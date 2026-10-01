@@ -37,7 +37,8 @@ pub(super) fn bundle(value: &SectorBundle) -> Result<(), SectorBundleError> {
         return Err(SectorBundleError::Source);
     }
     let rows = &value.rows;
-    if rows.period != 1
+    if rows.accounting != babylon_material_circuit::CircuitAccounting::PhysicalControl
+        || rows.period != 1
         || !rows.orders.is_empty()
         || !rows.backlog.is_empty()
         || !rows.freight.is_empty()

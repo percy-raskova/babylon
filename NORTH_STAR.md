@@ -73,6 +73,18 @@ Determinism proves computational identity, not scientific truth. Historical
 cases test causal signatures and counterfactual behavior. They do not dictate a
 historical path.
 
+Every county in the 50 states and DC participates in the approved national
+economy. Twelve finite external markets and explicit US dependencies connect it
+to the world. Michigan remains a scenario within the same economic engine.
+Recurring needs, paid work, purchases, production and investment must continue
+beyond opening provisions. The first material organizer choice contrasts local
+aid with slower cross-region solidarity, using actual goods, money and time.
+The [design and worked accounts](reports/national-economy-design-2026-09-20.md)
+record that direction and its evidence.
+
+Linear owns implementation scope and status. This direction does not claim
+those mechanics already work.
+
 The Bevy client observes durable Michigan campaigns and offers the bounded
 Wayne organizer loop. Broader G4 observer and G5 player-agency acceptance remain
 incomplete.

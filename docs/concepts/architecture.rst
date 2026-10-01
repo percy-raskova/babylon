@@ -114,7 +114,7 @@ The shipping engine path is:
 
 ``babylon-material-circuit``
    Physical production, routed freight, local transfers, merchant handling,
-   finite final fulfillment, and conserved staffing transitions.
+   finite final fulfillment, conserved staffing, and funded monetary accounts.
 
 ``babylon-persistence``
    Rust-owned PostgreSQL activation, campaign foundation, checkpoint restart,
@@ -152,6 +152,43 @@ through the common checked inventory operations. Staffing binds production or
 merchant work to a conserved pool. ``ProductionEvidenceDigest`` binds the
 complete authorized projection, sorting unordered rows while preserving event,
 geometry, and physical path order.
+
+The material state explicitly selects a physical accounting control or monetary
+accounts. Both use the same allocator. Monetary orders must name funded escrow.
+Dispatch holds that money until actual arrival or local handoff.
+Physical loss refunds the buyer.
+
+Employers fund attendance before work. Wage
+obligations and payment remain separate receipts, while later labor receipts
+distinguish used, paid idle, unfunded, and unplanned hours. The detached close checks cash
+plus reserves before it can publish. Canonical state captures pending orders
+and earned unpaid wages for restart.
+
+Captured recurring policies connect household stocks and needs, affordable
+purchases, consumption and unmet needs to that same material close. Funded
+orders keep their accepted price. Handoffs credit resident stocks before
+consumption. Unfilled recurring retail requests expire and refund their reserve.
+Resolved orders retire together with their escrow. Receipts preserve their
+admission, fulfillment and expiry for later inspection.
+
+Procurement accounts for inventory and outstanding inbound orders, including
+goods in transit once. Later production and attendance plans respond to
+sales, funded unfilled requests and closing stock. Offers can change their next
+quote through a captured bounded inventory policy. A second outbound pass
+dispatches newly funded firm orders through the remaining shared resources.
+Local firm credits occur after both passes, so they cannot feed another dispatch
+in the same close. The eight-period fixed-price control exercises this loop.
+
+The observer authenticates admissions, settlement and retirement between
+adjacent material states. It reports household stocks, consumption and unmet
+needs separately from retail handoffs. Order drill-down keeps active and
+latest-period rows with explicit cumulative totals. Campaign comparisons use
+stable resident and retailer identities as generated order identities change.
+
+The current Michigan campaign still selects the physical control. National
+content, rolling budgets, investment and the playable household and solidarity
+connections remain separate acceptance work. ADR263 records the approved
+direction and distinguishes its requirements from verified implementation.
 
 Practice has one typed contract for actors, stable targets, authority, intents,
 resource quotes, resolved batches, and ordered actions. The evidence driver

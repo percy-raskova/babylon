@@ -1225,3 +1225,8 @@ decisions:
     status: accepted
     date: '2026-09-13'
     file: ADR262_native_organizer_practice.yaml
+  ADR263_recurring_national_economy:
+    title: Recurring national and foreign economies share one material and monetary circuit
+    status: accepted
+    date: '2026-09-20'
+    file: ADR263_recurring_national_economy.yaml

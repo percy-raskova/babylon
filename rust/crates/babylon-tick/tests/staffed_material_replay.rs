@@ -197,6 +197,7 @@ fn opening() -> MaterialCircuitState {
         handling_coefficients: Vec::new(),
         final_demand_principals: Vec::new(),
         final_demand_orders: Vec::new(),
+        accounting: babylon_material_circuit::CircuitAccounting::PhysicalControl,
         maintenance_binding: None,
         maintenance_service: None,
     };
@@ -271,6 +272,14 @@ fn try_session_with_authored_rules(
     rules: &str,
     labor: StaffingComposition,
 ) -> Result<Session, MaterialReplayError> {
+    try_session_with_material(rules, labor, opening())
+}
+
+fn try_session_with_material(
+    rules: &str,
+    labor: StaffingComposition,
+    material: MaterialCircuitState,
+) -> Result<Session, MaterialReplayError> {
     let foundation = michigan_dynamic_hex_foundation::michigan_dynamic_hex_foundation().unwrap();
     let (_, parsed) = split_content(rules).unwrap();
     let forms = parsed.into_iter().map(|rule| rule.form).collect::<Vec<_>>();
@@ -291,7 +300,7 @@ fn try_session_with_authored_rules(
     .map_err(MaterialReplayError::Graph)?;
     MaterialReplaySession::new(
         graph,
-        MaterialWorldRegister::try_new(0, opening()).unwrap(),
+        MaterialWorldRegister::try_new(0, material).unwrap(),
         sha256_of(b"staffed-replay-fixture-foundation"),
         7,
         labor,
@@ -301,6 +310,66 @@ fn try_session_with_authored_rules(
 fn session(rules: &str) -> Session {
     try_session(rules, staffed_labor()).unwrap()
 }
+
+fn paid_material() -> MaterialCircuitState {
+    use babylon_kernel::currency::Currency;
+    use babylon_material_circuit::{
+        AccountId, CashAccount, CircuitAccounting, EmploymentTerms, FinalDemandPrincipal,
+        FinalDemandPrincipalId, MonetaryBook, MonetaryCircuit, OutboundOrderId, PurchaseEscrow,
+    };
+    let mut material = opening();
+    let household = FinalDemandPrincipalId::from_bytes([30; 32]);
+    material.final_demand_principals.push(FinalDemandPrincipal {
+        id: household,
+        county_geoid: *b"26163",
+    });
+    let mut book = MonetaryBook::open(vec![
+        CashAccount {
+            id: AccountId::Site(site(1)),
+            cash: Currency::from_micro_units(1000),
+        },
+        CashAccount {
+            id: AccountId::Site(site(2)),
+            cash: Currency::from_micro_units(0),
+        },
+        CashAccount {
+            id: AccountId::Household(household),
+            cash: Currency::from_micro_units(0),
+        },
+    ])
+    .unwrap();
+    for order in &material.orders {
+        book.reserve_purchase(
+            PurchaseEscrow::new(
+                OutboundOrderId::Delivery(order.order_id),
+                AccountId::Site(order.buyer_site_id),
+                AccountId::Site(order.supplier_site_id),
+                order.ordered,
+                Currency::from_micro_units(2),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+    }
+    material.accounting = CircuitAccounting::Monetary(MonetaryCircuit {
+        recurring: None,
+        book,
+        employment: vec![EmploymentTerms {
+            site_id: site(1),
+            unit_id: unit(1),
+            payee: household,
+            hourly_rate: Currency::from_micro_units(1),
+        }],
+    });
+    material
+}
+
+fn paid_session() -> Session {
+    try_session_with_material(MATERIAL_CYCLE, staffed_labor(), paid_material()).unwrap()
+}
+
+#[path = "staffed_material_replay/recurring.rs"]
+mod recurring;
 
 fn try_session(
     additional_rules: &str,
@@ -640,6 +709,72 @@ fn prepared_and_failed_commit_publish_nothing_and_retry_has_identical_joint_iden
     assert_eq!(sink.events.len(), before.events.len() + 1);
     assert_eq!(&sink.events[..before.events.len()], before.events);
     assert_people(&session, 0.0, 1.0, 0.0);
+}
+
+#[test]
+fn wage_and_dispatch_candidate_is_atomic_and_restarts_through_paid_arrival() {
+    use babylon_kernel::currency::Currency;
+    use babylon_material_circuit::{AccountId, CircuitAccounting};
+    let mut session = paid_session();
+    let mut sink = CollectingSink::default();
+    let before = live(&session, &sink);
+    let candidate = prepare(&session);
+    let receipts = decode_material_receipts(candidate.material().receipt_bytes()).unwrap();
+    assert_eq!(receipts.wage_accruals.len(), 1);
+    assert_eq!(
+        receipts.wage_accruals[0].amount,
+        Currency::from_micro_units(160)
+    );
+    assert_eq!(receipts.labor_use[0].paid_idle_hours, 160);
+    assert_eq!(receipts.money_transfers.len(), 2);
+    let expected = *candidate.identity();
+    let refused = session.commit_prepared_and_publish(&mut sink, candidate, |_| {
+        Err::<ReplayCommitDisposition, _>("paid commit refused")
+    });
+    assert!(matches!(
+        refused,
+        Err(MaterialCommitError::Commit("paid commit refused"))
+    ));
+    assert_eq!(live(&session, &sink), before);
+    let retry = prepare(&session);
+    assert_eq!(*retry.identity(), expected);
+    let graph = retry.graph_report().result_stable_graph().clone();
+    let graph_material = owned_checkpoint_rows(retry.graph_report().material_state_rows());
+    let registers = retry
+        .graph_report()
+        .result_registers()
+        .canonical_bytes()
+        .to_vec();
+    let material = retry.material().register().canonical_bytes().to_vec();
+    commit(&mut session, &mut sink, retry);
+    let mut restored = paid_session();
+    restored
+        .restore_full_checkpoint(&graph, &graph_material, &registers, &material)
+        .unwrap();
+    let mut restored_sink = CollectingSink::default();
+    for _ in 2..=4 {
+        let next = prepare(&session);
+        let replay = prepare(&restored);
+        assert_eq!(replay.identity(), next.identity());
+        assert_eq!(
+            replay.material().receipt_bytes(),
+            next.material().receipt_bytes()
+        );
+        commit(&mut session, &mut sink, next);
+        commit(&mut restored, &mut restored_sink, replay);
+    }
+    assert_eq!(session.material(), restored.material());
+    let CircuitAccounting::Monetary(economy) = &restored.material().state().accounting else {
+        panic!("paid circuit")
+    };
+    assert_eq!(
+        economy.book.cash(AccountId::Site(site(2))).unwrap(),
+        Currency::from_micro_units(8)
+    );
+    assert_eq!(
+        economy.book.total_cash_and_reserves().unwrap(),
+        Currency::from_micro_units(1000)
+    );
 }
 
 #[test]

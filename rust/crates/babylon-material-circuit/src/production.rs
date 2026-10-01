@@ -520,6 +520,65 @@ fn consume_production_inputs(
     Ok(())
 }
 
+fn recurring_demand_cap(state: &MaterialCircuitState, process: ProcessId) -> u64 {
+    let crate::CircuitAccounting::Monetary(economy) = &state.accounting else {
+        return u64::MAX;
+    };
+    let Some(recurring) = &economy.recurring else {
+        return u64::MAX;
+    };
+    recurring
+        .production
+        .binary_search_by_key(&process, |row| row.process_id)
+        .ok()
+        .map_or(0, |index| recurring.production[index].planned_batches)
+}
+
+/// Existing funded freight can inform plans but never enters current usable
+/// stock. Each remaining stage's declared loss is applied to its forecast.
+fn planning_inventory(
+    state: &MaterialCircuitState,
+    next_period: u64,
+) -> Result<InventoryLedger, MaterialCircuitError> {
+    let mut inventory: InventoryLedger = state
+        .inventory
+        .iter()
+        .map(|row| ((row.site_id, row.good_id, row.unit_id), row.quantity))
+        .collect();
+    if !matches!(&state.accounting, crate::CircuitAccounting::Monetary(economy) if economy.recurring.is_some())
+    {
+        return Ok(inventory);
+    }
+    for lot in &state.freight {
+        let mut arrival = lot.stage_arrival_period;
+        let mut quantity = lot.quantity;
+        let start = state.route_stages.partition_point(|row| {
+            (row.route_id, row.stage_index) < (lot.route_id, lot.current_stage_index)
+        });
+        let end = state
+            .route_stages
+            .partition_point(|row| row.route_id <= lot.route_id);
+        for stage in &state.route_stages[start..end] {
+            if stage.stage_index > lot.current_stage_index {
+                arrival = arrival
+                    .checked_add(u64::from(stage.travel_periods))
+                    .ok_or(MaterialCircuitError::Arithmetic)?;
+            }
+            let loss = u128::from(quantity) * u128::from(stage.loss_ppm)
+                / u128::from(crate::FREIGHT_LOSS_PARTS_PER_MILLION);
+            quantity -= u64::try_from(loss).map_err(|_| MaterialCircuitError::Arithmetic)?;
+        }
+        if arrival <= next_period {
+            credit_inventory(
+                &mut inventory,
+                (lot.destination_site_id, lot.good_id, lot.unit_id),
+                quantity,
+            )?;
+        }
+    }
+    Ok(inventory)
+}
+
 fn next_period_candidates(
     state: &MaterialCircuitState,
     next_period: u64,
@@ -537,7 +596,8 @@ fn next_period_candidates(
                 output.process_id,
                 output.site_id,
                 next_period,
-            ),
+            )
+            .min(recurring_demand_cap(state, output.process_id)),
         })
         .collect()
 }
@@ -581,11 +641,7 @@ pub(crate) fn derive_shared_labor_requests(
     state: &MaterialCircuitState,
     next_period: u64,
 ) -> Result<Vec<ProcessLaborRequest>, MaterialCircuitError> {
-    let inventory = state
-        .inventory
-        .iter()
-        .map(|row| ((row.site_id, row.good_id, row.unit_id), row.quantity))
-        .collect();
+    let inventory = planning_inventory(state, next_period)?;
     let candidates = next_period_candidates(state, next_period);
     let allocations = allocate_production_batches(
         state,
@@ -618,11 +674,7 @@ pub(crate) fn prospective_batches(
     process: ProcessId,
     period: u64,
 ) -> Result<u64, MaterialCircuitError> {
-    let inventory = state
-        .inventory
-        .iter()
-        .map(|row| ((row.site_id, row.good_id, row.unit_id), row.quantity))
-        .collect();
+    let inventory = planning_inventory(state, period)?;
     let candidates = next_period_candidates(state, period);
     let allocations = allocate_production_batches(
         state,
@@ -643,10 +695,9 @@ pub(crate) fn derive_shared_production(
     state: &mut MaterialCircuitState,
     next_period: u64,
 ) -> Result<(), MaterialCircuitError> {
-    let inventory = take_inventory(state);
+    let inventory = planning_inventory(state, next_period)?;
     derive_next_period_production(state, &inventory, next_period)?;
     prune_consumed_capacity(state, next_period);
-    publish_inventory(state, inventory);
     Ok(())
 }
 
@@ -698,6 +749,7 @@ mod tests {
             handling_coefficients: Vec::new(),
             final_demand_principals: Vec::new(),
             final_demand_orders: Vec::new(),
+            accounting: crate::CircuitAccounting::PhysicalControl,
             maintenance_binding: None,
             maintenance_service: None,
         }

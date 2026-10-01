@@ -418,6 +418,7 @@ mod tests {
     }
     fn chain() -> ProductionSnapshot {
         ProductionSnapshot {
+            household_accounts: Vec::new(),
             maintenance_account: None,
             content_authority_sha256: "a".repeat(64),
             road_source: None,

@@ -41,11 +41,6 @@ pub(super) fn validate_merchants(state: &MaterialCircuitState) -> Result<(), Mat
     {
         return Err(MaterialCircuitError::DuplicateRow);
     }
-    let production_sites: BTreeSet<_> = state
-        .process_outputs
-        .iter()
-        .map(|row| row.site_id)
-        .collect();
     let road_principals: BTreeSet<_> = state
         .route_stage_capacities
         .iter()
@@ -55,7 +50,6 @@ pub(super) fn validate_merchants(state: &MaterialCircuitState) -> Result<(), Mat
     for row in &state.merchants {
         if !row.county_geoid.iter().all(u8::is_ascii_digit)
             || site_node(state, row.site_id).is_none()
-            || production_sites.contains(&row.site_id)
             || road_principals.contains(&row.capacity_id)
         {
             return Err(MaterialCircuitError::MerchantInvariant);

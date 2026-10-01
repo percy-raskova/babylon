@@ -129,13 +129,14 @@ fn project_with_labels(
     };
     super::outbound::completed_facts(prior, current, receipt)?;
     let processes = process_map(prior)?;
-    let orders = order_map(prior)?;
-    if processes != process_map(current)? || orders != order_map(current)? {
+    let joined = super::lifecycle::join(prior, current, receipt)?;
+    let orders = order_map(joined.deliveries.values().map(|(before, _)| before))?;
+    if processes != process_map(current)? {
         return Err(ProductionProjectionError::State);
     }
     let mut ledger = inventory_ledger(prior, current)?;
     add_production(prior, receipt, &processes, &mut ledger)?;
-    add_transport(prior, current, receipt, &orders, &mut ledger)?;
+    add_transport(prior, current, receipt, &orders, &joined, &mut ledger)?;
     add_final_demand(prior, receipt, &mut ledger)?;
     if let Some(done) = maintenance {
         let binding = &done.binding;
@@ -195,9 +196,11 @@ fn process_map(state: &MaterialCircuitState) -> Result<Processes, ProductionProj
     Ok(processes)
 }
 
-fn order_map(state: &MaterialCircuitState) -> Result<Orders, ProductionProjectionError> {
+fn order_map<'a>(
+    rows: impl Iterator<Item = &'a OrderRow>,
+) -> Result<Orders, ProductionProjectionError> {
     let mut orders = Orders::new();
-    for row in &state.orders {
+    for row in rows {
         if row.shipped > row.ordered
             || row.realized > row.delivered
             || row
@@ -307,6 +310,7 @@ fn add_transport(
     current: &MaterialCircuitState,
     receipt: &MaterialTickReceipts,
     orders: &Orders,
+    joined: &super::lifecycle::PeriodOrders,
     ledger: &mut Ledger,
 ) -> Result<(), ProductionProjectionError> {
     let mut movements = Movements::new();
@@ -358,11 +362,7 @@ fn add_transport(
             row.quantity,
         )?;
     }
-    let previous: BTreeMap<_, _> = prior.orders.iter().map(|row| (row.order_id, row)).collect();
-    for row in &current.orders {
-        let before = previous
-            .get(&row.order_id)
-            .ok_or(ProductionProjectionError::State)?;
+    for (before, row) in joined.deliveries.values() {
         check_movement(
             before,
             row,
@@ -503,7 +503,8 @@ fn add_local_transfers(
     Ok(())
 }
 
-/// Finite end-buyer fulfillment is a terminal stock sink, not consumption.
+/// Retail fulfillment leaves the site account. Resident receipt and consumption
+/// reconcile separately in the household account.
 fn add_final_demand(
     prior: &MaterialCircuitState,
     receipt: &MaterialTickReceipts,

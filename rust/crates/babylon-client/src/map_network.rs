@@ -732,6 +732,8 @@ mod tests {
         snapshot.sites[1].sector_code = "44-45".into();
         snapshot.final_demand_accounts.push(
             babylon_persistence::production_observation::ProductionFinalDemandAccount {
+                total_order_count: 1,
+                expired: 0,
                 demand_principal_id: "demand".into(),
                 county_geoid: "26099".into(),
                 good_id: "steel".into(),
@@ -745,6 +747,7 @@ mod tests {
                 retailer_site_ids: vec!["b".into()],
                 orders: vec![
                     babylon_persistence::production_observation::ProductionFinalDemandOrder {
+                        expired: 0,
                         order_id: "final".into(),
                         retailer_site_id: "b".into(),
                         ordered: 10,

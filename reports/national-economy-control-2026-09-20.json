@@ -1,0 +1,3341 @@
+{
+  "assumptions": {
+    "excluded": [
+      "price formation",
+      "taxation",
+      "credit",
+      "dividends",
+      "transport charges",
+      "resource regeneration",
+      "loss and refund cases",
+      "population change",
+      "organizer effects"
+    ],
+    "hours_per_worker_per_period": 4,
+    "household_need_per_period": 4,
+    "initial_resource_equivalent": 56,
+    "money_supply": 24,
+    "needs": "Unmet period consumption is recorded; no automatic next-period catch-up demand.",
+    "ownership": "Seller retains title and inventory-in-transit until final arrival. Buyer holds funded escrow only. Sale, purchase, title transfer and escrow settlement coincide at arrival.",
+    "payroll": "Previous signals set opening shift plans. After prior arrival settlements, all shifts reserve actual cash before work or current retail requests. Attendance earns the full funded wage even if idle; payment is a separate event.",
+    "period_days": 28,
+    "periods": 8,
+    "planning": "Next supplier plan equals current factory replenishment; next factory plan equals current distributor replenishment. Next distributor plan equals current household request affordable after committed payroll, including unfilled requests. Unfilled retail requests expire, without becoming repeat arrears orders.",
+    "prices": {
+      "factory_finished": 3,
+      "raw": 1,
+      "retail_finished": 4
+    },
+    "production_recipe": "One raw unit becomes one finished unit.",
+    "seller_delivery_obligation": "Each transit lot records the seller quantity obligation. It is not a seller cash liability because the buyer escrow is not seller cash.",
+    "transport": "Two dedicated routes, capacity four native units per period each, one-period transit; free Designed capacity, no carrier financial actor.",
+    "wage_per_hour": 1,
+    "workers": {
+      "distributor": 1,
+      "factory": 2,
+      "supplier": 1
+    }
+  },
+  "expected": {
+    "distributor_funded_hours": [
+      4,
+      4,
+      4,
+      0,
+      0,
+      4,
+      4,
+      4
+    ],
+    "factory_output": [
+      4,
+      4,
+      4,
+      0,
+      0,
+      0,
+      4,
+      4
+    ],
+    "household_consumption": [
+      4,
+      4,
+      4,
+      4,
+      0,
+      4,
+      4,
+      4
+    ],
+    "household_purchases": [
+      4,
+      4,
+      0,
+      0,
+      0,
+      4,
+      4,
+      4
+    ],
+    "household_requests": [
+      4,
+      4,
+      0,
+      0,
+      4,
+      4,
+      4,
+      4
+    ],
+    "supplier_output": [
+      4,
+      4,
+      4,
+      4,
+      0,
+      0,
+      0,
+      4
+    ],
+    "wages_obligated_and_paid": [
+      16,
+      16,
+      16,
+      4,
+      0,
+      4,
+      12,
+      16
+    ]
+  },
+  "final_accounts_debit_positive": {
+    "distributor": {
+      "cash": 4,
+      "cost_of_goods_sold": 60,
+      "equity": -20,
+      "handling_expense": 24,
+      "sales": -80,
+      "trade_escrow": 12
+    },
+    "factory": {
+      "cost_of_goods_sold": 48,
+      "equity": -16,
+      "sales": -48,
+      "seller_owned_transit": 12,
+      "trade_escrow": 4
+    },
+    "household": {
+      "cash": 4,
+      "consumption_expense": 112,
+      "equity": -32,
+      "wage_income": -84
+    },
+    "supplier": {
+      "cost_of_goods_sold": 16,
+      "equity": -4,
+      "sales": -16,
+      "seller_owned_transit": 4
+    }
+  },
+  "journal": [
+    {
+      "event_id": 1,
+      "label": "explicit opening assets and equity",
+      "period": 0,
+      "postings": [
+        {
+          "actor": "supplier",
+          "debit_positive_legs": {
+            "cash": 4,
+            "equity": -4
+          }
+        },
+        {
+          "actor": "factory",
+          "debit_positive_legs": {
+            "cash": 12,
+            "equity": -16,
+            "raw_inventory": 4
+          }
+        },
+        {
+          "actor": "distributor",
+          "debit_positive_legs": {
+            "cash": 8,
+            "equity": -20,
+            "finished_inventory": 12
+          }
+        },
+        {
+          "actor": "household",
+          "debit_positive_legs": {
+            "equity": -32,
+            "food_inventory": 32
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 2,
+      "label": "fund committed shift before production or retail orders",
+      "period": 1,
+      "postings": [
+        {
+          "actor": "supplier",
+          "debit_positive_legs": {
+            "cash": -4,
+            "payroll_escrow": 4
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 3,
+      "label": "fund committed shift before production or retail orders",
+      "period": 1,
+      "postings": [
+        {
+          "actor": "factory",
+          "debit_positive_legs": {
+            "cash": -8,
+            "payroll_escrow": 8
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 4,
+      "label": "fund committed shift before production or retail orders",
+      "period": 1,
+      "postings": [
+        {
+          "actor": "distributor",
+          "debit_positive_legs": {
+            "cash": -4,
+            "payroll_escrow": 4
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 5,
+      "label": "factory transforms opening raw material",
+      "period": 1,
+      "postings": [
+        {
+          "actor": "factory",
+          "debit_positive_legs": {
+            "finished_inventory": 4,
+            "raw_inventory": -4
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 6,
+      "label": "committed attendance earns wages; obligation is distinct from payment",
+      "period": 1,
+      "postings": [
+        {
+          "actor": "supplier",
+          "debit_positive_legs": {
+            "raw_inventory": 4,
+            "wages_payable": -4
+          }
+        },
+        {
+          "actor": "household",
+          "debit_positive_legs": {
+            "wage_income": -4,
+            "wages_receivable": 4
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 7,
+      "label": "pay earned wages out of previously funded payroll escrow",
+      "period": 1,
+      "postings": [
+        {
+          "actor": "supplier",
+          "debit_positive_legs": {
+            "payroll_escrow": -4,
+            "wages_payable": 4
+          }
+        },
+        {
+          "actor": "household",
+          "debit_positive_legs": {
+            "cash": 4,
+            "wages_receivable": -4
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 8,
+      "label": "committed attendance earns wages; obligation is distinct from payment",
+      "period": 1,
+      "postings": [
+        {
+          "actor": "factory",
+          "debit_positive_legs": {
+            "finished_inventory": 8,
+            "wages_payable": -8
+          }
+        },
+        {
+          "actor": "household",
+          "debit_positive_legs": {
+            "wage_income": -8,
+            "wages_receivable": 8
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 9,
+      "label": "pay earned wages out of previously funded payroll escrow",
+      "period": 1,
+      "postings": [
+        {
+          "actor": "factory",
+          "debit_positive_legs": {
+            "payroll_escrow": -8,
+            "wages_payable": 8
+          }
+        },
+        {
+          "actor": "household",
+          "debit_positive_legs": {
+            "cash": 8,
+            "wages_receivable": -8
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 10,
+      "label": "committed attendance earns wages; obligation is distinct from payment",
+      "period": 1,
+      "postings": [
+        {
+          "actor": "distributor",
+          "debit_positive_legs": {
+            "handling_expense": 4,
+            "wages_payable": -4
+          }
+        },
+        {
+          "actor": "household",
+          "debit_positive_legs": {
+            "wage_income": -4,
+            "wages_receivable": 4
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 11,
+      "label": "pay earned wages out of previously funded payroll escrow",
+      "period": 1,
+      "postings": [
+        {
+          "actor": "distributor",
+          "debit_positive_legs": {
+            "payroll_escrow": -4,
+            "wages_payable": 4
+          }
+        },
+        {
+          "actor": "household",
+          "debit_positive_legs": {
+            "cash": 4,
+            "wages_receivable": -4
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 12,
+      "label": "local retail handoff, title transfer, and immediate settlement",
+      "period": 1,
+      "postings": [
+        {
+          "actor": "distributor",
+          "debit_positive_legs": {
+            "cost_of_goods_sold": 12,
+            "finished_inventory": -12,
+            "sales": -16,
+            "trade_receivable": 16
+          }
+        },
+        {
+          "actor": "household",
+          "debit_positive_legs": {
+            "food_inventory": 16,
+            "trade_payable": -16
+          }
+        },
+        {
+          "actor": "household",
+          "debit_positive_legs": {
+            "cash": -16,
+            "trade_payable": 16
+          }
+        },
+        {
+          "actor": "distributor",
+          "debit_positive_legs": {
+            "cash": 16,
+            "trade_receivable": -16
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 13,
+      "label": "reserve buyer money and dispatch seller-owned goods",
+      "period": 1,
+      "postings": [
+        {
+          "actor": "distributor",
+          "debit_positive_legs": {
+            "cash": -12,
+            "trade_escrow": 12
+          }
+        },
+        {
+          "actor": "factory",
+          "debit_positive_legs": {
+            "finished_inventory": -12,
+            "seller_owned_transit": 12
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 14,
+      "label": "reserve buyer money and dispatch seller-owned goods",
+      "period": 1,
+      "postings": [
+        {
+          "actor": "factory",
+          "debit_positive_legs": {
+            "cash": -4,
+            "trade_escrow": 4
+          }
+        },
+        {
+          "actor": "supplier",
+          "debit_positive_legs": {
+            "raw_inventory": -4,
+            "seller_owned_transit": 4
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 15,
+      "label": "household consumes available provisions",
+      "period": 1,
+      "postings": [
+        {
+          "actor": "household",
+          "debit_positive_legs": {
+            "consumption_expense": 16,
+            "food_inventory": -16
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 16,
+      "label": "final arrival, title transfer, and escrow settlement",
+      "period": 2,
+      "postings": [
+        {
+          "actor": "factory",
+          "debit_positive_legs": {
+            "cost_of_goods_sold": 12,
+            "sales": -12,
+            "seller_owned_transit": -12,
+            "trade_receivable": 12
+          }
+        },
+        {
+          "actor": "distributor",
+          "debit_positive_legs": {
+            "finished_inventory": 12,
+            "trade_payable": -12
+          }
+        },
+        {
+          "actor": "distributor",
+          "debit_positive_legs": {
+            "trade_escrow": -12,
+            "trade_payable": 12
+          }
+        },
+        {
+          "actor": "factory",
+          "debit_positive_legs": {
+            "cash": 12,
+            "trade_receivable": -12
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 17,
+      "label": "final arrival, title transfer, and escrow settlement",
+      "period": 2,
+      "postings": [
+        {
+          "actor": "supplier",
+          "debit_positive_legs": {
+            "cost_of_goods_sold": 4,
+            "sales": -4,
+            "seller_owned_transit": -4,
+            "trade_receivable": 4
+          }
+        },
+        {
+          "actor": "factory",
+          "debit_positive_legs": {
+            "raw_inventory": 4,
+            "trade_payable": -4
+          }
+        },
+        {
+          "actor": "factory",
+          "debit_positive_legs": {
+            "trade_escrow": -4,
+            "trade_payable": 4
+          }
+        },
+        {
+          "actor": "supplier",
+          "debit_positive_legs": {
+            "cash": 4,
+            "trade_receivable": -4
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 18,
+      "label": "fund committed shift before production or retail orders",
+      "period": 2,
+      "postings": [
+        {
+          "actor": "supplier",
+          "debit_positive_legs": {
+            "cash": -4,
+            "payroll_escrow": 4
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 19,
+      "label": "fund committed shift before production or retail orders",
+      "period": 2,
+      "postings": [
+        {
+          "actor": "factory",
+          "debit_positive_legs": {
+            "cash": -8,
+            "payroll_escrow": 8
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 20,
+      "label": "fund committed shift before production or retail orders",
+      "period": 2,
+      "postings": [
+        {
+          "actor": "distributor",
+          "debit_positive_legs": {
+            "cash": -4,
+            "payroll_escrow": 4
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 21,
+      "label": "factory transforms opening raw material",
+      "period": 2,
+      "postings": [
+        {
+          "actor": "factory",
+          "debit_positive_legs": {
+            "finished_inventory": 4,
+            "raw_inventory": -4
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 22,
+      "label": "committed attendance earns wages; obligation is distinct from payment",
+      "period": 2,
+      "postings": [
+        {
+          "actor": "supplier",
+          "debit_positive_legs": {
+            "raw_inventory": 4,
+            "wages_payable": -4
+          }
+        },
+        {
+          "actor": "household",
+          "debit_positive_legs": {
+            "wage_income": -4,
+            "wages_receivable": 4
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 23,
+      "label": "pay earned wages out of previously funded payroll escrow",
+      "period": 2,
+      "postings": [
+        {
+          "actor": "supplier",
+          "debit_positive_legs": {
+            "payroll_escrow": -4,
+            "wages_payable": 4
+          }
+        },
+        {
+          "actor": "household",
+          "debit_positive_legs": {
+            "cash": 4,
+            "wages_receivable": -4
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 24,
+      "label": "committed attendance earns wages; obligation is distinct from payment",
+      "period": 2,
+      "postings": [
+        {
+          "actor": "factory",
+          "debit_positive_legs": {
+            "finished_inventory": 8,
+            "wages_payable": -8
+          }
+        },
+        {
+          "actor": "household",
+          "debit_positive_legs": {
+            "wage_income": -8,
+            "wages_receivable": 8
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 25,
+      "label": "pay earned wages out of previously funded payroll escrow",
+      "period": 2,
+      "postings": [
+        {
+          "actor": "factory",
+          "debit_positive_legs": {
+            "payroll_escrow": -8,
+            "wages_payable": 8
+          }
+        },
+        {
+          "actor": "household",
+          "debit_positive_legs": {
+            "cash": 8,
+            "wages_receivable": -8
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 26,
+      "label": "committed attendance earns wages; obligation is distinct from payment",
+      "period": 2,
+      "postings": [
+        {
+          "actor": "distributor",
+          "debit_positive_legs": {
+            "handling_expense": 4,
+            "wages_payable": -4
+          }
+        },
+        {
+          "actor": "household",
+          "debit_positive_legs": {
+            "wage_income": -4,
+            "wages_receivable": 4
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 27,
+      "label": "pay earned wages out of previously funded payroll escrow",
+      "period": 2,
+      "postings": [
+        {
+          "actor": "distributor",
+          "debit_positive_legs": {
+            "payroll_escrow": -4,
+            "wages_payable": 4
+          }
+        },
+        {
+          "actor": "household",
+          "debit_positive_legs": {
+            "cash": 4,
+            "wages_receivable": -4
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 28,
+      "label": "local retail handoff, title transfer, and immediate settlement",
+      "period": 2,
+      "postings": [
+        {
+          "actor": "distributor",
+          "debit_positive_legs": {
+            "cost_of_goods_sold": 12,
+            "finished_inventory": -12,
+            "sales": -16,
+            "trade_receivable": 16
+          }
+        },
+        {
+          "actor": "household",
+          "debit_positive_legs": {
+            "food_inventory": 16,
+            "trade_payable": -16
+          }
+        },
+        {
+          "actor": "household",
+          "debit_positive_legs": {
+            "cash": -16,
+            "trade_payable": 16
+          }
+        },
+        {
+          "actor": "distributor",
+          "debit_positive_legs": {
+            "cash": 16,
+            "trade_receivable": -16
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 29,
+      "label": "reserve buyer money and dispatch seller-owned goods",
+      "period": 2,
+      "postings": [
+        {
+          "actor": "distributor",
+          "debit_positive_legs": {
+            "cash": -12,
+            "trade_escrow": 12
+          }
+        },
+        {
+          "actor": "factory",
+          "debit_positive_legs": {
+            "finished_inventory": -12,
+            "seller_owned_transit": 12
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 30,
+      "label": "reserve buyer money and dispatch seller-owned goods",
+      "period": 2,
+      "postings": [
+        {
+          "actor": "factory",
+          "debit_positive_legs": {
+            "cash": -4,
+            "trade_escrow": 4
+          }
+        },
+        {
+          "actor": "supplier",
+          "debit_positive_legs": {
+            "raw_inventory": -4,
+            "seller_owned_transit": 4
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 31,
+      "label": "household consumes available provisions",
+      "period": 2,
+      "postings": [
+        {
+          "actor": "household",
+          "debit_positive_legs": {
+            "consumption_expense": 16,
+            "food_inventory": -16
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 32,
+      "label": "final arrival, title transfer, and escrow settlement",
+      "period": 3,
+      "postings": [
+        {
+          "actor": "factory",
+          "debit_positive_legs": {
+            "cost_of_goods_sold": 12,
+            "sales": -12,
+            "seller_owned_transit": -12,
+            "trade_receivable": 12
+          }
+        },
+        {
+          "actor": "distributor",
+          "debit_positive_legs": {
+            "finished_inventory": 12,
+            "trade_payable": -12
+          }
+        },
+        {
+          "actor": "distributor",
+          "debit_positive_legs": {
+            "trade_escrow": -12,
+            "trade_payable": 12
+          }
+        },
+        {
+          "actor": "factory",
+          "debit_positive_legs": {
+            "cash": 12,
+            "trade_receivable": -12
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 33,
+      "label": "final arrival, title transfer, and escrow settlement",
+      "period": 3,
+      "postings": [
+        {
+          "actor": "supplier",
+          "debit_positive_legs": {
+            "cost_of_goods_sold": 4,
+            "sales": -4,
+            "seller_owned_transit": -4,
+            "trade_receivable": 4
+          }
+        },
+        {
+          "actor": "factory",
+          "debit_positive_legs": {
+            "raw_inventory": 4,
+            "trade_payable": -4
+          }
+        },
+        {
+          "actor": "factory",
+          "debit_positive_legs": {
+            "trade_escrow": -4,
+            "trade_payable": 4
+          }
+        },
+        {
+          "actor": "supplier",
+          "debit_positive_legs": {
+            "cash": 4,
+            "trade_receivable": -4
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 34,
+      "label": "fund committed shift before production or retail orders",
+      "period": 3,
+      "postings": [
+        {
+          "actor": "supplier",
+          "debit_positive_legs": {
+            "cash": -4,
+            "payroll_escrow": 4
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 35,
+      "label": "fund committed shift before production or retail orders",
+      "period": 3,
+      "postings": [
+        {
+          "actor": "factory",
+          "debit_positive_legs": {
+            "cash": -8,
+            "payroll_escrow": 8
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 36,
+      "label": "fund committed shift before production or retail orders",
+      "period": 3,
+      "postings": [
+        {
+          "actor": "distributor",
+          "debit_positive_legs": {
+            "cash": -4,
+            "payroll_escrow": 4
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 37,
+      "label": "factory transforms opening raw material",
+      "period": 3,
+      "postings": [
+        {
+          "actor": "factory",
+          "debit_positive_legs": {
+            "finished_inventory": 4,
+            "raw_inventory": -4
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 38,
+      "label": "committed attendance earns wages; obligation is distinct from payment",
+      "period": 3,
+      "postings": [
+        {
+          "actor": "supplier",
+          "debit_positive_legs": {
+            "raw_inventory": 4,
+            "wages_payable": -4
+          }
+        },
+        {
+          "actor": "household",
+          "debit_positive_legs": {
+            "wage_income": -4,
+            "wages_receivable": 4
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 39,
+      "label": "pay earned wages out of previously funded payroll escrow",
+      "period": 3,
+      "postings": [
+        {
+          "actor": "supplier",
+          "debit_positive_legs": {
+            "payroll_escrow": -4,
+            "wages_payable": 4
+          }
+        },
+        {
+          "actor": "household",
+          "debit_positive_legs": {
+            "cash": 4,
+            "wages_receivable": -4
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 40,
+      "label": "committed attendance earns wages; obligation is distinct from payment",
+      "period": 3,
+      "postings": [
+        {
+          "actor": "factory",
+          "debit_positive_legs": {
+            "finished_inventory": 8,
+            "wages_payable": -8
+          }
+        },
+        {
+          "actor": "household",
+          "debit_positive_legs": {
+            "wage_income": -8,
+            "wages_receivable": 8
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 41,
+      "label": "pay earned wages out of previously funded payroll escrow",
+      "period": 3,
+      "postings": [
+        {
+          "actor": "factory",
+          "debit_positive_legs": {
+            "payroll_escrow": -8,
+            "wages_payable": 8
+          }
+        },
+        {
+          "actor": "household",
+          "debit_positive_legs": {
+            "cash": 8,
+            "wages_receivable": -8
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 42,
+      "label": "committed attendance earns wages; obligation is distinct from payment",
+      "period": 3,
+      "postings": [
+        {
+          "actor": "distributor",
+          "debit_positive_legs": {
+            "handling_expense": 4,
+            "wages_payable": -4
+          }
+        },
+        {
+          "actor": "household",
+          "debit_positive_legs": {
+            "wage_income": -4,
+            "wages_receivable": 4
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 43,
+      "label": "pay earned wages out of previously funded payroll escrow",
+      "period": 3,
+      "postings": [
+        {
+          "actor": "distributor",
+          "debit_positive_legs": {
+            "payroll_escrow": -4,
+            "wages_payable": 4
+          }
+        },
+        {
+          "actor": "household",
+          "debit_positive_legs": {
+            "cash": 4,
+            "wages_receivable": -4
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 44,
+      "label": "reserve buyer money and dispatch seller-owned goods",
+      "period": 3,
+      "postings": [
+        {
+          "actor": "factory",
+          "debit_positive_legs": {
+            "cash": -4,
+            "trade_escrow": 4
+          }
+        },
+        {
+          "actor": "supplier",
+          "debit_positive_legs": {
+            "raw_inventory": -4,
+            "seller_owned_transit": 4
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 45,
+      "label": "household consumes available provisions",
+      "period": 3,
+      "postings": [
+        {
+          "actor": "household",
+          "debit_positive_legs": {
+            "consumption_expense": 16,
+            "food_inventory": -16
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 46,
+      "label": "final arrival, title transfer, and escrow settlement",
+      "period": 4,
+      "postings": [
+        {
+          "actor": "supplier",
+          "debit_positive_legs": {
+            "cost_of_goods_sold": 4,
+            "sales": -4,
+            "seller_owned_transit": -4,
+            "trade_receivable": 4
+          }
+        },
+        {
+          "actor": "factory",
+          "debit_positive_legs": {
+            "raw_inventory": 4,
+            "trade_payable": -4
+          }
+        },
+        {
+          "actor": "factory",
+          "debit_positive_legs": {
+            "trade_escrow": -4,
+            "trade_payable": 4
+          }
+        },
+        {
+          "actor": "supplier",
+          "debit_positive_legs": {
+            "cash": 4,
+            "trade_receivable": -4
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 47,
+      "label": "fund committed shift before production or retail orders",
+      "period": 4,
+      "postings": [
+        {
+          "actor": "supplier",
+          "debit_positive_legs": {
+            "cash": -4,
+            "payroll_escrow": 4
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 48,
+      "label": "committed attendance earns wages; obligation is distinct from payment",
+      "period": 4,
+      "postings": [
+        {
+          "actor": "supplier",
+          "debit_positive_legs": {
+            "raw_inventory": 4,
+            "wages_payable": -4
+          }
+        },
+        {
+          "actor": "household",
+          "debit_positive_legs": {
+            "wage_income": -4,
+            "wages_receivable": 4
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 49,
+      "label": "pay earned wages out of previously funded payroll escrow",
+      "period": 4,
+      "postings": [
+        {
+          "actor": "supplier",
+          "debit_positive_legs": {
+            "payroll_escrow": -4,
+            "wages_payable": 4
+          }
+        },
+        {
+          "actor": "household",
+          "debit_positive_legs": {
+            "cash": 4,
+            "wages_receivable": -4
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 50,
+      "label": "household consumes available provisions",
+      "period": 4,
+      "postings": [
+        {
+          "actor": "household",
+          "debit_positive_legs": {
+            "consumption_expense": 16,
+            "food_inventory": -16
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 51,
+      "label": "fund committed shift before production or retail orders",
+      "period": 6,
+      "postings": [
+        {
+          "actor": "distributor",
+          "debit_positive_legs": {
+            "cash": -4,
+            "payroll_escrow": 4
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 52,
+      "label": "committed attendance earns wages; obligation is distinct from payment",
+      "period": 6,
+      "postings": [
+        {
+          "actor": "distributor",
+          "debit_positive_legs": {
+            "handling_expense": 4,
+            "wages_payable": -4
+          }
+        },
+        {
+          "actor": "household",
+          "debit_positive_legs": {
+            "wage_income": -4,
+            "wages_receivable": 4
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 53,
+      "label": "pay earned wages out of previously funded payroll escrow",
+      "period": 6,
+      "postings": [
+        {
+          "actor": "distributor",
+          "debit_positive_legs": {
+            "payroll_escrow": -4,
+            "wages_payable": 4
+          }
+        },
+        {
+          "actor": "household",
+          "debit_positive_legs": {
+            "cash": 4,
+            "wages_receivable": -4
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 54,
+      "label": "local retail handoff, title transfer, and immediate settlement",
+      "period": 6,
+      "postings": [
+        {
+          "actor": "distributor",
+          "debit_positive_legs": {
+            "cost_of_goods_sold": 12,
+            "finished_inventory": -12,
+            "sales": -16,
+            "trade_receivable": 16
+          }
+        },
+        {
+          "actor": "household",
+          "debit_positive_legs": {
+            "food_inventory": 16,
+            "trade_payable": -16
+          }
+        },
+        {
+          "actor": "household",
+          "debit_positive_legs": {
+            "cash": -16,
+            "trade_payable": 16
+          }
+        },
+        {
+          "actor": "distributor",
+          "debit_positive_legs": {
+            "cash": 16,
+            "trade_receivable": -16
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 55,
+      "label": "reserve buyer money and dispatch seller-owned goods",
+      "period": 6,
+      "postings": [
+        {
+          "actor": "distributor",
+          "debit_positive_legs": {
+            "cash": -12,
+            "trade_escrow": 12
+          }
+        },
+        {
+          "actor": "factory",
+          "debit_positive_legs": {
+            "finished_inventory": -12,
+            "seller_owned_transit": 12
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 56,
+      "label": "household consumes available provisions",
+      "period": 6,
+      "postings": [
+        {
+          "actor": "household",
+          "debit_positive_legs": {
+            "consumption_expense": 16,
+            "food_inventory": -16
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 57,
+      "label": "final arrival, title transfer, and escrow settlement",
+      "period": 7,
+      "postings": [
+        {
+          "actor": "factory",
+          "debit_positive_legs": {
+            "cost_of_goods_sold": 12,
+            "sales": -12,
+            "seller_owned_transit": -12,
+            "trade_receivable": 12
+          }
+        },
+        {
+          "actor": "distributor",
+          "debit_positive_legs": {
+            "finished_inventory": 12,
+            "trade_payable": -12
+          }
+        },
+        {
+          "actor": "distributor",
+          "debit_positive_legs": {
+            "trade_escrow": -12,
+            "trade_payable": 12
+          }
+        },
+        {
+          "actor": "factory",
+          "debit_positive_legs": {
+            "cash": 12,
+            "trade_receivable": -12
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 58,
+      "label": "fund committed shift before production or retail orders",
+      "period": 7,
+      "postings": [
+        {
+          "actor": "factory",
+          "debit_positive_legs": {
+            "cash": -8,
+            "payroll_escrow": 8
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 59,
+      "label": "fund committed shift before production or retail orders",
+      "period": 7,
+      "postings": [
+        {
+          "actor": "distributor",
+          "debit_positive_legs": {
+            "cash": -4,
+            "payroll_escrow": 4
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 60,
+      "label": "factory transforms opening raw material",
+      "period": 7,
+      "postings": [
+        {
+          "actor": "factory",
+          "debit_positive_legs": {
+            "finished_inventory": 4,
+            "raw_inventory": -4
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 61,
+      "label": "committed attendance earns wages; obligation is distinct from payment",
+      "period": 7,
+      "postings": [
+        {
+          "actor": "factory",
+          "debit_positive_legs": {
+            "finished_inventory": 8,
+            "wages_payable": -8
+          }
+        },
+        {
+          "actor": "household",
+          "debit_positive_legs": {
+            "wage_income": -8,
+            "wages_receivable": 8
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 62,
+      "label": "pay earned wages out of previously funded payroll escrow",
+      "period": 7,
+      "postings": [
+        {
+          "actor": "factory",
+          "debit_positive_legs": {
+            "payroll_escrow": -8,
+            "wages_payable": 8
+          }
+        },
+        {
+          "actor": "household",
+          "debit_positive_legs": {
+            "cash": 8,
+            "wages_receivable": -8
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 63,
+      "label": "committed attendance earns wages; obligation is distinct from payment",
+      "period": 7,
+      "postings": [
+        {
+          "actor": "distributor",
+          "debit_positive_legs": {
+            "handling_expense": 4,
+            "wages_payable": -4
+          }
+        },
+        {
+          "actor": "household",
+          "debit_positive_legs": {
+            "wage_income": -4,
+            "wages_receivable": 4
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 64,
+      "label": "pay earned wages out of previously funded payroll escrow",
+      "period": 7,
+      "postings": [
+        {
+          "actor": "distributor",
+          "debit_positive_legs": {
+            "payroll_escrow": -4,
+            "wages_payable": 4
+          }
+        },
+        {
+          "actor": "household",
+          "debit_positive_legs": {
+            "cash": 4,
+            "wages_receivable": -4
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 65,
+      "label": "local retail handoff, title transfer, and immediate settlement",
+      "period": 7,
+      "postings": [
+        {
+          "actor": "distributor",
+          "debit_positive_legs": {
+            "cost_of_goods_sold": 12,
+            "finished_inventory": -12,
+            "sales": -16,
+            "trade_receivable": 16
+          }
+        },
+        {
+          "actor": "household",
+          "debit_positive_legs": {
+            "food_inventory": 16,
+            "trade_payable": -16
+          }
+        },
+        {
+          "actor": "household",
+          "debit_positive_legs": {
+            "cash": -16,
+            "trade_payable": 16
+          }
+        },
+        {
+          "actor": "distributor",
+          "debit_positive_legs": {
+            "cash": 16,
+            "trade_receivable": -16
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 66,
+      "label": "reserve buyer money and dispatch seller-owned goods",
+      "period": 7,
+      "postings": [
+        {
+          "actor": "distributor",
+          "debit_positive_legs": {
+            "cash": -12,
+            "trade_escrow": 12
+          }
+        },
+        {
+          "actor": "factory",
+          "debit_positive_legs": {
+            "finished_inventory": -12,
+            "seller_owned_transit": 12
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 67,
+      "label": "reserve buyer money and dispatch seller-owned goods",
+      "period": 7,
+      "postings": [
+        {
+          "actor": "factory",
+          "debit_positive_legs": {
+            "cash": -4,
+            "trade_escrow": 4
+          }
+        },
+        {
+          "actor": "supplier",
+          "debit_positive_legs": {
+            "raw_inventory": -4,
+            "seller_owned_transit": 4
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 68,
+      "label": "household consumes available provisions",
+      "period": 7,
+      "postings": [
+        {
+          "actor": "household",
+          "debit_positive_legs": {
+            "consumption_expense": 16,
+            "food_inventory": -16
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 69,
+      "label": "final arrival, title transfer, and escrow settlement",
+      "period": 8,
+      "postings": [
+        {
+          "actor": "factory",
+          "debit_positive_legs": {
+            "cost_of_goods_sold": 12,
+            "sales": -12,
+            "seller_owned_transit": -12,
+            "trade_receivable": 12
+          }
+        },
+        {
+          "actor": "distributor",
+          "debit_positive_legs": {
+            "finished_inventory": 12,
+            "trade_payable": -12
+          }
+        },
+        {
+          "actor": "distributor",
+          "debit_positive_legs": {
+            "trade_escrow": -12,
+            "trade_payable": 12
+          }
+        },
+        {
+          "actor": "factory",
+          "debit_positive_legs": {
+            "cash": 12,
+            "trade_receivable": -12
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 70,
+      "label": "final arrival, title transfer, and escrow settlement",
+      "period": 8,
+      "postings": [
+        {
+          "actor": "supplier",
+          "debit_positive_legs": {
+            "cost_of_goods_sold": 4,
+            "sales": -4,
+            "seller_owned_transit": -4,
+            "trade_receivable": 4
+          }
+        },
+        {
+          "actor": "factory",
+          "debit_positive_legs": {
+            "raw_inventory": 4,
+            "trade_payable": -4
+          }
+        },
+        {
+          "actor": "factory",
+          "debit_positive_legs": {
+            "trade_escrow": -4,
+            "trade_payable": 4
+          }
+        },
+        {
+          "actor": "supplier",
+          "debit_positive_legs": {
+            "cash": 4,
+            "trade_receivable": -4
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 71,
+      "label": "fund committed shift before production or retail orders",
+      "period": 8,
+      "postings": [
+        {
+          "actor": "supplier",
+          "debit_positive_legs": {
+            "cash": -4,
+            "payroll_escrow": 4
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 72,
+      "label": "fund committed shift before production or retail orders",
+      "period": 8,
+      "postings": [
+        {
+          "actor": "factory",
+          "debit_positive_legs": {
+            "cash": -8,
+            "payroll_escrow": 8
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 73,
+      "label": "fund committed shift before production or retail orders",
+      "period": 8,
+      "postings": [
+        {
+          "actor": "distributor",
+          "debit_positive_legs": {
+            "cash": -4,
+            "payroll_escrow": 4
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 74,
+      "label": "factory transforms opening raw material",
+      "period": 8,
+      "postings": [
+        {
+          "actor": "factory",
+          "debit_positive_legs": {
+            "finished_inventory": 4,
+            "raw_inventory": -4
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 75,
+      "label": "committed attendance earns wages; obligation is distinct from payment",
+      "period": 8,
+      "postings": [
+        {
+          "actor": "supplier",
+          "debit_positive_legs": {
+            "raw_inventory": 4,
+            "wages_payable": -4
+          }
+        },
+        {
+          "actor": "household",
+          "debit_positive_legs": {
+            "wage_income": -4,
+            "wages_receivable": 4
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 76,
+      "label": "pay earned wages out of previously funded payroll escrow",
+      "period": 8,
+      "postings": [
+        {
+          "actor": "supplier",
+          "debit_positive_legs": {
+            "payroll_escrow": -4,
+            "wages_payable": 4
+          }
+        },
+        {
+          "actor": "household",
+          "debit_positive_legs": {
+            "cash": 4,
+            "wages_receivable": -4
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 77,
+      "label": "committed attendance earns wages; obligation is distinct from payment",
+      "period": 8,
+      "postings": [
+        {
+          "actor": "factory",
+          "debit_positive_legs": {
+            "finished_inventory": 8,
+            "wages_payable": -8
+          }
+        },
+        {
+          "actor": "household",
+          "debit_positive_legs": {
+            "wage_income": -8,
+            "wages_receivable": 8
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 78,
+      "label": "pay earned wages out of previously funded payroll escrow",
+      "period": 8,
+      "postings": [
+        {
+          "actor": "factory",
+          "debit_positive_legs": {
+            "payroll_escrow": -8,
+            "wages_payable": 8
+          }
+        },
+        {
+          "actor": "household",
+          "debit_positive_legs": {
+            "cash": 8,
+            "wages_receivable": -8
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 79,
+      "label": "committed attendance earns wages; obligation is distinct from payment",
+      "period": 8,
+      "postings": [
+        {
+          "actor": "distributor",
+          "debit_positive_legs": {
+            "handling_expense": 4,
+            "wages_payable": -4
+          }
+        },
+        {
+          "actor": "household",
+          "debit_positive_legs": {
+            "wage_income": -4,
+            "wages_receivable": 4
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 80,
+      "label": "pay earned wages out of previously funded payroll escrow",
+      "period": 8,
+      "postings": [
+        {
+          "actor": "distributor",
+          "debit_positive_legs": {
+            "payroll_escrow": -4,
+            "wages_payable": 4
+          }
+        },
+        {
+          "actor": "household",
+          "debit_positive_legs": {
+            "cash": 4,
+            "wages_receivable": -4
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 81,
+      "label": "local retail handoff, title transfer, and immediate settlement",
+      "period": 8,
+      "postings": [
+        {
+          "actor": "distributor",
+          "debit_positive_legs": {
+            "cost_of_goods_sold": 12,
+            "finished_inventory": -12,
+            "sales": -16,
+            "trade_receivable": 16
+          }
+        },
+        {
+          "actor": "household",
+          "debit_positive_legs": {
+            "food_inventory": 16,
+            "trade_payable": -16
+          }
+        },
+        {
+          "actor": "household",
+          "debit_positive_legs": {
+            "cash": -16,
+            "trade_payable": 16
+          }
+        },
+        {
+          "actor": "distributor",
+          "debit_positive_legs": {
+            "cash": 16,
+            "trade_receivable": -16
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 82,
+      "label": "reserve buyer money and dispatch seller-owned goods",
+      "period": 8,
+      "postings": [
+        {
+          "actor": "distributor",
+          "debit_positive_legs": {
+            "cash": -12,
+            "trade_escrow": 12
+          }
+        },
+        {
+          "actor": "factory",
+          "debit_positive_legs": {
+            "finished_inventory": -12,
+            "seller_owned_transit": 12
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 83,
+      "label": "reserve buyer money and dispatch seller-owned goods",
+      "period": 8,
+      "postings": [
+        {
+          "actor": "factory",
+          "debit_positive_legs": {
+            "cash": -4,
+            "trade_escrow": 4
+          }
+        },
+        {
+          "actor": "supplier",
+          "debit_positive_legs": {
+            "raw_inventory": -4,
+            "seller_owned_transit": 4
+          }
+        }
+      ]
+    },
+    {
+      "event_id": 84,
+      "label": "household consumes available provisions",
+      "period": 8,
+      "postings": [
+        {
+          "actor": "household",
+          "debit_positive_legs": {
+            "consumption_expense": 16,
+            "food_inventory": -16
+          }
+        }
+      ]
+    }
+  ],
+  "net_income": {
+    "distributor": -4,
+    "factory": 0,
+    "household": -28,
+    "supplier": 0
+  },
+  "opening": {
+    "cash": {
+      "distributor": 8,
+      "factory": 12,
+      "household": 0,
+      "supplier": 4
+    },
+    "cumulative_consumption": 0,
+    "cumulative_unmet_consumption": 0,
+    "in_transit": [],
+    "payroll_escrow": {
+      "distributor": 0,
+      "factory": 0,
+      "household": 0,
+      "supplier": 0
+    },
+    "stocks": {
+      "distributor_finished": 4,
+      "factory_finished": 0,
+      "factory_raw": 4,
+      "household_finished": 8,
+      "supplier_raw": 0
+    },
+    "trade_escrow": {
+      "distributor": 0,
+      "factory": 0,
+      "household": 0,
+      "supplier": 0
+    },
+    "unextracted_resource": 40
+  },
+  "periods": [
+    {
+      "arrivals_and_settlements": [],
+      "closing": {
+        "cash": {
+          "distributor": 8,
+          "factory": 0,
+          "household": 0,
+          "supplier": 0
+        },
+        "cumulative_consumption": 4,
+        "cumulative_unmet_consumption": 0,
+        "in_transit": [
+          {
+            "arrival_period": 2,
+            "buyer": "distributor",
+            "custody": "carrier",
+            "dispatch_period": 1,
+            "escrow_amount": 12,
+            "order_id": "factory-distributor-1",
+            "quantity": 4,
+            "seller": "factory",
+            "seller_delivery_obligation_units": 4,
+            "seller_unit_cost": 3,
+            "title_owner": "factory",
+            "unit_price": 3
+          },
+          {
+            "arrival_period": 2,
+            "buyer": "factory",
+            "custody": "carrier",
+            "dispatch_period": 1,
+            "escrow_amount": 4,
+            "order_id": "supplier-factory-1",
+            "quantity": 4,
+            "seller": "supplier",
+            "seller_delivery_obligation_units": 4,
+            "seller_unit_cost": 1,
+            "title_owner": "supplier",
+            "unit_price": 1
+          }
+        ],
+        "payroll_escrow": {
+          "distributor": 0,
+          "factory": 0,
+          "household": 0,
+          "supplier": 0
+        },
+        "stocks": {
+          "distributor_finished": 0,
+          "factory_finished": 0,
+          "factory_raw": 0,
+          "household_finished": 8,
+          "supplier_raw": 0
+        },
+        "trade_escrow": {
+          "distributor": 12,
+          "factory": 4,
+          "household": 0,
+          "supplier": 0
+        },
+        "unextracted_resource": 36
+      },
+      "factory_output": 4,
+      "first_journal_event": 2,
+      "household_consumption": 4,
+      "household_purchase": 4,
+      "household_request": 4,
+      "labor": {
+        "distributor": {
+          "available": 4,
+          "funded": 4,
+          "paid_idle": 0,
+          "uncommitted": 0,
+          "used": 4,
+          "wages_obligated": 4,
+          "wages_paid": 4,
+          "wages_unpaid": 0
+        },
+        "factory": {
+          "available": 8,
+          "funded": 8,
+          "paid_idle": 0,
+          "uncommitted": 0,
+          "used": 8,
+          "wages_obligated": 8,
+          "wages_paid": 8,
+          "wages_unpaid": 0
+        },
+        "supplier": {
+          "available": 4,
+          "funded": 4,
+          "paid_idle": 0,
+          "uncommitted": 0,
+          "used": 4,
+          "wages_obligated": 4,
+          "wages_paid": 4,
+          "wages_unpaid": 0
+        }
+      },
+      "last_journal_event": 15,
+      "new_orders": [
+        {
+          "arrival_period": 2,
+          "buyer": "distributor",
+          "custody": "carrier",
+          "dispatch_period": 1,
+          "escrow_amount": 12,
+          "order_id": "factory-distributor-1",
+          "quantity": 4,
+          "seller": "factory",
+          "seller_delivery_obligation_units": 4,
+          "seller_unit_cost": 3,
+          "title_owner": "factory",
+          "unit_price": 3
+        },
+        {
+          "arrival_period": 2,
+          "buyer": "factory",
+          "custody": "carrier",
+          "dispatch_period": 1,
+          "escrow_amount": 4,
+          "order_id": "supplier-factory-1",
+          "quantity": 4,
+          "seller": "supplier",
+          "seller_delivery_obligation_units": 4,
+          "seller_unit_cost": 1,
+          "title_owner": "supplier",
+          "unit_price": 1
+        }
+      ],
+      "next_plans": {
+        "distributor": 4,
+        "factory": 4,
+        "supplier": 4
+      },
+      "opening_after_arrivals": {
+        "cash": {
+          "distributor": 8,
+          "factory": 12,
+          "household": 0,
+          "supplier": 4
+        },
+        "cumulative_consumption": 0,
+        "cumulative_unmet_consumption": 0,
+        "in_transit": [],
+        "payroll_escrow": {
+          "distributor": 0,
+          "factory": 0,
+          "household": 0,
+          "supplier": 0
+        },
+        "stocks": {
+          "distributor_finished": 4,
+          "factory_finished": 0,
+          "factory_raw": 4,
+          "household_finished": 8,
+          "supplier_raw": 0
+        },
+        "trade_escrow": {
+          "distributor": 0,
+          "factory": 0,
+          "household": 0,
+          "supplier": 0
+        },
+        "unextracted_resource": 40
+      },
+      "opening_plans": {
+        "distributor": 4,
+        "factory": 4,
+        "supplier": 4
+      },
+      "period": 1,
+      "supplier_output": 4,
+      "unfilled_purchase_request": 0,
+      "unmet_consumption": 0
+    },
+    {
+      "arrivals_and_settlements": [
+        {
+          "arrival_period": 2,
+          "buyer": "distributor",
+          "custody": "carrier",
+          "dispatch_period": 1,
+          "escrow_amount": 12,
+          "order_id": "factory-distributor-1",
+          "quantity": 4,
+          "seller": "factory",
+          "seller_delivery_obligation_units": 4,
+          "seller_unit_cost": 3,
+          "title_owner": "factory",
+          "unit_price": 3
+        },
+        {
+          "arrival_period": 2,
+          "buyer": "factory",
+          "custody": "carrier",
+          "dispatch_period": 1,
+          "escrow_amount": 4,
+          "order_id": "supplier-factory-1",
+          "quantity": 4,
+          "seller": "supplier",
+          "seller_delivery_obligation_units": 4,
+          "seller_unit_cost": 1,
+          "title_owner": "supplier",
+          "unit_price": 1
+        }
+      ],
+      "closing": {
+        "cash": {
+          "distributor": 8,
+          "factory": 0,
+          "household": 0,
+          "supplier": 0
+        },
+        "cumulative_consumption": 8,
+        "cumulative_unmet_consumption": 0,
+        "in_transit": [
+          {
+            "arrival_period": 3,
+            "buyer": "distributor",
+            "custody": "carrier",
+            "dispatch_period": 2,
+            "escrow_amount": 12,
+            "order_id": "factory-distributor-2",
+            "quantity": 4,
+            "seller": "factory",
+            "seller_delivery_obligation_units": 4,
+            "seller_unit_cost": 3,
+            "title_owner": "factory",
+            "unit_price": 3
+          },
+          {
+            "arrival_period": 3,
+            "buyer": "factory",
+            "custody": "carrier",
+            "dispatch_period": 2,
+            "escrow_amount": 4,
+            "order_id": "supplier-factory-2",
+            "quantity": 4,
+            "seller": "supplier",
+            "seller_delivery_obligation_units": 4,
+            "seller_unit_cost": 1,
+            "title_owner": "supplier",
+            "unit_price": 1
+          }
+        ],
+        "payroll_escrow": {
+          "distributor": 0,
+          "factory": 0,
+          "household": 0,
+          "supplier": 0
+        },
+        "stocks": {
+          "distributor_finished": 0,
+          "factory_finished": 0,
+          "factory_raw": 0,
+          "household_finished": 8,
+          "supplier_raw": 0
+        },
+        "trade_escrow": {
+          "distributor": 12,
+          "factory": 4,
+          "household": 0,
+          "supplier": 0
+        },
+        "unextracted_resource": 32
+      },
+      "factory_output": 4,
+      "first_journal_event": 16,
+      "household_consumption": 4,
+      "household_purchase": 4,
+      "household_request": 4,
+      "labor": {
+        "distributor": {
+          "available": 4,
+          "funded": 4,
+          "paid_idle": 0,
+          "uncommitted": 0,
+          "used": 4,
+          "wages_obligated": 4,
+          "wages_paid": 4,
+          "wages_unpaid": 0
+        },
+        "factory": {
+          "available": 8,
+          "funded": 8,
+          "paid_idle": 0,
+          "uncommitted": 0,
+          "used": 8,
+          "wages_obligated": 8,
+          "wages_paid": 8,
+          "wages_unpaid": 0
+        },
+        "supplier": {
+          "available": 4,
+          "funded": 4,
+          "paid_idle": 0,
+          "uncommitted": 0,
+          "used": 4,
+          "wages_obligated": 4,
+          "wages_paid": 4,
+          "wages_unpaid": 0
+        }
+      },
+      "last_journal_event": 31,
+      "new_orders": [
+        {
+          "arrival_period": 3,
+          "buyer": "distributor",
+          "custody": "carrier",
+          "dispatch_period": 2,
+          "escrow_amount": 12,
+          "order_id": "factory-distributor-2",
+          "quantity": 4,
+          "seller": "factory",
+          "seller_delivery_obligation_units": 4,
+          "seller_unit_cost": 3,
+          "title_owner": "factory",
+          "unit_price": 3
+        },
+        {
+          "arrival_period": 3,
+          "buyer": "factory",
+          "custody": "carrier",
+          "dispatch_period": 2,
+          "escrow_amount": 4,
+          "order_id": "supplier-factory-2",
+          "quantity": 4,
+          "seller": "supplier",
+          "seller_delivery_obligation_units": 4,
+          "seller_unit_cost": 1,
+          "title_owner": "supplier",
+          "unit_price": 1
+        }
+      ],
+      "next_plans": {
+        "distributor": 4,
+        "factory": 4,
+        "supplier": 4
+      },
+      "opening_after_arrivals": {
+        "cash": {
+          "distributor": 8,
+          "factory": 12,
+          "household": 0,
+          "supplier": 4
+        },
+        "cumulative_consumption": 4,
+        "cumulative_unmet_consumption": 0,
+        "in_transit": [],
+        "payroll_escrow": {
+          "distributor": 0,
+          "factory": 0,
+          "household": 0,
+          "supplier": 0
+        },
+        "stocks": {
+          "distributor_finished": 4,
+          "factory_finished": 0,
+          "factory_raw": 4,
+          "household_finished": 8,
+          "supplier_raw": 0
+        },
+        "trade_escrow": {
+          "distributor": 0,
+          "factory": 0,
+          "household": 0,
+          "supplier": 0
+        },
+        "unextracted_resource": 36
+      },
+      "opening_plans": {
+        "distributor": 4,
+        "factory": 4,
+        "supplier": 4
+      },
+      "period": 2,
+      "supplier_output": 4,
+      "unfilled_purchase_request": 0,
+      "unmet_consumption": 0
+    },
+    {
+      "arrivals_and_settlements": [
+        {
+          "arrival_period": 3,
+          "buyer": "distributor",
+          "custody": "carrier",
+          "dispatch_period": 2,
+          "escrow_amount": 12,
+          "order_id": "factory-distributor-2",
+          "quantity": 4,
+          "seller": "factory",
+          "seller_delivery_obligation_units": 4,
+          "seller_unit_cost": 3,
+          "title_owner": "factory",
+          "unit_price": 3
+        },
+        {
+          "arrival_period": 3,
+          "buyer": "factory",
+          "custody": "carrier",
+          "dispatch_period": 2,
+          "escrow_amount": 4,
+          "order_id": "supplier-factory-2",
+          "quantity": 4,
+          "seller": "supplier",
+          "seller_delivery_obligation_units": 4,
+          "seller_unit_cost": 1,
+          "title_owner": "supplier",
+          "unit_price": 1
+        }
+      ],
+      "closing": {
+        "cash": {
+          "distributor": 4,
+          "factory": 0,
+          "household": 16,
+          "supplier": 0
+        },
+        "cumulative_consumption": 12,
+        "cumulative_unmet_consumption": 0,
+        "in_transit": [
+          {
+            "arrival_period": 4,
+            "buyer": "factory",
+            "custody": "carrier",
+            "dispatch_period": 3,
+            "escrow_amount": 4,
+            "order_id": "supplier-factory-3",
+            "quantity": 4,
+            "seller": "supplier",
+            "seller_delivery_obligation_units": 4,
+            "seller_unit_cost": 1,
+            "title_owner": "supplier",
+            "unit_price": 1
+          }
+        ],
+        "payroll_escrow": {
+          "distributor": 0,
+          "factory": 0,
+          "household": 0,
+          "supplier": 0
+        },
+        "stocks": {
+          "distributor_finished": 4,
+          "factory_finished": 4,
+          "factory_raw": 0,
+          "household_finished": 4,
+          "supplier_raw": 0
+        },
+        "trade_escrow": {
+          "distributor": 0,
+          "factory": 4,
+          "household": 0,
+          "supplier": 0
+        },
+        "unextracted_resource": 28
+      },
+      "factory_output": 4,
+      "first_journal_event": 32,
+      "household_consumption": 4,
+      "household_purchase": 0,
+      "household_request": 0,
+      "labor": {
+        "distributor": {
+          "available": 4,
+          "funded": 4,
+          "paid_idle": 4,
+          "uncommitted": 0,
+          "used": 0,
+          "wages_obligated": 4,
+          "wages_paid": 4,
+          "wages_unpaid": 0
+        },
+        "factory": {
+          "available": 8,
+          "funded": 8,
+          "paid_idle": 0,
+          "uncommitted": 0,
+          "used": 8,
+          "wages_obligated": 8,
+          "wages_paid": 8,
+          "wages_unpaid": 0
+        },
+        "supplier": {
+          "available": 4,
+          "funded": 4,
+          "paid_idle": 0,
+          "uncommitted": 0,
+          "used": 4,
+          "wages_obligated": 4,
+          "wages_paid": 4,
+          "wages_unpaid": 0
+        }
+      },
+      "last_journal_event": 45,
+      "new_orders": [
+        {
+          "arrival_period": 4,
+          "buyer": "factory",
+          "custody": "carrier",
+          "dispatch_period": 3,
+          "escrow_amount": 4,
+          "order_id": "supplier-factory-3",
+          "quantity": 4,
+          "seller": "supplier",
+          "seller_delivery_obligation_units": 4,
+          "seller_unit_cost": 1,
+          "title_owner": "supplier",
+          "unit_price": 1
+        }
+      ],
+      "next_plans": {
+        "distributor": 0,
+        "factory": 0,
+        "supplier": 4
+      },
+      "opening_after_arrivals": {
+        "cash": {
+          "distributor": 8,
+          "factory": 12,
+          "household": 0,
+          "supplier": 4
+        },
+        "cumulative_consumption": 8,
+        "cumulative_unmet_consumption": 0,
+        "in_transit": [],
+        "payroll_escrow": {
+          "distributor": 0,
+          "factory": 0,
+          "household": 0,
+          "supplier": 0
+        },
+        "stocks": {
+          "distributor_finished": 4,
+          "factory_finished": 0,
+          "factory_raw": 4,
+          "household_finished": 8,
+          "supplier_raw": 0
+        },
+        "trade_escrow": {
+          "distributor": 0,
+          "factory": 0,
+          "household": 0,
+          "supplier": 0
+        },
+        "unextracted_resource": 32
+      },
+      "opening_plans": {
+        "distributor": 4,
+        "factory": 4,
+        "supplier": 4
+      },
+      "period": 3,
+      "supplier_output": 4,
+      "unfilled_purchase_request": 0,
+      "unmet_consumption": 0
+    },
+    {
+      "arrivals_and_settlements": [
+        {
+          "arrival_period": 4,
+          "buyer": "factory",
+          "custody": "carrier",
+          "dispatch_period": 3,
+          "escrow_amount": 4,
+          "order_id": "supplier-factory-3",
+          "quantity": 4,
+          "seller": "supplier",
+          "seller_delivery_obligation_units": 4,
+          "seller_unit_cost": 1,
+          "title_owner": "supplier",
+          "unit_price": 1
+        }
+      ],
+      "closing": {
+        "cash": {
+          "distributor": 4,
+          "factory": 0,
+          "household": 20,
+          "supplier": 0
+        },
+        "cumulative_consumption": 16,
+        "cumulative_unmet_consumption": 0,
+        "in_transit": [],
+        "payroll_escrow": {
+          "distributor": 0,
+          "factory": 0,
+          "household": 0,
+          "supplier": 0
+        },
+        "stocks": {
+          "distributor_finished": 4,
+          "factory_finished": 4,
+          "factory_raw": 4,
+          "household_finished": 0,
+          "supplier_raw": 4
+        },
+        "trade_escrow": {
+          "distributor": 0,
+          "factory": 0,
+          "household": 0,
+          "supplier": 0
+        },
+        "unextracted_resource": 24
+      },
+      "factory_output": 0,
+      "first_journal_event": 46,
+      "household_consumption": 4,
+      "household_purchase": 0,
+      "household_request": 0,
+      "labor": {
+        "distributor": {
+          "available": 4,
+          "funded": 0,
+          "paid_idle": 0,
+          "uncommitted": 4,
+          "used": 0,
+          "wages_obligated": 0,
+          "wages_paid": 0,
+          "wages_unpaid": 0
+        },
+        "factory": {
+          "available": 8,
+          "funded": 0,
+          "paid_idle": 0,
+          "uncommitted": 8,
+          "used": 0,
+          "wages_obligated": 0,
+          "wages_paid": 0,
+          "wages_unpaid": 0
+        },
+        "supplier": {
+          "available": 4,
+          "funded": 4,
+          "paid_idle": 0,
+          "uncommitted": 0,
+          "used": 4,
+          "wages_obligated": 4,
+          "wages_paid": 4,
+          "wages_unpaid": 0
+        }
+      },
+      "last_journal_event": 50,
+      "new_orders": [],
+      "next_plans": {
+        "distributor": 0,
+        "factory": 0,
+        "supplier": 0
+      },
+      "opening_after_arrivals": {
+        "cash": {
+          "distributor": 4,
+          "factory": 0,
+          "household": 16,
+          "supplier": 4
+        },
+        "cumulative_consumption": 12,
+        "cumulative_unmet_consumption": 0,
+        "in_transit": [],
+        "payroll_escrow": {
+          "distributor": 0,
+          "factory": 0,
+          "household": 0,
+          "supplier": 0
+        },
+        "stocks": {
+          "distributor_finished": 4,
+          "factory_finished": 4,
+          "factory_raw": 4,
+          "household_finished": 4,
+          "supplier_raw": 0
+        },
+        "trade_escrow": {
+          "distributor": 0,
+          "factory": 0,
+          "household": 0,
+          "supplier": 0
+        },
+        "unextracted_resource": 28
+      },
+      "opening_plans": {
+        "distributor": 0,
+        "factory": 0,
+        "supplier": 4
+      },
+      "period": 4,
+      "supplier_output": 4,
+      "unfilled_purchase_request": 0,
+      "unmet_consumption": 0
+    },
+    {
+      "arrivals_and_settlements": [],
+      "closing": {
+        "cash": {
+          "distributor": 4,
+          "factory": 0,
+          "household": 20,
+          "supplier": 0
+        },
+        "cumulative_consumption": 16,
+        "cumulative_unmet_consumption": 4,
+        "in_transit": [],
+        "payroll_escrow": {
+          "distributor": 0,
+          "factory": 0,
+          "household": 0,
+          "supplier": 0
+        },
+        "stocks": {
+          "distributor_finished": 4,
+          "factory_finished": 4,
+          "factory_raw": 4,
+          "household_finished": 0,
+          "supplier_raw": 4
+        },
+        "trade_escrow": {
+          "distributor": 0,
+          "factory": 0,
+          "household": 0,
+          "supplier": 0
+        },
+        "unextracted_resource": 24
+      },
+      "factory_output": 0,
+      "first_journal_event": 51,
+      "household_consumption": 0,
+      "household_purchase": 0,
+      "household_request": 4,
+      "labor": {
+        "distributor": {
+          "available": 4,
+          "funded": 0,
+          "paid_idle": 0,
+          "uncommitted": 4,
+          "used": 0,
+          "wages_obligated": 0,
+          "wages_paid": 0,
+          "wages_unpaid": 0
+        },
+        "factory": {
+          "available": 8,
+          "funded": 0,
+          "paid_idle": 0,
+          "uncommitted": 8,
+          "used": 0,
+          "wages_obligated": 0,
+          "wages_paid": 0,
+          "wages_unpaid": 0
+        },
+        "supplier": {
+          "available": 4,
+          "funded": 0,
+          "paid_idle": 0,
+          "uncommitted": 4,
+          "used": 0,
+          "wages_obligated": 0,
+          "wages_paid": 0,
+          "wages_unpaid": 0
+        }
+      },
+      "last_journal_event": 50,
+      "new_orders": [],
+      "next_plans": {
+        "distributor": 4,
+        "factory": 0,
+        "supplier": 0
+      },
+      "opening_after_arrivals": {
+        "cash": {
+          "distributor": 4,
+          "factory": 0,
+          "household": 20,
+          "supplier": 0
+        },
+        "cumulative_consumption": 16,
+        "cumulative_unmet_consumption": 0,
+        "in_transit": [],
+        "payroll_escrow": {
+          "distributor": 0,
+          "factory": 0,
+          "household": 0,
+          "supplier": 0
+        },
+        "stocks": {
+          "distributor_finished": 4,
+          "factory_finished": 4,
+          "factory_raw": 4,
+          "household_finished": 0,
+          "supplier_raw": 4
+        },
+        "trade_escrow": {
+          "distributor": 0,
+          "factory": 0,
+          "household": 0,
+          "supplier": 0
+        },
+        "unextracted_resource": 24
+      },
+      "opening_plans": {
+        "distributor": 0,
+        "factory": 0,
+        "supplier": 0
+      },
+      "period": 5,
+      "supplier_output": 0,
+      "unfilled_purchase_request": 4,
+      "unmet_consumption": 4
+    },
+    {
+      "arrivals_and_settlements": [],
+      "closing": {
+        "cash": {
+          "distributor": 4,
+          "factory": 0,
+          "household": 8,
+          "supplier": 0
+        },
+        "cumulative_consumption": 20,
+        "cumulative_unmet_consumption": 4,
+        "in_transit": [
+          {
+            "arrival_period": 7,
+            "buyer": "distributor",
+            "custody": "carrier",
+            "dispatch_period": 6,
+            "escrow_amount": 12,
+            "order_id": "factory-distributor-6",
+            "quantity": 4,
+            "seller": "factory",
+            "seller_delivery_obligation_units": 4,
+            "seller_unit_cost": 3,
+            "title_owner": "factory",
+            "unit_price": 3
+          }
+        ],
+        "payroll_escrow": {
+          "distributor": 0,
+          "factory": 0,
+          "household": 0,
+          "supplier": 0
+        },
+        "stocks": {
+          "distributor_finished": 0,
+          "factory_finished": 0,
+          "factory_raw": 4,
+          "household_finished": 0,
+          "supplier_raw": 4
+        },
+        "trade_escrow": {
+          "distributor": 12,
+          "factory": 0,
+          "household": 0,
+          "supplier": 0
+        },
+        "unextracted_resource": 24
+      },
+      "factory_output": 0,
+      "first_journal_event": 51,
+      "household_consumption": 4,
+      "household_purchase": 4,
+      "household_request": 4,
+      "labor": {
+        "distributor": {
+          "available": 4,
+          "funded": 4,
+          "paid_idle": 0,
+          "uncommitted": 0,
+          "used": 4,
+          "wages_obligated": 4,
+          "wages_paid": 4,
+          "wages_unpaid": 0
+        },
+        "factory": {
+          "available": 8,
+          "funded": 0,
+          "paid_idle": 0,
+          "uncommitted": 8,
+          "used": 0,
+          "wages_obligated": 0,
+          "wages_paid": 0,
+          "wages_unpaid": 0
+        },
+        "supplier": {
+          "available": 4,
+          "funded": 0,
+          "paid_idle": 0,
+          "uncommitted": 4,
+          "used": 0,
+          "wages_obligated": 0,
+          "wages_paid": 0,
+          "wages_unpaid": 0
+        }
+      },
+      "last_journal_event": 56,
+      "new_orders": [
+        {
+          "arrival_period": 7,
+          "buyer": "distributor",
+          "custody": "carrier",
+          "dispatch_period": 6,
+          "escrow_amount": 12,
+          "order_id": "factory-distributor-6",
+          "quantity": 4,
+          "seller": "factory",
+          "seller_delivery_obligation_units": 4,
+          "seller_unit_cost": 3,
+          "title_owner": "factory",
+          "unit_price": 3
+        }
+      ],
+      "next_plans": {
+        "distributor": 4,
+        "factory": 4,
+        "supplier": 0
+      },
+      "opening_after_arrivals": {
+        "cash": {
+          "distributor": 4,
+          "factory": 0,
+          "household": 20,
+          "supplier": 0
+        },
+        "cumulative_consumption": 16,
+        "cumulative_unmet_consumption": 4,
+        "in_transit": [],
+        "payroll_escrow": {
+          "distributor": 0,
+          "factory": 0,
+          "household": 0,
+          "supplier": 0
+        },
+        "stocks": {
+          "distributor_finished": 4,
+          "factory_finished": 4,
+          "factory_raw": 4,
+          "household_finished": 0,
+          "supplier_raw": 4
+        },
+        "trade_escrow": {
+          "distributor": 0,
+          "factory": 0,
+          "household": 0,
+          "supplier": 0
+        },
+        "unextracted_resource": 24
+      },
+      "opening_plans": {
+        "distributor": 4,
+        "factory": 0,
+        "supplier": 0
+      },
+      "period": 6,
+      "supplier_output": 0,
+      "unfilled_purchase_request": 0,
+      "unmet_consumption": 0
+    },
+    {
+      "arrivals_and_settlements": [
+        {
+          "arrival_period": 7,
+          "buyer": "distributor",
+          "custody": "carrier",
+          "dispatch_period": 6,
+          "escrow_amount": 12,
+          "order_id": "factory-distributor-6",
+          "quantity": 4,
+          "seller": "factory",
+          "seller_delivery_obligation_units": 4,
+          "seller_unit_cost": 3,
+          "title_owner": "factory",
+          "unit_price": 3
+        }
+      ],
+      "closing": {
+        "cash": {
+          "distributor": 4,
+          "factory": 0,
+          "household": 4,
+          "supplier": 0
+        },
+        "cumulative_consumption": 24,
+        "cumulative_unmet_consumption": 4,
+        "in_transit": [
+          {
+            "arrival_period": 8,
+            "buyer": "distributor",
+            "custody": "carrier",
+            "dispatch_period": 7,
+            "escrow_amount": 12,
+            "order_id": "factory-distributor-7",
+            "quantity": 4,
+            "seller": "factory",
+            "seller_delivery_obligation_units": 4,
+            "seller_unit_cost": 3,
+            "title_owner": "factory",
+            "unit_price": 3
+          },
+          {
+            "arrival_period": 8,
+            "buyer": "factory",
+            "custody": "carrier",
+            "dispatch_period": 7,
+            "escrow_amount": 4,
+            "order_id": "supplier-factory-7",
+            "quantity": 4,
+            "seller": "supplier",
+            "seller_delivery_obligation_units": 4,
+            "seller_unit_cost": 1,
+            "title_owner": "supplier",
+            "unit_price": 1
+          }
+        ],
+        "payroll_escrow": {
+          "distributor": 0,
+          "factory": 0,
+          "household": 0,
+          "supplier": 0
+        },
+        "stocks": {
+          "distributor_finished": 0,
+          "factory_finished": 0,
+          "factory_raw": 0,
+          "household_finished": 0,
+          "supplier_raw": 0
+        },
+        "trade_escrow": {
+          "distributor": 12,
+          "factory": 4,
+          "household": 0,
+          "supplier": 0
+        },
+        "unextracted_resource": 24
+      },
+      "factory_output": 4,
+      "first_journal_event": 57,
+      "household_consumption": 4,
+      "household_purchase": 4,
+      "household_request": 4,
+      "labor": {
+        "distributor": {
+          "available": 4,
+          "funded": 4,
+          "paid_idle": 0,
+          "uncommitted": 0,
+          "used": 4,
+          "wages_obligated": 4,
+          "wages_paid": 4,
+          "wages_unpaid": 0
+        },
+        "factory": {
+          "available": 8,
+          "funded": 8,
+          "paid_idle": 0,
+          "uncommitted": 0,
+          "used": 8,
+          "wages_obligated": 8,
+          "wages_paid": 8,
+          "wages_unpaid": 0
+        },
+        "supplier": {
+          "available": 4,
+          "funded": 0,
+          "paid_idle": 0,
+          "uncommitted": 4,
+          "used": 0,
+          "wages_obligated": 0,
+          "wages_paid": 0,
+          "wages_unpaid": 0
+        }
+      },
+      "last_journal_event": 68,
+      "new_orders": [
+        {
+          "arrival_period": 8,
+          "buyer": "distributor",
+          "custody": "carrier",
+          "dispatch_period": 7,
+          "escrow_amount": 12,
+          "order_id": "factory-distributor-7",
+          "quantity": 4,
+          "seller": "factory",
+          "seller_delivery_obligation_units": 4,
+          "seller_unit_cost": 3,
+          "title_owner": "factory",
+          "unit_price": 3
+        },
+        {
+          "arrival_period": 8,
+          "buyer": "factory",
+          "custody": "carrier",
+          "dispatch_period": 7,
+          "escrow_amount": 4,
+          "order_id": "supplier-factory-7",
+          "quantity": 4,
+          "seller": "supplier",
+          "seller_delivery_obligation_units": 4,
+          "seller_unit_cost": 1,
+          "title_owner": "supplier",
+          "unit_price": 1
+        }
+      ],
+      "next_plans": {
+        "distributor": 4,
+        "factory": 4,
+        "supplier": 4
+      },
+      "opening_after_arrivals": {
+        "cash": {
+          "distributor": 4,
+          "factory": 12,
+          "household": 8,
+          "supplier": 0
+        },
+        "cumulative_consumption": 20,
+        "cumulative_unmet_consumption": 4,
+        "in_transit": [],
+        "payroll_escrow": {
+          "distributor": 0,
+          "factory": 0,
+          "household": 0,
+          "supplier": 0
+        },
+        "stocks": {
+          "distributor_finished": 4,
+          "factory_finished": 0,
+          "factory_raw": 4,
+          "household_finished": 0,
+          "supplier_raw": 4
+        },
+        "trade_escrow": {
+          "distributor": 0,
+          "factory": 0,
+          "household": 0,
+          "supplier": 0
+        },
+        "unextracted_resource": 24
+      },
+      "opening_plans": {
+        "distributor": 4,
+        "factory": 4,
+        "supplier": 0
+      },
+      "period": 7,
+      "supplier_output": 0,
+      "unfilled_purchase_request": 0,
+      "unmet_consumption": 0
+    },
+    {
+      "arrivals_and_settlements": [
+        {
+          "arrival_period": 8,
+          "buyer": "distributor",
+          "custody": "carrier",
+          "dispatch_period": 7,
+          "escrow_amount": 12,
+          "order_id": "factory-distributor-7",
+          "quantity": 4,
+          "seller": "factory",
+          "seller_delivery_obligation_units": 4,
+          "seller_unit_cost": 3,
+          "title_owner": "factory",
+          "unit_price": 3
+        },
+        {
+          "arrival_period": 8,
+          "buyer": "factory",
+          "custody": "carrier",
+          "dispatch_period": 7,
+          "escrow_amount": 4,
+          "order_id": "supplier-factory-7",
+          "quantity": 4,
+          "seller": "supplier",
+          "seller_delivery_obligation_units": 4,
+          "seller_unit_cost": 1,
+          "title_owner": "supplier",
+          "unit_price": 1
+        }
+      ],
+      "closing": {
+        "cash": {
+          "distributor": 4,
+          "factory": 0,
+          "household": 4,
+          "supplier": 0
+        },
+        "cumulative_consumption": 28,
+        "cumulative_unmet_consumption": 4,
+        "in_transit": [
+          {
+            "arrival_period": 9,
+            "buyer": "distributor",
+            "custody": "carrier",
+            "dispatch_period": 8,
+            "escrow_amount": 12,
+            "order_id": "factory-distributor-8",
+            "quantity": 4,
+            "seller": "factory",
+            "seller_delivery_obligation_units": 4,
+            "seller_unit_cost": 3,
+            "title_owner": "factory",
+            "unit_price": 3
+          },
+          {
+            "arrival_period": 9,
+            "buyer": "factory",
+            "custody": "carrier",
+            "dispatch_period": 8,
+            "escrow_amount": 4,
+            "order_id": "supplier-factory-8",
+            "quantity": 4,
+            "seller": "supplier",
+            "seller_delivery_obligation_units": 4,
+            "seller_unit_cost": 1,
+            "title_owner": "supplier",
+            "unit_price": 1
+          }
+        ],
+        "payroll_escrow": {
+          "distributor": 0,
+          "factory": 0,
+          "household": 0,
+          "supplier": 0
+        },
+        "stocks": {
+          "distributor_finished": 0,
+          "factory_finished": 0,
+          "factory_raw": 0,
+          "household_finished": 0,
+          "supplier_raw": 0
+        },
+        "trade_escrow": {
+          "distributor": 12,
+          "factory": 4,
+          "household": 0,
+          "supplier": 0
+        },
+        "unextracted_resource": 20
+      },
+      "factory_output": 4,
+      "first_journal_event": 69,
+      "household_consumption": 4,
+      "household_purchase": 4,
+      "household_request": 4,
+      "labor": {
+        "distributor": {
+          "available": 4,
+          "funded": 4,
+          "paid_idle": 0,
+          "uncommitted": 0,
+          "used": 4,
+          "wages_obligated": 4,
+          "wages_paid": 4,
+          "wages_unpaid": 0
+        },
+        "factory": {
+          "available": 8,
+          "funded": 8,
+          "paid_idle": 0,
+          "uncommitted": 0,
+          "used": 8,
+          "wages_obligated": 8,
+          "wages_paid": 8,
+          "wages_unpaid": 0
+        },
+        "supplier": {
+          "available": 4,
+          "funded": 4,
+          "paid_idle": 0,
+          "uncommitted": 0,
+          "used": 4,
+          "wages_obligated": 4,
+          "wages_paid": 4,
+          "wages_unpaid": 0
+        }
+      },
+      "last_journal_event": 84,
+      "new_orders": [
+        {
+          "arrival_period": 9,
+          "buyer": "distributor",
+          "custody": "carrier",
+          "dispatch_period": 8,
+          "escrow_amount": 12,
+          "order_id": "factory-distributor-8",
+          "quantity": 4,
+          "seller": "factory",
+          "seller_delivery_obligation_units": 4,
+          "seller_unit_cost": 3,
+          "title_owner": "factory",
+          "unit_price": 3
+        },
+        {
+          "arrival_period": 9,
+          "buyer": "factory",
+          "custody": "carrier",
+          "dispatch_period": 8,
+          "escrow_amount": 4,
+          "order_id": "supplier-factory-8",
+          "quantity": 4,
+          "seller": "supplier",
+          "seller_delivery_obligation_units": 4,
+          "seller_unit_cost": 1,
+          "title_owner": "supplier",
+          "unit_price": 1
+        }
+      ],
+      "next_plans": {
+        "distributor": 4,
+        "factory": 4,
+        "supplier": 4
+      },
+      "opening_after_arrivals": {
+        "cash": {
+          "distributor": 4,
+          "factory": 12,
+          "household": 4,
+          "supplier": 4
+        },
+        "cumulative_consumption": 24,
+        "cumulative_unmet_consumption": 4,
+        "in_transit": [],
+        "payroll_escrow": {
+          "distributor": 0,
+          "factory": 0,
+          "household": 0,
+          "supplier": 0
+        },
+        "stocks": {
+          "distributor_finished": 4,
+          "factory_finished": 0,
+          "factory_raw": 4,
+          "household_finished": 0,
+          "supplier_raw": 0
+        },
+        "trade_escrow": {
+          "distributor": 0,
+          "factory": 0,
+          "household": 0,
+          "supplier": 0
+        },
+        "unextracted_resource": 24
+      },
+      "opening_plans": {
+        "distributor": 4,
+        "factory": 4,
+        "supplier": 4
+      },
+      "period": 8,
+      "supplier_output": 4,
+      "unfilled_purchase_request": 0,
+      "unmet_consumption": 0
+    }
+  ],
+  "schema": "OneOffEightPeriodEscrowControlV1",
+  "scope": "Fixed prices and population, financed shifts, renewed orders, title retained by seller until final arrival; not a production engine.",
+  "status": "arithmetic_assertions_passed",
+  "totals": {
+    "consumption": 28,
+    "factory_output": 20,
+    "final_cash_plus_escrow": 24,
+    "household_purchases": 20,
+    "physical_stock_plus_consumption": 56,
+    "supplier_output": 20,
+    "unmet_consumption": 4,
+    "wages_obligated": 84,
+    "wages_paid": 84,
+    "wages_unpaid": 0
+  }
+}

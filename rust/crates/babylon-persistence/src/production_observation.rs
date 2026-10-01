@@ -24,6 +24,8 @@ pub struct ProductionSnapshot {
     pub events: Vec<ProductionEvent>,
     pub merchant_handling_accounts: Vec<ProductionMerchantHandlingAccount>,
     pub final_demand_accounts: Vec<ProductionFinalDemandAccount>,
+    /// Actual resident inventories and consumption; merchant fulfillment is separate.
+    pub household_accounts: Vec<crate::ProductionHouseholdAccount>,
     /// One exact service dependency; absent in campaigns without maintenance.
     pub maintenance_account: Option<ProductionMaintenanceAccount>,
     /// Each exact site/unit labor principal occurs once, across all its processes.
@@ -444,8 +446,13 @@ pub struct ProductionFinalDemandAccount {
     pub ordered: u64,
     pub fulfilled: u64,
     pub outstanding: u64,
+    pub expired: u64,
     pub retail_stock_on_hand: u64,
     pub retailer_site_ids: Vec<String>,
+    /// Number of all admitted principals in the authenticated receipt prefix.
+    pub total_order_count: u64,
+    /// Current register rows plus completed-period witnesses, not a lifetime list.
+    /// Aggregate quantities above cover the complete authenticated history.
     pub orders: Vec<ProductionFinalDemandOrder>,
     pub completed: Option<CompletedProductionFinalDemand>,
 }
@@ -458,6 +465,7 @@ pub struct ProductionFinalDemandOrder {
     pub ordered: u64,
     pub fulfilled: u64,
     pub outstanding: u64,
+    pub expired: u64,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]

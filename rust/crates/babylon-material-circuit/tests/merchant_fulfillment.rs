@@ -33,6 +33,7 @@ fn merchant() -> MaterialCircuitState {
         }],
         final_demand_principals: vec![],
         final_demand_orders: vec![],
+        accounting: babylon_material_circuit::CircuitAccounting::PhysicalControl,
         maintenance_binding: None,
         maintenance_service: None,
         period: 1,
@@ -587,10 +588,15 @@ fn merchant_role_encoding_rejects_unknown_tags() {
     let mut bytes = encode_material_circuit_state(&state).unwrap();
     // Four trailing row families plus absent binding/service tags: counts,
     // merchant(102), coefficient(104), county principal(37), local order(176),
-    // and two zero option bytes. The merchant role follows its site and county.
+    // two absent options and the explicit physical-control tag. The merchant
+    // role follows its site and county.
     assert!(state.maintenance_binding.is_none() && state.maintenance_service.is_none());
-    assert_eq!(&bytes[bytes.len() - 2..], &[0, 0]);
-    let role_offset = bytes.len() - (4 * 4 + 102 + 104 + 37 + 176 + 2) + 4 + 32 + 5;
+    assert_eq!(
+        state.accounting,
+        babylon_material_circuit::CircuitAccounting::PhysicalControl
+    );
+    assert_eq!(&bytes[bytes.len() - 3..], &[0, 0, 0]);
+    let role_offset = bytes.len() - (4 * 4 + 102 + 104 + 37 + 176 + 3) + 4 + 32 + 5;
     assert_eq!(bytes[role_offset], 2);
     bytes[role_offset] = 3;
     assert_eq!(

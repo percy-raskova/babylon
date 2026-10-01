@@ -10,6 +10,7 @@ fn shared_opening() -> MaterialCircuitState {
     let site = SiteId::from_bytes([1; 32]);
     let labor_unit = UnitId::from_bytes([2; 32]);
     let mut state = MaterialCircuitState {
+        accounting: babylon_material_circuit::CircuitAccounting::PhysicalControl,
         maintenance_binding: None,
         maintenance_service: None,
         period: 1,

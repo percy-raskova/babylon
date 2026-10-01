@@ -1365,6 +1365,7 @@ mod tests {
             visibility: ObserverVisibility::FullObserver,
             counties: Vec::new(),
             production: Some(ProductionSnapshot {
+                household_accounts: Vec::new(),
                 maintenance_account: None,
                 content_authority_sha256: "a".repeat(64),
                 road_source: None,
@@ -1873,6 +1874,8 @@ mod tests {
                 snapshot
                     .final_demand_accounts
                     .push(ProductionFinalDemandAccount {
+                        total_order_count: 1,
+                        expired: 0,
                         demand_principal_id: format!("demand-{unit}"),
                         county_geoid: "26163".into(),
                         good_id: "4".repeat(64),
@@ -1885,6 +1888,7 @@ mod tests {
                         retail_stock_on_hand: stock,
                         retailer_site_ids: vec![retailer.id.clone()],
                         orders: vec![ProductionFinalDemandOrder {
+                            expired: 0,
                             order_id: format!("retail-order-{unit}"),
                             retailer_site_id: retailer.id.clone(),
                             ordered: 20,
@@ -2110,7 +2114,7 @@ mod tests {
     #[test]
     fn comparison_aggregate_refuses_unmatched_retail_principals_and_missing_periods() {
         for mismatch in [
-            "order",
+            "resident",
             "county",
             "duplicate",
             "missing",
@@ -2129,7 +2133,7 @@ mod tests {
                     .unwrap()
                     .final_demand_accounts;
                 match mismatch {
-                    "order" => rows[0].orders[0].order_id = "different-order".into(),
+                    "resident" => rows[0].demand_principal_id = "different-resident".into(),
                     "county" => rows[0].county_geoid = "26001".into(),
                     "duplicate" => rows.push(rows[0].clone()),
                     "missing" => rows[0].completed = None,
@@ -2152,6 +2156,43 @@ mod tests {
                 "{mismatch}: {reading}"
             );
         }
+    }
+
+    #[test]
+    fn comparison_uses_resident_identity_and_counts_shared_retail_stock_once() {
+        let (mut app, text) = retail_comparison_app(2);
+        edit_comparison_production(&mut app, |snapshot| {
+            let mut cohort = snapshot.final_demand_accounts[0].clone();
+            cohort.demand_principal_id = "second-resident-cohort".into();
+            cohort.orders[0].order_id = "second-household-order".into();
+            snapshot.final_demand_accounts.push(cohort);
+        });
+        {
+            let mut browser = app.world_mut().resource_mut::<CampaignBrowserState>();
+            let rows = &mut browser
+                .comparison
+                .as_mut()
+                .unwrap()
+                .production
+                .as_mut()
+                .unwrap()
+                .final_demand_accounts;
+            for row in rows {
+                row.orders[0]
+                    .order_id
+                    .push_str("-different-scenario-period");
+            }
+        }
+        let reading = painted_comparison(&mut app, text);
+        assert!(!reading.contains("Retail totals unavailable:"), "{reading}");
+        assert!(
+            reading.contains("Delivered to end buyers this period: 6 / 6 kg"),
+            "{reading}"
+        );
+        assert!(
+            reading.contains("Unsold retail stock: 10 / 10 kg"),
+            "{reading}"
+        );
     }
 
     #[test]

@@ -1,6 +1,6 @@
 version: 4
 name: material_world_register_v4
-authority: [ADR251, ADR260, ADR262]
+authority: [ADR251, ADR260, ADR262, ADR263]
 purpose: Complete current material state owned by the explicit material replay session.
 related_contracts:
   - contracts/material_circuit_v3.yaml
@@ -17,7 +17,7 @@ encoding:
     - u32_big_endian_version_4
     - u64_big_endian_completed_tick
     - u64_big_endian_state_byte_length
-    - exact_material_circuit_state_bytes_schema_4
+    - exact_material_circuit_state_bytes_schema_6
     - organizer_presence_u8_zero_or_one
     - if_present_u64_big_endian_config_length_then_canonical_organizer_config
     - if_present_u64_big_endian_state_length_then_canonical_organizer_state
@@ -26,16 +26,25 @@ encoding:
   decoder: reject_unknown_version_truncated_trailing_or_noncanonical_bytes
 transition:
   authority: MaterialCircuitV3
-  material_schema: 4
+  material_schema: 6
   implementation: advance_material_circuit_or_its_single_detached_close_and_finish
   order:
     - Complete due transport stages, attribute native loss and credit final physical arrivals.
+    - In monetary circuits, refund actual losses and settle actual arrivals from the matched purchase reserves.
+    - Retire prior terminal purchases; pay previously accrued wages and fund planned attendance from spendable cash.
+    - Accrue and pay attendance before work; admit recurring household orders from their actual current budgets.
     - Execute prior production commitments against current stock, opening labor and expiring service.
     - Complete bounded maintenance against post-production prospective inputs and current provider parts and labor.
     - Allocate delivery and final-demand orders against stock and shared mass capacities.
     - Constrain merchant handling with opening labor and debit only actual outbound quantities.
-    - Publish local internal buyer credits after every outbound grant and debit is fixed.
-    - Derive next-period production work, recorded feasible merchant handling need and receipted maintenance requests.
+    - Credit actual household handoffs, settle them, and refund expired recurring household orders.
+    - Replenish firm inventory positions and allocate only their new delivery orders through remaining resources.
+    - Publish local internal buyer credits after both outbound passes fix every grant and debit.
+    - Settle local transfers and consume recurring household needs from actual household stocks.
+    - Record planned, unplanned, funded, unfunded, used and paid idle hours separately.
+    - Check total cash plus purchase and payroll reserves against the captured opening total.
+    - Derive subsequent demand caps from sales, unfulfilled demand and inventories; update captured offers.
+    - Derive distinct production, merchant and maintenance work requests; retire terminal purchase principals.
     - Resolve staffing, replace next-period labor and form next-period production commitments.
   causal_barriers:
     - Arrivals cannot enlarge an existing production commitment.
@@ -45,6 +54,12 @@ transition:
     - Unused opening service expires; completed jobs grant service only for the next period.
     - Local parts replenishment arrives after maintenance and cannot repair the opening shortage.
     - Production and maintenance staffing requests ignore unavailable maintenance service.
+    - A monetary order requires matched funded escrow; an absent financial principal cannot enable free trade.
+    - Current attendance uses only funded hours; sales later in this close cannot fund earlier attendance.
+    - Attendance wages do not depend on production, handling, sales or realized revenue.
+    - Needs persist through unemployment and purchase withdrawal; unmet consumption cannot create money or hours.
+    - Expected future arrivals inform subsequent plans only; they never enter current usable inventory.
+    - Each generated household request expires after this period; settlement and refunds precede paired retirement.
   capacity:
     principal: corridor_id_and_departure_period
     unit: grams
@@ -52,8 +67,11 @@ transition:
     reservation: actual_dispatch_grams_once_per_unique_principal
     physical_path: Many captured edges may share one timed stage; edges do not advance time.
     residual: Proportional-floor and cross-resource residuals remain unused.
-  quantity_realization: Delivered internal commodity quantity; no payment or claim.
-  final_demand: Finite county orders credited once at retail handoff; no implied consumption.
+  quantity_realization: Delivered internal commodity quantity;
+    distinct from monetary settlement and value interpretation.
+  final_demand: Finite and generated household orders use the same retail handoff;
+    explicit household stocks and consumption remain separate accounts.
+  accounting: Explicit physical control or a captured monetary circuit using the same physical allocator.
 publication:
   owner: babylon_tick::material_replay::MaterialReplaySession
   prepare: Detached graph and material candidates with exact babylon_tick::material_world::MaterialTickReceipts bytes.

@@ -258,6 +258,7 @@ fn empty_state() -> MaterialCircuitState {
         handling_coefficients: Vec::new(),
         final_demand_principals: Vec::new(),
         final_demand_orders: Vec::new(),
+        accounting: babylon_material_circuit::CircuitAccounting::PhysicalControl,
         maintenance_binding: None,
         maintenance_service: None,
     }

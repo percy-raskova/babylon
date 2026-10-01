@@ -271,8 +271,8 @@ fn retail_accounts<'a>(
     good: &MaterialGoodKey,
 ) -> Result<BTreeMap<RetailIdentity<'a>, &'a ProductionFinalDemandAccount>, &'static str> {
     let owners = owners(snapshot)?;
+    let stocks = retailer_stocks(snapshot, good)?;
     let mut rows = BTreeMap::new();
-    let mut counties = BTreeSet::new();
     let mut order_ids = BTreeSet::new();
     for row in snapshot
         .final_demand_accounts
@@ -288,9 +288,8 @@ fn retail_accounts<'a>(
                 row,
             )
             .is_some()
-            || !counties.insert(&row.county_geoid)
         {
-            return Err("duplicate county or final-demand principal");
+            return Err("duplicate resident final-demand principal");
         }
         let retailers: BTreeSet<_> = row.retailer_site_ids.iter().collect();
         if retailers.is_empty()
@@ -304,35 +303,96 @@ fn retail_accounts<'a>(
         {
             return Err("retail owner coverage is missing or inconsistent");
         }
-        let mut ordered_retailers = BTreeSet::new();
-        let (mut fulfilled, mut outstanding) = (0_u64, 0_u64);
-        for order in &row.orders {
-            if !order_ids.insert(&order.order_id) {
-                return Err("duplicate final-demand order principal");
-            }
-            ordered_retailers.insert(&order.retailer_site_id);
-            if order.fulfilled.checked_add(order.outstanding) != Some(order.ordered) {
-                return Err("final-demand order quantities do not conserve");
-            }
-            fulfilled = fulfilled
-                .checked_add(order.fulfilled)
-                .ok_or("retail quantity overflow")?;
-            outstanding = outstanding
-                .checked_add(order.outstanding)
-                .ok_or("retail quantity overflow")?;
-        }
-        if retailers != ordered_retailers
-            || fulfilled != row.fulfilled
-            || outstanding != row.outstanding
-            || fulfilled.checked_add(outstanding) != Some(row.ordered)
+        if selected_retail_stock(&stocks, row.retailer_site_ids.iter().map(String::as_str))?
+            != row.retail_stock_on_hand
         {
-            return Err("county final-demand account does not match its orders");
+            return Err("resident account stock differs from disclosed retailer inventory");
         }
+        validate_listed_orders(row, &retailers, &mut order_ids)?;
     }
     if rows.is_empty() {
         return Err("no final-demand account for this exact good and unit");
     }
     Ok(rows)
+}
+
+fn validate_listed_orders<'a>(
+    row: &'a ProductionFinalDemandAccount,
+    retailers: &BTreeSet<&String>,
+    order_ids: &mut BTreeSet<&'a String>,
+) -> Result<(), &'static str> {
+    let mut ordered_retailers = BTreeSet::new();
+    let (mut fulfilled, mut outstanding, mut expired) = (0_u64, 0_u64, 0_u64);
+    for order in &row.orders {
+        if !order_ids.insert(&order.order_id) {
+            return Err("duplicate final-demand order principal");
+        }
+        ordered_retailers.insert(&order.retailer_site_id);
+        if order
+            .fulfilled
+            .checked_add(order.outstanding)
+            .and_then(|value| value.checked_add(order.expired))
+            != Some(order.ordered)
+        {
+            return Err("final-demand order quantities do not conserve");
+        }
+        fulfilled = fulfilled
+            .checked_add(order.fulfilled)
+            .ok_or("retail quantity overflow")?;
+        outstanding = outstanding
+            .checked_add(order.outstanding)
+            .ok_or("retail quantity overflow")?;
+        expired = expired
+            .checked_add(order.expired)
+            .ok_or("retail quantity overflow")?;
+    }
+    if !ordered_retailers.is_subset(retailers)
+        || fulfilled > row.fulfilled
+        || expired > row.expired
+        || outstanding != row.outstanding
+        || !u64::try_from(row.orders.len()).is_ok_and(|count| count <= row.total_order_count)
+        || (u64::try_from(row.orders.len()).ok() == Some(row.total_order_count)
+            && (fulfilled != row.fulfilled || expired != row.expired))
+        || row
+            .fulfilled
+            .checked_add(outstanding)
+            .and_then(|value| value.checked_add(row.expired))
+            != Some(row.ordered)
+    {
+        return Err("county final-demand account does not match its orders");
+    }
+    Ok(())
+}
+
+fn retailer_stocks<'a>(
+    snapshot: &'a ProductionSnapshot,
+    good: &MaterialGoodKey,
+) -> Result<BTreeMap<&'a str, u64>, &'static str> {
+    let mut result = BTreeMap::new();
+    for site in &snapshot.sites {
+        let mut rows = site
+            .inventory
+            .iter()
+            .filter(|row| row.good_id == good.good_id && row.unit_id == good.unit_id);
+        let quantity = rows.next().map_or(0, |row| row.quantity);
+        if rows.next().is_some() || result.insert(site.id.as_str(), quantity).is_some() {
+            return Err("duplicate retailer stock principal");
+        }
+    }
+    Ok(result)
+}
+
+fn selected_retail_stock<'a>(
+    stocks: &BTreeMap<&str, u64>,
+    retailers: impl Iterator<Item = &'a str>,
+) -> Result<u64, &'static str> {
+    retailers
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .try_fold(0_u64, |sum, id| {
+            sum.checked_add(*stocks.get(id).ok_or("retailer stock owner missing")?)
+                .ok_or("retail quantity overflow")
+        })
 }
 
 #[derive(Default)]
@@ -367,19 +427,8 @@ impl RetailTotals {
             .newly_fulfilled
             .checked_add(newly_fulfilled)
             .ok_or("retail quantity overflow")?;
-        self.stock = self
-            .stock
-            .checked_add(row.retail_stock_on_hand)
-            .ok_or("retail quantity overflow")?;
         Ok(())
     }
-}
-
-fn retail_order_principals(row: &ProductionFinalDemandAccount) -> BTreeSet<(&str, &str)> {
-    row.orders
-        .iter()
-        .map(|order| (order.order_id.as_str(), order.retailer_site_id.as_str()))
-        .collect()
 }
 
 fn write_retail(
@@ -396,11 +445,33 @@ fn write_retail(
     if left.keys().ne(right.keys()) {
         return Err("county or final-demand principal coverage differs");
     }
-    let (mut totals, mut other_totals) = (RetailTotals::default(), RetailTotals::default());
+    let stock = selected_retail_stock(
+        &retailer_stocks(current, good)?,
+        left.values()
+            .flat_map(|row| row.retailer_site_ids.iter().map(String::as_str)),
+    )?;
+    let other_stock = selected_retail_stock(
+        &retailer_stocks(compared, good)?,
+        right
+            .values()
+            .flat_map(|row| row.retailer_site_ids.iter().map(String::as_str)),
+    )?;
+    let (mut totals, mut other_totals) = (
+        RetailTotals {
+            stock,
+            ..RetailTotals::default()
+        },
+        RetailTotals {
+            stock: other_stock,
+            ..RetailTotals::default()
+        },
+    );
     for (key, row) in left {
         let other = right[&key];
-        if retail_order_principals(row) != retail_order_principals(other) {
-            return Err("final-demand order or retailer principal coverage differs");
+        if row.retailer_site_ids.iter().collect::<BTreeSet<_>>()
+            != other.retailer_site_ids.iter().collect::<BTreeSet<_>>()
+        {
+            return Err("retailer principal coverage differs");
         }
         totals.add(row, tick)?;
         other_totals.add(other, tick)?;

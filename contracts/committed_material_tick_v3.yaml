@@ -1,6 +1,6 @@
 version: 3
 name: committed_material_tick_v3
-authority: [ADR251, ADR260]
+authority: [ADR251, ADR260, ADR263]
 purpose: One marker-last transaction binds graph, H3, material, receipts and full restart state.
 envelope:
   domain: "babylon.committed-material-tick.v3\0"
@@ -17,22 +17,51 @@ envelope:
     - {tag: 5, name: graph_full_checkpoint, codec: existing_nine_checkpoint_sections_v1}
     - {tag: 6, name: archive_dirty_receipt, count: 1, hash: combined_material_tick_content_v3}
     - {tag: 7, name: complete_material_register, count: 1, key: empty, payload: exact_material_world_register_v4_bytes}
-    - {tag: 8, name: material_receipts, count: 1, key: empty, payload: exact_material_tick_receipts_v5_bytes}
+    - {tag: 8, name: material_receipts, count: 1, key: empty, payload: exact_material_tick_receipts_v7_bytes}
   family_frame: u8_tag_then_u64_big_endian_count
   row_frame: u32_big_endian_key_length_then_key_then_u32_big_endian_payload_length_then_payload
   ordering: Existing six families preserve strict canonical key order; singular added families cannot reorder.
   digest: sha256_exact_complete_envelope_bytes
   maximum_complete_bytes: 67108864
 receipts:
-  version: 5
-  domain: "babylon.material-tick-receipts.v5\0"
-  header: u32_big_endian_version_5_then_u64_big_endian_positive_resolve_tick
+  version: 7
+  domain: "babylon.material-tick-receipts.v7\0"
+  header: u32_big_endian_version_7_then_u64_big_endian_positive_resolve_tick
   family_frame: u8_tag_then_u64_big_endian_count
-  family_count: 10
+  family_count: 18
   identities: exact_32_bytes
   quantities_periods_and_hours: u64_big_endian
   stage_index: u16_big_endian_less_than_16
   outbound_order_tag: {delivery: 1, local_final_demand: 2}
+  price_decision_tag: {fixed: 1, hold: 2, unserved_demand: 3, excess_stock: 4}
+  money: signed_i128_big_endian_micro_currency
+  account: {width: 33, fields: [account_tag, identity], tags: {site: 1, household: 2, organization: 3, public: 4}}
+  money_location:
+    width: 34
+    fields: [location_tag, subtype_tag, identity]
+    tags: {cash: 1, purchase_reserve: 2, payroll_reserve: 3}
+    subtype: Cash uses account_tag; purchase uses outbound_order_tag; payroll uses zero.
+  money_purpose:
+    width: 34
+    fields: [purpose_tag, subtype_tag, identity]
+    tags:
+      purchase_reservation: 1
+      delivery_settlement: 2
+      purchase_refund: 3
+      shift_reservation: 4
+      wage_payment: 5
+      shift_cancellation: 6
+      cash: 7
+    subtype: Purchases use outbound_order_tag; shifts use zero; cash uses cash_purpose_tag.
+    cash_purpose_tag:
+      tax: 1
+      public_transfer: 2
+      household_transfer: 3
+      ownership_distribution: 4
+      capital_contribution: 5
+      transport_service: 6
+      mutual_aid: 7
+    unused_identity: Cash purposes require exactly 32 zero bytes.
   rows:
     - {tag: 1, fields: [process_id, site_id, planned_batches, produced_batches], width: 80}
     - tag: 2
@@ -84,12 +113,116 @@ receipts:
         - next_service_available_batches
       width: 312
       meaning: bounded_maintenance_completion_and_expiring_service
+    - tag: 11
+      fields: [money_purpose, debit_location, debit_delta, credit_location, credit_delta]
+      width: 134
+      meaning: exact_cash_or_reserve_movement
+    - tag: 12
+      fields: [shift_id, employer_account, payee_account, period, obligated_hours, amount]
+      width: 130
+      meaning: earned_wage_payable_and_matching_receivable_without_cash_movement
+    - tag: 13
+      fields:
+        - site_id
+        - unit_id
+        - payee_id
+        - period
+        - available_hours
+        - planned_hours
+        - unplanned_hours
+        - funded_hours
+        - unfunded_hours
+        - used_hours
+        - paid_idle_hours
+      width: 160
+      meaning: planned_attendance_funding_and_actual_utilization
+    - tag: 14
+      fields:
+        - principal_id
+        - retailer_site_id
+        - good_id
+        - unit_id
+        - order_id
+        - period
+        - opening_stock
+        - required_quantity
+        - desired_quantity
+        - requested_quantity
+        - admitted_quantity
+        - fulfilled_quantity
+        - expired_quantity
+        - unit_price
+      width: 240
+      meaning: recurring_household_need_purchase_and_expired_order_remainder
+    - tag: 15
+      fields:
+        - principal_id
+        - good_id
+        - unit_id
+        - period
+        - required_quantity
+        - available_quantity
+        - consumed_quantity
+        - unmet_quantity
+        - closing_quantity
+      width: 144
+      meaning: consumption_of_actual_household_stock_and_unmet_need
+    - tag: 16
+      fields:
+        - order_id
+        - buyer_site_id
+        - supplier_site_id
+        - good_id
+        - unit_id
+        - period
+        - on_hand
+        - outstanding_inbound
+        - target_stock
+        - desired_quantity
+        - admitted_quantity
+        - unit_price
+      width: 224
+      meaning: finite_procurement_admission_against_inventory_position
+    - tag: 17
+      fields:
+        - process_id
+        - site_id
+        - period
+        - next_period
+        - dispatched_quantity
+        - unshipped_quantity
+        - closing_output_stock
+        - output_buffer
+        - planned_batches
+      width: 120
+      meaning: next_period_production_demand_cap
+    - tag: 18
+      fields:
+        - site_id
+        - good_id
+        - unit_id
+        - period
+        - old_price
+        - next_price
+        - unserved_quantity
+        - closing_stock
+        - price_decision_tag
+      width: 153
+      meaning: next_offer_quote_and_observed_decision_inputs
   ordering:
-    families: Tags 1 through 10 appear exactly once in declared order, including empty families.
+    families: Tags 1 through 18 appear exactly once in declared order, including empty families.
     original_families: Preserve deterministic encounter order from babylon_material_circuit::advance_material_circuit.
     handling: Strict increasing unique site_id_and_tagged_outbound_order.
     local_fulfillment: Strict increasing unique order_id.
     local_transfer: Strict increasing unique order_id.
+    money_transfers: Preserve deterministic chronological execution order; do not sort by principal or purpose.
+    wage_accruals: Preserve attendance execution order with unique shift identities; hashed shift IDs are not sorted.
+    labor_use: Strict increasing unique site_id_and_unit_id.
+    household_demand: Strict increasing unique principal_good_unit; quoted order identities are unique.
+    household_consumption: Strict increasing unique principal_good_unit.
+    procurement: Strict increasing unique buyer_supplier_good_unit; quoted order identities are unique.
+    production_plans: Strict increasing unique process_id.
+    prices: Strict increasing unique site_good_unit.
   validation:
     - Reject wrong domain, version, family tag, truncation or trailing bytes.
     - Produced batches cannot exceed planned batches.
@@ -109,14 +242,58 @@ receipts:
     - Completed jobs equal the minimum request, job ceiling, parts quotient and labor quotient.
     - Checked products prove exact spare and labor debits and the following service grant.
     - A maintenance request whose labor product overflows is refused even if parts or labor are absent.
+    - Every money debit is negative and credit positive; checked signed addition must equal zero.
+    - Every purpose requires the corresponding cash/reserve endpoint shapes and matching order or shift identities.
+    - Cash transfers use distinct account identities; tagged owner namespaces remain distinct.
+    - Unknown tags and nonzero unused subtype or identity padding are refused.
+    - Wage accrual has distinct parties, positive hours and amount, and period equal to resolve_tick.
+    - Labor use belongs to resolve_tick; checked available equals planned plus unplanned,
+      planned equals funded plus unfunded, and funded equals used plus paid idle.
+    - Duplicate wage shift IDs and duplicate or unsorted labor site-unit identities are refused.
+    - All recurring rows belong to resolve_tick; production plans target its checked successor.
+    - Household required quantity is positive; desired covers at least required minus opening stock.
+    - Requested cannot exceed desired; admitted cannot exceed requested; fulfilled plus expired equals admitted.
+    - Purchase unit prices are positive and admitted quantity times price fits signed micro-currency.
+    - Consumption is the minimum of actual available stock and required quantity.
+    - Checked consumed plus unmet equals required; consumed plus closing equals available.
+    - Procurement has distinct parties; checked on-hand plus outstanding inbound determines stock position.
+    - Desired procurement cannot exceed target minus position; admitted cannot exceed desired.
+    - Checked dispatch plus unshipped plus buffer determines target output; closing stock reduces wanted output.
+    - Planned batches are zero exactly when wanted output is zero and cannot exceed wanted units.
+    - Exact batches need the absent positive output-per-batch coefficient; a standalone row cannot prove it.
+    - Old and next prices are positive; fixed or hold decisions retain the same price.
+    - Unserved-demand decisions require unserved quantity and cannot reduce price; ceilings can retain it.
+    - Excess-stock decisions require zero unserved quantity and positive stock and cannot raise price.
+    - Unknown price reasons and duplicate or noncanonical recurring keys are refused.
   interpretation:
     native_quantity: Identified good-unit quantity; gram reservations use the captured mass coefficient.
     handling_need: Resource-feasible work before opening labor limits actual outbound movement.
     final_fulfillment: A finite demand-account credit, without a freight lot or claim of actual consumption.
     local_transfer: One supplier debit and buyer credit, without physical arrival or staged-dispatch receipts.
     maintenance: Next-period service is neither a commodity shipment nor bankable inventory.
+    money_transfers: >-
+      A reserve is the single money principal; reservation is not sales revenue and arrival authorizes settlement.
+    wage_accruals: >-
+      The obligation is separate from payment and actual production; paying a prior unpaid shift creates no new accrual.
+    labor_use: >-
+      Unplanned hours are outside scheduled attendance; unfunded planned hours were not hired.
+      Used and paid idle hours partition funded attendance.
+    recurring: >-
+      Household need, desired purchases, funded admission, fulfillment and consumption are distinct.
+      Procurement, production caps and next prices explain decisions without promising execution.
+      Receipt validation alone cannot authenticate policy targets, prices, recipe coefficients,
+      opening cash or inventory against an absent state.
     authentication: Register and receipt identity, coefficient and account joins are verified before disclosure.
   maximum_rows_per_family: 65536
+  maximum_handling_rows: 131072
+  handling_bound: >-
+    At most N first-pass orders plus N new procurement orders after generated retail principals retire.
+    Delivery principals remain live through both passes, so dispatch and local-transfer families retain N.
+  maximum_money_transfer_rows: 655360
+  money_transfer_bound: >-
+    A conservative 10N derived movement ceiling covers prior and current payroll,
+    household and procurement reservations, delivery settlements and purchase refunds.
+    N is the state-family limit; this does not enlarge any state principal table.
   maximum_complete_bytes: 67108864
 persistence:
   material_rows: babylon_state.material_tick_v3

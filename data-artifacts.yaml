@@ -1583,3 +1583,30 @@ artifacts:
       county roster. Kalawao has residents but no invented workplace group.
       This capture allocates no persons, households, firms, physical recipes,
       capacities, operating inventories or money and initializes no campaign.
+  - name: national_transport_reference_2024
+    format: json.gz
+    source_table: null
+    generator: tools/make_national_transport_reference.py
+    mode: register
+    rows: 3373
+    sha256: d085520bb68e65927c6d5e395f493498d1fccf394f5ee64a7c06507e816b1ab3
+    home: src/babylon/data/reference/transport/national_transport_reference_2024.json.gz
+    material_relation: >-
+      Part of PER-40: 3144 county actors, twelve Designed counterparts and
+      six separate US dependency actors retain typed geography within a
+      bounded source-qualified sparse transport graph. Source airport,
+      marine, liquid-terminal, border and explicit Alaska bulk connections
+      remain distinct from Designed routing and finite 28-day service values.
+      Air refuses bulk; unsupported directed bulk access stays explicit.
+      All 3162 actor endpoints have general-cargo reachability within ten
+      links, which proves neither adequate capacity nor demand satisfaction.
+      Original county allocation factors retain exact decimal values and
+      five duplicate source multiplicities without summing or renormalizing.
+      Selected domestic FAF2024 aggregates, full foreign region/mode
+      aggregates and non-additive controls preserve native units, source
+      publication counts and separate import/export directions. FAF's eight
+      foreign regions never become twelve observed market quantities.
+      Source vintages differ; Valdez's obsolete source county is preserved
+      alongside its spatially verified 2024 county binding. Costs remain
+      unexecuted context: this capture pays no carrier, creates no stocks,
+      compiles no material route and hydrates no runtime campaign.

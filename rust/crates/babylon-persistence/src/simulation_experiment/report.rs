@@ -156,9 +156,13 @@ fn total(mut values: impl Iterator<Item = u64>) -> Result<u64> {
 }
 fn mass(state: &MaterialCircuitState) -> Result<u64> {
     let coefficients: BTreeMap<_, _> = state
-        .freight_mass_coefficients
+        .commodities
         .iter()
-        .map(|r| ((r.good_id, r.unit_id), r.grams_per_unit))
+        .filter_map(|r| {
+            r.grams_per_unit()
+                .ok()
+                .map(|grams| ((r.good_id, r.unit_id), grams))
+        })
         .collect();
     state
         .inventory

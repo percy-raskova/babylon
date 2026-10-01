@@ -201,7 +201,7 @@ pub(super) fn project_freight_capacity_accounts(
 }
 
 fn capacity_order(fact: &OutboundFact) -> Result<ProductionFreightCapacityOrder> {
-    let (id, kind) = identity(fact.id);
+    let (id, kind) = identity(fact.id)?;
     Ok(ProductionFreightCapacityOrder {
         order_id: digest_hex(&id.as_bytes()),
         kind,
@@ -262,9 +262,12 @@ fn completed_reservations(
                     .checked_add(u64::from(stage.travel_periods))
                     .ok_or(ProductionProjectionError::Arithmetic)?;
             }
-            if receipt.dispatches.iter().any(|row| {
-                row.order_id == identity(fact.id).0 && row.final_arrival_period != departure
-            }) {
+            let (id, _) = identity(fact.id)?;
+            if receipt
+                .dispatches
+                .iter()
+                .any(|row| row.order_id == id && row.final_arrival_period != departure)
+            {
                 return Err(ProductionProjectionError::State);
             }
         }

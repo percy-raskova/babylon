@@ -311,6 +311,12 @@ pub(crate) fn plan_production(
             .map(|index| &state.process_outputs[index])
             .ok_or(MaterialCircuitError::ProcessInvariant)?;
         let key = (policy.site_id, output.good_id, output.unit_id);
+        if state.commodities.iter().any(|r| {
+            (r.good_id, r.unit_id) == (output.good_id, output.unit_id)
+                && matches!(r.kind, crate::CommodityKind::PeriodService { .. })
+        }) {
+            continue;
+        }
         let sent = outbound.get(&key).copied().unwrap_or(0);
         let waiting = unshipped.get(&key).copied().unwrap_or(0);
         let stock = inventory.get(&key).copied().unwrap_or(0);
@@ -534,12 +540,21 @@ pub(crate) fn update_prices(
     };
     let mut receipts = Vec::new();
     for offer in &mut recurring.offers {
+        if state.commodities.iter().any(|r| {
+            (r.good_id, r.unit_id) == (offer.good_id, offer.unit_id)
+                && matches!(r.kind, crate::CommodityKind::PeriodService { .. })
+        }) {
+            continue;
+        }
         let key = (offer.site_id, offer.good_id, offer.unit_id);
         let waiting = unserved.get(&key).copied().unwrap_or(0);
         let stock = inventory.get(&key).copied().unwrap_or(0);
         let old = offer.unit_price;
         let reason = match offer.pricing {
             PricePolicy::Fixed => PriceDecision::Fixed,
+            PricePolicy::ServiceResponsive { .. } => {
+                return Err(MaterialCircuitError::ServiceInvariant)
+            }
             PricePolicy::Responsive {
                 minimum,
                 maximum,

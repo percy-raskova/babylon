@@ -41,6 +41,7 @@ fn local_cost_economy() -> MonetaryCircuit {
             hourly_rate: money(1),
         }],
         recurring: Some(Box::new(RecurringEconomy {
+            service_inputs: vec![],
             households: vec![],
             household_stocks: vec![],
             household_needs: vec![],

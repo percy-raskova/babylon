@@ -53,6 +53,7 @@ fn recurring_policies() -> RecurringEconomy {
         })
         .collect();
     RecurringEconomy {
+        service_inputs: vec![],
         households: vec![HouseholdCohort {
             principal_id: household(),
             households: 2,
@@ -250,12 +251,14 @@ pub(super) fn opening() -> MaterialCircuitState {
         process_outputs: process_outputs(),
         input_coefficients: input_coefficients(),
         labor_coefficients: labor_coefficients(),
-        freight_mass_coefficients: [0, 1, 2]
+        service_connections: vec![],
+        service_orders: vec![],
+        commodities: [0, 1, 2]
             .into_iter()
-            .map(|commodity| FreightMassCoefficient {
+            .map(|commodity| CommodityDefinition {
                 good_id: good(commodity),
                 unit_id: units(),
-                grams_per_unit: 1,
+                kind: babylon_material_circuit::CommodityKind::Storable { grams_per_unit: 1 },
             })
             .collect(),
         supplier_routes: supplier_routes(),

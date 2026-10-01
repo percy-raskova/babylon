@@ -167,7 +167,7 @@ fn handling_rows(
         {
             return Err(ProductionProjectionError::State);
         }
-        let (id, kind) = identity(row.order);
+        let (id, kind) = identity(row.order)?;
         result
             .entry(row.site_id)
             .or_default()
@@ -252,7 +252,7 @@ pub(super) fn project_final_with_labels(
         .flat_map(|(_, facts)| facts.iter())
         .filter_map(|fact| match fact.id {
             OutboundOrderId::LocalFinalDemand(id) => Some((id, fact.quantity)),
-            OutboundOrderId::Delivery(_) => None,
+            OutboundOrderId::Delivery(_) | OutboundOrderId::Service(_) => None,
         })
         .collect();
     let latest: BTreeSet<_> = quantities.keys().copied().collect();

@@ -121,10 +121,12 @@ fn paid_state() -> MaterialCircuitState {
         process_outputs: vec![],
         input_coefficients: vec![],
         labor_coefficients: vec![],
-        freight_mass_coefficients: vec![FreightMassCoefficient {
+        service_connections: vec![],
+        service_orders: vec![],
+        commodities: vec![CommodityDefinition {
             good_id: good,
             unit_id: unit,
-            grams_per_unit: 1,
+            kind: babylon_material_circuit::CommodityKind::Storable { grams_per_unit: 1 },
         }],
         supplier_routes: vec![SupplierRoute {
             buyer_site_id: buyer,
@@ -182,10 +184,11 @@ fn paid_state() -> MaterialCircuitState {
 fn accounting_offset(state: &MaterialCircuitState) -> usize {
     let mut control = state.clone();
     control.accounting = CircuitAccounting::PhysicalControl;
-    encode_material_circuit_state(&control).unwrap().len() - 2
+    // One accounting tag, one finite-capacity tag, and two empty service row counts.
+    encode_material_circuit_state(&control).unwrap().len() - 10
 }
 
-// Language-neutral schema-5 row widths, independent of Rust struct layout.
+// Language-neutral current monetary row widths, independent of Rust struct layout.
 const ACCOUNT_BYTES: usize = 1 + 32 + 16;
 const PURCHASE_BYTES: usize = 1 + 32 + 2 * (1 + 32) + 8 + 16 + 8 + 8;
 const SHIFT_BYTES: usize = 32 + 2 * (1 + 32) + 8 + 8 + 16 + 1;

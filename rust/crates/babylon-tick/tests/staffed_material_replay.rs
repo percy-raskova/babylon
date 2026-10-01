@@ -22,7 +22,7 @@ use babylon_kernel::replay::{ReplaySeed, ReplaySessionId};
 use babylon_kernel::tick_content_hash::RefDigest;
 use babylon_kernel::{content_digest::sha256_of, content_digest::ContentDigest};
 use babylon_material_circuit::{
-    BacklogRow, CapacityRow, CorridorCapacity, CorridorId, FreightMassCoefficient, GoodId,
+    BacklogRow, CapacityRow, CommodityDefinition, CorridorCapacity, CorridorId, GoodId,
     InputOutputCoefficient, InventoryRow, LaborCapacityRow, LaborCoefficient, LogisticsNodeId,
     MaterialCircuitState, OrderAccessMode, OrderId, OrderRow, ProcessId, ProcessOutput, RouteId,
     RouteStage, RouteStageCapacity, SiteId, SiteLogisticsNode, StaffingPolicy, StaffingPoolBinding,
@@ -167,11 +167,15 @@ fn opening() -> MaterialCircuitState {
         supplier_routes: Vec::new(),
         route_stages: Vec::new(),
         route_stage_capacities: Vec::new(),
-        freight_mass_coefficients: [1, 2]
-            .map(|id| FreightMassCoefficient {
+        service_connections: vec![],
+        service_orders: vec![],
+        commodities: [1, 2]
+            .map(|id| CommodityDefinition {
                 good_id: good(id),
                 unit_id: unit(2),
-                grams_per_unit: 1000,
+                kind: babylon_material_circuit::CommodityKind::Storable {
+                    grams_per_unit: 1000,
+                },
             })
             .to_vec(),
         inventory: vec![InventoryRow {

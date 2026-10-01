@@ -1,0 +1,79 @@
+ADR264_period_service_provision:
+  status: accepted
+  date: '2026-09-20'
+  issue: PER-30
+  title: Native period services precede goods production in the shared material close
+  evidence_class: Designed
+  authority:
+    - Director-approved playable national economy implementation plan of 2026-09-20
+    - Recorded PER-30 commitment for finite native service provision and responsive offers
+  partially_supersedes:
+    - ADR263 close ordering and household stock requirement for current period services
+  context: |
+    A stored good, a paid future claim and a performed service differ materially.
+    Freight mass cannot describe a haircut, a business service or network energy
+    provision. The existing local goods handoff occurs after production and cannot
+    supply a service input causally to that same period's production.
+  decision: |
+    Declare every commodity as Storable with positive shipment mass or as a
+    PeriodService in one of two explicit stages. UtilityProvision precedes
+    LocalServiceProvision, which precedes GoodsProduction. Fuel remains a stored
+    good; electricity uses its declared native unit. A captured provider-to-buyer
+    connection authorizes service reach without asserting a geographic path.
+    Source compilation must justify that reach; no ocean electricity is implied.
+
+    Invoke the existing production and outbound resource allocators with the same
+    remaining inputs, paid labor and process budgets. Service recipes produce
+    their positive declared native output quantity per whole batch. Funded native
+    requests cap prospective batches by ceiling division. Complete batches debit
+    complete input and labor costs; the existing outbound allocator distributes
+    their finite output. Unallocated output expires at exact remaining provider
+    cost. Unused capacity produces no output asset. Service recipe inputs may reference only earlier service stages; refuse
+    same-stage or backward service dependencies and cycles. Stored inputs come
+    from opening stock and due arrivals, never from later goods production.
+
+    Service orders carry an exact performance period. Reserve existing money at
+    the accepted quote, settle actual performance and refund unperformed units
+    when that period closes. Future reserves remain claims on future work. Site
+    service grants can supply only later stages during the current atomic close;
+    they expire before state publication. Performed but unused service is a buyer
+    period expense. Complete all stage seller debits and provider expiry before
+    any buyer quantity or carrying-cost credit. No service can become freight,
+    pantry stock or a next-period asset.
+    Household service satisfaction uses current performance without a fake pantry
+    row or a Retail merchant requirement.
+
+    Keep fixed offers for accounting controls. Responsive service offers use
+    funded unmet requests, actual performance, captured native capacity and available
+    transaction-cost evidence including provider-expired batch cost. B2B requests
+    follow current committed batches and recipe coefficients, bounded by captured
+    quantity and cash policies. Captured step and price bounds constrain subsequent
+    quotes. A permanently absent service inventory is not shortage evidence.
+    Neither policy guarantees sale, profit, growth or market clearing; existing
+    reserves retain their accepted quotes.
+
+    Keep physical quantities, money and historical carrying amounts distinct.
+    Actual provider input and productive labor costs accompany performed output
+    into realized cost of sales. Buyer service costs used in goods production
+    enter that goods carrying basis. Unused purchased service is a separate
+    expense. These transaction-cost categories do not identify surplus value or
+    decide the theoretical productive character of every service occupation.
+  alternatives_rejected:
+    - Fake positive freight grams and durable stock for services.
+    - Treating payment or future reservation as performed service.
+    - Independent service labor, money or capacity allocators.
+    - Refilling shared residuals between production stages.
+    - Recursive same-period goods credits or arbitrary dependency graph execution.
+    - Service price response inferred from always-zero warehouse stock.
+  consequences: |
+    New state and receipt schemas refuse prior bytes without compatibility.
+    Household need, service performance, expiry and market decisions remain
+    independently inspectable. Location adoption, national source compilation and
+    substantive observer presentation are separate integration work. The schedule
+    is an explicit game abstraction, not a new mathematical or theoretical primitive.
+  verification:
+    - contracts/material_circuit_v3.yaml
+    - contracts/committed_material_tick_v3.yaml
+    - rust/crates/babylon-material-circuit/tests/period_services.rs
+    - Native-unit staged causality, shared-resource conservation and finite expiry.
+    - Historical cost, accepted quotes, checkpoint replay and atomic refusal.

@@ -335,7 +335,7 @@ fn rolling_wire_refuses_obsolete_noncanonical_and_invalid_bookings() {
         unreachable!()
     };
     let payload_len = 1 + 12 + rows.installed_processes.len() * 72 + rows.shared.len() * 40;
-    let mode = bytes.len() - payload_len;
+    let mode = bytes.len() - payload_len - 8; // Two empty service row counts follow capacity.
     let mut invalid = bytes.clone();
     invalid[mode] = 2;
     assert_eq!(

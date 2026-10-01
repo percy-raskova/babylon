@@ -3,6 +3,7 @@
 mod accounting;
 mod capacity;
 mod recurring;
+mod services;
 mod valuation;
 
 use crate::SupplierTransport;
@@ -14,23 +15,22 @@ use babylon_kernel::content_digest::sha256_of;
 
 use crate::transition::canonical_state;
 use crate::{
-    BacklogRow, CapacityRow, CorridorCapacity, CorridorId, FreightLotId, FreightMassCoefficient,
-    GoodId, InputOutputCoefficient, InventoryRow, LaborCapacityRow, LaborCoefficient,
-    LogisticsNodeId, MaterialCircuitError, MaterialCircuitState, OrderAccessMode, OrderId,
-    OrderRow, ProcessId, ProcessOutput, ProductionCommitment, RouteId, RouteStage,
-    RouteStageCapacity, RoutedFreightLot, SiteId, SiteLogisticsNode, SupplierRoute, UnitId,
-    MAX_MATERIAL_CIRCUIT_ROWS,
+    BacklogRow, CapacityRow, CorridorCapacity, CorridorId, FreightLotId, GoodId,
+    InputOutputCoefficient, InventoryRow, LaborCapacityRow, LaborCoefficient, LogisticsNodeId,
+    MaterialCircuitError, MaterialCircuitState, OrderAccessMode, OrderId, OrderRow, ProcessId,
+    ProcessOutput, ProductionCommitment, RouteId, RouteStage, RouteStageCapacity, RoutedFreightLot,
+    SiteId, SiteLogisticsNode, SupplierRoute, UnitId, MAX_MATERIAL_CIRCUIT_ROWS,
 };
 
 /// Canonical domain for one complete routed material-circuit opening state.
 pub const MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES: &[u8] = b"babylon.material-circuit-state.v3";
 /// SHA-256 of the current language-neutral material circuit contract source.
 pub const MATERIAL_CIRCUIT_SOURCE_SHA256: [u8; 32] = [
-    227, 71, 1, 99, 240, 111, 40, 21, 111, 11, 213, 35, 50, 124, 60, 141, 38, 232, 194, 141, 231,
-    254, 129, 82, 75, 67, 211, 105, 27, 71, 232, 231,
+    168, 230, 126, 25, 42, 137, 108, 205, 194, 81, 25, 3, 86, 131, 211, 194, 207, 41, 207, 244,
+    167, 213, 66, 151, 132, 90, 68, 156, 172, 28, 183, 231,
 ];
 
-const SCHEMA_VERSION: u16 = 8;
+const SCHEMA_VERSION: u16 = 9;
 
 impl From<CursorError> for MaterialCircuitError {
     fn from(value: CursorError) -> Self {
@@ -158,16 +158,6 @@ fn append_stage_capacities(
         bytes.extend_from_slice(&row.route_id.as_bytes());
         bytes.extend_from_slice(&row.stage_index.to_be_bytes());
         bytes.extend_from_slice(&row.corridor_id.as_bytes());
-    })
-}
-fn append_mass(
-    output: &mut Vec<u8>,
-    rows: &[FreightMassCoefficient],
-) -> Result<(), MaterialCircuitError> {
-    append_rows(output, rows, |bytes, row| {
-        bytes.extend_from_slice(&row.good_id.as_bytes());
-        bytes.extend_from_slice(&row.unit_id.as_bytes());
-        bytes.extend_from_slice(&row.grams_per_unit.to_be_bytes());
     })
 }
 
@@ -361,17 +351,6 @@ fn decode_stage_capacities(
             route_id: RouteId::from_bytes(bytes.array()?),
             stage_index: bytes.u16()?,
             corridor_id: CorridorId::from_bytes(bytes.array()?),
-        })
-    })
-}
-fn decode_mass(
-    cursor: &mut Cursor<'_>,
-) -> Result<Vec<FreightMassCoefficient>, MaterialCircuitError> {
-    decode_rows(cursor, |bytes| {
-        Ok(FreightMassCoefficient {
-            good_id: GoodId::from_bytes(bytes.array()?),
-            unit_id: UnitId::from_bytes(bytes.array()?),
-            grams_per_unit: bytes.u64()?,
         })
     })
 }
@@ -662,7 +641,7 @@ pub fn encode_material_circuit_state(
     append_process_outputs(&mut output, &canonical.process_outputs)?;
     append_input_coefficients(&mut output, &canonical.input_coefficients)?;
     append_labor_coefficients(&mut output, &canonical.labor_coefficients)?;
-    append_mass(&mut output, &canonical.freight_mass_coefficients)?;
+    services::append_commodities(&mut output, &canonical.commodities)?;
     append_supplier_routes(&mut output, &canonical.supplier_routes)?;
     append_route_stages(&mut output, &canonical.route_stages)?;
     append_stage_capacities(&mut output, &canonical.route_stage_capacities)?;
@@ -681,6 +660,8 @@ pub fn encode_material_circuit_state(
     append_maintenance(&mut output, &canonical);
     accounting::append(&mut output, &canonical.accounting)?;
     capacity::append(&mut output, &canonical.capacity_supply)?;
+    services::append_connections(&mut output, &canonical.service_connections)?;
+    services::append_orders(&mut output, &canonical.service_orders)?;
 
     Ok(output)
 }
@@ -708,7 +689,7 @@ pub fn decode_material_circuit_state(
         process_outputs: decode_process_outputs(&mut cursor)?,
         input_coefficients: decode_input_coefficients(&mut cursor)?,
         labor_coefficients: decode_labor_coefficients(&mut cursor)?,
-        freight_mass_coefficients: decode_mass(&mut cursor)?,
+        commodities: services::decode_commodities(&mut cursor)?,
         supplier_routes: decode_supplier_routes(&mut cursor)?,
         route_stages: decode_route_stages(&mut cursor)?,
         route_stage_capacities: decode_stage_capacities(&mut cursor)?,
@@ -728,6 +709,8 @@ pub fn decode_material_circuit_state(
         maintenance_service: decode_maintenance_service(&mut cursor)?,
         accounting: accounting::decode(&mut cursor)?,
         capacity_supply: capacity::decode(&mut cursor)?,
+        service_connections: services::decode_connections(&mut cursor)?,
+        service_orders: services::decode_orders(&mut cursor)?,
     };
     cursor.finish()?;
     let canonical = canonical_state(&state)?;

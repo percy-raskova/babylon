@@ -10,7 +10,7 @@ use crate::michigan_material::{
 };
 use babylon_material_circuit::{
     decode_material_circuit_state, encode_material_circuit_state, BacklogRow, CapacityRow,
-    CorridorCapacity, FinalDemandOrder, FinalDemandPrincipal, FreightMassCoefficient, GoodId,
+    CommodityDefinition, CorridorCapacity, FinalDemandOrder, FinalDemandPrincipal, GoodId,
     InputOutputCoefficient, InventoryRow, LaborCapacityRow, LaborCoefficient, MaintenanceBinding,
     MaintenanceService, MaterialCircuitState, MerchantHandling, MerchantHandlingCoefficient,
     MerchantRole, OrderAccessMode, OrderRow, ProcessOutput, ProductionCommitment, RouteStage,
@@ -124,24 +124,22 @@ pub fn compile_sector_bundles(
         state
             .handling_coefficients
             .extend_from_slice(&rows.handling_coefficients);
-        for row in &rows.freight_mass_coefficients {
+        for row in &rows.commodities {
             if mass
-                .insert((row.good_id, row.unit_id), row.grams_per_unit)
-                .is_some_and(|n| n != row.grams_per_unit)
+                .insert((row.good_id, row.unit_id), row.kind)
+                .is_some_and(|n| n != row.kind)
             {
                 return Err(SectorBundleError::GoodUnit);
             }
         }
     }
-    state.freight_mass_coefficients = mass
+    state.commodities = mass
         .into_iter()
-        .map(
-            |((good_id, unit_id), grams_per_unit)| FreightMassCoefficient {
-                good_id,
-                unit_id,
-                grams_per_unit,
-            },
-        )
+        .map(|((good_id, unit_id), kind)| CommodityDefinition {
+            good_id,
+            unit_id,
+            kind,
+        })
         .collect();
     for route in catalog.routes() {
         append_route(&mut state, catalog, route)?;
@@ -272,7 +270,9 @@ fn empty_state() -> MaterialCircuitState {
         process_outputs: Vec::new(),
         input_coefficients: Vec::new(),
         labor_coefficients: Vec::new(),
-        freight_mass_coefficients: Vec::new(),
+        service_connections: vec![],
+        service_orders: vec![],
+        commodities: Vec::new(),
         supplier_routes: Vec::new(),
         route_stages: Vec::new(),
         route_stage_capacities: Vec::new(),
@@ -514,13 +514,13 @@ impl OwnerRows {
                 .iter()
                 .find(|g| g.id() == good.good_id)
                 .ok_or(SectorBundleError::GoodUnit)?;
-            self.rows
-                .freight_mass_coefficients
-                .push(FreightMassCoefficient {
-                    good_id: good.good_id,
-                    unit_id: good.unit_id,
+            self.rows.commodities.push(CommodityDefinition {
+                good_id: good.good_id,
+                unit_id: good.unit_id,
+                kind: babylon_material_circuit::CommodityKind::Storable {
                     grams_per_unit: definition.grams_per_unit,
-                });
+                },
+            });
         }
         SectorBundle::from_parts(
             owner,

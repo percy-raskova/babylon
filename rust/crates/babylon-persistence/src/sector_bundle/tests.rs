@@ -176,7 +176,7 @@ fn bundle_and_row_permutations_preserve_identity_and_changed_authority_refuses()
         rows.inventory.reverse();
         rows.input_coefficients.reverse();
         rows.site_logistics_nodes.reverse();
-        rows.freight_mass_coefficients.reverse();
+        rows.commodities.reverse();
         let mut goods = b.goods.clone();
         goods.reverse();
         let rebuilt = SectorBundle::from_parts(

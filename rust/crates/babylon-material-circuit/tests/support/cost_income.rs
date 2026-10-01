@@ -162,7 +162,7 @@ fn valuation_wire_refuses_missing_stocks_zero_quantity_cost_and_forged_equity() 
         + 65 * snapshot.accounts.len()
         + 113 * snapshot.stocks.len()
         + 80 * snapshot.freight.len();
-    let start = bytes.len() - 1 - width; // Explicit finite capacity tag follows the complete accounting payload.
+    let start = bytes.len() - 9 - width; // Finite capacity tag and two empty service row counts follow accounting.
     for length in start..bytes.len() {
         assert!(decode_material_circuit_state(&bytes[..length]).is_err());
     }

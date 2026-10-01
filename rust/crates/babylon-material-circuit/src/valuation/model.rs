@@ -51,6 +51,7 @@ pub struct IncomeStatement {
     pub freight_loss_expense: Currency,
     pub consumption_expense: Currency,
     pub final_demand_outlay: Currency,
+    pub unused_service_expense: Currency,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

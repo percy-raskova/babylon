@@ -41,11 +41,24 @@ fn opening(parts: u64, provider_hours: u64) -> MaterialCircuitState {
             unit_id: unit(2),
             quantity_per_batch: 60,
         }],
-        freight_mass_coefficients: vec![FreightMassCoefficient {
-            good_id: good(2),
-            unit_id: unit(1),
-            grams_per_unit: 1000,
-        }],
+        service_connections: vec![],
+        service_orders: vec![],
+        commodities: vec![
+            CommodityDefinition {
+                good_id: good(1),
+                unit_id: unit(1),
+                kind: babylon_material_circuit::CommodityKind::Storable {
+                    grams_per_unit: 1000,
+                },
+            },
+            CommodityDefinition {
+                good_id: good(2),
+                unit_id: unit(1),
+                kind: babylon_material_circuit::CommodityKind::Storable {
+                    grams_per_unit: 1000,
+                },
+            },
+        ],
         supplier_routes: vec![],
         route_stages: vec![],
         route_stage_capacities: vec![],
@@ -560,6 +573,13 @@ fn resource_sharing_is_refused_instead_of_imposing_hidden_priority() {
         unit_id: unit(1),
         quantity_per_batch: 1,
     });
+    shared_process.commodities.push(CommodityDefinition {
+        good_id: good(3),
+        unit_id: unit(1),
+        kind: CommodityKind::Storable {
+            grams_per_unit: 1000,
+        },
+    });
     shared_process.labor_coefficients.push(LaborCoefficient {
         process_id: other,
         unit_id: unit(2),
@@ -571,15 +591,6 @@ fn resource_sharing_is_refused_instead_of_imposing_hidden_priority() {
     );
     for (supplier, material) in [(site(2), good(2)), (site(1), good(1))] {
         let mut shared_order = state.clone();
-        if material == good(1) {
-            shared_order
-                .freight_mass_coefficients
-                .push(FreightMassCoefficient {
-                    good_id: material,
-                    unit_id: unit(1),
-                    grams_per_unit: 1000,
-                });
-        }
         let order_id = OrderId::from_bytes([9; 32]);
         shared_order.orders.push(OrderRow {
             order_id,
@@ -658,13 +669,6 @@ fn idle_consumer_and_provider_rehire_after_later_material_arrival() {
         unit_id: unit(1),
         quantity: 1280,
     });
-    state
-        .freight_mass_coefficients
-        .push(FreightMassCoefficient {
-            good_id: good(1),
-            unit_id: unit(1),
-            grams_per_unit: 1000,
-        });
     state.orders.push(OrderRow {
         order_id,
         access_mode: OrderAccessMode::CommoditySale,

@@ -214,13 +214,6 @@ pub struct LocalTransferReceipt {
     pub quantity: u64,
 }
 
-/// Positive exact grams represented by one native shipment unit.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct FreightMassCoefficient {
-    pub good_id: GoodId,
-    pub unit_id: UnitId,
-    pub grams_per_unit: u64,
-}
 /// One timed transport stage; physical geometry does not advance this clock.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct RouteStage {
@@ -313,6 +306,7 @@ pub struct FinalDemandOrder {
 pub enum OutboundOrderId {
     Delivery(OrderId),
     LocalFinalDemand(OrderId),
+    Service(OrderId),
 }
 
 /// Completed handling need before labor and actual outbound handling after labor.
@@ -430,7 +424,9 @@ pub struct MaterialCircuitState {
     pub process_outputs: Vec<ProcessOutput>,
     pub input_coefficients: Vec<InputOutputCoefficient>,
     pub labor_coefficients: Vec<LaborCoefficient>,
-    pub freight_mass_coefficients: Vec<FreightMassCoefficient>,
+    pub commodities: Vec<crate::CommodityDefinition>,
+    pub service_connections: Vec<crate::ServiceConnection>,
+    pub service_orders: Vec<crate::ServiceOrder>,
     pub supplier_routes: Vec<SupplierRoute>,
     pub route_stages: Vec<RouteStage>,
     pub route_stage_capacities: Vec<RouteStageCapacity>,
@@ -479,6 +475,7 @@ pub enum MaterialCircuitError {
     PayrollInvariant = 24,
     PurchaseInvariant = 25,
     ValuationInvariant = 26,
+    ServiceInvariant = 27,
 }
 
 /// Unknown language-neutral routed-material refusal code.
@@ -516,6 +513,7 @@ impl TryFrom<u16> for MaterialCircuitError {
             24 => Ok(Self::PayrollInvariant),
             25 => Ok(Self::PurchaseInvariant),
             26 => Ok(Self::ValuationInvariant),
+            27 => Ok(Self::ServiceInvariant),
             _ => Err(UnknownMaterialCircuitErrorCode(value)),
         }
     }
@@ -539,6 +537,10 @@ pub struct FreightLossReceipt {
 /// Atomic successor with native quantity receipts.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MaterialCircuitTransition {
+    pub service_performance: Vec<crate::ServicePerformanceReceipt>,
+    pub household_services: Vec<crate::HouseholdServiceReceipt>,
+    pub service_markets: Vec<crate::ServiceMarketReceipt>,
+    pub service_outputs: Vec<crate::ServiceOutputReceipt>,
     pub income: Vec<crate::IncomeReceipt>,
     pub state: MaterialCircuitState,
     pub household_demand: Vec<crate::HouseholdDemandReceipt>,

@@ -85,10 +85,12 @@ fn opening() -> MaterialCircuitState {
         process_outputs: vec![],
         input_coefficients: vec![],
         labor_coefficients: vec![],
-        freight_mass_coefficients: vec![FreightMassCoefficient {
+        service_connections: vec![],
+        service_orders: vec![],
+        commodities: vec![CommodityDefinition {
             good_id: good(),
             unit_id: unit(),
-            grams_per_unit: 1,
+            kind: babylon_material_circuit::CommodityKind::Storable { grams_per_unit: 1 },
         }],
         supplier_routes: vec![SupplierRoute {
             buyer_site_id: store(),

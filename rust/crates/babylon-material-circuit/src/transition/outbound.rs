@@ -70,7 +70,10 @@ impl OutboundSelection<'_> {
         match (self, order) {
             (Self::All, _) => true,
             (Self::NewDeliveries(ids), OutboundOrderId::Delivery(id)) => ids.contains(&id),
-            (Self::NewDeliveries(_), OutboundOrderId::LocalFinalDemand(_)) => false,
+            (
+                Self::NewDeliveries(_),
+                OutboundOrderId::LocalFinalDemand(_) | OutboundOrderId::Service(_),
+            ) => false,
         }
     }
 }
@@ -153,6 +156,9 @@ fn resource_groups(
             order.requested,
             1,
         )?;
+        if matches!(order.id, OutboundOrderId::Service(_)) {
+            continue;
+        }
         let grams = grams_per_unit(state, order.stock.1, order.stock.2)?;
         if let Some(route) = order.route {
             add_route_requests(
@@ -574,4 +580,25 @@ pub(super) fn credit_local_transfers(
         )?;
     }
     Ok(())
+}
+
+/// Services reuse the native-unit outbound allocation; no freight or handling resource exists.
+pub(crate) fn allocate_services(
+    state: &MaterialCircuitState,
+    services: &[crate::ServiceOrder],
+    available: &InventoryLedger,
+) -> Result<Vec<u64>, MaterialCircuitError> {
+    let orders: Vec<_> = services
+        .iter()
+        .map(|r| OutboundOrder {
+            id: OutboundOrderId::Service(r.order_id),
+            stock: (r.provider_site_id, r.good_id, r.unit_id),
+            requested: r.quantity,
+            route: None,
+            eligible: true,
+            included: true,
+        })
+        .collect();
+    let groups = resource_groups(state, &orders)?;
+    order_allocations(state, available, &groups, orders.len())
 }

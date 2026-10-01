@@ -5,6 +5,7 @@ use babylon_kernel::currency::Currency;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RecurringEconomy {
+    pub service_inputs: Vec<crate::ServiceInputPolicy>,
     pub households: Vec<HouseholdCohort>,
     pub household_stocks: Vec<HouseholdStock>,
     pub household_needs: Vec<HouseholdNeed>,
@@ -67,6 +68,11 @@ pub struct SellerOffer {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PricePolicy {
     Fixed,
+    ServiceResponsive {
+        minimum: Currency,
+        maximum: Currency,
+        step: Currency,
+    },
     Responsive {
         minimum: Currency,
         maximum: Currency,

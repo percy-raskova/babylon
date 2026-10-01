@@ -23,6 +23,7 @@ fn hours() -> UnitId {
 
 fn recurring(stock: u64) -> RecurringEconomy {
     RecurringEconomy {
+        service_inputs: vec![],
         households: vec![HouseholdCohort {
             principal_id: h(),
             households: 1,
@@ -117,10 +118,12 @@ fn opening(household_cash: i128, stock: u64) -> MaterialCircuitState {
         process_outputs: vec![],
         input_coefficients: vec![],
         labor_coefficients: vec![],
-        freight_mass_coefficients: vec![FreightMassCoefficient {
+        service_connections: vec![],
+        service_orders: vec![],
+        commodities: vec![CommodityDefinition {
             good_id: g(),
             unit_id: u(),
-            grams_per_unit: 1,
+            kind: crate::CommodityKind::Storable { grams_per_unit: 1 },
         }],
         supplier_routes: vec![],
         route_stages: vec![],
@@ -437,13 +440,11 @@ fn missing_or_overflowing_needs_and_invalid_prices_are_refused() {
 fn one_household_budget_is_shared_in_canonical_need_order() {
     let mut state = opening(4, 0);
     let other = GoodId::from_bytes([33; 32]);
-    state
-        .freight_mass_coefficients
-        .push(FreightMassCoefficient {
-            good_id: other,
-            unit_id: u(),
-            grams_per_unit: 1,
-        });
+    state.commodities.push(CommodityDefinition {
+        good_id: other,
+        unit_id: u(),
+        kind: crate::CommodityKind::Storable { grams_per_unit: 1 },
+    });
     state
         .handling_coefficients
         .push(MerchantHandlingCoefficient {

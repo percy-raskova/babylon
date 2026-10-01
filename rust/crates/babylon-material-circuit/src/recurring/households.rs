@@ -94,6 +94,9 @@ pub(crate) fn admit_household_orders(
     let mut movements = vec![];
     let mut receipts = vec![];
     for policy in policies {
+        if !stock.contains_key(&(policy.principal_id, policy.good_id, policy.unit_id)) {
+            continue;
+        }
         let key = (policy.principal_id, policy.good_id, policy.unit_id);
         let id = recurring_household_order_id(state.period, key);
         if existing.contains(&id) {
@@ -142,6 +145,7 @@ pub(crate) fn admit_household_orders(
                 .orders
                 .len()
                 .checked_add(state.final_demand_orders.len())
+                .and_then(|n| n.checked_add(state.service_orders.len()))
                 .and_then(|n| n.checked_add(orders.len()))
                 .ok_or(MaterialCircuitError::Arithmetic)?;
             if count >= MAX_MATERIAL_CIRCUIT_ROWS {
@@ -191,7 +195,7 @@ fn validate_demand_receipts(
     period: u64,
     demands: &[HouseholdDemandReceipt],
 ) -> Result<()> {
-    if demands.len() != rows.household_purchases.len() {
+    if demands.len() != rows.household_stocks.len() {
         return Err(MaterialCircuitError::FinalDemandInvariant);
     }
     let policies: BTreeMap<_, _> = rows
@@ -457,6 +461,9 @@ pub(crate) fn consume_household_needs(
         .collect();
     let mut receipts = vec![];
     for (key, required_quantity) in needed {
+        if !stocks.contains_key(&key) {
+            continue;
+        }
         let available_quantity = *stocks
             .get(&key)
             .ok_or(MaterialCircuitError::FinalDemandInvariant)?;

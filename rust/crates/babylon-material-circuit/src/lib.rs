@@ -14,6 +14,7 @@ mod model;
 mod payments;
 mod production;
 mod recurring;
+mod services;
 mod staffing;
 mod transition;
 mod valuation;
@@ -31,6 +32,12 @@ pub use payments::{
     MonetaryCircuit, MAX_MONEY_TRANSFERS_PER_PERIOD,
 };
 pub use recurring::*;
+pub use services::{
+    recurring_service_order_id, CommodityDefinition, CommodityKind, HouseholdServiceReceipt,
+    ServiceConnection, ServiceInputPolicy, ServiceMarketReceipt, ServiceOrder,
+    ServiceOutputReceipt, ServicePerformanceReceipt, ServicePriceDecision, ServiceStage,
+    MAX_SERVICE_RECEIPTS_PER_PERIOD,
+};
 pub use staffing::{
     advance_staffing, StaffingError, StaffingPolicy, StaffingPoolBinding, StaffingPoolId,
     StaffingPoolState, StaffingReceipt, StaffingState, StaffingTransition, StaffingWorkRequest,

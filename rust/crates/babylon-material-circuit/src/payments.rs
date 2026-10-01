@@ -12,9 +12,10 @@ use crate::{
 };
 
 /// Derived close ceiling: 3N payroll, 2N old purchase movements, 3N household
-/// admission/settlement/refund and 2N new firm admission/settlement movements.
+/// admission/settlement/refund, 2N new firm admission/settlement, and 4N
+/// service admission plus settlement/refund movements.
 /// The complete receipt envelope retains its independent byte ceiling.
-pub const MAX_MONEY_TRANSFERS_PER_PERIOD: usize = 10 * MAX_MATERIAL_CIRCUIT_ROWS;
+pub const MAX_MONEY_TRANSFERS_PER_PERIOD: usize = 14 * MAX_MATERIAL_CIRCUIT_ROWS;
 
 /// Controls declare that they omit money; monetary campaigns never infer this
 /// from missing accounts or prices. Both use the same physical allocator.
@@ -64,6 +65,7 @@ pub struct LaborUseReceipt {
 pub enum MaterialPurchase {
     Delivery(OrderRow),
     LocalFinalDemand(FinalDemandOrder),
+    Service(crate::ServiceOrder),
 }
 
 impl From<MonetaryError> for MaterialCircuitError {
@@ -176,7 +178,9 @@ pub(crate) fn validate(state: &MaterialCircuitState) -> Result<(), MaterialCircu
             return Err(MaterialCircuitError::PayrollInvariant);
         }
     }
-    if snapshot.purchases.len() != state.orders.len() + state.final_demand_orders.len() {
+    if snapshot.purchases.len()
+        != state.orders.len() + state.final_demand_orders.len() + state.service_orders.len()
+    {
         return Err(MaterialCircuitError::PurchaseInvariant);
     }
     for order in &state.orders {
@@ -204,8 +208,27 @@ pub(crate) fn validate(state: &MaterialCircuitState) -> Result<(), MaterialCircu
             0,
         )?;
     }
+    validate_service_purchases(state, &economy.book)?;
     economy.book.total_cash_and_reserves()?;
     crate::recurring::validate(state)?;
+    Ok(())
+}
+
+fn validate_service_purchases(
+    state: &MaterialCircuitState,
+    book: &MonetaryBook,
+) -> Result<(), MaterialCircuitError> {
+    for order in &state.service_orders {
+        validate_purchase(
+            book,
+            OutboundOrderId::Service(order.order_id),
+            order.buyer,
+            AccountId::Site(order.provider_site_id),
+            order.quantity,
+            0,
+            0,
+        )?;
+    }
     Ok(())
 }
 
@@ -249,7 +272,19 @@ pub fn admit_material_purchase(
     let CircuitAccounting::Monetary(economy) = &mut state.accounting else {
         return Err(MaterialCircuitError::MonetaryInvariant);
     };
+    if state.orders.len() + state.final_demand_orders.len() + state.service_orders.len()
+        >= MAX_MATERIAL_CIRCUIT_ROWS
+    {
+        return Err(MaterialCircuitError::RowLimit);
+    }
     let principal = match &purchase {
+        MaterialPurchase::Service(order) => PurchaseEscrow::new(
+            OutboundOrderId::Service(order.order_id),
+            order.buyer,
+            AccountId::Site(order.provider_site_id),
+            order.quantity,
+            unit_price,
+        )?,
         MaterialPurchase::Delivery(order) => {
             if order.shipped != 0 || order.lost != 0 || order.delivered != 0 || order.realized != 0
             {
@@ -278,6 +313,7 @@ pub fn admit_material_purchase(
     };
     let receipt = economy.book.reserve_purchase(principal)?;
     match purchase {
+        MaterialPurchase::Service(order) => state.service_orders.push(order),
         MaterialPurchase::Delivery(order) => {
             state.backlog.push(BacklogRow {
                 order_id: order.order_id,

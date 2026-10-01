@@ -1,9 +1,9 @@
 use babylon_material_circuit::{
     advance_material_circuit, decode_material_circuit_state, encode_material_circuit_state,
-    material_circuit_state_digest, BacklogRow, CapacityRow, CorridorCapacity, CorridorId,
-    FreightMassCoefficient, GoodId, InputOutputCoefficient, InventoryRow, LaborCapacityRow,
-    LaborCoefficient, LogisticsNodeId, MaterialCircuitState, OrderAccessMode, OrderId, OrderRow,
-    ProcessId, ProcessOutput, RouteId, RouteStage, RouteStageCapacity, SiteId, SiteLogisticsNode,
+    material_circuit_state_digest, BacklogRow, CapacityRow, CommodityDefinition, CorridorCapacity,
+    CorridorId, GoodId, InputOutputCoefficient, InventoryRow, LaborCapacityRow, LaborCoefficient,
+    LogisticsNodeId, MaterialCircuitState, OrderAccessMode, OrderId, OrderRow, ProcessId,
+    ProcessOutput, RouteId, RouteStage, RouteStageCapacity, SiteId, SiteLogisticsNode,
     SupplierRoute, SupplierTransport, UnitId, MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES,
     MAX_ROUTE_STAGES_PER_ROUTE,
 };
@@ -61,10 +61,12 @@ fn base_state() -> MaterialCircuitState {
         accounting: babylon_material_circuit::CircuitAccounting::PhysicalControl,
         maintenance_binding: None,
         maintenance_service: None,
-        freight_mass_coefficients: vec![FreightMassCoefficient {
+        service_connections: vec![],
+        service_orders: vec![],
+        commodities: vec![CommodityDefinition {
             good_id: good(GOODS),
             unit_id: unit(GOODS_UNIT),
-            grams_per_unit: 1,
+            kind: babylon_material_circuit::CommodityKind::Storable { grams_per_unit: 1 },
         }],
         route_stage_capacities: vec![RouteStageCapacity {
             route_id: route(ROUTE),
@@ -423,6 +425,11 @@ fn completed_leg_loss_remains_attributed_before_final_delivery() {
 #[test]
 fn final_arrival_can_form_and_execute_following_period_production() {
     let mut state = base_state();
+    state.commodities.push(CommodityDefinition {
+        good_id: good(19),
+        unit_id: unit(GOODS_UNIT),
+        kind: babylon_material_circuit::CommodityKind::Storable { grams_per_unit: 1 },
+    });
     state.process_outputs.push(ProcessOutput {
         process_id: process(18),
         site_id: site(BUYER),

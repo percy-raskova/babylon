@@ -209,6 +209,21 @@ fn initial_production_allocations(
     period: u64,
     resources: ProductionResources,
 ) -> Result<Vec<u64>, MaterialCircuitError> {
+    let mut service_requests = BTreeMap::<InventoryKey, u64>::new();
+    if period == state.period {
+        for order in state
+            .service_orders
+            .iter()
+            .filter(|r| r.performance_period == period)
+        {
+            let requested = service_requests
+                .entry((order.provider_site_id, order.good_id, order.unit_id))
+                .or_default();
+            *requested = requested
+                .checked_add(order.quantity)
+                .ok_or(MaterialCircuitError::Arithmetic)?;
+        }
+    }
     let mut allocations = Vec::with_capacity(commitments.len());
     for commitment in commitments.iter().take(MAX_MATERIAL_CIRCUIT_ROWS + 1) {
         let output = process_output(state, commitment.process_id)
@@ -216,12 +231,19 @@ fn initial_production_allocations(
         if output.site_id != commitment.site_id || commitment.period != period {
             return Err(MaterialCircuitError::ProcessInvariant);
         }
-        let batches = commitment.planned_batches.min(process_capacity(
+        let mut batches = commitment.planned_batches.min(process_capacity(
             state,
             commitment.process_id,
             commitment.site_id,
             period,
         ));
+        if period == state.period && crate::services::stage(state, output)?.is_some() {
+            let funded = service_requests
+                .get(&(output.site_id, output.good_id, output.unit_id))
+                .copied()
+                .unwrap_or(0);
+            batches = batches.min(funded.div_ceil(output.quantity_per_batch));
+        }
         allocations.push(
             if matches!(resources, ProductionResources::InputsAndLabor) {
                 crate::maintenance::limit_batches(state, commitment.process_id, period, batches)?
@@ -395,15 +417,31 @@ fn execute_production(
     inventory: &mut InventoryLedger,
     receipts: &mut Vec<ProductionReceipt>,
     costs: &mut CostClose,
+    phase: Option<crate::ServiceStage>,
+    services: &mut crate::services::ServiceClose,
 ) -> Result<(), MaterialCircuitError> {
-    let commitments = std::mem::take(&mut state.production_commitments);
-    let allocations = allocate_production_batches(
+    let mut commitments = Vec::new();
+    let mut later = Vec::new();
+    for row in std::mem::take(&mut state.production_commitments) {
+        let output =
+            process_output(state, row.process_id).ok_or(MaterialCircuitError::ProcessInvariant)?;
+        if crate::services::stage(state, output)? == phase {
+            commitments.push(row);
+        } else {
+            later.push(row);
+        }
+    }
+    state.production_commitments = later;
+    let mut allocations = allocate_production_batches(
         state,
         inventory,
         &commitments,
         state.period,
         ProductionResources::InputsAndLabor,
     )?;
+    if phase.is_some() {
+        services.allocate(state, &commitments, &mut allocations)?;
+    }
     let inputs = debit_production_allocations(state, inventory, &commitments, &allocations, costs)?;
     credit_production_allocations(
         state,
@@ -419,10 +457,12 @@ fn execute_production(
 pub(crate) fn execute_shared_production(
     state: &mut MaterialCircuitState,
     costs: &mut CostClose,
+    phase: Option<crate::ServiceStage>,
+    services: &mut crate::services::ServiceClose,
 ) -> Result<Vec<ProductionReceipt>, MaterialCircuitError> {
     let mut inventory = take_inventory(state);
     let mut receipts = Vec::new();
-    execute_production(state, &mut inventory, &mut receipts, costs)?;
+    execute_production(state, &mut inventory, &mut receipts, costs, phase, services)?;
     publish_inventory(state, inventory);
     Ok(receipts)
 }
@@ -568,6 +608,7 @@ fn planning_inventory(
         .iter()
         .map(|row| ((row.site_id, row.good_id, row.unit_id), row.quantity))
         .collect();
+    crate::services::planning_grants(state, next_period, &mut inventory)?;
     if !matches!(&state.accounting, crate::CircuitAccounting::Monetary(economy) if economy.recurring.is_some())
     {
         return Ok(inventory);
@@ -757,7 +798,9 @@ mod tests {
             process_outputs: Vec::new(),
             input_coefficients: Vec::new(),
             labor_coefficients: Vec::new(),
-            freight_mass_coefficients: Vec::new(),
+            service_connections: vec![],
+            service_orders: vec![],
+            commodities: Vec::new(),
             supplier_routes: Vec::new(),
             route_stages: Vec::new(),
             route_stage_capacities: Vec::new(),

@@ -2,7 +2,7 @@
 
 use babylon_material_circuit::{
     advance_material_circuit, advance_staffing, close_material_period, BacklogRow, CapacityRow,
-    CorridorCapacity, CorridorId, FreightMassCoefficient, GoodId, InputOutputCoefficient,
+    CommodityDefinition, CorridorCapacity, CorridorId, GoodId, InputOutputCoefficient,
     InventoryRow, LaborCapacityRow, LaborCoefficient, LogisticsNodeId, MaterialCircuitError,
     MaterialCircuitState, OrderAccessMode, OrderId, OrderRow, ProcessId, ProcessOutput,
     ProductionCommitment, RouteId, RouteStage, RouteStageCapacity, SiteId, SiteLogisticsNode,
@@ -82,7 +82,20 @@ fn opening() -> MaterialCircuitState {
             quantity_per_batch: 10,
         }],
         supplier_routes: Vec::new(),
-        freight_mass_coefficients: Vec::new(),
+        service_connections: vec![],
+        service_orders: vec![],
+        commodities: vec![
+            CommodityDefinition {
+                good_id: good(1),
+                unit_id: unit(2),
+                kind: babylon_material_circuit::CommodityKind::Storable { grams_per_unit: 1 },
+            },
+            CommodityDefinition {
+                good_id: good(2),
+                unit_id: unit(2),
+                kind: babylon_material_circuit::CommodityKind::Storable { grams_per_unit: 1 },
+            },
+        ],
         route_stage_capacities: Vec::new(),
         route_stages: Vec::new(),
         inventory: vec![InventoryRow {
@@ -163,13 +176,6 @@ fn arrival_opening() -> MaterialCircuitState {
         corridor_id: CorridorId::from_bytes([1; 32]),
     });
     state
-        .freight_mass_coefficients
-        .push(FreightMassCoefficient {
-            good_id: good(1),
-            unit_id: unit(2),
-            grams_per_unit: 1,
-        });
-    state
 }
 
 #[test]
@@ -246,6 +252,11 @@ fn shared_opening() -> MaterialCircuitState {
         output.process_id = process(id);
         output.good_id = good(id + 1);
         state.process_outputs.push(output);
+        state.commodities.push(CommodityDefinition {
+            good_id: good(id + 1),
+            unit_id: unit(2),
+            kind: babylon_material_circuit::CommodityKind::Storable { grams_per_unit: 1 },
+        });
         let mut input = state.input_coefficients[0].clone();
         input.process_id = process(id);
         state.input_coefficients.push(input);

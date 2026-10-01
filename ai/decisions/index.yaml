@@ -1230,3 +1230,8 @@ decisions:
     status: accepted
     date: '2026-09-20'
     file: ADR263_recurring_national_economy.yaml
+  ADR264_period_service_provision:
+    title: Native period services precede goods production in the shared material close
+    status: accepted
+    date: '2026-09-20'
+    file: ADR264_period_service_provision.yaml

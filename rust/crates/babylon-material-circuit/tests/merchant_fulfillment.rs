@@ -1,6 +1,6 @@
 use babylon_material_circuit::SupplierTransport;
 use babylon_material_circuit::{
-    advance_material_circuit, BacklogRow, CorridorCapacity, CorridorId, FreightMassCoefficient,
+    advance_material_circuit, BacklogRow, CommodityDefinition, CorridorCapacity, CorridorId,
     GoodId, InventoryRow, LaborCapacityRow, LogisticsNodeId, MaterialCircuitState,
     MerchantHandling, MerchantHandlingCoefficient, MerchantRole, OrderAccessMode, OrderId,
     OrderRow, RouteId, RouteStage, RouteStageCapacity, SiteId, SiteLogisticsNode, SupplierRoute,
@@ -51,10 +51,12 @@ fn merchant() -> MaterialCircuitState {
         process_outputs: vec![],
         input_coefficients: vec![],
         labor_coefficients: vec![],
-        freight_mass_coefficients: vec![FreightMassCoefficient {
+        service_connections: vec![],
+        service_orders: vec![],
+        commodities: vec![CommodityDefinition {
             good_id,
             unit_id,
-            grams_per_unit: 10,
+            kind: babylon_material_circuit::CommodityKind::Storable { grams_per_unit: 10 },
         }],
         supplier_routes: vec![SupplierRoute {
             transport_kind: SupplierTransport::Staged,
@@ -477,13 +479,11 @@ fn new_families_are_canonical_hash_bound_and_local_routed_ids_are_disjoint() {
     let mut duplicate_good = state.handling_coefficients[0].clone();
     duplicate_good.good_id = GoodId::from_bytes([99; 32]);
     state.handling_coefficients.push(duplicate_good.clone());
-    state
-        .freight_mass_coefficients
-        .push(FreightMassCoefficient {
-            good_id: duplicate_good.good_id,
-            unit_id: duplicate_good.unit_id,
-            grams_per_unit: 10,
-        });
+    state.commodities.push(CommodityDefinition {
+        good_id: duplicate_good.good_id,
+        unit_id: duplicate_good.unit_id,
+        kind: babylon_material_circuit::CommodityKind::Storable { grams_per_unit: 10 },
+    });
     let original = encode_material_circuit_state(&state).unwrap();
     let completed = advance_material_circuit(&state).unwrap();
     assert_eq!(
@@ -499,7 +499,7 @@ fn new_families_are_canonical_hash_bound_and_local_routed_ids_are_disjoint() {
     permuted.handling_coefficients.reverse();
     permuted.final_demand_principals.reverse();
     permuted.final_demand_orders.reverse();
-    permuted.freight_mass_coefficients.reverse();
+    permuted.commodities.reverse();
     permuted.corridor_capacities.reverse();
     permuted.site_logistics_nodes.reverse();
     assert_eq!(encode_material_circuit_state(&permuted).unwrap(), original);
@@ -590,14 +590,14 @@ fn merchant_role_encoding_rejects_unknown_tags() {
     // Four trailing row families plus absent binding/service tags: counts,
     // merchant(102), coefficient(104), county principal(37), local order(176),
     // two absent options and the explicit physical-control tag. The merchant
-    // role follows its site and county.
+    // role follows its site and county; two empty service row counts end the state.
     assert!(state.maintenance_binding.is_none() && state.maintenance_service.is_none());
     assert_eq!(
         state.accounting,
         babylon_material_circuit::CircuitAccounting::PhysicalControl
     );
     assert_eq!(&bytes[bytes.len() - 4..], &[0, 0, 0, 0]);
-    let role_offset = bytes.len() - (4 * 4 + 102 + 104 + 37 + 176 + 4) + 4 + 32 + 5;
+    let role_offset = bytes.len() - (4 * 4 + 102 + 104 + 37 + 176 + 12) + 4 + 32 + 5;
     assert_eq!(bytes[role_offset], 2);
     bytes[role_offset] = 3;
     assert_eq!(

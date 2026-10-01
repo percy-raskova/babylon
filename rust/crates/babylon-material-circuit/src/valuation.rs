@@ -79,6 +79,7 @@ impl IncomeStatement {
             freight_loss_expense: zero(),
             consumption_expense: zero(),
             final_demand_outlay: zero(),
+            unused_service_expense: zero(),
         }
     }
 
@@ -98,6 +99,7 @@ impl IncomeStatement {
             self.freight_loss_expense,
             self.consumption_expense,
             self.final_demand_outlay,
+            self.unused_service_expense,
         ];
         if flows.iter().any(|x| x.micro_units() < 0) {
             return Err(MaterialCircuitError::ValuationInvariant);

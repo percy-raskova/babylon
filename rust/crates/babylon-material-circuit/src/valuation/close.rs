@@ -82,6 +82,92 @@ impl CostClose {
         Ok(())
     }
 
+    pub(crate) fn service_carrying(&self, key: StockKey) -> Currency {
+        self.active
+            .as_ref()
+            .and_then(|a| a.book.stocks.get(&key).copied())
+            .unwrap_or_else(zero)
+    }
+    pub(crate) fn service_handoff(
+        &mut self,
+        row: &crate::ServicePerformanceReceipt,
+        available: u64,
+    ) -> Result<()> {
+        if row.performed_quantity == 0 {
+            return Ok(());
+        }
+        let Some(active) = &mut self.active else {
+            return Err(MaterialCircuitError::MonetaryInvariant);
+        };
+        let owner = AccountId::Site(row.provider_site_id);
+        let cost = active.book.take_stock(
+            (owner, row.good_id, row.unit_id),
+            available,
+            row.performed_quantity,
+        )?;
+        let payment = amount(row.performed_quantity, row.unit_price)?;
+        active.sale(owner, payment, cost)
+    }
+    pub(crate) fn receive_service(&mut self, row: &crate::ServicePerformanceReceipt) -> Result<()> {
+        if row.performed_quantity == 0 {
+            return Ok(());
+        }
+        let active = self
+            .active
+            .as_mut()
+            .ok_or(MaterialCircuitError::MonetaryInvariant)?;
+        active.book.credit_stock(
+            (row.buyer, row.good_id, row.unit_id),
+            amount(row.performed_quantity, row.unit_price)?,
+        )
+    }
+    pub(crate) fn consume_service(
+        &mut self,
+        key: StockKey,
+        available: u64,
+        quantity: u64,
+        finite_sink: bool,
+    ) -> Result<()> {
+        let Some(active) = &mut self.active else {
+            return Ok(());
+        };
+        let cost = active.book.take_stock(key, available, quantity)?;
+        let statement = active.statement(key.0)?;
+        if finite_sink {
+            statement.final_demand_outlay = add(statement.final_demand_outlay, cost)?;
+        } else {
+            statement.consumption_expense = add(statement.consumption_expense, cost)?;
+        }
+        Ok(())
+    }
+    pub(crate) fn expire_service(&mut self, key: StockKey, quantity: u64) -> Result<()> {
+        let Some(active) = &mut self.active else {
+            return Ok(());
+        };
+        let cost = active.book.take_stock(key, quantity, quantity)?;
+        let statement = active.statement(key.0)?;
+        statement.unused_service_expense = add(statement.unused_service_expense, cost)?;
+        Ok(())
+    }
+    pub(crate) fn clear_service_rows(
+        &mut self,
+        services: &std::collections::BTreeSet<(crate::GoodId, UnitId)>,
+    ) -> Result<()> {
+        let Some(active) = &mut self.active else {
+            return Ok(());
+        };
+        for (key, cost) in &active.book.stocks {
+            if services.contains(&(key.1, key.2)) && *cost != zero() {
+                return Err(MaterialCircuitError::ValuationInvariant);
+            }
+        }
+        active
+            .book
+            .stocks
+            .retain(|key, _| !services.contains(&(key.1, key.2)));
+        Ok(())
+    }
+
     pub(crate) fn dispatch(
         &mut self,
         key: StockKey,

@@ -6,10 +6,10 @@ use super::{
 use crate::material_runtime::{MaterialFoundationSpec, MaterialRuntimeFoundation};
 use babylon_kernel::content_digest::sha256_of;
 use babylon_material_circuit::{
-    decode_material_circuit_state, encode_material_circuit_state, BacklogRow, CorridorCapacity,
-    CorridorId, FreightMassCoefficient, GoodId, InventoryRow, LogisticsNodeId,
-    MaterialCircuitState, OrderAccessMode, OrderId, OrderRow, RouteId, RouteStage,
-    RouteStageCapacity, SiteId, SiteLogisticsNode, SupplierRoute, SupplierTransport, UnitId,
+    decode_material_circuit_state, encode_material_circuit_state, BacklogRow, CommodityDefinition,
+    CorridorCapacity, CorridorId, GoodId, InventoryRow, LogisticsNodeId, MaterialCircuitState,
+    OrderAccessMode, OrderId, OrderRow, RouteId, RouteStage, RouteStageCapacity, SiteId,
+    SiteLogisticsNode, SupplierRoute, SupplierTransport, UnitId,
 };
 use babylon_tick::{material_staffing::StaffingComposition, material_world::MaterialWorldRegister};
 use serde::{Deserialize, Serialize};
@@ -169,10 +169,14 @@ impl CapturedFreight {
             accounting: babylon_material_circuit::CircuitAccounting::PhysicalControl,
             maintenance_binding: None,
             maintenance_service: None,
-            freight_mass_coefficients: vec![FreightMassCoefficient {
+            service_connections: vec![],
+            service_orders: vec![],
+            commodities: vec![CommodityDefinition {
                 good_id: good,
                 unit_id: unit,
-                grams_per_unit: 1000,
+                kind: babylon_material_circuit::CommodityKind::Storable {
+                    grams_per_unit: 1000,
+                },
             }],
             supplier_routes: vec![SupplierRoute {
                 buyer_site_id: destination,

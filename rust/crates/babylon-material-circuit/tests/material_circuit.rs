@@ -1,6 +1,6 @@
 use babylon_material_circuit::{
     advance_material_circuit, material_circuit_state_digest, BacklogRow, CapacityRow,
-    CorridorCapacity, CorridorId, FreightMassCoefficient, GoodId, InputOutputCoefficient,
+    CommodityDefinition, CorridorCapacity, CorridorId, GoodId, InputOutputCoefficient,
     InventoryRow, LaborCapacityRow, LaborCoefficient, LogisticsNodeId, MaterialCircuitError,
     MaterialCircuitState, OrderAccessMode, OrderId, OrderRow, ProcessId, ProcessOutput,
     ProductionCommitment, RouteId, RouteStage, RouteStageCapacity, SiteId, SiteLogisticsNode,
@@ -27,11 +27,11 @@ fn order(byte: u8) -> OrderId {
     OrderId::from_bytes([byte; 32])
 }
 
-fn numbered_good(index: usize) -> GoodId {
+fn numbered_site(index: usize) -> SiteId {
     let mut bytes = [0_u8; 32];
     let number = u64::try_from(index).expect("material row ceiling fits u64");
     bytes[24..].copy_from_slice(&number.to_be_bytes());
-    GoodId::from_bytes(bytes)
+    SiteId::from_bytes(bytes)
 }
 
 const SUPPLIER: u8 = 1;
@@ -87,11 +87,20 @@ fn base_state() -> MaterialCircuitState {
                 node_id: LogisticsNodeId::from_bytes([FACTORY; 32]),
             },
         ],
-        freight_mass_coefficients: vec![FreightMassCoefficient {
-            good_id: good(GRAIN),
-            unit_id: unit(GOODS_UNIT),
-            grams_per_unit: 1,
-        }],
+        service_connections: vec![],
+        service_orders: vec![],
+        commodities: vec![
+            CommodityDefinition {
+                good_id: good(GRAIN),
+                unit_id: unit(GOODS_UNIT),
+                kind: babylon_material_circuit::CommodityKind::Storable { grams_per_unit: 1 },
+            },
+            CommodityDefinition {
+                good_id: good(BREAD),
+                unit_id: unit(GOODS_UNIT),
+                kind: babylon_material_circuit::CommodityKind::Storable { grams_per_unit: 1 },
+            },
+        ],
         route_stages: vec![RouteStage {
             route_id: RouteId::from_bytes([GRAIN_ORDER; 32]),
             stage_index: 0,
@@ -315,7 +324,20 @@ fn production_debits_all_inputs_before_crediting_any_output() {
         maintenance_binding: None,
         maintenance_service: None,
         site_logistics_nodes: vec![],
-        freight_mass_coefficients: vec![],
+        service_connections: vec![],
+        service_orders: vec![],
+        commodities: vec![
+            CommodityDefinition {
+                good_id: shared_good,
+                unit_id: goods_unit,
+                kind: babylon_material_circuit::CommodityKind::Storable { grams_per_unit: 1 },
+            },
+            CommodityDefinition {
+                good_id: consumer_output,
+                unit_id: goods_unit,
+                kind: babylon_material_circuit::CommodityKind::Storable { grams_per_unit: 1 },
+            },
+        ],
         route_stages: vec![],
         route_stage_capacities: vec![],
         corridor_capacities: vec![],
@@ -440,7 +462,20 @@ fn production_state_for_numeric_boundary() -> MaterialCircuitState {
         maintenance_binding: None,
         maintenance_service: None,
         site_logistics_nodes: vec![],
-        freight_mass_coefficients: vec![],
+        service_connections: vec![],
+        service_orders: vec![],
+        commodities: vec![
+            CommodityDefinition {
+                good_id: input_good,
+                unit_id: goods_unit,
+                kind: babylon_material_circuit::CommodityKind::Storable { grams_per_unit: 1 },
+            },
+            CommodityDefinition {
+                good_id: output_good,
+                unit_id: goods_unit,
+                kind: babylon_material_circuit::CommodityKind::Storable { grams_per_unit: 1 },
+            },
+        ],
         route_stages: vec![],
         route_stage_capacities: vec![],
         corridor_capacities: vec![],
@@ -510,8 +545,8 @@ fn zero_production_does_not_create_an_empty_inventory_row() {
     let process_id = process(4);
     let inventory = (0..MAX_MATERIAL_CIRCUIT_ROWS)
         .map(|index| InventoryRow {
-            site_id: production_site,
-            good_id: numbered_good(index),
+            site_id: numbered_site(index),
+            good_id: good(0),
             unit_id: goods_unit,
             quantity: 1,
         })
@@ -527,7 +562,20 @@ fn zero_production_does_not_create_an_empty_inventory_row() {
         maintenance_binding: None,
         maintenance_service: None,
         site_logistics_nodes: vec![],
-        freight_mass_coefficients: vec![],
+        service_connections: vec![],
+        service_orders: vec![],
+        commodities: vec![
+            CommodityDefinition {
+                good_id: good(0),
+                unit_id: goods_unit,
+                kind: babylon_material_circuit::CommodityKind::Storable { grams_per_unit: 1 },
+            },
+            CommodityDefinition {
+                good_id: output_good,
+                unit_id: goods_unit,
+                kind: babylon_material_circuit::CommodityKind::Storable { grams_per_unit: 1 },
+            },
+        ],
         route_stages: vec![],
         route_stage_capacities: vec![],
         corridor_capacities: vec![],

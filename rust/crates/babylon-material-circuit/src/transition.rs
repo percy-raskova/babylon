@@ -1,7 +1,7 @@
 //! Pure per-period transition for the exact routed material circuit.
 
 mod merchant_admission;
-mod outbound;
+pub(crate) mod outbound;
 
 use crate::valuation::CostClose;
 use std::collections::{BTreeMap, BTreeSet};
@@ -35,7 +35,9 @@ fn check_row_limits(state: &MaterialCircuitState) -> Result<(), MaterialCircuitE
         state.input_coefficients.len(),
         state.labor_coefficients.len(),
         state.supplier_routes.len(),
-        state.freight_mass_coefficients.len(),
+        state.commodities.len(),
+        state.service_orders.len(),
+        state.service_connections.len(),
         state.route_stage_capacities.len(),
         state.route_stages.len(),
         state.inventory.len(),
@@ -54,6 +56,7 @@ fn check_row_limits(state: &MaterialCircuitState) -> Result<(), MaterialCircuitE
             .orders
             .len()
             .checked_add(state.final_demand_orders.len())
+            .and_then(|n| n.checked_add(state.service_orders.len()))
             .ok_or(MaterialCircuitError::Arithmetic)?,
     ];
     if lengths
@@ -66,6 +69,7 @@ fn check_row_limits(state: &MaterialCircuitState) -> Result<(), MaterialCircuitE
 }
 
 fn canonicalize_rows(state: &mut MaterialCircuitState) {
+    crate::services::canonicalize(state);
     crate::capacity::canonicalize(&mut state.capacity_supply);
     crate::payments::canonicalize(&mut state.accounting);
     state.merchants.sort();
@@ -77,7 +81,7 @@ fn canonicalize_rows(state: &mut MaterialCircuitState) {
     state.input_coefficients.sort();
     state.labor_coefficients.sort();
     state.supplier_routes.sort();
-    state.freight_mass_coefficients.sort();
+    state.commodities.sort();
     state.route_stage_capacities.sort();
     state.route_stages.sort();
     state.inventory.sort();
@@ -119,11 +123,11 @@ fn validate_unique_rows(state: &MaterialCircuitState) -> Result<(), MaterialCirc
         .take(MAX_MATERIAL_CIRCUIT_ROWS + 1)
         .map(|row| (row.order_id, row.dispatch_period))
         .collect();
-    let duplicate = has_duplicate(&state.freight_mass_coefficients, |row| {
-        (row.good_id, row.unit_id)
-    }) || has_duplicate(&state.route_stage_capacities, |row| {
-        (row.route_id, row.stage_index, row.corridor_id)
-    }) || has_duplicate(&state.site_logistics_nodes, |row| row.site_id)
+    let duplicate = has_duplicate(&state.commodities, |row| (row.good_id, row.unit_id))
+        || has_duplicate(&state.route_stage_capacities, |row| {
+            (row.route_id, row.stage_index, row.corridor_id)
+        })
+        || has_duplicate(&state.site_logistics_nodes, |row| row.site_id)
         || node_ids.len() != state.site_logistics_nodes.len()
         || has_duplicate(&state.supplier_routes, |row| {
             (
@@ -205,13 +209,11 @@ fn grams_per_unit(
     good: GoodId,
     unit: UnitId,
 ) -> Result<u64, MaterialCircuitError> {
-    state
-        .freight_mass_coefficients
-        .binary_search_by_key(&(good, unit), |row| (row.good_id, row.unit_id))
-        .ok()
-        .map(|index| state.freight_mass_coefficients[index].grams_per_unit)
-        .filter(|grams| *grams > 0)
-        .ok_or(MaterialCircuitError::MassInvariant)
+    let index = state
+        .commodities
+        .binary_search_by_key(&(good, unit), |r| (r.good_id, r.unit_id))
+        .map_err(|_| MaterialCircuitError::MassInvariant)?;
+    state.commodities[index].grams_per_unit()
 }
 
 fn validate_routes(state: &MaterialCircuitState) -> Result<(), MaterialCircuitError> {
@@ -279,11 +281,12 @@ fn validate_routes(state: &MaterialCircuitState) -> Result<(), MaterialCircuitEr
     {
         return Err(MaterialCircuitError::CapacityInvariant);
     }
-    if state
-        .freight_mass_coefficients
-        .iter()
-        .any(|row| row.grams_per_unit == 0)
-    {
+    if state.commodities.iter().any(|row| {
+        matches!(
+            row.kind,
+            crate::CommodityKind::Storable { grams_per_unit: 0 }
+        )
+    }) {
         return Err(MaterialCircuitError::MassInvariant);
     }
     for order in &state.orders {
@@ -420,6 +423,7 @@ pub(crate) fn canonical_state(
     let mut canonical = state.clone();
     canonicalize_rows(&mut canonical);
     validate_unique_rows(&canonical)?;
+    crate::services::validate(&canonical)?;
     merchant_admission::validate_merchants(&canonical)?;
     validate_routes(&canonical)?;
     validate_orders_and_freight(&canonical)?;
@@ -910,6 +914,31 @@ fn next_plans(
     })
 }
 
+fn execute_production_stages(
+    state: &mut MaterialCircuitState,
+    costs: &mut CostClose,
+    services: &mut crate::services::ServiceClose,
+    movements: &mut Vec<crate::MoneyTransferReceipt>,
+) -> Result<Vec<crate::ProductionReceipt>, MaterialCircuitError> {
+    let mut production = Vec::new();
+    for stage in [
+        crate::ServiceStage::UtilityProvision,
+        crate::ServiceStage::LocalServiceProvision,
+    ] {
+        production.extend(execute_shared_production(
+            state,
+            costs,
+            Some(stage),
+            services,
+        )?);
+        services.handoff(state, stage, costs, movements)?;
+    }
+    production.extend(execute_shared_production(state, costs, None, services)?);
+    production.sort_by_key(|r| (r.site_id, r.process_id));
+    services.finish(state, costs)?;
+    Ok(production)
+}
+
 /// Execute due freight, prior production commitments and dispatch exactly once.
 ///
 /// The result borrows no mutable opening state and cannot become a world
@@ -948,7 +977,9 @@ pub fn close_material_period(
         crate::payments::fund_attendance(&mut state, &mut money_transfers, &mut wage_accruals)?;
     let mut household_demand =
         crate::recurring::admit_household_orders(&mut state, &mut money_transfers)?;
-    let production = execute_shared_production(&mut state, &mut costs)?;
+    let mut services = crate::services::ServiceClose::new(&mut state, &mut money_transfers)?;
+    let production =
+        execute_production_stages(&mut state, &mut costs, &mut services, &mut money_transfers)?;
     let maintenance = crate::maintenance::execute(opening, &mut state, &production)?;
     if let Some(receipt) = &maintenance {
         costs.maintenance(&state, receipt)?;
@@ -970,6 +1001,7 @@ pub fn close_material_period(
         .period
         .checked_add(1)
         .ok_or(MaterialCircuitError::Arithmetic)?;
+    services.plan(&mut state, next_period)?;
     let plans = next_plans(
         &mut state,
         &dispatches,
@@ -990,6 +1022,10 @@ pub fn close_material_period(
     Ok(ClosedMaterialPeriod {
         next_period,
         transition: MaterialCircuitTransition {
+            service_performance: services.performance,
+            household_services: services.household,
+            service_markets: services.markets,
+            service_outputs: services.outputs,
             income,
             state,
             household_demand,

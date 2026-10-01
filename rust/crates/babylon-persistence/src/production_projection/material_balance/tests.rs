@@ -1,5 +1,5 @@
 use babylon_material_circuit::{
-    BacklogRow, CapacityRow, CorridorCapacity, CorridorId, FreightMassCoefficient,
+    BacklogRow, CapacityRow, CommodityDefinition, CorridorCapacity, CorridorId,
     InputOutputCoefficient, InventoryRow, LaborCapacityRow, LaborCoefficient, LogisticsNodeId,
     OrderAccessMode, ProcessOutput, ProductionCommitment, RouteId, RouteStage, RouteStageCapacity,
     SiteLogisticsNode, SupplierRoute, SupplierTransport,
@@ -32,7 +32,9 @@ fn empty_state() -> MaterialCircuitState {
         supplier_routes: vec![],
         route_stages: vec![],
         route_stage_capacities: vec![],
-        freight_mass_coefficients: vec![],
+        service_connections: vec![],
+        service_orders: vec![],
+        commodities: vec![],
         merchants: vec![],
         handling_coefficients: vec![],
         final_demand_principals: vec![],
@@ -268,13 +270,11 @@ fn freight_state(loss_ppm: u32) -> MaterialCircuitState {
         order_id: order,
         quantity: 100,
     });
-    state
-        .freight_mass_coefficients
-        .push(FreightMassCoefficient {
-            good_id: inventory.good_id,
-            unit_id: inventory.unit_id,
-            grams_per_unit: 1,
-        });
+    state.commodities.push(CommodityDefinition {
+        good_id: inventory.good_id,
+        unit_id: inventory.unit_id,
+        kind: babylon_material_circuit::CommodityKind::Storable { grams_per_unit: 1 },
+    });
     state.inventory.push(inventory);
     state
 }
@@ -742,8 +742,8 @@ fn unknown_unit_metadata_refuses_instead_of_inventing_a_label() {
 
 fn retail_state() -> MaterialCircuitState {
     use babylon_material_circuit::{
-        CorridorCapacity, FinalDemandOrder, FinalDemandPrincipal, FinalDemandPrincipalId,
-        FreightMassCoefficient, MerchantHandling, MerchantHandlingCoefficient, MerchantRole,
+        CommodityDefinition, CorridorCapacity, FinalDemandOrder, FinalDemandPrincipal,
+        FinalDemandPrincipalId, MerchantHandling, MerchantHandlingCoefficient, MerchantRole,
     };
     let mut state = empty_state();
     let catalog = crate::test_support::catalog();
@@ -760,13 +760,11 @@ fn retail_state() -> MaterialCircuitState {
         site_id: inventory.site_id,
         node_id: LogisticsNodeId::from_bytes([7; 32]),
     });
-    state
-        .freight_mass_coefficients
-        .push(FreightMassCoefficient {
-            good_id: inventory.good_id,
-            unit_id: inventory.unit_id,
-            grams_per_unit: 10,
-        });
+    state.commodities.push(CommodityDefinition {
+        good_id: inventory.good_id,
+        unit_id: inventory.unit_id,
+        kind: babylon_material_circuit::CommodityKind::Storable { grams_per_unit: 10 },
+    });
     state.merchants.push(MerchantHandling {
         site_id: inventory.site_id,
         county_geoid: *b"26163",

@@ -53,6 +53,7 @@ fn opening() -> MaterialCircuitState {
         })
         .collect();
     let recurring = RecurringEconomy {
+        service_inputs: vec![],
         households: vec![HouseholdCohort {
             principal_id: household(),
             households: 2,
@@ -203,12 +204,14 @@ fn opening() -> MaterialCircuitState {
                 quantity_per_batch,
             })
             .collect(),
-        freight_mass_coefficients: [0, 1, 2]
+        service_connections: vec![],
+        service_orders: vec![],
+        commodities: [0, 1, 2]
             .into_iter()
-            .map(|commodity| FreightMassCoefficient {
+            .map(|commodity| CommodityDefinition {
                 good_id: good(commodity),
                 unit_id: units(),
-                grams_per_unit: 1,
+                kind: babylon_material_circuit::CommodityKind::Storable { grams_per_unit: 1 },
             })
             .collect(),
         supplier_routes: [(1, 2, 1), (2, 3, 2)]
@@ -563,7 +566,7 @@ fn captured_household_policies_refuse_old_bytes_bad_cursors_and_noncanonical_row
         + 65 * captured.accounts.len()
         + 113 * captured.stocks.len()
         + 80 * captured.freight.len();
-    let offset = encode_material_circuit_state(&finite).unwrap().len() - cost_bytes - 2;
+    let offset = encode_material_circuit_state(&finite).unwrap().len() - cost_bytes - 10;
     assert_eq!(bytes[offset], 1);
     let mut old = bytes.clone();
     let version = MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES.len() + 1;

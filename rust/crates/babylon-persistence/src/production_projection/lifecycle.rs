@@ -675,6 +675,7 @@ fn advance_purchase(
 ) -> Result<PurchaseEscrow> {
     let id = principal.order;
     let (delivered, refunded, buyer, seller, quantity) = match id {
+        OutboundOrderId::Service(_) => return Err(ProductionProjectionError::State),
         OutboundOrderId::Delivery(id) => {
             let (_, row) = orders
                 .deliveries

@@ -41,6 +41,7 @@ fn append_order(output: &mut Vec<u8>, order: OutboundOrderId) {
     let (tag, id) = match order {
         OutboundOrderId::Delivery(id) => (1, id),
         OutboundOrderId::LocalFinalDemand(id) => (2, id),
+        OutboundOrderId::Service(id) => (3, id),
     };
     output.push(tag);
     output.extend_from_slice(&id.as_bytes());
@@ -52,6 +53,9 @@ fn decode_order(cursor: &mut Cursor<'_>) -> Result<OutboundOrderId, MaterialCirc
             cursor.array()?,
         ))),
         2 => Ok(OutboundOrderId::LocalFinalDemand(OrderId::from_bytes(
+            cursor.array()?,
+        ))),
+        3 => Ok(OutboundOrderId::Service(OrderId::from_bytes(
             cursor.array()?,
         ))),
         _ => Err(MaterialCircuitError::WireEnum),

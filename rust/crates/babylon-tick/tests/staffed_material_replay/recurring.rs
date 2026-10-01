@@ -52,6 +52,7 @@ fn opening() -> MaterialCircuitState {
         panic!("paid opening")
     };
     economy.recurring = Some(Box::new(RecurringEconomy {
+        service_inputs: vec![],
         households: vec![HouseholdCohort {
             principal_id: household,
             households: 1,

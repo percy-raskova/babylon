@@ -96,7 +96,12 @@ fn validate_households(state: &MaterialCircuitState, rows: &RecurringEconomy) ->
     let purchase_keys = unique(&rows.household_purchases, |r| {
         (r.principal_id, r.good_id, r.unit_id)
     })?;
-    if stock_keys != need_keys
+    let stored_need_keys: BTreeSet<_> = need_keys
+        .iter()
+        .filter(|key| !crate::services::is_service(state, key.1, key.2))
+        .copied()
+        .collect();
+    if stock_keys != stored_need_keys
         || purchase_keys != need_keys
         || need_keys.iter().map(|key| key.0).collect::<BTreeSet<_>>() != household_ids
     {
@@ -130,6 +135,21 @@ fn validate_households(state: &MaterialCircuitState, rows: &RecurringEconomy) ->
         .map(|r| (r.site_id, r.good_id, r.unit_id))
         .collect();
     for policy in &rows.household_purchases {
+        if crate::services::is_service(state, policy.good_id, policy.unit_id) {
+            let connection = crate::ServiceConnection {
+                provider_site_id: policy.retailer_site_id,
+                buyer: AccountId::Household(policy.principal_id),
+                good_id: policy.good_id,
+                unit_id: policy.unit_id,
+            };
+            if policy.target_closing_stock != 0
+                || !state.service_connections.contains(&connection)
+                || !offers.contains(&(policy.retailer_site_id, policy.good_id, policy.unit_id))
+            {
+                return Err(MaterialCircuitError::ServiceInvariant);
+            }
+            continue;
+        }
         let merchant = merchants
             .get(&policy.retailer_site_id)
             .ok_or(MaterialCircuitError::FinalDemandInvariant)?;
@@ -156,7 +176,7 @@ fn validate_offers(state: &MaterialCircuitState, rows: &RecurringEconomy) -> Res
         .map(|r| r.site_id)
         .collect();
     let goods: BTreeSet<_> = state
-        .freight_mass_coefficients
+        .commodities
         .iter()
         .map(|r| (r.good_id, r.unit_id))
         .collect();

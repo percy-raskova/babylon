@@ -1,6 +1,6 @@
 meta:
   contract: MaterialCircuitV3
-  schema_version: 8
+  schema_version: 9
   evidence_class: Designed
   rust_owner: babylon-material-circuit
 
@@ -23,6 +23,8 @@ domains:
   state: babylon.material-circuit-state.v3
   freight_lot_identity: babylon.freight-lot.v2
   household_order_identity: babylon.recurring-household-order.v1
+  service_order_identity: babylon.recurring-service-order.v1
+  service_topup_identity: babylon.recurring-service-topup.v1
   procurement_identity: babylon.recurring-procurement.v1
   terminator_hex: "00"
 
@@ -42,11 +44,13 @@ encoding:
   accounting_mode_u8: {physical_control: 0, monetary: 1}
   account_owner_u8: {site: 1, household: 2, organization: 3, public: 4}
   account_identity: account_owner_u8 followed by raw-32-byte identity in its distinct owner namespace
-  outbound_order_u8: {delivery: 1, local_final_demand: 2}
+  outbound_order_u8: {delivery: 1, local_final_demand: 2, period_service: 3}
   outbound_order_identity: outbound_order_u8 followed by raw-32-byte order ID
   shift_state_u8: {reserved: 1, accrued: 2, paid: 3, cancelled: 4}
   boolean_u8: {disabled: 0, enabled: 1}
-  price_policy_u8: {fixed: 1, responsive: 2}
+  price_policy_u8: {fixed: 1, responsive: 2, service_responsive: 3}
+  commodity_kind_u8: {storable: 1, period_service: 2}
+  service_stage_u8: {utility_provision: 1, local_service_provision: 2}
   currency: signed i128 exact micro-units; 1000000 micro-units per currency unit; no float conversion
   maintenance_options: independent presence tags followed by fields; both present or both absent
   unsupported_schema: refuse; no legacy decoding or migration
@@ -60,7 +64,7 @@ state_field_order:
   - process_outputs
   - input_coefficients
   - labor_coefficients
-  - freight_mass_coefficients
+  - commodities
   - supplier_routes
   - route_stages
   - route_stage_capacities
@@ -80,6 +84,8 @@ state_field_order:
   - maintenance_service
   - accounting
   - capacity_supply
+  - service_connections
+  - service_orders
 
 accounting_field_order:
   physical_control: [accounting_mode_u8]
@@ -112,6 +118,7 @@ recurring_field_order:
   - replenishment
   - production
   - attendance
+  - service_inputs
 
 recurring_row_field_order:
   households: [principal_id, households, persons]
@@ -120,6 +127,9 @@ recurring_row_field_order:
   household_purchases: [principal_id, retailer_site_id, good_id, unit_id, target_closing_stock,
                         maximum_purchase, enabled_u8]
   offers: [site_id, good_id, unit_id, unit_price_i128, price_policy_u8, conditional_price_policy_fields]
+  service_responsive_price_policy: [minimum_i128, maximum_i128, step_i128]
+  service_inputs: [buyer_site_id, provider_site_id, good_id, unit_id, quantity_per_period, maximum_purchase,
+                   cash_floor_i128]
   responsive_price_policy: [minimum_i128, maximum_i128, step_i128, target_stock]
   replenishment: [buyer_site_id, supplier_site_id, good_id, unit_id, target_stock, maximum_purchase,
                   cash_floor_i128]
@@ -135,13 +145,18 @@ recurring_canonical_keys:
   replenishment: [buyer_site_id, supplier_site_id, good_id, unit_id]
   production: [process_id]
   attendance: [site_id, unit_id]
+  service_inputs: [buyer_site_id, good_id, unit_id]
 
 row_field_order:
   site_logistics_nodes: [site_id, node_id]
   process_outputs: [process_id, site_id, good_id, unit_id, quantity_per_batch]
   input_coefficients: [process_id, good_id, unit_id, quantity_per_batch]
   labor_coefficients: [process_id, unit_id, quantity_per_batch]
-  freight_mass_coefficients: [good_id, unit_id, grams_per_unit]
+  commodities: [good_id, unit_id, commodity_kind_u8, conditional_kind_fields]
+  storable_kind: [grams_per_unit]
+  period_service_kind: [service_stage_u8]
+  service_connections: [provider_site_id, buyer_account_identity, good_id, unit_id]
+  service_orders: [order_id, performance_period, provider_site_id, buyer_account_identity, good_id, unit_id, quantity]
   supplier_routes: [buyer_site_id, supplier_site_id, good_id, unit_id, route_id, transport_kind_u8]
   route_stages: [route_id, stage_index, from_node_id, to_node_id, travel_periods, loss_ppm]
   route_stage_capacities: [route_id, stage_index, corridor_id]
@@ -170,7 +185,9 @@ canonical_keys:
   process_outputs: [process_id]
   input_coefficients: [process_id, good_id, unit_id]
   labor_coefficients: [process_id]
-  freight_mass_coefficients: [good_id, unit_id]
+  commodities: [good_id, unit_id]
+  service_connections: [provider_site_id, buyer_account_identity, good_id, unit_id]
+  service_orders: [order_id]
   supplier_routes: [buyer_site_id, supplier_site_id, good_id, unit_id]
   route_stages: [route_id, stage_index]
   route_stage_capacities: [route_id, stage_index, corridor_id]
@@ -219,7 +236,9 @@ admission:
   - committed shift rows contain only accrued unpaid obligations earned in a positive period before the opening period
   - all monetary row families have strictly increasing canonical keys before book reconstruction
   - recurring households are explicit resident cohorts, never inferred from workplace jobs
-  - each configured household need has an explicit stock row and purchase policy, including zeros
+  - each configured household need has a purchase policy; only stored goods have an explicit pantry row including zeros
+  - period-service household needs have no pantry, zero stock target and a captured provider connection
+  - household service providers need not be Retail merchants
   - every finite order of a configured household names a captured recipient stock before admission
   - recurring production has one policy per process and at most one process per site-output-good-unit
   - recurring attendance exactly covers employment principals at the opening period
@@ -254,7 +273,18 @@ period_close:
   - fund planned attendance in canonical site-unit order, bounded by spendable cash and available whole hours
   - accrue and pay each funded attendance commitment before work; productive utilization is recorded separately
   - admit recurring household orders after payroll, sharing actual cash in canonical household-good-unit order
-  - execute existing prior production commitments bounded by opening enabled maintenance batches
+  - admit finite current service requirements from captured production commitments and input coefficients, bounded
+    by cash and policies
+  - execute UtilityProvision then LocalServiceProvision then GoodsProduction through shared input, labor and
+    process residuals
+  - each service stage produces complete funded-request-bounded batches and grants finite output through the
+    existing outbound allocator
+  - settle actual service grants and refund unperformed orders; expire unallocated provider output at exact
+    remaining cost
+  - complete all service seller debits and provider expiry before crediting that stage buyers
+  - direct household service satisfaction consumes current performance without pantry stock
+  - expense unused acquired service grants and remove all transient service quantity and carrying rows before
+    publication
   - expire unused opening service and perform whole maintenance jobs from inputs before outbound local credits
   - allocate routed and local outbound requests against shared stock, route mass and merchant handling mass
   - record merchant feasible quantities before current labor
@@ -276,7 +306,9 @@ period_close:
   - derive subsequent production from dispatched and unfulfilled demand, output stock, and captured buffers
   - forecast already funded freight due before subsequent production without crediting current usable inventory
   - derive subsequent attendance from distinct production, merchant, and maintenance work requests
-  - update next quotes from captured fixed or bounded stock-and-unserved-demand policies
+  - update next goods quotes from captured fixed or bounded stock-and-unserved-demand policies
+  - update next service quotes from funded unmet requests, native capacity and whole-batch cost including provider
+    expiry
   - retire terminal physical and financial purchase principals together after their evidence is recorded
   - audit total cash plus live purchase and payroll reserves without counting wage claims as extra money
   - rebuild unshipped backlog
@@ -320,11 +352,12 @@ conservation:
 
 limits:
   rows_per_family: 65536
-  combined_routed_and_local_orders: 65536
+  combined_delivery_retail_and_service_orders: 65536
   stages_per_route: 16
   total_freight_resource_requests: 1114112
   handling_receipts_per_period: 131072
-  money_transfers_per_period: 655360
+  money_transfers_per_period: 917504
+  service_performance_receipts_per_period: 196608
   receipt_bounds: Derived from at most two outbound passes and the bounded payroll and purchase phases
   classification: Designed bounds on execution and serialization, not material abundance
 
@@ -355,6 +388,7 @@ error_codes:
   payroll_invariant: 24
   purchase_invariant: 25
   valuation_invariant: 26
+  service_invariant: 27
 
 monetary_accounting:
   opening: capture explicit cash endowments and employment terms; no default accounts, credit, or hidden issuance
@@ -517,3 +551,44 @@ historical_cost_book:
     - cost operations cannot mutate spendable cash, reserves, purchase prices or wage obligations
     - all refusals discard the detached close, including late planning, arithmetic and net-asset mismatches
   excluded: Public and ownership flows, equity changes, equipment depreciation and installation remain separate work
+
+period_services:
+  authority: ADR264
+  commodity_admission:
+    - Every inventory, process input and process output good-unit has an explicit commodity definition.
+    - Storable goods have positive grams; service units have a declared stage and cannot have durable inventory,
+      freight or pantry rows.
+    - One service output process per provider-good-unit; positive ordinary output batch coefficients remain native
+      quantities.
+    - Service recipes may consume only earlier-stage service inputs; same-stage, backward dependencies and cycles
+      are refused.
+    - Captured provider-to-site-or-household connections authorize exact service orders; they do not infer
+      geography or class.
+    - Service orders have a positive quantity, current-or-future performance period and a matching accepted-price
+      monetary reserve.
+    - Service offers use Fixed or ServiceResponsive; service output stock buffers are zero.
+  partition:
+    - Complete produced native output equals allocated grants plus unallocated provider expiry.
+    - Admitted requests equal performed plus refunded unperformed quantity.
+    - Acquired performance equals used plus unused buyer expiry.
+    - Household required quantity equals satisfied plus unmet need; satisfaction is minimum required and acquired.
+  accounting:
+    - Provider input and productive labor costs capitalize only complete performed batches.
+    - Seller COGS follows canonical proportional carrying-cost withdrawal; full depletion takes the exact remainder.
+    - Unallocated provider output and acquired-but-unused buyer service become unused_service_expense at their
+      respective carrying amounts.
+    - Buyer service used in production enters output carrying basis; direct household use is consumption expense.
+    - Service stock and carrying rows exist only inside the detached atomic close and are absent in every committed
+      opening.
+  planning:
+    - B2B native requests derive from current committed batches times input coefficients, capped by policy
+      quantities and cash floor.
+    - Matching provider-buyer-good-unit funded orders due now reduce fresh household and B2B requests before admission.
+    - Top-up identity hashes its domain, ordinary recurring identity, and sorted matching due order identities,
+      quantities and accepted prices.
+    - Due orders retain their accepted price; only residual need can obtain a new reserve at the current quote.
+    - Service next planned native output covers observed requests or explicit next-period claims; ceiling division
+      converts to batches.
+    - Responsive quotes distinguish funded unmet demand, whole-batch cost pressure and spare native capacity with
+      bounded steps.
+    - Existing reserves keep their accepted price; no price or planning policy guarantees execution or profit.

@@ -27,14 +27,15 @@ pub(super) struct OutboundFact {
 
 pub(super) fn mass(state: &MaterialCircuitState, good: GoodId, unit: UnitId) -> Result<u64> {
     let mut rows = state
-        .freight_mass_coefficients
+        .commodities
         .iter()
         .filter(|row| row.good_id == good && row.unit_id == unit);
     let row = rows.next().ok_or(ProductionProjectionError::State)?;
-    if row.grams_per_unit == 0 || rows.next().is_some() {
+    if rows.next().is_some() {
         return Err(ProductionProjectionError::State);
     }
-    Ok(row.grams_per_unit)
+    row.grams_per_unit()
+        .map_err(|_| ProductionProjectionError::State)
 }
 
 pub(super) fn completed_facts(
@@ -46,10 +47,7 @@ pub(super) fn completed_facts(
         return Err(ProductionProjectionError::History);
     }
     if !same_rows(&prior.supplier_routes, &current.supplier_routes)
-        || !same_rows(
-            &prior.freight_mass_coefficients,
-            &current.freight_mass_coefficients,
-        )
+        || !same_rows(&prior.commodities, &current.commodities)
         || !same_rows(&prior.merchants, &current.merchants)
         || !same_rows(&prior.handling_coefficients, &current.handling_coefficients)
         || !same_rows(
@@ -251,11 +249,11 @@ fn final_facts(
 
 pub(super) fn identity(
     id: OutboundOrderId,
-) -> (
+) -> Result<(
     OrderId,
     crate::production_observation::ProductionOutboundKind,
-) {
-    match id {
+)> {
+    Ok(match id {
         OutboundOrderId::Delivery(id) => (
             id,
             crate::production_observation::ProductionOutboundKind::Delivery,
@@ -264,5 +262,6 @@ pub(super) fn identity(
             id,
             crate::production_observation::ProductionOutboundKind::LocalFinalDemand,
         ),
-    }
+        OutboundOrderId::Service(_) => return Err(ProductionProjectionError::State),
+    })
 }

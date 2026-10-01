@@ -51,6 +51,16 @@ pub(super) fn append(
         bytes.extend_from_slice(&row.unit_price.micro_units().to_be_bytes());
         match row.pricing {
             PricePolicy::Fixed => bytes.push(1),
+            PricePolicy::ServiceResponsive {
+                minimum,
+                maximum,
+                step,
+            } => {
+                bytes.push(3);
+                for amount in [minimum, maximum, step] {
+                    bytes.extend_from_slice(&amount.micro_units().to_be_bytes());
+                }
+            }
             PricePolicy::Responsive {
                 minimum,
                 maximum,
@@ -86,6 +96,15 @@ pub(super) fn append(
         bytes.extend_from_slice(&row.period.to_be_bytes());
         bytes.extend_from_slice(&row.planned_hours.to_be_bytes());
     })?;
+    append_rows(output, &rows.service_inputs, |b, r| {
+        b.extend_from_slice(&r.buyer_site_id.as_bytes());
+        b.extend_from_slice(&r.provider_site_id.as_bytes());
+        b.extend_from_slice(&r.good_id.as_bytes());
+        b.extend_from_slice(&r.unit_id.as_bytes());
+        b.extend_from_slice(&r.quantity_per_period.to_be_bytes());
+        b.extend_from_slice(&r.maximum_purchase.to_be_bytes());
+        b.extend_from_slice(&r.cash_floor.micro_units().to_be_bytes());
+    })?;
     Ok(())
 }
 
@@ -103,6 +122,11 @@ fn pricing(bytes: &mut Cursor<'_>) -> Result<PricePolicy, MaterialCircuitError> 
             maximum: currency(bytes)?,
             step: currency(bytes)?,
             target_stock: bytes.u64()?,
+        }),
+        3 => Ok(PricePolicy::ServiceResponsive {
+            minimum: currency(bytes)?,
+            maximum: currency(bytes)?,
+            step: currency(bytes)?,
         }),
         _ => Err(MaterialCircuitError::WireEnum),
     }
@@ -191,6 +215,17 @@ pub(super) fn decode(
                 unit_id: UnitId::from_bytes(bytes.array()?),
                 period: bytes.u64()?,
                 planned_hours: bytes.u64()?,
+            })
+        })?,
+        service_inputs: decode_rows(cursor, |b| {
+            Ok(crate::ServiceInputPolicy {
+                buyer_site_id: SiteId::from_bytes(b.array()?),
+                provider_site_id: SiteId::from_bytes(b.array()?),
+                good_id: GoodId::from_bytes(b.array()?),
+                unit_id: UnitId::from_bytes(b.array()?),
+                quantity_per_period: b.u64()?,
+                maximum_purchase: b.u64()?,
+                cash_floor: currency(b)?,
             })
         })?,
     })))

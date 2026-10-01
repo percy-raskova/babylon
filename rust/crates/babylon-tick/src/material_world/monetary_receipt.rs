@@ -54,6 +54,7 @@ fn order_parts(order: OutboundOrderId) -> (u8, [u8; 32]) {
     match order {
         OutboundOrderId::Delivery(id) => (1, id.as_bytes()),
         OutboundOrderId::LocalFinalDemand(id) => (2, id.as_bytes()),
+        OutboundOrderId::Service(id) => (3, id.as_bytes()),
     }
 }
 
@@ -61,6 +62,7 @@ fn order(tag: u8, id: [u8; 32]) -> Result<OutboundOrderId, MaterialWorldError> {
     match tag {
         1 => Ok(OutboundOrderId::Delivery(OrderId::from_bytes(id))),
         2 => Ok(OutboundOrderId::LocalFinalDemand(OrderId::from_bytes(id))),
+        3 => Ok(OutboundOrderId::Service(OrderId::from_bytes(id))),
         _ => Err(MaterialWorldError::Wire),
     }
 }

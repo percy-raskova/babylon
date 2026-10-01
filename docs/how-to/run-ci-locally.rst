@@ -193,7 +193,7 @@ The configuration groups checks by feedback cost:
   Hadolint, Gitleaks, and Rust formatting.
 - Commit-message time: Commitizen and the baseline-ceremony declaration.
 - Push time: the Python smoke and full-tree sentinel checks, Semgrep,
-  import boundaries, maintainability, LFS pointers, the baseline range check,
+  import boundaries, maintainability, the baseline range check,
   and the non-documentation Rust gate when its exact inputs changed.
 - Meta checks: hook selectors and exclusions must still apply to tracked
   paths. This prevents a deleted estate from leaving inert hooks behind.

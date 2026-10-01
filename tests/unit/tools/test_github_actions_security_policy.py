@@ -101,11 +101,20 @@ def test_codeql_gates_main_and_scans_protected_branches_with_least_privilege() -
     assert ignored_paths == [
         ".design-sync",
         "design",
-        "rust/crates/bsl-lint/tests/fixtures/sfs_non_authorability/reserved-rust/rust",
-        "rust/crates/bsl-lint/tests/fixtures/sfs_non_authorability/reserved-two-hop-helper/rust",
+        "rust/**/tests/**",
+        "rust/**/tests.rs",
     ]
     assert "src/frontend" not in ignored_paths
-    assert all((ROOT / path).exists() for path in ignored_paths)
+    assert all(any(ROOT.glob(path)) for path in ignored_paths)
+    # The test-directory rule also covers the two malformed nested workspaces
+    # that the extractor cannot parse.
+    assert all(
+        (ROOT / fixture).is_dir()
+        for fixture in (
+            "rust/crates/bsl-lint/tests/fixtures/sfs_non_authorability/reserved-rust/rust",
+            "rust/crates/bsl-lint/tests/fixtures/sfs_non_authorability/reserved-two-hop-helper/rust",
+        )
+    )
     assert upload["with"] == {
         "category": "/language:${{ matrix.language }}",
         "upload": "always",

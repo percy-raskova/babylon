@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Repo-hygiene gate: allowlisted root, no tracked-ignored files, no fat blobs.
 
-Program 14 (Correspondence) Phase 0.5. Enforces three invariants, loudly
+Program 14 (Correspondence) Phase 0.5. Enforces four invariants, loudly
 (Constitution III.11 — no silent degradation):
 
 a. **Root allowlist** — every *tracked* top-level entry must appear in
@@ -12,11 +12,17 @@ b. **No tracked-but-ignored files** — the failure mode that let 70 MB of
    ``reports/`` artifacts ride in git (ignore rules added after commit, index
    never purged). The ``.gitkeep`` convention (tracked keeper inside an
    ignored directory) is exempt.
-c. **No tracked blob over 1 MiB at HEAD** — LFS pointers are ~130-byte blobs,
-   so blob size alone separates pointers from real heavyweights; a >1 MiB
-   blob is either missing an LFS attribute or missing a renormalize. Named
-   exemptions live in ``LARGE_BLOB_EXEMPTIONS`` (grown only with a per-entry
-   owner-visible justification comment).
+c. **No tracked blob over 1 MiB at HEAD** — anything larger belongs outside
+   the repository: a sha256-pinned ``ci-data`` release asset when CI needs it
+   (``.github/actions/fetch-reference-db``), the babylon-data drive when only
+   local work does. Named budgets and exemptions live in
+   ``RUNTIME_ASSET_BLOB_LIMITS`` and ``LARGE_BLOB_EXEMPTIONS`` (grown only with
+   a per-entry owner-visible justification comment).
+d. **No Git LFS** — no tracked ``.gitattributes`` may route paths through
+   ``filter=lfs``. Hosted CI checks out without LFS, so an LFS-routed file
+   reached jobs as a 130-byte pointer (PRs #201, #308, #665), and every
+   smudging git command spent the repository's LFS bandwidth budget until it
+   ran out and broke the unit tier (PER-339, 2026-09-27).
 
 Run: ``uv run python tools/check_repo_hygiene.py`` (wired into
 ``mise run check`` as ``check:hygiene`` and into CI). Exit 0 = clean,
@@ -57,7 +63,6 @@ ALLOWED_TOP_LEVEL_DIRS: frozenset[str] = frozenset(
         "results",  # gitignored output dir; tracked .gitkeep only
         "rust",  # in-tree Rust/Ratatui client workspace (raster cutover, Amendment AC/ADR150)
         "security",  # pip-audit expiring-ignores policy (program 15)
-        "sources",  # Percy's theory texts (LFS)
         "specs",
         "src",
         "tests",
@@ -136,8 +141,12 @@ LARGE_BLOB_EXEMPTIONS: frozenset[str] = frozenset(
     }
 )
 
-#: 1 MiB — anything larger in plain git belongs in LFS (or out of the repo).
+#: 1 MiB — anything larger belongs outside the repository (invariant c)
+#: unless it has a named budget or exemption.
 MAX_BLOB_BYTES: int = 1_048_576
+
+#: The gitattributes assignment that routes paths through Git LFS (invariant d).
+LFS_FILTER_ATTRIBUTE: str = "filter=lfs"
 
 # These two embedded, quality-5 Vorbis themes need 1.5 and 1.8 MiB. Keep a
 # finite per-file budget: assets/audio-renders.json pins their MIDI sources,
@@ -259,8 +268,8 @@ def check_tracked_but_ignored(ignored_tracked_paths: list[str]) -> list[str]:
     )
 
 
-def check_large_non_lfs_blobs(ls_tree_lines: list[str]) -> list[str]:
-    """Return HEAD blobs exceeding the default or named budget (LFS pointers are tiny).
+def check_large_blobs(ls_tree_lines: list[str]) -> list[str]:
+    """Return HEAD blobs exceeding the default or named budget.
 
     :param ls_tree_lines: Output of ``git ls-tree -r -l HEAD`` — each line is
         ``<mode> <type> <oid> <size>\\t<path>`` (size is ``-`` for non-blobs).
@@ -282,8 +291,35 @@ def check_large_non_lfs_blobs(ls_tree_lines: list[str]) -> list[str]:
     return sorted(violations)
 
 
+def check_no_lfs_rules(attributes: dict[str, str]) -> list[str]:
+    """Return gitattributes rules that route files through Git LFS.
+
+    Blank and ``#`` comment lines are ignored. Every other line is a pattern,
+    or an ``[attr]`` macro definition, followed by attributes, so a rule that
+    lists ``filter=lfs`` among them is a violation.
+
+    :param attributes: Tracked ``.gitattributes`` paths mapped to their HEAD text.
+    :returns: Sorted ``"path: rule"`` strings for offending rules.
+    """
+    violations: list[str] = []
+    for path, text in attributes.items():
+        for line in text.splitlines()[:MAX_GIT_OUTPUT_LINES]:
+            rule = line.strip()
+            if not rule or rule.startswith("#"):
+                continue
+            if LFS_FILTER_ATTRIBUTE in rule.split()[1:]:
+                violations.append(f"{path}: {rule}")
+    return sorted(violations)
+
+
+def _gitattributes_paths(ls_tree_lines: list[str]) -> list[str]:
+    """Return tracked ``.gitattributes`` paths from ``git ls-tree -r`` output."""
+    paths = (line.partition("\t")[2] for line in ls_tree_lines[:MAX_GIT_OUTPUT_LINES])
+    return sorted(path for path in paths if path.rsplit("/", 1)[-1] == ".gitattributes")
+
+
 def main() -> int:
-    """Run all three hygiene checks against the repository; print violations.
+    """Run all four hygiene checks against the repository; print violations.
 
     :returns: 0 clean, 1 violations found, 2 git infrastructure failure.
     """
@@ -293,6 +329,10 @@ def main() -> int:
             ["ls-files", "-z", "-i", "-c", "--exclude-standard"], nul_separated=True
         )
         tree_lines = _git_lines(["ls-tree", "-r", "-l", "-z", "HEAD"], nul_separated=True)
+        attributes = {
+            path: "\n".join(_git_lines(["cat-file", "blob", f"HEAD:{path}"]))
+            for path in _gitattributes_paths(tree_lines)
+        }
     except RuntimeError as exc:
         print(f"HYGIENE GATE ERROR: {exc}", file=sys.stderr)
         return 2
@@ -301,9 +341,10 @@ def main() -> int:
         ("top-level entry not on root allowlist", check_top_level_allowlist(tracked)),
         ("tracked file matches .gitignore", check_tracked_but_ignored(ignored_tracked)),
         (
-            f"tracked blob exceeds {MAX_BLOB_BYTES} bytes and is not LFS",
-            check_large_non_lfs_blobs(tree_lines),
+            f"tracked blob exceeds its budget ({MAX_BLOB_BYTES} bytes unless named)",
+            check_large_blobs(tree_lines),
         ),
+        ("gitattributes rule routes files through Git LFS", check_no_lfs_rules(attributes)),
     ]
 
     exit_code = 0
@@ -312,7 +353,7 @@ def main() -> int:
             print(f"HYGIENE VIOLATION [{label}]: {violation}", file=sys.stderr)
             exit_code = 1
     if exit_code == 0:
-        print("Repo hygiene: clean (allowlist, ignore-consistency, blob sizes).")
+        print("Repo hygiene: clean (allowlist, ignore-consistency, blob sizes, no Git LFS).")
     return exit_code
 
 

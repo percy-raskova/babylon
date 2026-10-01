@@ -27,8 +27,10 @@ output/
 - **Name for content**, not date (git already has the date).
 - **Curate, don't dump** — keep the artifacts that demonstrate something; delete
   superseded ones. This is a showcase, not a log.
-- **Scaling:** if binary artifacts grow heavy, move them to Git LFS (the repo
-  already uses LFS for large fixtures) rather than letting the git history bloat.
+- **Scaling:** keep each artifact at or below the 1 MiB repo-hygiene budget.
+- **Large artifacts:** put them in sha256-pinned `ci-data` release assets or
+  keep them on the babylon-data drive.
+- **No Git LFS:** CI checkouts do not include LFS content.
 
 ## Current contents
 

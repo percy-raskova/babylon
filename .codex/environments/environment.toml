@@ -188,11 +188,6 @@ if [ "$available_kib" -lt "$minimum_free_kib" ]; then
   exit 1
 fi
 
-lfs_cache="/tmp/babylon-codex-lfs-$(id -u)"
-install -d -m 700 "$lfs_cache"
-git config extensions.worktreeConfig true
-git config --worktree lfs.storage "$lfs_cache"
-
 if [ ! -e .env ] && [ ! -L .env ]; then
   install -m 600 .env.example .env
 fi

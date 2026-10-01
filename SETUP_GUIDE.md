@@ -35,7 +35,7 @@ Install these Debian packages before `mise run setup`:
 
 ```bash
 sudo apt-get update
-sudo apt-get install -y build-essential pkg-config git-lfs libssl-dev libpq-dev \
+sudo apt-get install -y build-essential pkg-config libssl-dev libpq-dev \
   libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev libx11-dev \
   libxcursor-dev libxi-dev libxrandr-dev libvulkan-dev mesa-vulkan-drivers
 ```

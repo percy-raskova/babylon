@@ -1610,3 +1610,24 @@ artifacts:
       alongside its spatially verified 2024 county binding. Costs remain
       unexecuted context: this capture pays no carrier, creates no stocks,
       compiles no material route and hydrates no runtime campaign.
+
+  - name: national_resident_workforce_2024
+    format: csv.gz
+    source_table: null
+    generator: tools/make_national_resident_workforce.py
+    mode: register
+    rows: 3144
+    sha256: 4fd2d325cbad74424cc2c20f3705c76ed2dc034bd038637db577c7da8be7c0a0
+    home: src/babylon/data/reference/economy/national_resident_workforce_2024.csv.gz
+    material_relation: >-
+      Part of PER-40: ACS 2024 five-year B24080 class-of-worker observations
+      for the exact 3144 domestic counties. Preserve all 21 estimate/MOE
+      pairs, raw source tokens and availability. The sixteen sex-specific
+      leaves partition civilian employed residents without adding nested
+      subtotals. Every county total reconciles with the captured B23025
+      employed-person control. Incorporated and unincorporated self-employed
+      persons and unpaid family workers remain separate from employees.
+      These categories do not infer political class, workplace assignment,
+      QCEW coverage, ownership claims, labor hours or income. The bounded
+      native reader supplies later explicit resident-workplace allocation;
+      this source capture creates no game persons, cash or activity.

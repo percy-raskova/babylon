@@ -63,7 +63,7 @@ class TestManifest:
             digest = hashlib.sha256(path.read_bytes()).hexdigest()
             assert digest == entry["sha256"], f"{entry['name']} drifted from its manifest hash"
             checked += 1
-        assert checked == 35
+        assert checked == 36
         # the four registered canonical CSVs (R1 pair post-demotion, ricci,
         # county->CZ) plus the 13 Vol II Unit U2 hand-registered LODES
         # entries (1 tri-county crosswalk + 12 OD-matrix years, generator

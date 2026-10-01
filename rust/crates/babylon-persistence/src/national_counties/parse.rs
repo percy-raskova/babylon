@@ -134,7 +134,7 @@ fn cell(fields: &[&str], expected: &str, status: ObservationStatus) -> Result<So
         status,
     })
 }
-pub(super) fn acs_cell(fields: &[&str]) -> Result<SourceCell, Error> {
+pub(crate) fn acs_cell(fields: &[&str]) -> Result<SourceCell, Error> {
     use ObservationStatus::{
         ControlledEstimate, EstimateNotComputable, InsufficientSampleCases, MoeNotComputable,
         MoeOpenEndedMedian, NotApplicableOrAvailable, Published,

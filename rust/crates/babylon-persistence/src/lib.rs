@@ -30,6 +30,7 @@ mod michigan_dynamic_hex_foundation;
 pub mod michigan_economy;
 pub mod national_cohorts;
 pub mod national_counties;
+pub mod national_resident_workforce;
 pub mod national_transport;
 pub(crate) mod observer_material;
 pub mod observer_reader;

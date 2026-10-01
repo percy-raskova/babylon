@@ -13,9 +13,10 @@ use std::{io::Read, sync::OnceLock};
 mod parse;
 #[cfg(test)]
 mod tests;
+pub(crate) use parse::acs_cell;
 use parse::parse_csv;
 #[cfg(test)]
-use parse::{acs_cell, qcew};
+use parse::qcew;
 
 const ARTIFACT: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),

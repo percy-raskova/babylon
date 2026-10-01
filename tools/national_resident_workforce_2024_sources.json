@@ -1,0 +1,22 @@
+{
+  "contract": "NationalResidentWorkforce2024SourcesV1",
+  "county_reference_sha256": "28ad84a461f00c12489b11e0d770ad71bc3f09190dbc35774d725fc2333fec8e",
+  "sources": [
+    {
+      "id": "B24080",
+      "path": "national_reference_2024/class_of_worker_2026-09-20/acsdt5y2024-b24080.dat",
+      "url": "https://www2.census.gov/programs-surveys/acs/summary_file/2024/table-based-SF/data/5YRData/acsdt5y2024-b24080.dat",
+      "bytes": 84256627,
+      "sha256": "7236cdcaadaa608b7c87a12e0bfbb059ae6567608811d70714cfd9d98d75b486",
+      "note": "Official ACS 2024 five-year bulk table, captured 2026-09-20; raw estimate/MOE sentinels retained. API returned Missing Key HTML and was not used."
+    },
+    {
+      "id": "acs_table_shells",
+      "path": "national_reference_2024/ACS20245YR_Table_Shells.txt",
+      "url": "https://www2.census.gov/programs-surveys/acs/summary_file/2024/table-based-SF/documentation/ACS20245YR_Table_Shells.txt",
+      "bytes": 5622840,
+      "sha256": "5b46f4af873744a415c4974204010db976e2a61ff916674732f81c496a6b517d",
+      "note": "Official variable labels and universe; captured 2026-09-20."
+    }
+  ]
+}

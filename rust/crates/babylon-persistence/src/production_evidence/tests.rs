@@ -204,7 +204,7 @@ fn full_disclosure() -> ObserverEconomySnapshot {
             total_order_count: 1,
             expired: 0,
             demand_principal_id: "county-demand".to_owned(),
-            county_geoid: "26163".to_owned(),
+            location: "county:26163".parse().unwrap(),
             good_id: stock.good_id.clone(),
             unit_id: stock.unit_id.clone(),
             good: stock.good,
@@ -273,7 +273,7 @@ fn household_disclosure(production: &mut ProductionSnapshot) {
         .household_accounts
         .push(crate::ProductionHouseholdAccount {
             demand_principal_id: final_account.demand_principal_id.clone(),
-            county_geoid: final_account.county_geoid.clone(),
+            location: final_account.location,
             good_id: final_account.good_id.clone(),
             unit_id: final_account.unit_id.clone(),
             good: final_account.good.clone(),

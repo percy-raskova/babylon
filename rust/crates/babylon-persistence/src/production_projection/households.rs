@@ -1,6 +1,7 @@
 //! Resident stocks and explicit consumption, separate from merchant stock exits.
 use super::{lifecycle, ProductionProjectionError};
 use crate::{michigan_economy::digest_hex, michigan_material::MichiganMaterialCatalog};
+use babylon_kernel::economic_location::EconomicLocation;
 use babylon_material_circuit::{FinalDemandPrincipalId, GoodId, MaterialCircuitState, UnitId};
 use babylon_tick::material_world::MaterialTickReceipts;
 use serde::{Deserialize, Serialize};
@@ -14,7 +15,7 @@ type Key = (FinalDemandPrincipalId, GoodId, UnitId);
 #[serde(deny_unknown_fields)]
 pub struct ProductionHouseholdAccount {
     pub demand_principal_id: String,
-    pub county_geoid: String,
+    pub location: EconomicLocation,
     pub good_id: String,
     pub unit_id: String,
     pub good: String,
@@ -116,8 +117,7 @@ pub(super) fn project_with_labels(
         let (good, unit) = labels(key.1, key.2).ok_or(ProductionProjectionError::Content)?;
         result.push(ProductionHouseholdAccount {
             demand_principal_id: digest_hex(&key.0.as_bytes()),
-            county_geoid: String::from_utf8(principal.county_geoid.to_vec())
-                .map_err(|_| ProductionProjectionError::State)?,
+            location: principal.location,
             good_id: digest_hex(&key.1.as_bytes()),
             unit_id: digest_hex(&key.2.as_bytes()),
             good,

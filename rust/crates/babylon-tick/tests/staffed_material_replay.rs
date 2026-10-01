@@ -326,7 +326,7 @@ fn paid_material() -> MaterialCircuitState {
     let household = FinalDemandPrincipalId::from_bytes([30; 32]);
     material.final_demand_principals.push(FinalDemandPrincipal {
         id: household,
-        county_geoid: *b"26163",
+        location: "county:26163".parse().unwrap(),
     });
     let mut book = MonetaryBook::open(vec![
         CashAccount {

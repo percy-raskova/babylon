@@ -174,6 +174,16 @@ consumption. Unfilled recurring retail requests expire and refund their reserve.
 Resolved orders retire together with their escrow. Receipts preserve their
 admission, fulfillment and expiry for later inspection.
 
+Merchant and resident accounts carry a checked ``EconomicLocation``: a domestic
+county, one of twelve foreign counterparts, or an explicit US dependency.
+Distinct household cohorts may share a location and retain separate stocks and
+cash. Retail handoffs require matching locations. Goods crossing locations must
+reach the receiving merchant through the captured delivery circuit. State schema
+10 preserves those identities in six canonical bytes and refuses older formats.
+County projections select domestic locations explicitly; foreign markets never
+acquire invented county identifiers. The shared paid controls exercise these
+namespaces; nationwide campaign admission remains a separate integration step.
+
 Procurement accounts for inventory and outstanding inbound orders, including
 goods in transit once. Later production and attendance plans respond to
 sales, funded unfilled requests and closing stock. Offers can change their next

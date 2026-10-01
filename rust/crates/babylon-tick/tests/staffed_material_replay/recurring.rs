@@ -28,7 +28,7 @@ fn opening() -> MaterialCircuitState {
     let handling = CorridorId::from_bytes([2; 32]);
     material.merchants.push(MerchantHandling {
         site_id: site(1),
-        county_geoid: *b"26163",
+        location: "county:26163".parse().unwrap(),
         role: MerchantRole::Retail,
         capacity_id: handling,
         labor_unit_id: unit(1),

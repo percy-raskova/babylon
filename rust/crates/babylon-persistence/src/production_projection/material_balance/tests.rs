@@ -767,7 +767,7 @@ fn retail_state() -> MaterialCircuitState {
     });
     state.merchants.push(MerchantHandling {
         site_id: inventory.site_id,
-        county_geoid: *b"26163",
+        location: "county:26163".parse().unwrap(),
         role: MerchantRole::Retail,
         capacity_id,
         labor_unit_id,
@@ -782,7 +782,7 @@ fn retail_state() -> MaterialCircuitState {
         });
     state.final_demand_principals.push(FinalDemandPrincipal {
         id: demand_principal_id,
-        county_geoid: *b"26163",
+        location: "county:26163".parse().unwrap(),
     });
     state.final_demand_orders.push(FinalDemandOrder {
         order_id: OrderId::from_bytes([8; 32]),
@@ -1267,7 +1267,7 @@ fn underfunded_maintenance_uses_paid_hours_instead_of_all_available_people_time(
     let payee = FinalDemandPrincipalId::from_bytes([50; 32]);
     state.final_demand_principals.push(FinalDemandPrincipal {
         id: payee,
-        county_geoid: *b"26163",
+        location: "county:26163".parse().unwrap(),
     });
     let mut accounts: Vec<_> = state
         .site_logistics_nodes

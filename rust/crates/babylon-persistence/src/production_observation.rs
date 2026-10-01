@@ -439,7 +439,7 @@ pub struct ProductionMerchantHandlingOrder {
 #[serde(deny_unknown_fields)]
 pub struct ProductionFinalDemandAccount {
     pub demand_principal_id: String,
-    pub county_geoid: String,
+    pub location: babylon_kernel::economic_location::EconomicLocation,
     pub good_id: String,
     pub unit_id: String,
     pub good: String,

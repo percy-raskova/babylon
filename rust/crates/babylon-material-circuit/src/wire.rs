@@ -12,6 +12,7 @@ use crate::{
     MerchantHandlingCoefficient, MerchantRole,
 };
 use babylon_kernel::content_digest::sha256_of;
+use babylon_kernel::economic_location::EconomicLocation;
 
 use crate::transition::canonical_state;
 use crate::{
@@ -26,11 +27,11 @@ use crate::{
 pub const MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES: &[u8] = b"babylon.material-circuit-state.v3";
 /// SHA-256 of the current language-neutral material circuit contract source.
 pub const MATERIAL_CIRCUIT_SOURCE_SHA256: [u8; 32] = [
-    168, 230, 126, 25, 42, 137, 108, 205, 194, 81, 25, 3, 86, 131, 211, 194, 207, 41, 207, 244,
-    167, 213, 66, 151, 132, 90, 68, 156, 172, 28, 183, 231,
+    57, 121, 122, 150, 52, 21, 55, 36, 193, 9, 27, 145, 48, 167, 171, 99, 76, 247, 146, 207, 200,
+    176, 108, 121, 174, 130, 141, 234, 208, 228, 47, 223,
 ];
 
-const SCHEMA_VERSION: u16 = 9;
+const SCHEMA_VERSION: u16 = 10;
 
 impl From<CursorError> for MaterialCircuitError {
     fn from(value: CursorError) -> Self {
@@ -469,7 +470,7 @@ fn append_merchants(
 ) -> Result<(), MaterialCircuitError> {
     append_rows(output, rows, |bytes, row| {
         bytes.extend_from_slice(&row.site_id.as_bytes());
-        bytes.extend_from_slice(&row.county_geoid);
+        bytes.extend_from_slice(&row.location.canonical_bytes());
         bytes.push(row.role as u8);
         bytes.extend_from_slice(&row.capacity_id.as_bytes());
         bytes.extend_from_slice(&row.labor_unit_id.as_bytes());
@@ -482,7 +483,8 @@ fn decode_merchants(
     decode_rows(cursor, |bytes| {
         Ok(MerchantHandling {
             site_id: SiteId::from_bytes(bytes.array()?),
-            county_geoid: bytes.array()?,
+            location: EconomicLocation::from_canonical_bytes(bytes.array()?)
+                .map_err(|_| MaterialCircuitError::WireEnum)?,
             role: match bytes.u8()? {
                 1 => MerchantRole::Wholesale,
                 2 => MerchantRole::Retail,
@@ -525,7 +527,7 @@ fn append_final_demand_principals(
 ) -> Result<(), MaterialCircuitError> {
     append_rows(output, rows, |bytes, row| {
         bytes.extend_from_slice(&row.id.as_bytes());
-        bytes.extend_from_slice(&row.county_geoid);
+        bytes.extend_from_slice(&row.location.canonical_bytes());
     })
 }
 
@@ -535,7 +537,8 @@ fn decode_final_demand_principals(
     decode_rows(cursor, |bytes| {
         Ok(FinalDemandPrincipal {
             id: FinalDemandPrincipalId::from_bytes(bytes.array()?),
-            county_geoid: bytes.array()?,
+            location: EconomicLocation::from_canonical_bytes(bytes.array()?)
+                .map_err(|_| MaterialCircuitError::WireEnum)?,
         })
     })
 }

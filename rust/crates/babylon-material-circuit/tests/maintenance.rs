@@ -777,7 +777,7 @@ fn paid_maintenance_opening() -> MaterialCircuitState {
     let payee = FinalDemandPrincipalId::from_bytes([7; 32]);
     state.final_demand_principals.push(FinalDemandPrincipal {
         id: payee,
-        county_geoid: *b"26163",
+        location: "county:26163".parse().unwrap(),
     });
     let book = MonetaryBook::open(vec![
         CashAccount {

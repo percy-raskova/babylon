@@ -2,6 +2,9 @@
 use babylon_kernel::currency::Currency;
 use babylon_material_circuit::*;
 
+#[path = "support/economic_location_cases.rs"]
+mod economic_location_cases;
+
 fn site(id: u8) -> SiteId {
     SiteId::from_bytes([id; 32])
 }
@@ -290,7 +293,7 @@ fn opening() -> MaterialCircuitState {
             .collect(),
         merchants: vec![MerchantHandling {
             site_id: site(3),
-            county_geoid: *b"26163",
+            location: "county:26163".parse().unwrap(),
             role: MerchantRole::Retail,
             capacity_id: corridor(3),
             labor_unit_id: hours(),
@@ -303,7 +306,7 @@ fn opening() -> MaterialCircuitState {
         }],
         final_demand_principals: vec![FinalDemandPrincipal {
             id: household(),
-            county_geoid: *b"26163",
+            location: "county:26163".parse().unwrap(),
         }],
         final_demand_orders: vec![],
         maintenance_binding: None,
@@ -674,7 +677,7 @@ fn producer_retail_opening() -> MaterialCircuitState {
     let mut state = opening();
     state.merchants.push(MerchantHandling {
         site_id: site(1),
-        county_geoid: *b"26163",
+        location: "county:26163".parse().unwrap(),
         role: MerchantRole::Retail,
         capacity_id: corridor(4),
         labor_unit_id: hours(),

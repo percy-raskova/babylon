@@ -1877,7 +1877,7 @@ mod tests {
                         total_order_count: 1,
                         expired: 0,
                         demand_principal_id: format!("demand-{unit}"),
-                        county_geoid: "26163".into(),
+                        location: "county:26163".parse().unwrap(),
                         good_id: "4".repeat(64),
                         unit_id: unit_id.repeat(64),
                         good: "Steel".into(),
@@ -2134,7 +2134,7 @@ mod tests {
                     .final_demand_accounts;
                 match mismatch {
                     "resident" => rows[0].demand_principal_id = "different-resident".into(),
-                    "county" => rows[0].county_geoid = "26001".into(),
+                    "county" => rows[0].location = "county:26001".parse().unwrap(),
                     "duplicate" => rows.push(rows[0].clone()),
                     "missing" => rows[0].completed = None,
                     "receipt period" => rows[0].completed.as_mut().unwrap().period = 1,

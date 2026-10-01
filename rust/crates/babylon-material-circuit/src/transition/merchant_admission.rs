@@ -48,10 +48,7 @@ pub(super) fn validate_merchants(state: &MaterialCircuitState) -> Result<(), Mat
         .collect();
     let mut handling_principals = BTreeSet::new();
     for row in &state.merchants {
-        if !row.county_geoid.iter().all(u8::is_ascii_digit)
-            || site_node(state, row.site_id).is_none()
-            || road_principals.contains(&row.capacity_id)
-        {
+        if site_node(state, row.site_id).is_none() || road_principals.contains(&row.capacity_id) {
             return Err(MaterialCircuitError::MerchantInvariant);
         }
         if !handling_principals.insert(row.capacity_id) {
@@ -69,15 +66,6 @@ pub(super) fn validate_merchants(state: &MaterialCircuitState) -> Result<(), Mat
             hours_per_unit(state, row.supplier_site_id, row.good_id, row.unit_id)?;
         }
     }
-    let mut counties = BTreeSet::new();
-    for row in &state.final_demand_principals {
-        if !row.county_geoid.iter().all(u8::is_ascii_digit) {
-            return Err(MaterialCircuitError::FinalDemandInvariant);
-        }
-        if !counties.insert(row.county_geoid) {
-            return Err(MaterialCircuitError::DuplicateRow);
-        }
-    }
     for row in &state.final_demand_orders {
         let retailer = merchant(state, row.retailer_site_id)
             .ok_or(MaterialCircuitError::FinalDemandInvariant)?;
@@ -88,7 +76,7 @@ pub(super) fn validate_merchants(state: &MaterialCircuitState) -> Result<(), Mat
             .map(|index| &state.final_demand_principals[index])
             .ok_or(MaterialCircuitError::FinalDemandInvariant)?;
         if retailer.role != MerchantRole::Retail
-            || retailer.county_geoid != principal.county_geoid
+            || retailer.location != principal.location
             || row.ordered == 0
             || row.fulfilled > row.ordered
         {

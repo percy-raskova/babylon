@@ -1,6 +1,6 @@
 meta:
   contract: MaterialCircuitV3
-  schema_version: 9
+  schema_version: 10
   evidence_class: Designed
   rust_owner: babylon-material-circuit
 
@@ -11,7 +11,7 @@ scope:
   - geometry and preselected physical paths are captured by campaign content
   - explicit local inter-owner circulation without timed transport or a road
   - staffed wholesale and retail outbound handling without changing goods
-  - finite county-local retail handoff orders with no road journey
+  - finite location-local retail handoff orders with no road journey
   - one bounded maintenance provider consumes parts and labor to enable next-period batches
   - explicit physical controls or captured monetary accounts, purchase reserves, and attendance wages
   - exact funded settlement follows actual arrival or local handoff; departure is not a sale
@@ -37,7 +37,7 @@ encoding:
   stage_index: u16
   travel_periods: u16
   loss_ppm: u32
-  county_geoid: five ASCII decimal digits
+  economic_location: six canonical bytes with a checked county, counterpart or dependency tag
   merchant_role_u8: {wholesale: 1, retail: 2}
   supplier_transport_u8: {local: 1, staged: 2}
   optional_presence_u8: {absent: 0, present: 1}
@@ -170,9 +170,9 @@ row_field_order:
   capacities: [process_id, site_id, period, available_batches]
   labor: [site_id, unit_id, period, available]
   production_commitments: [process_id, site_id, period, planned_batches]
-  merchants: [site_id, county_geoid, role_u8, capacity_id, labor_unit_id]
+  merchants: [site_id, economic_location, role_u8, capacity_id, labor_unit_id]
   handling_coefficients: [site_id, good_id, unit_id, hours_per_unit]
-  final_demand_principals: [id, county_geoid]
+  final_demand_principals: [id, economic_location]
   final_demand_orders: [order_id, retailer_site_id, demand_principal_id, good_id, unit_id, ordered, fulfilled]
 
 optional_field_order:

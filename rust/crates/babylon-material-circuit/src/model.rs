@@ -1,5 +1,7 @@
 //! Current production, inventory, freight and order state.
 
+use babylon_kernel::economic_location::EconomicLocation;
+
 /// Designed serialization and validation ceiling, not material abundance.
 pub const MAX_MATERIAL_CIRCUIT_ROWS: usize = 65_536;
 /// Derived ceiling: retail retirement permits a second bounded handling pass.
@@ -267,7 +269,7 @@ pub enum MerchantRole {
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct MerchantHandling {
     pub site_id: SiteId,
-    pub county_geoid: [u8; 5],
+    pub location: EconomicLocation,
     pub role: MerchantRole,
     pub capacity_id: CorridorId,
     pub labor_unit_id: UnitId,
@@ -282,11 +284,11 @@ pub struct MerchantHandlingCoefficient {
     pub hours_per_unit: u64,
 }
 
-/// County-local end-buyer account identity, without a household or inventory.
+/// End-buyer account identity and market location, without a stock assertion.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct FinalDemandPrincipal {
     pub id: FinalDemandPrincipalId,
-    pub county_geoid: [u8; 5],
+    pub location: EconomicLocation,
 }
 
 /// Finite native-good handoff order; fulfillment does not assert consumption.

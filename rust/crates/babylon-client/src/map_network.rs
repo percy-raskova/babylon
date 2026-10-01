@@ -202,13 +202,18 @@ fn project_final_demand(
     // Draw only an explicit retail order; a buyer marker has no invented stock.
     let mut demand: Vec<_> = snapshot.final_demand_accounts.iter().collect();
     demand.sort_by(|a, b| {
-        (&a.county_geoid, &a.good_id, &a.unit_id).cmp(&(&b.county_geoid, &b.good_id, &b.unit_id))
+        (a.location, &a.good_id, &a.unit_id).cmp(&(b.location, &b.good_id, &b.unit_id))
     });
     for account in demand {
-        let Some(anchor) = anchors.0.get(&account.county_geoid) else {
+        let babylon_kernel::economic_location::EconomicLocation::County(county) = account.location
+        else {
             continue;
         };
-        let to = NodeKey::EndBuyers(account.county_geoid.clone());
+        let geoid = county.geoid();
+        let Some(anchor) = anchors.0.get(geoid.as_str()) else {
+            continue;
+        };
+        let to = NodeKey::EndBuyers(geoid.to_string());
         let mut orders: Vec<_> = account.orders.iter().collect();
         orders.sort_by(|a, b| {
             (&a.retailer_site_id, &a.order_id).cmp(&(&b.retailer_site_id, &b.order_id))
@@ -218,13 +223,10 @@ fn project_final_demand(
             if !result.nodes.contains_key(&from) {
                 continue;
             }
-            let rank = county_ranks
-                .get(account.county_geoid.as_str())
-                .copied()
-                .unwrap_or(0);
+            let rank = county_ranks.get(geoid.as_str()).copied().unwrap_or(0);
             result.nodes.entry(to.clone()).or_insert_with(|| NetworkNode {
                 key: to.clone(), site_id: order.retailer_site_id.clone(),
-                county: account.county_geoid.clone(), sector: NetworkSector::EndBuyers,
+                county: geoid.to_string(), sector: NetworkSector::EndBuyers,
                 position: node_position(anchor.position, rank),
                 caption: format!("{} · end buyers\nFinite orders · delivery, not consumption\nClick: trace retail · Circuit [P]: fulfillment", county_label(&anchor.name)),
             });
@@ -735,7 +737,7 @@ mod tests {
                 total_order_count: 1,
                 expired: 0,
                 demand_principal_id: "demand".into(),
-                county_geoid: "26099".into(),
+                location: "county:26099".parse().unwrap(),
                 good_id: "steel".into(),
                 unit_id: "kg".into(),
                 good: "Steel".into(),

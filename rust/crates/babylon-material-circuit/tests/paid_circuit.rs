@@ -152,7 +152,7 @@ fn opening() -> MaterialCircuitState {
         production_commitments: vec![],
         merchants: vec![MerchantHandling {
             site_id: store(),
-            county_geoid: *b"26163",
+            location: "county:26163".parse().unwrap(),
             role: MerchantRole::Retail,
             capacity_id: handling,
             labor_unit_id: hours(),
@@ -165,7 +165,7 @@ fn opening() -> MaterialCircuitState {
         }],
         final_demand_principals: vec![FinalDemandPrincipal {
             id: household(),
-            county_geoid: *b"26163",
+            location: "county:26163".parse().unwrap(),
         }],
         final_demand_orders: vec![],
         maintenance_binding: None,

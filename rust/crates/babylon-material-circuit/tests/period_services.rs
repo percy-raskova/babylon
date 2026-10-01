@@ -213,7 +213,7 @@ fn opening() -> MaterialCircuitState {
         handling_coefficients: vec![],
         final_demand_principals: vec![FinalDemandPrincipal {
             id: household(),
-            county_geoid: *b"26163",
+            location: "county:26163".parse().unwrap(),
         }],
         final_demand_orders: vec![],
         maintenance_binding: None,

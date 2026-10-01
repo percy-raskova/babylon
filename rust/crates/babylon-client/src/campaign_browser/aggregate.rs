@@ -262,7 +262,7 @@ fn write_quantity(output: &mut String, label: &str, current: u64, compared: u64,
 
 #[derive(PartialEq, Eq, PartialOrd, Ord)]
 struct RetailIdentity<'a> {
-    county: &'a str,
+    location: babylon_kernel::economic_location::EconomicLocation,
     principal: &'a str,
 }
 
@@ -282,7 +282,7 @@ fn retail_accounts<'a>(
         if rows
             .insert(
                 RetailIdentity {
-                    county: &row.county_geoid,
+                    location: row.location,
                     principal: &row.demand_principal_id,
                 },
                 row,
@@ -297,7 +297,9 @@ fn retail_accounts<'a>(
             || retailers.iter().any(|id| {
                 owners.get(id.as_str()).is_none_or(|owner| {
                     owner.role != ProductionSiteRole::Retail
-                        || owner.county_geoid != row.county_geoid
+                        || !matches!(row.location,
+                            babylon_kernel::economic_location::EconomicLocation::County(county)
+                                if county.geoid().as_str() == owner.county_geoid)
                 })
             })
         {

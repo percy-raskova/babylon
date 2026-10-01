@@ -158,7 +158,7 @@ fn validate_households(state: &MaterialCircuitState, rows: &RecurringEconomy) ->
             .ok_or(MaterialCircuitError::FinalDemandInvariant)?;
         let offer_key = (policy.retailer_site_id, policy.good_id, policy.unit_id);
         if merchant.role != MerchantRole::Retail
-            || merchant.county_geoid != principal.county_geoid
+            || merchant.location != principal.location
             || !offers.contains(&offer_key)
             || !handling.contains(&offer_key)
         {

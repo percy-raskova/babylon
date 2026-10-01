@@ -287,8 +287,7 @@ pub(super) fn project_final_with_labels(
                 .transpose()?;
             Ok(ProductionFinalDemandAccount {
                 demand_principal_id: digest_hex(&principal.as_bytes()),
-                county_geoid: String::from_utf8(county.county_geoid.to_vec())
-                    .map_err(|_| ProductionProjectionError::State)?,
+                location: county.location,
                 good_id: digest_hex(&good.as_bytes()),
                 unit_id: digest_hex(&unit.as_bytes()),
                 good: good_label,

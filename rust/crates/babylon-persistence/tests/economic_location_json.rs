@@ -43,7 +43,7 @@ fn captured_locations_refuse_aliases_territorial_counties_and_unchecked_object_s
         r#""dependency:72""#,
         r#""01001""#,
         r#"{"County":"72001"}"#,
-        r#"[0,55,50,48,48,49]"#,
+        r"[0,55,50,48,48,49]",
     ] {
         assert!(
             serde_json::from_str::<EconomicLocation>(value).is_err(),

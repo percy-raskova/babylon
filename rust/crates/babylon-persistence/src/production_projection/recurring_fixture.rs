@@ -317,7 +317,7 @@ pub(super) fn opening() -> MaterialCircuitState {
             .collect(),
         merchants: vec![MerchantHandling {
             site_id: site(3),
-            county_geoid: *b"26163",
+            location: "county:26163".parse().unwrap(),
             role: MerchantRole::Retail,
             capacity_id: corridor(3),
             labor_unit_id: hours(),
@@ -330,7 +330,7 @@ pub(super) fn opening() -> MaterialCircuitState {
         }],
         final_demand_principals: vec![FinalDemandPrincipal {
             id: household(),
-            county_geoid: *b"26163",
+            location: "county:26163".parse().unwrap(),
         }],
         final_demand_orders: vec![],
         maintenance_binding: None,

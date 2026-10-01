@@ -148,7 +148,7 @@ fn opening(household_cash: i128, stock: u64) -> MaterialCircuitState {
         production_commitments: vec![],
         merchants: vec![MerchantHandling {
             site_id: s(),
-            county_geoid: *b"26163",
+            location: "county:26163".parse().unwrap(),
             role: MerchantRole::Retail,
             capacity_id: CorridorId::from_bytes([6; 32]),
             labor_unit_id: hours(),
@@ -161,7 +161,7 @@ fn opening(household_cash: i128, stock: u64) -> MaterialCircuitState {
         }],
         final_demand_principals: vec![FinalDemandPrincipal {
             id: h(),
-            county_geoid: *b"26163",
+            location: "county:26163".parse().unwrap(),
         }],
         final_demand_orders: vec![],
         maintenance_binding: None,

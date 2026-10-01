@@ -65,10 +65,12 @@ pub fn michigan_sector_bundles(
     bundles.sort_by(|a, b| a.owner.subject.cmp(&b.owner.subject));
     Ok(bundles)
 }
-fn county_bytes(county: &str) -> Result<[u8; 5], SectorBundleError> {
-    county
-        .as_bytes()
-        .try_into()
+fn county_location(
+    county: &str,
+) -> Result<babylon_kernel::economic_location::EconomicLocation, SectorBundleError> {
+    let id = babylon_kernel::geography::CountyGeoid::try_from(county)
+        .map_err(|_| SectorBundleError::Owner)?;
+    babylon_kernel::economic_location::EconomicLocation::domestic_county(id)
         .map_err(|_| SectorBundleError::Owner)
 }
 fn corridor<'a>(
@@ -464,7 +466,7 @@ impl OwnerRows {
         if let Some(merchant) = catalog.merchants().iter().find(|m| m.site_key == site.key) {
             self.rows.merchants.push(MerchantHandling {
                 site_id: site.id(),
-                county_geoid: county_bytes(&site.county_geoid)?,
+                location: county_location(&site.county_geoid)?,
                 role: match site.role {
                     MichiganSiteRole::Wholesale => MerchantRole::Wholesale,
                     MichiganSiteRole::Retail => MerchantRole::Retail,
@@ -590,7 +592,7 @@ fn append_final_demand(
         if principals.insert(demand.principal_id()) {
             state.final_demand_principals.push(FinalDemandPrincipal {
                 id: demand.principal_id(),
-                county_geoid: county_bytes(&demand.county_geoid)?,
+                location: county_location(&demand.county_geoid)?,
             });
         }
         state.final_demand_orders.push(FinalDemandOrder {

@@ -175,6 +175,12 @@ pub enum EconomicLocationError {
     UnknownDependency(u8),
     /// Foreign and dependency identities require four zero padding bytes.
     NoncanonicalPadding,
+    /// Text identities require one of the three exact namespace prefixes.
+    UnknownNamespace,
+    /// The foreign namespace contains no such pinned counterpart key.
+    UnknownCounterpartKey,
+    /// The dependency namespace contains no such exact M49 code.
+    UnknownDependencyKey,
 }
 
 impl EconomicLocation {
@@ -234,6 +240,64 @@ impl EconomicLocation {
             }
             tag => Err(EconomicLocationError::UnknownTag(tag)),
         }
+    }
+}
+
+impl std::fmt::Display for EconomicLocation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::County(county) => write!(f, "county:{}", county.geoid()),
+            Self::Foreign(id) => write!(f, "foreign:{}", id.as_str()),
+            Self::Dependency(id) => write!(f, "dependency:{}", id.m49()),
+        }
+    }
+}
+
+impl std::str::FromStr for EconomicLocation {
+    type Err = EconomicLocationError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        let (namespace, key) = value
+            .split_once(':')
+            .ok_or(EconomicLocationError::UnknownNamespace)?;
+        match namespace {
+            "county" => Self::domestic_county(
+                CountyGeoid::try_from(key).map_err(EconomicLocationError::CountySyntax)?,
+            ),
+            "foreign" => ForeignCounterpart::from_key(key)
+                .map(Self::Foreign)
+                .ok_or(EconomicLocationError::UnknownCounterpartKey),
+            "dependency" => UsDependency::from_m49(key)
+                .map(Self::Dependency)
+                .ok_or(EconomicLocationError::UnknownDependencyKey),
+            _ => Err(EconomicLocationError::UnknownNamespace),
+        }
+    }
+}
+
+impl serde::Serialize for EconomicLocation {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.collect_str(self)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for EconomicLocation {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct LocationVisitor;
+
+        impl serde::de::Visitor<'_> for LocationVisitor {
+            type Value = EconomicLocation;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("an exact county:, foreign:, or dependency: location key")
+            }
+
+            fn visit_str<E: serde::de::Error>(self, value: &str) -> Result<Self::Value, E> {
+                value.parse().map_err(E::custom)
+            }
+        }
+
+        deserializer.deserialize_str(LocationVisitor)
     }
 }
 

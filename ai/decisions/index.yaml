@@ -1255,3 +1255,8 @@ decisions:
     status: accepted
     date: '2026-10-01'
     file: ADR268_productive_equipment_and_installation.yaml
+  ADR270_household_time_and_material_organizer:
+    title: Household time and material support constrain independently authorized organizational practice
+    status: accepted
+    date: '2026-10-02'
+    file: ADR270_household_time_and_material_organizer.yaml

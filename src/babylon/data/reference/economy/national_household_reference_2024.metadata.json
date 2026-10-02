@@ -1,0 +1,428 @@
+{
+  "artifact": {
+    "bytes": 932960,
+    "decoded_bytes": 4812253,
+    "path": "src/babylon/data/reference/economy/national_household_reference_2024.csv.gz",
+    "rows": 3144,
+    "sha256": "8de3890dda46892ed53a9fda093075a0ce962f93121c6705d5df1dfc5a4a6582"
+  },
+  "contract": "NationalHouseholdReference2024V1",
+  "county_control": {
+    "households_table": "B11001_001",
+    "path": "src/babylon/data/reference/economy/national_county_reference_2024.csv.gz",
+    "population_table": "B01003_001",
+    "roster": "TIGER2024 50 states and DC, 3144 county equivalents; CT9, AK30, HI5",
+    "sha256": "28ad84a461f00c12489b11e0d770ad71bc3f09190dbc35774d725fc2333fec8e"
+  },
+  "coverage": {
+    "B11001": {
+      "counties": 3144,
+      "estimate_moe_pairs": 28296,
+      "line_estimate_totals": {
+        "B11001_001": 129227496,
+        "B11001_002": 82990528,
+        "B11001_003": 60637388,
+        "B11001_004": 22353140,
+        "B11001_005": 6572819,
+        "B11001_006": 15780321,
+        "B11001_007": 46236968,
+        "B11001_008": 37140836,
+        "B11001_009": 9096132
+      },
+      "statuses": {
+        "estimate:published": 28296,
+        "moe:published": 28296
+      },
+      "total_estimate": 129227496
+    },
+    "B11002": {
+      "counties": 3144,
+      "estimate_moe_pairs": 37728,
+      "line_estimate_totals": {
+        "B11002_001": 326722431,
+        "B11002_002": 268506581,
+        "B11002_003": 194691187,
+        "B11002_004": 192953841,
+        "B11002_005": 1737346,
+        "B11002_006": 21230626,
+        "B11002_007": 18684961,
+        "B11002_008": 2545665,
+        "B11002_009": 52584768,
+        "B11002_010": 49026103,
+        "B11002_011": 3558665,
+        "B11002_012": 58215850
+      },
+      "statuses": {
+        "estimate:published": 37728,
+        "moe:controlled_estimate": 1,
+        "moe:published": 37727
+      },
+      "total_estimate": 326722431
+    },
+    "B19001": {
+      "counties": 3144,
+      "estimate_moe_pairs": 53448,
+      "line_estimate_totals": {
+        "B19001_001": 129227496,
+        "B19001_002": 6397599,
+        "B19001_003": 4406926,
+        "B19001_004": 3858602,
+        "B19001_005": 4245461,
+        "B19001_006": 4192539,
+        "B19001_007": 4358743,
+        "B19001_008": 4343918,
+        "B19001_009": 4433159,
+        "B19001_010": 4296543,
+        "B19001_011": 8280714,
+        "B19001_012": 11750969,
+        "B19001_013": 16319799,
+        "B19001_014": 13068961,
+        "B19001_015": 9601960,
+        "B19001_016": 12405370,
+        "B19001_017": 17266233
+      },
+      "statuses": {
+        "estimate:published": 53448,
+        "moe:published": 53448
+      },
+      "total_estimate": 129227496
+    },
+    "B19051": {
+      "counties": 3144,
+      "estimate_moe_pairs": 9432,
+      "line_estimate_totals": {
+        "B19051_001": 129227496,
+        "B19051_002": 100097816,
+        "B19051_003": 29129680
+      },
+      "statuses": {
+        "estimate:published": 9432,
+        "moe:published": 9432
+      },
+      "total_estimate": 129227496
+    }
+  },
+  "definitions": {
+    "B11001_001": {
+      "Indent": "0",
+      "Label": "Total:",
+      "Title": "Household Type (Including Living Alone)",
+      "Universe": "Households"
+    },
+    "B11001_002": {
+      "Indent": "1",
+      "Label": "Family households:",
+      "Title": "Household Type (Including Living Alone)",
+      "Universe": "Households"
+    },
+    "B11001_003": {
+      "Indent": "2",
+      "Label": "Married-couple family",
+      "Title": "Household Type (Including Living Alone)",
+      "Universe": "Households"
+    },
+    "B11001_004": {
+      "Indent": "2",
+      "Label": "Other family:",
+      "Title": "Household Type (Including Living Alone)",
+      "Universe": "Households"
+    },
+    "B11001_005": {
+      "Indent": "3",
+      "Label": "Male householder, no spouse present",
+      "Title": "Household Type (Including Living Alone)",
+      "Universe": "Households"
+    },
+    "B11001_006": {
+      "Indent": "3",
+      "Label": "Female householder, no spouse present",
+      "Title": "Household Type (Including Living Alone)",
+      "Universe": "Households"
+    },
+    "B11001_007": {
+      "Indent": "1",
+      "Label": "Nonfamily households:",
+      "Title": "Household Type (Including Living Alone)",
+      "Universe": "Households"
+    },
+    "B11001_008": {
+      "Indent": "2",
+      "Label": "Householder living alone",
+      "Title": "Household Type (Including Living Alone)",
+      "Universe": "Households"
+    },
+    "B11001_009": {
+      "Indent": "2",
+      "Label": "Householder not living alone",
+      "Title": "Household Type (Including Living Alone)",
+      "Universe": "Households"
+    },
+    "B11002_001": {
+      "Indent": "0",
+      "Label": "Total:",
+      "Title": "Household Type by Relatives and Nonrelatives for Population in Households",
+      "Universe": "Population in households"
+    },
+    "B11002_002": {
+      "Indent": "1",
+      "Label": "In family households:",
+      "Title": "Household Type by Relatives and Nonrelatives for Population in Households",
+      "Universe": "Population in households"
+    },
+    "B11002_003": {
+      "Indent": "2",
+      "Label": "In married-couple family:",
+      "Title": "Household Type by Relatives and Nonrelatives for Population in Households",
+      "Universe": "Population in households"
+    },
+    "B11002_004": {
+      "Indent": "3",
+      "Label": "Relatives",
+      "Title": "Household Type by Relatives and Nonrelatives for Population in Households",
+      "Universe": "Population in households"
+    },
+    "B11002_005": {
+      "Indent": "3",
+      "Label": "Nonrelatives",
+      "Title": "Household Type by Relatives and Nonrelatives for Population in Households",
+      "Universe": "Population in households"
+    },
+    "B11002_006": {
+      "Indent": "2",
+      "Label": "In male householder, no spouse present, family:",
+      "Title": "Household Type by Relatives and Nonrelatives for Population in Households",
+      "Universe": "Population in households"
+    },
+    "B11002_007": {
+      "Indent": "3",
+      "Label": "Relatives",
+      "Title": "Household Type by Relatives and Nonrelatives for Population in Households",
+      "Universe": "Population in households"
+    },
+    "B11002_008": {
+      "Indent": "3",
+      "Label": "Nonrelatives",
+      "Title": "Household Type by Relatives and Nonrelatives for Population in Households",
+      "Universe": "Population in households"
+    },
+    "B11002_009": {
+      "Indent": "2",
+      "Label": "In female householder, no spouse present, family:",
+      "Title": "Household Type by Relatives and Nonrelatives for Population in Households",
+      "Universe": "Population in households"
+    },
+    "B11002_010": {
+      "Indent": "3",
+      "Label": "Relatives",
+      "Title": "Household Type by Relatives and Nonrelatives for Population in Households",
+      "Universe": "Population in households"
+    },
+    "B11002_011": {
+      "Indent": "3",
+      "Label": "Nonrelatives",
+      "Title": "Household Type by Relatives and Nonrelatives for Population in Households",
+      "Universe": "Population in households"
+    },
+    "B11002_012": {
+      "Indent": "1",
+      "Label": "In nonfamily households",
+      "Title": "Household Type by Relatives and Nonrelatives for Population in Households",
+      "Universe": "Population in households"
+    },
+    "B19001_001": {
+      "Indent": "0",
+      "Label": "Total:",
+      "Title": "Household Income in the Past 12 Months (in 2024 Inflation-Adjusted Dollars)",
+      "Universe": "Households"
+    },
+    "B19001_002": {
+      "Indent": "1",
+      "Label": "Less than $10,000",
+      "Title": "Household Income in the Past 12 Months (in 2024 Inflation-Adjusted Dollars)",
+      "Universe": "Households"
+    },
+    "B19001_003": {
+      "Indent": "1",
+      "Label": "$10,000 to $14,999",
+      "Title": "Household Income in the Past 12 Months (in 2024 Inflation-Adjusted Dollars)",
+      "Universe": "Households"
+    },
+    "B19001_004": {
+      "Indent": "1",
+      "Label": "$15,000 to $19,999",
+      "Title": "Household Income in the Past 12 Months (in 2024 Inflation-Adjusted Dollars)",
+      "Universe": "Households"
+    },
+    "B19001_005": {
+      "Indent": "1",
+      "Label": "$20,000 to $24,999",
+      "Title": "Household Income in the Past 12 Months (in 2024 Inflation-Adjusted Dollars)",
+      "Universe": "Households"
+    },
+    "B19001_006": {
+      "Indent": "1",
+      "Label": "$25,000 to $29,999",
+      "Title": "Household Income in the Past 12 Months (in 2024 Inflation-Adjusted Dollars)",
+      "Universe": "Households"
+    },
+    "B19001_007": {
+      "Indent": "1",
+      "Label": "$30,000 to $34,999",
+      "Title": "Household Income in the Past 12 Months (in 2024 Inflation-Adjusted Dollars)",
+      "Universe": "Households"
+    },
+    "B19001_008": {
+      "Indent": "1",
+      "Label": "$35,000 to $39,999",
+      "Title": "Household Income in the Past 12 Months (in 2024 Inflation-Adjusted Dollars)",
+      "Universe": "Households"
+    },
+    "B19001_009": {
+      "Indent": "1",
+      "Label": "$40,000 to $44,999",
+      "Title": "Household Income in the Past 12 Months (in 2024 Inflation-Adjusted Dollars)",
+      "Universe": "Households"
+    },
+    "B19001_010": {
+      "Indent": "1",
+      "Label": "$45,000 to $49,999",
+      "Title": "Household Income in the Past 12 Months (in 2024 Inflation-Adjusted Dollars)",
+      "Universe": "Households"
+    },
+    "B19001_011": {
+      "Indent": "1",
+      "Label": "$50,000 to $59,999",
+      "Title": "Household Income in the Past 12 Months (in 2024 Inflation-Adjusted Dollars)",
+      "Universe": "Households"
+    },
+    "B19001_012": {
+      "Indent": "1",
+      "Label": "$60,000 to $74,999",
+      "Title": "Household Income in the Past 12 Months (in 2024 Inflation-Adjusted Dollars)",
+      "Universe": "Households"
+    },
+    "B19001_013": {
+      "Indent": "1",
+      "Label": "$75,000 to $99,999",
+      "Title": "Household Income in the Past 12 Months (in 2024 Inflation-Adjusted Dollars)",
+      "Universe": "Households"
+    },
+    "B19001_014": {
+      "Indent": "1",
+      "Label": "$100,000 to $124,999",
+      "Title": "Household Income in the Past 12 Months (in 2024 Inflation-Adjusted Dollars)",
+      "Universe": "Households"
+    },
+    "B19001_015": {
+      "Indent": "1",
+      "Label": "$125,000 to $149,999",
+      "Title": "Household Income in the Past 12 Months (in 2024 Inflation-Adjusted Dollars)",
+      "Universe": "Households"
+    },
+    "B19001_016": {
+      "Indent": "1",
+      "Label": "$150,000 to $199,999",
+      "Title": "Household Income in the Past 12 Months (in 2024 Inflation-Adjusted Dollars)",
+      "Universe": "Households"
+    },
+    "B19001_017": {
+      "Indent": "1",
+      "Label": "$200,000 or more",
+      "Title": "Household Income in the Past 12 Months (in 2024 Inflation-Adjusted Dollars)",
+      "Universe": "Households"
+    },
+    "B19051_001": {
+      "Indent": "0",
+      "Label": "Total:",
+      "Title": "Earnings in the Past 12 Months for Households",
+      "Universe": "Households"
+    },
+    "B19051_002": {
+      "Indent": "1",
+      "Label": "With earnings",
+      "Title": "Earnings in the Past 12 Months for Households",
+      "Universe": "Households"
+    },
+    "B19051_003": {
+      "Indent": "1",
+      "Label": "No earnings",
+      "Title": "Earnings in the Past 12 Months for Households",
+      "Universe": "Households"
+    }
+  },
+  "derived_group_quarters": {
+    "available_counties": 3144,
+    "formula": "B01003_001 minus B11002_001",
+    "margin_of_error": "Not derived; component uncertainty retained separately.",
+    "persons": 8200068
+  },
+  "issue": "PER-40",
+  "native_readers": [
+    "babylon-persistence::national_households"
+  ],
+  "regeneration": "mise exec -- uv run --frozen python tools/make_national_household_reference.py --source-root /media/user/data/babylon-data",
+  "runtime_consumers": [],
+  "selection_and_residual_evidence_class": "Derived",
+  "semantics": {
+    "annotations": "Raw estimate/MOE annotations are unavailable in these bulk sources, not blank or inferred.",
+    "limits": "Historical B19051 earnings status is not current employment, wages or income amount. No class, ownership, employment, wages, wealth, domestic labor, time, political consent, game cohort or cash allocation is observed or initialized here. Later joint allocation requires an explicitly Designed policy.",
+    "partitions": "Each table's own nested parents are checked controls, not extra households/persons. B11001 disjoint type leaves are 003/005/006/008/009; B19001 leaves are 002\u2013017. B19051 leaves 002/003 count households with/no earnings in the past12months. B11002 retains relatives/nonrelatives and family/nonfamily partitions in persons.",
+    "separate_margins": "Type counts, persons by type, income bins and historical with/no-earnings counts are separate marginal observations. They do not establish a joint microhousehold profile. Do not impose integer family-size feasibility across tables or silently rebalance their estimates.",
+    "uncertainty": "Every estimate and 90-percent MOE literal and sentinel is retained. Missing is not zero. A controlled-estimate MOE is unavailable, not zero uncertainty. No combined MOE is invented.",
+    "units": "B11001, B19001 and B19051 count households. B11002 counts persons in households. B19001 bins refer to annual household income in 2024 inflation-adjusted USD, not game cash, wages or wealth."
+  },
+  "source_manifest": {
+    "path": "tools/national_household_reference_2024_sources.json",
+    "sha256": "0abf87da38be9451d5c6be02c477dd5c354c0fbed4145fdc62bcad9e00beaca9"
+  },
+  "source_values_evidence_class": "Observed",
+  "sources": {
+    "B11001": {
+      "actual_path": "/media/user/data/babylon-data/national_reference_2024/acsdt5y2024-b11001.dat",
+      "bytes": 45827971,
+      "id": "B11001",
+      "note": "Official table-based five-year bulk file; downloaded 2026-09-20",
+      "path": "national_reference_2024/acsdt5y2024-b11001.dat",
+      "sha256": "77200c3d9c0d99773bc7f78208bc96f25170e5d4d175a5de320620b478ceaff5",
+      "url": "https://www2.census.gov/programs-surveys/acs/summary_file/2024/table-based-SF/data/5YRData/acsdt5y2024-b11001.dat"
+    },
+    "B11002": {
+      "actual_path": "/media/user/data/babylon-data/national_reference_2024/households_2026-10-02/acsdt5y2024-b11002.dat",
+      "bytes": 58697156,
+      "id": "B11002",
+      "note": "Official ACS 2024 five-year bulk table; captured 2026-10-02. Estimate/MOE literals retained; annotations not supplied.",
+      "path": "national_reference_2024/households_2026-10-02/acsdt5y2024-b11002.dat",
+      "sha256": "84dd1165671a943f4adeae3a585dae764fb0f5a19791858a79ff8578f7b6ca80",
+      "url": "https://www2.census.gov/programs-surveys/acs/summary_file/2024/table-based-SF/data/5YRData/acsdt5y2024-b11002.dat"
+    },
+    "B19001": {
+      "actual_path": "/media/user/data/babylon-data/national_reference_2024/households_2026-10-02/acsdt5y2024-b19001.dat",
+      "bytes": 68953041,
+      "id": "B19001",
+      "note": "Official ACS 2024 five-year bulk table; captured 2026-10-02. Estimate/MOE literals retained; annotations not supplied.",
+      "path": "national_reference_2024/households_2026-10-02/acsdt5y2024-b19001.dat",
+      "sha256": "1af421b3b9d0f85dbd938cd518ad5d01c693fa2870f24e1089552ea5c1e6683f",
+      "url": "https://www2.census.gov/programs-surveys/acs/summary_file/2024/table-based-SF/data/5YRData/acsdt5y2024-b19001.dat"
+    },
+    "B19051": {
+      "actual_path": "/media/user/data/babylon-data/national_reference_2024/households_2026-10-02/acsdt5y2024-b19051.dat",
+      "bytes": 23573665,
+      "id": "B19051",
+      "note": "Official ACS 2024 five-year bulk table; captured 2026-10-02. Past12-month household earnings is a separate historical margin; raw annotations unavailable.",
+      "path": "national_reference_2024/households_2026-10-02/acsdt5y2024-b19051.dat",
+      "sha256": "2de0986d1715a88d95637af4e48ac2edded4ff3b283f6360cd55455afa0dd90e",
+      "url": "https://www2.census.gov/programs-surveys/acs/summary_file/2024/table-based-SF/data/5YRData/acsdt5y2024-b19051.dat",
+      "variables_url": "https://api.census.gov/data/2024/acs/acs5/groups/B19051.html"
+    },
+    "acs_table_shells": {
+      "actual_path": "/media/user/data/babylon-data/national_reference_2024/ACS20245YR_Table_Shells.txt",
+      "bytes": 5622840,
+      "id": "acs_table_shells",
+      "note": "Official variable labels and universes; downloaded 2026-09-20",
+      "path": "national_reference_2024/ACS20245YR_Table_Shells.txt",
+      "sha256": "5b46f4af873744a415c4974204010db976e2a61ff916674732f81c496a6b517d",
+      "url": "https://www2.census.gov/programs-surveys/acs/summary_file/2024/table-based-SF/documentation/ACS20245YR_Table_Shells.txt"
+    }
+  },
+  "vintage": "ACS 2024 five-year (2020\u20132024)"
+}

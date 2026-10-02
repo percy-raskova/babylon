@@ -42,6 +42,8 @@ pub enum ObservationStatus {
     Suppressed,
     /// No selected source row was published.
     NotPublished,
+    /// Supplied ACS cell is empty or null; its exact literal is retained.
+    Missing,
     /// ACS estimate could not be computed.
     EstimateNotComputable,
     /// ACS sample cases were insufficient.

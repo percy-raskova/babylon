@@ -131,10 +131,11 @@ fn cell(fields: &[&str], expected: &str, status: ObservationStatus) -> Result<So
 }
 pub(crate) fn acs_cell(fields: &[&str]) -> Result<SourceCell, Error> {
     use ObservationStatus::{
-        ControlledEstimate, EstimateNotComputable, InsufficientSampleCases, MoeNotComputable,
-        MoeOpenEndedMedian, NotApplicableOrAvailable, Published,
+        ControlledEstimate, EstimateNotComputable, InsufficientSampleCases, Missing,
+        MoeNotComputable, MoeOpenEndedMedian, NotApplicableOrAvailable, Published,
     };
     let (name, status) = match fields.get(1).copied() {
+        Some("" | "null") => ("missing", Missing),
         Some("-666666666") => ("estimate_not_computable", EstimateNotComputable),
         Some("-999999999") => ("insufficient_sample_cases", InsufficientSampleCases),
         Some("-888888888") => ("not_applicable_or_available", NotApplicableOrAvailable),

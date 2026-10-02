@@ -1631,3 +1631,23 @@ artifacts:
       QCEW coverage, ownership claims, labor hours or income. The bounded
       native reader supplies later explicit resident-workplace allocation;
       this source capture creates no game persons, cash or activity.
+
+  - name: national_household_reference_2024
+    format: csv.gz
+    source_table: null
+    generator: tools/make_national_household_reference.py
+    mode: register
+    rows: 3144
+    sha256: 8de3890dda46892ed53a9fda093075a0ce962f93121c6705d5df1dfc5a4a6582
+    home: src/babylon/data/reference/economy/national_household_reference_2024.csv.gz
+    material_relation: >-
+      Part of PER-40: separate ACS 2024 five-year B11001 household-type,
+      B11002 persons-in-households, B19001 annual-income bins and B19051
+      historical with/no-earnings margins
+      for the exact 3144 domestic counties. All 41 estimate/MOE pairs
+      retain original tokens and availability, including controlled margins.
+      B11001 households and B01003 population reconcile against the pinned
+      county foundation. Group-quarters persons are a Derived residual,
+      with no invented combined uncertainty. These separate margins create
+      no joint household profiles, political class, wages, wealth, work,
+      time budgets, cash or game cohorts. Raw annotations are unavailable.

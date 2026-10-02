@@ -1,7 +1,9 @@
 use super::{
-    GameCommodity, GameDependencyProfile, GameEquipmentPolicy, GameFinancialPolicy, GameNeed,
-    GamePrice, GameProfile, GameRecipe, NationalGamePolicy, NationalGamePolicyError,
+    GameCommodity, GameDependencyProfile, GameEquipmentPolicy, GameFinancialPolicy,
+    GameJourneyTiming, GameMarketPolicy, GameNeed, GamePrice, GameProfile, GameRecipe,
+    GameServiceReach, NationalGamePolicy, NationalGamePolicyError,
 };
+use crate::national_transport::CargoClass;
 use babylon_kernel::{
     content_digest::sha256_of, currency::Currency, economic_identity::EconomicFunction,
     economic_location::ForeignCounterpart,
@@ -29,6 +31,7 @@ struct RawPolicy {
     missing_peer_weight_per_establishment: u64,
     household_enterprise_function: String,
     financial: RawFinancial,
+    markets: RawMarkets,
     equipment: RawEquipment,
     commodity: BTreeMap<String, RawCommodity>,
     process: BTreeMap<String, RawRecipe>,
@@ -43,6 +46,7 @@ struct RawCommodity {
     unit_label: String,
     kind: String,
     grams_per_unit: u64,
+    cargo_class: Option<String>,
     opening_price_micros: Option<i128>,
     minimum_price_micros: Option<i128>,
     maximum_price_micros: Option<i128>,
@@ -107,6 +111,14 @@ struct RawEquipment {
     opening_remaining_service_bps: [u16; 4],
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawMarkets {
+    foreign_procurement_bps: u16,
+    journey_timing: String,
+    service_reach: String,
+}
+
 pub(super) fn parse(source: &str) -> Result<NationalGamePolicy, Error> {
     if source.len() > 65_536 {
         return Err(Error::Bounds);
@@ -119,6 +131,7 @@ pub(super) fn parse(source: &str) -> Result<NationalGamePolicy, Error> {
     let counterparts = counterparts(raw.counterpart)?;
     let dependency = dependency(raw.dependency)?;
     let financial = financial(raw.financial)?;
+    let markets = markets(&raw.markets)?;
     let equipment = equipment(raw.equipment, &commodities)?;
     Ok(NationalGamePolicy {
         period_days: raw.period_days,
@@ -133,6 +146,7 @@ pub(super) fn parse(source: &str) -> Result<NationalGamePolicy, Error> {
         missing_peer_weight_per_establishment: raw.missing_peer_weight_per_establishment,
         household_enterprise_function: EconomicFunction::HouseholdServices,
         financial,
+        markets,
         equipment,
         commodities,
         recipes,
@@ -284,6 +298,17 @@ fn commodity(key: &str, raw: RawCommodity) -> Result<GameCommodity, Error> {
     if (key == "resource_deposit") != price.is_none() {
         return Err(fail());
     }
+    let cargo = match raw.cargo_class.as_deref() {
+        None => None,
+        Some("general") => Some(CargoClass::General),
+        Some("dry_bulk") => Some(CargoClass::DryBulk),
+        Some("crude_oil") => Some(CargoClass::CrudeOil),
+        Some("refined_liquid") => Some(CargoClass::RefinedLiquid),
+        _ => return Err(fail()),
+    };
+    if cargo.is_some() != (matches!(kind, CommodityKind::Storable { .. }) && price.is_some()) {
+        return Err(fail());
+    }
     let mut good_bytes = b"NationalGoodV1\0".to_vec();
     good_bytes.extend_from_slice(key.as_bytes());
     let mut unit_bytes = b"NationalUnitV1\0".to_vec();
@@ -294,6 +319,7 @@ fn commodity(key: &str, raw: RawCommodity) -> Result<GameCommodity, Error> {
         label: raw.label,
         unit_label: raw.unit_label,
         kind,
+        cargo,
         price,
     })
 }
@@ -476,5 +502,19 @@ fn dependency(raw: RawDependency) -> Result<GameDependencyProfile, Error> {
                 function_weights_bps: raw.function_weights_bps,
             },
         )?,
+    })
+}
+
+fn markets(raw: &RawMarkets) -> Result<GameMarketPolicy, Error> {
+    if raw.foreign_procurement_bps > 10_000
+        || raw.journey_timing != "slowest_profile"
+        || raw.service_reach != "same_state_or_own_counterpart"
+    {
+        return Err(Error::Profile("market scope".to_owned()));
+    }
+    Ok(GameMarketPolicy {
+        foreign_procurement_bps: raw.foreign_procurement_bps,
+        journey_timing: GameJourneyTiming::SlowestProfile,
+        service_reach: GameServiceReach::SameStateOrOwnCounterpart,
     })
 }

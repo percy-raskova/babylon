@@ -15,6 +15,11 @@ handling_hours_per_unit = 1
 missing_peer_weight_per_establishment = 1 # Designed allocation points, never observed jobs.
 household_enterprise_function = "household_services"
 
+[markets]
+foreign_procurement_bps = 2500 # A sourcing cap, not a promised realized flow.
+journey_timing = "slowest_profile" # Administrative hops do not add 28-day delays.
+service_reach = "same_state_or_own_counterpart"
+
 [financial]
 wage_tax_bps = 1500
 operating_income_tax_bps = 1500
@@ -38,6 +43,7 @@ opening_remaining_service_bps = [2500, 5000, 7500, 10000]
 label = "Food for one person for 28 days"
 unit_label = "person-period food parcel"
 kind = "storable"
+cargo_class = "general"
 grams_per_unit = 14000
 opening_price_micros = 280000000
 minimum_price_micros = 70000000
@@ -48,6 +54,7 @@ price_step_micros = 7000000
 label = "Industrial feedstock"
 unit_label = "feedstock bundle"
 kind = "storable"
+cargo_class = "dry_bulk"
 grams_per_unit = 10000
 opening_price_micros = 40000000
 minimum_price_micros = 10000000
@@ -58,6 +65,7 @@ price_step_micros = 1000000
 label = "Manufactured supplies"
 unit_label = "supplies bundle"
 kind = "storable"
+cargo_class = "general"
 grams_per_unit = 5000
 opening_price_micros = 120000000
 minimum_price_micros = 30000000
@@ -68,6 +76,7 @@ price_step_micros = 3000000
 label = "Productive equipment"
 unit_label = "equipment unit"
 kind = "storable"
+cargo_class = "general"
 grams_per_unit = 250000
 opening_price_micros = 4000000000
 minimum_price_micros = 1000000000

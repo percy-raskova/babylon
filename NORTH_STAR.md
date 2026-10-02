@@ -58,6 +58,11 @@ is not the focus.
 Support and opposition belong to distinct groups. Pressure directed at the
 organization stays separate from regional unrest and the repressive climate.
 
+Households are the smallest economic decision unit. Household cohorts keep
+differences in income, ownership and needs that change play. Cohort accounts
+track people, workers and finite time. The economy does not simulate
+individual agents.
+
 The future language interface proposes a few concrete first steps for a broad
 intention. The player chooses an approach and confirms a reviewed action.
 Pinned plans preserve intentions. They do not silently execute them. G5 owns

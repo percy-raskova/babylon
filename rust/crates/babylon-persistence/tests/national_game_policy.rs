@@ -141,6 +141,9 @@ fn source_workplace_identity_keeps_ownership_and_function_independent() {
     .unwrap();
     assert_ne!(private.site_id, public.site_id);
     assert_ne!(private.site_id, other.site_id);
+    assert!(private.workplace.canonical_bytes().is_ok());
+    assert!(public.workplace.canonical_bytes().is_ok());
+    assert!(other.workplace.canonical_bytes().is_ok());
     assert_eq!(private.allocation_weight, 7);
     assert_eq!(private.location, location);
     assert_eq!(
@@ -152,7 +155,7 @@ fn source_workplace_identity_keeps_ownership_and_function_independent() {
         private.workplace,
         babylon_graph::stable_element::StableElementKey::Node {
             scenario: "national-world".to_owned(),
-            local_name: "site_26163_food_5".to_owned(),
+            local_name: "site-26163-food-5".to_owned(),
         }
     );
 }
@@ -183,4 +186,35 @@ fn authored_funding_and_equipment_controls_refuse_unaccounted_requirements() {
         "service_batches_per_unit = 0"
     ))
     .is_err());
+}
+
+#[test]
+fn cargo_eligibility_is_captured_and_cannot_be_inferred_from_mass() {
+    use babylon_persistence::national_transport::CargoClass;
+    let policy = NationalGamePolicy::parse(SOURCE).unwrap();
+    assert_eq!(policy.commodities["food"].cargo, Some(CargoClass::General));
+    assert_eq!(
+        policy.commodities["resources"].cargo,
+        Some(CargoClass::DryBulk)
+    );
+    assert_eq!(policy.commodities["housing"].cargo, None);
+    assert_eq!(policy.commodities["resource_deposit"].cargo, None);
+    for changed in [
+        SOURCE.replacen("cargo_class = \"general\"\n", "", 1),
+        SOURCE.replacen(
+            "cargo_class = \"general\"",
+            "cargo_class = \"unlimited\"",
+            1,
+        ),
+        SOURCE.replace(
+            "foreign_procurement_bps = 2500",
+            "foreign_procurement_bps = 10001",
+        ),
+        SOURCE.replace(
+            "journey_timing = \"slowest_profile\"",
+            "journey_timing = \"instant\"",
+        ),
+    ] {
+        assert!(NationalGamePolicy::parse(&changed).is_err());
+    }
 }

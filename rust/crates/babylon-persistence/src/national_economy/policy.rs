@@ -22,6 +22,7 @@ pub struct NationalGamePolicy {
     pub missing_peer_weight_per_establishment: u64,
     pub household_enterprise_function: EconomicFunction,
     pub financial: GameFinancialPolicy,
+    pub markets: GameMarketPolicy,
     pub equipment: GameEquipmentPolicy,
     pub commodities: BTreeMap<String, GameCommodity>,
     pub recipes: BTreeMap<EconomicFunction, GameRecipe>,
@@ -37,6 +38,7 @@ pub struct GameCommodity {
     pub label: String,
     pub unit_label: String,
     pub kind: CommodityKind,
+    pub cargo: Option<crate::national_transport::CargoClass>,
     pub price: Option<GamePrice>,
 }
 
@@ -230,4 +232,22 @@ impl GamePrice {
             step: scale(self.step)?,
         })
     }
+}
+
+/// Captured trade sourcing and coarse journey conventions, not observed flows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GameMarketPolicy {
+    pub foreign_procurement_bps: u16,
+    pub journey_timing: GameJourneyTiming,
+    pub service_reach: GameServiceReach,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GameJourneyTiming {
+    SlowestProfile,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GameServiceReach {
+    SameStateOrOwnCounterpart,
 }

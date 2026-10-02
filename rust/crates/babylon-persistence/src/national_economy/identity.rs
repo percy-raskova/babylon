@@ -65,9 +65,9 @@ pub fn source_workplace_target(
         allocation_weight,
         &bytes,
         format!(
-            "site_{}_{}_{}",
+            "site-{}-{}-{}",
             county.geoid(),
-            function.source_key(),
+            function.source_key().replace('_', "-"),
             ownership.source_code()
         ),
         ResidentWorkplaceSource::Qcew(CohortKey {
@@ -95,7 +95,7 @@ pub fn household_enterprise_target(
         QcewOwnership::Private,
         1,
         &bytes,
-        format!("enterprise_{}", county.geoid()),
+        format!("enterprise-{}", county.geoid()),
         ResidentWorkplaceSource::HouseholdEnterprise,
     ))
 }
@@ -126,7 +126,7 @@ pub fn resident_employer_target(
         1,
         &bytes,
         format!(
-            "resident_employer_{}_{}",
+            "resident-employer-{}-{}",
             county.geoid(),
             ownership.source_code()
         ),

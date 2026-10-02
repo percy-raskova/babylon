@@ -234,7 +234,14 @@ delivered equipment and complete installation before increasing usable capacity.
 The policy reader does not itself complete that installation mechanism.
 
 The initial domestic household accounts pool each county's source persons and
-households. Worksites allocate independently accounted resident employees,
+households into a cohort. The household is the minimum economic decision unit;
+person counts inside it explain needs and finite work, without creating
+individual agents. Workplace member rows are counted household-residence groups,
+not personal characters. Disjoint household cohorts can distinguish income,
+ownership or need when those differences matter to play; their source-supported
+counts and Designed allocation assumptions must remain separate.
+
+Worksites allocate independently accounted resident employees,
 working owners, unpaid family and unemployed reserves. Home-county placement is
 an explicit first control, not a commuting observation. Missing source employer
 classes receive named Designed resident-employer placements only when needed.
@@ -255,6 +262,48 @@ Private ownership claims, public ownership and cross-border claims are declared
 separately from source workplace ownership and household wages. These opening
 assignments are not observations of wealth or a political-class census. All
 payments remain limited by the common book's actual cash and prior obligations.
+
+Priced stored bundles have captured cargo classes. Food, finished materials and
+equipment use general cargo; industrial feedstock uses dry bulk. A general air
+connection cannot satisfy a bulk requirement. An unavailable compatible supplier
+leaves the input requirement in place without inventing supply. Period services
+have explicit provider connections, no pantry stock and no freight. The first
+domestic service catchments stay within one state; external services stay within
+their own counterpart or dependency. These are Designed catchments, not evidence
+of a particular utility network or provider's observed service territory.
+
+The national journey uses one timed stage over a verified directed compatible
+path. It reserves every distinct participating shared pool at departure. Its
+duration and loss use the largest participating profile values, rather than
+adding a 28-day delay at every administrative hop. This Designed coarse journey
+omits intermediate rerouting and sums of independent leg losses. Explicit staged
+physical controls remain available for those interactions.
+
+The first supplier preferences cap cross-border procurement at one quarter of
+the periodic requirement, including when a domestic supplier is absent. Domestic
+preferences select a nearby compatible provider. Counterpart preferences rotate
+deterministically across sites; external buyers prefer a large compatible U.S.
+provider. These are bounded sourcing preferences, not measured trade shares or
+national trade policy. Actual orders, fulfillment and settlement remain subject
+to budgets, stock, labor and shared transport capacity.
+
+The 1 October native opening check admits 60,634 sites and staffing pools,
+3,162 counted household cohorts and 62,925 aggregate workplace members. Domestic
+members preserve 161,297,155 employed and 8,902,365 reserve persons. It retains
+73,504 site stock rows, 114,680 recipe-input rows, 115,936 supplier relationships,
+71,856 service connections and 222,347 route capacity memberships. This checks
+the generated opening, including Kalawao's shared production/retail accounts.
+The first full test execution took 54.86 seconds. Caching initializer-only
+supplier preferences retained the same census: its next full test took 39.22
+seconds, including 37.17 seconds of opening generation. These timings do not
+qualify committed-period performance, persistence, subsequent economic behavior
+or play. Common-runtime initialization and the 52-period national qualification
+remain required.
+
+The final scoped opening check and six policy admission cases passed after
+structural cleanup, as did strict all-target persistence Clippy. That run retained
+the same census and took 31.49 seconds, including 30.59 seconds of generation.
+These are development-host initializer timings, not a committed-advance p95.
 
 The equipment opening uses forty batches per unit per period and four thousand
 productive service batches per unit, with thirty-two installation hours and

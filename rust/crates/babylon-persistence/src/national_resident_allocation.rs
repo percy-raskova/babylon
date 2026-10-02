@@ -403,7 +403,7 @@ fn base32(bytes: &[u8; 32]) -> String {
     }
     result
 }
-fn apportion(total: u64, weights: &[u64]) -> Result<Vec<u64>> {
+pub(crate) fn apportion(total: u64, weights: &[u64]) -> Result<Vec<u64>> {
     let sum = weights.iter().try_fold(0_u64, |n, w| {
         n.checked_add(*w).ok_or(AllocationError::Arithmetic)
     })?;

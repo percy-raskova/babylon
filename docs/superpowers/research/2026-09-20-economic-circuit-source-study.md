@@ -269,4 +269,47 @@ choices. The earlier transport/storage reading does not justify classifying
 every service as unproductive labor, nor deriving class from a technical
 commodity kind.
 
+## Fixed-capital follow-up, 2026-10-01
+
+Read in context before implementing investment: **Capital II, chapter 8,
+entire section II, Components, Replacements, Repairs and Accumulation of Fixed
+Capital**, with its retained notes, and **the complete chapter 9**, including
+its notes. Source: the same local `capital-v2.epub` recorded above;
+`OPS/ch08.htm#2` and `OPS/ch09.htm`. The EPUB SHA-256 remains
+`ace2abfba921a129d5a3ce14ea6ac9b8c991073e4091bfb47a0a406b619cfd94`.
+Entry hashes are `595bd8a6bd4b4ff9d1761a91686510630345b69fc61723afadbf949c1c5a96e1`
+and `c4e37813e45c8b131f1e891ab058a441fef2e2d824387d0227af91cc3c0177fc`.
+Chapter 8 section I was not included in this follow-up.
+
+The argument distinguishes the instrument that continues functioning from the
+portion of its value circulating with products. Replacing a worn instrument,
+repairing it and extending capacity are different activities. Money set aside
+for replacement does not itself supply the replacement's material form.
+Maintenance requires continuing expenditure of materials and labor; an assumed
+normal equipment life already presupposes maintenance. Partial renewal and
+unequal component lives complicate any universal retirement calendar.
+
+Chapter 9 distinguishes advanced capital from the repeatedly turned-over
+amount, the return of value in money from the physical reproduction interval,
+and differences in payment timing from differences in productive turnover.
+The discussion of crisis and moral depreciation does not prescribe a ten-year
+clock that makes every firm invest or contract together. Its cited historical
+railway lifetimes and expenditure estimates are not current US observations.
+
+**Implementation constraints:** purchases require actual equipment supply,
+freight, arrival and installation; expansion requires complementary materials
+and finite work. Replacement expenditure and repairs remain distinguishable
+from retained earnings and from accounting depreciation. A depreciation charge
+cannot credit spendable cash, and a replacement reserve cannot guarantee a
+sale or physical delivery. Ownership claims and repeated payments cannot be
+counted as newly produced goods or duplicate consolidated income.
+
+**Designed choices still to implement:** compact equipment cohorts, wear and
+maintenance requirements, installation timing and replacement/expansion
+policies. Exact lifetimes, cost allocation and investment thresholds require
+explicit game parameters. Transaction-cost books remain a disclosed game
+convention, not a claim that carrying cost is Marx's value or that monetary
+profit measures surplus-value. Stagnation, unsuccessful investment and idle
+money remain permissible outcomes.
+
 <!-- vale on -->

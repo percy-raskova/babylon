@@ -10,7 +10,9 @@ mod parse;
 mod tests;
 pub use model::*;
 
-use crate::national_counties::{national_county_reference, NationalCountyReferenceError};
+use crate::national_counties::{
+    national_county_reference, NationalCountyReference, NationalCountyReferenceError,
+};
 use babylon_kernel::{content_digest::sha256_of, geography::CountyGeoid};
 use std::{io::Read, sync::OnceLock};
 
@@ -42,14 +44,23 @@ impl NationalResidentWorkforceReference {
     /// # Errors
     /// Refuses changed bytes, malformed cells, missing counties or contradictory counts.
     pub fn decode_pinned(bytes: &[u8]) -> Result<Self, ResidentWorkforceReferenceError> {
+        let counties =
+            national_county_reference().map_err(ResidentWorkforceReferenceError::CountySource)?;
+        Self::decode_captured(bytes, counties)
+    }
+    /// Reopen from supplied captured evidence and its exact checked county control.
+    /// # Errors
+    /// Refuses changed source/control bytes and contradictory resident observations.
+    pub fn decode_captured(
+        bytes: &[u8],
+        counties: &NationalCountyReference,
+    ) -> Result<Self, ResidentWorkforceReferenceError> {
         if bytes.len() > MAX_COMPRESSED_BYTES {
             return Err(ResidentWorkforceReferenceError::Bound);
         }
         if sha256_of(bytes) != ARTIFACT_SHA256 {
             return Err(ResidentWorkforceReferenceError::ArtifactDigest);
         }
-        let counties =
-            national_county_reference().map_err(ResidentWorkforceReferenceError::CountySource)?;
         if counties.artifact_sha256() != COUNTY_REFERENCE_SHA256 {
             return Err(ResidentWorkforceReferenceError::CountyDigest);
         }

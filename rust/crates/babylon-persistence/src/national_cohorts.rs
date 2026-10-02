@@ -4,10 +4,12 @@
 //! workplace jobs are not distinct resident persons. Eligibility here allocates
 //! no game firms, labor, recipes, stocks, capacities or monetary balances.
 
-use crate::national_counties::{national_county_reference, NationalCountyReferenceError};
+use crate::national_counties::{
+    national_county_reference, NationalCountyReference, NationalCountyReferenceError,
+};
 use babylon_kernel::{
     content_digest::sha256_of,
-    geography::{CountyGeoid, CountyGeoidError},
+    geography::{CountyGeoid, CountyGeoidError, NationalCountyRoster},
 };
 use std::{io::Read, sync::OnceLock};
 mod mapping;
@@ -42,6 +44,7 @@ static REFERENCE: OnceLock<Result<NationalCohortReference, NationalCohortReferen
 /// All admitted and context groups, sorted by county, optional function and ownership.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct NationalCohortReference {
+    roster: NationalCountyRoster,
     groups: Box<[CohortReference]>,
 }
 impl NationalCohortReference {
@@ -50,17 +53,29 @@ impl NationalCohortReference {
     /// # Errors
     /// Refuses altered bytes, bounds, malformed records or inconsistent source measures.
     pub fn decode_pinned(bytes: &[u8]) -> Result<Self, NationalCohortReferenceError> {
+        let counties =
+            national_county_reference().map_err(NationalCohortReferenceError::CountyReference)?;
+        Self::decode_captured(bytes, mapping::DOCUMENT, counties)
+    }
+    /// Admit supplied source and mapping bytes against the supplied checked county capture.
+    /// This path never reacquires policy or county evidence from compiled defaults.
+    /// # Errors
+    /// Refuses changed dependencies and all ordinary source-contract violations.
+    pub fn decode_captured(
+        bytes: &[u8],
+        mapping_bytes: &[u8],
+        counties: &NationalCountyReference,
+    ) -> Result<Self, NationalCohortReferenceError> {
         if bytes.len() > MAX_COMPRESSED_BYTES {
             return Err(NationalCohortReferenceError::Bound);
         }
         if sha256_of(bytes) != ARTIFACT_SHA256 {
             return Err(NationalCohortReferenceError::ArtifactDigest);
         }
-        let counties =
-            national_county_reference().map_err(NationalCohortReferenceError::CountyReference)?;
-        let mapping = mapping::FunctionMapping::load()?;
+        let mapping = mapping::FunctionMapping::decode_pinned(mapping_bytes)?;
         let groups = parse::parse_csv(&decode_gzip(bytes)?, &mapping, counties)?;
         Ok(Self {
+            roster: counties.roster().clone(),
             groups: groups.into_boxed_slice(),
         })
     }
@@ -89,10 +104,9 @@ impl NationalCohortReference {
         &self,
         county: CountyGeoid,
     ) -> Result<&[CohortReference], NationalCohortReferenceError> {
-        national_county_reference()
-            .map_err(NationalCohortReferenceError::CountyReference)?
-            .county(county)
-            .map_err(|_| NationalCohortReferenceError::UnknownCounty(county))?;
+        if !self.roster.contains(county) {
+            return Err(NationalCohortReferenceError::UnknownCounty(county));
+        }
         let start = self.groups.partition_point(|row| row.key().county < county);
         let end = self
             .groups

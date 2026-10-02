@@ -3,7 +3,7 @@ use babylon_kernel::{content_digest::sha256_of, economic_identity::EconomicFunct
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet};
 
-const DOCUMENT: &[u8] = include_bytes!(concat!(
+pub(super) const DOCUMENT: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../../contracts/national_qcew_function_mapping_v1.json"
 ));
@@ -29,11 +29,15 @@ struct Function {
 }
 pub(super) struct FunctionMapping(BTreeMap<String, Option<EconomicFunction>>);
 impl FunctionMapping {
+    #[cfg(test)]
     pub(super) fn load() -> Result<Self, Error> {
-        if sha256_of(DOCUMENT) != MAPPING_SHA256 {
+        Self::decode_pinned(DOCUMENT)
+    }
+    pub(super) fn decode_pinned(bytes: &[u8]) -> Result<Self, Error> {
+        if bytes.len() > 16_384 || sha256_of(bytes) != MAPPING_SHA256 {
             return Err(Error::FunctionMapping);
         }
-        let doc: Document = serde_json::from_slice(DOCUMENT).map_err(|_| Error::FunctionMapping)?;
+        let doc: Document = serde_json::from_slice(bytes).map_err(|_| Error::FunctionMapping)?;
         if doc.contract != "NationalQcewFunctionMappingV1"
             || doc.evidence_class != "Designed"
             || doc.source_vintage != 2024

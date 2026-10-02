@@ -8,22 +8,23 @@ use super::{
 };
 use babylon_kernel::{
     economic_location::{EconomicLocation, ForeignCounterpart, UsDependency},
-    geography::CountyGeoid,
+    geography::{CountyGeoid, NationalCountyRoster},
 };
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
-pub(super) fn county(raw: &str) -> Result<CountyGeoid, Error> {
+fn county(raw: &str, roster: &NationalCountyRoster) -> Result<CountyGeoid, Error> {
     let id = CountyGeoid::try_from(raw).map_err(|_| Error::County)?;
-    crate::national_counties::national_county_reference()
-        .map_err(|_| Error::County)?
-        .county(id)
-        .map_err(|_| Error::County)?;
+    if !roster.contains(id) {
+        return Err(Error::County);
+    }
     Ok(id)
 }
-fn location(raw: &str) -> Result<EconomicLocation, Error> {
+fn location(raw: &str, roster: &NationalCountyRoster) -> Result<EconomicLocation, Error> {
     let (kind, key) = raw.split_once(':').ok_or(Error::Location)?;
     match kind {
-        "county" => EconomicLocation::domestic_county(county(key)?).map_err(|_| Error::Location),
+        "county" => {
+            EconomicLocation::domestic_county(county(key, roster)?).map_err(|_| Error::Location)
+        }
         "foreign" => ForeignCounterpart::from_key(key)
             .map(EconomicLocation::Foreign)
             .ok_or(Error::Location),
@@ -48,7 +49,10 @@ fn point(latitude: Option<&str>, longitude: Option<&str>) -> Result<(), Error> {
         _ => Err(Error::Location),
     }
 }
-pub(super) fn nodes(rows: Vec<raw::Node>) -> Result<Vec<TransportNode>, Error> {
+pub(super) fn nodes(
+    rows: Vec<raw::Node>,
+    roster: &NationalCountyRoster,
+) -> Result<Vec<TransportNode>, Error> {
     let mut output = Vec::with_capacity(rows.len());
     for row in rows {
         if row.id.is_empty()
@@ -61,7 +65,7 @@ pub(super) fn nodes(rows: Vec<raw::Node>) -> Result<Vec<TransportNode>, Error> {
             return Err(Error::Node);
         }
         point(row.latitude.as_deref(), row.longitude.as_deref())?;
-        let place = location(&row.location)?;
+        let place = location(&row.location, roster)?;
         let valid_actor = match row.kind {
             TransportNodeKind::County => matches!(place, EconomicLocation::County(_)),
             TransportNodeKind::Foreign => matches!(place, EconomicLocation::Foreign(_)),
@@ -186,11 +190,12 @@ fn truck_access(
 pub(super) fn access(
     rows: Vec<raw::CountyAccess>,
     nodes: &[TransportNode],
+    roster: &NationalCountyRoster,
 ) -> Result<Vec<CountyTransportAccess>, Error> {
     let ids: BTreeSet<&str> = nodes.iter().map(|n| n.id.as_str()).collect();
     let mut result = Vec::with_capacity(rows.len());
     for row in rows {
-        let county = county(&row.county)?;
+        let county = county(&row.county, roster)?;
         if row.zone.len() != 3
             || !row.zone.bytes().all(|b| b.is_ascii_digit())
             || row
@@ -320,6 +325,7 @@ fn flow_key(key: &[String], zones: &BTreeSet<&str>) -> Result<(), Error> {
 pub(super) fn factors(
     rows: &[[String; 7]],
     access: &[CountyTransportAccess],
+    roster: &NationalCountyRoster,
 ) -> Result<Vec<CountyAllocationFactor>, Error> {
     if rows.len() > 100_000 || !rows.windows(2).all(|pair| pair[0][..5] < pair[1][..5]) {
         return Err(Error::Factor);
@@ -362,7 +368,7 @@ pub(super) fn factors(
             } else {
                 AllocationDirection::Destination
             },
-            county: county(&row[2])?,
+            county: county(&row[2], roster)?,
             zone: row[3].clone(),
             commodity_group: row[4].clone(),
             decimal_factor: row[5].clone(),

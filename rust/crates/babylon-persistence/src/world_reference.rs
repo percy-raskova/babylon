@@ -72,17 +72,36 @@ impl WorldReference {
     /// # Errors
     /// Refuses changed bytes, malformed records, scope overlap or contradictory populations.
     pub fn decode_pinned(population: &[u8], trade: &[u8]) -> Result<Self, WorldReferenceError> {
-        if population.len() > MAX_COMPRESSED_BYTES || trade.len() > MAX_COMPRESSED_BYTES {
+        Self::decode_captured(population, trade, MEMBERSHIP, SCOPE_POLICY)
+    }
+    /// Admit the four explicitly supplied captured artifacts without policy fallback.
+    /// # Errors
+    /// Refuses any changed source/policy bytes or inconsistent scope and measures.
+    pub fn decode_captured(
+        population: &[u8],
+        trade: &[u8],
+        membership: &[u8],
+        scope_policy: &[u8],
+    ) -> Result<Self, WorldReferenceError> {
+        if [
+            population.len(),
+            trade.len(),
+            membership.len(),
+            scope_policy.len(),
+        ]
+        .into_iter()
+        .any(|length| length > MAX_COMPRESSED_BYTES)
+        {
             return Err(WorldReferenceError::Bound);
         }
         if sha256_of(population) != DIGESTS.population
             || sha256_of(trade) != DIGESTS.trade
-            || sha256_of(MEMBERSHIP) != DIGESTS.membership
-            || sha256_of(SCOPE_POLICY) != DIGESTS.population_scope
+            || sha256_of(membership) != DIGESTS.membership
+            || sha256_of(scope_policy) != DIGESTS.population_scope
         {
             return Err(WorldReferenceError::ArtifactDigest);
         }
-        parse::capture(&decode(population)?, &decode(trade)?, MEMBERSHIP)
+        parse::capture(&decode(population)?, &decode(trade)?, membership)
     }
     /// Every source identity in canonical source order, including context and missing rows.
     #[must_use]

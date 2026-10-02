@@ -7,7 +7,7 @@
 
 use babylon_kernel::{
     content_digest::sha256_of,
-    geography::{CountyGeoid, CountyGeoidError},
+    geography::{CountyGeoid, CountyGeoidError, NationalCountyRoster, NATIONAL_COUNTY_COUNT},
 };
 use std::{io::Read, sync::OnceLock};
 mod parse;
@@ -24,17 +24,11 @@ const ARTIFACT: &[u8] = include_bytes!(concat!(
 ));
 const MAX_COMPRESSED_BYTES: usize = 1_048_576;
 const MAX_CSV_BYTES: usize = 2_097_152;
-const COUNTY_COUNT: usize = 3144;
+const COUNTY_COUNT: usize = NATIONAL_COUNTY_COUNT;
 // Exact gzip SHA-256 from national_county_reference_2024.metadata.json.
 const ARTIFACT_SHA256: [u8; 32] = [
     40, 173, 132, 164, 97, 240, 12, 18, 72, 155, 17, 224, 215, 112, 173, 113, 188, 63, 9, 25, 13,
     188, 53, 119, 77, 114, 95, 194, 51, 63, 236, 142,
-];
-// SHA-256 of the sorted source GEOIDs, each followed by one ASCII newline.
-// This separate pin also refuses a same-size roster with an invented county.
-const ROSTER_SHA256: [u8; 32] = [
-    242, 101, 30, 198, 169, 55, 84, 118, 227, 255, 9, 239, 180, 194, 166, 153, 205, 86, 144, 255,
-    211, 240, 201, 130, 174, 172, 173, 150, 124, 33, 194, 65,
 ];
 static REFERENCE: OnceLock<Result<NationalCountyReference, NationalCountyReferenceError>> =
     OnceLock::new();
@@ -218,6 +212,7 @@ impl CountyReference {
 /// Immutable ordered capture. Construction requires the exact artifact and roster pins.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct NationalCountyReference {
+    roster: NationalCountyRoster,
     counties: Box<[CountyReference]>,
 }
 impl NationalCountyReference {
@@ -233,6 +228,11 @@ impl NationalCountyReference {
             return Err(NationalCountyReferenceError::ArtifactDigest);
         }
         parse_csv(&decode_gzip(bytes)?)
+    }
+    /// Exact checked domestic membership, shareable without copying observations.
+    #[must_use]
+    pub const fn roster(&self) -> &NationalCountyRoster {
+        &self.roster
     }
     /// Read every county in ascending GEOID order; no mutable collection is exposed.
     #[must_use]

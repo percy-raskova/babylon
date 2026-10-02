@@ -1,5 +1,8 @@
 //! Source geographic identities. Syntax and jurisdiction do not establish roster membership.
 
+mod roster;
+pub use roster::{NationalCountyRoster, NationalCountyRosterError, NATIONAL_COUNTY_COUNT};
+
 /// Exact five ASCII digits of a county or county-equivalent GEOID.
 ///
 /// Construction checks syntax only. A captured, vintage-specific county roster

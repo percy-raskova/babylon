@@ -2,12 +2,9 @@
 use super::{
     AcsEstimate, CountyReference, InternalPoint, NationalCountyReference,
     NationalCountyReferenceError, ObservationStatus, ResidentEstimates, SourceCell,
-    WorkplaceObservations, COUNTY_COUNT, MAX_CSV_BYTES, ROSTER_SHA256,
+    WorkplaceObservations, COUNTY_COUNT, MAX_CSV_BYTES,
 };
-use babylon_kernel::{
-    content_digest::sha256_of,
-    geography::{CountyGeoid, CountyJurisdiction},
-};
+use babylon_kernel::geography::{CountyGeoid, CountyJurisdiction, NationalCountyRoster};
 type Error = NationalCountyReferenceError;
 const COLUMN_COUNT: usize = 76;
 const ACS_NAMES: [&str; 9] = [
@@ -69,7 +66,6 @@ pub(super) fn parse_csv(text: &str) -> Result<NationalCountyReference, Error> {
         return Err(Error::Header);
     }
     let mut counties: Vec<CountyReference> = Vec::with_capacity(COUNTY_COUNT);
-    let mut roster = Vec::with_capacity(COUNTY_COUNT * 6);
     for line in lines {
         if counties.len() == COUNTY_COUNT {
             return Err(Error::Bound);
@@ -85,14 +81,13 @@ pub(super) fn parse_csv(text: &str) -> Result<NationalCountyReference, Error> {
                 return Err(Error::CountyOrder);
             }
         }
-        roster.extend_from_slice(&row.geoid.as_bytes());
-        roster.push(b'\n');
         counties.push(row);
     }
-    if counties.len() != COUNTY_COUNT || sha256_of(&roster) != ROSTER_SHA256 {
-        return Err(Error::RosterDigest);
-    }
+    let roster =
+        NationalCountyRoster::try_new(counties.iter().map(CountyReference::geoid).collect())
+            .map_err(|_| Error::RosterDigest)?;
     Ok(NationalCountyReference {
+        roster,
         counties: counties.into_boxed_slice(),
     })
 }

@@ -1650,7 +1650,7 @@ pub(crate) struct KeyboardContext<'w> {
     claimed: Res<'w, ObserverKeyboardClaim>,
     ui: Res<'w, ObserverUiState>,
     view: Res<'w, crate::production::PrimaryView>,
-    atlas: Res<'w, CountyAtlas>,
+    scope: Option<Res<'w, crate::map::CountyMapScope>>,
     selected: ResMut<'w, SelectedCounty>,
 }
 
@@ -1666,7 +1666,7 @@ pub(crate) fn keyboard(
         claimed,
         ui,
         view,
-        atlas,
+        scope,
         mut selected,
     } = context;
     if ui.splash_visible || ui.comparison_open {
@@ -1718,34 +1718,13 @@ pub(crate) fn keyboard(
     if *view == crate::production::PrimaryView::Map
         && (keys.just_pressed(KeyCode::ArrowLeft) || keys.just_pressed(KeyCode::ArrowRight))
     {
-        if let Some(next) =
-            adjacent_county(&atlas, selected.0, keys.just_pressed(KeyCode::ArrowRight))
+        if let Some(next) = scope
+            .as_ref()
+            .and_then(|scope| scope.adjacent(selected.0, keys.just_pressed(KeyCode::ArrowRight)))
         {
             selected.0 = Some(next);
         }
     }
-}
-
-fn adjacent_county(atlas: &CountyAtlas, selected: Option<usize>, forward: bool) -> Option<usize> {
-    let counties: Vec<usize> = (0..atlas.len())
-        .filter(|index| {
-            atlas
-                .county(*index)
-                .is_some_and(|county| county.fips.starts_with("26"))
-        })
-        .collect();
-    if counties.is_empty() {
-        return None;
-    }
-    let current = counties.iter().position(|index| Some(*index) == selected);
-    let next = current.map_or(0, |index| {
-        if forward {
-            (index + 1) % counties.len()
-        } else {
-            (index + counties.len() - 1) % counties.len()
-        }
-    });
-    Some(counties[next])
 }
 
 #[must_use]
@@ -1935,7 +1914,7 @@ fn repaint(
             ObserverText::Measures => county.as_ref().map_or_else(|| "Select a county to inspect this lens.".into(), |county| format!("{}\n{}", lens.label, format_lens_reading(lens.county(county.fips), &lens.unit))),
             ObserverText::Hover if *view != crate::production::PrimaryView::Map => String::new(),
             ObserverText::Hover if matches!(ui.lens, MapLens::Relationships) => hovered.0.and_then(|index| atlas.county(index)).map_or_else(String::new, |county| county.name.to_owned()),
-            ObserverText::Hover => hovered.0.and_then(|index| atlas.county(index)).filter(|county| county.fips.starts_with("26")).map_or_else(String::new, |county| format!("{}\n{}\n{}", county.name, lens.label, format_lens_reading(lens.county(county.fips), &lens.unit))),
+            ObserverText::Hover => hovered.0.and_then(|index| atlas.county(index)).map_or_else(String::new, |county| format!("{}\n{}\n{}", county.name, lens.label, format_lens_reading(lens.county(county.fips), &lens.unit))),
             ObserverText::Audio => format!("Title theme: The Purge\nIn-game soundtrack: {} ({}/{})\nMusic {:.0}% | effects {:.0}%\nReduced motion: {} | Stop on delivery: {}", audio.track_title(),audio.track+1,crate::observer_audio::ObserverAudioSettings::track_count(),audio.music_volume*100.0,audio.effects_volume*100.0,if ui.reduced_motion {"ON"}else{"OFF"},if ui.stop_on_delivery {"ON"}else{"OFF"}),
             ObserverText::Evidence => format!("Viewing period {} / Archive processed through {}\n{}", state.viewed_tick, state.archive_verified_tick, archive_detail),
             ObserverText::EvidenceDetails => installed.map_or_else(String::new, |snapshot| {
@@ -3061,8 +3040,7 @@ mod tests {
         }
     }
 
-    #[test]
-    fn county_arrow_shortcuts_only_change_selection_on_geography() {
+    fn county_arrow_app() -> (App, usize) {
         let atlas = CountyAtlas::parse(include_bytes!(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../../../assets/map/county_atlas.bin"
@@ -3072,18 +3050,56 @@ mod tests {
             .find(|index| atlas.county(*index).is_some_and(|row| row.fips == "26099"))
             .expect("Macomb");
         let mut app = App::new();
-        app.add_plugins((MinimalPlugins, InputPlugin))
-            .insert_resource(atlas)
-            .insert_resource(SelectedCounty(Some(county)))
-            .insert_resource(crate::production::PrimaryView::Production)
-            .insert_resource(ObserverUiState {
-                menu_open: false,
-                splash_visible: false,
-                ..default()
-            })
-            .init_resource::<ObserverKeyboardClaim>()
-            .add_message::<ObserverCommand>()
-            .add_systems(Update, keyboard);
+        app.add_plugins((
+            MinimalPlugins,
+            bevy::asset::AssetPlugin::default(),
+            crate::map::MapPlugin,
+        ))
+        .insert_resource(atlas)
+        .insert_resource(SelectedCounty(Some(county)))
+        .insert_resource(crate::production::PrimaryView::Production)
+        .insert_resource(ObserverUiState {
+            menu_open: false,
+            splash_visible: false,
+            ..default()
+        })
+        .init_resource::<ObserverKeyboardClaim>()
+        .add_message::<ObserverCommand>()
+        .add_systems(Update, keyboard);
+        let campaign = babylon_persistence::identity::CampaignId::from_uuid(uuid::Uuid::nil());
+        let mut session = ObserverSession::new(campaign);
+        session.foundation_digest = Some("fixture".into());
+        session.ready(0, None);
+        app.insert_resource(session)
+            .insert_resource(ObserverFrame(Some(ObserverEconomySnapshot {
+                campaign_id: campaign.as_uuid().to_string(),
+                resolve_tick: 0,
+                foundation_digest: "fixture".into(),
+                tick_content_hash: None,
+                nominal_world_hash: None,
+                envelope_digest: None,
+                visibility: babylon_persistence::observer_reader::ObserverVisibility::FullObserver,
+                production: None,
+                counties: ["26099", "26163"]
+                    .into_iter()
+                    .map(
+                        |id| babylon_persistence::observer_reader::ObserverCountyEconomy {
+                            county_geoid: id.into(),
+                            annual_avg_estabs_count: None,
+                            annual_avg_emplvl: None,
+                            total_annual_wages: None,
+                            annual_avg_wkly_wage: None,
+                        },
+                    )
+                    .collect(),
+            })));
+        app.update();
+        (app, county)
+    }
+
+    #[test]
+    fn county_arrow_shortcuts_only_change_selection_on_geography() {
+        let (mut app, county) = county_arrow_app();
         for view in [
             crate::production::PrimaryView::Production,
             crate::production::PrimaryView::Map,

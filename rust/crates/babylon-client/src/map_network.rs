@@ -1,14 +1,34 @@
 //! Disclosed domestic county owners as a geographic, schematic network.
 //! Display offsets separate county aggregates; they are never factory locations.
 
-use super::*;
+use super::super::{ObserverMapCamera, BASE_HEIGHT, MAP_LAYER};
+use super::{
+    disclosed_snapshot, label_bundle, road_mesh, CountyAnchors, RelationshipEntity,
+    RelationshipLabel, RelationshipObservation, RoadSegment, RoadSegments,
+};
+use crate::decision_surface::{DeclaredSurface, SurfaceId};
+use crate::observer::{ObservationContext, ObserverSession};
+use crate::observer_io::ObserverSet;
+use crate::observer_theme as theme;
 use crate::observer_ui::NetworkSector;
+use crate::observer_ui::{ObserverUiState, ObserverViewport, RoadLayer};
+use crate::production::PrimaryView;
 use crate::production::ProductionCommand;
+use crate::production_layout::place_label;
 use babylon_persistence::{
     production_observation::ProductionSite, production_observation::ProductionSiteRole,
 };
+use bevy::ecs::system::SystemParam;
 use bevy::picking::pointer::PointerButton;
+use bevy::prelude::*;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
+
+#[path = "map_network_projection.rs"]
+mod projection;
+use projection::project_network;
+#[path = "map_network_peers.rs"]
+mod peers;
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 enum NodeKey {
@@ -39,8 +59,16 @@ enum NetworkLinkKind {
     Maintenance,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct ExternalPeer {
+    site_id: String,
+    caption: String,
+}
+
 #[derive(Default)]
 struct NetworkProjection {
+    selected_county: Option<String>,
+    external: BTreeMap<NodeKey, ExternalPeer>,
     nodes: BTreeMap<NodeKey, NetworkNode>,
     links: BTreeSet<NetworkLink>,
     total_cohorts: usize,
@@ -97,181 +125,6 @@ fn node_position(anchor: Vec3, rank: usize) -> Vec3 {
             0.0,
             (rank / 3) as f32 * 12.0 - 6.0,
         )
-}
-
-fn project_network(
-    frame: &ObserverFrame,
-    session: &ObserverSession,
-    anchors: &CountyAnchors,
-    sector: NetworkSector,
-    good: Option<&crate::map_economy_lens::MaterialGoodKey>,
-) -> NetworkProjection {
-    let Some(snapshot) = disclosed_snapshot(frame, session) else {
-        return NetworkProjection::default();
-    };
-    let mut result = NetworkProjection {
-        available: true,
-        ..default()
-    };
-    let mut sites: Vec<_> = snapshot.sites.iter().collect();
-    sites.sort_by(|a, b| {
-        (a.location, site_sector(a), &a.id).cmp(&(b.location, site_sector(b), &b.id))
-    });
-    let workforce: BTreeMap<_, _> = snapshot
-        .staffing_accounts
-        .iter()
-        .map(|row| (row.site_id.as_str(), (row.employed, row.reserve)))
-        .collect();
-    let mut county_ranks = BTreeMap::<String, usize>::new();
-    for site in sites {
-        let Some(county) = site.county_geoid() else {
-            continue;
-        };
-        let Some(anchor) = anchors.0.get(&county) else {
-            continue;
-        };
-        let rank = county_ranks.entry(county.clone()).or_default();
-        let key = NodeKey::Site(site.id.clone());
-        result.nodes.insert(
-            key.clone(),
-            NetworkNode {
-                key,
-                site_id: site.id.clone(),
-                county,
-                sector: site_sector(site),
-                position: node_position(anchor.position, *rank),
-                caption: node_caption(site, workforce.get(site.id.as_str()).copied()),
-            },
-        );
-        *rank += 1;
-    }
-    result.total_cohorts = result.nodes.len();
-    for (relation, _) in declared_relations(snapshot) {
-        let from = NodeKey::Site(relation.supplier);
-        let to = NodeKey::Site(relation.buyer);
-        if result.nodes.contains_key(&from) && result.nodes.contains_key(&to) {
-            result.links.insert(NetworkLink {
-                from,
-                to,
-                kind: NetworkLinkKind::Commodity {
-                    good: relation.good,
-                    unit: relation.unit,
-                },
-            });
-        }
-    }
-    if let Some(account) = snapshot.maintenance_account.as_ref().and_then(|account| {
-        crate::production::maintenance::account(snapshot, &account.provider_site_id)
-    }) {
-        let from = NodeKey::Site(account.provider_site_id.clone());
-        let to = NodeKey::Site(account.consumer_site_id.clone());
-        if result.nodes.contains_key(&from) && result.nodes.contains_key(&to) {
-            result.links.insert(NetworkLink {
-                from,
-                to,
-                kind: NetworkLinkKind::Maintenance,
-            });
-        }
-    }
-    project_final_demand(snapshot, anchors, &county_ranks, &mut result);
-    result.total_links = result.links.len();
-    filter_network(snapshot, &mut result, sector, good);
-    result
-}
-
-fn filter_network(
-    snapshot: &ProductionSnapshot,
-    result: &mut NetworkProjection,
-    sector: NetworkSector,
-    good: Option<&crate::map_economy_lens::MaterialGoodKey>,
-) {
-    let matching: BTreeSet<_> = snapshot
-        .sites
-        .iter()
-        .filter(|site| match sector {
-            NetworkSector::Retail => site.roles.contains(&ProductionSiteRole::Retail),
-            NetworkSector::Wholesale => site.roles.contains(&ProductionSiteRole::Wholesale),
-            NetworkSector::Maintenance => site.roles.contains(&ProductionSiteRole::Maintenance),
-            NetworkSector::Production => site.roles.contains(&ProductionSiteRole::Production),
-            _ => site_sector(site) == sector,
-        })
-        .map(|site| NodeKey::Site(site.id.clone()))
-        .chain(
-            result
-                .nodes
-                .iter()
-                .filter(|(_, n)| n.sector == sector)
-                .map(|(k, _)| k.clone()),
-        )
-        .collect();
-    result.links.retain(|link| {
-        good.is_none_or(|good| matches!(&link.kind, NetworkLinkKind::Commodity { good: id, unit } if good.good_id == *id && good.unit_id == *unit))
-            && (sector == NetworkSector::All
-                || [&link.from, &link.to].into_iter().any(|key| {
-                    matching.contains(key)
-                }))
-    });
-    if sector != NetworkSector::All || good.is_some() {
-        let connected: BTreeSet<_> = result
-            .links
-            .iter()
-            .flat_map(|link| [&link.from, &link.to])
-            .cloned()
-            .collect();
-        result
-            .nodes
-            .retain(|key, _| connected.contains(key) || (good.is_none() && matching.contains(key)));
-    }
-}
-
-fn project_final_demand(
-    snapshot: &ProductionSnapshot,
-    anchors: &CountyAnchors,
-    county_ranks: &BTreeMap<String, usize>,
-    result: &mut NetworkProjection,
-) {
-    // End buyers are county demand accounts, not additional firms or households.
-    // Draw only an explicit retail order; a buyer marker has no invented stock.
-    let mut demand: Vec<_> = snapshot.final_demand_accounts.iter().collect();
-    demand.sort_by(|a, b| {
-        (a.location, &a.good_id, &a.unit_id).cmp(&(b.location, &b.good_id, &b.unit_id))
-    });
-    for account in demand {
-        let babylon_kernel::economic_location::EconomicLocation::County(county) = account.location
-        else {
-            continue;
-        };
-        let geoid = county.geoid();
-        let Some(anchor) = anchors.0.get(geoid.as_str()) else {
-            continue;
-        };
-        let to = NodeKey::EndBuyers(geoid.to_string());
-        let mut orders: Vec<_> = account.orders.iter().collect();
-        orders.sort_by(|a, b| {
-            (&a.retailer_site_id, &a.order_id).cmp(&(&b.retailer_site_id, &b.order_id))
-        });
-        for order in orders {
-            let from = NodeKey::Site(order.retailer_site_id.clone());
-            if !result.nodes.contains_key(&from) {
-                continue;
-            }
-            let rank = county_ranks.get(geoid.as_str()).copied().unwrap_or(0);
-            result.nodes.entry(to.clone()).or_insert_with(|| NetworkNode {
-                key: to.clone(), site_id: order.retailer_site_id.clone(),
-                county: geoid.to_string(), sector: NetworkSector::EndBuyers,
-                position: node_position(anchor.position, rank),
-                caption: format!("{} · end buyers\nFinite orders · delivery, not consumption\nClick: trace retail · Circuit [P]: fulfillment", county_label(&anchor.name)),
-            });
-            result.links.insert(NetworkLink {
-                from,
-                to: to.clone(),
-                kind: NetworkLinkKind::Commodity {
-                    good: account.good_id.clone(),
-                    unit: account.unit_id.clone(),
-                },
-            });
-        }
-    }
 }
 
 #[derive(Component)]
@@ -346,9 +199,14 @@ fn heading(projection: &NetworkProjection, filter: NetworkSector) -> String {
     if !projection.available {
         return "ECONOMY NETWORK\nUnavailable in this observation".into();
     }
+    let Some(county) = &projection.selected_county else {
+        return "ECONOMY NETWORK\nSelect a county to inspect its direct suppliers and buyers."
+            .into();
+    };
     let cohorts = projection
         .nodes
         .keys()
+        .chain(projection.external.keys())
         .filter(|key| matches!(key, NodeKey::Site(_)))
         .count();
     let counties = projection
@@ -357,12 +215,9 @@ fn heading(projection: &NetworkProjection, filter: NetworkSector) -> String {
         .map(|node| &node.county)
         .collect::<BTreeSet<_>>()
         .len();
-    format!(
-        "ECONOMY NETWORK\n{cohorts} cohorts · {counties} counties\n{} / {} disclosed links · {}\nArrows: commodity supplier → buyer\nGold service: maintenance → consumer\nDots: county aggregates, not factories\nClick a dot to trace · Map lens to filter",
-        projection.links.len(),
-        projection.total_links,
-        filter.label()
-    )
+    format!("{county} + direct counterparts\n{cohorts} / {} disclosed cohorts · {counties} mapped counties\n{} / {} disclosed links · {}\n{} counterparts listed outside this map\nArrows: supplier → buyer; county aggregates, not factories\nClick a dot or counterpart to inspect · county selection changes scope",
+        projection.total_cohorts, projection.links.len(), projection.total_links,
+        filter.label(), projection.external.len())
 }
 
 fn spawn_legend(commands: &mut Commands) {
@@ -409,14 +264,7 @@ fn rebuild_network(
     old: Query<(Entity, Option<&Mesh3d>), With<EconomyEntity>>,
 ) {
     let context = observation.session.context();
-    if scope.0.as_ref() == Some(&context)
-        && !observation.frame.is_changed()
-        && !observation.navigation.is_changed()
-        && !observation.ui.is_changed()
-        && !observation.session.is_changed()
-        && !observation.view.is_changed()
-        && !observation.selected.is_changed()
-    {
+    if scope.0.as_ref() == Some(&context) && !observation.changed() {
         return;
     }
     scope.0 = Some(context.clone());
@@ -442,6 +290,7 @@ fn rebuild_network(
         &observation.frame,
         &observation.session,
         &observation.anchors,
+        observation.selected.0,
         observation.ui.network_sector,
         good,
     );
@@ -472,6 +321,7 @@ fn rebuild_network(
         &projection,
         observation.navigation.selected_site.as_deref(),
     );
+    peers::spawn_peers(&mut commands, &projection, &context);
     spawn_network_nodes(
         &mut commands,
         &assets,
@@ -490,6 +340,9 @@ fn spawn_network_connections(
 ) {
     let mut connections = BTreeMap::<(NodeKey, NodeKey), NetworkSector>::new();
     for link in &projection.links {
+        if !projection.nodes.contains_key(&link.from) || !projection.nodes.contains_key(&link.to) {
+            continue;
+        }
         connections.insert(
             (link.from.clone(), link.to.clone()),
             if link.kind == NetworkLinkKind::Maintenance {
@@ -728,7 +581,8 @@ pub(super) fn install(app: &mut App) {
             Update,
             place_network_labels.after(super::super::sync_camera),
         )
-        .add_systems(Update, place_legend.after(super::super::sync_camera));
+        .add_systems(Update, place_legend.after(super::super::sync_camera))
+        .add_systems(Update, peers::place_peers.after(super::super::sync_camera));
 }
 
 fn place_legend(
@@ -757,13 +611,19 @@ mod tests {
     use super::super::tests::fixture;
     use super::*;
     use crate::map_economy_lens::MaterialGoodKey;
+    use crate::observer_ui::ObserverFrame;
 
-    #[test]
-    fn network_keeps_isolated_cohorts_all_goods_and_retail_endpoints_without_inventing_routes() {
+    fn retail_fixture() -> (ObserverSession, ObserverFrame, CountyAnchors) {
         let (session, mut frame, anchors) = fixture();
         let snapshot = frame.0.as_mut().unwrap().production.as_mut().unwrap();
         snapshot.sites[1].roles = vec![ProductionSiteRole::Retail];
         snapshot.sites[1].sector_code = Some("44-45".into());
+        let mut isolated = snapshot.sites[1].clone();
+        isolated.id = "local-isolated".into();
+        for process in &mut isolated.processes {
+            process.inputs.clear();
+        }
+        snapshot.sites.push(isolated);
         snapshot.final_demand_accounts.push(
             babylon_persistence::production_observation::ProductionFinalDemandAccount {
                 total_order_count: 1,
@@ -792,17 +652,33 @@ mod tests {
                 completed: None,
             },
         );
-        let full = project_network(&frame, &session, &anchors, NetworkSector::All, None);
-        assert_eq!(full.total_cohorts, 3);
+        (session, frame, anchors)
+    }
+
+    #[test]
+    fn network_keeps_local_isolated_cohorts_and_direct_retail_relationships_without_inventing_routes(
+    ) {
+        let (session, mut frame, anchors) = retail_fixture();
+        let full = project_network(
+            &frame,
+            &session,
+            &anchors,
+            Some(2),
+            NetworkSector::All,
+            None,
+        );
+        assert_eq!(full.total_cohorts, 4);
         assert_eq!(full.nodes.len(), 4);
+        assert!(!full.nodes.contains_key(&NodeKey::Site("unrelated".into())));
         assert_eq!(
             full.links.len(),
             3,
             "two goods and one local final-demand relationship"
         );
         assert!(
-            full.nodes.contains_key(&NodeKey::Site("unrelated".into())),
-            "isolated producers stay visible"
+            full.nodes
+                .contains_key(&NodeKey::Site("local-isolated".into())),
+            "isolated producers in the selected county stay visible"
         );
         assert!(full
             .links
@@ -812,6 +688,7 @@ mod tests {
             &frame,
             &session,
             &anchors,
+            Some(2),
             NetworkSector::Retail,
             Some(&MaterialGoodKey {
                 good_id: "steel".into(),
@@ -831,7 +708,14 @@ mod tests {
         let snapshot = frame.0.as_mut().unwrap().production.as_mut().unwrap();
         snapshot.sites.reverse();
         snapshot.final_demand_accounts.reverse();
-        let permuted = project_network(&frame, &session, &anchors, NetworkSector::All, None);
+        let permuted = project_network(
+            &frame,
+            &session,
+            &anchors,
+            Some(2),
+            NetworkSector::All,
+            None,
+        );
         assert_eq!(full.nodes, permuted.nodes);
         assert_eq!(full.links, permuted.links);
         assert!(
@@ -857,7 +741,15 @@ mod tests {
         for invalid in ["stale", "loading", "preview"] {
             let (mut session, mut frame, anchors) = fixture();
             assert!(
-                project_network(&frame, &session, &anchors, NetworkSector::All, None).available
+                project_network(
+                    &frame,
+                    &session,
+                    &anchors,
+                    Some(2),
+                    NetworkSector::All,
+                    None
+                )
+                .available
             );
             match invalid {
                 "stale" => frame.0.as_mut().unwrap().resolve_tick = 2,
@@ -869,20 +761,36 @@ mod tests {
                 }
                 _ => unreachable!(),
             }
-            let hidden = project_network(&frame, &session, &anchors, NetworkSector::All, None);
+            let hidden = project_network(
+                &frame,
+                &session,
+                &anchors,
+                Some(2),
+                NetworkSector::All,
+                None,
+            );
             assert!(!hidden.available);
-            assert!(hidden.nodes.is_empty() && hidden.links.is_empty());
+            assert!(
+                hidden.nodes.is_empty() && hidden.links.is_empty() && hidden.external.is_empty()
+            );
         }
     }
     #[test]
     fn maintenance_network_discloses_service_endpoints_only_to_the_current_full_observer() {
         let (session, mut frame, anchors) = fixture();
         let source = frame.0.as_ref().unwrap().production.as_ref().unwrap();
-        let snapshot = crate::maintenance_fixture::snapshot(source, 3, Some(2));
+        let snapshot = crate::maintenance_fixture::snapshot(source, 3, Some(1));
         let provider = snapshot.sites.last().unwrap().id.clone();
         let consumer = snapshot.sites[0].id.clone();
         frame.0.as_mut().unwrap().production = Some(snapshot);
-        let full = project_network(&frame, &session, &anchors, NetworkSector::All, None);
+        let full = project_network(
+            &frame,
+            &session,
+            &anchors,
+            Some(1),
+            NetworkSector::All,
+            None,
+        );
         assert_eq!(
             full.nodes[&NodeKey::Site(provider.clone())].sector.label(),
             "Maintenance"
@@ -896,6 +804,7 @@ mod tests {
             &frame,
             &session,
             &anchors,
+            Some(1),
             NetworkSector::All,
             Some(&MaterialGoodKey {
                 good_id: "steel".into(),
@@ -905,8 +814,19 @@ mod tests {
         assert!(!goods_only.nodes.contains_key(&NodeKey::Site(provider)));
         frame.0.as_mut().unwrap().visibility =
             babylon_persistence::observer_reader::ObserverVisibility::KnownPreview;
-        let hidden = project_network(&frame, &session, &anchors, NetworkSector::All, None);
+        let hidden = project_network(
+            &frame,
+            &session,
+            &anchors,
+            Some(1),
+            NetworkSector::All,
+            None,
+        );
         assert!(!hidden.available);
-        assert!(hidden.nodes.is_empty() && hidden.links.is_empty());
+        assert!(hidden.nodes.is_empty() && hidden.links.is_empty() && hidden.external.is_empty());
     }
 }
+
+#[cfg(test)]
+#[path = "map_network_focus_tests.rs"]
+mod focus_tests;

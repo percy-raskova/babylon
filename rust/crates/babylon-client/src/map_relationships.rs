@@ -144,7 +144,7 @@ struct CountyAnchor {
     position: Vec3,
 }
 
-#[derive(Resource)]
+#[derive(Resource, Default)]
 pub(super) struct CountyAnchors(BTreeMap<String, CountyAnchor>, Vec2);
 
 impl CountyAnchors {
@@ -201,8 +201,18 @@ struct RelationshipProjection {
     available: bool,
 }
 
-fn declared_relations(snapshot: &ProductionSnapshot) -> BTreeMap<RelationKey, (String, String)> {
+fn declared_relations(
+    snapshot: &ProductionSnapshot,
+    selected_site: &str,
+    material: Option<&crate::map_economy_lens::MaterialGoodKey>,
+) -> BTreeMap<RelationKey, (String, String)> {
     crate::material_relations::declared_material_relations(snapshot)
+        .filter(|relation| {
+            (relation.supplier == selected_site || relation.buyer == selected_site)
+                && material.is_none_or(|good| {
+                    relation.good_id == good.good_id && relation.unit_id == good.unit_id
+                })
+        })
         .map(|relation| {
             (
                 RelationKey {
@@ -278,15 +288,7 @@ fn project(
         return result;
     }
     let edges = physical_index(snapshot);
-    for (key, (good, unit)) in declared_relations(snapshot) {
-        if material
-            .is_some_and(|material| material.good_id != key.good || material.unit_id != key.unit)
-        {
-            continue;
-        }
-        if key.supplier != selected_site && key.buyer != selected_site {
-            continue;
-        }
+    for (key, (good, unit)) in declared_relations(snapshot, selected_site, material) {
         let (Some(supplier), Some(buyer)) = (
             sites.get(key.supplier.as_str()),
             sites.get(key.buyer.as_str()),
@@ -610,6 +612,18 @@ struct RelationshipObservation<'w> {
     view: Res<'w, PrimaryView>,
 }
 
+impl RelationshipObservation<'_> {
+    fn changed(&self) -> bool {
+        self.anchors.is_changed()
+            || self.frame.is_changed()
+            || self.navigation.is_changed()
+            || self.ui.is_changed()
+            || self.session.is_changed()
+            || self.view.is_changed()
+            || self.selected.is_changed()
+    }
+}
+
 fn rebuild(
     mut commands: Commands,
     observation: RelationshipObservation,
@@ -619,13 +633,7 @@ fn rebuild(
     old: Query<Entity, With<RelationshipEntity>>,
 ) {
     let current = (observation.session.context(), observation.selected.0);
-    if scope.0.as_ref() == Some(&current)
-        && !observation.frame.is_changed()
-        && !observation.navigation.is_changed()
-        && !observation.ui.is_changed()
-        && !observation.session.is_changed()
-        && !observation.view.is_changed()
-    {
+    if scope.0.as_ref() == Some(&current) && !observation.changed() {
         return;
     }
     scope.0 = Some(current.clone());
@@ -815,7 +823,12 @@ fn jump_target(
     // Revalidate the exact disclosed relation, independently of which six
     // labels another material filter would have placed on its first page.
     let snapshot = disclosed_snapshot(frame, session)?;
-    if !declared_relations(snapshot).contains_key(&jump.key) {
+    if !crate::material_relations::declared_material_relations(snapshot).any(|relation| {
+        relation.supplier == jump.key.supplier
+            && relation.buyer == jump.key.buyer
+            && relation.good_id == jump.key.good
+            && relation.unit_id == jump.key.unit
+    }) {
         return None;
     }
     let supplier = snapshot
@@ -1384,7 +1397,7 @@ mod tests {
     }
 
     #[test]
-    fn world_opens_with_the_whole_economy_before_a_county_or_cohort_is_selected() {
+    fn world_waits_for_county_then_shows_direct_economy_without_a_cohort_selection() {
         let mut app = road_layer_app();
         *app.world_mut().resource_mut::<ObserverUiState>() = ObserverUiState {
             menu_open: false,
@@ -1400,9 +1413,26 @@ mod tests {
             app.world_mut()
                 .query::<&Text>()
                 .iter(app.world())
-                .any(|text| text.0.contains("ECONOMY NETWORK") && text.0.contains("3 cohorts")),
-            "World must disclose the whole admitted economy without first selecting a chain"
+                .any(|text| text
+                    .0
+                    .contains("Select a county to inspect its direct suppliers and buyers")),
+            "No county selection must not create an unbounded all-actor scene"
         );
+        app.world_mut().resource_mut::<SelectedCounty>().0 = Some(1);
+        app.update();
+        assert!(app
+            .world_mut()
+            .query::<&Text>()
+            .iter(app.world())
+            .any(|text| {
+                text.0.contains("Wayne County, MI + direct counterparts")
+                    && text.0.contains("3 / 3 disclosed cohorts")
+            }));
+        assert!(app
+            .world()
+            .resource::<crate::production::ProductionNavigation>()
+            .selected_site
+            .is_none());
     }
 
     #[test]

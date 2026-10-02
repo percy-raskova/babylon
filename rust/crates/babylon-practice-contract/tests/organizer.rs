@@ -4,6 +4,7 @@ use babylon_practice_contract::*;
 fn config() -> OrganizerConfig {
     OrganizerConfig {
         schema_version: ORGANIZER_SCHEMA_VERSION,
+        time_binding: OrganizerTimeBindingMode::FixedTimeControl,
         campaign_id: [1; 16],
         controlled_actor_id: 101,
         input_authority_id: [2; 16],
@@ -1262,5 +1263,140 @@ fn finite_one_contributor_can_fund_distinct_actor_uses_without_duplicating_suppl
     assert_eq!(
         next.receipts.last().unwrap().outcome,
         OrganizerOutcome::ContactCompleted
+    );
+}
+
+fn captured_household_config() -> OrganizerConfig {
+    let mut captured = config();
+    captured.time_binding = OrganizerTimeBindingMode::Household {
+        bindings: captured
+            .participants
+            .iter()
+            .map(|participant| OrganizerHouseholdBinding {
+                contributor_id: participant.contributor_id,
+                principal_id: [51; 32],
+            })
+            .collect(),
+    };
+    captured
+}
+
+#[test]
+fn captured_time_binding_shared_households_roundtrip_and_change_identity() {
+    let captured = captured_household_config();
+    validate_organizer_config(&captured).unwrap();
+    let bytes = encode_organizer_config(&captured).unwrap();
+    assert_eq!(decode_organizer_config(&bytes).unwrap(), captured);
+    assert_ne!(bytes, encode_organizer_config(&config()).unwrap());
+    let mut changed = captured.clone();
+    let OrganizerTimeBindingMode::Household { bindings } = &mut changed.time_binding else {
+        unreachable!()
+    };
+    bindings[1].principal_id = [52; 32];
+    assert_ne!(bytes, encode_organizer_config(&changed).unwrap());
+}
+
+#[test]
+fn captured_time_binding_rejects_missing_duplicate_zero_and_unrostered_rows() {
+    for kind in 0..6 {
+        let mut captured = captured_household_config();
+        let OrganizerTimeBindingMode::Household { bindings } = &mut captured.time_binding else {
+            unreachable!()
+        };
+        match kind {
+            0 => {
+                bindings.pop();
+            }
+            1 => bindings[1].contributor_id = bindings[0].contributor_id,
+            2 => bindings[0].principal_id = [0; 32],
+            3 => bindings[0].contributor_id = 999,
+            4 => bindings.reverse(),
+            _ => bindings[0].contributor_id = 0,
+        }
+        assert_eq!(
+            validate_organizer_config(&captured),
+            Err(OrganizerError::TimeBindingMismatch)
+        );
+    }
+}
+
+#[test]
+fn captured_time_binding_is_required_and_old_format_is_refused() {
+    let captured = captured_household_config();
+    let mut old_schema = captured.clone();
+    old_schema.schema_version = 1;
+    assert_eq!(
+        validate_organizer_config(&old_schema),
+        Err(OrganizerError::UnsupportedSchema)
+    );
+    let mut old_state = initial_organizer_state(&captured).unwrap();
+    old_state.schema_version = 1;
+    assert_eq!(
+        validate_organizer_state(&old_state),
+        Err(OrganizerError::UnsupportedSchema)
+    );
+    let mut payload = serde_json::to_value(&captured).unwrap();
+    payload.as_object_mut().unwrap().remove("time_binding");
+    assert!(serde_json::from_value::<OrganizerConfig>(payload).is_err());
+    let mut old_bytes = b"babylon.organizer-config.v1\0".to_vec();
+    old_bytes.extend(serde_json::to_vec(&captured).unwrap());
+    assert_eq!(
+        decode_organizer_config(&old_bytes),
+        Err(OrganizerError::Codec)
+    );
+}
+
+#[test]
+fn captured_time_binding_cannot_select_fixed_allowances() {
+    let captured = captured_household_config();
+    assert_eq!(
+        organizer_fixed_time_resources(&captured, 1),
+        Err(OrganizerError::TimeBindingMismatch)
+    );
+}
+
+#[test]
+fn captured_time_binding_preserves_shared_principal_budget_identity() {
+    let mut captured = captured_household_config();
+    let mut resources = shared_time(&config(), 10);
+    let OrganizerTimeBindingMode::Household { bindings } = &mut captured.time_binding else {
+        unreachable!()
+    };
+    bindings[2].principal_id = [52; 32];
+    assert_eq!(
+        finite_act(
+            &captured,
+            &initial_organizer_state(&captured).unwrap(),
+            &resources
+        )
+        .unwrap()
+        .receipts
+        .last()
+        .unwrap()
+        .outcome,
+        OrganizerOutcome::ContactCompleted
+    );
+    resources = finite_time(&config(), 1);
+    assert_eq!(
+        finite_act(
+            &captured,
+            &initial_organizer_state(&captured).unwrap(),
+            &resources
+        ),
+        Err(OrganizerError::TimeBindingMismatch)
+    );
+    let mut distinct = captured.clone();
+    let OrganizerTimeBindingMode::Household { bindings } = &mut distinct.time_binding else {
+        unreachable!()
+    };
+    bindings[1].principal_id = [53; 32];
+    let shared = shared_time(&config(), 10);
+    assert_eq!(
+        finite_act(
+            &distinct,
+            &initial_organizer_state(&distinct).unwrap(),
+            &shared
+        ),
+        Err(OrganizerError::TimeBindingMismatch)
     );
 }

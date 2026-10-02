@@ -1,7 +1,8 @@
 //! Period-specific finite time; aliases bind one shared supply exactly once.
 use super::transition::response_intent;
 use super::{
-    validate_organizer_config, OrganizerConfig, OrganizerError, OrganizerPartner, OrganizerTimeUse,
+    validate_organizer_config, OrganizerConfig, OrganizerError, OrganizerPartner,
+    OrganizerTimeBindingMode, OrganizerTimeUse,
 };
 use crate::{
     allocate_practice_resources, derive_practice_resource_request, PracticeIntent,
@@ -44,6 +45,9 @@ pub fn organizer_fixed_time_resources(
     period: u64,
 ) -> Result<OrganizerPeriodTimeResources, OrganizerError> {
     validate_organizer_config(config)?;
+    if config.time_binding != OrganizerTimeBindingMode::FixedTimeControl {
+        return Err(OrganizerError::TimeBindingMismatch);
+    }
     if period == 0 {
         return Err(OrganizerError::TimePeriodMismatch);
     }
@@ -127,8 +131,40 @@ pub(super) fn validate_resources(
         }
         bound.insert(binding.budget_id);
     }
+    validate_captured_aliases(config, resources)?;
     if bound != capacities {
         return Err(OrganizerError::TimeCapacityScope);
+    }
+    Ok(())
+}
+
+fn validate_captured_aliases(
+    config: &OrganizerConfig,
+    resources: &OrganizerPeriodTimeResources,
+) -> Result<(), OrganizerError> {
+    let OrganizerTimeBindingMode::Household { bindings } = &config.time_binding else {
+        return Ok(());
+    };
+    let transient: BTreeMap<_, _> = resources
+        .bindings
+        .iter()
+        .map(|row| (row.contributor_id, row.budget_id))
+        .collect();
+    let mut principals = BTreeMap::new();
+    let mut budgets = BTreeMap::new();
+    for binding in bindings {
+        let budget = *transient
+            .get(&binding.contributor_id)
+            .ok_or(OrganizerError::TimeBindingMismatch)?;
+        if principals
+            .insert(binding.principal_id, budget)
+            .is_some_and(|previous| previous != budget)
+            || budgets
+                .insert(budget, binding.principal_id)
+                .is_some_and(|previous| previous != binding.principal_id)
+        {
+            return Err(OrganizerError::TimeBindingMismatch);
+        }
     }
     Ok(())
 }

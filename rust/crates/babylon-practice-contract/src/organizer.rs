@@ -13,7 +13,7 @@ pub use time_resources::*;
 pub use transition::*;
 
 /// Current organizer representation. Older representations are unsupported.
-pub const ORGANIZER_SCHEMA_VERSION: u16 = 1;
+pub const ORGANIZER_SCHEMA_VERSION: u16 = 2;
 
 /// Whole organizer-hours are Designed participant time commitments, not jobs.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -54,6 +54,24 @@ pub struct OrganizerPartner {
     pub permits_maintenance_report: bool,
 }
 
+/// Captured identity only; the material host validates household existence and units.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OrganizerHouseholdBinding {
+    pub contributor_id: u64,
+    pub principal_id: [u8; 32],
+}
+
+/// Required captured source of time; no implicit fixed supply for household work.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub enum OrganizerTimeBindingMode {
+    FixedTimeControl,
+    Household {
+        bindings: Vec<OrganizerHouseholdBinding>,
+    },
+}
+
 /// Captured scenario content. All quantities and political actors are Designed.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -69,6 +87,7 @@ pub struct OrganizerConfig {
     pub workplace_partner: OrganizerPartner,
     pub neighborhood_partner: OrganizerPartner,
     pub participants: Vec<OrganizerParticipant>,
+    pub time_binding: OrganizerTimeBindingMode,
     pub inquiry_hours: u64,
     pub contact_hours: u64,
     pub partner_response_hours: u64,

@@ -112,6 +112,7 @@ pub fn validate_organizer_config(config: &OrganizerConfig) -> Result<(), Organiz
             return Err(OrganizerError::InvalidConfig);
         }
     }
+    validate_time_binding(config)?;
     if config.initial_observations.len() > MAX_ORGANIZER_ROWS {
         return Err(OrganizerError::SizeLimit);
     }
@@ -127,6 +128,24 @@ pub fn validate_organizer_config(config: &OrganizerConfig) -> Result<(), Organiz
         {
             return Err(OrganizerError::InvalidConfig);
         }
+    }
+    Ok(())
+}
+
+fn validate_time_binding(config: &OrganizerConfig) -> Result<(), OrganizerError> {
+    let OrganizerTimeBindingMode::Household { bindings } = &config.time_binding else {
+        return Ok(());
+    };
+    if bindings.len() != config.participants.len()
+        || bindings
+            .iter()
+            .zip(&config.participants)
+            .any(|(binding, participant)| {
+                binding.contributor_id != participant.contributor_id
+                    || binding.principal_id == [0; 32]
+            })
+    {
+        return Err(OrganizerError::TimeBindingMismatch);
     }
     Ok(())
 }
@@ -299,11 +318,11 @@ pub fn validate_organizer_pair(
 
 pub fn encode_organizer_config(config: &OrganizerConfig) -> Result<Vec<u8>, OrganizerError> {
     validate_organizer_config(config)?;
-    canonical(b"babylon.organizer-config.v1", config)
+    canonical(b"babylon.organizer-config.v2", config)
 }
 
 pub fn decode_organizer_config(bytes: &[u8]) -> Result<OrganizerConfig, OrganizerError> {
-    let value = decode(b"babylon.organizer-config.v1", bytes)?;
+    let value = decode(b"babylon.organizer-config.v2", bytes)?;
     validate_organizer_config(&value)?;
     Ok(value)
 }

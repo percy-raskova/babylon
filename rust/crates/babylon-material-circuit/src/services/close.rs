@@ -120,12 +120,11 @@ impl ServiceClose {
             ));
             let produced_quantity = state
                 .inventory
-                .iter()
-                .find(|r| {
+                .binary_search_by_key(&(output.site_id, output.good_id, output.unit_id), |r| {
                     (r.site_id, r.good_id, r.unit_id)
-                        == (output.site_id, output.good_id, output.unit_id)
                 })
-                .map_or(0, |r| r.quantity);
+                .ok()
+                .map_or(0, |i| state.inventory[i].quantity);
             self.outputs.push(ServiceOutputReceipt {
                 period: state.period,
                 process_id: output.process_id,
@@ -140,8 +139,11 @@ impl ServiceClose {
             });
             if let Some(market) = self
                 .markets
-                .iter_mut()
-                .find(|r| r.process_id == output.process_id)
+                .binary_search_by_key(&(output.site_id, output.good_id, output.unit_id), |r| {
+                    (r.site_id, r.good_id, r.unit_id)
+                })
+                .ok()
+                .map(|i| &mut self.markets[i])
             {
                 market.direct_cost = direct_cost;
             }
@@ -331,8 +333,9 @@ impl ServiceClose {
                 }
                 let cohort = r
                     .households
-                    .iter()
-                    .find(|r| r.principal_id == need.principal_id)
+                    .binary_search_by_key(&need.principal_id, |r| r.principal_id)
+                    .ok()
+                    .map(|i| &r.households[i])
                     .ok_or(MaterialCircuitError::FinalDemandInvariant)?;
                 let required = need.required_quantity(cohort)?;
                 let key = (

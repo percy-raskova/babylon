@@ -88,15 +88,17 @@ fn requests(state: &MaterialCircuitState) -> Result<Vec<Request>> {
         }
         let cohort = r
             .households
-            .iter()
-            .find(|r| r.principal_id == p.principal_id)
+            .binary_search_by_key(&p.principal_id, |r| r.principal_id)
+            .ok()
+            .map(|i| &r.households[i])
             .ok_or(MaterialCircuitError::FinalDemandInvariant)?;
         let need = r
             .household_needs
-            .iter()
-            .find(|r| {
-                (r.principal_id, r.good_id, r.unit_id) == (p.principal_id, p.good_id, p.unit_id)
+            .binary_search_by_key(&(p.principal_id, p.good_id, p.unit_id), |r| {
+                (r.principal_id, r.good_id, r.unit_id)
             })
+            .ok()
+            .map(|i| &r.household_needs[i])
             .ok_or(MaterialCircuitError::FinalDemandInvariant)?;
         let required = need.required_quantity(cohort)?;
         result.push(Request {
@@ -175,6 +177,12 @@ pub(super) fn admit(
         return Ok(vec![]);
     };
     let mut result = Vec::new();
+    // New orders append until the final sort; index only actual positive admissions.
+    let mut order_ids: std::collections::BTreeSet<_> = state
+        .service_orders
+        .iter()
+        .map(|row| row.order_id)
+        .collect();
     for order in &state.service_orders {
         if order.performance_period == state.period {
             let price = e
@@ -191,10 +199,11 @@ pub(super) fn admit(
             .ok_or(MaterialCircuitError::ServiceInvariant)?;
         let price = recurring
             .offers
-            .iter()
-            .find(|o| {
-                (o.site_id, o.good_id, o.unit_id) == (request.provider, request.good, request.unit)
+            .binary_search_by_key(&(request.provider, request.good, request.unit), |o| {
+                (o.site_id, o.good_id, o.unit_id)
             })
+            .ok()
+            .map(|i| &recurring.offers[i])
             .ok_or(MaterialCircuitError::PurchaseInvariant)?
             .unit_price;
         let cash = e
@@ -215,11 +224,7 @@ pub(super) fn admit(
             unit_id: request.unit,
             quantity,
         };
-        if state
-            .service_orders
-            .iter()
-            .any(|r| r.order_id == order.order_id)
-        {
+        if order_ids.contains(&order.order_id) {
             return Err(MaterialCircuitError::DuplicateRow);
         }
         if quantity > 0 {
@@ -239,6 +244,7 @@ pub(super) fn admit(
                 quantity,
                 price,
             )?)?);
+            order_ids.insert(order.order_id);
             state.service_orders.push(order.clone());
         }
         result.push(receipt(&order, request.requested, price));

@@ -90,7 +90,8 @@ fn separately_accounted_household_cohorts_can_share_one_market_location() {
         principal_id: second,
         good_id: good(2),
         unit_id: units(),
-        units_per_person: 1,
+        basis: babylon_material_circuit::HouseholdNeedBasis::Persons,
+        units_per_basis: 1,
     });
     recurring.household_purchases.push(HouseholdPurchasePolicy {
         principal_id: second,
@@ -167,7 +168,7 @@ fn material_wire_refuses_invalid_locations_and_the_previous_state_format() {
     }
     let mut previous = bytes;
     let version = MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES.len() + 1;
-    assert_eq!(&previous[version..version + 2], &10_u16.to_be_bytes());
-    previous[version..version + 2].copy_from_slice(&9_u16.to_be_bytes());
+    assert_eq!(&previous[version..version + 2], &11_u16.to_be_bytes());
+    previous[version..version + 2].copy_from_slice(&10_u16.to_be_bytes());
     assert!(decode_material_circuit_state(&previous).is_err());
 }

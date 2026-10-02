@@ -27,20 +27,18 @@ pub fn recurring_household_order_id(
 }
 
 fn requirements(rows: &RecurringEconomy) -> Result<BTreeMap<HouseholdKey, u64>> {
-    let people: BTreeMap<_, _> = rows
+    let households: BTreeMap<_, _> = rows
         .households
         .iter()
-        .map(|r| (r.principal_id, r.persons))
+        .map(|r| (r.principal_id, r))
         .collect();
     rows.household_needs
         .iter()
         .map(|need| {
-            let persons = people
+            let cohort = households
                 .get(&need.principal_id)
                 .ok_or(MaterialCircuitError::FinalDemandInvariant)?;
-            let quantity = persons
-                .checked_mul(need.units_per_person)
-                .ok_or(MaterialCircuitError::Arithmetic)?;
+            let quantity = need.required_quantity(cohort)?;
             Ok(((need.principal_id, need.good_id, need.unit_id), quantity))
         })
         .collect()

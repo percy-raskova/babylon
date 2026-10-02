@@ -74,10 +74,10 @@ fn validate_households(state: &MaterialCircuitState, rows: &RecurringEconomy) ->
         .iter()
         .map(|r| (r.id, r))
         .collect();
-    let people: BTreeMap<_, _> = rows
+    let households: BTreeMap<_, _> = rows
         .households
         .iter()
-        .map(|r| (r.principal_id, r.persons))
+        .map(|r| (r.principal_id, r))
         .collect();
     for row in &rows.households {
         if row.households == 0
@@ -114,14 +114,10 @@ fn validate_households(state: &MaterialCircuitState, rows: &RecurringEconomy) ->
         return Err(MaterialCircuitError::FinalDemandInvariant);
     }
     for need in &rows.household_needs {
-        if need.units_per_person == 0 {
-            return Err(MaterialCircuitError::ZeroQuantity);
-        }
-        people
+        let cohort = households
             .get(&need.principal_id)
-            .ok_or(MaterialCircuitError::FinalDemandInvariant)?
-            .checked_mul(need.units_per_person)
-            .ok_or(MaterialCircuitError::Arithmetic)?;
+            .ok_or(MaterialCircuitError::FinalDemandInvariant)?;
+        need.required_quantity(cohort)?;
     }
     let offers: BTreeSet<_> = rows
         .offers

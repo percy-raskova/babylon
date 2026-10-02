@@ -2,8 +2,9 @@
 use super::{append_rows, decode_rows, Cursor};
 use crate::{
     AttendancePlan, FinalDemandPrincipalId, GoodId, HouseholdCohort, HouseholdNeed,
-    HouseholdPurchasePolicy, HouseholdStock, MaterialCircuitError, PricePolicy, ProcessId,
-    ProductionDemandPolicy, RecurringEconomy, ReplenishmentPolicy, SellerOffer, SiteId, UnitId,
+    HouseholdNeedBasis, HouseholdPurchasePolicy, HouseholdStock, MaterialCircuitError, PricePolicy,
+    ProcessId, ProductionDemandPolicy, RecurringEconomy, ReplenishmentPolicy, SellerOffer, SiteId,
+    UnitId,
 };
 use babylon_kernel::currency::Currency;
 
@@ -33,7 +34,8 @@ pub(super) fn append(
         bytes.extend_from_slice(&row.principal_id.as_bytes());
         bytes.extend_from_slice(&row.good_id.as_bytes());
         bytes.extend_from_slice(&row.unit_id.as_bytes());
-        bytes.extend_from_slice(&row.units_per_person.to_be_bytes());
+        bytes.push(row.basis as u8);
+        bytes.extend_from_slice(&row.units_per_basis.to_be_bytes());
     })?;
     append_rows(output, &rows.household_purchases, |bytes, row| {
         bytes.extend_from_slice(&row.principal_id.as_bytes());
@@ -163,7 +165,12 @@ pub(super) fn decode(
                 principal_id: FinalDemandPrincipalId::from_bytes(bytes.array()?),
                 good_id: GoodId::from_bytes(bytes.array()?),
                 unit_id: UnitId::from_bytes(bytes.array()?),
-                units_per_person: bytes.u64()?,
+                basis: match bytes.u8()? {
+                    1 => HouseholdNeedBasis::Persons,
+                    2 => HouseholdNeedBasis::Households,
+                    _ => return Err(MaterialCircuitError::WireEnum),
+                },
+                units_per_basis: bytes.u64()?,
             })
         })?,
         household_purchases: decode_rows(cursor, |bytes| {

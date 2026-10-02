@@ -126,10 +126,9 @@ pub(super) fn project_with_labels(
             person_count: household.persons,
             retailer_site_id: digest_hex(&policy.retailer_site_id.as_bytes()),
             stock_on_hand: stock.quantity,
-            required_per_period: household
-                .persons
-                .checked_mul(need.units_per_person)
-                .ok_or(ProductionProjectionError::Arithmetic)?,
+            required_per_period: need
+                .required_quantity(household)
+                .map_err(|_| ProductionProjectionError::State)?,
             completed: completed.get(&key).cloned(),
         });
     }
@@ -149,20 +148,15 @@ pub(super) fn completed_balances(
     if before.households != after.households || before.household_needs != after.household_needs {
         return Err(ProductionProjectionError::State);
     }
-    let people: BTreeMap<_, _> = before
+    let households: BTreeMap<_, _> = before
         .households
         .iter()
-        .map(|row| (row.principal_id, row.persons))
+        .map(|row| (row.principal_id, row))
         .collect();
     let needs: BTreeMap<_, _> = before
         .household_needs
         .iter()
-        .map(|row| {
-            (
-                (row.principal_id, row.good_id, row.unit_id),
-                row.units_per_person,
-            )
-        })
+        .map(|row| ((row.principal_id, row.good_id, row.unit_id), row))
         .collect();
     let mut opening: BTreeMap<_, _> = before
         .household_stocks
@@ -197,11 +191,13 @@ pub(super) fn completed_balances(
             .remove(&key)
             .ok_or(ProductionProjectionError::State)?;
         let received = received.remove(&key).unwrap_or(0);
-        let persons = *people.get(&key.0).ok_or(ProductionProjectionError::State)?;
-        let need = *needs.get(&key).ok_or(ProductionProjectionError::State)?;
-        let required = persons
-            .checked_mul(need)
-            .ok_or(ProductionProjectionError::Arithmetic)?;
+        let cohort = households
+            .get(&key.0)
+            .ok_or(ProductionProjectionError::State)?;
+        let need = needs.get(&key).ok_or(ProductionProjectionError::State)?;
+        let required = need
+            .required_quantity(cohort)
+            .map_err(|_| ProductionProjectionError::State)?;
         if row.period != prior.period
             || purchase.period != prior.period
             || row.required_quantity != required

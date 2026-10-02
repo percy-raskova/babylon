@@ -329,15 +329,12 @@ impl ServiceClose {
                 if !is_service(state, need.good_id, need.unit_id) {
                     continue;
                 }
-                let people = r
+                let cohort = r
                     .households
                     .iter()
                     .find(|r| r.principal_id == need.principal_id)
-                    .ok_or(MaterialCircuitError::FinalDemandInvariant)?
-                    .persons;
-                let required = people
-                    .checked_mul(need.units_per_person)
-                    .ok_or(MaterialCircuitError::Arithmetic)?;
+                    .ok_or(MaterialCircuitError::FinalDemandInvariant)?;
+                let required = need.required_quantity(cohort)?;
                 let key = (
                     AccountId::Household(need.principal_id),
                     need.good_id,

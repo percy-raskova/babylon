@@ -178,11 +178,17 @@ Merchant and resident accounts carry a checked ``EconomicLocation``: a domestic
 county, one of twelve foreign counterparts, or an explicit US dependency.
 Distinct household cohorts may share a location and retain separate stocks and
 cash. Retail handoffs require matching locations. Goods crossing locations must
-reach the receiving merchant through the captured delivery circuit. State schema
-10 preserves those identities in six canonical bytes and refuses older formats.
+reach the receiving merchant through the captured delivery circuit. The current
+state preserves those identities in six canonical bytes and refuses older formats.
 County projections select domestic locations explicitly; foreign markets never
 acquire invented county identifiers. The shared paid controls exercise these
 namespaces; nationwide campaign admission remains a separate integration step.
+
+Each recurring need declares a person or household basis and an exact positive
+coefficient. Goods admission, pantry consumption, service admission and service
+satisfaction use that same requirement. This permits housing to depend on homes
+while food depends on residents. Neither calculation changes either population
+count. Captured controls explicitly retain their person-based requirements.
 
 Procurement accounts for inventory and outstanding inbound orders, including
 goods in transit once. Later production and attendance plans respond to

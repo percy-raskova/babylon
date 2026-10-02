@@ -1,6 +1,6 @@
 meta:
   contract: MaterialCircuitV3
-  schema_version: 10
+  schema_version: 11
   evidence_class: Designed
   rust_owner: babylon-material-circuit
 
@@ -38,6 +38,7 @@ encoding:
   travel_periods: u16
   loss_ppm: u32
   economic_location: six canonical bytes with a checked county, counterpart or dependency tag
+  need_basis_u8: {persons: 1, households: 2}
   merchant_role_u8: {wholesale: 1, retail: 2}
   supplier_transport_u8: {local: 1, staged: 2}
   optional_presence_u8: {absent: 0, present: 1}
@@ -123,7 +124,7 @@ recurring_field_order:
 recurring_row_field_order:
   households: [principal_id, households, persons]
   household_stocks: [principal_id, good_id, unit_id, quantity]
-  household_needs: [principal_id, good_id, unit_id, units_per_person]
+  household_needs: [principal_id, good_id, unit_id, need_basis_u8, units_per_basis]
   household_purchases: [principal_id, retailer_site_id, good_id, unit_id, target_closing_stock,
                         maximum_purchase, enabled_u8]
   offers: [site_id, good_id, unit_id, unit_price_i128, price_policy_u8, conditional_price_policy_fields]

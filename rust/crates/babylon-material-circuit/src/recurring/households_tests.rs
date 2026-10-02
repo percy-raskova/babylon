@@ -39,7 +39,8 @@ fn recurring(stock: u64) -> RecurringEconomy {
             principal_id: h(),
             good_id: g(),
             unit_id: u(),
-            units_per_person: 1,
+            basis: crate::HouseholdNeedBasis::Persons,
+            units_per_basis: 1,
         }],
         household_purchases: vec![HouseholdPurchasePolicy {
             principal_id: h(),
@@ -277,7 +278,7 @@ fn fulfillment_credits_stock_expiry_refunds_and_consumption_preserves_need() {
         (4, 2, 2, 2, 0)
     );
     assert_eq!(
-        household_rows(&mut state).household_needs[0].units_per_person,
+        household_rows(&mut state).household_needs[0].units_per_basis,
         1
     );
     let closed = state.clone();
@@ -414,7 +415,7 @@ fn finite_preexisting_household_order_is_credited_but_not_expired() {
 fn missing_or_overflowing_needs_and_invalid_prices_are_refused() {
     let mut state = opening(16, 0);
     validate(&state).unwrap();
-    household_rows(&mut state).household_needs[0].units_per_person = u64::MAX;
+    household_rows(&mut state).household_needs[0].units_per_basis = u64::MAX;
     assert_eq!(validate(&state), Err(MaterialCircuitError::Arithmetic));
     let before = state.clone();
     assert_eq!(
@@ -464,7 +465,8 @@ fn one_household_budget_is_shared_in_canonical_need_order() {
         principal_id: h(),
         good_id: other,
         unit_id: u(),
-        units_per_person: 1,
+        basis: crate::HouseholdNeedBasis::Persons,
+        units_per_basis: 1,
     });
     rows.household_purchases.insert(
         0,

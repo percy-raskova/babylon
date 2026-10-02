@@ -41,7 +41,40 @@ pub struct HouseholdNeed {
     pub principal_id: FinalDemandPrincipalId,
     pub good_id: GoodId,
     pub unit_id: UnitId,
-    pub units_per_person: u64,
+    pub basis: HouseholdNeedBasis,
+    pub units_per_basis: u64,
+}
+
+/// Distinct material requirements may depend on residents or occupied households.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[repr(u8)]
+pub enum HouseholdNeedBasis {
+    Persons = 1,
+    Households = 2,
+}
+
+impl HouseholdNeed {
+    /// Exact recurring requirement; this calculation changes neither count.
+    /// # Errors
+    /// Refuses the wrong resident principal, zero coefficients and overflow.
+    pub fn required_quantity(
+        &self,
+        cohort: &HouseholdCohort,
+    ) -> Result<u64, crate::MaterialCircuitError> {
+        if cohort.principal_id != self.principal_id {
+            return Err(crate::MaterialCircuitError::FinalDemandInvariant);
+        }
+        if self.units_per_basis == 0 {
+            return Err(crate::MaterialCircuitError::ZeroQuantity);
+        }
+        let count = match self.basis {
+            HouseholdNeedBasis::Persons => cohort.persons,
+            HouseholdNeedBasis::Households => cohort.households,
+        };
+        count
+            .checked_mul(self.units_per_basis)
+            .ok_or(crate::MaterialCircuitError::Arithmetic)
+    }
 }
 
 /// One preferred local retailer per resident good/unit requirement.

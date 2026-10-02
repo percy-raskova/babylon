@@ -71,12 +71,11 @@ fn requests(state: &MaterialCircuitState) -> Result<Vec<Request>> {
         if !is_service(state, p.good_id, p.unit_id) {
             continue;
         }
-        let people = r
+        let cohort = r
             .households
             .iter()
             .find(|r| r.principal_id == p.principal_id)
-            .ok_or(MaterialCircuitError::FinalDemandInvariant)?
-            .persons;
+            .ok_or(MaterialCircuitError::FinalDemandInvariant)?;
         let need = r
             .household_needs
             .iter()
@@ -84,9 +83,7 @@ fn requests(state: &MaterialCircuitState) -> Result<Vec<Request>> {
                 (r.principal_id, r.good_id, r.unit_id) == (p.principal_id, p.good_id, p.unit_id)
             })
             .ok_or(MaterialCircuitError::FinalDemandInvariant)?;
-        let required = people
-            .checked_mul(need.units_per_person)
-            .ok_or(MaterialCircuitError::Arithmetic)?;
+        let required = need.required_quantity(cohort)?;
         result.push(Request {
             order_id: recurring_service_order_id(
                 state.period,

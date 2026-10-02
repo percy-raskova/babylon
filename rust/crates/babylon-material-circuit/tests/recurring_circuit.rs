@@ -5,6 +5,9 @@ use babylon_material_circuit::*;
 #[path = "support/economic_location_cases.rs"]
 mod economic_location_cases;
 
+#[path = "support/household_need_basis_cases.rs"]
+mod household_need_basis_cases;
+
 fn site(id: u8) -> SiteId {
     SiteId::from_bytes([id; 32])
 }
@@ -72,7 +75,8 @@ fn opening() -> MaterialCircuitState {
             principal_id: household(),
             good_id: good(2),
             unit_id: units(),
-            units_per_person: 1,
+            basis: babylon_material_circuit::HouseholdNeedBasis::Persons,
+            units_per_basis: 1,
         }],
         household_purchases: vec![HouseholdPurchasePolicy {
             principal_id: household(),
@@ -590,9 +594,16 @@ fn captured_household_policies_refuse_old_bytes_bad_cursors_and_noncanonical_row
         decode_material_circuit_state(&excessive),
         Err(MaterialCircuitError::WireLimit)
     );
-    // The captured control has one 48-byte cohort, one 104-byte stock and
-    // need, one 145-byte policy, then three 113-byte fixed-price offers.
-    let purchase = offset + 17 + 4 + 48 + 4 + 104 + 4 + 104 + 4;
+    // The captured control has one 48-byte cohort, one 104-byte stock,
+    // one 105-byte need, one 145-byte policy and three 113-byte fixed offers.
+    let need = offset + 17 + 4 + 48 + 4 + 104 + 4;
+    let mut unknown_basis = bytes.clone();
+    unknown_basis[need + 96] = 3;
+    assert_eq!(
+        decode_material_circuit_state(&unknown_basis),
+        Err(MaterialCircuitError::WireEnum)
+    );
+    let purchase = need + 105 + 4;
     let mut invalid = bytes.clone();
     invalid[purchase + 144] = 2;
     assert_eq!(
@@ -708,7 +719,8 @@ fn producer_retail_opening() -> MaterialCircuitState {
         principal_id: household(),
         good_id: good(1),
         unit_id: units(),
-        units_per_person: 1,
+        basis: babylon_material_circuit::HouseholdNeedBasis::Persons,
+        units_per_basis: 1,
     });
     rows.household_purchases[0].enabled = false;
     rows.household_purchases.push(HouseholdPurchasePolicy {

@@ -68,7 +68,8 @@ fn opening() -> MaterialCircuitState {
             principal_id: household,
             good_id: good(2),
             unit_id: unit(2),
-            units_per_person: 1,
+            basis: babylon_material_circuit::HouseholdNeedBasis::Persons,
+            units_per_basis: 1,
         }],
         household_purchases: vec![HouseholdPurchasePolicy {
             principal_id: household,

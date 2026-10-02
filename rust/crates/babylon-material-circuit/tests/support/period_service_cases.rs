@@ -1,4 +1,36 @@
 use super::*;
+
+#[test]
+fn household_service_need_uses_the_selected_basis_at_admission_and_consumption() {
+    for (basis, expected) in [
+        (HouseholdNeedBasis::Persons, 4),
+        (HouseholdNeedBasis::Households, 1),
+    ] {
+        let mut state = recurring(opening());
+        let CircuitAccounting::Monetary(economy) = &mut state.accounting else {
+            panic!("the control must pay for actual services");
+        };
+        let rows = economy.recurring.as_mut().unwrap();
+        rows.households[0].persons = 4;
+        rows.household_needs[0].basis = basis;
+        rows.household_purchases[0].maximum_purchase = 4;
+        let close = advance_material_circuit(&state).unwrap();
+        let receipt = &close.household_services[0];
+        assert_eq!(receipt.required_quantity, expected);
+        assert_eq!(
+            receipt.satisfied_quantity + receipt.unmet_quantity,
+            expected
+        );
+        assert_eq!(receipt.satisfied_quantity, 1);
+        let request = close
+            .service_performance
+            .iter()
+            .find(|row| row.buyer == AccountId::Household(household()))
+            .unwrap();
+        assert_eq!(request.requested_quantity, expected);
+    }
+}
+
 fn recurring(mut state: MaterialCircuitState) -> MaterialCircuitState {
     state.inventory[0].quantity = 3;
     state.capacities[0].available_batches = 4;
@@ -56,7 +88,8 @@ fn recurring(mut state: MaterialCircuitState) -> MaterialCircuitState {
             principal_id: household(),
             good_id: good(2),
             unit_id: unit(2),
-            units_per_person: 1,
+            basis: babylon_material_circuit::HouseholdNeedBasis::Persons,
+            units_per_basis: 1,
         }],
         household_purchases: vec![HouseholdPurchasePolicy {
             principal_id: household(),

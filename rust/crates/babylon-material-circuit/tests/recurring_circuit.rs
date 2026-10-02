@@ -8,6 +8,9 @@ mod economic_location_cases;
 #[path = "support/household_need_basis_cases.rs"]
 mod household_need_basis_cases;
 
+#[path = "support/empty_workforce_cases.rs"]
+mod empty_workforce_cases;
+
 fn site(id: u8) -> SiteId {
     SiteId::from_bytes([id; 32])
 }

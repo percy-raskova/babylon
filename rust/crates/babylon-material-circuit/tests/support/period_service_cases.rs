@@ -1,5 +1,21 @@
 use super::*;
 
+// These finite fixtures explicitly supply one resident member per employer.
+fn sync_member_hours(state: &mut MaterialCircuitState) {
+    let CircuitAccounting::Monetary(economy) = &mut state.accounting else {
+        panic!("paid control")
+    };
+    economy.member_labor = state
+        .labor
+        .iter()
+        .map(|row| MemberLaborCapacityRow {
+            member_id: StaffingMemberId::from_bytes(row.site_id.as_bytes()),
+            period: row.period,
+            available_hours: row.available,
+        })
+        .collect();
+}
+
 #[test]
 fn household_service_need_uses_the_selected_basis_at_admission_and_consumption() {
     for (basis, expected) in [
@@ -149,6 +165,7 @@ fn recurring(mut state: MaterialCircuitState) -> MaterialCircuitState {
         last_household_admission_period: 0,
         last_household_consumption_period: 0,
     }));
+    sync_member_hours(&mut state);
     state
 }
 #[test]
@@ -212,7 +229,7 @@ fn service_quotes_distinguish_funded_unmet_cost_pressure_and_spare_capacity() {
     let CircuitAccounting::Monetary(e) = &mut costly.accounting else {
         panic!()
     };
-    e.employment[0].hourly_rate = money(3);
+    e.employment[0].compensation = LaborCompensation::Wage(money(3));
     let closed = advance_material_circuit(&costly).unwrap();
     let u = &closed.service_markets[0];
     assert_eq!(
@@ -388,6 +405,7 @@ fn utility_and_goods_stages_share_the_same_site_labor_residual() {
         .unwrap()
         .owner = AccountId::Site(site(1));
     e.costs = HistoricalCostBook::from_snapshot(captured).unwrap();
+    sync_member_hours(&mut state);
     for (id, provider, buyer, commodity, price) in [(11, 1, 2, 1, 1), (12, 2, 1, 2, 2)] {
         state = admit_material_purchase(
             &state,
@@ -434,6 +452,7 @@ fn utility_and_goods_stages_share_the_same_site_labor_residual() {
         1
     );
     state.labor[0].available = 2;
+    sync_member_hours(&mut state);
     let closed = advance_material_circuit(&state).unwrap();
     assert_eq!(
         closed
@@ -467,6 +486,7 @@ fn batch_opening(mut state: MaterialCircuitState) -> MaterialCircuitState {
         state.labor[1].available = 1;
         state.production_commitments[1].planned_batches = 1;
     }
+    sync_member_hours(&mut state);
     state
 }
 #[test]
@@ -529,6 +549,7 @@ fn same_stage_peer_acquisition_cannot_mix_into_unsold_provider_cost() {
         .production_commitments
         .retain(|r| r.process_id != process(3));
     state.labor[2].available = 0;
+    sync_member_hours(&mut state);
     state.inventory.push(InventoryRow {
         site_id: site(2),
         good_id: good(4),

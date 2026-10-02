@@ -68,15 +68,27 @@ fn opening() -> MaterialCircuitState {
         period: 1,
         accounting: CircuitAccounting::Monetary(Box::new(MonetaryCircuit {
             financial: babylon_material_circuit::FinancialInstitutions::empty(),
+            member_labor: (1..=3)
+                .map(|n| babylon_material_circuit::MemberLaborCapacityRow {
+                    member_id: babylon_material_circuit::StaffingMemberId::from_bytes(
+                        site(n).as_bytes(),
+                    ),
+                    period: 1,
+                    available_hours: if n == 1 { 2 } else { 1 },
+                })
+                .collect(),
             costs,
             book,
             recurring: None,
             employment: (1..=3)
                 .map(|n| EmploymentTerms {
+                    member_id: babylon_material_circuit::StaffingMemberId::from_bytes(
+                        (site(n)).as_bytes(),
+                    ),
                     site_id: site(n),
                     unit_id: unit(9),
                     payee: household(),
-                    hourly_rate: money(1),
+                    compensation: babylon_material_circuit::LaborCompensation::Wage(money(1)),
                 })
                 .collect(),
         })),

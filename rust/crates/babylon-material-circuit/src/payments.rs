@@ -2,21 +2,21 @@
 
 use std::collections::BTreeSet;
 
-use babylon_kernel::{content_digest::sha256_of, currency::Currency};
+use babylon_kernel::currency::Currency;
 
 use crate::{
-    AccountId, BacklogRow, FinalDemandOrder, FinalDemandPrincipalId, FundedShift,
-    MaterialCircuitError, MaterialCircuitState, MonetaryBook, MonetaryError, MoneyTransferReceipt,
-    OrderRow, OutboundOrderId, PurchaseEscrow, ShiftId, ShiftState, SiteId, UnitId,
-    WageAccrualReceipt, MAX_MATERIAL_CIRCUIT_ROWS,
+    AccountId, BacklogRow, FinalDemandOrder, MaterialCircuitError, MaterialCircuitState,
+    MonetaryBook, MonetaryError, MoneyTransferReceipt, OrderRow, OutboundOrderId, PurchaseEscrow,
+    ShiftState, SiteId, UnitId, MAX_MATERIAL_CIRCUIT_ROWS,
 };
 
-/// Derived close ceiling: 3N payroll, 2N old purchase movements, 3N household
+/// Derived close ceiling: 3M member payroll, 2N old purchase movements, 3N household
 /// admission/settlement/refund, 2N new firm admission/settlement, and 4N
 /// service admission plus settlement/refund movements.
 /// Another 4N bounds public budgets, taxes, owner payouts and contributions.
 /// The complete receipt envelope retains its independent byte ceiling.
-pub const MAX_MONEY_TRANSFERS_PER_PERIOD: usize = 18 * MAX_MATERIAL_CIRCUIT_ROWS;
+pub const MAX_MONEY_TRANSFERS_PER_PERIOD: usize =
+    3 * crate::MAX_STAFFING_MEMBERS + 15 * MAX_MATERIAL_CIRCUIT_ROWS;
 
 /// Controls declare that they omit money; monetary campaigns never infer this
 /// from missing accounts or prices. Both use the same physical allocator.
@@ -33,33 +33,14 @@ pub struct MonetaryCircuit {
     pub recurring: Option<Box<crate::RecurringEconomy>>,
     pub book: MonetaryBook,
     pub employment: Vec<EmploymentTerms>,
+    pub member_labor: Vec<crate::MemberLaborCapacityRow>,
 }
 
-/// A captured attendance wage for one workplace's exact labor unit. This binds
-/// workplace hours to a resident payee; it does not turn jobs into people.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct EmploymentTerms {
-    pub site_id: SiteId,
-    pub unit_id: UnitId,
-    pub payee: FinalDemandPrincipalId,
-    pub hourly_rate: Currency,
-}
-
-/// Physical utilization is reported after work, independently of wage payment.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LaborUseReceipt {
-    pub site_id: SiteId,
-    pub unit_id: UnitId,
-    pub payee: FinalDemandPrincipalId,
-    pub period: u64,
-    pub available_hours: u64,
-    pub planned_hours: u64,
-    pub unplanned_hours: u64,
-    pub funded_hours: u64,
-    pub unfunded_hours: u64,
-    pub used_hours: u64,
-    pub paid_idle_hours: u64,
-}
+mod attendance;
+pub(crate) use attendance::{fund_attendance, AttendanceLedger, LaborUse};
+pub use attendance::{
+    member_shift_id, EmploymentTerms, LaborCompensation, LaborUseReceipt, MemberLaborUseReceipt,
+};
 
 /// Admission fixes the price and funds the entire accepted principal. Buyers
 /// decide their affordable requested quantity before invoking this boundary.
@@ -88,8 +69,63 @@ pub(crate) fn canonicalize(accounting: &mut CircuitAccounting) {
         crate::financial::canonicalize(&mut economy.financial);
         economy
             .employment
-            .sort_by_key(|row| (row.site_id, row.unit_id));
+            .sort_by_key(|row| (row.site_id, row.unit_id, row.member_id));
+        economy
+            .member_labor
+            .sort_by_key(|row| (row.period, row.member_id));
     }
+}
+
+fn validate_member_budgets(
+    state: &MaterialCircuitState,
+    economy: &MonetaryCircuit,
+) -> Result<(), MaterialCircuitError> {
+    use std::collections::BTreeMap;
+    let terms: BTreeMap<_, _> = economy
+        .employment
+        .iter()
+        .map(|row| (row.member_id, row))
+        .collect();
+    let mut seen = BTreeSet::new();
+    let mut groups = BTreeMap::<_, (u64, usize)>::new();
+    for row in &economy.member_labor {
+        let term = terms
+            .get(&row.member_id)
+            .ok_or(MaterialCircuitError::PayrollInvariant)?;
+        if row.period < state.period || !seen.insert((row.period, row.member_id)) {
+            return Err(MaterialCircuitError::PayrollInvariant);
+        }
+        let group = groups
+            .entry((row.period, term.site_id, term.unit_id))
+            .or_default();
+        group.0 = group
+            .0
+            .checked_add(row.available_hours)
+            .ok_or(MaterialCircuitError::Arithmetic)?;
+        group.1 += 1;
+    }
+    let mut expected_members = BTreeMap::<_, usize>::new();
+    for term in &economy.employment {
+        *expected_members
+            .entry((term.site_id, term.unit_id))
+            .or_default() += 1;
+    }
+    for row in state.labor.iter().filter(|row| row.period >= state.period) {
+        let actual = groups.remove(&(row.period, row.site_id, row.unit_id));
+        let count = expected_members
+            .get(&(row.site_id, row.unit_id))
+            .copied()
+            .unwrap_or(0);
+        if !(row.available == 0 && count == 0 && actual.is_none())
+            && actual != Some((row.available, count))
+        {
+            return Err(MaterialCircuitError::PayrollInvariant);
+        }
+    }
+    if !groups.is_empty() {
+        return Err(MaterialCircuitError::PayrollInvariant);
+    }
+    Ok(())
 }
 
 fn labor_principals(state: &MaterialCircuitState) -> BTreeSet<(SiteId, UnitId)> {
@@ -123,7 +159,9 @@ pub(crate) fn validate(state: &MaterialCircuitState) -> Result<(), MaterialCircu
     let CircuitAccounting::Monetary(economy) = &state.accounting else {
         return Ok(());
     };
-    if economy.employment.len() > MAX_MATERIAL_CIRCUIT_ROWS {
+    if economy.employment.len() > crate::MAX_STAFFING_MEMBERS
+        || economy.member_labor.len() > crate::MAX_STAFFING_MEMBERS
+    {
         return Err(MaterialCircuitError::RowLimit);
     }
     let sites: BTreeSet<_> = state
@@ -155,32 +193,29 @@ pub(crate) fn validate(state: &MaterialCircuitState) -> Result<(), MaterialCircu
         }
     }
     let mut employment = BTreeSet::new();
+    let mut member_ids = BTreeSet::new();
     for row in &economy.employment {
-        if !employment.insert((row.site_id, row.unit_id))
+        employment.insert((row.site_id, row.unit_id));
+        if !member_ids.insert(row.member_id)
             || !sites.contains(&row.site_id)
             || !households.contains(&row.payee)
-            || row.hourly_rate.micro_units() <= 0
+            || matches!(row.compensation, LaborCompensation::Wage(rate) if rate.micro_units() <= 0)
         {
             return Err(MaterialCircuitError::PayrollInvariant);
         }
     }
-    if employment != labor_principals(state) {
+    let principals = labor_principals(state);
+    if !employment.is_subset(&principals)
+        || state.labor.iter().any(|r| {
+            r.period >= state.period
+                && r.available != 0
+                && !employment.contains(&(r.site_id, r.unit_id))
+        })
+    {
         return Err(MaterialCircuitError::PayrollInvariant);
     }
-    // A committed opening can contain previously earned but unpaid wages.
-    // Half-completed attendance belongs only inside the detached close.
-    for shift in &snapshot.shifts {
-        if shift.period == 0 || shift.period >= state.period || shift.state != ShiftState::Accrued {
-            return Err(MaterialCircuitError::PayrollInvariant);
-        }
-        let (AccountId::Site(site), AccountId::Household(payee)) = (shift.employer, shift.payee)
-        else {
-            return Err(MaterialCircuitError::PayrollInvariant);
-        };
-        if !sites.contains(&site) || !households.contains(&payee) {
-            return Err(MaterialCircuitError::PayrollInvariant);
-        }
-    }
+    validate_member_budgets(state, economy)?;
+    validate_opening_shifts(&snapshot.shifts, state.period, &sites, &households)?;
     if snapshot.purchases.len()
         != state.orders.len() + state.final_demand_orders.len() + state.service_orders.len()
     {
@@ -215,6 +250,29 @@ pub(crate) fn validate(state: &MaterialCircuitState) -> Result<(), MaterialCircu
     economy.book.total_cash_and_reserves()?;
     crate::financial::validate(state)?;
     crate::recurring::validate(state)?;
+    Ok(())
+}
+
+fn validate_opening_shifts(
+    shifts: &[crate::FundedShift],
+    period: u64,
+    sites: &BTreeSet<SiteId>,
+    households: &BTreeSet<crate::FinalDemandPrincipalId>,
+) -> Result<(), MaterialCircuitError> {
+    // A committed opening can contain previously earned but unpaid wages.
+    // Half-completed attendance belongs only inside the detached close.
+    for shift in shifts {
+        if shift.period == 0 || shift.period >= period || shift.state != ShiftState::Accrued {
+            return Err(MaterialCircuitError::PayrollInvariant);
+        }
+        let (AccountId::Site(site), AccountId::Household(payee)) = (shift.employer, shift.payee)
+        else {
+            return Err(MaterialCircuitError::PayrollInvariant);
+        };
+        if !sites.contains(&site) || !households.contains(&payee) {
+            return Err(MaterialCircuitError::PayrollInvariant);
+        }
+    }
     Ok(())
 }
 
@@ -351,118 +409,6 @@ pub(crate) fn settle_deliveries(
         if order.fulfilled > economy.book.purchase(id)?.delivered {
             transfers.push(economy.book.settle_purchase(id, order.fulfilled)?.transfer);
         }
-    }
-    Ok(())
-}
-
-fn shift_id(period: u64, terms: &EmploymentTerms) -> ShiftId {
-    let mut bytes = b"babylon.funded-attendance.v1\0".to_vec();
-    bytes.extend_from_slice(&period.to_be_bytes());
-    bytes.extend_from_slice(&terms.site_id.as_bytes());
-    bytes.extend_from_slice(&terms.unit_id.as_bytes());
-    bytes.extend_from_slice(&terms.payee.as_bytes());
-    ShiftId::from_bytes(sha256_of(&bytes))
-}
-
-pub(crate) fn fund_attendance(
-    state: &mut MaterialCircuitState,
-    transfers: &mut Vec<MoneyTransferReceipt>,
-    accruals: &mut Vec<WageAccrualReceipt>,
-) -> Result<Vec<LaborUseReceipt>, MaterialCircuitError> {
-    let CircuitAccounting::Monetary(economy) = &mut state.accounting else {
-        return Ok(vec![]);
-    };
-    for shift in economy.book.snapshot().shifts {
-        transfers.push(economy.book.pay_shift(shift.id)?);
-        economy.book.retire_shift(shift.id)?;
-    }
-    let mut receipts = Vec::new();
-    // Canonical site/unit order is the explicit priority when one employer's
-    // cash cannot fund every kind of attendance. No fractional hour is hired.
-    for labor in state
-        .labor
-        .iter_mut()
-        .filter(|row| row.period == state.period)
-    {
-        let index = economy
-            .employment
-            .binary_search_by_key(&(labor.site_id, labor.unit_id), |row| {
-                (row.site_id, row.unit_id)
-            })
-            .map_err(|_| MaterialCircuitError::PayrollInvariant)?;
-        let terms = &economy.employment[index];
-        let cash = economy
-            .book
-            .cash(AccountId::Site(terms.site_id))?
-            .micro_units();
-        let planned = if let Some(recurring) = &economy.recurring {
-            let index = recurring
-                .attendance
-                .binary_search_by_key(&(labor.site_id, labor.unit_id), |row| {
-                    (row.site_id, row.unit_id)
-                })
-                .map_err(|_| MaterialCircuitError::PayrollInvariant)?;
-            let plan = &recurring.attendance[index];
-            if plan.period != state.period {
-                return Err(MaterialCircuitError::PeriodInvariant);
-            }
-            plan.planned_hours.min(labor.available)
-        } else {
-            labor.available
-        };
-        let affordable = cash / terms.hourly_rate.micro_units();
-        let funded = u64::try_from(affordable.min(i128::from(planned)))
-            .map_err(|_| MaterialCircuitError::Arithmetic)?;
-        receipts.push(LaborUseReceipt {
-            site_id: labor.site_id,
-            unit_id: labor.unit_id,
-            payee: terms.payee,
-            period: state.period,
-            available_hours: labor.available,
-            planned_hours: planned,
-            unplanned_hours: labor.available - planned,
-            funded_hours: funded,
-            unfunded_hours: planned - funded,
-            used_hours: 0,
-            paid_idle_hours: funded,
-        });
-        labor.available = funded;
-        if funded == 0 {
-            continue;
-        }
-        let id = shift_id(state.period, terms);
-        transfers.push(economy.book.reserve_shift(FundedShift::new(
-            id,
-            AccountId::Site(terms.site_id),
-            AccountId::Household(terms.payee),
-            state.period,
-            funded,
-            terms.hourly_rate,
-        )?)?);
-        accruals.push(economy.book.accrue_shift(id)?);
-        transfers.push(economy.book.pay_shift(id)?);
-        economy.book.retire_shift(id)?;
-    }
-    Ok(receipts)
-}
-
-pub(crate) fn record_labor_use(
-    state: &MaterialCircuitState,
-    receipts: &mut [LaborUseReceipt],
-) -> Result<(), MaterialCircuitError> {
-    for receipt in receipts {
-        let index = state
-            .labor
-            .binary_search_by_key(&(receipt.period, receipt.site_id, receipt.unit_id), |row| {
-                (row.period, row.site_id, row.unit_id)
-            })
-            .map_err(|_| MaterialCircuitError::PayrollInvariant)?;
-        let remaining = state.labor[index].available;
-        receipt.used_hours = receipt
-            .funded_hours
-            .checked_sub(remaining)
-            .ok_or(MaterialCircuitError::PayrollInvariant)?;
-        receipt.paid_idle_hours = remaining;
     }
     Ok(())
 }

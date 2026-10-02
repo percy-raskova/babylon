@@ -12,7 +12,7 @@ use super::{MaterialWorldError, ReceiptCursor};
 
 pub(super) const TRANSFER_BYTES: usize = 134;
 pub(super) const ACCRUAL_BYTES: usize = 130;
-pub(super) const LABOR_BYTES: usize = 160;
+pub(super) const LABOR_BYTES: usize = 144;
 
 pub(super) fn validate_order(
     wages: &[WageAccrualReceipt],
@@ -267,8 +267,16 @@ pub(super) fn decode_accrual(
 fn validate_labor(row: &LaborUseReceipt, period: u64) -> Result<(), MaterialWorldError> {
     if row.period != period
         || row.planned_hours.checked_add(row.unplanned_hours) != Some(row.available_hours)
-        || row.funded_hours.checked_add(row.unfunded_hours) != Some(row.planned_hours)
-        || row.used_hours.checked_add(row.paid_idle_hours) != Some(row.funded_hours)
+        || row
+            .funded_hours
+            .checked_add(row.unfunded_hours)
+            .and_then(|n| n.checked_add(row.non_wage_hours))
+            != Some(row.planned_hours)
+        || row
+            .used_hours
+            .checked_add(row.paid_idle_hours)
+            .and_then(|n| n.checked_add(row.unpaid_idle_hours))
+            != row.funded_hours.checked_add(row.non_wage_hours)
     {
         return Err(MaterialWorldError::Wire);
     }
@@ -281,11 +289,7 @@ pub(super) fn encode_labor(
     bytes: &mut Vec<u8>,
 ) -> Result<(), MaterialWorldError> {
     validate_labor(row, period)?;
-    for id in [
-        row.site_id.as_bytes(),
-        row.unit_id.as_bytes(),
-        row.payee.as_bytes(),
-    ] {
+    for id in [row.site_id.as_bytes(), row.unit_id.as_bytes()] {
         bytes.extend_from_slice(&id);
     }
     for value in [
@@ -295,8 +299,10 @@ pub(super) fn encode_labor(
         row.unplanned_hours,
         row.funded_hours,
         row.unfunded_hours,
+        row.non_wage_hours,
         row.used_hours,
         row.paid_idle_hours,
+        row.unpaid_idle_hours,
     ] {
         bytes.extend_from_slice(&value.to_be_bytes());
     }
@@ -310,15 +316,16 @@ pub(super) fn decode_labor(
     let row = LaborUseReceipt {
         site_id: SiteId::from_bytes(cursor.take()?),
         unit_id: UnitId::from_bytes(cursor.take()?),
-        payee: FinalDemandPrincipalId::from_bytes(cursor.take()?),
         period: cursor.u64()?,
         available_hours: cursor.u64()?,
         planned_hours: cursor.u64()?,
         unplanned_hours: cursor.u64()?,
         funded_hours: cursor.u64()?,
         unfunded_hours: cursor.u64()?,
+        non_wage_hours: cursor.u64()?,
         used_hours: cursor.u64()?,
         paid_idle_hours: cursor.u64()?,
+        unpaid_idle_hours: cursor.u64()?,
     };
     validate_labor(&row, period)?;
     Ok(row)

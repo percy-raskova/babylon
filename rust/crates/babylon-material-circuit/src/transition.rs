@@ -721,11 +721,30 @@ impl ClosedMaterialPeriod {
         self.finish()
     }
 
+    /// Replace graph-derived aggregate and member hours together before planning.
+    /// # Errors
+    /// Refuses missing, duplicate, foreign or inconsistent hour principals.
+    pub fn finish_with_workforce(
+        mut self,
+        next_labor: Vec<LaborCapacityRow>,
+        member_labor: Vec<crate::MemberLaborCapacityRow>,
+    ) -> Result<MaterialCircuitTransition, MaterialCircuitError> {
+        if let crate::CircuitAccounting::Monetary(economy) = &mut self.transition.state.accounting {
+            economy.member_labor = member_labor;
+        }
+        self.finish_with_labor(next_labor)
+    }
+
     fn finish(mut self) -> Result<MaterialCircuitTransition, MaterialCircuitError> {
         let state = &mut self.transition.state;
         derive_shared_production(state, self.next_period)?;
         crate::capacity::roll_forward(state, self.next_period)?;
         state.period = self.next_period;
+        if let crate::CircuitAccounting::Monetary(economy) = &mut state.accounting {
+            economy
+                .member_labor
+                .retain(|row| row.period >= self.next_period);
+        }
         *state = canonical_state(state)?;
         Ok(self.transition)
     }
@@ -979,8 +998,7 @@ pub fn close_material_period(
     let mut deliveries = Vec::new();
     let mut realizations = Vec::new();
     let mut dispatches = Vec::new();
-    let mut money_transfers = Vec::new();
-    let mut wage_accruals = Vec::new();
+    let (mut money_transfers, mut wage_accruals) = (Vec::new(), Vec::new());
     process_due_freight(
         &mut state,
         &mut inventory,
@@ -996,8 +1014,9 @@ pub fn close_material_period(
     rebuild_backlog(&mut state);
     let mut finance =
         crate::financial::FinancialClose::opening(&mut state, &mut costs, &mut money_transfers)?;
-    let mut labor_use =
+    let attendance =
         crate::payments::fund_attendance(&mut state, &mut money_transfers, &mut wage_accruals)?;
+    costs.admit_attendance(attendance);
     let mut household_demand =
         crate::recurring::admit_household_orders(&mut state, &mut money_transfers)?;
     let mut services = crate::services::ServiceClose::new(&mut state, &mut money_transfers)?;
@@ -1015,8 +1034,8 @@ pub fn close_material_period(
         &mut costs,
     )?;
     let household_consumption = consume_households(&mut state, &mut costs)?;
-    crate::payments::record_labor_use(&state, &mut labor_use)?;
-    costs.payroll(&state, &labor_use, &wage_accruals)?;
+    let (labor_use, member_labor_use) = costs.finish_attendance(&state)?;
+    costs.payroll(&state, &member_labor_use, &wage_accruals)?;
     finance.closing(&mut state, &mut costs, &mut money_transfers)?;
     let next_period = state
         .period
@@ -1043,6 +1062,8 @@ pub fn close_material_period(
             taxes: finance.taxes,
             distributions: finance.distributions,
             contributions: finance.contributions,
+            staffing_members: vec![],
+            member_labor_use,
             service_performance: services.performance,
             household_services: services.household,
             service_markets: services.markets,

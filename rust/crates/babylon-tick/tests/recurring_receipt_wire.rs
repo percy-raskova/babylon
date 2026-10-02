@@ -1,7 +1,7 @@
 //! Independent vectors for recurring demand, consumption, firm plans and prices.
 use babylon_tick::material_world::{decode_material_receipts, MaterialWorldError};
 
-const DOMAIN: &[u8] = b"babylon.material-tick-receipts.v10\0";
+const DOMAIN: &[u8] = b"babylon.material-tick-receipts.v11\0";
 
 fn words(ids: &[u8], values: &[u64]) -> Vec<u8> {
     let mut bytes = Vec::new();
@@ -47,9 +47,9 @@ fn price(reason: u8, old: i128, next: i128, unserved: u64, stock: u64) -> Vec<u8
 
 fn envelope(family: u8, rows: &[Vec<u8>]) -> Vec<u8> {
     let mut bytes = DOMAIN.to_vec();
-    bytes.extend_from_slice(&10_u32.to_be_bytes());
+    bytes.extend_from_slice(&11_u32.to_be_bytes());
     bytes.extend_from_slice(&7_u64.to_be_bytes());
-    for tag in 1..=27 {
+    for tag in 1..=29 {
         bytes.push(tag);
         let count = if tag == family { rows.len() as u64 } else { 0 };
         bytes.extend_from_slice(&count.to_be_bytes());
@@ -255,11 +255,12 @@ fn two_pass_handling_evidence_can_exceed_one_state_table() {
 fn every_family_keeps_its_explicit_row_and_whole_envelope_bounds() {
     use babylon_material_circuit::{MAX_MATERIAL_CIRCUIT_ROWS, MAX_MONEY_TRANSFERS_PER_PERIOD};
     use babylon_tick::material_world::MAX_MATERIAL_WORLD_REGISTER_BYTES;
-    for tag in 1..=27_u8 {
+    for tag in 1..=29_u8 {
         let limit = match tag {
             7 => 2 * MAX_MATERIAL_CIRCUIT_ROWS,
             11 => MAX_MONEY_TRANSFERS_PER_PERIOD,
             20 => babylon_material_circuit::MAX_SERVICE_RECEIPTS_PER_PERIOD,
+            12 | 28 | 29 => babylon_material_circuit::MAX_STAFFING_MEMBERS,
             _ => MAX_MATERIAL_CIRCUIT_ROWS,
         };
         let mut bytes = envelope(0, &[]);

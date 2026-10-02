@@ -28,11 +28,11 @@ use crate::{
 pub const MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES: &[u8] = b"babylon.material-circuit-state.v3";
 /// SHA-256 of the current language-neutral material circuit contract source.
 pub const MATERIAL_CIRCUIT_SOURCE_SHA256: [u8; 32] = [
-    233, 136, 229, 130, 224, 231, 133, 156, 187, 252, 77, 189, 158, 26, 16, 189, 168, 54, 109, 167,
-    171, 214, 69, 51, 244, 132, 202, 209, 225, 144, 59, 193,
+    195, 7, 165, 241, 81, 80, 181, 58, 127, 27, 109, 181, 72, 223, 187, 80, 201, 137, 150, 153,
+    236, 192, 146, 164, 164, 201, 135, 27, 47, 198, 194, 162,
 ];
 
-const SCHEMA_VERSION: u16 = 12;
+const SCHEMA_VERSION: u16 = 13;
 
 impl From<CursorError> for MaterialCircuitError {
     fn from(value: CursorError) -> Self {

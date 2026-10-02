@@ -1,7 +1,7 @@
 use super::{
     apply_material_staffing, exact_real, read_stock, MaterialStaffingError, StaffingComposition,
-    StaffingEffectContext, StaffingEffects, StaffingNodeBinding, EMPLOYED_POPULATION,
-    MAX_EXACT_STAFFING_INTEGER, PREVIOUS_UNRETAINED_HOURS, RESERVE_POPULATION,
+    StaffingEffectContext, StaffingEffects, StaffingMemberNodeBinding, StaffingNodeBinding,
+    EMPLOYED_POPULATION, MAX_EXACT_STAFFING_INTEGER, PREVIOUS_UNRETAINED_HOURS, RESERVE_POPULATION,
     STAFFING_COMPOSITION_ID, STAFFING_FIELDS,
 };
 use babylon_bsl::causal_contract::{EvidenceClass, RuleRole};
@@ -15,8 +15,9 @@ use babylon_graph::state_hash::CanonicalState;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
 use babylon_graph::working_copy::DetachedCopy;
 use babylon_material_circuit::{
-    ProcessId, SiteId, StaffingError, StaffingPolicy, StaffingPoolBinding, StaffingPoolId,
-    StaffingWorkRequest, StaffingWorkSource, UnitId,
+    FinalDemandPrincipalId, ProcessId, SiteId, StaffingError, StaffingMemberBinding,
+    StaffingMemberId, StaffingPolicy, StaffingPoolBinding, StaffingPoolId, StaffingWorkRequest,
+    StaffingWorkSource, UnitId,
 };
 
 struct Fixture {
@@ -29,8 +30,8 @@ struct Fixture {
 impl Fixture {
     fn new(reverse: bool) -> Self {
         let workers = [
-            "(node a NodeType/SOCIAL_CLASS (social-class/employed-population 3) (social-class/reserve-population 1) (social-class/previous-unretained-labor-hours 480))",
-            "(node b NodeType/SOCIAL_CLASS (social-class/employed-population 1) (social-class/reserve-population 1) (social-class/previous-unretained-labor-hours 160))",
+            "(node a NodeType/SOCIAL_CLASS (social-class/employed-population 3) (social-class/reserve-population 1)) (node a-workplace NodeType/BUSINESS (business/previous-unretained-labor-hours 480))",
+            "(node b NodeType/SOCIAL_CLASS (social-class/employed-population 1) (social-class/reserve-population 1)) (node b-workplace NodeType/BUSINESS (business/previous-unretained-labor-hours 160))",
         ];
         let nodes = if reverse {
             [workers[1], workers[0]]
@@ -41,7 +42,7 @@ impl Fixture {
             "(scenario staffing/fixture
               (deffield social-class/employed-population int extensive)
               (deffield social-class/reserve-population int extensive)
-              (deffield social-class/previous-unretained-labor-hours int extensive)
+              (deffield business/previous-unretained-labor-hours int extensive)
               {} {} (node land NodeType/TERRITORY))",
             nodes[0], nodes[1]
         );
@@ -112,7 +113,27 @@ fn subject(name: &str) -> StableElementKey {
 }
 
 fn binding(name: &str, pool: StaffingPoolBinding) -> StaffingNodeBinding {
-    StaffingNodeBinding::try_new(subject(name), pool).unwrap()
+    let member = member_binding(name, &pool);
+    let workplace = if name == "land" {
+        name.to_owned()
+    } else {
+        format!("{name}-workplace")
+    };
+    StaffingNodeBinding::try_new(subject(&workplace), pool, vec![member]).unwrap()
+}
+
+fn member_binding(name: &str, pool: &StaffingPoolBinding) -> StaffingMemberNodeBinding {
+    StaffingMemberNodeBinding::try_new(
+        subject(name),
+        StaffingMemberBinding::try_new(
+            StaffingMemberId::from_bytes(pool.pool_id().as_bytes()),
+            FinalDemandPrincipalId::from_bytes(pool.pool_id().as_bytes()),
+            "county:26163".parse().unwrap(),
+            pool.labor_force(),
+        )
+        .unwrap(),
+    )
+    .unwrap()
 }
 
 fn composition() -> StaffingComposition {
@@ -160,7 +181,7 @@ fn shared_process_work_retains_only_one_period_then_recovers_with_exact_evidence
     assert_eq!(
         fixture
             .graph
-            .node_attribute(a, PREVIOUS_UNRETAINED_HOURS)
+            .node_attribute(fixture.node("a-workplace"), PREVIOUS_UNRETAINED_HOURS)
             .unwrap()
             .to_bits(),
         160.0_f64.to_bits()
@@ -211,7 +232,7 @@ fn supplied_schedule_controls_employment_and_next_period_hours() {
         let a = fixture.node("a");
         fixture
             .graph
-            .update_node(a, PREVIOUS_UNRETAINED_HOURS, 0.0)
+            .update_node(fixture.node("a-workplace"), PREVIOUS_UNRETAINED_HOURS, 0.0)
             .unwrap();
         let composition =
             StaffingComposition::try_new(vec![binding("a", pool(1, 4, hours_per_person, &[1, 2]))])
@@ -239,7 +260,7 @@ fn supplied_schedule_controls_employment_and_next_period_hours() {
         assert_eq!(
             fixture
                 .graph
-                .node_attribute(a, PREVIOUS_UNRETAINED_HOURS)
+                .node_attribute(fixture.node("a-workplace"), PREVIOUS_UNRETAINED_HOURS)
                 .unwrap()
                 .to_bits(),
             241.0_f64.to_bits()
@@ -274,7 +295,8 @@ fn evidence_subject_is_stable_across_different_node_allocation_order() {
     assert_eq!(left.staffing_receipts(), right.staffing_receipts());
     assert!(stable_payload(&left, &first.resolver)
         .iter()
-        .any(|(name, value)| name == "subject" && *value == StableBslValue::Node(subject("a"))));
+        .any(|(name, value)| name == "subject"
+            && *value == StableBslValue::Node(subject("a-workplace"))));
     assert_eq!(
         left.committed_events()[0].emitting_rule(),
         STAFFING_COMPOSITION_ID
@@ -321,7 +343,11 @@ fn malformed_numeric_readings_never_become_workforce_defaults() {
         let a = fixture.node("a");
         fixture
             .graph
-            .update_node(a, PREVIOUS_UNRETAINED_HOURS, invalid)
+            .update_node(
+                fixture.node("a-workplace"),
+                PREVIOUS_UNRETAINED_HOURS,
+                invalid,
+            )
             .unwrap();
         let composition = composition();
         assert!(fixture
@@ -330,7 +356,7 @@ fn malformed_numeric_readings_never_become_workforce_defaults() {
         assert_eq!(
             fixture
                 .graph
-                .node_attribute(a, PREVIOUS_UNRETAINED_HOURS)
+                .node_attribute(fixture.node("a-workplace"), PREVIOUS_UNRETAINED_HOURS)
                 .unwrap()
                 .to_bits(),
             invalid.to_bits()
@@ -358,7 +384,7 @@ fn exact_boundary_and_negative_zero_are_canonical() {
     fixture
         .graph
         .update_node(
-            a,
+            fixture.node("a-workplace"),
             PREVIOUS_UNRETAINED_HOURS,
             exact_real(MAX_EXACT_STAFFING_INTEGER).unwrap(),
         )
@@ -374,14 +400,25 @@ fn exact_boundary_and_negative_zero_are_canonical() {
     assert_eq!(boundary.staffing_receipts()[0].closing_employed(), 4);
     fixture
         .graph
-        .update_node(a, PREVIOUS_UNRETAINED_HOURS, -0.0)
+        .update_node(fixture.node("a-workplace"), PREVIOUS_UNRETAINED_HOURS, -0.0)
         .unwrap();
     fixture
         .apply(&composition, 1, &requests(&composition, 1, [0, 0]))
         .unwrap();
     for field in [EMPLOYED_POPULATION, PREVIOUS_UNRETAINED_HOURS] {
         assert_eq!(
-            fixture.graph.node_attribute(a, field).unwrap().to_bits(),
+            fixture
+                .graph
+                .node_attribute(
+                    if field == PREVIOUS_UNRETAINED_HOURS {
+                        fixture.node("a-workplace")
+                    } else {
+                        a
+                    },
+                    field
+                )
+                .unwrap()
+                .to_bits(),
             0.0_f64.to_bits()
         );
     }
@@ -441,7 +478,15 @@ fn field_declarations_require_all_three_int_extensive_fields() {
 #[test]
 fn missing_node_fields_wrong_owners_and_foreign_scopes_refuse() {
     let mut fixture = Fixture::new(false);
-    let land = StaffingComposition::try_new(vec![binding("land", pool(1, 4, 160, &[1]))]).unwrap();
+    let bound = pool(1, 4, 160, &[1]);
+    let member = member_binding("a", &bound);
+    let land = StaffingComposition::try_new(vec![StaffingNodeBinding::try_new(
+        subject("land"),
+        bound,
+        vec![member],
+    )
+    .unwrap()])
+    .unwrap();
     assert!(matches!(
         fixture.apply(&land, 1, &[request(&land.bindings()[0], 1, 1, 0)]),
         Err(MaterialStaffingError::NodeOwner)
@@ -453,6 +498,7 @@ fn missing_node_fields_wrong_owners_and_foreign_scopes_refuse() {
     let foreign = StaffingComposition::try_new(vec![StaffingNodeBinding::try_new(
         foreign,
         pool(1, 4, 160, &[1]),
+        vec![member_binding("a", &pool(1, 4, 160, &[1]))],
     )
     .unwrap()])
     .unwrap();
@@ -524,11 +570,9 @@ fn different_pool_ids_cannot_double_count_one_site_unit() {
 #[test]
 fn every_node_read_finishes_before_the_first_effect() {
     let mut fixture = Fixture::new(false);
-    let a = fixture.node("a");
-    let b = fixture.node("b");
     fixture
         .graph
-        .update_node(b, PREVIOUS_UNRETAINED_HOURS, 0.5)
+        .update_node(fixture.node("b-workplace"), PREVIOUS_UNRETAINED_HOURS, 0.5)
         .unwrap();
     let composition = StaffingComposition::try_new(vec![
         binding("a", pool(1, 4, 160, &[1])),
@@ -543,7 +587,7 @@ fn every_node_read_finishes_before_the_first_effect() {
     assert_eq!(
         fixture
             .graph
-            .node_attribute(a, PREVIOUS_UNRETAINED_HOURS)
+            .node_attribute(fixture.node("a-workplace"), PREVIOUS_UNRETAINED_HOURS)
             .unwrap()
             .to_bits(),
         480.0_f64.to_bits()
@@ -637,4 +681,73 @@ fn dropping_a_successful_detached_candidate_does_not_publish_its_writes() {
     assert_ne!(candidate.state_hash().unwrap(), before);
     drop(candidate);
     assert_eq!(fixture.graph.state_hash().unwrap(), before);
+}
+
+#[test]
+fn one_workplace_updates_two_resident_partitions_and_memory_without_duplicate_people() {
+    let mut fixture = Fixture::new(false);
+    let combined = pool(1, 6, 160, &[1, 2]);
+    let binding = StaffingNodeBinding::try_new(
+        subject("a-workplace"),
+        combined,
+        vec![
+            member_binding("a", &pool(1, 4, 160, &[1])),
+            member_binding("b", &pool(2, 2, 160, &[2])),
+        ],
+    )
+    .unwrap();
+    let composition = StaffingComposition::try_new(vec![binding]).unwrap();
+    let effects = fixture
+        .apply(&composition, 1, &requests(&composition, 1, [80, 80]))
+        .unwrap();
+    assert_eq!(effects.staffing_receipts()[0].closing_employed(), 3);
+    assert_eq!(
+        effects
+            .member_receipts()
+            .iter()
+            .map(|r| (r.closing_employed, r.closing_reserve))
+            .collect::<Vec<_>>(),
+        [(2, 2), (1, 1)]
+    );
+    assert_eq!(
+        effects
+            .next_member_labor()
+            .iter()
+            .map(|r| r.available_hours)
+            .collect::<Vec<_>>(),
+        [320, 160]
+    );
+    assert_eq!(
+        fixture
+            .graph
+            .node_attribute(fixture.node("a"), EMPLOYED_POPULATION)
+            .unwrap(),
+        2.0
+    );
+    assert_eq!(
+        fixture
+            .graph
+            .node_attribute(fixture.node("b"), EMPLOYED_POPULATION)
+            .unwrap(),
+        1.0
+    );
+    assert_eq!(
+        fixture
+            .graph
+            .node_attribute(fixture.node("a-workplace"), PREVIOUS_UNRETAINED_HOURS)
+            .unwrap(),
+        160.0
+    );
+    let recovered = fixture
+        .apply(&composition, 2, &requests(&composition, 2, [480, 480]))
+        .unwrap();
+    assert_eq!(
+        recovered
+            .member_receipts()
+            .iter()
+            .map(|r| r.hires)
+            .collect::<Vec<_>>(),
+        [2, 1]
+    );
+    assert_eq!(recovered.next_labor()[0].available, 960);
 }

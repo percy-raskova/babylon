@@ -5,9 +5,10 @@ use babylon_kernel::currency::Currency;
 use super::{append_rows, decode_rows, Cursor};
 use crate::{
     AccountId, CashAccount, CircuitAccounting, EmploymentTerms, FinalDemandPrincipalId,
-    FundedShift, MaterialCircuitError, MonetaryBook, MonetaryBookSnapshot, MonetaryCircuit,
-    OrderId, OrganizationAccountId, OutboundOrderId, PublicAccountId, PurchaseEscrow, ShiftId,
-    ShiftState, SiteId, UnitId,
+    FundedShift, LaborCompensation, MaterialCircuitError, MemberLaborCapacityRow, MonetaryBook,
+    MonetaryBookSnapshot, MonetaryCircuit, OrderId, OrganizationAccountId, OutboundOrderId,
+    PublicAccountId, PurchaseEscrow, ShiftId, ShiftState, SiteId, StaffingMemberId, UnitId,
+    MAX_STAFFING_MEMBERS,
 };
 
 pub(super) fn append_account(output: &mut Vec<u8>, account: AccountId) {
@@ -105,11 +106,22 @@ pub(super) fn append(
             ShiftState::Cancelled => 4,
         });
     })?;
-    append_rows(output, &economy.employment, |bytes, row| {
+    append_member_rows(output, &economy.employment, |bytes, row| {
+        bytes.extend_from_slice(&row.member_id.as_bytes());
         bytes.extend_from_slice(&row.site_id.as_bytes());
         bytes.extend_from_slice(&row.unit_id.as_bytes());
         bytes.extend_from_slice(&row.payee.as_bytes());
-        bytes.extend_from_slice(&row.hourly_rate.micro_units().to_be_bytes());
+        bytes.push(match row.compensation {
+            LaborCompensation::Wage(_) => 1,
+            LaborCompensation::WorkingOwner => 2,
+            LaborCompensation::UnpaidFamily => 3,
+        });
+        bytes.extend_from_slice(&row.compensation.wage_rate().micro_units().to_be_bytes());
+    })?;
+    append_member_rows(output, &economy.member_labor, |bytes, row| {
+        bytes.extend_from_slice(&row.member_id.as_bytes());
+        bytes.extend_from_slice(&row.period.to_be_bytes());
+        bytes.extend_from_slice(&row.available_hours.to_be_bytes());
     })?;
     super::recurring::append(output, economy.recurring.as_deref())?;
     super::valuation::append(output, &economy.costs)?;
@@ -167,12 +179,32 @@ pub(super) fn decode(cursor: &mut Cursor<'_>) -> Result<CircuitAccounting, Mater
             },
         })
     })?;
-    let employment = decode_rows(cursor, |bytes| {
+    let employment = decode_member_rows(cursor, |bytes| {
+        let member_id = StaffingMemberId::from_bytes(bytes.array()?);
+        let site_id = SiteId::from_bytes(bytes.array()?);
+        let unit_id = UnitId::from_bytes(bytes.array()?);
+        let payee = FinalDemandPrincipalId::from_bytes(bytes.array()?);
+        let tag = bytes.u8()?;
+        let rate = decode_currency(bytes)?;
+        let compensation = match tag {
+            1 if rate.micro_units() > 0 => LaborCompensation::Wage(rate),
+            2 if rate.micro_units() == 0 => LaborCompensation::WorkingOwner,
+            3 if rate.micro_units() == 0 => LaborCompensation::UnpaidFamily,
+            _ => return Err(MaterialCircuitError::WireEnum),
+        };
         Ok(EmploymentTerms {
-            site_id: SiteId::from_bytes(bytes.array()?),
-            unit_id: UnitId::from_bytes(bytes.array()?),
-            payee: FinalDemandPrincipalId::from_bytes(bytes.array()?),
-            hourly_rate: decode_currency(bytes)?,
+            member_id,
+            site_id,
+            unit_id,
+            payee,
+            compensation,
+        })
+    })?;
+    let member_labor = decode_member_rows(cursor, |bytes| {
+        Ok(MemberLaborCapacityRow {
+            member_id: StaffingMemberId::from_bytes(bytes.array()?),
+            period: bytes.u64()?,
+            available_hours: bytes.u64()?,
         })
     })?;
     // The book constructor normalizes into ordered maps. Check the actual input
@@ -180,7 +212,8 @@ pub(super) fn decode(cursor: &mut Cursor<'_>) -> Result<CircuitAccounting, Mater
     ordered_rows(&accounts, |row| row.id)?;
     ordered_rows(&purchases, |row| row.order)?;
     ordered_rows(&shifts, |row| row.id)?;
-    ordered_rows(&employment, |row| (row.site_id, row.unit_id))?;
+    ordered_rows(&employment, |row| (row.site_id, row.unit_id, row.member_id))?;
+    ordered_rows(&member_labor, |row| (row.period, row.member_id))?;
     Ok(CircuitAccounting::Monetary(Box::new(MonetaryCircuit {
         book: MonetaryBook::from_snapshot(MonetaryBookSnapshot {
             accounts,
@@ -188,8 +221,42 @@ pub(super) fn decode(cursor: &mut Cursor<'_>) -> Result<CircuitAccounting, Mater
             shifts,
         })?,
         employment,
+        member_labor,
         recurring: super::recurring::decode(cursor)?,
         costs: super::valuation::decode(cursor)?,
         financial: super::financial::decode(cursor)?,
     })))
+}
+
+fn append_member_rows<T>(
+    out: &mut Vec<u8>,
+    rows: &[T],
+    mut encode: impl FnMut(&mut Vec<u8>, &T),
+) -> Result<(), MaterialCircuitError> {
+    if rows.len() > MAX_STAFFING_MEMBERS {
+        return Err(MaterialCircuitError::WireLimit);
+    }
+    out.extend_from_slice(
+        &u32::try_from(rows.len())
+            .map_err(|_| MaterialCircuitError::WireLimit)?
+            .to_be_bytes(),
+    );
+    for row in rows {
+        encode(out, row);
+    }
+    Ok(())
+}
+fn decode_member_rows<T>(
+    cursor: &mut Cursor<'_>,
+    mut decode: impl FnMut(&mut Cursor<'_>) -> Result<T, MaterialCircuitError>,
+) -> Result<Vec<T>, MaterialCircuitError> {
+    let count = usize::try_from(cursor.u32()?).map_err(|_| MaterialCircuitError::WireLimit)?;
+    if count > MAX_STAFFING_MEMBERS {
+        return Err(MaterialCircuitError::WireLimit);
+    }
+    let mut rows = Vec::with_capacity(count);
+    for _ in 0..count {
+        rows.push(decode(cursor)?);
+    }
+    Ok(rows)
 }

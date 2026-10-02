@@ -377,14 +377,24 @@ mod engine_test {
             capacity_supply: CapacitySupply::FiniteSchedule,
             accounting: CircuitAccounting::Monetary(Box::new(MonetaryCircuit {
                 financial: babylon_material_circuit::FinancialInstitutions::empty(),
+                member_labor: vec![babylon_material_circuit::MemberLaborCapacityRow {
+                    member_id: babylon_material_circuit::StaffingMemberId::from_bytes(
+                        site.as_bytes(),
+                    ),
+                    period: 1,
+                    available_hours: 1,
+                }],
                 book,
                 costs,
                 recurring: None,
                 employment: vec![EmploymentTerms {
+                    member_id: babylon_material_circuit::StaffingMemberId::from_bytes(
+                        (site).as_bytes(),
+                    ),
                     site_id: site,
                     unit_id: labor,
                     payee: person,
-                    hourly_rate: money(1),
+                    compensation: babylon_material_circuit::LaborCompensation::Wage(money(1)),
                 }],
             })),
             site_logistics_nodes: vec![SiteLogisticsNode {

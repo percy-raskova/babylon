@@ -1,6 +1,6 @@
 version: 3
 name: committed_material_tick_v3
-authority: [ADR251, ADR260, ADR263, ADR264, ADR266]
+authority: [ADR251, ADR260, ADR263, ADR264, ADR266, ADR267]
 purpose: One marker-last transaction binds graph, H3, material, receipts and full restart state.
 envelope:
   domain: "babylon.committed-material-tick.v3\0"
@@ -17,18 +17,18 @@ envelope:
     - {tag: 5, name: graph_full_checkpoint, codec: existing_nine_checkpoint_sections_v1}
     - {tag: 6, name: archive_dirty_receipt, count: 1, hash: combined_material_tick_content_v3}
     - {tag: 7, name: complete_material_register, count: 1, key: empty, payload: exact_material_world_register_v4_bytes}
-    - {tag: 8, name: material_receipts, count: 1, key: empty, payload: exact_material_tick_receipts_v10_bytes}
+    - {tag: 8, name: material_receipts, count: 1, key: empty, payload: exact_material_tick_receipts_v11_bytes}
   family_frame: u8_tag_then_u64_big_endian_count
   row_frame: u32_big_endian_key_length_then_key_then_u32_big_endian_payload_length_then_payload
   ordering: Existing six families preserve strict canonical key order; singular added families cannot reorder.
   digest: sha256_exact_complete_envelope_bytes
   maximum_complete_bytes: 67108864
 receipts:
-  version: 10
-  domain: "babylon.material-tick-receipts.v10\0"
-  header: u32_big_endian_version_10_then_u64_big_endian_positive_resolve_tick
+  version: 11
+  domain: "babylon.material-tick-receipts.v11\0"
+  header: u32_big_endian_version_11_then_u64_big_endian_positive_resolve_tick
   family_frame: u8_tag_then_u64_big_endian_count
-  family_count: 27
+  family_count: 29
   identities: exact_32_bytes
   quantities_periods_and_hours: u64_big_endian
   stage_index: u16_big_endian_less_than_16
@@ -122,20 +122,10 @@ receipts:
       width: 130
       meaning: earned_wage_payable_and_matching_receivable_without_cash_movement
     - tag: 13
-      fields:
-        - site_id
-        - unit_id
-        - payee_id
-        - period
-        - available_hours
-        - planned_hours
-        - unplanned_hours
-        - funded_hours
-        - unfunded_hours
-        - used_hours
-        - paid_idle_hours
-      width: 160
-      meaning: planned_attendance_funding_and_actual_utilization
+      fields: [site_id, unit_id, period, available_hours, planned_hours, unplanned_hours,
+               funded_hours, unfunded_hours, non_wage_hours, used_hours, paid_idle_hours, unpaid_idle_hours]
+      width: 144
+      meaning: aggregate_planned_attendance_and_actual_utilization_without_a_single_payee
     - tag: 14
       fields:
         - principal_id
@@ -257,8 +247,22 @@ receipts:
       fields: [period, id, contributor, issuer_site_id, requested, paid, unfunded]
       width: 153
       meaning: finite_cash_for_equity_contribution_distinct_from_income
+    - tag: 28
+      fields: [pool_id, site_id, unit_id, member_id, household_id, residence_six_bytes, period,
+               labor_force, hours_per_person, opening_employed, opening_reserve, hires, separations,
+               closing_employed, closing_reserve, next_opening_hours]
+      width: 246
+      meaning: conserved_resident_share_of_the_single_workplace_staffing_decision
+    - tag: 29
+      fields: [member_id, site_id, unit_id, payee_id, compensation_tag, hourly_rate_i128, period,
+               available_hours, planned_hours, unplanned_hours, attended_hours, unattended_hours,
+               production_hours, handling_hours, maintenance_hours, idle_hours, accrued_wages,
+               production_wages, handling_wages, maintenance_wages, idle_wages]
+      width: 305
+      meaning: resident_attendance_and_exact_actual_work_wage_attribution
+  compensation_tag: {wage: 1, working_owner: 2, unpaid_family: 3}
   ordering:
-    families: Tags 1 through 27 appear exactly once in declared order, including empty families.
+    families: Tags 1 through 29 appear exactly once in declared order, including empty families.
     original_families: Preserve deterministic encounter order from babylon_material_circuit::advance_material_circuit.
     handling: Strict increasing unique site_id_and_tagged_outbound_order.
     local_fulfillment: Strict increasing unique order_id.
@@ -266,6 +270,8 @@ receipts:
     money_transfers: Preserve deterministic chronological execution order; do not sort by principal or purpose.
     wage_accruals: Preserve attendance execution order with unique shift identities; hashed shift IDs are not sorted.
     labor_use: Strict increasing unique site_id_and_unit_id.
+    staffing_members: Strict increasing pool_id_and_member_id with globally unique member IDs.
+    member_labor_use: Strict increasing site_id_unit_id_member_id with globally unique member IDs.
     household_demand: Strict increasing unique principal_good_unit; quoted order identities are unique.
     household_consumption: Strict increasing unique principal_good_unit.
     procurement: Strict increasing unique buyer_supplier_good_unit; quoted order identities are unique.
@@ -278,6 +284,14 @@ receipts:
     service_outputs: Strict increasing unique site_good_unit.
 
   validation:
+    - Member opening and closing employed plus reserve equal the immutable member force; transfers conserve persons.
+    - Each member next hours equals closing employed times captured schedule, with checked integer arithmetic.
+    - Available hours equal planned plus unplanned; planned equals attended plus unattended for each member.
+    - Attended hours equal production plus handling plus maintenance plus idle hours.
+    - Wage mode has positive rate and exact earned/use amounts; non-wage modes require zero rate and wage amounts.
+    - Aggregate labor is the exact sum of member receipts; paid and unpaid idle hours remain distinct.
+    - Every positive employee attendance has one exact member-domain wage accrual with matching principals and amount.
+    - Where both families are present, staffing and attendance member identities, payees and opening hours agree.
     - Reject wrong domain, version, family tag, truncation or trailing bytes.
     - Produced batches cannot exceed planned batches.
     - Staged dispatch quantity is positive and final arrival is later than resolve_tick.
@@ -353,8 +367,9 @@ receipts:
     wage_accruals: >-
       The obligation is separate from payment and actual production; paying a prior unpaid shift creates no new accrual.
     labor_use: >-
-      Unplanned hours are outside scheduled attendance; unfunded planned hours were not hired.
-      Used and paid idle hours partition funded attendance.
+      Unplanned hours are outside scheduled attendance; unfunded hours remain unperformed planned employee work.
+      Funded plus non-wage attendance equals used plus paid idle plus unpaid idle hours.
+      Employment stocks remain graph-owned and are separate from funded attendance.
     recurring: >-
       Household need, desired purchases, funded admission, fulfillment and consumption are distinct.
       Procurement, production caps and next prices explain decisions without promising execution.
@@ -372,14 +387,13 @@ receipts:
   handling_bound: >-
     At most N first-pass orders plus N new procurement orders after generated retail principals retire.
     Delivery principals remain live through both passes, so dispatch and local-transfer families retain N.
-  maximum_money_transfer_rows: 1179648
+  maximum_member_and_wage_accrual_rows: 131072
+  maximum_money_transfer_rows: 1376256
   maximum_service_performance_rows: 196608
   money_transfer_bound: >-
-    A conservative 18N derived movement ceiling covers prior and current payroll,
-    household and procurement reservations, delivery settlements and purchase refunds.
-    The additional 4N covers two recurring service request families plus bounded service settlement/refunds.
-    A further 4N covers contributions, public allocations, eligible taxes and ownership payouts.
-    N is the state-family limit; this does not enlarge any state principal table.
+    3M covers prior and current member payroll. 15N covers purchase, household, procurement,
+    service, public-budget, tax, distribution and contribution movements. M is the member limit;
+    N is the ordinary state-family limit. State and aggregate byte ceilings remain independent.
   maximum_complete_bytes: 67108864
 persistence:
   material_rows: babylon_state.material_tick_v3

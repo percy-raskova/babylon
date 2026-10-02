@@ -4,8 +4,8 @@ use super::{
     add, amount, portion, sub, zero, HistoricalCostBook, IncomeReceipt, IncomeStatement, Result,
 };
 use crate::{
-    AccountId, CircuitAccounting, FinalDemandOrder, FreightLotId, LaborUseReceipt,
-    MaterialCircuitError, MaterialCircuitState, OrderRow, OutboundOrderId, ProcessOutput,
+    AccountId, CircuitAccounting, FinalDemandOrder, FreightLotId, MaterialCircuitError,
+    MaterialCircuitState, MemberLaborUseReceipt, OrderRow, OutboundOrderId, ProcessOutput,
     RoutedFreightLot, SiteId, UnitId, WageAccrualReceipt, MAX_MATERIAL_CIRCUIT_ROWS,
 };
 use babylon_kernel::currency::Currency;
@@ -13,6 +13,7 @@ use std::collections::BTreeMap;
 
 pub(crate) struct CostClose {
     pub(super) active: Option<ActiveCosts>,
+    attendance: crate::payments::AttendanceLedger,
 }
 pub(super) struct ActiveCosts {
     pub(super) book: HistoricalCostBook,
@@ -37,7 +38,21 @@ impl CostClose {
                     .collect(),
             }),
         };
-        Self { active }
+        Self {
+            active,
+            attendance: crate::payments::AttendanceLedger::default(),
+        }
+    }
+
+    pub(crate) fn admit_attendance(&mut self, attendance: crate::payments::AttendanceLedger) {
+        self.attendance = attendance;
+    }
+
+    pub(crate) fn finish_attendance(
+        &mut self,
+        state: &MaterialCircuitState,
+    ) -> Result<(Vec<crate::LaborUseReceipt>, Vec<MemberLaborUseReceipt>)> {
+        std::mem::take(&mut self.attendance).finish(state)
     }
 
     pub(crate) fn input(
@@ -73,7 +88,12 @@ impl CostClose {
             .quantity_per_batch
             .checked_mul(batches)
             .ok_or(MaterialCircuitError::Arithmetic)?;
-        let wages = wage_cost(state, output.site_id, labor.unit_id, hours)?;
+        let wages = self.attendance.consume(
+            output.site_id,
+            labor.unit_id,
+            hours,
+            crate::payments::LaborUse::Production,
+        )?;
         let key = (
             AccountId::Site(output.site_id),
             output.good_id,
@@ -333,7 +353,7 @@ impl CostClose {
 
     pub(crate) fn handling(
         &mut self,
-        state: &MaterialCircuitState,
+        _state: &MaterialCircuitState,
         site: SiteId,
         unit: UnitId,
         hours: u64,
@@ -341,7 +361,9 @@ impl CostClose {
         let Some(active) = &mut self.active else {
             return Ok(());
         };
-        let wages = wage_cost(state, site, unit, hours)?;
+        let wages =
+            self.attendance
+                .consume(site, unit, hours, crate::payments::LaborUse::Handling)?;
         let statement = active.statement(AccountId::Site(site))?;
         statement.handling_expense = add(statement.handling_expense, wages)?;
         Ok(())
@@ -349,7 +371,7 @@ impl CostClose {
 
     pub(crate) fn maintenance(
         &mut self,
-        state: &MaterialCircuitState,
+        _state: &MaterialCircuitState,
         receipt: &crate::MaintenanceReceipt,
     ) -> Result<()> {
         let Some(active) = &mut self.active else {
@@ -362,11 +384,11 @@ impl CostClose {
             receipt.available_spare_parts,
             receipt.consumed_spare_parts,
         )?;
-        let wages = wage_cost(
-            state,
+        let wages = self.attendance.consume(
             binding.provider_site_id,
             binding.labor_unit_id,
             receipt.consumed_labor_hours,
+            crate::payments::LaborUse::Maintenance,
         )?;
         let statement = active.statement(owner)?;
         statement.maintenance_material_expense =
@@ -378,7 +400,7 @@ impl CostClose {
     pub(crate) fn payroll(
         &mut self,
         state: &MaterialCircuitState,
-        labor: &[LaborUseReceipt],
+        labor: &[MemberLaborUseReceipt],
         accruals: &[WageAccrualReceipt],
     ) -> Result<()> {
         let Some(active) = &mut self.active else {
@@ -395,7 +417,8 @@ impl CostClose {
             statement.wage_income = add(statement.wage_income, row.amount)?;
         }
         for row in labor {
-            let idle = wage_cost(state, row.site_id, row.unit_id, row.paid_idle_hours)?;
+            row.validate()?;
+            let idle = row.idle_wages;
             let statement = active.statement(AccountId::Site(row.site_id))?;
             statement.idle_labor_expense = add(statement.idle_labor_expense, idle)?;
         }
@@ -480,22 +503,6 @@ impl ActiveCosts {
     }
 }
 
-fn wage_cost(
-    state: &MaterialCircuitState,
-    site: SiteId,
-    unit: UnitId,
-    hours: u64,
-) -> Result<Currency> {
-    let CircuitAccounting::Monetary(economy) = &state.accounting else {
-        return Ok(zero());
-    };
-    let index = economy
-        .employment
-        .binary_search_by_key(&(site, unit), |r| (r.site_id, r.unit_id))
-        .map_err(|_| MaterialCircuitError::PayrollInvariant)?;
-    let terms = &economy.employment[index];
-    amount(hours, terms.hourly_rate)
-}
 fn purchase_amount(
     state: &MaterialCircuitState,
     order: OutboundOrderId,

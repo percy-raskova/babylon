@@ -4,7 +4,7 @@
 //! This module neither owns durable state nor publishes a tick. A caller must
 //! discard its entire candidate if an effect or a later tick stage refuses.
 
-use std::collections::BTreeSet;
+use std::collections::BTreeMap;
 
 use babylon_bsl::causal_contract::{
     reduce_audit_receipts, AuditReceipt, ContractError, EvidenceClass, RuleContract, RuleRole,
@@ -20,8 +20,9 @@ use babylon_bsl::write_log::{CollectingWriteLog, WriteRecord};
 use babylon_graph::stable_element::{StableElementKey, StableElementResolver, StableIdentityError};
 use babylon_graph::substrate::{GraphError, GraphSubstrate, NodeId};
 use babylon_material_circuit::{
-    advance_staffing, LaborCapacityRow, StaffingError, StaffingPoolBinding, StaffingPoolState,
-    StaffingReceipt, StaffingState, StaffingWorkRequest, MAX_MATERIAL_CIRCUIT_ROWS,
+    advance_staffing, distribute_staffing_members, LaborCapacityRow, MemberLaborCapacityRow,
+    StaffingError, StaffingMemberReceipt, StaffingMemberState, StaffingPoolState, StaffingReceipt,
+    StaffingState, StaffingWorkRequest,
 };
 
 use crate::committed_event::CommittedEvent;
@@ -35,8 +36,8 @@ pub const EMPLOYED_POPULATION: &str = "social-class/employed-population";
 /// Exact reserve persons in that same closed pool.
 pub const RESERVE_POPULATION: &str = "social-class/reserve-population";
 /// Last period's actual unretained work request, never its retained maximum.
-pub const PREVIOUS_UNRETAINED_HOURS: &str = "social-class/previous-unretained-labor-hours";
-/// The composition's complete write footprint, in application order per pool.
+pub const PREVIOUS_UNRETAINED_HOURS: &str = "business/previous-unretained-labor-hours";
+/// The composition's complete owned field set; member writes follow canonical identities.
 pub const STAFFING_FIELDS: [&str; 3] = [
     EMPLOYED_POPULATION,
     RESERVE_POPULATION,
@@ -68,6 +69,7 @@ pub enum MaterialStaffingError {
     },
     Audit(ContractError),
     Allocation,
+    OpeningLabor,
 }
 
 impl std::fmt::Display for MaterialStaffingError {
@@ -95,110 +97,8 @@ impl From<EvalError> for MaterialStaffingError {
     }
 }
 
-/// One authored workforce node and its distinct, closed physical labor pool.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct StaffingNodeBinding {
-    subject: StableElementKey,
-    pool: StaffingPoolBinding,
-}
-
-impl StaffingNodeBinding {
-    /// Check the node identity and exact population with the supplied typed policy.
-    /// The caller admits the authored schedule as part of campaign content.
-    /// # Errors
-    /// Refuses another key kind, malformed key or unrepresentable population.
-    pub fn try_new(
-        subject: StableElementKey,
-        pool: StaffingPoolBinding,
-    ) -> Result<Self, MaterialStaffingError> {
-        if !matches!(subject, StableElementKey::Node { .. }) {
-            return Err(MaterialStaffingError::NodeBinding);
-        }
-        subject.canonical_bytes()?;
-        exact_real(pool.labor_force())?;
-        Ok(Self { subject, pool })
-    }
-    #[must_use]
-    pub const fn subject(&self) -> &StableElementKey {
-        &self.subject
-    }
-    #[must_use]
-    pub const fn pool(&self) -> &StaffingPoolBinding {
-        &self.pool
-    }
-}
-
-/// Immutable, complete bindings, ordered by pool identity without duplicate principals.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct StaffingComposition {
-    bindings: Vec<StaffingNodeBinding>,
-}
-
-impl StaffingComposition {
-    /// Validate the complete roster. No population or political role is inferred.
-    /// # Errors
-    /// Refuses empty, excessive, duplicate or overlapping ownership.
-    pub fn try_new(mut bindings: Vec<StaffingNodeBinding>) -> Result<Self, MaterialStaffingError> {
-        if bindings.is_empty() {
-            return Err(MaterialStaffingError::EmptyBindings);
-        }
-        if bindings.len() > MAX_MATERIAL_CIRCUIT_ROWS {
-            return Err(StaffingError::RowLimit.into());
-        }
-        bindings.sort_unstable_by_key(|row| row.pool.pool_id());
-        let mut nodes = BTreeSet::new();
-        let mut pools = BTreeSet::new();
-        let mut sites = BTreeSet::new();
-        let mut work_sources = BTreeSet::new();
-        for row in &bindings {
-            if !nodes.insert(row.subject.canonical_bytes()?) {
-                return Err(MaterialStaffingError::DuplicateNode);
-            }
-            if !pools.insert(row.pool.pool_id()) {
-                return Err(StaffingError::DuplicatePool.into());
-            }
-            if !sites.insert((row.pool.site_id(), row.pool.unit_id())) {
-                return Err(StaffingError::DuplicateSiteUnit.into());
-            }
-            for source in row.pool.work_sources() {
-                if !work_sources.insert(*source) {
-                    return Err(StaffingError::DuplicateWorkSource.into());
-                }
-                if work_sources.len() > MAX_MATERIAL_CIRCUIT_ROWS {
-                    return Err(StaffingError::RowLimit.into());
-                }
-            }
-        }
-        Ok(Self { bindings })
-    }
-    /// Admit an inventory/transport boundary with no labor-consuming activity.
-    /// # Errors
-    /// Refuses any production, merchant, maintenance or scheduled labor authority.
-    pub fn inventory_only(
-        state: &babylon_material_circuit::MaterialCircuitState,
-    ) -> Result<Self, MaterialStaffingError> {
-        if !state.process_outputs.is_empty()
-            || !state.input_coefficients.is_empty()
-            || !state.labor_coefficients.is_empty()
-            || !state.capacities.is_empty()
-            || !state.production_commitments.is_empty()
-            || !state.labor.is_empty()
-            || !state.merchants.is_empty()
-            || !state.handling_coefficients.is_empty()
-            || state.maintenance_binding.is_some()
-            || state.maintenance_service.is_some()
-        {
-            return Err(MaterialStaffingError::InventoryHasLabor);
-        }
-        Ok(Self {
-            bindings: Vec::new(),
-        })
-    }
-    #[must_use]
-    pub fn bindings(&self) -> &[StaffingNodeBinding] {
-        &self.bindings
-    }
-}
+mod bindings;
+pub use bindings::{StaffingComposition, StaffingMemberNodeBinding, StaffingNodeBinding};
 
 /// Exact registries already owned by the prepared replay environment.
 #[derive(Clone, Copy)]
@@ -212,6 +112,8 @@ pub struct StaffingEffectContext<'a> {
 #[derive(Debug)]
 pub struct StaffingEffects {
     staffing_receipts: Vec<StaffingReceipt>,
+    member_receipts: Vec<StaffingMemberReceipt>,
+    next_member_labor: Vec<MemberLaborCapacityRow>,
     next_labor: Vec<LaborCapacityRow>,
     writes: Vec<WriteRecord>,
     audit_receipts: Vec<AuditReceipt>,
@@ -221,6 +123,14 @@ impl StaffingEffects {
     #[must_use]
     pub fn staffing_receipts(&self) -> &[StaffingReceipt] {
         &self.staffing_receipts
+    }
+    #[must_use]
+    pub fn member_receipts(&self) -> &[StaffingMemberReceipt] {
+        &self.member_receipts
+    }
+    #[must_use]
+    pub fn next_member_labor(&self) -> &[MemberLaborCapacityRow] {
+        &self.next_member_labor
     }
     #[must_use]
     pub fn next_labor(&self) -> &[LaborCapacityRow] {
@@ -263,25 +173,23 @@ fn validate_fields(context: StaffingEffectContext<'_>) -> Result<(), MaterialSta
 fn resolve_node(
     graph: &impl GraphSubstrate,
     context: StaffingEffectContext<'_>,
-    row: &StaffingNodeBinding,
+    subject: &StableElementKey,
+    kind: &str,
 ) -> Result<NodeId, MaterialStaffingError> {
-    if !context
-        .resolver
-        .sealed_node_has_type(&row.subject, "SOCIAL_CLASS")?
-    {
+    if !context.resolver.sealed_node_has_type(subject, kind)? {
         return Err(MaterialStaffingError::NodeOwner);
     }
-    let StableElementKey::Node { local_name, .. } = &row.subject else {
+    let StableElementKey::Node { local_name, .. } = subject else {
         return Err(MaterialStaffingError::NodeBinding);
     };
     let node = context.resolver.node_handle_by_local_name(local_name)?;
-    if context.resolver.node_key(node)? != &row.subject {
+    if context.resolver.node_key(node)? != subject {
         return Err(MaterialStaffingError::NodeBinding);
     }
     if graph
         .node_type_of(node)
         .map_err(MaterialStaffingError::Graph)?
-        != "SOCIAL_CLASS"
+        != kind
     {
         return Err(MaterialStaffingError::NodeOwner);
     }
@@ -322,30 +230,134 @@ fn exact_real(value: u64) -> Result<f64, MaterialStaffingError> {
     Ok(f64::from(high) * 4_294_967_296.0 + f64::from(low))
 }
 
+struct OpeningStaffing {
+    state: StaffingState,
+    workplaces: Vec<NodeId>,
+    members: Vec<Vec<StaffingMemberState>>,
+    member_nodes: Vec<Vec<NodeId>>,
+}
+
 fn read_opening(
     graph: &impl GraphSubstrate,
     context: StaffingEffectContext<'_>,
     composition: &StaffingComposition,
     period: u64,
-) -> Result<(StaffingState, Vec<NodeId>), MaterialStaffingError> {
-    validate_fields(context)?;
-    let mut pools = reserved(composition.bindings.len())?;
-    let mut nodes = reserved(composition.bindings.len())?;
-    let mut seen = BTreeSet::new();
-    for row in &composition.bindings {
-        let node = resolve_node(graph, context, row)?;
-        if !seen.insert(node) {
-            return Err(MaterialStaffingError::DuplicateNode);
+) -> Result<OpeningStaffing, MaterialStaffingError> {
+    if !composition.bindings().is_empty() {
+        validate_fields(context)?;
+    }
+    let mut pools = reserved(composition.bindings().len())?;
+    let mut workplaces = reserved(composition.bindings().len())?;
+    let mut members = reserved(composition.bindings().len())?;
+    let mut member_nodes = reserved(composition.bindings().len())?;
+    for row in composition.bindings() {
+        let workplace = resolve_node(graph, context, row.subject(), "BUSINESS")?;
+        let mut states = reserved(row.members().len())?;
+        let mut nodes = reserved(row.members().len())?;
+        let (mut employed, mut reserve) = (0_u64, 0_u64);
+        for member in row.members() {
+            let node = resolve_node(graph, context, member.subject(), "SOCIAL_CLASS")?;
+            let state = StaffingMemberState::try_new(
+                member.member().clone(),
+                read_stock(graph, node, EMPLOYED_POPULATION, &context)?,
+                read_stock(graph, node, RESERVE_POPULATION, &context)?,
+            )?;
+            employed = employed
+                .checked_add(state.employed())
+                .ok_or(StaffingError::Arithmetic)?;
+            reserve = reserve
+                .checked_add(state.reserve())
+                .ok_or(StaffingError::Arithmetic)?;
+            states.push(state);
+            nodes.push(node);
         }
         pools.push(StaffingPoolState::try_new(
-            row.pool.clone(),
-            read_stock(graph, node, EMPLOYED_POPULATION, &context)?,
-            read_stock(graph, node, RESERVE_POPULATION, &context)?,
-            read_stock(graph, node, PREVIOUS_UNRETAINED_HOURS, &context)?,
+            row.pool().clone(),
+            employed,
+            reserve,
+            read_stock(graph, workplace, PREVIOUS_UNRETAINED_HOURS, &context)?,
         )?);
-        nodes.push(node);
+        workplaces.push(workplace);
+        members.push(states);
+        member_nodes.push(nodes);
     }
-    Ok((StaffingState::try_new(period, pools)?, nodes))
+    Ok(OpeningStaffing {
+        state: StaffingState::try_new(period, pools)?,
+        workplaces,
+        members,
+        member_nodes,
+    })
+}
+
+/// Authenticate material budgets against graph-owned opening people before cash moves.
+/// # Errors
+/// Refuses any aggregate/member hour mismatch, missing payee, or residence mismatch.
+pub fn validate_opening_labor(
+    graph: &impl GraphSubstrate,
+    context: StaffingEffectContext<'_>,
+    composition: &StaffingComposition,
+    material: &babylon_material_circuit::MaterialCircuitState,
+) -> Result<(), MaterialStaffingError> {
+    use babylon_material_circuit::CircuitAccounting;
+    let opening = read_opening(graph, context, composition, material.period)?;
+    let mut expected = BTreeMap::new();
+    let mut member_hours = BTreeMap::new();
+    let mut member_bindings = BTreeMap::new();
+    for (pool, members) in opening.state.pools().iter().zip(&opening.members) {
+        let hours = pool
+            .employed()
+            .checked_mul(pool.binding().policy().hours_per_person())
+            .ok_or(StaffingError::Arithmetic)?;
+        expected.insert((pool.binding().site_id(), pool.binding().unit_id()), hours);
+        for member in members {
+            let id = member.binding().member_id();
+            member_hours.insert(
+                id,
+                member
+                    .employed()
+                    .checked_mul(pool.binding().policy().hours_per_person())
+                    .ok_or(StaffingError::Arithmetic)?,
+            );
+            member_bindings.insert(id, (pool.binding(), member.binding()));
+        }
+    }
+    let actual: BTreeMap<_, _> = material
+        .labor
+        .iter()
+        .filter(|r| r.period == material.period)
+        .map(|r| ((r.site_id, r.unit_id), r.available))
+        .collect();
+    if expected != actual {
+        return Err(MaterialStaffingError::OpeningLabor);
+    }
+    if let CircuitAccounting::Monetary(economy) = &material.accounting {
+        let actual: BTreeMap<_, _> = economy
+            .member_labor
+            .iter()
+            .filter(|r| r.period == material.period)
+            .map(|r| (r.member_id, r.available_hours))
+            .collect();
+        if actual != member_hours || economy.employment.len() != member_bindings.len() {
+            return Err(MaterialStaffingError::OpeningLabor);
+        }
+        let residents: BTreeMap<_, _> = material
+            .final_demand_principals
+            .iter()
+            .map(|r| (r.id, r.location))
+            .collect();
+        for terms in &economy.employment {
+            let (pool, member) = member_bindings
+                .get(&terms.member_id)
+                .ok_or(MaterialStaffingError::OpeningLabor)?;
+            if (terms.site_id, terms.unit_id, terms.payee)
+                != (pool.site_id(), pool.unit_id(), member.household_id())
+                || residents.get(&terms.payee) != Some(&member.residence())
+            {
+                return Err(MaterialStaffingError::OpeningLabor);
+            }
+        }
+    }
+    Ok(())
 }
 
 fn staffing_event(
@@ -390,38 +402,76 @@ fn staffing_event(
     ))
 }
 
+struct PreparedEffects {
+    writes: Vec<PendingWrite>,
+    events: Vec<CommittedEvent>,
+    members: Vec<StaffingMemberReceipt>,
+    next_member_labor: Vec<MemberLaborCapacityRow>,
+}
 fn prepare_effects(
-    nodes: &[NodeId],
+    opening: &OpeningStaffing,
     receipts: &[StaffingReceipt],
-) -> Result<(Vec<PendingWrite>, Vec<CommittedEvent>), MaterialStaffingError> {
-    if nodes.len() != receipts.len() {
+) -> Result<PreparedEffects, MaterialStaffingError> {
+    if opening.workplaces.len() != receipts.len() {
         return Err(MaterialStaffingError::NodeBinding);
     }
-    let count = nodes
-        .len()
-        .checked_mul(3)
-        .ok_or(MaterialStaffingError::Allocation)?;
-    let mut writes = reserved(count)?;
-    let mut events = reserved(nodes.len())?;
-    for (node, receipt) in nodes.iter().zip(receipts) {
-        for (field, value) in STAFFING_FIELDS.into_iter().zip([
-            receipt.closing_employed(),
-            receipt.closing_reserve(),
+    let mut result = PreparedEffects {
+        writes: vec![],
+        events: vec![],
+        members: vec![],
+        next_member_labor: vec![],
+    };
+    for (index, receipt) in receipts.iter().enumerate() {
+        result.writes.push(typed_write(
+            opening.workplaces[index],
+            PREVIOUS_UNRETAINED_HOURS,
             receipt.current_unretained_hours(),
-        ]) {
-            writes.push(PendingWrite {
-                target: WriteTarget::Node(*node),
-                field: field.to_owned(),
-                op: UpdateOp::Set,
-                operand: WriteOperand::Real(exact_real(value)?),
+        )?);
+        result
+            .events
+            .push(staffing_event(opening.workplaces[index], receipt)?);
+        let members = distribute_staffing_members(receipt, &opening.members[index])?;
+        for (node, member) in opening.member_nodes[index].iter().zip(&members) {
+            result.writes.push(typed_write(
+                *node,
+                EMPLOYED_POPULATION,
+                member.closing_employed,
+            )?);
+            result.writes.push(typed_write(
+                *node,
+                RESERVE_POPULATION,
+                member.closing_reserve,
+            )?);
+            result.next_member_labor.push(MemberLaborCapacityRow {
+                member_id: member.member.member_id(),
+                period: member
+                    .period
+                    .checked_add(1)
+                    .ok_or(StaffingError::Arithmetic)?,
+                available_hours: member.next_opening_hours,
             });
         }
-        events.push(staffing_event(*node, receipt)?);
+        result.members.extend(members);
     }
-    Ok((writes, events))
+    result
+        .next_member_labor
+        .sort_unstable_by_key(|r| (r.period, r.member_id));
+    Ok(result)
+}
+fn typed_write(
+    node: NodeId,
+    field: &str,
+    value: u64,
+) -> Result<PendingWrite, MaterialStaffingError> {
+    Ok(PendingWrite {
+        target: WriteTarget::Node(node),
+        field: field.to_owned(),
+        op: UpdateOp::Set,
+        operand: WriteOperand::Real(exact_real(value)?),
+    })
 }
 
-/// Resolve one complete workforce transition and apply its three exact graph effects per pool.
+/// Apply one workplace request-memory write and each member's two person-stock writes.
 ///
 /// Every source read, core transition and output conversion finishes before the first write.
 /// The caller must supply a detached candidate and discard it on any returned error. This
@@ -435,9 +485,11 @@ pub fn apply_material_staffing(
     period: u64,
     requests: &[StaffingWorkRequest],
 ) -> Result<StaffingEffects, MaterialStaffingError> {
-    let (opening, nodes) = read_opening(graph, context, composition, period)?;
-    let transition = advance_staffing(&opening, requests)?;
-    let (pending, committed_events) = prepare_effects(&nodes, transition.receipts())?;
+    let opening = read_opening(graph, context, composition, period)?;
+    let transition = advance_staffing(&opening.state, requests)?;
+    let prepared = prepare_effects(&opening, transition.receipts())?;
+    let pending = prepared.writes;
+    let committed_events = prepared.events;
     let mut staffing_receipts = reserved(transition.receipts().len())?;
     staffing_receipts.extend_from_slice(transition.receipts());
     let mut next_labor = reserved(transition.next_labor().len())?;
@@ -472,6 +524,8 @@ pub fn apply_material_staffing(
         .map_err(MaterialStaffingError::Audit)?;
     Ok(StaffingEffects {
         staffing_receipts,
+        member_receipts: prepared.members,
+        next_member_labor: prepared.next_member_labor,
         next_labor,
         writes: log.records,
         audit_receipts,

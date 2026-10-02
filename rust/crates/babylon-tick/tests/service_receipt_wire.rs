@@ -1,6 +1,6 @@
 //! Independent native service wire witnesses; no Rust layout or encoder-derived fixture.
 use babylon_tick::material_world::decode_material_receipts;
-const DOMAIN: &[u8] = b"babylon.material-tick-receipts.v10\0";
+const DOMAIN: &[u8] = b"babylon.material-tick-receipts.v11\0";
 fn quantities(bytes: &mut Vec<u8>, values: &[u64]) {
     for value in values {
         bytes.extend_from_slice(&value.to_be_bytes());
@@ -58,9 +58,9 @@ fn row(tag: u8, key: u8) -> Vec<u8> {
 }
 fn envelope(tag: u8, rows: &[Vec<u8>]) -> Vec<u8> {
     let mut bytes = DOMAIN.to_vec();
-    bytes.extend_from_slice(&10_u32.to_be_bytes());
+    bytes.extend_from_slice(&11_u32.to_be_bytes());
     quantities(&mut bytes, &[1]);
-    for family in 1..=27 {
+    for family in 1..=29 {
         bytes.push(family);
         quantities(
             &mut bytes,

@@ -20,10 +20,11 @@ mod maintenance_receipt;
 mod monetary_receipt;
 mod recurring_receipt;
 mod service_receipt;
+mod workforce_receipt;
 
 const REGISTER_DOMAIN: &[u8] = b"babylon.material-world-register.v4\0";
 const NOMINAL_DOMAIN: &[u8] = b"babylon.nominal-material-world.v3\0";
-const RECEIPT_DOMAIN: &[u8] = b"babylon.material-tick-receipts.v10\0";
+const RECEIPT_DOMAIN: &[u8] = b"babylon.material-tick-receipts.v11\0";
 /// Shared identity ceiling inherited by the aggregate replay envelope.
 pub const MAX_MATERIAL_WORLD_REGISTER_BYTES: usize = 67_108_864;
 
@@ -407,6 +408,7 @@ fn receipt_row_limit(index: usize) -> usize {
         6 => babylon_material_circuit::MAX_HANDLING_RECEIPTS_PER_PERIOD,
         10 => babylon_material_circuit::MAX_MONEY_TRANSFERS_PER_PERIOD,
         19 => babylon_material_circuit::MAX_SERVICE_RECEIPTS_PER_PERIOD,
+        11 | 27 | 28 => babylon_material_circuit::MAX_STAFFING_MEMBERS,
         _ => babylon_material_circuit::MAX_MATERIAL_CIRCUIT_ROWS,
     }
 }
@@ -488,6 +490,14 @@ fn encode_material_receipts(
             transition.contributions.len(),
             financial_receipt::CONTRIBUTIONS_BYTES,
         ),
+        (
+            transition.staffing_members.len(),
+            workforce_receipt::STAFFING_BYTES,
+        ),
+        (
+            transition.member_labor_use.len(),
+            workforce_receipt::ATTENDANCE_BYTES,
+        ),
     ];
     if families
         .iter()
@@ -497,6 +507,12 @@ fn encode_material_receipts(
         return Err(MaterialWorldError::ByteLimit);
     }
     monetary_receipt::validate_order(&transition.wage_accruals, &transition.labor_use)?;
+    workforce_receipt::validate_join(
+        &transition.staffing_members,
+        &transition.member_labor_use,
+        &transition.labor_use,
+        &transition.wage_accruals,
+    )?;
     income_receipt::validate_order(&transition.income)?;
     financial_receipt::validate(
         &transition.public_budgets,
@@ -532,7 +548,7 @@ fn encode_material_receipts(
     )?;
     let mut bytes = bounded_bytes(length)?;
     bytes.extend_from_slice(RECEIPT_DOMAIN);
-    bytes.extend_from_slice(&10_u32.to_be_bytes());
+    bytes.extend_from_slice(&11_u32.to_be_bytes());
     bytes.extend_from_slice(&tick.to_be_bytes());
     for (tag, (count, _)) in families.iter().enumerate() {
         bytes.push(u8::try_from(tag + 1).map_err(|_| MaterialWorldError::Arithmetic)?);
@@ -701,16 +717,28 @@ fn encode_material_receipts(
                 tick,
                 &mut bytes,
             )?,
-            _ => unreachable!("the twenty-seven material receipt families are closed"),
+            27 => {
+                for row in &transition.staffing_members {
+                    workforce_receipt::encode_staffing(row, tick, &mut bytes)?;
+                }
+            }
+            28 => {
+                for row in &transition.member_labor_use {
+                    workforce_receipt::encode_attendance(row, tick, &mut bytes)?;
+                }
+            }
+            _ => unreachable!("the twenty-nine material receipt families are closed"),
         }
     }
     debug_assert_eq!(bytes.len(), length);
     Ok(bytes)
 }
 
-/// Typed material evidence decoded only from an exact committed V10 receipt family.
+/// Typed material evidence decoded only from an exact committed V11 receipt family.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MaterialTickReceipts {
+    pub staffing_members: Vec<babylon_material_circuit::StaffingMemberReceipt>,
+    pub member_labor_use: Vec<babylon_material_circuit::MemberLaborUseReceipt>,
     pub public_budgets: Vec<babylon_material_circuit::PublicBudgetReceipt>,
     pub taxes: Vec<babylon_material_circuit::TaxReceipt>,
     pub distributions: Vec<babylon_material_circuit::DistributionReceipt>,
@@ -753,7 +781,7 @@ pub fn decode_material_receipts(bytes: &[u8]) -> Result<MaterialTickReceipts, Ma
         bytes,
         position: RECEIPT_DOMAIN.len(),
     };
-    if cursor.take::<4>()? != 10_u32.to_be_bytes() {
+    if cursor.take::<4>()? != 11_u32.to_be_bytes() {
         return Err(MaterialWorldError::Wire);
     }
     let resolve_tick = cursor.u64()?;
@@ -761,6 +789,8 @@ pub fn decode_material_receipts(bytes: &[u8]) -> Result<MaterialTickReceipts, Ma
         return Err(MaterialWorldError::Wire);
     }
     let mut result = MaterialTickReceipts {
+        staffing_members: vec![],
+        member_labor_use: vec![],
         public_budgets: vec![],
         taxes: vec![],
         distributions: vec![],
@@ -791,7 +821,7 @@ pub fn decode_material_receipts(bytes: &[u8]) -> Result<MaterialTickReceipts, Ma
         local_transfers: Vec::new(),
         maintenance: None,
     };
-    for tag in 1..=27 {
+    for tag in 1..=29 {
         if cursor.take::<1>()? != [tag] {
             return Err(MaterialWorldError::Wire);
         }
@@ -830,6 +860,8 @@ pub fn decode_material_receipts(bytes: &[u8]) -> Result<MaterialTickReceipts, Ma
             financial_receipt::TAXES_BYTES,
             financial_receipt::DISTRIBUTIONS_BYTES,
             financial_receipt::CONTRIBUTIONS_BYTES,
+            workforce_receipt::STAFFING_BYTES,
+            workforce_receipt::ATTENDANCE_BYTES,
         ][usize::from(tag - 1)];
         if count
             .checked_mul(width)
@@ -865,6 +897,8 @@ pub fn decode_material_receipts(bytes: &[u8]) -> Result<MaterialTickReceipts, Ma
             25 => result.taxes.try_reserve_exact(count),
             26 => result.distributions.try_reserve_exact(count),
             27 => result.contributions.try_reserve_exact(count),
+            28 => result.staffing_members.try_reserve_exact(count),
+            29 => result.member_labor_use.try_reserve_exact(count),
 
             _ => return Err(MaterialWorldError::Wire),
         }
@@ -1077,6 +1111,18 @@ pub fn decode_material_receipts(bytes: &[u8]) -> Result<MaterialTickReceipts, Ma
                         &mut cursor,
                         resolve_tick,
                     )?),
+                28 => result
+                    .staffing_members
+                    .push(workforce_receipt::decode_staffing(
+                        &mut cursor,
+                        resolve_tick,
+                    )?),
+                29 => result
+                    .member_labor_use
+                    .push(workforce_receipt::decode_attendance(
+                        &mut cursor,
+                        resolve_tick,
+                    )?),
                 19 => result
                     .income
                     .push(income_receipt::decode(&mut cursor, resolve_tick)?),
@@ -1088,6 +1134,12 @@ pub fn decode_material_receipts(bytes: &[u8]) -> Result<MaterialTickReceipts, Ma
         return Err(MaterialWorldError::Wire);
     }
     monetary_receipt::validate_order(&result.wage_accruals, &result.labor_use)?;
+    workforce_receipt::validate_join(
+        &result.staffing_members,
+        &result.member_labor_use,
+        &result.labor_use,
+        &result.wage_accruals,
+    )?;
     income_receipt::validate_order(&result.income)?;
     financial_receipt::validate(
         &result.public_budgets,

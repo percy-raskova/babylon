@@ -35,8 +35,9 @@ pub use financial::{
 };
 pub use model::*;
 pub use payments::{
-    admit_material_purchase, CircuitAccounting, EmploymentTerms, LaborUseReceipt, MaterialPurchase,
-    MonetaryCircuit, MAX_MONEY_TRANSFERS_PER_PERIOD,
+    admit_material_purchase, member_shift_id, CircuitAccounting, EmploymentTerms,
+    LaborCompensation, LaborUseReceipt, MaterialPurchase, MemberLaborUseReceipt, MonetaryCircuit,
+    MAX_MONEY_TRANSFERS_PER_PERIOD,
 };
 pub use recurring::*;
 pub use services::{
@@ -46,9 +47,11 @@ pub use services::{
     MAX_SERVICE_RECEIPTS_PER_PERIOD,
 };
 pub use staffing::{
-    advance_staffing, StaffingError, StaffingPolicy, StaffingPoolBinding, StaffingPoolId,
-    StaffingPoolState, StaffingReceipt, StaffingState, StaffingTransition, StaffingWorkRequest,
-    StaffingWorkSource,
+    advance_staffing, distribute_staffing_members, MemberLaborCapacityRow, StaffingError,
+    StaffingMemberBinding, StaffingMemberId, StaffingMemberReceipt, StaffingMemberState,
+    StaffingPolicy, StaffingPoolBinding, StaffingPoolId, StaffingPoolState, StaffingReceipt,
+    StaffingState, StaffingTransition, StaffingWorkRequest, StaffingWorkSource,
+    MAX_STAFFING_MEMBERS,
 };
 pub use valuation::{
     CapitalAccount, EquityCarryingValue, FreightCarryingValue, HistoricalCostBook,

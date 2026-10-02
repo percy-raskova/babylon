@@ -102,6 +102,23 @@ fn paid_state() -> MaterialCircuitState {
                     ];
                     financial
                 },
+                member_labor: [3, 4]
+                    .into_iter()
+                    .flat_map(|period| {
+                        [seller, buyer]
+                            .into_iter()
+                            .map(move |site| (site, period, 0))
+                    })
+                    .map(|(site, period, available_hours)| {
+                        babylon_material_circuit::MemberLaborCapacityRow {
+                            member_id: babylon_material_circuit::StaffingMemberId::from_bytes(
+                                site.as_bytes(),
+                            ),
+                            period,
+                            available_hours,
+                        }
+                    })
+                    .collect(),
                 costs: HistoricalCostBook::open(
                     &book,
                     vec![StockCarryingValue {
@@ -119,10 +136,15 @@ fn paid_state() -> MaterialCircuitState {
                 employment: [seller, buyer]
                     .into_iter()
                     .map(|site_id| EmploymentTerms {
+                        member_id: babylon_material_circuit::StaffingMemberId::from_bytes(
+                            (site_id).as_bytes(),
+                        ),
                         site_id,
                         unit_id: hours,
                         payee: household,
-                        hourly_rate: money((1_i128 << 65) + 7),
+                        compensation: babylon_material_circuit::LaborCompensation::Wage(money(
+                            (1_i128 << 65) + 7,
+                        )),
                     })
                     .collect(),
             }
@@ -209,7 +231,8 @@ fn accounting_offset(state: &MaterialCircuitState) -> usize {
 const ACCOUNT_BYTES: usize = 1 + 32 + 16;
 const PURCHASE_BYTES: usize = 1 + 32 + 2 * (1 + 32) + 8 + 16 + 8 + 8;
 const SHIFT_BYTES: usize = 32 + 2 * (1 + 32) + 8 + 8 + 16 + 1;
-const EMPLOYMENT_BYTES: usize = 32 + 32 + 32 + 16;
+const EMPLOYMENT_BYTES: usize = 4 * 32 + 1 + 16;
+const MEMBER_LABOR_BYTES: usize = 32 + 8 + 8;
 
 #[test]
 fn exact_i128_accounts_escrow_and_unpaid_wages_survive_restart() {
@@ -232,7 +255,7 @@ fn exact_i128_accounts_escrow_and_unpaid_wages_survive_restart() {
     assert_eq!(economy.book.snapshot().shifts.len(), 2);
     assert_eq!(economy.book.snapshot().purchases.len(), 2);
     assert_eq!(
-        economy.employment[0].hourly_rate.micro_units(),
+        economy.employment[0].compensation.wage_rate().micro_units(),
         (1_i128 << 65) + 7
     );
     let offset = accounting_offset(&state);
@@ -262,6 +285,7 @@ fn all_monetary_row_families_reject_noncanonical_wire_order() {
         (purchases, PURCHASE_BYTES),
         (shifts, SHIFT_BYTES),
         (employment, EMPLOYMENT_BYTES),
+        (employment + 2 * EMPLOYMENT_BYTES + 4, MEMBER_LABOR_BYTES),
     ] {
         let mut reversed = bytes.clone();
         reversed[start..start + 2 * width].rotate_left(width);
@@ -288,14 +312,15 @@ fn monetary_tags_counts_and_invalid_currency_are_refused() {
             Err(MaterialCircuitError::WireEnum)
         );
     }
-    for count_offset in [
-        accounting + 1,
-        purchases - 4,
-        shifts - 4,
-        shifts + 2 * SHIFT_BYTES,
+    for (count_offset, excess) in [
+        (accounting + 1, 65_537_u32),
+        (purchases - 4, 65_537),
+        (shifts - 4, 65_537),
+        (shifts + 2 * SHIFT_BYTES, 131_073),
+        (shifts + 2 * SHIFT_BYTES + 4 + 2 * EMPLOYMENT_BYTES, 131_073),
     ] {
         let mut excessive = bytes.clone();
-        excessive[count_offset..count_offset + 4].copy_from_slice(&65_537_u32.to_be_bytes());
+        excessive[count_offset..count_offset + 4].copy_from_slice(&excess.to_be_bytes());
         assert_eq!(
             decode_material_circuit_state(&excessive),
             Err(MaterialCircuitError::WireLimit)
@@ -371,11 +396,11 @@ fn physical_binding_and_employment_remain_required_after_decoding() {
     );
     let employment = shifts + 2 * SHIFT_BYTES + 4;
     let mut zero_wage = bytes;
-    zero_wage[employment + 96..employment + EMPLOYMENT_BYTES]
+    zero_wage[employment + 129..employment + EMPLOYMENT_BYTES]
         .copy_from_slice(&0_i128.to_be_bytes());
     assert_eq!(
         decode_material_circuit_state(&zero_wage),
-        Err(MaterialCircuitError::PayrollInvariant)
+        Err(MaterialCircuitError::WireEnum)
     );
 }
 

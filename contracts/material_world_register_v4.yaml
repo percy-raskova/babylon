@@ -17,7 +17,7 @@ encoding:
     - u32_big_endian_version_4
     - u64_big_endian_completed_tick
     - u64_big_endian_state_byte_length
-    - exact_material_circuit_state_bytes_schema_9
+    - exact_material_circuit_state_bytes_schema_13
     - organizer_presence_u8_zero_or_one
     - if_present_u64_big_endian_config_length_then_canonical_organizer_config
     - if_present_u64_big_endian_state_length_then_canonical_organizer_state
@@ -26,7 +26,7 @@ encoding:
   decoder: reject_unknown_version_truncated_trailing_or_noncanonical_bytes
 transition:
   authority: MaterialCircuitV3
-  material_schema: 9
+  material_schema: 13
   implementation: advance_material_circuit_or_its_single_detached_close_and_finish
   order:
     - Complete due transport stages, attribute native loss and credit final physical arrivals.
@@ -51,7 +51,9 @@ transition:
     - Check total cash plus purchase and payroll reserves against the captured opening total.
     - Derive subsequent demand caps from sales, unfulfilled demand and inventories; update captured offers.
     - Derive distinct production, merchant and maintenance work requests; retire terminal purchase principals.
-    - Resolve staffing, replace next-period labor and form next-period production commitments.
+    - Resolve one workplace staffing decision, partition member graph stocks and install exact next member
+      and pool hours.
+    - Bind resident attendance, actual wage costs and graph stock receipts into the same committed period.
   causal_barriers:
     - Arrivals cannot enlarge an existing production commitment.
     - Arrived goods may satisfy current merchant handling and dispatch.

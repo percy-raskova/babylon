@@ -545,6 +545,8 @@ pub struct MaterialCircuitTransition {
     pub taxes: Vec<crate::TaxReceipt>,
     pub distributions: Vec<crate::DistributionReceipt>,
     pub contributions: Vec<crate::CapitalContributionReceipt>,
+    pub staffing_members: Vec<crate::StaffingMemberReceipt>,
+    pub member_labor_use: Vec<crate::MemberLaborUseReceipt>,
     pub service_performance: Vec<crate::ServicePerformanceReceipt>,
     pub household_services: Vec<crate::HouseholdServiceReceipt>,
     pub service_markets: Vec<crate::ServiceMarketReceipt>,

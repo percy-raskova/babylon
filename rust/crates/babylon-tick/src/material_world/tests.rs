@@ -3,10 +3,10 @@ use super::*;
 // A merchant's two physical handoffs share the same explicit handling account.
 // These bytes exercise the committed receipt boundary independently of its encoder.
 fn local_handoff_receipts() -> Vec<u8> {
-    let mut bytes = b"babylon.material-tick-receipts.v10\0".to_vec();
-    bytes.extend_from_slice(&10_u32.to_be_bytes());
+    let mut bytes = b"babylon.material-tick-receipts.v11\0".to_vec();
+    bytes.extend_from_slice(&11_u32.to_be_bytes());
     bytes.extend_from_slice(&1_u64.to_be_bytes());
-    for tag in 1..=27_u8 {
+    for tag in 1..=29_u8 {
         bytes.push(tag);
         bytes.extend_from_slice(&u64::from(matches!(tag, 7 | 8)).to_be_bytes());
         if tag == 7 {
@@ -89,7 +89,7 @@ fn receipt_version_and_local_delivery_quantity_are_strict() {
 fn local_transfer_receipts_preserve_both_owners_without_freight() {
     use babylon_material_circuit::SiteId;
     let mut bytes = local_handoff_receipts();
-    let tail = bytes.split_off(bytes.len() - 162);
+    let tail = bytes.split_off(bytes.len() - (29 - 9) * 9);
     let count = bytes.len() - 8;
     bytes[count..].copy_from_slice(&1_u64.to_be_bytes());
     let row_start = bytes.len();
@@ -113,7 +113,7 @@ fn local_transfer_receipts_preserve_both_owners_without_freight() {
         decode_material_receipts(&self_transfer),
         Err(MaterialWorldError::Wire)
     );
-    let end = bytes.len() - 162;
+    let end = bytes.len() - (29 - 9) * 9;
     bytes[end - 8..end].fill(0);
     assert_eq!(
         decode_material_receipts(&bytes),
@@ -144,9 +144,9 @@ fn monetary_receipt_encoding_preserves_exact_cash_and_execution_order() {
         })
         .into();
     let mut bytes = RECEIPT_DOMAIN.to_vec();
-    bytes.extend_from_slice(&10_u32.to_be_bytes());
+    bytes.extend_from_slice(&11_u32.to_be_bytes());
     bytes.extend_from_slice(&7_u64.to_be_bytes());
-    for tag in 1..=27 {
+    for tag in 1..=29 {
         bytes.push(tag);
         bytes.extend_from_slice(&if tag == 11 { 3_u64 } else { 0 }.to_be_bytes());
         if tag == 11 {
@@ -167,46 +167,94 @@ fn monetary_receipt_encoding_preserves_exact_cash_and_execution_order() {
     assert_eq!(destination, [123]);
 }
 
+fn member_attendance(member: u8, site: u8) -> babylon_material_circuit::MemberLaborUseReceipt {
+    use babylon_material_circuit::*;
+    let money = babylon_kernel::currency::Currency::from_micro_units;
+    MemberLaborUseReceipt {
+        member_id: StaffingMemberId::from_bytes([member; 32]),
+        site_id: SiteId::from_bytes([site; 32]),
+        unit_id: UnitId::from_bytes([5; 32]),
+        payee: FinalDemandPrincipalId::from_bytes([2; 32]),
+        compensation: LaborCompensation::Wage(money(3)),
+        period: 7,
+        available_hours: 6,
+        planned_hours: 6,
+        unplanned_hours: 0,
+        attended_hours: 4,
+        unattended_hours: 2,
+        production_hours: 1,
+        handling_hours: 0,
+        maintenance_hours: 0,
+        idle_hours: 3,
+        accrued_wages: money(12),
+        production_wages: money(3),
+        handling_wages: money(0),
+        maintenance_wages: money(0),
+        idle_wages: money(9),
+    }
+}
+
 #[test]
 fn attendance_receipt_encoding_roundtrips_without_sorting_hashed_shift_ids() {
-    use babylon_kernel::currency::Currency;
     use babylon_material_circuit::{
-        AccountId, FinalDemandPrincipalId, LaborUseReceipt, ShiftId, SiteId, UnitId,
-        WageAccrualReceipt,
+        member_shift_id, AccountId, EmploymentTerms, LaborUseReceipt, WageAccrualReceipt,
     };
-    let payee = FinalDemandPrincipalId::from_bytes([2; 32]);
-    let wages: Vec<_> = [(9, 1), (1, 2)]
-        .map(|(shift, site)| WageAccrualReceipt {
-            shift: ShiftId::from_bytes([shift; 32]),
-            employer: AccountId::Site(SiteId::from_bytes([site; 32])),
-            payee: AccountId::Household(payee),
-            period: 7,
-            obligated_hours: 4,
-            amount: Currency::from_micro_units(12),
+    let members = [member_attendance(4, 1), member_attendance(1, 2)];
+    let wages: Vec<_> = members
+        .iter()
+        .map(|row| {
+            let terms = EmploymentTerms {
+                member_id: row.member_id,
+                site_id: row.site_id,
+                unit_id: row.unit_id,
+                payee: row.payee,
+                compensation: row.compensation,
+            };
+            WageAccrualReceipt {
+                shift: member_shift_id(7, &terms),
+                employer: AccountId::Site(row.site_id),
+                payee: AccountId::Household(row.payee),
+                period: 7,
+                obligated_hours: 4,
+                amount: row.accrued_wages,
+            }
         })
-        .into();
-    let labor: Vec<_> = [1, 2]
-        .map(|site| LaborUseReceipt {
-            site_id: SiteId::from_bytes([site; 32]),
-            unit_id: UnitId::from_bytes([5; 32]),
-            payee,
+        .collect();
+    assert!(
+        wages[0].shift > wages[1].shift,
+        "chronological wages are deliberately not hash ordered"
+    );
+    let labor: Vec<_> = members
+        .iter()
+        .map(|row| LaborUseReceipt {
+            site_id: row.site_id,
+            unit_id: row.unit_id,
             period: 7,
             available_hours: 6,
             planned_hours: 6,
             unplanned_hours: 0,
             funded_hours: 4,
             unfunded_hours: 2,
+            non_wage_hours: 0,
             used_hours: 1,
             paid_idle_hours: 3,
+            unpaid_idle_hours: 0,
         })
-        .into();
+        .collect();
     monetary_receipt::validate_order(&wages, &labor).unwrap();
     let mut bytes = RECEIPT_DOMAIN.to_vec();
-    bytes.extend_from_slice(&10_u32.to_be_bytes());
+    bytes.extend_from_slice(&11_u32.to_be_bytes());
     bytes.extend_from_slice(&7_u64.to_be_bytes());
-    for tag in 1..=27 {
+    for tag in 1..=29 {
         bytes.push(tag);
-        bytes.extend_from_slice(&if matches!(tag, 12 | 13) { 2_u64 } else { 0 }.to_be_bytes());
+        bytes.extend_from_slice(
+            &if matches!(tag, 12 | 13 | 29) {
+                2_u64
+            } else {
+                0
+            }
+            .to_be_bytes(),
+        );
         if tag == 12 {
             for row in &wages {
                 monetary_receipt::encode_accrual(row, 7, &mut bytes).unwrap();
@@ -215,11 +263,16 @@ fn attendance_receipt_encoding_roundtrips_without_sorting_hashed_shift_ids() {
             for row in &labor {
                 monetary_receipt::encode_labor(row, 7, &mut bytes).unwrap();
             }
+        } else if tag == 29 {
+            for row in &members {
+                workforce_receipt::encode_attendance(row, 7, &mut bytes).unwrap();
+            }
         }
     }
     let decoded = decode_material_receipts(&bytes).unwrap();
     assert_eq!(decoded.wage_accruals, wages);
     assert_eq!(decoded.labor_use, labor);
+    assert_eq!(decoded.member_labor_use, members);
     let reversed = [labor[1].clone(), labor[0].clone()];
     assert_eq!(
         monetary_receipt::validate_order(&wages, &reversed),

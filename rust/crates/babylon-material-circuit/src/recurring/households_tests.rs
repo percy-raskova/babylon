@@ -71,49 +71,57 @@ fn recurring(stock: u64) -> RecurringEconomy {
     }
 }
 
+fn opening_economy(household_cash: i128, stock: u64) -> MonetaryCircuit {
+    let book = MonetaryBook::open(vec![
+        CashAccount {
+            id: AccountId::Site(s()),
+            cash: cash(16),
+        },
+        CashAccount {
+            id: AccountId::Household(h()),
+            cash: cash(household_cash),
+        },
+    ])
+    .unwrap();
+    MonetaryCircuit {
+        financial: crate::FinancialInstitutions::empty(),
+        member_labor: vec![crate::MemberLaborCapacityRow {
+            member_id: crate::StaffingMemberId::from_bytes(s().as_bytes()),
+            period: 1,
+            available_hours: 4,
+        }],
+        costs: HistoricalCostBook::open(
+            &book,
+            [AccountId::Site(s()), AccountId::Household(h())]
+                .into_iter()
+                .map(|owner| StockCarryingValue {
+                    owner,
+                    good_id: g(),
+                    unit_id: u(),
+                    amount: cash(0),
+                })
+                .collect(),
+            vec![],
+            vec![],
+        )
+        .unwrap(),
+        book,
+        employment: vec![EmploymentTerms {
+            member_id: crate::StaffingMemberId::from_bytes((s()).as_bytes()),
+            site_id: s(),
+            unit_id: hours(),
+            payee: h(),
+            compensation: crate::LaborCompensation::Wage(cash(4)),
+        }],
+        recurring: Some(Box::new(recurring(stock))),
+    }
+}
+
 fn opening(household_cash: i128, stock: u64) -> MaterialCircuitState {
     MaterialCircuitState {
         capacity_supply: crate::CapacitySupply::FiniteSchedule,
         period: 1,
-        accounting: CircuitAccounting::Monetary(Box::new({
-            let book = MonetaryBook::open(vec![
-                CashAccount {
-                    id: AccountId::Site(s()),
-                    cash: cash(16),
-                },
-                CashAccount {
-                    id: AccountId::Household(h()),
-                    cash: cash(household_cash),
-                },
-            ])
-            .unwrap();
-            MonetaryCircuit {
-                financial: crate::FinancialInstitutions::empty(),
-                costs: HistoricalCostBook::open(
-                    &book,
-                    [AccountId::Site(s()), AccountId::Household(h())]
-                        .into_iter()
-                        .map(|owner| StockCarryingValue {
-                            owner,
-                            good_id: g(),
-                            unit_id: u(),
-                            amount: cash(0),
-                        })
-                        .collect(),
-                    vec![],
-                    vec![],
-                )
-                .unwrap(),
-                book,
-                employment: vec![EmploymentTerms {
-                    site_id: s(),
-                    unit_id: hours(),
-                    payee: h(),
-                    hourly_rate: cash(4),
-                }],
-                recurring: Some(Box::new(recurring(stock))),
-            }
-        })),
+        accounting: CircuitAccounting::Monetary(Box::new(opening_economy(household_cash, stock))),
         site_logistics_nodes: vec![SiteLogisticsNode {
             site_id: s(),
             node_id: LogisticsNodeId::from_bytes([2; 32]),
@@ -295,6 +303,7 @@ fn fulfillment_credits_stock_expiry_refunds_and_consumption_preserves_need() {
 fn withdrawn_orders_do_not_erase_unemployed_residents_needs() {
     let mut state = opening(0, 2);
     state.labor[0].available = 0;
+    economy(&mut state).member_labor[0].available_hours = 0;
     household_rows(&mut state).household_purchases[0].enabled = false;
     let demands = admit_household_orders(&mut state, &mut vec![]).unwrap();
     assert_eq!(

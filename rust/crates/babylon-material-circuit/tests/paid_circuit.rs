@@ -66,11 +66,17 @@ fn opening() -> MaterialCircuitState {
                 .unwrap(),
                 book,
                 recurring: None,
+                member_labor: vec![MemberLaborCapacityRow {
+                    member_id: StaffingMemberId::from_bytes(store().as_bytes()),
+                    period: 1,
+                    available_hours: 4,
+                }],
                 employment: vec![EmploymentTerms {
+                    member_id: StaffingMemberId::from_bytes(store().as_bytes()),
                     site_id: store(),
                     unit_id: hours(),
                     payee: household(),
-                    hourly_rate: money(1),
+                    compensation: LaborCompensation::Wage(money(1)),
                 }],
             }
         })),
@@ -390,6 +396,7 @@ fn previously_earned_wages_survive_restart_and_payment_does_not_accrue_them_agai
     let CircuitAccounting::Monetary(economy) = &mut state.accounting else {
         unreachable!()
     };
+    economy.member_labor[0].period = 2;
     economy
         .book
         .reserve_shift(
@@ -488,6 +495,10 @@ fn goods_and_a_funded_buyer_do_not_substitute_for_employer_working_cash() {
 fn a_failure_after_attendance_cannot_publish_wages_or_cash() {
     let mut state = opening();
     state.period = u64::MAX;
+    let CircuitAccounting::Monetary(economy) = &mut state.accounting else {
+        unreachable!()
+    };
+    economy.member_labor[0].period = u64::MAX;
     for row in &mut state.labor {
         row.period = u64::MAX;
     }
@@ -579,3 +590,6 @@ fn historical_cost_partial_dispatch_and_loss_leave_exact_remainders_without_cash
     assert_eq!(book.book.total_cash_and_reserves().unwrap(), money(24));
     assert!(book.costs.snapshot().freight.is_empty());
 }
+
+#[path = "support/resident_attendance.rs"]
+mod resident_attendance;

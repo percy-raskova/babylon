@@ -1245,3 +1245,8 @@ decisions:
     status: accepted
     date: '2026-10-01'
     file: ADR266_funded_public_and_ownership_flows.yaml
+  ADR267_resident_workplace_staffing:
+    title: Resident members under one graph-owned workplace staffing decision
+    status: accepted
+    date: '2026-10-01'
+    file: ADR267_resident_workplace_staffing.yaml

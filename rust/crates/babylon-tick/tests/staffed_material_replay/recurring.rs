@@ -120,9 +120,13 @@ fn session() -> Session {
         ],
     )
     .unwrap();
-    let staffing =
-        StaffingComposition::try_new(vec![StaffingNodeBinding::try_new(subject(), pool).unwrap()])
-            .unwrap();
+    let staffing = StaffingComposition::try_new(vec![StaffingNodeBinding::try_new(
+        subject(),
+        pool.clone(),
+        vec![resident_member(&pool)],
+    )
+    .unwrap()])
+    .unwrap();
     try_session_with_material(MATERIAL_CYCLE, staffing, opening()).unwrap()
 }
 

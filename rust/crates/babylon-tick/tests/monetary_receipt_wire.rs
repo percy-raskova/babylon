@@ -1,7 +1,7 @@
 //! Independent vectors for exact monetary postings and finite attendance evidence.
 use babylon_tick::material_world::{decode_material_receipts, MaterialWorldError};
 
-const DOMAIN: &[u8] = b"babylon.material-tick-receipts.v10\0";
+const DOMAIN: &[u8] = b"babylon.material-tick-receipts.v11\0";
 
 fn tagged(tag: u8, subtag: u8, id: u8) -> Vec<u8> {
     let mut bytes = vec![tag, subtag];
@@ -19,37 +19,72 @@ fn transfer(debit: i128, credit: i128) -> Vec<u8> {
 }
 
 fn accrual() -> Vec<u8> {
-    let mut bytes = vec![4; 32];
+    accrual_hours(4)
+}
+fn accrual_hours(hours: u64) -> Vec<u8> {
+    let mut key = b"babylon.member-funded-attendance.v1\0".to_vec();
+    key.extend_from_slice(&7_u64.to_be_bytes());
+    for id in [4, 1, 5, 2] {
+        key.extend_from_slice(&[id; 32]);
+    }
+    let mut bytes = babylon_kernel::content_digest::sha256_of(&key).to_vec();
     bytes.push(1); // employer site
     bytes.extend_from_slice(&[1; 32]);
     bytes.push(2); // payee household
     bytes.extend_from_slice(&[2; 32]);
     bytes.extend_from_slice(&7_u64.to_be_bytes());
-    bytes.extend_from_slice(&4_u64.to_be_bytes());
-    bytes.extend_from_slice(&12_i128.to_be_bytes());
+    bytes.extend_from_slice(&hours.to_be_bytes());
+    bytes.extend_from_slice(&(i128::from(hours) * 3).to_be_bytes());
     bytes
 }
 
 fn labor(values: [u64; 8]) -> Vec<u8> {
+    let [period, available, planned, unplanned, funded, unfunded, used, idle] = values;
     let mut bytes = Vec::new();
-    for id in [1, 5, 2] {
+    for id in [1, 5] {
         bytes.extend_from_slice(&[id; 32]);
     }
-    for value in values {
+    for value in [
+        period, available, planned, unplanned, funded, unfunded, 0, used, idle, 0,
+    ] {
         bytes.extend_from_slice(&value.to_be_bytes());
     }
     bytes
 }
 
+fn member(labor: &[u8]) -> Vec<u8> {
+    let hours: Vec<_> = labor[64..]
+        .chunks_exact(8)
+        .map(|n| u64::from_be_bytes(n.try_into().unwrap()))
+        .collect();
+    let mut bytes = Vec::new();
+    for id in [4, 1, 5, 2] {
+        bytes.extend_from_slice(&[id; 32]);
+    }
+    bytes.push(1);
+    bytes.extend_from_slice(&3_i128.to_be_bytes());
+    for value in [
+        hours[0], hours[1], hours[2], hours[3], hours[4], hours[5], hours[7], 0, 0, hours[8],
+    ] {
+        bytes.extend_from_slice(&value.to_be_bytes());
+    }
+    for value in [hours[4], hours[7], 0, 0, hours[8]] {
+        bytes.extend_from_slice(&(i128::from(value) * 3).to_be_bytes());
+    }
+    bytes
+}
+
 fn envelope(transfers: &[Vec<u8>], wages: &[Vec<u8>], labor: &[Vec<u8>]) -> Vec<u8> {
+    let members: Vec<_> = labor.iter().map(|r| member(r)).collect();
     let mut bytes = DOMAIN.to_vec();
-    bytes.extend_from_slice(&10_u32.to_be_bytes());
+    bytes.extend_from_slice(&11_u32.to_be_bytes());
     bytes.extend_from_slice(&7_u64.to_be_bytes());
-    for tag in 1..=27 {
+    for tag in 1..=29 {
         let rows = match tag {
             11 => transfers,
             12 => wages,
             13 => labor,
+            29 => &members,
             _ => &[],
         };
         bytes.push(tag);
@@ -89,7 +124,12 @@ fn current_receipts_admit_unfunded_and_fully_idle_attendance() {
         [7, 8, 6, 2, 6, 0, 0, 6],
         [7, 8, 0, 8, 0, 0, 0, 0],
     ] {
-        assert!(decode_material_receipts(&envelope(&[], &[], &[labor(hours)])).is_ok());
+        let wages = if hours[4] == 0 {
+            vec![]
+        } else {
+            vec![accrual_hours(hours[4])]
+        };
+        assert!(decode_material_receipts(&envelope(&[], &wages, &[labor(hours)])).is_ok());
     }
 }
 

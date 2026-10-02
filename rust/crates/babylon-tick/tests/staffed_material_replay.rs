@@ -35,8 +35,8 @@ use babylon_tick::material_replay::{
     MaterialReplaySession, PreparedMaterialTick,
 };
 use babylon_tick::material_staffing::{
-    StaffingComposition, StaffingNodeBinding, EMPLOYED_POPULATION, PREVIOUS_UNRETAINED_HOURS,
-    RESERVE_POPULATION, STAFFING_COMPOSITION_ID, STAFFING_FIELDS,
+    StaffingComposition, StaffingMemberNodeBinding, StaffingNodeBinding, EMPLOYED_POPULATION,
+    PREVIOUS_UNRETAINED_HOURS, RESERVE_POPULATION, STAFFING_COMPOSITION_ID, STAFFING_FIELDS,
 };
 use babylon_tick::material_state::{
     DynamicHexStateRow, MaterialState, MaterialStateRows, MaterialStateRowsInput,
@@ -54,15 +54,18 @@ const SCENARIO: &str = r"
 (scenario staffing/replay
   (deffield social-class/employed-population int extensive)
   (deffield social-class/reserve-population int extensive)
-  (deffield social-class/previous-unretained-labor-hours int extensive)
+  (deffield business/previous-unretained-labor-hours int extensive)
+  (deffield business/probability probability intensive)
   (deffield social-class/seen-employed int extensive)
   (deffield social-class/probability probability intensive)
   (node workers NodeType/SOCIAL_CLASS
     (social-class/employed-population 1)
     (social-class/reserve-population 0)
-    (social-class/previous-unretained-labor-hours 160)
     (social-class/seen-employed 1)
-    (social-class/probability 0.9p)))
+    (social-class/probability 0.9p))
+  (node workplace NodeType/BUSINESS
+    (business/previous-unretained-labor-hours 160)
+    (business/probability 0.9p)))
 ";
 
 const MATERIAL_CYCLE: &str = r#"
@@ -96,18 +99,18 @@ const FAILURE: &str = r#"
   :fuel 64
   (anchor :after metabolism)
   (bindings
-    (binding requested :field social-class/previous-unretained-labor-hours)
-    (binding probability :field social-class/probability))
+    (binding requested :field business/previous-unretained-labor-hours)
+    (binding probability :field business/probability))
   (when (> requested 0))
   (effects
     (emit EventType/STAFFING_ABORT)
-    (update-node self social-class/probability (add 0.4i))))
+    (update-node self business/probability (add 0.4i))))
 "#;
 
 fn subject() -> StableElementKey {
     StableElementKey::Node {
         scenario: "staffing/replay".to_owned(),
-        local_name: "workers".to_owned(),
+        local_name: "workplace".to_owned(),
     }
 }
 
@@ -259,6 +262,26 @@ fn install_freight(state: &mut MaterialCircuitState) {
     });
 }
 
+fn resident_member(pool: &StaffingPoolBinding) -> StaffingMemberNodeBinding {
+    use babylon_material_circuit::{
+        FinalDemandPrincipalId, StaffingMemberBinding, StaffingMemberId,
+    };
+    StaffingMemberNodeBinding::try_new(
+        StableElementKey::Node {
+            scenario: "staffing/replay".to_owned(),
+            local_name: "workers".to_owned(),
+        },
+        StaffingMemberBinding::try_new(
+            StaffingMemberId::from_bytes(pool.site_id().as_bytes()),
+            FinalDemandPrincipalId::from_bytes([30; 32]),
+            "county:26163".parse().unwrap(),
+            pool.labor_force(),
+        )
+        .unwrap(),
+    )
+    .unwrap()
+}
+
 fn staffed_labor() -> StaffingComposition {
     let pool = StaffingPoolBinding::try_new(
         StaffingPoolId::from_bytes([1; 32]),
@@ -269,8 +292,13 @@ fn staffed_labor() -> StaffingComposition {
         vec![StaffingWorkSource::Production(process())],
     )
     .unwrap();
-    StaffingComposition::try_new(vec![StaffingNodeBinding::try_new(subject(), pool).unwrap()])
-        .unwrap()
+    StaffingComposition::try_new(vec![StaffingNodeBinding::try_new(
+        subject(),
+        pool.clone(),
+        vec![resident_member(&pool)],
+    )
+    .unwrap()])
+    .unwrap()
 }
 
 fn try_session_with_authored_rules(
@@ -360,6 +388,17 @@ fn paid_material() -> MaterialCircuitState {
         let book = book;
         MonetaryCircuit {
             financial: babylon_material_circuit::FinancialInstitutions::empty(),
+            member_labor: material
+                .labor
+                .iter()
+                .map(|row| babylon_material_circuit::MemberLaborCapacityRow {
+                    member_id: babylon_material_circuit::StaffingMemberId::from_bytes(
+                        row.site_id.as_bytes(),
+                    ),
+                    period: row.period,
+                    available_hours: row.available,
+                })
+                .collect(),
             costs: babylon_material_circuit::HistoricalCostBook::open(
                 &book,
                 material
@@ -379,10 +418,15 @@ fn paid_material() -> MaterialCircuitState {
             book,
             recurring: None,
             employment: vec![EmploymentTerms {
+                member_id: babylon_material_circuit::StaffingMemberId::from_bytes(
+                    (site(1)).as_bytes(),
+                ),
                 site_id: site(1),
                 unit_id: unit(1),
                 payee: household,
-                hourly_rate: Currency::from_micro_units(1),
+                compensation: babylon_material_circuit::LaborCompensation::Wage(
+                    Currency::from_micro_units(1),
+                ),
             }],
         }
     }));
@@ -517,7 +561,11 @@ fn advance(session: &mut Session, sink: &mut CollectingSink) -> MaterialTickRece
 
 fn assert_stock(session: &Session, field: &str, expected: f64) {
     let graph = session.graph_session().graph();
-    let nodes = graph.nodes("SOCIAL_CLASS");
+    let nodes = graph.nodes(if field == PREVIOUS_UNRETAINED_HOURS {
+        "BUSINESS"
+    } else {
+        "SOCIAL_CLASS"
+    });
     assert_eq!(nodes.len(), 1);
     assert_eq!(
         graph.node_attribute(nodes[0], field).unwrap().to_bits(),
@@ -871,9 +919,9 @@ fn successful_acknowledgement_publishes_stable_staffing_and_identity_free_audit_
     assert_eq!(
         audit[1..].iter().map(|row| &row.effect).collect::<Vec<_>>(),
         [
+            &EffectSignature::NodeField(PREVIOUS_UNRETAINED_HOURS.to_owned()),
             &EffectSignature::NodeField(EMPLOYED_POPULATION.to_owned()),
             &EffectSignature::NodeField(RESERVE_POPULATION.to_owned()),
-            &EffectSignature::NodeField(PREVIOUS_UNRETAINED_HOURS.to_owned()),
         ]
     );
     assert_eq!(

@@ -86,11 +86,18 @@ fn configure_service_money(
     native: UnitId,
     hours: UnitId,
 ) {
+    let member_id = StaffingMemberId::from_bytes(site().as_bytes());
+    e.member_labor = vec![MemberLaborCapacityRow {
+        member_id,
+        period: 1,
+        available_hours: 1,
+    }];
     e.employment = vec![EmploymentTerms {
+        member_id,
         site_id: site(),
         unit_id: hours,
         payee: household(),
-        hourly_rate: money(2),
+        compensation: LaborCompensation::Wage(money(2)),
     }];
     e.costs = HistoricalCostBook::open(
         &e.book,

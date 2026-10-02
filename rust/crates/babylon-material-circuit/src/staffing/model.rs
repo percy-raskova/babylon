@@ -32,6 +32,7 @@ pub enum StaffingError {
     DuplicateRequest = 12,
     MissingRequest = 13,
     Allocation = 14,
+    DuplicateMember = 15,
 }
 
 impl std::fmt::Display for StaffingError {

@@ -34,13 +34,23 @@ fn local_cost_economy() -> MonetaryCircuit {
     .unwrap();
     MonetaryCircuit {
         financial: babylon_material_circuit::FinancialInstitutions::empty(),
+        member_labor: (1..=2)
+            .map(|period| babylon_material_circuit::MemberLaborCapacityRow {
+                member_id: babylon_material_circuit::StaffingMemberId::from_bytes(
+                    site(2).as_bytes(),
+                ),
+                period,
+                available_hours: 1,
+            })
+            .collect(),
         book,
         costs,
         employment: vec![EmploymentTerms {
+            member_id: babylon_material_circuit::StaffingMemberId::from_bytes((site(2)).as_bytes()),
             site_id: site(2),
             unit_id: hours(),
             payee: household(),
-            hourly_rate: money(1),
+            compensation: babylon_material_circuit::LaborCompensation::Wage(money(1)),
         }],
         recurring: Some(Box::new(RecurringEconomy {
             service_inputs: vec![],

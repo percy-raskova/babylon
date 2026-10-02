@@ -30,15 +30,17 @@ const SCENARIO: &str = r"
 (scenario organizer/replay
   (deffield social-class/employed-population int extensive)
   (deffield social-class/reserve-population int extensive)
-  (deffield social-class/previous-unretained-labor-hours int extensive)
+  (deffield business/previous-unretained-labor-hours int extensive)
   (node consumers NodeType/SOCIAL_CLASS
     (social-class/employed-population 8)
-    (social-class/reserve-population 0)
-    (social-class/previous-unretained-labor-hours 1280))
+    (social-class/reserve-population 0))
+  (node consumers-workplace NodeType/BUSINESS
+    (business/previous-unretained-labor-hours 1280))
   (node maintainers NodeType/SOCIAL_CLASS
     (social-class/employed-population 0)
-    (social-class/reserve-population 1)
-    (social-class/previous-unretained-labor-hours 0)))
+    (social-class/reserve-population 1))
+  (node maintainers-workplace NodeType/BUSINESS
+    (business/previous-unretained-labor-hours 0)))
 ";
 
 const MATERIAL: &str = r#"
@@ -111,13 +113,16 @@ fn opening() -> MaterialCircuitState {
         }],
         service_connections: vec![],
         service_orders: vec![],
-        commodities: vec![CommodityDefinition {
-            good_id: good(2),
-            unit_id: unit(1),
-            kind: babylon_material_circuit::CommodityKind::Storable {
-                grams_per_unit: 1000,
-            },
-        }],
+        commodities: [1, 2]
+            .into_iter()
+            .map(|id| CommodityDefinition {
+                good_id: good(id),
+                unit_id: unit(1),
+                kind: babylon_material_circuit::CommodityKind::Storable {
+                    grams_per_unit: 1000,
+                },
+            })
+            .collect(),
         supplier_routes: vec![],
         route_stages: vec![],
         route_stage_capacities: vec![],
@@ -254,7 +259,7 @@ fn staffing() -> StaffingComposition {
             StaffingNodeBinding::try_new(
                 StableElementKey::Node {
                     scenario: "organizer/replay".into(),
-                    local_name: name.into(),
+                    local_name: format!("{name}-workplace"),
                 },
                 StaffingPoolBinding::try_new(
                     StaffingPoolId::from_bytes([id; 32]),
@@ -265,6 +270,22 @@ fn staffing() -> StaffingComposition {
                     vec![source],
                 )
                 .unwrap(),
+                vec![
+                    babylon_tick::material_staffing::StaffingMemberNodeBinding::try_new(
+                        StableElementKey::Node {
+                            scenario: "organizer/replay".into(),
+                            local_name: name.into(),
+                        },
+                        babylon_material_circuit::StaffingMemberBinding::try_new(
+                            babylon_material_circuit::StaffingMemberId::from_bytes([id; 32]),
+                            babylon_material_circuit::FinalDemandPrincipalId::from_bytes([id; 32]),
+                            "county:26163".parse().unwrap(),
+                            people,
+                        )
+                        .unwrap(),
+                    )
+                    .unwrap(),
+                ],
             )
             .unwrap()
         })

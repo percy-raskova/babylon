@@ -820,15 +820,29 @@ fn paid_maintenance_opening() -> MaterialCircuitState {
     .unwrap();
     state.accounting = CircuitAccounting::Monetary(Box::new(MonetaryCircuit {
         financial: babylon_material_circuit::FinancialInstitutions::empty(),
+        member_labor: state
+            .labor
+            .iter()
+            .map(|row| babylon_material_circuit::MemberLaborCapacityRow {
+                member_id: babylon_material_circuit::StaffingMemberId::from_bytes(
+                    row.site_id.as_bytes(),
+                ),
+                period: row.period,
+                available_hours: row.available,
+            })
+            .collect(),
         book,
         costs,
         employment: [1, 2]
             .into_iter()
             .map(|id| EmploymentTerms {
+                member_id: babylon_material_circuit::StaffingMemberId::from_bytes(
+                    (site(id)).as_bytes(),
+                ),
                 site_id: site(id),
                 unit_id: unit(2),
                 payee,
-                hourly_rate: money(1),
+                compensation: babylon_material_circuit::LaborCompensation::Wage(money(1)),
             })
             .collect(),
         recurring: None,

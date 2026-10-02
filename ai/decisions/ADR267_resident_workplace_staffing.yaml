@@ -1,0 +1,89 @@
+ADR267_resident_workplace_staffing:
+  status: accepted
+  date: '2026-10-01'
+  issue: PER-32
+  title: Resident members under one graph-owned workplace staffing decision
+  authority:
+    - Director-approved national recurring economy plan in PER-40
+    - PER-32 closed-pool staffing commitment and ADR255
+    - PER-36 exact funded attendance and ownership separation
+  context: |
+    A workplace can draw labor from several residences. One aggregate household
+    payee loses that relationship, while copying employment into a payroll table
+    creates a second people register. Owners and unpaid family can also supply
+    real labor without an employee wage obligation. Their statistical work
+    status alone does not establish ownership shares or political class.
+  decision: |
+    R1. AUTHORITY. A sparse resident member has one SOCIAL_CLASS graph node with
+    exact employed-population and reserve-population. Immutable captured content
+    binds the member to one workplace pool, resident household, EconomicLocation,
+    and fixed labor force. Members alone own employment stocks. The BUSINESS
+    workplace owns business/previous-unretained-labor-hours. Initial admission
+    permits one labor unit per workplace; it refuses ambiguous memory ownership.
+    Zero-force workplaces have no invented members.
+    No incomplete class node exists merely to hold workplace memory. General
+    rules keep their typed field requirements and native staffing ownership
+    remains exclusive through the effect-footprint audit.
+
+    R2. DECISION. The existing aggregate staffing reducer remains the only
+    target-employment rule. Its hires or separations are divided proportionally
+    over member reserves or employed people, using exact largest remainders and
+    canonical member identity for ties. Aggregate and member receipts reconcile.
+    This fixed-pool slice adds no migration, mortality, or participation policy.
+    It does not assign a political class or consciousness from an ACS work class.
+
+    R3. ATTENDANCE. Material member-hour schedules are derived budgets, never
+    population authority. Replay checks current hours against graph employment
+    times the captured schedule before payroll and installs next member and
+    aggregate budgets atomically. Explicit finite controls may provide scheduled
+    hours without claiming a graph-derived population. Wage attendance creates
+    funded obligations and resident payments. Canonical member order resolves
+    scarce employer payroll cash; it does not determine actual work shares.
+    WorkingOwner and UnpaidFamily attendance have no wage accrual. Attendance
+    does not create an ownership
+    claim, and an unpaid family member does not acquire a share by working.
+
+    R4. COSTS. Actual production, handling, and maintenance consume the same
+    finite member attendance. Each use receives proportional exact hour shares
+    from remaining attendance; canonical ties and remaining hours are explicit.
+    Only employee wage amounts enter productive or expense costs. Unused paid
+    attendance is paid idle time. Non-wage idle hours remain distinct. All wage
+    allocations reconcile to actual accruals, independently of sales and draws.
+    Ownership distributions use separately captured claims and funded journals.
+
+    R5. EVIDENCE. Source counts remain source evidence: ACS persons, QCEW jobs,
+    and aged LODES job-flow weights are distinct quantities and vintages. The
+    initial allocation is explicitly home-county and does not claim commuting.
+    Its placement and weights are Designed. Complete QCEW job observations are
+    usable weights. Missing leaves use establishment counts with published peer
+    intensity in NAICS/ownership, function/ownership, then NAICS order; if no
+    peer exists, captured Designed points per establishment apply. Raw source
+    absence remains intact. Employee classes without usable matching targets
+    receive explicit residence-employer fallbacks. Working owners and family
+    receive executable household-enterprise activity; they do not disappear.
+    Self-employment is not asserted to be an observed QCEW coverage residual. Unemployed reserve placement is
+    separately accounted; inactive, armed-forces, and younger residents retain
+    household needs without becoming invented workers. Members have a separate
+    Designed ceiling of 131072, justified by the provisional sparse bound of
+    88678 plus explicit fallback actors. Workplace and total byte bounds remain.
+    Actual national member counts and encoded bytes require compiler evidence;
+    this ceiling alone establishes no national coverage or performance claim.
+
+    R6. PUBLICATION. Opening graph checks, payroll, physical work, member changes,
+    endpoint validation, receipt encoding, and combined identity remain one
+    detached transaction. Failure publishes no partial graph, material, cash,
+    receipt, or time. Incompatible development formats are refused; there is no
+    predecessor engine, migration, or inferred member fallback.
+  alternatives_rejected:
+    - Copying mutable resident employment into a second material people ledger.
+    - Treating aggregate workplace jobs as a count of unique resident persons.
+    - Using a SOCIAL_CLASS memory node missing ordinary class rule fields.
+    - Attributing all mixed-member work to the first member in identity order.
+    - Fabricating wages for owner or unpaid-family attendance.
+    - Inferring political position or ownership from statistical employment class.
+  consequences:
+    - Residence, worksite, labor hours, wage obligations, and ownership stay distinct.
+    - General workforce boundary changes remain separate explicit mechanisms.
+    - National compilation must reconcile all admitted resident control totals.
+    - This decision records authority and required behavior, not qualification results.
+  evidence_class: Designed

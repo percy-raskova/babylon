@@ -5,8 +5,8 @@
 
 use crate::{
     material_staffing::{
-        apply_material_staffing, MaterialStaffingError, StaffingComposition, StaffingEffectContext,
-        StaffingEffects,
+        apply_material_staffing, validate_opening_labor, MaterialStaffingError,
+        StaffingComposition, StaffingEffectContext, StaffingEffects,
     },
     material_state::MaterialStateRows,
     material_world::{
@@ -119,6 +119,7 @@ impl MaterialBaseInputs<'_> {
         }
         let composition = self.labor;
         {
+            validate_opening_labor(graph, context, composition, self.opening.state())?;
             let closed = close_material_period(self.opening.state())?;
             let bindings = composition
                 .bindings()
@@ -133,7 +134,11 @@ impl MaterialBaseInputs<'_> {
                 closed.closing_period(),
                 &requests,
             )?;
-            let transition = closed.finish_with_labor(effects.next_labor().to_vec())?;
+            let mut transition = closed.finish_with_workforce(
+                effects.next_labor().to_vec(),
+                effects.next_member_labor().to_vec(),
+            )?;
+            transition.staffing_members = effects.member_receipts().to_vec();
             Ok((self.opening.prepare_transition(transition)?, Some(effects)))
         }
     }

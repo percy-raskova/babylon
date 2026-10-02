@@ -1,6 +1,6 @@
 meta:
   contract: MaterialCircuitV3
-  schema_version: 12
+  schema_version: 13
   evidence_class: Designed
   rust_owner: babylon-material-circuit
 
@@ -47,6 +47,8 @@ encoding:
   account_identity: account_owner_u8 followed by raw-32-byte identity in its distinct owner namespace
   outbound_order_u8: {delivery: 1, local_final_demand: 2, period_service: 3}
   outbound_order_identity: outbound_order_u8 followed by raw-32-byte order ID
+  labor_compensation_u8: {wage: 1, working_owner: 2, unpaid_family: 3}
+  compensation_rate: wage requires positive hourly_rate; non-wage modes require canonical zero padding
   shift_state_u8: {reserved: 1, accrued: 2, paid: 3, cancelled: 4}
   boolean_u8: {disabled: 0, enabled: 1}
   price_policy_u8: {fixed: 1, responsive: 2, service_responsive: 3}
@@ -90,8 +92,8 @@ state_field_order:
 
 accounting_field_order:
   physical_control: [accounting_mode_u8]
-  monetary: [accounting_mode_u8, accounts, purchases, shifts, employment, optional_recurring, historical_cost_book,
-             financial_institutions]
+  monetary: [accounting_mode_u8, accounts, purchases, shifts, employment, member_labor, optional_recurring,
+             historical_cost_book, financial_institutions]
 
 monetary_row_field_order:
   accounts: [account_identity, cash_i128]
@@ -99,13 +101,15 @@ monetary_row_field_order:
               unit_price_i128, delivered, refunded]
   shifts: [id, employer_account_identity, payee_account_identity, period, committed_hours,
            hourly_rate_i128, shift_state_u8]
-  employment: [site_id, unit_id, payee_household_id, hourly_rate_i128]
+  employment: [member_id, site_id, unit_id, payee_household_id, labor_compensation_u8, hourly_rate_i128]
+  member_labor: [member_id, period, available_hours]
 
 monetary_canonical_keys:
   accounts: [account_owner_u8, owner_id]
   purchases: [outbound_order_u8, order_id]
   shifts: [id]
-  employment: [site_id, unit_id]
+  employment: [site_id, unit_id, member_id]
+  member_labor: [period, member_id]
 
 
 recurring_field_order:
@@ -231,7 +235,9 @@ admission:
   - monetary accounts are nonnegative and unique; all material sites and household principals have cash rows
   - site and household account identities reference known material owners;
     organization and public namespaces are distinct
-  - monetary employment terms exactly cover the material site-unit labor principals with positive captured wage rates
+  - monetary member terms bind unique member IDs, a site-unit, resident payee and explicit compensation
+  - positive wage rates create obligations; working-owner and unpaid-family modes create no wages or ownership
+  - member schedule totals exactly cover each declared site-unit period budget; zero-force workplaces may be empty
   - every purchase reserve matches its physical order identity, parties, quantity, delivered quantity, and lost quantity
   - a monetary commodity sale has realized quantity equal to its accepted delivered quantity
   - a final-demand purchase reserve matches fulfilled quantity and has no refunded quantity in this close
@@ -359,6 +365,7 @@ conservation:
 
 limits:
   rows_per_family: 65536
+  employment_and_member_labor_rows: 131072
   combined_delivery_retail_and_service_orders: 65536
   stages_per_route: 16
   total_freight_resource_requests: 1114112
@@ -407,8 +414,10 @@ monetary_accounting:
   loss: cumulative physically lost quantity refunds only its newly lost portion to the buyer
   duplicate_settlement: repeated or decreasing cumulative quantities are refused
   payroll: reserve all wages for the admitted attendance before accrual or payment
-  attendance: all committed hours earn wages even when later productive use is zero
-  utilization: record used and paid idle hours after actual work; neither changes the earned wage
+  attendance: all funded employee hours earn wages even when later productive use is zero; non-wage hours stay distinct
+  utilization: actual production, handling and maintenance take proportional remaining member hours; idle stays distinct
+  member_wages: actual use receives exact employee hours times rate; working-owner and unpaid-family cost is zero
+  shift_identity: sha256 member-funded-attendance domain, period, member, site, unit and resident payee
   price_valuation: money costs, sale receipts, and wage obligations are not a claim about labor value or surplus value
   snapshot: spendable cash excludes reserves; decoding never reserves the same principal a second time
   failure: checked overflow or any refusal publishes no successor state, payment, obligation, or physical receipt
@@ -427,10 +436,15 @@ merchant_receipts:
   local_transfer_evidence: no freight lot, physical arrival, or staged dispatch receipt
 
 staffing:
-  schema: StaffingV2
+  schema: StaffingV3
   work_source_tags: {production: 1, merchant_handling: 2, maintenance: 3}
   work_source_identity: process ID for production, site ID for merchant handling and maintenance
-  binding_membership: unique tagged work sources, one conserved site-unit person principal
+  binding_membership: unique tagged work sources, one workplace with one labor unit and conserved resident members
+  graph_authority: SOCIAL_CLASS members alone own employed and reserve; BUSINESS workplace owns prior request memory
+  member_limit: 131072
+  population_transfer: aggregate hires or separations use largest remainders over member reserves or employed stocks
+  opening_hours: graph employment times captured schedule must equal each current derived member-hour budget
+  receipt_join: member receipts reconcile aggregate staffing, resident payees, hours, actual use and wage accruals
   production_request: next-period input and process-capacity feasible work before service and employment constraints
   maintenance_request: prospective requested whole jobs multiplied by hours per job before resource constraints
   merchant_request: recorded current-period nonlabor-feasible outbound handling hours

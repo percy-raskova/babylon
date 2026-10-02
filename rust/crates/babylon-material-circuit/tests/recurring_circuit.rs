@@ -146,6 +146,22 @@ fn opening() -> MaterialCircuitState {
             .unwrap();
             MonetaryCircuit {
                 financial: babylon_material_circuit::FinancialInstitutions::empty(),
+                member_labor: (1..=9)
+                    .flat_map(|period| {
+                        [(1, 4), (2, 8), (3, 4)]
+                            .into_iter()
+                            .map(move |(owner, available_hours)| {
+                                babylon_material_circuit::MemberLaborCapacityRow {
+                                    member_id:
+                                        babylon_material_circuit::StaffingMemberId::from_bytes(
+                                            site(owner).as_bytes(),
+                                        ),
+                                    period,
+                                    available_hours,
+                                }
+                            })
+                    })
+                    .collect(),
                 costs: HistoricalCostBook::open(
                     &book,
                     [
@@ -171,10 +187,13 @@ fn opening() -> MaterialCircuitState {
                 employment: [1, 2, 3]
                     .into_iter()
                     .map(|owner| EmploymentTerms {
+                        member_id: babylon_material_circuit::StaffingMemberId::from_bytes(
+                            (site(owner)).as_bytes(),
+                        ),
                         site_id: site(owner),
                         unit_id: hours(),
                         payee: household(),
-                        hourly_rate: money(1),
+                        compensation: babylon_material_circuit::LaborCompensation::Wage(money(1)),
                     })
                     .collect(),
             }

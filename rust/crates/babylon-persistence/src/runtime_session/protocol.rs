@@ -31,10 +31,12 @@ pub struct RuntimeSessionTail {
     pub tick_content_hash: Option<String>,
 }
 
-/// Closed wire selection of the existing authored delivery presets.
+/// Closed wire selection of captured campaigns and explicit Michigan controls.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RuntimeSessionPreset {
+    #[serde(rename = "national-world")]
+    NationalWorld,
     #[serde(rename = "organize-in-wayne")]
     OrganizeInWayne,
     Standard,
@@ -61,8 +63,9 @@ pub enum RuntimeSessionPreset {
     StatewideMaintenanceBoth,
 }
 impl RuntimeSessionPreset {
-    pub(super) const fn delivery(self) -> MichiganDeliveryPreset {
-        match self {
+    pub(super) const fn delivery(self) -> Option<MichiganDeliveryPreset> {
+        Some(match self {
+            Self::NationalWorld => return None,
             Self::OrganizeInWayne => MichiganDeliveryPreset::OrganizeInWayne,
             Self::Standard => MichiganDeliveryPreset::Standard,
             Self::Delayed => MichiganDeliveryPreset::Delayed,
@@ -82,7 +85,7 @@ impl RuntimeSessionPreset {
                 MichiganDeliveryPreset::StatewideMaintenancePartsShortage
             }
             Self::StatewideMaintenanceBoth => MichiganDeliveryPreset::StatewideMaintenanceBoth,
-        }
+        })
     }
 }
 
@@ -266,4 +269,34 @@ pub enum RuntimeSessionResponse {
         request_id: u64,
         scope: RuntimeSessionScope,
     },
+}
+
+#[cfg(test)]
+mod selection_tests {
+    use super::*;
+
+    #[test]
+    fn national_selection_has_no_michigan_fallback_or_open_override() {
+        let preset: RuntimeSessionPreset = serde_json::from_str("\"national-world\"").unwrap();
+        assert_eq!(preset, RuntimeSessionPreset::NationalWorld);
+        assert_eq!(preset.delivery(), None);
+        assert_eq!(
+            RuntimeSessionPreset::Standard.delivery(),
+            Some(MichiganDeliveryPreset::Standard)
+        );
+        for selection in [
+            "national",
+            "National-world",
+            "national_world",
+            "national-world ",
+        ] {
+            assert!(
+                serde_json::from_value::<RuntimeSessionPreset>(serde_json::json!(selection))
+                    .is_err()
+            );
+        }
+        assert!(serde_json::from_value::<RuntimeSessionTarget>(serde_json::json!({
+            "type": "open", "campaign_id": uuid::Uuid::from_u128(7).to_string(), "preset": "national-world"
+        })).is_err());
+    }
 }

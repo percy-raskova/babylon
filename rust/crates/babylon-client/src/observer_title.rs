@@ -34,6 +34,7 @@ struct TitleActionCaption;
 enum TitleAction {
     Continue,
     NewGame,
+    NationalEconomy,
     LoadGame,
     Campaigns,
     Settings,
@@ -211,6 +212,7 @@ fn spawn_home(commands: &mut Commands) {
                 for (action, caption) in [
                     (TitleAction::Continue, "Continue"),
                     (TitleAction::NewGame, "New Game"),
+                    (TitleAction::NationalEconomy, "National economy · observer"),
                     (TitleAction::LoadGame, "Load Game"),
                     (TitleAction::Campaigns, "Observer Campaigns"),
                     (TitleAction::Settings, "Settings"),
@@ -256,11 +258,15 @@ fn action_enabled(
         TitleAction::Continue | TitleAction::Resume => {
             !opening.launch_pending && can_continue(session)
         }
-        TitleAction::NewGame => {
+        TitleAction::NewGame | TitleAction::NationalEconomy => {
+            let command = if action == TitleAction::NationalEconomy {
+                ObserverCommand::NewNationalCampaign
+            } else {
+                ObserverCommand::NewOrganizerCampaign
+            };
             !opening.launch_pending
                 && !session.lifecycle_pending()
-                && availability(ObserverCommand::NewOrganizerCampaign, session)
-                    == ControlAvailability::Enabled
+                && availability(command, session) == ControlAvailability::Enabled
         }
         _ => true,
     }
@@ -310,6 +316,9 @@ impl TitleInput<'_> {
             }
             TitleAction::NewGame => {
                 self.commands.write(ObserverCommand::NewOrganizerCampaign);
+            }
+            TitleAction::NationalEconomy => {
+                self.commands.write(ObserverCommand::NewNationalCampaign);
             }
             TitleAction::LoadGame => self.opening.menu_page = MenuPage::SavedGames,
             TitleAction::Campaigns => self.opening.menu_page = MenuPage::Campaigns,
@@ -408,6 +417,7 @@ type TitleRootFilter = Or<(With<TitleMenuRoot>, With<TitleBackdrop>)>;
 
 fn paint(
     opening: Res<OpeningPresentation>,
+    progress: Option<Res<crate::observer_progress::OperationProgress>>,
     session: Res<ObserverSession>,
     ui: Res<ObserverUiState>,
     mut roots: Query<(&mut Visibility, Has<TitleMenuRoot>), TitleRootFilter>,
@@ -483,8 +493,11 @@ fn paint(
     } else {
         ""
     };
+    let pending = progress
+        .as_deref()
+        .and_then(crate::observer_progress::OperationProgress::caption);
     for mut text in &mut status {
-        text.set_if_neq(Text::new(caption));
+        text.set_if_neq(Text::new(pending.as_deref().unwrap_or(caption)));
     }
 }
 
@@ -563,6 +576,7 @@ mod tests {
             (TitleAction::Settings, MenuPage::Settings),
             (TitleAction::Campaigns, MenuPage::Campaigns),
             (TitleAction::NewGame, MenuPage::Home),
+            (TitleAction::NationalEconomy, MenuPage::Home),
         ] {
             app.world_mut()
                 .resource_mut::<OpeningPresentation>()
@@ -587,7 +601,13 @@ mod tests {
             .resource_mut::<Messages<ObserverCommand>>()
             .drain()
             .collect();
-        assert_eq!(messages, [ObserverCommand::NewOrganizerCampaign]);
+        assert_eq!(
+            messages,
+            [
+                ObserverCommand::NewOrganizerCampaign,
+                ObserverCommand::NewNationalCampaign
+            ]
+        );
         assert!(app.world().resource::<ObserverUiState>().menu_open);
         assert!(
             !app.world().resource::<OpeningPresentation>().launch_pending,

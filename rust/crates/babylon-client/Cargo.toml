@@ -1,6 +1,6 @@
 [package]
 name = "babylon-client"
-description = "Durable campaign observer and headless Archive commands"
+description = "Durable campaign observer and headless read commands"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -33,9 +33,9 @@ dynamic_linking = ["bevy/dynamic_linking"]
 [dependencies]
 bevy = { version = "0.18", features = ["webp"] }
 babylon-kernel = { path = "../babylon-kernel" }
-# PER-23 Slice 3 (ADR249 R9-R11): the headless dossier CLI reads the
-# fog-safe reader surface — the confined read-only Archive projection, never
-# game state, and never a writer path.
+# Archive commands use the confined fog-safe reader. The explicit economy
+# status command uses the separately provisioned full-observer reader, as does
+# the window's full-observer view. Neither receives a writer capability.
 babylon-persistence = { path = "../babylon-persistence" }
 earcut = "0.4.11"
 serde_json = "1"

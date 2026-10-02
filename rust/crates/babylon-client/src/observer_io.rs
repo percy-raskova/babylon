@@ -507,7 +507,11 @@ fn apply_response(
             previous_scope,
             scope,
         } => {
+            let leaving_organizer = state.organizer_enabled;
             state.switching(request_id, &previous_scope, scope)?;
+            if leaving_organizer {
+                state.set_perspective(Perspective::FullObserver);
+            }
             reset.clear(state);
             refresh.bump();
         }
@@ -686,20 +690,9 @@ fn apply_command(command: ObserverCommand, context: &mut CommandContext) {
             state.inspect_tick(tick);
             refresh.bump();
         }
-        ObserverCommand::NewCampaign
-        | ObserverCommand::NewOrganizerCampaign
-        | ObserverCommand::ReopenCampaign
-        | ObserverCommand::NewDelayedCampaign
-        | ObserverCommand::NewSharedFreightAmpleCampaign
-        | ObserverCommand::NewSharedFreightConstrainedCampaign
-        | ObserverCommand::NewStatewideBaselineCampaign
-        | ObserverCommand::NewStatewideFreightConstraintCampaign
-        | ObserverCommand::NewStatewidePackagingShortageCampaign
-        | ObserverCommand::NewStatewideBothCampaign
-        | ObserverCommand::NewStatewideMaintenanceBaselineCampaign
-        | ObserverCommand::NewStatewideMaintenanceLaborShortageCampaign
-        | ObserverCommand::NewStatewideMaintenancePartsShortageCampaign
-        | ObserverCommand::NewStatewideMaintenanceBothCampaign => {
+        command
+            if command == ObserverCommand::ReopenCampaign || campaign_preset(command).is_some() =>
+        {
             queue_menu_campaign(command, context);
         }
         _ => apply_presentation_command(command, context),
@@ -724,10 +717,19 @@ fn queue_menu_campaign(command: ObserverCommand, context: &mut CommandContext) {
         ObserverCommand::ReopenCampaign => RuntimeSessionTarget::Open {
             campaign_id: state.campaign.as_uuid().to_string(),
         },
-        _ => RuntimeSessionTarget::New {
-            campaign_id: uuid::Uuid::new_v4().to_string(),
-            preset: campaign_preset(command),
-        },
+        _ => {
+            let Some(preset) = campaign_preset(command) else {
+                feedback.reject(
+                    "This command does not select a new campaign.",
+                    time.elapsed_secs_f64(),
+                );
+                return;
+            };
+            RuntimeSessionTarget::New {
+                campaign_id: uuid::Uuid::new_v4().to_string(),
+                preset,
+            }
+        }
     };
     match state.queue_campaign(target) {
         Ok(()) => {
@@ -739,8 +741,10 @@ fn queue_menu_campaign(command: ObserverCommand, context: &mut CommandContext) {
     }
 }
 
-fn campaign_preset(command: ObserverCommand) -> RuntimeSessionPreset {
-    match command {
+pub(crate) fn campaign_preset(command: ObserverCommand) -> Option<RuntimeSessionPreset> {
+    Some(match command {
+        ObserverCommand::NewNationalCampaign => RuntimeSessionPreset::NationalWorld,
+        ObserverCommand::NewCampaign => RuntimeSessionPreset::Standard,
         ObserverCommand::NewOrganizerCampaign => RuntimeSessionPreset::OrganizeInWayne,
         ObserverCommand::NewStatewideMaintenanceBaselineCampaign => {
             RuntimeSessionPreset::StatewideMaintenanceBaseline
@@ -768,8 +772,8 @@ fn campaign_preset(command: ObserverCommand) -> RuntimeSessionPreset {
             RuntimeSessionPreset::SharedFreightConstrained
         }
         ObserverCommand::NewDelayedCampaign => RuntimeSessionPreset::Delayed,
-        _ => RuntimeSessionPreset::Standard,
-    }
+        _ => return None,
+    })
 }
 
 fn apply_presentation_command(command: ObserverCommand, context: &mut CommandContext) {
@@ -1121,7 +1125,14 @@ fn finish_shutdown(
 pub struct ObserverIoPlugin;
 impl Plugin for ObserverIoPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<PendingObservation>()
+        app.init_resource::<crate::observer_progress::OperationProgress>()
+            .add_systems(
+                Update,
+                crate::observer_progress::track
+                    .after(ObserverSet::Install)
+                    .before(ObserverSet::Paint),
+            )
+            .init_resource::<PendingObservation>()
             .init_resource::<ObservationCache>()
             .init_resource::<PlaybackClock>()
             .init_resource::<ShutdownProgress>()
@@ -1385,6 +1396,7 @@ pub(crate) mod tests {
     #[test]
     fn launcher_handoff_without_pipe_keeps_the_window_and_campaign_open() {
         for command in [
+            ObserverCommand::NewNationalCampaign,
             ObserverCommand::NewCampaign,
             ObserverCommand::NewDelayedCampaign,
             ObserverCommand::NewSharedFreightAmpleCampaign,
@@ -1416,6 +1428,7 @@ pub(crate) mod tests {
     #[test]
     fn campaign_choices_after_admission_failure_request_switch_without_exiting() {
         for command in [
+            ObserverCommand::NewNationalCampaign,
             ObserverCommand::NewCampaign,
             ObserverCommand::NewDelayedCampaign,
             ObserverCommand::NewSharedFreightAmpleCampaign,
@@ -1438,6 +1451,13 @@ pub(crate) mod tests {
                     assert_eq!(campaign_id, uuid::Uuid::from_u128(1).to_string());
                 }
                 (
+                    ObserverCommand::NewNationalCampaign,
+                    RuntimeSessionTarget::New {
+                        preset: RuntimeSessionPreset::NationalWorld,
+                        ..
+                    },
+                )
+                | (
                     ObserverCommand::NewCampaign,
                     RuntimeSessionTarget::New {
                         preset: RuntimeSessionPreset::Standard,
@@ -1616,7 +1636,14 @@ pub(crate) mod tests {
     #[test]
     fn idle_pipe_and_observation_polling_do_not_invalidate_the_session_each_frame() {
         let (mut app, _requests, responses) = quit_app();
-        app.init_resource::<PendingObservation>()
+        app.init_resource::<crate::observer_progress::OperationProgress>()
+            .add_systems(
+                Update,
+                crate::observer_progress::track
+                    .after(ObserverSet::Install)
+                    .before(ObserverSet::Paint),
+            )
+            .init_resource::<PendingObservation>()
             .init_resource::<ObservationCache>()
             .init_resource::<SessionChanges>()
             .add_systems(
@@ -1954,7 +1981,7 @@ pub(crate) mod tests {
         );
     }
 
-    pub(super) fn snapshot_with_event(
+    pub(crate) fn snapshot_with_event(
         state: &ObserverSession,
         kind: &str,
         period: u64,

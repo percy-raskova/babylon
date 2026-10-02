@@ -741,7 +741,11 @@ def test_prepare_builds_with_native_rustup_from_the_pinned_workspace(
 
 
 def _smoke_transcript_children(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, *, refused: bool = False
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    *,
+    refused: bool = False,
+    economic_report: dict[str, object] | None = None,
 ) -> list[list[str]]:
     """Keep the real launcher/session code; replace only native process boundaries."""
     calls: list[list[str]] = []
@@ -784,6 +788,11 @@ def _smoke_transcript_children(
 
     def readback(args: list[str], **_kwargs: Any) -> Any:
         assert not refused, "a refused New cannot proceed to native readback"
+        if args[-2:] == ["economy", "status"]:
+            assert args[1:4] == ["--headless", "--campaign", str(CAMPAIGN)]
+            return launcher.subprocess.CompletedProcess(
+                args, 0, stdout=json.dumps(economic_report or _national_snapshot_report())
+            )
         assert args[1:] == ["--headless", "--campaign", str(CAMPAIGN), "tick", "status"]
         return launcher.subprocess.CompletedProcess(
             args,
@@ -825,6 +834,7 @@ def _smoke_transcript_children(
         "statewide-maintenance-parts-shortage",
         "statewide-maintenance-both",
         "organize-in-wayne",
+        "national-world",
     ],
 )
 def test_smoke_request_preserves_selected_preset_through_new_restart_and_readback(
@@ -915,3 +925,84 @@ def test_preparation_refuses_database_before_reader_mutations(
     assert calls == (
         ["bootstrap"] if refused_phase == "bootstrap" else ["bootstrap", "provision-readers"]
     )
+
+
+def _national_snapshot_report() -> dict[str, object]:
+    return {
+        "record": "economy-status",
+        "schema_version": 1,
+        "campaign_id": str(CAMPAIGN),
+        "resolve_tick": 1,
+        "foundation_digest": "b" * 64,
+        "tick_content_hash": "a" * 64,
+        "nominal_world_hash": "c" * 64,
+        "envelope_digest": "d" * 64,
+        "visibility": "full_observer",
+        "duration": {"kind": "continuous"},
+        "county_count": 3144,
+        "exact_national_roster": True,
+        "domestic_household_locations": 3144,
+        "households_cover_national_roster": True,
+        "external_household_locations": 18,
+        "household_cohorts": 6324,
+        "sites": 60634,
+        "household_goods_accounts": 9486,
+        "household_service_accounts": 9486,
+        "completed_household_goods_accounts": 9486,
+        "completed_household_service_accounts": 9486,
+        "completed_material_balance": True,
+        "price_accounts": 106000,
+        "read_elapsed_us": 12345,
+    }
+
+
+def test_national_smoke_requires_the_authenticated_economic_snapshot(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _smoke_transcript_children(monkeypatch, tmp_path)
+    assert launcher.main(["--smoke", "--no-build", "--preset", "national-world"]) == 0
+    report = json.loads(capsys.readouterr().out)
+    assert report["economy_snapshot"] == _national_snapshot_report()
+    assert set(report["lifecycle_timings_us"]) == {"opening", "advance_commit_ack", "reopen"}
+    assert all(
+        type(value) is int and value >= 0 for value in report["lifecycle_timings_us"].values()
+    )
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("county_count", 83),
+        ("exact_national_roster", False),
+        ("domestic_household_locations", 3143),
+        ("households_cover_national_roster", False),
+        ("campaign_id", str(UUID(int=9))),
+        ("resolve_tick", 0),
+        ("foundation_digest", "e" * 64),
+        ("tick_content_hash", "e" * 64),
+        ("duration", {"kind": "finite", "final_period": 16}),
+        ("completed_material_balance", False),
+        ("completed_household_goods_accounts", 0),
+        ("completed_household_service_accounts", 0),
+        ("visibility", "known_preview"),
+        ("envelope_digest", None),
+        ("nominal_world_hash", None),
+        ("read_elapsed_us", -1),
+    ],
+)
+def test_national_smoke_refuses_incomplete_or_mismatched_economic_read(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    field: str,
+    value: object,
+) -> None:
+    report = _national_snapshot_report()
+    report[field] = value
+    _smoke_transcript_children(monkeypatch, tmp_path, economic_report=report)
+    assert launcher.main(["--smoke", "--no-build", "--preset", "national-world"]) == 1
+    output = capsys.readouterr()
+    assert not output.out
+    assert "national economic snapshot" in output.err

@@ -174,7 +174,12 @@ fn county_subject(geoid: &str) -> Result<ArchivePageRef, String> {
 fn execute(invocation: &HeadlessInvocation) -> Result<(), String> {
     let reader = SemanticArchiveReader::from_env().map_err(|error| error.to_string())?;
     let mut out = std::io::stdout().lock();
-    if invocation.command == CliCommand::TickStatus {
+    if invocation.command == CliCommand::EconomyStatus {
+        write_jsonl(
+            &mut out,
+            &crate::economy_status::read(&reader, invocation.campaign_id)?,
+        )?;
+    } else if invocation.command == CliCommand::TickStatus {
         write_jsonl(&mut out, &tick_status_row(&reader, invocation.campaign_id)?)?;
     } else {
         let scope = pinned_scope(&reader, invocation.campaign_id)?;
@@ -193,7 +198,7 @@ fn execute(invocation: &HeadlessInvocation) -> Result<(), String> {
             CliCommand::Changelog { geoid } => {
                 write_changes(&mut out, &reader, &scope, &county_subject(geoid)?)?;
             }
-            CliCommand::TickStatus => unreachable!("handled above"),
+            CliCommand::TickStatus | CliCommand::EconomyStatus => unreachable!("handled above"),
         }
     }
     out.flush().map_err(|error| error.to_string())

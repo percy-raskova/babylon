@@ -188,6 +188,7 @@ pub enum ObserverCommand {
     Menu,
     NewCampaign,
     NewOrganizerCampaign,
+    NewNationalCampaign,
     NewDelayedCampaign,
     NewSharedFreightAmpleCampaign,
     NewSharedFreightConstrainedCampaign,
@@ -878,6 +879,12 @@ fn menu_column() -> Node {
 }
 
 fn menu_campaign(panel: &mut ChildSpawnerCommands) {
+    panel.spawn(block_label("National economy", 14.0, theme::YELLOW));
+    preset_grid(
+        panel,
+        &[("National world", ObserverCommand::NewNationalCampaign)],
+    );
+    panel.spawn(block_label("All 3,144 U.S. counties and external markets. Economy observation; organizing actions are not connected yet.", 12.0, theme::GRAY));
     panel.spawn(block_label("Statewide Michigan", 14.0, theme::YELLOW));
     preset_grid(
         panel,
@@ -1846,6 +1853,23 @@ fn archive_page_status(
     }
 }
 
+fn paint_pending_status(
+    progress: Option<Res<crate::observer_progress::OperationProgress>>,
+    mut texts: Query<(&ObserverText, &mut Text)>,
+) {
+    let Some(caption) = progress
+        .as_deref()
+        .and_then(crate::observer_progress::OperationProgress::caption)
+    else {
+        return;
+    };
+    for (kind, mut text) in &mut texts {
+        if matches!(kind, ObserverText::Status) {
+            text.set_if_neq(Text::new(&caption));
+        }
+    }
+}
+
 fn repaint(
     shell: ShellState,
     mut texts: Query<(&ObserverText, &mut Text)>,
@@ -2129,6 +2153,7 @@ impl Plugin for ObserverShellPlugin {
                 Update,
                 (
                     repaint,
+                    paint_pending_status.after(repaint),
                     paint_menu_pages,
                     paint_buttons,
                     paint_view_controls,

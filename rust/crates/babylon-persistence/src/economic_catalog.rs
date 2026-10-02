@@ -13,6 +13,9 @@ mod graph;
 mod michigan;
 mod model;
 mod national;
+mod preset;
+
+pub use preset::national_catalog_input;
 mod session;
 mod sources;
 mod view;

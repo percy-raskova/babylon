@@ -13,8 +13,8 @@ use babylon_persistence::{
 };
 use uuid::Uuid;
 
-/// The `--headless` flag: run exactly one dossier command against the
-/// fog-safe reader and exit instead of opening the windowed viewer.
+/// The `--headless` flag: run exactly one read command against the
+/// command-specific read capability and exit instead of opening the windowed viewer.
 pub const HEADLESS_FLAG: &str = "--headless";
 /// The canonical campaign identity for the connected window or headless read.
 /// Falls back to [`CAMPAIGN_ENV`].
@@ -32,9 +32,10 @@ pub const STORY_FLAG: &str = "--story";
 /// The closed set of command words the parser recognizes. Anything else
 /// earns a Levenshtein did-you-mean over exactly this list — never a
 /// silent guess, never a prefix abbreviation.
-const COMMAND_WORDS: [&str; 7] = [
+const COMMAND_WORDS: [&str; 8] = [
     "changelog",
     "dossier",
+    "economy",
     "help",
     "search",
     "show",
@@ -62,6 +63,9 @@ commands:
       use this command for the durable committed tick tail of the campaign:
       the resolve tick, layout version, and the committed content and
       envelope hashes.
+  economy status
+      use this command for an authenticated full-observer economic snapshot summary,
+      including exact national county coverage; requires BABYLON_OBSERVER_DSN.
   changelog <geoid>
       use this command for the supersession feed of one county: the
       consecutive atom pairs whose atom identity changed across ticks.
@@ -69,11 +73,11 @@ commands:
       use this command for the help text of any command topic, recursively.
 
 options:
-  --headless    run one command against the fog-safe reader and exit.
+  --headless    run one command against its explicit read capability and exit.
   --campaign    open an existing canonical campaign UUID; falls back to BABYLON_CAMPAIGN_ID.
   --new-campaign create an absent campaign with this canonical UUID.
   --preset      new campaign scenario: standard (default), delayed,
-                shared-freight-ample, shared-freight-constrained, statewide-baseline, statewide-freight-constraint, statewide-packaging-shortage, statewide-both, statewide-maintenance-baseline, statewide-maintenance-labor-shortage, statewide-maintenance-parts-shortage, statewide-maintenance-both or organize-in-wayne.
+                shared-freight-ample, shared-freight-constrained, statewide-baseline, statewide-freight-constraint, statewide-packaging-shortage, statewide-both, statewide-maintenance-baseline, statewide-maintenance-labor-shortage, statewide-maintenance-parts-shortage, statewide-maintenance-both, organize-in-wayne or national-world.
   Open the connected window with `mise run play`.
 ";
 
@@ -135,6 +139,17 @@ example:
       tick status
 ";
 
+const ECONOMY_HELP: &str = "\
+economy status — authenticated full-observer economic snapshot summary
+
+use this command for county scope, household coverage, current accounts and hashes
+read through ObserverEconomyReader. Requires BABYLON_OBSERVER_DSN in addition to
+the restricted tick-status reader; it grants no writer or organizer authority.
+
+usage:
+  babylon-client --headless --campaign <uuid> economy status
+";
+
 const CHANGELOG_HELP: &str = "\
 changelog <geoid> — one county's supersession feed
 
@@ -171,6 +186,8 @@ pub enum CliCommand {
     },
     /// `tick status` — the committed durable tick status.
     TickStatus,
+    /// `economy status` — authenticated full-observer snapshot scope and identity.
+    EconomyStatus,
     /// `changelog <geoid>` — the supersession feed for one county.
     Changelog {
         /// Five-digit county GEOID.
@@ -195,6 +212,8 @@ pub enum HelpTopic {
     Tick,
     /// `help tick status`.
     TickStatus,
+    /// `help economy` or `help economy status`.
+    Economy,
     /// `help changelog`.
     Changelog,
     /// `help help`.
@@ -349,6 +368,7 @@ fn windowed_target(
         let preset = match preset.as_deref() {
             None | Some("standard") => RuntimeSessionPreset::Standard,
             Some("delayed") => RuntimeSessionPreset::Delayed,
+            Some("national-world") => RuntimeSessionPreset::NationalWorld,
             Some("organize-in-wayne") => RuntimeSessionPreset::OrganizeInWayne,
             Some("statewide-baseline") => RuntimeSessionPreset::StatewideBaseline,
             Some("statewide-freight-constraint") => RuntimeSessionPreset::StatewideFreightConstraint,
@@ -363,7 +383,7 @@ fn windowed_target(
             Some(_) => {
                 return Err(CliError::at(
                     concat!(file!(), ":", line!()),
-                    "new campaign preset must be standard, delayed, shared-freight-ample, shared-freight-constrained, statewide-baseline, statewide-freight-constraint, statewide-packaging-shortage, statewide-both, statewide-maintenance-baseline, statewide-maintenance-labor-shortage, statewide-maintenance-parts-shortage, statewide-maintenance-both or organize-in-wayne".into(),
+                    "new campaign preset must be standard, delayed, shared-freight-ample, shared-freight-constrained, statewide-baseline, statewide-freight-constraint, statewide-packaging-shortage, statewide-both, statewide-maintenance-baseline, statewide-maintenance-labor-shortage, statewide-maintenance-parts-shortage, statewide-maintenance-both, organize-in-wayne or national-world".into(),
                 ))
             }
         };
@@ -430,6 +450,13 @@ fn parse_command(words: &[String]) -> Result<CliCommand, CliError> {
     };
     match first.as_str() {
         "dossier" => parse_dossier(tail),
+        "economy" => match tail {
+            [status] if status == "status" => Ok(CliCommand::EconomyStatus),
+            _ => Err(CliError::at(
+                concat!(file!(), ":", line!()),
+                "expected 'economy status'".into(),
+            )),
+        },
         "tick" => match tail {
             [status] if status == "status" => Ok(CliCommand::TickStatus),
             _ => Err(CliError::at(
@@ -517,6 +544,7 @@ pub fn parse_help_topic(words: &[String]) -> Result<HelpTopic, CliError> {
         [topic] => match topic.as_str() {
             "dossier" => Ok(HelpTopic::Dossier),
             "tick" => Ok(HelpTopic::Tick),
+            "economy" => Ok(HelpTopic::Economy),
             "changelog" => Ok(HelpTopic::Changelog),
             "help" => Ok(HelpTopic::Help),
             other => Err(unknown_word(other, "help topic")),
@@ -525,6 +553,7 @@ pub fn parse_help_topic(words: &[String]) -> Result<HelpTopic, CliError> {
             ("dossier", "show") => Ok(HelpTopic::DossierShow),
             ("dossier", "search") => Ok(HelpTopic::DossierSearch),
             ("tick", "status") => Ok(HelpTopic::TickStatus),
+            ("economy", "status") => Ok(HelpTopic::Economy),
             (other, _) => Err(unknown_word(other, "help topic")),
         },
         _ => Err(CliError::at(
@@ -548,13 +577,14 @@ pub const fn render_help(topic: HelpTopic) -> &'static str {
         HelpTopic::DossierSearch => DOSSIER_SEARCH_HELP,
         HelpTopic::Tick => TICK_HELP,
         HelpTopic::TickStatus => TICK_STATUS_HELP,
+        HelpTopic::Economy => ECONOMY_HELP,
         HelpTopic::Changelog => CHANGELOG_HELP,
         HelpTopic::Help => HELP_HELP,
     }
 }
 
 /// Exact Levenshtein edit distance over Unicode scalar values. Only the
-/// did-you-mean uses it, over the seven closed command words.
+/// did-you-mean uses it, over the closed command words.
 fn levenshtein(left: &str, right: &str) -> usize {
     let right_chars = right.chars().collect::<Vec<_>>();
     let mut previous = (0..=right_chars.len()).collect::<Vec<_>>();
@@ -887,6 +917,76 @@ mod tests {
         assert!(
             matches!(request, CliRequest::Headless { command: CliCommand::Changelog { geoid }, .. } if geoid == "26163")
         );
+    }
+
+    #[test]
+    fn economic_summary_requires_an_explicit_headless_campaign_and_exact_command() {
+        let env = crate::test_support::EnvVarGuard::lock(CAMPAIGN_ENV);
+        env.remove();
+        let parsed = parse(os(&[
+            HEADLESS_FLAG,
+            CAMPAIGN_FLAG,
+            CAMPAIGN,
+            "economy",
+            "status",
+        ]))
+        .unwrap();
+        assert!(matches!(
+            parsed,
+            CliRequest::Headless {
+                command: CliCommand::EconomyStatus,
+                ..
+            }
+        ));
+        for words in [
+            vec![HEADLESS_FLAG, "economy", "status"],
+            vec![CAMPAIGN_FLAG, CAMPAIGN, "economy", "status"],
+            vec![HEADLESS_FLAG, CAMPAIGN_FLAG, CAMPAIGN, "economy"],
+            vec![
+                HEADLESS_FLAG,
+                CAMPAIGN_FLAG,
+                CAMPAIGN,
+                "economy",
+                "status",
+                "extra",
+            ],
+        ] {
+            assert!(parse(os(&words)).is_err());
+        }
+        assert!(render_help(HelpTopic::Economy).contains("BABYLON_OBSERVER_DSN"));
+    }
+
+    #[test]
+    fn national_world_is_an_explicit_new_selection_and_never_an_open_override() {
+        let request = parse(os(&[
+            NEW_CAMPAIGN_FLAG,
+            CAMPAIGN,
+            PRESET_FLAG,
+            "national-world",
+        ]))
+        .expect("the captured national economy is an explicit New choice");
+        let CliRequest::Windowed { initial_target } = request else {
+            panic!("national New must retain the connected window path")
+        };
+        assert_eq!(
+            serde_json::to_value(initial_target).unwrap()["preset"],
+            "national-world"
+        );
+        assert!(parse(os(&[
+            CAMPAIGN_FLAG,
+            CAMPAIGN,
+            PRESET_FLAG,
+            "national-world"
+        ]))
+        .is_err());
+        for invalid in [
+            "national",
+            "National-world",
+            "national-world ",
+            "national_world",
+        ] {
+            assert!(parse(os(&[NEW_CAMPAIGN_FLAG, CAMPAIGN, PRESET_FLAG, invalid])).is_err());
+        }
     }
 
     #[test]

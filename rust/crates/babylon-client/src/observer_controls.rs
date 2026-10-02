@@ -92,11 +92,7 @@ pub(crate) fn availability(
 ) -> ControlAvailability {
     use ControlAvailability::{Disabled, Enabled};
     use ObserverCommand::{
-        Live, NewCampaign, NewDelayedCampaign, NewSharedFreightAmpleCampaign,
-        NewSharedFreightConstrainedCampaign, NewStatewideBaselineCampaign,
-        NewStatewideBothCampaign, NewStatewideFreightConstraintCampaign,
-        NewStatewidePackagingShortageCampaign, NextPeriod, Perspective, PreviousPeriod,
-        ReopenCampaign, Step, TogglePlay,
+        Live, NextPeriod, Perspective, PreviousPeriod, ReopenCampaign, Step, TogglePlay,
     };
 
     if command == ObserverCommand::Quit {
@@ -105,19 +101,8 @@ pub(crate) fn availability(
     if state.quit_requested {
         return CLOSING;
     }
-    if matches!(
-        command,
-        NewCampaign
-            | ObserverCommand::NewOrganizerCampaign
-            | NewDelayedCampaign
-            | NewSharedFreightAmpleCampaign
-            | NewSharedFreightConstrainedCampaign
-            | NewStatewideBaselineCampaign
-            | NewStatewideFreightConstraintCampaign
-            | NewStatewidePackagingShortageCampaign
-            | NewStatewideBothCampaign
-            | ReopenCampaign
-    ) && state.runtime_disconnected()
+    if (crate::observer_io::campaign_preset(command).is_some() || command == ReopenCampaign)
+        && state.runtime_disconnected()
     {
         return Disabled("Runtime connection unavailable; close and relaunch Babylon");
     }

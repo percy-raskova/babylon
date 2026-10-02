@@ -140,7 +140,6 @@ pub(super) fn open(
     defines_path: &std::path::Path,
 ) -> Result<(DurableBackend, String), RuntimeSessionErrorCode> {
     let campaign = target.campaign()?;
-    let requested_catalog = catalog_for_target(target, defines_path)?;
     let bounded = crate::material_runtime::bounded_material_writer_config(config)
         .map_err(|_| RuntimeSessionErrorCode::StorageRefused)?;
     crate::runtime::verify_runtime_schema(config)
@@ -160,12 +159,7 @@ pub(super) fn open(
             )
         }
         RuntimeSessionTarget::New { preset, .. } => {
-            let catalog = requested_catalog
-                .as_ref()
-                .ok_or(RuntimeSessionErrorCode::DefinesInvalid)?;
-            let foundation = MichiganContentPreset::new_campaign(preset.delivery())
-                .create_foundation_for_campaign(catalog, campaign)
-                .map_err(|_| RuntimeSessionErrorCode::ScenarioMismatch)?;
+            let foundation = new_foundation(*preset, defines_path, campaign)?;
             let digest = digest_hex(&foundation.digest());
             (
                 DurableMaterialRuntime::create_new(config, campaign, foundation),
@@ -196,30 +190,54 @@ pub(super) fn open(
     ))
 }
 
-fn catalog_for_target(
-    target: &RuntimeSessionTarget,
+fn new_foundation(
+    preset: super::RuntimeSessionPreset,
     defines_path: &std::path::Path,
-) -> Result<Option<crate::michigan_material::MichiganMaterialCatalog>, RuntimeSessionErrorCode> {
-    let RuntimeSessionTarget::New { preset, .. } = target else {
-        return Ok(None);
-    };
-    // Load for each New request. Open never touches the mutable source file.
-    let catalog = crate::michigan_material::MichiganMaterialCatalog::load_for_preset(
-        defines_path,
-        preset.delivery(),
-    )
-    .map_err(|error| {
-        eprintln!("{error}");
-        match error {
-            crate::MichiganDefinesError::Read(_) => RuntimeSessionErrorCode::DefinesMissing,
-            crate::MichiganDefinesError::TooLarge => RuntimeSessionErrorCode::DefinesTooLarge,
-            crate::MichiganDefinesError::Toml(_) | crate::MichiganDefinesError::Utf8(_) => {
-                RuntimeSessionErrorCode::DefinesMalformed
-            }
-            _ => RuntimeSessionErrorCode::DefinesInvalid,
-        }
-    })?;
-    Ok(Some(catalog))
+    campaign: CampaignId,
+) -> Result<crate::material_runtime::MaterialRuntimeFoundation, RuntimeSessionErrorCode> {
+    if preset == super::RuntimeSessionPreset::NationalWorld {
+        let captured = crate::economic_catalog::CapturedEconomicCatalog::capture(
+            crate::economic_catalog::national_catalog_input(),
+            None,
+        )
+        .map_err(|error| {
+            eprintln!("National source admission refused: {error}");
+            RuntimeSessionErrorCode::ScenarioMismatch
+        })?;
+        return captured
+            .create_foundation(
+                babylon_kernel::replay::ReplaySessionId::try_from("national-world")
+                    .map_err(|_| RuntimeSessionErrorCode::ScenarioMismatch)?,
+                babylon_kernel::replay::ReplaySeed::new(319),
+            )
+            .map_err(|error| {
+                eprintln!("National foundation refused: {error}");
+                RuntimeSessionErrorCode::ScenarioMismatch
+            });
+    }
+    let delivery = preset
+        .delivery()
+        .ok_or(RuntimeSessionErrorCode::ScenarioMismatch)?;
+    // Only Michigan controls consume this mutable New-only parameter file.
+    // Open and national New use their explicit captured-source paths.
+    let catalog =
+        crate::michigan_material::MichiganMaterialCatalog::load_for_preset(defines_path, delivery)
+            .map_err(|error| {
+                eprintln!("{error}");
+                match error {
+                    crate::MichiganDefinesError::Read(_) => RuntimeSessionErrorCode::DefinesMissing,
+                    crate::MichiganDefinesError::TooLarge => {
+                        RuntimeSessionErrorCode::DefinesTooLarge
+                    }
+                    crate::MichiganDefinesError::Toml(_) | crate::MichiganDefinesError::Utf8(_) => {
+                        RuntimeSessionErrorCode::DefinesMalformed
+                    }
+                    _ => RuntimeSessionErrorCode::DefinesInvalid,
+                }
+            })?;
+    MichiganContentPreset::new_campaign(delivery)
+        .create_foundation_for_campaign(&catalog, campaign)
+        .map_err(|_| RuntimeSessionErrorCode::ScenarioMismatch)
 }
 
 fn runtime_content(
@@ -288,42 +306,29 @@ mod defines_tests {
             RuntimeSessionPreset::StatewideMaintenancePartsShortage,
             RuntimeSessionPreset::StatewideMaintenanceBoth,
         ] {
-            let target = RuntimeSessionTarget::New {
-                campaign_id: uuid::Uuid::from_u128(31).to_string(),
-                preset,
-            };
+            let campaign = CampaignId::from_uuid(uuid::Uuid::from_u128(31));
             assert!(matches!(
-                catalog_for_target(&target, &path),
+                new_foundation(preset, &path, campaign),
                 Err(RuntimeSessionErrorCode::DefinesMissing)
             ));
             std::fs::write(&manifest, b"{}").unwrap();
             assert!(matches!(
-                catalog_for_target(&target, &path),
+                new_foundation(preset, &path, campaign),
                 Err(RuntimeSessionErrorCode::DefinesInvalid)
             ));
             std::fs::remove_file(&manifest).unwrap();
         }
         std::fs::remove_file(&path).unwrap();
         std::fs::remove_dir(&directory).unwrap();
-        let open = RuntimeSessionTarget::Open {
-            campaign_id: uuid::Uuid::from_u128(31).to_string(),
-        };
-        assert!(catalog_for_target(&open, &path).unwrap().is_none());
     }
     #[test]
-    fn new_reloads_config_while_open_never_reads_it() {
+    fn michigan_new_captures_changed_parameters_and_refuses_missing_or_malformed_sources() {
         let path =
             std::env::temp_dir().join(format!("babylon-defines-{}.toml", std::process::id()));
-        let new = RuntimeSessionTarget::New {
-            campaign_id: uuid::Uuid::from_u128(17).to_string(),
-            preset: super::super::RuntimeSessionPreset::Standard,
-        };
-        let open = RuntimeSessionTarget::Open {
-            campaign_id: uuid::Uuid::from_u128(17).to_string(),
-        };
-        assert!(catalog_for_target(&open, &path).unwrap().is_none());
+        let preset = super::super::RuntimeSessionPreset::Standard;
+        let campaign = CampaignId::from_uuid(uuid::Uuid::from_u128(17));
         assert!(matches!(
-            catalog_for_target(&new, &path),
+            new_foundation(preset, &path, campaign),
             Err(RuntimeSessionErrorCode::DefinesMissing)
         ));
         let source = include_str!(concat!(
@@ -331,7 +336,7 @@ mod defines_tests {
             "/../../../content/scenarios/michigan/defines.toml"
         ));
         std::fs::write(&path, source).unwrap();
-        let first = catalog_for_target(&new, &path).unwrap().unwrap();
+        let first = new_foundation(preset, &path, campaign).unwrap();
         std::fs::write(
             &path,
             source.replace(
@@ -340,17 +345,17 @@ mod defines_tests {
             ),
         )
         .unwrap();
-        let second = catalog_for_target(&new, &path).unwrap().unwrap();
+        let second = new_foundation(preset, &path, campaign).unwrap();
+        assert_ne!(first.digest(), second.digest());
         assert_ne!(
-            first.staffing().hours_per_worker_period,
-            second.staffing().hours_per_worker_period
+            first.initial_register().canonical_bytes(),
+            second.initial_register().canonical_bytes()
         );
         std::fs::write(&path, "malformed = [").unwrap();
         assert!(matches!(
-            catalog_for_target(&new, &path),
+            new_foundation(preset, &path, campaign),
             Err(RuntimeSessionErrorCode::DefinesMalformed)
         ));
-        assert!(catalog_for_target(&open, &path).unwrap().is_none());
         std::fs::remove_file(path).unwrap();
     }
 

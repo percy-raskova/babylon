@@ -12,7 +12,26 @@ use babylon_kernel::content_digest::sha256_of;
 use babylon_tick::material_replay::IdentifiedMaterialTick;
 
 const DOMAIN: &[u8] = b"babylon.committed-material-tick.v3\0";
-pub const MAX_COMMITTED_MATERIAL_TICK_BYTES: usize = 67_108_864;
+/// Derived from six row-family bounds, register, receipt and exact framing.
+pub const MAX_COMMITTED_MATERIAL_TICK_BYTES: usize =
+    babylon_tick::material_world::MAX_MATERIAL_WORLD_REGISTER_BYTES
+        + babylon_tick::material_world::MAX_MATERIAL_TICK_RECEIPT_BYTES
+        + crate::committed_tick_envelope::COMMITTED_TICK_ROW_FAMILY_COUNT
+            * crate::committed_tick_envelope::MAX_COMMITTED_TICK_ROW_BATCH_BYTES
+        + FIXED_FRAMING_BYTES;
+const FIXED_FRAMING_BYTES: usize = DOMAIN.len() + 4 + 16 + 8 + 32 + 8 * 9 + 16;
+
+fn material_component_lengths(
+    register: usize,
+    receipts: usize,
+) -> Result<(), RustPersistenceRuntimeError> {
+    if register > babylon_tick::material_world::MAX_MATERIAL_WORLD_REGISTER_BYTES
+        || receipts > babylon_tick::material_world::MAX_MATERIAL_TICK_RECEIPT_BYTES
+    {
+        return Err(RustPersistenceRuntimeError::CampaignConflict);
+    }
+    Ok(())
+}
 
 /// Exact closed envelope, with material register and receipts inseparable from its claim.
 #[derive(Debug, PartialEq, Eq)]
@@ -31,6 +50,7 @@ impl CommittedMaterialTickEnvelope {
         register: &[u8],
         receipts: &[u8],
     ) -> Result<Self, RustPersistenceRuntimeError> {
+        material_component_lengths(register.len(), receipts.len())?;
         if sha256_of(receipts) != identity.receipt_digest() {
             return Err(RustPersistenceRuntimeError::CampaignConflict);
         }
@@ -43,7 +63,7 @@ impl CommittedMaterialTickEnvelope {
         .map_err(RustPersistenceRuntimeError::SemanticEnvelope)?;
         let capacity = component
             .iter()
-            .try_fold(DOMAIN.len() + 4 + 16 + 8 + 32 + 8 * 9, |total, batch| {
+            .try_fold(FIXED_FRAMING_BYTES - 16, |total, batch| {
                 batch.rows().iter().try_fold(total, |total, row| {
                     total
                         .checked_add(8)
@@ -123,4 +143,30 @@ fn append_row(
         bytes.extend_from_slice(value);
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn independent_components_and_exact_derived_framing() {
+        assert_eq!(FIXED_FRAMING_BYTES, 183);
+        assert_eq!(
+            MAX_COMMITTED_MATERIAL_TICK_BYTES,
+            1_000_000_000 + 7 * 67_108_864 + FIXED_FRAMING_BYTES
+        );
+        assert!(material_component_lengths(1_000_000_000, 67_108_864).is_ok());
+        assert!(material_component_lengths(1_000_000_001, 0).is_err());
+        assert!(material_component_lengths(0, 67_108_865).is_err());
+        for index in 0..6 {
+            let mut counts = [0; 6];
+            let mut bodies = [0; 6];
+            counts[5] = 1;
+            bodies[5] = 9;
+            counts[index] = 1;
+            bodies[index] = 67_108_865;
+            assert!(validate_committed_tick_envelope_bounds(counts, bodies).is_err());
+        }
+    }
 }

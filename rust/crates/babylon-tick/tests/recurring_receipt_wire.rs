@@ -1,7 +1,7 @@
 //! Independent vectors for recurring demand, consumption, firm plans and prices.
 use babylon_tick::material_world::{decode_material_receipts, MaterialWorldError};
 
-const DOMAIN: &[u8] = b"babylon.material-tick-receipts.v12\0";
+const DOMAIN: &[u8] = b"babylon.material-tick-receipts.v13\0";
 
 fn words(ids: &[u8], values: &[u64]) -> Vec<u8> {
     let mut bytes = Vec::new();
@@ -42,12 +42,13 @@ fn price(reason: u8, old: i128, next: i128, unserved: u64, stock: u64) -> Vec<u8
     bytes.extend_from_slice(&unserved.to_be_bytes());
     bytes.extend_from_slice(&stock.to_be_bytes());
     bytes.push(reason);
+    bytes.extend_from_slice(&[0; 41]); // Explicit unavailable current cost observation.
     bytes
 }
 
 fn envelope(family: u8, rows: &[Vec<u8>]) -> Vec<u8> {
     let mut bytes = DOMAIN.to_vec();
-    bytes.extend_from_slice(&12_u32.to_be_bytes());
+    bytes.extend_from_slice(&13_u32.to_be_bytes());
     bytes.extend_from_slice(&7_u64.to_be_bytes());
     for tag in 1..=32 {
         bytes.push(tag);
@@ -75,7 +76,7 @@ fn recurring_families_admit_complete_independent_vectors() {
         (15, consumption(), 144),
         (16, procurement(), 224),
         (17, plan(), 120),
-        (18, price(3, 11, 12, 1, 0), 153),
+        (18, price(3, 11, 12, 1, 0), 194),
     ] {
         assert_eq!(row.len(), width);
         assert!(
@@ -275,4 +276,67 @@ fn every_family_keeps_its_explicit_row_and_whole_envelope_bounds() {
     let mut bytes = envelope(0, &[]);
     bytes.resize(MAX_MATERIAL_WORLD_REGISTER_BYTES + 1, 0);
     assert!(decode_material_receipts(&bytes).is_err());
+}
+
+fn cost_claim(
+    mut row: Vec<u8>,
+    basis: u8,
+    quantity: u64,
+    carrying: i128,
+    handling: i128,
+) -> Vec<u8> {
+    row[153] = basis;
+    row[154..162].copy_from_slice(&quantity.to_be_bytes());
+    row[162..178].copy_from_slice(&carrying.to_be_bytes());
+    row[178..194].copy_from_slice(&handling.to_be_bytes());
+    row
+}
+
+#[test]
+fn goods_cost_wire_admits_exclusive_direct_claims_and_refuses_impossible_reason_or_basis() {
+    for row in [
+        cost_claim(price(5, 11, 12, 0, 3), 1, 2, 23, 0), // Exact ceiling12, unsold production.
+        cost_claim(price(5, 11, 11, 0, 3), 2, 4, 40, 8), // Bounded ceiling can leave price unchanged.
+        cost_claim(price(1, 11, 11, 0, 3), 1, 2, 23, 0), // Fixed disregards the cost pressure.
+        cost_claim(price(3, 11, 12, 1, 0), 2, 4, 40, 8), // Demand can take precedence.
+        cost_claim(
+            price(2, i128::MAX, i128::MAX, 0, 0),
+            1,
+            u64::MAX,
+            i128::MAX,
+            0,
+        ),
+        cost_claim(price(2, 1, 1, 0, 0), 2, 2, 0, 0), // Actual free units, not unavailable evidence.
+    ] {
+        assert!(decode_material_receipts(&envelope(18, &[row])).is_ok());
+    }
+    for row in [
+        cost_claim(price(5, 11, 12, 0, 3), 0, 0, 0, 0),
+        cost_claim(price(5, 11, 12, 0, 3), 3, 2, 23, 0),
+        cost_claim(price(5, 11, 12, 0, 3), 0, 2, 23, 0),
+        cost_claim(price(5, 11, 12, 0, 3), 1, 0, 23, 0),
+        cost_claim(price(5, 11, 12, 0, 3), 1, 2, 23, 1),
+        cost_claim(price(5, 11, 12, 0, 3), 2, 2, 23, -1),
+        cost_claim(price(5, 11, 12, 0, 3), 2, 2, -1, 23),
+        cost_claim(price(5, 11, 12, 0, 3), 2, 2, i128::MAX, 1),
+        cost_claim(price(5, 11, 12, 0, 3), 1, 2, 22, 0),
+        cost_claim(price(5, 11, 10, 0, 3), 1, 2, 23, 0),
+        cost_claim(price(2, 11, 11, 0, 3), 1, 2, 23, 0),
+        cost_claim(price(4, 11, 10, 0, 3), 2, 4, 40, 8),
+    ] {
+        assert!(decode_material_receipts(&envelope(18, &[row])).is_err());
+    }
+}
+
+#[test]
+fn goods_cost_wire_refuses_prior_receipt_version_and_every_truncated_cost_prefix() {
+    let bytes = envelope(18, &[cost_claim(price(5, 11, 12, 0, 3), 1, 2, 23, 0)]);
+    for end in 0..bytes.len() {
+        assert!(decode_material_receipts(&bytes[..end]).is_err());
+    }
+    let mut previous = bytes.clone();
+    previous[DOMAIN.len()..DOMAIN.len() + 4].copy_from_slice(&12_u32.to_be_bytes());
+    assert!(decode_material_receipts(&previous).is_err());
+    previous[DOMAIN.len() - 2] = b'2';
+    assert!(decode_material_receipts(&previous).is_err());
 }

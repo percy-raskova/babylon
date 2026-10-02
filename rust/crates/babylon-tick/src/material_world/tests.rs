@@ -3,8 +3,8 @@ use super::*;
 // A merchant's two physical handoffs share the same explicit handling account.
 // These bytes exercise the committed receipt boundary independently of its encoder.
 fn local_handoff_receipts() -> Vec<u8> {
-    let mut bytes = b"babylon.material-tick-receipts.v12\0".to_vec();
-    bytes.extend_from_slice(&12_u32.to_be_bytes());
+    let mut bytes = b"babylon.material-tick-receipts.v13\0".to_vec();
+    bytes.extend_from_slice(&13_u32.to_be_bytes());
     bytes.extend_from_slice(&1_u64.to_be_bytes());
     for tag in 1..=32_u8 {
         bytes.push(tag);
@@ -144,7 +144,7 @@ fn monetary_receipt_encoding_preserves_exact_cash_and_execution_order() {
         })
         .into();
     let mut bytes = RECEIPT_DOMAIN.to_vec();
-    bytes.extend_from_slice(&12_u32.to_be_bytes());
+    bytes.extend_from_slice(&13_u32.to_be_bytes());
     bytes.extend_from_slice(&7_u64.to_be_bytes());
     for tag in 1..=32 {
         bytes.push(tag);
@@ -245,7 +245,7 @@ fn attendance_receipt_encoding_roundtrips_without_sorting_hashed_shift_ids() {
         .collect();
     monetary_receipt::validate_order(&wages, &labor).unwrap();
     let mut bytes = RECEIPT_DOMAIN.to_vec();
-    bytes.extend_from_slice(&12_u32.to_be_bytes());
+    bytes.extend_from_slice(&13_u32.to_be_bytes());
     bytes.extend_from_slice(&7_u64.to_be_bytes());
     for tag in 1..=32 {
         bytes.push(tag);

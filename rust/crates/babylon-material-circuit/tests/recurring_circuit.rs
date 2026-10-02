@@ -944,3 +944,6 @@ mod cost_income;
 
 #[path = "support/local_cost.rs"]
 mod local_cost;
+
+#[path = "support/goods_cost_prices.rs"]
+mod goods_cost_prices;

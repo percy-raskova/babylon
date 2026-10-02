@@ -55,3 +55,32 @@ fn equipment_receipt_refuses_invalid_work_cost_partitions_duplicates_and_old_ver
     let old = b"babylon.material-tick-receipts.v11\0";
     assert!(super::super::decode_material_receipts(old).is_err());
 }
+
+#[test]
+fn goods_cost_from_real_equipment_close_roundtrips_and_restart_does_not_reuse_it() {
+    let mut state = opening();
+    for _ in 0..3 {
+        state = advance_material_circuit(&state).unwrap().state;
+    }
+    configure_output_quote(&mut state);
+    let transition = advance_material_circuit(&state).unwrap();
+    let bytes = super::super::encode_material_receipts(4, &transition).unwrap();
+    let decoded = super::super::decode_material_receipts(&bytes).unwrap();
+    assert_eq!(decoded.prices, transition.prices);
+    assert_eq!(decoded.prices[0].cost.quantity, 2);
+    assert_eq!(decoded.prices[0].cost.carrying_cost, money(29));
+    assert_eq!(decoded.prices[0].reason, PriceDecision::CostPressure);
+    let restored =
+        decode_material_circuit_state(&encode_material_circuit_state(&transition.state).unwrap())
+            .unwrap();
+    let next = advance_material_circuit(&restored).unwrap();
+    assert_eq!(next, advance_material_circuit(&transition.state).unwrap());
+    assert_eq!(next.prices[0].cost.basis, GoodsPriceCostBasis::Unavailable);
+    let next_bytes = super::super::encode_material_receipts(5, &next).unwrap();
+    assert_eq!(
+        super::super::decode_material_receipts(&next_bytes)
+            .unwrap()
+            .prices,
+        next.prices
+    );
+}

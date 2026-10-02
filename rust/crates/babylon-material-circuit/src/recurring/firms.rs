@@ -4,7 +4,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use babylon_kernel::{content_digest::sha256_of, currency::Currency};
 
-use super::{AttendancePlan, PricePolicy};
+use super::AttendancePlan;
 use crate::{
     AccountId, CircuitAccounting, GoodId, HouseholdDemandReceipt, LocalTransferReceipt,
     MaterialCircuitError, MaterialCircuitState, MoneyTransferReceipt, OrderAccessMode, OrderId,
@@ -48,28 +48,6 @@ pub struct ProductionPlanReceipt {
     pub closing_output_stock: u64,
     pub output_buffer: u64,
     pub planned_batches: u64,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PriceDecision {
-    Fixed,
-    Hold,
-    UnservedDemand,
-    ExcessStock,
-}
-
-/// Offers for the next period; existing purchase reserves keep their own prices.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PriceReceipt {
-    pub period: u64,
-    pub site_id: SiteId,
-    pub good_id: GoodId,
-    pub unit_id: UnitId,
-    pub old_price: Currency,
-    pub next_price: Currency,
-    pub unserved_quantity: u64,
-    pub closing_stock: u64,
-    pub reason: PriceDecision,
 }
 
 fn add(
@@ -499,104 +477,6 @@ fn add_hours(
         .checked_add(quantity)
         .ok_or(MaterialCircuitError::Arithmetic)?;
     Ok(())
-}
-
-pub(crate) fn update_prices(
-    state: &mut MaterialCircuitState,
-    demand: &[HouseholdDemandReceipt],
-) -> Result<Vec<PriceReceipt>, MaterialCircuitError> {
-    if !active(state) {
-        return Ok(Vec::new());
-    }
-    let mut unserved = BTreeMap::new();
-    for row in demand {
-        add(
-            &mut unserved,
-            (row.retailer_site_id, row.good_id, row.unit_id),
-            row.expired_quantity,
-        )?;
-    }
-    for order in &state.orders {
-        add(
-            &mut unserved,
-            (order.supplier_site_id, order.good_id, order.unit_id),
-            order.ordered - order.shipped,
-        )?;
-    }
-    for row in &state.final_demand_orders {
-        add(
-            &mut unserved,
-            (row.retailer_site_id, row.good_id, row.unit_id),
-            row.ordered - row.fulfilled,
-        )?;
-    }
-    let inventory: BTreeMap<_, _> = state
-        .inventory
-        .iter()
-        .map(|row| ((row.site_id, row.good_id, row.unit_id), row.quantity))
-        .collect();
-    let CircuitAccounting::Monetary(economy) = &mut state.accounting else {
-        return Ok(Vec::new());
-    };
-    let Some(recurring) = &mut economy.recurring else {
-        return Ok(Vec::new());
-    };
-    let mut receipts = Vec::new();
-    for offer in &mut recurring.offers {
-        if state.commodities.iter().any(|r| {
-            (r.good_id, r.unit_id) == (offer.good_id, offer.unit_id)
-                && matches!(r.kind, crate::CommodityKind::PeriodService { .. })
-        }) {
-            continue;
-        }
-        let key = (offer.site_id, offer.good_id, offer.unit_id);
-        let waiting = unserved.get(&key).copied().unwrap_or(0);
-        let stock = inventory.get(&key).copied().unwrap_or(0);
-        let old = offer.unit_price;
-        let reason = match offer.pricing {
-            PricePolicy::Fixed => PriceDecision::Fixed,
-            PricePolicy::ServiceResponsive { .. } => {
-                return Err(MaterialCircuitError::ServiceInvariant)
-            }
-            PricePolicy::Responsive {
-                minimum,
-                maximum,
-                step,
-                target_stock,
-            } => {
-                if waiting > 0 && stock <= target_stock {
-                    // Saturation is explicit at the declared quote ceiling.
-                    offer.unit_price = Currency::from_micro_units(
-                        old.micro_units()
-                            .saturating_add(step.micro_units())
-                            .min(maximum.micro_units()),
-                    );
-                    PriceDecision::UnservedDemand
-                } else if waiting == 0 && stock > target_stock {
-                    offer.unit_price = Currency::from_micro_units(
-                        old.micro_units()
-                            .saturating_sub(step.micro_units())
-                            .max(minimum.micro_units()),
-                    );
-                    PriceDecision::ExcessStock
-                } else {
-                    PriceDecision::Hold
-                }
-            }
-        };
-        receipts.push(PriceReceipt {
-            period: state.period,
-            site_id: offer.site_id,
-            good_id: offer.good_id,
-            unit_id: offer.unit_id,
-            old_price: old,
-            next_price: offer.unit_price,
-            unserved_quantity: waiting,
-            closing_stock: stock,
-            reason,
-        });
-    }
-    Ok(receipts)
 }
 
 pub(crate) fn retire_resolved_purchases(

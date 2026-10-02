@@ -915,6 +915,7 @@ fn next_plans(
     household_demand: &[crate::HouseholdDemandReceipt],
     maintenance: Option<&crate::MaintenanceReceipt>,
     next_period: u64,
+    costs: &CostClose,
 ) -> Result<NextPlans, MaterialCircuitError> {
     let production_plans = crate::recurring::firms::plan_production(
         state,
@@ -933,7 +934,7 @@ fn next_plans(
         maintenance,
         next_period,
     )?;
-    let prices = crate::recurring::firms::update_prices(state, household_demand)?;
+    let prices = crate::recurring::prices::update_prices(state, household_demand, costs)?;
     Ok(NextPlans {
         production: production_plans,
         prices,
@@ -1079,6 +1080,7 @@ pub fn close_material_period(
         &household_demand,
         maintenance.as_ref(),
         next_period,
+        &costs,
     )?;
     crate::recurring::firms::retire_resolved_purchases(&mut state)?;
     rebuild_backlog(&mut state);

@@ -15,6 +15,7 @@ pub(crate) struct CostClose {
     pub(super) active: Option<ActiveCosts>,
     pub(super) attendance: crate::payments::AttendanceLedger,
     pub(crate) wear_receipts: Vec<crate::EquipmentWearReceipt>,
+    pub(super) goods: super::prices::GoodsCostLedger,
 }
 pub(super) struct ActiveCosts {
     pub(super) book: HistoricalCostBook,
@@ -42,6 +43,7 @@ impl CostClose {
         Self {
             active,
             wear_receipts: Vec::new(),
+            goods: super::prices::GoodsCostLedger::default(),
             attendance: crate::payments::AttendanceLedger::default(),
         }
     }
@@ -101,7 +103,17 @@ impl CostClose {
             output.good_id,
             output.unit_id,
         );
-        active.book.credit_stock(key, add(inputs, wages)?)?;
+        let carrying = add(inputs, wages)?;
+        active.book.credit_stock(key, carrying)?;
+        let quantity = output
+            .quantity_per_batch
+            .checked_mul(batches)
+            .ok_or(MaterialCircuitError::Arithmetic)?;
+        self.goods.produced(
+            (output.site_id, output.good_id, output.unit_id),
+            quantity,
+            carrying,
+        )?;
         let statement = active.statement(key.0)?;
         statement.productive_labor_capitalized =
             add(statement.productive_labor_capitalized, wages)?;
@@ -214,7 +226,7 @@ impl CostClose {
         if active.book.freight.insert(lot, (owner, cost)).is_some() {
             return Err(MaterialCircuitError::DuplicateRow);
         }
-        Ok(())
+        self.goods.released((owner, key.1, key.2), quantity, cost)
     }
 
     pub(crate) fn freight(
@@ -280,6 +292,11 @@ impl CostClose {
             owner,
             purchase_amount(state, OutboundOrderId::Delivery(order.order_id), quantity)?,
             cost,
+        )?;
+        self.goods.released(
+            (order.supplier_site_id, order.good_id, order.unit_id),
+            quantity,
+            cost,
         )
     }
 
@@ -327,6 +344,11 @@ impl CostClose {
             quantity,
         )?;
         active.sale(seller, payment, cost)?;
+        self.goods.released(
+            (order.retailer_site_id, order.good_id, order.unit_id),
+            quantity,
+            cost,
+        )?;
         let buyer = AccountId::Household(order.demand_principal_id);
         let key = (buyer, order.good_id, order.unit_id);
         if active.book.stocks.contains_key(&key) {
@@ -355,11 +377,12 @@ impl CostClose {
 
     pub(crate) fn handling(
         &mut self,
-        _state: &MaterialCircuitState,
-        site: SiteId,
+        key: (SiteId, crate::GoodId, UnitId),
         unit: UnitId,
+        quantity: u64,
         hours: u64,
     ) -> Result<()> {
+        let site = key.0;
         let Some(active) = &mut self.active else {
             return Ok(());
         };
@@ -368,7 +391,7 @@ impl CostClose {
                 .consume(site, unit, hours, crate::payments::LaborUse::Handling)?;
         let statement = active.statement(AccountId::Site(site))?;
         statement.handling_expense = add(statement.handling_expense, wages)?;
-        Ok(())
+        self.goods.handled(key, quantity, wages)
     }
 
     pub(crate) fn maintenance(

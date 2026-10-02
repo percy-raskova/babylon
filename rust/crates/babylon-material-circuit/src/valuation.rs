@@ -6,6 +6,7 @@ mod close;
 mod equipment;
 mod financial;
 mod model;
+mod prices;
 mod validation;
 pub(crate) use close::CostClose;
 pub(crate) use validation::validate;

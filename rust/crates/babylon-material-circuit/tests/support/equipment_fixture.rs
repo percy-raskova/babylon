@@ -380,3 +380,41 @@ fn configure_investment_supply(state: &mut MaterialCircuitState) {
         cash_floor: money(0),
     }];
 }
+
+fn configure_output_quote(state: &mut MaterialCircuitState) {
+    let period = state.period;
+    economy_mut(state).recurring = Some(Box::new(RecurringEconomy {
+        service_inputs: vec![],
+        households: vec![],
+        household_stocks: vec![],
+        household_needs: vec![],
+        household_purchases: vec![],
+        replenishment: vec![],
+        offers: vec![SellerOffer {
+            site_id: site(),
+            good_id: good(4),
+            unit_id: unit(),
+            unit_price: money(3),
+            pricing: PricePolicy::Responsive {
+                minimum: money(1),
+                maximum: money(20),
+                step: money(1),
+                target_stock: 0,
+            },
+        }],
+        production: vec![ProductionDemandPolicy {
+            process_id: process(),
+            site_id: site(),
+            output_buffer: 2,
+            planned_batches: 2,
+        }],
+        attendance: vec![AttendancePlan {
+            site_id: site(),
+            unit_id: hours(),
+            period,
+            planned_hours: 2,
+        }],
+        last_household_admission_period: period - 1,
+        last_household_consumption_period: period - 1,
+    }));
+}

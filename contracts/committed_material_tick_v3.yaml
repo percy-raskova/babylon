@@ -17,23 +17,24 @@ envelope:
     - {tag: 5, name: graph_full_checkpoint, codec: existing_nine_checkpoint_sections_v1}
     - {tag: 6, name: archive_dirty_receipt, count: 1, hash: combined_material_tick_content_v3}
     - {tag: 7, name: complete_material_register, count: 1, key: empty, payload: exact_material_world_register_v4_bytes}
-    - {tag: 8, name: material_receipts, count: 1, key: empty, payload: exact_material_tick_receipts_v12_bytes}
+    - {tag: 8, name: material_receipts, count: 1, key: empty, payload: exact_material_tick_receipts_v13_bytes}
   family_frame: u8_tag_then_u64_big_endian_count
   row_frame: u32_big_endian_key_length_then_key_then_u32_big_endian_payload_length_then_payload
   ordering: Existing six families preserve strict canonical key order; singular added families cannot reorder.
   digest: sha256_exact_complete_envelope_bytes
   maximum_complete_bytes: 67108864
 receipts:
-  version: 12
-  domain: "babylon.material-tick-receipts.v12\0"
-  header: u32_big_endian_version_12_then_u64_big_endian_positive_resolve_tick
+  version: 13
+  domain: "babylon.material-tick-receipts.v13\0"
+  header: u32_big_endian_version_13_then_u64_big_endian_positive_resolve_tick
   family_frame: u8_tag_then_u64_big_endian_count
   family_count: 32
   identities: exact_32_bytes
   quantities_periods_and_hours: u64_big_endian
   stage_index: u16_big_endian_less_than_16
   outbound_order_tag: {delivery: 1, local_final_demand: 2, period_service: 3}
-  price_decision_tag: {fixed: 1, hold: 2, unserved_demand: 3, excess_stock: 4}
+  price_decision_tag: {fixed: 1, hold: 2, unserved_demand: 3, excess_stock: 4, cost_pressure: 5}
+  goods_cost_basis_tag: {unavailable: 0, produced: 1, released: 2}
   money: signed_i128_big_endian_micro_currency
   account: {width: 33, fields: [account_tag, identity], tags: {site: 1, household: 2, organization: 3, public: 4}}
   money_location:
@@ -197,7 +198,11 @@ receipts:
         - unserved_quantity
         - closing_stock
         - price_decision_tag
-      width: 153
+        - goods_cost_basis_tag
+        - cost_quantity
+        - carrying_cost
+        - handling_wages
+      width: 194
       meaning: next_offer_quote_and_observed_decision_inputs
     - tag: 19
       fields: [account, period, opening_capital, opening_retained_earnings, opening_contributed_capital,
@@ -396,6 +401,11 @@ receipts:
     - Old and next prices are positive; fixed or hold decisions retain the same price.
     - Unserved-demand decisions require unserved quantity and cannot reduce price; ceilings can retain it.
     - Excess-stock decisions require zero unserved quantity and positive stock and cannot raise price.
+    - Goods cost basis is unavailable with zero quantity and zero amounts,
+      or produced or released with positive quantity.
+    - Produced cost cannot include handling wages; every amount is nonnegative and checked total cost fits currency.
+    - Cost-pressure decisions require exact rounded-up unit cost above the old quote and cannot reduce price.
+    - Hold and excess-stock decisions cannot override an observed cost shortfall; fixed offers can disregard it.
     - Unknown price reasons and duplicate or noncanonical recurring keys are refused.
     - Income rows have unique canonical account order and period equal to resolve_tick.
     - Income flows are nonnegative; net income and retained earnings are signed exact micro-currency.
@@ -438,6 +448,11 @@ receipts:
       Procurement, production caps and next prices explain decisions without promising execution.
       Receipt validation alone cannot authenticate policy targets, prices, recipe coefficients,
       opening cash or inventory against an absent state.
+      Goods cost is a committed per-good posting claim, not a value theory or guaranteed margin.
+      Produced and released bases are exclusive; released carrying includes unsold seller-owned transit.
+      A consumer joins native quantities and actual handling wages to physical and member receipts.
+      Account-wide COGS alone cannot prove exact carrying attribution among mixed goods; those joins must
+      preserve that proof boundary rather than duplicate the historical-cost allocator.
     income: >-
       Historical transaction-cost bookkeeping, not a measurement of surplus value or social labor.
       Standalone rows prove their equations; account net assets and physical carrying keys require the complete state.

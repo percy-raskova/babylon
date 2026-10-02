@@ -3,16 +3,15 @@
 pub(crate) mod firms;
 mod households;
 mod model;
+pub(crate) mod prices;
 
-pub use firms::{
-    recurring_procurement_order_id, PriceDecision, PriceReceipt, ProcurementReceipt,
-    ProductionPlanReceipt,
-};
+pub use firms::{recurring_procurement_order_id, ProcurementReceipt, ProductionPlanReceipt};
 pub use households::recurring_household_order_id;
 pub(crate) use households::{
     admit_household_orders, complete_household_orders, consume_household_needs,
 };
 pub use model::*;
+pub use prices::{GoodsPriceCostBasis, GoodsPriceCostEvidence, PriceDecision, PriceReceipt};
 
 use crate::{
     AccountId, CircuitAccounting, MaterialCircuitError, MaterialCircuitState, MerchantRole,

@@ -421,3 +421,36 @@ fn installed_capacity_cannot_replace_missing_inputs_or_avoid_paid_idle_loss() {
     assert_eq!(income.statement.idle_labor_expense, money(4));
     assert_eq!(income.net_income, money(-4));
 }
+
+#[test]
+fn goods_cost_actual_wear_inputs_and_wages_are_one_produced_basis_without_revaluation() {
+    let mut state = opening();
+    for _ in 0..3 {
+        state = advance_material_circuit(&state).unwrap().state;
+    }
+    configure_output_quote(&mut state);
+    let result = advance_material_circuit(&state).unwrap();
+    let row = &result.prices[0];
+    assert_eq!(
+        row.cost,
+        GoodsPriceCostEvidence {
+            basis: GoodsPriceCostBasis::Produced,
+            quantity: 2,
+            carrying_cost: money(29),
+            handling_wages: money(0),
+        }
+    ); // Four inputs + four productive wages +21 wear.
+    assert_eq!(
+        (row.reason, row.next_price),
+        (PriceDecision::CostPressure, money(4))
+    );
+    assert_eq!(stock_cost(&result.state, good(4)), money(29));
+    assert_eq!(equipment_cost(&result.state), money(11));
+    let restored =
+        decode_material_circuit_state(&encode_material_circuit_state(&result.state).unwrap())
+            .unwrap();
+    assert_eq!(
+        advance_material_circuit(&result.state).unwrap(),
+        advance_material_circuit(&restored).unwrap()
+    );
+}

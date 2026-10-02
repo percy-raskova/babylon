@@ -4,9 +4,9 @@ use std::collections::BTreeSet;
 
 use babylon_kernel::currency::Currency;
 use babylon_material_circuit::{
-    FinalDemandPrincipalId, GoodId, HouseholdConsumptionReceipt, HouseholdDemandReceipt, OrderId,
-    PriceDecision, PriceReceipt, ProcessId, ProcurementReceipt, ProductionPlanReceipt, SiteId,
-    UnitId,
+    FinalDemandPrincipalId, GoodId, GoodsPriceCostBasis, GoodsPriceCostEvidence,
+    HouseholdConsumptionReceipt, HouseholdDemandReceipt, OrderId, PriceDecision, PriceReceipt,
+    ProcessId, ProcurementReceipt, ProductionPlanReceipt, SiteId, UnitId,
 };
 
 use super::{MaterialWorldError, ReceiptCursor};
@@ -15,7 +15,7 @@ pub(super) const DEMAND_BYTES: usize = 240;
 pub(super) const CONSUMPTION_BYTES: usize = 144;
 pub(super) const PROCUREMENT_BYTES: usize = 224;
 pub(super) const PLAN_BYTES: usize = 120;
-pub(super) const PRICE_BYTES: usize = 153;
+pub(super) const PRICE_BYTES: usize = 194;
 
 fn ordered<T, K: Ord>(rows: &[T], key: impl Fn(&T) -> K) -> bool {
     rows.windows(2).all(|pair| key(&pair[0]) < key(&pair[1]))
@@ -127,11 +127,15 @@ fn validate_plan(row: &ProductionPlanReceipt, period: u64) -> Result<(), Materia
 fn validate_price(row: &PriceReceipt, period: u64) -> Result<(), MaterialWorldError> {
     let old = row.old_price.micro_units();
     let next = row.next_price.micro_units();
+    let unit_cost = row.cost.unit_cost().map_err(|_| MaterialWorldError::Wire)?;
+    let cost_pressure = unit_cost.is_some_and(|cost| cost > row.old_price);
     let justified = match row.reason {
-        PriceDecision::Fixed | PriceDecision::Hold => next == old,
+        PriceDecision::Fixed => next == old,
+        PriceDecision::Hold => next == old && !cost_pressure,
+        PriceDecision::CostPressure => cost_pressure && next >= old,
         PriceDecision::UnservedDemand => row.unserved_quantity > 0 && next >= old,
         PriceDecision::ExcessStock => {
-            row.unserved_quantity == 0 && row.closing_stock > 0 && next <= old
+            row.unserved_quantity == 0 && row.closing_stock > 0 && next <= old && !cost_pressure
         }
     };
     if row.period != period || old <= 0 || next <= 0 || !justified {
@@ -367,7 +371,16 @@ pub(super) fn encode_price(
         PriceDecision::Hold => 2,
         PriceDecision::UnservedDemand => 3,
         PriceDecision::ExcessStock => 4,
+        PriceDecision::CostPressure => 5,
     });
+    bytes.push(match row.cost.basis {
+        GoodsPriceCostBasis::Unavailable => 0,
+        GoodsPriceCostBasis::Produced => 1,
+        GoodsPriceCostBasis::Released => 2,
+    });
+    bytes.extend_from_slice(&row.cost.quantity.to_be_bytes());
+    bytes.extend_from_slice(&row.cost.carrying_cost.micro_units().to_be_bytes());
+    bytes.extend_from_slice(&row.cost.handling_wages.micro_units().to_be_bytes());
     Ok(())
 }
 
@@ -389,7 +402,19 @@ pub(super) fn decode_price(
             2 => PriceDecision::Hold,
             3 => PriceDecision::UnservedDemand,
             4 => PriceDecision::ExcessStock,
+            5 => PriceDecision::CostPressure,
             _ => return Err(MaterialWorldError::Wire),
+        },
+        cost: GoodsPriceCostEvidence {
+            basis: match cursor.take::<1>()?[0] {
+                0 => GoodsPriceCostBasis::Unavailable,
+                1 => GoodsPriceCostBasis::Produced,
+                2 => GoodsPriceCostBasis::Released,
+                _ => return Err(MaterialWorldError::Wire),
+            },
+            quantity: cursor.u64()?,
+            carrying_cost: currency(cursor)?,
+            handling_wages: currency(cursor)?,
         },
     };
     validate_price(&row, period)?;
@@ -511,6 +536,7 @@ mod tests {
                 unserved_quantity: 1,
                 closing_stock: 0,
                 reason: PriceDecision::UnservedDemand,
+                cost: GoodsPriceCostEvidence::unavailable(),
             },
             encode_price,
             decode_price,

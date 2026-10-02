@@ -458,7 +458,12 @@ fn apply_handling(
         let used_hours = handled_quantity
             .checked_mul(hours)
             .ok_or(MaterialCircuitError::Arithmetic)?;
-        costs.handling(state, merchant.site_id, merchant.labor_unit_id, used_hours)?;
+        costs.handling(
+            order.stock,
+            merchant.labor_unit_id,
+            *handled_quantity,
+            used_hours,
+        )?;
         if *handled_quantity > 0 {
             let labor = labor_index(state, merchant.site_id, merchant.labor_unit_id)
                 .ok_or(MaterialCircuitError::CapacityInvariant)?;

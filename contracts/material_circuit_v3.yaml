@@ -726,3 +726,24 @@ productive_equipment:
       or growth.
     - Captured service lives and proportional historical-cost withdrawals are Designed, not empirical machine-life
       estimates.
+
+
+goods_quote_costs:
+  evidence_class: Designed
+  persistence: transient current-close posting evidence in receipts; no second durable cost or cash ledger
+  basis:
+    produced: current actual output quantity and capitalized input carrying, actual productive wages and equipment wear
+    released: current actual seller-stock withdrawals to routed freight, local buyers or final demand
+    unavailable: zero quantity and zero amounts when neither current production nor release exists
+  selection:
+    - actual merchant handling requires the released basis and the same native released and handled quantity
+    - handling uses actual member wage costs, including zero wages for working owners and unpaid family
+    - otherwise current produced cost takes precedence over released cost; the two are never added
+    - idle work and general maintenance are not speculatively allocated to a particular good
+  quote:
+    - fixed offers remain fixed; existing accepted reserves and historical carrying are never repriced
+    - existing unmet-demand and stock-target guard takes precedence, then observed unit cost, then excess stock
+    - exact rounded-up unit cost above the old quote applies only the captured step and ceiling
+    - no observation is distinct from actual zero-cost output; no policy guarantees clearing or a positive margin
+  qualification: >-
+    Historical transaction-cost bookkeeping, not social value, surplus value or a universal valuation theory.

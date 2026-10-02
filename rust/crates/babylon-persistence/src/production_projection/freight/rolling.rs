@@ -13,8 +13,18 @@ pub(super) fn reconcile(
     before: &RollingCapacitySupply,
     after: &RollingCapacitySupply,
     reservations: Reservations,
+    receipt: &babylon_tick::material_world::MaterialTickReceipts,
 ) -> Result<BTreeMap<CapacityKey, ProductionFreightReservation>> {
-    if supply_identity(before) != supply_identity(after) {
+    // Mutable assets may differ only after the actual installation/wear book join succeeds.
+    super::super::equipment::validate(prior, current, receipt)?;
+    let same_processes = match (&before.processes, &after.processes) {
+        (
+            babylon_material_circuit::RollingProcessSupply::Equipment(_),
+            babylon_material_circuit::RollingProcessSupply::Equipment(_),
+        ) => true,
+        (a, b) => a == b,
+    };
+    if !same_processes || shared_identity(before) != shared_identity(after) {
         return Err(ProductionProjectionError::State);
     }
     let supply: BTreeMap<_, _> = before
@@ -86,17 +96,12 @@ fn reservation_book(rows: &[FutureCapacityReservation], period: u64) -> Result<B
     Ok(result)
 }
 
-type SupplyIdentity = (
-    babylon_material_circuit::RollingProcessSupply,
-    Vec<(CorridorId, u64)>,
-);
-fn supply_identity(value: &RollingCapacitySupply) -> SupplyIdentity {
-    let processes = value.processes.clone();
-    let mut shared: Vec<_> = value
+fn shared_identity(supply: &RollingCapacitySupply) -> Vec<(CorridorId, u64)> {
+    let mut rows: Vec<_> = supply
         .shared
         .iter()
         .map(|r| (r.corridor_id, r.grams_per_period))
         .collect();
-    shared.sort_unstable();
-    (processes, shared)
+    rows.sort_unstable();
+    rows
 }

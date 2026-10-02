@@ -13,6 +13,7 @@ struct MemberUses {
     production: u64,
     handling: u64,
     maintenance: u64,
+    installation: u64,
 }
 impl MemberUses {
     fn add(&mut self, row: &MemberLaborUseReceipt) -> Result<()> {
@@ -20,6 +21,7 @@ impl MemberUses {
         self.production = add_time(self.production, row.production_hours, 1)?;
         self.handling = add_time(self.handling, row.handling_hours, 1)?;
         self.maintenance = add_time(self.maintenance, row.maintenance_hours, 1)?;
+        self.installation = add_time(self.installation, row.installation_hours, 1)?;
         Ok(())
     }
 }
@@ -77,18 +79,24 @@ pub(super) fn reconcile(
             .used
             .checked_sub(physical.handling_used)
             .and_then(|n| n.checked_sub(physical.maintenance_used))
+            .and_then(|n| n.checked_sub(physical.installation_used))
             .ok_or(ProductionProjectionError::Arithmetic)?;
         if !seen.insert(key)
             || row.period != opening.period
             || row.available_hours != available.get(&key).copied().unwrap_or(0)
             || row.available_hours != members.available
             || row.used_hours != physical.used
-            || (members.production, members.handling, members.maintenance)
-                != (
-                    production,
-                    physical.handling_used,
-                    physical.maintenance_used,
-                )
+            || (
+                members.production,
+                members.handling,
+                members.maintenance,
+                members.installation,
+            ) != (
+                production,
+                physical.handling_used,
+                physical.maintenance_used,
+                physical.installation_used,
+            )
         {
             return Err(ProductionProjectionError::History);
         }

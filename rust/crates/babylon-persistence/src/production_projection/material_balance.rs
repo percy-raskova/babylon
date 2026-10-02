@@ -43,6 +43,8 @@ pub struct ProductionMaterialBalanceRow {
     pub consumed: u64,
     /// Spare parts used by maintenance, separate from productive recipe inputs.
     pub maintenance_consumed: u64,
+    /// Equipment and complementary materials transferred into installation work in progress.
+    pub installation_consumed: u64,
     pub dispatched: u64,
     pub closing: u64,
 }
@@ -63,6 +65,7 @@ struct Amounts {
     produced: u64,
     consumed: u64,
     maintenance_consumed: u64,
+    installation_consumed: u64,
     dispatched: u64,
     closing: u64,
 }
@@ -128,6 +131,8 @@ fn project_with_labels(
         _ => return Err(ProductionProjectionError::History),
     };
     super::outbound::completed_facts(prior, current, receipt)?;
+    super::services::validate(prior, current, receipt)?;
+    let equipment = super::equipment::validate(prior, current, receipt)?;
     let processes = process_map(prior)?;
     let joined = super::lifecycle::join(prior, current, receipt)?;
     let orders = order_map(joined.deliveries.values().map(|(before, _)| before))?;
@@ -150,6 +155,12 @@ fn project_with_labels(
                 .or_default()
                 .maintenance_consumed,
             done.consumed_spare_parts,
+        )?;
+    }
+    for (key, quantity) in equipment.materials {
+        add(
+            &mut ledger.entry(key).or_default().installation_consumed,
+            quantity,
         )?;
     }
     let rows = ledger
@@ -266,11 +277,16 @@ fn add_production(
             return Err(ProductionProjectionError::State);
         }
     }
-    // Declared but idle input/output principals have honest zero-flow rows.
+    let services = super::services::service_kinds(prior);
+    // Declared but idle durable principals have honest zero-flow rows.
     for process in processes.values() {
-        ledger.entry(process.output).or_default();
+        if !services.contains(&(process.output.1, process.output.2)) {
+            ledger.entry(process.output).or_default();
+        }
         for &(good, unit) in process.inputs.keys() {
-            ledger.entry((process.output.0, good, unit)).or_default();
+            if !services.contains(&(good, unit)) {
+                ledger.entry((process.output.0, good, unit)).or_default();
+            }
         }
     }
     for row in &receipt.production {
@@ -284,11 +300,16 @@ fn add_production(
             return Err(ProductionProjectionError::State);
         }
         let output = multiply(process.output_per_batch, row.produced_batches)?;
-        add(
-            &mut ledger.entry(process.output).or_default().produced,
-            output,
-        )?;
+        if !services.contains(&(process.output.1, process.output.2)) {
+            add(
+                &mut ledger.entry(process.output).or_default().produced,
+                output,
+            )?;
+        }
         for (&(good, unit), &coefficient) in &process.inputs {
+            if services.contains(&(good, unit)) {
+                continue;
+            }
             let input = multiply(coefficient, row.produced_batches)?;
             add(
                 &mut ledger
@@ -589,6 +610,7 @@ fn finish_row(
     ])? != total(&[
         amounts.consumed,
         amounts.maintenance_consumed,
+        amounts.installation_consumed,
         amounts.dispatched,
         amounts.local_transferred,
         amounts.final_demand_fulfilled,
@@ -611,6 +633,7 @@ fn finish_row(
         produced: amounts.produced,
         consumed: amounts.consumed,
         maintenance_consumed: amounts.maintenance_consumed,
+        installation_consumed: amounts.installation_consumed,
         dispatched: amounts.dispatched,
         closing: amounts.closing,
     })

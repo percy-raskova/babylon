@@ -268,20 +268,14 @@ impl MaterialHistory {
         if receipt.resolve_tick != identity.resolve_tick() {
             return Err(ObserverEconomyError::InvalidProjection);
         }
-        crate::production_projection::lifecycle::validate_period(
+        let period_orders = crate::production_projection::lifecycle::validate_period(
             self.register.state(),
             next.state(),
             &receipt,
         )
         .map_err(|_| ObserverEconomyError::InvalidProjection)?;
         self.orders
-            .retire(self.register.state())
-            .map_err(|_| ObserverEconomyError::InvalidProjection)?;
-        self.orders
-            .admit(next.state(), &receipt)
-            .map_err(|_| ObserverEconomyError::InvalidProjection)?;
-        self.orders
-            .movements(&receipt)
+            .record(self.register.state(), &period_orders)
             .map_err(|_| ObserverEconomyError::InvalidProjection)?;
         self.receipt = Some((receipt, identity.receipt_digest()));
         self.prior_world = Some(identity.result_world_hash());

@@ -1,13 +1,13 @@
-//! V11 identity of an already-authorized production presentation.
+//! V12 identity of an already-authorized production presentation.
 //!
 //! Scope and the complete typed DTO are serialized as canonical JSON after the
 //! fixed domain/version. True multisets sort; events, geometry vertices and each
 //! route's physical edge sequence retain their semantic order. Serialization
-//! streams into the hash with an explicit byte ceiling. V11 binds the explicit
-//! duration and selected-period events alongside household stocks, consumption,
-//! expiry, and bounded order lists with cumulative totals. V11 binds the typed
-//! county, counterpart or dependency location of each resident account, and the
-//! graph-owned aggregate staffing members with compensation and transfer witnesses.
+//! streams into the hash with an explicit byte ceiling. V12 also binds household
+//! service needs and satisfaction, installation materials and work, and per-good
+//! quotes with committed direct costs. It also binds household stocks, consumption,
+//! bounded order history and resident staffing.
+//! Locations keep their exact county, counterpart or dependency scope.
 
 use crate::{
     observer_reader::ObserverEconomySnapshot, observer_reader::ObserverVisibility,
@@ -20,7 +20,7 @@ use std::{
     io::{self, Write},
 };
 
-const DOMAIN: &[u8] = b"babylon.production-observation-evidence.v11\0";
+const DOMAIN: &[u8] = b"babylon.production-observation-evidence.v12\0";
 const MAX_ROWS: usize = 65_536;
 const MAX_PHYSICAL_ROWS: usize = 1_114_112;
 const MAX_EVIDENCE_BYTES: usize = 128 * 1024 * 1024;
@@ -83,6 +83,8 @@ impl ObserverEconomySnapshot {
         validate_identities(source)?;
         validate_maintenance(source, self.resolve_tick)?;
         validate_households(source, self.resolve_tick)?;
+        validate_household_services(source, self.resolve_tick)?;
+        validate_goods_prices(source, self.resolve_tick)?;
         let production = canonical_production(source);
         let scope = EvidenceScope {
             campaign_id: &self.campaign_id,
@@ -100,7 +102,7 @@ impl ObserverEconomySnapshot {
             bound: false,
         };
         output.hash.update(DOMAIN);
-        output.hash.update(11_u32.to_be_bytes());
+        output.hash.update(12_u32.to_be_bytes());
         if serde_json::to_writer(&mut output, &scope).is_err() {
             return Err(if output.bound {
                 ProductionEvidenceError::Bound
@@ -175,6 +177,8 @@ fn validate_identities(rows: &ProductionSnapshot) -> Result<()> {
         rows.merchant_handling_accounts.len(),
         rows.final_demand_accounts.len(),
         rows.household_accounts.len(),
+        rows.household_service_accounts.len(),
+        rows.goods_price_accounts.len(),
         rows.observed_contexts.len(),
         rows.process_attributions.len(),
     ] {
@@ -321,6 +325,56 @@ fn validate_households(rows: &ProductionSnapshot, period: u64) -> Result<()> {
                     && done.fulfilled <= done.received
                     && done.admitted <= done.requested
                     && done.requested <= done.desired => {}
+            _ => return Err(ProductionEvidenceError::InvalidIdentity),
+        }
+    }
+    Ok(())
+}
+
+fn validate_household_services(rows: &ProductionSnapshot, period: u64) -> Result<()> {
+    unique(
+        rows.household_service_accounts
+            .iter()
+            .map(|r| (&r.demand_principal_id, &r.good_id, &r.unit_id)),
+    )?;
+    for row in &rows.household_service_accounts {
+        unique(&row.provider_site_ids)?;
+        if row.household_count == 0
+            || row.person_count < row.household_count
+            || row.required_per_period == 0
+        {
+            return Err(ProductionEvidenceError::InvalidIdentity);
+        }
+        match (&row.completed, period) {
+            (None, 0) => {}
+            (Some(done), period)
+                if period > 0
+                    && done.period == period
+                    && done.required == row.required_per_period
+                    && done.satisfied == done.required.min(done.performed)
+                    && done.satisfied.checked_add(done.unmet) == Some(done.required)
+                    && done.satisfied.checked_add(done.unused) == Some(done.performed)
+                    && done.performed.checked_add(done.expired) == Some(done.admitted)
+                    && done.admitted <= done.requested => {}
+            _ => return Err(ProductionEvidenceError::InvalidIdentity),
+        }
+    }
+    Ok(())
+}
+
+fn validate_goods_prices(rows: &ProductionSnapshot, period: u64) -> Result<()> {
+    unique(
+        rows.goods_price_accounts
+            .iter()
+            .map(|r| (&r.site_id, &r.good_id, &r.unit_id)),
+    )?;
+    for row in &rows.goods_price_accounts {
+        if row.current_price_micro <= 0 {
+            return Err(ProductionEvidenceError::InvalidIdentity);
+        }
+        match (&row.completed, period) {
+            (None, 0) => {}
+            (Some(done), period) if period > 0 && done.valid(period, row.current_price_micro) => {}
             _ => return Err(ProductionEvidenceError::InvalidIdentity),
         }
     }
@@ -482,6 +536,11 @@ fn canonical_production(source: &ProductionSnapshot) -> ProductionSnapshot {
     }
     rows.final_demand_accounts.sort_unstable();
     rows.household_accounts.sort_unstable();
+    for row in &mut rows.household_service_accounts {
+        row.provider_site_ids.sort_unstable();
+    }
+    rows.household_service_accounts.sort_unstable();
+    rows.goods_price_accounts.sort_unstable();
     rows.freight.sort_unstable();
     for event in &mut rows.events {
         event.subject_site_ids.sort_unstable();

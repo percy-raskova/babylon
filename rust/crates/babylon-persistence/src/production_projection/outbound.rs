@@ -81,6 +81,7 @@ fn delivery_facts(
         !orders
             .early_retired
             .contains(&OutboundOrderId::Delivery(row.order_id))
+            && !orders.after_outbound.contains(&row.order_id)
     }) {
         if next.insert(row.order_id, row).is_some() {
             return Err(ProductionProjectionError::State);
@@ -103,6 +104,7 @@ fn delivery_facts(
         !orders
             .early_retired
             .contains(&OutboundOrderId::Delivery(row.order_id))
+            && !orders.after_outbound.contains(&row.order_id)
     }) {
         let closing = next
             .remove(&order.order_id)

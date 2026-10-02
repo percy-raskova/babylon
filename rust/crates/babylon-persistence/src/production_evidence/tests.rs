@@ -95,7 +95,7 @@ fn published_observations() -> &'static [ObserverEconomySnapshot] {
                     Ok::<_, ()>(ReplayCommitDisposition::Committed)
                 })
                 .unwrap();
-            history.push((receipt, ack.receipt_digest()));
+            history.push((opening.clone(), receipt, ack.receipt_digest()));
             observation.resolve_tick = ack.resolve_tick();
             observation.tick_content_hash = Some(digest_hex(ack.tick_content_hash().as_bytes()));
             observation.envelope_digest = Some(digest_hex(&envelope.digest()));
@@ -237,6 +237,7 @@ fn full_disclosure() -> ObserverEconomySnapshot {
             }),
         });
     household_disclosure(production);
+    price_disclosure(production);
     production.staffing_accounts[0].members[0].compensation = Some(
         crate::production_observation::ProductionLaborCompensation::Wage {
             hourly_micro_units: 3,
@@ -583,7 +584,8 @@ fn maintenance_value(mut value: Value, period: u64, jobs: Option<u64>) -> Value 
             "completed": jobs.map(|n| serde_json::json!({
                 "period": period, "opening": n * 10, "planned": 0, "used": n * 10,
                 "unused": 0, "handling_needed": 0, "handling_used": 0,
-                "maintenance_needed": 40, "maintenance_used": n * 10
+                "maintenance_needed": 40, "maintenance_used": n * 10,
+                "installation_needed": 0, "installation_used": 0
             }))
         }));
     value["maintenance_account"] = serde_json::json!({
@@ -692,4 +694,32 @@ fn maintenance_evidence_covers_every_account_field_and_refuses_fog_or_wrong_endp
     );
     observation.production = None;
     assert_eq!(observation.production_evidence_digest(), Ok(None));
+}
+
+fn price_disclosure(production: &mut ProductionSnapshot) {
+    let site = &production.sites[0];
+    let stock = &site.inventory[0];
+    production
+        .goods_price_accounts
+        .push(crate::ProductionGoodsPriceAccount {
+            site_id: site.id.clone(),
+            good_id: stock.good_id.clone(),
+            unit_id: stock.unit_id.clone(),
+            good: stock.good.clone(),
+            unit: stock.unit.clone(),
+            current_price_micro: 4,
+            completed: Some(crate::CompletedGoodsPrice {
+                period: 1,
+                old_price_micro: 3,
+                next_price_micro: 4,
+                unserved_quantity: 0,
+                closing_stock: 0,
+                reason: crate::GoodsPriceReason::CostPressure,
+                cost_basis: crate::GoodsPriceBasis::Released,
+                basis_quantity: 2,
+                carrying_cost_micro: 7,
+                handling_wages_micro: 1,
+                unit_cost_micro: Some(4),
+            }),
+        });
 }

@@ -114,6 +114,8 @@ fn shared_principal_is_counted_once_and_time_closes_from_actual_receipts() {
         Some(CompletedProductionLabor {
             maintenance_needed: 0,
             maintenance_used: 0,
+            installation_needed: 0,
+            installation_used: 0,
             period: 1,
             opening: 12,
             planned: 13,
@@ -173,7 +175,13 @@ fn multiplication_and_shared_sum_overflow_refuse_without_mutating_inputs() {
     opening.labor_coefficients[0].quantity_per_batch = u64::MAX;
     let before = opening.clone();
     assert!(matches!(
-        completed_totals(&opening, &receipt, None, &budgets(&opening).unwrap()),
+        completed_totals(
+            &opening,
+            &receipt,
+            None,
+            &budgets(&opening).unwrap(),
+            &super::super::equipment::EquipmentFacts::default()
+        ),
         Err(ProductionProjectionError::Arithmetic)
     ));
     assert_eq!(opening, before);
@@ -188,7 +196,13 @@ fn multiplication_and_shared_sum_overflow_refuse_without_mutating_inputs() {
         row.produced_batches = 0;
     }
     assert!(matches!(
-        completed_totals(&opening, &receipt, None, &budgets(&opening).unwrap()),
+        completed_totals(
+            &opening,
+            &receipt,
+            None,
+            &budgets(&opening).unwrap(),
+            &super::super::equipment::EquipmentFacts::default()
+        ),
         Err(ProductionProjectionError::Arithmetic)
     ));
 }

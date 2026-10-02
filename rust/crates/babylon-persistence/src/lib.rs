@@ -180,5 +180,10 @@ pub mod simulation_experiment;
 pub mod national_economy;
 
 pub use production_projection::households::{
-    CompletedHouseholdBalance, ProductionHouseholdAccount,
+    CompletedHouseholdBalance, CompletedHouseholdService, ProductionHouseholdAccount,
+    ProductionHouseholdServiceAccount,
+};
+
+pub use production_projection::prices::{
+    CompletedGoodsPrice, GoodsPriceBasis, GoodsPriceReason, ProductionGoodsPriceAccount,
 };

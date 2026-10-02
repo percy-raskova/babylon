@@ -27,6 +27,10 @@ pub struct ProductionSnapshot {
     pub final_demand_accounts: Vec<ProductionFinalDemandAccount>,
     /// Actual resident inventories and consumption; merchant fulfillment is separate.
     pub household_accounts: Vec<crate::ProductionHouseholdAccount>,
+    /// Current-period services satisfy needs directly and never become pantry inventory.
+    pub household_service_accounts: Vec<crate::ProductionHouseholdServiceAccount>,
+    /// Per-good current quotes and their latest committed demand, stock and cost evidence.
+    pub goods_price_accounts: Vec<crate::ProductionGoodsPriceAccount>,
     /// One exact service dependency; absent in campaigns without maintenance.
     pub maintenance_account: Option<ProductionMaintenanceAccount>,
     /// Each exact site/unit labor principal occurs once, across all its processes.
@@ -190,6 +194,8 @@ pub struct CompletedProductionLabor {
     pub handling_used: u64,
     pub maintenance_needed: u64,
     pub maintenance_used: u64,
+    pub installation_needed: u64,
+    pub installation_used: u64,
 }
 
 /// Stable workplace or resident member subject of an admitted workforce composition.

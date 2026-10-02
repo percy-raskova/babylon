@@ -48,6 +48,8 @@ fn site(id: &str, suppliers: &[&str]) -> ProductionSite {
 fn snapshot() -> ProductionSnapshot {
     ProductionSnapshot {
         household_accounts: Vec::new(),
+        household_service_accounts: Vec::new(),
+        goods_price_accounts: Vec::new(),
         maintenance_account: None,
         content_authority_sha256: "a".repeat(64),
         road_source: None,
@@ -144,6 +146,7 @@ fn reading_headline_uses_exact_output_identity_and_keeps_absence_distinct_from_z
         period: 5,
         rows: vec![ProductionMaterialBalanceRow {
             maintenance_consumed: 0,
+            installation_consumed: 0,
             local_received: 0,
             local_transferred: 0,
             final_demand_fulfilled: 0,
@@ -191,6 +194,7 @@ fn stock_readings_keep_units_and_subjects_separate_and_do_not_invent_foundation_
     assert!(!value.contains("Opened 0"));
     let kilograms = ProductionMaterialBalanceRow {
         maintenance_consumed: 0,
+        installation_consumed: 0,
         local_received: 0,
         local_transferred: 0,
         final_demand_fulfilled: 0,
@@ -208,6 +212,7 @@ fn stock_readings_keep_units_and_subjects_separate_and_do_not_invent_foundation_
     };
     let tonnes = ProductionMaterialBalanceRow {
         maintenance_consumed: 0,
+        installation_consumed: 0,
         unit_id: "tonne".into(),
         unit: "tonne".into(),
         opening: 1,
@@ -220,6 +225,7 @@ fn stock_readings_keep_units_and_subjects_separate_and_do_not_invent_foundation_
     };
     let unrelated = ProductionMaterialBalanceRow {
         maintenance_consumed: 0,
+        installation_consumed: 0,
         local_received: 0,
         local_transferred: 0,
         final_demand_fulfilled: 0,
@@ -264,6 +270,7 @@ fn merchant_reading_has_no_fake_production_and_separates_local_goods_from_arriva
         period: 1,
         rows: vec![ProductionMaterialBalanceRow {
             maintenance_consumed: 0,
+            installation_consumed: 0,
             site_id: "b".into(),
             good_id: "meal".into(),
             unit_id: "kg".into(),
@@ -339,6 +346,8 @@ fn inspector_separates_committed_work_time_from_next_opening_and_other_sites() {
             completed: Some(CompletedProductionLabor {
                 maintenance_needed: 0,
                 maintenance_used: 0,
+                installation_needed: 0,
+                installation_used: 0,
                 handling_needed: 0,
                 handling_used: 0,
                 period: 5,
@@ -448,6 +457,8 @@ fn workforce_readings_use_exact_people_and_retention_for_only_the_selected_site(
                 babylon_persistence::production_observation::CompletedProductionLabor {
                     maintenance_needed: 0,
                     maintenance_used: 0,
+                    installation_needed: 0,
+                    installation_used: 0,
                     handling_needed: 0,
                     handling_used: 0,
                     period: 5,
@@ -531,6 +542,8 @@ fn workforce_foundation_absence_and_zero_completed_flows_remain_distinct() {
         babylon_persistence::production_observation::CompletedProductionLabor {
             maintenance_needed: 0,
             maintenance_used: 0,
+            installation_needed: 0,
+            installation_used: 0,
             handling_needed: 0,
             handling_used: 0,
             period: 5,

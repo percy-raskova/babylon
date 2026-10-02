@@ -1,6 +1,9 @@
 //! Projection of exact committed material registers and evidence, without adjudication.
 
 pub(crate) mod context;
+mod equipment;
+#[cfg(test)]
+mod equipment_fixture;
 mod freight;
 pub(crate) mod history;
 pub(crate) mod households;
@@ -10,8 +13,14 @@ mod maintenance;
 pub(crate) mod material_balance;
 mod merchants;
 mod outbound;
+pub(crate) mod prices;
+#[cfg(test)]
+mod prices_tests;
 #[cfg(test)]
 mod recurring_fixture;
+mod services;
+#[cfg(test)]
+mod services_fixture;
 pub(crate) mod staffing;
 
 use babylon_material_circuit::{MaterialCircuitState, OrderId, ProcessId, SiteId};
@@ -47,29 +56,32 @@ pub(crate) fn project_material_observation(
     preset: MichiganDeliveryPreset,
     register: &MaterialWorldRegister,
     opening: Option<&MaterialWorldRegister>,
-    history: &[(MaterialTickReceipts, [u8; 32])],
+    history: &[(MaterialWorldRegister, MaterialTickReceipts, [u8; 32])],
 ) -> Result<ProductionSnapshot, ProductionProjectionError> {
     let tick = register.completed_tick();
     if !catalog.duration().contains(tick) || u64::try_from(history.len()).ok() != Some(tick) {
         return Err(ProductionProjectionError::History);
     }
-    for (index, (receipt, _)) in history.iter().enumerate() {
+    for (index, (_, receipt, _)) in history.iter().enumerate() {
         if usize::try_from(receipt.resolve_tick).ok() != Some(index + 1) {
             return Err(ProductionProjectionError::History);
         }
     }
-    let state = register.state();
     let mut order_history = history::OrderHistory::from_catalog(catalog)?;
-    for (receipt, _) in history {
-        order_history.admit(state, receipt)?;
-        order_history.movements(receipt)?;
+    for (index, (prior, receipt, _)) in history.iter().enumerate() {
+        let next = history.get(index + 1).map_or(register, |row| &row.0);
+        let period = lifecycle::validate_period(prior.state(), next.state(), receipt)?;
+        order_history.record(prior.state(), &period)?;
     }
+    let latest = history
+        .last()
+        .map(|(_, receipt, digest)| (receipt.clone(), *digest));
     project_material_current(
         catalog,
         preset,
         register,
         opening,
-        history.last(),
+        latest.as_ref(),
         &order_history,
     )
 }
@@ -105,6 +117,30 @@ pub(crate) fn project_material_current(
         opening.map(MaterialWorldRegister::state),
         receipt.map(|(receipt, _)| receipt),
     )?;
+    let household_service_accounts = households::services::project_with_labels(
+        state,
+        opening.map(MaterialWorldRegister::state),
+        receipt.map(|(r, _)| r),
+        |good, unit| {
+            catalog
+                .goods()
+                .iter()
+                .find(|r| r.id() == good && r.unit_id() == unit)
+                .map(|r| (r.label.clone(), r.unit_key.clone()))
+        },
+    )?;
+    let goods_price_accounts = prices::project_with_labels(
+        state,
+        opening.map(MaterialWorldRegister::state),
+        receipt.map(|(r, _)| r),
+        |good, unit| {
+            catalog
+                .goods()
+                .iter()
+                .find(|r| r.id() == good && r.unit_id() == unit)
+                .map(|r| (r.label.clone(), r.unit_key.clone()))
+        },
+    )?;
     let material_balance = material_balance::project_material_balance(
         catalog,
         state,
@@ -138,7 +174,27 @@ pub(crate) fn project_material_current(
             })
             .collect()
     });
-    let road_source = catalog.physical_network().map(|network| {
+    let road_source = project_road_source(catalog);
+    Ok(ProductionSnapshot {
+        scenario_label: scenario_label(preset).to_owned(),
+        duration: catalog.duration(), content_authority_sha256: digest_hex(&catalog.defines_hash()),
+        sites, routes, freight, events, labor_accounts, material_balance, freight_capacity_accounts,
+        merchant_handling_accounts, final_demand_accounts, household_accounts, household_service_accounts, goods_price_accounts, maintenance_account, physical_edges, road_source,
+        staffing_accounts: Vec::new(), observed_contexts: Vec::new(), process_attributions: Vec::new(),
+        provenance: vec![
+            format!("Designed {} physical circuit at {} resolution.", catalog.duration(), catalog.geographic_scale()),
+            "Recipes, opening stock, purchase policies, workforce schedules and capacity quantities are Designed.".to_owned(),
+            "Observed QCEW annual-average jobs are separate from current modeled employed and reserve people.".to_owned(),
+            "Events disclose this selected period. Earlier committed receipts remain available through historical observations.".to_owned(),
+            catalog.terminal_output_disposition().to_owned(),
+            "Capacity reservations precede physical arrivals. Local transfer and end-buyer fulfillment are distinct stock movements. Household stock and consumption use separate committed receipts; delivery alone does not prove payment or consumption.".to_owned(),
+            format!("Captured content authority sha256:{}", digest_hex(&catalog.defines_hash())),
+        ],
+    })
+}
+
+fn project_road_source(catalog: &MichiganMaterialCatalog) -> Option<ProductionRoadSource> {
+    catalog.physical_network().map(|network| {
         let source = &network.source;
         ProductionRoadSource {
             pbf_sha256: source.pbf_sha256.clone(),
@@ -152,22 +208,6 @@ pub(crate) fn project_material_current(
             routing_profile_version: source.routing_profile_version.clone(),
             graph_sha256: source.graph_sha256.clone(),
         }
-    });
-    Ok(ProductionSnapshot {
-        scenario_label: scenario_label(preset).to_owned(),
-        duration: catalog.duration(), content_authority_sha256: digest_hex(&catalog.defines_hash()),
-        sites, routes, freight, events, labor_accounts, material_balance, freight_capacity_accounts,
-        merchant_handling_accounts, final_demand_accounts, household_accounts, maintenance_account, physical_edges, road_source,
-        staffing_accounts: Vec::new(), observed_contexts: Vec::new(), process_attributions: Vec::new(),
-        provenance: vec![
-            format!("Designed {} physical circuit at {} resolution.", catalog.duration(), catalog.geographic_scale()),
-            "Recipes, opening stock, purchase policies, workforce schedules and capacity quantities are Designed.".to_owned(),
-            "Observed QCEW annual-average jobs are separate from current modeled employed and reserve people.".to_owned(),
-            "Events disclose this selected period. Earlier committed receipts remain available through historical observations.".to_owned(),
-            catalog.terminal_output_disposition().to_owned(),
-            "Capacity reservations precede physical arrivals. Local transfer and end-buyer fulfillment are distinct stock movements. Household stock and consumption use separate committed receipts; delivery alone does not prove payment or consumption.".to_owned(),
-            format!("Captured content authority sha256:{}", digest_hex(&catalog.defines_hash())),
-        ],
     })
 }
 
@@ -826,7 +866,7 @@ mod tests {
         let prepared = session.prepare_advance(&actions).unwrap();
         let next = prepared.material();
         let receipt = decode_material_receipts(next.receipt_bytes()).unwrap();
-        let history = vec![(receipt, sha256_of(next.receipt_bytes()))];
+        let history = vec![(opening.clone(), receipt, sha256_of(next.receipt_bytes()))];
         let snapshot = project_material_observation(
             &crate::test_support::catalog(),
             preset,
@@ -843,7 +883,7 @@ mod tests {
         assert_eq!(starved.processes[0].planned_batches, Some(0));
         assert_eq!(starved.processes[0].produced_batches, Some(0));
         assert!(!history[0]
-            .0
+            .1
             .production
             .iter()
             .any(|row| digest_hex(&row.site_id.as_bytes()) == starved.id));
@@ -939,6 +979,7 @@ mod tests {
             .unwrap();
             let next = session.prepare_advance(&actions).unwrap();
             history.push((
+                session.material().clone(),
                 decode_material_receipts(next.material().receipt_bytes()).unwrap(),
                 sha256_of(next.material().receipt_bytes()),
             ));

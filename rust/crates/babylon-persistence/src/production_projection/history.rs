@@ -3,14 +3,13 @@
 use super::ProductionProjectionError;
 use crate::michigan_material::MichiganMaterialCatalog;
 use babylon_material_circuit::{
-    recurring_household_order_id, recurring_procurement_order_id, FinalDemandOrder,
-    FinalDemandPrincipalId, GoodId, MaterialCircuitState, OrderId, RouteId, SiteId, UnitId,
+    FinalDemandOrder, FinalDemandPrincipalId, GoodId, MaterialCircuitState, OrderId, RouteId,
+    SiteId, UnitId,
 };
-use babylon_tick::material_world::MaterialTickReceipts;
 use std::collections::{BTreeMap, BTreeSet};
 
 type Result<T> = std::result::Result<T, ProductionProjectionError>;
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 pub(crate) struct Delivery {
     pub route: RouteId,
     pub supplier: SiteId,
@@ -40,7 +39,7 @@ pub(crate) struct FinalTotals {
 pub(crate) struct OrderHistory {
     pub deliveries: BTreeMap<OrderId, Delivery>,
     pub final_orders: BTreeMap<OrderId, FinalOrder>,
-    pub retired_deliveries: BTreeMap<RouteId, Delivery>,
+    pub retired_deliveries: BTreeMap<(RouteId, SiteId, SiteId, GoodId, UnitId), Delivery>,
     pub retired_final: BTreeMap<(FinalDemandPrincipalId, GoodId, UnitId), FinalTotals>,
 }
 impl OrderHistory {
@@ -119,7 +118,13 @@ impl OrderHistory {
             if row.delivered.checked_add(row.lost) != Some(row.ordered) {
                 return Err(ProductionProjectionError::State);
             }
-            if let Some(total) = self.retired_deliveries.get_mut(&row.route) {
+            if let Some(total) = self.retired_deliveries.get_mut(&(
+                row.route,
+                row.supplier,
+                row.buyer,
+                row.good,
+                row.unit,
+            )) {
                 if (total.supplier, total.buyer, total.good, total.unit)
                     != (row.supplier, row.buyer, row.good, row.unit)
                 {
@@ -137,7 +142,10 @@ impl OrderHistory {
                         .ok_or(ProductionProjectionError::Arithmetic)?;
                 }
             } else {
-                self.retired_deliveries.insert(row.route, row);
+                self.retired_deliveries.insert(
+                    (row.route, row.supplier, row.buyer, row.good, row.unit),
+                    row,
+                );
             }
         }
         let final_ids: BTreeSet<_> = opening
@@ -179,198 +187,73 @@ impl OrderHistory {
         Ok(())
     }
 
-    pub fn admit(
+    /// Retain only the single lifecycle validator's completed witnesses.
+    pub fn record(
         &mut self,
-        state: &MaterialCircuitState,
-        receipts: &MaterialTickReceipts,
+        prior: &MaterialCircuitState,
+        period: &super::lifecycle::PeriodOrders,
     ) -> Result<()> {
-        let routes: BTreeMap<_, _> = state
+        self.retire(prior)?;
+        let prior_delivery: BTreeSet<_> = prior.orders.iter().map(|r| r.order_id).collect();
+        let prior_final: BTreeSet<_> = prior
+            .final_demand_orders
+            .iter()
+            .map(|r| r.order_id)
+            .collect();
+        if self.deliveries.keys().copied().collect::<BTreeSet<_>>() != prior_delivery
+            || self.final_orders.keys().copied().collect::<BTreeSet<_>>() != prior_final
+        {
+            return Err(ProductionProjectionError::History);
+        }
+        let routes: BTreeMap<_, _> = prior
             .supplier_routes
             .iter()
-            .map(|route| {
+            .map(|r| {
                 (
-                    (
-                        route.buyer_site_id,
-                        route.supplier_site_id,
-                        route.good_id,
-                        route.unit_id,
-                    ),
-                    route,
+                    (r.buyer_site_id, r.supplier_site_id, r.good_id, r.unit_id),
+                    r.route_id,
                 )
             })
             .collect();
-        if routes.len() != state.supplier_routes.len() {
+        if routes.len() != prior.supplier_routes.len() {
             return Err(ProductionProjectionError::State);
         }
-        for row in &receipts.procurement {
-            if row.period != receipts.resolve_tick
-                || row.order_id
-                    != recurring_procurement_order_id(
-                        row.period,
-                        row.buyer_site_id,
-                        row.supplier_site_id,
-                        row.good_id,
-                        row.unit_id,
-                    )
-            {
-                return Err(ProductionProjectionError::State);
-            }
-            if row.admitted_quantity == 0 {
-                continue;
-            }
-            let route = routes
+        for (&id, (before, after)) in &period.deliveries {
+            let route = *routes
                 .get(&(
-                    row.buyer_site_id,
-                    row.supplier_site_id,
-                    row.good_id,
-                    row.unit_id,
+                    before.buyer_site_id,
+                    before.supplier_site_id,
+                    before.good_id,
+                    before.unit_id,
                 ))
                 .ok_or(ProductionProjectionError::State)?;
+            let opening = delivery(before, route);
             if self
                 .deliveries
-                .insert(
-                    row.order_id,
-                    Delivery {
-                        route: route.route_id,
-                        supplier: row.supplier_site_id,
-                        buyer: row.buyer_site_id,
-                        good: row.good_id,
-                        unit: row.unit_id,
-                        ordered: row.admitted_quantity,
-                        shipped: 0,
-                        delivered: 0,
-                        lost: 0,
-                        realized: 0,
-                    },
-                )
-                .is_some()
+                .get(&id)
+                .is_some_and(|known| known != &opening)
             {
-                return Err(ProductionProjectionError::State);
+                return Err(ProductionProjectionError::History);
             }
+            self.deliveries.insert(id, delivery(after, route));
         }
-        for row in &receipts.household_demand {
-            if row.period != receipts.resolve_tick
-                || row.order_id
-                    != recurring_household_order_id(
-                        row.period,
-                        (row.principal_id, row.good_id, row.unit_id),
-                    )
-            {
-                return Err(ProductionProjectionError::State);
-            }
-            if row.admitted_quantity == 0 {
-                continue;
-            }
+        for (&id, (before, after)) in &period.final_orders {
             if self
                 .final_orders
-                .insert(
-                    row.order_id,
-                    FinalOrder {
-                        order: FinalDemandOrder {
-                            order_id: row.order_id,
-                            demand_principal_id: row.principal_id,
-                            retailer_site_id: row.retailer_site_id,
-                            good_id: row.good_id,
-                            unit_id: row.unit_id,
-                            ordered: row.admitted_quantity,
-                            fulfilled: 0,
-                        },
-                        expired: row.expired_quantity,
-                    },
-                )
-                .is_some()
+                .get(&id)
+                .is_some_and(|known| known.order != *before || known.expired != 0)
             {
-                return Err(ProductionProjectionError::State);
+                return Err(ProductionProjectionError::History);
             }
+            self.final_orders.insert(
+                id,
+                FinalOrder {
+                    order: after.clone(),
+                    expired: period.expired.get(&id).copied().unwrap_or(0),
+                },
+            );
         }
         Ok(())
-    }
-
-    pub fn movements(&mut self, receipts: &MaterialTickReceipts) -> Result<()> {
-        for row in &receipts.dispatches {
-            let value = self.delivery_mut(row.order_id)?;
-            if row.route_id != value.route {
-                return Err(ProductionProjectionError::State);
-            }
-            add(&mut value.shipped, row.quantity)?;
-        }
-        for row in &receipts.arrivals {
-            add(
-                &mut self.delivery_mut(row.order_id)?.delivered,
-                row.quantity,
-            )?;
-        }
-        for row in &receipts.losses {
-            add(&mut self.delivery_mut(row.order_id)?.lost, row.quantity)?;
-        }
-        for row in &receipts.realizations {
-            add(&mut self.delivery_mut(row.order_id)?.realized, row.quantity)?;
-        }
-        for row in &receipts.local_transfers {
-            let value = self.delivery_mut(row.order_id)?;
-            if (value.supplier, value.buyer, value.good, value.unit)
-                != (
-                    row.supplier_site_id,
-                    row.buyer_site_id,
-                    row.good_id,
-                    row.unit_id,
-                )
-            {
-                return Err(ProductionProjectionError::State);
-            }
-            add(&mut value.shipped, row.quantity)?;
-            add(&mut value.delivered, row.quantity)?;
-            add(&mut value.realized, row.quantity)?;
-        }
-        for row in &receipts.local_fulfillments {
-            let value = &mut self
-                .final_orders
-                .get_mut(&row.order_id)
-                .ok_or(ProductionProjectionError::State)?
-                .order;
-            if (
-                value.demand_principal_id,
-                value.retailer_site_id,
-                value.good_id,
-                value.unit_id,
-            ) != (
-                row.demand_principal_id,
-                row.retailer_site_id,
-                row.good_id,
-                row.unit_id,
-            ) {
-                return Err(ProductionProjectionError::State);
-            }
-            add(&mut value.fulfilled, row.quantity)?;
-        }
-        for row in self.deliveries.values() {
-            if row.shipped > row.ordered
-                || row
-                    .delivered
-                    .checked_add(row.lost)
-                    .is_none_or(|n| n > row.shipped)
-                || row.realized > row.delivered
-            {
-                return Err(ProductionProjectionError::State);
-            }
-        }
-        for row in self.final_orders.values() {
-            if row
-                .order
-                .fulfilled
-                .checked_add(row.expired)
-                .is_none_or(|n| n > row.order.ordered)
-            {
-                return Err(ProductionProjectionError::State);
-            }
-        }
-        Ok(())
-    }
-
-    fn delivery_mut(&mut self, id: OrderId) -> Result<&mut Delivery> {
-        self.deliveries
-            .get_mut(&id)
-            .ok_or(ProductionProjectionError::State)
     }
 
     #[cfg(test)]
@@ -395,12 +278,55 @@ impl OrderHistory {
         }
     }
 }
-fn add(total: &mut u64, quantity: u64) -> Result<()> {
-    if quantity == 0 {
-        return Err(ProductionProjectionError::State);
+fn delivery(row: &babylon_material_circuit::OrderRow, route: RouteId) -> Delivery {
+    Delivery {
+        route,
+        supplier: row.supplier_site_id,
+        buyer: row.buyer_site_id,
+        good: row.good_id,
+        unit: row.unit_id,
+        ordered: row.ordered,
+        shipped: row.shipped,
+        delivered: row.delivered,
+        lost: row.lost,
+        realized: row.realized,
     }
-    *total = total
-        .checked_add(quantity)
-        .ok_or(ProductionProjectionError::Arithmetic)?;
-    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn distinct_supplier_relations_can_retire_on_the_same_physical_route() {
+        let state = super::super::services_fixture::opening();
+        let mut history = OrderHistory::default();
+        for n in 1..=2 {
+            history.deliveries.insert(
+                OrderId::from_bytes([n; 32]),
+                Delivery {
+                    route: RouteId::from_bytes([1; 32]),
+                    supplier: SiteId::from_bytes([n; 32]),
+                    buyer: SiteId::from_bytes([3; 32]),
+                    good: GoodId::from_bytes([n; 32]),
+                    unit: UnitId::from_bytes([n; 32]),
+                    ordered: 3,
+                    shipped: 3,
+                    delivered: 2,
+                    lost: 1,
+                    realized: 2,
+                },
+            );
+        }
+        history.retire(&state).unwrap();
+        assert!(history.deliveries.is_empty());
+        assert_eq!(history.retired_deliveries.len(), 2);
+        assert_eq!(
+            history
+                .retired_deliveries
+                .values()
+                .map(|r| r.ordered)
+                .sum::<u64>(),
+            6
+        );
+    }
 }

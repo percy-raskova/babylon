@@ -227,7 +227,11 @@ pub(super) fn project_final_with_labels(
     }
     let mut configured = BTreeMap::<DemandKey, BTreeSet<SiteId>>::new();
     if let Some(rows) = super::lifecycle::recurring(current) {
+        let services = super::services::service_kinds(current);
         for policy in &rows.household_purchases {
+            if services.contains(&(policy.good_id, policy.unit_id)) {
+                continue;
+            }
             let key = (policy.principal_id, policy.good_id, policy.unit_id);
             groups.entry(key).or_default();
             configured

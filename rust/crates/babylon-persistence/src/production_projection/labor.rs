@@ -25,6 +25,8 @@ struct LaborTotals {
     handling_used: u64,
     maintenance_needed: u64,
     maintenance_used: u64,
+    installation_needed: u64,
+    installation_used: u64,
 }
 
 pub(super) fn project_labor_accounts(
@@ -51,7 +53,8 @@ pub(super) fn project_labor_accounts(
                 return Err(ProductionProjectionError::State);
             }
             let available = budgets(prior)?;
-            let totals = completed_totals(prior, receipt, maintenance, &available)?;
+            let equipment = super::equipment::validate(prior, state, receipt)?;
+            let totals = completed_totals(prior, receipt, maintenance, &available, &equipment)?;
             (Some(available), totals)
         }
         _ => return Err(ProductionProjectionError::History),
@@ -82,6 +85,8 @@ pub(super) fn project_labor_accounts(
                         handling_used: account.handling_used,
                         maintenance_needed: account.maintenance_needed,
                         maintenance_used: account.maintenance_used,
+                        installation_needed: account.installation_needed,
+                        installation_used: account.installation_used,
                     })
                 })
                 .transpose()?;
@@ -129,6 +134,7 @@ fn completed_totals(
     receipt: &MaterialTickReceipts,
     maintenance: Option<&babylon_material_circuit::MaintenanceReceipt>,
     available: &Budgets,
+    equipment: &super::equipment::EquipmentFacts,
 ) -> Result<Totals, ProductionProjectionError> {
     let sources = process_labor(opening)?;
     let mut processes = BTreeMap::<ProcessId, (Principal, u64, u64)>::new();
@@ -171,6 +177,12 @@ fn completed_totals(
             add_time(0, done.requested_jobs, done.binding.labor_units_per_job)?;
         account.maintenance_used = done.consumed_labor_hours;
         account.used = add_time(account.used, done.consumed_labor_hours, 1)?;
+    }
+    for (&key, &(needed, used)) in &equipment.labor {
+        let account = totals.entry(key).or_default();
+        account.installation_needed = needed;
+        account.installation_used = used;
+        account.used = add_time(account.used, used, 1)?;
     }
     attendance::reconcile(opening, receipt, &totals, available)?;
     Ok(totals)

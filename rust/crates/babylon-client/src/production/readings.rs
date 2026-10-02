@@ -152,8 +152,10 @@ pub(super) fn describe_flow(site: &ProductionSite, snapshot: &ProductionSnapshot
         .iter()
         .filter(|account| account.retailer_site_ids.contains(&site.id))
     {
-        writeln!(value, "COUNTY FINAL DEMAND / {}\n{} {} ordered · {} fulfilled · {} outstanding\nDelivery to end buyers; consumption is not recorded.", account.good, grouped(account.ordered), account.unit, grouped(account.fulfilled), grouped(account.outstanding)).expect("String write");
+        writeln!(value, "RESIDENT FINAL DEMAND / {}\n{} {} ordered · {} fulfilled · {} outstanding\nFulfillment and household consumption have separate accounts.", account.good, grouped(account.ordered), account.unit, grouped(account.fulfilled), grouped(account.outstanding)).expect("String write");
     }
+    describe_households(&mut value, site, snapshot);
+    describe_prices(&mut value, site, snapshot);
     describe_material_balance(&mut value, site, snapshot);
     value.push_str("\nINVENTORY\n");
     for stock in &site.inventory {
@@ -334,14 +336,15 @@ pub(super) fn describe_material_balance(
     }
     writeln!(value, "\nSTOCK MOVEMENT / PERIOD {}", balance.period).expect("String write");
     for row in rows {
-        if row.maintenance_consumed != 0
+        if row.installation_consumed != 0
+            || row.maintenance_consumed != 0
             || super::maintenance::account(snapshot, &site.id).is_some_and(|account| {
                 account.provider_site_id == site.id
                     && account.spare_good_id == row.good_id
                     && account.spare_unit_id == row.unit_id
             })
         {
-            writeln!(value, "{} / {}\nOpened {} + arrived {} + received locally {} + produced {}\n= production consumed {} + maintenance consumed {} + dispatched {} + transferred locally {} + final demand {} + closed {}", row.good, row.unit, grouped(row.opening), grouped(row.arrivals), grouped(row.local_received), grouped(row.produced), grouped(row.consumed), grouped(row.maintenance_consumed), grouped(row.dispatched), grouped(row.local_transferred), grouped(row.final_demand_fulfilled), grouped(row.closing)).expect("String write");
+            writeln!(value, "{} / {}\nOpened {} + arrived {} + received locally {} + produced {}\n= production consumed {} + maintenance consumed {} + installation consumed {} + dispatched {} + transferred locally {} + final demand {} + closed {}", row.good, row.unit, grouped(row.opening), grouped(row.arrivals), grouped(row.local_received), grouped(row.produced), grouped(row.consumed), grouped(row.maintenance_consumed), grouped(row.installation_consumed), grouped(row.dispatched), grouped(row.local_transferred), grouped(row.final_demand_fulfilled), grouped(row.closing)).expect("String write");
             continue;
         }
         if row.local_received != 0 || row.local_transferred != 0 || row.final_demand_fulfilled != 0
@@ -546,6 +549,16 @@ fn describe_labor_accounts(
                 )
                 .expect("String write");
             }
+            if completed.installation_needed != 0 || completed.installation_used != 0 {
+                writeln!(
+                    value,
+                    "Installation: {} awaiting work · {} used {}",
+                    grouped(completed.installation_needed),
+                    grouped(completed.installation_used),
+                    account.unit
+                )
+                .expect("String write");
+            }
             value.push_str("Time accounts do not measure job losses.\n");
         }
         writeln!(
@@ -556,5 +569,114 @@ fn describe_labor_accounts(
             account.unit,
         )
         .expect("String write");
+    }
+}
+
+fn describe_households(value: &mut String, site: &ProductionSite, snapshot: &ProductionSnapshot) {
+    for row in snapshot
+        .household_accounts
+        .iter()
+        .filter(|r| r.retailer_site_id == site.id)
+    {
+        writeln!(
+            value,
+            "HOUSEHOLD GOODS / {} / {}\n{} households · {} persons · {} {} needed each period",
+            row.location,
+            row.good,
+            grouped(row.household_count),
+            grouped(row.person_count),
+            grouped(row.required_per_period),
+            row.unit
+        )
+        .expect("String write");
+        if let Some(done) = &row.completed {
+            writeln!(
+                value,
+                "{} received · {} consumed · {} unmet · {} in pantry",
+                grouped(done.received),
+                grouped(done.consumed),
+                grouped(done.unmet),
+                grouped(done.closing_stock)
+            )
+            .expect("String write");
+        }
+    }
+    for row in snapshot
+        .household_service_accounts
+        .iter()
+        .filter(|r| r.provider_site_ids.contains(&site.id))
+    {
+        writeln!(
+            value,
+            "HOUSEHOLD SERVICE / {} / {}\n{} households · {} persons · {} {} needed each period",
+            row.location,
+            row.good,
+            grouped(row.household_count),
+            grouped(row.person_count),
+            grouped(row.required_per_period),
+            row.unit
+        )
+        .expect("String write");
+        if let Some(done) = &row.completed {
+            writeln!(
+                value,
+                "{} requested · {} funded · {} performed · {} need satisfied · {} unmet",
+                grouped(done.requested),
+                grouped(done.admitted),
+                grouped(done.performed),
+                grouped(done.satisfied),
+                grouped(done.unmet)
+            )
+            .expect("String write");
+        } else {
+            value.push_str("Foundation; no completed service period.\n");
+        }
+    }
+}
+
+fn describe_prices(value: &mut String, site: &ProductionSite, snapshot: &ProductionSnapshot) {
+    use babylon_persistence::{GoodsPriceBasis, GoodsPriceReason};
+    for row in snapshot
+        .goods_price_accounts
+        .iter()
+        .filter(|r| r.site_id == site.id)
+    {
+        writeln!(
+            value,
+            "\nQUOTE / {}\n{} micro-currency per {}",
+            row.good, row.current_price_micro, row.unit
+        )
+        .expect("String write");
+        if let Some(done) = &row.completed {
+            let reason = match done.reason {
+                GoodsPriceReason::Fixed => "Fixed quote",
+                GoodsPriceReason::Hold => "Quote held",
+                GoodsPriceReason::UnservedDemand => "Unserved demand",
+                GoodsPriceReason::ExcessStock => "Excess stock",
+                GoodsPriceReason::CostPressure => "Direct cost pressure",
+            };
+            writeln!(
+                value,
+                "{reason}: {} → {}\n{} unserved · {} closing stock",
+                done.old_price_micro,
+                done.next_price_micro,
+                grouped(done.unserved_quantity),
+                grouped(done.closing_stock)
+            )
+            .expect("String write");
+            match done.cost_basis {
+                GoodsPriceBasis::Unavailable => {
+                    value.push_str("No current production or stock-release cost observation.\n");
+                }
+                basis => {
+                    let basis = if basis == GoodsPriceBasis::Produced {
+                        "produced"
+                    } else {
+                        "released from seller stock"
+                    };
+                    writeln!(value,"{} {} {basis} · {} carrying + {} handling wages (micro-currency)\nCommitted direct cost per unit: {}",grouped(done.basis_quantity),row.unit,done.carrying_cost_micro,done.handling_wages_micro,done.unit_cost_micro.expect("validated price evidence")).expect("String write");
+                }
+            }
+        }
     }
 }

@@ -291,7 +291,7 @@ fn completed_reservations(
         (
             babylon_material_circuit::CapacitySupply::Rolling(before),
             babylon_material_circuit::CapacitySupply::Rolling(after),
-        ) => rolling::reconcile(prior, current, before, after, reservations),
+        ) => rolling::reconcile(prior, current, before, after, reservations, receipt),
         _ => Err(ProductionProjectionError::State),
     }
 }

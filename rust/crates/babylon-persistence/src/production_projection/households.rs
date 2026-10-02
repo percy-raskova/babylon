@@ -1,10 +1,12 @@
 //! Resident stocks and explicit consumption, separate from merchant stock exits.
+pub(crate) mod services;
 use super::{lifecycle, ProductionProjectionError};
 use crate::{michigan_economy::digest_hex, michigan_material::MichiganMaterialCatalog};
 use babylon_kernel::economic_location::EconomicLocation;
 use babylon_material_circuit::{FinalDemandPrincipalId, GoodId, MaterialCircuitState, UnitId};
 use babylon_tick::material_world::MaterialTickReceipts;
 use serde::{Deserialize, Serialize};
+pub use services::{CompletedHouseholdService, ProductionHouseholdServiceAccount};
 use std::collections::BTreeMap;
 
 type Result<T> = std::result::Result<T, ProductionProjectionError>;

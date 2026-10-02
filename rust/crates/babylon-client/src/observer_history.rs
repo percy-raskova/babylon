@@ -1015,6 +1015,8 @@ mod tests {
             counties: vec![],
             production: Some(ProductionSnapshot {
                 household_accounts: Vec::new(),
+                household_service_accounts: Vec::new(),
+                goods_price_accounts: Vec::new(),
                 maintenance_account: None,
                 content_authority_sha256: "a".repeat(64),
                 road_source: None,

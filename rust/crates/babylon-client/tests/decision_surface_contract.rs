@@ -142,6 +142,8 @@ fn production_observation() -> babylon_persistence::production_observation::Prod
     };
     ProductionSnapshot {
         household_accounts: Vec::new(),
+        household_service_accounts: Vec::new(),
+        goods_price_accounts: Vec::new(),
         maintenance_account: None,
         physical_edges: Vec::new(),
         content_authority_sha256: "a".repeat(64),

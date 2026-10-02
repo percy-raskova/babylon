@@ -1,5 +1,7 @@
 //! Period-local order witnesses, including admissions absent from both snapshots.
 //! These joins authenticate receipts; they do not allocate, plan, or replay work.
+mod investment;
+mod services;
 use super::ProductionProjectionError;
 use babylon_kernel::currency::Currency;
 use babylon_material_circuit::{
@@ -12,10 +14,13 @@ use std::collections::{BTreeMap, BTreeSet};
 
 type Result<T> = std::result::Result<T, ProductionProjectionError>;
 
-pub(super) struct PeriodOrders {
+pub(crate) struct PeriodOrders {
     pub deliveries: BTreeMap<OrderId, (OrderRow, OrderRow)>,
     pub final_orders: BTreeMap<OrderId, (FinalDemandOrder, FinalDemandOrder)>,
+    services: BTreeMap<OrderId, services::ServiceWitness>,
     pub early_retired: BTreeSet<OutboundOrderId>,
+    /// Positive investment admissions occur after both outbound passes.
+    pub after_outbound: BTreeSet<OrderId>,
     pub expired: BTreeMap<OrderId, u64>,
 }
 
@@ -57,7 +62,9 @@ pub(super) fn join(
     let mut orders = PeriodOrders {
         deliveries: BTreeMap::new(),
         final_orders: BTreeMap::new(),
+        services: BTreeMap::new(),
         early_retired: BTreeSet::new(),
+        after_outbound: BTreeSet::new(),
         expired: BTreeMap::new(),
     };
     for row in &prior.orders {
@@ -81,7 +88,18 @@ pub(super) fn join(
     let mut admissions = BTreeMap::new();
     admit_households(prior, receipts, &mut orders, &mut admissions)?;
     admit_firms(prior, receipts, &mut orders, &mut admissions)?;
+    investment::admit(prior, receipts, &mut orders, &mut admissions)?;
+    services::admit(prior, current, receipts, &mut orders, &mut admissions)?;
     add_movements(receipts, &mut orders)?;
+    for id in &orders.after_outbound {
+        let (before, after) = orders
+            .deliveries
+            .get(id)
+            .ok_or(ProductionProjectionError::State)?;
+        if before != after {
+            return Err(ProductionProjectionError::State);
+        }
+    }
     reconcile(prior, current, &mut orders)?;
     check_purchases(prior, current, receipts, &orders, &admissions)?;
     Ok(orders)
@@ -97,9 +115,24 @@ fn admit_households(
     let policies = recurring(prior)
         .map(|rows| rows.household_purchases.as_slice())
         .unwrap_or_default();
+    let services: BTreeSet<_> = prior
+        .commodities
+        .iter()
+        .filter(|r| {
+            matches!(
+                r.kind,
+                babylon_material_circuit::CommodityKind::PeriodService { .. }
+            )
+        })
+        .map(|r| (r.good_id, r.unit_id))
+        .collect();
+    let policies: Vec<_> = policies
+        .iter()
+        .filter(|r| !services.contains(&(r.good_id, r.unit_id)))
+        .collect();
     let mut expected: BTreeMap<_, _> = policies
         .iter()
-        .map(|row| ((row.principal_id, row.good_id, row.unit_id), row))
+        .map(|row| ((row.principal_id, row.good_id, row.unit_id), *row))
         .collect();
     if expected.len() != policies.len() {
         return Err(ProductionProjectionError::State);
@@ -584,7 +617,9 @@ fn check_purchases(
             return Err(ProductionProjectionError::State);
         }
     }
-    if principals.len() != orders.deliveries.len() + orders.final_orders.len() {
+    if principals.len()
+        != orders.deliveries.len() + orders.final_orders.len() + orders.services.len()
+    {
         return Err(ProductionProjectionError::State);
     }
     let active: BTreeSet<_> = current
@@ -596,6 +631,15 @@ fn check_purchases(
                 .final_demand_orders
                 .iter()
                 .map(|row| OutboundOrderId::LocalFinalDemand(row.order_id)),
+        )
+        .collect();
+    let active: BTreeSet<_> = active
+        .into_iter()
+        .chain(
+            current
+                .service_orders
+                .iter()
+                .map(|r| OutboundOrderId::Service(r.order_id)),
         )
         .collect();
     if active.iter().ne(closing.keys()) {
@@ -611,7 +655,7 @@ fn check_purchases(
         )?;
         match closing.remove(&id) {
             Some(value) if value == principal => {}
-            None if recurring(prior).is_some()
+            None if (recurring(prior).is_some() || matches!(id, OutboundOrderId::Service(_)))
                 && principal.delivered.checked_add(principal.refunded)
                     == Some(principal.quantity) => {}
             _ => return Err(ProductionProjectionError::State),
@@ -675,7 +719,19 @@ fn advance_purchase(
 ) -> Result<PurchaseEscrow> {
     let id = principal.order;
     let (delivered, refunded, buyer, seller, quantity) = match id {
-        OutboundOrderId::Service(_) => return Err(ProductionProjectionError::State),
+        OutboundOrderId::Service(id) => {
+            let witness = orders
+                .services
+                .get(&id)
+                .ok_or(ProductionProjectionError::State)?;
+            (
+                witness.performed,
+                witness.expired,
+                witness.order.buyer,
+                AccountId::Site(witness.order.provider_site_id),
+                witness.order.quantity,
+            )
+        }
         OutboundOrderId::Delivery(id) => {
             let (_, row) = orders
                 .deliveries
@@ -739,10 +795,13 @@ pub(crate) fn validate_period(
     prior: &MaterialCircuitState,
     current: &MaterialCircuitState,
     receipt: &MaterialTickReceipts,
-) -> Result<()> {
-    join(prior, current, receipt)?;
+) -> Result<PeriodOrders> {
+    let orders = join(prior, current, receipt)?;
+    super::services::validate(prior, current, receipt)?;
+    super::equipment::validate(prior, current, receipt)?;
+    super::prices::validate(prior, current, receipt, &orders)?;
     if recurring(prior).is_some() {
         super::households::completed_balances(prior, current, receipt)?;
     }
-    Ok(())
+    Ok(orders)
 }

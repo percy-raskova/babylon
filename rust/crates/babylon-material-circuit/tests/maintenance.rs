@@ -815,9 +815,11 @@ fn paid_maintenance_opening() -> MaterialCircuitState {
             },
         ],
         vec![],
+        vec![],
     )
     .unwrap();
-    state.accounting = CircuitAccounting::Monetary(MonetaryCircuit {
+    state.accounting = CircuitAccounting::Monetary(Box::new(MonetaryCircuit {
+        financial: babylon_material_circuit::FinancialInstitutions::empty(),
         book,
         costs,
         employment: [1, 2]
@@ -830,7 +832,7 @@ fn paid_maintenance_opening() -> MaterialCircuitState {
             })
             .collect(),
         recurring: None,
-    });
+    }));
     state
 }
 

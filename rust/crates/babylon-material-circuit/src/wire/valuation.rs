@@ -2,9 +2,9 @@
 use super::accounting::{append_account, decode_account, decode_currency, ordered_rows};
 use super::{append_rows, decode_rows, Cursor};
 use crate::{
-    CapitalAccount, FreightCarryingValue, FreightLotId, GoodId, HistoricalCostBook,
-    HistoricalCostSnapshot, MaterialCircuitError, SiteId, StockCarryingValue, UnitId,
-    MAX_CARRYING_STOCKS,
+    CapitalAccount, EquityCarryingValue, FreightCarryingValue, FreightLotId, GoodId,
+    HistoricalCostBook, HistoricalCostSnapshot, MaterialCircuitError, SiteId, StockCarryingValue,
+    UnitId, MAX_CARRYING_STOCKS,
 };
 
 pub(super) fn append(
@@ -15,6 +15,7 @@ pub(super) fn append(
     append_rows(out, &rows.accounts, |b, r| {
         append_account(b, r.account);
         b.extend_from_slice(&r.opening_capital.micro_units().to_be_bytes());
+        b.extend_from_slice(&r.contributed_capital.micro_units().to_be_bytes());
         b.extend_from_slice(&r.retained_earnings.micro_units().to_be_bytes());
     })?;
     out.extend_from_slice(
@@ -32,6 +33,11 @@ pub(super) fn append(
         b.extend_from_slice(&r.lot_id.as_bytes());
         b.extend_from_slice(&r.owner.as_bytes());
         b.extend_from_slice(&r.amount.micro_units().to_be_bytes());
+    })?;
+    append_rows(out, &rows.equity, |b, r| {
+        append_account(b, r.owner);
+        b.extend_from_slice(&r.issuer_site_id.as_bytes());
+        b.extend_from_slice(&r.amount.micro_units().to_be_bytes());
     })
 }
 
@@ -40,6 +46,7 @@ pub(super) fn decode(cursor: &mut Cursor<'_>) -> Result<HistoricalCostBook, Mate
         Ok(CapitalAccount {
             account: decode_account(b)?,
             opening_capital: decode_currency(b)?,
+            contributed_capital: decode_currency(b)?,
             retained_earnings: decode_currency(b)?,
         })
     })?;
@@ -63,6 +70,14 @@ pub(super) fn decode(cursor: &mut Cursor<'_>) -> Result<HistoricalCostBook, Mate
             amount: decode_currency(b)?,
         })
     })?;
+    let equity = decode_rows(cursor, |b| {
+        Ok(EquityCarryingValue {
+            owner: decode_account(b)?,
+            issuer_site_id: SiteId::from_bytes(b.array()?),
+            amount: decode_currency(b)?,
+        })
+    })?;
+    ordered_rows(&equity, |r| (r.owner, r.issuer_site_id))?;
     ordered_rows(&accounts, |r| r.account)?;
     ordered_rows(&stocks, |r| (r.owner, r.good_id, r.unit_id))?;
     ordered_rows(&freight, |r| r.lot_id)?;
@@ -70,5 +85,6 @@ pub(super) fn decode(cursor: &mut Cursor<'_>) -> Result<HistoricalCostBook, Mate
         accounts,
         stocks,
         freight,
+        equity,
     })
 }

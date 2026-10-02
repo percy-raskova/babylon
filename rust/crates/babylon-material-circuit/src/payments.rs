@@ -14,19 +14,21 @@ use crate::{
 /// Derived close ceiling: 3N payroll, 2N old purchase movements, 3N household
 /// admission/settlement/refund, 2N new firm admission/settlement, and 4N
 /// service admission plus settlement/refund movements.
+/// Another 4N bounds public budgets, taxes, owner payouts and contributions.
 /// The complete receipt envelope retains its independent byte ceiling.
-pub const MAX_MONEY_TRANSFERS_PER_PERIOD: usize = 14 * MAX_MATERIAL_CIRCUIT_ROWS;
+pub const MAX_MONEY_TRANSFERS_PER_PERIOD: usize = 18 * MAX_MATERIAL_CIRCUIT_ROWS;
 
 /// Controls declare that they omit money; monetary campaigns never infer this
 /// from missing accounts or prices. Both use the same physical allocator.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CircuitAccounting {
     PhysicalControl,
-    Monetary(MonetaryCircuit),
+    Monetary(Box<MonetaryCircuit>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MonetaryCircuit {
+    pub financial: crate::FinancialInstitutions,
     pub costs: crate::HistoricalCostBook,
     pub recurring: Option<Box<crate::RecurringEconomy>>,
     pub book: MonetaryBook,
@@ -83,6 +85,7 @@ pub(crate) fn canonicalize(accounting: &mut CircuitAccounting) {
         if let Some(recurring) = &mut economy.recurring {
             crate::recurring::canonicalize(recurring);
         }
+        crate::financial::canonicalize(&mut economy.financial);
         economy
             .employment
             .sort_by_key(|row| (row.site_id, row.unit_id));
@@ -210,6 +213,7 @@ pub(crate) fn validate(state: &MaterialCircuitState) -> Result<(), MaterialCircu
     }
     validate_service_purchases(state, &economy.book)?;
     economy.book.total_cash_and_reserves()?;
+    crate::financial::validate(state)?;
     crate::recurring::validate(state)?;
     Ok(())
 }

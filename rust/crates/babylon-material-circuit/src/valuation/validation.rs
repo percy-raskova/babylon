@@ -52,7 +52,12 @@ pub(crate) fn validate(state: &MaterialCircuitState) -> Result<()> {
     }
     for (account, assets) in costs.net_assets(&economy.book)? {
         let row = &costs.accounts[&account];
-        if assets != add(row.opening_capital, row.retained_earnings)? {
+        if assets
+            != add(
+                add(row.opening_capital, row.contributed_capital)?,
+                row.retained_earnings,
+            )?
+        {
             return Err(MaterialCircuitError::ValuationInvariant);
         }
     }

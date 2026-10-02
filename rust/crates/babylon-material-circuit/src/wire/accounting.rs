@@ -113,6 +113,7 @@ pub(super) fn append(
     })?;
     super::recurring::append(output, economy.recurring.as_deref())?;
     super::valuation::append(output, &economy.costs)?;
+    super::financial::append(output, &economy.financial)?;
     Ok(())
 }
 
@@ -180,7 +181,7 @@ pub(super) fn decode(cursor: &mut Cursor<'_>) -> Result<CircuitAccounting, Mater
     ordered_rows(&purchases, |row| row.order)?;
     ordered_rows(&shifts, |row| row.id)?;
     ordered_rows(&employment, |row| (row.site_id, row.unit_id))?;
-    Ok(CircuitAccounting::Monetary(MonetaryCircuit {
+    Ok(CircuitAccounting::Monetary(Box::new(MonetaryCircuit {
         book: MonetaryBook::from_snapshot(MonetaryBookSnapshot {
             accounts,
             purchases,
@@ -189,5 +190,6 @@ pub(super) fn decode(cursor: &mut Cursor<'_>) -> Result<CircuitAccounting, Mater
         employment,
         recurring: super::recurring::decode(cursor)?,
         costs: super::valuation::decode(cursor)?,
-    }))
+        financial: super::financial::decode(cursor)?,
+    })))
 }

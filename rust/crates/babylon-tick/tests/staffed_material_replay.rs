@@ -356,9 +356,10 @@ fn paid_material() -> MaterialCircuitState {
         )
         .unwrap();
     }
-    material.accounting = CircuitAccounting::Monetary({
+    material.accounting = CircuitAccounting::Monetary(Box::new({
         let book = book;
         MonetaryCircuit {
+            financial: babylon_material_circuit::FinancialInstitutions::empty(),
             costs: babylon_material_circuit::HistoricalCostBook::open(
                 &book,
                 material
@@ -372,6 +373,7 @@ fn paid_material() -> MaterialCircuitState {
                     })
                     .collect(),
                 vec![],
+                vec![],
             )
             .unwrap(),
             book,
@@ -383,7 +385,7 @@ fn paid_material() -> MaterialCircuitState {
                 hourly_rate: Currency::from_micro_units(1),
             }],
         }
-    });
+    }));
     material
 }
 
@@ -1067,3 +1069,5 @@ fn removing_the_staffed_subject_is_refused_by_the_existing_shape_verb_loader() {
         assert!(message.contains("graph-shape verbs"), "{message}");
     }
 }
+#[path = "staffed_material_replay/financial.rs"]
+mod financial;

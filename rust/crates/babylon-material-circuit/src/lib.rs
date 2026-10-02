@@ -8,6 +8,7 @@
 
 mod accounts;
 mod capacity;
+mod financial;
 mod inventory;
 mod maintenance;
 mod model;
@@ -25,6 +26,12 @@ pub use accounts::{
     MonetaryError, MoneyLocation, MoneyPosting, MoneyTransferPurpose, MoneyTransferReceipt,
     OrganizationAccountId, PublicAccountId, PurchaseEscrow, PurchaseMovementReceipt, ShiftId,
     ShiftState, WageAccrualReceipt,
+};
+pub use financial::{
+    validate_distribution_receipts, CapitalContributionOrder, CapitalContributionReceipt,
+    ContributionId, DistributionPolicy, DistributionReceipt, FinancialInstitutions,
+    InstitutionLocation, OwnershipClaim, PublicAllocation, PublicBudget, PublicBudgetReceipt,
+    PublicTransferTreatment, TaxBasis, TaxPolicy, TaxReceipt,
 };
 pub use model::*;
 pub use payments::{
@@ -44,8 +51,9 @@ pub use staffing::{
     StaffingWorkSource,
 };
 pub use valuation::{
-    CapitalAccount, FreightCarryingValue, HistoricalCostBook, HistoricalCostSnapshot,
-    IncomeReceipt, IncomeStatement, StockCarryingValue, MAX_CARRYING_STOCKS,
+    CapitalAccount, EquityCarryingValue, FreightCarryingValue, HistoricalCostBook,
+    HistoricalCostSnapshot, IncomeReceipt, IncomeStatement, StockCarryingValue,
+    MAX_CARRYING_STOCKS,
 };
 
 pub use transition::{advance_material_circuit, close_material_period, ClosedMaterialPeriod};

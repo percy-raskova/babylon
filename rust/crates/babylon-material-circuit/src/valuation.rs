@@ -3,6 +3,7 @@
 
 mod book;
 mod close;
+mod financial;
 mod model;
 mod validation;
 pub(crate) use close::CostClose;
@@ -80,18 +81,17 @@ impl IncomeStatement {
             consumption_expense: zero(),
             final_demand_outlay: zero(),
             unused_service_expense: zero(),
+            tax_income: zero(),
+            tax_expense: zero(),
+            public_transfer_income: zero(),
+            public_transfer_expense: zero(),
+            distribution_income: zero(),
         }
     }
 
-    /// Period transaction-cost income, without capitalization counted as expense.
-    /// # Errors
-    /// Refuses negative flow amounts or unrepresentable sums.
-    pub fn net_income(&self) -> Result<Currency> {
-        let flows = [
-            self.sales,
-            self.wage_income,
+    fn expenses(&self) -> [Currency; 9] {
+        [
             self.cost_of_goods_sold,
-            self.productive_labor_capitalized,
             self.idle_labor_expense,
             self.handling_expense,
             self.maintenance_labor_expense,
@@ -100,14 +100,45 @@ impl IncomeStatement {
             self.consumption_expense,
             self.final_demand_outlay,
             self.unused_service_expense,
-        ];
-        if flows.iter().any(|x| x.micro_units() < 0) {
+        ]
+    }
+    /// Operating sales less consumed costs; excludes all income/capital transfers.
+    /// # Errors
+    /// Refuses invalid amounts or unrepresentable sums.
+    pub fn operating_income(&self) -> Result<Currency> {
+        let expenses = self.expenses();
+        if self.sales.micro_units() < 0 || expenses.iter().any(|x| x.micro_units() < 0) {
             return Err(MaterialCircuitError::ValuationInvariant);
         }
-        let expenses = flows[4..]
+        sub(self.sales, expenses.into_iter().try_fold(zero(), add)?)
+    }
+    /// Period book income. Issuer distributions are an equity withdrawal; property
+    /// income must be eliminated against those withdrawals in consolidated reports.
+    /// # Errors
+    /// Refuses negative flow amounts or unrepresentable sums.
+    pub fn net_income(&self) -> Result<Currency> {
+        let incomes = [
+            self.wage_income,
+            self.tax_income,
+            self.public_transfer_income,
+            self.distribution_income,
+        ];
+        let outlays = [self.tax_expense, self.public_transfer_expense];
+        if incomes
             .iter()
-            .try_fold(self.cost_of_goods_sold, |n, x| add(n, *x))?;
-        sub(add(self.sales, self.wage_income)?, expenses)
+            .chain(outlays.iter())
+            .any(|x| x.micro_units() < 0)
+            || self.productive_labor_capitalized.micro_units() < 0
+        {
+            return Err(MaterialCircuitError::ValuationInvariant);
+        }
+        sub(
+            add(
+                self.operating_income()?,
+                incomes.into_iter().try_fold(zero(), add)?,
+            )?,
+            outlays.into_iter().try_fold(zero(), add)?,
+        )
     }
 }
 
@@ -118,9 +149,20 @@ impl IncomeReceipt {
     pub fn validate(&self) -> Result<()> {
         if self.period == 0
             || self.opening_capital.micro_units() < 0
+            || self.opening_contributed_capital.micro_units() < 0
+            || self.contributions_received.micro_units() < 0
+            || self.distributions_paid.micro_units() < 0
+            || self.closing_contributed_capital
+                != add(
+                    self.opening_contributed_capital,
+                    self.contributions_received,
+                )?
             || self.net_income != self.statement.net_income()?
             || self.closing_retained_earnings
-                != add(self.opening_retained_earnings, self.net_income)?
+                != sub(
+                    add(self.opening_retained_earnings, self.net_income)?,
+                    self.distributions_paid,
+                )?
         {
             return Err(MaterialCircuitError::ValuationInvariant);
         }

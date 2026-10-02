@@ -371,11 +371,12 @@ mod engine_test {
             },
         ])
         .unwrap();
-        let costs = HistoricalCostBook::open(&book, vec![], vec![]).unwrap();
+        let costs = HistoricalCostBook::open(&book, vec![], vec![], vec![]).unwrap();
         MaterialCircuitState {
             period: 1,
             capacity_supply: CapacitySupply::FiniteSchedule,
-            accounting: CircuitAccounting::Monetary(MonetaryCircuit {
+            accounting: CircuitAccounting::Monetary(Box::new(MonetaryCircuit {
+                financial: babylon_material_circuit::FinancialInstitutions::empty(),
                 book,
                 costs,
                 recurring: None,
@@ -385,7 +386,7 @@ mod engine_test {
                     payee: person,
                     hourly_rate: money(1),
                 }],
-            }),
+            })),
             site_logistics_nodes: vec![SiteLogisticsNode {
                 site_id: site,
                 node_id: LogisticsNodeId::from_bytes([1; 32]),

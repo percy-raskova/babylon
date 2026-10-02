@@ -1323,9 +1323,10 @@ fn underfunded_maintenance_uses_paid_hours_instead_of_all_available_people_time(
             hourly_rate: Currency::from_micro_units(1),
         })
         .collect();
-    state.accounting = CircuitAccounting::Monetary({
+    state.accounting = CircuitAccounting::Monetary(Box::new({
         let book = MonetaryBook::open(accounts).unwrap();
         MonetaryCircuit {
+            financial: babylon_material_circuit::FinancialInstitutions::empty(),
             costs: babylon_material_circuit::HistoricalCostBook::open(
                 &book,
                 state
@@ -1339,13 +1340,14 @@ fn underfunded_maintenance_uses_paid_hours_instead_of_all_available_people_time(
                     })
                     .collect(),
                 vec![],
+                vec![],
             )
             .unwrap(),
             book,
             recurring: None,
             employment,
         }
-    });
+    }));
     let valid = pair(state);
     assert_eq!(
         valid.2.maintenance.as_ref().unwrap().available_labor_hours,

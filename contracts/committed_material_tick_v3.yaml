@@ -1,6 +1,6 @@
 version: 3
 name: committed_material_tick_v3
-authority: [ADR251, ADR260, ADR263, ADR264]
+authority: [ADR251, ADR260, ADR263, ADR264, ADR266]
 purpose: One marker-last transaction binds graph, H3, material, receipts and full restart state.
 envelope:
   domain: "babylon.committed-material-tick.v3\0"
@@ -17,18 +17,18 @@ envelope:
     - {tag: 5, name: graph_full_checkpoint, codec: existing_nine_checkpoint_sections_v1}
     - {tag: 6, name: archive_dirty_receipt, count: 1, hash: combined_material_tick_content_v3}
     - {tag: 7, name: complete_material_register, count: 1, key: empty, payload: exact_material_world_register_v4_bytes}
-    - {tag: 8, name: material_receipts, count: 1, key: empty, payload: exact_material_tick_receipts_v9_bytes}
+    - {tag: 8, name: material_receipts, count: 1, key: empty, payload: exact_material_tick_receipts_v10_bytes}
   family_frame: u8_tag_then_u64_big_endian_count
   row_frame: u32_big_endian_key_length_then_key_then_u32_big_endian_payload_length_then_payload
   ordering: Existing six families preserve strict canonical key order; singular added families cannot reorder.
   digest: sha256_exact_complete_envelope_bytes
   maximum_complete_bytes: 67108864
 receipts:
-  version: 9
-  domain: "babylon.material-tick-receipts.v9\0"
-  header: u32_big_endian_version_9_then_u64_big_endian_positive_resolve_tick
+  version: 10
+  domain: "babylon.material-tick-receipts.v10\0"
+  header: u32_big_endian_version_10_then_u64_big_endian_positive_resolve_tick
   family_frame: u8_tag_then_u64_big_endian_count
-  family_count: 23
+  family_count: 27
   identities: exact_32_bytes
   quantities_periods_and_hours: u64_big_endian
   stage_index: u16_big_endian_less_than_16
@@ -210,11 +210,14 @@ receipts:
       width: 153
       meaning: next_offer_quote_and_observed_decision_inputs
     - tag: 19
-      fields: [account, period, opening_capital, opening_retained_earnings, sales, wage_income, cost_of_goods_sold,
+      fields: [account, period, opening_capital, opening_retained_earnings, opening_contributed_capital,
+               contributions_received, closing_contributed_capital, distributions_paid, sales, wage_income,
+               cost_of_goods_sold,
                productive_labor_capitalized, idle_labor_expense, handling_expense, maintenance_labor_expense,
                maintenance_material_expense, freight_loss_expense, consumption_expense, final_demand_outlay,
-               unused_service_expense, net_income, closing_retained_earnings]
-      width: 297
+               unused_service_expense, tax_income, tax_expense, public_transfer_income, public_transfer_expense,
+               distribution_income, net_income, closing_retained_earnings]
+      width: 441
       meaning: historical_transaction_cost_income_and_retained_earnings
     - tag: 20
       fields: [period, order_id, provider_site_id, buyer_account, good_id, unit_id, requested_quantity,
@@ -237,8 +240,25 @@ receipts:
                expired_quantity, direct_cost, expired_cost]
       width: 192
       meaning: complete_service_batch_output_and_unallocated_provider_expiry
+    - tag: 24
+      fields: [period, public_account, recipient, treatment_u8, priority_u32, requested, paid, unfunded]
+      width: 126
+      meaning: funded_current_public_allocation_and_explicit_shortfall
+    - tag: 25
+      fields: [period, payer, public_recipient, tax_basis_u8, rate_bps_u16, taxable_amount, assessed, collected,
+               uncollected]
+      width: 140
+      meaning: cash_limited_tax_without_uncollected_debt
+    - tag: 26
+      fields: [period, issuer_site_id, beneficiary, shares, total_shares, eligible_earnings, declared_total, paid]
+      width: 137
+      meaning: exact_ownership_payout_without_second_remittance_income
+    - tag: 27
+      fields: [period, id, contributor, issuer_site_id, requested, paid, unfunded]
+      width: 153
+      meaning: finite_cash_for_equity_contribution_distinct_from_income
   ordering:
-    families: Tags 1 through 23 appear exactly once in declared order, including empty families.
+    families: Tags 1 through 27 appear exactly once in declared order, including empty families.
     original_families: Preserve deterministic encounter order from babylon_material_circuit::advance_material_circuit.
     handling: Strict increasing unique site_id_and_tagged_outbound_order.
     local_fulfillment: Strict increasing unique order_id.
@@ -302,8 +322,16 @@ receipts:
     - Unknown price reasons and duplicate or noncanonical recurring keys are refused.
     - Income rows have unique canonical account order and period equal to resolve_tick.
     - Income flows are nonnegative; net income and retained earnings are signed exact micro-currency.
-    - Net income equals sales plus wage income less COGS and all named expenses; capitalization is not an expense.
-    - Closing retained earnings equal opening retained earnings plus net income with checked arithmetic.
+    - Net income includes sales, wages, tax, operating transfers and distributions less COGS and named expenses.
+    - Capital contributions and productive capitalization are not income or current expenses.
+    - Closing retained earnings equal opening retained earnings plus net income less distributions paid.
+    - Closing contributed capital equals opening contributed capital plus contributions received.
+    - Financial receipts use exact current periods, closed tags, nonnegative partitions and canonical unique keys.
+    - Tax assessment equals floor of captured taxable amount times the rate; collected plus uncollected equals
+      assessment.
+    - Each distribution issuer group proves share totals, common declared amount and exact stable remainder allocation.
+    - Financial receipt payment totals exactly match their corresponding cash transfer purpose and account pair.
+    - Standalone receipts do not prove absent policy caps, cash floors, ownership claims or tax eligibility.
     - Service receipts belong to resolve_tick; service market next_period is its checked successor.
     - Service prices are positive; admitted-price products fit exact signed currency.
     - Service admitted does not exceed requested; performed plus expired equals admitted; used plus unused equals
@@ -344,12 +372,13 @@ receipts:
   handling_bound: >-
     At most N first-pass orders plus N new procurement orders after generated retail principals retire.
     Delivery principals remain live through both passes, so dispatch and local-transfer families retain N.
-  maximum_money_transfer_rows: 917504
+  maximum_money_transfer_rows: 1179648
   maximum_service_performance_rows: 196608
   money_transfer_bound: >-
-    A conservative 14N derived movement ceiling covers prior and current payroll,
+    A conservative 18N derived movement ceiling covers prior and current payroll,
     household and procurement reservations, delivery settlements and purchase refunds.
     The additional 4N covers two recurring service request families plus bounded service settlement/refunds.
+    A further 4N covers contributions, public allocations, eligible taxes and ownership payouts.
     N is the state-family limit; this does not enlarge any state principal table.
   maximum_complete_bytes: 67108864
 persistence:

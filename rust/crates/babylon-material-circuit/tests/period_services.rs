@@ -60,12 +60,14 @@ fn opening() -> MaterialCircuitState {
             })
             .collect(),
         vec![],
+        vec![],
     )
     .unwrap();
     MaterialCircuitState {
         capacity_supply: CapacitySupply::FiniteSchedule,
         period: 1,
-        accounting: CircuitAccounting::Monetary(MonetaryCircuit {
+        accounting: CircuitAccounting::Monetary(Box::new(MonetaryCircuit {
+            financial: babylon_material_circuit::FinancialInstitutions::empty(),
             costs,
             book,
             recurring: None,
@@ -77,7 +79,7 @@ fn opening() -> MaterialCircuitState {
                     hourly_rate: money(1),
                 })
                 .collect(),
-        }),
+        })),
         commodities: vec![
             CommodityDefinition {
                 good_id: good(1),

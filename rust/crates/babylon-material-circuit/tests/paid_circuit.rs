@@ -31,7 +31,7 @@ fn opening() -> MaterialCircuitState {
     MaterialCircuitState {
         capacity_supply: babylon_material_circuit::CapacitySupply::FiniteSchedule,
         period: 1,
-        accounting: CircuitAccounting::Monetary({
+        accounting: CircuitAccounting::Monetary(Box::new({
             let book = MonetaryBook::open(vec![
                 CashAccount {
                     id: AccountId::Site(source()),
@@ -48,6 +48,7 @@ fn opening() -> MaterialCircuitState {
             ])
             .unwrap();
             MonetaryCircuit {
+                financial: babylon_material_circuit::FinancialInstitutions::empty(),
                 costs: HistoricalCostBook::open(
                     &book,
                     [source(), store()]
@@ -60,6 +61,7 @@ fn opening() -> MaterialCircuitState {
                         })
                         .collect(),
                     vec![],
+                    vec![],
                 )
                 .unwrap(),
                 book,
@@ -71,7 +73,7 @@ fn opening() -> MaterialCircuitState {
                     hourly_rate: money(1),
                 }],
             }
-        }),
+        })),
         site_logistics_nodes: vec![
             SiteLogisticsNode {
                 site_id: source(),
@@ -406,7 +408,7 @@ fn previously_earned_wages_survive_restart_and_payment_does_not_accrue_them_agai
     let captured = economy.costs.snapshot();
     // Capture this continuation's existing wage claim and liability once.
     economy.costs =
-        HistoricalCostBook::open(&economy.book, captured.stocks, captured.freight).unwrap();
+        HistoricalCostBook::open(&economy.book, captured.stocks, captured.freight, vec![]).unwrap();
     assert_eq!(
         economy
             .book
@@ -538,6 +540,7 @@ fn historical_cost_partial_dispatch_and_loss_leave_exact_remainders_without_cash
                 amount: money(amount),
             })
             .collect(),
+        vec![],
         vec![],
     )
     .unwrap();

@@ -1240,3 +1240,8 @@ decisions:
     status: accepted
     date: '2026-10-01'
     file: ADR265_captured_economic_catalog.yaml
+  ADR266_funded_public_and_ownership_flows:
+    title: Captured ownership and public policies post funded flows through the common monetary close
+    status: accepted
+    date: '2026-10-01'
+    file: ADR266_funded_public_and_ownership_flows.yaml

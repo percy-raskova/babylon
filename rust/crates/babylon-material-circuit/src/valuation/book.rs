@@ -1,7 +1,7 @@
 //! Bounded carrying amounts and captured equity; no duplicate money balances.
 use super::{
-    add, portion, sub, zero, CapitalAccount, FreightCarryingValue, HistoricalCostSnapshot, Result,
-    StockCarryingValue, MAX_CARRYING_STOCKS,
+    add, portion, sub, zero, CapitalAccount, EquityCarryingValue, FreightCarryingValue,
+    HistoricalCostSnapshot, Result, StockCarryingValue, MAX_CARRYING_STOCKS,
 };
 use crate::{
     AccountId, FreightLotId, GoodId, MaterialCircuitError, MonetaryBook, SiteId, UnitId,
@@ -17,6 +17,7 @@ pub struct HistoricalCostBook {
     pub(super) accounts: BTreeMap<AccountId, CapitalAccount>,
     pub(super) stocks: BTreeMap<StockKey, Currency>,
     pub(super) freight: BTreeMap<FreightLotId, (SiteId, Currency)>,
+    pub(super) equity: BTreeMap<(AccountId, SiteId), Currency>,
 }
 
 impl HistoricalCostBook {
@@ -29,6 +30,7 @@ impl HistoricalCostBook {
         money: &MonetaryBook,
         stocks: Vec<StockCarryingValue>,
         freight: Vec<FreightCarryingValue>,
+        equity: Vec<EquityCarryingValue>,
     ) -> Result<Self> {
         let accounts = money
             .snapshot()
@@ -37,6 +39,7 @@ impl HistoricalCostBook {
             .map(|row| CapitalAccount {
                 account: row.id,
                 opening_capital: zero(),
+                contributed_capital: zero(),
                 retained_earnings: zero(),
             })
             .collect();
@@ -44,6 +47,7 @@ impl HistoricalCostBook {
             accounts,
             stocks,
             freight,
+            equity,
         })?;
         let assets = book.net_assets(money)?;
         for (account, value) in assets {
@@ -62,6 +66,7 @@ impl HistoricalCostBook {
         if rows.accounts.len() > MAX_MATERIAL_CIRCUIT_ROWS
             || rows.stocks.len() > MAX_CARRYING_STOCKS
             || rows.freight.len() > MAX_MATERIAL_CIRCUIT_ROWS
+            || rows.equity.len() > MAX_MATERIAL_CIRCUIT_ROWS
         {
             return Err(MaterialCircuitError::RowLimit);
         }
@@ -69,9 +74,10 @@ impl HistoricalCostBook {
             accounts: BTreeMap::new(),
             stocks: BTreeMap::new(),
             freight: BTreeMap::new(),
+            equity: BTreeMap::new(),
         };
         for row in rows.accounts {
-            if row.opening_capital.micro_units() < 0 {
+            if row.opening_capital.micro_units() < 0 || row.contributed_capital.micro_units() < 0 {
                 return Err(MaterialCircuitError::ValuationInvariant);
             }
             if book.accounts.insert(row.account, row).is_some() {
@@ -107,6 +113,24 @@ impl HistoricalCostBook {
                 return Err(MaterialCircuitError::DuplicateRow);
             }
         }
+        for row in rows.equity {
+            if row.amount.micro_units() < 0
+                || row.owner == AccountId::Site(row.issuer_site_id)
+                || !book.accounts.contains_key(&row.owner)
+                || !book
+                    .accounts
+                    .contains_key(&AccountId::Site(row.issuer_site_id))
+            {
+                return Err(MaterialCircuitError::ValuationInvariant);
+            }
+            if book
+                .equity
+                .insert((row.owner, row.issuer_site_id), row.amount)
+                .is_some()
+            {
+                return Err(MaterialCircuitError::DuplicateRow);
+            }
+        }
         Ok(book)
     }
 
@@ -114,6 +138,15 @@ impl HistoricalCostBook {
     pub fn snapshot(&self) -> HistoricalCostSnapshot {
         HistoricalCostSnapshot {
             accounts: self.accounts.values().cloned().collect(),
+            equity: self
+                .equity
+                .iter()
+                .map(|(&(owner, issuer_site_id), &amount)| EquityCarryingValue {
+                    owner,
+                    issuer_site_id,
+                    amount,
+                })
+                .collect(),
             stocks: self
                 .stocks
                 .iter()
@@ -183,6 +216,9 @@ impl HistoricalCostBook {
         }
         for &(owner, value) in self.freight.values() {
             accumulate(&mut totals, AccountId::Site(owner), value)?;
+        }
+        for (&(owner, _), &value) in &self.equity {
+            accumulate(&mut totals, owner, value)?;
         }
         Ok(totals)
     }

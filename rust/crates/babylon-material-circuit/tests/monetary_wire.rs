@@ -83,9 +83,25 @@ fn paid_state() -> MaterialCircuitState {
     MaterialCircuitState {
         capacity_supply: babylon_material_circuit::CapacitySupply::FiniteSchedule,
         period: 3,
-        accounting: CircuitAccounting::Monetary({
+        accounting: CircuitAccounting::Monetary(Box::new({
             let book = book;
             MonetaryCircuit {
+                financial: {
+                    let mut financial = FinancialInstitutions::empty();
+                    financial.locations = vec![
+                        InstitutionLocation {
+                            account: AccountId::Organization(OrganizationAccountId::from_bytes(
+                                [1; 32],
+                            )),
+                            location: "county:26163".parse().unwrap(),
+                        },
+                        InstitutionLocation {
+                            account: AccountId::Public(PublicAccountId::from_bytes([1; 32])),
+                            location: "county:26163".parse().unwrap(),
+                        },
+                    ];
+                    financial
+                },
                 costs: HistoricalCostBook::open(
                     &book,
                     vec![StockCarryingValue {
@@ -94,6 +110,7 @@ fn paid_state() -> MaterialCircuitState {
                         unit_id: unit,
                         amount: money(0),
                     }],
+                    vec![],
                     vec![],
                 )
                 .unwrap(),
@@ -109,7 +126,7 @@ fn paid_state() -> MaterialCircuitState {
                     })
                     .collect(),
             }
-        }),
+        })),
         site_logistics_nodes: [seller, buyer]
             .into_iter()
             .enumerate()

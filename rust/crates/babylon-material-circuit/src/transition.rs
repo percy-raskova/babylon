@@ -939,6 +939,27 @@ fn execute_production_stages(
     Ok(production)
 }
 
+fn consume_households(
+    state: &mut MaterialCircuitState,
+    costs: &mut CostClose,
+) -> Result<Vec<crate::HouseholdConsumptionReceipt>, MaterialCircuitError> {
+    let receipts = crate::recurring::consume_household_needs(state)?;
+    for receipt in &receipts {
+        costs.consume(receipt)?;
+    }
+    Ok(receipts)
+}
+fn canonicalize_outbound_receipts(
+    outbound: &mut outbound::OutboundReceipts,
+    dispatches: &mut [RoutedDispatchReceipt],
+) {
+    outbound
+        .handling
+        .sort_by_key(|row| (row.site_id, row.order));
+    outbound.local_transfers.sort_by_key(|row| row.order_id);
+    dispatches.sort_by_key(|row| row.order_id);
+}
+
 /// Execute due freight, prior production commitments and dispatch exactly once.
 ///
 /// The result borrows no mutable opening state and cannot become a world
@@ -973,6 +994,8 @@ pub fn close_material_period(
     crate::payments::settle_deliveries(&mut state, &mut money_transfers)?;
     crate::recurring::firms::retire_resolved_purchases(&mut state)?;
     rebuild_backlog(&mut state);
+    let mut finance =
+        crate::financial::FinancialClose::opening(&mut state, &mut costs, &mut money_transfers)?;
     let mut labor_use =
         crate::payments::fund_attendance(&mut state, &mut money_transfers, &mut wage_accruals)?;
     let mut household_demand =
@@ -991,12 +1014,10 @@ pub fn close_material_period(
         &mut money_transfers,
         &mut costs,
     )?;
-    let household_consumption = crate::recurring::consume_household_needs(&mut state)?;
-    for receipt in &household_consumption {
-        costs.consume(receipt)?;
-    }
+    let household_consumption = consume_households(&mut state, &mut costs)?;
     crate::payments::record_labor_use(&state, &mut labor_use)?;
     costs.payroll(&state, &labor_use, &wage_accruals)?;
+    finance.closing(&mut state, &mut costs, &mut money_transfers)?;
     let next_period = state
         .period
         .checked_add(1)
@@ -1012,16 +1033,16 @@ pub fn close_material_period(
     )?;
     crate::recurring::firms::retire_resolved_purchases(&mut state)?;
     rebuild_backlog(&mut state);
-    outbound
-        .handling
-        .sort_by_key(|row| (row.site_id, row.order));
-    outbound.local_transfers.sort_by_key(|row| row.order_id);
-    dispatches.sort_by_key(|row| row.order_id);
+    canonicalize_outbound_receipts(&mut outbound, &mut dispatches);
     crate::payments::conserved(opening, &state)?;
     let income = costs.finish(&mut state)?;
     Ok(ClosedMaterialPeriod {
         next_period,
         transition: MaterialCircuitTransition {
+            public_budgets: finance.public_budgets,
+            taxes: finance.taxes,
+            distributions: finance.distributions,
+            contributions: finance.contributions,
             service_performance: services.performance,
             household_services: services.household,
             service_markets: services.markets,

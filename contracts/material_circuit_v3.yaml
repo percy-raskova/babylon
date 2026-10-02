@@ -1,6 +1,6 @@
 meta:
   contract: MaterialCircuitV3
-  schema_version: 11
+  schema_version: 12
   evidence_class: Designed
   rust_owner: babylon-material-circuit
 
@@ -17,7 +17,7 @@ scope:
   - exact funded settlement follows actual arrival or local handoff; departure is not a sale
   - optional recurring resident needs, funded purchases, stocks, consumption, procurement, and subsequent plans
   - fixed-price controls and captured bounded responsive offers use the same physical allocator
-  - no route search, credit creation, exchange-rate policy, or tax policy decisions occur here
+  - no route search, credit creation, exchange-rate policy, or endogenous fiscal policy decisions occur here
 
 domains:
   state: babylon.material-circuit-state.v3
@@ -90,7 +90,8 @@ state_field_order:
 
 accounting_field_order:
   physical_control: [accounting_mode_u8]
-  monetary: [accounting_mode_u8, accounts, purchases, shifts, employment, optional_recurring, historical_cost_book]
+  monetary: [accounting_mode_u8, accounts, purchases, shifts, employment, optional_recurring, historical_cost_book,
+             financial_institutions]
 
 monetary_row_field_order:
   accounts: [account_identity, cash_i128]
@@ -270,6 +271,8 @@ period_close:
   - credit retained final arrival to destination inventory once
   - settle accepted arrived quantities and refund newly lost quantities from their existing purchase reserves
   - retire already settled prior purchase principals before new admissions need their bounded slots
+  - execute due captured capital contributions from pre-phase cash, preserving exact equity and issuer capital
+  - fund captured public allocations from finite current cash and appropriation caps in priority order
   - pay outstanding earned wages from their existing payroll reserves
   - fund planned attendance in canonical site-unit order, bounded by spendable cash and available whole hours
   - accrue and pay each funded attendance commitment before work; productive utilization is recorded separately
@@ -304,6 +307,9 @@ period_close:
   - settle actual local supplier transfers and retail handoffs from their admitted purchase reserves
   - consume recurring household needs from actual stocks, retaining unmet consumption as dated evidence
   - record used, paid idle, planned unfunded, and available unplanned hours separately
+  - assess captured eligible wage and positive operating-income taxes after actual costs and wage accrual
+  - collect taxes only from cash above captured floors; record uncollected amounts without creating claims
+  - distribute positive post-tax retained earnings only within cash, fraction and cap, using captured ownership
   - derive subsequent production from dispatched and unfulfilled demand, output stock, and captured buffers
   - forecast already funded freight due before subsequent production without crediting current usable inventory
   - derive subsequent attendance from distinct production, merchant, and maintenance work requests
@@ -357,7 +363,7 @@ limits:
   stages_per_route: 16
   total_freight_resource_requests: 1114112
   handling_receipts_per_period: 131072
-  money_transfers_per_period: 917504
+  money_transfers_per_period: 1179648
   service_performance_receipts_per_period: 196608
   receipt_bounds: Derived from at most two outbound passes and the bounded payroll and purchase phases
   classification: Designed bounds on execution and serialization, not material abundance
@@ -390,6 +396,7 @@ error_codes:
   purchase_invariant: 25
   valuation_invariant: 26
   service_invariant: 27
+  financial_invariant: 28
 
 monetary_accounting:
   opening: capture explicit cash endowments and employment terms; no default accounts, credit, or hidden issuance
@@ -510,21 +517,26 @@ capacity_supply:
 historical_cost_book:
   evidence_class: Designed
   purpose: Historical transaction-cost bookkeeping; no surplus-value, SNLT or universal valuation claim
-  field_order: [capital_accounts, stock_carrying_values, freight_carrying_values]
+  field_order: [capital_accounts, stock_carrying_values, freight_carrying_values, equity_carrying_values]
   row_fields:
-    capital_accounts: [account, opening_capital, retained_earnings]
+    capital_accounts: [account, opening_capital, contributed_capital, retained_earnings]
     stock_carrying_values: [owner_account, good_id, unit_id, amount]
     freight_carrying_values: [lot_id, seller_site_id, amount]
-  row_width_bytes: {capital_accounts: 65, stock_carrying_values: 113, freight_carrying_values: 80}
+    equity_carrying_values: [owner_account, issuer_site_id, amount]
+  row_width_bytes: {capital_accounts: 81, stock_carrying_values: 113, freight_carrying_values: 80,
+                    equity_carrying_values: 81}
   canonical_keys:
     capital_accounts: [account]
     stock_carrying_values: [owner_account, good_id, unit_id]
     freight_carrying_values: [lot_id]
-  bounds: {capital_accounts: 65536, stock_carrying_values: 131072, freight_carrying_values: 65536}
+    equity_carrying_values: [owner_account, issuer_site_id]
+  bounds: {capital_accounts: 65536, stock_carrying_values: 131072, freight_carrying_values: 65536,
+           equity_carrying_values: 65536}
   stock_bound: Two physical families of at most N each, site inventories and resident household stocks
   opening:
     - require explicit carrying rows for every physical site stock, household stock and freight lot, including zero
-    - derive opening capital once from cash, reserves, carrying values and wage claims less liabilities
+    - derive opening capital once from cash, reserves, physical and equity carrying values and wage claims less
+      liabilities
     - initial retained earnings are zero; restart restores captured capital and accumulated earnings exactly
     - installed equipment without a captured carrying amount is outside this book-capital measure
   quantities: Physical rows alone own quantities; carrying rows never manufacture or duplicate units
@@ -545,13 +557,15 @@ historical_cost_book:
     - carrying amounts are nonnegative; zero physical quantity requires zero carrying value
     - every transit carrying row has the physical lot's seller as title owner
     - capital accounts exactly match monetary accounts; stock and freight carrying keys exactly match physical keys
-    - each account's net assets equal captured opening capital plus accumulated retained earnings
-    - each period income equals sales plus wage income less COGS and named period expenses
-    - closing retained earnings equal opening retained earnings plus period income
+    - each account's net assets equal captured opening capital plus contributed capital plus accumulated retained
+      earnings
+    - each period income includes sales, wages, tax, operating-transfer and distribution income less COGS and named
+      expenses
+    - closing retained earnings equal opening retained earnings plus period income less distributions paid
     - productive labor, handling, maintenance labor and idle wage costs partition current earned wages exactly
     - cost operations cannot mutate spendable cash, reserves, purchase prices or wage obligations
     - all refusals discard the detached close, including late planning, arithmetic and net-asset mismatches
-  excluded: Public and ownership flows, equity changes, equipment depreciation and installation remain separate work
+  excluded: Equipment depreciation and installation remain separate work
 
 period_services:
   authority: ADR264
@@ -593,3 +607,50 @@ period_services:
     - Responsive quotes distinguish funded unmet demand, whole-batch cost pressure and spare native capacity with
       bounded steps.
     - Existing reserves keep their accepted price; no price or planning policy guarantees execution or profit.
+
+financial_institutions:
+  authority: ADR266
+  evidence_class: Designed
+  field_order: [locations, ownership, distributions, taxes, public_budgets, public_allocations, contributions]
+  row_fields:
+    locations: [account, economic_location]
+    ownership: [issuer_site_id, beneficiary_account, shares_u64]
+    distributions: [issuer_site_id, earnings_fraction_bps_u16, period_cap, cash_floor]
+    taxes: [payer_account, public_recipient_id, tax_basis_u8, rate_bps_u16, cash_floor]
+    public_budgets: [public_account_id, period_cap, cash_floor]
+    public_allocations: [public_account_id, recipient_account, transfer_treatment_u8, priority_u32, amount_per_period]
+    contributions: [id, due_period, contributor_account, issuer_site_id, amount]
+  row_width_bytes: {locations: 39, ownership: 73, distributions: 66, taxes: 84, public_budgets: 64,
+                    public_allocations: 86, contributions: 121}
+  canonical_keys:
+    locations: [account]
+    ownership: [issuer_site_id, beneficiary_account]
+    distributions: [issuer_site_id]
+    taxes: [payer_account]
+    public_budgets: [public_account_id]
+    public_allocations: [public_account_id, priority, recipient_account, transfer_treatment]
+    contributions: [id]
+  tax_basis_u8: {wage_income: 1, positive_operating_income: 2}
+  transfer_treatment_u8: {household_income_support: 1, provider_operating_grant: 2}
+  invariants:
+    - All tables are bounded by N; account identities and explicit policy counterparties must exist.
+    - Locations exactly cover organization and public accounts; locations do not create ownership or tax liability.
+    - Captured positive ownership shares are independent of residence, attendance and legal account namespace.
+    - Claim keys exactly match explicit equity carrying rows, including zero; no self-ownership.
+    - Contributions require a captured claim, due period and positive amount; consume each due instruction once.
+    - Acquired equity debits cash and raises contributor carrying basis and issuer contributed capital, never income.
+    - Capture all contribution funding before credits; no same-phase circular funding.
+    - Public allocations consume cash above floor and finite current appropriation in priority then canonical order.
+    - Household income support and provider operating grants produce paired expense and income only when paid.
+    - Public capital support uses the separate finite contribution instruction and its equity claim.
+    - One tax policy per eligible payer; bases are earned wages or positive operating income before financial flows.
+    - Taxes exclude contributions, distribution income and reporting remittances; uncollected assessments create no
+      debt.
+    - Capture tax bases and cash before credits; capture distribution earnings and cash after tax but before any payout.
+    - Distributions use positive retained earnings, a bounded fraction, cap and available cash; never mint money.
+    - Exact share floors allocate remaining micro-units to canonical beneficiaries, conserving the declared amount.
+    - Distribution is an issuer retained-earnings reduction and beneficiary income exactly once, not a second sale.
+    - Cross-border reporting may classify the same flow as a remittance but cannot post a second income or cash credit.
+    - Equity carrying assets and issuer capital require elimination when reporting consolidated totals.
+  limits: Prices, shares, appropriations and tax rules are captured game policies; no endogenous legislature or finance
+    market.

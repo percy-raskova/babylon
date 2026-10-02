@@ -124,7 +124,7 @@ fn opening() -> MaterialCircuitState {
     MaterialCircuitState {
         capacity_supply: babylon_material_circuit::CapacitySupply::FiniteSchedule,
         period: 1,
-        accounting: CircuitAccounting::Monetary({
+        accounting: CircuitAccounting::Monetary(Box::new({
             let book = MonetaryBook::open(vec![
                 CashAccount {
                     id: AccountId::Site(site(1)),
@@ -145,6 +145,7 @@ fn opening() -> MaterialCircuitState {
             ])
             .unwrap();
             MonetaryCircuit {
+                financial: babylon_material_circuit::FinancialInstitutions::empty(),
                 costs: HistoricalCostBook::open(
                     &book,
                     [
@@ -162,6 +163,7 @@ fn opening() -> MaterialCircuitState {
                     })
                     .collect(),
                     vec![],
+                    vec![],
                 )
                 .unwrap(),
                 book,
@@ -176,7 +178,7 @@ fn opening() -> MaterialCircuitState {
                     })
                     .collect(),
             }
-        }),
+        })),
         site_logistics_nodes: [1, 2, 3]
             .into_iter()
             .map(|owner| SiteLogisticsNode {
@@ -510,7 +512,8 @@ fn responsive_next_quote_does_not_reprice_existing_reserves() {
         .amount = money(0);
     // This scenario starts without the retailer's stock or its opening asset.
     accounts.costs =
-        HistoricalCostBook::open(&accounts.book, captured.stocks, captured.freight).unwrap();
+        HistoricalCostBook::open(&accounts.book, captured.stocks, captured.freight, vec![])
+            .unwrap();
     let offer = recurring_mut(&mut state)
         .offers
         .iter_mut()
@@ -567,13 +570,14 @@ fn captured_household_policies_refuse_old_bytes_bad_cursors_and_noncanonical_row
         .stocks
         .retain(|row| matches!(row.owner, AccountId::Site(_)));
     economy.costs =
-        HistoricalCostBook::open(&economy.book, captured.stocks, captured.freight).unwrap();
+        HistoricalCostBook::open(&economy.book, captured.stocks, captured.freight, vec![]).unwrap();
     let captured = economy.costs.snapshot();
-    let cost_bytes = 12
-        + 65 * captured.accounts.len()
+    let cost_bytes = 16
+        + 81 * captured.accounts.len()
         + 113 * captured.stocks.len()
-        + 80 * captured.freight.len();
-    let offset = encode_material_circuit_state(&finite).unwrap().len() - cost_bytes - 10;
+        + 80 * captured.freight.len()
+        + 81 * captured.equity.len();
+    let offset = encode_material_circuit_state(&finite).unwrap().len() - cost_bytes - 10 - 28; // Seven empty financial table counts.
     assert_eq!(bytes[offset], 1);
     let mut old = bytes.clone();
     let version = MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES.len() + 1;
@@ -644,7 +648,8 @@ fn retained_finite_purchase_restores_attendance_when_recurring_purchases_are_dis
     let captured = accounts.costs.snapshot();
     // This control opens after its deliberate endowment transfer.
     accounts.costs =
-        HistoricalCostBook::open(&accounts.book, captured.stocks, captured.freight).unwrap();
+        HistoricalCostBook::open(&accounts.book, captured.stocks, captured.freight, vec![])
+            .unwrap();
     let id = OrderId::from_bytes([90; 32]);
     let (state, _) = admit_material_purchase(
         &state,
@@ -867,7 +872,8 @@ fn a_household_purchase_without_a_recipient_stock_is_refused_before_reserving_ca
         .retain(|row| row.owner != AccountId::Household(household()) || row.good_id != good(1));
     // Capture this fixture's changed opening endowments and absent stock explicitly.
     accounts.costs =
-        HistoricalCostBook::open(&accounts.book, captured.stocks, captured.freight).unwrap();
+        HistoricalCostBook::open(&accounts.book, captured.stocks, captured.freight, vec![])
+            .unwrap();
     let original = state.clone();
     assert_eq!(
         admit_material_purchase(

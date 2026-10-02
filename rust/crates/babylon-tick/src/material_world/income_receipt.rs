@@ -4,7 +4,7 @@ use super::{MaterialWorldError, ReceiptCursor};
 use babylon_kernel::currency::Currency;
 use babylon_material_circuit::{IncomeReceipt, IncomeStatement};
 
-pub(super) const ROW_BYTES: usize = 297;
+pub(super) const ROW_BYTES: usize = 441;
 
 pub(super) fn validate_order(rows: &[IncomeReceipt]) -> Result<(), MaterialWorldError> {
     if rows
@@ -44,6 +44,10 @@ fn encode_row(
     for value in [
         row.opening_capital,
         row.opening_retained_earnings,
+        row.opening_contributed_capital,
+        row.contributions_received,
+        row.closing_contributed_capital,
+        row.distributions_paid,
         s.sales,
         s.wage_income,
         s.cost_of_goods_sold,
@@ -56,6 +60,11 @@ fn encode_row(
         s.consumption_expense,
         s.final_demand_outlay,
         s.unused_service_expense,
+        s.tax_income,
+        s.tax_expense,
+        s.public_transfer_income,
+        s.public_transfer_expense,
+        s.distribution_income,
         row.net_income,
         row.closing_retained_earnings,
     ] {
@@ -81,6 +90,10 @@ pub(super) fn decode(
         period: cursor.u64()?,
         opening_capital: money(cursor)?,
         opening_retained_earnings: money(cursor)?,
+        opening_contributed_capital: money(cursor)?,
+        contributions_received: money(cursor)?,
+        closing_contributed_capital: money(cursor)?,
+        distributions_paid: money(cursor)?,
         statement: IncomeStatement {
             sales: money(cursor)?,
             wage_income: money(cursor)?,
@@ -94,6 +107,11 @@ pub(super) fn decode(
             consumption_expense: money(cursor)?,
             final_demand_outlay: money(cursor)?,
             unused_service_expense: money(cursor)?,
+            tax_income: money(cursor)?,
+            tax_expense: money(cursor)?,
+            public_transfer_income: money(cursor)?,
+            public_transfer_expense: money(cursor)?,
+            distribution_income: money(cursor)?,
         },
         net_income: money(cursor)?,
         closing_retained_earnings: money(cursor)?,

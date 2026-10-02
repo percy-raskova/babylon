@@ -1,7 +1,7 @@
 //! Independent vectors for exact monetary postings and finite attendance evidence.
 use babylon_tick::material_world::{decode_material_receipts, MaterialWorldError};
 
-const DOMAIN: &[u8] = b"babylon.material-tick-receipts.v9\0";
+const DOMAIN: &[u8] = b"babylon.material-tick-receipts.v10\0";
 
 fn tagged(tag: u8, subtag: u8, id: u8) -> Vec<u8> {
     let mut bytes = vec![tag, subtag];
@@ -43,9 +43,9 @@ fn labor(values: [u64; 8]) -> Vec<u8> {
 
 fn envelope(transfers: &[Vec<u8>], wages: &[Vec<u8>], labor: &[Vec<u8>]) -> Vec<u8> {
     let mut bytes = DOMAIN.to_vec();
-    bytes.extend_from_slice(&9_u32.to_be_bytes());
+    bytes.extend_from_slice(&10_u32.to_be_bytes());
     bytes.extend_from_slice(&7_u64.to_be_bytes());
-    for tag in 1..=23 {
+    for tag in 1..=27 {
         let rows = match tag {
             11 => transfers,
             12 => wages,
@@ -188,9 +188,15 @@ fn all_money_purposes_keep_account_and_reserve_namespaces_distinct() {
         movement(tagged(6, 0, 4), tagged(3, 0, 4), tagged(1, 1, 1)),
     ];
     assert!(decode_material_receipts(&envelope(&rows, &[], &[])).is_ok());
-    for purpose in 1..=7 {
+    for purpose in [3, 6, 7] {
         let row = movement(tagged(7, purpose, 0), tagged(1, 3, 1), tagged(1, 4, 1));
         assert!(decode_material_receipts(&envelope(&[row], &[], &[])).is_ok());
+    }
+    // Current fiscal/ownership purposes additionally require matched policy receipts.
+    // Their complete valid vectors live in financial_receipt_wire.rs.
+    for purpose in [1, 2, 4, 5] {
+        let orphan = movement(tagged(7, purpose, 0), tagged(1, 3, 1), tagged(1, 4, 1));
+        assert!(decode_material_receipts(&envelope(&[orphan], &[], &[])).is_err());
     }
 }
 

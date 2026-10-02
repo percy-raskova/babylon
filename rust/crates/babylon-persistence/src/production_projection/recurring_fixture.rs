@@ -118,7 +118,7 @@ fn recurring_policies() -> RecurringEconomy {
 }
 
 fn accounting() -> CircuitAccounting {
-    CircuitAccounting::Monetary({
+    CircuitAccounting::Monetary(Box::new({
         let book = MonetaryBook::open(vec![
             CashAccount {
                 id: AccountId::Site(site(1)),
@@ -139,6 +139,7 @@ fn accounting() -> CircuitAccounting {
         ])
         .unwrap();
         MonetaryCircuit {
+            financial: babylon_material_circuit::FinancialInstitutions::empty(),
             costs: babylon_material_circuit::HistoricalCostBook::open(
                 &book,
                 [
@@ -156,6 +157,7 @@ fn accounting() -> CircuitAccounting {
                 })
                 .collect(),
                 vec![],
+                vec![],
             )
             .unwrap(),
             book,
@@ -170,7 +172,7 @@ fn accounting() -> CircuitAccounting {
                 })
                 .collect(),
         }
-    })
+    }))
 }
 
 fn supplier_routes() -> Vec<SupplierRoute> {

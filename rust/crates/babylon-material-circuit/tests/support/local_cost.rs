@@ -29,9 +29,11 @@ fn local_cost_economy() -> MonetaryCircuit {
             })
             .collect(),
         vec![],
+        vec![],
     )
     .unwrap();
     MonetaryCircuit {
+        financial: babylon_material_circuit::FinancialInstitutions::empty(),
         book,
         costs,
         employment: vec![EmploymentTerms {
@@ -77,7 +79,7 @@ fn local_cost_economy() -> MonetaryCircuit {
 
 fn local_cost_opening() -> MaterialCircuitState {
     let mut state = opening();
-    state.accounting = CircuitAccounting::Monetary(local_cost_economy());
+    state.accounting = CircuitAccounting::Monetary(Box::new(local_cost_economy()));
     state.inventory = vec![inventory(1, 2, 1), inventory(2, 2, 1)];
     state.process_outputs.clear();
     state.input_coefficients.clear();

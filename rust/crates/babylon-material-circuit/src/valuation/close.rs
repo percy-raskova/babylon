@@ -12,11 +12,13 @@ use babylon_kernel::currency::Currency;
 use std::collections::BTreeMap;
 
 pub(crate) struct CostClose {
-    active: Option<ActiveCosts>,
+    pub(super) active: Option<ActiveCosts>,
 }
-struct ActiveCosts {
-    book: HistoricalCostBook,
-    income: BTreeMap<AccountId, IncomeStatement>,
+pub(super) struct ActiveCosts {
+    pub(super) book: HistoricalCostBook,
+    pub(super) income: BTreeMap<AccountId, IncomeStatement>,
+    pub(super) contributions: BTreeMap<AccountId, Currency>,
+    pub(super) distributions: BTreeMap<AccountId, Currency>,
 }
 
 impl CostClose {
@@ -25,6 +27,8 @@ impl CostClose {
             CircuitAccounting::PhysicalControl => None,
             CircuitAccounting::Monetary(economy) => Some(ActiveCosts {
                 book: economy.costs.clone(),
+                contributions: BTreeMap::new(),
+                distributions: BTreeMap::new(),
                 income: economy
                     .costs
                     .accounts
@@ -425,17 +429,33 @@ impl CostClose {
                 .get_mut(&account)
                 .ok_or(MaterialCircuitError::ValuationInvariant)?;
             let net_income = statement.net_income()?;
-            let closing = add(row.retained_earnings, net_income)?;
+            let contributions_received = active
+                .contributions
+                .get(&account)
+                .copied()
+                .unwrap_or_else(zero);
+            let distributions_paid = active
+                .distributions
+                .get(&account)
+                .copied()
+                .unwrap_or_else(zero);
+            let closing_contributed_capital = add(row.contributed_capital, contributions_received)?;
+            let closing = sub(add(row.retained_earnings, net_income)?, distributions_paid)?;
             receipts.push(IncomeReceipt {
                 account,
                 period: state.period,
                 opening_capital: row.opening_capital,
                 opening_retained_earnings: row.retained_earnings,
+                opening_contributed_capital: row.contributed_capital,
+                contributions_received,
+                closing_contributed_capital,
+                distributions_paid,
                 statement,
                 net_income,
                 closing_retained_earnings: closing,
             });
             row.retained_earnings = closing;
+            row.contributed_capital = closing_contributed_capital;
         }
         let CircuitAccounting::Monetary(economy) = &mut state.accounting else {
             return Err(MaterialCircuitError::ValuationInvariant);
@@ -447,7 +467,7 @@ impl CostClose {
 }
 
 impl ActiveCosts {
-    fn statement(&mut self, account: AccountId) -> Result<&mut IncomeStatement> {
+    pub(super) fn statement(&mut self, account: AccountId) -> Result<&mut IncomeStatement> {
         self.income
             .get_mut(&account)
             .ok_or(MaterialCircuitError::ValuationInvariant)

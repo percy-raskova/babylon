@@ -3,7 +3,7 @@
 
 use babylon_tick::material_world::decode_material_receipts;
 
-const DOMAIN: &[u8] = b"babylon.material-tick-receipts.v9\0";
+const DOMAIN: &[u8] = b"babylon.material-tick-receipts.v10\0";
 const ROW_START: usize = DOMAIN.len() + 12 + 10 * 9;
 const QUANTITIES: usize = ROW_START + 5 * 32 + 4 * 8;
 
@@ -13,7 +13,7 @@ fn receipt(values: [u64; 15]) -> Vec<u8> {
 
 fn receipt_with_coefficients(coefficients: [u64; 4], values: [u64; 15]) -> Vec<u8> {
     let mut bytes = DOMAIN.to_vec();
-    bytes.extend_from_slice(&9_u32.to_be_bytes());
+    bytes.extend_from_slice(&10_u32.to_be_bytes());
     bytes.extend_from_slice(&1_u64.to_be_bytes());
     for tag in 1..=10_u8 {
         bytes.push(tag);
@@ -33,7 +33,7 @@ fn receipt_with_coefficients(coefficients: [u64; 4], values: [u64; 15]) -> Vec<u
 }
 
 fn append_remaining_families(bytes: &mut Vec<u8>) {
-    for tag in 11..=23 {
+    for tag in 11..=27 {
         bytes.push(tag);
         bytes.extend_from_slice(&0_u64.to_be_bytes());
     }

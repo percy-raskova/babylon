@@ -367,7 +367,7 @@ fn member(
     )
     .map_err(|_| AllocationError::PopulationControl)?;
     let subject = StableElementKey::Node {
-        scenario: "national-world".into(),
+        scenario: crate::national_economy::NATIONAL_SCENARIO_ID.into(),
         local_name: format!("member-{}", base32(&identity)),
     };
     subject

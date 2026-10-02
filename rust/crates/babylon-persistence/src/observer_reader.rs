@@ -1,5 +1,6 @@
 //! Separate read-only economic observer and per-signal granted preview capabilities.
 
+mod counties;
 mod history;
 
 pub use crate::observer_material::ObserverMaterialCursor;
@@ -10,11 +11,10 @@ use postgres::{Config, IsolationLevel, NoTls};
 use serde::{Deserialize, Serialize};
 
 use crate::{
+    economic_content::{validate_economic_header, EconomicContentAdmission},
     identity::CampaignId,
-    michigan_content::{
-        validate_michigan_header, MichiganContentAdmission, MICHIGAN_CONTENT_PRESETS,
-    },
-    michigan_economy::{digest_hex, michigan_economy, MichiganCountyEconomy},
+    michigan_content::{MichiganContentPreset, MICHIGAN_CONTENT_PRESETS},
+    michigan_economy::{digest_hex, MichiganCountyEconomy},
     postgres_catalog::validate_connection_target,
 };
 
@@ -123,7 +123,7 @@ impl ObserverEconomyReader {
         self.visibility
     }
 
-    /// Read at most 64 explicitly founded Michigan material campaigns.
+    /// Read at most 64 explicitly founded current economic campaigns.
     /// # Errors
     /// Refuses authority, malformed identities, unknown presets or invalid clocks.
     pub fn campaigns(&self) -> Result<Vec<CampaignSummary>, ObserverEconomyError> {
@@ -142,7 +142,8 @@ impl ObserverEconomyReader {
             .read_only(true)
             .start()
             .map_err(|_| ObserverEconomyError::Database)?;
-        let presets: Vec<_> = MICHIGAN_CONTENT_PRESETS.iter().map(|p| p.id()).collect();
+        let mut presets: Vec<_> = MICHIGAN_CONTENT_PRESETS.iter().map(|p| p.id()).collect();
+        presets.push("national-world");
         let rows = transaction
             .query(CAMPAIGN_CATALOG_SQL, &[&presets])
             .map_err(|_| ObserverEconomyError::Database)?;
@@ -209,25 +210,25 @@ impl ObserverEconomyReader {
                 .batch_execute("SET LOCAL idle_in_transaction_session_timeout = '120s'")
                 .map_err(|_| ObserverEconomyError::Database)?;
         }
-        let (foundation_hash, material_header) = read_foundation(
+        let (foundation_hash, geography_scope, material_header) = read_foundation(
             &mut transaction,
             campaign,
             expected_tick,
             self.visibility,
             candidate.as_ref(),
         )?;
-        let economy = michigan_economy().map_err(|_| ObserverEconomyError::Reference)?;
         let admission = material_header
             .as_ref()
             .and_then(|header| header.admission.as_ref());
         let (tick_content_hash, envelope_digest) =
             read_commit_identity(&mut transaction, campaign, tick, material_header.is_some())?;
-        let counties = read_committed_counties(
+        let counties = counties::read(
             &mut transaction,
             campaign,
             expected_tick,
             self.visibility,
-            economy.counties(),
+            &geography_scope,
+            admission.map(AsRef::as_ref),
         )?;
         let material = if let Some(admission) = admission {
             crate::observer_material::material_observation(
@@ -277,8 +278,15 @@ fn read_foundation(
     tick: u64,
     visibility: ObserverVisibility,
     cached: Option<&ObserverMaterialCursor>,
-) -> Result<(Vec<u8>, Option<crate::observer_material::MaterialHeader>), ObserverEconomyError> {
-    let foundation = transaction.query_opt("SELECT campaign_id, foundation_sha256, scenario_sha256 FROM public.v_observer_economy_foundation_v1 WHERE campaign_id = $1", &[campaign.as_uuid()]).map_err(|_| ObserverEconomyError::Database)?.ok_or(ObserverEconomyError::CampaignAbsent)?;
+) -> Result<
+    (
+        Vec<u8>,
+        String,
+        Option<crate::observer_material::MaterialHeader>,
+    ),
+    ObserverEconomyError,
+> {
+    let foundation = transaction.query_opt("SELECT campaign_id, foundation_sha256, source_sha256, geography_scope FROM public.v_observer_economy_foundation_v1 WHERE campaign_id = $1", &[campaign.as_uuid()]).map_err(|_| ObserverEconomyError::Database)?.ok_or(ObserverEconomyError::CampaignAbsent)?;
     let found_campaign: uuid::Uuid = foundation
         .try_get(0)
         .map_err(|_| ObserverEconomyError::InvalidProjection)?;
@@ -316,7 +324,16 @@ fn read_foundation(
             &scenario_hash,
         )?;
     }
-    Ok((foundation_hash, material_header))
+    let geography_scope: String = foundation
+        .try_get(3)
+        .map_err(|_| ObserverEconomyError::InvalidProjection)?;
+    if !matches!(
+        geography_scope.as_str(),
+        "michigan-control" | "national-counties"
+    ) {
+        return Err(ObserverEconomyError::ScenarioMismatch);
+    }
+    Ok((foundation_hash, geography_scope, material_header))
 }
 
 fn read_commit_identity(
@@ -357,7 +374,7 @@ WHERE header.preset_id=ANY($1::text[])
  AND octet_length(header.content_sha256)=32 AND header.content_sha256<>decode(repeat('00',32),'hex')
  AND octet_length(header.foundation_sha256)=32 AND header.foundation_sha256<>decode(repeat('00',32),'hex')
  AND octet_length(graph.foundation_sha256)=32 AND graph.foundation_sha256<>decode(repeat('00',32),'hex')
- AND octet_length(graph.scenario_sha256)=32 AND graph.scenario_sha256<>decode(repeat('00',32),'hex')
+ AND octet_length(graph.source_sha256)=32 AND graph.source_sha256<>decode(repeat('00',32),'hex')
 GROUP BY header.campaign_id,header.preset_id,header.duration_kind,header.final_period,header.content_sha256,header.foundation_sha256
 HAVING COALESCE(max(marker.resolve_tick),0)>=0 AND (header.duration_kind='continuous' OR COALESCE(max(marker.resolve_tick),0)<=header.final_period)
  AND bool_and(marker.envelope_layout_version IS NULL OR marker.envelope_layout_version=3)
@@ -383,21 +400,29 @@ fn campaign_summary(row: &postgres::Row) -> Result<CampaignSummary, ObserverEcon
             .map_err(|_| ObserverEconomyError::InvalidProjection)?,
     )
     .map_err(|_| ObserverEconomyError::InvalidProjection)?;
-    let entry = validate_michigan_header(&preset_id, duration, &content, &foundation, tick)
+    validate_economic_header(&preset_id, duration, &content, &foundation, tick)
         .map_err(|_| ObserverEconomyError::ScenarioMismatch)?;
     if campaign.is_nil() {
         return Err(ObserverEconomyError::InvalidProjection);
     }
+    let label = if preset_id == "national-world" {
+        "United States and world markets"
+    } else {
+        MichiganContentPreset::from_id(&preset_id)
+            .ok_or(ObserverEconomyError::ScenarioMismatch)?
+            .label()
+    }
+    .to_owned();
     Ok(CampaignSummary {
         id: campaign.to_string(),
         preset: preset_id,
-        label: entry.label().to_owned(),
+        label,
         durable_tick: tick,
     })
 }
 
 fn validate_observer_graph(
-    material: Option<&MichiganContentAdmission>,
+    material: Option<&EconomicContentAdmission>,
     graph: &[u8],
     scenario: &[u8],
 ) -> Result<(), ObserverEconomyError> {
@@ -425,7 +450,7 @@ fn graph_only_observer_identity() -> Result<([u8; 32], [u8; 32]), ObserverEconom
             .map_err(|_| ObserverEconomyError::Reference)?;
         Ok((
             sha256_of(foundation.canonical_bytes()),
-            sha256_of(foundation.content_bundle().scenario_source_bytes()),
+            sha256_of(foundation.content_bundle().canonical_bytes()),
         ))
     })
 }
@@ -714,6 +739,7 @@ fn observer_role_views() -> Vec<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::michigan_economy::michigan_economy;
     #[test]
     fn material_headers_bind_the_matching_graph_and_graph_only_is_separate() {
         let (graph, scenario) = graph_only_observer_identity().unwrap();
@@ -726,11 +752,11 @@ mod tests {
             assert!(validate_observer_graph(
                 Some(&entry),
                 &entry.graph_digest,
-                &entry.scenario_digest
+                &entry.source_digest
             )
             .is_ok());
             let baseline_only =
-                validate_observer_graph(None, &entry.graph_digest, &entry.scenario_digest);
+                validate_observer_graph(None, &entry.graph_digest, &entry.source_digest);
             assert_eq!(baseline_only, Err(ObserverEconomyError::ScenarioMismatch));
             for other in MICHIGAN_CONTENT_PRESETS
                 .into_iter()
@@ -741,7 +767,7 @@ mod tests {
                     validate_observer_graph(
                         Some(&entry),
                         &other.graph_digest,
-                        &other.scenario_digest
+                        &other.source_digest
                     )
                     .is_ok(),
                     entry.graph_digest == other.graph_digest

@@ -3,8 +3,19 @@
 //! Source observations, Designed policy and regenerated opening assignments are
 //! distinct. These input rows never own a second mutable material world.
 
+mod capture;
+mod codec;
+mod compile;
+mod control;
+mod error;
+mod foundation;
+mod graph;
+mod michigan;
 mod model;
+mod national;
+mod session;
 mod sources;
+mod view;
 
 pub use model::{
     CatalogAccounting, CatalogCapacity, CatalogGeography, CatalogLogistics, CatalogMaintenance,
@@ -15,3 +26,12 @@ pub use model::{
     RecipeTemplateId, ResidentStaffingMemberSeed, ResidentStaffingPoolSeed,
 };
 pub use sources::{SourceArtifact, SourceArtifactKind};
+
+pub use view::{EconomicProjectionView, EconomicSourceView};
+
+pub use error::EconomicCatalogError;
+
+pub use compile::CompiledEconomicOpening;
+pub use michigan::import_michigan_opening;
+
+pub use capture::CapturedEconomicCatalog;

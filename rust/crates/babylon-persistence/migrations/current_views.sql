@@ -11,9 +11,11 @@ FROM babylon_state.tick_commit;
 REVOKE ALL ON public.v_committed_tick_status_v1 FROM PUBLIC;
 
 CREATE VIEW public.v_observer_economy_foundation_v1 AS
-SELECT campaign_id, foundation_sha256,
-       pg_catalog.sha256(pg_catalog.convert_to(scenario_source, 'UTF8')) AS scenario_sha256
-FROM babylon_state.campaign_foundation;
+SELECT foundation.campaign_id, foundation.foundation_sha256,
+       pg_catalog.sha256(foundation.content_bundle_bytes) AS source_sha256,
+       campaign.geography_scope
+FROM babylon_state.campaign_foundation AS foundation
+JOIN babylon_state.campaign AS campaign USING (campaign_id);
 
 CREATE VIEW public.v_observer_county_economy_v1 AS
 SELECT foundation.campaign_id, 0::bigint AS resolve_tick, mapping.county_geoid,
@@ -40,7 +42,18 @@ JOIN babylon_state.tick_commit AS marker
   ON marker.campaign_id = fields.campaign_id AND marker.resolve_tick = fields.resolve_tick
 WHERE fields.value_tag = 1 AND fields.field_name IN
   ('qcew-establishments', 'qcew-employment', 'qcew-total-annual-wages', 'qcew-average-weekly-wage')
-GROUP BY fields.campaign_id, fields.resolve_tick, identity.int_value;
+GROUP BY fields.campaign_id, fields.resolve_tick, identity.int_value
+UNION ALL
+-- National counties carry identity in the graph. Their published QCEW values
+-- remain immutable captured observations, never synthetic dynamic state fields.
+SELECT foundation.campaign_id, marker.resolve_tick, mapping.county_geoid,
+       NULL::bigint, NULL::bigint, NULL::bigint, NULL::bigint,
+       true, true, true, true
+FROM babylon_state.campaign_foundation AS foundation
+JOIN babylon_meta.territory_county_map_v1 AS mapping USING (campaign_id)
+JOIN babylon_state.tick_commit AS marker USING (campaign_id)
+JOIN babylon_state.campaign AS campaign USING (campaign_id)
+WHERE campaign.geography_scope = 'national-counties';
 
 CREATE VIEW public.v_known_county_economy_v1 WITH (security_barrier = true) AS
 SELECT raw.campaign_id, raw.resolve_tick, raw.county_geoid,

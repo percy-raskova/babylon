@@ -5,14 +5,14 @@ use super::{
     DisposableTarget, DurableMaterialRuntime, Measurements, MichiganContentPreset,
     MichiganDeliveryPreset, MichiganMaterialCatalog, NoTls, ObserverEconomyReader,
     ObserverVisibility, OrderedPracticeActionBatch, ProductionSnapshot, ReplayCommitDisposition,
-    Session, SourceCopies, Uuid, MAX_MATERIAL_WORLD_REGISTER_BYTES,
-    MAX_MICHIGAN_CAPTURED_CONTENT_BYTES,
+    Session, SourceCopies, Uuid, MAX_MATERIAL_TICK_RECEIPT_BYTES,
+    MAX_MATERIAL_WORLD_REGISTER_BYTES, MAX_MICHIGAN_SOURCE_BYTES,
 };
 use babylon_bsl::causal_contract::EvidenceClass;
 use babylon_graph::state_hash::CanonicalState;
 use babylon_material_circuit::MaintenanceReceipt;
 use babylon_persistence::{
-    material_runtime::MaterialRuntimeError,
+    material_runtime::{MaterialRuntimeError, MAX_MATERIAL_FOUNDATION_BYTES},
     michigan_material::MichiganSiteRole,
     production_observation::{CompletedProductionMaintenance, ProductionSiteRole},
 };
@@ -82,12 +82,16 @@ fn qualify(case: Case, index: u128) {
     assert_eq!(foundation.canonical_bytes(), twin.canonical_bytes());
     let mut reference = twin.into_session().unwrap();
     let mut measured = Measurements {
-        captured_bytes: catalog.defines_bytes().len(),
+        captured_bytes: foundation
+            .graph_foundation()
+            .content_bundle()
+            .canonical_bytes()
+            .len(),
         foundation_bytes: foundation.canonical_bytes().len(),
         ..Measurements::default()
     };
-    assert!(measured.captured_bytes < MAX_MICHIGAN_CAPTURED_CONTENT_BYTES);
-    assert!(measured.foundation_bytes < MAX_MATERIAL_WORLD_REGISTER_BYTES);
+    assert!(measured.captured_bytes < MAX_MICHIGAN_SOURCE_BYTES);
+    assert!(measured.foundation_bytes < MAX_MATERIAL_FOUNDATION_BYTES);
     let mut target = DisposableTarget::create();
     let campaign = CampaignId::from_uuid(Uuid::from_u128(30_100 + index));
     let mut runtime = DurableMaterialRuntime::create(&target.writer, campaign, foundation).unwrap();
@@ -114,19 +118,7 @@ fn qualify(case: Case, index: u128) {
         assert_sql_marker_refusal(&mut sql, campaign, &mut runtime);
     }
     for period in 1..=3 {
-        let opening_capacities = reference
-            .material()
-            .state()
-            .corridor_capacities
-            .iter()
-            .filter(|row| row.period == period)
-            .map(|row| {
-                (
-                    identity_hex(row.corridor_id.as_bytes()),
-                    row.available_grams,
-                )
-            })
-            .collect();
+        let opening_capacities = opening_capacities(&reference, period);
         let receipts = advance_pair(
             &mut runtime,
             &mut reference,
@@ -168,6 +160,22 @@ fn qualify(case: Case, index: u128) {
     assert_persisted_totals(&mut sql, campaign, preset.id(), &measured);
 }
 
+fn opening_capacities(reference: &Session, period: u64) -> std::collections::BTreeMap<String, u64> {
+    reference
+        .material()
+        .state()
+        .corridor_capacities
+        .iter()
+        .filter(|row| row.period == period)
+        .map(|row| {
+            (
+                identity_hex(row.corridor_id.as_bytes()),
+                row.available_grams,
+            )
+        })
+        .collect()
+}
+
 fn assert_persisted_totals(
     sql: &mut postgres::Client,
     campaign: CampaignId,
@@ -184,7 +192,7 @@ fn assert_persisted_totals(
     assert_eq!(commits, 3);
     assert!(measured.maximum_family_rows < 65_536);
     assert!(measured.maximum_register_bytes < MAX_MATERIAL_WORLD_REGISTER_BYTES);
-    assert!(measured.maximum_receipt_bytes < MAX_MATERIAL_WORLD_REGISTER_BYTES);
+    assert!(measured.maximum_receipt_bytes < MAX_MATERIAL_TICK_RECEIPT_BYTES);
     eprintln!("actual maintenance PostgreSQL {preset}: {measured:?}");
 }
 
@@ -310,7 +318,7 @@ fn assert_foundation(rows: &ProductionSnapshot, catalog: &MichiganMaterialCatalo
         .iter()
         .find(|site| site.id == account.provider_site_id)
         .unwrap();
-    assert_eq!(provider.role, ProductionSiteRole::Maintenance);
+    assert!(provider.roles.contains(&ProductionSiteRole::Maintenance));
     assert!(provider.processes.is_empty());
     assert_eq!(provider.observed_employment, Some(1480));
     assert_eq!(

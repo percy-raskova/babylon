@@ -7,6 +7,8 @@
 extern crate self as babylon_persistence;
 
 mod archive;
+mod archive_campaign;
+pub use archive_campaign::captured_archive_producer;
 pub mod archive_driver;
 mod archive_foundation_grants;
 pub mod archive_revision;
@@ -19,6 +21,7 @@ pub mod committed_tick_envelope;
 mod county_producer;
 mod current_schema;
 pub mod economic_catalog;
+pub mod economic_content;
 mod foundation;
 mod glossary_concepts;
 pub mod h3_reference_cohort;
@@ -51,7 +54,6 @@ pub(crate) mod production_projection;
 mod reader;
 mod runtime;
 pub mod runtime_session;
-pub mod sector_bundle;
 mod semantic_batches;
 mod semantic_codec;
 mod semantic_vectors;
@@ -97,7 +99,9 @@ pub use county_producer::{
     COUNTY_PHI_HOUR_GRANT_KEY, COUNTY_PHI_HOUR_LABEL, PINNED_COUNTY_IDENTITY_ARTIFACT_SHA256,
 };
 
-pub use foundation::{CampaignFoundation, FoundationContentBundle};
+pub use foundation::{
+    CampaignFoundation, FoundationContentBundle, FoundationContentError, FoundationContentKind,
+};
 pub use glossary_concepts::{
     glossary_concepts, GlossaryConcept, GlossaryConcepts, GlossaryConceptsError,
     GLOSSARY_CONCEPTS_FIXTURE_PATH, PINNED_GLOSSARY_CONCEPTS_SHA256,

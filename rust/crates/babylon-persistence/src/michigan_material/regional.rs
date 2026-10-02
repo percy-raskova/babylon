@@ -8,9 +8,7 @@ use super::{
     MichiganSiteRole, MichiganStaffingDesign, MichiganWorkforceSeed,
     MICHIGAN_INDUSTRY_BASELINE_SHA256, SOURCE_URL,
 };
-use crate::michigan_sectors::{
-    michigan_county_sectors, QCEW_SECTORS_ARTIFACT_SHA256, QCEW_SECTORS_SEMANTIC_SHA256,
-};
+use crate::michigan_sectors::{QCEW_SECTORS_ARTIFACT_SHA256, QCEW_SECTORS_SEMANTIC_SHA256};
 use serde::Deserialize;
 use std::collections::BTreeSet;
 const INDUSTRY: &[u8] =
@@ -106,13 +104,22 @@ pub(super) fn blank(defines: &MichiganDefines) -> MichiganNormalizedContent {
         },
     }
 }
+#[cfg(test)]
 pub(super) fn owner_source(
     county: &str,
     sector: &str,
     industry_hash: &str,
 ) -> Result<MichiganOwnerSource, MichiganDefinesError> {
-    let source = michigan_county_sectors()
+    let source = crate::michigan_sectors::michigan_county_sectors()
         .map_err(|_| MichiganDefinesError::Material(MichiganMaterialError::SourceValue))?;
+    owner_source_from_rows(county, sector, industry_hash, source)
+}
+pub(super) fn owner_source_from_rows(
+    county: &str,
+    sector: &str,
+    industry_hash: &str,
+    source: &crate::michigan_sectors::MichiganCountySectors,
+) -> Result<MichiganOwnerSource, MichiganDefinesError> {
     let row = source
         .rows()
         .iter()
@@ -150,13 +157,28 @@ fn mass(defines: &MichiganDefines, unit: &str) -> Result<u64, MichiganDefinesErr
 pub(super) fn compile(
     defines: MichiganDefines,
 ) -> Result<MichiganMaterialCatalog, MichiganDefinesError> {
+    use crate::economic_catalog::{SourceArtifact, SourceArtifactKind as K};
+    let mut context = super::captured::MichiganObservedSources::fresh()?;
+    context.artifacts.extend([
+        SourceArtifact::capture(K::DesignedPolicy, defines.encode()?),
+        SourceArtifact::capture(K::MichiganIndustryBaseline, INDUSTRY.to_vec()),
+        SourceArtifact::capture(K::MichiganRegionalTopology, TOPOLOGY.to_vec()),
+    ]);
+    compile_with_sources(defines, INDUSTRY, TOPOLOGY, &context)
+}
+pub(super) fn compile_with_sources(
+    defines: MichiganDefines,
+    industry: &[u8],
+    topology: &[u8],
+    observed: &super::captured::MichiganObservedSources<'_>,
+) -> Result<MichiganMaterialCatalog, MichiganDefinesError> {
     use MichiganDefinesError::Material;
-    if crate::michigan_economy::digest_hex(&sha256_of(INDUSTRY))
+    if crate::michigan_economy::digest_hex(&sha256_of(industry))
         != MICHIGAN_INDUSTRY_BASELINE_SHA256
     {
         return Err(Material(MichiganMaterialError::ArtifactDigest));
     }
-    let source: Industry = serde_json::from_slice(INDUSTRY)
+    let source: Industry = serde_json::from_slice(industry)
         .map_err(|_| Material(MichiganMaterialError::ArtifactDecode))?;
     if source.schema != "MichiganIndustryBaselineV1"
         || source.vintage != 2024
@@ -167,7 +189,7 @@ pub(super) fn compile(
     {
         return Err(Material(MichiganMaterialError::ArtifactShape));
     }
-    let topology: Topology = serde_json::from_slice(TOPOLOGY)
+    let topology: Topology = serde_json::from_slice(topology)
         .map_err(|_| Material(MichiganMaterialError::ArtifactDecode))?;
     let mut normalized = blank(&defines);
     normalized.industry = source.rows;
@@ -189,10 +211,11 @@ pub(super) fn compile(
         .map(|site| &site.county_geoid)
         .collect::<BTreeSet<_>>()
     {
-        normalized.owners.push(owner_source(
+        normalized.owners.push(owner_source_from_rows(
             county,
             "31-33",
             MICHIGAN_INDUSTRY_BASELINE_SHA256,
+            observed.sectors,
         )?);
     }
     for good in topology.goods {
@@ -210,11 +233,12 @@ pub(super) fn compile(
         topology.routes,
         topology.corridors,
     )?;
-    MichiganMaterialCatalog::from_normalized(
+    MichiganMaterialCatalog::from_normalized_with_sources(
         defines,
         normalized,
         MichiganDeliveryPreset::Standard,
         interventions,
+        observed,
     )
 }
 

@@ -290,10 +290,8 @@ fn read_territory_county_map_rows(
 pub(crate) fn verify_territory_county_map(
     client: &mut impl GenericClient,
     campaign_id: CampaignId,
-    scenario_source: &str,
-    prelude_source: Option<&str>,
+    mut declared: Vec<TerritoryCountyMapRow>,
 ) -> Result<(), TerritoryCountyMapError> {
-    let mut declared = extract_declared_territory_county_map(scenario_source, prelude_source)?;
     let stored = read_territory_county_map_rows(client, campaign_id)?;
     declared.sort_by(|left, right| {
         left.territory_local_name

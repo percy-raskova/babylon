@@ -1,42 +1,22 @@
-//! Capture/regional regression evidence before the statewide compiler is introduced.
-
-#[test]
-fn captured_authority_contains_normalized_content_instead_of_only_numeric_defines() {
-    let source = include_str!("../../../../../content/scenarios/michigan/defines.toml");
-    let catalog = MichiganMaterialCatalog::from_defines_toml(source).unwrap();
-    let stored: serde_json::Value = serde_json::from_slice(catalog.defines_bytes()).unwrap();
-    assert_eq!(stored["schema"], "MichiganCapturedContentV6");
-    assert_eq!(stored["rule_source"], catalog.rule_source());
-    assert_eq!(stored["normalized"]["sites"].as_array().unwrap().len(), 5);
-    assert_eq!(
-        stored["normalized"]["processes"].as_array().unwrap().len(),
-        5
-    );
-}
-
+//! Explicit control import contracts through the common source authority.
 use super::*;
+use crate::economic_catalog::{CapturedEconomicCatalog, SourceArtifactKind};
 use std::collections::BTreeMap;
 
 #[test]
 fn captured_rule_source_survives_restart_without_reopening_current_authored_rules() {
-    use crate::michigan_content::{admit_michigan_content, MichiganContentPreset};
-
+    use crate::economic_content::admit_economic_content;
+    use crate::michigan_content::MichiganContentPreset;
     let original = crate::test_support::catalog();
-    let mut changed = original.capture.clone();
-    changed.rule_source = format!("; Captured campaign source.\n{}", changed.rule_source);
-    let changed = MichiganMaterialCatalog::capture(changed).unwrap();
-    assert_ne!(original.defines_hash(), changed.defines_hash());
-    let restored = MichiganMaterialCatalog::from_stored_defines(changed.defines_bytes()).unwrap();
-    assert_eq!(restored, changed);
-
+    let mut control = original.capture.clone();
+    control.rule_source = format!("; Captured campaign source.\n{}", control.rule_source);
+    let rules = control.rule_source.as_bytes().to_vec();
+    let mut changed = original.keep_sources(MichiganMaterialCatalog::capture(control).unwrap());
+    changed.replace_source(SourceArtifactKind::Rules, rules);
     let preset = MichiganContentPreset::FourWeekStandard;
     let original_foundation = preset.create_foundation(&original).unwrap();
-    let restored_foundation = preset.create_foundation(&restored).unwrap();
+    let restored_foundation = preset.create_foundation(&changed).unwrap();
     assert_ne!(original_foundation.digest(), restored_foundation.digest());
-    assert_ne!(
-        original_foundation.spec().content_digest,
-        restored_foundation.spec().content_digest
-    );
     assert_eq!(
         original_foundation
             .graph_foundation()
@@ -59,87 +39,71 @@ fn captured_rule_source_survives_restart_without_reopening_current_authored_rule
             .rule_source_bytes(),
         changed.rule_source().as_bytes()
     );
-    assert!(admit_michigan_content(
+    assert!(admit_economic_content(
         preset.id(),
         restored_foundation.spec().duration,
         &restored_foundation.spec().content_digest,
         &restored_foundation.digest(),
         0,
-        restored_foundation.canonical_bytes(),
+        restored_foundation.canonical_bytes()
     )
     .is_ok());
 }
 
 #[test]
 fn captured_material_content_refuses_missing_rules_and_a_graph_only_rule_set() {
-    use crate::michigan_content::{MichiganContentError, MichiganContentPreset};
-
-    let catalog = crate::test_support::catalog();
-    let mut capture: serde_json::Value = serde_json::from_slice(catalog.defines_bytes()).unwrap();
-    capture.as_object_mut().unwrap().remove("rule_source");
-    assert!(matches!(
-        MichiganMaterialCatalog::from_stored_defines(&serde_json::to_vec(&capture).unwrap()),
-        Err(MichiganDefinesError::Canonical)
-    ));
-    for rule_source in ["", "; no executable material cycle\n"] {
-        let mut capture = catalog.capture.clone();
-        capture.rule_source = rule_source.to_owned();
-        if rule_source.is_empty() {
-            assert!(matches!(
-                MichiganMaterialCatalog::capture(capture),
-                Err(MichiganDefinesError::Material(MichiganMaterialError::Bound))
-            ));
+    let original = crate::test_support::catalog();
+    for rules in ["", "; no executable material cycle\n"] {
+        let mut control = original.capture.clone();
+        control.rule_source = rules.to_owned();
+        let changed = MichiganMaterialCatalog::capture(control);
+        if rules.is_empty() {
+            assert!(changed.is_err());
         } else {
-            let graph_only = MichiganMaterialCatalog::capture(capture).unwrap();
-            assert!(matches!(
-                MichiganContentPreset::FourWeekStandard.create_foundation(&graph_only),
-                Err(MichiganContentError::Foundation)
-            ));
+            let mut changed = original.keep_sources(changed.unwrap());
+            changed.replace_source(SourceArtifactKind::Rules, rules.as_bytes().to_vec());
+            assert!(
+                crate::michigan_content::MichiganContentPreset::FourWeekStandard
+                    .create_foundation(&changed)
+                    .is_err()
+            );
         }
     }
 }
 
 #[test]
-fn normalized_permutations_and_preset_round_trips_preserve_complete_authority() {
-    let original = MichiganMaterialCatalog::from_defines_toml(include_str!(
-        "../../../../../content/scenarios/michigan/defines.toml"
-    ))
-    .unwrap();
-    let mut capture = original.capture.clone();
-    capture.normalized.sites.reverse();
-    capture.normalized.processes.reverse();
-    capture.normalized.goods.reverse();
-    capture.normalized.owners.reverse();
-    capture.normalized.industry.reverse();
-    capture.normalized.staffing.pools.reverse();
-    capture.interventions.reverse();
-    let reordered = MichiganMaterialCatalog::capture(capture).unwrap();
-    assert_eq!(original.defines_bytes(), reordered.defines_bytes());
+fn normalized_permutations_and_preset_round_trips_preserve_common_authority() {
+    let original = crate::test_support::catalog();
+    let mut control = original.capture.clone();
+    control.normalized.sites.reverse();
+    control.normalized.processes.reverse();
+    control.normalized.goods.reverse();
+    control.normalized.owners.reverse();
+    control.normalized.industry.reverse();
+    control.normalized.staffing.pools.reverse();
+    control.interventions.reverse();
+    let reordered = original.keep_sources(MichiganMaterialCatalog::capture(control).unwrap());
+    let original_capture = CapturedEconomicCatalog::from_michigan(&original).unwrap();
+    let reordered_capture = CapturedEconomicCatalog::from_michigan(&reordered).unwrap();
+    assert_eq!(
+        original_capture.canonical_bytes(),
+        reordered_capture.canonical_bytes()
+    );
     let constrained = original
         .with_preset(MichiganDeliveryPreset::SharedFreightConstrained)
         .unwrap();
+    let captured = CapturedEconomicCatalog::from_michigan(&constrained).unwrap();
     let restored =
-        MichiganMaterialCatalog::from_stored_defines(constrained.defines_bytes()).unwrap();
-    for catalog in [&original, &reordered, &constrained, &restored] {
-        assert_eq!(catalog.defines_hash(), sha256_of(catalog.defines_bytes()));
-    }
-    assert_ne!(original.defines_hash(), constrained.defines_hash());
-    assert_eq!(constrained, restored);
-    assert_eq!(
-        original.graph_scenario_source(),
-        constrained.graph_scenario_source()
-    );
+        CapturedEconomicCatalog::decode(captured.canonical_bytes(), captured.digest()).unwrap();
+    assert_eq!(captured.opening(), restored.opening());
+    assert_ne!(original_capture.digest(), captured.digest());
     assert_eq!(
         original,
         constrained
             .with_preset(MichiganDeliveryPreset::Standard)
             .unwrap()
     );
-    assert!(!restored.observed_defines().is_empty());
-    assert!(restored
-        .graph_scenario_source()
-        .contains("business-26163-31-33"));
-    assert!(restored
+    assert!(constrained
         .with_preset(MichiganDeliveryPreset::StatewideBoth)
         .is_err());
 }
@@ -213,9 +177,11 @@ fn merchant_fixture() -> MichiganMaterialCatalog {
 #[test]
 fn normalized_multi_input_owners_share_inventory_and_labor_and_merchants_have_no_fake_road() {
     let c = merchant_fixture();
-    let bundles = crate::sector_bundle::michigan_sector_bundles(&c).unwrap();
-    assert_eq!(bundles.len(), 6);
-    let state = crate::sector_bundle::compile_sector_bundles(&bundles, c.preset(), &c).unwrap();
+    let state = crate::economic_catalog::import_michigan_opening(&c)
+        .unwrap()
+        .compile()
+        .unwrap()
+        .state;
     let p = c
         .processes()
         .iter()
@@ -260,8 +226,6 @@ fn normalized_multi_input_owners_share_inventory_and_labor_and_merchants_have_no
             .iter()
             .any(|s| s.route_id == route.route_id));
     }
-    let restored = MichiganMaterialCatalog::from_stored_defines(c.defines_bytes()).unwrap();
-    assert_eq!(restored, c);
 }
 #[test]
 fn observed_suppression_remains_absent_and_zero_employment_can_recover_from_reserve() {

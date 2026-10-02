@@ -5,9 +5,10 @@ use postgres::{Config, NoTls};
 
 use super::{RuntimeSessionErrorCode, RuntimeSessionTail, RuntimeSessionTarget, SessionBackend};
 use crate::{
+    economic_content::{admit_economic_content, EconomicContentAdmission},
     identity::CampaignId,
     material_runtime::{DurableMaterialRuntime, MaterialRuntimeError},
-    michigan_content::{admit_michigan_content, MichiganContentPreset},
+    michigan_content::MichiganContentPreset,
     michigan_economy::digest_hex,
 };
 
@@ -224,8 +225,8 @@ fn catalog_for_target(
 fn runtime_content(
     client: &mut impl postgres::GenericClient,
     campaign: CampaignId,
-) -> Result<crate::michigan_content::MichiganContentAdmission, RuntimeSessionErrorCode> {
-    let row = client.query_opt("SELECT f.preset_id,f.duration_kind,f.final_period,f.content_sha256,f.foundation_sha256,g.foundation_sha256 AS graph_sha256,pg_catalog.sha256(pg_catalog.convert_to(g.scenario_source,'UTF8')) AS scenario_sha256,f.foundation_bytes FROM babylon_state.material_campaign_foundation_v3 f JOIN babylon_state.campaign_foundation g USING(campaign_id) WHERE campaign_id=$1::uuid", &[campaign.as_uuid()])
+) -> Result<EconomicContentAdmission, RuntimeSessionErrorCode> {
+    let row = client.query_opt("SELECT f.preset_id,f.duration_kind,f.final_period,f.content_sha256,f.foundation_sha256,g.foundation_sha256 AS graph_sha256,pg_catalog.sha256(g.content_bundle_bytes) AS source_sha256,f.foundation_bytes FROM babylon_state.material_campaign_foundation_v3 f JOIN babylon_state.campaign_foundation g USING(campaign_id) WHERE campaign_id=$1::uuid", &[campaign.as_uuid()])
         .map_err(|_| RuntimeSessionErrorCode::StorageRefused)?;
     let Some(row) = row else {
         return Err(RuntimeSessionErrorCode::CampaignAbsent);
@@ -245,12 +246,12 @@ fn runtime_content(
         .try_get("graph_sha256")
         .map_err(|_| RuntimeSessionErrorCode::StorageRefused)?;
     let scenario: Vec<u8> = row
-        .try_get("scenario_sha256")
+        .try_get("source_sha256")
         .map_err(|_| RuntimeSessionErrorCode::StorageRefused)?;
     let bytes: Vec<u8> = row
         .try_get("foundation_bytes")
         .map_err(|_| RuntimeSessionErrorCode::StorageRefused)?;
-    let admitted = admit_michigan_content(&id, duration, &content, &foundation, 0, &bytes)
+    let admitted = admit_economic_content(&id, duration, &content, &foundation, 0, &bytes)
         .map_err(|_| RuntimeSessionErrorCode::ScenarioMismatch)?;
     admitted
         .validate_graph(&graph, &scenario)
@@ -340,7 +341,10 @@ mod defines_tests {
         )
         .unwrap();
         let second = catalog_for_target(&new, &path).unwrap().unwrap();
-        assert_ne!(first.defines_hash(), second.defines_hash());
+        assert_ne!(
+            first.staffing().hours_per_worker_period,
+            second.staffing().hours_per_worker_period
+        );
         std::fs::write(&path, "malformed = [").unwrap();
         assert!(matches!(
             catalog_for_target(&new, &path),

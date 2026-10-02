@@ -8,8 +8,8 @@ use super::{ArchiveDriverEvent, ArchiveDriverFailure};
 use crate::archive::database;
 use crate::{
     identity::CampaignId, ArchiveWorker, ArchiveWorkerCancellation,
-    CompositeArchiveDossierProducer, CountyDossierProducer, PlaceDossierProducer,
-    PostgresFailureClass, SemanticArchiveError, ARCHIVE_WAKEUP_CHANNEL,
+    CompositeArchiveDossierProducer, PostgresFailureClass, SemanticArchiveError,
+    ARCHIVE_WAKEUP_CHANNEL,
 };
 
 const WAIT: Duration = Duration::from_millis(125);
@@ -48,7 +48,7 @@ pub(super) fn classify(error: SemanticArchiveError) -> ArchiveDriverFailure {
 }
 
 fn listener(config: &Config) -> Result<Client, ArchiveDriverFailure> {
-    let mut listener_config = config.clone();
+    let mut listener_config = bounded_config(config);
     listener_config.application_name("babylon-archive-listener-v1");
     let mut client = listener_config
         .connect(NoTls)
@@ -137,6 +137,7 @@ fn request_id(event: &ArchiveDriverEvent) -> Option<u64> {
 
 struct DriverState {
     listener: Option<Client>,
+    producer: Option<CompositeArchiveDossierProducer>,
     dirty: bool,
     retry_at: Option<Instant>,
     backoff: Duration,
@@ -148,6 +149,7 @@ impl DriverState {
     fn new() -> Self {
         Self {
             listener: None,
+            producer: None,
             dirty: true,
             retry_at: None,
             backoff: WAIT,
@@ -257,8 +259,20 @@ fn maintain(
             }
         }
     }
-    let result = producer(config)
-        .and_then(|producer| worker.sweep_cancellable(campaign, &producer, cancellation));
+    if state.producer.is_none() {
+        match crate::captured_archive_producer(config, campaign) {
+            Ok(producer) => state.producer = Some(producer),
+            Err(error) => {
+                state.failure(classify(error));
+                return;
+            }
+        }
+    }
+    let result = state
+        .producer
+        .as_ref()
+        .ok_or(SemanticArchiveError::StoredPageMismatch)
+        .and_then(|producer| worker.sweep_cancellable(campaign, producer, cancellation));
     match result {
         Ok(report) => {
             state.outbox.push(ArchiveDriverEvent::Progress {
@@ -274,16 +288,6 @@ fn maintain(
         Err(SemanticArchiveError::WorkerCanceled) => state.dirty = false,
         Err(error) => state.failure(classify(error)),
     }
-}
-
-fn producer(config: &Config) -> Result<CompositeArchiveDossierProducer, SemanticArchiveError> {
-    Ok(CompositeArchiveDossierProducer::new(vec![
-        Box::new(crate::organizer_archive::OrganizerDossierProducer::new(
-            config,
-        )),
-        Box::new(CountyDossierProducer::try_new(config)?),
-        Box::new(PlaceDossierProducer::try_new(config)?),
-    ]))
 }
 
 #[cfg(test)]

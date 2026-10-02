@@ -146,8 +146,18 @@ Authoritative Persistence
 
 ``babylon-runtime`` is the production composition root. It verifies the current
 schema and serves the observer through ``DurableMaterialRuntime``. That runtime
-captures one current Michigan foundation, judges one period, and commits graph
+accepts one captured economic foundation, judges one period, and commits graph
 and material evidence together. Callers cannot submit a pre-judged report.
+
+The current source envelope pins exact artifact bytes, rules, policy and compiler
+identity. It regenerates one shared opening for native graph admission and the
+initial material register. Authored Michigan controls use an explicit importer.
+National county sources use the same compiler and replay session.
+
+The foundation stores one complete initial material register. Current reads
+reuse the admitted opening. Capture and restart check it against the saved bytes.
+The national opening has passed complete capture and decode. A national period
+advance and playable campaign need separate qualification.
 
 Production, freight, merchant handling, local transfers, retail fulfillment,
 and staffing share one material state. Production updates that state's fields
@@ -259,13 +269,21 @@ material checkpoint bound to the committed tail. A delta checkpoint is never a r
 Missing, duplicate, out-of-order, or digest-mismatched sections refuse before
 the runtime resumes.
 
-H3 Reader Boundary
-------------------
+Geographic Reader Boundary
+--------------------------
 
-Rust installs the exact reference cohort and Michigan dynamic foundation, then
-reads typed relations directly. Python has no game-state reader or compatibility
-projection. The consuming Rust paths check reference transport, hierarchy,
-ordering, and current restricted readers.
+Captured national geography identifies all 3,144 domestic counties. Foreign
+counterparts and dependencies have separate typed locations. Optional H3 and
+place detail must name a supplied, checked local capture. National county
+coverage does not imply fine geometry. The database keeps the complete campaign
+reference digest separate from the optional local H3 reference key.
+
+Rust reads those typed relations directly. Python has no game-state reader or
+compatibility projection. The consuming Rust paths check reference transport,
+hierarchy, ordering, and current restricted readers. Archive startup uses the
+captured county roster and registers place producers and their public grants
+only where captured detail exists. Sweeps reuse producer context. Missing local
+detail remains unavailable.
 
 Reference Data and Operator Tools
 ---------------------------------

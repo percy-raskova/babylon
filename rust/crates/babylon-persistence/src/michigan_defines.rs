@@ -2,8 +2,6 @@
 //! Canonical values, not TOML whitespace or a mutable file path, enter identity.
 
 use std::collections::BTreeMap;
-use std::io::Read;
-use std::path::Path;
 
 use babylon_kernel::clock::{DAYS_PER_TICK, WEEKS_PER_TICK};
 use serde::{Deserialize, Serialize};
@@ -163,17 +161,6 @@ pub(crate) struct MichiganDefines {
     pub organizer: OrganizerDefines,
 }
 impl MichiganDefines {
-    pub fn load(path: &Path) -> Result<Self, MichiganDefinesError> {
-        let file = std::fs::File::open(path).map_err(MichiganDefinesError::Read)?;
-        let mut bytes = Vec::new();
-        file.take((MAX_MICHIGAN_DEFINES_BYTES + 1) as u64)
-            .read_to_end(&mut bytes)
-            .map_err(MichiganDefinesError::Read)?;
-        if bytes.len() > MAX_MICHIGAN_DEFINES_BYTES {
-            return Err(MichiganDefinesError::TooLarge);
-        }
-        Self::parse(&String::from_utf8(bytes).map_err(MichiganDefinesError::Utf8)?)
-    }
     pub fn parse(text: &str) -> Result<Self, MichiganDefinesError> {
         if text.len() > MAX_MICHIGAN_DEFINES_BYTES {
             return Err(MichiganDefinesError::TooLarge);

@@ -10,6 +10,7 @@ pub use opening::{build_national_opening, NationalOpeningError};
 pub use identity::{
     household_enterprise_target, household_principal, resident_employer_target,
     source_workplace_target, ResidentWorkplaceSource, ResidentWorkplaceTarget,
+    NATIONAL_SCENARIO_ID,
 };
 pub use policy::{
     GameCommodity, GameDependencyProfile, GameEquipmentPolicy, GameFinancialPolicy,

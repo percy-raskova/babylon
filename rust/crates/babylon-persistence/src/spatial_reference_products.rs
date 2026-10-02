@@ -103,10 +103,10 @@ impl ReferenceProduct {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CountyIdentityRow {
     county_id: u32,
-    county_geoid: &'static str,
+    county_geoid: String,
     state_id: u16,
-    county_fips: &'static str,
-    county_name: &'static str,
+    county_fips: String,
+    county_name: String,
 }
 
 impl CountyIdentityRow {
@@ -116,8 +116,8 @@ impl CountyIdentityRow {
     }
 
     #[must_use]
-    pub const fn county_geoid(&self) -> &'static str {
-        self.county_geoid
+    pub fn county_geoid(&self) -> &str {
+        &self.county_geoid
     }
 
     #[must_use]
@@ -126,37 +126,37 @@ impl CountyIdentityRow {
     }
 
     #[must_use]
-    pub const fn county_fips(&self) -> &'static str {
-        self.county_fips
+    pub fn county_fips(&self) -> &str {
+        &self.county_fips
     }
 
     #[must_use]
-    pub const fn county_name(&self) -> &'static str {
-        self.county_name
+    pub fn county_name(&self) -> &str {
+        &self.county_name
     }
 }
 
 /// One canonical Michigan Census place subject.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PlaceIdentityRow {
-    place_geoid: &'static str,
-    state_fips: &'static str,
-    place_fips: &'static str,
-    place_ns: &'static str,
-    name: &'static str,
-    name_lsad: &'static str,
-    lsad: &'static str,
-    class_fp: &'static str,
-    principal_city_indicator: &'static str,
-    mtfcc: &'static str,
-    functional_status: &'static str,
+    place_geoid: String,
+    state_fips: String,
+    place_fips: String,
+    place_ns: String,
+    name: String,
+    name_lsad: String,
+    lsad: String,
+    class_fp: String,
+    principal_city_indicator: String,
+    mtfcc: String,
+    functional_status: String,
 }
 
 macro_rules! place_getter {
     ($name:ident, $field:ident) => {
         #[must_use]
-        pub const fn $name(&self) -> &'static str {
-            self.$field
+        pub fn $name(&self) -> &str {
+            &self.$field
         }
     };
 }
@@ -176,10 +176,10 @@ impl PlaceIdentityRow {
 }
 
 /// One fixed-scale land-fraction observation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct H3LandFractionRow {
     cell_id: H3CellId,
-    source_county_geoid: &'static str,
+    source_county_geoid: String,
     parts_per_million: u32,
 }
 
@@ -190,8 +190,8 @@ impl H3LandFractionRow {
     }
 
     #[must_use]
-    pub const fn source_county_geoid(&self) -> &'static str {
-        self.source_county_geoid
+    pub fn source_county_geoid(&self) -> &str {
+        &self.source_county_geoid
     }
 
     #[must_use]
@@ -220,10 +220,10 @@ impl H3CountRow {
 }
 
 /// One true county/H3 land-area slice.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CountyH3LandAreaRow {
     cell_id: H3CellId,
-    county_geoid: &'static str,
+    county_geoid: String,
     land_area_m2: u64,
 }
 
@@ -234,8 +234,8 @@ impl CountyH3LandAreaRow {
     }
 
     #[must_use]
-    pub const fn county_geoid(&self) -> &'static str {
-        self.county_geoid
+    pub fn county_geoid(&self) -> &str {
+        &self.county_geoid
     }
 
     #[must_use]
@@ -245,11 +245,11 @@ impl CountyH3LandAreaRow {
 }
 
 /// One true place/county/H3 land-area slice and its fixed denominator.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CountyPlaceH3LandAreaRow {
     cell_id: H3CellId,
-    county_geoid: &'static str,
-    place_geoid: &'static str,
+    county_geoid: String,
+    place_geoid: String,
     place_land_area_m2: u64,
     cell_mi_land_area_m2: u64,
     place_land_area_share_ppb: u32,
@@ -262,13 +262,13 @@ impl CountyPlaceH3LandAreaRow {
     }
 
     #[must_use]
-    pub const fn county_geoid(&self) -> &'static str {
-        self.county_geoid
+    pub fn county_geoid(&self) -> &str {
+        &self.county_geoid
     }
 
     #[must_use]
-    pub const fn place_geoid(&self) -> &'static str {
-        self.place_geoid
+    pub fn place_geoid(&self) -> &str {
+        &self.place_geoid
     }
 
     #[must_use]
@@ -409,7 +409,40 @@ impl std::error::Error for SpatialReferenceProductsError {}
 pub fn michigan_spatial_reference_products(
     cohort: &H3ReferenceCohort,
 ) -> Result<SpatialReferenceProducts, SpatialReferenceProductsError> {
-    let fixture = fixture_bytes();
+    decode_products(
+        fixture_bytes(),
+        cohort.receipt().ref_digest(),
+        &direct_resolution_seven_cells(cohort),
+    )
+}
+
+impl SpatialReferenceProducts {
+    /// Decode supplied immutable detail against the captured Michigan H3 source.
+    /// # Errors
+    /// Refuses changed bytes, source-cohort disagreement or invalid spatial rows.
+    pub fn decode_captured(
+        bytes: &[u8],
+        detail: &babylon_tick::h3_runtime::MichiganDynamicHexFoundation,
+    ) -> Result<Self, SpatialReferenceProductsError> {
+        let cells = detail
+            .rows()
+            .iter()
+            .filter(|row| row.cell_id().resolution() == 7)
+            .map(babylon_tick::h3_runtime::MichiganDynamicHexFoundationRow::cell_id)
+            .collect();
+        decode_products(
+            bytes,
+            RefDigest::from_bytes(detail.base_reference_cohort_digest()),
+            &cells,
+        )
+    }
+}
+
+fn decode_products(
+    fixture: &[u8],
+    expected_reference: RefDigest,
+    direct_cells: &BTreeSet<H3CellId>,
+) -> Result<SpatialReferenceProducts, SpatialReferenceProductsError> {
     if sha256_of(fixture) != EXPECTED_FIXTURE_DIGEST {
         return Err(SpatialReferenceProductsError::FixtureDigest);
     }
@@ -422,11 +455,10 @@ pub fn michigan_spatial_reference_products(
         return Err(SpatialReferenceProductsError::FixtureVersion { actual: version });
     }
     let ref_digest = RefDigest::from_bytes(reader.array::<32>("ref_digest")?);
-    if ref_digest != cohort.receipt().ref_digest() {
+    if ref_digest != expected_reference {
         return Err(SpatialReferenceProductsError::FixtureRefDigest);
     }
     let counts = read_counts(&mut reader)?;
-    let direct_cells = direct_resolution_seven_cells(cohort);
     let counties = read_counties(&mut reader, counts[0])?;
     let county_geoids = counties
         .iter()
@@ -437,8 +469,7 @@ pub fn michigan_spatial_reference_products(
         .iter()
         .map(PlaceIdentityRow::place_geoid)
         .collect::<BTreeSet<_>>();
-    let land_fractions =
-        read_land_fractions(&mut reader, counts[2], &direct_cells, &county_geoids)?;
+    let land_fractions = read_land_fractions(&mut reader, counts[2], direct_cells, &county_geoids)?;
     if land_fractions.len() != direct_cells.len() {
         return Err(SpatialReferenceProductsError::InvalidSubject {
             section: "land_fractions",
@@ -448,18 +479,18 @@ pub fn michigan_spatial_reference_products(
         &mut reader,
         counts[3],
         "population_counts",
-        &direct_cells,
+        direct_cells,
         10_066_869,
     )?;
     let workplace_counts = read_counts_section(
         &mut reader,
         counts[4],
         "workplace_counts",
-        &direct_cells,
+        direct_cells,
         3_931_809,
     )?;
     let (county_land_areas, denominators, county_keys) =
-        read_county_land_areas(&mut reader, counts[5], &direct_cells, &county_geoids)?;
+        read_county_land_areas(&mut reader, counts[5], direct_cells, &county_geoids)?;
     let county_place_land_areas = read_county_place_land_areas(
         &mut reader,
         counts[6],
@@ -485,7 +516,7 @@ pub fn michigan_spatial_reference_products(
     })
 }
 
-fn fixture_bytes() -> &'static [u8] {
+pub(crate) fn fixture_bytes() -> &'static [u8] {
     FIXTURE
         .get_or_init(|| {
             let capacity = FIXTURE_PARTS.iter().map(|part| part.len()).sum();
@@ -499,7 +530,7 @@ fn fixture_bytes() -> &'static [u8] {
 }
 
 fn read_counts(
-    reader: &mut FixtureReader<'static>,
+    reader: &mut FixtureReader<'_>,
 ) -> Result<[usize; 7], SpatialReferenceProductsError> {
     let mut counts = [0_usize; 7];
     for (index, expected) in EXPECTED_COUNTS.into_iter().enumerate() {
@@ -532,7 +563,7 @@ fn direct_resolution_seven_cells(cohort: &H3ReferenceCohort) -> BTreeSet<H3CellI
 }
 
 fn read_counties(
-    reader: &mut FixtureReader<'static>,
+    reader: &mut FixtureReader<'_>,
     count: usize,
 ) -> Result<Vec<CountyIdentityRow>, SpatialReferenceProductsError> {
     let mut rows = Vec::with_capacity(count);
@@ -541,65 +572,69 @@ fn read_counties(
     for _ in 0..count {
         let row = CountyIdentityRow {
             county_id: reader.u32("county_id")?,
-            county_geoid: reader.ascii(5, "county_geoid")?,
+            county_geoid: reader.ascii(5, "county_geoid")?.to_owned(),
             state_id: reader.u16("state_id")?,
-            county_fips: reader.ascii(3, "county_fips")?,
-            county_name: reader.framed_text("county_name")?,
+            county_fips: reader.ascii(3, "county_fips")?.to_owned(),
+            county_name: reader.framed_text("county_name")?.to_owned(),
         };
         if row.county_id == 0
             || row.state_id == 0
-            || row.county_geoid.get(2..) != Some(row.county_fips)
-            || prior_geoid.is_some_and(|prior| prior >= row.county_geoid)
+            || row.county_geoid.get(2..) != Some(row.county_fips.as_str())
+            || prior_geoid
+                .as_ref()
+                .is_some_and(|prior| prior >= &row.county_geoid)
             || !county_ids.insert(row.county_id)
         {
             return Err(SpatialReferenceProductsError::InvalidSubject {
                 section: "counties",
             });
         }
-        prior_geoid = Some(row.county_geoid);
+        prior_geoid = Some(row.county_geoid.clone());
         rows.push(row);
     }
     Ok(rows)
 }
 
 fn read_places(
-    reader: &mut FixtureReader<'static>,
+    reader: &mut FixtureReader<'_>,
     count: usize,
 ) -> Result<Vec<PlaceIdentityRow>, SpatialReferenceProductsError> {
     let mut rows = Vec::with_capacity(count);
     let mut prior_geoid = None;
     for _ in 0..count {
         let row = PlaceIdentityRow {
-            place_geoid: reader.ascii(7, "place_geoid")?,
-            state_fips: reader.ascii(2, "state_fips")?,
-            place_fips: reader.ascii(5, "place_fips")?,
-            place_ns: reader.ascii(8, "place_ns")?,
-            name: reader.framed_text("place name")?,
-            name_lsad: reader.framed_text("place name_lsad")?,
-            lsad: reader.ascii(2, "lsad")?,
-            class_fp: reader.ascii(2, "class_fp")?,
-            principal_city_indicator: reader.ascii(1, "principal_city_indicator")?,
-            mtfcc: reader.ascii(5, "mtfcc")?,
-            functional_status: reader.ascii(1, "functional_status")?,
+            place_geoid: reader.ascii(7, "place_geoid")?.to_owned(),
+            state_fips: reader.ascii(2, "state_fips")?.to_owned(),
+            place_fips: reader.ascii(5, "place_fips")?.to_owned(),
+            place_ns: reader.ascii(8, "place_ns")?.to_owned(),
+            name: reader.framed_text("place name")?.to_owned(),
+            name_lsad: reader.framed_text("place name_lsad")?.to_owned(),
+            lsad: reader.ascii(2, "lsad")?.to_owned(),
+            class_fp: reader.ascii(2, "class_fp")?.to_owned(),
+            principal_city_indicator: reader.ascii(1, "principal_city_indicator")?.to_owned(),
+            mtfcc: reader.ascii(5, "mtfcc")?.to_owned(),
+            functional_status: reader.ascii(1, "functional_status")?.to_owned(),
         };
         if row.state_fips != "26"
-            || row.place_geoid.get(..2) != Some(row.state_fips)
-            || row.place_geoid.get(2..) != Some(row.place_fips)
-            || prior_geoid.is_some_and(|prior| prior >= row.place_geoid)
+            || row.place_geoid.get(..2) != Some(row.state_fips.as_str())
+            || row.place_geoid.get(2..) != Some(row.place_fips.as_str())
+            || prior_geoid
+                .as_ref()
+                .is_some_and(|prior| prior >= &row.place_geoid)
         {
             return Err(SpatialReferenceProductsError::InvalidSubject { section: "places" });
         }
-        prior_geoid = Some(row.place_geoid);
+        prior_geoid = Some(row.place_geoid.clone());
         rows.push(row);
     }
     Ok(rows)
 }
 
 fn read_land_fractions(
-    reader: &mut FixtureReader<'static>,
+    reader: &mut FixtureReader<'_>,
     count: usize,
     direct_cells: &BTreeSet<H3CellId>,
-    county_geoids: &BTreeSet<&'static str>,
+    county_geoids: &BTreeSet<&str>,
 ) -> Result<Vec<H3LandFractionRow>, SpatialReferenceProductsError> {
     let mut rows = Vec::with_capacity(count);
     let mut prior = None;
@@ -607,12 +642,12 @@ fn read_land_fractions(
         let cell_id = reader.cell("land_fraction cell")?;
         let row = H3LandFractionRow {
             cell_id,
-            source_county_geoid: reader.ascii(5, "source_county_geoid")?,
+            source_county_geoid: reader.ascii(5, "source_county_geoid")?.to_owned(),
             parts_per_million: reader.u32("land_fraction_ppm")?,
         };
         require_direct(cell_id, "land_fractions", direct_cells)?;
         if row.parts_per_million > 1_000_000
-            || !county_geoids.contains(row.source_county_geoid)
+            || !county_geoids.contains(row.source_county_geoid.as_str())
             || prior.is_some_and(|previous| previous >= cell_id)
         {
             return Err(SpatialReferenceProductsError::InvalidMeasure {
@@ -626,7 +661,7 @@ fn read_land_fractions(
 }
 
 fn read_counts_section(
-    reader: &mut FixtureReader<'static>,
+    reader: &mut FixtureReader<'_>,
     count: usize,
     section: &'static str,
     direct_cells: &BTreeSet<H3CellId>,
@@ -659,14 +694,14 @@ fn read_counts_section(
 type CountyLandRead = (
     Vec<CountyH3LandAreaRow>,
     BTreeMap<H3CellId, u64>,
-    BTreeSet<(H3CellId, &'static str)>,
+    BTreeSet<(H3CellId, String)>,
 );
 
 fn read_county_land_areas(
-    reader: &mut FixtureReader<'static>,
+    reader: &mut FixtureReader<'_>,
     count: usize,
     direct_cells: &BTreeSet<H3CellId>,
-    county_geoids: &BTreeSet<&'static str>,
+    county_geoids: &BTreeSet<&str>,
 ) -> Result<CountyLandRead, SpatialReferenceProductsError> {
     let mut rows = Vec::with_capacity(count);
     let mut prior = None;
@@ -676,20 +711,20 @@ fn read_county_land_areas(
     for _ in 0..count {
         let row = CountyH3LandAreaRow {
             cell_id: reader.cell("county_land_areas")?,
-            county_geoid: reader.ascii(5, "county_geoid")?,
+            county_geoid: reader.ascii(5, "county_geoid")?.to_owned(),
             land_area_m2: reader.u64("land_area_m2")?,
         };
         require_direct(row.cell_id, "county_land_areas", direct_cells)?;
-        let key = (row.cell_id, row.county_geoid);
+        let key = (row.cell_id, row.county_geoid.clone());
         if row.land_area_m2 == 0
-            || !county_geoids.contains(row.county_geoid)
-            || prior.is_some_and(|previous| previous >= key)
+            || !county_geoids.contains(row.county_geoid.as_str())
+            || prior.as_ref().is_some_and(|previous| previous >= &key)
         {
             return Err(SpatialReferenceProductsError::InvalidMeasure {
                 section: "county_land_areas",
             });
         }
-        prior = Some(key);
+        prior = Some(key.clone());
         keys.insert(key);
         let denominator = denominators.entry(row.cell_id).or_insert(0_u64);
         *denominator = denominator.checked_add(row.land_area_m2).ok_or(
@@ -713,10 +748,10 @@ fn read_county_land_areas(
 }
 
 fn read_county_place_land_areas(
-    reader: &mut FixtureReader<'static>,
+    reader: &mut FixtureReader<'_>,
     count: usize,
-    county_keys: &BTreeSet<(H3CellId, &'static str)>,
-    place_geoids: &BTreeSet<&'static str>,
+    county_keys: &BTreeSet<(H3CellId, String)>,
+    place_geoids: &BTreeSet<&str>,
     denominators: &BTreeMap<H3CellId, u64>,
 ) -> Result<Vec<CountyPlaceH3LandAreaRow>, SpatialReferenceProductsError> {
     let mut rows = Vec::with_capacity(count);
@@ -726,13 +761,17 @@ fn read_county_place_land_areas(
     for _ in 0..count {
         let row = CountyPlaceH3LandAreaRow {
             cell_id: reader.cell("county_place_land_areas")?,
-            county_geoid: reader.ascii(5, "county_geoid")?,
-            place_geoid: reader.ascii(7, "place_geoid")?,
+            county_geoid: reader.ascii(5, "county_geoid")?.to_owned(),
+            place_geoid: reader.ascii(7, "place_geoid")?.to_owned(),
             place_land_area_m2: reader.u64("place_land_area_m2")?,
             cell_mi_land_area_m2: reader.u64("cell_mi_land_area_m2")?,
             place_land_area_share_ppb: reader.u32("place_land_area_share_ppb")?,
         };
-        let key = (row.cell_id, row.county_geoid, row.place_geoid);
+        let key = (
+            row.cell_id,
+            row.county_geoid.clone(),
+            row.place_geoid.clone(),
+        );
         let expected_denominator = denominators.get(&row.cell_id).copied();
         let numerator = u128::from(row.place_land_area_m2)
             .checked_mul(1_000_000_000)
@@ -748,15 +787,15 @@ fn read_county_place_land_areas(
             || row.place_land_area_m2 > row.cell_mi_land_area_m2
             || expected_denominator != Some(row.cell_mi_land_area_m2)
             || expected_share != Some(row.place_land_area_share_ppb)
-            || !county_keys.contains(&(row.cell_id, row.county_geoid))
-            || !place_geoids.contains(row.place_geoid)
-            || prior.is_some_and(|previous| previous >= key)
+            || !county_keys.contains(&(row.cell_id, row.county_geoid.clone()))
+            || !place_geoids.contains(row.place_geoid.as_str())
+            || prior.as_ref().is_some_and(|previous| previous >= &key)
         {
             return Err(SpatialReferenceProductsError::InvalidMeasure {
                 section: "county_place_land_areas",
             });
         }
-        prior = Some(key);
+        prior = Some(key.clone());
         let share_sum = share_sums.entry(row.cell_id).or_insert(0_u64);
         *share_sum = share_sum
             .checked_add(u64::from(row.place_land_area_share_ppb))

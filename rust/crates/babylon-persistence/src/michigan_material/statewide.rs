@@ -5,7 +5,7 @@ use super::{
     MichiganMaterialCatalog, MichiganMaterialCorridor, MichiganMaterialError, MichiganMaterialGood,
     MichiganMaterialInput, MichiganMaterialPath, MichiganMaterialProcess, MichiganMaterialRoute,
     MichiganMaterialSite, MichiganMerchant, MichiganNormalizedContent, MichiganPhysicalNetwork,
-    MichiganSiteRole, MichiganWorkforceSeed, MAX_MICHIGAN_CAPTURED_CONTENT_BYTES,
+    MichiganSiteRole, MichiganWorkforceSeed, MAX_MICHIGAN_SOURCE_BYTES,
 };
 use crate::michigan_defines::{CommodityDisposition, CommodityUnit};
 use serde::Deserialize;
@@ -150,12 +150,12 @@ fn role(value: &str) -> Result<MichiganSiteRole, MichiganDefinesError> {
         _ => Err(error()),
     }
 }
-fn load_roster() -> Result<Roster, MichiganDefinesError> {
-    if crate::michigan_economy::digest_hex(&sha256_of(ROSTER)) != ROSTER_SHA256 {
+fn load_roster(bytes: &[u8]) -> Result<Roster, MichiganDefinesError> {
+    if crate::michigan_economy::digest_hex(&sha256_of(bytes)) != ROSTER_SHA256 {
         return Err(error());
     }
     let mut decoded = Vec::new();
-    flate2::read::GzDecoder::new(ROSTER)
+    flate2::read::GzDecoder::new(bytes)
         .take(4_194_305)
         .read_to_end(&mut decoded)
         .map_err(|_| error())?;
@@ -191,7 +191,32 @@ pub(super) fn compile(
     physical: MichiganPhysicalNetwork,
     interventions: Vec<MichiganIntervention>,
 ) -> Result<MichiganMaterialCatalog, MichiganDefinesError> {
-    if bytes.len() > MAX_MICHIGAN_CAPTURED_CONTENT_BYTES {
+    use crate::economic_catalog::{SourceArtifact, SourceArtifactKind as K};
+    let mut context = super::captured::MichiganObservedSources::fresh()?;
+    context.artifacts.extend([
+        SourceArtifact::capture(K::MichiganDefines, text.as_bytes().to_vec()),
+        SourceArtifact::capture(K::MichiganCommodityRoster, ROSTER.to_vec()),
+        SourceArtifact::capture(K::MichiganQualificationJson, bytes.to_vec()),
+        SourceArtifact::capture(
+            K::MichiganPhysicalNetworkJson,
+            serde_json::to_vec(&physical).map_err(|_| error())?,
+        ),
+        SourceArtifact::capture(
+            K::MichiganControlOverrides,
+            serde_json::to_vec(&interventions).map_err(|_| error())?,
+        ),
+    ]);
+    compile_with_sources(text, bytes, physical, interventions, ROSTER, &context)
+}
+pub(super) fn compile_with_sources(
+    text: &str,
+    bytes: &[u8],
+    physical: MichiganPhysicalNetwork,
+    interventions: Vec<MichiganIntervention>,
+    roster_bytes: &[u8],
+    observed: &super::captured::MichiganObservedSources<'_>,
+) -> Result<MichiganMaterialCatalog, MichiganDefinesError> {
+    if bytes.len() > MAX_MICHIGAN_SOURCE_BYTES {
         return Err(error());
     }
     let defines = MichiganDefines::parse(text)?;
@@ -207,10 +232,10 @@ pub(super) fn compile(
     {
         return Err(error());
     }
-    let roster = load_roster()?;
+    let roster = load_roster(roster_bytes)?;
     let mut c = regional::blank(&defines);
     "finite_county_final_demand".clone_into(&mut c.terminal_output_disposition);
-    append_owners(&mut c, &defines, &qualification, &roster)?;
+    append_owners(&mut c, &defines, &qualification, &roster, observed.sectors)?;
     append_industry(&mut c, roster, &qualification.owners)?;
     for (name, g) in &defines.commodity {
         c.goods.push(MichiganMaterialGood {
@@ -235,11 +260,12 @@ pub(super) fn compile(
     append_routes(&mut c, &defines, &qualification.orders, &physical)?;
     append_merchants_and_final_demand(&mut c, &defines, &qualification.retail_final_demands)?;
     c.physical_network = Some(physical);
-    MichiganMaterialCatalog::from_normalized(
+    MichiganMaterialCatalog::from_normalized_with_sources(
         defines,
         c,
         MichiganDeliveryPreset::StatewideBaseline,
         interventions,
+        observed,
     )
 }
 
@@ -248,6 +274,7 @@ fn append_owners(
     defines: &MichiganDefines,
     qualification: &Qualification,
     roster: &Roster,
+    sectors: &crate::michigan_sectors::MichiganCountySectors,
 ) -> Result<(), MichiganDefinesError> {
     if qualification.owners.len() != roster.actors.len() {
         return Err(error());
@@ -275,8 +302,12 @@ fn append_owners(
         {
             return Err(error());
         }
-        let owner_source =
-            regional::owner_source(&owner.county_geoid, &owner.sector_code, ROSTER_SHA256)?;
+        let owner_source = regional::owner_source_from_rows(
+            &owner.county_geoid,
+            &owner.sector_code,
+            ROSTER_SHA256,
+            sectors,
+        )?;
         if owner_source.county_source_file != source.file
             || owner_source.county_source_sha256 != source.sha256
         {

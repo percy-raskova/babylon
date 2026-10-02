@@ -35,8 +35,6 @@ use crate::semantic_batches::{
 };
 use crate::semantic_codec::SemanticCodecError;
 
-const REFERENCE_BUNDLE_DOMAIN: &[u8] = b"babylon.h3.reference-bundle-composite.v1\0";
-
 /// A checked refusal while deriving durable inputs from one identified tick.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RustPersistenceRuntimeError {
@@ -79,6 +77,9 @@ pub enum RustPersistenceRuntimeError {
     },
     /// A tick-owned exact source could not be recomposed or copied.
     ReplaySource,
+    /// The singular current source envelope refused exact framing or source semantics.
+    FoundationContent(crate::FoundationContentError),
+    EconomicCatalog(crate::economic_catalog::EconomicCatalogError),
     /// A delta checkpoint cannot be selected as a restart root.
     DeltaCheckpointNotRestartRoot,
     /// A governed semantic row codec refused its report-owned input.
@@ -375,12 +376,25 @@ pub fn hydrate_campaign_foundation(
 }
 
 /// Rebuild the exact stored tick-zero graph and verify all captured components.
-/// The immutable H3 reference remains the existing admitted reference; scenario,
-/// rules, defines, session identity and seed come from the durable foundation.
+/// Economic captures restore their explicit county and optional local-detail
+/// authority. Authored controls retain their admitted Michigan reference; all
+/// paths restore rules, session identity and seed from the durable foundation.
 pub(crate) fn reconstruct_graph_foundation_session(
     foundation: &CampaignFoundation,
 ) -> Result<ReplayTickSession<HypergraphStore>, RustPersistenceRuntimeError> {
     let bundle = foundation.content_bundle();
+    if let Some(catalog) = bundle.economic_catalog() {
+        let session = catalog
+            .new_graph_session(
+                foundation.replay_session_identity().clone(),
+                foundation.rng_seed(),
+                foundation.content_digest().clone(),
+                foundation.reference_digest(),
+            )
+            .map_err(RustPersistenceRuntimeError::EconomicCatalog)?;
+        foundation.verify_reconstructed_session(&session)?;
+        return Ok(session);
+    }
     let scenario = std::str::from_utf8(bundle.scenario_source_bytes())
         .map_err(|_| RustPersistenceRuntimeError::ReplaySource)?;
     let prelude = bundle
@@ -406,17 +420,7 @@ pub(crate) fn reconstruct_graph_foundation_session(
         material,
     )
     .map_err(|_| RustPersistenceRuntimeError::ReplayTick)?;
-    let verification_bundle = FoundationContentBundle::try_new(
-        scenario,
-        prelude,
-        rules,
-        bundle.defines_bytes(),
-        bundle.reference_bundle_manifest_bytes(),
-    )?;
-    let verification = CampaignFoundation::capture(&session, verification_bundle)?;
-    if verification.canonical_bytes() != foundation.canonical_bytes() {
-        return Err(RustPersistenceRuntimeError::CampaignConflict);
-    }
+    foundation.verify_reconstructed_session(&session)?;
     Ok(session)
 }
 
@@ -428,8 +432,7 @@ pub(crate) fn hydrate_campaign_foundation_client(
         .query_opt(
             "SELECT stable_graph, world_registers, resolver_manifest, prepared_environment, \
                     replay_session_id, rng_seed, defines_hash, rules_hash, ref_digest, \
-                    scenario_source, prelude_source, rule_source, defines_bytes, \
-                    reference_manifest_bytes, foundation_sha256 \
+                    content_bundle_bytes, foundation_sha256 \
              FROM babylon_state.campaign_foundation \
              WHERE campaign_id = $1::uuid",
             &[campaign_id.as_uuid()],
@@ -445,20 +448,9 @@ pub(crate) fn hydrate_campaign_foundation_client(
     let defines_hash = decode_digest_column(&row, 6)?;
     let rules_hash = decode_digest_column(&row, 7)?;
     let reference_digest = decode_digest_column(&row, 8)?;
-    let scenario_source: String = decode_runtime_column(&row, 9)?;
-    let prelude_source: Option<String> = decode_runtime_column(&row, 10)?;
-    let rule_source: String = decode_runtime_column(&row, 11)?;
-    let defines_bytes: Vec<u8> = decode_runtime_column(&row, 12)?;
-    let reference_manifest: Vec<u8> = decode_runtime_column(&row, 13)?;
-    let foundation_sha256 = decode_digest_column(&row, 14)?;
-    crate::territory_county_map::verify_territory_county_map(
-        client,
-        campaign_id,
-        &scenario_source,
-        prelude_source.as_deref(),
-    )
-    .map_err(RustPersistenceRuntimeError::TerritoryCountyMap)?;
-    CampaignFoundation::from_persisted(
+    let content_bundle_bytes: Vec<u8> = decode_runtime_column(&row, 9)?;
+    let foundation_sha256 = decode_digest_column(&row, 10)?;
+    let foundation = CampaignFoundation::from_persisted(
         stable_graph,
         world_registers,
         resolver_manifest,
@@ -468,13 +460,44 @@ pub(crate) fn hydrate_campaign_foundation_client(
         defines_hash,
         rules_hash,
         reference_digest,
-        &scenario_source,
-        prelude_source.as_deref(),
-        &rule_source,
-        &defines_bytes,
-        &reference_manifest,
+        &content_bundle_bytes,
         foundation_sha256,
+    )?;
+    let bundle = foundation.content_bundle();
+    crate::territory_county_map::verify_territory_county_map(
+        client,
+        campaign_id,
+        bundle.territory_county_map()?,
     )
+    .map_err(RustPersistenceRuntimeError::TerritoryCountyMap)?;
+    verify_campaign_geography(client, campaign_id, bundle)?;
+    Ok(foundation)
+}
+
+fn verify_campaign_geography(
+    client: &mut impl GenericClient,
+    campaign_id: CampaignId,
+    bundle: &FoundationContentBundle,
+) -> Result<(), RustPersistenceRuntimeError> {
+    let row = client
+        .query_opt(
+            "SELECT ref_digest, geography_scope, local_h3_ref_digest FROM babylon_state.campaign \
+         WHERE campaign_id = $1::uuid",
+            &[campaign_id.as_uuid()],
+        )
+        .map_err(|error| RustPersistenceRuntimeError::postgres("read campaign geography", &error))?
+        .ok_or(RustPersistenceRuntimeError::FoundationAbsent)?;
+    let reference = decode_digest_column(&row, 0)?;
+    let scope: String = decode_runtime_column(&row, 1)?;
+    let local: Option<Vec<u8>> = decode_runtime_column(&row, 2)?;
+    let (expected_scope, expected_local) = bundle.geographic_binding()?;
+    if reference != *bundle.reference_digest().as_bytes()
+        || scope != expected_scope
+        || local.as_deref() != expected_local.as_ref().map(<[u8; 32]>::as_slice)
+    {
+        return Err(RustPersistenceRuntimeError::CampaignConflict);
+    }
+    Ok(())
 }
 
 pub(crate) fn verify_runtime_schema(
@@ -509,48 +532,36 @@ pub(crate) fn insert_campaign_foundation_rows(
     let replay_session = std::str::from_utf8(foundation.replay_session_identity().as_bytes())
         .map_err(|_| RustPersistenceRuntimeError::ReplaySource)?;
     let bundle = foundation.content_bundle();
-    let base_reference_digest = base_reference_digest(
-        bundle.reference_bundle_manifest_bytes(),
-        foundation.reference_digest(),
-    )?;
+    let (geography_scope, local_h3_ref_digest) = bundle.geographic_binding()?;
     client
         .execute(
             "INSERT INTO babylon_state.campaign \
              (campaign_id, replay_layout_version, rng_layout_version, replay_session_id, rng_seed, \
-              defines_hash, rules_hash, ref_digest) \
-             VALUES ($1, 1, 2, $2, $3, $4, $5, $6) ON CONFLICT (campaign_id) DO NOTHING",
+              defines_hash, rules_hash, ref_digest, geography_scope, local_h3_ref_digest) \
+             VALUES ($1, 1, 2, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT (campaign_id) DO NOTHING",
             &[
                 campaign_id.as_uuid(),
                 &replay_session,
                 &i64::from_be_bytes(foundation.rng_seed().to_be_bytes()),
                 &&foundation.content_digest().defines_hash[..],
                 &&foundation.content_digest().rules_hash[..],
-                &&base_reference_digest[..],
+                &foundation.reference_digest().as_bytes().as_slice(),
+                &geography_scope,
+                &local_h3_ref_digest.as_ref().map(<[u8; 32]>::as_slice),
             ],
         )
         .map_err(|error| {
             RustPersistenceRuntimeError::postgres("insert campaign identity", &error)
         })?;
-    let scenario = std::str::from_utf8(bundle.scenario_source_bytes())
-        .map_err(|_| RustPersistenceRuntimeError::ReplaySource)?;
-    let prelude = bundle
-        .prelude_source_bytes()
-        .map(std::str::from_utf8)
-        .transpose()
-        .map_err(|_| RustPersistenceRuntimeError::ReplaySource)?;
-    let rules = std::str::from_utf8(bundle.rule_source_bytes())
-        .map_err(|_| RustPersistenceRuntimeError::ReplaySource)?;
-    let territory_county_map =
-        crate::territory_county_map::extract_declared_territory_county_map(scenario, prelude)
-            .map_err(RustPersistenceRuntimeError::TerritoryCountyMap)?;
+    let territory_county_map = bundle.territory_county_map()?;
     let foundation_sha256 = sha256_of(foundation.canonical_bytes());
     client
         .execute(
             "INSERT INTO babylon_state.campaign_foundation \
              (campaign_id, stable_graph, world_registers, resolver_manifest, prepared_environment, \
-              replay_session_id, rng_seed, defines_hash, rules_hash, ref_digest, scenario_source, \
-              prelude_source, rule_source, defines_bytes, reference_manifest_bytes, foundation_sha256) \
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) \
+              replay_session_id, rng_seed, defines_hash, rules_hash, ref_digest, \
+              content_bundle_bytes, foundation_sha256) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) \
              ON CONFLICT (campaign_id) DO NOTHING",
             &[
                 campaign_id.as_uuid(),
@@ -563,11 +574,7 @@ pub(crate) fn insert_campaign_foundation_rows(
                 &&foundation.content_digest().defines_hash[..],
                 &&foundation.content_digest().rules_hash[..],
                 &foundation.reference_digest().as_bytes().as_slice(),
-                &scenario,
-                &prelude,
-                &rules,
-                &bundle.defines_bytes(),
-                &bundle.reference_bundle_manifest_bytes(),
+                &bundle.canonical_bytes(),
                 &&foundation_sha256[..],
             ],
         )
@@ -594,28 +601,13 @@ pub(crate) fn insert_campaign_foundation_rows(
         &territory_county_map,
     )
     .map_err(RustPersistenceRuntimeError::TerritoryCountyMap)?;
-    crate::archive_foundation_grants::seed_foundation_grants(client, campaign_id)
-        .map_err(RustPersistenceRuntimeError::FoundationGrants)?;
-    Ok(())
-}
-
-fn base_reference_digest(
-    reference_manifest: &[u8],
-    expected_bundle_digest: babylon_kernel::tick_content_hash::RefDigest,
-) -> Result<[u8; 32], RustPersistenceRuntimeError> {
-    let expected_len = REFERENCE_BUNDLE_DOMAIN
-        .len()
-        .checked_add(64)
-        .ok_or(RustPersistenceRuntimeError::ReplaySource)?;
-    if reference_manifest.len() != expected_len
-        || !reference_manifest.starts_with(REFERENCE_BUNDLE_DOMAIN)
-        || sha256_of(reference_manifest) != *expected_bundle_digest.as_bytes()
-    {
-        return Err(RustPersistenceRuntimeError::ReplaySource);
+    if let Some(catalog) = bundle.economic_catalog() {
+        crate::archive_foundation_grants::seed_catalog_grants(client, campaign_id, catalog)
+    } else {
+        crate::archive_foundation_grants::seed_foundation_grants(client, campaign_id)
     }
-    reference_manifest[REFERENCE_BUNDLE_DOMAIN.len()..REFERENCE_BUNDLE_DOMAIN.len() + 32]
-        .try_into()
-        .map_err(|_| RustPersistenceRuntimeError::ReplaySource)
+    .map_err(RustPersistenceRuntimeError::FoundationGrants)?;
+    Ok(())
 }
 
 pub(crate) fn insert_typed_tick_pre_marker_rows(

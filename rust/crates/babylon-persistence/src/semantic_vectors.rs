@@ -14,8 +14,8 @@ const MAX_VECTOR_ROWS: usize = 128;
 const MAX_VECTOR_LINE_BYTES: usize = 65_536;
 const GOVERNED_VECTOR_ROWS: usize = 54;
 const GOVERNED_VECTOR_SHA256: [u8; 32] = [
-    0xf7, 0x1c, 0x94, 0xc0, 0x87, 0xdb, 0xeb, 0x3b, 0xc5, 0xc0, 0x2d, 0x77, 0x97, 0x7a, 0x9c, 0xf6,
-    0x39, 0xfd, 0x03, 0x6e, 0xd3, 0x5d, 0xac, 0xc9, 0x10, 0x31, 0x30, 0xa3, 0xa4, 0xce, 0xf2, 0x93,
+    0x5c, 0x8c, 0x79, 0x84, 0x7e, 0xae, 0xa3, 0x41, 0xd5, 0x7d, 0x89, 0x81, 0x4f, 0x29, 0xf8, 0xc7,
+    0x92, 0xcc, 0xf9, 0x6c, 0xd5, 0x29, 0xab, 0x27, 0x06, 0x53, 0x89, 0x58, 0x31, 0xab, 0x33, 0x3e,
 ];
 /// One bounded semantic-vector verification failure.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -560,6 +560,7 @@ fn execute_foundation(
         bundle,
         &[
             "layout",
+            "kind",
             "scenario_source_bytes",
             "prelude_source_bytes",
             "rule_source_bytes",
@@ -567,8 +568,11 @@ fn execute_foundation(
             "reference_bundle_manifest_hex",
         ],
     )?;
-    if integer_u32(field(bundle, "layout")?, "content bundle layout")? != 2 {
+    if integer_u32(field(bundle, "layout")?, "content bundle layout")? != 3 {
         return semantic(id, "content bundle layout");
+    }
+    if string(bundle, "kind")? != "authored_bscn" {
+        return semantic(id, "content bundle kind");
     }
     let defines = hex_bytes(string(bundle, "defines_hex")?, "defines")?;
     let manifest = hex_bytes(

@@ -10,6 +10,9 @@ use babylon_kernel::{
 };
 use babylon_material_circuit::{FinalDemandPrincipalId, SiteId, StaffingPoolId};
 
+/// Qualified BSCN scope shared by every national graph subject.
+pub const NATIONAL_SCENARIO_ID: &str = "economy/national-world";
+
 /// The observation supporting activity, or a named Designed placement.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ResidentWorkplaceSource {
@@ -150,7 +153,7 @@ fn target(
         site_id,
         pool_id: StaffingPoolId::from_bytes(sha256_of(&pool)),
         workplace: StableElementKey::Node {
-            scenario: "national-world".to_owned(),
+            scenario: NATIONAL_SCENARIO_ID.to_owned(),
             local_name,
         },
         location,

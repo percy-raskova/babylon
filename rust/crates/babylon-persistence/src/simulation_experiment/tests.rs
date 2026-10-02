@@ -1,5 +1,4 @@
 use super::*;
-use crate::sector_bundle::{michigan_sector_bundles, SectorBundle};
 
 pub(super) fn spec(profile: ExperimentProfile) -> SimulationExperimentV1 {
     let (epoch, starting_snapshot) = match profile {
@@ -92,30 +91,22 @@ fn continuous_player_duration_is_distinct_from_finite_diagnostic_bundles() {
         .regional_catalog()
         .unwrap();
     assert_eq!(catalog.duration().final_period(), Some(130));
-    let captured: serde_json::Value = serde_json::from_slice(catalog.defines_bytes()).unwrap();
-    assert_eq!(captured["defines"]["DURATION"]["final_period"], 130);
     assert!(
         crate::michigan_content::MichiganContentPreset::FourWeekStandard
             .create_foundation(&catalog)
             .is_err()
     );
-    for bundle in michigan_sector_bundles(&catalog).unwrap() {
-        assert_eq!(bundle.duration().final_period(), Some(130));
-        assert_eq!(
-            SectorBundle::decode(bundle.canonical_bytes(), bundle.sha256()).unwrap(),
-            bundle
-        );
-        assert!(bundle
-            .material_rows()
-            .capacities
-            .iter()
-            .any(|r| r.period == 130));
-        assert!(!bundle
-            .material_rows()
-            .capacities
-            .iter()
-            .any(|r| r.period > 130));
-    }
+    let captured =
+        crate::economic_catalog::CapturedEconomicCatalog::from_michigan(&catalog).unwrap();
+    let restored = crate::economic_catalog::CapturedEconomicCatalog::decode(
+        captured.canonical_bytes(),
+        captured.digest(),
+    )
+    .unwrap();
+    assert_eq!(restored.view().duration.final_period(), Some(130));
+    let material = restored.opening().compile().unwrap().state;
+    assert!(material.capacities.iter().any(|row| row.period == 130));
+    assert!(!material.capacities.iter().any(|row| row.period > 130));
 }
 #[test]
 fn historical_jobs_initialize_only_the_named_five_workforce_accounts() {

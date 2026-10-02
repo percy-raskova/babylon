@@ -364,7 +364,7 @@ pub(super) fn subject(location: EconomicLocation, prefix: &str) -> StableElement
         })
         .collect();
     StableElementKey::Node {
-        scenario: "national-world".into(),
+        scenario: crate::national_economy::NATIONAL_SCENARIO_ID.into(),
         local_name: format!("{}-{encoded}", prefix.replace('_', "-")),
     }
 }

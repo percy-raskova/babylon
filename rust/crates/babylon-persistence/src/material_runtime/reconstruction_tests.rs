@@ -1,6 +1,6 @@
 use super::*;
 use babylon_kernel::replay::{ReplaySeed, ReplaySessionId};
-use babylon_tick::material_state::MaterialState;
+use babylon_tick::material_state::{MaterialGeography, MaterialState};
 
 pub(super) fn persisted_graph_copy(original: &CampaignFoundation) -> CampaignFoundation {
     let bundle = original.content_bundle();
@@ -14,13 +14,7 @@ pub(super) fn persisted_graph_copy(original: &CampaignFoundation) -> CampaignFou
         original.content_digest().defines_hash,
         original.content_digest().rules_hash,
         *original.reference_digest().as_bytes(),
-        std::str::from_utf8(bundle.scenario_source_bytes()).unwrap(),
-        bundle
-            .prelude_source_bytes()
-            .map(|bytes| std::str::from_utf8(bytes).unwrap()),
-        std::str::from_utf8(bundle.rule_source_bytes()).unwrap(),
-        bundle.defines_bytes(),
-        bundle.reference_bundle_manifest_bytes(),
+        bundle.canonical_bytes(),
         sha256_of(original.canonical_bytes()),
     )
     .unwrap()
@@ -103,7 +97,11 @@ fn material_foundation_refuses_a_rule_bundle_different_from_its_captured_catalog
         original.graph_foundation().rng_seed(),
         changed_bundle.content_digest().clone(),
         changed_bundle.reference_digest(),
-        MaterialState::try_new(crate::michigan_dynamic_hex_foundation().unwrap()).unwrap(),
+        MaterialState::try_from_geography(MaterialGeography::MichiganControl {
+            local_detail: crate::michigan_dynamic_hex_foundation().unwrap(),
+            reference_bundle_digest: *changed_bundle.reference_digest().as_bytes(),
+        })
+        .unwrap(),
     )
     .unwrap();
     assert!(matches!(
@@ -128,34 +126,19 @@ fn recapture_with_seed(
     original: &MaterialRuntimeFoundation,
     seed: i64,
 ) -> Result<MaterialRuntimeFoundation, MaterialRuntimeError> {
-    let bundle = original.graph_foundation.content_bundle();
-    let source = std::str::from_utf8(bundle.scenario_source_bytes()).unwrap();
-    let rules = std::str::from_utf8(bundle.rule_source_bytes()).unwrap();
-    let graph = ReplayTickSession::new(
-        source,
-        None,
-        rules,
-        HypergraphStore::new(),
-        ReplaySessionId::try_from("fixture/stored-content-v2").unwrap(),
+    let graph = original.graph_foundation();
+    let captured = graph
+        .content_bundle()
+        .economic_catalog()
+        .ok_or(MaterialRuntimeError::FoundationMismatch)?;
+    let catalog = crate::economic_catalog::CapturedEconomicCatalog::decode(
+        captured.canonical_bytes(),
+        captured.digest(),
+    )
+    .map_err(|_| MaterialRuntimeError::FoundationMismatch)?;
+    catalog.create_foundation(
+        graph.replay_session_identity().clone(),
         ReplaySeed::new(seed),
-        bundle.content_digest().clone(),
-        bundle.reference_digest(),
-        MaterialState::try_new(crate::michigan_dynamic_hex_foundation().unwrap()).unwrap(),
-    )
-    .unwrap();
-    let revised_bundle = FoundationContentBundle::try_new(
-        source,
-        None,
-        rules,
-        bundle.defines_bytes(),
-        bundle.reference_bundle_manifest_bytes(),
-    )
-    .unwrap();
-    MaterialRuntimeFoundation::capture(
-        graph,
-        revised_bundle,
-        original.register.state().clone(),
-        original.spec.clone(),
     )
 }
 
@@ -167,10 +150,7 @@ fn typed_experiment_refuses_a_graph_seed_different_from_its_captured_input() {
     .unwrap();
     let original = experiment.create_foundation().unwrap();
     assert!(recapture_with_seed(&original, experiment.seed).is_ok());
-    assert!(matches!(
-        recapture_with_seed(&original, 9821),
-        Err(MaterialRuntimeError::FoundationMismatch)
-    ));
+    assert!(recapture_with_seed(&original, 9821).is_err());
 }
 
 #[test]
@@ -523,7 +503,11 @@ fn unwrapped_definitions_and_changed_opening_workforce_are_not_scheduled_fallbac
             ReplaySeed::new(319),
             bundle.content_digest().clone(),
             bundle.reference_digest(),
-            MaterialState::try_new(crate::michigan_dynamic_hex_foundation().unwrap()).unwrap(),
+            MaterialState::try_from_geography(MaterialGeography::MichiganControl {
+                local_detail: crate::michigan_dynamic_hex_foundation().unwrap(),
+                reference_bundle_digest: *bundle.reference_digest().as_bytes(),
+            })
+            .unwrap(),
         )
         .unwrap();
         assert!(matches!(
@@ -656,4 +640,53 @@ fn material_transition_failure_abandons_prepared_graph_and_identity() {
     assert_eq!(session.graph_session().completed_tick(), 0);
     assert_eq!(session.material().canonical_bytes(), bytes);
     assert_eq!(session.current_world_hash().unwrap(), hash);
+}
+
+#[test]
+fn captured_source_refuses_changed_tick_zero_organizer_agreements() {
+    let catalog = crate::michigan_material::MichiganMaterialCatalog::load_for_preset(
+        &std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../content/scenarios/michigan/defines.toml"),
+        crate::michigan_material::MichiganDeliveryPreset::OrganizeInWayne,
+    )
+    .unwrap();
+    let original = crate::michigan_content::MichiganContentPreset::OrganizeInWayne
+        .create_foundation_for_campaign(
+            &catalog,
+            crate::identity::CampaignId::from_uuid(uuid::Uuid::from_u128(0x40_265)),
+        )
+        .unwrap();
+    let mut changed = original
+        .initial_register()
+        .organizer_state()
+        .unwrap()
+        .clone();
+    assert!(!changed.agreements.is_empty());
+    changed.agreements.clear();
+    let altered_register =
+        MaterialWorldRegister::try_new(0, original.initial_register().state().clone())
+            .unwrap()
+            .with_organizer(
+                original
+                    .initial_register()
+                    .organizer_config()
+                    .unwrap()
+                    .clone(),
+                changed,
+            )
+            .unwrap();
+    let graph = reconstruct_graph_foundation_session(original.graph_foundation()).unwrap();
+    assert!(MaterialRuntimeFoundation::capture_register(
+        graph,
+        FoundationContentBundle::decode(
+            original
+                .graph_foundation()
+                .content_bundle()
+                .canonical_bytes(),
+        )
+        .unwrap(),
+        altered_register,
+        original.spec().clone(),
+    )
+    .is_err());
 }

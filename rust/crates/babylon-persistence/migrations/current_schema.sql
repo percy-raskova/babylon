@@ -454,6 +454,10 @@ CREATE TABLE babylon_state.campaign (
     defines_hash bytea NOT NULL,
     rules_hash bytea NOT NULL,
     ref_digest bytea NOT NULL,
+    geography_scope text NOT NULL COLLATE pg_catalog."C",
+    local_h3_ref_digest bytea,
+    CONSTRAINT campaign_geography_scope CHECK (((geography_scope = 'michigan-control'::text AND local_h3_ref_digest IS NOT NULL) OR geography_scope = 'national-counties'::text)),
+    CONSTRAINT campaign_local_h3_digest_length CHECK ((local_h3_ref_digest IS NULL OR octet_length(local_h3_ref_digest) = 32)),
     CONSTRAINT campaign_defines_hash_length CHECK ((octet_length(defines_hash) = 32)),
     CONSTRAINT campaign_ref_digest_length CHECK ((octet_length(ref_digest) = 32)),
     CONSTRAINT campaign_replay_layout_v1 CHECK ((replay_layout_version = 1)),
@@ -474,12 +478,9 @@ CREATE TABLE babylon_state.campaign_foundation (
     defines_hash bytea NOT NULL,
     rules_hash bytea NOT NULL,
     ref_digest bytea NOT NULL,
-    scenario_source text NOT NULL COLLATE pg_catalog."C",
-    prelude_source text COLLATE pg_catalog."C",
-    rule_source text NOT NULL COLLATE pg_catalog."C",
-    defines_bytes bytea NOT NULL,
-    reference_manifest_bytes bytea NOT NULL,
+    content_bundle_bytes bytea NOT NULL,
     foundation_sha256 bytea NOT NULL,
+    CONSTRAINT campaign_foundation_content_bound CHECK (((octet_length(content_bundle_bytes) > 0) AND (octet_length(content_bundle_bytes) <= 67108864))),
     CONSTRAINT campaign_foundation_hashes CHECK (((octet_length(defines_hash) = 32) AND (octet_length(rules_hash) = 32) AND (octet_length(ref_digest) = 32) AND (octet_length(foundation_sha256) = 32)))
 );
 
@@ -1061,7 +1062,7 @@ ALTER TABLE ONLY babylon_state.campaign_foundation
     ADD CONSTRAINT campaign_foundation_campaign_fkey FOREIGN KEY (campaign_id) REFERENCES babylon_state.campaign(campaign_id);
 
 ALTER TABLE ONLY babylon_state.campaign
-    ADD CONSTRAINT campaign_reference_cohort_fkey FOREIGN KEY (ref_digest) REFERENCES babylon_ref.h3_reference_cohort(ref_digest) DEFERRABLE INITIALLY DEFERRED;
+    ADD CONSTRAINT campaign_local_h3_reference_fkey FOREIGN KEY (local_h3_ref_digest) REFERENCES babylon_ref.h3_reference_cohort(ref_digest) DEFERRABLE INITIALLY DEFERRED;
 
 ALTER TABLE ONLY babylon_state.graph_hyperedge_member_v1
     ADD CONSTRAINT graph_hyperedge_member_v1_campaign_id_resolve_tick_local_n_fkey FOREIGN KEY (campaign_id, resolve_tick, local_name) REFERENCES babylon_state.graph_hyperedge_v1(campaign_id, resolve_tick, local_name) ON DELETE CASCADE;
@@ -1113,15 +1114,15 @@ CREATE TABLE babylon_state.material_campaign_foundation_v3 (
         OR (duration_kind = 'finite' AND final_period IS NOT NULL AND final_period > 0)
     ),
     content_sha256 bytea NOT NULL CHECK (octet_length(content_sha256) = 32),
-    initial_register_bytes bytea NOT NULL CHECK (octet_length(initial_register_bytes) <= 67108864),
-    foundation_bytes bytea NOT NULL CHECK (octet_length(foundation_bytes) <= 67108864),
+    initial_register_bytes bytea NOT NULL CHECK (octet_length(initial_register_bytes) <= 268435456),
+    foundation_bytes bytea NOT NULL CHECK (octet_length(foundation_bytes) <= 335544557),
     foundation_sha256 bytea NOT NULL CHECK (octet_length(foundation_sha256) = 32)
 );
 CREATE TABLE babylon_state.material_tick_v3 (
     campaign_id uuid NOT NULL REFERENCES babylon_state.material_campaign_foundation_v3(campaign_id),
     resolve_tick bigint NOT NULL CHECK (resolve_tick > 0),
     identity_bytes bytea NOT NULL CHECK (octet_length(identity_bytes) <= 1024),
-    register_bytes bytea NOT NULL CHECK (octet_length(register_bytes) <= 67108864),
+    register_bytes bytea NOT NULL CHECK (octet_length(register_bytes) <= 268435456),
     receipt_bytes bytea NOT NULL CHECK (octet_length(receipt_bytes) <= 67108864),
     PRIMARY KEY (campaign_id, resolve_tick)
 );

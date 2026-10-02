@@ -142,6 +142,12 @@ fn run_case(
     let foundation = preset.create_foundation(catalog)?;
     let foundation_hash = hex(&foundation.digest());
     let foundation_bytes = foundation.canonical_bytes().len();
+    let captured_content_sha256 = hex(&foundation.spec().content_digest);
+    let captured_bytes = foundation
+        .graph_foundation()
+        .content_bundle()
+        .canonical_bytes()
+        .len();
     let mut session = foundation.into_session()?;
     if session
         .material()
@@ -197,9 +203,9 @@ fn run_case(
     }
     Ok(Case {
         preset: preset.id(),
-        captured_content_sha256: hex(&selected.defines_hash()),
+        captured_content_sha256,
         foundation_sha256: foundation_hash,
-        captured_bytes: selected.defines_bytes().len(),
+        captured_bytes,
         foundation_bytes,
         compile_ms,
         advance_ms: advancing.elapsed().as_millis(),

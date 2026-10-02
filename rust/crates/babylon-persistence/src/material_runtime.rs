@@ -1,7 +1,10 @@
 //! Explicit V3 durable material campaign, marker-last and checkpoint-complete.
 
 mod component_identity;
+mod decode;
+mod envelope;
 pub(crate) use component_identity::MaterialComponentIdentity;
+pub use envelope::MAX_MATERIAL_FOUNDATION_BYTES;
 
 use crate::stored_tick::{StoredEvent, StoredTickReadSource, StoredTickRelation};
 
@@ -199,7 +202,7 @@ fn validate_foundation_spec(spec: &MaterialFoundationSpec) -> Result<(), Materia
 }
 
 impl MaterialRuntimeFoundation {
-    /// Capture a foundation whose content explicitly uses the V2 source encoding.
+    /// Capture a foundation whose content explicitly uses the current tagged source encoding.
     /// # Errors
     /// Refuses invalid graph, material register, spec or aggregate bounds.
     pub fn capture(
@@ -243,7 +246,13 @@ impl MaterialRuntimeFoundation {
         graph
             .validate_material_cycle()
             .map_err(|error| MaterialRuntimeError::Replay(MaterialReplayError::Graph(error)))?;
-        let labor = if spec.preset_id
+        let labor = if let Some(catalog) = graph_foundation.content_bundle().economic_catalog() {
+            catalog
+                .validate_foundation(&graph_foundation, &register, &spec)
+                .map_err(|error| {
+                    MaterialRuntimeError::Graph(RustPersistenceRuntimeError::EconomicCatalog(error))
+                })?
+        } else if spec.preset_id
             == crate::simulation_experiment::ExperimentProfile::HistoricalFreight.foundation_id()
         {
             crate::simulation_experiment::validate_freight_authority(
@@ -253,23 +262,13 @@ impl MaterialRuntimeFoundation {
             )
             .map_err(|_| MaterialRuntimeError::FoundationMismatch)?
         } else {
-            crate::sector_bundle::foundation::validate_stored_material_authority(
-                &graph_foundation,
-                &register,
-                &spec,
-            )
-            .map_err(|_| MaterialRuntimeError::FoundationMismatch)?
+            return Err(MaterialRuntimeError::FoundationMismatch);
         };
-        let length = FOUNDATION_DOMAIN
-            .len()
-            .checked_add(4 + 9 + 32 + 3 * 8)
-            .and_then(|n| n.checked_add(spec.preset_id.len()))
-            .and_then(|n| n.checked_add(graph_foundation.canonical_bytes().len()))
-            .and_then(|n| n.checked_add(register.canonical_bytes().len()))
-            .ok_or(MaterialRuntimeError::Bounds)?;
-        if length > 67_108_864 {
-            return Err(MaterialRuntimeError::Bounds);
-        }
+        let length = envelope::material_foundation_length(
+            spec.preset_id.len(),
+            graph_foundation.canonical_bytes().len(),
+            register.canonical_bytes().len(),
+        )?;
         let mut bytes = Vec::new();
         bytes
             .try_reserve_exact(length)
@@ -321,9 +320,6 @@ impl MaterialRuntimeFoundation {
                 .map(str::to_owned)
                 .map_err(|_| MaterialRuntimeError::FoundationMismatch)
         };
-        let scenario = text(bundle.scenario_source_bytes())?;
-        let prelude = bundle.prelude_source_bytes().map(text).transpose()?;
-        let rules = text(bundle.rule_source_bytes())?;
         let session = text(original.replay_session_identity().as_bytes())?;
         let graph = CampaignFoundation::from_persisted(
             original.stable_graph_bytes().to_vec(),
@@ -335,11 +331,7 @@ impl MaterialRuntimeFoundation {
             original.content_digest().defines_hash,
             original.content_digest().rules_hash,
             *original.reference_digest().as_bytes(),
-            &scenario,
-            prelude.as_deref(),
-            &rules,
-            bundle.defines_bytes(),
-            bundle.reference_bundle_manifest_bytes(),
+            bundle.canonical_bytes(),
             sha256_of(original.canonical_bytes()),
         )?;
         reconstruct_material_foundation(
@@ -373,6 +365,13 @@ impl MaterialRuntimeFoundation {
     #[must_use]
     pub const fn graph_foundation(&self) -> &CampaignFoundation {
         &self.graph_foundation
+    }
+    pub(crate) fn opening_graph_state(
+        &self,
+    ) -> Result<babylon_graph::stable_state::StableGraphState, MaterialRuntimeError> {
+        self.graph
+            .stable_graph_state()
+            .map_err(|_| MaterialRuntimeError::FoundationMismatch)
     }
     /// Exact labor authority decoded from the admitted stored definitions.
     #[must_use]

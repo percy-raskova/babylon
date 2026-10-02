@@ -72,6 +72,13 @@ impl MichiganSectorCode {
     }
 }
 
+impl TryFrom<&str> for MichiganSectorCode {
+    type Error = MichiganSectorsError;
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        Self::parse(value)
+    }
+}
+
 /// Code 99 remains unclassified, without an invented classified membership.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MichiganSectorDisposition {

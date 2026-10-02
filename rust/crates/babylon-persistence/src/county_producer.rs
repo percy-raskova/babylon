@@ -3,9 +3,9 @@
 //! [`CountyDossierProducer`] turns one committed dirty receipt into a
 //! bounded batch of county dossier pages. Counties enumerate from the
 //! campaign's declared `babylon_meta.territory_county_map_v1` rows in GEOID
-//! order; titles, place links, and place labels resolve from the checked,
-//! digest-pinned Michigan spatial reference products, so the receipt batch
-//! hash folds the exact pinned artifact bytes in through the page content.
+//! order. Current economic campaigns resolve identity from their captured county
+//! roster and place links only from explicitly captured local detail. Authored
+//! controls retain their explicit fixed Michigan reference scope.
 //!
 //! # Page semantics
 //!
@@ -61,7 +61,6 @@ use sha2::{Digest as _, Sha256};
 use uuid::Uuid;
 
 use crate::archive::{database, decode, validate_text, ARCHIVE_PAGE_TEMPLATE_SHA256};
-use crate::archive_foundation_grants::county_qcew_citation;
 use crate::michigan_economy::{
     QCEW_ECONOMICS_ARTIFACT_SHA256, QCEW_ECONOMICS_FIELD_KEYS, QCEW_ECONOMICS_SOURCE_ID,
 };
@@ -188,6 +187,7 @@ pub struct CountySignal {
     grant_key: String,
     label: String,
     value: String,
+    reference: Option<ArchiveCitation>,
 }
 
 impl CountySignal {
@@ -208,6 +208,7 @@ impl CountySignal {
             grant_key,
             label,
             value,
+            reference: None,
         })
     }
 
@@ -285,6 +286,7 @@ pub struct CountyPagePlan {
     title: String,
     signals: Vec<CountySignal>,
     place_links: Vec<CountyPlaceLink>,
+    decision_question: String,
 }
 
 impl CountyPagePlan {
@@ -329,7 +331,14 @@ impl CountyPagePlan {
             title,
             signals,
             place_links,
+            decision_question: COUNTY_DECISION_QUESTION.to_owned(),
         })
+    }
+
+    /// Borrow the source-scoped county decision question.
+    #[must_use]
+    pub fn decision_question(&self) -> &str {
+        &self.decision_question
     }
 
     /// Borrow the five-digit county GEOID.
@@ -566,19 +575,20 @@ pub fn desired_county_projection(
         .iter()
         .filter(|signal| grants.knows_field(&county_ref, signal.grant_key()))
         .map(|signal| {
-            let (source_id, provenance_name) =
-                if QCEW_ECONOMICS_FIELD_KEYS.contains(&signal.grant_key()) {
-                    let citation = county_qcew_citation(plan.county_geoid());
-                    (
-                        citation.source_id().to_owned(),
-                        citation.locator().to_owned(),
-                    )
-                } else {
-                    (
-                        COMMITTED_TICK_SOURCE_ID.to_owned(),
-                        plan.territory_local_name().to_owned(),
-                    )
-                };
+            let (source_id, provenance_name) = if signal.reference.is_some()
+                || QCEW_ECONOMICS_FIELD_KEYS.contains(&signal.grant_key())
+            {
+                let citation = signal_citation(plan, signal, 0)?;
+                (
+                    citation.source_id().to_owned(),
+                    citation.locator().to_owned(),
+                )
+            } else {
+                (
+                    COMMITTED_TICK_SOURCE_ID.to_owned(),
+                    plan.territory_local_name().to_owned(),
+                )
+            };
             CountySignalProjection::try_new(
                 signal.label().to_owned(),
                 signal.value().to_owned(),
@@ -603,7 +613,7 @@ pub fn desired_county_projection(
         .collect::<Result<Vec<_>, SemanticArchiveError>>()?;
     CountyPageProjection::try_new(
         plan.title().to_owned(),
-        COUNTY_DECISION_QUESTION.to_owned(),
+        plan.decision_question().to_owned(),
         signals,
         places,
     )
@@ -766,6 +776,16 @@ fn parse_signal_bullet(line: &str, verified_tick: u64) -> Option<CountySignalPro
             return None;
         }
         locator.to_owned()
+    } else if source_id == NATIONAL_COUNTY_SOURCE_ID {
+        let (geoid, digest) = locator
+            .strip_prefix("national_county_reference_2024.csv.gz#county_geoid=")?
+            .split_once("&sha256=")?;
+        babylon_kernel::geography::CountyGeoid::try_from(geoid).ok()?;
+        if digest != crate::michigan_economy::digest_hex(&crate::national_counties::ARTIFACT_SHA256)
+        {
+            return None;
+        }
+        locator.to_owned()
     } else {
         parse_committed_locator(locator, verified_tick)?
     };
@@ -863,14 +883,7 @@ pub fn county_page_input(
         .signals
         .iter()
         .map(|signal| {
-            let citation = if QCEW_ECONOMICS_FIELD_KEYS.contains(&signal.grant_key()) {
-                county_qcew_citation(plan.county_geoid())
-            } else {
-                ArchiveCitation::try_new(
-                    COMMITTED_TICK_SOURCE_ID.to_owned(),
-                    format!("campaign/{resolve_tick}/{}", plan.territory_local_name),
-                )?
-            };
+            let citation = signal_citation(plan, signal, resolve_tick)?;
             ArchiveSignal::try_new(
                 signal.grant_key.clone(),
                 signal.label.clone(),
@@ -893,7 +906,7 @@ pub fn county_page_input(
         subject,
         resolve_tick,
         tick_content_hash,
-        COUNTY_DECISION_QUESTION.to_owned(),
+        plan.decision_question().to_owned(),
         signals,
         links,
     )
@@ -1042,14 +1055,21 @@ pub fn county_committed_signals(
     Ok(signals)
 }
 
-/// Production county dossier producer over the checked reference products.
+mod source;
+pub(crate) use source::CountySource;
+use source::{signal_citation, NATIONAL_COUNTY_SOURCE_ID};
+
+/// Production county dossier producer over the captured campaign source.
 pub struct CountyDossierProducer {
     config: Config,
-    products: SpatialReferenceProducts,
+    source: CountySource,
+    campaign: Option<CampaignId>,
+    expected_mapping: Option<Vec<(String, String)>>,
 }
 
 impl CountyDossierProducer {
-    /// Load the checked reference products and bind the committed-state readers.
+    /// Construct an explicit fixed-reference authored control producer.
+    /// Captured economic campaigns use their source-scoped Archive factory.
     ///
     /// # Errors
     /// Refuses loudly when the embedded reference products, their governing
@@ -1062,8 +1082,25 @@ impl CountyDossierProducer {
         verify_pinned_artifact_digests(&products)?;
         Ok(Self {
             config: config.clone(),
-            products,
+            source: CountySource::Michigan(products),
+            campaign: None,
+            expected_mapping: None,
         })
+    }
+
+    pub(crate) fn from_captured(
+        config: &Config,
+        campaign: CampaignId,
+        source: CountySource,
+        mut mapping: Vec<(String, String)>,
+    ) -> Self {
+        mapping.sort();
+        Self {
+            config: config.clone(),
+            source,
+            campaign: Some(campaign),
+            expected_mapping: Some(mapping),
+        }
     }
 
     /// Resolve every desired county page from the declared mapping and the
@@ -1081,64 +1118,22 @@ impl CountyDossierProducer {
         campaign_id: CampaignId,
         resolve_tick: u64,
     ) -> Result<Vec<CountyPagePlan>, SemanticArchiveError> {
-        let county_names = self
-            .products
-            .counties()
-            .iter()
-            .map(|county| (county.county_geoid(), county.county_name()))
-            .collect::<BTreeMap<_, _>>();
-        let place_names = self
-            .products
-            .places()
-            .iter()
-            .map(|place| (place.place_geoid(), place.name_lsad()))
-            .collect::<BTreeMap<_, _>>();
-        let overlaps = self.products.county_place_land_areas().iter().fold(
-            BTreeMap::<&str, BTreeSet<&str>>::new(),
-            |mut overlaps, row| {
-                overlaps
-                    .entry(row.county_geoid())
-                    .or_default()
-                    .insert(row.place_geoid());
-                overlaps
-            },
-        );
+        if self
+            .campaign
+            .is_some_and(|expected| expected != campaign_id)
+        {
+            return Err(SemanticArchiveError::StoredPageMismatch);
+        }
         let mapping = self.read_county_mapping(campaign_id)?;
+        if self
+            .expected_mapping
+            .as_ref()
+            .is_some_and(|expected| expected != &mapping)
+        {
+            return Err(SemanticArchiveError::StoredPageMismatch);
+        }
         let committed = self.read_committed_fields(campaign_id, resolve_tick)?;
-        mapping
-            .into_iter()
-            .map(|(county_geoid, territory_local_name)| {
-                let title = (*county_names
-                    .get(county_geoid.as_str())
-                    .ok_or(SemanticArchiveError::StoredPageMismatch)?)
-                .to_owned();
-                let signals = match committed.get(&territory_local_name) {
-                    Some(fields) => county_committed_signals(fields)?,
-                    None => Vec::new(),
-                };
-                let place_links = overlaps
-                    .get(county_geoid.as_str())
-                    .into_iter()
-                    .flatten()
-                    .map(|place_geoid| {
-                        let place_name = place_names
-                            .get(place_geoid)
-                            .ok_or(SemanticArchiveError::StoredPageMismatch)?;
-                        CountyPlaceLink::try_new(
-                            (*place_geoid).to_owned(),
-                            (*place_name).to_owned(),
-                        )
-                    })
-                    .collect::<Result<Vec<_>, _>>()?;
-                CountyPagePlan::try_new(
-                    county_geoid,
-                    territory_local_name,
-                    title,
-                    signals,
-                    place_links,
-                )
-            })
-            .collect()
+        self.source.plans(mapping, &committed)
     }
 
     /// Read the campaign's declared county mapping in GEOID order.
@@ -1310,3 +1305,6 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+mod captured_tests;

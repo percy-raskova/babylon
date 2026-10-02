@@ -26,7 +26,6 @@ use babylon_persistence::michigan_dynamic_hex_foundation;
 use babylon_persistence::{
     bootstrap_current_runtime, h3_reference_cohort::representative_h3_reference_cohort,
     identity::CampaignId, preflight_current_schema, CampaignFoundation, CommittedTickReceipt,
-    CompositeArchiveDossierProducer, CountyDossierProducer, PlaceDossierProducer,
     PostgresDiagnostic, SemanticArchiveStore,
 };
 use babylon_practice_contract::OrderedPracticeActionBatch;
@@ -1188,18 +1187,12 @@ fn run_archive_worker_once(config: &Config) -> Result<(), String> {
     store
         .verify_schema()
         .map_err(|error| format!("Archive schema refused: {error}"))?;
-    let county = CountyDossierProducer::try_new(config)
-        .map_err(|error| format!("Archive county producer refused: {error}"))?;
-    let place = PlaceDossierProducer::try_new(config)
-        .map_err(|error| format!("Archive place producer refused: {error}"))?;
-    let producer = CompositeArchiveDossierProducer::new(vec![
-        Box::new(babylon_persistence::OrganizerDossierProducer::new(config)),
-        Box::new(county),
-        Box::new(place),
-    ]);
+    let campaign = campaign_id()?;
+    let producer = babylon_persistence::captured_archive_producer(config, campaign)
+        .map_err(|error| format!("Archive captured source refused: {error}"))?;
     let mut worker = babylon_persistence::ArchiveWorker::new(config);
     let report = worker
-        .sweep_once(campaign_id()?, &producer)
+        .sweep_once(campaign, &producer)
         .map_err(|error| format!("Archive worker sweep refused: {error}"))?;
     println!(
         "Archive worker sweep complete; verified_tick={}; applied={}; \

@@ -7,6 +7,10 @@
 //! `identity`, and `containment` for geography, `subject` and `identity`
 //! for concepts. The four explicitly public QCEW 2024 baseline keys are also
 //! granted for counties. Other composition and magnitude keys remain earned.
+//! A national economic capture instead grants county identity and containment
+//! from its own complete county roster. It supplies no unprovided Michigan
+//! place, fine-H3 or QCEW-field grant through geographic defaulting. Optional
+//! captured place detail grants only its source-supported public place keys.
 
 use postgres::Transaction;
 
@@ -390,14 +394,93 @@ pub fn seed_foundation_grants(
     client: &mut Transaction<'_>,
     campaign_id: CampaignId,
 ) -> Result<FoundationGrantReport, FoundationGrantsError> {
+    seed_rows(client, campaign_id, &foundation_grant_rows()?)
+}
+
+pub(crate) fn seed_catalog_grants(
+    client: &mut Transaction<'_>,
+    campaign_id: CampaignId,
+    catalog: &crate::economic_catalog::CapturedEconomicCatalog,
+) -> Result<FoundationGrantReport, FoundationGrantsError> {
+    match catalog.view().sources {
+        crate::economic_catalog::EconomicSourceView::MichiganControl { .. } => {
+            seed_foundation_grants(client, campaign_id)
+        }
+        crate::economic_catalog::EconomicSourceView::National { counties, .. } => seed_rows(
+            client,
+            campaign_id,
+            &national_reference_grants(counties, catalog.spatial_detail())?,
+        ),
+    }
+}
+
+fn national_reference_grants(
+    counties: &crate::national_counties::NationalCountyReference,
+    detail: Option<&crate::spatial_reference_products::SpatialReferenceProducts>,
+) -> Result<Vec<FoundationGrantRow>, FoundationGrantsError> {
+    let mut rows = national_county_grants(counties)?;
+    if let Some(detail) = detail {
+        let county_ids = counties
+            .counties()
+            .iter()
+            .map(|county| county.geoid().to_string())
+            .collect();
+        for place in crate::place_producer::captured_place_ids(detail, &county_ids) {
+            let subject =
+                ArchiveAtomSubject::try_new(ArchiveAtomSubjectKind::Place, place.clone())?;
+            for key in FOUNDATION_PLACE_GRANT_KEYS {
+                let citation = if key == "containment" {
+                    place_containment_citation(&place)
+                } else {
+                    place_identity_citation(&place)
+                };
+                rows.push(FoundationGrantRow::try_new(
+                    subject.clone(),
+                    key.to_owned(),
+                    citation,
+                )?);
+            }
+        }
+    }
+    Ok(rows)
+}
+
+fn national_county_grants(
+    counties: &crate::national_counties::NationalCountyReference,
+) -> Result<Vec<FoundationGrantRow>, FoundationGrantsError> {
+    let mut rows =
+        Vec::with_capacity(counties.counties().len() * FOUNDATION_COUNTY_GRANT_KEYS.len());
+    let digest = crate::michigan_economy::digest_hex(&counties.artifact_sha256());
+    for county in counties.counties() {
+        let geoid = county.geoid().to_string();
+        let subject = ArchiveAtomSubject::try_new(ArchiveAtomSubjectKind::County, geoid.clone())?;
+        let citation = ArchiveCitation::try_new(
+            "national-county-reference-2024-v1".to_owned(),
+            format!("national_county_reference_2024.csv.gz#county_geoid={geoid}&sha256={digest}"),
+        )?;
+        for key in FOUNDATION_COUNTY_GRANT_KEYS {
+            rows.push(FoundationGrantRow::try_new(
+                subject.clone(),
+                key.to_owned(),
+                citation.clone(),
+            )?);
+        }
+    }
+    Ok(rows)
+}
+
+fn seed_rows(
+    client: &mut Transaction<'_>,
+    campaign_id: CampaignId,
+    rows: &[FoundationGrantRow],
+) -> Result<FoundationGrantReport, FoundationGrantsError> {
     crate::current_schema::require_current_schema(client)
         .map_err(SemanticArchiveError::CurrentSchema)?;
     let mut transaction = client
         .transaction()
         .map_err(|error| crate::archive::database("begin foundation grant savepoint", &error))?;
-    let rows = foundation_grant_rows()?;
     let mut grant_rows = 0usize;
-    for row in &rows {
+    for row in rows {
         insert_grant_row(
             &mut transaction,
             campaign_id,
@@ -409,21 +492,16 @@ pub fn seed_foundation_grants(
         )?;
         grant_rows += 1;
     }
-    let counties = rows
-        .iter()
-        .filter(|row| row.subject().kind() == ArchiveAtomSubjectKind::County)
-        .count()
-        / (FOUNDATION_COUNTY_GRANT_KEYS.len() + QCEW_ECONOMICS_FIELD_KEYS.len());
-    let places = rows
-        .iter()
-        .filter(|row| row.subject().kind() == ArchiveAtomSubjectKind::Place)
-        .count()
-        / FOUNDATION_PLACE_GRANT_KEYS.len();
-    let concepts = rows
-        .iter()
-        .filter(|row| row.subject().kind() == ArchiveAtomSubjectKind::Concept)
-        .count()
-        / FOUNDATION_CONCEPT_GRANT_KEYS.len();
+    let subjects = |kind| {
+        rows.iter()
+            .filter(|row| row.subject().kind() == kind)
+            .map(|row| row.subject().id())
+            .collect::<std::collections::BTreeSet<_>>()
+            .len()
+    };
+    let counties = subjects(ArchiveAtomSubjectKind::County);
+    let places = subjects(ArchiveAtomSubjectKind::Place);
+    let concepts = subjects(ArchiveAtomSubjectKind::Concept);
     transaction
         .commit()
         .map_err(|error| crate::archive::database("commit foundation grant savepoint", &error))?;
@@ -433,4 +511,67 @@ pub fn seed_foundation_grants(
         concepts,
         grant_rows,
     })
+}
+
+#[cfg(test)]
+mod national_scope_tests {
+    use super::*;
+    #[test]
+    fn optional_captured_detail_grants_only_its_source_supported_places() {
+        let source = crate::national_counties::NationalCountyReference::decode_pinned(
+            include_bytes!(
+                "../../../../src/babylon/data/reference/economy/national_county_reference_2024.csv.gz"
+            ),
+        )
+        .unwrap();
+        let base = national_reference_grants(&source, None).unwrap();
+        let products =
+            michigan_spatial_reference_products(representative_h3_reference_cohort().unwrap())
+                .unwrap();
+        let detailed = national_reference_grants(&source, Some(&products)).unwrap();
+        assert_eq!(base.len(), 9_432);
+        assert_eq!(detailed.len(), base.len() + 745 * 3);
+        assert_eq!(&detailed[..base.len()], base);
+        assert!(detailed[base.len()..].iter().all(|row| {
+            row.subject().kind() == ArchiveAtomSubjectKind::Place
+                && row.subject().id().starts_with("26")
+                && FOUNDATION_PLACE_GRANT_KEYS.contains(&row.grant_key())
+                && [
+                    FOUNDATION_PLACE_IDENTITY_SOURCE_ID,
+                    FOUNDATION_PLACE_CONTAINMENT_SOURCE_ID,
+                ]
+                .contains(&row.citation().source_id())
+        }));
+    }
+    #[test]
+    fn captured_national_roster_grants_only_county_public_identity() {
+        let source = crate::national_counties::NationalCountyReference::decode_pinned(
+            include_bytes!(
+            "../../../../src/babylon/data/reference/economy/national_county_reference_2024.csv.gz"),
+        )
+        .unwrap();
+        let rows = national_county_grants(&source).unwrap();
+        assert_eq!(rows.len(), 3 * 3_144);
+        assert!(rows
+            .iter()
+            .all(|row| row.subject().kind() == ArchiveAtomSubjectKind::County
+                && FOUNDATION_COUNTY_GRANT_KEYS.contains(&row.grant_key())
+                && row.citation().source_id() == "national-county-reference-2024-v1"));
+        for county in ["02013", "09011", "15005", "11001", "26163"] {
+            // The pinned 2024 roster uses Connecticut planning regions; 09011 is obsolete.
+            let expected = if county == "09011" { 0 } else { 3 };
+            assert_eq!(
+                rows.iter()
+                    .filter(|row| row.subject().id() == county)
+                    .count(),
+                expected
+            );
+        }
+        assert_eq!(
+            rows.iter()
+                .filter(|row| row.subject().id().starts_with("09"))
+                .count(),
+            9 * 3
+        );
+    }
 }

@@ -9,8 +9,8 @@ use babylon_persistence::{
 
 const SOURCE_BOUND: usize = 1_048_576;
 const SMALL_SOURCE: &str = "(scenario fixture/content)";
-const SMALL_HEX: &str = "626162796c6f6e2e63616d706169676e2d666f756e646174696f6e2d636f6e74656e742e76320000000002010000001a287363656e6172696f20666978747572652f636f6e74656e74290200030000000004000000027b7d05000000097265666572656e6365";
-const SMALL_SHA256: &str = "2215ae1508a00a06bb9f826617165dbcf1ede1ca12d746028a8e70f45d9c0894";
+const SMALL_HEX: &str = "626162796c6f6e2e63616d706169676e2d666f756e646174696f6e2d636f6e74656e742e7633000000000301010000001a287363656e6172696f20666978747572652f636f6e74656e74290200030000000004000000027b7d05000000097265666572656e6365";
+const SMALL_SHA256: &str = "96989d26811c36fbd9f0fbdeda6f7fbbe3599d559421da3f10e276dc5895de6a";
 
 fn hex(bytes: &[u8]) -> String {
     use std::fmt::Write as _;
@@ -23,14 +23,15 @@ fn hex(bytes: &[u8]) -> String {
 
 #[test]
 fn exact_current_wire_binds_explicit_version_and_all_five_fields() {
-    let v2 = FoundationContentBundle::try_new(SMALL_SOURCE, None, "", b"{}", b"reference").unwrap();
-    assert_eq!(hex(v2.canonical_bytes()), SMALL_HEX);
-    assert_eq!(hex(&sha256_of(v2.canonical_bytes())), SMALL_SHA256);
-    assert_eq!(v2.scenario_source_bytes(), SMALL_SOURCE.as_bytes());
-    assert_eq!(v2.prelude_source_bytes(), None);
-    assert!(v2.rule_source_bytes().is_empty());
-    assert_eq!(v2.defines_bytes(), b"{}");
-    assert_eq!(v2.reference_bundle_manifest_bytes(), b"reference");
+    let current =
+        FoundationContentBundle::try_new(SMALL_SOURCE, None, "", b"{}", b"reference").unwrap();
+    assert_eq!(hex(current.canonical_bytes()), SMALL_HEX);
+    assert_eq!(hex(&sha256_of(current.canonical_bytes())), SMALL_SHA256);
+    assert_eq!(current.scenario_source_bytes(), SMALL_SOURCE.as_bytes());
+    assert_eq!(current.prelude_source_bytes(), None);
+    assert!(current.rule_source_bytes().is_empty());
+    assert_eq!(current.defines_bytes(), b"{}");
+    assert_eq!(current.reference_bundle_manifest_bytes(), b"reference");
 }
 
 #[derive(Clone, Copy, Debug)]

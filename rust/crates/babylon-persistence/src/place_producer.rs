@@ -671,10 +671,24 @@ pub struct PlaceDossierProducer {
     config: Config,
     products: SpatialReferenceProducts,
     allowlist: Option<Vec<String>>,
+    campaign: Option<CampaignId>,
+}
+
+pub(crate) fn captured_place_ids(
+    products: &SpatialReferenceProducts,
+    counties: &BTreeSet<String>,
+) -> BTreeSet<String> {
+    products
+        .county_place_land_areas()
+        .iter()
+        .filter(|row| counties.contains(row.county_geoid()))
+        .map(|row| row.place_geoid().to_owned())
+        .collect()
 }
 
 impl PlaceDossierProducer {
-    /// Load the checked reference products and bind the stored-page reader.
+    /// Construct an explicit fixed-reference authored control producer.
+    /// Captured campaigns select place coverage from their captured county mapping.
     ///
     /// # Errors
     /// Refuses loudly when the embedded reference products, their governing
@@ -689,6 +703,23 @@ impl PlaceDossierProducer {
             config: config.clone(),
             products,
             allowlist: None,
+            campaign: None,
+        })
+    }
+
+    pub(crate) fn from_captured(
+        config: &Config,
+        campaign: CampaignId,
+        products: SpatialReferenceProducts,
+        counties: &BTreeSet<String>,
+    ) -> Result<Self, SemanticArchiveError> {
+        verify_pinned_artifact_digests(&products)?;
+        let places = captured_place_ids(&products, counties);
+        Ok(Self {
+            config: config.clone(),
+            products,
+            allowlist: Some(places.into_iter().collect()),
+            campaign: Some(campaign),
         })
     }
 
@@ -699,8 +730,8 @@ impl PlaceDossierProducer {
     /// anything else refuses with
     /// [`SemanticArchiveError::InvalidIdentity`]. Only allowlisted places
     /// enumerate, which keeps small drains single-sweep for live proofs.
-    /// Production keeps the full fixture through [`PlaceDossierProducer::try_new`];
-    /// larger dirty sets page across sweeps under the shared page budget.
+    /// This control uses the pinned fixture; captured campaign producers instead
+    /// select their declared counties. Larger dirty sets use the shared page budget.
     ///
     /// # Errors
     /// Refuses unsorted, duplicated, malformed, or unknown GEOIDs, or any
@@ -799,6 +830,9 @@ impl ArchiveDossierProducer for PlaceDossierProducer {
         page_budget: usize,
     ) -> Result<ArchiveProducerOutcome, SemanticArchiveError> {
         let campaign = CampaignId::from_uuid(campaign_id);
+        if self.campaign.is_some_and(|expected| expected != campaign) {
+            return Err(SemanticArchiveError::StoredPageMismatch);
+        }
         let desired = self.desired_pages()?;
         crate::archive_revision::publication::select_dirty_pages(
             &self.config,

@@ -16,12 +16,14 @@ use std::collections::TryReserveError;
 const LAYOUT: u32 = 1;
 const ROW_KEY_DOMAIN: &[u8] = b"babylon.committed-tick-row-key.v1\0";
 const ROW_PAYLOAD_DOMAIN: &[u8] = b"babylon.committed-tick-row-payload.v1\0";
-const FOUNDATION_CONTENT_DOMAIN: &[u8] = b"babylon.campaign-foundation-content.v2\0";
+const FOUNDATION_CONTENT_DOMAIN: &[u8] = b"babylon.campaign-foundation-content.v3\0";
 const MAX_FOUNDATION_SOURCE: usize = 1_048_576;
 const CHECKPOINT_DOMAIN: &[u8] = b"babylon.full-checkpoint-manifest.v1\0";
 const EMPTY_PROOF_DOMAIN: &[u8] = b"babylon.semantic-empty-proof.v1\0";
 const MAX_UTF8_BYTES: usize = 65_535;
 const MAX_BYTES: usize = 67_108_864;
+/// Unchanged independent limit for the complete graph campaign foundation.
+pub(crate) const MAX_CAMPAIGN_FOUNDATION_BYTES: usize = MAX_BYTES;
 const MAX_ITEMS: usize = 1_048_576;
 
 /// One enum-ordered branch in a canonical choice-receipt semantic row.
@@ -570,9 +572,10 @@ pub(crate) fn encode_foundation_content(
         defines.len(),
         reference_manifest.len(),
     )?;
-    let mut output = SemanticWriter::new("foundation content V2", MAX_BYTES);
+    let mut output = SemanticWriter::new("foundation content V3", MAX_BYTES);
     output.write_all(FOUNDATION_CONTENT_DOMAIN)?;
-    output.write_all(&2_u32.to_be_bytes())?;
+    output.write_all(&3_u32.to_be_bytes())?;
+    output.write_byte(1)?; // Explicit authored BSCN disposition.
     output.write_byte(1)?;
     append_foundation_source(&mut output, scenario_source)?;
     output.write_byte(2)?;
@@ -610,8 +613,8 @@ fn foundation_content_length(
             SemanticRefusalCode::FieldByteBound,
         ));
     }
-    // Domain, version, five tags, four required length words and one option tag.
-    let mut length = FOUNDATION_CONTENT_DOMAIN.len() + 4 + 5 + 4 * 4 + 1;
+    // Domain, version, disposition, five tags, four lengths and one option tag.
+    let mut length = FOUNDATION_CONTENT_DOMAIN.len() + 4 + 1 + 5 + 4 * 4 + 1;
     for field in [
         scenario,
         prelude.unwrap_or(0),
@@ -623,12 +626,12 @@ fn foundation_content_length(
         length = length
             .checked_add(field)
             .ok_or(SemanticCodecError::CapacityOverflow {
-                field: "foundation content V2",
+                field: "foundation content V3",
             })?;
     }
     if length > MAX_BYTES {
         return Err(SemanticCodecError::ByteLimit {
-            field: "foundation content V2",
+            field: "foundation content V3",
             actual: length,
             maximum: MAX_BYTES,
         });
@@ -645,7 +648,7 @@ fn append_foundation_source(
             SemanticRefusalCode::FieldByteBound,
         ));
     }
-    output.write_all(&checked_u32(source.len(), "V2 source byte length")?.to_be_bytes())?;
+    output.write_all(&checked_u32(source.len(), "V3 source byte length")?.to_be_bytes())?;
     output.write_all(source.as_bytes())
 }
 
@@ -690,7 +693,7 @@ pub(crate) fn encode_foundation(
     reference_digest: &[u8; 32],
     content: &[u8],
 ) -> Result<Vec<u8>, SemanticCodecError> {
-    let mut output = SemanticWriter::new("campaign foundation", MAX_BYTES);
+    let mut output = SemanticWriter::new("campaign foundation", MAX_CAMPAIGN_FOUNDATION_BYTES);
     append_bytes(&mut output, stable_graph)?;
     append_bytes(&mut output, world_registers)?;
     append_bytes(&mut output, resolver_manifest)?;

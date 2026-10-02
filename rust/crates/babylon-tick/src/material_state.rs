@@ -679,7 +679,12 @@ pub enum GeographicScope {
 #[derive(Clone, Copy)]
 pub enum MaterialGeography<'a> {
     /// The current intentional Michigan control.
-    MichiganControl(&'a MichiganDynamicHexFoundation),
+    MichiganControl {
+        /// Qualified detail within Michigan, never national fine geometry.
+        local_detail: &'a MichiganDynamicHexFoundation,
+        /// Full captured campaign reference identity, independent of the H3 source digest.
+        reference_bundle_digest: [u8; 32],
+    },
     /// County authority, with independently identified optional Michigan detail.
     NationalCounties {
         /// Proof of all 3,144 current domestic county identities.
@@ -710,7 +715,10 @@ impl MaterialState {
     /// # Errors
     /// Returns the first dynamic-runtime allocation or ordering refusal.
     pub fn try_new(foundation: &MichiganDynamicHexFoundation) -> Result<Self, MaterialStateError> {
-        Self::try_from_geography(MaterialGeography::MichiganControl(foundation))
+        Self::try_from_geography(MaterialGeography::MichiganControl {
+            local_detail: foundation,
+            reference_bundle_digest: foundation.reference_bundle_digest(),
+        })
     }
 
     /// Construct fixed county authority without implying unprovided local geometry.
@@ -718,13 +726,16 @@ impl MaterialState {
     /// Returns the first local-runtime allocation or ordering refusal.
     pub fn try_from_geography(source: MaterialGeography<'_>) -> Result<Self, MaterialStateError> {
         let (geography, detail) = match source {
-            MaterialGeography::MichiganControl(foundation) => (
+            MaterialGeography::MichiganControl {
+                local_detail,
+                reference_bundle_digest,
+            } => (
                 GeographicAuthority {
                     scope: GeographicScope::MichiganControl,
-                    reference_bundle_digest: foundation.reference_bundle_digest(),
+                    reference_bundle_digest,
                     roster: None,
                 },
-                Some(foundation),
+                Some(local_detail),
             ),
             MaterialGeography::NationalCounties {
                 roster,

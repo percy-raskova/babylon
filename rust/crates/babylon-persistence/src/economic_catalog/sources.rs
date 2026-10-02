@@ -36,6 +36,15 @@ pub enum SourceArtifactKind {
     MichiganStatewideManifest = 27,
     MichiganMaintenanceIndustry = 28,
     MichiganExperiment = 29,
+    /// Exact campaign UUID needed to regenerate the authored organizer authority.
+    OrganizerContext = 30,
+    /// Programmatic source input, distinct from an original gzip artifact.
+    MichiganQualificationJson = 31,
+    MichiganPhysicalNetworkJson = 32,
+    /// Exact authored intervention parameters, never a generated material state.
+    MichiganControlOverrides = 33,
+    /// Exact local spatial products, checked against the captured H3 detail.
+    MichiganSpatialProducts = 34,
 }
 
 /// One captured blob, independent of its evidence interpretation. Compressed
@@ -43,7 +52,7 @@ pub enum SourceArtifactKind {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SourceArtifact {
     kind: SourceArtifactKind,
-    bytes: Box<[u8]>,
+    bytes: std::sync::Arc<[u8]>,
     digest: [u8; 32],
 }
 impl SourceArtifact {
@@ -53,7 +62,7 @@ impl SourceArtifact {
         let digest = sha256_of(&bytes);
         Self {
             kind,
-            bytes: bytes.into_boxed_slice(),
+            bytes: bytes.into(),
             digest,
         }
     }
@@ -68,5 +77,48 @@ impl SourceArtifact {
     #[must_use]
     pub const fn digest(&self) -> [u8; 32] {
         self.digest
+    }
+}
+
+impl TryFrom<u8> for SourceArtifactKind {
+    type Error = super::EconomicCatalogError;
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            1 => Ok(Self::GraphDeclarations),
+            2 => Ok(Self::PreludeDeclarations),
+            3 => Ok(Self::Rules),
+            4 => Ok(Self::DesignedPolicy),
+            5 => Ok(Self::NationalCounties),
+            6 => Ok(Self::NationalCohorts),
+            7 => Ok(Self::ResidentWorkforce),
+            8 => Ok(Self::NationalTransport),
+            9 => Ok(Self::InternationalTrade),
+            10 => Ok(Self::WorldPopulation),
+            11 => Ok(Self::CohortFunctionMapping),
+            12 => Ok(Self::CounterpartMembership),
+            13 => Ok(Self::PopulationScopePolicy),
+            14 => Ok(Self::TransportPolicy),
+            15 => Ok(Self::TransportSourceManifest),
+            16 => Ok(Self::MichiganDefines),
+            17 => Ok(Self::MichiganQualification),
+            18 => Ok(Self::MichiganPhysicalNetwork),
+            19 => Ok(Self::MichiganDynamicHexes),
+            20 => Ok(Self::NationalGamePolicy),
+            21 => Ok(Self::MichiganCountyEvidence),
+            22 => Ok(Self::MichiganSectorEvidence),
+            23 => Ok(Self::MichiganSectorSources),
+            24 => Ok(Self::MichiganRegionalTopology),
+            25 => Ok(Self::MichiganIndustryBaseline),
+            26 => Ok(Self::MichiganCommodityRoster),
+            27 => Ok(Self::MichiganStatewideManifest),
+            28 => Ok(Self::MichiganMaintenanceIndustry),
+            29 => Ok(Self::MichiganExperiment),
+            30 => Ok(Self::OrganizerContext),
+            31 => Ok(Self::MichiganQualificationJson),
+            32 => Ok(Self::MichiganPhysicalNetworkJson),
+            33 => Ok(Self::MichiganControlOverrides),
+            34 => Ok(Self::MichiganSpatialProducts),
+            _ => Err(super::EconomicCatalogError::WireTag),
+        }
     }
 }

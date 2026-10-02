@@ -6,6 +6,7 @@ use babylon_persistence::archive_revision::{
     ArchiveDossierState, ArchiveDossierUnavailable, ArchiveReadScope, ArchiveSearchState,
 };
 use babylon_persistence::{
+    captured_archive_producer,
     identity::CampaignId,
     install_reader_role,
     material_runtime::DurableMaterialRuntime,
@@ -47,13 +48,6 @@ struct DisposableTarget {
     writer: Config,
     database: String,
     roles: Vec<String>,
-}
-
-fn michigan_archive_producer(config: &Config) -> CompositeArchiveDossierProducer {
-    CompositeArchiveDossierProducer::new(vec![
-        Box::new(CountyDossierProducer::try_new(config).unwrap()),
-        Box::new(PlaceDossierProducer::try_new(config).unwrap()),
-    ])
 }
 
 fn advance_material_period(runtime: &mut DurableMaterialRuntime) {
@@ -313,7 +307,7 @@ fn live_michigan_all_county_cards_keep_public_source_and_quiet_restart_freshness
     advance_material_period(&mut runtime);
     assert_archive_progress(&reader, campaign, 1, 0);
     let mut worker = ArchiveWorker::new(&target.writer);
-    let producer = michigan_archive_producer(&target.writer);
+    let producer = captured_archive_producer(&target.writer, campaign).unwrap();
     let first = worker.sweep_once(campaign, &producer).unwrap();
     assert_eq!(
         first.dispositions(),
@@ -367,7 +361,7 @@ fn assert_restart_drains_and_verifies_quiet_periods(
     )
     .unwrap();
     let mut worker = ArchiveWorker::new(&target.writer);
-    let producer = michigan_archive_producer(&target.writer);
+    let producer = captured_archive_producer(&target.writer, campaign).unwrap();
     for _ in 0..4 {
         if worker
             .sweep_once(campaign, &producer)
@@ -721,7 +715,7 @@ fn assert_material_accounts(
         let route = rows
             .routes
             .iter()
-            .find(|route| route.id == evidence.route_id)
+            .find(|route| route.id == evidence.supplier_relation_id)
             .unwrap();
         assert_eq!(evidence.good_id, route.good_id);
         assert_eq!(evidence.unit_id, route.unit_id);
@@ -730,7 +724,7 @@ fn assert_material_accounts(
         let source = catalog
             .routes()
             .iter()
-            .find(|row| identity_hex(row.id().as_bytes()) == route.id)
+            .find(|row| identity_hex(row.id().as_bytes()) == route.physical_route_id)
             .unwrap();
         assert_eq!(
             evidence.order_id,
@@ -1032,8 +1026,8 @@ fn insert_unadmitted_catalog_rows(config: &Config, source: CampaignId) -> Vec<Ca
     let mut ids = Vec::new();
     for number in 1..=66_u128 {
         let campaign = CampaignId::from_uuid(Uuid::from_u128(number));
-        tx.execute("INSERT INTO babylon_state.campaign (campaign_id,replay_layout_version,rng_layout_version,replay_session_id,rng_seed,defines_hash,rules_hash,ref_digest) SELECT $1,replay_layout_version,rng_layout_version,replay_session_id,rng_seed,defines_hash,rules_hash,ref_digest FROM babylon_state.campaign WHERE campaign_id=$2", &[campaign.as_uuid(), source.as_uuid()]).unwrap();
-        tx.execute("INSERT INTO babylon_state.campaign_foundation (campaign_id,stable_graph,world_registers,resolver_manifest,prepared_environment,replay_session_id,rng_seed,defines_hash,rules_hash,ref_digest,scenario_source,prelude_source,rule_source,defines_bytes,reference_manifest_bytes,foundation_sha256) SELECT $1,stable_graph,world_registers,resolver_manifest,prepared_environment,replay_session_id,rng_seed,defines_hash,rules_hash,ref_digest,scenario_source,prelude_source,rule_source,defines_bytes,reference_manifest_bytes,foundation_sha256 FROM babylon_state.campaign_foundation WHERE campaign_id=$2", &[campaign.as_uuid(), source.as_uuid()]).unwrap();
+        tx.execute("INSERT INTO babylon_state.campaign (campaign_id,replay_layout_version,rng_layout_version,replay_session_id,rng_seed,defines_hash,rules_hash,ref_digest,geography_scope,local_h3_ref_digest) SELECT $1,replay_layout_version,rng_layout_version,replay_session_id,rng_seed,defines_hash,rules_hash,ref_digest,geography_scope,local_h3_ref_digest FROM babylon_state.campaign WHERE campaign_id=$2", &[campaign.as_uuid(), source.as_uuid()]).unwrap();
+        tx.execute("INSERT INTO babylon_state.campaign_foundation (campaign_id,stable_graph,world_registers,resolver_manifest,prepared_environment,replay_session_id,rng_seed,defines_hash,rules_hash,ref_digest,content_bundle_bytes,foundation_sha256) SELECT $1,stable_graph,world_registers,resolver_manifest,prepared_environment,replay_session_id,rng_seed,defines_hash,rules_hash,ref_digest,content_bundle_bytes,foundation_sha256 FROM babylon_state.campaign_foundation WHERE campaign_id=$2", &[campaign.as_uuid(), source.as_uuid()]).unwrap();
         let preset = if number == 66 {
             // Opaque material content still needs a complete public county family.
             // Without this mapping, snapshot refusal would concern missing county

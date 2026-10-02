@@ -142,7 +142,7 @@ fn staffing(
         .map_err(|_| NationalOpeningError::Policy)?;
         // A full base32 identity preserves every digest bit within the graph's name bound.
         let subject = StableElementKey::Node {
-            scenario: "national-world".into(),
+            scenario: crate::national_economy::NATIONAL_SCENARIO_ID.into(),
             local_name: format!("member-{}", base32(&identity)),
         };
         builder.opening.employment.push(EmploymentTerms {

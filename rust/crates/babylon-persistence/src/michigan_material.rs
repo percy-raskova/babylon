@@ -1,6 +1,7 @@
 //! Captured, normalized Designed physical content with separate observed evidence.
 //! Both regional and statewide authoring feed the same material compiler.
 
+mod captured;
 #[cfg(test)]
 mod experiment_tests;
 mod maintenance;
@@ -22,7 +23,7 @@ use std::path::Path;
 
 pub const MICHIGAN_INDUSTRY_BASELINE_SHA256: &str =
     "eb486d7e11b8b63fc58c53ab918eff84b341b293a66faf422ddb9304fb2b553e";
-pub const MAX_MICHIGAN_CAPTURED_CONTENT_BYTES: usize = 64 * 1024 * 1024;
+pub const MAX_MICHIGAN_SOURCE_BYTES: usize = 64 * 1024 * 1024;
 const SOURCE_URL: &str = "https://data.bls.gov/cew/data/files/2024/csv/2024_annual_by_area.zip";
 const ID_DOMAIN: &str = "babylon.michigan-material.v1";
 
@@ -139,16 +140,12 @@ fn identity(kind: &str, key: &str) -> [u8; 32] {
     sha256_of(format!("{ID_DOMAIN}\0{kind}\0{key}").as_bytes())
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-struct MichiganCapturedContent {
-    schema: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct MichiganResolvedControl {
     experiment: Option<crate::simulation_experiment::SimulationExperimentV1>,
     organizer: Option<babylon_practice_contract::OrganizerConfig>,
     graph_scenario_source: String,
     rule_source: String,
-    observed_defines: Vec<u8>,
     defines: MichiganDefines,
     base_preset: MichiganDeliveryPreset,
     selected_preset: MichiganDeliveryPreset,
@@ -157,12 +154,30 @@ struct MichiganCapturedContent {
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MichiganMaterialCatalog {
-    capture: MichiganCapturedContent,
+    source_inputs: Vec<crate::economic_catalog::SourceArtifact>,
+    capture: MichiganResolvedControl,
     scenario: MichiganNormalizedContent,
-    defines_bytes: Vec<u8>,
-    defines_digest: [u8; 32],
+}
+/// Descriptive diagnostic output. This borrowed report is never decoded as
+/// campaign authority; only the captured source envelope can recreate a control.
+#[derive(Serialize)]
+pub struct MichiganControlReport<'a> {
+    schema: &'static str,
+    experiment: Option<&'a crate::simulation_experiment::SimulationExperimentV1>,
+    defines: &'a MichiganDefines,
+    normalized: &'a MichiganNormalizedContent,
 }
 impl MichiganMaterialCatalog {
+    /// Describe resolved diagnostic inputs without serializing replay authority.
+    #[must_use]
+    pub fn resolved_report(&self) -> MichiganControlReport<'_> {
+        MichiganControlReport {
+            schema: "MichiganControlInputReportV1",
+            experiment: self.capture.experiment.as_ref(),
+            defines: &self.capture.defines,
+            normalized: &self.scenario,
+        }
+    }
     /// Load the authored sources required by a fresh campaign's geographic scope.
     /// # Errors
     /// Refuses missing or changed qualification artifacts and unfrozen interventions.
@@ -188,12 +203,20 @@ impl MichiganMaterialCatalog {
     /// # Errors
     /// Refuses unknown, missing, malformed or out-of-bound authored values.
     pub fn load_defines(path: &Path) -> Result<Self, MichiganDefinesError> {
-        regional::compile(MichiganDefines::load(path)?)
+        Self::from_defines_toml(&source::read_defines_text(path)?)
     }
     /// # Errors
     /// Refuses malformed authored content.
     pub fn from_defines_toml(text: &str) -> Result<Self, MichiganDefinesError> {
-        regional::compile(MichiganDefines::parse(text)?)
+        let mut result = regional::compile(MichiganDefines::parse(text)?)?;
+        result
+            .source_inputs
+            .retain(|s| s.kind() != crate::economic_catalog::SourceArtifactKind::DesignedPolicy);
+        result.replace_source(
+            crate::economic_catalog::SourceArtifactKind::MichiganDefines,
+            text.as_bytes().to_vec(),
+        );
+        Ok(result)
     }
     /// Capture prequalified physical paths and source-supported statewide relationships.
     /// # Errors
@@ -213,20 +236,31 @@ impl MichiganMaterialCatalog {
         maintenance::compile(self)
     }
     pub(crate) fn with_wayne_organizer(&self) -> Result<Self, MichiganDefinesError> {
+        let mut rules = self.rule_source().to_owned();
+        rules.push_str(include_str!(
+            "../../../../content/scenarios/michigan/organizer-cycle.bsl"
+        ));
+        self.with_wayne_organizer_rules(&rules)
+    }
+    fn with_wayne_organizer_rules(&self, rules: &str) -> Result<Self, MichiganDefinesError> {
         let both = self.with_preset(MichiganDeliveryPreset::StatewideMaintenanceBoth)?;
-        let mut result = Self::from_normalized(
-            both.capture.defines.clone(),
-            both.scenario.clone(),
-            MichiganDeliveryPreset::OrganizeInWayne,
-            Vec::new(),
-        )?;
+        let mut capture = both.capture.clone();
+        both.graph_scenario_source()
+            .clone_into(&mut capture.graph_scenario_source);
+        capture.normalized = both.scenario.clone();
+        capture.base_preset = MichiganDeliveryPreset::OrganizeInWayne;
+        capture.selected_preset = MichiganDeliveryPreset::OrganizeInWayne;
+        capture.interventions.clear();
+        let mut result = both.keep_sources(Self::capture(capture)?);
         let mut capture = result.capture.clone();
         capture.graph_scenario_source =
             crate::organizer_content::append_declarations(&capture.graph_scenario_source)?;
-        capture.rule_source.push_str(include_str!(
-            "../../../../content/scenarios/michigan/organizer-cycle.bsl"
-        ));
-        result = Self::capture(capture)?;
+        rules.clone_into(&mut capture.rule_source);
+        result = result.keep_sources(Self::capture(capture)?);
+        result.replace_source(
+            crate::economic_catalog::SourceArtifactKind::Rules,
+            result.rule_source().as_bytes().to_vec(),
+        );
         Ok(result)
     }
     pub(crate) fn with_organizer_campaign(
@@ -247,7 +281,12 @@ impl MichiganMaterialCatalog {
                 .id()
                 .as_bytes(),
         )?);
-        Self::capture(capture)
+        let mut result = self.keep_sources(Self::capture(capture)?);
+        result.replace_source(
+            crate::economic_catalog::SourceArtifactKind::OrganizerContext,
+            campaign.as_uuid().as_bytes().to_vec(),
+        );
+        Ok(result)
     }
     pub(crate) fn with_experiment(
         &self,
@@ -267,11 +306,13 @@ impl MichiganMaterialCatalog {
         capture.interventions.clear();
         capture.graph_scenario_source =
             crate::simulation_experiment::regional::scenario(&capture.normalized);
-        // Only the typed starting observations and snapshot identity enter diagnostics.
-        capture.observed_defines = spec
-            .canonical_bytes()
-            .map_err(|_| MichiganDefinesError::Canonical)?;
-        Self::capture(capture)
+        let mut result = self.keep_sources(Self::capture(capture)?);
+        result.replace_source(
+            crate::economic_catalog::SourceArtifactKind::MichiganExperiment,
+            spec.canonical_bytes()
+                .map_err(|_| MichiganDefinesError::Canonical)?,
+        );
+        Ok(result)
     }
     pub(crate) fn experiment(
         &self,
@@ -281,36 +322,40 @@ impl MichiganMaterialCatalog {
     pub(crate) fn organizer_config(&self) -> Option<&babylon_practice_contract::OrganizerConfig> {
         self.capture.organizer.as_ref()
     }
-    pub(crate) fn from_stored_defines(bytes: &[u8]) -> Result<Self, MichiganDefinesError> {
-        if bytes.len() > MAX_MICHIGAN_CAPTURED_CONTENT_BYTES {
-            return Err(MichiganDefinesError::Material(MichiganMaterialError::Bound));
-        }
-        let capture: MichiganCapturedContent =
-            serde_json::from_slice(bytes).map_err(|_| MichiganDefinesError::Canonical)?;
-        // Numeric constraints remain separately bounded and checked; no source file is reopened.
-        if let Some(spec) = &capture.experiment {
-            capture.defines.validate_experiment(spec.horizon)?;
-        } else {
-            MichiganDefines::decode(&capture.defines.encode()?)?;
-        }
-        let result = Self::capture(capture)?;
-        if result.defines_bytes != bytes {
-            return Err(MichiganDefinesError::Canonical);
-        }
-        Ok(result)
-    }
+    #[cfg(test)]
     pub(super) fn from_normalized(
+        defines: MichiganDefines,
+        normalized: MichiganNormalizedContent,
+        base_preset: MichiganDeliveryPreset,
+        interventions: Vec<MichiganIntervention>,
+    ) -> Result<Self, MichiganDefinesError> {
+        let counties = crate::michigan_economy::michigan_economy()
+            .map_err(|_| MichiganDefinesError::Material(MichiganMaterialError::SourceValue))?;
+        let sectors = crate::michigan_sectors::michigan_county_sectors()
+            .map_err(|_| MichiganDefinesError::Material(MichiganMaterialError::SourceValue))?;
+        let mut context = captured::MichiganObservedSources::fresh()?;
+        context.counties = counties;
+        context.sectors = sectors;
+        Self::from_normalized_with_sources(
+            defines,
+            normalized,
+            base_preset,
+            interventions,
+            &context,
+        )
+    }
+    pub(super) fn from_normalized_with_sources(
         defines: MichiganDefines,
         mut normalized: MichiganNormalizedContent,
         base_preset: MichiganDeliveryPreset,
         mut interventions: Vec<MichiganIntervention>,
+        sources: &captured::MichiganObservedSources<'_>,
     ) -> Result<Self, MichiganDefinesError> {
         validate::canonicalize(&mut normalized, &mut interventions);
-        let observed = crate::michigan_cohorts::michigan_cohorts()
-            .map_err(|_| MichiganDefinesError::Material(MichiganMaterialError::SourceValue))?;
-        let graph_scenario_source =
-            crate::michigan_cohorts::michigan_staffed_scenario(&normalized.staffing.pools)
-                .map_err(|_| MichiganDefinesError::Material(MichiganMaterialError::ContentValue))?;
+        let graph_scenario_source = sources
+            .cohorts(&normalized.staffing.pools)?
+            .scenario_source()
+            .to_owned();
         for intervention in &mut interventions {
             let mut changed = normalized.clone();
             validate::apply(&mut changed, intervention).map_err(MichiganDefinesError::Material)?;
@@ -318,41 +363,35 @@ impl MichiganMaterialCatalog {
                 None
             } else {
                 Some(
-                    crate::michigan_cohorts::michigan_staffed_scenario(&changed.staffing.pools)
-                        .map_err(|_| {
-                            MichiganDefinesError::Material(MichiganMaterialError::ContentValue)
-                        })?,
+                    sources
+                        .cohorts(&changed.staffing.pools)?
+                        .scenario_source()
+                        .to_owned(),
                 )
             };
         }
-        Self::capture(MichiganCapturedContent {
-            schema: "MichiganCapturedContentV6".to_owned(),
+        let mut result = Self::capture(MichiganResolvedControl {
             organizer: None,
             experiment: None,
             graph_scenario_source,
-            rule_source: include_str!("../../../../content/scenarios/michigan/material-cycle.bsl")
-                .to_owned(),
-            observed_defines: observed.defines_bytes().to_vec(),
+            rule_source: sources.rules.to_owned(),
             defines,
             normalized,
             base_preset,
             selected_preset: base_preset,
             interventions,
-        })
+        })?;
+        result.source_inputs.clone_from(&sources.artifacts);
+        Ok(result)
     }
-    fn capture(mut capture: MichiganCapturedContent) -> Result<Self, MichiganDefinesError> {
+    fn capture(mut capture: MichiganResolvedControl) -> Result<Self, MichiganDefinesError> {
         use MichiganDefinesError::Material;
         if capture.graph_scenario_source.is_empty()
             || capture.graph_scenario_source.len() > 1_048_576
             || capture.rule_source.is_empty()
             || capture.rule_source.len() > 1_048_576
-            || capture.observed_defines.is_empty()
-            || capture.observed_defines.len() > 65_536
         {
             return Err(Material(MichiganMaterialError::Bound));
-        }
-        if capture.schema != "MichiganCapturedContentV6" {
-            return Err(MichiganDefinesError::Canonical);
         }
         if let Some(spec) = &capture.experiment {
             spec.validate()
@@ -371,10 +410,6 @@ impl MichiganMaterialCatalog {
                 || capture.organizer.is_some()
                 || capture.graph_scenario_source
                     != crate::simulation_experiment::regional::scenario(&capture.normalized)
-                || capture.observed_defines
-                    != spec
-                        .canonical_bytes()
-                        .map_err(|_| MichiganDefinesError::Canonical)?
             {
                 return Err(MichiganDefinesError::Canonical);
             }
@@ -399,16 +434,10 @@ impl MichiganMaterialCatalog {
             validate::apply(&mut scenario, intervention).map_err(Material)?;
             validate::content(&scenario).map_err(Material)?;
         }
-        let defines_bytes =
-            serde_json::to_vec(&capture).map_err(|_| MichiganDefinesError::Canonical)?;
-        if defines_bytes.len() > MAX_MICHIGAN_CAPTURED_CONTENT_BYTES {
-            return Err(Material(MichiganMaterialError::Bound));
-        }
         Ok(Self {
+            source_inputs: Vec::new(),
             capture,
             scenario,
-            defines_digest: sha256_of(&defines_bytes),
-            defines_bytes,
         })
     }
     /// Resolve only the explicit overrides captured with this campaign.
@@ -423,7 +452,7 @@ impl MichiganMaterialCatalog {
         }
         let mut capture = self.capture.clone();
         capture.selected_preset = preset;
-        Self::capture(capture)
+        Self::capture(capture).map(|result| self.keep_sources(result))
     }
     #[must_use]
     pub const fn preset(&self) -> MichiganDeliveryPreset {
@@ -441,18 +470,6 @@ impl MichiganMaterialCatalog {
     #[must_use]
     pub fn rule_source(&self) -> &str {
         &self.capture.rule_source
-    }
-    #[must_use]
-    pub fn observed_defines(&self) -> &[u8] {
-        &self.capture.observed_defines
-    }
-    #[must_use]
-    pub fn defines_bytes(&self) -> &[u8] {
-        &self.defines_bytes
-    }
-    #[must_use]
-    pub const fn defines_hash(&self) -> [u8; 32] {
-        self.defines_digest
     }
     #[must_use]
     pub const fn duration(&self) -> babylon_kernel::clock::CampaignDuration {

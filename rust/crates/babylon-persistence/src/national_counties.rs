@@ -26,7 +26,7 @@ const MAX_COMPRESSED_BYTES: usize = 1_048_576;
 const MAX_CSV_BYTES: usize = 2_097_152;
 const COUNTY_COUNT: usize = NATIONAL_COUNTY_COUNT;
 // Exact gzip SHA-256 from national_county_reference_2024.metadata.json.
-const ARTIFACT_SHA256: [u8; 32] = [
+pub(crate) const ARTIFACT_SHA256: [u8; 32] = [
     40, 173, 132, 164, 97, 240, 12, 18, 72, 155, 17, 224, 215, 112, 173, 113, 188, 63, 9, 25, 13,
     188, 53, 119, 77, 114, 95, 194, 51, 63, 236, 142,
 ];

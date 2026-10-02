@@ -1,6 +1,6 @@
 version: 3
 name: material_campaign_foundation_v3
-authority: [ADR251, ADR260, ADR263]
+authority: [ADR251, ADR260, ADR263, ADR265]
 purpose: Pin an explicit tick-zero circuit campaign without upgrading graph-only campaigns.
 encoding:
   domain: "babylon.material-campaign-foundation.v3\0"
@@ -12,7 +12,14 @@ encoding:
     - u64_big_endian_graph_foundation_v1_length_then_exact_bytes
     - u64_big_endian_material_register_v4_length_then_exact_bytes
   digest: sha256_exact_bytes
-  maximum_complete_bytes: 67108864
+  maximum_complete_bytes: 335544557
+  component_bounds:
+    graph_foundation_bytes: 67108864
+    material_world_register_bytes: 268435456
+    aggregate_framing_and_preset_bytes: 237
+    rule: Check each nonempty component before allocation or source reconstruction.
+    source_catalog: Included once inside the graph foundation; never added again.
+    tick_receipt_bytes: Independent 67108864 limit; not part of this opening envelope.
   preset: 1_to_128_lowercase_ascii_letters_digits_and_hyphens
   campaign_duration:
     continuous: Tag zero and eight zero padding bytes; no designed final period.
@@ -23,8 +30,8 @@ storage:
   table: babylon_state.material_campaign_foundation_v3
   graph_component: babylon_state.campaign_foundation
   install: Both foundation components and grants in one transaction at completed tick zero.
-  open: Reconstruct from captured normalized authority and compare stored foundation bytes and digests.
-  captured_source: Selected preset, normalized recipes and owner cells, interventions, and resolved physical paths.
+  open: Regenerate the pinned current importer from captured sources and compare opening bytes and digests.
+  captured_source: One current tagged content bundle, source artifact bytes and digests, and compiler identity.
   live_source_reads_on_resume: forbidden
   incompatible_campaign: Typed refusal without altering stored data; a new campaign identity is required.
   preset_comparison: Distinct campaign foundations; no in-session intervention.

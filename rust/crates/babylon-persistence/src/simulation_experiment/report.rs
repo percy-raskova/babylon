@@ -440,20 +440,7 @@ pub fn run(spec: &SimulationExperimentV1) -> Result<ExperimentRun> {
         .into_session()
         .map_err(|_| ExperimentError::Foundation)?;
     let graph = foundation.graph_foundation();
-    let process_keys: BTreeMap<_, _> = if spec.profile == ExperimentProfile::HistoricalFreight {
-        BTreeMap::new()
-    } else {
-        crate::sector_bundle::foundation::decode_stored_bundle_defines(
-            graph.content_bundle().defines_bytes(),
-            graph.content_digest().defines_hash,
-        )
-        .map_err(|_| ExperimentError::Content)?
-        .catalog()
-        .processes()
-        .iter()
-        .map(|p| (p.id(), p.key.clone()))
-        .collect()
-    };
+    let process_keys = captured_process_keys(spec.profile, graph)?;
     let (mut setup, mut trajectory) = initial_report(spec, &foundation, &session, initial_mass)?;
     let mut periods = Vec::new();
     for period in 1..=spec.horizon {
@@ -524,6 +511,29 @@ pub fn run(spec: &SimulationExperimentV1) -> Result<ExperimentRun> {
         captured_setup: setup,
         captured_defines: graph.content_bundle().defines_bytes().to_vec(),
         foundation_bytes: foundation.canonical_bytes().to_vec(),
+    })
+}
+fn captured_process_keys(
+    profile: ExperimentProfile,
+    graph: &crate::CampaignFoundation,
+) -> Result<BTreeMap<ProcessId, String>> {
+    Ok(if profile == ExperimentProfile::HistoricalFreight {
+        BTreeMap::new()
+    } else {
+        let captured = graph
+            .content_bundle()
+            .economic_catalog()
+            .ok_or(ExperimentError::Content)?;
+        let crate::economic_catalog::EconomicSourceView::MichiganControl { catalog, .. } =
+            captured.view().sources
+        else {
+            return Err(ExperimentError::Content);
+        };
+        catalog
+            .processes()
+            .iter()
+            .map(|p| (p.id(), p.key.clone()))
+            .collect()
     })
 }
 /// Inventory-boundary identity useful to inspectors; this is not a domestic good.

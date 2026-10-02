@@ -29,6 +29,12 @@ ADR265_captured_economic_catalog:
     Future unsupported compiler versions refuse instead of silently regenerating
     a different opening. Compilation does not advance time or adjudicate an
     economic transition.
+    Persist campaign content as one current tagged envelope. Authored BSCN and
+    economic-catalog inputs have explicit reconstruction dispositions. The
+    database keeps the complete reference digest separately from an optional
+    local H3 foreign key; county-only national scope cannot claim a Michigan
+    reference cohort. Observer source identity hashes the complete envelope,
+    rather than declaration text that omits generated instances.
 
     Admit typed graph instances against the same BSL field and vocabulary
     declarations as authored instances. Retain exact scalar domains, stable
@@ -44,6 +50,11 @@ ADR265_captured_economic_catalog:
     separate typed locations. Fine H3 coverage is optional, identified and scoped;
     an absent local capture supplies no fabricated cells or zero-valued detail.
     Reconstruct the same geographic authority from captured input bytes.
+    Archive startup uses that same captured county roster and registers local
+    place producers only for explicitly captured spatial detail. Pair Michigan
+    spatial products with their captured H3 source and verify both before reuse.
+    Cache immutable producer context across sweeps; do not repeatedly regenerate
+    the national opening or invent local detail for county-only campaigns.
 
     Import authored Michigan controls into this current catalog and compiler.
     Retire per-owner material-state envelopes and their obsolete saved decoder.

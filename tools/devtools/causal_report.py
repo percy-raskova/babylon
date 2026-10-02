@@ -75,6 +75,7 @@ def _validate_case(case: dict[str, Any]) -> None:
             {"kind": "regional_delivery", "delivery": delivery},
         ],
     }
+    _identity_digest(case["catalog_sha256"], "catalog_sha256")
     experiment = case["experiment"]
     actual = {
         **experiment,
@@ -226,7 +227,7 @@ def validate_artifacts(directory: Path) -> tuple[dict[str, Any], dict[str, Any]]
     rows = [_json(line) for line in (directory / "periods.jsonl").read_bytes().splitlines()]
     if (
         inputs != manifest["inputs"]
-        or inputs.get("schema") != "SimulationExperimentMatrixV1"
+        or inputs.get("schema") != "SimulationExperimentMatrixV2"
         or inputs.get("periods") != 16
     ):
         raise ValueError("captured experiment matrix differs from manifest or required horizon")
@@ -300,6 +301,9 @@ def validate_artifacts(directory: Path) -> tuple[dict[str, Any], dict[str, Any]]
             raise ValueError("food control evidence differs across causal cases")
         controls[row["period"]] = food
     _validate_case_identities(manifest, inputs, summary, rows)
+    for captured, result in zip(inputs["cases"], summary["cases"], strict=True):
+        if captured["catalog_sha256"] != result["foundation"]["graph_defines_sha256"]:
+            raise ValueError("resolved report does not bind the campaign source catalog")
     projected_inputs = [
         {
             # Only the resolved regional mechanics enter the behavioral baseline.
@@ -307,7 +311,7 @@ def validate_artifacts(directory: Path) -> tuple[dict[str, Any], dict[str, Any]]
             # remain checksum-verified evidence without causing false drift.
             key: value["normalized"] if key == "resolved_defines" else value
             for key, value in case.items()
-            if key not in {"canonical_defines_utf8", "defines_sha256"}
+            if key not in {"canonical_defines_utf8", "defines_sha256", "catalog_sha256"}
         }
         for case in inputs["cases"]
     ]

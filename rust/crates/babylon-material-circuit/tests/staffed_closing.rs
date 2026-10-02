@@ -472,3 +472,6 @@ fn replacement_labor_is_sorted_before_the_planner_searches_multiple_principals()
     assert_eq!(next.state.production_commitments[0].planned_batches, 1);
     assert_eq!(next.state.production_commitments[1].planned_batches, 2);
 }
+
+#[path = "support/family_bound_cases.rs"]
+mod family_bound_cases;

@@ -59,8 +59,8 @@ pub(crate) fn append_declarations(source: &str) -> Result<String, MichiganDefine
         .ok_or(MichiganDefinesError::Canonical)?;
     let mut source = source
         .replace(
-            "(TERRITORY ORGANIZATION SOCIAL_CLASS)",
-            "(TERRITORY ORGANIZATION SOCIAL_CLASS PARTICIPANT_BODY)",
+            "(TERRITORY ORGANIZATION BUSINESS SOCIAL_CLASS)",
+            "(TERRITORY ORGANIZATION BUSINESS SOCIAL_CLASS PARTICIPANT_BODY)",
         )
         .replace("(ECONOMIC_SECTOR)", "(ECONOMIC_SECTOR ORGANIZATION_BODY)");
     source.push_str("  (defvocabulary EdgeType (CONTACT))\n");

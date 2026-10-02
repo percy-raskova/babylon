@@ -17,12 +17,18 @@ ADR265_captured_economic_catalog:
     Those representations do not establish national economic or spatial authority.
   decision: |
     Capture one EconomicCatalog with a singular table of bounded source artifacts,
-    exact digests, authored rules and definitions, shared Designed templates and
-    explicit opening assignments. Preserve source missingness and the distinction
-    between resident persons, households, workplace jobs and labor hours. Store
-    opening quantities and carrying amounts once in the catalog inputs. Compile
-    one global material register and one graph for the existing replay session.
-    Compilation does not advance time or adjudicate an economic transition.
+    exact digests, authored rules and definitions, and Designed policy bytes. Pin
+    the supported compiler and importer version. Regenerate shared templates and
+    opening assignments from those captured inputs into one transient
+    EconomicOpening. Preserve source missingness and the distinction between
+    resident persons, household cohorts, workplace jobs and labor hours. No person
+    agents or duplicate durable table of generated opening assignments is needed.
+    Compile one global material register and one graph for the existing replay
+    session. Preserve the initial material checkpoint and require exact agreement
+    with regeneration; optional caller-supplied opening rows must also agree.
+    Future unsupported compiler versions refuse instead of silently regenerating
+    a different opening. Compilation does not advance time or adjudicate an
+    economic transition.
 
     Admit typed graph instances against the same BSL field and vocabulary
     declarations as authored instances. Retain exact scalar domains, stable

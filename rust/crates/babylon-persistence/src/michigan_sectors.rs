@@ -167,6 +167,13 @@ pub struct MichiganCountySectors {
     rows: Vec<MichiganCountySector>,
 }
 impl MichiganCountySectors {
+    /// Admit campaign-captured rows with their exact source manifest.
+    /// # Errors
+    /// Refuses altered source pins, bytes, disclosure, coverage or row semantics.
+    pub fn decode_captured(raw: &[u8], manifest: &[u8]) -> Result<Self, MichiganSectorsError> {
+        admit(raw, manifest)
+    }
+
     #[must_use]
     pub fn rows(&self) -> &[MichiganCountySector] {
         &self.rows
@@ -491,7 +498,7 @@ fn admit(raw: &[u8], manifest: &[u8]) -> Result<MichiganCountySectors, MichiganS
 pub fn michigan_county_sectors() -> Result<&'static MichiganCountySectors, MichiganSectorsError> {
     static SECTORS: OnceLock<Result<MichiganCountySectors, MichiganSectorsError>> = OnceLock::new();
     SECTORS
-        .get_or_init(|| admit(ARTIFACT, SOURCE_MANIFEST))
+        .get_or_init(|| MichiganCountySectors::decode_captured(ARTIFACT, SOURCE_MANIFEST))
         .as_ref()
         .map_err(|error| *error)
 }

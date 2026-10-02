@@ -35,13 +35,23 @@ fn current_staffed_foundation_keeps_observed_cohorts_separate_from_five_designed
         assert_eq!(source.matches("(node business-").count(), 1_603);
         assert_eq!(source.matches("(hyperedge sector-").count(), 19);
         assert_eq!(source.matches("(node workforce-").count(), 5);
-        assert_eq!(source.matches("(deffield social-class/").count(), 3);
+        assert_eq!(source.matches("(deffield social-class/").count(), 2);
+        assert_eq!(source.matches("(node workplace-").count(), 5);
+        assert_eq!(source.matches("(deffield business/").count(), 1);
         assert!(!crate::michigan_cohorts::michigan_cohorts()
             .unwrap()
             .scenario_source()
             .contains("SOCIAL_CLASS"));
         let composition = foundation.labor();
         assert_eq!(composition.bindings().len(), 5);
+        for binding in composition.bindings() {
+            assert_eq!(binding.members().len(), 1);
+            assert_ne!(binding.subject(), binding.members()[0].subject());
+            assert_eq!(
+                binding.pool().labor_force(),
+                binding.members()[0].member().labor_force()
+            );
+        }
         assert_eq!(foundation.initial_register().state().labor.len(), 5);
         assert!(foundation
             .initial_register()

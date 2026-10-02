@@ -1,12 +1,14 @@
 //! Closed staffing authority stored with the executable sector definitions.
 
 use babylon_graph::stable_element::StableElementKey;
-use babylon_kernel::content_digest::sha256_of;
+use babylon_kernel::{content_digest::sha256_of, economic_location::EconomicLocation};
 use babylon_material_circuit::{
-    ProcessId, SiteId, StaffingPolicy, StaffingPoolBinding, StaffingPoolId, StaffingWorkSource,
-    UnitId,
+    FinalDemandPrincipalId, ProcessId, SiteId, StaffingMemberBinding, StaffingMemberId,
+    StaffingPolicy, StaffingPoolBinding, StaffingPoolId, StaffingWorkSource, UnitId,
 };
-use babylon_tick::material_staffing::{StaffingComposition, StaffingNodeBinding};
+use babylon_tick::material_staffing::{
+    StaffingComposition, StaffingMemberNodeBinding, StaffingNodeBinding,
+};
 use serde::{Deserialize, Serialize};
 
 use super::SectorBundleError;
@@ -26,6 +28,8 @@ enum StoredWorkSource {
 struct StoredPool {
     scenario: String,
     local_name: String,
+    workplace_local_name: String,
+    residence_county: String,
     pool_id: [u8; 32],
     site_id: [u8; 32],
     unit_id: [u8; 32],
@@ -70,6 +74,8 @@ impl StoredStaffing {
             bindings.push(StoredPool {
                 scenario: MICHIGAN_COHORT_SCENARIO.to_owned(),
                 local_name: seed.local_name(),
+                workplace_local_name: seed.workplace_local_name(),
+                residence_county: site.county_geoid.clone(),
                 pool_id: sha256_of(
                     format!("babylon.michigan-staffing.v1\0pool\0{}", seed.key).as_bytes(),
                 ),
@@ -149,14 +155,52 @@ impl StoredStaffing {
                 StaffingNodeBinding::try_new(
                     StableElementKey::Node {
                         scenario: binding.scenario.clone(),
-                        local_name: binding.local_name.clone(),
+                        local_name: binding.workplace_local_name.clone(),
                     },
                     pool,
+                    binding.members()?,
                 )
                 .map_err(|_| SectorBundleError::Resource)
             })
             .collect::<Result<Vec<_>, _>>()?;
         StaffingComposition::try_new(bindings).map_err(|_| SectorBundleError::Resource)
+    }
+}
+
+impl StoredPool {
+    fn members(&self) -> Result<Vec<StaffingMemberNodeBinding>, SectorBundleError> {
+        if self.labor_force == 0 {
+            return Ok(vec![]);
+        }
+        let county = self
+            .residence_county
+            .parse()
+            .map_err(|_| SectorBundleError::Source)?;
+        let residence =
+            EconomicLocation::domestic_county(county).map_err(|_| SectorBundleError::Source)?;
+        // These explicitly Designed physical controls have no funded household
+        // account. Their aggregate resident identity is not the finite retail buyer.
+        let identity = |kind: &str| {
+            let mut bytes = format!("babylon.michigan-control-resident.v1\0{kind}\0").into_bytes();
+            bytes.extend_from_slice(&self.pool_id);
+            sha256_of(&bytes)
+        };
+        let member = StaffingMemberBinding::try_new(
+            StaffingMemberId::from_bytes(identity("member")),
+            FinalDemandPrincipalId::from_bytes(identity("household")),
+            residence,
+            self.labor_force,
+        )
+        .map_err(|_| SectorBundleError::Resource)?;
+        let binding = StaffingMemberNodeBinding::try_new(
+            StableElementKey::Node {
+                scenario: self.scenario.clone(),
+                local_name: self.local_name.clone(),
+            },
+            member,
+        )
+        .map_err(|_| SectorBundleError::Resource)?;
+        Ok(vec![binding])
     }
 }
 
@@ -171,7 +215,7 @@ mod tests {
         let decoded = StoredStaffing::decode(&bytes, &crate::test_support::catalog()).unwrap();
         assert_eq!(decoded, original);
         assert_eq!(decoded.composition().unwrap().bindings().len(), 5);
-        for change in 0..11 {
+        for change in 0..13 {
             let mut changed = original.clone();
             match change {
                 0 => changed.authority = "Scheduled".to_owned(),
@@ -190,7 +234,9 @@ mod tests {
                     }
                 },
                 9 => changed.bindings[0].local_name.push('x'),
-                _ => changed.design.composition_id.push('x'),
+                10 => changed.design.composition_id.push('x'),
+                11 => changed.bindings[0].workplace_local_name.push('x'),
+                _ => changed.bindings[0].residence_county = "26001".to_owned(),
             }
             assert_eq!(
                 StoredStaffing::decode(&changed.encode().unwrap(), &crate::test_support::catalog()),

@@ -18,6 +18,7 @@ mod checkpoint;
 pub mod committed_tick_envelope;
 mod county_producer;
 mod current_schema;
+pub mod economic_catalog;
 mod foundation;
 mod glossary_concepts;
 pub mod h3_reference_cohort;

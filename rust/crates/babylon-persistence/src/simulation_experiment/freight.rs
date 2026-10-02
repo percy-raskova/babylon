@@ -249,7 +249,7 @@ impl CapturedFreight {
 }
 fn scenario() -> String {
     use std::fmt::Write;
-    let mut text=format!("(scenario {SCENARIO}\n  (defvocabulary NodeType (INVENTORY_BOUNDARY PORT_ENTRY SOCIAL_CLASS))\n");
+    let mut text=format!("(scenario {SCENARIO}\n  (defvocabulary NodeType (INVENTORY_BOUNDARY PORT_ENTRY BUSINESS SOCIAL_CLASS))\n");
     for field in babylon_tick::material_staffing::STAFFING_FIELDS {
         writeln!(&mut text, "  (deffield {field} int extensive)").expect("String write");
     }

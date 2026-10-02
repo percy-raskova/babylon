@@ -292,14 +292,14 @@ fn restore_designed_transport(
 /// fixed 2024 QCEW observations used by the ordinary player display.
 pub(crate) fn scenario(c: &MichiganNormalizedContent) -> String {
     let mut text = format!(
-        "(scenario {}\n  (defvocabulary NodeType (SOCIAL_CLASS))\n",
+        "(scenario {}\n  (defvocabulary NodeType (BUSINESS SOCIAL_CLASS))\n",
         crate::michigan_cohorts::MICHIGAN_COHORT_SCENARIO
     );
     for field in babylon_tick::material_staffing::STAFFING_FIELDS {
         writeln!(&mut text, "  (deffield {field} int extensive)").expect("String write");
     }
     for pool in &c.staffing.pools {
-        writeln!(&mut text,"  (node {} NodeType/SOCIAL_CLASS (social-class/employed-population {}) (social-class/reserve-population {}) (social-class/previous-unretained-labor-hours {}))",pool.local_name(),pool.employed,pool.reserve,pool.previous_unretained_hours).expect("String write");
+        crate::michigan_cohorts::append_workforce_seed(&mut text, pool);
     }
     text.push_str(")\n");
     text

@@ -102,6 +102,11 @@ impl MichiganWorkforceSeed {
     pub fn local_name(&self) -> String {
         format!("workforce-{}", self.key)
     }
+    /// Actual worksite memory is separate from the passive observed QCEW cohort.
+    #[must_use]
+    pub fn workplace_local_name(&self) -> String {
+        format!("workplace-{}", self.site_key)
+    }
 }
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]

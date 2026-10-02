@@ -19,7 +19,7 @@ fn trace(c: &MichiganMaterialCatalog, periods: usize) -> Vec<MaterialCircuitTran
         .iter()
         .map(|b| b.pool().clone())
         .collect();
-    let pools=composition.bindings().iter().map(|b|{let seed=authority.design().pools.iter().find(|s|matches!(b.subject(),StableElementKey::Node{local_name,..} if *local_name==s.local_name())).unwrap();StaffingPoolState::try_new(b.pool().clone(),seed.employed,seed.reserve,seed.previous_unretained_hours).unwrap()}).collect();
+    let pools=composition.bindings().iter().map(|b|{let seed=authority.design().pools.iter().find(|s|matches!(b.subject(),StableElementKey::Node{local_name,..} if *local_name==s.workplace_local_name())).unwrap();StaffingPoolState::try_new(b.pool().clone(),seed.employed,seed.reserve,seed.previous_unretained_hours).unwrap()}).collect();
     let mut staffing = StaffingState::try_new(1, pools).unwrap();
     (0..periods)
         .map(|_| {

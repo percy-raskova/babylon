@@ -1,6 +1,6 @@
 meta:
   contract: MaterialCircuitV3
-  schema_version: 13
+  schema_version: 14
   evidence_class: Designed
   rust_owner: babylon-material-circuit
 
@@ -26,6 +26,8 @@ domains:
   service_order_identity: babylon.recurring-service-order.v1
   service_topup_identity: babylon.recurring-service-topup.v1
   procurement_identity: babylon.recurring-procurement.v1
+  equipment_installation_identity: babylon.equipment-installation.v1
+  equipment_purchase_identity: babylon.equipment-purchase.v1
   terminator_hex: "00"
 
 encoding:
@@ -296,6 +298,9 @@ period_close:
   - expense unused acquired service grants and remove all transient service quantity and carrying rows before
     publication
   - expire unused opening service and perform whole maintenance jobs from inputs before outbound local credits
+  - consume actual equipment service life during production and capitalize exact historical wear into output
+  - start installation from arrived equipment and complete complementary materials; consume shared residual worker hours
+  - completed installation becomes usable only next period; unfinished work and its carrying value persist
   - allocate routed and local outbound requests against shared stock, route mass and merchant handling mass
   - record merchant feasible quantities before current labor
   - constrain feasible handling with opening labor through the same resource reducer
@@ -316,9 +321,10 @@ period_close:
   - assess captured eligible wage and positive operating-income taxes after actual costs and wage accrual
   - collect taxes only from cash above captured floors; record uncollected amounts without creating claims
   - distribute positive post-tax retained earnings only within cash, fraction and cap, using captured ownership
+  - admit ordinary equipment orders from post-financial free cash and explicit replacement or expansion policies
   - derive subsequent production from dispatched and unfulfilled demand, output stock, and captured buffers
   - forecast already funded freight due before subsequent production without crediting current usable inventory
-  - derive subsequent attendance from distinct production, merchant, and maintenance work requests
+  - derive subsequent attendance from distinct production, merchant, maintenance and installation work requests
   - update next goods quotes from captured fixed or bounded stock-and-unserved-demand policies
   - update next service quotes from funded unmet requests, native capacity and whole-batch cost including provider
     expiry
@@ -370,7 +376,7 @@ limits:
   stages_per_route: 16
   total_freight_resource_requests: 1114112
   handling_receipts_per_period: 131072
-  money_transfers_per_period: 1179648
+  money_transfers_per_period: 1441792
   service_performance_receipts_per_period: 196608
   receipt_bounds: Derived from at most two outbound passes and the bounded payroll and purchase phases
   classification: Designed bounds on execution and serialization, not material abundance
@@ -404,6 +410,7 @@ error_codes:
   valuation_invariant: 26
   service_invariant: 27
   financial_invariant: 28
+  equipment_invariant: 30
 
 monetary_accounting:
   opening: capture explicit cash endowments and employment terms; no default accounts, credit, or hidden issuance
@@ -486,7 +493,8 @@ capacity_supply:
   evidence_class: Designed
   mode_u8: {finite_schedule: 0, rolling: 1}
   finite_schedule: dated capacities and corridor_capacities are sole residual owners; absent periods supply zero
-  rolling_field_order: [mode_u8, installed_processes, shared, future_reservations]
+  rolling_field_order: [mode_u8, process_supply_tag, process_supply, shared, future_reservations]
+  process_supply_tag: {captured_nameplate: 0, equipment: 1}
   finite_field_order: [mode_u8]
   row_fields:
     installed_processes: [process_id, site_id, batches_per_period]
@@ -498,21 +506,22 @@ capacity_supply:
     shared: [corridor_id]
     future_reservations: [departure_period, corridor_id]
   maximum_rows_per_family: 65536
-  installed_equipment: existing usable process nameplate; money or equipment orders do not increase capacity
+  installed_equipment: captured nameplate controls or finite managed cohorts; one owner, never additive
   labor: next-period staffing remains independent; rolling capacity does not generate workers or hours
   accounting: capacity mode is explicit and independent of physical or monetary accounting and price policy
   rolling_invariants:
     - installed rows cover every process once with its actual site; zero nameplate is explicit
     - shared supply covers exactly the union of route capacity and merchant handling principals
     - current process and shared budgets contain only the opening period and cover their supply rows exactly
-    - current process batches equal installed nameplate; remaining shared grams cannot exceed gross throughput
+    - current process batches equal the explicit supply mode result; remaining shared grams cannot exceed gross
+      throughput
     - future reservations are positive, unique and strictly later than the opening period
     - every future reservation references a route capacity with sufficient remaining departure lookahead
     - future reserved grams cannot exceed the corresponding gross shared supply
     - row, date and quantity arithmetic overflow refuses the complete detached close
   availability:
     current: existing residual budget
-    future_process: installed batches per period for planning only
+    future_process: captured nameplate or usable managed cohort supply for planning only
     future_shared: gross grams per period minus already reserved grams
   reservation:
     current: debit the remaining current budget
@@ -521,7 +530,7 @@ capacity_supply:
     capacity_reduction: refuse captured supply below existing bookings; no silent cancellation or clipping
   rollover:
     - require exactly one successor period
-    - install current process budgets from installed nameplate
+    - install current process budgets from the explicit supply mode once
     - install current shared budgets as gross throughput minus reservations due in the successor period
     - discard consumed earlier budgets and promoted reservations; retain all later reservations
     - perform rollover only in successful transition finalization, never in validation or decoding
@@ -531,28 +540,32 @@ capacity_supply:
 historical_cost_book:
   evidence_class: Designed
   purpose: Historical transaction-cost bookkeeping; no surplus-value, SNLT or universal valuation claim
-  field_order: [capital_accounts, stock_carrying_values, freight_carrying_values, equity_carrying_values]
+  field_order: [capital_accounts, stock_carrying_values, freight_carrying_values, equity_carrying_values,
+                equipment_carrying_values]
   row_fields:
     capital_accounts: [account, opening_capital, contributed_capital, retained_earnings]
     stock_carrying_values: [owner_account, good_id, unit_id, amount]
     freight_carrying_values: [lot_id, seller_site_id, amount]
     equity_carrying_values: [owner_account, issuer_site_id, amount]
+    equipment_carrying_values: [asset_tag_u8, asset_id, owner_site_id, amount]
   row_width_bytes: {capital_accounts: 81, stock_carrying_values: 113, freight_carrying_values: 80,
-                    equity_carrying_values: 81}
+                    equity_carrying_values: 81, equipment_carrying_values: 81}
   canonical_keys:
     capital_accounts: [account]
     stock_carrying_values: [owner_account, good_id, unit_id]
     freight_carrying_values: [lot_id]
     equity_carrying_values: [owner_account, issuer_site_id]
+    equipment_carrying_values: [asset_tag_u8, asset_id]
   bounds: {capital_accounts: 65536, stock_carrying_values: 131072, freight_carrying_values: 65536,
-           equity_carrying_values: 65536}
+           equity_carrying_values: 65536, equipment_carrying_values: 131072}
   stock_bound: Two physical families of at most N each, site inventories and resident household stocks
   opening:
     - require explicit carrying rows for every physical site stock, household stock and freight lot, including zero
     - derive opening capital once from cash, reserves, physical and equity carrying values and wage claims less
       liabilities
     - initial retained earnings are zero; restart restores captured capital and accumulated earnings exactly
-    - installed equipment without a captured carrying amount is outside this book-capital measure
+    - managed equipment and unfinished installations each require an explicit carrying row, including zero
+    - captured-nameplate controls deliberately omit equipment physical and carrying assets
   quantities: Physical rows alone own quantities; carrying rows never manufacture or duplicate units
   withdrawal: floor(carrying_amount * withdrawn_quantity / available_quantity), using quotient/remainder arithmetic
   rounding: Partial withdrawals retain every rounding remainder; whole depletion transfers the full remaining amount
@@ -576,10 +589,11 @@ historical_cost_book:
     - each period income includes sales, wages, tax, operating-transfer and distribution income less COGS and named
       expenses
     - closing retained earnings equal opening retained earnings plus period income less distributions paid
-    - productive labor, handling, maintenance labor and idle wage costs partition current earned wages exactly
+    - productive labor, installation labor, handling, maintenance labor and idle wage costs partition current earned
+      wages exactly
     - cost operations cannot mutate spendable cash, reserves, purchase prices or wage obligations
     - all refusals discard the detached close, including late planning, arithmetic and net-asset mismatches
-  excluded: Equipment depreciation and installation remain separate work
+  excluded: Calendar decay, obsolescence and universal social-value measurement remain outside this book
 
 period_services:
   authority: ADR264
@@ -668,3 +682,47 @@ financial_institutions:
     - Equity carrying assets and issuer capital require elimination when reporting consolidated totals.
   limits: Prices, shares, appropriations and tax rules are captured game policies; no endogenous legislature or finance
     market.
+
+productive_equipment:
+  authority: ADR268
+  evidence_class: Designed
+  field_order: [definitions, bindings, installation_inputs, cohorts, pending,
+                installation_policies, investment_policies]
+  row_fields:
+    definitions: [id, equipment_good_id, equipment_unit_id, batches_per_unit_per_period, service_batches_per_unit,
+                  installation_labor_unit_id, installation_hours_per_unit]
+    bindings: [process_id, site_id, definition_id]
+    installation_inputs: [definition_id, good_id, unit_id, quantity_per_equipment_unit]
+    cohorts: [id, process_id, units, remaining_service_batches, usable_from_period]
+    pending: [id, process_id, units, started_period, remaining_hours]
+    installation_policies: [process_id, maximum_started_units_per_period, maximum_hours_per_period]
+    investment_policies: [process_id, supplier_site_id, replacement_target_units, maximum_installed_units,
+                          maximum_purchase_per_period, expansion_earnings_fraction_bps_u16, cash_floor]
+  asset_tag_u8: {installation: 0, installed: 1}
+  canonical_keys:
+    definitions: [id]
+    bindings: [process_id]
+    installation_inputs: [definition_id, good_id, unit_id]
+    cohorts: [process_id, id]
+    pending: [process_id, id]
+    installation_policies: [process_id]
+    investment_policies: [process_id]
+  limits: Each physical family has at most N rows; N pending plus N installed carrying values have at most 2N rows.
+  invariants:
+    - Every process has one checked binding; zero cohorts and absent policies explicitly permit inactive processes.
+    - Coefficients are positive; equipment and installation complements are storable native goods.
+    - Available batches sum the minimum of each usable cohort nameplate and its remaining finite service batches.
+    - Productive use consumes service batches once; full exhaustion transfers all remaining carrying micro-units.
+    - Equipment stock becomes WIP only with complete complementary inputs; no cash payment can install capacity.
+    - Actual installation shares existing attendance residuals; employee wages capitalize and unpaid work adds no
+      wage cost.
+    - A completed cohort becomes usable in the following period; unfinished work survives restart and zero current
+      output.
+    - Fixed finite and captured-nameplate controls remain explicit and cannot add capacity to managed equipment.
+    - Investment accounts once for installed units, WIP, allocated equipment stock and outstanding funded goods orders.
+    - Replacement may use available cash at a loss; expansion also requires its bounded positive retained-earnings
+      budget.
+    - Decisions disclose captured plans, accepted output orders, output stocks and buffers without promising sales
+      or growth.
+    - Captured service lives and proportional historical-cost withdrawals are Designed, not empirical machine-life
+      estimates.

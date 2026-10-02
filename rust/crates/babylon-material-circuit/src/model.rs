@@ -411,7 +411,7 @@ pub struct FutureCapacityReservation {
 /// Current residuals live only in the state's dated current-period budgets.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RollingCapacitySupply {
-    pub installed_processes: Vec<InstalledProcessCapacity>,
+    pub processes: crate::RollingProcessSupply,
     pub shared: Vec<SharedCapacitySupply>,
     pub future_reservations: Vec<FutureCapacityReservation>,
 }
@@ -451,6 +451,7 @@ pub struct MaterialCircuitState {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u16)]
 pub enum MaterialCircuitError {
+    EquipmentInvariant = 30,
     RowLimit = 1,
     ZeroQuantity = 2,
     DuplicateRow = 3,
@@ -518,6 +519,7 @@ impl TryFrom<u16> for MaterialCircuitError {
             26 => Ok(Self::ValuationInvariant),
             27 => Ok(Self::ServiceInvariant),
             28 => Ok(Self::FinancialInvariant),
+            30 => Ok(Self::EquipmentInvariant),
             _ => Err(UnknownMaterialCircuitErrorCode(value)),
         }
     }
@@ -541,6 +543,9 @@ pub struct FreightLossReceipt {
 /// Atomic successor with native quantity receipts.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MaterialCircuitTransition {
+    pub installation: Vec<crate::InstallationReceipt>,
+    pub equipment_wear: Vec<crate::EquipmentWearReceipt>,
+    pub investment: Vec<crate::InvestmentReceipt>,
     pub public_budgets: Vec<crate::PublicBudgetReceipt>,
     pub taxes: Vec<crate::TaxReceipt>,
     pub distributions: Vec<crate::DistributionReceipt>,

@@ -1250,3 +1250,8 @@ decisions:
     status: accepted
     date: '2026-10-01'
     file: ADR267_resident_workplace_staffing.yaml
+  ADR268_productive_equipment_and_installation:
+    title: Real equipment, installation work and wear supply process capacity
+    status: accepted
+    date: '2026-10-01'
+    file: ADR268_productive_equipment_and_installation.yaml

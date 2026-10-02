@@ -158,11 +158,12 @@ fn valuation_wire_refuses_missing_stocks_zero_quantity_cost_and_forged_equity() 
     let bytes = encode_material_circuit_state(&state).unwrap();
     assert_eq!(decode_material_circuit_state(&bytes).unwrap(), state);
     let snapshot = economy(&state).costs.snapshot();
-    let width = 16
+    let width = 20
         + 81 * snapshot.accounts.len()
         + 113 * snapshot.stocks.len()
         + 80 * snapshot.freight.len()
-        + 81 * snapshot.equity.len();
+        + 81 * snapshot.equity.len()
+        + 81 * snapshot.equipment.len();
     let start = bytes.len() - 9 - 28 - width; // Seven empty financial counts, finite capacity and empty services.
     for length in start..bytes.len() {
         assert!(decode_material_circuit_state(&bytes[..length]).is_err());

@@ -7,15 +7,17 @@ fn rolling(mut state: MaterialCircuitState) -> MaterialCircuitState {
         .corridor_capacities
         .retain(|row| row.period == state.period);
     state.capacity_supply = CapacitySupply::Rolling(Box::new(RollingCapacitySupply {
-        installed_processes: state
-            .capacities
-            .iter()
-            .map(|row| InstalledProcessCapacity {
-                process_id: row.process_id,
-                site_id: row.site_id,
-                batches_per_period: row.available_batches,
-            })
-            .collect(),
+        processes: babylon_material_circuit::RollingProcessSupply::CapturedNameplate(
+            state
+                .capacities
+                .iter()
+                .map(|row| InstalledProcessCapacity {
+                    process_id: row.process_id,
+                    site_id: row.site_id,
+                    batches_per_period: row.available_batches,
+                })
+                .collect(),
+        ),
         shared: state
             .corridor_capacities
             .iter()
@@ -347,7 +349,10 @@ fn rolling_wire_refuses_obsolete_noncanonical_and_invalid_bookings() {
     let CapacitySupply::Rolling(rows) = &state.capacity_supply else {
         unreachable!()
     };
-    let payload_len = 1 + 12 + rows.installed_processes.len() * 72 + rows.shared.len() * 40;
+    let payload_len = 2
+        + 12
+        + rows.processes.capacities(state.period).unwrap().len() * 72
+        + rows.shared.len() * 40;
     let mode = bytes.len() - payload_len - 8; // Two empty service row counts follow capacity.
     let mut invalid = bytes.clone();
     invalid[mode] = 2;
@@ -356,7 +361,7 @@ fn rolling_wire_refuses_obsolete_noncanonical_and_invalid_bookings() {
         Err(MaterialCircuitError::WireEnum)
     );
     let mut unordered = bytes.clone();
-    unordered[mode + 5..mode + 5 + 144].rotate_left(72);
+    unordered[mode + 6..mode + 6 + 144].rotate_left(72);
     assert_eq!(
         decode_material_circuit_state(&unordered),
         Err(MaterialCircuitError::WireNoncanonical)

@@ -1,7 +1,7 @@
 //! Independent vectors for exact monetary postings and finite attendance evidence.
 use babylon_tick::material_world::{decode_material_receipts, MaterialWorldError};
 
-const DOMAIN: &[u8] = b"babylon.material-tick-receipts.v11\0";
+const DOMAIN: &[u8] = b"babylon.material-tick-receipts.v12\0";
 
 fn tagged(tag: u8, subtag: u8, id: u8) -> Vec<u8> {
     let mut bytes = vec![tag, subtag];
@@ -64,11 +64,11 @@ fn member(labor: &[u8]) -> Vec<u8> {
     bytes.push(1);
     bytes.extend_from_slice(&3_i128.to_be_bytes());
     for value in [
-        hours[0], hours[1], hours[2], hours[3], hours[4], hours[5], hours[7], 0, 0, hours[8],
+        hours[0], hours[1], hours[2], hours[3], hours[4], hours[5], hours[7], 0, 0, 0, hours[8],
     ] {
         bytes.extend_from_slice(&value.to_be_bytes());
     }
-    for value in [hours[4], hours[7], 0, 0, hours[8]] {
+    for value in [hours[4], hours[7], 0, 0, 0, hours[8]] {
         bytes.extend_from_slice(&(i128::from(value) * 3).to_be_bytes());
     }
     bytes
@@ -77,9 +77,9 @@ fn member(labor: &[u8]) -> Vec<u8> {
 fn envelope(transfers: &[Vec<u8>], wages: &[Vec<u8>], labor: &[Vec<u8>]) -> Vec<u8> {
     let members: Vec<_> = labor.iter().map(|r| member(r)).collect();
     let mut bytes = DOMAIN.to_vec();
-    bytes.extend_from_slice(&11_u32.to_be_bytes());
+    bytes.extend_from_slice(&12_u32.to_be_bytes());
     bytes.extend_from_slice(&7_u64.to_be_bytes());
-    for tag in 1..=29 {
+    for tag in 1..=32 {
         let rows = match tag {
             11 => transfers,
             12 => wages,

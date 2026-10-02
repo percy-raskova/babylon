@@ -43,11 +43,13 @@ fn attendance() -> MemberLaborUseReceipt {
         production_hours: 1,
         handling_hours: 1,
         maintenance_hours: 0,
+        installation_hours: 0,
         idle_hours: 1,
         accrued_wages: money(9),
         production_wages: money(3),
         handling_wages: money(3),
         maintenance_wages: money(0),
+        installation_wages: babylon_kernel::currency::Currency::from_micro_units(0),
         idle_wages: money(3),
     }
 }

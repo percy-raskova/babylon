@@ -413,6 +413,7 @@ fn paid_material() -> MaterialCircuitState {
                     .collect(),
                 vec![],
                 vec![],
+                vec![],
             )
             .unwrap(),
             book,

@@ -71,7 +71,8 @@ fn separately_accounted_household_cohorts_can_share_one_market_location() {
         amount: money(0),
     });
     economy.book = MonetaryBook::open(accounts).unwrap();
-    economy.costs = HistoricalCostBook::open(&economy.book, stocks, vec![], vec![]).unwrap();
+    economy.costs =
+        HistoricalCostBook::open(&economy.book, stocks, vec![], vec![], vec![]).unwrap();
     let recurring = economy.recurring.as_mut().unwrap();
     // One cohort consumes its own pantry while its neighbor buys from the store.
     recurring.household_purchases[0].enabled = false;
@@ -168,7 +169,7 @@ fn material_wire_refuses_invalid_locations_and_the_previous_state_format() {
     }
     let mut previous = bytes;
     let version = MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES.len() + 1;
-    assert_eq!(&previous[version..version + 2], &13_u16.to_be_bytes());
+    assert_eq!(&previous[version..version + 2], &14_u16.to_be_bytes());
     previous[version..version + 2].copy_from_slice(&11_u16.to_be_bytes());
     assert!(decode_material_circuit_state(&previous).is_err());
 }

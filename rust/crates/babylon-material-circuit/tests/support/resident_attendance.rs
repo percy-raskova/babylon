@@ -28,6 +28,7 @@ fn mixed(second: LaborCompensation) -> MaterialCircuitState {
         economy.costs.snapshot().stocks,
         vec![],
         vec![],
+        vec![],
     )
     .unwrap();
     economy.employment = vec![

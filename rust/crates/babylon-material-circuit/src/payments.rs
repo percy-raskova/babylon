@@ -14,9 +14,10 @@ use crate::{
 /// admission/settlement/refund, 2N new firm admission/settlement, and 4N
 /// service admission plus settlement/refund movements.
 /// Another 4N bounds public budgets, taxes, owner payouts and contributions.
+/// Another N admits ordinary equipment purchase reserves.
 /// The complete receipt envelope retains its independent byte ceiling.
 pub const MAX_MONEY_TRANSFERS_PER_PERIOD: usize =
-    3 * crate::MAX_STAFFING_MEMBERS + 15 * MAX_MATERIAL_CIRCUIT_ROWS;
+    3 * crate::MAX_STAFFING_MEMBERS + 16 * MAX_MATERIAL_CIRCUIT_ROWS;
 
 /// Controls declare that they omit money; monetary campaigns never infer this
 /// from missing accounts or prices. Both use the same physical allocator.

@@ -816,6 +816,7 @@ fn paid_maintenance_opening() -> MaterialCircuitState {
         ],
         vec![],
         vec![],
+        vec![],
     )
     .unwrap();
     state.accounting = CircuitAccounting::Monetary(Box::new(MonetaryCircuit {

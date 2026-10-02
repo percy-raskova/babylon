@@ -13,7 +13,8 @@ use std::collections::BTreeMap;
 
 pub(crate) struct CostClose {
     pub(super) active: Option<ActiveCosts>,
-    attendance: crate::payments::AttendanceLedger,
+    pub(super) attendance: crate::payments::AttendanceLedger,
+    pub(crate) wear_receipts: Vec<crate::EquipmentWearReceipt>,
 }
 pub(super) struct ActiveCosts {
     pub(super) book: HistoricalCostBook,
@@ -40,6 +41,7 @@ impl CostClose {
         };
         Self {
             active,
+            wear_receipts: Vec::new(),
             attendance: crate::payments::AttendanceLedger::default(),
         }
     }
@@ -433,7 +435,9 @@ impl CostClose {
                     statement.maintenance_labor_expense,
                 )?,
             )?;
-            if classified != wages.get(account).copied().unwrap_or_else(zero) {
+            if add(classified, statement.installation_labor_capitalized)?
+                != wages.get(account).copied().unwrap_or_else(zero)
+            {
                 return Err(MaterialCircuitError::ValuationInvariant);
             }
         }

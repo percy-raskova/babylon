@@ -103,6 +103,7 @@ fn opening_economy(household_cash: i128, stock: u64) -> MonetaryCircuit {
                 .collect(),
             vec![],
             vec![],
+            vec![],
         )
         .unwrap(),
         book,

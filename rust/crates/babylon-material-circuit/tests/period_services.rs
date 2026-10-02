@@ -61,6 +61,7 @@ fn opening() -> MaterialCircuitState {
             .collect(),
         vec![],
         vec![],
+        vec![],
     )
     .unwrap();
     MaterialCircuitState {

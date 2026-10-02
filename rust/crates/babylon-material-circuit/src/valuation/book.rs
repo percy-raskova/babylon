@@ -18,6 +18,7 @@ pub struct HistoricalCostBook {
     pub(super) stocks: BTreeMap<StockKey, Currency>,
     pub(super) freight: BTreeMap<FreightLotId, (SiteId, Currency)>,
     pub(super) equity: BTreeMap<(AccountId, SiteId), Currency>,
+    pub(super) equipment: BTreeMap<crate::EquipmentAssetId, (SiteId, Currency)>,
 }
 
 impl HistoricalCostBook {
@@ -31,6 +32,7 @@ impl HistoricalCostBook {
         stocks: Vec<StockCarryingValue>,
         freight: Vec<FreightCarryingValue>,
         equity: Vec<EquityCarryingValue>,
+        equipment: Vec<crate::EquipmentCarryingValue>,
     ) -> Result<Self> {
         let accounts = money
             .snapshot()
@@ -48,6 +50,7 @@ impl HistoricalCostBook {
             stocks,
             freight,
             equity,
+            equipment,
         })?;
         let assets = book.net_assets(money)?;
         for (account, value) in assets {
@@ -67,6 +70,7 @@ impl HistoricalCostBook {
             || rows.stocks.len() > MAX_CARRYING_STOCKS
             || rows.freight.len() > MAX_MATERIAL_CIRCUIT_ROWS
             || rows.equity.len() > MAX_MATERIAL_CIRCUIT_ROWS
+            || rows.equipment.len() > 2 * MAX_MATERIAL_CIRCUIT_ROWS
         {
             return Err(MaterialCircuitError::RowLimit);
         }
@@ -75,6 +79,7 @@ impl HistoricalCostBook {
             stocks: BTreeMap::new(),
             freight: BTreeMap::new(),
             equity: BTreeMap::new(),
+            equipment: BTreeMap::new(),
         };
         for row in rows.accounts {
             if row.opening_capital.micro_units() < 0 || row.contributed_capital.micro_units() < 0 {
@@ -131,12 +136,35 @@ impl HistoricalCostBook {
                 return Err(MaterialCircuitError::DuplicateRow);
             }
         }
+        for row in rows.equipment {
+            if row.amount.micro_units() < 0
+                || !book.accounts.contains_key(&AccountId::Site(row.owner))
+            {
+                return Err(MaterialCircuitError::ValuationInvariant);
+            }
+            if book
+                .equipment
+                .insert(row.asset, (row.owner, row.amount))
+                .is_some()
+            {
+                return Err(MaterialCircuitError::DuplicateRow);
+            }
+        }
         Ok(book)
     }
 
     #[must_use]
     pub fn snapshot(&self) -> HistoricalCostSnapshot {
         HistoricalCostSnapshot {
+            equipment: self
+                .equipment
+                .iter()
+                .map(|(&asset, &(owner, amount))| crate::EquipmentCarryingValue {
+                    asset,
+                    owner,
+                    amount,
+                })
+                .collect(),
             accounts: self.accounts.values().cloned().collect(),
             equity: self
                 .equity
@@ -219,6 +247,9 @@ impl HistoricalCostBook {
         }
         for (&(owner, _), &value) in &self.equity {
             accumulate(&mut totals, owner, value)?;
+        }
+        for &(owner, value) in self.equipment.values() {
+            accumulate(&mut totals, AccountId::Site(owner), value)?;
         }
         Ok(totals)
     }

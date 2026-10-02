@@ -180,6 +180,7 @@ fn opening() -> MaterialCircuitState {
                     .collect(),
                     vec![],
                     vec![],
+                    vec![],
                 )
                 .unwrap(),
                 book,
@@ -530,9 +531,14 @@ fn responsive_next_quote_does_not_reprice_existing_reserves() {
         .unwrap()
         .amount = money(0);
     // This scenario starts without the retailer's stock or its opening asset.
-    accounts.costs =
-        HistoricalCostBook::open(&accounts.book, captured.stocks, captured.freight, vec![])
-            .unwrap();
+    accounts.costs = HistoricalCostBook::open(
+        &accounts.book,
+        captured.stocks,
+        captured.freight,
+        vec![],
+        vec![],
+    )
+    .unwrap();
     let offer = recurring_mut(&mut state)
         .offers
         .iter_mut()
@@ -588,14 +594,21 @@ fn captured_household_policies_refuse_old_bytes_bad_cursors_and_noncanonical_row
     captured
         .stocks
         .retain(|row| matches!(row.owner, AccountId::Site(_)));
-    economy.costs =
-        HistoricalCostBook::open(&economy.book, captured.stocks, captured.freight, vec![]).unwrap();
+    economy.costs = HistoricalCostBook::open(
+        &economy.book,
+        captured.stocks,
+        captured.freight,
+        vec![],
+        vec![],
+    )
+    .unwrap();
     let captured = economy.costs.snapshot();
-    let cost_bytes = 16
+    let cost_bytes = 20
         + 81 * captured.accounts.len()
         + 113 * captured.stocks.len()
         + 80 * captured.freight.len()
-        + 81 * captured.equity.len();
+        + 81 * captured.equity.len()
+        + 81 * captured.equipment.len();
     let offset = encode_material_circuit_state(&finite).unwrap().len() - cost_bytes - 10 - 28; // Seven empty financial table counts.
     assert_eq!(bytes[offset], 1);
     let mut old = bytes.clone();
@@ -666,9 +679,14 @@ fn retained_finite_purchase_restores_attendance_when_recurring_purchases_are_dis
         .unwrap();
     let captured = accounts.costs.snapshot();
     // This control opens after its deliberate endowment transfer.
-    accounts.costs =
-        HistoricalCostBook::open(&accounts.book, captured.stocks, captured.freight, vec![])
-            .unwrap();
+    accounts.costs = HistoricalCostBook::open(
+        &accounts.book,
+        captured.stocks,
+        captured.freight,
+        vec![],
+        vec![],
+    )
+    .unwrap();
     let id = OrderId::from_bytes([90; 32]);
     let (state, _) = admit_material_purchase(
         &state,
@@ -890,9 +908,14 @@ fn a_household_purchase_without_a_recipient_stock_is_refused_before_reserving_ca
         .stocks
         .retain(|row| row.owner != AccountId::Household(household()) || row.good_id != good(1));
     // Capture this fixture's changed opening endowments and absent stock explicitly.
-    accounts.costs =
-        HistoricalCostBook::open(&accounts.book, captured.stocks, captured.freight, vec![])
-            .unwrap();
+    accounts.costs = HistoricalCostBook::open(
+        &accounts.book,
+        captured.stocks,
+        captured.freight,
+        vec![],
+        vec![],
+    )
+    .unwrap();
     let original = state.clone();
     assert_eq!(
         admit_material_purchase(

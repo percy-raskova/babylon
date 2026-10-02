@@ -72,11 +72,13 @@ pub struct MemberLaborUseReceipt {
     pub production_hours: u64,
     pub handling_hours: u64,
     pub maintenance_hours: u64,
+    pub installation_hours: u64,
     pub idle_hours: u64,
     pub accrued_wages: Currency,
     pub production_wages: Currency,
     pub handling_wages: Currency,
     pub maintenance_wages: Currency,
+    pub installation_wages: Currency,
     pub idle_wages: Currency,
 }
 impl MemberLaborUseReceipt {
@@ -87,7 +89,8 @@ impl MemberLaborUseReceipt {
         let used = self
             .production_hours
             .checked_add(self.handling_hours)
-            .and_then(|n| n.checked_add(self.maintenance_hours));
+            .and_then(|n| n.checked_add(self.maintenance_hours))
+            .and_then(|n| n.checked_add(self.installation_hours));
         if self.period == 0
             || self.planned_hours.checked_add(self.unplanned_hours) != Some(self.available_hours)
             || self.attended_hours.checked_add(self.unattended_hours) != Some(self.planned_hours)
@@ -103,6 +106,7 @@ impl MemberLaborUseReceipt {
             (self.production_hours, self.production_wages),
             (self.handling_hours, self.handling_wages),
             (self.maintenance_hours, self.maintenance_wages),
+            (self.installation_hours, self.installation_wages),
             (self.idle_hours, self.idle_wages),
         ] {
             if wages != wage_amount(hours, self.compensation)? {
@@ -118,6 +122,7 @@ pub(crate) enum LaborUse {
     Production,
     Handling,
     Maintenance,
+    Installation,
 }
 
 #[derive(Default)]
@@ -159,6 +164,9 @@ impl AttendanceLedger {
                 LaborUse::Production => (&mut row.production_hours, &mut row.production_wages),
                 LaborUse::Handling => (&mut row.handling_hours, &mut row.handling_wages),
                 LaborUse::Maintenance => (&mut row.maintenance_hours, &mut row.maintenance_wages),
+                LaborUse::Installation => {
+                    (&mut row.installation_hours, &mut row.installation_wages)
+                }
             };
             *used = used
                 .checked_add(share)
@@ -386,6 +394,8 @@ fn fund_member_attendance(
         unplanned_hours: available - planned,
         attended_hours: attended,
         unattended_hours: planned - attended,
+        installation_hours: 0,
+        installation_wages: zero,
         production_hours: 0,
         handling_hours: 0,
         maintenance_hours: 0,

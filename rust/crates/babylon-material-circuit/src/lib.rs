@@ -8,6 +8,7 @@
 
 mod accounts;
 mod capacity;
+mod equipment;
 mod financial;
 mod inventory;
 mod maintenance;
@@ -27,6 +28,13 @@ pub use accounts::{
     OrganizationAccountId, PublicAccountId, PurchaseEscrow, PurchaseMovementReceipt, ShiftId,
     ShiftState, WageAccrualReceipt,
 };
+pub use equipment::{
+    equipment_installation_id, equipment_purchase_order_id, EquipmentAssetId, EquipmentBinding,
+    EquipmentCarryingValue, EquipmentCohortId, EquipmentDefinition, EquipmentDefinitionId,
+    EquipmentWearReceipt, InstallationId, InstallationInput, InstallationPolicy,
+    InstallationReceipt, InstalledEquipmentCohort, InvestmentPolicy, InvestmentReceipt,
+    PendingInstallation, ProductiveEquipment, RollingProcessSupply,
+};
 pub use financial::{
     validate_distribution_receipts, CapitalContributionOrder, CapitalContributionReceipt,
     ContributionId, DistributionPolicy, DistributionReceipt, FinancialInstitutions,
@@ -41,10 +49,10 @@ pub use payments::{
 };
 pub use recurring::*;
 pub use services::{
-    recurring_service_order_id, CommodityDefinition, CommodityKind, HouseholdServiceReceipt,
-    ServiceConnection, ServiceInputPolicy, ServiceMarketReceipt, ServiceOrder,
-    ServiceOutputReceipt, ServicePerformanceReceipt, ServicePriceDecision, ServiceStage,
-    MAX_SERVICE_RECEIPTS_PER_PERIOD,
+    recurring_service_order_id, recurring_service_topup_order_id, CommodityDefinition,
+    CommodityKind, HouseholdServiceReceipt, ServiceConnection, ServiceInputPolicy,
+    ServiceMarketReceipt, ServiceOrder, ServiceOutputReceipt, ServicePerformanceReceipt,
+    ServicePriceDecision, ServiceStage, MAX_SERVICE_RECEIPTS_PER_PERIOD,
 };
 pub use staffing::{
     advance_staffing, distribute_staffing_members, MemberLaborCapacityRow, StaffingError,

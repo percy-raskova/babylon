@@ -433,4 +433,9 @@ fn successor_refusal_registry_includes_accounting_and_rejects_unknown_codes() {
         Ok(MaterialCircuitError::FinancialInvariant)
     );
     assert!(MaterialCircuitError::try_from(29).is_err());
+    assert_eq!(
+        MaterialCircuitError::try_from(30),
+        Ok(MaterialCircuitError::EquipmentInvariant)
+    );
+    assert!(MaterialCircuitError::try_from(31).is_err());
 }

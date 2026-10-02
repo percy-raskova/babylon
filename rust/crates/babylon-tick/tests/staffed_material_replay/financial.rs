@@ -26,6 +26,7 @@ fn financial_session() -> Session {
             issuer_site_id: site(2),
             amount: money(0),
         }],
+        vec![],
     )
     .unwrap();
     e.financial = FinancialInstitutions {

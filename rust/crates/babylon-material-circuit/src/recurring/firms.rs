@@ -422,6 +422,9 @@ pub(crate) fn plan_attendance(
     for request in production {
         add_hours(&mut hours, request.site_id, request.unit_id, request.hours)?;
     }
+    for (_, site, unit, requested) in crate::equipment::work_requests(state)? {
+        add_hours(&mut hours, site, unit, requested)?;
+    }
     let merchants: BTreeMap<_, _> = state
         .merchants
         .iter()

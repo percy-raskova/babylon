@@ -371,7 +371,7 @@ mod engine_test {
             },
         ])
         .unwrap();
-        let costs = HistoricalCostBook::open(&book, vec![], vec![], vec![]).unwrap();
+        let costs = HistoricalCostBook::open(&book, vec![], vec![], vec![], vec![]).unwrap();
         MaterialCircuitState {
             period: 1,
             capacity_supply: CapacitySupply::FiniteSchedule,

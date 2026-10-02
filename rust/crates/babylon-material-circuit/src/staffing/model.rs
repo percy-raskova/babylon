@@ -12,6 +12,7 @@ pub enum StaffingWorkSource {
     Production(ProcessId),
     MerchantHandling(SiteId),
     Maintenance(SiteId),
+    Installation(ProcessId),
 }
 
 /// Closed refusals; no partial staffing transition is returned.

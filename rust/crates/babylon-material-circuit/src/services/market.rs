@@ -40,7 +40,7 @@ pub(super) fn capture(state: &MaterialCircuitState) -> Result<Vec<ServiceMarketR
                 output.process_id,
                 output.site_id,
                 state.period,
-            )
+            )?
             .checked_mul(output.quantity_per_batch)
             .ok_or(MaterialCircuitError::Arithmetic)?,
             direct_cost: Currency::from_micro_units(0),

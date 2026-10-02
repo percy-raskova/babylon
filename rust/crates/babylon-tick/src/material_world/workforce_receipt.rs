@@ -7,7 +7,7 @@ use babylon_material_circuit::{
 };
 
 pub(super) const STAFFING_BYTES: usize = 246;
-pub(super) const ATTENDANCE_BYTES: usize = 305;
+pub(super) const ATTENDANCE_BYTES: usize = 329;
 
 pub(super) fn encode_staffing(
     row: &StaffingMemberReceipt,
@@ -113,6 +113,7 @@ pub(super) fn encode_attendance(
         row.production_hours,
         row.handling_hours,
         row.maintenance_hours,
+        row.installation_hours,
         row.idle_hours,
     ] {
         bytes.extend_from_slice(&value.to_be_bytes());
@@ -122,6 +123,7 @@ pub(super) fn encode_attendance(
         row.production_wages,
         row.handling_wages,
         row.maintenance_wages,
+        row.installation_wages,
         row.idle_wages,
     ] {
         bytes.extend_from_slice(&value.micro_units().to_be_bytes());
@@ -159,11 +161,13 @@ pub(super) fn decode_attendance(
         production_hours: cursor.u64()?,
         handling_hours: cursor.u64()?,
         maintenance_hours: cursor.u64()?,
+        installation_hours: cursor.u64()?,
         idle_hours: cursor.u64()?,
         accrued_wages: currency(cursor)?,
         production_wages: currency(cursor)?,
         handling_wages: currency(cursor)?,
         maintenance_wages: currency(cursor)?,
+        installation_wages: currency(cursor)?,
         idle_wages: currency(cursor)?,
     };
     row.validate().map_err(|_| MaterialWorldError::Wire)?;

@@ -30,6 +30,7 @@ fn local_cost_economy() -> MonetaryCircuit {
             .collect(),
         vec![],
         vec![],
+        vec![],
     )
     .unwrap();
     MonetaryCircuit {

@@ -32,6 +32,22 @@ pub fn recurring_service_order_id(
     bytes.extend_from_slice(&unit.as_bytes());
     crate::OrderId::from_bytes(sha256_of(&bytes))
 }
+/// Exact identity of a top-up against captured, accepted service commitments.
+/// `due` is the strictly order-ID-sorted `(order, quantity, accepted price)` slice.
+#[must_use]
+pub fn recurring_service_topup_order_id(
+    base: crate::OrderId,
+    due: &[(crate::OrderId, u64, Currency)],
+) -> crate::OrderId {
+    let mut bytes = b"babylon.recurring-service-topup.v1\0".to_vec();
+    bytes.extend_from_slice(&base.as_bytes());
+    for (order, quantity, price) in due {
+        bytes.extend_from_slice(&order.as_bytes());
+        bytes.extend_from_slice(&quantity.to_be_bytes());
+        bytes.extend_from_slice(&price.micro_units().to_be_bytes());
+    }
+    crate::OrderId::from_bytes(sha256_of(&bytes))
+}
 struct Request {
     order_id: crate::OrderId,
     buyer: AccountId,
@@ -139,15 +155,14 @@ fn deduct_due_commitments(state: &MaterialCircuitState, requests: &mut [Request]
         {
             request.requested = request.requested.saturating_sub(*quantity);
             // Preserve accepted reserves; a remaining requirement is a separate current-price purchase.
-            let mut bytes = b"babylon.recurring-service-topup.v1\0".to_vec();
-            bytes.extend_from_slice(&request.order_id.as_bytes());
-            for order in orders {
-                let reserve = e.book.purchase(OutboundOrderId::Service(order.order_id))?;
-                bytes.extend_from_slice(&order.order_id.as_bytes());
-                bytes.extend_from_slice(&order.quantity.to_be_bytes());
-                bytes.extend_from_slice(&reserve.unit_price.micro_units().to_be_bytes());
-            }
-            request.order_id = crate::OrderId::from_bytes(sha256_of(&bytes));
+            let accepted = orders
+                .iter()
+                .map(|order| {
+                    let reserve = e.book.purchase(OutboundOrderId::Service(order.order_id))?;
+                    Ok((order.order_id, order.quantity, reserve.unit_price))
+                })
+                .collect::<Result<Vec<_>>>()?;
+            request.order_id = recurring_service_topup_order_id(request.order_id, &accepted);
         }
     }
     Ok(())

@@ -401,15 +401,17 @@ fn rolling_two_stage_opening() -> MaterialCircuitState {
     state.capacities.retain(|row| row.period == 1);
     state.corridor_capacities.retain(|row| row.period == 1);
     state.capacity_supply = CapacitySupply::Rolling(Box::new(RollingCapacitySupply {
-        installed_processes: state
-            .capacities
-            .iter()
-            .map(|row| InstalledProcessCapacity {
-                process_id: row.process_id,
-                site_id: row.site_id,
-                batches_per_period: row.available_batches,
-            })
-            .collect(),
+        processes: babylon_material_circuit::RollingProcessSupply::CapturedNameplate(
+            state
+                .capacities
+                .iter()
+                .map(|row| InstalledProcessCapacity {
+                    process_id: row.process_id,
+                    site_id: row.site_id,
+                    batches_per_period: row.available_batches,
+                })
+                .collect(),
+        ),
         shared: state
             .corridor_capacities
             .iter()

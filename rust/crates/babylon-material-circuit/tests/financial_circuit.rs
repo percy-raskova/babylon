@@ -85,6 +85,7 @@ fn opening(cash: [i128; 5]) -> MaterialCircuitState {
                 amount: money(0),
             },
         ],
+        vec![],
     )
     .unwrap();
     MaterialCircuitState {

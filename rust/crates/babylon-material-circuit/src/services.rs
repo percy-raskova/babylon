@@ -5,7 +5,7 @@ mod market;
 mod model;
 mod validation;
 use crate::{GoodId, MaterialCircuitError, MaterialCircuitState, ProcessOutput, UnitId};
-pub use admission::recurring_service_order_id;
+pub use admission::{recurring_service_order_id, recurring_service_topup_order_id};
 pub(crate) use close::ServiceClose;
 pub use model::*;
 pub(crate) use validation::{canonicalize, validate};

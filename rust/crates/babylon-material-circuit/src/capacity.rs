@@ -11,7 +11,13 @@ type Result<T> = std::result::Result<T, MaterialCircuitError>;
 pub(crate) fn row_limits(state: &MaterialCircuitState) -> Result<()> {
     if let CapacitySupply::Rolling(rows) = &state.capacity_supply {
         if [
-            rows.installed_processes.len(),
+            match &rows.processes {
+                crate::RollingProcessSupply::CapturedNameplate(r) => r.len(),
+                crate::RollingProcessSupply::Equipment(e) => {
+                    crate::equipment::row_limits(e)?;
+                    e.bindings.len()
+                }
+            },
             rows.shared.len(),
             rows.future_reservations.len(),
         ]
@@ -26,8 +32,12 @@ pub(crate) fn row_limits(state: &MaterialCircuitState) -> Result<()> {
 
 pub(crate) fn canonicalize(supply: &mut CapacitySupply) {
     if let CapacitySupply::Rolling(rows) = supply {
-        rows.installed_processes
-            .sort_by_key(|r| (r.site_id, r.process_id));
+        match &mut rows.processes {
+            crate::RollingProcessSupply::CapturedNameplate(r) => {
+                r.sort_by_key(|r| (r.site_id, r.process_id));
+            }
+            crate::RollingProcessSupply::Equipment(e) => crate::equipment::canonicalize(e),
+        }
         rows.shared.sort_by_key(|r| r.corridor_id);
         rows.future_reservations
             .sort_by_key(|r| (r.departure_period, r.corridor_id));
@@ -46,7 +56,11 @@ pub(crate) fn validate(state: &MaterialCircuitState) -> Result<()> {
     let CapacitySupply::Rolling(rows) = &state.capacity_supply else {
         return Ok(());
     };
-    unique(&rows.installed_processes, |r| (r.site_id, r.process_id))?;
+    let installed_processes = rows.processes.capacities(state.period)?;
+    if let crate::RollingProcessSupply::Equipment(e) = &rows.processes {
+        crate::equipment::validate(state, e)?;
+    }
+    unique(&installed_processes, |r| (r.site_id, r.process_id))?;
     unique(&rows.shared, |r| r.corridor_id)?;
     unique(&rows.future_reservations, |r| {
         (r.departure_period, r.corridor_id)
@@ -56,8 +70,7 @@ pub(crate) fn validate(state: &MaterialCircuitState) -> Result<()> {
         .iter()
         .map(|r| (r.site_id, r.process_id))
         .collect();
-    let installed: BTreeSet<_> = rows
-        .installed_processes
+    let installed: BTreeSet<_> = installed_processes
         .iter()
         .map(|r| (r.site_id, r.process_id))
         .collect();
@@ -74,12 +87,12 @@ pub(crate) fn validate(state: &MaterialCircuitState) -> Result<()> {
         .collect();
     if installed != processes
         || supply.keys().copied().collect::<BTreeSet<_>>() != corridors
-        || state.capacities.len() != rows.installed_processes.len()
+        || state.capacities.len() != installed_processes.len()
         || state.corridor_capacities.len() != rows.shared.len()
     {
         return Err(MaterialCircuitError::CapacityInvariant);
     }
-    for (budget, installed) in state.capacities.iter().zip(&rows.installed_processes) {
+    for (budget, installed) in state.capacities.iter().zip(&installed_processes) {
         if budget.period != state.period
             || budget.site_id != installed.site_id
             || budget.process_id != installed.process_id
@@ -147,23 +160,41 @@ pub(crate) fn process_available(
     process: ProcessId,
     site: SiteId,
     period: u64,
-) -> u64 {
+) -> Result<u64> {
     if period > state.period {
         if let CapacitySupply::Rolling(rows) = &state.capacity_supply {
-            return rows
-                .installed_processes
-                .binary_search_by_key(&(site, process), |r| (r.site_id, r.process_id))
-                .ok()
-                .map_or(0, |i| rows.installed_processes[i].batches_per_period);
+            return match &rows.processes {
+                crate::RollingProcessSupply::CapturedNameplate(r) => Ok(r
+                    .binary_search_by_key(&(site, process), |r| (r.site_id, r.process_id))
+                    .ok()
+                    .map_or(0, |i| r[i].batches_per_period)),
+                crate::RollingProcessSupply::Equipment(e) => {
+                    let (b, d) = e.definition(process)?;
+                    if b.site_id != site {
+                        return Err(MaterialCircuitError::EquipmentInvariant);
+                    }
+                    e.cohorts[e.cohorts_for(process)]
+                        .iter()
+                        .filter(|c| c.usable_from_period <= period)
+                        .try_fold(0_u64, |n, c| {
+                            let v = c
+                                .units
+                                .checked_mul(d.batches_per_unit_per_period)
+                                .ok_or(MaterialCircuitError::Arithmetic)?
+                                .min(c.remaining_service_batches);
+                            n.checked_add(v).ok_or(MaterialCircuitError::Arithmetic)
+                        })
+                }
+            };
         }
     }
-    state
+    Ok(state
         .capacities
         .binary_search_by_key(&(period, site, process), |r| {
             (r.period, r.site_id, r.process_id)
         })
         .ok()
-        .map_or(0, |i| state.capacities[i].available_batches)
+        .map_or(0, |i| state.capacities[i].available_batches))
 }
 
 pub(crate) fn shared_available(
@@ -255,7 +286,8 @@ pub(crate) fn roll_forward(state: &mut MaterialCircuitState, next_period: u64) -
         return Ok(());
     };
     let capacities = rows
-        .installed_processes
+        .processes
+        .capacities(next_period)?
         .iter()
         .map(|r| CapacityRow {
             site_id: r.site_id,

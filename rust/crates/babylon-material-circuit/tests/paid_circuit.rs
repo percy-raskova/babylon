@@ -62,6 +62,7 @@ fn opening() -> MaterialCircuitState {
                         .collect(),
                     vec![],
                     vec![],
+                    vec![],
                 )
                 .unwrap(),
                 book,
@@ -414,8 +415,14 @@ fn previously_earned_wages_survive_restart_and_payment_does_not_accrue_them_agai
     economy.book.accrue_shift(previous_shift).unwrap();
     let captured = economy.costs.snapshot();
     // Capture this continuation's existing wage claim and liability once.
-    economy.costs =
-        HistoricalCostBook::open(&economy.book, captured.stocks, captured.freight, vec![]).unwrap();
+    economy.costs = HistoricalCostBook::open(
+        &economy.book,
+        captured.stocks,
+        captured.freight,
+        vec![],
+        vec![],
+    )
+    .unwrap();
     assert_eq!(
         economy
             .book
@@ -551,6 +558,7 @@ fn historical_cost_partial_dispatch_and_loss_leave_exact_remainders_without_cash
                 amount: money(amount),
             })
             .collect(),
+        vec![],
         vec![],
         vec![],
     )

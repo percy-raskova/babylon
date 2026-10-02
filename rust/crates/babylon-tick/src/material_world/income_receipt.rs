@@ -4,7 +4,7 @@ use super::{MaterialWorldError, ReceiptCursor};
 use babylon_kernel::currency::Currency;
 use babylon_material_circuit::{IncomeReceipt, IncomeStatement};
 
-pub(super) const ROW_BYTES: usize = 441;
+pub(super) const ROW_BYTES: usize = 473;
 
 pub(super) fn validate_order(rows: &[IncomeReceipt]) -> Result<(), MaterialWorldError> {
     if rows
@@ -52,6 +52,8 @@ fn encode_row(
         s.wage_income,
         s.cost_of_goods_sold,
         s.productive_labor_capitalized,
+        s.installation_labor_capitalized,
+        s.equipment_wear_capitalized,
         s.idle_labor_expense,
         s.handling_expense,
         s.maintenance_labor_expense,
@@ -99,6 +101,8 @@ pub(super) fn decode(
             wage_income: money(cursor)?,
             cost_of_goods_sold: money(cursor)?,
             productive_labor_capitalized: money(cursor)?,
+            installation_labor_capitalized: money(cursor)?,
+            equipment_wear_capitalized: money(cursor)?,
             idle_labor_expense: money(cursor)?,
             handling_expense: money(cursor)?,
             maintenance_labor_expense: money(cursor)?,

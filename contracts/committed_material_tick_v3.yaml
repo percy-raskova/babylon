@@ -1,6 +1,6 @@
 version: 3
 name: committed_material_tick_v3
-authority: [ADR251, ADR260, ADR263, ADR264, ADR266, ADR267]
+authority: [ADR251, ADR260, ADR263, ADR264, ADR266, ADR267, ADR268]
 purpose: One marker-last transaction binds graph, H3, material, receipts and full restart state.
 envelope:
   domain: "babylon.committed-material-tick.v3\0"
@@ -17,18 +17,18 @@ envelope:
     - {tag: 5, name: graph_full_checkpoint, codec: existing_nine_checkpoint_sections_v1}
     - {tag: 6, name: archive_dirty_receipt, count: 1, hash: combined_material_tick_content_v3}
     - {tag: 7, name: complete_material_register, count: 1, key: empty, payload: exact_material_world_register_v4_bytes}
-    - {tag: 8, name: material_receipts, count: 1, key: empty, payload: exact_material_tick_receipts_v11_bytes}
+    - {tag: 8, name: material_receipts, count: 1, key: empty, payload: exact_material_tick_receipts_v12_bytes}
   family_frame: u8_tag_then_u64_big_endian_count
   row_frame: u32_big_endian_key_length_then_key_then_u32_big_endian_payload_length_then_payload
   ordering: Existing six families preserve strict canonical key order; singular added families cannot reorder.
   digest: sha256_exact_complete_envelope_bytes
   maximum_complete_bytes: 67108864
 receipts:
-  version: 11
-  domain: "babylon.material-tick-receipts.v11\0"
-  header: u32_big_endian_version_11_then_u64_big_endian_positive_resolve_tick
+  version: 12
+  domain: "babylon.material-tick-receipts.v12\0"
+  header: u32_big_endian_version_12_then_u64_big_endian_positive_resolve_tick
   family_frame: u8_tag_then_u64_big_endian_count
-  family_count: 29
+  family_count: 32
   identities: exact_32_bytes
   quantities_periods_and_hours: u64_big_endian
   stage_index: u16_big_endian_less_than_16
@@ -203,11 +203,12 @@ receipts:
       fields: [account, period, opening_capital, opening_retained_earnings, opening_contributed_capital,
                contributions_received, closing_contributed_capital, distributions_paid, sales, wage_income,
                cost_of_goods_sold,
-               productive_labor_capitalized, idle_labor_expense, handling_expense, maintenance_labor_expense,
+               productive_labor_capitalized, installation_labor_capitalized, equipment_wear_capitalized,
+               idle_labor_expense, handling_expense, maintenance_labor_expense,
                maintenance_material_expense, freight_loss_expense, consumption_expense, final_demand_outlay,
                unused_service_expense, tax_income, tax_expense, public_transfer_income, public_transfer_expense,
                distribution_income, net_income, closing_retained_earnings]
-      width: 441
+      width: 473
       meaning: historical_transaction_cost_income_and_retained_earnings
     - tag: 20
       fields: [period, order_id, provider_site_id, buyer_account, good_id, unit_id, requested_quantity,
@@ -256,13 +257,68 @@ receipts:
     - tag: 29
       fields: [member_id, site_id, unit_id, payee_id, compensation_tag, hourly_rate_i128, period,
                available_hours, planned_hours, unplanned_hours, attended_hours, unattended_hours,
-               production_hours, handling_hours, maintenance_hours, idle_hours, accrued_wages,
-               production_wages, handling_wages, maintenance_wages, idle_wages]
-      width: 305
+               production_hours, handling_hours, maintenance_hours, installation_hours, idle_hours, accrued_wages,
+               production_wages, handling_wages, maintenance_wages, installation_wages, idle_wages]
+      width: 329
       meaning: resident_attendance_and_exact_actual_work_wage_attribution
+    - tag: 30
+      name: installation
+      width: 209
+      fields:
+        - period
+        - id
+        - process_id
+        - site_id
+        - units
+        - started
+        - opening_hours
+        - used_hours
+        - remaining_hours
+        - usable_from_period
+        - opening_carrying
+        - materials_capitalized
+        - wages_capitalized
+        - closing_carrying
+    - tag: 31
+      name: equipment_wear
+      width: 176
+      fields:
+        - period
+        - cohort_id
+        - process_id
+        - site_id
+        - opening_service_batches
+        - used_batches
+        - remaining_service_batches
+        - opening_carrying
+        - carried_to_output
+        - closing_carrying
+    - tag: 32
+      name: investment
+      width: 272
+      fields:
+        - period
+        - order_id
+        - process_id
+        - site_id
+        - supplier_site_id
+        - installed_units
+        - pending_units
+        - on_hand_units
+        - outstanding_inbound_units
+        - captured_plan_batches
+        - accepted_output_orders
+        - output_stock
+        - output_buffer
+        - replacement_requested_units
+        - expansion_requested_units
+        - admitted_units
+        - unit_price
+        - free_cash
+        - earnings_budget
   compensation_tag: {wage: 1, working_owner: 2, unpaid_family: 3}
   ordering:
-    families: Tags 1 through 29 appear exactly once in declared order, including empty families.
+    families: Tags 1 through 32 appear exactly once in declared order, including empty families.
     original_families: Preserve deterministic encounter order from babylon_material_circuit::advance_material_circuit.
     handling: Strict increasing unique site_id_and_tagged_outbound_order.
     local_fulfillment: Strict increasing unique order_id.
@@ -278,16 +334,23 @@ receipts:
     production_plans: Strict increasing unique process_id.
     prices: Strict increasing unique site_good_unit.
     income: Strict increasing unique account.
+    installation: Strict increasing process_id and installation_id.
+    equipment_wear: Strict increasing process_id and cohort_id.
+    investment: Strict increasing process_id.
     service_performance: Strict increasing unique order_id.
     household_services: Strict increasing unique principal_good_unit.
     service_markets: Strict increasing unique site_good_unit.
     service_outputs: Strict increasing unique site_good_unit.
 
   validation:
+    - Installation and wear belong to resolve_tick and prove exact remaining-work, service-life and carrying partitions.
+    - Installation completion grants only checked next-period usability; full wear exhaustion leaves zero carrying cost.
+    - Investment admits no more than requested quantities and actual captured free cash can fund at its positive quote.
+    - Equipment receipt equations cannot authenticate absent state policies, cohort identities or balances.
     - Member opening and closing employed plus reserve equal the immutable member force; transfers conserve persons.
     - Each member next hours equals closing employed times captured schedule, with checked integer arithmetic.
     - Available hours equal planned plus unplanned; planned equals attended plus unattended for each member.
-    - Attended hours equal production plus handling plus maintenance plus idle hours.
+    - Attended hours equal production plus handling plus maintenance plus installation plus idle hours.
     - Wage mode has positive rate and exact earned/use amounts; non-wage modes require zero rate and wage amounts.
     - Aggregate labor is the exact sum of member receipts; paid and unpaid idle hours remain distinct.
     - Every positive employee attendance has one exact member-domain wage accrual with matching principals and amount.
@@ -388,11 +451,11 @@ receipts:
     At most N first-pass orders plus N new procurement orders after generated retail principals retire.
     Delivery principals remain live through both passes, so dispatch and local-transfer families retain N.
   maximum_member_and_wage_accrual_rows: 131072
-  maximum_money_transfer_rows: 1376256
+  maximum_money_transfer_rows: 1441792
   maximum_service_performance_rows: 196608
   money_transfer_bound: >-
-    3M covers prior and current member payroll. 15N covers purchase, household, procurement,
-    service, public-budget, tax, distribution and contribution movements. M is the member limit;
+    3M covers prior and current member payroll. 16N covers purchase, household, procurement,
+    service, public-budget, tax, distribution contribution and equipment purchase movements. M is the member limit;
     N is the ordinary state-family limit. State and aggregate byte ceilings remain independent.
   maximum_complete_bytes: 67108864
 persistence:

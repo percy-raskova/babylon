@@ -55,7 +55,7 @@ fn equity_backed_retained_income_cannot_be_distributed_without_cash() {
         issuer_site_id: other,
         amount: money(7),
     });
-    e.costs = HistoricalCostBook::open(&e.book, vec![], vec![], equity).unwrap();
+    e.costs = HistoricalCostBook::open(&e.book, vec![], vec![], equity, vec![]).unwrap();
     e.financial.ownership.push(OwnershipClaim {
         issuer_site_id: other,
         beneficiary: AccountId::Site(site()),
@@ -164,6 +164,7 @@ fn incoming_distribution_cannot_fund_another_issuer_until_the_next_period() {
                 amount: money(0),
             },
         ],
+        vec![],
     )
     .unwrap();
     retained(&mut state, 7);

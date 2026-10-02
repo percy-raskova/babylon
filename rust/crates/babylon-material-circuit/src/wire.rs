@@ -2,6 +2,7 @@
 
 mod accounting;
 mod capacity;
+mod equipment;
 mod financial;
 mod recurring;
 mod services;
@@ -28,11 +29,11 @@ use crate::{
 pub const MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES: &[u8] = b"babylon.material-circuit-state.v3";
 /// SHA-256 of the current language-neutral material circuit contract source.
 pub const MATERIAL_CIRCUIT_SOURCE_SHA256: [u8; 32] = [
-    195, 7, 165, 241, 81, 80, 181, 58, 127, 27, 109, 181, 72, 223, 187, 80, 201, 137, 150, 153,
-    236, 192, 146, 164, 164, 201, 135, 27, 47, 198, 194, 162,
+    199, 54, 241, 197, 36, 43, 76, 225, 227, 252, 135, 250, 149, 145, 28, 28, 172, 128, 0, 174,
+    221, 177, 161, 55, 50, 79, 98, 26, 50, 106, 92, 63,
 ];
 
-const SCHEMA_VERSION: u16 = 13;
+const SCHEMA_VERSION: u16 = 14;
 
 impl From<CursorError> for MaterialCircuitError {
     fn from(value: CursorError) -> Self {

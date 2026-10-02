@@ -478,7 +478,7 @@ fn batch_opening(mut state: MaterialCircuitState) -> MaterialCircuitState {
         .find(|r| r.good_id == good(4))
         .unwrap()
         .amount = money(9);
-    e.costs = HistoricalCostBook::open(&e.book, stocks, vec![], vec![]).unwrap();
+    e.costs = HistoricalCostBook::open(&e.book, stocks, vec![], vec![], vec![]).unwrap();
     if let Some(r) = &mut e.recurring {
         r.household_purchases[0].enabled = false;
         r.attendance[0].planned_hours = 1;
@@ -566,7 +566,7 @@ fn same_stage_peer_acquisition_cannot_mix_into_unsold_provider_cost() {
         unit_id: unit(4),
         amount: money(19),
     });
-    e.costs = HistoricalCostBook::open(&e.book, stocks, vec![], vec![]).unwrap();
+    e.costs = HistoricalCostBook::open(&e.book, stocks, vec![], vec![], vec![]).unwrap();
     state.service_connections = (1..=2)
         .map(|provider| ServiceConnection {
             provider_site_id: site(provider),
@@ -678,7 +678,8 @@ fn prebooked_household_service_retains_its_price_and_is_not_purchased_twice() {
         .unwrap()
         .cash = money(2);
     e.book = MonetaryBook::open(accounts).unwrap();
-    e.costs = HistoricalCostBook::open(&e.book, e.costs.snapshot().stocks, vec![], vec![]).unwrap();
+    e.costs = HistoricalCostBook::open(&e.book, e.costs.snapshot().stocks, vec![], vec![], vec![])
+        .unwrap();
     let id = recurring_service_order_id(
         1,
         AccountId::Household(household()),

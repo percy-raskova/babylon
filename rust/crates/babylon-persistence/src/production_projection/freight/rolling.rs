@@ -86,25 +86,17 @@ fn reservation_book(rows: &[FutureCapacityReservation], period: u64) -> Result<B
     Ok(result)
 }
 
-type InstalledIdentity = (
-    babylon_material_circuit::ProcessId,
-    babylon_material_circuit::SiteId,
-    u64,
+type SupplyIdentity = (
+    babylon_material_circuit::RollingProcessSupply,
+    Vec<(CorridorId, u64)>,
 );
-type SupplyIdentity = (Vec<InstalledIdentity>, Vec<(CorridorId, u64)>);
-
 fn supply_identity(value: &RollingCapacitySupply) -> SupplyIdentity {
-    let mut processes: Vec<_> = value
-        .installed_processes
-        .iter()
-        .map(|row| (row.process_id, row.site_id, row.batches_per_period))
-        .collect();
+    let processes = value.processes.clone();
     let mut shared: Vec<_> = value
         .shared
         .iter()
-        .map(|row| (row.corridor_id, row.grams_per_period))
+        .map(|r| (r.corridor_id, r.grams_per_period))
         .collect();
-    processes.sort_unstable();
     shared.sort_unstable();
     (processes, shared)
 }

@@ -647,6 +647,13 @@ impl ClosedMaterialPeriod {
                 },
             )
             .transpose()?;
+        for (source, site, unit, hours) in crate::equipment::work_requests(state)? {
+            let total = nonmerchant.entry((site, unit)).or_default();
+            *total = total
+                .checked_add(hours)
+                .ok_or(MaterialCircuitError::Arithmetic)?;
+            requests.push((source, site, unit, hours));
+        }
         let mut needed = BTreeMap::<SiteId, u64>::new();
         for receipt in &self.transition.handling {
             let hours = needed.entry(receipt.site_id).or_default();
@@ -979,6 +986,36 @@ fn canonicalize_outbound_receipts(
     dispatches.sort_by_key(|row| row.order_id);
 }
 
+struct DueFreightReceipts {
+    losses: Vec<FreightLossReceipt>,
+    arrivals: Vec<ArrivalReceipt>,
+    deliveries: Vec<DeliveryReceipt>,
+    realizations: Vec<RealizationReceipt>,
+}
+fn close_due_freight(
+    state: &mut MaterialCircuitState,
+    costs: &mut CostClose,
+) -> Result<DueFreightReceipts, MaterialCircuitError> {
+    let mut inventory = take_inventory(state);
+    let mut result = DueFreightReceipts {
+        losses: Vec::new(),
+        arrivals: Vec::new(),
+        deliveries: Vec::new(),
+        realizations: Vec::new(),
+    };
+    process_due_freight(
+        state,
+        &mut inventory,
+        &mut result.losses,
+        &mut result.arrivals,
+        &mut result.deliveries,
+        &mut result.realizations,
+        costs,
+    )?;
+    publish_inventory(state, inventory);
+    Ok(result)
+}
+
 /// Execute due freight, prior production commitments and dispatch exactly once.
 ///
 /// The result borrows no mutable opening state and cannot become a world
@@ -992,23 +1029,14 @@ pub fn close_material_period(
 ) -> Result<ClosedMaterialPeriod, MaterialCircuitError> {
     let mut state = canonical_state(opening)?;
     let mut costs = CostClose::new(&state);
-    let mut inventory = take_inventory(&mut state);
-    let mut losses = Vec::new();
-    let mut arrivals = Vec::new();
-    let mut deliveries = Vec::new();
-    let mut realizations = Vec::new();
+    let DueFreightReceipts {
+        losses,
+        arrivals,
+        deliveries,
+        realizations,
+    } = close_due_freight(&mut state, &mut costs)?;
     let mut dispatches = Vec::new();
     let (mut money_transfers, mut wage_accruals) = (Vec::new(), Vec::new());
-    process_due_freight(
-        &mut state,
-        &mut inventory,
-        &mut losses,
-        &mut arrivals,
-        &mut deliveries,
-        &mut realizations,
-        &mut costs,
-    )?;
-    publish_inventory(&mut state, inventory);
     crate::payments::settle_deliveries(&mut state, &mut money_transfers)?;
     crate::recurring::firms::retire_resolved_purchases(&mut state)?;
     rebuild_backlog(&mut state);
@@ -1026,6 +1054,7 @@ pub fn close_material_period(
     if let Some(receipt) = &maintenance {
         costs.maintenance(&state, receipt)?;
     }
+    let installation = crate::equipment::install(&mut state, &mut costs)?;
     let (mut outbound, procurement) = dispatch_and_replenish(
         &mut state,
         &mut dispatches,
@@ -1041,6 +1070,7 @@ pub fn close_material_period(
         .period
         .checked_add(1)
         .ok_or(MaterialCircuitError::Arithmetic)?;
+    let investment = crate::equipment::invest(&mut state, &costs, &mut money_transfers)?;
     services.plan(&mut state, next_period)?;
     let plans = next_plans(
         &mut state,
@@ -1054,10 +1084,15 @@ pub fn close_material_period(
     rebuild_backlog(&mut state);
     canonicalize_outbound_receipts(&mut outbound, &mut dispatches);
     crate::payments::conserved(opening, &state)?;
+    let mut equipment_wear = std::mem::take(&mut costs.wear_receipts);
+    equipment_wear.sort_by_key(|r| (r.process_id, r.cohort_id));
     let income = costs.finish(&mut state)?;
     Ok(ClosedMaterialPeriod {
         next_period,
         transition: MaterialCircuitTransition {
+            installation,
+            equipment_wear,
+            investment,
             public_budgets: finance.public_budgets,
             taxes: finance.taxes,
             distributions: finance.distributions,

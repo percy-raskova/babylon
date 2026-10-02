@@ -3,6 +3,7 @@
 
 mod book;
 mod close;
+mod equipment;
 mod financial;
 mod model;
 mod validation;
@@ -37,7 +38,7 @@ fn amount(quantity: u64, rate: Currency) -> Result<Currency> {
 
 /// Exact ordered proportional withdrawal. The residual stays on remaining units;
 /// withdrawing every remaining unit always transfers every remaining micro-unit.
-fn portion(carrying: Currency, available: u64, quantity: u64) -> Result<Currency> {
+pub(crate) fn portion(carrying: Currency, available: u64, quantity: u64) -> Result<Currency> {
     let cost = carrying.micro_units();
     if cost < 0 || quantity > available || (available == 0 && cost != 0) {
         return Err(MaterialCircuitError::ValuationInvariant);
@@ -73,6 +74,8 @@ impl IncomeStatement {
             wage_income: zero(),
             cost_of_goods_sold: zero(),
             productive_labor_capitalized: zero(),
+            installation_labor_capitalized: zero(),
+            equipment_wear_capitalized: zero(),
             idle_labor_expense: zero(),
             handling_expense: zero(),
             maintenance_labor_expense: zero(),
@@ -129,6 +132,8 @@ impl IncomeStatement {
             .chain(outlays.iter())
             .any(|x| x.micro_units() < 0)
             || self.productive_labor_capitalized.micro_units() < 0
+            || self.installation_labor_capitalized.micro_units() < 0
+            || self.equipment_wear_capitalized.micro_units() < 0
         {
             return Err(MaterialCircuitError::ValuationInvariant);
         }

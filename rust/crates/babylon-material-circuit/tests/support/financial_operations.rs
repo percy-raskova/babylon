@@ -109,6 +109,7 @@ fn configure_service_money(
         }],
         vec![],
         e.costs.snapshot().equity,
+        vec![],
     )
     .unwrap();
     e.recurring = Some(Box::new(RecurringEconomy {

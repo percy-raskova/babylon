@@ -38,7 +38,27 @@ pub(super) fn append(
         append_account(b, r.owner);
         b.extend_from_slice(&r.issuer_site_id.as_bytes());
         b.extend_from_slice(&r.amount.micro_units().to_be_bytes());
-    })
+    })?;
+    out.extend_from_slice(
+        &u32::try_from(rows.equipment.len())
+            .map_err(|_| MaterialCircuitError::WireLimit)?
+            .to_be_bytes(),
+    );
+    for r in rows.equipment {
+        match r.asset {
+            crate::EquipmentAssetId::Installation(id) => {
+                out.push(0);
+                out.extend_from_slice(&id.as_bytes());
+            }
+            crate::EquipmentAssetId::Installed(id) => {
+                out.push(1);
+                out.extend_from_slice(&id.as_bytes());
+            }
+        }
+        out.extend_from_slice(&r.owner.as_bytes());
+        out.extend_from_slice(&r.amount.micro_units().to_be_bytes());
+    }
+    Ok(())
 }
 
 pub(super) fn decode(cursor: &mut Cursor<'_>) -> Result<HistoricalCostBook, MaterialCircuitError> {
@@ -77,6 +97,28 @@ pub(super) fn decode(cursor: &mut Cursor<'_>) -> Result<HistoricalCostBook, Mate
             amount: decode_currency(b)?,
         })
     })?;
+    let count = usize::try_from(cursor.u32()?).map_err(|_| MaterialCircuitError::WireLimit)?;
+    if count > 2 * crate::MAX_MATERIAL_CIRCUIT_ROWS {
+        return Err(MaterialCircuitError::WireLimit);
+    }
+    let mut equipment = Vec::with_capacity(count);
+    for _ in 0..count {
+        let asset = match cursor.u8()? {
+            0 => crate::EquipmentAssetId::Installation(crate::InstallationId::from_bytes(
+                cursor.array()?,
+            )),
+            1 => crate::EquipmentAssetId::Installed(crate::EquipmentCohortId::from_bytes(
+                cursor.array()?,
+            )),
+            _ => return Err(MaterialCircuitError::WireEnum),
+        };
+        equipment.push(crate::EquipmentCarryingValue {
+            asset,
+            owner: SiteId::from_bytes(cursor.array()?),
+            amount: decode_currency(cursor)?,
+        });
+    }
+    ordered_rows(&equipment, |r| r.asset)?;
     ordered_rows(&equity, |r| (r.owner, r.issuer_site_id))?;
     ordered_rows(&accounts, |r| r.account)?;
     ordered_rows(&stocks, |r| (r.owner, r.good_id, r.unit_id))?;
@@ -86,5 +128,6 @@ pub(super) fn decode(cursor: &mut Cursor<'_>) -> Result<HistoricalCostBook, Mate
         stocks,
         freight,
         equity,
+        equipment,
     })
 }

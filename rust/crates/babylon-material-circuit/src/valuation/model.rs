@@ -29,8 +29,8 @@ pub struct EquityCarryingValue {
 }
 
 /// Opening book capital is captured once; earnings can be negative.
-/// Existing installed equipment without a captured monetary carrying amount is
-/// outside this book. This is not total social capital or a value-theory measure.
+/// Managed equipment has explicit carrying amounts; captured-nameplate controls
+/// omit those physical assets. This is not total social capital or a value measure.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CapitalAccount {
     pub account: AccountId,
@@ -45,6 +45,7 @@ pub struct HistoricalCostSnapshot {
     pub stocks: Vec<StockCarryingValue>,
     pub freight: Vec<FreightCarryingValue>,
     pub equity: Vec<EquityCarryingValue>,
+    pub equipment: Vec<crate::EquipmentCarryingValue>,
 }
 
 /// Nonnegative period flows; capitalization is disclosed but is not an expense.
@@ -54,6 +55,8 @@ pub struct IncomeStatement {
     pub wage_income: Currency,
     pub cost_of_goods_sold: Currency,
     pub productive_labor_capitalized: Currency,
+    pub installation_labor_capitalized: Currency,
+    pub equipment_wear_capitalized: Currency,
     pub idle_labor_expense: Currency,
     pub handling_expense: Currency,
     pub maintenance_labor_expense: Currency,

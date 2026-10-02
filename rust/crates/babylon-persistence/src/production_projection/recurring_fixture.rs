@@ -173,6 +173,7 @@ fn accounting() -> CircuitAccounting {
                 .collect(),
                 vec![],
                 vec![],
+                vec![],
             )
             .unwrap(),
             book,

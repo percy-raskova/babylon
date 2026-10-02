@@ -1355,6 +1355,7 @@ fn underfunded_maintenance_uses_paid_hours_instead_of_all_available_people_time(
                     .collect(),
                 vec![],
                 vec![],
+                vec![],
             )
             .unwrap(),
             book,

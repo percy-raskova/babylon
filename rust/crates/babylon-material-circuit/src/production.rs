@@ -185,7 +185,7 @@ fn process_capacity(
     process: ProcessId,
     site: SiteId,
     period: u64,
-) -> u64 {
+) -> Result<u64, MaterialCircuitError> {
     crate::capacity::process_available(state, process, site, period)
 }
 
@@ -236,7 +236,7 @@ fn initial_production_allocations(
             commitment.process_id,
             commitment.site_id,
             period,
-        ));
+        )?);
         if period == state.period && crate::services::stage(state, output)?.is_some() {
             let funded = service_requests
                 .get(&(output.site_id, output.good_id, output.unit_id))
@@ -514,7 +514,11 @@ fn credit_production_allocations(
             .quantity_per_batch
             .checked_mul(batches)
             .ok_or(MaterialCircuitError::Arithmetic)?;
-        costs.output(state, &output, batches, inputs[index])?;
+        let wear = costs.wear(state, output.process_id, batches)?;
+        let inputs = inputs[index]
+            .checked_add(wear)
+            .map_err(|_| MaterialCircuitError::Arithmetic)?;
+        costs.output(state, &output, batches, inputs)?;
         credit_inventory(
             inventory,
             (output.site_id, output.good_id, output.unit_id),
@@ -646,22 +650,24 @@ fn planning_inventory(
 fn next_period_candidates(
     state: &MaterialCircuitState,
     next_period: u64,
-) -> Vec<crate::ProductionCommitment> {
+) -> Result<Vec<crate::ProductionCommitment>, MaterialCircuitError> {
     state
         .process_outputs
         .iter()
         .take(MAX_MATERIAL_CIRCUIT_ROWS + 1)
-        .map(|output| crate::ProductionCommitment {
-            process_id: output.process_id,
-            site_id: output.site_id,
-            period: next_period,
-            planned_batches: process_capacity(
-                state,
-                output.process_id,
-                output.site_id,
-                next_period,
-            )
-            .min(recurring_demand_cap(state, output.process_id)),
+        .map(|output| {
+            Ok(crate::ProductionCommitment {
+                process_id: output.process_id,
+                site_id: output.site_id,
+                period: next_period,
+                planned_batches: process_capacity(
+                    state,
+                    output.process_id,
+                    output.site_id,
+                    next_period,
+                )?
+                .min(recurring_demand_cap(state, output.process_id)),
+            })
         })
         .collect()
 }
@@ -671,7 +677,7 @@ fn derive_next_period_production(
     inventory: &InventoryLedger,
     next_period: u64,
 ) -> Result<(), MaterialCircuitError> {
-    let candidates = next_period_candidates(state, next_period);
+    let candidates = next_period_candidates(state, next_period)?;
     let allocations = allocate_production_batches(
         state,
         inventory,
@@ -706,7 +712,7 @@ pub(crate) fn derive_shared_labor_requests(
     next_period: u64,
 ) -> Result<Vec<ProcessLaborRequest>, MaterialCircuitError> {
     let inventory = planning_inventory(state, next_period)?;
-    let candidates = next_period_candidates(state, next_period);
+    let candidates = next_period_candidates(state, next_period)?;
     let allocations = allocate_production_batches(
         state,
         &inventory,
@@ -739,7 +745,7 @@ pub(crate) fn prospective_batches(
     period: u64,
 ) -> Result<u64, MaterialCircuitError> {
     let inventory = planning_inventory(state, period)?;
-    let candidates = next_period_candidates(state, period);
+    let candidates = next_period_candidates(state, period)?;
     let allocations = allocate_production_batches(
         state,
         &inventory,

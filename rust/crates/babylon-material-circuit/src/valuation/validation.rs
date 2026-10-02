@@ -50,6 +50,7 @@ pub(crate) fn validate(state: &MaterialCircuitState) -> Result<()> {
             return Err(MaterialCircuitError::ValuationInvariant);
         }
     }
+    super::equipment::validate_assets(state, costs)?;
     for (account, assets) in costs.net_assets(&economy.book)? {
         let row = &costs.accounts[&account];
         if assets

@@ -47,7 +47,7 @@ fn household_service_need_uses_the_selected_basis_at_admission_and_consumption()
     }
 }
 
-fn recurring(mut state: MaterialCircuitState) -> MaterialCircuitState {
+pub(super) fn recurring(mut state: MaterialCircuitState) -> MaterialCircuitState {
     state.inventory[0].quantity = 3;
     state.capacities[0].available_batches = 4;
     state.capacities[1].available_batches = 3;

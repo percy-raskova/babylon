@@ -10,6 +10,13 @@ use crate::{
 use babylon_kernel::currency::Currency;
 use std::collections::BTreeMap;
 
+// A close retains durable stocks until publication, plus one key per possible
+// service provider output and per positive admitted service buyer grant.
+// Zero-request receipts never credit a grant. ServiceClose::finish removes these
+// service keys before final state admission; snapshots retain the durable bound.
+const MAX_WORKING_CARRYING_STOCKS: usize =
+    MAX_CARRYING_STOCKS + crate::MAX_MATERIAL_CIRCUIT_ROWS + crate::MAX_SERVICE_ORDERS;
+
 pub(super) type StockKey = (AccountId, GoodId, UnitId);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -216,7 +223,7 @@ impl HistoricalCostBook {
     }
 
     pub(super) fn credit_stock(&mut self, key: StockKey, value: Currency) -> Result<()> {
-        if !self.stocks.contains_key(&key) && self.stocks.len() >= MAX_CARRYING_STOCKS {
+        if !self.stocks.contains_key(&key) && self.stocks.len() >= MAX_WORKING_CARRYING_STOCKS {
             return Err(MaterialCircuitError::RowLimit);
         }
         let cost = self.stocks.entry(key).or_insert_with(zero);
@@ -265,4 +272,76 @@ fn accumulate(
         .ok_or(MaterialCircuitError::ValuationInvariant)?;
     *total = add(*total, value)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn key(index: usize) -> StockKey {
+        let mut identity = [0; 32];
+        identity[24..].copy_from_slice(&u64::try_from(index).unwrap().to_be_bytes());
+        (
+            AccountId::Site(SiteId::from_bytes([1; 32])),
+            GoodId::from_bytes(identity),
+            UnitId::from_bytes([2; 32]),
+        )
+    }
+
+    fn empty_book() -> HistoricalCostBook {
+        let money = MonetaryBook::open(vec![crate::CashAccount {
+            id: key(0).0,
+            cash: zero(),
+        }])
+        .unwrap();
+        HistoricalCostBook::open(&money, vec![], vec![], vec![], vec![]).unwrap()
+    }
+
+    #[test]
+    fn transient_carrying_keys_have_an_exact_separate_insertion_bound() {
+        let mut book = empty_book();
+        book.stocks = (0..MAX_WORKING_CARRYING_STOCKS - 1)
+            .map(|i| (key(i), zero()))
+            .collect();
+        book.credit_stock(
+            key(MAX_WORKING_CARRYING_STOCKS - 1),
+            Currency::from_micro_units(7),
+        )
+        .unwrap();
+        assert_eq!(book.stocks.len(), 393_216);
+        book.credit_stock(
+            key(MAX_WORKING_CARRYING_STOCKS - 1),
+            Currency::from_micro_units(3),
+        )
+        .unwrap();
+        assert_eq!(
+            book.stocks[&key(MAX_WORKING_CARRYING_STOCKS - 1)],
+            Currency::from_micro_units(10)
+        );
+        assert_eq!(
+            book.credit_stock(key(MAX_WORKING_CARRYING_STOCKS), zero()),
+            Err(MaterialCircuitError::RowLimit)
+        );
+        assert_eq!(book.stocks.len(), MAX_WORKING_CARRYING_STOCKS);
+        assert!(!book.stocks.contains_key(&key(MAX_WORKING_CARRYING_STOCKS)));
+        assert_eq!(
+            HistoricalCostBook::from_snapshot(book.snapshot()),
+            Err(MaterialCircuitError::RowLimit)
+        );
+    }
+
+    #[test]
+    fn durable_carrying_snapshot_still_refuses_the_first_excess_key() {
+        let mut book = empty_book();
+        book.stocks = (0..MAX_CARRYING_STOCKS).map(|i| (key(i), zero())).collect();
+        assert_eq!(
+            HistoricalCostBook::from_snapshot(book.snapshot()).unwrap(),
+            book
+        );
+        book.credit_stock(key(MAX_CARRYING_STOCKS), zero()).unwrap();
+        assert_eq!(
+            HistoricalCostBook::from_snapshot(book.snapshot()),
+            Err(MaterialCircuitError::RowLimit)
+        );
+    }
 }

@@ -6,8 +6,10 @@
 use serde::{Deserialize, Serialize};
 
 mod contract;
+mod time_resources;
 mod transition;
 pub use contract::*;
+pub use time_resources::*;
 pub use transition::*;
 
 /// Current organizer representation. Older representations are unsupported.
@@ -147,6 +149,7 @@ pub struct OrganizerPreview {
 pub enum OrganizerPauseReason {
     Explicit,
     InsufficientCommittedTime,
+    InsufficientAvailableTime,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -334,6 +337,12 @@ pub enum OrganizerError {
     PeriodMismatch,
     Refused(OrganizerRefusal),
     ResourceAllocation,
+    TimeBindingMismatch,
+    TimeCapacityMissing,
+    TimeCapacityDuplicate,
+    TimeCapacityScope,
+    TimeUnitMismatch,
+    TimePeriodMismatch,
     Codec,
     NonCanonical,
     SizeLimit,

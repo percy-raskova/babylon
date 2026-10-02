@@ -921,3 +921,346 @@ fn shared_contact_allocation(
     )
     .unwrap()
 }
+
+fn finite_time(config: &OrganizerConfig, period: u64) -> OrganizerPeriodTimeResources {
+    let mut resources = organizer_fixed_time_resources(config, period).unwrap();
+    // The real source path accepts the captured material hour unit, not the
+    // separate fixed-control identity.
+    resources.unit_id = PracticeUnitId::from_bytes([44; 32]);
+    for capacity in &mut resources.capacities {
+        capacity.unit_id = resources.unit_id;
+    }
+    resources
+}
+
+fn finite_act(
+    config: &OrganizerConfig,
+    state: &OrganizerState,
+    resources: &OrganizerPeriodTimeResources,
+) -> Result<OrganizerState, OrganizerError> {
+    let accepted = admit_organizer(
+        config,
+        state,
+        &command(config, state, OrganizerChoice::Reinforce),
+    )?;
+    resolve_organizer_period_with_time(
+        config,
+        state,
+        &facts(state.period + 1, 160),
+        Some(&accepted),
+        resources,
+    )
+}
+
+fn shared_time(config: &OrganizerConfig, available: u64) -> OrganizerPeriodTimeResources {
+    let mut resources = finite_time(config, 1);
+    let shared = resources.bindings[0].budget_id;
+    resources.bindings[1].budget_id = shared;
+    resources.capacities.remove(1);
+    resources.capacities[0].available = available;
+    resources
+}
+
+fn assert_no_time_product(state: &OrganizerState) {
+    let receipt = state.receipts.last().unwrap();
+    assert_eq!(receipt.outcome, OrganizerOutcome::InsufficientTime);
+    assert_eq!(receipt.hours_spent, 0);
+    assert!(receipt.time_use.is_empty());
+    assert!(receipt.contact_product_id.is_none());
+    assert!(receipt.observation_ids.is_empty());
+    assert!(state.contact_products.is_empty());
+}
+
+#[test]
+fn finite_shared_alias_supply_is_counted_once_and_shortage_spends_nothing() {
+    let config = config();
+    let opening = initial_organizer_state(&config).unwrap();
+    // Eight controlled-actor hours plus two partner hours share nine actual hours.
+    let resources = shared_time(&config, 9);
+    let before = resources.clone();
+    let next = finite_act(&config, &opening, &resources).unwrap();
+    assert_no_time_product(&next);
+    assert_eq!(next.agreements, opening.agreements);
+    assert_eq!(resources, before);
+    assert!(!next.standing.authorized);
+    assert_eq!(
+        next.standing.paused_reason,
+        Some(OrganizerPauseReason::InsufficientAvailableTime)
+    );
+}
+
+#[test]
+fn finite_zero_availability_is_a_receipt_not_a_tick_error_or_refill() {
+    let config = config();
+    let opening = initial_organizer_state(&config).unwrap();
+    let mut resources = finite_time(&config, 1);
+    for capacity in &mut resources.capacities {
+        capacity.available = 0;
+    }
+    assert_no_time_product(&finite_act(&config, &opening, &resources).unwrap());
+}
+
+#[test]
+fn finite_complete_shared_budget_keeps_exact_alias_and_actor_debits() {
+    let config = config();
+    let opening = initial_organizer_state(&config).unwrap();
+    let next = finite_act(&config, &opening, &shared_time(&config, 10)).unwrap();
+    let receipt = next.receipts.last().unwrap();
+    assert_eq!(receipt.outcome, OrganizerOutcome::ContactCompleted);
+    assert_eq!(receipt.hours_spent, 8);
+    assert_eq!(
+        receipt.time_use,
+        [
+            OrganizerTimeUse {
+                contributor_id: 201,
+                actor_id: 101,
+                hours: 8
+            },
+            OrganizerTimeUse {
+                contributor_id: 202,
+                actor_id: 102,
+                hours: 2
+            },
+        ]
+    );
+    assert_eq!(next.contact_products.len(), 1);
+    assert_eq!(next.agreements, opening.agreements);
+}
+
+#[test]
+fn finite_same_actor_aliases_share_one_derived_request_identity() {
+    let mut config = config();
+    config.participants[0].available_hours = 4;
+    config.participants[0].commitments[0].hours = 4;
+    let mut extra = config.participants[0].clone();
+    extra.contributor_id = 204;
+    config.participants.push(extra);
+    let opening = initial_organizer_state(&config).unwrap();
+    let mut resources = finite_time(&config, 1);
+    let shared = resources.bindings[0].budget_id;
+    resources.bindings[3].budget_id = shared;
+    resources.capacities.pop();
+    resources.capacities[0].available = 8;
+    let next = finite_act(&config, &opening, &resources).unwrap();
+    let receipt = next.receipts.last().unwrap();
+    assert_eq!(receipt.outcome, OrganizerOutcome::ContactCompleted);
+    assert_eq!(
+        receipt
+            .time_use
+            .iter()
+            .filter(|row| row.actor_id == 101)
+            .map(|row| row.hours)
+            .sum::<u64>(),
+        8
+    );
+    assert_eq!(
+        receipt
+            .time_use
+            .iter()
+            .filter(|row| row.actor_id == 101)
+            .count(),
+        2
+    );
+}
+
+#[test]
+fn finite_resource_order_does_not_change_receipt_or_products() {
+    let config = config();
+    let opening = initial_organizer_state(&config).unwrap();
+    let resources = shared_time(&config, 10);
+    let mut reversed = resources.clone();
+    reversed.bindings.reverse();
+    reversed.capacities.reverse();
+    assert_eq!(
+        finite_act(&config, &opening, &resources),
+        finite_act(&config, &opening, &reversed)
+    );
+}
+
+#[test]
+fn finite_malformed_resources_refuse_with_specific_errors() {
+    let config = config();
+    let opening = initial_organizer_state(&config).unwrap();
+    let resources = finite_time(&config, 1);
+    let mut invalid = resources.clone();
+    invalid.capacities.remove(0);
+    assert_eq!(
+        finite_act(&config, &opening, &invalid),
+        Err(OrganizerError::TimeCapacityMissing)
+    );
+    invalid = resources.clone();
+    invalid.capacities.push(invalid.capacities[0].clone());
+    assert_eq!(
+        finite_act(&config, &opening, &invalid),
+        Err(OrganizerError::TimeCapacityDuplicate)
+    );
+    invalid = resources.clone();
+    invalid.bindings.pop();
+    assert_eq!(
+        finite_act(&config, &opening, &invalid),
+        Err(OrganizerError::TimeBindingMismatch)
+    );
+    invalid = resources.clone();
+    invalid.bindings[1].contributor_id = invalid.bindings[0].contributor_id;
+    assert_eq!(
+        finite_act(&config, &opening, &invalid),
+        Err(OrganizerError::TimeBindingMismatch)
+    );
+    invalid = resources.clone();
+    invalid.capacities[0].unit_id = PracticeUnitId::from_bytes([45; 32]);
+    assert_eq!(
+        finite_act(&config, &opening, &invalid),
+        Err(OrganizerError::TimeUnitMismatch)
+    );
+    invalid = resources.clone();
+    invalid.unit_id = PracticeUnitId::from_bytes([0; 32]);
+    assert_eq!(
+        finite_act(&config, &opening, &invalid),
+        Err(OrganizerError::TimeUnitMismatch)
+    );
+    invalid = resources.clone();
+    invalid.period += 1;
+    assert_eq!(
+        finite_act(&config, &opening, &invalid),
+        Err(OrganizerError::TimePeriodMismatch)
+    );
+    invalid = resources.clone();
+    invalid.capacities[0].owner = PracticeResourceOwner::ActorOrganization(
+        ActorOrganizationId::from_bytes(101_u64.to_be_bytes()),
+    );
+    assert_eq!(
+        finite_act(&config, &opening, &invalid),
+        Err(OrganizerError::TimeCapacityScope)
+    );
+    invalid = resources;
+    invalid.capacities[0].mode = PracticeResourceAllocationMode::ExclusiveAllOrNone;
+    assert_eq!(
+        finite_act(&config, &opening, &invalid),
+        Err(OrganizerError::TimeCapacityScope)
+    );
+}
+
+#[test]
+fn finite_time_does_not_supply_partner_consent() {
+    for policy in [
+        OrganizerPartnerPolicy::Refuse,
+        OrganizerPartnerPolicy::NoResponse,
+    ] {
+        let mut config = config();
+        config.workplace_partner.policy = policy;
+        let opening = initial_organizer_state(&config).unwrap();
+        let next = finite_act(&config, &opening, &finite_time(&config, 1)).unwrap();
+        let receipt = next.receipts.last().unwrap();
+        assert_eq!(receipt.outcome, OrganizerOutcome::ContactUncompleted);
+        assert_ne!(
+            receipt.partner_response,
+            OrganizerPartnerResponse::Participated
+        );
+        assert!(receipt.contact_product_id.is_none());
+        assert!(next.contact_products.is_empty());
+        assert_eq!(next.agreements, opening.agreements);
+    }
+}
+
+#[test]
+fn finite_time_rejects_changed_admitted_commitments() {
+    let config = config();
+    let opening = initial_organizer_state(&config).unwrap();
+    let mut accepted = admit_organizer(
+        &config,
+        &opening,
+        &command(&config, &opening, OrganizerChoice::Reinforce),
+    )
+    .unwrap();
+    accepted.resolves_period += 1;
+    let reduced = reduce_organizer_products(&config, &opening, &facts(1, 160)).unwrap();
+    assert_eq!(
+        resolve_organizer_practice_with_time(
+            &config,
+            &opening,
+            &reduced,
+            &facts(1, 160),
+            Some(&accepted),
+            &finite_time(&config, 1)
+        ),
+        Err(OrganizerError::InvalidCommitment)
+    );
+}
+
+#[test]
+fn finite_partner_shortage_keeps_all_own_time_and_produces_no_response_work() {
+    let config = config();
+    let opening = initial_organizer_state(&config).unwrap();
+    let mut resources = finite_time(&config, 1);
+    resources.capacities[1].available = 0;
+    let next = finite_act(&config, &opening, &resources).unwrap();
+    assert_no_time_product(&next);
+    assert_eq!(
+        next.receipts.last().unwrap().partner_response,
+        OrganizerPartnerResponse::UnableToParticipate
+    );
+    assert_eq!(next.agreements, opening.agreements);
+}
+
+#[test]
+fn finite_named_fixed_control_uses_the_same_resolver_without_source_fallback() {
+    let config = config();
+    let opening = initial_organizer_state(&config).unwrap();
+    let accepted = admit_organizer(
+        &config,
+        &opening,
+        &command(&config, &opening, OrganizerChoice::Reinforce),
+    )
+    .unwrap();
+    let resources = organizer_fixed_time_resources(&config, 1).unwrap();
+    assert_eq!(resources.unit_id, organizer_time_unit_id());
+    assert_eq!(
+        resolve_organizer_period(&config, &opening, &facts(1, 160), Some(&accepted)),
+        resolve_organizer_period_with_time(
+            &config,
+            &opening,
+            &facts(1, 160),
+            Some(&accepted),
+            &resources
+        )
+    );
+}
+
+#[test]
+fn finite_one_contributor_can_fund_distinct_actor_uses_without_duplicating_supply() {
+    let mut config = config();
+    config.participants.remove(1);
+    config.participants[0].commitments = vec![
+        OrganizerContribution {
+            actor_id: 101,
+            hours: 14,
+        },
+        OrganizerContribution {
+            actor_id: 102,
+            hours: 2,
+        },
+    ];
+    let opening = initial_organizer_state(&config).unwrap();
+    let mut resources = finite_time(&config, 1);
+    resources.capacities[0].available = 10;
+    let next = finite_act(&config, &opening, &resources).unwrap();
+    assert_eq!(
+        next.receipts.last().unwrap().time_use,
+        [
+            OrganizerTimeUse {
+                contributor_id: 201,
+                actor_id: 101,
+                hours: 8
+            },
+            OrganizerTimeUse {
+                contributor_id: 201,
+                actor_id: 102,
+                hours: 2
+            },
+        ]
+    );
+    assert_eq!(
+        next.receipts.last().unwrap().outcome,
+        OrganizerOutcome::ContactCompleted
+    );
+}

@@ -1,16 +1,12 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 
 use babylon_kernel::content_digest::sha256_of;
 
 use super::contract::{committed_hours, identity, required_hours, validate_organizer_pair};
 use super::*;
 use crate::{
-    allocate_practice_resources, derive_practice_resource_request, ActorOrganizationId,
-    InputAuthorityId, PracticeId, PracticeIntent, PracticeParameter,
-    PracticeResourceAllocationContract, PracticeResourceAllocationMode, PracticeResourceCapacity,
-    PracticeResourceId, PracticeResourceLocator, PracticeResourceOwner,
-    PracticeResourceRequirement, PracticeTargetIdentity, PracticeTargetTag, PracticeUnitId,
-    ProposalNonce, TaggedPracticeTarget,
+    ActorOrganizationId, InputAuthorityId, PracticeId, PracticeIntent, PracticeParameter,
+    PracticeTargetIdentity, PracticeTargetTag, ProposalNonce, TaggedPracticeTarget,
 };
 
 fn target_identity(domain: &[u8], id: u64) -> [u8; 32] {
@@ -344,7 +340,7 @@ fn partner_response(
     }
 }
 
-fn response_intent(
+pub(super) fn response_intent(
     intent: &PracticeIntent,
     config: &OrganizerConfig,
     partner: &OrganizerPartner,
@@ -487,95 +483,6 @@ pub fn organizer_action_batch(
     .map_err(|_| OrganizerError::InvalidCommitment)
 }
 
-fn allocate_hours(
-    config: &OrganizerConfig,
-    intent: &PracticeIntent,
-    partner: Option<&OrganizerPartner>,
-    own_hours: u64,
-) -> Result<Vec<OrganizerTimeUse>, OrganizerError> {
-    let contract = PracticeResourceAllocationContract::conservation_first();
-    let unit_id = PracticeUnitId::from_bytes(sha256_of(b"babylon.organizer-whole-hour.v1"));
-    let mut capacities = vec![];
-    let mut contributor_by_resource = BTreeMap::new();
-    for participant in &config.participants {
-        let resource_id = PracticeResourceId::from_bytes(target_identity(
-            b"babylon.organizer-contributor.v1",
-            participant.contributor_id,
-        ));
-        contributor_by_resource.insert(resource_id, participant.contributor_id);
-        capacities.push(PracticeResourceCapacity {
-            owner: PracticeResourceOwner::Shared,
-            resource_id,
-            unit_id,
-            mode: PracticeResourceAllocationMode::DivisibleProRata,
-            available: participant.available_hours,
-        });
-    }
-    let mut actors = vec![(intent.clone(), own_hours)];
-    if let Some(partner) = partner {
-        actors.push((
-            response_intent(intent, config, partner)?,
-            config.partner_response_hours,
-        ));
-    }
-    let mut requests = vec![];
-    for (actor_intent, cost) in actors {
-        let actor_id = u64::from_be_bytes(actor_intent.actor_org_id.to_bytes());
-        let mut remaining = cost;
-        for participant in &config.participants {
-            let offered = participant
-                .commitments
-                .iter()
-                .find(|row| row.actor_id == actor_id)
-                .map_or(0, |row| row.hours);
-            let quantity = remaining.min(offered);
-            if quantity == 0 {
-                continue;
-            }
-            remaining = remaining
-                .checked_sub(quantity)
-                .ok_or(OrganizerError::Arithmetic)?;
-            requests.push(
-                derive_practice_resource_request(
-                    &contract,
-                    &actor_intent,
-                    &PracticeResourceRequirement {
-                        practice_id: actor_intent.practice_id,
-                        locator: PracticeResourceLocator::Shared,
-                        resource_id: PracticeResourceId::from_bytes(target_identity(
-                            b"babylon.organizer-contributor.v1",
-                            participant.contributor_id,
-                        )),
-                        unit_id,
-                        quantity,
-                    },
-                )
-                .map_err(|_| OrganizerError::ResourceAllocation)?,
-            );
-        }
-        if remaining != 0 {
-            return Err(OrganizerError::ResourceAllocation);
-        }
-    }
-    let allocation = allocate_practice_resources(&contract, &requests, &capacities)
-        .map_err(|_| OrganizerError::ResourceAllocation)?;
-    let mut time_use = vec![];
-    for row in allocation.allocations() {
-        if row.allocated() != row.requested() {
-            return Err(OrganizerError::ResourceAllocation);
-        }
-        time_use.push(OrganizerTimeUse {
-            contributor_id: *contributor_by_resource
-                .get(&row.request().resource_id())
-                .ok_or(OrganizerError::ResourceAllocation)?,
-            actor_id: u64::from_be_bytes(row.request().proposal_key().actor_org_id.to_bytes()),
-            hours: row.allocated(),
-        });
-    }
-    time_use.sort_by_key(|row| (row.contributor_id, row.actor_id));
-    Ok(time_use)
-}
-
 fn inquiry_report(question: OrganizerInquiry, opening: &OrganizerState) -> Option<OrganizerReport> {
     let facts = opening.last_workplace_facts.as_ref()?;
     Some(match question {
@@ -608,12 +515,34 @@ fn inquiry_report(question: OrganizerInquiry, opening: &OrganizerState) -> Optio
 
 /// Execute one admitted ruling or the saved routine after the product reducer.
 /// The accepted commitment remains an input; it is never mutated on failure.
+/// Explicit fixed-time control path; captured campaigns supply real budgets
+/// through `resolve_organizer_practice_with_time` instead.
 pub fn resolve_organizer_practice(
     config: &OrganizerConfig,
     opening: &OrganizerState,
     reduced: &OrganizerState,
     facts: &OrganizerWorkplaceFacts,
     accepted: Option<&OrganizerCommitment>,
+) -> Result<OrganizerState, OrganizerError> {
+    validate_organizer_pair(config, opening)?;
+    if opening.period.checked_add(1) != Some(facts.period) {
+        return Err(OrganizerError::PeriodMismatch);
+    }
+    let resources = organizer_fixed_time_resources(config, facts.period)?;
+    resolve_organizer_practice_with_time(config, opening, reduced, facts, accepted, &resources)
+}
+
+/// Execute with exact supplied resolving-period budgets and independent consent.
+/// Aliases share one capacity; incomplete funding spends no actual time.
+/// # Errors
+/// Refuses malformed bindings, units, resource scope and changed commitments.
+pub fn resolve_organizer_practice_with_time(
+    config: &OrganizerConfig,
+    opening: &OrganizerState,
+    reduced: &OrganizerState,
+    facts: &OrganizerWorkplaceFacts,
+    accepted: Option<&OrganizerCommitment>,
+    resources: &OrganizerPeriodTimeResources,
 ) -> Result<OrganizerState, OrganizerError> {
     validate_organizer_pair(config, opening)?;
     validate_organizer_pair(config, reduced)?;
@@ -624,6 +553,7 @@ pub fn resolve_organizer_practice(
     {
         return Err(OrganizerError::PeriodMismatch);
     }
+    super::time_resources::validate_resources(config, facts.period, resources)?;
     let routine = routine_commitment(config, opening)?;
     let commitment = accepted.unwrap_or(&routine);
     if let Some(accepted) = accepted {
@@ -673,79 +603,112 @@ pub fn resolve_organizer_practice(
         next.standing.paused_reason = Some(OrganizerPauseReason::InsufficientCommittedTime);
         receipt.outcome = OrganizerOutcome::InsufficientTime;
     } else if required > 0 {
-        if choice == OrganizerChoice::ResumeStanding {
-            next.standing.authorized = true;
-            next.standing.paused_reason = None;
-        }
-        let partner =
-            partner_for_choice(config, choice).ok_or(OrganizerError::InvalidCommitment)?;
-        receipt.partner_actor_id = Some(partner.actor_id);
-        receipt.partner_response = partner_response(config, partner)?;
-        let intent = practice_intent_with_origin(config, opening, commitment, accepted.is_none())?;
-        receipt.time_use = allocate_hours(
+        execute_practice(
             config,
-            &intent,
-            (receipt.partner_response == OrganizerPartnerResponse::Participated).then_some(partner),
-            required,
+            opening,
+            &mut next,
+            commitment,
+            resources,
+            &mut receipt,
+            accepted.is_none(),
         )?;
-        receipt.hours_spent = required;
-        match choice {
-            OrganizerChoice::Inquiry(question) => {
-                let allowed = match question {
-                    OrganizerInquiry::WorkLost => partner.permits_work_report,
-                    OrganizerInquiry::MaintenanceReceived => partner.permits_maintenance_report,
-                };
-                if allowed && receipt.partner_response == OrganizerPartnerResponse::Participated {
-                    if let Some(report) = inquiry_report(question, opening) {
-                        let id = add_observation(
-                            &mut next,
-                            config,
-                            opening.period,
-                            facts.period,
-                            Some(receipt_id),
-                            report,
-                        )?;
-                        receipt.observation_ids.push(id);
-                        receipt.outcome = OrganizerOutcome::EvidenceObtained;
-                    } else {
-                        receipt.outcome = OrganizerOutcome::EvidenceWithheld;
-                    }
-                } else {
-                    receipt.outcome = OrganizerOutcome::EvidenceWithheld;
-                }
-            }
-            OrganizerChoice::Reinforce
-            | OrganizerChoice::Hold
-            | OrganizerChoice::ResumeStanding => {
-                if receipt.partner_response == OrganizerPartnerResponse::Participated {
-                    let product_id = identity(
-                        b"babylon.organizer-contact-product.v1",
-                        &(
-                            receipt_id,
-                            config.controlled_actor_id,
-                            partner.actor_id,
-                            facts.period,
-                        ),
-                    )?;
-                    receipt.contact_product_id = Some(product_id);
-                    receipt.outcome = OrganizerOutcome::ContactCompleted;
-                    next.contact_products.push(OrganizerContactProduct {
-                        product_id,
-                        receipt_id,
-                        actor_id: config.controlled_actor_id,
-                        partner_actor_id: partner.actor_id,
-                        produced_period: facts.period,
-                    });
-                } else {
-                    receipt.outcome = OrganizerOutcome::ContactUncompleted;
-                }
-            }
-            OrganizerChoice::PauseStanding => return Err(OrganizerError::InvalidCommitment),
-        }
     }
     next.receipts.push(receipt);
     validate_organizer_pair(config, &next)?;
     Ok(next)
+}
+
+fn execute_practice(
+    config: &OrganizerConfig,
+    opening: &OrganizerState,
+    next: &mut OrganizerState,
+    commitment: &OrganizerCommitment,
+    resources: &OrganizerPeriodTimeResources,
+    receipt: &mut OrganizerReceipt,
+    standing_origin: bool,
+) -> Result<(), OrganizerError> {
+    let choice = commitment.command.choice;
+    let required = required_hours(config, opening, choice);
+    let period = next.period;
+    let receipt_id = receipt.receipt_id;
+    let partner = partner_for_choice(config, choice).ok_or(OrganizerError::InvalidCommitment)?;
+    receipt.partner_actor_id = Some(partner.actor_id);
+    receipt.partner_response = partner_response(config, partner)?;
+    let intent = practice_intent_with_origin(config, opening, commitment, standing_origin)?;
+    let Some(time_use) = super::time_resources::allocate_hours(
+        config,
+        &intent,
+        (receipt.partner_response == OrganizerPartnerResponse::Participated).then_some(partner),
+        required,
+        resources,
+    )?
+    else {
+        next.standing.authorized = false;
+        next.standing.paused_reason = Some(OrganizerPauseReason::InsufficientAvailableTime);
+        receipt.outcome = OrganizerOutcome::InsufficientTime;
+        if receipt.partner_response == OrganizerPartnerResponse::Participated {
+            receipt.partner_response = OrganizerPartnerResponse::UnableToParticipate;
+        }
+        return Ok(());
+    };
+    receipt.time_use = time_use;
+    if choice == OrganizerChoice::ResumeStanding {
+        next.standing.authorized = true;
+        next.standing.paused_reason = None;
+    }
+    receipt.hours_spent = required;
+    match choice {
+        OrganizerChoice::Inquiry(question) => {
+            let allowed = match question {
+                OrganizerInquiry::WorkLost => partner.permits_work_report,
+                OrganizerInquiry::MaintenanceReceived => partner.permits_maintenance_report,
+            };
+            if allowed && receipt.partner_response == OrganizerPartnerResponse::Participated {
+                if let Some(report) = inquiry_report(question, opening) {
+                    let id = add_observation(
+                        next,
+                        config,
+                        opening.period,
+                        period,
+                        Some(receipt_id),
+                        report,
+                    )?;
+                    receipt.observation_ids.push(id);
+                    receipt.outcome = OrganizerOutcome::EvidenceObtained;
+                } else {
+                    receipt.outcome = OrganizerOutcome::EvidenceWithheld;
+                }
+            } else {
+                receipt.outcome = OrganizerOutcome::EvidenceWithheld;
+            }
+        }
+        OrganizerChoice::Reinforce | OrganizerChoice::Hold | OrganizerChoice::ResumeStanding => {
+            if receipt.partner_response == OrganizerPartnerResponse::Participated {
+                let product_id = identity(
+                    b"babylon.organizer-contact-product.v1",
+                    &(
+                        receipt_id,
+                        config.controlled_actor_id,
+                        partner.actor_id,
+                        period,
+                    ),
+                )?;
+                receipt.contact_product_id = Some(product_id);
+                receipt.outcome = OrganizerOutcome::ContactCompleted;
+                next.contact_products.push(OrganizerContactProduct {
+                    product_id,
+                    receipt_id,
+                    actor_id: config.controlled_actor_id,
+                    partner_actor_id: partner.actor_id,
+                    produced_period: period,
+                });
+            } else {
+                receipt.outcome = OrganizerOutcome::ContactUncompleted;
+            }
+        }
+        OrganizerChoice::PauseStanding => return Err(OrganizerError::InvalidCommitment),
+    }
+    Ok(())
 }
 
 /// Compose the two separately scheduled BSL operations for replay contracts.
@@ -757,4 +720,19 @@ pub fn resolve_organizer_period(
 ) -> Result<OrganizerState, OrganizerError> {
     let reduced = reduce_organizer_products(config, opening, facts)?;
     resolve_organizer_practice(config, opening, &reduced, facts, accepted)
+}
+
+/// Resolve using exact period-specific supplied time; no absent-budget fallback.
+/// # Errors
+/// Refuses malformed resources, periods or commitments. Valid scarcity produces
+/// an insufficient-time receipt with no actual debit or new contact product.
+pub fn resolve_organizer_period_with_time(
+    config: &OrganizerConfig,
+    opening: &OrganizerState,
+    facts: &OrganizerWorkplaceFacts,
+    accepted: Option<&OrganizerCommitment>,
+    resources: &OrganizerPeriodTimeResources,
+) -> Result<OrganizerState, OrganizerError> {
+    let reduced = reduce_organizer_products(config, opening, facts)?;
+    resolve_organizer_practice_with_time(config, opening, &reduced, facts, accepted, resources)
 }

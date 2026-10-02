@@ -1235,3 +1235,8 @@ decisions:
     status: accepted
     date: '2026-09-20'
     file: ADR264_period_service_provision.yaml
+  ADR265_captured_economic_catalog:
+    title: One captured economic catalog initializes the shared runtime with explicit geography
+    status: accepted
+    date: '2026-10-01'
+    file: ADR265_captured_economic_catalog.yaml

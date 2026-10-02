@@ -450,6 +450,24 @@ fn hydrate_scenario<G: GraphSubstrate>(
     }
 }
 
+fn hydrate_scenario_instances<G: GraphSubstrate>(
+    scenario_src: &str,
+    prelude_src: Option<&str>,
+    seed: Option<&babylon_bsl::scenario_seed::GraphSeed>,
+    graph: &mut G,
+) -> Result<LoadedScenario, PrepareError> {
+    match seed {
+        Some(seed) => babylon_bsl::scenario_seed::load_scenario_with_seed(
+            scenario_src,
+            prelude_src,
+            seed,
+            graph,
+        )
+        .map_err(PrepareError::Scenario),
+        None => hydrate_scenario(scenario_src, prelude_src, graph),
+    }
+}
+
 /// The D32 implicit-`<edge-type>/strength` collision check (D32,
 /// `bsl-language.rst` §2.9): every `EdgeType` carries one implicit
 /// `<edge-type>/strength` field, needing no `deffield`.
@@ -1526,16 +1544,47 @@ pub(crate) fn prepare_rules<G: GraphSubstrate + CanonicalState>(
     )
 }
 
+pub(crate) fn prepare_rules_with_graph_seed<G: GraphSubstrate + CanonicalState>(
+    scenario_src: &str,
+    prelude_src: Option<&str>,
+    rule_src: &str,
+    graph: &mut G,
+    seed: &babylon_bsl::scenario_seed::GraphSeed,
+) -> Result<PreparedRules, PrepareError> {
+    prepare_rules_with_instances(
+        scenario_src,
+        prelude_src,
+        rule_src,
+        graph,
+        kernel_slot::BUNDLED_KERNEL_SLOT_RESERVATIONS,
+        Some(seed),
+    )
+}
+
 fn prepare_rules_with_kernel_slots<G: GraphSubstrate + CanonicalState>(
     scenario_src: &str,
-    // Train B item 4 (#591, D157): `None` for every pre-existing caller
-    // (`run_once_into`, `RuleDiagnosticSession::new`) — behavior unchanged, byte for
-    // byte. `Some(prelude)` routes the scenario load through
-    // `load_scenario_with_prelude` instead of `load_scenario`.
     prelude_src: Option<&str>,
     rule_src: &str,
     graph: &mut G,
     kernel_slots: &[kernel_slot::KernelSlotReservationRef<'_>],
+) -> Result<PreparedRules, PrepareError> {
+    prepare_rules_with_instances(
+        scenario_src,
+        prelude_src,
+        rule_src,
+        graph,
+        kernel_slots,
+        None,
+    )
+}
+
+fn prepare_rules_with_instances<G: GraphSubstrate + CanonicalState>(
+    scenario_src: &str,
+    prelude_src: Option<&str>,
+    rule_src: &str,
+    graph: &mut G,
+    kernel_slots: &[kernel_slot::KernelSlotReservationRef<'_>],
+    seed: Option<&babylon_bsl::scenario_seed::GraphSeed>,
 ) -> Result<PreparedRules, PrepareError> {
     // §2.2's `<intrinsic-decl>` top-forms, split from the `(rule …)` forms
     // they may share a source with (`split_content`), then parsed into the
@@ -1562,7 +1611,8 @@ fn prepare_rules_with_kernel_slots<G: GraphSubstrate + CanonicalState>(
     // composition error order while ensuring a phase-composition refusal
     // cannot partially hydrate the caller-owned graph.
     let mut validation_graph = HypergraphStore::new();
-    let validation_scenario = hydrate_scenario(scenario_src, prelude_src, &mut validation_graph)?;
+    let validation_scenario =
+        hydrate_scenario_instances(scenario_src, prelude_src, seed, &mut validation_graph)?;
 
     // The scenario's `deffield` forms ARE the registries for slice 1. When
     // Phase 2's content registries land they replace this wholesale; until
@@ -1651,7 +1701,7 @@ fn prepare_rules_with_kernel_slots<G: GraphSubstrate + CanonicalState>(
     // All non-mutating validation has succeeded. Hydrate the caller graph
     // exactly once and retain this pass's content-to-node identities, which
     // may differ from the disposable graph when the caller was non-empty.
-    let scenario = hydrate_scenario(scenario_src, prelude_src, graph)?;
+    let scenario = hydrate_scenario_instances(scenario_src, prelude_src, seed, graph)?;
 
     Ok(PreparedRules {
         rules,

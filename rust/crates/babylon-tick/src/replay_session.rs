@@ -687,12 +687,77 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> ReplayT
         scenario_src: &str,
         prelude_src: Option<&str>,
         rule_src: &str,
+        graph: G,
+        session: ReplaySessionId,
+        seed: ReplaySeed,
+        content: ContentDigest,
+        reference: RefDigest,
+        material_state: MaterialState,
+    ) -> Result<Self, ReplayTickError> {
+        Self::new_with_instances(
+            scenario_src,
+            prelude_src,
+            rule_src,
+            graph,
+            session,
+            seed,
+            content,
+            reference,
+            material_state,
+            None,
+        )
+    }
+
+    /// Compile native captured instances against the same BSL declarations,
+    /// rules and replay environment as an authored scenario.
+    ///
+    /// # Errors
+    /// Refuses invalid seed admission or any ordinary replay preparation failure.
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "the constructor makes every authoritative replay identity explicit"
+    )]
+    pub fn new_with_graph_seed(
+        scenario_src: &str,
+        prelude_src: Option<&str>,
+        rule_src: &str,
+        graph: G,
+        session: ReplaySessionId,
+        seed: ReplaySeed,
+        content: ContentDigest,
+        reference: RefDigest,
+        material_state: MaterialState,
+        instances: &babylon_bsl::scenario_seed::GraphSeed,
+    ) -> Result<Self, ReplayTickError> {
+        Self::new_with_instances(
+            scenario_src,
+            prelude_src,
+            rule_src,
+            graph,
+            session,
+            seed,
+            content,
+            reference,
+            material_state,
+            Some(instances),
+        )
+    }
+
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "shared constructor retains explicit replay identity and instance source"
+    )]
+    fn new_with_instances(
+        scenario_src: &str,
+        prelude_src: Option<&str>,
+        rule_src: &str,
         mut graph: G,
         session: ReplaySessionId,
         seed: ReplaySeed,
         content: ContentDigest,
         reference: RefDigest,
         material_state: MaterialState,
+        instances: Option<&babylon_bsl::scenario_seed::GraphSeed>,
     ) -> Result<Self, ReplayTickError> {
         let expected_reference = material_state.reference_bundle_digest();
         let actual_reference = *reference.as_bytes();
@@ -704,12 +769,19 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> ReplayT
                 },
             ));
         }
-        let prepared =
-            prepare_rules(scenario_src, prelude_src, rule_src, &mut graph).map_err(|error| {
-                ReplayTickError::Preparation {
-                    message: error.to_string(),
-                }
-            })?;
+        let prepared = match instances {
+            Some(instances) => crate::prepare_rules_with_graph_seed(
+                scenario_src,
+                prelude_src,
+                rule_src,
+                &mut graph,
+                instances,
+            ),
+            None => prepare_rules(scenario_src, prelude_src, rule_src, &mut graph),
+        }
+        .map_err(|error| ReplayTickError::Preparation {
+            message: error.to_string(),
+        })?;
         let resolver = StableElementResolver::seal(
             &graph,
             &prepared.scenario_scope,
@@ -1648,6 +1720,87 @@ mod tests {
             dynamic_fixture_material_state(),
         )
         .unwrap()
+    }
+
+    #[test]
+    fn native_seed_and_authored_instances_use_the_same_replay_machine() {
+        use babylon_bsl::scenario_seed::{GraphSeed, NodeSeed, SeedAttribute, SeedValue};
+        let declarations = "(scenario capture/native-replay
+          (defvocabulary NodeType (SOCIAL_CLASS))
+          (defvocabulary EventType (RETENTION_ALLOCATION))
+          (deffield social-class/wages int extensive))";
+        let instances = GraphSeed::try_new(
+            ["workers-a", "workers-b"]
+                .into_iter()
+                .map(|name| NodeSeed {
+                    local_name: name.to_owned(),
+                    node_type: "SOCIAL_CLASS".to_owned(),
+                    attributes: vec![SeedAttribute {
+                        field: "social-class/wages".to_owned(),
+                        value: SeedValue::Integer(10),
+                    }],
+                })
+                .collect(),
+            vec![],
+            vec![],
+        )
+        .unwrap();
+        let authored = declarations.strip_suffix(')').unwrap().to_owned()
+            + "(node workers-a NodeType/SOCIAL_CLASS (social-class/wages 10))
+               (node workers-b NodeType/SOCIAL_CLASS (social-class/wages 10)))";
+        let identity = ReplaySessionId::try_from("capture/native-replay").unwrap();
+        let (_, rules) = split_content(EVENT_RULE).unwrap();
+        let forms = rules.into_iter().map(|rule| rule.form).collect::<Vec<_>>();
+        let content = ContentDigest {
+            defines_hash: [0x73; 32],
+            rules_hash: rules_hash_of(&forms).unwrap(),
+        };
+        let reference = RefDigest::from_bytes(MICHIGAN_DYNAMIC_HEX_REFERENCE_BUNDLE_DIGEST);
+        let mut native = ReplayTickSession::new_with_graph_seed(
+            declarations,
+            None,
+            EVENT_RULE,
+            MemoryGraph::new(),
+            identity.clone(),
+            ReplaySeed::new(17),
+            content.clone(),
+            reference,
+            dynamic_fixture_material_state(),
+            &instances,
+        )
+        .unwrap();
+        let mut text = ReplayTickSession::new(
+            &authored,
+            None,
+            EVENT_RULE,
+            MemoryGraph::new(),
+            identity.clone(),
+            ReplaySeed::new(17),
+            content,
+            reference,
+            dynamic_fixture_material_state(),
+        )
+        .unwrap();
+        assert_eq!(
+            native.stable_graph_state().unwrap(),
+            text.stable_graph_state().unwrap()
+        );
+        for period in 1..=3 {
+            let actions = OrderedPracticeActionBatch::empty(identity.clone(), period).unwrap();
+            let mut native_sink = babylon_bsl::structural_verbs::CollectingSink::default();
+            let mut text_sink = babylon_bsl::structural_verbs::CollectingSink::default();
+            let native_report = native.advance(&mut native_sink, &actions).unwrap();
+            let text_report = text.advance(&mut text_sink, &actions).unwrap();
+            assert_eq!(
+                native_report.tick_content_hash(),
+                text_report.tick_content_hash()
+            );
+            assert_eq!(native_report.result_world(), text_report.result_world());
+            assert_eq!(
+                native_report.successful_event_batch(),
+                text_report.successful_event_batch()
+            );
+        }
     }
 
     fn dynamic_fixture_material_state() -> MaterialState {

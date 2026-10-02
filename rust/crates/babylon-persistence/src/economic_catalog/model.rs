@@ -4,10 +4,11 @@
 //! Source observations bind identity and scale; recipe and opening assignments
 //! require their captured Designed policy evidence.
 
-use crate::national_cohorts::CohortKey;
+use crate::{michigan_sectors::MichiganSectorCode, national_cohorts::CohortKey};
 use babylon_graph::stable_element::StableElementKey;
 use babylon_kernel::{
     currency::Currency, economic_identity::EconomicFunction, economic_location::EconomicLocation,
+    geography::CountyGeoid,
 };
 use babylon_material_circuit::{
     CorridorId, FinalDemandPrincipalId, GoodId, HouseholdNeedBasis, HouseholdPurchasePolicy,
@@ -48,12 +49,12 @@ pub struct RecipeTemplate {
     pub labor: Option<LaborRequirement>,
 }
 
-/// Existing installed equipment and the first production plan at one site.
+/// One process assignment and its first production plan. Capacity has one
+/// separate owner in `CatalogCapacity`, including captured nameplate controls.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ProcessInstallation {
     pub process_id: ProcessId,
     pub recipe: RecipeTemplateId,
-    pub installed_batches: u64,
     pub planned_batches: u64,
     pub output_buffer: u64,
 }
@@ -70,7 +71,15 @@ pub struct OpeningCommodityStock {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum EconomicSiteSource {
     Qcew(CohortKey),
-    Designed { key: String },
+    /// Observed context shared by explicitly Designed Michigan control worksites.
+    /// It is not a national function/ownership cohort or a duplicated observation.
+    MichiganSector {
+        county_geoid: CountyGeoid,
+        sector_code: MichiganSectorCode,
+    },
+    Designed {
+        key: String,
+    },
 }
 
 /// Staffed distribution of one native commodity unit.
@@ -187,7 +196,7 @@ pub struct ResidentStaffingPoolSeed {
 /// supply. Missing finite dates supply nothing; they never become rolling supply.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum CatalogCapacity {
-    Installed,
+    Rolling(babylon_material_circuit::RollingProcessSupply),
     Finite {
         process: Vec<babylon_material_circuit::CapacityRow>,
         freight: Vec<babylon_material_circuit::CorridorCapacity>,
@@ -198,6 +207,9 @@ pub enum CatalogCapacity {
 /// Every counter must describe an unshipped, unrealized opening obligation.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CatalogOpeningOrders {
+    /// Explicit finite-control buyers without an invented recurring household count.
+    /// Counted household principals are instead derived from the household seed table.
+    pub principals: Vec<babylon_material_circuit::FinalDemandPrincipal>,
     pub goods: Vec<babylon_material_circuit::OrderRow>,
     pub final_demand: Vec<babylon_material_circuit::FinalDemandOrder>,
 }
@@ -226,6 +238,8 @@ pub struct EconomicOpening {
     pub institutional_cash: Vec<babylon_material_circuit::CashAccount>,
     pub institutions: babylon_material_circuit::FinancialInstitutions,
     pub equity: Vec<babylon_material_circuit::EquityCarryingValue>,
+    /// Exact carrying amounts for installed equipment and pending installation.
+    pub equipment: Vec<babylon_material_circuit::EquipmentCarryingValue>,
     pub capacity: CatalogCapacity,
     pub policies: CatalogPolicies,
     pub logistics: CatalogLogistics,

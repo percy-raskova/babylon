@@ -1,5 +1,6 @@
 //! Asset receipts reconcile physical instruments and work in progress with adjacent books.
 //! This validates actual movements without choosing installation or investment policy.
+mod decisions;
 mod installation;
 mod wear;
 use super::ProductionProjectionError;
@@ -83,7 +84,8 @@ pub(super) fn validate(
         (None, None)
             if receipt.installation.is_empty()
                 && receipt.equipment_wear.is_empty()
-                && receipt.investment.is_empty() =>
+                && receipt.investment.is_empty()
+                && receipt.installation_decisions.is_empty() =>
         {
             return Ok(EquipmentFacts::default())
         }
@@ -103,6 +105,7 @@ pub(super) fn validate(
     let definitions = Definitions::new(before)?;
     let mut assets = asset_book(prior)?;
     let mut cohorts = wear::reconcile(prior, before, receipt, &definitions, &mut assets)?;
+    decisions::validate(prior, before, receipt, &definitions, &cohorts)?;
     let (pending, facts) = installation::reconcile(
         prior,
         before,

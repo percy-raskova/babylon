@@ -638,15 +638,17 @@ mod tests {
                 scenario_label: "Designed telemetry fixture".into(),
                 duration: babylon_kernel::clock::CampaignDuration::Finite { final_period: 16 },
                 sites: vec![ProductionSite {
+                    function: "manufacturing".into(),
                     id: HIDDEN_SITE.into(),
                     name: HIDDEN_LABEL.into(),
-                    county_geoid: "26163".into(),
-                    industry_code: "331".into(),
+                    location: "county:26163".parse().unwrap(),
+                    industry_code: Some("331".into()),
                     observed_employment: None,
                     inventory: Vec::new(),
-                    role:
+                    roles: vec![
                         babylon_persistence::production_observation::ProductionSiteRole::Production,
-                    sector_code: "31-33".into(),
+                    ],
+                    sector_code: Some("31-33".into()),
                     processes: vec![
                         babylon_persistence::production_observation::ProductionProcess {
                             id: "fixture-process".into(),
@@ -668,6 +670,7 @@ mod tests {
                 freight: Vec::new(),
                 events: Vec::new(),
                 observed_contexts: Vec::new(),
+                national_observed_contexts: Vec::new(),
                 process_attributions: Vec::new(),
                 provenance: Vec::new(),
             }),

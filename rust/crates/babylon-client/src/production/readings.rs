@@ -134,7 +134,9 @@ pub(super) fn describe_flow(site: &ProductionSite, snapshot: &ProductionSnapshot
                 value,
                 "{}: {} {}",
                 input.good,
-                grouped(input.on_hand),
+                input
+                    .on_hand
+                    .map_or_else(|| "period service; no stored stock".into(), grouped),
                 input.unit
             )
             .expect("String write");
@@ -266,8 +268,10 @@ pub(super) fn describe_work(site: &ProductionSite, snapshot: &ProductionSnapshot
 
 fn describe_sources(site: &ProductionSite, snapshot: &ProductionSnapshot) -> String {
     let mut value = format!(
-        "COUNTY-SECTOR OWNER / NAICS {}\nSector {} · {:?}\n",
-        site.industry_code, site.sector_code, site.role
+        "WORKPLACE / {}\n{} · {:?}\n",
+        site.location,
+        site.industry_code.as_deref().unwrap_or(&site.function),
+        site.roles
     );
     for process in &site.processes {
         writeln!(
@@ -373,6 +377,7 @@ fn describe_sector_context(
     site: &ProductionSite,
     snapshot: &ProductionSnapshot,
 ) {
+    describe_national_context(value, site, snapshot);
     let subjects: std::collections::BTreeSet<_> = snapshot
         .process_attributions
         .iter()
@@ -380,11 +385,11 @@ fn describe_sector_context(
         .map(|link| &link.cohort_subject)
         .collect();
     for context in snapshot.observed_contexts.iter().filter(|context| {
-        context.county_geoid == site.county_geoid
+        site.is_in_county(&context.county_geoid)
             && (subjects.contains(&context.subject)
-                || (site.role
-                    == babylon_persistence::production_observation::ProductionSiteRole::Maintenance
-                    && context.sector_code == site.sector_code))
+                || (site.roles.contains(
+                    &babylon_persistence::production_observation::ProductionSiteRole::Maintenance,
+                ) && site.sector_code.as_deref() == Some(context.sector_code.as_str())))
     }) {
         writeln!(
             value,
@@ -442,6 +447,43 @@ fn describe_sector_context(
             context.source_url,
         )
         .expect("String write");
+    }
+}
+
+fn describe_national_context(
+    value: &mut String,
+    site: &ProductionSite,
+    snapshot: &ProductionSnapshot,
+) {
+    for row in snapshot
+        .national_observed_contexts
+        .iter()
+        .filter(|r| r.site_id == site.id)
+    {
+        writeln!(
+            value,
+            "\nWORKPLACE SOURCE / OBSERVED {}\nCounty {} · {} · ownership {}",
+            row.vintage, row.county_geoid, row.function, row.ownership
+        )
+        .expect("String write");
+        for (label, cell) in [
+            ("Establishments", &row.establishments),
+            ("Annual-average jobs", &row.annual_average_jobs),
+            ("Annual payroll USD", &row.annual_payroll_usd),
+        ] {
+            if cell.missing_members == 0 {
+                writeln!(value, "{label}: {}", grouped(cell.known_subtotal)).expect("String write");
+            } else {
+                writeln!(
+                    value,
+                    "{label}: {} known subtotal; {} source cells not disclosed",
+                    grouped(cell.known_subtotal),
+                    cell.missing_members
+                )
+                .expect("String write");
+            }
+        }
+        writeln!(value,"Source jobs do not assign people to this workplace. Technical function mapping is Designed.\nSource sha256:{}\nMapping sha256:{}",row.artifact_sha256,row.function_mapping_sha256).expect("String write");
     }
 }
 
@@ -519,11 +561,13 @@ fn describe_labor_accounts(
                 account.unit,
             )
             .expect("String write");
-            if matches!(
-                site.role,
-                babylon_persistence::production_observation::ProductionSiteRole::Wholesale
-                    | babylon_persistence::production_observation::ProductionSiteRole::Retail
-            ) || completed.handling_needed != 0
+            if site.roles.iter().any(|r| {
+                matches!(
+                    r,
+                    babylon_persistence::production_observation::ProductionSiteRole::Wholesale
+                        | babylon_persistence::production_observation::ProductionSiteRole::Retail
+                )
+            }) || completed.handling_needed != 0
                 || completed.handling_used != 0
             {
                 writeln!(
@@ -537,8 +581,9 @@ fn describe_labor_accounts(
             }
             if completed.maintenance_needed != 0
                 || completed.maintenance_used != 0
-                || site.role
-                    == babylon_persistence::production_observation::ProductionSiteRole::Maintenance
+                || site.roles.contains(
+                    &babylon_persistence::production_observation::ProductionSiteRole::Maintenance,
+                )
             {
                 writeln!(
                     value,

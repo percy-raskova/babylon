@@ -1034,6 +1034,7 @@ mod tests {
                 events: vec![event],
                 material_balance: None,
                 observed_contexts: Vec::new(),
+                national_observed_contexts: Vec::new(),
                 process_attributions: Vec::new(),
                 provenance: vec![],
             }),
@@ -1177,14 +1178,17 @@ mod tests {
 
     fn delivery_site(id: &str, name: &str) -> ProductionSite {
         ProductionSite {
+            function: "manufacturing".into(),
             id: id.into(),
-            county_geoid: "26163".into(),
+            location: "county:26163".parse().unwrap(),
             name: name.into(),
-            industry_code: "331".into(),
+            industry_code: Some("331".into()),
             observed_employment: None,
             inventory: vec![],
-            role: babylon_persistence::production_observation::ProductionSiteRole::Production,
-            sector_code: "31-33".into(),
+            roles: vec![
+                babylon_persistence::production_observation::ProductionSiteRole::Production,
+            ],
+            sector_code: Some("31-33".into()),
             processes: vec![
                 babylon_persistence::production_observation::ProductionProcess {
                     id: "fixture-process".into(),
@@ -1221,6 +1225,7 @@ mod tests {
             delivery_site("buyer", "Macomb parts"),
         ];
         snapshot.routes = vec![ProductionRoute {
+            physical_route_id: "route".into(),
             physical_edge_ids: Vec::new(),
             distance_mm: None,
             transport_kind:
@@ -1259,6 +1264,7 @@ mod tests {
                     description: format!("Original part {part} stage {index}"),
                     receipt_digest: "a".repeat(64),
                     delivery_evidence: Some(ProductionDeliveryEvidence {
+                        supplier_relation_id: "route".into(),
                         stage,
                         order_id: "order".into(),
                         route_id: "route".into(),

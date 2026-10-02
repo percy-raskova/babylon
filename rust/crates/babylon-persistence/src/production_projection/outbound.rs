@@ -3,8 +3,8 @@
 
 use super::ProductionProjectionError;
 use babylon_material_circuit::{
-    GoodId, MaterialCircuitState, OrderId, OutboundOrderId, RouteId, SiteId, SupplierTransport,
-    UnitId,
+    GoodId, MaterialCircuitState, OrderId, OutboundOrderId, RouteId, SiteId, SupplierRoute,
+    SupplierTransport, UnitId,
 };
 use babylon_tick::material_world::MaterialTickReceipts;
 use std::collections::BTreeMap;
@@ -15,6 +15,7 @@ type Result<T> = std::result::Result<T, ProductionProjectionError>;
 pub(super) struct OutboundFact {
     pub id: OutboundOrderId,
     pub site: SiteId,
+    pub buyer: Option<SiteId>,
     pub good: GoodId,
     pub unit: UnitId,
     pub route: Option<RouteId>,
@@ -71,6 +72,26 @@ pub(super) fn same_rows<T: Clone + Ord>(before: &[T], after: &[T]) -> bool {
     before == after
 }
 
+type RelationKey = (SiteId, SiteId, GoodId, UnitId);
+
+fn supplier_relations(
+    prior: &MaterialCircuitState,
+) -> Result<BTreeMap<RelationKey, &SupplierRoute>> {
+    let mut relations = BTreeMap::new();
+    for r in &prior.supplier_routes {
+        if relations
+            .insert(
+                (r.buyer_site_id, r.supplier_site_id, r.good_id, r.unit_id),
+                r,
+            )
+            .is_some()
+        {
+            return Err(ProductionProjectionError::State);
+        }
+    }
+    Ok(relations)
+}
+
 fn delivery_facts(
     prior: &MaterialCircuitState,
     orders: &super::lifecycle::PeriodOrders,
@@ -99,6 +120,7 @@ fn delivery_facts(
             return Err(ProductionProjectionError::State);
         }
     }
+    let relations = supplier_relations(prior)?;
     let mut facts = Vec::new();
     for (order, _) in orders.deliveries.values().filter(|(row, _)| {
         !orders
@@ -109,16 +131,14 @@ fn delivery_facts(
         let closing = next
             .remove(&order.order_id)
             .ok_or(ProductionProjectionError::State)?;
-        let mut relation = prior.supplier_routes.iter().filter(|row| {
-            row.supplier_site_id == order.supplier_site_id
-                && row.buyer_site_id == order.buyer_site_id
-                && row.good_id == order.good_id
-                && row.unit_id == order.unit_id
-        });
-        let route = relation.next();
-        if relation.next().is_some() {
-            return Err(ProductionProjectionError::State);
-        }
+        let route = relations
+            .get(&(
+                order.buyer_site_id,
+                order.supplier_site_id,
+                order.good_id,
+                order.unit_id,
+            ))
+            .copied();
         let dispatch = dispatches.remove(&order.order_id);
         let transfer = local.remove(&order.order_id);
         let quantity = match route.map(|row| row.transport_kind) {
@@ -155,6 +175,7 @@ fn delivery_facts(
         facts.push(OutboundFact {
             id: OutboundOrderId::Delivery(order.order_id),
             site: order.supplier_site_id,
+            buyer: Some(order.buyer_site_id),
             good: order.good_id,
             unit: order.unit_id,
             route: route.map(|row| row.route_id),
@@ -227,6 +248,7 @@ fn final_facts(
         facts.push(OutboundFact {
             id: OutboundOrderId::LocalFinalDemand(order.order_id),
             site: order.retailer_site_id,
+            buyer: None,
             good: order.good_id,
             unit: order.unit_id,
             route: None,

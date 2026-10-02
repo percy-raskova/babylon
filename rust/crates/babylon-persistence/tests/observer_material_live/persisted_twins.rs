@@ -362,7 +362,7 @@ fn assert_freight(
         let source = catalog
             .routes()
             .iter()
-            .find(|row| identity_hex(row.id().as_bytes()) == route.id)
+            .find(|row| identity_hex(row.id().as_bytes()) == route.physical_route_id)
             .unwrap();
         let dispatched: u128 = receipts
             .dispatches
@@ -388,7 +388,7 @@ fn assert_freight(
         let in_transit: u128 = after
             .freight
             .iter()
-            .filter(|lot| lot.route_id == route.id)
+            .filter(|lot| lot.route_id == route.physical_route_id)
             .map(|lot| u128::from(lot.quantity))
             .sum();
         assert!(route.shipped <= route.ordered);
@@ -451,7 +451,7 @@ fn assert_food_disconnected(standard: &ProductionSnapshot, delayed: &ProductionS
     let food: BTreeSet<_> = standard
         .sites
         .iter()
-        .filter(|site| site.industry_code == "311")
+        .filter(|site| site.industry_code.as_deref() == Some("311"))
         .map(|site| site.id.as_str())
         .collect();
     assert_eq!(food.len(), 2);

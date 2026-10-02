@@ -12,18 +12,22 @@ use postgres::GenericClient;
 use std::sync::Arc;
 
 use crate::{
+    economic_content::{
+        admit_economic_content, validate_economic_header, EconomicContentAdmission,
+    },
     identity::CampaignId,
     material_runtime::read_observer_material_tick,
-    michigan_content::{
-        admit_michigan_content, validate_michigan_header, MichiganContentAdmission,
-        MichiganPhysicalProjection,
-    },
     michigan_economy::digest_hex,
     observer_reader::{
         ObserverEconomyError, ObserverVisibility, ProductionHistoryTarget, ProductionOutputPoint,
     },
     production_observation::ProductionSnapshot,
-    production_projection::{history::OrderHistory, project_material_current, project_process},
+    production_projection::{
+        history::OrderHistory,
+        metadata::Metadata,
+        project_economic_current,
+        sites::{project_process, Quantities},
+    },
 };
 
 pub(crate) struct MaterialObservation {
@@ -57,7 +61,7 @@ fn decode_material_row(row: &postgres::Row) -> Result<MaterialObservationRow, po
 
 pub(crate) struct MaterialHeader {
     pub(crate) foundation_digest: Vec<u8>,
-    pub(crate) admission: Option<Arc<MichiganContentAdmission>>,
+    pub(crate) admission: Option<Arc<EconomicContentAdmission>>,
 }
 
 pub(crate) fn read_material_header(
@@ -85,7 +89,7 @@ pub(crate) fn read_material_header(
     let foundation_digest: Vec<u8> = header
         .try_get("foundation_sha256")
         .map_err(|_| ObserverEconomyError::InvalidProjection)?;
-    validate_michigan_header(&preset_id, duration, &content, &foundation_digest, tick)
+    validate_economic_header(&preset_id, duration, &content, &foundation_digest, tick)
         .map_err(|_| ObserverEconomyError::ScenarioMismatch)?;
     if &row_campaign != campaign.as_uuid() {
         return Err(ObserverEconomyError::ScenarioMismatch);
@@ -93,8 +97,8 @@ pub(crate) fn read_material_header(
     let admission = if visibility == ObserverVisibility::FullObserver {
         if let Some(cached) = cached.filter(|cursor| {
             cursor.campaign == campaign
-                && cursor.admission.preset.id() == preset_id
-                && cursor.admission.digest.as_slice() == foundation_digest.as_slice()
+                && cursor.admission.preset_id() == preset_id
+                && cursor.admission.digest().as_slice() == foundation_digest.as_slice()
         }) {
             cached
                 .admission
@@ -108,7 +112,7 @@ pub(crate) fn read_material_header(
                 .try_get(0)
                 .map_err(|_| ObserverEconomyError::InvalidProjection)?;
             Some(Arc::new(
-                admit_michigan_content(
+                admit_economic_content(
                     &preset_id,
                     duration,
                     &content,
@@ -135,7 +139,7 @@ pub(crate) fn read_material_header(
 #[derive(Clone)]
 pub struct ObserverMaterialCursor {
     campaign: CampaignId,
-    admission: Arc<MichiganContentAdmission>,
+    admission: Arc<EconomicContentAdmission>,
     history: MaterialHistory,
 }
 impl ObserverMaterialCursor {
@@ -155,12 +159,12 @@ struct MaterialHistory {
 }
 
 impl MaterialHistory {
-    fn new(expected: &MichiganContentAdmission) -> Result<Self, ObserverEconomyError> {
+    fn new(expected: &EconomicContentAdmission) -> Result<Self, ObserverEconomyError> {
         Ok(Self {
-            register: expected.register.clone(),
+            register: expected.initial_register().clone(),
             opening: None,
             receipt: None,
-            orders: OrderHistory::from_catalog(&expected.catalog)
+            orders: OrderHistory::from_opening(expected.initial_register().state())
                 .map_err(|_| ObserverEconomyError::InvalidProjection)?,
             prior_world: None,
         })
@@ -169,7 +173,7 @@ impl MaterialHistory {
     fn append(
         &mut self,
         campaign: CampaignId,
-        expected: &MichiganContentAdmission,
+        expected: &EconomicContentAdmission,
         index: u64,
         row: &postgres::Row,
     ) -> Result<(), ObserverEconomyError> {
@@ -180,7 +184,7 @@ impl MaterialHistory {
     fn append_decoded(
         &mut self,
         campaign: CampaignId,
-        expected: &MichiganContentAdmission,
+        expected: &EconomicContentAdmission,
         index: u64,
         row: MaterialObservationRow,
     ) -> Result<(), ObserverEconomyError> {
@@ -207,8 +211,8 @@ impl MaterialHistory {
             return Err(ObserverEconomyError::InvalidProjection);
         }
         if index == 0 {
-            if foundation_bytes.as_deref() != Some(expected.canonical_bytes.as_slice())
-                || next != expected.register
+            if foundation_bytes.as_deref() != Some(expected.canonical_bytes())
+                || next != *expected.initial_register()
                 || receipts.is_some()
                 || identity.is_some()
                 || content_hash.is_some()
@@ -240,7 +244,7 @@ impl MaterialHistory {
 
     fn append_receipt(
         &mut self,
-        expected: &MichiganContentAdmission,
+        expected: &EconomicContentAdmission,
         next: &MaterialWorldRegister,
         identity: &[u8],
         receipt_bytes: &[u8],
@@ -250,7 +254,7 @@ impl MaterialHistory {
         let identity = IdentifiedMaterialTick::decode(identity)
             .map_err(|_| ObserverEconomyError::InvalidProjection)?;
         if identity.resolve_tick() != index
-            || identity.foundation_digest() != expected.digest
+            || identity.foundation_digest() != expected.digest()
             || content_hash != Some(identity.tick_content_hash().as_bytes().as_slice())
             || sha256_of(receipt_bytes) != identity.receipt_digest()
             || nominal_material_world_hash(identity.graph_world_after(), next)
@@ -308,7 +312,7 @@ fn material_rows(
 fn extend_history(
     transaction: &mut impl GenericClient,
     campaign: CampaignId,
-    expected: &MichiganContentAdmission,
+    expected: &EconomicContentAdmission,
     history: &mut MaterialHistory,
     mut start: u64,
     through: u64,
@@ -330,19 +334,19 @@ pub(crate) fn material_observation(
     campaign: CampaignId,
     tick: u64,
     visibility: ObserverVisibility,
-    expected: &Arc<MichiganContentAdmission>,
+    expected: &Arc<EconomicContentAdmission>,
     cursor: &mut Option<ObserverMaterialCursor>,
 ) -> Result<MaterialObservation, ObserverEconomyError> {
     if visibility == ObserverVisibility::KnownPreview {
         return Ok(MaterialObservation {
-            foundation_digest: digest_hex(&expected.digest),
+            foundation_digest: digest_hex(&expected.digest()),
             production: None,
             nominal_world_hash: None,
         });
     }
     let reuse = cursor.as_ref().is_some_and(|c| {
         c.campaign == campaign
-            && c.admission.digest == expected.digest
+            && c.admission.digest() == expected.digest()
             && c.completed_tick() <= tick
     });
     let (mut history, start) = if reuse {
@@ -359,10 +363,8 @@ pub(crate) fn material_observation(
         (MaterialHistory::new(expected)?, 0)
     };
     extend_history(transaction, campaign, expected, &mut history, start, tick)?;
-    let MichiganPhysicalProjection::Normalized = expected.physical_projection;
-    let mut production = project_material_current(
-        &expected.catalog,
-        expected.preset.delivery(),
+    let mut production = project_economic_current(
+        expected.view(),
         &history.register,
         history.opening.as_ref(),
         history.receipt.as_ref(),
@@ -381,7 +383,7 @@ pub(crate) fn material_observation(
     let prior_world = history.prior_world;
     if cursor.as_ref().is_none_or(|cached| {
         cached.campaign != campaign
-            || cached.admission.digest != expected.digest
+            || cached.admission.digest() != expected.digest()
             || cached.completed_tick() <= tick
     }) {
         *cursor = Some(ObserverMaterialCursor {
@@ -391,7 +393,7 @@ pub(crate) fn material_observation(
         });
     }
     Ok(MaterialObservation {
-        foundation_digest: digest_hex(&expected.digest),
+        foundation_digest: digest_hex(&expected.digest()),
         production: Some(attribute_production(production, expected, visibility)?),
         nominal_world_hash: prior_world.map(|hash| digest_hex(&hash)),
     })
@@ -402,16 +404,18 @@ pub(crate) fn production_history(
     campaign: CampaignId,
     tick: u64,
     target: &ProductionHistoryTarget,
-    expected: &MichiganContentAdmission,
+    expected: &EconomicContentAdmission,
 ) -> Result<Vec<ProductionOutputPoint>, ObserverEconomyError> {
-    let process = expected
-        .catalog
-        .processes()
+    let metadata =
+        Metadata::new(expected.view()).map_err(|_| ObserverEconomyError::InvalidProjection)?;
+    let process = *metadata
+        .processes
         .iter()
-        .find(|process| {
-            digest_hex(&process.id().as_bytes()) == target.process_id
-                && digest_hex(&process.site_id().as_bytes()) == target.site_id
+        .find(|(id, (site, _, _))| {
+            digest_hex(&id.as_bytes()) == target.process_id
+                && digest_hex(&site.site_id.as_bytes()) == target.site_id
         })
+        .map(|(id, _)| id)
         .ok_or(ObserverEconomyError::ProductionHistoryUnavailable)?;
     let start = tick.saturating_sub(babylon_kernel::clock::TICKS_PER_YEAR - 1);
     let mut history = MaterialHistory::new(expected)?;
@@ -432,8 +436,8 @@ pub(crate) fn production_history(
                     transaction,
                     campaign,
                     period,
-                    expected.foundation_graph.scenario_scope(),
-                    expected.digest,
+                    expected.foundation_graph().scenario_scope(),
+                    expected.digest(),
                     &expected.component_identity,
                 )
                 .map_err(|_| ObserverEconomyError::InvalidProjection)?;
@@ -443,19 +447,21 @@ pub(crate) fn production_history(
                     return Err(ObserverEconomyError::InvalidProjection);
                 }
             }
-            let projected = project_process(
-                &expected.catalog,
-                history.register.state(),
-                process,
-                history.receipt.as_ref().map(|(receipt, _)| receipt),
-            )
-            .map_err(|_| ObserverEconomyError::InvalidProjection)?;
-            if projected.output_good_id != target.output_good_id
-                || projected.output_unit_id != target.output_unit_id
-            {
-                return Err(ObserverEconomyError::ProductionHistoryUnavailable);
-            }
             if period >= start {
+                let projected = project_process(
+                    &metadata,
+                    &Quantities::new(
+                        history.register.state(),
+                        history.receipt.as_ref().map(|(r, _)| r),
+                    ),
+                    process,
+                )
+                .map_err(|_| ObserverEconomyError::InvalidProjection)?;
+                if projected.output_good_id != target.output_good_id
+                    || projected.output_unit_id != target.output_unit_id
+                {
+                    return Err(ObserverEconomyError::ProductionHistoryUnavailable);
+                }
                 points.push(ProductionOutputPoint::from_process(period, &projected)?);
             }
         }
@@ -466,7 +472,7 @@ pub(crate) fn production_history(
 fn authenticated_staffing(
     transaction: &mut impl GenericClient,
     campaign: CampaignId,
-    expected: &MichiganContentAdmission,
+    expected: &EconomicContentAdmission,
     register: &MaterialWorldRegister,
     opening: Option<&MaterialWorldRegister>,
     result_world: Option<[u8; 32]>,
@@ -476,8 +482,8 @@ fn authenticated_staffing(
     let tick = register.completed_tick();
     if tick == 0 {
         return project_staffing_accounts(
-            &expected.staffing,
-            &expected.foundation_graph,
+            expected.staffing(),
+            expected.foundation_graph(),
             register,
             None,
             &[],
@@ -490,8 +496,8 @@ fn authenticated_staffing(
             transaction,
             campaign,
             tick,
-            expected.foundation_graph.scenario_scope(),
-            expected.digest,
+            expected.foundation_graph().scenario_scope(),
+            expected.digest(),
             &expected.component_identity,
         )
         .map_err(|_| ObserverEconomyError::InvalidProjection)
@@ -514,13 +520,13 @@ fn authenticated_staffing(
         }
         (&previous.graph, &previous.register)
     } else {
-        (&expected.foundation_graph, &expected.register)
+        (expected.foundation_graph(), expected.initial_register())
     };
     if Some(prior_register) != opening {
         return Err(ObserverEconomyError::InvalidProjection);
     }
     project_staffing_accounts(
-        &expected.staffing,
+        expected.staffing(),
         &current.graph,
         register,
         Some(prior_graph),
@@ -532,13 +538,9 @@ fn authenticated_staffing(
 
 fn attribute_production(
     mut production: ProductionSnapshot,
-    expected: &MichiganContentAdmission,
+    expected: &EconomicContentAdmission,
     visibility: ObserverVisibility,
 ) -> Result<ProductionSnapshot, ObserverEconomyError> {
-    expected
-        .preset
-        .label()
-        .clone_into(&mut production.scenario_label);
     crate::production_projection::context::attach_observed_context(
         expected,
         visibility,

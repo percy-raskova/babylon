@@ -273,7 +273,7 @@ fn project(
         .collect();
     if sites
         .get(selected_site)
-        .is_none_or(|site| site.county_geoid != county)
+        .is_none_or(|site| !site.is_in_county(county))
     {
         return result;
     }
@@ -293,12 +293,17 @@ fn project(
         ) else {
             continue;
         };
-        if supplier.county_geoid != county && buyer.county_geoid != county {
+        if !supplier.is_in_county(county) && !buyer.is_in_county(county) {
             continue;
         }
+        let (Some(supplier_county), Some(buyer_county)) =
+            (supplier.county_geoid(), buyer.county_geoid())
+        else {
+            continue;
+        };
         let (Some(from), Some(to)) = (
-            anchors.0.get(&supplier.county_geoid),
-            anchors.0.get(&buyer.county_geoid),
+            anchors.0.get(&supplier_county),
+            anchors.0.get(&buyer_county),
         ) else {
             continue;
         };
@@ -306,7 +311,7 @@ fn project(
         if result.rows.len() == MAX_RELATIONSHIPS {
             continue;
         }
-        let outbound = supplier.county_geoid == county;
+        let outbound = supplier.is_in_county(county);
         let physical = relation_roads(snapshot, &key, edges.as_ref(), anchors.1);
         let physical_missing = physical.is_none();
         result.rows.push(CountyRelationship {
@@ -321,7 +326,7 @@ fn project(
                 unit
             ),
             outbound,
-            internal: supplier.county_geoid == buyer.county_geoid,
+            internal: supplier.location == buyer.location,
             physical: physical.unwrap_or_default().into_iter().collect(),
             physical_missing,
         });
@@ -649,7 +654,7 @@ fn rebuild(
                     .is_some_and(|snapshot| {
                         snapshot.sites.iter().any(|site| {
                             site.id == *id
-                                && Some(site.county_geoid.as_str())
+                                && site.county_geoid().as_deref()
                                     == observation.anchors.selected(observation.selected.0)
                         })
                     })
@@ -821,18 +826,18 @@ fn jump_target(
         .sites
         .iter()
         .find(|site| site.id == jump.key.buyer)?;
-    if supplier.county_geoid == buyer.county_geoid {
+    if supplier.location == buyer.location {
         return None;
     }
     let county = anchors.selected(selected)?;
-    let destination = if supplier.county_geoid == county {
-        &buyer.county_geoid
-    } else if buyer.county_geoid == county {
-        &supplier.county_geoid
+    let destination = if supplier.is_in_county(county) {
+        buyer.county_geoid()?
+    } else if buyer.is_in_county(county) {
+        supplier.county_geoid()?
     } else {
         return None;
     };
-    anchors.0.get(destination).map(|anchor| anchor.index)
+    anchors.0.get(&destination).map(|anchor| anchor.index)
 }
 
 fn input(
@@ -1024,14 +1029,17 @@ mod tests {
 
     fn site(id: &str, county: &str) -> ProductionSite {
         ProductionSite {
+            function: "manufacturing".into(),
             id: id.into(),
-            county_geoid: county.into(),
+            location: format!("county:{county}").parse().unwrap(),
             name: format!("{id} county cohort"),
-            industry_code: "331".into(),
+            industry_code: Some("331".into()),
             observed_employment: None,
             inventory: Vec::new(),
-            role: babylon_persistence::production_observation::ProductionSiteRole::Production,
-            sector_code: "31-33".into(),
+            roles: vec![
+                babylon_persistence::production_observation::ProductionSiteRole::Production,
+            ],
+            sector_code: Some("31-33".into()),
             processes: vec![
                 babylon_persistence::production_observation::ProductionProcess {
                     id: "fixture-process".into(),
@@ -1064,7 +1072,7 @@ mod tests {
                 good: good.into(),
                 unit: unit.into(),
                 quantity_per_batch: 7,
-                on_hand: 2,
+                on_hand: Some(2),
                 supplier_site_ids: vec![supplier.id.clone()],
             });
         }
@@ -1098,6 +1106,7 @@ mod tests {
                 freight: Vec::new(),
                 events: Vec::new(),
                 observed_contexts: Vec::new(),
+                national_observed_contexts: Vec::new(),
                 process_attributions: Vec::new(),
                 provenance: Vec::new(),
             }),
@@ -1202,6 +1211,7 @@ mod tests {
             distance_mm: 1_500_000,
         }];
         snapshot.routes = vec![ProductionRoute {
+            physical_route_id: "supply-road".into(),
             id: "supply-road".into(),
             supplier_site_id: "a".into(),
             buyer_site_id: "b".into(),

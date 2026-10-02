@@ -1,58 +1,108 @@
-//! Captured observed county-sector context for active material owners.
-//! Attribution reads saved source cells and never reopens a current artifact.
-
-use super::ProductionProjectionError;
+//! Captured source context with native geographic scope and explicit missingness.
+use super::{metadata::Metadata, ProductionProjectionError};
 use crate::{
+    economic_catalog::{EconomicProjectionView, EconomicSiteSource, EconomicSourceView},
+    economic_content::EconomicContentAdmission,
     michigan_cohorts::michigan_business_subject_for_owner,
-    michigan_content::MichiganContentAdmission,
     michigan_economy::digest_hex,
-    michigan_material::{MichiganMaterialCatalog, MichiganOwnerSource},
+    michigan_material::MichiganOwnerSource,
     observer_reader::ObserverVisibility,
-    production_observation::DesignedProcessAttribution,
-    production_observation::ObservedSectorContext,
-    production_observation::ProductionBusinessSubject,
-    production_observation::ProductionSnapshot,
+    production_observation::{
+        DesignedProcessAttribution, ObservedKnownSubtotal, ObservedNationalCohortContext,
+        ObservedSectorContext, ProductionBusinessSubject, ProductionSnapshot,
+    },
     ArchiveEvidenceClass,
 };
 use babylon_graph::stable_element::StableElementKey;
 use std::collections::{BTreeMap, BTreeSet};
-
+type Result<T> = std::result::Result<T, ProductionProjectionError>;
 type ContextRows = (Vec<ObservedSectorContext>, Vec<DesignedProcessAttribution>);
 
 pub(crate) fn attach_observed_context(
-    admitted: &MichiganContentAdmission,
+    admitted: &EconomicContentAdmission,
     visibility: ObserverVisibility,
     snapshot: &mut ProductionSnapshot,
-) -> Result<(), ProductionProjectionError> {
+) -> Result<()> {
     if visibility != ObserverVisibility::FullObserver {
         snapshot.observed_contexts.clear();
+        snapshot.national_observed_contexts.clear();
         snapshot.process_attributions.clear();
         return Ok(());
     }
-    let (contexts, links) = context_rows(&admitted.catalog, snapshot)?;
+    let view = admitted.view();
+    let (contexts, links, national) = match view.sources {
+        EconomicSourceView::MichiganControl { .. } => {
+            let (c, l) = context_rows(view, snapshot)?;
+            (c, l, vec![])
+        }
+        EconomicSourceView::National { .. } => (vec![], vec![], national_rows(view, snapshot)?),
+    };
     snapshot.observed_contexts = contexts;
     snapshot.process_attributions = links;
+    snapshot.national_observed_contexts = national;
     Ok(())
 }
-
+fn visible_sites<'a>(
+    metadata: &Metadata<'_>,
+    snapshot: &'a ProductionSnapshot,
+) -> Result<BTreeMap<String, &'a crate::production_observation::ProductionSite>> {
+    let mut rows = BTreeMap::new();
+    for row in &snapshot.sites {
+        if rows.insert(row.id.clone(), row).is_some() {
+            return Err(ProductionProjectionError::State);
+        }
+    }
+    if rows.len() != metadata.sites.len() {
+        return Err(ProductionProjectionError::Content);
+    }
+    for (&id, site) in &metadata.sites {
+        let visible = rows
+            .get(&digest_hex(&id.as_bytes()))
+            .ok_or(ProductionProjectionError::Content)?;
+        if visible.location != site.location
+            || visible.function != site.function.source_key()
+            || visible
+                .processes
+                .iter()
+                .map(|r| r.id.clone())
+                .collect::<BTreeSet<_>>()
+                != site
+                    .processes
+                    .iter()
+                    .map(|r| digest_hex(&r.process_id.as_bytes()))
+                    .collect()
+        {
+            return Err(ProductionProjectionError::Content);
+        }
+    }
+    Ok(rows)
+}
 fn context_rows(
-    catalog: &MichiganMaterialCatalog,
+    view: EconomicProjectionView<'_>,
     snapshot: &ProductionSnapshot,
-) -> Result<ContextRows, ProductionProjectionError> {
+) -> Result<ContextRows> {
+    let metadata = Metadata::new(view)?;
+    let visible = visible_sites(&metadata, snapshot)?;
+    let EconomicSourceView::MichiganControl { catalog, .. } = view.sources else {
+        return Ok((vec![], vec![]));
+    };
     let mut contexts = BTreeMap::new();
     let mut links = Vec::new();
-    let mut site_ids = BTreeSet::new();
+    let mut authored_processes = BTreeMap::<_, Vec<_>>::new();
+    for process in catalog.processes() {
+        authored_processes
+            .entry(process.site_key.as_str())
+            .or_default()
+            .push(process);
+    }
     for site in catalog.sites() {
         let site_id = digest_hex(&site.id().as_bytes());
-        let visible = snapshot
-            .sites
-            .iter()
-            .find(|row| row.id == site_id)
+        let shown = visible
+            .get(&site_id)
             .ok_or(ProductionProjectionError::State)?;
-        if visible.county_geoid != site.county_geoid
-            || visible.sector_code != site.sector_code
-            || visible.industry_code != site.naics
-            || !site_ids.insert(site_id.clone())
+        if !shown.is_in_county(&site.county_geoid)
+            || shown.sector_code.as_deref() != Some(&site.sector_code)
+            || shown.industry_code.as_deref() != Some(&site.naics)
         {
             return Err(ProductionProjectionError::Content);
         }
@@ -63,41 +113,97 @@ fn context_rows(
         let subject = context.subject.clone();
         if contexts
             .insert(subject.clone(), context.clone())
-            .is_some_and(|prior| prior != context)
+            .is_some_and(|old| old != context)
         {
             return Err(ProductionProjectionError::Content);
         }
-        for process in catalog
-            .processes()
-            .iter()
-            .filter(|row| row.site_key == site.key)
+        for process in authored_processes
+            .get(site.key.as_str())
+            .into_iter()
+            .flatten()
         {
-            let process_id = digest_hex(&process.id().as_bytes());
-            if !visible.processes.iter().any(|row| row.id == process_id) {
-                return Err(ProductionProjectionError::State);
-            }
             links.push(DesignedProcessAttribution {
-                process_id,
+                process_id: digest_hex(&process.id().as_bytes()),
                 site_id: site_id.clone(),
                 industry_code: process.industry_code.clone(),
                 cohort_subject: subject.clone(),
-                scenario_artifact_sha256: digest_hex(&catalog.defines_hash()),
+                scenario_artifact_sha256: digest_hex(&view.source_digest),
                 industry_artifact_sha256: source.industry_artifact_sha256.clone(),
                 evidence_class: ArchiveEvidenceClass::Designed,
             });
         }
     }
-    if snapshot.sites.len() != site_ids.len() || links.len() != catalog.processes().len() {
-        return Err(ProductionProjectionError::Content);
-    }
     links.sort_unstable();
     Ok((contexts.into_values().collect(), links))
+}
+fn subtotal(row: crate::national_cohorts::KnownSubtotal) -> ObservedKnownSubtotal {
+    ObservedKnownSubtotal {
+        known_subtotal: row.known_subtotal(),
+        published_members: row.published_members(),
+        missing_members: row.missing_members(),
+    }
+}
+fn national_rows(
+    view: EconomicProjectionView<'_>,
+    snapshot: &ProductionSnapshot,
+) -> Result<Vec<ObservedNationalCohortContext>> {
+    let EconomicSourceView::National { cohorts, .. } = view.sources else {
+        return Ok(vec![]);
+    };
+    let metadata = Metadata::new(view)?;
+    let visible = visible_sites(&metadata, snapshot)?;
+    let mut rows = Vec::new();
+    for site in &view.opening.sites {
+        let EconomicSiteSource::Qcew(key) = site.source else {
+            continue;
+        };
+        let source = cohorts
+            .group(key)
+            .filter(|r| r.is_admitted())
+            .ok_or(ProductionProjectionError::Content)?;
+        let site_id = digest_hex(&site.site_id.as_bytes());
+        let shown = visible
+            .get(&site_id)
+            .ok_or(ProductionProjectionError::State)?;
+        if !shown.is_in_county(key.county.as_str())
+            || key.function != Some(site.function)
+            || shown.observed_employment != source.jobs().complete_total()
+        {
+            return Err(ProductionProjectionError::Content);
+        }
+        let StableElementKey::Node {
+            scenario,
+            local_name,
+        } = &site.subject
+        else {
+            return Err(ProductionProjectionError::Content);
+        };
+        rows.push(ObservedNationalCohortContext {
+            site_id,
+            subject: ProductionBusinessSubject {
+                scenario: scenario.clone(),
+                local_name: local_name.clone(),
+            },
+            county_geoid: key.county.to_string(),
+            function: site.function.source_key().to_owned(),
+            ownership: key.ownership.source_code().to_owned(),
+            vintage: 2024,
+            establishments: subtotal(source.establishments()),
+            annual_average_jobs: subtotal(source.jobs()),
+            annual_payroll_usd: subtotal(source.annual_payroll_usd()),
+            artifact_sha256: digest_hex(&cohorts.artifact_sha256()),
+            function_mapping_sha256: digest_hex(&cohorts.function_mapping_sha256()),
+            evidence_class: ArchiveEvidenceClass::Observed,
+        });
+    }
+    rows.sort_unstable();
+    Ok(rows)
 }
 
 fn checked_context(
     source: &MichiganOwnerSource,
     source_url: &str,
-) -> Result<ObservedSectorContext, ProductionProjectionError> {
+) -> Result<ObservedSectorContext> {
     let StableElementKey::Node {
         scenario,
         local_name,

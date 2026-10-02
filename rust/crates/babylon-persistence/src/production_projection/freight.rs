@@ -7,13 +7,11 @@ use super::{
     ProductionProjectionError,
 };
 use crate::{
-    michigan_economy::digest_hex, michigan_material::MichiganMaterialCatalog,
-    production_observation::CompletedProductionFreightCapacity,
+    michigan_economy::digest_hex, production_observation::CompletedProductionFreightCapacity,
     production_observation::ProductionCapacityKind,
     production_observation::ProductionFreightCapacityAccount,
     production_observation::ProductionFreightCapacityOrder,
     production_observation::ProductionFreightReservation,
-    production_observation::ProductionRouteStage,
 };
 use babylon_material_circuit::{
     CorridorId, MaterialCircuitState, RouteId, RouteStage, SiteId, SupplierTransport,
@@ -32,62 +30,48 @@ struct Participants {
     merchants: BTreeSet<SiteId>,
 }
 
-pub(super) fn project_route_stages(
-    state: &MaterialCircuitState,
-    route: RouteId,
-) -> Result<Vec<ProductionRouteStage>> {
-    stages(state, route)?
-        .into_iter()
-        .map(|stage| {
-            let ids = memberships(state, route, stage.stage_index)?;
-            Ok(ProductionRouteStage {
-                stage_index: stage.stage_index,
-                travel_periods: u64::from(stage.travel_periods),
-                capacity_ids: ids
-                    .into_iter()
-                    .map(|id| digest_hex(&id.as_bytes()))
-                    .collect(),
-            })
-        })
-        .collect()
+struct RouteIndex<'a> {
+    stages: BTreeMap<RouteId, Vec<&'a RouteStage>>,
+    memberships: BTreeMap<(RouteId, u16), BTreeSet<CorridorId>>,
 }
-
-fn stages(state: &MaterialCircuitState, route: RouteId) -> Result<Vec<&RouteStage>> {
-    let mut rows: Vec<_> = state
-        .route_stages
-        .iter()
-        .filter(|row| row.route_id == route)
-        .collect();
-    rows.sort_unstable_by_key(|row| row.stage_index);
-    if rows
-        .iter()
-        .enumerate()
-        .any(|(index, row)| usize::from(row.stage_index) != index || row.travel_periods == 0)
-    {
-        return Err(ProductionProjectionError::State);
-    }
-    Ok(rows)
-}
-
-fn memberships(
-    state: &MaterialCircuitState,
-    route: RouteId,
-    stage_index: u16,
-) -> Result<BTreeSet<CorridorId>> {
-    let mut ids = BTreeSet::new();
-    for row in state
-        .route_stage_capacities
-        .iter()
-        .filter(|row| row.route_id == route && row.stage_index == stage_index)
-    {
-        if !ids.insert(row.corridor_id) {
+impl<'a> RouteIndex<'a> {
+    fn new(state: &'a MaterialCircuitState) -> Result<Self> {
+        let mut memberships = BTreeMap::<_, BTreeSet<_>>::new();
+        for row in &state.route_stage_capacities {
+            if !memberships
+                .entry((row.route_id, row.stage_index))
+                .or_default()
+                .insert(row.corridor_id)
+            {
+                return Err(ProductionProjectionError::State);
+            }
+        }
+        let mut stages = BTreeMap::<_, Vec<_>>::new();
+        for row in &state.route_stages {
+            if !memberships.contains_key(&(row.route_id, row.stage_index)) {
+                return Err(ProductionProjectionError::State);
+            }
+            stages.entry(row.route_id).or_default().push(row);
+        }
+        let count = stages.values().map(Vec::len).sum::<usize>();
+        if count != memberships.len() {
             return Err(ProductionProjectionError::State);
         }
+        for rows in stages.values_mut() {
+            rows.sort_unstable_by_key(|r| r.stage_index);
+            if rows
+                .iter()
+                .enumerate()
+                .any(|(i, r)| usize::from(r.stage_index) != i || r.travel_periods == 0)
+            {
+                return Err(ProductionProjectionError::State);
+            }
+        }
+        Ok(Self {
+            stages,
+            memberships,
+        })
     }
-    if ids.is_empty() {
-        return Err(ProductionProjectionError::State);
-    }
-    Ok(ids)
 }
 
 fn budgets(state: &MaterialCircuitState) -> Result<Budgets> {
@@ -106,9 +90,10 @@ fn budgets(state: &MaterialCircuitState) -> Result<Budgets> {
 
 fn participants(state: &MaterialCircuitState) -> Result<BTreeMap<CorridorId, Participants>> {
     let mut result = BTreeMap::<CorridorId, Participants>::new();
-    for stage in &state.route_stages {
-        for id in memberships(state, stage.route_id, stage.stage_index)? {
-            result.entry(id).or_default().routes.insert(stage.route_id);
+    let index = RouteIndex::new(state)?;
+    for ((route, _), ids) in index.memberships {
+        for id in ids {
+            result.entry(id).or_default().routes.insert(route);
         }
     }
     for merchant in &state.merchants {
@@ -130,11 +115,23 @@ fn participants(state: &MaterialCircuitState) -> Result<BTreeMap<CorridorId, Par
     Ok(result)
 }
 
+#[cfg(test)]
 pub(super) fn project_freight_capacity_accounts(
-    catalog: &MichiganMaterialCatalog,
+    catalog: &crate::michigan_material::MichiganMaterialCatalog,
     state: &MaterialCircuitState,
     opening: Option<&MaterialCircuitState>,
     receipt: Option<&MaterialTickReceipts>,
+) -> Result<Vec<ProductionFreightCapacityAccount>> {
+    project_with_labels(state, opening, receipt, |id| {
+        catalog.corridor_label(id).map(str::to_owned)
+    })
+}
+
+pub(super) fn project_with_labels(
+    state: &MaterialCircuitState,
+    opening: Option<&MaterialCircuitState>,
+    receipt: Option<&MaterialTickReceipts>,
+    label: impl Fn(CorridorId) -> Option<String>,
 ) -> Result<Vec<ProductionFreightCapacityAccount>> {
     let current = budgets(state)?;
     let principals = participants(state)?;
@@ -149,18 +146,20 @@ pub(super) fn project_freight_capacity_accounts(
         )?),
         _ => return Err(ProductionProjectionError::History),
     };
+    let mut completed_groups = BTreeMap::<_, Vec<_>>::new();
+    if let Some(rows) = &completed {
+        for ((id, _), row) in rows {
+            completed_groups.entry(*id).or_default().push(row.clone());
+        }
+    }
     principals
         .into_iter()
         .map(|(id, participating)| {
             let complete = completed
                 .as_ref()
-                .map(|rows| CompletedProductionFreightCapacity {
+                .map(|_| CompletedProductionFreightCapacity {
                     period: state.period - 1,
-                    reservations: rows
-                        .iter()
-                        .filter(|((principal, _), _)| *principal == id)
-                        .map(|(_, row)| row.clone())
-                        .collect(),
+                    reservations: completed_groups.remove(&id).unwrap_or_default(),
                 });
             if complete
                 .as_ref()
@@ -170,10 +169,7 @@ pub(super) fn project_freight_capacity_accounts(
             }
             Ok(ProductionFreightCapacityAccount {
                 corridor_id: digest_hex(&id.as_bytes()),
-                corridor_label: catalog
-                    .corridor_label(id)
-                    .ok_or(ProductionProjectionError::Content)?
-                    .to_owned(),
+                corridor_label: label(id).ok_or(ProductionProjectionError::Content)?,
                 kind: if participating.merchants.is_empty() {
                     ProductionCapacityKind::Transport
                 } else {
@@ -203,6 +199,10 @@ pub(super) fn project_freight_capacity_accounts(
 fn capacity_order(fact: &OutboundFact) -> Result<ProductionFreightCapacityOrder> {
     let (id, kind) = identity(fact.id)?;
     Ok(ProductionFreightCapacityOrder {
+        supplier_relation_id: fact
+            .route
+            .and(fact.buyer)
+            .map(|buyer| super::routes::relation_id((buyer, fact.site, fact.good, fact.unit))),
         order_id: digest_hex(&id.as_bytes()),
         kind,
         supplier_site_id: digest_hex(&fact.site.as_bytes()),
@@ -242,19 +242,29 @@ fn completed_reservations(
     for id in principals.keys() {
         reservations.entry((*id, prior.period)).or_default();
     }
+    let route_index = RouteIndex::new(prior)?;
+    let merchants: BTreeMap<_, _> = prior.merchants.iter().map(|r| (r.site_id, r)).collect();
+    let dispatches: BTreeMap<_, _> = receipt.dispatches.iter().map(|r| (r.order_id, r)).collect();
     for fact in facts {
         let order = capacity_order(&fact)?;
         if fact.transport == Some(SupplierTransport::Staged) {
             let route = fact.route.ok_or(ProductionProjectionError::State)?;
             let mut departure = prior.period;
-            let stages = stages(prior, route)?;
+            let stages = route_index
+                .stages
+                .get(&route)
+                .ok_or(ProductionProjectionError::State)?;
             if stages.is_empty() {
                 return Err(ProductionProjectionError::State);
             }
             for stage in stages {
-                for capacity in memberships(prior, route, stage.stage_index)? {
+                for capacity in route_index
+                    .memberships
+                    .get(&(route, stage.stage_index))
+                    .ok_or(ProductionProjectionError::State)?
+                {
                     reservations
-                        .entry((capacity, departure))
+                        .entry((*capacity, departure))
                         .or_default()
                         .push(order.clone());
                 }
@@ -263,15 +273,14 @@ fn completed_reservations(
                     .ok_or(ProductionProjectionError::Arithmetic)?;
             }
             let (id, _) = identity(fact.id)?;
-            if receipt
-                .dispatches
-                .iter()
-                .any(|row| row.order_id == id && row.final_arrival_period != departure)
+            if dispatches
+                .get(&id)
+                .is_some_and(|row| row.final_arrival_period != departure)
             {
                 return Err(ProductionProjectionError::State);
             }
         }
-        if let Some(merchant) = prior.merchants.iter().find(|row| row.site_id == fact.site) {
+        if let Some(merchant) = merchants.get(&fact.site) {
             reservations
                 .entry((merchant.capacity_id, prior.period))
                 .or_default()

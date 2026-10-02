@@ -107,17 +107,16 @@ pub(crate) fn opening_site(snapshot: &ProductionSnapshot) -> Option<&ProductionS
 /// Only the committed plan and output determine this label, never closing stock.
 pub(crate) fn committed_plan_status(site: &ProductionSite) -> &'static str {
     if site.processes.is_empty() {
-        return match site.role {
-            babylon_persistence::production_observation::ProductionSiteRole::Wholesale => {
+        return match site.roles.first() {
+            Some(babylon_persistence::production_observation::ProductionSiteRole::Wholesale) => {
                 "Wholesale / handling and onward distribution"
             }
-            babylon_persistence::production_observation::ProductionSiteRole::Retail => {
+            Some(babylon_persistence::production_observation::ProductionSiteRole::Retail) => {
                 "Retail / delivery to final demand"
             }
-            babylon_persistence::production_observation::ProductionSiteRole::Production => {
-                "No productive process disclosed"
-            }
-            babylon_persistence::production_observation::ProductionSiteRole::Maintenance => {
+            Some(babylon_persistence::production_observation::ProductionSiteRole::Production)
+            | None => "No productive process disclosed",
+            Some(babylon_persistence::production_observation::ProductionSiteRole::Maintenance) => {
                 "Maintenance / service jobs for a bound process"
             }
         };
@@ -375,14 +374,17 @@ mod tests {
 
     fn site(id: &str, suppliers: &[&str]) -> ProductionSite {
         ProductionSite {
+            function: "manufacturing".into(),
             id: id.into(),
-            county_geoid: "26163".into(),
+            location: "county:26163".parse().unwrap(),
             name: format!("Cohort {id}"),
-            industry_code: "331".into(),
+            industry_code: Some("331".into()),
             observed_employment: Some(999_999),
             inventory: Vec::new(),
-            role: babylon_persistence::production_observation::ProductionSiteRole::Production,
-            sector_code: "31-33".into(),
+            roles: vec![
+                babylon_persistence::production_observation::ProductionSiteRole::Production,
+            ],
+            sector_code: Some("31-33".into()),
             processes: vec![
                 babylon_persistence::production_observation::ProductionProcess {
                     id: "fixture-process".into(),
@@ -403,7 +405,7 @@ mod tests {
                             good: format!("Input {supplier}"),
                             unit: "kg".into(),
                             quantity_per_batch: 3,
-                            on_hand: 5,
+                            on_hand: Some(5),
                             supplier_site_ids: vec![(*supplier).into()],
                         })
                         .collect(),
@@ -438,6 +440,7 @@ mod tests {
             freight: Vec::new(),
             events: Vec::new(),
             observed_contexts: Vec::new(),
+            national_observed_contexts: Vec::new(),
             process_attributions: Vec::new(),
             provenance: Vec::new(),
         }
@@ -488,7 +491,7 @@ mod tests {
         ] {
             assert!(!text.contains(invented), "invented {invented}: {text}");
         }
-        snapshot.sites[1].processes[0].inputs[0].on_hand = 0;
+        snapshot.sites[1].processes[0].inputs[0].on_hand = Some(0);
         snapshot.sites[1].processes[0].labor[0].available = 0;
         snapshot.sites[1].processes[0].available_batches = 0;
         assert_eq!(describe_brief(&snapshot.sites[1], &snapshot), text);
@@ -581,6 +584,7 @@ mod tests {
 
     fn route() -> ProductionRoute {
         ProductionRoute {
+            physical_route_id: "route-a-b".into(),
             physical_edge_ids: Vec::new(),
             distance_mm: None,
             transport_kind:

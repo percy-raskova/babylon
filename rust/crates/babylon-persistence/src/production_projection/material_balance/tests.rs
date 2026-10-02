@@ -1478,6 +1478,14 @@ fn actual_installation_and_wear_project_materials_work_and_next_period_capacity(
         if period == 5 {
             assert_eq!(f::equipment_cost(&evidence.1).micro_units(), 0);
             assert_eq!(f::stock_cost(&evidence.1, f::good(4)).micro_units(), 44);
+            assert_eq!(evidence.2.installation_decisions[0].installed_units, 0);
+            let mut pre_wear_position = evidence.clone();
+            pre_wear_position.2.installation_decisions[0].installed_units = 1;
+            pre_wear_position.2.installation_decisions[0].requested_units = 0;
+            assert!(pre_wear_position.2.installation_decisions[0]
+                .validate()
+                .is_ok());
+            assert!(project(&pre_wear_position).is_err());
             let mut missing = evidence.clone();
             missing.2.equipment_wear.clear();
             assert!(project(&missing).is_err());
@@ -1629,4 +1637,54 @@ fn actual_unfunded_household_service_need_remains_visible_without_work_or_purcha
         (1, 0, 0, 1)
     );
     conserved(&complete(&evidence));
+}
+
+#[test]
+fn installation_decision_must_join_current_plan_and_post_wear_position() {
+    let evidence = pair(super::super::equipment_fixture::opening());
+    assert!(!evidence.2.installation_decisions.is_empty());
+    assert!(project(&evidence).is_ok());
+    let mut missing = evidence.clone();
+    missing.2.installation_decisions.clear();
+    assert!(project(&missing).is_err());
+    let mut duplicate = evidence.clone();
+    duplicate
+        .2
+        .installation_decisions
+        .push(duplicate.2.installation_decisions[0].clone());
+    assert!(project(&duplicate).is_err());
+    for mutate in [
+        |r: &mut babylon_material_circuit::InstallationDecisionReceipt| {
+            r.captured_plan_batches += 1;
+        },
+        |r: &mut babylon_material_circuit::InstallationDecisionReceipt| {
+            r.target_units += 1;
+            r.requested_units += 1;
+        },
+    ] {
+        let mut changed = evidence.clone();
+        mutate(&mut changed.2.installation_decisions[0]);
+        assert!(changed.2.installation_decisions[0].validate().is_ok());
+        assert!(project(&changed).is_err());
+    }
+}
+
+#[test]
+fn installation_decision_joins_captured_pending_before_completion() {
+    let evidence = pair(pair(super::super::equipment_fixture::opening()).1);
+    assert_eq!(evidence.2.installation_decisions[0].pending_units, 1);
+    assert!(project(&evidence).is_ok());
+    for mutate in [
+        |r: &mut babylon_material_circuit::InstallationDecisionReceipt| {
+            r.pending_units += 1;
+        },
+        |r: &mut babylon_material_circuit::InstallationDecisionReceipt| {
+            r.installed_units += 1;
+        },
+    ] {
+        let mut changed = evidence.clone();
+        mutate(&mut changed.2.installation_decisions[0]);
+        assert!(changed.2.installation_decisions[0].validate().is_ok());
+        assert!(project(&changed).is_err());
+    }
 }

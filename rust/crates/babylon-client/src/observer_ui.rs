@@ -74,16 +74,18 @@ pub enum NetworkSector {
     Agriculture,
     Mining,
     Manufacturing,
+    Production,
     Maintenance,
     Wholesale,
     Retail,
     EndBuyers,
 }
 impl NetworkSector {
-    pub const GROUPS: [Self; 7] = [
+    pub const GROUPS: [Self; 8] = [
         Self::Agriculture,
         Self::Mining,
         Self::Manufacturing,
+        Self::Production,
         Self::Maintenance,
         Self::Wholesale,
         Self::Retail,
@@ -96,6 +98,7 @@ impl NetworkSector {
             Self::Agriculture => "Agriculture / forestry",
             Self::Mining => "Extraction",
             Self::Manufacturing => "Manufacturing",
+            Self::Production => "Goods / service producers",
             Self::Maintenance => "Maintenance",
             Self::Wholesale => "Wholesale",
             Self::Retail => "Retail",
@@ -741,7 +744,7 @@ fn spawn_lens_controls(panel: &mut ChildSpawnerCommands) {
             NetworkSector::Wholesale,
             NetworkSector::Retail,
         ],
-        vec![NetworkSector::Maintenance],
+        vec![NetworkSector::Production, NetworkSector::Maintenance],
     ] {
         panel.spawn(row()).with_children(|bar| {
             for sector in group {
@@ -1773,10 +1776,7 @@ fn county_circuit_intro(
     let Some(county) = county else {
         return "Select a county to follow its work and dependencies.".into();
     };
-    let available = snapshot
-        .sites
-        .iter()
-        .any(|site| site.county_geoid == county);
+    let available = snapshot.sites.iter().any(|site| site.is_in_county(county));
     if !available {
         return "No production relationships are modeled here yet. The Archive contains the observed county context.".into();
     }
@@ -1802,7 +1802,7 @@ fn county_developments(snapshot: Option<&ObserverEconomySnapshot>, county: &str)
                     production
                         .sites
                         .iter()
-                        .any(|site| site.id == *id && site.county_geoid == county)
+                        .any(|site| site.id == *id && site.is_in_county(county))
                 })
         })
         .count();

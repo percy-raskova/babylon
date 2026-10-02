@@ -3,6 +3,8 @@
 
 use std::collections::BTreeMap;
 
+use babylon_kernel::economic_location::EconomicLocation;
+
 use babylon_persistence::{
     observer_reader::ObserverCountyEconomy, observer_reader::ObserverEconomySnapshot,
     production_observation::ProductionSnapshot,
@@ -366,7 +368,7 @@ pub fn project_map_lens(
         label: lens.label_for_log(snapshot),
         good_label: None,
         unit: String::new(),
-        evidence: "DESIGNED | county industry cohorts; no factory locations",
+        evidence: "DESIGNED | modeled economic locations and material accounts",
         counties: BTreeMap::new(),
         unavailable: LensUnavailable::Loading,
     };
@@ -463,13 +465,18 @@ fn project_workforce(
         return result;
     };
     result.unavailable = LensUnavailable::NotModeled;
+    let sites: BTreeMap<_, _> = production
+        .sites
+        .iter()
+        .map(|site| (site.id.as_str(), site))
+        .collect();
+    if sites.len() != production.sites.len() {
+        result.unavailable = LensUnavailable::InvalidObservation;
+        return result;
+    }
     let mut identities = std::collections::BTreeSet::new();
     for account in &production.staffing_accounts {
-        let Some(site) = production
-            .sites
-            .iter()
-            .find(|site| site.id == account.site_id)
-        else {
+        let Some(site) = sites.get(account.site_id.as_str()) else {
             result.counties.clear();
             result.unavailable = LensUnavailable::InvalidObservation;
             return result;
@@ -486,7 +493,10 @@ fn project_workforce(
             WorkforceMetric::Employed => account.employed,
             WorkforceMetric::Reserve => account.reserve,
         };
-        if add_quantity(&mut result.counties, &site.county_geoid, Some(quantity)).is_err() {
+        let Some(county) = site.county_geoid() else {
+            continue;
+        };
+        if add_quantity(&mut result.counties, &county, Some(quantity)).is_err() {
             result.counties.clear();
             result.unavailable = LensUnavailable::Arithmetic;
             return result;
@@ -519,21 +529,64 @@ fn project_material_counties(
     kind: MaterialLensKind,
     good: &MaterialGoodKey,
 ) -> Result<BTreeMap<String, CountyLensReading>, MapLensError> {
-    let mut counties = BTreeMap::new();
+    Ok(project_material_locations(production, kind, good)?
+        .into_iter()
+        .filter_map(|(location, quantity)| {
+            let EconomicLocation::County(county) = location else {
+                return None;
+            };
+            Some((
+                county.geoid().to_string(),
+                quantity.map_or(
+                    CountyLensReading::Unavailable(LensUnavailable::NoProductionPeriod),
+                    CountyLensReading::Available,
+                ),
+            ))
+        })
+        .collect())
+}
+
+type MaterialLocations = BTreeMap<EconomicLocation, Option<u64>>;
+
+fn add_location_quantity(
+    rows: &mut MaterialLocations,
+    location: EconomicLocation,
+    quantity: Option<u64>,
+) -> Result<(), MapLensError> {
+    let row = rows.entry(location).or_insert(Some(0));
+    *row = match (*row, quantity) {
+        (Some(before), Some(quantity)) => Some(
+            before
+                .checked_add(quantity)
+                .ok_or(MapLensError::Arithmetic)?,
+        ),
+        _ => None,
+    };
+    Ok(())
+}
+
+/// The county map and whole-campaign totals share one typed-location fold.
+/// `None` preserves an absent completed-production receipt rather than inventing zero.
+pub(crate) fn project_material_locations(
+    production: &ProductionSnapshot,
+    kind: MaterialLensKind,
+    good: &MaterialGoodKey,
+) -> Result<MaterialLocations, MapLensError> {
+    let mut rows = BTreeMap::new();
     match kind {
         MaterialLensKind::ProducedThisPeriod => {
             for owner in &production.sites {
-                for site in &owner.processes {
-                    if good.matches(&site.output_good_id, &site.output_unit_id) {
-                        let produced = site
+                for process in &owner.processes {
+                    if good.matches(&process.output_good_id, &process.output_unit_id) {
+                        let produced = process
                             .produced_batches
                             .map(|batches| {
                                 batches
-                                    .checked_mul(site.output_per_batch)
+                                    .checked_mul(process.output_per_batch)
                                     .ok_or(MapLensError::Arithmetic)
                             })
                             .transpose()?;
-                        add_quantity(&mut counties, &owner.county_geoid, produced)?;
+                        add_location_quantity(&mut rows, owner.location, produced)?;
                     }
                 }
             }
@@ -542,49 +595,73 @@ fn project_material_counties(
             for site in &production.sites {
                 for stock in &site.inventory {
                     if good.matches(&stock.good_id, &stock.unit_id) {
-                        add_quantity(&mut counties, &site.county_geoid, Some(stock.quantity))?;
+                        add_location_quantity(&mut rows, site.location, Some(stock.quantity))?;
                     }
                 }
             }
         }
-        MaterialLensKind::InboundInTransit => {
-            let routes: BTreeMap<_, _> = production
-                .routes
-                .iter()
-                .filter(|route| good.matches(&route.good_id, &route.unit_id))
-                .map(|route| (route.id.as_str(), route))
-                .collect();
-            let sites: BTreeMap<_, _> = production
-                .sites
-                .iter()
-                .map(|site| (site.id.as_str(), site))
-                .collect();
-            for route in routes.values() {
-                let buyer = sites
-                    .get(route.buyer_site_id.as_str())
-                    .ok_or(MapLensError::Identity)?;
-                add_quantity(&mut counties, &buyer.county_geoid, Some(0))?;
-            }
-            for lot in &production.freight {
-                if !good.matches(&lot.good_id, &lot.unit_id) {
-                    continue;
-                }
-                let route = routes
-                    .get(lot.route_id.as_str())
-                    .ok_or(MapLensError::Identity)?;
-                if route.buyer_site_id != lot.destination_site_id
-                    || route.supplier_site_id != lot.source_site_id
-                {
-                    return Err(MapLensError::Identity);
-                }
-                let buyer = sites
-                    .get(lot.destination_site_id.as_str())
-                    .ok_or(MapLensError::Identity)?;
-                add_quantity(&mut counties, &buyer.county_geoid, Some(lot.quantity))?;
-            }
-        }
+        MaterialLensKind::InboundInTransit => add_inbound(production, good, &mut rows)?,
     }
-    Ok(counties)
+    Ok(rows)
+}
+
+fn add_inbound(
+    production: &ProductionSnapshot,
+    good: &MaterialGoodKey,
+    rows: &mut MaterialLocations,
+) -> Result<(), MapLensError> {
+    let routes: BTreeMap<_, _> = production
+        .routes
+        .iter()
+        .filter(|route| good.matches(&route.good_id, &route.unit_id))
+        .map(|route| {
+            (
+                (
+                    route.physical_route_id.as_str(),
+                    route.supplier_site_id.as_str(),
+                    route.buyer_site_id.as_str(),
+                    route.good_id.as_str(),
+                    route.unit_id.as_str(),
+                ),
+                route,
+            )
+        })
+        .collect();
+    let sites: BTreeMap<_, _> = production
+        .sites
+        .iter()
+        .map(|site| (site.id.as_str(), site))
+        .collect();
+    for route in routes.values() {
+        let buyer = sites
+            .get(route.buyer_site_id.as_str())
+            .ok_or(MapLensError::Identity)?;
+        add_location_quantity(rows, buyer.location, Some(0))?;
+    }
+    for lot in &production.freight {
+        if !good.matches(&lot.good_id, &lot.unit_id) {
+            continue;
+        }
+        let route = routes
+            .get(&(
+                lot.route_id.as_str(),
+                lot.source_site_id.as_str(),
+                lot.destination_site_id.as_str(),
+                lot.good_id.as_str(),
+                lot.unit_id.as_str(),
+            ))
+            .ok_or(MapLensError::Identity)?;
+        if route.buyer_site_id != lot.destination_site_id
+            || route.supplier_site_id != lot.source_site_id
+        {
+            return Err(MapLensError::Identity);
+        }
+        let buyer = sites
+            .get(lot.destination_site_id.as_str())
+            .ok_or(MapLensError::Identity)?;
+        add_location_quantity(rows, buyer.location, Some(lot.quantity))?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -618,10 +695,11 @@ mod tests {
 
     fn site(id: &str, county: &str, good: char, quantity: u64) -> ProductionSite {
         ProductionSite {
+            function: "manufacturing".into(),
             id: id.into(),
-            county_geoid: county.into(),
+            location: format!("county:{county}").parse().unwrap(),
             name: id.into(),
-            industry_code: "331".into(),
+            industry_code: Some("331".into()),
             observed_employment: None,
             inventory: vec![ProductionStock {
                 good_id: key(good).good_id,
@@ -630,8 +708,10 @@ mod tests {
                 unit: "kg".into(),
                 quantity,
             }],
-            role: babylon_persistence::production_observation::ProductionSiteRole::Production,
-            sector_code: "31-33".into(),
+            roles: vec![
+                babylon_persistence::production_observation::ProductionSiteRole::Production,
+            ],
+            sector_code: Some("31-33".into()),
             processes: vec![
                 babylon_persistence::production_observation::ProductionProcess {
                     id: "fixture-process".into(),
@@ -683,6 +763,7 @@ mod tests {
                     site("buyer", "26099", 'b', 0),
                 ],
                 routes: vec![ProductionRoute {
+                    physical_route_id: "route".into(),
                     physical_edge_ids: Vec::new(),
                     distance_mm: None,
                     transport_kind: babylon_persistence::production_observation::ProductionRouteTransport::Staged,
@@ -721,6 +802,7 @@ mod tests {
                 }],
                 events: vec![],
                 observed_contexts: Vec::new(),
+                national_observed_contexts: Vec::new(),
                 process_attributions: Vec::new(),
                 provenance: vec![],
             }),

@@ -1,7 +1,6 @@
 //! Active order witnesses and bounded cumulative totals from authenticated periods.
 //! This index is presentation evidence, never retained simulation state.
 use super::ProductionProjectionError;
-use crate::michigan_material::MichiganMaterialCatalog;
 use babylon_material_circuit::{
     FinalDemandOrder, FinalDemandPrincipalId, GoodId, MaterialCircuitState, OrderId, RouteId,
     SiteId, UnitId,
@@ -43,59 +42,59 @@ pub(crate) struct OrderHistory {
     pub retired_final: BTreeMap<(FinalDemandPrincipalId, GoodId, UnitId), FinalTotals>,
 }
 impl OrderHistory {
-    pub fn from_catalog(catalog: &MichiganMaterialCatalog) -> Result<Self> {
-        let mut result = Self::default();
-        for route in catalog.routes() {
-            let supplier = catalog
-                .site(&route.supplier_site_key)
-                .ok_or(ProductionProjectionError::Content)?
-                .id();
-            let buyer = catalog
-                .site(&route.buyer_site_key)
-                .ok_or(ProductionProjectionError::Content)?
-                .id();
-            let good = catalog
-                .good(&route.good_key)
-                .ok_or(ProductionProjectionError::Content)?;
-            result.deliveries.insert(
-                route.order_id(),
-                Delivery {
-                    route: route.id(),
-                    supplier,
-                    buyer,
-                    good: good.id(),
-                    unit: good.unit_id(),
-                    ordered: route.ordered_quantity,
-                    shipped: 0,
-                    delivered: 0,
-                    lost: 0,
-                    realized: 0,
-                },
-            );
+    pub fn from_opening(state: &MaterialCircuitState) -> Result<Self> {
+        if state.period != 1 {
+            return Err(ProductionProjectionError::History);
         }
-        for row in catalog.final_demands() {
-            let retailer = catalog
-                .site(&row.retailer_site_key)
-                .ok_or(ProductionProjectionError::Content)?
-                .id();
-            let good = catalog
-                .good(&row.good_key)
-                .ok_or(ProductionProjectionError::Content)?;
-            result.final_orders.insert(
-                row.order_id(),
-                FinalOrder {
-                    order: FinalDemandOrder {
-                        order_id: row.order_id(),
-                        demand_principal_id: row.principal_id(),
-                        retailer_site_id: retailer,
-                        good_id: good.id(),
-                        unit_id: good.unit_id(),
-                        ordered: row.ordered_quantity,
-                        fulfilled: 0,
+        let mut routes = BTreeMap::new();
+        for row in &state.supplier_routes {
+            if routes
+                .insert(
+                    (
+                        row.buyer_site_id,
+                        row.supplier_site_id,
+                        row.good_id,
+                        row.unit_id,
+                    ),
+                    row.route_id,
+                )
+                .is_some()
+            {
+                return Err(ProductionProjectionError::State);
+            }
+        }
+        let mut result = Self::default();
+        for row in &state.orders {
+            let route = *routes
+                .get(&(
+                    row.buyer_site_id,
+                    row.supplier_site_id,
+                    row.good_id,
+                    row.unit_id,
+                ))
+                .ok_or(ProductionProjectionError::State)?;
+            if result
+                .deliveries
+                .insert(row.order_id, delivery(row, route))
+                .is_some()
+            {
+                return Err(ProductionProjectionError::State);
+            }
+        }
+        for row in &state.final_demand_orders {
+            if result
+                .final_orders
+                .insert(
+                    row.order_id,
+                    FinalOrder {
+                        order: row.clone(),
+                        expired: 0,
                     },
-                    expired: 0,
-                },
-            );
+                )
+                .is_some()
+            {
+                return Err(ProductionProjectionError::State);
+            }
         }
         Ok(result)
     }

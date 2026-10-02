@@ -288,7 +288,8 @@ fn reservations_for_later_legs_debit_the_future_period_without_claiming_arrival(
         vec![(1, 160_000, 0), (2, 120_000, 40_000)]
     );
     assert!(receipt.arrivals.is_empty());
-    let legs = project_route_stages(&next, sheet.id()).unwrap();
+    let mut stages = super::super::routes::stage_index(&next).unwrap();
+    let legs = stages.remove(&sheet.id()).unwrap();
     assert_eq!(
         legs.iter().map(|leg| leg.stage_index).collect::<Vec<_>>(),
         [0, 1]

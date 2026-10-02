@@ -282,7 +282,7 @@ fn assert_full_projection(
         .iter()
         .find(|site| site.id == maintenance.provider_site_id)
         .unwrap();
-    assert_eq!(provider.role, ProductionSiteRole::Maintenance);
+    assert!(provider.roles.contains(&ProductionSiteRole::Maintenance));
     assert!(provider.processes.is_empty());
     assert_eq!(provider.observed_employment, Some(1480));
     assert_eq!(snapshot.sites.len(), catalog.sites().len());

@@ -10,7 +10,7 @@ use babylon_persistence::{
 };
 
 use crate::map_economy_lens::{
-    project_map_lens, CountyLensReading, MapLens, MaterialGoodKey, MaterialLensKind,
+    material_choices, project_material_locations, MapLens, MaterialGoodKey, MaterialLensKind,
 };
 
 use super::staffing_difference;
@@ -41,20 +41,22 @@ fn compatible_owners(
         || current.iter().any(|(id, site)| {
             compared.get(id).is_none_or(|other| {
                 (
-                    site.county_geoid.as_str(),
-                    site.sector_code.as_str(),
-                    site.role,
-                    site.industry_code.as_str(),
+                    site.location,
+                    site.sector_code.as_deref(),
+                    site.roles.iter().collect::<BTreeSet<_>>(),
+                    site.industry_code.as_deref(),
+                    site.function.as_str(),
                 ) != (
-                    other.county_geoid.as_str(),
-                    other.sector_code.as_str(),
-                    other.role,
-                    other.industry_code.as_str(),
+                    other.location,
+                    other.sector_code.as_deref(),
+                    other.roles.iter().collect::<BTreeSet<_>>(),
+                    other.industry_code.as_deref(),
+                    other.function.as_str(),
                 )
             })
         })
     {
-        return Err("owner, county, sector or role coverage differs");
+        return Err("owner, location, source or role coverage differs");
     }
     Ok(())
 }
@@ -204,22 +206,35 @@ fn material_total(
     snapshot: &ObserverEconomySnapshot,
     lens: &MapLens,
 ) -> Result<(String, u64), &'static str> {
-    let projection = project_map_lens(Some(snapshot), lens);
-    if projection.counties.is_empty() {
-        return Err(projection.unavailable.label());
-    }
-    let total = projection
-        .counties
-        .values()
-        .try_fold(0_u64, |total, row| match row {
-            CountyLensReading::Available(value) => total
-                .checked_add(*value)
-                .ok_or("material quantity overflow"),
-            CountyLensReading::Unavailable(_) => {
-                Err("no completed production receipt for the selected period")
-            }
+    let MapLens::Material {
+        kind,
+        good: Some(good),
+    } = lens
+    else {
+        return Err("Select an exact good and unit in World's material lens");
+    };
+    let choice = material_choices(snapshot, *kind)
+        .map_err(|_| "inconsistent material identity")?
+        .into_iter()
+        .find(|choice| choice.key == *good)
+        .ok_or("exact good and unit are not disclosed")?;
+    let production = snapshot
+        .production
+        .as_ref()
+        .ok_or("production is missing")?;
+    let locations =
+        project_material_locations(production, *kind, good).map_err(|error| match error {
+            crate::map_economy_lens::MapLensError::Identity => "inconsistent material identity",
+            crate::map_economy_lens::MapLensError::Arithmetic => "material quantity overflow",
         })?;
-    Ok((projection.unit, total))
+    if locations.is_empty() {
+        return Err("no account for this exact good and unit");
+    }
+    let total = locations.values().try_fold(0_u64, |total, row| {
+        let value = row.ok_or("no completed production receipt for the selected period")?;
+        total.checked_add(value).ok_or("material quantity overflow")
+    })?;
+    Ok((choice.unit, total))
 }
 
 fn write_material(
@@ -296,10 +311,8 @@ fn retail_accounts<'a>(
             || retailers.len() != row.retailer_site_ids.len()
             || retailers.iter().any(|id| {
                 owners.get(id.as_str()).is_none_or(|owner| {
-                    owner.role != ProductionSiteRole::Retail
-                        || !matches!(row.location,
-                            babylon_kernel::economic_location::EconomicLocation::County(county)
-                                if county.geoid().as_str() == owner.county_geoid)
+                    !owner.roles.contains(&ProductionSiteRole::Retail)
+                        || owner.location != row.location
                 })
             })
         {
@@ -515,12 +528,22 @@ pub(super) fn write(
     let (Some(left), Some(right)) = (&current.production, &compared.production) else {
         return;
     };
-    let counties: BTreeSet<_> = left.sites.iter().map(|site| &site.county_geoid).collect();
+    let locations: BTreeSet<_> = left.sites.iter().map(|site| site.location).collect();
+    let county_count = locations
+        .iter()
+        .filter(|location| {
+            matches!(
+                location,
+                babylon_kernel::economic_location::EconomicLocation::County(_)
+            )
+        })
+        .count();
     writeln!(
         output,
-        "MODELED CAMPAIGN TOTALS / {} owners / {} counties",
+        "MODELED CAMPAIGN TOTALS / {} owners / {} counties / {} external locations",
         left.sites.len(),
-        counties.len()
+        county_count,
+        locations.len() - county_count
     )
     .expect("String write");
     if let Err(error) = write_workforce(output, left, right, current.resolve_tick) {

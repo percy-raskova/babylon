@@ -1,9 +1,9 @@
-//! V12 identity of an already-authorized production presentation.
+//! V13 identity of an already-authorized production presentation.
 //!
 //! Scope and the complete typed DTO are serialized as canonical JSON after the
 //! fixed domain/version. True multisets sort; events, geometry vertices and each
 //! route's physical edge sequence retain their semantic order. Serialization
-//! streams into the hash with an explicit byte ceiling. V12 also binds household
+//! streams into the hash with an explicit byte ceiling. V13 also binds household
 //! service needs and satisfaction, installation materials and work, and per-good
 //! quotes with committed direct costs. It also binds household stocks, consumption,
 //! bounded order history and resident staffing.
@@ -20,7 +20,7 @@ use std::{
     io::{self, Write},
 };
 
-const DOMAIN: &[u8] = b"babylon.production-observation-evidence.v12\0";
+const DOMAIN: &[u8] = b"babylon.production-observation-evidence.v13\0";
 const MAX_ROWS: usize = 65_536;
 const MAX_PHYSICAL_ROWS: usize = 1_114_112;
 const MAX_EVIDENCE_BYTES: usize = 128 * 1024 * 1024;
@@ -81,6 +81,7 @@ impl ObserverEconomySnapshot {
             return Err(ProductionEvidenceError::InvalidIdentity);
         }
         validate_identities(source)?;
+        validate_source_contexts(source)?;
         validate_maintenance(source, self.resolve_tick)?;
         validate_households(source, self.resolve_tick)?;
         validate_household_services(source, self.resolve_tick)?;
@@ -102,7 +103,7 @@ impl ObserverEconomySnapshot {
             bound: false,
         };
         output.hash.update(DOMAIN);
-        output.hash.update(12_u32.to_be_bytes());
+        output.hash.update(13_u32.to_be_bytes());
         if serde_json::to_writer(&mut output, &scope).is_err() {
             return Err(if output.bound {
                 ProductionEvidenceError::Bound
@@ -149,6 +150,50 @@ fn unique<T: Ord>(rows: impl IntoIterator<Item = T>) -> Result<()> {
     Ok(())
 }
 
+fn validate_source_contexts(rows: &ProductionSnapshot) -> Result<()> {
+    let sites: std::collections::BTreeMap<_, _> =
+        rows.sites.iter().map(|r| (r.id.as_str(), r)).collect();
+    for site in &rows.sites {
+        if site.roles.is_empty() {
+            return Err(ProductionEvidenceError::InvalidIdentity);
+        }
+        unique(&site.roles)?;
+    }
+    for row in &rows.national_observed_contexts {
+        let site = sites
+            .get(row.site_id.as_str())
+            .ok_or(ProductionEvidenceError::InvalidIdentity)?;
+        if !site.is_in_county(&row.county_geoid)
+            || site.function != row.function
+            || row.evidence_class != crate::ArchiveEvidenceClass::Observed
+        {
+            return Err(ProductionEvidenceError::InvalidIdentity);
+        }
+        let mut member_count = None;
+        for cell in [
+            &row.establishments,
+            &row.annual_average_jobs,
+            &row.annual_payroll_usd,
+        ] {
+            let count = cell
+                .published_members
+                .checked_add(cell.missing_members)
+                .ok_or(ProductionEvidenceError::Bound)?;
+            if count == 0 || member_count.is_some_and(|n| n != count) {
+                return Err(ProductionEvidenceError::InvalidIdentity);
+            }
+            member_count = Some(count);
+        }
+        if site.observed_employment
+            != (row.annual_average_jobs.missing_members == 0)
+                .then_some(row.annual_average_jobs.known_subtotal)
+        {
+            return Err(ProductionEvidenceError::InvalidIdentity);
+        }
+    }
+    Ok(())
+}
+
 fn validate_member_identities(rows: &ProductionSnapshot) -> Result<()> {
     let member_count = rows
         .staffing_accounts
@@ -180,6 +225,7 @@ fn validate_identities(rows: &ProductionSnapshot) -> Result<()> {
         rows.household_service_accounts.len(),
         rows.goods_price_accounts.len(),
         rows.observed_contexts.len(),
+        rows.national_observed_contexts.len(),
         rows.process_attributions.len(),
     ] {
         if count > MAX_ROWS {
@@ -196,6 +242,11 @@ fn validate_identities(rows: &ProductionSnapshot) -> Result<()> {
             .flat_map(|row| row.processes.iter().map(|row| &row.id)),
     )?;
     unique(rows.routes.iter().map(|row| &row.id))?;
+    unique(
+        rows.national_observed_contexts
+            .iter()
+            .map(|row| &row.site_id),
+    )?;
     unique(rows.freight.iter().map(|row| &row.id))?;
     unique(rows.events.iter().map(|row| &row.id))?;
     unique(rows.physical_edges.iter().map(|row| &row.id))?;
@@ -387,7 +438,7 @@ fn validate_maintenance(rows: &ProductionSnapshot, period: u64) -> Result<()> {
         if rows
             .sites
             .iter()
-            .any(|site| site.role == ProductionSiteRole::Maintenance)
+            .any(|site| site.roles.contains(&ProductionSiteRole::Maintenance))
         {
             return Err(ProductionEvidenceError::InvalidIdentity);
         }
@@ -407,11 +458,11 @@ fn validate_maintenance(rows: &ProductionSnapshot, period: u64) -> Result<()> {
             .find(|process| process.id == account.consumer_process_id)
     });
     if !provider.is_some_and(|site| {
-        site.role == ProductionSiteRole::Maintenance && site.processes.is_empty()
+        site.roles.contains(&ProductionSiteRole::Maintenance) && site.processes.is_empty()
     }) || rows
         .sites
         .iter()
-        .filter(|site| site.role == ProductionSiteRole::Maintenance)
+        .filter(|site| site.roles.contains(&ProductionSiteRole::Maintenance))
         .count()
         != 1
         || account.provider_site_id == account.consumer_site_id
@@ -483,6 +534,7 @@ fn validate_maintenance(rows: &ProductionSnapshot, period: u64) -> Result<()> {
 fn canonical_production(source: &ProductionSnapshot) -> ProductionSnapshot {
     let mut rows = source.clone();
     for site in &mut rows.sites {
+        site.roles.sort_unstable();
         site.inventory.sort_unstable();
         for process in &mut site.processes {
             for input in &mut process.inputs {
@@ -503,6 +555,7 @@ fn canonical_production(source: &ProductionSnapshot) -> ProductionSnapshot {
         balance.rows.sort_unstable();
     }
     rows.observed_contexts.sort_unstable();
+    rows.national_observed_contexts.sort_unstable();
     rows.process_attributions.sort_unstable();
     rows.physical_edges.sort_unstable();
     for route in &mut rows.routes {

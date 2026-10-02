@@ -2,7 +2,6 @@
 use super::ProductionProjectionError;
 use crate::{
     michigan_economy::digest_hex,
-    michigan_material::MichiganMaterialCatalog,
     production_observation::{CompletedProductionMaintenance, ProductionMaintenanceAccount},
 };
 use babylon_material_circuit::{MaintenanceBinding, MaintenanceReceipt, MaterialCircuitState};
@@ -10,63 +9,44 @@ use babylon_tick::material_world::MaterialTickReceipts;
 type Result<T> = std::result::Result<T, ProductionProjectionError>;
 
 pub(super) fn project_maintenance(
-    catalog: &MichiganMaterialCatalog,
+    metadata: &super::metadata::Metadata<'_>,
     state: &MaterialCircuitState,
     opening: Option<&MaterialCircuitState>,
     receipt: Option<&MaterialTickReceipts>,
 ) -> Result<Option<ProductionMaintenanceAccount>> {
     let done = completed(state, opening, receipt)?;
-    let Some(binding) = &state.maintenance_binding else {
-        if catalog.maintenance().is_some() {
-            return Err(ProductionProjectionError::Content);
-        }
+    let captured = metadata.opening().maintenance.as_ref().map(|r| &r.binding);
+    if state.maintenance_binding.as_ref() != captured {
+        return Err(ProductionProjectionError::Content);
+    }
+    let Some(binding) = captured else {
         return Ok(None);
     };
-    let designed = catalog
-        .maintenance()
+    let provider = metadata.site(binding.provider_site_id)?;
+    let (consumer, _, recipe) = metadata
+        .processes
+        .get(&binding.consumer_process_id)
         .ok_or(ProductionProjectionError::Content)?;
-    let provider = catalog
-        .sites()
-        .iter()
-        .find(|site| site.key == designed.provider_site_key)
-        .ok_or(ProductionProjectionError::Content)?;
-    let process = catalog
-        .processes()
-        .iter()
-        .find(|process| process.key == designed.consumer_process_key)
-        .ok_or(ProductionProjectionError::Content)?;
-    let consumer = catalog
-        .sites()
-        .iter()
-        .find(|site| site.key == process.site_key)
-        .ok_or(ProductionProjectionError::Content)?;
-    let spare = catalog
-        .goods()
-        .iter()
-        .find(|good| good.key == designed.spare_good_key)
-        .ok_or(ProductionProjectionError::Content)?;
+    let spare = metadata.good(binding.spare_good_id, binding.spare_unit_id)?;
     let output = state
         .process_outputs
         .iter()
-        .find(|row| row.process_id == process.id())
+        .find(|r| r.process_id == binding.consumer_process_id)
         .ok_or(ProductionProjectionError::State)?;
-    let good = catalog
-        .goods()
-        .iter()
-        .find(|good| good.id() == output.good_id && good.unit_id() == output.unit_id)
-        .ok_or(ProductionProjectionError::State)?;
-    if binding.provider_site_id != provider.id()
-        || binding.consumer_process_id != process.id()
-        || output.site_id != consumer.id()
-        || binding.spare_good_id != spare.id()
-        || binding.spare_unit_id != spare.unit_id()
-        || binding.spare_units_per_job != designed.spare_units_per_job
-        || binding.labor_units_per_job != designed.labor_units_per_job
-        || binding.enabled_batches_per_job != designed.enabled_batches_per_job
-        || binding.maximum_jobs_per_period != designed.maximum_jobs_per_period
-    {
+    if (
+        output.site_id,
+        output.good_id,
+        output.unit_id,
+        output.quantity_per_batch,
+    ) != (
+        consumer.site_id,
+        recipe.output.good_id,
+        recipe.output.unit_id,
+        recipe.output.quantity,
+    ) {
         return Err(ProductionProjectionError::Content);
     }
+    let good = metadata.good(output.good_id, output.unit_id)?;
     let service = state
         .maintenance_service
         .ok_or(ProductionProjectionError::State)?;
@@ -75,19 +55,19 @@ pub(super) fn project_maintenance(
         .checked_mul(output.quantity_per_batch)
         .ok_or(ProductionProjectionError::Arithmetic)?;
     Ok(Some(ProductionMaintenanceAccount {
-        provider_site_id: digest_hex(&provider.id().as_bytes()),
-        consumer_site_id: digest_hex(&consumer.id().as_bytes()),
-        consumer_process_id: digest_hex(&process.id().as_bytes()),
-        spare_good_id: digest_hex(&spare.id().as_bytes()),
-        spare_unit_id: digest_hex(&spare.unit_id().as_bytes()),
+        provider_site_id: digest_hex(&provider.site_id.as_bytes()),
+        consumer_site_id: digest_hex(&consumer.site_id.as_bytes()),
+        consumer_process_id: digest_hex(&binding.consumer_process_id.as_bytes()),
+        spare_good_id: digest_hex(&spare.good_id.as_bytes()),
+        spare_unit_id: digest_hex(&spare.unit_id.as_bytes()),
         spare_good: spare.label.clone(),
-        spare_unit: spare.unit_key.clone(),
+        spare_unit: spare.unit_label.clone(),
         labor_unit_id: digest_hex(&binding.labor_unit_id.as_bytes()),
         labor_unit: "labor-hours".into(),
-        output_good_id: digest_hex(&good.id().as_bytes()),
-        output_unit_id: digest_hex(&good.unit_id().as_bytes()),
+        output_good_id: digest_hex(&good.good_id.as_bytes()),
+        output_unit_id: digest_hex(&good.unit_id.as_bytes()),
         output_good: good.label.clone(),
-        output_unit: good.unit_key.clone(),
+        output_unit: good.unit_label.clone(),
         output_per_batch: output.quantity_per_batch,
         spare_units_per_job: binding.spare_units_per_job,
         labor_units_per_job: binding.labor_units_per_job,

@@ -7,8 +7,9 @@ pub(crate) fn maintenance(mut value: Value, period: u64, jobs: Option<u64>) -> V
     let consumer = value["sites"][0]["id"].clone();
     let provider = "9".repeat(64);
     value["sites"].as_array_mut().unwrap().push(json!({
-        "id": provider, "county_geoid": "26163", "name": "Wayne maintenance",
-        "industry_code": "811310", "observed_employment": null, "role": "Maintenance",
+        "id": provider, "location": "county:26163", "name": "Wayne maintenance",
+        "industry_code": "811310", "observed_employment": null, "roles": ["Maintenance"],
+        "function": "Maintenance",
         "sector_code": "81", "processes": [], "inventory": []
     }));
     value["labor_accounts"].as_array_mut().unwrap().push(json!({
@@ -17,7 +18,8 @@ pub(crate) fn maintenance(mut value: Value, period: u64, jobs: Option<u64>) -> V
         "completed": jobs.map(|n| json!({
             "period": period, "opening": n * 10, "planned": 0, "used": n * 10,
             "unused": 0, "handling_needed": 0, "handling_used": 0,
-            "maintenance_needed": 40, "maintenance_used": n * 10
+            "maintenance_needed": 40, "maintenance_used": n * 10,
+            "installation_needed": 0, "installation_used": 0
         }))
     }));
     value["maintenance_account"] = json!({

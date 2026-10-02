@@ -22,7 +22,7 @@ fn assert_projection(snapshot: &ObserverEconomySnapshot, runtime: &DurableMateri
     assert_eq!(
         rows.sites
             .iter()
-            .map(|site| &site.county_geoid)
+            .filter_map(babylon_persistence::production_observation::ProductionSite::county_geoid)
             .collect::<BTreeSet<_>>()
             .len(),
         83

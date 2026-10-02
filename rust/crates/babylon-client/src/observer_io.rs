@@ -1989,6 +1989,7 @@ pub(crate) mod tests {
                     routes: Vec::new(),
                     freight: Vec::new(),
                     observed_contexts: Vec::new(),
+                    national_observed_contexts: Vec::new(),
                     process_attributions: Vec::new(),
                     provenance: Vec::new(),
                     events: vec![

@@ -907,8 +907,16 @@ fn write_comparison_cohort(
     compared: &ProductionSnapshot,
     period: u64,
 ) {
-    writeln!(output, "{} | NAICS {}", site.name, site.industry_code)
-        .expect("writing to a String cannot fail");
+    writeln!(
+        output,
+        "{} | {}",
+        site.name,
+        site.industry_code.as_ref().map_or_else(
+            || format!("Function {}", site.function),
+            |code| format!("NAICS {code}")
+        )
+    )
+    .expect("writing to a String cannot fail");
     let Some(other_site) = compared.sites.iter().find(|other| other.id == site.id) else {
         output.push_str("Comparable cohort unavailable.\n\n");
         return;
@@ -1378,15 +1386,17 @@ mod tests {
                 scenario_label: "Staffing comparison fixture".into(),
                 duration: babylon_kernel::clock::CampaignDuration::Finite { final_period: 520 },
                 sites: vec![ProductionSite {
+                    function: "manufacturing".into(),
                     id: site_id.clone(),
-                    county_geoid: "26163".into(),
+                    location: "county:26163".parse().unwrap(),
                     name: "Wayne manufacturing cohort".into(),
-                    industry_code: "331".into(),
+                    industry_code: Some("331".into()),
                     observed_employment: Some(20),
                     inventory: Vec::new(),
-                    role:
+                    roles: vec![
                         babylon_persistence::production_observation::ProductionSiteRole::Production,
-                    sector_code: "31-33".into(),
+                    ],
+                    sector_code: Some("31-33".into()),
                     processes: vec![
                         babylon_persistence::production_observation::ProductionProcess {
                             id: "fixture-process".into(),
@@ -1438,6 +1448,7 @@ mod tests {
                 labor_accounts: Vec::new(),
                 material_balance: None,
                 observed_contexts: Vec::new(),
+                national_observed_contexts: Vec::new(),
                 process_attributions: Vec::new(),
                 provenance: Vec::new(),
             }),
@@ -1859,7 +1870,7 @@ mod tests {
         edit_comparison_production(&mut app, |snapshot| {
             let mut retailer = snapshot.sites[0].clone();
             retailer.id = "retailer".into();
-            retailer.role = ProductionSiteRole::Retail;
+            retailer.roles = vec![ProductionSiteRole::Retail];
             retailer.processes.clear();
             let mut workforce = snapshot.staffing_accounts[0].clone();
             workforce.pool_id = "retail-workforce".into();
@@ -1988,7 +1999,9 @@ mod tests {
                         .staffing_accounts
                         .push(snapshot.staffing_accounts[0].clone()),
                     "duplicate owner" => snapshot.sites.push(snapshot.sites[0].clone()),
-                    "owner coverage" => snapshot.sites[0].county_geoid = "26001".into(),
+                    "owner coverage" => {
+                        snapshot.sites[0].location = "county:26001".parse().unwrap();
+                    }
                     "missing workforce" => snapshot.staffing_accounts.clear(),
                     "bad balance" => snapshot.staffing_accounts[0].reserve = 100,
                     "overflow" => snapshot.staffing_accounts[0].employed = u64::MAX,
@@ -2031,6 +2044,36 @@ mod tests {
         let reading = painted_comparison(&mut app, text);
         assert!(reading.contains("Select an exact good and unit in World's material lens"));
         assert!(!reading.contains("Delivered to end buyers to date:"));
+    }
+
+    #[test]
+    fn campaign_totals_include_foreign_household_markets_outside_the_county_map() {
+        let (mut app, text) = retail_comparison_app(2);
+        edit_comparison_production(&mut app, |snapshot| {
+            for site in &mut snapshot.sites {
+                site.location = "foreign:canada".parse().unwrap();
+            }
+            for household in &mut snapshot.final_demand_accounts {
+                household.location = "foreign:canada".parse().unwrap();
+            }
+        });
+        let reading = painted_comparison(&mut app, text);
+        assert!(
+            reading.contains("2 owners / 0 counties / 1 external locations"),
+            "{reading}"
+        );
+        assert!(
+            reading.contains("Inventory on hand: 10 / 10 kg"),
+            "{reading}"
+        );
+        assert!(
+            reading.contains("Delivered to end buyers to date: 3 / 3 kg"),
+            "{reading}"
+        );
+        assert!(
+            reading.contains("Unsold retail stock: 10 / 10 kg"),
+            "{reading}"
+        );
     }
 
     #[test]

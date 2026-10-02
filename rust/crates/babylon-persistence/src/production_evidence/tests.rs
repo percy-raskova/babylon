@@ -571,8 +571,8 @@ fn maintenance_value(mut value: Value, period: u64, jobs: Option<u64>) -> Value 
         .as_array_mut()
         .unwrap()
         .push(serde_json::json!({
-            "id": provider, "county_geoid": "26163", "name": "Wayne maintenance",
-            "industry_code": "811310", "observed_employment": null, "role": "Maintenance",
+            "id": provider, "location": "county:26163", "name": "Wayne maintenance",
+            "industry_code": "811310", "observed_employment": null, "roles": ["Maintenance"], "function": "household_services",
             "sector_code": "81", "processes": [], "inventory": []
         }));
     value["labor_accounts"]

@@ -1,4 +1,4 @@
-//! The complete disclosed economy as a geographic, schematic owner network.
+//! Disclosed domestic county owners as a geographic, schematic network.
 //! Display offsets separate county aggregates; they are never factory locations.
 
 use super::*;
@@ -49,39 +49,38 @@ struct NetworkProjection {
 }
 
 fn site_sector(site: &ProductionSite) -> NetworkSector {
-    match site.role {
-        ProductionSiteRole::Wholesale => NetworkSector::Wholesale,
-        ProductionSiteRole::Retail => NetworkSector::Retail,
-        ProductionSiteRole::Maintenance => NetworkSector::Maintenance,
-        ProductionSiteRole::Production => match site.sector_code.as_str() {
-            "11" => NetworkSector::Agriculture,
-            "21" => NetworkSector::Mining,
-            _ => NetworkSector::Manufacturing,
-        },
+    if site.roles.contains(&ProductionSiteRole::Production) {
+        return match site.sector_code.as_deref() {
+            Some("11") => NetworkSector::Agriculture,
+            Some("21") => NetworkSector::Mining,
+            Some(_) => NetworkSector::Manufacturing,
+            None => NetworkSector::Production,
+        };
+    }
+    if site.roles.contains(&ProductionSiteRole::Retail) {
+        NetworkSector::Retail
+    } else if site.roles.contains(&ProductionSiteRole::Wholesale) {
+        NetworkSector::Wholesale
+    } else {
+        NetworkSector::Maintenance
     }
 }
 
-fn node_caption(site: &ProductionSite, snapshot: &ProductionSnapshot) -> String {
+fn node_caption(site: &ProductionSite, workforce: Option<(u64, u64)>) -> String {
     let mut text = format!(
-        "{}\n{} · NAICS {}",
+        "{}\n{} · {}",
         site.name,
         site_sector(site).label(),
-        site.industry_code
+        site.industry_code.as_ref().map_or_else(
+            || format!("Function {}", site.function),
+            |code| format!("NAICS {code}")
+        )
     );
     for process in &site.processes {
         write!(text, "\n{} / {}", process.output_good, process.output_unit).expect("String write");
     }
-    if let Some(work) = snapshot
-        .staffing_accounts
-        .iter()
-        .find(|row| row.site_id == site.id)
-    {
-        write!(
-            text,
-            "\n{} employed · {} reserve / Derived",
-            work.employed, work.reserve
-        )
-        .expect("String write");
+    if let Some((employed, reserve)) = workforce {
+        write!(text, "\n{employed} employed · {reserve} reserve / Derived").expect("String write");
     }
     text.push_str("\nClick: trace connections · Circuit [P]: accounts");
     text
@@ -116,24 +115,32 @@ fn project_network(
     };
     let mut sites: Vec<_> = snapshot.sites.iter().collect();
     sites.sort_by(|a, b| {
-        (&a.county_geoid, site_sector(a), &a.id).cmp(&(&b.county_geoid, site_sector(b), &b.id))
+        (a.location, site_sector(a), &a.id).cmp(&(b.location, site_sector(b), &b.id))
     });
-    let mut county_ranks = BTreeMap::<&str, usize>::new();
+    let workforce: BTreeMap<_, _> = snapshot
+        .staffing_accounts
+        .iter()
+        .map(|row| (row.site_id.as_str(), (row.employed, row.reserve)))
+        .collect();
+    let mut county_ranks = BTreeMap::<String, usize>::new();
     for site in sites {
-        let Some(anchor) = anchors.0.get(&site.county_geoid) else {
+        let Some(county) = site.county_geoid() else {
             continue;
         };
-        let rank = county_ranks.entry(&site.county_geoid).or_default();
+        let Some(anchor) = anchors.0.get(&county) else {
+            continue;
+        };
+        let rank = county_ranks.entry(county.clone()).or_default();
         let key = NodeKey::Site(site.id.clone());
         result.nodes.insert(
             key.clone(),
             NetworkNode {
                 key,
                 site_id: site.id.clone(),
-                county: site.county_geoid.clone(),
+                county,
                 sector: site_sector(site),
                 position: node_position(anchor.position, *rank),
-                caption: node_caption(site, snapshot),
+                caption: node_caption(site, workforce.get(site.id.as_str()).copied()),
             },
         );
         *rank += 1;
@@ -168,14 +175,40 @@ fn project_network(
     }
     project_final_demand(snapshot, anchors, &county_ranks, &mut result);
     result.total_links = result.links.len();
+    filter_network(snapshot, &mut result, sector, good);
+    result
+}
+
+fn filter_network(
+    snapshot: &ProductionSnapshot,
+    result: &mut NetworkProjection,
+    sector: NetworkSector,
+    good: Option<&crate::map_economy_lens::MaterialGoodKey>,
+) {
+    let matching: BTreeSet<_> = snapshot
+        .sites
+        .iter()
+        .filter(|site| match sector {
+            NetworkSector::Retail => site.roles.contains(&ProductionSiteRole::Retail),
+            NetworkSector::Wholesale => site.roles.contains(&ProductionSiteRole::Wholesale),
+            NetworkSector::Maintenance => site.roles.contains(&ProductionSiteRole::Maintenance),
+            NetworkSector::Production => site.roles.contains(&ProductionSiteRole::Production),
+            _ => site_sector(site) == sector,
+        })
+        .map(|site| NodeKey::Site(site.id.clone()))
+        .chain(
+            result
+                .nodes
+                .iter()
+                .filter(|(_, n)| n.sector == sector)
+                .map(|(k, _)| k.clone()),
+        )
+        .collect();
     result.links.retain(|link| {
         good.is_none_or(|good| matches!(&link.kind, NetworkLinkKind::Commodity { good: id, unit } if good.good_id == *id && good.unit_id == *unit))
             && (sector == NetworkSector::All
                 || [&link.from, &link.to].into_iter().any(|key| {
-                    result
-                        .nodes
-                        .get(key)
-                        .is_some_and(|node| node.sector == sector)
+                    matching.contains(key)
                 }))
     });
     if sector != NetworkSector::All || good.is_some() {
@@ -185,17 +218,16 @@ fn project_network(
             .flat_map(|link| [&link.from, &link.to])
             .cloned()
             .collect();
-        result.nodes.retain(|key, node| {
-            connected.contains(key) || (good.is_none() && node.sector == sector)
-        });
+        result
+            .nodes
+            .retain(|key, _| connected.contains(key) || (good.is_none() && matching.contains(key)));
     }
-    result
 }
 
 fn project_final_demand(
     snapshot: &ProductionSnapshot,
     anchors: &CountyAnchors,
-    county_ranks: &BTreeMap<&str, usize>,
+    county_ranks: &BTreeMap<String, usize>,
     result: &mut NetworkProjection,
 ) {
     // End buyers are county demand accounts, not additional firms or households.
@@ -265,7 +297,7 @@ fn sector_color(sector: NetworkSector) -> Color {
     match sector {
         NetworkSector::Agriculture => Color::srgb_u8(151, 190, 128),
         NetworkSector::Mining => theme::COPPER,
-        NetworkSector::Manufacturing => theme::BLUE,
+        NetworkSector::Manufacturing | NetworkSector::Production => theme::BLUE,
         NetworkSector::Maintenance => Color::srgb_u8(221, 190, 109),
         NetworkSector::Wholesale => Color::srgb_u8(185, 155, 217),
         NetworkSector::Retail => theme::YELLOW,
@@ -730,8 +762,8 @@ mod tests {
     fn network_keeps_isolated_cohorts_all_goods_and_retail_endpoints_without_inventing_routes() {
         let (session, mut frame, anchors) = fixture();
         let snapshot = frame.0.as_mut().unwrap().production.as_mut().unwrap();
-        snapshot.sites[1].role = ProductionSiteRole::Retail;
-        snapshot.sites[1].sector_code = "44-45".into();
+        snapshot.sites[1].roles = vec![ProductionSiteRole::Retail];
+        snapshot.sites[1].sector_code = Some("44-45".into());
         snapshot.final_demand_accounts.push(
             babylon_persistence::production_observation::ProductionFinalDemandAccount {
                 total_order_count: 1,

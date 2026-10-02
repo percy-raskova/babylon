@@ -3,6 +3,8 @@
 //! This projection never allocates batches, routes freight, or advances a world.
 //! It reports actual receipt quantities using the recipe that governed the period.
 
+#[cfg(test)]
+use crate::michigan_material::MichiganMaterialCatalog;
 use std::collections::{BTreeMap, BTreeSet};
 
 use babylon_material_circuit::{
@@ -12,7 +14,7 @@ use babylon_tick::material_world::MaterialTickReceipts;
 use serde::{Deserialize, Serialize};
 
 use super::ProductionProjectionError;
-use crate::{michigan_economy::digest_hex, michigan_material::MichiganMaterialCatalog};
+use crate::michigan_economy::digest_hex;
 
 /// One complete committed period's local inventory accounts. Absent at foundation.
 /// The enclosing authorized observation binds campaign, perspective and evidence.
@@ -97,6 +99,7 @@ struct Movement {
 
 /// Inputs have already passed the enclosing material identity verification.
 /// A missing completed family is legitimate only at the true foundation.
+#[cfg(test)]
 pub(super) fn project_material_balance(
     catalog: &MichiganMaterialCatalog,
     current: &MaterialCircuitState,
@@ -112,7 +115,7 @@ pub(super) fn project_material_balance(
     })
 }
 
-fn project_with_labels(
+pub(super) fn project_with_labels(
     current: &MaterialCircuitState,
     prior: Option<&MaterialCircuitState>,
     receipt: Option<&MaterialTickReceipts>,
@@ -403,15 +406,21 @@ fn add_dispatches(
     movements: &mut Movements,
     ledger: &mut Ledger,
 ) -> Result<(), ProductionProjectionError> {
+    let lots: BTreeMap<_, _> = current
+        .freight
+        .iter()
+        .map(|lot| (lot.lot_id, lot))
+        .collect();
+    if lots.len() != current.freight.len() {
+        return Err(ProductionProjectionError::State);
+    }
     let mut seen = BTreeSet::new();
     for row in &receipt.dispatches {
         let principal = orders
             .get(&row.order_id)
             .ok_or(ProductionProjectionError::State)?;
-        let lot = current
-            .freight
-            .iter()
-            .find(|lot| lot.lot_id == row.lot_id)
+        let lot = lots
+            .get(&row.lot_id)
             .ok_or(ProductionProjectionError::State)?;
         if row.quantity == 0
             || !seen.insert(row.lot_id)
@@ -457,17 +466,22 @@ fn add_losses(
     orders: &Orders,
     movements: &mut Movements,
 ) -> Result<(), ProductionProjectionError> {
+    let lots: BTreeMap<_, _> = prior.freight.iter().map(|lot| (lot.lot_id, lot)).collect();
+    let legs: BTreeMap<_, _> = prior
+        .route_stages
+        .iter()
+        .map(|leg| ((leg.route_id, leg.stage_index), leg))
+        .collect();
+    if lots.len() != prior.freight.len() || legs.len() != prior.route_stages.len() {
+        return Err(ProductionProjectionError::State);
+    }
     let mut seen = BTreeSet::new();
     for row in &receipt.losses {
-        let lot = prior
-            .freight
-            .iter()
-            .find(|lot| lot.lot_id == row.lot_id)
+        let lot = lots
+            .get(&row.lot_id)
             .ok_or(ProductionProjectionError::State)?;
-        let leg = prior
-            .route_stages
-            .iter()
-            .find(|leg| leg.route_id == lot.route_id && leg.stage_index == lot.current_stage_index)
+        let leg = legs
+            .get(&(lot.route_id, lot.current_stage_index))
             .ok_or(ProductionProjectionError::State)?;
         if row.quantity == 0
             || row.quantity > lot.quantity

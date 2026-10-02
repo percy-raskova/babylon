@@ -108,21 +108,18 @@ fn observer_app() -> App {
     app
 }
 
-fn production_observation() -> babylon_persistence::production_observation::ProductionSnapshot {
-    use babylon_persistence::{
-        production_observation::ProductionEvent, production_observation::ProductionFreight,
-        production_observation::ProductionRoute, production_observation::ProductionSite,
-        production_observation::ProductionSnapshot,
-    };
-    let site = |id: &str| ProductionSite {
+fn surface_site(id: &str) -> babylon_persistence::production_observation::ProductionSite {
+    use babylon_persistence::production_observation::ProductionSite;
+    ProductionSite {
         id: id.into(),
-        county_geoid: "26163".into(),
+        location: "county:26163".parse().unwrap(),
+        function: "manufacturing".into(),
         name: format!("Surface fixture {id}"),
-        industry_code: "331".into(),
+        industry_code: Some("331".into()),
         observed_employment: None,
         inventory: Vec::new(),
-        role: babylon_persistence::production_observation::ProductionSiteRole::Production,
-        sector_code: "31-33".into(),
+        roles: vec![babylon_persistence::production_observation::ProductionSiteRole::Production],
+        sector_code: Some("31-33".into()),
         processes: vec![
             babylon_persistence::production_observation::ProductionProcess {
                 id: "fixture-process".into(),
@@ -139,6 +136,13 @@ fn production_observation() -> babylon_persistence::production_observation::Prod
                 labor: Vec::new(),
             },
         ],
+    }
+}
+
+fn production_observation() -> babylon_persistence::production_observation::ProductionSnapshot {
+    use babylon_persistence::{
+        production_observation::ProductionEvent, production_observation::ProductionFreight,
+        production_observation::ProductionRoute, production_observation::ProductionSnapshot,
     };
     ProductionSnapshot {
         household_accounts: Vec::new(),
@@ -156,8 +160,9 @@ fn production_observation() -> babylon_persistence::production_observation::Prod
         staffing_accounts: Vec::new(),
         scenario_label: "Read-only surface fixture".into(),
         duration: babylon_kernel::clock::CampaignDuration::Finite { final_period: 16 },
-        sites: vec![site("source"), site("destination")],
+        sites: vec![surface_site("source"), surface_site("destination")],
         routes: vec![ProductionRoute {
+            physical_route_id: "route".into(),
             physical_edge_ids: Vec::new(),
             distance_mm: None,
             transport_kind:
@@ -205,6 +210,7 @@ fn production_observation() -> babylon_persistence::production_observation::Prod
             delivery_evidence: None,
         }],
         observed_contexts: Vec::new(),
+        national_observed_contexts: Vec::new(),
         process_attributions: Vec::new(),
         provenance: vec!["Designed read-only test fixture".into()],
     }

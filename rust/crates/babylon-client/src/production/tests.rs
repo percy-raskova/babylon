@@ -10,14 +10,15 @@ use babylon_persistence::{
 
 fn site(id: &str, suppliers: &[&str]) -> ProductionSite {
     ProductionSite {
+        function: "manufacturing".into(),
         id: id.into(),
-        county_geoid: "26163".into(),
+        location: "county:26163".parse().unwrap(),
         name: format!("Cohort {id}"),
-        industry_code: "331".into(),
+        industry_code: Some("331".into()),
         observed_employment: Some(20),
         inventory: Vec::new(),
-        role: babylon_persistence::production_observation::ProductionSiteRole::Production,
-        sector_code: "31-33".into(),
+        roles: vec![babylon_persistence::production_observation::ProductionSiteRole::Production],
+        sector_code: Some("31-33".into()),
         processes: vec![
             babylon_persistence::production_observation::ProductionProcess {
                 id: "fixture-process".into(),
@@ -37,7 +38,7 @@ fn site(id: &str, suppliers: &[&str]) -> ProductionSite {
                     good: "input".into(),
                     unit: "kg".into(),
                     quantity_per_batch: 1,
-                    on_hand: 20,
+                    on_hand: Some(20),
                     supplier_site_ids: suppliers.iter().map(|id| (*id).into()).collect(),
                 }],
             },
@@ -61,6 +62,7 @@ fn snapshot() -> ProductionSnapshot {
         labor_accounts: Vec::new(),
         staffing_accounts: Vec::new(),
         observed_contexts: Vec::new(),
+        national_observed_contexts: Vec::new(),
         process_attributions: Vec::new(),
         scenario_label: "Navigation fixture".into(),
         duration: babylon_kernel::clock::CampaignDuration::Finite { final_period: 8 },
@@ -70,6 +72,7 @@ fn snapshot() -> ProductionSnapshot {
             site("c", &["b"]),
         ],
         routes: vec![ProductionRoute {
+            physical_route_id: "a-b".into(),
             physical_edge_ids: Vec::new(),
             distance_mm: None,
             transport_kind:
@@ -262,7 +265,7 @@ fn merchant_reading_has_no_fake_production_and_separates_local_goods_from_arriva
     };
     let mut snapshot = snapshot();
     let merchant = &mut snapshot.sites[1];
-    merchant.role = ProductionSiteRole::Retail;
+    merchant.roles = vec![ProductionSiteRole::Retail];
     merchant.processes.clear();
     snapshot.routes[0].transport_kind = ProductionRouteTransport::Local;
     snapshot.routes[0].travel_periods = 0;
@@ -305,7 +308,7 @@ fn merchant_handling_reading_uses_exact_kilograms_without_changing_work_hours() 
         production_observation::ProductionSiteRole,
     };
     let mut snapshot = snapshot();
-    snapshot.sites[1].role = ProductionSiteRole::Retail;
+    snapshot.sites[1].roles = vec![ProductionSiteRole::Retail];
     snapshot.sites[1].processes.clear();
     snapshot.merchant_handling_accounts = vec![ProductionMerchantHandlingAccount {
         site_id: "b".into(),
@@ -597,7 +600,7 @@ fn attributed_snapshot() -> ProductionSnapshot {
             .push(DesignedProcessAttribution {
                 process_id: format!("process-{}", site.id),
                 site_id: site.id.clone(),
-                industry_code: site.industry_code.clone(),
+                industry_code: site.industry_code.clone().unwrap(),
                 cohort_subject: subject.clone(),
                 scenario_artifact_sha256: "c".repeat(64),
                 industry_artifact_sha256: "d".repeat(64),
@@ -926,7 +929,7 @@ fn map_and_flat_controls_preserve_the_county_selected_on_geography() {
     let macomb = index("26099");
     let wayne = index("26163");
     let mut production = snapshot();
-    production.sites[1].industry_code = "332".into();
+    production.sites[1].industry_code = Some("332".into());
     let mut app = App::new();
     app.add_plugins(MinimalPlugins)
         .insert_resource(state)

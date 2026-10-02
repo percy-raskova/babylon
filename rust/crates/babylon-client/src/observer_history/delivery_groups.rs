@@ -267,11 +267,12 @@ impl<'a> DisclosedRoutes<'a> {
         }
         let route = *self
             .routes
-            .get(evidence.route_id.as_str())
+            .get(evidence.supplier_relation_id.as_str())
             .ok_or(DeliveryGroupingError::RouteUnavailable)?;
         if event.period == 0
             || evidence.order_id.is_empty()
             || event.receipt_digest.is_empty()
+            || route.physical_route_id != evidence.route_id
             || route.good_id != evidence.good_id
             || route.unit_id != evidence.unit_id
         {
@@ -350,14 +351,17 @@ mod tests {
 
     fn site(id: &str, name: &str) -> ProductionSite {
         ProductionSite {
+            function: "manufacturing".into(),
             id: id.into(),
-            county_geoid: "26163".into(),
+            location: "county:26163".parse().unwrap(),
             name: name.into(),
-            industry_code: "331".into(),
+            industry_code: Some("331".into()),
             observed_employment: None,
             inventory: vec![],
-            role: babylon_persistence::production_observation::ProductionSiteRole::Production,
-            sector_code: "31-33".into(),
+            roles: vec![
+                babylon_persistence::production_observation::ProductionSiteRole::Production,
+            ],
+            sector_code: Some("31-33".into()),
             processes: vec![
                 babylon_persistence::production_observation::ProductionProcess {
                     id: "fixture-process".into(),
@@ -396,6 +400,7 @@ mod tests {
                 site("buyer", "Macomb parts"),
             ],
             routes: vec![ProductionRoute {
+                physical_route_id: "route".into(),
                 physical_edge_ids: Vec::new(),
                 distance_mm: None,
                 transport_kind:
@@ -423,6 +428,7 @@ mod tests {
             labor_accounts: vec![],
             staffing_accounts: Vec::new(),
             observed_contexts: vec![],
+            national_observed_contexts: vec![],
             process_attributions: vec![],
             provenance: vec![],
         }
@@ -443,6 +449,7 @@ mod tests {
             description: "Preserve this original committed description.".into(),
             receipt_digest: format!("receipt-{period}"),
             delivery_evidence: Some(ProductionDeliveryEvidence {
+                supplier_relation_id: "route".into(),
                 stage,
                 order_id: order.into(),
                 route_id: "route".into(),
@@ -649,7 +656,8 @@ mod tests {
             let mut snapshot = snapshot();
             snapshot.events = triplet("order", 2, 3);
             let mut route = snapshot.routes[0].clone();
-            route.id = "other-route".into();
+            route.id = "other-relation".into();
+            route.physical_route_id = "other-route".into();
             route.good_id = good_id.into();
             route.unit_id = unit_id.into();
             snapshot.routes.push(route);
@@ -657,6 +665,7 @@ mod tests {
             for event in &mut other_events {
                 let evidence = event.delivery_evidence.as_mut().unwrap();
                 evidence.route_id = "other-route".into();
+                evidence.supplier_relation_id = "other-relation".into();
                 evidence.good_id = good_id.into();
                 evidence.unit_id = unit_id.into();
             }
@@ -674,7 +683,8 @@ mod tests {
             let mut snapshot = snapshot();
             snapshot.events = triplet("order", 2, 3);
             let mut route = snapshot.routes[0].clone();
-            route.id = "other-route".into();
+            route.id = "other-relation".into();
+            route.physical_route_id = "other-route".into();
             match changed {
                 "good" => {
                     route.good_id = "other-good".into();
@@ -698,7 +708,8 @@ mod tests {
                 event.subject_site_ids =
                     vec![route.supplier_site_id.clone(), route.buyer_site_id.clone()];
                 let evidence = event.delivery_evidence.as_mut().unwrap();
-                evidence.route_id.clone_from(&route.id);
+                evidence.route_id.clone_from(&route.physical_route_id);
+                evidence.supplier_relation_id.clone_from(&route.id);
                 evidence.good_id.clone_from(&route.good_id);
                 evidence.unit_id.clone_from(&route.unit_id);
             }

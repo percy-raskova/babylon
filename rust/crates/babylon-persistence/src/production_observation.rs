@@ -42,6 +42,8 @@ pub struct ProductionSnapshot {
     pub material_balance: Option<crate::CompletedMaterialBalance>,
     /// Deduplicated public 2024 source cells, never current modeled employment.
     pub observed_contexts: Vec<ObservedSectorContext>,
+    /// Source-cohort subtotals preserve missing cells and never allocate persons.
+    pub national_observed_contexts: Vec<ObservedNationalCohortContext>,
     /// Designed attribution only; these are not supplier or employment relations.
     pub process_attributions: Vec<DesignedProcessAttribution>,
     /// Declared assumptions and source artifact identifiers.
@@ -92,19 +94,61 @@ pub struct DesignedProcessAttribution {
     pub evidence_class: crate::ArchiveEvidenceClass,
 }
 
-/// One aggregate county-sector owner, never a factory coordinate.
+/// One aggregate workplace with a typed geographic scope, never a factory coordinate.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProductionSite {
     pub id: String,
-    pub county_geoid: String,
+    pub location: babylon_kernel::economic_location::EconomicLocation,
     pub name: String,
-    pub industry_code: String,
+    pub industry_code: Option<String>,
     pub observed_employment: Option<u64>,
-    pub role: ProductionSiteRole,
-    pub sector_code: String,
+    pub roles: Vec<ProductionSiteRole>,
+    pub sector_code: Option<String>,
+    pub function: String,
     pub processes: Vec<ProductionProcess>,
     pub inventory: Vec<ProductionStock>,
+}
+impl ProductionSite {
+    /// A county-only map has no invented position for foreign or dependency actors.
+    #[must_use]
+    pub fn county_geoid(&self) -> Option<String> {
+        match self.location {
+            babylon_kernel::economic_location::EconomicLocation::County(county) => {
+                Some(county.geoid().to_string())
+            }
+            _ => None,
+        }
+    }
+    #[must_use]
+    pub fn is_in_county(&self, geoid: &str) -> bool {
+        matches!(self.location,babylon_kernel::economic_location::EconomicLocation::County(county) if county.geoid().as_str()==geoid)
+    }
+}
+
+/// Known sums are not totals when one or more source cells are missing.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ObservedKnownSubtotal {
+    pub known_subtotal: u64,
+    pub published_members: usize,
+    pub missing_members: usize,
+}
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ObservedNationalCohortContext {
+    pub site_id: String,
+    pub subject: ProductionBusinessSubject,
+    pub county_geoid: String,
+    pub function: String,
+    pub ownership: String,
+    pub vintage: u16,
+    pub establishments: ObservedKnownSubtotal,
+    pub annual_average_jobs: ObservedKnownSubtotal,
+    pub annual_payroll_usd: ObservedKnownSubtotal,
+    pub artifact_sha256: String,
+    pub function_mapping_sha256: String,
+    pub evidence_class: crate::ArchiveEvidenceClass,
 }
 
 /// An owner role does not imply a fabricated productive process.
@@ -157,7 +201,8 @@ pub struct ProductionInput {
     pub good: String,
     pub unit: String,
     pub quantity_per_batch: u64,
-    pub on_hand: u64,
+    /// Period services have no durable on-hand stock.
+    pub on_hand: Option<u64>,
     pub supplier_site_ids: Vec<String>,
 }
 
@@ -284,7 +329,9 @@ pub struct CompletedProductionStaffing {
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProductionRoute {
+    /// Stable buyer/supplier/good/unit relationship identity.
     pub id: String,
+    pub physical_route_id: String,
     pub supplier_site_id: String,
     pub buyer_site_id: String,
     pub good_id: String,
@@ -351,6 +398,8 @@ pub enum ProductionDeliveryStage {
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProductionDeliveryEvidence {
+    /// Stable trade relationship, distinct from the native physical route below.
+    pub supplier_relation_id: String,
     pub stage: ProductionDeliveryStage,
     pub order_id: String,
     pub route_id: String,
@@ -376,6 +425,7 @@ pub struct ProductionFreightCapacityAccount {
     pub corridor_label: String,
     pub kind: ProductionCapacityKind,
     pub merchant_site_ids: Vec<String>,
+    /// Physical route identities; several supplier relationships can share one.
     pub route_ids: Vec<String>,
     pub next_opening_period: u64,
     pub next_opening_available_grams: u64,
@@ -407,6 +457,7 @@ pub struct ProductionFreightReservation {
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProductionFreightCapacityOrder {
+    pub supplier_relation_id: Option<String>,
     pub order_id: String,
     pub route_id: Option<String>,
     pub kind: ProductionOutboundKind,

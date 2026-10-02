@@ -21,11 +21,11 @@ fn continuous_cursor_replays_beyond_sixteen_and_refuses_a_broken_tail() {
     let foundation = MaterialObservationRow {
         row_campaign: *campaign.as_uuid(),
         row_tick: 0,
-        register_bytes: expected.register.canonical_bytes().to_vec(),
+        register_bytes: expected.initial_register().canonical_bytes().to_vec(),
         receipts: None,
         identity: None,
         content_hash: None,
-        foundation_bytes: Some(expected.canonical_bytes.clone()),
+        foundation_bytes: Some(expected.canonical_bytes().to_vec()),
     };
     history
         .append_decoded(campaign, &expected, 0, foundation.clone())
@@ -86,9 +86,8 @@ fn continuous_cursor_replays_beyond_sixteen_and_refuses_a_broken_tail() {
     assert_eq!(cold.register, history.register);
     assert_eq!(cold.receipt, history.receipt);
     let project = |value: &MaterialHistory| {
-        project_material_current(
-            &catalog,
-            preset.delivery(),
+        project_economic_current(
+            expected.view(),
             &value.register,
             value.opening.as_ref(),
             value.receipt.as_ref(),

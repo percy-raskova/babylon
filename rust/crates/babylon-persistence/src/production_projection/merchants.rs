@@ -5,8 +5,7 @@ use super::{
     ProductionProjectionError,
 };
 use crate::{
-    michigan_economy::digest_hex, michigan_material::MichiganMaterialCatalog,
-    production_observation::CompletedProductionFinalDemand,
+    michigan_economy::digest_hex, production_observation::CompletedProductionFinalDemand,
     production_observation::CompletedProductionMerchantHandling,
     production_observation::ProductionFinalDemandAccount,
     production_observation::ProductionFinalDemandOrder,
@@ -23,12 +22,32 @@ use std::collections::{BTreeMap, BTreeSet};
 type Result<T> = std::result::Result<T, ProductionProjectionError>;
 type DemandKey = (FinalDemandPrincipalId, GoodId, UnitId);
 
+#[cfg(test)]
 pub(super) fn project_merchants(
-    catalog: &MichiganMaterialCatalog,
+    catalog: &crate::michigan_material::MichiganMaterialCatalog,
     current: &MaterialCircuitState,
     prior: Option<&MaterialCircuitState>,
     receipt: Option<&MaterialTickReceipts>,
     history: &super::history::OrderHistory,
+) -> Result<(
+    Vec<ProductionMerchantHandlingAccount>,
+    Vec<ProductionFinalDemandAccount>,
+)> {
+    project_with_labels(current, prior, receipt, history, |g, u| {
+        catalog
+            .goods()
+            .iter()
+            .find(|r| r.id() == g && r.unit_id() == u)
+            .map(|r| (r.label.clone(), r.unit_key.clone()))
+    })
+}
+
+pub(super) fn project_with_labels(
+    current: &MaterialCircuitState,
+    prior: Option<&MaterialCircuitState>,
+    receipt: Option<&MaterialTickReceipts>,
+    history: &super::history::OrderHistory,
+    labels: impl Fn(GoodId, UnitId) -> Option<(String, String)>,
 ) -> Result<(
     Vec<ProductionMerchantHandlingAccount>,
     Vec<ProductionFinalDemandAccount>,
@@ -46,13 +65,13 @@ pub(super) fn project_merchants(
             .as_ref()
             .map(|(prior, receipt, facts)| (*prior, *receipt, facts.as_slice())),
     )?;
-    let demand = final_demand_accounts(
-        catalog,
+    let demand = project_final_with_labels(
         current,
         completed
             .as_ref()
             .map(|(prior, _, facts)| (*prior, facts.as_slice())),
         history,
+        labels,
     )?;
     Ok((handling, demand))
 }
@@ -68,14 +87,21 @@ fn handling_accounts(
     let complete_rows = completed
         .map(|(prior, receipt, facts)| handling_rows(prior, receipt, facts))
         .transpose()?;
+    let mut coefficients_by_site = BTreeMap::<_, Vec<_>>::new();
+    for row in &current.handling_coefficients {
+        coefficients_by_site
+            .entry(row.site_id)
+            .or_default()
+            .push(row);
+    }
     current
         .merchants
         .iter()
         .map(|merchant| {
-            let coefficients = current
-                .handling_coefficients
-                .iter()
-                .filter(|row| row.site_id == merchant.site_id)
+            let coefficients = coefficients_by_site
+                .get(&merchant.site_id)
+                .into_iter()
+                .flatten()
                 .map(|row| {
                     if row.hours_per_unit == 0 {
                         return Err(ProductionProjectionError::State);
@@ -141,21 +167,24 @@ fn handling_rows(
             return Err(ProductionProjectionError::State);
         }
     }
+    let mut coefficients = BTreeMap::new();
+    for row in &prior.handling_coefficients {
+        if coefficients
+            .insert((row.site_id, row.good_id, row.unit_id), row)
+            .is_some()
+        {
+            return Err(ProductionProjectionError::State);
+        }
+    }
     let mut result = BTreeMap::<SiteId, Vec<ProductionMerchantHandlingOrder>>::new();
     for row in &receipt.handling {
         let fact = expected
             .remove(&(row.site_id, row.order))
             .ok_or(ProductionProjectionError::State)?;
-        let mut coefficients = prior.handling_coefficients.iter().filter(|coefficient| {
-            coefficient.site_id == row.site_id
-                && coefficient.good_id == fact.good
-                && coefficient.unit_id == fact.unit
-        });
         let coefficient = coefficients
-            .next()
+            .get(&(row.site_id, fact.good, fact.unit))
             .ok_or(ProductionProjectionError::State)?;
-        if coefficients.next().is_some()
-            || coefficient.hours_per_unit == 0
+        if coefficient.hours_per_unit == 0
             || row.handled_quantity != fact.quantity
             || row.handled_quantity > row.feasible_quantity
             || row.feasible_quantity > fact.requested
@@ -191,21 +220,6 @@ fn handling_rows(
         rows.sort_unstable();
     }
     Ok(result)
-}
-
-fn final_demand_accounts(
-    catalog: &MichiganMaterialCatalog,
-    current: &MaterialCircuitState,
-    completed: Option<(&MaterialCircuitState, &[OutboundFact])>,
-    history: &super::history::OrderHistory,
-) -> Result<Vec<ProductionFinalDemandAccount>> {
-    project_final_with_labels(current, completed, history, |good, unit| {
-        catalog
-            .goods()
-            .iter()
-            .find(|row| row.id() == good && row.unit_id() == unit)
-            .map(|row| (row.label.clone(), row.unit_key.clone()))
-    })
 }
 
 pub(super) fn project_final_with_labels(

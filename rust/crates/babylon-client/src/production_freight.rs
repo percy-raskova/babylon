@@ -5,7 +5,6 @@ use std::fmt::Write as _;
 
 use babylon_persistence::{
     production_observation::ProductionFreightCapacityAccount,
-    production_observation::ProductionFreightCapacityOrder,
     production_observation::ProductionFreightReservation, production_observation::ProductionRoute,
     production_observation::ProductionSite, production_observation::ProductionSnapshot,
 };
@@ -26,27 +25,44 @@ fn participating_routes<'a>(
     account: &ProductionFreightCapacityAccount,
     snapshot: &'a ProductionSnapshot,
 ) -> Vec<&'a ProductionRoute> {
+    let disclosed: BTreeSet<_> = snapshot.sites.iter().map(|site| site.id.as_str()).collect();
+    let physical: BTreeSet<_> = account.route_ids.iter().map(String::as_str).collect();
     let mut routes: Vec<_> = snapshot
         .routes
         .iter()
         .filter(|route| {
-            account.route_ids.contains(&route.id)
+            physical.contains(route.physical_route_id.as_str())
                 && route
                     .stages
                     .iter()
                     .any(|leg| leg.capacity_ids.contains(&account.corridor_id))
-                && snapshot
-                    .sites
-                    .iter()
-                    .any(|site| site.id == route.supplier_site_id)
-                && snapshot
-                    .sites
-                    .iter()
-                    .any(|site| site.id == route.buyer_site_id)
+                && disclosed.contains(route.supplier_site_id.as_str())
+                && disclosed.contains(route.buyer_site_id.as_str())
         })
         .collect();
     routes.sort_by(|a, b| a.id.cmp(&b.id));
     routes
+}
+
+fn capacity_routes(snapshot: &ProductionSnapshot) -> BTreeMap<&str, Vec<&ProductionRoute>> {
+    let disclosed: BTreeSet<_> = snapshot.sites.iter().map(|site| site.id.as_str()).collect();
+    let mut result = BTreeMap::<_, Vec<_>>::new();
+    for route in &snapshot.routes {
+        if !disclosed.contains(route.supplier_site_id.as_str())
+            || !disclosed.contains(route.buyer_site_id.as_str())
+        {
+            continue;
+        }
+        let capacities: BTreeSet<_> = route
+            .stages
+            .iter()
+            .flat_map(|stage| stage.capacity_ids.iter().map(String::as_str))
+            .collect();
+        for capacity in capacities {
+            result.entry(capacity).or_default().push(route);
+        }
+    }
+    result
 }
 
 /// A shared principal is shown once, independent of how many routes use it.
@@ -55,16 +71,7 @@ pub(crate) fn shared_accounts<'a>(
     snapshot: &'a ProductionSnapshot,
     selected_site: Option<&str>,
 ) -> Vec<&'a ProductionFreightCapacityAccount> {
-    let disclosed: BTreeSet<_> = snapshot.sites.iter().map(|site| site.id.as_str()).collect();
-    let routes: BTreeMap<_, _> = snapshot
-        .routes
-        .iter()
-        .filter(|route| {
-            disclosed.contains(route.supplier_site_id.as_str())
-                && disclosed.contains(route.buyer_site_id.as_str())
-        })
-        .map(|route| (route.id.as_str(), route))
-        .collect();
+    let routes = capacity_routes(snapshot);
     let mut accounts: Vec<_> = snapshot
         .freight_capacity_accounts
         .iter()
@@ -74,23 +81,21 @@ pub(crate) fn shared_accounts<'a>(
             {
                 return false;
             }
-            let participants: Vec<_> = account
-                .route_ids
+            let Some(participants) = routes.get(account.corridor_id.as_str()) else {
+                return false;
+            };
+            let physical: BTreeSet<_> = account.route_ids.iter().map(String::as_str).collect();
+            let mut count = 0;
+            let mut selected = selected_site.is_none();
+            for route in participants
                 .iter()
-                .filter_map(|id| routes.get(id.as_str()))
-                .filter(|route| {
-                    route
-                        .stages
-                        .iter()
-                        .any(|stage| stage.capacity_ids.contains(&account.corridor_id))
-                })
-                .collect();
-            participants.len() > 1
-                && selected_site.is_none_or(|id| {
-                    participants
-                        .iter()
-                        .any(|route| route.supplier_site_id == id || route.buyer_site_id == id)
-                })
+                .filter(|r| physical.contains(r.physical_route_id.as_str()))
+            {
+                count += 1;
+                selected |= selected_site
+                    .is_some_and(|id| route.supplier_site_id == id || route.buyer_site_id == id);
+            }
+            count > 1 && selected
         })
         .collect();
     accounts.sort_by(|a, b| {
@@ -174,7 +179,9 @@ pub(crate) fn account_reading(
             }
             for order in reservation.orders.iter().take(6) {
                 let Some(route) = routes.iter().find(|route| {
-                    Some(route.id.as_str()) == order.route_id.as_deref()
+                    Some(route.id.as_str()) == order.supplier_relation_id.as_deref()
+                        && Some(route.physical_route_id.as_str()) == order.route_id.as_deref()
+                        && route.supplier_site_id == order.supplier_site_id
                         && route.good_id == order.good_id
                         && route.unit_id == order.unit_id
                 }) else {
@@ -207,7 +214,7 @@ pub(crate) fn account_reading(
         .iter()
         .flat_map(|completed| &completed.reservations)
         .flat_map(|reservation| &reservation.orders)
-        .filter_map(|order| order.route_id.as_deref())
+        .filter_map(|order| order.supplier_relation_id.as_deref())
         .collect();
     for route in routes
         .iter()
@@ -236,25 +243,58 @@ pub(crate) fn competitor_sites<'a>(
         .routes
         .iter()
         .filter(|route| {
-            route_ids.contains(&route.id)
+            route_ids.contains(&route.physical_route_id)
                 && disclosed.contains(route.supplier_site_id.as_str())
                 && disclosed.contains(route.buyer_site_id.as_str())
         })
         .filter(|route| route.supplier_site_id != site_id && route.buyer_site_id != site_id)
         .flat_map(|route| [&route.supplier_site_id, &route.buyer_site_id])
         .collect();
+    let sites: BTreeMap<_, _> = snapshot
+        .sites
+        .iter()
+        .map(|site| (site.id.as_str(), site))
+        .collect();
     ids.into_iter()
-        .filter_map(|id| snapshot.sites.iter().find(|site| site.id == *id))
+        .filter_map(|id| sites.get(id.as_str()).copied())
         .collect()
 }
 
-fn order_key(order: &ProductionFreightCapacityOrder) -> (&str, Option<&str>, &str, &str) {
-    (
-        &order.order_id,
-        order.route_id.as_deref(),
-        &order.good_id,
-        &order.unit_id,
-    )
+fn grouped_orders<'a>(
+    reservation: &ProductionFreightReservation,
+    routes: &[&'a ProductionRoute],
+) -> (BTreeMap<&'a str, [u64; 3]>, bool) {
+    let routes: BTreeMap<_, _> = routes.iter().map(|r| (r.id.as_str(), *r)).collect();
+    let mut result = BTreeMap::<_, [u64; 3]>::new();
+    let mut invalid = false;
+    for order in &reservation.orders {
+        let Some(route) = order
+            .supplier_relation_id
+            .as_deref()
+            .and_then(|id| routes.get(id))
+            .filter(|route| {
+                Some(route.physical_route_id.as_str()) == order.route_id.as_deref()
+                    && route.supplier_site_id == order.supplier_site_id
+                    && route.good_id == order.good_id
+                    && route.unit_id == order.unit_id
+            })
+        else {
+            invalid = true;
+            continue;
+        };
+        let total = result.entry(route.id.as_str()).or_default();
+        for (sum, n) in
+            total
+                .iter_mut()
+                .zip([order.requested, order.dispatched, order.remaining_unshipped])
+        {
+            let Some(next) = sum.checked_add(n) else {
+                return (BTreeMap::new(), true);
+            };
+            *sum = next;
+        }
+    }
+    (result, invalid)
 }
 
 fn pair(output: &mut String, label: &str, current: u64, compared: u64, unit: &str) {
@@ -280,63 +320,51 @@ fn compare_orders(
     a: &ProductionFreightCapacityAccount,
     b: &ProductionFreightCapacityAccount,
 ) {
-    let orders: BTreeSet<_> = r_a
-        .orders
-        .iter()
-        .chain(&r_b.orders)
-        .map(order_key)
-        .collect();
-    for key in orders.into_iter().take(6) {
-        let (Some(o_a), Some(o_b)) = (
-            r_a.orders.iter().find(|order| order_key(order) == key),
-            r_b.orders.iter().find(|order| order_key(order) == key),
+    let current_routes = participating_routes(a, current);
+    let compared_routes = participating_routes(b, compared);
+    let (left, bad_left) = grouped_orders(r_a, &current_routes);
+    let (right, bad_right) = grouped_orders(r_b, &compared_routes);
+    if bad_left || bad_right {
+        output.push_str("Comparable route endpoints unavailable.\n");
+    }
+    let keys: BTreeSet<_> = left.keys().chain(right.keys()).copied().collect();
+    for key in keys.into_iter().take(6) {
+        let (Some(route), Some(other)) = (
+            current_routes.iter().find(|r| r.id == key),
+            compared_routes.iter().find(|r| r.id == key),
         ) else {
-            output.push_str("Comparable route order unavailable.\n");
-            continue;
-        };
-        let route = participating_routes(a, current).into_iter().find(|route| {
-            Some(route.id.as_str()) == o_a.route_id.as_deref()
-                && route.good_id == o_a.good_id
-                && route.unit_id == o_a.unit_id
-        });
-        let Some(route) = route else {
             output.push_str("Comparable route endpoints unavailable.\n");
             continue;
         };
-        let other_route = participating_routes(b, compared).into_iter().find(|other| {
-            other.id == route.id && other.good_id == route.good_id && other.unit_id == route.unit_id
-        });
-        let Some(other_route) = other_route else {
+        if (
+            route.supplier_site_id.as_str(),
+            route.buyer_site_id.as_str(),
+            route.good_id.as_str(),
+            route.unit_id.as_str(),
+        ) != (
+            other.supplier_site_id.as_str(),
+            other.buyer_site_id.as_str(),
+            other.good_id.as_str(),
+            other.unit_id.as_str(),
+        ) {
             output.push_str("Comparable route endpoints unavailable.\n");
             continue;
-        };
+        }
+        let left = left.get(key).copied().unwrap_or([0; 3]);
+        let right = right.get(key).copied().unwrap_or([0; 3]);
         writeln!(output, "{}", route_label(route, current)).expect("String write");
-        pair(
-            output,
-            "Requested",
-            o_a.requested,
-            o_b.requested,
-            &route.unit,
-        );
-        pair(
-            output,
-            "Dispatched",
-            o_a.dispatched,
-            o_b.dispatched,
-            &route.unit,
-        );
-        pair(
-            output,
-            "Remaining unshipped",
-            o_a.remaining_unshipped,
-            o_b.remaining_unshipped,
-            &route.unit,
-        );
+        for ((label, a), b) in ["Requested", "Dispatched", "Remaining unshipped"]
+            .into_iter()
+            .zip(left)
+            .zip(right)
+        {
+            pair(output, label, a, b, &route.unit);
+        }
         pair(
             output,
             "Arrived to date",
             route.delivered,
-            other_route.delivered,
+            other.delivered,
             &route.unit,
         );
     }
@@ -517,14 +545,17 @@ pub(crate) mod tests {
         let sites = ["steel", "panels", "mill", "meals"]
             .into_iter()
             .map(|id| ProductionSite {
+                function: "manufacturing".into(),
                 id: id.into(),
-                county_geoid: "26163".into(),
+                location: "county:26163".parse().unwrap(),
                 name: id.into(),
-                industry_code: "331".into(),
+                industry_code: Some("331".into()),
                 observed_employment: None,
                 inventory: Vec::new(),
-                role: babylon_persistence::production_observation::ProductionSiteRole::Production,
-                sector_code: "31-33".into(),
+                roles: vec![
+                    babylon_persistence::production_observation::ProductionSiteRole::Production,
+                ],
+                sector_code: Some("31-33".into()),
                 processes: vec![
                     babylon_persistence::production_observation::ProductionProcess {
                         id: "fixture-process".into(),
@@ -549,6 +580,7 @@ pub(crate) mod tests {
         ]
         .into_iter()
         .map(|(id, supplier, buyer, ordered, shipped)| ProductionRoute {
+            physical_route_id: id.into(),
             physical_edge_ids: Vec::new(),
             distance_mm: None,
             transport_kind:
@@ -596,6 +628,7 @@ pub(crate) mod tests {
             labor_accounts: Vec::new(),
             staffing_accounts: Vec::new(),
             observed_contexts: Vec::new(),
+            national_observed_contexts: Vec::new(),
             process_attributions: Vec::new(),
             freight_capacity_accounts: vec![capacity_fixture()],
         }
@@ -621,6 +654,7 @@ pub(crate) mod tests {
                         .into_iter()
                         .map(
                             |(id, requested, dispatched)| ProductionFreightCapacityOrder {
+                                supplier_relation_id: Some(id.into()),
                                 order_id: format!("order-{id}"),
                                 route_id: Some(id.into()),
                                 kind: babylon_persistence::production_observation::ProductionOutboundKind::Delivery,
@@ -853,5 +887,22 @@ pub(crate) mod tests {
                 comparison_reading(period, &current, &other, Some("panels"))
             );
         }
+    }
+    #[test]
+    fn comparisons_group_relations_when_recurring_order_ids_differ() {
+        let left = fixture();
+        let mut right = left.clone();
+        let orders = &mut right.freight_capacity_accounts[0]
+            .completed
+            .as_mut()
+            .unwrap()
+            .reservations[0]
+            .orders;
+        for row in orders {
+            row.order_id = format!("renewed-{}", row.order_id);
+        }
+        let text = comparison_reading(1, &left, &right, None);
+        assert!(text.contains("Dispatched: 120 / 120 kg"));
+        assert!(!text.contains("Comparable route order unavailable"));
     }
 }

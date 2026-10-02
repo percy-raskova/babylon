@@ -12,7 +12,9 @@ use babylon_bsl::types::EnumRegistry;
 use babylon_bsl::vocabulary::{ClosedVocabulary, EnumKind};
 use babylon_graph::memory::MemoryGraph;
 use babylon_graph::stable_element::{StableElementKey, StableElementResolver, StableIdentityError};
-use babylon_graph::stable_state::encode_stable_graph_state;
+use babylon_graph::stable_state::{
+    compose_stable_graph_state_from_rows, encode_stable_graph_state, StableGraphStateRowsInput,
+};
 use babylon_graph::state_hash::CanonicalState;
 use babylon_graph::substrate::{GraphSubstrate, HyperedgeId, NodeId};
 use babylon_kernel::currency::Currency;
@@ -45,11 +47,13 @@ pub(super) fn execute(name: &str, recipe: &Value) -> Result<(), &'static str> {
             execute_carrier(recipe).map_err(carrier_error)
         }
         "resolver_rows"
+        | "resolver_hyperedge_rows"
         | "resolver_edges"
         | "resolver_hyperedge_members"
         | "resolver_fact_units"
         | "resolver_manifest_bytes" => execute_resolver(recipe).map_err(graph_error),
-        "stable_graph_elements"
+        "stable_graph_nodes"
+        | "stable_graph_elements"
         | "stable_graph_attribute_rows"
         | "stable_graph_hyperedge_members"
         | "stable_graph_fact_units"
@@ -306,9 +310,9 @@ fn add_nodes(
     node_type: &str,
     name_pattern: &str,
 ) -> HashMap<NodeId, String> {
-    assert!(count <= 65_537);
+    assert!(count <= 131_073);
     let mut names = HashMap::with_capacity(count);
-    for index in (0..=65_536).take(count) {
+    for index in (0..=131_072).take(count) {
         let node = graph.add_node(node_type).expect("bounded synthetic node");
         names.insert(node, patterned_symbol(name_pattern, index));
     }
@@ -319,6 +323,7 @@ fn execute_resolver(recipe: &Value) -> Result<(), StableIdentityError> {
     let fixture = text(recipe, "fixture");
     match fixture {
         "resolver_nodes" => resolver_nodes(recipe),
+        "resolver_hyperedges" => resolver_hyperedges(recipe),
         "resolver_edges" => resolver_edges(recipe),
         "resolver_single_hyperedge" => resolver_single_hyperedge(recipe),
         "resolver_fact_units" => resolver_fact_units(recipe),
@@ -512,7 +517,7 @@ struct GeneratedState {
 
 impl GeneratedState {
     fn nodes(&self) -> Vec<(NodeId, String)> {
-        (0..=65_536)
+        (0..=131_072)
             .take(self.node_count)
             .map(|index| (NodeId(index as u64), self.node_type.clone()))
             .collect()
@@ -605,6 +610,7 @@ fn one_node_resolver(name: &str) -> StableElementResolver {
 fn execute_stable_graph(recipe: &Value) -> Result<(), StableIdentityError> {
     match text(recipe, "fixture") {
         "stable_graph_nodes" => stable_graph_nodes(recipe),
+        "stable_graph_hyperedge_rows" => stable_graph_hyperedge_rows(recipe),
         "stable_graph_node_f64" => stable_graph_attributes(recipe),
         "stable_graph_single_hyperedge" => stable_graph_hyperedge(recipe),
         "stable_graph_fact_units" => stable_graph_facts(recipe),
@@ -1086,4 +1092,51 @@ fn action_error(error: OrderedPracticeActionError) -> &'static str {
         OrderedPracticeActionError::BatchLength { .. } => "byte_limit",
         other => panic!("unexpected ordered-action bound error: {other:?}"),
     }
+}
+
+fn resolver_hyperedges(recipe: &Value) -> Result<(), StableIdentityError> {
+    let count = count(recipe, "hyperedge_rows");
+    assert!(count <= 65_537);
+    let mut graph = MemoryGraph::new();
+    let node = graph.add_node("n").expect("single hyperedge member");
+    let mut names = HashMap::new();
+    for index in 0..count {
+        let edge = graph
+            .add_hyperedge("h", &[node])
+            .expect("bounded hyperedge row");
+        names.insert(edge, format!("h{index:05x}"));
+    }
+    StableElementResolver::seal(
+        &graph,
+        "s",
+        &HashMap::from([(node, "n".to_owned())]),
+        &names,
+    )
+    .map(|_| ())
+}
+
+fn stable_graph_hyperedge_rows(recipe: &Value) -> Result<(), StableIdentityError> {
+    let count = count(recipe, "state_hyperedge_rows");
+    assert!(count <= 65_537);
+    compose_stable_graph_state_from_rows(
+        "s",
+        StableGraphStateRowsInput {
+            nodes: vec![("n".to_owned(), "n".to_owned())],
+            node_f64: vec![],
+            edges: vec![],
+            edge_f64: vec![],
+            node_currency: vec![],
+            hyperedge_f64: vec![],
+            hyperedges: (0..count)
+                .map(|index| {
+                    (
+                        format!("h{index:05x}"),
+                        "h".to_owned(),
+                        vec!["n".to_owned()],
+                    )
+                })
+                .collect(),
+        },
+    )
+    .map(|_| ())
 }

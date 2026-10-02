@@ -61,11 +61,13 @@ bounds:
   governance_utf8_bytes: 4194304
   stable_carrier_active_elements: 256
   stable_carrier_bytes: 105962
-  resolver_rows: 65536
+  resolver_rows: 131072
+  resolver_hyperedge_rows: 65536
   resolver_edges: 65536
   resolver_hyperedge_members: 65534
   resolver_fact_units: 1048576
   resolver_manifest_bytes: 8388608
+  stable_graph_nodes: 131072
   stable_graph_elements: 65536
   stable_graph_attribute_rows: 524288
   stable_graph_hyperedge_members: 65534
@@ -101,10 +103,12 @@ bound_refusals:
   stable_carrier_active_elements: {operation: compose_stable_carrier, expected_code: active_element_limit}
   stable_carrier_bytes: {operation: compose_stable_carrier, expected_code: byte_limit}
   resolver_rows: {operation: seal_stable_resolver, expected_code: row_limit}
+  resolver_hyperedge_rows: {operation: seal_stable_resolver, expected_code: row_limit}
   resolver_edges: {operation: seal_stable_resolver, expected_code: edge_limit}
   resolver_hyperedge_members: {operation: seal_stable_resolver, expected_code: hyperedge_members}
   resolver_fact_units: {operation: seal_stable_resolver, expected_code: aggregate_row_limit}
   resolver_manifest_bytes: {operation: seal_stable_resolver, expected_code: byte_limit}
+  stable_graph_nodes: {operation: encode_stable_graph, expected_code: row_limit}
   stable_graph_elements: {operation: encode_stable_graph, expected_code: row_limit}
   stable_graph_attribute_rows: {operation: encode_stable_graph, expected_code: row_limit}
   stable_graph_hyperedge_members: {operation: encode_stable_graph, expected_code: hyperedge_members}
@@ -175,7 +179,13 @@ layouts:
       - tag: 3
         body: hyperedge_count_u32 then hyperedge_count rows of local_name_str32, hyperedge_type_str32
         order: local_name_unsigned_ascii
-    bounds: [resolver_rows, resolver_edges, resolver_hyperedge_members, resolver_fact_units, resolver_manifest_bytes]
+    bounds:
+      - resolver_rows
+      - resolver_hyperedge_rows
+      - resolver_edges
+      - resolver_hyperedge_members
+      - resolver_fact_units
+      - resolver_manifest_bytes
   stable_graph_v1:
     domain_ascii_nul: babylon.stable-graph
     layout_u32: 1
@@ -207,6 +217,7 @@ layouts:
         order: [local_name, qname]
     float_rule: finite nonzero raw binary64 bits; either signed zero becomes all-zero bits
     bounds:
+      - stable_graph_nodes
       - stable_graph_elements
       - stable_graph_attribute_rows
       - stable_graph_hyperedge_members

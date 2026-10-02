@@ -9,7 +9,9 @@ use babylon_bsl::identity_sections::{
     encode_prepared_bsl_sections, encode_tick_payload_sections, MAX_PREPARED_AGGREGATE_ROWS,
     MAX_PREPARED_ROWS,
 };
-use babylon_graph::stable_element::{StableElementResolver, StableIdentityError};
+use babylon_graph::stable_element::{
+    StableElementResolver, StableIdentityError, MAX_STABLE_RESOLVER_ROWS,
+};
 use babylon_graph::stable_state::{StableGraphState, STABLE_GRAPH_STATE_LAYOUT_VERSION};
 use babylon_kernel::tick_content_hash::{
     PreparedEnvironmentDigest, StableWorldDigest, TickPayloadDigest,
@@ -354,7 +356,11 @@ fn validate_prepared_rows(prepared: &PreparedRules) -> Result<(), ReplayTickIden
         .ok_or(ReplayTickIdentityError::CapacityOverflow {
             field: "stable resolver rows",
         })?;
-    validate_row_limit("stable resolver rows", resolver_rows, MAX_PREPARED_ROWS)
+    validate_row_limit(
+        "stable resolver rows",
+        resolver_rows,
+        MAX_STABLE_RESOLVER_ROWS,
+    )
 }
 
 fn validate_prepared_aggregate(

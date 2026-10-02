@@ -12,10 +12,10 @@ use babylon_kernel::currency::Currency;
 use babylon_practice_contract::{PracticeTargetDomain, PracticeTopologyLoadCounter};
 use std::collections::{BTreeSet, HashMap, HashSet};
 
-// Keep the current authored instance ceiling until the national compiler has
-// measured its actual seed. Native capture removes the text/AST duplication;
-// it does not silently remove the existing finite admission limits.
-const MAX_SEED_ROWS: usize = 65_536;
+// The generated national opening has 129,865 counted actor/territory nodes.
+// This node ceiling does not widen either relationship family.
+const MAX_SEED_NODES: usize = 131_072;
+const MAX_SEED_RELATIONS: usize = 65_536;
 const MAX_SEED_VALUES: usize = 1_048_576;
 
 /// One exact literal admitted by the same field rules as authored BSCN.
@@ -128,13 +128,11 @@ impl GraphSeed {
         mut edges: Vec<EdgeSeed>,
         mut hyperedges: Vec<HyperedgeSeed>,
     ) -> Result<Self, ScenarioError> {
-        if nodes.len() > MAX_SEED_ROWS
-            || edges.len() > MAX_SEED_ROWS
-            || hyperedges.len() > MAX_SEED_ROWS
-        {
-            return Err(err(
-                "native seed exceeds the current 65,536-row instance bound",
-            ));
+        if nodes.len() > MAX_SEED_NODES {
+            return Err(err("native seed exceeds the 131,072-node bound"));
+        }
+        if edges.len() > MAX_SEED_RELATIONS || hyperedges.len() > MAX_SEED_RELATIONS {
+            return Err(err("native seed exceeds the 65,536-row relationship bound"));
         }
         let mut names = BTreeSet::new();
         let mut values = 0_usize;

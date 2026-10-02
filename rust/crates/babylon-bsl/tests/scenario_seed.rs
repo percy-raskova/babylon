@@ -183,3 +183,21 @@ fn native_seed_preserves_practice_topology_admission() {
         .unwrap_err();
     assert_eq!(error.code, Some("E-LOAD-063"));
 }
+
+#[test]
+fn native_seed_admits_the_measured_national_actor_count_with_a_finite_ceiling() {
+    use babylon_bsl::scenario_seed::{GraphSeed, NodeSeed};
+    let rows = |count| {
+        (0..count)
+            .map(|index| NodeSeed {
+                local_name: format!("workplace-{index}"),
+                node_type: "BUSINESS".to_owned(),
+                attributes: vec![],
+            })
+            .collect()
+    };
+    // Captured 3,144 counties + 60,634 workplaces + 62,925 aggregate staffing
+    // members + 3,162 counted household cohorts. These are never person agents.
+    assert!(GraphSeed::try_new(rows(129_865), vec![], vec![]).is_ok());
+    assert!(GraphSeed::try_new(rows(131_073), vec![], vec![]).is_err());
+}

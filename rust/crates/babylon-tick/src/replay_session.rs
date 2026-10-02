@@ -1723,6 +1723,49 @@ mod tests {
     }
 
     #[test]
+    fn measured_aggregate_node_count_reaches_the_same_prepared_replay_session() {
+        use babylon_bsl::scenario_seed::{GraphSeed, NodeSeed};
+        let instances = GraphSeed::try_new(
+            (0..129_865)
+                .map(|index| NodeSeed {
+                    local_name: format!("workplace-{index:06}"),
+                    node_type: "BUSINESS".to_owned(),
+                    attributes: vec![],
+                })
+                .collect(),
+            vec![],
+            vec![],
+        )
+        .unwrap();
+        let replay = ReplayTickSession::new_with_graph_seed(
+            "(scenario capture/aggregate-count (defvocabulary NodeType (BUSINESS)))",
+            None,
+            "",
+            MemoryGraph::new(),
+            ReplaySessionId::try_from("capture/aggregate-count").unwrap(),
+            ReplaySeed::new(17),
+            ContentDigest {
+                defines_hash: [0x73; 32],
+                rules_hash: rules_hash_of(&[]).unwrap(),
+            },
+            RefDigest::from_bytes(MICHIGAN_DYNAMIC_HEX_REFERENCE_BUNDLE_DIGEST),
+            dynamic_fixture_material_state(),
+            &instances,
+        );
+        assert!(replay.is_ok(), "{:?}", replay.as_ref().err());
+        assert_eq!(
+            replay
+                .unwrap()
+                .stable_graph_state()
+                .unwrap()
+                .rows()
+                .nodes()
+                .len(),
+            129_865
+        );
+    }
+
+    #[test]
     fn native_seed_and_authored_instances_use_the_same_replay_machine() {
         use babylon_bsl::scenario_seed::{GraphSeed, NodeSeed, SeedAttribute, SeedValue};
         let declarations = "(scenario capture/native-replay

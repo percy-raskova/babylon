@@ -209,6 +209,69 @@ and international counterparts; PER-58/PER-56/PER-12 material practice and nativ
 play. PER-337 records household reproduction and PER-338 resource renewal and
 real capital installation. These references are not closure claims.
 
+## Designed first national opening
+
+The first national policy is authored in
+`content/scenarios/national/defines.toml`. Its native bundles, labor coefficients,
+transport masses, starting prices, foreign participation and sector allocations
+are **Designed**, rather than observed production or subsistence thresholds.
+Prices use the shared responsive market policies after initialization. The fixed
+accounting control below retains its own fixed prices and population.
+
+Food represents a person-period parcel. Manufactured supplies and equipment are
+stored physical bundles. Utility provision, housing provision, household services,
+business support and public provision expire within the period; they have no
+fictitious freight tonnage or pantry stock. Housing provision describes use and
+upkeep of existing housing, rather than claiming that one month's service creates
+a dwelling. These coarse bundles expose dependencies without claiming to explain
+every activity inside the corresponding source function.
+
+Food renews through actual materials, utility provision, business support and
+labor. Extraction uses a finite declared reserve plus work and purchased inputs.
+The reserve scale is a Designed resource endowment, independent of campaign
+duration; it is not a lifetime capacity schedule. Equipment orders must acquire
+delivered equipment and complete installation before increasing usable capacity.
+The policy reader does not itself complete that installation mechanism.
+
+The initial domestic household accounts pool each county's source persons and
+households. Worksites allocate independently accounted resident employees,
+working owners, unpaid family and unemployed reserves. Home-county placement is
+an explicit first control, not a commuting observation. Missing source employer
+classes receive named Designed resident-employer placements only when needed.
+The aged local LODES main-only files do not establish absent interstate movement
+as zero. Source job counts can weight placements but cannot add people.
+
+Foreign profiles have independent finite workers, households, prices and sector
+allocations. Their lower nominal price scales are Designed gameplay differences
+in the common accounting currency, not an exchange-rate model or a measured
+purchasing-power conversion. UN source population and its missingness remain
+separate from these game workforce allocations. The missing UM population stays
+missing; fifty temporary game residents are an explicit Designed opening choice.
+
+The opening fiscal rates, public food support and distribution shares are also
+Designed controls. Public provisioning accounts pool budgets by economic location;
+they do not assert that an international market aggregation has one government.
+Private ownership claims, public ownership and cross-border claims are declared
+separately from source workplace ownership and household wages. These opening
+assignments are not observations of wealth or a political-class census. All
+payments remain limited by the common book's actual cash and prior obligations.
+
+The equipment opening uses forty batches per unit per period and four thousand
+productive service batches per unit, with thirty-two installation hours and
+four material bundles. Initial remaining-use fractions vary by stable site
+identity. These are Designed opening ages and technical units; they are not
+observed asset lives. Installation competes for the same finite workplace hours.
+This first use-based wear model omits idle deterioration and moral depreciation,
+both discussed in the Capital II follow-up. Ordinary maintenance expense remains
+distinct from new installation work in progress.
+
+Native admission checks cover the authored policy and actor identities. Instantiating all
+57,238 admitted source sites gives 49,084 source processes and 107,852 recipe-input
+rows under this policy, before household enterprises, external counterparts and
+fallback providers. This exact source-and-policy census already exceeds the old
+65,536 input-row ceiling. It is not a live national performance measurement;
+compiled bytes, committed advances and play acceptance remain to be qualified.
+
 ## Eight-period accounting control
 
 The [source-study receipt](../docs/superpowers/research/2026-09-20-economic-circuit-source-study.md)

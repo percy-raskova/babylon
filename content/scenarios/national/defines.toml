@@ -1,0 +1,326 @@
+# Designed first national/world campaign policy. These are gameplay units,
+# not source-derived production, subsistence thresholds or a forecast.
+# Every price is millionths of one common currency unit; no exchange rates.
+schema_version = 1
+evidence_class = "Designed"
+period_days = 28
+work_hours_per_person = 160
+default_wage_micros_per_hour = 24000000
+opening_pantry_periods = 1
+opening_input_periods = 2
+working_capital_periods = 2
+retailer_buffer_periods = 2
+resource_reserve_output_periods = 1040
+handling_hours_per_unit = 1
+missing_peer_weight_per_establishment = 1 # Designed allocation points, never observed jobs.
+household_enterprise_function = "household_services"
+
+[financial]
+wage_tax_bps = 1500
+operating_income_tax_bps = 1500
+private_distribution_bps = 5000
+reserve_food_support_periods = 1
+cross_border_ownership_bps = 2000
+
+[equipment]
+batches_per_unit_per_period = 40
+service_batches_per_unit = 4000
+installation_hours_per_unit = 32
+installation_inputs = { materials = 4 }
+installation_workforce_hours_bps = 625
+expansion_earnings_fraction_bps = 2500
+opening_remaining_service_bps = [2500, 5000, 7500, 10000]
+
+# Prices change through existing inspectable responsive market policies.
+# Public grants pay provider costs; the small posted public fee is separate.
+
+[commodity.food]
+label = "Food for one person for 28 days"
+unit_label = "person-period food parcel"
+kind = "storable"
+grams_per_unit = 14000
+opening_price_micros = 280000000
+minimum_price_micros = 70000000
+maximum_price_micros = 1120000000
+price_step_micros = 7000000
+
+[commodity.resources]
+label = "Industrial feedstock"
+unit_label = "feedstock bundle"
+kind = "storable"
+grams_per_unit = 10000
+opening_price_micros = 40000000
+minimum_price_micros = 10000000
+maximum_price_micros = 160000000
+price_step_micros = 1000000
+
+[commodity.materials]
+label = "Manufactured supplies"
+unit_label = "supplies bundle"
+kind = "storable"
+grams_per_unit = 5000
+opening_price_micros = 120000000
+minimum_price_micros = 30000000
+maximum_price_micros = 480000000
+price_step_micros = 3000000
+
+[commodity.equipment]
+label = "Productive equipment"
+unit_label = "equipment unit"
+kind = "storable"
+grams_per_unit = 250000
+opening_price_micros = 4000000000
+minimum_price_micros = 1000000000
+maximum_price_micros = 16000000000
+price_step_micros = 100000000
+
+[commodity.utility]
+label = "Utility provision"
+unit_label = "utility service unit"
+kind = "utility"
+grams_per_unit = 0
+opening_price_micros = 75000000
+minimum_price_micros = 18750000
+maximum_price_micros = 300000000
+price_step_micros = 1875000
+
+[commodity.housing]
+label = "Housing provision"
+unit_label = "household-period housing"
+kind = "service"
+grams_per_unit = 0
+opening_price_micros = 1450000000
+minimum_price_micros = 362500000
+maximum_price_micros = 5800000000
+price_step_micros = 36250000
+
+[commodity.household_services]
+label = "Household services"
+unit_label = "person-period service"
+kind = "service"
+grams_per_unit = 0
+opening_price_micros = 600000000
+minimum_price_micros = 150000000
+maximum_price_micros = 2400000000
+price_step_micros = 15000000
+
+[commodity.business_services]
+label = "Business support"
+unit_label = "business service unit"
+kind = "service"
+grams_per_unit = 0
+opening_price_micros = 100000000
+minimum_price_micros = 25000000
+maximum_price_micros = 400000000
+price_step_micros = 2500000
+
+[commodity.public_provision]
+label = "Public provisioning"
+unit_label = "person-period provision"
+kind = "service"
+grams_per_unit = 0
+opening_price_micros = 1000000
+minimum_price_micros = 250000
+maximum_price_micros = 4000000
+price_step_micros = 25000
+
+[commodity.resource_deposit]
+label = "Finite extractable reserve"
+unit_label = "feedstock bundle"
+kind = "storable"
+grams_per_unit = 10000
+
+[process.food]
+output = "food"
+output_units_per_batch = 16
+labor_hours_per_batch = 16
+inputs = { materials = 1, utility = 1, business_services = 1 }
+
+[process.extraction]
+output = "resources"
+output_units_per_batch = 8
+labor_hours_per_batch = 16
+inputs = { resource_deposit = 8, utility = 1, business_services = 1 }
+
+[process.energy_utilities]
+output = "utility"
+output_units_per_batch = 160
+labor_hours_per_batch = 16
+inputs = { resources = 8 }
+
+[process.manufacturing]
+output = "materials"
+output_units_per_batch = 8
+labor_hours_per_batch = 16
+inputs = { resources = 8, utility = 2, business_services = 1 }
+
+[process.capital_goods]
+output = "equipment"
+output_units_per_batch = 1
+labor_hours_per_batch = 16
+inputs = { resources = 8, materials = 4, utility = 2, business_services = 1 }
+
+[process.construction_housing]
+output = "housing"
+output_units_per_batch = 16
+labor_hours_per_batch = 16
+inputs = { materials = 1, utility = 1 }
+
+[process.household_services]
+output = "household_services"
+output_units_per_batch = 8
+labor_hours_per_batch = 160
+inputs = { materials = 1, utility = 1 }
+
+[process.business_services]
+output = "business_services"
+output_units_per_batch = 16
+labor_hours_per_batch = 160
+inputs = { materials = 1, utility = 1 }
+
+[process.public_provisioning]
+output = "public_provision"
+output_units_per_batch = 160
+labor_hours_per_batch = 160
+inputs = { materials = 1, utility = 1 }
+
+[[household_needs]]
+good = "food"
+basis = "persons"
+units_per_basis = 1
+
+[[household_needs]]
+good = "materials"
+basis = "households"
+units_per_basis = 1
+
+[[household_needs]]
+good = "utility"
+basis = "persons"
+units_per_basis = 1
+
+[[household_needs]]
+good = "housing"
+basis = "households"
+units_per_basis = 1
+
+[[household_needs]]
+good = "household_services"
+basis = "persons"
+units_per_basis = 1
+
+[[household_needs]]
+good = "public_provision"
+basis = "persons"
+units_per_basis = 1
+
+# Counterpart shares are game allocations, not measured class or sector shares.
+# Function order: business, capital, housing, distribution, energy, extraction,
+# food, household services, manufacturing, public. Membership lives separately.
+
+[counterpart."canada"]
+participation_bps = 4500
+opening_employment_bps = 9000
+persons_per_household = 3
+wage_micros_per_hour = 20000000
+price_scale_bps = 10000
+function_weights_bps = [1200, 300, 1000, 1200, 800, 1800, 800, 2000, 600, 300]
+
+[counterpart."mexico"]
+participation_bps = 4500
+opening_employment_bps = 9000
+persons_per_household = 3
+wage_micros_per_hour = 7000000
+price_scale_bps = 4000
+function_weights_bps = [900, 500, 1000, 1400, 400, 600, 1000, 2200, 1700, 300]
+
+[counterpart."china"]
+participation_bps = 4500
+opening_employment_bps = 9000
+persons_per_household = 3
+wage_micros_per_hour = 10000000
+price_scale_bps = 4500
+function_weights_bps = [800, 1300, 800, 1100, 500, 700, 700, 1500, 2300, 300]
+
+[counterpart."russia"]
+participation_bps = 4500
+opening_employment_bps = 9000
+persons_per_household = 3
+wage_micros_per_hour = 11000000
+price_scale_bps = 5500
+function_weights_bps = [900, 500, 900, 1100, 1000, 1700, 800, 1700, 1100, 300]
+
+[counterpart."india"]
+participation_bps = 4500
+opening_employment_bps = 9000
+persons_per_household = 3
+wage_micros_per_hour = 5000000
+price_scale_bps = 2200
+function_weights_bps = [1200, 400, 900, 1300, 400, 500, 1500, 2200, 1300, 300]
+
+[counterpart."japan"]
+participation_bps = 4500
+opening_employment_bps = 9000
+persons_per_household = 3
+wage_micros_per_hour = 22000000
+price_scale_bps = 10000
+function_weights_bps = [1300, 1100, 900, 1300, 500, 300, 500, 2500, 1300, 300]
+
+[counterpart."european_union"]
+participation_bps = 4500
+opening_employment_bps = 9000
+persons_per_household = 3
+wage_micros_per_hour = 22000000
+price_scale_bps = 9500
+function_weights_bps = [1300, 700, 1100, 1200, 500, 400, 700, 2600, 1200, 300]
+
+[counterpart."remaining_europe"]
+participation_bps = 4500
+opening_employment_bps = 9000
+persons_per_household = 3
+wage_micros_per_hour = 14000000
+price_scale_bps = 7000
+function_weights_bps = [1000, 600, 1000, 1200, 700, 900, 900, 2100, 1300, 300]
+
+[counterpart."latin_america_caribbean"]
+participation_bps = 4500
+opening_employment_bps = 9000
+persons_per_household = 3
+wage_micros_per_hour = 7000000
+price_scale_bps = 4000
+function_weights_bps = [900, 300, 1000, 1300, 500, 1100, 1500, 2200, 900, 300]
+
+[counterpart."west_asia_north_africa"]
+participation_bps = 4500
+opening_employment_bps = 9000
+persons_per_household = 3
+wage_micros_per_hour = 8000000
+price_scale_bps = 4500
+function_weights_bps = [900, 300, 1100, 1200, 1000, 2000, 700, 1900, 600, 300]
+
+[counterpart."sub_saharan_africa"]
+participation_bps = 4500
+opening_employment_bps = 9000
+persons_per_household = 3
+wage_micros_per_hour = 4000000
+price_scale_bps = 1800
+function_weights_bps = [800, 200, 800, 1500, 500, 1500, 2000, 1900, 500, 300]
+
+[counterpart."remaining_asia_pacific"]
+participation_bps = 4500
+opening_employment_bps = 9000
+persons_per_household = 3
+wage_micros_per_hour = 9000000
+price_scale_bps = 4500
+function_weights_bps = [1000, 600, 900, 1200, 500, 1000, 1000, 2000, 1500, 300]
+
+# Separate dependencies use source persons when available. The missing UM
+# observation stays missing; its 50 temporary game residents are Designed.
+[dependency]
+participation_bps = 4500
+opening_employment_bps = 9000
+persons_per_household = 3
+wage_micros_per_hour = 24000000
+price_scale_bps = 10000
+function_weights_bps = [1000, 500, 1000, 1500, 500, 500, 1500, 2000, 1000, 500]
+missing_population_game_persons = 50

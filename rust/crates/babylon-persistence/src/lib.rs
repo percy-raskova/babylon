@@ -175,6 +175,8 @@ mod test_support;
 
 pub mod simulation_experiment;
 
+pub mod national_economy;
+
 pub use production_projection::households::{
     CompletedHouseholdBalance, ProductionHouseholdAccount,
 };

@@ -252,3 +252,46 @@ fn received_stock(
     }
     Ok(received)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use babylon_material_circuit::{CircuitAccounting, HouseholdNeedBasis};
+    use babylon_tick::material_world::{decode_material_receipts, MaterialWorldRegister};
+
+    #[test]
+    fn projection_authenticates_person_and_household_requirements_from_committed_consumption() {
+        for (basis, required) in [
+            (HouseholdNeedBasis::Persons, 4),
+            (HouseholdNeedBasis::Households, 2),
+        ] {
+            let mut opening = super::super::recurring_fixture::opening();
+            let CircuitAccounting::Monetary(economy) = &mut opening.accounting else {
+                panic!("monetary control");
+            };
+            economy.recurring.as_mut().unwrap().household_needs[0].basis = basis;
+            let opening = MaterialWorldRegister::try_new(0, opening).unwrap();
+            let next = opening.prepare_next().unwrap();
+            let mut receipts = decode_material_receipts(next.receipt_bytes()).unwrap();
+            let project = |receipts: &MaterialTickReceipts| {
+                project_with_labels(
+                    next.register().state(),
+                    Some(opening.state()),
+                    Some(receipts),
+                    |_, _| Some(("food".to_owned(), "units".to_owned())),
+                )
+            };
+            let rows = project(&receipts).unwrap();
+            assert_eq!(rows.len(), 1);
+            assert_eq!((rows[0].person_count, rows[0].household_count), (4, 2));
+            assert_eq!(rows[0].required_per_period, required);
+            let completed = rows[0].completed.as_ref().unwrap();
+            assert_eq!(
+                (completed.required, completed.consumed),
+                (required, required)
+            );
+            receipts.household_consumption[0].required_quantity += 1;
+            assert!(project(&receipts).is_err());
+        }
+    }
+}

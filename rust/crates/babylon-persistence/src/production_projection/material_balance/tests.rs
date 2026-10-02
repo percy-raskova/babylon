@@ -1,5 +1,5 @@
 use babylon_material_circuit::{
-    BacklogRow, CapacityRow, CommodityDefinition, CorridorCapacity, CorridorId,
+    BacklogRow, CapacityRow, CommodityDefinition, CommodityKind, CorridorCapacity, CorridorId,
     InputOutputCoefficient, InventoryRow, LaborCapacityRow, LaborCoefficient, LogisticsNodeId,
     OrderAccessMode, ProcessOutput, ProductionCommitment, RouteId, RouteStage, RouteStageCapacity,
     SiteLogisticsNode, SupplierRoute, SupplierTransport,
@@ -100,6 +100,11 @@ fn stock(site: u8, good: u8, unit: u8, quantity: u64) -> InventoryRow {
 fn production_state(specs: &[(u8, u64, u64, u64)], opening: u64) -> MaterialCircuitState {
     let mut state = empty_state();
     let inventory = stock(1, 2, 3, opening);
+    state.commodities.push(CommodityDefinition {
+        good_id: inventory.good_id,
+        unit_id: inventory.unit_id,
+        kind: CommodityKind::Storable { grams_per_unit: 1 },
+    });
     let mut labor = 0_u64;
     for &(id, input, output, batches) in specs {
         let process_id = ProcessId::from_bytes([id; 32]);
@@ -173,6 +178,11 @@ fn shared_process_principal_records_production_and_consumption_separately_once()
 fn foundation_is_absent_but_committed_quiet_and_empty_accounts_are_present() {
     let mut state = empty_state();
     state.inventory.push(stock(1, 2, 3, 9));
+    state.commodities.push(CommodityDefinition {
+        good_id: GoodId::from_bytes([2; 32]),
+        unit_id: UnitId::from_bytes([3; 32]),
+        kind: CommodityKind::Storable { grams_per_unit: 1 },
+    });
     assert_eq!(
         project_with_labels(&state, None, None, |_, _| None),
         Ok(None)
@@ -191,6 +201,14 @@ fn foundation_is_absent_but_committed_quiet_and_empty_accounts_are_present() {
 fn exact_units_and_sites_never_merge_even_when_labels_match() {
     let mut state = empty_state();
     state.inventory = vec![stock(1, 2, 3, 7), stock(1, 2, 4, 9), stock(5, 2, 3, 11)];
+    state.commodities = [3, 4]
+        .into_iter()
+        .map(|unit| CommodityDefinition {
+            good_id: GoodId::from_bytes([2; 32]),
+            unit_id: UnitId::from_bytes([unit; 32]),
+            kind: CommodityKind::Storable { grams_per_unit: 1 },
+        })
+        .collect();
     let (prior, current, receipt) = pair(state);
     let balance = project_with_labels(&current, Some(&prior), Some(&receipt), |_, _| {
         Some(("material".to_owned(), "unit".to_owned()))
@@ -724,6 +742,11 @@ fn check_arrival_refusals(arrival: &Pair) {
 fn unknown_unit_metadata_refuses_instead_of_inventing_a_label() {
     let mut state = empty_state();
     state.inventory.push(stock(1, 2, 3, 9));
+    state.commodities.push(CommodityDefinition {
+        good_id: GoodId::from_bytes([2; 32]),
+        unit_id: UnitId::from_bytes([3; 32]),
+        kind: CommodityKind::Storable { grams_per_unit: 1 },
+    });
     let (prior, current, receipt) = pair(state);
     assert_eq!(
         project_with_labels(&current, Some(&prior), Some(&receipt), |_, _| None),
@@ -1044,6 +1067,11 @@ fn maintenance_opening() -> MaterialCircuitState {
     let mut state = production_state(&[(4, 1, 2, 2)], 10);
     state.input_coefficients[0].good_id = GoodId::from_bytes([21; 32]);
     state.inventory[0].good_id = GoodId::from_bytes([21; 32]);
+    state.commodities.push(CommodityDefinition {
+        good_id: GoodId::from_bytes([21; 32]),
+        unit_id: UnitId::from_bytes([3; 32]),
+        kind: CommodityKind::Storable { grams_per_unit: 1 },
+    });
     let provider = SiteId::from_bytes([20; 32]);
     let binding = babylon_material_circuit::MaintenanceBinding {
         provider_site_id: provider,

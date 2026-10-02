@@ -1,6 +1,6 @@
 use babylon_material_circuit::{
-    CapacityRow, GoodId, LaborCapacityRow, LaborCoefficient, LogisticsNodeId, ProcessOutput,
-    ProductionCommitment, SiteLogisticsNode,
+    CapacityRow, CommodityDefinition, CommodityKind, GoodId, LaborCapacityRow, LaborCoefficient,
+    LogisticsNodeId, ProcessOutput, ProductionCommitment, SiteLogisticsNode,
 };
 use babylon_tick::material_world::{decode_material_receipts, MaterialWorldRegister};
 
@@ -27,7 +27,14 @@ fn shared_opening() -> MaterialCircuitState {
         route_stage_capacities: vec![],
         service_connections: vec![],
         service_orders: vec![],
-        commodities: vec![],
+        commodities: [4, 5]
+            .into_iter()
+            .map(|id| CommodityDefinition {
+                good_id: GoodId::from_bytes([id; 32]),
+                unit_id: UnitId::from_bytes([6; 32]),
+                kind: CommodityKind::Storable { grams_per_unit: 1 },
+            })
+            .collect(),
         merchants: vec![],
         handling_coefficients: vec![],
         final_demand_principals: vec![],
@@ -249,6 +256,11 @@ fn maintenance_labor_is_debited_once_and_stays_separate_from_production_and_hand
             unit_id: UnitId::from_bytes([6; 32]),
             quantity: 10,
         });
+    opening.commodities.push(CommodityDefinition {
+        good_id: GoodId::from_bytes([21; 32]),
+        unit_id: UnitId::from_bytes([6; 32]),
+        kind: CommodityKind::Storable { grams_per_unit: 1 },
+    });
     let provider = SiteId::from_bytes([20; 32]);
     let binding = babylon_material_circuit::MaintenanceBinding {
         provider_site_id: provider,

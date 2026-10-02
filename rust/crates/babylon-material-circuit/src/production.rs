@@ -117,11 +117,7 @@ pub(crate) fn validate_processes(state: &MaterialCircuitState) -> Result<(), Mat
             return Err(MaterialCircuitError::ZeroQuantity);
         }
     }
-    for row in state
-        .input_coefficients
-        .iter()
-        .take(MAX_MATERIAL_CIRCUIT_ROWS + 1)
-    {
+    for row in &state.input_coefficients {
         if row.quantity_per_batch == 0 || !process_ids.contains(&row.process_id) {
             return Err(MaterialCircuitError::ProcessInvariant);
         }
@@ -299,10 +295,7 @@ fn production_resource_groups(
                 allocations[index],
             )?;
         }
-        for input in input_coefficients(state, commitment.process_id)
-            .iter()
-            .take(MAX_MATERIAL_CIRCUIT_ROWS + 1)
-        {
+        for input in input_coefficients(state, commitment.process_id) {
             add_production_request(
                 &mut groups,
                 ProductionResourceKey::Input((commitment.site_id, input.good_id, input.unit_id)),
@@ -548,10 +541,9 @@ fn consume_production_inputs(
     }
     let inputs: Vec<_> = input_coefficients(state, process)
         .iter()
-        .take(MAX_MATERIAL_CIRCUIT_ROWS + 1)
         .map(|row| (row.good_id, row.unit_id, row.quantity_per_batch))
         .collect();
-    for (good, unit, quantity_per_batch) in inputs.into_iter().take(MAX_MATERIAL_CIRCUIT_ROWS + 1) {
+    for (good, unit, quantity_per_batch) in inputs {
         let quantity = quantity_per_batch
             .checked_mul(batches)
             .ok_or(MaterialCircuitError::Arithmetic)?;

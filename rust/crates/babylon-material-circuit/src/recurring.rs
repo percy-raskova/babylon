@@ -48,13 +48,15 @@ fn unique<T, K: Ord>(rows: &[T], key: impl Fn(&T) -> K) -> Result<BTreeSet<K>> {
 }
 
 fn row_limits(rows: &RecurringEconomy) -> Result<()> {
+    if rows.replenishment.len() > crate::MAX_REPLENISHMENT_POLICIES {
+        return Err(MaterialCircuitError::RowLimit);
+    }
     if [
         rows.households.len(),
         rows.household_stocks.len(),
         rows.household_needs.len(),
         rows.household_purchases.len(),
         rows.offers.len(),
-        rows.replenishment.len(),
         rows.production.len(),
         rows.attendance.len(),
     ]
@@ -280,17 +282,36 @@ pub(crate) fn validate(state: &MaterialCircuitState) -> Result<()> {
             .book
             .cash(AccountId::Household(household.principal_id))?;
     }
+    validate_attendance(state, economy, rows)
+}
+
+fn validate_attendance(
+    state: &MaterialCircuitState,
+    economy: &crate::MonetaryCircuit,
+    rows: &RecurringEconomy,
+) -> Result<()> {
     let employment: BTreeSet<_> = economy
         .employment
         .iter()
         .map(|r| (r.site_id, r.unit_id))
         .collect();
+    let available: BTreeMap<_, _> = state
+        .labor
+        .iter()
+        .filter(|r| r.period == state.period)
+        .map(|r| ((r.site_id, r.unit_id), r.available))
+        .collect();
+    let required: BTreeSet<_> = employment.iter().chain(available.keys()).copied().collect();
     if rows
         .attendance
         .iter()
         .map(|r| (r.site_id, r.unit_id))
         .collect::<BTreeSet<_>>()
-        != employment
+        != required
+        || rows.attendance.iter().any(|r| {
+            let key = (r.site_id, r.unit_id);
+            !employment.contains(&key) && (r.planned_hours != 0 || available.get(&key) != Some(&0))
+        })
     {
         return Err(MaterialCircuitError::PayrollInvariant);
     }

@@ -213,7 +213,8 @@ canonical_keys:
   final_demand_orders: [order_id]
 
 admission:
-  - each site and logistics node have unique ownership
+  - each economic site has exactly one captured logistics access point; distinct sites may share that point
+  - shared logistics access never merges site stock ownership, orders, cash accounts, or capacity claims
   - each supplier relation selects one relationship identity and explicit local or staged transport
   - local relations connect distinct known sites and have no timed stages or memberships
   - staged relations have connected positive timed stages; one relationship cannot mix transport modes
@@ -226,10 +227,10 @@ admission:
   - finite-schedule missing period capacity means zero availability, not a malformed register
   - every merchant owns a unique handling capacity disjoint from route capacities
   - production and merchant work at one site share its inventory and exact site-unit labor budget
-  - every merchant site has a logistics node, valid county GEOID, and one labor-unit principal
+  - every merchant site has a logistics access point, checked economic location, and one labor-unit principal
   - each merchant outbound good-unit has positive exact handling hours and mass per native unit
-  - each final-demand principal owns one unique county account
-  - a local order names a retail merchant in its demand principal county
+  - each final-demand principal has one unique identity and account; distinct households may share a location
+  - a local order names a retail merchant in its demand principal economic location
   - local order quantities satisfy zero <= fulfilled <= ordered with ordered positive
   - routed and local order identity domains are disjoint even if their raw order IDs match
   - all ordinary material and production invariants remain enforced
@@ -251,7 +252,10 @@ admission:
   - household service providers need not be Retail merchants
   - every finite order of a configured household names a captured recipient stock before admission
   - recurring production has one policy per process and at most one process per site-output-good-unit
-  - recurring attendance exactly covers employment principals at the opening period
+  - recurring attendance exactly covers distinct employment and current labor principals at the opening period
+  - an attendance principal without employment has an explicit zero available-hours row and zero planned hours
+  - multiple resident members retain separate payees and share one workplace attendance plan
+  - desired production or handling at an empty workplace cannot create workers, funded hours, wages or output
   - both recurring household phase cursors equal the preceding period at a canonical opening
   - responsive quotes remain inside positive captured bounds; admitted escrows retain their own prices
 
@@ -370,14 +374,38 @@ conservation:
   - available hours equal planned available plus unplanned hours
 
 limits:
-  rows_per_family: 65536
+  rows_per_family: 65536 # Default; only the named overrides below differ.
+  family_overrides:
+    inventory: 131072
+    input_coefficients: 131072
+    supplier_routes: 262144
+    route_stage_capacities: 262144
+    service_connections: 131072
+    monetary_accounts: 131072
+    capital_accounts: 131072
+    replenishment: 262144
+  staffing_work_sources_and_requests: 131072
+  measured_national_opening:
+    inventory: 73504
+    input_coefficients: 114680
+    supplier_routes: 190505
+    route_stage_capacities: 247928
+    service_connections: 71856
+    monetary_accounts: 66958
+    replenishment: 138337
+    staffing_work_sources: 112805
+  measured_basis: Derived table counts from the complete national opening on 2 October 2026;
+    limits are Designed next-power-of-two ceilings, not physical resources or people.
   employment_and_member_labor_rows: 131072
   combined_delivery_retail_and_service_orders: 65536
   stages_per_route: 16
   total_freight_resource_requests: 1114112
+  total_production_resource_groups: 196608 # Input-family ceiling plus labor-family ceiling.
   handling_receipts_per_period: 131072
   money_transfers_per_period: 1441792
   service_performance_receipts_per_period: 196608
+  procurement_receipts_per_period: 262144 # At most one per captured replenishment policy.
+  income_receipts_per_period: 131072 # At most one per cash/capital account.
   receipt_bounds: Derived from at most two outbound passes and the bounded payroll and purchase phases
   classification: Designed bounds on execution and serialization, not material abundance
 
@@ -556,9 +584,9 @@ historical_cost_book:
     freight_carrying_values: [lot_id]
     equity_carrying_values: [owner_account, issuer_site_id]
     equipment_carrying_values: [asset_tag_u8, asset_id]
-  bounds: {capital_accounts: 65536, stock_carrying_values: 131072, freight_carrying_values: 65536,
+  bounds: {capital_accounts: 131072, stock_carrying_values: 196608, freight_carrying_values: 65536,
            equity_carrying_values: 65536, equipment_carrying_values: 131072}
-  stock_bound: Two physical families of at most N each, site inventories and resident household stocks
+  stock_bound: Site inventories at most 131072 plus resident household stocks at most 65536
   opening:
     - require explicit carrying rows for every physical site stock, household stock and freight lot, including zero
     - derive opening capital once from cash, reserves, physical and equity carrying values and wage claims less

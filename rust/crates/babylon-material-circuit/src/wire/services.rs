@@ -1,4 +1,4 @@
-use super::{append_rows, decode_rows, Cursor};
+use super::{append_bounded_rows, append_rows, decode_bounded_rows, decode_rows, Cursor};
 use crate::{
     CommodityDefinition, CommodityKind, GoodId, MaterialCircuitError, OrderId, ServiceConnection,
     ServiceOrder, ServiceStage, SiteId, UnitId,
@@ -49,7 +49,7 @@ pub(super) fn append_connections(
     out: &mut Vec<u8>,
     rows: &[ServiceConnection],
 ) -> Result<(), MaterialCircuitError> {
-    append_rows(out, rows, |b, r| {
+    append_bounded_rows(out, rows, crate::MAX_SERVICE_CONNECTIONS, |b, r| {
         b.extend_from_slice(&r.provider_site_id.as_bytes());
         super::accounting::append_account(b, r.buyer);
         b.extend_from_slice(&r.good_id.as_bytes());
@@ -59,7 +59,7 @@ pub(super) fn append_connections(
 pub(super) fn decode_connections(
     c: &mut Cursor<'_>,
 ) -> Result<Vec<ServiceConnection>, MaterialCircuitError> {
-    decode_rows(c, |b| {
+    decode_bounded_rows(c, crate::MAX_SERVICE_CONNECTIONS, |b| {
         Ok(ServiceConnection {
             provider_site_id: SiteId::from_bytes(b.array()?),
             buyer: super::accounting::decode_account(b)?,

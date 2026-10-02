@@ -17,7 +17,7 @@ pub use book::HistoricalCostBook;
 pub use model::*;
 
 type Result<T> = std::result::Result<T, MaterialCircuitError>;
-pub const MAX_CARRYING_STOCKS: usize = 2 * crate::MAX_MATERIAL_CIRCUIT_ROWS;
+pub const MAX_CARRYING_STOCKS: usize = crate::MAX_INVENTORY_ROWS + crate::MAX_MATERIAL_CIRCUIT_ROWS;
 
 fn zero() -> Currency {
     Currency::from_micro_units(0)

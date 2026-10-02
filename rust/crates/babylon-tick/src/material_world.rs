@@ -27,8 +27,10 @@ mod workforce_receipt;
 const REGISTER_DOMAIN: &[u8] = b"babylon.material-world-register.v4\0";
 const NOMINAL_DOMAIN: &[u8] = b"babylon.nominal-material-world.v3\0";
 const RECEIPT_DOMAIN: &[u8] = b"babylon.material-tick-receipts.v14\0";
-/// Shared identity ceiling inherited by the aggregate replay envelope.
-pub const MAX_MATERIAL_WORLD_REGISTER_BYTES: usize = 67_108_864;
+/// Designed bound above the measured 240,132,173-byte complete national opening.
+pub const MAX_MATERIAL_WORLD_REGISTER_BYTES: usize = 268_435_456;
+/// Independent receipt envelope bound; state size does not qualify closing evidence.
+pub const MAX_MATERIAL_TICK_RECEIPT_BYTES: usize = 67_108_864;
 
 /// One checked complete material register at a completed four-week boundary.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -121,7 +123,7 @@ impl MaterialWorldRegister {
             .and_then(|count| count.checked_add(state_bytes.len()))
             .and_then(|count| count.checked_add(organizer_bytes.len()))
             .ok_or(MaterialWorldError::Arithmetic)?;
-        let mut bytes = bounded_bytes(length)?;
+        let mut bytes = bounded_bytes(length, MAX_MATERIAL_WORLD_REGISTER_BYTES)?;
         bytes.extend_from_slice(REGISTER_DOMAIN);
         bytes.extend_from_slice(&4_u32.to_be_bytes());
         bytes.extend_from_slice(&completed_tick.to_be_bytes());
@@ -395,8 +397,8 @@ pub fn nominal_material_world_hash(
     sha256_of(&bytes[..domain + 68])
 }
 
-fn bounded_bytes(length: usize) -> Result<Vec<u8>, MaterialWorldError> {
-    if length > MAX_MATERIAL_WORLD_REGISTER_BYTES {
+fn bounded_bytes(length: usize, maximum: usize) -> Result<Vec<u8>, MaterialWorldError> {
+    if length > maximum {
         return Err(MaterialWorldError::ByteLimit);
     }
     let mut bytes = Vec::new();
@@ -411,6 +413,8 @@ fn receipt_row_limit(index: usize) -> usize {
         10 => babylon_material_circuit::MAX_MONEY_TRANSFERS_PER_PERIOD,
         19 => babylon_material_circuit::MAX_SERVICE_RECEIPTS_PER_PERIOD,
         11 | 27 | 28 => babylon_material_circuit::MAX_STAFFING_MEMBERS,
+        15 => babylon_material_circuit::MAX_REPLENISHMENT_POLICIES,
+        18 => babylon_material_circuit::MAX_MONETARY_ACCOUNTS,
         _ => babylon_material_circuit::MAX_MATERIAL_CIRCUIT_ROWS,
     }
 }
@@ -607,7 +611,7 @@ fn encode_material_receipts(
                 .ok_or(MaterialWorldError::Arithmetic)
         },
     )?;
-    let mut bytes = bounded_bytes(length)?;
+    let mut bytes = bounded_bytes(length, MAX_MATERIAL_TICK_RECEIPT_BYTES)?;
     bytes.extend_from_slice(RECEIPT_DOMAIN);
     bytes.extend_from_slice(&14_u32.to_be_bytes());
     bytes.extend_from_slice(&tick.to_be_bytes());
@@ -827,7 +831,7 @@ pub struct MaterialTickReceipts {
 /// Refuses versions, tags, counts, truncation, trailing bytes and invalid quantity relations.
 pub fn decode_material_receipts(bytes: &[u8]) -> Result<MaterialTickReceipts, MaterialWorldError> {
     use babylon_material_circuit::*;
-    if bytes.len() > MAX_MATERIAL_WORLD_REGISTER_BYTES || !bytes.starts_with(RECEIPT_DOMAIN) {
+    if bytes.len() > MAX_MATERIAL_TICK_RECEIPT_BYTES || !bytes.starts_with(RECEIPT_DOMAIN) {
         return Err(MaterialWorldError::Wire);
     }
     let mut cursor = ReceiptCursor {

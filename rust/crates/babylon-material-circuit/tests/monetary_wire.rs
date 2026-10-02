@@ -314,7 +314,7 @@ fn monetary_tags_counts_and_invalid_currency_are_refused() {
         );
     }
     for (count_offset, excess) in [
-        (accounting + 1, 65_537_u32),
+        (accounting + 1, 131_073_u32),
         (purchases - 4, 65_537),
         (shifts - 4, 65_537),
         (shifts + 2 * SHIFT_BYTES, 131_073),

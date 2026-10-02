@@ -41,11 +41,10 @@ fn connection(
         .is_ok()
 }
 pub(crate) fn validate(state: &MaterialCircuitState) -> Result<()> {
-    for n in [
-        state.commodities.len(),
-        state.service_connections.len(),
-        state.service_orders.len(),
-    ] {
+    if state.service_connections.len() > crate::MAX_SERVICE_CONNECTIONS {
+        return Err(MaterialCircuitError::RowLimit);
+    }
+    for n in [state.commodities.len(), state.service_orders.len()] {
         if n > MAX_MATERIAL_CIRCUIT_ROWS {
             return Err(MaterialCircuitError::RowLimit);
         }

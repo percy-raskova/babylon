@@ -29,18 +29,34 @@ type CapacityKey = (u64, CorridorId);
 
 fn check_row_limits(state: &MaterialCircuitState) -> Result<(), MaterialCircuitError> {
     crate::capacity::row_limits(state)?;
+    if [
+        (
+            state.input_coefficients.len(),
+            crate::MAX_INPUT_COEFFICIENTS,
+        ),
+        (state.supplier_routes.len(), crate::MAX_SUPPLIER_ROUTES),
+        (
+            state.service_connections.len(),
+            crate::MAX_SERVICE_CONNECTIONS,
+        ),
+        (
+            state.route_stage_capacities.len(),
+            crate::MAX_ROUTE_CAPACITY_MEMBERSHIPS,
+        ),
+        (state.inventory.len(), crate::MAX_INVENTORY_ROWS),
+    ]
+    .into_iter()
+    .any(|(length, limit)| length > limit)
+    {
+        return Err(MaterialCircuitError::RowLimit);
+    }
     let lengths = [
         state.site_logistics_nodes.len(),
         state.process_outputs.len(),
-        state.input_coefficients.len(),
         state.labor_coefficients.len(),
-        state.supplier_routes.len(),
         state.commodities.len(),
         state.service_orders.len(),
-        state.service_connections.len(),
-        state.route_stage_capacities.len(),
         state.route_stages.len(),
-        state.inventory.len(),
         state.orders.len(),
         state.backlog.len(),
         state.freight.len(),
@@ -105,18 +121,10 @@ fn canonicalize_rows(state: &mut MaterialCircuitState) {
 }
 
 pub(crate) fn has_duplicate<T, K: PartialEq>(rows: &[T], key: impl Fn(&T) -> K) -> bool {
-    rows.windows(2)
-        .take(MAX_MATERIAL_CIRCUIT_ROWS)
-        .any(|pair| key(&pair[0]) == key(&pair[1]))
+    rows.windows(2).any(|pair| key(&pair[0]) == key(&pair[1]))
 }
 
 fn validate_unique_rows(state: &MaterialCircuitState) -> Result<(), MaterialCircuitError> {
-    let node_ids: BTreeSet<_> = state
-        .site_logistics_nodes
-        .iter()
-        .take(MAX_MATERIAL_CIRCUIT_ROWS + 1)
-        .map(|row| row.node_id)
-        .collect();
     let dispatch_ids: BTreeSet<_> = state
         .freight
         .iter()
@@ -128,7 +136,6 @@ fn validate_unique_rows(state: &MaterialCircuitState) -> Result<(), MaterialCirc
             (row.route_id, row.stage_index, row.corridor_id)
         })
         || has_duplicate(&state.site_logistics_nodes, |row| row.site_id)
-        || node_ids.len() != state.site_logistics_nodes.len()
         || has_duplicate(&state.supplier_routes, |row| {
             (
                 row.buyer_site_id,
@@ -306,7 +313,6 @@ fn supplier_routes(state: &MaterialCircuitState) -> BTreeMap<SupplierKey, Supply
     state
         .supplier_routes
         .iter()
-        .take(MAX_MATERIAL_CIRCUIT_ROWS + 1)
         .map(|row| {
             (
                 (
@@ -773,6 +779,22 @@ fn recurring_merchant_hours(
         .attendance
         .binary_search_by_key(&key, |row| (row.site_id, row.unit_id))
         .map_err(|_| MaterialCircuitError::PayrollInvariant)?;
+    if economy
+        .employment
+        .binary_search_by_key(&key, |row| (row.site_id, row.unit_id))
+        .is_err()
+    {
+        let labor = state
+            .labor
+            .binary_search_by_key(&(state.period, key.0, key.1), |row| {
+                (row.period, row.site_id, row.unit_id)
+            })
+            .map_err(|_| MaterialCircuitError::PayrollInvariant)?;
+        if recurring.attendance[index].planned_hours != 0 || state.labor[labor].available != 0 {
+            return Err(MaterialCircuitError::PayrollInvariant);
+        }
+        return Ok(physical_need);
+    }
     recurring.attendance[index]
         .planned_hours
         .checked_sub(other_work)
@@ -798,7 +820,7 @@ fn staffing_work_owners(
             if owners.insert(*process, binding).is_some() {
                 return Err(MaterialCircuitError::DuplicateRow);
             }
-            if owners.len() > MAX_MATERIAL_CIRCUIT_ROWS {
+            if owners.len() > crate::MAX_STAFFING_WORK_SOURCES {
                 return Err(MaterialCircuitError::RowLimit);
             }
         }

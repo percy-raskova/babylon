@@ -443,24 +443,48 @@ pub(crate) fn plan_attendance(
             requested,
         )?;
     }
+    install_attendance_plans(state, &hours, next_period)
+}
+
+fn install_attendance_plans(
+    state: &mut MaterialCircuitState,
+    hours: &BTreeMap<(SiteId, UnitId), u64>,
+    next_period: u64,
+) -> Result<(), MaterialCircuitError> {
     let CircuitAccounting::Monetary(economy) = &mut state.accounting else {
-        unreachable!()
+        return Err(MaterialCircuitError::MonetaryInvariant);
     };
     let recurring = economy
         .recurring
         .as_mut()
         .ok_or(MaterialCircuitError::MonetaryInvariant)?;
-    recurring.attendance = economy
+    let employment: BTreeSet<_> = economy
         .employment
         .iter()
-        .map(|terms| AttendancePlan {
-            site_id: terms.site_id,
-            unit_id: terms.unit_id,
+        .map(|terms| (terms.site_id, terms.unit_id))
+        .collect();
+    let principals: BTreeSet<_> = employment
+        .iter()
+        .copied()
+        .chain(
+            state
+                .labor
+                .iter()
+                .filter(|row| row.period == state.period)
+                .map(|row| (row.site_id, row.unit_id)),
+        )
+        .collect();
+    recurring.attendance = principals
+        .into_iter()
+        .map(|(site_id, unit_id)| AttendancePlan {
+            site_id,
+            unit_id,
             period: next_period,
-            planned_hours: hours
-                .get(&(terms.site_id, terms.unit_id))
-                .copied()
-                .unwrap_or(0),
+            planned_hours: if employment.contains(&(site_id, unit_id)) {
+                hours.get(&(site_id, unit_id)).copied().unwrap_or(0)
+            } else {
+                0
+            },
         })
         .collect();
     Ok(())

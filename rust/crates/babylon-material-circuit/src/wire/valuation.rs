@@ -1,6 +1,6 @@
 //! Exact current historical-cost book, with no implicit missing-value convention.
 use super::accounting::{append_account, decode_account, decode_currency, ordered_rows};
-use super::{append_rows, decode_rows, Cursor};
+use super::{append_bounded_rows, append_rows, decode_bounded_rows, decode_rows, Cursor};
 use crate::{
     CapitalAccount, EquityCarryingValue, FreightCarryingValue, FreightLotId, GoodId,
     HistoricalCostBook, HistoricalCostSnapshot, MaterialCircuitError, SiteId, StockCarryingValue,
@@ -12,7 +12,7 @@ pub(super) fn append(
     book: &HistoricalCostBook,
 ) -> Result<(), MaterialCircuitError> {
     let rows = book.snapshot();
-    append_rows(out, &rows.accounts, |b, r| {
+    append_bounded_rows(out, &rows.accounts, crate::MAX_MONETARY_ACCOUNTS, |b, r| {
         append_account(b, r.account);
         b.extend_from_slice(&r.opening_capital.micro_units().to_be_bytes());
         b.extend_from_slice(&r.contributed_capital.micro_units().to_be_bytes());
@@ -62,7 +62,7 @@ pub(super) fn append(
 }
 
 pub(super) fn decode(cursor: &mut Cursor<'_>) -> Result<HistoricalCostBook, MaterialCircuitError> {
-    let accounts = decode_rows(cursor, |b| {
+    let accounts = decode_bounded_rows(cursor, crate::MAX_MONETARY_ACCOUNTS, |b| {
         Ok(CapitalAccount {
             account: decode_account(b)?,
             opening_capital: decode_currency(b)?,

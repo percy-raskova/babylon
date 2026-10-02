@@ -255,13 +255,15 @@ fn two_pass_handling_evidence_can_exceed_one_state_table() {
 #[test]
 fn every_family_keeps_its_explicit_row_and_whole_envelope_bounds() {
     use babylon_material_circuit::{MAX_MATERIAL_CIRCUIT_ROWS, MAX_MONEY_TRANSFERS_PER_PERIOD};
-    use babylon_tick::material_world::MAX_MATERIAL_WORLD_REGISTER_BYTES;
+    use babylon_tick::material_world::MAX_MATERIAL_TICK_RECEIPT_BYTES;
     for tag in 1..=33_u8 {
         let limit = match tag {
             7 => 2 * MAX_MATERIAL_CIRCUIT_ROWS,
             11 => MAX_MONEY_TRANSFERS_PER_PERIOD,
             20 => babylon_material_circuit::MAX_SERVICE_RECEIPTS_PER_PERIOD,
             12 | 28 | 29 => babylon_material_circuit::MAX_STAFFING_MEMBERS,
+            16 => babylon_material_circuit::MAX_REPLENISHMENT_POLICIES,
+            19 => babylon_material_circuit::MAX_MONETARY_ACCOUNTS,
             _ => MAX_MATERIAL_CIRCUIT_ROWS,
         };
         let mut bytes = envelope(0, &[]);
@@ -274,7 +276,7 @@ fn every_family_keeps_its_explicit_row_and_whole_envelope_bounds() {
         );
     }
     let mut bytes = envelope(0, &[]);
-    bytes.resize(MAX_MATERIAL_WORLD_REGISTER_BYTES + 1, 0);
+    bytes.resize(MAX_MATERIAL_TICK_RECEIPT_BYTES + 1, 0);
     assert!(decode_material_receipts(&bytes).is_err());
 }
 

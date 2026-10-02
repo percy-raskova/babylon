@@ -2,7 +2,7 @@
 
 use babylon_kernel::currency::Currency;
 
-use super::{append_rows, decode_rows, Cursor};
+use super::{append_bounded_rows, append_rows, decode_bounded_rows, decode_rows, Cursor};
 use crate::{
     AccountId, CashAccount, CircuitAccounting, EmploymentTerms, FinalDemandPrincipalId,
     FundedShift, LaborCompensation, MaterialCircuitError, MemberLaborCapacityRow, MonetaryBook,
@@ -79,10 +79,15 @@ pub(super) fn append(
     };
     output.push(1);
     let snapshot = economy.book.snapshot();
-    append_rows(output, &snapshot.accounts, |bytes, row| {
-        append_account(bytes, row.id);
-        bytes.extend_from_slice(&row.cash.micro_units().to_be_bytes());
-    })?;
+    append_bounded_rows(
+        output,
+        &snapshot.accounts,
+        crate::MAX_MONETARY_ACCOUNTS,
+        |bytes, row| {
+            append_account(bytes, row.id);
+            bytes.extend_from_slice(&row.cash.micro_units().to_be_bytes());
+        },
+    )?;
     append_rows(output, &snapshot.purchases, |bytes, row| {
         append_order(bytes, row.order);
         append_account(bytes, row.buyer);
@@ -145,7 +150,7 @@ pub(super) fn decode(cursor: &mut Cursor<'_>) -> Result<CircuitAccounting, Mater
         1 => {}
         _ => return Err(MaterialCircuitError::WireEnum),
     }
-    let accounts = decode_rows(cursor, |bytes| {
+    let accounts = decode_bounded_rows(cursor, crate::MAX_MONETARY_ACCOUNTS, |bytes| {
         Ok(CashAccount {
             id: decode_account(bytes)?,
             cash: decode_currency(bytes)?,

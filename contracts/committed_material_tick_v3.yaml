@@ -26,7 +26,7 @@ envelope:
 receipts:
   version: 14
   domain: "babylon.material-tick-receipts.v14\0"
-  header: u32_big_endian_version_13_then_u64_big_endian_positive_resolve_tick
+  header: u32_big_endian_version_14_then_u64_big_endian_positive_resolve_tick
   family_frame: u8_tag_then_u64_big_endian_count
   family_count: 33
   identities: exact_32_bytes
@@ -477,6 +477,8 @@ receipts:
     At most N first-pass orders plus N new procurement orders after generated retail principals retire.
     Delivery principals remain live through both passes, so dispatch and local-transfer families retain N.
   maximum_member_and_wage_accrual_rows: 131072
+  maximum_procurement_rows: 262144
+  maximum_income_account_rows: 131072
   maximum_money_transfer_rows: 1441792
   maximum_service_performance_rows: 196608
   money_transfer_bound: >-

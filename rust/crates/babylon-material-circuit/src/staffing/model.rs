@@ -218,7 +218,7 @@ impl StaffingState {
                 if !work_sources.insert(*source) {
                     return Err(StaffingError::DuplicateWorkSource);
                 }
-                if work_sources.len() > MAX_MATERIAL_CIRCUIT_ROWS {
+                if work_sources.len() > crate::MAX_STAFFING_WORK_SOURCES {
                     return Err(StaffingError::RowLimit);
                 }
             }

@@ -143,30 +143,7 @@ fn local_retailers(builder: &mut Builder<'_>) -> Result<BTreeMap<EconomicLocatio
             handling: actors::handling_requirements(builder)?,
         };
         let retail_hours = retail_hours(builder, persons, households)?;
-        let actor = builder
-            .actors
-            .get_mut(&site)
-            .ok_or(NationalOpeningError::Identity)?;
-        if let Some(process) = actor.process_id {
-            let recipe = builder
-                .policy
-                .recipes
-                .get(&actor.function)
-                .ok_or(NationalOpeningError::Policy)?;
-            let available = quantity(actor.employed, builder.policy.work_hours_per_person)?;
-            actor.planned_batches =
-                available.saturating_sub(retail_hours) / recipe.labor_hours_per_batch;
-            let row = builder.opening.sites[*builder
-                .sites
-                .get(&site)
-                .ok_or(NationalOpeningError::Identity)?]
-            .processes
-            .iter_mut()
-            .find(|p| p.process_id == process)
-            .ok_or(NationalOpeningError::Identity)?;
-            row.planned_batches = actor.planned_batches;
-            row.output_buffer = quantity(actor.planned_batches, recipe.output_units_per_batch)?;
-        }
+        reserve_retail_labor(builder, site, retail_hours)?;
         builder.site_mut(site)?.merchant = Some(merchant);
         let staffing = builder
             .opening
@@ -189,6 +166,47 @@ fn local_retailers(builder: &mut Builder<'_>) -> Result<BTreeMap<EconomicLocatio
         selected.insert(location, site);
     }
     Ok(selected)
+}
+
+fn reserve_retail_labor(builder: &mut Builder<'_>, site: SiteId, retail_hours: u64) -> Result<()> {
+    let actor = builder
+        .actors
+        .get_mut(&site)
+        .ok_or(NationalOpeningError::Identity)?;
+    if let Some(process) = actor.process_id {
+        let recipe = builder
+            .policy
+            .recipes
+            .get(&actor.function)
+            .ok_or(NationalOpeningError::Policy)?;
+        let available = quantity(actor.employed, builder.policy.work_hours_per_person)?;
+        actor.planned_batches =
+            available.saturating_sub(retail_hours) / recipe.labor_hours_per_batch;
+        let output_buffer = if matches!(
+            builder
+                .policy
+                .commodities
+                .get(&recipe.output)
+                .ok_or(NationalOpeningError::Policy)?
+                .kind,
+            CommodityKind::Storable { .. }
+        ) {
+            quantity(actor.planned_batches, recipe.output_units_per_batch)?
+        } else {
+            0
+        };
+        let row = builder.opening.sites[*builder
+            .sites
+            .get(&site)
+            .ok_or(NationalOpeningError::Identity)?]
+        .processes
+        .iter_mut()
+        .find(|p| p.process_id == process)
+        .ok_or(NationalOpeningError::Identity)?;
+        row.planned_batches = actor.planned_batches;
+        row.output_buffer = output_buffer;
+    }
+    Ok(())
 }
 
 fn retail_hours(builder: &Builder<'_>, persons: u64, households: u64) -> Result<u64> {

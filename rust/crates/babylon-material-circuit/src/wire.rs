@@ -5,6 +5,8 @@ mod capacity;
 mod equipment;
 mod financial;
 mod recurring;
+#[cfg(test)]
+mod row_limits_tests;
 mod services;
 mod valuation;
 
@@ -29,8 +31,8 @@ use crate::{
 pub const MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES: &[u8] = b"babylon.material-circuit-state.v3";
 /// SHA-256 of the current language-neutral material circuit contract source.
 pub const MATERIAL_CIRCUIT_SOURCE_SHA256: [u8; 32] = [
-    144, 20, 15, 231, 169, 34, 231, 113, 213, 49, 210, 25, 81, 132, 233, 84, 23, 216, 23, 104, 30,
-    24, 74, 43, 95, 36, 149, 124, 106, 186, 210, 121,
+    65, 227, 116, 254, 63, 217, 212, 141, 227, 152, 241, 182, 158, 65, 156, 112, 87, 130, 108, 176,
+    13, 21, 82, 97, 124, 105, 78, 165, 37, 238, 8, 69,
 ];
 
 const SCHEMA_VERSION: u16 = 15;
@@ -44,9 +46,9 @@ impl From<CursorError> for MaterialCircuitError {
     }
 }
 
-fn row_count(cursor: &mut Cursor<'_>) -> Result<usize, MaterialCircuitError> {
+fn row_count(cursor: &mut Cursor<'_>, limit: usize) -> Result<usize, MaterialCircuitError> {
     let count = usize::try_from(cursor.u32()?).map_err(|_| MaterialCircuitError::WireLimit)?;
-    if count > MAX_MATERIAL_CIRCUIT_ROWS {
+    if count > limit {
         return Err(MaterialCircuitError::WireLimit);
     }
     Ok(count)
@@ -55,11 +57,23 @@ fn row_count(cursor: &mut Cursor<'_>) -> Result<usize, MaterialCircuitError> {
 fn append_rows<T>(
     output: &mut Vec<u8>,
     rows: &[T],
+    append: impl FnMut(&mut Vec<u8>, &T),
+) -> Result<(), MaterialCircuitError> {
+    append_bounded_rows(output, rows, MAX_MATERIAL_CIRCUIT_ROWS, append)
+}
+
+fn append_bounded_rows<T>(
+    output: &mut Vec<u8>,
+    rows: &[T],
+    limit: usize,
     mut append: impl FnMut(&mut Vec<u8>, &T),
 ) -> Result<(), MaterialCircuitError> {
+    if rows.len() > limit {
+        return Err(MaterialCircuitError::WireLimit);
+    }
     let count = u32::try_from(rows.len()).map_err(|_| MaterialCircuitError::WireLimit)?;
     output.extend_from_slice(&count.to_be_bytes());
-    for row in rows.iter().take(MAX_MATERIAL_CIRCUIT_ROWS + 1) {
+    for row in rows {
         append(output, row);
     }
     Ok(())
@@ -67,14 +81,19 @@ fn append_rows<T>(
 
 fn decode_rows<T>(
     cursor: &mut Cursor<'_>,
+    decode: impl FnMut(&mut Cursor<'_>) -> Result<T, MaterialCircuitError>,
+) -> Result<Vec<T>, MaterialCircuitError> {
+    decode_bounded_rows(cursor, MAX_MATERIAL_CIRCUIT_ROWS, decode)
+}
+
+fn decode_bounded_rows<T>(
+    cursor: &mut Cursor<'_>,
+    limit: usize,
     mut decode: impl FnMut(&mut Cursor<'_>) -> Result<T, MaterialCircuitError>,
 ) -> Result<Vec<T>, MaterialCircuitError> {
-    let count = row_count(cursor)?;
+    let count = row_count(cursor, limit)?;
     let mut rows = Vec::with_capacity(count);
-    for index in 0..=MAX_MATERIAL_CIRCUIT_ROWS {
-        if index == count {
-            break;
-        }
+    for _ in 0..count {
         rows.push(decode(cursor)?);
     }
     Ok(rows)
@@ -107,7 +126,7 @@ fn append_input_coefficients(
     output: &mut Vec<u8>,
     rows: &[InputOutputCoefficient],
 ) -> Result<(), MaterialCircuitError> {
-    append_rows(output, rows, |bytes, row| {
+    append_bounded_rows(output, rows, crate::MAX_INPUT_COEFFICIENTS, |bytes, row| {
         bytes.extend_from_slice(&row.process_id.as_bytes());
         bytes.extend_from_slice(&row.good_id.as_bytes());
         bytes.extend_from_slice(&row.unit_id.as_bytes());
@@ -130,7 +149,7 @@ fn append_supplier_routes(
     output: &mut Vec<u8>,
     rows: &[SupplierRoute],
 ) -> Result<(), MaterialCircuitError> {
-    append_rows(output, rows, |bytes, row| {
+    append_bounded_rows(output, rows, crate::MAX_SUPPLIER_ROUTES, |bytes, row| {
         bytes.extend_from_slice(&row.buyer_site_id.as_bytes());
         bytes.extend_from_slice(&row.supplier_site_id.as_bytes());
         bytes.extend_from_slice(&row.good_id.as_bytes());
@@ -157,18 +176,23 @@ fn append_stage_capacities(
     output: &mut Vec<u8>,
     rows: &[RouteStageCapacity],
 ) -> Result<(), MaterialCircuitError> {
-    append_rows(output, rows, |bytes, row| {
-        bytes.extend_from_slice(&row.route_id.as_bytes());
-        bytes.extend_from_slice(&row.stage_index.to_be_bytes());
-        bytes.extend_from_slice(&row.corridor_id.as_bytes());
-    })
+    append_bounded_rows(
+        output,
+        rows,
+        crate::MAX_ROUTE_CAPACITY_MEMBERSHIPS,
+        |bytes, row| {
+            bytes.extend_from_slice(&row.route_id.as_bytes());
+            bytes.extend_from_slice(&row.stage_index.to_be_bytes());
+            bytes.extend_from_slice(&row.corridor_id.as_bytes());
+        },
+    )
 }
 
 fn append_inventory(
     output: &mut Vec<u8>,
     rows: &[InventoryRow],
 ) -> Result<(), MaterialCircuitError> {
-    append_rows(output, rows, |bytes, row| {
+    append_bounded_rows(output, rows, crate::MAX_INVENTORY_ROWS, |bytes, row| {
         bytes.extend_from_slice(&row.site_id.as_bytes());
         bytes.extend_from_slice(&row.good_id.as_bytes());
         bytes.extend_from_slice(&row.unit_id.as_bytes());
@@ -293,7 +317,7 @@ fn decode_process_outputs(
 fn decode_input_coefficients(
     cursor: &mut Cursor<'_>,
 ) -> Result<Vec<InputOutputCoefficient>, MaterialCircuitError> {
-    decode_rows(cursor, |bytes| {
+    decode_bounded_rows(cursor, crate::MAX_INPUT_COEFFICIENTS, |bytes| {
         Ok(InputOutputCoefficient {
             process_id: ProcessId::from_bytes(bytes.array()?),
             good_id: GoodId::from_bytes(bytes.array()?),
@@ -318,7 +342,7 @@ fn decode_labor_coefficients(
 fn decode_supplier_routes(
     cursor: &mut Cursor<'_>,
 ) -> Result<Vec<SupplierRoute>, MaterialCircuitError> {
-    decode_rows(cursor, |bytes| {
+    decode_bounded_rows(cursor, crate::MAX_SUPPLIER_ROUTES, |bytes| {
         Ok(SupplierRoute {
             buyer_site_id: SiteId::from_bytes(bytes.array()?),
             supplier_site_id: SiteId::from_bytes(bytes.array()?),
@@ -349,7 +373,7 @@ fn decode_route_stages(cursor: &mut Cursor<'_>) -> Result<Vec<RouteStage>, Mater
 fn decode_stage_capacities(
     cursor: &mut Cursor<'_>,
 ) -> Result<Vec<RouteStageCapacity>, MaterialCircuitError> {
-    decode_rows(cursor, |bytes| {
+    decode_bounded_rows(cursor, crate::MAX_ROUTE_CAPACITY_MEMBERSHIPS, |bytes| {
         Ok(RouteStageCapacity {
             route_id: RouteId::from_bytes(bytes.array()?),
             stage_index: bytes.u16()?,
@@ -359,7 +383,7 @@ fn decode_stage_capacities(
 }
 
 fn decode_inventory(cursor: &mut Cursor<'_>) -> Result<Vec<InventoryRow>, MaterialCircuitError> {
-    decode_rows(cursor, |bytes| {
+    decode_bounded_rows(cursor, crate::MAX_INVENTORY_ROWS, |bytes| {
         Ok(InventoryRow {
             site_id: SiteId::from_bytes(bytes.array()?),
             good_id: GoodId::from_bytes(bytes.array()?),

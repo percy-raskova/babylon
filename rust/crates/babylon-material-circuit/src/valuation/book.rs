@@ -66,7 +66,7 @@ impl HistoricalCostBook {
     /// # Errors
     /// Refuses duplicates, negative costs, unknown owners or bounded row excess.
     pub fn from_snapshot(rows: HistoricalCostSnapshot) -> Result<Self> {
-        if rows.accounts.len() > MAX_MATERIAL_CIRCUIT_ROWS
+        if rows.accounts.len() > crate::MAX_MONETARY_ACCOUNTS
             || rows.stocks.len() > MAX_CARRYING_STOCKS
             || rows.freight.len() > MAX_MATERIAL_CIRCUIT_ROWS
             || rows.equity.len() > MAX_MATERIAL_CIRCUIT_ROWS

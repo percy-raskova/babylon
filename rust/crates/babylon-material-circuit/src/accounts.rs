@@ -316,7 +316,9 @@ impl MonetaryBook {
     /// # Errors
     /// Refuses row overflow, duplicate principals, absent owners or invalid rows.
     pub fn from_snapshot(snapshot: MonetaryBookSnapshot) -> Result<Self, MonetaryError> {
-        row_limit(snapshot.accounts.len())?;
+        if snapshot.accounts.len() > crate::MAX_MONETARY_ACCOUNTS {
+            return Err(MonetaryError::RowLimit);
+        }
         row_limit(snapshot.purchases.len())?;
         row_limit(snapshot.shifts.len())?;
         let mut book = Self {

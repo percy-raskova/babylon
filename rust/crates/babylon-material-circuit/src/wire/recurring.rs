@@ -1,5 +1,5 @@
 //! Exact captured needs, stocks and decision policies; no default on old bytes.
-use super::{append_rows, decode_rows, Cursor};
+use super::{append_bounded_rows, append_rows, decode_bounded_rows, decode_rows, Cursor};
 use crate::{
     AttendancePlan, FinalDemandPrincipalId, GoodId, HouseholdCohort, HouseholdNeed,
     HouseholdNeedBasis, HouseholdPurchasePolicy, HouseholdStock, MaterialCircuitError, PricePolicy,
@@ -77,15 +77,7 @@ pub(super) fn append(
             }
         }
     })?;
-    append_rows(output, &rows.replenishment, |bytes, row| {
-        bytes.extend_from_slice(&row.buyer_site_id.as_bytes());
-        bytes.extend_from_slice(&row.supplier_site_id.as_bytes());
-        bytes.extend_from_slice(&row.good_id.as_bytes());
-        bytes.extend_from_slice(&row.unit_id.as_bytes());
-        bytes.extend_from_slice(&row.target_stock.to_be_bytes());
-        bytes.extend_from_slice(&row.maximum_purchase.to_be_bytes());
-        bytes.extend_from_slice(&row.cash_floor.micro_units().to_be_bytes());
-    })?;
+    append_replenishment(output, &rows.replenishment)?;
     append_rows(output, &rows.production, |bytes, row| {
         bytes.extend_from_slice(&row.process_id.as_bytes());
         bytes.extend_from_slice(&row.site_id.as_bytes());
@@ -108,6 +100,26 @@ pub(super) fn append(
         b.extend_from_slice(&r.cash_floor.micro_units().to_be_bytes());
     })?;
     Ok(())
+}
+
+fn append_replenishment(
+    output: &mut Vec<u8>,
+    rows: &[ReplenishmentPolicy],
+) -> Result<(), MaterialCircuitError> {
+    append_bounded_rows(
+        output,
+        rows,
+        crate::MAX_REPLENISHMENT_POLICIES,
+        |bytes, row| {
+            bytes.extend_from_slice(&row.buyer_site_id.as_bytes());
+            bytes.extend_from_slice(&row.supplier_site_id.as_bytes());
+            bytes.extend_from_slice(&row.good_id.as_bytes());
+            bytes.extend_from_slice(&row.unit_id.as_bytes());
+            bytes.extend_from_slice(&row.target_stock.to_be_bytes());
+            bytes.extend_from_slice(&row.maximum_purchase.to_be_bytes());
+            bytes.extend_from_slice(&row.cash_floor.micro_units().to_be_bytes());
+        },
+    )
 }
 
 fn currency(bytes: &mut Cursor<'_>) -> Result<Currency, MaterialCircuitError> {
@@ -197,7 +209,7 @@ pub(super) fn decode(
                 pricing: pricing(bytes)?,
             })
         })?,
-        replenishment: decode_rows(cursor, |bytes| {
+        replenishment: decode_bounded_rows(cursor, crate::MAX_REPLENISHMENT_POLICIES, |bytes| {
             Ok(ReplenishmentPolicy {
                 buyer_site_id: SiteId::from_bytes(bytes.array()?),
                 supplier_site_id: SiteId::from_bytes(bytes.array()?),

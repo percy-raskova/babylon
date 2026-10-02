@@ -153,6 +153,54 @@ fn inventory_quantity(state: &MaterialCircuitState, site_id: SiteId) -> u64 {
         .map_or(0, |row| row.quantity)
 }
 
+#[test]
+fn shared_access_point_preserves_distinct_buyers_and_one_freight_budget() {
+    let mut state = two_route_state();
+    state.site_logistics_nodes[2].node_id = node(BUYER_NODE);
+    state.supplier_routes[1].route_id = route(ROUTE);
+    state.route_stages.truncate(1);
+    state.route_stage_capacities.truncate(1);
+    state.corridor_capacities.truncate(1);
+    state.corridor_capacities[0].available_grams = 10;
+    let bytes = encode_material_circuit_state(&state)
+        .expect("distinct buyers may share their captured logistics access point");
+    let opening = decode_material_circuit_state(&bytes).unwrap();
+    let dispatched = advance_material_circuit(&opening).unwrap();
+    assert_eq!(dispatched.state.freight.len(), 2);
+    assert_eq!(
+        dispatched
+            .dispatches
+            .iter()
+            .map(|r| r.quantity)
+            .sum::<u64>(),
+        10
+    );
+    assert_eq!(inventory_quantity(&dispatched.state, site(SUPPLIER)), 2);
+    assert_eq!(inventory_quantity(&dispatched.state, site(BUYER)), 0);
+    assert_eq!(inventory_quantity(&dispatched.state, site(12)), 0);
+    let arrived = advance_material_circuit(&dispatched.state).unwrap();
+    assert!(arrived.state.freight.is_empty());
+    assert_eq!(inventory_quantity(&arrived.state, site(SUPPLIER)), 2);
+    assert_eq!(inventory_quantity(&arrived.state, site(BUYER)), 6);
+    assert_eq!(inventory_quantity(&arrived.state, site(12)), 4);
+    assert_eq!(opening.inventory, state.inventory);
+
+    let mut duplicate_site = opening.clone();
+    duplicate_site
+        .site_logistics_nodes
+        .push(duplicate_site.site_logistics_nodes[0].clone());
+    assert_eq!(
+        encode_material_circuit_state(&duplicate_site),
+        Err(babylon_material_circuit::MaterialCircuitError::DuplicateRow)
+    );
+    let mut wrong_endpoint = opening;
+    wrong_endpoint.site_logistics_nodes[2].node_id = node(99);
+    assert_eq!(
+        encode_material_circuit_state(&wrong_endpoint),
+        Err(babylon_material_circuit::MaterialCircuitError::RouteInvariant)
+    );
+}
+
 fn two_leg_state(second_leg_capacity: u64) -> MaterialCircuitState {
     let mut state = base_state();
     let middle = node(10);

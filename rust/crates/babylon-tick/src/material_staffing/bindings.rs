@@ -142,7 +142,7 @@ impl StaffingComposition {
                 }
             }
             if members.len() > MAX_STAFFING_MEMBERS
-                || work_sources.len() > MAX_MATERIAL_CIRCUIT_ROWS
+                || work_sources.len() > babylon_material_circuit::MAX_STAFFING_WORK_SOURCES
             {
                 return Err(StaffingError::RowLimit.into());
             }

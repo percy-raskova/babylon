@@ -77,6 +77,7 @@ fn opening_capacity() -> CapacitySupply {
             cohorts: vec![],
             pending: vec![],
             installation_policies: vec![InstallationPolicy {
+                target: babylon_material_circuit::InstallationTarget::FixedUnits(1),
                 process_id: process(),
                 maximum_started_units_per_period: 1,
                 maximum_hours_per_period: 2,

@@ -7,8 +7,9 @@ use babylon_kernel::{content_digest::sha256_of, currency::Currency};
 use babylon_material_circuit::{
     EquipmentAssetId, EquipmentBinding, EquipmentCarryingValue, EquipmentCohortId,
     EquipmentDefinition, EquipmentDefinitionId, InstallationInput, InstallationPolicy,
-    InstalledEquipmentCohort, InvestmentPolicy, ProductiveEquipment, RollingProcessSupply,
-    StaffingPoolBinding, StaffingWorkSource, SupplierRoute, SupplierTransport,
+    InstallationTarget, InstalledEquipmentCohort, InvestmentPolicy, ProductiveEquipment,
+    RollingProcessSupply, StaffingPoolBinding, StaffingWorkSource, SupplierRoute,
+    SupplierTransport,
 };
 use std::collections::BTreeSet;
 
@@ -306,6 +307,9 @@ fn installation_policy(
         .min(maximum);
     equipment.installation_policies.push(InstallationPolicy {
         process_id: process,
+        target: InstallationTarget::ProductionPlan {
+            replacement_units: machine_units(builder, actor, actor.employed, definition)?,
+        },
         maximum_started_units_per_period: starts,
         maximum_hours_per_period: hours,
     });

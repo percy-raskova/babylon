@@ -280,11 +280,13 @@ fn process(
     let process_id = ProcessId::from_bytes(sha256_of(&identity));
     context.process_id = Some(process_id);
     let output_units = quantity(context.planned_batches, recipe.output_units_per_batch)?;
+    let output = builder.commodity(&recipe.output)?;
+    let stored_output = matches!(output.kind, CommodityKind::Storable { .. });
     let installation = ProcessInstallation {
         process_id,
         recipe: templates::recipe_id(context.function)?,
         planned_batches: context.planned_batches,
-        output_buffer: output_units,
+        output_buffer: if stored_output { output_units } else { 0 },
     };
     for (key, coefficient) in &recipe.inputs {
         let good = builder.commodity(key)?;
@@ -310,8 +312,7 @@ fn process(
             )?);
         }
     }
-    let output = builder.commodity(&recipe.output)?;
-    if matches!(output.kind, CommodityKind::Storable { .. }) {
+    if stored_output {
         opening_stock.push(stock(
             builder,
             &recipe.output,

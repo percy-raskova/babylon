@@ -6,7 +6,7 @@ use super::{
     StaffingError, StaffingPoolState, StaffingReceipt, StaffingState, StaffingTransition,
     StaffingWorkRequest,
 };
-use crate::{LaborCapacityRow, MAX_MATERIAL_CIRCUIT_ROWS};
+use crate::{LaborCapacityRow, MAX_STAFFING_WORK_SOURCES};
 
 fn reserved_vec<T>(count: usize) -> Result<Vec<T>, StaffingError> {
     let mut rows = Vec::new();
@@ -19,7 +19,7 @@ fn pool_requests(
     opening: &StaffingState,
     requests: &[StaffingWorkRequest],
 ) -> Result<Vec<u64>, StaffingError> {
-    if requests.len() > MAX_MATERIAL_CIRCUIT_ROWS {
+    if requests.len() > MAX_STAFFING_WORK_SOURCES {
         return Err(StaffingError::RowLimit);
     }
     let mut owners = BTreeMap::new();

@@ -4,10 +4,27 @@ use babylon_kernel::economic_location::EconomicLocation;
 
 /// Designed serialization and validation ceiling, not material abundance.
 pub const MAX_MATERIAL_CIRCUIT_ROWS: usize = 65_536;
+/// Designed ceiling for the measured 73,504 national site-stock rows.
+pub const MAX_INVENTORY_ROWS: usize = 131_072;
+/// Designed ceiling for the measured 114,680 national recipe inputs.
+pub const MAX_INPUT_COEFFICIENTS: usize = 131_072;
+/// Designed ceiling for the measured 190,505 national supplier relations.
+pub const MAX_SUPPLIER_ROUTES: usize = 262_144;
+/// Designed ceiling for the measured 247,928 route/capacity memberships.
+pub const MAX_ROUTE_CAPACITY_MEMBERSHIPS: usize = 262_144;
+/// Designed ceiling for the measured 71,856 technical service connections.
+pub const MAX_SERVICE_CONNECTIONS: usize = 131_072;
+/// Designed ceiling for the measured 66,958 cash and capital account owners.
+pub const MAX_MONETARY_ACCOUNTS: usize = 131_072;
+/// Designed ceiling for the measured 138,337 national procurement policies.
+pub const MAX_REPLENISHMENT_POLICIES: usize = 262_144;
+/// Designed ceiling for 112,805 distinct work purposes sharing counted workers.
+pub const MAX_STAFFING_WORK_SOURCES: usize = 131_072;
 /// Derived ceiling: retail retirement permits a second bounded handling pass.
 pub const MAX_HANDLING_RECEIPTS_PER_PERIOD: usize = 2 * MAX_MATERIAL_CIRCUIT_ROWS;
 /// Derived transition ceiling for disjoint input and labor resource groups.
-pub const MAX_PRODUCTION_RESOURCE_GROUPS: usize = MAX_MATERIAL_CIRCUIT_ROWS * 2;
+pub const MAX_PRODUCTION_RESOURCE_GROUPS: usize =
+    MAX_INPUT_COEFFICIENTS + MAX_MATERIAL_CIRCUIT_ROWS;
 
 macro_rules! identity_type {
     ($name:ident) => {

@@ -1,12 +1,13 @@
-//! V10 identity of an already-authorized production presentation.
+//! V11 identity of an already-authorized production presentation.
 //!
 //! Scope and the complete typed DTO are serialized as canonical JSON after the
 //! fixed domain/version. True multisets sort; events, geometry vertices and each
 //! route's physical edge sequence retain their semantic order. Serialization
-//! streams into the hash with an explicit byte ceiling. V10 binds the explicit
+//! streams into the hash with an explicit byte ceiling. V11 binds the explicit
 //! duration and selected-period events alongside household stocks, consumption,
-//! expiry, and bounded order lists with cumulative totals. V10 binds the typed
-//! county, counterpart or dependency location of each resident account.
+//! expiry, and bounded order lists with cumulative totals. V11 binds the typed
+//! county, counterpart or dependency location of each resident account, and the
+//! graph-owned aggregate staffing members with compensation and transfer witnesses.
 
 use crate::{
     observer_reader::ObserverEconomySnapshot, observer_reader::ObserverVisibility,
@@ -19,7 +20,7 @@ use std::{
     io::{self, Write},
 };
 
-const DOMAIN: &[u8] = b"babylon.production-observation-evidence.v10\0";
+const DOMAIN: &[u8] = b"babylon.production-observation-evidence.v11\0";
 const MAX_ROWS: usize = 65_536;
 const MAX_PHYSICAL_ROWS: usize = 1_114_112;
 const MAX_EVIDENCE_BYTES: usize = 128 * 1024 * 1024;
@@ -99,7 +100,7 @@ impl ObserverEconomySnapshot {
             bound: false,
         };
         output.hash.update(DOMAIN);
-        output.hash.update(9_u32.to_be_bytes());
+        output.hash.update(11_u32.to_be_bytes());
         if serde_json::to_writer(&mut output, &scope).is_err() {
             return Err(if output.bound {
                 ProductionEvidenceError::Bound
@@ -146,6 +147,23 @@ fn unique<T: Ord>(rows: impl IntoIterator<Item = T>) -> Result<()> {
     Ok(())
 }
 
+fn validate_member_identities(rows: &ProductionSnapshot) -> Result<()> {
+    let member_count = rows
+        .staffing_accounts
+        .iter()
+        .try_fold(0_usize, |n, row| n.checked_add(row.members.len()))
+        .ok_or(ProductionEvidenceError::Bound)?;
+    if member_count > babylon_material_circuit::MAX_STAFFING_MEMBERS {
+        return Err(ProductionEvidenceError::Bound);
+    }
+    unique(
+        rows.staffing_accounts
+            .iter()
+            .flat_map(|row| row.members.iter().map(|member| &member.member_id)),
+    )?;
+    Ok(())
+}
+
 fn validate_identities(rows: &ProductionSnapshot) -> Result<()> {
     for count in [
         rows.sites.len(),
@@ -182,6 +200,7 @@ fn validate_identities(rows: &ProductionSnapshot) -> Result<()> {
             .iter()
             .map(|row| (&row.site_id, &row.unit_id)),
     )?;
+    validate_member_identities(rows)?;
     unique(rows.staffing_accounts.iter().map(|row| &row.pool_id))?;
     unique(
         rows.staffing_accounts
@@ -422,6 +441,9 @@ fn canonical_production(source: &ProductionSnapshot) -> ProductionSnapshot {
     }
     rows.sites.sort_unstable();
     rows.labor_accounts.sort_unstable();
+    for pool in &mut rows.staffing_accounts {
+        pool.members.sort_unstable();
+    }
     rows.staffing_accounts.sort_unstable();
     if let Some(balance) = &mut rows.material_balance {
         balance.rows.sort_unstable();

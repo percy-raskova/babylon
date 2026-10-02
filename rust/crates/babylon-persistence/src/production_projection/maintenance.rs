@@ -232,8 +232,19 @@ fn maintenance_hours(
     let mut rows = receipt.labor_use.iter().filter(|row| {
         row.site_id == binding.provider_site_id && row.unit_id == binding.labor_unit_id
     });
-    let row = rows.next().ok_or(ProductionProjectionError::State)?;
-    if rows.next().is_some() || row.available_hours != available || row.funded_hours > available {
+    let Some(row) = rows.next() else {
+        if available == 0
+            && matches!(&prior.accounting, babylon_material_circuit::CircuitAccounting::Monetary(economy) if !economy.employment.iter().any(|term|term.site_id==binding.provider_site_id && term.unit_id==binding.labor_unit_id))
+        {
+            return Ok(0);
+        }
+        return Err(ProductionProjectionError::State);
+    };
+    let attended = row
+        .funded_hours
+        .checked_add(row.non_wage_hours)
+        .ok_or(ProductionProjectionError::Arithmetic)?;
+    if rows.next().is_some() || row.available_hours != available || attended > available {
         return Err(ProductionProjectionError::State);
     }
     let mut productive = 0_u64;
@@ -255,7 +266,7 @@ fn maintenance_hours(
                 .ok_or(ProductionProjectionError::Arithmetic)?;
         }
     }
-    row.funded_hours
+    attended
         .checked_sub(productive)
         .ok_or(ProductionProjectionError::State)
 }

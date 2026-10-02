@@ -382,7 +382,7 @@ pub(crate) fn material_observation(
         &history.register,
         history.opening.as_ref(),
         history.prior_world,
-        history.receipt.as_ref().map(|(_, digest)| *digest),
+        history.receipt.as_ref(),
     )?;
     let prior_world = history.prior_world;
     if cursor.as_ref().is_none_or(|cached| {
@@ -476,7 +476,7 @@ fn authenticated_staffing(
     register: &MaterialWorldRegister,
     opening: Option<&MaterialWorldRegister>,
     result_world: Option<[u8; 32]>,
-    receipt_digest: Option<[u8; 32]>,
+    period_receipt: Option<&(MaterialTickReceipts, [u8; 32])>,
 ) -> Result<Vec<crate::production_observation::ProductionStaffingAccount>, ObserverEconomyError> {
     use crate::production_projection::staffing::project_staffing_accounts;
     let tick = register.completed_tick();
@@ -487,6 +487,7 @@ fn authenticated_staffing(
             register,
             None,
             &[],
+            None,
         )
         .map_err(|_| ObserverEconomyError::InvalidProjection);
     }
@@ -504,7 +505,7 @@ fn authenticated_staffing(
     let current = read(tick)?;
     if current.register != *register
         || Some(current.identity.result_world_hash()) != result_world
-        || Some(current.identity.receipt_digest()) != receipt_digest
+        || Some(current.identity.receipt_digest()) != period_receipt.map(|(_, digest)| *digest)
     {
         return Err(ObserverEconomyError::InvalidProjection);
     }
@@ -530,6 +531,7 @@ fn authenticated_staffing(
         register,
         Some(prior_graph),
         &current.events,
+        period_receipt.map(|(rows, _)| rows),
     )
     .map_err(|_| ObserverEconomyError::InvalidProjection)
 }

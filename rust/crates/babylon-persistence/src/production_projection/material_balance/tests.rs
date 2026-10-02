@@ -1317,16 +1317,30 @@ fn underfunded_maintenance_uses_paid_hours_instead_of_all_available_people_time(
     let employment = keys
         .into_iter()
         .map(|(site_id, unit_id)| EmploymentTerms {
+            member_id: babylon_material_circuit::StaffingMemberId::from_bytes((site_id).as_bytes()),
             site_id,
             unit_id,
             payee,
-            hourly_rate: Currency::from_micro_units(1),
+            compensation: babylon_material_circuit::LaborCompensation::Wage(
+                Currency::from_micro_units(1),
+            ),
         })
         .collect();
     state.accounting = CircuitAccounting::Monetary(Box::new({
         let book = MonetaryBook::open(accounts).unwrap();
         MonetaryCircuit {
             financial: babylon_material_circuit::FinancialInstitutions::empty(),
+            member_labor: state
+                .labor
+                .iter()
+                .map(|row| babylon_material_circuit::MemberLaborCapacityRow {
+                    member_id: babylon_material_circuit::StaffingMemberId::from_bytes(
+                        row.site_id.as_bytes(),
+                    ),
+                    period: row.period,
+                    available_hours: row.available,
+                })
+                .collect(),
             costs: babylon_material_circuit::HistoricalCostBook::open(
                 &book,
                 state

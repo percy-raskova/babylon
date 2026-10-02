@@ -402,6 +402,7 @@ fn staffing_account(
         production_observation::ProductionStaffingSubject,
     };
     ProductionStaffingAccount {
+        members: vec![],
         pool_id: format!("pool-{site_id}"),
         site_id: site_id.into(),
         unit_id: "labor-hours".into(),
@@ -468,7 +469,7 @@ fn workforce_readings_use_exact_people_and_retention_for_only_the_selected_site(
     assert!(text.contains("40 hours per person / period (Designed)"));
     assert!(text.contains("STAFFING / PERIOD 5"));
     assert!(text.contains("Opening: 4 employed, 0 reserve"));
-    assert!(text.contains("Hires: 0 | separations: 2 | target: 2 employed"));
+    assert!(text.contains("Work activations: 0 | releases: 2 | target: 2 employed"));
     assert!(text.contains("Work request: 40 hours | prior period: 80 hours"));
     assert!(text.contains("One-period retention: 80 hours"));
     assert!(text.contains("Next opening (period 6): 80 labor-hours (Derived)"));
@@ -503,7 +504,7 @@ fn workforce_foundation_absence_and_zero_completed_flows_remain_distinct() {
     assert!(foundation.contains("Opening workforce; no completed staffing period."));
     assert!(foundation.contains("MODELED WORKFORCE / DESIGNED"));
     assert!(!foundation.contains("MODELED WORKFORCE / DERIVED"));
-    assert!(!foundation.contains("Hires:"));
+    assert!(!foundation.contains("Work activations:"));
     assert!(!foundation.contains("STAFFING / PERIOD"));
     assert!(foundation.contains("Next opening (period 1): 80 labor-hours (Derived)"));
     assert_eq!(foundation.matches("Next opening").count(), 1);
@@ -544,7 +545,7 @@ fn workforce_foundation_absence_and_zero_completed_flows_remain_distinct() {
         &snapshot,
         ProductionReadingSection::Work,
     );
-    assert!(quiet.contains("Hires: 0 | separations: 0"));
+    assert!(quiet.contains("Work activations: 0 | releases: 0"));
     assert!(!quiet.contains("no completed staffing period"));
     assert!(quiet.contains("Next opening (period 6): 80 labor-hours (Derived)"));
     assert_eq!(quiet.matches("Next opening").count(), 1);

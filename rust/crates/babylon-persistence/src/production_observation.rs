@@ -192,7 +192,7 @@ pub struct CompletedProductionLabor {
     pub maintenance_used: u64,
 }
 
-/// Stable `SOCIAL_CLASS` subject of an admitted Designed workforce pool.
+/// Stable workplace or resident member subject of an admitted workforce composition.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProductionStaffingSubject {
@@ -213,10 +213,50 @@ pub struct ProductionStaffingAccount {
     pub employed: u64,
     pub reserve: u64,
     pub previous_unretained_hours: u64,
+    /// The sole graph-owned resident person partitions of this workplace pool.
+    pub members: Vec<ProductionStaffingMemberAccount>,
     pub next_opening_period: u64,
     pub next_opening_hours: u64,
     /// Absent at foundation; present only with exact committed staffing evidence.
     pub completed: Option<CompletedProductionStaffing>,
+}
+
+/// An aggregate household-residence/workplace group, never an individual person agent.
+/// Its person counts remain separate from labor hours and source job estimates.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProductionStaffingMemberAccount {
+    pub member_id: String,
+    pub household_id: String,
+    pub residence: babylon_kernel::economic_location::EconomicLocation,
+    pub subject: ProductionStaffingSubject,
+    pub labor_force: u64,
+    pub employed: u64,
+    pub reserve: u64,
+    pub next_opening_hours: u64,
+    /// Physical controls have no captured compensation policy.
+    pub compensation: Option<ProductionLaborCompensation>,
+    pub completed: Option<CompletedProductionStaffingMember>,
+}
+
+/// Attendance mode does not identify political class or confer ownership.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub enum ProductionLaborCompensation {
+    Wage { hourly_micro_units: i128 },
+    WorkingOwner,
+    UnpaidFamily,
+}
+
+/// Exact member transfers witnessed by the committed period receipt.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CompletedProductionStaffingMember {
+    pub period: u64,
+    pub opening_employed: u64,
+    pub opening_reserve: u64,
+    pub hires: u64,
+    pub separations: u64,
 }
 
 /// Completed staffing decision. Closing E/R stocks belong to the enclosing account.

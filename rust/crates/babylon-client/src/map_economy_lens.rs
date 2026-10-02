@@ -767,6 +767,7 @@ mod tests {
         production
             .staffing_accounts
             .push(ProductionStaffingAccount {
+                members: vec![],
                 pool_id: "owner-pool".into(),
                 site_id: "source".into(),
                 unit_id: "hours".into(),

@@ -9,6 +9,9 @@ use babylon_tick::replay_session::ReplayCommitDisposition;
 
 use super::*;
 use crate::michigan_content::MichiganContentPreset;
+use babylon_tick::material_staffing::{
+    EMPLOYED_POPULATION, PREVIOUS_UNRETAINED_HOURS, RESERVE_POPULATION,
+};
 
 #[derive(Clone)]
 struct Window {
@@ -16,6 +19,7 @@ struct Window {
     graph: StableGraphState,
     register: MaterialWorldRegister,
     events: Vec<StoredEvent>,
+    receipts: Option<MaterialTickReceipts>,
 }
 
 impl Window {
@@ -26,6 +30,7 @@ impl Window {
             &self.register,
             self.opening.as_ref(),
             &self.events,
+            self.receipts.as_ref(),
         )
     }
 }
@@ -50,6 +55,7 @@ fn fixture() -> &'static PublishedFixture {
             graph: session.graph_session().stable_graph_state().unwrap(),
             register: session.material().clone(),
             events: vec![],
+            receipts: None,
         }];
         let mut sink = CollectingSink::default();
         for tick in 1..=8 {
@@ -62,6 +68,12 @@ fn fixture() -> &'static PublishedFixture {
             let prepared = session.prepare_advance(&actions).unwrap();
             let window = Window {
                 opening: Some(opening),
+                receipts: Some(
+                    babylon_tick::material_world::decode_material_receipts(
+                        prepared.material().receipt_bytes(),
+                    )
+                    .unwrap(),
+                ),
                 graph: prepared.graph_report().result_stable_graph().clone(),
                 register: prepared.material().register().clone(),
                 events: prepared
@@ -127,6 +139,18 @@ fn local_name() -> &'static str {
     local_name
 }
 
+fn stock_subject(field: &str) -> &'static str {
+    if field == PREVIOUS_UNRETAINED_HOURS {
+        return local_name();
+    }
+    let StableElementKey::Node { local_name, .. } =
+        fixture().composition.bindings()[0].members()[0].subject()
+    else {
+        panic!("member node")
+    };
+    local_name
+}
+
 fn graph_rows(graph: &StableGraphState) -> StableGraphStateRowsInput {
     let rows = graph.rows();
     StableGraphStateRowsInput {
@@ -153,7 +177,7 @@ fn set_graph_number(graph: &StableGraphState, field: &str, value: f64) -> Stable
     change_graph(graph, |rows| {
         rows.node_f64
             .iter_mut()
-            .find(|(node, key, _)| node == local_name() && key == field)
+            .find(|(node, key, _)| node == stock_subject(field) && key == field)
             .unwrap()
             .2 = value.to_bits();
     })
@@ -399,7 +423,7 @@ fn opening_and_closing_stocks_memory_owner_and_scope_are_bound() {
                 let row = rows
                     .node_f64
                     .iter_mut()
-                    .find(|(node, key, _)| node == local_name() && key == field)
+                    .find(|(node, key, _)| node == stock_subject(field) && key == field)
                     .unwrap();
                 row.2 = (f64::from_bits(row.2) + 1.0).to_bits();
             });
@@ -460,7 +484,11 @@ fn graph_numeric_lane_and_exact_integer_boundary_are_enforced() {
         9_007_199_254_740_992.0,
     );
     assert_eq!(
-        population_field(&exact, local_name(), PREVIOUS_UNRETAINED_HOURS).unwrap(),
+        StaffingGraph::new(&exact)
+            .unwrap()
+            .stocks(&fixture().composition.bindings()[0])
+            .unwrap()
+            .previous,
         1_u64 << 53
     );
     let mut missing = window.clone();
@@ -538,4 +566,32 @@ fn full_typed_integer_hours_above_graph_precision_survive_the_complete_account_p
     assert_eq!(result.target_employed, people);
     assert_eq!(result.hires, 0);
     assert_eq!(result.separations, 0);
+}
+
+#[test]
+fn member_receipt_omission_duplication_and_residence_forgery_refuse_even_with_valid_pool_totals() {
+    let original = committed();
+    original.project().unwrap();
+    let mut missing = original.clone();
+    missing.receipts.as_mut().unwrap().staffing_members.pop();
+    assert_eq!(missing.project(), Err(ProductionProjectionError::History));
+    let mut duplicate = original.clone();
+    let row = duplicate.receipts.as_ref().unwrap().staffing_members[0].clone();
+    duplicate
+        .receipts
+        .as_mut()
+        .unwrap()
+        .staffing_members
+        .push(row);
+    assert_eq!(duplicate.project(), Err(ProductionProjectionError::History));
+    let mut changed = original;
+    let row = &mut changed.receipts.as_mut().unwrap().staffing_members[0];
+    row.member = babylon_material_circuit::StaffingMemberBinding::try_new(
+        row.member.member_id(),
+        row.member.household_id(),
+        "county:26099".parse().unwrap(),
+        row.member.labor_force(),
+    )
+    .unwrap();
+    assert_eq!(changed.project(), Err(ProductionProjectionError::History));
 }

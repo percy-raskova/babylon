@@ -60,6 +60,7 @@ fn published_observations() -> &'static [ObserverEconomySnapshot] {
             session.material(),
             None,
             &[],
+            None,
         )
         .unwrap();
         let mut result = vec![observation.clone()];
@@ -141,6 +142,12 @@ fn prepared_staffing(
         prepared.material().register(),
         Some(opening),
         &events,
+        Some(
+            &babylon_tick::material_world::decode_material_receipts(
+                prepared.material().receipt_bytes(),
+            )
+            .unwrap(),
+        ),
     )
     .unwrap()
 }
@@ -230,6 +237,11 @@ fn full_disclosure() -> ObserverEconomySnapshot {
             }),
         });
     household_disclosure(production);
+    production.staffing_accounts[0].members[0].compensation = Some(
+        crate::production_observation::ProductionLaborCompensation::Wage {
+            hourly_micro_units: 3,
+        },
+    );
     observation
 }
 
@@ -328,6 +340,9 @@ fn presentation_multisets_permute_without_changing_evidence_identity() {
     rows.physical_edges.reverse();
     rows.labor_accounts.reverse();
     rows.staffing_accounts.reverse();
+    for pool in &mut rows.staffing_accounts {
+        pool.members.reverse();
+    }
     rows.freight_capacity_accounts.reverse();
     for account in &mut rows.freight_capacity_accounts {
         account.route_ids.reverse();
@@ -485,6 +500,10 @@ fn duplicate_principals_and_row_bounds_refuse_instead_of_acquiring_a_digest() {
     for mutate in [
         |rows: &mut ProductionSnapshot| {
             rows.sites.push(rows.sites[0].clone());
+        },
+        |rows: &mut ProductionSnapshot| {
+            let member = rows.staffing_accounts[0].members[0].clone();
+            rows.staffing_accounts[0].members.push(member);
         },
         |rows: &mut ProductionSnapshot| {
             rows.physical_edges.push(rows.physical_edges[0].clone());

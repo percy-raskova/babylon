@@ -471,7 +471,7 @@ fn describe_staffing_accounts(
         if let Some(completed) = &account.completed {
             writeln!(
                 value,
-                "\nSTAFFING / PERIOD {}\nOpening: {} employed, {} reserve\nHires: {} | separations: {} | target: {} employed\nWork request: {} hours | prior period: {} hours\nOne-period retention: {} hours\n",
+                "\nSTAFFING / PERIOD {}\nOpening: {} employed, {} reserve\nWork activations: {} | releases: {} | target: {} employed\nWork request: {} hours | prior period: {} hours\nOne-period retention: {} hours\n",
                 completed.period,
                 grouped(completed.opening_employed),
                 grouped(completed.opening_reserve),

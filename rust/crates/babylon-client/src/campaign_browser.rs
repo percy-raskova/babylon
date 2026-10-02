@@ -1403,6 +1403,7 @@ mod tests {
                     ],
                 }],
                 staffing_accounts: vec![ProductionStaffingAccount {
+                    members: vec![],
                     pool_id: "2".repeat(64),
                     site_id,
                     unit_id: "3".repeat(64),

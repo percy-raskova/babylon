@@ -11,6 +11,8 @@ use crate::{
     production_observation::ProductionLaborAccount,
 };
 
+mod attendance;
+
 type Principal = (SiteId, UnitId);
 type Budgets = BTreeMap<Principal, u64>;
 type Totals = BTreeMap<Principal, LaborTotals>;
@@ -48,10 +50,9 @@ pub(super) fn project_labor_accounts(
             {
                 return Err(ProductionProjectionError::State);
             }
-            (
-                Some(budgets(prior)?),
-                completed_totals(prior, receipt, maintenance)?,
-            )
+            let available = budgets(prior)?;
+            let totals = completed_totals(prior, receipt, maintenance, &available)?;
+            (Some(available), totals)
         }
         _ => return Err(ProductionProjectionError::History),
     };
@@ -107,15 +108,8 @@ fn budgets(state: &MaterialCircuitState) -> Result<Budgets, ProductionProjection
             return Err(ProductionProjectionError::State);
         }
     }
-    for process in &state.process_outputs {
-        let coefficient = state
-            .labor_coefficients
-            .iter()
-            .find(|row| row.process_id == process.process_id)
-            .ok_or(ProductionProjectionError::State)?;
-        result
-            .entry((process.site_id, coefficient.unit_id))
-            .or_insert(0);
+    for (key, _) in process_labor(state)?.into_values() {
+        result.entry(key).or_insert(0);
     }
     for merchant in &state.merchants {
         result
@@ -134,28 +128,19 @@ fn completed_totals(
     opening: &MaterialCircuitState,
     receipt: &MaterialTickReceipts,
     maintenance: Option<&babylon_material_circuit::MaintenanceReceipt>,
+    available: &Budgets,
 ) -> Result<Totals, ProductionProjectionError> {
+    let sources = process_labor(opening)?;
     let mut processes = BTreeMap::<ProcessId, (Principal, u64, u64)>::new();
     for plan in &opening.production_commitments {
-        let coefficient = opening
-            .labor_coefficients
-            .iter()
-            .find(|row| row.process_id == plan.process_id)
+        let (key, coefficient) = sources
+            .get(&plan.process_id)
+            .copied()
             .ok_or(ProductionProjectionError::State)?;
         if plan.period != opening.period
-            || !opening
-                .process_outputs
-                .iter()
-                .any(|row| row.process_id == plan.process_id && row.site_id == plan.site_id)
+            || plan.site_id != key.0
             || processes
-                .insert(
-                    plan.process_id,
-                    (
-                        (plan.site_id, coefficient.unit_id),
-                        coefficient.quantity_per_batch,
-                        plan.planned_batches,
-                    ),
-                )
+                .insert(plan.process_id, (key, coefficient, plan.planned_batches))
                 .is_some()
         {
             return Err(ProductionProjectionError::State);
@@ -187,6 +172,7 @@ fn completed_totals(
         account.maintenance_used = done.consumed_labor_hours;
         account.used = add_time(account.used, done.consumed_labor_hours, 1)?;
     }
+    attendance::reconcile(opening, receipt, &totals, available)?;
     Ok(totals)
 }
 
@@ -195,12 +181,18 @@ fn add_handling_time(
     receipt: &MaterialTickReceipts,
     totals: &mut Totals,
 ) -> Result<(), ProductionProjectionError> {
+    let merchants: BTreeMap<_, _> = opening
+        .merchants
+        .iter()
+        .map(|row| (row.site_id, row.labor_unit_id))
+        .collect();
+    if merchants.len() != opening.merchants.len() {
+        return Err(ProductionProjectionError::State);
+    }
     let mut seen = BTreeSet::new();
     for row in &receipt.handling {
-        let merchant = opening
-            .merchants
-            .iter()
-            .find(|merchant| merchant.site_id == row.site_id)
+        let unit = merchants
+            .get(&row.site_id)
             .ok_or(ProductionProjectionError::State)?;
         if !seen.insert(row.order)
             || row.handled_quantity > row.feasible_quantity
@@ -208,14 +200,42 @@ fn add_handling_time(
         {
             return Err(ProductionProjectionError::State);
         }
-        let account = totals
-            .entry((row.site_id, merchant.labor_unit_id))
-            .or_default();
+        let account = totals.entry((row.site_id, *unit)).or_default();
         account.handling_needed = add_time(account.handling_needed, row.needed_hours, 1)?;
         account.handling_used = add_time(account.handling_used, row.used_hours, 1)?;
         account.used = add_time(account.used, row.used_hours, 1)?;
     }
     Ok(())
+}
+
+/// One checked immutable lookup replaces a coefficient scan for every process.
+fn process_labor(
+    state: &MaterialCircuitState,
+) -> Result<BTreeMap<ProcessId, (Principal, u64)>, ProductionProjectionError> {
+    let mut coefficients: BTreeMap<_, _> = state
+        .labor_coefficients
+        .iter()
+        .map(|row| (row.process_id, (row.unit_id, row.quantity_per_batch)))
+        .collect();
+    if coefficients.len() != state.labor_coefficients.len() {
+        return Err(ProductionProjectionError::State);
+    }
+    let mut result = BTreeMap::new();
+    for row in &state.process_outputs {
+        let (unit, quantity) = coefficients
+            .remove(&row.process_id)
+            .ok_or(ProductionProjectionError::State)?;
+        if result
+            .insert(row.process_id, ((row.site_id, unit), quantity))
+            .is_some()
+        {
+            return Err(ProductionProjectionError::State);
+        }
+    }
+    if !coefficients.is_empty() {
+        return Err(ProductionProjectionError::State);
+    }
+    Ok(result)
 }
 
 fn add_time(total: u64, batches: u64, coefficient: u64) -> Result<u64, ProductionProjectionError> {

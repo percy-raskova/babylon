@@ -18,8 +18,14 @@ pub(crate) fn canonicalize(state: &mut MaterialCircuitState) {
 }
 fn account_exists(state: &MaterialCircuitState, account: AccountId) -> bool {
     match account {
-        AccountId::Site(id) => state.site_logistics_nodes.iter().any(|r| r.site_id == id),
-        AccountId::Household(id) => state.final_demand_principals.iter().any(|r| r.id == id),
+        AccountId::Site(id) => state
+            .site_logistics_nodes
+            .binary_search_by_key(&id, |r| r.site_id)
+            .is_ok(),
+        AccountId::Household(id) => state
+            .final_demand_principals
+            .binary_search_by_key(&id, |r| r.id)
+            .is_ok(),
         _ => false,
     }
 }
@@ -141,10 +147,12 @@ fn validate_policies(
                 policy.good_id,
                 policy.unit_id,
             )
-            || !r.offers.iter().any(|o| {
-                (o.site_id, o.good_id, o.unit_id)
-                    == (policy.provider_site_id, policy.good_id, policy.unit_id)
-            })
+            || r.offers
+                .binary_search_by_key(
+                    &(policy.provider_site_id, policy.good_id, policy.unit_id),
+                    |o| (o.site_id, o.good_id, o.unit_id),
+                )
+                .is_err()
         {
             return Err(MaterialCircuitError::ServiceInvariant);
         }
@@ -176,10 +184,14 @@ fn validate_policies(
         }
     }
     for policy in &r.production {
+        // Preserve the first canonical match before later duplicate-process validation.
+        let first = state
+            .process_outputs
+            .partition_point(|o| o.process_id < policy.process_id);
         let output = state
             .process_outputs
-            .iter()
-            .find(|o| o.process_id == policy.process_id)
+            .get(first)
+            .filter(|o| o.process_id == policy.process_id)
             .ok_or(MaterialCircuitError::ProcessInvariant)?;
         if is_service(state, output.good_id, output.unit_id) && policy.output_buffer != 0 {
             return Err(MaterialCircuitError::ServiceInvariant);

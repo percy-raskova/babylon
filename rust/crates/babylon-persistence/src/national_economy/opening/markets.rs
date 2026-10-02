@@ -15,12 +15,12 @@ use babylon_material_circuit::{
 use std::collections::BTreeMap;
 
 #[derive(Default)]
-struct Preferences {
+pub(super) struct Preferences {
     services: BTreeMap<(EconomicLocation, GoodId, UnitId), Option<SiteId>>,
     domestic: BTreeMap<(EconomicLocation, GoodId, UnitId, Option<SiteId>), Option<SiteId>>,
 }
 
-type Providers = BTreeMap<(GoodId, UnitId), BTreeMap<EconomicLocation, Vec<SiteId>>>;
+pub(super) type Providers = BTreeMap<(GoodId, UnitId), BTreeMap<EconomicLocation, Vec<SiteId>>>;
 
 pub(super) fn wire(builder: &mut Builder<'_>) -> Result<()> {
     let retailers = local_retailers(builder)?;
@@ -85,6 +85,7 @@ pub(super) fn wire(builder: &mut Builder<'_>) -> Result<()> {
         &mut preferences,
     )?;
     producers(builder, &providers, &mut network, &mut preferences)?;
+    super::equipment::wire(builder, &providers, &mut network, &mut preferences)?;
     let policies = &mut builder.opening.policies;
     policies
         .offers
@@ -472,14 +473,14 @@ fn service_provider(
 }
 
 #[derive(Clone, Copy)]
-struct ProcurementNeed<'a> {
-    buyer: SiteId,
-    key: &'a str,
-    required: u64,
-    buffer_periods: u64,
+pub(super) struct ProcurementNeed<'a> {
+    pub(super) buyer: SiteId,
+    pub(super) key: &'a str,
+    pub(super) required: u64,
+    pub(super) buffer_periods: u64,
 }
 
-fn primary_supplier(
+pub(super) fn primary_supplier(
     locations: &BTreeMap<EconomicLocation, Vec<SiteId>>,
     network: &mut Network<'_>,
     preferences: &mut Preferences,
@@ -524,7 +525,7 @@ fn primary_supplier(
     Ok(primary)
 }
 
-fn secondary_supplier(
+pub(super) fn secondary_supplier(
     builder: &Builder<'_>,
     locations: &BTreeMap<EconomicLocation, Vec<SiteId>>,
     network: &mut Network<'_>,
@@ -577,7 +578,7 @@ fn secondary_supplier(
     Ok(secondary)
 }
 
-fn procure(
+pub(super) fn procure(
     builder: &mut Builder<'_>,
     providers: &Providers,
     network: &mut Network<'_>,
@@ -631,7 +632,7 @@ fn procure(
     }
     Ok(())
 }
-fn payroll(builder: &Builder<'_>, site: SiteId) -> Result<Currency> {
+pub(super) fn payroll(builder: &Builder<'_>, site: SiteId) -> Result<Currency> {
     let actor = builder
         .actors
         .get(&site)

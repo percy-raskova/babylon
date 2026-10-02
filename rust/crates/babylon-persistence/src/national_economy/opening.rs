@@ -2,6 +2,7 @@
 //! This module owns no mutable runtime or filesystem fallback.
 
 mod actors;
+mod equipment;
 mod external;
 mod financial;
 mod markets;
@@ -27,8 +28,8 @@ use babylon_kernel::{
     economic_location::EconomicLocation,
 };
 use babylon_material_circuit::{
-    FinancialInstitutions, GoodId, LogisticsNodeId, ProcessId, ReplenishmentPolicy, SellerOffer,
-    SiteId, UnitId,
+    FinancialInstitutions, GoodId, LogisticsNodeId, ProcessId, ReplenishmentPolicy,
+    RollingProcessSupply, SellerOffer, SiteId, UnitId,
 };
 use std::collections::BTreeMap;
 
@@ -180,7 +181,8 @@ impl<'a> Builder<'a> {
                 institutional_cash: vec![],
                 institutions: FinancialInstitutions::empty(),
                 equity: vec![],
-                capacity: CatalogCapacity::Installed,
+                equipment: vec![],
+                capacity: CatalogCapacity::Rolling(RollingProcessSupply::CapturedNameplate(vec![])),
                 policies: CatalogPolicies {
                     offers: vec![],
                     replenishment: vec![],
@@ -195,6 +197,7 @@ impl<'a> Builder<'a> {
                     shared_capacity: vec![],
                 },
                 orders: CatalogOpeningOrders {
+                    principals: vec![],
                     goods: vec![],
                     final_demand: vec![],
                 },

@@ -169,46 +169,8 @@ pub(super) fn finish(builder: &mut Builder<'_>) -> Result<()> {
     let mut network = Network::new(builder.transport)?;
     let mut routes = BTreeSet::new();
     let capacities = capacities(builder)?;
-    for row in builder.opening.policies.replenishment.clone() {
-        let from = builder
-            .actors
-            .get(&row.supplier_site_id)
-            .ok_or(NationalOpeningError::Identity)?
-            .location;
-        let to = builder
-            .actors
-            .get(&row.buyer_site_id)
-            .ok_or(NationalOpeningError::Identity)?
-            .location;
-        let good = builder
-            .policy
-            .commodities
-            .values()
-            .find(|g| g.good_id == row.good_id && g.unit_id == row.unit_id)
-            .ok_or(NationalOpeningError::Policy)?;
-        let cargo = good.cargo.ok_or(NationalOpeningError::Policy)?;
-        let id = route_id(from, to, cargo);
-        builder
-            .opening
-            .logistics
-            .supplier_routes
-            .push(SupplierRoute {
-                buyer_site_id: row.buyer_site_id,
-                supplier_site_id: row.supplier_site_id,
-                good_id: row.good_id,
-                unit_id: row.unit_id,
-                route_id: id,
-                transport_kind: if from == to {
-                    SupplierTransport::Local
-                } else {
-                    SupplierTransport::Staged
-                },
-            });
-        if from == to || !routes.insert(id) {
-            continue;
-        }
-        add_stage(builder, &mut network, from, to, cargo, id)?;
-    }
+    add_replenishment_routes(builder)?;
+    add_route_stages(builder, &mut network, &mut routes)?;
     // Current capacity is defined only for principals used by a route or merchant.
     let used: BTreeSet<_> = builder
         .opening
@@ -329,6 +291,81 @@ fn add_stage(
                 stage_index: 0,
                 corridor_id: pool,
             });
+    }
+    Ok(())
+}
+
+fn add_replenishment_routes(builder: &mut Builder<'_>) -> Result<()> {
+    for row in builder.opening.policies.replenishment.clone() {
+        let from = builder
+            .actors
+            .get(&row.supplier_site_id)
+            .ok_or(NationalOpeningError::Identity)?
+            .location;
+        let to = builder
+            .actors
+            .get(&row.buyer_site_id)
+            .ok_or(NationalOpeningError::Identity)?
+            .location;
+        let good = builder
+            .policy
+            .commodities
+            .values()
+            .find(|g| g.good_id == row.good_id && g.unit_id == row.unit_id)
+            .ok_or(NationalOpeningError::Policy)?;
+        let cargo = good.cargo.ok_or(NationalOpeningError::Policy)?;
+        let id = route_id(from, to, cargo);
+        builder
+            .opening
+            .logistics
+            .supplier_routes
+            .push(SupplierRoute {
+                buyer_site_id: row.buyer_site_id,
+                supplier_site_id: row.supplier_site_id,
+                good_id: row.good_id,
+                unit_id: row.unit_id,
+                route_id: id,
+                transport_kind: if from == to {
+                    SupplierTransport::Local
+                } else {
+                    SupplierTransport::Staged
+                },
+            });
+    }
+    Ok(())
+}
+
+fn add_route_stages(
+    builder: &mut Builder<'_>,
+    network: &mut Network<'_>,
+    routes: &mut BTreeSet<RouteId>,
+) -> Result<()> {
+    for row in builder.opening.logistics.supplier_routes.clone() {
+        let from = builder
+            .actors
+            .get(&row.supplier_site_id)
+            .ok_or(NationalOpeningError::Identity)?
+            .location;
+        let to = builder
+            .actors
+            .get(&row.buyer_site_id)
+            .ok_or(NationalOpeningError::Identity)?
+            .location;
+        let cargo = builder
+            .policy
+            .commodities
+            .values()
+            .find(|g| g.good_id == row.good_id && g.unit_id == row.unit_id)
+            .and_then(|g| g.cargo)
+            .ok_or(NationalOpeningError::Policy)?;
+        let id = route_id(from, to, cargo);
+        if id != row.route_id {
+            return Err(NationalOpeningError::Identity);
+        }
+        if from == to || !routes.insert(id) {
+            continue;
+        }
+        add_stage(builder, network, from, to, cargo, id)?;
     }
     Ok(())
 }

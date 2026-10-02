@@ -1,8 +1,10 @@
 //! The full generated opening preserves actual resident partitions and finite relations.
 use babylon_kernel::economic_location::EconomicLocation;
-use babylon_material_circuit::{CommodityKind, SupplierTransport};
+use babylon_material_circuit::{
+    CommodityKind, EquipmentAssetId, RollingProcessSupply, StaffingWorkSource, SupplierTransport,
+};
 use babylon_persistence::{
-    economic_catalog::EconomicOpening,
+    economic_catalog::{CatalogCapacity, EconomicOpening},
     national_cohorts::national_cohort_reference,
     national_counties::national_county_reference,
     national_economy::{build_national_opening, NationalGamePolicy},
@@ -34,6 +36,68 @@ fn full_opening_conserves_counted_households_and_uses_finite_connected_accounts(
     assert_unique_principals(&opening, &policy);
     assert_missing_retail_fallback(&opening);
     census(&opening);
+    assert_managed_equipment(&opening);
+}
+
+fn assert_managed_equipment(opening: &EconomicOpening) {
+    let CatalogCapacity::Rolling(RollingProcessSupply::Equipment(equipment)) = &opening.capacity
+    else {
+        panic!("national play requires managed equipment, not permanent nameplate capacity");
+    };
+    assert!(equipment.pending.is_empty());
+    assert_eq!(
+        equipment.bindings.len(),
+        opening
+            .sites
+            .iter()
+            .map(|s| s.processes.len())
+            .sum::<usize>()
+    );
+    let carrying: BTreeMap<_, _> = opening.equipment.iter().map(|r| (r.asset, r)).collect();
+    let bindings: BTreeMap<_, _> = equipment
+        .bindings
+        .iter()
+        .map(|b| (b.process_id, b))
+        .collect();
+    let definitions: BTreeMap<_, _> = equipment.definitions.iter().map(|d| (d.id, d)).collect();
+    let pools: BTreeMap<_, _> = opening
+        .staffing
+        .iter()
+        .map(|s| (s.pool.site_id(), &s.pool))
+        .collect();
+    for policy in &equipment.installation_policies {
+        let pool = pools[&bindings[&policy.process_id].site_id];
+        assert!(pool
+            .work_sources()
+            .contains(&StaffingWorkSource::Installation(policy.process_id)));
+        assert!(policy.maximum_hours_per_period <= pool.labor_force() * 160);
+    }
+    assert_eq!(carrying.len(), equipment.cohorts.len());
+    for cohort in &equipment.cohorts {
+        let value = carrying[&EquipmentAssetId::Installed(cohort.id)];
+        let owner = bindings[&cohort.process_id].site_id;
+        assert_eq!(value.owner, owner);
+        assert!(value.amount.micro_units() > 0);
+        assert!(cohort.units > 0 && cohort.remaining_service_batches > 0);
+        assert_eq!(cohort.usable_from_period, 1);
+    }
+    let routes: BTreeSet<_> = opening
+        .logistics
+        .supplier_routes
+        .iter()
+        .map(|r| (r.buyer_site_id, r.supplier_site_id, r.good_id, r.unit_id))
+        .collect();
+    for policy in &equipment.investment_policies {
+        let binding = bindings[&policy.process_id];
+        let definition = definitions[&binding.definition_id];
+        assert!(routes.contains(&(
+            binding.site_id,
+            policy.supplier_site_id,
+            definition.equipment_good_id,
+            definition.equipment_unit_id
+        )));
+        assert!(policy.maximum_purchase_per_period > 0);
+    }
 }
 
 fn assert_people(opening: &EconomicOpening) {

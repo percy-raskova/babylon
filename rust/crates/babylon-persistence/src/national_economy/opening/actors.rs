@@ -283,7 +283,6 @@ fn process(
     let installation = ProcessInstallation {
         process_id,
         recipe: templates::recipe_id(context.function)?,
-        installed_batches: context.planned_batches,
         planned_batches: context.planned_batches,
         output_buffer: output_units,
     };

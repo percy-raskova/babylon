@@ -6,6 +6,7 @@ fn delivery_receipts(order_id: OrderId) -> MaterialTickReceipts {
         staffing_members: vec![],
         member_labor_use: vec![],
         installation: vec![],
+        installation_decisions: vec![],
         equipment_wear: vec![],
         investment: vec![],
         public_budgets: vec![],

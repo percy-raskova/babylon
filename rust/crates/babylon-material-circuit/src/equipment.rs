@@ -1,4 +1,5 @@
 //! Actual productive equipment; money alone supplies no productive capacity.
+mod choice;
 mod installation;
 mod investment;
 mod model;

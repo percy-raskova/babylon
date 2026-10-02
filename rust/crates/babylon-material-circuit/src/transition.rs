@@ -1092,7 +1092,8 @@ pub fn close_material_period(
     Ok(ClosedMaterialPeriod {
         next_period,
         transition: MaterialCircuitTransition {
-            installation,
+            installation: installation.work,
+            installation_decisions: installation.decisions,
             equipment_wear,
             investment,
             public_budgets: finance.public_budgets,

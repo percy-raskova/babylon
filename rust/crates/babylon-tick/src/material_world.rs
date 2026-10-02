@@ -17,6 +17,7 @@ use babylon_practice_contract::{
 mod equipment_receipt;
 mod financial_receipt;
 mod income_receipt;
+mod installation_decision;
 mod maintenance_receipt;
 mod monetary_receipt;
 mod recurring_receipt;
@@ -25,7 +26,7 @@ mod workforce_receipt;
 
 const REGISTER_DOMAIN: &[u8] = b"babylon.material-world-register.v4\0";
 const NOMINAL_DOMAIN: &[u8] = b"babylon.nominal-material-world.v3\0";
-const RECEIPT_DOMAIN: &[u8] = b"babylon.material-tick-receipts.v13\0";
+const RECEIPT_DOMAIN: &[u8] = b"babylon.material-tick-receipts.v14\0";
 /// Shared identity ceiling inherited by the aggregate replay envelope.
 pub const MAX_MATERIAL_WORLD_REGISTER_BYTES: usize = 67_108_864;
 
@@ -537,6 +538,10 @@ fn encode_material_receipts(
             transition.investment.len(),
             equipment_receipt::INVESTMENT_BYTES,
         ),
+        (
+            transition.installation_decisions.len(),
+            installation_decision::ROW_BYTES,
+        ),
     ];
     if families
         .iter()
@@ -568,6 +573,7 @@ fn encode_material_receipts(
         &transition.income,
     )?;
     equipment_receipt::validate_investment(&transition.investment, &transition.money_transfers)?;
+    installation_decision::validate(&transition.installation_decisions, &transition.installation)?;
     income_receipt::validate_order(&transition.income)?;
     financial_receipt::validate(
         &transition.public_budgets,
@@ -603,7 +609,7 @@ fn encode_material_receipts(
     )?;
     let mut bytes = bounded_bytes(length)?;
     bytes.extend_from_slice(RECEIPT_DOMAIN);
-    bytes.extend_from_slice(&13_u32.to_be_bytes());
+    bytes.extend_from_slice(&14_u32.to_be_bytes());
     bytes.extend_from_slice(&tick.to_be_bytes());
     for (tag, (count, _)) in families.iter().enumerate() {
         bytes.push(u8::try_from(tag + 1).map_err(|_| MaterialWorldError::Arithmetic)?);
@@ -767,17 +773,21 @@ fn encode_material_receipts(
             }
             30 => equipment_receipt::encode_wear(&transition.equipment_wear, tick, &mut bytes)?,
             31 => equipment_receipt::encode_investment(&transition.investment, tick, &mut bytes)?,
-            _ => unreachable!("the thirty-two material receipt families are closed"),
+            32 => {
+                installation_decision::encode(&transition.installation_decisions, tick, &mut bytes)?
+            }
+            _ => unreachable!("the thirty-three material receipt families are closed"),
         }
     }
     debug_assert_eq!(bytes.len(), length);
     Ok(bytes)
 }
 
-/// Typed material evidence decoded only from an exact committed V12 receipt family.
+/// Typed material evidence decoded only from an exact committed V14 receipt family.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MaterialTickReceipts {
     pub installation: Vec<babylon_material_circuit::InstallationReceipt>,
+    pub installation_decisions: Vec<babylon_material_circuit::InstallationDecisionReceipt>,
     pub equipment_wear: Vec<babylon_material_circuit::EquipmentWearReceipt>,
     pub investment: Vec<babylon_material_circuit::InvestmentReceipt>,
     pub staffing_members: Vec<babylon_material_circuit::StaffingMemberReceipt>,
@@ -824,7 +834,7 @@ pub fn decode_material_receipts(bytes: &[u8]) -> Result<MaterialTickReceipts, Ma
         bytes,
         position: RECEIPT_DOMAIN.len(),
     };
-    if cursor.take::<4>()? != 13_u32.to_be_bytes() {
+    if cursor.take::<4>()? != 14_u32.to_be_bytes() {
         return Err(MaterialWorldError::Wire);
     }
     let resolve_tick = cursor.u64()?;
@@ -833,6 +843,7 @@ pub fn decode_material_receipts(bytes: &[u8]) -> Result<MaterialTickReceipts, Ma
     }
     let mut result = MaterialTickReceipts {
         installation: Vec::new(),
+        installation_decisions: Vec::new(),
         equipment_wear: Vec::new(),
         investment: Vec::new(),
         staffing_members: vec![],
@@ -867,7 +878,7 @@ pub fn decode_material_receipts(bytes: &[u8]) -> Result<MaterialTickReceipts, Ma
         local_transfers: Vec::new(),
         maintenance: None,
     };
-    for tag in 1..=32 {
+    for tag in 1..=33 {
         if cursor.take::<1>()? != [tag] {
             return Err(MaterialWorldError::Wire);
         }
@@ -911,6 +922,7 @@ pub fn decode_material_receipts(bytes: &[u8]) -> Result<MaterialTickReceipts, Ma
             equipment_receipt::INSTALLATION_BYTES,
             equipment_receipt::WEAR_BYTES,
             equipment_receipt::INVESTMENT_BYTES,
+            installation_decision::ROW_BYTES,
         ][usize::from(tag - 1)];
         if count
             .checked_mul(width)
@@ -951,6 +963,7 @@ pub fn decode_material_receipts(bytes: &[u8]) -> Result<MaterialTickReceipts, Ma
             30 => result.installation.try_reserve_exact(count),
             31 => result.equipment_wear.try_reserve_exact(count),
             32 => result.investment.try_reserve_exact(count),
+            33 => result.installation_decisions.try_reserve_exact(count),
 
             _ => return Err(MaterialWorldError::Wire),
         }
@@ -970,6 +983,9 @@ pub fn decode_material_receipts(bytes: &[u8]) -> Result<MaterialTickReceipts, Ma
                     &mut cursor,
                     resolve_tick,
                 )?),
+                33 => result
+                    .installation_decisions
+                    .push(installation_decision::decode(&mut cursor, resolve_tick)?),
                 1 => {
                     let process_id = ProcessId::from_bytes(cursor.take()?);
                     let site_id = SiteId::from_bytes(cursor.take()?);
@@ -1217,6 +1233,7 @@ pub fn decode_material_receipts(bytes: &[u8]) -> Result<MaterialTickReceipts, Ma
     )?;
     equipment_receipt::validate_wear(&result.equipment_wear, &result.production, &result.income)?;
     equipment_receipt::validate_investment(&result.investment, &result.money_transfers)?;
+    installation_decision::validate(&result.installation_decisions, &result.installation)?;
     income_receipt::validate_order(&result.income)?;
     financial_receipt::validate(
         &result.public_budgets,

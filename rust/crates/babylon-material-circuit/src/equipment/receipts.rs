@@ -160,3 +160,35 @@ impl InvestmentReceipt {
         Ok(())
     }
 }
+
+/// Target evidence at installation admission, after actual current productive wear.
+/// Captured plans express a decision, not a claim that demand will clear.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InstallationDecisionReceipt {
+    pub period: u64,
+    pub process_id: ProcessId,
+    pub site_id: SiteId,
+    pub captured_plan_batches: u64,
+    pub target_units: u64,
+    pub installed_units: u64,
+    pub pending_units: u64,
+    pub requested_units: u64,
+    pub started_units: u64,
+}
+impl InstallationDecisionReceipt {
+    /// # Errors
+    /// Refuses inconsistent position, requested deficit or actual starts.
+    pub fn validate(&self) -> Result<()> {
+        let position = self
+            .installed_units
+            .checked_add(self.pending_units)
+            .ok_or(MaterialCircuitError::Arithmetic)?;
+        if self.period == 0
+            || self.requested_units != self.target_units.saturating_sub(position)
+            || self.started_units > self.requested_units
+        {
+            return Err(MaterialCircuitError::EquipmentInvariant);
+        }
+        Ok(())
+    }
+}

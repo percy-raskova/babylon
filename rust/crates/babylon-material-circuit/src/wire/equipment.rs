@@ -3,9 +3,9 @@ use super::accounting::decode_currency;
 use super::{append_rows, decode_rows, Cursor};
 use crate::{
     EquipmentBinding, EquipmentCohortId, EquipmentDefinition, EquipmentDefinitionId, GoodId,
-    InstallationId, InstallationInput, InstallationPolicy, InstalledEquipmentCohort,
-    InvestmentPolicy, MaterialCircuitError, PendingInstallation, ProcessId, ProductiveEquipment,
-    SiteId, UnitId,
+    InstallationId, InstallationInput, InstallationPolicy, InstallationTarget,
+    InstalledEquipmentCohort, InvestmentPolicy, MaterialCircuitError, PendingInstallation,
+    ProcessId, ProductiveEquipment, SiteId, UnitId,
 };
 pub(super) fn append(
     out: &mut Vec<u8>,
@@ -47,6 +47,16 @@ pub(super) fn append(
     })?;
     append_rows(out, &e.installation_policies, |b, r| {
         b.extend_from_slice(&r.process_id.as_bytes());
+        match r.target {
+            InstallationTarget::FixedUnits(units) => {
+                b.push(1);
+                b.extend_from_slice(&units.to_be_bytes());
+            }
+            InstallationTarget::ProductionPlan { replacement_units } => {
+                b.push(2);
+                b.extend_from_slice(&replacement_units.to_be_bytes());
+            }
+        }
         b.extend_from_slice(&r.maximum_started_units_per_period.to_be_bytes());
         b.extend_from_slice(&r.maximum_hours_per_period.to_be_bytes());
     })?;
@@ -110,6 +120,13 @@ pub(super) fn decode(c: &mut Cursor<'_>) -> Result<ProductiveEquipment, Material
         installation_policies: decode_rows(c, |b| {
             Ok(InstallationPolicy {
                 process_id: ProcessId::from_bytes(b.array()?),
+                target: match b.u8()? {
+                    1 => InstallationTarget::FixedUnits(b.u64()?),
+                    2 => InstallationTarget::ProductionPlan {
+                        replacement_units: b.u64()?,
+                    },
+                    _ => return Err(MaterialCircuitError::WireEnum),
+                },
                 maximum_started_units_per_period: b.u64()?,
                 maximum_hours_per_period: b.u64()?,
             })

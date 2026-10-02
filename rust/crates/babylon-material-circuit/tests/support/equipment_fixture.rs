@@ -74,6 +74,7 @@ fn opening_capacity() -> CapacitySupply {
             pending: vec![],
             installation_policies: vec![InstallationPolicy {
                 process_id: process(),
+                target: InstallationTarget::FixedUnits(1),
                 maximum_started_units_per_period: 1,
                 maximum_hours_per_period: 2,
             }],

@@ -31,9 +31,10 @@ pub use accounts::{
 pub use equipment::{
     equipment_installation_id, equipment_purchase_order_id, EquipmentAssetId, EquipmentBinding,
     EquipmentCarryingValue, EquipmentCohortId, EquipmentDefinition, EquipmentDefinitionId,
-    EquipmentWearReceipt, InstallationId, InstallationInput, InstallationPolicy,
-    InstallationReceipt, InstalledEquipmentCohort, InvestmentPolicy, InvestmentReceipt,
-    PendingInstallation, ProductiveEquipment, RollingProcessSupply,
+    EquipmentWearReceipt, InstallationDecisionReceipt, InstallationId, InstallationInput,
+    InstallationPolicy, InstallationReceipt, InstallationTarget, InstalledEquipmentCohort,
+    InvestmentPolicy, InvestmentReceipt, PendingInstallation, ProductiveEquipment,
+    RollingProcessSupply,
 };
 pub use financial::{
     validate_distribution_receipts, CapitalContributionOrder, CapitalContributionReceipt,

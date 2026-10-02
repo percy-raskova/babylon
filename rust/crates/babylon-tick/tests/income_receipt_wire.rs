@@ -1,7 +1,7 @@
 //! Language-neutral signed income rows and exact arithmetic, independent of Rust layout.
 use babylon_tick::material_world::decode_material_receipts;
 
-const DOMAIN: &[u8] = b"babylon.material-tick-receipts.v13\0";
+const DOMAIN: &[u8] = b"babylon.material-tick-receipts.v14\0";
 const ROW_BYTES: usize = 473;
 
 fn row(id: u8) -> Vec<u8> {
@@ -18,9 +18,9 @@ fn row(id: u8) -> Vec<u8> {
 }
 fn envelope(rows: &[Vec<u8>]) -> Vec<u8> {
     let mut bytes = DOMAIN.to_vec();
-    bytes.extend_from_slice(&13_u32.to_be_bytes());
+    bytes.extend_from_slice(&14_u32.to_be_bytes());
     bytes.extend_from_slice(&1_u64.to_be_bytes());
-    for tag in 1..=32_u8 {
+    for tag in 1..=33_u8 {
         bytes.push(tag);
         bytes.extend_from_slice(&(if tag == 19 { rows.len() as u64 } else { 0 }).to_be_bytes());
         if tag == 19 {
@@ -67,7 +67,7 @@ fn income_rows_refuse_bad_equations_negative_flows_periods_order_and_previous_sc
     let mut previous = bytes.clone();
     previous[DOMAIN.len()..DOMAIN.len() + 4].copy_from_slice(&9_u32.to_be_bytes());
     assert!(decode_material_receipts(&previous).is_err());
-    previous[DOMAIN.len()..DOMAIN.len() + 4].copy_from_slice(&13_u32.to_be_bytes());
+    previous[DOMAIN.len()..DOMAIN.len() + 4].copy_from_slice(&14_u32.to_be_bytes());
     previous[DOMAIN.len() - 2] = b'9';
     assert!(decode_material_receipts(&previous).is_err());
     for length in 0..bytes.len() {

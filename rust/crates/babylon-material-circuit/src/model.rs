@@ -544,6 +544,7 @@ pub struct FreightLossReceipt {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MaterialCircuitTransition {
     pub installation: Vec<crate::InstallationReceipt>,
+    pub installation_decisions: Vec<crate::InstallationDecisionReceipt>,
     pub equipment_wear: Vec<crate::EquipmentWearReceipt>,
     pub investment: Vec<crate::InvestmentReceipt>,
     pub public_budgets: Vec<crate::PublicBudgetReceipt>,

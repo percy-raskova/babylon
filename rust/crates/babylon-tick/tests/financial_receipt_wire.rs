@@ -1,6 +1,6 @@
 //! Independent wire vectors for exact funded fiscal and ownership postings.
 use babylon_tick::material_world::decode_material_receipts;
-const DOMAIN: &[u8] = b"babylon.material-tick-receipts.v13\0";
+const DOMAIN: &[u8] = b"babylon.material-tick-receipts.v14\0";
 fn id(out: &mut Vec<u8>, n: u8) {
     out.extend_from_slice(&[n; 32]);
 }
@@ -69,9 +69,9 @@ fn cash(purpose: u8, payer: (u8, u8), recipient: (u8, u8), amount: i128) -> Vec<
 }
 fn envelope(rows: &[(u8, Vec<Vec<u8>>)]) -> Vec<u8> {
     let mut b = DOMAIN.to_vec();
-    b.extend_from_slice(&13_u32.to_be_bytes());
+    b.extend_from_slice(&14_u32.to_be_bytes());
     b.extend_from_slice(&7_u64.to_be_bytes());
-    for tag in 1..=32 {
+    for tag in 1..=33 {
         let rows = rows
             .iter()
             .find(|(t, _)| *t == tag)

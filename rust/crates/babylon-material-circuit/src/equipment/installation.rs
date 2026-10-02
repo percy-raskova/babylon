@@ -36,20 +36,29 @@ fn material_requirements(
     rows
 }
 fn start_projects(
-    period: u64,
+    state: &MaterialCircuitState,
     e: &mut ProductiveEquipment,
     inventory: &mut InventoryLedger,
+    eligible: &mut InventoryLedger,
     costs: &mut CostClose,
-) -> Result<BTreeMap<InstallationId, Currency>> {
+) -> Result<InstallationStarts> {
+    let period = state.period;
     let mut starts = BTreeMap::new();
-    for policy in &e.installation_policies {
+    let mut decisions = e
+        .installation_policies
+        .iter()
+        .map(|p| super::choice::decision(state, e, p))
+        .collect::<Result<Vec<_>>>()?;
+    for (policy, decision) in e.installation_policies.iter().zip(&mut decisions) {
         let (binding, d) = e.definition(policy.process_id)?;
         let materials = material_requirements(e, d);
         let units = materials.iter().fold(
-            policy.maximum_started_units_per_period,
+            policy
+                .maximum_started_units_per_period
+                .min(decision.requested_units),
             |n, (good, unit, qty)| {
                 n.min(
-                    inventory
+                    eligible
                         .get(&(binding.site_id, *good, *unit))
                         .copied()
                         .unwrap_or(0)
@@ -57,6 +66,8 @@ fn start_projects(
                 )
             },
         );
+        decision.started_units = units;
+        decision.validate()?;
         if units == 0 {
             continue;
         }
@@ -80,6 +91,12 @@ fn start_projects(
                 quantity,
             )?;
             debit_inventory(
+                eligible,
+                key,
+                quantity,
+                MaterialCircuitError::EquipmentInvariant,
+            )?;
+            debit_inventory(
                 inventory,
                 key,
                 quantity,
@@ -99,22 +116,38 @@ fn start_projects(
             remaining_hours: hours,
         });
     }
-    Ok(starts)
+    Ok(InstallationStarts {
+        costs: starts,
+        decisions,
+    })
+}
+struct InstallationStarts {
+    costs: BTreeMap<InstallationId, Currency>,
+    decisions: Vec<super::InstallationDecisionReceipt>,
+}
+pub(crate) struct InstallationClose {
+    pub work: Vec<InstallationReceipt>,
+    pub decisions: Vec<super::InstallationDecisionReceipt>,
 }
 pub(crate) fn install(
     state: &mut MaterialCircuitState,
     costs: &mut CostClose,
-) -> Result<Vec<InstallationReceipt>> {
+) -> Result<InstallationClose> {
     let Some(mut e) = get(state).cloned() else {
-        return Ok(vec![]);
+        return Ok(InstallationClose {
+            work: vec![],
+            decisions: vec![],
+        });
     };
     e.cohorts.retain(|c| c.remaining_service_batches > 0);
     let period = state.period;
     let next = period
         .checked_add(1)
         .ok_or(MaterialCircuitError::Arithmetic)?;
+    let mut eligible = super::choice::eligible_inventory(state)?;
     let mut inventory = take_inventory(state);
-    let starts = start_projects(period, &mut e, &mut inventory, costs)?;
+    let admission = start_projects(state, &mut e, &mut inventory, &mut eligible, costs)?;
+    let starts = admission.costs;
     e.pending.sort_by_key(|r| (r.process_id, r.id));
     let mut budgets: BTreeMap<_, _> = e
         .installation_policies
@@ -194,7 +227,10 @@ pub(crate) fn install(
     *get_mut(state).ok_or(MaterialCircuitError::EquipmentInvariant)? = e;
     publish_inventory(state, inventory);
     receipts.sort_by_key(|r| (r.process_id, r.id));
-    Ok(receipts)
+    Ok(InstallationClose {
+        work: receipts,
+        decisions: admission.decisions,
+    })
 }
 /// Installation requests survive zero productive capacity and do not consume it.
 pub(crate) fn work_requests(
@@ -203,11 +239,7 @@ pub(crate) fn work_requests(
     let Some(e) = get(state) else {
         return Ok(vec![]);
     };
-    let inventory: InventoryLedger = state
-        .inventory
-        .iter()
-        .map(|r| ((r.site_id, r.good_id, r.unit_id), r.quantity))
-        .collect();
+    let mut inventory = super::choice::eligible_inventory(state)?;
     let mut result = Vec::with_capacity(e.installation_policies.len());
     for p in &e.installation_policies {
         let (b, d) = e.definition(p.process_id)?;
@@ -218,11 +250,23 @@ pub(crate) fn work_requests(
                 .ok_or(MaterialCircuitError::Arithmetic)
         })?;
         let materials = material_requirements(e, d);
-        let possible = materials
-            .iter()
-            .fold(p.maximum_started_units_per_period, |n, (g, u, q)| {
-                n.min(inventory.get(&(b.site_id, *g, *u)).copied().unwrap_or(0) / q)
-            });
+        let decision = super::choice::decision(state, e, p)?;
+        let possible = materials.iter().fold(
+            p.maximum_started_units_per_period
+                .min(decision.requested_units),
+            |n, (g, u, q)| n.min(inventory.get(&(b.site_id, *g, *u)).copied().unwrap_or(0) / q),
+        );
+        for (good, unit, coefficient) in materials {
+            let quantity = possible
+                .checked_mul(coefficient)
+                .ok_or(MaterialCircuitError::Arithmetic)?;
+            debit_inventory(
+                &mut inventory,
+                (b.site_id, good, unit),
+                quantity,
+                MaterialCircuitError::EquipmentInvariant,
+            )?;
+        }
         hours = hours
             .checked_add(
                 possible

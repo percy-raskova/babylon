@@ -1,6 +1,6 @@
 meta:
   contract: MaterialCircuitV3
-  schema_version: 14
+  schema_version: 15
   evidence_class: Designed
   rust_owner: babylon-material-circuit
 
@@ -695,10 +695,14 @@ productive_equipment:
     installation_inputs: [definition_id, good_id, unit_id, quantity_per_equipment_unit]
     cohorts: [id, process_id, units, remaining_service_batches, usable_from_period]
     pending: [id, process_id, units, started_period, remaining_hours]
-    installation_policies: [process_id, maximum_started_units_per_period, maximum_hours_per_period]
+    installation_policies: [process_id, target_tag_u8, target_units_u64,
+                            maximum_started_units_per_period, maximum_hours_per_period]
     investment_policies: [process_id, supplier_site_id, replacement_target_units, maximum_installed_units,
                           maximum_purchase_per_period, expansion_earnings_fraction_bps_u16, cash_floor]
   asset_tag_u8: {installation: 0, installed: 1}
+  installation_target_tag_u8: {fixed_units: 1, production_plan: 2}
+  installation_target_payload: Fixed uses target units; production plan uses explicit replacement units.
+  installation_policy_row_width: 57
   canonical_keys:
     definitions: [id]
     bindings: [process_id]
@@ -714,6 +718,15 @@ productive_equipment:
     - Available batches sum the minimum of each usable cohort nameplate and its remaining finite service batches.
     - Productive use consumes service batches once; full exhaustion transfers all remaining carrying micro-units.
     - Equipment stock becomes WIP only with complete complementary inputs; no cash payment can install capacity.
+    - Installation target is explicit fixed units or maximum of replacement units and ceiling of current planned
+      batches divided by batches per equipment unit; the production-plan mode requires a captured recurring plan.
+    - New installation requests equal target minus live installed units after wear and existing WIP, floored at zero.
+    - Existing WIP continues under its work budget when the new target falls; purchase ceilings cannot ban owned
+      equipment installation below a separately declared target.
+    - Unshipped delivery and unfulfilled final-demand commitments protect equipment and complementary stock from
+      installation; prospective staffing uses the same transient eligibility and shared material residuals.
+    - Investment position excludes sale-pledged stock and inbound units needed to cover remaining sale commitments.
+    - Installation decision receipts include explicit zero choices and match actual new starts and existing WIP.
     - Actual installation shares existing attendance residuals; employee wages capitalize and unpaid work adds no
       wage cost.
     - A completed cohort becomes usable in the following period; unfinished work survives restart and zero current

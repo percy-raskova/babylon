@@ -56,9 +56,16 @@ pub struct PendingInstallation {
     pub started_period: u64,
     pub remaining_hours: u64,
 }
+/// Explicit desired installed position, independent of purchase admission ceilings.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InstallationTarget {
+    FixedUnits(u64),
+    ProductionPlan { replacement_units: u64 },
+}
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InstallationPolicy {
     pub process_id: ProcessId,
+    pub target: InstallationTarget,
     pub maximum_started_units_per_period: u64,
     pub maximum_hours_per_period: u64,
 }

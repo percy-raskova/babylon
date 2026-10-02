@@ -56,7 +56,7 @@ impl Evidence {
             observed_stock: stock.clone(),
             stock,
             inbound: BTreeMap::new(),
-            accepted: BTreeMap::new(),
+            accepted: super::choice::sale_commitments(state)?,
             pending: BTreeMap::new(),
             outputs: state
                 .process_outputs
@@ -91,23 +91,10 @@ impl Evidence {
                 (o.buyer_site_id, o.good_id, o.unit_id),
                 pending,
             )?;
-            add(
-                &mut result.accepted,
-                (o.supplier_site_id, o.good_id, o.unit_id),
-                o.ordered
-                    .checked_sub(o.shipped)
-                    .ok_or(MaterialCircuitError::EquipmentInvariant)?,
-            )?;
         }
-        for o in &state.final_demand_orders {
-            add(
-                &mut result.accepted,
-                (o.retailer_site_id, o.good_id, o.unit_id),
-                o.ordered
-                    .checked_sub(o.fulfilled)
-                    .ok_or(MaterialCircuitError::EquipmentInvariant)?,
-            )?;
-        }
+        let mut pledges = result.accepted.clone();
+        super::choice::protect_sales(&mut result.stock, &mut pledges);
+        super::choice::protect_sales(&mut result.inbound, &mut pledges);
         Ok(result)
     }
     fn position(&mut self, e: &ProductiveEquipment, p: &InvestmentPolicy) -> Result<Position> {

@@ -84,3 +84,42 @@ fn goods_cost_from_real_equipment_close_roundtrips_and_restart_does_not_reuse_it
         next.prices
     );
 }
+
+#[test]
+fn installation_decisions_roundtrip_and_refuse_false_starts_positions_and_old_format() {
+    let original = advance_material_circuit(&opening()).unwrap();
+    let bytes = super::super::encode_material_receipts(1, &original).unwrap();
+    let decoded = super::super::decode_material_receipts(&bytes).unwrap();
+    assert_eq!(
+        decoded.installation_decisions,
+        original.installation_decisions
+    );
+    assert_eq!(decoded.installation_decisions[0].started_units, 1);
+    for mutation in 0..5 {
+        let mut changed = original.clone();
+        match mutation {
+            0 => changed.installation_decisions.clear(),
+            1 => changed.installation_decisions[0].started_units = 0,
+            2 => changed.installation_decisions[0].pending_units = 1,
+            3 => changed.installation_decisions[0].period = 2,
+            _ => changed
+                .installation_decisions
+                .push(changed.installation_decisions[0].clone()),
+        }
+        assert!(
+            super::super::encode_material_receipts(1, &changed).is_err(),
+            "mutation {mutation}"
+        );
+    }
+    let start = bytes.len() - super::super::installation_decision::ROW_BYTES;
+    let mut malformed = bytes.clone();
+    malformed[start + 112..start + 120].copy_from_slice(&0_u64.to_be_bytes());
+    assert!(super::super::decode_material_receipts(&malformed).is_err());
+    let mut old = bytes.clone();
+    let domain = super::super::RECEIPT_DOMAIN.len();
+    old[domain..domain + 4].copy_from_slice(&13_u32.to_be_bytes());
+    assert!(super::super::decode_material_receipts(&old).is_err());
+    for length in [start - 1, start, start + 72, bytes.len() - 1] {
+        assert!(super::super::decode_material_receipts(&bytes[..length]).is_err());
+    }
+}

@@ -166,7 +166,11 @@ fn validate_policies(state: &MaterialCircuitState, e: &ProductiveEquipment) -> R
         .collect();
     for p in &e.installation_policies {
         e.definition(p.process_id)?;
-        if p.maximum_started_units_per_period == 0 || p.maximum_hours_per_period == 0 {
+        if p.maximum_started_units_per_period == 0
+            || p.maximum_hours_per_period == 0
+            || (matches!(p.target, super::InstallationTarget::ProductionPlan { .. })
+                && super::choice::planned_batches(state, p.process_id).is_none())
+        {
             return Err(MaterialCircuitError::EquipmentInvariant);
         }
     }

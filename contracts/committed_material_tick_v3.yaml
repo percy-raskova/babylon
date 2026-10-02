@@ -17,18 +17,18 @@ envelope:
     - {tag: 5, name: graph_full_checkpoint, codec: existing_nine_checkpoint_sections_v1}
     - {tag: 6, name: archive_dirty_receipt, count: 1, hash: combined_material_tick_content_v3}
     - {tag: 7, name: complete_material_register, count: 1, key: empty, payload: exact_material_world_register_v4_bytes}
-    - {tag: 8, name: material_receipts, count: 1, key: empty, payload: exact_material_tick_receipts_v13_bytes}
+    - {tag: 8, name: material_receipts, count: 1, key: empty, payload: exact_material_tick_receipts_v14_bytes}
   family_frame: u8_tag_then_u64_big_endian_count
   row_frame: u32_big_endian_key_length_then_key_then_u32_big_endian_payload_length_then_payload
   ordering: Existing six families preserve strict canonical key order; singular added families cannot reorder.
   digest: sha256_exact_complete_envelope_bytes
   maximum_complete_bytes: 67108864
 receipts:
-  version: 13
-  domain: "babylon.material-tick-receipts.v13\0"
+  version: 14
+  domain: "babylon.material-tick-receipts.v14\0"
   header: u32_big_endian_version_13_then_u64_big_endian_positive_resolve_tick
   family_frame: u8_tag_then_u64_big_endian_count
-  family_count: 32
+  family_count: 33
   identities: exact_32_bytes
   quantities_periods_and_hours: u64_big_endian
   stage_index: u16_big_endian_less_than_16
@@ -321,9 +321,15 @@ receipts:
         - unit_price
         - free_cash
         - earnings_budget
+    - tag: 33
+      name: installation_decisions
+      width: 120
+      fields: [period, process_id, site_id, captured_plan_batches, target_units, installed_units,
+               pending_units, requested_units, started_units]
+      meaning: explicit_desired_installation_and_actual_material_admission_including_zero
   compensation_tag: {wage: 1, working_owner: 2, unpaid_family: 3}
   ordering:
-    families: Tags 1 through 32 appear exactly once in declared order, including empty families.
+    families: Tags 1 through 33 appear exactly once in declared order, including empty families.
     original_families: Preserve deterministic encounter order from babylon_material_circuit::advance_material_circuit.
     handling: Strict increasing unique site_id_and_tagged_outbound_order.
     local_fulfillment: Strict increasing unique order_id.
@@ -341,6 +347,7 @@ receipts:
     income: Strict increasing unique account.
     installation: Strict increasing process_id and installation_id.
     equipment_wear: Strict increasing process_id and cohort_id.
+    installation_decisions: Strict increasing process_id; one row per captured installation policy.
     investment: Strict increasing process_id.
     service_performance: Strict increasing unique order_id.
     household_services: Strict increasing unique principal_good_unit.
@@ -361,6 +368,10 @@ receipts:
     - Every positive employee attendance has one exact member-domain wage accrual with matching principals and amount.
     - Where both families are present, staffing and attendance member identities, payees and opening hours agree.
     - Reject wrong domain, version, family tag, truncation or trailing bytes.
+    - Installation decisions partition target against checked installed plus pending units; starts cannot exceed
+      requested units. Current installation starts and continuing WIP units match the decision exactly by process/site.
+    - Captured policy/plan and pledged-stock eligibility require the authoritative-state consumer; standalone receipt
+      decoding does not prove absent captured state.
     - Produced batches cannot exceed planned batches.
     - Staged dispatch quantity is positive and final arrival is later than resolve_tick.
     - Loss, physical arrival, delivery, realization and local transfer quantities are positive.

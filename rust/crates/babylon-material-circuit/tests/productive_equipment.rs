@@ -219,6 +219,7 @@ fn installation_overflow_after_attendance_discards_every_detached_change() {
         .unwrap()
         .quantity = 4;
     equipment_mut(&mut state).installation_policies[0].maximum_started_units_per_period = 2;
+    equipment_mut(&mut state).installation_policies[0].target = InstallationTarget::FixedUnits(2);
     equipment_mut(&mut state).definitions[0].installation_hours_per_unit = u64::MAX;
     let before = encode_material_circuit_state(&state).unwrap();
     assert_eq!(
@@ -238,7 +239,7 @@ fn current_equipment_wire_refuses_previous_schema_and_inconsistent_physical_cost
     let bytes = encode_material_circuit_state(&state).unwrap();
     let mut old = bytes.clone();
     let offset = MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES.len() + 1;
-    old[offset..offset + 2].copy_from_slice(&13_u16.to_be_bytes());
+    old[offset..offset + 2].copy_from_slice(&14_u16.to_be_bytes());
     assert_eq!(
         decode_material_circuit_state(&old),
         Err(MaterialCircuitError::WireVersion)
@@ -454,3 +455,6 @@ fn goods_cost_actual_wear_inputs_and_wages_are_one_produced_basis_without_revalu
         advance_material_circuit(&restored).unwrap()
     );
 }
+
+#[path = "support/equipment_choice.rs"]
+mod equipment_choice;

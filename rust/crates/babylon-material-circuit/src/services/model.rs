@@ -142,7 +142,7 @@ impl ServiceOutputReceipt {
         Ok(())
     }
 }
-/// Opening due orders plus two bounded sets of recurring policies (including zero admissions).
+/// Independent close ceiling, including captured orders and zero-admission requests.
 pub const MAX_SERVICE_RECEIPTS_PER_PERIOD: usize = 3 * crate::MAX_MATERIAL_CIRCUIT_ROWS;
 
 impl ServicePerformanceReceipt {

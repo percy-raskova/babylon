@@ -27,7 +27,38 @@ type SupplierKey = (SiteId, SiteId, GoodId, UnitId);
 type SupplyPath = (RouteId, crate::SupplierTransport);
 type CapacityKey = (u64, CorridorId);
 
+pub(crate) fn check_order_principal_limits(
+    delivery: usize,
+    retail: usize,
+    service: usize,
+) -> Result<(), MaterialCircuitError> {
+    let lengths = [delivery, retail, service];
+    if delivery > crate::MAX_DELIVERY_ORDERS
+        || retail > MAX_MATERIAL_CIRCUIT_ROWS
+        || service > crate::MAX_SERVICE_ORDERS
+    {
+        return Err(MaterialCircuitError::RowLimit);
+    }
+    let combined = lengths.into_iter().try_fold(0_usize, |total, count| {
+        total
+            .checked_add(count)
+            .ok_or(MaterialCircuitError::Arithmetic)
+    })?;
+    if combined > crate::MAX_MATERIAL_ORDER_PRINCIPALS {
+        return Err(MaterialCircuitError::RowLimit);
+    }
+    Ok(())
+}
+
 fn check_row_limits(state: &MaterialCircuitState) -> Result<(), MaterialCircuitError> {
+    check_order_principal_limits(
+        state.orders.len(),
+        state.final_demand_orders.len(),
+        state.service_orders.len(),
+    )?;
+    if state.backlog.len() > crate::MAX_DELIVERY_ORDERS {
+        return Err(MaterialCircuitError::RowLimit);
+    }
     crate::capacity::row_limits(state)?;
     if [
         (
@@ -55,10 +86,7 @@ fn check_row_limits(state: &MaterialCircuitState) -> Result<(), MaterialCircuitE
         state.process_outputs.len(),
         state.labor_coefficients.len(),
         state.commodities.len(),
-        state.service_orders.len(),
         state.route_stages.len(),
-        state.orders.len(),
-        state.backlog.len(),
         state.freight.len(),
         state.corridor_capacities.len(),
         state.capacities.len(),
@@ -68,12 +96,6 @@ fn check_row_limits(state: &MaterialCircuitState) -> Result<(), MaterialCircuitE
         state.handling_coefficients.len(),
         state.final_demand_principals.len(),
         state.final_demand_orders.len(),
-        state
-            .orders
-            .len()
-            .checked_add(state.final_demand_orders.len())
-            .and_then(|n| n.checked_add(state.service_orders.len()))
-            .ok_or(MaterialCircuitError::Arithmetic)?,
     ];
     if lengths
         .into_iter()
@@ -379,12 +401,7 @@ fn validate_orders_and_freight(state: &MaterialCircuitState) -> Result<(), Mater
             .checked_add(u128::from(lot.quantity))
             .ok_or(MaterialCircuitError::Arithmetic)?;
     }
-    for (order, backlog) in state
-        .orders
-        .iter()
-        .zip(&state.backlog)
-        .take(MAX_MATERIAL_CIRCUIT_ROWS + 1)
-    {
+    for (order, backlog) in state.orders.iter().zip(&state.backlog) {
         if order.ordered == 0 {
             return Err(MaterialCircuitError::ZeroQuantity);
         }
@@ -560,7 +577,6 @@ fn rebuild_backlog(state: &mut MaterialCircuitState) {
     state.backlog = state
         .orders
         .iter()
-        .take(MAX_MATERIAL_CIRCUIT_ROWS + 1)
         .map(|order| BacklogRow {
             order_id: order.order_id,
             quantity: order.ordered - order.shipped,

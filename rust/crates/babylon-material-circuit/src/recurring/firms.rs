@@ -9,7 +9,6 @@ use crate::{
     AccountId, CircuitAccounting, GoodId, HouseholdDemandReceipt, LocalTransferReceipt,
     MaterialCircuitError, MaterialCircuitState, MoneyTransferReceipt, OrderAccessMode, OrderId,
     OrderRow, OutboundOrderId, ProcessId, PurchaseEscrow, RoutedDispatchReceipt, SiteId, UnitId,
-    MAX_MATERIAL_CIRCUIT_ROWS,
 };
 
 type StockKey = (SiteId, GoodId, UnitId);
@@ -180,9 +179,15 @@ pub(crate) fn replenish(
         if quantity == 0 {
             continue;
         }
-        if state.orders.len() + state.final_demand_orders.len() >= MAX_MATERIAL_CIRCUIT_ROWS {
-            return Err(MaterialCircuitError::RowLimit);
-        }
+        crate::transition::check_order_principal_limits(
+            state
+                .orders
+                .len()
+                .checked_add(1)
+                .ok_or(MaterialCircuitError::Arithmetic)?,
+            state.final_demand_orders.len(),
+            state.service_orders.len(),
+        )?;
         transfers.push(economy.book.reserve_purchase(PurchaseEscrow::new(
             OutboundOrderId::Delivery(id),
             AccountId::Site(policy.buyer_site_id),

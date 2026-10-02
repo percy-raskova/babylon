@@ -72,7 +72,7 @@ pub(super) fn append_orders(
     out: &mut Vec<u8>,
     rows: &[ServiceOrder],
 ) -> Result<(), MaterialCircuitError> {
-    append_rows(out, rows, |b, r| {
+    append_bounded_rows(out, rows, crate::MAX_SERVICE_ORDERS, |b, r| {
         b.extend_from_slice(&r.order_id.as_bytes());
         b.extend_from_slice(&r.performance_period.to_be_bytes());
         b.extend_from_slice(&r.provider_site_id.as_bytes());
@@ -83,7 +83,7 @@ pub(super) fn append_orders(
     })
 }
 pub(super) fn decode_orders(c: &mut Cursor<'_>) -> Result<Vec<ServiceOrder>, MaterialCircuitError> {
-    decode_rows(c, |b| {
+    decode_bounded_rows(c, crate::MAX_SERVICE_ORDERS, |b| {
         Ok(ServiceOrder {
             order_id: OrderId::from_bytes(b.array()?),
             performance_period: b.u64()?,

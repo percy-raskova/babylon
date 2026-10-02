@@ -382,6 +382,9 @@ limits:
     route_stage_capacities: 262144
     service_connections: 131072
     monetary_accounts: 131072
+    monetary_purchases: 327680
+    service_orders: 131072
+    delivery_orders_and_backlog: 131072
     capital_accounts: 131072
     replenishment: 262144
   staffing_work_sources_and_requests: 131072
@@ -396,17 +399,30 @@ limits:
     staffing_work_sources: 112805
   measured_basis: Derived table counts from the complete national opening on 2 October 2026;
     limits are Designed next-power-of-two ceilings, not physical resources or people.
+  measured_national_close_refusals:
+    proposed_combined_orders: 65537
+    proposed_service_orders: 65537
+    proposed_delivery_orders_from_checked_append: 65537
+    proposed_working_inventory_rows: 131073
+  dynamic_order_basis: Actual detached first-close admissions; per-family bounds remain independent,
+    and the purchase ceiling is their sum. These bounds create no supply or purchasing power.
   employment_and_member_labor_rows: 131072
-  combined_delivery_retail_and_service_orders: 65536
+  # Sum of delivery 131072, retail 65536 and service 131072 independently bounded rows.
+  combined_delivery_retail_and_service_orders: 327680
   stages_per_route: 16
   total_freight_resource_requests: 1114112
   total_production_resource_groups: 196608 # Input-family ceiling plus labor-family ceiling.
+  working_inventory_rows: 393216
+  working_inventory_basis: Opening stock plus bounded freight, output and service grant keys;
+    planning instead combines stock, future freight, prebooked services and service-input policies.
+    This transient bound does not change the 131072 durable inventory limit or permit stored services.
   handling_receipts_per_period: 131072
   money_transfers_per_period: 1441792
   service_performance_receipts_per_period: 196608
   procurement_receipts_per_period: 262144 # At most one per captured replenishment policy.
   income_receipts_per_period: 131072 # At most one per cash/capital account.
-  receipt_bounds: Derived from at most two outbound passes and the bounded payroll and purchase phases
+  receipt_bounds: Independent close ceilings; simultaneous maximal admitted families need not fit.
+    These admission changes leave receipt-family and byte bounds unchanged.
   classification: Designed bounds on execution and serialization, not material abundance
 
 error_codes:

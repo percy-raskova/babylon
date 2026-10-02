@@ -248,11 +248,15 @@ pub(crate) fn invest(
     for p in &e.investment_policies {
         let row = decision(&e, p, state.period, &mut evidence, &m.book, costs)?;
         if row.admitted_units > 0 {
-            if state.orders.len() + state.final_demand_orders.len() + state.service_orders.len()
-                >= crate::MAX_MATERIAL_CIRCUIT_ROWS
-            {
-                return Err(MaterialCircuitError::RowLimit);
-            }
+            crate::transition::check_order_principal_limits(
+                state
+                    .orders
+                    .len()
+                    .checked_add(1)
+                    .ok_or(MaterialCircuitError::Arithmetic)?,
+                state.final_demand_orders.len(),
+                state.service_orders.len(),
+            )?;
             let (_, d) = e.definition(p.process_id)?;
             transfers.push(m.book.reserve_purchase(PurchaseEscrow::new(
                 OutboundOrderId::Delivery(row.order_id),

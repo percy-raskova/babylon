@@ -31,8 +31,8 @@ use crate::{
 pub const MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES: &[u8] = b"babylon.material-circuit-state.v3";
 /// SHA-256 of the current language-neutral material circuit contract source.
 pub const MATERIAL_CIRCUIT_SOURCE_SHA256: [u8; 32] = [
-    65, 227, 116, 254, 63, 217, 212, 141, 227, 152, 241, 182, 158, 65, 156, 112, 87, 130, 108, 176,
-    13, 21, 82, 97, 124, 105, 78, 165, 37, 238, 8, 69,
+    195, 41, 225, 239, 180, 216, 255, 100, 107, 15, 218, 58, 136, 165, 116, 242, 6, 110, 154, 36,
+    189, 102, 240, 131, 234, 207, 21, 205, 185, 249, 240, 100,
 ];
 
 const SCHEMA_VERSION: u16 = 15;
@@ -201,7 +201,7 @@ fn append_inventory(
 }
 
 fn append_orders(output: &mut Vec<u8>, rows: &[OrderRow]) -> Result<(), MaterialCircuitError> {
-    append_rows(output, rows, |bytes, row| {
+    append_bounded_rows(output, rows, crate::MAX_DELIVERY_ORDERS, |bytes, row| {
         bytes.extend_from_slice(&row.order_id.as_bytes());
         bytes.push(row.access_mode as u8);
         bytes.extend_from_slice(&row.buyer_site_id.as_bytes());
@@ -217,7 +217,7 @@ fn append_orders(output: &mut Vec<u8>, rows: &[OrderRow]) -> Result<(), Material
 }
 
 fn append_backlog(output: &mut Vec<u8>, rows: &[BacklogRow]) -> Result<(), MaterialCircuitError> {
-    append_rows(output, rows, |bytes, row| {
+    append_bounded_rows(output, rows, crate::MAX_DELIVERY_ORDERS, |bytes, row| {
         bytes.extend_from_slice(&row.order_id.as_bytes());
         bytes.extend_from_slice(&row.quantity.to_be_bytes());
     })
@@ -394,7 +394,7 @@ fn decode_inventory(cursor: &mut Cursor<'_>) -> Result<Vec<InventoryRow>, Materi
 }
 
 fn decode_orders(cursor: &mut Cursor<'_>) -> Result<Vec<OrderRow>, MaterialCircuitError> {
-    decode_rows(cursor, |bytes| {
+    decode_bounded_rows(cursor, crate::MAX_DELIVERY_ORDERS, |bytes| {
         let order_id = OrderId::from_bytes(bytes.array()?);
         let access_mode = match bytes.u8()? {
             1 => OrderAccessMode::CommoditySale,
@@ -417,7 +417,7 @@ fn decode_orders(cursor: &mut Cursor<'_>) -> Result<Vec<OrderRow>, MaterialCircu
 }
 
 fn decode_backlog(cursor: &mut Cursor<'_>) -> Result<Vec<BacklogRow>, MaterialCircuitError> {
-    decode_rows(cursor, |bytes| {
+    decode_bounded_rows(cursor, crate::MAX_DELIVERY_ORDERS, |bytes| {
         Ok(BacklogRow {
             order_id: OrderId::from_bytes(bytes.array()?),
             quantity: bytes.u64()?,

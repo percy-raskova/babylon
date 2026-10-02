@@ -315,7 +315,7 @@ fn monetary_tags_counts_and_invalid_currency_are_refused() {
     }
     for (count_offset, excess) in [
         (accounting + 1, 131_073_u32),
-        (purchases - 4, 65_537),
+        (purchases - 4, 327_681),
         (shifts - 4, 65_537),
         (shifts + 2 * SHIFT_BYTES, 131_073),
         (shifts + 2 * SHIFT_BYTES + 4 + 2 * EMPLOYMENT_BYTES, 131_073),
@@ -427,3 +427,9 @@ fn historical_cost_opening_accrued_wages_are_assets_and_liabilities_without_repe
     assert!(economy.book.snapshot().shifts.is_empty());
     assert_eq!(economy.book.cash(household).unwrap(), row.opening_capital);
 }
+
+#[path = "monetary_wire/order_principal_limits.rs"]
+mod order_principal_limits;
+
+#[path = "monetary_wire/delivery_limits.rs"]
+mod delivery_limits;

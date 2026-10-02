@@ -319,7 +319,9 @@ impl MonetaryBook {
         if snapshot.accounts.len() > crate::MAX_MONETARY_ACCOUNTS {
             return Err(MonetaryError::RowLimit);
         }
-        row_limit(snapshot.purchases.len())?;
+        if snapshot.purchases.len() > crate::MAX_MATERIAL_ORDER_PRINCIPALS {
+            return Err(MonetaryError::RowLimit);
+        }
         row_limit(snapshot.shifts.len())?;
         let mut book = Self {
             accounts: BTreeMap::new(),
@@ -421,7 +423,9 @@ impl MonetaryBook {
         if self.purchases.contains_key(&row.order) {
             return Err(MonetaryError::DuplicatePurchase);
         }
-        insertion_limit(self.purchases.len())?;
+        if self.purchases.len() >= crate::MAX_MATERIAL_ORDER_PRINCIPALS {
+            return Err(MonetaryError::RowLimit);
+        }
         self.cash(row.seller)?;
         let amount = row.reserved_amount()?;
         let cash = self.cash_after_debit(row.buyer, amount)?;

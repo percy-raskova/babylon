@@ -352,3 +352,9 @@ fn a_service_dependency_cycle_and_durable_service_stock_are_refused_atomically()
 
 #[path = "support/period_service_cases.rs"]
 mod service_cases;
+
+#[path = "period_services/order_limits.rs"]
+mod order_limits;
+
+#[path = "period_services/inventory_limits.rs"]
+mod inventory_limits;

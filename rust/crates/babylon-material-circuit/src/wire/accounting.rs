@@ -88,15 +88,20 @@ pub(super) fn append(
             bytes.extend_from_slice(&row.cash.micro_units().to_be_bytes());
         },
     )?;
-    append_rows(output, &snapshot.purchases, |bytes, row| {
-        append_order(bytes, row.order);
-        append_account(bytes, row.buyer);
-        append_account(bytes, row.seller);
-        bytes.extend_from_slice(&row.quantity.to_be_bytes());
-        bytes.extend_from_slice(&row.unit_price.micro_units().to_be_bytes());
-        bytes.extend_from_slice(&row.delivered.to_be_bytes());
-        bytes.extend_from_slice(&row.refunded.to_be_bytes());
-    })?;
+    append_bounded_rows(
+        output,
+        &snapshot.purchases,
+        crate::MAX_MATERIAL_ORDER_PRINCIPALS,
+        |bytes, row| {
+            append_order(bytes, row.order);
+            append_account(bytes, row.buyer);
+            append_account(bytes, row.seller);
+            bytes.extend_from_slice(&row.quantity.to_be_bytes());
+            bytes.extend_from_slice(&row.unit_price.micro_units().to_be_bytes());
+            bytes.extend_from_slice(&row.delivered.to_be_bytes());
+            bytes.extend_from_slice(&row.refunded.to_be_bytes());
+        },
+    )?;
     append_rows(output, &snapshot.shifts, |bytes, row| {
         bytes.extend_from_slice(&row.id.as_bytes());
         append_account(bytes, row.employer);
@@ -156,7 +161,7 @@ pub(super) fn decode(cursor: &mut Cursor<'_>) -> Result<CircuitAccounting, Mater
             cash: decode_currency(bytes)?,
         })
     })?;
-    let purchases = decode_rows(cursor, |bytes| {
+    let purchases = decode_bounded_rows(cursor, crate::MAX_MATERIAL_ORDER_PRINCIPALS, |bytes| {
         Ok(PurchaseEscrow {
             order: decode_order(bytes)?,
             buyer: decode_account(bytes)?,

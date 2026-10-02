@@ -139,16 +139,17 @@ pub(crate) fn admit_household_orders(
             unit_price,
         };
         if admitted_quantity > 0 {
-            let count = state
-                .orders
+            let retail = state
+                .final_demand_orders
                 .len()
-                .checked_add(state.final_demand_orders.len())
-                .and_then(|n| n.checked_add(state.service_orders.len()))
-                .and_then(|n| n.checked_add(orders.len()))
+                .checked_add(orders.len())
+                .and_then(|n| n.checked_add(1))
                 .ok_or(MaterialCircuitError::Arithmetic)?;
-            if count >= MAX_MATERIAL_CIRCUIT_ROWS {
-                return Err(MaterialCircuitError::RowLimit);
-            }
+            crate::transition::check_order_principal_limits(
+                state.orders.len(),
+                retail,
+                state.service_orders.len(),
+            )?;
             let (order, movement) = fund_order(&mut book, &demand)?;
             orders.push(order);
             movements.push(movement);

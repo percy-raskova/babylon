@@ -10,12 +10,10 @@ use crate::{
     ShiftState, SiteId, UnitId, MAX_MATERIAL_CIRCUIT_ROWS,
 };
 
-/// Derived close ceiling: 3M member payroll, 2N old purchase movements, 3N household
-/// admission/settlement/refund, 2N new firm admission/settlement, and 4N
-/// service admission plus settlement/refund movements.
-/// Another 4N bounds public budgets, taxes, owner payouts and contributions.
-/// Another N admits ordinary equipment purchase reserves.
-/// The complete receipt envelope retains its independent byte ceiling.
+/// Independent Designed close ceiling. The original 3M + 16N derivation does not
+/// cover every simultaneously maximal admitted family after named policy limits
+/// grow. Admission of a large opening therefore does not promise that its entire
+/// possible close fits this count or the independent complete-receipt byte cap.
 pub const MAX_MONEY_TRANSFERS_PER_PERIOD: usize =
     3 * crate::MAX_STAFFING_MEMBERS + 16 * MAX_MATERIAL_CIRCUIT_ROWS;
 
@@ -335,11 +333,20 @@ pub fn admit_material_purchase(
     let CircuitAccounting::Monetary(economy) = &mut state.accounting else {
         return Err(MaterialCircuitError::MonetaryInvariant);
     };
-    if state.orders.len() + state.final_demand_orders.len() + state.service_orders.len()
-        >= MAX_MATERIAL_CIRCUIT_ROWS
-    {
-        return Err(MaterialCircuitError::RowLimit);
-    }
+    let mut counts = [
+        state.orders.len(),
+        state.final_demand_orders.len(),
+        state.service_orders.len(),
+    ];
+    let family = match &purchase {
+        MaterialPurchase::Delivery(_) => 0,
+        MaterialPurchase::LocalFinalDemand(_) => 1,
+        MaterialPurchase::Service(_) => 2,
+    };
+    counts[family] = counts[family]
+        .checked_add(1)
+        .ok_or(MaterialCircuitError::Arithmetic)?;
+    crate::transition::check_order_principal_limits(counts[0], counts[1], counts[2])?;
     let principal = match &purchase {
         MaterialPurchase::Service(order) => PurchaseEscrow::new(
             OutboundOrderId::Service(order.order_id),

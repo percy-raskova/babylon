@@ -4,6 +4,13 @@ use babylon_kernel::economic_location::EconomicLocation;
 
 /// Designed serialization and validation ceiling, not material abundance.
 pub const MAX_MATERIAL_CIRCUIT_ROWS: usize = 65_536;
+/// Designed ceiling after the actual national close exceeded 65,536 service orders.
+pub const MAX_SERVICE_ORDERS: usize = 131_072;
+/// Designed ceiling after the actual national close exceeded 65,536 delivery orders.
+pub const MAX_DELIVERY_ORDERS: usize = 131_072;
+/// Derived total of independently bounded delivery, retail and service principals.
+pub const MAX_MATERIAL_ORDER_PRINCIPALS: usize =
+    MAX_DELIVERY_ORDERS + MAX_MATERIAL_CIRCUIT_ROWS + MAX_SERVICE_ORDERS;
 /// Designed ceiling for the measured 73,504 national site-stock rows.
 pub const MAX_INVENTORY_ROWS: usize = 131_072;
 /// Designed ceiling for the measured 114,680 national recipe inputs.

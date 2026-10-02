@@ -5,7 +5,7 @@ use super::{
     credit_inventory, debit_inventory, freight_lot_id, grams_per_unit, route_stages,
     stage_capacities, supplier_routes, BTreeMap, CapacityKey, InventoryKey, InventoryLedger,
     MaterialCircuitError, MaterialCircuitState, RouteId, RoutedDispatchReceipt, RoutedFreightLot,
-    SiteId, SupplierKey, SupplyPath, UnitId, MAX_MATERIAL_CIRCUIT_ROWS,
+    SiteId, SupplierKey, SupplyPath, UnitId,
 };
 use crate::production::proportional_floor;
 use crate::valuation::CostClose;
@@ -323,12 +323,7 @@ fn apply_dispatches(
     costs: &mut CostClose,
 ) -> Result<Vec<LocalTransferReceipt>, MaterialCircuitError> {
     let mut local_transfers = Vec::new();
-    for (index, quantity) in allocations
-        .iter()
-        .copied()
-        .enumerate()
-        .take(MAX_MATERIAL_CIRCUIT_ROWS + 1)
-    {
+    for (index, quantity) in allocations.iter().copied().enumerate() {
         if quantity == 0 {
             continue;
         }

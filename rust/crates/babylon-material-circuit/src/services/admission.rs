@@ -4,7 +4,6 @@ use super::{
 };
 use crate::{
     AccountId, CircuitAccounting, MoneyTransferReceipt, OutboundOrderId, PurchaseEscrow, SiteId,
-    MAX_MATERIAL_CIRCUIT_ROWS,
 };
 use babylon_kernel::{content_digest::sha256_of, currency::Currency};
 
@@ -224,11 +223,15 @@ pub(super) fn admit(
             return Err(MaterialCircuitError::DuplicateRow);
         }
         if quantity > 0 {
-            if state.service_orders.len() + state.orders.len() + state.final_demand_orders.len()
-                >= MAX_MATERIAL_CIRCUIT_ROWS
-            {
-                return Err(MaterialCircuitError::RowLimit);
-            }
+            crate::transition::check_order_principal_limits(
+                state.orders.len(),
+                state.final_demand_orders.len(),
+                state
+                    .service_orders
+                    .len()
+                    .checked_add(1)
+                    .ok_or(MaterialCircuitError::Arithmetic)?,
+            )?;
             movements.push(e.book.reserve_purchase(PurchaseEscrow::new(
                 OutboundOrderId::Service(order.order_id),
                 order.buyer,

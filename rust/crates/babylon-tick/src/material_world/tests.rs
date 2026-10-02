@@ -281,3 +281,22 @@ fn attendance_receipt_encoding_roundtrips_without_sorting_hashed_shift_ids() {
         Err(MaterialWorldError::Wire)
     );
 }
+
+// Exercises the real pre-allocation ceiling, without pretending a byte-capacity
+// reservation is a valid giant economic state. No bytes are initialized here.
+#[test]
+fn register_byte_budget_is_one_gb_and_receipts_keep_their_independent_cap() {
+    const ONE_GB: usize = 1_000_000_000;
+    let admitted = bounded_bytes(ONE_GB, MAX_MATERIAL_WORLD_REGISTER_BYTES).unwrap();
+    assert!(admitted.is_empty());
+    assert!(admitted.capacity() >= ONE_GB);
+    assert_eq!(
+        bounded_bytes(ONE_GB + 1, MAX_MATERIAL_WORLD_REGISTER_BYTES),
+        Err(MaterialWorldError::ByteLimit)
+    );
+    assert_eq!(MAX_MATERIAL_TICK_RECEIPT_BYTES, 67_108_864);
+    assert_eq!(
+        bounded_bytes(67_108_865, MAX_MATERIAL_TICK_RECEIPT_BYTES),
+        Err(MaterialWorldError::ByteLimit)
+    );
+}

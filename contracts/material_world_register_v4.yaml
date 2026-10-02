@@ -22,9 +22,11 @@ encoding:
     - if_present_u64_big_endian_config_length_then_canonical_organizer_config
     - if_present_u64_big_endian_state_length_then_canonical_organizer_state
   digest: sha256_exact_bytes
-  maximum_complete_bytes: 268435456
+  maximum_complete_bytes: 1000000000
   measured_opening_state_bytes: 240132173
-  bound_basis: Designed next binary ceiling above the admitted full national opening measured 2 October 2026.
+  bound_basis: >-
+    Designed literal 1 GB operational headroom explicitly authorized by the Director
+    on 2 October 2026; not a measured minimum.
   independence: Receipt, captured source, graph, foundation and committed envelope ceilings are separate.
   decoder: reject_unknown_version_truncated_trailing_or_noncanonical_bytes
 transition:

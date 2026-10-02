@@ -27,8 +27,9 @@ mod workforce_receipt;
 const REGISTER_DOMAIN: &[u8] = b"babylon.material-world-register.v4\0";
 const NOMINAL_DOMAIN: &[u8] = b"babylon.nominal-material-world.v3\0";
 const RECEIPT_DOMAIN: &[u8] = b"babylon.material-tick-receipts.v14\0";
-/// Designed bound above the measured 240,132,173-byte complete national opening.
-pub const MAX_MATERIAL_WORLD_REGISTER_BYTES: usize = 268_435_456;
+/// Designed 1 GB operational headroom explicitly authorized by the Director.
+/// This standalone ceiling does not enlarge surrounding foundation or receipt bounds.
+pub const MAX_MATERIAL_WORLD_REGISTER_BYTES: usize = 1_000_000_000;
 /// Independent receipt envelope bound; state size does not qualify closing evidence.
 pub const MAX_MATERIAL_TICK_RECEIPT_BYTES: usize = 67_108_864;
 

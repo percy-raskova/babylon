@@ -7,12 +7,9 @@ use babylon_tick::material_world::MAX_MATERIAL_WORLD_REGISTER_BYTES;
 const FIXED_FRAMING_BYTES: usize = FOUNDATION_DOMAIN.len() + 4 + 9 + 32 + 3 * 8;
 const MAX_PRESET_BYTES: usize = 128;
 
-/// Complete framing of independently bounded graph and material components.
-/// The captured source catalog occurs once, inside the graph foundation.
-pub const MAX_MATERIAL_FOUNDATION_BYTES: usize = FIXED_FRAMING_BYTES
-    + MAX_PRESET_BYTES
-    + MAX_CAMPAIGN_FOUNDATION_BYTES
-    + MAX_MATERIAL_WORLD_REGISTER_BYTES;
+/// Independent complete framing ceiling. Larger admitted component limits do
+/// not automatically enlarge this total; the source catalog still occurs once.
+pub const MAX_MATERIAL_FOUNDATION_BYTES: usize = 335_544_557;
 
 pub(super) fn material_foundation_length(
     preset: usize,
@@ -59,5 +56,9 @@ mod tests {
         assert!(super::material_foundation_length(1, 0, 1).is_err());
         assert!(super::material_foundation_length(1, 1, 0).is_err());
         assert!(super::material_foundation_length(1, usize::MAX, 1).is_err());
+        // A larger standalone register allowance never enlarges the complete envelope.
+        assert!(
+            super::material_foundation_length(1, 1, MAX_MATERIAL_WORLD_REGISTER_BYTES).is_err()
+        );
     }
 }

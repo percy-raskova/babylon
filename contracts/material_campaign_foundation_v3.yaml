@@ -13,9 +13,10 @@ encoding:
     - u64_big_endian_material_register_v4_length_then_exact_bytes
   digest: sha256_exact_bytes
   maximum_complete_bytes: 335544557
+  independent_total: A larger component allowance never enlarges this complete framing ceiling.
   component_bounds:
     graph_foundation_bytes: 67108864
-    material_world_register_bytes: 268435456
+    material_world_register_bytes: 1000000000
     aggregate_framing_and_preset_bytes: 237
     rule: Check each nonempty component before allocation or source reconstruction.
     source_catalog: Included once inside the graph foundation; never added again.

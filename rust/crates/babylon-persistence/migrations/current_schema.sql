@@ -1114,7 +1114,7 @@ CREATE TABLE babylon_state.material_campaign_foundation_v3 (
         OR (duration_kind = 'finite' AND final_period IS NOT NULL AND final_period > 0)
     ),
     content_sha256 bytea NOT NULL CHECK (octet_length(content_sha256) = 32),
-    initial_register_bytes bytea NOT NULL CHECK (octet_length(initial_register_bytes) <= 268435456),
+    initial_register_bytes bytea NOT NULL CHECK (octet_length(initial_register_bytes) <= 1000000000),
     foundation_bytes bytea NOT NULL CHECK (octet_length(foundation_bytes) <= 335544557),
     foundation_sha256 bytea NOT NULL CHECK (octet_length(foundation_sha256) = 32)
 );
@@ -1122,7 +1122,7 @@ CREATE TABLE babylon_state.material_tick_v3 (
     campaign_id uuid NOT NULL REFERENCES babylon_state.material_campaign_foundation_v3(campaign_id),
     resolve_tick bigint NOT NULL CHECK (resolve_tick > 0),
     identity_bytes bytea NOT NULL CHECK (octet_length(identity_bytes) <= 1024),
-    register_bytes bytea NOT NULL CHECK (octet_length(register_bytes) <= 268435456),
+    register_bytes bytea NOT NULL CHECK (octet_length(register_bytes) <= 1000000000),
     receipt_bytes bytea NOT NULL CHECK (octet_length(receipt_bytes) <= 67108864),
     PRIMARY KEY (campaign_id, resolve_tick)
 );

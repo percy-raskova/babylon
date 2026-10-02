@@ -1,7 +1,7 @@
 //! Exact captured needs, stocks and decision policies; no default on old bytes.
 use super::{append_bounded_rows, append_rows, decode_bounded_rows, decode_rows, Cursor};
 use crate::{
-    AttendancePlan, FinalDemandPrincipalId, GoodId, HouseholdCohort, HouseholdNeed,
+    AttendancePlan, FinalDemandPrincipalId, GoodId, HouseholdCohort, HouseholdKind, HouseholdNeed,
     HouseholdNeedBasis, HouseholdPurchasePolicy, HouseholdStock, MaterialCircuitError, PricePolicy,
     ProcessId, ProductionDemandPolicy, RecurringEconomy, ReplenishmentPolicy, SellerOffer, SiteId,
     UnitId,
@@ -20,6 +20,7 @@ pub(super) fn append(
     output.extend_from_slice(&rows.last_household_admission_period.to_be_bytes());
     output.extend_from_slice(&rows.last_household_consumption_period.to_be_bytes());
     append_rows(output, &rows.households, |bytes, row| {
+        bytes.push(row.kind as u8);
         bytes.extend_from_slice(&row.principal_id.as_bytes());
         bytes.extend_from_slice(&row.households.to_be_bytes());
         bytes.extend_from_slice(&row.persons.to_be_bytes());
@@ -30,22 +31,32 @@ pub(super) fn append(
         bytes.extend_from_slice(&row.unit_id.as_bytes());
         bytes.extend_from_slice(&row.quantity.to_be_bytes());
     })?;
-    append_rows(output, &rows.household_needs, |bytes, row| {
-        bytes.extend_from_slice(&row.principal_id.as_bytes());
-        bytes.extend_from_slice(&row.good_id.as_bytes());
-        bytes.extend_from_slice(&row.unit_id.as_bytes());
-        bytes.push(row.basis as u8);
-        bytes.extend_from_slice(&row.units_per_basis.to_be_bytes());
-    })?;
-    append_rows(output, &rows.household_purchases, |bytes, row| {
-        bytes.extend_from_slice(&row.principal_id.as_bytes());
-        bytes.extend_from_slice(&row.retailer_site_id.as_bytes());
-        bytes.extend_from_slice(&row.good_id.as_bytes());
-        bytes.extend_from_slice(&row.unit_id.as_bytes());
-        bytes.extend_from_slice(&row.target_closing_stock.to_be_bytes());
-        bytes.extend_from_slice(&row.maximum_purchase.to_be_bytes());
-        bytes.push(u8::from(row.enabled));
-    })?;
+    append_bounded_rows(
+        output,
+        &rows.household_needs,
+        crate::MAX_HOUSEHOLD_NEEDS,
+        |bytes, row| {
+            bytes.extend_from_slice(&row.principal_id.as_bytes());
+            bytes.extend_from_slice(&row.good_id.as_bytes());
+            bytes.extend_from_slice(&row.unit_id.as_bytes());
+            bytes.push(row.basis as u8);
+            bytes.extend_from_slice(&row.units_per_basis.to_be_bytes());
+        },
+    )?;
+    append_bounded_rows(
+        output,
+        &rows.household_purchases,
+        crate::MAX_HOUSEHOLD_NEEDS,
+        |bytes, row| {
+            bytes.extend_from_slice(&row.principal_id.as_bytes());
+            bytes.extend_from_slice(&row.retailer_site_id.as_bytes());
+            bytes.extend_from_slice(&row.good_id.as_bytes());
+            bytes.extend_from_slice(&row.unit_id.as_bytes());
+            bytes.extend_from_slice(&row.target_closing_stock.to_be_bytes());
+            bytes.extend_from_slice(&row.maximum_purchase.to_be_bytes());
+            bytes.push(u8::from(row.enabled));
+        },
+    )?;
     append_rows(output, &rows.offers, |bytes, row| {
         bytes.extend_from_slice(&row.site_id.as_bytes());
         bytes.extend_from_slice(&row.good_id.as_bytes());
@@ -146,6 +157,19 @@ fn pricing(bytes: &mut Cursor<'_>) -> Result<PricePolicy, MaterialCircuitError> 
     }
 }
 
+fn decode_household(bytes: &mut Cursor<'_>) -> Result<HouseholdCohort, MaterialCircuitError> {
+    Ok(HouseholdCohort {
+        kind: match bytes.u8()? {
+            1 => HouseholdKind::Ordinary,
+            2 => HouseholdKind::CollectiveResidence,
+            _ => return Err(MaterialCircuitError::WireEnum),
+        },
+        principal_id: FinalDemandPrincipalId::from_bytes(bytes.array()?),
+        households: bytes.u64()?,
+        persons: bytes.u64()?,
+    })
+}
+
 pub(super) fn decode(
     cursor: &mut Cursor<'_>,
 ) -> Result<Option<Box<RecurringEconomy>>, MaterialCircuitError> {
@@ -157,13 +181,7 @@ pub(super) fn decode(
     Ok(Some(Box::new(RecurringEconomy {
         last_household_admission_period: cursor.u64()?,
         last_household_consumption_period: cursor.u64()?,
-        households: decode_rows(cursor, |bytes| {
-            Ok(HouseholdCohort {
-                principal_id: FinalDemandPrincipalId::from_bytes(bytes.array()?),
-                households: bytes.u64()?,
-                persons: bytes.u64()?,
-            })
-        })?,
+        households: decode_rows(cursor, decode_household)?,
         household_stocks: decode_rows(cursor, |bytes| {
             Ok(HouseholdStock {
                 principal_id: FinalDemandPrincipalId::from_bytes(bytes.array()?),
@@ -172,7 +190,7 @@ pub(super) fn decode(
                 quantity: bytes.u64()?,
             })
         })?,
-        household_needs: decode_rows(cursor, |bytes| {
+        household_needs: decode_bounded_rows(cursor, crate::MAX_HOUSEHOLD_NEEDS, |bytes| {
             Ok(HouseholdNeed {
                 principal_id: FinalDemandPrincipalId::from_bytes(bytes.array()?),
                 good_id: GoodId::from_bytes(bytes.array()?),
@@ -185,7 +203,7 @@ pub(super) fn decode(
                 units_per_basis: bytes.u64()?,
             })
         })?,
-        household_purchases: decode_rows(cursor, |bytes| {
+        household_purchases: decode_bounded_rows(cursor, crate::MAX_HOUSEHOLD_NEEDS, |bytes| {
             Ok(HouseholdPurchasePolicy {
                 principal_id: FinalDemandPrincipalId::from_bytes(bytes.array()?),
                 retailer_site_id: SiteId::from_bytes(bytes.array()?),

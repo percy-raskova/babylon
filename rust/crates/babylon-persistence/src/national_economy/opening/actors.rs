@@ -9,6 +9,7 @@ use crate::{
     },
     national_counties::NationalCountyReference,
     national_economy::{household_principal, ResidentWorkplaceSource},
+    national_household_allocation::{HouseholdBudgetKey, NationalHouseholdAllocation},
     national_resident_allocation::{ResidentAttendanceMode, ResidentWorkplaceAllocation},
 };
 use babylon_graph::stable_element::StableElementKey;
@@ -17,25 +18,30 @@ use babylon_kernel::{
     economic_location::EconomicLocation,
 };
 use babylon_material_circuit::{
-    CommodityKind, CorridorId, EmploymentTerms, HouseholdNeedBasis, LaborCompensation,
-    LogisticsNodeId, MerchantRole, ProcessId, StaffingPolicy, StaffingWorkSource,
+    CommodityKind, CorridorId, EmploymentTerms, HouseholdKind, HouseholdNeedBasis,
+    LaborCompensation, LogisticsNodeId, MerchantRole, ProcessId, StaffingPolicy,
+    StaffingWorkSource,
 };
 
 pub(super) fn domestic(
     builder: &mut Builder<'_>,
     counties: &NationalCountyReference,
     allocation: &ResidentWorkplaceAllocation,
+    household_budgets: &NationalHouseholdAllocation,
 ) -> Result<()> {
-    for controls in &allocation.counties {
-        let location = EconomicLocation::domestic_county(controls.county)
+    for county in household_budgets.counties() {
+        let location = EconomicLocation::domestic_county(county.county())
             .map_err(|_| NationalOpeningError::SourceScope)?;
-        household(
-            builder,
-            location,
-            controls.population,
-            controls.households,
-            10_000,
-        )?;
+        for budget in county.budgets() {
+            household(
+                builder,
+                location,
+                budget.key,
+                budget.persons,
+                budget.households,
+                10_000,
+            )?;
+        }
     }
     for row in &allocation.workplaces {
         let target = &row.target;
@@ -148,16 +154,27 @@ pub(super) fn sources(actor: &ActorContext) -> Vec<StaffingWorkSource> {
 pub(super) fn household(
     builder: &mut Builder<'_>,
     location: EconomicLocation,
+    budget: HouseholdBudgetKey,
     persons: u64,
     households: u64,
     price_scale_bps: u16,
 ) -> Result<()> {
-    if persons == 0 || households == 0 || households > persons {
+    let kind = if budget == HouseholdBudgetKey::CollectiveResidence {
+        HouseholdKind::CollectiveResidence
+    } else {
+        HouseholdKind::Ordinary
+    };
+    if !kind.admits_counts(persons, households) {
         return Err(NationalOpeningError::MissingObservation);
     }
     let mut stock = vec![];
     let mut period_needs_cost = Currency::from_micro_units(0);
     for need in &builder.policy.household_needs {
+        if kind == HouseholdKind::CollectiveResidence
+            && need.basis == HouseholdNeedBasis::Households
+        {
+            continue;
+        }
         let good = builder.commodity(&need.key)?;
         let units = quantity(
             match need.basis {
@@ -188,13 +205,26 @@ pub(super) fn household(
             });
         }
     }
+    let principal_id = household_principal(location, budget);
+    if builder
+        .household_keys
+        .insert(principal_id, budget)
+        .is_some()
+    {
+        return Err(NationalOpeningError::Identity);
+    }
     builder.opening.households.push(EconomicHouseholdSeed {
-        principal_id: household_principal(location),
-        subject: subject(location, "household"),
+        kind,
+        principal_id,
+        subject: subject(location, &format!("household-{}", budget.label())),
         location,
         persons,
         households,
-        template: HouseholdTemplateId(1),
+        template: HouseholdTemplateId(if kind == HouseholdKind::CollectiveResidence {
+            2
+        } else {
+            1
+        }),
         opening_stock: stock,
         opening_cash: amount(builder.policy.working_capital_periods, period_needs_cost)?,
     });
@@ -393,4 +423,35 @@ pub(super) fn handling_requirements(
             Err(error) => Some(Err(error)),
         })
         .collect()
+}
+
+/// National authoring guard: no graph member force is funded by invented residents.
+pub(super) fn validate_people(opening: &crate::economic_catalog::EconomicOpening) -> Result<()> {
+    let households: std::collections::BTreeMap<_, _> = opening
+        .households
+        .iter()
+        .map(|h| (h.principal_id, h))
+        .collect();
+    if households.len() != opening.households.len() {
+        return Err(NationalOpeningError::Identity);
+    }
+    let mut forces = std::collections::BTreeMap::<_, u64>::new();
+    for member in opening.staffing.iter().flat_map(|pool| &pool.members) {
+        let household = households
+            .get(&member.member.household_id())
+            .ok_or(NationalOpeningError::Identity)?;
+        if member.member.residence() != household.location {
+            return Err(NationalOpeningError::SourceScope);
+        }
+        let force = forces.entry(household.principal_id).or_default();
+        *force = force
+            .checked_add(member.member.labor_force())
+            .ok_or(NationalOpeningError::Arithmetic)?;
+        if *force > household.persons {
+            return Err(NationalOpeningError::Workforce(
+                crate::national_resident_allocation::AllocationError::PopulationControl,
+            ));
+        }
+    }
+    Ok(())
 }

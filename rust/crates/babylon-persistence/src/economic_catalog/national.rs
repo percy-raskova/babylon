@@ -5,7 +5,7 @@ use super::{
 };
 use crate::{
     national_cohorts::NationalCohortReference, national_counties::NationalCountyReference,
-    national_economy::NationalGamePolicy,
+    national_economy::NationalGamePolicy, national_households::NationalHouseholdReference,
     national_resident_workforce::NationalResidentWorkforceReference,
     national_transport::NationalTransportReference, world_reference::WorldReference,
 };
@@ -15,6 +15,7 @@ pub(super) struct NationalSources {
     pub(super) counties: NationalCountyReference,
     cohorts: NationalCohortReference,
     residents: NationalResidentWorkforceReference,
+    households: NationalHouseholdReference,
     world: WorldReference,
     transport: NationalTransportReference,
 }
@@ -27,6 +28,7 @@ impl NationalSources {
             Kind::NationalCounties,
             Kind::NationalCohorts,
             Kind::ResidentWorkforce,
+            Kind::NationalHouseholds,
             Kind::NationalTransport,
             Kind::InternationalTrade,
             Kind::WorldPopulation,
@@ -60,6 +62,9 @@ impl NationalSources {
             &counties,
         )
         .map_err(|_| EconomicCatalogError::Source(Kind::ResidentWorkforce))?;
+        let households =
+            NationalHouseholdReference::decode_captured(b(Kind::NationalHouseholds)?, &counties)
+                .map_err(|_| EconomicCatalogError::Source(Kind::NationalHouseholds))?;
         let world = WorldReference::decode_captured(
             b(Kind::WorldPopulation)?,
             b(Kind::InternationalTrade)?,
@@ -77,7 +82,13 @@ impl NationalSources {
         let policy = NationalGamePolicy::from_captured_bytes(b(Kind::NationalGamePolicy)?)
             .map_err(|_| EconomicCatalogError::Source(Kind::NationalGamePolicy))?;
         let opening = crate::national_economy::build_national_opening(
-            &counties, &cohorts, &residents, &world, &transport, &policy,
+            &counties,
+            &cohorts,
+            &residents,
+            &households,
+            &world,
+            &transport,
+            &policy,
         )
         .map_err(EconomicCatalogError::NationalOpening)?;
         Ok((
@@ -85,6 +96,7 @@ impl NationalSources {
                 counties,
                 cohorts,
                 residents,
+                households,
                 world,
                 transport,
             },
@@ -96,6 +108,7 @@ impl NationalSources {
             counties: &self.counties,
             cohorts: &self.cohorts,
             residents: &self.residents,
+            households: &self.households,
             world: &self.world,
             transport: &self.transport,
         }

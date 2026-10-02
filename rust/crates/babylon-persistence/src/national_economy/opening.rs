@@ -17,6 +17,10 @@ use crate::{
     },
     national_cohorts::NationalCohortReference,
     national_counties::NationalCountyReference,
+    national_household_allocation::{
+        allocate_households, HouseholdAllocationError, HouseholdBudgetKey,
+    },
+    national_households::NationalHouseholdReference,
     national_resident_allocation::{allocate_home_county, AllocationError},
     national_resident_workforce::NationalResidentWorkforceReference,
     national_transport::NationalTransportReference,
@@ -44,6 +48,7 @@ pub enum NationalOpeningError {
     Bounds,
     Arithmetic,
     Workforce(AllocationError),
+    Households(HouseholdAllocationError),
 }
 impl std::fmt::Display for NationalOpeningError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -84,6 +89,7 @@ struct ActorContext {
 
 struct Builder<'a> {
     policy: &'a NationalGamePolicy,
+    household_keys: BTreeMap<babylon_material_circuit::FinalDemandPrincipalId, HouseholdBudgetKey>,
     transport: &'a NationalTransportReference,
     labor_unit: UnitId,
     opening: EconomicOpening,
@@ -103,6 +109,7 @@ pub fn build_national_opening(
     counties: &NationalCountyReference,
     cohorts: &NationalCohortReference,
     residents: &NationalResidentWorkforceReference,
+    household_margins: &NationalHouseholdReference,
     world: &WorldReference,
     transport: &NationalTransportReference,
     policy: &NationalGamePolicy,
@@ -110,13 +117,21 @@ pub fn build_national_opening(
     if u64::from(transport.period_days()) != policy.period_days {
         return Err(NationalOpeningError::Policy);
     }
-    let allocation = allocate_home_county(counties, cohorts, residents, policy)
+    let household_budgets = allocate_households(
+        counties,
+        household_margins,
+        residents,
+        policy.households.private_owner_households_bps,
+    )
+    .map_err(NationalOpeningError::Households)?;
+    let allocation = allocate_home_county(counties, cohorts, residents, &household_budgets, policy)
         .map_err(NationalOpeningError::Workforce)?;
     let mut builder = Builder::new(policy, transport)?;
-    actors::domestic(&mut builder, counties, &allocation)?;
+    actors::domestic(&mut builder, counties, &allocation, &household_budgets)?;
     external::world(&mut builder, world)?;
     markets::wire(&mut builder)?;
-    financial::wire(&mut builder, &allocation)?;
+    actors::validate_people(&builder.opening)?;
+    financial::wire(&mut builder)?;
     routes::finish(&mut builder)?;
     builder
         .opening
@@ -149,6 +164,7 @@ impl<'a> Builder<'a> {
             templates::compile(policy, labor_unit)?;
         Ok(Self {
             policy,
+            household_keys: BTreeMap::new(),
             transport,
             labor_unit,
             actors: BTreeMap::new(),

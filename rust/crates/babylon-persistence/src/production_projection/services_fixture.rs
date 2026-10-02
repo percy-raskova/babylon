@@ -291,6 +291,7 @@ pub(super) fn recurring(mut state: MaterialCircuitState) -> MaterialCircuitState
     e.recurring = Some(Box::new(RecurringEconomy {
         service_inputs: service_inputs(),
         households: vec![HouseholdCohort {
+            kind: babylon_material_circuit::HouseholdKind::Ordinary,
             principal_id: household(),
             households: 1,
             persons: 1,

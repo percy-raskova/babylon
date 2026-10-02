@@ -17,9 +17,32 @@ fn capture_retains_sources_once_and_regenerates_the_exact_native_opening() {
     // There is no per-firm or generated global-state serialization inside this envelope.
     assert!(catalog.canonical_bytes().len() < source_bytes + 4096);
     assert_eq!(catalog.digest(), sha256_of(catalog.canonical_bytes()));
-    assert_eq!(catalog.compiler_version(), "national-world-v1");
+    assert_eq!(catalog.compiler_version(), "national-world-v2");
+    let mut obsolete = catalog.canonical_bytes().to_vec();
+    let compiler = b"national-world-v2";
+    let offset = obsolete
+        .windows(compiler.len())
+        .position(|s| s == compiler)
+        .unwrap();
+    obsolete[offset + compiler.len() - 1] = b'1';
+    assert_eq!(
+        CapturedEconomicCatalog::decode(&obsolete, sha256_of(&obsolete)),
+        Err(babylon_persistence::economic_catalog::EconomicCatalogError::CompilerVersion)
+    );
     assert_eq!(catalog.opening().sites.len(), 60_634);
-    assert_eq!(catalog.opening().households.len(), 3_162);
+    assert_eq!(
+        catalog
+            .opening()
+            .households
+            .iter()
+            .filter(|h| matches!(
+                h.location,
+                babylon_kernel::economic_location::EconomicLocation::County(_)
+            ))
+            .map(|h| h.households)
+            .sum::<u64>(),
+        129_227_496
+    );
     assert!(matches!(
         catalog.opening().capacity,
         CatalogCapacity::Rolling(babylon_material_circuit::RollingProcessSupply::Equipment(_))
@@ -39,7 +62,18 @@ fn capture_retains_sources_once_and_regenerates_the_exact_native_opening() {
     let original =
         babylon_persistence::economic_content::EconomicContentAdmission::from_foundation(original)
             .unwrap();
-    assert_eq!(original.foundation_graph().rows().nodes().len(), 129_865);
+    let expected_nodes = 3_144
+        + expected_opening.sites.len()
+        + expected_opening.households.len()
+        + expected_opening
+            .staffing
+            .iter()
+            .map(|p| p.members.len())
+            .sum::<usize>();
+    assert_eq!(
+        original.foundation_graph().rows().nodes().len(),
+        expected_nodes
+    );
     eprintln!(
         "native foundation bytes: sources={source_bytes}, catalog={}, graph={}, register={}, complete={}, nodes={}",
         catalog_bytes,
@@ -75,6 +109,11 @@ fn absent_duplicate_or_forged_sources_never_fall_back_to_current_files() {
         .sources
         .retain(|source| source.kind() != Kind::NationalCohorts);
     assert!(CapturedEconomicCatalog::capture(missing, None).is_err());
+    let mut absent_households = input();
+    absent_households
+        .sources
+        .retain(|source| source.kind() != Kind::NationalHouseholds);
+    assert!(CapturedEconomicCatalog::capture(absent_households, None).is_err());
     let mut duplicate = input();
     duplicate.sources.push(duplicate.sources[0].clone());
     assert!(CapturedEconomicCatalog::capture(duplicate, None).is_err());

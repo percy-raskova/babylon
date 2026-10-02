@@ -1115,7 +1115,7 @@ CREATE TABLE babylon_state.material_campaign_foundation_v3 (
     ),
     content_sha256 bytea NOT NULL CHECK (octet_length(content_sha256) = 32),
     initial_register_bytes bytea NOT NULL CHECK (octet_length(initial_register_bytes) <= 1000000000),
-    foundation_bytes bytea NOT NULL CHECK (octet_length(foundation_bytes) <= 335544557),
+    foundation_bytes bytea NOT NULL CHECK (octet_length(foundation_bytes) <= 1067109101),
     foundation_sha256 bytea NOT NULL CHECK (octet_length(foundation_sha256) = 32)
 );
 CREATE TABLE babylon_state.material_tick_v3 (

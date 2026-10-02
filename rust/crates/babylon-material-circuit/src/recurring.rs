@@ -48,14 +48,15 @@ fn unique<T, K: Ord>(rows: &[T], key: impl Fn(&T) -> K) -> Result<BTreeSet<K>> {
 }
 
 fn row_limits(rows: &RecurringEconomy) -> Result<()> {
-    if rows.replenishment.len() > crate::MAX_REPLENISHMENT_POLICIES {
+    if rows.replenishment.len() > crate::MAX_REPLENISHMENT_POLICIES
+        || rows.household_needs.len() > crate::MAX_HOUSEHOLD_NEEDS
+        || rows.household_purchases.len() > crate::MAX_HOUSEHOLD_NEEDS
+    {
         return Err(MaterialCircuitError::RowLimit);
     }
     if [
         rows.households.len(),
         rows.household_stocks.len(),
-        rows.household_needs.len(),
-        rows.household_purchases.len(),
         rows.offers.len(),
         rows.production.len(),
         rows.attendance.len(),
@@ -81,8 +82,7 @@ fn validate_households(state: &MaterialCircuitState, rows: &RecurringEconomy) ->
         .map(|r| (r.principal_id, r))
         .collect();
     for row in &rows.households {
-        if row.households == 0
-            || row.persons < row.households
+        if !row.kind.admits_counts(row.persons, row.households)
             || !principals.contains_key(&row.principal_id)
         {
             return Err(MaterialCircuitError::FinalDemandInvariant);
@@ -140,7 +140,10 @@ fn validate_households(state: &MaterialCircuitState, rows: &RecurringEconomy) ->
                 unit_id: policy.unit_id,
             };
             if policy.target_closing_stock != 0
-                || !state.service_connections.contains(&connection)
+                || state
+                    .service_connections
+                    .binary_search(&connection)
+                    .is_err()
                 || !offers.contains(&(policy.retailer_site_id, policy.good_id, policy.unit_id))
             {
                 return Err(MaterialCircuitError::ServiceInvariant);

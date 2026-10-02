@@ -5,7 +5,7 @@ use super::EconomicOpening;
 use crate::{
     michigan_economy::MichiganEconomy, michigan_material::MichiganMaterialCatalog,
     michigan_sectors::MichiganCountySectors, national_cohorts::NationalCohortReference,
-    national_counties::NationalCountyReference,
+    national_counties::NationalCountyReference, national_households::NationalHouseholdReference,
     national_resident_workforce::NationalResidentWorkforceReference,
     national_transport::NationalTransportReference, world_reference::WorldReference,
 };
@@ -24,6 +24,7 @@ pub enum EconomicSourceView<'a> {
         counties: &'a NationalCountyReference,
         cohorts: &'a NationalCohortReference,
         residents: &'a NationalResidentWorkforceReference,
+        households: &'a NationalHouseholdReference,
         world: &'a WorldReference,
         transport: &'a NationalTransportReference,
     },

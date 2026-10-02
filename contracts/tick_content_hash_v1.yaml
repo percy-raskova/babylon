@@ -61,13 +61,13 @@ bounds:
   governance_utf8_bytes: 4194304
   stable_carrier_active_elements: 256
   stable_carrier_bytes: 105962
-  resolver_rows: 131072
+  resolver_rows: 262144
   resolver_hyperedge_rows: 65536
   resolver_edges: 65536
   resolver_hyperedge_members: 65534
   resolver_fact_units: 1048576
-  resolver_manifest_bytes: 8388608
-  stable_graph_nodes: 131072
+  resolver_manifest_bytes: 16777216
+  stable_graph_nodes: 262144
   stable_graph_elements: 65536
   stable_graph_attribute_rows: 524288
   stable_graph_hyperedge_members: 65534

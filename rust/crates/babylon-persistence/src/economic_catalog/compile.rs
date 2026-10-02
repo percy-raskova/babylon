@@ -418,6 +418,7 @@ fn recurring(opening: &EconomicOpening, state: &MaterialCircuitState) -> Result<
             .get(&h.template)
             .ok_or(EconomicCatalogError::Opening("absent household template"))?;
         households.push(HouseholdCohort {
+            kind: h.kind,
             principal_id: h.principal_id,
             persons: h.persons,
             households: h.households,

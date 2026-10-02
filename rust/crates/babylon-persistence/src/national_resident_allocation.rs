@@ -1,15 +1,17 @@
 //! Designed home-county workplace placement of source-controlled resident persons.
 //! Each member is a counted household-residence/workplace group, never an individual agent.
 //! This is opening authoring: durable employed/reserve stocks belong only to the graph.
+mod households;
 mod weights;
 use crate::{
     economic_catalog::{ResidentStaffingMemberSeed, ResidentStaffingPoolSeed},
     national_cohorts::NationalCohortReference,
     national_counties::NationalCountyReference,
     national_economy::{
-        household_enterprise_target, household_principal, resident_employer_target,
-        source_workplace_target, NationalGamePolicy, ResidentWorkplaceTarget,
+        household_enterprise_target, resident_employer_target, source_workplace_target,
+        NationalGamePolicy, ResidentWorkplaceTarget,
     },
+    national_household_allocation::{CountyHouseholdAllocation, NationalHouseholdAllocation},
     national_resident_workforce::{NationalResidentWorkforceReference, WorkerClass},
 };
 use babylon_graph::stable_element::StableElementKey;
@@ -93,6 +95,7 @@ pub struct ResidentWorkplaceAllocation {
     pub cohort_source_sha256: [u8; 32],
     pub function_mapping_sha256: [u8; 32],
     pub classes_source_sha256: [u8; 32],
+    pub household_source_sha256: [u8; 32],
     pub workplaces: Vec<AssignedResidentWorkplace>,
     pub counties: Vec<ResidentCountyAllocation>,
 }
@@ -141,8 +144,16 @@ pub fn allocate_home_county(
     counties: &NationalCountyReference,
     cohorts: &NationalCohortReference,
     classes: &NationalResidentWorkforceReference,
+    household_budgets: &NationalHouseholdAllocation,
     policy: &NationalGamePolicy,
 ) -> Result<ResidentWorkplaceAllocation> {
+    if household_budgets.county_source_sha256 != counties.artifact_sha256()
+        || household_budgets.classes_source_sha256 != classes.artifact_sha256()
+        || household_budgets.private_owner_households_bps
+            != policy.households.private_owner_households_bps
+    {
+        return Err(AllocationError::SourceScope);
+    }
     if policy.missing_peer_weight_per_establishment == 0 {
         return Err(AllocationError::Policy);
     }
@@ -178,6 +189,7 @@ pub fn allocate_home_county(
         cohort_source_sha256: cohorts.artifact_sha256(),
         function_mapping_sha256: cohorts.function_mapping_sha256(),
         classes_source_sha256: classes.artifact_sha256(),
+        household_source_sha256: household_budgets.household_source_sha256(),
         workplaces: vec![],
         counties: vec![],
     };
@@ -186,9 +198,14 @@ pub fn allocate_home_county(
         let location = EconomicLocation::domestic_county(county.geoid())
             .map_err(|_| AllocationError::SourceScope)?;
         let sites = by_county.remove(&county.geoid()).unwrap_or_default();
-        result
-            .workplaces
-            .extend(assign_county(sites, location, &controls)?);
+        result.workplaces.extend(assign_county(
+            sites,
+            location,
+            &controls,
+            household_budgets
+                .county(county.geoid())
+                .map_err(|_| AllocationError::SourceScope)?,
+        )?);
         result.counties.push(controls);
     }
     if !by_county.is_empty() {
@@ -219,30 +236,30 @@ fn assign_county(
     mut sites: Vec<PendingWorkplace>,
     location: EconomicLocation,
     controls: &ResidentCountyAllocation,
+    budgets: &CountyHouseholdAllocation,
 ) -> Result<Vec<AssignedResidentWorkplace>> {
-    let mut assigned_workplaces = vec![];
+    let mut pending = vec![];
     sites.sort_unstable_by_key(|row| row.target.site_id);
     allocate_employees(&mut sites, location, controls)?;
     for row in sites {
-        let mut assigned = AssignedResidentWorkplace {
-            target: row.target,
-            weight: row.weight,
-            members: vec![],
-        };
+        let mut members = vec![];
         if row
             .employed
             .checked_add(row.reserve)
             .ok_or(AllocationError::Arithmetic)?
             > 0
         {
-            assigned.members.push(member(
-                &assigned.target,
-                ResidentAttendanceMode::Employee,
-                row.employed,
-                row.reserve,
-            )?);
+            members.push(PendingResidentMember {
+                mode: ResidentAttendanceMode::Employee,
+                employed: row.employed,
+                reserve: row.reserve,
+            });
         }
-        assigned_workplaces.push(assigned);
+        pending.push(PendingAssignedWorkplace {
+            target: row.target,
+            weight: row.weight,
+            members,
+        });
     }
     let owners = controls.source_classes[1]
         .checked_add(controls.source_classes[6])
@@ -253,29 +270,37 @@ fn assign_county(
             household_enterprise_target(location).map_err(|_| AllocationError::SourceScope)?;
         let mut members = vec![];
         if owners > 0 {
-            members.push(member(
-                &target,
-                ResidentAttendanceMode::WorkingOwner,
-                owners,
-                0,
-            )?);
+            members.push(PendingResidentMember {
+                mode: ResidentAttendanceMode::WorkingOwner,
+                employed: owners,
+                reserve: 0,
+            });
         }
         if family > 0 {
-            members.push(member(
-                &target,
-                ResidentAttendanceMode::UnpaidFamily,
-                family,
-                0,
-            )?);
+            members.push(PendingResidentMember {
+                mode: ResidentAttendanceMode::UnpaidFamily,
+                employed: family,
+                reserve: 0,
+            });
         }
-        members.sort_unstable_by_key(|row| row.seed.member.member_id());
-        assigned_workplaces.push(AssignedResidentWorkplace {
+        pending.push(PendingAssignedWorkplace {
             target,
             weight: None,
             members,
         });
     }
-    Ok(assigned_workplaces)
+    households::partition(&pending, budgets)
+}
+struct PendingAssignedWorkplace {
+    target: ResidentWorkplaceTarget,
+    weight: Option<WorkforceAllocationWeight>,
+    members: Vec<PendingResidentMember>,
+}
+#[derive(Clone, Copy)]
+struct PendingResidentMember {
+    mode: ResidentAttendanceMode,
+    employed: u64,
+    reserve: u64,
 }
 
 struct PendingWorkplace {
@@ -349,17 +374,19 @@ fn add_fallback(
 fn member(
     target: &ResidentWorkplaceTarget,
     mode: ResidentAttendanceMode,
+    principal: babylon_material_circuit::FinalDemandPrincipalId,
     employed: u64,
     reserve: u64,
 ) -> Result<AssignedResidentMember> {
-    let mut bytes = b"NationalResidentMemberV1\0".to_vec();
+    let mut bytes = b"NationalResidentMemberV2\0".to_vec();
     bytes.extend_from_slice(&target.site_id.as_bytes());
     bytes.extend_from_slice(&target.location.canonical_bytes());
     bytes.push(mode.tag());
+    bytes.extend_from_slice(&principal.as_bytes());
     let identity = sha256_of(&bytes);
     let member = StaffingMemberBinding::try_new(
         StaffingMemberId::from_bytes(identity),
-        household_principal(target.location),
+        principal,
         target.location,
         employed
             .checked_add(reserve)

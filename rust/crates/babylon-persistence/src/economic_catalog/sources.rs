@@ -45,6 +45,8 @@ pub enum SourceArtifactKind {
     MichiganControlOverrides = 33,
     /// Exact local spatial products, checked against the captured H3 detail.
     MichiganSpatialProducts = 34,
+    /// Independent captured county household and historical-earnings margins.
+    NationalHouseholds = 35,
 }
 
 /// One captured blob, independent of its evidence interpretation. Compressed
@@ -118,6 +120,7 @@ impl TryFrom<u8> for SourceArtifactKind {
             32 => Ok(Self::MichiganPhysicalNetworkJson),
             33 => Ok(Self::MichiganControlOverrides),
             34 => Ok(Self::MichiganSpatialProducts),
+            35 => Ok(Self::NationalHouseholds),
             _ => Err(super::EconomicCatalogError::WireTag),
         }
     }

@@ -136,6 +136,7 @@ pub struct HouseholdTemplate {
 /// A resident principal, with persons and households independent of workplace jobs.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct EconomicHouseholdSeed {
+    pub kind: babylon_material_circuit::HouseholdKind,
     pub principal_id: FinalDemandPrincipalId,
     pub subject: StableElementKey,
     pub location: EconomicLocation,

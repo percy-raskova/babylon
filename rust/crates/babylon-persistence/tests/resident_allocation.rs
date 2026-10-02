@@ -17,17 +17,25 @@ fn home_county_allocation_conserves_all_resident_controls_and_keeps_source_zero_
         "/../../../content/scenarios/national/defines.toml"
     )))
     .unwrap();
-    let allocation = allocate_home_county(counties, cohorts, classes, &policy).unwrap();
+    let allocation =
+        allocate_home_county(counties, cohorts, classes, &household_budgets(), &policy).unwrap();
     assert_eq!(allocation.counties.len(), 3144);
     assert_eq!(allocation.workplaces.len(), 60454);
+    let member_ids: std::collections::BTreeSet<_> = allocation
+        .workplaces
+        .iter()
+        .flat_map(|r| &r.members)
+        .map(|m| m.seed.member.member_id())
+        .collect();
     assert_eq!(
+        member_ids.len(),
         allocation
             .workplaces
             .iter()
             .map(|r| r.members.len())
-            .sum::<usize>(),
-        62745
+            .sum::<usize>()
     );
+    assert!(allocation.workplaces.iter().any(|r| r.members.len() > 1));
     assert_eq!(
         allocation
             .workplaces
@@ -79,6 +87,7 @@ fn kalawao_employees_have_explicit_fallbacks_and_owner_activity_is_not_a_missing
         national_county_reference().unwrap(),
         national_cohort_reference().unwrap(),
         national_resident_workforce_reference().unwrap(),
+        &household_budgets(),
         &NationalGamePolicy::parse(include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../../../content/scenarios/national/defines.toml"
@@ -107,12 +116,18 @@ fn kalawao_employees_have_explicit_fallbacks_and_owner_activity_is_not_a_missing
             )
         })
         .unwrap();
-    assert_eq!(enterprise.members.len(), 1);
+    assert!(enterprise
+        .members
+        .iter()
+        .all(|m| m.mode == ResidentAttendanceMode::WorkingOwner));
     assert_eq!(
-        enterprise.members[0].mode,
-        ResidentAttendanceMode::WorkingOwner
+        enterprise
+            .members
+            .iter()
+            .map(|m| m.seed.employed)
+            .sum::<u64>(),
+        3
     );
-    assert_eq!(enterprise.members[0].seed.employed, 3);
     assert_eq!(
         rows.iter()
             .flat_map(|r| &r.members)
@@ -134,6 +149,7 @@ fn suppressed_jobs_remain_absent_when_peer_weights_place_resident_people() {
         national_county_reference().unwrap(),
         cohorts,
         national_resident_workforce_reference().unwrap(),
+        &household_budgets(),
         &policy,
     )
     .unwrap();
@@ -171,4 +187,15 @@ fn suppressed_jobs_remain_absent_when_peer_weights_place_resident_people() {
         }
     }
     assert!(suppressed_groups > 0);
+}
+
+fn household_budgets(
+) -> babylon_persistence::national_household_allocation::NationalHouseholdAllocation {
+    babylon_persistence::national_household_allocation::allocate_households(
+        national_county_reference().unwrap(),
+        babylon_persistence::national_households::national_household_reference().unwrap(),
+        national_resident_workforce_reference().unwrap(),
+        1_000,
+    )
+    .unwrap()
 }

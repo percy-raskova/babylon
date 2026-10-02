@@ -1,6 +1,6 @@
 meta:
   contract: MaterialCircuitV3
-  schema_version: 15
+  schema_version: 16
   evidence_class: Designed
   rust_owner: babylon-material-circuit
 
@@ -129,7 +129,8 @@ recurring_field_order:
   - service_inputs
 
 recurring_row_field_order:
-  households: [principal_id, households, persons]
+  households: [kind, principal_id, households, persons]
+  household_kind: "u8: 1 ordinary (H>0, P>=H); 2 collective residence (P>0, H=0), person-based needs only"
   household_stocks: [principal_id, good_id, unit_id, quantity]
   household_needs: [principal_id, good_id, unit_id, need_basis_u8, units_per_basis]
   household_purchases: [principal_id, retailer_site_id, good_id, unit_id, target_closing_stock,
@@ -386,6 +387,9 @@ limits:
     service_orders: 131072
     delivery_orders_and_backlog: 131072
     capital_accounts: 131072
+    household_needs_and_purchase_policies: 131072
+    ownership_and_equity_claims: 131072
+    tax_policies: 131072 # One per captured cash account.
     replenishment: 262144
   staffing_work_sources_and_requests: 131072
   measured_national_opening:
@@ -393,8 +397,11 @@ limits:
     input_coefficients: 114680
     supplier_routes: 190505
     route_stage_capacities: 247928
-    service_connections: 71856
-    monetary_accounts: 66958
+    service_connections: 118881
+    monetary_accounts: 79489
+    household_needs_and_purchase_policies: 87960
+    ownership_and_equity_claims: 90794
+    tax_policies: 76327
     replenishment: 138337
     staffing_work_sources: 112805
   measured_basis: Derived table counts from the complete national opening on 2 October 2026;
@@ -417,12 +424,14 @@ limits:
     planning instead combines stock, future freight, prebooked services and service-input policies.
     This transient bound does not change the 131072 durable inventory limit or permit stored services.
   handling_receipts_per_period: 131072
-  money_transfers_per_period: 1441792
+  money_transfers_per_period: 1441792 # Independent close ceiling; not all maximal families are promised to fit.
   service_performance_receipts_per_period: 196608
   procurement_receipts_per_period: 262144 # At most one per captured replenishment policy.
   income_receipts_per_period: 131072 # At most one per cash/capital account.
-  receipt_bounds: Independent close ceilings; simultaneous maximal admitted families need not fit.
-    These admission changes leave receipt-family and byte bounds unchanged.
+  tax_receipts_per_period: 131072 # At most one per captured payer.
+  distribution_receipts_per_period: 131072 # At most one per ownership claim.
+  receipt_bounds: Named receipt-family limits cover their corresponding captured row families;
+    the independent money-transfer and complete-byte ceilings can still refuse an oversized close
   classification: Designed bounds on execution and serialization, not material abundance
 
 error_codes:
@@ -601,7 +610,7 @@ historical_cost_book:
     equity_carrying_values: [owner_account, issuer_site_id]
     equipment_carrying_values: [asset_tag_u8, asset_id]
   bounds: {capital_accounts: 131072, stock_carrying_values: 196608, freight_carrying_values: 65536,
-           equity_carrying_values: 65536, equipment_carrying_values: 131072}
+           equity_carrying_values: 131072, equipment_carrying_values: 131072}
   stock_bound: Site inventories at most 131072 plus resident household stocks at most 65536
   opening:
     - require explicit carrying rows for every physical site stock, household stock and freight lot, including zero

@@ -7,9 +7,9 @@ use babylon_tick::material_world::MAX_MATERIAL_WORLD_REGISTER_BYTES;
 const FIXED_FRAMING_BYTES: usize = FOUNDATION_DOMAIN.len() + 4 + 9 + 32 + 3 * 8;
 const MAX_PRESET_BYTES: usize = 128;
 
-/// Independent complete framing ceiling. Larger admitted component limits do
-/// not automatically enlarge this total; the source catalog still occurs once.
-pub const MAX_MATERIAL_FOUNDATION_BYTES: usize = 335_544_557;
+/// Explicit Derived complete framing ceiling for the approved component bounds.
+/// The source catalog occurs once, inside the graph foundation.
+pub const MAX_MATERIAL_FOUNDATION_BYTES: usize = 1_067_109_101;
 
 pub(super) fn material_foundation_length(
     preset: usize,
@@ -56,9 +56,20 @@ mod tests {
         assert!(super::material_foundation_length(1, 0, 1).is_err());
         assert!(super::material_foundation_length(1, 1, 0).is_err());
         assert!(super::material_foundation_length(1, usize::MAX, 1).is_err());
-        // A larger standalone register allowance never enlarges the complete envelope.
-        assert!(
-            super::material_foundation_length(1, 1, MAX_MATERIAL_WORLD_REGISTER_BYTES).is_err()
+    }
+    #[test]
+    fn measured_household_foundation_and_maximum_components_fit_exactly() {
+        assert_eq!(
+            super::material_foundation_length(14, 57_018_148, 284_889_820).unwrap(),
+            341_908_091
         );
+        assert_eq!(
+            super::material_foundation_length(128, 67_108_864, 1_000_000_000).unwrap(),
+            super::MAX_MATERIAL_FOUNDATION_BYTES
+        );
+        assert_eq!(super::MAX_MATERIAL_FOUNDATION_BYTES, 1_067_109_101);
+        assert!(super::material_foundation_length(129, 67_108_864, 1_000_000_000).is_err());
+        assert!(super::material_foundation_length(128, 67_108_865, 1_000_000_000).is_err());
+        assert!(super::material_foundation_length(128, 67_108_864, 1_000_000_001).is_err());
     }
 }

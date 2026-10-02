@@ -119,12 +119,22 @@ fn local_retailers(builder: &mut Builder<'_>) -> Result<BTreeMap<EconomicLocatio
     }
     // Missing commercial distribution becomes a role at an existing accounted
     // workplace, with its existing people, shared attendance and actual cash.
-    let missing: Vec<_> = builder
-        .opening
-        .households
-        .iter()
-        .filter(|h| !selected.contains_key(&h.location))
-        .map(|h| (h.location, h.persons, h.households))
+    let mut resident_totals = BTreeMap::<EconomicLocation, (u64, u64)>::new();
+    for row in &builder.opening.households {
+        let totals = resident_totals.entry(row.location).or_default();
+        totals.0 = totals
+            .0
+            .checked_add(row.persons)
+            .ok_or(NationalOpeningError::Arithmetic)?;
+        totals.1 = totals
+            .1
+            .checked_add(row.households)
+            .ok_or(NationalOpeningError::Arithmetic)?;
+    }
+    let missing: Vec<_> = resident_totals
+        .into_iter()
+        .filter(|(location, _)| !selected.contains_key(location))
+        .map(|(location, (persons, households))| (location, persons, households))
         .collect();
     for (location, persons, households) in missing {
         let site = builder
@@ -242,11 +252,17 @@ fn households(
     preferences: &mut Preferences,
 ) -> Result<()> {
     let households = builder.opening.households.clone();
+    let mut retail_requirements = BTreeMap::<(SiteId, String), u64>::new();
     for household in households {
         let retailer = *retailers
             .get(&household.location)
             .ok_or(NationalOpeningError::Identity)?;
         for need in builder.policy.household_needs.clone() {
+            if household.kind == babylon_material_circuit::HouseholdKind::CollectiveResidence
+                && need.basis == HouseholdNeedBasis::Households
+            {
+                continue;
+            }
             let good = builder.commodity(&need.key)?.clone();
             let required = quantity(
                 match need.basis {
@@ -293,20 +309,27 @@ fn households(
                     });
                 continue;
             }
-            retail_stock(builder, retailer, &need.key, required)?;
-            procure(
-                builder,
-                providers,
-                network,
-                preferences,
-                ProcurementNeed {
-                    buyer: retailer,
-                    key: &need.key,
-                    required,
-                    buffer_periods: builder.policy.retailer_buffer_periods,
-                },
-            )?;
+            let total = retail_requirements.entry((retailer, need.key)).or_default();
+            *total = total
+                .checked_add(required)
+                .ok_or(NationalOpeningError::Arithmetic)?;
         }
+    }
+    // Supply and fractional sourcing are calculated once from the location total.
+    for ((retailer, key), required) in retail_requirements {
+        retail_stock(builder, retailer, &key, required)?;
+        procure(
+            builder,
+            providers,
+            network,
+            preferences,
+            ProcurementNeed {
+                buyer: retailer,
+                key: &key,
+                required,
+                buffer_periods: builder.policy.retailer_buffer_periods,
+            },
+        )?;
     }
     Ok(())
 }

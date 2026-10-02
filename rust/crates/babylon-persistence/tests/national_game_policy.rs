@@ -154,7 +154,7 @@ fn source_workplace_identity_keeps_ownership_and_function_independent() {
     assert_eq!(
         private.workplace,
         babylon_graph::stable_element::StableElementKey::Node {
-            scenario: "national-world".to_owned(),
+            scenario: babylon_persistence::national_economy::NATIONAL_SCENARIO_ID.to_owned(),
             local_name: "site-26163-food-5".to_owned(),
         }
     );
@@ -217,4 +217,26 @@ fn cargo_eligibility_is_captured_and_cannot_be_inferred_from_mass() {
     ] {
         assert!(NationalGamePolicy::parse(&changed).is_err());
     }
+}
+
+#[test]
+fn owner_exposure_fraction_is_required_bounded_and_separate_from_income() {
+    assert_eq!(
+        NationalGamePolicy::parse(SOURCE)
+            .unwrap()
+            .households
+            .private_owner_households_bps,
+        1_000
+    );
+    for bad in ["0", "10001", "-1"] {
+        assert!(NationalGamePolicy::parse(&SOURCE.replace(
+            "private_owner_households_bps = 1000",
+            &format!("private_owner_households_bps = {bad}")
+        ))
+        .is_err());
+    }
+    assert!(
+        NationalGamePolicy::parse(&SOURCE.replace("private_owner_households_bps = 1000", ""))
+            .is_err()
+    );
 }

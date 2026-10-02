@@ -15,6 +15,10 @@ handling_hours_per_unit = 1
 missing_peer_weight_per_establishment = 1 # Designed allocation points, never observed jobs.
 household_enterprise_function = "household_services"
 
+[households]
+# Designed exposure within each historical earnings margin; not observed wealth/class.
+private_owner_households_bps = 1000
+
 [markets]
 foreign_procurement_bps = 2500 # A sourcing cap, not a promised realized flow.
 journey_timing = "slowest_profile" # Administrative hops do not add 28-day delays.

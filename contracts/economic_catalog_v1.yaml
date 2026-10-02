@@ -58,9 +58,10 @@ source_roles:
   michigan_physical_network_canonical_json: 32
   michigan_control_overrides_canonical_json: 33
   michigan_spatial_products: 34
+  national_households: 35
 admission:
-  compilers: [national-world-v1, michigan-control-v1]
-  national_identity: {scenario: economy/national-world, preset: national-world, compiler: national-world-v1}
+  compilers: [national-world-v2, michigan-control-v1]
+  national_identity: {scenario: economy/national-world, preset: national-world, compiler: national-world-v2}
   source_coverage: Each importer requires its exact dependency set and refuses extra roles.
   source_semantics: Captured bytes enter their source-specific checked native readers.
   missingness: Suppression, absent observations and incomplete subtotals remain explicit.
@@ -74,7 +75,7 @@ admission:
     County identity follows the captured roster; place pages and their public grants
     require captured local detail.
   organizer_opening: Captured organizer configuration and complete initial state must equal exact source regeneration.
-  native_graph_nodes: 131072 maximum; the measured current opening uses 129865 aggregate nodes.
+  native_graph_nodes: 262144 maximum; the measured sparse-household opening uses 179772 aggregate nodes.
   native_graph_relationships: 65536 per edge and hyperedge family; node admission does not widen these.
 refusals:
   - invalid_domain_version_timebase_or_tag

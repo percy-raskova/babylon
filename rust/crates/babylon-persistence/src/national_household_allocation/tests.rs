@@ -207,6 +207,75 @@ fn infeasible_designed_joint_refuses_without_reclassifying_source_households() {
     );
 }
 
+#[test]
+fn sparse_workplace_members_pay_the_exact_allocated_resident_budgets() {
+    use crate::{
+        national_cohorts::national_cohort_reference,
+        national_economy::{household_principal, NationalGamePolicy},
+        national_resident_allocation::allocate_home_county,
+    };
+    use babylon_kernel::economic_location::EconomicLocation;
+    use std::collections::{BTreeMap, BTreeSet};
+
+    let counties = national_county_reference().unwrap();
+    let classes = national_resident_workforce_reference().unwrap();
+    let household_allocation = allocate_households(
+        counties,
+        national_household_reference().unwrap(),
+        classes,
+        1_000,
+    )
+    .unwrap();
+    let policy = NationalGamePolicy::parse(include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../../content/scenarios/national/defines.toml"
+    )))
+    .unwrap();
+    let workplaces = allocate_home_county(
+        counties,
+        national_cohort_reference().unwrap(),
+        classes,
+        &household_allocation,
+        &policy,
+    )
+    .unwrap();
+    let mut actual = BTreeMap::new();
+    let mut identities = BTreeSet::new();
+    let mut divided_workplaces = 0;
+    for workplace in workplaces.workplaces {
+        let mut recipients = BTreeSet::new();
+        for assigned in workplace.members {
+            let row = assigned.seed;
+            assert_eq!(row.member.residence(), workplace.target.location);
+            assert_eq!(row.employed + row.reserve, row.member.labor_force());
+            assert!(row.member.labor_force() > 0);
+            assert!(identities.insert(row.member.member_id()));
+            recipients.insert(row.member.household_id());
+            let totals = actual
+                .entry((workplace.target.location, row.member.household_id()))
+                .or_insert((0_u64, 0_u64));
+            totals.0 += row.employed;
+            totals.1 += row.reserve;
+        }
+        divided_workplaces += usize::from(recipients.len() > 1);
+    }
+    assert!(divided_workplaces > 0);
+    let mut aggregate = (0_u64, 0_u64);
+    for county in household_allocation.counties() {
+        let location = EconomicLocation::domestic_county(county.county()).unwrap();
+        for budget in county.budgets() {
+            let principal = household_principal(location, budget.key);
+            let workforce = actual.remove(&(location, principal)).unwrap_or_default();
+            assert_eq!(workforce, (budget.employed, budget.reserve));
+            assert!(workforce.0 + workforce.1 <= budget.persons);
+            aggregate.0 += workforce.0;
+            aggregate.1 += workforce.1;
+        }
+    }
+    assert!(actual.is_empty());
+    assert_eq!(aggregate, (161_297_155, 8_902_365));
+}
+
 fn assert_historical_margins(
     row: &CountyHouseholdAllocation,
     source: &crate::national_households::CountyHouseholdMargins,

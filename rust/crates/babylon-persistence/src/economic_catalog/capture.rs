@@ -118,7 +118,7 @@ impl CapturedEconomicCatalog {
     pub fn compiler_version(&self) -> &'static str {
         match self.input.geography {
             CatalogGeography::MichiganControl => "michigan-control-v1",
-            _ => "national-world-v1",
+            _ => "national-world-v2",
         }
     }
     #[must_use]
@@ -169,7 +169,7 @@ fn compiler_for(input: &EconomicCatalogInput) -> Result<&'static str> {
                 && input.duration == CampaignDuration::Continuous
                 && input.organizer.is_none() =>
         {
-            Ok("national-world-v1")
+            Ok("national-world-v2")
         }
         CatalogGeography::MichiganControl
             if input.scenario_id == crate::michigan_cohorts::MICHIGAN_COHORT_SCENARIO =>

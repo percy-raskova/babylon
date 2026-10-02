@@ -2,7 +2,7 @@
 use super::{CatalogGeography, EconomicCatalogInput, SourceArtifact, SourceArtifactKind as Kind};
 use babylon_kernel::clock::CampaignDuration;
 
-/// Capture the fourteen committed source artifacts and Designed policy.
+/// Capture the committed source artifacts and Designed policy.
 /// No live dataset or caller-provided Michigan defines file participates.
 #[must_use]
 pub fn national_catalog_input() -> EconomicCatalogInput {
@@ -13,6 +13,7 @@ pub fn national_catalog_input() -> EconomicCatalogInput {
         (Kind::NationalCounties, include_bytes!("../../../../../src/babylon/data/reference/economy/national_county_reference_2024.csv.gz")),
         (Kind::NationalCohorts, include_bytes!("../../../../../src/babylon/data/reference/economy/national_cohort_reference_2024.csv.gz")),
         (Kind::ResidentWorkforce, include_bytes!("../../../../../src/babylon/data/reference/economy/national_resident_workforce_2024.csv.gz")),
+        (Kind::NationalHouseholds, include_bytes!("../../../../../src/babylon/data/reference/economy/national_household_reference_2024.csv.gz")),
         (Kind::NationalTransport, include_bytes!("../../../../../src/babylon/data/reference/transport/national_transport_reference_2024.json.gz")),
         (Kind::InternationalTrade, include_bytes!("../../../../../src/babylon/data/reference/economy/international_counterpart_reference_2024.csv.gz")),
         (Kind::WorldPopulation, include_bytes!("../../../../../src/babylon/data/reference/economy/world_population_reference_2024.csv.gz")),

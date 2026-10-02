@@ -81,14 +81,25 @@ pub(super) fn compile(policy: &NationalGamePolicy, unit: UnitId) -> Result<Templ
             })
         })
         .collect::<Result<Vec<_>>>()?;
+    let person_needs = needs
+        .iter()
+        .filter(|n| n.basis == babylon_material_circuit::HouseholdNeedBasis::Persons)
+        .cloned()
+        .collect();
     Ok((
         commodities,
         labels,
         recipes,
-        vec![HouseholdTemplate {
-            id: HouseholdTemplateId(1),
-            needs,
-        }],
+        vec![
+            HouseholdTemplate {
+                id: HouseholdTemplateId(1),
+                needs,
+            },
+            HouseholdTemplate {
+                id: HouseholdTemplateId(2),
+                needs: person_needs,
+            },
+        ],
     ))
 }
 fn commodity(policy: &NationalGamePolicy, key: &str, quantity: u64) -> Result<CommodityAmount> {

@@ -159,3 +159,6 @@ fn financial_wire_requires_cash_match_unique_order_and_current_version() {
         assert!(decode_material_receipts(&b[..end]).is_err());
     }
 }
+
+#[path = "support/household_financial_receipt_bounds.rs"]
+mod household_financial_receipt_bounds;

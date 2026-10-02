@@ -17,7 +17,10 @@ pub(crate) fn canonicalize(f: &mut FinancialInstitutions) {
     f.contributions.sort_by_key(|r| r.id);
 }
 fn unique<T, K: Ord>(rows: &[T], key: impl Fn(&T) -> K) -> Result<()> {
-    if rows.len() > MAX_MATERIAL_CIRCUIT_ROWS {
+    bounded_unique(rows, MAX_MATERIAL_CIRCUIT_ROWS, key)
+}
+fn bounded_unique<T, K: Ord>(rows: &[T], limit: usize, key: impl Fn(&T) -> K) -> Result<()> {
+    if rows.len() > limit {
         return Err(MaterialCircuitError::RowLimit);
     }
     let mut keys = BTreeSet::new();
@@ -28,9 +31,11 @@ fn unique<T, K: Ord>(rows: &[T], key: impl Fn(&T) -> K) -> Result<()> {
 }
 fn structure(f: &FinancialInstitutions) -> Result<()> {
     unique(&f.locations, |r| r.account)?;
-    unique(&f.ownership, |r| (r.issuer_site_id, r.beneficiary))?;
+    bounded_unique(&f.ownership, crate::MAX_OWNERSHIP_CLAIMS, |r| {
+        (r.issuer_site_id, r.beneficiary)
+    })?;
     unique(&f.distributions, |r| r.issuer_site_id)?;
-    unique(&f.taxes, |r| r.payer)?;
+    bounded_unique(&f.taxes, crate::MAX_MONETARY_ACCOUNTS, |r| r.payer)?;
     unique(&f.public_budgets, |r| r.public_account)?;
     unique(&f.public_allocations, |r| {
         (r.public_account, r.recipient, r.treatment)

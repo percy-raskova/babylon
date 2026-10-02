@@ -249,7 +249,7 @@ mod tests {
             (timebase, 27, EconomicCatalogError::CompilerVersion),
             (duration_padding, 1, EconomicCatalogError::WireTag),
             (geography, 4, EconomicCatalogError::WireTag),
-            (source_kind, 35, EconomicCatalogError::WireTag),
+            (source_kind, 36, EconomicCatalogError::WireTag),
             (source_kind + 1, 0, EconomicCatalogError::Digest),
         ] {
             let mut altered = raw.clone();

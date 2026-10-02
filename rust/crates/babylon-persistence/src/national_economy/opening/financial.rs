@@ -1,9 +1,6 @@
 //! Explicit budget and ownership opening assumptions, separate from source class.
 use super::{amount, quantity, sum_amount, ActorContext, Builder, NationalOpeningError, Result};
-use crate::{
-    national_economy::household_principal,
-    national_resident_allocation::ResidentWorkplaceAllocation,
-};
+use crate::national_household_allocation::HouseholdBudgetKey;
 use babylon_kernel::{
     content_digest::sha256_of,
     currency::Currency,
@@ -17,28 +14,26 @@ use babylon_material_circuit::{
 };
 use std::collections::BTreeMap;
 
-pub(super) fn wire(
-    builder: &mut Builder<'_>,
-    allocation: &ResidentWorkplaceAllocation,
-) -> Result<()> {
-    let mut reserve = BTreeMap::<EconomicLocation, u64>::new();
-    for county in &allocation.counties {
-        reserve.insert(
-            EconomicLocation::domestic_county(county.county)
-                .map_err(|_| NationalOpeningError::SourceScope)?,
-            county.reserve,
-        );
-    }
-    for pool in &builder.opening.staffing {
-        for member in &pool.members {
-            let location = member.member.residence();
-            if !matches!(location, EconomicLocation::County(_)) {
-                let count = reserve.entry(location).or_default();
-                *count = count
-                    .checked_add(member.reserve)
-                    .ok_or(NationalOpeningError::Arithmetic)?;
-            }
-        }
+pub(super) fn wire(builder: &mut Builder<'_>) -> Result<()> {
+    let mut reserve = BTreeMap::<
+        (
+            babylon_material_circuit::FinalDemandPrincipalId,
+            EconomicLocation,
+        ),
+        u64,
+    >::new();
+    for member in builder
+        .opening
+        .staffing
+        .iter()
+        .flat_map(|pool| &pool.members)
+    {
+        let count = reserve
+            .entry((member.member.household_id(), member.member.residence()))
+            .or_default();
+        *count = count
+            .checked_add(member.reserve)
+            .ok_or(NationalOpeningError::Arithmetic)?;
     }
     let mut budgets = BTreeMap::<EconomicLocation, Currency>::new();
     for household in &builder.opening.households {
@@ -52,9 +47,10 @@ pub(super) fn wire(
         });
     }
     household_support(builder, &reserve, &mut budgets)?;
+    let private_owners = private_owners(builder)?;
     let actors: Vec<_> = builder.actors.values().cloned().collect();
     for actor in actors {
-        ownership(builder, &actor)?;
+        ownership(builder, &actor, &private_owners)?;
         builder.opening.institutions.taxes.push(TaxPolicy {
             payer: AccountId::Site(actor.site_id),
             public_recipient: public(actor.location),
@@ -109,7 +105,13 @@ pub(super) fn wire(
 
 fn household_support(
     builder: &mut Builder<'_>,
-    reserves: &BTreeMap<EconomicLocation, u64>,
+    reserves: &BTreeMap<
+        (
+            babylon_material_circuit::FinalDemandPrincipalId,
+            EconomicLocation,
+        ),
+        u64,
+    >,
     budgets: &mut BTreeMap<EconomicLocation, Currency>,
 ) -> Result<()> {
     let policy = &builder.policy.financial;
@@ -122,7 +124,7 @@ fn household_support(
         .as_ref()
         .ok_or(NationalOpeningError::Policy)?
         .clone();
-    for (location, persons) in reserves {
+    for ((principal, location), persons) in reserves {
         let scale = scale(builder, *location)?;
         let unit_price = food
             .scaled(scale)
@@ -141,7 +143,7 @@ fn household_support(
             .public_allocations
             .push(PublicAllocation {
                 public_account: public(*location),
-                recipient: AccountId::Household(household_principal(*location)),
+                recipient: AccountId::Household(*principal),
                 treatment: PublicTransferTreatment::HouseholdIncomeSupport,
                 priority: 1,
                 amount_per_period: support,
@@ -151,17 +153,19 @@ fn household_support(
     Ok(())
 }
 
-fn ownership(builder: &mut Builder<'_>, actor: &ActorContext) -> Result<()> {
+type PrivateOwners =
+    BTreeMap<EconomicLocation, Vec<(babylon_material_circuit::FinalDemandPrincipalId, u64)>>;
+
+fn ownership(
+    builder: &mut Builder<'_>,
+    actor: &ActorContext,
+    private_owners: &PrivateOwners,
+) -> Result<()> {
     let is_public = actor
         .source_ownership
         .is_some_and(|owner| owner != QcewOwnership::Private)
         || (actor.source_ownership.is_none()
             && actor.function == EconomicFunction::PublicProvisioning);
-    let beneficiary = if is_public {
-        AccountId::Public(public(actor.location))
-    } else {
-        AccountId::Household(household_principal(actor.location))
-    };
     let remote = foreign_claim(actor);
     let remote_share = if remote.is_some() {
         u64::from(builder.policy.financial.cross_border_ownership_bps)
@@ -169,15 +173,31 @@ fn ownership(builder: &mut Builder<'_>, actor: &ActorContext) -> Result<()> {
         0
     };
     if remote_share < 10_000 {
-        claim(builder, actor, beneficiary, 10_000 - remote_share);
+        if is_public {
+            claim(
+                builder,
+                actor,
+                AccountId::Public(public(actor.location)),
+                10_000 - remote_share,
+            );
+        } else {
+            private_claims(
+                builder,
+                actor,
+                actor.location,
+                10_000 - remote_share,
+                private_owners,
+            )?;
+        }
     }
     if remote_share > 0 {
-        claim(
+        private_claims(
             builder,
             actor,
             remote.ok_or(NationalOpeningError::Policy)?,
             remote_share,
-        );
+            private_owners,
+        )?;
     }
     let cash_floor = payroll(builder, actor)?;
     let site = builder
@@ -217,22 +237,60 @@ fn claim(builder: &mut Builder<'_>, actor: &ActorContext, beneficiary: AccountId
 }
 
 /// Two explicitly Designed reciprocal claims make location and remittance distinct.
-fn foreign_claim(actor: &ActorContext) -> Option<AccountId> {
+fn foreign_claim(actor: &ActorContext) -> Option<EconomicLocation> {
     if matches!(actor.location, EconomicLocation::County(county) if county.geoid().as_bytes() == *b"26163")
         && actor.function == EconomicFunction::CapitalGoods
         && actor.source_ownership == Some(QcewOwnership::Private)
     {
-        return Some(AccountId::Household(household_principal(
-            EconomicLocation::Foreign(ForeignCounterpart::Japan),
-        )));
+        return Some(EconomicLocation::Foreign(ForeignCounterpart::Japan));
     }
     if actor.location == EconomicLocation::Foreign(ForeignCounterpart::Canada)
         && actor.function == EconomicFunction::CapitalGoods
     {
-        let location = "county:26163".parse().ok()?;
-        return Some(AccountId::Household(household_principal(location)));
+        return "county:26163".parse().ok();
     }
     None
+}
+
+fn private_owners(builder: &Builder<'_>) -> Result<PrivateOwners> {
+    let mut by_location = PrivateOwners::new();
+    for row in &builder.opening.households {
+        let key = builder
+            .household_keys
+            .get(&row.principal_id)
+            .ok_or(NationalOpeningError::Identity)?;
+        if key.owner_exposure() || *key == HouseholdBudgetKey::PooledExternal {
+            by_location
+                .entry(row.location)
+                .or_default()
+                .push((row.principal_id, row.households));
+        }
+    }
+    for recipients in by_location.values_mut() {
+        recipients.sort_unstable_by_key(|row| row.0);
+    }
+    Ok(by_location)
+}
+
+fn private_claims(
+    builder: &mut Builder<'_>,
+    actor: &ActorContext,
+    location: EconomicLocation,
+    total_shares: u64,
+    private_owners: &PrivateOwners,
+) -> Result<()> {
+    let recipients = private_owners
+        .get(&location)
+        .ok_or(NationalOpeningError::Identity)?;
+    let weights: Vec<_> = recipients.iter().map(|row| row.1).collect();
+    let shares = crate::national_resident_allocation::apportion(total_shares, &weights)
+        .map_err(NationalOpeningError::Workforce)?;
+    for ((principal, _), shares) in recipients.iter().copied().zip(shares) {
+        if shares > 0 {
+            claim(builder, actor, AccountId::Household(principal), shares);
+        }
+    }
+    Ok(())
 }
 
 fn public_provider_grant(builder: &Builder<'_>, actor: &ActorContext) -> Result<Currency> {

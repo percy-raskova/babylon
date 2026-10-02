@@ -25,6 +25,7 @@ fn recurring(stock: u64) -> RecurringEconomy {
     RecurringEconomy {
         service_inputs: vec![],
         households: vec![HouseholdCohort {
+            kind: crate::HouseholdKind::Ordinary,
             principal_id: h(),
             households: 1,
             persons: 4,

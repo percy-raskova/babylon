@@ -69,7 +69,7 @@ impl HistoricalCostBook {
         if rows.accounts.len() > crate::MAX_MONETARY_ACCOUNTS
             || rows.stocks.len() > MAX_CARRYING_STOCKS
             || rows.freight.len() > MAX_MATERIAL_CIRCUIT_ROWS
-            || rows.equity.len() > MAX_MATERIAL_CIRCUIT_ROWS
+            || rows.equity.len() > crate::MAX_OWNERSHIP_CLAIMS
             || rows.equipment.len() > 2 * MAX_MATERIAL_CIRCUIT_ROWS
         {
             return Err(MaterialCircuitError::RowLimit);

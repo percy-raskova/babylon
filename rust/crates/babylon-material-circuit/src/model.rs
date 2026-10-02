@@ -19,10 +19,14 @@ pub const MAX_INPUT_COEFFICIENTS: usize = 131_072;
 pub const MAX_SUPPLIER_ROUTES: usize = 262_144;
 /// Designed ceiling for the measured 247,928 route/capacity memberships.
 pub const MAX_ROUTE_CAPACITY_MEMBERSHIPS: usize = 262_144;
-/// Designed ceiling for the measured 71,856 technical service connections.
+/// Designed ceiling for the measured 118,881 technical service connections.
 pub const MAX_SERVICE_CONNECTIONS: usize = 131_072;
-/// Designed ceiling for the measured 66,958 cash and capital account owners.
+/// Designed ceiling for the measured 79,489 cash and capital account owners.
 pub const MAX_MONETARY_ACCOUNTS: usize = 131_072;
+/// Designed ceiling for 87,960 captured household needs and purchase policies.
+pub const MAX_HOUSEHOLD_NEEDS: usize = 131_072;
+/// Designed ceiling for 90,794 independently captured ownership/equity claims.
+pub const MAX_OWNERSHIP_CLAIMS: usize = 131_072;
 /// Designed ceiling for the measured 138,337 national procurement policies.
 pub const MAX_REPLENISHMENT_POLICIES: usize = 262_144;
 /// Designed ceiling for 112,805 distinct work purposes sharing counted workers.

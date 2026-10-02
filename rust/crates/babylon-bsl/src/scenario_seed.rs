@@ -12,9 +12,9 @@ use babylon_kernel::currency::Currency;
 use babylon_practice_contract::{PracticeTargetDomain, PracticeTopologyLoadCounter};
 use std::collections::{BTreeSet, HashMap, HashSet};
 
-// The generated national opening has 129,865 counted actor/territory nodes.
+// The generated household-budget opening has 179,772 counted actor/territory nodes.
 // This node ceiling does not widen either relationship family.
-const MAX_SEED_NODES: usize = 131_072;
+const MAX_SEED_NODES: usize = 262_144;
 const MAX_SEED_RELATIONS: usize = 65_536;
 const MAX_SEED_VALUES: usize = 1_048_576;
 
@@ -129,7 +129,7 @@ impl GraphSeed {
         mut hyperedges: Vec<HyperedgeSeed>,
     ) -> Result<Self, ScenarioError> {
         if nodes.len() > MAX_SEED_NODES {
-            return Err(err("native seed exceeds the 131,072-node bound"));
+            return Err(err("native seed exceeds the 262,144-node bound"));
         }
         if edges.len() > MAX_SEED_RELATIONS || hyperedges.len() > MAX_SEED_RELATIONS {
             return Err(err("native seed exceeds the 65,536-row relationship bound"));

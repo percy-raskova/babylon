@@ -34,12 +34,16 @@ pub struct ResidentWorkplaceTarget {
     pub source: ResidentWorkplaceSource,
 }
 
-/// One pooled county/foreign/dependency resident account; persons and households
-/// remain separately counted within it.
+/// One explicitly named counted budget at a fixed location; no current income
+/// or employment changes this identity.
 #[must_use]
-pub fn household_principal(location: EconomicLocation) -> FinalDemandPrincipalId {
-    let mut bytes = b"NationalHouseholdV1\0".to_vec();
+pub fn household_principal(
+    location: EconomicLocation,
+    budget: crate::national_household_allocation::HouseholdBudgetKey,
+) -> FinalDemandPrincipalId {
+    let mut bytes = b"NationalHouseholdV2\0".to_vec();
     bytes.extend_from_slice(&location.canonical_bytes());
+    bytes.push(budget as u8);
     FinalDemandPrincipalId::from_bytes(sha256_of(&bytes))
 }
 

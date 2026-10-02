@@ -15,7 +15,7 @@ pub const STABLE_GRAPH_STATE_LAYOUT_VERSION: u32 = 1;
 /// Maximum rows in each edge or hyperedge section of stable graph state.
 pub const MAX_STABLE_GRAPH_ELEMENTS: usize = 65_536;
 /// Maximum aggregate actor and territory nodes in a current national graph.
-pub const MAX_STABLE_GRAPH_NODES: usize = 131_072;
+pub const MAX_STABLE_GRAPH_NODES: usize = 262_144;
 /// Maximum rows in one stable graph attribute section.
 pub const MAX_STABLE_GRAPH_ATTRIBUTES: usize = 524_288;
 /// Maximum members in one stable hyperedge.

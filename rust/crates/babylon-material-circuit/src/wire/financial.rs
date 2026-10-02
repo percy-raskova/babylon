@@ -1,6 +1,6 @@
 //! Canonical financial institutions, eligibility, finite instructions and budgets.
 use super::accounting::{append_account, decode_account, decode_currency, ordered_rows};
-use super::{append_rows, decode_rows, Cursor};
+use super::{append_bounded_rows, append_rows, decode_bounded_rows, decode_rows, Cursor};
 use crate::{
     CapitalContributionOrder, ContributionId, DistributionPolicy, FinancialInstitutions,
     InstitutionLocation, MaterialCircuitError, OwnershipClaim, PublicAccountId, PublicAllocation,
@@ -48,14 +48,14 @@ fn decode_locations(c: &mut Cursor<'_>) -> Result<Vec<InstitutionLocation>> {
     Ok(rows)
 }
 fn append_ownership(out: &mut Vec<u8>, rows: &[OwnershipClaim]) -> Result<()> {
-    append_rows(out, rows, |b, r| {
+    append_bounded_rows(out, rows, crate::MAX_OWNERSHIP_CLAIMS, |b, r| {
         b.extend_from_slice(&r.issuer_site_id.as_bytes());
         append_account(b, r.beneficiary);
         b.extend_from_slice(&r.shares.to_be_bytes());
     })
 }
 fn decode_ownership(c: &mut Cursor<'_>) -> Result<Vec<OwnershipClaim>> {
-    let rows = decode_rows(c, |b| {
+    let rows = decode_bounded_rows(c, crate::MAX_OWNERSHIP_CLAIMS, |b| {
         Ok(OwnershipClaim {
             issuer_site_id: SiteId::from_bytes(b.array()?),
             beneficiary: decode_account(b)?,
@@ -86,7 +86,7 @@ fn decode_distributions(c: &mut Cursor<'_>) -> Result<Vec<DistributionPolicy>> {
     Ok(rows)
 }
 fn append_taxes(out: &mut Vec<u8>, rows: &[TaxPolicy]) -> Result<()> {
-    append_rows(out, rows, |b, r| {
+    append_bounded_rows(out, rows, crate::MAX_MONETARY_ACCOUNTS, |b, r| {
         append_account(b, r.payer);
         b.extend_from_slice(&r.public_recipient.as_bytes());
         b.push(r.basis as u8);
@@ -95,7 +95,7 @@ fn append_taxes(out: &mut Vec<u8>, rows: &[TaxPolicy]) -> Result<()> {
     })
 }
 fn decode_taxes(c: &mut Cursor<'_>) -> Result<Vec<TaxPolicy>> {
-    let rows = decode_rows(c, |b| {
+    let rows = decode_bounded_rows(c, crate::MAX_MONETARY_ACCOUNTS, |b| {
         Ok(TaxPolicy {
             payer: decode_account(b)?,
             public_recipient: PublicAccountId::from_bytes(b.array()?),

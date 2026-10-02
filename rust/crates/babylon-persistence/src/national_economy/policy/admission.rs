@@ -1,7 +1,7 @@
 use super::{
     GameCommodity, GameDependencyProfile, GameEquipmentPolicy, GameFinancialPolicy,
-    GameJourneyTiming, GameMarketPolicy, GameNeed, GamePrice, GameProfile, GameRecipe,
-    GameServiceReach, NationalGamePolicy, NationalGamePolicyError,
+    GameHouseholdPolicy, GameJourneyTiming, GameMarketPolicy, GameNeed, GamePrice, GameProfile,
+    GameRecipe, GameServiceReach, NationalGamePolicy, NationalGamePolicyError,
 };
 use crate::national_transport::CargoClass;
 use babylon_kernel::{
@@ -31,6 +31,7 @@ struct RawPolicy {
     missing_peer_weight_per_establishment: u64,
     household_enterprise_function: String,
     financial: RawFinancial,
+    households: RawHouseholds,
     markets: RawMarkets,
     equipment: RawEquipment,
     commodity: BTreeMap<String, RawCommodity>,
@@ -89,6 +90,12 @@ struct RawDependency {
     missing_population_game_persons: u64,
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawHouseholds {
+    private_owner_households_bps: u16,
+}
+
 #[derive(Clone, Copy, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RawFinancial {
@@ -125,6 +132,12 @@ pub(super) fn parse(source: &str) -> Result<NationalGamePolicy, Error> {
     }
     let raw: RawPolicy = toml::from_str(source).map_err(|_| Error::Syntax)?;
     validate_globals(&raw)?;
+    if !(1..=10_000).contains(&raw.households.private_owner_households_bps) {
+        return Err(Error::Profile("private owner household fraction".into()));
+    }
+    let households = GameHouseholdPolicy {
+        private_owner_households_bps: raw.households.private_owner_households_bps,
+    };
     let commodities = commodities(raw.commodity)?;
     let recipes = recipes(raw.process, &commodities)?;
     let household_needs = needs(raw.household_needs, &commodities)?;
@@ -146,6 +159,7 @@ pub(super) fn parse(source: &str) -> Result<NationalGamePolicy, Error> {
         missing_peer_weight_per_establishment: raw.missing_peer_weight_per_establishment,
         household_enterprise_function: EconomicFunction::HouseholdServices,
         financial,
+        households,
         markets,
         equipment,
         commodities,

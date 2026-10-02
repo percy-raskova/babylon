@@ -1,6 +1,7 @@
 //! Reopening admits supplied artifacts and dependencies, without reacquiring files.
 use babylon_persistence::{
     national_cohorts::NationalCohortReference, national_counties::NationalCountyReference,
+    national_households::NationalHouseholdReference,
     national_resident_workforce::NationalResidentWorkforceReference,
     national_transport::NationalTransportReference, world_reference::WorldReference,
 };
@@ -13,6 +14,9 @@ const COHORTS: &[u8] = include_bytes!(
 );
 const RESIDENTS: &[u8] = include_bytes!(
     "../../../../src/babylon/data/reference/economy/national_resident_workforce_2024.csv.gz"
+);
+const HOUSEHOLDS: &[u8] = include_bytes!(
+    "../../../../src/babylon/data/reference/economy/national_household_reference_2024.csv.gz"
 );
 const TRANSPORT: &[u8] = include_bytes!(
     "../../../../src/babylon/data/reference/transport/national_transport_reference_2024.json.gz"
@@ -38,6 +42,7 @@ fn explicit_captured_dependencies_reproduce_all_current_source_dimensions() {
     let cohorts = NationalCohortReference::decode_captured(COHORTS, MAPPING, &counties).unwrap();
     let residents =
         NationalResidentWorkforceReference::decode_captured(RESIDENTS, &counties).unwrap();
+    let households = NationalHouseholdReference::decode_captured(HOUSEHOLDS, &counties).unwrap();
     let world =
         WorldReference::decode_captured(POPULATION, TRADE, MEMBERSHIP, POPULATION_SCOPE).unwrap();
     let transport = NationalTransportReference::decode_captured(
@@ -51,6 +56,15 @@ fn explicit_captured_dependencies_reproduce_all_current_source_dimensions() {
     assert_eq!(cohorts.groups().len(), 59058);
     assert_eq!(cohorts.admitted_cohorts().count(), 57238);
     assert_eq!(residents.counties().len(), 3144);
+    assert_eq!(households.counties().len(), 3144);
+    assert_eq!(
+        households
+            .counties()
+            .iter()
+            .map(|c| c.total_households().estimate.value().unwrap())
+            .sum::<u64>(),
+        129_227_496
+    );
     assert_eq!(world.counterparts().len(), 12);
     assert_eq!(transport.county_access().len(), 3144);
     assert_eq!(transport.links().len(), 6870);

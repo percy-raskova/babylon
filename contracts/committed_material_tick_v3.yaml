@@ -479,12 +479,14 @@ receipts:
   maximum_member_and_wage_accrual_rows: 131072
   maximum_procurement_rows: 262144
   maximum_income_account_rows: 131072
+  maximum_tax_rows: 131072 # One per captured payer account.
+  maximum_distribution_rows: 131072 # One per captured ownership claim.
   maximum_money_transfer_rows: 1441792
   maximum_service_performance_rows: 196608
   money_transfer_bound: >-
-    3M covers prior and current member payroll. 16N covers purchase, household, procurement,
-    service, public-budget, tax, distribution contribution and equipment purchase movements. M is the member limit;
-    N is the ordinary state-family limit. State and aggregate byte ceilings remain independent.
+    Independent Designed close ceiling retained at 3M + 16N. The original sum does not cover
+    every simultaneously maximal admitted family after named policy limits grow. A valid
+    opening does not promise that every possible close fits this or the complete-byte ceiling.
   maximum_complete_bytes: 67108864
 persistence:
   material_rows: babylon_state.material_tick_v3

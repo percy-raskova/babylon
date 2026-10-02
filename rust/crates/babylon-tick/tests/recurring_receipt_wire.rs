@@ -263,7 +263,8 @@ fn every_family_keeps_its_explicit_row_and_whole_envelope_bounds() {
             20 => babylon_material_circuit::MAX_SERVICE_RECEIPTS_PER_PERIOD,
             12 | 28 | 29 => babylon_material_circuit::MAX_STAFFING_MEMBERS,
             16 => babylon_material_circuit::MAX_REPLENISHMENT_POLICIES,
-            19 => babylon_material_circuit::MAX_MONETARY_ACCOUNTS,
+            19 | 25 => babylon_material_circuit::MAX_MONETARY_ACCOUNTS,
+            26 => babylon_material_circuit::MAX_OWNERSHIP_CLAIMS,
             _ => MAX_MATERIAL_CIRCUIT_ROWS,
         };
         let mut bytes = envelope(0, &[]);

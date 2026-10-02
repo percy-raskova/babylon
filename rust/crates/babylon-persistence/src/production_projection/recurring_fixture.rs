@@ -55,6 +55,7 @@ fn recurring_policies() -> RecurringEconomy {
     RecurringEconomy {
         service_inputs: vec![],
         households: vec![HouseholdCohort {
+            kind: babylon_material_circuit::HouseholdKind::Ordinary,
             principal_id: household(),
             households: 2,
             persons: 4,

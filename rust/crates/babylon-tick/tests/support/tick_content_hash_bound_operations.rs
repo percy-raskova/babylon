@@ -310,9 +310,9 @@ fn add_nodes(
     node_type: &str,
     name_pattern: &str,
 ) -> HashMap<NodeId, String> {
-    assert!(count <= 131_073);
+    assert!(count <= 262_145);
     let mut names = HashMap::with_capacity(count);
-    for index in (0..=131_072).take(count) {
+    for index in (0..=262_144).take(count) {
         let node = graph.add_node(node_type).expect("bounded synthetic node");
         names.insert(node, patterned_symbol(name_pattern, index));
     }
@@ -419,10 +419,10 @@ fn resolver_fact_units(recipe: &Value) -> Result<(), StableIdentityError> {
 
 fn resolver_manifest_nodes(recipe: &Value) -> Result<(), StableIdentityError> {
     let full_count = count(recipe, "full_node_rows");
-    assert!(full_count <= 65_535);
+    assert!(full_count <= 131_071);
     let mut graph = MemoryGraph::new();
     let mut names = HashMap::with_capacity(full_count + 1);
-    for index in (0..65_535).take(full_count) {
+    for index in (0..131_071).take(full_count) {
         let node_type = "T".repeat(count(recipe, "full_node_type_bytes"));
         let node = graph.add_node(&node_type).expect("manifest full node");
         names.insert(
@@ -436,8 +436,23 @@ fn resolver_manifest_nodes(recipe: &Value) -> Result<(), StableIdentityError> {
         final_node,
         fixed_symbol('z', full_count, count(recipe, "final_node_name_bytes")),
     );
-    StableElementResolver::seal(&graph, text(recipe, "scenario"), &names, &HashMap::new())
-        .map(|_| ())
+    let resolver =
+        StableElementResolver::seal(&graph, text(recipe, "scenario"), &names, &HashMap::new())?;
+    assert_eq!(
+        resolver.node_key(final_node).unwrap(),
+        &StableElementKey::Node {
+            scenario: text(recipe, "scenario").to_owned(),
+            local_name: names[&final_node].clone(),
+        }
+    );
+    let manifest = resolver.manifest().canonical_bytes();
+    let tail_start = manifest.len() - 5 - final_type.len();
+    assert_eq!(
+        &manifest[tail_start..manifest.len() - 5],
+        final_type.as_bytes()
+    );
+    assert_eq!(&manifest[manifest.len() - 5..], &[3, 0, 0, 0, 0]);
+    Ok(())
 }
 
 fn execute_carrier(recipe: &Value) -> Result<(), StableIdentityError> {
@@ -517,7 +532,7 @@ struct GeneratedState {
 
 impl GeneratedState {
     fn nodes(&self) -> Vec<(NodeId, String)> {
-        (0..=131_072)
+        (0..=262_144)
             .take(self.node_count)
             .map(|index| (NodeId(index as u64), self.node_type.clone()))
             .collect()

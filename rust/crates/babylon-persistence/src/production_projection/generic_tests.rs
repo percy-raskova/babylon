@@ -61,6 +61,7 @@ fn native_source_view_keeps_foreign_scope_and_suppressed_jobs_without_michigan_l
     view.sources = EconomicSourceView::National {
         counties: crate::national_counties::national_county_reference().unwrap(),
         cohorts,
+        households: crate::national_households::national_household_reference().unwrap(),
         residents: crate::national_resident_workforce::national_resident_workforce_reference()
             .unwrap(),
         world: crate::world_reference::world_reference().unwrap(),

@@ -34,7 +34,7 @@ pub(super) fn append(
         b.extend_from_slice(&r.owner.as_bytes());
         b.extend_from_slice(&r.amount.micro_units().to_be_bytes());
     })?;
-    append_rows(out, &rows.equity, |b, r| {
+    append_bounded_rows(out, &rows.equity, crate::MAX_OWNERSHIP_CLAIMS, |b, r| {
         append_account(b, r.owner);
         b.extend_from_slice(&r.issuer_site_id.as_bytes());
         b.extend_from_slice(&r.amount.micro_units().to_be_bytes());
@@ -90,7 +90,7 @@ pub(super) fn decode(cursor: &mut Cursor<'_>) -> Result<HistoricalCostBook, Mate
             amount: decode_currency(b)?,
         })
     })?;
-    let equity = decode_rows(cursor, |b| {
+    let equity = decode_bounded_rows(cursor, crate::MAX_OWNERSHIP_CLAIMS, |b| {
         Ok(EquityCarryingValue {
             owner: decode_account(b)?,
             issuer_site_id: SiteId::from_bytes(b.array()?),

@@ -3,6 +3,7 @@ use super::{actors, quantity, ActorContext, Builder, NationalOpeningError, Resul
 use crate::{
     economic_catalog::{EconomicSiteSource, ResidentStaffingMemberSeed, ResidentStaffingPoolSeed},
     national_economy::{household_principal, GameProfile},
+    national_household_allocation::HouseholdBudgetKey,
     world_reference::WorldReference,
 };
 use babylon_graph::stable_element::StableElementKey;
@@ -63,6 +64,7 @@ fn add(
     actors::household(
         builder,
         location,
+        HouseholdBudgetKey::PooledExternal,
         counts.persons,
         counts.households,
         profile.price_scale_bps,
@@ -130,12 +132,14 @@ fn staffing(
     .map_err(|_| NationalOpeningError::Policy)?;
     let mut members = vec![];
     if context.force > 0 {
-        let mut bytes = b"NationalExternalWorkforceV1\0".to_vec();
+        let principal = household_principal(context.location, HouseholdBudgetKey::PooledExternal);
+        let mut bytes = b"NationalExternalWorkforceV2\0".to_vec();
         bytes.extend_from_slice(&site.as_bytes());
+        bytes.extend_from_slice(&principal.as_bytes());
         let identity = sha256_of(&bytes);
         let member = StaffingMemberBinding::try_new(
             StaffingMemberId::from_bytes(identity),
-            household_principal(context.location),
+            principal,
             context.location,
             context.force,
         )

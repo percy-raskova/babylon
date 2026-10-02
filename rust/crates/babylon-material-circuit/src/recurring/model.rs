@@ -22,9 +22,27 @@ pub struct RecurringEconomy {
 /// Resident persons and household count are independent of workplace jobs.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HouseholdCohort {
+    pub kind: HouseholdKind,
     pub principal_id: FinalDemandPrincipalId,
     pub households: u64,
     pub persons: u64,
+}
+
+/// Collective residence accounts carry people without inventing households.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[repr(u8)]
+pub enum HouseholdKind {
+    Ordinary = 1,
+    CollectiveResidence = 2,
+}
+impl HouseholdKind {
+    #[must_use]
+    pub const fn admits_counts(self, persons: u64, households: u64) -> bool {
+        match self {
+            Self::Ordinary => households > 0 && persons >= households,
+            Self::CollectiveResidence => persons > 0 && households == 0,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -56,12 +74,15 @@ pub enum HouseholdNeedBasis {
 impl HouseholdNeed {
     /// Exact recurring requirement; this calculation changes neither count.
     /// # Errors
-    /// Refuses the wrong resident principal, zero coefficients and overflow.
+    /// Refuses the wrong principal, household-based collective needs, zero coefficients and overflow.
     pub fn required_quantity(
         &self,
         cohort: &HouseholdCohort,
     ) -> Result<u64, crate::MaterialCircuitError> {
-        if cohort.principal_id != self.principal_id {
+        if cohort.principal_id != self.principal_id
+            || (cohort.kind == HouseholdKind::CollectiveResidence
+                && self.basis == HouseholdNeedBasis::Households)
+        {
             return Err(crate::MaterialCircuitError::FinalDemandInvariant);
         }
         if self.units_per_basis == 0 {

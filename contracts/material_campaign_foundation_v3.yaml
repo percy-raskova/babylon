@@ -12,8 +12,10 @@ encoding:
     - u64_big_endian_graph_foundation_v1_length_then_exact_bytes
     - u64_big_endian_material_register_v4_length_then_exact_bytes
   digest: sha256_exact_bytes
-  maximum_complete_bytes: 335544557
-  independent_total: A larger component allowance never enlarges this complete framing ceiling.
+  maximum_complete_bytes: 1067109101
+  complete_bound_class: Derived
+  complete_bound_basis: Explicit 1000000000 register plus 67108864 graph plus 237 maximum framing bytes.
+  independent_total: Check the complete envelope and each component; the captured source occurs once.
   component_bounds:
     graph_foundation_bytes: 67108864
     material_world_register_bytes: 1000000000

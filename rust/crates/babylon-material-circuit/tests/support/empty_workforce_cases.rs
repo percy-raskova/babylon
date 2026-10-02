@@ -209,6 +209,7 @@ fn split_retail_members() -> MaterialCircuitState {
     recurring.households[0].households = 1;
     recurring.households[0].persons = 3;
     recurring.households.push(HouseholdCohort {
+        kind: babylon_material_circuit::HouseholdKind::Ordinary,
         principal_id: second,
         households: 1,
         persons: 1,

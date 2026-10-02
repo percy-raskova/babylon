@@ -11,6 +11,9 @@ mod household_need_basis_cases;
 #[path = "support/empty_workforce_cases.rs"]
 mod empty_workforce_cases;
 
+#[path = "support/household_budget_cases.rs"]
+mod household_budget_cases;
+
 fn site(id: u8) -> SiteId {
     SiteId::from_bytes([id; 32])
 }
@@ -64,6 +67,7 @@ fn opening() -> MaterialCircuitState {
     let recurring = RecurringEconomy {
         service_inputs: vec![],
         households: vec![HouseholdCohort {
+            kind: babylon_material_circuit::HouseholdKind::Ordinary,
             principal_id: household(),
             households: 2,
             persons: 4,
@@ -633,9 +637,15 @@ fn captured_household_policies_refuse_old_bytes_bad_cursors_and_noncanonical_row
         decode_material_circuit_state(&excessive),
         Err(MaterialCircuitError::WireLimit)
     );
-    // The captured control has one 48-byte cohort, one 104-byte stock,
+    let mut unknown_kind = bytes.clone();
+    unknown_kind[offset + 21] = 3;
+    assert_eq!(
+        decode_material_circuit_state(&unknown_kind),
+        Err(MaterialCircuitError::WireEnum)
+    );
+    // The captured control has one 49-byte cohort, one 104-byte stock,
     // one 105-byte need, one 145-byte policy and three 113-byte fixed offers.
-    let need = offset + 17 + 4 + 48 + 4 + 104 + 4;
+    let need = offset + 17 + 4 + 49 + 4 + 104 + 4;
     let mut unknown_basis = bytes.clone();
     unknown_basis[need + 96] = 3;
     assert_eq!(

@@ -278,3 +278,6 @@ fn public_support_records_unfunded_budget_without_creating_cash_or_consumption()
 mod edges;
 #[path = "support/financial_operations.rs"]
 mod operations;
+
+#[path = "support/household_policy_bounds.rs"]
+mod household_policy_bounds;

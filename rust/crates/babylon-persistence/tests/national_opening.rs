@@ -14,6 +14,9 @@ use babylon_persistence::{
 };
 use std::collections::{BTreeMap, BTreeSet};
 
+#[path = "support/national_household_controls.rs"]
+mod household_controls;
+
 #[test]
 fn full_opening_conserves_counted_households_and_uses_finite_connected_accounts() {
     let policy = NationalGamePolicy::parse(include_str!(concat!(
@@ -27,16 +30,26 @@ fn full_opening_conserves_counted_households_and_uses_finite_connected_accounts(
     let world = world_reference().unwrap();
     let transport = national_transport_reference().unwrap();
     let start = std::time::Instant::now();
-    let opening =
-        build_national_opening(counties, cohorts, residents, world, transport, &policy).unwrap();
+    let opening = build_national_opening(
+        counties,
+        cohorts,
+        residents,
+        babylon_persistence::national_households::national_household_reference().unwrap(),
+        world,
+        transport,
+        &policy,
+    )
+    .unwrap();
     eprintln!("native opening generation: {:?}", start.elapsed());
-    assert_people(&opening);
+    household_controls::assert_people(&opening, &policy);
+    household_controls::assert_endowments_and_ownership(&opening, &policy);
     assert_markets(&opening, &policy);
     assert_routes(&opening);
     assert_unique_principals(&opening, &policy);
     assert_missing_retail_fallback(&opening);
     census(&opening);
     assert_managed_equipment(&opening);
+    household_controls::assert_admitted_state(&opening);
 }
 
 fn assert_managed_equipment(opening: &EconomicOpening) {
@@ -100,46 +113,6 @@ fn assert_managed_equipment(opening: &EconomicOpening) {
     }
 }
 
-fn assert_people(opening: &EconomicOpening) {
-    let domestic: Vec<_> = opening
-        .households
-        .iter()
-        .filter(|r| matches!(r.location, EconomicLocation::County(_)))
-        .collect();
-    assert_eq!(domestic.len(), 3_144);
-    assert_eq!(domestic.iter().map(|r| r.persons).sum::<u64>(), 334_922_499);
-    assert_eq!(opening.households.len(), 3_162);
-    let members: Vec<_> = opening
-        .staffing
-        .iter()
-        .flat_map(|r| &r.members)
-        .filter(|m| matches!(m.member.residence(), EconomicLocation::County(_)))
-        .collect();
-    assert_eq!(members.len(), 62_745);
-    assert_eq!(members.iter().map(|m| m.employed).sum::<u64>(), 161_297_155);
-    assert_eq!(members.iter().map(|m| m.reserve).sum::<u64>(), 8_902_365);
-    assert_eq!(opening.sites.len(), 60_634);
-    assert!(opening.orders.goods.is_empty() && opening.orders.final_demand.is_empty());
-    assert_eq!(opening.recipes.len(), 9);
-    assert_eq!(opening.household_templates.len(), 1);
-    let residents: BTreeMap<_, _> = opening
-        .households
-        .iter()
-        .map(|r| (r.principal_id, r))
-        .collect();
-    for row in &opening.staffing {
-        assert!(row.workplace.canonical_bytes().is_ok());
-        for m in &row.members {
-            assert!(m.subject.canonical_bytes().is_ok());
-            assert_eq!(m.employed + m.reserve, m.member.labor_force());
-            assert_eq!(
-                residents[&m.member.household_id()].location,
-                m.member.residence()
-            );
-        }
-    }
-}
-
 fn assert_markets(opening: &EconomicOpening, policy: &NationalGamePolicy) {
     let sites: BTreeMap<_, _> = opening.sites.iter().map(|s| (s.site_id, s)).collect();
     let service_keys: BTreeSet<_> = policy
@@ -157,6 +130,11 @@ fn assert_markets(opening: &EconomicOpening, policy: &NationalGamePolicy) {
     for household in &opening.households {
         assert!(household.subject.canonical_bytes().is_ok());
         for need in &policy.household_needs {
+            if household.kind == babylon_material_circuit::HouseholdKind::CollectiveResidence
+                && need.basis == babylon_material_circuit::HouseholdNeedBasis::Households
+            {
+                continue;
+            }
             let good = &policy.commodities[&need.key];
             let purchase = purchases[&(household.principal_id, good.good_id, good.unit_id)];
             assert!(purchase.enabled && purchase.maximum_purchase > 0);
@@ -288,6 +266,19 @@ fn assert_missing_retail_fallback(opening: &EconomicOpening) {
 }
 
 fn census(opening: &EconomicOpening) {
+    let templates: BTreeMap<_, _> = opening
+        .household_templates
+        .iter()
+        .map(|t| (t.id, t.needs.len()))
+        .collect();
+    let needs = opening
+        .households
+        .iter()
+        .map(|h| templates[&h.template])
+        .sum::<usize>();
+    eprintln!("household census: templates={templates:?} needs={needs} purchases={} pantry_rows={} claims={} tax_policies={} public_allocations={}",
+        opening.policies.household_purchases.len(), opening.households.iter().map(|h| h.opening_stock.len()).sum::<usize>(),
+        opening.institutions.ownership.len(), opening.institutions.taxes.len(), opening.institutions.public_allocations.len());
     eprintln!("opening census: sites={} households={} staffing_pools={} staffing_members={} stocks={} inputs={} offers={} procurement={} service_inputs={} connections={} supplier_routes={} stages={} memberships={} cash_accounts={}",
         opening.sites.len(),opening.households.len(),opening.staffing.len(),opening.staffing.iter().map(|s|s.members.len()).sum::<usize>(),
         opening.sites.iter().map(|s|s.opening_stock.len()).sum::<usize>(),opening.sites.iter().map(|s|s.processes.iter().map(|p| opening.recipes.iter().find(|r|r.id==p.recipe).unwrap().inputs.len()).sum::<usize>()).sum::<usize>(),

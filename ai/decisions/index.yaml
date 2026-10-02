@@ -1255,6 +1255,11 @@ decisions:
     status: accepted
     date: '2026-10-01'
     file: ADR268_productive_equipment_and_installation.yaml
+  ADR269_sparse_household_budgets:
+    title: Sparse counted household budgets preserve separate earnings and ownership exposure
+    status: accepted
+    date: '2026-10-02'
+    file: ADR269_sparse_household_budgets.yaml
   ADR270_household_time_and_material_organizer:
     title: Household time and material support constrain independently authorized organizational practice
     status: accepted

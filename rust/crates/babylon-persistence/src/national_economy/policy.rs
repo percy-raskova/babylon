@@ -22,6 +22,7 @@ pub struct NationalGamePolicy {
     pub missing_peer_weight_per_establishment: u64,
     pub household_enterprise_function: EconomicFunction,
     pub financial: GameFinancialPolicy,
+    pub households: GameHouseholdPolicy,
     pub markets: GameMarketPolicy,
     pub equipment: GameEquipmentPolicy,
     pub commodities: BTreeMap<String, GameCommodity>,
@@ -81,6 +82,12 @@ pub struct GameProfile {
 pub struct GameDependencyProfile {
     pub profile: GameProfile,
     pub missing_population_game_persons: u64,
+}
+
+/// Designed ownership exposure among historical household-earnings margins.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GameHouseholdPolicy {
+    pub private_owner_households_bps: u16,
 }
 
 /// Designed rates and budget commitments; payments still require actual funds.

@@ -196,8 +196,12 @@ fn native_seed_admits_the_measured_national_actor_count_with_a_finite_ceiling() 
             })
             .collect()
     };
-    // Captured 3,144 counties + 60,634 workplaces + 62,925 aggregate staffing
-    // members + 3,162 counted household cohorts. These are never person agents.
-    assert!(GraphSeed::try_new(rows(129_865), vec![], vec![]).is_ok());
-    assert!(GraphSeed::try_new(rows(131_073), vec![], vec![]).is_err());
+    // Captured 3,144 counties + 60,634 workplaces + 100,301 counted staffing
+    // members + 15,693 household budgets. These are never person agents.
+    assert!(GraphSeed::try_new(rows(179_772), vec![], vec![]).is_ok());
+    assert!(GraphSeed::try_new(rows(262_144), vec![], vec![]).is_ok());
+    assert!(GraphSeed::try_new(rows(262_145), vec![], vec![]).is_err());
+    let mut duplicate = rows(179_772);
+    duplicate[179_771] = duplicate[0].clone();
+    assert!(GraphSeed::try_new(duplicate, vec![], vec![]).is_err());
 }

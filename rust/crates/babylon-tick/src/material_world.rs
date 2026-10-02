@@ -415,7 +415,8 @@ fn receipt_row_limit(index: usize) -> usize {
         19 => babylon_material_circuit::MAX_SERVICE_RECEIPTS_PER_PERIOD,
         11 | 27 | 28 => babylon_material_circuit::MAX_STAFFING_MEMBERS,
         15 => babylon_material_circuit::MAX_REPLENISHMENT_POLICIES,
-        18 => babylon_material_circuit::MAX_MONETARY_ACCOUNTS,
+        18 | 24 => babylon_material_circuit::MAX_MONETARY_ACCOUNTS,
+        25 => babylon_material_circuit::MAX_OWNERSHIP_CLAIMS,
         _ => babylon_material_circuit::MAX_MATERIAL_CIRCUIT_ROWS,
     }
 }

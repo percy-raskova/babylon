@@ -3,6 +3,7 @@
 import hashlib
 import json
 import os
+import select
 import shlex
 import subprocess
 import sys
@@ -328,7 +329,6 @@ def test_real_global_flock_conflicts_across_linked_worktrees(tmp_path):
     repository, linked = national_linked_checkouts(tmp_path)
     control = repository / ".git/babylon-national-storage"
     control.mkdir()
-    ready = tmp_path / "lock-ready"
     holder = subprocess.Popen(
         [
             "flock",
@@ -336,19 +336,17 @@ def test_real_global_flock_conflicts_across_linked_worktrees(tmp_path):
             str(control / "runner.lock"),
             "bash",
             "-c",
-            'touch "$1"; read -r line',
+            'printf "locked\\n"; read -r line',
             "held",
-            str(ready),
         ],
         stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
     )
     try:
-        import time
-
-        deadline = time.monotonic() + 3
-        while not ready.exists() and time.monotonic() < deadline:
-            time.sleep(0.01)
-        assert ready.exists()
+        assert holder.stdout is not None
+        readable, _, _ = select.select([holder.stdout], [], [], 3)
+        assert readable, "actual lock-holder readiness within the three-second bound"
+        assert holder.stdout.readline() == b"locked\n"
         result = national_guard(linked, "national_lock_entry")
         assert result.returncode == 75
         assert not (linked / "reports").exists()

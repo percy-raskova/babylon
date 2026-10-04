@@ -1522,6 +1522,7 @@ mod tests {
             production.routes = freight.routes.clone();
             production.physical_routes = freight.physical_routes.clone();
             production.freight_capacity_accounts = freight.freight_capacity_accounts.clone();
+            production.freight_order_definitions = freight.freight_order_definitions.clone();
             production.sites.extend(freight.sites.clone());
         });
         (app, text)

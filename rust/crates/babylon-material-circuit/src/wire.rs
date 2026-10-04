@@ -33,8 +33,8 @@ use crate::{
 pub const MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES: &[u8] = b"babylon.material-circuit-state.v3";
 /// SHA-256 of the current language-neutral material circuit contract source.
 pub const MATERIAL_CIRCUIT_SOURCE_SHA256: [u8; 32] = [
-    119, 78, 237, 125, 111, 66, 137, 63, 174, 26, 162, 81, 97, 51, 243, 185, 41, 146, 203, 12, 132,
-    140, 130, 224, 185, 162, 60, 31, 210, 40, 1, 52,
+    221, 72, 124, 112, 57, 15, 166, 127, 198, 226, 214, 183, 169, 85, 11, 145, 141, 71, 200, 19,
+    28, 2, 209, 201, 33, 180, 69, 122, 214, 114, 41, 167,
 ];
 
 const SCHEMA_VERSION: u16 = 18;

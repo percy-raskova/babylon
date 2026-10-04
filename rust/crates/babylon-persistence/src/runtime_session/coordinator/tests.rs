@@ -418,8 +418,14 @@ fn malformed_actions_versions_campaigns_and_overlong_frames_cannot_advance() {
         (5, "campaign", RuntimeSessionErrorCode::UnsupportedVersion),
         (6, "campaign", RuntimeSessionErrorCode::UnsupportedVersion),
         (7, "campaign", RuntimeSessionErrorCode::UnsupportedVersion),
+        (8, "campaign", RuntimeSessionErrorCode::UnsupportedVersion),
         (9, "campaign", RuntimeSessionErrorCode::UnsupportedVersion),
-        (8, "other", RuntimeSessionErrorCode::SessionMismatch),
+        (11, "campaign", RuntimeSessionErrorCode::UnsupportedVersion),
+        (
+            RUNTIME_SESSION_PROTOCOL_VERSION,
+            "other",
+            RuntimeSessionErrorCode::SessionMismatch,
+        ),
     ] {
         let mut request = advance();
         if let RuntimeSessionRequest::Advance {

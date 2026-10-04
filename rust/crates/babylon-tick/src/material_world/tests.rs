@@ -89,7 +89,7 @@ fn receipt_version_and_local_delivery_quantity_are_strict() {
 fn local_transfer_receipts_preserve_both_owners_without_freight() {
     use babylon_material_circuit::SiteId;
     let mut bytes = local_handoff_receipts();
-    let tail = bytes.split_off(bytes.len() - (35 - 9) * 9);
+    let tail = bytes.split_off(bytes.len() - (36 - 9) * 9);
     let count = bytes.len() - 8;
     bytes[count..].copy_from_slice(&1_u64.to_be_bytes());
     let row_start = bytes.len();
@@ -113,7 +113,7 @@ fn local_transfer_receipts_preserve_both_owners_without_freight() {
         decode_material_receipts(&self_transfer),
         Err(MaterialWorldError::Wire)
     );
-    let end = bytes.len() - (35 - 9) * 9;
+    let end = bytes.len() - (36 - 9) * 9;
     bytes[end - 8..end].fill(0);
     assert_eq!(
         decode_material_receipts(&bytes),

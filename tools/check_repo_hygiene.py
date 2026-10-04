@@ -196,6 +196,9 @@ RUNTIME_ASSET_BLOB_LIMITS: dict[str, int] = {
     # the content reader separately bounds decoded content. Match the named
     # 2 MiB pre-commit publication bound without exempting other network files.
     "content/scenarios/michigan/statewide-physical.json.gz": 2_097_152,
+    # PER-40: exact compact source capture, pinned by metadata and native reader.
+    # Keep the same named publication limit as pre-commit, not a data wildcard.
+    "src/babylon/data/reference/economy/national_cohort_reference_2024.csv.gz": 2_097_152,
 }
 
 #: Fixed upper bound on git output lines (Power-of-10 rule 2). The repo

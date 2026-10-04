@@ -79,12 +79,47 @@ impl RuntimePipe {
 }
 
 #[derive(Resource, Default)]
-struct PendingObservation(
-    Option<(
-        ObservationContext,
-        Task<Result<ObserverEconomySnapshot, String>>,
-    )>,
-);
+struct PendingObservation(Option<(ObservationContext, Task<ObservationRead>)>);
+
+struct ObservationRead {
+    result: Result<PreparedObservation, String>,
+    cursor: Option<babylon_persistence::observer_reader::ObserverMaterialCursor>,
+}
+struct PreparedObservation {
+    snapshot: ObserverEconomySnapshot,
+    evidence: crate::observer_ui::ProductionEvidenceOutcome,
+}
+
+impl PreparedObservation {
+    fn new(mut snapshot: ObserverEconomySnapshot) -> Self {
+        let evidence = snapshot.production_evidence_digest();
+        Self { snapshot, evidence }
+    }
+}
+
+#[derive(Clone, PartialEq, Eq)]
+struct ObservationCacheKey {
+    campaign: babylon_persistence::identity::CampaignId,
+    epoch: Option<u64>,
+    perspective: Perspective,
+    foundation: Option<String>,
+}
+impl ObservationCacheKey {
+    fn from_session(session: &ObserverSession) -> Self {
+        Self {
+            campaign: session.campaign,
+            epoch: session.runtime_scope().map(|scope| scope.epoch),
+            perspective: session.perspective,
+            foundation: session.foundation_digest.clone(),
+        }
+    }
+}
+/// Owns the authenticated read cursor between asynchronous requests.
+#[derive(Resource, Default)]
+struct ObservationCache {
+    key: Option<ObservationCacheKey>,
+    cursor: Option<babylon_persistence::observer_reader::ObserverMaterialCursor>,
+}
 
 #[derive(Resource, Default)]
 struct PlaybackClock {
@@ -256,7 +291,7 @@ impl CampaignReset<'_> {
             **primary = crate::production::PrimaryView::Map;
         }
         if let Some(frame) = &mut self.frame {
-            frame.0 = None;
+            **frame = ObserverFrame::default();
         }
         if let Some(pending) = &mut self.pending {
             pending.0 = None;
@@ -284,6 +319,8 @@ fn receive(
     mut state: ResMut<ObserverSession>,
     mut refresh: ResMut<DossierRefresh>,
     mut reset: CampaignReset,
+    mut progress: Option<ResMut<crate::observer_progress::OperationProgress>>,
+    time: Res<Time<Real>>,
 ) {
     if state.phase == SessionPhase::Closed || state.runtime_disconnected() {
         return;
@@ -304,6 +341,28 @@ fn receive(
                 break;
             }
         };
+        if let RuntimeSessionResponse::AdvanceProgress {
+            request_id,
+            resolve_tick,
+            stage,
+            ..
+        } = &response
+        {
+            let result = admits_response_scope(&response, &state).and_then(|admitted| {
+                if !admitted {
+                    return Ok(());
+                }
+                progress
+                    .as_deref_mut()
+                    .ok_or_else(|| "Advance progress presentation is not installed".to_owned())?
+                    .report_stage(&state, *request_id, *resolve_tick, *stage, time.elapsed())
+            });
+            if let Err(error) = result {
+                state.disconnect(error);
+                break;
+            }
+            continue;
+        }
         if let Err(error) = apply_response(response, &mut state, &mut refresh, &mut reset) {
             state.disconnect(error);
             break;
@@ -319,6 +378,7 @@ fn response_scope(response: &RuntimeSessionResponse) -> &RuntimeSessionScope {
         RuntimeSessionResponse::Hello { scope, .. }
         | RuntimeSessionResponse::Switching { scope, .. }
         | RuntimeSessionResponse::Ready { scope, .. }
+        | RuntimeSessionResponse::AdvanceProgress { scope, .. }
         | RuntimeSessionResponse::Committed { scope, .. }
         | RuntimeSessionResponse::ArchiveProgress { scope, .. }
         | RuntimeSessionResponse::Error { scope, .. }
@@ -349,16 +409,32 @@ fn admits_response_scope(
     Ok(true)
 }
 
-fn admit_campaign(
-    state: &mut ObserverSession,
-    refresh: &mut DossierRefresh,
-    reset: &mut CampaignReset,
+struct CampaignAdmission {
     request_id: u64,
     foundation_digest: String,
     tail: RuntimeSessionTail,
     organizer: bool,
+    duration: babylon_kernel::clock::CampaignDuration,
+}
+
+fn admit_campaign(
+    state: &mut ObserverSession,
+    refresh: &mut DossierRefresh,
+    reset: &mut CampaignReset,
+    admission: CampaignAdmission,
 ) -> Result<(), String> {
+    let CampaignAdmission {
+        request_id,
+        foundation_digest,
+        tail,
+        organizer,
+        duration,
+    } = admission;
+    if !duration.contains(tail.resolve_tick) {
+        return Err("Runtime supplied an invalid campaign duration".into());
+    }
     state.admitted(request_id, foundation_digest, tail)?;
+    state.duration = Some(duration);
     state.organizer_enabled = organizer;
     state.set_organizer_control_pending(organizer);
     if organizer {
@@ -399,6 +475,9 @@ fn refuse_runtime_request(
 ) -> Result<(), String> {
     let complete = code
         == babylon_persistence::runtime_session::RuntimeSessionErrorCode::HorizonComplete
+        && state
+            .duration
+            .is_some_and(|duration| duration.complete(state.durable_tick))
         && tail.is_some_and(|tail| {
             tail.resolve_tick == state.durable_tick && tail.tick_content_hash == state.content_hash
         });
@@ -465,7 +544,11 @@ fn apply_response(
             previous_scope,
             scope,
         } => {
+            let leaving_organizer = state.organizer_enabled;
             state.switching(request_id, &previous_scope, scope)?;
+            if leaving_organizer {
+                state.set_perspective(Perspective::FullObserver);
+            }
             reset.clear(state);
             refresh.bump();
         }
@@ -473,6 +556,7 @@ fn apply_response(
             request_id,
             foundation_digest,
             tail,
+            duration,
             organizer,
             ..
         } => {
@@ -480,24 +564,22 @@ fn apply_response(
                 state,
                 refresh,
                 reset,
-                request_id,
-                foundation_digest,
-                tail,
-                organizer,
+                CampaignAdmission {
+                    request_id,
+                    foundation_digest,
+                    tail,
+                    organizer,
+                    duration,
+                },
             )?;
+        }
+        RuntimeSessionResponse::AdvanceProgress { .. } => {
+            return Err("Advance progress must use its readonly presentation admission".into());
         }
         RuntimeSessionResponse::Committed {
             request_id, tail, ..
         } => {
-            if !state.acknowledge(request_id, tail.resolve_tick, tail.tick_content_hash) {
-                return Err("Unexpected committed acknowledgement; reopen the campaign.".into());
-            }
-            if state.organizer_enabled {
-                state.pause_playback();
-                state.set_organizer_control_pending(true);
-                reset.organizer()?.committed();
-            }
-            refresh.bump();
+            apply_committed_response(state, refresh, reset, request_id, tail)?;
         }
         RuntimeSessionResponse::OrganizerStatus {
             request_id,
@@ -541,6 +623,25 @@ fn apply_response(
             }
         }
     }
+    Ok(())
+}
+
+fn apply_committed_response(
+    state: &mut ObserverSession,
+    refresh: &mut DossierRefresh,
+    reset: &mut CampaignReset,
+    request_id: u64,
+    tail: RuntimeSessionTail,
+) -> Result<(), String> {
+    if !state.acknowledge(request_id, tail.resolve_tick, tail.tick_content_hash) {
+        return Err("Unexpected committed acknowledgement; reopen the campaign.".into());
+    }
+    if state.organizer_enabled {
+        state.pause_playback();
+        state.set_organizer_control_pending(true);
+        reset.organizer()?.committed();
+    }
+    refresh.bump();
     Ok(())
 }
 
@@ -640,20 +741,9 @@ fn apply_command(command: ObserverCommand, context: &mut CommandContext) {
             state.inspect_tick(tick);
             refresh.bump();
         }
-        ObserverCommand::NewCampaign
-        | ObserverCommand::NewOrganizerCampaign
-        | ObserverCommand::ReopenCampaign
-        | ObserverCommand::NewDelayedCampaign
-        | ObserverCommand::NewSharedFreightAmpleCampaign
-        | ObserverCommand::NewSharedFreightConstrainedCampaign
-        | ObserverCommand::NewStatewideBaselineCampaign
-        | ObserverCommand::NewStatewideFreightConstraintCampaign
-        | ObserverCommand::NewStatewidePackagingShortageCampaign
-        | ObserverCommand::NewStatewideBothCampaign
-        | ObserverCommand::NewStatewideMaintenanceBaselineCampaign
-        | ObserverCommand::NewStatewideMaintenanceLaborShortageCampaign
-        | ObserverCommand::NewStatewideMaintenancePartsShortageCampaign
-        | ObserverCommand::NewStatewideMaintenanceBothCampaign => {
+        command
+            if command == ObserverCommand::ReopenCampaign || campaign_preset(command).is_some() =>
+        {
             queue_menu_campaign(command, context);
         }
         _ => apply_presentation_command(command, context),
@@ -674,27 +764,34 @@ fn queue_menu_campaign(command: ObserverCommand, context: &mut CommandContext) {
         return;
     }
     state.pause_playback();
-    let target = match command {
-        ObserverCommand::ReopenCampaign => RuntimeSessionTarget::Open {
+    let target = if command == ObserverCommand::ReopenCampaign {
+        RuntimeSessionTarget::Open {
             campaign_id: state.campaign.as_uuid().to_string(),
-        },
-        _ => RuntimeSessionTarget::New {
-            campaign_id: uuid::Uuid::new_v4().to_string(),
-            preset: campaign_preset(command),
-        },
-    };
-    match state.queue_campaign(target) {
-        Ok(()) => {
-            if let Some(opening) = opening {
-                opening.launch_pending = true;
-            }
         }
-        Err(error) => state.fail(error),
+    } else {
+        let Some(preset) = campaign_preset(command) else {
+            feedback.reject(
+                "This command does not select a new campaign.",
+                time.elapsed_secs_f64(),
+            );
+            return;
+        };
+        RuntimeSessionTarget::New {
+            campaign_id: uuid::Uuid::new_v4().to_string(),
+            preset,
+        }
+    };
+    if let Err(error) = state.queue_campaign(target) {
+        state.fail(error);
+    } else if let Some(opening) = opening {
+        opening.launch_pending = true;
     }
 }
 
-fn campaign_preset(command: ObserverCommand) -> RuntimeSessionPreset {
-    match command {
+pub(crate) fn campaign_preset(command: ObserverCommand) -> Option<RuntimeSessionPreset> {
+    Some(match command {
+        ObserverCommand::NewNationalCampaign => RuntimeSessionPreset::NationalWorld,
+        ObserverCommand::NewCampaign => RuntimeSessionPreset::Standard,
         ObserverCommand::NewOrganizerCampaign => RuntimeSessionPreset::OrganizeInWayne,
         ObserverCommand::NewStatewideMaintenanceBaselineCampaign => {
             RuntimeSessionPreset::StatewideMaintenanceBaseline
@@ -722,8 +819,8 @@ fn campaign_preset(command: ObserverCommand) -> RuntimeSessionPreset {
             RuntimeSessionPreset::SharedFreightConstrained
         }
         ObserverCommand::NewDelayedCampaign => RuntimeSessionPreset::Delayed,
-        _ => RuntimeSessionPreset::Standard,
-    }
+        _ => return None,
+    })
 }
 
 fn apply_presentation_command(command: ObserverCommand, context: &mut CommandContext) {
@@ -825,36 +922,51 @@ fn apply_presentation_command(command: ObserverCommand, context: &mut CommandCon
 fn start_observation(
     state: Res<ObserverSession>,
     mut pending: ResMut<PendingObservation>,
+    mut cache: ResMut<ObservationCache>,
     mut frame: ResMut<ObserverFrame>,
 ) {
+    let key = ObservationCacheKey::from_session(&state);
+    if cache.key.as_ref() != Some(&key) {
+        cache.key = Some(key);
+        cache.cursor = None;
+    }
     if state.quit_requested {
         pending.0 = None;
+        cache.cursor = None;
         return;
     }
     if let Some((context, _)) = &pending.0 {
         if !state.accepts(context) {
             pending.0 = None;
-            frame.0 = None;
+            *frame = ObserverFrame::default();
         }
     }
     if state.phase != SessionPhase::Loading || pending.0.is_some() {
         return;
     }
-    frame.0 = None;
+    *frame = ObserverFrame::default();
     let context = state.context();
     let requested = context.clone();
+    let mut cursor = cache.cursor.take();
     let task = AsyncComputeTaskPool::get().spawn(async move {
         let started = std::time::Instant::now();
-        let reader = match requested.perspective {
-            Perspective::FullObserver => ObserverEconomyReader::from_observer_env(),
-            Perspective::PlayerKnowledge => ObserverEconomyReader::from_known_env(),
-        }
-        .map_err(|error| error.to_string())?;
-        let result = reader
-            .snapshot(requested.campaign, requested.tick)
-            .map_err(|error| error.to_string());
+        let resumed_after = cursor
+            .as_ref()
+            .map(babylon_persistence::observer_reader::ObserverMaterialCursor::completed_tick);
+        let result = (|| {
+            let reader = match requested.perspective {
+                Perspective::FullObserver => ObserverEconomyReader::from_observer_env(),
+                Perspective::PlayerKnowledge => ObserverEconomyReader::from_known_env(),
+            }
+            .map_err(|error| error.to_string())?;
+            reader
+                .snapshot_with_cursor(requested.campaign, requested.tick, &mut cursor)
+                .map(PreparedObservation::new)
+                .map_err(|error| error.to_string())
+        })();
         bevy::log::info!(target: "babylon_client::timing",
             stage = "authenticated_observer_read",
+            resumed_after = ?resumed_after,
             campaign = %requested.campaign.as_uuid(),
             tick = requested.tick,
             generation = requested.generation,
@@ -862,7 +974,7 @@ fn start_observation(
             elapsed_us = started.elapsed().as_micros(),
             success = result.is_ok(),
             "observer read completed");
-        result
+        ObservationRead { result, cursor }
     });
     pending.0 = Some((context, task));
 }
@@ -870,6 +982,7 @@ fn start_observation(
 fn collect_observation(
     mut state: ResMut<ObserverSession>,
     mut pending: ResMut<PendingObservation>,
+    mut cache: ResMut<ObservationCache>,
     mut frame: ResMut<ObserverFrame>,
     ui: Res<ObserverUiState>,
 ) {
@@ -884,28 +997,38 @@ fn collect_observation(
     if !state.accepts(&context) {
         return;
     }
-    match result {
-        Ok(snapshot) => install_observation(
-            &mut state,
-            &context,
-            snapshot,
-            &mut frame,
-            ui.stop_on_delivery,
-        ),
-        Err(error) => state.fail(error),
+    match result.result {
+        Ok(snapshot) => {
+            install_observation(
+                &mut state,
+                &context,
+                snapshot,
+                &mut frame,
+                ui.stop_on_delivery,
+            );
+            if state.phase != SessionPhase::Failed {
+                cache.cursor = result.cursor;
+            }
+        }
+        Err(error) => {
+            // Reader failures leave the previously authenticated cursor intact.
+            cache.cursor = result.cursor;
+            state.fail(error);
+        }
     }
 }
 
 fn install_observation(
     state: &mut ObserverSession,
     context: &ObservationContext,
-    snapshot: ObserverEconomySnapshot,
+    prepared: PreparedObservation,
     frame: &mut ObserverFrame,
     stop_on_delivery: bool,
 ) {
     if !state.accepts(context) {
         return;
     }
+    let PreparedObservation { snapshot, evidence } = prepared;
     let visibility = match context.perspective {
         Perspective::FullObserver => ObserverVisibility::FullObserver,
         Perspective::PlayerKnowledge => ObserverVisibility::KnownPreview,
@@ -922,7 +1045,15 @@ fn install_observation(
         return;
     }
     if let Some(production) = &snapshot.production {
-        state.horizon_tick = Some(production.horizon_period);
+        if !production.duration.contains(snapshot.resolve_tick)
+            || state
+                .duration
+                .is_some_and(|duration| duration != production.duration)
+        {
+            state.fail("Observation duration differs from the admitted campaign.".into());
+            return;
+        }
+        state.duration = Some(production.duration);
     }
     if state.installed(context) {
         // Only newly installed, disclosed events from this committed period can
@@ -939,7 +1070,7 @@ fn install_observation(
         {
             state.pause_playback();
         }
-        frame.0 = Some(snapshot);
+        *frame = ObserverFrame(Some(snapshot), Some(evidence));
     }
 }
 
@@ -1043,7 +1174,15 @@ fn finish_shutdown(
 pub struct ObserverIoPlugin;
 impl Plugin for ObserverIoPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<PendingObservation>()
+        app.init_resource::<crate::observer_progress::OperationProgress>()
+            .add_systems(
+                Update,
+                crate::observer_progress::track
+                    .after(ObserverSet::Install)
+                    .before(ObserverSet::Paint),
+            )
+            .init_resource::<PendingObservation>()
+            .init_resource::<ObservationCache>()
             .init_resource::<PlaybackClock>()
             .init_resource::<ShutdownProgress>()
             .configure_sets(
@@ -1083,6 +1222,282 @@ pub(crate) mod tests {
     use crate::observer_audio::ObserverAudioSettings;
     use crate::observer_ui::ObserverDisclosure;
     use babylon_persistence::identity::CampaignId;
+
+    pub(crate) fn install_pending_command_fixture(
+        app: &mut App,
+    ) -> (mpsc::Receiver<RuntimeSessionRequest>, ResponseSender) {
+        let (requests, receiver) = mpsc::sync_channel(8);
+        let (replies, responses) = mpsc::channel();
+        app.world_mut()
+            .resource_mut::<ObserverSession>()
+            .connected_fixture();
+        app.insert_resource(RuntimePipe {
+            requests,
+            responses: Mutex::new(responses),
+        })
+        .init_resource::<DossierRefresh>()
+        .init_resource::<ObserverAudioSettings>()
+        .init_resource::<ObserverFeedback>()
+        .add_systems(Update, handle_commands.in_set(ObserverSet::Input))
+        .add_systems(Update, receive.in_set(ObserverSet::Receive));
+        (receiver, replies)
+    }
+
+    #[test]
+    fn matching_advance_progress_changes_only_presentation_not_session_authority() {
+        let (mut app, requests, replies) = quit_app();
+        app.init_resource::<SessionChanges>()
+            .add_systems(Update, record_session_changes.after(receive));
+        dispatch(&mut app, &[ObserverCommand::Step]);
+        let RuntimeSessionRequest::Advance {
+            scope, request_id, ..
+        } = requests.try_recv().unwrap()
+        else {
+            panic!("expected actual advance")
+        };
+        app.update();
+        app.world_mut().resource_mut::<SessionChanges>().0.clear();
+        let context = app.world().resource::<ObserverSession>().context();
+        replies
+            .send(Ok(advance_progress_wire(
+                scope,
+                request_id,
+                4,
+                "preparing_commitments",
+            )))
+            .unwrap();
+        app.update();
+        assert_eq!(app.world().resource::<SessionChanges>().0, [false]);
+        assert_eq!(app.world().resource::<ObserverSession>().context(), context);
+        assert!(app
+            .world()
+            .resource::<crate::observer_progress::OperationProgress>()
+            .caption()
+            .unwrap()
+            .starts_with("Period 4 · Preparing commitments · "));
+        assert!(requests.try_recv().is_err());
+    }
+
+    #[test]
+    fn advance_progress_clears_after_matching_refusal_or_transport_loss() {
+        for transport_loss in [false, true] {
+            let (mut app, requests, replies) = quit_app();
+            app.add_systems(Update, crate::observer_progress::track.after(receive));
+            dispatch(&mut app, &[ObserverCommand::Step]);
+            let RuntimeSessionRequest::Advance {
+                scope, request_id, ..
+            } = requests.try_recv().unwrap()
+            else {
+                panic!("expected real advance")
+            };
+            replies
+                .send(Ok(advance_progress_wire(
+                    scope.clone(),
+                    request_id,
+                    4,
+                    "preparing_commitments",
+                )))
+                .unwrap();
+            app.update();
+            assert!(app
+                .world()
+                .resource::<crate::observer_progress::OperationProgress>()
+                .caption()
+                .unwrap()
+                .contains("Preparing commitments"));
+            if transport_loss {
+                replies.send(Err("transport lost".into())).unwrap();
+            } else {
+                replies.send(Ok(RuntimeSessionResponse::Error { scope,
+                request_id:Some(request_id),
+                code:babylon_persistence::runtime_session::RuntimeSessionErrorCode::StorageRefused,
+                tail:Some(RuntimeSessionTail { resolve_tick:3,tick_content_hash:None })
+            })).unwrap();
+            }
+            app.update();
+            let state = app.world().resource::<ObserverSession>();
+            assert_eq!(state.phase, SessionPhase::Failed);
+            assert_eq!(state.durable_tick, 3);
+            assert_eq!(state.advance_pending(), transport_loss);
+            assert!(app
+                .world()
+                .resource::<crate::observer_progress::OperationProgress>()
+                .caption()
+                .is_none());
+        }
+    }
+
+    fn advance_progress_wire(
+        scope: RuntimeSessionScope,
+        request_id: u64,
+        tick: u64,
+        stage: &str,
+    ) -> RuntimeSessionResponse {
+        serde_json::from_value(serde_json::json!({
+            "type":"advance_progress", "scope":scope, "request_id":request_id,
+            "resolve_tick":tick, "stage":stage
+        }))
+        .expect("current advance progress framing")
+    }
+
+    #[test]
+    fn advance_progress_refuses_wrong_identity_tick_and_nonsequential_stages() {
+        for fault in [
+            "campaign",
+            "epoch",
+            "request",
+            "tick",
+            "skip",
+            "duplicate",
+            "regress",
+        ] {
+            let (mut app, requests, replies) = quit_app();
+            dispatch(&mut app, &[ObserverCommand::Step]);
+            let RuntimeSessionRequest::Advance {
+                scope, request_id, ..
+            } = requests.try_recv().unwrap()
+            else {
+                panic!("expected real advance")
+            };
+            let context = app.world().resource::<ObserverSession>().context();
+            replies
+                .send(Ok(advance_progress_wire(
+                    scope.clone(),
+                    request_id,
+                    4,
+                    "preparing_commitments",
+                )))
+                .unwrap();
+            app.update();
+            if fault == "regress" {
+                replies
+                    .send(Ok(advance_progress_wire(
+                        scope.clone(),
+                        request_id,
+                        4,
+                        "resolving_economy",
+                    )))
+                    .unwrap();
+                app.update();
+            }
+            let mut wrong_scope = scope;
+            if fault == "campaign" {
+                wrong_scope.campaign_id = Some(uuid::Uuid::from_u128(999).to_string());
+            }
+            if fault == "epoch" {
+                wrong_scope.epoch += 1;
+            }
+            let id = if fault == "request" {
+                request_id + 1
+            } else {
+                request_id
+            };
+            let tick = if fault == "tick" { 5 } else { 4 };
+            let stage = if fault == "skip" {
+                "saving_period"
+            } else if matches!(fault, "duplicate" | "regress") {
+                "preparing_commitments"
+            } else {
+                "resolving_economy"
+            };
+            replies
+                .send(Ok(advance_progress_wire(wrong_scope, id, tick, stage)))
+                .unwrap();
+            app.update();
+            let session = app.world().resource::<ObserverSession>();
+            assert_eq!(session.phase, SessionPhase::Failed, "{fault}");
+            assert!(session.runtime_disconnected(), "{fault}");
+            assert!(
+                session.advance_pending(),
+                "uncertain request authority remains"
+            );
+            assert_eq!(session.context(), context);
+            assert_eq!(session.durable_tick, 3);
+            let error = session.error.as_deref().unwrap();
+            assert!(
+                error.contains(if matches!(fault, "campaign" | "epoch") {
+                    "lifecycle identity"
+                } else if matches!(fault, "skip" | "duplicate" | "regress") {
+                    "stage order"
+                } else {
+                    "pending request and period"
+                }),
+                "{fault}: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn old_epoch_progress_is_discarded_and_commit_remains_the_only_tail_publication() {
+        let (mut app, requests, replies) = quit_app();
+        dispatch(&mut app, &[ObserverCommand::Step]);
+        let RuntimeSessionRequest::Advance {
+            scope, request_id, ..
+        } = requests.try_recv().unwrap()
+        else {
+            panic!("expected real advance")
+        };
+        let context = app.world().resource::<ObserverSession>().context();
+        let mut old = scope.clone();
+        old.epoch -= 1;
+        replies
+            .send(Ok(advance_progress_wire(old, 999, 999, "saving_period")))
+            .unwrap();
+        app.update();
+        assert_eq!(
+            app.world().resource::<ObserverSession>().phase,
+            SessionPhase::Advancing
+        );
+        for stage in [
+            "preparing_commitments",
+            "resolving_economy",
+            "preparing_storage",
+            "saving_period",
+        ] {
+            replies
+                .send(Ok(advance_progress_wire(
+                    scope.clone(),
+                    request_id,
+                    4,
+                    stage,
+                )))
+                .unwrap();
+            app.update();
+            let state = app.world().resource::<ObserverSession>();
+            assert_eq!(state.context(), context);
+            assert_eq!(state.durable_tick, 3);
+            assert!(state.advance_pending());
+        }
+        replies
+            .send(Ok(RuntimeSessionResponse::Committed {
+                scope: scope.clone(),
+                request_id,
+                tail: RuntimeSessionTail {
+                    resolve_tick: 4,
+                    tick_content_hash: Some("4".repeat(64)),
+                },
+            }))
+            .unwrap();
+        app.update();
+        let state = app.world().resource::<ObserverSession>();
+        assert_eq!(state.durable_tick, 4);
+        assert_eq!(state.phase, SessionPhase::Loading);
+        assert!(!state.advance_pending());
+        replies
+            .send(Ok(advance_progress_wire(
+                scope,
+                request_id,
+                4,
+                "saving_period",
+            )))
+            .unwrap();
+        app.update();
+        assert_eq!(
+            app.world().resource::<ObserverSession>().phase,
+            SessionPhase::Failed
+        );
+        assert_eq!(app.world().resource::<ObserverSession>().durable_tick, 4);
+    }
 
     fn command_app() -> (App, mpsc::Receiver<RuntimeSessionRequest>) {
         let mut state = ObserverSession::new(CampaignId::from_uuid(uuid::Uuid::from_u128(1)));
@@ -1142,6 +1557,7 @@ pub(crate) mod tests {
         let (responses, receiver) = mpsc::channel();
         app.world_mut().resource_mut::<RuntimePipe>().responses = Mutex::new(receiver);
         app.init_resource::<PlaybackClock>()
+            .init_resource::<crate::observer_progress::OperationProgress>()
             .add_systems(Update, receive.before(handle_commands));
         (app, requests, responses)
     }
@@ -1306,6 +1722,7 @@ pub(crate) mod tests {
     #[test]
     fn launcher_handoff_without_pipe_keeps_the_window_and_campaign_open() {
         for command in [
+            ObserverCommand::NewNationalCampaign,
             ObserverCommand::NewCampaign,
             ObserverCommand::NewDelayedCampaign,
             ObserverCommand::NewSharedFreightAmpleCampaign,
@@ -1337,6 +1754,7 @@ pub(crate) mod tests {
     #[test]
     fn campaign_choices_after_admission_failure_request_switch_without_exiting() {
         for command in [
+            ObserverCommand::NewNationalCampaign,
             ObserverCommand::NewCampaign,
             ObserverCommand::NewDelayedCampaign,
             ObserverCommand::NewSharedFreightAmpleCampaign,
@@ -1359,6 +1777,13 @@ pub(crate) mod tests {
                     assert_eq!(campaign_id, uuid::Uuid::from_u128(1).to_string());
                 }
                 (
+                    ObserverCommand::NewNationalCampaign,
+                    RuntimeSessionTarget::New {
+                        preset: RuntimeSessionPreset::NationalWorld,
+                        ..
+                    },
+                )
+                | (
                     ObserverCommand::NewCampaign,
                     RuntimeSessionTarget::New {
                         preset: RuntimeSessionPreset::Standard,
@@ -1537,7 +1962,15 @@ pub(crate) mod tests {
     #[test]
     fn idle_pipe_and_observation_polling_do_not_invalidate_the_session_each_frame() {
         let (mut app, _requests, responses) = quit_app();
-        app.init_resource::<PendingObservation>()
+        app.init_resource::<crate::observer_progress::OperationProgress>()
+            .add_systems(
+                Update,
+                crate::observer_progress::track
+                    .after(ObserverSet::Install)
+                    .before(ObserverSet::Paint),
+            )
+            .init_resource::<PendingObservation>()
+            .init_resource::<ObservationCache>()
             .init_resource::<SessionChanges>()
             .add_systems(
                 Update,
@@ -1592,12 +2025,16 @@ pub(crate) mod tests {
             let (mut app, requests, responses) = quit_app();
             {
                 let mut state = app.world_mut().resource_mut::<ObserverSession>();
-                state.horizon_tick = Some(16);
+                state.duration =
+                    Some(babylon_kernel::clock::CampaignDuration::Finite { final_period: 16 });
                 state.ready(tick, None);
                 let context = state.context();
                 assert!(state.installed(&context));
                 state.archive_verified_tick = tick;
-                if Some(tick) == state.horizon_tick {
+                if state
+                    .duration
+                    .is_some_and(|duration| duration.complete(tick))
+                {
                     state.complete();
                 }
             }
@@ -1711,7 +2148,7 @@ pub(crate) mod tests {
         let state = app.world().resource::<ObserverSession>();
         let campaign = state.campaign;
         let context = state.context();
-        let frame = ObserverFrame(Some(snapshot_with_event(state, "production", 3)));
+        let frame = ObserverFrame(Some(snapshot_with_event(state, "production", 3)), None);
         let scope = ArchiveReadScope::committed(campaign, 3, [0xaa; 32]).unwrap();
         let subject = ArchivePageRef::try_new(ArchiveSubjectKind::County, "26163".into()).unwrap();
         let read = ArchiveDossierRead {
@@ -1827,9 +2264,8 @@ pub(crate) mod tests {
         app.world_mut()
             .resource_mut::<Time>()
             .advance_by(std::time::Duration::from_secs(1));
-        app.world_mut()
-            .resource_mut::<ObserverSession>()
-            .horizon_tick = Some(5);
+        app.world_mut().resource_mut::<ObserverSession>().duration =
+            Some(babylon_kernel::clock::CampaignDuration::Finite { final_period: 5 });
         dispatch(&mut app, &[ObserverCommand::TogglePlay]);
         for expected_period in [4, 5] {
             let RuntimeSessionRequest::Advance {
@@ -1871,7 +2307,7 @@ pub(crate) mod tests {
         );
     }
 
-    pub(super) fn snapshot_with_event(
+    pub(crate) fn snapshot_with_event(
         state: &ObserverSession,
         kind: &str,
         period: u64,
@@ -1887,6 +2323,11 @@ pub(crate) mod tests {
             counties: Vec::new(),
             production: Some(
                 babylon_persistence::production_observation::ProductionSnapshot {
+                    physical_routes: vec![],
+
+                    household_accounts: Vec::new(),
+                    household_service_accounts: Vec::new(),
+                    goods_price_accounts: Vec::new(),
                     maintenance_account: None,
                     content_authority_sha256: "a".repeat(64),
                     road_source: None,
@@ -1894,15 +2335,17 @@ pub(crate) mod tests {
                     merchant_handling_accounts: Vec::new(),
                     final_demand_accounts: Vec::new(),
                     freight_capacity_accounts: Vec::new(),
+                    freight_order_definitions: Vec::new(),
                     material_balance: None,
                     labor_accounts: Vec::new(),
                     staffing_accounts: Vec::new(),
                     scenario_label: "bounded observer fixture".into(),
-                    horizon_period: 16,
+                    duration: babylon_kernel::clock::CampaignDuration::Finite { final_period: 16 },
                     sites: Vec::new(),
                     routes: Vec::new(),
                     freight: Vec::new(),
                     observed_contexts: Vec::new(),
+                    national_observed_contexts: Vec::new(),
                     process_attributions: Vec::new(),
                     provenance: Vec::new(),
                     events: vec![
@@ -1941,7 +2384,7 @@ pub(crate) mod tests {
             install_observation(
                 &mut state,
                 &context,
-                snapshot.clone(),
+                PreparedObservation::new(snapshot.clone()),
                 &mut frame,
                 delivery_stop,
             );
@@ -1951,7 +2394,13 @@ pub(crate) mod tests {
             );
             assert!(frame.0.is_some());
             assert!(state.start_playback());
-            install_observation(&mut state, &context, snapshot, &mut frame, delivery_stop);
+            install_observation(
+                &mut state,
+                &context,
+                PreparedObservation::new(snapshot),
+                &mut frame,
+                delivery_stop,
+            );
             assert!(
                 state.playing,
                 "resuming cannot replay an already installed interruption"
@@ -1969,16 +2418,85 @@ pub(crate) mod tests {
         state.set_perspective(Perspective::PlayerKnowledge);
         assert!(state.start_playback());
         let mut frame = ObserverFrame::default();
-        install_observation(&mut state, &stale_context, stale_snapshot, &mut frame, true);
+        install_observation(
+            &mut state,
+            &stale_context,
+            PreparedObservation::new(stale_snapshot),
+            &mut frame,
+            true,
+        );
         assert!(state.playing);
         assert!(frame.0.is_none());
         let context = state.context();
         let mut known = snapshot_with_event(&state, "freight loss", 3);
         known.visibility = ObserverVisibility::KnownPreview;
         known.production = None;
-        install_observation(&mut state, &context, known, &mut frame, true);
+        install_observation(
+            &mut state,
+            &context,
+            PreparedObservation::new(known),
+            &mut frame,
+            true,
+        );
         assert!(state.playing);
         assert!(frame.0.as_ref().unwrap().production.is_none());
+    }
+
+    #[test]
+    fn installed_evidence_is_atomic_with_snapshot_and_stale_reads_preserve_it() {
+        let mut state = ObserverSession::new(CampaignId::from_uuid(uuid::Uuid::from_u128(1)));
+        state.ready(3, None);
+        state.foundation_digest = Some("foundation".into());
+        let context = state.context();
+        let mut frame = ObserverFrame::default();
+        let snapshot = snapshot_with_event(&state, "production", 3);
+        install_observation(
+            &mut state,
+            &context,
+            PreparedObservation {
+                snapshot,
+                evidence: Err(babylon_persistence::ProductionEvidenceError::Bound),
+            },
+            &mut frame,
+            false,
+        );
+        assert_eq!(
+            frame.1,
+            Some(Err(babylon_persistence::ProductionEvidenceError::Bound))
+        );
+        assert_eq!(frame.0.as_ref().unwrap().resolve_tick, 3);
+        state.set_perspective(Perspective::PlayerKnowledge);
+        let stale_snapshot = snapshot_with_event(&state, "production", 3);
+        install_observation(
+            &mut state,
+            &context,
+            PreparedObservation {
+                snapshot: stale_snapshot,
+                evidence: Ok(None),
+            },
+            &mut frame,
+            false,
+        );
+        assert_eq!(
+            frame.1,
+            Some(Err(babylon_persistence::ProductionEvidenceError::Bound))
+        );
+        let context = state.context();
+        let mut known = snapshot_with_event(&state, "production", 3);
+        known.visibility = ObserverVisibility::KnownPreview;
+        known.production = None;
+        install_observation(
+            &mut state,
+            &context,
+            PreparedObservation::new(known),
+            &mut frame,
+            false,
+        );
+        assert_eq!(frame.1, Some(Ok(None)));
+        assert_eq!(
+            frame.0.as_ref().unwrap().visibility,
+            ObserverVisibility::KnownPreview
+        );
     }
 
     #[test]

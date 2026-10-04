@@ -1,11 +1,16 @@
 //! One ordered atomic publication path; no mutable-head write remains.
 
-use super::{knowledge, record::RevisionRecord, storage, tick_knowledge, ArchiveReadScope};
+use super::{
+    knowledge,
+    record::{is_link, parse_page_key, CheckedRevision, GrantDependency, RevisionRecord},
+    storage, tick_knowledge, ArchiveReadScope,
+};
 use crate::archive::{database, decode, decode_digest, mint_page_atoms, persist_atom_rows};
 use crate::{
     identity::CampaignId, ArchiveDirtyBatch, ArchiveKnowledge, ArchiveMaterializeDisposition,
     ArchiveMaterializeMode, ArchiveMaterializeReport, ArchivePageInput, FogSafeArchiveRenderer,
-    MaterializedArchivePage, PendingArchiveReceipt, SemanticArchiveError, SemanticArchiveStore,
+    MaterializedArchivePage, PendingArchiveReceipt, RenderedArchivePage, SemanticArchiveError,
+    SemanticArchiveStore,
 };
 use postgres::{Client, GenericClient, IsolationLevel};
 use sha2::{Digest as _, Sha256};
@@ -70,6 +75,28 @@ pub(crate) fn materialize(
 ) -> Result<ArchiveMaterializeReport, SemanticArchiveError> {
     let mut client = store.connect("connect immutable Archive materializer")?;
     with_campaign_lock(&mut client, campaign, |client| {
+        let scope = ArchiveReadScope::committed(
+            campaign,
+            batch.resolve_tick(),
+            *batch.tick_content_hash(),
+        )?;
+        let mut capture = client
+            .build_transaction()
+            .isolation_level(IsolationLevel::Serializable)
+            .read_only(true)
+            .start()
+            .map_err(|error| database("begin immutable Archive input capture", &error))?;
+        crate::current_schema::require_current_schema(&mut capture)
+            .map_err(SemanticArchiveError::CurrentSchema)?;
+        validate_receipt_identity(&mut capture, &scope, false)?;
+        let known = tick_knowledge::capture(&mut capture, &scope)?;
+        capture
+            .commit()
+            .map_err(|error| database("finish immutable Archive input capture", &error))?;
+        let receipt =
+            PendingArchiveReceipt::try_new(batch.resolve_tick(), *batch.tick_content_hash())?;
+        let mut prepared = prepare(campaign, &receipt, batch, &known)?;
+        authenticate_existing(client, &mut prepared)?;
         let mut tx = client
             .build_transaction()
             .isolation_level(IsolationLevel::Serializable)
@@ -78,36 +105,125 @@ pub(crate) fn materialize(
             .map_err(|error| database("begin immutable Archive batch", &error))?;
         crate::current_schema::require_current_schema(&mut tx)
             .map_err(SemanticArchiveError::CurrentSchema)?;
-        let scope = ArchiveReadScope::committed(
-            campaign,
-            batch.resolve_tick(),
-            *batch.tick_content_hash(),
-        )?;
         validate_receipt(&mut tx, &scope)?;
-        let known = tick_knowledge::pin(&mut tx, &scope)?;
-        let receipt =
-            PendingArchiveReceipt::try_new(batch.resolve_tick(), *batch.tick_content_hash())?;
-        let report = publish(&mut tx, campaign, &receipt, batch, mode, &known)?;
+        tick_knowledge::pin_prepared(&mut tx, &scope, &known)?;
+        let report = publish(&mut tx, prepared, mode)?;
         tx.commit()
             .map_err(|error| database("commit immutable Archive batch", &error))?;
         Ok(report)
     })
 }
 
-pub(super) fn publish(
+/// Authenticate the prepared identity and ordered head before pin insertion.
+pub(super) fn revalidate_prepared(
     client: &mut impl GenericClient,
     campaign: CampaignId,
     receipt: &PendingArchiveReceipt,
+) -> Result<(), SemanticArchiveError> {
+    let scope = ArchiveReadScope::committed(
+        campaign,
+        receipt.resolve_tick(),
+        *receipt.tick_content_hash(),
+    )?;
+    validate_receipt(client, &scope)?;
+    if next_receipt(client, campaign)?.as_ref() != Some(receipt) {
+        return Err(SemanticArchiveError::ArchiveOrderViolation);
+    }
+    Ok(())
+}
+
+/// Owned canonical rendering; construction requires no database client.
+/// Private fields bind each rendered page to the exact batch and frozen knowledge.
+pub(super) struct PreparedPublication {
+    scope: ArchiveReadScope,
+    receipt: PendingArchiveReceipt,
+    batch: ArchiveDirtyBatch,
+    known: ArchiveKnowledge,
+    pages: Vec<(CheckedRevision, RenderedArchivePage)>,
+}
+
+pub(super) fn prepare(
+    campaign: CampaignId,
+    receipt: &PendingArchiveReceipt,
     batch: &ArchiveDirtyBatch,
-    mode: ArchiveMaterializeMode,
     known: &ArchiveKnowledge,
-) -> Result<ArchiveMaterializeReport, SemanticArchiveError> {
+) -> Result<PreparedPublication, SemanticArchiveError> {
     crate::archive_batch_matches_receipt(batch, receipt)?;
     let scope = ArchiveReadScope::committed(
         campaign,
         receipt.resolve_tick(),
         *receipt.tick_content_hash(),
     )?;
+    let renderer = FogSafeArchiveRenderer::new()?;
+    let pages = batch
+        .pages()
+        .iter()
+        .map(|input| prepare_page(&renderer, &scope, input, known))
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(PreparedPublication {
+        scope,
+        receipt: receipt.clone(),
+        batch: batch.clone(),
+        known: known.clone(),
+        pages,
+    })
+}
+
+/// Capture existing exact-tick candidates under one short snapshot; admit detached.
+pub(super) fn authenticate_existing(
+    client: &mut postgres::Client,
+    prepared: &mut PreparedPublication,
+) -> Result<(), SemanticArchiveError> {
+    let mut tx = client
+        .build_transaction()
+        .isolation_level(IsolationLevel::Serializable)
+        .read_only(true)
+        .start()
+        .map_err(|e| database("capture prepared Archive replay bodies", &e))?;
+    let subjects = prepared
+        .pages
+        .iter()
+        .map(|(checked, _)| checked.record().subject.clone())
+        .collect::<Vec<_>>();
+    let captured = storage::capture_comparison_records(
+        &mut tx,
+        prepared.scope.campaign_id(),
+        prepared.scope.tick(),
+        &subjects,
+    )?;
+    tx.commit()
+        .map_err(|e| database("finish prepared Archive replay body capture", &e))?;
+    for ((checked, _), existing) in prepared.pages.iter_mut().zip(captured) {
+        if let Some(existing) = existing {
+            let body = existing.body()?;
+            // Older quiet revisions are not conflicts with a newly selected tick.
+            let admitted = existing.admit()?;
+            if admitted.effective_tick == checked.record().effective_tick {
+                if admitted != *checked.record() || admitted.digest()? != checked.digest() {
+                    return Err(SemanticArchiveError::ReceiptConflict);
+                }
+                checked.bind_replay_body(body);
+            }
+        }
+    }
+    Ok(())
+}
+
+pub(super) fn publish(
+    client: &mut impl GenericClient,
+    prepared: PreparedPublication,
+    mode: ArchiveMaterializeMode,
+) -> Result<ArchiveMaterializeReport, SemanticArchiveError> {
+    #[cfg(test)]
+    let _publication_observation = super::body_encoding::PublicationObservation::enter();
+    let PreparedPublication {
+        scope,
+        receipt,
+        batch,
+        known,
+        pages,
+    } = prepared;
+    let campaign = scope.campaign_id();
     validate_receipt(client, &scope)?;
     // Keep campaign deletion ordered after this publication and its final claim,
     // while allowing the runtime to advance the campaign's non-key tick fields.
@@ -118,26 +234,24 @@ pub(super) fn publish(
             &[campaign.as_uuid()],
         )
         .map_err(|error| database("hold Archive campaign during publication", &error))?;
-    if reconcile(client, campaign, batch, known)? {
+    if reconcile(client, campaign, &batch, &known)? {
         return Ok(ArchiveMaterializeReport {
             disposition: ArchiveMaterializeDisposition::AlreadyConsumed,
             pages: Vec::new(),
         });
     }
-    if next_receipt(client, campaign)?.as_ref() != Some(receipt) {
+    if next_receipt(client, campaign)?.as_ref() != Some(&receipt) {
         return Err(SemanticArchiveError::ArchiveOrderViolation);
     }
-    if tick_knowledge::load(client, &scope)? != *known {
+    if tick_knowledge::load(client, &scope)? != known {
         return Err(SemanticArchiveError::ReceiptConflict);
     }
-    let renderer = FogSafeArchiveRenderer::new()?;
-    let pages = batch
-        .pages()
-        .iter()
-        .map(|input| publish_page(client, &renderer, &scope, input, known))
+    let pages = pages
+        .into_iter()
+        .map(|(record, page)| publish_page(client, &record, page))
         .collect::<Result<Vec<_>, _>>()?;
     if mode == ArchiveMaterializeMode::Consume {
-        claim(client, campaign, batch, known)?;
+        claim(client, campaign, &batch, &known)?;
     }
     Ok(ArchiveMaterializeReport {
         disposition: ArchiveMaterializeDisposition::Applied,
@@ -149,13 +263,25 @@ fn validate_receipt(
     client: &mut impl GenericClient,
     scope: &ArchiveReadScope,
 ) -> Result<(), SemanticArchiveError> {
+    validate_receipt_identity(client, scope, true)
+}
+
+fn validate_receipt_identity(
+    client: &mut impl GenericClient,
+    scope: &ArchiveReadScope,
+    lock: bool,
+) -> Result<(), SemanticArchiveError> {
     let campaign = scope.campaign_id();
+    let locking = if lock {
+        " FOR SHARE OF dirty,marker"
+    } else {
+        ""
+    };
     let row = client
         .query_opt(
-            "SELECT dirty.tick_content_hash,marker.tick_content_hash \
+            &format!("SELECT dirty.tick_content_hash,marker.tick_content_hash \
         FROM babylon_state.archive_dirty_receipt_v1 dirty JOIN babylon_state.tick_commit marker \
-        USING(campaign_id,resolve_tick) WHERE dirty.campaign_id=$1 AND dirty.resolve_tick=$2 \
-        FOR SHARE OF dirty,marker",
+        USING(campaign_id,resolve_tick) WHERE dirty.campaign_id=$1 AND dirty.resolve_tick=$2{locking}"),
             &[campaign.as_uuid(), &storage::signed(scope.tick())?],
         )
         .map_err(|error| database("validate ordered Archive source receipt", &error))?
@@ -168,13 +294,12 @@ fn validate_receipt(
     Ok(())
 }
 
-fn publish_page(
-    client: &mut impl GenericClient,
+fn prepare_page(
     renderer: &FogSafeArchiveRenderer,
     scope: &ArchiveReadScope,
     input: &ArchivePageInput,
     known: &ArchiveKnowledge,
-) -> Result<MaterializedArchivePage, SemanticArchiveError> {
+) -> Result<(CheckedRevision, RenderedArchivePage), SemanticArchiveError> {
     let (page, emission) = renderer.render_with_emission(input, known)?;
     let atoms = mint_page_atoms(scope.campaign_id(), scope.tick(), input, known)?;
     let mut record = RevisionRecord {
@@ -192,11 +317,56 @@ fn publish_page(
         grants: Vec::new(),
         emission,
     };
-    record.grants = knowledge::capture(client, &record)?;
-    let minted = persist_atom_rows(client, scope.campaign_id(), &record.atoms)?;
-    let persisted = storage::insert(client, &record)?;
+    let mut keys = std::collections::BTreeSet::new();
+    keys.insert((record.subject.clone(), "subject".to_owned()));
+    for atom in &record.atoms {
+        let subject = if is_link(atom) {
+            let crate::ArchiveAtomValue::Text(target) = atom.value() else {
+                return Err(SemanticArchiveError::StoredPageMismatch);
+            };
+            parse_page_key(target)?
+        } else {
+            record.subject.clone()
+        };
+        keys.insert((subject, atom.grant_key().to_owned()));
+    }
+    record.grants = keys
+        .into_iter()
+        .map(|(subject, key)| {
+            let grant = known
+                .grant(&subject, &key)
+                .ok_or(SemanticArchiveError::UnknownSubject)?;
+            Ok(GrantDependency {
+                subject,
+                key,
+                granted_tick: grant.granted_tick,
+                citation: grant.citation.clone(),
+            })
+        })
+        .collect::<Result<Vec<_>, SemanticArchiveError>>()?;
+    record.grants.sort_by(|a, b| {
+        (a.subject.kind().as_str(), a.subject.id(), &a.key).cmp(&(
+            b.subject.kind().as_str(),
+            b.subject.id(),
+            &b.key,
+        ))
+    });
+    Ok((CheckedRevision::new(record)?, page))
+}
+
+fn publish_page(
+    client: &mut impl GenericClient,
+    checked: &CheckedRevision,
+    page: RenderedArchivePage,
+) -> Result<MaterializedArchivePage, SemanticArchiveError> {
+    let record = checked.record();
+    if knowledge::capture(client, record)? != record.grants {
+        return Err(SemanticArchiveError::ReceiptConflict);
+    }
+    let minted = persist_atom_rows(client, record.source.campaign_id(), &record.atoms)?;
+    let persisted = storage::insert(client, checked)?;
     Ok(MaterializedArchivePage {
-        page_ref: record.subject,
+        page_ref: record.subject.clone(),
         page,
         persisted,
         atoms: minted,
@@ -255,6 +425,13 @@ pub(crate) fn select_dirty_pages<T>(
     budget: usize,
     make: impl Fn(&T, u64, [u8; 32]) -> Result<ArchivePageInput, SemanticArchiveError>,
 ) -> Result<crate::ArchiveProducerOutcome, SemanticArchiveError> {
+    let inputs = plans
+        .iter()
+        .map(|plan| {
+            make(plan, receipt.resolve_tick(), *receipt.tick_content_hash())
+                .map(|input| (plan, input))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
     let mut client =
         SemanticArchiveStore::new(config).connect("connect retained producer comparison")?;
     let mut tx = client
@@ -263,35 +440,29 @@ pub(crate) fn select_dirty_pages<T>(
         .read_only(true)
         .start()
         .map_err(|error| database("begin retained producer comparison", &error))?;
+    let inputs = inputs
+        .into_iter()
+        .filter(|(_, input)| known.knows_subject(input.subject().page_ref()))
+        .collect::<Vec<_>>();
+    let subjects = inputs
+        .iter()
+        .map(|(_, input)| input.subject().page_ref().clone())
+        .collect::<Vec<_>>();
+    let captured =
+        storage::capture_comparison_records(&mut tx, campaign, receipt.resolve_tick(), &subjects)?;
+    let candidates = inputs
+        .into_iter()
+        .zip(captured)
+        .map(|((plan, input), stored)| (plan, input, stored))
+        .collect::<Vec<_>>();
+    tx.commit()
+        .map_err(|error| database("commit retained producer comparison read", &error))?;
     let renderer = FogSafeArchiveRenderer::new()?;
     let mut pages = Vec::new();
     let mut remaining = 0usize;
-    for plan in plans {
-        let input = make(plan, receipt.resolve_tick(), *receipt.tick_content_hash())?;
-        if !known.knows_subject(input.subject().page_ref()) {
-            continue;
-        }
-        let subject = input.subject().page_ref();
-        let row = tx
-            .query_opt(
-                &format!(
-                    "SELECT {} FROM babylon_meta.archive_page_revision_v2 \
-            WHERE campaign_id=$1 AND subject_kind=$2 AND subject_id=$3 AND effective_tick<=$4 \
-            ORDER BY effective_tick DESC LIMIT 1",
-                    storage::COLUMNS
-                ),
-                &[
-                    campaign.as_uuid(),
-                    &subject.kind().as_str(),
-                    &subject.id(),
-                    &storage::signed(receipt.resolve_tick())?,
-                ],
-            )
-            .map_err(|error| database("read exact producer comparison revision", &error))?;
-        let stored = row
-            .map(|row| storage::decode_record(&mut tx, &row, storage::ReadAuthority::Writer))
-            .transpose()?;
-        let quiet = if let Some(record) = stored {
+    for (plan, input, stored) in candidates {
+        let quiet = if let Some(captured) = stored {
+            let record = captured.admit()?;
             let old = make(
                 plan,
                 record.source.tick(),
@@ -321,8 +492,6 @@ pub(crate) fn select_dirty_pages<T>(
             }
         }
     }
-    tx.commit()
-        .map_err(|error| database("commit retained producer comparison read", &error))?;
     Ok(crate::ArchiveProducerOutcome::new(
         ArchiveDirtyBatch::try_new(receipt.resolve_tick(), *receipt.tick_content_hash(), pages)?,
         remaining,

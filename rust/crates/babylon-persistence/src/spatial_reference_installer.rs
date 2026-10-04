@@ -698,8 +698,8 @@ fn insert_places(
 
 fn collect_place_text(
     rows: &[PlaceIdentityRow],
-    getter: fn(&PlaceIdentityRow) -> &'static str,
-) -> Vec<&'static str> {
+    getter: fn(&PlaceIdentityRow) -> &str,
+) -> Vec<&str> {
     rows.iter().map(getter).collect()
 }
 

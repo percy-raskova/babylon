@@ -6,10 +6,10 @@ use super::{
 use crate::material_runtime::{MaterialFoundationSpec, MaterialRuntimeFoundation};
 use babylon_kernel::content_digest::sha256_of;
 use babylon_material_circuit::{
-    decode_material_circuit_state, encode_material_circuit_state, BacklogRow, CorridorCapacity,
-    CorridorId, FreightMassCoefficient, GoodId, InventoryRow, LogisticsNodeId,
-    MaterialCircuitState, OrderAccessMode, OrderId, OrderRow, RouteId, RouteStage,
-    RouteStageCapacity, SiteId, SiteLogisticsNode, SupplierRoute, SupplierTransport, UnitId,
+    decode_material_circuit_state, encode_material_circuit_state, BacklogRow, CommodityDefinition,
+    CorridorCapacity, CorridorId, GoodId, InventoryRow, LogisticsNodeId, MaterialCircuitState,
+    OrderAccessMode, OrderId, OrderRow, RouteId, RouteStage, RouteStageCapacity, SiteId,
+    SiteLogisticsNode, SupplierRoute, SupplierTransport, UnitId,
 };
 use babylon_tick::{material_staffing::StaffingComposition, material_world::MaterialWorldRegister};
 use serde::{Deserialize, Serialize};
@@ -144,6 +144,7 @@ impl CapturedFreight {
         let from = LogisticsNodeId::from_bytes(id("canadian-inventory-terminal"));
         let to = LogisticsNodeId::from_bytes(id("detroit-port-entry-terminal"));
         let state = MaterialCircuitState {
+            capacity_supply: babylon_material_circuit::CapacitySupply::FiniteSchedule,
             period: 1,
             site_logistics_nodes: vec![
                 SiteLogisticsNode {
@@ -165,12 +166,17 @@ impl CapturedFreight {
             handling_coefficients: vec![],
             final_demand_principals: vec![],
             final_demand_orders: vec![],
+            accounting: babylon_material_circuit::CircuitAccounting::PhysicalControl,
             maintenance_binding: None,
             maintenance_service: None,
-            freight_mass_coefficients: vec![FreightMassCoefficient {
+            service_connections: vec![],
+            service_orders: vec![],
+            commodities: vec![CommodityDefinition {
                 good_id: good,
                 unit_id: unit,
-                grams_per_unit: 1000,
+                kind: babylon_material_circuit::CommodityKind::Storable {
+                    grams_per_unit: 1000,
+                },
             }],
             supplier_routes: vec![SupplierRoute {
                 buyer_site_id: destination,
@@ -243,7 +249,7 @@ impl CapturedFreight {
 }
 fn scenario() -> String {
     use std::fmt::Write;
-    let mut text=format!("(scenario {SCENARIO}\n  (defvocabulary NodeType (INVENTORY_BOUNDARY PORT_ENTRY SOCIAL_CLASS))\n");
+    let mut text=format!("(scenario {SCENARIO}\n  (defvocabulary NodeType (INVENTORY_BOUNDARY PORT_ENTRY BUSINESS SOCIAL_CLASS))\n");
     for field in babylon_tick::material_staffing::STAFFING_FIELDS {
         writeln!(&mut text, "  (deffield {field} int extensive)").expect("String write");
     }
@@ -268,7 +274,9 @@ pub(super) fn foundation(spec: &SimulationExperimentV1) -> Result<MaterialRuntim
         state,
         MaterialFoundationSpec {
             preset_id: spec.profile.foundation_id().to_owned(),
-            horizon_ticks: spec.horizon,
+            duration: babylon_kernel::clock::CampaignDuration::Finite {
+                final_period: spec.horizon,
+            },
             content_digest: sha256_of(&defines),
         },
     )
@@ -288,7 +296,7 @@ pub(super) fn validate_authority(
     captured.validate()?;
     if captured.bytes() != Ok(bytes.to_vec())
         || spec.preset_id != captured.experiment.profile.foundation_id()
-        || spec.horizon_ticks != captured.experiment.horizon
+        || spec.duration.final_period() != Some(captured.experiment.horizon)
         || spec.content_digest != sha256_of(bytes)
         || graph.rng_seed() != babylon_kernel::replay::ReplaySeed::new(captured.experiment.seed)
         || graph.content_bundle().scenario_source_bytes() != scenario().as_bytes()

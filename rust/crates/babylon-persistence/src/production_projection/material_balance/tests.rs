@@ -1,5 +1,5 @@
 use babylon_material_circuit::{
-    BacklogRow, CapacityRow, CorridorCapacity, CorridorId, FreightMassCoefficient,
+    BacklogRow, CapacityRow, CommodityDefinition, CommodityKind, CorridorCapacity, CorridorId,
     InputOutputCoefficient, InventoryRow, LaborCapacityRow, LaborCoefficient, LogisticsNodeId,
     OrderAccessMode, ProcessOutput, ProductionCommitment, RouteId, RouteStage, RouteStageCapacity,
     SiteLogisticsNode, SupplierRoute, SupplierTransport,
@@ -20,6 +20,8 @@ type Pair = (
 
 fn empty_state() -> MaterialCircuitState {
     MaterialCircuitState {
+        capacity_supply: babylon_material_circuit::CapacitySupply::FiniteSchedule,
+        accounting: babylon_material_circuit::CircuitAccounting::PhysicalControl,
         maintenance_binding: None,
         maintenance_service: None,
         period: 1,
@@ -30,7 +32,9 @@ fn empty_state() -> MaterialCircuitState {
         supplier_routes: vec![],
         route_stages: vec![],
         route_stage_capacities: vec![],
-        freight_mass_coefficients: vec![],
+        service_connections: vec![],
+        service_orders: vec![],
+        commodities: vec![],
         merchants: vec![],
         handling_coefficients: vec![],
         final_demand_principals: vec![],
@@ -75,6 +79,7 @@ fn conserved(balance: &CompletedMaterialBalance) {
                 + u128::from(row.produced),
             u128::from(row.consumed)
                 + u128::from(row.maintenance_consumed)
+                + u128::from(row.installation_consumed)
                 + u128::from(row.dispatched)
                 + u128::from(row.local_transferred)
                 + u128::from(row.final_demand_fulfilled)
@@ -96,6 +101,11 @@ fn stock(site: u8, good: u8, unit: u8, quantity: u64) -> InventoryRow {
 fn production_state(specs: &[(u8, u64, u64, u64)], opening: u64) -> MaterialCircuitState {
     let mut state = empty_state();
     let inventory = stock(1, 2, 3, opening);
+    state.commodities.push(CommodityDefinition {
+        good_id: inventory.good_id,
+        unit_id: inventory.unit_id,
+        kind: CommodityKind::Storable { grams_per_unit: 1 },
+    });
     let mut labor = 0_u64;
     for &(id, input, output, batches) in specs {
         let process_id = ProcessId::from_bytes([id; 32]);
@@ -169,6 +179,11 @@ fn shared_process_principal_records_production_and_consumption_separately_once()
 fn foundation_is_absent_but_committed_quiet_and_empty_accounts_are_present() {
     let mut state = empty_state();
     state.inventory.push(stock(1, 2, 3, 9));
+    state.commodities.push(CommodityDefinition {
+        good_id: GoodId::from_bytes([2; 32]),
+        unit_id: UnitId::from_bytes([3; 32]),
+        kind: CommodityKind::Storable { grams_per_unit: 1 },
+    });
     assert_eq!(
         project_with_labels(&state, None, None, |_, _| None),
         Ok(None)
@@ -187,6 +202,14 @@ fn foundation_is_absent_but_committed_quiet_and_empty_accounts_are_present() {
 fn exact_units_and_sites_never_merge_even_when_labels_match() {
     let mut state = empty_state();
     state.inventory = vec![stock(1, 2, 3, 7), stock(1, 2, 4, 9), stock(5, 2, 3, 11)];
+    state.commodities = [3, 4]
+        .into_iter()
+        .map(|unit| CommodityDefinition {
+            good_id: GoodId::from_bytes([2; 32]),
+            unit_id: UnitId::from_bytes([unit; 32]),
+            kind: CommodityKind::Storable { grams_per_unit: 1 },
+        })
+        .collect();
     let (prior, current, receipt) = pair(state);
     let balance = project_with_labels(&current, Some(&prior), Some(&receipt), |_, _| {
         Some(("material".to_owned(), "unit".to_owned()))
@@ -266,13 +289,11 @@ fn freight_state(loss_ppm: u32) -> MaterialCircuitState {
         order_id: order,
         quantity: 100,
     });
-    state
-        .freight_mass_coefficients
-        .push(FreightMassCoefficient {
-            good_id: inventory.good_id,
-            unit_id: inventory.unit_id,
-            grams_per_unit: 1,
-        });
+    state.commodities.push(CommodityDefinition {
+        good_id: inventory.good_id,
+        unit_id: inventory.unit_id,
+        kind: babylon_material_circuit::CommodityKind::Storable { grams_per_unit: 1 },
+    });
     state.inventory.push(inventory);
     state
 }
@@ -722,6 +743,11 @@ fn check_arrival_refusals(arrival: &Pair) {
 fn unknown_unit_metadata_refuses_instead_of_inventing_a_label() {
     let mut state = empty_state();
     state.inventory.push(stock(1, 2, 3, 9));
+    state.commodities.push(CommodityDefinition {
+        good_id: GoodId::from_bytes([2; 32]),
+        unit_id: UnitId::from_bytes([3; 32]),
+        kind: CommodityKind::Storable { grams_per_unit: 1 },
+    });
     let (prior, current, receipt) = pair(state);
     assert_eq!(
         project_with_labels(&current, Some(&prior), Some(&receipt), |_, _| None),
@@ -740,8 +766,8 @@ fn unknown_unit_metadata_refuses_instead_of_inventing_a_label() {
 
 fn retail_state() -> MaterialCircuitState {
     use babylon_material_circuit::{
-        CorridorCapacity, FinalDemandOrder, FinalDemandPrincipal, FinalDemandPrincipalId,
-        FreightMassCoefficient, MerchantHandling, MerchantHandlingCoefficient, MerchantRole,
+        CommodityDefinition, CorridorCapacity, FinalDemandOrder, FinalDemandPrincipal,
+        FinalDemandPrincipalId, MerchantHandling, MerchantHandlingCoefficient, MerchantRole,
     };
     let mut state = empty_state();
     let catalog = crate::test_support::catalog();
@@ -758,16 +784,14 @@ fn retail_state() -> MaterialCircuitState {
         site_id: inventory.site_id,
         node_id: LogisticsNodeId::from_bytes([7; 32]),
     });
-    state
-        .freight_mass_coefficients
-        .push(FreightMassCoefficient {
-            good_id: inventory.good_id,
-            unit_id: inventory.unit_id,
-            grams_per_unit: 10,
-        });
+    state.commodities.push(CommodityDefinition {
+        good_id: inventory.good_id,
+        unit_id: inventory.unit_id,
+        kind: babylon_material_circuit::CommodityKind::Storable { grams_per_unit: 10 },
+    });
     state.merchants.push(MerchantHandling {
         site_id: inventory.site_id,
-        county_geoid: *b"26163",
+        location: "county:26163".parse().unwrap(),
         role: MerchantRole::Retail,
         capacity_id,
         labor_unit_id,
@@ -782,7 +806,7 @@ fn retail_state() -> MaterialCircuitState {
         });
     state.final_demand_principals.push(FinalDemandPrincipal {
         id: demand_principal_id,
-        county_geoid: *b"26163",
+        location: "county:26163".parse().unwrap(),
     });
     state.final_demand_orders.push(FinalDemandOrder {
         order_id: OrderId::from_bytes([8; 32]),
@@ -893,8 +917,14 @@ fn finite_fulfillment_and_quiet_successor_reconcile_handling_work_stock_and_mass
     let catalog = crate::test_support::catalog();
     let mut state = retail_state();
     state.final_demand_orders[0].ordered = 3;
-    let foundation =
-        super::super::merchants::project_merchants(&catalog, &state, None, None).unwrap();
+    let foundation = super::super::merchants::project_merchants(
+        &catalog,
+        &state,
+        None,
+        None,
+        &super::super::history::OrderHistory::final_from_state(&state),
+    )
+    .unwrap();
     assert!(foundation.0[0].completed.is_none());
     assert!(foundation.1[0].completed.is_none());
     let completed = pair(state);
@@ -905,6 +935,7 @@ fn finite_fulfillment_and_quiet_successor_reconcile_handling_work_stock_and_mass
         &completed.1,
         Some(&completed.0),
         Some(&completed.2),
+        &super::super::history::OrderHistory::final_from_state(&completed.1),
     )
     .unwrap();
     let work = handling[0].completed.as_ref().unwrap();
@@ -938,7 +969,7 @@ fn finite_fulfillment_and_quiet_successor_reconcile_handling_work_stock_and_mass
         ),
         (0, 6, 6, 6, 0)
     );
-    let capacity = super::super::freight::project_freight_capacity_accounts(
+    let (capacity, definitions) = super::super::freight::project_freight_capacity_accounts(
         &catalog,
         &completed.1,
         Some(&completed.0),
@@ -954,13 +985,20 @@ fn finite_fulfillment_and_quiet_successor_reconcile_handling_work_stock_and_mass
         ),
         (100, 30, 70)
     );
-    assert!(reservation.orders[0].route_id.is_none());
+    assert!(definitions
+        .iter()
+        .find(|d| d.id == reservation.orders[0])
+        .unwrap()
+        .order
+        .route_id
+        .is_none());
     let quiet = pair(completed.1);
     let (handling, demand) = super::super::merchants::project_merchants(
         &catalog,
         &quiet.1,
         Some(&quiet.0),
         Some(&quiet.2),
+        &super::super::history::OrderHistory::final_from_state(&quiet.1),
     )
     .unwrap();
     assert_eq!(handling[0].completed.as_ref().unwrap().used_hours, 0);
@@ -1024,18 +1062,23 @@ fn completed_local_fulfillment_and_handling_require_exact_receipt_identity() {
                 &catalog,
                 &changed.1,
                 Some(&changed.0),
-                Some(&changed.2)
+                Some(&changed.2),
+                &super::super::history::OrderHistory::final_from_state(&changed.1),
             ),
             Err(ProductionProjectionError::State)
         ));
     }
 }
 
-#[test]
-fn maintenance_spare_parts_close_as_their_own_exact_stock_debit() {
+fn maintenance_opening() -> MaterialCircuitState {
     let mut state = production_state(&[(4, 1, 2, 2)], 10);
     state.input_coefficients[0].good_id = GoodId::from_bytes([21; 32]);
     state.inventory[0].good_id = GoodId::from_bytes([21; 32]);
+    state.commodities.push(CommodityDefinition {
+        good_id: GoodId::from_bytes([21; 32]),
+        unit_id: UnitId::from_bytes([3; 32]),
+        kind: CommodityKind::Storable { grams_per_unit: 1 },
+    });
     let provider = SiteId::from_bytes([20; 32]);
     let binding = babylon_material_circuit::MaintenanceBinding {
         provider_site_id: provider,
@@ -1069,6 +1112,13 @@ fn maintenance_spare_parts_close_as_their_own_exact_stock_debit() {
         capacity.period = 2;
     }
     state.capacities.extend(future);
+    state
+}
+
+#[test]
+fn maintenance_spare_parts_close_as_their_own_exact_stock_debit() {
+    let state = maintenance_opening();
+    let provider = SiteId::from_bytes([20; 32]);
     let pair = pair(state);
     let balance = complete(&pair);
     let row = balance
@@ -1082,4 +1132,567 @@ fn maintenance_spare_parts_close_as_their_own_exact_stock_debit() {
     let mut damaged = pair.clone();
     damaged.2.maintenance.as_mut().unwrap().consumed_spare_parts += 1;
     assert!(project(&damaged).is_err());
+}
+
+#[test]
+fn recurring_eight_period_control_preserves_balances_after_order_retirement() {
+    use babylon_material_circuit::CircuitAccounting;
+    let mut state = super::super::recurring_fixture::opening();
+    for period in 1..=8 {
+        let CircuitAccounting::Monetary(economy) = &mut state.accounting else {
+            panic!("monetary")
+        };
+        economy.recurring.as_mut().unwrap().household_purchases[0].enabled =
+            ![3, 4].contains(&period);
+        let pair = pair(state);
+        let balance = complete(&pair);
+        conserved(&balance);
+        assert_eq!(balance.period, period);
+        assert!(pair.1.final_demand_orders.is_empty());
+        state = pair.1;
+    }
+}
+
+#[test]
+fn recurring_principals_refuse_missing_duplicate_or_unfunded_admission_claims() {
+    let valid = pair(super::super::recurring_fixture::opening());
+    for change in [
+        |pair: &mut Pair| {
+            pair.2.household_demand.clear();
+        },
+        |pair: &mut Pair| {
+            pair.2
+                .household_demand
+                .push(pair.2.household_demand[0].clone());
+        },
+        |pair: &mut Pair| {
+            pair.2.household_demand[0].order_id = OrderId::from_bytes([99; 32]);
+        },
+        |pair: &mut Pair| {
+            pair.2.household_demand[0].expired_quantity += 1;
+        },
+        |pair: &mut Pair| {
+            pair.2.procurement.clear();
+        },
+        |pair: &mut Pair| {
+            pair.2.procurement[0].supplier_site_id = SiteId::from_bytes([99; 32]);
+        },
+        |pair: &mut Pair| {
+            pair.2.money_transfers.retain(|row| {
+                !matches!(
+                    row.purpose,
+                    babylon_material_circuit::MoneyTransferPurpose::PurchaseReservation(_)
+                )
+            });
+        },
+        |pair: &mut Pair| {
+            pair.1.orders.remove(0);
+        },
+    ] {
+        let mut damaged = valid.clone();
+        change(&mut damaged);
+        assert!(project(&damaged).is_err());
+    }
+}
+
+#[test]
+fn retired_monetary_arrivals_require_delivery_and_realization_receipts() {
+    let first = pair(super::super::recurring_fixture::opening());
+    let valid = pair(first.1);
+    complete(&valid);
+    let mut damaged = valid.clone();
+    assert!(!damaged.2.realizations.is_empty());
+    damaged.2.realizations.clear();
+    assert!(super::super::lifecycle::validate_period(&damaged.0, &damaged.1, &damaged.2).is_err());
+    damaged = valid.clone();
+    damaged.2.deliveries.clear();
+    assert!(project(&damaged).is_err());
+    let mut fake_cash = valid.clone();
+    let babylon_material_circuit::CircuitAccounting::Monetary(economy) =
+        &mut fake_cash.1.accounting
+    else {
+        panic!("monetary")
+    };
+    let mut snapshot = economy.book.snapshot();
+    snapshot.accounts[0].cash = babylon_kernel::currency::Currency::from_micro_units(
+        snapshot.accounts[0].cash.micro_units() + 1,
+    );
+    economy.book = babylon_material_circuit::MonetaryBook::from_snapshot(snapshot).unwrap();
+    assert!(
+        super::super::lifecycle::validate_period(&fake_cash.0, &fake_cash.1, &fake_cash.2).is_err()
+    );
+}
+
+#[test]
+fn household_stock_conservation_distinguishes_delivery_consumption_and_expiry() {
+    let valid = pair(super::super::recurring_fixture::opening());
+    let project_household = |pair: &Pair| {
+        super::super::households::project_with_labels(
+            &pair.1,
+            Some(&pair.0),
+            Some(&pair.2),
+            |good, unit| Some((digest_hex(&good.as_bytes()), digest_hex(&unit.as_bytes()))),
+        )
+    };
+    let rows = project_household(&valid).unwrap();
+    assert_eq!((rows[0].household_count, rows[0].person_count), (2, 4));
+    let done = rows[0].completed.as_ref().unwrap();
+    assert_eq!(
+        (
+            done.opening_stock,
+            done.received,
+            done.consumed,
+            done.closing_stock
+        ),
+        (8, 4, 4, 8)
+    );
+    let mut scarce = super::super::recurring_fixture::opening();
+    scarce
+        .inventory
+        .iter_mut()
+        .find(|row| {
+            row.site_id == SiteId::from_bytes([3; 32]) && row.good_id == GoodId::from_bytes([2; 32])
+        })
+        .unwrap()
+        .quantity = 2;
+    let scarce = pair(scarce);
+    complete(&scarce);
+    let rows = project_household(&scarce).unwrap();
+    let partial = rows[0].completed.as_ref().unwrap();
+    assert_eq!(
+        (
+            partial.admitted,
+            partial.fulfilled,
+            partial.expired,
+            partial.received,
+            partial.consumed,
+            partial.closing_stock
+        ),
+        (4, 2, 2, 2, 4, 6)
+    );
+    let mut damaged = valid.clone();
+    damaged.2.household_consumption[0].consumed_quantity -= 1;
+    assert!(project_household(&damaged).is_err());
+    assert!(super::super::lifecycle::validate_period(&damaged.0, &damaged.1, &damaged.2).is_err());
+    damaged = valid.clone();
+    damaged.2.household_consumption.clear();
+    assert!(project_household(&damaged).is_err());
+    assert!(super::super::lifecycle::validate_period(&damaged.0, &damaged.1, &damaged.2).is_err());
+    damaged = valid.clone();
+    damaged
+        .2
+        .household_consumption
+        .push(damaged.2.household_consumption[0].clone());
+    assert!(project_household(&damaged).is_err());
+    assert!(super::super::lifecycle::validate_period(&damaged.0, &damaged.1, &damaged.2).is_err());
+}
+
+#[test]
+fn underfunded_maintenance_uses_paid_hours_instead_of_all_available_people_time() {
+    use babylon_kernel::currency::Currency;
+    use babylon_material_circuit::{
+        AccountId, CashAccount, CircuitAccounting, EmploymentTerms, FinalDemandPrincipal,
+        FinalDemandPrincipalId, MonetaryBook, MonetaryCircuit,
+    };
+    let mut state = maintenance_opening();
+    state.site_logistics_nodes.push(SiteLogisticsNode {
+        site_id: SiteId::from_bytes([1; 32]),
+        node_id: LogisticsNodeId::from_bytes([1; 32]),
+    });
+    let payee = FinalDemandPrincipalId::from_bytes([50; 32]);
+    state.final_demand_principals.push(FinalDemandPrincipal {
+        id: payee,
+        location: "county:26163".parse().unwrap(),
+    });
+    let mut accounts: Vec<_> = state
+        .site_logistics_nodes
+        .iter()
+        .map(|row| CashAccount {
+            id: AccountId::Site(row.site_id),
+            cash: Currency::from_micro_units(0),
+        })
+        .collect();
+    accounts.push(CashAccount {
+        id: AccountId::Household(payee),
+        cash: Currency::from_micro_units(0),
+    });
+    let keys: BTreeSet<_> = state
+        .labor
+        .iter()
+        .map(|row| (row.site_id, row.unit_id))
+        .collect();
+    let employment = keys
+        .into_iter()
+        .map(|(site_id, unit_id)| EmploymentTerms {
+            member_id: babylon_material_circuit::StaffingMemberId::from_bytes((site_id).as_bytes()),
+            site_id,
+            unit_id,
+            payee,
+            compensation: babylon_material_circuit::LaborCompensation::Wage(
+                Currency::from_micro_units(1),
+            ),
+        })
+        .collect();
+    state.accounting = CircuitAccounting::Monetary(Box::new({
+        let book = MonetaryBook::open(accounts).unwrap();
+        MonetaryCircuit {
+            aid: babylon_material_circuit::AidBook::default(),
+            household_time: babylon_material_circuit::HouseholdTimeAccounting::NotModeled,
+            financial: babylon_material_circuit::FinancialInstitutions::empty(),
+            member_labor: state
+                .labor
+                .iter()
+                .map(|row| babylon_material_circuit::MemberLaborCapacityRow {
+                    member_id: babylon_material_circuit::StaffingMemberId::from_bytes(
+                        row.site_id.as_bytes(),
+                    ),
+                    period: row.period,
+                    available_hours: row.available,
+                })
+                .collect(),
+            costs: babylon_material_circuit::HistoricalCostBook::open(
+                &book,
+                state
+                    .inventory
+                    .iter()
+                    .map(|row| babylon_material_circuit::StockCarryingValue {
+                        owner: AccountId::Site(row.site_id),
+                        good_id: row.good_id,
+                        unit_id: row.unit_id,
+                        amount: Currency::from_micro_units(0),
+                    })
+                    .collect(),
+                vec![],
+                vec![],
+                vec![],
+            )
+            .unwrap(),
+            book,
+            recurring: None,
+            employment,
+        }
+    }));
+    let valid = pair(state);
+    assert_eq!(
+        valid.2.maintenance.as_ref().unwrap().available_labor_hours,
+        0
+    );
+    complete(&valid);
+    let mut damaged = valid.clone();
+    damaged.2.labor_use.clear();
+    assert!(project(&damaged).is_err());
+}
+
+#[test]
+fn recurring_cumulative_totals_do_not_require_lifetime_order_rows() {
+    use babylon_material_circuit::CircuitAccounting;
+    let mut state = super::super::recurring_fixture::opening();
+    let mut history = super::super::history::OrderHistory::default();
+    let mut last = Vec::new();
+    for period in 1..=8 {
+        let CircuitAccounting::Monetary(economy) = &mut state.accounting else {
+            panic!("monetary")
+        };
+        economy.recurring.as_mut().unwrap().household_purchases[0].enabled =
+            ![3, 4].contains(&period);
+        let valid = pair(state);
+        let orders =
+            super::super::lifecycle::validate_period(&valid.0, &valid.1, &valid.2).unwrap();
+        history.record(&valid.0, &orders).unwrap();
+        let facts = super::super::outbound::completed_facts(&valid.0, &valid.1, &valid.2).unwrap();
+        last = super::super::merchants::project_final_with_labels(
+            &valid.1,
+            Some((&valid.0, &facts)),
+            &history,
+            |good, unit| Some((digest_hex(&good.as_bytes()), digest_hex(&unit.as_bytes()))),
+        )
+        .unwrap();
+        assert_eq!(last.len(), 1);
+        assert!(history.final_orders.len() <= 1);
+        assert!(history.retired_final.len() <= 1);
+        assert!(history.retired_deliveries.len() <= 2);
+        assert!(history.deliveries.len() <= 4);
+        assert!(last[0].orders.len() <= 1);
+        state = valid.1;
+    }
+    assert_eq!(
+        (
+            last[0].total_order_count,
+            last[0].ordered,
+            last[0].fulfilled,
+            last[0].expired,
+            last[0].outstanding
+        ),
+        (6, 24, 20, 4, 0)
+    );
+    assert_eq!(last[0].orders.len(), 1);
+}
+
+#[test]
+fn actual_service_stages_project_only_durable_inventory_and_refuse_missing_performance() {
+    let state = super::super::services_fixture::opening();
+    let mut evidence = pair(super::super::services_fixture::funded(state));
+    let balance = complete(&evidence);
+    conserved(&balance);
+    assert_eq!(balance.rows.len(), 2);
+    assert_eq!(balance.rows.iter().map(|r| r.consumed).sum::<u64>(), 2);
+    assert_eq!(balance.rows.iter().map(|r| r.produced).sum::<u64>(), 1);
+    assert!(balance.rows.iter().all(|r| r.good_id
+        != digest_hex(&GoodId::from_bytes([1; 32]).as_bytes())
+        && r.good_id != digest_hex(&GoodId::from_bytes([2; 32]).as_bytes())));
+    evidence.2.service_performance.pop();
+    assert!(project(&evidence).is_err());
+}
+
+#[test]
+fn actual_recurring_services_authenticate_paid_household_satisfaction_without_pantry() {
+    let state =
+        super::super::services_fixture::recurring(super::super::services_fixture::opening());
+    let evidence = pair(state);
+    assert_eq!(evidence.2.household_services[0].satisfied_quantity, 1);
+    assert!(evidence.2.household_consumption.is_empty());
+    let services = super::super::households::services::project_with_labels(
+        &evidence.1,
+        Some(&evidence.0),
+        Some(&evidence.2),
+        |_, _| Some(("Care".into(), "service-period".into())),
+    )
+    .unwrap();
+    assert_eq!(services.len(), 1);
+    assert_eq!(services[0].completed.as_ref().unwrap().satisfied, 1);
+    assert_eq!(services[0].required_per_period, 1);
+    super::super::lifecycle::validate_period(&evidence.0, &evidence.1, &evidence.2).unwrap();
+    conserved(&complete(&evidence));
+}
+
+#[test]
+fn actual_installation_and_wear_project_materials_work_and_next_period_capacity() {
+    use super::super::{equipment_fixture as f, labor};
+    let mut state = f::opening();
+    for period in 1..=5 {
+        let evidence = pair(state);
+        assert_eq!(evidence.0.period, period);
+        conserved(&complete(&evidence));
+        labor::project_labor_accounts(&evidence.1, Some(&evidence.0), Some(&evidence.2)).unwrap();
+        if period == 2 {
+            assert_eq!(f::equipment_cost(&evidence.1).micro_units(), 30);
+            let mut missing = evidence.clone();
+            missing.2.installation.clear();
+            assert!(project(&missing).is_err());
+        }
+        if period == 3 {
+            assert_eq!(f::equipment(&evidence.1).cohorts[0].usable_from_period, 4);
+        }
+        if period == 5 {
+            assert_eq!(f::equipment_cost(&evidence.1).micro_units(), 0);
+            assert_eq!(f::stock_cost(&evidence.1, f::good(4)).micro_units(), 44);
+            assert_eq!(evidence.2.installation_decisions[0].installed_units, 0);
+            let mut pre_wear_position = evidence.clone();
+            pre_wear_position.2.installation_decisions[0].installed_units = 1;
+            pre_wear_position.2.installation_decisions[0].requested_units = 0;
+            assert!(pre_wear_position.2.installation_decisions[0]
+                .validate()
+                .is_ok());
+            assert!(project(&pre_wear_position).is_err());
+            let mut missing = evidence.clone();
+            missing.2.equipment_wear.clear();
+            assert!(project(&missing).is_err());
+        }
+        state = evidence.1;
+    }
+}
+
+#[test]
+fn actual_investment_order_admission_joins_captured_policy_and_real_cash_reservation() {
+    let mut state = super::super::equipment_fixture::opening();
+    super::super::equipment_fixture::configure_investment(&mut state, 100, 0);
+    let mut evidence = pair(state);
+    assert_eq!(evidence.2.investment[0].admitted_units, 1);
+    let orders =
+        super::super::lifecycle::validate_period(&evidence.0, &evidence.1, &evidence.2).unwrap();
+    let mut history = super::super::history::OrderHistory::default();
+    history.record(&evidence.0, &orders).unwrap();
+    assert_eq!(history.deliveries.len(), 1);
+    assert!(super::super::outbound::completed_facts(&evidence.0, &evidence.1, &evidence.2).unwrap().is_empty(),
+        "investment admission occurs after the final outbound pass; it is not this close's freight pressure");
+    conserved(&complete(&evidence));
+    evidence.2.investment[0].order_id = OrderId::from_bytes([255; 32]);
+    assert!(
+        super::super::lifecycle::validate_period(&evidence.0, &evidence.1, &evidence.2).is_err()
+    );
+}
+
+#[test]
+fn actual_prebooked_service_preserves_accepted_quote_and_authenticates_separate_topup() {
+    use babylon_material_circuit::{
+        admit_material_purchase, recurring_service_order_id, AccountId, MaterialPurchase,
+        ServiceOrder,
+    };
+    let state =
+        super::super::services_fixture::recurring(super::super::services_fixture::opening());
+    let buyer = AccountId::Site(SiteId::from_bytes([2; 32]));
+    let provider = SiteId::from_bytes([1; 32]);
+    let good = GoodId::from_bytes([1; 32]);
+    let unit = UnitId::from_bytes([1; 32]);
+    let id = recurring_service_order_id(1, buyer, provider, good, unit);
+    let (state, _) = admit_material_purchase(
+        &state,
+        MaterialPurchase::Service(ServiceOrder {
+            order_id: id,
+            performance_period: 1,
+            provider_site_id: provider,
+            buyer,
+            good_id: good,
+            unit_id: unit,
+            quantity: 1,
+        }),
+        babylon_kernel::currency::Currency::from_micro_units(1),
+    )
+    .unwrap();
+    let mut evidence = pair(state);
+    let rows: Vec<_> = evidence
+        .2
+        .service_performance
+        .iter()
+        .filter(|r| r.buyer == buyer && r.good_id == good)
+        .collect();
+    assert_eq!(rows.len(), 2);
+    assert_eq!(rows.iter().map(|r| r.admitted_quantity).sum::<u64>(), 2);
+    assert_eq!(
+        rows.iter()
+            .find(|r| r.order_id == id)
+            .unwrap()
+            .unit_price
+            .micro_units(),
+        1
+    );
+    super::super::lifecycle::validate_period(&evidence.0, &evidence.1, &evidence.2).unwrap();
+    conserved(&complete(&evidence));
+    evidence
+        .2
+        .service_performance
+        .iter_mut()
+        .find(|r| r.order_id == id)
+        .unwrap()
+        .unit_price = babylon_kernel::currency::Currency::from_micro_units(2);
+    assert!(
+        super::super::lifecycle::validate_period(&evidence.0, &evidence.1, &evidence.2).is_err()
+    );
+}
+
+#[test]
+fn actual_captured_pending_installation_keeps_its_admitted_identity() {
+    use babylon_material_circuit::{
+        CapacitySupply, CircuitAccounting, EquipmentAssetId, HistoricalCostBook, InstallationId,
+        RollingProcessSupply,
+    };
+    let mut state = pair(super::super::equipment_fixture::opening()).1;
+    let CapacitySupply::Rolling(supply) = &mut state.capacity_supply else {
+        panic!("rolling")
+    };
+    let RollingProcessSupply::Equipment(equipment) = &mut supply.processes else {
+        panic!("equipment")
+    };
+    let original = equipment.pending[0].id;
+    let captured = InstallationId::from_bytes([203; 32]);
+    equipment.pending[0].id = captured;
+    let CircuitAccounting::Monetary(economy) = &mut state.accounting else {
+        panic!("monetary")
+    };
+    let mut costs = economy.costs.snapshot();
+    costs
+        .equipment
+        .iter_mut()
+        .find(|r| r.asset == EquipmentAssetId::Installation(original))
+        .unwrap()
+        .asset = EquipmentAssetId::Installation(captured);
+    economy.costs = HistoricalCostBook::from_snapshot(costs).unwrap();
+    let evidence = pair(state);
+    assert_eq!(evidence.2.installation[0].id, captured);
+    assert!(!evidence.2.installation[0].started);
+    conserved(&complete(&evidence));
+}
+
+#[test]
+fn actual_unfunded_household_service_need_remains_visible_without_work_or_purchases() {
+    use babylon_material_circuit::CircuitAccounting;
+    let mut state =
+        super::super::services_fixture::recurring(super::super::services_fixture::opening());
+    for row in &mut state.labor {
+        row.available = 0;
+    }
+    let CircuitAccounting::Monetary(economy) = &mut state.accounting else {
+        panic!("monetary")
+    };
+    for row in &mut economy.member_labor {
+        row.available_hours = 0;
+    }
+    for row in &mut economy.recurring.as_mut().unwrap().attendance {
+        row.planned_hours = 0;
+    }
+    let evidence = pair(state);
+    let rows = super::super::households::services::project_with_labels(
+        &evidence.1,
+        Some(&evidence.0),
+        Some(&evidence.2),
+        |_, _| Some(("Care".into(), "service-period".into())),
+    )
+    .unwrap();
+    assert_eq!(rows.len(), 1);
+    let done = rows[0].completed.as_ref().unwrap();
+    assert_eq!(
+        (done.required, done.admitted, done.satisfied, done.unmet),
+        (1, 0, 0, 1)
+    );
+    conserved(&complete(&evidence));
+}
+
+#[test]
+fn installation_decision_must_join_current_plan_and_post_wear_position() {
+    let evidence = pair(super::super::equipment_fixture::opening());
+    assert!(!evidence.2.installation_decisions.is_empty());
+    assert!(project(&evidence).is_ok());
+    let mut missing = evidence.clone();
+    missing.2.installation_decisions.clear();
+    assert!(project(&missing).is_err());
+    let mut duplicate = evidence.clone();
+    duplicate
+        .2
+        .installation_decisions
+        .push(duplicate.2.installation_decisions[0].clone());
+    assert!(project(&duplicate).is_err());
+    for mutate in [
+        |r: &mut babylon_material_circuit::InstallationDecisionReceipt| {
+            r.captured_plan_batches += 1;
+        },
+        |r: &mut babylon_material_circuit::InstallationDecisionReceipt| {
+            r.target_units += 1;
+            r.requested_units += 1;
+        },
+    ] {
+        let mut changed = evidence.clone();
+        mutate(&mut changed.2.installation_decisions[0]);
+        assert!(changed.2.installation_decisions[0].validate().is_ok());
+        assert!(project(&changed).is_err());
+    }
+}
+
+#[test]
+fn installation_decision_joins_captured_pending_before_completion() {
+    let evidence = pair(pair(super::super::equipment_fixture::opening()).1);
+    assert_eq!(evidence.2.installation_decisions[0].pending_units, 1);
+    assert!(project(&evidence).is_ok());
+    for mutate in [
+        |r: &mut babylon_material_circuit::InstallationDecisionReceipt| {
+            r.pending_units += 1;
+        },
+        |r: &mut babylon_material_circuit::InstallationDecisionReceipt| {
+            r.installed_units += 1;
+        },
+    ] {
+        let mut changed = evidence.clone();
+        mutate(&mut changed.2.installation_decisions[0]);
+        assert!(changed.2.installation_decisions[0].validate().is_ok());
+        assert!(project(&changed).is_err());
+    }
 }

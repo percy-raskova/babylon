@@ -68,6 +68,7 @@ impl Plugin for SessionLogPlugin {
 fn observer_command_name(command: ObserverCommand) -> &'static str {
     match command {
         ObserverCommand::NewOrganizerCampaign => "new_organizer_campaign",
+        ObserverCommand::NewNationalCampaign => "new_national_campaign",
         ObserverCommand::TogglePlay => "toggle_play",
         ObserverCommand::Step => "step",
         ObserverCommand::Speed => "speed",
@@ -622,6 +623,11 @@ mod tests {
             visibility: ObserverVisibility::FullObserver,
             counties: Vec::new(),
             production: Some(ProductionSnapshot {
+                physical_routes: vec![],
+
+                household_accounts: Vec::new(),
+                household_service_accounts: Vec::new(),
+                goods_price_accounts: Vec::new(),
                 maintenance_account: None,
                 content_authority_sha256: "a".repeat(64),
                 road_source: None,
@@ -629,21 +635,24 @@ mod tests {
                 merchant_handling_accounts: Vec::new(),
                 final_demand_accounts: Vec::new(),
                 freight_capacity_accounts: Vec::new(),
+                freight_order_definitions: Vec::new(),
                 material_balance: None,
                 labor_accounts: Vec::new(),
                 staffing_accounts: Vec::new(),
                 scenario_label: "Designed telemetry fixture".into(),
-                horizon_period: 16,
+                duration: babylon_kernel::clock::CampaignDuration::Finite { final_period: 16 },
                 sites: vec![ProductionSite {
+                    function: "manufacturing".into(),
                     id: HIDDEN_SITE.into(),
                     name: HIDDEN_LABEL.into(),
-                    county_geoid: "26163".into(),
-                    industry_code: "331".into(),
+                    location: "county:26163".parse().unwrap(),
+                    industry_code: Some("331".into()),
                     observed_employment: None,
                     inventory: Vec::new(),
-                    role:
+                    roles: vec![
                         babylon_persistence::production_observation::ProductionSiteRole::Production,
-                    sector_code: "31-33".into(),
+                    ],
+                    sector_code: Some("31-33".into()),
                     processes: vec![
                         babylon_persistence::production_observation::ProductionProcess {
                             id: "fixture-process".into(),
@@ -665,6 +674,7 @@ mod tests {
                 freight: Vec::new(),
                 events: Vec::new(),
                 observed_contexts: Vec::new(),
+                national_observed_contexts: Vec::new(),
                 process_attributions: Vec::new(),
                 provenance: Vec::new(),
             }),
@@ -688,7 +698,7 @@ mod tests {
         session.foundation_digest = Some("foundation".into());
         session.ready(0, None);
         assert!(session.installed(&session.context()));
-        app.insert_resource(ObserverFrame(Some(snapshot(&session))))
+        app.insert_resource(ObserverFrame(Some(snapshot(&session)), None))
             .insert_resource(session)
             .insert_resource(ObserverUiState {
                 menu_open: false,
@@ -752,7 +762,7 @@ mod tests {
             app.insert_resource(atlas)
                 .insert_resource(SelectedCounty(Some(wayne)))
                 .insert_resource(DossierCampaignId(campaign))
-                .insert_resource(ObserverFrame(Some(frame)))
+                .insert_resource(ObserverFrame(Some(frame), None))
                 .init_resource::<DossierRefresh>()
                 .insert_resource(ActiveCountyDossier(Some(InstalledDossier {
                     scope: DossierRequestScope {

@@ -2756,7 +2756,7 @@ candidate_extension_initial_acl_entries AS MATERIALIZED (
     LEFT JOIN extension_role_identity_profile AS grantee_identity
       ON grantee_identity.role_oid = acl.grantee
 ),
-extension_initial_privileges AS (
+extension_initial_privileges AS MATERIALIZED (
     SELECT
         initial.extension_oid,
         initial.classid,

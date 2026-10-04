@@ -190,10 +190,14 @@ pub(super) fn capture(
             super::freight::resolved_setup(graph.content_bundle().defines_bytes())?,
         )));
     }
-    let stored = crate::sector_bundle::foundation::decode_stored_bundle_defines(
-        graph.content_bundle().defines_bytes(),
-        graph.content_digest().defines_hash,
-    )
-    .map_err(|_| ExperimentError::Content)?;
-    regional(spec, stored.catalog())
+    let captured = graph
+        .content_bundle()
+        .economic_catalog()
+        .ok_or(ExperimentError::Content)?;
+    let crate::economic_catalog::EconomicSourceView::MichiganControl { catalog, .. } =
+        captured.view().sources
+    else {
+        return Err(ExperimentError::Content);
+    };
+    regional(spec, catalog)
 }

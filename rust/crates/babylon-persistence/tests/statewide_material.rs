@@ -8,17 +8,19 @@ use babylon_material_circuit::{
     GoodId, MaterialCircuitState, MerchantRole, OrderId, SiteId, UnitId, MAX_MATERIAL_CIRCUIT_ROWS,
 };
 use babylon_persistence::{
-    michigan_content::{admit_michigan_content, MichiganContentPreset},
+    economic_content::admit_economic_content,
+    material_runtime::MAX_MATERIAL_FOUNDATION_BYTES,
+    michigan_content::MichiganContentPreset,
     michigan_material::{
-        MichiganDeliveryPreset, MichiganMaterialCatalog, MAX_MICHIGAN_CAPTURED_CONTENT_BYTES,
+        MichiganDeliveryPreset, MichiganMaterialCatalog, MAX_MICHIGAN_SOURCE_BYTES,
     },
 };
 use babylon_practice_contract::OrderedPracticeActionBatch;
 use babylon_tick::{
-    material_replay::{MaterialReplayError, MaterialReplaySession, PreparedMaterialTick},
+    material_replay::{MaterialReplaySession, PreparedMaterialTick},
     material_world::{
         decode_material_receipts, MaterialTickReceipts, MaterialWorldRegister,
-        MAX_MATERIAL_WORLD_REGISTER_BYTES,
+        MAX_MATERIAL_TICK_RECEIPT_BYTES, MAX_MATERIAL_WORLD_REGISTER_BYTES,
     },
     replay_session::ReplayCommitDisposition,
 };
@@ -48,6 +50,7 @@ fn physical_paths_require_all_overlapping_capacity_memberships_and_preserve_iden
             Vec::new(),
         )
     };
+    let physical_bytes = serde_json::to_vec(&physical).unwrap();
     let catalog = compile(physical.clone()).unwrap();
     let mut routed = 0;
     for route in catalog.routes() {
@@ -65,7 +68,47 @@ fn physical_paths_require_all_overlapping_capacity_memberships_and_preserve_iden
     for group in &mut physical.capacity_groups {
         group.edge_keys.reverse();
     }
-    assert_eq!(catalog, compile(physical.clone()).unwrap());
+    let reordered_bytes = serde_json::to_vec(&physical).unwrap();
+    let reordered = compile(physical.clone()).unwrap();
+    // Raw supplied source ordering stays evidence. Compare the complete resolved
+    // inputs and regenerated initialization separately from that source identity.
+    assert_eq!(
+        serde_json::to_value(catalog.resolved_report()).unwrap(),
+        serde_json::to_value(reordered.resolved_report()).unwrap()
+    );
+    assert_eq!(catalog.preset(), reordered.preset());
+    assert_eq!(
+        catalog.graph_scenario_source(),
+        reordered.graph_scenario_source()
+    );
+    assert_eq!(catalog.rule_source(), reordered.rule_source());
+    let original_opening =
+        babylon_persistence::economic_catalog::import_michigan_opening(&catalog).unwrap();
+    let reordered_opening =
+        babylon_persistence::economic_catalog::import_michigan_opening(&reordered).unwrap();
+    assert_eq!(original_opening, reordered_opening);
+    assert_eq!(
+        original_opening.compile().unwrap().state,
+        reordered_opening.compile().unwrap().state
+    );
+    let original_capture =
+        babylon_persistence::economic_catalog::CapturedEconomicCatalog::from_michigan(&catalog)
+            .unwrap();
+    let reordered_capture =
+        babylon_persistence::economic_catalog::CapturedEconomicCatalog::from_michigan(&reordered)
+            .unwrap();
+    let source_kind =
+        babylon_persistence::economic_catalog::SourceArtifactKind::MichiganPhysicalNetworkJson;
+    assert_eq!(
+        original_capture.source(source_kind),
+        Some(physical_bytes.as_slice())
+    );
+    assert_eq!(
+        reordered_capture.source(source_kind),
+        Some(reordered_bytes.as_slice())
+    );
+    assert_ne!(sha256_of(&physical_bytes), sha256_of(&reordered_bytes));
+    assert_ne!(original_capture.digest(), reordered_capture.digest());
     let uncovered = physical.edges[0].id.clone();
     for group in &mut physical.capacity_groups {
         group.edge_keys.retain(|key| key != &uncovered);
@@ -242,7 +285,7 @@ fn maximum_row_count(state: &MaterialCircuitState) -> usize {
         state.process_outputs.len(),
         state.input_coefficients.len(),
         state.labor_coefficients.len(),
-        state.freight_mass_coefficients.len(),
+        state.commodities.len(),
         state.supplier_routes.len(),
         state.route_stages.len(),
         state.route_stage_capacities.len(),
@@ -275,7 +318,13 @@ fn synthetic_statewide_roster_completes_sixteen_authenticated_periods_with_nativ
     assert_eq!(catalog.final_demands().len(), 233);
     assert_eq!(catalog.staffing().pools.len(), 397);
     assert!(catalog.routes().len() > 500);
-    assert!(catalog.defines_bytes().len() < MAX_MICHIGAN_CAPTURED_CONTENT_BYTES);
+    assert!(
+        babylon_persistence::economic_catalog::CapturedEconomicCatalog::from_michigan(&catalog)
+            .unwrap()
+            .canonical_bytes()
+            .len()
+            < MAX_MICHIGAN_SOURCE_BYTES
+    );
     let (mut session, foundation_bytes) = captured_session(&catalog);
     let compile_time = started.elapsed();
     let mut fulfilled = BTreeMap::new();
@@ -316,7 +365,7 @@ fn synthetic_statewide_roster_completes_sixteen_authenticated_periods_with_nativ
             .unwrap();
     }
     assert!(maximum_register_bytes < MAX_MATERIAL_WORLD_REGISTER_BYTES);
-    assert!(maximum_receipt_bytes < MAX_MATERIAL_WORLD_REGISTER_BYTES);
+    assert!(maximum_receipt_bytes < MAX_MATERIAL_TICK_RECEIPT_BYTES);
     assert!(maximum_rows < MAX_MATERIAL_CIRCUIT_ROWS);
     assert!(dispatch_count > 0 && local_count > 0 && !fulfilled.is_empty());
     let state = session.material().state();
@@ -332,15 +381,12 @@ fn synthetic_statewide_roster_completes_sixteen_authenticated_periods_with_nativ
     let actions =
         OrderedPracticeActionBatch::empty(session.graph_session().session_identity().clone(), 17)
             .unwrap();
-    assert!(matches!(
-        session.prepare_advance(&actions),
-        Err(MaterialReplayError::Horizon)
-    ));
+    assert!(session.prepare_advance(&actions).is_ok());
     assert_eq!(before, session.current_world_hash().unwrap());
     assert_eq!(session.completed_tick(), 16);
     eprintln!(
         "SYNTHETIC SCALE ONLY: owners=397 counties=83 processes=233 routes={} captured_bytes={} foundation_bytes={foundation_bytes} max_register_bytes={maximum_register_bytes} max_receipt_bytes={maximum_receipt_bytes} max_rows={maximum_rows} dispatches={dispatch_count} local_transfers={local_count} fulfilled_orders={} unfilled_orders={unfilled} compile_and_admit_ms={} advance_16_ms={} unsold_native_by_good={named_unsold:?}",
-        catalog.routes().len(), catalog.defines_bytes().len(), fulfilled.len(),
+        catalog.routes().len(), babylon_persistence::economic_catalog::CapturedEconomicCatalog::from_michigan(&catalog).unwrap().canonical_bytes().len(), fulfilled.len(),
         compile_time.as_millis(), advancing.elapsed().as_millis(),
     );
 }
@@ -367,7 +413,7 @@ fn captured_session(catalog: &MichiganMaterialCatalog) -> (Session, usize) {
     let preset = MichiganContentPreset::new_campaign(MichiganDeliveryPreset::StatewideBaseline);
     let foundation = preset.create_foundation(catalog).unwrap();
     let foundation_bytes = foundation.canonical_bytes().len();
-    assert!(foundation_bytes < MAX_MATERIAL_WORLD_REGISTER_BYTES);
+    assert!(foundation_bytes < MAX_MATERIAL_FOUNDATION_BYTES);
     assert_eq!(
         foundation
             .initial_register()
@@ -383,9 +429,9 @@ fn captured_session(catalog: &MichiganMaterialCatalog) -> (Session, usize) {
     assert_eq!(state.supplier_routes.len(), catalog.routes().len());
     assert_eq!(state.final_demand_orders.len(), 233);
     assert_eq!(state.labor.len(), 397);
-    let admitted = admit_michigan_content(
+    let admitted = admit_economic_content(
         preset.id(),
-        16,
+        foundation.spec().duration,
         &foundation.spec().content_digest,
         &foundation.digest(),
         0,
@@ -395,9 +441,9 @@ fn captured_session(catalog: &MichiganMaterialCatalog) -> (Session, usize) {
     assert_eq!(admitted.digest(), foundation.digest());
     let mut corrupted = foundation.canonical_bytes().to_vec();
     *corrupted.last_mut().unwrap() ^= 1;
-    assert!(admit_michigan_content(
+    assert!(admit_economic_content(
         preset.id(),
-        16,
+        foundation.spec().duration,
         &foundation.spec().content_digest,
         &foundation.digest(),
         0,
@@ -480,15 +526,15 @@ fn new_reads_pinned_siblings_and_saved_open_survives_changed_or_missing_source_f
         std::fs::remove_file(sources.path(name)).unwrap();
     }
     assert!(MichiganMaterialCatalog::load_for_preset(&defines_path, delivery).is_err());
-    let opened = admit_michigan_content(
+    let opened = admit_economic_content(
         preset.id(),
-        16,
+        foundation.spec().duration,
         &foundation.spec().content_digest,
         &foundation.digest(),
         0,
         foundation.canonical_bytes(),
     )
     .unwrap();
-    assert_eq!(opened.preset(), preset);
+    assert_eq!(opened.preset_id(), preset.id());
     assert_eq!(opened.digest(), foundation.digest());
 }

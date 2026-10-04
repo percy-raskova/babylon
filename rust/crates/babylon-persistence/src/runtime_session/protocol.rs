@@ -3,16 +3,24 @@
 use serde::{Deserialize, Serialize};
 
 use super::RuntimeSessionErrorCode;
-pub use crate::organizer_runtime::OrganizerSnapshot;
+pub use crate::organizer_runtime::{
+    OrganizerAidCapacity, OrganizerAidOrdinaryOffer, OrganizerAidPending, OrganizerAidResolution,
+    OrganizerAidRouteStage, OrganizerAidTime, OrganizerAidTransportPreview,
+    OrganizerCollectionPreview, OrganizerMaterialAidPreview, OrganizerSnapshot,
+};
 use crate::{identity::CampaignId, michigan_material::MichiganDeliveryPreset};
 pub use babylon_practice_contract::{
-    OrganizerAgreement, OrganizerChoice, OrganizerCommand, OrganizerCommitment, OrganizerInquiry,
-    OrganizerObservation, OrganizerOutcome, OrganizerPartnerResponse, OrganizerPauseReason,
-    OrganizerPosition, OrganizerPreview, OrganizerReceipt, OrganizerRefusal, OrganizerReport,
-    OrganizerStandingWork, OrganizerView,
+    OrganizerAgreement, OrganizerAidKind, OrganizerAidMaterialPostings, OrganizerAidOption,
+    OrganizerAidSupportStatus, OrganizerChoice, OrganizerCollectionOutcome,
+    OrganizerCollectionResolution, OrganizerCommand, OrganizerCommitment, OrganizerGiftConsent,
+    OrganizerInquiry, OrganizerObservation, OrganizerOutcome, OrganizerPartnerResponse,
+    OrganizerPauseReason, OrganizerPosition, OrganizerPreview, OrganizerReceipt, OrganizerRefusal,
+    OrganizerReport, OrganizerStandingWork, OrganizerView,
 };
 
-pub const RUNTIME_SESSION_PROTOCOL_VERSION: u16 = 4;
+pub use crate::material_runtime::MaterialAdvanceStage as RuntimeAdvanceStage;
+
+pub const RUNTIME_SESSION_PROTOCOL_VERSION: u16 = 10;
 pub const RUNTIME_SESSION_MAX_LINE_BYTES: usize = 131_072;
 
 /// A lifecycle incarnation, distinct even when the same campaign is reopened.
@@ -31,10 +39,12 @@ pub struct RuntimeSessionTail {
     pub tick_content_hash: Option<String>,
 }
 
-/// Closed wire selection of the existing authored delivery presets.
+/// Closed wire selection of captured campaigns and explicit Michigan controls.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RuntimeSessionPreset {
+    #[serde(rename = "national-world")]
+    NationalWorld,
     #[serde(rename = "organize-in-wayne")]
     OrganizeInWayne,
     Standard,
@@ -61,8 +71,9 @@ pub enum RuntimeSessionPreset {
     StatewideMaintenanceBoth,
 }
 impl RuntimeSessionPreset {
-    pub(super) const fn delivery(self) -> MichiganDeliveryPreset {
-        match self {
+    pub(super) const fn delivery(self) -> Option<MichiganDeliveryPreset> {
+        Some(match self {
+            Self::NationalWorld => return None,
             Self::OrganizeInWayne => MichiganDeliveryPreset::OrganizeInWayne,
             Self::Standard => MichiganDeliveryPreset::Standard,
             Self::Delayed => MichiganDeliveryPreset::Delayed,
@@ -82,7 +93,7 @@ impl RuntimeSessionPreset {
                 MichiganDeliveryPreset::StatewideMaintenancePartsShortage
             }
             Self::StatewideMaintenanceBoth => MichiganDeliveryPreset::StatewideMaintenanceBoth,
-        }
+        })
     }
 }
 
@@ -226,6 +237,7 @@ pub enum RuntimeSessionResponse {
         request_id: u64,
         scope: RuntimeSessionScope,
         foundation_digest: String,
+        duration: babylon_kernel::clock::CampaignDuration,
         organizer: bool,
         tail: RuntimeSessionTail,
     },
@@ -243,6 +255,12 @@ pub enum RuntimeSessionResponse {
         request_id: u64,
         scope: RuntimeSessionScope,
         snapshot: Box<OrganizerSnapshot>,
+    },
+    AdvanceProgress {
+        request_id: u64,
+        scope: RuntimeSessionScope,
+        resolve_tick: u64,
+        stage: RuntimeAdvanceStage,
     },
     Committed {
         request_id: u64,
@@ -266,3 +284,57 @@ pub enum RuntimeSessionResponse {
         scope: RuntimeSessionScope,
     },
 }
+
+#[cfg(test)]
+mod selection_tests {
+    use super::*;
+
+    #[test]
+    fn national_selection_has_no_michigan_fallback_or_open_override() {
+        let preset: RuntimeSessionPreset = serde_json::from_str("\"national-world\"").unwrap();
+        assert_eq!(preset, RuntimeSessionPreset::NationalWorld);
+        assert_eq!(preset.delivery(), None);
+        assert_eq!(
+            RuntimeSessionPreset::Standard.delivery(),
+            Some(MichiganDeliveryPreset::Standard)
+        );
+        for selection in [
+            "national",
+            "National-world",
+            "national_world",
+            "national-world ",
+        ] {
+            assert!(
+                serde_json::from_value::<RuntimeSessionPreset>(serde_json::json!(selection))
+                    .is_err()
+            );
+        }
+        assert!(serde_json::from_value::<RuntimeSessionTarget>(serde_json::json!({
+            "type": "open", "campaign_id": uuid::Uuid::from_u128(7).to_string(), "preset": "national-world"
+        })).is_err());
+    }
+}
+
+#[test]
+fn advance_progress_current_wire_is_closed_and_versioned() {
+    assert_eq!(RUNTIME_SESSION_PROTOCOL_VERSION, 10);
+    let valid = r#"{"type":"advance_progress","request_id":2,"scope":{"epoch":1,"campaign_id":"00000000-0000-0000-0000-000000000001"},"resolve_tick":1,"stage":"preparing_commitments"}"#;
+    let response: RuntimeSessionResponse =
+        serde_json::from_str(valid).expect("current actual progress wire");
+    assert_eq!(
+        serde_json::to_value(response).unwrap(),
+        serde_json::from_str::<serde_json::Value>(valid).unwrap()
+    );
+    assert!(serde_json::from_str::<RuntimeSessionResponse>(
+        &valid.replace("preparing_commitments", "invented_stage")
+    )
+    .is_err());
+    assert!(serde_json::from_str::<RuntimeSessionResponse>(
+        &valid.replace(r#""resolve_tick":1"#, r#""resolve_tick":1,"percent":50"#)
+    )
+    .is_err());
+}
+
+#[cfg(test)]
+#[path = "money_wire_tests.rs"]
+mod money_wire_tests;

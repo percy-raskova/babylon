@@ -61,9 +61,10 @@ def _evidence(path: Path, head: str) -> None:
                 "resolved_defines": resolved,
                 "canonical_defines_utf8": encoded,
                 "defines_sha256": hashlib.sha256(encoded.encode()).hexdigest(),
+                "catalog_sha256": hashlib.sha256(f"{case}/bundle".encode()).hexdigest(),
             }
         )
-    inputs = {"schema": "SimulationExperimentMatrixV1", "periods": 16, "cases": cases}
+    inputs = {"schema": "SimulationExperimentMatrixV2", "periods": 16, "cases": cases}
     summary: dict[str, Any] = {
         "schema": "MichiganDeliveryStockSummaryV1",
         "food_control_equal": True,
@@ -390,6 +391,7 @@ def test_unconsumed_source_text_does_not_change_semantic_baseline(tmp_path: Path
     _, before = validate_artifacts(evidence)
     inputs = json.loads((evidence / "inputs.json").read_text())
     for case in inputs["cases"]:
+        case["catalog_sha256"] = hashlib.sha256(f"{case['case']}/new-bundle".encode()).hexdigest()
         case["resolved_defines"]["rule_source"] = "; changed comment only"
         case["resolved_defines"]["defines"] = {"unconsumed_statewide_parameter": 17}
         case["canonical_defines_utf8"] = json.dumps(case["resolved_defines"])
@@ -516,4 +518,21 @@ def test_foundation_and_summary_identities_are_required_and_bound(
     (evidence / "manifest.json").write_bytes(canonical_bytes(manifest))
     _refresh(evidence, "summary.json")
     with pytest.raises(ValueError):
+        validate_artifacts(evidence)
+
+
+def test_catalog_identity_must_match_the_actual_native_foundation(tmp_path: Path) -> None:
+    evidence = tmp_path / "evidence"
+    _evidence(evidence, "a" * 40)
+    inputs = json.loads((evidence / "inputs.json").read_text())
+    inputs["cases"][0]["catalog_sha256"] = "f" * 64
+    (evidence / "inputs.json").write_bytes(canonical_bytes(inputs))
+    manifest = json.loads((evidence / "manifest.json").read_text())
+    manifest["inputs"] = inputs
+    manifest["experiment_digest"] = hashlib.sha256(
+        json.dumps(inputs, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    (evidence / "manifest.json").write_bytes(canonical_bytes(manifest))
+    _refresh(evidence, "inputs.json")
+    with pytest.raises(ValueError, match="source catalog"):
         validate_artifacts(evidence)

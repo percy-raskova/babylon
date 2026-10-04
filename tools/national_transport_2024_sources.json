@@ -1,0 +1,232 @@
+{
+  "contract": "NationalTransportSources2024V1",
+  "official_pages": [
+    {
+      "bytes": 84698,
+      "evidence_class": "Observed",
+      "id": "taps",
+      "path": "/media/user/data/babylon-data/national_reference_2024/transport_2026-09-20/taps.html",
+      "qualification": "Current page snapshot; facilities/relationships and dated operating description, not historical2024 capacity.",
+      "retrieved_date": "2026-09-20",
+      "sha256": "d0413a50c123d4473fa848c242dcc6783e832721f0fba381594996ec43b089fe",
+      "url": "https://alyeska-pipe.com/trans-alaska-pipeline-system-taps-overview/"
+    },
+    {
+      "bytes": 33527,
+      "evidence_class": "Observed",
+      "id": "richardson",
+      "path": "/media/user/data/babylon-data/national_reference_2024/transport_2026-09-20/richardson.html",
+      "qualification": "Current page snapshot; facilities/relationships and dated operating description, not historical2024 capacity.",
+      "retrieved_date": "2026-09-20",
+      "sha256": "86d7bd02ddd67f0405de5d02a64284a3dbe7694c6fc0e7c460a67679a18d19e3",
+      "url": "https://dot.alaska.gov/highways/richardson/"
+    },
+    {
+      "bytes": 81492,
+      "evidence_class": "Observed",
+      "id": "red_dog_dnr",
+      "path": "/media/user/data/babylon-data/national_reference_2024/transport_2026-09-20/red_dog_dnr.html",
+      "qualification": "Current page snapshot; facilities/relationships and dated operating description, not historical2024 capacity.",
+      "retrieved_date": "2026-09-20",
+      "sha256": "d81d60be5928bd5ca2296056006b208f84e43353c36d4e9f232a657a198577b0",
+      "url": "https://dnr.alaska.gov/mlw/mining/large-mines/red-dog/"
+    },
+    {
+      "bytes": 226096,
+      "evidence_class": "Observed",
+      "id": "red_dog_season",
+      "path": "/media/user/data/babylon-data/national_reference_2024/transport_2026-09-20/red_dog_season.html",
+      "qualification": "Current page snapshot; facilities/relationships and dated operating description, not historical2024 capacity.",
+      "retrieved_date": "2026-09-20",
+      "sha256": "e8d938dede958f1b5d9e43e9db353f4b306b1693661e92b1645f4283ab48ba64",
+      "url": "https://www.teck.com/news/stories/2021/reducing-fugitive-dust-impacts-at-red-dog-operations"
+    },
+    {
+      "bytes": 125519,
+      "evidence_class": "Observed",
+      "id": "los_angeles_bulk",
+      "path": "/media/user/data/babylon-data/national_reference_2024/transport_2026-09-20/los_angeles_bulk.html",
+      "qualification": "Port-complex dry/liquid bulk capability; does not specify selected RoRo berth capacity or observed counterpart routes.",
+      "retrieved_date": "2026-09-20",
+      "sha256": "0059c6ff4d3b6df954e276e8c726813e9a76df9c3c37074288b3d3d08aaab4c7",
+      "url": "https://portoflosangeles.org/about"
+    }
+  ],
+  "sources": [
+    {
+      "bytes": 9318400,
+      "id": "airports",
+      "path": "/media/user/data/babylon-data/dot/NTAD_Aviation_Facilities_698356094499483505.geodatabase",
+      "relation": "FAA open/public airport points; per-record EFF_DATE including2025-12-25",
+      "sha256": "e469d49940c8d5fca81fc547ecd793b68a0f917a8531642f510c5adef6aaaad9"
+    },
+    {
+      "bytes": 31218198,
+      "id": "border",
+      "path": "/media/user/data/babylon-data/bts_border/border_crossing_entry_data.csv",
+      "relation": "BTS2024 inbound truck counts; no observed outbound or installed capacity",
+      "sha256": "d3f4652bcb4f6541daa09312f30042caaccc87f602ad8e0d74809de161341426"
+    },
+    {
+      "bytes": 422246,
+      "id": "county_reference",
+      "path": "src/babylon/data/reference/economy/national_county_reference_2024.csv.gz",
+      "relation": "Pinned3144county roster/internal points and ACS population hub ranking",
+      "sha256": "28ad84a461f00c12489b11e0d770ad71bc3f09190dbc35774d725fc2333fec8e"
+    },
+    {
+      "bytes": 124748,
+      "id": "factors_pipeline_destination",
+      "path": "/media/user/data/babylon-data/freight/faf/pipeline_destination_factors.csv",
+      "relation": "Experimental estimated county allocation factors; not observedcountyOD or physical access",
+      "sha256": "09478990e3108402d91b784cbd984cc4639e31e7269888390d5f7ce5c40018ca"
+    },
+    {
+      "bytes": 97298,
+      "id": "factors_pipeline_origin",
+      "path": "/media/user/data/babylon-data/freight/faf/pipeline_origin_factors.csv",
+      "relation": "Experimental estimated county allocation factors; not observedcountyOD or physical access",
+      "sha256": "70b2e3861320c51fc7083da8aa41ac02bb0279b963f39440556638bd42d2765c"
+    },
+    {
+      "bytes": 375776,
+      "id": "factors_rail_destination",
+      "path": "/media/user/data/babylon-data/freight/faf/rail_destination_factors.csv",
+      "relation": "Experimental estimated county allocation factors; not observedcountyOD or physical access",
+      "sha256": "3204f68c3f1b196cb36dbbec49f21e0cb4cd1949f57c3f496b7bca9a4fc895c2"
+    },
+    {
+      "bytes": 335468,
+      "id": "factors_rail_origin",
+      "path": "/media/user/data/babylon-data/freight/faf/rail_origin_factors.csv",
+      "relation": "Experimental estimated county allocation factors; not observedcountyOD or physical access",
+      "sha256": "27d5510f22cc4572bcfa12cb462a05b76d6417c2715bf0c366f4f27959e5a373"
+    },
+    {
+      "bytes": 497851,
+      "id": "factors_truck_destination",
+      "path": "/media/user/data/babylon-data/freight/faf/truck_destination_factors.csv",
+      "relation": "Experimental estimated county allocation factors; not observedcountyOD or physical access",
+      "sha256": "f3496a88b331cee18a527178c74ee55d5ae80a1235ad98bdce9e0fd8459516ce"
+    },
+    {
+      "bytes": 497942,
+      "id": "factors_truck_origin",
+      "path": "/media/user/data/babylon-data/freight/faf/truck_origin_factors.csv",
+      "relation": "Experimental estimated county allocation factors; not observedcountyOD or physical access",
+      "sha256": "ddd3c94b1007071a46110e5465528d396d870616c8acf855759c35d539f9a224"
+    },
+    {
+      "bytes": 129403,
+      "id": "factors_water_destination",
+      "path": "/media/user/data/babylon-data/freight/faf/water_destination_factors.csv",
+      "relation": "Experimental estimated county allocation factors; not observedcountyOD or physical access",
+      "sha256": "429dc697c87bd51ec436df57b193a20a44afddbd933ffc9ec3975c8af9dff495"
+    },
+    {
+      "bytes": 132522,
+      "id": "factors_water_origin",
+      "path": "/media/user/data/babylon-data/freight/faf/water_origin_factors.csv",
+      "relation": "Experimental estimated county allocation factors; not observedcountyOD or physical access",
+      "sha256": "acaf213c56ec4179cddec5146e5512188ac1ca65e410966cc5c30b887c201f52"
+    },
+    {
+      "bytes": 695246787,
+      "id": "faf2024",
+      "path": "/media/user/data/babylon-data/freight/faf/region/FAF5.7.1_2018-2024.csv",
+      "relation": "FAF5.7.1 calendar2024 estimated flows; not installed capacities",
+      "sha256": "b77a6c64728c5dd8595e39ee7a57810f78827eb7d27241c4ced9b83cc10c1bbb"
+    },
+    {
+      "bytes": 28786,
+      "id": "faf_metadata",
+      "path": "/media/user/data/babylon-data/freight/faf/region/FAF5_metadata.xlsx",
+      "relation": "Source units,132domestic/8foreign zones and native modes",
+      "sha256": "33d6b6fd1c53dbef38005bb2b73b8a5df77545373d210da23ec974c180acfc72"
+    },
+    {
+      "bytes": 40496,
+      "id": "international_roster",
+      "path": "contracts/international_counterpart_membership_v1.json",
+      "relation": "Explicit12counterparts and6USdependency scopes",
+      "sha256": "0bdd543fcdc59503f1037a512afc715f591423bfe11938a55fdb36f8641a082f"
+    },
+    {
+      "bytes": 125519,
+      "id": "los_angeles_bulk",
+      "path": "/media/user/data/babylon-data/national_reference_2024/transport_2026-09-20/los_angeles_bulk.html",
+      "relation": "Port-complex dry/liquid bulk capability; does not specify selected RoRo berth capacity or observed counterpart routes.",
+      "sha256": "0059c6ff4d3b6df954e276e8c726813e9a76df9c3c37074288b3d3d08aaab4c7"
+    },
+    {
+      "bytes": 315392,
+      "id": "marine",
+      "path": "/media/user/data/babylon-data/dot/NTAD_Intermodal_Freight_Facilities_Marine_Roll_on_Roll_off_-294017341140200559.geodatabase",
+      "relation": "NTAD RoRo facility evidence, not comprehensive ports or bulk berths",
+      "sha256": "79a9004e5a0a42a28b14026949167556ef84305ebac812e736dbd23e928713f5"
+    },
+    {
+      "bytes": 1024000,
+      "id": "pipeline_terminals",
+      "path": "/media/user/data/babylon-data/dot/NTAD_Intermodal_Freight_Facilities_Pipeline_Terminals_5225567625332244848.geodatabase",
+      "relation": "NTAD2021terminal product/access flags, not pipeline connections or rated capacity",
+      "sha256": "ac16e6c328f9ef9332a5ab36bd5cea852d03cc9c63e204282958d71ea15d5483"
+    },
+    {
+      "bytes": 81492,
+      "id": "red_dog_dnr",
+      "path": "/media/user/data/babylon-data/national_reference_2024/transport_2026-09-20/red_dog_dnr.html",
+      "relation": "Current page snapshot; facilities/relationships and dated operating description, not historical2024 capacity.",
+      "sha256": "d81d60be5928bd5ca2296056006b208f84e43353c36d4e9f232a657a198577b0"
+    },
+    {
+      "bytes": 226096,
+      "id": "red_dog_season",
+      "path": "/media/user/data/babylon-data/national_reference_2024/transport_2026-09-20/red_dog_season.html",
+      "relation": "Current page snapshot; facilities/relationships and dated operating description, not historical2024 capacity.",
+      "sha256": "e8d938dede958f1b5d9e43e9db353f4b306b1693661e92b1645f4283ab48ba64"
+    },
+    {
+      "bytes": 33527,
+      "id": "richardson",
+      "path": "/media/user/data/babylon-data/national_reference_2024/transport_2026-09-20/richardson.html",
+      "relation": "Current page snapshot; facilities/relationships and dated operating description, not historical2024 capacity.",
+      "sha256": "86d7bd02ddd67f0405de5d02a64284a3dbe7694c6fc0e7c460a67679a18d19e3"
+    },
+    {
+      "bytes": 84698,
+      "id": "taps",
+      "path": "/media/user/data/babylon-data/national_reference_2024/transport_2026-09-20/taps.html",
+      "relation": "Current page snapshot; facilities/relationships and dated operating description, not historical2024 capacity.",
+      "sha256": "d0413a50c123d4473fa848c242dcc6783e832721f0fba381594996ec43b089fe"
+    },
+    {
+      "bytes": 993755,
+      "id": "tiger_dbf",
+      "path": "/media/user/data/babylon-data/tiger/county/tl_2024_us_county.dbf",
+      "relation": "TIGER2024geographic spatial admission",
+      "sha256": "f310846d5f8160fc63e2e4930af756b966f31a86e7b019a251ffc51789d28919"
+    },
+    {
+      "bytes": 165,
+      "id": "tiger_prj",
+      "path": "/media/user/data/babylon-data/tiger/county/tl_2024_us_county.prj",
+      "relation": "TIGER2024geographic spatial admission",
+      "sha256": "0b9041e921d9ebb43247d314608fe9e38a0b008ee793067fc1806199ea1fb9dd"
+    },
+    {
+      "bytes": 132150152,
+      "id": "tiger_shp",
+      "path": "/media/user/data/babylon-data/tiger/county/tl_2024_us_county.shp",
+      "relation": "TIGER2024geographic spatial admission",
+      "sha256": "4bdd1476ffeb7e5a4bc6a2eb60d39e6ceae3d385b2d87793a634ffe1552aafe4"
+    },
+    {
+      "bytes": 25980,
+      "id": "tiger_shx",
+      "path": "/media/user/data/babylon-data/tiger/county/tl_2024_us_county.shx",
+      "relation": "TIGER2024geographic spatial admission",
+      "sha256": "d41d07996080ceaa52c7a01045f9139d01a017aba59f3f8a7b7d8d000a8151c6"
+    }
+  ]
+}

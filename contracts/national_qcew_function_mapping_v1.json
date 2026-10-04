@@ -1,0 +1,151 @@
+{
+  "contract": "NationalQcewFunctionMappingV1",
+  "issue": "PER-40",
+  "evidence_class": "Designed",
+  "source_vintage": 2024,
+  "selection": "one disjoint NAICS cut across aggregation levels 74, 75 and 76; never add its parent sector controls to selected rows",
+  "ownership_codes": {
+    "1": "federal government",
+    "2": "state government",
+    "3": "local government",
+    "5": "private"
+  },
+  "ownership_semantics": "ownership is a separate source axis; public hospitals, utilities and transportation retain their technical functions",
+  "functions": [
+    {
+      "id": "food",
+      "label": "Food",
+      "naics_codes": [
+        "111",
+        "112",
+        "114",
+        "1151",
+        "1152",
+        "311",
+        "3121"
+      ],
+      "qualification": "Agriculture, fishing and food/beverage proxy; includes non-food crops and mixed agricultural support."
+    },
+    {
+      "id": "extraction",
+      "label": "Extraction",
+      "naics_codes": [
+        "113",
+        "1153",
+        "21"
+      ],
+      "qualification": "Forestry and mining proxy; no physical resource stocks or extraction yields observed."
+    },
+    {
+      "id": "energy_utilities",
+      "label": "Energy/utilities",
+      "naics_codes": [
+        "22",
+        "324"
+      ],
+      "qualification": "Utilities and petroleum/coal products proxy; electricity, fuel and water outputs remain distinct runtime quantities."
+    },
+    {
+      "id": "manufacturing",
+      "label": "Manufacturing",
+      "naics_codes": [
+        "3122",
+        "313",
+        "314",
+        "315",
+        "316",
+        "321",
+        "322",
+        "323",
+        "325",
+        "326",
+        "327",
+        "331",
+        "332",
+        "337",
+        "339"
+      ],
+      "qualification": "Mixed intermediate, consumer and capital uses; this is not an observed consumption-goods department."
+    },
+    {
+      "id": "capital_goods",
+      "label": "Capital goods",
+      "naics_codes": [
+        "333",
+        "334",
+        "335",
+        "336"
+      ],
+      "qualification": "Designed machinery/electronics/equipment/transport proxy includes consumer vehicles, appliances and electronics. Other sectors also produce capital goods; QCEW does not observe product end-use."
+    },
+    {
+      "id": "construction_housing",
+      "label": "Construction/housing",
+      "naics_codes": [
+        "23",
+        "531"
+      ],
+      "qualification": "Construction and real-estate employment do not measure housing stock, dwellings or completed construction."
+    },
+    {
+      "id": "distribution_transport",
+      "label": "Distribution/transport",
+      "naics_codes": [
+        "42",
+        "44-45",
+        "48-49"
+      ],
+      "qualification": "Wholesale, retail and transportation/storage remain distinct source cells; no freight tonnage or route capacity is inferred."
+    },
+    {
+      "id": "household_services",
+      "label": "Household services",
+      "naics_codes": [
+        "61",
+        "62",
+        "71",
+        "72",
+        "81"
+      ],
+      "qualification": "Education, health, recreation, accommodation/food services and other services are a broad service proxy, not measured household consumption."
+    },
+    {
+      "id": "business_services",
+      "label": "Business services",
+      "naics_codes": [
+        "51",
+        "52",
+        "532",
+        "533",
+        "54",
+        "55",
+        "56"
+      ],
+      "qualification": "Information, finance, rental, professional and support activities have mixed final uses; no productive/unproductive class judgment is encoded."
+    },
+    {
+      "id": "public_provisioning",
+      "label": "Public provisioning",
+      "naics_codes": [
+        "92"
+      ],
+      "qualification": "Public administration is a technical function, not all publicly owned activity. Public budgets can fund other functions without counting those jobs again."
+    }
+  ],
+  "residual_naics_codes": [
+    "99"
+  ],
+  "residual_disposition": "unclassified; no invented function assignment",
+  "unsupported_needs": [
+    "physical output, commodity composition and input recipes",
+    "product end-use: capital, intermediate and consumer allocation",
+    "named employers, workplaces and ownership chains",
+    "distinct persons, resident workforce, commuting and worker allocation",
+    "unpaid household work, informal activity and self-employment outside QCEW coverage",
+    "inventories, equipment, natural resource stocks and usable capacities",
+    "service quantity units, access, demand and capacity",
+    "prices, bank balances, payments, profits and funding decisions",
+    "within-county placement and domestic unallocated xx999 job placement"
+  ],
+  "runtime_authority": "source evidence and Designed classification only; runtime recipes, allocation and approximations require separate captured provenance"
+}

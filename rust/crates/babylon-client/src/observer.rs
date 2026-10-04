@@ -54,7 +54,7 @@ pub struct ObserverSession {
     pub durable_tick: u64,
     pub viewed_tick: u64,
     pub archive_verified_tick: u64,
-    pub horizon_tick: Option<u64>,
+    pub duration: Option<babylon_kernel::clock::CampaignDuration>,
     pub content_hash: Option<String>,
     pub foundation_digest: Option<String>,
     pub phase: SessionPhase,
@@ -78,7 +78,7 @@ impl ObserverSession {
             durable_tick: 0,
             viewed_tick: 0,
             archive_verified_tick: 0,
-            horizon_tick: None,
+            duration: None,
             content_hash: None,
             foundation_digest: None,
             phase: SessionPhase::Connecting,
@@ -127,8 +127,8 @@ impl ObserverSession {
                 SessionPhase::Ready | SessionPhase::Loading | SessionPhase::Advancing
             )
             || self
-                .horizon_tick
-                .is_some_and(|limit| self.durable_tick >= limit)
+                .duration
+                .is_some_and(|limit| !limit.can_advance(self.durable_tick))
         {
             return false;
         }
@@ -152,8 +152,8 @@ impl ObserverSession {
             && self.viewed_tick == self.durable_tick
             && self.durable_tick.checked_add(1).is_some()
             && self
-                .horizon_tick
-                .is_none_or(|limit| self.durable_tick < limit)
+                .duration
+                .is_none_or(|limit| limit.can_advance(self.durable_tick))
     }
 
     /// A runtime handshake reconciles any lost acknowledgement before play.
@@ -173,8 +173,8 @@ impl ObserverSession {
         }
         self.phase = if self.viewed_tick == self.durable_tick
             && self
-                .horizon_tick
-                .is_some_and(|horizon| self.durable_tick >= horizon)
+                .duration
+                .is_some_and(|duration| duration.complete(self.durable_tick))
         {
             SessionPhase::Complete
         } else {
@@ -190,7 +190,6 @@ impl ObserverSession {
     pub fn complete(&mut self) {
         self.playing = false;
         self.pending_request = None;
-        self.horizon_tick = Some(self.durable_tick);
         self.phase = SessionPhase::Complete;
     }
 
@@ -203,8 +202,8 @@ impl ObserverSession {
             || self.viewed_tick != self.durable_tick
             || self.durable_tick.checked_add(1).is_none()
             || self
-                .horizon_tick
-                .is_some_and(|limit| self.durable_tick >= limit)
+                .duration
+                .is_some_and(|limit| !limit.can_advance(self.durable_tick))
         {
             return None;
         }
@@ -212,6 +211,40 @@ impl ObserverSession {
         self.pending_request = Some(request);
         self.phase = SessionPhase::Advancing;
         Some(request)
+    }
+
+    pub(crate) const fn pending_advance_request(&self) -> Option<u64> {
+        self.pending_request
+    }
+
+    pub(crate) fn validate_advance_stage(
+        &self,
+        request: u64,
+        tick: u64,
+        stage: babylon_persistence::runtime_session::RuntimeAdvanceStage,
+        prior: Option<babylon_persistence::runtime_session::RuntimeAdvanceStage>,
+    ) -> Result<(), String> {
+        use babylon_persistence::runtime_session::RuntimeAdvanceStage as Stage;
+        if self.pending_request != Some(request)
+            || self.durable_tick.checked_add(1) != Some(tick)
+            || !matches!(
+                self.phase,
+                SessionPhase::Ready | SessionPhase::Loading | SessionPhase::Advancing
+            )
+        {
+            return Err("Advance progress did not match its pending request and period".into());
+        }
+        let expected = match prior {
+            None => Some(Stage::PreparingCommitments),
+            Some(Stage::PreparingCommitments) => Some(Stage::ResolvingEconomy),
+            Some(Stage::ResolvingEconomy) => Some(Stage::PreparingStorage),
+            Some(Stage::PreparingStorage) => Some(Stage::SavingPeriod),
+            Some(Stage::SavingPeriod) => None,
+        };
+        if expected != Some(stage) {
+            return Err("Advance progress did not follow the required stage order".into());
+        }
+        Ok(())
     }
 
     pub fn acknowledge(&mut self, request: u64, tick: u64, hash: Option<String>) -> bool {
@@ -348,7 +381,7 @@ mod tests {
     #[test]
     fn scenario_horizon_and_quit_stop_playback_without_an_extra_commit() {
         let mut state = ready(3);
-        state.horizon_tick = Some(4);
+        state.duration = Some(babylon_kernel::clock::CampaignDuration::Finite { final_period: 4 });
         assert!(state.start_playback());
         commit(&mut state);
         assert_eq!(state.phase, SessionPhase::Complete);

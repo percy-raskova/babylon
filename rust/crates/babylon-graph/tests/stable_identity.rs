@@ -375,7 +375,7 @@ fn sealed_resolver_detects_every_topology_mutation() {
 }
 
 #[test]
-fn resolver_accepts_65536_rows_and_refuses_65537_before_manifest_allocation() {
+fn resolver_accepts_the_current_row_ceiling_and_refuses_the_next_before_allocation() {
     let mut graph = MemoryGraph::new();
     let mut names = HashMap::new();
     for index in 0..MAX_STABLE_RESOLVER_ROWS {

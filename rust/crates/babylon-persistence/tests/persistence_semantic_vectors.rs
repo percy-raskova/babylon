@@ -119,8 +119,8 @@ fn vector_executor_consumes_foundation_checkpoint_and_empty_proof_semantics() {
     for (id, witness, replacement) in [
         (
             "foundation-full-nine-fields",
+            b"\"layout\":3".as_slice(),
             b"\"layout\":2".as_slice(),
-            b"\"layout\":1".as_slice(),
         ),
         (
             "checkpoint-full-nine-sections",

@@ -66,7 +66,7 @@ pub fn digest_json(value: &impl Serialize) -> Result<String> {
 }
 
 fn regional_parameters(catalog: &MichiganMaterialCatalog) -> Result<Value> {
-    let capture: Value = serde_json::from_slice(catalog.defines_bytes())?;
+    let capture: Value = serde_json::to_value(catalog.resolved_report())?;
     let definitions = capture
         .get("defines")
         .and_then(Value::as_object)
@@ -74,7 +74,7 @@ fn regional_parameters(catalog: &MichiganMaterialCatalog) -> Result<Value> {
     let parameters = [
         "SCHEMA_VERSION",
         "TICK_DURATION_DAYS",
-        "HORIZON_PERIODS",
+        "DURATION",
         "staffing",
         "process",
         "corridor",
@@ -95,10 +95,13 @@ fn regional_parameters(catalog: &MichiganMaterialCatalog) -> Result<Value> {
 }
 
 pub fn cases() -> Result<Vec<Case>> {
-    let original = MichiganMaterialCatalog::from_defines_toml(BASELINE)
-        .map_err(|error| contract(format!("baseline validation: {error}")))?;
+    let original = MichiganMaterialCatalog::from_defines_toml(&BASELINE.replace(
+        "DURATION = { kind = \"continuous\" }",
+        "DURATION = { kind = \"finite\", final_period = 16 }",
+    ))
+    .map_err(|error| contract(format!("baseline validation: {error}")))?;
     let baseline = regional_parameters(&original)?;
-    if baseline["HORIZON_PERIODS"] != PERIODS
+    if baseline["DURATION"]["final_period"] != PERIODS
         || baseline["process"]["panel_forming"]["OPENING_INPUT_UNITS"] != 0
         || baseline["process"]["panel_forming"]["OPENING_PLANNED_BATCHES"] != 0
         || original.processes().len() != 5
@@ -141,19 +144,25 @@ pub fn experiment_identity(cases: &[Case]) -> Result<Value> {
     let rows = cases
         .iter()
         .map(|case| {
+            let report = serde_json::to_string(&case.catalog.resolved_report())?;
+            let capture =
+                babylon_persistence::economic_catalog::CapturedEconomicCatalog::from_michigan(
+                    &case.catalog,
+                )
+                .map_err(|error| contract(format!("captured case: {error}")))?;
             Ok(json!({
                 "case": case.spec.id,
                 "preset": case.spec.delivery.id(),
                 "opening_sheet_kg": case.spec.opening_sheet_kg,
                 "experiment": case.experiment,
-                "resolved_defines": serde_json::from_slice::<Value>(case.catalog.defines_bytes())?,
-                "canonical_defines_utf8": std::str::from_utf8(case.catalog.defines_bytes())
-                    .map_err(|_| contract("canonical defines are not UTF-8"))?,
-                "defines_sha256": hex(&case.catalog.defines_hash())
+                "resolved_defines": serde_json::from_str::<Value>(&report)?,
+                "canonical_defines_utf8": report,
+                "defines_sha256": hex(&sha256_of(report.as_bytes())),
+                "catalog_sha256": hex(&capture.digest())
             }))
         })
         .collect::<Result<Vec<_>>>()?;
-    Ok(json!({"schema": "SimulationExperimentMatrixV1", "periods": PERIODS, "cases": rows}))
+    Ok(json!({"schema": "SimulationExperimentMatrixV2", "periods": PERIODS, "cases": rows}))
 }
 
 #[derive(Serialize)]
@@ -170,7 +179,7 @@ fn foundation(case: &Case) -> Result<(Value, MaterialReplaySession<HypergraphSto
         .map_err(|error| contract(format!("{} foundation: {error:?}", case.spec.id)))?;
     let graph = foundation.graph_foundation();
     let seed = i64::from_be_bytes(graph.rng_seed().to_be_bytes());
-    if seed != 319 || foundation.spec().horizon_ticks != PERIODS {
+    if seed != 319 || foundation.spec().duration.final_period() != Some(PERIODS) {
         return Err(contract("selected composition changed its seed or horizon"));
     }
     let identity = json!({

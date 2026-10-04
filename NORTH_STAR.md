@@ -58,6 +58,11 @@ is not the focus.
 Support and opposition belong to distinct groups. Pressure directed at the
 organization stays separate from regional unrest and the repressive climate.
 
+Households are the smallest economic decision unit. Household cohorts keep
+differences in income, ownership and needs that change play. Cohort accounts
+track people, workers and finite time. The economy does not simulate
+individual agents.
+
 The future language interface proposes a few concrete first steps for a broad
 intention. The player chooses an approach and confirms a reviewed action.
 Pinned plans preserve intentions. They do not silently execute them. G5 owns
@@ -72,6 +77,33 @@ relations before it can display them as facts.
 Determinism proves computational identity, not scientific truth. Historical
 cases test causal signatures and counterfactual behavior. They do not dictate a
 historical path.
+
+Every county in the 50 states and DC participates in the approved national
+economy. Twelve finite external markets and explicit US dependencies connect it
+to the world. Michigan remains a scenario within the same economic engine.
+Recurring needs, paid work, purchases, production and investment must continue
+beyond opening provisions. The first material organizer choice contrasts local
+aid with slower cross-region solidarity, using actual goods, money and time.
+The [design and worked accounts](reports/national-economy-design-2026-09-20.md)
+record that direction and its evidence.
+
+National qualification also measures save growth in Postgres, separating
+one-time captures from each period's state and history. Address avoidable
+serialization duplication before the playable build. Storage improvements must
+preserve county coverage, exact accounts, replay and recovery. Larger persistence
+changes must show measured benefits and explicit recovery evidence.
+
+The Designed ceiling is 10 decimal MB (10,000,000 bytes) per committed tick,
+including retained state, receipts, graph history, indexes and checkpoint growth.
+Thirteen ticks have a 130 MB incremental storage ceiling per model year.
+The 52-tick ceiling is 520 MB. Report opening storage separately.
+The current representation has not passed this budget.
+
+Development can replace the persistence design without compatibility layers for
+older formats. Preserve old saves as data and refuse unsupported formats.
+
+Linear owns implementation scope and status. This direction does not claim
+those mechanics already work.
 
 The Bevy client observes durable Michigan campaigns and offers the bounded
 Wayne organizer loop. Broader G4 observer and G5 player-agency acceptance remain

@@ -1,5 +1,8 @@
 //! Database-free capture of one exact replay campaign foundation.
 
+mod content;
+pub use content::{FoundationContentError, FoundationContentKind};
+
 use std::collections::TryReserveError;
 
 use babylon_bsl::canonical_ast::rules_hash_of;
@@ -18,12 +21,23 @@ use crate::runtime::RustPersistenceRuntimeError;
 use crate::semantic_codec;
 
 #[derive(Debug, PartialEq, Eq)]
+struct AuthoredFoundationSources {
+    scenario: Vec<u8>,
+    prelude: Option<Vec<u8>>,
+    rules: Vec<u8>,
+    defines: Vec<u8>,
+    reference_manifest: Vec<u8>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum FoundationSources {
+    Authored(AuthoredFoundationSources),
+    Economic(Box<crate::economic_catalog::CapturedEconomicCatalog>),
+}
+
+#[derive(Debug, PartialEq, Eq)]
 pub struct FoundationContentBundle {
-    scenario_source_bytes: Vec<u8>,
-    prelude_source_bytes: Option<Vec<u8>>,
-    rule_source_bytes: Vec<u8>,
-    defines_bytes: Vec<u8>,
-    reference_bundle_manifest_bytes: Vec<u8>,
+    sources: FoundationSources,
     content_digest: ContentDigest,
     reference_digest: RefDigest,
     canonical_bytes: Vec<u8>,
@@ -69,11 +83,13 @@ impl FoundationContentBundle {
         let reference_bundle_manifest_bytes =
             copy_bytes("foundation reference manifest bytes", reference_manifest)?;
         Ok(Self {
-            scenario_source_bytes,
-            prelude_source_bytes,
-            rule_source_bytes,
-            defines_bytes,
-            reference_bundle_manifest_bytes,
+            sources: FoundationSources::Authored(AuthoredFoundationSources {
+                scenario: scenario_source_bytes,
+                prelude: prelude_source_bytes,
+                rules: rule_source_bytes,
+                defines: defines_bytes,
+                reference_manifest: reference_bundle_manifest_bytes,
+            }),
             content_digest,
             reference_digest,
             canonical_bytes,
@@ -83,33 +99,59 @@ impl FoundationContentBundle {
 
 impl FoundationContentBundle {
     /// Borrow the exact scenario source bytes.
+    /// # Panics
+    /// Panics only if the private admitted-source invariant is violated.
     #[must_use]
     pub fn scenario_source_bytes(&self) -> &[u8] {
-        &self.scenario_source_bytes
+        match &self.sources {
+            FoundationSources::Authored(sources) => &sources.scenario,
+            FoundationSources::Economic(catalog) => catalog
+                .scenario_source()
+                .expect("admitted scenario source")
+                .as_bytes(),
+        }
     }
 
     /// Borrow the exact optional prelude source bytes.
     #[must_use]
     pub fn prelude_source_bytes(&self) -> Option<&[u8]> {
-        self.prelude_source_bytes.as_deref()
+        match &self.sources {
+            FoundationSources::Authored(sources) => sources.prelude.as_deref(),
+            FoundationSources::Economic(catalog) => {
+                catalog.source(crate::economic_catalog::SourceArtifactKind::PreludeDeclarations)
+            }
+        }
     }
 
     /// Borrow the exact rule source bytes.
+    /// # Panics
+    /// Panics only if the private admitted-source invariant is violated.
     #[must_use]
     pub fn rule_source_bytes(&self) -> &[u8] {
-        &self.rule_source_bytes
+        match &self.sources {
+            FoundationSources::Authored(sources) => &sources.rules,
+            FoundationSources::Economic(catalog) => catalog
+                .source(crate::economic_catalog::SourceArtifactKind::Rules)
+                .expect("admitted rule source"),
+        }
     }
 
     /// Borrow the exact defines artifact bytes.
     #[must_use]
     pub fn defines_bytes(&self) -> &[u8] {
-        &self.defines_bytes
+        match &self.sources {
+            FoundationSources::Authored(sources) => &sources.defines,
+            FoundationSources::Economic(catalog) => catalog.canonical_bytes(),
+        }
     }
 
     /// Borrow the exact reference-bundle manifest bytes.
     #[must_use]
     pub fn reference_bundle_manifest_bytes(&self) -> &[u8] {
-        &self.reference_bundle_manifest_bytes
+        match &self.sources {
+            FoundationSources::Authored(sources) => &sources.reference_manifest,
+            FoundationSources::Economic(catalog) => catalog.canonical_bytes(),
+        }
     }
 
     /// Borrow the exact mechanics identity derived from the retained artifacts.
@@ -245,11 +287,16 @@ impl CampaignFoundation {
             .transpose()
             .map_err(|_| RustPersistenceRuntimeError::ReplaySource)?;
         let mut graph = HypergraphStore::new();
-        let loaded = match prelude {
-            Some(prelude) => load_scenario_with_prelude(prelude, scenario, &mut graph),
-            None => load_scenario(scenario, &mut graph),
-        }
-        .map_err(|_| RustPersistenceRuntimeError::ReplaySource)?;
+        let loaded = match content_bundle.economic_catalog() {
+            Some(catalog) => catalog
+                .load_graph(&mut graph)
+                .map_err(|_| RustPersistenceRuntimeError::ReplaySource)?,
+            None => match prelude {
+                Some(prelude) => load_scenario_with_prelude(prelude, scenario, &mut graph),
+                None => load_scenario(scenario, &mut graph),
+            }
+            .map_err(|_| RustPersistenceRuntimeError::ReplaySource)?,
+        };
         let resolver = StableElementResolver::seal(
             &graph,
             &loaded.id,
@@ -262,15 +309,44 @@ impl CampaignFoundation {
         let captured = session
             .stable_graph_state()
             .map_err(|_| RustPersistenceRuntimeError::ReplaySource)?;
-        if reloaded.canonical_bytes() != captured.canonical_bytes() {
+        if reloaded.canonical_bytes() != captured.canonical_bytes()
+            || resolver.manifest().canonical_bytes() != session.resolver_manifest_bytes()
+        {
             return Err(RustPersistenceRuntimeError::FoundationScenarioMismatch);
+        }
+        Ok(())
+    }
+
+    /// Compare every reconstructed replay source without decoding or regenerating
+    /// a second copy of the already admitted economic catalog.
+    pub(crate) fn verify_reconstructed_session(
+        &self,
+        session: &ReplayTickSession<HypergraphStore>,
+    ) -> Result<(), RustPersistenceRuntimeError> {
+        let graph = session
+            .stable_graph_state()
+            .map_err(|_| RustPersistenceRuntimeError::ReplaySource)?;
+        let world = session
+            .world_registers()
+            .map_err(|_| RustPersistenceRuntimeError::ReplaySource)?;
+        if session.completed_tick() != 0
+            || graph.canonical_bytes() != self.stable_graph_bytes
+            || world.canonical_bytes() != self.world_register_bytes
+            || session.resolver_manifest_bytes() != self.resolver_manifest_bytes
+            || session.prepared_environment_bytes() != self.prepared_environment_bytes
+            || session.session_identity() != &self.replay_session_identity
+            || session.rng_seed() != self.rng_seed
+            || session.content_digest() != &self.content_digest
+            || session.reference_digest() != self.reference_digest
+        {
+            return Err(RustPersistenceRuntimeError::CampaignConflict);
         }
         Ok(())
     }
 
     #[allow(
         clippy::too_many_arguments,
-        reason = "the durable foundation has nine exact replay sources and five content artifacts"
+        reason = "the durable foundation has nine exact replay sources and one tagged content blob"
     )]
     pub(crate) fn from_persisted(
         stable_graph_bytes: Vec<u8>,
@@ -282,20 +358,10 @@ impl CampaignFoundation {
         defines_hash: [u8; 32],
         rules_hash: [u8; 32],
         reference_digest: [u8; 32],
-        scenario_source: &str,
-        prelude_source: Option<&str>,
-        rule_source: &str,
-        defines_bytes: &[u8],
-        reference_manifest: &[u8],
+        content_bundle_bytes: &[u8],
         expected_foundation_sha256: [u8; 32],
     ) -> Result<Self, RustPersistenceRuntimeError> {
-        let content_bundle = FoundationContentBundle::try_new(
-            scenario_source,
-            prelude_source,
-            rule_source,
-            defines_bytes,
-            reference_manifest,
-        )?;
+        let content_bundle = FoundationContentBundle::decode(content_bundle_bytes)?;
         let content_digest = ContentDigest {
             defines_hash,
             rules_hash,

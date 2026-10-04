@@ -698,5 +698,4 @@ class TestNativeObserverPlayTask:
     def test_play_uses_the_versioned_runtime_launcher_without_preadvance(self) -> None:
         task = _tasks()["play"]
         assert task["run"] == "uv run --frozen python tools/run_observer_session.py"
-        assert "durable Michigan observer" in str(task["description"])
         assert "usage" not in task

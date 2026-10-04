@@ -161,13 +161,14 @@ fn dossier_search_and_history_use_one_confined_repeatable_read_scope() {
 #[test]
 fn retained_bytes_require_complete_emission_and_captured_grants() {
     for field in [
-        "emission_json TEXT NOT NULL",
+        "body_bytes BYTEA NOT NULL",
+        "body_decoded_sha256 BYTEA NOT NULL",
         "grant_count",
         "atom_count",
         "provenance_source_id",
         "provenance_locator",
         "granted_tick",
-        "archive_tick_knowledge_member_v2",
+        "archive_knowledge_membership_v3",
     ] {
         assert!(SCHEMA.contains(field), "retained publication binds {field}");
     }

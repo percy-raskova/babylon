@@ -1,0 +1,28 @@
+{
+  "apportionments": [
+    {
+      "child": "m49:248",
+      "parent": "m49:246",
+      "persons": 30654,
+      "qualification": "Designed allocation uses the separately dated year-end observation to split the July Finland projection. It is not a UN July independent estimate; both source measures remain unchanged.",
+      "source": "aland_population",
+      "source_date": "2024-12-31"
+    }
+  ],
+  "contract": "WorldPopulationScopeV1",
+  "evidence_class": "Designed",
+  "included_in_parent": {
+    "m49:162": "m49:036",
+    "m49:166": "m49:036",
+    "m49:574": "m49:036",
+    "m49:744": "m49:578"
+  },
+  "semantics": {
+    "execution": "No runtime inventories, labor, capacity, purchasing power or needs are established by this artifact alone.",
+    "missing_areas": "No separate WPP row exists for Antarctica, Bouvet, British Indian Ocean Territory, South Georgia/South Sandwich, French Southern Territories, Heard/McDonald, US Minor Outlying Islands or Pitcairn. A missing row is not observed zero. Pitcairn appears only in the Polynesia aggregate note; do not apportion a regional total silently.",
+    "politics": "Geographic/statistical coverage and Designed gameplay markets are separate from jurisdiction, sovereignty, ownership and class.",
+    "population": "WPP2024 medium projections are demographic context, not a census, labor force, household count or productive capacity. Derived integer conversion preserves raw XML tokens. The source year does not change the game membership snapshot date.",
+    "rounding": "Preserve the four-person leaf-versus-world rounding residual. Do not force domestic ACS to the differently scoped UN US projection.",
+    "source_coverage": "Country/Area rows only. All region, income, development and world aggregates remain non-additive controls. Included areas do not receive duplicate independent quantities. Missing independent observations stay blank; their known group subtotals do not claim complete coverage."
+  }
+}

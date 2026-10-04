@@ -34,13 +34,13 @@ struct RepairIndustryObservation {
     row: MichiganIndustryBaselineRow,
 }
 
-fn source() -> Result<MichiganIndustryBaselineRow, MichiganMaterialError> {
+fn source(artifact: &[u8]) -> Result<MichiganIndustryBaselineRow, MichiganMaterialError> {
     use MichiganMaterialError::{ArtifactDecode, ArtifactDigest, SourceValue};
-    if crate::michigan_economy::digest_hex(&sha256_of(ARTIFACT)) != ARTIFACT_HASH {
+    if crate::michigan_economy::digest_hex(&sha256_of(artifact)) != ARTIFACT_HASH {
         return Err(ArtifactDigest);
     }
     let source: RepairIndustryObservation =
-        serde_json::from_slice(ARTIFACT).map_err(|_| ArtifactDecode)?;
+        serde_json::from_slice(artifact).map_err(|_| ArtifactDecode)?;
     let expected: BTreeMap<_, _> = [
         ("area_fips", "26163"),
         ("own_code", "5"),
@@ -58,20 +58,44 @@ fn source() -> Result<MichiganIndustryBaselineRow, MichiganMaterialError> {
         || source.vintage != 2024
         || source.source_url != SOURCE_URL
         || source.selection != expected
-        || source.row.source_sha256 != SOURCE_HASH
-        || source.row.annual_avg_estabs_count != 122
-        || source.row.annual_avg_emplvl != Some(1480)
-        || source.row.total_annual_wages != Some(119_725_241)
-        || source.row.annual_avg_wkly_wage != Some(1556)
-        || !source.row.disclosure_code.is_empty()
+        || !is_maintenance_observation(&source.row)
     {
         return Err(SourceValue);
     }
     Ok(source.row)
 }
 
+// Semantic pin for the selected published row. Reconstruction validates its
+// supplied artifact before compilation and never reopens the installed artifact.
+fn is_maintenance_observation(row: &MichiganIndustryBaselineRow) -> bool {
+    row.area_fips == "26163" && row.area_title == "Wayne County, Michigan"
+        && row.industry_code == "811310"
+        && row.industry_title == "NAICS 811310 Commercial and industrial machinery and equipment (except automotive and electronic) repair and maintenance"
+        && row.own_code == "5" && row.agglvl_code == "78"
+        && row.source_file == "2024.annual 26163 Wayne County, Michigan.csv"
+        && row.source_sha256 == SOURCE_HASH && row.disclosure_code.is_empty()
+        && row.annual_avg_estabs_count == 122 && row.annual_avg_emplvl == Some(1480)
+        && row.total_annual_wages == Some(119_725_241)
+        && row.annual_avg_wkly_wage == Some(1556)
+}
+
 pub(super) fn compile(
     base: &MichiganMaterialCatalog,
+) -> Result<MichiganMaterialCatalog, MichiganDefinesError> {
+    let mut context = super::captured::MichiganObservedSources::fresh()?;
+    context.artifacts.clone_from(&base.source_inputs);
+    context
+        .artifacts
+        .push(crate::economic_catalog::SourceArtifact::capture(
+            crate::economic_catalog::SourceArtifactKind::MichiganMaintenanceIndustry,
+            ARTIFACT.to_vec(),
+        ));
+    compile_with_sources(base, ARTIFACT, &context)
+}
+pub(super) fn compile_with_sources(
+    base: &MichiganMaterialCatalog,
+    artifact: &[u8],
+    observed: &super::captured::MichiganObservedSources<'_>,
 ) -> Result<MichiganMaterialCatalog, MichiganDefinesError> {
     use MichiganDefinesError::Material;
     if base.preset() != MichiganDeliveryPreset::StatewideBaseline || base.maintenance().is_some() {
@@ -92,7 +116,13 @@ pub(super) fn compile(
         .find(|i| i.good_key == STOCK)
         .ok_or(Material(MichiganMaterialError::ContentReference))?
         .opening_quantity = d.consumer_opening_metal_stock;
-    append_provider(&mut c, d, defines.hours_per_period())?;
+    append_provider(
+        &mut c,
+        d,
+        defines.hours_per_period(),
+        artifact,
+        observed.sectors,
+    )?;
     c.routes.push(MichiganMaterialRoute {
         key: "26163-metal-parts-maintenance-replenishment".to_owned(),
         supplier_site_key: consumer_site,
@@ -102,11 +132,12 @@ pub(super) fn compile(
         path: MichiganMaterialPath::Local,
     });
     let interventions = interventions(d);
-    MichiganMaterialCatalog::from_normalized(
+    MichiganMaterialCatalog::from_normalized_with_sources(
         defines,
         c,
         MichiganDeliveryPreset::StatewideMaintenanceBaseline,
         interventions,
+        observed,
     )
 }
 
@@ -114,6 +145,8 @@ fn append_provider(
     c: &mut MichiganNormalizedContent,
     d: &MaintenanceDefines,
     hours_per_period: u64,
+    artifact: &[u8],
+    sectors: &crate::michigan_sectors::MichiganCountySectors,
 ) -> Result<(), MichiganDefinesError> {
     use MichiganDefinesError::Material;
     c.sites.push(MichiganMaterialSite {
@@ -124,9 +157,13 @@ fn append_provider(
         sector_code: "81".to_owned(),
         role: MichiganSiteRole::Maintenance,
     });
-    c.owners
-        .push(regional::owner_source("26163", "81", ARTIFACT_HASH)?);
-    c.industry.push(source().map_err(Material)?);
+    c.owners.push(regional::owner_source_from_rows(
+        "26163",
+        "81",
+        ARTIFACT_HASH,
+        sectors,
+    )?);
+    c.industry.push(source(artifact).map_err(Material)?);
     c.staffing.pools.push(MichiganWorkforceSeed {
         key: PROVIDER.to_owned(),
         site_key: PROVIDER.to_owned(),
@@ -221,10 +258,11 @@ pub(super) fn validate(c: &MichiganNormalizedContent) -> Result<(), MichiganMate
         || provider.county_geoid != "26163"
         || provider.sector_code != "81"
         || provider.naics != "811310"
-        || c.industry
+        || !c
+            .industry
             .iter()
             .find(|r| r.area_fips == "26163" && r.industry_code == "811310")
-            != Some(&source()?)
+            .is_some_and(is_maintenance_observation)
     {
         return Err(SourceValue);
     }

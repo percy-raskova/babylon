@@ -1415,6 +1415,7 @@ mod governed_field_write_prohibition_tests {
             systems: Box::leak(Box::new(HashSet::from([
                 "control-ratio".to_owned(),
                 "geography".to_owned(),
+                "population".to_owned(),
             ]))),
             vocabulary_registry: None,
             rule_file: "x.bsl",
@@ -1422,10 +1423,34 @@ mod governed_field_write_prohibition_tests {
     }
 
     #[test]
-    fn the_governed_table_names_the_county_mapping_field() {
+    fn rules_cannot_rewrite_captured_household_count_principals() {
+        let ctx = load_ctx();
+        for field in ["household/persons", "household/households"] {
+            let source = format!(
+                "(rule population/source-probe :role mechanic :evidence designed \
+                 :material-basis \"captured source mutation probe\" :fuel 64 \
+                 (bindings) (effects (update-node self {field} (set 1))))"
+            );
+            let error = load_rule(&source, &ctx).unwrap_err();
+            assert!(
+                matches!(
+                    error,
+                    LoadError::Causal(ContractError::GovernedFieldWriteProhibited { .. })
+                ),
+                "{field}: {error:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_governed_table_names_fixed_geography_and_resident_count_principals() {
         assert_eq!(
             GOVERNED_WRITE_PROHIBITED_NODE_FIELDS,
-            &["territory/county-fips"]
+            &[
+                "territory/county-fips",
+                "household/persons",
+                "household/households"
+            ]
         );
     }
 

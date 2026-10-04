@@ -1,0 +1,102 @@
+ADR270_household_time_and_material_organizer:
+  status: accepted
+  date: '2026-10-02'
+  issue: PER-337
+  title: Household time and material support constrain independently authorized organizational practice
+  evidence_class: Designed
+  authority:
+    - Director-approved national economy, local aid and cross-region solidarity implementation
+    - Director clarification that households are the minimum economic decision unit
+    - Recorded PER-337 paid and unpaid household time and separate organizational consent
+  partially_supersedes:
+    - ADR262 fixed participant hours for the richer national campaign
+  context: |
+    Resident budgets must not merge wage income, ownership income or unmet needs
+    across an entire county. Political participation cannot consume a second copy
+    of hours already occupied by employment or household obligations. Material aid
+    can relieve a particular obligation without producing political agreement.
+    The current organizer admits commands before the material close and resolves
+    practice after it. Its fixed contributor allowances do not yet carry household
+    attendance or provisioning evidence.
+  decision: |
+    Keep households and sparse household cohorts as budget and provisioning units.
+    People, employed and reserve workers remain conserved counts. No individual
+    agent, gender assignment or inferred political class is needed. Collective
+    residences keep explicit counted accounts rather than invented households.
+
+    Capture finite household time policies with declared person-hour units.
+    Sources account for eligible residents supplying a time endowment; Designed
+    coefficients distinguish the modeled time endowment, protected household
+    commitments, routine unpaid provisioning and additional burdens associated
+    with specific unmet goods or services. These are inspectable game policies,
+    not observed time-use estimates or assertions that unpaid work is determined
+    by sex. Initial eligibility uses the existing observed age-16-plus margin,
+    not an inferred age-18-plus adult count or employment requirement. Allocate
+    that fixed county margin across household cohorts subject to workforce less
+    than or equal to eligible residents less than or equal to persons. Preserve
+    armed, inactive and under-16 counts separately through an explicitly Designed
+    joint allocation. Inactive does not identify retirees. Political contribution
+    does not require entering the employment workforce or creating a member row.
+    Actual attendance has priority and includes paid idle, working-owner
+    and unpaid-family attendance. Join unique current-period member receipts by
+    household payee and subtract attended hours once. Do not subtract wages paid
+    for earlier attendance, pool labor or the attendance-purpose partition again.
+
+    Account separately for available time, attended time, protected commitments,
+    allocated unpaid commitments, unresolved commitments, voluntary contributions
+    and remaining time. Declared commitments do not automatically produce food or
+    services. Unemployment does not erase needs or turn unmet provisioning into
+    leisure. Receipt equations must reconcile finite hours and identify overburden.
+
+    Bind contributor bodies to real household principals, explicit counted
+    participation and consent limits. Several bodies drawing from one household
+    share one household-period resource. Retain the existing finite resource
+    allocator; do not add ActionBudget as a second time supply. Subdivide small
+    participant and recipient cohorts from captured domestic budgets when needed
+    for meaningful aid. Conserve persons, households, workforce, cash, stocks and
+    ownership through that subdivision. Political agreement remains a separate
+    explicit relation, not a household category or an effect of receipt of aid.
+
+    Admission authorizes an attempt against dated evidence. Material resolution
+    supplies actual current-period availability. Keep the accepted command and
+    action identity unchanged when availability differs. Resource shortage is a
+    recorded incomplete outcome, not successful practice and not malformed input.
+    Actual allocated effort can be consumed without a completed product. Invalid
+    inputs and failed transactions continue to publish nothing. Independent
+    partners retain their own authority, policies and finite contributions.
+
+    Local aid and remote support commit actual organizational cash, goods and
+    participant effort. Consume each accepted material commitment once at the
+    next period's material admission, through the same escrow, orders, freight,
+    inventory, settlement and household handoff as ordinary purchases. Remote
+    dispatch and payment do not establish recipient consumption. Support affects
+    household availability only through actual provisioning and consumption.
+    Later independently authorized practice may use the resulting available time;
+    aid itself creates no agreement, membership, consciousness or worker-hours.
+
+    Keep fixed-time and fixed-price controls as explicit current scenarios. They
+    are controls, not old-format fallbacks. Persist current time evidence and
+    once-only product consumption within the existing marker-last tick boundary.
+    Older unsupported captures remain recoverable data and refuse clearly.
+  source_qualification: |
+    The recorded Grundrisse and Capital passages distinguish reproduction,
+    consumption, labor-power and circulation. The selected MIM and Cope arguments
+    address unpaid domestic work with substantive disagreements about gender,
+    class and imperial relations. None supplies the proposed game time constants
+    or proves that provisioning causes consent. Exact constants require Designed
+    labels, dimensional checks and actual play evidence.
+  source_record:
+    - docs/superpowers/research/2026-09-20-economic-circuit-source-study.md
+    - reports/household-time-design-2026-10-02.md
+  consequences: |
+    This decision records the implementation boundary; it does not establish that
+    the time consumer, aid circuit or national organizer is delivered. Current
+    national advance, durable persistence and playable qualification remain open.
+    No reserved theoretical line or mathematical primitive changes.
+  verification:
+    - Exact time journal and shared-household aliasing witness.
+    - Attendance including paid idle and late wage payment do not double-charge time.
+    - Changed availability after consent records shortage without successful products.
+    - Duplicate aid admission has one cash, goods, time and product-consumption effect.
+    - Remote support has no provisioning consequence before arrival and consumption.
+    - Severing consumption, contribution or agreement removes the corresponding consequence.

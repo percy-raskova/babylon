@@ -1,6 +1,6 @@
 use babylon_material_circuit::SupplierTransport;
 use babylon_material_circuit::{
-    advance_material_circuit, BacklogRow, CorridorCapacity, CorridorId, FreightMassCoefficient,
+    advance_material_circuit, BacklogRow, CommodityDefinition, CorridorCapacity, CorridorId,
     GoodId, InventoryRow, LaborCapacityRow, LogisticsNodeId, MaterialCircuitState,
     MerchantHandling, MerchantHandlingCoefficient, MerchantRole, OrderAccessMode, OrderId,
     OrderRow, RouteId, RouteStage, RouteStageCapacity, SiteId, SiteLogisticsNode, SupplierRoute,
@@ -18,9 +18,10 @@ fn merchant() -> MaterialCircuitState {
     let source_node = LogisticsNodeId::from_bytes([1; 32]);
     let buyer_node = LogisticsNodeId::from_bytes([2; 32]);
     MaterialCircuitState {
+        capacity_supply: babylon_material_circuit::CapacitySupply::FiniteSchedule,
         merchants: vec![MerchantHandling {
             site_id: source,
-            county_geoid: *b"26163",
+            location: "county:26163".parse().unwrap(),
             role: MerchantRole::Retail,
             capacity_id: CorridorId::from_bytes([9; 32]),
             labor_unit_id: UnitId::from_bytes([8; 32]),
@@ -33,6 +34,7 @@ fn merchant() -> MaterialCircuitState {
         }],
         final_demand_principals: vec![],
         final_demand_orders: vec![],
+        accounting: babylon_material_circuit::CircuitAccounting::PhysicalControl,
         maintenance_binding: None,
         maintenance_service: None,
         period: 1,
@@ -49,10 +51,12 @@ fn merchant() -> MaterialCircuitState {
         process_outputs: vec![],
         input_coefficients: vec![],
         labor_coefficients: vec![],
-        freight_mass_coefficients: vec![FreightMassCoefficient {
+        service_connections: vec![],
+        service_orders: vec![],
+        commodities: vec![CommodityDefinition {
             good_id,
             unit_id,
-            grams_per_unit: 10,
+            kind: babylon_material_circuit::CommodityKind::Storable { grams_per_unit: 10 },
         }],
         supplier_routes: vec![SupplierRoute {
             transport_kind: SupplierTransport::Staged,
@@ -143,7 +147,7 @@ fn add_local_order(state: &mut MaterialCircuitState) {
     let principal = FinalDemandPrincipalId::from_bytes([10; 32]);
     state.final_demand_principals.push(FinalDemandPrincipal {
         id: principal,
-        county_geoid: store.county_geoid,
+        location: store.location,
     });
     state.final_demand_orders.push(FinalDemandOrder {
         order_id: OrderId::from_bytes([11; 32]),
@@ -428,11 +432,10 @@ fn merchant_admission_refuses_invalid_coefficients_county_role_and_capacity_owne
         |s| s.handling_coefficients[0].hours_per_unit = 0,
         |s| s.handling_coefficients.clear(),
         |s| s.final_demand_orders[0].fulfilled = 11,
-        |s| s.final_demand_principals[0].county_geoid = *b"26001",
+        |s| s.final_demand_principals[0].location = "county:26001".parse().unwrap(),
         |s| s.merchants[0].role = MerchantRole::Wholesale,
         |s| s.merchants.push(s.merchants[0].clone()),
         |s| s.final_demand_orders.push(s.final_demand_orders[0].clone()),
-        |s| s.final_demand_principals[0].county_geoid = *b"26bad",
     ];
     for mutate in mutations {
         let mut malformed = base.clone();
@@ -475,13 +478,11 @@ fn new_families_are_canonical_hash_bound_and_local_routed_ids_are_disjoint() {
     let mut duplicate_good = state.handling_coefficients[0].clone();
     duplicate_good.good_id = GoodId::from_bytes([99; 32]);
     state.handling_coefficients.push(duplicate_good.clone());
-    state
-        .freight_mass_coefficients
-        .push(FreightMassCoefficient {
-            good_id: duplicate_good.good_id,
-            unit_id: duplicate_good.unit_id,
-            grams_per_unit: 10,
-        });
+    state.commodities.push(CommodityDefinition {
+        good_id: duplicate_good.good_id,
+        unit_id: duplicate_good.unit_id,
+        kind: babylon_material_circuit::CommodityKind::Storable { grams_per_unit: 10 },
+    });
     let original = encode_material_circuit_state(&state).unwrap();
     let completed = advance_material_circuit(&state).unwrap();
     assert_eq!(
@@ -497,7 +498,7 @@ fn new_families_are_canonical_hash_bound_and_local_routed_ids_are_disjoint() {
     permuted.handling_coefficients.reverse();
     permuted.final_demand_principals.reverse();
     permuted.final_demand_orders.reverse();
-    permuted.freight_mass_coefficients.reverse();
+    permuted.commodities.reverse();
     permuted.corridor_capacities.reverse();
     permuted.site_logistics_nodes.reverse();
     assert_eq!(encode_material_circuit_state(&permuted).unwrap(), original);
@@ -505,8 +506,8 @@ fn new_families_are_canonical_hash_bound_and_local_routed_ids_are_disjoint() {
     let baseline = material_circuit_state_digest(&state).unwrap();
     let mutations: &[fn(&mut MaterialCircuitState)] = &[
         |s| {
-            s.merchants[0].county_geoid = *b"26001";
-            s.final_demand_principals[0].county_geoid = *b"26001";
+            s.merchants[0].location = "county:26001".parse().unwrap();
+            s.final_demand_principals[0].location = "county:26001".parse().unwrap();
         },
         |s| s.handling_coefficients[0].hours_per_unit += 1,
         |s| {
@@ -530,7 +531,7 @@ fn multiple_merchants_and_county_accounts_preserve_identity_under_all_new_row_pe
     let second_site = state.site_logistics_nodes[1].site_id;
     let mut second_store = state.merchants[0].clone();
     second_store.site_id = second_site;
-    second_store.county_geoid = *b"26001";
+    second_store.location = "county:26001".parse().unwrap();
     second_store.capacity_id = CorridorId::from_bytes([20; 32]);
     let mut coefficient = state.handling_coefficients[0].clone();
     coefficient.site_id = second_site;
@@ -543,7 +544,7 @@ fn multiple_merchants_and_county_accounts_preserve_identity_under_all_new_row_pe
     labor.available = 9;
     let mut demand = state.final_demand_principals[0].clone();
     demand.id = FinalDemandPrincipalId::from_bytes([21; 32]);
-    demand.county_geoid = second_store.county_geoid;
+    demand.location = second_store.location;
     let mut order = state.final_demand_orders[0].clone();
     order.order_id = OrderId::from_bytes([22; 32]);
     order.retailer_site_id = second_site;
@@ -586,11 +587,16 @@ fn merchant_role_encoding_rejects_unknown_tags() {
     let state = local_store();
     let mut bytes = encode_material_circuit_state(&state).unwrap();
     // Four trailing row families plus absent binding/service tags: counts,
-    // merchant(102), coefficient(104), county principal(37), local order(176),
-    // and two zero option bytes. The merchant role follows its site and county.
+    // merchant(103), coefficient(104), located principal(38), local order(176),
+    // two absent options and the explicit physical-control tag. The merchant
+    // role follows its site and location; two empty service row counts end the state.
     assert!(state.maintenance_binding.is_none() && state.maintenance_service.is_none());
-    assert_eq!(&bytes[bytes.len() - 2..], &[0, 0]);
-    let role_offset = bytes.len() - (4 * 4 + 102 + 104 + 37 + 176 + 2) + 4 + 32 + 5;
+    assert_eq!(
+        state.accounting,
+        babylon_material_circuit::CircuitAccounting::PhysicalControl
+    );
+    assert_eq!(&bytes[bytes.len() - 4..], &[0, 0, 0, 0]);
+    let role_offset = bytes.len() - (4 * 4 + 103 + 104 + 38 + 176 + 12) + 4 + 32 + 6;
     assert_eq!(bytes[role_offset], 2);
     bytes[role_offset] = 3;
     assert_eq!(

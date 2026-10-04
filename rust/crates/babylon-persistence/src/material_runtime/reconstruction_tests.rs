@@ -1,6 +1,6 @@
 use super::*;
 use babylon_kernel::replay::{ReplaySeed, ReplaySessionId};
-use babylon_tick::material_state::MaterialState;
+use babylon_tick::material_state::{MaterialGeography, MaterialState};
 
 pub(super) fn persisted_graph_copy(original: &CampaignFoundation) -> CampaignFoundation {
     let bundle = original.content_bundle();
@@ -14,13 +14,7 @@ pub(super) fn persisted_graph_copy(original: &CampaignFoundation) -> CampaignFou
         original.content_digest().defines_hash,
         original.content_digest().rules_hash,
         *original.reference_digest().as_bytes(),
-        std::str::from_utf8(bundle.scenario_source_bytes()).unwrap(),
-        bundle
-            .prelude_source_bytes()
-            .map(|bytes| std::str::from_utf8(bytes).unwrap()),
-        std::str::from_utf8(bundle.rule_source_bytes()).unwrap(),
-        bundle.defines_bytes(),
-        bundle.reference_bundle_manifest_bytes(),
+        bundle.canonical_bytes(),
         sha256_of(original.canonical_bytes()),
     )
     .unwrap()
@@ -30,7 +24,6 @@ pub(super) fn stored_copy(original: &MaterialRuntimeFoundation) -> StoredMateria
     StoredMaterialFoundation {
         spec: original.spec.clone(),
         initial_register_bytes: original.register.canonical_bytes().to_vec(),
-        foundation_bytes: original.canonical_bytes().to_vec(),
         foundation_digest: original.digest(),
         graph_foundation_digest: sha256_of(original.graph_foundation.canonical_bytes()),
     }
@@ -103,7 +96,11 @@ fn material_foundation_refuses_a_rule_bundle_different_from_its_captured_catalog
         original.graph_foundation().rng_seed(),
         changed_bundle.content_digest().clone(),
         changed_bundle.reference_digest(),
-        MaterialState::try_new(crate::michigan_dynamic_hex_foundation().unwrap()).unwrap(),
+        MaterialState::try_from_geography(MaterialGeography::MichiganControl {
+            local_detail: crate::michigan_dynamic_hex_foundation().unwrap(),
+            reference_bundle_digest: *changed_bundle.reference_digest().as_bytes(),
+        })
+        .unwrap(),
     )
     .unwrap();
     assert!(matches!(
@@ -128,34 +125,19 @@ fn recapture_with_seed(
     original: &MaterialRuntimeFoundation,
     seed: i64,
 ) -> Result<MaterialRuntimeFoundation, MaterialRuntimeError> {
-    let bundle = original.graph_foundation.content_bundle();
-    let source = std::str::from_utf8(bundle.scenario_source_bytes()).unwrap();
-    let rules = std::str::from_utf8(bundle.rule_source_bytes()).unwrap();
-    let graph = ReplayTickSession::new(
-        source,
-        None,
-        rules,
-        HypergraphStore::new(),
-        ReplaySessionId::try_from("fixture/stored-content-v2").unwrap(),
+    let graph = original.graph_foundation();
+    let captured = graph
+        .content_bundle()
+        .economic_catalog()
+        .ok_or(MaterialRuntimeError::FoundationMismatch)?;
+    let catalog = crate::economic_catalog::CapturedEconomicCatalog::decode(
+        captured.canonical_bytes(),
+        captured.digest(),
+    )
+    .map_err(|_| MaterialRuntimeError::FoundationMismatch)?;
+    catalog.create_foundation(
+        graph.replay_session_identity().clone(),
         ReplaySeed::new(seed),
-        bundle.content_digest().clone(),
-        bundle.reference_digest(),
-        MaterialState::try_new(crate::michigan_dynamic_hex_foundation().unwrap()).unwrap(),
-    )
-    .unwrap();
-    let revised_bundle = FoundationContentBundle::try_new(
-        source,
-        None,
-        rules,
-        bundle.defines_bytes(),
-        bundle.reference_bundle_manifest_bytes(),
-    )
-    .unwrap();
-    MaterialRuntimeFoundation::capture(
-        graph,
-        revised_bundle,
-        original.register.state().clone(),
-        original.spec.clone(),
     )
 }
 
@@ -167,10 +149,7 @@ fn typed_experiment_refuses_a_graph_seed_different_from_its_captured_input() {
     .unwrap();
     let original = experiment.create_foundation().unwrap();
     assert!(recapture_with_seed(&original, experiment.seed).is_ok());
-    assert!(matches!(
-        recapture_with_seed(&original, 9821),
-        Err(MaterialRuntimeError::FoundationMismatch)
-    ));
+    assert!(recapture_with_seed(&original, 9821).is_err());
 }
 
 #[test]
@@ -220,15 +199,17 @@ fn reconstruction_refuses_component_changes_and_an_unadmitted_expected_identity(
         .create_foundation(&crate::test_support::catalog())
         .unwrap();
     let expected = original.digest();
-    for mutation in 0..6 {
+    for mutation in 0..5 {
         let mut stored = stored_copy(&original);
         match mutation {
             0 => stored.spec.content_digest[0] ^= 1,
             1 => stored.spec.preset_id.push_str("-changed"),
-            2 => stored.spec.horizon_ticks += 1,
-            3 => stored.foundation_bytes[0] ^= 1,
-            4 => stored.foundation_digest[0] ^= 1,
-            5 => stored.graph_foundation_digest[0] ^= 1,
+            2 => {
+                stored.spec.duration =
+                    babylon_kernel::clock::CampaignDuration::Finite { final_period: 17 }
+            }
+            3 => stored.foundation_digest[0] ^= 1,
+            4 => stored.graph_foundation_digest[0] ^= 1,
             _ => unreachable!(),
         }
         assert!(matches!(
@@ -451,8 +432,15 @@ fn assert_delayed_panel_retention(
     use babylon_graph::stable_element::StableElementKey;
     let events = candidate.graph_report().successful_event_batch().events();
     assert_eq!(events.len(), 5);
+    let panel_name = crate::test_support::catalog()
+        .staffing()
+        .pools
+        .iter()
+        .find(|seed| seed.key == "panel-forming")
+        .unwrap()
+        .workplace_local_name();
     let panel = events.iter().find(|event| event.fields().iter().any(|(key,value)| {
-        key == "subject" && matches!(value, StableBslValue::Node(StableElementKey::Node{local_name,..}) if local_name == "workforce-panel-forming")
+        key == "subject" && matches!(value, StableBslValue::Node(StableElementKey::Node{local_name,..}) if *local_name == panel_name)
     })).unwrap();
     let field = |name| match &panel
         .fields()
@@ -520,7 +508,11 @@ fn unwrapped_definitions_and_changed_opening_workforce_are_not_scheduled_fallbac
             ReplaySeed::new(319),
             bundle.content_digest().clone(),
             bundle.reference_digest(),
-            MaterialState::try_new(crate::michigan_dynamic_hex_foundation().unwrap()).unwrap(),
+            MaterialState::try_from_geography(MaterialGeography::MichiganControl {
+                local_detail: crate::michigan_dynamic_hex_foundation().unwrap(),
+                reference_bundle_digest: *bundle.reference_digest().as_bytes(),
+            })
+            .unwrap(),
         )
         .unwrap();
         assert!(matches!(
@@ -575,7 +567,7 @@ fn assert_workforce_seed_evidence(
     assert_eq!(events.len(), 5);
     for seed in &catalog.staffing().pools {
         let event = events.iter().find(|event| event.fields().iter().any(|(key,value)| {
-            key == "subject" && matches!(value, StableBslValue::Node(StableElementKey::Node{local_name,..}) if *local_name == seed.local_name())
+            key == "subject" && matches!(value, StableBslValue::Node(StableElementKey::Node{local_name,..}) if *local_name == seed.workplace_local_name())
         })).unwrap();
         for (field, value) in [
             ("opening-employed", seed.employed),
@@ -624,9 +616,14 @@ fn material_transition_failure_abandons_prepared_graph_and_identity() {
             });
     }
     let register = MaterialWorldRegister::try_new(0, initial).unwrap();
-    let session =
-        MaterialReplaySession::new(foundation.graph, register, [7; 32], 16, foundation.labor)
-            .unwrap();
+    let session = MaterialReplaySession::new(
+        foundation.graph,
+        register,
+        [7; 32],
+        babylon_kernel::clock::CampaignDuration::Finite { final_period: 16 },
+        foundation.labor,
+    )
+    .unwrap();
     let bytes = session.material().canonical_bytes().to_vec();
     let hash = session.current_world_hash().unwrap();
     let actions =
@@ -648,4 +645,88 @@ fn material_transition_failure_abandons_prepared_graph_and_identity() {
     assert_eq!(session.graph_session().completed_tick(), 0);
     assert_eq!(session.material().canonical_bytes(), bytes);
     assert_eq!(session.current_world_hash().unwrap(), hash);
+}
+
+#[test]
+fn captured_source_refuses_changed_tick_zero_organizer_agreements() {
+    let catalog = crate::michigan_material::MichiganMaterialCatalog::load_for_preset(
+        &std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../content/scenarios/michigan/defines.toml"),
+        crate::michigan_material::MichiganDeliveryPreset::OrganizeInWayne,
+    )
+    .unwrap();
+    let original = crate::michigan_content::MichiganContentPreset::OrganizeInWayne
+        .create_foundation_for_campaign(
+            &catalog,
+            crate::identity::CampaignId::from_uuid(uuid::Uuid::from_u128(0x40_265)),
+        )
+        .unwrap();
+    let mut changed = original
+        .initial_register()
+        .organizer_state()
+        .unwrap()
+        .clone();
+    assert!(!changed.agreements.is_empty());
+    changed.agreements.clear();
+    let altered_register =
+        MaterialWorldRegister::try_new(0, original.initial_register().state().clone())
+            .unwrap()
+            .with_organizer(
+                original
+                    .initial_register()
+                    .organizer_config()
+                    .unwrap()
+                    .clone(),
+                changed,
+            )
+            .unwrap();
+    let graph = reconstruct_graph_foundation_session(original.graph_foundation()).unwrap();
+    assert!(MaterialRuntimeFoundation::capture_register(
+        graph,
+        FoundationContentBundle::decode(
+            original
+                .graph_foundation()
+                .content_bundle()
+                .canonical_bytes(),
+        )
+        .unwrap(),
+        altered_register,
+        original.spec().clone(),
+    )
+    .is_err());
+}
+
+#[test]
+fn single_owner_components_preserve_binary_export_and_reject_framing_damage() {
+    let original = crate::michigan_content::MichiganContentPreset::FourWeekStandard
+        .create_foundation(&crate::test_support::catalog())
+        .unwrap();
+    let rebuilt = reconstruct_material_foundation(
+        stored_copy(&original),
+        persisted_graph_copy(original.graph_foundation()),
+        original.digest(),
+    )
+    .unwrap();
+    assert_eq!(rebuilt.canonical_bytes(), original.canonical_bytes());
+    assert_eq!(rebuilt.digest(), original.digest());
+    assert_eq!(
+        MaterialRuntimeFoundation::decode(original.canonical_bytes(), original.digest())
+            .unwrap()
+            .canonical_bytes(),
+        original.canonical_bytes()
+    );
+    let mut trailing = original.canonical_bytes().to_vec();
+    trailing.push(0);
+    assert!(matches!(
+        MaterialRuntimeFoundation::decode(&trailing, sha256_of(&trailing)),
+        Err(MaterialRuntimeError::FoundationMismatch)
+    ));
+    let mut damaged = stored_copy(&original);
+    damaged.initial_register_bytes.push(0);
+    assert!(reconstruct_material_foundation(
+        damaged,
+        persisted_graph_copy(original.graph_foundation()),
+        original.digest()
+    )
+    .is_err());
 }

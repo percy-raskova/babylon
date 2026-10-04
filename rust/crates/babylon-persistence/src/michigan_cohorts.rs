@@ -166,19 +166,31 @@ fn build_cohorts_with_workforce(
 ) -> Result<MichiganCohorts, MichiganCohortsError> {
     let economy = michigan_economy().map_err(MichiganCohortsError::Economy)?;
     let sectors = michigan_county_sectors().map_err(MichiganCohortsError::Sectors)?;
+    build_cohorts_from_sources(
+        economy,
+        sectors,
+        include_str!("../../../../content/scenarios/michigan/cohort-declarations.bscn"),
+        workforce,
+    )
+}
+
+pub(crate) fn build_cohorts_from_sources(
+    economy: &crate::michigan_economy::MichiganEconomy,
+    sectors: &MichiganCountySectors,
+    declarations: &str,
+    workforce: &[crate::michigan_material::MichiganWorkforceSeed],
+) -> Result<MichiganCohorts, MichiganCohortsError> {
     if sectors.rows().len() != 1_603 {
         return Err(MichiganCohortsError::Coverage);
     }
     let workforce_type = if workforce.is_empty() {
         ""
     } else {
-        " SOCIAL_CLASS"
+        " BUSINESS SOCIAL_CLASS"
     };
     let mut source = format!("(scenario {MICHIGAN_COHORT_SCENARIO}\n  (defvocabulary NodeType (TERRITORY ORGANIZATION{workforce_type}))\n  (defvocabulary HyperedgeType (ECONOMIC_SECTOR))\n  (deffield territory/county-fips int extensive)\n");
     append_county_observations(&mut source, economy.counties());
-    source.push_str(include_str!(
-        "../../../../content/scenarios/michigan/cohort-declarations.bscn"
-    ));
+    source.push_str(declarations);
     for row in sectors.rows() {
         append_business(&mut source, row)?;
     }
@@ -188,7 +200,7 @@ fn build_cohorts_with_workforce(
             writeln!(&mut source, "  (deffield {field} int extensive)").expect("String write");
         }
         for seed in workforce {
-            writeln!(&mut source, "  (node {} NodeType/SOCIAL_CLASS (social-class/employed-population {}) (social-class/reserve-population {}) (social-class/previous-unretained-labor-hours {}))", seed.local_name(), seed.employed, seed.reserve, seed.previous_unretained_hours).expect("String write");
+            append_workforce_seed(&mut source, seed);
         }
     }
     source.push_str(")\n");
@@ -200,6 +212,7 @@ fn build_cohorts_with_workforce(
 }
 
 /// Material-only graph composition. The observed foundation has no workforce seeds.
+#[cfg(test)]
 pub(crate) fn michigan_staffed_scenario(
     workforce: &[crate::michigan_material::MichiganWorkforceSeed],
 ) -> Result<String, MichiganCohortsError> {
@@ -230,6 +243,23 @@ pub fn michigan_cohort_foundation(
         cohorts.defines_bytes(),
     )
     .map_err(MichiganCohortsError::Economy)
+}
+
+/// The workplace owns request memory; its resident member alone owns E/R stocks.
+pub(crate) fn append_workforce_seed(
+    source: &mut String,
+    seed: &crate::michigan_material::MichiganWorkforceSeed,
+) {
+    writeln!(
+        source,
+        "  (node {} NodeType/BUSINESS (business/previous-unretained-labor-hours {}))",
+        seed.workplace_local_name(),
+        seed.previous_unretained_hours
+    )
+    .expect("String write");
+    if seed.employed != 0 || seed.reserve != 0 {
+        writeln!(source, "  (node {} NodeType/SOCIAL_CLASS (social-class/employed-population {}) (social-class/reserve-population {}))", seed.local_name(), seed.employed, seed.reserve).expect("String write");
+    }
 }
 
 #[cfg(test)]

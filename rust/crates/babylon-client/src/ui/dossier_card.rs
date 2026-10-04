@@ -1717,17 +1717,20 @@ mod tests {
         ArchivePageRef::try_new(kind, id.into()).unwrap()
     }
     fn frame(session: &ObserverSession, hash: &str) -> ObserverFrame {
-        ObserverFrame(Some(ObserverEconomySnapshot {
-            campaign_id: session.campaign.as_uuid().to_string(),
-            resolve_tick: session.viewed_tick,
-            foundation_digest: "foundation".into(),
-            nominal_world_hash: None,
-            tick_content_hash: Some(hash.into()),
-            envelope_digest: None,
-            visibility: ObserverVisibility::FullObserver,
-            counties: vec![],
-            production: None,
-        }))
+        ObserverFrame(
+            Some(ObserverEconomySnapshot {
+                campaign_id: session.campaign.as_uuid().to_string(),
+                resolve_tick: session.viewed_tick,
+                foundation_digest: "foundation".into(),
+                nominal_world_hash: None,
+                tick_content_hash: Some(hash.into()),
+                envelope_digest: None,
+                visibility: ObserverVisibility::FullObserver,
+                counties: vec![],
+                production: None,
+            }),
+            None,
+        )
     }
     fn installed(session: &ObserverSession, hash: &str) -> InstalledDossier {
         let read_scope =

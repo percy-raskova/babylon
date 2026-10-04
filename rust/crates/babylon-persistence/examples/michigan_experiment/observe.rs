@@ -377,7 +377,7 @@ fn processes(
                 })
                 .ok_or_else(|| contract("unbound process workforce"))?;
             let staffing = staffing
-                .remove(&seed.local_name())
+                .remove(&seed.workplace_local_name())
                 .ok_or_else(|| contract("missing process staffing receipt"))?;
             let input = catalog
                 .good(&input_recipe.good_key)

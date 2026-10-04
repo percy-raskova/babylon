@@ -308,12 +308,14 @@ fn spawn_approaches(body: &mut ChildSpawnerCommands) {
 
 fn spawn_approach_grid(choices: &mut ChildSpawnerCommands) {
     choices.spawn((text("", 13.0, theme::YELLOW), TextPart::ChoiceHeading));
+    spawn_approach(choices, OrganizerChoice::Collect);
     for pair in [
         [
             OrganizerChoice::Inquiry(OrganizerInquiry::WorkLost),
             OrganizerChoice::Inquiry(OrganizerInquiry::MaintenanceReceived),
         ],
         [OrganizerChoice::Reinforce, OrganizerChoice::Hold],
+        [OrganizerChoice::LocalAid, OrganizerChoice::RemoteAid],
     ] {
         choices
             .spawn(Node {
@@ -614,13 +616,19 @@ fn visible(
 
 fn enabled(action: OrganizerAction, client: &OrganizerClient, session: &ObserverSession) -> bool {
     match action {
-        OrganizerAction::Choose(_) | OrganizerAction::Review => client.available(session),
+        OrganizerAction::Choose(choice) => {
+            client.available(session) && client.choice_available(choice)
+        }
+        OrganizerAction::Review => {
+            client.available(session) && client.choice_available(client.choice())
+        }
         OrganizerAction::Advance => {
             crate::observer_controls::availability(ObserverCommand::Step, session)
                 == crate::observer_controls::ControlAvailability::Enabled
         }
         OrganizerAction::Confirm => {
             client.available(session)
+                && client.choice_available(client.choice())
                 && client.review_context.as_ref() == Some(&session.context())
                 && client.preview.as_ref().is_some_and(|preview| {
                     preview.refusal.is_none() && preview.current_period == session.durable_tick
@@ -641,10 +649,15 @@ fn enabled(action: OrganizerAction, client: &OrganizerClient, session: &Observer
         }
         OrganizerAction::ArchiveWorkplace | OrganizerAction::ArchiveOrganization => {
             client.view.is_some()
-                && matches!(
+                && (matches!(
                     session.phase,
                     crate::observer::SessionPhase::Ready | crate::observer::SessionPhase::Complete
-                )
+                ) || (session.phase == crate::observer::SessionPhase::Advancing
+                    && session.advance_pending()
+                    && client
+                        .view
+                        .as_ref()
+                        .is_some_and(|view| view.period == session.viewed_tick)))
         }
         OrganizerAction::Open | OrganizerAction::CloseInspector => true,
     }
@@ -1212,14 +1225,14 @@ fn paint_text(scope: &Scope, focus: &InputFocus, paint: &mut Paint) {
             TextPart::Title => scope.client.view.as_ref().map_or_else(|| "Wayne Organizing Collective".into(), |view| view.organization_label.clone()),
             TextPart::Situation => scope.client.view.as_ref().map_or_else(|| "Awaiting the committed organizer situation…".into(), |view| presentation::situation(view, scope.session.viewed_tick)),
             TextPart::Means => scope.client.view.as_ref().map_or_else(String::new, |view| {
-                let horizon = scope.session.horizon_tick.map_or_else(|| "—".into(), |value| value.to_string());
-                if historical { format!("HISTORY · period {} / {horizon}\nCurrent period {} · {} organizer-hours", scope.session.viewed_tick, view.period, view.available_hours) }
-                else { format!("PERIOD {} / {horizon} · 4 weeks\n{} organizer-hours available", view.period, view.available_hours) }
+                let endpoint = scope.session.duration.and_then(babylon_kernel::clock::CampaignDuration::final_period).map_or_else(String::new, |value| format!(" / {value}"));
+                if historical { format!("HISTORY · period {}{endpoint}\nCurrent period {} · {} organizer-hours", scope.session.viewed_tick, view.period, view.available_hours) }
+                else { format!("PERIOD {}{endpoint} · 4 weeks\n{} organizer-hours available", view.period, view.available_hours) }
             }),
             TextPart::Context => scope.client.view.as_ref().map_or_else(String::new, presentation::context),
             TextPart::Aftermath => scope.client.view.as_ref().map_or_else(String::new, |view| presentation::aftermath(view, scope.session.viewed_tick)),
             TextPart::ChoiceHeading => if complete { "CAMPAIGN COMPLETE".into() } else if historical { "CURRENT CHOICES · RETURN LIVE TO DECIDE".into() } else { "CHOOSE OUR WORK FOR THE NEXT PERIOD".into() },
-            TextPart::Approach(choice) => if complete { "No further period remains. Inspect our practice history and retained reports.".into() } else { scope.client.view.as_ref().map_or_else(String::new, |view| presentation::approach(view, *choice)) },
+            TextPart::Approach(choice) => if complete { "No further period remains. Inspect our practice history and retained reports.".into() } else { scope.client.view.as_ref().map_or_else(String::new, |view| presentation::client_approach(&scope.client, view, *choice)) },
             TextPart::ChoiceMarker(choice) => {
                 if complete { "CLOSED".into() }
                 else if scope.client.commitment.as_ref().is_some_and(|value| value.command.choice == *choice) { "ACCEPTED".into() }
@@ -1246,6 +1259,29 @@ fn paint_buttons(scope: &Scope, buttons: &mut PaintedButtons) {
     for (button, interaction, mut node, mut background, mut border) in &mut *buttons {
         if matches!(button.0, OrganizerAction::Open) {
             let next = if scope.session.organizer_enabled {
+                Display::Flex
+            } else {
+                Display::None
+            };
+            if node.display != next {
+                node.display = next;
+            }
+        }
+        if let OrganizerAction::Choose(
+            choice @ (OrganizerChoice::LocalAid | OrganizerChoice::RemoteAid),
+        ) = button.0
+        {
+            let next = if scope.client.aid_preview(choice).is_some() {
+                Display::Flex
+            } else {
+                Display::None
+            };
+            if node.display != next {
+                node.display = next;
+            }
+        }
+        if matches!(button.0, OrganizerAction::Choose(OrganizerChoice::Collect)) {
+            let next = if scope.client.collection.is_some() {
                 Display::Flex
             } else {
                 Display::None
@@ -1420,9 +1456,12 @@ mod tests {
                     paused_reason: None,
                 },
                 agreements: Vec::new(),
+                total_observation_count: 0,
                 observations: Vec::new(),
+                total_receipt_count: 0,
                 receipts: Vec::new(),
                 positions: Vec::new(),
+                aid_options: Vec::new(),
             }),
             ..default()
         };
@@ -1876,6 +1915,31 @@ mod tests {
     }
 
     #[test]
+    fn evicted_draft_reference_stays_saved_and_routes_to_earned_archive() {
+        let (mut app, _) = reference_fixture();
+        press_named(&mut app, "Keep report in draft");
+        press_named(&mut app, "Return to decision [Esc]");
+        let retained = app.world().resource::<OrganizerClient>().draft.clone();
+        {
+            let mut client = app.world_mut().resource_mut::<OrganizerClient>();
+            let view = client.view.as_mut().unwrap();
+            view.total_observation_count = 325;
+            view.observations.pop();
+        }
+        press_named(&mut app, "Personal notes");
+        press_named(&mut app, "Open saved references");
+        assert!(painted_text(&mut app, true).contains("Open Cited workplace Archive"));
+        assert!(!painted_text(&mut app, true).contains("777 kg"));
+        assert_eq!(app.world().resource::<OrganizerClient>().draft, retained);
+        assert!(app.world().resource::<OrganizerClient>().outbox.is_none());
+        press_named(&mut app, "Cited workplace Archive");
+        assert_eq!(app.world().resource::<ArchiveRequests>().0, vec![false]);
+        assert!(app.world().resource::<ObserverUiState>().archive_open);
+        assert_eq!(app.world().resource::<OrganizerClient>().draft, retained);
+        assert!(app.world().resource::<OrganizerClient>().outbox.is_none());
+    }
+
+    #[test]
     fn draft_references_cannot_reopen_hidden_foreign_or_missing_observations() {
         for fault in 0..4 {
             let (mut app, _) = reference_fixture();
@@ -2090,6 +2154,224 @@ mod tests {
         return_to_organizer(&mut app, focus, &draft);
     }
 
+    #[test]
+    fn pending_advance_paints_request_and_keeps_committed_navigation_and_notes_live() {
+        use babylon_persistence::runtime_session::RuntimeSessionRequest;
+        use std::time::Duration;
+
+        let (mut app, window, notes, draft) = focused_organizer(true);
+        app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
+            Duration::ZERO,
+        ));
+        let (requests, replies) =
+            crate::observer_io::tests::install_pending_command_fixture(&mut app);
+        let (status, reading, measures) =
+            crate::observer_ui::tests::install_pending_paint_fixture(&mut app);
+        let county = app
+            .world()
+            .resource::<CountyAtlas>()
+            .index_of_fips("26163")
+            .unwrap();
+        app.world_mut().resource_mut::<SelectedCounty>().0 = Some(county);
+        app.world_mut()
+            .resource_mut::<ObserverSession>()
+            .foundation_digest = Some("foundation".into());
+        {
+            let mut state = app.world_mut().resource_mut::<ObserverSession>();
+            state.ready(3, Some("3".repeat(64)));
+            let installed_context = state.context();
+            assert!(state.installed(&installed_context));
+        }
+        app.world_mut()
+            .resource_mut::<OrganizerClient>()
+            .view
+            .as_mut()
+            .unwrap()
+            .period = 3;
+        let mut committed = crate::observer_io::tests::snapshot_with_event(
+            app.world().resource::<ObserverSession>(),
+            "freight arrival",
+            3,
+        );
+        committed.production = Some(crate::production_freight::tests::fixture());
+        app.world_mut()
+            .resource_mut::<crate::observer_ui::ObserverFrame>()
+            .0 = Some(committed.clone());
+        app.update();
+        let context = app.world().resource::<ObserverSession>().context();
+        app.world_mut().write_message(ObserverCommand::Step);
+        app.update();
+        let request = requests.try_recv().unwrap();
+        assert!(matches!(
+            request,
+            RuntimeSessionRequest::Advance { request_id: 1, .. }
+        ));
+        assert_eq!(
+            app.world().get::<Text>(status).unwrap().0,
+            "Period 4 requested; awaiting commit · 0s elapsed"
+        );
+        assert_eq!(app.world().resource::<ObserverSession>().durable_tick, 3);
+        assert_pending_frame(&app, &context, &committed);
+
+        app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
+            Duration::from_secs(7),
+        ));
+        app.update();
+        assert_eq!(
+            app.world().get::<Text>(status).unwrap().0,
+            "Period 4 requested; awaiting commit · 7s elapsed"
+        );
+        app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
+            Duration::ZERO,
+        ));
+        exercise_actual_advance_progress(&mut app, &replies, status, &context, &committed);
+        typing_key(&mut app, window, KeyCode::KeyX, "x");
+        assert_eq!(app.world().resource::<InputFocus>().get(), Some(notes));
+        assert_ne!(
+            app.world()
+                .resource::<OrganizerClient>()
+                .draft
+                .as_ref()
+                .unwrap()
+                .notes
+                .text,
+            draft.notes.text
+        );
+        assert!(panel_has_visible_text(&mut app, true, "Personal notes"));
+        exercise_pending_committed_panels(&mut app, reading, measures);
+        assert_pending_frame(&app, &context, &committed);
+        assert!(app.world().resource::<ObserverSession>().advance_pending());
+        assert!(app.world().resource::<OrganizerClient>().outbox.is_none());
+        assert!(
+            requests.try_recv().is_err(),
+            "local reads and note edits cannot submit another period or organizer action"
+        );
+    }
+
+    fn exercise_actual_advance_progress(
+        app: &mut App,
+        replies: &std::sync::mpsc::Sender<
+            Result<babylon_persistence::runtime_session::RuntimeSessionResponse, String>,
+        >,
+        status: Entity,
+        context: &crate::observer::ObservationContext,
+        committed: &babylon_persistence::observer_reader::ObserverEconomySnapshot,
+    ) {
+        let scope = app
+            .world()
+            .resource::<ObserverSession>()
+            .runtime_scope()
+            .unwrap()
+            .clone();
+        for (index, (stage, caption)) in [
+            ("preparing_commitments", "Preparing commitments"),
+            ("resolving_economy", "Resolving economy"),
+            ("preparing_storage", "Preparing storage"),
+            ("saving_period", "Saving period"),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            // Literal wire evidence is independent of the future enum/API.
+            let response = serde_json::from_value(serde_json::json!({
+                "type": "advance_progress", "request_id": 1, "scope": scope,
+                "resolve_tick": 4, "stage": stage
+            }))
+            .expect("current protocol must admit real advance phase messages");
+            replies.send(Ok(response)).unwrap();
+            app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
+                std::time::Duration::from_secs(1),
+            ));
+            app.update();
+            assert_eq!(
+                app.world().get::<Text>(status).unwrap().0,
+                format!("Period 4 · {caption} · {}s elapsed", index + 8)
+            );
+            assert_pending_frame(app, context, committed);
+        }
+        app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
+            std::time::Duration::ZERO,
+        ));
+    }
+
+    fn assert_pending_frame(
+        app: &App,
+        context: &crate::observer::ObservationContext,
+        committed: &babylon_persistence::observer_reader::ObserverEconomySnapshot,
+    ) {
+        let state = app.world().resource::<ObserverSession>();
+        assert_eq!(&state.context(), context);
+        assert_eq!(state.durable_tick, 3);
+        assert_eq!(
+            state.content_hash.as_deref(),
+            Some("3".repeat(64)).as_deref()
+        );
+        assert_eq!(
+            app.world()
+                .resource::<crate::observer_ui::ObserverFrame>()
+                .for_session(state),
+            Some(committed)
+        );
+    }
+
+    fn exercise_pending_committed_panels(app: &mut App, reading: Entity, measures: Entity) {
+        use crate::observer_ui::{NetworkSector, RoadLayer};
+        for inspector in [
+            OrganizerInspector::Relationships,
+            OrganizerInspector::Receipts,
+        ] {
+            // Inspector navigation starts from the actual modal close control.
+            // Notes and the preceding inspector intentionally hide menu actions.
+            app.world_mut()
+                .write_message(OrganizerAction::CloseInspector);
+            app.update();
+            assert_eq!(
+                app.world().resource::<OrganizerClient>().inspector,
+                OrganizerInspector::Closed
+            );
+            app.world_mut()
+                .write_message(OrganizerAction::Inspect(inspector));
+            app.update();
+            assert_eq!(
+                app.world().resource::<OrganizerClient>().inspector,
+                inspector
+            );
+            let expected = if inspector == OrganizerInspector::Relationships {
+                "CURRENT COMMUNICATION AGREEMENTS"
+            } else {
+                "COMMITTED PRACTICE HISTORY"
+            };
+            assert!(panel_has_visible_text(app, true, expected));
+        }
+        app.world_mut()
+            .write_message(OrganizerAction::ArchiveWorkplace);
+        app.update();
+        assert_eq!(*app.world().resource::<PrimaryView>(), PrimaryView::Map);
+        assert_eq!(app.world().resource::<ArchiveRequests>().0, vec![false]);
+        assert_eq!(
+            app.world().get::<Text>(reading).unwrap().0,
+            "Choose a cohort to follow its commodities, freight and workers in Circuit."
+        );
+        for command in [
+            ObserverCommand::EconomicDetails,
+            ObserverCommand::Relationships,
+            ObserverCommand::RoadLayer(RoadLayer::EconomyNetwork),
+            ObserverCommand::NetworkSector(NetworkSector::Manufacturing),
+        ] {
+            app.world_mut().write_message(command);
+            app.update();
+            assert!(app
+                .world()
+                .resource::<crate::observer_ui::ObserverFeedback>()
+                .message
+                .is_none());
+        }
+        assert_eq!(
+            app.world().get::<Text>(measures).unwrap().0,
+            "Choose an economic lens to inspect exact county readings."
+        );
+    }
+
     fn focused_organizer(notes: bool) -> (App, Entity, Entity, OrganizerDraft) {
         use crate::observer_focus::ObserverFocusPlugin;
         use bevy::input::InputPlugin;
@@ -2233,5 +2515,69 @@ mod tests {
             Some(focus)
         );
         return_to_organizer(&mut app, focus, &draft);
+    }
+    #[test]
+    fn native_collection_card_is_reachable_and_history_navigation_cannot_act() {
+        let (mut app, _) = reviewed_period_three();
+        {
+            let mut client = app.world_mut().resource_mut::<OrganizerClient>();
+            client.clear_review();
+            client.collection = Some(
+                babylon_persistence::runtime_session::OrganizerCollectionPreview {
+                    period: 3,
+                    mandate_id: [8; 32],
+                    cash_consent:
+                        babylon_persistence::runtime_session::OrganizerGiftConsent::Accept,
+                    maximum_cash_micros: 400_000,
+                    protected_cash_floor_micros: 0,
+                    collection_hours: 2,
+                    organization_cash_micros: 1_000_000,
+                },
+            );
+        }
+        app.update();
+        let present = app
+            .world_mut()
+            .query::<(&ActionButton, &Node)>()
+            .iter(app.world())
+            .any(|(button, node)| {
+                matches!(button.0, OrganizerAction::Choose(OrganizerChoice::Collect))
+                    && node.display == Display::Flex
+            });
+        assert!(present, "actual native collection card must be visible");
+        press_named(&mut app, "Collect a voluntary contribution");
+        assert_eq!(
+            app.world().resource::<OrganizerClient>().choice(),
+            OrganizerChoice::Collect
+        );
+        let card = app
+            .world_mut()
+            .query::<(&TextPart, &Text)>()
+            .iter(app.world())
+            .find_map(|(part, text)| {
+                matches!(part, TextPart::Approach(OrganizerChoice::Collect)).then(|| text.0.clone())
+            })
+            .unwrap();
+        assert!(card.contains("cap 400000 cash micros; 2 shared material hours"));
+        review_selected(&mut app);
+        // Paint the reviewed model before inspecting the actual native text.
+        app.update();
+        assert!(confirmation_enabled(&app));
+        assert!(painted_text(&mut app, false)
+            .to_lowercase()
+            .contains("protected consumption"));
+        inspect_period(&mut app, 2);
+        app.update();
+        assert!(!confirmation_enabled(&app));
+        press_named(&mut app, "Confirm ruling");
+        assert!(app.world().resource::<OrganizerClient>().outbox.is_none());
+        press_named(&mut app, "Practice history");
+        assert_eq!(
+            app.world().resource::<OrganizerClient>().inspector,
+            OrganizerInspector::Receipts
+        );
+        press_named(&mut app, "Our practice Archive");
+        assert_eq!(app.world().resource::<ArchiveRequests>().0, vec![true]);
+        assert!(app.world().resource::<OrganizerClient>().outbox.is_none());
     }
 }

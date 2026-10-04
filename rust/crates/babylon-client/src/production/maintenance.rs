@@ -14,7 +14,7 @@ pub(crate) fn account<'a>(
         return None;
     }
     snapshot.sites.iter().find(|site| {
-        site.id == account.provider_site_id && site.role == ProductionSiteRole::Maintenance
+        site.id == account.provider_site_id && site.roles.contains(&ProductionSiteRole::Maintenance)
     })?;
     snapshot
         .sites

@@ -16,13 +16,15 @@ pub const MAX_STABLE_CARRIER_ACTIVE_ELEMENTS: usize = 256;
 /// Maximum canonical V2 carrier byte length.
 pub const MAX_STABLE_CARRIER_BYTES: usize = 105_962;
 /// Maximum combined node and hyperedge rows in one resolver manifest.
-pub const MAX_STABLE_RESOLVER_ROWS: usize = 65_536;
+pub const MAX_STABLE_RESOLVER_ROWS: usize = 262_144;
+/// Maximum hyperedge rows; the national node allowance does not widen this family.
+pub const MAX_STABLE_RESOLVER_HYPEREDGES: usize = 65_536;
 /// Maximum members in one hyperedge while sealing a stable resolver.
 pub const MAX_STABLE_RESOLVER_HYPEREDGE_MEMBERS: usize = 65_534;
 /// Maximum topology rows plus member references while sealing a resolver.
 pub const MAX_STABLE_RESOLVER_FACT_UNITS: usize = 1_048_576;
 /// Maximum canonical resolver-manifest byte length.
-pub const MAX_STABLE_RESOLVER_MANIFEST_BYTES: usize = 8_388_608;
+pub const MAX_STABLE_RESOLVER_MANIFEST_BYTES: usize = 16_777_216;
 
 const STABLE_ELEMENT_DOMAIN: &[u8] = b"babylon.stable-element";
 const STABLE_RESOLVER_DOMAIN: &[u8] = b"babylon.stable-element-resolver";
@@ -1174,6 +1176,13 @@ fn manifest_capacity(
 }
 
 fn validate_resolver_row_count(nodes: usize, hyperedges: usize) -> Result<(), StableIdentityError> {
+    if hyperedges > MAX_STABLE_RESOLVER_HYPEREDGES {
+        return Err(StableIdentityError::StateSectionLimit {
+            section: "resolver hyperedges",
+            actual: hyperedges,
+            maximum: MAX_STABLE_RESOLVER_HYPEREDGES,
+        });
+    }
     let actual = nodes
         .checked_add(hyperedges)
         .ok_or(StableIdentityError::CapacityOverflow {

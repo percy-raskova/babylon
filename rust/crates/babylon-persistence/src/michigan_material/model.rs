@@ -102,6 +102,11 @@ impl MichiganWorkforceSeed {
     pub fn local_name(&self) -> String {
         format!("workforce-{}", self.key)
     }
+    /// Actual worksite memory is separate from the passive observed QCEW cohort.
+    #[must_use]
+    pub fn workplace_local_name(&self) -> String {
+        format!("workplace-{}", self.site_key)
+    }
 }
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -350,7 +355,7 @@ pub struct MichiganMaintenance {
 pub struct MichiganNormalizedContent {
     pub schema: String,
     pub evidence_class: String,
-    pub horizon_ticks: u64,
+    pub duration: babylon_kernel::clock::CampaignDuration,
     pub tick_duration_days: u64,
     pub geographic_scale: String,
     pub terminal_output_disposition: String,

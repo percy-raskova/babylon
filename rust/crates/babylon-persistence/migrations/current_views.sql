@@ -11,9 +11,11 @@ FROM babylon_state.tick_commit;
 REVOKE ALL ON public.v_committed_tick_status_v1 FROM PUBLIC;
 
 CREATE VIEW public.v_observer_economy_foundation_v1 AS
-SELECT campaign_id, foundation_sha256,
-       pg_catalog.sha256(pg_catalog.convert_to(scenario_source, 'UTF8')) AS scenario_sha256
-FROM babylon_state.campaign_foundation;
+SELECT foundation.campaign_id, foundation.foundation_sha256,
+       pg_catalog.sha256(foundation.content_bundle_bytes) AS source_sha256,
+       campaign.geography_scope
+FROM babylon_state.campaign_foundation AS foundation
+JOIN babylon_state.campaign AS campaign USING (campaign_id);
 
 CREATE VIEW public.v_observer_county_economy_v1 AS
 SELECT foundation.campaign_id, 0::bigint AS resolve_tick, mapping.county_geoid,
@@ -40,7 +42,18 @@ JOIN babylon_state.tick_commit AS marker
   ON marker.campaign_id = fields.campaign_id AND marker.resolve_tick = fields.resolve_tick
 WHERE fields.value_tag = 1 AND fields.field_name IN
   ('qcew-establishments', 'qcew-employment', 'qcew-total-annual-wages', 'qcew-average-weekly-wage')
-GROUP BY fields.campaign_id, fields.resolve_tick, identity.int_value;
+GROUP BY fields.campaign_id, fields.resolve_tick, identity.int_value
+UNION ALL
+-- National counties carry identity in the graph. Their published QCEW values
+-- remain immutable captured observations, never synthetic dynamic state fields.
+SELECT foundation.campaign_id, marker.resolve_tick, mapping.county_geoid,
+       NULL::bigint, NULL::bigint, NULL::bigint, NULL::bigint,
+       true, true, true, true
+FROM babylon_state.campaign_foundation AS foundation
+JOIN babylon_meta.territory_county_map_v1 AS mapping USING (campaign_id)
+JOIN babylon_state.tick_commit AS marker USING (campaign_id)
+JOIN babylon_state.campaign AS campaign USING (campaign_id)
+WHERE campaign.geography_scope = 'national-counties';
 
 CREATE VIEW public.v_known_county_economy_v1 WITH (security_barrier = true) AS
 SELECT raw.campaign_id, raw.resolve_tick, raw.county_geoid,
@@ -73,27 +86,39 @@ CROSS JOIN LATERAL (
         AND grant_row.grant_key = 'qcew-average-weekly-wage') AS weekly_wage
 ) AS permission;
 
-CREATE VIEW public.v_material_campaign_identity_v1 AS
-SELECT campaign_id, preset_id, horizon_ticks, content_sha256, foundation_sha256
-FROM babylon_state.material_campaign_foundation_v2;
+CREATE VIEW public.v_material_campaign_identity_v2 AS
+SELECT campaign_id, preset_id, duration_kind, final_period, content_sha256, foundation_sha256
+FROM babylon_state.material_campaign_foundation_v3;
+
+-- Captured sources belong to the full observer capability only.
+CREATE VIEW public.v_observer_material_foundation_v1 AS
+SELECT f.campaign_id, f.preset_id, f.duration_kind, f.final_period,
+       f.content_sha256, f.initial_register_bytes, f.foundation_sha256,
+       g.foundation_sha256 AS graph_foundation_sha256,
+       g.stable_graph, g.world_registers, g.resolver_manifest, g.prepared_environment,
+       g.replay_session_id, g.rng_seed, g.defines_hash, g.rules_hash, g.ref_digest,
+       g.content_bundle_bytes
+FROM babylon_state.material_campaign_foundation_v3 AS f
+JOIN babylon_state.campaign_foundation AS g USING (campaign_id);
+REVOKE ALL ON public.v_observer_material_foundation_v1 FROM PUBLIC;
 
 -- Only the observer group receives complete material bytes. Known preview has
 -- no grant on this view or the underlying tables; projection cannot undo that.
 CREATE VIEW public.v_observer_material_state_v1 AS
-SELECT campaign_id, 0::bigint AS resolve_tick, initial_register_bytes AS register_bytes,
-       NULL::bytea AS receipt_bytes, NULL::bytea AS identity_bytes,
-       NULL::bytea AS tick_content_hash, foundation_bytes
-FROM babylon_state.material_campaign_foundation_v2
+SELECT campaign_id, 0::bigint AS resolve_tick, initial_register_bytes AS register_storage_bytes,
+       NULL::bytea AS receipt_storage_bytes, NULL::bytea AS identity_bytes,
+       NULL::bytea AS tick_content_hash, NULL::bytea AS lookup_delta_bytes
+FROM babylon_state.material_campaign_foundation_v3
 UNION ALL
-SELECT state.campaign_id, state.resolve_tick, state.register_bytes,
-       state.receipt_bytes, state.identity_bytes, marker.tick_content_hash,
-       NULL::bytea AS foundation_bytes
+SELECT state.campaign_id, state.resolve_tick, state.register_storage_bytes,
+       state.receipt_storage_bytes, state.identity_bytes, marker.tick_content_hash,
+       state.lookup_delta_bytes
 FROM babylon_state.material_tick_v3 AS state
 JOIN babylon_state.tick_commit AS marker
   ON marker.campaign_id = state.campaign_id AND marker.resolve_tick = state.resolve_tick
 WHERE marker.envelope_layout_version = 3;
 
-REVOKE ALL ON public.v_material_campaign_identity_v1,
+REVOKE ALL ON public.v_material_campaign_identity_v2,
               public.v_observer_material_state_v1 FROM PUBLIC;
 
 -- Complete persisted components for authenticated material-tick reconstruction.
@@ -267,6 +292,7 @@ JOIN babylon_state.tick_commit AS marker
  AND marker.resolve_tick = component.resolve_tick
 WHERE marker.envelope_layout_version = 3;
 
+-- Current closed checkpoint source references; Rust restores canonical section bytes.
 CREATE VIEW public.v_observer_checkpoint_section_v1 AS
 SELECT component.*
 FROM babylon_state.checkpoint_section_v1 AS component

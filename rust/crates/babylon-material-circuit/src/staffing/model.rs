@@ -12,6 +12,7 @@ pub enum StaffingWorkSource {
     Production(ProcessId),
     MerchantHandling(SiteId),
     Maintenance(SiteId),
+    Installation(ProcessId),
 }
 
 /// Closed refusals; no partial staffing transition is returned.
@@ -32,6 +33,7 @@ pub enum StaffingError {
     DuplicateRequest = 12,
     MissingRequest = 13,
     Allocation = 14,
+    DuplicateMember = 15,
 }
 
 impl std::fmt::Display for StaffingError {
@@ -216,7 +218,7 @@ impl StaffingState {
                 if !work_sources.insert(*source) {
                     return Err(StaffingError::DuplicateWorkSource);
                 }
-                if work_sources.len() > MAX_MATERIAL_CIRCUIT_ROWS {
+                if work_sources.len() > crate::MAX_STAFFING_WORK_SOURCES {
                     return Err(StaffingError::RowLimit);
                 }
             }

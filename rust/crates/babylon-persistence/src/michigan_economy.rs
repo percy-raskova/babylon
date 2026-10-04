@@ -58,6 +58,26 @@ pub struct MichiganEconomy {
     scenario_source: String,
 }
 impl MichiganEconomy {
+    /// Admit the exact bounded source bytes captured by a campaign.
+    /// # Errors
+    /// Refuses changed bytes, excess expansion, malformed rows or invalid values.
+    pub fn decode_captured(raw: &[u8]) -> Result<Self, MichiganEconomyError> {
+        if raw.len() > 1_048_576 || digest_hex(&sha256_of(raw)) != QCEW_ECONOMICS_ARTIFACT_SHA256 {
+            return Err(MichiganEconomyError::ArtifactDigest);
+        }
+        let mut decoded = String::new();
+        flate2::read::GzDecoder::new(raw)
+            .take(MAX_DECODED_BYTES + 1)
+            .read_to_string(&mut decoded)
+            .map_err(|_| MichiganEconomyError::ArtifactDecode)?;
+        if u64::try_from(decoded.len()).map_err(|_| MichiganEconomyError::ArtifactDecode)?
+            > MAX_DECODED_BYTES
+        {
+            return Err(MichiganEconomyError::ArtifactDecode);
+        }
+        parse_csv(&decoded)
+    }
+
     #[must_use]
     pub fn counties(&self) -> &[MichiganCountyEconomy] {
         &self.counties
@@ -185,22 +205,7 @@ pub(crate) fn append_county_observations(
 pub fn michigan_economy() -> Result<&'static MichiganEconomy, MichiganEconomyError> {
     static ECONOMY: OnceLock<Result<MichiganEconomy, MichiganEconomyError>> = OnceLock::new();
     ECONOMY
-        .get_or_init(|| {
-            if digest_hex(&sha256_of(ARTIFACT)) != QCEW_ECONOMICS_ARTIFACT_SHA256 {
-                return Err(MichiganEconomyError::ArtifactDigest);
-            }
-            let mut decoded = String::new();
-            flate2::read::GzDecoder::new(ARTIFACT)
-                .take(MAX_DECODED_BYTES + 1)
-                .read_to_string(&mut decoded)
-                .map_err(|_| MichiganEconomyError::ArtifactDecode)?;
-            if u64::try_from(decoded.len()).map_err(|_| MichiganEconomyError::ArtifactDecode)?
-                > MAX_DECODED_BYTES
-            {
-                return Err(MichiganEconomyError::ArtifactDecode);
-            }
-            parse_csv(&decoded)
-        })
+        .get_or_init(|| MichiganEconomy::decode_captured(ARTIFACT))
         .as_ref()
         .map_err(|error| *error)
 }

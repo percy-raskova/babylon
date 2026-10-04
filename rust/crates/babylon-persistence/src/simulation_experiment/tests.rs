@@ -1,5 +1,4 @@
 use super::*;
-use crate::sector_bundle::{michigan_sector_bundles, SectorBundle};
 
 pub(super) fn spec(profile: ExperimentProfile) -> SimulationExperimentV1 {
     let (epoch, starting_snapshot) = match profile {
@@ -80,42 +79,34 @@ fn closed_inputs_refuse_unknown_fields_dates_horizons_and_cross_profile_interven
     assert_eq!(bad.validate(), Err(ExperimentError::Intervention));
 }
 #[test]
-fn player_horizon_stays_bounded_and_diagnostic_bundle_codec_captures_its_horizon() {
+fn continuous_player_duration_is_distinct_from_finite_diagnostic_bundles() {
     let source = include_str!("../../../../../content/scenarios/michigan/defines.toml");
-    assert!(
-        crate::michigan_material::MichiganMaterialCatalog::from_defines_toml(
-            &source.replace("HORIZON_PERIODS = 16", "HORIZON_PERIODS = 130")
-        )
-        .is_err()
+    let live =
+        crate::michigan_material::MichiganMaterialCatalog::from_defines_toml(source).unwrap();
+    assert_eq!(
+        live.duration(),
+        babylon_kernel::clock::CampaignDuration::Continuous
     );
     let catalog = spec(ExperimentProfile::Sustained)
         .regional_catalog()
         .unwrap();
-    assert_eq!(catalog.horizon_ticks(), 130);
-    let captured: serde_json::Value = serde_json::from_slice(catalog.defines_bytes()).unwrap();
-    assert_eq!(captured["defines"]["HORIZON_PERIODS"], 130);
+    assert_eq!(catalog.duration().final_period(), Some(130));
     assert!(
         crate::michigan_content::MichiganContentPreset::FourWeekStandard
             .create_foundation(&catalog)
             .is_err()
     );
-    for bundle in michigan_sector_bundles(&catalog).unwrap() {
-        assert_eq!(bundle.horizon_ticks(), 130);
-        assert_eq!(
-            SectorBundle::decode(bundle.canonical_bytes(), bundle.sha256()).unwrap(),
-            bundle
-        );
-        assert!(bundle
-            .material_rows()
-            .capacities
-            .iter()
-            .any(|r| r.period == 130));
-        assert!(!bundle
-            .material_rows()
-            .capacities
-            .iter()
-            .any(|r| r.period > 130));
-    }
+    let captured =
+        crate::economic_catalog::CapturedEconomicCatalog::from_michigan(&catalog).unwrap();
+    let restored = crate::economic_catalog::CapturedEconomicCatalog::decode(
+        captured.canonical_bytes(),
+        captured.digest(),
+    )
+    .unwrap();
+    assert_eq!(restored.view().duration.final_period(), Some(130));
+    let material = restored.opening().compile().unwrap().state;
+    assert!(material.capacities.iter().any(|row| row.period == 130));
+    assert!(!material.capacities.iter().any(|row| row.period > 130));
 }
 #[test]
 fn historical_jobs_initialize_only_the_named_five_workforce_accounts() {

@@ -1,0 +1,63 @@
+{
+  "contract": "InternationalCounterpartSourcesV1",
+  "identity_snapshot": "2026-09-20",
+  "sources": [
+    {
+      "bytes": 1798140,
+      "id": "census_trade",
+      "note": "Supplied local workbook bytes. Original acquisition date unknown; not replaced by current download. Exact 2024 rows selected; later-year rows ignored.",
+      "path": "imperial_rent/country.xlsx",
+      "sha256": "48a4d25c8c8fc88eddaa593950ef18749025c4a597beea1e40f4da966753c9ef",
+      "url": "https://www.census.gov/foreign-trade/balance/country.xlsx"
+    },
+    {
+      "bytes": 1721575,
+      "id": "un_m49_overview",
+      "note": "Official public snapshot fetched 2026-09-20; current identity/documentation, not historical 2024 roster.",
+      "path": "national_reference_2024/international_identity_2026-09-20/un_m49_overview.html",
+      "sha256": "b9048114f6e7f2abda83bf03d4263c9d7cd1bd7230e3d0461025ee7839a7a1fb",
+      "url": "https://unstats.un.org/unsd/methodology/m49/overview/"
+    },
+    {
+      "bytes": 2051368,
+      "id": "un_m49_methodology",
+      "note": "Official public snapshot fetched 2026-09-20; current identity/documentation, not historical 2024 roster.",
+      "path": "national_reference_2024/international_identity_2026-09-20/un_m49_methodology.html",
+      "sha256": "4d5cabcb10ad9ef184553b5e64c0a34ba8deeb20dab2e02cd0be3599b93bb01d",
+      "url": "https://unstats.un.org/unsd/methodology/m49/"
+    },
+    {
+      "bytes": 87538,
+      "id": "census_schedule_c",
+      "note": "Official public snapshot fetched 2026-09-20; current identity/documentation, not historical 2024 roster.",
+      "path": "national_reference_2024/international_identity_2026-09-20/census_schedule_c.html",
+      "sha256": "3a6b37035e113cad7130b4e3335e946503c0cd00b6e83b16ad6d8d4aca818e81",
+      "url": "https://www.census.gov/foreign-trade/schedules/c/countrycodes.html"
+    },
+    {
+      "bytes": 59795,
+      "id": "doi_islands",
+      "note": "Official public snapshot fetched 2026-09-20; current identity/documentation, not historical 2024 roster.",
+      "path": "national_reference_2024/international_identity_2026-09-20/doi_islands.html",
+      "sha256": "74cb70ccde1fb747bbeab00a711eb1bdc69663e449580b81471a846e11c79fcc",
+      "url": "https://www.doi.gov/oia/islands"
+    },
+    {
+      "bytes": 63686,
+      "id": "census_balance_index",
+      "note": "Official public snapshot fetched 2026-09-20; current identity/documentation, not historical 2024 roster.",
+      "path": "national_reference_2024/international_identity_2026-09-20/census_balance_index.html",
+      "sha256": "44415fb09c7931579d94b97df360e288c54c8ca96e59464f98959201de4b8d03",
+      "url": "https://www.census.gov/foreign-trade/balance/index.html"
+    },
+    {
+      "bytes": 217001,
+      "id": "census_china_balance",
+      "note": "Official public snapshot fetched 2026-09-20; current identity/documentation, not historical 2024 roster.",
+      "path": "national_reference_2024/international_identity_2026-09-20/census_china_balance.html",
+      "sha256": "d83d0dd03a2ee88e2d1968a7ed43090268eac866ebbc0c4416d1bdb673d60655",
+      "url": "https://www.census.gov/foreign-trade/balance/c5700.html"
+    }
+  ],
+  "trade_year": 2024
+}

@@ -66,6 +66,7 @@ fn switching(app: &mut App, responses: &Replies, switch: &Switch) {
 fn admitted(app: &mut App, responses: &Replies, switch: &Switch, period: u64) {
     responses
         .send(Ok(RuntimeSessionResponse::Ready {
+            duration: babylon_kernel::clock::CampaignDuration::Finite { final_period: 16 },
             organizer: false,
             request_id: switch.request_id,
             scope: switch.scope.clone(),
@@ -234,7 +235,7 @@ fn lifecycle_switch_waits_for_commit_ack_then_clears_scoped_observations() {
     let state = app.world().resource::<ObserverSession>();
     let original = state.context();
     let snapshot = snapshot_with_event(state, "production", 3);
-    app.insert_resource(ObserverFrame(Some(snapshot)))
+    app.insert_resource(ObserverFrame(Some(snapshot), None))
         .insert_resource(DossierCampaignId(original.campaign))
         .init_resource::<ActiveCountyDossier>()
         .init_resource::<DossierFetchState>();
@@ -320,6 +321,7 @@ fn return_to_a_rejects_stale_results(failed_b: bool) {
     assert!(current.generation > old_context.generation);
     for stale in [
         RuntimeSessionResponse::Ready {
+            duration: babylon_kernel::clock::CampaignDuration::Finite { final_period: 16 },
             organizer: false,
             request_id: 0,
             scope: old_scope.clone(),
@@ -355,7 +357,7 @@ fn return_to_a_rejects_stale_results(failed_b: bool) {
     install_observation(
         &mut app.world_mut().resource_mut::<ObserverSession>(),
         &old_context,
-        old_snapshot,
+        PreparedObservation::new(old_snapshot),
         &mut frame,
         false,
     );
@@ -542,4 +544,39 @@ fn lifecycle_admission_refusals_explain_the_available_campaign_choice() {
         assert_eq!(take_switch(&requests).request_id, switch.request_id + 1);
         assert!(app.world().resource::<Messages<AppExit>>().is_empty());
     }
+}
+
+#[test]
+fn national_admission_leaves_the_old_wayne_workspace_and_waits_for_its_own_observation() {
+    let (mut app, requests, responses) = initial();
+    app.insert_resource(crate::production::PrimaryView::Organizer);
+    {
+        let mut state = app.world_mut().resource_mut::<ObserverSession>();
+        state.perspective = Perspective::PlayerKnowledge;
+        state.organizer_enabled = true;
+        state
+            .queue_campaign(RuntimeSessionTarget::New {
+                campaign_id: campaign(2).as_uuid().to_string(),
+                preset: RuntimeSessionPreset::NationalWorld,
+            })
+            .unwrap();
+    }
+    hello(&mut app, &responses);
+    let switch = take_switch(&requests);
+    switching(&mut app, &responses, &switch);
+    admitted(&mut app, &responses, &switch, 0);
+    let state = app.world().resource::<ObserverSession>();
+    assert_eq!(state.campaign, campaign(2));
+    assert!(!state.organizer_enabled);
+    assert_eq!(state.perspective, Perspective::FullObserver);
+    assert_eq!(state.phase, SessionPhase::Loading);
+    assert_eq!(
+        *app.world().resource::<crate::production::PrimaryView>(),
+        crate::production::PrimaryView::Map
+    );
+    command(&mut app, ObserverCommand::Step);
+    assert!(
+        requests.try_recv().is_err(),
+        "admission is not an installed economic observation"
+    );
 }

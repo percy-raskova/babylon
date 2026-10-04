@@ -1,0 +1,68 @@
+ADR278_measured_save_footprint:
+  status: accepted
+  date: '2026-10-03'
+  issue: PER-40
+  title: Save footprint determines history storage
+  evidence_class: Designed
+  authority:
+    - Director prefers PostgreSQL when Parquet does not reduce disk use
+    - Director requires accumulated saves to avoid consuming 20 GB
+    - Repository rules require an architecture decision record
+  context: |
+    The Director proposed Parquet to save disk space, then clarified that the
+    format is optional. The current national period charges 35,069,952 bytes.
+    One typed Parquet accounting-family trial exceeded the native family size.
+    Neither a format change nor moving bytes outside PostgreSQL proves savings.
+  decision: |
+    Keep PostgreSQL as the default for living state and historical evidence.
+    Evaluate Parquet only when a complete measured comparison shows a material
+    reduction in total retained disk use that justifies its added complexity.
+    It is not a required architectural destination or a delivery prerequisite.
+    DuckDB and Arrow remain optional tools for a demonstrated consumer.
+
+    Measure the complete retained save, including foundation, living accounts,
+    history, indexes, unused allocated space, checkpoints, identity tables and
+    every external file or manifest. Account for shared assets without counting
+    them twice. Report cluster overhead, WAL and temporary export or checkpoint
+    peaks separately so per-save totals do not conceal overall host consumption.
+    Keep the interim 23,000,000-byte period ceiling and 52-period qualification.
+
+    Use 25 model years, or 325 periods, as a provisional long-campaign measurement
+    horizon while the Director's duration preference is pending. This is an
+    agent assumption, not a Director-selected campaign length or an expiry.
+    Longer play remains allowed. Report projections separately from observations,
+    including scenarios that approach or exceed 20,000,000,000 retained bytes.
+    Set a Designed 10,000,000,000-byte PostgreSQL save ceiling at that provisional
+    325-period horizon. This agent-selected engineering allowance leaves room
+    below the Director's 20 GB concern; it is not a claim of measured long-run
+    size. The ordinary 52-period check and the actual 325-period save-footprint
+    qualification remain separate. A projected result cannot qualify a save.
+    An observed total-save failure also fails ordinary storage qualification.
+    Count the database's allocated opening size, including its schema, plus
+    conservatively charged committed growth and restart growth. Compare longer
+    projections with the Director's 20 GB boundary as well as the provisional
+    benchmark. PostgreSQL-only evidence cannot qualify external files added
+    later. Longer-duration support needs measured evidence before a final claim.
+
+    First repair measured duplication and continue independent playable work.
+    Larger persistence changes require a demonstrated retained-size or recovery
+    problem. Checkpoints, deterministic inputs and reconstructable evidence may
+    remove redundant history, but must first prove exact replay, native recovery
+    and all real history consumers. Preserve every living commitment regardless
+    of age. Qualify publication and recovery before pruning any history.
+  supersedes:
+    - ADR277_active_economy_and_sealed_accounting_history # selection of Parquet as the planned history store only
+  consequences: |
+    The earlier archive proposal remains historical evidence. No current rows
+    move to Parquet and no archive or pruning implementation is claimed.
+    The checkpoint and accounting-query distinction remains useful regardless
+    of storage format. Full county coverage, exact accounting, replay, recovery
+    and the Designed advance target remain unchanged. No game law or primitive
+    changes, and technical correctness does not establish enjoyment.
+  verification:
+    - Total retained save size and temporary host peaks have separate measurements.
+    - Format comparisons include all required indexes, identities and manifests.
+    - Longer campaign projections state their duration and assumptions.
+    - Actual long-run evidence, rather than a single-period projection, qualifies growth.
+    - Removal of redundant history preserves complete living state and exact recovery.
+  source_record: reports/national-household-time-close-census-2026-10-02.md

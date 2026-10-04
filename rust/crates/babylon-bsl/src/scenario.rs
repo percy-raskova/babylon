@@ -90,6 +90,9 @@
 // ~20 pre-existing fallible signatures for a rarely-taken error branch.
 #![allow(clippy::result_large_err)]
 
+#[path = "scenario_seed.rs"]
+pub mod seed;
+
 use crate::error_identity::{decl_identity, vocabulary_identity, ErrorIdentity};
 use crate::evaluator::Value;
 use crate::probability::MassDeclarationAnalysis;

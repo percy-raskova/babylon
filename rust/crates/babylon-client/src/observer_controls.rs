@@ -56,8 +56,8 @@ fn advance_availability(state: &ObserverSession) -> ControlAvailability {
     }
     if state.phase == SessionPhase::Complete
         || state
-            .horizon_tick
-            .is_some_and(|horizon| state.durable_tick >= horizon)
+            .duration
+            .is_some_and(|duration| duration.complete(state.durable_tick))
     {
         return ControlAvailability::Disabled(
             "Scenario complete; committed history remains available",
@@ -68,7 +68,7 @@ fn advance_availability(state: &ObserverSession) -> ControlAvailability {
             "This is the final period; further play is unavailable",
         );
     }
-    if state.durable_tick.checked_add(1).is_none() {
+    if state.durable_tick >= i64::MAX as u64 {
         return ControlAvailability::Disabled(
             "The campaign has reached its supported period limit",
         );
@@ -77,11 +77,11 @@ fn advance_availability(state: &ObserverSession) -> ControlAvailability {
 }
 
 fn pending_finishes_scenario(state: &ObserverSession) -> bool {
-    state.horizon_tick.is_some_and(|horizon| {
+    state.duration.is_some_and(|duration| {
         state
             .durable_tick
             .checked_add(1)
-            .is_some_and(|next| next >= horizon)
+            .is_some_and(|next| duration.complete(next))
     })
 }
 
@@ -92,11 +92,7 @@ pub(crate) fn availability(
 ) -> ControlAvailability {
     use ControlAvailability::{Disabled, Enabled};
     use ObserverCommand::{
-        Live, NewCampaign, NewDelayedCampaign, NewSharedFreightAmpleCampaign,
-        NewSharedFreightConstrainedCampaign, NewStatewideBaselineCampaign,
-        NewStatewideBothCampaign, NewStatewideFreightConstraintCampaign,
-        NewStatewidePackagingShortageCampaign, NextPeriod, Perspective, PreviousPeriod,
-        ReopenCampaign, Step, TogglePlay,
+        Live, NextPeriod, Perspective, PreviousPeriod, ReopenCampaign, Step, TogglePlay,
     };
 
     if command == ObserverCommand::Quit {
@@ -105,19 +101,8 @@ pub(crate) fn availability(
     if state.quit_requested {
         return CLOSING;
     }
-    if matches!(
-        command,
-        NewCampaign
-            | ObserverCommand::NewOrganizerCampaign
-            | NewDelayedCampaign
-            | NewSharedFreightAmpleCampaign
-            | NewSharedFreightConstrainedCampaign
-            | NewStatewideBaselineCampaign
-            | NewStatewideFreightConstraintCampaign
-            | NewStatewidePackagingShortageCampaign
-            | NewStatewideBothCampaign
-            | ReopenCampaign
-    ) && state.runtime_disconnected()
+    if (crate::observer_io::campaign_preset(command).is_some() || command == ReopenCampaign)
+        && state.runtime_disconnected()
     {
         return Disabled("Runtime connection unavailable; close and relaunch Babylon");
     }
@@ -183,7 +168,15 @@ pub(crate) fn availability(
         }
         ObserverCommand::RoadLayer(_) | ObserverCommand::NetworkSector(_) => {
             if state.perspective == crate::observer::Perspective::FullObserver {
-                inspection_availability(state)
+                // These commands only repaint the installed committed snapshot.
+                // They neither change observation identity nor request a new read.
+                if state.advance_pending()
+                    && matches!(state.phase, SessionPhase::Ready | SessionPhase::Advancing)
+                {
+                    Enabled
+                } else {
+                    inspection_availability(state)
+                }
             } else {
                 Disabled("Economic networks are unavailable in player knowledge")
             }
@@ -350,7 +343,7 @@ mod tests {
             "PERIOD 14\n4 weeks / 28 days"
         );
         assert!(period_advance_help().contains("13 periods make a 52-week model year"));
-        state.horizon_tick = Some(1);
+        state.duration = Some(babylon_kernel::clock::CampaignDuration::Finite { final_period: 1 });
         state.complete();
         assert!(turn_presentation(&state)
             .status
@@ -538,6 +531,39 @@ mod tests {
     }
 
     #[test]
+    fn pending_local_network_reads_preserve_transport_and_context_guards() {
+        let mut state = ready(3);
+        state.begin_advance().unwrap();
+        for command in [
+            ObserverCommand::RoadLayer(crate::observer_ui::RoadLayer::EconomyNetwork),
+            ObserverCommand::NetworkSector(crate::observer_ui::NetworkSector::Manufacturing),
+        ] {
+            assert_eq!(availability(command, &state), ControlAvailability::Enabled);
+            state.perspective = crate::observer::Perspective::PlayerKnowledge;
+            assert!(matches!(
+                availability(command, &state),
+                ControlAvailability::Disabled(_)
+            ));
+            state.perspective = crate::observer::Perspective::FullObserver;
+        }
+        for command in [
+            ObserverCommand::Step,
+            ObserverCommand::PreviousPeriod,
+            ObserverCommand::Perspective,
+        ] {
+            assert_eq!(availability(command, &state), PENDING);
+        }
+        state.phase = SessionPhase::Loading;
+        assert_eq!(
+            availability(
+                ObserverCommand::RoadLayer(crate::observer_ui::RoadLayer::EconomyNetwork),
+                &state
+            ),
+            PENDING
+        );
+    }
+
+    #[test]
     fn completion_keeps_history_and_disables_further_advances() {
         let mut state = ready(16);
         state.complete();
@@ -581,7 +607,7 @@ mod tests {
     #[test]
     fn final_pending_period_can_pause_but_cannot_promise_further_play() {
         let mut state = ready(15);
-        state.horizon_tick = Some(16);
+        state.duration = Some(babylon_kernel::clock::CampaignDuration::Finite { final_period: 16 });
         state.begin_advance().unwrap();
         assert_eq!(
             turn_presentation(&state).period,

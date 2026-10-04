@@ -43,7 +43,9 @@ admission:
     - michigan-material-statewide-maintenance-labor-shortage-v8
     - michigan-material-statewide-maintenance-parts-shortage-v8
     - michigan-material-statewide-maintenance-both-v8
-  stored_defines_version: 4
+  authored_defines_schema_version: 6
+  captured_content_schema: MichiganCapturedContentV6
+  stored_defines_envelope_version: 4
   duration_days: 28
   duration_is_hashed_foundation_content: true
   incompatible_prior_content: refuse without changing stored data
@@ -101,7 +103,8 @@ content_units:
     staffing_retention_periods: 1
     standard_route_periods: 1
     delayed_sheet_route_periods: 3
-    horizon_periods: 16
+    campaign_duration: continuous
+    finite_experiments: Explicit profile-specific final periods.
   observed_source_units: >-
     Annual observations stay annual. QCEW mean weekly wage remains a weekly
     source statistic, not a period wage or a payment. No observed value,
@@ -131,3 +134,24 @@ required_evidence:
   - Exact stock, freight, order, labor, and person accounts reconcile each period.
   - History, comparison, Archive, and Bevy label the same authenticated period.
   - Old stored campaigns remain intact after refused admission.
+
+campaign_duration:
+  authority: ADR263 and the captured CampaignDuration.
+  continuous: No designed final period; signed-clock exhaustion refuses advancement.
+  finite: A positive explicit final period; no advance beyond it.
+  unknown_client_metadata: Distinct from an admitted continuous duration.
+  capacity: Continuous content captures standing supplies and current budgets, not lifetime rows.
+  finite_resources: Opening stocks, orders and independent commitments remain finite.
+  save_identity: Duration is included in content, bundles, foundation and runtime admission.
+  old_formats: Refuse without modifying data; no migration or compatibility execution.
+
+observation_window:
+  authority: Current and prior registers plus authenticated committed receipts.
+  retained: Active and latest orders, latest receipt, cumulative totals by stable relation.
+  retired_orders: Aggregate only after authenticated resolution and removal from authoritative state.
+  incremental: Authenticate each new period and the current persisted envelope before publication.
+  publication: A failed page or read transaction leaves the prior cursor untouched.
+  invalidation: Campaign, foundation, runtime epoch or visibility change.
+  history: Selected-period receipts remain available from persisted history on demand.
+  cold_restart: Page through the prefix with bounded memory; elapsed work still grows with history.
+  forbidden: Trusting an unauthenticated SQL summary or dropping lifecycle and consumption checks.

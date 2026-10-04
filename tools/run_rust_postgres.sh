@@ -44,9 +44,17 @@ if [ "${BABYLON_POSTGRES_IMAGE_ID+x}" = x ] &&
 fi
 
 case "$LIVE_FOCUS" in
-  runtime_smoke | reference_integrity | runtime | archive | reader | production_history | statewide_synthetic | statewide_qualified | organizer | client) ;;
+  runtime_smoke | session_progress | reference_integrity | runtime | territory | archive | reader | reader_recovery | production_history | statewide_synthetic | statewide_qualified | organizer | client | national_storage) ;;
   *) die "unsupported live focus: $LIVE_FOCUS" ;;
 esac
+
+if [ "$LIVE_FOCUS" = national_storage ]; then
+  # shellcheck source=tools/postgres_national_lifecycle.sh
+  source "$REPO_ROOT/tools/postgres_national_lifecycle.sh"
+  national_capture_selection
+  national_lock_entry "$@"
+  national_begin
+fi
 
 require_container_absent() {
   local context="$1"
@@ -97,13 +105,24 @@ claim_task_container() {
 
 # shellcheck disable=SC2329 # Invoked by the EXIT trap after ownership is proved.
 cleanup_best_effort() {
+  if [ "$LIVE_FOCUS" = national_storage ] && [ -e "${NATIONAL_RECORD:-/nonexistent}" ]; then
+    national_failure_summary "${1:-${status:-1}}" || true
+    printf 'National lifecycle status=failure-retained record=%s attempted_container=%s id=%s\n' "$NATIONAL_RECORD" "$CONTAINER" "$CONTAINER_ID" >&2
+    return 0
+  fi
   [ "$OWNED" -eq 1 ] || return 0
+  # National failures retain the exact game and lease for diagnosis.
+  [ "$LIVE_FOCUS" != national_storage ] || return 0
   timeout --signal=TERM --kill-after=5s 30s \
     docker rm --force --volumes "$CONTAINER_ID" >/dev/null 2>&1 || true
 }
 
 cleanup_checked() {
   [ "$OWNED" -eq 1 ] || return 0
+  if [ "$LIVE_FOCUS" = national_storage ]; then
+    [ "$status" -eq 0 ] || die "national failure retains the exact game and lease for diagnosis"
+    national_verify_disposable || die "national ownership/evidence refusal; exact target and lease preserved"
+  fi
   timeout --signal=TERM --kill-after=5s 30s \
     docker rm --force --volumes "$CONTAINER_ID" >/dev/null
   require_container_absent "cleanup"
@@ -111,6 +130,9 @@ cleanup_checked() {
     require_volume_absent
   fi
   OWNED=0
+  if [ "$LIVE_FOCUS" = national_storage ]; then
+    rm -- "$NATIONAL_RECORD"
+  fi
 }
 
 wait_for_runtime() {
@@ -229,11 +251,11 @@ on_signal() {
   if [ "$OWNED" -eq 0 ]; then
     claim_task_container "" || true
   fi
-  cleanup_best_effort
+  cleanup_best_effort "$status"
   exit "$status"
 }
 
-trap cleanup_best_effort EXIT
+trap 'cleanup_best_effort "$?"' EXIT
 trap 'on_signal 130' INT
 trap 'on_signal 143' TERM
 trap 'on_signal 129' HUP
@@ -259,8 +281,10 @@ if [ -n "$PREBUILT_IMAGE_ID" ] && [ "$IMAGE_ID" != "$PREBUILT_IMAGE_ID" ]; then
   die "prebuilt PostgreSQL image ID does not match the expected tag"
 fi
 
+if [ "$LIVE_FOCUS" = national_storage ]; then national_record; fi
 run_status=0
 created_container_id="$(timeout --signal=TERM --kill-after=5s 30s docker run --detach \
+  --log-driver local --log-opt max-size=10m --log-opt max-file=2 \
   --name "$CONTAINER" \
   --label "babylon.disposable_runtime=$CANARY" \
   --publish 127.0.0.1::5432 \
@@ -282,12 +306,14 @@ else
   die_with_runtime_logs "task-owned container did not start"
 fi
 
+if [ "$LIVE_FOCUS" = national_storage ]; then national_record; fi
 inspect_status=0
 VOLUME="$(timeout --signal=TERM --kill-after=2s 10s \
   docker inspect --format '{{range .Mounts}}{{if eq .Destination "/var/lib/postgresql/data"}}{{.Name}}{{end}}{{end}}' "$CONTAINER")" ||
   inspect_status="$?"
 [ "$inspect_status" -eq 0 ] && [ -n "$VOLUME" ] ||
   die_with_runtime_logs "anonymous data volume identity was not resolved"
+if [ "$LIVE_FOCUS" = national_storage ]; then national_record; fi
 port_status=0
 published="$(timeout --signal=TERM --kill-after=2s 10s \
   docker port "$CONTAINER" 5432/tcp)" || port_status="$?"
@@ -328,7 +354,7 @@ export PATH="$CARGO_TARGET_DIR/debug:$PATH"
 # Suppress inherited libpq service/target redirection for every host probe.
 unset PGHOST PGHOSTADDR PGPORT PGDATABASE PGOPTIONS PGSERVICE PGSERVICEFILE PGSYSCONFDIR
 status=0
-if [ "$LIVE_FOCUS" != reference_integrity ]; then
+if [ "$LIVE_FOCUS" != reference_integrity ] && [ "$LIVE_FOCUS" != national_storage ]; then
   cd "$REPO_ROOT/rust"
   run_phase runtime_build 600 cargo build -p babylon-persistence --bin babylon-runtime --locked || status=$?
   if [ "$status" -eq 0 ] && [ "$LIVE_FOCUS" = runtime_smoke ]; then
@@ -355,7 +381,7 @@ if [ "$LIVE_FOCUS" != reference_integrity ]; then
     observation="$(runtime_observation babylon_test)" || status=$?
     [ "$observation" = "$CLEAN_RUNTIME" ] || { printf 'fresh bootstrap authority mismatch: %s\n' "$observation" >&2; status=1; }
   fi
-  if [ "$status" -eq 0 ] && [ "$LIVE_FOCUS" != runtime_smoke ]; then
+  if [ "$status" -eq 0 ] && [ "$LIVE_FOCUS" != runtime_smoke ] && [ "$LIVE_FOCUS" != session_progress ]; then
     create_runtime_template || status=$?
     export BABYLON_RUNTIME_TEMPLATE_DB="$RUNTIME_TEMPLATE"
   fi
@@ -364,9 +390,31 @@ fi
 if [ "$status" -eq 0 ]; then
   cd "$REPO_ROOT/rust"
   case "$LIVE_FOCUS" in
+    national_storage)
+      national_create_game
+      # This existing consumer installs its own fresh schema and reopens every tick.
+      # Qualification is uncapped, serialized by the lease, and retains exact saves.
+      BLAS=1 cargo test -p babylon-persistence --test national_storage_encoded_measurement \
+        actual_encoded_national_tick_measures_postgresql_growth_and_recovery \
+        --locked -- --ignored --nocapture --test-threads=1 || status=$?
+      if [ "$status" -eq 0 ]; then
+        cd "$REPO_ROOT"
+        national_measure || status=$?
+      fi
+      ;;
     runtime_smoke)
       cd "$REPO_ROOT"
       run_phase michigan_rollover 600 env BABYLON_RUNTIME_DSN="$BOOTSTRAP_DSN" mise run qa:michigan-rollover-smoke || status=$?
+      ;;
+    session_progress)
+      # Exercise the actual protocol producer and launcher through distinct
+      # session processes, recovery and the native committed-state reader.
+      run_phase session_client_build 600 cargo build -p babylon-client --bin babylon-client --locked || status=$?
+      if [ "$status" -eq 0 ]; then
+        cd "$REPO_ROOT"
+        run_phase session_progress 600 env BABYLON_RUNTIME_DSN="$BOOTSTRAP_DSN" \
+          mise run play -- --smoke --no-build --preset standard || status=$?
+      fi
       ;;
     reference_integrity)
       run_phase reference_integrity 900 cargo test -p babylon-persistence --lib \
@@ -380,29 +428,69 @@ if [ "$status" -eq 0 ]; then
       run_phase runtime 600 cargo test -p babylon-persistence --lib \
         runtime::live_tests::live_ --locked -- --nocapture --ignored --test-threads=1 || status=$?
       if [ "$status" -eq 0 ]; then
+        run_phase territory_storage 600 cargo test -p babylon-persistence --lib \
+          runtime::live_tests::territory_controls:: --locked -- --nocapture --ignored --test-threads=1 || status=$?
+      fi
+      if [ "$status" -eq 0 ]; then
         run_phase material_writer_bounds 180 env BABYLON_RUNTIME_DSN="$BOOTSTRAP_DSN" \
           cargo test -p babylon-persistence --lib \
           material_runtime::writer_bounds_tests::live_bounded_writer_verifies_authority_and_timeouts_in_read_only_transaction \
           --locked -- --nocapture --ignored --exact --test-threads=1 || status=$?
       fi
       ;;
+    territory)
+      run_phase territory_storage 600 cargo test -p babylon-persistence --lib \
+        runtime::live_tests::territory_controls:: --locked -- --nocapture --ignored --test-threads=1 || status=$?
+      if [ "$status" -eq 0 ]; then
+        run_phase territory_commit_recovery 600 cargo test -p babylon-persistence --lib \
+          runtime::live_tests::live_material_commit_loss_reconciles_only_the_complete_persisted_candidate \
+          --locked -- --nocapture --ignored --exact --test-threads=1 || status=$?
+      fi
+      for territory_reader in exact_rows_require_the_matching_commit_marker full_observer_requires_every_view_and_preview_refuses_all_grant_paths; do
+        [ "$status" -eq 0 ] || break
+        run_phase "territory_$territory_reader" 600 cargo test -p babylon-persistence --test observer_material_live \
+          "tick_components::$territory_reader" --locked -- --nocapture --ignored --exact --test-threads=1 || status=$?
+      done
+      ;;
     archive)
       # Current material fixtures commit real ticks. Bound each independent
       # acceptance group so one slow group cannot hide an unfinished later one.
       run_phase archive_worker 600 cargo test -p babylon-persistence --lib \
         archive_revision::worker::live_tests:: --locked -- --nocapture --ignored \
-        --skip ::bounds:: --skip ::revisions:: --skip ::wakeup:: --test-threads=1 || status=$?
-      for archive_group in bounds revisions wakeup; do
+        --skip ::bounds:: --skip ::revisions:: --skip ::wakeup:: \
+        --skip ::organizer_capture:: --skip ::short_publication:: --skip ::checkpoint_membership:: --test-threads=1 || status=$?
+      for archive_group in organizer_capture short_publication bounds revisions wakeup; do
         [ "$status" -eq 0 ] || break
         run_phase "archive_$archive_group" 600 cargo test -p babylon-persistence --lib \
           "archive_revision::worker::live_tests::$archive_group::" \
           --locked -- --nocapture --ignored --test-threads=1 || status=$?
+      done
+      for checkpoint_control in \
+        live_shared_membership_preserves_checkpoint_boundary_and_historical_reads \
+        live_changed_admission_refuses_even_when_later_full_set_is_unchanged \
+        live_frozen_membership_refuses_missing_extra_base_reference_and_delta_corruption \
+        live_checkpoint_page_failure_rolls_back_new_base_without_disturbing_history; do
+        [ "$status" -eq 0 ] || break
+        run_phase "archive_checkpoint_$checkpoint_control" 600 cargo test -p babylon-persistence --lib \
+          "archive_revision::worker::live_tests::checkpoint_membership::$checkpoint_control" \
+          --locked -- --nocapture --ignored --exact --test-threads=1 || status=$?
       done
       for archive_producer in place_producer_live county_producer_live; do
         [ "$status" -eq 0 ] || break
         run_phase "$archive_producer" 600 cargo test -p babylon-persistence \
           --test "$archive_producer" --locked -- --nocapture --ignored --test-threads=1 || status=$?
       done
+      ;;
+    reader_recovery)
+      # Bounded repairs and receipt authentication use the same owned roles,
+      # template and cleanup as the full reader gate. Keep its default intact.
+      run_phase reader_recovery 600 cargo test -p babylon-persistence \
+        --test observer_material_live --locked -- --nocapture --ignored \
+        --test-threads=2 \
+        cold_restart_and_history_refuse_corrupt_or_missing_earlier_period_lookup \
+        held_staffing_history_survives_advance_reopen_and_does_not_mutate_authority \
+        persisted_delivery_twins_reconcile_and_restart_at_dispatch_transit_and_arrival \
+        live_material_observer_preserves_history_and_denies_preview_blob_authority || status=$?
       ;;
     reader)
       for reader_suite in reader_role_live observer_material_live; do
@@ -456,6 +544,9 @@ fi
 [ "$status" -eq 0 ] || emit_runtime_logs
 cleanup_checked
 trap - EXIT INT TERM HUP
+if [ "$LIVE_FOCUS" = national_storage ]; then
+  printf 'National lifecycle status=success-cleaned; storage acceptance is recorded separately in qualification.json\n'
+fi
 printf 'Rust PostgreSQL cleanup verified: container=%s volume=%s elapsed_seconds=%s status=%s\n' \
   "$CONTAINER" "$VOLUME" "$SECONDS" "$status"
 exit "$status"

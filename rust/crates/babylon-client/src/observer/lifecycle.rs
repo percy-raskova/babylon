@@ -209,7 +209,7 @@ impl ObserverSession {
         self.durable_tick = 0;
         self.viewed_tick = 0;
         self.archive_verified_tick = 0;
-        self.horizon_tick = None;
+        self.duration = None;
         self.content_hash = None;
         self.foundation_digest = None;
         self.error = None;

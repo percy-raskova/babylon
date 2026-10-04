@@ -741,22 +741,53 @@ def test_prepare_builds_with_native_rustup_from_the_pinned_workspace(
 
 
 def _smoke_transcript_children(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, *, refused: bool = False
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    *,
+    refused: bool = False,
+    economic_report: dict[str, object] | None = None,
+    protocol_version: int | float = 10,
+    progress_rows: list[dict[str, Any]] | None = None,
+    progress_before_ready: bool = False,
 ) -> list[list[str]]:
     """Keep the real launcher/session code; replace only native process boundaries."""
     calls: list[list[str]] = []
     tail = {"resolve_tick": 1, "tick_content_hash": "a" * 64}
-    scope = {"session_id": "fixture", "generation": 1}
+    hello_scope = {"epoch": 0, "campaign_id": None}
+    scope = {"epoch": 1, "campaign_id": str(CAMPAIGN)}
 
     class RuntimeChild:
         def __init__(self, args: list[str], **_kwargs: Any) -> None:
             new = not calls
             calls.append(args)
             self.stdin = (tmp_path / f"requests-{len(calls)}.jsonl").open("wb")
-            rows: list[dict[str, Any]] = [{"type": "hello", "protocol_version": 4, "scope": scope}]
+            rows: list[dict[str, Any]] = [
+                {"type": "hello", "protocol_version": protocol_version, "scope": hello_scope}
+            ]
             if refused:
                 rows.append({"type": "error", "request_id": 1, "code": "invalid_defines"})
             else:
+                progress = (
+                    progress_rows
+                    if progress_rows is not None
+                    else [
+                        {
+                            "type": "advance_progress",
+                            "request_id": 2,
+                            "scope": scope,
+                            "resolve_tick": 1,
+                            "stage": stage,
+                        }
+                        for stage in (
+                            "preparing_commitments",
+                            "resolving_economy",
+                            "preparing_storage",
+                            "saving_period",
+                        )
+                    ]
+                )
+                if progress_before_ready:
+                    rows.extend(progress)
                 rows.append(
                     {
                         "type": "ready",
@@ -767,10 +798,11 @@ def _smoke_transcript_children(
                     }
                 )
                 if new:
+                    rows.extend(progress)
                     rows.append(
                         {"type": "committed", "request_id": 2, "scope": scope, "tail": tail}
                     )
-                rows.append({"type": "stopped", "request_id": 3 if new else 2})
+                rows.append({"type": "stopped", "request_id": 3 if new else 2, "scope": scope})
             read_fd, write_fd = os.pipe()
             self.stdout = os.fdopen(read_fd, "rb")
             with os.fdopen(write_fd, "wb") as output:
@@ -784,6 +816,11 @@ def _smoke_transcript_children(
 
     def readback(args: list[str], **_kwargs: Any) -> Any:
         assert not refused, "a refused New cannot proceed to native readback"
+        if args[-2:] == ["economy", "status"]:
+            assert args[1:4] == ["--headless", "--campaign", str(CAMPAIGN)]
+            return launcher.subprocess.CompletedProcess(
+                args, 0, stdout=json.dumps(economic_report or _national_snapshot_report())
+            )
         assert args[1:] == ["--headless", "--campaign", str(CAMPAIGN), "tick", "status"]
         return launcher.subprocess.CompletedProcess(
             args,
@@ -825,6 +862,7 @@ def _smoke_transcript_children(
         "statewide-maintenance-parts-shortage",
         "statewide-maintenance-both",
         "organize-in-wayne",
+        "national-world",
     ],
 )
 def test_smoke_request_preserves_selected_preset_through_new_restart_and_readback(
@@ -915,3 +953,187 @@ def test_preparation_refuses_database_before_reader_mutations(
     assert calls == (
         ["bootstrap"] if refused_phase == "bootstrap" else ["bootstrap", "provision-readers"]
     )
+
+
+def _national_snapshot_report() -> dict[str, object]:
+    return {
+        "record": "economy-status",
+        "schema_version": 1,
+        "campaign_id": str(CAMPAIGN),
+        "resolve_tick": 1,
+        "foundation_digest": "b" * 64,
+        "tick_content_hash": "a" * 64,
+        "nominal_world_hash": "c" * 64,
+        "envelope_digest": "d" * 64,
+        "visibility": "full_observer",
+        "duration": {"kind": "continuous"},
+        "county_count": 3144,
+        "exact_national_roster": True,
+        "domestic_household_locations": 3144,
+        "households_cover_national_roster": True,
+        "external_household_locations": 18,
+        "household_cohorts": 6324,
+        "sites": 60634,
+        "household_goods_accounts": 9486,
+        "household_service_accounts": 9486,
+        "completed_household_goods_accounts": 9486,
+        "completed_household_service_accounts": 9486,
+        "completed_material_balance": True,
+        "price_accounts": 106000,
+        "read_elapsed_us": 12345,
+    }
+
+
+def test_national_smoke_requires_the_authenticated_economic_snapshot(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _smoke_transcript_children(monkeypatch, tmp_path)
+    assert launcher.main(["--smoke", "--no-build", "--preset", "national-world"]) == 0
+    report = json.loads(capsys.readouterr().out)
+    assert report["economy_snapshot"] == _national_snapshot_report()
+    assert set(report["lifecycle_timings_us"]) == {"opening", "advance_commit_ack", "reopen"}
+    assert all(
+        type(value) is int and value >= 0 for value in report["lifecycle_timings_us"].values()
+    )
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("county_count", 83),
+        ("exact_national_roster", False),
+        ("domestic_household_locations", 3143),
+        ("households_cover_national_roster", False),
+        ("campaign_id", str(UUID(int=9))),
+        ("resolve_tick", 0),
+        ("foundation_digest", "e" * 64),
+        ("tick_content_hash", "e" * 64),
+        ("duration", {"kind": "finite", "final_period": 16}),
+        ("completed_material_balance", False),
+        ("completed_household_goods_accounts", 0),
+        ("completed_household_service_accounts", 0),
+        ("visibility", "known_preview"),
+        ("envelope_digest", None),
+        ("nominal_world_hash", None),
+        ("read_elapsed_us", -1),
+    ],
+)
+def test_national_smoke_refuses_incomplete_or_mismatched_economic_read(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    field: str,
+    value: object,
+) -> None:
+    report = _national_snapshot_report()
+    report[field] = value
+    _smoke_transcript_children(monkeypatch, tmp_path, economic_report=report)
+    assert launcher.main(["--smoke", "--no-build", "--preset", "national-world"]) == 1
+    output = capsys.readouterr()
+    assert not output.out
+    assert "national economic snapshot" in output.err
+
+
+def test_installation_check_admits_current_nine_and_exact_progress_stream(
+    monkeypatch, tmp_path, capsys
+):
+    _smoke_transcript_children(monkeypatch, tmp_path, protocol_version=10)
+    assert launcher.main(["--smoke", "--no-build", "--preset", "standard"]) == 0
+    for index in (1, 2):
+        requests = [
+            json.loads(line)
+            for line in (tmp_path / f"requests-{index}.jsonl").read_text().splitlines()
+        ]
+        assert all(
+            type(row["protocol_version"]) is int and row["protocol_version"] == 10
+            for row in requests
+        )
+        assert requests[0]["scope"] == {"epoch": 0, "campaign_id": None}
+        assert all(
+            row["scope"] == {"epoch": 1, "campaign_id": str(CAMPAIGN)} for row in requests[1:]
+        )
+    assert json.loads(capsys.readouterr().out)["periods"] == 1
+
+
+@pytest.mark.parametrize("version", [5, 6, 7, 8, 9, 10.0])
+def test_installation_check_refuses_unsupported_or_untyped_version(
+    monkeypatch, tmp_path, capsys, version
+):
+    _smoke_transcript_children(monkeypatch, tmp_path, protocol_version=version)
+    assert launcher.main(["--smoke", "--no-build", "--preset", "standard"]) == 1
+    assert "requires runtime session protocol 10" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "defect",
+    [
+        "request",
+        "scope",
+        "tick",
+        "float_tick",
+        "unknown_stage",
+        "order",
+        "duplicate",
+        "missing",
+        "before_ready",
+        "extra",
+    ],
+)
+def test_installation_check_refuses_invalid_interim_advance_progress(
+    monkeypatch, tmp_path, capsys, defect
+):
+    rows = [
+        {
+            "type": "advance_progress",
+            "request_id": 2,
+            "scope": {"epoch": 1, "campaign_id": str(CAMPAIGN)},
+            "resolve_tick": 1,
+            "stage": stage,
+        }
+        for stage in (
+            "preparing_commitments",
+            "resolving_economy",
+            "preparing_storage",
+            "saving_period",
+        )
+    ]
+    if defect == "request":
+        rows[0]["request_id"] = 1
+    if defect == "scope":
+        rows[0]["scope"] = {"epoch": 2, "campaign_id": str(CAMPAIGN)}
+    if defect == "tick":
+        rows[0]["resolve_tick"] = 2
+    if defect == "float_tick":
+        rows[0]["resolve_tick"] = 1.0
+    if defect == "unknown_stage":
+        rows[0]["stage"] = "finished"
+    if defect == "order":
+        rows[0], rows[1] = rows[1], rows[0]
+    if defect == "duplicate":
+        rows.insert(1, rows[0].copy())
+    if defect == "missing":
+        rows.pop()
+    if defect == "extra":
+        rows[0]["guessed_percentage"] = 1
+    _smoke_transcript_children(
+        monkeypatch, tmp_path, progress_rows=rows, progress_before_ready=defect == "before_ready"
+    )
+    assert launcher.main(["--smoke", "--no-build", "--preset", "standard"]) == 1
+    error = capsys.readouterr().err
+    assert (
+        "commit omitted advance stages" if defect == "missing" else "invalid advance progress"
+    ) in error
+
+
+def test_launcher_current_protocol_matches_rust_protocol_authority():
+    import re
+
+    source = (
+        Path(__file__).resolve().parents[3]
+        / "rust/crates/babylon-persistence/src/runtime_session/protocol.rs"
+    ).read_text()
+    match = re.search(r"pub const RUNTIME_SESSION_PROTOCOL_VERSION: u16 = ([0-9]+);", source)
+    assert match is not None
+    assert int(match.group(1)) == launcher.RUNTIME_SESSION_PROTOCOL_VERSION

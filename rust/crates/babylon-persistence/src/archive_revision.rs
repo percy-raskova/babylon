@@ -1,5 +1,6 @@
 //! Immutable Archive publications and exact scoped dossier observations.
 
+mod body_encoding;
 mod changes;
 pub(crate) mod emission;
 mod knowledge;

@@ -1,0 +1,51 @@
+ADR279_exact_territory_definitions:
+  status: accepted
+  date: '2026-10-03'
+  issue: PER-40
+  title: Exact territory definitions serve current and historical reads
+  evidence_class: Designed
+  authority:
+    - Director authorizes PostgreSQL redesign to reduce accumulated save growth
+    - Repository rules require one current implementation and exact recovery
+  context: |
+    Current national territory projections contain the county identity. The
+    engine reproduces them from its graph and captured scope, but county and
+    observer consumers also need typed SQL fields. Repeating territory parents
+    and fields charged 2,277,376 bytes in the measured current national tick.
+    Dynamic territory fields in other scenarios remain part of the contract.
+  decision: |
+    Intern each exact territory identity and ordered typed fieldset once per
+    campaign. Store compact period membership references and an expected count.
+    Expand references through the current territory SQL views for all existing
+    production readers. Preserve canonical engine rows, ordering and hashes.
+    Seed actual opening definitions from the authoritative replay projection;
+    charge that storage to the opening save. Changed fields create a new exact
+    definition. Empty fieldsets remain represented by their parent definition.
+
+    SHA-256 selects candidate definitions; it does not establish identity.
+    Reconstruct candidate typed rows, validate their count and digest, and
+    compare complete canonical bytes before reuse. Preserve every scalar tag,
+    exact currency, stored binary64 bits and nullable ratio bounds. Definition
+    identity follows the existing BSL canonical encoder, including its declared
+    equivalence of the two signs of real zero; do not introduce new semantics.
+
+    Definitions and fields are immutable. Marker admission checks reference
+    ownership, temporal validity, completeness, dense ordered fields and one
+    definition per territory. Serialize insertions against marker publication.
+    Refuse late inserts, future or uncommitted references and unsupported old
+    schemas. Public and restricted roles receive only their existing projections.
+  consequences: |
+    This changes the current physical schema, not game law or a mathematical
+    primitive. No compatibility path or historical pruning is introduced.
+    Measured savings must include opening definitions, indexes and allocation.
+    This repair alone is not expected to close the current 12 MB period deficit.
+  verification:
+    - Unchanged definitions reuse storage; changed definitions preserve history.
+    - All typed values and empty fieldsets reconstruct identical canonical bytes.
+    - Invalid, incomplete and late writes cannot publish a durable tick.
+    - Full and restricted readers preserve their data and privilege boundaries.
+    - Native restart and accumulated save measurements include all retained bytes.
+  sources:
+    - https://www.postgresql.org/docs/17/sql-createtrigger.html
+    - https://www.postgresql.org/docs/17/plpgsql-trigger.html
+  source_record: reports/national-household-time-close-census-2026-10-02.md

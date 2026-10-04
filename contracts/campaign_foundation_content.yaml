@@ -1,16 +1,20 @@
-version: 2
+version: 3
 name: campaign_foundation_content
-purpose: Capture exact authored sources for the current material runtime.
+purpose: Capture one explicit current reconstruction source for the material runtime.
 encoding:
   type: FoundationContentBundle
-  domain: "babylon.campaign-foundation-content.v2\0"
-  layout: u32_big_endian_2
-  fields:
+  domain: "babylon.campaign-foundation-content.v3\0"
+  layout: u32_big_endian_3
+  disposition: {authored_bscn: 1, economic_catalog: 2}
+  authored_fields:
     - {tag: 1, name: scenario_source_bytes, codec: source_utf8}
     - {tag: 2, name: prelude_source_bytes, codec: optional_source_utf8}
     - {tag: 3, name: rule_source_bytes, codec: source_utf8}
     - {tag: 4, name: defines_bytes, codec: bounded_bytes}
     - {tag: 5, name: reference_bundle_manifest_bytes, codec: bounded_bytes}
+  economic_fields:
+    - {tag: 1, name: captured_economic_catalog, codec: bounded_bytes}
+  economic_catalog_contract: contracts/economic_catalog_v1.yaml
   source_utf8:
     frame: u32_big_endian_length_then_exact_utf8_bytes
     maximum_bytes: 1048576
@@ -24,13 +28,16 @@ encoding:
     maximum_bytes: 67108864
   maximum_complete_bytes: 67108864
   digest: sha256_exact_complete_bytes
-  canonicalization: Exact input bytes without rewriting or format dispatch.
+  canonicalization: Exact input bytes under an explicit closed source disposition.
 construction:
-  content: FoundationContentBundle::try_new
+  authored_content: FoundationContentBundle::try_new
+  economic_content: FoundationContentBundle::from_economic_catalog
+  decoding: FoundationContentBundle::decode
   capture: CampaignFoundation::capture
   identity: The nested content domain and layout bind the complete foundation digest.
 storage:
   schema: One current schema, verified before writes or acknowledgement.
   creation: Capture graph and material foundation in one transaction.
-  hydration: Rebuild exact source bytes and verify the stored foundation digest.
+  column: campaign_foundation.content_bundle_bytes
+  hydration: Decode the singular source blob and verify the stored foundation digest.
   refusal: Incompatible schema, changed bytes, malformed sources or digest mismatch.

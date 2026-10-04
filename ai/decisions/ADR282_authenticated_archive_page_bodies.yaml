@@ -1,0 +1,70 @@
+ADR282_authenticated_archive_page_bodies:
+  status: accepted
+  date: '2026-10-04'
+  issue: PER-343
+  title: Archive page bodies retain exact semantics in a bounded compressed tuple
+  evidence_class: Designed
+  authority:
+    - Director approved lossless storage changes based on measured duplication
+    - Repository rules require an architecture decision record
+  context: |
+    A retained national corpus contains 3,148 page revisions. A separately
+    owned physical-storage experiment reconstructed every original body field
+    and retained the original canonical identities. The page relation's complete
+    allocated storage fell from 7,135,232 to 3,530,752 decimal bytes, a reduction
+    of 3,604,480 bytes. This component measurement does not establish integrated
+    per-period growth, recovery, or long-save compliance.
+  decision: |
+    Store title, Markdown, search text, provenance JSON and canonical emission
+    JSON together in one versioned, length-delimited UTF-8 tuple compressed with
+    Zstandard. Retain an explicit encoding tag, exact decoded length and decoded
+    checksum. Keep the indexed search projection available, and authenticate its
+    equality with the original search field when admitting the body.
+
+    Bound both stored and decoded lengths before allocation. Refuse unsupported
+    encoding, incorrect lengths, malformed UTF-8, NULs, corrupt frames, changed
+    projections, noncanonical emission and changed semantic digests. Preserve
+    the original page content and revision hashes; physical compression cannot
+    define a new semantic identity.
+
+    Encode newly checked pages outside the publication transaction. Capture
+    retained body frames, scalars, ordered atoms and grants in a short read
+    transaction, then decode and authenticate outside that transaction. Before
+    publication, revalidate the exact captured physical witnesses without
+    reconstructing bodies inside the writer transaction. A different legitimate
+    compression frame may represent the same authenticated record. An admitted
+    retry preserves the stored frame and publishes its consumption marker once.
+
+    Confined current and historical dossier readers use one central decoder and
+    the existing knowledge, revision, atom and grant checks. The indexed search
+    text does not substitute for authenticated page contents. Reader transaction
+    bounds remain required independently of the detached publication path.
+
+    Keep one current schema and codec. The current schema identity and authentic
+    four-role catalog censuses refuse the earlier plaintext shape before writes.
+    Preserve old saves and failed-run evidence as data; add no migration solely
+    for compatibility during development.
+  alternatives: |
+    Repeated uncompressed text and JSON duplicate compressible body content.
+    Compressing fields independently loses their joint redundancy and adds more
+    frames. Hashing only physical bytes would confuse representation with page
+    identity. External archives remain deferred under ADR278 until their total
+    storage and recovery behavior justify the additional system.
+  consequences: |
+    The codec adds bounded lossless reconstruction and exact frame witnesses.
+    It changes no economic accounts, county coverage, political agreement,
+    primitive or reserved theory line. ADR280 budgets remain authoritative.
+    Actual integrated growth, timing, replay and native play qualification remain
+    required; a component saving or local test result cannot satisfy them.
+    This decision authorizes no merge.
+  verification:
+    - Lossless decoding preserves all five original fields and canonical hashes.
+    - Unsupported tags, corruption and altered search or emission are refused.
+    - Actual retry accepts equivalent content and preserves the admitted frame.
+    - Slow encoding and decoding run without a writer transaction.
+    - Failed publication leaves no partial pages, pin or consumption marker.
+    - Confined current and historical dossiers retain their exact identities.
+    - Complete PostgreSQL measurements charge tables, indexes and TOAST.
+  source_record: reports/test-results/per343-archive-body-physical/2026-10-04/current-corpus-revision002/result.private.json
+  implementation_record: reports/test-results/per343-archive-body-integration/2026-10-04/packed-body-green/control-composition.json
+  failed_gate_record: reports/test-results/per343-archive-body-integration/2026-10-04/packed-body-green/live-postgres/execution.json

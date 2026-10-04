@@ -59,7 +59,7 @@ fn live_revision_refuses_later_tick_and_conflicting_stage_without_partial_public
         .connect(NoTls)
         .expect("pin count")
         .query_one(
-            "SELECT count(*) FROM babylon_meta.archive_tick_knowledge_v2 WHERE campaign_id=$1",
+            "SELECT count(*) FROM babylon_meta.archive_tick_knowledge_v3 WHERE campaign_id=$1",
             &[target.campaign_id.as_uuid()],
         )
         .expect("pin query")

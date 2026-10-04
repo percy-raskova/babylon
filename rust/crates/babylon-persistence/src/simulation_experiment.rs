@@ -309,12 +309,16 @@ impl SimulationExperimentV1 {
             return freight::foundation(self);
         }
         let catalog = regional::catalog(self)?;
-        crate::sector_bundle::foundation::create_bundle_foundation(
-            self.profile.foundation_id(),
-            crate::michigan_material::MichiganDeliveryPreset::Standard,
-            &catalog,
-        )
-        .map_err(|_| ExperimentError::Foundation)
+        crate::economic_catalog::CapturedEconomicCatalog::from_michigan(&catalog)
+            .map_err(|_| ExperimentError::Content)?
+            .create_foundation(
+                babylon_kernel::replay::ReplaySessionId::try_from(
+                    crate::michigan_cohorts::MICHIGAN_COHORT_SESSION,
+                )
+                .map_err(|_| ExperimentError::Foundation)?,
+                babylon_kernel::replay::ReplaySeed::new(self.seed),
+            )
+            .map_err(|_| ExperimentError::Foundation)
     }
     /// Resolved regional rows for evidence readers. No second transition authority.
     /// # Errors

@@ -1,8 +1,14 @@
 //! Shared atlas and county selection for the durable observer's geographic views.
 
+mod scope;
+pub(crate) use scope::CountyMapScope;
+
 use crate::atlas::CountyAtlas;
 use bevy::input::InputPlugin;
 use bevy::prelude::*;
+
+#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
+pub(crate) struct MapScopeSet;
 
 /// The atlas index under the cursor this frame, or `None`.
 #[derive(Resource, Default)]
@@ -41,6 +47,14 @@ impl Plugin for MapPlugin {
         }
         app.init_resource::<HoveredCounty>()
             .init_resource::<SelectedCounty>()
+            .init_resource::<CountyMapScope>()
+            .add_systems(
+                Update,
+                scope::sync_county_scope
+                    .in_set(MapScopeSet)
+                    .after(crate::observer_io::ObserverSet::Install)
+                    .before(crate::observer_io::ObserverSet::Paint),
+            )
             .add_systems(Startup, load_county_atlas);
     }
 }

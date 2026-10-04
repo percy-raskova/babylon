@@ -28,7 +28,7 @@ impl ProductionNavigation {
         self.county_geoid = Some(county_geoid.to_owned());
         let resume = snapshot.is_some_and(|snapshot| {
             snapshot.sites.iter().any(|site| {
-                self.selected_site.as_ref() == Some(&site.id) && site.county_geoid == county_geoid
+                self.selected_site.as_ref() == Some(&site.id) && site.is_in_county(county_geoid)
             })
         });
         if !resume {
@@ -169,7 +169,10 @@ impl ProductionControlAvailability {
                             .sites
                             .iter()
                             .filter(|site| {
-                                navigation.county_geoid.as_ref() == Some(&site.county_geoid)
+                                navigation
+                                    .county_geoid
+                                    .as_deref()
+                                    .is_some_and(|county| site.is_in_county(county))
                             })
                             .count(),
                         ProductionPage::Relationships => navigation
@@ -183,10 +186,15 @@ impl ProductionControlAvailability {
                                     .collect::<std::collections::BTreeSet<_>>()
                                     .len()
                             }),
-                        ProductionPage::Competitors => navigation
+                        ProductionPage::Competitors => match navigation
                             .selected_site
                             .as_deref()
-                            .map_or(0, |id| competitor_sites(id, snapshot).len()),
+                            .map(|id| competitor_sites(id, snapshot))
+                        {
+                            Some(Ok(sites)) => sites.len(),
+                            None => 0,
+                            Some(Err(_)) => return false,
+                        },
                     };
                     *page < count.div_ceil(6).max(1)
                 }) =>
@@ -351,7 +359,7 @@ pub(super) fn sync_selected_county(
         selected.0 = (0..atlas.len()).find(|index| {
             atlas
                 .county(*index)
-                .is_some_and(|county| county.fips == site.county_geoid)
+                .is_some_and(|county| site.is_in_county(county.fips))
         });
     }
 }
@@ -449,6 +457,6 @@ pub(super) fn focus_opening(
     selected.0 = (0..atlas.len()).find(|index| {
         atlas
             .county(*index)
-            .is_some_and(|county| county.fips == site.county_geoid)
+            .is_some_and(|county| site.is_in_county(county.fips))
     });
 }

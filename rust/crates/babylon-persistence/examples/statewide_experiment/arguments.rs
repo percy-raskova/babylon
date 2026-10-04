@@ -1,8 +1,6 @@
 use super::{hex, refused, report::Candidate, Result};
 use babylon_kernel::content_digest::sha256_of;
-use babylon_persistence::michigan_material::{
-    MichiganPhysicalNetwork, MAX_MICHIGAN_CAPTURED_CONTENT_BYTES,
-};
+use babylon_persistence::michigan_material::{MichiganPhysicalNetwork, MAX_MICHIGAN_SOURCE_BYTES};
 use serde::Serialize;
 use std::{
     collections::BTreeMap,
@@ -85,9 +83,9 @@ impl Arguments {
 fn bounded_read(path: &Path) -> Result<Vec<u8>> {
     let mut data = Vec::new();
     File::open(path)?
-        .take((MAX_MICHIGAN_CAPTURED_CONTENT_BYTES + 1) as u64)
+        .take((MAX_MICHIGAN_SOURCE_BYTES + 1) as u64)
         .read_to_end(&mut data)?;
-    if data.len() > MAX_MICHIGAN_CAPTURED_CONTENT_BYTES {
+    if data.len() > MAX_MICHIGAN_SOURCE_BYTES {
         return Err(refused(format!(
             "input exceeds captured-content bound: {}",
             path.display()

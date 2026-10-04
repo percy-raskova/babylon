@@ -94,7 +94,8 @@ impl ArchiveDriver {
     ) -> Result<Self, ArchiveDriverStartError> {
         crate::postgres_catalog::validate_connection_target(config)
             .map_err(|_| ArchiveDriverStartError::InvalidTarget)?;
-        let config = run::bounded_config(config);
+        // Keep external admission separate from the internally bounded connections.
+        let config = config.clone();
         let cancellation = ArchiveWorkerCancellation::default();
         let worker_stop = cancellation.clone();
         let (requests, receiver) = mpsc::sync_channel(COMMAND_CAPACITY);

@@ -2,8 +2,8 @@
 //!
 //! Material state is deliberately outside [`crate::replay_identity::StableWorld`],
 //! tick payload, and tick-content identity. The replay session owns one explicit
-//! checked dynamic-H3 source and publishes separately owned graph-derived and
-//! dynamic canonical projections only after every identity and allocation check succeeds.
+//! checked geographic scope with optional local dynamic-H3 detail. It publishes
+//! graph-derived and local dynamic projections only after identity and allocation checks.
 
 use std::collections::TryReserveError;
 
@@ -14,7 +14,7 @@ use babylon_bsl::typecheck::TypeEnv;
 use babylon_bsl::types::EnumRegistry;
 use babylon_graph::stable_element::{StableElementKey, StableElementResolver, StableIdentityError};
 use babylon_graph::stable_state::{StableGraphEdgeRow, StableGraphState};
-use babylon_kernel::{content_digest::sha256_of, H3CellId};
+use babylon_kernel::{content_digest::sha256_of, geography::NationalCountyRoster, H3CellId};
 
 use crate::h3_runtime::{
     MichiganDynamicHexFoundation, MichiganDynamicHexFoundationError, MichiganDynamicHexValueBits,
@@ -35,7 +35,7 @@ const MAX_MATERIAL_BYTES: usize = 64 * 1024 * 1024;
 /// A typed material-state construction or projection refusal.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MaterialStateError {
-    /// The replay reference differs from the checked dynamic-H3 foundation.
+    /// The replay reference differs from the captured geographic foundation.
     ReferenceBundleMismatch {
         expected: [u8; 32],
         actual: [u8; 32],
@@ -251,10 +251,6 @@ impl DynamicHexRuntime {
 
     fn rows(&self) -> &[DynamicHexRuntimeRow] {
         &self.rows
-    }
-
-    const fn reference_bundle_digest(&self) -> [u8; 32] {
-        self.reference_bundle_digest
     }
 }
 
@@ -670,45 +666,155 @@ impl MaterialStateRowRef<'_> {
     }
 }
 
-/// The session-owned exact dynamic-H3 runtime.
+/// Fixed geographic authority; local H3 detail does not expand its coverage.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GeographicScope {
+    /// Intentional Michigan control with its qualified local source.
+    MichiganControl,
+    /// The complete captured 2024 fifty-state and DC county roster.
+    NationalCounties,
+}
+
+/// Explicit captured geography for an opening replay session.
+#[derive(Clone, Copy)]
+pub enum MaterialGeography<'a> {
+    /// The current intentional Michigan control.
+    MichiganControl {
+        /// Qualified detail within Michigan, never national fine geometry.
+        local_detail: &'a MichiganDynamicHexFoundation,
+        /// Full captured campaign reference identity, independent of the H3 source digest.
+        reference_bundle_digest: [u8; 32],
+    },
+    /// County authority, with independently identified optional Michigan detail.
+    NationalCounties {
+        /// Proof of all 3,144 current domestic county identities.
+        roster: &'a NationalCountyRoster,
+        /// Identity of the entire campaign's captured reference bundle.
+        reference_bundle_digest: [u8; 32],
+        /// Only this scoped local artifact can supply dynamic H3 rows.
+        local_detail: Option<&'a MichiganDynamicHexFoundation>,
+    },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct GeographicAuthority {
+    scope: GeographicScope,
+    reference_bundle_digest: [u8; 32],
+    roster: Option<NationalCountyRoster>,
+}
+
+/// Session-owned geographic authority and optional exact local dynamic state.
 #[derive(Debug, PartialEq, Eq)]
 pub struct MaterialState {
-    dynamic_hexes: DynamicHexRuntime,
+    geography: GeographicAuthority,
+    dynamic_hexes: Option<DynamicHexRuntime>,
 }
 
 impl MaterialState {
-    /// Construct the sole checked dynamic-H3 runtime.
-    ///
+    /// Construct the intentional Michigan control through common geographic admission.
     /// # Errors
     /// Returns the first dynamic-runtime allocation or ordering refusal.
     pub fn try_new(foundation: &MichiganDynamicHexFoundation) -> Result<Self, MaterialStateError> {
-        let dynamic_hexes =
-            DynamicHexRuntime::try_from_foundation(foundation, &ProductionMaterialAllocationGate)?;
-        Self::try_from_runtime(dynamic_hexes)
+        Self::try_from_geography(MaterialGeography::MichiganControl {
+            local_detail: foundation,
+            reference_bundle_digest: foundation.reference_bundle_digest(),
+        })
     }
 
-    fn try_from_runtime(dynamic_hexes: DynamicHexRuntime) -> Result<Self, MaterialStateError> {
-        if dynamic_hexes
-            .rows()
-            .windows(2)
-            .any(|rows| rows[0].cell_id.as_u64() >= rows[1].cell_id.as_u64())
-        {
+    /// Construct fixed county authority without implying unprovided local geometry.
+    /// # Errors
+    /// Returns the first local-runtime allocation or ordering refusal.
+    pub fn try_from_geography(source: MaterialGeography<'_>) -> Result<Self, MaterialStateError> {
+        let (geography, detail) = match source {
+            MaterialGeography::MichiganControl {
+                local_detail,
+                reference_bundle_digest,
+            } => (
+                GeographicAuthority {
+                    scope: GeographicScope::MichiganControl,
+                    reference_bundle_digest,
+                    roster: None,
+                },
+                Some(local_detail),
+            ),
+            MaterialGeography::NationalCounties {
+                roster,
+                reference_bundle_digest,
+                local_detail,
+            } => (
+                GeographicAuthority {
+                    scope: GeographicScope::NationalCounties,
+                    reference_bundle_digest,
+                    roster: Some(roster.clone()),
+                },
+                local_detail,
+            ),
+        };
+        let dynamic_hexes = detail
+            .map(|foundation| {
+                DynamicHexRuntime::try_from_foundation(
+                    foundation,
+                    &ProductionMaterialAllocationGate,
+                )
+            })
+            .transpose()?;
+        Self::try_from_runtime(geography, dynamic_hexes)
+    }
+
+    fn try_from_runtime(
+        geography: GeographicAuthority,
+        dynamic_hexes: Option<DynamicHexRuntime>,
+    ) -> Result<Self, MaterialStateError> {
+        if dynamic_hexes.as_ref().is_some_and(|source| {
+            source
+                .rows()
+                .windows(2)
+                .any(|rows| rows[0].cell_id.as_u64() >= rows[1].cell_id.as_u64())
+        }) {
             return Err(MaterialStateError::SourceRowOrder {
                 family: "dynamic hex",
             });
         }
-        Ok(Self { dynamic_hexes })
+        Ok(Self {
+            geography,
+            dynamic_hexes,
+        })
+    }
+
+    /// The captured scope survives detached transitions and checkpoint restoration.
+    #[must_use]
+    pub const fn geographic_scope(&self) -> GeographicScope {
+        self.geography.scope
+    }
+
+    /// Exact national membership, absent for the intentional Michigan control.
+    #[must_use]
+    pub const fn county_roster(&self) -> Option<&NationalCountyRoster> {
+        self.geography.roster.as_ref()
+    }
+
+    /// Whether a qualified Michigan local-detail artifact was explicitly provided.
+    #[must_use]
+    pub const fn has_michigan_local_detail(&self) -> bool {
+        self.dynamic_hexes.is_some()
     }
 
     pub(crate) const fn reference_bundle_digest(&self) -> [u8; 32] {
-        self.dynamic_hexes.reference_bundle_digest()
+        self.geography.reference_bundle_digest
     }
 
     #[cfg(test)]
     pub(crate) fn try_dynamic_runtime_fixture_for_test(
         rows: Vec<(H3CellId, MichiganDynamicHexValueBits)>,
     ) -> Result<Self, MaterialStateError> {
-        Self::try_from_runtime(DynamicHexRuntime::try_fixture(rows)?)
+        Self::try_from_runtime(
+            GeographicAuthority {
+                scope: GeographicScope::MichiganControl,
+                reference_bundle_digest: MICHIGAN_DYNAMIC_HEX_REFERENCE_BUNDLE_DIGEST,
+                roster: None,
+            },
+            Some(DynamicHexRuntime::try_fixture(rows)?),
+        )
     }
 
     pub(crate) fn try_detached(
@@ -716,7 +822,12 @@ impl MaterialState {
         gate: &dyn MaterialAllocationGate,
     ) -> Result<Self, MaterialStateError> {
         Ok(Self {
-            dynamic_hexes: self.dynamic_hexes.try_detached(gate)?,
+            geography: self.geography.clone(),
+            dynamic_hexes: self
+                .dynamic_hexes
+                .as_ref()
+                .map(|source| source.try_detached(gate))
+                .transpose()?,
         })
     }
 
@@ -724,10 +835,19 @@ impl MaterialState {
         &self,
         rows: &MaterialStateRows,
     ) -> Result<Self, MaterialStateError> {
-        Self::try_from_runtime(self.dynamic_hexes.try_restore_from_rows(
-            rows.dynamic_hexes().rows(),
-            &ProductionMaterialAllocationGate,
-        )?)
+        let restored = match &self.dynamic_hexes {
+            Some(source) => Some(source.try_restore_from_rows(
+                rows.dynamic_hexes().rows(),
+                &ProductionMaterialAllocationGate,
+            )?),
+            None if rows.dynamic_hexes().source_count() == 0 => None,
+            None => {
+                return Err(MaterialStateError::SourceRowOrder {
+                    family: "uncaptured dynamic hex checkpoint identity",
+                })
+            }
+        };
+        Self::try_from_runtime(self.geography.clone(), restored)
     }
 
     pub(crate) fn project_rows(
@@ -740,11 +860,12 @@ impl MaterialState {
 }
 
 fn project_dynamic_rows(
-    source: &DynamicHexRuntime,
+    source: Option<&DynamicHexRuntime>,
     gate: &dyn MaterialAllocationGate,
 ) -> Result<Vec<DynamicHexStateRow>, MaterialStateError> {
-    let mut rows = reserve_vec("material dynamic rows", source.rows().len(), gate)?;
-    for row in source.rows() {
+    let source_rows = source.map(DynamicHexRuntime::rows).unwrap_or_default();
+    let mut rows = reserve_vec("material dynamic rows", source_rows.len(), gate)?;
+    for row in source_rows {
         rows.push(DynamicHexStateRow::try_from_runtime(row, gate)?);
     }
     Ok(rows)
@@ -915,8 +1036,10 @@ impl MaterialStateRows {
             gate,
         )?;
         let territories = TerritoryStateRows::compose(territory_rows, gate)?;
-        let dynamic_hexes =
-            DynamicHexStateRows::compose(project_dynamic_rows(&source.dynamic_hexes, gate)?, gate)?;
+        let dynamic_hexes = DynamicHexStateRows::compose(
+            project_dynamic_rows(source.dynamic_hexes.as_ref(), gate)?,
+            gate,
+        )?;
         let organization_rows = derive_organization_rows(
             context.stable_graph,
             context.scenario_scope,

@@ -52,7 +52,7 @@ qualified statewide content.
 Authored campaign values
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-``content/scenarios/michigan/defines.toml`` uses definitions schema V4.
+``content/scenarios/michigan/defines.toml`` uses definitions schema V6.
 It contains the regional recipes and routes plus statewide commodity,
 template, transport, merchant, and maintenance tables. Operating quantities
 have the ``Designed`` evidence class. Observed QCEW establishments qualify
@@ -65,22 +65,27 @@ overflow. ``--defines PATH`` selects the numeric source for New. Canonical
 numeric values ignore comments, whitespace, and table order. Source and
 qualification pins also contribute to a statewide campaign's identity.
 
-``MichiganCapturedContentV4`` retains ``MichiganNormalizedContentV3`` owners,
-recipes, stocks, workforce, orders, explicit preset overrides, and observed
-source cells. It also retains the material-cycle BSL, generated graph scenarios
-for the base and any workforce variants, and observed definitions. Maintenance
-content includes the provider, consumer binding, and opening service. Statewide
-capture includes selected physical paths, deduplicated edge geometry, county
-terminal attachments, vehicle profile, and network source identity. It excludes
-the full routing matrix and unselected road graph.
+Michigan control admission regenerates ``MichiganNormalizedContentV4`` from
+captured authored and observed sources, including preset overrides and physical
+network evidence. The normalized opening supplies owners, recipes, stocks,
+workforce, orders, and maintenance content. The source capture includes
+material-cycle BSL, graph declarations, and observed definitions. Statewide
+transport evidence retains selected physical paths, deduplicated edge geometry,
+county terminal attachments, vehicle profile, and network source identity.
+It excludes the full routing matrix and unselected road graph.
 
-``SectorBundleV3`` and ``StoredSectorBundleDefinesV4`` keep executable rows
-and staffing authority around that capture. The captured-content and total
-definitions limits are each 64 MiB. Each generated graph source and the BSL
-source have a 1 MiB limit. These are admission ceilings, not measured full-state
-performance claims. Open reconstructs admitted saved authority without rereading
-changed TOML, QCEW, or road files and without rerouting. Admission refuses unsupported
-versions without deleting their stored data.
+``CapturedEconomicCatalog`` stores exact source bytes and hashes with compiler,
+geography, duration, and optional organizer configuration. Admission regenerates
+and checks the typed ``EconomicOpening``. The catalog does not encode derived
+per-site or global opening rows.
+
+Each source artifact has a 32 MiB limit. The complete catalog has a 64 MiB limit.
+Graph declarations, prelude declarations, and BSL rules each have a 1 MiB limit.
+These are admission ceilings, not measured full-state performance claims.
+
+Open reconstructs admitted saved authority without rereading changed TOML,
+QCEW, or road files and without rerouting.
+Admission refuses unsupported versions without deleting their stored data.
 
 Regional parameters
 ^^^^^^^^^^^^^^^^^^^
@@ -101,17 +106,19 @@ that value.
      - Constraints and four-week conversion
      - Consumer and consequence
    * - ``SCHEMA_VERSION``
-     - ``4``. Format version
-     - Exactly ``4``
+     - ``6``. Format version
+     - Exactly ``6``
      - Canonical content admission. Fixed contract
    * - ``TICK_DURATION_DAYS``
      - ``28`` days
      - Exactly the Rust clock interval
      - Stored interval admission. Fixed contract
-   * - ``HORIZON_PERIODS``
-     - ``16`` four-week periods
-     - Integer ``1..=16``. Unscaled
-     - Session stop, inventory bounds, Circuit horizon. Consequential
+   * - ``DURATION``
+     - ``{ kind = "continuous" }``
+     - Explicit continuous policy, or finite policy with positive
+       ``final_period`` no greater than 131
+     - Captured campaign duration. Finite experiments keep their
+       declared endpoint
    * - ``staffing.WORK_HOURS_PER_PERSON_WEEK``
      - ``40`` hours/person/week
      - Integer ``1..=168``. Becomes ``160`` hours/person/period
@@ -248,7 +255,8 @@ recipe keeps its typed inputs.
      - Meaning and current authored values
    * - ``statewide.FINITE_ORDER_PERIODS``
      - ``4`` nominal production periods of finite orders. Integer
-       ``1..=HORIZON_PERIODS``. Orders do not recur
+       positive quantity bounded by any explicit finite campaign duration.
+       These physical-control orders do not recur
    * - ``statewide.TERMINAL_ATTACHMENT_LIMIT_METERS``
      - ``50000`` meters. Positive limit for a Designed county
        terminal, not a factory location

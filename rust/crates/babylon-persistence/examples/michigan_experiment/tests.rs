@@ -11,7 +11,13 @@ fn matrix_changes_only_stock_and_selected_delivery() {
     );
     let hashes: BTreeSet<_> = cases
         .iter()
-        .map(|case| case.catalog.defines_hash())
+        .map(|case| {
+            babylon_persistence::economic_catalog::CapturedEconomicCatalog::from_michigan(
+                &case.catalog,
+            )
+            .unwrap()
+            .digest()
+        })
         .collect();
     assert_eq!(
         hashes.len(),
@@ -22,7 +28,7 @@ fn matrix_changes_only_stock_and_selected_delivery() {
         .iter()
         .map(|case| {
             let captured: serde_json::Value =
-                serde_json::from_slice(case.catalog.defines_bytes()).unwrap();
+                serde_json::to_value(case.catalog.resolved_report()).unwrap();
             let mut content = captured["normalized"].clone();
             let panel = content["processes"]
                 .as_array_mut()
@@ -66,7 +72,10 @@ fn matrix_changes_only_stock_and_selected_delivery() {
             run::BASELINE,
         )
         .unwrap();
-    assert_eq!(catalog.defines_bytes(), original.defines_bytes());
+    assert_eq!(
+        serde_json::to_value(catalog.resolved_report()).unwrap(),
+        serde_json::to_value(original.resolved_report()).unwrap()
+    );
     let first = run::experiment_identity(&cases).unwrap();
     assert_eq!(
         run::digest_json(&first).unwrap(),

@@ -94,7 +94,7 @@ fn missing_or_misidentified_visible_owner_refuses_without_partial_publication() 
             snapshot.sites.pop();
         },
         |snapshot: &mut ProductionSnapshot| {
-            snapshot.sites[0].sector_code = "11".to_owned();
+            snapshot.sites[0].sector_code = Some("11".to_owned());
         },
         |snapshot: &mut ProductionSnapshot| {
             snapshot.sites[0].processes.clear();
@@ -193,9 +193,11 @@ fn delivery_presets_share_observed_context_without_assigning_jobs() {
 fn source_and_visible_site_order_does_not_change_context_or_duplicate_wayne_jobs() {
     let catalog = crate::test_support::catalog();
     let mut snapshot = opening();
-    let expected = context_rows(&catalog, &snapshot).unwrap();
+    let capture =
+        crate::economic_catalog::CapturedEconomicCatalog::from_michigan(&catalog).unwrap();
+    let expected = context_rows(capture.view(), &snapshot).unwrap();
     snapshot.sites.reverse();
-    assert_eq!(context_rows(&catalog, &snapshot).unwrap(), expected);
+    assert_eq!(context_rows(capture.view(), &snapshot).unwrap(), expected);
     assert_eq!(
         expected
             .0
@@ -204,4 +206,21 @@ fn source_and_visible_site_order_does_not_change_context_or_duplicate_wayne_jobs
             .count(),
         1
     );
+}
+
+#[test]
+fn national_known_subtotals_keep_suppressed_members_explicit() {
+    let reference = crate::national_cohorts::national_cohort_reference().unwrap();
+    let row = reference
+        .admitted_cohorts()
+        .find(|r| r.jobs().missing_members() > 0)
+        .unwrap();
+    let disclosed = subtotal(row.jobs());
+    assert!(disclosed.missing_members > 0);
+    assert_eq!(disclosed.known_subtotal, row.jobs().known_subtotal());
+    assert_eq!(
+        disclosed.published_members + disclosed.missing_members,
+        row.members().len()
+    );
+    assert!(row.jobs().complete_total().is_none());
 }

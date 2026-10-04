@@ -1,0 +1,77 @@
+ADR268_productive_equipment_and_installation:
+  status: accepted
+  date: '2026-10-01'
+  issue: PER-338
+  title: Real equipment, installation work and wear supply process capacity
+  evidence_class: Designed
+  authority:
+    - Director-approved national economy plan and recorded PER-338 productive equipment commitment
+  partially_supersedes:
+    - ADR263, ADR264 and ADR266 close ordering for installation and investment admission
+  context: |
+    Money for equipment, a paid order, delivered equipment, installation in
+    progress and a functioning instrument are different material relations.
+    A replacement fund cannot guarantee delivery, labor, complementary inputs or
+    profitable use. Capacity and historical carrying amounts need separate owners.
+  decision: |
+    Rolling process supply explicitly chooses captured nameplate controls or
+    managed productive equipment. These modes never add their capacities. The
+    managed mode owns definitions, process bindings, homogeneous installed cohorts,
+    pending installation work and finite policies. A process may have no installed
+    equipment or policies and still have an explicit checked binding with zero
+    capacity. Shared freight and handling supply keep their existing authority.
+
+    Ordinary paid goods orders procure equipment through the existing supplier,
+    escrow, dispatch, loss and arrival circuit. Installation moves actual stocked
+    equipment and complete complementary materials into work in progress. Actual
+    worker hours reduce remaining installation work across periods, using the
+    existing member attendance allocator. Installation follows production and
+    maintenance and shares their remaining labor and material budgets. Completion
+    supplies usable capacity from the following period. Late local deliveries wait
+    for a subsequent installation phase. Installation work requests remain present
+    when the dependent process has no usable equipment or current production.
+
+    One cohort's available batches are bounded by its captured nameplate and
+    remaining service batches. Actual production consumes that finite service life.
+    Usage-based wear transfers historical carrying cost into actual produced output
+    with exact proportional withdrawals; complete exhaustion transfers the entire
+    remainder. Retire exhausted cohorts with dated evidence. Do not credit cash,
+    reprice existing assets or charge the same cost again as a period expense.
+    Acquisition, installation materials and actual employee installation wages
+    enter asset carrying cost. Working-owner and unpaid-family work can perform
+    installation without creating a wage cost or ownership claim. Ordinary repairs
+    remain on the maintenance expense path.
+
+    Replacement and expansion are decision intentions, not promised physical
+    outcomes. Cash-funded replacement can occur while earnings are negative.
+    Expansion additionally uses a bounded positive-retained-earnings policy.
+    Both account for stocked equipment, pending installations and funded inbound
+    orders, and respect actual available cash and a captured cash floor. Admission
+    follows closing financial flows and precedes next-period production planning;
+    new orders use the following period's existing dispatch phases. Disclose
+    captured plans, accepted orders and output buffers separately. Unmet planned
+    production alone does not prove market demand or make expansion successful.
+  source_qualification: |
+    Capital II chapter 8 section II and chapter 9 distinguish functioning fixed
+    capital, wear, maintenance, replacement funds and physical reproduction. The
+    recorded local EPUB entries were read completely, including retained notes.
+    They also discuss deterioration while idle, weather, moral depreciation and
+    heterogeneous component lives. The first kernel's finite usage life and exact
+    historical-cost allocation are Designed simplifications, not measurements or
+    Marx's value theory. No universal investment or crisis clock follows from them.
+  source_record:
+    - docs/superpowers/research/2026-09-20-economic-circuit-source-study.md
+    - https://www.marxists.org/archive/marx/works/1885-c2/ch08.htm
+    - https://www.marxists.org/archive/marx/works/1885-c2/ch09.htm
+  consequences: |
+    State schema 14 and receipt schema 12 refuse preceding formats. Physical
+    equipment and historical carrying rows reconcile by exact identity. Canonical
+    receipts expose installation, wear and investment decisions. No installation
+    policy or asset automatically creates residents, jobs, ownership, money or
+    shared transport capacity. Source compilation and native presentation remain
+    separate integration responsibilities; broader resource-renewal acceptance is
+    open. All numeric equipment coefficients are captured content.
+  verification:
+    - rust/crates/babylon-material-circuit/tests/productive_equipment.rs
+    - Independent WIP and wear journal, delivery delay, shared actual work and inactive controls.
+    - Cash limits, funded inbound deduplication, hoarding, restart and failed-close atomicity.

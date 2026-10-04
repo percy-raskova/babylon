@@ -3,6 +3,8 @@
 //! This projection never allocates batches, routes freight, or advances a world.
 //! It reports actual receipt quantities using the recipe that governed the period.
 
+#[cfg(test)]
+use crate::michigan_material::MichiganMaterialCatalog;
 use std::collections::{BTreeMap, BTreeSet};
 
 use babylon_material_circuit::{
@@ -12,7 +14,7 @@ use babylon_tick::material_world::MaterialTickReceipts;
 use serde::{Deserialize, Serialize};
 
 use super::ProductionProjectionError;
-use crate::{michigan_economy::digest_hex, michigan_material::MichiganMaterialCatalog};
+use crate::michigan_economy::digest_hex;
 
 /// One complete committed period's local inventory accounts. Absent at foundation.
 /// The enclosing authorized observation binds campaign, perspective and evidence.
@@ -43,6 +45,8 @@ pub struct ProductionMaterialBalanceRow {
     pub consumed: u64,
     /// Spare parts used by maintenance, separate from productive recipe inputs.
     pub maintenance_consumed: u64,
+    /// Equipment and complementary materials transferred into installation work in progress.
+    pub installation_consumed: u64,
     pub dispatched: u64,
     pub closing: u64,
 }
@@ -63,6 +67,7 @@ struct Amounts {
     produced: u64,
     consumed: u64,
     maintenance_consumed: u64,
+    installation_consumed: u64,
     dispatched: u64,
     closing: u64,
 }
@@ -94,6 +99,7 @@ struct Movement {
 
 /// Inputs have already passed the enclosing material identity verification.
 /// A missing completed family is legitimate only at the true foundation.
+#[cfg(test)]
 pub(super) fn project_material_balance(
     catalog: &MichiganMaterialCatalog,
     current: &MaterialCircuitState,
@@ -109,7 +115,7 @@ pub(super) fn project_material_balance(
     })
 }
 
-fn project_with_labels(
+pub(super) fn project_with_labels(
     current: &MaterialCircuitState,
     prior: Option<&MaterialCircuitState>,
     receipt: Option<&MaterialTickReceipts>,
@@ -128,14 +134,17 @@ fn project_with_labels(
         _ => return Err(ProductionProjectionError::History),
     };
     super::outbound::completed_facts(prior, current, receipt)?;
+    super::services::validate(prior, current, receipt)?;
+    let equipment = super::equipment::validate(prior, current, receipt)?;
     let processes = process_map(prior)?;
-    let orders = order_map(prior)?;
-    if processes != process_map(current)? || orders != order_map(current)? {
+    let joined = super::lifecycle::join(prior, current, receipt)?;
+    let orders = order_map(joined.deliveries.values().map(|(before, _)| before))?;
+    if processes != process_map(current)? {
         return Err(ProductionProjectionError::State);
     }
     let mut ledger = inventory_ledger(prior, current)?;
     add_production(prior, receipt, &processes, &mut ledger)?;
-    add_transport(prior, current, receipt, &orders, &mut ledger)?;
+    add_transport(prior, current, receipt, &orders, &joined, &mut ledger)?;
     add_final_demand(prior, receipt, &mut ledger)?;
     if let Some(done) = maintenance {
         let binding = &done.binding;
@@ -149,6 +158,12 @@ fn project_with_labels(
                 .or_default()
                 .maintenance_consumed,
             done.consumed_spare_parts,
+        )?;
+    }
+    for (key, quantity) in equipment.materials {
+        add(
+            &mut ledger.entry(key).or_default().installation_consumed,
+            quantity,
         )?;
     }
     let rows = ledger
@@ -195,9 +210,11 @@ fn process_map(state: &MaterialCircuitState) -> Result<Processes, ProductionProj
     Ok(processes)
 }
 
-fn order_map(state: &MaterialCircuitState) -> Result<Orders, ProductionProjectionError> {
+fn order_map<'a>(
+    rows: impl Iterator<Item = &'a OrderRow>,
+) -> Result<Orders, ProductionProjectionError> {
     let mut orders = Orders::new();
-    for row in &state.orders {
+    for row in rows {
         if row.shipped > row.ordered
             || row.realized > row.delivered
             || row
@@ -263,11 +280,16 @@ fn add_production(
             return Err(ProductionProjectionError::State);
         }
     }
-    // Declared but idle input/output principals have honest zero-flow rows.
+    let services = super::services::service_kinds(prior);
+    // Declared but idle durable principals have honest zero-flow rows.
     for process in processes.values() {
-        ledger.entry(process.output).or_default();
+        if !services.contains(&(process.output.1, process.output.2)) {
+            ledger.entry(process.output).or_default();
+        }
         for &(good, unit) in process.inputs.keys() {
-            ledger.entry((process.output.0, good, unit)).or_default();
+            if !services.contains(&(good, unit)) {
+                ledger.entry((process.output.0, good, unit)).or_default();
+            }
         }
     }
     for row in &receipt.production {
@@ -281,11 +303,16 @@ fn add_production(
             return Err(ProductionProjectionError::State);
         }
         let output = multiply(process.output_per_batch, row.produced_batches)?;
-        add(
-            &mut ledger.entry(process.output).or_default().produced,
-            output,
-        )?;
+        if !services.contains(&(process.output.1, process.output.2)) {
+            add(
+                &mut ledger.entry(process.output).or_default().produced,
+                output,
+            )?;
+        }
         for (&(good, unit), &coefficient) in &process.inputs {
+            if services.contains(&(good, unit)) {
+                continue;
+            }
             let input = multiply(coefficient, row.produced_batches)?;
             add(
                 &mut ledger
@@ -307,6 +334,7 @@ fn add_transport(
     current: &MaterialCircuitState,
     receipt: &MaterialTickReceipts,
     orders: &Orders,
+    joined: &super::lifecycle::PeriodOrders,
     ledger: &mut Ledger,
 ) -> Result<(), ProductionProjectionError> {
     let mut movements = Movements::new();
@@ -358,11 +386,7 @@ fn add_transport(
             row.quantity,
         )?;
     }
-    let previous: BTreeMap<_, _> = prior.orders.iter().map(|row| (row.order_id, row)).collect();
-    for row in &current.orders {
-        let before = previous
-            .get(&row.order_id)
-            .ok_or(ProductionProjectionError::State)?;
+    for (before, row) in joined.deliveries.values() {
         check_movement(
             before,
             row,
@@ -382,15 +406,21 @@ fn add_dispatches(
     movements: &mut Movements,
     ledger: &mut Ledger,
 ) -> Result<(), ProductionProjectionError> {
+    let lots: BTreeMap<_, _> = current
+        .freight
+        .iter()
+        .map(|lot| (lot.lot_id, lot))
+        .collect();
+    if lots.len() != current.freight.len() {
+        return Err(ProductionProjectionError::State);
+    }
     let mut seen = BTreeSet::new();
     for row in &receipt.dispatches {
         let principal = orders
             .get(&row.order_id)
             .ok_or(ProductionProjectionError::State)?;
-        let lot = current
-            .freight
-            .iter()
-            .find(|lot| lot.lot_id == row.lot_id)
+        let lot = lots
+            .get(&row.lot_id)
             .ok_or(ProductionProjectionError::State)?;
         if row.quantity == 0
             || !seen.insert(row.lot_id)
@@ -436,17 +466,22 @@ fn add_losses(
     orders: &Orders,
     movements: &mut Movements,
 ) -> Result<(), ProductionProjectionError> {
+    let lots: BTreeMap<_, _> = prior.freight.iter().map(|lot| (lot.lot_id, lot)).collect();
+    let legs: BTreeMap<_, _> = prior
+        .route_stages
+        .iter()
+        .map(|leg| ((leg.route_id, leg.stage_index), leg))
+        .collect();
+    if lots.len() != prior.freight.len() || legs.len() != prior.route_stages.len() {
+        return Err(ProductionProjectionError::State);
+    }
     let mut seen = BTreeSet::new();
     for row in &receipt.losses {
-        let lot = prior
-            .freight
-            .iter()
-            .find(|lot| lot.lot_id == row.lot_id)
+        let lot = lots
+            .get(&row.lot_id)
             .ok_or(ProductionProjectionError::State)?;
-        let leg = prior
-            .route_stages
-            .iter()
-            .find(|leg| leg.route_id == lot.route_id && leg.stage_index == lot.current_stage_index)
+        let leg = legs
+            .get(&(lot.route_id, lot.current_stage_index))
             .ok_or(ProductionProjectionError::State)?;
         if row.quantity == 0
             || row.quantity > lot.quantity
@@ -503,7 +538,8 @@ fn add_local_transfers(
     Ok(())
 }
 
-/// Finite end-buyer fulfillment is a terminal stock sink, not consumption.
+/// Retail fulfillment leaves the site account. Resident receipt and consumption
+/// reconcile separately in the household account.
 fn add_final_demand(
     prior: &MaterialCircuitState,
     receipt: &MaterialTickReceipts,
@@ -588,6 +624,7 @@ fn finish_row(
     ])? != total(&[
         amounts.consumed,
         amounts.maintenance_consumed,
+        amounts.installation_consumed,
         amounts.dispatched,
         amounts.local_transferred,
         amounts.final_demand_fulfilled,
@@ -610,6 +647,7 @@ fn finish_row(
         produced: amounts.produced,
         consumed: amounts.consumed,
         maintenance_consumed: amounts.maintenance_consumed,
+        installation_consumed: amounts.installation_consumed,
         dispatched: amounts.dispatched,
         closing: amounts.closing,
     })

@@ -1,0 +1,47 @@
+{
+  "contract": "NationalHouseholdReference2024SourcesV1",
+  "county_reference_sha256": "28ad84a461f00c12489b11e0d770ad71bc3f09190dbc35774d725fc2333fec8e",
+  "sources": [
+    {
+      "id": "B11001",
+      "path": "national_reference_2024/acsdt5y2024-b11001.dat",
+      "url": "https://www2.census.gov/programs-surveys/acs/summary_file/2024/table-based-SF/data/5YRData/acsdt5y2024-b11001.dat",
+      "bytes": 45827971,
+      "sha256": "77200c3d9c0d99773bc7f78208bc96f25170e5d4d175a5de320620b478ceaff5",
+      "note": "Official table-based five-year bulk file; downloaded 2026-09-20"
+    },
+    {
+      "id": "B11002",
+      "url": "https://www2.census.gov/programs-surveys/acs/summary_file/2024/table-based-SF/data/5YRData/acsdt5y2024-b11002.dat",
+      "bytes": 58697156,
+      "sha256": "84dd1165671a943f4adeae3a585dae764fb0f5a19791858a79ff8578f7b6ca80",
+      "path": "national_reference_2024/households_2026-10-02/acsdt5y2024-b11002.dat",
+      "note": "Official ACS 2024 five-year bulk table; captured 2026-10-02. Estimate/MOE literals retained; annotations not supplied."
+    },
+    {
+      "id": "B19001",
+      "url": "https://www2.census.gov/programs-surveys/acs/summary_file/2024/table-based-SF/data/5YRData/acsdt5y2024-b19001.dat",
+      "bytes": 68953041,
+      "sha256": "1af421b3b9d0f85dbd938cd518ad5d01c693fa2870f24e1089552ea5c1e6683f",
+      "path": "national_reference_2024/households_2026-10-02/acsdt5y2024-b19001.dat",
+      "note": "Official ACS 2024 five-year bulk table; captured 2026-10-02. Estimate/MOE literals retained; annotations not supplied."
+    },
+    {
+      "id": "B19051",
+      "url": "https://www2.census.gov/programs-surveys/acs/summary_file/2024/table-based-SF/data/5YRData/acsdt5y2024-b19051.dat",
+      "bytes": 23573665,
+      "sha256": "2de0986d1715a88d95637af4e48ac2edded4ff3b283f6360cd55455afa0dd90e",
+      "variables_url": "https://api.census.gov/data/2024/acs/acs5/groups/B19051.html",
+      "path": "national_reference_2024/households_2026-10-02/acsdt5y2024-b19051.dat",
+      "note": "Official ACS 2024 five-year bulk table; captured 2026-10-02. Past12-month household earnings is a separate historical margin; raw annotations unavailable."
+    },
+    {
+      "id": "acs_table_shells",
+      "path": "national_reference_2024/ACS20245YR_Table_Shells.txt",
+      "url": "https://www2.census.gov/programs-surveys/acs/summary_file/2024/table-based-SF/documentation/ACS20245YR_Table_Shells.txt",
+      "bytes": 5622840,
+      "sha256": "5b46f4af873744a415c4974204010db976e2a61ff916674732f81c496a6b517d",
+      "note": "Official variable labels and universes; downloaded 2026-09-20"
+    }
+  ]
+}

@@ -1,9 +1,9 @@
 use babylon_material_circuit::{
     advance_material_circuit, decode_material_circuit_state, encode_material_circuit_state,
-    material_circuit_state_digest, BacklogRow, CapacityRow, CorridorCapacity, CorridorId,
-    FreightMassCoefficient, GoodId, InputOutputCoefficient, InventoryRow, LaborCapacityRow,
-    LaborCoefficient, LogisticsNodeId, MaterialCircuitState, OrderAccessMode, OrderId, OrderRow,
-    ProcessId, ProcessOutput, RouteId, RouteStage, RouteStageCapacity, SiteId, SiteLogisticsNode,
+    material_circuit_state_digest, BacklogRow, CapacityRow, CommodityDefinition, CorridorCapacity,
+    CorridorId, GoodId, InputOutputCoefficient, InventoryRow, LaborCapacityRow, LaborCoefficient,
+    LogisticsNodeId, MaterialCircuitState, OrderAccessMode, OrderId, OrderRow, ProcessId,
+    ProcessOutput, RouteId, RouteStage, RouteStageCapacity, SiteId, SiteLogisticsNode,
     SupplierRoute, SupplierTransport, UnitId, MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES,
     MAX_ROUTE_STAGES_PER_ROUTE,
 };
@@ -52,17 +52,21 @@ const ROUTE: u8 = 9;
 
 fn base_state() -> MaterialCircuitState {
     MaterialCircuitState {
+        capacity_supply: babylon_material_circuit::CapacitySupply::FiniteSchedule,
         period: 1,
         merchants: vec![],
         handling_coefficients: vec![],
         final_demand_principals: vec![],
         final_demand_orders: vec![],
+        accounting: babylon_material_circuit::CircuitAccounting::PhysicalControl,
         maintenance_binding: None,
         maintenance_service: None,
-        freight_mass_coefficients: vec![FreightMassCoefficient {
+        service_connections: vec![],
+        service_orders: vec![],
+        commodities: vec![CommodityDefinition {
             good_id: good(GOODS),
             unit_id: unit(GOODS_UNIT),
-            grams_per_unit: 1,
+            kind: babylon_material_circuit::CommodityKind::Storable { grams_per_unit: 1 },
         }],
         route_stage_capacities: vec![RouteStageCapacity {
             route_id: route(ROUTE),
@@ -147,6 +151,54 @@ fn inventory_quantity(state: &MaterialCircuitState, site_id: SiteId) -> u64 {
         .iter()
         .find(|row| row.site_id == site_id && row.good_id == good(GOODS))
         .map_or(0, |row| row.quantity)
+}
+
+#[test]
+fn shared_access_point_preserves_distinct_buyers_and_one_freight_budget() {
+    let mut state = two_route_state();
+    state.site_logistics_nodes[2].node_id = node(BUYER_NODE);
+    state.supplier_routes[1].route_id = route(ROUTE);
+    state.route_stages.truncate(1);
+    state.route_stage_capacities.truncate(1);
+    state.corridor_capacities.truncate(1);
+    state.corridor_capacities[0].available_grams = 10;
+    let bytes = encode_material_circuit_state(&state)
+        .expect("distinct buyers may share their captured logistics access point");
+    let opening = decode_material_circuit_state(&bytes).unwrap();
+    let dispatched = advance_material_circuit(&opening).unwrap();
+    assert_eq!(dispatched.state.freight.len(), 2);
+    assert_eq!(
+        dispatched
+            .dispatches
+            .iter()
+            .map(|r| r.quantity)
+            .sum::<u64>(),
+        10
+    );
+    assert_eq!(inventory_quantity(&dispatched.state, site(SUPPLIER)), 2);
+    assert_eq!(inventory_quantity(&dispatched.state, site(BUYER)), 0);
+    assert_eq!(inventory_quantity(&dispatched.state, site(12)), 0);
+    let arrived = advance_material_circuit(&dispatched.state).unwrap();
+    assert!(arrived.state.freight.is_empty());
+    assert_eq!(inventory_quantity(&arrived.state, site(SUPPLIER)), 2);
+    assert_eq!(inventory_quantity(&arrived.state, site(BUYER)), 6);
+    assert_eq!(inventory_quantity(&arrived.state, site(12)), 4);
+    assert_eq!(opening.inventory, state.inventory);
+
+    let mut duplicate_site = opening.clone();
+    duplicate_site
+        .site_logistics_nodes
+        .push(duplicate_site.site_logistics_nodes[0].clone());
+    assert_eq!(
+        encode_material_circuit_state(&duplicate_site),
+        Err(babylon_material_circuit::MaterialCircuitError::DuplicateRow)
+    );
+    let mut wrong_endpoint = opening;
+    wrong_endpoint.site_logistics_nodes[2].node_id = node(99);
+    assert_eq!(
+        encode_material_circuit_state(&wrong_endpoint),
+        Err(babylon_material_circuit::MaterialCircuitError::RouteInvariant)
+    );
 }
 
 fn two_leg_state(second_leg_capacity: u64) -> MaterialCircuitState {
@@ -421,6 +473,11 @@ fn completed_leg_loss_remains_attributed_before_final_delivery() {
 #[test]
 fn final_arrival_can_form_and_execute_following_period_production() {
     let mut state = base_state();
+    state.commodities.push(CommodityDefinition {
+        good_id: good(19),
+        unit_id: unit(GOODS_UNIT),
+        kind: babylon_material_circuit::CommodityKind::Storable { grams_per_unit: 1 },
+    });
     state.process_outputs.push(ProcessOutput {
         process_id: process(18),
         site_id: site(BUYER),

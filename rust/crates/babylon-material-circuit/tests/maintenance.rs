@@ -15,6 +15,7 @@ fn process() -> ProcessId {
 }
 fn opening(parts: u64, provider_hours: u64) -> MaterialCircuitState {
     MaterialCircuitState {
+        capacity_supply: babylon_material_circuit::CapacitySupply::FiniteSchedule,
         period: 1,
         site_logistics_nodes: (1..=3)
             .map(|id| SiteLogisticsNode {
@@ -40,11 +41,24 @@ fn opening(parts: u64, provider_hours: u64) -> MaterialCircuitState {
             unit_id: unit(2),
             quantity_per_batch: 60,
         }],
-        freight_mass_coefficients: vec![FreightMassCoefficient {
-            good_id: good(2),
-            unit_id: unit(1),
-            grams_per_unit: 1000,
-        }],
+        service_connections: vec![],
+        service_orders: vec![],
+        commodities: vec![
+            CommodityDefinition {
+                good_id: good(1),
+                unit_id: unit(1),
+                kind: babylon_material_circuit::CommodityKind::Storable {
+                    grams_per_unit: 1000,
+                },
+            },
+            CommodityDefinition {
+                good_id: good(2),
+                unit_id: unit(1),
+                kind: babylon_material_circuit::CommodityKind::Storable {
+                    grams_per_unit: 1000,
+                },
+            },
+        ],
         supplier_routes: vec![],
         route_stages: vec![],
         route_stage_capacities: vec![],
@@ -102,6 +116,7 @@ fn opening(parts: u64, provider_hours: u64) -> MaterialCircuitState {
         handling_coefficients: vec![],
         final_demand_principals: vec![],
         final_demand_orders: vec![],
+        accounting: babylon_material_circuit::CircuitAccounting::PhysicalControl,
         maintenance_binding: Some(MaintenanceBinding {
             provider_site_id: site(2),
             consumer_process_id: process(),
@@ -558,6 +573,13 @@ fn resource_sharing_is_refused_instead_of_imposing_hidden_priority() {
         unit_id: unit(1),
         quantity_per_batch: 1,
     });
+    shared_process.commodities.push(CommodityDefinition {
+        good_id: good(3),
+        unit_id: unit(1),
+        kind: CommodityKind::Storable {
+            grams_per_unit: 1000,
+        },
+    });
     shared_process.labor_coefficients.push(LaborCoefficient {
         process_id: other,
         unit_id: unit(2),
@@ -569,15 +591,6 @@ fn resource_sharing_is_refused_instead_of_imposing_hidden_priority() {
     );
     for (supplier, material) in [(site(2), good(2)), (site(1), good(1))] {
         let mut shared_order = state.clone();
-        if material == good(1) {
-            shared_order
-                .freight_mass_coefficients
-                .push(FreightMassCoefficient {
-                    good_id: material,
-                    unit_id: unit(1),
-                    grams_per_unit: 1000,
-                });
-        }
         let order_id = OrderId::from_bytes([9; 32]);
         shared_order.orders.push(OrderRow {
             order_id,
@@ -656,13 +669,6 @@ fn idle_consumer_and_provider_rehire_after_later_material_arrival() {
         unit_id: unit(1),
         quantity: 1280,
     });
-    state
-        .freight_mass_coefficients
-        .push(FreightMassCoefficient {
-            good_id: good(1),
-            unit_id: unit(1),
-            grams_per_unit: 1000,
-        });
     state.orders.push(OrderRow {
         order_id,
         access_mode: OrderAccessMode::CommoditySale,
@@ -762,4 +768,129 @@ fn spare_parts_independently_limit_positive_whole_jobs() {
     assert_eq!(stock(&result.state, site(2), good(2)), 1);
     assert_eq!(receipt.next_service.available_batches, 2);
     assert_eq!(result.state.production_commitments[0].planned_batches, 2);
+}
+
+fn paid_maintenance_opening() -> MaterialCircuitState {
+    use babylon_kernel::currency::Currency;
+    let money = Currency::from_micro_units;
+    let mut state = opening(2, 20);
+    let payee = FinalDemandPrincipalId::from_bytes([7; 32]);
+    state.final_demand_principals.push(FinalDemandPrincipal {
+        id: payee,
+        location: "county:26163".parse().unwrap(),
+    });
+    let book = MonetaryBook::open(vec![
+        CashAccount {
+            id: AccountId::Site(site(1)),
+            cash: money(1280),
+        },
+        CashAccount {
+            id: AccountId::Site(site(2)),
+            cash: money(20),
+        },
+        CashAccount {
+            id: AccountId::Site(site(3)),
+            cash: money(0),
+        },
+        CashAccount {
+            id: AccountId::Household(payee),
+            cash: money(0),
+        },
+    ])
+    .unwrap();
+    let costs = HistoricalCostBook::open(
+        &book,
+        vec![
+            StockCarryingValue {
+                owner: AccountId::Site(site(1)),
+                good_id: good(1),
+                unit_id: unit(1),
+                amount: money(2560),
+            },
+            StockCarryingValue {
+                owner: AccountId::Site(site(2)),
+                good_id: good(2),
+                unit_id: unit(1),
+                amount: money(6),
+            },
+        ],
+        vec![],
+        vec![],
+        vec![],
+    )
+    .unwrap();
+    state.accounting = CircuitAccounting::Monetary(Box::new(MonetaryCircuit {
+        aid: AidBook::default(),
+
+        household_time: babylon_material_circuit::HouseholdTimeAccounting::NotModeled,
+        financial: babylon_material_circuit::FinancialInstitutions::empty(),
+        member_labor: state
+            .labor
+            .iter()
+            .map(|row| babylon_material_circuit::MemberLaborCapacityRow {
+                member_id: babylon_material_circuit::StaffingMemberId::from_bytes(
+                    row.site_id.as_bytes(),
+                ),
+                period: row.period,
+                available_hours: row.available,
+            })
+            .collect(),
+        book,
+        costs,
+        employment: [1, 2]
+            .into_iter()
+            .map(|id| EmploymentTerms {
+                member_id: babylon_material_circuit::StaffingMemberId::from_bytes(
+                    (site(id)).as_bytes(),
+                ),
+                site_id: site(id),
+                unit_id: unit(2),
+                payee,
+                compensation: babylon_material_circuit::LaborCompensation::Wage(money(1)),
+            })
+            .collect(),
+        recurring: None,
+    }));
+    state
+}
+
+#[test]
+fn historical_cost_maintenance_and_idle_work_are_expenses_not_output_assets() {
+    use babylon_kernel::currency::Currency;
+    let money = Currency::from_micro_units;
+    let state = paid_maintenance_opening();
+    let closed = advance_material_circuit(&state).unwrap();
+    let producer = &closed
+        .income
+        .iter()
+        .find(|row| row.account == AccountId::Site(site(1)))
+        .unwrap()
+        .statement;
+    assert_eq!(producer.productive_labor_capitalized, money(960));
+    assert_eq!(producer.idle_labor_expense, money(320));
+    assert_eq!(producer.net_income().unwrap(), money(-320));
+    let provider = &closed
+        .income
+        .iter()
+        .find(|row| row.account == AccountId::Site(site(2)))
+        .unwrap()
+        .statement;
+    assert_eq!(provider.maintenance_material_expense, money(6));
+    assert_eq!(provider.maintenance_labor_expense, money(20));
+    assert_eq!(provider.net_income().unwrap(), money(-26));
+    let CircuitAccounting::Monetary(economy) = &closed.state.accounting else {
+        unreachable!()
+    };
+    assert_eq!(
+        economy
+            .costs
+            .snapshot()
+            .stocks
+            .iter()
+            .find(|row| row.owner == AccountId::Site(site(1)) && row.good_id == good(2))
+            .unwrap()
+            .amount,
+        money(2240)
+    );
+    assert_eq!(economy.book.total_cash_and_reserves().unwrap(), money(1300));
 }

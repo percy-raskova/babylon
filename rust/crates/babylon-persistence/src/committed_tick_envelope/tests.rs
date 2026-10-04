@@ -41,18 +41,35 @@ fn row_keys_are_nonempty_unique_and_strictly_ordered_in_choice_family() {
 }
 #[test]
 fn cumulative_bounds_cover_six_families_and_singular_archive() {
+    let ceilings = ALL_COMMITTED_TICK_ROW_FAMILIES.map(CommittedTickRowFamily::maximum_body_bytes);
     assert_eq!(
-        validate_committed_tick_envelope_bounds([1; 6], [MAX_COMMITTED_TICK_ROW_BATCH_BYTES; 6],)
-            .expect("exact byte maximum"),
-        6 * MAX_COMMITTED_TICK_ROW_BATCH_BYTES
+        ceilings,
+        [
+            134_217_728,
+            67_108_864,
+            67_108_864,
+            67_108_864,
+            67_108_864,
+            67_108_864
+        ]
     );
-    assert!(matches!(
-        validate_committed_tick_envelope_bounds(
-            [1; 6],
-            [MAX_COMMITTED_TICK_ROW_BATCH_BYTES + 1; 6],
-        ),
-        Err(CommittedTickEnvelopeError::BatchBytes { .. })
-    ));
+    assert_eq!(
+        validate_committed_tick_envelope_bounds([1; 6], ceilings)
+            .expect("each independent byte maximum"),
+        MAX_COMMITTED_COMPONENT_BODY_BYTES
+    );
+    for (index, family) in ALL_COMMITTED_TICK_ROW_FAMILIES.into_iter().enumerate() {
+        let mut oversized = ceilings;
+        oversized[index] += 1;
+        assert_eq!(
+            validate_committed_tick_envelope_bounds([1; 6], oversized),
+            Err(CommittedTickEnvelopeError::BatchBytes {
+                family,
+                actual: ceilings[index] + 1,
+                maximum: ceilings[index]
+            })
+        );
+    }
 
     let mut maximum_rows = [0_usize; 6];
     maximum_rows[0] = MAX_COMMITTED_TICK_ROWS - 1;

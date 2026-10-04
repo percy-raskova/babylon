@@ -69,10 +69,10 @@ captures its graph foundation, complete material register, staffing authority,
 and authored content identity in one foundation transaction. Opening a
 campaign verifies those same stored components before reconstruction.
 
-Each advance judges one 28-day period on detached state. The current Michigan
-campaign has an empty BSL rule set; typed material production, routed freight,
-and staffing determine its physical transition. The runtime stops at the saved
-horizon, which can be 1 through 16 periods.
+Each advance judges one 28-day period on detached state through the captured
+BSL material cycle. The saved duration is explicitly continuous or finite.
+Continuous campaigns have no authored terminal period; finite experiments stop
+at their captured endpoint. Clock and arithmetic bounds still apply.
 
 A caller cannot commit a pre-judged report. The runtime publishes an
 acknowledgement only after a successful commit or exact reconciliation of an
@@ -161,9 +161,24 @@ The current composition uses these contracts:
 
 - ``contracts/current_schema.yaml``
 - ``contracts/campaign_foundation_content.yaml``
-- ``contracts/material_campaign_foundation_v2.yaml``
+- ``contracts/material_campaign_foundation_v3.yaml``
 - ``contracts/committed_material_tick_v3.yaml``
 - ``contracts/simulation_interval_v1.yaml``
+
+Campaign duration is captured explicitly as continuous or finite with a final
+period. Continuous campaigns use standing capacity supplies and current
+budgets. They keep finite opening resources and do not acquire goods or money
+from time. The current material foundation is version 3 and its public header
+is version 2;
+older stored data remains intact when admission refuses it.
+
+The native observer retains an authenticated read cursor between requests. It
+keeps current and prior state, the latest receipts, active order witnesses, and
+cumulative totals by stable supplier route and resident group. A failed read
+cannot replace that cursor. Earlier receipts remain in PostgreSQL and are read
+on demand. Reopening validates the prefix in bounded pages; memory is bounded,
+but cold-read work still grows with the campaign's history. Timing output
+reports whether an observation resumed an existing cursor.
 
 Current format identities remain explicit. The runtime rejects unsupported inputs.
 Independent semantic byte and refusal vectors remain executable. Superseded

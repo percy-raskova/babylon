@@ -1,6 +1,12 @@
 //! Read-only presentation rows derived from a committed material envelope.
 //! These rows report exact stocks and receipts; they never adjudicate a tick.
 
+mod freight_orders;
+mod physical_routes;
+pub(crate) use freight_orders::FreightOrderRegistry;
+pub use freight_orders::{freight_order_identity, FreightOrderError, FreightOrderIndex};
+pub use physical_routes::{PhysicalRouteError, PhysicalRouteIndex};
+
 use serde::{Deserialize, Serialize};
 
 /// One complete role-scoped view of the committed circuit.
@@ -12,18 +18,29 @@ use serde::{Deserialize, Serialize};
 #[serde(deny_unknown_fields)]
 pub struct ProductionSnapshot {
     pub scenario_label: String,
-    pub horizon_period: u64,
+    pub duration: babylon_kernel::clock::CampaignDuration,
     pub content_authority_sha256: String,
     pub physical_edges: Vec<ProductionPhysicalEdge>,
     pub road_source: Option<ProductionRoadSource>,
     pub sites: Vec<ProductionSite>,
     pub routes: Vec<ProductionRoute>,
+    /// Shared physical definitions; supplier quantities remain on each relation.
+    pub physical_routes: Vec<PhysicalRouteDefinition>,
     pub freight: Vec<ProductionFreight>,
     /// Each mass-capacity principal is disclosed once, with distinct reservation periods.
     pub freight_capacity_accounts: Vec<ProductionFreightCapacityAccount>,
+    /// Exact complete order tuples shared by reservation occurrences.
+    pub freight_order_definitions: Vec<ProductionFreightOrderDefinition>,
+    /// Events for this selected period; historical observations provide earlier receipts.
     pub events: Vec<ProductionEvent>,
     pub merchant_handling_accounts: Vec<ProductionMerchantHandlingAccount>,
     pub final_demand_accounts: Vec<ProductionFinalDemandAccount>,
+    /// Actual resident inventories and consumption; merchant fulfillment is separate.
+    pub household_accounts: Vec<crate::ProductionHouseholdAccount>,
+    /// Current-period services satisfy needs directly and never become pantry inventory.
+    pub household_service_accounts: Vec<crate::ProductionHouseholdServiceAccount>,
+    /// Per-good current quotes and their latest committed demand, stock and cost evidence.
+    pub goods_price_accounts: Vec<crate::ProductionGoodsPriceAccount>,
     /// One exact service dependency; absent in campaigns without maintenance.
     pub maintenance_account: Option<ProductionMaintenanceAccount>,
     /// Each exact site/unit labor principal occurs once, across all its processes.
@@ -35,6 +52,8 @@ pub struct ProductionSnapshot {
     pub material_balance: Option<crate::CompletedMaterialBalance>,
     /// Deduplicated public 2024 source cells, never current modeled employment.
     pub observed_contexts: Vec<ObservedSectorContext>,
+    /// Source-cohort subtotals preserve missing cells and never allocate persons.
+    pub national_observed_contexts: Vec<ObservedNationalCohortContext>,
     /// Designed attribution only; these are not supplier or employment relations.
     pub process_attributions: Vec<DesignedProcessAttribution>,
     /// Declared assumptions and source artifact identifiers.
@@ -85,19 +104,61 @@ pub struct DesignedProcessAttribution {
     pub evidence_class: crate::ArchiveEvidenceClass,
 }
 
-/// One aggregate county-sector owner, never a factory coordinate.
+/// One aggregate workplace with a typed geographic scope, never a factory coordinate.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProductionSite {
     pub id: String,
-    pub county_geoid: String,
+    pub location: babylon_kernel::economic_location::EconomicLocation,
     pub name: String,
-    pub industry_code: String,
+    pub industry_code: Option<String>,
     pub observed_employment: Option<u64>,
-    pub role: ProductionSiteRole,
-    pub sector_code: String,
+    pub roles: Vec<ProductionSiteRole>,
+    pub sector_code: Option<String>,
+    pub function: String,
     pub processes: Vec<ProductionProcess>,
     pub inventory: Vec<ProductionStock>,
+}
+impl ProductionSite {
+    /// A county-only map has no invented position for foreign or dependency actors.
+    #[must_use]
+    pub fn county_geoid(&self) -> Option<String> {
+        match self.location {
+            babylon_kernel::economic_location::EconomicLocation::County(county) => {
+                Some(county.geoid().to_string())
+            }
+            _ => None,
+        }
+    }
+    #[must_use]
+    pub fn is_in_county(&self, geoid: &str) -> bool {
+        matches!(self.location,babylon_kernel::economic_location::EconomicLocation::County(county) if county.geoid().as_str()==geoid)
+    }
+}
+
+/// Known sums are not totals when one or more source cells are missing.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ObservedKnownSubtotal {
+    pub known_subtotal: u64,
+    pub published_members: usize,
+    pub missing_members: usize,
+}
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ObservedNationalCohortContext {
+    pub site_id: String,
+    pub subject: ProductionBusinessSubject,
+    pub county_geoid: String,
+    pub function: String,
+    pub ownership: String,
+    pub vintage: u16,
+    pub establishments: ObservedKnownSubtotal,
+    pub annual_average_jobs: ObservedKnownSubtotal,
+    pub annual_payroll_usd: ObservedKnownSubtotal,
+    pub artifact_sha256: String,
+    pub function_mapping_sha256: String,
+    pub evidence_class: crate::ArchiveEvidenceClass,
 }
 
 /// An owner role does not imply a fabricated productive process.
@@ -150,7 +211,8 @@ pub struct ProductionInput {
     pub good: String,
     pub unit: String,
     pub quantity_per_batch: u64,
-    pub on_hand: u64,
+    /// Period services have no durable on-hand stock.
+    pub on_hand: Option<u64>,
     pub supplier_site_ids: Vec<String>,
 }
 
@@ -187,9 +249,11 @@ pub struct CompletedProductionLabor {
     pub handling_used: u64,
     pub maintenance_needed: u64,
     pub maintenance_used: u64,
+    pub installation_needed: u64,
+    pub installation_used: u64,
 }
 
-/// Stable `SOCIAL_CLASS` subject of an admitted Designed workforce pool.
+/// Stable workplace or resident member subject of an admitted workforce composition.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProductionStaffingSubject {
@@ -210,10 +274,50 @@ pub struct ProductionStaffingAccount {
     pub employed: u64,
     pub reserve: u64,
     pub previous_unretained_hours: u64,
+    /// The sole graph-owned resident person partitions of this workplace pool.
+    pub members: Vec<ProductionStaffingMemberAccount>,
     pub next_opening_period: u64,
     pub next_opening_hours: u64,
     /// Absent at foundation; present only with exact committed staffing evidence.
     pub completed: Option<CompletedProductionStaffing>,
+}
+
+/// An aggregate household-residence/workplace group, never an individual person agent.
+/// Its person counts remain separate from labor hours and source job estimates.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProductionStaffingMemberAccount {
+    pub member_id: String,
+    pub household_id: String,
+    pub residence: babylon_kernel::economic_location::EconomicLocation,
+    pub subject: ProductionStaffingSubject,
+    pub labor_force: u64,
+    pub employed: u64,
+    pub reserve: u64,
+    pub next_opening_hours: u64,
+    /// Physical controls have no captured compensation policy.
+    pub compensation: Option<ProductionLaborCompensation>,
+    pub completed: Option<CompletedProductionStaffingMember>,
+}
+
+/// Attendance mode does not identify political class or confer ownership.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub enum ProductionLaborCompensation {
+    Wage { hourly_micro_units: i128 },
+    WorkingOwner,
+    UnpaidFamily,
+}
+
+/// Exact member transfers witnessed by the committed period receipt.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CompletedProductionStaffingMember {
+    pub period: u64,
+    pub opening_employed: u64,
+    pub opening_reserve: u64,
+    pub hires: u64,
+    pub separations: u64,
 }
 
 /// Completed staffing decision. Closing E/R stocks belong to the enclosing account.
@@ -235,19 +339,15 @@ pub struct CompletedProductionStaffing {
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProductionRoute {
+    /// Stable buyer/supplier/good/unit relationship identity.
     pub id: String,
+    pub physical_route_id: String,
     pub supplier_site_id: String,
     pub buyer_site_id: String,
     pub good_id: String,
     pub unit_id: String,
     pub good: String,
     pub unit: String,
-    pub travel_periods: u64,
-    /// Timed stages identify shared capacities; geometry edges do not add time.
-    pub stages: Vec<ProductionRouteStage>,
-    pub transport_kind: ProductionRouteTransport,
-    pub physical_edge_ids: Vec<String>,
-    pub distance_mm: Option<u64>,
     pub grams_per_unit: u64,
     pub ordered: u64,
     pub shipped: u64,
@@ -255,6 +355,20 @@ pub struct ProductionRoute {
     pub lost: u64,
     pub realized: u64,
     pub backlog: u64,
+}
+
+/// One exact shared physical route, separate from supplier relationships.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PhysicalRouteDefinition {
+    pub id: String,
+    pub travel_periods: u64,
+    /// Stage indices order time; capacity memberships are unique multisets.
+    pub stages: Vec<ProductionRouteStage>,
+    pub transport_kind: ProductionRouteTransport,
+    /// Repeated edges and their sequence remain meaningful.
+    pub physical_edge_ids: Vec<String>,
+    pub distance_mm: Option<u64>,
 }
 
 /// One packet on screen corresponds to one actual in-transit freight lot.
@@ -302,6 +416,8 @@ pub enum ProductionDeliveryStage {
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProductionDeliveryEvidence {
+    /// Stable trade relationship, distinct from the native physical route below.
+    pub supplier_relation_id: String,
     pub stage: ProductionDeliveryStage,
     pub order_id: String,
     pub route_id: String,
@@ -327,6 +443,7 @@ pub struct ProductionFreightCapacityAccount {
     pub corridor_label: String,
     pub kind: ProductionCapacityKind,
     pub merchant_site_ids: Vec<String>,
+    /// Physical route identities; several supplier relationships can share one.
     pub route_ids: Vec<String>,
     pub next_opening_period: u64,
     pub next_opening_available_grams: u64,
@@ -351,13 +468,23 @@ pub struct ProductionFreightReservation {
     pub opening_available_grams: u64,
     pub newly_reserved_grams: u64,
     pub remaining_available_grams: u64,
-    pub orders: Vec<ProductionFreightCapacityOrder>,
+    pub orders: Vec<String>,
+    pub support_orders: Vec<ProductionAidCapacityOrder>,
+}
+
+/// One exact complete tuple; references remain on every reservation occurrence.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProductionFreightOrderDefinition {
+    pub id: String,
+    pub order: ProductionFreightCapacityOrder,
 }
 
 /// One order's opening request and actual committed dispatch for a reservation.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProductionFreightCapacityOrder {
+    pub supplier_relation_id: Option<String>,
     pub order_id: String,
     pub route_id: Option<String>,
     pub kind: ProductionOutboundKind,
@@ -436,7 +563,7 @@ pub struct ProductionMerchantHandlingOrder {
 #[serde(deny_unknown_fields)]
 pub struct ProductionFinalDemandAccount {
     pub demand_principal_id: String,
-    pub county_geoid: String,
+    pub location: babylon_kernel::economic_location::EconomicLocation,
     pub good_id: String,
     pub unit_id: String,
     pub good: String,
@@ -444,8 +571,13 @@ pub struct ProductionFinalDemandAccount {
     pub ordered: u64,
     pub fulfilled: u64,
     pub outstanding: u64,
+    pub expired: u64,
     pub retail_stock_on_hand: u64,
     pub retailer_site_ids: Vec<String>,
+    /// Number of all admitted principals in the authenticated receipt prefix.
+    pub total_order_count: u64,
+    /// Current register rows plus completed-period witnesses, not a lifetime list.
+    /// Aggregate quantities above cover the complete authenticated history.
     pub orders: Vec<ProductionFinalDemandOrder>,
     pub completed: Option<CompletedProductionFinalDemand>,
 }
@@ -458,6 +590,7 @@ pub struct ProductionFinalDemandOrder {
     pub ordered: u64,
     pub fulfilled: u64,
     pub outstanding: u64,
+    pub expired: u64,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -547,4 +680,20 @@ pub struct CompletedProductionMaintenance {
     pub completed_jobs: u64,
     pub consumed_spare_parts: u64,
     pub consumed_labor_hours: u64,
+}
+
+/// A household gift reserves route mass without implying a commercial site sale.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProductionAidCapacityOrder {
+    pub commitment_id: String,
+    pub mandate_id: String,
+    pub donor_principal_id: String,
+    pub recipient_principal_id: String,
+    pub route_id: String,
+    pub good_id: String,
+    pub unit_id: String,
+    pub dispatched: u64,
+    pub grams_per_unit: u64,
+    pub reserved_grams: u64,
 }

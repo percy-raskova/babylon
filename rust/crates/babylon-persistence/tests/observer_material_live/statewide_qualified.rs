@@ -13,7 +13,8 @@ use super::{
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_material_circuit::{GoodId, MaterialCircuitState, UnitId};
 use babylon_persistence::{
-    michigan_material::{MichiganMaterialCatalog, MAX_MICHIGAN_CAPTURED_CONTENT_BYTES},
+    material_runtime::MAX_MATERIAL_FOUNDATION_BYTES,
+    michigan_material::{MichiganMaterialCatalog, MAX_MICHIGAN_SOURCE_BYTES},
     production_observation::ProductionCapacityKind,
     production_observation::ProductionOutboundKind,
     production_observation::ProductionSnapshot,
@@ -22,7 +23,8 @@ use babylon_persistence::{
 use babylon_tick::{
     material_replay::MaterialReplaySession,
     material_world::{
-        decode_material_receipts, MaterialTickReceipts, MAX_MATERIAL_WORLD_REGISTER_BYTES,
+        decode_material_receipts, MaterialTickReceipts, MAX_MATERIAL_TICK_RECEIPT_BYTES,
+        MAX_MATERIAL_WORLD_REGISTER_BYTES,
     },
     replay_session::ReplayCommitDisposition,
 };
@@ -157,12 +159,16 @@ fn qualify_preset(delivery: MichiganDeliveryPreset, index: u128) {
     assert_eq!(foundation.canonical_bytes(), twin.canonical_bytes());
     let mut reference = twin.into_session().unwrap();
     let mut measured = Measurements {
-        captured_bytes: catalog.defines_bytes().len(),
+        captured_bytes: foundation
+            .graph_foundation()
+            .content_bundle()
+            .canonical_bytes()
+            .len(),
         foundation_bytes: foundation.canonical_bytes().len(),
         ..Measurements::default()
     };
-    assert!(measured.captured_bytes < MAX_MICHIGAN_CAPTURED_CONTENT_BYTES);
-    assert!(measured.foundation_bytes < MAX_MATERIAL_WORLD_REGISTER_BYTES);
+    assert!(measured.captured_bytes < MAX_MICHIGAN_SOURCE_BYTES);
+    assert!(measured.foundation_bytes < MAX_MATERIAL_FOUNDATION_BYTES);
     let mut target = DisposableTarget::create();
     let campaign = CampaignId::from_uuid(Uuid::from_u128(29_800 + index));
     let mut runtime = DurableMaterialRuntime::create(&target.writer, campaign, foundation).unwrap();
@@ -253,7 +259,7 @@ fn assert_qualified_totals(
     assert!(measured.local_transfer_receipts > 0 && measured.final_handoff_receipts > 0);
     assert!(measured.maximum_family_rows < 65_536);
     assert!(measured.maximum_register_bytes < MAX_MATERIAL_WORLD_REGISTER_BYTES);
-    assert!(measured.maximum_receipt_bytes < MAX_MATERIAL_WORLD_REGISTER_BYTES);
+    assert!(measured.maximum_receipt_bytes < MAX_MATERIAL_TICK_RECEIPT_BYTES);
     eprintln!("actual statewide PostgreSQL {preset}: {measured:?}");
 }
 
@@ -310,12 +316,13 @@ fn advance_pair(
     let began = Instant::now();
     advance_material_period(runtime);
     measured.advance += began.elapsed();
-    let row = sql.query_one("SELECT register_bytes,receipt_bytes FROM babylon_state.material_tick_v3 WHERE campaign_id=$1::uuid AND resolve_tick=$2", &[campaign.as_uuid(), &i64::try_from(receipts.resolve_tick).unwrap()]).unwrap();
+    let (stored_register, stored_receipts) =
+        super::persisted_twins::stored_canonical_material(sql, campaign, receipts.resolve_tick);
     assert_eq!(
-        row.get::<_, Vec<u8>>(0),
+        stored_register,
         prepared.material().register().canonical_bytes()
     );
-    assert_eq!(row.get::<_, Vec<u8>>(1), bytes);
+    assert_eq!(stored_receipts, bytes);
     reference
         .commit_prepared_and_publish(&mut CollectingSink::default(), prepared, |_| {
             Ok::<_, ()>(ReplayCommitDisposition::Committed)
@@ -342,7 +349,7 @@ fn observe(
     held: &mut Vec<(u64, ProductionEvidenceDigest)>,
 ) -> ProductionSnapshot {
     let began = Instant::now();
-    let snapshot = observer
+    let mut snapshot = observer
         .snapshot(campaign, runtime.session().completed_tick())
         .unwrap();
     measured.projection += began.elapsed();
@@ -362,7 +369,13 @@ fn observe(
     let rows = snapshot.production.as_ref().unwrap();
     assert_eq!(
         rows.content_authority_sha256,
-        identity_hex(catalog.defines_hash())
+        identity_hex(
+            runtime
+                .session()
+                .graph_session()
+                .content_digest()
+                .defines_hash
+        )
     );
     assert_eq!(rows.sites.len(), catalog.sites().len());
     assert_eq!(rows.staffing_accounts.len(), catalog.staffing().pools.len());
@@ -465,7 +478,7 @@ fn assert_qualified_witness(
         let site = rows
             .sites
             .iter()
-            .find(|s| s.county_geoid == "26033" && s.sector_code == "31-33")
+            .find(|s| s.is_in_county("26033") && s.sector_code.as_deref() == Some("31-33"))
             .unwrap();
         let workforce = rows
             .staffing_accounts
@@ -568,7 +581,7 @@ fn assert_stock(rows: &ProductionSnapshot, state: &MaterialCircuitState) {
         let transit = rows
             .freight
             .iter()
-            .filter(|lot| lot.route_id == route.id)
+            .filter(|lot| lot.route_id == route.physical_route_id)
             .map(|lot| u128::from(lot.quantity))
             .sum::<u128>();
         assert_eq!(
@@ -676,7 +689,11 @@ fn assert_capacity(
     period: u64,
     completed: Option<(&MaterialTickReceipts, &BTreeMap<String, u64>)>,
 ) {
+    let definitions =
+        babylon_persistence::production_observation::PhysicalRouteIndex::try_new(rows).unwrap();
     let mut principals = BTreeSet::new();
+    let order_definitions =
+        babylon_persistence::production_observation::FreightOrderIndex::try_new(rows).unwrap();
     for account in &rows.freight_capacity_accounts {
         assert!(principals.insert(&account.corridor_id));
         let Some(done) = &account.completed else {
@@ -703,7 +720,8 @@ fn assert_capacity(
             );
             let mut orders = BTreeSet::new();
             let mut reserved = 0_u128;
-            for order in &reservation.orders {
+            for reference in &reservation.orders {
+                let order = order_definitions.get(reference).unwrap();
                 assert!(orders.insert((order.kind, &order.order_id)));
                 let actual = outbound_quantity(receipts, order.kind, &order.order_id);
                 assert_eq!(u128::from(order.dispatched), actual);
@@ -719,9 +737,11 @@ fn assert_capacity(
                     let route = rows
                         .routes
                         .iter()
-                        .find(|r| Some(&r.id) == order.route_id.as_ref())
+                        .find(|r| Some(&r.physical_route_id) == order.route_id.as_ref())
                         .unwrap();
-                    assert!(route
+                    assert!(definitions
+                        .get(route)
+                        .unwrap()
                         .stages
                         .iter()
                         .any(|stage| stage.capacity_ids.contains(&account.corridor_id)));
@@ -868,7 +888,7 @@ fn assert_history_and_preview(
     let preview_config = target.login("babylon_reader", "actualpreview");
     let preview =
         ObserverEconomyReader::connect(&preview_config, ObserverVisibility::KnownPreview).unwrap();
-    let snapshot = preview.snapshot(campaign, durable_tick).unwrap();
+    let mut snapshot = preview.snapshot(campaign, durable_tick).unwrap();
     assert!(snapshot.production.is_none());
     assert!(snapshot.production_evidence_digest().unwrap().is_none());
 }
@@ -879,7 +899,7 @@ fn maximum_rows(state: &MaterialCircuitState) -> usize {
         state.process_outputs.len(),
         state.input_coefficients.len(),
         state.labor_coefficients.len(),
-        state.freight_mass_coefficients.len(),
+        state.commodities.len(),
         state.supplier_routes.len(),
         state.route_stages.len(),
         state.route_stage_capacities.len(),

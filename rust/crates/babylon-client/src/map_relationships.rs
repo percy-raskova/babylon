@@ -144,7 +144,7 @@ struct CountyAnchor {
     position: Vec3,
 }
 
-#[derive(Resource)]
+#[derive(Resource, Default)]
 pub(super) struct CountyAnchors(BTreeMap<String, CountyAnchor>, Vec2);
 
 impl CountyAnchors {
@@ -201,8 +201,18 @@ struct RelationshipProjection {
     available: bool,
 }
 
-fn declared_relations(snapshot: &ProductionSnapshot) -> BTreeMap<RelationKey, (String, String)> {
+fn declared_relations(
+    snapshot: &ProductionSnapshot,
+    selected_site: &str,
+    material: Option<&crate::map_economy_lens::MaterialGoodKey>,
+) -> BTreeMap<RelationKey, (String, String)> {
     crate::material_relations::declared_material_relations(snapshot)
+        .filter(|relation| {
+            (relation.supplier == selected_site || relation.buyer == selected_site)
+                && material.is_none_or(|good| {
+                    relation.good_id == good.good_id && relation.unit_id == good.unit_id
+                })
+        })
         .map(|relation| {
             (
                 RelationKey {
@@ -224,6 +234,7 @@ fn county_label(name: &str) -> &str {
 
 fn relation_roads(
     snapshot: &ProductionSnapshot,
+    definitions: &babylon_persistence::production_observation::PhysicalRouteIndex<'_>,
     key: &RelationKey,
     edges: Option<&BTreeMap<&str, &ProductionPhysicalEdge>>,
     origin: Vec2,
@@ -237,6 +248,7 @@ fn relation_roads(
                 && route.good_id == key.good
                 && route.unit_id == key.unit
         })
+        .filter_map(|route| definitions.get(route))
         .flat_map(|route| route.physical_edge_ids.iter().map(String::as_str))
         .collect();
     if ids.is_empty() {
@@ -266,6 +278,12 @@ fn project(
     else {
         return result;
     };
+    let Ok(definitions) =
+        babylon_persistence::production_observation::PhysicalRouteIndex::try_new(snapshot)
+    else {
+        result.available = false;
+        return result;
+    };
     let sites: BTreeMap<_, _> = snapshot
         .sites
         .iter()
@@ -273,32 +291,29 @@ fn project(
         .collect();
     if sites
         .get(selected_site)
-        .is_none_or(|site| site.county_geoid != county)
+        .is_none_or(|site| !site.is_in_county(county))
     {
         return result;
     }
     let edges = physical_index(snapshot);
-    for (key, (good, unit)) in declared_relations(snapshot) {
-        if material
-            .is_some_and(|material| material.good_id != key.good || material.unit_id != key.unit)
-        {
-            continue;
-        }
-        if key.supplier != selected_site && key.buyer != selected_site {
-            continue;
-        }
+    for (key, (good, unit)) in declared_relations(snapshot, selected_site, material) {
         let (Some(supplier), Some(buyer)) = (
             sites.get(key.supplier.as_str()),
             sites.get(key.buyer.as_str()),
         ) else {
             continue;
         };
-        if supplier.county_geoid != county && buyer.county_geoid != county {
+        if !supplier.is_in_county(county) && !buyer.is_in_county(county) {
             continue;
         }
+        let (Some(supplier_county), Some(buyer_county)) =
+            (supplier.county_geoid(), buyer.county_geoid())
+        else {
+            continue;
+        };
         let (Some(from), Some(to)) = (
-            anchors.0.get(&supplier.county_geoid),
-            anchors.0.get(&buyer.county_geoid),
+            anchors.0.get(&supplier_county),
+            anchors.0.get(&buyer_county),
         ) else {
             continue;
         };
@@ -306,8 +321,8 @@ fn project(
         if result.rows.len() == MAX_RELATIONSHIPS {
             continue;
         }
-        let outbound = supplier.county_geoid == county;
-        let physical = relation_roads(snapshot, &key, edges.as_ref(), anchors.1);
+        let outbound = supplier.is_in_county(county);
+        let physical = relation_roads(snapshot, &definitions, &key, edges.as_ref(), anchors.1);
         let physical_missing = physical.is_none();
         result.rows.push(CountyRelationship {
             key,
@@ -321,7 +336,7 @@ fn project(
                 unit
             ),
             outbound,
-            internal: supplier.county_geoid == buyer.county_geoid,
+            internal: supplier.location == buyer.location,
             physical: physical.unwrap_or_default().into_iter().collect(),
             physical_missing,
         });
@@ -605,6 +620,18 @@ struct RelationshipObservation<'w> {
     view: Res<'w, PrimaryView>,
 }
 
+impl RelationshipObservation<'_> {
+    fn changed(&self) -> bool {
+        self.anchors.is_changed()
+            || self.frame.is_changed()
+            || self.navigation.is_changed()
+            || self.ui.is_changed()
+            || self.session.is_changed()
+            || self.view.is_changed()
+            || self.selected.is_changed()
+    }
+}
+
 fn rebuild(
     mut commands: Commands,
     observation: RelationshipObservation,
@@ -614,13 +641,7 @@ fn rebuild(
     old: Query<Entity, With<RelationshipEntity>>,
 ) {
     let current = (observation.session.context(), observation.selected.0);
-    if scope.0.as_ref() == Some(&current)
-        && !observation.frame.is_changed()
-        && !observation.navigation.is_changed()
-        && !observation.ui.is_changed()
-        && !observation.session.is_changed()
-        && !observation.view.is_changed()
-    {
+    if scope.0.as_ref() == Some(&current) && !observation.changed() {
         return;
     }
     scope.0 = Some(current.clone());
@@ -649,7 +670,7 @@ fn rebuild(
                     .is_some_and(|snapshot| {
                         snapshot.sites.iter().any(|site| {
                             site.id == *id
-                                && Some(site.county_geoid.as_str())
+                                && site.county_geoid().as_deref()
                                     == observation.anchors.selected(observation.selected.0)
                         })
                     })
@@ -810,7 +831,12 @@ fn jump_target(
     // Revalidate the exact disclosed relation, independently of which six
     // labels another material filter would have placed on its first page.
     let snapshot = disclosed_snapshot(frame, session)?;
-    if !declared_relations(snapshot).contains_key(&jump.key) {
+    if !crate::material_relations::declared_material_relations(snapshot).any(|relation| {
+        relation.supplier == jump.key.supplier
+            && relation.buyer == jump.key.buyer
+            && relation.good_id == jump.key.good
+            && relation.unit_id == jump.key.unit
+    }) {
         return None;
     }
     let supplier = snapshot
@@ -821,18 +847,18 @@ fn jump_target(
         .sites
         .iter()
         .find(|site| site.id == jump.key.buyer)?;
-    if supplier.county_geoid == buyer.county_geoid {
+    if supplier.location == buyer.location {
         return None;
     }
     let county = anchors.selected(selected)?;
-    let destination = if supplier.county_geoid == county {
-        &buyer.county_geoid
-    } else if buyer.county_geoid == county {
-        &supplier.county_geoid
+    let destination = if supplier.is_in_county(county) {
+        buyer.county_geoid()?
+    } else if buyer.is_in_county(county) {
+        supplier.county_geoid()?
     } else {
         return None;
     };
-    anchors.0.get(destination).map(|anchor| anchor.index)
+    anchors.0.get(&destination).map(|anchor| anchor.index)
 }
 
 fn input(
@@ -1024,14 +1050,17 @@ mod tests {
 
     fn site(id: &str, county: &str) -> ProductionSite {
         ProductionSite {
+            function: "manufacturing".into(),
             id: id.into(),
-            county_geoid: county.into(),
+            location: format!("county:{county}").parse().unwrap(),
             name: format!("{id} county cohort"),
-            industry_code: "331".into(),
+            industry_code: Some("331".into()),
             observed_employment: None,
             inventory: Vec::new(),
-            role: babylon_persistence::production_observation::ProductionSiteRole::Production,
-            sector_code: "31-33".into(),
+            roles: vec![
+                babylon_persistence::production_observation::ProductionSiteRole::Production,
+            ],
+            sector_code: Some("31-33".into()),
             processes: vec![
                 babylon_persistence::production_observation::ProductionProcess {
                     id: "fixture-process".into(),
@@ -1064,41 +1093,51 @@ mod tests {
                 good: good.into(),
                 unit: unit.into(),
                 quantity_per_batch: 7,
-                on_hand: 2,
+                on_hand: Some(2),
                 supplier_site_ids: vec![supplier.id.clone()],
             });
         }
-        let frame = ObserverFrame(Some(ObserverEconomySnapshot {
-            campaign_id: session.campaign.as_uuid().to_string(),
-            resolve_tick: 3,
-            foundation_digest: "foundation".into(),
-            nominal_world_hash: None,
-            tick_content_hash: Some("committed".into()),
-            envelope_digest: None,
-            visibility: ObserverVisibility::FullObserver,
-            counties: Vec::new(),
-            production: Some(ProductionSnapshot {
-                maintenance_account: None,
-                content_authority_sha256: "a".repeat(64),
-                road_source: None,
-                physical_edges: Vec::new(),
-                merchant_handling_accounts: Vec::new(),
-                final_demand_accounts: Vec::new(),
-                freight_capacity_accounts: Vec::new(),
-                material_balance: None,
-                labor_accounts: Vec::new(),
-                staffing_accounts: Vec::new(),
-                scenario_label: "fixture".into(),
-                horizon_period: 16,
-                sites: vec![supplier, buyer, site("unrelated", "26161")],
-                routes: Vec::new(),
-                freight: Vec::new(),
-                events: Vec::new(),
-                observed_contexts: Vec::new(),
-                process_attributions: Vec::new(),
-                provenance: Vec::new(),
+        let frame = ObserverFrame(
+            Some(ObserverEconomySnapshot {
+                campaign_id: session.campaign.as_uuid().to_string(),
+                resolve_tick: 3,
+                foundation_digest: "foundation".into(),
+                nominal_world_hash: None,
+                tick_content_hash: Some("committed".into()),
+                envelope_digest: None,
+                visibility: ObserverVisibility::FullObserver,
+                counties: Vec::new(),
+                production: Some(ProductionSnapshot {
+                    physical_routes: vec![],
+
+                    household_accounts: Vec::new(),
+                    household_service_accounts: Vec::new(),
+                    goods_price_accounts: Vec::new(),
+                    maintenance_account: None,
+                    content_authority_sha256: "a".repeat(64),
+                    road_source: None,
+                    physical_edges: Vec::new(),
+                    merchant_handling_accounts: Vec::new(),
+                    final_demand_accounts: Vec::new(),
+                    freight_capacity_accounts: Vec::new(),
+                    freight_order_definitions: Vec::new(),
+                    material_balance: None,
+                    labor_accounts: Vec::new(),
+                    staffing_accounts: Vec::new(),
+                    scenario_label: "fixture".into(),
+                    duration: babylon_kernel::clock::CampaignDuration::Finite { final_period: 16 },
+                    sites: vec![supplier, buyer, site("unrelated", "26161")],
+                    routes: Vec::new(),
+                    freight: Vec::new(),
+                    events: Vec::new(),
+                    observed_contexts: Vec::new(),
+                    national_observed_contexts: Vec::new(),
+                    process_attributions: Vec::new(),
+                    provenance: Vec::new(),
+                }),
             }),
-        }));
+            None,
+        );
         let anchors = CountyAnchors(
             [
                 (
@@ -1184,21 +1223,35 @@ mod tests {
         );
     }
 
-    #[test]
-    fn selected_physical_path_uses_captured_edges_and_exact_material_identity() {
+    fn set_captured_shared_path(snapshot: &mut ProductionSnapshot) {
         use babylon_persistence::{
             production_observation::ProductionPhysicalEdge,
             production_observation::ProductionRoute,
             production_observation::ProductionRouteTransport,
         };
-        let (session, mut frame, anchors) = fixture();
-        let snapshot = frame.0.as_mut().unwrap().production.as_mut().unwrap();
         snapshot.physical_edges = vec![ProductionPhysicalEdge {
             id: "road".into(),
             shape_e7: vec![[-830_000_000, 423_000_000], [-829_900_000, 423_100_000]],
             distance_mm: 1_500_000,
         }];
+        snapshot.physical_routes = vec![
+            babylon_persistence::production_observation::PhysicalRouteDefinition {
+                id: "supply-road".into(),
+                travel_periods: 1,
+                stages: vec![
+                    babylon_persistence::production_observation::ProductionRouteStage {
+                        stage_index: 0,
+                        travel_periods: 1,
+                        capacity_ids: vec!["fixture-capacity".into()],
+                    },
+                ],
+                transport_kind: ProductionRouteTransport::Staged,
+                physical_edge_ids: vec!["road".into(), "road".into()],
+                distance_mm: Some(3_000_000),
+            },
+        ];
         snapshot.routes = vec![ProductionRoute {
+            physical_route_id: "supply-road".into(),
             id: "supply-road".into(),
             supplier_site_id: "a".into(),
             buyer_site_id: "b".into(),
@@ -1206,11 +1259,6 @@ mod tests {
             unit_id: "kg".into(),
             good: "steel".into(),
             unit: "kg".into(),
-            travel_periods: 1,
-            transport_kind: ProductionRouteTransport::Staged,
-            physical_edge_ids: vec!["road".into(), "road".into()],
-            distance_mm: Some(3_000_000),
-            stages: Vec::new(),
             grams_per_unit: 1000,
             ordered: 10,
             shipped: 5,
@@ -1223,9 +1271,16 @@ mod tests {
         reversed.id = "road-reversed".into();
         reversed.shape_e7.reverse();
         snapshot.physical_edges.push(reversed);
-        snapshot.routes[0]
+        snapshot.physical_routes[0]
             .physical_edge_ids
             .push("road-reversed".into());
+    }
+
+    #[test]
+    fn selected_physical_path_uses_captured_edges_and_exact_material_identity() {
+        let (session, mut frame, anchors) = fixture();
+        let snapshot = frame.0.as_mut().unwrap().production.as_mut().unwrap();
+        set_captured_shared_path(snapshot);
         let filter = crate::map_economy_lens::MaterialGoodKey {
             good_id: "steel".into(),
             unit_id: "kg".into(),
@@ -1308,19 +1363,25 @@ mod tests {
                 distance_mm: 1_000_000,
             });
         }
-        let mut route = crate::production_freight::tests::fixture().routes.remove(0);
+        let mut shared = crate::production_freight::tests::fixture();
+        let mut route = shared.routes.remove(0);
+        let mut physical = shared.physical_routes.remove(0);
         route.id = "road-route".into();
         route.supplier_site_id = "a".into();
         route.buyer_site_id = "b".into();
         route.good_id = "steel".into();
         route.good = "Steel".into();
-        route.physical_edge_ids = vec!["road".into(), "reverse".into(), "overlap".into()];
+        physical.physical_edge_ids = vec!["road".into(), "reverse".into(), "overlap".into()];
         let mut other = route.clone();
         other.id = "other-route".into();
         other.buyer_site_id = "unrelated".into();
         other.good_id = "ore".into();
         other.unit_id = "tonne".into();
-        other.physical_edge_ids = vec!["branch".into()];
+        let mut other_physical = physical.clone();
+        other_physical.id = "other-physical".into();
+        other.physical_route_id = other_physical.id.clone();
+        other_physical.physical_edge_ids = vec!["branch".into()];
+        snapshot.physical_routes = vec![physical, other_physical];
         snapshot.routes = vec![route, other];
         let mut app = App::new();
         app.insert_resource(session)
@@ -1371,7 +1432,7 @@ mod tests {
     }
 
     #[test]
-    fn world_opens_with_the_whole_economy_before_a_county_or_cohort_is_selected() {
+    fn world_waits_for_county_then_shows_direct_economy_without_a_cohort_selection() {
         let mut app = road_layer_app();
         *app.world_mut().resource_mut::<ObserverUiState>() = ObserverUiState {
             menu_open: false,
@@ -1387,9 +1448,26 @@ mod tests {
             app.world_mut()
                 .query::<&Text>()
                 .iter(app.world())
-                .any(|text| text.0.contains("ECONOMY NETWORK") && text.0.contains("3 cohorts")),
-            "World must disclose the whole admitted economy without first selecting a chain"
+                .any(|text| text
+                    .0
+                    .contains("Select a county to inspect its direct suppliers and buyers")),
+            "No county selection must not create an unbounded all-actor scene"
         );
+        app.world_mut().resource_mut::<SelectedCounty>().0 = Some(1);
+        app.update();
+        assert!(app
+            .world_mut()
+            .query::<&Text>()
+            .iter(app.world())
+            .any(|text| {
+                text.0.contains("Wayne County, MI + direct counterparts")
+                    && text.0.contains("3 / 3 disclosed cohorts")
+            }));
+        assert!(app
+            .world()
+            .resource::<crate::production::ProductionNavigation>()
+            .selected_site
+            .is_none());
     }
 
     #[test]

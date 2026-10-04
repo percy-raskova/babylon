@@ -2,8 +2,6 @@
 //! Canonical values, not TOML whitespace or a mutable file path, enter identity.
 
 use std::collections::BTreeMap;
-use std::io::Read;
-use std::path::Path;
 
 use babylon_kernel::clock::{DAYS_PER_TICK, WEEKS_PER_TICK};
 use serde::{Deserialize, Serialize};
@@ -136,7 +134,7 @@ pub(crate) struct MichiganDefines {
     pub regional_mass: RegionalMassDefines,
     pub schema_version: u16,
     pub tick_duration_days: u64,
-    pub horizon_periods: u64,
+    pub duration: babylon_kernel::clock::CampaignDuration,
     #[serde(rename = "staffing")]
     pub staffing: StaffingDefines,
     #[serde(rename = "process")]
@@ -163,17 +161,6 @@ pub(crate) struct MichiganDefines {
     pub organizer: OrganizerDefines,
 }
 impl MichiganDefines {
-    pub fn load(path: &Path) -> Result<Self, MichiganDefinesError> {
-        let file = std::fs::File::open(path).map_err(MichiganDefinesError::Read)?;
-        let mut bytes = Vec::new();
-        file.take((MAX_MICHIGAN_DEFINES_BYTES + 1) as u64)
-            .read_to_end(&mut bytes)
-            .map_err(MichiganDefinesError::Read)?;
-        if bytes.len() > MAX_MICHIGAN_DEFINES_BYTES {
-            return Err(MichiganDefinesError::TooLarge);
-        }
-        Self::parse(&String::from_utf8(bytes).map_err(MichiganDefinesError::Utf8)?)
-    }
     pub fn parse(text: &str) -> Result<Self, MichiganDefinesError> {
         if text.len() > MAX_MICHIGAN_DEFINES_BYTES {
             return Err(MichiganDefinesError::TooLarge);
@@ -202,10 +189,10 @@ impl MichiganDefines {
         self.staffing.work_hours_per_person_week * WEEKS_PER_TICK
     }
     fn validate(&self) -> Result<(), MichiganDefinesError> {
-        self.validate_with_horizon_bound(super::michigan_material::MICHIGAN_MAX_HORIZON_PERIODS)
+        self.validate_with_horizon_bound(crate::simulation_experiment::MAX_EXPERIMENT_HORIZON)
     }
     pub(crate) fn validate_experiment(&self, horizon: u64) -> Result<(), MichiganDefinesError> {
-        if self.horizon_periods != horizon {
+        if self.duration.final_period() != Some(horizon) {
             return Err(MichiganDefinesError::Value(
                 "captured experiment horizon mismatch",
             ));
@@ -217,16 +204,21 @@ impl MichiganDefines {
         maximum_horizon: u64,
     ) -> Result<(), MichiganDefinesError> {
         use MichiganDefinesError::Value;
-        if self.schema_version != 5 {
-            return Err(Value("SCHEMA_VERSION must equal 5"));
+        if self.schema_version != 6 {
+            return Err(Value("SCHEMA_VERSION must equal 6"));
         }
         if self.tick_duration_days != DAYS_PER_TICK {
             return Err(Value(
                 "TICK_DURATION_DAYS must equal the supported 28-day period",
             ));
         }
-        if !(1..=maximum_horizon).contains(&self.horizon_periods) {
-            return Err(Value("HORIZON_PERIODS exceeds the admitted profile bound"));
+        if self.duration.validate().is_err()
+            || self
+                .duration
+                .final_period()
+                .is_some_and(|p| p > maximum_horizon)
+        {
+            return Err(Value("DURATION exceeds the admitted finite profile bound"));
         }
         if !(1..=168).contains(&self.staffing.work_hours_per_person_week) {
             return Err(Value("WORK_HOURS_PER_PERSON_WEEK must be 1..=168"));
@@ -387,8 +379,8 @@ mod tests {
     #[test]
     fn missing_unknown_fractional_and_invalid_units_are_refused() {
         for changed in [
-            SOURCE.replace("SCHEMA_VERSION = 5", "UNUSED_COEFFICIENT = 1"),
-            SOURCE.replace("SCHEMA_VERSION = 5", "SCHEMA_VERSION = 1"),
+            SOURCE.replace("SCHEMA_VERSION = 6", "UNUSED_COEFFICIENT = 1"),
+            SOURCE.replace("SCHEMA_VERSION = 6", "SCHEMA_VERSION = 1"),
             SOURCE.replace("[route.sheet_transfer]", "[route.unknown_transfer]"),
             SOURCE.replace(
                 "CONSTRAINED_UNITS_PER_WEEK = 40",
@@ -411,7 +403,10 @@ mod tests {
                 "WORK_HOURS_PER_PERSON_WEEK = 169",
             ),
             SOURCE.replace("TICK_DURATION_DAYS = 28", "TICK_DURATION_DAYS = 7"),
-            SOURCE.replace("HORIZON_PERIODS = 16", "HORIZON_PERIODS = 17"),
+            SOURCE.replace(
+                "DURATION = { kind = \"continuous\" }",
+                "DURATION = { kind = \"finite\", final_period = 0 }",
+            ),
             SOURCE.replace("INPUT_UNITS_PER_BATCH = 10", "INPUT_UNITS_PER_BATCH = 0"),
             SOURCE.replace(
                 "OPENING_PLANNED_BATCHES = 32",
@@ -465,7 +460,12 @@ mod tests {
                 "EVIDENCE_CLASS = \"Observed\"",
             ),
             SOURCE.replace("ROAD_TRAVEL_PERIODS = 1", "ROAD_TRAVEL_PERIODS = 2"),
-            SOURCE.replace("FINITE_ORDER_PERIODS = 4", "FINITE_ORDER_PERIODS = 17"),
+            SOURCE
+                .replace(
+                    "DURATION = { kind = \"continuous\" }",
+                    "DURATION = { kind = \"finite\", final_period = 16 }",
+                )
+                .replace("FINITE_ORDER_PERIODS = 4", "FINITE_ORDER_PERIODS = 17"),
             SOURCE.replace("OUTPUT_GOOD = \"machinery\"", "OUTPUT_GOOD = \"unknown\""),
             SOURCE.replace("crop_feedstock = 100", "crop_feedstock = 0"),
             SOURCE.replace("crop_feedstock = 25600", "unknown = 25600"),

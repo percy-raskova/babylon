@@ -1,0 +1,98 @@
+ADR269_sparse_household_budgets:
+  status: accepted
+  date: '2026-10-02'
+  issue: PER-337
+  title: Sparse counted household budgets preserve separate earnings and ownership exposure
+  evidence_class: Designed
+  authority:
+    - Director-approved national economy plan and recorded PER-337 household recipient and ownership scope
+  partially_supersedes:
+    - ADR265 national opening household allocation and ADR267 national resident payee construction
+  context: |
+    One pooled county account can use one household's wages or distributions to
+    fund every resident's purchases. Separate source margins do not identify a
+    joint household population, current worker placement, ownership or time use.
+    A playable budget distinction must retain exact source controls without
+    inventing individual agents or treating jobs as persons.
+  decision: |
+    National initialization captures the qualified household reference alongside
+    county population and resident workforce controls. Preserve observed household
+    counts with and without earnings in the previous twelve months. Split each
+    margin into Designed private-owner exposure and nonowner exposure budgets,
+    using one required captured fraction and exact bounded rounding. At most four
+    nonempty ordinary budgets are initialized per county. The initial fraction is 1000 basis
+    points. It measures neither observed wealth nor a political class. This bounded
+    initializer does not restrict the common runtime to four category identities;
+    its captured roster admits other distinct counted principals.
+
+    Account for the derived population outside households in a separate collective
+    residence budget with positive persons and zero households. Ordinary budgets
+    retain positive household counts and at least one person per household.
+    Collective residents have person-based needs; household-based needs apply only
+    to ordinary households. Combined needs, opening stocks and opening cash equal
+    the preceding location totals. Empty groups create no accounts or households.
+
+    Current persons, employed and reserve counts are a Designed joint allocation
+    under exact county controls. Both no-opening-earner budgets start with zero
+    employed persons. They may contain reserve members who later obtain work.
+    Historical labels never change identity or prevent hiring. Prefer source-
+    supported working-owner attendance in owner-exposure capacity where feasible;
+    attendance itself creates no claim. Allocate sparse members by exact remaining
+    county budget quotas and include the household principal in member identity.
+    Each budget's immutable member force must fit its counted persons. Graph-owned
+    employed and reserve stocks remain the only mutable workforce authority.
+
+    Payroll and consumption use each captured principal's existing money and
+    goods accounts. Concentrate the unchanged local private ownership shares and
+    incoming Canadian claim in owner-exposure budgets, apportioned by their
+    household counts. Preserve each issuer's shares; public and foreign claims
+    remain distinct. Distributions post once through the existing financial close.
+    Foreign counterpart households remain explicitly pooled in this first scope.
+
+    Aggregate retail handling, opening supplier stocks, buffers and procurement
+    once per location and good. Retain distinct household purchase and service
+    policies against that shared supply. Splitting recipients must not duplicate
+    workers, supplier capacity, stock, cash, equity or demand.
+  source_qualification: |
+    ACS 2024 five-year B11001 and B11002 provide separate household-type and
+    persons-in-households margins. B19001 gives annual household income bins;
+    B19051 distinguishes earnings in the previous twelve months. These are not
+    observed current employment, ownership, class, cash, wealth or unpaid time.
+    Preserve raw estimates, margins of error and missing/sentinel status. The
+    group-quarter residual is Derived from compatible population controls. Joint
+    person, workforce and ownership placement and proportional rounding are
+    Designed. No synthetic joint household is presented as a source observation.
+  consequences: |
+    Captured household source role 35 and national-world-v2 bind the new opening
+    compiler to the independent margins. Material state schema 16 explicitly
+    captures household kind and refuses prior formats. Existing saves remain
+    recoverable data; no migration or compatibility path is added. Household principals are counted budget cohorts, not source
+    household counts or person agents. Independent budgets can exhaust while
+    neighboring wage or owner budgets receive income. Population and participation
+    remain fixed; household time, aid and broader class reproduction remain open.
+  operational_bounds: |
+    The actual opening has 179772 graph nodes and 284889764 canonical material
+    state bytes. Common economic admission preserves every budget and member.
+    Named needs/purchase and ownership/equity ceilings are 131072; taxes reuse
+    the existing 131072-account bound. The native seed, resolver row and stable
+    node ceilings are 262144. The actual resolver manifest is 11641695 bytes;
+    its independent ceiling is 16 MiB. Exact row and byte conformance recipes
+    retain finite next-element refusal and complete final identities.
+
+    The Director explicitly chose a 1 GB (1000000000-byte) standalone material
+    register ceiling for operational headroom. This is Designed, not a measured
+    minimum or an economic assumption. Actual complete framing measured 341908091
+    bytes and exceeded the former 335544557 total while each component fitted.
+    The explicitly approved Derived complete foundation maximum is 1067109101
+    bytes: 1000000000 register + 67108864 graph + 237 maximum framing.
+    Graph-state and receipt envelopes remain 64 MiB, and edge, membership
+    and aggregate fact limits remain independent. A component's larger ceiling
+    does not implicitly enlarge a surrounding envelope or promise advancement.
+    The two current SQL register checks follow the same register ceiling through
+    the live schema census and intentional baseline ceremony.
+  verification:
+    - rust/crates/babylon-persistence/src/national_household_allocation/tests.rs
+    - rust/crates/babylon-material-circuit/tests/support/household_budget_cases.rs
+    - rust/crates/babylon-persistence/tests/support/national_household_controls.rs
+    - Exact all-county population, household, employed and reserve controls.
+    - Separate wage and owner income, unpaid budget exhaustion, hiring and restart.

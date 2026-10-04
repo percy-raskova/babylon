@@ -78,8 +78,8 @@ pub(crate) const READER_PRIVILEGE_CENSUS_SQL: &str = "WITH RECURSIVE role_closur
     OR (namespace.nspname = 'public' AND relation.relname IN ('v_committed_tick_status_v1', \
     'v_archive_verification_v1', \
     'v_observer_economy_foundation_v1', 'v_known_county_economy_v1', \
-    'v_observer_county_economy_v1', 'v_material_campaign_identity_v1', \
-    'v_observer_material_state_v1','v_archive_revision_known_v2','v_archive_revision_index_v2', \
+    'v_observer_county_economy_v1', 'v_material_campaign_identity_v2', \
+    'v_observer_material_state_v1','v_observer_material_foundation_v1','v_archive_revision_known_v2','v_archive_revision_index_v2', \
     'v_archive_revision_atom_v2','v_archive_revision_grant_v2',\
     'v_archive_subject_grant_v2','v_archive_tick_knowledge_v2','v_archive_revision_scope_v2', \
     'v_observer_graph_node_v1', 'v_observer_graph_node_f64_v1', \
@@ -136,7 +136,7 @@ pub(crate) const READER_VIEWS: [&str; 12] = [
     "public.v_archive_verification_v1",
     "public.v_committed_tick_status_v1",
     "public.v_known_county_economy_v1",
-    "public.v_material_campaign_identity_v1",
+    "public.v_material_campaign_identity_v2",
     "public.v_observer_economy_foundation_v1",
 ];
 /// Known-acknowledged-commit tick status read. The read goes through the view

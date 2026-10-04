@@ -74,6 +74,9 @@ struct Backend {
 }
 
 impl SessionBackend for Backend {
+    fn duration(&self) -> babylon_kernel::clock::CampaignDuration {
+        babylon_kernel::clock::CampaignDuration::Finite { final_period: 16 }
+    }
     fn tail(&self) -> RuntimeSessionTail {
         RuntimeSessionTail {
             resolve_tick: self.tick,
@@ -83,9 +86,18 @@ impl SessionBackend for Backend {
     fn advance(
         &mut self,
         expected: &RuntimeSessionTail,
+        report_stage: &mut dyn FnMut(super::super::RuntimeAdvanceStage),
     ) -> Result<RuntimeSessionTail, RuntimeSessionErrorCode> {
         if expected != &self.tail() {
             return Err(RuntimeSessionErrorCode::StaleExpectedTail);
+        }
+        for stage in [
+            super::super::RuntimeAdvanceStage::PreparingCommitments,
+            super::super::RuntimeAdvanceStage::ResolvingEconomy,
+            super::super::RuntimeAdvanceStage::PreparingStorage,
+            super::super::RuntimeAdvanceStage::SavingPeriod,
+        ] {
+            report_stage(stage);
         }
         if self.fail_commit {
             return Err(RuntimeSessionErrorCode::CommitRefused);
@@ -135,7 +147,7 @@ fn advance() -> RuntimeSessionRequest {
 
 fn advance_numbered(request_id: u64) -> RuntimeSessionRequest {
     RuntimeSessionRequest::Advance {
-        protocol_version: 4,
+        protocol_version: RUNTIME_SESSION_PROTOCOL_VERSION,
         scope: scope(1, A),
         request_id,
         expected_tail: RuntimeSessionTail {
@@ -147,7 +159,7 @@ fn advance_numbered(request_id: u64) -> RuntimeSessionRequest {
 
 fn stop() -> RuntimeSessionRequest {
     RuntimeSessionRequest::Stop {
-        protocol_version: 4,
+        protocol_version: RUNTIME_SESSION_PROTOCOL_VERSION,
         scope: scope(1, A),
         request_id: 8,
     }
@@ -155,7 +167,7 @@ fn stop() -> RuntimeSessionRequest {
 
 fn refresh() -> RuntimeSessionRequest {
     RuntimeSessionRequest::RefreshArchive {
-        protocol_version: 4,
+        protocol_version: RUNTIME_SESSION_PROTOCOL_VERSION,
         scope: scope(1, A),
         request_id: 3,
     }
@@ -192,7 +204,7 @@ fn switching(
     request_id: u64,
 ) -> RuntimeSessionRequest {
     RuntimeSessionRequest::Switch {
-        protocol_version: 4,
+        protocol_version: RUNTIME_SESSION_PROTOCOL_VERSION,
         request_id,
         scope: previous,
         target: RuntimeSessionTarget::Open {
@@ -206,20 +218,26 @@ fn responses(output: &[u8]) -> Vec<RuntimeSessionResponse> {
         .filter(|row| {
             !matches!(
                 row,
-                RuntimeSessionResponse::Hello { .. } | RuntimeSessionResponse::Switching { .. }
+                RuntimeSessionResponse::Hello { .. }
+                    | RuntimeSessionResponse::Switching { .. }
+                    | RuntimeSessionResponse::AdvanceProgress { .. }
             )
         })
         .collect()
 }
 impl SessionBackend for &mut Backend {
+    fn duration(&self) -> babylon_kernel::clock::CampaignDuration {
+        babylon_kernel::clock::CampaignDuration::Finite { final_period: 16 }
+    }
     fn tail(&self) -> RuntimeSessionTail {
         (**self).tail()
     }
     fn advance(
         &mut self,
         expected: &RuntimeSessionTail,
+        progress: &mut dyn FnMut(super::super::RuntimeAdvanceStage),
     ) -> Result<RuntimeSessionTail, RuntimeSessionErrorCode> {
-        (**self).advance(expected)
+        (**self).advance(expected, progress)
     }
 }
 fn active_coordinator<'a, 'b, W: Write>(
@@ -391,13 +409,23 @@ fn failed_commit_and_duplicate_tail_never_publish_a_second_period() {
 
 #[test]
 fn malformed_actions_versions_campaigns_and_overlong_frames_cannot_advance() {
-    assert!(serde_json::from_str::<RuntimeSessionRequest>(r#"{"type":"advance","protocol_version":2,"campaign_id":"campaign","request_id":1,"expected_tail":{"resolve_tick":0,"tick_content_hash":null},"actions":[1]}"#).is_err());
+    assert!(serde_json::from_str::<RuntimeSessionRequest>(r#"{"type":"advance","protocol_version":6,"campaign_id":"campaign","request_id":1,"expected_tail":{"resolve_tick":0,"tick_content_hash":null},"actions":[1]}"#).is_err());
     for (version, campaign, expected) in [
         (1, "campaign", RuntimeSessionErrorCode::UnsupportedVersion),
         (2, "campaign", RuntimeSessionErrorCode::UnsupportedVersion),
         (3, "campaign", RuntimeSessionErrorCode::UnsupportedVersion),
+        (4, "campaign", RuntimeSessionErrorCode::UnsupportedVersion),
         (5, "campaign", RuntimeSessionErrorCode::UnsupportedVersion),
-        (4, "other", RuntimeSessionErrorCode::SessionMismatch),
+        (6, "campaign", RuntimeSessionErrorCode::UnsupportedVersion),
+        (7, "campaign", RuntimeSessionErrorCode::UnsupportedVersion),
+        (8, "campaign", RuntimeSessionErrorCode::UnsupportedVersion),
+        (9, "campaign", RuntimeSessionErrorCode::UnsupportedVersion),
+        (11, "campaign", RuntimeSessionErrorCode::UnsupportedVersion),
+        (
+            RUNTIME_SESSION_PROTOCOL_VERSION,
+            "other",
+            RuntimeSessionErrorCode::SessionMismatch,
+        ),
     ] {
         let mut request = advance();
         if let RuntimeSessionRequest::Advance {
@@ -782,3 +810,164 @@ fn cooperative_shutdown_waits_for_completion_after_last_sender_drops() {
 }
 
 mod lifecycle;
+struct ProgressOutput {
+    bytes: Vec<u8>,
+    state: Arc<DriverState>,
+    fail_progress: bool,
+    attempts: usize,
+    flushed: usize,
+}
+impl Write for ProgressOutput {
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        if bytes
+            .windows(b"advance_progress".len())
+            .any(|part| part == b"advance_progress")
+        {
+            self.attempts += 1;
+            if self.fail_progress {
+                return Err(io::Error::new(
+                    io::ErrorKind::BrokenPipe,
+                    "progress fixture",
+                ));
+            }
+        }
+        self.bytes.extend_from_slice(bytes);
+        Ok(bytes.len())
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        let last = self
+            .bytes
+            .split(|byte| *byte == b'\n')
+            .filter(|line| !line.is_empty())
+            .next_back()
+            .unwrap();
+        let row: serde_json::Value = serde_json::from_slice(last).unwrap();
+        if row["type"] == "advance_progress" {
+            assert_eq!(
+                self.state.tick.load(Ordering::SeqCst),
+                0,
+                "flush precedes durability"
+            );
+            self.flushed += 1;
+        }
+        Ok(())
+    }
+}
+fn progress_output(backend: &Backend, fail_progress: bool) -> ProgressOutput {
+    ProgressOutput {
+        bytes: Vec::new(),
+        state: Arc::clone(&backend.state),
+        fail_progress,
+        attempts: 0,
+        flushed: 0,
+    }
+}
+fn raw_progress(bytes: &[u8]) -> Vec<serde_json::Value> {
+    bytes
+        .split(|byte| *byte == b'\n')
+        .filter(|line| !line.is_empty())
+        .map(|line| serde_json::from_slice::<serde_json::Value>(line).unwrap())
+        .filter(|row| row["type"] == "advance_progress")
+        .collect()
+}
+#[test]
+fn actual_progress_flushes_in_order_before_ack_and_stale_tail_emits_none() {
+    let mut backend = backend();
+    let mut output = progress_output(&backend, false);
+    run(
+        wire(&[advance(), advance(), advance_numbered(3), stop()]),
+        &mut backend,
+        &mut output,
+    )
+    .unwrap();
+    assert_eq!(output.flushed, 4);
+    assert_eq!(backend.tick, 1);
+    let rows = raw_progress(&output.bytes);
+    assert_eq!(rows.len(), 4);
+    for (row, stage) in rows.iter().zip([
+        "preparing_commitments",
+        "resolving_economy",
+        "preparing_storage",
+        "saving_period",
+    ]) {
+        assert_eq!(row["stage"], stage);
+        assert_eq!(row["request_id"], 2);
+        assert_eq!(row["scope"]["epoch"], 1);
+        assert_eq!(row["scope"]["campaign_id"], A);
+        assert_eq!(row["resolve_tick"], 1);
+    }
+    let wire = wire_responses(&output.bytes);
+    assert!(wire.iter().any(|row| matches!(
+        row,
+        RuntimeSessionResponse::Error {
+            request_id: Some(2),
+            code: RuntimeSessionErrorCode::InvalidRequest,
+            ..
+        }
+    )));
+    assert!(wire.iter().any(|row| matches!(
+        row,
+        RuntimeSessionResponse::Error {
+            request_id: Some(3),
+            code: RuntimeSessionErrorCode::StaleExpectedTail,
+            ..
+        }
+    )));
+    let ack = wire
+        .iter()
+        .position(|row| matches!(row, RuntimeSessionResponse::Committed { request_id: 2, .. }))
+        .unwrap();
+    assert_eq!(
+        raw_progress(
+            &output
+                .bytes
+                .split(|byte| *byte == b'\n')
+                .take(ack)
+                .flat_map(|line| line.iter().copied().chain([b'\n']))
+                .collect::<Vec<_>>()
+        )
+        .len(),
+        4
+    );
+}
+#[test]
+fn progress_refusal_never_becomes_committed_and_pipe_loss_never_retries() {
+    let mut refused = backend();
+    refused.fail_commit = true;
+    let mut output = progress_output(&refused, false);
+    run(wire(&[advance(), stop()]), &mut refused, &mut output).unwrap();
+    assert_eq!(output.flushed, 4);
+    assert_eq!(refused.tick, 0);
+    assert!(!wire_responses(&output.bytes)
+        .iter()
+        .any(|row| matches!(row, RuntimeSessionResponse::Committed { .. })));
+    assert!(wire_responses(&output.bytes).iter().any(|row| matches!(
+        row,
+        RuntimeSessionResponse::Error {
+            code: RuntimeSessionErrorCode::CommitRefused,
+            ..
+        }
+    )));
+    let mut durable = backend();
+    let mut failed = progress_output(&durable, true);
+    assert_eq!(
+        run(
+            wire(&[advance(), advance_numbered(3), stop()]),
+            &mut durable,
+            &mut failed
+        ),
+        Err(RuntimeSessionErrorCode::PipeFailure)
+    );
+    assert_eq!(
+        durable.tick, 1,
+        "authoritative work completes exactly once despite lost progress pipe"
+    );
+    assert_eq!(
+        failed.attempts, 1,
+        "first failure suppresses later progress writes"
+    );
+    assert!(!wire_responses(&failed.bytes).iter().any(|row| matches!(
+        row,
+        RuntimeSessionResponse::Committed { .. } | RuntimeSessionResponse::Error { .. }
+    )));
+}

@@ -41,7 +41,6 @@ fn stored_experiments_refuse_internally_consistent_but_underived_opening_rows() 
                     unreachable!()
                 };
                 series[0].jobs += 1;
-                capture.observed_defines = spec.canonical_bytes().unwrap();
             }
             _ => unreachable!(),
         }
@@ -49,9 +48,8 @@ fn stored_experiments_refuse_internally_consistent_but_underived_opening_rows() 
         // must come from the observed-input/derived-row contract itself.
         capture.graph_scenario_source =
             crate::simulation_experiment::regional::scenario(&capture.normalized);
-        let bytes = serde_json::to_vec(&capture).unwrap();
         assert!(
-            MichiganMaterialCatalog::from_stored_defines(&bytes).is_err(),
+            MichiganMaterialCatalog::capture(capture).is_err(),
             "mutation {mutation}"
         );
     }
@@ -87,9 +85,13 @@ fn stored_experiments_accept_derived_rows_and_joint_admitted_interventions() {
             ];
         }
         let catalog = spec.regional_catalog().unwrap();
-        assert_eq!(
-            MichiganMaterialCatalog::from_stored_defines(catalog.defines_bytes()).unwrap(),
-            catalog
-        );
+        let captured =
+            crate::economic_catalog::CapturedEconomicCatalog::from_michigan(&catalog).unwrap();
+        let restored = crate::economic_catalog::CapturedEconomicCatalog::decode(
+            captured.canonical_bytes(),
+            captured.digest(),
+        )
+        .unwrap();
+        assert_eq!(restored.opening(), captured.opening());
     }
 }

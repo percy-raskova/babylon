@@ -1,0 +1,52 @@
+version: 3
+name: material_campaign_foundation_v3
+authority: [ADR251, ADR260, ADR263, ADR265, ADR271]
+purpose: Pin an explicit tick-zero circuit campaign without upgrading graph-only campaigns.
+encoding:
+  domain: "babylon.material-campaign-foundation.v3\0"
+  fields:
+    - u32_big_endian_version_3
+    - one_byte_duration_tag_then_u64_big_endian_final_period
+    - exact_32_byte_authored_content_digest
+    - u64_big_endian_preset_utf8_length_then_exact_bytes
+    - u64_big_endian_graph_foundation_v1_length_then_exact_bytes
+    - u64_big_endian_material_register_v4_length_then_exact_bytes
+  digest: sha256_exact_bytes
+  maximum_complete_bytes: 1067109101
+  complete_bound_class: Derived
+  complete_bound_basis: Explicit 1000000000 register plus 67108864 graph plus 237 maximum framing bytes.
+  independent_total: Check the complete envelope and each component; the captured source occurs once.
+  component_bounds:
+    graph_foundation_bytes: 67108864
+    material_world_register_bytes: 1000000000
+    aggregate_framing_and_preset_bytes: 237
+    rule: Check each nonempty component before allocation or source reconstruction.
+    source_catalog: Included once inside the graph foundation; never added again.
+    tick_receipt_bytes: Independent Derived 872612528 limit; not part of this opening envelope.
+  preset: 1_to_128_lowercase_ascii_letters_digits_and_hyphens
+  campaign_duration:
+    continuous: Tag zero and eight zero padding bytes; no designed final period.
+    finite: Tag one and a positive signed-64 final period.
+    refusal: Unknown tag, nonzero continuous padding, zero or oversized finite endpoint.
+    clock_exhaustion: Checked signed-64 clock refusal; never fabricated scenario completion.
+storage:
+  table: babylon_state.material_campaign_foundation_v3
+  graph_component: babylon_state.campaign_foundation
+  full_foundation_blob: Not persisted; the graph/source and initial register components have one owner each.
+  install: Both foundation components and grants in one transaction at completed tick zero.
+  open: Authenticate exact canonical framing over stored components before regeneration; require the regenerated
+    canonical digest.
+  observer: Shared authenticated reconstruction through restricted v_observer_material_foundation_v1; KnownPreview has
+    no grant.
+  binary_export: Exact external framing remains canonical; reject trailing or damaged input.
+  captured_source: One current tagged content bundle, source artifact bytes and digests, and compiler identity.
+  material_state_schema: 18; earlier schemas refuse without migration.
+  aid_authority: Captured mandate source hashes, actors, contributors, payer accounts, households and units are part
+    of the initial register.
+  live_source_reads_on_resume: forbidden
+  incompatible_campaign: Typed refusal without altering stored data; a new campaign identity is required.
+  preset_comparison: Distinct campaign foundations; no in-session intervention.
+related_contracts:
+  - contracts/material_world_register_v4.yaml
+  - contracts/material_circuit_v3.yaml
+  - contracts/simulation_interval_v1.yaml

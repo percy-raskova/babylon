@@ -601,7 +601,14 @@ pub const GOVERNED_EFFECT_ALLOWANCES: &[GovernedEffectAllowance] = &[
 /// and Archive resolution with contradictory geography. The prohibition is
 /// name-exact and load-time, and it binds every role: the mechanic's
 /// otherwise-unrestricted write surface explicitly stops here.
-pub const GOVERNED_WRITE_PROHIBITED_NODE_FIELDS: &[&str] = &["territory/county-fips"];
+// Resident person/household counts are captured source principals. An explicit
+// future demographic mechanism may account their changes; ordinary rule writes
+// cannot manufacture buyers or replace the resident staffing E/R authority.
+pub const GOVERNED_WRITE_PROHIBITED_NODE_FIELDS: &[&str] = &[
+    "territory/county-fips",
+    "household/persons",
+    "household/households",
+];
 
 /// A causal-contract rejection.
 #[derive(Debug, Clone, PartialEq, Eq)]

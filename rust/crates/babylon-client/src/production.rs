@@ -1094,7 +1094,7 @@ fn freight_markers(
             continue;
         }
         if !snapshot.routes.iter().any(|route| {
-            route.id == lot.route_id
+            route.physical_route_id == lot.route_id
                 && route.supplier_site_id == lot.source_site_id
                 && route.buyer_site_id == lot.destination_site_id
                 && route.good_id == lot.good_id
@@ -1194,7 +1194,12 @@ fn spawn_county_cohorts(
     let mut sites: Vec<_> = snapshot
         .sites
         .iter()
-        .filter(|site| navigation.county_geoid.as_ref() == Some(&site.county_geoid))
+        .filter(|site| {
+            navigation
+                .county_geoid
+                .as_deref()
+                .is_some_and(|county| site.is_in_county(county))
+        })
         .collect();
     sites.sort_by(|a, b| (&a.sector_code, &a.id).cmp(&(&b.sector_code, &b.id)));
     panel.spawn(text(
@@ -1237,7 +1242,10 @@ fn spawn_county_cohorts(
             panel,
             &format!(
                 "{} / {:?}\n{} · {}",
-                site.name, site.role, site.sector_code, workforce
+                site.name,
+                site.roles,
+                site.sector_code.as_deref().unwrap_or(&site.function),
+                workforce
             ),
             ProductionCommand::Select {
                 site_id: site.id.clone(),
@@ -1254,10 +1262,18 @@ fn spawn_freight_participants(
     navigation: &ProductionNavigation,
     context: &ObservationContext,
 ) {
-    for account in shared_accounts(snapshot, Some(&site.id))
-        .into_iter()
-        .take(1)
-    {
+    let (Ok(accounts), Ok(competitors)) = (
+        shared_accounts(snapshot, Some(&site.id)),
+        competitor_sites(&site.id, snapshot),
+    ) else {
+        panel.spawn(text(
+            "Shared freight details unavailable in this observation.",
+            15.0,
+            theme::PAPER,
+        ));
+        return;
+    };
+    for account in accounts.into_iter().take(1) {
         panel.spawn((
             text(account_brief(account), 15.0, theme::PAPER),
             ProductionFreightReading,
@@ -1270,7 +1286,6 @@ fn spawn_freight_participants(
             ObserverFocusTarget::reading(Some(context.clone())),
         ));
     }
-    let competitors = competitor_sites(&site.id, snapshot);
     if !competitors.is_empty() {
         panel.spawn(text(
             "OTHER PARTICIPANTS / SHARED FREIGHT",

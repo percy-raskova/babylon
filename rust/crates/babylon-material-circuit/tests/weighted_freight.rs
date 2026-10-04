@@ -1,18 +1,20 @@
 use babylon_material_circuit::SupplierTransport;
 use babylon_material_circuit::{
     advance_material_circuit, decode_material_circuit_state, encode_material_circuit_state,
-    material_circuit_state_digest, BacklogRow, CorridorCapacity, CorridorId,
-    FreightMassCoefficient, GoodId, InventoryRow, LogisticsNodeId, MaterialCircuitError,
+    material_circuit_state_digest, BacklogRow, CommodityDefinition, CommodityKind,
+    CorridorCapacity, CorridorId, GoodId, InventoryRow, LogisticsNodeId, MaterialCircuitError,
     MaterialCircuitState, OrderAccessMode, OrderId, OrderRow, RouteId, RouteStage,
     RouteStageCapacity, SiteId, SiteLogisticsNode, SupplierRoute, UnitId,
 };
 
 fn competition() -> MaterialCircuitState {
     let mut state = MaterialCircuitState {
+        capacity_supply: babylon_material_circuit::CapacitySupply::FiniteSchedule,
         merchants: vec![],
         handling_coefficients: vec![],
         final_demand_principals: vec![],
         final_demand_orders: vec![],
+        accounting: babylon_material_circuit::CircuitAccounting::PhysicalControl,
         maintenance_binding: None,
         maintenance_service: None,
         period: 1,
@@ -21,7 +23,9 @@ fn competition() -> MaterialCircuitState {
         input_coefficients: Vec::new(),
         labor_coefficients: Vec::new(),
         supplier_routes: Vec::new(),
-        freight_mass_coefficients: Vec::new(),
+        service_connections: vec![],
+        service_orders: vec![],
+        commodities: Vec::new(),
         route_stage_capacities: Vec::new(),
         route_stages: Vec::new(),
         inventory: Vec::new(),
@@ -96,13 +100,13 @@ fn competition() -> MaterialCircuitState {
             stage_index: 0,
             corridor_id: CorridorId::from_bytes([90; 32]),
         });
-        state
-            .freight_mass_coefficients
-            .push(FreightMassCoefficient {
-                good_id: good,
-                unit_id: unit,
+        state.commodities.push(CommodityDefinition {
+            good_id: good,
+            unit_id: unit,
+            kind: babylon_material_circuit::CommodityKind::Storable {
                 grams_per_unit: if identity == 1 { 10 } else { 1 },
-            });
+            },
+        });
     }
     state.corridor_capacities.push(CorridorCapacity {
         corridor_id: CorridorId::from_bytes([90; 32]),
@@ -287,13 +291,13 @@ fn duplicate_or_missing_mass_and_stage_capacity_identity_is_refused() {
         Err(MaterialCircuitError::DuplicateRow)
     );
     changed = original.clone();
-    changed.freight_mass_coefficients[0].grams_per_unit = 0;
+    changed.commodities[0].kind = CommodityKind::Storable { grams_per_unit: 0 };
     assert_eq!(
         advance_material_circuit(&changed),
         Err(MaterialCircuitError::MassInvariant)
     );
     changed = original.clone();
-    changed.freight_mass_coefficients.remove(0);
+    changed.commodities.remove(0);
     assert_eq!(
         advance_material_circuit(&changed),
         Err(MaterialCircuitError::MassInvariant)
@@ -322,7 +326,7 @@ fn row_permutations_and_wire_roundtrip_preserve_complete_continuation() {
     reversed.supplier_routes.reverse();
     reversed.route_stages.reverse();
     reversed.route_stage_capacities.reverse();
-    reversed.freight_mass_coefficients.reverse();
+    reversed.commodities.reverse();
     reversed.inventory.reverse();
     reversed.orders.reverse();
     reversed.backlog.reverse();
@@ -369,8 +373,10 @@ fn overflowing_mass_request_sum_and_period_refuse_without_mutating_opening() {
     for inventory in &mut state.inventory {
         inventory.quantity = u64::MAX;
     }
-    for coefficient in &mut state.freight_mass_coefficients {
-        coefficient.grams_per_unit = u64::MAX;
+    for coefficient in &mut state.commodities {
+        coefficient.kind = CommodityKind::Storable {
+            grams_per_unit: u64::MAX,
+        };
     }
     let before = state.clone();
     assert_eq!(
@@ -390,8 +396,8 @@ fn overflowing_mass_request_sum_and_period_refuse_without_mutating_opening() {
 }
 
 #[test]
-fn successor_refusal_registry_includes_maintenance_and_rejects_unknown_codes() {
-    for value in 1_u16..=22 {
+fn successor_refusal_registry_includes_accounting_and_rejects_unknown_codes() {
+    for value in 1_u16..=26 {
         assert_eq!(
             u16::from(MaterialCircuitError::try_from(value).unwrap()),
             value
@@ -402,5 +408,50 @@ fn successor_refusal_registry_includes_maintenance_and_rejects_unknown_codes() {
         MaterialCircuitError::try_from(22),
         Ok(MaterialCircuitError::MaintenanceInvariant)
     );
-    assert!(MaterialCircuitError::try_from(23).is_err());
+    assert_eq!(
+        MaterialCircuitError::try_from(23),
+        Ok(MaterialCircuitError::MonetaryInvariant)
+    );
+    assert_eq!(
+        MaterialCircuitError::try_from(24),
+        Ok(MaterialCircuitError::PayrollInvariant)
+    );
+    assert_eq!(
+        MaterialCircuitError::try_from(25),
+        Ok(MaterialCircuitError::PurchaseInvariant)
+    );
+    assert_eq!(
+        MaterialCircuitError::try_from(26),
+        Ok(MaterialCircuitError::ValuationInvariant)
+    );
+    assert_eq!(
+        MaterialCircuitError::try_from(27),
+        Ok(MaterialCircuitError::ServiceInvariant)
+    );
+    assert_eq!(
+        MaterialCircuitError::try_from(28),
+        Ok(MaterialCircuitError::FinancialInvariant)
+    );
+    assert!(MaterialCircuitError::try_from(29).is_err());
+    assert_eq!(
+        MaterialCircuitError::try_from(30),
+        Ok(MaterialCircuitError::EquipmentInvariant)
+    );
+    assert_eq!(
+        MaterialCircuitError::try_from(31),
+        Ok(MaterialCircuitError::HouseholdTimeInvariant)
+    );
+    assert_eq!(
+        MaterialCircuitError::try_from(32),
+        Ok(MaterialCircuitError::AidInvariant)
+    );
+    assert_eq!(
+        MaterialCircuitError::try_from(33),
+        Ok(MaterialCircuitError::AidAuthority)
+    );
+    assert_eq!(
+        MaterialCircuitError::try_from(34),
+        Ok(MaterialCircuitError::CollectionInvariant)
+    );
+    assert!(MaterialCircuitError::try_from(35).is_err());
 }

@@ -12,11 +12,19 @@ use crate::{install_reader_role, SemanticArchiveReader};
 use crate::{material_runtime, michigan_content, michigan_material};
 use std::str::FromStr;
 
+#[path = "live_tests/checkpoint_membership.rs"]
+mod checkpoint_membership;
+
+#[path = "live_tests/short_publication.rs"]
+mod short_publication;
+
 #[path = "live_tests/bounds.rs"]
 mod bounds;
 
 #[path = "../../../tests/support/archive_reader.rs"]
 mod archive_reader;
+#[path = "live_tests/organizer_capture.rs"]
+mod organizer_capture;
 #[path = "live_tests/revisions.rs"]
 mod revisions;
 #[path = "live_tests/wakeup.rs"]
@@ -838,8 +846,7 @@ fn live_search_refuses_tampered_page_content() {
             .connect(NoTls)
             .expect("tamper connection")
             .execute(
-                "UPDATE babylon_meta.archive_page_revision_v2 SET markdown = \
-             pg_catalog.concat(markdown, ' tampered') WHERE campaign_id = $1::uuid",
+                "UPDATE babylon_meta.archive_page_revision_v2 SET body_bytes = body_bytes || decode('00','hex') WHERE campaign_id = $1::uuid",
                 &[target.campaign_id.as_uuid()],
             )
             .expect("stored markdown tampers");

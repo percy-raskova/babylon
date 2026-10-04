@@ -1,0 +1,67 @@
+ADR281_authenticated_archive_membership_checkpoints:
+  status: accepted
+  date: '2026-10-04'
+  issue: PER-343
+  title: Frozen Archive membership uses authenticated checkpoint bases
+  evidence_class: Designed
+  authority:
+    - Director approved shared frozen membership bases and exact additions
+    - Repository rules require an architecture decision record
+  context: |
+    Successful retained national Archive catch-up reached period two with
+    canonical state, commands and source unchanged. Its exact read-only census
+    found 9,438 frozen members in period one and 9,440 in period two, with only
+    two additions and no removals. The existing representation retained 18,878
+    member rows. Their relation occupied 2,932,736 decimal bytes, including
+    1,384,448 index bytes. These two periods establish duplication, not sustained
+    storage savings or long-save qualification.
+  decision: |
+    Replace repeated complete membership sets with authenticated complete
+    checkpoint bases and exact additions within bounded segments. Keep each
+    frozen pin's complete knowledge hash and count, receipt identity and worker
+    identity. Its stored checkpoint reference governs historical reconstruction.
+    Use a named Designed default of thirteen periods between complete bases.
+    Changed checkpoint selection affects future pins, never retained meanings.
+
+    Reconstruct a historical set from its complete base and additions admitted
+    through the requested period. Base rows belong to their checkpoint; later
+    additions record their actual frozen admission period. A grant's authored
+    granted period or insertion order cannot determine historical membership.
+    Backdated late grants must leave earlier frozen sets unchanged.
+
+    Independently authenticate the complete base, every bounded segment delta
+    commitment through the requested period, and the reconstructed complete set.
+    Bind each delta's exact count and hash using the existing canonical knowledge
+    encoding. A moved addition must be refused even when a later complete set
+    would be identical. Require exact campaign and segment foreign keys, and
+    refuse missing, extra, moved or corrupted membership and provenance.
+
+    Capture receipt and knowledge in a short transaction under the campaign
+    publication lock. Compute and authenticate outside transactions. Revalidate
+    before atomically publishing the pin, base or additions, pages and final
+    consumption marker. A failure publishes no new partial membership.
+
+    Preserve public reader semantics and immutable grant payloads. Maintain one
+    current physical representation and refuse the incompatible earlier schema
+    before mutation. Preserve retained evidence and unique inputs; do not migrate
+    or reset existing games to qualify the change.
+  alternatives: |
+    Repeated full sets duplicate nearly unchanged memberships. Unauthenticated
+    deltas or insertion-order reconstruction cannot preserve exact historical
+    admission. An unbounded chain makes read and recovery costs grow with campaign
+    duration. Parquet remains deferred under ADR278 until a representative total
+    disk and recovery comparison justifies it.
+  consequences: |
+    The representation adds bounded delta authentication and checkpoint metadata.
+    Actual byte savings, query cost, native memory and recovery remain to be
+    measured. It changes no economic account, game primitive or theory line.
+    ADR280 budgets and the distinct smoke, 52-period, 325-period and native play
+    requirements remain unchanged. This decision authorizes no merge.
+  verification:
+    - Reconstructed historical knowledge retains its exact original hash and count.
+    - Base, delta, reference and admission-period corruption is refused.
+    - Late and backdated grants cannot alter an earlier frozen membership set.
+    - Checkpoint boundaries and empty deltas preserve historical reader results.
+    - Cancellation, stale capture and publication failure leave no partial pin.
+    - Measured relation growth, query behavior and restart support savings claims.
+  source_record: reports/test-results/per342-qualification/2026-10-04/retained-head-two-census/archive-census.json

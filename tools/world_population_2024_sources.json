@@ -1,0 +1,24 @@
+{
+  "contract": "WorldPopulationSourcesV1",
+  "sources": [
+    {
+      "bytes": 26142942,
+      "citation": "United Nations, Department of Economic and Social Affairs, Population Division (2024). World Population Prospects 2024, Online Edition.",
+      "fetched_at": "2026-09-20T08:23:49.476501+00:00",
+      "id": "un_wpp",
+      "license": "CC BY 3.0 IGO; https://creativecommons.org/licenses/by/3.0/igo/",
+      "path": "national_reference_2024/un_wpp_2024/WPP2024_GEN_F01_DEMOGRAPHIC_INDICATORS_COMPACT.xlsx",
+      "qualification": "2024 occurs in the Medium variant projection sheet; population is July 1 in thousands, not a contemporaneous census.",
+      "sha256": "98e34d9b65b53858cd08a57a566e45050b08093ad85ba5714fe6fbd78055ae6d",
+      "url": "https://population.un.org/wpp/assets/Excel%20Files/1_Indicator%20(Standard)/EXCEL_FILES/1_General/WPP2024_GEN_F01_DEMOGRAPHIC_INDICATORS_COMPACT.xlsx"
+    },
+    {
+      "bytes": 96442,
+      "fetched_at": "2026-09-20T08:31:03.830658+00:00",
+      "id": "aland_population",
+      "path": "national_reference_2024/un_wpp_2024/aland_population_2024.html",
+      "sha256": "b460f39651a7049bce3ee471a14ee82596dd0cb10a655ae86a3bb05552ebbc64",
+      "url": "https://www.asub.ax/sv/statistik/invanarantalet-31122024"
+    }
+  ]
+}

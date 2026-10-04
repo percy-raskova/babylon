@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Launch one persistent Michigan observer session with separate read capabilities."""
+"""Launch one persistent economic observer session with separate read capabilities."""
 
 from __future__ import annotations
 
@@ -29,6 +29,13 @@ OBSERVER_CAPTURE_FILTER = "session=debug,babylon_client=debug"
 # The runtime's database statement timeout is 120 seconds. EOF/Stop gets time
 # to finish a transaction before any exact-child termination is attempted.
 RUNTIME_SHUTDOWN_GRACE_SECONDS = 150
+RUNTIME_SESSION_PROTOCOL_VERSION: int = 10
+ADVANCE_STAGES = (
+    "preparing_commitments",
+    "resolving_economy",
+    "preparing_storage",
+    "saving_period",
+)
 CHILD_SIGNAL_WAIT_SECONDS = 10
 READ_LOGINS = (
     ("babylon_observer_game", "babylon_observer", "babylon_observer_game"),
@@ -201,6 +208,7 @@ class NewCampaignTarget:
         "statewide-maintenance-parts-shortage",
         "statewide-maintenance-both",
         "organize-in-wayne",
+        "national-world",
     ]
 
 
@@ -214,6 +222,8 @@ class OpenCampaignTarget:
 def _new_target(campaign: UUID, preset: str | None) -> NewCampaignTarget:
     if preset is None or preset == "standard":
         return NewCampaignTarget(campaign, "standard")
+    if preset == "national-world":
+        return NewCampaignTarget(campaign, "national-world")
     if preset == "delayed":
         return NewCampaignTarget(campaign, "delayed")
     if preset == "shared-freight-ample":
@@ -479,6 +489,7 @@ def _check_session(
     environment: Mapping[str, str],
     defines: Path,
     target: NewCampaignTarget | OpenCampaignTarget,
+    timings_us: dict[str, int] | None = None,
 ) -> tuple[str, dict[str, object]]:
     """Exercise the installed lifecycle protocol with one bounded native process."""
     child = subprocess.Popen(
@@ -492,9 +503,16 @@ def _check_session(
     output = child.stdout
     buffer = b""
 
-    def receive(kind: str, request_id: int | None = None) -> dict[str, object]:
+    def receive(
+        kind: str,
+        request_id: int | None = None,
+        *,
+        advance_scope: object = None,
+        advance_tick: int | None = None,
+    ) -> dict[str, object]:
         nonlocal buffer
         deadline = time.monotonic() + RUNTIME_SHUTDOWN_GRACE_SECONDS
+        stage_index = 0
         while True:
             while b"\n" not in buffer:
                 if len(buffer) >= 4096:
@@ -522,7 +540,28 @@ def _check_session(
                 raise ObserverLaunchError(
                     f"installation check runtime refused: {message.get('code')}"
                 )
+            if message.get("type") == "advance_progress":
+                if (
+                    kind != "committed"
+                    or advance_scope is None
+                    or advance_tick is None
+                    or set(message) != {"type", "request_id", "scope", "resolve_tick", "stage"}
+                    or type(message.get("request_id")) is not int
+                    or message.get("request_id") != request_id
+                    or message.get("scope") != advance_scope
+                    or type(message.get("resolve_tick")) is not int
+                    or message.get("resolve_tick") != advance_tick
+                    or stage_index >= len(ADVANCE_STAGES)
+                    or message.get("stage") != ADVANCE_STAGES[stage_index]
+                ):
+                    raise ObserverLaunchError(
+                        "installation check received invalid advance progress"
+                    )
+                stage_index += 1
+                continue
             if message.get("type") == kind and message.get("request_id") == request_id:
+                if kind == "committed" and stage_index != len(ADVANCE_STAGES):
+                    raise ObserverLaunchError("installation check commit omitted advance stages")
                 return message
             if message.get("type") not in {"switching", "archive_progress"}:
                 raise ObserverLaunchError(
@@ -533,7 +572,7 @@ def _check_session(
         assert child.stdin is not None
         row = {
             "type": kind,
-            "protocol_version": 4,
+            "protocol_version": RUNTIME_SESSION_PROTOCOL_VERSION,
             "request_id": request_id,
             "scope": scope,
             **fields,
@@ -543,14 +582,24 @@ def _check_session(
 
     try:
         hello = receive("hello")
-        if hello.get("protocol_version") != 4:
-            raise ObserverLaunchError("installation check requires runtime session protocol 4")
+        if (
+            type(hello.get("protocol_version")) is not int
+            or hello.get("protocol_version") != RUNTIME_SESSION_PROTOCOL_VERSION
+        ):
+            raise ObserverLaunchError(
+                f"installation check requires runtime session protocol {RUNTIME_SESSION_PROTOCOL_VERSION}"
+            )
         new = isinstance(target, NewCampaignTarget)
         requested = {"type": "new" if new else "open", "campaign_id": str(target.campaign)}
         if isinstance(target, NewCampaignTarget):
             requested["preset"] = target.preset
+        opening_started = time.monotonic_ns()
         send("switch", 1, hello["scope"], target=requested)
         ready = receive("ready", 1)
+        if timings_us is not None:
+            timings_us["opening" if new else "reopen"] = (
+                time.monotonic_ns() - opening_started
+            ) // 1000
         tail = ready["tail"]
         scope = ready["scope"]
         if new:
@@ -558,8 +607,11 @@ def _check_session(
                 raise ObserverLaunchError(
                     "installation check New did not return an empty durable tail"
                 )
+            advance_started = time.monotonic_ns()
             send("advance", 2, scope, expected_tail=tail)
-            committed = receive("committed", 2)
+            committed = receive("committed", 2, advance_scope=scope, advance_tick=1)
+            if timings_us is not None:
+                timings_us["advance_commit_ack"] = (time.monotonic_ns() - advance_started) // 1000
             if committed["scope"] != scope:
                 raise ObserverLaunchError("installation check commit changed campaign scope")
             tail = committed["tail"]
@@ -589,6 +641,70 @@ def _check_session(
         child.stdout.close()
 
 
+def _national_economy_status(
+    client: Path,
+    root: Path,
+    reader: Mapping[str, str],
+    campaign: UUID,
+    expected: tuple[str, dict[str, object]],
+) -> dict[str, object]:
+    """Read the authenticated economic consumer after a real process restart."""
+    result = subprocess.run(
+        [str(client), "--headless", "--campaign", str(campaign), "economy", "status"],
+        cwd=root,
+        env=dict(reader),
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=RUNTIME_SHUTDOWN_GRACE_SECONDS,
+    )
+    status = json.loads(result.stdout)
+    exact = {
+        "record": "economy-status",
+        "schema_version": 1,
+        "campaign_id": str(campaign),
+        "resolve_tick": 1,
+        "foundation_digest": expected[0],
+        "tick_content_hash": expected[1]["tick_content_hash"],
+        "visibility": "full_observer",
+        "duration": {"kind": "continuous"},
+        "county_count": 3144,
+        "exact_national_roster": True,
+        "domestic_household_locations": 3144,
+        "households_cover_national_roster": True,
+        "completed_material_balance": True,
+    }
+    if not isinstance(status, dict) or any(
+        type(status.get(key)) is not type(value) or status[key] != value
+        for key, value in exact.items()
+    ):
+        raise ObserverLaunchError(
+            "national economic snapshot has incomplete scope or mismatched identity"
+        )
+    positive = (
+        "household_cohorts",
+        "sites",
+        "household_goods_accounts",
+        "household_service_accounts",
+        "completed_household_goods_accounts",
+        "completed_household_service_accounts",
+        "price_accounts",
+    )
+    if any(type(status.get(key)) is not int or status[key] <= 0 for key in positive):
+        raise ObserverLaunchError(
+            "national economic snapshot has no completed household or market accounts"
+        )
+    if any(
+        re.fullmatch(r"[0-9a-f]{64}", str(status.get(key))) is None
+        for key in ("nominal_world_hash", "envelope_digest")
+    ):
+        raise ObserverLaunchError("national economic snapshot lacks authenticated hash evidence")
+    if type(status.get("read_elapsed_us")) is not int or status["read_elapsed_us"] < 0:
+        raise ObserverLaunchError("national economic snapshot has invalid read timing")
+    return status
+
+
 def check_installation(
     runtime: Path,
     client: Path,
@@ -601,9 +717,15 @@ def check_installation(
     """Prove New, one period, process restart, Open, and the real native reader."""
     campaign = uuid4()
     target = _new_target(campaign, preset)
-    first = _check_session(runtime, root, writer, defines, target)
+    timings_us: dict[str, int] = {}
+    first = _check_session(runtime, root, writer, defines, target, timings_us=timings_us)
     reopened = _check_session(
-        runtime, root, writer, Path("/dev/null"), OpenCampaignTarget(campaign)
+        runtime,
+        root,
+        writer,
+        Path("/dev/null"),
+        OpenCampaignTarget(campaign),
+        timings_us=timings_us,
     )
     if reopened != first:
         raise ObserverLaunchError(
@@ -631,6 +753,11 @@ def check_installation(
         raise ObserverLaunchError(
             "installation check native reader disagrees with the committed period"
         )
+    economy_snapshot = (
+        _national_economy_status(client, root, reader, campaign, first)
+        if target.preset == "national-world"
+        else None
+    )
     print(
         json.dumps(
             {
@@ -641,6 +768,8 @@ def check_installation(
                 "foundation_digest": first[0],
                 "tail": first[1],
                 "reopened_without_defines": True,
+                "lifecycle_timings_us": timings_us,
+                **({"economy_snapshot": economy_snapshot} if economy_snapshot is not None else {}),
             }
         )
     )
@@ -738,7 +867,7 @@ def main(argv: list[str] | None = None) -> int:
         "--defines",
         type=Path,
         default=DEFAULT_DEFINES,
-        help="TOML values for new campaigns; existing campaigns use their saved parameters",
+        help="TOML values for new Michigan controls; national uses pinned policy, Open uses saved parameters",
     )
     parser.add_argument(
         "--preset",
@@ -756,6 +885,7 @@ def main(argv: list[str] | None = None) -> int:
             "statewide-maintenance-parts-shortage",
             "statewide-maintenance-both",
             "organize-in-wayne",
+            "national-world",
         ),
         help="choose a new world's material preset; requires New rather than Open",
     )

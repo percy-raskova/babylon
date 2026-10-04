@@ -1480,3 +1480,174 @@ artifacts:
       Designed. This is source evidence only, with no HPMS replacement, freight capacity, border delay,
       loss rate, H3 allocation, factory placement, Canadian actor, runtime hydration, campaign mutation,
       or gate completion authority.'
+  - name: national_county_reference_2024
+    format: csv.gz
+    source_table: null
+    generator: tools/make_national_county_reference.py
+    mode: register
+    rows: 3144
+    sha256: 28ad84a461f00c12489b11e0d770ad71bc3f09190dbc35774d725fc2333fec8e
+    home: src/babylon/data/reference/economy/national_county_reference_2024.csv.gz
+    material_relation: >-
+      Part of PER-40: observed foundation for exactly 3144 TIGER2024 counties
+      and county equivalents in 50 states and DC. ACS 2020-2024 five-year
+      estimates retain residents, households and labor-force persons with
+      literal estimate/MOE tokens and explicit uncertainty statuses. QCEW
+      2024 annual totals retain workplace jobs, establishments and wage
+      observations independently; Kalawao's absent QCEW row stays missing.
+      Source byte hashes and official acquisition URLs are pinned in
+      tools/national_county_reference_2024_sources.json; definitions, units,
+      coverage and digests accompany the artifact in its metadata JSON.
+      No imputation, jobs-to-persons conversion, employer/site allocation,
+      game-state initializer, runtime consumer or Michigan cutover is granted.
+  - name: national_qcew_function_basis_2024
+    format: parquet
+    source_table: null
+    generator: tools/make_national_qcew_function_basis.py
+    mode: register
+    rows: 144881
+    sha256: df7b6937540a0e6afab334de146c8229fac4865829347f8fca37c86c9a056d7c
+    home: src/babylon/data/reference/economy/national_qcew_function_basis_2024.parquet
+    material_relation: >-
+      Part of PER-40: one disjoint observed 2024 QCEW county/NAICS/ownership
+      cut, preserving federal, state, local and private rows at source
+      aggregation levels 74/75/76. Suppressed measures remain null; source
+      rows with rounded-zero annual establishments or jobs stay present.
+      Code 99 remains unclassified. The separate Designed function mapping
+      in contracts/national_qcew_function_mapping_v1.json uses explicit
+      game proxies, including mixed end-use capital-goods industries.
+      Parent sectors are non-additive diagnostics. Domestic xx999 jobs
+      remain unallocated; absent cells do not create observed zero rows.
+      Source pins reuse tools/national_county_reference_2024_sources.json.
+      This source foundation grants no worker/site allocation, production
+      recipes, capacities, invented employers or runtime hydration.
+  - name: international_counterpart_reference_2024
+    format: csv.gz
+    source_table: null
+    generator: tools/make_international_counterpart_reference.py
+    mode: register
+    rows: 252
+    sha256: 658fa904c1c4255edb64e2151d9a22bcd96ad74a4cf37dc63b6cb05fcc135b53
+    home: src/babylon/data/reference/economy/international_counterpart_reference_2024.csv.gz
+    material_relation: >-
+      Part of PER-31: 252 explicit geographic/statistical and trade-reporting
+      identities, with 233 observed 2024 Census goods-trade leaves assigned
+      disjointly to twelve Designed counterparts. Fifteen aggregate, product
+      and FTA controls remain non-additive diagnostics. Imports and exports
+      retain separate annual/monthly source decimal tokens and missingness.
+      Six US dependencies remain separate, with no invented trade values;
+      freely associated states stay external counterparts. Gaza/West Bank
+      are trade-only leaves linked to the Palestine population identity.
+      The pinned UN/Census/DOI roster snapshot is from September 2026 and
+      does not claim historical 2024 jurisdiction coverage. Explicit
+      membership, edge decisions, source pins and reconciliation accompany
+      this artifact. No population allocation, production, purchasing power,
+      inventory, infinite supply or runtime hydration is established.
+  - name: world_population_reference_2024
+    format: csv.gz
+    source_table: null
+    generator: tools/make_world_population_reference.py
+    mode: register
+    rows: 252
+    sha256: 6ec6309e87b61d39038519df7881b3a9dc58afa030468f33d4ff25bf6dc2dc8d
+    home: src/babylon/data/reference/economy/world_population_reference_2024.csv.gz
+    material_relation: >-
+      Part of PER-31: 237 UN WPP2024 country/area medium-variant population
+      projections join the 252 pinned world reporting identities. Source
+      units, exact numeric tokens, date, row and scope notes remain explicit.
+      Included territories do not create a second population; the separate
+      Designed Finland-to-Aland allocation preserves the total while using
+      a separately dated official year-end observation. Missing independent
+      observations remain absent. Gaza/West Bank are trade-only children.
+      Preserve the four-person rounded-leaf versus world-control residual.
+      Domestic play still uses the ACS county capture. This context does
+      not create workers, households, production, needs, cash or capacity.
+  - name: national_cohort_reference_2024
+    format: csv.gz
+    source_table: null
+    generator: tools/make_national_cohort_reference.py
+    mode: register
+    rows: 59058
+    sha256: 1c963f6b709c31f798253e41662619a32ad31d4532022931392cf2fbd78eb497
+    home: src/babylon/data/reference/economy/national_cohort_reference_2024.csv.gz
+    material_relation: >-
+      Part of PER-40: compact native capture of all 144881 disjoint QCEW
+      source members in 59058 county/function/ownership observation groups.
+      The 57347 mapped groups remain distinct from 1711 unclassified context
+      groups; exactly 57238 have positive known establishments, jobs or
+      payroll and qualify for later executable admission. Each measure keeps
+      its known subtotal and published member count; suppressed jobs and
+      payroll remain unknown while establishments stay published. Mean
+      weekly wages remain per-member observations and are never added.
+      The bounded Rust reader joins exact identities to the separate 3144
+      county roster. Kalawao has residents but no invented workplace group.
+      This capture allocates no persons, households, firms, physical recipes,
+      capacities, operating inventories or money and initializes no campaign.
+  - name: national_transport_reference_2024
+    format: json.gz
+    source_table: null
+    generator: tools/make_national_transport_reference.py
+    mode: register
+    rows: 3373
+    sha256: d085520bb68e65927c6d5e395f493498d1fccf394f5ee64a7c06507e816b1ab3
+    home: src/babylon/data/reference/transport/national_transport_reference_2024.json.gz
+    material_relation: >-
+      Part of PER-40: 3144 county actors, twelve Designed counterparts and
+      six separate US dependency actors retain typed geography within a
+      bounded source-qualified sparse transport graph. Source airport,
+      marine, liquid-terminal, border and explicit Alaska bulk connections
+      remain distinct from Designed routing and finite 28-day service values.
+      Air refuses bulk; unsupported directed bulk access stays explicit.
+      All 3162 actor endpoints have general-cargo reachability within ten
+      links, which proves neither adequate capacity nor demand satisfaction.
+      Original county allocation factors retain exact decimal values and
+      five duplicate source multiplicities without summing or renormalizing.
+      Selected domestic FAF2024 aggregates, full foreign region/mode
+      aggregates and non-additive controls preserve native units, source
+      publication counts and separate import/export directions. FAF's eight
+      foreign regions never become twelve observed market quantities.
+      Source vintages differ; Valdez's obsolete source county is preserved
+      alongside its spatially verified 2024 county binding. Costs remain
+      unexecuted context: this capture pays no carrier, creates no stocks,
+      compiles no material route and hydrates no runtime campaign.
+
+  - name: national_resident_workforce_2024
+    format: csv.gz
+    source_table: null
+    generator: tools/make_national_resident_workforce.py
+    mode: register
+    rows: 3144
+    sha256: 4fd2d325cbad74424cc2c20f3705c76ed2dc034bd038637db577c7da8be7c0a0
+    home: src/babylon/data/reference/economy/national_resident_workforce_2024.csv.gz
+    material_relation: >-
+      Part of PER-40: ACS 2024 five-year B24080 class-of-worker observations
+      for the exact 3144 domestic counties. Preserve all 21 estimate/MOE
+      pairs, raw source tokens and availability. The sixteen sex-specific
+      leaves partition civilian employed residents without adding nested
+      subtotals. Every county total reconciles with the captured B23025
+      employed-person control. Incorporated and unincorporated self-employed
+      persons and unpaid family workers remain separate from employees.
+      These categories do not infer political class, workplace assignment,
+      QCEW coverage, ownership claims, labor hours or income. The bounded
+      native reader supplies later explicit resident-workplace allocation;
+      this source capture creates no game persons, cash or activity.
+
+  - name: national_household_reference_2024
+    format: csv.gz
+    source_table: null
+    generator: tools/make_national_household_reference.py
+    mode: register
+    rows: 3144
+    sha256: 8de3890dda46892ed53a9fda093075a0ce962f93121c6705d5df1dfc5a4a6582
+    home: src/babylon/data/reference/economy/national_household_reference_2024.csv.gz
+    material_relation: >-
+      Part of PER-40: separate ACS 2024 five-year B11001 household-type,
+      B11002 persons-in-households, B19001 annual-income bins and B19051
+      historical with/no-earnings margins
+      for the exact 3144 domestic counties. All 41 estimate/MOE pairs
+      retain original tokens and availability, including controlled margins.
+      B11001 households and B01003 population reconcile against the pinned
+      county foundation. Group-quarters persons are a Derived residual,
+      with no invented combined uncertainty. These separate margins create
+      no joint household profiles, political class, wages, wealth, work,
+      time budgets, cash or game cohorts. Raw annotations are unavailable.

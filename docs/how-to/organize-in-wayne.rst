@@ -38,7 +38,8 @@ as an acquired workplace report. **Workplace report** shows the latest evidence
 available at the inspected period, with its source and age. **Last period**
 describes the most recent completed practice.
 
-Each of the campaign's 16 periods covers 28 days. The collective has
+Each campaign period covers 28 days. The campaign has no designed final period.
+The collective has
 16 organizer-hours per period. Contact work uses 8 hours. An inquiry uses 12.
 A participating partner spends 2 of its own 8 hours. Unused time expires.
 
@@ -166,8 +167,9 @@ period and refresh the preview before submitting.
 
 Close and reopen the saved campaign to check a pending ruling or its
 completed receipt. The runtime reconciles saved commitments without a new
-submission of your personal draft. At the finite campaign horizon, evidence
-stays readable and the runtime refuses new rulings.
+submission of your personal draft. Continuous campaigns accept later rulings.
+An explicit finite experiment stops at its saved endpoint, where evidence stays
+readable and the runtime refuses new rulings.
 
 Unsupported older personal-draft formats remain on disk without conversion or
 overwrite. The workspace explains when saving the personal draft is unavailable.

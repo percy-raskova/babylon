@@ -1250,11 +1250,13 @@ fn measure_bound_recipe(name: &str, recipe: &Value) -> u64 {
         "stable_carrier_active_elements" => recipe_count(recipe, "active_element_count"),
         "stable_carrier_bytes" => measure_carrier_bytes(recipe),
         "resolver_rows" => measure_resolver_rows(recipe),
+        "resolver_hyperedge_rows" => recipe_count(recipe, "hyperedge_rows"),
         "resolver_edges" => recipe_count(recipe, "edge_rows"),
         "resolver_hyperedge_members" => recipe_count(recipe, "hyperedge_member_rows"),
         "resolver_fact_units" => measure_resolver_facts(recipe),
         "resolver_manifest_bytes" => measure_resolver_manifest_bytes(recipe),
-        "stable_graph_elements" => recipe_count(recipe, "state_node_rows"),
+        "stable_graph_nodes" => recipe_count(recipe, "state_node_rows"),
+        "stable_graph_elements" => recipe_count(recipe, "state_hyperedge_rows"),
         "stable_graph_attribute_rows" => recipe_count(recipe, "node_f64_rows"),
         "stable_graph_hyperedge_members" => recipe_count(recipe, "state_member_rows"),
         "stable_graph_fact_units" => measure_graph_facts(recipe),
@@ -1270,7 +1272,10 @@ fn measure_bound_recipe(name: &str, recipe: &Value) -> u64 {
         "tick_rule_outcomes" => recipe_count(recipe, "rule_outcome_rows"),
         "tick_rows" => recipe_count(recipe, "event_rows"),
         "tick_aggregate_rows" => {
-            recipe_count(recipe, "event_rows") + recipe_count(recipe, "payload_rows")
+            let payloads = recipe_counts(recipe, "payload_rows_per_event", 2);
+            let events = recipe_count(recipe, "event_rows");
+            assert_eq!(events, payloads.len() as u64);
+            events + payloads.iter().sum::<u64>()
         }
         "tick_combined_bytes" => measure_tick_bytes(recipe),
         _ => panic!("unknown bound recipe {name}"),
@@ -1466,11 +1471,13 @@ fn bound_contract(name: &str) -> (&'static str, u64, &'static str) {
         ),
         "stable_carrier_active_elements" => ("compose_stable_carrier", 256, "active_element_limit"),
         "stable_carrier_bytes" => ("compose_stable_carrier", 105_962, "byte_limit"),
-        "resolver_rows" => ("seal_stable_resolver", 65_536, "row_limit"),
+        "resolver_rows" => ("seal_stable_resolver", 262_144, "row_limit"),
+        "resolver_hyperedge_rows" => ("seal_stable_resolver", 65_536, "row_limit"),
         "resolver_edges" => ("seal_stable_resolver", 65_536, "edge_limit"),
         "resolver_hyperedge_members" => ("seal_stable_resolver", 65_534, "hyperedge_members"),
         "resolver_fact_units" => ("seal_stable_resolver", 1_048_576, "aggregate_row_limit"),
-        "resolver_manifest_bytes" => ("seal_stable_resolver", 8_388_608, "byte_limit"),
+        "resolver_manifest_bytes" => ("seal_stable_resolver", 16_777_216, "byte_limit"),
+        "stable_graph_nodes" => ("encode_stable_graph", 262_144, "row_limit"),
         "stable_graph_elements" => ("encode_stable_graph", 65_536, "row_limit"),
         "stable_graph_attribute_rows" => ("encode_stable_graph", 524_288, "row_limit"),
         "stable_graph_hyperedge_members" => ("encode_stable_graph", 65_534, "hyperedge_members"),
@@ -1486,7 +1493,7 @@ fn bound_contract(name: &str) -> (&'static str, u64, &'static str) {
         "prepared_combined_bytes" => ("encode_prepared_bsl", 67_108_864, "byte_limit"),
         "tick_rule_outcomes" => ("encode_tick_payload", 65_536, "row_limit"),
         "tick_rows" => ("encode_tick_payload", 1_048_576, "row_limit"),
-        "tick_aggregate_rows" => ("encode_tick_payload", 1_048_576, "aggregate_row_limit"),
+        "tick_aggregate_rows" => ("encode_tick_payload", 2_097_152, "aggregate_row_limit"),
         "tick_combined_bytes" => ("encode_tick_payload", 67_108_864, "byte_limit"),
         _ => panic!("unknown bound refusal {name}"),
     }

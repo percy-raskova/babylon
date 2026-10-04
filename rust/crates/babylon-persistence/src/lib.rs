@@ -7,6 +7,8 @@
 extern crate self as babylon_persistence;
 
 mod archive;
+mod archive_campaign;
+pub use archive_campaign::captured_archive_producer;
 pub mod archive_driver;
 mod archive_foundation_grants;
 pub mod archive_revision;
@@ -15,9 +17,12 @@ mod archive_worker;
 mod babylon_markdown;
 mod bootstrap;
 mod checkpoint;
+mod checkpoint_reference;
 pub mod committed_tick_envelope;
 mod county_producer;
 mod current_schema;
+pub mod economic_catalog;
+pub mod economic_content;
 mod foundation;
 mod glossary_concepts;
 pub mod h3_reference_cohort;
@@ -28,11 +33,24 @@ pub mod material_runtime;
 mod metadata;
 mod michigan_dynamic_hex_foundation;
 pub mod michigan_economy;
+pub mod national_cohorts;
+pub mod national_counties;
+pub mod national_household_allocation;
+pub mod national_household_time_allocation;
+pub mod national_households;
+pub mod national_resident_allocation;
+pub mod national_resident_workforce;
+pub mod national_transport;
 pub(crate) mod observer_material;
 pub mod observer_reader;
 mod observer_tick_components;
 mod organizer_archive;
+mod reference_csv;
+pub mod world_reference;
 pub use organizer_archive::OrganizerDossierProducer;
+pub mod event_storage;
+pub mod graph_storage;
+pub mod material_storage;
 mod organizer_content;
 pub mod organizer_runtime;
 mod place_producer;
@@ -40,19 +58,30 @@ pub mod postgres_catalog;
 mod postgres_diagnostic;
 pub(crate) mod production_projection;
 mod reader;
+mod receipt_storage;
 mod runtime;
 pub mod runtime_session;
-pub mod sector_bundle;
 mod semantic_batches;
 mod semantic_codec;
 mod semantic_vectors;
 mod spatial_reference_installer;
 pub mod spatial_reference_products;
+mod state_storage;
+mod storage_compression;
 mod stored_tick;
 mod territory_county_map;
+pub mod territory_storage;
 pub mod tick_commit_claim;
 
 pub use archive::*;
+pub use material_storage::Error as MaterialStorageError;
+/// Derived bound for a stored register, including compression and section framing.
+pub const MAX_STORED_MATERIAL_REGISTER_BYTES: usize = state_storage::MAX_STATE_PACKAGE_BYTES;
+/// Derived bound for a complete stored receipt package, including its framing.
+pub const MAX_STORED_MATERIAL_RECEIPT_BYTES: usize = receipt_storage::MAX_RECEIPT_STORAGE_BYTES;
+/// Derived bound for one stored lookup delta, including compression and framing.
+pub const MAX_STORED_MATERIAL_LOOKUP_DELTA_BYTES: usize =
+    material_storage::MAX_LOOKUP_PACKAGE_BYTES;
 pub use archive_foundation_grants::{
     foundation_grant_rows, foundation_grants_semantic_sha256, seed_foundation_grants,
     FoundationGrantReport, FoundationGrantRow, FoundationGrantsError,
@@ -88,7 +117,9 @@ pub use county_producer::{
     COUNTY_PHI_HOUR_GRANT_KEY, COUNTY_PHI_HOUR_LABEL, PINNED_COUNTY_IDENTITY_ARTIFACT_SHA256,
 };
 
-pub use foundation::{CampaignFoundation, FoundationContentBundle};
+pub use foundation::{
+    CampaignFoundation, FoundationContentBundle, FoundationContentError, FoundationContentKind,
+};
 pub use glossary_concepts::{
     glossary_concepts, GlossaryConcept, GlossaryConcepts, GlossaryConceptsError,
     GLOSSARY_CONCEPTS_FIXTURE_PATH, PINNED_GLOSSARY_CONCEPTS_SHA256,
@@ -151,7 +182,7 @@ pub use territory_county_map::{
 };
 
 mod production_evidence;
-pub use production_evidence::ProductionEvidenceDigest;
+pub use production_evidence::{ProductionEvidenceDigest, ProductionEvidenceError};
 pub use production_projection::material_balance::{
     CompletedMaterialBalance, ProductionMaterialBalanceRow,
 };
@@ -168,3 +199,18 @@ pub mod michigan_sectors;
 mod test_support;
 
 pub mod simulation_experiment;
+
+pub mod national_economy;
+
+pub use production_projection::households::{
+    CompletedHouseholdBalance, CompletedHouseholdService, ProductionHouseholdAccount,
+    ProductionHouseholdKind, ProductionHouseholdServiceAccount,
+};
+
+pub use production_projection::prices::{
+    CompletedGoodsPrice, GoodsPriceBasis, GoodsPriceReason, ProductionGoodsPriceAccount,
+};
+
+#[cfg(test)]
+#[path = "../../babylon-tick/tests/support/organizer_aid_fixture.rs"]
+mod organizer_aid_fixture;

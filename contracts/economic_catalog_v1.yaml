@@ -1,0 +1,98 @@
+version: 2
+name: captured_economic_catalog
+purpose: One immutable captured source table regenerates the current economic opening.
+evidence_class: Designed
+encoding:
+  domain: "babylon.economic-catalog.v1\0"
+  layout: u16_big_endian_2
+  timebase: u64_big_endian_days_per_period_28
+  identity:
+    - compiler_version
+    - scenario_id
+    - preset_id
+  identity_codec: u16_big_endian_length_then_nonempty_utf8_maximum_128_bytes_without_nul
+  duration: Current nine-byte CampaignDuration with exact option padding.
+  geography: {national_counties: 1, national_with_michigan_detail: 2, michigan_control: 3}
+  source_count: u16_big_endian_maximum_32_rows
+  source_row:
+    - u8_closed_role_tag
+    - sha256_exact_source_bytes_32_bytes
+    - u32_big_endian_byte_length
+    - exact_source_bytes
+  source_order: Strict increasing role tags; duplicate or unknown roles refuse.
+  organizer_footer:
+    - u8_closed_presence_tag
+    - u32_big_endian_config_byte_length
+    - exact_current_canonical_organizer_config_bytes
+  organizer_presence: Absent is tag zero and length zero; present is tag one and positive bounded length.
+  maximum_organizer_config_bytes: 33554432
+  organizer_source_basis: SHA256 of the exact current source frame with an absent organizer footer.
+  organizer_content_identity: Source basis is distinct from the final complete catalog digest; configuration never
+    hashes itself.
+  maximum_source_bytes: 33554432
+  maximum_complete_bytes: 67108864
+  digest: sha256_exact_complete_bytes
+source_roles:
+  graph_declarations: 1
+  prelude_declarations: 2
+  rules: 3
+  designed_control_policy: 4
+  national_counties: 5
+  national_cohorts: 6
+  resident_workforce: 7
+  national_transport: 8
+  international_trade: 9
+  world_population: 10
+  cohort_function_mapping: 11
+  counterpart_membership: 12
+  population_scope_policy: 13
+  transport_policy: 14
+  transport_source_manifest: 15
+  michigan_defines: 16
+  michigan_qualification_gzip: 17
+  michigan_physical_network_gzip: 18
+  michigan_dynamic_hexes: 19
+  national_game_policy: 20
+  michigan_county_evidence: 21
+  michigan_sector_evidence: 22
+  michigan_sector_sources: 23
+  michigan_regional_topology: 24
+  michigan_industry_baseline: 25
+  michigan_commodity_roster: 26
+  michigan_statewide_manifest: 27
+  michigan_maintenance_industry: 28
+  michigan_experiment: 29
+  organizer_campaign_uuid: 30
+  michigan_qualification_json: 31
+  michigan_physical_network_canonical_json: 32
+  michigan_control_overrides_canonical_json: 33
+  michigan_spatial_products: 34
+  national_households: 35
+admission:
+  compilers: [national-world-v4, michigan-control-v1]
+  national_identity: {scenario: economy/national-world, preset: national-world, compiler: national-world-v4}
+  source_coverage: Each importer requires its exact dependency set and refuses extra roles.
+  source_semantics: Captured bytes enter their source-specific checked native readers.
+  missingness: Suppression, absent observations and incomplete subtotals remain explicit.
+  opening: Regenerate once from supplied captures; compare optional supplied opening exactly.
+  current_reads: Reuse the admitted immutable opening and view without regeneration.
+  unsupported_compiler: Refuse before regeneration; no file lookup or compatibility fallback.
+  household_counts: Counted cohorts and person totals; no individual person agents.
+  mutable_owners: Graph member employment and reserve; one canonical material register.
+  local_detail: Michigan H3 and spatial-product captures must appear together and cross-validate.
+  archive: >-
+    County identity follows the captured roster; place pages and their public grants
+    require captured local detail.
+  organizer_opening: Captured organizer configuration and complete initial state must equal exact source regeneration.
+  organizer_campaign: Captured configuration binds the campaign identity; national admission regenerates it from
+    captured policy and actual household, workplace and route identities.
+  unsupported_layout: Refuse layout one; preserve old saves as data without a compatibility reader.
+  native_graph_nodes: 262144 maximum; the measured sparse-household opening uses 179772 aggregate nodes.
+  native_graph_relationships: 65536 per edge and hyperedge family; node admission does not widen these.
+refusals:
+  - invalid_domain_version_timebase_or_tag
+  - missing_duplicate_extra_or_changed_source
+  - invalid_utf8_nul_or_excess_bytes
+  - invalid_source_specific_schema_or_membership
+  - mismatched_supplied_opening
+  - noncanonical_order_padding_or_trailing_bytes

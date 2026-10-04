@@ -177,6 +177,23 @@ fn live_publication_protects_deletion_without_blocking_authoritative_tick() {
         .expect("Archive connection");
     let (committed, next_identity, page, revision_digest) =
         publication::with_campaign_lock(&mut client, campaign, |client| {
+            let mut capture = client
+                .build_transaction()
+                .isolation_level(IsolationLevel::Serializable)
+                .read_only(true)
+                .start()
+                .expect("coherent input capture");
+            let knowledge =
+                tick_knowledge::capture(&mut capture, &scope).expect("capture knowledge");
+            capture.commit().expect("finish coherent input capture");
+            let outcome = StubPageProducer
+                .produce(*campaign.as_uuid(), &receipt, &knowledge, 1)
+                .expect("one real Archive page");
+            let mut prepared =
+                publication::prepare(campaign, &receipt, outcome.batch(), &knowledge)
+                    .expect("detached canonical rendering");
+            publication::authenticate_existing(client, &mut prepared)
+                .expect("detached existing body admission");
             let mut tx = client
                 .build_transaction()
                 .isolation_level(IsolationLevel::Serializable)
@@ -185,19 +202,10 @@ fn live_publication_protects_deletion_without_blocking_authoritative_tick() {
                 .expect("actual Archive transaction isolation");
             crate::current_schema::require_current_schema(&mut tx)
                 .expect("current schema before publication");
-            let knowledge = tick_knowledge::pin(&mut tx, &scope).expect("receipt-pinned knowledge");
-            let outcome = StubPageProducer
-                .produce(*campaign.as_uuid(), &receipt, &knowledge, 1)
-                .expect("one real Archive page");
-            let report = publication::publish(
-                &mut tx,
-                campaign,
-                &receipt,
-                outcome.batch(),
-                ArchiveMaterializeMode::Consume,
-                &knowledge,
-            )
-            .expect("actual publication acquires the campaign lock");
+            tick_knowledge::pin_prepared(&mut tx, &scope, &knowledge)
+                .expect("receipt-pinned knowledge");
+            let report = publication::publish(&mut tx, prepared, ArchiveMaterializeMode::Consume)
+                .expect("actual publication acquires the campaign lock");
             assert_eq!(report.disposition(), ArchiveMaterializeDisposition::Applied);
             let page = report.pages()[0].page().clone();
             let revision_digest: Vec<u8> = tx

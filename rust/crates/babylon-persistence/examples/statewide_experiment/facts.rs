@@ -363,7 +363,7 @@ fn maximum_rows(state: &MaterialCircuitState) -> usize {
         state.process_outputs.len(),
         state.input_coefficients.len(),
         state.labor_coefficients.len(),
-        state.freight_mass_coefficients.len(),
+        state.commodities.len(),
         state.supplier_routes.len(),
         state.route_stages.len(),
         state.route_stage_capacities.len(),

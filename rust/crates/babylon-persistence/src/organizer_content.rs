@@ -4,7 +4,7 @@ use babylon_graph::stable_element::StableElementKey;
 use babylon_kernel::content_digest::sha256_of;
 use babylon_practice_contract::{
     initial_organizer_state, OrganizerConfig, OrganizerContribution, OrganizerParticipant,
-    OrganizerPartner, OrganizerPartnerPolicy, ORGANIZER_SCHEMA_VERSION,
+    OrganizerPartner, OrganizerPartnerPolicy, OrganizerTimeBindingMode, ORGANIZER_SCHEMA_VERSION,
 };
 
 use crate::{
@@ -59,8 +59,8 @@ pub(crate) fn append_declarations(source: &str) -> Result<String, MichiganDefine
         .ok_or(MichiganDefinesError::Canonical)?;
     let mut source = source
         .replace(
-            "(TERRITORY ORGANIZATION SOCIAL_CLASS)",
-            "(TERRITORY ORGANIZATION SOCIAL_CLASS PARTICIPANT_BODY)",
+            "(TERRITORY ORGANIZATION BUSINESS SOCIAL_CLASS)",
+            "(TERRITORY ORGANIZATION BUSINESS SOCIAL_CLASS PARTICIPANT_BODY)",
         )
         .replace("(ECONOMIC_SECTOR)", "(ECONOMIC_SECTOR ORGANIZATION_BODY)");
     source.push_str("  (defvocabulary EdgeType (CONTACT))\n");
@@ -116,6 +116,8 @@ pub(crate) fn config(
     identity
         .extend_from_slice(&serde_json::to_vec(d).map_err(|_| MichiganDefinesError::Canonical)?);
     let config = OrganizerConfig {
+        aid_bindings: vec![],
+        collection: None,
         schema_version: ORGANIZER_SCHEMA_VERSION,
         campaign_id: *campaign.canonical_bytes(),
         controlled_actor_id: actors[0],
@@ -127,6 +129,7 @@ pub(crate) fn config(
         workplace_partner: partner(1),
         neighborhood_partner: partner(2),
         participants,
+        time_binding: OrganizerTimeBindingMode::FixedTimeControl,
         inquiry_hours: d.inquiry_hours,
         contact_hours: d.contact_hours,
         partner_response_hours: d.partner_response_hours,

@@ -1,9 +1,41 @@
 //! Current production, inventory, freight and order state.
 
+use babylon_kernel::economic_location::EconomicLocation;
+
 /// Designed serialization and validation ceiling, not material abundance.
 pub const MAX_MATERIAL_CIRCUIT_ROWS: usize = 65_536;
+/// Designed ceiling after the actual national close exceeded 65,536 service orders.
+pub const MAX_SERVICE_ORDERS: usize = 131_072;
+/// Designed ceiling after the actual national close exceeded 65,536 delivery orders.
+pub const MAX_DELIVERY_ORDERS: usize = 131_072;
+/// Derived total of independently bounded delivery, retail and service principals.
+pub const MAX_MATERIAL_ORDER_PRINCIPALS: usize =
+    MAX_DELIVERY_ORDERS + MAX_MATERIAL_CIRCUIT_ROWS + MAX_SERVICE_ORDERS;
+/// Designed ceiling for the measured 73,504 national site-stock rows.
+pub const MAX_INVENTORY_ROWS: usize = 131_072;
+/// Designed ceiling for the measured 114,680 national recipe inputs.
+pub const MAX_INPUT_COEFFICIENTS: usize = 131_072;
+/// Designed ceiling for the measured 190,505 national supplier relations.
+pub const MAX_SUPPLIER_ROUTES: usize = 262_144;
+/// Designed ceiling for the measured 247,928 route/capacity memberships.
+pub const MAX_ROUTE_CAPACITY_MEMBERSHIPS: usize = 262_144;
+/// Designed ceiling for the measured 118,881 technical service connections.
+pub const MAX_SERVICE_CONNECTIONS: usize = 131_072;
+/// Designed ceiling for the measured 79,489 cash and capital account owners.
+pub const MAX_MONETARY_ACCOUNTS: usize = 131_072;
+/// Designed ceiling for 87,960 captured household needs and purchase policies.
+pub const MAX_HOUSEHOLD_NEEDS: usize = 131_072;
+/// Designed ceiling for 90,794 independently captured ownership/equity claims.
+pub const MAX_OWNERSHIP_CLAIMS: usize = 131_072;
+/// Designed ceiling for the measured 138,337 national procurement policies.
+pub const MAX_REPLENISHMENT_POLICIES: usize = 262_144;
+/// Designed ceiling for 112,805 distinct work purposes sharing counted workers.
+pub const MAX_STAFFING_WORK_SOURCES: usize = 131_072;
+/// Derived ceiling: retail retirement permits a second bounded handling pass.
+pub const MAX_HANDLING_RECEIPTS_PER_PERIOD: usize = 2 * MAX_MATERIAL_CIRCUIT_ROWS;
 /// Derived transition ceiling for disjoint input and labor resource groups.
-pub const MAX_PRODUCTION_RESOURCE_GROUPS: usize = MAX_MATERIAL_CIRCUIT_ROWS * 2;
+pub const MAX_PRODUCTION_RESOURCE_GROUPS: usize =
+    MAX_INPUT_COEFFICIENTS + MAX_MATERIAL_CIRCUIT_ROWS;
 
 macro_rules! identity_type {
     ($name:ident) => {
@@ -212,13 +244,6 @@ pub struct LocalTransferReceipt {
     pub quantity: u64,
 }
 
-/// Positive exact grams represented by one native shipment unit.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct FreightMassCoefficient {
-    pub good_id: GoodId,
-    pub unit_id: UnitId,
-    pub grams_per_unit: u64,
-}
 /// One timed transport stage; physical geometry does not advance this clock.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct RouteStage {
@@ -272,7 +297,7 @@ pub enum MerchantRole {
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct MerchantHandling {
     pub site_id: SiteId,
-    pub county_geoid: [u8; 5],
+    pub location: EconomicLocation,
     pub role: MerchantRole,
     pub capacity_id: CorridorId,
     pub labor_unit_id: UnitId,
@@ -287,11 +312,11 @@ pub struct MerchantHandlingCoefficient {
     pub hours_per_unit: u64,
 }
 
-/// County-local end-buyer account identity, without a household or inventory.
+/// End-buyer account identity and market location, without a stock assertion.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct FinalDemandPrincipal {
     pub id: FinalDemandPrincipalId,
-    pub county_geoid: [u8; 5],
+    pub location: EconomicLocation,
 }
 
 /// Finite native-good handoff order; fulfillment does not assert consumption.
@@ -311,6 +336,7 @@ pub struct FinalDemandOrder {
 pub enum OutboundOrderId {
     Delivery(OrderId),
     LocalFinalDemand(OrderId),
+    Service(OrderId),
 }
 
 /// Completed handling need before labor and actual outbound handling after labor.
@@ -378,15 +404,59 @@ pub struct MaintenanceReceipt {
     pub next_service: MaintenanceService,
 }
 
+/// Physical capacity supply is explicit and independent of accounting or prices.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CapacitySupply {
+    /// Existing dated residual tables are finite; missing periods supply zero.
+    FiniteSchedule,
+    /// Existing equipment supplies a new period, net of advance freight bookings.
+    Rolling(Box<RollingCapacitySupply>),
+}
+
+/// Installed equipment nameplate; cash or an equipment order does not create it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InstalledProcessCapacity {
+    pub process_id: ProcessId,
+    pub site_id: SiteId,
+    pub batches_per_period: u64,
+}
+
+/// Physical shared throughput, including separately bound merchant handling.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SharedCapacitySupply {
+    pub corridor_id: CorridorId,
+    pub grams_per_period: u64,
+}
+
+/// Original dispatch grams remain booked even if the associated freight is lost.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FutureCapacityReservation {
+    pub departure_period: u64,
+    pub corridor_id: CorridorId,
+    pub reserved_grams: u64,
+}
+
+/// Current residuals live only in the state's dated current-period budgets.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RollingCapacitySupply {
+    pub processes: crate::RollingProcessSupply,
+    pub shared: Vec<SharedCapacitySupply>,
+    pub future_reservations: Vec<FutureCapacityReservation>,
+}
+
 /// Complete opening state; stock and recipe quantities retain their native units.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MaterialCircuitState {
+    pub capacity_supply: CapacitySupply,
     pub period: u64,
+    pub accounting: crate::CircuitAccounting,
     pub site_logistics_nodes: Vec<SiteLogisticsNode>,
     pub process_outputs: Vec<ProcessOutput>,
     pub input_coefficients: Vec<InputOutputCoefficient>,
     pub labor_coefficients: Vec<LaborCoefficient>,
-    pub freight_mass_coefficients: Vec<FreightMassCoefficient>,
+    pub commodities: Vec<crate::CommodityDefinition>,
+    pub service_connections: Vec<crate::ServiceConnection>,
+    pub service_orders: Vec<crate::ServiceOrder>,
     pub supplier_routes: Vec<SupplierRoute>,
     pub route_stages: Vec<RouteStage>,
     pub route_stage_capacities: Vec<RouteStageCapacity>,
@@ -409,6 +479,11 @@ pub struct MaterialCircuitState {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u16)]
 pub enum MaterialCircuitError {
+    HouseholdTimeInvariant = 31,
+    AidInvariant = 32,
+    AidAuthority = 33,
+    CollectionInvariant = 34,
+    EquipmentInvariant = 30,
     RowLimit = 1,
     ZeroQuantity = 2,
     DuplicateRow = 3,
@@ -431,6 +506,12 @@ pub enum MaterialCircuitError {
     MerchantInvariant = 20,
     FinalDemandInvariant = 21,
     MaintenanceInvariant = 22,
+    MonetaryInvariant = 23,
+    PayrollInvariant = 24,
+    PurchaseInvariant = 25,
+    ValuationInvariant = 26,
+    ServiceInvariant = 27,
+    FinancialInvariant = 28,
 }
 
 /// Unknown language-neutral routed-material refusal code.
@@ -464,6 +545,17 @@ impl TryFrom<u16> for MaterialCircuitError {
             20 => Ok(Self::MerchantInvariant),
             21 => Ok(Self::FinalDemandInvariant),
             22 => Ok(Self::MaintenanceInvariant),
+            23 => Ok(Self::MonetaryInvariant),
+            24 => Ok(Self::PayrollInvariant),
+            25 => Ok(Self::PurchaseInvariant),
+            26 => Ok(Self::ValuationInvariant),
+            27 => Ok(Self::ServiceInvariant),
+            28 => Ok(Self::FinancialInvariant),
+            30 => Ok(Self::EquipmentInvariant),
+            31 => Ok(Self::HouseholdTimeInvariant),
+            32 => Ok(Self::AidInvariant),
+            33 => Ok(Self::AidAuthority),
+            34 => Ok(Self::CollectionInvariant),
             _ => Err(UnknownMaterialCircuitErrorCode(value)),
         }
     }
@@ -487,7 +579,34 @@ pub struct FreightLossReceipt {
 /// Atomic successor with native quantity receipts.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MaterialCircuitTransition {
+    pub aid: Vec<crate::AidReceipt>,
+    pub collections: Vec<crate::CollectionReceipt>,
+    pub aid_contributions: Vec<crate::HouseholdContributionUse>,
+    pub household_time: Vec<crate::HouseholdTimeReceipt>,
+    pub installation: Vec<crate::InstallationReceipt>,
+    pub installation_decisions: Vec<crate::InstallationDecisionReceipt>,
+    pub equipment_wear: Vec<crate::EquipmentWearReceipt>,
+    pub investment: Vec<crate::InvestmentReceipt>,
+    pub public_budgets: Vec<crate::PublicBudgetReceipt>,
+    pub taxes: Vec<crate::TaxReceipt>,
+    pub distributions: Vec<crate::DistributionReceipt>,
+    pub contributions: Vec<crate::CapitalContributionReceipt>,
+    pub staffing_members: Vec<crate::StaffingMemberReceipt>,
+    pub member_labor_use: Vec<crate::MemberLaborUseReceipt>,
+    pub service_performance: Vec<crate::ServicePerformanceReceipt>,
+    pub household_services: Vec<crate::HouseholdServiceReceipt>,
+    pub service_markets: Vec<crate::ServiceMarketReceipt>,
+    pub service_outputs: Vec<crate::ServiceOutputReceipt>,
+    pub income: Vec<crate::IncomeReceipt>,
     pub state: MaterialCircuitState,
+    pub household_demand: Vec<crate::HouseholdDemandReceipt>,
+    pub household_consumption: Vec<crate::HouseholdConsumptionReceipt>,
+    pub procurement: Vec<crate::ProcurementReceipt>,
+    pub production_plans: Vec<crate::ProductionPlanReceipt>,
+    pub prices: Vec<crate::PriceReceipt>,
+    pub money_transfers: Vec<crate::MoneyTransferReceipt>,
+    pub wage_accruals: Vec<crate::WageAccrualReceipt>,
+    pub labor_use: Vec<crate::LaborUseReceipt>,
     pub production: Vec<ProductionReceipt>,
     pub dispatches: Vec<RoutedDispatchReceipt>,
     pub losses: Vec<FreightLossReceipt>,

@@ -265,7 +265,7 @@ fn assert_full_projection(
     catalog: &MichiganMaterialCatalog,
     register: &MaterialWorldRegister,
     opening: Option<&MaterialWorldRegister>,
-    history: &[(MaterialTickReceipts, [u8; 32])],
+    history: &[(MaterialWorldRegister, MaterialTickReceipts, [u8; 32])],
 ) {
     use crate::production_observation::ProductionSiteRole;
     let snapshot = crate::production_projection::project_material_observation(
@@ -282,7 +282,7 @@ fn assert_full_projection(
         .iter()
         .find(|site| site.id == maintenance.provider_site_id)
         .unwrap();
-    assert_eq!(provider.role, ProductionSiteRole::Maintenance);
+    assert!(provider.roles.contains(&ProductionSiteRole::Maintenance));
     assert!(provider.processes.is_empty());
     assert_eq!(provider.observed_employment, Some(1480));
     assert_eq!(snapshot.sites.len(), catalog.sites().len());
@@ -301,7 +301,7 @@ fn assert_full_projection(
             .map(|done| done.completed_jobs),
         history
             .last()
-            .map(|(receipt, _)| receipt.maintenance.as_ref().unwrap().completed_jobs),
+            .map(|(_, receipt, _)| receipt.maintenance.as_ref().unwrap().completed_jobs),
         "zero and positive service completion remain visible through the full projection"
     );
 }
@@ -337,6 +337,7 @@ fn qualify_case(base: &MichiganMaterialCatalog, case: Case) {
         let mut candidate = uninterrupted.prepare_advance(&actions).unwrap();
         assert_close(&candidate, case, &witness, period);
         history.push((
+            uninterrupted.material().clone(),
             decode_material_receipts(candidate.material().receipt_bytes()).unwrap(),
             candidate.identity().receipt_digest(),
         ));

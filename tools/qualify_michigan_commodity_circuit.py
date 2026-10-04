@@ -92,7 +92,6 @@ class AuthoredCircuit:
     recipes: tuple[Recipe, ...]
     finite_order_periods: int
     weeks_per_period: int
-    horizon_periods: int
     source_sha256: str
 
 
@@ -188,17 +187,32 @@ def parse_defines(document: dict[str, Any], *, source_sha256: str = "") -> Autho
     """Read only the authored catalogue boundary needed for finite order quantities."""
     if (
         type(document.get("SCHEMA_VERSION")) is not int
-        or document.get("SCHEMA_VERSION") != 5
+        or document.get("SCHEMA_VERSION") != 6
         or type(document.get("TICK_DURATION_DAYS")) is not int
         or document.get("TICK_DURATION_DAYS") != 28
     ):
-        raise QualificationError("defines_version", "schema 5 and 28-day periods required")
-    horizon = _uint(document.get("HORIZON_PERIODS"), "HORIZON_PERIODS")
+        raise QualificationError("defines_version", "schema 6 and 28-day periods required")
+    duration = _mapping(document.get("DURATION"), "DURATION")
+    final_period = None
+    if duration == {"kind": "continuous"}:
+        pass
+    elif set(duration) == {"kind", "final_period"} and duration["kind"] == "finite":
+        final_period = _uint(duration["final_period"], "DURATION.final_period")
+        if final_period > 131:
+            raise QualificationError(
+                "campaign_duration", "finite duration exceeds admitted profile"
+            )
+    else:
+        raise QualificationError(
+            "campaign_duration", "explicit continuous or finite duration required"
+        )
     statewide = _mapping(document.get("statewide"), "statewide")
     periods = _uint(statewide.get("FINITE_ORDER_PERIODS"), "FINITE_ORDER_PERIODS")
-    if not periods <= horizon <= 16 or statewide.get("EVIDENCE_CLASS") != "Designed":
+    if (final_period is not None and periods > final_period) or statewide.get(
+        "EVIDENCE_CLASS"
+    ) != "Designed":
         raise QualificationError(
-            "finite_order_horizon", "Designed orders must fit the sixteen-period horizon"
+            "finite_order_horizon", "Designed opening orders must fit any explicit finite duration"
         )
     goods = []
     for name, raw in sorted(_mapping(document.get("commodity"), "commodity").items()):
@@ -267,7 +281,7 @@ def parse_defines(document: dict[str, Any], *, source_sha256: str = "") -> Autho
         raise QualificationError(
             "duplicate_output_family", "one representative family per traded good required"
         )
-    return AuthoredCircuit(tuple(goods), tuple(recipes), periods, 4, horizon, source_sha256)
+    return AuthoredCircuit(tuple(goods), tuple(recipes), periods, 4, source_sha256)
 
 
 def read_defines(path: Path) -> AuthoredCircuit:

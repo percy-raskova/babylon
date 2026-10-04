@@ -1,30 +1,43 @@
 //! Canonical current routed-material state bytes for restart and replay.
 
+mod accounting;
+mod aid;
+mod capacity;
+mod equipment;
+mod financial;
+mod household_time;
+mod recurring;
+#[cfg(test)]
+mod row_limits_tests;
+mod services;
+mod valuation;
+
 use crate::SupplierTransport;
 use crate::{
     FinalDemandOrder, FinalDemandPrincipal, FinalDemandPrincipalId, MerchantHandling,
     MerchantHandlingCoefficient, MerchantRole,
 };
 use babylon_kernel::content_digest::sha256_of;
+use babylon_kernel::economic_location::EconomicLocation;
 
 use crate::transition::canonical_state;
 use crate::{
-    BacklogRow, CapacityRow, CorridorCapacity, CorridorId, FreightLotId, FreightMassCoefficient,
-    GoodId, InputOutputCoefficient, InventoryRow, LaborCapacityRow, LaborCoefficient,
-    LogisticsNodeId, MaterialCircuitError, MaterialCircuitState, OrderAccessMode, OrderId,
-    OrderRow, ProcessId, ProcessOutput, ProductionCommitment, RouteId, RouteStage,
-    RouteStageCapacity, RoutedFreightLot, SiteId, SiteLogisticsNode, SupplierRoute, UnitId,
-    MAX_MATERIAL_CIRCUIT_ROWS,
+    BacklogRow, CapacityRow, CorridorCapacity, CorridorId, FreightLotId, GoodId,
+    InputOutputCoefficient, InventoryRow, LaborCapacityRow, LaborCoefficient, LogisticsNodeId,
+    MaterialCircuitError, MaterialCircuitState, OrderAccessMode, OrderId, OrderRow, ProcessId,
+    ProcessOutput, ProductionCommitment, RouteId, RouteStage, RouteStageCapacity, RoutedFreightLot,
+    SiteId, SiteLogisticsNode, SupplierRoute, UnitId, MAX_MATERIAL_CIRCUIT_ROWS,
 };
 
 /// Canonical domain for one complete routed material-circuit opening state.
 pub const MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES: &[u8] = b"babylon.material-circuit-state.v3";
 /// SHA-256 of the current language-neutral material circuit contract source.
 pub const MATERIAL_CIRCUIT_SOURCE_SHA256: [u8; 32] = [
-    182, 114, 199, 46, 170, 231, 70, 119, 34, 241, 1, 237, 155, 190, 52, 93, 11, 128, 224, 98, 167,
-    226, 139, 203, 156, 148, 53, 147, 136, 122, 175, 173,
+    221, 72, 124, 112, 57, 15, 166, 127, 198, 226, 214, 183, 169, 85, 11, 145, 141, 71, 200, 19,
+    28, 2, 209, 201, 33, 180, 69, 122, 214, 114, 41, 167,
 ];
-const SCHEMA_VERSION: u16 = 4;
+
+const SCHEMA_VERSION: u16 = 18;
 
 impl From<CursorError> for MaterialCircuitError {
     fn from(value: CursorError) -> Self {
@@ -35,9 +48,9 @@ impl From<CursorError> for MaterialCircuitError {
     }
 }
 
-fn row_count(cursor: &mut Cursor<'_>) -> Result<usize, MaterialCircuitError> {
+fn row_count(cursor: &mut Cursor<'_>, limit: usize) -> Result<usize, MaterialCircuitError> {
     let count = usize::try_from(cursor.u32()?).map_err(|_| MaterialCircuitError::WireLimit)?;
-    if count > MAX_MATERIAL_CIRCUIT_ROWS {
+    if count > limit {
         return Err(MaterialCircuitError::WireLimit);
     }
     Ok(count)
@@ -46,11 +59,23 @@ fn row_count(cursor: &mut Cursor<'_>) -> Result<usize, MaterialCircuitError> {
 fn append_rows<T>(
     output: &mut Vec<u8>,
     rows: &[T],
+    append: impl FnMut(&mut Vec<u8>, &T),
+) -> Result<(), MaterialCircuitError> {
+    append_bounded_rows(output, rows, MAX_MATERIAL_CIRCUIT_ROWS, append)
+}
+
+fn append_bounded_rows<T>(
+    output: &mut Vec<u8>,
+    rows: &[T],
+    limit: usize,
     mut append: impl FnMut(&mut Vec<u8>, &T),
 ) -> Result<(), MaterialCircuitError> {
+    if rows.len() > limit {
+        return Err(MaterialCircuitError::WireLimit);
+    }
     let count = u32::try_from(rows.len()).map_err(|_| MaterialCircuitError::WireLimit)?;
     output.extend_from_slice(&count.to_be_bytes());
-    for row in rows.iter().take(MAX_MATERIAL_CIRCUIT_ROWS + 1) {
+    for row in rows {
         append(output, row);
     }
     Ok(())
@@ -58,14 +83,19 @@ fn append_rows<T>(
 
 fn decode_rows<T>(
     cursor: &mut Cursor<'_>,
+    decode: impl FnMut(&mut Cursor<'_>) -> Result<T, MaterialCircuitError>,
+) -> Result<Vec<T>, MaterialCircuitError> {
+    decode_bounded_rows(cursor, MAX_MATERIAL_CIRCUIT_ROWS, decode)
+}
+
+fn decode_bounded_rows<T>(
+    cursor: &mut Cursor<'_>,
+    limit: usize,
     mut decode: impl FnMut(&mut Cursor<'_>) -> Result<T, MaterialCircuitError>,
 ) -> Result<Vec<T>, MaterialCircuitError> {
-    let count = row_count(cursor)?;
+    let count = row_count(cursor, limit)?;
     let mut rows = Vec::with_capacity(count);
-    for index in 0..=MAX_MATERIAL_CIRCUIT_ROWS {
-        if index == count {
-            break;
-        }
+    for _ in 0..count {
         rows.push(decode(cursor)?);
     }
     Ok(rows)
@@ -98,7 +128,7 @@ fn append_input_coefficients(
     output: &mut Vec<u8>,
     rows: &[InputOutputCoefficient],
 ) -> Result<(), MaterialCircuitError> {
-    append_rows(output, rows, |bytes, row| {
+    append_bounded_rows(output, rows, crate::MAX_INPUT_COEFFICIENTS, |bytes, row| {
         bytes.extend_from_slice(&row.process_id.as_bytes());
         bytes.extend_from_slice(&row.good_id.as_bytes());
         bytes.extend_from_slice(&row.unit_id.as_bytes());
@@ -121,7 +151,7 @@ fn append_supplier_routes(
     output: &mut Vec<u8>,
     rows: &[SupplierRoute],
 ) -> Result<(), MaterialCircuitError> {
-    append_rows(output, rows, |bytes, row| {
+    append_bounded_rows(output, rows, crate::MAX_SUPPLIER_ROUTES, |bytes, row| {
         bytes.extend_from_slice(&row.buyer_site_id.as_bytes());
         bytes.extend_from_slice(&row.supplier_site_id.as_bytes());
         bytes.extend_from_slice(&row.good_id.as_bytes());
@@ -148,28 +178,23 @@ fn append_stage_capacities(
     output: &mut Vec<u8>,
     rows: &[RouteStageCapacity],
 ) -> Result<(), MaterialCircuitError> {
-    append_rows(output, rows, |bytes, row| {
-        bytes.extend_from_slice(&row.route_id.as_bytes());
-        bytes.extend_from_slice(&row.stage_index.to_be_bytes());
-        bytes.extend_from_slice(&row.corridor_id.as_bytes());
-    })
-}
-fn append_mass(
-    output: &mut Vec<u8>,
-    rows: &[FreightMassCoefficient],
-) -> Result<(), MaterialCircuitError> {
-    append_rows(output, rows, |bytes, row| {
-        bytes.extend_from_slice(&row.good_id.as_bytes());
-        bytes.extend_from_slice(&row.unit_id.as_bytes());
-        bytes.extend_from_slice(&row.grams_per_unit.to_be_bytes());
-    })
+    append_bounded_rows(
+        output,
+        rows,
+        crate::MAX_ROUTE_CAPACITY_MEMBERSHIPS,
+        |bytes, row| {
+            bytes.extend_from_slice(&row.route_id.as_bytes());
+            bytes.extend_from_slice(&row.stage_index.to_be_bytes());
+            bytes.extend_from_slice(&row.corridor_id.as_bytes());
+        },
+    )
 }
 
 fn append_inventory(
     output: &mut Vec<u8>,
     rows: &[InventoryRow],
 ) -> Result<(), MaterialCircuitError> {
-    append_rows(output, rows, |bytes, row| {
+    append_bounded_rows(output, rows, crate::MAX_INVENTORY_ROWS, |bytes, row| {
         bytes.extend_from_slice(&row.site_id.as_bytes());
         bytes.extend_from_slice(&row.good_id.as_bytes());
         bytes.extend_from_slice(&row.unit_id.as_bytes());
@@ -178,7 +203,7 @@ fn append_inventory(
 }
 
 fn append_orders(output: &mut Vec<u8>, rows: &[OrderRow]) -> Result<(), MaterialCircuitError> {
-    append_rows(output, rows, |bytes, row| {
+    append_bounded_rows(output, rows, crate::MAX_DELIVERY_ORDERS, |bytes, row| {
         bytes.extend_from_slice(&row.order_id.as_bytes());
         bytes.push(row.access_mode as u8);
         bytes.extend_from_slice(&row.buyer_site_id.as_bytes());
@@ -194,7 +219,7 @@ fn append_orders(output: &mut Vec<u8>, rows: &[OrderRow]) -> Result<(), Material
 }
 
 fn append_backlog(output: &mut Vec<u8>, rows: &[BacklogRow]) -> Result<(), MaterialCircuitError> {
-    append_rows(output, rows, |bytes, row| {
+    append_bounded_rows(output, rows, crate::MAX_DELIVERY_ORDERS, |bytes, row| {
         bytes.extend_from_slice(&row.order_id.as_bytes());
         bytes.extend_from_slice(&row.quantity.to_be_bytes());
     })
@@ -294,7 +319,7 @@ fn decode_process_outputs(
 fn decode_input_coefficients(
     cursor: &mut Cursor<'_>,
 ) -> Result<Vec<InputOutputCoefficient>, MaterialCircuitError> {
-    decode_rows(cursor, |bytes| {
+    decode_bounded_rows(cursor, crate::MAX_INPUT_COEFFICIENTS, |bytes| {
         Ok(InputOutputCoefficient {
             process_id: ProcessId::from_bytes(bytes.array()?),
             good_id: GoodId::from_bytes(bytes.array()?),
@@ -319,7 +344,7 @@ fn decode_labor_coefficients(
 fn decode_supplier_routes(
     cursor: &mut Cursor<'_>,
 ) -> Result<Vec<SupplierRoute>, MaterialCircuitError> {
-    decode_rows(cursor, |bytes| {
+    decode_bounded_rows(cursor, crate::MAX_SUPPLIER_ROUTES, |bytes| {
         Ok(SupplierRoute {
             buyer_site_id: SiteId::from_bytes(bytes.array()?),
             supplier_site_id: SiteId::from_bytes(bytes.array()?),
@@ -350,7 +375,7 @@ fn decode_route_stages(cursor: &mut Cursor<'_>) -> Result<Vec<RouteStage>, Mater
 fn decode_stage_capacities(
     cursor: &mut Cursor<'_>,
 ) -> Result<Vec<RouteStageCapacity>, MaterialCircuitError> {
-    decode_rows(cursor, |bytes| {
+    decode_bounded_rows(cursor, crate::MAX_ROUTE_CAPACITY_MEMBERSHIPS, |bytes| {
         Ok(RouteStageCapacity {
             route_id: RouteId::from_bytes(bytes.array()?),
             stage_index: bytes.u16()?,
@@ -358,20 +383,9 @@ fn decode_stage_capacities(
         })
     })
 }
-fn decode_mass(
-    cursor: &mut Cursor<'_>,
-) -> Result<Vec<FreightMassCoefficient>, MaterialCircuitError> {
-    decode_rows(cursor, |bytes| {
-        Ok(FreightMassCoefficient {
-            good_id: GoodId::from_bytes(bytes.array()?),
-            unit_id: UnitId::from_bytes(bytes.array()?),
-            grams_per_unit: bytes.u64()?,
-        })
-    })
-}
 
 fn decode_inventory(cursor: &mut Cursor<'_>) -> Result<Vec<InventoryRow>, MaterialCircuitError> {
-    decode_rows(cursor, |bytes| {
+    decode_bounded_rows(cursor, crate::MAX_INVENTORY_ROWS, |bytes| {
         Ok(InventoryRow {
             site_id: SiteId::from_bytes(bytes.array()?),
             good_id: GoodId::from_bytes(bytes.array()?),
@@ -382,7 +396,7 @@ fn decode_inventory(cursor: &mut Cursor<'_>) -> Result<Vec<InventoryRow>, Materi
 }
 
 fn decode_orders(cursor: &mut Cursor<'_>) -> Result<Vec<OrderRow>, MaterialCircuitError> {
-    decode_rows(cursor, |bytes| {
+    decode_bounded_rows(cursor, crate::MAX_DELIVERY_ORDERS, |bytes| {
         let order_id = OrderId::from_bytes(bytes.array()?);
         let access_mode = match bytes.u8()? {
             1 => OrderAccessMode::CommoditySale,
@@ -405,7 +419,7 @@ fn decode_orders(cursor: &mut Cursor<'_>) -> Result<Vec<OrderRow>, MaterialCircu
 }
 
 fn decode_backlog(cursor: &mut Cursor<'_>) -> Result<Vec<BacklogRow>, MaterialCircuitError> {
-    decode_rows(cursor, |bytes| {
+    decode_bounded_rows(cursor, crate::MAX_DELIVERY_ORDERS, |bytes| {
         Ok(BacklogRow {
             order_id: OrderId::from_bytes(bytes.array()?),
             quantity: bytes.u64()?,
@@ -484,7 +498,7 @@ fn append_merchants(
 ) -> Result<(), MaterialCircuitError> {
     append_rows(output, rows, |bytes, row| {
         bytes.extend_from_slice(&row.site_id.as_bytes());
-        bytes.extend_from_slice(&row.county_geoid);
+        bytes.extend_from_slice(&row.location.canonical_bytes());
         bytes.push(row.role as u8);
         bytes.extend_from_slice(&row.capacity_id.as_bytes());
         bytes.extend_from_slice(&row.labor_unit_id.as_bytes());
@@ -497,7 +511,8 @@ fn decode_merchants(
     decode_rows(cursor, |bytes| {
         Ok(MerchantHandling {
             site_id: SiteId::from_bytes(bytes.array()?),
-            county_geoid: bytes.array()?,
+            location: EconomicLocation::from_canonical_bytes(bytes.array()?)
+                .map_err(|_| MaterialCircuitError::WireEnum)?,
             role: match bytes.u8()? {
                 1 => MerchantRole::Wholesale,
                 2 => MerchantRole::Retail,
@@ -540,7 +555,7 @@ fn append_final_demand_principals(
 ) -> Result<(), MaterialCircuitError> {
     append_rows(output, rows, |bytes, row| {
         bytes.extend_from_slice(&row.id.as_bytes());
-        bytes.extend_from_slice(&row.county_geoid);
+        bytes.extend_from_slice(&row.location.canonical_bytes());
     })
 }
 
@@ -550,7 +565,8 @@ fn decode_final_demand_principals(
     decode_rows(cursor, |bytes| {
         Ok(FinalDemandPrincipal {
             id: FinalDemandPrincipalId::from_bytes(bytes.array()?),
-            county_geoid: bytes.array()?,
+            location: EconomicLocation::from_canonical_bytes(bytes.array()?)
+                .map_err(|_| MaterialCircuitError::WireEnum)?,
         })
     })
 }
@@ -656,7 +672,7 @@ pub fn encode_material_circuit_state(
     append_process_outputs(&mut output, &canonical.process_outputs)?;
     append_input_coefficients(&mut output, &canonical.input_coefficients)?;
     append_labor_coefficients(&mut output, &canonical.labor_coefficients)?;
-    append_mass(&mut output, &canonical.freight_mass_coefficients)?;
+    services::append_commodities(&mut output, &canonical.commodities)?;
     append_supplier_routes(&mut output, &canonical.supplier_routes)?;
     append_route_stages(&mut output, &canonical.route_stages)?;
     append_stage_capacities(&mut output, &canonical.route_stage_capacities)?;
@@ -673,6 +689,10 @@ pub fn encode_material_circuit_state(
     append_final_demand_principals(&mut output, &canonical.final_demand_principals)?;
     append_final_demand_orders(&mut output, &canonical.final_demand_orders)?;
     append_maintenance(&mut output, &canonical);
+    accounting::append(&mut output, &canonical.accounting)?;
+    capacity::append(&mut output, &canonical.capacity_supply)?;
+    services::append_connections(&mut output, &canonical.service_connections)?;
+    services::append_orders(&mut output, &canonical.service_orders)?;
 
     Ok(output)
 }
@@ -700,7 +720,7 @@ pub fn decode_material_circuit_state(
         process_outputs: decode_process_outputs(&mut cursor)?,
         input_coefficients: decode_input_coefficients(&mut cursor)?,
         labor_coefficients: decode_labor_coefficients(&mut cursor)?,
-        freight_mass_coefficients: decode_mass(&mut cursor)?,
+        commodities: services::decode_commodities(&mut cursor)?,
         supplier_routes: decode_supplier_routes(&mut cursor)?,
         route_stages: decode_route_stages(&mut cursor)?,
         route_stage_capacities: decode_stage_capacities(&mut cursor)?,
@@ -718,6 +738,10 @@ pub fn decode_material_circuit_state(
         final_demand_orders: decode_final_demand_orders(&mut cursor)?,
         maintenance_binding: decode_maintenance_binding(&mut cursor)?,
         maintenance_service: decode_maintenance_service(&mut cursor)?,
+        accounting: accounting::decode(&mut cursor)?,
+        capacity_supply: capacity::decode(&mut cursor)?,
+        service_connections: services::decode_connections(&mut cursor)?,
+        service_orders: services::decode_orders(&mut cursor)?,
     };
     cursor.finish()?;
     let canonical = canonical_state(&state)?;

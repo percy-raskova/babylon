@@ -149,8 +149,8 @@ its own fanfare. The full soundtrack plays in sequence during a campaign. Open
 **Settings** and press **J**, or choose **Next in-game track**, to select the
 campaign recording. Settings also controls music volume, effects, and mute.
 
-The supplied parameters cover 16 four-week periods (64 weeks).
-Each campaign can select a shorter horizon.
+The supplied campaigns continue in four-week periods without a designed final period.
+Finite experiments keep explicit stopping periods. Opening resources stay finite.
 The comparison shows the same committed period in two saved campaigns.
 Each campaign retains its own authored parameters and captured sources.
 
@@ -220,6 +220,24 @@ Liberty start menu. **Continue** enters the prepared or reopened campaign.
 **New Game** starts the Wayne organizer loop. **Load Game** opens or compares
 saves, **Observer Campaigns** offers alternative scenarios, and **Settings**
 controls audio and reduced motion. Saved campaigns stay in the database.
+
+Choose **National economy · observer** for all 3,144 U.S. counties and the
+captured external markets, or launch it directly:
+
+```bash
+mise run play -- --new --preset national-world
+```
+
+This entry currently provides economic observation; organizer actions remain in
+the Wayne control. Opening, advancing, and reading show their current phase and
+elapsed time. A committed period becomes visible after its authenticated read.
+
+For a window-free national check, use
+`mise run play -- --smoke --preset national-world`. It requests a new campaign
+and one committed period, then restarts the runtime and checks the saved county
+and household scope through the native economic reader. Any refusal fails the
+check. Successful JSON output records identities and timings; it does not
+establish rendering performance or gameplay quality.
 
 See [`SETUP_GUIDE.md`](SETUP_GUIDE.md) for launch options and host requirements.
 

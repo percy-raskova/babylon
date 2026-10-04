@@ -674,7 +674,7 @@ PGPASSWORD=test psql -h localhost -p 5433 -U test -d babylon_test -c
 '''
 
 [tasks."play"]
-description = "Open or continue the durable Michigan observer game with isolated read capabilities"
+description = "Open or continue the durable economic observer with isolated read capabilities"
 run = "uv run --frozen python tools/run_observer_session.py"
 
 [tasks."data:lodes-od"]

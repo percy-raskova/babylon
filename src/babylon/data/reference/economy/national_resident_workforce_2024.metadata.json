@@ -1,0 +1,229 @@
+{
+  "artifact": {
+    "bytes": 445395,
+    "decoded_bytes": 2387685,
+    "path": "src/babylon/data/reference/economy/national_resident_workforce_2024.csv.gz",
+    "rows": 3144,
+    "sha256": "4fd2d325cbad74424cc2c20f3705c76ed2dc034bd038637db577c7da8be7c0a0"
+  },
+  "contract": "NationalResidentWorkforce2024V1",
+  "county_control": {
+    "mismatches": 0,
+    "path": "src/babylon/data/reference/economy/national_county_reference_2024.csv.gz",
+    "sha256": "28ad84a461f00c12489b11e0d770ad71bc3f09190dbc35774d725fc2333fec8e",
+    "table": "B23025_004"
+  },
+  "coverage": {
+    "classes": {
+      "federal_government_employee": {
+        "complete_counties": 3144,
+        "known_persons": 4381305
+      },
+      "incorporated_self_employed": {
+        "complete_counties": 3144,
+        "known_persons": 6410561
+      },
+      "local_government_employee": {
+        "complete_counties": 3144,
+        "known_persons": 12269328
+      },
+      "nonprofit_employee": {
+        "complete_counties": 3144,
+        "known_persons": 14269472
+      },
+      "private_company_employee": {
+        "complete_counties": 3144,
+        "known_persons": 107217243
+      },
+      "state_government_employee": {
+        "complete_counties": 3144,
+        "known_persons": 6805360
+      },
+      "unincorporated_self_employed": {
+        "complete_counties": 3144,
+        "known_persons": 9642196
+      },
+      "unpaid_family_worker": {
+        "complete_counties": 3144,
+        "known_persons": 301690
+      }
+    },
+    "counties": 3144,
+    "source_estimates": 66024,
+    "source_margins_of_error": 66024,
+    "statuses": {
+      "estimate:published": 66024,
+      "moe:published": 66024
+    }
+  },
+  "definitions": {
+    "B24080_001": {
+      "Indent": "0",
+      "Label": "Total:",
+      "Title": "Sex by Class of Worker for the Civilian Employed Population 16 Years and Over",
+      "Universe": "Civilian employed population 16 years and over"
+    },
+    "B24080_002": {
+      "Indent": "1",
+      "Label": "Male:",
+      "Title": "Sex by Class of Worker for the Civilian Employed Population 16 Years and Over",
+      "Universe": "Civilian employed population 16 years and over"
+    },
+    "B24080_003": {
+      "Indent": "2",
+      "Label": "Private for-profit wage and salary workers:",
+      "Title": "Sex by Class of Worker for the Civilian Employed Population 16 Years and Over",
+      "Universe": "Civilian employed population 16 years and over"
+    },
+    "B24080_004": {
+      "Indent": "3",
+      "Label": "Employee of private company workers",
+      "Title": "Sex by Class of Worker for the Civilian Employed Population 16 Years and Over",
+      "Universe": "Civilian employed population 16 years and over"
+    },
+    "B24080_005": {
+      "Indent": "3",
+      "Label": "Self-employed in own incorporated business workers",
+      "Title": "Sex by Class of Worker for the Civilian Employed Population 16 Years and Over",
+      "Universe": "Civilian employed population 16 years and over"
+    },
+    "B24080_006": {
+      "Indent": "2",
+      "Label": "Private not-for-profit wage and salary workers",
+      "Title": "Sex by Class of Worker for the Civilian Employed Population 16 Years and Over",
+      "Universe": "Civilian employed population 16 years and over"
+    },
+    "B24080_007": {
+      "Indent": "2",
+      "Label": "Local government workers",
+      "Title": "Sex by Class of Worker for the Civilian Employed Population 16 Years and Over",
+      "Universe": "Civilian employed population 16 years and over"
+    },
+    "B24080_008": {
+      "Indent": "2",
+      "Label": "State government workers",
+      "Title": "Sex by Class of Worker for the Civilian Employed Population 16 Years and Over",
+      "Universe": "Civilian employed population 16 years and over"
+    },
+    "B24080_009": {
+      "Indent": "2",
+      "Label": "Federal government workers",
+      "Title": "Sex by Class of Worker for the Civilian Employed Population 16 Years and Over",
+      "Universe": "Civilian employed population 16 years and over"
+    },
+    "B24080_010": {
+      "Indent": "2",
+      "Label": "Self-employed in own not incorporated business workers",
+      "Title": "Sex by Class of Worker for the Civilian Employed Population 16 Years and Over",
+      "Universe": "Civilian employed population 16 years and over"
+    },
+    "B24080_011": {
+      "Indent": "2",
+      "Label": "Unpaid family workers",
+      "Title": "Sex by Class of Worker for the Civilian Employed Population 16 Years and Over",
+      "Universe": "Civilian employed population 16 years and over"
+    },
+    "B24080_012": {
+      "Indent": "1",
+      "Label": "Female:",
+      "Title": "Sex by Class of Worker for the Civilian Employed Population 16 Years and Over",
+      "Universe": "Civilian employed population 16 years and over"
+    },
+    "B24080_013": {
+      "Indent": "2",
+      "Label": "Private for-profit wage and salary workers:",
+      "Title": "Sex by Class of Worker for the Civilian Employed Population 16 Years and Over",
+      "Universe": "Civilian employed population 16 years and over"
+    },
+    "B24080_014": {
+      "Indent": "3",
+      "Label": "Employee of private company workers",
+      "Title": "Sex by Class of Worker for the Civilian Employed Population 16 Years and Over",
+      "Universe": "Civilian employed population 16 years and over"
+    },
+    "B24080_015": {
+      "Indent": "3",
+      "Label": "Self-employed in own incorporated business workers",
+      "Title": "Sex by Class of Worker for the Civilian Employed Population 16 Years and Over",
+      "Universe": "Civilian employed population 16 years and over"
+    },
+    "B24080_016": {
+      "Indent": "2",
+      "Label": "Private not-for-profit wage and salary workers",
+      "Title": "Sex by Class of Worker for the Civilian Employed Population 16 Years and Over",
+      "Universe": "Civilian employed population 16 years and over"
+    },
+    "B24080_017": {
+      "Indent": "2",
+      "Label": "Local government workers",
+      "Title": "Sex by Class of Worker for the Civilian Employed Population 16 Years and Over",
+      "Universe": "Civilian employed population 16 years and over"
+    },
+    "B24080_018": {
+      "Indent": "2",
+      "Label": "State government workers",
+      "Title": "Sex by Class of Worker for the Civilian Employed Population 16 Years and Over",
+      "Universe": "Civilian employed population 16 years and over"
+    },
+    "B24080_019": {
+      "Indent": "2",
+      "Label": "Federal government workers",
+      "Title": "Sex by Class of Worker for the Civilian Employed Population 16 Years and Over",
+      "Universe": "Civilian employed population 16 years and over"
+    },
+    "B24080_020": {
+      "Indent": "2",
+      "Label": "Self-employed in own not incorporated business workers",
+      "Title": "Sex by Class of Worker for the Civilian Employed Population 16 Years and Over",
+      "Universe": "Civilian employed population 16 years and over"
+    },
+    "B24080_021": {
+      "Indent": "2",
+      "Label": "Unpaid family workers",
+      "Title": "Sex by Class of Worker for the Civilian Employed Population 16 Years and Over",
+      "Universe": "Civilian employed population 16 years and over"
+    }
+  },
+  "issue": "PER-40",
+  "native_readers": [
+    "babylon-persistence::national_resident_workforce"
+  ],
+  "regeneration": "mise exec -- uv run --frozen python tools/make_national_resident_workforce.py --source-root /media/user/data/babylon-data",
+  "runtime_consumers": [],
+  "selection_and_subtotals_evidence_class": "Derived",
+  "semantics": {
+    "control": "Check every available source partition and the exact county B23025 civilian-employed control. Contradictions refuse; no balancing or renormalization repairs observations.",
+    "interpretation": "Class of worker is a source employment category, not a political class or observed workplace assignment. Incorporated self-employment is separate from private company employees. Neither establishes QCEW coverage.",
+    "limits": "Creates no game people, households, firms, commuting, labor hours, incomes, cash or ownership claims. Any later allocation and omitted-function treatment need separate captured Designed policies.",
+    "partition": "Male leaves 004\u2013011 and female leaves 014\u2013021 are disjoint. Sex totals 002/012, private subtotals 003/013 and overall total 001 are controls only, never additional people.",
+    "uncertainty": "Preserve each source estimate and 90-percent margin independently. Missing/sentinel cells remain absent; no summed or zero-filled margin of error is invented."
+  },
+  "source_manifest": {
+    "path": "tools/national_resident_workforce_2024_sources.json",
+    "sha256": "a841fe3ab5c967344e516a0a416a7aa3a2cf6542a2ad6e9aa2ad2e41dc4a2dd5"
+  },
+  "source_values_evidence_class": "Observed",
+  "sources": {
+    "B24080": {
+      "actual_path": "/media/user/data/babylon-data/national_reference_2024/class_of_worker_2026-09-20/acsdt5y2024-b24080.dat",
+      "bytes": 84256627,
+      "id": "B24080",
+      "note": "Official ACS 2024 five-year bulk table, captured 2026-09-20; raw estimate/MOE sentinels retained. API returned Missing Key HTML and was not used.",
+      "path": "national_reference_2024/class_of_worker_2026-09-20/acsdt5y2024-b24080.dat",
+      "sha256": "7236cdcaadaa608b7c87a12e0bfbb059ae6567608811d70714cfd9d98d75b486",
+      "url": "https://www2.census.gov/programs-surveys/acs/summary_file/2024/table-based-SF/data/5YRData/acsdt5y2024-b24080.dat"
+    },
+    "acs_table_shells": {
+      "actual_path": "/media/user/data/babylon-data/national_reference_2024/ACS20245YR_Table_Shells.txt",
+      "bytes": 5622840,
+      "id": "acs_table_shells",
+      "note": "Official variable labels and universe; captured 2026-09-20.",
+      "path": "national_reference_2024/ACS20245YR_Table_Shells.txt",
+      "sha256": "5b46f4af873744a415c4974204010db976e2a61ff916674732f81c496a6b517d",
+      "url": "https://www2.census.gov/programs-surveys/acs/summary_file/2024/table-based-SF/documentation/ACS20245YR_Table_Shells.txt"
+    }
+  },
+  "units": "resident persons",
+  "universe": "Civilian employed population 16 years and over",
+  "vintage": "ACS 2024 five-year (2020\u20132024)"
+}

@@ -12,8 +12,10 @@ use crate::substrate::{HyperedgeId, NodeId};
 
 /// Stable graph-state layout version.
 pub const STABLE_GRAPH_STATE_LAYOUT_VERSION: u32 = 1;
-/// Maximum node, edge, or hyperedge rows in stable graph state.
+/// Maximum rows in each edge or hyperedge section of stable graph state.
 pub const MAX_STABLE_GRAPH_ELEMENTS: usize = 65_536;
+/// Maximum aggregate actor and territory nodes in a current national graph.
+pub const MAX_STABLE_GRAPH_NODES: usize = 262_144;
 /// Maximum rows in one stable graph attribute section.
 pub const MAX_STABLE_GRAPH_ATTRIBUTES: usize = 524_288;
 /// Maximum members in one stable hyperedge.
@@ -258,7 +260,7 @@ fn copy_stable_string(field: &'static str, source: &str) -> Result<String, Stabl
 }
 
 fn validate_loaded_rows(rows: &mut StableGraphStateRows) -> Result<(), StableIdentityError> {
-    validate_section("nodes", rows.nodes.len(), MAX_STABLE_GRAPH_ELEMENTS)?;
+    validate_section("nodes", rows.nodes.len(), MAX_STABLE_GRAPH_NODES)?;
     validate_section(
         "node f64 attributes",
         rows.node_f64.len(),
@@ -348,7 +350,7 @@ fn collect_listings<G: CanonicalState>(graph: &G) -> Listings {
 }
 
 fn validate_listing_bounds(value: &Listings) -> Result<(), StableIdentityError> {
-    validate_section("nodes", value.nodes.len(), MAX_STABLE_GRAPH_ELEMENTS)?;
+    validate_section("nodes", value.nodes.len(), MAX_STABLE_GRAPH_NODES)?;
     validate_section(
         "node f64 attributes",
         value.node_f64.len(),
@@ -464,7 +466,7 @@ fn resolve_nodes(
     resolver: &StableElementResolver,
 ) -> Result<Vec<StableGraphNodeRow>, StableIdentityError> {
     let mut rows = reserve_rows("stable graph nodes", source.len())?;
-    for (node, node_type) in source.iter().take(MAX_STABLE_GRAPH_ELEMENTS + 1) {
+    for (node, node_type) in source.iter().take(MAX_STABLE_GRAPH_NODES + 1) {
         rows.push((
             resolver.node_local_name(*node)?.to_owned(),
             node_type.clone(),
@@ -781,7 +783,7 @@ fn append_nodes(
     rows: &[StableGraphNodeRow],
 ) -> Result<(), StableIdentityError> {
     append_count(output, 0x02, rows.len())?;
-    for row in rows.iter().take(MAX_STABLE_GRAPH_ELEMENTS + 1) {
+    for row in rows.iter().take(MAX_STABLE_GRAPH_NODES + 1) {
         append_str32(output, "stable node name", &row.0)?;
         append_str32(output, "stable node type", &row.1)?;
     }
@@ -924,14 +926,14 @@ mod tests {
     use super::{
         finite_bits, validate_fact_units, validate_section, validate_state_byte_size,
         MAX_STABLE_GRAPH_ATTRIBUTES, MAX_STABLE_GRAPH_ELEMENTS, MAX_STABLE_GRAPH_FACT_UNITS,
-        MAX_STABLE_GRAPH_HYPEREDGE_MEMBERS, MAX_STABLE_GRAPH_STATE_BYTES,
+        MAX_STABLE_GRAPH_HYPEREDGE_MEMBERS, MAX_STABLE_GRAPH_NODES, MAX_STABLE_GRAPH_STATE_BYTES,
     };
     use crate::stable_element::StableIdentityError;
 
     #[test]
     fn every_stable_state_ceiling_accepts_maximum_and_refuses_plus_one() {
         let section_limits = [
-            ("nodes", MAX_STABLE_GRAPH_ELEMENTS),
+            ("nodes", MAX_STABLE_GRAPH_NODES),
             ("edges", MAX_STABLE_GRAPH_ELEMENTS),
             ("hyperedges", MAX_STABLE_GRAPH_ELEMENTS),
             ("node f64 attributes", MAX_STABLE_GRAPH_ATTRIBUTES),

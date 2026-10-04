@@ -1,6 +1,6 @@
 use babylon_material_circuit::{
-    CapacityRow, GoodId, LaborCapacityRow, LaborCoefficient, LogisticsNodeId, ProcessOutput,
-    ProductionCommitment, SiteLogisticsNode,
+    CapacityRow, CommodityDefinition, CommodityKind, GoodId, LaborCapacityRow, LaborCoefficient,
+    LogisticsNodeId, ProcessOutput, ProductionCommitment, SiteLogisticsNode,
 };
 use babylon_tick::material_world::{decode_material_receipts, MaterialWorldRegister};
 
@@ -10,6 +10,8 @@ fn shared_opening() -> MaterialCircuitState {
     let site = SiteId::from_bytes([1; 32]);
     let labor_unit = UnitId::from_bytes([2; 32]);
     let mut state = MaterialCircuitState {
+        capacity_supply: babylon_material_circuit::CapacitySupply::FiniteSchedule,
+        accounting: babylon_material_circuit::CircuitAccounting::PhysicalControl,
         maintenance_binding: None,
         maintenance_service: None,
         period: 1,
@@ -23,7 +25,16 @@ fn shared_opening() -> MaterialCircuitState {
         supplier_routes: vec![],
         route_stages: vec![],
         route_stage_capacities: vec![],
-        freight_mass_coefficients: vec![],
+        service_connections: vec![],
+        service_orders: vec![],
+        commodities: [4, 5]
+            .into_iter()
+            .map(|id| CommodityDefinition {
+                good_id: GoodId::from_bytes([id; 32]),
+                unit_id: UnitId::from_bytes([6; 32]),
+                kind: CommodityKind::Storable { grams_per_unit: 1 },
+            })
+            .collect(),
         merchants: vec![],
         handling_coefficients: vec![],
         final_demand_principals: vec![],
@@ -103,6 +114,8 @@ fn shared_principal_is_counted_once_and_time_closes_from_actual_receipts() {
         Some(CompletedProductionLabor {
             maintenance_needed: 0,
             maintenance_used: 0,
+            installation_needed: 0,
+            installation_used: 0,
             period: 1,
             opening: 12,
             planned: 13,
@@ -162,7 +175,13 @@ fn multiplication_and_shared_sum_overflow_refuse_without_mutating_inputs() {
     opening.labor_coefficients[0].quantity_per_batch = u64::MAX;
     let before = opening.clone();
     assert!(matches!(
-        completed_totals(&opening, &receipt, None),
+        completed_totals(
+            &opening,
+            &receipt,
+            None,
+            &budgets(&opening).unwrap(),
+            &super::super::equipment::EquipmentFacts::default()
+        ),
         Err(ProductionProjectionError::Arithmetic)
     ));
     assert_eq!(opening, before);
@@ -177,7 +196,13 @@ fn multiplication_and_shared_sum_overflow_refuse_without_mutating_inputs() {
         row.produced_batches = 0;
     }
     assert!(matches!(
-        completed_totals(&opening, &receipt, None),
+        completed_totals(
+            &opening,
+            &receipt,
+            None,
+            &budgets(&opening).unwrap(),
+            &super::super::equipment::EquipmentFacts::default()
+        ),
         Err(ProductionProjectionError::Arithmetic)
     ));
 }
@@ -245,6 +270,11 @@ fn maintenance_labor_is_debited_once_and_stays_separate_from_production_and_hand
             unit_id: UnitId::from_bytes([6; 32]),
             quantity: 10,
         });
+    opening.commodities.push(CommodityDefinition {
+        good_id: GoodId::from_bytes([21; 32]),
+        unit_id: UnitId::from_bytes([6; 32]),
+        kind: CommodityKind::Storable { grams_per_unit: 1 },
+    });
     let provider = SiteId::from_bytes([20; 32]);
     let binding = babylon_material_circuit::MaintenanceBinding {
         provider_site_id: provider,
@@ -301,4 +331,42 @@ fn maintenance_labor_is_debited_once_and_stays_separate_from_production_and_hand
     let mut missing = receipt.clone();
     missing.maintenance = None;
     assert!(project_labor_accounts(&next, Some(&opening), Some(&missing)).is_err());
+}
+
+#[test]
+fn monetary_attendance_cannot_relabel_actual_production_as_idle_or_handling() {
+    let (opening, next, receipt) =
+        committed_pair(crate::production_projection::recurring_fixture::opening());
+    project_labor_accounts(&next, Some(&opening), Some(&receipt)).unwrap();
+    for as_idle in [true, false] {
+        let mut changed = receipt.clone();
+        let member = changed
+            .member_labor_use
+            .iter_mut()
+            .find(|row| row.production_hours > 0)
+            .unwrap();
+        let key = (member.site_id, member.unit_id);
+        let rate = member.compensation.wage_rate();
+        member.production_hours -= 1;
+        member.production_wages = member.production_wages.checked_sub(rate).unwrap();
+        if as_idle {
+            member.idle_hours += 1;
+            member.idle_wages = member.idle_wages.checked_add(rate).unwrap();
+            let aggregate = changed
+                .labor_use
+                .iter_mut()
+                .find(|row| (row.site_id, row.unit_id) == key)
+                .unwrap();
+            aggregate.used_hours -= 1;
+            aggregate.paid_idle_hours += 1;
+        } else {
+            member.handling_hours += 1;
+            member.handling_wages = member.handling_wages.checked_add(rate).unwrap();
+        }
+        member.validate().unwrap();
+        assert_eq!(
+            project_labor_accounts(&next, Some(&opening), Some(&changed)),
+            Err(ProductionProjectionError::History)
+        );
+    }
 }

@@ -438,7 +438,7 @@ fn empty_or_overbound_process_membership_and_requests_refuse() {
     let opening = state(vec![pool(owned.clone(), 2, 4)]);
     refusal(
         &opening,
-        &vec![request(&owned, 1, 0); MAX_MATERIAL_CIRCUIT_ROWS + 1],
+        &vec![request(&owned, 1, 0); crate::MAX_STAFFING_WORK_SOURCES + 1],
         StaffingError::RowLimit,
     );
 }

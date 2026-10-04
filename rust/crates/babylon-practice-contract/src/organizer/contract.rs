@@ -48,20 +48,27 @@ pub fn validate_organizer_config(config: &OrganizerConfig) -> Result<(), Organiz
     if config.schema_version != ORGANIZER_SCHEMA_VERSION {
         return Err(OrganizerError::UnsupportedSchema);
     }
-    let actors = [
+    if config.aid_bindings.len() > 2 {
+        return Err(OrganizerError::InvalidConfig);
+    }
+    let mut actors = vec![
         config.controlled_actor_id,
         config.workplace_partner.actor_id,
         config.neighborhood_partner.actor_id,
     ];
-    let authorities = [
+    let mut authorities = vec![
         config.input_authority_id,
         config.workplace_partner.authority_id,
         config.neighborhood_partner.authority_id,
     ];
+    for binding in &config.aid_bindings {
+        actors.push(binding.partner.actor_id);
+        authorities.push(binding.partner.authority_id);
+    }
     if actors.contains(&0)
-        || actors.iter().copied().collect::<BTreeSet<_>>().len() != 3
+        || actors.iter().copied().collect::<BTreeSet<_>>().len() != actors.len()
         || authorities.contains(&[0; 16])
-        || authorities.iter().copied().collect::<BTreeSet<_>>().len() != 3
+        || authorities.iter().copied().collect::<BTreeSet<_>>().len() != authorities.len()
         || config.workplace_id == 0
         || config.workplace_process_id == [0; 32]
         || actors.contains(&config.workplace_id)
@@ -87,7 +94,7 @@ pub fn validate_organizer_config(config: &OrganizerConfig) -> Result<(), Organiz
             || participant.concern.len() > 2048
             || participant.objection.len() > 2048
             || participant.review_condition.len() > 2048
-            || participant.commitments.len() > 3
+            || participant.commitments.len() > actors.len()
         {
             return Err(OrganizerError::InvalidConfig);
         }
@@ -112,6 +119,16 @@ pub fn validate_organizer_config(config: &OrganizerConfig) -> Result<(), Organiz
             return Err(OrganizerError::InvalidConfig);
         }
     }
+    validate_time_binding(config)?;
+    super::aid::validate_aid_bindings(config)?;
+    super::collection::validate_collection_config(config)?;
+    if config
+        .aid_bindings
+        .iter()
+        .any(|row| !label_valid(&row.partner.label))
+    {
+        return Err(OrganizerError::InvalidConfig);
+    }
     if config.initial_observations.len() > MAX_ORGANIZER_ROWS {
         return Err(OrganizerError::SizeLimit);
     }
@@ -131,12 +148,32 @@ pub fn validate_organizer_config(config: &OrganizerConfig) -> Result<(), Organiz
     Ok(())
 }
 
+fn validate_time_binding(config: &OrganizerConfig) -> Result<(), OrganizerError> {
+    let OrganizerTimeBindingMode::Household { bindings } = &config.time_binding else {
+        return Ok(());
+    };
+    if bindings.len() != config.participants.len()
+        || bindings
+            .iter()
+            .zip(&config.participants)
+            .any(|(binding, participant)| {
+                binding.contributor_id != participant.contributor_id
+                    || binding.principal_id == [0; 32]
+            })
+    {
+        return Err(OrganizerError::TimeBindingMismatch);
+    }
+    Ok(())
+}
+
 pub fn validate_organizer_state(state: &OrganizerState) -> Result<(), OrganizerError> {
     if state.schema_version != ORGANIZER_SCHEMA_VERSION {
         return Err(OrganizerError::UnsupportedSchema);
     }
     if state.observations.len() > MAX_ORGANIZER_ROWS
         || state.receipts.len() > MAX_ORGANIZER_ROWS
+        || state.aid_receipts.len() > MAX_ORGANIZER_ROWS
+        || state.pending_aid.len() > 2
         || state.contact_products.len() > MAX_ORGANIZER_ROWS
         || state.consumed_product_ids.len() > MAX_ORGANIZER_ROWS
         || state.agreements.len() > 2
@@ -179,6 +216,8 @@ pub fn validate_organizer_state(state: &OrganizerState) -> Result<(), OrganizerE
             return Err(OrganizerError::InvalidState);
         }
     }
+    super::aid::validate_aid_state(state)?;
+    super::collection::validate_collection_state_shape(state)?;
     let mut observation_ids = BTreeSet::new();
     for observation in &state.observations {
         if observation.observed_period > observation.acquired_period
@@ -270,7 +309,40 @@ pub fn validate_organizer_pair(
     {
         return Err(OrganizerError::InvalidState);
     }
-    for receipt in &state.receipts {
+    super::collection::validate_collection_history(config, state)?;
+    for pending in &state.pending_aid {
+        super::aid::validate_pending(config, pending)?;
+    }
+    for row in &state.aid_receipts {
+        super::aid::validate_pending(config, &row.authorization)?;
+        super::aid::validate_resolution_allocation(config, row)?;
+    }
+    for receipt in state
+        .receipts
+        .iter()
+        .chain(state.aid_receipts.iter().map(|row| &row.practice))
+    {
+        if let Some(kind) = super::aid::aid_kind(receipt.choice) {
+            let binding = config
+                .aid_bindings
+                .iter()
+                .find(|row| row.kind == kind)
+                .ok_or(OrganizerError::InvalidState)?;
+            if receipt
+                .partner_actor_id
+                .is_some_and(|id| id != binding.partner.actor_id)
+                || receipt.time_use.iter().any(|row| {
+                    (row.actor_id == config.controlled_actor_id
+                        && row.contributor_id != binding.donor_contributor_id)
+                        || (row.actor_id == binding.partner.actor_id
+                            && row.contributor_id != binding.recipient_contributor_id)
+                        || (row.actor_id != config.controlled_actor_id
+                            && row.actor_id != binding.partner.actor_id)
+                })
+            {
+                return Err(OrganizerError::InvalidState);
+            }
+        }
         for participant in &config.participants {
             let spent = receipt
                 .time_use
@@ -294,28 +366,31 @@ pub fn validate_organizer_pair(
             return Err(OrganizerError::InvalidState);
         }
     }
+    super::aid::validate_period_allocations(config, state)?;
     Ok(())
 }
 
 pub fn encode_organizer_config(config: &OrganizerConfig) -> Result<Vec<u8>, OrganizerError> {
     validate_organizer_config(config)?;
-    canonical(b"babylon.organizer-config.v1", config)
+    canonical(b"babylon.organizer-config.v6", config)
 }
 
 pub fn decode_organizer_config(bytes: &[u8]) -> Result<OrganizerConfig, OrganizerError> {
-    let value = decode(b"babylon.organizer-config.v1", bytes)?;
+    let value = decode(b"babylon.organizer-config.v6", bytes)?;
     validate_organizer_config(&value)?;
     Ok(value)
 }
 
 pub fn encode_organizer_state(state: &OrganizerState) -> Result<Vec<u8>, OrganizerError> {
     validate_organizer_state(state)?;
-    canonical(b"babylon.organizer-state.v1", state)
+    super::aid::validate_completed_aid(state)?;
+    canonical(b"babylon.organizer-state.v4", state)
 }
 
 pub fn decode_organizer_state(bytes: &[u8]) -> Result<OrganizerState, OrganizerError> {
-    let value = decode(b"babylon.organizer-state.v1", bytes)?;
+    let value = decode(b"babylon.organizer-state.v4", bytes)?;
     validate_organizer_state(&value)?;
+    super::aid::validate_completed_aid(&value)?;
     Ok(value)
 }
 
@@ -332,7 +407,28 @@ pub fn validate_organizer_receipt(receipt: &OrganizerReceipt) -> Result<(), Orga
         .try_fold(0_u64, |sum, row| {
             sum.checked_add(row.hours).ok_or(OrganizerError::Arithmetic)
         })?;
-    if receipt.actor_id == 0
+    if (matches!(
+        receipt.outcome,
+        OrganizerOutcome::AidScheduled
+            | OrganizerOutcome::AidAwaitingSupport
+            | OrganizerOutcome::AidNotProvisioned
+    ) && (!receipt.time_use.is_empty()
+        || receipt.partner_actor_id.is_some()
+        || receipt.partner_response != OrganizerPartnerResponse::NotRequested))
+        || (receipt.choice == OrganizerChoice::Collect
+            && (receipt.standing_work
+                || receipt.commitment_id.is_none()
+                || receipt.partner_actor_id.is_some()
+                || receipt.partner_response != OrganizerPartnerResponse::NotRequested
+                || !matches!(
+                    receipt.outcome,
+                    OrganizerOutcome::CollectionCompleted | OrganizerOutcome::CollectionRefused
+                )))
+        || (matches!(
+            receipt.outcome,
+            OrganizerOutcome::CollectionCompleted | OrganizerOutcome::CollectionRefused
+        ) && receipt.choice != OrganizerChoice::Collect)
+        || receipt.actor_id == 0
         || receipt.period == 0
         || own_hours != receipt.hours_spent
         || receipt.time_use.len() > 32
@@ -349,14 +445,39 @@ pub fn validate_organizer_receipt(receipt: &OrganizerReceipt) -> Result<(), Orga
             == receipt.observation_ids.is_empty()
         || (matches!(
             receipt.outcome,
-            OrganizerOutcome::ContactCompleted | OrganizerOutcome::EvidenceObtained
+            OrganizerOutcome::ContactCompleted
+                | OrganizerOutcome::EvidenceObtained
+                | OrganizerOutcome::AidPracticeCompleted
         ) && receipt.partner_response != OrganizerPartnerResponse::Participated)
         || (matches!(
             receipt.outcome,
             OrganizerOutcome::StandingPaused
+                | OrganizerOutcome::AidScheduled
+                | OrganizerOutcome::AidAwaitingSupport
+                | OrganizerOutcome::AidNotProvisioned
                 | OrganizerOutcome::InsufficientTime
+                | OrganizerOutcome::CollectionRefused
                 | OrganizerOutcome::NoAuthorizedPractice
         ) && receipt.hours_spent != 0)
+        || (super::aid::aid_kind(receipt.choice).is_some()
+            && (receipt.standing_work
+                || receipt.contact_product_id.is_some()
+                || !receipt.observation_ids.is_empty()
+                || !matches!(
+                    receipt.outcome,
+                    OrganizerOutcome::AidScheduled
+                        | OrganizerOutcome::AidAwaitingSupport
+                        | OrganizerOutcome::AidNotProvisioned
+                        | OrganizerOutcome::AidPracticeCompleted
+                        | OrganizerOutcome::AidPracticeUncompleted
+                        | OrganizerOutcome::InsufficientTime
+                )))
+        || (matches!(
+            receipt.outcome,
+            OrganizerOutcome::AidPracticeCompleted | OrganizerOutcome::AidPracticeUncompleted
+        ) && (super::aid::aid_kind(receipt.choice).is_none()
+            || receipt.standing_work
+            || receipt.commitment_id.is_none()))
     {
         return Err(OrganizerError::InvalidState);
     }
@@ -365,11 +486,11 @@ pub fn validate_organizer_receipt(receipt: &OrganizerReceipt) -> Result<(), Orga
 
 pub fn encode_organizer_receipt(receipt: &OrganizerReceipt) -> Result<Vec<u8>, OrganizerError> {
     validate_organizer_receipt(receipt)?;
-    canonical(b"babylon.organizer-receipt.v1", receipt)
+    canonical(b"babylon.organizer-receipt.v2", receipt)
 }
 
 pub fn decode_organizer_receipt(bytes: &[u8]) -> Result<OrganizerReceipt, OrganizerError> {
-    let value = decode(b"babylon.organizer-receipt.v1", bytes)?;
+    let value = decode(b"babylon.organizer-receipt.v2", bytes)?;
     validate_organizer_receipt(&value)?;
     Ok(value)
 }
@@ -408,6 +529,9 @@ pub fn initial_organizer_state(config: &OrganizerConfig) -> Result<OrganizerStat
         agreements,
         observations: config.initial_observations.clone(),
         receipts: vec![],
+        pending_aid: vec![],
+        aid_receipts: vec![],
+        collection_receipts: vec![],
         contact_products: vec![],
         consumed_product_ids: vec![],
         last_workplace_facts: None,
@@ -438,16 +562,63 @@ pub fn organizer_view(
     if actor_id != config.controlled_actor_id {
         return Err(OrganizerError::Refused(OrganizerRefusal::WrongAuthority));
     }
-    let receipts = state
+    let mut receipts = state
         .receipts
         .iter()
         .filter(|row| row.actor_id == actor_id)
+        .collect::<Vec<_>>();
+    let total_receipt_count =
+        u32::try_from(receipts.len()).map_err(|_| OrganizerError::Arithmetic)?;
+    receipts.sort_by_key(|row| (row.period, row.receipt_id));
+    let receipts = receipts
+        .into_iter()
+        .rev()
+        .take(ORGANIZER_RECENT_RECEIPTS)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
         .cloned()
         .map(|mut receipt| {
             // Independent partners disclose participation, not their time ledger.
             receipt.time_use.retain(|row| row.actor_id == actor_id);
             receipt
         })
+        .collect();
+    let mut observations = state
+        .observations
+        .iter()
+        .filter(|row| row.actor_id == actor_id)
+        .collect::<Vec<_>>();
+    let total_observation_count =
+        u32::try_from(observations.len()).map_err(|_| OrganizerError::Arithmetic)?;
+    observations.sort_by_key(|row| (row.acquired_period, row.observed_period, row.observation_id));
+    // Preserve the latest materially distinct report even when it predates the recent window.
+    let mut latest = std::collections::BTreeMap::new();
+    for row in &observations {
+        let kind = match row.report {
+            OrganizerReport::Work { .. } => 0_u8,
+            OrganizerReport::ReducedWork { .. } => 1,
+            OrganizerReport::Maintenance { .. } => 2,
+        };
+        let key = (row.subject_id, row.source_actor_id, kind);
+        let candidate = (row.observed_period, row.acquired_period, row.observation_id);
+        if latest.get(&key).is_none_or(|old: &&OrganizerObservation| {
+            candidate > (old.observed_period, old.acquired_period, old.observation_id)
+        }) {
+            latest.insert(key, *row);
+        }
+    }
+    let mut selected: BTreeSet<_> = observations
+        .iter()
+        .rev()
+        .take(ORGANIZER_RECENT_OBSERVATIONS)
+        .map(|row| row.observation_id)
+        .collect();
+    selected.extend(latest.values().map(|row| row.observation_id));
+    let observations = observations
+        .into_iter()
+        .filter(|row| selected.contains(&row.observation_id))
+        .cloned()
         .collect();
     let positions = config
         .participants
@@ -490,14 +661,28 @@ pub fn organizer_view(
             .filter(|row| row.actor_id == actor_id)
             .cloned()
             .collect(),
-        observations: state
-            .observations
-            .iter()
-            .filter(|row| row.actor_id == actor_id)
-            .cloned()
-            .collect(),
+        total_observation_count,
+        observations,
+        total_receipt_count,
         receipts,
         positions,
+        aid_options: config
+            .aid_bindings
+            .iter()
+            .filter(|binding| {
+                !state
+                    .pending_aid
+                    .iter()
+                    .any(|row| row.gift.kind == binding.kind)
+            })
+            .map(|row| OrganizerAidOption {
+                kind: row.kind,
+                partner_actor_id: row.partner.actor_id,
+                partner_label: row.partner.label.clone(),
+                coordination_hours: row.coordination_hours,
+                receiving_consent: row.receiving_consent,
+            })
+            .collect(),
     })
 }
 
@@ -507,6 +692,13 @@ pub(super) fn required_hours(
     choice: OrganizerChoice,
 ) -> u64 {
     match choice {
+        OrganizerChoice::Collect => config
+            .collection
+            .as_ref()
+            .map_or(0, |row| row.collection_hours),
+        OrganizerChoice::LocalAid | OrganizerChoice::RemoteAid => {
+            super::aid::aid_binding(config, choice).map_or(0, |row| row.coordination_hours)
+        }
         OrganizerChoice::Inquiry(_) => config.inquiry_hours,
         OrganizerChoice::Reinforce | OrganizerChoice::ResumeStanding => config.contact_hours,
         OrganizerChoice::Hold if state.standing.authorized => config.contact_hours,
@@ -538,9 +730,25 @@ pub fn preview_organizer(
         Some(OrganizerRefusal::ContentChanged)
     } else if command.resource_digest != organizer_resource_digest()? {
         Some(OrganizerRefusal::ResourceContractChanged)
+    } else if state
+        .pending_aid
+        .iter()
+        .any(|row| row.gift.commitment.command.choice == command.choice)
+    {
+        Some(OrganizerRefusal::PendingAidConflict)
+    } else if super::aid::aid_kind(command.choice).is_some()
+        && super::aid::aid_binding(config, command.choice).is_none()
+    {
+        Some(OrganizerRefusal::AidUnavailable)
+    } else if super::aid::aid_binding(config, command.choice)
+        .is_some_and(|row| row.receiving_consent == OrganizerGiftConsent::Refuse)
+    {
+        Some(OrganizerRefusal::AidReceivingRefused)
+    } else if command.choice == OrganizerChoice::Collect {
+        super::collection::collection_refusal(config)?
     } else if command.choice == OrganizerChoice::ResumeStanding && state.standing.authorized {
         Some(OrganizerRefusal::StandingWorkAlreadyActive)
-    } else if cost > available_hours {
+    } else if super::aid::aid_kind(command.choice).is_none() && cost > available_hours {
         Some(OrganizerRefusal::InsufficientCommittedTime)
     } else {
         None
@@ -560,7 +768,11 @@ pub fn preview_organizer(
             && state.standing.authorized
             && matches!(
                 command.choice,
-                OrganizerChoice::Inquiry(_) | OrganizerChoice::Reinforce
+                OrganizerChoice::Collect
+                    | OrganizerChoice::Inquiry(_)
+                    | OrganizerChoice::Reinforce
+                    | OrganizerChoice::LocalAid
+                    | OrganizerChoice::RemoteAid
             ),
         refusal,
         observations: if authorized {

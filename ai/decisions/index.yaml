@@ -25,6 +25,26 @@ meta:
   # ADR160-169 = P26 international-trade lane block (101-trade-activation),
   # allocated by Director ruling 2026-07-27; ADR160 minted at its charter.
 decisions:
+  ADR278_measured_save_footprint:
+    title: Save footprint determines history storage
+    status: accepted
+    date: '2026-10-03'
+    file: ADR278_measured_save_footprint.yaml
+  ADR277_active_economy_and_sealed_accounting_history:
+    title: Living economy and sealed history have separate storage roles
+    status: accepted
+    date: '2026-10-03'
+    file: ADR277_active_economy_and_sealed_accounting_history.yaml
+  ADR276_generated_identity_lookup_descriptors:
+    title: Generated identity descriptors preserve each period's exact typed lookup
+    status: accepted
+    date: '2026-10-03'
+    file: ADR276_generated_identity_lookup_descriptors.yaml
+  ADR275_material_gifts_and_delayed_practice:
+    title: Material gifts retain separate owners and delayed practice authority
+    status: accepted
+    date: '2026-10-03'
+    file: ADR275_material_gifts_and_delayed_practice.yaml
   ADR254_archive_notification_wakeups:
     title: PostgreSQL wakeups for the owned Archive worker
     status: accepted
@@ -1225,3 +1245,83 @@ decisions:
     status: accepted
     date: '2026-09-13'
     file: ADR262_native_organizer_practice.yaml
+  ADR263_recurring_national_economy:
+    title: Recurring national and foreign economies share one material and monetary circuit
+    status: accepted
+    date: '2026-09-20'
+    file: ADR263_recurring_national_economy.yaml
+  ADR264_period_service_provision:
+    title: Native period services precede goods production in the shared material close
+    status: accepted
+    date: '2026-09-20'
+    file: ADR264_period_service_provision.yaml
+  ADR265_captured_economic_catalog:
+    title: One captured economic catalog initializes the shared runtime with explicit geography
+    status: accepted
+    date: '2026-10-01'
+    file: ADR265_captured_economic_catalog.yaml
+  ADR266_funded_public_and_ownership_flows:
+    title: Captured ownership and public policies post funded flows through the common monetary close
+    status: accepted
+    date: '2026-10-01'
+    file: ADR266_funded_public_and_ownership_flows.yaml
+  ADR267_resident_workplace_staffing:
+    title: Resident members under one graph-owned workplace staffing decision
+    status: accepted
+    date: '2026-10-01'
+    file: ADR267_resident_workplace_staffing.yaml
+  ADR268_productive_equipment_and_installation:
+    title: Real equipment, installation work and wear supply process capacity
+    status: accepted
+    date: '2026-10-01'
+    file: ADR268_productive_equipment_and_installation.yaml
+  ADR269_sparse_household_budgets:
+    title: Sparse counted household budgets preserve separate earnings and ownership exposure
+    status: accepted
+    date: '2026-10-02'
+    file: ADR269_sparse_household_budgets.yaml
+  ADR270_household_time_and_material_organizer:
+    title: Household time and material support constrain independently authorized organizational practice
+    status: accepted
+    date: '2026-10-02'
+    file: ADR270_household_time_and_material_organizer.yaml
+  ADR271_national_storage_budget_and_marker_validation:
+    title: A bounded national save validates event continuity once at its commit marker
+    status: accepted
+    date: '2026-10-02'
+    file: ADR271_national_storage_budget_and_marker_validation.yaml
+  ADR272_compact_material_storage_and_typed_lookups:
+    title: Shared typed lookups and lossless columns store exact history
+    status: accepted
+    date: '2026-10-02'
+    file: ADR272_compact_material_storage_and_typed_lookups.yaml
+  ADR273_interim_save_budget_and_rotating_qualification:
+    title: Interim save budget and one rotating national qualification campaign
+    status: accepted
+    date: '2026-10-02'
+    file: ADR273_interim_save_budget_and_rotating_qualification.yaml
+  ADR274_period_local_material_lookup_ownership:
+    title: Period material lookups retain the opening seed and current identities
+    status: accepted
+    date: '2026-10-03'
+    file: ADR274_period_local_material_lookup_ownership.yaml
+  ADR279_exact_territory_definitions:
+    title: Exact territory definitions serve current and historical reads
+    status: accepted
+    date: '2026-10-03'
+    file: ADR279_exact_territory_definitions.yaml
+  ADR280_development_budgets_prioritize_play:
+    title: Development budgets prioritize the playable national economy
+    status: accepted
+    date: '2026-10-03'
+    file: ADR280_development_budgets_prioritize_play.yaml
+  ADR281_authenticated_archive_membership_checkpoints:
+    title: Frozen Archive membership uses authenticated checkpoint bases
+    status: accepted
+    date: '2026-10-04'
+    file: ADR281_authenticated_archive_membership_checkpoints.yaml
+  ADR282_authenticated_archive_page_bodies:
+    title: Archive page bodies retain exact semantics in a bounded compressed tuple
+    status: accepted
+    date: '2026-10-04'
+    file: ADR282_authenticated_archive_page_bodies.yaml

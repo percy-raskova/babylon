@@ -254,18 +254,23 @@ pub(crate) fn insert_territory_county_map_rows(
 /// # Errors
 /// Returns [`TerritoryCountyMapError`] for a database failure or a stored
 /// row that violates the row shape the schema pins.
-fn read_territory_county_map_rows(
+pub(crate) fn capture_territory_county_map_rows(
     client: &mut impl GenericClient,
     campaign_id: CampaignId,
-) -> Result<Vec<TerritoryCountyMapRow>, TerritoryCountyMapError> {
-    let rows = client
+) -> Result<Vec<postgres::Row>, TerritoryCountyMapError> {
+    client
         .query(
             "SELECT territory_local_name, county_geoid \
              FROM babylon_meta.territory_county_map_v1 \
              WHERE campaign_id = $1::uuid ORDER BY territory_local_name, county_geoid",
             &[campaign_id.as_uuid()],
         )
-        .map_err(|error| database("read territory county map rows", &error))?;
+        .map_err(|error| database("read territory county map rows", &error))
+}
+
+fn admit_territory_county_map_rows(
+    rows: &[postgres::Row],
+) -> Result<Vec<TerritoryCountyMapRow>, TerritoryCountyMapError> {
     rows.iter()
         .map(|row| {
             let local: String = row
@@ -287,14 +292,11 @@ fn read_territory_county_map_rows(
 /// # Errors
 /// Returns [`TerritoryCountyMapError`] for extraction, missing schema, divergent
 /// stored rows, or a database failure.
-pub(crate) fn verify_territory_county_map(
-    client: &mut impl GenericClient,
-    campaign_id: CampaignId,
-    scenario_source: &str,
-    prelude_source: Option<&str>,
+pub(crate) fn verify_captured_territory_county_map(
+    rows: &[postgres::Row],
+    mut declared: Vec<TerritoryCountyMapRow>,
 ) -> Result<(), TerritoryCountyMapError> {
-    let mut declared = extract_declared_territory_county_map(scenario_source, prelude_source)?;
-    let stored = read_territory_county_map_rows(client, campaign_id)?;
+    let stored = admit_territory_county_map_rows(rows)?;
     declared.sort_by(|left, right| {
         left.territory_local_name
             .cmp(&right.territory_local_name)

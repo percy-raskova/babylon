@@ -27,8 +27,16 @@ use crate::ui::dossier_card::{ActiveCountyDossier, DossierFetchState, DossierRef
 
 pub(crate) const OBSERVER_PANEL_BOTTOM: f32 = 56.0;
 
+pub(crate) type ProductionEvidenceOutcome = Result<
+    Option<babylon_persistence::ProductionEvidenceDigest>,
+    babylon_persistence::ProductionEvidenceError,
+>;
+
 #[derive(Resource, Default)]
-pub struct ObserverFrame(pub Option<ObserverEconomySnapshot>);
+pub struct ObserverFrame(
+    pub Option<ObserverEconomySnapshot>,
+    pub(crate) Option<ProductionEvidenceOutcome>,
+);
 
 impl ObserverFrame {
     /// Returns only the exact installed period and capability for this session.
@@ -74,16 +82,18 @@ pub enum NetworkSector {
     Agriculture,
     Mining,
     Manufacturing,
+    Production,
     Maintenance,
     Wholesale,
     Retail,
     EndBuyers,
 }
 impl NetworkSector {
-    pub const GROUPS: [Self; 7] = [
+    pub const GROUPS: [Self; 8] = [
         Self::Agriculture,
         Self::Mining,
         Self::Manufacturing,
+        Self::Production,
         Self::Maintenance,
         Self::Wholesale,
         Self::Retail,
@@ -96,6 +106,7 @@ impl NetworkSector {
             Self::Agriculture => "Agriculture / forestry",
             Self::Mining => "Extraction",
             Self::Manufacturing => "Manufacturing",
+            Self::Production => "Goods / service producers",
             Self::Maintenance => "Maintenance",
             Self::Wholesale => "Wholesale",
             Self::Retail => "Retail",
@@ -185,6 +196,7 @@ pub enum ObserverCommand {
     Menu,
     NewCampaign,
     NewOrganizerCampaign,
+    NewNationalCampaign,
     NewDelayedCampaign,
     NewSharedFreightAmpleCampaign,
     NewSharedFreightConstrainedCampaign,
@@ -741,7 +753,7 @@ fn spawn_lens_controls(panel: &mut ChildSpawnerCommands) {
             NetworkSector::Wholesale,
             NetworkSector::Retail,
         ],
-        vec![NetworkSector::Maintenance],
+        vec![NetworkSector::Production, NetworkSector::Maintenance],
     ] {
         panel.spawn(row()).with_children(|bar| {
             for sector in group {
@@ -875,6 +887,16 @@ fn menu_column() -> Node {
 }
 
 fn menu_campaign(panel: &mut ChildSpawnerCommands) {
+    panel.spawn(block_label(
+        "Wayne in the national world",
+        14.0,
+        theme::YELLOW,
+    ));
+    preset_grid(
+        panel,
+        &[("New national game", ObserverCommand::NewNationalCampaign)],
+    );
+    panel.spawn(block_label("Organize in Wayne within all 3,144 U.S. counties and external markets. Local aid and remote solidarity use actual food, funds and household time.", 12.0, theme::GRAY));
     panel.spawn(block_label("Statewide Michigan", 14.0, theme::YELLOW));
     preset_grid(
         panel,
@@ -1647,7 +1669,7 @@ pub(crate) struct KeyboardContext<'w> {
     claimed: Res<'w, ObserverKeyboardClaim>,
     ui: Res<'w, ObserverUiState>,
     view: Res<'w, crate::production::PrimaryView>,
-    atlas: Res<'w, CountyAtlas>,
+    scope: Option<Res<'w, crate::map::CountyMapScope>>,
     selected: ResMut<'w, SelectedCounty>,
 }
 
@@ -1663,7 +1685,7 @@ pub(crate) fn keyboard(
         claimed,
         ui,
         view,
-        atlas,
+        scope,
         mut selected,
     } = context;
     if ui.splash_visible || ui.comparison_open {
@@ -1715,34 +1737,13 @@ pub(crate) fn keyboard(
     if *view == crate::production::PrimaryView::Map
         && (keys.just_pressed(KeyCode::ArrowLeft) || keys.just_pressed(KeyCode::ArrowRight))
     {
-        if let Some(next) =
-            adjacent_county(&atlas, selected.0, keys.just_pressed(KeyCode::ArrowRight))
+        if let Some(next) = scope
+            .as_ref()
+            .and_then(|scope| scope.adjacent(selected.0, keys.just_pressed(KeyCode::ArrowRight)))
         {
             selected.0 = Some(next);
         }
     }
-}
-
-fn adjacent_county(atlas: &CountyAtlas, selected: Option<usize>, forward: bool) -> Option<usize> {
-    let counties: Vec<usize> = (0..atlas.len())
-        .filter(|index| {
-            atlas
-                .county(*index)
-                .is_some_and(|county| county.fips.starts_with("26"))
-        })
-        .collect();
-    if counties.is_empty() {
-        return None;
-    }
-    let current = counties.iter().position(|index| Some(*index) == selected);
-    let next = current.map_or(0, |index| {
-        if forward {
-            (index + 1) % counties.len()
-        } else {
-            (index + counties.len() - 1) % counties.len()
-        }
-    });
-    Some(counties[next])
 }
 
 #[must_use]
@@ -1773,10 +1774,7 @@ fn county_circuit_intro(
     let Some(county) = county else {
         return "Select a county to follow its work and dependencies.".into();
     };
-    let available = snapshot
-        .sites
-        .iter()
-        .any(|site| site.county_geoid == county);
+    let available = snapshot.sites.iter().any(|site| site.is_in_county(county));
     if !available {
         return "No production relationships are modeled here yet. The Archive contains the observed county context.".into();
     }
@@ -1802,7 +1800,7 @@ fn county_developments(snapshot: Option<&ObserverEconomySnapshot>, county: &str)
                     production
                         .sites
                         .iter()
-                        .any(|site| site.id == *id && site.county_geoid == county)
+                        .any(|site| site.id == *id && site.is_in_county(county))
                 })
         })
         .count();
@@ -1864,6 +1862,23 @@ fn archive_page_status(
         None if read_failed => "Archive read failed".into(),
         None if selected => "Archive awaiting page".into(),
         None => "Archive: select a county".into(),
+    }
+}
+
+fn paint_pending_status(
+    progress: Option<Res<crate::observer_progress::OperationProgress>>,
+    mut texts: Query<(&ObserverText, &mut Text)>,
+) {
+    let Some(caption) = progress
+        .as_deref()
+        .and_then(crate::observer_progress::OperationProgress::caption)
+    else {
+        return;
+    };
+    for (kind, mut text) in &mut texts {
+        if matches!(kind, ObserverText::Status) {
+            text.set_if_neq(Text::new(&caption));
+        }
     }
 }
 
@@ -1935,15 +1950,16 @@ fn repaint(
             ObserverText::Measures => county.as_ref().map_or_else(|| "Select a county to inspect this lens.".into(), |county| format!("{}\n{}", lens.label, format_lens_reading(lens.county(county.fips), &lens.unit))),
             ObserverText::Hover if *view != crate::production::PrimaryView::Map => String::new(),
             ObserverText::Hover if matches!(ui.lens, MapLens::Relationships) => hovered.0.and_then(|index| atlas.county(index)).map_or_else(String::new, |county| county.name.to_owned()),
-            ObserverText::Hover => hovered.0.and_then(|index| atlas.county(index)).filter(|county| county.fips.starts_with("26")).map_or_else(String::new, |county| format!("{}\n{}\n{}", county.name, lens.label, format_lens_reading(lens.county(county.fips), &lens.unit))),
+            ObserverText::Hover => hovered.0.and_then(|index| atlas.county(index)).map_or_else(String::new, |county| format!("{}\n{}\n{}", county.name, lens.label, format_lens_reading(lens.county(county.fips), &lens.unit))),
             ObserverText::Audio => format!("Title theme: The Purge\nIn-game soundtrack: {} ({}/{})\nMusic {:.0}% | effects {:.0}%\nReduced motion: {} | Stop on delivery: {}", audio.track_title(),audio.track+1,crate::observer_audio::ObserverAudioSettings::track_count(),audio.music_volume*100.0,audio.effects_volume*100.0,if ui.reduced_motion {"ON"}else{"OFF"},if ui.stop_on_delivery {"ON"}else{"OFF"}),
             ObserverText::Evidence => format!("Viewing period {} / Archive processed through {}\n{}", state.viewed_tick, state.archive_verified_tick, archive_detail),
             ObserverText::EvidenceDetails => installed.map_or_else(String::new, |snapshot| {
                 let mut evidence = format!("CAMPAIGN\n{}\n\nCOMMITTED EVIDENCE / PERIOD {}\n{}\n\nWORLD IDENTITY\n{}", wrapped_identity(&snapshot.campaign_id), snapshot.resolve_tick, wrapped_identity(snapshot.tick_content_hash.as_deref().unwrap_or(&snapshot.foundation_digest)), snapshot.nominal_world_hash.as_deref().map_or_else(|| "Unavailable in this observation".to_owned(), wrapped_identity));
-                match snapshot.production_evidence_digest() {
-                    Ok(Some(digest)) => { let _ = write!(evidence, "\n\nPRODUCTION OBSERVATION\n{}", wrapped_identity(&digest.to_hex())); }
-                    Ok(None) => {}
-                    Err(_) => evidence.push_str("\n\nPRODUCTION OBSERVATION INVALID\nProduction evidence could not be authenticated."),
+                match frame.1.as_ref() {
+                    Some(Ok(Some(digest))) => { let _ = write!(evidence, "\n\nPRODUCTION OBSERVATION\n{}", wrapped_identity(&digest.to_hex())); }
+                    Some(Ok(None)) => {}
+                    Some(Err(_)) => evidence.push_str("\n\nPRODUCTION OBSERVATION INVALID\nProduction evidence could not be authenticated."),
+                    None => evidence.push_str("\n\nPRODUCTION OBSERVATION UNAVAILABLE\nProduction evidence has not been authenticated."),
                 }
                 evidence
             }),
@@ -2150,6 +2166,7 @@ impl Plugin for ObserverShellPlugin {
                 Update,
                 (
                     repaint,
+                    paint_pending_status.after(repaint),
                     paint_menu_pages,
                     paint_buttons,
                     paint_view_controls,
@@ -2161,7 +2178,36 @@ impl Plugin for ObserverShellPlugin {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
+    pub(crate) fn install_pending_paint_fixture(app: &mut App) -> (Entity, Entity, Entity) {
+        let status = app
+            .world_mut()
+            .spawn((Node::default(), ObserverText::Status, Text::new("")))
+            .id();
+        let reading = app
+            .world_mut()
+            .spawn((Node::default(), ObserverText::Production, Text::new("")))
+            .id();
+        let measures = app
+            .world_mut()
+            .spawn((Node::default(), ObserverText::Measures, Text::new("")))
+            .id();
+        app.init_resource::<HoveredCounty>()
+            .init_resource::<ObserverFrame>()
+            .init_resource::<crate::observer_progress::OperationProgress>()
+            .add_systems(
+                Update,
+                (
+                    crate::observer_progress::track,
+                    repaint,
+                    paint_pending_status,
+                )
+                    .chain()
+                    .in_set(crate::observer_io::ObserverSet::Paint),
+            );
+        (status, reading, measures)
+    }
+
     use super::*;
     use crate::observer_focus::ObserverFocusPlugin;
 
@@ -3061,8 +3107,7 @@ mod tests {
         }
     }
 
-    #[test]
-    fn county_arrow_shortcuts_only_change_selection_on_geography() {
+    fn county_arrow_app() -> (App, usize) {
         let atlas = CountyAtlas::parse(include_bytes!(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../../../assets/map/county_atlas.bin"
@@ -3072,18 +3117,58 @@ mod tests {
             .find(|index| atlas.county(*index).is_some_and(|row| row.fips == "26099"))
             .expect("Macomb");
         let mut app = App::new();
-        app.add_plugins((MinimalPlugins, InputPlugin))
-            .insert_resource(atlas)
-            .insert_resource(SelectedCounty(Some(county)))
-            .insert_resource(crate::production::PrimaryView::Production)
-            .insert_resource(ObserverUiState {
-                menu_open: false,
-                splash_visible: false,
-                ..default()
-            })
-            .init_resource::<ObserverKeyboardClaim>()
-            .add_message::<ObserverCommand>()
-            .add_systems(Update, keyboard);
+        app.add_plugins((
+            MinimalPlugins,
+            bevy::asset::AssetPlugin::default(),
+            crate::map::MapPlugin,
+        ))
+        .insert_resource(atlas)
+        .insert_resource(SelectedCounty(Some(county)))
+        .insert_resource(crate::production::PrimaryView::Production)
+        .insert_resource(ObserverUiState {
+            menu_open: false,
+            splash_visible: false,
+            ..default()
+        })
+        .init_resource::<ObserverKeyboardClaim>()
+        .add_message::<ObserverCommand>()
+        .add_systems(Update, keyboard);
+        let campaign = babylon_persistence::identity::CampaignId::from_uuid(uuid::Uuid::nil());
+        let mut session = ObserverSession::new(campaign);
+        session.foundation_digest = Some("fixture".into());
+        session.ready(0, None);
+        app.insert_resource(session).insert_resource(ObserverFrame(
+            Some(ObserverEconomySnapshot {
+                campaign_id: campaign.as_uuid().to_string(),
+                resolve_tick: 0,
+                foundation_digest: "fixture".into(),
+                tick_content_hash: None,
+                nominal_world_hash: None,
+                envelope_digest: None,
+                visibility: babylon_persistence::observer_reader::ObserverVisibility::FullObserver,
+                production: None,
+                counties: ["26099", "26163"]
+                    .into_iter()
+                    .map(
+                        |id| babylon_persistence::observer_reader::ObserverCountyEconomy {
+                            county_geoid: id.into(),
+                            annual_avg_estabs_count: None,
+                            annual_avg_emplvl: None,
+                            total_annual_wages: None,
+                            annual_avg_wkly_wage: None,
+                        },
+                    )
+                    .collect(),
+            }),
+            None,
+        ));
+        app.update();
+        (app, county)
+    }
+
+    #[test]
+    fn county_arrow_shortcuts_only_change_selection_on_geography() {
+        let (mut app, county) = county_arrow_app();
         for view in [
             crate::production::PrimaryView::Production,
             crate::production::PrimaryView::Map,

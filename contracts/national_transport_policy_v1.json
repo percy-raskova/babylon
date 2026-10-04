@@ -1,0 +1,266 @@
+{
+  "airport_overrides": {
+    "02013": "CDB",
+    "02016": "DUT",
+    "02020": "ANC",
+    "02050": "BET",
+    "02060": "AKN",
+    "02063": "VDZ",
+    "02066": "GKN",
+    "02068": "INR",
+    "02070": "DLG",
+    "02090": "FAI",
+    "02100": "HNS",
+    "02105": "HNH",
+    "02110": "JNU",
+    "02122": "ENA",
+    "02130": "KTN",
+    "02150": "ADQ",
+    "02158": "KSM",
+    "02164": "PTH",
+    "02170": "PAQ",
+    "02180": "OME",
+    "02185": "SCC",
+    "02188": "OTZ",
+    "02195": "PSG",
+    "02198": "AKW",
+    "02220": "SIT",
+    "02230": "SGY",
+    "02240": "ORT",
+    "02275": "WRG",
+    "02282": "YAK",
+    "02290": "GAL",
+    "15001": "ITO",
+    "15003": "HNL",
+    "15005": "LUP",
+    "15007": "LIH",
+    "15009": "OGG",
+    "25007": "MVY",
+    "25019": "ACK",
+    "53055": "FHR"
+  },
+  "anchor_airports": [
+    "ANC",
+    "HNL",
+    "BOS",
+    "SEA",
+    "LAX",
+    "IAH",
+    "JFK",
+    "PPG",
+    "GUM",
+    "GSN",
+    "SJU",
+    "STT",
+    "STX",
+    "MDY"
+  ],
+  "bounds": {
+    "compressed_bytes": 2097152,
+    "decoded_bytes": 16777216,
+    "flow_rows": 40000,
+    "links": 12000,
+    "nodes": 4000,
+    "route_stages": 16
+  },
+  "cargo_classes": [
+    "general",
+    "dry_bulk",
+    "crude_oil",
+    "refined_liquid"
+  ],
+  "contract": "NationalTransportPolicyV1",
+  "counterpart_gateways": {
+    "canada": [],
+    "china": [
+      "los_angeles",
+      "tacoma"
+    ],
+    "european_union": [
+      "newark"
+    ],
+    "india": [
+      "los_angeles",
+      "houston"
+    ],
+    "japan": [
+      "los_angeles",
+      "tacoma"
+    ],
+    "latin_america_caribbean": [
+      "houston"
+    ],
+    "mexico": [],
+    "remaining_asia_pacific": [
+      "los_angeles",
+      "tacoma"
+    ],
+    "remaining_europe": [
+      "newark"
+    ],
+    "russia": [
+      "los_angeles",
+      "tacoma"
+    ],
+    "sub_saharan_africa": [
+      "newark"
+    ],
+    "west_asia_north_africa": [
+      "newark",
+      "houston"
+    ]
+  },
+  "dependency_airports": {
+    "016": "PPG",
+    "316": "GUM",
+    "580": "GSN",
+    "581": "MDY",
+    "630": "SJU",
+    "850": "STT"
+  },
+  "dependency_services": [
+    [
+      "PPG",
+      "HNL"
+    ],
+    [
+      "GUM",
+      "HNL"
+    ],
+    [
+      "GSN",
+      "GUM"
+    ],
+    [
+      "SJU",
+      "JFK"
+    ],
+    [
+      "STT",
+      "SJU"
+    ],
+    [
+      "STX",
+      "SJU"
+    ],
+    [
+      "MDY",
+      "HNL"
+    ]
+  ],
+  "evidence_class": "Designed",
+  "issue": "PER-40",
+  "marine_gateways": {
+    "anchorage": 77,
+    "honolulu": 20,
+    "houston": 67,
+    "kahului": 71,
+    "los_angeles": 29,
+    "newark": 33,
+    "tacoma": 51
+  },
+  "period_days": 28,
+  "semantics": {
+    "capacity": "Finite Designed grams per28-day service period, not installed throughput inferred from observed annual FAF tons or facility acreage. Reachability does not prove adequate supply.",
+    "costs": "Unexecuted exact monetary context. The material engine does not pay a transport operator merely because a source edge carries a cost.",
+    "dependencies": "Six US dependencies remain distinct from counterpart markets. Midway is the Designed UM gateway and supplies no population or access to every outlying island. Other dependency gateways likewise represent aggregate county-free market actors.",
+    "facility_scope": "RoRo points support general-cargo facility evidence, not bulk berth capability. Liquid routes use explicit pipeline-terminal crude/refined/water flags plus TAPS primary evidence. Red Dog dry-bulk export uses the documented road/port chain.",
+    "foreign": "Twelve Designed markets are abstract endpoints, not observed foreign port facilities. FAF8 foreign areas remain independent context; no12-market tonnage inferred from dollar trade shares.",
+    "hierarchy": "Eight continental trunk hubs form a bounded clique. Each continental FAF hub is its highest published-population ground-admitted county; nearest trunk uses county source internal points and great-circle distance, deterministic GEOID tie. This is Designed corridor selection, not extracted road geometry.",
+    "islands": "AllAK/HI counties and Nantucket/Dukes/SanJuanWA have explicit source airports and no automatic county-to-FAF ground links. County access does not represent every isolated settlement inside a county.",
+    "mode_access": "Air permits general cargo only. Crude oil and refined liquid are separate; TAPS carries crude only. Bulk cargo without a supported pathway remains explicitly unavailable.",
+    "runtime": "No simulation, inventory, production, bank, money, owned carrier or campaign hydration is supplied by this capture.",
+    "seasonality": "Red Dog source operation is seasonal. Its finite positive service profile is an explicitly annualized Designed opening approximation; no seasonal closure mechanism or guaranteed year-round observed service is claimed.",
+    "source_vintages": "2024FAF flows and TIGER counties; NTAD facility snapshots have their own source dates, including2021pipeline records and2025airport effective dates; official Alaska pages captured2026. This is not an observed2024 network census.",
+    "timing": "Consecutive continental truck links may be coalesced by a future compiler while retaining every shared capacity membership. Every sea, air and pipeline service remains an explicit mode leg. No runtime route compiler is supplied here."
+  },
+  "service_profiles": {
+    "air_feeder": {
+      "capacity_grams": 100000000,
+      "cost_micros_per_tonne": 1500000000,
+      "loss_ppm": 0,
+      "mode": "air",
+      "travel_periods": 1
+    },
+    "air_trunk": {
+      "capacity_grams": 1000000000,
+      "cost_micros_per_tonne": 2000000000,
+      "loss_ppm": 0,
+      "mode": "air",
+      "travel_periods": 1
+    },
+    "airport_handling": {
+      "capacity_grams": 1000000000,
+      "cost_micros_per_tonne": 25000000,
+      "loss_ppm": 0,
+      "mode": "handling",
+      "travel_periods": 1
+    },
+    "border": {
+      "capacity_grams": 500000000000,
+      "cost_micros_per_tonne": 40000000,
+      "loss_ppm": 0,
+      "mode": "truck",
+      "travel_periods": 1
+    },
+    "handling": {
+      "capacity_grams": 200000000000,
+      "cost_micros_per_tonne": 10000000,
+      "loss_ppm": 0,
+      "mode": "handling",
+      "travel_periods": 1
+    },
+    "local_road": {
+      "capacity_grams": 20000000000,
+      "cost_micros_per_tonne": 20000000,
+      "loss_ppm": 0,
+      "mode": "truck",
+      "travel_periods": 1
+    },
+    "pipeline": {
+      "capacity_grams": 1000000000000,
+      "cost_micros_per_tonne": 20000000,
+      "loss_ppm": 0,
+      "mode": "pipeline",
+      "travel_periods": 1
+    },
+    "regional_road": {
+      "capacity_grams": 200000000000,
+      "cost_micros_per_tonne": 50000000,
+      "loss_ppm": 0,
+      "mode": "truck",
+      "travel_periods": 1
+    },
+    "sea_domestic": {
+      "capacity_grams": 100000000000,
+      "cost_micros_per_tonne": 100000000,
+      "loss_ppm": 0,
+      "mode": "sea",
+      "travel_periods": 2
+    },
+    "sea_foreign": {
+      "capacity_grams": 1000000000000,
+      "cost_micros_per_tonne": 150000000,
+      "loss_ppm": 0,
+      "mode": "sea",
+      "travel_periods": 2
+    },
+    "trunk_road": {
+      "capacity_grams": 2000000000000,
+      "cost_micros_per_tonne": 120000000,
+      "loss_ppm": 0,
+      "mode": "truck",
+      "travel_periods": 1
+    }
+  },
+  "trunk_counties": [
+    "06037",
+    "13121",
+    "17031",
+    "26163",
+    "34013",
+    "48113",
+    "48201",
+    "53033"
+  ]
+}

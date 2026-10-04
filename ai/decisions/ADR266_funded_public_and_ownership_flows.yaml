@@ -1,0 +1,72 @@
+ADR266_funded_public_and_ownership_flows:
+  status: accepted
+  date: '2026-10-01'
+  issue: PER-36
+  title: Captured ownership and public policies post funded flows through the common monetary close
+  evidence_class: Designed
+  authority:
+    - Director-approved national economy implementation plan and recorded PER-36 and PER-30 commitments
+  partially_supersedes:
+    - ADR263 and ADR264 close ordering for funded public allocations and post-operation distributions
+  context: |
+    A productive site, its owners, its workforce and its geographic location are
+    separate relations. Existing exact cash and historical carrying books can
+    represent their transactions without another allocator or money authority.
+    Cash, realized income, retained earnings and contributed capital differ.
+  decision: |
+    Capture explicit organization/public locations, positive ownership shares,
+    eligible tax payers, public appropriation caps and priorities, distribution
+    policies and finite dated contribution orders. A location or labor role cannot
+    create an ownership claim or tax membership. Organization and public location
+    use the same EconomicLocation vocabulary as sites and households.
+
+    After due arrivals and principal retirement, execute due contributions then
+    public allocations before current attendance funding. Contributions exchange
+    actual cash for captured equity carrying amounts and increase issuer
+    contributed capital. They do not create income, new shares or equipment.
+    Underfunded instructions report the shortfall and retire after that attempt.
+    Recurring public allocations draw only available treasury cash within a
+    captured appropriation. Priority and canonical identity determine scarcity.
+    Household support and provider operating grants enter paired current expense
+    and income accounts. Public capital support uses the contribution path and
+    requires a separately captured ownership claim.
+
+    After actual operation, consumption and wage classification, assess explicit
+    wage or positive operating-income taxes. Collect available cash above the
+    payer's floor; uncollected assessment is dated evidence, not an invented debt
+    or treasury receivable. Capital contributions, ownership income and reporting
+    remittances do not enter the operating tax base. One policy per payer is the
+    initial bounded fiscal abstraction.
+
+    Distribute positive post-tax retained earnings only within the captured
+    fraction, cap and spendable cash floor. Positive share weights allocate exact
+    floor amounts; stable canonical beneficiaries receive remaining micro-units.
+    Reduce issuer retained earnings and recognize beneficiary income once. A
+    cross-border remittance label describes that same transaction without a
+    second cash or income posting. Freeze all bases and funding at each phase
+    before incoming credits, so cross-ownership does not recursively fund itself.
+
+    The money book remains the sole cash and reserve authority. Historical equity
+    carrying amounts are financial assets, distinct from physical inventory and
+    issuer contributed capital. Reconcile account net assets against immutable
+    opening capital, contributed capital and retained earnings. Consolidated
+    reporting must eliminate internal financial claims and flows. The book does
+    not mark equity to market or identify book profit with surplus value. Capital
+    III chapter 1 constrains distinctions between capital advanced, capital
+    consumed, cost-price and value; it does not prescribe this Designed policy.
+  alternatives_rejected:
+    - Ownership inferred from residence, employment or unpaid family attendance.
+    - Public spending, tax claims or dividends that mint cash.
+    - Treating equity contributions as operating income or instant equipment.
+    - Counting a dividend and its reporting remittance as two incomes.
+    - Recursive same-phase payouts funded by incoming distributions.
+  consequences: |
+    State schema 12 and receipt schema 10 refuse earlier formats. Four financial
+    receipt families preserve funding partitions and match cash postings. Native
+    presentation, source compilation, asset installation and richer fiscal choice
+    remain integration work. These policies add no theoretical primitive.
+  verification:
+    - contracts/material_circuit_v3.yaml
+    - contracts/committed_material_tick_v3.yaml
+    - rust/crates/babylon-material-circuit/tests/financial_circuit.rs
+    - Independent operating journal, finite budgets, exact shares, restart and atomic refusal.

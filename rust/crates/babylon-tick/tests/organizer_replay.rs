@@ -30,15 +30,17 @@ const SCENARIO: &str = r"
 (scenario organizer/replay
   (deffield social-class/employed-population int extensive)
   (deffield social-class/reserve-population int extensive)
-  (deffield social-class/previous-unretained-labor-hours int extensive)
+  (deffield business/previous-unretained-labor-hours int extensive)
   (node consumers NodeType/SOCIAL_CLASS
     (social-class/employed-population 8)
-    (social-class/reserve-population 0)
-    (social-class/previous-unretained-labor-hours 1280))
+    (social-class/reserve-population 0))
+  (node consumers-workplace NodeType/BUSINESS
+    (business/previous-unretained-labor-hours 1280))
   (node maintainers NodeType/SOCIAL_CLASS
     (social-class/employed-population 0)
-    (social-class/reserve-population 1)
-    (social-class/previous-unretained-labor-hours 0)))
+    (social-class/reserve-population 1))
+  (node maintainers-workplace NodeType/BUSINESS
+    (business/previous-unretained-labor-hours 0)))
 ";
 
 const MATERIAL: &str = r#"
@@ -83,6 +85,7 @@ fn process() -> ProcessId {
 
 fn opening() -> MaterialCircuitState {
     MaterialCircuitState {
+        capacity_supply: babylon_material_circuit::CapacitySupply::FiniteSchedule,
         period: 1,
         site_logistics_nodes: (1..=2)
             .map(|id| SiteLogisticsNode {
@@ -108,11 +111,18 @@ fn opening() -> MaterialCircuitState {
             unit_id: unit(2),
             quantity_per_batch: 60,
         }],
-        freight_mass_coefficients: vec![FreightMassCoefficient {
-            good_id: good(2),
-            unit_id: unit(1),
-            grams_per_unit: 1000,
-        }],
+        service_connections: vec![],
+        service_orders: vec![],
+        commodities: [1, 2]
+            .into_iter()
+            .map(|id| CommodityDefinition {
+                good_id: good(id),
+                unit_id: unit(1),
+                kind: babylon_material_circuit::CommodityKind::Storable {
+                    grams_per_unit: 1000,
+                },
+            })
+            .collect(),
         supplier_routes: vec![],
         route_stages: vec![],
         route_stage_capacities: vec![],
@@ -166,6 +176,7 @@ fn opening() -> MaterialCircuitState {
         handling_coefficients: vec![],
         final_demand_principals: vec![],
         final_demand_orders: vec![],
+        accounting: babylon_material_circuit::CircuitAccounting::PhysicalControl,
         maintenance_binding: Some(MaintenanceBinding {
             provider_site_id: site(2),
             consumer_process_id: process(),
@@ -186,7 +197,9 @@ fn opening() -> MaterialCircuitState {
 
 fn config() -> OrganizerConfig {
     OrganizerConfig {
+        aid_bindings: vec![],
         schema_version: ORGANIZER_SCHEMA_VERSION,
+        collection: None,
         campaign_id: [1; 16],
         controlled_actor_id: 101,
         input_authority_id: [2; 16],
@@ -222,6 +235,7 @@ fn config() -> OrganizerConfig {
                 review_condition: "Review next period".into(),
             })
             .collect(),
+        time_binding: babylon_practice_contract::OrganizerTimeBindingMode::FixedTimeControl,
         inquiry_hours: 12,
         contact_hours: 8,
         partner_response_hours: 2,
@@ -248,7 +262,7 @@ fn staffing() -> StaffingComposition {
             StaffingNodeBinding::try_new(
                 StableElementKey::Node {
                     scenario: "organizer/replay".into(),
-                    local_name: name.into(),
+                    local_name: format!("{name}-workplace"),
                 },
                 StaffingPoolBinding::try_new(
                     StaffingPoolId::from_bytes([id; 32]),
@@ -259,6 +273,22 @@ fn staffing() -> StaffingComposition {
                     vec![source],
                 )
                 .unwrap(),
+                vec![
+                    babylon_tick::material_staffing::StaffingMemberNodeBinding::try_new(
+                        StableElementKey::Node {
+                            scenario: "organizer/replay".into(),
+                            local_name: name.into(),
+                        },
+                        babylon_material_circuit::StaffingMemberBinding::try_new(
+                            babylon_material_circuit::StaffingMemberId::from_bytes([id; 32]),
+                            babylon_material_circuit::FinalDemandPrincipalId::from_bytes([id; 32]),
+                            "county:26163".parse().unwrap(),
+                            people,
+                        )
+                        .unwrap(),
+                    )
+                    .unwrap(),
+                ],
             )
             .unwrap()
         })
@@ -299,7 +329,7 @@ fn try_session(
         graph,
         material,
         sha256_of(b"organizer-replay-fixture-foundation"),
-        8,
+        babylon_kernel::clock::CampaignDuration::Finite { final_period: 8 },
         staffing(),
     )
 }

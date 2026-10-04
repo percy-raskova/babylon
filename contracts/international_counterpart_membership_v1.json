@@ -1,0 +1,1518 @@
+{
+  "contract": "InternationalCounterpartMembershipV1",
+  "evidence_class": "Designed",
+  "memberships": [
+    {
+      "counterpart_id": "west_asia_north_africa",
+      "disposition": "counterpart",
+      "identity_id": "census:5082",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "west_asia_north_africa",
+      "disposition": "counterpart",
+      "identity_id": "census:5083",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_asia_pacific",
+      "disposition": "counterpart",
+      "identity_id": "m49:004",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_europe",
+      "disposition": "counterpart",
+      "identity_id": "m49:008",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "",
+      "disposition": "nonmarket",
+      "identity_id": "m49:010",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "west_asia_north_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:012",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "",
+      "disposition": "us_dependency",
+      "identity_id": "m49:016",
+      "us_relationship": "us_dependency"
+    },
+    {
+      "counterpart_id": "remaining_europe",
+      "disposition": "counterpart",
+      "identity_id": "m49:020",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "sub_saharan_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:024",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "latin_america_caribbean",
+      "disposition": "counterpart",
+      "identity_id": "m49:028",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "west_asia_north_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:031",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "latin_america_caribbean",
+      "disposition": "counterpart",
+      "identity_id": "m49:032",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_asia_pacific",
+      "disposition": "counterpart",
+      "identity_id": "m49:036",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "european_union",
+      "disposition": "counterpart",
+      "identity_id": "m49:040",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "latin_america_caribbean",
+      "disposition": "counterpart",
+      "identity_id": "m49:044",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "west_asia_north_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:048",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_asia_pacific",
+      "disposition": "counterpart",
+      "identity_id": "m49:050",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "west_asia_north_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:051",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "latin_america_caribbean",
+      "disposition": "counterpart",
+      "identity_id": "m49:052",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "european_union",
+      "disposition": "counterpart",
+      "identity_id": "m49:056",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_europe",
+      "disposition": "counterpart",
+      "identity_id": "m49:060",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_asia_pacific",
+      "disposition": "counterpart",
+      "identity_id": "m49:064",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "latin_america_caribbean",
+      "disposition": "counterpart",
+      "identity_id": "m49:068",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_europe",
+      "disposition": "counterpart",
+      "identity_id": "m49:070",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "sub_saharan_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:072",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "latin_america_caribbean",
+      "disposition": "counterpart",
+      "identity_id": "m49:074",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "latin_america_caribbean",
+      "disposition": "counterpart",
+      "identity_id": "m49:076",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "latin_america_caribbean",
+      "disposition": "counterpart",
+      "identity_id": "m49:084",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "sub_saharan_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:086",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_asia_pacific",
+      "disposition": "counterpart",
+      "identity_id": "m49:090",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "latin_america_caribbean",
+      "disposition": "counterpart",
+      "identity_id": "m49:092",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_asia_pacific",
+      "disposition": "counterpart",
+      "identity_id": "m49:096",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "european_union",
+      "disposition": "counterpart",
+      "identity_id": "m49:100",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_asia_pacific",
+      "disposition": "counterpart",
+      "identity_id": "m49:104",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "sub_saharan_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:108",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_europe",
+      "disposition": "counterpart",
+      "identity_id": "m49:112",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_asia_pacific",
+      "disposition": "counterpart",
+      "identity_id": "m49:116",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "sub_saharan_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:120",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "canada",
+      "disposition": "counterpart",
+      "identity_id": "m49:124",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "sub_saharan_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:132",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "latin_america_caribbean",
+      "disposition": "counterpart",
+      "identity_id": "m49:136",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "sub_saharan_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:140",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_asia_pacific",
+      "disposition": "counterpart",
+      "identity_id": "m49:144",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "sub_saharan_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:148",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "latin_america_caribbean",
+      "disposition": "counterpart",
+      "identity_id": "m49:152",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "china",
+      "disposition": "counterpart",
+      "identity_id": "m49:156",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_asia_pacific",
+      "disposition": "counterpart",
+      "identity_id": "m49:158",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_asia_pacific",
+      "disposition": "counterpart",
+      "identity_id": "m49:162",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_asia_pacific",
+      "disposition": "counterpart",
+      "identity_id": "m49:166",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "latin_america_caribbean",
+      "disposition": "counterpart",
+      "identity_id": "m49:170",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "sub_saharan_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:174",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "sub_saharan_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:175",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "sub_saharan_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:178",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "sub_saharan_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:180",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_asia_pacific",
+      "disposition": "counterpart",
+      "identity_id": "m49:184",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "latin_america_caribbean",
+      "disposition": "counterpart",
+      "identity_id": "m49:188",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "european_union",
+      "disposition": "counterpart",
+      "identity_id": "m49:191",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "latin_america_caribbean",
+      "disposition": "counterpart",
+      "identity_id": "m49:192",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "european_union",
+      "disposition": "counterpart",
+      "identity_id": "m49:196",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "european_union",
+      "disposition": "counterpart",
+      "identity_id": "m49:203",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "sub_saharan_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:204",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "european_union",
+      "disposition": "counterpart",
+      "identity_id": "m49:208",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "latin_america_caribbean",
+      "disposition": "counterpart",
+      "identity_id": "m49:212",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "latin_america_caribbean",
+      "disposition": "counterpart",
+      "identity_id": "m49:214",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "latin_america_caribbean",
+      "disposition": "counterpart",
+      "identity_id": "m49:218",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "latin_america_caribbean",
+      "disposition": "counterpart",
+      "identity_id": "m49:222",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "sub_saharan_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:226",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "sub_saharan_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:231",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "sub_saharan_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:232",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "european_union",
+      "disposition": "counterpart",
+      "identity_id": "m49:233",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_europe",
+      "disposition": "counterpart",
+      "identity_id": "m49:234",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "latin_america_caribbean",
+      "disposition": "counterpart",
+      "identity_id": "m49:238",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "latin_america_caribbean",
+      "disposition": "counterpart",
+      "identity_id": "m49:239",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_asia_pacific",
+      "disposition": "counterpart",
+      "identity_id": "m49:242",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "european_union",
+      "disposition": "counterpart",
+      "identity_id": "m49:246",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_europe",
+      "disposition": "counterpart",
+      "identity_id": "m49:248",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "european_union",
+      "disposition": "counterpart",
+      "identity_id": "m49:250",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "latin_america_caribbean",
+      "disposition": "counterpart",
+      "identity_id": "m49:254",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_asia_pacific",
+      "disposition": "counterpart",
+      "identity_id": "m49:258",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "sub_saharan_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:260",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "sub_saharan_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:262",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "sub_saharan_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:266",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "west_asia_north_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:268",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "sub_saharan_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:270",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "west_asia_north_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:275",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "european_union",
+      "disposition": "counterpart",
+      "identity_id": "m49:276",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "sub_saharan_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:288",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_europe",
+      "disposition": "counterpart",
+      "identity_id": "m49:292",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_asia_pacific",
+      "disposition": "counterpart",
+      "identity_id": "m49:296",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "european_union",
+      "disposition": "counterpart",
+      "identity_id": "m49:300",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_europe",
+      "disposition": "counterpart",
+      "identity_id": "m49:304",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "latin_america_caribbean",
+      "disposition": "counterpart",
+      "identity_id": "m49:308",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "latin_america_caribbean",
+      "disposition": "counterpart",
+      "identity_id": "m49:312",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "",
+      "disposition": "us_dependency",
+      "identity_id": "m49:316",
+      "us_relationship": "us_dependency"
+    },
+    {
+      "counterpart_id": "latin_america_caribbean",
+      "disposition": "counterpart",
+      "identity_id": "m49:320",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "sub_saharan_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:324",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "latin_america_caribbean",
+      "disposition": "counterpart",
+      "identity_id": "m49:328",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "latin_america_caribbean",
+      "disposition": "counterpart",
+      "identity_id": "m49:332",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_asia_pacific",
+      "disposition": "counterpart",
+      "identity_id": "m49:334",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_europe",
+      "disposition": "counterpart",
+      "identity_id": "m49:336",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "latin_america_caribbean",
+      "disposition": "counterpart",
+      "identity_id": "m49:340",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_asia_pacific",
+      "disposition": "counterpart",
+      "identity_id": "m49:344",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "european_union",
+      "disposition": "counterpart",
+      "identity_id": "m49:348",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_europe",
+      "disposition": "counterpart",
+      "identity_id": "m49:352",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "india",
+      "disposition": "counterpart",
+      "identity_id": "m49:356",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_asia_pacific",
+      "disposition": "counterpart",
+      "identity_id": "m49:360",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "west_asia_north_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:364",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "west_asia_north_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:368",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "european_union",
+      "disposition": "counterpart",
+      "identity_id": "m49:372",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "west_asia_north_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:376",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "european_union",
+      "disposition": "counterpart",
+      "identity_id": "m49:380",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "sub_saharan_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:384",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "latin_america_caribbean",
+      "disposition": "counterpart",
+      "identity_id": "m49:388",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "japan",
+      "disposition": "counterpart",
+      "identity_id": "m49:392",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_asia_pacific",
+      "disposition": "counterpart",
+      "identity_id": "m49:398",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "west_asia_north_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:400",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "sub_saharan_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:404",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_asia_pacific",
+      "disposition": "counterpart",
+      "identity_id": "m49:408",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_asia_pacific",
+      "disposition": "counterpart",
+      "identity_id": "m49:410",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_europe",
+      "disposition": "counterpart",
+      "identity_id": "m49:412",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "west_asia_north_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:414",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_asia_pacific",
+      "disposition": "counterpart",
+      "identity_id": "m49:417",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_asia_pacific",
+      "disposition": "counterpart",
+      "identity_id": "m49:418",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "west_asia_north_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:422",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "sub_saharan_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:426",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "european_union",
+      "disposition": "counterpart",
+      "identity_id": "m49:428",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "sub_saharan_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:430",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "west_asia_north_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:434",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_europe",
+      "disposition": "counterpart",
+      "identity_id": "m49:438",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "european_union",
+      "disposition": "counterpart",
+      "identity_id": "m49:440",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "european_union",
+      "disposition": "counterpart",
+      "identity_id": "m49:442",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_asia_pacific",
+      "disposition": "counterpart",
+      "identity_id": "m49:446",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "sub_saharan_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:450",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "sub_saharan_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:454",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_asia_pacific",
+      "disposition": "counterpart",
+      "identity_id": "m49:458",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_asia_pacific",
+      "disposition": "counterpart",
+      "identity_id": "m49:462",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "sub_saharan_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:466",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "european_union",
+      "disposition": "counterpart",
+      "identity_id": "m49:470",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "latin_america_caribbean",
+      "disposition": "counterpart",
+      "identity_id": "m49:474",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "sub_saharan_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:478",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "sub_saharan_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:480",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "mexico",
+      "disposition": "counterpart",
+      "identity_id": "m49:484",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_europe",
+      "disposition": "counterpart",
+      "identity_id": "m49:492",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_asia_pacific",
+      "disposition": "counterpart",
+      "identity_id": "m49:496",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_europe",
+      "disposition": "counterpart",
+      "identity_id": "m49:498",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_europe",
+      "disposition": "counterpart",
+      "identity_id": "m49:499",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "latin_america_caribbean",
+      "disposition": "counterpart",
+      "identity_id": "m49:500",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "west_asia_north_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:504",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "sub_saharan_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:508",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "west_asia_north_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:512",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "sub_saharan_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:516",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_asia_pacific",
+      "disposition": "counterpart",
+      "identity_id": "m49:520",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_asia_pacific",
+      "disposition": "counterpart",
+      "identity_id": "m49:524",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "european_union",
+      "disposition": "counterpart",
+      "identity_id": "m49:528",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "latin_america_caribbean",
+      "disposition": "counterpart",
+      "identity_id": "m49:531",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "latin_america_caribbean",
+      "disposition": "counterpart",
+      "identity_id": "m49:533",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "latin_america_caribbean",
+      "disposition": "counterpart",
+      "identity_id": "m49:534",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "latin_america_caribbean",
+      "disposition": "counterpart",
+      "identity_id": "m49:535",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_asia_pacific",
+      "disposition": "counterpart",
+      "identity_id": "m49:540",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_asia_pacific",
+      "disposition": "counterpart",
+      "identity_id": "m49:548",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_asia_pacific",
+      "disposition": "counterpart",
+      "identity_id": "m49:554",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "latin_america_caribbean",
+      "disposition": "counterpart",
+      "identity_id": "m49:558",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "sub_saharan_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:562",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "sub_saharan_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:566",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_asia_pacific",
+      "disposition": "counterpart",
+      "identity_id": "m49:570",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_asia_pacific",
+      "disposition": "counterpart",
+      "identity_id": "m49:574",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_europe",
+      "disposition": "counterpart",
+      "identity_id": "m49:578",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "",
+      "disposition": "us_dependency",
+      "identity_id": "m49:580",
+      "us_relationship": "us_dependency"
+    },
+    {
+      "counterpart_id": "",
+      "disposition": "us_dependency",
+      "identity_id": "m49:581",
+      "us_relationship": "us_dependency"
+    },
+    {
+      "counterpart_id": "remaining_asia_pacific",
+      "disposition": "counterpart",
+      "identity_id": "m49:583",
+      "us_relationship": "freely_associated_state"
+    },
+    {
+      "counterpart_id": "remaining_asia_pacific",
+      "disposition": "counterpart",
+      "identity_id": "m49:584",
+      "us_relationship": "freely_associated_state"
+    },
+    {
+      "counterpart_id": "remaining_asia_pacific",
+      "disposition": "counterpart",
+      "identity_id": "m49:585",
+      "us_relationship": "freely_associated_state"
+    },
+    {
+      "counterpart_id": "remaining_asia_pacific",
+      "disposition": "counterpart",
+      "identity_id": "m49:586",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "latin_america_caribbean",
+      "disposition": "counterpart",
+      "identity_id": "m49:591",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_asia_pacific",
+      "disposition": "counterpart",
+      "identity_id": "m49:598",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "latin_america_caribbean",
+      "disposition": "counterpart",
+      "identity_id": "m49:600",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "latin_america_caribbean",
+      "disposition": "counterpart",
+      "identity_id": "m49:604",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_asia_pacific",
+      "disposition": "counterpart",
+      "identity_id": "m49:608",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_asia_pacific",
+      "disposition": "counterpart",
+      "identity_id": "m49:612",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "european_union",
+      "disposition": "counterpart",
+      "identity_id": "m49:616",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "european_union",
+      "disposition": "counterpart",
+      "identity_id": "m49:620",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "sub_saharan_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:624",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_asia_pacific",
+      "disposition": "counterpart",
+      "identity_id": "m49:626",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "",
+      "disposition": "us_dependency",
+      "identity_id": "m49:630",
+      "us_relationship": "us_dependency"
+    },
+    {
+      "counterpart_id": "west_asia_north_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:634",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "sub_saharan_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:638",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "european_union",
+      "disposition": "counterpart",
+      "identity_id": "m49:642",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "russia",
+      "disposition": "counterpart",
+      "identity_id": "m49:643",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "sub_saharan_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:646",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "latin_america_caribbean",
+      "disposition": "counterpart",
+      "identity_id": "m49:652",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "sub_saharan_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:654",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "latin_america_caribbean",
+      "disposition": "counterpart",
+      "identity_id": "m49:659",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "latin_america_caribbean",
+      "disposition": "counterpart",
+      "identity_id": "m49:660",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "latin_america_caribbean",
+      "disposition": "counterpart",
+      "identity_id": "m49:662",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "latin_america_caribbean",
+      "disposition": "counterpart",
+      "identity_id": "m49:663",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_europe",
+      "disposition": "counterpart",
+      "identity_id": "m49:666",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "latin_america_caribbean",
+      "disposition": "counterpart",
+      "identity_id": "m49:670",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_europe",
+      "disposition": "counterpart",
+      "identity_id": "m49:674",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "sub_saharan_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:678",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "west_asia_north_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:682",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "sub_saharan_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:686",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_europe",
+      "disposition": "counterpart",
+      "identity_id": "m49:688",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "sub_saharan_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:690",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "sub_saharan_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:694",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_asia_pacific",
+      "disposition": "counterpart",
+      "identity_id": "m49:702",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "european_union",
+      "disposition": "counterpart",
+      "identity_id": "m49:703",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_asia_pacific",
+      "disposition": "counterpart",
+      "identity_id": "m49:704",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "european_union",
+      "disposition": "counterpart",
+      "identity_id": "m49:705",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "sub_saharan_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:706",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "sub_saharan_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:710",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "sub_saharan_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:716",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "european_union",
+      "disposition": "counterpart",
+      "identity_id": "m49:724",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "sub_saharan_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:728",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "west_asia_north_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:729",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "west_asia_north_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:732",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "latin_america_caribbean",
+      "disposition": "counterpart",
+      "identity_id": "m49:740",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_europe",
+      "disposition": "counterpart",
+      "identity_id": "m49:744",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "sub_saharan_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:748",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "european_union",
+      "disposition": "counterpart",
+      "identity_id": "m49:752",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_europe",
+      "disposition": "counterpart",
+      "identity_id": "m49:756",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "west_asia_north_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:760",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_asia_pacific",
+      "disposition": "counterpart",
+      "identity_id": "m49:762",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_asia_pacific",
+      "disposition": "counterpart",
+      "identity_id": "m49:764",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "sub_saharan_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:768",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_asia_pacific",
+      "disposition": "counterpart",
+      "identity_id": "m49:772",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_asia_pacific",
+      "disposition": "counterpart",
+      "identity_id": "m49:776",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "latin_america_caribbean",
+      "disposition": "counterpart",
+      "identity_id": "m49:780",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "west_asia_north_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:784",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "west_asia_north_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:788",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "west_asia_north_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:792",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_asia_pacific",
+      "disposition": "counterpart",
+      "identity_id": "m49:795",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "latin_america_caribbean",
+      "disposition": "counterpart",
+      "identity_id": "m49:796",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_asia_pacific",
+      "disposition": "counterpart",
+      "identity_id": "m49:798",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "sub_saharan_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:800",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_europe",
+      "disposition": "counterpart",
+      "identity_id": "m49:804",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_europe",
+      "disposition": "counterpart",
+      "identity_id": "m49:807",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "west_asia_north_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:818",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_europe",
+      "disposition": "counterpart",
+      "identity_id": "m49:826",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_europe",
+      "disposition": "counterpart",
+      "identity_id": "m49:831",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_europe",
+      "disposition": "counterpart",
+      "identity_id": "m49:832",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_europe",
+      "disposition": "counterpart",
+      "identity_id": "m49:833",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "sub_saharan_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:834",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "",
+      "disposition": "domestic",
+      "identity_id": "m49:840",
+      "us_relationship": "domestic"
+    },
+    {
+      "counterpart_id": "",
+      "disposition": "us_dependency",
+      "identity_id": "m49:850",
+      "us_relationship": "us_dependency"
+    },
+    {
+      "counterpart_id": "sub_saharan_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:854",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "latin_america_caribbean",
+      "disposition": "counterpart",
+      "identity_id": "m49:858",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_asia_pacific",
+      "disposition": "counterpart",
+      "identity_id": "m49:860",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "latin_america_caribbean",
+      "disposition": "counterpart",
+      "identity_id": "m49:862",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_asia_pacific",
+      "disposition": "counterpart",
+      "identity_id": "m49:876",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "remaining_asia_pacific",
+      "disposition": "counterpart",
+      "identity_id": "m49:882",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "west_asia_north_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:887",
+      "us_relationship": "none"
+    },
+    {
+      "counterpart_id": "sub_saharan_africa",
+      "disposition": "counterpart",
+      "identity_id": "m49:894",
+      "us_relationship": "none"
+    }
+  ]
+}

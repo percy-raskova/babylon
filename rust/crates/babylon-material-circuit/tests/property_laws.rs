@@ -1,6 +1,6 @@
 use babylon_material_circuit::{
     advance_material_circuit, material_circuit_state_digest, BacklogRow, CapacityRow,
-    FreightMassCoefficient, GoodId, InputOutputCoefficient, InventoryRow, LaborCapacityRow,
+    CommodityDefinition, GoodId, InputOutputCoefficient, InventoryRow, LaborCapacityRow,
     LaborCoefficient, LogisticsNodeId, MaterialCircuitState, OrderAccessMode, OrderId, OrderRow,
     ProcessId, ProcessOutput, ProductionCommitment, RouteId, SiteId, SiteLogisticsNode,
     SupplierRoute, SupplierTransport, UnitId,
@@ -32,11 +32,13 @@ fn allocation_state(available: u64, first: u64, second: u64) -> MaterialCircuitS
         })
         .collect::<Vec<_>>();
     MaterialCircuitState {
+        capacity_supply: babylon_material_circuit::CapacitySupply::FiniteSchedule,
         period: 1,
         merchants: vec![],
         handling_coefficients: vec![],
         final_demand_principals: vec![],
         final_demand_orders: vec![],
+        accounting: babylon_material_circuit::CircuitAccounting::PhysicalControl,
         maintenance_binding: None,
         maintenance_service: None,
         site_logistics_nodes: vec![
@@ -49,10 +51,12 @@ fn allocation_state(available: u64, first: u64, second: u64) -> MaterialCircuitS
                 node_id: LogisticsNodeId::from_bytes([2; 32]),
             },
         ],
-        freight_mass_coefficients: vec![FreightMassCoefficient {
+        service_connections: vec![],
+        service_orders: vec![],
+        commodities: vec![CommodityDefinition {
             good_id: good,
             unit_id: unit,
-            grams_per_unit: 1,
+            kind: babylon_material_circuit::CommodityKind::Storable { grams_per_unit: 1 },
         }],
         route_stages: vec![],
         route_stage_capacities: vec![],
@@ -146,15 +150,30 @@ fn production_state(input: u64, labor: u64, capacity: u64) -> MaterialCircuitSta
     let labor_unit = UnitId::from_bytes(id::<5>());
     let process = ProcessId::from_bytes(id::<6>());
     MaterialCircuitState {
+        capacity_supply: babylon_material_circuit::CapacitySupply::FiniteSchedule,
         period: 1,
         merchants: vec![],
         handling_coefficients: vec![],
         final_demand_principals: vec![],
         final_demand_orders: vec![],
+        accounting: babylon_material_circuit::CircuitAccounting::PhysicalControl,
         maintenance_binding: None,
         maintenance_service: None,
         site_logistics_nodes: vec![],
-        freight_mass_coefficients: vec![],
+        service_connections: vec![],
+        service_orders: vec![],
+        commodities: vec![
+            CommodityDefinition {
+                good_id: input_good,
+                unit_id: goods_unit,
+                kind: babylon_material_circuit::CommodityKind::Storable { grams_per_unit: 1 },
+            },
+            CommodityDefinition {
+                good_id: output_good,
+                unit_id: goods_unit,
+                kind: babylon_material_circuit::CommodityKind::Storable { grams_per_unit: 1 },
+            },
+        ],
         route_stages: vec![],
         route_stage_capacities: vec![],
         corridor_capacities: vec![],
@@ -241,6 +260,11 @@ fn shared_inputs_and_labor_allocate_without_process_order_priority() {
         good_id: GoodId::from_bytes(id::<8>()),
         unit_id: UnitId::from_bytes(id::<4>()),
         quantity_per_batch: 5,
+    });
+    state.commodities.push(CommodityDefinition {
+        good_id: GoodId::from_bytes(id::<8>()),
+        unit_id: UnitId::from_bytes(id::<4>()),
+        kind: babylon_material_circuit::CommodityKind::Storable { grams_per_unit: 1 },
     });
     state.input_coefficients.push(InputOutputCoefficient {
         process_id: second_process,

@@ -5,8 +5,8 @@
 
 use crate::{
     material_staffing::{
-        apply_material_staffing, MaterialStaffingError, StaffingComposition, StaffingEffectContext,
-        StaffingEffects,
+        apply_material_staffing, validate_opening_labor, MaterialStaffingError,
+        StaffingComposition, StaffingEffectContext, StaffingEffects,
     },
     material_state::MaterialStateRows,
     material_world::{
@@ -24,7 +24,10 @@ use babylon_graph::{
     substrate::GraphSubstrate, working_copy::DetachedCopy,
 };
 use babylon_kernel::{content_digest::sha256_of, tick_content_hash::TickContentHash};
-use babylon_material_circuit::{close_material_period, MaterialCircuitError};
+use babylon_material_circuit::{
+    close_material_period_with_support, AidResolveInput, AidTransport, CircuitAccounting,
+    MaterialCircuitError,
+};
 use babylon_practice_contract::{
     organizer_action_batch, OrderedPracticeActionBatch, OrganizerCommitment,
 };
@@ -49,6 +52,8 @@ pub enum MaterialBaseError {
     },
     Period,
     MissingCandidate,
+    /// Accepted gift did not match its captured material mandate exactly.
+    AidMandateMismatch,
     MissingResolver,
     /// A material session must bind exactly one authored whole-period operation.
     InvocationCount {
@@ -108,6 +113,65 @@ impl MaterialBaseInputs<'_> {
             _ => Err(MaterialBaseError::World(MaterialWorldError::Wire)),
         }
     }
+    fn aid_inputs(&self) -> Result<Vec<AidResolveInput>, MaterialBaseError> {
+        use babylon_practice_contract::{OrganizerAidKind, OrganizerChoice};
+        let Some(accepted) = self.commitment else {
+            return Ok(Vec::new());
+        };
+        if !matches!(
+            accepted.command.choice,
+            OrganizerChoice::LocalAid | OrganizerChoice::RemoteAid
+        ) {
+            return Ok(Vec::new());
+        }
+        let config = self
+            .opening
+            .organizer_config()
+            .ok_or(MaterialWorldError::Wire)?;
+        let opening = self
+            .opening
+            .organizer_state()
+            .ok_or(MaterialWorldError::Wire)?;
+        let gift = babylon_practice_contract::organizer_aid_commitment(config, opening, accepted)
+            .map_err(|error| MaterialBaseError::World(error.into()))?;
+        let CircuitAccounting::Monetary(economy) = &self.opening.state().accounting else {
+            return Err(MaterialWorldError::Wire.into());
+        };
+        let mut matches = economy
+            .aid
+            .mandates
+            .iter()
+            .filter(|row| row.id == gift.mandate_id);
+        let mandate = matches
+            .next()
+            .ok_or(MaterialBaseError::AidMandateMismatch)?;
+        if matches.next().is_some()
+            || mandate.source_hash != gift.source_hash
+            || mandate.donor_actor != gift.donor_actor_id
+            || mandate.recipient_actor != gift.recipient_actor_id
+            || mandate.donor_contributor_id != gift.donor_contributor_id
+            || mandate.donor.as_bytes() != gift.donor_principal_id
+            || mandate.recipient.as_bytes() != gift.recipient_principal_id
+            || !matches!(
+                (gift.kind, mandate.transport),
+                (OrganizerAidKind::Local, AidTransport::Local)
+                    | (OrganizerAidKind::Remote, AidTransport::Routed { .. })
+            )
+            || accepted.command.expected_period != self.opening.completed_tick()
+            || accepted.resolves_period != self.opening.state().period
+        {
+            return Err(MaterialBaseError::AidMandateMismatch);
+        }
+        // The capture bounds the request; the material owner determines actual fulfillment.
+        Ok(vec![AidResolveInput {
+            mandate_id: mandate.id,
+            source_hash: mandate.source_hash,
+            admitted_period: accepted.command.expected_period,
+            donor_actor: gift.donor_actor_id,
+            recipient_actor: gift.recipient_actor_id,
+            quantity: mandate.maximum_quantity,
+        }])
+    }
     pub(crate) fn prepare(
         self,
         graph: &mut impl GraphSubstrate,
@@ -119,7 +183,28 @@ impl MaterialBaseInputs<'_> {
         }
         let composition = self.labor;
         {
-            let closed = close_material_period(self.opening.state())?;
+            validate_opening_labor(graph, context, composition, self.opening.state())?;
+            let aid_inputs = self.aid_inputs()?;
+            let collection_inputs = match (
+                self.opening.organizer_config(),
+                self.opening.organizer_state(),
+            ) {
+                (Some(config), Some(organizer)) => {
+                    crate::material_world::organizer_collection::input(
+                        config,
+                        organizer,
+                        self.commitment,
+                        self.opening.state(),
+                    )?
+                }
+                (None, None) if self.commitment.is_none() => vec![],
+                _ => return Err(MaterialWorldError::Wire.into()),
+            };
+            let closed = close_material_period_with_support(
+                self.opening.state(),
+                &aid_inputs,
+                &collection_inputs,
+            )?;
             let bindings = composition
                 .bindings()
                 .iter()
@@ -133,8 +218,16 @@ impl MaterialBaseInputs<'_> {
                 closed.closing_period(),
                 &requests,
             )?;
-            let transition = closed.finish_with_labor(effects.next_labor().to_vec())?;
-            Ok((self.opening.prepare_transition(transition)?, Some(effects)))
+            let mut transition = closed.finish_with_workforce(
+                effects.next_labor().to_vec(),
+                effects.next_member_labor().to_vec(),
+            )?;
+            transition.staffing_members = effects.member_receipts().to_vec();
+            Ok((
+                self.opening
+                    .prepare_transition(transition, self.commitment)?,
+                Some(effects),
+            ))
         }
     }
 }
@@ -146,6 +239,7 @@ pub enum MaterialReplayError {
     Material(MaterialWorldError),
     FoundationTick,
     Horizon,
+    ClockExhausted,
     StaleCandidate,
     Identity,
 }
@@ -310,7 +404,7 @@ pub struct MaterialReplaySession<G> {
     graph: ReplayTickSession<G>,
     material: MaterialWorldRegister,
     foundation_digest: [u8; 32],
-    horizon: u64,
+    duration: babylon_kernel::clock::CampaignDuration,
     labor: StaffingComposition,
 }
 /// Fully prepared candidate; dropping it publishes nothing.
@@ -349,13 +443,13 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> Materia
         graph: ReplayTickSession<G>,
         material: MaterialWorldRegister,
         foundation_digest: [u8; 32],
-        horizon: u64,
+        duration: babylon_kernel::clock::CampaignDuration,
         labor: StaffingComposition,
     ) -> Result<Self, MaterialReplayError> {
         if graph.completed_tick() != 0 || material.completed_tick() != 0 {
             return Err(MaterialReplayError::FoundationTick);
         }
-        if horizon == 0 || horizon > i64::MAX as u64 {
+        if duration.validate().is_err() {
             return Err(MaterialReplayError::Horizon);
         }
         graph.validate_material_cycle()?;
@@ -365,7 +459,7 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> Materia
             graph,
             material,
             foundation_digest,
-            horizon,
+            duration,
             labor,
         })
     }
@@ -386,8 +480,8 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> Materia
         self.foundation_digest
     }
     #[must_use]
-    pub const fn horizon(&self) -> u64 {
-        self.horizon
+    pub const fn duration(&self) -> babylon_kernel::clock::CampaignDuration {
+        self.duration
     }
 
     /// Hash the currently held graph and material world under the successor domain.
@@ -425,8 +519,11 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> Materia
         actions: &OrderedPracticeActionBatch,
         commitment: Option<&OrganizerCommitment>,
     ) -> Result<PreparedMaterialTick<G>, MaterialReplayError> {
-        if self.completed_tick() >= self.horizon {
+        if self.duration.complete(self.completed_tick()) {
             return Err(MaterialReplayError::Horizon);
+        }
+        if !self.duration.can_advance(self.completed_tick()) {
+            return Err(MaterialReplayError::ClockExhausted);
         }
         let (graph, material) = self.graph.prepare_material_advance(
             actions,
@@ -495,7 +592,7 @@ impl MaterialReplaySession<babylon_graph::hypergraph_store::HypergraphStore> {
     ) -> Result<(), MaterialReplayError> {
         let material = MaterialWorldRegister::decode(material_bytes)?;
         let tick = material.completed_tick();
-        if tick == 0 || tick > self.horizon {
+        if tick == 0 || !self.duration.contains(tick) {
             return Err(MaterialReplayError::Horizon);
         }
         let tick = i64::try_from(tick).map_err(|_| MaterialReplayError::Identity)?;

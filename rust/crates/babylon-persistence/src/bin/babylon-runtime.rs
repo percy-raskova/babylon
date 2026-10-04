@@ -26,7 +26,6 @@ use babylon_persistence::michigan_dynamic_hex_foundation;
 use babylon_persistence::{
     bootstrap_current_runtime, h3_reference_cohort::representative_h3_reference_cohort,
     identity::CampaignId, preflight_current_schema, CampaignFoundation, CommittedTickReceipt,
-    CompositeArchiveDossierProducer, CountyDossierProducer, PlaceDossierProducer,
     PostgresDiagnostic, SemanticArchiveStore,
 };
 use babylon_practice_contract::OrderedPracticeActionBatch;
@@ -337,16 +336,14 @@ fn run_to_tick(
     mut choice_receipt_writer: Option<&mut ChoiceReceiptJsonlWriter>,
 ) -> Result<(), String> {
     let foundation = material_diagnostic_foundation()?;
-    if target_tick > foundation.spec().horizon_ticks {
+    if !foundation.spec().duration.contains(target_tick) {
         return Err(format!(
             "requested target exceeds current authored horizon {}",
-            foundation.spec().horizon_ticks
+            foundation.spec().duration
         ));
     }
-    let foundation_identity = foundation_identity(
-        foundation.graph_foundation(),
-        foundation.spec().horizon_ticks,
-    );
+    let foundation_identity =
+        foundation_identity(foundation.graph_foundation(), foundation.spec().duration);
     let expected_digest = foundation.digest();
     let mut runtime = open_or_create_runtime(config, campaign, foundation)?;
     let mut completed = runtime.session().completed_tick();
@@ -465,7 +462,7 @@ struct ObservableTickReport {
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct FoundationIdentityTickReport {
     replay_seed: i64,
-    horizon_periods: u64,
+    duration: babylon_kernel::clock::CampaignDuration,
     foundation: [u8; 32],
     defines: [u8; 32],
     rules: [u8; 32],
@@ -602,7 +599,7 @@ impl SimulationTickReport {
                 "tick_duration_days": babylon_kernel::clock::DAYS_PER_TICK,
                 "scenario": self.scenario.as_str(),
                 "fixed_replay_seed": self.foundation.replay_seed,
-                "horizon_periods": self.foundation.horizon_periods,
+                "duration": self.foundation.duration,
                 "parameter_overrides": false,
                 "stochastic_draws": false,
                 "dynamic_h3_updates": false,
@@ -817,11 +814,11 @@ fn observable_bits<'a>(
 
 fn foundation_identity(
     foundation: &CampaignFoundation,
-    horizon_periods: u64,
+    duration: babylon_kernel::clock::CampaignDuration,
 ) -> FoundationIdentityTickReport {
     FoundationIdentityTickReport {
         replay_seed: i64::from_be_bytes(foundation.rng_seed().to_be_bytes()),
-        horizon_periods,
+        duration,
         foundation: sha256_of(foundation.canonical_bytes()),
         defines: foundation.content_digest().defines_hash,
         rules: foundation.content_digest().rules_hash,
@@ -1004,10 +1001,7 @@ fn choice_receipt_json_value(
 
 fn content_descriptor() -> Result<serde_json::Value, String> {
     let foundation = material_diagnostic_foundation()?;
-    let identity = foundation_identity(
-        foundation.graph_foundation(),
-        foundation.spec().horizon_ticks,
-    );
+    let identity = foundation_identity(foundation.graph_foundation(), foundation.spec().duration);
     let session = foundation
         .into_session()
         .map_err(|error| error.to_string())?;
@@ -1031,7 +1025,7 @@ fn content_descriptor() -> Result<serde_json::Value, String> {
             "slice_id": TICK_REPORT_SLICE_ID,
             "scenario": state.scenario_scope(),
             "fixed_replay_seed": identity.replay_seed,
-            "horizon_periods": identity.horizon_periods,
+            "duration": identity.duration,
             "tick_duration_days": babylon_kernel::clock::DAYS_PER_TICK,
             "parameter_overrides": false, "stochastic_draws": false,
             "dynamic_h3_updates": false
@@ -1050,7 +1044,10 @@ fn material_diagnostic_foundation(
 ) -> Result<babylon_persistence::material_runtime::MaterialRuntimeFoundation, String> {
     let catalog =
         babylon_persistence::michigan_material::MichiganMaterialCatalog::from_defines_toml(
-            include_str!("../../../../../content/scenarios/michigan/defines.toml"),
+            &include_str!("../../../../../content/scenarios/michigan/defines.toml").replace(
+                "DURATION = { kind = \"continuous\" }",
+                "DURATION = { kind = \"finite\", final_period = 16 }",
+            ),
         )
         .map_err(|error| error.to_string())?;
     babylon_persistence::michigan_content::MichiganContentPreset::new_campaign(
@@ -1069,7 +1066,7 @@ fn open_or_create_runtime(
     let stored = {
         let mut client = config.connect(NoTls).map_err(|error| error.to_string())?;
         client.query_opt(
-            "SELECT foundation_sha256 FROM babylon_state.material_campaign_foundation_v2 WHERE campaign_id = $1",
+            "SELECT foundation_sha256 FROM babylon_state.material_campaign_foundation_v3 WHERE campaign_id = $1",
             &[campaign.as_uuid()],
         ).map_err(|error| error.to_string())?
     };
@@ -1190,18 +1187,12 @@ fn run_archive_worker_once(config: &Config) -> Result<(), String> {
     store
         .verify_schema()
         .map_err(|error| format!("Archive schema refused: {error}"))?;
-    let county = CountyDossierProducer::try_new(config)
-        .map_err(|error| format!("Archive county producer refused: {error}"))?;
-    let place = PlaceDossierProducer::try_new(config)
-        .map_err(|error| format!("Archive place producer refused: {error}"))?;
-    let producer = CompositeArchiveDossierProducer::new(vec![
-        Box::new(babylon_persistence::OrganizerDossierProducer::new(config)),
-        Box::new(county),
-        Box::new(place),
-    ]);
+    let campaign = campaign_id()?;
+    let producer = babylon_persistence::captured_archive_producer(config, campaign)
+        .map_err(|error| format!("Archive captured source refused: {error}"))?;
     let mut worker = babylon_persistence::ArchiveWorker::new(config);
     let report = worker
-        .sweep_once(campaign_id()?, &producer)
+        .sweep_once(campaign, &producer)
         .map_err(|error| format!("Archive worker sweep refused: {error}"))?;
     println!(
         "Archive worker sweep complete; verified_tick={}; applied={}; \
@@ -1242,7 +1233,7 @@ fn inspect_archive(config: &Config) -> Result<(), String> {
             "SELECT \
                (SELECT pg_catalog.count(*) FROM babylon_meta.archive_knowledge_grant_v1), \
                (SELECT pg_catalog.count(*) FROM babylon_meta.archive_receipt_consumption_v1), \
-               (SELECT pg_catalog.count(*) FROM babylon_meta.archive_page_v1)",
+               (SELECT pg_catalog.count(*) FROM babylon_meta.archive_page_revision_v2)",
             &[],
         )
         .map_err(|error| postgres_failure("semantic Archive probe", &error))?;
@@ -1252,12 +1243,12 @@ fn inspect_archive(config: &Config) -> Result<(), String> {
     let consumptions: i64 = meta
         .try_get(1)
         .map_err(|error| postgres_failure("Archive consumption count decode", &error))?;
-    let pages: i64 = meta
+    let page_revisions: i64 = meta
         .try_get(2)
-        .map_err(|error| postgres_failure("Archive page count decode", &error))?;
+        .map_err(|error| postgres_failure("Archive page revision count decode", &error))?;
     println!(
         "Rust Archive schema=current; dirty_receipts={receipts}; tick_range={}..{}; \
-         knowledge_grants={grants}; consumed_receipts={consumptions}; pages={pages}.",
+         knowledge_grants={grants}; consumed_receipts={consumptions}; page_revisions={page_revisions}.",
         first.map_or_else(|| "none".to_owned(), |value| value.to_string()),
         last.map_or_else(|| "none".to_owned(), |value| value.to_string()),
     );
@@ -1447,10 +1438,13 @@ mod tests {
         let descriptor = super::content_descriptor().expect("captured content description");
         let foundation = super::material_diagnostic_foundation().unwrap();
         assert_eq!(
-            descriptor["scope"]["horizon_periods"],
-            foundation.spec().horizon_ticks
+            descriptor["scope"]["duration"],
+            serde_json::to_value(foundation.spec().duration).unwrap()
         );
-        assert_eq!(descriptor["scope"]["horizon_periods"], 16);
+        assert_eq!(
+            descriptor["scope"]["duration"],
+            serde_json::json!({"kind":"finite", "final_period":16})
+        );
         assert_eq!(
             descriptor["scope"]["fixed_replay_seed"],
             i64::from_be_bytes(foundation.graph_foundation().rng_seed().to_be_bytes())
@@ -1603,7 +1597,7 @@ mod tests {
             persistence_reopened_after_commit: true,
             foundation: FoundationIdentityTickReport {
                 replay_seed: super::FIXED_REPLAY_SEED,
-                horizon_periods: 16,
+                duration: babylon_kernel::clock::CampaignDuration::Finite { final_period: 16 },
                 foundation: [0x25; 32],
                 defines: [0x26; 32],
                 rules: [0x27; 32],
@@ -1909,7 +1903,10 @@ mod tests {
         let foundation = babylon_persistence::CampaignFoundation::capture(&session, bundle)
             .expect("tick-zero foundation captures");
 
-        let identity = foundation_identity(&foundation, 16);
+        let identity = foundation_identity(
+            &foundation,
+            babylon_kernel::clock::CampaignDuration::Finite { final_period: 16 },
+        );
 
         assert_eq!(
             identity.foundation,
@@ -1921,7 +1918,13 @@ mod tests {
             identity.reference,
             *foundation.reference_digest().as_bytes()
         );
-        assert_eq!(identity, foundation_identity(&foundation, 16));
+        assert_eq!(
+            identity,
+            foundation_identity(
+                &foundation,
+                babylon_kernel::clock::CampaignDuration::Finite { final_period: 16 }
+            )
+        );
     }
 
     #[test]

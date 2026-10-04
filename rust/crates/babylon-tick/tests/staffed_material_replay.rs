@@ -22,7 +22,7 @@ use babylon_kernel::replay::{ReplaySeed, ReplaySessionId};
 use babylon_kernel::tick_content_hash::RefDigest;
 use babylon_kernel::{content_digest::sha256_of, content_digest::ContentDigest};
 use babylon_material_circuit::{
-    BacklogRow, CapacityRow, CorridorCapacity, CorridorId, FreightMassCoefficient, GoodId,
+    BacklogRow, CapacityRow, CommodityDefinition, CorridorCapacity, CorridorId, GoodId,
     InputOutputCoefficient, InventoryRow, LaborCapacityRow, LaborCoefficient, LogisticsNodeId,
     MaterialCircuitState, OrderAccessMode, OrderId, OrderRow, ProcessId, ProcessOutput, RouteId,
     RouteStage, RouteStageCapacity, SiteId, SiteLogisticsNode, StaffingPolicy, StaffingPoolBinding,
@@ -35,8 +35,8 @@ use babylon_tick::material_replay::{
     MaterialReplaySession, PreparedMaterialTick,
 };
 use babylon_tick::material_staffing::{
-    StaffingComposition, StaffingNodeBinding, EMPLOYED_POPULATION, PREVIOUS_UNRETAINED_HOURS,
-    RESERVE_POPULATION, STAFFING_COMPOSITION_ID, STAFFING_FIELDS,
+    StaffingComposition, StaffingMemberNodeBinding, StaffingNodeBinding, EMPLOYED_POPULATION,
+    PREVIOUS_UNRETAINED_HOURS, RESERVE_POPULATION, STAFFING_COMPOSITION_ID, STAFFING_FIELDS,
 };
 use babylon_tick::material_state::{
     DynamicHexStateRow, MaterialState, MaterialStateRows, MaterialStateRowsInput,
@@ -54,15 +54,18 @@ const SCENARIO: &str = r"
 (scenario staffing/replay
   (deffield social-class/employed-population int extensive)
   (deffield social-class/reserve-population int extensive)
-  (deffield social-class/previous-unretained-labor-hours int extensive)
+  (deffield business/previous-unretained-labor-hours int extensive)
+  (deffield business/probability probability intensive)
   (deffield social-class/seen-employed int extensive)
   (deffield social-class/probability probability intensive)
   (node workers NodeType/SOCIAL_CLASS
     (social-class/employed-population 1)
     (social-class/reserve-population 0)
-    (social-class/previous-unretained-labor-hours 160)
     (social-class/seen-employed 1)
-    (social-class/probability 0.9p)))
+    (social-class/probability 0.9p))
+  (node workplace NodeType/BUSINESS
+    (business/previous-unretained-labor-hours 160)
+    (business/probability 0.9p)))
 ";
 
 const MATERIAL_CYCLE: &str = r#"
@@ -96,18 +99,18 @@ const FAILURE: &str = r#"
   :fuel 64
   (anchor :after metabolism)
   (bindings
-    (binding requested :field social-class/previous-unretained-labor-hours)
-    (binding probability :field social-class/probability))
+    (binding requested :field business/previous-unretained-labor-hours)
+    (binding probability :field business/probability))
   (when (> requested 0))
   (effects
     (emit EventType/STAFFING_ABORT)
-    (update-node self social-class/probability (add 0.4i))))
+    (update-node self business/probability (add 0.4i))))
 "#;
 
 fn subject() -> StableElementKey {
     StableElementKey::Node {
         scenario: "staffing/replay".to_owned(),
-        local_name: "workers".to_owned(),
+        local_name: "workplace".to_owned(),
     }
 }
 
@@ -138,6 +141,7 @@ fn labor(period: u64, available: u64) -> LaborCapacityRow {
 
 fn opening() -> MaterialCircuitState {
     let mut state = MaterialCircuitState {
+        capacity_supply: babylon_material_circuit::CapacitySupply::FiniteSchedule,
         period: 1,
         site_logistics_nodes: [1, 2]
             .map(|id| SiteLogisticsNode {
@@ -166,11 +170,15 @@ fn opening() -> MaterialCircuitState {
         supplier_routes: Vec::new(),
         route_stages: Vec::new(),
         route_stage_capacities: Vec::new(),
-        freight_mass_coefficients: [1, 2]
-            .map(|id| FreightMassCoefficient {
+        service_connections: vec![],
+        service_orders: vec![],
+        commodities: [1, 2]
+            .map(|id| CommodityDefinition {
                 good_id: good(id),
                 unit_id: unit(2),
-                grams_per_unit: 1000,
+                kind: babylon_material_circuit::CommodityKind::Storable {
+                    grams_per_unit: 1000,
+                },
             })
             .to_vec(),
         inventory: vec![InventoryRow {
@@ -197,6 +205,7 @@ fn opening() -> MaterialCircuitState {
         handling_coefficients: Vec::new(),
         final_demand_principals: Vec::new(),
         final_demand_orders: Vec::new(),
+        accounting: babylon_material_circuit::CircuitAccounting::PhysicalControl,
         maintenance_binding: None,
         maintenance_service: None,
     };
@@ -253,6 +262,26 @@ fn install_freight(state: &mut MaterialCircuitState) {
     });
 }
 
+fn resident_member(pool: &StaffingPoolBinding) -> StaffingMemberNodeBinding {
+    use babylon_material_circuit::{
+        FinalDemandPrincipalId, StaffingMemberBinding, StaffingMemberId,
+    };
+    StaffingMemberNodeBinding::try_new(
+        StableElementKey::Node {
+            scenario: "staffing/replay".to_owned(),
+            local_name: "workers".to_owned(),
+        },
+        StaffingMemberBinding::try_new(
+            StaffingMemberId::from_bytes(pool.site_id().as_bytes()),
+            FinalDemandPrincipalId::from_bytes([30; 32]),
+            "county:26163".parse().unwrap(),
+            pool.labor_force(),
+        )
+        .unwrap(),
+    )
+    .unwrap()
+}
+
 fn staffed_labor() -> StaffingComposition {
     let pool = StaffingPoolBinding::try_new(
         StaffingPoolId::from_bytes([1; 32]),
@@ -263,13 +292,26 @@ fn staffed_labor() -> StaffingComposition {
         vec![StaffingWorkSource::Production(process())],
     )
     .unwrap();
-    StaffingComposition::try_new(vec![StaffingNodeBinding::try_new(subject(), pool).unwrap()])
-        .unwrap()
+    StaffingComposition::try_new(vec![StaffingNodeBinding::try_new(
+        subject(),
+        pool.clone(),
+        vec![resident_member(&pool)],
+    )
+    .unwrap()])
+    .unwrap()
 }
 
 fn try_session_with_authored_rules(
     rules: &str,
     labor: StaffingComposition,
+) -> Result<Session, MaterialReplayError> {
+    try_session_with_material(rules, labor, opening())
+}
+
+fn try_session_with_material(
+    rules: &str,
+    labor: StaffingComposition,
+    material: MaterialCircuitState,
 ) -> Result<Session, MaterialReplayError> {
     let foundation = michigan_dynamic_hex_foundation::michigan_dynamic_hex_foundation().unwrap();
     let (_, parsed) = split_content(rules).unwrap();
@@ -291,9 +333,9 @@ fn try_session_with_authored_rules(
     .map_err(MaterialReplayError::Graph)?;
     MaterialReplaySession::new(
         graph,
-        MaterialWorldRegister::try_new(0, opening()).unwrap(),
+        MaterialWorldRegister::try_new(0, material).unwrap(),
         sha256_of(b"staffed-replay-fixture-foundation"),
-        7,
+        babylon_kernel::clock::CampaignDuration::Finite { final_period: 7 },
         labor,
     )
 }
@@ -301,6 +343,105 @@ fn try_session_with_authored_rules(
 fn session(rules: &str) -> Session {
     try_session(rules, staffed_labor()).unwrap()
 }
+
+fn paid_material() -> MaterialCircuitState {
+    use babylon_kernel::currency::Currency;
+    use babylon_material_circuit::{
+        AccountId, CashAccount, CircuitAccounting, EmploymentTerms, FinalDemandPrincipal,
+        FinalDemandPrincipalId, MonetaryBook, MonetaryCircuit, OutboundOrderId, PurchaseEscrow,
+    };
+    let mut material = opening();
+    let household = FinalDemandPrincipalId::from_bytes([30; 32]);
+    material.final_demand_principals.push(FinalDemandPrincipal {
+        id: household,
+        location: "county:26163".parse().unwrap(),
+    });
+    let mut book = MonetaryBook::open(vec![
+        CashAccount {
+            id: AccountId::Site(site(1)),
+            cash: Currency::from_micro_units(1000),
+        },
+        CashAccount {
+            id: AccountId::Site(site(2)),
+            cash: Currency::from_micro_units(0),
+        },
+        CashAccount {
+            id: AccountId::Household(household),
+            cash: Currency::from_micro_units(0),
+        },
+    ])
+    .unwrap();
+    for order in &material.orders {
+        book.reserve_purchase(
+            PurchaseEscrow::new(
+                OutboundOrderId::Delivery(order.order_id),
+                AccountId::Site(order.buyer_site_id),
+                AccountId::Site(order.supplier_site_id),
+                order.ordered,
+                Currency::from_micro_units(2),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+    }
+    material.accounting = CircuitAccounting::Monetary(Box::new({
+        let book = book;
+        MonetaryCircuit {
+            aid: babylon_material_circuit::AidBook::default(),
+            household_time: babylon_material_circuit::HouseholdTimeAccounting::NotModeled,
+            financial: babylon_material_circuit::FinancialInstitutions::empty(),
+            member_labor: material
+                .labor
+                .iter()
+                .map(|row| babylon_material_circuit::MemberLaborCapacityRow {
+                    member_id: babylon_material_circuit::StaffingMemberId::from_bytes(
+                        row.site_id.as_bytes(),
+                    ),
+                    period: row.period,
+                    available_hours: row.available,
+                })
+                .collect(),
+            costs: babylon_material_circuit::HistoricalCostBook::open(
+                &book,
+                material
+                    .inventory
+                    .iter()
+                    .map(|row| babylon_material_circuit::StockCarryingValue {
+                        owner: AccountId::Site(row.site_id),
+                        good_id: row.good_id,
+                        unit_id: row.unit_id,
+                        amount: Currency::from_micro_units(0),
+                    })
+                    .collect(),
+                vec![],
+                vec![],
+                vec![],
+            )
+            .unwrap(),
+            book,
+            recurring: None,
+            employment: vec![EmploymentTerms {
+                member_id: babylon_material_circuit::StaffingMemberId::from_bytes(
+                    (site(1)).as_bytes(),
+                ),
+                site_id: site(1),
+                unit_id: unit(1),
+                payee: household,
+                compensation: babylon_material_circuit::LaborCompensation::Wage(
+                    Currency::from_micro_units(1),
+                ),
+            }],
+        }
+    }));
+    material
+}
+
+fn paid_session() -> Session {
+    try_session_with_material(MATERIAL_CYCLE, staffed_labor(), paid_material()).unwrap()
+}
+
+#[path = "staffed_material_replay/recurring.rs"]
+mod recurring;
 
 fn try_session(
     additional_rules: &str,
@@ -423,7 +564,11 @@ fn advance(session: &mut Session, sink: &mut CollectingSink) -> MaterialTickRece
 
 fn assert_stock(session: &Session, field: &str, expected: f64) {
     let graph = session.graph_session().graph();
-    let nodes = graph.nodes("SOCIAL_CLASS");
+    let nodes = graph.nodes(if field == PREVIOUS_UNRETAINED_HOURS {
+        "BUSINESS"
+    } else {
+        "SOCIAL_CLASS"
+    });
     assert_eq!(nodes.len(), 1);
     assert_eq!(
         graph.node_attribute(nodes[0], field).unwrap().to_bits(),
@@ -643,6 +788,92 @@ fn prepared_and_failed_commit_publish_nothing_and_retry_has_identical_joint_iden
 }
 
 #[test]
+fn wage_and_dispatch_candidate_is_atomic_and_restarts_through_paid_arrival() {
+    use babylon_kernel::currency::Currency;
+    use babylon_material_circuit::{AccountId, CircuitAccounting};
+    let mut session = paid_session();
+    let mut sink = CollectingSink::default();
+    let before = live(&session, &sink);
+    let candidate = prepare(&session);
+    let receipts = decode_material_receipts(candidate.material().receipt_bytes()).unwrap();
+    assert_eq!(receipts.wage_accruals.len(), 1);
+    assert_eq!(
+        receipts.wage_accruals[0].amount,
+        Currency::from_micro_units(160)
+    );
+    assert_eq!(receipts.labor_use[0].paid_idle_hours, 160);
+    let employer = receipts
+        .income
+        .iter()
+        .find(|row| row.account == AccountId::Site(site(1)))
+        .unwrap();
+    assert_eq!(
+        employer.statement.idle_labor_expense,
+        Currency::from_micro_units(160)
+    );
+    assert_eq!(employer.net_income, Currency::from_micro_units(-160));
+    let household = receipts
+        .income
+        .iter()
+        .find(|row| matches!(row.account, AccountId::Household(_)))
+        .unwrap();
+    assert_eq!(
+        household.statement.wage_income,
+        Currency::from_micro_units(160)
+    );
+    assert_eq!(household.net_income, Currency::from_micro_units(160));
+    assert_eq!(receipts.money_transfers.len(), 2);
+    let expected = *candidate.identity();
+    let refused = session.commit_prepared_and_publish(&mut sink, candidate, |_| {
+        Err::<ReplayCommitDisposition, _>("paid commit refused")
+    });
+    assert!(matches!(
+        refused,
+        Err(MaterialCommitError::Commit("paid commit refused"))
+    ));
+    assert_eq!(live(&session, &sink), before);
+    let retry = prepare(&session);
+    assert_eq!(*retry.identity(), expected);
+    let graph = retry.graph_report().result_stable_graph().clone();
+    let graph_material = owned_checkpoint_rows(retry.graph_report().material_state_rows());
+    let registers = retry
+        .graph_report()
+        .result_registers()
+        .canonical_bytes()
+        .to_vec();
+    let material = retry.material().register().canonical_bytes().to_vec();
+    commit(&mut session, &mut sink, retry);
+    let mut restored = paid_session();
+    restored
+        .restore_full_checkpoint(&graph, &graph_material, &registers, &material)
+        .unwrap();
+    let mut restored_sink = CollectingSink::default();
+    for _ in 2..=4 {
+        let next = prepare(&session);
+        let replay = prepare(&restored);
+        assert_eq!(replay.identity(), next.identity());
+        assert_eq!(
+            replay.material().receipt_bytes(),
+            next.material().receipt_bytes()
+        );
+        commit(&mut session, &mut sink, next);
+        commit(&mut restored, &mut restored_sink, replay);
+    }
+    assert_eq!(session.material(), restored.material());
+    let CircuitAccounting::Monetary(economy) = &restored.material().state().accounting else {
+        panic!("paid circuit")
+    };
+    assert_eq!(
+        economy.book.cash(AccountId::Site(site(2))).unwrap(),
+        Currency::from_micro_units(8)
+    );
+    assert_eq!(
+        economy.book.total_cash_and_reserves().unwrap(),
+        Currency::from_micro_units(1000)
+    );
+}
+
+#[test]
 fn successful_acknowledgement_publishes_stable_staffing_and_identity_free_audit_evidence() {
     let mut session = session("");
     let mut sink = CollectingSink::default();
@@ -691,9 +922,9 @@ fn successful_acknowledgement_publishes_stable_staffing_and_identity_free_audit_
     assert_eq!(
         audit[1..].iter().map(|row| &row.effect).collect::<Vec<_>>(),
         [
+            &EffectSignature::NodeField(PREVIOUS_UNRETAINED_HOURS.to_owned()),
             &EffectSignature::NodeField(EMPLOYED_POPULATION.to_owned()),
             &EffectSignature::NodeField(RESERVE_POPULATION.to_owned()),
-            &EffectSignature::NodeField(PREVIOUS_UNRETAINED_HOURS.to_owned()),
         ]
     );
     assert_eq!(
@@ -889,3 +1120,5 @@ fn removing_the_staffed_subject_is_refused_by_the_existing_shape_verb_loader() {
         assert!(message.contains("graph-shape verbs"), "{message}");
     }
 }
+#[path = "staffed_material_replay/financial.rs"]
+mod financial;

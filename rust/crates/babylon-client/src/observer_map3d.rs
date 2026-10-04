@@ -3,17 +3,15 @@
 //! simulated buildings. All economic bytes come from the installed frame.
 
 use bevy::asset::RenderAssetUsages;
-use bevy::camera::{visibility::RenderLayers, Viewport};
+use bevy::camera::Viewport;
 use bevy::ecs::system::SystemParam;
 use bevy::input::mouse::{AccumulatedMouseMotion, AccumulatedMouseScroll, MouseScrollUnit};
-use bevy::light::CascadeShadowConfigBuilder;
 use bevy::mesh::PrimitiveTopology;
 use bevy::picking::pointer::PointerButton;
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 
 use crate::atlas::CountyAtlas;
-use crate::decision_surface::{DeclaredSurface, SurfaceId};
 use crate::map::{HoveredCounty, SelectedCounty};
 use crate::map_economy_lens::{project_map_lens, MapLens};
 use crate::observer::ObserverSession;
@@ -25,13 +23,16 @@ use crate::production::PrimaryView;
 
 #[path = "map_relationships.rs"]
 mod relationships;
+#[path = "map_scene.rs"]
+mod scene;
+use scene::setup_map;
 
 const MAP_LAYER: usize = 2;
 const METRES_TO_SCENE: f32 = 0.001;
 const BASE_HEIGHT: f32 = 3.0;
 const DATA_HEIGHT: f32 = 125.0;
 
-pub(crate) const MAP_VIEW_HELP: &str = "Relationships keeps county slabs level. Dashed arrows are schematic dependencies, not physical route geometry. Economic lenses compare county readings by height; gray means unavailable or not modeled, while zero is a measured account. Heights never locate terrain, buildings or factories.\nRight-drag orbit | middle-drag pan | wheel / +/- zoom | Home reset";
+pub(crate) const MAP_VIEW_HELP: &str = "Relationships keeps county slabs level. Dashed arrows are schematic dependencies, not physical route geometry. Economic lenses compare county readings by height; gray means unavailable or not modeled, while zero is a measured account. Heights never locate terrain, buildings or factories. Atlas: Michigan 2023 land; other domestic counties 2024 boundaries. Alaska and Hawaii are relocated insets.\nRight-drag orbit | middle-drag pan | wheel / +/- zoom | Home reset";
 
 /// Identifies the observer's perspective map camera, separate from production.
 #[derive(Component)]
@@ -47,20 +48,26 @@ struct CountySlab {
 #[derive(Component)]
 struct MapLegend;
 
-#[derive(Resource)]
-struct MichiganMapGeometry {
+#[derive(Resource, Default)]
+struct MapGeometry {
     extent: Vec2,
 }
 
 /// Camera motion is direct, without inertia or automatic drift. This also
 /// keeps reduced-motion mode free of incidental movement.
-#[derive(Resource)]
+#[derive(Resource, Clone, PartialEq)]
 struct MapOrbit {
     target: Vec3,
     yaw: f32,
     pitch: f32,
     distance: f32,
     fitted_distance: f32,
+}
+
+impl Default for MapOrbit {
+    fn default() -> Self {
+        Self::new(1.0)
+    }
 }
 
 impl MapOrbit {
@@ -191,163 +198,6 @@ fn county_prism(
     outline.insert_attribute(Mesh::ATTRIBUTE_NORMAL, vec![[0.0, 1.0, 0.0]; edges.len()]);
     outline.insert_attribute(Mesh::ATTRIBUTE_POSITION, edges);
     (body, outline)
-}
-
-fn setup_map(
-    mut commands: Commands,
-    atlas: Res<CountyAtlas>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-) {
-    let counties: Vec<_> = (0..atlas.len())
-        .filter(|index| {
-            atlas
-                .county(*index)
-                .is_some_and(|county| county.fips.starts_with("26"))
-        })
-        .collect();
-    assert_eq!(
-        counties.len(),
-        83,
-        "Michigan geography must contain all 83 counties"
-    );
-    let (min, max) = counties
-        .iter()
-        .filter_map(|index| atlas.county(*index))
-        .map(|county| (county.bbox.min, county.bbox.max))
-        .reduce(|(a, b), (c, d)| (a.min(c), b.max(d)))
-        .expect("Michigan has geography");
-    let origin = (min + max) * 0.5;
-    let extent = (max - min) * METRES_TO_SCENE;
-    let triangles = crate::tessellate::tessellate(&atlas);
-    commands.insert_resource(relationships::CountyAnchors::from_atlas(
-        &atlas, &counties, origin,
-    ));
-    for index in counties {
-        let county = atlas.county(index).expect("Michigan index exists");
-        let (body, edge) = county_prism(&atlas, &triangles, index, origin);
-        let outline = materials.add(StandardMaterial {
-            base_color: theme::INK,
-            unlit: true,
-            ..default()
-        });
-        commands
-            .spawn((
-                Mesh3d(meshes.add(body)),
-                MeshMaterial3d(materials.add(StandardMaterial {
-                    base_color: theme::LAND,
-                    perceptual_roughness: 0.78,
-                    metallic: 0.08,
-                    ..default()
-                })),
-                Transform::from_scale(Vec3::new(1.0, BASE_HEIGHT, 1.0)),
-                RenderLayers::layer(MAP_LAYER),
-                CountySlab {
-                    atlas_index: index,
-                    fips: county.fips.to_owned(),
-                    outline: outline.clone(),
-                },
-                DeclaredSurface::new(SurfaceId::ObserverShell),
-            ))
-            .with_child((
-                Mesh3d(meshes.add(edge)),
-                MeshMaterial3d(outline),
-                RenderLayers::layer(MAP_LAYER),
-                Pickable::IGNORE,
-                DeclaredSurface::new(SurfaceId::ObserverShell),
-            ))
-            .observe(hover_county)
-            .observe(leave_county)
-            .observe(select_county);
-    }
-    spawn_map_scene(&mut commands, extent, &mut meshes, &mut materials);
-}
-
-fn spawn_map_scene(
-    commands: &mut Commands,
-    extent: Vec2,
-    meshes: &mut Assets<Mesh>,
-    materials: &mut Assets<StandardMaterial>,
-) {
-    let plinth = materials.add(StandardMaterial {
-        base_color: theme::INK,
-        perceptual_roughness: 0.94,
-        ..default()
-    });
-    commands.spawn((
-        Mesh3d(meshes.add(Cuboid::new(extent.x + 60.0, 10.0, extent.y + 60.0))),
-        MeshMaterial3d(plinth),
-        Transform::from_xyz(0.0, -5.1, 0.0),
-        RenderLayers::layer(MAP_LAYER),
-        Pickable::IGNORE,
-        DeclaredSurface::new(SurfaceId::ObserverShell),
-    ));
-    commands.spawn((
-        DirectionalLight {
-            color: theme::PAPER,
-            illuminance: 9000.0,
-            shadows_enabled: true,
-            ..default()
-        },
-        Transform::from_xyz(-400.0, 800.0, 300.0).looking_at(Vec3::ZERO, Vec3::Y),
-        CascadeShadowConfigBuilder {
-            first_cascade_far_bound: extent.max_element() * 0.5,
-            maximum_distance: extent.max_element() * 6.0,
-            ..default()
-        }
-        .build(),
-        RenderLayers::layer(MAP_LAYER),
-    ));
-    commands.spawn((
-        DirectionalLight {
-            color: theme::BLUE,
-            illuminance: 1800.0,
-            ..default()
-        },
-        Transform::from_xyz(500.0, 300.0, -300.0).looking_at(Vec3::ZERO, Vec3::Y),
-        RenderLayers::layer(MAP_LAYER),
-    ));
-    let orbit = MapOrbit::new(extent.max_element());
-    commands.spawn((
-        Camera3d::default(),
-        Camera {
-            clear_color: ClearColorConfig::Custom(theme::INK),
-            ..default()
-        },
-        Projection::Perspective(PerspectiveProjection {
-            fov: 45.0_f32.to_radians(),
-            near: 0.5,
-            far: 12_000.0,
-            ..default()
-        }),
-        orbit.transform(),
-        RenderLayers::layer(MAP_LAYER),
-        ObserverMapCamera,
-        Msaa::Sample4,
-    ));
-    commands.insert_resource(orbit);
-    commands.insert_resource(MichiganMapGeometry { extent });
-    commands.spawn((
-        Text::new("Michigan | 83 counties | geographic boundaries"),
-        TextFont {
-            font_size: 14.0,
-            ..default()
-        },
-        TextColor(theme::PAPER),
-        crate::observer_ui::ObserverFontRole::Body,
-        Node {
-            position_type: PositionType::Absolute,
-            max_width: px(700),
-            padding: UiRect::axes(px(10), px(6)),
-            ..default()
-        },
-        BackgroundColor(theme::INK),
-        ZIndex(4),
-        Pickable::IGNORE,
-        Visibility::Hidden,
-        MapLegend,
-        DeclaredSurface::new(SurfaceId::ObserverShell),
-    ));
 }
 
 fn hover_county(
@@ -541,11 +391,7 @@ struct NavigationInput<'w, 's> {
     buttons: Query<'w, 's, &'static Interaction, With<Button>>,
 }
 
-fn navigate(
-    input: NavigationInput,
-    geometry: Res<MichiganMapGeometry>,
-    mut orbit: ResMut<MapOrbit>,
-) {
+fn navigate(input: NavigationInput, geometry: Res<MapGeometry>, mut orbit: ResMut<MapOrbit>) {
     if *input.view != PrimaryView::Map
         || input.ui.menu_open
         || input.ui.splash_visible
@@ -625,7 +471,7 @@ fn navigate(
 fn keyboard_orbit(
     keys: &ButtonInput<KeyCode>,
     dt: f32,
-    geometry: &MichiganMapGeometry,
+    geometry: &MapGeometry,
     orbit: &mut MapOrbit,
 ) {
     let yaw_key = if keys.pressed(KeyCode::KeyD) {
@@ -663,23 +509,24 @@ fn keyboard_orbit(
 
 #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
 fn sync_camera(
-    orbit: Res<MapOrbit>,
+    mut orbit: ResMut<MapOrbit>,
+    geometry: Res<MapGeometry>,
     view: Res<PrimaryView>,
     viewport: Res<ObserverViewport>,
     windows: Query<&Window, With<PrimaryWindow>>,
-    mut cameras: Query<(&mut Camera, &mut Transform), With<ObserverMapCamera>>,
+    mut cameras: Query<(&mut Camera, &mut Transform, &mut Projection), With<ObserverMapCamera>>,
 ) {
-    let Ok((mut camera, mut transform)) = cameras.single_mut() else {
+    let Ok((mut camera, mut transform, mut projection)) = cameras.single_mut() else {
         return;
     };
     let active = *view == PrimaryView::Map;
     if camera.is_active != active {
         camera.is_active = active;
     }
-    if orbit.is_changed() {
-        transform.set_if_neq(orbit.transform());
-    }
     if let (Some(rect), Ok(window)) = (viewport.0, windows.single()) {
+        let mut fitted = orbit.clone();
+        scene::fit_orbit(&mut fitted, geometry.extent, rect.width() / rect.height());
+        orbit.set_if_neq(fitted);
         let value = Viewport {
             physical_position: (rect.min * window.scale_factor()).as_uvec2(),
             physical_size: (rect.size() * window.scale_factor()).as_uvec2(),
@@ -692,6 +539,14 @@ fn sync_camera(
             camera.viewport = Some(value);
         }
     }
+    transform.set_if_neq(orbit.transform());
+    let far = scene::camera_far(geometry.extent, &orbit);
+    if matches!(&*projection, Projection::Perspective(perspective) if perspective.far.to_bits() != far.to_bits())
+    {
+        if let Projection::Perspective(perspective) = &mut *projection {
+            perspective.far = far;
+        }
+    }
 }
 
 pub struct ObserverMap3dPlugin;
@@ -701,13 +556,22 @@ impl Plugin for ObserverMap3dPlugin {
             app.add_plugins(MeshPickingPlugin);
         }
         app.init_asset::<StandardMaterial>()
-            .add_systems(Startup, setup_map.after(crate::map::load_county_atlas))
+            .init_resource::<MapGeometry>()
+            .init_resource::<MapOrbit>()
+            .init_resource::<relationships::CountyAnchors>()
+            .add_systems(
+                Update,
+                setup_map
+                    .after(crate::map::MapScopeSet)
+                    .before(ObserverSet::Paint),
+            )
             .add_systems(Update, navigate.in_set(ObserverSet::Input))
             .add_systems(Update, update_observation.in_set(ObserverSet::Paint))
             .add_systems(
                 Update,
                 (sync_camera, place_legend).after(ObserverSet::Paint),
             );
+        app.add_systems(Update, scene::place_insets.after(sync_camera));
         relationships::install(app);
     }
 }
@@ -744,7 +608,7 @@ mod tests {
                 Vec2::ZERO,
                 Vec2::splat(500.0),
             ))))
-            .insert_resource(MichiganMapGeometry {
+            .insert_resource(MapGeometry {
                 extent: Vec2::splat(200.0),
             })
             .insert_resource(MapOrbit::new(200.0))
@@ -1010,38 +874,38 @@ mod tests {
             counties: Vec::new(),
             production: None,
         };
-        assert!(ObserverFrame(Some(snapshot.clone()))
+        assert!(ObserverFrame(Some(snapshot.clone()), None)
             .for_session(&session)
             .is_some());
         snapshot.resolve_tick = 3;
-        assert!(ObserverFrame(Some(snapshot.clone()))
+        assert!(ObserverFrame(Some(snapshot.clone()), None)
             .for_session(&session)
             .is_none());
         snapshot.resolve_tick = 4;
         snapshot.visibility = ObserverVisibility::KnownPreview;
-        assert!(ObserverFrame(Some(snapshot.clone()))
+        assert!(ObserverFrame(Some(snapshot.clone()), None)
             .for_session(&session)
             .is_none());
         session.perspective = Perspective::PlayerKnowledge;
-        assert!(ObserverFrame(Some(snapshot.clone()))
+        assert!(ObserverFrame(Some(snapshot.clone()), None)
             .for_session(&session)
             .is_some());
         session.foundation_digest = Some("g".repeat(64));
-        assert!(ObserverFrame(Some(snapshot.clone()))
+        assert!(ObserverFrame(Some(snapshot.clone()), None)
             .for_session(&session)
             .is_none());
         session.foundation_digest = Some(snapshot.foundation_digest.clone());
         snapshot.tick_content_hash = Some("b".repeat(64));
-        assert!(ObserverFrame(Some(snapshot.clone()))
+        assert!(ObserverFrame(Some(snapshot.clone()), None)
             .for_session(&session)
             .is_none());
         session.viewed_tick = 3;
         snapshot.resolve_tick = 3;
-        assert!(ObserverFrame(Some(snapshot.clone()))
+        assert!(ObserverFrame(Some(snapshot.clone()), None)
             .for_session(&session)
             .is_some());
         snapshot.campaign_id = uuid::Uuid::from_u128(1).to_string();
-        assert!(ObserverFrame(Some(snapshot))
+        assert!(ObserverFrame(Some(snapshot), None)
             .for_session(&session)
             .is_none());
     }
@@ -1060,7 +924,7 @@ mod tests {
                 Vec2::ZERO,
                 Vec2::splat(500.0),
             ))))
-            .insert_resource(MichiganMapGeometry {
+            .insert_resource(MapGeometry {
                 extent: Vec2::splat(200.0),
             })
             .insert_resource(MapOrbit::new(200.0))
@@ -1292,3 +1156,7 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "map_scope_tests.rs"]
+mod scope_tests;

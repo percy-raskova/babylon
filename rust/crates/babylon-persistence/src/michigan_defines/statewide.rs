@@ -140,7 +140,10 @@ pub(super) fn validate(defines: &super::MichiganDefines) -> Result<(), MichiganD
     }) {
         return Err(Value("unresolved traded commodity template coverage"));
     }
-    if !(1..=defines.horizon_periods).contains(&defines.statewide.finite_order_periods)
+    if defines.statewide.finite_order_periods == 0
+        || !defines
+            .duration
+            .contains(defines.statewide.finite_order_periods)
         || !positive(defines.statewide.terminal_attachment_limit_meters)
     {
         return Err(Value(

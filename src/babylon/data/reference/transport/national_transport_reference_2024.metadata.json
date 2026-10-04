@@ -1,0 +1,878 @@
+{
+  "artifact": {
+    "bytes": 1044791,
+    "decoded_bytes": 8964690,
+    "path": "src/babylon/data/reference/transport/national_transport_reference_2024.json.gz",
+    "rows": 3373,
+    "sha256": "d085520bb68e65927c6d5e395f493498d1fccf394f5ee64a7c06507e816b1ab3"
+  },
+  "audit": {
+    "general_diameter": 10,
+    "general_targets": 3162,
+    "unavailable_bulk_counties": [
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "dry_bulk",
+        "county": "02013"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "dry_bulk",
+        "county": "02016"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "dry_bulk",
+        "county": "02020"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "dry_bulk",
+        "county": "02050"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "dry_bulk",
+        "county": "02060"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "dry_bulk",
+        "county": "02063"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "dry_bulk",
+        "county": "02066"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "dry_bulk",
+        "county": "02068"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "dry_bulk",
+        "county": "02070"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "dry_bulk",
+        "county": "02090"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "dry_bulk",
+        "county": "02100"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "dry_bulk",
+        "county": "02105"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "dry_bulk",
+        "county": "02110"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "dry_bulk",
+        "county": "02122"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "dry_bulk",
+        "county": "02130"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "dry_bulk",
+        "county": "02150"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "dry_bulk",
+        "county": "02158"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "dry_bulk",
+        "county": "02164"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "dry_bulk",
+        "county": "02170"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "dry_bulk",
+        "county": "02180"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "dry_bulk",
+        "county": "02185"
+      },
+      {
+        "can_receive": false,
+        "can_supply": true,
+        "cargo": "dry_bulk",
+        "county": "02188"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "dry_bulk",
+        "county": "02195"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "dry_bulk",
+        "county": "02198"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "dry_bulk",
+        "county": "02220"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "dry_bulk",
+        "county": "02230"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "dry_bulk",
+        "county": "02240"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "dry_bulk",
+        "county": "02275"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "dry_bulk",
+        "county": "02282"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "dry_bulk",
+        "county": "02290"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "dry_bulk",
+        "county": "15001"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "dry_bulk",
+        "county": "15003"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "dry_bulk",
+        "county": "15005"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "dry_bulk",
+        "county": "15007"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "dry_bulk",
+        "county": "15009"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "dry_bulk",
+        "county": "25007"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "dry_bulk",
+        "county": "25019"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "dry_bulk",
+        "county": "53055"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "crude_oil",
+        "county": "02013"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "crude_oil",
+        "county": "02016"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "crude_oil",
+        "county": "02020"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "crude_oil",
+        "county": "02050"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "crude_oil",
+        "county": "02060"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "crude_oil",
+        "county": "02066"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "crude_oil",
+        "county": "02068"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "crude_oil",
+        "county": "02070"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "crude_oil",
+        "county": "02100"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "crude_oil",
+        "county": "02105"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "crude_oil",
+        "county": "02110"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "crude_oil",
+        "county": "02122"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "crude_oil",
+        "county": "02130"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "crude_oil",
+        "county": "02150"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "crude_oil",
+        "county": "02158"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "crude_oil",
+        "county": "02164"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "crude_oil",
+        "county": "02170"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "crude_oil",
+        "county": "02180"
+      },
+      {
+        "can_receive": false,
+        "can_supply": true,
+        "cargo": "crude_oil",
+        "county": "02185"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "crude_oil",
+        "county": "02188"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "crude_oil",
+        "county": "02195"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "crude_oil",
+        "county": "02198"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "crude_oil",
+        "county": "02220"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "crude_oil",
+        "county": "02230"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "crude_oil",
+        "county": "02240"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "crude_oil",
+        "county": "02275"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "crude_oil",
+        "county": "02282"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "crude_oil",
+        "county": "02290"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "crude_oil",
+        "county": "15001"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "crude_oil",
+        "county": "15005"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "crude_oil",
+        "county": "15007"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "crude_oil",
+        "county": "15009"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "crude_oil",
+        "county": "25007"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "crude_oil",
+        "county": "25019"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "crude_oil",
+        "county": "53055"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "refined_liquid",
+        "county": "02050"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "refined_liquid",
+        "county": "02060"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "refined_liquid",
+        "county": "02063"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "refined_liquid",
+        "county": "02066"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "refined_liquid",
+        "county": "02068"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "refined_liquid",
+        "county": "02070"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "refined_liquid",
+        "county": "02090"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "refined_liquid",
+        "county": "02100"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "refined_liquid",
+        "county": "02105"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "refined_liquid",
+        "county": "02110"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "refined_liquid",
+        "county": "02130"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "refined_liquid",
+        "county": "02150"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "refined_liquid",
+        "county": "02158"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "refined_liquid",
+        "county": "02164"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "refined_liquid",
+        "county": "02170"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "refined_liquid",
+        "county": "02180"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "refined_liquid",
+        "county": "02185"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "refined_liquid",
+        "county": "02188"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "refined_liquid",
+        "county": "02195"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "refined_liquid",
+        "county": "02198"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "refined_liquid",
+        "county": "02220"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "refined_liquid",
+        "county": "02230"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "refined_liquid",
+        "county": "02240"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "refined_liquid",
+        "county": "02275"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "refined_liquid",
+        "county": "02282"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "refined_liquid",
+        "county": "02290"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "refined_liquid",
+        "county": "15005"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "refined_liquid",
+        "county": "15007"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "refined_liquid",
+        "county": "15009"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "refined_liquid",
+        "county": "25007"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "refined_liquid",
+        "county": "25019"
+      },
+      {
+        "can_receive": false,
+        "can_supply": false,
+        "cargo": "refined_liquid",
+        "county": "53055"
+      }
+    ]
+  },
+  "contract": "NationalTransportReferenceV1",
+  "counts": {
+    "border_inbound_2024": 36,
+    "county_access": 3144,
+    "county_factors": 68562,
+    "facilities": 66,
+    "links": 6870,
+    "nodes": 3373,
+    "pools": 3507
+  },
+  "county_rebindings": [
+    {
+      "basis": "Retain original source label; current county admitted by TIGER2024 point-in-polygon.",
+      "captured_county": "02063",
+      "source_county": "02261",
+      "source_id": "pipeline_terminals",
+      "source_key": "02261016"
+    }
+  ],
+  "evidence_classes": {
+    "faf_estimates": "Derived",
+    "source_aggregation": "Derived",
+    "source_facility_records": "Observed",
+    "topology_and_service": "Designed"
+  },
+  "factor_duplicate_keys": 5,
+  "factor_source_rows": 68567,
+  "factor_zone_qualification": "Mode-specific source zones remain independent. Twelve Connecticut pipeline rows differ from the truck routing-hub basis; neither source identity is normalized or repaired.",
+  "flows": {
+    "controls": 100,
+    "domestic": 7584,
+    "domestic_aggregate_rows": 120532,
+    "foreign": 691,
+    "source_rows": 2494901
+  },
+  "issue": "PER-40",
+  "native_readers": [
+    "babylon-persistence::national_transport"
+  ],
+  "nontruck_factor_zone_differences_from_truck": 12,
+  "policy_sha256": "6a9621fa02c4f65ed38c9670bc8be3eb3d357960ff575253c228d8901faacee4",
+  "runtime_consumers": [],
+  "semantics": {
+    "capacity": "Finite Designed grams per28-day service period, not installed throughput inferred from observed annual FAF tons or facility acreage. Reachability does not prove adequate supply.",
+    "costs": "Unexecuted exact monetary context. The material engine does not pay a transport operator merely because a source edge carries a cost.",
+    "dependencies": "Six US dependencies remain distinct from counterpart markets. Midway is the Designed UM gateway and supplies no population or access to every outlying island. Other dependency gateways likewise represent aggregate county-free market actors.",
+    "facility_scope": "RoRo points support general-cargo facility evidence, not bulk berth capability. Liquid routes use explicit pipeline-terminal crude/refined/water flags plus TAPS primary evidence. Red Dog dry-bulk export uses the documented road/port chain.",
+    "foreign": "Twelve Designed markets are abstract endpoints, not observed foreign port facilities. FAF8 foreign areas remain independent context; no12-market tonnage inferred from dollar trade shares.",
+    "hierarchy": "Eight continental trunk hubs form a bounded clique. Each continental FAF hub is its highest published-population ground-admitted county; nearest trunk uses county source internal points and great-circle distance, deterministic GEOID tie. This is Designed corridor selection, not extracted road geometry.",
+    "islands": "AllAK/HI counties and Nantucket/Dukes/SanJuanWA have explicit source airports and no automatic county-to-FAF ground links. County access does not represent every isolated settlement inside a county.",
+    "mode_access": "Air permits general cargo only. Crude oil and refined liquid are separate; TAPS carries crude only. Bulk cargo without a supported pathway remains explicitly unavailable.",
+    "runtime": "No simulation, inventory, production, bank, money, owned carrier or campaign hydration is supplied by this capture.",
+    "seasonality": "Red Dog source operation is seasonal. Its finite positive service profile is an explicitly annualized Designed opening approximation; no seasonal closure mechanism or guaranteed year-round observed service is claimed.",
+    "source_vintages": "2024FAF flows and TIGER counties; NTAD facility snapshots have their own source dates, including2021pipeline records and2025airport effective dates; official Alaska pages captured2026. This is not an observed2024 network census.",
+    "timing": "Consecutive continental truck links may be coalesced by a future compiler while retaining every shared capacity membership. Every sea, air and pipeline service remains an explicit mode leg. No runtime route compiler is supplied here."
+  },
+  "sources": [
+    {
+      "bytes": 9318400,
+      "id": "airports",
+      "path": "/media/user/data/babylon-data/dot/NTAD_Aviation_Facilities_698356094499483505.geodatabase",
+      "relation": "FAA open/public airport points; per-record EFF_DATE including2025-12-25",
+      "sha256": "e469d49940c8d5fca81fc547ecd793b68a0f917a8531642f510c5adef6aaaad9"
+    },
+    {
+      "bytes": 31218198,
+      "id": "border",
+      "path": "/media/user/data/babylon-data/bts_border/border_crossing_entry_data.csv",
+      "relation": "BTS2024 inbound truck counts; no observed outbound or installed capacity",
+      "sha256": "d3f4652bcb4f6541daa09312f30042caaccc87f602ad8e0d74809de161341426"
+    },
+    {
+      "bytes": 422246,
+      "id": "county_reference",
+      "path": "src/babylon/data/reference/economy/national_county_reference_2024.csv.gz",
+      "relation": "Pinned3144county roster/internal points and ACS population hub ranking",
+      "sha256": "28ad84a461f00c12489b11e0d770ad71bc3f09190dbc35774d725fc2333fec8e"
+    },
+    {
+      "bytes": 124748,
+      "id": "factors_pipeline_destination",
+      "path": "/media/user/data/babylon-data/freight/faf/pipeline_destination_factors.csv",
+      "relation": "Experimental estimated county allocation factors; not observedcountyOD or physical access",
+      "sha256": "09478990e3108402d91b784cbd984cc4639e31e7269888390d5f7ce5c40018ca"
+    },
+    {
+      "bytes": 97298,
+      "id": "factors_pipeline_origin",
+      "path": "/media/user/data/babylon-data/freight/faf/pipeline_origin_factors.csv",
+      "relation": "Experimental estimated county allocation factors; not observedcountyOD or physical access",
+      "sha256": "70b2e3861320c51fc7083da8aa41ac02bb0279b963f39440556638bd42d2765c"
+    },
+    {
+      "bytes": 375776,
+      "id": "factors_rail_destination",
+      "path": "/media/user/data/babylon-data/freight/faf/rail_destination_factors.csv",
+      "relation": "Experimental estimated county allocation factors; not observedcountyOD or physical access",
+      "sha256": "3204f68c3f1b196cb36dbbec49f21e0cb4cd1949f57c3f496b7bca9a4fc895c2"
+    },
+    {
+      "bytes": 335468,
+      "id": "factors_rail_origin",
+      "path": "/media/user/data/babylon-data/freight/faf/rail_origin_factors.csv",
+      "relation": "Experimental estimated county allocation factors; not observedcountyOD or physical access",
+      "sha256": "27d5510f22cc4572bcfa12cb462a05b76d6417c2715bf0c366f4f27959e5a373"
+    },
+    {
+      "bytes": 497851,
+      "id": "factors_truck_destination",
+      "path": "/media/user/data/babylon-data/freight/faf/truck_destination_factors.csv",
+      "relation": "Experimental estimated county allocation factors; not observedcountyOD or physical access",
+      "sha256": "f3496a88b331cee18a527178c74ee55d5ae80a1235ad98bdce9e0fd8459516ce"
+    },
+    {
+      "bytes": 497942,
+      "id": "factors_truck_origin",
+      "path": "/media/user/data/babylon-data/freight/faf/truck_origin_factors.csv",
+      "relation": "Experimental estimated county allocation factors; not observedcountyOD or physical access",
+      "sha256": "ddd3c94b1007071a46110e5465528d396d870616c8acf855759c35d539f9a224"
+    },
+    {
+      "bytes": 129403,
+      "id": "factors_water_destination",
+      "path": "/media/user/data/babylon-data/freight/faf/water_destination_factors.csv",
+      "relation": "Experimental estimated county allocation factors; not observedcountyOD or physical access",
+      "sha256": "429dc697c87bd51ec436df57b193a20a44afddbd933ffc9ec3975c8af9dff495"
+    },
+    {
+      "bytes": 132522,
+      "id": "factors_water_origin",
+      "path": "/media/user/data/babylon-data/freight/faf/water_origin_factors.csv",
+      "relation": "Experimental estimated county allocation factors; not observedcountyOD or physical access",
+      "sha256": "acaf213c56ec4179cddec5146e5512188ac1ca65e410966cc5c30b887c201f52"
+    },
+    {
+      "bytes": 695246787,
+      "id": "faf2024",
+      "path": "/media/user/data/babylon-data/freight/faf/region/FAF5.7.1_2018-2024.csv",
+      "relation": "FAF5.7.1 calendar2024 estimated flows; not installed capacities",
+      "sha256": "b77a6c64728c5dd8595e39ee7a57810f78827eb7d27241c4ced9b83cc10c1bbb"
+    },
+    {
+      "bytes": 28786,
+      "id": "faf_metadata",
+      "path": "/media/user/data/babylon-data/freight/faf/region/FAF5_metadata.xlsx",
+      "relation": "Source units,132domestic/8foreign zones and native modes",
+      "sha256": "33d6b6fd1c53dbef38005bb2b73b8a5df77545373d210da23ec974c180acfc72"
+    },
+    {
+      "bytes": 40496,
+      "id": "international_roster",
+      "path": "contracts/international_counterpart_membership_v1.json",
+      "relation": "Explicit12counterparts and6USdependency scopes",
+      "sha256": "0bdd543fcdc59503f1037a512afc715f591423bfe11938a55fdb36f8641a082f"
+    },
+    {
+      "bytes": 125519,
+      "id": "los_angeles_bulk",
+      "path": "/media/user/data/babylon-data/national_reference_2024/transport_2026-09-20/los_angeles_bulk.html",
+      "relation": "Port-complex dry/liquid bulk capability; does not specify selected RoRo berth capacity or observed counterpart routes.",
+      "sha256": "0059c6ff4d3b6df954e276e8c726813e9a76df9c3c37074288b3d3d08aaab4c7"
+    },
+    {
+      "bytes": 315392,
+      "id": "marine",
+      "path": "/media/user/data/babylon-data/dot/NTAD_Intermodal_Freight_Facilities_Marine_Roll_on_Roll_off_-294017341140200559.geodatabase",
+      "relation": "NTAD RoRo facility evidence, not comprehensive ports or bulk berths",
+      "sha256": "79a9004e5a0a42a28b14026949167556ef84305ebac812e736dbd23e928713f5"
+    },
+    {
+      "bytes": 1024000,
+      "id": "pipeline_terminals",
+      "path": "/media/user/data/babylon-data/dot/NTAD_Intermodal_Freight_Facilities_Pipeline_Terminals_5225567625332244848.geodatabase",
+      "relation": "NTAD2021terminal product/access flags, not pipeline connections or rated capacity",
+      "sha256": "ac16e6c328f9ef9332a5ab36bd5cea852d03cc9c63e204282958d71ea15d5483"
+    },
+    {
+      "bytes": 81492,
+      "id": "red_dog_dnr",
+      "path": "/media/user/data/babylon-data/national_reference_2024/transport_2026-09-20/red_dog_dnr.html",
+      "relation": "Current page snapshot; facilities/relationships and dated operating description, not historical2024 capacity.",
+      "sha256": "d81d60be5928bd5ca2296056006b208f84e43353c36d4e9f232a657a198577b0"
+    },
+    {
+      "bytes": 226096,
+      "id": "red_dog_season",
+      "path": "/media/user/data/babylon-data/national_reference_2024/transport_2026-09-20/red_dog_season.html",
+      "relation": "Current page snapshot; facilities/relationships and dated operating description, not historical2024 capacity.",
+      "sha256": "e8d938dede958f1b5d9e43e9db353f4b306b1693661e92b1645f4283ab48ba64"
+    },
+    {
+      "bytes": 33527,
+      "id": "richardson",
+      "path": "/media/user/data/babylon-data/national_reference_2024/transport_2026-09-20/richardson.html",
+      "relation": "Current page snapshot; facilities/relationships and dated operating description, not historical2024 capacity.",
+      "sha256": "86d7bd02ddd67f0405de5d02a64284a3dbe7694c6fc0e7c460a67679a18d19e3"
+    },
+    {
+      "bytes": 84698,
+      "id": "taps",
+      "path": "/media/user/data/babylon-data/national_reference_2024/transport_2026-09-20/taps.html",
+      "relation": "Current page snapshot; facilities/relationships and dated operating description, not historical2024 capacity.",
+      "sha256": "d0413a50c123d4473fa848c242dcc6783e832721f0fba381594996ec43b089fe"
+    },
+    {
+      "bytes": 993755,
+      "id": "tiger_dbf",
+      "path": "/media/user/data/babylon-data/tiger/county/tl_2024_us_county.dbf",
+      "relation": "TIGER2024geographic spatial admission",
+      "sha256": "f310846d5f8160fc63e2e4930af756b966f31a86e7b019a251ffc51789d28919"
+    },
+    {
+      "bytes": 165,
+      "id": "tiger_prj",
+      "path": "/media/user/data/babylon-data/tiger/county/tl_2024_us_county.prj",
+      "relation": "TIGER2024geographic spatial admission",
+      "sha256": "0b9041e921d9ebb43247d314608fe9e38a0b008ee793067fc1806199ea1fb9dd"
+    },
+    {
+      "bytes": 132150152,
+      "id": "tiger_shp",
+      "path": "/media/user/data/babylon-data/tiger/county/tl_2024_us_county.shp",
+      "relation": "TIGER2024geographic spatial admission",
+      "sha256": "4bdd1476ffeb7e5a4bc6a2eb60d39e6ceae3d385b2d87793a634ffe1552aafe4"
+    },
+    {
+      "bytes": 25980,
+      "id": "tiger_shx",
+      "path": "/media/user/data/babylon-data/tiger/county/tl_2024_us_county.shx",
+      "relation": "TIGER2024geographic spatial admission",
+      "sha256": "d41d07996080ceaa52c7a01045f9139d01a017aba59f3f8a7b7d8d000a8151c6"
+    }
+  ]
+}

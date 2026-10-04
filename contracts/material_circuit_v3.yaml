@@ -1,6 +1,6 @@
 meta:
   contract: MaterialCircuitV3
-  schema_version: 4
+  schema_version: 18
   evidence_class: Designed
   rust_owner: babylon-material-circuit
 
@@ -11,13 +11,24 @@ scope:
   - geometry and preselected physical paths are captured by campaign content
   - explicit local inter-owner circulation without timed transport or a road
   - staffed wholesale and retail outbound handling without changing goods
-  - finite county-local retail handoff orders with no road journey
+  - finite location-local retail handoff orders with no road journey
   - one bounded maintenance provider consumes parts and labor to enable next-period batches
-  - no routing, household behavior, consumption, money, or payment decisions occur in this transition
+  - explicit physical controls or captured monetary accounts, purchase reserves, and attendance wages
+  - exact funded settlement follows actual arrival or local handoff; departure is not a sale
+  - optional recurring resident needs, funded purchases, stocks, consumption, procurement, and subsequent plans
+  - fixed-price controls and captured bounded responsive offers use the same physical allocator
+  - no route search, credit creation, exchange-rate policy, or endogenous fiscal policy decisions occur here
 
 domains:
   state: babylon.material-circuit-state.v3
   freight_lot_identity: babylon.freight-lot.v2
+  household_order_identity: babylon.recurring-household-order.v1
+  service_order_identity: babylon.recurring-service-order.v1
+  service_topup_identity: babylon.recurring-service-topup.v1
+  procurement_identity: babylon.recurring-procurement.v1
+  equipment_installation_identity: babylon.equipment-installation.v1
+  equipment_purchase_identity: babylon.equipment-purchase.v1
+  aid_commitment_identity: babylon.household-aid-commitment.v1
   terminator_hex: "00"
 
 encoding:
@@ -29,10 +40,24 @@ encoding:
   stage_index: u16
   travel_periods: u16
   loss_ppm: u32
-  county_geoid: five ASCII decimal digits
+  economic_location: six canonical bytes with a checked county, counterpart or dependency tag
+  need_basis_u8: {persons: 1, households: 2}
   merchant_role_u8: {wholesale: 1, retail: 2}
   supplier_transport_u8: {local: 1, staged: 2}
   optional_presence_u8: {absent: 0, present: 1}
+  accounting_mode_u8: {physical_control: 0, monetary: 1}
+  account_owner_u8: {site: 1, household: 2, organization: 3, public: 4}
+  account_identity: account_owner_u8 followed by raw-32-byte identity in its distinct owner namespace
+  outbound_order_u8: {delivery: 1, local_final_demand: 2, period_service: 3}
+  outbound_order_identity: outbound_order_u8 followed by raw-32-byte order ID
+  labor_compensation_u8: {wage: 1, working_owner: 2, unpaid_family: 3}
+  compensation_rate: wage requires positive hourly_rate; non-wage modes require canonical zero padding
+  shift_state_u8: {reserved: 1, accrued: 2, paid: 3, cancelled: 4}
+  boolean_u8: {disabled: 0, enabled: 1}
+  price_policy_u8: {fixed: 1, responsive: 2, service_responsive: 3}
+  commodity_kind_u8: {storable: 1, period_service: 2}
+  service_stage_u8: {utility_provision: 1, local_service_provision: 2}
+  currency: signed i128 exact micro-units; 1000000 micro-units per currency unit; no float conversion
   maintenance_options: independent presence tags followed by fields; both present or both absent
   unsupported_schema: refuse; no legacy decoding or migration
   row_count: u32
@@ -45,7 +70,7 @@ state_field_order:
   - process_outputs
   - input_coefficients
   - labor_coefficients
-  - freight_mass_coefficients
+  - commodities
   - supplier_routes
   - route_stages
   - route_stage_capacities
@@ -63,13 +88,86 @@ state_field_order:
   - final_demand_orders
   - maintenance_binding
   - maintenance_service
+  - accounting
+  - capacity_supply
+  - service_connections
+  - service_orders
+
+accounting_field_order:
+  physical_control: [accounting_mode_u8]
+  monetary: [accounting_mode_u8, accounts, purchases, shifts, employment, member_labor, optional_recurring,
+             historical_cost_book, financial_institutions, household_time_accounting,
+             aid_mandates, aid_freight, aid_cash_reserves]
+
+monetary_row_field_order:
+  accounts: [account_identity, cash_i128]
+  purchases: [outbound_order_identity, buyer_account_identity, seller_account_identity, quantity,
+              unit_price_i128, delivered, refunded]
+  shifts: [id, employer_account_identity, payee_account_identity, period, committed_hours,
+           hourly_rate_i128, shift_state_u8]
+  employment: [member_id, site_id, unit_id, payee_household_id, labor_compensation_u8, hourly_rate_i128]
+  member_labor: [member_id, period, available_hours]
+
+monetary_canonical_keys:
+  accounts: [account_owner_u8, owner_id]
+  purchases: [outbound_order_u8, order_id]
+  shifts: [id]
+  employment: [site_id, unit_id, member_id]
+  member_labor: [period, member_id]
+
+
+recurring_field_order:
+  - optional_presence_u8
+  - last_household_admission_period
+  - last_household_consumption_period
+  - households
+  - household_stocks
+  - household_needs
+  - household_purchases
+  - offers
+  - replenishment
+  - production
+  - attendance
+  - service_inputs
+
+recurring_row_field_order:
+  households: [kind, principal_id, households, persons]
+  household_kind: "u8: 1 ordinary (H>0, P>=H); 2 collective residence (P>0, H=0), person-based needs only"
+  household_stocks: [principal_id, good_id, unit_id, quantity]
+  household_needs: [principal_id, good_id, unit_id, need_basis_u8, units_per_basis]
+  household_purchases: [principal_id, retailer_site_id, good_id, unit_id, target_closing_stock,
+                        maximum_purchase, enabled_u8]
+  offers: [site_id, good_id, unit_id, unit_price_i128, price_policy_u8, conditional_price_policy_fields]
+  service_responsive_price_policy: [minimum_i128, maximum_i128, step_i128]
+  service_inputs: [buyer_site_id, provider_site_id, good_id, unit_id, quantity_per_period, maximum_purchase,
+                   cash_floor_i128]
+  responsive_price_policy: [minimum_i128, maximum_i128, step_i128, target_stock]
+  replenishment: [buyer_site_id, supplier_site_id, good_id, unit_id, target_stock, maximum_purchase,
+                  cash_floor_i128]
+  production: [process_id, site_id, output_buffer, planned_batches]
+  attendance: [site_id, unit_id, period, planned_hours]
+
+recurring_canonical_keys:
+  households: [principal_id]
+  household_stocks: [principal_id, good_id, unit_id]
+  household_needs: [principal_id, good_id, unit_id]
+  household_purchases: [principal_id, good_id, unit_id]
+  offers: [site_id, good_id, unit_id]
+  replenishment: [buyer_site_id, supplier_site_id, good_id, unit_id]
+  production: [process_id]
+  attendance: [site_id, unit_id]
+  service_inputs: [buyer_site_id, good_id, unit_id]
 
 row_field_order:
   site_logistics_nodes: [site_id, node_id]
   process_outputs: [process_id, site_id, good_id, unit_id, quantity_per_batch]
   input_coefficients: [process_id, good_id, unit_id, quantity_per_batch]
   labor_coefficients: [process_id, unit_id, quantity_per_batch]
-  freight_mass_coefficients: [good_id, unit_id, grams_per_unit]
+  commodities: [good_id, unit_id, commodity_kind_u8, conditional_kind_fields]
+  storable_kind: [grams_per_unit]
+  period_service_kind: [service_stage_u8]
+  service_connections: [provider_site_id, buyer_account_identity, good_id, unit_id]
+  service_orders: [order_id, performance_period, provider_site_id, buyer_account_identity, good_id, unit_id, quantity]
   supplier_routes: [buyer_site_id, supplier_site_id, good_id, unit_id, route_id, transport_kind_u8]
   route_stages: [route_id, stage_index, from_node_id, to_node_id, travel_periods, loss_ppm]
   route_stage_capacities: [route_id, stage_index, corridor_id]
@@ -83,9 +181,9 @@ row_field_order:
   capacities: [process_id, site_id, period, available_batches]
   labor: [site_id, unit_id, period, available]
   production_commitments: [process_id, site_id, period, planned_batches]
-  merchants: [site_id, county_geoid, role_u8, capacity_id, labor_unit_id]
+  merchants: [site_id, economic_location, role_u8, capacity_id, labor_unit_id]
   handling_coefficients: [site_id, good_id, unit_id, hours_per_unit]
-  final_demand_principals: [id, county_geoid]
+  final_demand_principals: [id, economic_location]
   final_demand_orders: [order_id, retailer_site_id, demand_principal_id, good_id, unit_id, ordered, fulfilled]
 
 optional_field_order:
@@ -98,7 +196,9 @@ canonical_keys:
   process_outputs: [process_id]
   input_coefficients: [process_id, good_id, unit_id]
   labor_coefficients: [process_id]
-  freight_mass_coefficients: [good_id, unit_id]
+  commodities: [good_id, unit_id]
+  service_connections: [provider_site_id, buyer_account_identity, good_id, unit_id]
+  service_orders: [order_id]
   supplier_routes: [buyer_site_id, supplier_site_id, good_id, unit_id]
   route_stages: [route_id, stage_index]
   route_stage_capacities: [route_id, stage_index, corridor_id]
@@ -116,7 +216,8 @@ canonical_keys:
   final_demand_orders: [order_id]
 
 admission:
-  - each site and logistics node have unique ownership
+  - each economic site has exactly one captured logistics access point; distinct sites may share that point
+  - shared logistics access never merges site stock ownership, orders, cash accounts, or capacity claims
   - each supplier relation selects one relationship identity and explicit local or staged transport
   - local relations connect distinct known sites and have no timed stages or memberships
   - staged relations have connected positive timed stages; one relationship cannot mix transport modes
@@ -126,15 +227,40 @@ admission:
   - every capacity budget references a principal in stage memberships or merchant handling
   - every order and supplier good-unit principal has one positive mass coefficient
   - extra mass coefficients and unused route topology may remain
-  - missing period capacity means zero availability, not a malformed register
-  - every merchant owns a unique site and handling capacity, disjoint from production sites and route capacities
-  - every merchant site has a logistics node, valid county GEOID, and one labor-unit principal
+  - finite-schedule missing period capacity means zero availability, not a malformed register
+  - every merchant owns a unique handling capacity disjoint from route capacities
+  - production and merchant work at one site share its inventory and exact site-unit labor budget
+  - every merchant site has a logistics access point, checked economic location, and one labor-unit principal
   - each merchant outbound good-unit has positive exact handling hours and mass per native unit
-  - each final-demand principal owns one unique county account
-  - a local order names a retail merchant in its demand principal county
+  - each final-demand principal has one unique identity and account; distinct households may share a location
+  - a local order names a retail merchant in its demand principal economic location
   - local order quantities satisfy zero <= fulfilled <= ordered with ordered positive
   - routed and local order identity domains are disjoint even if their raw order IDs match
   - all ordinary material and production invariants remain enforced
+  - accounting mode is explicit; absent monetary data never selects a physical control
+  - monetary accounts are nonnegative and unique; all material sites and household principals have cash rows
+  - site and household account identities reference known material owners;
+    organization and public namespaces are distinct
+  - monetary member terms bind unique member IDs, a site-unit, resident payee and explicit compensation
+  - positive wage rates create obligations; working-owner and unpaid-family modes create no wages or ownership
+  - member schedule totals exactly cover each declared site-unit period budget; zero-force workplaces may be empty
+  - every purchase reserve matches its physical order identity, parties, quantity, delivered quantity, and lost quantity
+  - a monetary commodity sale has realized quantity equal to its accepted delivered quantity
+  - a final-demand purchase reserve matches fulfilled quantity and has no refunded quantity in this close
+  - committed shift rows contain only accrued unpaid obligations earned in a positive period before the opening period
+  - all monetary row families have strictly increasing canonical keys before book reconstruction
+  - recurring households are explicit resident cohorts, never inferred from workplace jobs
+  - each configured household need has a purchase policy; only stored goods have an explicit pantry row including zeros
+  - period-service household needs have no pantry, zero stock target and a captured provider connection
+  - household service providers need not be Retail merchants
+  - every finite order of a configured household names a captured recipient stock before admission
+  - recurring production has one policy per process and at most one process per site-output-good-unit
+  - recurring attendance exactly covers distinct employment and current labor principals at the opening period
+  - an attendance principal without employment has an explicit zero available-hours row and zero planned hours
+  - multiple resident members retain separate payees and share one workplace attendance plan
+  - desired production or handling at an empty workplace cannot create workers, funded hours, wages or output
+  - both recurring household phase cursors equal the preceding period at a canonical opening
+  - responsive quotes remain inside positive captured bounds; admitted escrows retain their own prices
 
 allocation:
   order_request: full remaining native quantity
@@ -158,8 +284,30 @@ allocation:
 period_close:
   - complete due stages and attribute stage-specific native-unit loss
   - credit retained final arrival to destination inventory once
-  - execute existing prior production commitments bounded by opening enabled maintenance batches
+  - settle accepted arrived quantities and refund newly lost quantities from their existing purchase reserves
+  - retire already settled prior purchase principals before new admissions need their bounded slots
+  - execute due captured capital contributions from pre-phase cash, preserving exact equity and issuer capital
+  - fund captured public allocations from finite current cash and appropriation caps in priority order
+  - pay outstanding earned wages from their existing payroll reserves
+  - fund planned attendance in canonical site-unit order, bounded by spendable cash and available whole hours
+  - accrue and pay each funded attendance commitment before work; productive utilization is recorded separately
+  - admit recurring household orders after payroll, sharing actual cash in canonical household-good-unit order
+  - admit finite current service requirements from captured production commitments and input coefficients, bounded
+    by cash and policies
+  - execute UtilityProvision then LocalServiceProvision then GoodsProduction through shared input, labor and
+    process residuals
+  - each service stage produces complete funded-request-bounded batches and grants finite output through the
+    existing outbound allocator
+  - settle actual service grants and refund unperformed orders; expire unallocated provider output at exact
+    remaining cost
+  - complete all service seller debits and provider expiry before crediting that stage buyers
+  - direct household service satisfaction consumes current performance without pantry stock
+  - expense unused acquired service grants and remove all transient service quantity and carrying rows before
+    publication
   - expire unused opening service and perform whole maintenance jobs from inputs before outbound local credits
+  - consume actual equipment service life during production and capitalize exact historical wear into output
+  - start installation from arrived equipment and complete complementary materials; consume shared residual worker hours
+  - completed installation becomes usable only next period; unfinished work and its carrying value persist
   - allocate routed and local outbound requests against shared stock, route mass and merchant handling mass
   - record merchant feasible quantities before current labor
   - constrain feasible handling with opening labor through the same resource reducer
@@ -169,11 +317,44 @@ period_close:
   - debit merchant handling mass and labor exactly once per actual outbound
   - debit retail stock and credit positive local order fulfillment exactly once without a freight lot
   - record handling receipts including explicit zero feasible and actual work
-  - credit local internal buyers only after all outbound grants and debits are fixed
+  - credit actual household handoffs to stock and settle them; expire unfilled recurring requests with refunds
+  - replenish firm inventory positions, counting undelivered order quantities once including their transit
+  - allocate only newly admitted deliveries in a second pass through the same remaining resource budgets
+  - credit local internal buyers only after both outbound passes fix all grants and debits
   - local credits cannot feed another outbound order until a following close
+  - settle actual local supplier transfers and retail handoffs from their admitted purchase reserves
+  - consume recurring household needs from actual stocks, retaining unmet consumption as dated evidence
+  - record used, paid idle, planned unfunded, and available unplanned hours separately
+  - assess captured eligible wage and positive operating-income taxes after actual costs and wage accrual
+  - collect taxes only from cash above captured floors; record uncollected amounts without creating claims
+  - resolve an original authenticated Collect ruling from independently captured household cash consent after
+    actual reproduction and due taxes, freezing eligible free cash before ownership distributions and collection
+  - protect every current captured household storable and service requirement, closing purchase-policy stock
+    target, due tax and capital payment; existing purchase, payroll and aid reserves are never free cash
+  - exclude earlier current-period MutualAid and aid cash grant credits from the frozen collection source;
+    an ownership payout cannot retroactively fund this period's collection
+  - transfer one all-or-zero capped household cash gift to its existing aid mandate's organizational payer using
+    Cash(MutualAid); close gift expense and income once and retain its exact canonical transfer ordinal
+  - consume whole actual collection hours from the same finite donor household contribution capacity after
+    physical aid fulfillment; an acknowledgment cannot consume those hours again, and it reduces the donor
+    political promise once before delayed coordination
+  - retain the original command, admission and resolve periods, captured mandate and source, exact donor and
+    payer, actual amount, refusal reason and shared contribution use in the bounded V17 receipt family36;
+    actual voluntary payment creates no membership, agreement, recurring withdrawal or new hour supply
+  - distribute positive post-tax retained earnings only within cash, fraction and cap, using captured ownership
+  - admit ordinary equipment orders from post-financial free cash and explicit replacement or expansion policies
+  - derive subsequent production from dispatched and unfulfilled demand, output stock, and captured buffers
+  - forecast already funded freight due before subsequent production without crediting current usable inventory
+  - derive subsequent attendance from distinct production, merchant, maintenance and installation work requests
+  - update next goods quotes from captured fixed or bounded stock-and-unserved-demand policies
+  - update next service quotes from funded unmet requests, native capacity and whole-batch cost including provider
+    expiry
+  - retire terminal physical and financial purchase principals together after their evidence is recorded
+  - audit total cash plus live purchase, payroll and aid reserves without counting wage claims as extra money
   - rebuild unshipped backlog
   - derive next-period staffing and production through their existing exact rules
-  - prune expired capacity and validate the successor
+  - prune finite scheduled capacity or install rolling next-period budgets net of due advance reservations
+  - validate the successor without generating additional capacity
 
 transit:
   lot_identity: SHA256(freight_lot_domain + terminator + order_id + dispatch_period_u64)
@@ -196,13 +377,79 @@ conservation:
     maintenance spare consumption plus staged dispatch plus local transfer outflow plus final fulfillment plus
     closing stock
   - local fulfilled cumulative quantity increments only by positive local fulfillment receipts
-  - final-demand account totals are derived from finite order rows and do not assert actual consumption
+  - finite final-demand fulfillment remains distinct from household consumption
+  - household opening stock plus actual handoffs equals consumption plus closing stock
+  - required household consumption equals consumed plus unmet quantity, independently of employment
+  - generated household admitted quantity equals fulfilled plus expired refunded quantity
+  - total spendable cash plus purchase reserves plus payroll reserves is unchanged by the close
+  - purchase reserve equals fixed unit price multiplied by (quantity - delivered - refunded)
+  - each money transfer has equal opposite signed postings with named cash or reserve locations
+  - attendance accrual creates one employer payable and matching worker receivable without a cash movement
+  - wage payment consumes its payroll reserve and extinguishes the matching obligation
+  - funded hours equal used hours plus paid idle hours
+  - planned available hours equal funded plus unfunded hours
+  - available hours equal planned available plus unplanned hours
 
 limits:
-  rows_per_family: 65536
-  combined_routed_and_local_orders: 65536
+  rows_per_family: 65536 # Default; only the named overrides below differ.
+  family_overrides:
+    inventory: 131072
+    input_coefficients: 131072
+    supplier_routes: 262144
+    route_stage_capacities: 262144
+    service_connections: 131072
+    monetary_accounts: 131072
+    monetary_purchases: 327680
+    service_orders: 131072
+    delivery_orders_and_backlog: 131072
+    capital_accounts: 131072
+    household_needs_and_purchase_policies: 131072
+    ownership_and_equity_claims: 131072
+    tax_policies: 131072 # One per captured cash account.
+    replenishment: 262144
+  staffing_work_sources_and_requests: 131072
+  measured_national_opening:
+    inventory: 73504
+    input_coefficients: 114680
+    supplier_routes: 190505
+    route_stage_capacities: 247928
+    service_connections: 118881
+    monetary_accounts: 79489
+    household_needs_and_purchase_policies: 87960
+    ownership_and_equity_claims: 90794
+    tax_policies: 76327
+    replenishment: 138337
+    staffing_work_sources: 112805
+  measured_basis: Derived table counts from the complete national opening on 2 October 2026;
+    limits are Designed next-power-of-two ceilings, not physical resources or people.
+  measured_national_close_refusals:
+    proposed_combined_orders: 65537
+    proposed_service_orders: 65537
+    proposed_delivery_orders_from_checked_append: 65537
+    proposed_working_inventory_rows: 131073
+  dynamic_order_basis: Actual detached first-close admissions; per-family bounds remain independent,
+    and the purchase ceiling is their sum. These bounds create no supply or purchasing power.
+  employment_and_member_labor_rows: 131072
+  # Sum of delivery 131072, retail 65536 and service 131072 independently bounded rows.
+  combined_delivery_retail_and_service_orders: 327680
   stages_per_route: 16
   total_freight_resource_requests: 1114112
+  total_production_resource_groups: 196608 # Input-family ceiling plus labor-family ceiling.
+  working_inventory_rows: 393216
+  working_inventory_basis: Opening stock plus bounded freight, output and service grant keys;
+    planning instead combines stock, future freight, prebooked services and service-input policies.
+    This transient bound does not change the 131072 durable inventory limit or permit stored services.
+  handling_receipts_per_period: 131072
+  money_transfers_per_period: 1441792 # Independent close ceiling; not all maximal families are promised to fit.
+  service_performance_receipts_per_period: 196608
+  procurement_receipts_per_period: 262144 # At most one per captured replenishment policy.
+  income_receipts_per_period: 131072 # At most one per cash/capital account.
+  collection_receipts_per_period: 1 # Original authenticated ruling, not a recurring withdrawal.
+  aid_receipts_per_period: 327680 # Derived five outcomes times 65536 captured material rows.
+  tax_receipts_per_period: 131072 # At most one per captured payer.
+  distribution_receipts_per_period: 131072 # At most one per ownership claim.
+  receipt_bounds: Named receipt-family limits cover their corresponding captured row families;
+    the independent money-transfer and complete-byte ceilings can still refuse an oversized close
   classification: Designed bounds on execution and serialization, not material abundance
 
 error_codes:
@@ -228,6 +475,33 @@ error_codes:
   merchant_invariant: 20
   final_demand_invariant: 21
   maintenance_invariant: 22
+  monetary_invariant: 23
+  payroll_invariant: 24
+  purchase_invariant: 25
+  valuation_invariant: 26
+  service_invariant: 27
+  financial_invariant: 28
+  equipment_invariant: 30
+  household_time_invariant: 31
+  aid_invariant: 32
+  aid_authority: 33
+
+monetary_accounting:
+  opening: capture explicit cash endowments and employment terms; no default accounts, credit, or hidden issuance
+  unit_price: positive exact currency per native order unit, fixed for the accepted principal
+  admission: reserve the entire new purchase principal and admit its physical order as one detached operation
+  departure: seller retains title while goods are in transit; buyer holds reserved money and no delivered goods
+  settlement: cumulative actual arrival or local handoff pays only its newly delivered quantity
+  loss: cumulative physically lost quantity refunds only its newly lost portion to the buyer
+  duplicate_settlement: repeated or decreasing cumulative quantities are refused
+  payroll: reserve all wages for the admitted attendance before accrual or payment
+  attendance: all funded employee hours earn wages even when later productive use is zero; non-wage hours stay distinct
+  utilization: actual production, handling and maintenance take proportional remaining member hours; idle stays distinct
+  member_wages: actual use receives exact employee hours times rate; working-owner and unpaid-family cost is zero
+  shift_identity: sha256 member-funded-attendance domain, period, member, site, unit and resident payee
+  price_valuation: money costs, sale receipts, and wage obligations are not a claim about labor value or surplus value
+  snapshot: spendable cash excludes reserves; decoding never reserves the same principal a second time
+  failure: checked overflow or any refusal publishes no successor state, payment, obligation, or physical receipt
 
 merchant_receipts:
   handling_fields: [site_id, outbound_order, feasible_quantity, handled_quantity, needed_hours, used_hours]
@@ -243,10 +517,15 @@ merchant_receipts:
   local_transfer_evidence: no freight lot, physical arrival, or staged dispatch receipt
 
 staffing:
-  schema: StaffingV2
+  schema: StaffingV3
   work_source_tags: {production: 1, merchant_handling: 2, maintenance: 3}
   work_source_identity: process ID for production, site ID for merchant handling and maintenance
-  binding_membership: unique tagged work sources, one conserved site-unit person principal
+  binding_membership: unique tagged work sources, one workplace with one labor unit and conserved resident members
+  graph_authority: SOCIAL_CLASS members alone own employed and reserve; BUSINESS workplace owns prior request memory
+  member_limit: 131072
+  population_transfer: aggregate hires or separations use largest remainders over member reserves or employed stocks
+  opening_hours: graph employment times captured schedule must equal each current derived member-hour budget
+  receipt_join: member receipts reconcile aggregate staffing, resident payees, hours, actual use and wage accruals
   production_request: next-period input and process-capacity feasible work before service and employment constraints
   maintenance_request: prospective requested whole jobs multiplied by hours per job before resource constraints
   merchant_request: recorded current-period nonlabor-feasible outbound handling hours
@@ -283,3 +562,361 @@ maintenance:
   receipt_fields: [binding, period, opening_service_batches, consumed_service_batches, expired_service_batches,
                    prospective_batches, requested_jobs, opening_spare_parts, arrived_spare_parts, available_spare_parts,
                    available_labor_hours, completed_jobs, consumed_spare_parts, consumed_labor_hours, next_service]
+
+capacity_supply:
+  evidence_class: Designed
+  mode_u8: {finite_schedule: 0, rolling: 1}
+  finite_schedule: dated capacities and corridor_capacities are sole residual owners; absent periods supply zero
+  rolling_field_order: [mode_u8, process_supply_tag, process_supply, shared, future_reservations]
+  process_supply_tag: {captured_nameplate: 0, equipment: 1}
+  finite_field_order: [mode_u8]
+  row_fields:
+    installed_processes: [process_id, site_id, batches_per_period]
+    shared: [corridor_id, grams_per_period]
+    future_reservations: [departure_period, corridor_id, reserved_grams]
+  row_width_bytes: {installed_processes: 72, shared: 40, future_reservations: 48}
+  canonical_keys:
+    installed_processes: [site_id, process_id]
+    shared: [corridor_id]
+    future_reservations: [departure_period, corridor_id]
+  maximum_rows_per_family: 65536
+  installed_equipment: captured nameplate controls or finite managed cohorts; one owner, never additive
+  labor: next-period staffing remains independent; rolling capacity does not generate workers or hours
+  accounting: capacity mode is explicit and independent of physical or monetary accounting and price policy
+  rolling_invariants:
+    - installed rows cover every process once with its actual site; zero nameplate is explicit
+    - shared supply covers exactly the union of route capacity and merchant handling principals
+    - current process and shared budgets contain only the opening period and cover their supply rows exactly
+    - current process batches equal the explicit supply mode result; remaining shared grams cannot exceed gross
+      throughput
+    - future reservations are positive, unique and strictly later than the opening period
+    - every future reservation references a route capacity with sufficient remaining departure lookahead
+    - future reserved grams cannot exceed the corresponding gross shared supply
+    - row, date and quantity arithmetic overflow refuses the complete detached close
+  availability:
+    current: existing residual budget
+    future_process: captured nameplate or usable managed cohort supply for planning only
+    future_shared: gross grams per period minus already reserved grams
+  reservation:
+    current: debit the remaining current budget
+    future: add original dispatch grams to the unique departure-period and corridor reservation
+    losses: never release advance reservations, including when a lot disappears before its booked departure
+    capacity_reduction: refuse captured supply below existing bookings; no silent cancellation or clipping
+  rollover:
+    - require exactly one successor period
+    - install current process budgets from the explicit supply mode once
+    - install current shared budgets as gross throughput minus reservations due in the successor period
+    - discard consumed earlier budgets and promoted reservations; retain all later reservations
+    - perform rollover only in successful transition finalization, never in validation or decoding
+  persistence: encode mode, installed supply, current residual budgets and future bookings; refuse earlier schemas
+
+
+historical_cost_book:
+  evidence_class: Designed
+  purpose: Historical transaction-cost bookkeeping; no surplus-value, SNLT or universal valuation claim
+  field_order: [capital_accounts, stock_carrying_values, freight_carrying_values, equity_carrying_values,
+                equipment_carrying_values]
+  row_fields:
+    capital_accounts: [account, opening_capital, contributed_capital, retained_earnings]
+    stock_carrying_values: [owner_account, good_id, unit_id, amount]
+    freight_carrying_values: [lot_id, owner_account, amount]
+    equity_carrying_values: [owner_account, issuer_site_id, amount]
+    equipment_carrying_values: [asset_tag_u8, asset_id, owner_site_id, amount]
+  row_width_bytes: {capital_accounts: 81, stock_carrying_values: 113, freight_carrying_values: 81,
+                    equity_carrying_values: 81, equipment_carrying_values: 81}
+  canonical_keys:
+    capital_accounts: [account]
+    stock_carrying_values: [owner_account, good_id, unit_id]
+    freight_carrying_values: [lot_id]
+    equity_carrying_values: [owner_account, issuer_site_id]
+    equipment_carrying_values: [asset_tag_u8, asset_id]
+  bounds: {capital_accounts: 131072, stock_carrying_values: 196608, freight_carrying_values: 65536,
+           equity_carrying_values: 131072, equipment_carrying_values: 131072}
+  stock_bound: Site inventories at most 131072 plus resident household stocks at most 65536
+  opening:
+    - require explicit carrying rows for every physical site stock, household stock and freight lot, including zero
+    - derive opening capital once from cash, reserves, physical and equity carrying values and wage claims less
+      liabilities
+    - initial retained earnings are zero; restart restores captured capital and accumulated earnings exactly
+    - managed equipment and unfinished installations each require an explicit carrying row, including zero
+    - captured-nameplate controls deliberately omit equipment physical and carrying assets
+  quantities: Physical rows alone own quantities; carrying rows never manufacture or duplicate units
+  withdrawal: floor(carrying_amount * withdrawn_quantity / available_quantity), using quotient/remainder arithmetic
+  rounding: Partial withdrawals retain every rounding remainder; whole depletion transfers the full remaining amount
+  flow_rules:
+    - production consumes input carrying values and capitalizes actual productive paid labor into output
+    - dispatch transfers seller stock cost to seller-owned freight without revenue or buyer inventory
+    - staged loss expenses the seller's withdrawn carrying amount; its cash refund remains the money book's authority
+    - final arrival recognizes seller sales and COGS; buyer inventory receives the fixed settled acquisition amount
+    - local seller withdrawal and sale precede delayed buyer stock and carrying-value credits after both outbound passes
+    - household handoff capitalizes pantry purchases; actual household consumption withdraws carrying value as expense
+    - finite final-demand sinks recognize a distinct outlay at fulfillment without adding a pantry or consumption need
+    - wages earned are household income; productive wages capitalized are not a second current expense
+    - unused funded attendance, handling, maintenance labor and materials, and freight losses are separate expenses
+    - changed quotes do not reprice existing stock, transit or purchase reserves
+  reconciliation:
+    - carrying amounts are nonnegative; zero physical quantity requires zero carrying value
+    - ordinary transit carrying rows belong to the seller account; aid transit carrying rows belong to the donor
+      household
+    - capital accounts exactly match monetary accounts; stock keys match physical stocks and freight keys match
+      ordinary plus aid lots
+    - each account's net assets equal captured opening capital plus contributed capital plus accumulated retained
+      earnings
+    - each period income includes sales, wages, tax, operating-transfer, distribution and gift income less COGS,
+      named expenses and gift expense
+    - closing retained earnings equal opening retained earnings plus period income less distributions paid
+    - productive labor, installation labor, handling, maintenance labor and idle wage costs partition current earned
+      wages exactly
+    - cost operations cannot mutate spendable cash, reserves, purchase prices or wage obligations
+    - all refusals discard the detached close, including late planning, arithmetic and net-asset mismatches
+  excluded: Calendar decay, obsolescence and universal social-value measurement remain outside this book
+
+period_services:
+  authority: ADR264
+  commodity_admission:
+    - Every inventory, process input and process output good-unit has an explicit commodity definition.
+    - Storable goods have positive grams; service units have a declared stage and cannot have durable inventory,
+      freight or pantry rows.
+    - One service output process per provider-good-unit; positive ordinary output batch coefficients remain native
+      quantities.
+    - Service recipes may consume only earlier-stage service inputs; same-stage, backward dependencies and cycles
+      are refused.
+    - Captured provider-to-site-or-household connections authorize exact service orders; they do not infer
+      geography or class.
+    - Service orders have a positive quantity, current-or-future performance period and a matching accepted-price
+      monetary reserve.
+    - Service offers use Fixed or ServiceResponsive; service output stock buffers are zero.
+  partition:
+    - Complete produced native output equals allocated grants plus unallocated provider expiry.
+    - Admitted requests equal performed plus refunded unperformed quantity.
+    - Acquired performance equals used plus unused buyer expiry.
+    - Household required quantity equals satisfied plus unmet need; satisfaction is minimum required and acquired.
+  accounting:
+    - Provider input and productive labor costs capitalize only complete performed batches.
+    - Seller COGS follows canonical proportional carrying-cost withdrawal; full depletion takes the exact remainder.
+    - Unallocated provider output and acquired-but-unused buyer service become unused_service_expense at their
+      respective carrying amounts.
+    - Buyer service used in production enters output carrying basis; direct household use is consumption expense.
+    - Service stock and carrying rows exist only inside the detached atomic close and are absent in every committed
+      opening.
+  planning:
+    - B2B native requests derive from current committed batches times input coefficients, capped by policy
+      quantities and cash floor.
+    - Matching provider-buyer-good-unit funded orders due now reduce fresh household and B2B requests before admission.
+    - Top-up identity hashes its domain, ordinary recurring identity, and sorted matching due order identities,
+      quantities and accepted prices.
+    - Due orders retain their accepted price; only residual need can obtain a new reserve at the current quote.
+    - Service next planned native output covers observed requests or explicit next-period claims; ceiling division
+      converts to batches.
+    - Responsive quotes distinguish funded unmet demand, whole-batch cost pressure and spare native capacity with
+      bounded steps.
+    - Existing reserves keep their accepted price; no price or planning policy guarantees execution or profit.
+
+financial_institutions:
+  authority: ADR266
+  evidence_class: Designed
+  field_order: [locations, ownership, distributions, taxes, public_budgets, public_allocations, contributions]
+  row_fields:
+    locations: [account, economic_location]
+    ownership: [issuer_site_id, beneficiary_account, shares_u64]
+    distributions: [issuer_site_id, earnings_fraction_bps_u16, period_cap, cash_floor]
+    taxes: [payer_account, public_recipient_id, tax_basis_u8, rate_bps_u16, cash_floor]
+    public_budgets: [public_account_id, period_cap, cash_floor]
+    public_allocations: [public_account_id, recipient_account, transfer_treatment_u8, priority_u32, amount_per_period]
+    contributions: [id, due_period, contributor_account, issuer_site_id, amount]
+  row_width_bytes: {locations: 39, ownership: 73, distributions: 66, taxes: 84, public_budgets: 64,
+                    public_allocations: 86, contributions: 121}
+  canonical_keys:
+    locations: [account]
+    ownership: [issuer_site_id, beneficiary_account]
+    distributions: [issuer_site_id]
+    taxes: [payer_account]
+    public_budgets: [public_account_id]
+    public_allocations: [public_account_id, priority, recipient_account, transfer_treatment]
+    contributions: [id]
+  tax_basis_u8: {wage_income: 1, positive_operating_income: 2}
+  transfer_treatment_u8: {household_income_support: 1, provider_operating_grant: 2}
+  invariants:
+    - All tables are bounded by N; account identities and explicit policy counterparties must exist.
+    - Locations exactly cover organization and public accounts; locations do not create ownership or tax liability.
+    - Captured positive ownership shares are independent of residence, attendance and legal account namespace.
+    - Claim keys exactly match explicit equity carrying rows, including zero; no self-ownership.
+    - Contributions require a captured claim, due period and positive amount; consume each due instruction once.
+    - Acquired equity debits cash and raises contributor carrying basis and issuer contributed capital, never income.
+    - Capture all contribution funding before credits; no same-phase circular funding.
+    - Public allocations consume cash above floor and finite current appropriation in priority then canonical order.
+    - Household income support and provider operating grants produce paired expense and income only when paid.
+    - Public capital support uses the separate finite contribution instruction and its equity claim.
+    - One tax policy per eligible payer; bases are earned wages or positive operating income before financial flows.
+    - Taxes exclude contributions, distribution income and reporting remittances; uncollected assessments create no
+      debt.
+    - Capture tax bases and cash before credits; capture distribution earnings and cash after tax but before any payout.
+    - Distributions use positive retained earnings, a bounded fraction, cap and available cash; never mint money.
+    - Exact share floors allocate remaining micro-units to canonical beneficiaries, conserving the declared amount.
+    - Distribution is an issuer retained-earnings reduction and beneficiary income exactly once, not a second sale.
+    - Cross-border reporting may classify the same flow as a remittance but cannot post a second income or cash credit.
+    - Equity carrying assets and issuer capital require elimination when reporting consolidated totals.
+  limits: Prices, shares, appropriations and tax rules are captured game policies; no endogenous legislature or finance
+    market.
+
+productive_equipment:
+  authority: ADR268
+  evidence_class: Designed
+  field_order: [definitions, bindings, installation_inputs, cohorts, pending,
+                installation_policies, investment_policies]
+  row_fields:
+    definitions: [id, equipment_good_id, equipment_unit_id, batches_per_unit_per_period, service_batches_per_unit,
+                  installation_labor_unit_id, installation_hours_per_unit]
+    bindings: [process_id, site_id, definition_id]
+    installation_inputs: [definition_id, good_id, unit_id, quantity_per_equipment_unit]
+    cohorts: [id, process_id, units, remaining_service_batches, usable_from_period]
+    pending: [id, process_id, units, started_period, remaining_hours]
+    installation_policies: [process_id, target_tag_u8, target_units_u64,
+                            maximum_started_units_per_period, maximum_hours_per_period]
+    investment_policies: [process_id, supplier_site_id, replacement_target_units, maximum_installed_units,
+                          maximum_purchase_per_period, expansion_earnings_fraction_bps_u16, cash_floor]
+  asset_tag_u8: {installation: 0, installed: 1}
+  installation_target_tag_u8: {fixed_units: 1, production_plan: 2}
+  installation_target_payload: Fixed uses target units; production plan uses explicit replacement units.
+  installation_policy_row_width: 57
+  canonical_keys:
+    definitions: [id]
+    bindings: [process_id]
+    installation_inputs: [definition_id, good_id, unit_id]
+    cohorts: [process_id, id]
+    pending: [process_id, id]
+    installation_policies: [process_id]
+    investment_policies: [process_id]
+  limits: Each physical family has at most N rows; N pending plus N installed carrying values have at most 2N rows.
+  invariants:
+    - Every process has one checked binding; zero cohorts and absent policies explicitly permit inactive processes.
+    - Coefficients are positive; equipment and installation complements are storable native goods.
+    - Available batches sum the minimum of each usable cohort nameplate and its remaining finite service batches.
+    - Productive use consumes service batches once; full exhaustion transfers all remaining carrying micro-units.
+    - Equipment stock becomes WIP only with complete complementary inputs; no cash payment can install capacity.
+    - Installation target is explicit fixed units or maximum of replacement units and ceiling of current planned
+      batches divided by batches per equipment unit; the production-plan mode requires a captured recurring plan.
+    - New installation requests equal target minus live installed units after wear and existing WIP, floored at zero.
+    - Existing WIP continues under its work budget when the new target falls; purchase ceilings cannot ban owned
+      equipment installation below a separately declared target.
+    - Unshipped delivery and unfulfilled final-demand commitments protect equipment and complementary stock from
+      installation; prospective staffing uses the same transient eligibility and shared material residuals.
+    - Investment position excludes sale-pledged stock and inbound units needed to cover remaining sale commitments.
+    - Installation decision receipts include explicit zero choices and match actual new starts and existing WIP.
+    - Actual installation shares existing attendance residuals; employee wages capitalize and unpaid work adds no
+      wage cost.
+    - A completed cohort becomes usable in the following period; unfinished work survives restart and zero current
+      output.
+    - Fixed finite and captured-nameplate controls remain explicit and cannot add capacity to managed equipment.
+    - Investment accounts once for installed units, WIP, allocated equipment stock and outstanding funded goods orders.
+    - Replacement may use available cash at a loss; expansion also requires its bounded positive retained-earnings
+      budget.
+    - Decisions disclose captured plans, accepted output orders, output stocks and buffers without promising sales
+      or growth.
+    - Captured service lives and proportional historical-cost withdrawals are Designed, not empirical machine-life
+      estimates.
+
+
+goods_quote_costs:
+  evidence_class: Designed
+  persistence: transient current-close posting evidence in receipts; no second durable cost or cash ledger
+
+  basis:
+    produced: current actual output quantity and capitalized input carrying, actual productive wages and equipment wear
+    released: current actual seller-stock withdrawals to routed freight, local buyers or final demand
+    unavailable: zero quantity and zero amounts when neither current production nor release exists
+  selection:
+    - actual merchant handling requires the released basis and the same native released and handled quantity
+    - handling uses actual member wage costs, including zero wages for working owners and unpaid family
+    - otherwise current produced cost takes precedence over released cost; the two are never added
+    - idle work and general maintenance are not speculatively allocated to a particular good
+  quote:
+    - fixed offers remain fixed; existing accepted reserves and historical carrying are never repriced
+    - existing unmet-demand and stock-target guard takes precedence, then observed unit cost, then excess stock
+    - exact rounded-up unit cost above the old quote applies only the captured step and ceiling
+    - no observation is distinct from actual zero-cost output; no policy guarantees clearing or a positive margin
+  qualification: >-
+    Historical transaction-cost bookkeeping, not social value, surplus value or a universal valuation theory.
+
+household_time:
+  authority: ADR270
+  evidence: Captured eligible residents and explicitly Designed hour commitments; not observed time-use estimates.
+  accounting_u8: {not_modeled_control: 0, modeled: 1}
+  field_order: [accounting_u8, policies, receipts, contributions]
+  count_encoding: u32_big_endian_before_each_modeled_row_family_and_each_policy_burden_family
+  policy_fields: [principal_id, labor_unit_id, eligible_persons, hours_per_eligible_person,
+                  protected_need_basis_u8, protected_hours_per_basis,
+                  provisioning_need_basis_u8, provisioning_hours_per_basis, unmet_burdens]
+  burden_fields: [good_id, unit_id, hours_per_unmet_unit]
+  receipt_fields: [principal_id, period, labor_unit_id, endowment_hours, attended_hours,
+                   protected_hours, protected_unresolved_hours, unpaid_requested_hours,
+                   unpaid_allocated_hours, unpaid_unresolved_hours, contribution_available_hours]
+  contribution_fields: [period, use_id, principal_id, actor_id, contributor_id, hours]
+  canonical_keys:
+    policies: [principal_id]
+    burdens: [good_id, unit_id]
+    receipts: [principal_id]
+    contributions: [use_id]
+  limits:
+    policies: 65536
+    receipts: 65536
+    contributions: 65536
+    aggregate_burdens: 65536
+  invariants:
+    - Modeled accounts cover exactly the recurring household roster, including collective residences.
+    - Eligible residents do not exceed counted persons; member capacity cannot exceed their declared hour endowment.
+    - Labor units belong to admitted hour accounts and match each household's employment terms.
+    - Actual unique current-period member attendance is charged once, including paid and unpaid idle hours.
+    - Priority is attendance, protected commitments, unpaid provisioning, then available contribution.
+    - Endowment equals attendance plus allocated protected and unpaid commitments plus available contribution.
+    - Requested unpaid commitments equal allocated plus unresolved claims; unresolved claims are not performed work.
+    - Unresolved higher-priority claims forbid available contribution; protected unresolved claims forbid unpaid
+      allocation.
+    - Receipts belong exactly to the preceding completed period and reconcile captured policy and needs bounds.
+    - Consumption changes unmet-need burdens; it cannot create time, goods or political consent.
+    - Several organizational aliases share one household account; their combined positive debits cannot overdraw it.
+    - Exact same-period debit retries are idempotent; stale uses or changed terms refuse atomically.
+    - Consent remains a separate authorized political relation; a debit ledger does not establish agreement.
+    - Current state bytes include the last receipts and debit ledger; older state versions refuse without migration.
+
+household_aid:
+  evidence_class: Designed
+  field_order: [mandates, freight, cash_reserves]
+  mandate_fields: [id, source_hash, donor_actor, donor_contributor_id, recipient_actor, payer_account,
+                   donor_household_id, recipient_household_id, good_id, unit_id, labor_unit_id,
+                   hours_per_unit, maximum_quantity, cash_per_unit, transport_tag, conditional_transport_fields]
+  transport_u8: {local: 1, routed: 2}
+  routed_fields: [route_id, from_node_id, to_node_id]
+  mandate_width_bytes: {local: 314, routed: 410}
+  freight_fields: [lot_id, commitment_id, mandate_id, route_id, dispatch_period, current_stage_index,
+                   stage_arrival_period, donor_household_id, recipient_household_id, good_id, unit_id, quantity]
+  reserve_fields: [commitment_id, payer_account, donor_household_id, recipient_household_id, quantity,
+                   cash_per_unit, granted, refunded]
+  row_width_bytes: {freight: 282, cash_reserves: 169}
+  canonical_keys: {mandates: [id], freight: [lot_id], cash_reserves: [commitment_id]}
+  bounds: {mandates: 65536, freight: 65536, cash_reserves: 327680, receipts_per_period: 327680}
+  receipt_bound_basis: Five closed outcomes times MAX_MATERIAL_CIRCUIT_ROWS; not a guarantee of five rows per mandate.
+  commitment_identity: SHA256(aid_commitment_domain + terminator + mandate_id + dispatch_period_u64)
+  payer: Explicit captured account funds cash; donor household owns goods and supplies contributor authority.
+  rules:
+    - Mandates capture exact source hash, donor and recipient actors, contributor, payer, households and native units.
+    - Donor and recipient households differ; payer cannot be the recipient household account.
+    - Input authority and period must match the captured mandate; no missing time or account fallback.
+    - Positive requested quantities are bounded by captured maximum, actual donor stock, finite cash and supplied hours.
+    - Local transport requires one location; routed transport uses captured route and endpoint identities.
+    - Local grant credits actual recipient stock; dispatch moves donor stock and basis to donor-owned aid freight.
+    - Routed grants credit only retained arrived quantities; stage losses remove goods and expense their withdrawn
+      donor freight basis.
+    - Cash enters one aid reserve at reservation; actual grant releases it to recipient and unshipped or lost
+      quantities refund payer.
+    - Granted goods basis is donor gift expense; granted cash is payer gift expense; recipient gift income includes
+      both exactly once.
+    - Gift flows are not sales, wages, contributed capital, tax collections or additional reserves.
+    - Contribution uses retain exact period, household, actor, contributor and hours; the host must atomically debit
+      the authoritative time ledger.
+    - Gross household time receipts remain unchanged by contribution debits; the separate ledger owns their expenditure.
+    - A failed detached operation publishes no goods, cash, time use or aid receipt.
+  host_boundary: Material aid and supplied resources do not establish completed organizer practice or independent
+    partner consent.
+  persistence: State schema18 includes every aid vector even when empty in monetary mode; physical controls omit
+    monetary branches.

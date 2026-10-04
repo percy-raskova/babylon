@@ -17,9 +17,10 @@ runtime, creates a fresh campaign, and records post-commit evidence:
    mise run sim:report 16 300 shared
 
 The default run covers 15 four-week periods (60 weeks), crossing the annual
-boundary at period 13. The second command covers the full 16-period player
-content horizon with a 300-second timeout. The runtime describes its captured
-scenario, seed, horizon, and observation inventory before the wrapper touches
+boundary at period 13. The second command requests a finite 16-period reporting
+window with a 300-second timeout. This window is not a campaign lifetime.
+The runtime describes its captured scenario, seed, horizon, and observation
+inventory before the wrapper touches
 ``PostgreSQL``. The wrapper refuses a longer run and keeps an error summary.
 Use the named long diagnostic profiles below for 130-period qualification.
 A modeled year is 13 periods, or 364 days.
@@ -600,6 +601,179 @@ compilation and reporter overhead. Shared database deltas include concurrent
 activity. Use the same source inputs and starting state for before/after
 measurements, and report failures or unavailable measurements explicitly.
 
+National saves have a Designed development ceiling of 40,000,000 decimal bytes
+per committed period. The separate optimization target is 23,000,000 bytes.
+ADR280 records the current development budgets.
+
+Check actual session progress with the owned Postgres runner:
+
+.. code-block:: bash
+
+   BABYLON_POSTGRES_LIVE_FOCUS=session_progress mise run test:rust-postgres
+
+This builds the current runtime and client, then checks a small campaign through
+the real launcher. Four ordered stage reports must precede its commit reply.
+A separate process reopens the campaign and the native reader verifies the tail.
+The runner removes only its owned disposable target. This checks the same engine
+path, but does not qualify national timing or a rendered window.
+
+Measure opening storage separately. Include retained
+receipts, graph history, checkpoints, shared objects, dictionaries, indexes and
+TOAST.
+Use a fresh isolated database, actual runtime commits and authenticated
+restarts. Failed or unpublished allocations do not prove committed growth.
+
+Preserve incompatible saves as data when replacing a development format.
+
+Check the resulting stage snapshots with the pinned project environment:
+
+.. code-block:: bash
+
+   mise exec -- uv run --frozen python -m tools.devtools.national_storage_qualification \
+     --policy /absolute/run/policy.json \
+     --baseline /absolute/run/schema-baseline.json \
+     --opening /absolute/run/opening-created.json \
+     --ticks /absolute/run/tick-[0-9][0-9].json \
+     --reopens /absolute/run/tick-[0-9][0-9]-reopened.json \
+     --timings /absolute/run/native-timings.json \
+     --qualify
+
+The evaluator reads files and never connects to Postgres. It refuses missing
+or inconsistent markers, changed historical hashes, incomparable databases,
+duplicate relations and a changed county roster. It charges the largest of
+whole-database growth, summed positive parent-relation growth and zero, with
+restart growth included in the period. Parent totals already include TOAST.
+
+Each period must meet the ceiling. Shrinking another relation cannot conceal
+growing history. ``--qualify`` exits unsuccessfully unless at least 52 consecutive
+committed periods and every restart are verified and pass the storage ceiling.
+Without that flag a shorter run reports ``failed`` or ``incomplete`` for diagnosis.
+
+Report all individual increments and the opening, rather than only a mean.
+The evaluator reports measured rolling thirteen-period totals once available.
+Annual projections use thirteen 28-day periods. Label twelve ticks as a separate
+comparison. Record cluster-wide WAL, temporary disk, peak memory, commit latency
+and restart latency separately. Passing this storage criterion does not prove
+economic behavior, responsive native play or enjoyment.
+
+Adjust budgets through ``contracts/national_storage_qualification_v2.json`` or
+an explicit policy file. The evaluator rejects unknown or duplicate fields,
+non-integer limits and inconsistent thresholds. County coverage, the thirteen
+period model year and the 52-period correctness milestone remain fixed.
+The national runner validates and captures the policy before creating its
+disposable database. A later edit applies to the next run, not retained evidence.
+
+By default, the runner uses the captured routine count.
+The save report includes the configured duration alongside the ten, 25 and
+fifty-year comparisons. Each projection remains an estimate, not qualification.
+
+Check a policy and run the routine two-period national smoke check:
+
+.. code-block:: bash
+
+   mise exec -- uv run --frozen python -m tools.devtools.national_storage_qualification \
+     --policy /absolute/benchmark-policy.json --validate-policy
+   BABYLON_POSTGRES_LIVE_FOCUS=national_storage \
+     BABYLON_STORAGE_POLICY_PATH=/absolute/benchmark-policy.json \
+     BABYLON_STORAGE_REPORT_DIRECTORY=/absolute/new-evidence-directory \
+     BABYLON_NATIONAL_STORAGE_PERIODS=2 mise run test:rust-postgres
+
+Use ``BABYLON_POSTGRES_LIVE_FOCUS=reader_recovery`` for the bounded native
+receipt, historical lookup, delivery and staffing recovery controls. This
+selection uses the existing owned Postgres bootstrap, authority checks and
+cleanup. The full ``reader`` selection still covers all reader suites.
+
+
+The owned runner defaults to ``BABYLON_NATIONAL_STORAGE_QUALIFICATION=report-only``.
+Matching routine smoke runs still enforce their separate development gate.
+Set ``storage`` to enforce full storage qualification, or ``save``
+to enforce actual complete save-horizon evidence as well.
+
+The runner captures and hashes the selected mode beside the frozen policy.
+Timing qualification uses ``BABYLON_NATIONAL_QUALIFY_TIMING=1`` separately.
+These gates do not prove native UI play.
+A short run cannot pass full storage or save qualification.
+
+For the current policy, use 52 periods with ``storage`` or 325 with ``save``::
+
+   BABYLON_POSTGRES_LIVE_FOCUS=national_storage \
+     BABYLON_NATIONAL_STORAGE_QUALIFICATION=storage \
+     BABYLON_NATIONAL_STORAGE_PERIODS=52 \
+     BABYLON_STORAGE_REPORT_DIRECTORY=/absolute/new-storage-evidence \
+     mise run test:rust-postgres
+
+For save qualification, change the mode to ``save``, use the captured
+``save_qualification_ticks`` count, and select a new evidence directory. This is
+an expensive real run. An existing retained game blocks another.
+
+The default ``raw-economic`` capture measures the national economy directly.
+Set ``BABYLON_NATIONAL_CAPTURE_MODE=playable-aid`` to create the current
+``NationalWorld`` campaign through the runtime session protocol. This consumer
+submits remote aid in period one and local aid in period two, checks nonce
+retries, and reopens after every committed period. Use at least two periods.
+Unknown capture modes refuse before acquiring the national lease.
+
+The playable consumer also verifies committed cash, goods and household time
+through an authenticated observer credential. It waits for Archive catch-up.
+A confined reader verifies the dated Wayne county and organization dossiers.
+The complete production snapshot must also pass at each committed boundary.
+The captured policy allows at most 180 seconds each for Archive
+catch-up after acknowledgement and the complete production read.
+
+The runner enforces ``--qualify-playable`` against the resulting report. Campaign,
+foundation, period, county roster and canonical hashes must agree with the
+storage and recovery evidence. It preserves compact accounting facts and atomic
+progress records alongside that evidence. These reads count toward total native
+run duration. An interrupted run retains an explicit incomplete failure summary
+and its exact disposable game. Actual scarcity can leave positive aid consequences
+incomplete. This automated material qualification does not establish native
+interaction or enjoyment.
+
+The default development timing limit is under sixty seconds per focused
+control. Cold loads must finish under 180 seconds. The two-period smoke check
+with recovery must finish within 900 seconds. National advances aim for sixty to ninety
+seconds, with p95 at most 120 seconds.
+
+The default p95 proof requires 52
+acknowledged advances. One observation cannot supply it. A complete 52-period
+run preferably finishes within four hours, including recovery. This preference
+does not shorten required proof.
+
+Use ``--qualify-timing`` with the stage snapshots and native timing file to
+require sufficient samples and passing timing results. Use
+``BABYLON_NATIONAL_QUALIFY_TIMING=1`` to enforce that gate in the owned runner.
+It will refuse a short run as incomplete and preserve the target for exact
+recovery. Leave it unset for routine two-period measurement and automatic
+retirement after it preserves valid evidence.
+
+The owned runner enforces ``--qualify-smoke`` when the requested period count
+matches the captured policy's routine count. This checks complete recovery,
+the development storage ceiling, observed advance times, cold loads and total
+duration. It exits unsuccessfully on exceeded limits or missing evidence.
+The short smoke result does not qualify the 52-period or p95 milestone.
+
+The smoke duration measures native test elapsed. It includes ownership checks,
+schema admission, capture, opening, advances, recovery, parity and snapshots.
+Compilation, earlier disposable database setup and final evidence publication
+are outside that timer. Report the outer harness elapsed separately.
+
+Assess focused controls from an actual Rust or Python ``JUnit`` report:
+
+.. code-block:: bash
+
+   mise exec -- uv run --frozen python -m tools.devtools.national_storage_qualification \
+     --policy /absolute/benchmark-policy.json \
+     --focused-junit /absolute/junit.xml --qualify-focused
+
+This gate checks executed case durations and failures, excluding compilation.
+It cannot prove that a native window stays responsive. Report that evidence
+separately through actual interaction with the last committed map, reports,
+relationships and notes while an advance is pending.
+
+``--qualify-save`` separately requires the configured long horizon, every
+verified restart and the total-save budget. Defaults are 325 periods at twenty-five
+model years and 10,000,000,000 bytes. Short-run projections remain estimates.
+
 See :doc:`/concepts/architecture` for authority boundaries and
 :doc:`/reference/ci-workflow` for development and release validation.
 
@@ -627,8 +801,9 @@ evidence.
 ``diagnostic-sustained.json`` covers 130 four-week periods with finite stocks
 and orders that support activity in the final modeled year.
 ``diagnostic-depletion.json`` extends the current finite endowment to the same
-horizon so exhaustion stays visible. Player profiles still refuse more than
-16 periods. These are ten modeled years, not ten civil years.
+horizon so exhaustion stays visible. Playable campaigns use continuous
+duration; these diagnostic profiles keep explicit finite horizons. These are ten modeled
+years, not ten civil years.
 
 The typed input contains a named profile, horizon, seed, optional civil epoch
 and source snapshot identity, starting observations, and admitted interventions.

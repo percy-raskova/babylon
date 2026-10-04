@@ -1,0 +1,82 @@
+ADR265_captured_economic_catalog:
+  status: accepted
+  date: '2026-10-01'
+  issue: PER-40
+  title: One captured economic catalog initializes the shared runtime with explicit geography
+  evidence_class: Designed
+  authority:
+    - Director-approved national economy implementation and current-format replacement scope
+    - Recorded PER-40 common catalog, native seed admission and geographic foundation commitment
+  partially_supersedes:
+    - ADR260 durable per-owner sector bundle envelopes and Michigan-only foundation admission
+  context: |
+    The national source contains 57,238 admitted workplace cohorts. The current
+    foundation repeats normalized source content, full material states for each
+    owner and the compiled opening state. Its graph also requires a large text
+    declaration for every instance and always attaches Michigan fine geography.
+    Those representations do not establish national economic or spatial authority.
+  decision: |
+    Capture one EconomicCatalog with a singular table of bounded source artifacts,
+    exact digests, authored rules and definitions, and Designed policy bytes. Pin
+    the supported compiler and importer version. Regenerate shared templates and
+    opening assignments from those captured inputs into one transient
+    EconomicOpening. Preserve source missingness and the distinction between
+    resident persons, household cohorts, workplace jobs and labor hours. No person
+    agents or duplicate durable table of generated opening assignments is needed.
+    Compile one global material register and one graph for the existing replay
+    session. Preserve the initial material checkpoint and require exact agreement
+    with regeneration; optional caller-supplied opening rows must also agree.
+    Future unsupported compiler versions refuse instead of silently regenerating
+    a different opening. Compilation does not advance time or adjudicate an
+    economic transition.
+    Persist campaign content as one current tagged envelope. Authored BSCN and
+    economic-catalog inputs have explicit reconstruction dispositions. The
+    database keeps the complete reference digest separately from an optional
+    local H3 foreign key; county-only national scope cannot claim a Michigan
+    reference cohort. Observer source identity hashes the complete envelope,
+    rather than declaration text that omits generated instances.
+
+    Admit typed graph instances against the same BSL field and vocabulary
+    declarations as authored instances. Retain exact scalar domains, stable
+    identities, native hyperedges, actual cardinality bounds and governed rule
+    preparation. Do not serialize every instance as generated BSCN text or add
+    another interpreter. Member employment and reserve stocks belong to the graph;
+    staffing composition retains immutable bindings. Workplace BUSINESS nodes
+    retain request memory. HOUSEHOLD nodes bind resident counts and account
+    identity without duplicating class-member employment or reserve stocks.
+
+    Capture geographic coverage explicitly. National county authority uses the
+    pinned 2024 fifty-state and DC roster. Counterparts and dependencies retain
+    separate typed locations. Fine H3 coverage is optional, identified and scoped;
+    an absent local capture supplies no fabricated cells or zero-valued detail.
+    Reconstruct the same geographic authority from captured input bytes.
+    Archive startup uses that same captured county roster and registers local
+    place producers only for explicitly captured spatial detail. Pair Michigan
+    spatial products with their captured H3 source and verify both before reuse.
+    Cache immutable producer context across sweeps; do not repeatedly regenerate
+    the national opening or invent local detail for county-only campaigns.
+
+    Import authored Michigan controls into this current catalog and compiler.
+    Retire per-owner material-state envelopes and their obsolete saved decoder.
+    Keep independent current byte, schema, conservation and replay contracts;
+    incompatible prior captures refuse clearly without migration or mutation.
+    Set bounds from measured representation and compiled counts, not blanket
+    increases. Source pinning and replay identity do not establish economic
+    validity, sufficient transport capacity or enjoyable play.
+  alternatives_rejected:
+    - Separate national and Michigan transition engines.
+    - Full material state serialized once per workplace owner.
+    - Generated graph-instance text as the durable authority for national scale.
+    - Automatic Michigan hex coverage in a national county campaign.
+    - Reopening a campaign against changed source files or implicit fallback inputs.
+  consequences: |
+    The compiler and reconstruction path must agree on one canonical catalog,
+    graph, geographic foundation and material register. Runtime transitions,
+    atomic publication and marker-last durability remain unchanged. National
+    observation and play qualification remain separate acceptance work.
+  verification:
+    - contracts/economic_catalog_v1.yaml
+    - rust/crates/babylon-bsl/tests/scenario_seed.rs
+    - Typed versus authored graph equivalence and strict invalid-seed refusal.
+    - Captured-byte reconstruction without current external sources.
+    - National county coverage, optional local detail and measured opening sizes.

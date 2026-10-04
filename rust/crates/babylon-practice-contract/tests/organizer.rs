@@ -4,6 +4,9 @@ use babylon_practice_contract::*;
 fn config() -> OrganizerConfig {
     OrganizerConfig {
         schema_version: ORGANIZER_SCHEMA_VERSION,
+        collection: None,
+        time_binding: OrganizerTimeBindingMode::FixedTimeControl,
+        aid_bindings: vec![],
         campaign_id: [1; 16],
         controlled_actor_id: 101,
         input_authority_id: [2; 16],
@@ -920,4 +923,615 @@ fn shared_contact_allocation(
         }],
     )
     .unwrap()
+}
+
+fn finite_time(config: &OrganizerConfig, period: u64) -> OrganizerPeriodTimeResources {
+    let mut resources = organizer_fixed_time_resources(config, period).unwrap();
+    // The real source path accepts the captured material hour unit, not the
+    // separate fixed-control identity.
+    resources.unit_id = PracticeUnitId::from_bytes([44; 32]);
+    for capacity in &mut resources.capacities {
+        capacity.unit_id = resources.unit_id;
+    }
+    resources
+}
+
+fn finite_act(
+    config: &OrganizerConfig,
+    state: &OrganizerState,
+    resources: &OrganizerPeriodTimeResources,
+) -> Result<OrganizerState, OrganizerError> {
+    let accepted = admit_organizer(
+        config,
+        state,
+        &command(config, state, OrganizerChoice::Reinforce),
+    )?;
+    resolve_organizer_period_with_time(
+        config,
+        state,
+        &facts(state.period + 1, 160),
+        Some(&accepted),
+        resources,
+        babylon_practice_contract::OrganizerMaterialSupport {
+            aid: &[],
+            collection: None,
+        },
+    )
+}
+
+fn shared_time(config: &OrganizerConfig, available: u64) -> OrganizerPeriodTimeResources {
+    let mut resources = finite_time(config, 1);
+    let shared = resources.bindings[0].budget_id;
+    resources.bindings[1].budget_id = shared;
+    resources.capacities.remove(1);
+    resources.capacities[0].available = available;
+    resources
+}
+
+fn assert_no_time_product(state: &OrganizerState) {
+    let receipt = state.receipts.last().unwrap();
+    assert_eq!(receipt.outcome, OrganizerOutcome::InsufficientTime);
+    assert_eq!(receipt.hours_spent, 0);
+    assert!(receipt.time_use.is_empty());
+    assert!(receipt.contact_product_id.is_none());
+    assert!(receipt.observation_ids.is_empty());
+    assert!(state.contact_products.is_empty());
+}
+
+#[test]
+fn finite_shared_alias_supply_is_counted_once_and_shortage_spends_nothing() {
+    let config = config();
+    let opening = initial_organizer_state(&config).unwrap();
+    // Eight controlled-actor hours plus two partner hours share nine actual hours.
+    let resources = shared_time(&config, 9);
+    let before = resources.clone();
+    let next = finite_act(&config, &opening, &resources).unwrap();
+    assert_no_time_product(&next);
+    assert_eq!(next.agreements, opening.agreements);
+    assert_eq!(resources, before);
+    assert!(!next.standing.authorized);
+    assert_eq!(
+        next.standing.paused_reason,
+        Some(OrganizerPauseReason::InsufficientAvailableTime)
+    );
+}
+
+#[test]
+fn finite_zero_availability_is_a_receipt_not_a_tick_error_or_refill() {
+    let config = config();
+    let opening = initial_organizer_state(&config).unwrap();
+    let mut resources = finite_time(&config, 1);
+    for capacity in &mut resources.capacities {
+        capacity.available = 0;
+    }
+    assert_no_time_product(&finite_act(&config, &opening, &resources).unwrap());
+}
+
+#[test]
+fn finite_complete_shared_budget_keeps_exact_alias_and_actor_debits() {
+    let config = config();
+    let opening = initial_organizer_state(&config).unwrap();
+    let next = finite_act(&config, &opening, &shared_time(&config, 10)).unwrap();
+    let receipt = next.receipts.last().unwrap();
+    assert_eq!(receipt.outcome, OrganizerOutcome::ContactCompleted);
+    assert_eq!(receipt.hours_spent, 8);
+    assert_eq!(
+        receipt.time_use,
+        [
+            OrganizerTimeUse {
+                contributor_id: 201,
+                actor_id: 101,
+                hours: 8
+            },
+            OrganizerTimeUse {
+                contributor_id: 202,
+                actor_id: 102,
+                hours: 2
+            },
+        ]
+    );
+    assert_eq!(next.contact_products.len(), 1);
+    assert_eq!(next.agreements, opening.agreements);
+}
+
+#[test]
+fn finite_same_actor_aliases_share_one_derived_request_identity() {
+    let mut config = config();
+    config.participants[0].available_hours = 4;
+    config.participants[0].commitments[0].hours = 4;
+    let mut extra = config.participants[0].clone();
+    extra.contributor_id = 204;
+    config.participants.push(extra);
+    let opening = initial_organizer_state(&config).unwrap();
+    let mut resources = finite_time(&config, 1);
+    let shared = resources.bindings[0].budget_id;
+    resources.bindings[3].budget_id = shared;
+    resources.capacities.pop();
+    resources.capacities[0].available = 8;
+    let next = finite_act(&config, &opening, &resources).unwrap();
+    let receipt = next.receipts.last().unwrap();
+    assert_eq!(receipt.outcome, OrganizerOutcome::ContactCompleted);
+    assert_eq!(
+        receipt
+            .time_use
+            .iter()
+            .filter(|row| row.actor_id == 101)
+            .map(|row| row.hours)
+            .sum::<u64>(),
+        8
+    );
+    assert_eq!(
+        receipt
+            .time_use
+            .iter()
+            .filter(|row| row.actor_id == 101)
+            .count(),
+        2
+    );
+}
+
+#[test]
+fn finite_resource_order_does_not_change_receipt_or_products() {
+    let config = config();
+    let opening = initial_organizer_state(&config).unwrap();
+    let resources = shared_time(&config, 10);
+    let mut reversed = resources.clone();
+    reversed.bindings.reverse();
+    reversed.capacities.reverse();
+    assert_eq!(
+        finite_act(&config, &opening, &resources),
+        finite_act(&config, &opening, &reversed)
+    );
+}
+
+#[test]
+fn finite_malformed_resources_refuse_with_specific_errors() {
+    let config = config();
+    let opening = initial_organizer_state(&config).unwrap();
+    let resources = finite_time(&config, 1);
+    let mut invalid = resources.clone();
+    invalid.capacities.remove(0);
+    assert_eq!(
+        finite_act(&config, &opening, &invalid),
+        Err(OrganizerError::TimeCapacityMissing)
+    );
+    invalid = resources.clone();
+    invalid.capacities.push(invalid.capacities[0].clone());
+    assert_eq!(
+        finite_act(&config, &opening, &invalid),
+        Err(OrganizerError::TimeCapacityDuplicate)
+    );
+    invalid = resources.clone();
+    invalid.bindings.pop();
+    assert_eq!(
+        finite_act(&config, &opening, &invalid),
+        Err(OrganizerError::TimeBindingMismatch)
+    );
+    invalid = resources.clone();
+    invalid.bindings[1].contributor_id = invalid.bindings[0].contributor_id;
+    assert_eq!(
+        finite_act(&config, &opening, &invalid),
+        Err(OrganizerError::TimeBindingMismatch)
+    );
+    invalid = resources.clone();
+    invalid.capacities[0].unit_id = PracticeUnitId::from_bytes([45; 32]);
+    assert_eq!(
+        finite_act(&config, &opening, &invalid),
+        Err(OrganizerError::TimeUnitMismatch)
+    );
+    invalid = resources.clone();
+    invalid.unit_id = PracticeUnitId::from_bytes([0; 32]);
+    assert_eq!(
+        finite_act(&config, &opening, &invalid),
+        Err(OrganizerError::TimeUnitMismatch)
+    );
+    invalid = resources.clone();
+    invalid.period += 1;
+    assert_eq!(
+        finite_act(&config, &opening, &invalid),
+        Err(OrganizerError::TimePeriodMismatch)
+    );
+    invalid = resources.clone();
+    invalid.capacities[0].owner = PracticeResourceOwner::ActorOrganization(
+        ActorOrganizationId::from_bytes(101_u64.to_be_bytes()),
+    );
+    assert_eq!(
+        finite_act(&config, &opening, &invalid),
+        Err(OrganizerError::TimeCapacityScope)
+    );
+    invalid = resources;
+    invalid.capacities[0].mode = PracticeResourceAllocationMode::ExclusiveAllOrNone;
+    assert_eq!(
+        finite_act(&config, &opening, &invalid),
+        Err(OrganizerError::TimeCapacityScope)
+    );
+}
+
+#[test]
+fn finite_time_does_not_supply_partner_consent() {
+    for policy in [
+        OrganizerPartnerPolicy::Refuse,
+        OrganizerPartnerPolicy::NoResponse,
+    ] {
+        let mut config = config();
+        config.workplace_partner.policy = policy;
+        let opening = initial_organizer_state(&config).unwrap();
+        let next = finite_act(&config, &opening, &finite_time(&config, 1)).unwrap();
+        let receipt = next.receipts.last().unwrap();
+        assert_eq!(receipt.outcome, OrganizerOutcome::ContactUncompleted);
+        assert_ne!(
+            receipt.partner_response,
+            OrganizerPartnerResponse::Participated
+        );
+        assert!(receipt.contact_product_id.is_none());
+        assert!(next.contact_products.is_empty());
+        assert_eq!(next.agreements, opening.agreements);
+    }
+}
+
+#[test]
+fn finite_time_rejects_changed_admitted_commitments() {
+    let config = config();
+    let opening = initial_organizer_state(&config).unwrap();
+    let mut accepted = admit_organizer(
+        &config,
+        &opening,
+        &command(&config, &opening, OrganizerChoice::Reinforce),
+    )
+    .unwrap();
+    accepted.resolves_period += 1;
+    let reduced = reduce_organizer_products(&config, &opening, &facts(1, 160)).unwrap();
+    assert_eq!(
+        resolve_organizer_practice_with_time(
+            &config,
+            &opening,
+            &reduced,
+            &facts(1, 160),
+            Some(&accepted),
+            &finite_time(&config, 1),
+            babylon_practice_contract::OrganizerMaterialSupport {
+                aid: &[],
+                collection: None
+            },
+        ),
+        Err(OrganizerError::InvalidCommitment)
+    );
+}
+
+#[test]
+fn finite_partner_shortage_keeps_all_own_time_and_produces_no_response_work() {
+    let config = config();
+    let opening = initial_organizer_state(&config).unwrap();
+    let mut resources = finite_time(&config, 1);
+    resources.capacities[1].available = 0;
+    let next = finite_act(&config, &opening, &resources).unwrap();
+    assert_no_time_product(&next);
+    assert_eq!(
+        next.receipts.last().unwrap().partner_response,
+        OrganizerPartnerResponse::UnableToParticipate
+    );
+    assert_eq!(next.agreements, opening.agreements);
+}
+
+#[test]
+fn finite_named_fixed_control_uses_the_same_resolver_without_source_fallback() {
+    let config = config();
+    let opening = initial_organizer_state(&config).unwrap();
+    let accepted = admit_organizer(
+        &config,
+        &opening,
+        &command(&config, &opening, OrganizerChoice::Reinforce),
+    )
+    .unwrap();
+    let resources = organizer_fixed_time_resources(&config, 1).unwrap();
+    assert_eq!(resources.unit_id, organizer_time_unit_id());
+    assert_eq!(
+        resolve_organizer_period(&config, &opening, &facts(1, 160), Some(&accepted)),
+        resolve_organizer_period_with_time(
+            &config,
+            &opening,
+            &facts(1, 160),
+            Some(&accepted),
+            &resources,
+            babylon_practice_contract::OrganizerMaterialSupport {
+                aid: &[],
+                collection: None,
+            }
+        )
+    );
+}
+
+#[test]
+fn finite_one_contributor_can_fund_distinct_actor_uses_without_duplicating_supply() {
+    let mut config = config();
+    config.participants.remove(1);
+    config.participants[0].commitments = vec![
+        OrganizerContribution {
+            actor_id: 101,
+            hours: 14,
+        },
+        OrganizerContribution {
+            actor_id: 102,
+            hours: 2,
+        },
+    ];
+    let opening = initial_organizer_state(&config).unwrap();
+    let mut resources = finite_time(&config, 1);
+    resources.capacities[0].available = 10;
+    let next = finite_act(&config, &opening, &resources).unwrap();
+    assert_eq!(
+        next.receipts.last().unwrap().time_use,
+        [
+            OrganizerTimeUse {
+                contributor_id: 201,
+                actor_id: 101,
+                hours: 8
+            },
+            OrganizerTimeUse {
+                contributor_id: 201,
+                actor_id: 102,
+                hours: 2
+            },
+        ]
+    );
+    assert_eq!(
+        next.receipts.last().unwrap().outcome,
+        OrganizerOutcome::ContactCompleted
+    );
+}
+
+fn captured_household_config() -> OrganizerConfig {
+    let mut captured = config();
+    captured.time_binding = OrganizerTimeBindingMode::Household {
+        bindings: captured
+            .participants
+            .iter()
+            .map(|participant| OrganizerHouseholdBinding {
+                contributor_id: participant.contributor_id,
+                principal_id: [51; 32],
+            })
+            .collect(),
+    };
+    captured
+}
+
+#[test]
+fn captured_time_binding_shared_households_roundtrip_and_change_identity() {
+    let captured = captured_household_config();
+    validate_organizer_config(&captured).unwrap();
+    let bytes = encode_organizer_config(&captured).unwrap();
+    assert_eq!(decode_organizer_config(&bytes).unwrap(), captured);
+    assert_ne!(bytes, encode_organizer_config(&config()).unwrap());
+    let mut changed = captured.clone();
+    let OrganizerTimeBindingMode::Household { bindings } = &mut changed.time_binding else {
+        unreachable!()
+    };
+    bindings[1].principal_id = [52; 32];
+    assert_ne!(bytes, encode_organizer_config(&changed).unwrap());
+}
+
+#[test]
+fn captured_time_binding_rejects_missing_duplicate_zero_and_unrostered_rows() {
+    for kind in 0..6 {
+        let mut captured = captured_household_config();
+        let OrganizerTimeBindingMode::Household { bindings } = &mut captured.time_binding else {
+            unreachable!()
+        };
+        match kind {
+            0 => {
+                bindings.pop();
+            }
+            1 => bindings[1].contributor_id = bindings[0].contributor_id,
+            2 => bindings[0].principal_id = [0; 32],
+            3 => bindings[0].contributor_id = 999,
+            4 => bindings.reverse(),
+            _ => bindings[0].contributor_id = 0,
+        }
+        assert_eq!(
+            validate_organizer_config(&captured),
+            Err(OrganizerError::TimeBindingMismatch)
+        );
+    }
+}
+
+#[test]
+fn captured_time_binding_is_required_and_old_format_is_refused() {
+    let captured = captured_household_config();
+    let mut old_schema = captured.clone();
+    old_schema.schema_version = 1;
+    assert_eq!(
+        validate_organizer_config(&old_schema),
+        Err(OrganizerError::UnsupportedSchema)
+    );
+    let mut old_state = initial_organizer_state(&captured).unwrap();
+    old_state.schema_version = 1;
+    assert_eq!(
+        validate_organizer_state(&old_state),
+        Err(OrganizerError::UnsupportedSchema)
+    );
+    let mut payload = serde_json::to_value(&captured).unwrap();
+    payload.as_object_mut().unwrap().remove("time_binding");
+    assert!(serde_json::from_value::<OrganizerConfig>(payload).is_err());
+    let mut old_bytes = b"babylon.organizer-config.v1\0".to_vec();
+    old_bytes.extend(serde_json::to_vec(&captured).unwrap());
+    assert_eq!(
+        decode_organizer_config(&old_bytes),
+        Err(OrganizerError::Codec)
+    );
+}
+
+#[test]
+fn captured_time_binding_cannot_select_fixed_allowances() {
+    let captured = captured_household_config();
+    assert_eq!(
+        organizer_fixed_time_resources(&captured, 1),
+        Err(OrganizerError::TimeBindingMismatch)
+    );
+}
+
+#[test]
+fn captured_time_binding_preserves_shared_principal_budget_identity() {
+    let mut captured = captured_household_config();
+    let mut resources = shared_time(&config(), 10);
+    let OrganizerTimeBindingMode::Household { bindings } = &mut captured.time_binding else {
+        unreachable!()
+    };
+    bindings[2].principal_id = [52; 32];
+    assert_eq!(
+        finite_act(
+            &captured,
+            &initial_organizer_state(&captured).unwrap(),
+            &resources
+        )
+        .unwrap()
+        .receipts
+        .last()
+        .unwrap()
+        .outcome,
+        OrganizerOutcome::ContactCompleted
+    );
+    resources = finite_time(&config(), 1);
+    assert_eq!(
+        finite_act(
+            &captured,
+            &initial_organizer_state(&captured).unwrap(),
+            &resources
+        ),
+        Err(OrganizerError::TimeBindingMismatch)
+    );
+    let mut distinct = captured.clone();
+    let OrganizerTimeBindingMode::Household { bindings } = &mut distinct.time_binding else {
+        unreachable!()
+    };
+    bindings[1].principal_id = [53; 32];
+    let shared = shared_time(&config(), 10);
+    assert_eq!(
+        finite_act(
+            &distinct,
+            &initial_organizer_state(&distinct).unwrap(),
+            &shared
+        ),
+        Err(OrganizerError::TimeBindingMismatch)
+    );
+}
+
+#[path = "organizer/aid.rs"]
+mod aid;
+
+#[test]
+fn long_horizon_organizer_view_bounds_reply_without_mutating_history_or_authority() {
+    let config = config();
+    let mut state = initial_organizer_state(&config).unwrap();
+    for period in 1..=325 {
+        state = resolve_organizer_period(&config, &state, &facts(period, 160), None).unwrap();
+    }
+    assert_eq!(state.receipts.len(), 325);
+    assert!(state.contact_products.len() > 8);
+    let canonical = serde_json::to_vec(&state).unwrap();
+    let command = command(&config, &state, OrganizerChoice::Hold);
+    let accepted = admit_organizer(&config, &state, &command).unwrap();
+    let view = organizer_view(&config, &state, config.controlled_actor_id).unwrap();
+    assert_eq!(
+        view.receipts.len(),
+        8,
+        "native snapshot carries a fixed recent window"
+    );
+    assert_eq!(view.receipts.first().unwrap().period, 318);
+    assert_eq!(view.receipts.last().unwrap().period, 325);
+    let response = serde_json::json!({"organizer":{"view":view,"pending":null,"aid":[],"pending_aid":[],"aid_resolutions":[]}});
+    assert_eq!(response["organizer"]["view"]["total_receipt_count"], 325);
+    assert_eq!(
+        response["organizer"]["view"]["total_observation_count"],
+        state.observations.len()
+    );
+    assert!(
+        serde_json::to_vec(&response).unwrap().len() < 65_536,
+        "leave at least half of the 131072-byte frame for other fixed protocol fields"
+    );
+    assert_eq!(
+        serde_json::to_vec(&state).unwrap(),
+        canonical,
+        "presentation never drops canonical history"
+    );
+    assert_eq!(
+        admit_organizer(&config, &state, &command).unwrap(),
+        accepted,
+        "bounded presentation does not change command authorization"
+    );
+}
+
+#[test]
+fn recent_observations_preserve_latest_distinct_reports_and_complete_counts() {
+    let mut config = config();
+    config.initial_agreement_through_period = 1000;
+    let initial = initial_organizer_state(&config).unwrap();
+    let first = act(&config, &initial, OrganizerChoice::Hold, 160);
+    let mut state = act(
+        &config,
+        &first,
+        OrganizerChoice::Inquiry(OrganizerInquiry::WorkLost),
+        0,
+    );
+    let early = state
+        .observations
+        .iter()
+        .filter(|row| !matches!(row.report, OrganizerReport::Maintenance { .. }))
+        .map(|row| row.observation_id)
+        .collect::<Vec<_>>();
+    assert!(!early.is_empty());
+    for _ in 0..40 {
+        state = act(
+            &config,
+            &state,
+            OrganizerChoice::Inquiry(OrganizerInquiry::MaintenanceReceived),
+            0,
+        );
+    }
+    let canonical = serde_json::to_vec(&state).unwrap();
+    let view = organizer_view(&config, &state, config.controlled_actor_id).unwrap();
+    assert!(state.observations.len() > 8);
+    assert!(
+        view.observations.len() <= 11,
+        "eight recent reports plus at most three report kinds"
+    );
+    for id in early {
+        assert!(
+            view.observations.iter().any(|row| row.observation_id == id),
+            "latest older report of a distinct kind must remain visible"
+        );
+    }
+    assert!(view
+        .observations
+        .iter()
+        .any(|row| row.acquired_period == state.period));
+    assert_eq!(
+        serde_json::to_value(&view).unwrap()["total_observation_count"],
+        state.observations.len()
+    );
+    assert_eq!(serde_json::to_vec(&state).unwrap(), canonical);
+}
+
+#[test]
+fn organizer_view_refuses_unsupported_history_format_without_counts() {
+    let config = config();
+    let state = initial_organizer_state(&config).unwrap();
+    let view = organizer_view(&config, &state, config.controlled_actor_id).unwrap();
+    for field in ["total_observation_count", "total_receipt_count"] {
+        let mut bytes = serde_json::to_value(&view).unwrap();
+        bytes.as_object_mut().unwrap().remove(field);
+        assert!(serde_json::from_value::<OrganizerView>(bytes).is_err());
+    }
+}
+
+#[test]
+fn captured_config_requires_explicit_nullable_collection_terms() {
+    let value = serde_json::to_value(config()).unwrap();
+    assert!(value.as_object().unwrap().contains_key("collection"));
+    assert_eq!(value["collection"], serde_json::Value::Null);
+}
+#[test]
+fn omitted_collection_terms_are_refused_not_inferred_from_aid() {
+    let mut value = serde_json::to_value(config()).unwrap();
+    value.as_object_mut().unwrap().remove("collection");
+    assert!(serde_json::from_value::<OrganizerConfig>(value).is_err());
 }

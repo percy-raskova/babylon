@@ -87,8 +87,9 @@ The window observes the durable runtime.
 
 The Michigan map has 83 county QCEW baselines. The production scenario
 has five Designed county-industry cohorts, with 3D and compact 2D views.
-The supplied horizon is 16 four-week periods (64 weeks); authored parameters can
-select a shorter horizon. Observer campaigns have no player interventions.
+The supplied campaigns continue in four-week periods without a designed final
+period. Finite experiments keep explicit stopping periods. Observer campaigns
+have no player interventions.
 **New Game** opens the Wayne organizer campaign.
 
 To keep saved worlds and open a new campaign:

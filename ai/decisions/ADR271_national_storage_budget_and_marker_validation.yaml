@@ -1,0 +1,94 @@
+ADR271_national_storage_budget_and_marker_validation:
+  status: accepted
+  date: '2026-10-02'
+  issue: PER-40
+  title: Bounded national saves own their opening once and validate events at the marker
+  evidence_class: Designed
+  authority:
+    - Director-approved national economy and 52-period qualification
+    - Director authorization to redesign PostgreSQL without backwards compatibility
+    - Director request for an explicit megabytes-per-tick benchmark
+  context: |
+    A native national close produces a 320,403,396-byte register and
+    382,843,837-byte receipt. Forty-four state sections totaling 209,130,672
+    bytes remain identical across that first period. The current PostgreSQL
+    opening also stores a complete foundation containing components stored
+    separately. These measurements justify investigating compact representation
+    and single ownership; they do not establish disk savings or future invariance.
+
+    The first full PostgreSQL candidate reaches COMMIT with 60,634 event parents
+    and 788,242 fields. Existing deferred row triggers scan the whole event set
+    once per parent or field mutation. The attempt is cancelled unpublished,
+    inside that verifier, with zero acknowledged markers. Repeated scans cannot
+    serve the required national advance budget.
+
+    Three subsequent actual commits and authenticated restarts preserve all
+    3,144 counties. Their charged growth is 670,261,248, 651,493,376 and
+    649,609,216 bytes. Complete state/receipt blobs and graph/event row versions
+    dominate that retained cost. Whole-blob compression and a first-register
+    delta prototype remain too large for the Designed ceiling.
+
+    Removing the duplicate foundation reduces matched opening growth from
+    369,786,880 to 186,392,576 bytes. A new actual national commit and cold open
+    preserve the same county roster, tick-content, register, receipt and world
+    hashes. First-period growth remains 670,253,056 bytes, so this ownership
+    repair does not satisfy recurring storage or advance latency acceptance.
+  decision: |
+    Qualify national saves against a Designed ceiling of 10,000,000 decimal
+    bytes per committed tick. Include retained state, receipts, graph history,
+    indexes, TOAST, checkpoints and tick-created dictionaries or shared objects.
+    Charge the maximum of zero, whole-database growth and summed positive growth
+    of ordinary parent relation totals. Count each parent's TOAST once. Retain
+    individual increments and rolling thirteen-period totals; report opening,
+    cluster-wide WAL, temporary disk and peak memory separately. A short run is
+    measurement evidence, not acceptance of the fifty-two-period horizon.
+
+    Persist each opening component once: captured graph/source components,
+    initial material register, specification and their canonical digests. Remove
+    the separately persisted full material foundation containing those same
+    components. Reconstruct it through one shared loader for runtime and full
+    observer reads. Authenticate the exact canonical framing over borrowed
+    components before source regeneration, then require the regenerated digest.
+    The restricted observer component view has no KnownPreview grant. External
+    binary capture/export retains its canonical framing and exact decode checks.
+
+    Validate the final event set once at its deferred commit marker. Statement
+    transition-table guards collect distinct affected campaign/tick keys for
+    inserts, updates and deletes. They acquire ordered transaction locks shared
+    with marker insertion and refuse any mutation of an already marked event
+    set. Updates check both old and new keys. Deferred event-to-marker and
+    immediate field-to-event foreign keys remain required. Final validation
+    checks contiguous event ordinals and field positions. Explicit immediate
+    constraint evaluation cannot authorize later mutation of marked history.
+
+    The writer still judges a detached tick, writes every component before its
+    marker, commits atomically and publishes only after acknowledgement or exact
+    whole-envelope reconciliation. Bulk event insertion must reproduce every
+    typed column, including nullable choice references and exact currency.
+    Failed transactions publish nothing. Historical evidence remains complete.
+
+    Current development may replace persistence formats. Preserve old saves as
+    recoverable data and refuse unsupported schemas clearly; do not maintain a
+    second writer, format adapter or migration solely for compatibility.
+  alternatives_rejected:
+    - Raising the storage budget to match the current duplicated representation.
+    - Retaining a second complete opening to simplify runtime or observer reads.
+    - Reducing county coverage, accounting precision or retained causal evidence.
+    - Removing continuity checks or relying only on the ordinary writer's honesty.
+    - Per-row complete event scans, which repeat work quadratically.
+    - Assuming first-period identical sections are invariant for every future tick.
+  consequences: |
+    The current format has not passed the storage or committed-advance targets.
+    Actual PostgreSQL commits and authenticated restarts must establish its
+    baseline before larger representation changes are claimed as improvements.
+    Compact storage must reconstruct the current canonical bytes and hashes.
+    No economic mechanism, reserved theory line or primitive changes.
+  verification:
+    - Valid bulk writes equal the prior typed rows and roll back without residue.
+    - Event and field holes, unmarked rows and late marked-history writes refuse.
+    - Concurrent event writes and marker insertion cannot publish an unchecked set.
+    - Immediate constraint evaluation followed by further mutation remains guarded.
+    - Full county roster, canonical evidence and hashes survive authenticated restart.
+    - All fifty-two actual increments include checkpoint and shared-object growth.
+  canonical_contract: contracts/national_storage_qualification_v1.json
+  source_record: reports/national-household-time-close-census-2026-10-02.md

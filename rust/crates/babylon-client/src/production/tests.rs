@@ -10,14 +10,15 @@ use babylon_persistence::{
 
 fn site(id: &str, suppliers: &[&str]) -> ProductionSite {
     ProductionSite {
+        function: "manufacturing".into(),
         id: id.into(),
-        county_geoid: "26163".into(),
+        location: "county:26163".parse().unwrap(),
         name: format!("Cohort {id}"),
-        industry_code: "331".into(),
+        industry_code: Some("331".into()),
         observed_employment: Some(20),
         inventory: Vec::new(),
-        role: babylon_persistence::production_observation::ProductionSiteRole::Production,
-        sector_code: "31-33".into(),
+        roles: vec![babylon_persistence::production_observation::ProductionSiteRole::Production],
+        sector_code: Some("31-33".into()),
         processes: vec![
             babylon_persistence::production_observation::ProductionProcess {
                 id: "fixture-process".into(),
@@ -37,7 +38,7 @@ fn site(id: &str, suppliers: &[&str]) -> ProductionSite {
                     good: "input".into(),
                     unit: "kg".into(),
                     quantity_per_batch: 1,
-                    on_hand: 20,
+                    on_hand: Some(20),
                     supplier_site_ids: suppliers.iter().map(|id| (*id).into()).collect(),
                 }],
             },
@@ -47,6 +48,27 @@ fn site(id: &str, suppliers: &[&str]) -> ProductionSite {
 
 fn snapshot() -> ProductionSnapshot {
     ProductionSnapshot {
+        physical_routes: vec![
+            babylon_persistence::production_observation::PhysicalRouteDefinition {
+                id: "a-b".into(),
+                travel_periods: 1,
+                stages: vec![
+                    babylon_persistence::production_observation::ProductionRouteStage {
+                        stage_index: 0,
+                        travel_periods: 1,
+                        capacity_ids: vec!["fixture-capacity".into()],
+                    },
+                ],
+                transport_kind:
+                    babylon_persistence::production_observation::ProductionRouteTransport::Staged,
+                physical_edge_ids: Vec::new(),
+                distance_mm: None,
+            },
+        ],
+
+        household_accounts: Vec::new(),
+        household_service_accounts: Vec::new(),
+        goods_price_accounts: Vec::new(),
         maintenance_account: None,
         content_authority_sha256: "a".repeat(64),
         road_source: None,
@@ -54,25 +76,23 @@ fn snapshot() -> ProductionSnapshot {
         merchant_handling_accounts: Vec::new(),
         final_demand_accounts: Vec::new(),
         freight_capacity_accounts: Vec::new(),
+        freight_order_definitions: Vec::new(),
         material_balance: None,
         labor_accounts: Vec::new(),
         staffing_accounts: Vec::new(),
         observed_contexts: Vec::new(),
+        national_observed_contexts: Vec::new(),
         process_attributions: Vec::new(),
         scenario_label: "Navigation fixture".into(),
-        horizon_period: 8,
+        duration: babylon_kernel::clock::CampaignDuration::Finite { final_period: 8 },
         sites: vec![
             site("a", &[]),
             site("b", &["a", "withheld"]),
             site("c", &["b"]),
         ],
         routes: vec![ProductionRoute {
-            physical_edge_ids: Vec::new(),
-            distance_mm: None,
-            transport_kind:
-                babylon_persistence::production_observation::ProductionRouteTransport::Staged,
+            physical_route_id: "a-b".into(),
             grams_per_unit: 1000,
-            stages: Vec::new(),
             id: "a-b".into(),
             supplier_site_id: "a".into(),
             buyer_site_id: "b".into(),
@@ -80,7 +100,6 @@ fn snapshot() -> ProductionSnapshot {
             unit_id: "b".repeat(64),
             good: "steel".into(),
             unit: "kg".into(),
-            travel_periods: 1,
             ordered: 20,
             shipped: 10,
             delivered: 10,
@@ -143,6 +162,7 @@ fn reading_headline_uses_exact_output_identity_and_keeps_absence_distinct_from_z
         period: 5,
         rows: vec![ProductionMaterialBalanceRow {
             maintenance_consumed: 0,
+            installation_consumed: 0,
             local_received: 0,
             local_transferred: 0,
             final_demand_fulfilled: 0,
@@ -190,6 +210,7 @@ fn stock_readings_keep_units_and_subjects_separate_and_do_not_invent_foundation_
     assert!(!value.contains("Opened 0"));
     let kilograms = ProductionMaterialBalanceRow {
         maintenance_consumed: 0,
+        installation_consumed: 0,
         local_received: 0,
         local_transferred: 0,
         final_demand_fulfilled: 0,
@@ -207,6 +228,7 @@ fn stock_readings_keep_units_and_subjects_separate_and_do_not_invent_foundation_
     };
     let tonnes = ProductionMaterialBalanceRow {
         maintenance_consumed: 0,
+        installation_consumed: 0,
         unit_id: "tonne".into(),
         unit: "tonne".into(),
         opening: 1,
@@ -219,6 +241,7 @@ fn stock_readings_keep_units_and_subjects_separate_and_do_not_invent_foundation_
     };
     let unrelated = ProductionMaterialBalanceRow {
         maintenance_consumed: 0,
+        installation_consumed: 0,
         local_received: 0,
         local_transferred: 0,
         final_demand_fulfilled: 0,
@@ -255,14 +278,16 @@ fn merchant_reading_has_no_fake_production_and_separates_local_goods_from_arriva
     };
     let mut snapshot = snapshot();
     let merchant = &mut snapshot.sites[1];
-    merchant.role = ProductionSiteRole::Retail;
+    merchant.roles = vec![ProductionSiteRole::Retail];
     merchant.processes.clear();
-    snapshot.routes[0].transport_kind = ProductionRouteTransport::Local;
-    snapshot.routes[0].travel_periods = 0;
+    snapshot.physical_routes[0].transport_kind = ProductionRouteTransport::Local;
+    snapshot.physical_routes[0].travel_periods = 0;
+    snapshot.physical_routes[0].stages.clear();
     snapshot.material_balance = Some(CompletedMaterialBalance {
         period: 1,
         rows: vec![ProductionMaterialBalanceRow {
             maintenance_consumed: 0,
+            installation_consumed: 0,
             site_id: "b".into(),
             good_id: "meal".into(),
             unit_id: "kg".into(),
@@ -297,7 +322,7 @@ fn merchant_handling_reading_uses_exact_kilograms_without_changing_work_hours() 
         production_observation::ProductionSiteRole,
     };
     let mut snapshot = snapshot();
-    snapshot.sites[1].role = ProductionSiteRole::Retail;
+    snapshot.sites[1].roles = vec![ProductionSiteRole::Retail];
     snapshot.sites[1].processes.clear();
     snapshot.merchant_handling_accounts = vec![ProductionMerchantHandlingAccount {
         site_id: "b".into(),
@@ -338,6 +363,8 @@ fn inspector_separates_committed_work_time_from_next_opening_and_other_sites() {
             completed: Some(CompletedProductionLabor {
                 maintenance_needed: 0,
                 maintenance_used: 0,
+                installation_needed: 0,
+                installation_used: 0,
                 handling_needed: 0,
                 handling_used: 0,
                 period: 5,
@@ -401,6 +428,7 @@ fn staffing_account(
         production_observation::ProductionStaffingSubject,
     };
     ProductionStaffingAccount {
+        members: vec![],
         pool_id: format!("pool-{site_id}"),
         site_id: site_id.into(),
         unit_id: "labor-hours".into(),
@@ -446,6 +474,8 @@ fn workforce_readings_use_exact_people_and_retention_for_only_the_selected_site(
                 babylon_persistence::production_observation::CompletedProductionLabor {
                     maintenance_needed: 0,
                     maintenance_used: 0,
+                    installation_needed: 0,
+                    installation_used: 0,
                     handling_needed: 0,
                     handling_used: 0,
                     period: 5,
@@ -467,7 +497,7 @@ fn workforce_readings_use_exact_people_and_retention_for_only_the_selected_site(
     assert!(text.contains("40 hours per person / period (Designed)"));
     assert!(text.contains("STAFFING / PERIOD 5"));
     assert!(text.contains("Opening: 4 employed, 0 reserve"));
-    assert!(text.contains("Hires: 0 | separations: 2 | target: 2 employed"));
+    assert!(text.contains("Work activations: 0 | releases: 2 | target: 2 employed"));
     assert!(text.contains("Work request: 40 hours | prior period: 80 hours"));
     assert!(text.contains("One-period retention: 80 hours"));
     assert!(text.contains("Next opening (period 6): 80 labor-hours (Derived)"));
@@ -502,7 +532,7 @@ fn workforce_foundation_absence_and_zero_completed_flows_remain_distinct() {
     assert!(foundation.contains("Opening workforce; no completed staffing period."));
     assert!(foundation.contains("MODELED WORKFORCE / DESIGNED"));
     assert!(!foundation.contains("MODELED WORKFORCE / DERIVED"));
-    assert!(!foundation.contains("Hires:"));
+    assert!(!foundation.contains("Work activations:"));
     assert!(!foundation.contains("STAFFING / PERIOD"));
     assert!(foundation.contains("Next opening (period 1): 80 labor-hours (Derived)"));
     assert_eq!(foundation.matches("Next opening").count(), 1);
@@ -529,6 +559,8 @@ fn workforce_foundation_absence_and_zero_completed_flows_remain_distinct() {
         babylon_persistence::production_observation::CompletedProductionLabor {
             maintenance_needed: 0,
             maintenance_used: 0,
+            installation_needed: 0,
+            installation_used: 0,
             handling_needed: 0,
             handling_used: 0,
             period: 5,
@@ -543,7 +575,7 @@ fn workforce_foundation_absence_and_zero_completed_flows_remain_distinct() {
         &snapshot,
         ProductionReadingSection::Work,
     );
-    assert!(quiet.contains("Hires: 0 | separations: 0"));
+    assert!(quiet.contains("Work activations: 0 | releases: 0"));
     assert!(!quiet.contains("no completed staffing period"));
     assert!(quiet.contains("Next opening (period 6): 80 labor-hours (Derived)"));
     assert_eq!(quiet.matches("Next opening").count(), 1);
@@ -582,7 +614,7 @@ fn attributed_snapshot() -> ProductionSnapshot {
             .push(DesignedProcessAttribution {
                 process_id: format!("process-{}", site.id),
                 site_id: site.id.clone(),
-                industry_code: site.industry_code.clone(),
+                industry_code: site.industry_code.clone().unwrap(),
                 cohort_subject: subject.clone(),
                 scenario_artifact_sha256: "c".repeat(64),
                 industry_artifact_sha256: "d".repeat(64),
@@ -911,21 +943,24 @@ fn map_and_flat_controls_preserve_the_county_selected_on_geography() {
     let macomb = index("26099");
     let wayne = index("26163");
     let mut production = snapshot();
-    production.sites[1].industry_code = "332".into();
+    production.sites[1].industry_code = Some("332".into());
     let mut app = App::new();
     app.add_plugins(MinimalPlugins)
         .insert_resource(state)
-        .insert_resource(ObserverFrame(Some(ObserverEconomySnapshot {
-            campaign_id: campaign.as_uuid().to_string(),
-            resolve_tick: 1,
-            foundation_digest: "f".repeat(64),
-            tick_content_hash: Some("a".repeat(64)),
-            nominal_world_hash: None,
-            envelope_digest: None,
-            visibility: ObserverVisibility::FullObserver,
-            counties: Vec::new(),
-            production: Some(production),
-        })))
+        .insert_resource(ObserverFrame(
+            Some(ObserverEconomySnapshot {
+                campaign_id: campaign.as_uuid().to_string(),
+                resolve_tick: 1,
+                foundation_digest: "f".repeat(64),
+                tick_content_hash: Some("a".repeat(64)),
+                nominal_world_hash: None,
+                envelope_digest: None,
+                visibility: ObserverVisibility::FullObserver,
+                counties: Vec::new(),
+                production: Some(production),
+            }),
+            None,
+        ))
         .insert_resource(atlas)
         .insert_resource(PrimaryView::Production)
         .insert_resource(ProductionNavigation {
@@ -984,17 +1019,20 @@ fn opening_focus_uses_current_capability_and_preserves_selection() {
     let campaign = CampaignId::from_uuid(uuid::Uuid::nil());
     let mut state = ObserverSession::new(campaign);
     state.ready(1, Some("a".repeat(64)));
-    let frame = ObserverFrame(Some(ObserverEconomySnapshot {
-        campaign_id: campaign.as_uuid().to_string(),
-        resolve_tick: 1,
-        foundation_digest: "b".repeat(64),
-        nominal_world_hash: None,
-        tick_content_hash: Some("a".repeat(64)),
-        envelope_digest: None,
-        visibility: ObserverVisibility::FullObserver,
-        counties: Vec::new(),
-        production: Some(snapshot()),
-    }));
+    let frame = ObserverFrame(
+        Some(ObserverEconomySnapshot {
+            campaign_id: campaign.as_uuid().to_string(),
+            resolve_tick: 1,
+            foundation_digest: "b".repeat(64),
+            nominal_world_hash: None,
+            tick_content_hash: Some("a".repeat(64)),
+            envelope_digest: None,
+            visibility: ObserverVisibility::FullObserver,
+            counties: Vec::new(),
+            production: Some(snapshot()),
+        }),
+        None,
+    );
     let mut app = App::new();
     app.insert_resource(state)
         .insert_resource(frame)
@@ -1136,17 +1174,20 @@ fn unstarted_dependency_navigation_app() -> App {
     let campaign = CampaignId::from_uuid(uuid::Uuid::nil());
     let mut state = ObserverSession::new(campaign);
     state.ready(1, Some("a".repeat(64)));
-    let frame = ObserverFrame(Some(ObserverEconomySnapshot {
-        campaign_id: campaign.as_uuid().to_string(),
-        resolve_tick: 1,
-        foundation_digest: "f".repeat(64),
-        tick_content_hash: Some("a".repeat(64)),
-        nominal_world_hash: None,
-        envelope_digest: None,
-        visibility: ObserverVisibility::FullObserver,
-        counties: Vec::new(),
-        production: Some(snapshot()),
-    }));
+    let frame = ObserverFrame(
+        Some(ObserverEconomySnapshot {
+            campaign_id: campaign.as_uuid().to_string(),
+            resolve_tick: 1,
+            foundation_digest: "f".repeat(64),
+            tick_content_hash: Some("a".repeat(64)),
+            nominal_world_hash: None,
+            envelope_digest: None,
+            visibility: ObserverVisibility::FullObserver,
+            counties: Vec::new(),
+            production: Some(snapshot()),
+        }),
+        None,
+    );
     let atlas = CountyAtlas::parse(include_bytes!(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../../../assets/map/county_atlas.bin"

@@ -47,6 +47,10 @@
               "label": "Sheet transfer"
             }
           ],
+          "duration": {
+            "final_period": 16,
+            "kind": "finite"
+          },
           "evidence_class": "Designed",
           "final_demands": [],
           "geographic_scale": "county_industry_aggregate",
@@ -94,7 +98,6 @@
               "unit_key": "subassembly"
             }
           ],
-          "horizon_ticks": 16,
           "industry": [
             {
               "agglvl_code": "75",
@@ -378,7 +381,7 @@
               "supplier_site_key": "wayne-primary-metal"
             }
           ],
-          "schema": "MichiganNormalizedContentV3",
+          "schema": "MichiganNormalizedContentV4",
           "sites": [
             {
               "county_geoid": "26099",
@@ -541,6 +544,10 @@
               "label": "Sheet transfer"
             }
           ],
+          "duration": {
+            "final_period": 16,
+            "kind": "finite"
+          },
           "evidence_class": "Designed",
           "final_demands": [],
           "geographic_scale": "county_industry_aggregate",
@@ -588,7 +595,6 @@
               "unit_key": "subassembly"
             }
           ],
-          "horizon_ticks": 16,
           "industry": [
             {
               "agglvl_code": "75",
@@ -872,7 +878,7 @@
               "supplier_site_key": "wayne-primary-metal"
             }
           ],
-          "schema": "MichiganNormalizedContentV3",
+          "schema": "MichiganNormalizedContentV4",
           "sites": [
             {
               "county_geoid": "26099",
@@ -1035,6 +1041,10 @@
               "label": "Sheet transfer"
             }
           ],
+          "duration": {
+            "final_period": 16,
+            "kind": "finite"
+          },
           "evidence_class": "Designed",
           "final_demands": [],
           "geographic_scale": "county_industry_aggregate",
@@ -1082,7 +1092,6 @@
               "unit_key": "subassembly"
             }
           ],
-          "horizon_ticks": 16,
           "industry": [
             {
               "agglvl_code": "75",
@@ -1366,7 +1375,7 @@
               "supplier_site_key": "wayne-primary-metal"
             }
           ],
-          "schema": "MichiganNormalizedContentV3",
+          "schema": "MichiganNormalizedContentV4",
           "sites": [
             {
               "county_geoid": "26099",
@@ -1529,6 +1538,10 @@
               "label": "Sheet transfer"
             }
           ],
+          "duration": {
+            "final_period": 16,
+            "kind": "finite"
+          },
           "evidence_class": "Designed",
           "final_demands": [],
           "geographic_scale": "county_industry_aggregate",
@@ -1576,7 +1589,6 @@
               "unit_key": "subassembly"
             }
           ],
-          "horizon_ticks": 16,
           "industry": [
             {
               "agglvl_code": "75",
@@ -1860,7 +1872,7 @@
               "supplier_site_key": "wayne-primary-metal"
             }
           ],
-          "schema": "MichiganNormalizedContentV3",
+          "schema": "MichiganNormalizedContentV4",
           "sites": [
             {
               "county_geoid": "26099",
@@ -1979,7 +1991,7 @@
       }
     ],
     "periods": 16,
-    "schema": "SimulationExperimentMatrixV1"
+    "schema": "SimulationExperimentMatrixV2"
   },
   "periods": [
     {

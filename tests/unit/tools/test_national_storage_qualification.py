@@ -17,7 +17,7 @@ from tools.devtools.national_storage_qualification import (
 def policy():
     return Policy.model_validate_json(
         (
-            Path(__file__).resolve().parents[3] / "contracts/national_storage_qualification_v2.json"
+            Path(__file__).resolve().parents[3] / "contracts/national_storage_qualification_v3.json"
         ).read_bytes()
     )
 
@@ -126,6 +126,43 @@ def test_positive_relation_growth_cannot_be_hidden_by_database_shrink():
     assert r["ticks"][0]["database_delta_bytes"] == -10
     assert r["ticks"][0]["charged_growth_bytes"] == 40_000_001
     assert r["status"] == "failed"
+
+
+def test_positive_unattributed_growth_cannot_hide_behind_known_relation_shrink():
+    item = snapshot(1, 40_000_051, 0)
+    item["relations"].append(["babylon_meta", "new_history", 40_000_000, 0, 0, 40_000_000, 1])
+    result = run([item])
+    period = result["ticks"][0]
+    assert period["charged_growth_bytes"] == 40_000_051
+    assert period["unattributed_database_growth_bytes"] == 51
+    assert not period["budget_passed"]
+    assert result["status"] == "failed"
+
+
+def test_recovery_allocation_cannot_hide_behind_committed_relation_shrink():
+    committed = snapshot(1, 110, 110)
+    reopened = snapshot(1, 110, 100)
+    reopened["relations"].append(["babylon_meta", "recovery_history", 10, 0, 0, 10, 1])
+    result = run([committed], [reopened])
+    period = result["ticks"][0]
+    assert period["charged_growth_bytes"] == 20
+    assert period["restart_growth"]["database_delta_bytes"] == 0
+    assert period["restart_growth"]["charged_growth_bytes"] == 10
+
+
+@pytest.mark.parametrize("version", [1, 2, 4])
+def test_unsupported_storage_policy_versions_refuse(version):
+    data = policy().model_dump()
+    data["version"] = version
+    with pytest.raises(ValueError):
+        Policy.model_validate(data)
+
+
+def test_storage_charge_method_cannot_change_with_an_unversioned_override():
+    data = policy().model_dump()
+    data["storage_charge_method"] = "maximum_net_or_parent_growth"
+    with pytest.raises(ValueError):
+        Policy.model_validate(data)
 
 
 @pytest.mark.parametrize("growth,passed", [(40_000_000, True), (40_000_001, False)])

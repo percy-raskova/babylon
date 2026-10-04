@@ -640,9 +640,11 @@ Check the resulting stage snapshots with the pinned project environment:
 
 The evaluator reads files and never connects to Postgres. It refuses missing
 or inconsistent markers, changed historical hashes, incomparable databases,
-duplicate relations and a changed county roster. It charges the largest of
-whole-database growth, summed positive parent-relation growth and zero, with
-restart growth included in the period. Parent totals already include TOAST.
+duplicate relations and a changed county roster. It sums positive parent-relation
+growth and positive database growth outside those relations. The latter is the
+database delta minus the sum of signed parent deltas. It charges commit and
+restart intervals separately, so shrinking one collection cannot hide allocation
+elsewhere. Parent totals already include TOAST.
 
 Each period must meet the ceiling. Shrinking another relation cannot conceal
 growing history. ``--qualify`` exits unsuccessfully unless at least 52 consecutive
@@ -656,10 +658,14 @@ comparison. Record cluster-wide WAL, temporary disk, peak memory, commit latency
 and restart latency separately. Passing this storage criterion does not prove
 economic behavior, responsive native play or enjoyment.
 
-Adjust budgets through ``contracts/national_storage_qualification_v2.json`` or
+Adjust budgets through ``contracts/national_storage_qualification_v3.json`` or
 an explicit policy file. The evaluator rejects unknown or duplicate fields,
 non-integer limits and inconsistent thresholds. County coverage, the thirteen
 period model year and the 52-period correctness milestone remain fixed.
+
+The selected policy fixes the storage charge method as well as its thresholds.
+Current runs reject earlier policy versions. Retained results keep their original
+captured policy and evaluator. New overrides apply to future runs.
 The national runner validates and captures the policy before creating its
 disposable database. A later edit applies to the next run, not retained evidence.
 

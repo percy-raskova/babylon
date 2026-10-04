@@ -112,7 +112,7 @@ national_begin() {
   # Execute the frozen compatible collector with its adjacent SQL and explicit
   # output directory. Its stage convention is <stage>.json, matching the test.
   export BABYLON_STORAGE_SNAPSHOT_SCRIPT="$BABYLON_STORAGE_REPORT_DIRECTORY/snapshot-source.py"
-  NATIONAL_POLICY_SOURCE="${BABYLON_STORAGE_POLICY_PATH:-$REPO_ROOT/contracts/national_storage_qualification_v2.json}"
+  NATIONAL_POLICY_SOURCE="${BABYLON_STORAGE_POLICY_PATH:-$REPO_ROOT/contracts/national_storage_qualification_v3.json}"
   [[ "$NATIONAL_POLICY_SOURCE" = /* ]] || die "storage policy override must be an absolute path"
   NATIONAL_POLICY_SOURCE="$(realpath -e -- "$NATIONAL_POLICY_SOURCE")" || die "storage policy must exist"
   [ -f "$NATIONAL_POLICY_SOURCE" ] || die "storage policy must be a regular file"

@@ -2,6 +2,7 @@
 
 use crate::{
     archive::{database, insert_grant_row},
+    economic_content::{EconomicAdmissionOwner, EconomicContentAdmission},
     identity::CampaignId,
     material_runtime::MaterialRuntimeError,
     ArchiveCitation, ArchiveDirtyBatch, ArchiveDossierProducer, ArchiveKnowledge, ArchivePageInput,
@@ -383,6 +384,7 @@ fn receipt_text(receipt: &OrganizerReceipt) -> String {
 /// Existing Archive-worker producer for committed, period-specific organizer evidence.
 pub struct OrganizerDossierProducer {
     config: postgres::Config,
+    foundation: EconomicAdmissionOwner,
 }
 impl OrganizerDossierProducer {
     /// Bind the writer connection used by the existing Archive worker.
@@ -390,6 +392,7 @@ impl OrganizerDossierProducer {
     pub fn new(config: &postgres::Config) -> Self {
         Self {
             config: config.clone(),
+            foundation: EconomicAdmissionOwner::default(),
         }
     }
 }
@@ -448,7 +451,18 @@ impl ArchiveDossierProducer for OrganizerDossierProducer {
             .commit()
             .map_err(|e| database("finish organizer Archive capture", &e))?;
         drop(client);
-        captured.admit_and_render()
+        let campaign = CampaignId::from_uuid(campaign);
+        let candidate = self
+            .foundation
+            .candidate(campaign)
+            .map_err(|_| SemanticArchiveError::StoredPageMismatch)?;
+        let (outcome, admitted) = captured.admit_and_render(candidate)?;
+        if let Some(admitted) = admitted {
+            self.foundation
+                .publish(campaign, admitted)
+                .map_err(|_| SemanticArchiveError::StoredPageMismatch)?;
+        }
+        Ok(outcome)
     }
 }
 
@@ -493,32 +507,44 @@ pub(crate) fn capture_organizer_pages(
 }
 
 impl CapturedOrganizerPages {
-    pub(crate) fn admit_and_render(self) -> Result<ArchiveProducerOutcome, SemanticArchiveError> {
+    pub(crate) fn admit_and_render(
+        self,
+        cached: Option<std::sync::Arc<EconomicContentAdmission>>,
+    ) -> Result<
+        (
+            ArchiveProducerOutcome,
+            Option<std::sync::Arc<EconomicContentAdmission>>,
+        ),
+        SemanticArchiveError,
+    > {
         let receipt = PendingArchiveReceipt::try_new(self.tick, self.content_hash)?;
         let page_budget = self.page_budget;
         let Some(captured) = self.register else {
-            return Ok(ArchiveProducerOutcome::new(
-                ArchiveDirtyBatch::try_new(
-                    receipt.resolve_tick(),
-                    *receipt.tick_content_hash(),
-                    Vec::new(),
-                )?,
-                self.subjects.len(),
+            return Ok((
+                ArchiveProducerOutcome::new(
+                    ArchiveDirtyBatch::try_new(
+                        receipt.resolve_tick(),
+                        *receipt.tick_content_hash(),
+                        Vec::new(),
+                    )?,
+                    self.subjects.len(),
+                ),
+                None,
             ));
         };
-        let register = Some(captured.admit().map_err(archive_register_error)?);
+        let (register, admitted) = captured.admit(cached).map_err(archive_register_error)?;
         let subjects = self.subjects;
-        let Some(state) = register
-            .as_ref()
-            .and_then(MaterialWorldRegister::organizer_state)
-        else {
-            return Ok(ArchiveProducerOutcome::new(
-                ArchiveDirtyBatch::try_new(
-                    receipt.resolve_tick(),
-                    *receipt.tick_content_hash(),
-                    Vec::new(),
-                )?,
-                0,
+        let Some(state) = register.organizer_state() else {
+            return Ok((
+                ArchiveProducerOutcome::new(
+                    ArchiveDirtyBatch::try_new(
+                        receipt.resolve_tick(),
+                        *receipt.tick_content_hash(),
+                        Vec::new(),
+                    )?,
+                    0,
+                ),
+                Some(admitted),
             ));
         };
         let total = subjects.len();
@@ -575,13 +601,16 @@ impl CapturedOrganizerPages {
             pages.push(ArchivePageInput::try_new(ArchiveSubject::try_new(kind,id,title)?,receipt.resolve_tick(),*receipt.tick_content_hash(),"Designed Wayne scenario: these fictional organizations and modeled workplace do not represent observed organizations or the whole workforce. What have we learned or performed, and which commitment should we review next?".into(),signals,Vec::new())?);
         }
         let remaining = total.saturating_sub(pages.len());
-        Ok(ArchiveProducerOutcome::new(
-            ArchiveDirtyBatch::try_new(
-                receipt.resolve_tick(),
-                *receipt.tick_content_hash(),
-                pages,
-            )?,
-            remaining,
+        Ok((
+            ArchiveProducerOutcome::new(
+                ArchiveDirtyBatch::try_new(
+                    receipt.resolve_tick(),
+                    *receipt.tick_content_hash(),
+                    pages,
+                )?,
+                remaining,
+            ),
+            Some(admitted),
         ))
     }
 }

@@ -11,7 +11,9 @@ use postgres::{Config, IsolationLevel, NoTls};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    economic_content::{validate_economic_header, EconomicContentAdmission},
+    economic_content::{
+        validate_economic_header, EconomicAdmissionOwner, EconomicContentAdmission,
+    },
     identity::CampaignId,
     michigan_content::{MichiganContentPreset, MICHIGAN_CONTENT_PRESETS},
     michigan_economy::{digest_hex, MichiganCountyEconomy},
@@ -107,6 +109,7 @@ pub struct CommittedMaterialObservation {
 pub struct ObserverEconomyReader {
     config: Config,
     visibility: ObserverVisibility,
+    foundation: EconomicAdmissionOwner,
 }
 impl ObserverEconomyReader {
     /// # Errors
@@ -135,6 +138,7 @@ impl ObserverEconomyReader {
         Ok(Self {
             config: config.clone(),
             visibility,
+            foundation: EconomicAdmissionOwner::default(),
         })
     }
     #[must_use]
@@ -175,12 +179,16 @@ impl ObserverEconomyReader {
         transaction
             .batch_execute("SET LOCAL idle_in_transaction_session_timeout = '120s'")
             .map_err(|_| ObserverEconomyError::Database)?;
+        let candidate = self
+            .foundation
+            .candidate(campaign)
+            .map_err(|_| ObserverEconomyError::ScenarioMismatch)?;
         let (_, _, header) = read_foundation(
             &mut transaction,
             campaign,
             expected_tick,
             self.visibility,
-            None,
+            candidate.as_ref(),
         )?;
         let expected = header
             .as_ref()
@@ -201,6 +209,9 @@ impl ObserverEconomyReader {
         transaction
             .commit()
             .map_err(|_| ObserverEconomyError::Database)?;
+        self.foundation
+            .publish(campaign, std::sync::Arc::clone(expected))
+            .map_err(|_| ObserverEconomyError::ScenarioMismatch)?;
         Ok(result)
     }
 
@@ -238,12 +249,16 @@ impl ObserverEconomyReader {
         transaction
             .batch_execute("SET LOCAL idle_in_transaction_session_timeout = '120s'")
             .map_err(|_| ObserverEconomyError::Database)?;
+        let candidate = self
+            .foundation
+            .candidate(campaign)
+            .map_err(|_| ObserverEconomyError::ScenarioMismatch)?;
         let (_, geography_scope, header) = read_foundation(
             &mut transaction,
             campaign,
             expected_tick,
             self.visibility,
-            None,
+            candidate.as_ref(),
         )?;
         let expected = header
             .as_ref()
@@ -290,6 +305,9 @@ impl ObserverEconomyReader {
             .production_evidence_digest()
             .map_err(|_| ObserverEconomyError::InvalidProjection)?
             .ok_or(ObserverEconomyError::InvalidProjection)?;
+        self.foundation
+            .publish(campaign, std::sync::Arc::clone(expected))
+            .map_err(|_| ObserverEconomyError::ScenarioMismatch)?;
         Ok(CommittedMaterialObservation {
             snapshot,
             accounting,
@@ -384,12 +402,23 @@ impl ObserverEconomyReader {
                 .batch_execute("SET LOCAL idle_in_transaction_session_timeout = '120s'")
                 .map_err(|_| ObserverEconomyError::Database)?;
         }
+        let cached_admission = if self.visibility == ObserverVisibility::FullObserver {
+            candidate
+                .as_ref()
+                .and_then(|cursor| cursor.admission(campaign))
+                .or(self
+                    .foundation
+                    .candidate(campaign)
+                    .map_err(|_| ObserverEconomyError::ScenarioMismatch)?)
+        } else {
+            None
+        };
         let (foundation_hash, geography_scope, material_header) = read_foundation(
             &mut transaction,
             campaign,
             expected_tick,
             self.visibility,
-            candidate.as_ref(),
+            cached_admission.as_ref(),
         )?;
         let admission = material_header
             .as_ref()
@@ -431,6 +460,11 @@ impl ObserverEconomyReader {
         transaction
             .commit()
             .map_err(|_| ObserverEconomyError::Database)?;
+        if let Some(admitted) = admission {
+            self.foundation
+                .publish(campaign, std::sync::Arc::clone(admitted))
+                .map_err(|_| ObserverEconomyError::ScenarioMismatch)?;
+        }
         *cursor = candidate;
         Ok(ObserverEconomySnapshot {
             campaign_id: campaign.as_uuid().to_string(),
@@ -451,7 +485,7 @@ fn read_foundation(
     campaign: CampaignId,
     tick: u64,
     visibility: ObserverVisibility,
-    cached: Option<&ObserverMaterialCursor>,
+    cached: Option<&std::sync::Arc<EconomicContentAdmission>>,
 ) -> Result<
     (
         Vec<u8>,

@@ -13,7 +13,7 @@ use crate::{
     economic_content::{validate_economic_header, EconomicContentAdmission},
     identity::CampaignId,
     material_runtime::{
-        load_material_foundation_components, read_observer_material_tick, FoundationReadSource,
+        capture_material_foundation_components, read_observer_material_tick, FoundationReadSource,
     },
     michigan_economy::digest_hex,
     observer_reader::{
@@ -67,7 +67,7 @@ pub(crate) fn read_material_header(
     campaign: CampaignId,
     tick: u64,
     visibility: ObserverVisibility,
-    cached: Option<&ObserverMaterialCursor>,
+    cached: Option<&Arc<EconomicContentAdmission>>,
 ) -> Result<Option<MaterialHeader>, ObserverEconomyError> {
     let header = transaction.query_opt("SELECT campaign_id, preset_id, duration_kind, final_period, content_sha256, foundation_sha256 FROM public.v_material_campaign_identity_v2 WHERE campaign_id=$1", &[campaign.as_uuid()]).map_err(|_| ObserverEconomyError::Database)?;
     let Some(header) = header else {
@@ -93,29 +93,33 @@ pub(crate) fn read_material_header(
         return Err(ObserverEconomyError::ScenarioMismatch);
     }
     let admission = if visibility == ObserverVisibility::FullObserver {
-        if let Some(cached) = cached.filter(|cursor| {
-            cursor.campaign == campaign
-                && cursor.admission.preset_id() == preset_id
-                && cursor.admission.digest().as_slice() == foundation_digest.as_slice()
-        }) {
+        let _foundation_timing = diagnostics::Timing::start(Stage::FoundationLoad, 0);
+        let expected = foundation_digest
+            .as_slice()
+            .try_into()
+            .map_err(|_| ObserverEconomyError::InvalidProjection)?;
+        let captured = capture_material_foundation_components(
+            transaction,
+            campaign,
+            expected,
+            FoundationReadSource::FullObserver,
+        )
+        .map_err(|_| ObserverEconomyError::ScenarioMismatch)?;
+        if let Some(cached) = cached {
             cached
-                .admission
                 .validate_header(duration, &content, &foundation_digest, tick)
                 .map_err(|_| ObserverEconomyError::ScenarioMismatch)?;
-            Some(Arc::clone(&cached.admission))
+            if cached.preset_id() != preset_id {
+                return Err(ObserverEconomyError::ScenarioMismatch);
+            }
+            captured
+                .validate_against(cached)
+                .map_err(|_| ObserverEconomyError::ScenarioMismatch)?;
+            Some(Arc::clone(cached))
         } else {
-            let _foundation_timing = diagnostics::Timing::start(Stage::FoundationLoad, 0);
-            let expected = foundation_digest
-                .as_slice()
-                .try_into()
-                .map_err(|_| ObserverEconomyError::InvalidProjection)?;
-            let rebuilt = load_material_foundation_components(
-                transaction,
-                campaign,
-                expected,
-                FoundationReadSource::FullObserver,
-            )
-            .map_err(|_| ObserverEconomyError::ScenarioMismatch)?;
+            let rebuilt = captured
+                .admit()
+                .map_err(|_| ObserverEconomyError::ScenarioMismatch)?;
             let economic_timing = diagnostics::Timing::start(Stage::FoundationEconomicAdmission, 0);
             let admitted = EconomicContentAdmission::from_foundation(rebuilt)
                 .map_err(|_| ObserverEconomyError::ScenarioMismatch)?;
@@ -148,6 +152,9 @@ pub struct ObserverMaterialCursor {
     history: MaterialHistory,
 }
 impl ObserverMaterialCursor {
+    pub(crate) fn admission(&self, campaign: CampaignId) -> Option<Arc<EconomicContentAdmission>> {
+        (self.campaign == campaign).then(|| Arc::clone(&self.admission))
+    }
     #[must_use]
     pub fn completed_tick(&self) -> u64 {
         self.history.register.completed_tick()
@@ -168,9 +175,10 @@ struct MaterialHistory {
 
 impl MaterialHistory {
     fn new(expected: &EconomicContentAdmission) -> Result<Self, ObserverEconomyError> {
-        let lookup =
-            crate::material_storage::OpeningRegister::from_opening(expected.initial_register())
-                .map_err(|_| ObserverEconomyError::InvalidProjection)?;
+        let lookup = expected
+            .opening()
+            .map_err(|_| ObserverEconomyError::InvalidProjection)?
+            .clone();
         let lookup_chain = crate::material_storage::initial_lookup_chain(&lookup)
             .map_err(|_| ObserverEconomyError::InvalidProjection)?;
         Ok(Self {

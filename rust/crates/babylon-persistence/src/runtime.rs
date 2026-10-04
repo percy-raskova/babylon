@@ -478,6 +478,28 @@ pub(crate) fn capture_campaign_foundation(
 }
 
 impl CapturedCampaignFoundation {
+    /// An equality witness reuses only an already admitted immutable source.
+    /// Geography and territory allocation remain fresh witnesses of this capture.
+    pub(crate) fn validate_against(
+        &self,
+        admitted: &CampaignFoundation,
+        digest: &[u8; 32],
+    ) -> Result<(), RustPersistenceRuntimeError> {
+        verify_captured_foundation_components(
+            &self.foundation,
+            admitted,
+            digest,
+            "foundation_sha256",
+        )?;
+        let bundle = admitted.content_bundle();
+        crate::territory_county_map::verify_captured_territory_county_map(
+            &self.county_mapping,
+            bundle.territory_county_map()?,
+        )
+        .map_err(RustPersistenceRuntimeError::TerritoryCountyMap)?;
+        verify_captured_campaign_geography(&self.geography, bundle)
+    }
+
     pub(crate) fn admit(self) -> Result<CampaignFoundation, RustPersistenceRuntimeError> {
         let Self {
             foundation: row,
@@ -518,6 +540,41 @@ impl CapturedCampaignFoundation {
         verify_captured_campaign_geography(&geography, bundle)?;
         Ok(foundation)
     }
+}
+
+/// Compare actual SQL components, including their scalar identities, rather than
+/// trusting stored digest claims. Borrow bytea fields while the capture is alive.
+pub(crate) fn verify_captured_foundation_components(
+    row: &postgres::Row,
+    admitted: &CampaignFoundation,
+    digest: &[u8; 32],
+    digest_column: &str,
+) -> Result<(), RustPersistenceRuntimeError> {
+    let bytes = |name: &str| {
+        row.try_get::<_, &[u8]>(name)
+            .map_err(|_| RustPersistenceRuntimeError::CampaignConflict)
+    };
+    let session: &str = row
+        .try_get("replay_session_id")
+        .map_err(|_| RustPersistenceRuntimeError::CampaignConflict)?;
+    let seed: i64 = row
+        .try_get("rng_seed")
+        .map_err(|_| RustPersistenceRuntimeError::CampaignConflict)?;
+    if bytes("stable_graph")? != admitted.stable_graph_bytes()
+        || bytes("world_registers")? != admitted.world_register_bytes()
+        || bytes("resolver_manifest")? != admitted.resolver_manifest_bytes()
+        || bytes("prepared_environment")? != admitted.prepared_environment_bytes()
+        || session.as_bytes() != admitted.replay_session_identity().as_bytes()
+        || seed.to_be_bytes() != admitted.rng_seed().to_be_bytes()
+        || bytes("defines_hash")? != admitted.content_digest().defines_hash
+        || bytes("rules_hash")? != admitted.content_digest().rules_hash
+        || bytes("ref_digest")? != admitted.reference_digest().as_bytes()
+        || bytes("content_bundle_bytes")? != admitted.content_bundle().canonical_bytes()
+        || bytes(digest_column)? != digest
+    {
+        return Err(RustPersistenceRuntimeError::CampaignConflict);
+    }
+    Ok(())
 }
 
 fn verify_captured_campaign_geography(

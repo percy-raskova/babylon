@@ -2,9 +2,11 @@
 //! This module owns no mutable runtime or filesystem fallback.
 
 mod actors;
+pub mod aid;
 mod equipment;
 mod external;
 mod financial;
+mod household_time;
 mod markets;
 mod routes;
 mod templates;
@@ -20,6 +22,7 @@ use crate::{
     national_household_allocation::{
         allocate_households, HouseholdAllocationError, HouseholdBudgetKey,
     },
+    national_household_time_allocation::allocate_household_time,
     national_households::NationalHouseholdReference,
     national_resident_allocation::{allocate_home_county, AllocationError},
     national_resident_workforce::NationalResidentWorkforceReference,
@@ -49,6 +52,8 @@ pub enum NationalOpeningError {
     Arithmetic,
     Workforce(AllocationError),
     Households(HouseholdAllocationError),
+    HouseholdTime(crate::national_household_time_allocation::HouseholdTimeAllocationError),
+    TimeAccount(babylon_material_circuit::MaterialCircuitError),
 }
 impl std::fmt::Display for NationalOpeningError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -89,6 +94,8 @@ struct ActorContext {
 
 struct Builder<'a> {
     policy: &'a NationalGamePolicy,
+    aid: aid::NationalAidCapture,
+    eligible_overrides: BTreeMap<babylon_material_circuit::FinalDemandPrincipalId, u64>,
     household_keys: BTreeMap<babylon_material_circuit::FinalDemandPrincipalId, HouseholdBudgetKey>,
     transport: &'a NationalTransportReference,
     labor_unit: UnitId,
@@ -98,6 +105,13 @@ struct Builder<'a> {
     logistics_nodes: BTreeMap<EconomicLocation, LogisticsNodeId>,
     offer_indices: BTreeMap<(SiteId, GoodId, UnitId), usize>,
     procurement_indices: BTreeMap<(SiteId, SiteId, GoodId, UnitId), usize>,
+}
+
+/// Designed policy joined to the exact source digest used by captured aid mandates.
+#[derive(Clone, Copy)]
+pub struct NationalOpeningPolicy<'a> {
+    pub policy: &'a NationalGamePolicy,
+    pub source_hash: [u8; 32],
 }
 
 /// Initialize every captured county and bounded foreign/dependency counterpart.
@@ -112,8 +126,12 @@ pub fn build_national_opening(
     household_margins: &NationalHouseholdReference,
     world: &WorldReference,
     transport: &NationalTransportReference,
-    policy: &NationalGamePolicy,
-) -> Result<EconomicOpening> {
+    captured_policy: NationalOpeningPolicy<'_>,
+) -> Result<NationalOpening> {
+    let NationalOpeningPolicy {
+        policy,
+        source_hash: policy_source_hash,
+    } = captured_policy;
     if u64::from(transport.period_days()) != policy.period_days {
         return Err(NationalOpeningError::Policy);
     }
@@ -124,15 +142,27 @@ pub fn build_national_opening(
         policy.households.private_owner_households_bps,
     )
     .map_err(NationalOpeningError::Households)?;
-    let allocation = allocate_home_county(counties, cohorts, residents, &household_budgets, policy)
-        .map_err(NationalOpeningError::Workforce)?;
+    let time_controls = allocate_household_time(counties, &household_budgets)
+        .map_err(NationalOpeningError::HouseholdTime)?;
+    let mut allocation =
+        allocate_home_county(counties, cohorts, residents, &household_budgets, policy)
+            .map_err(NationalOpeningError::Workforce)?;
     let mut builder = Builder::new(policy, transport)?;
+    aid::prepare(
+        &mut builder,
+        &household_budgets,
+        &time_controls,
+        &mut allocation,
+        policy_source_hash,
+    )?;
     actors::domestic(&mut builder, counties, &allocation, &household_budgets)?;
+    aid::fund(&mut builder)?;
     external::world(&mut builder, world)?;
     markets::wire(&mut builder)?;
     actors::validate_people(&builder.opening)?;
     financial::wire(&mut builder)?;
     routes::finish(&mut builder)?;
+    household_time::wire(&mut builder, &time_controls)?;
     builder
         .opening
         .sites
@@ -149,7 +179,14 @@ pub fn build_national_opening(
         .opening
         .employment
         .sort_unstable_by_key(|row| row.member_id);
-    Ok(builder.opening)
+    builder.opening.policies.aid = babylon_material_circuit::AidBook {
+        mandates: builder.aid.mandates.clone(),
+        freight: vec![],
+    };
+    Ok(NationalOpening {
+        opening: builder.opening,
+        aid: builder.aid,
+    })
 }
 
 impl<'a> Builder<'a> {
@@ -164,6 +201,8 @@ impl<'a> Builder<'a> {
             templates::compile(policy, labor_unit)?;
         Ok(Self {
             policy,
+            aid: aid::NationalAidCapture::default(),
+            eligible_overrides: BTreeMap::new(),
             household_keys: BTreeMap::new(),
             transport,
             labor_unit,
@@ -200,6 +239,8 @@ impl<'a> Builder<'a> {
                 equipment: vec![],
                 capacity: CatalogCapacity::Rolling(RollingProcessSupply::CapturedNameplate(vec![])),
                 policies: CatalogPolicies {
+                    aid: babylon_material_circuit::AidBook::default(),
+                    household_time: babylon_material_circuit::HouseholdTimeAccounting::NotModeled,
                     offers: vec![],
                     replenishment: vec![],
                     household_purchases: vec![],
@@ -296,4 +337,11 @@ fn amount(quantity: u64, price: Currency) -> Result<Currency> {
 fn sum_amount(left: Currency, right: Currency) -> Result<Currency> {
     left.checked_add(right)
         .map_err(|_| NationalOpeningError::Arithmetic)
+}
+
+/// One current complete national capture; aid metadata must be installed by admission.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NationalOpening {
+    pub opening: EconomicOpening,
+    pub aid: aid::NationalAidCapture,
 }

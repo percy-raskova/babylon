@@ -48,6 +48,9 @@ fn opening() -> MaterialCircuitState {
             ])
             .unwrap();
             MonetaryCircuit {
+                aid: AidBook::default(),
+
+                household_time: babylon_material_circuit::HouseholdTimeAccounting::NotModeled,
                 financial: babylon_material_circuit::FinancialInstitutions::empty(),
                 costs: HistoricalCostBook::open(
                     &book,

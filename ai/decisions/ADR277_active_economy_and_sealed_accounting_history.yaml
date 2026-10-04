@@ -1,0 +1,66 @@
+ADR277_active_economy_and_sealed_accounting_history:
+  status: accepted
+  date: '2026-10-03'
+  issue: PER-40
+  title: Living economy and sealed history have separate storage roles
+  evidence_class: Designed
+  authority:
+    - Director selects PostgreSQL active state and structured Parquet history
+    - Director requires bounded storage repair alongside playable economy work
+    - Repository rules require an architecture decision record
+  context: |
+    The current national period charges 35,069,952 retained bytes and passes
+    exact cold recovery. It still fails the 23,000,000-byte interim ceiling.
+    Receipts occupy 19,051,336 bytes. Current cold recovery authenticates the
+    historical PostgreSQL lookup chain. Moving accounting rows alone cannot
+    remove that dependency or establish smaller total campaign storage.
+  decision: |
+    Select PostgreSQL for complete living state and a bounded recent history
+    window. Retain goods, cash, assets, labor, ownership, relationships, escrow,
+    unpaid obligations, pending decisions, shipments, settlement, consent and
+    every causal memory or trend required by subsequent decisions. Age alone
+    does not permit archival: an old unpaid wage remains live.
+
+    Select typed compressed Parquet datasets for accumulated resolved accounting
+    and action evidence. Append sealed immutable files rather than rewriting
+    one growing file. A completed thirteen-period model year and a few files
+    per family are the starting layout; share foundation and fixed identities.
+    Query selected historical ranges with DuckDB. Import into PostgreSQL only
+    for a concrete consumer. Arrow may carry bounded export or import batches.
+    Keep native admitted restart checkpoints separate from accounting queries.
+
+    This records direction, not implemented archival eligibility or publication.
+    Defer full archive implementation unless measured history growth or recovery
+    becomes a demonstrated qualification blocker. First make a bounded repair
+    of the measured dominant receipt payload while continuing independent
+    gameplay work. Once the interim budget passes, freeze speculative storage
+    work and prioritize native play. The earlier 10 MB ambition is not a gate.
+
+    Before pruning, qualify a self-contained admitted checkpoint, authenticated
+    chain boundary and complete dependencies. Export from a pinned committed
+    boundary. Preserve exact full-range money, quantities, units, typed identities,
+    ordinals, replay inputs and component hashes. Publish durable versioned
+    manifests. Prove cold queries, exact restoration, native recovery and
+    interrupted export, publication and pruning. Retain unresolved commitments.
+    Charge native packs, Parquet, lookups, manifests and live database together;
+    report export, checkpoint and WAL peaks separately.
+  alternatives: |
+    Keeping all historical evidence in the active database perpetuates growth.
+    An accounting export alone cannot replace admitted restart or replay.
+    Annual bulk import for ordinary queries adds work without a required consumer.
+    Moving bytes outside PostgreSQL cannot conceal retained campaign cost.
+    Further possible optimizations do not justify delaying playable qualification.
+  consequences: |
+    Current PostgreSQL readers, codecs and transactions remain authoritative.
+    No current rows are pruned and no annual archive implementation is claimed.
+    Compression, sorting, row groups and retention require measured choices.
+    Full county coverage, exact accounting, replay, recovery, the interim budget
+    and Designed p95 advance target remain unchanged. No game law, mathematical
+    primitive or reserved theory changes. Technical checks do not establish fun.
+  verification:
+    - Living commitments survive archive boundaries regardless of original date.
+    - Normal advances use complete active state and new inputs without past-history scans.
+    - Exact native recovery and cold history queries precede any pruning.
+    - Total retained storage and temporary peaks are measured without double-counting.
+    - Bounded storage repair continues alongside native economic and gameplay qualification.
+  source_record: reports/national-household-time-close-census-2026-10-02.md

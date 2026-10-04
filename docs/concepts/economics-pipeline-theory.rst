@@ -6,10 +6,12 @@ Economic circuit and theoretical interpretation
 .. Preserve source titles, author names and exact economic terms.
 
 Babylon's current Rust material circuit produces and moves goods through
-finite inputs, labor, capacity, inventory and orders. The national economy
-work connects those accounts to recurring household reproduction, actual
-payments, responsive markets and ownership. Those additions remain implementation
-work. The existing physical circuit does not already execute them.
+finite inputs, labor, capacity, inventory and orders. The ``NationalWorld``
+campaign also captures recurring household reproduction, wages, payments,
+responsive markets, ownership and equipment investment in that circuit.
+Physical-only controls keep their declared simplifications. Implementation
+and bounded control evidence do not prove full national qualification or
+enjoyable play. The 52-period and native play requirements remain separate.
 
 The :doc:`architecture` page describes the current executable boundary.
 The Director-approved design and its mechanism map are in

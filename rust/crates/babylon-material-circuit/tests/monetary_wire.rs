@@ -86,6 +86,9 @@ fn paid_state() -> MaterialCircuitState {
         accounting: CircuitAccounting::Monetary(Box::new({
             let book = book;
             MonetaryCircuit {
+                aid: AidBook::default(),
+
+                household_time: babylon_material_circuit::HouseholdTimeAccounting::NotModeled,
                 financial: {
                     let mut financial = FinancialInstitutions::empty();
                     financial.locations = vec![

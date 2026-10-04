@@ -1,4 +1,5 @@
 //! Household service needs remain visible without inventing a pantry stock.
+use super::ProductionHouseholdKind;
 use super::{
     digest_hex, lifecycle, EconomicLocation, GoodId, MaterialCircuitState, MaterialTickReceipts,
     ProductionProjectionError, Result, UnitId,
@@ -10,6 +11,7 @@ use std::collections::{BTreeMap, BTreeSet};
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProductionHouseholdServiceAccount {
+    pub kind: ProductionHouseholdKind,
     pub demand_principal_id: String,
     pub location: EconomicLocation,
     pub good_id: String,
@@ -104,6 +106,7 @@ pub(crate) fn project_with_labels(
             expired: purchases.2,
         });
         result.push(ProductionHouseholdServiceAccount {
+            kind: cohort.kind.into(),
             demand_principal_id: digest_hex(&key.0.as_bytes()),
             location,
             good_id: digest_hex(&key.1.as_bytes()),
@@ -153,4 +156,53 @@ fn purchase_totals(
             .insert(digest_hex(&row.provider_site_id.as_bytes()));
     }
     Ok(purchases)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use babylon_material_circuit::{CircuitAccounting, HouseholdKind};
+    use babylon_tick::material_world::{decode_material_receipts, MaterialWorldRegister};
+
+    #[test]
+    fn collective_resident_services_preserve_actual_receipts_and_zero_households() {
+        let mut opening = super::super::super::services_fixture::recurring(
+            super::super::super::services_fixture::opening(),
+        );
+        let CircuitAccounting::Monetary(economy) = &mut opening.accounting else {
+            panic!("monetary control");
+        };
+        let cohort = &mut economy.recurring.as_mut().unwrap().households[0];
+        cohort.kind = HouseholdKind::CollectiveResidence;
+        cohort.households = 0;
+        let opening = MaterialWorldRegister::try_new(0, opening).unwrap();
+        let next = opening.prepare_next().unwrap();
+        let mut receipts = decode_material_receipts(next.receipt_bytes()).unwrap();
+        let project = |receipts: &MaterialTickReceipts| {
+            project_with_labels(
+                next.register().state(),
+                Some(opening.state()),
+                Some(receipts),
+                |_, _| Some(("care".into(), "service-hours".into())),
+            )
+        };
+        let rows = project(&receipts).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].kind, ProductionHouseholdKind::CollectiveResidence);
+        assert_eq!((rows[0].person_count, rows[0].household_count), (1, 0));
+        let done = rows[0].completed.as_ref().unwrap();
+        let actual = &receipts.household_services[0];
+        assert_eq!(
+            (done.required, done.performed, done.satisfied),
+            (
+                actual.required_quantity,
+                actual.performed_quantity,
+                actual.satisfied_quantity
+            )
+        );
+        assert_eq!(done.satisfied + done.unmet, done.required);
+        assert_eq!(done.performed + done.expired, done.admitted);
+        receipts.household_services[0].required_quantity += 1;
+        assert!(project(&receipts).is_err());
+    }
 }

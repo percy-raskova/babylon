@@ -39,6 +39,12 @@ use crate::semantic_codec::SemanticCodecError;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RustPersistenceRuntimeError {
     CurrentSchema(crate::CurrentSchemaError),
+    /// Exact typed event storage admission refused.
+    EventStorage(crate::event_storage::Error),
+    /// Exact graph lookup or input row admission refused.
+    GraphStorage(crate::graph_storage::Error),
+    /// Exact typed territory definition or membership admission refused.
+    TerritoryStorage(crate::territory_storage::Error),
     /// A local-only runtime connection or transaction operation failed.
     Database {
         /// Stable operation name without caller-supplied text.
@@ -424,10 +430,24 @@ pub(crate) fn reconstruct_graph_foundation_session(
     Ok(session)
 }
 
+/// Owned SQL witnesses. Capturing performs no graph/content admission.
+pub(crate) struct CapturedCampaignFoundation {
+    foundation: postgres::Row,
+    county_mapping: Vec<postgres::Row>,
+    geography: postgres::Row,
+}
+
 pub(crate) fn hydrate_campaign_foundation_client(
     client: &mut impl GenericClient,
     campaign_id: CampaignId,
 ) -> Result<CampaignFoundation, RustPersistenceRuntimeError> {
+    capture_campaign_foundation(client, campaign_id)?.admit()
+}
+
+pub(crate) fn capture_campaign_foundation(
+    client: &mut impl GenericClient,
+    campaign_id: CampaignId,
+) -> Result<CapturedCampaignFoundation, RustPersistenceRuntimeError> {
     let row = client
         .query_opt(
             "SELECT stable_graph, world_registers, resolver_manifest, prepared_environment, \
@@ -439,47 +459,10 @@ pub(crate) fn hydrate_campaign_foundation_client(
         )
         .map_err(|error| RustPersistenceRuntimeError::postgres("read campaign foundation", &error))?
         .ok_or(RustPersistenceRuntimeError::FoundationAbsent)?;
-    let stable_graph: Vec<u8> = decode_runtime_column(&row, 0)?;
-    let world_registers: Vec<u8> = decode_runtime_column(&row, 1)?;
-    let resolver_manifest: Vec<u8> = decode_runtime_column(&row, 2)?;
-    let prepared_environment: Vec<u8> = decode_runtime_column(&row, 3)?;
-    let replay_session_id: String = decode_runtime_column(&row, 4)?;
-    let rng_seed: i64 = decode_runtime_column(&row, 5)?;
-    let defines_hash = decode_digest_column(&row, 6)?;
-    let rules_hash = decode_digest_column(&row, 7)?;
-    let reference_digest = decode_digest_column(&row, 8)?;
-    let content_bundle_bytes: Vec<u8> = decode_runtime_column(&row, 9)?;
-    let foundation_sha256 = decode_digest_column(&row, 10)?;
-    let foundation = CampaignFoundation::from_persisted(
-        stable_graph,
-        world_registers,
-        resolver_manifest,
-        prepared_environment,
-        &replay_session_id,
-        rng_seed,
-        defines_hash,
-        rules_hash,
-        reference_digest,
-        &content_bundle_bytes,
-        foundation_sha256,
-    )?;
-    let bundle = foundation.content_bundle();
-    crate::territory_county_map::verify_territory_county_map(
-        client,
-        campaign_id,
-        bundle.territory_county_map()?,
-    )
-    .map_err(RustPersistenceRuntimeError::TerritoryCountyMap)?;
-    verify_campaign_geography(client, campaign_id, bundle)?;
-    Ok(foundation)
-}
-
-fn verify_campaign_geography(
-    client: &mut impl GenericClient,
-    campaign_id: CampaignId,
-    bundle: &FoundationContentBundle,
-) -> Result<(), RustPersistenceRuntimeError> {
-    let row = client
+    let county_mapping =
+        crate::territory_county_map::capture_territory_county_map_rows(client, campaign_id)
+            .map_err(RustPersistenceRuntimeError::TerritoryCountyMap)?;
+    let geography = client
         .query_opt(
             "SELECT ref_digest, geography_scope, local_h3_ref_digest FROM babylon_state.campaign \
          WHERE campaign_id = $1::uuid",
@@ -487,9 +470,63 @@ fn verify_campaign_geography(
         )
         .map_err(|error| RustPersistenceRuntimeError::postgres("read campaign geography", &error))?
         .ok_or(RustPersistenceRuntimeError::FoundationAbsent)?;
-    let reference = decode_digest_column(&row, 0)?;
-    let scope: String = decode_runtime_column(&row, 1)?;
-    let local: Option<Vec<u8>> = decode_runtime_column(&row, 2)?;
+    Ok(CapturedCampaignFoundation {
+        foundation: row,
+        county_mapping,
+        geography,
+    })
+}
+
+impl CapturedCampaignFoundation {
+    pub(crate) fn admit(self) -> Result<CampaignFoundation, RustPersistenceRuntimeError> {
+        let Self {
+            foundation: row,
+            county_mapping,
+            geography,
+        } = self;
+        let stable_graph: Vec<u8> = decode_runtime_column(&row, 0)?;
+        let world_registers: Vec<u8> = decode_runtime_column(&row, 1)?;
+        let resolver_manifest: Vec<u8> = decode_runtime_column(&row, 2)?;
+        let prepared_environment: Vec<u8> = decode_runtime_column(&row, 3)?;
+        let replay_session_id: String = decode_runtime_column(&row, 4)?;
+        let rng_seed: i64 = decode_runtime_column(&row, 5)?;
+        let defines_hash = decode_digest_column(&row, 6)?;
+        let rules_hash = decode_digest_column(&row, 7)?;
+        let reference_digest = decode_digest_column(&row, 8)?;
+        let content_bundle_bytes: Vec<u8> = decode_runtime_column(&row, 9)?;
+        let foundation_sha256 = decode_digest_column(&row, 10)?;
+        drop(row);
+        let foundation = CampaignFoundation::from_persisted(
+            stable_graph,
+            world_registers,
+            resolver_manifest,
+            prepared_environment,
+            &replay_session_id,
+            rng_seed,
+            defines_hash,
+            rules_hash,
+            reference_digest,
+            &content_bundle_bytes,
+            foundation_sha256,
+        )?;
+        let bundle = foundation.content_bundle();
+        crate::territory_county_map::verify_captured_territory_county_map(
+            &county_mapping,
+            bundle.territory_county_map()?,
+        )
+        .map_err(RustPersistenceRuntimeError::TerritoryCountyMap)?;
+        verify_captured_campaign_geography(&geography, bundle)?;
+        Ok(foundation)
+    }
+}
+
+fn verify_captured_campaign_geography(
+    row: &postgres::Row,
+    bundle: &FoundationContentBundle,
+) -> Result<(), RustPersistenceRuntimeError> {
+    let reference = decode_digest_column(row, 0)?;
+    let scope: String = decode_runtime_column(row, 1)?;
+    let local: Option<Vec<u8>> = decode_runtime_column(row, 2)?;
     let (expected_scope, expected_local) = bundle.geographic_binding()?;
     if reference != *bundle.reference_digest().as_bytes()
         || scope != expected_scope
@@ -661,40 +698,13 @@ fn insert_typed_graph_rows(
     report: &IdentifiedTickReport,
 ) -> Result<(), RustPersistenceRuntimeError> {
     let rows = report.result_stable_graph().rows();
-    let sink = client.copy_in(
-        "COPY babylon_state.graph_node_v1 (campaign_id, resolve_tick, local_name, node_type) FROM STDIN BINARY",
-    ).map_err(|error| RustPersistenceRuntimeError::postgres("begin graph node copy", &error))?;
-    let mut writer =
-        BinaryCopyInWriter::new(sink, &[Type::UUID, Type::INT8, Type::TEXT, Type::TEXT]);
-    for (local_name, node_type) in rows.nodes() {
-        writer
-            .write(&[campaign_id.as_uuid(), &resolve_tick, local_name, node_type])
-            .map_err(|error| {
-                RustPersistenceRuntimeError::postgres("write graph node copy", &error)
-            })?;
-    }
-    finish_binary_copy(writer, rows.nodes().len(), "finish graph node copy")?;
-    let sink = client.copy_in(
-        "COPY babylon_state.graph_node_f64_v1 (campaign_id, resolve_tick, local_name, qname, value_bits) FROM STDIN BINARY",
-    ).map_err(|error| RustPersistenceRuntimeError::postgres("begin graph node f64 copy", &error))?;
-    let mut writer = BinaryCopyInWriter::new(
-        sink,
-        &[Type::UUID, Type::INT8, Type::TEXT, Type::TEXT, Type::INT8],
-    );
-    for (local_name, qname, bits) in rows.node_f64() {
-        writer
-            .write(&[
-                campaign_id.as_uuid(),
-                &resolve_tick,
-                local_name,
-                qname,
-                &bit_pattern_i64(*bits),
-            ])
-            .map_err(|error| {
-                RustPersistenceRuntimeError::postgres("write graph node f64 copy", &error)
-            })?;
-    }
-    finish_binary_copy(writer, rows.node_f64().len(), "finish graph node f64 copy")?;
+    crate::graph_storage::insert(
+        client,
+        campaign_id,
+        resolve_tick,
+        rows.nodes(),
+        rows.node_f64(),
+    )?;
     for (edge_type, source, target, strength_bits) in rows.edges() {
         let strength_bits = bit_pattern_i64(*strength_bits);
         require_single_insert(
@@ -848,46 +858,7 @@ fn insert_typed_material_rows(
             "insert world register",
         )?;
     }
-    for row in rows.territories().rows() {
-        let territory_id = stable_key_bytes(row.territory_id())?;
-        require_single_insert(
-            client.execute(
-                "INSERT INTO babylon_state.territory_state_v1 \
-                 (campaign_id, resolve_tick, territory_id) VALUES ($1::uuid, $2, $3)",
-                &[campaign_id.as_uuid(), &resolve_tick, &territory_id],
-            ),
-            "insert territory state",
-        )?;
-    }
-    let campaign = campaign_id.as_uuid().to_string();
-    let tick = resolve_tick.to_string();
-    let mut writer = client
-        .copy_in(
-            "COPY babylon_state.territory_state_field_v1 \
-         (campaign_id, resolve_tick, territory_id, position, field_name, value_tag, int_value, \
-          currency_value, real_bits, ratio_bits, ratio_min_bits, ratio_max_bits, bool_value, \
-          enum_type, enum_member, stable_key) FROM STDIN WITH (FORMAT csv)",
-        )
-        .map_err(|error| {
-            RustPersistenceRuntimeError::postgres("begin territory field copy", &error)
-        })?;
-    let mut expected = 0_usize;
-    for row in rows.territories().rows() {
-        let territory = bytea_copy_text(&stable_key_bytes(row.territory_id())?);
-        for (position, (field_name, value)) in row.ordered_fields().iter().enumerate() {
-            let position = checked_position(position)?.to_string();
-            write_bsl_csv_row(
-                &mut writer,
-                &[&campaign, &tick, &territory, &position, field_name],
-                value,
-                "write territory field copy",
-            )?;
-            expected = expected
-                .checked_add(1)
-                .ok_or(RustPersistenceRuntimeError::CampaignConflict)?;
-        }
-    }
-    finish_csv_copy(writer, expected, "finish territory field copy")?;
+    crate::territory_storage::insert(client, campaign_id, resolve_tick, rows.territories().rows())?;
     insert_dynamic_hex_rows(client, campaign_id, resolve_tick, report)?;
     insert_organization_state_rows(client, campaign_id, resolve_tick, report)
 }
@@ -1054,7 +1025,7 @@ fn finish_binary_copy(
     require_copy_count(inserted, expected, operation)
 }
 
-fn finish_csv_copy(
+pub(crate) fn finish_csv_copy(
     writer: postgres::CopyInWriter<'_>,
     expected: usize,
     operation: &'static str,
@@ -1078,7 +1049,7 @@ fn require_copy_count(
     Ok(())
 }
 
-fn bytea_copy_text(bytes: &[u8]) -> String {
+pub(crate) fn bytea_copy_text(bytes: &[u8]) -> String {
     const HEX: &[u8; 16] = b"0123456789abcdef";
     let mut encoded = String::from("\\x");
     for byte in bytes {
@@ -1088,7 +1059,7 @@ fn bytea_copy_text(bytes: &[u8]) -> String {
     encoded
 }
 
-fn write_bsl_csv_row(
+pub(crate) fn write_bsl_csv_row(
     writer: &mut impl std::io::Write,
     prefix: &[&str],
     value: &StableBslValue,
@@ -1127,7 +1098,7 @@ fn write_bsl_csv_row(
 // PostgreSQL CSV distinguishes NULL (unquoted empty) from an empty string
 // (quoted empty). Quote every present field, doubling only embedded quotes;
 // unlike text COPY, CSV leaves bytea's hexadecimal backslash untouched.
-fn write_csv_row<'a>(
+pub(crate) fn write_csv_row<'a>(
     writer: &mut impl std::io::Write,
     fields: impl Iterator<Item = Option<&'a str>>,
 ) -> std::io::Result<()> {
@@ -1241,54 +1212,12 @@ fn insert_typed_event_rows(
     resolve_tick: i64,
     report: &IdentifiedTickReport,
 ) -> Result<(), RustPersistenceRuntimeError> {
-    for (ordinal, event) in report.successful_event_batch().events().iter().enumerate() {
-        let ordinal =
-            i64::try_from(ordinal).map_err(|_| RustPersistenceRuntimeError::IntegerConversion {
-                field: "successful event ordinal",
-                value: ordinal,
-            })?;
-        let choice_receipt_ordinal = event
-            .choice_receipt()
-            .map(|reference| i64::from(reference.encounter_ordinal()));
-        require_single_insert(
-            client.execute(
-                "INSERT INTO babylon_state.tick_event_v2 \
-                 (campaign_id, resolve_tick, ordinal, event_type, emitting_rule, \
-                  choice_receipt_ordinal) VALUES ($1::uuid, $2, $3, $4, $5, $6)",
-                &[
-                    campaign_id.as_uuid(),
-                    &resolve_tick,
-                    &ordinal,
-                    &event.event_type(),
-                    &event.emitting_rule(),
-                    &choice_receipt_ordinal,
-                ],
-            ),
-            "insert tick event",
-        )?;
-        for (position, (field_name, value)) in event.fields().iter().enumerate() {
-            let position = i64::from(checked_u32_position(position)?);
-            let prefix: [&(dyn ToSql + Sync); 5] = [
-                campaign_id.as_uuid(),
-                &resolve_tick,
-                &ordinal,
-                &position,
-                field_name,
-            ];
-            insert_bsl_value_row(
-                client,
-                "INSERT INTO babylon_state.tick_event_field_v2 \
-                 (campaign_id, resolve_tick, ordinal, position, field_name, value_tag, int_value, \
-                  currency_value, real_bits, ratio_bits, ratio_min_bits, ratio_max_bits, bool_value, \
-                  enum_type, enum_member, stable_key) \
-                 VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8::text::numeric, $9, $10, $11, $12, $13, $14, $15, $16)",
-                &prefix,
-                value,
-                "insert tick event field",
-            )?;
-        }
-    }
-    Ok(())
+    crate::event_storage::insert(
+        client,
+        campaign_id,
+        resolve_tick,
+        report.successful_event_batch().events(),
+    )
 }
 
 fn insert_full_checkpoint(
@@ -1324,19 +1253,28 @@ fn insert_full_checkpoint(
         if sha256_of(exact_bytes) != section.sha256() {
             return Err(RustPersistenceRuntimeError::CampaignConflict);
         }
-        let section_tag = i16::from(section.tag().tag());
+        let reference =
+            crate::checkpoint_reference::Reference::capture(section.tag().tag(), exact_bytes)
+                .map_err(|_| RustPersistenceRuntimeError::CampaignConflict)?;
+        let section_tag = i16::from(reference.tag);
+        let source_tag = i16::from(reference.source);
+        let decoded_length = i64::try_from(reference.decoded_length)
+            .map_err(|_| RustPersistenceRuntimeError::CampaignConflict)?;
         let ordinal = 0_i64;
         require_single_insert(
             client.execute(
                 "INSERT INTO babylon_state.checkpoint_section_v1 \
-                 (campaign_id, resolve_tick, section_tag, ordinal, exact_section_bytes) \
-                 VALUES ($1::uuid, $2, $3, $4, $5)",
+                 (campaign_id, resolve_tick, section_tag, ordinal, source_tag, decoded_length, decoded_sha256, inline_section_bytes) \
+                 VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8)",
                 &[
                     campaign_id.as_uuid(),
                     &resolve_tick,
                     &section_tag,
                     &ordinal,
-                    exact_bytes,
+                    &source_tag,
+                    &decoded_length,
+                    &&reference.digest[..],
+                    &reference.inline,
                 ],
             ),
             "insert checkpoint section",
@@ -1601,6 +1539,8 @@ pub fn prepare_committed_tick(
 
 #[cfg(test)]
 mod live_tests {
+    #[path = "territory_controls/controls.rs"]
+    mod territory_controls;
     use super::*;
     use postgres::{Config, NoTls};
     use std::str::FromStr;
@@ -1610,6 +1550,77 @@ mod live_tests {
     const ACK: &str = "I_UNDERSTAND_THIS_DISPOSABLE_RUNTIME_DROPS_ITS_SCRATCH_DATABASES_AND_ROLES";
     const CANARY_ENV: &str = "BABYLON_POSTGRES_DISPOSABLE_CANARY";
     const TEMPLATE_DB_ENV: &str = "BABYLON_RUNTIME_TEMPLATE_DB";
+    fn valid_changed_material_receipt(
+        owner: &mut postgres::Client,
+        campaign: CampaignId,
+        base: &[u8],
+    ) -> Vec<u8> {
+        let opening = crate::material_storage::seed(base).unwrap();
+        let mut chain = crate::material_storage::initial_lookup_chain(&opening).unwrap();
+        let mut loaded = None;
+        let rows=owner.query("SELECT resolve_tick,lookup_delta_bytes FROM babylon_state.material_tick_v3 WHERE campaign_id=$1::uuid AND resolve_tick<=2 ORDER BY resolve_tick",&[campaign.as_uuid()]).unwrap();
+        assert_eq!(rows.len(), 2);
+        for (index, row) in rows.iter().enumerate() {
+            assert_eq!(row.get::<_, i64>(0), i64::try_from(index + 1).unwrap());
+            loaded = Some(
+                crate::material_storage::read_period_lookup(
+                    &opening,
+                    u64::try_from(index + 1).unwrap(),
+                    row.get::<_, &[u8]>(1),
+                    crate::material_storage::LookupAnchor::Previous(chain),
+                )
+                .unwrap(),
+            );
+            chain = loaded.as_ref().unwrap().chain;
+        }
+        let lookup = loaded.unwrap();
+        let row=owner.query_one("SELECT register_storage_bytes,receipt_storage_bytes FROM babylon_state.material_tick_v3 WHERE campaign_id=$1::uuid AND resolve_tick=2",&[campaign.as_uuid()]).unwrap();
+        let (register, mut receipts) = crate::material_storage::decode(
+            &opening,
+            2,
+            row.get::<_, &[u8]>(0),
+            row.get::<_, &[u8]>(1),
+            &lookup.lookup,
+            lookup.chain,
+        )
+        .unwrap();
+        let original_digest = sha256_of(&receipts);
+        let decoded = babylon_tick::material_world::decode_material_receipts(&receipts).unwrap();
+        // Family1 retains exact planned batches; increasing the first plan keeps
+        // produced<=planned and all physical quantities/identity joins admissible.
+        let planned = decoded
+            .production
+            .first()
+            .unwrap()
+            .planned_batches
+            .checked_add(1)
+            .unwrap();
+        let offset = b"babylon.material-tick-receipts.v16\0".len() + 4 + 8 + 1 + 8 + 32 + 32;
+        receipts[offset..offset + 8].copy_from_slice(&planned.to_be_bytes());
+        assert_ne!(sha256_of(&receipts), original_digest);
+        babylon_tick::material_world::decode_material_receipts(&receipts).unwrap();
+        let register =
+            babylon_tick::material_world::MaterialWorldRegister::decode(&register).unwrap();
+        let encoded =
+            crate::material_storage::encode(&register, &receipts, &opening, lookup.previous_chain)
+                .unwrap();
+        assert_eq!(encoded.lookup.entries(), lookup.lookup.entries());
+        assert_eq!(
+            crate::material_storage::decode(
+                &opening,
+                2,
+                &encoded.register_storage_bytes,
+                &encoded.receipt_storage_bytes,
+                &encoded.lookup,
+                encoded.lookup_chain,
+            )
+            .unwrap()
+            .1,
+            receipts
+        );
+        encoded.receipt_storage_bytes
+    }
+
     #[test]
     #[ignore = "requires the task-owned disposable PostgreSQL runtime"]
     fn live_material_commit_loss_reconciles_only_the_complete_persisted_candidate() {
@@ -1683,18 +1694,16 @@ mod live_tests {
             .unwrap()
             .get(0);
         assert_eq!(count, 2);
-        let original: Vec<u8> = owner.query_one("SELECT receipt_bytes FROM babylon_state.material_tick_v3 WHERE campaign_id=$1::uuid AND resolve_tick=2", &[campaign.as_uuid()]).unwrap().get(0);
-        let mut corrupt = original.clone();
-        let last = corrupt.len() - 1;
-        corrupt[last] ^= 1;
-        owner.execute("UPDATE babylon_state.material_tick_v3 SET receipt_bytes=$2 WHERE campaign_id=$1::uuid AND resolve_tick=2", &[campaign.as_uuid(), &corrupt]).unwrap();
+        let original:Vec<u8>=owner.query_one("SELECT receipt_storage_bytes FROM babylon_state.material_tick_v3 WHERE campaign_id=$1::uuid AND resolve_tick=2",&[campaign.as_uuid()]).unwrap().get(0);
+        let corrupt = valid_changed_material_receipt(&mut owner, campaign, &before);
+        owner.execute("UPDATE babylon_state.material_tick_v3 SET receipt_storage_bytes=$2 WHERE campaign_id=$1::uuid AND resolve_tick=2",&[campaign.as_uuid(),&corrupt]).unwrap();
         let mut refused_sink = CollectingSink::default();
         assert!(stale
             .advance_and_commit(&mut refused_sink, &actions)
             .is_err());
         assert_eq!(stale.session().completed_tick(), 1);
         assert!(refused_sink.events.is_empty());
-        owner.execute("UPDATE babylon_state.material_tick_v3 SET receipt_bytes=$2 WHERE campaign_id=$1::uuid AND resolve_tick=2", &[campaign.as_uuid(), &original]).unwrap();
+        owner.execute("UPDATE babylon_state.material_tick_v3 SET receipt_storage_bytes=$2 WHERE campaign_id=$1::uuid AND resolve_tick=2", &[campaign.as_uuid(), &original]).unwrap();
         assert_eq!(
             stale
                 .advance_and_commit(&mut refused_sink, &actions)
@@ -1810,6 +1819,400 @@ mod live_tests {
         );
         database.cleanup();
     }
+    fn event_control_config() -> Config {
+        let mut config = validated_base_config();
+        let database = std::env::var("BABYLON_EVENT_COPY_DATABASE").unwrap();
+        assert!(database.starts_with("per337_event_continuity_"));
+        config.dbname(&database);
+        config
+    }
+
+    fn event_control_runtime(
+        config: &Config,
+        suffix: u128,
+    ) -> crate::material_runtime::DurableMaterialRuntime {
+        let foundation = crate::michigan_content::MichiganContentPreset::new_campaign(
+            crate::michigan_material::MichiganDeliveryPreset::Standard,
+        )
+        .create_foundation(&crate::test_support::catalog())
+        .unwrap();
+        let campaign = CampaignId::from_uuid(Uuid::from_u128(
+            (u128::from(std::process::id()) << 64) | suffix,
+        ));
+        crate::material_runtime::DurableMaterialRuntime::create(config, campaign, foundation)
+            .unwrap()
+    }
+
+    const EVENT_RAW_TABLES: [&str; 10] = [
+        "event_text_lookup_v1",
+        "event_key_lookup_v1",
+        "event_manifest_v1",
+        "event_parent_chunk_v1",
+        "event_field_chunk_v1",
+        "tick_commit",
+        "material_tick_v3",
+        "graph_node_manifest_v1",
+        "territory_tick_manifest_v1",
+        "territory_tick_membership_v1",
+    ];
+
+    fn event_raw_counts(client: &mut impl GenericClient, campaign: CampaignId) -> Vec<i64> {
+        EVENT_RAW_TABLES
+            .iter()
+            .map(|relation| {
+                client
+                    .query_one(
+                        &format!(
+                            "SELECT count(*) FROM babylon_state.{relation} WHERE campaign_id=$1"
+                        ),
+                        &[campaign.as_uuid()],
+                    )
+                    .unwrap()
+                    .get(0)
+            })
+            .collect()
+    }
+
+    fn event_snapshot(
+        client: &mut impl GenericClient,
+        campaign: CampaignId,
+        relations: [&str; 2],
+    ) -> [String; 2] {
+        std::array::from_fn(|index| {
+            let ordering = if index == 0 {
+                "ordinal"
+            } else {
+                "ordinal,position"
+            };
+            client.query_one(&format!("SELECT coalesce(jsonb_agg(to_jsonb(e) ORDER BY {ordering}),'[]'::jsonb)::text FROM {} e WHERE campaign_id=$1", relations[index]),
+                &[campaign.as_uuid()]).unwrap().get(0)
+        })
+    }
+
+    fn event_reference_tables(client: &mut impl GenericClient) {
+        client.batch_execute("CREATE TEMP TABLE event_parent_reference (
+            campaign_id uuid,resolve_tick bigint,ordinal bigint,event_type text COLLATE pg_catalog.\"C\",emitting_rule text COLLATE pg_catalog.\"C\",choice_receipt_ordinal bigint
+        ) ON COMMIT DROP;
+        CREATE TEMP TABLE event_field_reference (
+            campaign_id uuid,resolve_tick bigint,ordinal bigint,position bigint,field_name text COLLATE pg_catalog.\"C\",value_tag smallint,int_value bigint,
+            currency_value numeric(39,0),real_bits bigint,ratio_bits bigint,ratio_min_bits bigint,ratio_max_bits bigint,bool_value boolean,
+            enum_type text COLLATE pg_catalog.\"C\",enum_member text COLLATE pg_catalog.\"C\",stable_key bytea
+        ) ON COMMIT DROP").unwrap();
+    }
+
+    #[test]
+    #[ignore = "requires the task-owned disposable PostgreSQL runtime"]
+    fn live_event_copy_matches_reference_rows_and_rolls_back() {
+        let config = event_control_config();
+        let mut runtime = event_control_runtime(&config, 0x337_c0f1);
+        let campaign = runtime.campaign_id();
+        let actions = OrderedPracticeActionBatch::empty(
+            runtime.session().graph_session().session_identity().clone(),
+            1,
+        )
+        .unwrap();
+        let mut client = config.connect(NoTls).unwrap();
+        let before = event_raw_counts(&mut client, campaign);
+        let expected = {
+            let candidate = runtime.session().prepare_advance(&actions).unwrap();
+            let report = candidate.graph_report();
+            assert!(!report.successful_event_batch().events().is_empty());
+            let mut reference = client.transaction().unwrap();
+            event_reference_tables(&mut reference);
+            insert_event_rows_reference(&mut reference, campaign, 1, report).unwrap();
+            let expected = event_snapshot(
+                &mut reference,
+                campaign,
+                [
+                    "pg_temp.event_parent_reference",
+                    "pg_temp.event_field_reference",
+                ],
+            );
+            reference.rollback().unwrap();
+            let mut copied = client.transaction().unwrap();
+            insert_choice_receipt_rows(&mut copied, campaign, 1, report).unwrap();
+            insert_typed_event_rows(&mut copied, campaign, 1, report).unwrap();
+            assert_eq!(
+                event_snapshot(
+                    &mut copied,
+                    campaign,
+                    [
+                        "babylon_state.event_parent_expanded_v1",
+                        "babylon_state.event_field_expanded_v1"
+                    ]
+                ),
+                expected
+            );
+            assert_eq!(
+                event_snapshot(
+                    &mut copied,
+                    campaign,
+                    [
+                        "babylon_state.tick_event_v2",
+                        "babylon_state.tick_event_field_v2"
+                    ]
+                ),
+                ["[]".to_owned(), "[]".to_owned()]
+            );
+            copied.rollback().unwrap();
+            expected
+        };
+        assert_eq!(event_raw_counts(&mut client, campaign), before);
+        let mut sink = CollectingSink::default();
+        runtime.advance_and_commit(&mut sink, &actions).unwrap();
+        assert_eq!(runtime.session().completed_tick(), 1);
+        assert_eq!(
+            event_snapshot(
+                &mut client,
+                campaign,
+                [
+                    "babylon_state.tick_event_v2",
+                    "babylon_state.tick_event_field_v2"
+                ]
+            ),
+            expected
+        );
+    }
+
+    fn insert_event_fixture(
+        client: &mut impl GenericClient,
+        campaign: CampaignId,
+        event_ordinal: i64,
+        field_position: Option<i64>,
+    ) {
+        let text_id: i64 = client
+            .query_one(
+                "SELECT count(*) FROM babylon_state.event_text_lookup_v1 WHERE campaign_id=$1",
+                &[campaign.as_uuid()],
+            )
+            .unwrap()
+            .get(0);
+        client.execute("INSERT INTO babylon_state.event_text_lookup_v1(campaign_id,text_id,first_tick,value) VALUES($1,$2,1,'continuity-proof'),($1,$3,1,'proof')", &[campaign.as_uuid(),&text_id,&(text_id+1)]).unwrap();
+        let fields = i64::from(field_position.is_some());
+        client
+            .execute(
+                "INSERT INTO babylon_state.event_manifest_v1 VALUES($1,1,1,$2,1,$2)",
+                &[campaign.as_uuid(), &fields],
+            )
+            .unwrap();
+        client.execute("INSERT INTO babylon_state.event_parent_chunk_v1 VALUES($1,1,0,ARRAY[$2::bigint],ARRAY[$3::bigint],ARRAY[$3::bigint],ARRAY[NULL::bigint])", &[campaign.as_uuid(),&event_ordinal,&text_id]).unwrap();
+        if let Some(position) = field_position {
+            client.execute("INSERT INTO babylon_state.event_field_chunk_v1(campaign_id,resolve_tick,chunk,value_tag,event_ordinals,positions,name_ids,int_values) VALUES($1,1,0,1,ARRAY[$2::bigint],ARRAY[$3::bigint],ARRAY[$4::bigint],ARRAY[7::bigint])", &[campaign.as_uuid(),&event_ordinal,&position,&(text_id+1)]).unwrap();
+        }
+    }
+
+    fn insert_event_test_marker(client: &mut impl GenericClient, campaign: CampaignId) {
+        // This rollback-only event fixture deliberately has no territory rows.
+        client
+            .execute(
+                "INSERT INTO babylon_state.territory_tick_manifest_v1 (campaign_id,resolve_tick,territory_count) VALUES($1,1,0)",
+                &[campaign.as_uuid()],
+            )
+            .unwrap();
+        client.execute("INSERT INTO babylon_state.material_tick_v3(campaign_id,resolve_tick,identity_bytes,register_storage_bytes,receipt_storage_bytes,lookup_delta_bytes) VALUES($1,1,$2,$2,$2,$2)", &[campaign.as_uuid(),&&[1_u8;32][..]]).unwrap();
+        client
+            .execute(
+                "INSERT INTO babylon_state.graph_node_manifest_v1 VALUES($1,1,0,0,0,0)",
+                &[campaign.as_uuid()],
+            )
+            .unwrap();
+        client
+            .execute(
+                "INSERT INTO babylon_state.tick_commit VALUES($1,1,3,$2,$2)",
+                &[campaign.as_uuid(), &&[1_u8; 32][..]],
+            )
+            .unwrap();
+    }
+
+    #[test]
+    #[ignore = "requires the task-owned disposable PostgreSQL runtime"]
+    fn live_event_marker_continuity_is_atomic_and_immutable() {
+        let config = event_control_config();
+        let mut runtime = event_control_runtime(&config, 0x337_ce11);
+        let campaign = runtime.campaign_id();
+        let mut client = config.connect(NoTls).unwrap();
+        let before = event_raw_counts(&mut client, campaign);
+        for (ordinal, position) in [(1, Some(0)), (0, Some(1))] {
+            let mut tx = client.transaction().unwrap();
+            insert_event_fixture(&mut tx, campaign, ordinal, position);
+            insert_event_test_marker(&mut tx, campaign);
+            let error = tx.commit().unwrap_err();
+            assert_eq!(
+                error.as_db_error().unwrap().message(),
+                "event_storage_parent_field_choice_or_order"
+            );
+            assert_eq!(event_raw_counts(&mut client, campaign), before);
+        }
+        // The SQL-only empty-field parent is checked, then rolled back; its
+        // placeholder material bytes never become a durable engine publication.
+        let mut valid = client.transaction().unwrap();
+        insert_event_fixture(&mut valid, campaign, 0, None);
+        insert_event_test_marker(&mut valid, campaign);
+        valid
+            .batch_execute("SET CONSTRAINTS ALL IMMEDIATE")
+            .unwrap();
+        valid.rollback().unwrap();
+        assert_eq!(event_raw_counts(&mut client, campaign), before);
+        let actions = OrderedPracticeActionBatch::empty(
+            runtime.session().graph_session().session_identity().clone(),
+            1,
+        )
+        .unwrap();
+        runtime
+            .advance_and_commit(&mut CollectingSink::default(), &actions)
+            .unwrap();
+        assert_event_raw_history_immutable(&mut client, campaign);
+    }
+
+    fn assert_event_raw_history_immutable(client: &mut postgres::Client, campaign: CampaignId) {
+        let before = event_raw_counts(client, campaign);
+        for relation in &EVENT_RAW_TABLES[..5] {
+            for operation in ["UPDATE", "DELETE"] {
+                let mut tx = client.transaction().unwrap();
+                let sql = if operation == "UPDATE" {
+                    format!("UPDATE babylon_state.{relation} SET campaign_id=campaign_id WHERE campaign_id=$1")
+                } else {
+                    format!("DELETE FROM babylon_state.{relation} WHERE campaign_id=$1")
+                };
+                let error = tx.execute(&sql, &[campaign.as_uuid()]).unwrap_err();
+                assert_eq!(
+                    error.as_db_error().unwrap().message(),
+                    "event_storage_append_only"
+                );
+                tx.rollback().unwrap();
+            }
+        }
+        let mut tx = client.transaction().unwrap();
+        let error=tx.execute("INSERT INTO babylon_state.event_parent_chunk_v1 VALUES($1,1,999999,ARRAY[0::bigint],ARRAY[0::bigint],ARRAY[0::bigint],ARRAY[NULL::bigint])", &[campaign.as_uuid()]).unwrap_err();
+        assert_eq!(
+            error.as_db_error().unwrap().message(),
+            "tick_event_v2_refused_marked_history_mutation"
+        );
+        tx.rollback().unwrap();
+        assert_eq!(event_raw_counts(client, campaign), before);
+    }
+
+    #[test]
+    #[ignore = "requires the task-owned disposable PostgreSQL runtime"]
+    fn live_event_arrays_refuse_shape_null_and_inactive_lanes_atomically() {
+        let config = event_control_config();
+        let runtime = event_control_runtime(&config, 0x337_a221);
+        let campaign = runtime.campaign_id();
+        let mut client = config.connect(NoTls).unwrap();
+        let before = event_raw_counts(&mut client, campaign);
+        for statement in [
+            "INSERT INTO babylon_state.event_parent_chunk_v1 VALUES($1,1,0,ARRAY[0::bigint],'{}'::bigint[],ARRAY[$2::bigint],ARRAY[NULL::bigint])",
+            "INSERT INTO babylon_state.event_parent_chunk_v1 VALUES($1,1,0,'[0:0]={0}'::bigint[],ARRAY[$2::bigint],ARRAY[$2::bigint],ARRAY[NULL::bigint])",
+            "INSERT INTO babylon_state.event_parent_chunk_v1 VALUES($1,1,0,ARRAY[NULL::bigint],ARRAY[$2::bigint],ARRAY[$2::bigint],ARRAY[NULL::bigint])",
+            "INSERT INTO babylon_state.event_field_chunk_v1(campaign_id,resolve_tick,chunk,value_tag,event_ordinals,positions,name_ids,int_values) VALUES($1,1,0,1,ARRAY[0::bigint],ARRAY[0::bigint],ARRAY[$2::bigint],ARRAY[NULL::bigint])",
+            "INSERT INTO babylon_state.event_field_chunk_v1(campaign_id,resolve_tick,chunk,value_tag,event_ordinals,positions,name_ids,int_values,currency_values) VALUES($1,1,0,1,ARRAY[0::bigint],ARRAY[0::bigint],ARRAY[$2::bigint],ARRAY[7::bigint],ARRAY[7::numeric])",
+        ] {
+            let mut tx=client.transaction().unwrap();
+            let error=tx.execute(statement,&[campaign.as_uuid(),&0_i64]).unwrap_err();
+            assert_eq!(error.code(),Some(&postgres::error::SqlState::CHECK_VIOLATION));
+            tx.rollback().unwrap();
+            assert_eq!(event_raw_counts(&mut client,campaign),before);
+        }
+    }
+
+    #[test]
+    #[ignore = "requires the task-owned disposable PostgreSQL runtime"]
+    fn live_event_marker_refuses_chunk_gap_missing_choice_and_orphan_field() {
+        let config = event_control_config();
+        let runtime = event_control_runtime(&config, 0x337_a222);
+        let campaign = runtime.campaign_id();
+        let mut client = config.connect(NoTls).unwrap();
+        let before = event_raw_counts(&mut client, campaign);
+        for (chunk, choice, field_ordinal, expected) in [
+            (1, None, 0, "event_storage_parent_chunk_count_or_gap"),
+            (
+                0,
+                Some(0_i64),
+                0,
+                "event_storage_parent_field_choice_or_order",
+            ),
+            (0, None, 1, "event_storage_parent_field_choice_or_order"),
+        ] {
+            let mut tx = client.transaction().unwrap();
+            let text_id: i64 = tx
+                .query_one(
+                    "SELECT count(*) FROM babylon_state.event_text_lookup_v1 WHERE campaign_id=$1",
+                    &[campaign.as_uuid()],
+                )
+                .unwrap()
+                .get(0);
+            tx.execute("INSERT INTO babylon_state.event_text_lookup_v1(campaign_id,text_id,first_tick,value) VALUES($1,$2,1,'guard-proof')", &[campaign.as_uuid(),&text_id]).unwrap();
+            tx.execute(
+                "INSERT INTO babylon_state.event_manifest_v1 VALUES($1,1,1,1,1,1)",
+                &[campaign.as_uuid()],
+            )
+            .unwrap();
+            tx.execute("INSERT INTO babylon_state.event_parent_chunk_v1 VALUES($1,1,$2,ARRAY[0::bigint],ARRAY[$3::bigint],ARRAY[$3::bigint],ARRAY[$4::bigint])", &[campaign.as_uuid(),&i64::from(chunk),&text_id,&choice]).unwrap();
+            tx.execute("INSERT INTO babylon_state.event_field_chunk_v1(campaign_id,resolve_tick,chunk,value_tag,event_ordinals,positions,name_ids,int_values) VALUES($1,1,0,1,ARRAY[$2::bigint],ARRAY[0::bigint],ARRAY[$3::bigint],ARRAY[7::bigint])", &[campaign.as_uuid(),&i64::from(field_ordinal),&text_id]).unwrap();
+            insert_event_test_marker(&mut tx, campaign);
+            let error = tx.commit().unwrap_err();
+            assert_eq!(error.as_db_error().unwrap().message(), expected);
+            assert_eq!(event_raw_counts(&mut client, campaign), before);
+        }
+    }
+
+    fn insert_event_rows_reference(
+        client: &mut impl GenericClient,
+        campaign_id: CampaignId,
+        resolve_tick: i64,
+        report: &IdentifiedTickReport,
+    ) -> Result<(), RustPersistenceRuntimeError> {
+        for (ordinal, event) in report.successful_event_batch().events().iter().enumerate() {
+            let ordinal = i64::try_from(ordinal).map_err(|_| {
+                RustPersistenceRuntimeError::IntegerConversion {
+                    field: "successful event ordinal",
+                    value: ordinal,
+                }
+            })?;
+            let choice_receipt_ordinal = event
+                .choice_receipt()
+                .map(|reference| i64::from(reference.encounter_ordinal()));
+            require_single_insert(
+                client.execute(
+                    "INSERT INTO pg_temp.event_parent_reference \
+                 (campaign_id, resolve_tick, ordinal, event_type, emitting_rule, \
+                  choice_receipt_ordinal) VALUES ($1::uuid, $2, $3, $4, $5, $6)",
+                    &[
+                        campaign_id.as_uuid(),
+                        &resolve_tick,
+                        &ordinal,
+                        &event.event_type(),
+                        &event.emitting_rule(),
+                        &choice_receipt_ordinal,
+                    ],
+                ),
+                "insert tick event",
+            )?;
+            for (position, (field_name, value)) in event.fields().iter().enumerate() {
+                let position = i64::from(checked_u32_position(position)?);
+                let prefix: [&(dyn ToSql + Sync); 5] = [
+                    campaign_id.as_uuid(),
+                    &resolve_tick,
+                    &ordinal,
+                    &position,
+                    field_name,
+                ];
+                insert_bsl_value_row(
+                client,
+                "INSERT INTO pg_temp.event_field_reference \
+                 (campaign_id, resolve_tick, ordinal, position, field_name, value_tag, int_value, \
+                  currency_value, real_bits, ratio_bits, ratio_min_bits, ratio_max_bits, bool_value, \
+                  enum_type, enum_member, stable_key) \
+                 VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8::text::numeric, $9, $10, $11, $12, $13, $14, $15, $16)",
+                &prefix,
+                value,
+                "insert tick event field",
+            )?;
+            }
+        }
+        Ok(())
+    }
+
     fn validated_base_config() -> Config {
         assert_eq!(std::env::var(ACK_ENV).as_deref(), Ok(ACK));
         let canary = std::env::var(CANARY_ENV).expect("runner supplies the disposable canary");

@@ -1,8 +1,12 @@
 //! Finite supplier preferences, recurring household purchases and funded offers.
 use super::{
-    actors, amount, quantity, routes::Network, sum_amount, Builder, NationalOpeningError, Result,
+    actors, amount, quantity, routes::Network, sum_amount, ActorContext, Builder,
+    NationalOpeningError, Result,
 };
-use crate::{economic_catalog::MerchantSeed, national_transport::CargoClass};
+use crate::{
+    economic_catalog::{MerchantSeed, ResidentStaffingPoolSeed},
+    national_transport::CargoClass,
+};
 use babylon_kernel::{
     content_digest::sha256_of, currency::Currency, economic_identity::EconomicFunction,
     economic_location::EconomicLocation,
@@ -103,6 +107,32 @@ pub(super) fn wire(builder: &mut Builder<'_>) -> Result<()> {
     Ok(())
 }
 
+// Only missing retailer locations need these indices. Actor locations/employment
+// and staffing row positions do not change while retail roles are installed.
+struct RetailFallbackIndices {
+    sites: BTreeMap<EconomicLocation, SiteId>,
+    staffing: BTreeMap<SiteId, usize>,
+}
+impl RetailFallbackIndices {
+    fn new(actors: &BTreeMap<SiteId, ActorContext>, rows: &[ResidentStaffingPoolSeed]) -> Self {
+        let mut sites = BTreeMap::new();
+        for actor in actors.values().filter(|actor| actor.employed > 0) {
+            let chosen = sites.entry(actor.location).or_insert(actor.site_id);
+            if (actor.employed, std::cmp::Reverse(actor.site_id))
+                > (actors[chosen].employed, std::cmp::Reverse(*chosen))
+            {
+                *chosen = actor.site_id;
+            }
+        }
+        let mut staffing = BTreeMap::new();
+        for (index, row) in rows.iter().enumerate() {
+            // Preserve iter_mut().find's first matching row, including malformed duplicates.
+            staffing.entry(row.pool.site_id()).or_insert(index);
+        }
+        Self { sites, staffing }
+    }
+}
+
 fn local_retailers(builder: &mut Builder<'_>) -> Result<BTreeMap<EconomicLocation, SiteId>> {
     let mut selected = BTreeMap::new();
     for actor in builder
@@ -136,13 +166,15 @@ fn local_retailers(builder: &mut Builder<'_>) -> Result<BTreeMap<EconomicLocatio
         .filter(|(location, _)| !selected.contains_key(location))
         .map(|(location, (persons, households))| (location, persons, households))
         .collect();
+    if missing.is_empty() {
+        return Ok(selected);
+    }
+    let fallback = RetailFallbackIndices::new(&builder.actors, &builder.opening.staffing);
     for (location, persons, households) in missing {
-        let site = builder
-            .actors
-            .values()
-            .filter(|a| a.location == location && a.employed > 0)
-            .max_by_key(|a| (a.employed, std::cmp::Reverse(a.site_id)))
-            .map(|a| a.site_id)
+        let site = fallback
+            .sites
+            .get(&location)
+            .copied()
             .ok_or(NationalOpeningError::MissingObservation)?;
         let mut identity = b"NationalMerchantHandlingV1\0".to_vec();
         identity.extend_from_slice(&site.as_bytes());
@@ -155,11 +187,14 @@ fn local_retailers(builder: &mut Builder<'_>) -> Result<BTreeMap<EconomicLocatio
         let retail_hours = retail_hours(builder, persons, households)?;
         reserve_retail_labor(builder, site, retail_hours)?;
         builder.site_mut(site)?.merchant = Some(merchant);
+        let index = *fallback
+            .staffing
+            .get(&site)
+            .ok_or(NationalOpeningError::Identity)?;
         let staffing = builder
             .opening
             .staffing
-            .iter_mut()
-            .find(|s| s.pool.site_id() == site)
+            .get_mut(index)
             .ok_or(NationalOpeningError::Identity)?;
         let pool = &staffing.pool;
         let mut sources = pool.work_sources().to_vec();
@@ -682,4 +717,86 @@ pub(super) fn payroll(builder: &Builder<'_>, site: SiteId) -> Result<Currency> {
         quantity(actor.employee_persons, builder.policy.work_hours_per_person)?,
         actor.wage,
     )
+}
+
+#[cfg(test)]
+mod retailer_index_controls {
+    use super::*;
+    use babylon_graph::stable_element::StableElementKey;
+    use babylon_kernel::geography::CountyGeoid;
+    use babylon_material_circuit::{StaffingPolicy, StaffingPoolId};
+
+    fn actor(id: u8, county: &str, employed: u64) -> ActorContext {
+        ActorContext {
+            site_id: SiteId::from_bytes([id; 32]),
+            function: EconomicFunction::CapitalGoods,
+            source_ownership: None,
+            location: EconomicLocation::domestic_county(CountyGeoid::try_from(county).unwrap())
+                .unwrap(),
+            employed,
+            employee_persons: employed,
+            force: employed,
+            wage: Currency::from_micro_units(1),
+            price_scale_bps: 10_000,
+            planned_batches: 1,
+            process_id: None,
+        }
+    }
+    fn staffing(site: SiteId, id: u8) -> ResidentStaffingPoolSeed {
+        ResidentStaffingPoolSeed {
+            workplace: StableElementKey::Node {
+                scenario: "index-control".into(),
+                local_name: "workplace".into(),
+            },
+            pool: StaffingPoolBinding::try_new(
+                StaffingPoolId::from_bytes([id; 32]),
+                site,
+                UnitId::from_bytes([3; 32]),
+                2,
+                StaffingPolicy::one_period(1).unwrap(),
+                vec![StaffingWorkSource::MerchantHandling(site)],
+            )
+            .unwrap(),
+            previous_unretained_hours: 0,
+            members: vec![],
+        }
+    }
+    #[test]
+    fn fallback_indices_match_original_location_selection_and_first_pool() {
+        let rows = [
+            actor(9, "26163", 10),
+            actor(2, "26163", 10),
+            actor(1, "26163", 0),
+            actor(4, "26001", 3),
+            actor(5, "26001", 7),
+            actor(6, "26003", 0),
+        ];
+        let actors: BTreeMap<_, _> = rows.into_iter().map(|row| (row.site_id, row)).collect();
+        let site = SiteId::from_bytes([2; 32]);
+        let pools = vec![
+            staffing(site, 7),
+            staffing(site, 8),
+            staffing(SiteId::from_bytes([5; 32]), 9),
+        ];
+        let indices = RetailFallbackIndices::new(&actors, &pools);
+        for county in ["26163", "26001", "26003"] {
+            let location = actor(99, county, 0).location;
+            let original = actors
+                .values()
+                .filter(|row| row.location == location && row.employed > 0)
+                .max_by_key(|row| (row.employed, std::cmp::Reverse(row.site_id)))
+                .map(|row| row.site_id);
+            assert_eq!(indices.sites.get(&location).copied(), original);
+        }
+        assert_eq!(indices.sites[&actor(99, "26163", 0).location], site);
+        for row in &pools {
+            let original = pools
+                .iter()
+                .position(|pool| pool.pool.site_id() == row.pool.site_id())
+                .unwrap();
+            assert_eq!(indices.staffing[&row.pool.site_id()], original);
+        }
+        let empty = RetailFallbackIndices::new(&BTreeMap::new(), &[]);
+        assert!(empty.sites.is_empty() && empty.staffing.is_empty());
+    }
 }

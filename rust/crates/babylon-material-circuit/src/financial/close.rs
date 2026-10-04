@@ -127,16 +127,7 @@ impl FinancialClose {
         }
         Ok(())
     }
-    pub(crate) fn closing(
-        &mut self,
-        state: &mut MaterialCircuitState,
-        costs: &mut CostClose,
-        movements: &mut Vec<MoneyTransferReceipt>,
-    ) -> Result<()> {
-        self.collect_taxes(state, costs, movements)?;
-        self.distribute(state, costs, movements)
-    }
-    fn collect_taxes(
+    pub(crate) fn collect_taxes(
         &mut self,
         state: &mut MaterialCircuitState,
         costs: &mut CostClose,
@@ -182,7 +173,7 @@ impl FinancialClose {
         }
         Ok(())
     }
-    fn distribute(
+    pub(crate) fn distribute(
         &mut self,
         state: &mut MaterialCircuitState,
         costs: &mut CostClose,

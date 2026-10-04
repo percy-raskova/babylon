@@ -171,6 +171,25 @@ pub(super) fn finish(builder: &mut Builder<'_>) -> Result<()> {
     let capacities = capacities(builder)?;
     add_replenishment_routes(builder)?;
     add_route_stages(builder, &mut network, &mut routes)?;
+    let remote = builder
+        .aid
+        .mandates
+        .iter()
+        .find(|m| {
+            matches!(
+                m.transport,
+                babylon_material_circuit::AidTransport::Routed { .. }
+            )
+        })
+        .cloned()
+        .ok_or(NationalOpeningError::Identity)?;
+    if let babylon_material_circuit::AidTransport::Routed { route_id: id, .. } = remote.transport {
+        if routes.insert(id) {
+            let from = builder.aid.children[0].location;
+            let to = builder.aid.children[2].location;
+            add_stage(builder, &mut network, from, to, CargoClass::General, id)?;
+        }
+    }
     // Current capacity is defined only for principals used by a route or merchant.
     let used: BTreeSet<_> = builder
         .opening

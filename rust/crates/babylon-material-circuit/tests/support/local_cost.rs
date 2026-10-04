@@ -34,6 +34,9 @@ fn local_cost_economy() -> MonetaryCircuit {
     )
     .unwrap();
     MonetaryCircuit {
+        aid: AidBook::default(),
+
+        household_time: babylon_material_circuit::HouseholdTimeAccounting::NotModeled,
         financial: babylon_material_circuit::FinancialInstitutions::empty(),
         member_labor: (1..=2)
             .map(|period| babylon_material_circuit::MemberLaborCapacityRow {

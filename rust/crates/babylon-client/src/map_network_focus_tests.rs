@@ -104,6 +104,7 @@ fn household_service_needs_are_visible_without_fabricating_retail_orders() {
     let snapshot = frame.0.as_mut().unwrap().production.as_mut().unwrap();
     snapshot.household_service_accounts.push(
         babylon_persistence::ProductionHouseholdServiceAccount {
+            kind: babylon_persistence::ProductionHouseholdKind::Ordinary,
             demand_principal_id: "household".into(),
             location: "county:26163".parse().unwrap(),
             good_id: "care".into(),

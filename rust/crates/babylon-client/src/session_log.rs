@@ -623,6 +623,8 @@ mod tests {
             visibility: ObserverVisibility::FullObserver,
             counties: Vec::new(),
             production: Some(ProductionSnapshot {
+                physical_routes: vec![],
+
                 household_accounts: Vec::new(),
                 household_service_accounts: Vec::new(),
                 goods_price_accounts: Vec::new(),
@@ -633,6 +635,7 @@ mod tests {
                 merchant_handling_accounts: Vec::new(),
                 final_demand_accounts: Vec::new(),
                 freight_capacity_accounts: Vec::new(),
+                freight_order_definitions: Vec::new(),
                 material_balance: None,
                 labor_accounts: Vec::new(),
                 staffing_accounts: Vec::new(),
@@ -695,7 +698,7 @@ mod tests {
         session.foundation_digest = Some("foundation".into());
         session.ready(0, None);
         assert!(session.installed(&session.context()));
-        app.insert_resource(ObserverFrame(Some(snapshot(&session))))
+        app.insert_resource(ObserverFrame(Some(snapshot(&session)), None))
             .insert_resource(session)
             .insert_resource(ObserverUiState {
                 menu_open: false,
@@ -759,7 +762,7 @@ mod tests {
             app.insert_resource(atlas)
                 .insert_resource(SelectedCounty(Some(wayne)))
                 .insert_resource(DossierCampaignId(campaign))
-                .insert_resource(ObserverFrame(Some(frame)))
+                .insert_resource(ObserverFrame(Some(frame), None))
                 .init_resource::<DossierRefresh>()
                 .insert_resource(ActiveCountyDossier(Some(InstalledDossier {
                     scope: DossierRequestScope {

@@ -113,6 +113,9 @@ fn write_purpose(purpose: MoneyTransferPurpose, bytes: &mut Vec<u8>) {
         P::WagePayment(id) => (5, 0, id.as_bytes()),
         P::ShiftCancellation(id) => (6, 0, id.as_bytes()),
         P::Cash(purpose) => (7, cash_purpose_tag(purpose), [0; 32]),
+        P::AidReservation(id) => (8, 0, id.as_bytes()),
+        P::AidGrant(id) => (9, 0, id.as_bytes()),
+        P::AidRefund(id) => (10, 0, id.as_bytes()),
     };
     write_tagged(tag, subtype, id, bytes);
 }
@@ -131,6 +134,9 @@ fn read_purpose(
         5 if subtype == 0 => Ok(P::WagePayment(ShiftId::from_bytes(id))),
         6 if subtype == 0 => Ok(P::ShiftCancellation(ShiftId::from_bytes(id))),
         7 if id == [0; 32] => Ok(P::Cash(cash_purpose(subtype)?)),
+        8 if subtype == 0 => Ok(P::AidReservation(OrderId::from_bytes(id))),
+        9 if subtype == 0 => Ok(P::AidGrant(OrderId::from_bytes(id))),
+        10 if subtype == 0 => Ok(P::AidRefund(OrderId::from_bytes(id))),
         _ => Err(MaterialWorldError::Wire),
     }
 }
@@ -146,6 +152,7 @@ fn write_location(location: MoneyLocation, bytes: &mut Vec<u8>) {
             (2, subtype, id)
         }
         MoneyLocation::PayrollReserve(id) => (3, 0, id.as_bytes()),
+        MoneyLocation::AidReserve(id) => (4, 0, id.as_bytes()),
     };
     write_tagged(tag, subtype, id, bytes);
 }
@@ -157,12 +164,13 @@ fn read_location(cursor: &mut ReceiptCursor<'_>) -> Result<MoneyLocation, Materi
         1 => Ok(MoneyLocation::Cash(account(subtype, id)?)),
         2 => Ok(MoneyLocation::PurchaseReserve(order(subtype, id)?)),
         3 if subtype == 0 => Ok(MoneyLocation::PayrollReserve(ShiftId::from_bytes(id))),
+        4 if subtype == 0 => Ok(MoneyLocation::AidReserve(OrderId::from_bytes(id))),
         _ => Err(MaterialWorldError::Wire),
     }
 }
 
 fn validate_transfer(row: &MoneyTransferReceipt) -> Result<(), MaterialWorldError> {
-    use MoneyLocation::{Cash, PayrollReserve, PurchaseReserve};
+    use MoneyLocation::{AidReserve, Cash, PayrollReserve, PurchaseReserve};
     use MoneyTransferPurpose as P;
     let debit = row.debit.delta.micro_units();
     let credit = row.credit.delta.micro_units();
@@ -179,6 +187,8 @@ fn validate_transfer(row: &MoneyTransferReceipt) -> Result<(), MaterialWorldErro
             id == reserve
         }
         (P::Cash(_), Cash(sender), Cash(recipient)) => sender != recipient,
+        (P::AidReservation(id), Cash(_), AidReserve(reserve))
+        | (P::AidGrant(id) | P::AidRefund(id), AidReserve(reserve), Cash(_)) => id == reserve,
         _ => false,
     };
     if valid {

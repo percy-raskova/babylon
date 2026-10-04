@@ -186,10 +186,15 @@ impl ProductionControlAvailability {
                                     .collect::<std::collections::BTreeSet<_>>()
                                     .len()
                             }),
-                        ProductionPage::Competitors => navigation
+                        ProductionPage::Competitors => match navigation
                             .selected_site
                             .as_deref()
-                            .map_or(0, |id| competitor_sites(id, snapshot).len()),
+                            .map(|id| competitor_sites(id, snapshot))
+                        {
+                            Some(Ok(sites)) => sites.len(),
+                            None => 0,
+                            Some(Err(_)) => return false,
+                        },
                     };
                     *page < count.div_ceil(6).max(1)
                 }) =>

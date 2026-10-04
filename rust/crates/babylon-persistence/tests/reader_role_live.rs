@@ -409,8 +409,8 @@ fn assert_owner_side_privilege_matrix(client: &mut postgres::Client) {
                  ('babylon_meta.archive_atom_v1'), \
                  ('babylon_meta.archive_revision_atom_v2'), \
                  ('babylon_meta.archive_revision_grant_v2'), \
-                 ('babylon_meta.archive_tick_knowledge_v2'), \
-                 ('babylon_meta.archive_tick_knowledge_member_v2'), \
+                 ('babylon_meta.archive_tick_knowledge_v3'), \
+                 ('babylon_meta.archive_knowledge_membership_v3'), \
                  ('babylon_meta.current_schema')) AS tables(relation) \
              CROSS JOIN (VALUES \
                  ('SELECT'::pg_catalog.text), ('INSERT'), ('UPDATE'), ('DELETE'), \
@@ -470,8 +470,8 @@ fn assert_owner_side_privilege_matrix(client: &mut postgres::Client) {
 fn assert_reader_query_refusals(client: &mut postgres::Client) {
     for relation in [
         "archive_revision_grant_v2",
-        "archive_tick_knowledge_v2",
-        "archive_tick_knowledge_member_v2",
+        "archive_tick_knowledge_v3",
+        "archive_knowledge_membership_v3",
         "archive_atom_v1",
         "current_schema",
     ] {
@@ -877,7 +877,7 @@ fn assert_pin_worker_identity_refused(
     let tick = i64::try_from(scope.tick()).unwrap();
     let original: Vec<u8> = client
         .query_one(
-            "SELECT worker_contract_sha256 FROM babylon_meta.archive_tick_knowledge_v2 \
+            "SELECT worker_contract_sha256 FROM babylon_meta.archive_tick_knowledge_v3 \
              WHERE campaign_id=$1 AND resolve_tick=$2",
             &[target.campaign_id.as_uuid(), &tick],
         )
@@ -885,7 +885,7 @@ fn assert_pin_worker_identity_refused(
         .get(0);
     let mut corrupt = original.clone();
     corrupt[0] ^= 1;
-    let update = "UPDATE babylon_meta.archive_tick_knowledge_v2 SET worker_contract_sha256=$3 \
+    let update = "UPDATE babylon_meta.archive_tick_knowledge_v3 SET worker_contract_sha256=$3 \
                   WHERE campaign_id=$1 AND resolve_tick=$2";
     assert_eq!(
         client
@@ -1400,11 +1400,11 @@ fn assert_material_corruption_refused(
     campaign: CampaignId,
     observer: &ObserverEconomyReader,
 ) {
-    let exact:Vec<u8>=owner.query_one("SELECT register_bytes FROM babylon_state.material_tick_v3 WHERE campaign_id=$1::uuid AND resolve_tick=2",&[campaign.as_uuid()]).unwrap().get(0);
+    let exact:Vec<u8>=owner.query_one("SELECT register_storage_bytes FROM babylon_state.material_tick_v3 WHERE campaign_id=$1::uuid AND resolve_tick=2",&[campaign.as_uuid()]).unwrap().get(0);
     let mut corrupted = exact.clone();
     let last = corrupted.len() - 1;
     corrupted[last] ^= 1;
-    owner.execute("UPDATE babylon_state.material_tick_v3 SET register_bytes=$2 WHERE campaign_id=$1::uuid AND resolve_tick=2",&[campaign.as_uuid(),&corrupted]).unwrap();
+    owner.execute("UPDATE babylon_state.material_tick_v3 SET register_storage_bytes=$2 WHERE campaign_id=$1::uuid AND resolve_tick=2",&[campaign.as_uuid(),&corrupted]).unwrap();
     assert!(observer.snapshot(campaign, 2).is_err());
     assert!(DurableMaterialRuntime::open(
         config,
@@ -1415,7 +1415,7 @@ fn assert_material_corruption_refused(
             .digest()
     )
     .is_err());
-    owner.execute("UPDATE babylon_state.material_tick_v3 SET register_bytes=$2 WHERE campaign_id=$1::uuid AND resolve_tick=2",&[campaign.as_uuid(),&exact]).unwrap();
+    owner.execute("UPDATE babylon_state.material_tick_v3 SET register_storage_bytes=$2 WHERE campaign_id=$1::uuid AND resolve_tick=2",&[campaign.as_uuid(),&exact]).unwrap();
 }
 
 fn assert_material_stdio_advance(
@@ -1478,7 +1478,7 @@ fn assert_material_stdio_advance(
         .map(|line| serde_json::from_slice(line).unwrap())
         .collect();
     assert!(
-        matches!(&responses[0],RuntimeSessionResponse::Hello{protocol_version: 5,scope,..} if scope.epoch==0 && scope.campaign_id.is_none())
+        matches!(&responses[0],RuntimeSessionResponse::Hello{protocol_version: RUNTIME_SESSION_PROTOCOL_VERSION,scope,..} if scope.epoch==0 && scope.campaign_id.is_none())
     );
     assert!(matches!(&responses[2],RuntimeSessionResponse::Ready{tail,..} if tail.resolve_tick==2));
     assert!(responses.iter().any(|response| matches!(
@@ -1492,6 +1492,20 @@ fn assert_material_stdio_advance(
             RuntimeSessionResponse::Ready { tail, .. }
             | RuntimeSessionResponse::Committed { tail, .. } => {
                 acknowledged_tick = tail.resolve_tick;
+            }
+            RuntimeSessionResponse::AdvanceProgress {
+                request_id,
+                scope: current,
+                resolve_tick,
+                ..
+            } => {
+                assert_eq!(*request_id, 7);
+                assert_eq!(
+                    current.campaign_id.as_deref(),
+                    Some(campaign.as_uuid().to_string().as_str())
+                );
+                assert_eq!(*resolve_tick, 3);
+                assert_eq!(acknowledged_tick, 2);
             }
             RuntimeSessionResponse::ArchiveProgress { durable_tick, .. } => {
                 assert_eq!(*durable_tick, acknowledged_tick);

@@ -9,11 +9,13 @@ use crate::{
     PendingArchiveReceipt, SemanticArchiveError,
 };
 use babylon_practice_contract::{
+    OrganizerAidMaterialPostings, OrganizerAidResolutionReceipt, OrganizerAidSupportStatus,
     OrganizerChoice, OrganizerConfig, OrganizerInquiry, OrganizerObservation, OrganizerOutcome,
     OrganizerPartnerResponse, OrganizerReceipt, OrganizerReport,
 };
 use babylon_tick::material_world::MaterialWorldRegister;
 use postgres::{GenericClient, NoTls};
+use std::collections::BTreeMap;
 
 fn hex(bytes: &[u8; 32]) -> String {
     crate::michigan_economy::digest_hex(bytes)
@@ -164,7 +166,11 @@ pub(crate) fn insert_projection(
         )
         .map_err(archive_error)?;
     }
-    for receipt in &state.receipts {
+    for receipt in state
+        .receipts
+        .iter()
+        .chain(state.aid_receipts.iter().map(|row| &row.practice))
+    {
         if receipt.actor_id != config.controlled_actor_id {
             continue;
         }
@@ -227,7 +233,21 @@ fn validate_subjects(
     campaign: CampaignId,
     config: &OrganizerConfig,
 ) -> Result<(), MaterialRuntimeError> {
-    let rows = client.query("SELECT actor_id,subject_kind,subject_id,title FROM babylon_state.organizer_subject_v1 WHERE campaign_id=$1", &[campaign.as_uuid()])?;
+    let rows = capture_subjects(client, campaign)?;
+    validate_captured_subjects(&rows, config)
+}
+
+fn capture_subjects(
+    client: &mut impl GenericClient,
+    campaign: CampaignId,
+) -> Result<Vec<postgres::Row>, MaterialRuntimeError> {
+    Ok(client.query("SELECT actor_id,subject_kind,subject_id,title FROM babylon_state.organizer_subject_v1 WHERE campaign_id=$1", &[campaign.as_uuid()])?)
+}
+
+fn validate_captured_subjects(
+    rows: &[postgres::Row],
+    config: &OrganizerConfig,
+) -> Result<(), MaterialRuntimeError> {
     let expected = subject_definitions(config);
     let actor = config.controlled_actor_id.to_string();
     if rows.len() != expected.len()
@@ -309,6 +329,9 @@ fn report_text(observation: &OrganizerObservation) -> String {
 }
 fn receipt_text(receipt: &OrganizerReceipt) -> String {
     let practice = match receipt.choice {
+        OrganizerChoice::Collect => "Collect a voluntary contribution",
+        OrganizerChoice::LocalAid => "Local aid",
+        OrganizerChoice::RemoteAid => "Cross-region support",
         OrganizerChoice::Inquiry(OrganizerInquiry::WorkLost) => "Ask about work and output",
         OrganizerChoice::Inquiry(OrganizerInquiry::MaintenanceReceived) => "Ask about maintenance",
         OrganizerChoice::Reinforce => "Reinforce workplace contact",
@@ -317,6 +340,15 @@ fn receipt_text(receipt: &OrganizerReceipt) -> String {
         OrganizerChoice::ResumeStanding => "Resume neighborhood work",
     };
     let outcome = match receipt.outcome {
+        OrganizerOutcome::CollectionCompleted => {
+            "Voluntary contribution collected; funds available for later aid"
+        }
+        OrganizerOutcome::CollectionRefused => "Collection refused; no standing fallback",
+        OrganizerOutcome::AidScheduled => "Support committed for material resolution",
+        OrganizerOutcome::AidAwaitingSupport => "Support remains in transit",
+        OrganizerOutcome::AidNotProvisioned => "Support did not provide current consumption",
+        OrganizerOutcome::AidPracticeCompleted => "Independent aid practice completed",
+        OrganizerOutcome::AidPracticeUncompleted => "Independent aid practice uncompleted",
         OrganizerOutcome::EvidenceObtained => "Evidence obtained",
         OrganizerOutcome::EvidenceWithheld => "No report obtained",
         OrganizerOutcome::ContactCompleted => "Mutual contact completed",
@@ -396,8 +428,13 @@ impl ArchiveDossierProducer for OrganizerDossierProducer {
         _knowledge: &ArchiveKnowledge,
         page_budget: usize,
     ) -> Result<ArchiveProducerOutcome, SemanticArchiveError> {
-        let mut client = self
-            .config
+        let mut config = self.config.clone();
+        let options = format!(
+            "{} -c idle_in_transaction_session_timeout=5000ms",
+            config.get_options().unwrap_or("")
+        );
+        config.options(&options);
+        let mut client = config
             .connect(NoTls)
             .map_err(|e| database("connect organizer Archive producer", &e))?;
         let mut transaction = client
@@ -406,12 +443,71 @@ impl ArchiveDossierProducer for OrganizerDossierProducer {
             .read_only(true)
             .start()
             .map_err(|e| database("begin organizer Archive read", &e))?;
-        let register = crate::material_runtime::read_archive_organizer_register(
-            &mut transaction,
-            CampaignId::from_uuid(campaign),
-            receipt,
+        let captured = capture_organizer_pages(&mut transaction, campaign, receipt, page_budget)?;
+        transaction
+            .commit()
+            .map_err(|e| database("finish organizer Archive capture", &e))?;
+        drop(client);
+        captured.admit_and_render()
+    }
+}
+
+/// Owns only exact snapshot rows; detached admission and rendering cannot query SQL.
+pub(crate) struct CapturedOrganizerPages {
+    tick: u64,
+    content_hash: [u8; 32],
+    page_budget: usize,
+    subjects: Vec<postgres::Row>,
+    register: Option<crate::material_runtime::CapturedArchiveOrganizerRegister>,
+}
+
+pub(crate) fn capture_organizer_pages(
+    client: &mut impl GenericClient,
+    campaign: uuid::Uuid,
+    receipt: &PendingArchiveReceipt,
+    page_budget: usize,
+) -> Result<CapturedOrganizerPages, SemanticArchiveError> {
+    let tick = i64::try_from(receipt.resolve_tick())
+        .map_err(|_| SemanticArchiveError::InvalidVerifiedTick)?;
+    let subjects = client.query("SELECT s.actor_id,s.subject_kind,s.subject_id,s.title FROM babylon_state.organizer_subject_v1 s WHERE campaign_id=$1 AND NOT EXISTS(SELECT 1 FROM babylon_meta.archive_page_revision_v2 p WHERE p.campaign_id=s.campaign_id AND p.subject_kind=s.subject_kind AND p.subject_id=s.subject_id AND p.effective_tick=$2) ORDER BY subject_kind,subject_id", &[&campaign,&tick]).map_err(|e|database("read organizer report subjects",&e))?;
+    let register = if subjects.is_empty() || page_budget == 0 {
+        None
+    } else {
+        Some(
+            crate::material_runtime::capture_archive_organizer_register(
+                client,
+                CampaignId::from_uuid(campaign),
+                receipt,
+            )
+            .map_err(archive_register_error)?
+            .ok_or(SemanticArchiveError::StoredPageMismatch)?,
         )
-        .map_err(archive_register_error)?;
+    };
+    Ok(CapturedOrganizerPages {
+        tick: receipt.resolve_tick(),
+        content_hash: *receipt.tick_content_hash(),
+        page_budget,
+        subjects,
+        register,
+    })
+}
+
+impl CapturedOrganizerPages {
+    pub(crate) fn admit_and_render(self) -> Result<ArchiveProducerOutcome, SemanticArchiveError> {
+        let receipt = PendingArchiveReceipt::try_new(self.tick, self.content_hash)?;
+        let page_budget = self.page_budget;
+        let Some(captured) = self.register else {
+            return Ok(ArchiveProducerOutcome::new(
+                ArchiveDirtyBatch::try_new(
+                    receipt.resolve_tick(),
+                    *receipt.tick_content_hash(),
+                    Vec::new(),
+                )?,
+                self.subjects.len(),
+            ));
+        };
+        let register = Some(captured.admit().map_err(archive_register_error)?);
+        let subjects = self.subjects;
         let Some(state) = register
             .as_ref()
             .and_then(MaterialWorldRegister::organizer_state)
@@ -425,15 +521,26 @@ impl ArchiveDossierProducer for OrganizerDossierProducer {
                 0,
             ));
         };
-        let tick = i64::try_from(receipt.resolve_tick())
-            .map_err(|_| SemanticArchiveError::InvalidVerifiedTick)?;
-        let subjects = transaction.query("SELECT s.actor_id,s.subject_kind,s.subject_id,s.title FROM babylon_state.organizer_subject_v1 s WHERE campaign_id=$1 AND NOT EXISTS(SELECT 1 FROM babylon_meta.archive_page_revision_v2 p WHERE p.campaign_id=s.campaign_id AND p.subject_kind=s.subject_kind AND p.subject_id=s.subject_id AND p.effective_tick=$2) ORDER BY subject_kind,subject_id", &[&campaign,&tick]).map_err(|e|database("read organizer report subjects",&e))?;
         let total = subjects.len();
         let mut pages = Vec::new();
         let mut observations = state.observations.iter().collect::<Vec<_>>();
         observations.sort_by_key(|row| (row.acquired_period, row.observation_id));
-        let mut receipts = state.receipts.iter().collect::<Vec<_>>();
+        let mut receipts = state
+            .receipts
+            .iter()
+            .chain(state.aid_receipts.iter().map(|row| &row.practice))
+            .collect::<Vec<_>>();
         receipts.sort_by_key(|row| (row.period, row.receipt_id));
+        let aid_by_receipt: BTreeMap<_, _> = state
+            .aid_receipts
+            .iter()
+            .map(|row| (row.practice.receipt_id, row))
+            .collect();
+        let collection_by_receipt: BTreeMap<_, _> = state
+            .collection_receipts
+            .iter()
+            .map(|row| (row.practice.receipt_id, row))
+            .collect();
         for row in subjects.into_iter().take(page_budget) {
             let actor: String = row.get(0);
             let kind: String = row.get(1);
@@ -453,15 +560,20 @@ impl ArchiveDossierProducer for OrganizerDossierProducer {
                     .copied()
                     .filter(|value| value.actor_id.to_string() == actor && actor == id)
                 {
-                    signals.push(practice_signal(value)?);
+                    if let Some(collection) = collection_by_receipt.get(&value.receipt_id) {
+                        signals.push(collection_signal(collection)?);
+                        continue;
+                    }
+                    let aid = aid_by_receipt.get(&value.receipt_id);
+                    signals.push(match aid {
+                        Some(row) => aid_signal(row)?,
+                        None => practice_signal(value)?,
+                    });
                 }
             }
             let kind = crate::archive::decode_subject_kind(&kind)?;
             pages.push(ArchivePageInput::try_new(ArchiveSubject::try_new(kind,id,title)?,receipt.resolve_tick(),*receipt.tick_content_hash(),"Designed Wayne scenario: these fictional organizations and modeled workplace do not represent observed organizations or the whole workforce. What have we learned or performed, and which commitment should we review next?".into(),signals,Vec::new())?);
         }
-        transaction
-            .commit()
-            .map_err(|e| database("finish organizer Archive read", &e))?;
         let remaining = total.saturating_sub(pages.len());
         Ok(ArchiveProducerOutcome::new(
             ArchiveDirtyBatch::try_new(
@@ -502,6 +614,77 @@ fn practice_signal(receipt: &OrganizerReceipt) -> Result<ArchiveSignal, Semantic
     )
 }
 
+// Only public support facts are selected from the authenticated full row.
+// Policy, authority digests, household IDs and private account balances stay absent.
+struct AidSupportEvidence<'a> {
+    admission: u64,
+    dispatch: u64,
+    resolution: u64,
+    original_commitment: &'a [u8; 32],
+    material_commitment: &'a [u8; 32],
+    good: &'a [u8; 32],
+    unit: &'a [u8; 32],
+    status: &'a OrganizerAidSupportStatus,
+    material_postings: &'a OrganizerAidMaterialPostings,
+}
+
+fn aid_support_text(evidence: &AidSupportEvidence<'_>) -> String {
+    let support = match evidence.status {
+        OrganizerAidSupportStatus::AwaitingDelivery =>
+            "Pending: surviving freight remains in transit. No coordination time was spent.".into(),
+        OrganizerAidSupportStatus::TerminalFailure =>
+            "Terminal: no support was granted in this period; no surviving delivery remains. No coordination time was spent.".into(),
+        OrganizerAidSupportStatus::Granted { granted_quantity, consumed_quantity } => format!(
+            "Granted quantity: {granted_quantity}; recipient total consumption of the same good and unit in this period: {consumed_quantity}. This is aggregate consumption, not attribution to donated units. The original aid attempt is terminal; independent practice may still refuse or lack time."
+        ),
+    };
+    format!(
+        "Original human admission period: {}\nMaterial dispatch period: {}\nActual support resolution period: {}\nOriginal commitment: {}\nMaterial commitment: {}\nGood: {}; unit: {}\n{support}\nActual material postings in period {}: Dispatched food: {} units; donor household fulfillment: {} hours. Aid payer cash: reserved {}; gift paid {}; refunded {} micro-units. These are distinct movements, not repeated expenses; fulfillment is separate from independent coordination.\nDesigned eligibility requires a matching grant and positive same-period consumption. It does not prove donated units caused additional consumption or released time; receiving support does not authorize agreement or participation.",
+        evidence.admission, evidence.dispatch, evidence.resolution,
+        hex(evidence.original_commitment), hex(evidence.material_commitment),
+        hex(evidence.good), hex(evidence.unit), evidence.resolution,
+        evidence.material_postings.dispatched_quantity,
+        evidence.material_postings.fulfillment_hours,
+        evidence.material_postings.payer_cash_reserved_micros,
+        evidence.material_postings.payer_cash_granted_micros,
+        evidence.material_postings.payer_cash_refunded_micros
+    )
+}
+
+fn aid_signal(row: &OrganizerAidResolutionReceipt) -> Result<ArchiveSignal, SemanticArchiveError> {
+    let evidence = AidSupportEvidence {
+        admission: row.authorization.gift.commitment.command.expected_period,
+        dispatch: row.authorization.dispatch_period,
+        resolution: row.support.period,
+        original_commitment: &row.authorization.gift.commitment.commitment_id,
+        material_commitment: &row.support.material_commitment_id,
+        good: &row.support.good_id,
+        unit: &row.support.unit_id,
+        status: &row.support.status,
+        material_postings: &row.support.material_postings,
+    };
+    // Keep the existing actor-scoped grant and receipt citation. The producer
+    // obtained this full row from the authenticated period register, not SQL text.
+    ArchiveSignal::try_new(
+        format!("practice-{}", hex(&row.practice.receipt_id)),
+        format!(
+            "Aid support and independent practice in period {}",
+            row.practice.period
+        ),
+        format!(
+            "{}\n{}",
+            receipt_text(&row.practice),
+            aid_support_text(&evidence)
+        ),
+        citation(
+            row.practice.actor_id,
+            row.practice.period,
+            row.practice.period,
+            &row.practice.receipt_id,
+        )?,
+    )
+}
+
 /// The derived SQL projection must equal the actor-safe portion of the sealed
 /// register before a runtime restart or ambiguous commit can acknowledge it.
 pub(crate) fn validate_projection(
@@ -509,41 +692,97 @@ pub(crate) fn validate_projection(
     campaign: CampaignId,
     register: &MaterialWorldRegister,
 ) -> Result<(), MaterialRuntimeError> {
-    let Some(config) = register.organizer_config() else {
+    if register.organizer_config().is_none() {
         return Ok(());
-    };
+    }
     let state = register
         .organizer_state()
         .ok_or(MaterialRuntimeError::OrganizerStorage)?;
-    validate_subjects(client, campaign, config)?;
-    let tick = i64::try_from(state.period).map_err(|_| MaterialRuntimeError::Bounds)?;
-    let observed = client.query("SELECT observation_id,actor_id,subject_id,observed_period,acquired_period,observation_bytes FROM babylon_state.organizer_observation_v1 WHERE campaign_id=$1 AND acquired_period<=$2 ORDER BY observation_id", &[campaign.as_uuid(),&tick])?;
-    let mut expected = state
-        .observations
-        .iter()
-        .filter(|row| row.actor_id == config.controlled_actor_id)
-        .collect::<Vec<_>>();
-    expected.sort_by_key(|row| row.observation_id);
-    if observed.len() != expected.len() {
-        return Err(MaterialRuntimeError::OrganizerStorage);
-    }
-    for (row, expected) in observed.iter().zip(expected) {
-        validate_observation_row(row, expected)?;
-    }
+    capture_projection(client, campaign, state.period)?.validate(register)
+}
+
+/// Exact mutable organizer projection rows, owned by the short capture snapshot.
+pub(crate) struct CapturedOrganizerProjection {
+    subjects: Vec<postgres::Row>,
+    observations: Vec<postgres::Row>,
+    receipts: Vec<postgres::Row>,
+}
+
+pub(crate) fn capture_projection(
+    client: &mut impl GenericClient,
+    campaign: CampaignId,
+    tick: u64,
+) -> Result<CapturedOrganizerProjection, MaterialRuntimeError> {
+    let tick = i64::try_from(tick).map_err(|_| MaterialRuntimeError::Bounds)?;
+    let subjects = capture_subjects(client, campaign)?;
+    let observations = client.query("SELECT observation_id,actor_id,subject_id,observed_period,acquired_period,observation_bytes FROM babylon_state.organizer_observation_v1 WHERE campaign_id=$1 AND acquired_period<=$2 ORDER BY observation_id", &[campaign.as_uuid(),&tick])?;
     let receipts = client.query("SELECT receipt_id,actor_id,resolve_tick,receipt_bytes FROM babylon_state.organizer_receipt_v1 WHERE campaign_id=$1 AND resolve_tick<=$2 ORDER BY receipt_id", &[campaign.as_uuid(),&tick])?;
-    let mut expected = state
-        .receipts
-        .iter()
-        .filter(|row| row.actor_id == config.controlled_actor_id)
-        .collect::<Vec<_>>();
-    expected.sort_by_key(|row| row.receipt_id);
-    if receipts.len() != expected.len() {
-        return Err(MaterialRuntimeError::OrganizerStorage);
+    Ok(CapturedOrganizerProjection {
+        subjects,
+        observations,
+        receipts,
+    })
+}
+
+impl CapturedOrganizerProjection {
+    pub(crate) fn validate(
+        &self,
+        register: &MaterialWorldRegister,
+    ) -> Result<(), MaterialRuntimeError> {
+        let Some(config) = register.organizer_config() else {
+            return Ok(());
+        };
+        let state = register
+            .organizer_state()
+            .ok_or(MaterialRuntimeError::OrganizerStorage)?;
+        validate_captured_subjects(&self.subjects, config)?;
+        let observed = &self.observations;
+        let mut expected = state
+            .observations
+            .iter()
+            .filter(|row| row.actor_id == config.controlled_actor_id)
+            .collect::<Vec<_>>();
+        expected.sort_by_key(|row| row.observation_id);
+        if observed.len() != expected.len() {
+            return Err(MaterialRuntimeError::OrganizerStorage);
+        }
+        for (row, expected) in observed.iter().zip(expected) {
+            validate_observation_row(row, expected)?;
+        }
+        let receipts = &self.receipts;
+        let mut expected = state
+            .receipts
+            .iter()
+            .chain(state.aid_receipts.iter().map(|row| &row.practice))
+            .filter(|row| row.actor_id == config.controlled_actor_id)
+            .collect::<Vec<_>>();
+        expected.sort_by_key(|row| row.receipt_id);
+        if receipts.len() != expected.len() {
+            return Err(MaterialRuntimeError::OrganizerStorage);
+        }
+        for (row, expected) in receipts.iter().zip(expected) {
+            validate_receipt_row(row, expected)?;
+        }
+        Ok(())
     }
-    for (row, expected) in receipts.iter().zip(expected) {
-        validate_receipt_row(row, expected)?;
-    }
-    Ok(())
+}
+
+fn collection_signal(
+    row: &babylon_practice_contract::OrganizerCollectionResolution,
+) -> Result<ArchiveSignal, SemanticArchiveError> {
+    let receipt = &row.practice;
+    let text = format!("{}\nOriginal collection admission {}; actual resolution {}. Requested {} cash micros; collected {}; performed {} shared material hours. Collection result: {:?}. This original ruling replaces standing work once; refusal has no standing fallback. A successful gift funds later aid; no membership, agreement or additional time is credited.", receipt_text(receipt),row.fact.admitted_period,row.fact.period,row.fact.requested_cash_micros,row.fact.collected_cash_micros,row.fact.performed_hours,row.fact.outcome);
+    ArchiveSignal::try_new(
+        format!("practice-{}", hex(&receipt.receipt_id)),
+        format!("Collection in period {}", receipt.period),
+        text,
+        citation(
+            receipt.actor_id,
+            receipt.period,
+            receipt.period,
+            &receipt.receipt_id,
+        )?,
+    )
 }
 
 #[cfg(test)]
@@ -566,6 +805,66 @@ mod projection_tests {
                 previous_output_kg: Some(960),
             },
         }
+    }
+
+    #[test]
+    fn aid_evidence_preserves_original_dates_and_distinguishes_support_from_consumption() {
+        let status = OrganizerAidSupportStatus::Granted {
+            granted_quantity: 2,
+            consumed_quantity: 5,
+        };
+        let material_postings = OrganizerAidMaterialPostings {
+            dispatched_quantity: 0,
+            fulfillment_hours: 0,
+            payer_cash_reserved_micros: 0,
+            payer_cash_granted_micros: 6,
+            payer_cash_refunded_micros: 0,
+        };
+        let mut evidence = AidSupportEvidence {
+            admission: 0,
+            dispatch: 1,
+            resolution: 3,
+            original_commitment: &[1; 32],
+            material_commitment: &[2; 32],
+            good: &[3; 32],
+            unit: &[4; 32],
+            status: &status,
+            material_postings: &material_postings,
+        };
+        let text = aid_support_text(&evidence);
+        assert!(text.contains("admission period: 0"));
+        assert!(text.contains("dispatch period: 1"));
+        assert!(text.contains("resolution period: 3"));
+        assert!(text.contains("Actual material postings in period 3"));
+        assert!(text.contains("Dispatched food: 0 units; donor household fulfillment: 0 hours"));
+        assert!(text.contains("Aid payer cash: reserved 0; gift paid 6; refunded 0 micro-units"));
+        assert!(text.contains("These are distinct movements"));
+        assert!(text.contains(&hex(&[2; 32])));
+        assert!(text.contains("Granted quantity: 2"));
+        assert!(text.contains("this period: 5"));
+        assert!(text.contains("not attribution to donated units"));
+        assert!(text.contains("independent practice may still refuse"));
+        let waiting = OrganizerAidSupportStatus::AwaitingDelivery;
+        let empty_postings = OrganizerAidMaterialPostings {
+            dispatched_quantity: 0,
+            fulfillment_hours: 0,
+            payer_cash_reserved_micros: 0,
+            payer_cash_granted_micros: 0,
+            payer_cash_refunded_micros: 0,
+        };
+        evidence.material_postings = &empty_postings;
+        evidence.status = &waiting;
+        let text = aid_support_text(&evidence);
+        assert!(text.contains("Pending: surviving freight"));
+        assert!(text.contains("Aid payer cash: reserved 0; gift paid 0; refunded 0 micro-units"));
+        assert!(!text.contains("Granted quantity"));
+        let failed = OrganizerAidSupportStatus::TerminalFailure;
+        evidence.status = &failed;
+        let text = aid_support_text(&evidence);
+        assert!(text.contains("Terminal: no support was granted"));
+        assert!(text.contains("donor household fulfillment: 0 hours"));
+        assert!(text.contains("gift paid 0"));
+        assert!(!text.contains("Pending:"));
     }
 
     #[test]

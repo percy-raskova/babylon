@@ -83,7 +83,7 @@ bounds:
   prepared_combined_bytes: 67108864
   tick_rule_outcomes: 65536
   tick_rows: 1048576
-  tick_aggregate_rows: 1048576
+  tick_aggregate_rows: 2097152 # Designed measured national staffing headroom.
   tick_combined_bytes: 67108864
 
 bound_refusals:

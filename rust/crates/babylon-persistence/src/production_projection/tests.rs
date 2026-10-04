@@ -268,3 +268,111 @@ fn delivery_delay_changes_staffed_time_budgets_and_preserves_unaffected_food() {
         }
     }
 }
+
+#[test]
+fn native_route_projection_keeps_every_relation_and_shares_exact_stage_definitions() {
+    let snapshot = period_three(MichiganDeliveryPreset::Standard);
+    let index = crate::production_observation::PhysicalRouteIndex::try_new(&snapshot).unwrap();
+    let unique: std::collections::BTreeSet<_> = snapshot
+        .routes
+        .iter()
+        .map(|row| &row.physical_route_id)
+        .collect();
+    assert_eq!(snapshot.physical_routes.len(), unique.len());
+    assert!(!snapshot.routes.is_empty());
+    for relation in &snapshot.routes {
+        let definition = index.get(relation).unwrap();
+        assert_eq!(definition.id, relation.physical_route_id);
+        assert_eq!(
+            definition.travel_periods,
+            definition
+                .stages
+                .iter()
+                .map(|stage| stage.travel_periods)
+                .sum::<u64>()
+        );
+        assert_eq!(
+            relation.backlog,
+            relation.ordered.checked_sub(relation.shipped).unwrap()
+        );
+        for other in snapshot
+            .routes
+            .iter()
+            .filter(|row| row.physical_route_id == relation.physical_route_id)
+        {
+            assert!(std::ptr::eq(definition, index.get(other).unwrap()));
+        }
+    }
+}
+
+#[test]
+fn shared_physical_definitions_equal_actual_closed_material_route_rows() {
+    let preset = MichiganDeliveryPreset::Standard;
+    let session = MichiganContentPreset::new_campaign(preset)
+        .create_foundation(&crate::test_support::catalog())
+        .unwrap()
+        .into_session()
+        .unwrap();
+    let actions =
+        OrderedPracticeActionBatch::empty(session.graph_session().session_identity().clone(), 1)
+            .unwrap();
+    let opening = session.material().clone();
+    let next = session.prepare_advance(&actions).unwrap();
+    let receipts = decode_material_receipts(next.material().receipt_bytes()).unwrap();
+    let history = vec![(
+        opening.clone(),
+        receipts,
+        sha256_of(next.material().receipt_bytes()),
+    )];
+    let snapshot = project_material_observation(
+        &crate::test_support::catalog(),
+        preset,
+        next.material().register(),
+        Some(&opening),
+        &history,
+    )
+    .unwrap();
+    let index = crate::production_observation::PhysicalRouteIndex::try_new(&snapshot).unwrap();
+    let actual = next.material().register().state();
+    assert_eq!(snapshot.routes.len(), actual.supplier_routes.len());
+    for supplier in &actual.supplier_routes {
+        let relation = snapshot
+            .routes
+            .iter()
+            .find(|row| {
+                row.id
+                    == super::routes::relation_id((
+                        supplier.buyer_site_id,
+                        supplier.supplier_site_id,
+                        supplier.good_id,
+                        supplier.unit_id,
+                    ))
+            })
+            .unwrap();
+        let definition = index.get(relation).unwrap();
+        let expected: Vec<_> = actual
+            .route_stages
+            .iter()
+            .filter(|row| row.route_id == supplier.route_id)
+            .collect();
+        assert_eq!(definition.stages.len(), expected.len());
+        for stage in expected {
+            let projected = definition
+                .stages
+                .iter()
+                .find(|row| row.stage_index == stage.stage_index)
+                .unwrap();
+            assert_eq!(projected.travel_periods, u64::from(stage.travel_periods));
+            let mut capacities: Vec<_> = actual
+                .route_stage_capacities
+                .iter()
+                .filter(|row| {
+                    row.route_id == supplier.route_id && row.stage_index == stage.stage_index
+                })
+                .map(|row| crate::michigan_economy::digest_hex(&row.corridor_id.as_bytes()))
+                .collect();
+            capacities.sort_unstable();
+            assert_eq!(projected.capacity_ids, capacities);
+        }
+    }
+}

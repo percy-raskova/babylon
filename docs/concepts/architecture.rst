@@ -154,10 +154,254 @@ identity. It regenerates one shared opening for native graph admission and the
 initial material register. Authored Michigan controls use an explicit importer.
 National county sources use the same compiler and replay session.
 
-The foundation stores one complete initial material register. Current reads
-reuse the admitted opening. Capture and restart check it against the saved bytes.
+The foundation stores one complete initial material register alongside the
+captured graph and source components. Postgres does not store a second full
+foundation containing those same components. Runtime and full observer reads
+share reconstruction, authenticate canonical framing before regeneration and
+must reproduce the expected regenerated digest. Known preview cannot read the
+component view.
+External binary captures keep their exact framing and canonical decode checks.
+
 The national opening has passed complete capture and decode. A national period
 advance and playable campaign need separate qualification.
+
+Save growth is a separate national qualification criterion. Measure each material
+collection and receipt family, then Postgres database and relation growth after
+actual committed periods, including TOAST and indexes. Report uncompressed
+canonical bytes separately from physical storage, compression and WAL generation.
+Separate one-time captured sources from recurring restart state and history.
+Avoid counting TOAST twice.
+
+Annual projections state their period count: thirteen
+28-day periods form the 52-week model year, while twelve ticks are a separate
+comparison. Changing row counts and limited observations qualify any projection.
+
+Before final playable-build qualification, remove avoidable repeated invariant
+content or identities supported by that census. Any lossless storage encoding
+must check decoded canonical hashes. A changed canonical format needs its
+explicit ceremony. Keep complete county coverage, exact accounting, atomic
+publication, restart, replay and recovery. Measure row churn and expected savings
+before recommending lookup, periodic checkpoint, delta or separate history
+changes. Typed lookup tables are the selected representation for shared identities
+and definitions. Store each lookup entry once and use compact references in
+recurring rows. The engine can cache those tables in memory. Lookup references
+must preserve identity kinds and reconstruct the exact canonical bytes; table
+names alone do not establish a reduction in disk usage.
+
+Current material storage uses opening-based section deltas and a shared typed
+lookup for state and receipts. Runtime and full observer reconstruct and validate
+the complete canonical bytes. Its first actual commit retained 336,437,248 bytes
+with exact cold recovery, so it still fails the storage ceiling. Graph names and
+types now use campaign-owned SQL lookups; period membership and binary64 values
+use bounded parallel arrays behind the same logical reader views. Opening
+identities are stored once. Its first actual graph-packed commit retained
+212,729,856 bytes. Event names and native keys now use SQL lookups; event fields
+use bounded typed arrays behind the same logical views. Its first actual commit
+retained 86,343,680 bytes with exact cold recovery and complete county coverage.
+The opening added 263,184,384 bytes. Newly introduced event keys added 15,220,736
+bytes and are fully charged. Parallel event expansion and nine authenticated
+checkpoint source references reduce actual growth to 65,708,032 bytes. Only
+world registers remain inline; graph, semantic and six captured sections reuse
+their existing admitted sources. The complete original checkpoint manifest and
+envelope still authenticate reconstructed canonical bytes. Checkpoint growth is
+16,384 bytes, compared with the previous 20,652,032-byte copies.
+Outer advance and cold-recovery observations were 95.13 and 137.64 seconds,
+compared with 208.25 and 251.82 before this repair. Those timers included subsequent
+parity checks, so they do not isolate committed advance or open latency. Storage
+still fails its target; these observations are not long-run qualification.
+These measurements precede the material lookup ownership change below.
+
+A subsequent run shares Node event scopes and names through the existing graph
+string lookup. It retains 50,495,488 bytes for one committed period and charges
+263,258,112 bytes for the opening. All 3,144 counties, canonical material and
+receipt hashes, the tick content hash and world hash match the previous run.
+Cold recovery passes. Outer advance and recovery observations were 95.40 and
+140.22 seconds, including parity checks. This result still fails the provisional
+storage budget. Thirteen times its measured charge is 656,441,344 bytes; that
+is a single-period extrapolation, not a measured year.
+
+ADR274 gives each material period the immutable opening seed plus its own
+state and receipt identities. Pending and in-transit identities repeat
+where needed; retired identities do not accumulate in the runtime lookup.
+Consecutive lookup chunks bind to the unchanged tail state
+anchor. Both codecs retain full canonical admission and exact hashes. Valid
+receipts from another period refuse before state staging. Native recovery still
+scans historical lookup bytes, and staging still rebuilds local maps.
+One subsequent national period retained 50,487,296 bytes and charged 263,258,112
+bytes for the opening. Canonical state, receipts, tick content and world hashes
+match the preceding run, with all 3,144 counties and exact cold recovery. Advance
+and recovery outer observations were 64.57 and 135.97 seconds, including parity
+checks. Thirteen times this charge
+is 656,334,848 bytes; this remains a single-period extrapolation. The storage and
+long-run performance qualifications remain open. Historical corruption controls and long-run native
+qualification remain separate from this successful opening, advance and reopen.
+
+ADR276 replaces literal period additions with current V3 lookup descriptors.
+The encoder selects an opening-row recipe only when it reproduces the same typed
+identity. Unmatched identities stay literal. The decoded ordered table, logical
+hash and chain stay the same. The reader checks separate descriptor lengths,
+hashes and grammar limits before decompression.
+
+State storage remains V2. The reader refuses unsupported old lookup framing.
+SQL relations and the canonical engine format stay the same.
+
+The October 3 current run charges 35,069,952 bytes for one period and 263,135,232
+bytes for the opening. It covers all 3,144 counties and passes native cold
+recovery. The advance takes 64.617 seconds and cold open takes 112.108 seconds.
+These timers stop before parity checks.
+
+Lookup storage occupies 1,190,192 bytes. State and complete receipts occupy
+5,892,522 and 19,051,336 bytes. The complete retained charge still exceeds
+the 23,000,000-byte optimization target and fits the approved 40,000,000-byte
+development ceiling. Multiplying this charge by thirteen gives 455,909,376 bytes,
+excluding opening. This single-period projection proves neither annual growth
+nor p95 performance. The economic control does not prove organizer play or
+enjoyment.
+
+ADR278 records the Director's clarified priority: reduce the complete save's
+disk use. Postgres remains the default for living state and history. Parquet
+needs a measured reduction in total retained bytes that justifies its complexity.
+The earlier ADR277 archive proposal is optional.
+
+Age alone does not make a record ready for archiving. An unpaid wage, pending
+shipment or consent remains live until resolved. Keep causal memory and trends
+needed by future decisions. Append sealed immutable files for any export instead
+of rewriting one growing file. DuckDB and Arrow need a concrete consumer.
+
+Full archive implementation remains deferred. A native admitted checkpoint must
+first remove recovery's dependence on the old history prefix. Direct cold queries,
+exact restoration, interrupted publication and actual disk reclamation need
+separate proof. Charge archives, retained identity tables and live checkpoints
+together. Arrow batches or a different container format alone do not prove
+savings.
+
+The Director approved the longer-term Designed total-save target of
+10,000,000,000 bytes at twenty-five model years, or 325 periods. This target
+does not limit campaign duration. The ordinary 52-period development check and
+the actual 325-period save check remain separate. Projections cannot qualify the
+longer check.
+
+Count the allocated opening database, including its schema, plus
+charged period and restart growth. External storage needs separate accounting.
+Report cluster overhead, WAL and temporary peaks separately.
+
+ADR279 repairs measured territory duplication. It stores each exact identity
+and ordered typed field set once, then records integer period membership.
+Current SQL views expand those references for county and historical readers.
+Digest buckets narrow candidates. Complete canonical bytes prove equality.
+
+Opening definitions count toward opening storage. Changed fields create new
+immutable definitions. Metadata, marker guards and canonical reconstruction
+protect completeness and temporal validity. This representation changes no
+engine quantities or hashes.
+
+An earlier two-period raw economic capture passes its development storage and
+timing checks with verified cold recovery. Charges are 33,202,176 and
+34,406,400 bytes. Opening growth is 265,371,648 bytes. That capture does not
+include authenticated Archive completion, the complete production reader or
+the playable aid circuit. SIGINT ended the later playable capture before
+Archive caught up. Neither result qualifies sustained play, p95 or the
+total-save target.
+
+Retained Archive catch-up later completed thirteen sweeps in 357.12 seconds,
+adding 16,572,416 database bytes without changing committed economic identity.
+One complete production read took 159.71 seconds. The combined presentation
+and accounting read took 156.12 seconds. Peak process memory remained 8.10 GB.
+These samples do not qualify a new smoke, sustained save, or playable build.
+
+ADR280 records the Director's definitive provisional development benchmarks.
+Defer marginal storage redesign when measured development limits allow play.
+The 23 MB storage target remains an optimization target.
+The earlier 10 MB ambition is not an acceptance gate.
+
+* Focused economic and game play controls: under sixty seconds, excluding compilation.
+* National committed advance: aim for sixty to ninety seconds. The p95 limit is 120 seconds.
+* Cold load: under 180 seconds, with visible progress.
+* National smoke check: two periods and recovery within 900 seconds.
+* Full 52-period qualification: preferably under four hours, including recovery.
+
+
+The four-hour preference cannot truncate required proof. One advance cannot
+prove p95.
+
+Immediately acknowledge processing and keep the last committed
+map, reports, relationships and notes navigable. Show actual stages and elapsed
+time. Percentages need measurable completion. Link consequential changes to
+player commitments and let players skip lengthy narration or animation.
+Qualify these behaviors through actual play.
+
+Session protocol version 8 reports actual stage starts: preparing commitments,
+resolving the economy, preparing storage and saving the period. Each report
+identifies its ``request_id``, lifecycle scope and next period. The client checks their
+order and changes only presentation. Stage changes preserve elapsed time and
+the committed observation. Only the commit acknowledgement advances the
+durable period. If the progress pipe fails, reopen to reconcile a possible commit.
+
+Native aid replies encode money as canonical decimal strings and decode it as
+exact signed 128-bit integers. Numeric tokens and malformed or overflowing
+strings refuse. Canonical engine receipts keep their existing encoding.
+
+The optional national playable qualification uses the same session path for
+campaign admission, aid commitments, advances and recovery. It verifies actual
+committed receipt families through ``ObserverEconomyReader`` with a separate
+full-observer credential. The reader authenticates the foundation, complete
+history, current and previous envelopes, and committed identity before exposing
+receipts and the closing period's household contribution debits. Preview readers
+have no authority to read them. Ordinary snapshots do not copy these vectors.
+
+Full observers authenticate organizer actions from the disclosed committed
+intents. The reader admits the command against the authenticated prior state
+and matches its commitment identity to the closing receipt. It then reconstructs
+the entire ordered batch, including standing work, delayed aid and independent
+responses, and compares exact bytes and digest. Runtime recovery also checks
+consumption against the private command ledger. Restricted previews keep
+their existing boundary.
+
+The national ``PostgreSQL`` runner preserves source, input and evidence manifests,
+then removes its exact disposable container and volume after successful native
+validation. A shared lease in the Git common directory prevents concurrent
+national games across worktrees. Retained legacy leases also block admission.
+Its exclusive lock uses a separate ``flock --close`` supervisor so worker
+descendants cannot keep the lock after the runner exits. Failed runs retain an
+atomic summary and immutable progress records. The collector is maintained under
+``tools/devtools`` and the runner pins ``PostgreSQL`` build and configuration sources.
+
+The national development storage benchmark has a Designed ceiling of
+40,000,000 bytes per committed tick, recorded in
+``contracts/national_storage_qualification_v2.json``. It reports the separate
+23,000,000-byte optimization target and the longer-term total-save result.
+Count all retained campaign relations and indexes, including receipts, graph
+history and checkpoint growth.
+Charge new shared objects and dictionaries to
+their creation tick.
+
+The allocation charge is the largest of zero, whole-database
+growth and summed positive growth of ordinary parent relations. This prevents
+shrinking another relation from concealing a growing history. Parent totals
+already include their TOAST heap and indexes.
+
+ADR273 preserves the earlier interim decision. ADR280 owns current development
+readiness. The earlier 10 MB goal remains
+a future optimization goal. The measured 22.57 MB shared-compression prototype
+counts only material payloads. It does not prove total retained growth.
+
+One active disposable national test campaign rotates between qualification runs
+after preserving unique evidence. Old saves and unrelated sessions remain protected.
+
+Thirteen periods have a 520 decimal MB development ceiling per model year.
+The 52-period ceiling is 2,080 MB, plus opening. These Designed allowances do not
+measure sustained growth. Full county coverage and exact accounting, causal
+integrity, atomicity, replay and recovery remain required.
+
+A short run cannot qualify the 52-period horizon.
+
+Use one isolated measurement database and actual marker-last runtime commits.
+Keep the complete history and check the county roster, canonical evidence and
+world hashes after restart. Record opening cost separately, with WAL generation,
+temporary disk, memory, restart and recovery evidence alongside the storage
+ceiling. Current development can replace the Postgres representation without
+compatibility layers. Preserve incompatible saves as data and refuse their formats.
+
 
 Production, freight, merchant handling, local transfers, retail fulfillment,
 and staffing share one material state. Production updates that state's fields
@@ -165,6 +409,20 @@ through the common checked inventory operations. Staffing binds production or
 merchant work to a conserved pool. ``ProductionEvidenceDigest`` binds the
 complete authorized projection, sorting unordered rows while preserving event,
 geometry, and physical path order.
+
+Supplier relationships reference a shared ``PhysicalRouteDefinition`` by its
+captured route identity. Each relationship retains its parties, commodity,
+units and quantities. The definition holds travel time, ordered stages,
+capacity memberships and available geometry once. ``PhysicalRouteIndex``
+checks every definition and reference before borrowing the shared paths for
+display. Invalid definitions remain distinguishable from an empty route list.
+
+Version 16 presentation evidence binds both collections. Material save and
+receipt formats keep their existing identities.
+
+The complete presentation body streams into the hash with a Designed ceiling
+of 1,000,000,000 bytes. Projected memory and retained database growth
+have their own measurements and budgets.
 
 The material state explicitly selects a physical accounting control or monetary
 accounts. Both use the same allocator. Monetary orders must name funded escrow.
@@ -213,6 +471,23 @@ adjacent material states. It reports household stocks, consumption and unmet
 needs separately from retail handoffs. Order drill-down keeps active and
 latest-period rows with explicit cumulative totals. Campaign comparisons use
 stable resident and retailer identities as generated order identities change.
+
+Household stock accounts keep ordinary purchases, received support and dispatched
+support separate. Routed gifts arrive before that period's demand admission.
+Local gifts transfer after admission and before consumption. Gift cash settles
+through its own reserve.
+
+Gift shipments reserve the same dated route capacity
+as commercial freight. Full-observer receipts join these movements to the
+closing accounts. The current presentation evidence hash covers the support
+flows and their capacity reservations.
+
+Resident goods and service disclosures include the captured
+``ProductionHouseholdKind``. An ``Ordinary`` cohort must have more than zero
+households. Its person count must equal or exceed its household count.
+A ``CollectiveResidence`` cohort must have more than zero persons and zero
+ordinary households. Version 16 presentation evidence includes this
+classification and checks consumption and stock accounts.
 
 The current Michigan campaign still selects the physical control. National
 content, rolling budgets, investment and the playable household and solidarity
@@ -284,6 +559,15 @@ hierarchy, ordering, and current restricted readers. Archive startup uses the
 captured county roster and registers place producers and their public grants
 only where captured detail exists. Sweeps reuse producer context. Missing local
 detail remains unavailable.
+
+Future H3 storage work must trace reference admission, county and place joins,
+historical reads and restricted observer queries. Current cell IDs use
+``bigint``, which already occupies eight bytes. Resolution and parent cells can
+be derived from an H3 ID, but removing stored columns must preserve their
+consumers. Cell-set compaction does not encode arbitrary per-cell economic
+quantities. Measure populated captures and query plans before changing
+extensions or indexes. The retained national run showed no H3-related period
+growth, so this work is not a current storage priority.
 
 Reference Data and Operator Tools
 ---------------------------------
@@ -378,6 +662,25 @@ and organizational report dossiers
 with validated content and known citations. The scoped reader admits the
 requested committed period, retained publication, and disclosed links together.
 Global Archive progress cannot certify a selected page.
+
+The campaign publication lock spans capture, computation and publication.
+The worker captures the exact committed receipt and frozen knowledge in a
+short transaction, then closes that transaction before producer work. The
+organizer producer also captures its complete historical inputs before detached
+admission and rendering. Publication checks receipt and knowledge again, then
+commits each page batch with its pin. The final batch writes the consumption
+marker last in that transaction. Cancellation or changed inputs cannot leave
+a newly prepared pin without its published batch.
+
+ADR281 stores frozen membership as authenticated complete bases and exact
+additions. The ``Designed`` default uses thirteen-period segments. Reconstruction
+checks the base, every intervening addition set, and the requested complete
+set against their original counts and hashes.
+
+Actual admission periods govern membership. Late backdated grants cannot change
+earlier disclosure. New bases or additions commit atomically with publication.
+Admission refuses the earlier physical schema. Operators preserve incompatible
+games as evidence.
 
 The runtime owns one Archive listener and worker. Empty Postgres notifications
 signal committed tick markers and campaign creation. The listener registers

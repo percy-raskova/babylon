@@ -2196,20 +2196,48 @@ where
                             "organizer practice requires the product reducer".to_owned(),
                         )
                     })?;
-                    let next = babylon_practice_contract::resolve_organizer_practice(
-                        config, opening, &reduced, facts, commitment,
-                    )
+                    let household_bound = matches!(
+                        &config.time_binding,
+                        babylon_practice_contract::OrganizerTimeBindingMode::Household { .. }
+                    );
+                    let next = if household_bound {
+                        let resources =
+                            candidate
+                                .organizer_period_time_resources(config)
+                                .map_err(|error| {
+                                    transaction_error(
+                                        identity,
+                                        format!("organizer material time refused: {error}"),
+                                    )
+                                })?;
+                        babylon_practice_contract::resolve_organizer_practice_with_time(
+                            config,
+                            opening,
+                            &reduced,
+                            facts,
+                            commitment,
+                            &resources,
+                            babylon_practice_contract::OrganizerMaterialSupport {
+                                aid: candidate.organizer_aid_support(),
+                                collection: candidate.organizer_collection_fact(),
+                            },
+                        )
+                    } else {
+                        babylon_practice_contract::resolve_organizer_practice(
+                            config, opening, &reduced, facts, commitment,
+                        )
+                    }
                     .map_err(|error| {
                         transaction_error(identity, format!("organizer practice refused: {error}"))
                     })?;
-                    candidate
-                        .set_organizer(config.clone(), next)
-                        .map_err(|error| {
-                            transaction_error(
-                                identity,
-                                format!("organizer register refused: {error}"),
-                            )
-                        })?;
+                    let sealed = if household_bound {
+                        candidate.set_organizer_with_household_time(config.clone(), next)
+                    } else {
+                        candidate.set_organizer(config.clone(), next)
+                    };
+                    sealed.map_err(|error| {
+                        transaction_error(identity, format!("organizer register refused: {error}"))
+                    })?;
                     organizer_completed = true;
                     babylon_bsl::causal_contract::EffectSignature::OrganizerPractice
                 }
@@ -2431,10 +2459,7 @@ where
         .as_ref()
         .and_then(|material| material.register().organizer_state())
         .map(|state| {
-            state
-                .receipts
-                .iter()
-                .filter(|receipt| receipt.period == state.period)
+            babylon_practice_contract::organizer_period_receipts(state, state.period)
                 .cloned()
                 .collect::<Vec<_>>()
         })

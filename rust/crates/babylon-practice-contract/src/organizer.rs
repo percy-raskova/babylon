@@ -5,15 +5,20 @@
 
 use serde::{Deserialize, Serialize};
 
+mod aid;
+mod collection;
 mod contract;
+mod nonnegative_decimal_i128;
 mod time_resources;
 mod transition;
+pub use aid::*;
+pub use collection::*;
 pub use contract::*;
 pub use time_resources::*;
 pub use transition::*;
 
 /// Current organizer representation. Older representations are unsupported.
-pub const ORGANIZER_SCHEMA_VERSION: u16 = 2;
+pub const ORGANIZER_SCHEMA_VERSION: u16 = 6;
 
 /// Whole organizer-hours are Designed participant time commitments, not jobs.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -88,6 +93,9 @@ pub struct OrganizerConfig {
     pub neighborhood_partner: OrganizerPartner,
     pub participants: Vec<OrganizerParticipant>,
     pub time_binding: OrganizerTimeBindingMode,
+    #[serde(deserialize_with = "collection::required_terms")]
+    pub collection: Option<OrganizerCollectionMandate>,
+    pub aid_bindings: Vec<OrganizerAidBinding>,
     pub inquiry_hours: u64,
     pub contact_hours: u64,
     pub partner_response_hours: u64,
@@ -108,6 +116,9 @@ pub enum OrganizerInquiry {
 #[serde(rename_all = "snake_case")]
 pub enum OrganizerChoice {
     Inquiry(OrganizerInquiry),
+    Collect,
+    LocalAid,
+    RemoteAid,
     Reinforce,
     Hold,
     PauseStanding,
@@ -148,6 +159,11 @@ pub enum OrganizerRefusal {
     StandingWorkPaused,
     StandingWorkAlreadyActive,
     InvalidCommand,
+    CollectionUnavailable,
+    CollectionCashRefused,
+    AidUnavailable,
+    AidReceivingRefused,
+    PendingAidConflict,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -252,6 +268,13 @@ pub enum OrganizerOutcome {
     EvidenceWithheld,
     ContactCompleted,
     ContactUncompleted,
+    CollectionCompleted,
+    CollectionRefused,
+    AidScheduled,
+    AidAwaitingSupport,
+    AidNotProvisioned,
+    AidPracticeCompleted,
+    AidPracticeUncompleted,
     InsufficientTime,
     StandingPaused,
     StandingResumed,
@@ -303,10 +326,17 @@ pub struct OrganizerState {
     pub agreements: Vec<OrganizerAgreement>,
     pub observations: Vec<OrganizerObservation>,
     pub receipts: Vec<OrganizerReceipt>,
+    pub pending_aid: Vec<OrganizerPendingAidPractice>,
+    pub collection_receipts: Vec<OrganizerCollectionResolution>,
+    pub aid_receipts: Vec<OrganizerAidResolutionReceipt>,
     pub contact_products: Vec<OrganizerContactProduct>,
     pub consumed_product_ids: Vec<[u8; 32]>,
     pub last_workplace_facts: Option<OrganizerWorkplaceFacts>,
 }
+
+/// Designed presentation bounds; canonical organizer history remains complete.
+pub const ORGANIZER_RECENT_RECEIPTS: usize = 8;
+pub const ORGANIZER_RECENT_OBSERVATIONS: usize = 8;
 
 /// The runtime/client response surface deliberately omits hidden input state.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -329,9 +359,14 @@ pub struct OrganizerView {
     pub resource_digest: [u8; 32],
     pub standing: OrganizerStandingWork,
     pub agreements: Vec<OrganizerAgreement>,
+    /// Derived count of all actor observations in the canonical register.
+    pub total_observation_count: u32,
     pub observations: Vec<OrganizerObservation>,
+    /// Derived count of all actor ordinary receipts in the canonical register.
+    pub total_receipt_count: u32,
     pub receipts: Vec<OrganizerReceipt>,
     pub positions: Vec<OrganizerPosition>,
+    pub aid_options: Vec<OrganizerAidOption>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -352,6 +387,10 @@ pub enum OrganizerError {
     InvalidConfig,
     InvalidState,
     InvalidCommitment,
+    CollectionSupportMissing,
+    CollectionSupportMismatch,
+    AidSupportMissing,
+    AidSupportMismatch,
     Arithmetic,
     PeriodMismatch,
     Refused(OrganizerRefusal),
@@ -374,3 +413,11 @@ impl std::fmt::Display for OrganizerError {
 }
 
 impl std::error::Error for OrganizerError {}
+
+/// Borrowed material evidence for this exact resolving period.
+/// Collection is an original acknowledgment, not another time allocator.
+#[derive(Debug, Clone, Copy)]
+pub struct OrganizerMaterialSupport<'a> {
+    pub aid: &'a [OrganizerAidSupport],
+    pub collection: Option<&'a OrganizerCollectionFact>,
+}

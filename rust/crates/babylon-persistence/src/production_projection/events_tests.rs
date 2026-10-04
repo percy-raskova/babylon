@@ -22,6 +22,9 @@ use babylon_material_circuit::{ArrivalReceipt, DeliveryReceipt, RealizationRecei
 
 fn delivery_receipts(order_id: OrderId) -> MaterialTickReceipts {
     MaterialTickReceipts {
+        collections: vec![],
+        aid: vec![],
+        household_time: vec![],
         staffing_members: vec![],
         member_labor_use: vec![],
         installation: vec![],

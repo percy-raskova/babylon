@@ -316,7 +316,9 @@ fn compile_accounting(
 ) -> Result<CircuitAccounting> {
     match opening.accounting {
         CatalogAccounting::PhysicalControl => {
-            if !opening.households.is_empty()
+            if !opening.policies.aid.mandates.is_empty()
+                || !opening.policies.aid.freight.is_empty()
+                || !opening.households.is_empty()
                 || !opening.employment.is_empty()
                 || !opening.institutional_cash.is_empty()
                 || !opening.equity.is_empty()
@@ -326,6 +328,8 @@ fn compile_accounting(
                 || !opening.policies.replenishment.is_empty()
                 || !opening.policies.household_purchases.is_empty()
                 || !opening.policies.service_inputs.is_empty()
+                || opening.policies.household_time
+                    != babylon_material_circuit::HouseholdTimeAccounting::NotModeled
                 || opening.sites.iter().any(|s| {
                     s.opening_cash.micro_units() != 0
                         || s.opening_stock
@@ -346,6 +350,8 @@ fn compile_accounting(
             let (book, costs) = opening_books(opening)?;
             let recurring = recurring(opening, state)?;
             Ok(CircuitAccounting::Monetary(Box::new(MonetaryCircuit {
+                aid: opening.policies.aid.clone(),
+                household_time: opening.policies.household_time.clone(),
                 financial: opening.institutions.clone(),
                 costs,
                 recurring: Some(Box::new(recurring)),

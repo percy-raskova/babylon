@@ -13,10 +13,16 @@ fn foundation() -> MaterialRuntimeFoundation {
 }
 
 fn runtime() -> DurableMaterialRuntime {
+    let foundation = foundation();
+    let opening_bytes = foundation.initial_register().shared_canonical_bytes();
+    let lookup = material_storage::seed(opening_bytes.as_slice()).unwrap();
+    let lookup_chain = material_storage::initial_lookup_chain(&lookup).unwrap();
     DurableMaterialRuntime {
         config: Config::new(),
         campaign: CampaignId::from_uuid(uuid::Uuid::nil()),
-        session: foundation().into_session().unwrap(),
+        session: foundation.into_session().unwrap(),
+        lookup,
+        lookup_chain,
         tail: None,
         last_receipt: None,
         last_choice_receipts: Vec::new(),

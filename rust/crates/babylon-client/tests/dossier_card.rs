@@ -263,7 +263,9 @@ fn install_observer_frame(app: &mut App) {
         counties: Vec::new(),
         production: None,
     };
-    app.insert_resource(ObserverFrame(Some(frame)));
+    let mut observation = ObserverFrame::default();
+    observation.0 = Some(frame);
+    app.insert_resource(observation);
     let mut session = app.world_mut().resource_mut::<ObserverSession>();
     let context = session.context();
     assert!(session.installed(&context));

@@ -21,8 +21,11 @@ pub struct NationalGamePolicy {
     pub handling_hours_per_unit: u64,
     pub missing_peer_weight_per_establishment: u64,
     pub household_enterprise_function: EconomicFunction,
+    pub aid: GameAidPolicy,
+    pub organizer: GameOrganizerPolicy,
     pub financial: GameFinancialPolicy,
     pub households: GameHouseholdPolicy,
+    pub household_time: GameHouseholdTimePolicy,
     pub markets: GameMarketPolicy,
     pub equipment: GameEquipmentPolicy,
     pub commodities: BTreeMap<String, GameCommodity>,
@@ -98,6 +101,18 @@ pub struct GameFinancialPolicy {
     pub private_distribution_bps: u16,
     pub reserve_food_support_periods: u64,
     pub cross_border_ownership_bps: u16,
+}
+
+/// Designed resident time commitments; neither wages nor political consent.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GameHouseholdTimePolicy {
+    pub hours_per_eligible_person: u64,
+    pub ordinary_protected_hours_per_household: u64,
+    pub ordinary_provisioning_hours_per_household: u64,
+    pub collective_protected_hours_per_person: u64,
+    pub collective_provisioning_hours_per_person: u64,
+    pub external_eligible_persons_bps: u16,
+    pub unmet_hours_per_unit: BTreeMap<String, u64>,
 }
 
 /// Finite productive use and installation requirements, independent of the horizon.
@@ -257,4 +272,50 @@ pub enum GameJourneyTiming {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GameServiceReach {
     SameStateOrOwnCounterpart,
+}
+
+/// Captured Designed gift terms; ordinary market prices remain independent.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GameAidPolicy {
+    pub evidence_class: String,
+    pub donor_actor: u64,
+    pub local_recipient_actor: u64,
+    pub remote_recipient_actor: u64,
+    pub donor_contributor_id: u64,
+    pub local_recipient_contributor_id: u64,
+    pub remote_recipient_contributor_id: u64,
+    pub organization_opening_cash_micros: i128,
+    pub gift_cash_micros_per_unit: i128,
+    pub fulfillment_hours_per_unit: u64,
+    pub maximum_quantity: u64,
+}
+
+/// Designed political consent and time promises; actual supply remains household time.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GameOrganizerPolicy {
+    pub evidence_class: String,
+    pub organization_label: String,
+    pub workplace_partner_label: String,
+    pub neighborhood_partner_label: String,
+    pub local_partner_label: String,
+    pub remote_partner_label: String,
+    pub contributor_hours_cap: u64,
+    pub inquiry_hours: u64,
+    pub contact_hours: u64,
+    pub partner_response_hours: u64,
+    pub aid_coordination_hours: u64,
+    pub initial_agreement_through_period: u64,
+    pub contact_renewal_periods: u64,
+    pub local_receiving_consent: babylon_practice_contract::OrganizerGiftConsent,
+    pub remote_receiving_consent: babylon_practice_contract::OrganizerGiftConsent,
+    pub collection_cash_consent: babylon_practice_contract::OrganizerGiftConsent,
+    pub collection_maximum_cash_micros: i128,
+    pub collection_protected_cash_floor_micros: i128,
+    pub collection_hours: u64,
+    pub workplace_policy: babylon_practice_contract::OrganizerPartnerPolicy,
+    pub neighborhood_policy: babylon_practice_contract::OrganizerPartnerPolicy,
+    pub local_policy: babylon_practice_contract::OrganizerPartnerPolicy,
+    pub remote_policy: babylon_practice_contract::OrganizerPartnerPolicy,
 }

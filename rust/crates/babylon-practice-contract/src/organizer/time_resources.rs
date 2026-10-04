@@ -177,6 +177,7 @@ fn select_contributions(
     actor_id: u64,
     cost: u64,
     selected: &mut Selected,
+    contributor: Option<u64>,
 ) -> Result<(), OrganizerError> {
     let bindings: BTreeMap<_, _> = resources
         .bindings
@@ -185,6 +186,9 @@ fn select_contributions(
         .collect();
     let mut remaining = cost;
     for participant in &config.participants {
+        if contributor.is_some_and(|id| id != participant.contributor_id) {
+            continue;
+        }
         let offered = participant
             .commitments
             .iter()
@@ -220,6 +224,7 @@ pub(super) fn allocate_hours(
     partner: Option<&OrganizerPartner>,
     own_hours: u64,
     resources: &OrganizerPeriodTimeResources,
+    aid: Option<&super::OrganizerAidBinding>,
 ) -> Result<Option<Vec<OrganizerTimeUse>>, OrganizerError> {
     let contract = PracticeResourceAllocationContract::conservation_first();
     let mut actors = vec![(intent.clone(), own_hours)];
@@ -233,7 +238,32 @@ pub(super) fn allocate_hours(
     let mut requests = Vec::new();
     for (actor_intent, cost) in actors {
         let actor_id = u64::from_be_bytes(actor_intent.actor_org_id.to_bytes());
-        select_contributions(config, resources, actor_id, cost, &mut selected)?;
+        let contributor = aid.map(|row| {
+            if actor_id == config.controlled_actor_id {
+                row.donor_contributor_id
+            } else {
+                row.recipient_contributor_id
+            }
+        });
+        if let Some(contributor) = contributor {
+            let promised = config
+                .participants
+                .iter()
+                .find(|row| row.contributor_id == contributor)
+                .and_then(|row| row.commitments.iter().find(|row| row.actor_id == actor_id))
+                .map_or(0, |row| row.hours);
+            if promised < cost {
+                return Ok(None);
+            }
+        }
+        select_contributions(
+            config,
+            resources,
+            actor_id,
+            cost,
+            &mut selected,
+            contributor,
+        )?;
         for ((actor, budget), aliases) in &selected {
             if *actor != actor_id {
                 continue;
@@ -269,4 +299,51 @@ pub(super) fn allocate_hours(
     let mut time_use: Vec<_> = selected.into_values().flatten().collect();
     time_use.sort_by_key(|row| (row.contributor_id, row.actor_id));
     Ok(Some(time_use))
+}
+
+/// Detached current-period allocation remainder. The caller supplies only
+/// already-performed political uses; gift fulfillment was removed by the host.
+pub(super) fn remaining_after_uses(
+    config: &OrganizerConfig,
+    resources: &OrganizerPeriodTimeResources,
+    uses: &[OrganizerTimeUse],
+) -> Result<(OrganizerConfig, OrganizerPeriodTimeResources), OrganizerError> {
+    let mut remaining = config.clone();
+    let mut supply = resources.clone();
+    for row in uses {
+        let participant = remaining
+            .participants
+            .iter_mut()
+            .find(|p| p.contributor_id == row.contributor_id)
+            .ok_or(OrganizerError::TimeBindingMismatch)?;
+        let commitment = participant
+            .commitments
+            .iter_mut()
+            .find(|p| p.actor_id == row.actor_id)
+            .ok_or(OrganizerError::ResourceAllocation)?;
+        commitment.hours = commitment
+            .hours
+            .checked_sub(row.hours)
+            .ok_or(OrganizerError::ResourceAllocation)?;
+        let budget = supply
+            .bindings
+            .iter()
+            .find(|p| p.contributor_id == row.contributor_id)
+            .ok_or(OrganizerError::TimeBindingMismatch)?
+            .budget_id;
+        let capacity = supply
+            .capacities
+            .iter_mut()
+            .find(|p| p.resource_id == budget)
+            .ok_or(OrganizerError::TimeCapacityMissing)?;
+        capacity.available = capacity
+            .available
+            .checked_sub(row.hours)
+            .ok_or(OrganizerError::ResourceAllocation)?;
+    }
+    for row in &mut remaining.participants {
+        row.commitments.retain(|p| p.hours > 0);
+    }
+    validate_organizer_config(&remaining)?;
+    Ok((remaining, supply))
 }

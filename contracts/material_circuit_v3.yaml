@@ -1,6 +1,6 @@
 meta:
   contract: MaterialCircuitV3
-  schema_version: 16
+  schema_version: 18
   evidence_class: Designed
   rust_owner: babylon-material-circuit
 
@@ -28,6 +28,7 @@ domains:
   procurement_identity: babylon.recurring-procurement.v1
   equipment_installation_identity: babylon.equipment-installation.v1
   equipment_purchase_identity: babylon.equipment-purchase.v1
+  aid_commitment_identity: babylon.household-aid-commitment.v1
   terminator_hex: "00"
 
 encoding:
@@ -95,7 +96,8 @@ state_field_order:
 accounting_field_order:
   physical_control: [accounting_mode_u8]
   monetary: [accounting_mode_u8, accounts, purchases, shifts, employment, member_labor, optional_recurring,
-             historical_cost_book, financial_institutions]
+             historical_cost_book, financial_institutions, household_time_accounting,
+             aid_mandates, aid_freight, aid_cash_reserves]
 
 monetary_row_field_order:
   accounts: [account_identity, cash_i128]
@@ -325,6 +327,20 @@ period_close:
   - record used, paid idle, planned unfunded, and available unplanned hours separately
   - assess captured eligible wage and positive operating-income taxes after actual costs and wage accrual
   - collect taxes only from cash above captured floors; record uncollected amounts without creating claims
+  - resolve an original authenticated Collect ruling from independently captured household cash consent after
+    actual reproduction and due taxes, freezing eligible free cash before ownership distributions and collection
+  - protect every current captured household storable and service requirement, closing purchase-policy stock
+    target, due tax and capital payment; existing purchase, payroll and aid reserves are never free cash
+  - exclude earlier current-period MutualAid and aid cash grant credits from the frozen collection source;
+    an ownership payout cannot retroactively fund this period's collection
+  - transfer one all-or-zero capped household cash gift to its existing aid mandate's organizational payer using
+    Cash(MutualAid); close gift expense and income once and retain its exact canonical transfer ordinal
+  - consume whole actual collection hours from the same finite donor household contribution capacity after
+    physical aid fulfillment; an acknowledgment cannot consume those hours again, and it reduces the donor
+    political promise once before delayed coordination
+  - retain the original command, admission and resolve periods, captured mandate and source, exact donor and
+    payer, actual amount, refusal reason and shared contribution use in the bounded V17 receipt family36;
+    actual voluntary payment creates no membership, agreement, recurring withdrawal or new hour supply
   - distribute positive post-tax retained earnings only within cash, fraction and cap, using captured ownership
   - admit ordinary equipment orders from post-financial free cash and explicit replacement or expansion policies
   - derive subsequent production from dispatched and unfulfilled demand, output stock, and captured buffers
@@ -334,7 +350,7 @@ period_close:
   - update next service quotes from funded unmet requests, native capacity and whole-batch cost including provider
     expiry
   - retire terminal physical and financial purchase principals together after their evidence is recorded
-  - audit total cash plus live purchase and payroll reserves without counting wage claims as extra money
+  - audit total cash plus live purchase, payroll and aid reserves without counting wage claims as extra money
   - rebuild unshipped backlog
   - derive next-period staffing and production through their existing exact rules
   - prune finite scheduled capacity or install rolling next-period budgets net of due advance reservations
@@ -428,6 +444,8 @@ limits:
   service_performance_receipts_per_period: 196608
   procurement_receipts_per_period: 262144 # At most one per captured replenishment policy.
   income_receipts_per_period: 131072 # At most one per cash/capital account.
+  collection_receipts_per_period: 1 # Original authenticated ruling, not a recurring withdrawal.
+  aid_receipts_per_period: 327680 # Derived five outcomes times 65536 captured material rows.
   tax_receipts_per_period: 131072 # At most one per captured payer.
   distribution_receipts_per_period: 131072 # At most one per ownership claim.
   receipt_bounds: Named receipt-family limits cover their corresponding captured row families;
@@ -464,6 +482,9 @@ error_codes:
   service_invariant: 27
   financial_invariant: 28
   equipment_invariant: 30
+  household_time_invariant: 31
+  aid_invariant: 32
+  aid_authority: 33
 
 monetary_accounting:
   opening: capture explicit cash endowments and employment terms; no default accounts, credit, or hidden issuance
@@ -598,10 +619,10 @@ historical_cost_book:
   row_fields:
     capital_accounts: [account, opening_capital, contributed_capital, retained_earnings]
     stock_carrying_values: [owner_account, good_id, unit_id, amount]
-    freight_carrying_values: [lot_id, seller_site_id, amount]
+    freight_carrying_values: [lot_id, owner_account, amount]
     equity_carrying_values: [owner_account, issuer_site_id, amount]
     equipment_carrying_values: [asset_tag_u8, asset_id, owner_site_id, amount]
-  row_width_bytes: {capital_accounts: 81, stock_carrying_values: 113, freight_carrying_values: 80,
+  row_width_bytes: {capital_accounts: 81, stock_carrying_values: 113, freight_carrying_values: 81,
                     equity_carrying_values: 81, equipment_carrying_values: 81}
   canonical_keys:
     capital_accounts: [account]
@@ -635,12 +656,14 @@ historical_cost_book:
     - changed quotes do not reprice existing stock, transit or purchase reserves
   reconciliation:
     - carrying amounts are nonnegative; zero physical quantity requires zero carrying value
-    - every transit carrying row has the physical lot's seller as title owner
-    - capital accounts exactly match monetary accounts; stock and freight carrying keys exactly match physical keys
+    - ordinary transit carrying rows belong to the seller account; aid transit carrying rows belong to the donor
+      household
+    - capital accounts exactly match monetary accounts; stock keys match physical stocks and freight keys match
+      ordinary plus aid lots
     - each account's net assets equal captured opening capital plus contributed capital plus accumulated retained
       earnings
-    - each period income includes sales, wages, tax, operating-transfer and distribution income less COGS and named
-      expenses
+    - each period income includes sales, wages, tax, operating-transfer, distribution and gift income less COGS,
+      named expenses and gift expense
     - closing retained earnings equal opening retained earnings plus period income less distributions paid
     - productive labor, installation labor, handling, maintenance labor and idle wage costs partition current earned
       wages exactly
@@ -797,6 +820,7 @@ productive_equipment:
 goods_quote_costs:
   evidence_class: Designed
   persistence: transient current-close posting evidence in receipts; no second durable cost or cash ledger
+
   basis:
     produced: current actual output quantity and capitalized input carrying, actual productive wages and equipment wear
     released: current actual seller-stock withdrawals to routed freight, local buyers or final demand
@@ -813,3 +837,86 @@ goods_quote_costs:
     - no observation is distinct from actual zero-cost output; no policy guarantees clearing or a positive margin
   qualification: >-
     Historical transaction-cost bookkeeping, not social value, surplus value or a universal valuation theory.
+
+household_time:
+  authority: ADR270
+  evidence: Captured eligible residents and explicitly Designed hour commitments; not observed time-use estimates.
+  accounting_u8: {not_modeled_control: 0, modeled: 1}
+  field_order: [accounting_u8, policies, receipts, contributions]
+  count_encoding: u32_big_endian_before_each_modeled_row_family_and_each_policy_burden_family
+  policy_fields: [principal_id, labor_unit_id, eligible_persons, hours_per_eligible_person,
+                  protected_need_basis_u8, protected_hours_per_basis,
+                  provisioning_need_basis_u8, provisioning_hours_per_basis, unmet_burdens]
+  burden_fields: [good_id, unit_id, hours_per_unmet_unit]
+  receipt_fields: [principal_id, period, labor_unit_id, endowment_hours, attended_hours,
+                   protected_hours, protected_unresolved_hours, unpaid_requested_hours,
+                   unpaid_allocated_hours, unpaid_unresolved_hours, contribution_available_hours]
+  contribution_fields: [period, use_id, principal_id, actor_id, contributor_id, hours]
+  canonical_keys:
+    policies: [principal_id]
+    burdens: [good_id, unit_id]
+    receipts: [principal_id]
+    contributions: [use_id]
+  limits:
+    policies: 65536
+    receipts: 65536
+    contributions: 65536
+    aggregate_burdens: 65536
+  invariants:
+    - Modeled accounts cover exactly the recurring household roster, including collective residences.
+    - Eligible residents do not exceed counted persons; member capacity cannot exceed their declared hour endowment.
+    - Labor units belong to admitted hour accounts and match each household's employment terms.
+    - Actual unique current-period member attendance is charged once, including paid and unpaid idle hours.
+    - Priority is attendance, protected commitments, unpaid provisioning, then available contribution.
+    - Endowment equals attendance plus allocated protected and unpaid commitments plus available contribution.
+    - Requested unpaid commitments equal allocated plus unresolved claims; unresolved claims are not performed work.
+    - Unresolved higher-priority claims forbid available contribution; protected unresolved claims forbid unpaid
+      allocation.
+    - Receipts belong exactly to the preceding completed period and reconcile captured policy and needs bounds.
+    - Consumption changes unmet-need burdens; it cannot create time, goods or political consent.
+    - Several organizational aliases share one household account; their combined positive debits cannot overdraw it.
+    - Exact same-period debit retries are idempotent; stale uses or changed terms refuse atomically.
+    - Consent remains a separate authorized political relation; a debit ledger does not establish agreement.
+    - Current state bytes include the last receipts and debit ledger; older state versions refuse without migration.
+
+household_aid:
+  evidence_class: Designed
+  field_order: [mandates, freight, cash_reserves]
+  mandate_fields: [id, source_hash, donor_actor, donor_contributor_id, recipient_actor, payer_account,
+                   donor_household_id, recipient_household_id, good_id, unit_id, labor_unit_id,
+                   hours_per_unit, maximum_quantity, cash_per_unit, transport_tag, conditional_transport_fields]
+  transport_u8: {local: 1, routed: 2}
+  routed_fields: [route_id, from_node_id, to_node_id]
+  mandate_width_bytes: {local: 314, routed: 410}
+  freight_fields: [lot_id, commitment_id, mandate_id, route_id, dispatch_period, current_stage_index,
+                   stage_arrival_period, donor_household_id, recipient_household_id, good_id, unit_id, quantity]
+  reserve_fields: [commitment_id, payer_account, donor_household_id, recipient_household_id, quantity,
+                   cash_per_unit, granted, refunded]
+  row_width_bytes: {freight: 282, cash_reserves: 169}
+  canonical_keys: {mandates: [id], freight: [lot_id], cash_reserves: [commitment_id]}
+  bounds: {mandates: 65536, freight: 65536, cash_reserves: 327680, receipts_per_period: 327680}
+  receipt_bound_basis: Five closed outcomes times MAX_MATERIAL_CIRCUIT_ROWS; not a guarantee of five rows per mandate.
+  commitment_identity: SHA256(aid_commitment_domain + terminator + mandate_id + dispatch_period_u64)
+  payer: Explicit captured account funds cash; donor household owns goods and supplies contributor authority.
+  rules:
+    - Mandates capture exact source hash, donor and recipient actors, contributor, payer, households and native units.
+    - Donor and recipient households differ; payer cannot be the recipient household account.
+    - Input authority and period must match the captured mandate; no missing time or account fallback.
+    - Positive requested quantities are bounded by captured maximum, actual donor stock, finite cash and supplied hours.
+    - Local transport requires one location; routed transport uses captured route and endpoint identities.
+    - Local grant credits actual recipient stock; dispatch moves donor stock and basis to donor-owned aid freight.
+    - Routed grants credit only retained arrived quantities; stage losses remove goods and expense their withdrawn
+      donor freight basis.
+    - Cash enters one aid reserve at reservation; actual grant releases it to recipient and unshipped or lost
+      quantities refund payer.
+    - Granted goods basis is donor gift expense; granted cash is payer gift expense; recipient gift income includes
+      both exactly once.
+    - Gift flows are not sales, wages, contributed capital, tax collections or additional reserves.
+    - Contribution uses retain exact period, household, actor, contributor and hours; the host must atomically debit
+      the authoritative time ledger.
+    - Gross household time receipts remain unchanged by contribution debits; the separate ledger owns their expenditure.
+    - A failed detached operation publishes no goods, cash, time use or aid receipt.
+  host_boundary: Material aid and supplied resources do not establish completed organizer practice or independent
+    partner consent.
+  persistence: State schema18 includes every aid vector even when empty in monetary mode; physical controls omit
+    monetary branches.

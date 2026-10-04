@@ -34,7 +34,7 @@ struct TitleActionCaption;
 enum TitleAction {
     Continue,
     NewGame,
-    NationalEconomy,
+    MichiganControl,
     LoadGame,
     Campaigns,
     Settings,
@@ -211,8 +211,11 @@ fn spawn_home(commands: &mut Commands) {
             .with_children(|actions| {
                 for (action, caption) in [
                     (TitleAction::Continue, "Continue"),
-                    (TitleAction::NewGame, "New Game"),
-                    (TitleAction::NationalEconomy, "National economy · observer"),
+                    (
+                        TitleAction::NewGame,
+                        "New Game · Wayne in the national world",
+                    ),
+                    (TitleAction::MichiganControl, "Michigan · organizer control"),
                     (TitleAction::LoadGame, "Load Game"),
                     (TitleAction::Campaigns, "Observer Campaigns"),
                     (TitleAction::Settings, "Settings"),
@@ -258,11 +261,11 @@ fn action_enabled(
         TitleAction::Continue | TitleAction::Resume => {
             !opening.launch_pending && can_continue(session)
         }
-        TitleAction::NewGame | TitleAction::NationalEconomy => {
-            let command = if action == TitleAction::NationalEconomy {
-                ObserverCommand::NewNationalCampaign
-            } else {
+        TitleAction::NewGame | TitleAction::MichiganControl => {
+            let command = if action == TitleAction::MichiganControl {
                 ObserverCommand::NewOrganizerCampaign
+            } else {
+                ObserverCommand::NewNationalCampaign
             };
             !opening.launch_pending
                 && !session.lifecycle_pending()
@@ -315,10 +318,10 @@ impl TitleInput<'_> {
                 self.commands.write(ObserverCommand::Menu);
             }
             TitleAction::NewGame => {
-                self.commands.write(ObserverCommand::NewOrganizerCampaign);
-            }
-            TitleAction::NationalEconomy => {
                 self.commands.write(ObserverCommand::NewNationalCampaign);
+            }
+            TitleAction::MichiganControl => {
+                self.commands.write(ObserverCommand::NewOrganizerCampaign);
             }
             TitleAction::LoadGame => self.opening.menu_page = MenuPage::SavedGames,
             TitleAction::Campaigns => self.opening.menu_page = MenuPage::Campaigns,
@@ -415,11 +418,16 @@ fn eligibility(
 
 type TitleRootFilter = Or<(With<TitleMenuRoot>, With<TitleBackdrop>)>;
 
+#[derive(SystemParam)]
+struct TitlePaint<'w> {
+    opening: Res<'w, OpeningPresentation>,
+    progress: Option<Res<'w, crate::observer_progress::OperationProgress>>,
+    session: Res<'w, ObserverSession>,
+    ui: Res<'w, ObserverUiState>,
+}
+
 fn paint(
-    opening: Res<OpeningPresentation>,
-    progress: Option<Res<crate::observer_progress::OperationProgress>>,
-    session: Res<ObserverSession>,
-    ui: Res<ObserverUiState>,
+    context: TitlePaint,
     mut roots: Query<(&mut Visibility, Has<TitleMenuRoot>), TitleRootFilter>,
     mut actions: Query<(
         &Interaction,
@@ -432,6 +440,12 @@ fn paint(
     mut captions: Query<&mut TextColor, With<TitleActionCaption>>,
     mut status: Query<&mut Text, With<TitleStatus>>,
 ) {
+    let TitlePaint {
+        opening,
+        progress,
+        session,
+        ui,
+    } = context;
     let shown = opening.stage == OpeningStage::Title && ui.menu_open;
     for (mut visibility, home) in &mut roots {
         visibility.set_if_neq(
@@ -550,7 +564,7 @@ mod tests {
     use babylon_persistence::identity::CampaignId;
 
     #[test]
-    fn native_title_buttons_route_pages_and_emit_the_real_organizer_command() {
+    fn native_title_buttons_route_national_new_game_and_explicit_michigan_control() {
         let mut app = App::new();
         let mut session = ObserverSession::new(CampaignId::from_uuid(uuid::Uuid::from_u128(1)));
         session.connected_fixture();
@@ -576,7 +590,7 @@ mod tests {
             (TitleAction::Settings, MenuPage::Settings),
             (TitleAction::Campaigns, MenuPage::Campaigns),
             (TitleAction::NewGame, MenuPage::Home),
-            (TitleAction::NationalEconomy, MenuPage::Home),
+            (TitleAction::MichiganControl, MenuPage::Home),
         ] {
             app.world_mut()
                 .resource_mut::<OpeningPresentation>()
@@ -604,8 +618,8 @@ mod tests {
         assert_eq!(
             messages,
             [
-                ObserverCommand::NewOrganizerCampaign,
-                ObserverCommand::NewNationalCampaign
+                ObserverCommand::NewNationalCampaign,
+                ObserverCommand::NewOrganizerCampaign
             ]
         );
         assert!(app.world().resource::<ObserverUiState>().menu_open);

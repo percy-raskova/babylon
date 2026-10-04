@@ -25,6 +25,26 @@ meta:
   # ADR160-169 = P26 international-trade lane block (101-trade-activation),
   # allocated by Director ruling 2026-07-27; ADR160 minted at its charter.
 decisions:
+  ADR278_measured_save_footprint:
+    title: Save footprint determines history storage
+    status: accepted
+    date: '2026-10-03'
+    file: ADR278_measured_save_footprint.yaml
+  ADR277_active_economy_and_sealed_accounting_history:
+    title: Living economy and sealed history have separate storage roles
+    status: accepted
+    date: '2026-10-03'
+    file: ADR277_active_economy_and_sealed_accounting_history.yaml
+  ADR276_generated_identity_lookup_descriptors:
+    title: Generated identity descriptors preserve each period's exact typed lookup
+    status: accepted
+    date: '2026-10-03'
+    file: ADR276_generated_identity_lookup_descriptors.yaml
+  ADR275_material_gifts_and_delayed_practice:
+    title: Material gifts retain separate owners and delayed practice authority
+    status: accepted
+    date: '2026-10-03'
+    file: ADR275_material_gifts_and_delayed_practice.yaml
   ADR254_archive_notification_wakeups:
     title: PostgreSQL wakeups for the owned Archive worker
     status: accepted
@@ -1265,3 +1285,43 @@ decisions:
     status: accepted
     date: '2026-10-02'
     file: ADR270_household_time_and_material_organizer.yaml
+  ADR271_national_storage_budget_and_marker_validation:
+    title: A bounded national save validates event continuity once at its commit marker
+    status: accepted
+    date: '2026-10-02'
+    file: ADR271_national_storage_budget_and_marker_validation.yaml
+  ADR272_compact_material_storage_and_typed_lookups:
+    title: Shared typed lookups and lossless columns store exact history
+    status: accepted
+    date: '2026-10-02'
+    file: ADR272_compact_material_storage_and_typed_lookups.yaml
+  ADR273_interim_save_budget_and_rotating_qualification:
+    title: Interim save budget and one rotating national qualification campaign
+    status: accepted
+    date: '2026-10-02'
+    file: ADR273_interim_save_budget_and_rotating_qualification.yaml
+  ADR274_period_local_material_lookup_ownership:
+    title: Period material lookups retain the opening seed and current identities
+    status: accepted
+    date: '2026-10-03'
+    file: ADR274_period_local_material_lookup_ownership.yaml
+  ADR279_exact_territory_definitions:
+    title: Exact territory definitions serve current and historical reads
+    status: accepted
+    date: '2026-10-03'
+    file: ADR279_exact_territory_definitions.yaml
+  ADR280_development_budgets_prioritize_play:
+    title: Development budgets prioritize the playable national economy
+    status: accepted
+    date: '2026-10-03'
+    file: ADR280_development_budgets_prioritize_play.yaml
+  ADR281_authenticated_archive_membership_checkpoints:
+    title: Frozen Archive membership uses authenticated checkpoint bases
+    status: accepted
+    date: '2026-10-04'
+    file: ADR281_authenticated_archive_membership_checkpoints.yaml
+  ADR282_authenticated_archive_page_bodies:
+    title: Archive page bodies retain exact semantics in a bounded compressed tuple
+    status: accepted
+    date: '2026-10-04'
+    file: ADR282_authenticated_archive_page_bodies.yaml

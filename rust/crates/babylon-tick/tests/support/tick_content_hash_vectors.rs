@@ -1272,7 +1272,10 @@ fn measure_bound_recipe(name: &str, recipe: &Value) -> u64 {
         "tick_rule_outcomes" => recipe_count(recipe, "rule_outcome_rows"),
         "tick_rows" => recipe_count(recipe, "event_rows"),
         "tick_aggregate_rows" => {
-            recipe_count(recipe, "event_rows") + recipe_count(recipe, "payload_rows")
+            let payloads = recipe_counts(recipe, "payload_rows_per_event", 2);
+            let events = recipe_count(recipe, "event_rows");
+            assert_eq!(events, payloads.len() as u64);
+            events + payloads.iter().sum::<u64>()
         }
         "tick_combined_bytes" => measure_tick_bytes(recipe),
         _ => panic!("unknown bound recipe {name}"),
@@ -1490,7 +1493,7 @@ fn bound_contract(name: &str) -> (&'static str, u64, &'static str) {
         "prepared_combined_bytes" => ("encode_prepared_bsl", 67_108_864, "byte_limit"),
         "tick_rule_outcomes" => ("encode_tick_payload", 65_536, "row_limit"),
         "tick_rows" => ("encode_tick_payload", 1_048_576, "row_limit"),
-        "tick_aggregate_rows" => ("encode_tick_payload", 1_048_576, "aggregate_row_limit"),
+        "tick_aggregate_rows" => ("encode_tick_payload", 2_097_152, "aggregate_row_limit"),
         "tick_combined_bytes" => ("encode_tick_payload", 67_108_864, "byte_limit"),
         _ => panic!("unknown bound refusal {name}"),
     }

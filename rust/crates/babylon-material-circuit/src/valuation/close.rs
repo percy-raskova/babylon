@@ -25,6 +25,9 @@ pub(super) struct ActiveCosts {
 }
 
 impl CostClose {
+    pub(crate) fn attendance_members(&self) -> &[MemberLaborUseReceipt] {
+        self.attendance.members()
+    }
     pub(crate) fn new(state: &MaterialCircuitState) -> Self {
         let active = match &state.accounting {
             CircuitAccounting::PhysicalControl => None,
@@ -223,7 +226,12 @@ impl CostClose {
             return Err(MaterialCircuitError::RowLimit);
         }
         let cost = active.book.take_stock(key, available, quantity)?;
-        if active.book.freight.insert(lot, (owner, cost)).is_some() {
+        if active
+            .book
+            .freight
+            .insert(lot, (AccountId::Site(owner), cost))
+            .is_some()
+        {
             return Err(MaterialCircuitError::DuplicateRow);
         }
         self.goods.released((owner, key.1, key.2), quantity, cost)
@@ -250,7 +258,7 @@ impl CostClose {
             .checked_sub(lost_quantity)
             .ok_or(MaterialCircuitError::Arithmetic)?;
         let retained = sub(opening, lost_cost)?;
-        let statement = active.statement(AccountId::Site(owner))?;
+        let statement = active.statement(owner)?;
         statement.freight_loss_expense = add(statement.freight_loss_expense, lost_cost)?;
         if remaining == 0 || final_arrival {
             active.book.freight.remove(&lot.lot_id);
@@ -260,7 +268,10 @@ impl CostClose {
         if final_arrival && remaining > 0 {
             let payment =
                 purchase_amount(state, OutboundOrderId::Delivery(lot.order_id), remaining)?;
-            active.sale(AccountId::Site(owner), payment, retained)?;
+            if owner != AccountId::Site(lot.source_site_id) {
+                return Err(MaterialCircuitError::ValuationInvariant);
+            }
+            active.sale(owner, payment, retained)?;
             active.book.credit_stock(
                 (
                     AccountId::Site(lot.destination_site_id),
@@ -271,6 +282,139 @@ impl CostClose {
             )?;
         }
         Ok(())
+    }
+
+    pub(crate) fn dispatch_aid(
+        &mut self,
+        mandate: &crate::AidMandate,
+        available: u64,
+        quantity: u64,
+        lot: FreightLotId,
+    ) -> Result<Currency> {
+        let active = self
+            .active
+            .as_mut()
+            .ok_or(MaterialCircuitError::ValuationInvariant)?;
+        if active.book.freight.len() >= MAX_MATERIAL_CIRCUIT_ROWS {
+            return Err(MaterialCircuitError::RowLimit);
+        }
+        if active.book.freight.contains_key(&lot) {
+            return Err(MaterialCircuitError::DuplicateRow);
+        }
+        let owner = AccountId::Household(mandate.donor);
+        let cost = active.book.take_stock(
+            (owner, mandate.good_id, mandate.unit_id),
+            available,
+            quantity,
+        )?;
+        active.book.freight.insert(lot, (owner, cost));
+        Ok(cost)
+    }
+
+    pub(crate) fn local_aid(
+        &mut self,
+        mandate: &crate::AidMandate,
+        available: u64,
+        quantity: u64,
+        cash: Currency,
+    ) -> Result<Currency> {
+        let active = self
+            .active
+            .as_mut()
+            .ok_or(MaterialCircuitError::ValuationInvariant)?;
+        let carrying = active.book.take_stock(
+            (
+                AccountId::Household(mandate.donor),
+                mandate.good_id,
+                mandate.unit_id,
+            ),
+            available,
+            quantity,
+        )?;
+        self.grant_aid(mandate, carrying, cash)?;
+        Ok(carrying)
+    }
+
+    pub(crate) fn cash_gift(
+        &mut self,
+        sender: AccountId,
+        recipient: AccountId,
+        cash: Currency,
+    ) -> Result<()> {
+        if cash.micro_units() <= 0 || sender == recipient {
+            return Err(MaterialCircuitError::CollectionInvariant);
+        }
+        let active = self
+            .active
+            .as_mut()
+            .ok_or(MaterialCircuitError::ValuationInvariant)?;
+        let statement = active.statement(sender)?;
+        statement.gift_expense = add(statement.gift_expense, cash)?;
+        let statement = active.statement(recipient)?;
+        statement.gift_income = add(statement.gift_income, cash)?;
+        Ok(())
+    }
+
+    pub(crate) fn grant_aid(
+        &mut self,
+        mandate: &crate::AidMandate,
+        carrying: Currency,
+        cash: Currency,
+    ) -> Result<()> {
+        let active = self
+            .active
+            .as_mut()
+            .ok_or(MaterialCircuitError::ValuationInvariant)?;
+        active.book.credit_stock(
+            (
+                AccountId::Household(mandate.recipient),
+                mandate.good_id,
+                mandate.unit_id,
+            ),
+            carrying,
+        )?;
+        let total = add(carrying, cash)?;
+        let donor = active.statement(AccountId::Household(mandate.donor))?;
+        donor.gift_expense = add(donor.gift_expense, carrying)?;
+        let payer = active.statement(mandate.payer)?;
+        payer.gift_expense = add(payer.gift_expense, cash)?;
+        let recipient = active.statement(AccountId::Household(mandate.recipient))?;
+        recipient.gift_income = add(recipient.gift_income, total)?;
+        Ok(())
+    }
+
+    pub(crate) fn aid_freight(
+        &mut self,
+        lot: &crate::AidFreightLot,
+        lost_quantity: u64,
+        final_arrival: bool,
+    ) -> Result<(Currency, Currency)> {
+        let active = self
+            .active
+            .as_mut()
+            .ok_or(MaterialCircuitError::ValuationInvariant)?;
+        let &(owner, opening) = active
+            .book
+            .freight
+            .get(&lot.lot_id)
+            .ok_or(MaterialCircuitError::ValuationInvariant)?;
+        if owner != AccountId::Household(lot.donor) {
+            return Err(MaterialCircuitError::ValuationInvariant);
+        }
+        let lost_cost = portion(opening, lot.quantity, lost_quantity)?;
+        let retained = sub(opening, lost_cost)?;
+        let remaining = lot
+            .quantity
+            .checked_sub(lost_quantity)
+            .ok_or(MaterialCircuitError::Arithmetic)?;
+        let statement = active.statement(owner)?;
+        statement.freight_loss_expense = add(statement.freight_loss_expense, lost_cost)?;
+        if final_arrival || remaining == 0 {
+            active.book.freight.remove(&lot.lot_id);
+        } else {
+            active.book.freight.insert(lot.lot_id, (owner, retained));
+        }
+        Ok((lost_cost, retained))
     }
 
     pub(crate) fn local_sale(

@@ -67,6 +67,7 @@ trait SessionBackend {
     fn advance(
         &mut self,
         expected: &RuntimeSessionTail,
+        progress: &mut dyn FnMut(RuntimeAdvanceStage),
     ) -> Result<RuntimeSessionTail, RuntimeSessionErrorCode>;
 }
 

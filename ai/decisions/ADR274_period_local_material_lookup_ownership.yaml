@@ -1,0 +1,67 @@
+ADR274_period_local_material_lookup_ownership:
+  status: accepted
+  date: '2026-10-03'
+  issue: PER-40
+  title: Period material lookups retain the opening seed and current identities
+  evidence_class: Designed
+  authority:
+    - Director authorizes persistence redesign without backwards compatibility
+    - Director requires exact accounting, replay, recovery and measured growth
+    - Repository rules require a decision record for a new architecture decision
+  context: |
+    A cumulative material lookup retains historical order and freight identities
+    in every later runtime cache. Annual archives cannot bound that ownership.
+    The latest measured national period retains 50,495,488 bytes. It fails the
+    provisional 23,000,000-byte ceiling. Different storage ownership needs new
+    native evidence; a smaller cache does not establish smaller disk growth.
+  decision: |
+    Retain one admitted immutable opening authority. Share its canonical bytes,
+    section offsets and typed identity seed. Each period independently adds
+    the literal identities needed by its state and complete receipts. Repeat
+    a surviving pending or in-transit identity in a later period that uses it.
+    Preserve exact kind, bytes, ordering, quantities and canonical engine hashes.
+
+    Use current V2 state and period-lookup storage framing. Both state and receipt
+    references remain bounded by their own authenticated local prefixes. Finalize
+    receipt-only additions before binding the state package to the lookup chain.
+    Refuse independently valid receipts from another period before staging state.
+    Return admitted ticks from existing complete codec validation; do not repeat
+    full semantic decoding solely to recover the tick or trust unchecked headers.
+
+    Derive the initial chain from the admitted opening and typed seed. Each later
+    chain hashes the opening, period, previous chain and exact packed additions.
+    Cold runtime, reconciliation and Archive reads validate consecutive marked
+    lookup chunks and the unchanged tail state anchor. Retain one period table
+    and chain scalars while scanning. Full observer reads still authenticate each
+    requested historical canonical state, receipts, world and lifecycle.
+    Publish caches and chain state only after existing validation and acknowledgement.
+
+    This is an unchanged-tail corruption guarantee. A database owner rewriting
+    every chain link and the tail storage anchor is outside that guarantee.
+    The storage anchor is not a new externally signed or canonical engine root.
+    Keep current SQL shape and canonical envelope authority. Old storage framing
+    refuses clearly; preserve old data without a compatibility reader.
+  alternatives: |
+    Cumulative identity ownership grows with elapsed history. Decoding every old
+    canonical state solely to validate its lookup adds unnecessary recovery work.
+    An unchecked header or inferred identity cannot replace complete admission.
+    Annual Parquet history remains an investigation, not an adopted substitute
+    for a self-contained recovery checkpoint or transactional publication.
+  consequences: |
+    Retained lookup ownership no longer accumulates every past period identity.
+    Opening and local maps are still rebuilt or cloned during bounded staging.
+    Cold recovery still scans historical lookup bytes; it is not constant time.
+    Repeated surviving identities may increase disk cost. Measure actual native
+    growth, latency and peak memory before claiming a resource improvement.
+    No economic mechanism, mathematical primitive or reserved theory changes.
+  supersedes:
+    - ADR272_compact_material_storage_and_typed_lookups # cumulative material lookup ownership only
+  verification:
+    - Actual periods reconstruct identical canonical state and all receipts.
+    - Wrong periods, contexts, prefixes, kinds, frames and chain anchors refuse.
+    - Retired-only identities do not enter a later independent period table.
+    - Surviving identities retain exact kind and bytes in every using period.
+    - Self-consistent older corruption refuses with the original later anchor.
+    - Failed staging, commit, replay and observer admission publish no new cache.
+    - Native measurement charges all retained lookups and preserves every county.
+  source_record: reports/national-household-time-close-census-2026-10-02.md

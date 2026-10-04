@@ -3,7 +3,10 @@ pub(crate) mod services;
 use super::{lifecycle, ProductionProjectionError};
 use crate::michigan_economy::digest_hex;
 use babylon_kernel::economic_location::EconomicLocation;
-use babylon_material_circuit::{FinalDemandPrincipalId, GoodId, MaterialCircuitState, UnitId};
+use babylon_material_circuit::{
+    FinalDemandPrincipalId, GoodId, HouseholdCohort, HouseholdConsumptionReceipt,
+    HouseholdDemandReceipt, HouseholdNeed, MaterialCircuitState, UnitId,
+};
 use babylon_tick::material_world::MaterialTickReceipts;
 use serde::{Deserialize, Serialize};
 pub use services::{CompletedHouseholdService, ProductionHouseholdServiceAccount};
@@ -12,10 +15,40 @@ use std::collections::BTreeMap;
 type Result<T> = std::result::Result<T, ProductionProjectionError>;
 type Key = (FinalDemandPrincipalId, GoodId, UnitId);
 
+/// Captured residence accounting: collective residents are not ordinary households.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProductionHouseholdKind {
+    Ordinary,
+    CollectiveResidence,
+}
+impl From<babylon_material_circuit::HouseholdKind> for ProductionHouseholdKind {
+    fn from(kind: babylon_material_circuit::HouseholdKind) -> Self {
+        match kind {
+            babylon_material_circuit::HouseholdKind::Ordinary => Self::Ordinary,
+            babylon_material_circuit::HouseholdKind::CollectiveResidence => {
+                Self::CollectiveResidence
+            }
+        }
+    }
+}
+impl ProductionHouseholdKind {
+    pub(crate) const fn admits_counts(self, persons: u64, households: u64) -> bool {
+        let kind = match self {
+            Self::Ordinary => babylon_material_circuit::HouseholdKind::Ordinary,
+            Self::CollectiveResidence => {
+                babylon_material_circuit::HouseholdKind::CollectiveResidence
+            }
+        };
+        kind.admits_counts(persons, households)
+    }
+}
+
 /// One resident cohort and native good. People and households have separate units.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProductionHouseholdAccount {
+    pub kind: ProductionHouseholdKind,
     pub demand_principal_id: String,
     pub location: EconomicLocation,
     pub good_id: String,
@@ -37,7 +70,10 @@ pub struct ProductionHouseholdAccount {
 pub struct CompletedHouseholdBalance {
     pub period: u64,
     pub opening_stock: u64,
+    /// Ordinary retail fulfillment only; support is accounted separately.
     pub received: u64,
+    pub support_granted: u64,
+    pub support_dispatched: u64,
     pub required: u64,
     pub consumed: u64,
     pub unmet: u64,
@@ -103,6 +139,7 @@ pub(super) fn project_with_labels(
             .ok_or(ProductionProjectionError::State)?;
         let (good, unit) = labels(key.1, key.2).ok_or(ProductionProjectionError::Content)?;
         result.push(ProductionHouseholdAccount {
+            kind: household.kind.into(),
             demand_principal_id: digest_hex(&key.0.as_bytes()),
             location: principal.location,
             good_id: digest_hex(&key.1.as_bytes()),
@@ -168,6 +205,7 @@ pub(super) fn completed_balances(
         return Err(ProductionProjectionError::State);
     }
     let mut received = received_stock(receipt, &opening)?;
+    let gifts = super::aid::join(prior, current, receipt)?;
     let mut result = BTreeMap::new();
     for row in &receipt.household_consumption {
         let key = (row.principal_id, row.good_id, row.unit_id);
@@ -178,33 +216,34 @@ pub(super) fn completed_balances(
             .remove(&key)
             .ok_or(ProductionProjectionError::State)?;
         let received = received.remove(&key).unwrap_or(0);
-        let cohort = households
-            .get(&key.0)
+        let support_granted = gifts.received.get(&key).copied().unwrap_or(0);
+        let support_dispatched = gifts.sent.get(&key).copied().unwrap_or(0);
+        let demand_opening = stock
+            .checked_add(gifts.before_demand.get(&key).copied().unwrap_or(0))
+            .ok_or(ProductionProjectionError::Arithmetic)?;
+        let available = stock
+            .checked_add(received)
+            .and_then(|q| q.checked_add(support_granted))
+            .and_then(|q| q.checked_sub(support_dispatched))
             .ok_or(ProductionProjectionError::State)?;
-        let need = needs.get(&key).ok_or(ProductionProjectionError::State)?;
-        let required = need
-            .required_quantity(cohort)
-            .map_err(|_| ProductionProjectionError::State)?;
-        if row.period != prior.period
-            || purchase.period != prior.period
-            || row.required_quantity != required
-            || purchase.required_quantity != required
-            || purchase.opening_stock != stock
-            || stock.checked_add(received) != Some(row.available_quantity)
-            || row.consumed_quantity != row.available_quantity.min(required)
-            || row.consumed_quantity.checked_add(row.unmet_quantity) != Some(required)
-            || row.available_quantity.checked_sub(row.consumed_quantity)
-                != Some(row.closing_quantity)
-            || closing.get(&key) != Some(&row.closing_quantity)
-        {
-            return Err(ProductionProjectionError::State);
-        }
+        let required = required_quantity(key, &households, &needs)?;
+        validate_consumption_balance(
+            row,
+            purchase,
+            prior.period,
+            required,
+            demand_opening,
+            available,
+            closing.get(&key),
+        )?;
         result.insert(
             key,
             CompletedHouseholdBalance {
                 period: prior.period,
                 opening_stock: stock,
                 received,
+                support_granted,
+                support_dispatched,
                 required,
                 consumed: row.consumed_quantity,
                 unmet: row.unmet_quantity,
@@ -221,6 +260,44 @@ pub(super) fn completed_balances(
         return Err(ProductionProjectionError::State);
     }
     Ok(result)
+}
+
+fn required_quantity(
+    key: Key,
+    households: &BTreeMap<FinalDemandPrincipalId, &HouseholdCohort>,
+    needs: &BTreeMap<Key, &HouseholdNeed>,
+) -> Result<u64> {
+    let cohort = households
+        .get(&key.0)
+        .ok_or(ProductionProjectionError::State)?;
+    let need = needs.get(&key).ok_or(ProductionProjectionError::State)?;
+    need.required_quantity(cohort)
+        .map_err(|_| ProductionProjectionError::State)
+}
+
+fn validate_consumption_balance(
+    row: &HouseholdConsumptionReceipt,
+    purchase: &HouseholdDemandReceipt,
+    period: u64,
+    required: u64,
+    demand_opening: u64,
+    available: u64,
+    closing: Option<&u64>,
+) -> Result<()> {
+    if row.period != period
+        || purchase.period != period
+        || row.required_quantity != required
+        || purchase.required_quantity != required
+        || purchase.opening_stock != demand_opening
+        || available != row.available_quantity
+        || row.consumed_quantity != row.available_quantity.min(required)
+        || row.consumed_quantity.checked_add(row.unmet_quantity) != Some(required)
+        || row.available_quantity.checked_sub(row.consumed_quantity) != Some(row.closing_quantity)
+        || closing != Some(&row.closing_quantity)
+    {
+        return Err(ProductionProjectionError::State);
+    }
+    Ok(())
 }
 
 fn received_stock(
@@ -248,15 +325,34 @@ mod tests {
 
     #[test]
     fn projection_authenticates_person_and_household_requirements_from_committed_consumption() {
-        for (basis, required) in [
-            (HouseholdNeedBasis::Persons, 4),
-            (HouseholdNeedBasis::Households, 2),
+        for (kind, count, basis, required) in [
+            (
+                babylon_material_circuit::HouseholdKind::Ordinary,
+                2,
+                HouseholdNeedBasis::Persons,
+                4,
+            ),
+            (
+                babylon_material_circuit::HouseholdKind::Ordinary,
+                2,
+                HouseholdNeedBasis::Households,
+                2,
+            ),
+            (
+                babylon_material_circuit::HouseholdKind::CollectiveResidence,
+                0,
+                HouseholdNeedBasis::Persons,
+                4,
+            ),
         ] {
             let mut opening = super::super::recurring_fixture::opening();
             let CircuitAccounting::Monetary(economy) = &mut opening.accounting else {
                 panic!("monetary control");
             };
-            economy.recurring.as_mut().unwrap().household_needs[0].basis = basis;
+            let recurring = economy.recurring.as_mut().unwrap();
+            recurring.households[0].kind = kind;
+            recurring.households[0].households = count;
+            recurring.household_needs[0].basis = basis;
             let opening = MaterialWorldRegister::try_new(0, opening).unwrap();
             let next = opening.prepare_next().unwrap();
             let mut receipts = decode_material_receipts(next.receipt_bytes()).unwrap();
@@ -270,12 +366,17 @@ mod tests {
             };
             let rows = project(&receipts).unwrap();
             assert_eq!(rows.len(), 1);
-            assert_eq!((rows[0].person_count, rows[0].household_count), (4, 2));
+            assert_eq!(rows[0].kind, ProductionHouseholdKind::from(kind));
+            assert_eq!((rows[0].person_count, rows[0].household_count), (4, count));
             assert_eq!(rows[0].required_per_period, required);
             let completed = rows[0].completed.as_ref().unwrap();
             assert_eq!(
                 (completed.required, completed.consumed),
                 (required, required)
+            );
+            assert_eq!(
+                completed.opening_stock + completed.received + completed.support_granted,
+                completed.consumed + completed.closing_stock + completed.support_dispatched
             );
             receipts.household_consumption[0].required_quantity += 1;
             assert!(project(&receipts).is_err());

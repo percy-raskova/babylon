@@ -10,6 +10,15 @@
 
 #[path = "support/current_material.rs"]
 mod current_material;
+
+#[path = "support/archive_reader.rs"]
+mod archive_reader;
+use babylon_persistence::archive_revision::{
+    ArchiveDossierBounds, ArchiveDossierPending, ArchiveDossierState, ArchiveReadScope,
+};
+use babylon_persistence::ArchivePageRef;
+use babylon_persistence::{install_reader_role, SemanticArchiveReader};
+
 use babylon_persistence::{material_runtime, michigan_content, michigan_material};
 
 use std::str::FromStr;
@@ -243,25 +252,121 @@ fn receipt_consumption_count(config: &Config, campaign_id: CampaignId) -> i64 {
         .expect("consumption count decodes")
 }
 
-fn place_page_rows(config: &Config, campaign_id: CampaignId) -> Vec<(String, i64, String)> {
-    config
+fn first_dirty_receipt(config: &Config, campaign_id: CampaignId) -> PendingArchiveReceipt {
+    let hash: Vec<u8> = config
         .connect(NoTls)
-        .expect("place page rows connection")
-        .query(
-            "SELECT DISTINCT ON(subject_id) subject_id, source_tick, markdown FROM babylon_meta.archive_page_revision_v2 \
-             WHERE campaign_id = $1::uuid AND subject_kind = 'place' ORDER BY subject_id,effective_tick DESC",
+        .expect("receipt hash connection")
+        .query_one(
+            "SELECT tick_content_hash FROM babylon_state.archive_dirty_receipt_v1 \
+             WHERE campaign_id = $1::uuid AND resolve_tick = 1",
             &[campaign_id.as_uuid()],
         )
-        .expect("place page rows query")
-        .iter()
-        .map(|row| {
-            (
-                row.try_get(0).expect("subject id decodes"),
-                row.try_get(1).expect("verified tick decodes"),
-                row.try_get(2).expect("markdown decodes"),
-            )
-        })
+        .expect("one committed dirty receipt")
+        .try_get(0)
+        .expect("dirty receipt digest");
+    PendingArchiveReceipt::try_new(1, hash.try_into().expect("exact digest width"))
+        .expect("pending receipt")
+}
+
+fn place_page_rows(config: &Config, campaign_id: CampaignId) -> Vec<(String, i64, String)> {
+    let rows=config.connect(NoTls).unwrap().query("SELECT DISTINCT ON(subject_id) subject_id,effective_tick,source_tick FROM babylon_meta.archive_page_revision_v2 WHERE campaign_id=$1 AND subject_kind='place' ORDER BY subject_id,effective_tick DESC", &[campaign_id.as_uuid()]).unwrap();
+    archive_reader::with_reader(config, |reader| {
+        rows.iter()
+            .map(|row| {
+                let id: String = row.get(0);
+                let tick: i64 = row.get(1);
+                let source: i64 = row.get(2);
+                let scope =
+                    archive_reader::scope_at(config, campaign_id, u64::try_from(tick).unwrap());
+                let subject =
+                    ArchivePageRef::try_new(ArchiveSubjectKind::Place, id.clone()).unwrap();
+                let read = reader
+                    .dossier_as_of(&scope, &subject, &ArchiveDossierBounds::default())
+                    .unwrap();
+                let ArchiveDossierState::Ready { page, .. } = read.state else {
+                    panic!("place ready");
+                };
+                (id, source, page.markdown)
+            })
+            .collect()
+    })
+}
+
+// Physical drain evidence is independent from a dossier's verified readiness.
+fn place_page_metadata(config: &Config, campaign_id: CampaignId) -> Vec<(String, i64)> {
+    config
+        .connect(NoTls)
+        .expect("place metadata connection")
+        .query(
+            "SELECT DISTINCT ON(subject_id) subject_id,source_tick \
+             FROM babylon_meta.archive_page_revision_v2 \
+             WHERE campaign_id=$1 AND subject_kind='place' \
+             ORDER BY subject_id,effective_tick DESC",
+            &[campaign_id.as_uuid()],
+        )
+        .expect("retained place metadata")
+        .into_iter()
+        .map(|row| (row.get(0), row.get(1)))
         .collect()
+}
+
+fn staged_place_markdown(
+    config: &Config,
+    campaign_id: CampaignId,
+    subject_id: &str,
+    tick: u64,
+) -> String {
+    let scope = archive_reader::scope_at(config, campaign_id, tick);
+    let subject = ArchivePageRef::try_new(ArchiveSubjectKind::Place, subject_id.to_owned())
+        .expect("exact place identity");
+    archive_reader::with_reader(config, |reader| {
+        let read = reader
+            .dossier_as_of(&scope, &subject, &ArchiveDossierBounds::default())
+            .expect("authenticated staged place dossier");
+        let ArchiveDossierState::Pending {
+            page: Some(page),
+            reason: ArchiveDossierPending::ReceiptProcessing,
+        } = read.state
+        else {
+            panic!(
+                "staged place must await receipt processing: {:?}",
+                read.state
+            );
+        };
+        assert_eq!(page.effective_tick, tick);
+        assert_eq!(page.content_source, scope);
+        page.markdown
+    })
+}
+
+// Compare exact physical framing as well as authenticated decoded Markdown.
+type StoredPlaceBody = (i16, i32, Vec<u8>, Vec<u8>, String);
+
+fn stored_place_body(
+    config: &Config,
+    campaign_id: CampaignId,
+    subject_id: &str,
+) -> StoredPlaceBody {
+    let row = config
+        .connect(NoTls)
+        .expect("place body connection")
+        .query_one(
+            "SELECT body_encoding,body_decoded_length,body_decoded_sha256,body_bytes,search_text \
+             FROM babylon_meta.archive_page_revision_v2 \
+             WHERE campaign_id=$1 AND subject_kind='place' AND subject_id=$2 \
+             ORDER BY effective_tick DESC LIMIT 1",
+            &[campaign_id.as_uuid(), &subject_id],
+        )
+        .expect("exact retained place body");
+    (row.get(0), row.get(1), row.get(2), row.get(3), row.get(4))
+}
+
+fn assert_stored_body(config: &Config, campaign_id: CampaignId, original: &StoredPlaceBody) {
+    assert_eq!(
+        &stored_place_body(config, campaign_id, "2622000"),
+        original,
+        "repeated materialization preserves the original packed page body"
+    );
 }
 
 fn detroit_row(rows: &[(String, i64, String)]) -> &(String, i64, String) {
@@ -300,7 +405,7 @@ fn staged_head_geoids(
     campaign_id: CampaignId,
     expected_len: usize,
 ) -> Vec<String> {
-    let geoids: Vec<String> = place_page_rows(config, campaign_id)
+    let geoids: Vec<String> = place_page_metadata(config, campaign_id)
         .iter()
         .map(|row| row.0.clone())
         .collect();
@@ -318,7 +423,7 @@ fn assert_new_geoids_sort_after_head(
     head_geoids: &[String],
 ) {
     let head_max = head_geoids.last().expect("head is nonempty").clone();
-    for (geoid, ..) in place_page_rows(config, campaign_id) {
+    for (geoid, ..) in place_page_metadata(config, campaign_id) {
         if !head_geoids.iter().any(|stored| stored == &geoid) {
             assert!(
                 geoid > head_max,
@@ -418,7 +523,7 @@ fn live_place_producer_pages_the_bootstrap_drain_across_sweeps() {
         receipt_consumption_count(&target.config, target.campaign_id),
         1
     );
-    for (_, verified_tick, _) in place_page_rows(&target.config, target.campaign_id) {
+    for (_, verified_tick) in place_page_metadata(&target.config, target.campaign_id) {
         assert_eq!(verified_tick, 1, "rerun never republishes a clean page");
     }
     target.finish();
@@ -543,20 +648,7 @@ fn live_staged_batch_restages_without_double_writes() {
     let allowlist = vec!["2622000".to_owned()];
     let producer = PlaceDossierProducer::with_place_allowlist(&target.config, &allowlist)
         .expect("sorted unique allowlist binds");
-    let hash: Vec<u8> = target
-        .config
-        .connect(NoTls)
-        .expect("receipt hash connection")
-        .query_one(
-            "SELECT tick_content_hash FROM babylon_state.archive_dirty_receipt_v1 \
-             WHERE campaign_id = $1::uuid AND resolve_tick = 1",
-            &[target.campaign_id.as_uuid()],
-        )
-        .expect("one committed dirty receipt")
-        .try_get(0)
-        .expect("dirty receipt digest");
-    let receipt = PendingArchiveReceipt::try_new(1, hash.try_into().expect("exact digest width"))
-        .expect("pending receipt");
+    let receipt = first_dirty_receipt(&target.config, target.campaign_id);
     let outcome = producer
         .produce(
             *target.campaign_id.as_uuid(),
@@ -583,6 +675,7 @@ fn live_staged_batch_restages_without_double_writes() {
         0,
         "staging writes pages without claiming the receipt"
     );
+    let original_body = stored_place_body(&target.config, target.campaign_id, "2622000");
 
     // An exact restage — the same sweep crashing between stage and consume —
     // is a no-op through the monotonic page guard and claims nothing.
@@ -602,9 +695,8 @@ fn live_staged_batch_restages_without_double_writes() {
         receipt_consumption_count(&target.config, target.campaign_id),
         0
     );
-    let markdown = place_page_rows(&target.config, target.campaign_id)[0]
-        .2
-        .clone();
+    assert_stored_body(&target.config, target.campaign_id, &original_body);
+    let markdown = staged_place_markdown(&target.config, target.campaign_id, "2622000", 1);
 
     // A later sweep finishes the drain in Consume mode and claims exactly once.
     let consumed = store
@@ -628,6 +720,7 @@ fn live_staged_batch_restages_without_double_writes() {
         markdown,
         "settling never rewrites page bytes"
     );
+    assert_stored_body(&target.config, target.campaign_id, &original_body);
 
     // After the claim, a stage-mode retry reconciles as AlreadyConsumed.
     let settled = store
@@ -642,6 +735,7 @@ fn live_staged_batch_restages_without_double_writes() {
         ArchiveMaterializeDisposition::AlreadyConsumed
     );
     assert_eq!(place_page_count(&target.config, target.campaign_id), 1);
+    assert_stored_body(&target.config, target.campaign_id, &original_body);
     target.finish();
 }
 

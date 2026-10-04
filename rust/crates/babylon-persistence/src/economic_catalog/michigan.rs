@@ -122,6 +122,8 @@ pub fn import_michigan_opening(catalog: &MichiganMaterialCatalog) -> Result<Econ
         equipment: vec![],
         capacity,
         policies: CatalogPolicies {
+            aid: babylon_material_circuit::AidBook::default(),
+            household_time: babylon_material_circuit::HouseholdTimeAccounting::NotModeled,
             offers: vec![],
             replenishment: vec![],
             household_purchases: vec![],

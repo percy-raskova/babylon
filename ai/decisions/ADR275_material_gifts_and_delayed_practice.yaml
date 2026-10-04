@@ -1,0 +1,79 @@
+ADR275_material_gifts_and_delayed_practice:
+  status: accepted
+  date: '2026-10-03'
+  issue: PER-58
+  title: Material gifts retain separate owners and delayed practice authority
+  evidence_class: Designed
+  authority:
+    - Director approves local aid and cross-region solidarity through real accounts
+    - Director requires delivered support, consumption and independent practice
+    - Repository rules require a decision record for an architecture change
+  context: |
+    Household time can constrain practice without establishing that support
+    arrived. Available time alone cannot establish aid completion. A remote
+    dispatch also needs to retain its original practice authorization until
+    physical arrival and recipient provisioning, without another paid command.
+  decision: |
+    Capture bounded mandates with exact donor and recipient households, goods,
+    units, payer, terms, route and source identity. Keep household goods ownership
+    separate from organization cash. Gifts are neither sales nor contributed
+    equity. Match cash reservations, grants and refunds, and retain the carrying
+    basis until actual grant or loss. Protect the donor's own current needs.
+
+    Resolve accepted gifts in the next material period. Use actual funded labor
+    and the shared finite freight allocator. Dispatch cannot grant remote goods;
+    actual arrival precedes household receipt and consumption. Partial loss or
+    scarcity leaves explicit evidence and exact remaining or refunded principal.
+
+    Retain at most two pending practice authorizations with their original
+    commitments and dates. Receiving consent does not authorize later partner
+    practice. The material host supplies matching grant and same-period positive
+    recipient consumption facts. Before arrival, spend no coordination time.
+    Grant without current consumption has a terminal not-provisioned result;
+    do not assert later donated-unit consumption without retained provenance.
+
+    After provisioning, resolve the independently authorized attempt against
+    named actual remaining household time. Aliases share one budget. Material
+    fulfillment debits time once; later coordination and partner response debit
+    the remaining supply once. Ordinary selected or standing work runs first on
+    later periods; a newly accepted aid choice replaces standing work in its
+    original period. Record this scheduling choice as Designed.
+
+    Separate waiting, physical failure, provisioning, time scarcity, refusal and
+    performed practice. Preserve original authorization and actual resolution
+    dates. No gift or practice creates agreement, membership, consciousness or
+    worker-hours. Failed detached ticks publish nothing; exact retries cannot
+    duplicate material admission or pending practice.
+
+    Include the current canonical organizer configuration in the captured source
+    frame. National configuration binds a typed source basis computed from the
+    absent-configuration frame. The final catalog digest includes configuration
+    and differs from that basis, avoiding a self-reference. Restart regenerates
+    and compares the exact campaign, policy, household and workplace bindings.
+    Unsupported earlier source layouts refuse without a compatibility reader.
+  alternatives: |
+    Fixed action points cannot replace conserved goods, cash or time. Current
+    availability alone cannot establish delivery. Requiring another command on
+    arrival spends resources twice and loses the original authorization. A
+    stale-period exception to ordinary command admission weakens authority.
+    Tagged-unit provenance could support stronger consumption attribution but
+    is unnecessary for the bounded first playable contrast and is not adopted.
+  consequences: |
+    Captured national household refinements conserve source people, households,
+    employment and time margins. Existing accounts fund organization cash.
+    Recipient class nodes do not invent employment or workforce participation.
+    Current material codecs and typed storage include gift accounts and evidence.
+    Old unsupported representations refuse; unique historical data is preserved.
+    Matching grant and consumption prove those events occurred together, not
+    that donated units caused marginal consumption or a specific release of time.
+    Implementation, remote replay, Postgres, native play and enjoyment require
+    separate qualification. This decision does not claim those checks passed.
+  verification:
+    - Local grants and remote dispatch, arrival, loss and refunds reconcile.
+    - Supply, payment, consumption and independent authority cuts remove consequences.
+    - Original remote authorization resolves after arrival without another command.
+    - Shared household aliases and fulfillment cannot spend the same time twice.
+    - Failed publication changes no graph, events, money, goods or pending state.
+    - Restart retains pending, in-transit and completed identities and dates exactly.
+    - National source margins, monetary totals and actual corridor membership persist.
+  source_record: reports/national-household-time-close-census-2026-10-02.md

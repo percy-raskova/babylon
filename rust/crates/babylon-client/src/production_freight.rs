@@ -5,8 +5,12 @@ use std::fmt::Write as _;
 
 use babylon_persistence::{
     production_observation::ProductionFreightCapacityAccount,
-    production_observation::ProductionFreightReservation, production_observation::ProductionRoute,
-    production_observation::ProductionSite, production_observation::ProductionSnapshot,
+    production_observation::ProductionFreightReservation,
+    production_observation::ProductionRoute,
+    production_observation::ProductionSite,
+    production_observation::ProductionSnapshot,
+    production_observation::{PhysicalRouteError, ProductionAidCapacityOrder},
+    ProductionHouseholdAccount,
 };
 
 /// Capacity mass is displayed in kilograms without rounding away gram residuals.
@@ -24,6 +28,7 @@ pub(crate) fn format_freight_mass(grams: u64) -> String {
 fn participating_routes<'a>(
     account: &ProductionFreightCapacityAccount,
     snapshot: &'a ProductionSnapshot,
+    definitions: &babylon_persistence::production_observation::PhysicalRouteIndex<'a>,
 ) -> Vec<&'a ProductionRoute> {
     let disclosed: BTreeSet<_> = snapshot.sites.iter().map(|site| site.id.as_str()).collect();
     let physical: BTreeSet<_> = account.route_ids.iter().map(String::as_str).collect();
@@ -32,10 +37,12 @@ fn participating_routes<'a>(
         .iter()
         .filter(|route| {
             physical.contains(route.physical_route_id.as_str())
-                && route
-                    .stages
-                    .iter()
-                    .any(|leg| leg.capacity_ids.contains(&account.corridor_id))
+                && definitions.get(route).is_some_and(|physical| {
+                    physical
+                        .stages
+                        .iter()
+                        .any(|leg| leg.capacity_ids.contains(&account.corridor_id))
+                })
                 && disclosed.contains(route.supplier_site_id.as_str())
                 && disclosed.contains(route.buyer_site_id.as_str())
         })
@@ -44,7 +51,10 @@ fn participating_routes<'a>(
     routes
 }
 
-fn capacity_routes(snapshot: &ProductionSnapshot) -> BTreeMap<&str, Vec<&ProductionRoute>> {
+fn capacity_routes<'a>(
+    snapshot: &'a ProductionSnapshot,
+    definitions: &babylon_persistence::production_observation::PhysicalRouteIndex<'a>,
+) -> BTreeMap<&'a str, Vec<&'a ProductionRoute>> {
     let disclosed: BTreeSet<_> = snapshot.sites.iter().map(|site| site.id.as_str()).collect();
     let mut result = BTreeMap::<_, Vec<_>>::new();
     for route in &snapshot.routes {
@@ -53,7 +63,10 @@ fn capacity_routes(snapshot: &ProductionSnapshot) -> BTreeMap<&str, Vec<&Product
         {
             continue;
         }
-        let capacities: BTreeSet<_> = route
+        let Some(physical) = definitions.get(route) else {
+            continue;
+        };
+        let capacities: BTreeSet<_> = physical
             .stages
             .iter()
             .flat_map(|stage| stage.capacity_ids.iter().map(String::as_str))
@@ -70,8 +83,22 @@ fn capacity_routes(snapshot: &ProductionSnapshot) -> BTreeMap<&str, Vec<&Product
 pub(crate) fn shared_accounts<'a>(
     snapshot: &'a ProductionSnapshot,
     selected_site: Option<&str>,
+) -> Result<Vec<&'a ProductionFreightCapacityAccount>, PhysicalRouteError> {
+    let definitions =
+        babylon_persistence::production_observation::PhysicalRouteIndex::try_new(snapshot)?;
+    Ok(shared_accounts_with_index(
+        snapshot,
+        selected_site,
+        &definitions,
+    ))
+}
+
+pub(crate) fn shared_accounts_with_index<'a>(
+    snapshot: &'a ProductionSnapshot,
+    selected_site: Option<&str>,
+    definitions: &babylon_persistence::production_observation::PhysicalRouteIndex<'a>,
 ) -> Vec<&'a ProductionFreightCapacityAccount> {
-    let routes = capacity_routes(snapshot);
+    let routes = capacity_routes(snapshot, definitions);
     let mut accounts: Vec<_> = snapshot
         .freight_capacity_accounts
         .iter()
@@ -81,9 +108,9 @@ pub(crate) fn shared_accounts<'a>(
             {
                 return false;
             }
-            let Some(participants) = routes.get(account.corridor_id.as_str()) else {
-                return false;
-            };
+            let participants = routes
+                .get(account.corridor_id.as_str())
+                .map_or(&[][..], Vec::as_slice);
             let physical: BTreeSet<_> = account.route_ids.iter().map(String::as_str).collect();
             let mut count = 0;
             let mut selected = selected_site.is_none();
@@ -95,7 +122,20 @@ pub(crate) fn shared_accounts<'a>(
                 selected |= selected_site
                     .is_some_and(|id| route.supplier_site_id == id || route.buyer_site_id == id);
             }
-            count > 1 && selected
+            let support = account
+                .completed
+                .iter()
+                .flat_map(|done| &done.reservations)
+                .flat_map(|r| &r.support_orders)
+                .filter_map(|order| support_participants(account, order, snapshot));
+            let mut aid = false;
+            for (donor, recipient) in support {
+                aid = true;
+                selected |= selected_site.is_some_and(|id| {
+                    donor.retailer_site_id == id || recipient.retailer_site_id == id
+                });
+            }
+            (count > 1 || aid) && selected
         })
         .collect();
     accounts.sort_by(|a, b| {
@@ -103,6 +143,120 @@ pub(crate) fn shared_accounts<'a>(
             .cmp(&(b.next_opening_available_grams, &b.corridor_id))
     });
     accounts
+}
+
+fn support_participants<'a>(
+    account: &ProductionFreightCapacityAccount,
+    order: &ProductionAidCapacityOrder,
+    snapshot: &'a ProductionSnapshot,
+) -> Option<(
+    &'a ProductionHouseholdAccount,
+    &'a ProductionHouseholdAccount,
+)> {
+    if !account.route_ids.contains(&order.route_id) {
+        return None;
+    }
+    let find = |id: &str| {
+        snapshot.household_accounts.iter().find(|row| {
+            row.demand_principal_id == id
+                && row.good_id == order.good_id
+                && row.unit_id == order.unit_id
+        })
+    };
+    Some((
+        find(&order.donor_principal_id)?,
+        find(&order.recipient_principal_id)?,
+    ))
+}
+fn describe_support(
+    output: &mut String,
+    account: &ProductionFreightCapacityAccount,
+    reservation: &ProductionFreightReservation,
+    snapshot: &ProductionSnapshot,
+) {
+    if reservation.support_orders.len() > 6 {
+        writeln!(
+            output,
+            "{} household aid accounts; showing six.",
+            reservation.support_orders.len()
+        )
+        .expect("String write");
+    }
+    for order in reservation.support_orders.iter().take(6) {
+        let Some((donor, recipient)) = support_participants(account, order, snapshot) else {
+            output.push_str("Household support detail unavailable in this observation.\n");
+            continue;
+        };
+        writeln!(output,"HOUSEHOLD AID / {} -> {} / {}\nDispatched {} {} · reserved {}\nHouseholds can use this support after arrival.",
+            donor.location,recipient.location,donor.good,order.dispatched,donor.unit,format_freight_mass(order.reserved_grams)).expect("String write");
+    }
+}
+fn compare_support(
+    output: &mut String,
+    left: &ProductionFreightReservation,
+    right: &ProductionFreightReservation,
+    current: &ProductionSnapshot,
+    compared: &ProductionSnapshot,
+    a: &ProductionFreightCapacityAccount,
+    b: &ProductionFreightCapacityAccount,
+) {
+    let ids: BTreeSet<_> = left
+        .support_orders
+        .iter()
+        .chain(&right.support_orders)
+        .map(|r| r.mandate_id.as_str())
+        .collect();
+    for id in ids.into_iter().take(6) {
+        let (Some(l), Some(r)) = (
+            left.support_orders.iter().find(|r| r.mandate_id == id),
+            right.support_orders.iter().find(|r| r.mandate_id == id),
+        ) else {
+            output.push_str("Comparable household support unavailable.\n");
+            continue;
+        };
+        let (Some((donor, recipient)), Some(_)) = (
+            support_participants(a, l, current),
+            support_participants(b, r, compared),
+        ) else {
+            output.push_str("Comparable household support unavailable.\n");
+            continue;
+        };
+        if (
+            l.donor_principal_id.as_str(),
+            l.recipient_principal_id.as_str(),
+            l.route_id.as_str(),
+            l.good_id.as_str(),
+            l.unit_id.as_str(),
+        ) != (
+            r.donor_principal_id.as_str(),
+            r.recipient_principal_id.as_str(),
+            r.route_id.as_str(),
+            r.good_id.as_str(),
+            r.unit_id.as_str(),
+        ) {
+            output.push_str("Comparable household support unavailable.\n");
+            continue;
+        }
+        writeln!(
+            output,
+            "HOUSEHOLD AID / {} -> {} / {}",
+            donor.location, recipient.location, donor.good
+        )
+        .expect("String write");
+        pair(
+            output,
+            "Support dispatched",
+            l.dispatched,
+            r.dispatched,
+            &donor.unit,
+        );
+        capacity_pair(
+            output,
+            "Support reserved",
+            l.reserved_grams,
+            r.reserved_grams,
+        );
+    }
 }
 
 fn route_label(route: &ProductionRoute, snapshot: &ProductionSnapshot) -> String {
@@ -156,12 +310,32 @@ pub(crate) fn account_brief(account: &ProductionFreightCapacityAccount) -> Strin
     output
 }
 
-pub(crate) fn account_reading(
+#[cfg(test)]
+fn account_reading(
     account: &ProductionFreightCapacityAccount,
     snapshot: &ProductionSnapshot,
 ) -> String {
+    let Ok(definitions) =
+        babylon_persistence::production_observation::PhysicalRouteIndex::try_new(snapshot)
+    else {
+        return "Physical route details unavailable in this observation.\n".into();
+    };
+    let Ok(orders) =
+        babylon_persistence::production_observation::FreightOrderIndex::try_new(snapshot)
+    else {
+        return "Freight order details unavailable in this observation.\n".into();
+    };
+    account_reading_with_index(account, snapshot, &definitions, &orders)
+}
+
+pub(crate) fn account_reading_with_index<'a>(
+    account: &ProductionFreightCapacityAccount,
+    snapshot: &'a ProductionSnapshot,
+    definitions: &babylon_persistence::production_observation::PhysicalRouteIndex<'a>,
+    orders: &babylon_persistence::production_observation::FreightOrderIndex<'a>,
+) -> String {
     let mut output = format!("{}\n", account.corridor_label);
-    let routes = participating_routes(account, snapshot);
+    let routes = participating_routes(account, snapshot, definitions);
     if let Some(completed) = &account.completed {
         writeln!(output, "COMMITTED DISPATCH / PERIOD {}", completed.period).expect("String write");
         for reservation in &completed.reservations {
@@ -177,7 +351,10 @@ pub(crate) fn account_reading(
             if reservation.orders.len() > 6 {
                 writeln!(output, "{} order accounts; showing six. Other participants are available in the circuit rail.", reservation.orders.len()).expect("String write");
             }
-            for order in reservation.orders.iter().take(6) {
+            for reference in reservation.orders.iter().take(6) {
+                let Some(order) = orders.get(reference) else {
+                    return "Freight order details unavailable in this observation.\n".into();
+                };
                 let Some(route) = routes.iter().find(|route| {
                     Some(route.id.as_str()) == order.supplier_relation_id.as_deref()
                         && Some(route.physical_route_id.as_str()) == order.route_id.as_deref()
@@ -201,6 +378,7 @@ pub(crate) fn account_reading(
                 )
                 .expect("String write");
             }
+            describe_support(&mut output, account, reservation, snapshot);
         }
         if completed.reservations.is_empty() {
             output.push_str("No new capacity reservations in this completed period.\n");
@@ -214,6 +392,7 @@ pub(crate) fn account_reading(
         .iter()
         .flat_map(|completed| &completed.reservations)
         .flat_map(|reservation| &reservation.orders)
+        .filter_map(|reference| orders.get(reference))
         .filter_map(|order| order.supplier_relation_id.as_deref())
         .collect();
     for route in routes
@@ -233,8 +412,8 @@ pub(crate) fn account_reading(
 pub(crate) fn competitor_sites<'a>(
     site_id: &str,
     snapshot: &'a ProductionSnapshot,
-) -> Vec<&'a ProductionSite> {
-    let route_ids: BTreeSet<_> = shared_accounts(snapshot, Some(site_id))
+) -> Result<Vec<&'a ProductionSite>, PhysicalRouteError> {
+    let route_ids: BTreeSet<_> = shared_accounts(snapshot, Some(site_id))?
         .into_iter()
         .flat_map(|account| &account.route_ids)
         .collect();
@@ -255,19 +434,25 @@ pub(crate) fn competitor_sites<'a>(
         .iter()
         .map(|site| (site.id.as_str(), site))
         .collect();
-    ids.into_iter()
+    Ok(ids
+        .into_iter()
         .filter_map(|id| sites.get(id.as_str()).copied())
-        .collect()
+        .collect())
 }
 
 fn grouped_orders<'a>(
     reservation: &ProductionFreightReservation,
     routes: &[&'a ProductionRoute],
+    orders: &babylon_persistence::production_observation::FreightOrderIndex<'_>,
 ) -> (BTreeMap<&'a str, [u64; 3]>, bool) {
     let routes: BTreeMap<_, _> = routes.iter().map(|r| (r.id.as_str(), *r)).collect();
     let mut result = BTreeMap::<_, [u64; 3]>::new();
     let mut invalid = false;
-    for order in &reservation.orders {
+    for reference in &reservation.orders {
+        let Some(order) = orders.get(reference) else {
+            invalid = true;
+            continue;
+        };
         let Some(route) = order
             .supplier_relation_id
             .as_deref()
@@ -316,14 +501,17 @@ fn compare_orders(
     r_a: &ProductionFreightReservation,
     r_b: &ProductionFreightReservation,
     current: &ProductionSnapshot,
-    compared: &ProductionSnapshot,
-    a: &ProductionFreightCapacityAccount,
-    b: &ProductionFreightCapacityAccount,
+    (current_routes, current_orders): (
+        &[&ProductionRoute],
+        &babylon_persistence::production_observation::FreightOrderIndex<'_>,
+    ),
+    (compared_routes, compared_orders): (
+        &[&ProductionRoute],
+        &babylon_persistence::production_observation::FreightOrderIndex<'_>,
+    ),
 ) {
-    let current_routes = participating_routes(a, current);
-    let compared_routes = participating_routes(b, compared);
-    let (left, bad_left) = grouped_orders(r_a, &current_routes);
-    let (right, bad_right) = grouped_orders(r_b, &compared_routes);
+    let (left, bad_left) = grouped_orders(r_a, current_routes, current_orders);
+    let (right, bad_right) = grouped_orders(r_b, compared_routes, compared_orders);
     if bad_left || bad_right {
         output.push_str("Comparable route endpoints unavailable.\n");
     }
@@ -396,6 +584,26 @@ fn compare_reservation_capacity(
     }
 }
 
+fn compare_next_capacity(
+    output: &mut String,
+    current: &ProductionFreightCapacityAccount,
+    compared: &ProductionFreightCapacityAccount,
+) {
+    if current.next_opening_period == compared.next_opening_period {
+        capacity_pair(
+            output,
+            &format!(
+                "Next opening capacity (period {})",
+                current.next_opening_period
+            ),
+            current.next_opening_available_grams,
+            compared.next_opening_available_grams,
+        );
+    } else {
+        output.push_str("Next opening capacity periods do not match.\n");
+    }
+}
+
 fn capacity_changed(
     period: u64,
     current: &ProductionFreightCapacityAccount,
@@ -415,7 +623,9 @@ fn capacity_changed(
         && a.reservations.iter().any(|left| {
             b.reservations.iter().any(|right| {
                 left.reservation_period == right.reservation_period
-                    && left.opening_available_grams != right.opening_available_grams
+                    && (left.opening_available_grams != right.opening_available_grams
+                        || left.support_orders.iter().collect::<BTreeSet<_>>()
+                            != right.support_orders.iter().collect::<BTreeSet<_>>())
             })
         })
 }
@@ -450,8 +660,20 @@ pub(crate) fn comparison_reading(
     compared: &ProductionSnapshot,
     selected_site: Option<&str>,
 ) -> String {
-    let left = shared_accounts(current, selected_site);
-    let right = shared_accounts(compared, selected_site);
+    let (Ok(current_definitions), Ok(compared_definitions)) = (
+        babylon_persistence::production_observation::PhysicalRouteIndex::try_new(current),
+        babylon_persistence::production_observation::PhysicalRouteIndex::try_new(compared),
+    ) else {
+        return "Physical route comparison unavailable in this observation.\n".into();
+    };
+    let (Ok(current_orders), Ok(compared_orders)) = (
+        babylon_persistence::production_observation::FreightOrderIndex::try_new(current),
+        babylon_persistence::production_observation::FreightOrderIndex::try_new(compared),
+    ) else {
+        return "Freight order comparison unavailable in this observation.\n".into();
+    };
+    let left = shared_accounts_with_index(current, selected_site, &current_definitions);
+    let right = shared_accounts_with_index(compared, selected_site, &compared_definitions);
     let keys = comparison_keys(period, &left, &right);
     let mut output = String::new();
     if keys.len() > 6 {
@@ -474,16 +696,7 @@ pub(crate) fn comparison_reading(
             a.corridor_label
         )
         .expect("String write");
-        if a.next_opening_period == b.next_opening_period {
-            capacity_pair(
-                &mut output,
-                &format!("Next opening capacity (period {})", a.next_opening_period),
-                a.next_opening_available_grams,
-                b.next_opening_available_grams,
-            );
-        } else {
-            output.push_str("Next opening capacity periods do not match.\n");
-        }
+        compare_next_capacity(&mut output, a, b);
         let (Some(done_a), Some(done_b)) = (&a.completed, &b.completed) else {
             if period == 0 && a.completed.is_none() && b.completed.is_none() {
                 output.push_str("No completed freight reservations at foundation.\n\n");
@@ -505,6 +718,8 @@ pub(crate) fn comparison_reading(
         if reservations.is_empty() {
             output.push_str("No new capacity reservations in this completed period.\n");
         }
+        let current_routes = participating_routes(a, current, &current_definitions);
+        let compared_routes = participating_routes(b, compared, &compared_definitions);
         for reservation_period in reservations {
             writeln!(output, "Reservation period {reservation_period} / 28 days")
                 .expect("String write");
@@ -522,7 +737,15 @@ pub(crate) fn comparison_reading(
                 continue;
             };
             compare_reservation_capacity(&mut output, r_a, r_b);
-            compare_orders(&mut output, r_a, r_b, current, compared, a, b);
+            compare_orders(
+                &mut output,
+                r_a,
+                r_b,
+                current,
+                (&current_routes, &current_orders),
+                (&compared_routes, &compared_orders),
+            );
+            compare_support(&mut output, r_a, r_b, current, compared, a, b);
         }
         output.push('\n');
     }
@@ -541,7 +764,30 @@ pub(crate) mod tests {
         production_observation::ProductionSite, production_observation::ProductionSnapshot,
     };
 
+    fn rekey(snapshot: &mut ProductionSnapshot) {
+        for definition in &mut snapshot.freight_order_definitions {
+            let prior = definition.id.clone();
+            definition.id = babylon_persistence::production_observation::freight_order_identity(
+                &definition.order,
+            )
+            .unwrap();
+            for account in &mut snapshot.freight_capacity_accounts {
+                if let Some(completed) = &mut account.completed {
+                    for reservation in &mut completed.reservations {
+                        for reference in &mut reservation.orders {
+                            if *reference == prior {
+                                *reference = definition.id.clone();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     pub(crate) fn fixture() -> ProductionSnapshot {
+        let mut freight_order_definitions = Vec::new();
+        let capacity = capacity_fixture(&mut freight_order_definitions);
         let sites = ["steel", "panels", "mill", "meals"]
             .into_iter()
             .map(|id| ProductionSite {
@@ -581,10 +827,6 @@ pub(crate) mod tests {
         .into_iter()
         .map(|(id, supplier, buyer, ordered, shipped)| ProductionRoute {
             physical_route_id: id.into(),
-            physical_edge_ids: Vec::new(),
-            distance_mm: None,
-            transport_kind:
-                babylon_persistence::production_observation::ProductionRouteTransport::Staged,
             grams_per_unit: 1000,
             id: id.into(),
             supplier_site_id: supplier.into(),
@@ -593,21 +835,23 @@ pub(crate) mod tests {
             unit_id: "kg".into(),
             good: id.into(),
             unit: "kg".into(),
-            travel_periods: 1,
             ordered,
             shipped,
             delivered: 0,
             lost: 0,
             realized: 0,
             backlog: ordered - shipped,
-            stages: vec![ProductionRouteStage {
-                stage_index: 0,
-                capacity_ids: vec!["pool".into()],
-                travel_periods: 1,
-            }],
         })
         .collect();
         ProductionSnapshot {
+            physical_routes: ["sheets", "meal"].into_iter().map(|id| babylon_persistence::production_observation::PhysicalRouteDefinition {
+                id: id.into(), physical_edge_ids: Vec::new(), distance_mm: None,
+                transport_kind: babylon_persistence::production_observation::ProductionRouteTransport::Staged,
+                travel_periods: 1, stages: vec![ProductionRouteStage {
+                    stage_index: 0, capacity_ids: vec!["pool".into()], travel_periods: 1,
+                }],
+            }).collect(),
+
             household_accounts: Vec::new(),
             household_service_accounts: Vec::new(),
             goods_price_accounts: Vec::new(),
@@ -630,11 +874,16 @@ pub(crate) mod tests {
             observed_contexts: Vec::new(),
             national_observed_contexts: Vec::new(),
             process_attributions: Vec::new(),
-            freight_capacity_accounts: vec![capacity_fixture()],
+            freight_capacity_accounts: vec![capacity],
+            freight_order_definitions,
         }
     }
 
-    fn capacity_fixture() -> ProductionFreightCapacityAccount {
+    fn capacity_fixture(
+        definitions: &mut Vec<
+            babylon_persistence::production_observation::ProductionFreightOrderDefinition,
+        >,
+    ) -> ProductionFreightCapacityAccount {
         ProductionFreightCapacityAccount {
             corridor_id: "pool".into(),
             corridor_label: "Designed regional freight pool".into(),
@@ -646,6 +895,7 @@ pub(crate) mod tests {
             completed: Some(CompletedProductionFreightCapacity {
                 period: 1,
                 reservations: vec![ProductionFreightReservation {
+                    support_orders: Vec::new(),
                     reservation_period: 1,
                     opening_available_grams: 160_000,
                     newly_reserved_grams: 160_000,
@@ -653,7 +903,7 @@ pub(crate) mod tests {
                     orders: [("sheets", 600, 120), ("meal", 200, 40)]
                         .into_iter()
                         .map(
-                            |(id, requested, dispatched)| ProductionFreightCapacityOrder {
+                            |(id, requested, dispatched)| { let order = ProductionFreightCapacityOrder {
                                 supplier_relation_id: Some(id.into()),
                                 order_id: format!("order-{id}"),
                                 route_id: Some(id.into()),
@@ -671,7 +921,9 @@ pub(crate) mod tests {
                                 requested,
                                 dispatched,
                                 remaining_unshipped: requested - dispatched,
-                            },
+                            };
+                            let id = babylon_persistence::production_observation::freight_order_identity(&order).unwrap();
+                            definitions.push(babylon_persistence::production_observation::ProductionFreightOrderDefinition { id: id.clone(), order }); id },
                         )
                         .collect(),
                 }],
@@ -679,9 +931,98 @@ pub(crate) mod tests {
         }
     }
 
+    pub(crate) fn aid_fixture() -> ProductionSnapshot {
+        let mut snapshot = fixture();
+        snapshot.household_accounts = [
+            ("donor", "county:26163", "panels"),
+            ("recipient", "county:17031", "meals"),
+        ]
+        .into_iter()
+        .map(|(id, location, retailer)| ProductionHouseholdAccount {
+            kind: babylon_persistence::ProductionHouseholdKind::Ordinary,
+            demand_principal_id: id.into(),
+            location: location.parse().unwrap(),
+            good_id: "food".into(),
+            unit_id: "food-unit".into(),
+            good: "food".into(),
+            unit: "food units".into(),
+            household_count: 4,
+            person_count: 4,
+            retailer_site_id: retailer.into(),
+            stock_on_hand: 0,
+            required_per_period: 4,
+            completed: None,
+        })
+        .collect();
+        let account = &mut snapshot.freight_capacity_accounts[0];
+        account.route_ids.push("aid-route".into());
+        let reservation = &mut account.completed.as_mut().unwrap().reservations[0];
+        reservation.opening_available_grams = 188_000;
+        reservation.newly_reserved_grams = 188_000;
+        reservation.support_orders.push(ProductionAidCapacityOrder {
+            commitment_id: "aid-commitment".into(),
+            mandate_id: "aid-mandate".into(),
+            donor_principal_id: "donor".into(),
+            recipient_principal_id: "recipient".into(),
+            route_id: "aid-route".into(),
+            good_id: "food".into(),
+            unit_id: "food-unit".into(),
+            dispatched: 2,
+            grams_per_unit: 14_000,
+            reserved_grams: 28_000,
+        });
+        snapshot
+    }
+    #[test]
+    fn household_aid_capacity_has_its_own_disclosed_parties_and_mass() {
+        let mut snapshot = aid_fixture();
+        snapshot.routes.retain(|r| r.id == "sheets");
+        assert_eq!(shared_accounts(&snapshot, Some("meals")).unwrap().len(), 1);
+        let text = account_reading(&snapshot.freight_capacity_accounts[0], &snapshot);
+        assert!(text.contains("HOUSEHOLD AID / county:26163 -> county:17031 / food"));
+        assert!(text.contains("Dispatched 2 food units · reserved 28 kg"));
+        assert!(!text.contains("Requested 2"));
+        let mut other = snapshot.clone();
+        let row = &mut other.freight_capacity_accounts[0]
+            .completed
+            .as_mut()
+            .unwrap()
+            .reservations[0]
+            .support_orders[0];
+        row.dispatched = 1;
+        row.reserved_grams = 14_000;
+        other.freight_capacity_accounts[0]
+            .completed
+            .as_mut()
+            .unwrap()
+            .reservations[0]
+            .newly_reserved_grams = 174_000;
+        other.freight_capacity_accounts[0]
+            .completed
+            .as_mut()
+            .unwrap()
+            .reservations[0]
+            .remaining_available_grams = 14_000;
+        let comparison = comparison_reading(1, &snapshot, &other, Some("meals"));
+        assert!(comparison.contains("Support dispatched: 2 / 1 food units"));
+        assert!(comparison.contains("Support reserved: 28 kg / 14 kg"));
+        snapshot
+            .household_accounts
+            .retain(|r| r.demand_principal_id != "recipient");
+        assert!(shared_accounts(&snapshot, Some("meals"))
+            .unwrap()
+            .is_empty());
+        let hidden = account_reading(&snapshot.freight_capacity_accounts[0], &snapshot);
+        assert!(hidden.contains("Household support detail unavailable in this observation."));
+        assert!(!hidden.contains("HOUSEHOLD AID"));
+        assert!(!hidden.contains("Dispatched 2 food units"));
+        assert!(!hidden.contains("aid-commitment"));
+        assert!(!comparison_reading(1, &other, &snapshot, None).contains("Support dispatched:"));
+    }
+
     #[test]
     fn capacity_briefs_preserve_every_gram_as_exact_kilograms() {
-        let mut account = capacity_fixture();
+        let mut account = capacity_fixture(&mut Vec::new());
         account.completed = None;
         for (grams, expected) in [
             (0, "0 kg"),
@@ -710,9 +1051,11 @@ pub(crate) mod tests {
         let reservation = &mut account.completed.as_mut().unwrap().reservations[0];
         reservation.newly_reserved_grams = 159_999;
         reservation.remaining_available_grams = 1;
-        reservation.orders[0].unit_id = "panel".into();
+
         let brief = account_brief(account);
         assert!(brief.contains("160 kg opening · 159.999 kg reserved · 0.001 kg remaining"));
+        snapshot.freight_order_definitions[0].order.unit_id = "panel".into();
+        rekey(&mut snapshot);
         let text = account_reading(&snapshot.freight_capacity_accounts[0], &snapshot);
         assert!(text.contains("Newly reserved 159.999 kg\nRemaining 0.001 kg"));
         assert!(text.contains("Next opening (period 2): 0.001 kg available"));
@@ -726,7 +1069,7 @@ pub(crate) mod tests {
     #[test]
     fn shared_pool_is_counted_once_and_names_both_competing_chains() {
         let snapshot = fixture();
-        let accounts = shared_accounts(&snapshot, Some("panels"));
+        let accounts = shared_accounts(&snapshot, Some("panels")).unwrap();
         assert_eq!(accounts.len(), 1);
         let text = account_reading(accounts[0], &snapshot);
         assert_eq!(text.matches("Designed regional freight pool").count(), 1);
@@ -742,17 +1085,28 @@ pub(crate) mod tests {
     #[test]
     fn unmatched_reservation_reports_unavailable_detail_without_disclosing_order_data() {
         let mut snapshot = fixture();
-        let orders = &mut snapshot.freight_capacity_accounts[0]
+        let mut unavailable = snapshot.freight_order_definitions[0].order.clone();
+        unavailable.order_id = "private-order".into();
+        unavailable.route_id = Some("private-route".into());
+        unavailable.requested = 987_654;
+        unavailable.remaining_unshipped = unavailable.requested - unavailable.dispatched;
+        unavailable.requested_grams =
+            u128::from(unavailable.requested) * u128::from(unavailable.grams_per_unit);
+        let id = babylon_persistence::production_observation::freight_order_identity(&unavailable)
+            .unwrap();
+        snapshot.freight_order_definitions.push(
+            babylon_persistence::production_observation::ProductionFreightOrderDefinition {
+                id: id.clone(),
+                order: unavailable,
+            },
+        );
+        snapshot.freight_capacity_accounts[0]
             .completed
             .as_mut()
             .unwrap()
             .reservations[0]
-            .orders;
-        let mut unavailable = orders[0].clone();
-        unavailable.order_id = "private-order".into();
-        unavailable.route_id = Some("private-route".into());
-        unavailable.requested = 987_654;
-        orders.push(unavailable);
+            .orders
+            .push(id);
         let reading = account_reading(&snapshot.freight_capacity_accounts[0], &snapshot);
         assert!(reading.contains("Reservation route detail unavailable in this observation."));
         let comparison = comparison_reading(1, &snapshot, &snapshot, None);
@@ -769,6 +1123,7 @@ pub(crate) mod tests {
     fn foundation_and_completed_zero_have_different_capacity_readings() {
         let mut snapshot = fixture();
         snapshot.freight_capacity_accounts[0].completed = None;
+        snapshot.freight_order_definitions.clear();
         snapshot.freight_capacity_accounts[0].next_opening_period = 1;
         let text = account_reading(&snapshot.freight_capacity_accounts[0], &snapshot);
         assert!(text.contains("No completed freight reservations at foundation"));
@@ -783,19 +1138,42 @@ pub(crate) mod tests {
             .reservations[0];
         reservation.newly_reserved_grams = 0;
         reservation.remaining_available_grams = 160_000;
-        for order in &mut reservation.orders {
-            order.dispatched = 0;
-            order.remaining_unshipped = order.requested;
+        for definition in &mut snapshot.freight_order_definitions {
+            definition.order.dispatched = 0;
+            definition.order.reserved_grams = 0;
+            definition.order.remaining_unshipped = definition.order.requested;
         }
+        rekey(&mut snapshot);
         let text = account_reading(&snapshot.freight_capacity_accounts[0], &snapshot);
         assert!(text.contains("Newly reserved 0 kg\nRemaining 160 kg"));
         assert!(!text.contains("at foundation"));
     }
 
     #[test]
+    fn invalid_route_definitions_are_not_empty_shared_membership() {
+        let mut snapshot = fixture();
+        assert!(shared_accounts(&snapshot, Some("undisclosed"))
+            .unwrap()
+            .is_empty());
+        assert!(competitor_sites("undisclosed", &snapshot)
+            .unwrap()
+            .is_empty());
+        snapshot.physical_routes.clear();
+        assert!(matches!(
+            shared_accounts(&snapshot, Some("panels")),
+            Err(PhysicalRouteError::Missing)
+        ));
+        assert!(matches!(
+            competitor_sites("panels", &snapshot),
+            Err(PhysicalRouteError::Missing)
+        ));
+    }
+
+    #[test]
     fn competitor_navigation_exposes_disclosed_peers_without_supplier_edges() {
         let mut snapshot = fixture();
         let peers: Vec<_> = competitor_sites("panels", &snapshot)
+            .unwrap()
             .into_iter()
             .map(|site| site.id.as_str())
             .collect();
@@ -805,8 +1183,10 @@ pub(crate) mod tests {
             1
         );
         snapshot.sites.retain(|site| site.id != "mill");
-        assert!(competitor_sites("panels", &snapshot).is_empty());
-        assert!(shared_accounts(&snapshot, Some("panels")).is_empty());
+        assert!(competitor_sites("panels", &snapshot).unwrap().is_empty());
+        assert!(shared_accounts(&snapshot, Some("panels"))
+            .unwrap()
+            .is_empty());
     }
 
     #[test]
@@ -822,11 +1202,15 @@ pub(crate) mod tests {
         reservation.opening_available_grams = 800_000;
         reservation.newly_reserved_grams = 400_000;
         reservation.remaining_available_grams = 400_000;
-        reservation.orders[0].dispatched = 320;
-        reservation.orders[0].remaining_unshipped = 280;
-        reservation.orders[1].dispatched = 80;
-        reservation.orders[1].remaining_unshipped = 120;
+
         reservation.orders.reverse();
+        other.freight_order_definitions[0].order.dispatched = 320;
+        other.freight_order_definitions[0].order.reserved_grams = 320_000;
+        other.freight_order_definitions[0].order.remaining_unshipped = 280;
+        other.freight_order_definitions[1].order.dispatched = 80;
+        other.freight_order_definitions[1].order.reserved_grams = 80_000;
+        other.freight_order_definitions[1].order.remaining_unshipped = 120;
+        rekey(&mut other);
         let text = comparison_reading(1, &current, &other, None);
         assert_eq!(text.matches("Designed regional freight pool").count(), 1);
         assert!(text.contains("Reservation period 1"));
@@ -849,7 +1233,7 @@ pub(crate) mod tests {
             let mut current = fixture();
             current.freight_capacity_accounts = (0..8)
                 .map(|index| {
-                    let mut account = capacity_fixture();
+                    let mut account = capacity_fixture(&mut Vec::new());
                     account.corridor_id = format!("pool-{index}");
                     account.corridor_label = format!("Road pool {index}");
                     if period == 0 {
@@ -859,7 +1243,10 @@ pub(crate) mod tests {
                     account
                 })
                 .collect();
-            for route in &mut current.routes {
+            if period == 0 {
+                current.freight_order_definitions.clear();
+            }
+            for route in &mut current.physical_routes {
                 route.stages[0].capacity_ids = current
                     .freight_capacity_accounts
                     .iter()
@@ -892,17 +1279,34 @@ pub(crate) mod tests {
     fn comparisons_group_relations_when_recurring_order_ids_differ() {
         let left = fixture();
         let mut right = left.clone();
-        let orders = &mut right.freight_capacity_accounts[0]
-            .completed
-            .as_mut()
-            .unwrap()
-            .reservations[0]
-            .orders;
-        for row in orders {
-            row.order_id = format!("renewed-{}", row.order_id);
+        for definition in &mut right.freight_order_definitions {
+            definition.order.order_id = format!("renewed-{}", definition.order.order_id);
         }
+        rekey(&mut right);
         let text = comparison_reading(1, &left, &right, None);
         assert!(text.contains("Dispatched: 120 / 120 kg"));
         assert!(!text.contains("Comparable route order unavailable"));
+    }
+    #[test]
+    fn missing_or_forged_shared_order_facts_refuse_reading_and_comparison() {
+        let original = fixture();
+        for missing in [true, false] {
+            let mut changed = original.clone();
+            if missing {
+                changed.freight_order_definitions.remove(0);
+            } else {
+                changed.freight_order_definitions[0].order.requested = 987_654;
+            }
+            let text = account_reading(&changed.freight_capacity_accounts[0], &changed);
+            assert_eq!(
+                text,
+                "Freight order details unavailable in this observation.\n"
+            );
+            assert_eq!(
+                comparison_reading(1, &original, &changed, None),
+                "Freight order comparison unavailable in this observation.\n"
+            );
+            assert!(!text.contains("987654"));
+        }
     }
 }

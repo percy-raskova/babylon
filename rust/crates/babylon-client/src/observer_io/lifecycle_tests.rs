@@ -235,7 +235,7 @@ fn lifecycle_switch_waits_for_commit_ack_then_clears_scoped_observations() {
     let state = app.world().resource::<ObserverSession>();
     let original = state.context();
     let snapshot = snapshot_with_event(state, "production", 3);
-    app.insert_resource(ObserverFrame(Some(snapshot)))
+    app.insert_resource(ObserverFrame(Some(snapshot), None))
         .insert_resource(DossierCampaignId(original.campaign))
         .init_resource::<ActiveCountyDossier>()
         .init_resource::<DossierFetchState>();
@@ -357,7 +357,7 @@ fn return_to_a_rejects_stale_results(failed_b: bool) {
     install_observation(
         &mut app.world_mut().resource_mut::<ObserverSession>(),
         &old_context,
-        old_snapshot,
+        PreparedObservation::new(old_snapshot),
         &mut frame,
         false,
     );

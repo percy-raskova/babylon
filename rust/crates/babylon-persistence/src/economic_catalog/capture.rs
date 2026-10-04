@@ -58,8 +58,8 @@ impl CapturedEconomicCatalog {
         validate_text_sources(&input)?;
         let compiler = compiler_for(&input)?;
         // Check framing and byte bounds before source expansion or generation.
-        let bytes = codec::encode(&input, compiler)?;
-        let digest = sha256_of(&bytes);
+        // Check and release request framing before expansion; finalize after admission.
+        drop(codec::encode(&input, compiler)?);
         let local_detail = local_detail(&input)?;
         let spatial_detail = spatial_detail(&input, local_detail.as_ref())?;
         let (sources, opening) = match input.geography {
@@ -73,9 +73,26 @@ impl CapturedEconomicCatalog {
                 (CapturedSources::Michigan(Box::new(sources)), opening)
             }
         };
+        if let (CapturedSources::National(national), Some(config)) = (&sources, &input.organizer) {
+            let mut source_only = input.clone();
+            source_only.organizer = None;
+            let source_basis = sha256_of(&codec::encode(&source_only, compiler)?);
+            let expected_config = crate::national_economy::organizer::assemble(
+                config.campaign_id,
+                crate::national_economy::organizer::NationalOrganizerSourceBasis(source_basis),
+                &opening,
+                &national.aid,
+                &input,
+            )?;
+            if *config != expected_config {
+                return Err(EconomicCatalogError::Identity);
+            }
+        }
         if expected.is_some_and(|expected| *expected != opening) {
             return Err(EconomicCatalogError::Opening("supplied opening mismatch"));
         }
+        let bytes = codec::encode(&input, compiler)?;
+        let digest = sha256_of(&bytes);
         Ok(Self {
             input,
             sources,
@@ -85,6 +102,55 @@ impl CapturedEconomicCatalog {
             local_detail,
             spatial_detail,
         })
+    }
+    /// Capture a playable national campaign with authenticated immutable organizer content.
+    /// # Errors
+    /// Refuses nonnational input, contradictory captured actors, unavailable actual workplace,
+    /// invalid source-derived config or malformed current framing.
+    pub fn capture_national_campaign(
+        input: EconomicCatalogInput,
+        campaign: crate::identity::CampaignId,
+    ) -> Result<Self> {
+        if input.organizer.is_some() {
+            return Err(EconomicCatalogError::Identity);
+        }
+        let mut catalog = Self::capture(input, None)?;
+        let CapturedSources::National(national) = &catalog.sources else {
+            return Err(EconomicCatalogError::Identity);
+        };
+        let index = catalog
+            .input
+            .sources
+            .iter()
+            .position(|row| row.kind() == SourceArtifactKind::Rules)
+            .ok_or(EconomicCatalogError::Source(SourceArtifactKind::Rules))?;
+        catalog.input.sources[index] = SourceArtifact::capture(
+            SourceArtifactKind::Rules,
+            super::preset::national_organizer_rules(),
+        );
+        let source_basis = sha256_of(&codec::encode(
+            &catalog.input,
+            compiler_for(&catalog.input)?,
+        )?);
+        let config = crate::national_economy::organizer::assemble(
+            *campaign.canonical_bytes(),
+            crate::national_economy::organizer::NationalOrganizerSourceBasis(source_basis),
+            &catalog.opening,
+            &national.aid,
+            &catalog.input,
+        )?;
+        catalog.input.organizer = Some(config);
+        catalog.bytes = codec::encode(&catalog.input, compiler_for(&catalog.input)?)?;
+        catalog.digest = sha256_of(&catalog.bytes);
+        Ok(catalog)
+    }
+    /// Captured national gift bindings, regenerated only from admitted source bytes.
+    #[must_use]
+    pub fn national_aid_capture(&self) -> Option<&crate::national_economy::NationalAidCapture> {
+        match &self.sources {
+            CapturedSources::National(sources) => Some(&sources.aid),
+            CapturedSources::Michigan(_) => None,
+        }
     }
     /// Reopening uses only these captured bytes and the supported compiler version.
     /// # Errors
@@ -118,7 +184,7 @@ impl CapturedEconomicCatalog {
     pub fn compiler_version(&self) -> &'static str {
         match self.input.geography {
             CatalogGeography::MichiganControl => "michigan-control-v1",
-            _ => "national-world-v2",
+            _ => "national-world-v4",
         }
     }
     #[must_use]
@@ -166,10 +232,9 @@ fn compiler_for(input: &EconomicCatalogInput) -> Result<&'static str> {
         | CatalogGeography::NationalCountiesWithMichiganDetail
             if input.scenario_id == crate::national_economy::NATIONAL_SCENARIO_ID
                 && input.preset_id == "national-world"
-                && input.duration == CampaignDuration::Continuous
-                && input.organizer.is_none() =>
+                && input.duration == CampaignDuration::Continuous =>
         {
-            Ok("national-world-v2")
+            Ok("national-world-v4")
         }
         CatalogGeography::MichiganControl
             if input.scenario_id == crate::michigan_cohorts::MICHIGAN_COHORT_SCENARIO =>

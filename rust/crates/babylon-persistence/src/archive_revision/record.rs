@@ -39,6 +39,45 @@ pub(super) struct RevisionRecord {
     pub emission: ArchiveEmissionManifest,
 }
 
+/// A fully authenticated immutable record. Only the pure constructor can mint it.
+pub(super) struct CheckedRevision {
+    record: RevisionRecord,
+    digest: [u8; 32],
+    body: super::body_encoding::EncodedBody,
+    replay_body: Option<super::body_encoding::EncodedBody>,
+}
+
+impl CheckedRevision {
+    pub(super) fn new(record: RevisionRecord) -> Result<Self, SemanticArchiveError> {
+        let digest = record.digest()?;
+        // digest() has already performed complete semantic/emission admission.
+        let body = super::body_encoding::encode(&record)
+            .map_err(super::body_encoding::Error::into_semantic)?;
+        Ok(Self {
+            record,
+            digest,
+            body,
+            replay_body: None,
+        })
+    }
+
+    pub(super) fn body(&self) -> &super::body_encoding::EncodedBody {
+        &self.body
+    }
+    pub(super) fn accepted_body(&self) -> &super::body_encoding::EncodedBody {
+        self.replay_body.as_ref().unwrap_or(&self.body)
+    }
+    pub(super) fn bind_replay_body(&mut self, body: super::body_encoding::EncodedBody) {
+        self.replay_body = Some(body);
+    }
+    pub(super) fn record(&self) -> &RevisionRecord {
+        &self.record
+    }
+    pub(super) fn digest(&self) -> [u8; 32] {
+        self.digest
+    }
+}
+
 impl RevisionRecord {
     pub fn validate(&self) -> Result<(), SemanticArchiveError> {
         validate_text(&self.title)?;

@@ -11,6 +11,85 @@ const SOURCE: &str = include_str!(concat!(
 ));
 
 #[test]
+fn captured_aid_requires_positive_cash_terms_before_opening_accounts() {
+    let policy = NationalGamePolicy::parse(SOURCE).unwrap();
+    assert!(policy.aid.gift_cash_micros_per_unit > 0);
+    for amount in [0_i128, -1] {
+        let changed = SOURCE.replace(
+            "gift_cash_micros_per_unit = 100000",
+            &format!("gift_cash_micros_per_unit = {amount}"),
+        );
+        assert_ne!(changed, SOURCE);
+        assert_eq!(
+            NationalGamePolicy::parse(&changed),
+            Err(NationalGamePolicyError::Shape)
+        );
+    }
+}
+
+#[test]
+fn household_time_policy_is_captured_separately_from_wages_and_population() {
+    let policy = NationalGamePolicy::parse(SOURCE).unwrap();
+    let time = &policy.household_time;
+    assert_eq!(time.hours_per_eligible_person, 224);
+    assert!(time.hours_per_eligible_person >= policy.work_hours_per_person);
+    assert_eq!(time.ordinary_protected_hours_per_household, 32);
+    assert_eq!(time.ordinary_provisioning_hours_per_household, 64);
+    assert_eq!(time.collective_protected_hours_per_person, 32);
+    assert_eq!(time.collective_provisioning_hours_per_person, 64);
+    assert_eq!(time.external_eligible_persons_bps, 8_000);
+    assert_eq!(time.unmet_hours_per_unit["food"], 20);
+    assert_eq!(time.unmet_hours_per_unit.len(), 1);
+    let captured = NationalGamePolicy::from_captured_bytes(SOURCE.as_bytes()).unwrap();
+    assert_eq!(captured.household_time, policy.household_time);
+}
+
+#[test]
+fn household_time_policy_refuses_missing_unbounded_or_unrelated_commitments() {
+    let section = SOURCE
+        .find("[household_time]\n")
+        .expect("the current policy must capture time coefficients");
+    let end = SOURCE[section + 1..]
+        .find("\n[")
+        .map_or(SOURCE.len(), |offset| section + 1 + offset);
+    let mut missing = SOURCE.to_owned();
+    missing.replace_range(section..end, "");
+    assert!(NationalGamePolicy::parse(&missing).is_err());
+    for changed in [
+        SOURCE.replace(
+            "hours_per_eligible_person = 224",
+            "hours_per_eligible_person = 0",
+        ),
+        SOURCE.replace(
+            "hours_per_eligible_person = 224",
+            "hours_per_eligible_person = 159",
+        ),
+        SOURCE.replace(
+            "hours_per_eligible_person = 224",
+            "hours_per_eligible_person = 673",
+        ),
+        SOURCE.replace(
+            "external_eligible_persons_bps = 8000",
+            "external_eligible_persons_bps = 10001",
+        ),
+        SOURCE.replace(
+            "unmet_hours_per_unit = { food = 20 }",
+            "unmet_hours_per_unit = { food = 0 }",
+        ),
+        SOURCE.replace(
+            "unmet_hours_per_unit = { food = 20 }",
+            "unmet_hours_per_unit = { equipment = 20 }",
+        ),
+    ] {
+        assert_ne!(
+            changed, SOURCE,
+            "the boundary mutation must change the input"
+        );
+        assert!(NationalGamePolicy::parse(&changed).is_err());
+    }
+}
+
+#[test]
 fn national_policy_covers_physical_functions_and_distinct_household_needs() {
     let policy = NationalGamePolicy::parse(SOURCE).unwrap();
     assert_eq!(policy.commodities.len(), 10);

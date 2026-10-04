@@ -479,6 +479,10 @@ pub struct MaterialCircuitState {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u16)]
 pub enum MaterialCircuitError {
+    HouseholdTimeInvariant = 31,
+    AidInvariant = 32,
+    AidAuthority = 33,
+    CollectionInvariant = 34,
     EquipmentInvariant = 30,
     RowLimit = 1,
     ZeroQuantity = 2,
@@ -548,6 +552,10 @@ impl TryFrom<u16> for MaterialCircuitError {
             27 => Ok(Self::ServiceInvariant),
             28 => Ok(Self::FinancialInvariant),
             30 => Ok(Self::EquipmentInvariant),
+            31 => Ok(Self::HouseholdTimeInvariant),
+            32 => Ok(Self::AidInvariant),
+            33 => Ok(Self::AidAuthority),
+            34 => Ok(Self::CollectionInvariant),
             _ => Err(UnknownMaterialCircuitErrorCode(value)),
         }
     }
@@ -571,6 +579,10 @@ pub struct FreightLossReceipt {
 /// Atomic successor with native quantity receipts.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MaterialCircuitTransition {
+    pub aid: Vec<crate::AidReceipt>,
+    pub collections: Vec<crate::CollectionReceipt>,
+    pub aid_contributions: Vec<crate::HouseholdContributionUse>,
+    pub household_time: Vec<crate::HouseholdTimeReceipt>,
     pub installation: Vec<crate::InstallationReceipt>,
     pub installation_decisions: Vec<crate::InstallationDecisionReceipt>,
     pub equipment_wear: Vec<crate::EquipmentWearReceipt>,

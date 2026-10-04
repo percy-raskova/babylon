@@ -1,7 +1,7 @@
 //! Recurring household needs and purchases share the authoritative material close.
 
 pub(crate) mod firms;
-mod households;
+pub(crate) mod households;
 mod model;
 pub(crate) mod prices;
 

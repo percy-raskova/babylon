@@ -27,6 +27,8 @@ pub enum CircuitAccounting {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MonetaryCircuit {
+    pub aid: crate::AidBook,
+    pub household_time: crate::HouseholdTimeAccounting,
     pub financial: crate::FinancialInstitutions,
     pub costs: crate::HistoricalCostBook,
     pub recurring: Option<Box<crate::RecurringEconomy>>,
@@ -55,6 +57,9 @@ impl From<MonetaryError> for MaterialCircuitError {
         match value {
             MonetaryError::Arithmetic => Self::Arithmetic,
             MonetaryError::RowLimit => Self::RowLimit,
+            MonetaryError::InvalidAid | MonetaryError::DuplicateAid | MonetaryError::UnknownAid => {
+                Self::AidInvariant
+            }
             _ => Self::MonetaryInvariant,
         }
     }
@@ -62,6 +67,9 @@ impl From<MonetaryError> for MaterialCircuitError {
 
 pub(crate) fn canonicalize(accounting: &mut CircuitAccounting) {
     if let CircuitAccounting::Monetary(economy) = accounting {
+        economy.aid.mandates.sort_by_key(|r| r.id);
+        economy.aid.freight.sort_by_key(|r| r.lot_id);
+        crate::household_time::canonicalize(&mut economy.household_time);
         if let Some(recurring) = &mut economy.recurring {
             crate::recurring::canonicalize(recurring);
         }
@@ -249,6 +257,7 @@ pub(crate) fn validate(state: &MaterialCircuitState) -> Result<(), MaterialCircu
     economy.book.total_cash_and_reserves()?;
     crate::financial::validate(state)?;
     crate::recurring::validate(state)?;
+    crate::household_time::validate(state)?;
     Ok(())
 }
 

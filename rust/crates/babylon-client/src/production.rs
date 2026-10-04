@@ -1262,10 +1262,18 @@ fn spawn_freight_participants(
     navigation: &ProductionNavigation,
     context: &ObservationContext,
 ) {
-    for account in shared_accounts(snapshot, Some(&site.id))
-        .into_iter()
-        .take(1)
-    {
+    let (Ok(accounts), Ok(competitors)) = (
+        shared_accounts(snapshot, Some(&site.id)),
+        competitor_sites(&site.id, snapshot),
+    ) else {
+        panel.spawn(text(
+            "Shared freight details unavailable in this observation.",
+            15.0,
+            theme::PAPER,
+        ));
+        return;
+    };
+    for account in accounts.into_iter().take(1) {
         panel.spawn((
             text(account_brief(account), 15.0, theme::PAPER),
             ProductionFreightReading,
@@ -1278,7 +1286,6 @@ fn spawn_freight_participants(
             ObserverFocusTarget::reading(Some(context.clone())),
         ));
     }
-    let competitors = competitor_sites(&site.id, snapshot);
     if !competitors.is_empty() {
         panel.spawn(text(
             "OTHER PARTICIPANTS / SHARED FREIGHT",

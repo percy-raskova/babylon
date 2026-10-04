@@ -29,6 +29,13 @@ OBSERVER_CAPTURE_FILTER = "session=debug,babylon_client=debug"
 # The runtime's database statement timeout is 120 seconds. EOF/Stop gets time
 # to finish a transaction before any exact-child termination is attempted.
 RUNTIME_SHUTDOWN_GRACE_SECONDS = 150
+RUNTIME_SESSION_PROTOCOL_VERSION: int = 10
+ADVANCE_STAGES = (
+    "preparing_commitments",
+    "resolving_economy",
+    "preparing_storage",
+    "saving_period",
+)
 CHILD_SIGNAL_WAIT_SECONDS = 10
 READ_LOGINS = (
     ("babylon_observer_game", "babylon_observer", "babylon_observer_game"),
@@ -496,9 +503,16 @@ def _check_session(
     output = child.stdout
     buffer = b""
 
-    def receive(kind: str, request_id: int | None = None) -> dict[str, object]:
+    def receive(
+        kind: str,
+        request_id: int | None = None,
+        *,
+        advance_scope: object = None,
+        advance_tick: int | None = None,
+    ) -> dict[str, object]:
         nonlocal buffer
         deadline = time.monotonic() + RUNTIME_SHUTDOWN_GRACE_SECONDS
+        stage_index = 0
         while True:
             while b"\n" not in buffer:
                 if len(buffer) >= 4096:
@@ -526,7 +540,28 @@ def _check_session(
                 raise ObserverLaunchError(
                     f"installation check runtime refused: {message.get('code')}"
                 )
+            if message.get("type") == "advance_progress":
+                if (
+                    kind != "committed"
+                    or advance_scope is None
+                    or advance_tick is None
+                    or set(message) != {"type", "request_id", "scope", "resolve_tick", "stage"}
+                    or type(message.get("request_id")) is not int
+                    or message.get("request_id") != request_id
+                    or message.get("scope") != advance_scope
+                    or type(message.get("resolve_tick")) is not int
+                    or message.get("resolve_tick") != advance_tick
+                    or stage_index >= len(ADVANCE_STAGES)
+                    or message.get("stage") != ADVANCE_STAGES[stage_index]
+                ):
+                    raise ObserverLaunchError(
+                        "installation check received invalid advance progress"
+                    )
+                stage_index += 1
+                continue
             if message.get("type") == kind and message.get("request_id") == request_id:
+                if kind == "committed" and stage_index != len(ADVANCE_STAGES):
+                    raise ObserverLaunchError("installation check commit omitted advance stages")
                 return message
             if message.get("type") not in {"switching", "archive_progress"}:
                 raise ObserverLaunchError(
@@ -537,7 +572,7 @@ def _check_session(
         assert child.stdin is not None
         row = {
             "type": kind,
-            "protocol_version": 5,
+            "protocol_version": RUNTIME_SESSION_PROTOCOL_VERSION,
             "request_id": request_id,
             "scope": scope,
             **fields,
@@ -547,8 +582,13 @@ def _check_session(
 
     try:
         hello = receive("hello")
-        if hello.get("protocol_version") != 5:
-            raise ObserverLaunchError("installation check requires runtime session protocol 5")
+        if (
+            type(hello.get("protocol_version")) is not int
+            or hello.get("protocol_version") != RUNTIME_SESSION_PROTOCOL_VERSION
+        ):
+            raise ObserverLaunchError(
+                f"installation check requires runtime session protocol {RUNTIME_SESSION_PROTOCOL_VERSION}"
+            )
         new = isinstance(target, NewCampaignTarget)
         requested = {"type": "new" if new else "open", "campaign_id": str(target.campaign)}
         if isinstance(target, NewCampaignTarget):
@@ -569,7 +609,7 @@ def _check_session(
                 )
             advance_started = time.monotonic_ns()
             send("advance", 2, scope, expected_tail=tail)
-            committed = receive("committed", 2)
+            committed = receive("committed", 2, advance_scope=scope, advance_tick=1)
             if timings_us is not None:
                 timings_us["advance_commit_ack"] = (time.monotonic_ns() - advance_started) // 1000
             if committed["scope"] != scope:

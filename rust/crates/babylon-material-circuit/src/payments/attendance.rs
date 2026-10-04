@@ -131,6 +131,9 @@ pub(crate) struct AttendanceLedger {
     groups: BTreeMap<(SiteId, UnitId), Range<usize>>,
 }
 impl AttendanceLedger {
+    pub(crate) fn members(&self) -> &[MemberLaborUseReceipt] {
+        &self.members
+    }
     pub(crate) fn consume(
         &mut self,
         site: SiteId,

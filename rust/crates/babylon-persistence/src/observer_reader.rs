@@ -83,6 +83,25 @@ impl std::fmt::Display for ObserverEconomyError {
 }
 impl std::error::Error for ObserverEconomyError {}
 
+/// Complete typed receipts returned only after full observer authentication commits.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CommittedMaterialReceipts {
+    pub campaign_id: CampaignId,
+    pub identity: babylon_tick::material_replay::IdentifiedMaterialTick,
+    pub receipts: babylon_tick::material_world::MaterialTickReceipts,
+    /// Once-only contribution debits from this period's authenticated closing time ledger.
+    /// Gross `household_time` receipts precede these authorized debits.
+    pub household_contributions: Vec<babylon_material_circuit::HouseholdContributionReceipt>,
+}
+
+/// Independent presentation and complete accounting outputs of one authenticated read.
+/// The presentation digest is an output, never authority for decoding accounting evidence.
+pub struct CommittedMaterialObservation {
+    pub snapshot: ObserverEconomySnapshot,
+    pub accounting: CommittedMaterialReceipts,
+    pub production_evidence: crate::ProductionEvidenceDigest,
+}
+
 /// A capability whose visibility is fixed when its separate credential is admitted.
 #[derive(Clone)]
 pub struct ObserverEconomyReader {
@@ -121,6 +140,161 @@ impl ObserverEconomyReader {
     #[must_use]
     pub const fn visibility(&self) -> ObserverVisibility {
         self.visibility
+    }
+
+    /// Read complete accounting evidence through the existing full-observer authority.
+    /// # Errors
+    /// Refuses restricted roles, absent periods and incomplete or mismatched committed evidence.
+    pub fn committed_material_receipts(
+        &self,
+        campaign: CampaignId,
+        expected_tick: u64,
+    ) -> Result<CommittedMaterialReceipts, ObserverEconomyError> {
+        if self.visibility != ObserverVisibility::FullObserver {
+            return Err(ObserverEconomyError::Authority);
+        }
+        if expected_tick == 0 {
+            return Err(ObserverEconomyError::TickAbsent);
+        }
+        let tick = i64::try_from(expected_tick).map_err(|_| ObserverEconomyError::TickAbsent)?;
+        let mut config = self.config.clone();
+        config
+            .connect_timeout(crate::postgres_catalog::CATALOG_CONNECT_TIMEOUT)
+            .tcp_user_timeout(crate::postgres_catalog::CATALOG_TCP_USER_TIMEOUT)
+            .options(crate::postgres_catalog::CATALOG_STARTUP_OPTIONS);
+        let mut client = config
+            .connect(NoTls)
+            .map_err(|_| ObserverEconomyError::Database)?;
+        confine_authority(&mut client, self.visibility)?;
+        let mut transaction = client
+            .build_transaction()
+            .isolation_level(IsolationLevel::RepeatableRead)
+            .read_only(true)
+            .start()
+            .map_err(|_| ObserverEconomyError::Database)?;
+        transaction
+            .batch_execute("SET LOCAL idle_in_transaction_session_timeout = '120s'")
+            .map_err(|_| ObserverEconomyError::Database)?;
+        let (_, _, header) = read_foundation(
+            &mut transaction,
+            campaign,
+            expected_tick,
+            self.visibility,
+            None,
+        )?;
+        let expected = header
+            .as_ref()
+            .and_then(|h| h.admission.as_ref())
+            .ok_or(ObserverEconomyError::ScenarioMismatch)?;
+        let (content, _) = read_commit_identity(&mut transaction, campaign, tick, true)?;
+        let result = crate::observer_material::committed_receipts(
+            &mut transaction,
+            campaign,
+            expected_tick,
+            expected,
+        )?;
+        if content.as_deref()
+            != Some(digest_hex(result.identity.tick_content_hash().as_bytes()).as_str())
+        {
+            return Err(ObserverEconomyError::InvalidProjection);
+        }
+        transaction
+            .commit()
+            .map_err(|_| ObserverEconomyError::Database)?;
+        Ok(result)
+    }
+
+    /// Authenticate one period once, then independently check accounting and presentation.
+    /// Neither output is published before evidence validation and transaction commit.
+    /// # Errors
+    /// Refuses restricted authority, tick zero, incomplete components and invalid presentation.
+    pub fn committed_material_observation(
+        &self,
+        campaign: CampaignId,
+        expected_tick: u64,
+    ) -> Result<CommittedMaterialObservation, ObserverEconomyError> {
+        if self.visibility != ObserverVisibility::FullObserver {
+            return Err(ObserverEconomyError::Authority);
+        }
+        if expected_tick == 0 {
+            return Err(ObserverEconomyError::TickAbsent);
+        }
+        let tick = i64::try_from(expected_tick).map_err(|_| ObserverEconomyError::TickAbsent)?;
+        let mut config = self.config.clone();
+        config
+            .connect_timeout(crate::postgres_catalog::CATALOG_CONNECT_TIMEOUT)
+            .tcp_user_timeout(crate::postgres_catalog::CATALOG_TCP_USER_TIMEOUT)
+            .options(crate::postgres_catalog::CATALOG_STARTUP_OPTIONS);
+        let mut client = config
+            .connect(NoTls)
+            .map_err(|_| ObserverEconomyError::Database)?;
+        confine_authority(&mut client, self.visibility)?;
+        let mut transaction = client
+            .build_transaction()
+            .isolation_level(IsolationLevel::RepeatableRead)
+            .read_only(true)
+            .start()
+            .map_err(|_| ObserverEconomyError::Database)?;
+        transaction
+            .batch_execute("SET LOCAL idle_in_transaction_session_timeout = '120s'")
+            .map_err(|_| ObserverEconomyError::Database)?;
+        let (_, geography_scope, header) = read_foundation(
+            &mut transaction,
+            campaign,
+            expected_tick,
+            self.visibility,
+            None,
+        )?;
+        let expected = header
+            .as_ref()
+            .and_then(|h| h.admission.as_ref())
+            .ok_or(ObserverEconomyError::ScenarioMismatch)?;
+        let (tick_content_hash, envelope_digest) =
+            read_commit_identity(&mut transaction, campaign, tick, true)?;
+        let counties = counties::read(
+            &mut transaction,
+            campaign,
+            expected_tick,
+            self.visibility,
+            &geography_scope,
+            Some(expected.as_ref()),
+        )?;
+        let (material, accounting) = crate::observer_material::committed_observation(
+            &mut transaction,
+            campaign,
+            expected_tick,
+            expected,
+        )?;
+        if tick_content_hash.as_deref()
+            != Some(digest_hex(accounting.identity.tick_content_hash().as_bytes()).as_str())
+        {
+            return Err(ObserverEconomyError::InvalidProjection);
+        }
+        let mut snapshot = ObserverEconomySnapshot {
+            campaign_id: campaign.as_uuid().to_string(),
+            resolve_tick: expected_tick,
+            foundation_digest: material.foundation_digest,
+            nominal_world_hash: material.nominal_world_hash,
+            tick_content_hash,
+            envelope_digest,
+            visibility: self.visibility,
+            counties,
+            production: material.production,
+        };
+        transaction
+            .commit()
+            .map_err(|_| ObserverEconomyError::Database)?;
+        // All coherent database evidence is now owned. Pure presentation checks
+        // must not hold the read transaction open during national-sized hashing.
+        let production_evidence = snapshot
+            .production_evidence_digest()
+            .map_err(|_| ObserverEconomyError::InvalidProjection)?
+            .ok_or(ObserverEconomyError::InvalidProjection)?;
+        Ok(CommittedMaterialObservation {
+            snapshot,
+            accounting,
+            production_evidence,
+        })
     }
 
     /// Read at most 64 explicitly founded current economic campaigns.
@@ -556,7 +730,7 @@ fn project_county(
 }
 
 const AUTHORITY_SQL: &str = "SELECT role.rolsuper, role.rolcreatedb, role.rolcreaterole, role.rolreplication, role.rolbypassrls, pg_catalog.pg_has_role(current_user, $1, 'MEMBER'), pg_catalog.pg_has_role(current_user, 'babylon_observer', 'MEMBER') FROM pg_catalog.pg_roles role WHERE role.rolname = current_user";
-const HELD_SQL: &str = "WITH RECURSIVE role_closure(oid) AS (SELECT 0::oid UNION SELECT oid FROM pg_catalog.pg_roles WHERE rolname = current_user UNION SELECT membership.roleid FROM pg_catalog.pg_auth_members membership JOIN role_closure ON role_closure.oid = membership.member), restricted AS (SELECT relation.*, namespace.nspname FROM pg_catalog.pg_class relation JOIN pg_catalog.pg_namespace namespace ON namespace.oid = relation.relnamespace WHERE relation.relkind IN ('r','p','v','m','f') AND (namespace.nspname IN ('babylon_state','babylon_meta') OR (namespace.nspname = 'public' AND relation.relname IN ('v_committed_tick_status_v1','v_archive_page_known_v1','v_archive_atom_visible','v_county_card_atoms','v_archive_subject_atoms','v_archive_verification_v1','v_observer_economy_foundation_v1','v_observer_county_economy_v1','v_known_county_economy_v1','v_material_campaign_identity_v2','v_observer_material_state_v1','v_archive_revision_known_v2','v_archive_revision_atom_v2','v_archive_revision_grant_v2','v_archive_retention_v2','v_archive_subject_grant_v2','v_archive_revision_index_v2','v_archive_tick_knowledge_v2','v_archive_revision_scope_v2','v_observer_graph_node_v1','v_observer_graph_node_f64_v1','v_observer_graph_edge_v1','v_observer_graph_hyperedge_v1','v_observer_graph_hyperedge_member_v1','v_observer_graph_edge_f64_v1','v_observer_graph_node_currency_v1','v_observer_graph_hyperedge_f64_v1','v_observer_world_register_v1','v_observer_hex_state_delta_v1','v_observer_territory_state_v1','v_observer_territory_state_field_v1','v_observer_organization_state_v1','v_observer_organization_state_field_v1','v_observer_organization_territory_v1','v_observer_tick_event_v2','v_observer_tick_event_field_v2','v_observer_tick_choice_receipt_v1','v_observer_tick_choice_receipt_branch_v1','v_observer_tick_choice_receipt_carrier_element_v1','v_observer_checkpoint_manifest','v_observer_checkpoint_section_v1','v_observer_archive_dirty_receipt_v1','v_observer_tick_action_batch_v1')))) SELECT DISTINCT restricted.nspname || '.' || restricted.relname AS relation_name, acl.privilege_type, acl.is_grantable FROM restricted CROSS JOIN LATERAL pg_catalog.aclexplode(restricted.relacl) acl JOIN role_closure ON role_closure.oid = acl.grantee UNION SELECT restricted.nspname || '.' || restricted.relname, 'OWNERSHIP', false FROM restricted JOIN role_closure ON role_closure.oid = restricted.relowner UNION SELECT restricted.nspname || '.' || restricted.relname, acl.privilege_type, acl.is_grantable FROM restricted JOIN pg_catalog.pg_attribute attribute ON attribute.attrelid = restricted.oid AND attribute.attnum > 0 AND NOT attribute.attisdropped CROSS JOIN LATERAL pg_catalog.aclexplode(attribute.attacl) acl JOIN role_closure ON role_closure.oid = acl.grantee";
+const HELD_SQL: &str = "WITH RECURSIVE role_closure(oid) AS (SELECT 0::oid UNION SELECT oid FROM pg_catalog.pg_roles WHERE rolname = current_user UNION SELECT membership.roleid FROM pg_catalog.pg_auth_members membership JOIN role_closure ON role_closure.oid = membership.member), restricted AS (SELECT relation.*, namespace.nspname FROM pg_catalog.pg_class relation JOIN pg_catalog.pg_namespace namespace ON namespace.oid = relation.relnamespace WHERE relation.relkind IN ('r','p','v','m','f') AND (namespace.nspname IN ('babylon_state','babylon_meta') OR (namespace.nspname = 'public' AND relation.relname IN ('v_committed_tick_status_v1','v_archive_page_known_v1','v_archive_atom_visible','v_county_card_atoms','v_archive_subject_atoms','v_archive_verification_v1','v_observer_economy_foundation_v1','v_observer_county_economy_v1','v_known_county_economy_v1','v_material_campaign_identity_v2','v_observer_material_state_v1','v_observer_material_foundation_v1','v_archive_revision_known_v2','v_archive_revision_atom_v2','v_archive_revision_grant_v2','v_archive_retention_v2','v_archive_subject_grant_v2','v_archive_revision_index_v2','v_archive_tick_knowledge_v2','v_archive_revision_scope_v2','v_observer_graph_node_v1','v_observer_graph_node_f64_v1','v_observer_graph_edge_v1','v_observer_graph_hyperedge_v1','v_observer_graph_hyperedge_member_v1','v_observer_graph_edge_f64_v1','v_observer_graph_node_currency_v1','v_observer_graph_hyperedge_f64_v1','v_observer_world_register_v1','v_observer_hex_state_delta_v1','v_observer_territory_state_v1','v_observer_territory_state_field_v1','v_observer_organization_state_v1','v_observer_organization_state_field_v1','v_observer_organization_territory_v1','v_observer_tick_event_v2','v_observer_tick_event_field_v2','v_observer_tick_choice_receipt_v1','v_observer_tick_choice_receipt_branch_v1','v_observer_tick_choice_receipt_carrier_element_v1','v_observer_checkpoint_manifest','v_observer_checkpoint_section_v1','v_observer_archive_dirty_receipt_v1','v_observer_tick_action_batch_v1')))) SELECT DISTINCT restricted.nspname || '.' || restricted.relname AS relation_name, acl.privilege_type, acl.is_grantable FROM restricted CROSS JOIN LATERAL pg_catalog.aclexplode(restricted.relacl) acl JOIN role_closure ON role_closure.oid = acl.grantee UNION SELECT restricted.nspname || '.' || restricted.relname, 'OWNERSHIP', false FROM restricted JOIN role_closure ON role_closure.oid = restricted.relowner UNION SELECT restricted.nspname || '.' || restricted.relname, acl.privilege_type, acl.is_grantable FROM restricted JOIN pg_catalog.pg_attribute attribute ON attribute.attrelid = restricted.oid AND attribute.attnum > 0 AND NOT attribute.attisdropped CROSS JOIN LATERAL pg_catalog.aclexplode(attribute.attacl) acl JOIN role_closure ON role_closure.oid = acl.grantee";
 fn confine_authority(
     client: &mut postgres::Client,
     visibility: ObserverVisibility,
@@ -608,6 +782,7 @@ fn confine_authority(
                         | "public.v_observer_county_economy_v1"
                         | "public.v_material_campaign_identity_v2"
                         | "public.v_observer_material_state_v1"
+                        | "public.v_observer_material_foundation_v1"
                         | "public.v_committed_tick_status_v1"
                 ) || crate::observer_tick_components::OBSERVER_TICK_COMPONENT_VIEWS
                     .contains(&relation.as_str())
@@ -731,6 +906,7 @@ fn observer_role_views() -> Vec<&'static str> {
         "public.v_committed_tick_status_v1",
         "public.v_material_campaign_identity_v2",
         "public.v_observer_material_state_v1",
+        "public.v_observer_material_foundation_v1",
     ];
     views.extend(crate::observer_tick_components::OBSERVER_TICK_COMPONENT_VIEWS);
     views

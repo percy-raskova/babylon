@@ -31,6 +31,8 @@ fn purchase(index: usize) -> PurchaseEscrow {
 }
 fn snapshot(count: usize) -> MonetaryBookSnapshot {
     MonetaryBookSnapshot {
+        aid: vec![],
+
         accounts: vec![
             CashAccount {
                 id: buyer(),

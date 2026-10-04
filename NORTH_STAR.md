@@ -87,6 +87,21 @@ aid with slower cross-region solidarity, using actual goods, money and time.
 The [design and worked accounts](reports/national-economy-design-2026-09-20.md)
 record that direction and its evidence.
 
+National qualification also measures save growth in Postgres, separating
+one-time captures from each period's state and history. Address avoidable
+serialization duplication before the playable build. Storage improvements must
+preserve county coverage, exact accounts, replay and recovery. Larger persistence
+changes must show measured benefits and explicit recovery evidence.
+
+The Designed ceiling is 10 decimal MB (10,000,000 bytes) per committed tick,
+including retained state, receipts, graph history, indexes and checkpoint growth.
+Thirteen ticks have a 130 MB incremental storage ceiling per model year.
+The 52-tick ceiling is 520 MB. Report opening storage separately.
+The current representation has not passed this budget.
+
+Development can replace the persistence design without compatibility layers for
+older formats. Preserve old saves as data and refuse unsupported formats.
+
 Linear owns implementation scope and status. This direction does not claim
 those mechanics already work.
 

@@ -14,6 +14,12 @@ mod empty_workforce_cases;
 #[path = "support/household_budget_cases.rs"]
 mod household_budget_cases;
 
+#[path = "support/household_time_cases.rs"]
+mod household_time_cases;
+
+#[path = "support/aid_cases.rs"]
+mod aid_cases;
+
 fn site(id: u8) -> SiteId {
     SiteId::from_bytes([id; 32])
 }
@@ -152,6 +158,9 @@ fn opening() -> MaterialCircuitState {
             ])
             .unwrap();
             MonetaryCircuit {
+                aid: AidBook::default(),
+
+                household_time: babylon_material_circuit::HouseholdTimeAccounting::NotModeled,
                 financial: babylon_material_circuit::FinancialInstitutions::empty(),
                 member_labor: (1..=9)
                     .flat_map(|period| {
@@ -613,10 +622,12 @@ fn captured_household_policies_refuse_old_bytes_bad_cursors_and_noncanonical_row
     let cost_bytes = 20
         + 81 * captured.accounts.len()
         + 113 * captured.stocks.len()
-        + 80 * captured.freight.len()
+        + 81 * captured.freight.len()
         + 81 * captured.equity.len()
         + 81 * captured.equipment.len();
-    let offset = encode_material_circuit_state(&finite).unwrap().len() - cost_bytes - 10 - 28; // Seven empty financial table counts.
+    // Seven empty financial table counts and the explicit fixed-time control tag.
+    // Three empty gift counts precede the existing finite-capacity trailer.
+    let offset = encode_material_circuit_state(&finite).unwrap().len() - cost_bytes - 11 - 28 - 12;
     assert_eq!(bytes[offset], 1);
     let mut old = bytes.clone();
     let version = MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES.len() + 1;
@@ -960,3 +971,6 @@ mod local_cost;
 
 #[path = "support/goods_cost_prices.rs"]
 mod goods_cost_prices;
+
+#[path = "recurring_circuit/integrated_controls.rs"]
+mod integrated_controls;

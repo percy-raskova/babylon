@@ -109,6 +109,10 @@ fn opening() -> MaterialCircuitState {
 }
 
 fn session() -> Session {
+    session_with_material(opening())
+}
+
+fn session_with_material(material: MaterialCircuitState) -> Session {
     let pool = StaffingPoolBinding::try_new(
         StaffingPoolId::from_bytes([1; 32]),
         site(1),
@@ -128,7 +132,118 @@ fn session() -> Session {
     )
     .unwrap()])
     .unwrap();
-    try_session_with_material(MATERIAL_CYCLE, staffing, opening()).unwrap()
+    try_session_with_material(MATERIAL_CYCLE, staffing, material).unwrap()
+}
+
+fn household_time_session() -> Session {
+    use babylon_material_circuit::{
+        HouseholdNeedBasis, HouseholdTimeAccounting, HouseholdTimeBook, HouseholdTimeCommitment,
+        HouseholdTimePolicy, HouseholdUnmetTimeBurden,
+    };
+    let mut material = opening();
+    let CircuitAccounting::Monetary(economy) = &mut material.accounting else {
+        panic!("paid household opening");
+    };
+    let household = economy.recurring.as_ref().unwrap().households[0].principal_id;
+    economy.household_time = HouseholdTimeAccounting::Modeled(
+        HouseholdTimeBook::new(vec![HouseholdTimePolicy {
+            principal_id: household,
+            labor_unit_id: unit(1),
+            eligible_persons: 1,
+            hours_per_eligible_person: 224,
+            protected: HouseholdTimeCommitment {
+                basis: HouseholdNeedBasis::Households,
+                hours_per_basis: 32,
+            },
+            routine_provisioning: HouseholdTimeCommitment {
+                basis: HouseholdNeedBasis::Households,
+                hours_per_basis: 16,
+            },
+            unmet_burdens: vec![HouseholdUnmetTimeBurden {
+                good_id: good(2),
+                unit_id: unit(2),
+                hours_per_unmet_unit: 4,
+            }],
+        }])
+        .unwrap(),
+    );
+    session_with_material(material)
+}
+
+#[test]
+fn household_time_receipts_publish_atomically_and_replay_after_restart() {
+    use babylon_material_circuit::HouseholdTimeAccounting;
+    let mut session = household_time_session();
+    let mut sink = CollectingSink::default();
+    let before = live(&session, &sink);
+    let candidate = prepare(&session);
+    let receipts = decode_material_receipts(candidate.material().receipt_bytes()).unwrap();
+    let time = &receipts.household_time[0];
+    assert_eq!(receipts.household_time.len(), 1);
+    assert_eq!((time.period, time.attended_hours), (1, 160));
+    assert_eq!(receipts.household_consumption[0].unmet_quantity, 1);
+    assert_eq!(time.unpaid_requested_hours, 20);
+    assert_eq!(time.contribution_available_hours, 12);
+    let identity = *candidate.identity();
+    let refused = session.commit_prepared_and_publish(&mut sink, candidate, |_| {
+        Err::<ReplayCommitDisposition, _>("household time commit refused")
+    });
+    assert!(matches!(
+        refused,
+        Err(MaterialCommitError::Commit("household time commit refused"))
+    ));
+    assert_eq!(live(&session, &sink), before);
+    let retry = prepare(&session);
+    assert_eq!(*retry.identity(), identity);
+    let graph = retry.graph_report().result_stable_graph().clone();
+    let graph_material = owned_checkpoint_rows(retry.graph_report().material_state_rows());
+    let registers = retry
+        .graph_report()
+        .result_registers()
+        .canonical_bytes()
+        .to_vec();
+    let material = retry.material().register().canonical_bytes().to_vec();
+    let CircuitAccounting::Monetary(economy) = &retry.material().register().state().accounting
+    else {
+        panic!("paid household candidate");
+    };
+    let HouseholdTimeAccounting::Modeled(book) = &economy.household_time else {
+        panic!("captured household time policy");
+    };
+    assert_eq!(book.receipts, receipts.household_time);
+    commit(&mut session, &mut sink, retry);
+    let mut restored = household_time_session();
+    restored
+        .restore_full_checkpoint(&graph, &graph_material, &registers, &material)
+        .unwrap();
+    assert_eq!(restored.material(), session.material());
+    let mut restored_sink = CollectingSink::default();
+    for period in 2..=5 {
+        let next = prepare(&session);
+        let replay = prepare(&restored);
+        assert_eq!(replay.identity(), next.identity());
+        assert_eq!(
+            replay.material().receipt_bytes(),
+            next.material().receipt_bytes()
+        );
+        let current = decode_material_receipts(next.material().receipt_bytes()).unwrap();
+        assert_eq!(current.household_time[0].period, period);
+        assert_eq!(
+            current.household_time[0].attended_hours,
+            current
+                .member_labor_use
+                .iter()
+                .map(|row| row.attended_hours)
+                .sum::<u64>()
+        );
+        assert_eq!(
+            current.household_time[0].unpaid_requested_hours,
+            16 + 4 * current.household_consumption[0].unmet_quantity
+        );
+        commit(&mut session, &mut sink, next);
+        commit(&mut restored, &mut restored_sink, replay);
+    }
+    assert_eq!(restored.material(), session.material());
 }
 
 #[test]

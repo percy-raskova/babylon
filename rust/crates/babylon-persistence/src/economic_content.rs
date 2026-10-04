@@ -55,6 +55,11 @@ impl EconomicContentAdmission {
             component_identity,
         })
     }
+    /// Move the admitted authority into the durable runtime without regeneration.
+    #[must_use]
+    pub(crate) fn into_foundation(self) -> MaterialRuntimeFoundation {
+        self.foundation
+    }
     /// Borrow immutable metadata from the admitted economic source.
     /// # Panics
     /// Panics only if the private constructor invariant is violated.

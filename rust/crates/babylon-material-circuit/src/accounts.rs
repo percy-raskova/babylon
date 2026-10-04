@@ -32,6 +32,43 @@ pub struct CashAccount {
     pub cash: Currency,
 }
 
+/// Funded household gift; cash follows accepted physical units, never a sale.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AidCashReserve {
+    pub id: crate::OrderId,
+    pub payer: AccountId,
+    pub donor: crate::FinalDemandPrincipalId,
+    pub recipient: crate::FinalDemandPrincipalId,
+    pub quantity: u64,
+    pub cash_per_unit: Currency,
+    pub granted: u64,
+    pub refunded: u64,
+}
+impl AidCashReserve {
+    /// Outstanding donor-owned cash, separate from spendable balances.
+    /// # Errors
+    /// Refuses identical households, invalid quantities, negative amounts or overflow.
+    pub fn reserved_amount(&self) -> Result<Currency, MonetaryError> {
+        if self.donor == self.recipient
+            || self.payer == AccountId::Household(self.recipient)
+            || self.quantity == 0
+            || self.cash_per_unit.micro_units() <= 0
+        {
+            return Err(MonetaryError::InvalidAid);
+        }
+        quantity_amount(self.quantity, self.cash_per_unit)?;
+        let closed = self
+            .granted
+            .checked_add(self.refunded)
+            .ok_or(MonetaryError::Arithmetic)?;
+        let quantity = self
+            .quantity
+            .checked_sub(closed)
+            .ok_or(MonetaryError::QuantityExceedsPrincipal)?;
+        quantity_amount(quantity, self.cash_per_unit)
+    }
+}
+
 /// A price fixed at admission, in micro-currency per native order unit.
 ///
 /// `delivered` and `refunded` are disjoint cumulative quantities. The unconsumed
@@ -204,6 +241,7 @@ pub enum MoneyLocation {
     Cash(AccountId),
     PurchaseReserve(OutboundOrderId),
     PayrollReserve(ShiftId),
+    AidReserve(crate::OrderId),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -215,6 +253,9 @@ pub enum MoneyTransferPurpose {
     WagePayment(ShiftId),
     ShiftCancellation(ShiftId),
     Cash(CashTransferPurpose),
+    AidReservation(crate::OrderId),
+    AidGrant(crate::OrderId),
+    AidRefund(crate::OrderId),
 }
 
 /// Signed cash or reserve delta. One transfer always has two opposite postings.
@@ -256,6 +297,7 @@ pub struct MonetaryBookSnapshot {
     pub accounts: Vec<CashAccount>,
     pub purchases: Vec<PurchaseEscrow>,
     pub shifts: Vec<FundedShift>,
+    pub aid: Vec<AidCashReserve>,
 }
 
 /// A bounded current book; every operation validates before any mutation.
@@ -264,6 +306,7 @@ pub struct MonetaryBook {
     accounts: BTreeMap<AccountId, Currency>,
     purchases: BTreeMap<OutboundOrderId, PurchaseEscrow>,
     shifts: BTreeMap<ShiftId, FundedShift>,
+    aid: BTreeMap<crate::OrderId, AidCashReserve>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -287,6 +330,9 @@ pub enum MonetaryError {
     ShiftNotReserved,
     ShiftNotAccrued,
     OpenPrincipal,
+    InvalidAid,
+    DuplicateAid,
+    UnknownAid,
 }
 
 impl std::fmt::Display for MonetaryError {
@@ -306,6 +352,7 @@ impl MonetaryBook {
             accounts,
             purchases: vec![],
             shifts: vec![],
+            aid: vec![],
         })
     }
 
@@ -319,7 +366,13 @@ impl MonetaryBook {
         if snapshot.accounts.len() > crate::MAX_MONETARY_ACCOUNTS {
             return Err(MonetaryError::RowLimit);
         }
-        if snapshot.purchases.len() > crate::MAX_MATERIAL_ORDER_PRINCIPALS {
+        if snapshot
+            .purchases
+            .len()
+            .checked_add(snapshot.aid.len())
+            .ok_or(MonetaryError::Arithmetic)?
+            > crate::MAX_MATERIAL_ORDER_PRINCIPALS
+        {
             return Err(MonetaryError::RowLimit);
         }
         row_limit(snapshot.shifts.len())?;
@@ -327,6 +380,7 @@ impl MonetaryBook {
             accounts: BTreeMap::new(),
             purchases: BTreeMap::new(),
             shifts: BTreeMap::new(),
+            aid: BTreeMap::new(),
         };
         for row in snapshot.accounts {
             if row.cash.micro_units() < 0 {
@@ -342,6 +396,14 @@ impl MonetaryBook {
             book.cash(row.seller)?;
             if book.purchases.insert(row.order, row).is_some() {
                 return Err(MonetaryError::DuplicatePurchase);
+            }
+        }
+        for row in snapshot.aid {
+            row.reserved_amount()?;
+            book.cash(row.payer)?;
+            book.cash(AccountId::Household(row.recipient))?;
+            if book.aid.insert(row.id, row).is_some() {
+                return Err(MonetaryError::DuplicateAid);
             }
         }
         for row in snapshot.shifts {
@@ -366,6 +428,7 @@ impl MonetaryBook {
                 .collect(),
             purchases: self.purchases.values().cloned().collect(),
             shifts: self.shifts.values().cloned().collect(),
+            aid: self.aid.values().cloned().collect(),
         }
     }
 
@@ -403,6 +466,9 @@ impl MonetaryBook {
         for purchase in self.purchases.values() {
             total = add(total, purchase.reserved_amount()?)?;
         }
+        for gift in self.aid.values() {
+            total = add(total, gift.reserved_amount()?)?;
+        }
         for shift in self.shifts.values() {
             total = add(total, shift.reserved_amount()?)?;
         }
@@ -423,7 +489,13 @@ impl MonetaryBook {
         if self.purchases.contains_key(&row.order) {
             return Err(MonetaryError::DuplicatePurchase);
         }
-        if self.purchases.len() >= crate::MAX_MATERIAL_ORDER_PRINCIPALS {
+        if self
+            .purchases
+            .len()
+            .checked_add(self.aid.len())
+            .ok_or(MonetaryError::Arithmetic)?
+            >= crate::MAX_MATERIAL_ORDER_PRINCIPALS
+        {
             return Err(MonetaryError::RowLimit);
         }
         self.cash(row.seller)?;
@@ -668,6 +740,108 @@ impl MonetaryBook {
         self.accounts.insert(sender, debited_cash);
         self.accounts.insert(recipient, credited_cash);
         Ok(receipt)
+    }
+
+    /// Reserve the exact cash accompanying a newly accepted physical gift.
+    /// # Errors
+    /// Refuses malformed/reused principals, absent owners, bound overflow or insufficient cash.
+    pub fn reserve_aid(
+        &mut self,
+        row: AidCashReserve,
+    ) -> Result<MoneyTransferReceipt, MonetaryError> {
+        let amount = row.reserved_amount()?;
+        if row.granted != 0 || row.refunded != 0 {
+            return Err(MonetaryError::InvalidAid);
+        }
+        if self.aid.contains_key(&row.id) {
+            return Err(MonetaryError::DuplicateAid);
+        }
+        if self
+            .purchases
+            .len()
+            .checked_add(self.aid.len())
+            .ok_or(MonetaryError::Arithmetic)?
+            >= crate::MAX_MATERIAL_ORDER_PRINCIPALS
+        {
+            return Err(MonetaryError::RowLimit);
+        }
+        self.cash(AccountId::Household(row.recipient))?;
+        let donor = row.payer;
+        let after = self.cash_after_debit(donor, amount)?;
+        let receipt = transfer_receipt(
+            MoneyTransferPurpose::AidReservation(row.id),
+            MoneyLocation::Cash(donor),
+            MoneyLocation::AidReserve(row.id),
+            amount,
+        )?;
+        self.accounts.insert(donor, after);
+        self.aid.insert(row.id, row);
+        Ok(receipt)
+    }
+
+    /// Settle a physical grant or refund a physical loss using cumulative units.
+    /// # Errors
+    /// Refuses unknown, nonincreasing or excessive units; no balance changes on refusal.
+    pub fn resolve_aid(
+        &mut self,
+        id: crate::OrderId,
+        cumulative: u64,
+        refund: bool,
+    ) -> Result<MoneyTransferReceipt, MonetaryError> {
+        let mut row = self
+            .aid
+            .get(&id)
+            .cloned()
+            .ok_or(MonetaryError::UnknownAid)?;
+        let previous = if refund { row.refunded } else { row.granted };
+        let newly_closed = cumulative
+            .checked_sub(previous)
+            .filter(|n| *n > 0)
+            .ok_or(MonetaryError::NonIncreasingQuantity)?;
+        if refund {
+            row.refunded = cumulative;
+        } else {
+            row.granted = cumulative;
+        }
+        row.reserved_amount()?;
+        let amount = quantity_amount(newly_closed, row.cash_per_unit)?;
+        let recipient = if refund {
+            row.payer
+        } else {
+            AccountId::Household(row.recipient)
+        };
+        let after = add(self.cash(recipient)?, amount)?;
+        let purpose = if refund {
+            MoneyTransferPurpose::AidRefund(id)
+        } else {
+            MoneyTransferPurpose::AidGrant(id)
+        };
+        let receipt = transfer_receipt(
+            purpose,
+            MoneyLocation::AidReserve(id),
+            MoneyLocation::Cash(recipient),
+            amount,
+        )?;
+        self.accounts.insert(recipient, after);
+        self.aid.insert(id, row);
+        Ok(receipt)
+    }
+
+    /// Read the canonical physical-gift reserve for exact transport joins.
+    /// # Errors
+    /// Refuses a missing gift principal.
+    pub fn aid_reserve(&self, id: crate::OrderId) -> Result<&AidCashReserve, MonetaryError> {
+        self.aid.get(&id).ok_or(MonetaryError::UnknownAid)
+    }
+
+    /// Remove a fully granted/refunded gift after its final material receipt.
+    /// # Errors
+    /// Refuses outstanding cash or an unknown gift.
+    pub fn retire_aid(&mut self, id: crate::OrderId) -> Result<AidCashReserve, MonetaryError> {
+        if self.aid_reserve(id)?.reserved_amount()?.micro_units() != 0 {
+            return Err(MonetaryError::OpenPrincipal);
+        }
+        self.aid.remove(&id).ok_or(MonetaryError::UnknownAid)
     }
 
     fn cash_after_debit(

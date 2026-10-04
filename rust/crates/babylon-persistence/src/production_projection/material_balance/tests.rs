@@ -969,7 +969,7 @@ fn finite_fulfillment_and_quiet_successor_reconcile_handling_work_stock_and_mass
         ),
         (0, 6, 6, 6, 0)
     );
-    let capacity = super::super::freight::project_freight_capacity_accounts(
+    let (capacity, definitions) = super::super::freight::project_freight_capacity_accounts(
         &catalog,
         &completed.1,
         Some(&completed.0),
@@ -985,7 +985,13 @@ fn finite_fulfillment_and_quiet_successor_reconcile_handling_work_stock_and_mass
         ),
         (100, 30, 70)
     );
-    assert!(reservation.orders[0].route_id.is_none());
+    assert!(definitions
+        .iter()
+        .find(|d| d.id == reservation.orders[0])
+        .unwrap()
+        .order
+        .route_id
+        .is_none());
     let quiet = pair(completed.1);
     let (handling, demand) = super::super::merchants::project_merchants(
         &catalog,
@@ -1330,6 +1336,8 @@ fn underfunded_maintenance_uses_paid_hours_instead_of_all_available_people_time(
     state.accounting = CircuitAccounting::Monetary(Box::new({
         let book = MonetaryBook::open(accounts).unwrap();
         MonetaryCircuit {
+            aid: babylon_material_circuit::AidBook::default(),
+            household_time: babylon_material_circuit::HouseholdTimeAccounting::NotModeled,
             financial: babylon_material_circuit::FinancialInstitutions::empty(),
             member_labor: state
                 .labor

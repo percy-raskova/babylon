@@ -536,5 +536,16 @@ fn every_dispatch_transit_arrival_restart_reproduces_exact_continuation() {
     }
 }
 
-#[path = "support/material_config.rs"]
-mod test_support;
+// These controls qualify exact sixteen-period schedules, not the continuous
+// shipped campaign. Keep the horizon explicit in their captured input.
+mod test_support {
+    pub fn catalog() -> babylon_persistence::michigan_material::MichiganMaterialCatalog {
+        babylon_persistence::michigan_material::MichiganMaterialCatalog::from_defines_toml(
+            &include_str!("../../../../content/scenarios/michigan/defines.toml").replace(
+                "DURATION = { kind = \"continuous\" }",
+                "DURATION = { kind = \"finite\", final_period = 16 }",
+            ),
+        )
+        .expect("finite sixteen-period material control")
+    }
+}

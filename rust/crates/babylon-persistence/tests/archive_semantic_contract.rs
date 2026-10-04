@@ -273,7 +273,14 @@ fn persistence_queries_enforce_grants_in_sql_and_hide_raw_ledgers() {
     assert!(ARCHIVE_KNOWLEDGE_SQL.contains("provenance_locator"));
     let revision = include_str!("../migrations/current_archive.sql");
     assert!(revision.contains("grant_row.granted_tick = dependency.granted_tick"));
-    assert!(revision.contains("emission_json TEXT NOT NULL"));
+    for field in [
+        "body_encoding SMALLINT NOT NULL",
+        "body_decoded_length INTEGER NOT NULL",
+        "body_decoded_sha256 BYTEA NOT NULL",
+        "body_bytes BYTEA NOT NULL",
+    ] {
+        assert!(revision.contains(field));
+    }
     let read = include_str!("../src/archive_revision/read.rs");
     assert!(!read.contains("babylon_meta."));
     assert!(!read.contains("babylon_state."));

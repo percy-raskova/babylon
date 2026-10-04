@@ -1373,6 +1373,8 @@ mod tests {
             visibility: ObserverVisibility::FullObserver,
             counties: Vec::new(),
             production: Some(ProductionSnapshot {
+                physical_routes: vec![],
+
                 household_accounts: Vec::new(),
                 household_service_accounts: Vec::new(),
                 goods_price_accounts: Vec::new(),
@@ -1383,6 +1385,7 @@ mod tests {
                 merchant_handling_accounts: Vec::new(),
                 final_demand_accounts: Vec::new(),
                 freight_capacity_accounts: Vec::new(),
+                freight_order_definitions: Vec::new(),
                 scenario_label: "Staffing comparison fixture".into(),
                 duration: babylon_kernel::clock::CampaignDuration::Finite { final_period: 520 },
                 sites: vec![ProductionSite {
@@ -1469,9 +1472,10 @@ mod tests {
                 comparison: Some(staffing_snapshot(other, tick, 4, 0, 1)),
                 ..default()
             })
-            .insert_resource(ObserverFrame(Some(staffing_snapshot(
-                campaign, tick, 6, 2, 0,
-            ))))
+            .insert_resource(ObserverFrame(
+                Some(staffing_snapshot(campaign, tick, 6, 2, 0)),
+                None,
+            ))
             .insert_resource(ObserverUiState {
                 menu_open: false,
                 splash_visible: false,
@@ -1516,6 +1520,7 @@ mod tests {
         let freight = crate::production_freight::tests::fixture();
         edit_comparison_production(&mut app, |production| {
             production.routes = freight.routes.clone();
+            production.physical_routes = freight.physical_routes.clone();
             production.freight_capacity_accounts = freight.freight_capacity_accounts.clone();
             production.sites.extend(freight.sites.clone());
         });

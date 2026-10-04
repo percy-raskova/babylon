@@ -17,9 +17,9 @@ fn capture_retains_sources_once_and_regenerates_the_exact_native_opening() {
     // There is no per-firm or generated global-state serialization inside this envelope.
     assert!(catalog.canonical_bytes().len() < source_bytes + 4096);
     assert_eq!(catalog.digest(), sha256_of(catalog.canonical_bytes()));
-    assert_eq!(catalog.compiler_version(), "national-world-v2");
+    assert_eq!(catalog.compiler_version(), "national-world-v4");
     let mut obsolete = catalog.canonical_bytes().to_vec();
-    let compiler = b"national-world-v2";
+    let compiler = b"national-world-v4";
     let offset = obsolete
         .windows(compiler.len())
         .position(|s| s == compiler)

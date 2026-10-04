@@ -7,8 +7,10 @@ mod presentation;
 pub(crate) mod ui;
 
 use babylon_persistence::runtime_session::{
-    OrganizerChoice, OrganizerCommand, OrganizerCommitment, OrganizerPreview, OrganizerSnapshot,
-    OrganizerView, RuntimeSessionRequest, RUNTIME_SESSION_PROTOCOL_VERSION,
+    OrganizerAidPending, OrganizerAidResolution, OrganizerChoice, OrganizerCollectionPreview,
+    OrganizerCollectionResolution, OrganizerCommand, OrganizerCommitment,
+    OrganizerMaterialAidPreview, OrganizerPreview, OrganizerSnapshot, OrganizerView,
+    RuntimeSessionRequest, RUNTIME_SESSION_PROTOCOL_VERSION,
 };
 use bevy::prelude::*;
 
@@ -47,6 +49,11 @@ pub(crate) struct OrganizerClient {
     pub view: Option<OrganizerView>,
     pub commitment: Option<OrganizerCommitment>,
     pub preview: Option<OrganizerPreview>,
+    pub aid: Vec<OrganizerMaterialAidPreview>,
+    pub pending_aid: Vec<OrganizerAidPending>,
+    pub aid_resolutions: Vec<OrganizerAidResolution>,
+    pub collection: Option<OrganizerCollectionPreview>,
+    pub collection_resolutions: Vec<OrganizerCollectionResolution>,
     pub inspector: OrganizerInspector,
     pub message: String,
     draft: Option<OrganizerDraft>,
@@ -152,6 +159,52 @@ impl OrganizerClient {
                 .view
                 .as_ref()
                 .is_some_and(|view| view.period == session.durable_tick)
+    }
+
+    fn aid_preview(&self, choice: OrganizerChoice) -> Option<&OrganizerMaterialAidPreview> {
+        let kind = match choice {
+            OrganizerChoice::LocalAid => {
+                babylon_persistence::runtime_session::OrganizerAidKind::Local
+            }
+            OrganizerChoice::RemoteAid => {
+                babylon_persistence::runtime_session::OrganizerAidKind::Remote
+            }
+            _ => return None,
+        };
+        let view = self.view.as_ref()?;
+        self.aid
+            .iter()
+            .find(|row| row.kind == kind && row.period == view.period)
+    }
+
+    fn choice_available(&self, choice: OrganizerChoice) -> bool {
+        if choice == OrganizerChoice::Collect {
+            return self.view.as_ref().is_some_and(|view| {
+                self.collection.as_ref().is_some_and(|m| {
+                    m.period == view.period
+                        && m.cash_consent
+                            == babylon_persistence::runtime_session::OrganizerGiftConsent::Accept
+                })
+            });
+        }
+        if !matches!(
+            choice,
+            OrganizerChoice::LocalAid | OrganizerChoice::RemoteAid
+        ) {
+            return true;
+        }
+        let Some(preview) = self.aid_preview(choice) else {
+            return false;
+        };
+        self.view.as_ref().is_some_and(|view| {
+            view.aid_options.iter().any(|option| {
+                option.kind == preview.kind
+                    && option.receiving_consent
+                        == babylon_persistence::runtime_session::OrganizerGiftConsent::Accept
+            })
+        }) && preview.receiving_consent
+            == babylon_persistence::runtime_session::OrganizerGiftConsent::Accept
+            && !self.pending_aid.iter().any(|row| row.kind == preview.kind)
     }
 
     fn make_command(
@@ -303,6 +356,11 @@ impl OrganizerClient {
         if session.phase == SessionPhase::Ready && snapshot.duration.complete(session.viewed_tick) {
             session.complete();
         }
+        self.collection = snapshot.collection;
+        self.collection_resolutions = snapshot.collection_resolutions;
+        self.aid = snapshot.aid;
+        self.pending_aid = snapshot.pending_aid;
+        self.aid_resolutions = snapshot.aid_resolutions;
         self.view = Some(snapshot.view);
         self.commitment = snapshot.pending;
         self.status_due = false;
@@ -486,9 +544,12 @@ mod tests {
                 paused_reason: None,
             },
             agreements: Vec::new(),
+            total_observation_count: 0,
             observations: Vec::new(),
+            total_receipt_count: 0,
             receipts: Vec::new(),
             positions: Vec::new(),
+            aid_options: Vec::new(),
         };
         (
             OrganizerClient {
@@ -499,6 +560,70 @@ mod tests {
             },
             session,
         )
+    }
+
+    fn aid_fixture() -> OrganizerMaterialAidPreview {
+        OrganizerMaterialAidPreview {
+            kind: babylon_persistence::runtime_session::OrganizerAidKind::Local,
+            mandate_id: [4; 32],
+            period: 3,
+            donor_id: [5; 32],
+            recipient_id: [6; 32],
+            good_id: [7; 32],
+            unit_id: [8; 32],
+            donor_stock: 12,
+            own_need: 4,
+            grams_per_unit: 1000,
+            payer_cash: 120,
+            gift_cash_per_unit: 10,
+            ordinary_offer: None,
+            maximum_quantity: 8,
+            labor_unit_id: [9; 32],
+            fulfillment_hours_per_unit: 2,
+            coordination_hours: 3,
+            receiving_consent: babylon_persistence::runtime_session::OrganizerGiftConsent::Accept,
+            time: None,
+            transport: babylon_persistence::runtime_session::OrganizerAidTransportPreview::Local,
+        }
+    }
+
+    #[test]
+    fn aid_requires_current_authenticated_preview_offered_consent_and_no_pending_kind() {
+        let (mut client, _) = ready();
+        client.view.as_mut().unwrap().aid_options.push(
+            babylon_persistence::runtime_session::OrganizerAidOption {
+                kind: babylon_persistence::runtime_session::OrganizerAidKind::Local,
+                partner_actor_id: 95,
+                partner_label: "Recipient collective".into(),
+                coordination_hours: 3,
+                receiving_consent:
+                    babylon_persistence::runtime_session::OrganizerGiftConsent::Accept,
+            },
+        );
+        assert!(!client.choice_available(OrganizerChoice::LocalAid));
+        client.aid.push(aid_fixture());
+        assert!(client.choice_available(OrganizerChoice::LocalAid));
+        assert!(!client.choice_available(OrganizerChoice::RemoteAid));
+        client.aid[0].period = 2;
+        assert!(!client.choice_available(OrganizerChoice::LocalAid));
+        client.aid[0].period = 3;
+        client.aid[0].receiving_consent =
+            babylon_persistence::runtime_session::OrganizerGiftConsent::Refuse;
+        assert!(!client.choice_available(OrganizerChoice::LocalAid));
+        client.aid[0].receiving_consent =
+            babylon_persistence::runtime_session::OrganizerGiftConsent::Accept;
+        client.pending_aid.push(OrganizerAidPending {
+            kind: client.aid[0].kind,
+            original_commitment_id: [10; 32],
+            material_commitment_id: [11; 32],
+            mandate_id: [4; 32],
+            admitted_period: 1,
+            dispatch_period: 2,
+            good_id: [7; 32],
+            unit_id: [8; 32],
+        });
+        assert!(!client.choice_available(OrganizerChoice::LocalAid));
+        assert!(client.choice_available(OrganizerChoice::Hold));
     }
 
     #[test]
@@ -591,6 +716,11 @@ mod tests {
             .status(
                 request_id,
                 OrganizerSnapshot {
+                    collection: None,
+                    collection_resolutions: Vec::new(),
+                    aid: Vec::new(),
+                    pending_aid: Vec::new(),
+                    aid_resolutions: Vec::new(),
                     view: client.view.clone().unwrap(),
                     pending: Some(accepted.clone()),
                     duration: babylon_kernel::clock::CampaignDuration::Finite { final_period: 16 },
@@ -665,6 +795,11 @@ mod tests {
                 .status(
                     request_id,
                     OrganizerSnapshot {
+                        collection: None,
+                        collection_resolutions: Vec::new(),
+                        aid: Vec::new(),
+                        pending_aid: Vec::new(),
+                        aid_resolutions: Vec::new(),
                         view: client.view.clone().unwrap(),
                         pending: None,
                         duration: babylon_kernel::clock::CampaignDuration::Finite {
@@ -686,5 +821,49 @@ mod tests {
             assert!(!client.available(&session));
             assert!(session.begin_advance().is_none());
         }
+    }
+    #[test]
+    fn collection_original_command_uses_actual_runtime_queue_and_blocks_historical_actions() {
+        let (mut client, mut session) = ready();
+        let period = client.view.as_ref().unwrap().period;
+        client.collection = Some(OrganizerCollectionPreview {
+            period,
+            mandate_id: [8; 32],
+            cash_consent: babylon_persistence::runtime_session::OrganizerGiftConsent::Accept,
+            maximum_cash_micros: 400_000,
+            protected_cash_floor_micros: 0,
+            collection_hours: 2,
+            organization_cash_micros: 1_000_000,
+        });
+        assert!(client.choice_available(OrganizerChoice::Collect));
+        let command = client
+            .make_command(&session, OrganizerChoice::Collect)
+            .unwrap();
+        client.queue(&mut session, RequestKind::Submit, Some(command.clone()));
+        assert!(
+            matches!(client.outbox.take(),Some(RuntimeSessionRequest::SubmitOrganizer {command:sent,..}) if sent==command)
+        );
+        let id = client.pending.as_ref().unwrap().id;
+        let accepted = OrganizerCommitment {
+            command: command.clone(),
+            resolves_period: period + 1,
+            commitment_id: [9; 32],
+        };
+        client.accepted(id, accepted.clone(), &mut session).unwrap();
+        assert_eq!(client.commitment, Some(accepted));
+        assert_eq!(command.choice, OrganizerChoice::Collect);
+        assert_eq!(command.expected_period, period);
+        assert!(presentation::review(&client, false, false, false).contains("no standing fallback"));
+        assert!(!client.available(&session));
+        assert!(session.begin_advance().is_some());
+        let (mut historical, mut session) = ready();
+        session.inspect_tick(2);
+        assert!(session.installed(&session.context()));
+        assert!(!historical.available(&session));
+        assert!(!historical.choice_available(OrganizerChoice::Collect));
+        historical.collection = client.collection;
+        historical.collection.as_mut().unwrap().cash_consent =
+            babylon_persistence::runtime_session::OrganizerGiftConsent::Refuse;
+        assert!(!historical.choice_available(OrganizerChoice::Collect));
     }
 }

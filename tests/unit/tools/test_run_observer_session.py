@@ -746,21 +746,48 @@ def _smoke_transcript_children(
     *,
     refused: bool = False,
     economic_report: dict[str, object] | None = None,
+    protocol_version: int | float = 10,
+    progress_rows: list[dict[str, Any]] | None = None,
+    progress_before_ready: bool = False,
 ) -> list[list[str]]:
     """Keep the real launcher/session code; replace only native process boundaries."""
     calls: list[list[str]] = []
     tail = {"resolve_tick": 1, "tick_content_hash": "a" * 64}
-    scope = {"session_id": "fixture", "generation": 1}
+    hello_scope = {"epoch": 0, "campaign_id": None}
+    scope = {"epoch": 1, "campaign_id": str(CAMPAIGN)}
 
     class RuntimeChild:
         def __init__(self, args: list[str], **_kwargs: Any) -> None:
             new = not calls
             calls.append(args)
             self.stdin = (tmp_path / f"requests-{len(calls)}.jsonl").open("wb")
-            rows: list[dict[str, Any]] = [{"type": "hello", "protocol_version": 5, "scope": scope}]
+            rows: list[dict[str, Any]] = [
+                {"type": "hello", "protocol_version": protocol_version, "scope": hello_scope}
+            ]
             if refused:
                 rows.append({"type": "error", "request_id": 1, "code": "invalid_defines"})
             else:
+                progress = (
+                    progress_rows
+                    if progress_rows is not None
+                    else [
+                        {
+                            "type": "advance_progress",
+                            "request_id": 2,
+                            "scope": scope,
+                            "resolve_tick": 1,
+                            "stage": stage,
+                        }
+                        for stage in (
+                            "preparing_commitments",
+                            "resolving_economy",
+                            "preparing_storage",
+                            "saving_period",
+                        )
+                    ]
+                )
+                if progress_before_ready:
+                    rows.extend(progress)
                 rows.append(
                     {
                         "type": "ready",
@@ -771,10 +798,11 @@ def _smoke_transcript_children(
                     }
                 )
                 if new:
+                    rows.extend(progress)
                     rows.append(
                         {"type": "committed", "request_id": 2, "scope": scope, "tail": tail}
                     )
-                rows.append({"type": "stopped", "request_id": 3 if new else 2})
+                rows.append({"type": "stopped", "request_id": 3 if new else 2, "scope": scope})
             read_fd, write_fd = os.pipe()
             self.stdout = os.fdopen(read_fd, "rb")
             with os.fdopen(write_fd, "wb") as output:
@@ -1006,3 +1034,106 @@ def test_national_smoke_refuses_incomplete_or_mismatched_economic_read(
     output = capsys.readouterr()
     assert not output.out
     assert "national economic snapshot" in output.err
+
+
+def test_installation_check_admits_current_nine_and_exact_progress_stream(
+    monkeypatch, tmp_path, capsys
+):
+    _smoke_transcript_children(monkeypatch, tmp_path, protocol_version=10)
+    assert launcher.main(["--smoke", "--no-build", "--preset", "standard"]) == 0
+    for index in (1, 2):
+        requests = [
+            json.loads(line)
+            for line in (tmp_path / f"requests-{index}.jsonl").read_text().splitlines()
+        ]
+        assert all(
+            type(row["protocol_version"]) is int and row["protocol_version"] == 10
+            for row in requests
+        )
+        assert requests[0]["scope"] == {"epoch": 0, "campaign_id": None}
+        assert all(
+            row["scope"] == {"epoch": 1, "campaign_id": str(CAMPAIGN)} for row in requests[1:]
+        )
+    assert json.loads(capsys.readouterr().out)["periods"] == 1
+
+
+@pytest.mark.parametrize("version", [5, 6, 7, 8, 9, 10.0])
+def test_installation_check_refuses_unsupported_or_untyped_version(
+    monkeypatch, tmp_path, capsys, version
+):
+    _smoke_transcript_children(monkeypatch, tmp_path, protocol_version=version)
+    assert launcher.main(["--smoke", "--no-build", "--preset", "standard"]) == 1
+    assert "requires runtime session protocol 10" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "defect",
+    [
+        "request",
+        "scope",
+        "tick",
+        "float_tick",
+        "unknown_stage",
+        "order",
+        "duplicate",
+        "missing",
+        "before_ready",
+        "extra",
+    ],
+)
+def test_installation_check_refuses_invalid_interim_advance_progress(
+    monkeypatch, tmp_path, capsys, defect
+):
+    rows = [
+        {
+            "type": "advance_progress",
+            "request_id": 2,
+            "scope": {"epoch": 1, "campaign_id": str(CAMPAIGN)},
+            "resolve_tick": 1,
+            "stage": stage,
+        }
+        for stage in (
+            "preparing_commitments",
+            "resolving_economy",
+            "preparing_storage",
+            "saving_period",
+        )
+    ]
+    if defect == "request":
+        rows[0]["request_id"] = 1
+    if defect == "scope":
+        rows[0]["scope"] = {"epoch": 2, "campaign_id": str(CAMPAIGN)}
+    if defect == "tick":
+        rows[0]["resolve_tick"] = 2
+    if defect == "float_tick":
+        rows[0]["resolve_tick"] = 1.0
+    if defect == "unknown_stage":
+        rows[0]["stage"] = "finished"
+    if defect == "order":
+        rows[0], rows[1] = rows[1], rows[0]
+    if defect == "duplicate":
+        rows.insert(1, rows[0].copy())
+    if defect == "missing":
+        rows.pop()
+    if defect == "extra":
+        rows[0]["guessed_percentage"] = 1
+    _smoke_transcript_children(
+        monkeypatch, tmp_path, progress_rows=rows, progress_before_ready=defect == "before_ready"
+    )
+    assert launcher.main(["--smoke", "--no-build", "--preset", "standard"]) == 1
+    error = capsys.readouterr().err
+    assert (
+        "commit omitted advance stages" if defect == "missing" else "invalid advance progress"
+    ) in error
+
+
+def test_launcher_current_protocol_matches_rust_protocol_authority():
+    import re
+
+    source = (
+        Path(__file__).resolve().parents[3]
+        / "rust/crates/babylon-persistence/src/runtime_session/protocol.rs"
+    ).read_text()
+    match = re.search(r"pub const RUNTIME_SESSION_PROTOCOL_VERSION: u16 = ([0-9]+);", source)
+    assert match is not None
+    assert int(match.group(1)) == launcher.RUNTIME_SESSION_PROTOCOL_VERSION

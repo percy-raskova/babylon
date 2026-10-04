@@ -437,5 +437,21 @@ fn successor_refusal_registry_includes_accounting_and_rejects_unknown_codes() {
         MaterialCircuitError::try_from(30),
         Ok(MaterialCircuitError::EquipmentInvariant)
     );
-    assert!(MaterialCircuitError::try_from(31).is_err());
+    assert_eq!(
+        MaterialCircuitError::try_from(31),
+        Ok(MaterialCircuitError::HouseholdTimeInvariant)
+    );
+    assert_eq!(
+        MaterialCircuitError::try_from(32),
+        Ok(MaterialCircuitError::AidInvariant)
+    );
+    assert_eq!(
+        MaterialCircuitError::try_from(33),
+        Ok(MaterialCircuitError::AidAuthority)
+    );
+    assert_eq!(
+        MaterialCircuitError::try_from(34),
+        Ok(MaterialCircuitError::CollectionInvariant)
+    );
+    assert!(MaterialCircuitError::try_from(35).is_err());
 }

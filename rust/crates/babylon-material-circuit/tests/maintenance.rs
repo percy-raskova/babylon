@@ -820,6 +820,9 @@ fn paid_maintenance_opening() -> MaterialCircuitState {
     )
     .unwrap();
     state.accounting = CircuitAccounting::Monetary(Box::new(MonetaryCircuit {
+        aid: AidBook::default(),
+
+        household_time: babylon_material_circuit::HouseholdTimeAccounting::NotModeled,
         financial: babylon_material_circuit::FinancialInstitutions::empty(),
         member_labor: state
             .labor

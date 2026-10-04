@@ -796,12 +796,30 @@ pub(crate) fn validate_period(
     current: &MaterialCircuitState,
     receipt: &MaterialTickReceipts,
 ) -> Result<PeriodOrders> {
-    let orders = join(prior, current, receipt)?;
-    super::services::validate(prior, current, receipt)?;
-    super::equipment::validate(prior, current, receipt)?;
-    super::prices::validate(prior, current, receipt, &orders)?;
+    use super::diagnostics::{projection, Stage};
+    let tick = receipt.resolve_tick;
+    let orders = projection(Stage::LifecycleOrders, tick, join(prior, current, receipt))?;
+    projection(
+        Stage::LifecycleServices,
+        tick,
+        super::services::validate(prior, current, receipt),
+    )?;
+    projection(
+        Stage::LifecycleEquipment,
+        tick,
+        super::equipment::validate(prior, current, receipt),
+    )?;
+    projection(
+        Stage::LifecyclePrices,
+        tick,
+        super::prices::validate(prior, current, receipt, &orders),
+    )?;
     if recurring(prior).is_some() {
-        super::households::completed_balances(prior, current, receipt)?;
+        projection(
+            Stage::LifecycleHouseholds,
+            tick,
+            super::households::completed_balances(prior, current, receipt),
+        )?;
     }
     Ok(orders)
 }

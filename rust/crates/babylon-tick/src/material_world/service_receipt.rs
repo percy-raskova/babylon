@@ -376,6 +376,8 @@ mod engine_test {
             period: 1,
             capacity_supply: CapacitySupply::FiniteSchedule,
             accounting: CircuitAccounting::Monetary(Box::new(MonetaryCircuit {
+                aid: babylon_material_circuit::AidBook::default(),
+                household_time: babylon_material_circuit::HouseholdTimeAccounting::NotModeled,
                 financial: babylon_material_circuit::FinancialInstitutions::empty(),
                 member_labor: vec![babylon_material_circuit::MemberLaborCapacityRow {
                     member_id: babylon_material_circuit::StaffingMemberId::from_bytes(

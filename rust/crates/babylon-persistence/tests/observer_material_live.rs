@@ -562,6 +562,7 @@ fn live_material_observer_preserves_history_and_denies_preview_blob_authority() 
             .unwrap(),
     )
     .unwrap();
+    assert_single_foundation_storage(&target.writer, campaign);
     install_reader_role(&target.writer).unwrap();
     provision_observer_role(&target.writer).unwrap();
     provision_observer_role(&target.writer).unwrap();
@@ -573,16 +574,7 @@ fn live_material_observer_preserves_history_and_denies_preview_blob_authority() 
         ObserverEconomyReader::connect(&known_config, ObserverVisibility::KnownPreview).unwrap();
     let archive = SemanticArchiveReader::new(&known_config).unwrap();
     let mut cursor = None;
-    let zero = observer
-        .snapshot_with_cursor(campaign, 0, &mut cursor)
-        .unwrap();
-    assert_eq!(zero.counties.len(), 83);
-    assert_eq!(zero.production.as_ref().unwrap().sites.len(), 5);
-    assert_material_accounts(&zero);
-    assert_known_material_absence(&known.snapshot(campaign, 0).unwrap());
-    assert_preview_blob_denied(&known_config);
-    assert_eq!(observer.campaigns().unwrap(), known.campaigns().unwrap());
-    assert_eq!(observer.campaigns().unwrap()[0].durable_tick, 0);
+    let zero = opening_roles(&observer, &known, &known_config, campaign, &mut cursor);
     let mut history_at_two = None;
     for tick in 1..=18 {
         advance_material_period(&mut runtime);
@@ -594,7 +586,7 @@ fn live_material_observer_preserves_history_and_denies_preview_blob_authority() 
         assert_eq!(snapshot.resolve_tick, tick);
         assert_eq!(snapshot.counties.len(), 83);
         assert_material_accounts(&snapshot);
-        assert_known_material_absence(&known.snapshot(campaign, tick).unwrap());
+        assert_known_material_absence(&mut known.snapshot(campaign, tick).unwrap());
         archive.committed_tick_status(campaign).unwrap();
         if tick == 2 {
             history_at_two = Some(snapshot);
@@ -618,6 +610,13 @@ fn live_material_observer_preserves_history_and_denies_preview_blob_authority() 
                 history_at_two.clone().unwrap()
             );
             assert_material_accounts(&fresh.snapshot(campaign, 3).unwrap());
+            assert_committed_accounting_observation(
+                &observer,
+                &fresh,
+                campaign,
+                runtime.tail().unwrap(),
+            );
+            assert_authenticated_time_debits(&fresh, campaign, &runtime);
         }
     }
     assert_eq!(
@@ -653,7 +652,7 @@ fn assert_preview_blob_denied(known_config: &Config) {
         .connect(NoTls)
         .unwrap()
         .query(
-            "SELECT register_bytes FROM public.v_observer_material_state_v1",
+            "SELECT register_storage_bytes FROM public.v_observer_material_state_v1",
             &[]
         )
         .is_err());
@@ -669,8 +668,52 @@ fn identity_hex(bytes: [u8; 32]) -> String {
         })
 }
 
+fn opening_roles(
+    observer: &ObserverEconomyReader,
+    known: &ObserverEconomyReader,
+    known_config: &Config,
+    campaign: CampaignId,
+    cursor: &mut Option<babylon_persistence::observer_reader::ObserverMaterialCursor>,
+) -> babylon_persistence::observer_reader::ObserverEconomySnapshot {
+    let zero = observer.snapshot_with_cursor(campaign, 0, cursor).unwrap();
+    assert_eq!(zero.counties.len(), 83);
+    assert_eq!(zero.production.as_ref().unwrap().sites.len(), 5);
+    assert_material_accounts(&zero);
+    assert_known_material_absence(&mut known.snapshot(campaign, 0).unwrap());
+    assert_captured_foundation_denied(known_config);
+    assert!(matches!(
+        observer.committed_material_receipts(campaign, 0),
+        Err(ObserverEconomyError::TickAbsent)
+    ));
+    assert!(matches!(
+        known.committed_material_receipts(campaign, 1),
+        Err(ObserverEconomyError::Authority)
+    ));
+    assert!(matches!(
+        observer.committed_material_receipts(campaign, 1),
+        Err(ObserverEconomyError::TickAbsent)
+    ));
+
+    assert!(matches!(
+        observer.committed_material_observation(campaign, 0),
+        Err(ObserverEconomyError::TickAbsent)
+    ));
+    assert!(matches!(
+        known.committed_material_observation(campaign, 1),
+        Err(ObserverEconomyError::Authority)
+    ));
+    assert!(matches!(
+        observer.committed_material_observation(campaign, 1),
+        Err(ObserverEconomyError::TickAbsent)
+    ));
+
+    assert_eq!(observer.campaigns().unwrap(), known.campaigns().unwrap());
+    assert_eq!(observer.campaigns().unwrap()[0].durable_tick, 0);
+    zero
+}
+
 fn assert_known_material_absence(
-    snapshot: &babylon_persistence::observer_reader::ObserverEconomySnapshot,
+    snapshot: &mut babylon_persistence::observer_reader::ObserverEconomySnapshot,
 ) {
     assert_eq!(snapshot.visibility, ObserverVisibility::KnownPreview);
     assert!(snapshot.production.is_none());
@@ -775,18 +818,86 @@ fn assert_corrupted_register_is_rejected(
     cursor: &mut Option<babylon_persistence::observer_reader::ObserverMaterialCursor>,
 ) {
     // A syntactically valid stored register mutation cannot retain its committed identity.
-    let original: Vec<u8> = connection.query_one("SELECT register_bytes FROM babylon_state.material_tick_v3 WHERE campaign_id=$1 AND resolve_tick=18", &[campaign.as_uuid()]).unwrap().get(0);
-    let register = MaterialWorldRegister::decode(&original).unwrap();
-    let mut state = register.state().clone();
-    state.inventory[0].quantity += 1;
-    let corrupt = MaterialWorldRegister::try_new(18, state).unwrap();
-    connection.execute("UPDATE babylon_state.material_tick_v3 SET register_bytes=$2 WHERE campaign_id=$1 AND resolve_tick=18", &[campaign.as_uuid(), &corrupt.canonical_bytes()]).unwrap();
+    let base: Vec<u8> = connection.query_one(
+        "SELECT initial_register_bytes FROM babylon_state.material_campaign_foundation_v3 WHERE campaign_id=$1",
+        &[campaign.as_uuid()],
+    ).unwrap().get(0);
+    let opening = babylon_persistence::material_storage::seed(&base).unwrap();
+    let rows = connection.query(
+        "SELECT resolve_tick, register_storage_bytes, receipt_storage_bytes, lookup_delta_bytes FROM babylon_state.material_tick_v3 WHERE campaign_id=$1 AND resolve_tick<=18 ORDER BY resolve_tick",
+        &[campaign.as_uuid()],
+    ).unwrap();
+    assert_eq!(rows.len(), 18);
+    let mut chain = babylon_persistence::material_storage::initial_lookup_chain(&opening).unwrap();
+    let mut original = None;
+    for (index, row) in rows.into_iter().enumerate() {
+        assert_eq!(row.get::<_, i64>(0), i64::try_from(index + 1).unwrap());
+        let lookup = babylon_persistence::material_storage::read_period_lookup(
+            &opening,
+            u64::try_from(index + 1).unwrap(),
+            &row.get::<_, Vec<u8>>(3),
+            babylon_persistence::material_storage::LookupAnchor::Previous(chain),
+        )
+        .unwrap();
+        chain = lookup.chain;
+        if index == 17 {
+            let package: Vec<u8> = row.get(1);
+            let receipt_package: Vec<u8> = row.get(2);
+            let (canonical, receipts) = babylon_persistence::material_storage::decode(
+                &opening,
+                18,
+                &package,
+                &receipt_package,
+                &lookup.lookup,
+                lookup.chain,
+            )
+            .unwrap();
+            let register = MaterialWorldRegister::decode(&canonical).unwrap();
+            let mut state = register.state().clone();
+            state.inventory[0].quantity += 1;
+            let corrupt = MaterialWorldRegister::try_new(18, state).unwrap();
+            let encoded = babylon_persistence::material_storage::encode(
+                &corrupt,
+                &receipts,
+                &opening,
+                lookup.previous_chain,
+            )
+            .unwrap();
+            // Changing a quantity adds no identities. Existing receipt and delta stay valid.
+            assert_eq!(encoded.lookup.entries(), lookup.lookup.entries());
+            let (reconstructed, preserved_receipts) =
+                babylon_persistence::material_storage::decode(
+                    &opening,
+                    18,
+                    &encoded.register_storage_bytes,
+                    &receipt_package,
+                    &lookup.lookup,
+                    lookup.chain,
+                )
+                .unwrap();
+            assert_eq!(reconstructed, corrupt.canonical_bytes());
+            assert_eq!(preserved_receipts, receipts);
+            connection.execute("UPDATE babylon_state.material_tick_v3 SET register_storage_bytes=$2 WHERE campaign_id=$1 AND resolve_tick=18", &[campaign.as_uuid(), &encoded.register_storage_bytes]).unwrap();
+            original = Some(package);
+        }
+    }
+    let original = original.unwrap();
     assert_eq!(
         observer.snapshot_with_cursor(campaign, 18, cursor),
         Err(ObserverEconomyError::InvalidProjection)
     );
+    assert!(matches!(
+        observer.committed_material_receipts(campaign, 18),
+        Err(ObserverEconomyError::InvalidProjection)
+    ));
+
+    assert!(matches!(
+        observer.committed_material_observation(campaign, 18),
+        Err(ObserverEconomyError::InvalidProjection)
+    ));
+
     assert_eq!(cursor.as_ref().unwrap().completed_tick(), 18);
-    connection.execute("UPDATE babylon_state.material_tick_v3 SET register_bytes=$2 WHERE campaign_id=$1 AND resolve_tick=18", &[campaign.as_uuid(), &original]).unwrap();
+    connection.execute("UPDATE babylon_state.material_tick_v3 SET register_storage_bytes=$2 WHERE campaign_id=$1 AND resolve_tick=18", &[campaign.as_uuid(), &original]).unwrap();
     assert_material_accounts(&observer.snapshot_with_cursor(campaign, 18, cursor).unwrap());
 }
 
@@ -882,7 +993,7 @@ fn live_regional_content_revisions_resume_exactly_and_catalog_filters_before_its
         .connect(NoTls)
         .unwrap()
         .query(
-            "SELECT register_bytes FROM public.v_observer_material_state_v1",
+            "SELECT register_storage_bytes FROM public.v_observer_material_state_v1",
             &[]
         )
         .is_err());
@@ -932,7 +1043,7 @@ fn assert_revision_resume(
     advance_material_period(&mut reopened);
     assert_material_accounts(&observer.snapshot(campaign, 3).unwrap());
     assert_eq!(observer.snapshot(campaign, 1).unwrap(), history);
-    assert_known_material_absence(&known.snapshot(campaign, 3).unwrap());
+    assert_known_material_absence(&mut known.snapshot(campaign, 3).unwrap());
     assert_session_admits_stored_revision(config, campaign, observer);
     assert_eq!(observer.snapshot(campaign, 1).unwrap(), history);
     *runtime = reopened;
@@ -995,13 +1106,14 @@ fn assert_session_admits_stored_revision(
         &mut output,
     )
     .unwrap();
+    assert_streamed_native_advance(&output, campaign);
     let responses = std::str::from_utf8(&output)
         .unwrap()
         .lines()
         .map(|line| serde_json::from_str::<RuntimeSessionResponse>(line).unwrap())
         .collect::<Vec<_>>();
     assert!(
-        matches!(&responses[0], RuntimeSessionResponse::Hello { protocol_version: 5, scope }
+        matches!(&responses[0], RuntimeSessionResponse::Hello { protocol_version: RUNTIME_SESSION_PROTOCOL_VERSION, scope }
         if scope.epoch == 0 && scope.campaign_id.is_none())
     );
     assert!(
@@ -1015,6 +1127,44 @@ fn assert_session_admits_stored_revision(
         observer.snapshot(campaign, 4).unwrap().foundation_digest,
         current.foundation_digest
     );
+}
+
+fn assert_streamed_native_advance(output: &[u8], campaign: CampaignId) {
+    let streamed: Vec<_> = output
+        .split(|byte| *byte == b'\n')
+        .filter(|line| !line.is_empty())
+        .map(|line| serde_json::from_slice::<serde_json::Value>(line).unwrap())
+        .collect();
+    let progress: Vec<_> = streamed
+        .iter()
+        .filter(|row| row["type"] == "advance_progress")
+        .collect();
+    assert_eq!(
+        progress.len(),
+        4,
+        "actual native advance must stream four boundaries"
+    );
+    for (row, stage) in progress.iter().zip([
+        "preparing_commitments",
+        "resolving_economy",
+        "preparing_storage",
+        "saving_period",
+    ]) {
+        assert_eq!(row["stage"], stage);
+        assert_eq!(row["request_id"], 2);
+        assert_eq!(row["resolve_tick"], 4);
+        assert_eq!(row["scope"]["epoch"], 1);
+        assert_eq!(row["scope"]["campaign_id"], campaign.as_uuid().to_string());
+    }
+    let committed = streamed
+        .iter()
+        .position(|row| row["type"] == "committed")
+        .unwrap();
+    assert!(streamed
+        .iter()
+        .enumerate()
+        .filter(|(_, row)| row["type"] == "advance_progress")
+        .all(|(index, _)| index < committed));
 }
 
 // Deliberately malformed metadata is confined to this test's disposable clone.
@@ -1048,7 +1198,7 @@ fn insert_unadmitted_catalog_rows(config: &Config, source: CampaignId) -> Vec<Ca
         } else {
             "unadmitted-fixture-v1"
         };
-        tx.execute("INSERT INTO babylon_state.material_campaign_foundation_v3 (campaign_id,preset_id,duration_kind,final_period,content_sha256,initial_register_bytes,foundation_bytes,foundation_sha256) SELECT $1,$3,duration_kind,final_period,content_sha256,initial_register_bytes,foundation_bytes,pg_catalog.set_byte(foundation_sha256,0,(pg_catalog.get_byte(foundation_sha256,0)+1)%256) FROM babylon_state.material_campaign_foundation_v3 WHERE campaign_id=$2", &[campaign.as_uuid(), source.as_uuid(), &preset]).unwrap();
+        tx.execute("INSERT INTO babylon_state.material_campaign_foundation_v3 (campaign_id,preset_id,duration_kind,final_period,content_sha256,initial_register_bytes,foundation_sha256) SELECT $1,$3,duration_kind,final_period,content_sha256,initial_register_bytes,pg_catalog.set_byte(foundation_sha256,0,(pg_catalog.get_byte(foundation_sha256,0)+1)%256) FROM babylon_state.material_campaign_foundation_v3 WHERE campaign_id=$2", &[campaign.as_uuid(), source.as_uuid(), &preset]).unwrap();
         ids.push(campaign);
     }
     tx.commit().unwrap();
@@ -1279,3 +1429,293 @@ mod current_authority {
 
 #[path = "observer_material_live/organizer.rs"]
 mod organizer;
+
+fn assert_single_foundation_storage(writer: &Config, campaign: CampaignId) {
+    let mut storage = writer.connect(NoTls).unwrap();
+    let duplicate_columns: i64 = storage.query_one(
+        "SELECT count(*) FROM information_schema.columns WHERE table_schema='babylon_state' AND table_name='material_campaign_foundation_v3' AND column_name='foundation_bytes'", &[]
+    ).unwrap().get(0);
+    assert_eq!(
+        duplicate_columns, 0,
+        "the complete foundation must have no second stored owner"
+    );
+    let captured: Vec<u8> = storage.query_one(
+        "SELECT initial_register_bytes FROM babylon_state.material_campaign_foundation_v3 WHERE campaign_id=$1", &[campaign.as_uuid()]
+    ).unwrap().get(0);
+    assert_eq!(
+        MaterialWorldRegister::decode(&captured)
+            .unwrap()
+            .completed_tick(),
+        0
+    );
+}
+
+fn assert_captured_foundation_denied(known: &Config) {
+    assert_preview_blob_denied(known);
+    assert!(known
+        .connect(NoTls)
+        .unwrap()
+        .query(
+            "SELECT content_bundle_bytes FROM public.v_observer_material_foundation_v1",
+            &[]
+        )
+        .is_err());
+}
+
+fn self_consistent_changed_period_lookup(base: &[u8], delta: &[u8]) -> Vec<u8> {
+    let opening = babylon_persistence::material_storage::seed(base).unwrap();
+    let c0 = babylon_persistence::material_storage::initial_lookup_chain(&opening).unwrap();
+    let original_table = babylon_persistence::material_storage::read_period_lookup(
+        &opening,
+        1,
+        delta,
+        babylon_persistence::material_storage::LookupAnchor::Previous(c0),
+    )
+    .unwrap();
+    let prefix = b"BabylonPeriodLookupV3\0".len() + 2 + 32 + 8 + 32;
+    let additions = &original_table.lookup.entries()[opening.lookup().entries().len()..];
+    let mut packed = u32::try_from(additions.len())
+        .unwrap()
+        .to_be_bytes()
+        .to_vec();
+    for entry in additions {
+        packed.push(entry.kind as u8);
+        packed.extend_from_slice(&entry.bytes);
+    }
+    assert!(!additions.is_empty());
+    let replacement = (0..=original_table.lookup.entries().len())
+        .map(|counter| {
+            let mut bytes = [0; 32];
+            bytes[..8].copy_from_slice(&u64::try_from(counter).unwrap().to_be_bytes());
+            bytes
+        })
+        .find(|candidate| {
+            original_table
+                .lookup
+                .entries()
+                .iter()
+                .all(|entry| &entry.bytes != candidate)
+        })
+        .unwrap();
+    packed[5..37].copy_from_slice(&replacement);
+    let compressed = zstd::bulk::compress(&packed, 3).unwrap();
+    let mut self_consistent = delta[..prefix].to_vec();
+    self_consistent.extend_from_slice(&(packed.len() as u64).to_be_bytes());
+    self_consistent.extend_from_slice(&babylon_kernel::content_digest::sha256_of(&packed));
+    // All-literal V3 descriptors are exactly these logical packed additions.
+    self_consistent.extend_from_slice(&(packed.len() as u64).to_be_bytes());
+    self_consistent.extend_from_slice(&babylon_kernel::content_digest::sha256_of(&packed));
+    self_consistent.extend_from_slice(&(compressed.len() as u64).to_be_bytes());
+    self_consistent.extend_from_slice(&compressed);
+    let changed_table = babylon_persistence::material_storage::read_period_lookup(
+        &opening,
+        1,
+        &self_consistent,
+        babylon_persistence::material_storage::LookupAnchor::Previous(c0),
+    )
+    .unwrap();
+    assert_ne!(changed_table.chain, original_table.chain);
+    self_consistent
+}
+
+#[test]
+#[ignore = "requires the task-owned disposable PostgreSQL runtime and restricted reader roles"]
+fn cold_restart_and_history_refuse_corrupt_or_missing_earlier_period_lookup() {
+    let mut target = DisposableTarget::create();
+    let campaign = CampaignId::from_uuid(Uuid::from_u128(41_209));
+    let foundation = MichiganContentPreset::FourWeekStandard
+        .create_foundation(&crate::test_support::catalog())
+        .unwrap();
+    let foundation_digest = foundation.digest();
+    let mut runtime = DurableMaterialRuntime::create(&target.writer, campaign, foundation).unwrap();
+    for _ in 0..3 {
+        advance_material_period(&mut runtime);
+    }
+    let tail = *runtime.tail().unwrap();
+    let world = runtime.session().current_world_hash().unwrap();
+    install_reader_role(&target.writer).unwrap();
+    provision_observer_role(&target.writer).unwrap();
+    let observer_config = target.login("babylon_observer", "localperiodhistory");
+    let observer =
+        ObserverEconomyReader::connect(&observer_config, ObserverVisibility::FullObserver).unwrap();
+    let healthy = observer.snapshot(campaign, 3).unwrap();
+    let mut writer = target.writer.connect(NoTls).unwrap();
+    let saved = writer.query_one(
+        "SELECT identity_bytes,register_storage_bytes,receipt_storage_bytes,lookup_delta_bytes FROM babylon_state.material_tick_v3 WHERE campaign_id=$1::uuid AND resolve_tick=1",
+        &[campaign.as_uuid()],
+    ).unwrap();
+    let identity: Vec<u8> = saved.get(0);
+    let register: Vec<u8> = saved.get(1);
+    let receipts: Vec<u8> = saved.get(2);
+    let delta: Vec<u8> = saved.get(3);
+    // Recompute the literal chunk checksum/compression after changing one typed
+    // identity. Refusal must come from historical authentication, not a broken frame.
+    let base: Vec<u8> = writer.query_one(
+        "SELECT initial_register_bytes FROM babylon_state.material_campaign_foundation_v3 WHERE campaign_id=$1::uuid",
+        &[campaign.as_uuid()],
+    ).unwrap().get(0);
+    let self_consistent = self_consistent_changed_period_lookup(&base, &delta);
+    assert_eq!(writer.execute(
+        "UPDATE babylon_state.material_tick_v3 SET lookup_delta_bytes=$2 WHERE campaign_id=$1::uuid AND resolve_tick=1",
+        &[campaign.as_uuid(), &self_consistent],
+    ).unwrap(), 1);
+    let changed_restart =
+        DurableMaterialRuntime::open(&target.writer, campaign, foundation_digest).is_err();
+    let changed_history = observer.snapshot(campaign, 3);
+    assert_eq!(writer.execute(
+        "UPDATE babylon_state.material_tick_v3 SET lookup_delta_bytes=$2 WHERE campaign_id=$1::uuid AND resolve_tick=1",
+        &[campaign.as_uuid(), &delta],
+    ).unwrap(), 1);
+    assert!(
+        changed_restart,
+        "checksummed old table cannot keep the committed tail anchor"
+    );
+    assert_eq!(
+        changed_history,
+        Err(ObserverEconomyError::InvalidProjection)
+    );
+    assert_eq!(observer.snapshot(campaign, 3).unwrap(), healthy);
+
+    let mut wrong_period = delta.clone();
+    let tick_offset = b"BabylonPeriodLookupV3\0".len() + 2 + 32;
+    wrong_period[tick_offset..tick_offset + 8].copy_from_slice(&2_u64.to_be_bytes());
+    assert_eq!(writer.execute(
+        "UPDATE babylon_state.material_tick_v3 SET lookup_delta_bytes=$2 WHERE campaign_id=$1::uuid AND resolve_tick=1",
+        &[campaign.as_uuid(), &wrong_period],
+    ).unwrap(), 1);
+    let restart_refused =
+        DurableMaterialRuntime::open(&target.writer, campaign, foundation_digest).is_err();
+    let history_refused = observer.snapshot(campaign, 3);
+    assert_eq!(writer.execute(
+        "UPDATE babylon_state.material_tick_v3 SET lookup_delta_bytes=$2 WHERE campaign_id=$1::uuid AND resolve_tick=1",
+        &[campaign.as_uuid(), &delta],
+    ).unwrap(), 1);
+    assert!(
+        restart_refused,
+        "tail3 cannot hide a corrupt tick1 dependency"
+    );
+    assert_eq!(
+        history_refused,
+        Err(ObserverEconomyError::InvalidProjection)
+    );
+    assert_eq!(observer.snapshot(campaign, 3).unwrap(), healthy);
+
+    assert_eq!(writer.execute(
+        "DELETE FROM babylon_state.material_tick_v3 WHERE campaign_id=$1::uuid AND resolve_tick=1",
+        &[campaign.as_uuid()],
+    ).unwrap(), 1);
+    let restart_refused =
+        DurableMaterialRuntime::open(&target.writer, campaign, foundation_digest).is_err();
+    let history_refused = observer.snapshot(campaign, 3);
+    assert_eq!(writer.execute(
+        "INSERT INTO babylon_state.material_tick_v3(campaign_id,resolve_tick,identity_bytes,register_storage_bytes,receipt_storage_bytes,lookup_delta_bytes) VALUES($1::uuid,1,$2,$3,$4,$5)",
+        &[campaign.as_uuid(), &identity, &register, &receipts, &delta],
+    ).unwrap(), 1);
+    assert!(restart_refused, "tail3 cannot hide a missing tick1 row");
+    assert_eq!(history_refused, Err(ObserverEconomyError::TickAbsent));
+    assert_eq!(observer.snapshot(campaign, 3).unwrap(), healthy);
+    let reopened =
+        DurableMaterialRuntime::open(&target.writer, campaign, foundation_digest).unwrap();
+    assert_eq!(reopened.tail(), Some(&tail));
+    assert_eq!(reopened.session().current_world_hash().unwrap(), world);
+    assert_eq!(runtime.tail(), Some(&tail));
+    assert_eq!(runtime.session().current_world_hash().unwrap(), world);
+}
+
+fn assert_committed_accounting_observation(
+    observer: &ObserverEconomyReader,
+    reopened: &ObserverEconomyReader,
+    campaign: CampaignId,
+    tail: &babylon_tick::material_replay::IdentifiedMaterialTick,
+) {
+    let original = observer.committed_material_receipts(campaign, 3).unwrap();
+    let after_restart = reopened.committed_material_receipts(campaign, 3).unwrap();
+    assert_eq!(original.campaign_id, campaign);
+    assert_eq!(original.identity, *tail);
+    assert_eq!(
+        original.identity.resolve_tick(),
+        original.receipts.resolve_tick
+    );
+    assert_eq!(original, after_restart);
+    assert!(
+        !original.receipts.production.is_empty(),
+        "actual complete physical-control receipt family"
+    );
+    assert_combined_observation(observer, reopened, campaign, &original);
+    let historical = observer.committed_material_receipts(campaign, 2).unwrap();
+    assert_eq!(historical.identity.resolve_tick(), 2);
+    assert_eq!(historical.receipts.resolve_tick, 2);
+    assert_eq!(
+        historical,
+        reopened.committed_material_receipts(campaign, 2).unwrap()
+    );
+    assert!(matches!(
+        observer.committed_material_receipts(campaign, 4),
+        Err(ObserverEconomyError::TickAbsent)
+    ));
+}
+
+fn assert_combined_observation(
+    observer: &ObserverEconomyReader,
+    reopened: &ObserverEconomyReader,
+    campaign: CampaignId,
+    accounting: &babylon_persistence::observer_reader::CommittedMaterialReceipts,
+) {
+    let combined = observer
+        .committed_material_observation(campaign, 3)
+        .unwrap();
+    let mut separate = observer.snapshot(campaign, 3).unwrap();
+    let evidence = separate.production_evidence_digest().unwrap().unwrap();
+    assert_eq!(combined.accounting, *accounting);
+    assert_eq!(combined.snapshot, separate);
+    assert_eq!(combined.production_evidence, evidence);
+    let historical = reopened
+        .committed_material_observation(campaign, 2)
+        .unwrap();
+    assert_eq!(
+        historical.accounting,
+        observer.committed_material_receipts(campaign, 2).unwrap()
+    );
+    let mut historical_snapshot = observer.snapshot(campaign, 2).unwrap();
+    assert_eq!(
+        historical.production_evidence,
+        historical_snapshot
+            .production_evidence_digest()
+            .unwrap()
+            .unwrap()
+    );
+    assert_eq!(historical.snapshot, historical_snapshot);
+    assert!(matches!(
+        observer.committed_material_observation(campaign, 4),
+        Err(ObserverEconomyError::TickAbsent)
+    ));
+}
+
+fn assert_authenticated_time_debits(
+    reader: &ObserverEconomyReader,
+    campaign: CampaignId,
+    runtime: &DurableMaterialRuntime,
+) {
+    let observed = reader.committed_material_receipts(campaign, 3).unwrap();
+    let expected = match &runtime.session().material().state().accounting {
+        babylon_material_circuit::CircuitAccounting::PhysicalControl => &[][..],
+        babylon_material_circuit::CircuitAccounting::Monetary(economy) => {
+            match &economy.household_time {
+                babylon_material_circuit::HouseholdTimeAccounting::NotModeled => &[][..],
+                babylon_material_circuit::HouseholdTimeAccounting::Modeled(book) => {
+                    book.contributions.as_slice()
+                }
+            }
+        }
+    };
+    assert_eq!(observed.identity, *runtime.tail().unwrap());
+    assert_eq!(observed.household_contributions, expected);
+    assert!(observed
+        .household_contributions
+        .iter()
+        .all(|row| row.period == 3));
+    assert_eq!(
+        observed,
+        reader.committed_material_receipts(campaign, 3).unwrap()
+    );
+}

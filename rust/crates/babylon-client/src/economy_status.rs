@@ -4,7 +4,7 @@ use babylon_persistence::{
     identity::CampaignId,
     national_counties::national_county_reference,
     observer_reader::{ObserverEconomyReader, ObserverEconomySnapshot, ObserverVisibility},
-    SemanticArchiveReader,
+    CommittedTickStatus, SemanticArchiveReader,
 };
 use serde_json::{json, Value};
 use std::{collections::BTreeSet, time::Instant};
@@ -14,8 +14,8 @@ pub(crate) fn read(reader: &SemanticArchiveReader, campaign: CampaignId) -> Resu
     let tail = reader
         .committed_tick_status(campaign)
         .map_err(|e| e.to_string())?;
-    let period = tail.as_ref().map_or(0, |row| row.resolve_tick());
-    let snapshot = ObserverEconomyReader::from_observer_env()
+    let period = tail.as_ref().map_or(0, CommittedTickStatus::resolve_tick);
+    let mut snapshot = ObserverEconomyReader::from_observer_env()
         .map_err(|e| e.to_string())?
         .snapshot(campaign, period)
         .map_err(|e| e.to_string())?;
@@ -29,6 +29,25 @@ pub(crate) fn read(reader: &SemanticArchiveReader, campaign: CampaignId) -> Resu
         return Err("Economic snapshot differs from its requested committed identity".into());
     }
     let mut summary = summarize(&snapshot)?;
+    let production = snapshot
+        .production
+        .as_ref()
+        .ok_or("Economic projection absent")?;
+    let counts = (
+        production.sites.len(),
+        production.household_accounts.len(),
+        production.household_service_accounts.len(),
+    );
+    let evidence = snapshot
+        .production_evidence_digest()
+        .map_err(|error| {
+            format!(
+                "{error}; sites={}, household goods={}, household services={}",
+                counts.0, counts.1, counts.2
+            )
+        })?
+        .ok_or("Economic projection has no display evidence")?;
+    summary["production_evidence_sha256"] = evidence.to_hex().into();
     summary["read_elapsed_us"] = u64::try_from(start.elapsed().as_micros())
         .map_err(|_| "Economic read duration exceeds its reporting range")?
         .into();
@@ -93,7 +112,7 @@ fn summarize(snapshot: &ObserverEconomySnapshot) -> Result<Value, String> {
         })
         .collect();
     Ok(json!({
-        "record": "economy-status", "schema_version": 1,
+        "record": "economy-status", "schema_version": 2,
         "campaign_id": snapshot.campaign_id, "resolve_tick": snapshot.resolve_tick,
         "foundation_digest": snapshot.foundation_digest,
         "tick_content_hash": snapshot.tick_content_hash,

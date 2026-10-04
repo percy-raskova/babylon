@@ -81,7 +81,11 @@ impl OrganizerClient {
 
     pub(super) fn open_evidence_reports(&mut self, period: u64) {
         self.evidence.mode = EvidenceMode::Reports;
-        if self.evidence.selected_report.is_none() {
+        if self
+            .evidence
+            .selected_report
+            .is_none_or(|id| self.lawful_evidence(id, period).is_none())
+        {
             self.evidence.selected_report = self.evidence_ids(period).first().copied();
         }
     }

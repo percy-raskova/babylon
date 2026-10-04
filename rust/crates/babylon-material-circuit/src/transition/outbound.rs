@@ -17,6 +17,8 @@ use crate::{
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum FreightResourceKey {
     Inventory(InventoryKey),
+    HouseholdStock((crate::FinalDemandPrincipalId, crate::GoodId, UnitId)),
+    HouseholdTime(crate::FinalDemandPrincipalId, UnitId),
     Corridor(CapacityKey),
     Labor(SiteId, UnitId),
 }
@@ -199,8 +201,13 @@ fn resource_available(
     state: &MaterialCircuitState,
     inventory: &InventoryLedger,
     key: FreightResourceKey,
+    aid: &crate::aid::PreparedAid,
 ) -> Result<u64, MaterialCircuitError> {
     match key {
+        FreightResourceKey::HouseholdStock(key) => Ok(aid.surplus.get(&key).copied().unwrap_or(0)),
+        FreightResourceKey::HouseholdTime(principal, unit) => {
+            Ok(aid.hours.get(&(principal, unit)).copied().unwrap_or(0))
+        }
         FreightResourceKey::Inventory(inventory_key) => {
             Ok(inventory.get(&inventory_key).copied().unwrap_or(0))
         }
@@ -218,18 +225,22 @@ fn order_allocations(
     inventory: &InventoryLedger,
     groups: &BTreeMap<FreightResourceKey, Vec<FreightRequest>>,
     order_count: usize,
+    aid: &crate::aid::PreparedAid,
 ) -> Result<Vec<u64>, MaterialCircuitError> {
     let mut allocations = vec![0_u64; order_count];
     // Each active order has exactly one inventory request, regardless of the
     // number of capacity principals on its preselected route.
     for (key, requests) in groups {
-        if matches!(key, FreightResourceKey::Inventory(_)) {
+        if matches!(
+            key,
+            FreightResourceKey::Inventory(_) | FreightResourceKey::HouseholdStock(_)
+        ) {
             for request in requests {
                 allocations[request.order_index] = request.requested;
             }
         }
     }
-    limit_allocations(state, inventory, groups, &mut allocations)?;
+    limit_allocations(state, inventory, groups, &mut allocations, aid)?;
     Ok(allocations)
 }
 
@@ -238,6 +249,7 @@ fn limit_allocations(
     inventory: &InventoryLedger,
     groups: &BTreeMap<FreightResourceKey, Vec<FreightRequest>>,
     allocations: &mut [u64],
+    aid: &crate::aid::PreparedAid,
 ) -> Result<(), MaterialCircuitError> {
     for (key, requests) in groups {
         let total = requests.iter().try_fold(0_u128, |sum, request| {
@@ -245,7 +257,7 @@ fn limit_allocations(
             sum.checked_add(requested)
                 .ok_or(MaterialCircuitError::Arithmetic)
         })?;
-        let available = resource_available(state, inventory, *key)?;
+        let available = resource_available(state, inventory, *key, aid)?;
         for request in requests {
             let resource_request =
                 u128::from(request.requested) * u128::from(request.resource_per_unit);
@@ -536,10 +548,48 @@ pub(super) fn dispatch_orders(
     selection: &OutboundSelection<'_>,
     costs: &mut CostClose,
 ) -> Result<OutboundReceipts, MaterialCircuitError> {
+    dispatch_orders_with_aid(
+        state,
+        inventory,
+        receipts,
+        selection,
+        costs,
+        AidDispatch {
+            prepared: &crate::aid::PreparedAid::empty(),
+            money: &mut Vec::new(),
+            receipts: &mut Vec::new(),
+        },
+    )
+}
+
+pub(super) struct AidDispatch<'a> {
+    pub prepared: &'a crate::aid::PreparedAid,
+    pub money: &'a mut Vec<crate::MoneyTransferReceipt>,
+    pub receipts: &'a mut Vec<crate::AidReceipt>,
+}
+
+pub(super) fn dispatch_orders_with_aid(
+    state: &mut MaterialCircuitState,
+    inventory: &mut InventoryLedger,
+    receipts: &mut Vec<RoutedDispatchReceipt>,
+    selection: &OutboundSelection<'_>,
+    costs: &mut CostClose,
+    aid: AidDispatch<'_>,
+) -> Result<OutboundReceipts, MaterialCircuitError> {
+    let AidDispatch {
+        prepared: aid,
+        money,
+        receipts: aid_receipts,
+    } = aid;
     let routes = supplier_routes(state);
     let orders = outbound_orders(state, &routes, selection);
-    let groups = resource_groups(state, &orders)?;
-    let feasible = order_allocations(state, inventory, &groups, orders.len())?;
+    let mut groups = resource_groups(state, &orders)?;
+    add_aid_requests(state, aid, orders.len(), &mut groups)?;
+    let count = orders
+        .len()
+        .checked_add(aid.orders.len())
+        .ok_or(MaterialCircuitError::Arithmetic)?;
+    let feasible = order_allocations(state, inventory, &groups, count, aid)?;
     let mut allocations = feasible.clone();
     let request_count = groups.values().try_fold(0_usize, |count, rows| {
         count
@@ -547,7 +597,7 @@ pub(super) fn dispatch_orders(
             .ok_or(MaterialCircuitError::Arithmetic)
     })?;
     let labor = labor_groups(state, &orders, &feasible, request_count)?;
-    limit_allocations(state, inventory, &labor, &mut allocations)?;
+    limit_allocations(state, inventory, &labor, &mut allocations, aid)?;
     let handling = apply_handling(state, &orders, &feasible, &allocations, costs)?;
     let routed_count = state.orders.len();
     let local_transfers = apply_dispatches(
@@ -558,7 +608,20 @@ pub(super) fn dispatch_orders(
         receipts,
         costs,
     )?;
-    let local = apply_local_fulfillments(state, inventory, &allocations[routed_count..], costs)?;
+    let local = apply_local_fulfillments(
+        state,
+        inventory,
+        &allocations[routed_count..orders.len()],
+        costs,
+    )?;
+    apply_aid_dispatches(
+        state,
+        aid,
+        &allocations[orders.len()..],
+        costs,
+        money,
+        aid_receipts,
+    )?;
     Ok(OutboundReceipts {
         handling,
         local_fulfillments: local,
@@ -600,5 +663,202 @@ pub(crate) fn allocate_services(
         })
         .collect();
     let groups = resource_groups(state, &orders)?;
-    order_allocations(state, available, &groups, orders.len())
+    order_allocations(
+        state,
+        available,
+        &groups,
+        orders.len(),
+        &crate::aid::PreparedAid::empty(),
+    )
+}
+
+fn add_aid_requests(
+    state: &MaterialCircuitState,
+    aid: &crate::aid::PreparedAid,
+    offset: usize,
+    groups: &mut BTreeMap<FreightResourceKey, Vec<FreightRequest>>,
+) -> Result<(), MaterialCircuitError> {
+    let mut count = groups.values().try_fold(0usize, |n, rows| {
+        n.checked_add(rows.len())
+            .ok_or(MaterialCircuitError::Arithmetic)
+    })?;
+    for (index, (mandate, _, quantity)) in aid.orders.iter().enumerate() {
+        let index = offset
+            .checked_add(index)
+            .ok_or(MaterialCircuitError::Arithmetic)?;
+        add_request(
+            groups,
+            &mut count,
+            FreightResourceKey::HouseholdStock((mandate.donor, mandate.good_id, mandate.unit_id)),
+            index,
+            *quantity,
+            1,
+        )?;
+        add_request(
+            groups,
+            &mut count,
+            FreightResourceKey::HouseholdTime(mandate.donor, mandate.labor_unit_id),
+            index,
+            *quantity,
+            mandate.hours_per_unit,
+        )?;
+        if let crate::AidTransport::Routed { route_id, .. } = mandate.transport {
+            add_route_requests(
+                state,
+                route_id,
+                FreightRequest {
+                    order_index: index,
+                    requested: *quantity,
+                    resource_per_unit: grams_per_unit(state, mandate.good_id, mandate.unit_id)?,
+                },
+                groups,
+                &mut count,
+            )?;
+        }
+    }
+    Ok(())
+}
+
+fn apply_aid_dispatches(
+    state: &mut MaterialCircuitState,
+    aid: &crate::aid::PreparedAid,
+    allocations: &[u64],
+    costs: &mut CostClose,
+    money: &mut Vec<crate::MoneyTransferReceipt>,
+    receipts: &mut Vec<crate::AidReceipt>,
+) -> Result<(), MaterialCircuitError> {
+    for ((mandate, id, reserved_quantity), quantity) in aid.orders.iter().zip(allocations) {
+        let unshipped = reserved_quantity
+            .checked_sub(*quantity)
+            .ok_or(MaterialCircuitError::Arithmetic)?;
+        if unshipped > 0 {
+            let crate::CircuitAccounting::Monetary(economy) = &mut state.accounting else {
+                return Err(MaterialCircuitError::AidInvariant);
+            };
+            money.push(economy.book.resolve_aid(*id, unshipped, true)?);
+            receipts.push(crate::aid::receipt(
+                mandate,
+                *id,
+                state.period,
+                crate::AidOutcome::Unshipped,
+                crate::aid::AidFlow {
+                    quantity: unshipped,
+                    carrying: babylon_kernel::currency::Currency::from_micro_units(0),
+                    cash: crate::aid::cash_amount(unshipped, mandate)?,
+                    hours: 0,
+                },
+            ));
+        }
+        if *quantity > 0 {
+            apply_one_aid_dispatch(state, mandate, *id, *quantity, costs, money, receipts)?;
+        }
+        let crate::CircuitAccounting::Monetary(economy) = &mut state.accounting else {
+            return Err(MaterialCircuitError::AidInvariant);
+        };
+        if economy
+            .book
+            .aid_reserve(*id)?
+            .reserved_amount()?
+            .micro_units()
+            == 0
+        {
+            economy.book.retire_aid(*id)?;
+        }
+    }
+    Ok(())
+}
+
+fn apply_one_aid_dispatch(
+    state: &mut MaterialCircuitState,
+    mandate: &crate::AidMandate,
+    id: crate::OrderId,
+    quantity: u64,
+    costs: &mut CostClose,
+    money: &mut Vec<crate::MoneyTransferReceipt>,
+    receipts: &mut Vec<crate::AidReceipt>,
+) -> Result<(), MaterialCircuitError> {
+    let available = crate::aid::take_household_stock(state, mandate, quantity)?;
+    let lot_id = crate::aid::aid_lot_id(id);
+    let cash = crate::aid::cash_amount(quantity, mandate)?;
+    let hours = quantity
+        .checked_mul(mandate.hours_per_unit)
+        .ok_or(MaterialCircuitError::Arithmetic)?;
+    match mandate.transport {
+        crate::AidTransport::Local => {
+            let carrying = costs.local_aid(mandate, available, quantity, cash)?;
+            crate::aid::grant_household_stock(state, mandate, quantity)?;
+            let crate::CircuitAccounting::Monetary(economy) = &mut state.accounting else {
+                return Err(MaterialCircuitError::AidInvariant);
+            };
+            money.push(economy.book.resolve_aid(id, quantity, false)?);
+            receipts.push(crate::aid::receipt(
+                mandate,
+                id,
+                state.period,
+                crate::AidOutcome::Granted,
+                crate::aid::AidFlow {
+                    quantity,
+                    carrying,
+                    cash,
+                    hours,
+                },
+            ));
+        }
+        crate::AidTransport::Routed { route_id, .. } => {
+            let carrying = costs.dispatch_aid(mandate, available, quantity, lot_id)?;
+            let grams = quantity
+                .checked_mul(grams_per_unit(state, mandate.good_id, mandate.unit_id)?)
+                .ok_or(MaterialCircuitError::Arithmetic)?;
+            reserve_route_capacity(state, route_id, grams)?;
+            let first_leg = route_stages(state, route_id)
+                .first()
+                .ok_or(MaterialCircuitError::AidInvariant)?;
+            let stage_arrival_period = state
+                .period
+                .checked_add(u64::from(first_leg.travel_periods))
+                .ok_or(MaterialCircuitError::Arithmetic)?;
+            let lot = crate::AidFreightLot {
+                lot_id,
+                commitment_id: id,
+                mandate_id: mandate.id,
+                route_id,
+                dispatch_period: state.period,
+                current_stage_index: first_leg.stage_index,
+                stage_arrival_period,
+                donor: mandate.donor,
+                recipient: mandate.recipient,
+                good_id: mandate.good_id,
+                unit_id: mandate.unit_id,
+                quantity,
+            };
+            let crate::CircuitAccounting::Monetary(economy) = &mut state.accounting else {
+                return Err(MaterialCircuitError::AidInvariant);
+            };
+            if economy
+                .aid
+                .freight
+                .len()
+                .checked_add(state.freight.len())
+                .ok_or(MaterialCircuitError::Arithmetic)?
+                >= crate::MAX_MATERIAL_CIRCUIT_ROWS
+            {
+                return Err(MaterialCircuitError::RowLimit);
+            }
+            economy.aid.freight.push(lot);
+            receipts.push(crate::aid::receipt(
+                mandate,
+                id,
+                state.period,
+                crate::AidOutcome::Dispatched,
+                crate::aid::AidFlow {
+                    quantity,
+                    carrying,
+                    cash,
+                    hours,
+                },
+            ));
+        }
+    }
+
+    Ok(())
 }

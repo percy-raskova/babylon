@@ -14,7 +14,7 @@ use std::{collections::BTreeSet, time::Instant};
 #[path = "../fixtures/statewide_synthetic.rs"]
 mod synthetic;
 
-fn assert_projection(snapshot: &ObserverEconomySnapshot, runtime: &DurableMaterialRuntime) {
+fn assert_projection(snapshot: &mut ObserverEconomySnapshot, runtime: &DurableMaterialRuntime) {
     assert_eq!(snapshot.resolve_tick, runtime.session().completed_tick());
     assert!(snapshot.production_evidence_digest().unwrap().is_some());
     let rows = snapshot.production.as_ref().unwrap();
@@ -186,11 +186,11 @@ fn statewide_synthetic_circulation_survives_sixteen_persisted_periods_and_held_h
             );
         }
         let began = Instant::now();
-        let snapshot = observer
+        let mut snapshot = observer
             .snapshot(campaign, period)
             .unwrap_or_else(|error| panic!("statewide observation period {period}: {error:?}"));
         projection_time += began.elapsed();
-        assert_projection(&snapshot, &runtime);
+        assert_projection(&mut snapshot, &runtime);
         if [0, 1, 2, 8, 16].contains(&period) {
             held.push(snapshot.clone());
         }
@@ -204,10 +204,9 @@ fn statewide_synthetic_circulation_survives_sixteen_persisted_periods_and_held_h
         }
     }
     for snapshot in &held {
-        assert_eq!(
-            observer.snapshot(campaign, snapshot.resolve_tick).unwrap(),
-            *snapshot
-        );
+        let mut reopened = observer.snapshot(campaign, snapshot.resolve_tick).unwrap();
+        assert!(reopened.production_evidence_digest().unwrap().is_some());
+        assert_eq!(reopened, *snapshot);
     }
     let final_rows = held.last().unwrap().production.as_ref().unwrap();
     assert!(final_rows
@@ -222,7 +221,7 @@ fn statewide_synthetic_circulation_survives_sixteen_persisted_periods_and_held_h
     let preview_config = target.login("babylon_reader", "statewidepreview");
     let preview =
         ObserverEconomyReader::connect(&preview_config, ObserverVisibility::KnownPreview).unwrap();
-    let restricted = preview.snapshot(campaign, 16).unwrap();
+    let mut restricted = preview.snapshot(campaign, 16).unwrap();
     assert!(restricted.production.is_none());
     assert!(restricted.production_evidence_digest().unwrap().is_none());
     eprintln!("synthetic statewide PostgreSQL: creation={creation:?}, advance16_with_reference={advance_time:?}, projection17={projection_time:?}, resume3={resume_time:?}");

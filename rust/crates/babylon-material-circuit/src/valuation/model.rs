@@ -16,7 +16,7 @@ pub struct StockCarryingValue {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FreightCarryingValue {
     pub lot_id: FreightLotId,
-    pub owner: SiteId,
+    pub owner: AccountId,
     pub amount: Currency,
 }
 
@@ -70,6 +70,8 @@ pub struct IncomeStatement {
     pub public_transfer_income: Currency,
     pub public_transfer_expense: Currency,
     pub distribution_income: Currency,
+    pub gift_income: Currency,
+    pub gift_expense: Currency,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

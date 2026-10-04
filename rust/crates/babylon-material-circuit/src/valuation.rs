@@ -90,6 +90,8 @@ impl IncomeStatement {
             public_transfer_income: zero(),
             public_transfer_expense: zero(),
             distribution_income: zero(),
+            gift_income: zero(),
+            gift_expense: zero(),
         }
     }
 
@@ -126,8 +128,13 @@ impl IncomeStatement {
             self.tax_income,
             self.public_transfer_income,
             self.distribution_income,
+            self.gift_income,
         ];
-        let outlays = [self.tax_expense, self.public_transfer_expense];
+        let outlays = [
+            self.tax_expense,
+            self.public_transfer_expense,
+            self.gift_expense,
+        ];
         if incomes
             .iter()
             .chain(outlays.iter())

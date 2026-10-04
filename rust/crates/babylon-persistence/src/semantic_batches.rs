@@ -9,7 +9,7 @@ use babylon_tick::replay_session::{IdentifiedTickReport, SuccessfulEvent, Succes
 
 use crate::committed_tick_envelope::{
     validate_committed_tick_envelope_bounds, CommittedTickEnvelopeError, CommittedTickRow,
-    CommittedTickRowFamily, COMMITTED_TICK_ROW_FAMILY_COUNT, MAX_COMMITTED_TICK_ROW_BATCH_BYTES,
+    CommittedTickRowFamily, COMMITTED_TICK_ROW_FAMILY_COUNT,
 };
 use crate::semantic_codec::{self, SemanticCodecError};
 
@@ -566,12 +566,12 @@ fn push_encoded_row(
         .ok_or(SemanticBatchError::CapacityOverflow {
             field: "semantic batch row body",
         })?;
-    if next_body_bytes > MAX_COMMITTED_TICK_ROW_BATCH_BYTES {
+    if next_body_bytes > family.maximum_body_bytes() {
         return Err(SemanticBatchError::Envelope(
             CommittedTickEnvelopeError::BatchBytes {
                 family,
                 actual: next_body_bytes,
-                maximum: MAX_COMMITTED_TICK_ROW_BATCH_BYTES,
+                maximum: family.maximum_body_bytes(),
             },
         ));
     }
@@ -605,8 +605,8 @@ mod tests {
 
     use crate::committed_tick_envelope::{
         compose_row_families, CommittedTickEnvelopeError, CommittedTickRow,
-        CommittedTickRowFamilies, CommittedTickRowFamily, MAX_COMMITTED_TICK_ROWS,
-        MAX_COMMITTED_TICK_ROW_BATCH_BYTES,
+        CommittedTickRowFamilies, CommittedTickRowFamily, MAX_COMMITTED_GRAPH_ROW_BATCH_BYTES,
+        MAX_COMMITTED_TICK_ROWS,
     };
     use crate::michigan_dynamic_hex_foundation;
     use crate::semantic_codec::SemanticCodecError;
@@ -745,12 +745,12 @@ mod tests {
                 CommittedTickEnvelopeError::AggregateRows { .. }
             ))
         ));
-        preflight_graph_event_choice_bounds(1, MAX_COMMITTED_TICK_ROW_BATCH_BYTES, 0, 0, 0, 0, 9)
+        preflight_graph_event_choice_bounds(1, MAX_COMMITTED_GRAPH_ROW_BATCH_BYTES, 0, 0, 0, 0, 9)
             .expect("exact graph body ceiling");
         assert!(matches!(
             preflight_graph_event_choice_bounds(
                 1,
-                MAX_COMMITTED_TICK_ROW_BATCH_BYTES + 1,
+                MAX_COMMITTED_GRAPH_ROW_BATCH_BYTES + 1,
                 0,
                 0,
                 0,
@@ -768,7 +768,7 @@ mod tests {
         let row = crate::semantic_codec::encode_stable_graph_node("class-a", "SOCIAL_CLASS")
             .expect("small graph row encodes");
         let row_bytes = row_body_bytes(&row);
-        let mut body_bytes = MAX_COMMITTED_TICK_ROW_BATCH_BYTES - row_bytes + 1;
+        let mut body_bytes = MAX_COMMITTED_GRAPH_ROW_BATCH_BYTES - row_bytes + 1;
         let body_before = body_bytes;
         let mut rows = Vec::new();
 
@@ -782,8 +782,8 @@ mod tests {
             Err(SemanticBatchError::Envelope(
                 CommittedTickEnvelopeError::BatchBytes {
                     family: CommittedTickRowFamily::Graph,
-                    actual: MAX_COMMITTED_TICK_ROW_BATCH_BYTES + 1,
-                    maximum: MAX_COMMITTED_TICK_ROW_BATCH_BYTES,
+                    actual: MAX_COMMITTED_GRAPH_ROW_BATCH_BYTES + 1,
+                    maximum: MAX_COMMITTED_GRAPH_ROW_BATCH_BYTES,
                 }
             ))
         );

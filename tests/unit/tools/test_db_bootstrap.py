@@ -264,6 +264,31 @@ def _postgres_runner() -> str:
     return (ROOT / "tools/run_rust_postgres.sh").read_text(encoding="utf-8")
 
 
+def test_archive_checkpoint_controls_each_receive_an_exact_serial_phase() -> None:
+    source = (
+        ROOT
+        / "rust/crates/babylon-persistence/src/archive_revision/worker/live_tests/checkpoint_membership.rs"
+    ).read_text(encoding="utf-8")
+    names = {
+        line.removeprefix("fn ").split("(", maxsplit=1)[0]
+        for line in source.splitlines()
+        if line.startswith("fn live_")
+    }
+    assert names
+    runner = _postgres_runner()
+    phase = runner.split("for checkpoint_control in", maxsplit=1)[1].split(
+        "for archive_producer in", maxsplit=1
+    )[0]
+    listed = phase.split("; do", maxsplit=1)[0].replace("\\\n", " ").split()
+    assert set(listed) == names
+    assert '"archive_checkpoint_$checkpoint_control" 600 cargo test' in phase
+    assert (
+        '"archive_revision::worker::live_tests::checkpoint_membership::$checkpoint_control"'
+        in phase
+    )
+    assert "--exact --test-threads=1" in phase
+
+
 def test_fresh_runtime_focuses_cover_current_live_consumers() -> None:
     runner = _postgres_runner()
     for target in (
@@ -271,7 +296,8 @@ def test_fresh_runtime_focuses_cover_current_live_consumers() -> None:
         "--test reference_integrity",
         "runtime::live_tests::live_",
         "archive_revision::worker::live_tests::",
-        "for archive_group in bounds revisions wakeup",
+        "--skip ::organizer_capture:: --skip ::short_publication:: --skip ::checkpoint_membership::",
+        "for archive_group in organizer_capture short_publication bounds revisions wakeup",
         "for archive_producer in place_producer_live county_producer_live",
         "reader_role_live observer_material_live",
         "--test dossier_cli_live",
@@ -348,6 +374,7 @@ def test_heavy_children_and_enclosing_ci_have_truthful_deadlines() -> None:
         'run_phase material_writer_bounds 180 env BABYLON_RUNTIME_DSN="$BOOTSTRAP_DSN"',
         "run_phase archive_worker 600 cargo test",
         'run_phase "archive_$archive_group" 600 cargo test',
+        'run_phase "archive_checkpoint_$checkpoint_control" 600 cargo test',
         'run_phase "$archive_producer" 600 cargo test',
         'run_phase "$reader_suite" 600 cargo test',
         "run_phase production_history 600 cargo test",
@@ -368,17 +395,17 @@ def test_heavy_children_and_enclosing_ci_have_truthful_deadlines() -> None:
         if job_name == "pg-integration-shards":
             assert (
                 step["timeout-minutes"]
-                == "${{ matrix.focus == 'archive' && 85 || matrix.focus == 'reader' && 70 || 45 }}"
+                == "${{ matrix.focus == 'archive' && 145 || matrix.focus == 'reader' && 70 || 45 }}"
             )
             assert (
                 job["timeout-minutes"]
-                == "${{ matrix.focus == 'archive' && 95 || matrix.focus == 'reader' && 80 || 55 }}"
+                == "${{ matrix.focus == 'archive' && 155 || matrix.focus == 'reader' && 80 || 55 }}"
             )
             assert 600 + 180 + contract_seconds + 600 <= 45 * 60
             # Reader roles, observations, history and statewide proofs each get a phase.
             assert 70 * 60 >= 600 + 180 + 4 * 600 + 600
-            # Six serial Archive groups retain separate ten-minute ceilings.
-            assert 85 * 60 >= 600 + 180 + 6 * 600 + 600
+            # Eight existing groups plus four checkpoint controls run serially.
+            assert 145 * 60 >= 600 + 180 + 12 * 600 + 600
         else:
             assert step["timeout-minutes"] * 60 >= 600 + 180 + contract_seconds + 600
             assert job["timeout-minutes"] >= step["timeout-minutes"] + 10

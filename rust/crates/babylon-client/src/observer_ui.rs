@@ -27,8 +27,16 @@ use crate::ui::dossier_card::{ActiveCountyDossier, DossierFetchState, DossierRef
 
 pub(crate) const OBSERVER_PANEL_BOTTOM: f32 = 56.0;
 
+pub(crate) type ProductionEvidenceOutcome = Result<
+    Option<babylon_persistence::ProductionEvidenceDigest>,
+    babylon_persistence::ProductionEvidenceError,
+>;
+
 #[derive(Resource, Default)]
-pub struct ObserverFrame(pub Option<ObserverEconomySnapshot>);
+pub struct ObserverFrame(
+    pub Option<ObserverEconomySnapshot>,
+    pub(crate) Option<ProductionEvidenceOutcome>,
+);
 
 impl ObserverFrame {
     /// Returns only the exact installed period and capability for this session.
@@ -879,12 +887,16 @@ fn menu_column() -> Node {
 }
 
 fn menu_campaign(panel: &mut ChildSpawnerCommands) {
-    panel.spawn(block_label("National economy", 14.0, theme::YELLOW));
+    panel.spawn(block_label(
+        "Wayne in the national world",
+        14.0,
+        theme::YELLOW,
+    ));
     preset_grid(
         panel,
-        &[("National world", ObserverCommand::NewNationalCampaign)],
+        &[("New national game", ObserverCommand::NewNationalCampaign)],
     );
-    panel.spawn(block_label("All 3,144 U.S. counties and external markets. Economy observation; organizing actions are not connected yet.", 12.0, theme::GRAY));
+    panel.spawn(block_label("Organize in Wayne within all 3,144 U.S. counties and external markets. Local aid and remote solidarity use actual food, funds and household time.", 12.0, theme::GRAY));
     panel.spawn(block_label("Statewide Michigan", 14.0, theme::YELLOW));
     preset_grid(
         panel,
@@ -1943,10 +1955,11 @@ fn repaint(
             ObserverText::Evidence => format!("Viewing period {} / Archive processed through {}\n{}", state.viewed_tick, state.archive_verified_tick, archive_detail),
             ObserverText::EvidenceDetails => installed.map_or_else(String::new, |snapshot| {
                 let mut evidence = format!("CAMPAIGN\n{}\n\nCOMMITTED EVIDENCE / PERIOD {}\n{}\n\nWORLD IDENTITY\n{}", wrapped_identity(&snapshot.campaign_id), snapshot.resolve_tick, wrapped_identity(snapshot.tick_content_hash.as_deref().unwrap_or(&snapshot.foundation_digest)), snapshot.nominal_world_hash.as_deref().map_or_else(|| "Unavailable in this observation".to_owned(), wrapped_identity));
-                match snapshot.production_evidence_digest() {
-                    Ok(Some(digest)) => { let _ = write!(evidence, "\n\nPRODUCTION OBSERVATION\n{}", wrapped_identity(&digest.to_hex())); }
-                    Ok(None) => {}
-                    Err(_) => evidence.push_str("\n\nPRODUCTION OBSERVATION INVALID\nProduction evidence could not be authenticated."),
+                match frame.1.as_ref() {
+                    Some(Ok(Some(digest))) => { let _ = write!(evidence, "\n\nPRODUCTION OBSERVATION\n{}", wrapped_identity(&digest.to_hex())); }
+                    Some(Ok(None)) => {}
+                    Some(Err(_)) => evidence.push_str("\n\nPRODUCTION OBSERVATION INVALID\nProduction evidence could not be authenticated."),
+                    None => evidence.push_str("\n\nPRODUCTION OBSERVATION UNAVAILABLE\nProduction evidence has not been authenticated."),
                 }
                 evidence
             }),
@@ -2165,7 +2178,36 @@ impl Plugin for ObserverShellPlugin {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
+    pub(crate) fn install_pending_paint_fixture(app: &mut App) -> (Entity, Entity, Entity) {
+        let status = app
+            .world_mut()
+            .spawn((Node::default(), ObserverText::Status, Text::new("")))
+            .id();
+        let reading = app
+            .world_mut()
+            .spawn((Node::default(), ObserverText::Production, Text::new("")))
+            .id();
+        let measures = app
+            .world_mut()
+            .spawn((Node::default(), ObserverText::Measures, Text::new("")))
+            .id();
+        app.init_resource::<HoveredCounty>()
+            .init_resource::<ObserverFrame>()
+            .init_resource::<crate::observer_progress::OperationProgress>()
+            .add_systems(
+                Update,
+                (
+                    crate::observer_progress::track,
+                    repaint,
+                    paint_pending_status,
+                )
+                    .chain()
+                    .in_set(crate::observer_io::ObserverSet::Paint),
+            );
+        (status, reading, measures)
+    }
+
     use super::*;
     use crate::observer_focus::ObserverFocusPlugin;
 
@@ -3095,8 +3137,8 @@ mod tests {
         let mut session = ObserverSession::new(campaign);
         session.foundation_digest = Some("fixture".into());
         session.ready(0, None);
-        app.insert_resource(session)
-            .insert_resource(ObserverFrame(Some(ObserverEconomySnapshot {
+        app.insert_resource(session).insert_resource(ObserverFrame(
+            Some(ObserverEconomySnapshot {
                 campaign_id: campaign.as_uuid().to_string(),
                 resolve_tick: 0,
                 foundation_digest: "fixture".into(),
@@ -3117,7 +3159,9 @@ mod tests {
                         },
                     )
                     .collect(),
-            })));
+            }),
+            None,
+        ));
         app.update();
         (app, county)
     }

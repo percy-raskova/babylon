@@ -23,7 +23,7 @@ pub(super) type StockKey = (AccountId, GoodId, UnitId);
 pub struct HistoricalCostBook {
     pub(super) accounts: BTreeMap<AccountId, CapitalAccount>,
     pub(super) stocks: BTreeMap<StockKey, Currency>,
-    pub(super) freight: BTreeMap<FreightLotId, (SiteId, Currency)>,
+    pub(super) freight: BTreeMap<FreightLotId, (AccountId, Currency)>,
     pub(super) equity: BTreeMap<(AccountId, SiteId), Currency>,
     pub(super) equipment: BTreeMap<crate::EquipmentAssetId, (SiteId, Currency)>,
 }
@@ -112,9 +112,7 @@ impl HistoricalCostBook {
             }
         }
         for row in rows.freight {
-            if row.amount.micro_units() < 0
-                || !book.accounts.contains_key(&AccountId::Site(row.owner))
-            {
+            if row.amount.micro_units() < 0 || !book.accounts.contains_key(&row.owner) {
                 return Err(MaterialCircuitError::ValuationInvariant);
             }
             if book
@@ -240,6 +238,9 @@ impl HistoricalCostBook {
         for purchase in snapshot.purchases {
             accumulate(&mut totals, purchase.buyer, purchase.reserved_amount()?)?;
         }
+        for gift in snapshot.aid {
+            accumulate(&mut totals, gift.payer, gift.reserved_amount()?)?;
+        }
         for shift in snapshot.shifts {
             accumulate(&mut totals, shift.employer, shift.reserved_amount()?)?;
             let owed = shift.outstanding_wages()?;
@@ -250,7 +251,7 @@ impl HistoricalCostBook {
             accumulate(&mut totals, *owner, value)?;
         }
         for &(owner, value) in self.freight.values() {
-            accumulate(&mut totals, AccountId::Site(owner), value)?;
+            accumulate(&mut totals, owner, value)?;
         }
         for (&(owner, _), &value) in &self.equity {
             accumulate(&mut totals, owner, value)?;

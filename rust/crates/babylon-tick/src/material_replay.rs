@@ -24,7 +24,10 @@ use babylon_graph::{
     substrate::GraphSubstrate, working_copy::DetachedCopy,
 };
 use babylon_kernel::{content_digest::sha256_of, tick_content_hash::TickContentHash};
-use babylon_material_circuit::{close_material_period, MaterialCircuitError};
+use babylon_material_circuit::{
+    close_material_period_with_support, AidResolveInput, AidTransport, CircuitAccounting,
+    MaterialCircuitError,
+};
 use babylon_practice_contract::{
     organizer_action_batch, OrderedPracticeActionBatch, OrganizerCommitment,
 };
@@ -49,6 +52,8 @@ pub enum MaterialBaseError {
     },
     Period,
     MissingCandidate,
+    /// Accepted gift did not match its captured material mandate exactly.
+    AidMandateMismatch,
     MissingResolver,
     /// A material session must bind exactly one authored whole-period operation.
     InvocationCount {
@@ -108,6 +113,65 @@ impl MaterialBaseInputs<'_> {
             _ => Err(MaterialBaseError::World(MaterialWorldError::Wire)),
         }
     }
+    fn aid_inputs(&self) -> Result<Vec<AidResolveInput>, MaterialBaseError> {
+        use babylon_practice_contract::{OrganizerAidKind, OrganizerChoice};
+        let Some(accepted) = self.commitment else {
+            return Ok(Vec::new());
+        };
+        if !matches!(
+            accepted.command.choice,
+            OrganizerChoice::LocalAid | OrganizerChoice::RemoteAid
+        ) {
+            return Ok(Vec::new());
+        }
+        let config = self
+            .opening
+            .organizer_config()
+            .ok_or(MaterialWorldError::Wire)?;
+        let opening = self
+            .opening
+            .organizer_state()
+            .ok_or(MaterialWorldError::Wire)?;
+        let gift = babylon_practice_contract::organizer_aid_commitment(config, opening, accepted)
+            .map_err(|error| MaterialBaseError::World(error.into()))?;
+        let CircuitAccounting::Monetary(economy) = &self.opening.state().accounting else {
+            return Err(MaterialWorldError::Wire.into());
+        };
+        let mut matches = economy
+            .aid
+            .mandates
+            .iter()
+            .filter(|row| row.id == gift.mandate_id);
+        let mandate = matches
+            .next()
+            .ok_or(MaterialBaseError::AidMandateMismatch)?;
+        if matches.next().is_some()
+            || mandate.source_hash != gift.source_hash
+            || mandate.donor_actor != gift.donor_actor_id
+            || mandate.recipient_actor != gift.recipient_actor_id
+            || mandate.donor_contributor_id != gift.donor_contributor_id
+            || mandate.donor.as_bytes() != gift.donor_principal_id
+            || mandate.recipient.as_bytes() != gift.recipient_principal_id
+            || !matches!(
+                (gift.kind, mandate.transport),
+                (OrganizerAidKind::Local, AidTransport::Local)
+                    | (OrganizerAidKind::Remote, AidTransport::Routed { .. })
+            )
+            || accepted.command.expected_period != self.opening.completed_tick()
+            || accepted.resolves_period != self.opening.state().period
+        {
+            return Err(MaterialBaseError::AidMandateMismatch);
+        }
+        // The capture bounds the request; the material owner determines actual fulfillment.
+        Ok(vec![AidResolveInput {
+            mandate_id: mandate.id,
+            source_hash: mandate.source_hash,
+            admitted_period: accepted.command.expected_period,
+            donor_actor: gift.donor_actor_id,
+            recipient_actor: gift.recipient_actor_id,
+            quantity: mandate.maximum_quantity,
+        }])
+    }
     pub(crate) fn prepare(
         self,
         graph: &mut impl GraphSubstrate,
@@ -120,7 +184,27 @@ impl MaterialBaseInputs<'_> {
         let composition = self.labor;
         {
             validate_opening_labor(graph, context, composition, self.opening.state())?;
-            let closed = close_material_period(self.opening.state())?;
+            let aid_inputs = self.aid_inputs()?;
+            let collection_inputs = match (
+                self.opening.organizer_config(),
+                self.opening.organizer_state(),
+            ) {
+                (Some(config), Some(organizer)) => {
+                    crate::material_world::organizer_collection::input(
+                        config,
+                        organizer,
+                        self.commitment,
+                        self.opening.state(),
+                    )?
+                }
+                (None, None) if self.commitment.is_none() => vec![],
+                _ => return Err(MaterialWorldError::Wire.into()),
+            };
+            let closed = close_material_period_with_support(
+                self.opening.state(),
+                &aid_inputs,
+                &collection_inputs,
+            )?;
             let bindings = composition
                 .bindings()
                 .iter()
@@ -139,7 +223,11 @@ impl MaterialBaseInputs<'_> {
                 effects.next_member_labor().to_vec(),
             )?;
             transition.staffing_members = effects.member_receipts().to_vec();
-            Ok((self.opening.prepare_transition(transition)?, Some(effects)))
+            Ok((
+                self.opening
+                    .prepare_transition(transition, self.commitment)?,
+                Some(effects),
+            ))
         }
     }
 }

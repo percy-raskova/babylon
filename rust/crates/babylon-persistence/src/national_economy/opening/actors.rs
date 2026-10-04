@@ -33,7 +33,7 @@ pub(super) fn domestic(
         let location = EconomicLocation::domestic_county(county.county())
             .map_err(|_| NationalOpeningError::SourceScope)?;
         for budget in county.budgets() {
-            household(
+            super::aid::households(
                 builder,
                 location,
                 budget.key,
@@ -159,6 +159,31 @@ pub(super) fn household(
     households: u64,
     price_scale_bps: u16,
 ) -> Result<()> {
+    household_identity(
+        builder,
+        location,
+        budget,
+        persons,
+        households,
+        price_scale_bps,
+        (
+            household_principal(location, budget),
+            subject(location, &format!("household-{}", budget.label())),
+        ),
+    )
+}
+pub(super) fn household_identity(
+    builder: &mut Builder<'_>,
+    location: EconomicLocation,
+    budget: HouseholdBudgetKey,
+    persons: u64,
+    households: u64,
+    price_scale_bps: u16,
+    identity: (
+        babylon_material_circuit::FinalDemandPrincipalId,
+        StableElementKey,
+    ),
+) -> Result<()> {
     let kind = if budget == HouseholdBudgetKey::CollectiveResidence {
         HouseholdKind::CollectiveResidence
     } else {
@@ -205,7 +230,7 @@ pub(super) fn household(
             });
         }
     }
-    let principal_id = household_principal(location, budget);
+    let (principal_id, subject) = identity;
     if builder
         .household_keys
         .insert(principal_id, budget)
@@ -216,7 +241,7 @@ pub(super) fn household(
     builder.opening.households.push(EconomicHouseholdSeed {
         kind,
         principal_id,
-        subject: subject(location, &format!("household-{}", budget.label())),
+        subject,
         location,
         persons,
         households,

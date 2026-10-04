@@ -94,7 +94,7 @@ fn material_commit_failure_leaves_graph_circuit_world_time_and_sink_unchanged() 
     }
 }
 #[test]
-fn staffed_arrival_feeds_following_commitments_through_the_full_horizon() {
+fn staffed_arrival_feeds_following_commitments_past_the_former_campaign_expiry() {
     let mut fast = session(MichiganDeliveryPreset::Standard);
     let mut slow = session(MichiganDeliveryPreset::Delayed);
     assert_eq!(
@@ -103,7 +103,7 @@ fn staffed_arrival_feeds_following_commitments_through_the_full_horizon() {
     );
     let mut first_fast_delivery = None;
     let mut first_slow_delivery = None;
-    for tick in 1..=16 {
+    for tick in 1..=18 {
         for (session, first) in [
             (&mut fast, &mut first_fast_delivery),
             (&mut slow, &mut first_slow_delivery),
@@ -144,8 +144,8 @@ fn staffed_arrival_feeds_following_commitments_through_the_full_horizon() {
     }
     assert!(first_fast_delivery.is_some());
     assert!(first_slow_delivery.is_some());
-    assert!(fast.prepare_advance(&actions(&fast)).is_err());
-    assert!(slow.prepare_advance(&actions(&slow)).is_err());
+    assert_eq!(fast.completed_tick(), 18);
+    assert_eq!(slow.completed_tick(), 18);
 }
 
 #[test]

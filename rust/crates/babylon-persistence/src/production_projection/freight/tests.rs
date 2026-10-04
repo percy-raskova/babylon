@@ -85,7 +85,7 @@ fn shared_capacity_is_counted_once_with_exact_competing_dispatches_and_residual(
         (80, 160, (141, 18, 1)),
     ] {
         let (opening, next, receipt) = committed_pair(shared_opening(meal_order, capacity));
-        let accounts = project_freight_capacity_accounts(
+        let (accounts, definitions) = project_freight_capacity_accounts(
             &crate::test_support::catalog(),
             &next,
             Some(&opening),
@@ -121,13 +121,24 @@ fn shared_capacity_is_counted_once_with_exact_competing_dispatches_and_residual(
         let quantities: std::collections::BTreeSet<_> = reservation
             .orders
             .iter()
-            .map(|row| row.dispatched)
+            .map(|reference| {
+                definitions
+                    .iter()
+                    .find(|d| &d.id == reference)
+                    .unwrap()
+                    .order
+                    .dispatched
+            })
             .collect();
         assert_eq!(quantities, [expected.0, expected.1].into_iter().collect());
-        assert!(reservation
-            .orders
-            .iter()
-            .all(|row| row.requested.checked_sub(row.dispatched) == Some(row.remaining_unshipped)));
+        assert!(reservation.orders.iter().all(|reference| {
+            let row = &definitions
+                .iter()
+                .find(|d| &d.id == reference)
+                .unwrap()
+                .order;
+            row.requested.checked_sub(row.dispatched) == Some(row.remaining_unshipped)
+        }));
         let mut permuted_opening = opening.clone();
         permuted_opening.orders.reverse();
         permuted_opening.route_stages.reverse();
@@ -136,7 +147,7 @@ fn shared_capacity_is_counted_once_with_exact_competing_dispatches_and_residual(
         let mut permuted_receipt = receipt.clone();
         permuted_receipt.dispatches.reverse();
         assert_eq!(
-            accounts,
+            (accounts, definitions),
             project_freight_capacity_accounts(
                 &crate::test_support::catalog(),
                 &next,
@@ -151,7 +162,7 @@ fn shared_capacity_is_counted_once_with_exact_competing_dispatches_and_residual(
 #[test]
 fn foundation_sharing_is_known_but_completed_zero_is_not_invented() {
     let state = shared_opening(200, 160);
-    let accounts =
+    let (accounts, _definitions) =
         project_freight_capacity_accounts(&crate::test_support::catalog(), &state, None, None)
             .unwrap();
     assert!(accounts.iter().all(|row| row.completed.is_none()));
@@ -164,7 +175,7 @@ fn foundation_sharing_is_known_but_completed_zero_is_not_invented() {
         160_000
     );
     let (opening, next, receipt) = committed_pair(shared_opening(200, 0));
-    let accounts = project_freight_capacity_accounts(
+    let (accounts, definitions) = project_freight_capacity_accounts(
         &crate::test_support::catalog(),
         &next,
         Some(&opening),
@@ -182,7 +193,13 @@ fn foundation_sharing_is_known_but_completed_zero_is_not_invented() {
     assert!(completed.reservations[0]
         .orders
         .iter()
-        .all(|row| row.dispatched == 0));
+        .all(|reference| definitions
+            .iter()
+            .find(|d| &d.id == reference)
+            .unwrap()
+            .order
+            .dispatched
+            == 0));
 }
 
 #[test]
@@ -260,7 +277,7 @@ fn reservations_for_later_legs_debit_the_future_period_without_claiming_arrival(
     });
     state.route_stages.push(second);
     let (opening, next, receipt) = committed_pair(state);
-    let accounts =
+    let (accounts, _definitions) =
         project_freight_capacity_accounts(&catalog, &next, Some(&opening), Some(&receipt)).unwrap();
     let shared = accounts
         .iter()
@@ -317,7 +334,7 @@ fn rolling_capacity_reconciles_future_bookings_and_refuses_unexplained_budget_ch
     let project = |current: &MaterialCircuitState| {
         project_freight_capacity_accounts(&catalog, current, Some(&opening), Some(&receipt))
     };
-    let accounts = project(&next).unwrap();
+    let (accounts, _definitions) = project(&next).unwrap();
     let shared = accounts
         .iter()
         .find(|row| row.route_ids.len() == 2)
@@ -424,4 +441,77 @@ fn rolling_two_stage_opening() -> MaterialCircuitState {
         future_reservations: Vec::new(),
     }));
     state
+}
+
+#[test]
+fn multileg_projection_encodes_each_exact_order_fact_once() {
+    fn collect(value: &serde_json::Value, facts: &mut Vec<String>) {
+        match value {
+            serde_json::Value::Object(row) => {
+                if row.contains_key("order_id") {
+                    facts.push(serde_json::to_string(value).unwrap());
+                }
+                for child in row.values() {
+                    collect(child, facts);
+                }
+            }
+            serde_json::Value::Array(rows) => {
+                for child in rows {
+                    collect(child, facts);
+                }
+            }
+            _ => {}
+        }
+    }
+    let mut state = shared_opening(200, 160);
+    let catalog = crate::test_support::catalog();
+    let sheet = catalog
+        .routes()
+        .iter()
+        .find(|r| r.good_key == "sheet")
+        .unwrap();
+    let first = state
+        .route_stages
+        .iter_mut()
+        .find(|leg| leg.route_id == sheet.id())
+        .unwrap();
+    let destination = first.to_node_id;
+    let intermediate = LogisticsNodeId::from_bytes([73; 32]);
+    first.to_node_id = intermediate;
+    let second = RouteStage {
+        route_id: first.route_id,
+        stage_index: 1,
+        from_node_id: intermediate,
+        to_node_id: destination,
+        travel_periods: 1,
+        loss_ppm: 0,
+    };
+    let shared = state
+        .route_stage_capacities
+        .iter()
+        .find(|r| r.route_id == sheet.id())
+        .unwrap()
+        .corridor_id;
+    state.route_stage_capacities.push(RouteStageCapacity {
+        route_id: sheet.id(),
+        stage_index: 1,
+        corridor_id: shared,
+    });
+    state.route_stages.push(second);
+    let (opening, next, receipt) = committed_pair(state);
+    let projection =
+        project_freight_capacity_accounts(&catalog, &next, Some(&opening), Some(&receipt)).unwrap();
+    let disclosure = serde_json::to_value(&projection).unwrap();
+    let mut facts = Vec::new();
+    collect(&disclosure, &mut facts);
+    let unique: std::collections::BTreeSet<_> = facts.iter().collect();
+    assert!(
+        !unique.is_empty(),
+        "actual commercial order facts must remain disclosed"
+    );
+    assert_eq!(
+        facts.len(),
+        unique.len(),
+        "one exact order tuple must be encoded once despite reservations on multiple legs"
+    );
 }

@@ -7,7 +7,11 @@ use babylon_persistence::{
     national_households::national_household_reference,
 };
 
-pub(super) fn assert_people(opening: &EconomicOpening, policy: &NationalGamePolicy) {
+pub(super) fn assert_people(
+    opening: &EconomicOpening,
+    policy: &NationalGamePolicy,
+    aid: &babylon_persistence::national_economy::NationalAidCapture,
+) {
     let budgets = allocate_households(
         national_county_reference().unwrap(),
         national_household_reference().unwrap(),
@@ -37,33 +41,12 @@ pub(super) fn assert_people(opening: &EconomicOpening, policy: &NationalGamePoli
             total.1 += member.reserve;
         }
     }
-    let mut counted = 0;
-    for county in budgets.counties() {
-        let location = EconomicLocation::domestic_county(county.county()).unwrap();
-        for budget in county.budgets() {
-            counted += 1;
-            let principal = household_principal(location, budget.key);
-            let row = households[&principal];
-            assert_eq!(
-                (row.persons, row.households),
-                (budget.persons, budget.households)
-            );
-            assert_eq!(
-                assigned.get(&principal).copied().unwrap_or_default(),
-                (budget.employed, budget.reserve)
-            );
-            assert!(budget.employed + budget.reserve <= row.persons);
-            assert_eq!(
-                row.kind == HouseholdKind::CollectiveResidence,
-                budget.key == HouseholdBudgetKey::CollectiveResidence
-            );
-        }
-    }
+    let counted = assert_source_accounts(&budgets, &households, &assigned, aid);
     let domestic: Vec<_> = households
         .values()
         .filter(|h| matches!(h.location, EconomicLocation::County(_)))
         .collect();
-    assert_eq!(domestic.len(), counted);
+    assert_eq!(domestic.len(), counted + aid.children.len());
     assert_eq!(
         domestic
             .iter()
@@ -85,16 +68,67 @@ pub(super) fn assert_people(opening: &EconomicOpening, policy: &NationalGamePoli
             .sum::<u64>(),
         8_200_068
     );
-    assert_eq!(opening.households.len() - counted, 18);
+    assert_eq!(opening.households.len() - counted - aid.children.len(), 18);
     assert_eq!(opening.sites.len(), 60_634);
     assert!(opening.orders.goods.is_empty() && opening.orders.final_demand.is_empty());
     assert_eq!(opening.recipes.len(), 9);
     assert_eq!(opening.household_templates.len(), 2);
 }
 
+fn assert_source_accounts(
+    budgets: &babylon_persistence::national_household_allocation::NationalHouseholdAllocation,
+    households: &BTreeMap<
+        babylon_material_circuit::FinalDemandPrincipalId,
+        &babylon_persistence::economic_catalog::EconomicHouseholdSeed,
+    >,
+    assigned: &BTreeMap<babylon_material_circuit::FinalDemandPrincipalId, (u64, u64)>,
+    aid: &babylon_persistence::national_economy::NationalAidCapture,
+) -> usize {
+    let mut counted = 0;
+    for county in budgets.counties() {
+        let location = EconomicLocation::domestic_county(county.county()).unwrap();
+        for budget in county.budgets() {
+            counted += 1;
+            let principal = household_principal(location, budget.key);
+            let row = households[&principal];
+            let children: Vec<_> = aid
+                .children
+                .iter()
+                .filter(|child| child.parent == principal)
+                .collect();
+            let mut counted_people = (row.persons, row.households);
+            let mut counted_work = assigned.get(&principal).copied().unwrap_or_default();
+            for child in children {
+                let actual = households[&child.principal];
+                assert_eq!(
+                    (actual.persons, actual.households),
+                    (child.persons, child.households)
+                );
+                assert_eq!(actual.location, row.location);
+                assert_eq!(actual.kind, HouseholdKind::Ordinary);
+                counted_people.0 = counted_people.0.checked_add(actual.persons).unwrap();
+                counted_people.1 = counted_people.1.checked_add(actual.households).unwrap();
+                let work = assigned.get(&child.principal).copied().unwrap_or_default();
+                assert_eq!(work, (child.employed, child.reserve));
+                counted_work.0 = counted_work.0.checked_add(work.0).unwrap();
+                counted_work.1 = counted_work.1.checked_add(work.1).unwrap();
+            }
+            assert_eq!(counted_people, (budget.persons, budget.households));
+            assert_eq!(counted_work, (budget.employed, budget.reserve));
+            assert!(budget.employed + budget.reserve <= counted_people.0);
+            assert_eq!(
+                row.kind == HouseholdKind::CollectiveResidence,
+                budget.key == HouseholdBudgetKey::CollectiveResidence
+            );
+        }
+    }
+    counted
+}
+
 pub(super) fn assert_endowments_and_ownership(
     opening: &EconomicOpening,
     policy: &NationalGamePolicy,
+    aid: &babylon_persistence::national_economy::NationalAidCapture,
 ) {
     let mut totals = BTreeMap::<EconomicLocation, (u64, u64, i128)>::new();
     let mut stock = BTreeMap::<(EconomicLocation, _, _), (u64, i128)>::new();
@@ -124,6 +158,33 @@ pub(super) fn assert_endowments_and_ownership(
             domestic_owners.insert(household.principal_id);
         }
     }
+    let payer = aid.mandates[0].payer;
+    assert!(matches!(payer, AccountId::Organization(_)));
+    let organization = opening
+        .institutional_cash
+        .iter()
+        .filter(|account| account.id == payer)
+        .collect::<Vec<_>>();
+    assert_eq!(organization.len(), 1);
+    assert_eq!(
+        organization[0].cash.micro_units(),
+        policy.aid.organization_opening_cash_micros
+    );
+    let donor = opening
+        .households
+        .iter()
+        .find(|household| household.principal_id == aid.children[0].principal)
+        .unwrap();
+    assert!(opening
+        .institutions
+        .locations
+        .iter()
+        .any(|row| row.account == payer && row.location == donor.location));
+    let total = totals.get_mut(&donor.location).unwrap();
+    total.2 = total
+        .2
+        .checked_add(organization[0].cash.micro_units())
+        .unwrap();
     for (location, (persons, households, cash)) in &totals {
         let mut period_cost = 0;
         for need in &policy.household_needs {
@@ -147,6 +208,14 @@ pub(super) fn assert_endowments_and_ownership(
             period_cost * i128::from(policy.working_capital_periods)
         );
     }
+    assert_ownership(opening, &domestic_owners);
+    assert_retail_aggregation(opening, policy);
+}
+
+fn assert_ownership(
+    opening: &EconomicOpening,
+    domestic_owners: &BTreeSet<babylon_material_circuit::FinalDemandPrincipalId>,
+) {
     let locations: BTreeMap<_, _> = opening
         .households
         .iter()
@@ -174,7 +243,6 @@ pub(super) fn assert_endowments_and_ownership(
         "the existing Canadian claim reaches domestic owner budgets"
     );
     assert_eq!(opening.equity.len(), opening.institutions.ownership.len());
-    assert_retail_aggregation(opening, policy);
 }
 
 fn assert_retail_aggregation(opening: &EconomicOpening, policy: &NationalGamePolicy) {
@@ -241,35 +309,58 @@ fn assert_retail_aggregation(opening: &EconomicOpening, policy: &NationalGamePol
 }
 
 /// Exercise the actual compiler and material register, independently of the source census.
-pub fn assert_admitted_state(opening: &EconomicOpening) {
+pub fn assert_admitted_state(
+    opening: &EconomicOpening,
+    aid: &babylon_persistence::national_economy::NationalAidCapture,
+) {
     use babylon_material_circuit::{encode_material_circuit_state, CircuitAccounting};
     let start = std::time::Instant::now();
     let compiled = opening
         .compile()
-        .expect("complete state16 household opening must admit");
-    eprintln!("state16 common admission: {:?}", start.elapsed());
+        .expect("complete current household opening must admit");
+    eprintln!("current common admission: {:?}", start.elapsed());
     let state_bytes = encode_material_circuit_state(&compiled.state).unwrap();
     let CircuitAccounting::Monetary(e) = &compiled.state.accounting else {
         panic!("national monetary circuit");
     };
     let recurring = e.recurring.as_ref().unwrap();
-    assert_eq!(recurring.household_needs.len(), 87_960);
-    assert_eq!(recurring.household_purchases.len(), 87_960);
+    assert_eq!(e.aid.mandates, aid.mandates);
+    assert!(e.aid.freight.is_empty());
+    let added_needs = aid
+        .children
+        .iter()
+        .map(|child| {
+            let household = opening
+                .households
+                .iter()
+                .find(|h| h.principal_id == child.principal)
+                .unwrap();
+            opening
+                .household_templates
+                .iter()
+                .find(|t| t.id == household.template)
+                .unwrap()
+                .needs
+                .len()
+        })
+        .sum::<usize>();
+    assert_eq!(recurring.household_needs.len(), 87_960 + added_needs);
+    assert_eq!(recurring.household_purchases.len(), 87_960 + added_needs);
     assert_eq!(e.financial.ownership.len(), 90_794);
     assert_eq!(e.costs.snapshot().equity.len(), 90_794);
-    assert_eq!(e.financial.taxes.len(), 76_327);
-    assert_eq!(e.employment.len(), 100_301);
-    eprintln!("state16 canonical bytes: {}", state_bytes.len());
+    assert_eq!(e.financial.taxes.len(), 76_327 + aid.children.len());
+    assert_eq!(e.employment.len(), 100_301 + 1);
+    eprintln!("current canonical bytes: {}", state_bytes.len());
     eprintln!(
-        "state16 SHA256: {:02x?}",
+        "current SHA256: {:02x?}",
         babylon_kernel::content_digest::sha256_of(&state_bytes)
     );
     drop(state_bytes);
     let start = std::time::Instant::now();
     let register = babylon_tick::material_world::MaterialWorldRegister::try_new(0, compiled.state)
-        .expect("complete state16 opening register must admit");
+        .expect("complete current opening register must admit");
     eprintln!(
-        "state16 register bytes: {}, elapsed: {:?}",
+        "current register bytes: {}, elapsed: {:?}",
         register.canonical_bytes().len(),
         start.elapsed()
     );

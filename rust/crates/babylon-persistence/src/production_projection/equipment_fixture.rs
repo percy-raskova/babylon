@@ -94,6 +94,8 @@ fn opening_accounting(
     schedules: &[LaborCapacityRow],
 ) -> CircuitAccounting {
     CircuitAccounting::Monetary(Box::new(MonetaryCircuit {
+        aid: babylon_material_circuit::AidBook::default(),
+        household_time: babylon_material_circuit::HouseholdTimeAccounting::NotModeled,
         book,
         costs,
         financial: FinancialInstitutions::empty(),

@@ -742,6 +742,8 @@ mod tests {
             visibility: ObserverVisibility::FullObserver,
             counties: vec![],
             production: Some(ProductionSnapshot {
+            physical_routes: vec![babylon_persistence::production_observation::PhysicalRouteDefinition { id: "route".into(), travel_periods: 3, stages: vec![babylon_persistence::production_observation::ProductionRouteStage { stage_index: 0, travel_periods: 3, capacity_ids: vec!["fixture-capacity".into()] }], transport_kind: babylon_persistence::production_observation::ProductionRouteTransport::Staged, physical_edge_ids: Vec::new(), distance_mm: None }],
+
                 household_accounts: Vec::new(),
                 household_service_accounts: Vec::new(),
             goods_price_accounts: Vec::new(),
@@ -752,6 +754,7 @@ mod tests {
                 merchant_handling_accounts: Vec::new(),
                 final_demand_accounts: Vec::new(),
                 freight_capacity_accounts: Vec::new(),
+freight_order_definitions: Vec::new(),
                 material_balance: None,
                 labor_accounts: Vec::new(),
                 staffing_accounts: Vec::new(),
@@ -764,11 +767,7 @@ mod tests {
                 ],
                 routes: vec![ProductionRoute {
                     physical_route_id: "route".into(),
-                    physical_edge_ids: Vec::new(),
-                    distance_mm: None,
-                    transport_kind: babylon_persistence::production_observation::ProductionRouteTransport::Staged,
                     grams_per_unit: 1000,
-                    stages: Vec::new(),
                     id: "route".into(),
                     supplier_site_id: "source".into(),
                     buyer_site_id: "buyer".into(),
@@ -776,7 +775,6 @@ mod tests {
                     unit_id: key('a').unit_id,
                     good: "Good a".into(),
                     unit: "kg".into(),
-                    travel_periods: 3,
                     ordered: 100,
                     shipped: 90,
                     delivered: 60,

@@ -8,7 +8,7 @@ use std::fmt::Write as _;
 use super::ProductionReadingSection;
 use crate::observer_ui::grouped;
 use crate::production_brief::committed_plan_status;
-use crate::production_freight::{account_reading, format_freight_mass, shared_accounts};
+use crate::production_freight::format_freight_mass;
 
 pub(super) fn describe(
     site: &ProductionSite,
@@ -175,7 +175,21 @@ pub(super) fn describe_flow(site: &ProductionSite, snapshot: &ProductionSnapshot
 
 pub(super) fn describe_freight(site: &ProductionSite, snapshot: &ProductionSnapshot) -> String {
     let mut value = String::new();
-    let accounts = shared_accounts(snapshot, Some(&site.id));
+    let Ok(definitions) =
+        babylon_persistence::production_observation::PhysicalRouteIndex::try_new(snapshot)
+    else {
+        return "Physical route details unavailable in this observation.\n".into();
+    };
+    let Ok(orders) =
+        babylon_persistence::production_observation::FreightOrderIndex::try_new(snapshot)
+    else {
+        return "Freight order details unavailable in this observation.\n".into();
+    };
+    let accounts = crate::production_freight::shared_accounts_with_index(
+        snapshot,
+        Some(&site.id),
+        &definitions,
+    );
     if accounts.is_empty() {
         value.push_str("No shared freight pool disclosed for this subject.\n");
     }
@@ -183,7 +197,12 @@ pub(super) fn describe_freight(site: &ProductionSite, snapshot: &ProductionSnaps
         writeln!(value, "{} shared capacity accounts; showing the three with least next-opening availability.\n", accounts.len()).expect("String write");
     }
     for account in accounts.into_iter().take(3) {
-        value.push_str(&account_reading(account, snapshot));
+        value.push_str(&crate::production_freight::account_reading_with_index(
+            account,
+            snapshot,
+            &definitions,
+            &orders,
+        ));
         value.push('\n');
     }
     value.push_str("\nPHYSICAL DELIVERIES / TO DATE\n");
@@ -202,15 +221,18 @@ pub(super) fn describe_freight(site: &ProductionSite, snapshot: &ProductionSnaps
             .iter()
             .find(|site| site.id == *other)
             .map_or(other.as_str(), |site| site.name.as_str());
+        let Some(physical) = definitions.get(route) else {
+            continue;
+        };
         writeln!(
             value,
             "{} | {}\n{} / {} {} delivered | {} unshipped\n",
             name,
-            match route.transport_kind {
+            match physical.transport_kind {
                 babylon_persistence::production_observation::ProductionRouteTransport::Local =>
                     "Local inter-owner transfer".into(),
                 babylon_persistence::production_observation::ProductionRouteTransport::Staged =>
-                    format!("{} periods travel", route.travel_periods),
+                    format!("{} periods travel", physical.travel_periods),
             },
             grouped(route.delivered),
             grouped(route.ordered),
@@ -637,8 +659,10 @@ fn describe_households(value: &mut String, site: &ProductionSite, snapshot: &Pro
         if let Some(done) = &row.completed {
             writeln!(
                 value,
-                "{} received · {} consumed · {} unmet · {} in pantry",
+                "{} purchased · {} support received · {} support sent · {} consumed · {} unmet · {} in pantry",
                 grouped(done.received),
+                grouped(done.support_granted),
+                grouped(done.support_dispatched),
                 grouped(done.consumed),
                 grouped(done.unmet),
                 grouped(done.closing_stock)
@@ -723,5 +747,36 @@ fn describe_prices(value: &mut String, site: &ProductionSite, snapshot: &Product
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod aid_reading_tests {
+    use super::*;
+    #[test]
+    fn household_reading_separates_purchases_and_both_gift_directions() {
+        let mut snapshot = crate::production_freight::tests::aid_fixture();
+        snapshot.household_accounts[0].completed =
+            Some(babylon_persistence::CompletedHouseholdBalance {
+                period: 1,
+                opening_stock: 5,
+                received: 3,
+                support_granted: 2,
+                support_dispatched: 4,
+                required: 4,
+                consumed: 4,
+                unmet: 0,
+                closing_stock: 2,
+                desired: 3,
+                requested: 3,
+                admitted: 3,
+                fulfilled: 3,
+                expired: 0,
+            });
+        let site = snapshot.sites.iter().find(|s| s.id == "panels").unwrap();
+        let mut text = String::new();
+        describe_households(&mut text, site, &snapshot);
+        assert!(text.contains("3 purchased · 2 support received · 4 support sent · 4 consumed · 0 unmet · 2 in pantry"));
+        assert!(text.contains("4 households · 4 persons"));
     }
 }

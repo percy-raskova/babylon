@@ -1,6 +1,9 @@
 use babylon_kernel::currency::Currency;
 use babylon_material_circuit::*;
 
+#[path = "support/household_service_time_cases.rs"]
+mod household_service_time_cases;
+
 fn site(n: u8) -> SiteId {
     SiteId::from_bytes([n; 32])
 }
@@ -68,6 +71,9 @@ fn opening() -> MaterialCircuitState {
         capacity_supply: CapacitySupply::FiniteSchedule,
         period: 1,
         accounting: CircuitAccounting::Monetary(Box::new(MonetaryCircuit {
+            aid: AidBook::default(),
+
+            household_time: babylon_material_circuit::HouseholdTimeAccounting::NotModeled,
             financial: babylon_material_circuit::FinancialInstitutions::empty(),
             member_labor: (1..=3)
                 .map(|n| babylon_material_circuit::MemberLaborCapacityRow {

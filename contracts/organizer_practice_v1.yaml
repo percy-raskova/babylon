@@ -8,9 +8,11 @@ meta:
 
 encoding:
   outer: exact_ASCII_domain_then_NUL_then_canonical_UTF8_JSON
-  version: schema_version_1_where_present
+  version: config_and_state_schema_version_6_where_present
+  current_domains: {config: "babylon.organizer-config.v6\0", state: "babylon.organizer-state.v4\0",
+                    receipt: "babylon.organizer-receipt.v2\0"}
   field_order: Rust_declared_struct_field_order
-  numbers: whole_unsigned_integers_only
+  numbers: whole_unsigned_integers_and_strict_nonnegative_i128_decimal_cash_strings
   byte_arrays: fixed_length_JSON_unsigned_integer_arrays
   enums: snake_case_names_with_typed_payloads
   maps: absent_from_authoritative_state

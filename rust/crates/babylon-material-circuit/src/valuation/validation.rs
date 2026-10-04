@@ -38,7 +38,7 @@ pub(crate) fn validate(state: &MaterialCircuitState) -> Result<()> {
             return Err(MaterialCircuitError::ValuationInvariant);
         }
     }
-    if costs.freight.len() != state.freight.len() {
+    if costs.freight.len() != state.freight.len() + economy.aid.freight.len() {
         return Err(MaterialCircuitError::ValuationInvariant);
     }
     for lot in &state.freight {
@@ -46,7 +46,18 @@ pub(crate) fn validate(state: &MaterialCircuitState) -> Result<()> {
             .freight
             .get(&lot.lot_id)
             .ok_or(MaterialCircuitError::ValuationInvariant)?;
-        if owner != lot.source_site_id || (lot.quantity == 0 && cost.micro_units() != 0) {
+        if owner != AccountId::Site(lot.source_site_id)
+            || (lot.quantity == 0 && cost.micro_units() != 0)
+        {
+            return Err(MaterialCircuitError::ValuationInvariant);
+        }
+    }
+    for lot in &economy.aid.freight {
+        let &(owner, cost) = costs
+            .freight
+            .get(&lot.lot_id)
+            .ok_or(MaterialCircuitError::ValuationInvariant)?;
+        if owner != AccountId::Household(lot.donor) || lot.quantity == 0 || cost.micro_units() < 0 {
             return Err(MaterialCircuitError::ValuationInvariant);
         }
     }

@@ -13,6 +13,7 @@ type Result<T> = std::result::Result<T, EconomicCatalogError>;
 
 pub(super) struct NationalSources {
     pub(super) counties: NationalCountyReference,
+    pub(super) aid: crate::national_economy::NationalAidCapture,
     cohorts: NationalCohortReference,
     residents: NationalResidentWorkforceReference,
     households: NationalHouseholdReference,
@@ -48,6 +49,14 @@ impl NationalSources {
             ],
         )?;
         validate_declarations(input)?;
+        let expected_rules = if input.organizer.is_some() {
+            super::preset::national_organizer_rules()
+        } else {
+            include_bytes!("../../../../../content/scenarios/national/material-cycle.bsl").to_vec()
+        };
+        if super::capture::source(input, Kind::Rules)? != expected_rules {
+            return Err(EconomicCatalogError::Source(Kind::Rules));
+        }
         let b = |kind| super::capture::source(input, kind);
         let counties = NationalCountyReference::decode_pinned(b(Kind::NationalCounties)?)
             .map_err(|_| EconomicCatalogError::Source(Kind::NationalCounties))?;
@@ -88,11 +97,17 @@ impl NationalSources {
             &households,
             &world,
             &transport,
-            &policy,
+            crate::national_economy::NationalOpeningPolicy {
+                policy: &policy,
+                source_hash: babylon_kernel::content_digest::sha256_of(b(
+                    Kind::NationalGamePolicy,
+                )?),
+            },
         )
         .map_err(EconomicCatalogError::NationalOpening)?;
         Ok((
             Self {
+                aid: opening.aid,
                 counties,
                 cohorts,
                 residents,
@@ -100,7 +115,7 @@ impl NationalSources {
                 world,
                 transport,
             },
-            opening,
+            opening.opening,
         ))
     }
     pub(super) fn view(&self) -> EconomicSourceView<'_> {

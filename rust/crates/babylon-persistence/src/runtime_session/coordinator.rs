@@ -206,22 +206,7 @@ impl<'a, W: Write, B: SessionBackend, D: ArchiveControl> Coordinator<'a, W, B, D
                 self.switch(request_id, &target, events, sender, factories)?;
             }
             RuntimeSessionRequest::Advance { expected_tail, .. } => {
-                let result = self
-                    .active
-                    .as_mut()
-                    .ok_or(RuntimeSessionErrorCode::CampaignAbsent)
-                    .and_then(|active| active.backend.advance(&expected_tail));
-                match result {
-                    Ok(tail) => emit(
-                        self.output,
-                        &RuntimeSessionResponse::Committed {
-                            request_id,
-                            scope: self.scope.clone(),
-                            tail,
-                        },
-                    )?,
-                    Err(code) => self.refuse(Some(request_id), code)?,
-                }
+                self.advance(request_id, &expected_tail)?;
             }
             RuntimeSessionRequest::PreviewOrganizer { command, .. } => {
                 let result = self
@@ -277,6 +262,59 @@ impl<'a, W: Write, B: SessionBackend, D: ArchiveControl> Coordinator<'a, W, B, D
             }
         }
         Ok(None)
+    }
+
+    fn advance(
+        &mut self,
+        request_id: u64,
+        expected_tail: &super::RuntimeSessionTail,
+    ) -> Result<(), RuntimeSessionErrorCode> {
+        let mut progress_failure = None;
+        let scope = self.scope.clone();
+        let output = &mut *self.output;
+        let mut progress = |stage| {
+            if progress_failure.is_none() {
+                let result = expected_tail
+                    .resolve_tick
+                    .checked_add(1)
+                    .ok_or(RuntimeSessionErrorCode::InvalidRequest)
+                    .and_then(|resolve_tick| {
+                        emit(
+                            output,
+                            &RuntimeSessionResponse::AdvanceProgress {
+                                request_id,
+                                scope: scope.clone(),
+                                resolve_tick,
+                                stage,
+                            },
+                        )
+                    });
+                if let Err(code) = result {
+                    progress_failure = Some(code);
+                }
+            }
+        };
+        let result = self
+            .active
+            .as_mut()
+            .ok_or(RuntimeSessionErrorCode::CampaignAbsent)
+            .and_then(|active| active.backend.advance(expected_tail, &mut progress));
+        // Observation failure cannot abort authoritative work or fabricate an ACK.
+        if let Some(code) = progress_failure {
+            return Err(code);
+        }
+        match result {
+            Ok(tail) => emit(
+                self.output,
+                &RuntimeSessionResponse::Committed {
+                    request_id,
+                    scope: self.scope.clone(),
+                    tail,
+                },
+            )?,
+            Err(code) => self.refuse(Some(request_id), code)?,
+        }
+        Ok(())
     }
 
     fn submit_organizer(

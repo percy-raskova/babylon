@@ -12,9 +12,9 @@ use babylon_kernel::{
 };
 use babylon_material_circuit::{
     CorridorId, FinalDemandPrincipalId, GoodId, HouseholdNeedBasis, HouseholdPurchasePolicy,
-    LogisticsNodeId, MerchantRole, ProcessId, ReplenishmentPolicy, RouteStage, RouteStageCapacity,
-    SellerOffer, ServiceConnection, ServiceInputPolicy, SharedCapacitySupply, SiteId,
-    SupplierRoute, UnitId,
+    HouseholdTimeAccounting, LogisticsNodeId, MerchantRole, ProcessId, ReplenishmentPolicy,
+    RouteStage, RouteStageCapacity, SellerOffer, ServiceConnection, ServiceInputPolicy,
+    SharedCapacitySupply, SiteId, SupplierRoute, UnitId,
 };
 
 /// A catalog-local recipe identity, unique inside the captured template table.
@@ -157,6 +157,8 @@ pub enum CatalogAccounting {
 /// Opening policies reuse the engine's exact types without retaining dynamic cursors.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CatalogPolicies {
+    pub aid: babylon_material_circuit::AidBook,
+    pub household_time: HouseholdTimeAccounting,
     pub offers: Vec<SellerOffer>,
     pub replenishment: Vec<ReplenishmentPolicy>,
     pub household_purchases: Vec<HouseholdPurchasePolicy>,

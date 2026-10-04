@@ -20,7 +20,7 @@ must not be confused with contemporary observations or calibrated parameters.
 | --- | --- |
 | Marx, Grundrisse, 1857–58; Nicolaus translation, 1973 | Local mirror is partial. Read Introduction §§1–2, including the complete production/distribution/exchange/consumption discussion, from [MIA ch01, lines 13–130](https://www.marxists.org/archive/marx/works/1857/grundrisse/ch01.htm#loc2). Introduction §§3–4 remain unread. |
 | Grundrisse money | `MIA/archive/marx/works/1857/grundrisse/ch04.htm`, printed pp. 203–215 plus opening hoarding discussion pp. 215–217. Remaining chapter unread. |
-| Grundrisse capital as relation/process | `MIA/archive/marx/works/1857/grundrisse/ch05.htm`, examined pp. 251–262 in preparation; initial extraction was incomplete. Do not cite this as a complete chapter reading. |
+| Grundrisse capital as relation/process | `MIA/archive/marx/works/1857/grundrisse/ch05.htm`, printed pp. 251–262 fully read, with preceding context pp. 248–250 and continuation pp. 263–275 through `#iiib`, The two different processes in the exchange of capital with labour. Continued through the complete Capital and modern landed property — Wakefield section containing pp. 276–279, the following market discussion through p. 281, and the opening exchange/capacity paragraphs through p. 284 (local source lines 115–130). In-page footnotes and linked editorial notes 47–49 read. The later exchange/savings argument remains unread. This is not a complete chapter reading. |
 | Grundrisse realization and world market | [MIA ch08](https://www.marxists.org/archive/marx/works/1857/grundrisse/ch08.htm), complete Notebook IV opening section, HTML lines 3–145, plus beginning of following section lines 146–160. |
 | Grundrisse machinery, labor time, fixed-capital reproduction | [MIA ch14](https://www.marxists.org/archive/marx/works/1857/grundrisse/ch14.htm), complete opening four sections lines 3–71; complete turnover/reproduction, subsequent-year commitments, maintenance and revenue sections lines 108–232. Intervening Owen extract and later pauperism material not completed. |
 | Grundrisse profit | `MIA/archive/marx/works/1857/grundrisse/ch15.htm`, printed pp. 745–757 on profit's denominator, turnover, composition, tendencies/counteracting movements and Ricardo/Bastiat. Remainder unread. |
@@ -95,6 +95,14 @@ QCEW jobs do not become an unaccounted source of persons.
 **Qualification:** this establishes causal questions, not a source-derived
 household utility curve or a claim that every household has identical needs.
 
+The opening exchange discussion following the Wakefield section distinguishes
+buying disposition over labor for a stated time from using that capacity.
+Marx includes payment for unused capacity as a possible case and does not deduce
+a wage quantity from that general relation. **Interpretation for the game:**
+funded employment and payment must remain separate from actual work, output and
+sales. The funded retail control now checks actual handling and its wages while
+conserving total cash. Its fixed wage and price are **Designed** control inputs.
+
 ### Money, capital and investment are not interchangeable stocks
 
 Capital II chapter 2 distinguishes accumulated money from its conversion into
@@ -102,6 +110,15 @@ expanded productive capital. Grundrisse Notebook VII makes equipment,
 maintenance, circulating inputs and future reproduction commitments material
 conditions. Amin's two-department example changes equipment when productivity
 changes; unchanged machines do not simply become more capable.
+
+Grundrisse's Wakefield discussion also places capital within property and wage
+relations. The following market discussion relates domestic and foreign markets
+through production, inputs and circulation. **Interpretation:** an opening cash
+balance cannot substitute for ownership, access, labor or replenishment. Twelve
+finite counterpart economies are a **Designed** resolution, not a claim that
+those aggregations share an interest. This passage supplies neither their
+membership nor a formula for their prices. Banking and changes to land tenure
+remain outside this version.
 
 **Implementation:** retained earnings can fund a real order; delivery and
 installation precede capacity. Record capital advanced versus consumed cost,

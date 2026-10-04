@@ -140,6 +140,8 @@ fn accounting() -> CircuitAccounting {
         ])
         .unwrap();
         MonetaryCircuit {
+            aid: babylon_material_circuit::AidBook::default(),
+            household_time: babylon_material_circuit::HouseholdTimeAccounting::NotModeled,
             financial: babylon_material_circuit::FinancialInstitutions::empty(),
             member_labor: (1..=9)
                 .flat_map(|period| {

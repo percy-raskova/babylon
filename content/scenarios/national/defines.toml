@@ -1,7 +1,7 @@
 # Designed first national/world campaign policy. These are gameplay units,
 # not source-derived production, subsistence thresholds or a forecast.
 # Every price is millionths of one common currency unit; no exchange rates.
-schema_version = 1
+schema_version = 2
 evidence_class = "Designed"
 period_days = 28
 work_hours_per_person = 160
@@ -30,6 +30,17 @@ operating_income_tax_bps = 1500
 private_distribution_bps = 5000
 reserve_food_support_periods = 1
 cross_border_ownership_bps = 2000
+
+# Designed time accounting. Domestic eligibility uses ACS age 16+ controls;
+# external eligibility is a fixed approximation, never a new workforce source.
+[household_time]
+hours_per_eligible_person = 224
+ordinary_protected_hours_per_household = 32
+ordinary_provisioning_hours_per_household = 64
+collective_protected_hours_per_person = 32
+collective_provisioning_hours_per_person = 64
+external_eligible_persons_bps = 8000
+unmet_hours_per_unit = { food = 20 }
 
 [equipment]
 batches_per_unit_per_period = 40
@@ -337,3 +348,44 @@ wage_micros_per_hour = 24000000
 price_scale_bps = 10000
 function_weights_bps = [1000, 500, 1000, 1500, 500, 500, 1500, 2000, 1000, 500]
 missing_population_game_persons = 50
+
+# Designed terms captured in existing NationalGamePolicy artifact.
+[aid]
+evidence_class = "Designed"
+donor_actor = 2616301
+local_recipient_actor = 2616302
+remote_recipient_actor = 1703101
+donor_contributor_id = 2616301
+local_recipient_contributor_id = 2616302
+remote_recipient_contributor_id = 1703101
+organization_opening_cash_micros = 1000000
+gift_cash_micros_per_unit = 100000
+fulfillment_hours_per_unit = 2
+maximum_quantity = 4
+
+# Designed consent and organization commitments; real time remains finite.
+[organizer]
+evidence_class = "Designed"
+organization_label = "Wayne Organizing Collective"
+workplace_partner_label = "Wayne Workplace Committee"
+neighborhood_partner_label = "Wayne Neighborhood Contact Group"
+local_partner_label = "Wayne Local Aid Partners"
+remote_partner_label = "Cook Independent Solidarity Partners"
+contributor_hours_cap = 8
+inquiry_hours = 2
+contact_hours = 2
+partner_response_hours = 2
+aid_coordination_hours = 2
+initial_agreement_through_period = 1
+contact_renewal_periods = 1
+local_receiving_consent = "accept"
+remote_receiving_consent = "accept"
+# Independent Designed cash consent; protected material needs remain mandatory.
+collection_cash_consent = "accept"
+collection_maximum_cash_micros = 400000
+collection_protected_cash_floor_micros = 0
+collection_hours = 2
+workplace_policy = "participate"
+neighborhood_policy = "participate"
+local_policy = "participate"
+remote_policy = "participate"

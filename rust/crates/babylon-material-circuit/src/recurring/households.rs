@@ -452,6 +452,26 @@ pub(crate) fn consume_household_needs(
             return Err(MaterialCircuitError::PurchaseInvariant);
         }
     }
+    let receipts = preview_household_needs(rows, state.period)?;
+    let closing: BTreeMap<_, _> = receipts
+        .iter()
+        .map(|r| ((r.principal_id, r.good_id, r.unit_id), r.closing_quantity))
+        .collect();
+    let mut next_stocks = rows.household_stocks.clone();
+    for row in &mut next_stocks {
+        row.quantity = *closing
+            .get(&(row.principal_id, row.good_id, row.unit_id))
+            .ok_or(MaterialCircuitError::FinalDemandInvariant)?;
+    }
+    rows.household_stocks = next_stocks;
+    rows.last_household_consumption_period = state.period;
+    Ok(receipts)
+}
+
+pub(crate) fn preview_household_needs(
+    rows: &RecurringEconomy,
+    period: u64,
+) -> Result<Vec<HouseholdConsumptionReceipt>> {
     let needed = requirements(rows)?;
     let stocks: BTreeMap<_, _> = rows
         .household_stocks
@@ -468,7 +488,7 @@ pub(crate) fn consume_household_needs(
             .ok_or(MaterialCircuitError::FinalDemandInvariant)?;
         let consumed_quantity = available_quantity.min(required_quantity);
         receipts.push(HouseholdConsumptionReceipt {
-            period: state.period,
+            period,
             principal_id: key.0,
             good_id: key.1,
             unit_id: key.2,
@@ -479,17 +499,5 @@ pub(crate) fn consume_household_needs(
             closing_quantity: available_quantity - consumed_quantity,
         });
     }
-    let closing: BTreeMap<_, _> = receipts
-        .iter()
-        .map(|r| ((r.principal_id, r.good_id, r.unit_id), r.closing_quantity))
-        .collect();
-    let mut next_stocks = rows.household_stocks.clone();
-    for row in &mut next_stocks {
-        row.quantity = *closing
-            .get(&(row.principal_id, row.good_id, row.unit_id))
-            .ok_or(MaterialCircuitError::FinalDemandInvariant)?;
-    }
-    rows.household_stocks = next_stocks;
-    rows.last_household_consumption_period = state.period;
     Ok(receipts)
 }

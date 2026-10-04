@@ -579,7 +579,8 @@ fn install_held_observation(app: &mut App, target: &ReaderTarget, tick: u64) {
     app.world_mut()
         .resource_mut::<ObserverSession>()
         .ready(tick, Some(content_hash.clone()));
-    app.insert_resource(ObserverFrame(Some(ObserverEconomySnapshot {
+    let mut frame = ObserverFrame::default();
+    frame.0 = Some(ObserverEconomySnapshot {
         campaign_id: target.campaign_id.as_uuid().to_string(),
         resolve_tick: tick,
         foundation_digest: String::new(),
@@ -589,7 +590,8 @@ fn install_held_observation(app: &mut App, target: &ReaderTarget, tick: u64) {
         visibility: ObserverVisibility::FullObserver,
         counties: Vec::new(),
         production: None,
-    })));
+    });
+    app.insert_resource(frame);
     let mut session = app.world_mut().resource_mut::<ObserverSession>();
     let context = session.context();
     assert!(session.installed(&context));

@@ -29,8 +29,11 @@ pub const MAX_PREPARED_ENUM_MEMBERS: usize = 4_096;
 pub const MAX_PREPARED_VOCABULARY_MEMBERS: usize = 524_288;
 /// Maximum aggregate prepared-environment rows.
 pub const MAX_PREPARED_AGGREGATE_ROWS: usize = 1_048_576;
-/// Maximum aggregate tick-payload rows.
-pub const MAX_TICK_AGGREGATE_ROWS: usize = 1_048_576;
+/// Designed aggregate headroom for measured national tick observations.
+/// Native staffing uses sixteen rows per workplace and two per member before
+/// rule outcomes; the full national close needs 1,170,748 aggregate rows.
+/// Prepared environments and individual tick-family ceilings stay independent.
+pub const MAX_TICK_AGGREGATE_ROWS: usize = 2_097_152;
 /// Maximum combined prepared-environment section bytes.
 pub const MAX_PREPARED_COMBINED_BYTES: usize = 67_108_864;
 /// Maximum combined tick-payload section bytes.

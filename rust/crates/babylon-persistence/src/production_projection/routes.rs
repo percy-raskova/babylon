@@ -6,7 +6,9 @@ use super::{
 };
 use crate::{
     michigan_economy::digest_hex,
-    production_observation::{ProductionRoute, ProductionRouteStage, ProductionRouteTransport},
+    production_observation::{
+        PhysicalRouteDefinition, ProductionRoute, ProductionRouteStage, ProductionRouteTransport,
+    },
 };
 use babylon_kernel::content_digest::sha256_of;
 use babylon_material_circuit::{MaterialCircuitState, RouteId, SupplierRoute, SupplierTransport};
@@ -38,26 +40,53 @@ pub(super) fn project(
     metadata: &Metadata<'_>,
     state: &MaterialCircuitState,
     history: &OrderHistory,
-) -> Result<Vec<ProductionRoute>> {
+) -> Result<(Vec<ProductionRoute>, Vec<PhysicalRouteDefinition>)> {
     let stages = stage_index(state)?;
     let totals = relation_totals(history)?;
     let mut result = Vec::with_capacity(state.supplier_routes.len());
+    let mut definitions = BTreeMap::<RouteId, PhysicalRouteDefinition>::new();
     for relation in &state.supplier_routes {
         if metadata.routes.get(&key(relation)).copied() != Some(relation) {
             return Err(ProductionProjectionError::Content);
         }
         let good = metadata.good(relation.good_id, relation.unit_id)?;
-        let stages = stages.get(&relation.route_id).cloned().unwrap_or_default();
-        let travel_periods = stages
-            .iter()
-            .try_fold(0_u64, |n, r| n.checked_add(r.travel_periods))
-            .ok_or(ProductionProjectionError::Arithmetic)?;
-        let transport_kind = match relation.transport_kind {
-            SupplierTransport::Local if stages.is_empty() => ProductionRouteTransport::Local,
-            SupplierTransport::Staged if !stages.is_empty() => ProductionRouteTransport::Staged,
-            _ => return Err(ProductionProjectionError::State),
-        };
-        let (physical_edge_ids, distance_mm) = geometry(metadata, relation.route_id);
+        if let std::collections::btree_map::Entry::Vacant(entry) =
+            definitions.entry(relation.route_id)
+        {
+            let route_stages = stages.get(&relation.route_id).cloned().unwrap_or_default();
+            let travel_periods = route_stages
+                .iter()
+                .try_fold(0_u64, |n, r| n.checked_add(r.travel_periods))
+                .ok_or(ProductionProjectionError::Arithmetic)?;
+            let transport_kind = match relation.transport_kind {
+                SupplierTransport::Local if route_stages.is_empty() => {
+                    ProductionRouteTransport::Local
+                }
+                SupplierTransport::Staged if !route_stages.is_empty() => {
+                    ProductionRouteTransport::Staged
+                }
+                _ => return Err(ProductionProjectionError::State),
+            };
+            let (physical_edge_ids, distance_mm) = geometry(metadata, relation.route_id);
+            entry.insert(PhysicalRouteDefinition {
+                id: digest_hex(&relation.route_id.as_bytes()),
+                travel_periods,
+                stages: route_stages,
+                transport_kind,
+                physical_edge_ids,
+                distance_mm,
+            });
+        }
+        let physical = definitions
+            .get(&relation.route_id)
+            .ok_or(ProductionProjectionError::State)?;
+        if !matches!(
+            (relation.transport_kind, physical.transport_kind),
+            (SupplierTransport::Local, ProductionRouteTransport::Local)
+                | (SupplierTransport::Staged, ProductionRouteTransport::Staged)
+        ) {
+            return Err(ProductionProjectionError::State);
+        }
         let total = totals
             .get(&(relation.route_id, key(relation)))
             .copied()
@@ -71,11 +100,6 @@ pub(super) fn project(
             unit_id: digest_hex(&relation.unit_id.as_bytes()),
             good: good.label.clone(),
             unit: good.unit_label.clone(),
-            travel_periods,
-            stages,
-            transport_kind,
-            physical_edge_ids,
-            distance_mm,
             grams_per_unit: outbound::mass(state, relation.good_id, relation.unit_id)?,
             ordered: total[0],
             shipped: total[1],
@@ -90,7 +114,7 @@ pub(super) fn project(
     if result.len() != metadata.routes.len() {
         return Err(ProductionProjectionError::Content);
     }
-    Ok(result)
+    Ok((result, definitions.into_values().collect()))
 }
 
 fn relation_totals(history: &OrderHistory) -> Result<BTreeMap<(RouteId, RelationKey), [u64; 5]>> {

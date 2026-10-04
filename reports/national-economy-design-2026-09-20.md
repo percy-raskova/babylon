@@ -421,4 +421,121 @@ only this arrival-settlement control is retained. Loss/refund, taxation,
 dividends, price formation, investment, resource renewal and organizer effects
 need their own connected evidence and are not proved by this control.
 
+
+## Organizational funding control (PER-345)
+
+A source audit found that organizational cash previously came from its opening
+transfer and aid refunds. The current one-currency endowment funds ten successful
+parcels at the captured accompanying cash rate. Continuing household reproduction
+does not establish continuing organizational funding.
+
+The [four-period paper control](test-results/per345-funding/2026-10-04/four-period-paper-control/README.md)
+specifies one **Designed** connection: an independently authorized household
+cash contribution to the organization, with actual needs, committed payments and
+shared household time protected. It uses fixed prices and population, real finite
+stocks and exact matched cash transfers. The organization starts empty only in
+this accounting control, so period-1 collection necessarily funds period-2 aid.
+National opening balances remain unchanged. Savings permit another contribution
+after funded attendance stops; subsequent unmet household services block collection
+despite positive money and time. Wage commitments do not depend on realized output.
+
+The journal reconciles 58,576 currency units including reserves, 44 food parcels,
+20 materials bundles, wage obligations, selected gift income/expense and household
+time. Root independently reproduced its exact JSON and CSV. This proves its paper
+arithmetic; it does not prove a current engine mechanism, supplier reproduction,
+national performance or enjoyable play.
+
+The implemented collection resolves after actual household reproduction and tax
+commitments, before final cost and receipt close. Eligibility uses frozen source
+funds; same-period ownership payouts and incoming contributions cannot finance
+another collection. Household cash willingness is separate from player control
+and time pledges. Performed collection joins the existing shared material time
+rail once, carries the original mandate/command into matched transfer and gift
+accounting, and funds only later accepted material actions. Existing political
+agreement, membership and hours remain independent consequences. PER-345 owns
+implementation and its causal, replay, persistence and native evidence; none is
+established by this paper control.
+
+The first national collection mandate binds the existing donor household,
+its contributor and the organization account already used for aid. Its separately
+authored cash consent is **Designed** `accept`; it is not inferred from receiving
+aid, participating in time commitments or political agreement. Designed captured
+defaults are a 400,000 micro-unit maximum, two actual contribution hours and a zero
+additional cash floor. The cap follows the paper control as a game choice, not an
+observed willingness estimate. Authored values remain configurable for new captures.
+All six protected need and commitment checks remain mandatory; zero additional
+floor cannot waive reproduction, closing stock targets or reserved payments.
+A chosen collection replaces one period of standing work and resolves next period.
+Actual funds can finance only later accepted aid. The current bounded mechanism
+collects the captured requested amount in full or records a refusal; a refusal
+keeps the dated receipt and spends no collection cash or time. These content choices are
+within the approved recurring organizational-resources direction; they alter no
+reserved theoretical line or mathematical primitive.
+
+Selected engine controls now establish actual matched collection transfers,
+protection of closing household stocks, use of shared material time once,
+savings after funded attendance stops, independently authorized later aid,
+canonical replay, and owned/borrowed recovery. The integration evidence lives in
+`test-results/per345-funding/2026-10-04/root-integration/`. The current receipt
+adds one bounded 317-byte row and its nine-byte family frame; this does not alter
+the independent national retained-growth policy. Strict and native consumer
+qualification remains separate from national two-period, 52-period, 325-period
+and actual play acceptance. No enjoyment or sustained national funding claim
+follows from these selected controls.
+
+## Integrated national measurement, October 4
+
+The current two-period playable national measurement is **incomplete and failed**.
+Its first period completed authenticated Archive publication and the required
+dossier, independent aid accounting, the complete production reader, and a cold
+reopen with the original canonical identities. All 3,144 county identities remain
+present. The second economic period committed, but the bounded runtime reply
+failed with `WouldBlock` before its required Archive completion was retained.
+No successful two-period, 52-period or 325-period qualification follows.
+
+Evidence is preserved in
+`test-results/per342-qualification/2026-10-04/current-national-playable-smoke002/`.
+The runner record is in the accompanying `fresh-smoke002-runner/` directory;
+its log SHA-256 is
+`043b0b13fc94be6df2abfb4617b39fa05dddc07ae595443df5763db844d1f562`.
+The selected policy is version 2, source SHA-256
+`4ff65f4aa29cbae6b12381c3a5914978ccc4986c0f0c2d9242868a371d02f11f`.
+The source and input capsules remain frozen with the run; later source changes
+cannot reinterpret it. Private fixture credentials and recovery backups stay
+outside Git.
+
+| Observed measure | Result | Acceptance consequence |
+| --- | ---: | --- |
+| Opening database | 284,882,611 bytes | Fixed opening cost, separate from period growth |
+| First period after Archive and recovery | 330,225,331 bytes | Includes tables, indexes, TOAST and retained evidence |
+| Net database increase | 45,342,720 bytes | Does not alone determine the growth charge |
+| Positive component growth charge | 45,645,824 bytes | Fails the Designed 40,000,000-byte ceiling and 23,000,000-byte target |
+| First period material storage package | 25,243,938 bytes | Subset of total retained storage, not a save-size pass |
+| Committed advances | 67.361 and 71.203 seconds | Two samples cannot establish the 52-sample p95 |
+| First Archive catch-up | 170.505 seconds | Within the provisional 180-second limit for this boundary |
+| First cold reopen | 105.512 seconds | Within the 180-second limit for this boundary |
+| Failed test execution | 880.55 seconds | Required second boundary is missing; no smoke pass |
+| Runner including compilation | 992.078 seconds | Compilation is excluded from the smoke execution limit |
+
+The growth charge deliberately retains 303,104 bytes of unrelated shrinkage rather
+than letting it offset growing collections. Its largest components are the
+material tick (26,247,168 bytes), Archive page revisions (3,473,408), Archive grant
+revisions (3,186,688), event field chunks (2,621,440), Archive atoms (2,621,440),
+Archive atom revisions (2,301,952), graph numeric chunks (1,810,432), and frozen
+knowledge membership (1,605,632). Index and TOAST bytes are included once in each
+component total. WAL, temporary storage and memory remain separate measures.
+
+A constant first-period charge would extrapolate to 593,395,712 bytes per
+13-period model year and 15,119,775,411 bytes including the opening after 325
+periods. These are **Derived projections from one period**, not sustained-growth
+observations or acceptance evidence. They identify remaining storage work and
+cannot pass the actual 325-period requirement.
+
+The latest selected component composition establishes 158 Rust controls,
+including 50 native organizer controls, plus strict all-target Clippy for the five
+affected crates, formatting and BSL sentinels. The Archive component separately
+retains three schema controls and 38 live controls. These checks establish their
+bounded behaviors; they do not establish national timing, sustained funding or
+enjoyment. Actual native play feedback remains required.
+
 <!-- vale on -->

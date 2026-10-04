@@ -1,0 +1,76 @@
+ADR276_generated_identity_lookup_descriptors:
+  status: accepted
+  date: '2026-10-03'
+  issue: PER-40
+  title: Generated identity descriptors preserve each period's exact typed lookup
+  evidence_class: Designed
+  authority:
+    - Director authorizes lossless persistence redesign without backwards compatibility
+    - Director requires exact accounting, replay, recovery and measured storage growth
+    - Repository rules require a decision record for a new architecture decision
+  context: |
+    ADR274 bounds runtime ownership to the opening seed and one period table,
+    but stores each addition as a literal kind and thirty-two identity bytes.
+    Current constructors derive many order, shift, pool and freight identities
+    from already captured typed tuples. Their representation can be shortened
+    without replacing economic evidence or changing its canonical identity.
+  decision: |
+    Use current period-lookup wrapper V3 and a closed descriptor grammar.
+    Select a recipe only when its regenerated typed identity equals the actual
+    ordered addition. Otherwise retain the exact literal kind and bytes.
+    Preserve entry multiplicity and traversal order; duplicate typed identities
+    still refuse. Equal bytes in different identity domains remain distinct.
+
+    Recipes borrow authenticated opening rows through the current layout owner,
+    with checked section, row, width and identity kind. Record generation periods
+    explicitly. Ordinary freight can reference an opening or current-period
+    direct Order identity, including a forward reference. It cannot reference
+    another freight recipe, so dependency depth is bounded and cycles refuse.
+    No recipe depends on current state, receipt decoding or an older period table.
+    Unmatched authored, older-period, top-up and aid identities remain literals.
+
+    Reconstruct the original count and ordered kind-plus-thirty-two-byte table
+    before validating its logical length, SHA and typed prefixes. The existing
+    lookup chain continues to hash those exact logical packed bytes. Authenticate
+    descriptor length and SHA separately, with one bounded compressed frame.
+    Check logical shape and expected count before allocation or recipe resolution.
+    Bound descriptor length by the grammar's five-to-thirty-three bytes per entry,
+    plus its four-byte count, before decompression.
+    Refuse unknown recipes, kinds, unavailable references, invalid periods,
+    malformed counts, oversized bodies, damaged frames and trailing bytes.
+
+    Retain ADR274's period ownership, marker-last transaction, historical chain
+    scan, unchanged tail anchor and full canonical reader admission. Change no
+    SQL relation, capability, engine wire format, economic mechanism or game law.
+    The storage chain remains an unchanged-tail corruption guarantee, not an
+    external signature or new canonical trust root. Unsupported V2 lookup framing
+    refuses clearly; preserve old data without a compatibility reader.
+  alternatives: |
+    Literal additions are general but repeat generated identity bytes. A recipe
+    that merely assumes a constructor or current price cannot authenticate an
+    arbitrary claimed identity. Current-state references create a decoding cycle.
+    Replaying economic decisions cannot replace retained historical allocations.
+    Retain a literal fallback rather than force every identity into a formula.
+  consequences: |
+    Logical tables, prefix hashes, chain values and canonical engine bytes remain
+    identical for identical inputs. Only the stored lookup representation changes.
+    Recipe discovery scans relevant opening rows and constructs candidate maps;
+    empty additions and absent output kinds avoid unnecessary scans. This is not
+    a cache and establishes no improvement in latency or peak memory.
+    The earlier independently inverted descriptor prototype is separate evidence,
+    not qualification of the current codec. Native PostgreSQL retained bytes,
+    growth, advance and cold recovery timings remain unqualified for V3. Measure
+    complete current storage and temporary costs before claiming a budget result.
+    No mathematical primitive or reserved theory changes.
+  supersedes:
+    - ADR274_period_local_material_lookup_ownership # literal additions and V2 period-lookup wrapper only
+  verification:
+    - Current generated tables reconstruct identical ordered typed bytes and chains.
+    - Authored literals, distinct domains, older survivors and aid identities retain exact bytes.
+    - Checked descriptor substitution refuses the unchanged logical hash or chain anchor.
+    - Logical count and length errors refuse before allocation or invalid row resolution.
+    - Missing, foreign, cyclic and out-of-range references refuse without publishing caches.
+    - Actual state and complete receipts reconstruct their original canonical hashes.
+    - Native restart and historical-reader corruption controls retain existing guarantees.
+    - Native measurement charges all current storage, retained dependencies and temporary costs.
+  source_record: reports/national-household-time-close-census-2026-10-02.md

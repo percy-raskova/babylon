@@ -85,6 +85,9 @@ fn opening_economy(household_cash: i128, stock: u64) -> MonetaryCircuit {
     ])
     .unwrap();
     MonetaryCircuit {
+        aid: crate::AidBook::default(),
+
+        household_time: crate::HouseholdTimeAccounting::NotModeled,
         financial: crate::FinancialInstitutions::empty(),
         member_labor: vec![crate::MemberLaborCapacityRow {
             member_id: crate::StaffingMemberId::from_bytes(s().as_bytes()),
@@ -427,9 +430,12 @@ fn finite_preexisting_household_order_is_credited_but_not_expired() {
 #[test]
 fn missing_or_overflowing_needs_and_invalid_prices_are_refused() {
     let mut state = opening(16, 0);
-    validate(&state).unwrap();
+    super::validate(&state).unwrap();
     household_rows(&mut state).household_needs[0].units_per_basis = u64::MAX;
-    assert_eq!(validate(&state), Err(MaterialCircuitError::Arithmetic));
+    assert_eq!(
+        super::validate(&state),
+        Err(MaterialCircuitError::Arithmetic)
+    );
     let before = state.clone();
     assert_eq!(
         admit_household_orders(&mut state, &mut vec![]),
@@ -439,13 +445,13 @@ fn missing_or_overflowing_needs_and_invalid_prices_are_refused() {
     let mut state = opening(16, 0);
     household_rows(&mut state).offers[0].unit_price = cash(0);
     assert_eq!(
-        validate(&state),
+        super::validate(&state),
         Err(MaterialCircuitError::PurchaseInvariant)
     );
     let mut state = opening(16, 0);
     household_rows(&mut state).household_stocks.clear();
     assert_eq!(
-        validate(&state),
+        super::validate(&state),
         Err(MaterialCircuitError::FinalDemandInvariant)
     );
 }

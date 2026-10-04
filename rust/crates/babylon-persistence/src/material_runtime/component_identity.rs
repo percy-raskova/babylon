@@ -71,6 +71,10 @@ impl MaterialComponentIdentity {
         Ok(())
     }
 
+    pub(crate) const fn checkpoint_sources(&self) -> &[Vec<u8>; 6] {
+        &self.sections
+    }
+
     pub(super) const fn session_id(&self) -> &ReplaySessionId {
         &self.session_id
     }

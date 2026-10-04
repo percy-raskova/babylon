@@ -197,7 +197,9 @@ fn opening() -> MaterialCircuitState {
 
 fn config() -> OrganizerConfig {
     OrganizerConfig {
+        aid_bindings: vec![],
         schema_version: ORGANIZER_SCHEMA_VERSION,
+        collection: None,
         campaign_id: [1; 16],
         controlled_actor_id: 101,
         input_authority_id: [2; 16],
@@ -233,6 +235,7 @@ fn config() -> OrganizerConfig {
                 review_condition: "Review next period".into(),
             })
             .collect(),
+        time_binding: babylon_practice_contract::OrganizerTimeBindingMode::FixedTimeControl,
         inquiry_hours: 12,
         contact_hours: 8,
         partner_response_hours: 2,

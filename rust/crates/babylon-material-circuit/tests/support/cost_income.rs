@@ -161,10 +161,17 @@ fn valuation_wire_refuses_missing_stocks_zero_quantity_cost_and_forged_equity() 
     let width = 20
         + 81 * snapshot.accounts.len()
         + 113 * snapshot.stocks.len()
-        + 80 * snapshot.freight.len()
+        + 81 * snapshot.freight.len()
         + 81 * snapshot.equity.len()
         + 81 * snapshot.equipment.len();
-    let start = bytes.len() - 9 - 28 - width; // Seven empty financial counts, finite capacity and empty services.
+    // Empty financial and gift counts, fixed-time tag, finite capacity and services.
+    let start = bytes.len() - 10 - 28 - 12 - width;
+    assert_eq!(
+        bytes[start..start + 4],
+        u32::try_from(snapshot.accounts.len())
+            .unwrap()
+            .to_be_bytes()
+    );
     for length in start..bytes.len() {
         assert!(decode_material_circuit_state(&bytes[..length]).is_err());
     }
@@ -176,6 +183,10 @@ fn valuation_wire_refuses_missing_stocks_zero_quantity_cost_and_forged_equity() 
         Err(MaterialCircuitError::WireVersion)
     );
     let stock_start = start + 4 + 81 * snapshot.accounts.len();
+    assert_eq!(
+        bytes[stock_start..stock_start + 4],
+        u32::try_from(snapshot.stocks.len()).unwrap().to_be_bytes()
+    );
     let mut reordered = bytes.clone();
     let first = stock_start + 4;
     let left = reordered[first..first + 113].to_vec();

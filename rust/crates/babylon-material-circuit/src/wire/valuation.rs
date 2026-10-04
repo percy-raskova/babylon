@@ -31,7 +31,7 @@ pub(super) fn append(
     }
     append_rows(out, &rows.freight, |b, r| {
         b.extend_from_slice(&r.lot_id.as_bytes());
-        b.extend_from_slice(&r.owner.as_bytes());
+        append_account(b, r.owner);
         b.extend_from_slice(&r.amount.micro_units().to_be_bytes());
     })?;
     append_bounded_rows(out, &rows.equity, crate::MAX_OWNERSHIP_CLAIMS, |b, r| {
@@ -86,7 +86,7 @@ pub(super) fn decode(cursor: &mut Cursor<'_>) -> Result<HistoricalCostBook, Mate
     let freight = decode_rows(cursor, |b| {
         Ok(FreightCarryingValue {
             lot_id: FreightLotId::from_bytes(b.array()?),
-            owner: SiteId::from_bytes(b.array()?),
+            owner: decode_account(b)?,
             amount: decode_currency(b)?,
         })
     })?;

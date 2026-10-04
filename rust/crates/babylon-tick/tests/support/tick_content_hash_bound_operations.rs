@@ -961,14 +961,25 @@ fn tick_events(count: usize, event_name: &str) -> Vec<(String, Vec<(String, BslV
 }
 
 fn tick_aggregate_event(recipe: &Value) -> Vec<(String, Vec<(String, BslValue)>)> {
-    let count = count(recipe, "payload_rows");
-    assert!(count <= 1_048_576);
+    let counts = recipe["payload_rows_per_event"]
+        .as_array()
+        .expect("aggregate recipe declares each event's independent payload count");
+    assert_eq!(counts.len(), count(recipe, "event_rows"));
+    assert!(counts.len() <= 1_048_576);
     assert_eq!(signed(recipe, "payload_value"), 0);
-    let payload = (0..1_048_576)
-        .take(count)
-        .map(|_| (text(recipe, "payload_label").to_owned(), BslValue::Int(0)))
-        .collect();
-    vec![(text(recipe, "event_name").to_owned(), payload)]
+    counts
+        .iter()
+        .map(|value| {
+            let count = usize::try_from(value.as_u64().expect("nonnegative payload count"))
+                .expect("payload count fits the host");
+            assert!(count <= 1_048_576);
+            let payload = (0..1_048_576)
+                .take(count)
+                .map(|_| (text(recipe, "payload_label").to_owned(), BslValue::Int(0)))
+                .collect();
+            (text(recipe, "event_name").to_owned(), payload)
+        })
+        .collect()
 }
 
 fn tick_byte_event(recipe: &Value) -> Vec<(String, Vec<(String, BslValue)>)> {

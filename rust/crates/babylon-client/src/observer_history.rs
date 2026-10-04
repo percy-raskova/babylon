@@ -1004,41 +1004,47 @@ mod tests {
         session.ready(3, None);
         session.foundation_digest = Some("foundation".into());
         assert!(session.installed(&session.context()));
-        let frame = ObserverFrame(Some(ObserverEconomySnapshot {
-            campaign_id: session.campaign.as_uuid().to_string(),
-            resolve_tick: 3,
-            foundation_digest: "foundation".into(),
-            nominal_world_hash: None,
-            tick_content_hash: None,
-            envelope_digest: None,
-            visibility: ObserverVisibility::FullObserver,
-            counties: vec![],
-            production: Some(ProductionSnapshot {
-                household_accounts: Vec::new(),
-                household_service_accounts: Vec::new(),
-                goods_price_accounts: Vec::new(),
-                maintenance_account: None,
-                content_authority_sha256: "a".repeat(64),
-                road_source: None,
-                physical_edges: Vec::new(),
-                merchant_handling_accounts: Vec::new(),
-                final_demand_accounts: Vec::new(),
-                freight_capacity_accounts: Vec::new(),
-                labor_accounts: Vec::new(),
-                staffing_accounts: Vec::new(),
-                scenario_label: "Designed test campaign".into(),
-                duration: babylon_kernel::clock::CampaignDuration::Finite { final_period: 16 },
-                sites: vec![],
-                routes: vec![],
-                freight: vec![],
-                events: vec![event],
-                material_balance: None,
-                observed_contexts: Vec::new(),
-                national_observed_contexts: Vec::new(),
-                process_attributions: Vec::new(),
-                provenance: vec![],
+        let frame = ObserverFrame(
+            Some(ObserverEconomySnapshot {
+                campaign_id: session.campaign.as_uuid().to_string(),
+                resolve_tick: 3,
+                foundation_digest: "foundation".into(),
+                nominal_world_hash: None,
+                tick_content_hash: None,
+                envelope_digest: None,
+                visibility: ObserverVisibility::FullObserver,
+                counties: vec![],
+                production: Some(ProductionSnapshot {
+                    physical_routes: vec![],
+
+                    household_accounts: Vec::new(),
+                    household_service_accounts: Vec::new(),
+                    goods_price_accounts: Vec::new(),
+                    maintenance_account: None,
+                    content_authority_sha256: "a".repeat(64),
+                    road_source: None,
+                    physical_edges: Vec::new(),
+                    merchant_handling_accounts: Vec::new(),
+                    final_demand_accounts: Vec::new(),
+                    freight_capacity_accounts: Vec::new(),
+                    freight_order_definitions: Vec::new(),
+                    labor_accounts: Vec::new(),
+                    staffing_accounts: Vec::new(),
+                    scenario_label: "Designed test campaign".into(),
+                    duration: babylon_kernel::clock::CampaignDuration::Finite { final_period: 16 },
+                    sites: vec![],
+                    routes: vec![],
+                    freight: vec![],
+                    events: vec![event],
+                    material_balance: None,
+                    observed_contexts: Vec::new(),
+                    national_observed_contexts: Vec::new(),
+                    process_attributions: Vec::new(),
+                    provenance: vec![],
+                }),
             }),
-        }));
+            None,
+        );
         let mut app = App::new();
         app.insert_resource(session)
             .insert_resource(frame)
@@ -1224,14 +1230,26 @@ mod tests {
             delivery_site("supplier", "Wayne metal"),
             delivery_site("buyer", "Macomb parts"),
         ];
+        snapshot.physical_routes = vec![
+            babylon_persistence::production_observation::PhysicalRouteDefinition {
+                id: "route".into(),
+                travel_periods: 1,
+                stages: vec![
+                    babylon_persistence::production_observation::ProductionRouteStage {
+                        stage_index: 0,
+                        travel_periods: 1,
+                        capacity_ids: vec!["fixture-capacity".into()],
+                    },
+                ],
+                transport_kind:
+                    babylon_persistence::production_observation::ProductionRouteTransport::Staged,
+                physical_edge_ids: Vec::new(),
+                distance_mm: None,
+            },
+        ];
         snapshot.routes = vec![ProductionRoute {
             physical_route_id: "route".into(),
-            physical_edge_ids: Vec::new(),
-            distance_mm: None,
-            transport_kind:
-                babylon_persistence::production_observation::ProductionRouteTransport::Staged,
             grams_per_unit: 1000,
-            stages: Vec::new(),
             id: "route".into(),
             supplier_site_id: "supplier".into(),
             buyer_site_id: "buyer".into(),
@@ -1239,7 +1257,6 @@ mod tests {
             unit_id: "tonnes".into(),
             good: "Sheet metal".into(),
             unit: "tonnes".into(),
-            travel_periods: 1,
             ordered: 10_000,
             shipped: 999,
             delivered: 333,

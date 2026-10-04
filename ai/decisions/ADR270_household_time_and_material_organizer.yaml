@@ -25,12 +25,19 @@ ADR270_household_time_and_material_organizer:
     residences keep explicit counted accounts rather than invented households.
 
     Capture finite household time policies with declared person-hour units.
-    Sources account for the counted workforce supplying a time endowment; Designed
+    Sources account for eligible residents supplying a time endowment; Designed
     coefficients distinguish the modeled time endowment, protected household
     commitments, routine unpaid provisioning and additional burdens associated
     with specific unmet goods or services. These are inspectable game policies,
     not observed time-use estimates or assertions that unpaid work is determined
-    by sex. Actual attendance has priority and includes paid idle, working-owner
+    by sex. Initial eligibility uses the existing observed age-16-plus margin,
+    not an inferred age-18-plus adult count or employment requirement. Allocate
+    that fixed county margin across household cohorts subject to workforce less
+    than or equal to eligible residents less than or equal to persons. Preserve
+    armed, inactive and under-16 counts separately through an explicitly Designed
+    joint allocation. Inactive does not identify retirees. Political contribution
+    does not require entering the employment workforce or creating a member row.
+    Actual attendance has priority and includes paid idle, working-owner
     and unpaid-family attendance. Join unique current-period member receipts by
     household payee and subtract attended hours once. Do not subtract wages paid
     for earlier attendance, pool labor or the attendance-purpose partition again.

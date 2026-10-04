@@ -50,6 +50,26 @@ fn observer_app() -> App {
     // by ObserverFocusPlugin. IO is supplied by an immutable,
     // historical read fixture; audio settings need no device. There is no
     // runtime pipe, credential lookup, gameplay session, or database writer.
+    let mut frame = ObserverFrame::default();
+    frame.0 = Some(ObserverEconomySnapshot {
+        campaign_id: campaign.as_uuid().to_string(),
+        resolve_tick: 1,
+        foundation_digest: "f".repeat(64),
+        nominal_world_hash: Some("c".repeat(64)),
+        tick_content_hash: Some("a".repeat(64)),
+        envelope_digest: Some("d".repeat(64)),
+        visibility: ObserverVisibility::FullObserver,
+        counties: vec![
+            babylon_persistence::observer_reader::ObserverCountyEconomy {
+                county_geoid: "26163".into(),
+                annual_avg_estabs_count: None,
+                annual_avg_emplvl: None,
+                total_annual_wages: None,
+                annual_avg_wkly_wage: None,
+            },
+        ],
+        production: Some(production_observation()),
+    });
     app.add_plugins(babylon_client::visual_assets::VisualAssetsPlugin)
         .add_plugins(babylon_client::map::MapPlugin)
         .add_plugins(babylon_client::observer_ui::ObserverShellPlugin)
@@ -66,17 +86,7 @@ fn observer_app() -> App {
         .insert_resource(babylon_client::ui::dossier_card::DossierCampaignId(
             campaign,
         ))
-        .insert_resource(ObserverFrame(Some(ObserverEconomySnapshot {
-            campaign_id: campaign.as_uuid().to_string(),
-            resolve_tick: 1,
-            foundation_digest: "f".repeat(64),
-            nominal_world_hash: Some("c".repeat(64)),
-            tick_content_hash: Some("a".repeat(64)),
-            envelope_digest: Some("d".repeat(64)),
-            visibility: ObserverVisibility::FullObserver,
-            counties: Vec::new(),
-            production: Some(production_observation()),
-        })))
+        .insert_resource(frame)
         .insert_resource(TimeUpdateStrategy::ManualDuration(Duration::ZERO))
         .configure_sets(
             Update,
@@ -145,6 +155,24 @@ fn production_observation() -> babylon_persistence::production_observation::Prod
         production_observation::ProductionRoute, production_observation::ProductionSnapshot,
     };
     ProductionSnapshot {
+        physical_routes: vec![
+            babylon_persistence::production_observation::PhysicalRouteDefinition {
+                id: "route".into(),
+                travel_periods: 1,
+                stages: vec![
+                    babylon_persistence::production_observation::ProductionRouteStage {
+                        stage_index: 0,
+                        travel_periods: 1,
+                        capacity_ids: vec!["fixture-capacity".into()],
+                    },
+                ],
+                transport_kind:
+                    babylon_persistence::production_observation::ProductionRouteTransport::Staged,
+                physical_edge_ids: Vec::new(),
+                distance_mm: None,
+            },
+        ],
+
         household_accounts: Vec::new(),
         household_service_accounts: Vec::new(),
         goods_price_accounts: Vec::new(),
@@ -155,6 +183,7 @@ fn production_observation() -> babylon_persistence::production_observation::Prod
         merchant_handling_accounts: Vec::new(),
         final_demand_accounts: Vec::new(),
         freight_capacity_accounts: Vec::new(),
+        freight_order_definitions: Vec::new(),
         material_balance: None,
         labor_accounts: Vec::new(),
         staffing_accounts: Vec::new(),
@@ -163,12 +192,7 @@ fn production_observation() -> babylon_persistence::production_observation::Prod
         sites: vec![surface_site("source"), surface_site("destination")],
         routes: vec![ProductionRoute {
             physical_route_id: "route".into(),
-            physical_edge_ids: Vec::new(),
-            distance_mm: None,
-            transport_kind:
-                babylon_persistence::production_observation::ProductionRouteTransport::Staged,
             grams_per_unit: 1000,
-            stages: Vec::new(),
             id: "route".into(),
             supplier_site_id: "source".into(),
             buyer_site_id: "destination".into(),
@@ -176,7 +200,6 @@ fn production_observation() -> babylon_persistence::production_observation::Prod
             unit_id: "b".repeat(64),
             good: "sheet".into(),
             unit: "kg".into(),
-            travel_periods: 1,
             ordered: 10,
             shipped: 10,
             delivered: 0,
@@ -528,5 +551,30 @@ fn county_dossier_is_gameplay_role_but_gate_ineligible_until_an_action_opens() {
         ActionAvailability::Available => {
             panic!("investigate must be visibly unavailable until Gate 5")
         }
+    }
+}
+
+#[test]
+fn aid_cards_without_authenticated_material_terms_are_not_visible_choices() {
+    let mut app = observer_app();
+    let world = app.world_mut();
+    let parents = world
+        .query::<(&Text, &ChildOf)>()
+        .iter(world)
+        .filter(|(text, _)| {
+            matches!(
+                text.0.as_str(),
+                "Organize local aid" | "Organize remote solidarity"
+            )
+        })
+        .map(|(_, parent)| parent.parent())
+        .collect::<Vec<_>>();
+    assert_eq!(parents.len(), 2);
+    for parent in parents {
+        assert_eq!(world.get::<Node>(parent).unwrap().display, Display::None);
+        assert_eq!(
+            world.get::<DeclaredSurface>(parent).unwrap().id,
+            SurfaceId::OrganizerWorkspace
+        );
     }
 }

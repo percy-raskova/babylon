@@ -1,7 +1,20 @@
 version: 3
 name: committed_material_tick_v3
-authority: [ADR251, ADR260, ADR263, ADR264, ADR266, ADR267, ADR268]
+authority: [ADR251, ADR260, ADR263, ADR264, ADR266, ADR267, ADR268, ADR271, ADR272]
 purpose: One marker-last transaction binds graph, H3, material, receipts and full restart state.
+event_storage:
+  physical_rows: Private campaign lookups, parent and closed typed field arrays, and one period manifest.
+  logical_rows: Marker-bound tick_event_v2 and tick_event_field_v2 views preserve exact current columns.
+  lookup_identity: Exact UTF-8 names and canonical native element-key bytes; hash access is not identity.
+  parents: Binary COPY stores exact ordinals, text lookup references and nullable choice references in bounded arrays.
+  fields: Closed typed CSV array lanes preserve all nine exact BSL value projections.
+  continuity: One deferred marker callback checks the complete final event and field sets.
+  marked_history: Inserts, updates and deletes of marked event or field sets are refused.
+  mutation_guard: Insert transition tables lock distinct campaign/tick keys; append-only guards refuse updates and
+    deletes.
+  concurrency: Ordered transaction locks are shared by affected event sets and marker insertion.
+  immediate_constraints: A validated marker still forbids later mutation of its event set.
+  publication: Foreign keys, atomic rollback and whole-envelope acknowledgement remain required.
 envelope:
   domain: "babylon.committed-material-tick.v3\0"
   header:
@@ -17,18 +30,27 @@ envelope:
     - {tag: 5, name: graph_full_checkpoint, codec: existing_nine_checkpoint_sections_v1}
     - {tag: 6, name: archive_dirty_receipt, count: 1, hash: combined_material_tick_content_v3}
     - {tag: 7, name: complete_material_register, count: 1, key: empty, payload: exact_material_world_register_v4_bytes}
-    - {tag: 8, name: material_receipts, count: 1, key: empty, payload: exact_material_tick_receipts_v14_bytes}
+    - {tag: 8, name: material_receipts, count: 1, key: empty, payload: exact_material_tick_receipts_v17_bytes}
   family_frame: u8_tag_then_u64_big_endian_count
   row_frame: u32_big_endian_key_length_then_key_then_u32_big_endian_payload_length_then_payload
   ordering: Existing six families preserve strict canonical key order; singular added families cannot reorder.
   digest: sha256_exact_complete_envelope_bytes
-  maximum_complete_bytes: 67108864
+  component_family_maximum_bytes:
+    graph: 134217728
+    graph_and_h3_state: 67108864
+    bsl_event: 67108864
+    choice_receipt: 67108864
+    graph_full_checkpoint: 67108864
+    archive_dirty_receipt: 67108864
+  graph_maximum_basis: Designed_headroom_for_measured_national_graph_batch_85346543_bytes
+  maximum_complete_bytes: 2342374759
+  maximum_complete_basis: register_1000000000_plus_graph_134217728_plus_five_component_families_67108864_each_plus_derived_receipts_872612528_plus_framing_183
 receipts:
-  version: 14
-  domain: "babylon.material-tick-receipts.v14\0"
-  header: u32_big_endian_version_14_then_u64_big_endian_positive_resolve_tick
+  version: 17
+  domain: "babylon.material-tick-receipts.v17\0"
+  header: u32_big_endian_version_17_then_u64_big_endian_positive_resolve_tick
   family_frame: u8_tag_then_u64_big_endian_count
-  family_count: 33
+  family_count: 36
   identities: exact_32_bytes
   quantities_periods_and_hours: u64_big_endian
   stage_index: u16_big_endian_less_than_16
@@ -40,8 +62,8 @@ receipts:
   money_location:
     width: 34
     fields: [location_tag, subtype_tag, identity]
-    tags: {cash: 1, purchase_reserve: 2, payroll_reserve: 3}
-    subtype: Cash uses account_tag; purchase uses outbound_order_tag; payroll uses zero.
+    tags: {cash: 1, purchase_reserve: 2, payroll_reserve: 3, aid_reserve: 4}
+    subtype: Cash uses account_tag; purchase uses outbound_order_tag; payroll and aid use zero.
   money_purpose:
     width: 34
     fields: [purpose_tag, subtype_tag, identity]
@@ -53,7 +75,10 @@ receipts:
       wage_payment: 5
       shift_cancellation: 6
       cash: 7
-    subtype: Purchases use outbound_order_tag; shifts use zero; cash uses cash_purpose_tag.
+      aid_reservation: 8
+      aid_grant: 9
+      aid_refund: 10
+    subtype: Purchases use outbound_order_tag; shifts and aid use zero; cash uses cash_purpose_tag.
     cash_purpose_tag:
       tax: 1
       public_transfer: 2
@@ -212,8 +237,8 @@ receipts:
                idle_labor_expense, handling_expense, maintenance_labor_expense,
                maintenance_material_expense, freight_loss_expense, consumption_expense, final_demand_outlay,
                unused_service_expense, tax_income, tax_expense, public_transfer_income, public_transfer_expense,
-               distribution_income, net_income, closing_retained_earnings]
-      width: 473
+               distribution_income, gift_income, gift_expense, net_income, closing_retained_earnings]
+      width: 505
       meaning: historical_transaction_cost_income_and_retained_earnings
     - tag: 20
       fields: [period, order_id, provider_site_id, buyer_account, good_id, unit_id, requested_quantity,
@@ -327,9 +352,46 @@ receipts:
       fields: [period, process_id, site_id, captured_plan_batches, target_units, installed_units,
                pending_units, requested_units, started_units]
       meaning: explicit_desired_installation_and_actual_material_admission_including_zero
+    - tag: 34
+      name: household_time
+      width: 136
+      fields: [principal_id, period, labor_unit_id, endowment_hours, attended_hours,
+               protected_hours, protected_unresolved_hours, unpaid_requested_hours,
+               unpaid_allocated_hours, unpaid_unresolved_hours, contribution_available_hours]
+      meaning: finite_household_time_after_actual_attendance_and_provisioning
+    - tag: 35
+      name: household_aid
+      width: 387
+      fields: [commitment_id, mandate_id, period, dispatch_period, transport_tag, route_id,
+               from_node_id, to_node_id, payer_account, donor_household_id, recipient_household_id,
+               good_id, unit_id, outcome_tag, quantity, carrying_amount, cash_amount, contribution_hours]
+      meaning: exact_actual_gift_authority_transport_cash_and_time_evidence
+    - tag: 36
+      name: household_collection
+      width: 317
+      fields: [period, admitted_period, original_commitment_id, command_nonce, mandate_id, source_hash,
+               actor_id, contributor_id, donor, recipient, labor_unit_id, requested, collected,
+               performed_hours, outcome_tag, transfer_ordinal, contribution_use_id]
+      meaning: original_authenticated_collection_actual_cash_posting_and_shared_household_time
+  collection_row_limit: 1
+  collection_outcome_tag: {collected: 1, cash_consent_refused: 2, protected_consumption_unmet: 3,
+                           protected_service_unmet: 4, protected_closing_stock_unmet: 5,
+                           due_payment_unmet: 6, insufficient_cash: 7, insufficient_contribution_time: 8}
+  collection_transfer_ordinal: u32_big_endian; maximum_u32_means_no_posting_on_zero_refusal.
+  collection_refusal: Explicit zero collected cash, zero performed hours, null ordinal and zero use identity.
+  collection_join: Match original retained command and exact MutualAid household-to-organization cash ordinal;
+    authenticate the shared contribution use and actual material state before publication or recovery.
+  aid_transport_tag: {local: 1, routed: 2}
+  aid_local_padding: Local transport requires exactly 96 zero bytes for route and endpoint IDs.
+  aid_outcome_tag: {requested: 1, dispatched: 2, granted: 3, lost: 4, unshipped: 5}
+  aid_row_limit: 327680
+  aid_row_limit_basis: MAX_AID_RECEIPTS_PER_PERIOD equals five times MAX_MATERIAL_CIRCUIT_ROWS.
+  complete_receipt_maximum_bytes: 872612528
+  complete_receipt_maximum_basis: Derived existing family bounds, Income505 and Aid387 times 327680, Collection317
+    times one, plus complete framing.
   compensation_tag: {wage: 1, working_owner: 2, unpaid_family: 3}
   ordering:
-    families: Tags 1 through 33 appear exactly once in declared order, including empty families.
+    families: Tags 1 through 36 appear exactly once in declared order, including empty families.
     original_families: Preserve deterministic encounter order from babylon_material_circuit::advance_material_circuit.
     handling: Strict increasing unique site_id_and_tagged_outbound_order.
     local_fulfillment: Strict increasing unique order_id.
@@ -341,6 +403,8 @@ receipts:
     member_labor_use: Strict increasing site_id_unit_id_member_id with globally unique member IDs.
     household_demand: Strict increasing unique principal_good_unit; quoted order identities are unique.
     household_consumption: Strict increasing unique principal_good_unit.
+    household_time: Strict increasing unique principal_id.
+    household_aid: Strict increasing unique commitment_id_and_outcome_tag.
     procurement: Strict increasing unique buyer_supplier_good_unit; quoted order identities are unique.
     production_plans: Strict increasing unique process_id.
     prices: Strict increasing unique site_good_unit.
@@ -355,6 +419,18 @@ receipts:
     service_outputs: Strict increasing unique site_good_unit.
 
   validation:
+    - Aid commitment identity matches mandate ID and dispatch period; receipts retain explicit payer and goods owners.
+    - Aid local route padding is zero; transport, payer and outcome tags are closed and quantity is positive.
+    - Aid period equals resolve tick; dispatch period is positive and no later than resolve tick.
+    - Captured mandate joins authenticate source, actor, payer, households, native units and outcome terms.
+    - Aid reservation moves payer cash to one reserve; grant releases to recipient; refund returns to payer.
+    - Gift income and expense remain independent signed-i128 inputs to exact income and retained-earnings equations.
+    - Household time belongs to resolve_tick and its exact hour partitions have no free hours beside unresolved
+      priority claims.
+    - Household attended time joins the exact sum of unique member attendance by household and labor unit.
+    - Receipt encoding requires exact equality with the result register's modeled household time receipts.
+    - An empty time family denotes an explicit unmodeled control; standalone receipts cannot establish an absent time
+      policy.
     - Installation and wear belong to resolve_tick and prove exact remaining-work, service-life and carrying partitions.
     - Installation completion grants only checked next-period usability; full wear exhaustion leaves zero carrying cost.
     - Investment admits no more than requested quantities and actual captured free cash can fund at its positive quote.
@@ -420,7 +496,8 @@ receipts:
     - Unknown price reasons and duplicate or noncanonical recurring keys are refused.
     - Income rows have unique canonical account order and period equal to resolve_tick.
     - Income flows are nonnegative; net income and retained earnings are signed exact micro-currency.
-    - Net income includes sales, wages, tax, operating transfers and distributions less COGS and named expenses.
+    - Net income includes sales, wages, tax, operating transfers, distributions and gift income less COGS, named
+      expenses and gift expense.
     - Capital contributions and productive capitalization are not income or current expenses.
     - Closing retained earnings equal opening retained earnings plus net income less distributions paid.
     - Closing contributed capital equals opening contributed capital plus contributions received.
@@ -479,6 +556,8 @@ receipts:
   maximum_member_and_wage_accrual_rows: 131072
   maximum_procurement_rows: 262144
   maximum_income_account_rows: 131072
+  maximum_aid_rows: 327680 # Five closed outcomes times 65536 material rows.
+  maximum_collection_rows: 1 # One original authenticated collection ruling per period.
   maximum_tax_rows: 131072 # One per captured payer account.
   maximum_distribution_rows: 131072 # One per captured ownership claim.
   maximum_money_transfer_rows: 1441792
@@ -487,9 +566,44 @@ receipts:
     Independent Designed close ceiling retained at 3M + 16N. The original sum does not cover
     every simultaneously maximal admitted family after named policy limits grow. A valid
     opening does not promise that every possible close fits this or the complete-byte ceiling.
-  maximum_complete_bytes: 67108864
+  maximum_complete_bytes: 872612528
+  maximum_complete_basis: closed_36_family_row_limits_times_codec_widths_plus_framing_371
 persistence:
   material_rows: babylon_state.material_tick_v3
+  register_storage: Compiled section layouts, typed lookup references, exact columns and opening-relative XOR.
+  receipt_storage: All thirty-six families, exact columns and checked redundant numeric factors.
+  lookup_storage: One current period table shares the immutable opening seed and exact ordered recipe-or-literal
+    state/receipt additions in the same transaction.
+  lookup_descriptors: Authenticate bounded descriptor bytes separately; reconstruct exact logical typed additions from
+    authenticated opening rows or literals. Ordinary freight references only direct Order identities within opening
+    plus this period.
+  lookup_identity: Kind plus exact canonical thirty-two bytes; references are bounded by authenticated prefix.
+  lookup_history: Consecutive marked period chunks bind opening, period, predecessor chain and exact packed additions
+    to the unchanged tail state anchor.
+  lookup_ownership: Retain opening plus one local period table; repeat surviving identities without retaining retired
+    historical identities.
+  storage_domains:
+    state: "babylon.state-storage.v3\0"
+    period_lookup: "BabylonPeriodLookupV3\0"
+    receipt: "BabylonReceiptStorageV2\0"
+  canonical_reconstruction: Shared runtime and full-observer decoder verifies original bytes before envelope checks.
+  checkpoint_storage:
+    relation: babylon_state.checkpoint_section_v1
+    references: Nine ordered rows with exact source tag, decoded length and SHA-256; ordinal is zero.
+    sources:
+      1: authenticated_graph
+      2: inline_world_registers
+      3: captured_resolver
+      4: captured_replay_environment
+      5: captured_session
+      6: captured_seed
+      7: captured_content_digest
+      8: captured_reference_digest
+      9: authenticated_semantic_rows
+    canonical_identity: Reconstruct original section bytes, manifest and envelope; references are never canonical
+      checkpoint bytes.
+    admission: Refuse absent or extra tags, wrong source, inline shape, length, hash, manifest or envelope.
+  storage_admission: Refuse unsupported schemas, versions, prefixes, kinds, frames, lengths or trailing bytes.
   marker: babylon_state.tick_commit_with_envelope_layout_version_3
   marker_order: Final durable statement, after full checkpoint, material rows and Archive outbox.
   success: Acknowledgement only after COMMIT or exact reconciliation of the same committed candidate.

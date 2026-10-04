@@ -1233,7 +1233,7 @@ fn inspect_archive(config: &Config) -> Result<(), String> {
             "SELECT \
                (SELECT pg_catalog.count(*) FROM babylon_meta.archive_knowledge_grant_v1), \
                (SELECT pg_catalog.count(*) FROM babylon_meta.archive_receipt_consumption_v1), \
-               (SELECT pg_catalog.count(*) FROM babylon_meta.archive_page_v1)",
+               (SELECT pg_catalog.count(*) FROM babylon_meta.archive_page_revision_v2)",
             &[],
         )
         .map_err(|error| postgres_failure("semantic Archive probe", &error))?;
@@ -1243,12 +1243,12 @@ fn inspect_archive(config: &Config) -> Result<(), String> {
     let consumptions: i64 = meta
         .try_get(1)
         .map_err(|error| postgres_failure("Archive consumption count decode", &error))?;
-    let pages: i64 = meta
+    let page_revisions: i64 = meta
         .try_get(2)
-        .map_err(|error| postgres_failure("Archive page count decode", &error))?;
+        .map_err(|error| postgres_failure("Archive page revision count decode", &error))?;
     println!(
         "Rust Archive schema=current; dirty_receipts={receipts}; tick_range={}..{}; \
-         knowledge_grants={grants}; consumed_receipts={consumptions}; pages={pages}.",
+         knowledge_grants={grants}; consumed_receipts={consumptions}; page_revisions={page_revisions}.",
         first.map_or_else(|| "none".to_owned(), |value| value.to_string()),
         last.map_or_else(|| "none".to_owned(), |value| value.to_string()),
     );

@@ -35,11 +35,43 @@ fn practice_intent_with_origin(
     if admit_organizer(config, state, &commitment.command)? != *commitment {
         return Err(OrganizerError::InvalidCommitment);
     }
+    intent_for_authorized_commitment(config, state.period, commitment, standing_origin)
+}
+
+// Only current admitted input and validate_pending may enter this canonical builder.
+pub(super) fn intent_for_authorized_commitment(
+    config: &OrganizerConfig,
+    submit_after_tick: u64,
+    commitment: &OrganizerCommitment,
+    standing_origin: bool,
+) -> Result<PracticeIntent, OrganizerError> {
     let (practice, tag, target_id, parameters) = match commitment.command.choice {
+        OrganizerChoice::Collect => {
+            let row = config
+                .collection
+                .as_ref()
+                .ok_or(OrganizerError::InvalidCommitment)?;
+            (
+                PracticeId::MutualAid,
+                PracticeTargetTag::SocialClass,
+                row.social_class_target,
+                vec![],
+            )
+        }
+        OrganizerChoice::LocalAid | OrganizerChoice::RemoteAid => {
+            let binding = super::aid::aid_binding(config, commitment.command.choice)
+                .ok_or(OrganizerError::InvalidCommitment)?;
+            (
+                PracticeId::MutualAid,
+                PracticeTargetTag::SocialClass,
+                binding.social_class_target,
+                vec![],
+            )
+        }
         OrganizerChoice::Inquiry(question) => (
             PracticeId::Investigate,
             PracticeTargetTag::Facility,
-            config.workplace_id,
+            target_identity(b"babylon.organizer-target.v1", config.workplace_id),
             vec![PracticeParameter {
                 key_u8: 1,
                 value_kind_u8: 1,
@@ -53,47 +85,74 @@ fn practice_intent_with_origin(
         OrganizerChoice::Reinforce => (
             PracticeId::Organize,
             PracticeTargetTag::Organization,
-            config.workplace_partner.actor_id,
+            target_identity(
+                b"babylon.organizer-target.v1",
+                config.workplace_partner.actor_id,
+            ),
             control_parameter(1),
         ),
         OrganizerChoice::Hold => (
             PracticeId::Organize,
             PracticeTargetTag::Organization,
-            config.neighborhood_partner.actor_id,
+            target_identity(
+                b"babylon.organizer-target.v1",
+                config.neighborhood_partner.actor_id,
+            ),
             control_parameter(if standing_origin { 5 } else { 2 }),
         ),
         OrganizerChoice::PauseStanding => (
             PracticeId::Organize,
             PracticeTargetTag::Organization,
-            config.neighborhood_partner.actor_id,
+            target_identity(
+                b"babylon.organizer-target.v1",
+                config.neighborhood_partner.actor_id,
+            ),
             control_parameter(3),
         ),
         OrganizerChoice::ResumeStanding => (
             PracticeId::Organize,
             PracticeTargetTag::Organization,
-            config.neighborhood_partner.actor_id,
+            target_identity(
+                b"babylon.organizer-target.v1",
+                config.neighborhood_partner.actor_id,
+            ),
             control_parameter(4),
         ),
     };
     let value = PracticeIntent {
         schema_version: 2,
-        submit_after_tick: state.period,
+        submit_after_tick,
         resolve_tick: commitment.resolves_period,
         input_authority_id: InputAuthorityId::from_bytes(commitment.command.authority_id),
         actor_org_id: ActorOrganizationId::from_bytes(commitment.command.actor_id.to_be_bytes()),
         practice_id: practice,
         target: TaggedPracticeTarget {
             tag,
-            identity: PracticeTargetIdentity::from_bytes(target_identity(
-                b"babylon.organizer-target.v1",
-                target_id,
-            )),
+            identity: PracticeTargetIdentity::from_bytes(target_id),
         },
         proposal_nonce: ProposalNonce::from_bytes(commitment.command.nonce),
         quoted_content_digest: commitment.command.content_digest,
         quoted_resource_contract_digest: commitment.command.resource_digest,
         parameters,
-        evidence_digests: vec![],
+        evidence_digests: if let Some(binding) =
+            super::aid::aid_binding(config, commitment.command.choice)
+        {
+            let mut digests = vec![binding.mandate_id, binding.source_hash];
+            digests.sort_unstable();
+            digests.dedup();
+            digests
+        } else if commitment.command.choice == OrganizerChoice::Collect {
+            let row = config
+                .collection
+                .as_ref()
+                .ok_or(OrganizerError::InvalidCommitment)?;
+            let mut digests = vec![row.mandate_id, row.source_hash];
+            digests.sort_unstable();
+            digests.dedup();
+            digests
+        } else {
+            vec![]
+        },
     };
     crate::validate_practice_intent(&value).map_err(|_| OrganizerError::InvalidCommitment)?;
     Ok(value)
@@ -319,7 +378,10 @@ fn partner_for_choice(
         OrganizerChoice::Hold | OrganizerChoice::ResumeStanding => {
             Some(&config.neighborhood_partner)
         }
-        OrganizerChoice::PauseStanding => None,
+        OrganizerChoice::LocalAid | OrganizerChoice::RemoteAid => {
+            super::aid::aid_binding(config, choice).map(|row| &row.partner)
+        }
+        OrganizerChoice::PauseStanding | OrganizerChoice::Collect => None,
     }
 }
 
@@ -357,13 +419,16 @@ pub(super) fn response_intent(
     response.proposal_nonce = ProposalNonce::from_bytes(nonce);
     response.actor_org_id = ActorOrganizationId::from_bytes(partner.actor_id.to_be_bytes());
     response.input_authority_id = InputAuthorityId::from_bytes(partner.authority_id);
-    response.practice_id = PracticeId::Organize;
-    response.target.tag = PracticeTargetTag::Organization;
-    response.target.identity = PracticeTargetIdentity::from_bytes(target_identity(
-        b"babylon.organizer-target.v1",
-        config.controlled_actor_id,
-    ));
-    response.parameters.clear();
+    if intent.practice_id != PracticeId::MutualAid {
+        response.practice_id = PracticeId::Organize;
+        response.target.tag = PracticeTargetTag::Organization;
+        response.target.identity = PracticeTargetIdentity::from_bytes(target_identity(
+            b"babylon.organizer-target.v1",
+            config.controlled_actor_id,
+        ));
+        response.parameters.clear();
+    }
+    crate::validate_practice_intent(&response).map_err(|_| OrganizerError::InvalidCommitment)?;
     Ok(response)
 }
 
@@ -373,7 +438,7 @@ pub fn organizer_input_authority_ledger(
 ) -> Result<crate::PracticeInputAuthorityLedger, OrganizerError> {
     validate_organizer_config(config)?;
     let mut rows = vec![];
-    for (actor_id, authority_id, authority_kind) in [
+    let mut actors = vec![
         (
             config.controlled_actor_id,
             config.input_authority_id,
@@ -389,7 +454,15 @@ pub fn organizer_input_authority_ledger(
             config.neighborhood_partner.authority_id,
             crate::PracticeAuthorityKind::DeterministicPolicy,
         ),
-    ] {
+    ];
+    actors.extend(config.aid_bindings.iter().map(|row| {
+        (
+            row.partner.actor_id,
+            row.partner.authority_id,
+            crate::PracticeAuthorityKind::DeterministicPolicy,
+        )
+    }));
+    for (actor_id, authority_id, authority_kind) in actors {
         rows.push(crate::PracticeInputAuthority {
             schema_version: 2,
             campaign_id: crate::CampaignId::from_bytes(config.campaign_id),
@@ -434,6 +507,19 @@ pub fn organizer_resolved_action_batch(
                 if partner_response(config, partner)? == OrganizerPartnerResponse::Participated {
                     intents.push(response_intent(&intent, config, partner)?);
                 }
+            }
+        }
+        intents.push(intent);
+    }
+    for pending in &state.pending_aid {
+        let period = state
+            .period
+            .checked_add(1)
+            .ok_or(OrganizerError::Arithmetic)?;
+        let (intent, response) = super::aid::delayed_aid_intents(config, pending, period)?;
+        if let Some(partner) = partner_for_choice(config, pending.gift.commitment.command.choice) {
+            if partner_response(config, partner)? == OrganizerPartnerResponse::Participated {
+                intents.push(response);
             }
         }
         intents.push(intent);
@@ -529,7 +615,18 @@ pub fn resolve_organizer_practice(
         return Err(OrganizerError::PeriodMismatch);
     }
     let resources = organizer_fixed_time_resources(config, facts.period)?;
-    resolve_organizer_practice_with_time(config, opening, reduced, facts, accepted, &resources)
+    resolve_organizer_practice_with_time(
+        config,
+        opening,
+        reduced,
+        facts,
+        accepted,
+        &resources,
+        OrganizerMaterialSupport {
+            aid: &[],
+            collection: None,
+        },
+    )
 }
 
 /// Execute with exact supplied resolving-period budgets and independent consent.
@@ -543,7 +640,10 @@ pub fn resolve_organizer_practice_with_time(
     facts: &OrganizerWorkplaceFacts,
     accepted: Option<&OrganizerCommitment>,
     resources: &OrganizerPeriodTimeResources,
+    material_support: OrganizerMaterialSupport<'_>,
 ) -> Result<OrganizerState, OrganizerError> {
+    let aid_support = material_support.aid;
+    let collection_fact = material_support.collection;
     validate_organizer_pair(config, opening)?;
     validate_organizer_pair(config, reduced)?;
     if opening.period.checked_add(1) != Some(facts.period)
@@ -554,6 +654,7 @@ pub fn resolve_organizer_practice_with_time(
         return Err(OrganizerError::PeriodMismatch);
     }
     super::time_resources::validate_resources(config, facts.period, resources)?;
+    let fresh_aid = accepted.filter(|row| super::aid::aid_kind(row.command.choice).is_some());
     let routine = routine_commitment(config, opening)?;
     let commitment = accepted.unwrap_or(&routine);
     if let Some(accepted) = accepted {
@@ -561,6 +662,7 @@ pub fn resolve_organizer_practice_with_time(
             return Err(OrganizerError::InvalidCommitment);
         }
     }
+    super::aid::require_support_rows(opening, fresh_aid, facts.period, aid_support)?;
     let choice = commitment.command.choice;
     let receipt_id = identity(
         b"babylon.organizer-receipt.v1",
@@ -592,15 +694,28 @@ pub fn resolve_organizer_practice_with_time(
         time_use: vec![],
     };
     let required = required_hours(config, opening, choice);
-    if choice == OrganizerChoice::PauseStanding {
+    if choice == OrganizerChoice::Collect {
+        let fact = collection_fact.ok_or(OrganizerError::CollectionSupportMissing)?;
+        let resolution =
+            super::collection::acknowledge_collection(config, commitment, fact, &mut receipt)?;
+        next.collection_receipts.push(resolution);
+    } else if collection_fact.is_some() {
+        return Err(OrganizerError::CollectionSupportMismatch);
+    } else if fresh_aid.is_some() {
+        // The original accepted gift replaces ordinary work once, without
+        // dispatch being mislabeled as performed mutual-aid practice.
+        receipt.outcome = OrganizerOutcome::AidScheduled;
+    } else if choice == OrganizerChoice::PauseStanding {
         next.standing.authorized = false;
         next.standing.paused_reason = Some(OrganizerPauseReason::Explicit);
         receipt.outcome = OrganizerOutcome::StandingPaused;
     } else if required > committed_hours(config, config.controlled_actor_id)? {
         // A saved practice can lose eligibility between periods; no invented
         // resource refill or silent execution replaces missing commitments.
-        next.standing.authorized = false;
-        next.standing.paused_reason = Some(OrganizerPauseReason::InsufficientCommittedTime);
+        if super::aid::aid_kind(choice).is_none() {
+            next.standing.authorized = false;
+            next.standing.paused_reason = Some(OrganizerPauseReason::InsufficientCommittedTime);
+        }
         receipt.outcome = OrganizerOutcome::InsufficientTime;
     } else if required > 0 {
         execute_practice(
@@ -614,6 +729,14 @@ pub fn resolve_organizer_practice_with_time(
         )?;
     }
     next.receipts.push(receipt);
+    resolve_pending_aid(
+        config,
+        opening,
+        &mut next,
+        fresh_aid,
+        resources,
+        aid_support,
+    )?;
     validate_organizer_pair(config, &next)?;
     Ok(next)
 }
@@ -641,10 +764,13 @@ fn execute_practice(
         (receipt.partner_response == OrganizerPartnerResponse::Participated).then_some(partner),
         required,
         resources,
+        super::aid::aid_binding(config, choice),
     )?
     else {
-        next.standing.authorized = false;
-        next.standing.paused_reason = Some(OrganizerPauseReason::InsufficientAvailableTime);
+        if super::aid::aid_kind(choice).is_none() {
+            next.standing.authorized = false;
+            next.standing.paused_reason = Some(OrganizerPauseReason::InsufficientAvailableTime);
+        }
         receipt.outcome = OrganizerOutcome::InsufficientTime;
         if receipt.partner_response == OrganizerPartnerResponse::Participated {
             receipt.partner_response = OrganizerPartnerResponse::UnableToParticipate;
@@ -658,6 +784,9 @@ fn execute_practice(
     }
     receipt.hours_spent = required;
     match choice {
+        OrganizerChoice::LocalAid | OrganizerChoice::RemoteAid => {
+            return Err(OrganizerError::AidSupportMissing)
+        }
         OrganizerChoice::Inquiry(question) => {
             let allowed = match question {
                 OrganizerInquiry::WorkLost => partner.permits_work_report,
@@ -706,7 +835,9 @@ fn execute_practice(
                 receipt.outcome = OrganizerOutcome::ContactUncompleted;
             }
         }
-        OrganizerChoice::PauseStanding => return Err(OrganizerError::InvalidCommitment),
+        OrganizerChoice::PauseStanding | OrganizerChoice::Collect => {
+            return Err(OrganizerError::InvalidCommitment)
+        }
     }
     Ok(())
 }
@@ -732,7 +863,148 @@ pub fn resolve_organizer_period_with_time(
     facts: &OrganizerWorkplaceFacts,
     accepted: Option<&OrganizerCommitment>,
     resources: &OrganizerPeriodTimeResources,
+    material_support: OrganizerMaterialSupport<'_>,
 ) -> Result<OrganizerState, OrganizerError> {
     let reduced = reduce_organizer_products(config, opening, facts)?;
-    resolve_organizer_practice_with_time(config, opening, &reduced, facts, accepted, resources)
+    resolve_organizer_practice_with_time(
+        config,
+        opening,
+        &reduced,
+        facts,
+        accepted,
+        resources,
+        material_support,
+    )
+}
+
+fn resolve_pending_aid(
+    config: &OrganizerConfig,
+    opening: &OrganizerState,
+    next: &mut OrganizerState,
+    fresh: Option<&OrganizerCommitment>,
+    resources: &OrganizerPeriodTimeResources,
+    supports: &[OrganizerAidSupport],
+) -> Result<(), OrganizerError> {
+    let mut pending = opening.pending_aid.clone();
+    if let Some(accepted) = fresh {
+        let support = supports
+            .iter()
+            .find(|row| row.original_commitment_id == accepted.commitment_id)
+            .ok_or(OrganizerError::AidSupportMissing)?;
+        pending.push(super::aid::pending_from_support(
+            config, opening, accepted, support,
+        )?);
+    }
+    pending.sort_by_key(|row| row.gift.kind);
+    let mut previous = None;
+    for row in &pending {
+        super::aid::validate_pending(config, row)?;
+        if previous == Some(row.gift.kind) {
+            return Err(OrganizerError::Refused(
+                OrganizerRefusal::PendingAidConflict,
+            ));
+        }
+        previous = Some(row.gift.kind);
+    }
+    next.pending_aid.clear();
+    let remaining_pledge =
+        super::collection::remaining_collection_pledge(config, next, next.period)?;
+    let mut performed = organizer_period_receipts(next, next.period)
+        .filter(|row| row.choice != OrganizerChoice::Collect)
+        .flat_map(|row| row.time_use.iter())
+        .cloned()
+        .collect::<Vec<_>>();
+    for authorization in pending {
+        let support = supports
+            .iter()
+            .find(|row| row.original_commitment_id == authorization.gift.commitment.commitment_id)
+            .ok_or(OrganizerError::AidSupportMissing)?;
+        super::aid::validate_support(&authorization, support, next.period)?;
+        let choice = authorization.gift.commitment.command.choice;
+        let mut receipt = aid_attempt_receipt(&authorization, next.period)?;
+        match support.status {
+            OrganizerAidSupportStatus::AwaitingDelivery => {
+                receipt.outcome = OrganizerOutcome::AidAwaitingSupport;
+                next.pending_aid.push(authorization.clone());
+            }
+            OrganizerAidSupportStatus::TerminalFailure
+            | OrganizerAidSupportStatus::Granted {
+                consumed_quantity: 0,
+                ..
+            } => {}
+            OrganizerAidSupportStatus::Granted { .. } => {
+                let (intent, _) =
+                    super::aid::delayed_aid_intents(config, &authorization, next.period)?;
+                let partner =
+                    partner_for_choice(config, choice).ok_or(OrganizerError::InvalidCommitment)?;
+                receipt.partner_actor_id = Some(partner.actor_id);
+                receipt.partner_response = partner_response(config, partner)?;
+                let (remaining, supply) = super::time_resources::remaining_after_uses(
+                    &remaining_pledge,
+                    resources,
+                    &performed,
+                )?;
+                let binding = super::aid::aid_binding(config, choice)
+                    .ok_or(OrganizerError::AidSupportMismatch)?;
+                let time_use = super::time_resources::allocate_hours(
+                    &remaining,
+                    &intent,
+                    (receipt.partner_response == OrganizerPartnerResponse::Participated)
+                        .then_some(partner),
+                    binding.coordination_hours,
+                    &supply,
+                    Some(binding),
+                )?;
+                if let Some(uses) = time_use {
+                    receipt.outcome =
+                        if receipt.partner_response == OrganizerPartnerResponse::Participated {
+                            OrganizerOutcome::AidPracticeCompleted
+                        } else {
+                            OrganizerOutcome::AidPracticeUncompleted
+                        };
+                    receipt.hours_spent = binding.coordination_hours;
+                    performed.extend(uses.iter().cloned());
+                    receipt.time_use = uses;
+                } else {
+                    receipt.outcome = OrganizerOutcome::InsufficientTime;
+                    if receipt.partner_response == OrganizerPartnerResponse::Participated {
+                        receipt.partner_response = OrganizerPartnerResponse::UnableToParticipate;
+                    }
+                }
+            }
+        }
+        let row = OrganizerAidResolutionReceipt {
+            authorization,
+            support: support.clone(),
+            practice: receipt,
+        };
+        super::aid::validate_resolution_shape(&row)?;
+        next.aid_receipts.push(row);
+    }
+    Ok(())
+}
+
+fn aid_attempt_receipt(
+    authorization: &OrganizerPendingAidPractice,
+    period: u64,
+) -> Result<OrganizerReceipt, OrganizerError> {
+    let choice = authorization.gift.commitment.command.choice;
+    Ok(OrganizerReceipt {
+        receipt_id: identity(
+            b"babylon.organizer-aid-resolution.v1",
+            &(authorization.gift.commitment.commitment_id, period),
+        )?,
+        commitment_id: Some(authorization.gift.commitment.commitment_id),
+        actor_id: authorization.gift.donor_actor_id,
+        period,
+        choice,
+        standing_work: false,
+        outcome: OrganizerOutcome::AidNotProvisioned,
+        hours_spent: 0,
+        partner_actor_id: None,
+        partner_response: OrganizerPartnerResponse::NotRequested,
+        observation_ids: vec![],
+        contact_product_id: None,
+        time_use: vec![],
+    })
 }

@@ -234,6 +234,7 @@ fn county_label(name: &str) -> &str {
 
 fn relation_roads(
     snapshot: &ProductionSnapshot,
+    definitions: &babylon_persistence::production_observation::PhysicalRouteIndex<'_>,
     key: &RelationKey,
     edges: Option<&BTreeMap<&str, &ProductionPhysicalEdge>>,
     origin: Vec2,
@@ -247,6 +248,7 @@ fn relation_roads(
                 && route.good_id == key.good
                 && route.unit_id == key.unit
         })
+        .filter_map(|route| definitions.get(route))
         .flat_map(|route| route.physical_edge_ids.iter().map(String::as_str))
         .collect();
     if ids.is_empty() {
@@ -274,6 +276,12 @@ fn project(
     let (Some(snapshot), Some(county), Some(selected_site)) =
         (snapshot, anchors.selected(selected), selected_site)
     else {
+        return result;
+    };
+    let Ok(definitions) =
+        babylon_persistence::production_observation::PhysicalRouteIndex::try_new(snapshot)
+    else {
+        result.available = false;
         return result;
     };
     let sites: BTreeMap<_, _> = snapshot
@@ -314,7 +322,7 @@ fn project(
             continue;
         }
         let outbound = supplier.is_in_county(county);
-        let physical = relation_roads(snapshot, &key, edges.as_ref(), anchors.1);
+        let physical = relation_roads(snapshot, &definitions, &key, edges.as_ref(), anchors.1);
         let physical_missing = physical.is_none();
         result.rows.push(CountyRelationship {
             key,
@@ -1089,41 +1097,47 @@ mod tests {
                 supplier_site_ids: vec![supplier.id.clone()],
             });
         }
-        let frame = ObserverFrame(Some(ObserverEconomySnapshot {
-            campaign_id: session.campaign.as_uuid().to_string(),
-            resolve_tick: 3,
-            foundation_digest: "foundation".into(),
-            nominal_world_hash: None,
-            tick_content_hash: Some("committed".into()),
-            envelope_digest: None,
-            visibility: ObserverVisibility::FullObserver,
-            counties: Vec::new(),
-            production: Some(ProductionSnapshot {
-                household_accounts: Vec::new(),
-                household_service_accounts: Vec::new(),
-                goods_price_accounts: Vec::new(),
-                maintenance_account: None,
-                content_authority_sha256: "a".repeat(64),
-                road_source: None,
-                physical_edges: Vec::new(),
-                merchant_handling_accounts: Vec::new(),
-                final_demand_accounts: Vec::new(),
-                freight_capacity_accounts: Vec::new(),
-                material_balance: None,
-                labor_accounts: Vec::new(),
-                staffing_accounts: Vec::new(),
-                scenario_label: "fixture".into(),
-                duration: babylon_kernel::clock::CampaignDuration::Finite { final_period: 16 },
-                sites: vec![supplier, buyer, site("unrelated", "26161")],
-                routes: Vec::new(),
-                freight: Vec::new(),
-                events: Vec::new(),
-                observed_contexts: Vec::new(),
-                national_observed_contexts: Vec::new(),
-                process_attributions: Vec::new(),
-                provenance: Vec::new(),
+        let frame = ObserverFrame(
+            Some(ObserverEconomySnapshot {
+                campaign_id: session.campaign.as_uuid().to_string(),
+                resolve_tick: 3,
+                foundation_digest: "foundation".into(),
+                nominal_world_hash: None,
+                tick_content_hash: Some("committed".into()),
+                envelope_digest: None,
+                visibility: ObserverVisibility::FullObserver,
+                counties: Vec::new(),
+                production: Some(ProductionSnapshot {
+                    physical_routes: vec![],
+
+                    household_accounts: Vec::new(),
+                    household_service_accounts: Vec::new(),
+                    goods_price_accounts: Vec::new(),
+                    maintenance_account: None,
+                    content_authority_sha256: "a".repeat(64),
+                    road_source: None,
+                    physical_edges: Vec::new(),
+                    merchant_handling_accounts: Vec::new(),
+                    final_demand_accounts: Vec::new(),
+                    freight_capacity_accounts: Vec::new(),
+                    freight_order_definitions: Vec::new(),
+                    material_balance: None,
+                    labor_accounts: Vec::new(),
+                    staffing_accounts: Vec::new(),
+                    scenario_label: "fixture".into(),
+                    duration: babylon_kernel::clock::CampaignDuration::Finite { final_period: 16 },
+                    sites: vec![supplier, buyer, site("unrelated", "26161")],
+                    routes: Vec::new(),
+                    freight: Vec::new(),
+                    events: Vec::new(),
+                    observed_contexts: Vec::new(),
+                    national_observed_contexts: Vec::new(),
+                    process_attributions: Vec::new(),
+                    provenance: Vec::new(),
+                }),
             }),
-        }));
+            None,
+        );
         let anchors = CountyAnchors(
             [
                 (
@@ -1209,20 +1223,33 @@ mod tests {
         );
     }
 
-    #[test]
-    fn selected_physical_path_uses_captured_edges_and_exact_material_identity() {
+    fn set_captured_shared_path(snapshot: &mut ProductionSnapshot) {
         use babylon_persistence::{
             production_observation::ProductionPhysicalEdge,
             production_observation::ProductionRoute,
             production_observation::ProductionRouteTransport,
         };
-        let (session, mut frame, anchors) = fixture();
-        let snapshot = frame.0.as_mut().unwrap().production.as_mut().unwrap();
         snapshot.physical_edges = vec![ProductionPhysicalEdge {
             id: "road".into(),
             shape_e7: vec![[-830_000_000, 423_000_000], [-829_900_000, 423_100_000]],
             distance_mm: 1_500_000,
         }];
+        snapshot.physical_routes = vec![
+            babylon_persistence::production_observation::PhysicalRouteDefinition {
+                id: "supply-road".into(),
+                travel_periods: 1,
+                stages: vec![
+                    babylon_persistence::production_observation::ProductionRouteStage {
+                        stage_index: 0,
+                        travel_periods: 1,
+                        capacity_ids: vec!["fixture-capacity".into()],
+                    },
+                ],
+                transport_kind: ProductionRouteTransport::Staged,
+                physical_edge_ids: vec!["road".into(), "road".into()],
+                distance_mm: Some(3_000_000),
+            },
+        ];
         snapshot.routes = vec![ProductionRoute {
             physical_route_id: "supply-road".into(),
             id: "supply-road".into(),
@@ -1232,11 +1259,6 @@ mod tests {
             unit_id: "kg".into(),
             good: "steel".into(),
             unit: "kg".into(),
-            travel_periods: 1,
-            transport_kind: ProductionRouteTransport::Staged,
-            physical_edge_ids: vec!["road".into(), "road".into()],
-            distance_mm: Some(3_000_000),
-            stages: Vec::new(),
             grams_per_unit: 1000,
             ordered: 10,
             shipped: 5,
@@ -1249,9 +1271,16 @@ mod tests {
         reversed.id = "road-reversed".into();
         reversed.shape_e7.reverse();
         snapshot.physical_edges.push(reversed);
-        snapshot.routes[0]
+        snapshot.physical_routes[0]
             .physical_edge_ids
             .push("road-reversed".into());
+    }
+
+    #[test]
+    fn selected_physical_path_uses_captured_edges_and_exact_material_identity() {
+        let (session, mut frame, anchors) = fixture();
+        let snapshot = frame.0.as_mut().unwrap().production.as_mut().unwrap();
+        set_captured_shared_path(snapshot);
         let filter = crate::map_economy_lens::MaterialGoodKey {
             good_id: "steel".into(),
             unit_id: "kg".into(),
@@ -1334,19 +1363,25 @@ mod tests {
                 distance_mm: 1_000_000,
             });
         }
-        let mut route = crate::production_freight::tests::fixture().routes.remove(0);
+        let mut shared = crate::production_freight::tests::fixture();
+        let mut route = shared.routes.remove(0);
+        let mut physical = shared.physical_routes.remove(0);
         route.id = "road-route".into();
         route.supplier_site_id = "a".into();
         route.buyer_site_id = "b".into();
         route.good_id = "steel".into();
         route.good = "Steel".into();
-        route.physical_edge_ids = vec!["road".into(), "reverse".into(), "overlap".into()];
+        physical.physical_edge_ids = vec!["road".into(), "reverse".into(), "overlap".into()];
         let mut other = route.clone();
         other.id = "other-route".into();
         other.buyer_site_id = "unrelated".into();
         other.good_id = "ore".into();
         other.unit_id = "tonne".into();
-        other.physical_edge_ids = vec!["branch".into()];
+        let mut other_physical = physical.clone();
+        other_physical.id = "other-physical".into();
+        other.physical_route_id = other_physical.id.clone();
+        other_physical.physical_edge_ids = vec!["branch".into()];
+        snapshot.physical_routes = vec![physical, other_physical];
         snapshot.routes = vec![route, other];
         let mut app = App::new();
         app.insert_resource(session)

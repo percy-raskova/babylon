@@ -1,7 +1,8 @@
 use super::{
     GameCommodity, GameDependencyProfile, GameEquipmentPolicy, GameFinancialPolicy,
-    GameHouseholdPolicy, GameJourneyTiming, GameMarketPolicy, GameNeed, GamePrice, GameProfile,
-    GameRecipe, GameServiceReach, NationalGamePolicy, NationalGamePolicyError,
+    GameHouseholdPolicy, GameHouseholdTimePolicy, GameJourneyTiming, GameMarketPolicy, GameNeed,
+    GamePrice, GameProfile, GameRecipe, GameServiceReach, NationalGamePolicy,
+    NationalGamePolicyError,
 };
 use crate::national_transport::CargoClass;
 use babylon_kernel::{
@@ -32,6 +33,9 @@ struct RawPolicy {
     household_enterprise_function: String,
     financial: RawFinancial,
     households: RawHouseholds,
+    household_time: RawHouseholdTime,
+    aid: super::GameAidPolicy,
+    organizer: super::GameOrganizerPolicy,
     markets: RawMarkets,
     equipment: RawEquipment,
     commodity: BTreeMap<String, RawCommodity>,
@@ -108,6 +112,18 @@ struct RawFinancial {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
+struct RawHouseholdTime {
+    hours_per_eligible_person: u64,
+    ordinary_protected_hours_per_household: u64,
+    ordinary_provisioning_hours_per_household: u64,
+    collective_protected_hours_per_person: u64,
+    collective_provisioning_hours_per_person: u64,
+    external_eligible_persons_bps: u16,
+    unmet_hours_per_unit: BTreeMap<String, u64>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct RawEquipment {
     batches_per_unit_per_period: u64,
     service_batches_per_unit: u64,
@@ -132,6 +148,8 @@ pub(super) fn parse(source: &str) -> Result<NationalGamePolicy, Error> {
     }
     let raw: RawPolicy = toml::from_str(source).map_err(|_| Error::Syntax)?;
     validate_globals(&raw)?;
+    validate_organizer(&raw.organizer)?;
+    validate_aid(&raw.aid)?;
     if !(1..=10_000).contains(&raw.households.private_owner_households_bps) {
         return Err(Error::Profile("private owner household fraction".into()));
     }
@@ -144,6 +162,12 @@ pub(super) fn parse(source: &str) -> Result<NationalGamePolicy, Error> {
     let counterparts = counterparts(raw.counterpart)?;
     let dependency = dependency(raw.dependency)?;
     let financial = financial(raw.financial)?;
+    let household_time = household_time(
+        raw.household_time,
+        raw.period_days,
+        raw.work_hours_per_person,
+        &household_needs,
+    )?;
     let markets = markets(&raw.markets)?;
     let equipment = equipment(raw.equipment, &commodities)?;
     Ok(NationalGamePolicy {
@@ -158,8 +182,11 @@ pub(super) fn parse(source: &str) -> Result<NationalGamePolicy, Error> {
         handling_hours_per_unit: raw.handling_hours_per_unit,
         missing_peer_weight_per_establishment: raw.missing_peer_weight_per_establishment,
         household_enterprise_function: EconomicFunction::HouseholdServices,
+        aid: raw.aid,
+        organizer: raw.organizer,
         financial,
         households,
+        household_time,
         markets,
         equipment,
         commodities,
@@ -168,6 +195,77 @@ pub(super) fn parse(source: &str) -> Result<NationalGamePolicy, Error> {
         counterparts,
         dependency,
     })
+}
+
+fn validate_organizer(organizer: &super::GameOrganizerPolicy) -> Result<(), Error> {
+    if organizer.collection_maximum_cash_micros <= 0
+        || organizer.collection_protected_cash_floor_micros < 0
+        || organizer
+            .collection_maximum_cash_micros
+            .checked_add(organizer.collection_protected_cash_floor_micros)
+            .is_none()
+        || organizer.collection_hours == 0
+        || organizer.collection_hours > organizer.contributor_hours_cap
+        || organizer.evidence_class != "Designed"
+        || [
+            &organizer.organization_label,
+            &organizer.workplace_partner_label,
+            &organizer.neighborhood_partner_label,
+            &organizer.local_partner_label,
+            &organizer.remote_partner_label,
+        ]
+        .iter()
+        .any(|label| label.is_empty() || label.len() > 128 || label.contains('\0'))
+        || [
+            organizer.contributor_hours_cap,
+            organizer.inquiry_hours,
+            organizer.contact_hours,
+            organizer.partner_response_hours,
+            organizer.aid_coordination_hours,
+            organizer.initial_agreement_through_period,
+            organizer.contact_renewal_periods,
+        ]
+        .iter()
+        .any(|n| !(1..=224).contains(n))
+        || organizer
+            .contact_hours
+            .checked_add(organizer.partner_response_hours)
+            .is_none_or(|hours| hours > organizer.contributor_hours_cap)
+    {
+        return Err(Error::Shape);
+    }
+
+    Ok(())
+}
+
+fn validate_aid(aid: &super::GameAidPolicy) -> Result<(), Error> {
+    let actors = [
+        aid.donor_actor,
+        aid.local_recipient_actor,
+        aid.remote_recipient_actor,
+    ];
+    let contributors = [
+        aid.donor_contributor_id,
+        aid.local_recipient_contributor_id,
+        aid.remote_recipient_contributor_id,
+    ];
+    if aid.evidence_class != "Designed"
+        || actors.contains(&0)
+        || contributors.contains(&0)
+        || actors.into_iter().collect::<BTreeSet<_>>().len() != 3
+        || contributors.into_iter().collect::<BTreeSet<_>>().len() != 3
+        || aid.organization_opening_cash_micros <= 0
+        || aid.gift_cash_micros_per_unit <= 0
+        || aid.fulfillment_hours_per_unit == 0
+        || !(1..=4).contains(&aid.maximum_quantity)
+        || aid
+            .gift_cash_micros_per_unit
+            .checked_mul(i128::from(aid.maximum_quantity))
+            .is_none()
+    {
+        return Err(Error::Shape);
+    }
+    Ok(())
 }
 
 fn equipment(
@@ -226,11 +324,48 @@ fn financial(raw: RawFinancial) -> Result<GameFinancialPolicy, Error> {
     })
 }
 
+fn household_time(
+    raw: RawHouseholdTime,
+    period_days: u64,
+    work_hours: u64,
+    needs: &[GameNeed],
+) -> Result<GameHouseholdTimePolicy, Error> {
+    let maximum = period_days.checked_mul(24).ok_or(Error::Arithmetic)?;
+    if raw.hours_per_eligible_person < work_hours
+        || raw.hours_per_eligible_person > maximum
+        || [
+            raw.ordinary_protected_hours_per_household,
+            raw.ordinary_provisioning_hours_per_household,
+            raw.collective_protected_hours_per_person,
+            raw.collective_provisioning_hours_per_person,
+        ]
+        .into_iter()
+        .any(|hours| !(1..=maximum).contains(&hours))
+        || !(1..=10_000).contains(&raw.external_eligible_persons_bps)
+        || raw.unmet_hours_per_unit.is_empty()
+        || raw
+            .unmet_hours_per_unit
+            .iter()
+            .any(|(key, hours)| *hours == 0 || !needs.iter().any(|need| need.key == *key))
+    {
+        return Err(Error::Profile("household time policy".to_owned()));
+    }
+    Ok(GameHouseholdTimePolicy {
+        hours_per_eligible_person: raw.hours_per_eligible_person,
+        ordinary_protected_hours_per_household: raw.ordinary_protected_hours_per_household,
+        ordinary_provisioning_hours_per_household: raw.ordinary_provisioning_hours_per_household,
+        collective_protected_hours_per_person: raw.collective_protected_hours_per_person,
+        collective_provisioning_hours_per_person: raw.collective_provisioning_hours_per_person,
+        external_eligible_persons_bps: raw.external_eligible_persons_bps,
+        unmet_hours_per_unit: raw.unmet_hours_per_unit,
+    })
+}
+
 fn validate_globals(raw: &RawPolicy) -> Result<(), Error> {
     if raw.evidence_class != "Designed" {
         return Err(Error::Evidence);
     }
-    if raw.schema_version != 1
+    if raw.schema_version != 2
         || raw.period_days != 28
         || !(1..=672).contains(&raw.work_hours_per_person)
         || raw.default_wage_micros_per_hour <= 0

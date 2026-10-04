@@ -17,6 +17,9 @@ use std::collections::{BTreeMap, BTreeSet};
 #[path = "support/national_household_controls.rs"]
 mod household_controls;
 
+#[path = "support/national_household_time_controls.rs"]
+mod household_time_controls;
+
 #[test]
 fn full_opening_conserves_counted_households_and_uses_finite_connected_accounts() {
     let policy = NationalGamePolicy::parse(include_str!(concat!(
@@ -37,19 +40,30 @@ fn full_opening_conserves_counted_households_and_uses_finite_connected_accounts(
         babylon_persistence::national_households::national_household_reference().unwrap(),
         world,
         transport,
-        &policy,
+        babylon_persistence::national_economy::NationalOpeningPolicy {
+            policy: &policy,
+            source_hash: babylon_kernel::content_digest::sha256_of(include_bytes!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../../content/scenarios/national/defines.toml"
+            ))),
+        },
     )
     .unwrap();
+    let aid = opening.aid;
+    let opening = opening.opening;
+    assert_eq!(opening.policies.aid.mandates, aid.mandates);
+    assert!(opening.policies.aid.freight.is_empty());
     eprintln!("native opening generation: {:?}", start.elapsed());
-    household_controls::assert_people(&opening, &policy);
-    household_controls::assert_endowments_and_ownership(&opening, &policy);
+    household_controls::assert_people(&opening, &policy, &aid);
+    household_controls::assert_endowments_and_ownership(&opening, &policy, &aid);
     assert_markets(&opening, &policy);
     assert_routes(&opening);
     assert_unique_principals(&opening, &policy);
     assert_missing_retail_fallback(&opening);
     census(&opening);
     assert_managed_equipment(&opening);
-    household_controls::assert_admitted_state(&opening);
+    household_controls::assert_admitted_state(&opening, &aid);
+    household_time_controls::assert_time(&opening, &policy);
 }
 
 fn assert_managed_equipment(opening: &EconomicOpening) {

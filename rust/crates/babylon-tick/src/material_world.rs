@@ -14,24 +14,84 @@ use babylon_practice_contract::{
     OrganizerWorkplaceFacts,
 };
 
+mod aid_receipt;
+mod collection_receipt;
 mod equipment_receipt;
 mod financial_receipt;
+mod household_time_receipt;
+#[cfg(test)]
+mod household_time_tests;
 mod income_receipt;
 mod installation_decision;
 mod maintenance_receipt;
 mod monetary_receipt;
+pub(crate) mod organizer_collection;
+mod organizer_support;
+mod organizer_time;
 mod recurring_receipt;
 mod service_receipt;
 mod workforce_receipt;
 
 const REGISTER_DOMAIN: &[u8] = b"babylon.material-world-register.v4\0";
 const NOMINAL_DOMAIN: &[u8] = b"babylon.nominal-material-world.v3\0";
-const RECEIPT_DOMAIN: &[u8] = b"babylon.material-tick-receipts.v14\0";
+const RECEIPT_DOMAIN: &[u8] = b"babylon.material-tick-receipts.v17\0";
 /// Designed 1 GB operational headroom explicitly authorized by the Director.
 /// This standalone ceiling does not enlarge surrounding foundation or receipt bounds.
 pub const MAX_MATERIAL_WORLD_REGISTER_BYTES: usize = 1_000_000_000;
-/// Independent receipt envelope bound; state size does not qualify closing evidence.
-pub const MAX_MATERIAL_TICK_RECEIPT_BYTES: usize = 67_108_864;
+/// Derived complete receipt bound from the closed family row limits and codecs.
+/// Independent collection limits still reject excessive rows before allocation.
+pub const MAX_MATERIAL_TICK_RECEIPT_BYTES: usize = maximum_material_receipt_bytes();
+/// Number of ordered families in the current canonical receipt schema.
+pub const RECEIPT_FAMILY_COUNT: usize = 36;
+/// Exact canonical row widths, indexed by the zero-based receipt family.
+pub const RECEIPT_ROW_BYTES: [usize; RECEIPT_FAMILY_COUNT] = [
+    80_usize,
+    112,
+    106,
+    40,
+    40,
+    40,
+    97,
+    168,
+    168,
+    maintenance_receipt::ROW_BYTES,
+    monetary_receipt::TRANSFER_BYTES,
+    monetary_receipt::ACCRUAL_BYTES,
+    monetary_receipt::LABOR_BYTES,
+    recurring_receipt::DEMAND_BYTES,
+    recurring_receipt::CONSUMPTION_BYTES,
+    recurring_receipt::PROCUREMENT_BYTES,
+    recurring_receipt::PLAN_BYTES,
+    recurring_receipt::PRICE_BYTES,
+    income_receipt::ROW_BYTES,
+    service_receipt::PERFORMANCE_BYTES,
+    service_receipt::HOUSEHOLD_BYTES,
+    service_receipt::MARKET_BYTES,
+    service_receipt::OUTPUT_BYTES,
+    financial_receipt::PUBLIC_BUDGETS_BYTES,
+    financial_receipt::TAXES_BYTES,
+    financial_receipt::DISTRIBUTIONS_BYTES,
+    financial_receipt::CONTRIBUTIONS_BYTES,
+    workforce_receipt::STAFFING_BYTES,
+    workforce_receipt::ATTENDANCE_BYTES,
+    equipment_receipt::INSTALLATION_BYTES,
+    equipment_receipt::WEAR_BYTES,
+    equipment_receipt::INVESTMENT_BYTES,
+    installation_decision::ROW_BYTES,
+    household_time_receipt::ROW_BYTES,
+    aid_receipt::ROW_BYTES,
+    collection_receipt::ROW_BYTES,
+];
+
+const fn maximum_material_receipt_bytes() -> usize {
+    let mut total = RECEIPT_DOMAIN.len() + 12 + RECEIPT_FAMILY_COUNT * 9;
+    let mut index = 0;
+    while index < RECEIPT_FAMILY_COUNT {
+        total += receipt_row_limit(index) * RECEIPT_ROW_BYTES[index];
+        index += 1;
+    }
+    total
+}
 
 /// One checked complete material register at a completed four-week boundary.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -39,7 +99,7 @@ pub struct MaterialWorldRegister {
     completed_tick: u64,
     state: MaterialCircuitState,
     organizer: Option<(OrganizerConfig, OrganizerState)>,
-    canonical_bytes: Vec<u8>,
+    canonical_bytes: std::sync::Arc<Vec<u8>>,
     digest: [u8; 32],
 }
 
@@ -96,6 +156,37 @@ impl MaterialWorldRegister {
         }
         let state_bytes = encode_material_circuit_state(&state)?;
         let state = decode_material_circuit_state(&state_bytes)?;
+        Self::assemble(completed_tick, state, organizer, &state_bytes)
+    }
+
+    // Decode already admitted the complete typed circuit. Re-encode it and
+    // compare the complete outer wire below, without parsing that state twice.
+    fn build_admitted(
+        completed_tick: u64,
+        state: MaterialCircuitState,
+        organizer: Option<(OrganizerConfig, OrganizerState)>,
+    ) -> Result<Self, MaterialWorldError> {
+        if completed_tick
+            .checked_add(1)
+            .ok_or(MaterialWorldError::Arithmetic)?
+            != state.period
+        {
+            return Err(MaterialWorldError::PeriodMismatch);
+        }
+        let state_bytes = encode_material_circuit_state(&state)?;
+        Self::assemble(completed_tick, state, organizer, &state_bytes)
+    }
+
+    fn assemble(
+        completed_tick: u64,
+        state: MaterialCircuitState,
+        organizer: Option<(OrganizerConfig, OrganizerState)>,
+        state_bytes: &[u8],
+    ) -> Result<Self, MaterialWorldError> {
+        if let Some((config, organizer)) = &organizer {
+            organizer_collection::validate_binding(config, &state)?;
+            organizer_collection::current(config, organizer, &state, completed_tick)?;
+        }
         let mut organizer_bytes = Vec::new();
         match &organizer {
             None => organizer_bytes.push(0),
@@ -133,14 +224,14 @@ impl MaterialWorldRegister {
                 .map_err(|_| MaterialWorldError::Arithmetic)?
                 .to_be_bytes(),
         );
-        bytes.extend_from_slice(&state_bytes);
+        bytes.extend_from_slice(state_bytes);
         bytes.extend_from_slice(&organizer_bytes);
         let digest = sha256_of(&bytes);
         Ok(Self {
             completed_tick,
             state,
             organizer,
-            canonical_bytes: bytes,
+            canonical_bytes: std::sync::Arc::new(bytes),
             digest,
         })
     }
@@ -176,6 +267,11 @@ impl MaterialWorldRegister {
     #[must_use]
     pub fn canonical_bytes(&self) -> &[u8] {
         &self.canonical_bytes
+    }
+    /// Share the immutable canonical allocation without cloning the state or bytes.
+    #[must_use]
+    pub fn shared_canonical_bytes(&self) -> std::sync::Arc<Vec<u8>> {
+        std::sync::Arc::clone(&self.canonical_bytes)
     }
     #[must_use]
     pub const fn digest(&self) -> [u8; 32] {
@@ -228,8 +324,9 @@ impl MaterialWorldRegister {
             }
             _ => return Err(MaterialWorldError::Wire),
         };
-        let register = Self::build(tick, decode_material_circuit_state(state_bytes)?, organizer)?;
-        if register.canonical_bytes != bytes {
+        let register =
+            Self::build_admitted(tick, decode_material_circuit_state(state_bytes)?, organizer)?;
+        if register.canonical_bytes.as_slice() != bytes {
             return Err(MaterialWorldError::Wire);
         }
         Ok(register)
@@ -242,13 +339,14 @@ impl MaterialWorldRegister {
     /// Refuses any circuit or receipt encoding failure without changing this owner.
     pub fn prepare_next(&self) -> Result<PreparedMaterialWorld, MaterialWorldError> {
         let transition = advance_material_circuit(&self.state)?;
-        self.prepare_transition(transition)
+        self.prepare_transition(transition, None)
     }
 
     /// Seal the result of the shared closed-period planner on this exact opening.
     pub(crate) fn prepare_transition(
         &self,
         transition: MaterialCircuitTransition,
+        commitment: Option<&babylon_practice_contract::OrganizerCommitment>,
     ) -> Result<PreparedMaterialWorld, MaterialWorldError> {
         if self.state.period.checked_add(1) != Some(transition.state.period) {
             return Err(MaterialWorldError::PeriodMismatch);
@@ -258,6 +356,23 @@ impl MaterialWorldRegister {
             .organizer_config()
             .map(|config| organizer_workplace_facts(config, &self.state, &transition))
             .transpose()?;
+        let organizer_aid_support = match (self.organizer_config(), self.organizer_state()) {
+            (Some(config), Some(organizer)) => {
+                organizer_support::facts(config, organizer, commitment, &self.state, &transition)?
+            }
+            (None, None) if commitment.is_none() => Vec::new(),
+            _ => return Err(MaterialWorldError::Wire),
+        };
+        let organizer_collection_fact = match self.organizer_config() {
+            Some(config) => organizer_collection::support(
+                config,
+                commitment,
+                &transition.collections,
+                &transition.state,
+            )?,
+            None if transition.collections.is_empty() => None,
+            None => return Err(MaterialWorldError::Wire),
+        };
         let next = self
             .completed_tick
             .checked_add(1)
@@ -268,6 +383,8 @@ impl MaterialWorldRegister {
             register,
             receipt_bytes: receipts,
             organizer_facts,
+            organizer_aid_support,
+            organizer_collection_fact,
         })
     }
 }
@@ -279,8 +396,53 @@ pub struct PreparedMaterialWorld {
     register: MaterialWorldRegister,
     receipt_bytes: Vec<u8>,
     organizer_facts: Option<OrganizerWorkplaceFacts>,
+    organizer_aid_support: Vec<babylon_practice_contract::OrganizerAidSupport>,
+    organizer_collection_fact: Option<babylon_practice_contract::OrganizerCollectionFact>,
 }
 impl PreparedMaterialWorld {
+    pub(crate) fn organizer_collection_fact(
+        &self,
+    ) -> Option<&babylon_practice_contract::OrganizerCollectionFact> {
+        self.organizer_collection_fact.as_ref()
+    }
+    pub(crate) fn organizer_aid_support(
+        &self,
+    ) -> &[babylon_practice_contract::OrganizerAidSupport] {
+        &self.organizer_aid_support
+    }
+    pub(crate) fn organizer_period_time_resources(
+        &self,
+        config: &OrganizerConfig,
+    ) -> Result<babylon_practice_contract::OrganizerPeriodTimeResources, MaterialWorldError> {
+        organizer_time::resources(&self.register.state, config, self.register.completed_tick)
+    }
+
+    pub(crate) fn set_organizer_with_household_time(
+        &mut self,
+        config: OrganizerConfig,
+        organizer: OrganizerState,
+    ) -> Result<(), MaterialWorldError> {
+        let uses = organizer_time::uses(
+            &config,
+            &organizer,
+            self.register.completed_tick,
+            &self.register.state,
+        )?;
+        let mut state = self.register.state.clone();
+        babylon_material_circuit::consume_household_contributions(
+            &mut state,
+            self.register.completed_tick,
+            &uses,
+        )?;
+        // Contributions debit a separate ledger; the material time partition is
+        // still the gross supply actually closed before later political work.
+        self.register = MaterialWorldRegister::build(
+            self.register.completed_tick,
+            state,
+            Some((config, organizer)),
+        )?;
+        Ok(())
+    }
     #[must_use]
     pub fn organizer_workplace_facts(&self) -> Option<&OrganizerWorkplaceFacts> {
         self.organizer_facts.as_ref()
@@ -351,35 +513,61 @@ fn organizer_workplace_facts(
         .iter()
         .find(|row| row.process_id == process_id)
         .ok_or(MaterialWorldError::Wire)?;
-    let maintenance = transition
-        .maintenance
-        .as_ref()
-        .filter(|row| row.binding.consumer_process_id == process_id)
-        .ok_or(MaterialWorldError::Wire)?;
+    let (maintenance_enabled_batches, maintenance_consumed_batches, maintenance_expired_batches) =
+        match (
+            &opening.maintenance_binding,
+            &opening.maintenance_service,
+            &transition.maintenance,
+        ) {
+            (None, None, None) => (0, 0, 0),
+            (Some(binding), Some(service), Some(receipt))
+                if receipt.binding == *binding
+                    && service.period == opening.period
+                    && receipt.period == opening.period
+                    && receipt.opening_service_batches == service.available_batches =>
+            {
+                if binding.consumer_process_id == process_id {
+                    (
+                        receipt.opening_service_batches,
+                        receipt.consumed_service_batches,
+                        receipt.expired_service_batches,
+                    )
+                } else {
+                    (0, 0, 0)
+                }
+            }
+            _ => return Err(MaterialWorldError::Wire),
+        };
     let mass = opening
         .commodities
         .iter()
         .find(|row| row.good_id == output.good_id && row.unit_id == output.unit_id)
         .ok_or(MaterialWorldError::Wire)?;
-    if mass
-        .grams_per_unit()
-        .map_err(|_| MaterialWorldError::Wire)?
-        != 1_000
-    {
+    let produced_units = produced_batches
+        .checked_mul(output.quantity_per_batch)
+        .ok_or(MaterialWorldError::Arithmetic)?;
+    let output_grams = u128::from(produced_units)
+        .checked_mul(u128::from(
+            mass.grams_per_unit()
+                .map_err(|_| MaterialWorldError::Wire)?,
+        ))
+        .ok_or(MaterialWorldError::Arithmetic)?;
+    if output_grams % 1_000 != 0 {
+        // The current report promises exact whole kilograms; never round away goods.
         return Err(MaterialWorldError::Wire);
     }
+    let output_kg =
+        u64::try_from(output_grams / 1_000).map_err(|_| MaterialWorldError::Arithmetic)?;
     Ok(OrganizerWorkplaceFacts {
         period: opening.period,
         workplace_id: config.workplace_id,
         performed_labor_hours: produced_batches
             .checked_mul(labor.quantity_per_batch)
             .ok_or(MaterialWorldError::Arithmetic)?,
-        output_kg: produced_batches
-            .checked_mul(output.quantity_per_batch)
-            .ok_or(MaterialWorldError::Arithmetic)?,
-        maintenance_enabled_batches: maintenance.opening_service_batches,
-        maintenance_consumed_batches: maintenance.consumed_service_batches,
-        maintenance_expired_batches: maintenance.expired_service_batches,
+        output_kg,
+        maintenance_enabled_batches,
+        maintenance_consumed_batches,
+        maintenance_expired_batches,
     })
 }
 
@@ -408,7 +596,9 @@ fn bounded_bytes(length: usize, maximum: usize) -> Result<Vec<u8>, MaterialWorld
         .map_err(|_| MaterialWorldError::Allocation)?;
     Ok(bytes)
 }
-fn receipt_row_limit(index: usize) -> usize {
+/// Canonical collection limit for an admitted zero-based receipt family.
+/// Callers must first require `index < RECEIPT_FAMILY_COUNT`.
+pub const fn receipt_row_limit(index: usize) -> usize {
     match index {
         6 => babylon_material_circuit::MAX_HANDLING_RECEIPTS_PER_PERIOD,
         10 => babylon_material_circuit::MAX_MONEY_TRANSFERS_PER_PERIOD,
@@ -417,6 +607,8 @@ fn receipt_row_limit(index: usize) -> usize {
         15 => babylon_material_circuit::MAX_REPLENISHMENT_POLICIES,
         18 | 24 => babylon_material_circuit::MAX_MONETARY_ACCOUNTS,
         25 => babylon_material_circuit::MAX_OWNERSHIP_CLAIMS,
+        34 => babylon_material_circuit::MAX_AID_RECEIPTS_PER_PERIOD,
+        35 => 1,
         _ => babylon_material_circuit::MAX_MATERIAL_CIRCUIT_ROWS,
     }
 }
@@ -454,101 +646,46 @@ fn encode_material_receipts(
     if tick == 0 {
         return Err(MaterialWorldError::Wire);
     }
-    let families = [
-        (transition.production.len(), 80_usize),
-        (transition.dispatches.len(), 112),
-        (transition.losses.len(), 106),
-        (transition.arrivals.len(), 40),
-        (transition.deliveries.len(), 40),
-        (transition.realizations.len(), 40),
-        (transition.handling.len(), 97),
-        (transition.local_fulfillments.len(), 168),
-        (transition.local_transfers.len(), 168),
-        (
-            usize::from(transition.maintenance.is_some()),
-            maintenance_receipt::ROW_BYTES,
-        ),
-        (
-            transition.money_transfers.len(),
-            monetary_receipt::TRANSFER_BYTES,
-        ),
-        (
-            transition.wage_accruals.len(),
-            monetary_receipt::ACCRUAL_BYTES,
-        ),
-        (transition.labor_use.len(), monetary_receipt::LABOR_BYTES),
-        (
-            transition.household_demand.len(),
-            recurring_receipt::DEMAND_BYTES,
-        ),
-        (
-            transition.household_consumption.len(),
-            recurring_receipt::CONSUMPTION_BYTES,
-        ),
-        (
-            transition.procurement.len(),
-            recurring_receipt::PROCUREMENT_BYTES,
-        ),
-        (
-            transition.production_plans.len(),
-            recurring_receipt::PLAN_BYTES,
-        ),
-        (transition.prices.len(), recurring_receipt::PRICE_BYTES),
-        (transition.income.len(), income_receipt::ROW_BYTES),
-        (
-            transition.service_performance.len(),
-            service_receipt::PERFORMANCE_BYTES,
-        ),
-        (
-            transition.household_services.len(),
-            service_receipt::HOUSEHOLD_BYTES,
-        ),
-        (
-            transition.service_markets.len(),
-            service_receipt::MARKET_BYTES,
-        ),
-        (
-            transition.service_outputs.len(),
-            service_receipt::OUTPUT_BYTES,
-        ),
-        (
-            transition.public_budgets.len(),
-            financial_receipt::PUBLIC_BUDGETS_BYTES,
-        ),
-        (transition.taxes.len(), financial_receipt::TAXES_BYTES),
-        (
-            transition.distributions.len(),
-            financial_receipt::DISTRIBUTIONS_BYTES,
-        ),
-        (
-            transition.contributions.len(),
-            financial_receipt::CONTRIBUTIONS_BYTES,
-        ),
-        (
-            transition.staffing_members.len(),
-            workforce_receipt::STAFFING_BYTES,
-        ),
-        (
-            transition.member_labor_use.len(),
-            workforce_receipt::ATTENDANCE_BYTES,
-        ),
-        (
-            transition.installation.len(),
-            equipment_receipt::INSTALLATION_BYTES,
-        ),
-        (
-            transition.equipment_wear.len(),
-            equipment_receipt::WEAR_BYTES,
-        ),
-        (
-            transition.investment.len(),
-            equipment_receipt::INVESTMENT_BYTES,
-        ),
-        (
-            transition.installation_decisions.len(),
-            installation_decision::ROW_BYTES,
-        ),
+    let counts: [usize; RECEIPT_FAMILY_COUNT] = [
+        transition.production.len(),
+        transition.dispatches.len(),
+        transition.losses.len(),
+        transition.arrivals.len(),
+        transition.deliveries.len(),
+        transition.realizations.len(),
+        transition.handling.len(),
+        transition.local_fulfillments.len(),
+        transition.local_transfers.len(),
+        usize::from(transition.maintenance.is_some()),
+        transition.money_transfers.len(),
+        transition.wage_accruals.len(),
+        transition.labor_use.len(),
+        transition.household_demand.len(),
+        transition.household_consumption.len(),
+        transition.procurement.len(),
+        transition.production_plans.len(),
+        transition.prices.len(),
+        transition.income.len(),
+        transition.service_performance.len(),
+        transition.household_services.len(),
+        transition.service_markets.len(),
+        transition.service_outputs.len(),
+        transition.public_budgets.len(),
+        transition.taxes.len(),
+        transition.distributions.len(),
+        transition.contributions.len(),
+        transition.staffing_members.len(),
+        transition.member_labor_use.len(),
+        transition.installation.len(),
+        transition.equipment_wear.len(),
+        transition.investment.len(),
+        transition.installation_decisions.len(),
+        transition.household_time.len(),
+        transition.aid.len(),
+        transition.collections.len(),
     ];
+    let families: [(usize, usize); RECEIPT_FAMILY_COUNT] =
+        std::array::from_fn(|index| (counts[index], RECEIPT_ROW_BYTES[index]));
     if families
         .iter()
         .enumerate()
@@ -581,6 +718,17 @@ fn encode_material_receipts(
     equipment_receipt::validate_investment(&transition.investment, &transition.money_transfers)?;
     installation_decision::validate(&transition.installation_decisions, &transition.installation)?;
     income_receipt::validate_order(&transition.income)?;
+    aid_receipt::validate(&transition.aid, tick)?;
+    aid_receipt::validate_state(&transition.aid, &transition.state)?;
+    collection_receipt::validate(
+        &transition.collections,
+        &transition.money_transfers,
+        &transition.household_time,
+        &transition.income,
+        &transition.aid,
+        tick,
+    )?;
+    collection_receipt::validate_state(&transition.collections, &transition.state)?;
     financial_receipt::validate(
         &transition.public_budgets,
         &transition.taxes,
@@ -601,6 +749,12 @@ fn encode_material_receipts(
         &transition.production_plans,
         &transition.prices,
     )?;
+    household_time_receipt::validate(
+        &transition.household_time,
+        &transition.member_labor_use,
+        tick,
+    )?;
+    household_time_receipt::validate_state(&transition.state, &transition.household_time)?;
     let length = families.iter().try_fold(
         RECEIPT_DOMAIN.len() + 12 + families.len() * 9,
         |total, (count, width)| {
@@ -615,7 +769,7 @@ fn encode_material_receipts(
     )?;
     let mut bytes = bounded_bytes(length, MAX_MATERIAL_TICK_RECEIPT_BYTES)?;
     bytes.extend_from_slice(RECEIPT_DOMAIN);
-    bytes.extend_from_slice(&14_u32.to_be_bytes());
+    bytes.extend_from_slice(&17_u32.to_be_bytes());
     bytes.extend_from_slice(&tick.to_be_bytes());
     for (tag, (count, _)) in families.iter().enumerate() {
         bytes.push(u8::try_from(tag + 1).map_err(|_| MaterialWorldError::Arithmetic)?);
@@ -782,16 +936,22 @@ fn encode_material_receipts(
             32 => {
                 installation_decision::encode(&transition.installation_decisions, tick, &mut bytes)?
             }
-            _ => unreachable!("the thirty-three material receipt families are closed"),
+            33 => household_time_receipt::encode(&transition.household_time, tick, &mut bytes)?,
+            34 => aid_receipt::encode(&transition.aid, tick, &mut bytes)?,
+            35 => collection_receipt::encode(&transition.collections, tick, &mut bytes)?,
+            _ => unreachable!("the thirty-five material receipt families are closed"),
         }
     }
     debug_assert_eq!(bytes.len(), length);
     Ok(bytes)
 }
 
-/// Typed material evidence decoded only from an exact committed V14 receipt family.
+/// Typed material evidence decoded only from an exact committed V17 receipt family.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MaterialTickReceipts {
+    pub household_time: Vec<babylon_material_circuit::HouseholdTimeReceipt>,
+    pub aid: Vec<babylon_material_circuit::AidReceipt>,
+    pub collections: Vec<babylon_material_circuit::CollectionReceipt>,
     pub installation: Vec<babylon_material_circuit::InstallationReceipt>,
     pub installation_decisions: Vec<babylon_material_circuit::InstallationDecisionReceipt>,
     pub equipment_wear: Vec<babylon_material_circuit::EquipmentWearReceipt>,
@@ -840,7 +1000,7 @@ pub fn decode_material_receipts(bytes: &[u8]) -> Result<MaterialTickReceipts, Ma
         bytes,
         position: RECEIPT_DOMAIN.len(),
     };
-    if cursor.take::<4>()? != 14_u32.to_be_bytes() {
+    if cursor.take::<4>()? != 17_u32.to_be_bytes() {
         return Err(MaterialWorldError::Wire);
     }
     let resolve_tick = cursor.u64()?;
@@ -848,6 +1008,9 @@ pub fn decode_material_receipts(bytes: &[u8]) -> Result<MaterialTickReceipts, Ma
         return Err(MaterialWorldError::Wire);
     }
     let mut result = MaterialTickReceipts {
+        household_time: Vec::new(),
+        aid: Vec::new(),
+        collections: Vec::new(),
         installation: Vec::new(),
         installation_decisions: Vec::new(),
         equipment_wear: Vec::new(),
@@ -884,7 +1047,7 @@ pub fn decode_material_receipts(bytes: &[u8]) -> Result<MaterialTickReceipts, Ma
         local_transfers: Vec::new(),
         maintenance: None,
     };
-    for tag in 1..=33 {
+    for tag in 1..=36 {
         if cursor.take::<1>()? != [tag] {
             return Err(MaterialWorldError::Wire);
         }
@@ -929,6 +1092,9 @@ pub fn decode_material_receipts(bytes: &[u8]) -> Result<MaterialTickReceipts, Ma
             equipment_receipt::WEAR_BYTES,
             equipment_receipt::INVESTMENT_BYTES,
             installation_decision::ROW_BYTES,
+            household_time_receipt::ROW_BYTES,
+            aid_receipt::ROW_BYTES,
+            collection_receipt::ROW_BYTES,
         ][usize::from(tag - 1)];
         if count
             .checked_mul(width)
@@ -970,12 +1136,24 @@ pub fn decode_material_receipts(bytes: &[u8]) -> Result<MaterialTickReceipts, Ma
             31 => result.equipment_wear.try_reserve_exact(count),
             32 => result.investment.try_reserve_exact(count),
             33 => result.installation_decisions.try_reserve_exact(count),
+            34 => result.household_time.try_reserve_exact(count),
+            35 => result.aid.try_reserve_exact(count),
+            36 => result.collections.try_reserve_exact(count),
 
             _ => return Err(MaterialWorldError::Wire),
         }
         .map_err(|_| MaterialWorldError::Allocation)?;
         for _ in 0..count {
             match tag {
+                36 => result
+                    .collections
+                    .push(collection_receipt::decode(&mut cursor, resolve_tick)?),
+                35 => result
+                    .aid
+                    .push(aid_receipt::decode(&mut cursor, resolve_tick)?),
+                34 => result
+                    .household_time
+                    .push(household_time_receipt::decode(&mut cursor, resolve_tick)?),
                 30 => result
                     .installation
                     .push(equipment_receipt::decode_installation(
@@ -1241,6 +1419,15 @@ pub fn decode_material_receipts(bytes: &[u8]) -> Result<MaterialTickReceipts, Ma
     equipment_receipt::validate_investment(&result.investment, &result.money_transfers)?;
     installation_decision::validate(&result.installation_decisions, &result.installation)?;
     income_receipt::validate_order(&result.income)?;
+    aid_receipt::validate(&result.aid, resolve_tick)?;
+    collection_receipt::validate(
+        &result.collections,
+        &result.money_transfers,
+        &result.household_time,
+        &result.income,
+        &result.aid,
+        resolve_tick,
+    )?;
     financial_receipt::validate(
         &result.public_budgets,
         &result.taxes,
@@ -1260,6 +1447,11 @@ pub fn decode_material_receipts(bytes: &[u8]) -> Result<MaterialTickReceipts, Ma
         &result.procurement,
         &result.production_plans,
         &result.prices,
+    )?;
+    household_time_receipt::validate(
+        &result.household_time,
+        &result.member_labor_use,
+        resolve_tick,
     )?;
     Ok(result)
 }
@@ -1295,3 +1487,26 @@ impl ReceiptCursor<'_> {
 
 #[cfg(test)]
 mod tests;
+
+/// Verify collection against the exact retained original command and shared time ledger.
+/// # Errors
+/// Refuses changed or missing receipt, mandate, actor, original action or consumed use.
+pub fn validate_retained_collection(
+    register: &MaterialWorldRegister,
+    receipts: &MaterialTickReceipts,
+) -> Result<(), MaterialWorldError> {
+    if register.completed_tick() != receipts.resolve_tick {
+        return Err(MaterialWorldError::PeriodMismatch);
+    }
+    match (register.organizer_config(), register.organizer_state()) {
+        (Some(config), Some(organizer)) => organizer_collection::retained(
+            config,
+            organizer,
+            &receipts.collections,
+            register.state(),
+            receipts.resolve_tick,
+        ),
+        (None, None) if receipts.collections.is_empty() => Ok(()),
+        _ => Err(MaterialWorldError::Wire),
+    }
+}

@@ -316,12 +316,13 @@ fn advance_pair(
     let began = Instant::now();
     advance_material_period(runtime);
     measured.advance += began.elapsed();
-    let row = sql.query_one("SELECT register_bytes,receipt_bytes FROM babylon_state.material_tick_v3 WHERE campaign_id=$1::uuid AND resolve_tick=$2", &[campaign.as_uuid(), &i64::try_from(receipts.resolve_tick).unwrap()]).unwrap();
+    let (stored_register, stored_receipts) =
+        super::persisted_twins::stored_canonical_material(sql, campaign, receipts.resolve_tick);
     assert_eq!(
-        row.get::<_, Vec<u8>>(0),
+        stored_register,
         prepared.material().register().canonical_bytes()
     );
-    assert_eq!(row.get::<_, Vec<u8>>(1), bytes);
+    assert_eq!(stored_receipts, bytes);
     reference
         .commit_prepared_and_publish(&mut CollectingSink::default(), prepared, |_| {
             Ok::<_, ()>(ReplayCommitDisposition::Committed)
@@ -348,7 +349,7 @@ fn observe(
     held: &mut Vec<(u64, ProductionEvidenceDigest)>,
 ) -> ProductionSnapshot {
     let began = Instant::now();
-    let snapshot = observer
+    let mut snapshot = observer
         .snapshot(campaign, runtime.session().completed_tick())
         .unwrap();
     measured.projection += began.elapsed();
@@ -688,7 +689,11 @@ fn assert_capacity(
     period: u64,
     completed: Option<(&MaterialTickReceipts, &BTreeMap<String, u64>)>,
 ) {
+    let definitions =
+        babylon_persistence::production_observation::PhysicalRouteIndex::try_new(rows).unwrap();
     let mut principals = BTreeSet::new();
+    let order_definitions =
+        babylon_persistence::production_observation::FreightOrderIndex::try_new(rows).unwrap();
     for account in &rows.freight_capacity_accounts {
         assert!(principals.insert(&account.corridor_id));
         let Some(done) = &account.completed else {
@@ -715,7 +720,8 @@ fn assert_capacity(
             );
             let mut orders = BTreeSet::new();
             let mut reserved = 0_u128;
-            for order in &reservation.orders {
+            for reference in &reservation.orders {
+                let order = order_definitions.get(reference).unwrap();
                 assert!(orders.insert((order.kind, &order.order_id)));
                 let actual = outbound_quantity(receipts, order.kind, &order.order_id);
                 assert_eq!(u128::from(order.dispatched), actual);
@@ -731,9 +737,11 @@ fn assert_capacity(
                     let route = rows
                         .routes
                         .iter()
-                        .find(|r| Some(&r.id) == order.route_id.as_ref())
+                        .find(|r| Some(&r.physical_route_id) == order.route_id.as_ref())
                         .unwrap();
-                    assert!(route
+                    assert!(definitions
+                        .get(route)
+                        .unwrap()
                         .stages
                         .iter()
                         .any(|stage| stage.capacity_ids.contains(&account.corridor_id)));
@@ -880,7 +888,7 @@ fn assert_history_and_preview(
     let preview_config = target.login("babylon_reader", "actualpreview");
     let preview =
         ObserverEconomyReader::connect(&preview_config, ObserverVisibility::KnownPreview).unwrap();
-    let snapshot = preview.snapshot(campaign, durable_tick).unwrap();
+    let mut snapshot = preview.snapshot(campaign, durable_tick).unwrap();
     assert!(snapshot.production.is_none());
     assert!(snapshot.production_evidence_digest().unwrap().is_none());
 }

@@ -1,0 +1,130 @@
+ADR272_compact_material_storage_and_typed_lookups:
+  status: accepted
+  date: '2026-10-02'
+  issue: PER-40
+  title: Shared typed lookups and lossless columns store exact history
+  evidence_class: Designed
+  authority:
+    - Director request to use lookup tables for recurring identities
+    - Director authorization to redesign Postgres without backwards compatibility
+    - ADR271 national storage ceiling and exact recovery requirements
+  context: |
+    Measured raw commits average 657,121,280 retained bytes per period.
+    Opening ownership repair does not materially reduce recurring growth.
+    Whole-blob compression does not meet the 10,000,000-byte criterion.
+    Typed lookup, column and identity-descriptor prototypes prove exact inverses;
+    their combined components still exceed the criterion before graph history.
+    Prototype sizes cannot establish native or Postgres savings.
+  decision: |
+    Replace recurring raw material register and receipt columns with one current
+    lossless storage encoding. Keep their canonical engine bytes, identity,
+    hashes and complete committed envelope unchanged. Old schemas fail exact
+    schema admission; preserve their data without a compatibility reader.
+
+    Use a shared typed lookup with compact references. An identity's kind is
+    part of its key. Seed the opening lookup deterministically from admitted
+    opening state. Append one packed lookup delta per committed period, covering
+    state and receipt additions together. Each package authenticates the exact
+    lookup prefix it uses; later additions cannot invalidate earlier packages or
+    authorize references outside that prefix. Reject duplicate, unknown or
+    missing lookup entries and different predecessor prefixes.
+
+    Encode state sections through compiled layouts, exact identity references
+    and lossless columns. Equal sections reference the authenticated opening.
+    XOR requires identical row keys; changed shapes use complete columns.
+    Variable sections retain an explicit lossless fallback. Organizer bytes and
+    absent optional branches remain part of exact canonical reconstruction.
+    The initial implementation always uses the captured opening as its state
+    base, so it cannot grow an unbounded state-delta chain.
+
+    Encode all thirty-four receipt families. Reconstruct redundant numeric
+    fields only through their existing checked accounting relations. Preserve
+    independent quantities, rates, currency, period values and row order.
+    A valid relation that cannot use a factor retains its exact full fields.
+    Authenticate lengths, kinds, canonical hashes and existing typed decoders
+    before exposing reconstructed values. Compression admits one bounded frame
+    and refuses trailing, concatenated or malformed frames.
+
+    Stage the complete lookup and packages before writing. Insert them in the
+    same transaction as existing graph, event, checkpoint and Archive rows.
+    The commit marker stays last. Publish the lookup only with acknowledged
+    material state; ambiguous acknowledgements compare reconstructed canonical
+    envelopes and the complete staged lookup. Failed ticks publish neither.
+
+    Runtime and full observer use the same decoder with admitted opening bytes.
+    Historical lookup chunks must be consecutive and marker-joined. Observer
+    caches stage row changes until validation and transaction acknowledgement.
+    Known preview and Archive capabilities gain no raw storage or private input
+    grants. Share immutable opening canonical bytes without a second large copy.
+
+    Store graph names, types and qualified names in campaign-owned SQL lookup
+    tables. Node identity includes its exact name and type. Seed admitted opening
+    identities when creating a material campaign; subsequent additions belong to
+    their committed period. Store current membership and binary64 values in
+    bounded parallel arrays and reconstruct the same logical graph views.
+    Existing stable-graph admission owns the node and attribute count limits.
+    Storage chunks contain at most 4,096 entries as a Designed packing choice.
+
+    Large exact text uses a nonunique fixed-size search bucket plus full-value
+    equality. Bucket equality never establishes identity. Serialize lookup
+    admission with marker publication, refuse late additions and mutation, and
+    check complete counts, references, uniqueness and chunk continuity at the
+    deferred marker boundary. Private lookup and chunk tables grant no preview
+    or Archive access. Preserve exact bits, names, types and canonical hashes.
+
+    Store event names, emitting rules, field names, enum names and exact native
+    element keys in campaign-owned SQL lookup tables. Store each period's event
+    ordinals, field positions and closed typed payloads in bounded arrays behind
+    the same logical event views. Preserve nullable choice references, signed
+    integer bits, all currency micro-units and optional ratio bounds. Field names
+    retain their canonical byte order; exact lookup values establish identity.
+    Each lookup introduction belongs to its acknowledged period.
+
+    Event publication shares the graph campaign lock before ordered period
+    locks. One deferred marker check validates manifests, array shape, parent
+    and field continuity, exact lookup references and realized choices. Raw
+    lookup, manifest and array tables remain append-only and private. Preserve
+    independent row-projection and corruption witnesses at the storage boundary.
+    Expanded logical rows cannot hide missing uncommitted physical components.
+
+    Expand event arrays in parallel once per chunk. The full-value SQL profile
+    over 788,242 fields takes 122.49 seconds with repeated array subscripts and
+    1.50 seconds with parallel expansion. Bidirectional row comparison finds no
+    differences. This query result does not establish native advance latency.
+
+    Store nine closed checkpoint source references with exact decoded lengths
+    and hashes. Reuse the authenticated graph and semantic rows and six admitted
+    foundation sections. Keep only the dynamic world-register section inline.
+    Reconstruct the original checkpoint sections, manifest and envelope before
+    acceptance. References never replace canonical bytes in engine identity.
+    Reject unsupported sources, missing tags or changed canonical contents even
+    if an attacker updates a reference hash. No new history delta chain is used.
+  consequences: |
+    This cutover removes recurring raw material blobs and position maps.
+    Event arrays and lookup tables replace duplicated physical event rows.
+    Actual growth still fails the ceiling. The connected query and checkpoint
+    repair retains 65,708,032 bytes per period with exact cold recovery and all
+    counties. The intermediate event cutover retained 86,343,680 bytes; the graph
+    cutover retained 212,729,856. The one-time opening adds 263,184,384 bytes.
+    New event-key lookup entries add 15,220,736 bytes and are charged to their
+    introduction period. Checkpoint references add 16,384 bytes, compared with
+    20,652,032 for the previous copies. The advance takes 95.13 seconds and cold
+    recovery takes 137.64 seconds, compared with 208.25 and 251.82 before repair.
+    Native section census identifies offers as 2,033,630 compressed state bytes
+    and money transfers as 4,659,412 compressed receipt bytes. These are actual
+    package payloads, not extra relation charges or projected savings.
+    These are single-period observations, not fifty-two-period qualification.
+    Lookup growth, historical loading and codec work require actual fifty-two-
+    period disk, memory and latency measurements. Current native codec controls
+    do not satisfy Postgres or final playable-build acceptance.
+    The 10 MB ceiling, county coverage and exact accounting remain unchanged.
+    No economic mechanism, primitive or reserved theory line changes.
+  verification:
+    - All canonical register and receipt bytes survive independent decoding.
+    - Unknown versions, bad prefixes, kinds, frames and trailing bytes refuse.
+    - Failed staging and failed commits leave live state and lookup unchanged.
+    - Retry, restart, later advances and historical observer reads agree exactly.
+    - Corrupt or absent earlier lookup chunks refuse authenticated reconstruction.
+    - Actual Postgres charges include lookup chunks, metadata, indexes and TOAST.
+    - Fifty-two actual commits satisfy ADR271 before final storage qualification.
+  source_record: reports/national-household-time-close-census-2026-10-02.md

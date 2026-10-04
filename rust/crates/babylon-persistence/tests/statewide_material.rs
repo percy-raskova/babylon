@@ -50,6 +50,7 @@ fn physical_paths_require_all_overlapping_capacity_memberships_and_preserve_iden
             Vec::new(),
         )
     };
+    let physical_bytes = serde_json::to_vec(&physical).unwrap();
     let catalog = compile(physical.clone()).unwrap();
     let mut routed = 0;
     for route in catalog.routes() {
@@ -67,7 +68,47 @@ fn physical_paths_require_all_overlapping_capacity_memberships_and_preserve_iden
     for group in &mut physical.capacity_groups {
         group.edge_keys.reverse();
     }
-    assert_eq!(catalog, compile(physical.clone()).unwrap());
+    let reordered_bytes = serde_json::to_vec(&physical).unwrap();
+    let reordered = compile(physical.clone()).unwrap();
+    // Raw supplied source ordering stays evidence. Compare the complete resolved
+    // inputs and regenerated initialization separately from that source identity.
+    assert_eq!(
+        serde_json::to_value(catalog.resolved_report()).unwrap(),
+        serde_json::to_value(reordered.resolved_report()).unwrap()
+    );
+    assert_eq!(catalog.preset(), reordered.preset());
+    assert_eq!(
+        catalog.graph_scenario_source(),
+        reordered.graph_scenario_source()
+    );
+    assert_eq!(catalog.rule_source(), reordered.rule_source());
+    let original_opening =
+        babylon_persistence::economic_catalog::import_michigan_opening(&catalog).unwrap();
+    let reordered_opening =
+        babylon_persistence::economic_catalog::import_michigan_opening(&reordered).unwrap();
+    assert_eq!(original_opening, reordered_opening);
+    assert_eq!(
+        original_opening.compile().unwrap().state,
+        reordered_opening.compile().unwrap().state
+    );
+    let original_capture =
+        babylon_persistence::economic_catalog::CapturedEconomicCatalog::from_michigan(&catalog)
+            .unwrap();
+    let reordered_capture =
+        babylon_persistence::economic_catalog::CapturedEconomicCatalog::from_michigan(&reordered)
+            .unwrap();
+    let source_kind =
+        babylon_persistence::economic_catalog::SourceArtifactKind::MichiganPhysicalNetworkJson;
+    assert_eq!(
+        original_capture.source(source_kind),
+        Some(physical_bytes.as_slice())
+    );
+    assert_eq!(
+        reordered_capture.source(source_kind),
+        Some(reordered_bytes.as_slice())
+    );
+    assert_ne!(sha256_of(&physical_bytes), sha256_of(&reordered_bytes));
+    assert_ne!(original_capture.digest(), reordered_capture.digest());
     let uncovered = physical.edges[0].id.clone();
     for group in &mut physical.capacity_groups {
         group.edge_keys.retain(|key| key != &uncovered);

@@ -1,5 +1,10 @@
 (scenario economy/national-world
-  (defvocabulary NodeType (TERRITORY BUSINESS HOUSEHOLD SOCIAL_CLASS))
+  (defvocabulary NodeType (TERRITORY BUSINESS HOUSEHOLD SOCIAL_CLASS ORGANIZATION PARTICIPANT_BODY))
+  (defvocabulary HyperedgeType (ORGANIZATION_BODY))
+  (defvocabulary EdgeType (CONTACT))
+  (defenum OrgKind (STATE_APPARATUS BUSINESS POLITICAL_FACTION CIVIL_SOCIETY))
+  (deffield organization/kind enum OrgKind)
+  (deffield organization/county-fips int extensive)
   (deffield territory/county-fips int extensive)
   (deffield business/previous-unretained-labor-hours int extensive)
   (deffield household/persons int extensive)

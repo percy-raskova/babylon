@@ -700,6 +700,10 @@ mod live_tests {
             "GRANT SELECT ON babylon_state.tick_commit TO PUBLIC",
             "ALTER DEFAULT PRIVILEGES GRANT SELECT ON TABLES TO PUBLIC",
             "CREATE VIEW public.unregistered_view AS SELECT 1",
+            "CREATE OR REPLACE FUNCTION babylon_state.event_storage_immutable_v1() RETURNS trigger LANGUAGE plpgsql SET search_path TO 'pg_catalog' AS $$ BEGIN RAISE EXCEPTION USING ERRCODE='P0001', MESSAGE='changed_event_storage_append_only'; END $$",
+            "ALTER VIEW public.v_known_county_economy_v1 SET (security_barrier = false)",
+            "CREATE OR REPLACE VIEW public.v_committed_tick_status_v1 AS SELECT campaign_id, resolve_tick, envelope_layout_version, tick_content_hash, envelope_digest FROM babylon_state.tick_commit WHERE resolve_tick > 1",
+            "ALTER TABLE babylon_state.tick_commit DROP CONSTRAINT tick_commit_envelope_layout_v3; ALTER TABLE babylon_state.tick_commit ADD CONSTRAINT tick_commit_envelope_layout_v3 CHECK (envelope_layout_version = 4)",
         ] {
             let mut tx = client.transaction().unwrap();
             tx.batch_execute(mutation).unwrap();

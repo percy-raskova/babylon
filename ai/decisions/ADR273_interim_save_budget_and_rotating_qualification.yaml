@@ -1,0 +1,56 @@
+ADR273_interim_save_budget_and_rotating_qualification:
+  status: accepted
+  date: '2026-10-02'
+  issue: PER-40
+  title: Interim save budget and one rotating national qualification campaign
+  evidence_class: Designed
+  authority:
+    - Director accepts the measured 22.57 MB payload as acceptable for now
+    - Director requests one test game with rotation and disciplined disk use
+    - Director permits persistence redesign without backwards compatibility
+  context: |
+    The latest connected national period retains 65,708,032 bytes in Postgres.
+    Its authenticated state and receipt packages contain 24,937,230 payload
+    bytes. A read-only prototype compresses their exact combined decoded bodies
+    to 22,571,074 bytes. That prototype does not include SQL history, lookup
+    entries, indexes, TOAST, or a qualified current writer. It is not evidence
+    that actual total growth is 22.57 MB.
+  decision: |
+    Use a provisional maximum of 23,000,000 decimal bytes of total retained
+    growth per committed period, rounding the accepted payload size to a whole
+    decimal megabyte. The current executable qualification contract owns this
+    value. The earlier 10 MB objective remains a future optimization goal.
+    Keep all other accounting, coverage, publication, replay, recovery and
+    fifty-two-period requirements. The current 65,708,032-byte result fails
+    either ceiling. Preserve earlier measurements and their original budgets.
+
+    Charge all retained campaign data, metadata and indexes. Any external files
+    count too; moving data outside Postgres cannot establish a saving. Report
+    the opening separately. Thirteen periods have a provisional 299 MB ceiling;
+    fifty-two periods have a 1,196 MB ceiling. These are Designed limits, not
+    measured annual growth or an accepted playable build.
+
+    Use one active disposable national qualification campaign. Rotate it
+    between runs after preserving the exact source identity, logs, manifests,
+    byte counts, recovery proof and any unique reproducibility inputs. Keep
+    bounded durable evidence rather than a fresh retained game for every probe.
+    Inventory the exact task-owned database, container, mounts, files and
+    consumers before retirement. Preserve user saves, unrelated sessions,
+    unique evidence and recoverable historical data. Routine test cleanup must
+    not broadly remove worktrees, data stores or unresolved paths.
+
+    Keep PostgreSQL as the transactional authority while evaluating shared
+    immutable blocks and exact references. An external block store needs its
+    own measured benefit, durable publication protocol, coordinated backup and
+    restore, and missing-block refusal before adoption. A prototype is not
+    permission to weaken synchronous commit or crash recovery.
+  verification:
+    - Current qualification uses the 23,000,000-byte provisional ceiling.
+    - All external or shared storage is fully charged when introduced.
+    - Rotation preserves unique evidence and leaves one active test campaign.
+    - Old measurement records retain their original source and policy identity.
+    - Full county coverage and original canonical bytes survive recovery.
+  supersedes:
+    - ADR271_national_storage_budget_and_marker_validation # numeric ceiling only
+  canonical_contract: contracts/national_storage_qualification_v1.json
+  source_record: reports/national-household-time-close-census-2026-10-02.md

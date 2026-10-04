@@ -111,7 +111,10 @@ fn installation_decisions_roundtrip_and_refuse_false_starts_positions_and_old_fo
             "mutation {mutation}"
         );
     }
-    let start = bytes.len() - super::super::installation_decision::ROW_BYTES;
+    assert!(decoded.household_time.is_empty());
+    assert!(decoded.aid.is_empty());
+    // Empty time34 and aid35 each retain their tag and u64 count after this row.
+    let start = bytes.len() - 2 * (1 + 8) - super::super::installation_decision::ROW_BYTES;
     let mut malformed = bytes.clone();
     malformed[start + 112..start + 120].copy_from_slice(&0_u64.to_be_bytes());
     assert!(super::super::decode_material_receipts(&malformed).is_err());

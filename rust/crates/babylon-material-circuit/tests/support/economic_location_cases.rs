@@ -170,7 +170,12 @@ fn material_wire_refuses_invalid_locations_and_the_previous_state_format() {
     }
     let mut previous = bytes;
     let version = MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES.len() + 1;
-    assert_eq!(&previous[version..version + 2], &16_u16.to_be_bytes());
-    previous[version..version + 2].copy_from_slice(&15_u16.to_be_bytes());
-    assert!(decode_material_circuit_state(&previous).is_err());
+    assert_eq!(&previous[version..version + 2], &18_u16.to_be_bytes());
+    for unsupported in [14_u16, 15, 16, 17] {
+        previous[version..version + 2].copy_from_slice(&unsupported.to_be_bytes());
+        assert_eq!(
+            decode_material_circuit_state(&previous),
+            Err(MaterialCircuitError::WireVersion)
+        );
+    }
 }

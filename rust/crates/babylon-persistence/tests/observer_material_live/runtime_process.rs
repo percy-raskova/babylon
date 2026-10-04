@@ -23,10 +23,18 @@ const STARTUP_LIMIT: Duration = Duration::from_secs(60);
 const EXIT_LIMIT: Duration = Duration::from_secs(30);
 const CLEANUP_LIMIT: Duration = Duration::from_secs(5);
 
-struct RuntimeChild(Child, Arc<Mutex<Vec<u8>>>);
+struct RuntimeChild(
+    Child,
+    Arc<Mutex<Vec<u8>>>,
+    Option<thread::JoinHandle<std::io::Result<()>>>,
+);
 
 impl RuntimeChild {
     fn start(target: &DisposableTarget) -> Self {
+        Self::start_with_timings(target, false)
+    }
+
+    fn start_with_timings(target: &DisposableTarget, timings: bool) -> Self {
         let dsn = child_dsn(&target.writer);
         let diagnostics = Arc::new(Mutex::new(Vec::new()));
         let mut runtime = Self(
@@ -43,16 +51,36 @@ impl RuntimeChild {
                 .current_dir(env!("CARGO_MANIFEST_DIR"))
                 .env_clear()
                 .env("BABYLON_RUNTIME_DSN", dsn)
+                .env("BABYLON_TIMINGS", if timings { "1" } else { "0" })
                 .stdin(Stdio::piped())
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
                 .spawn()
                 .expect("start the actual runtime binary"),
             Arc::clone(&diagnostics),
+            None,
         );
         let mut stderr = runtime.0.stderr.take().unwrap();
-        let _diagnostics = thread::spawn(move || capture_diagnostics(&mut stderr, &diagnostics));
+        runtime.2 = Some(thread::spawn(move || {
+            capture_diagnostics(&mut stderr, &diagnostics)
+        }));
         runtime
+    }
+
+    fn finish_diagnostics(&mut self) {
+        let capture = self.2.take().expect("one owned diagnostics capture");
+        let started = Instant::now();
+        while !capture.is_finished() {
+            assert!(
+                started.elapsed() < EXIT_LIMIT,
+                "diagnostics did not reach EOF"
+            );
+            thread::park_timeout(Duration::from_millis(20));
+        }
+        capture
+            .join()
+            .expect("diagnostics capture completed")
+            .expect("diagnostics reached clean EOF");
     }
 
     fn diagnostics(&self) -> String {
@@ -521,6 +549,64 @@ fn live_runtime_child_switch_failure_retry_and_epoch_isolation_preserve_campaign
     assert_eq!(created.session().completed_tick(), 0);
 }
 
+#[test]
+#[ignore = "requires the task-owned disposable PostgreSQL runtime and actual runtime binary"]
+fn live_runtime_child_open_admits_one_foundation_without_changing_world() {
+    use std::fmt::Write as _;
+    let target = DisposableTarget::create();
+    let campaign =
+        CampaignId::from_uuid(Uuid::from_u128(0x0044_0000_0000_0000_0000_0000_0000_0081));
+    let foundation = MichiganContentPreset::new_campaign(MichiganDeliveryPreset::Standard)
+        .create_foundation(&crate::test_support::catalog())
+        .unwrap();
+    let digest = foundation.digest();
+    let mut foundation_digest = String::with_capacity(64);
+    for byte in digest {
+        write!(&mut foundation_digest, "{byte:02x}").unwrap();
+    }
+    let runtime = DurableMaterialRuntime::create(&target.writer, campaign, foundation).unwrap();
+    let register = runtime.session().material().canonical_bytes().to_vec();
+    let world = runtime.session().current_world_hash().unwrap();
+    drop(runtime);
+    // No period has been committed: Archive has no material receipt to admit.
+    // Existing FoundationAdmission timings therefore count only this actual Open.
+    let mut child = RuntimeChild::start_with_timings(&target, true);
+    let input = child.hello();
+    let empty = RuntimeSessionScope {
+        epoch: 0,
+        campaign_id: None,
+    };
+    let scope = campaign_scope(campaign, 1);
+    let (response, input) =
+        switch_campaign(&mut child, input, 1, &empty, open_target(campaign), &scope);
+    assert!(matches!(response,
+        RuntimeSessionResponse::Ready { tail, foundation_digest: observed, .. }
+        if tail.resolve_tick == 0 && tail.tick_content_hash.is_none()
+            && observed == foundation_digest
+    ));
+    assert_switch_stop(&mut child, input, &scope);
+    child.finish_diagnostics();
+    let diagnostics = child.diagnostics();
+    assert!(
+        diagnostics.len() < 8192,
+        "refuse a truncated admission count"
+    );
+    let admissions = diagnostics
+        .lines()
+        .filter(|line| {
+            line.starts_with("observer_projection_timing tick=0 stage=FoundationAdmission ")
+        })
+        .count();
+    assert_eq!(
+        admissions, 1,
+        "product Open must reconstruct its admitted foundation once"
+    );
+    let reopened = DurableMaterialRuntime::open(&target.writer, campaign, digest).unwrap();
+    assert_eq!(reopened.session().completed_tick(), 0);
+    assert_eq!(reopened.session().material().canonical_bytes(), register);
+    assert_eq!(reopened.session().current_world_hash().unwrap(), world);
+}
+
 enum ExitMode {
     BrokenOutput,
     Stop,
@@ -587,11 +673,16 @@ fn quote_dsn_value(value: &str) -> String {
     format!("'{}'", value.replace('\\', "\\\\").replace('\'', "\\'"))
 }
 
-fn capture_diagnostics(input: &mut impl Read, captured: &Mutex<Vec<u8>>) {
+fn capture_diagnostics(input: &mut impl Read, captured: &Mutex<Vec<u8>>) -> std::io::Result<()> {
     let mut buffer = [0_u8; 1024];
-    while let Ok(size) = input.read(&mut buffer) {
+    loop {
+        let size = match input.read(&mut buffer) {
+            Ok(size) => size,
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(error) => return Err(error),
+        };
         if size == 0 {
-            return;
+            return Ok(());
         }
         let mut output = captured.lock().unwrap();
         let keep = size.min(8192_usize.saturating_sub(output.len()));
@@ -628,7 +719,7 @@ fn runtime_child_dsn_selects_owned_database_from_uri_and_keyword_configs() {
 fn runtime_child_diagnostics_are_bounded_and_fully_drained() {
     let mut source = std::io::Cursor::new(vec![b'x'; 20_000]);
     let captured = Mutex::new(Vec::new());
-    capture_diagnostics(&mut source, &captured);
+    capture_diagnostics(&mut source, &captured).unwrap();
     assert_eq!(source.position(), 20_000);
     assert_eq!(captured.into_inner().unwrap(), vec![b'x'; 8192]);
 }

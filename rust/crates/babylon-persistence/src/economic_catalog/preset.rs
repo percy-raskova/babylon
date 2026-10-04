@@ -35,3 +35,14 @@ pub fn national_catalog_input() -> EconomicCatalogInput {
         organizer: None,
     }
 }
+
+/// Exact authored composition for the playable capture, sharing the economic core.
+pub(super) fn national_organizer_rules() -> Vec<u8> {
+    let mut rules =
+        include_bytes!("../../../../../content/scenarios/national/material-cycle.bsl").to_vec();
+    rules.push(b'\n');
+    rules.extend_from_slice(include_bytes!(
+        "../../../../../content/scenarios/national/organizer-cycle.bsl"
+    ));
+    rules
+}

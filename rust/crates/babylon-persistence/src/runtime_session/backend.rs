@@ -5,9 +5,12 @@ use postgres::{Config, NoTls};
 
 use super::{RuntimeSessionErrorCode, RuntimeSessionTail, RuntimeSessionTarget, SessionBackend};
 use crate::{
-    economic_content::{admit_economic_content, EconomicContentAdmission},
+    economic_content::EconomicContentAdmission,
     identity::CampaignId,
-    material_runtime::{DurableMaterialRuntime, MaterialRuntimeError},
+    material_runtime::{
+        load_material_foundation_components, DurableMaterialRuntime, FoundationReadSource,
+        MaterialRuntimeError,
+    },
     michigan_content::MichiganContentPreset,
     michigan_economy::digest_hex,
 };
@@ -46,17 +49,19 @@ impl SessionBackend for DurableBackend {
     fn advance(
         &mut self,
         expected: &RuntimeSessionTail,
+        progress: &mut dyn FnMut(super::RuntimeAdvanceStage),
     ) -> Result<RuntimeSessionTail, RuntimeSessionErrorCode> {
         if expected != &self.tail || durable_tail(&self.config, self.campaign)? != self.tail {
             return Err(RuntimeSessionErrorCode::StaleExpectedTail);
         }
+        progress(super::RuntimeAdvanceStage::PreparingCommitments);
         let actions = self
             .runtime
             .next_action_batch()
             .map_err(|error| advance_error(&error))?;
         let receipt = self
             .runtime
-            .advance_and_commit(&mut CollectingSink::default(), &actions)
+            .advance_and_commit_with_progress(&mut CollectingSink::default(), &actions, progress)
             .map_err(|error| advance_error(&error))?;
         self.tail = RuntimeSessionTail {
             resolve_tick: receipt.resolve_tick(),
@@ -140,31 +145,22 @@ pub(super) fn open(
     defines_path: &std::path::Path,
 ) -> Result<(DurableBackend, String), RuntimeSessionErrorCode> {
     let campaign = target.campaign()?;
-    let bounded = crate::material_runtime::bounded_material_writer_config(config)
+    crate::postgres_catalog::validate_connection_target(config)
         .map_err(|_| RuntimeSessionErrorCode::StorageRefused)?;
     crate::runtime::verify_runtime_schema(config)
         .map_err(|_| RuntimeSessionErrorCode::StorageRefused)?;
     crate::install_reader_role(config).map_err(|_| RuntimeSessionErrorCode::StorageRefused)?;
     crate::observer_reader::provision_observer_role(config)
         .map_err(|_| RuntimeSessionErrorCode::StorageRefused)?;
-    let (runtime, foundation_digest) = match target {
+    let runtime = match target {
         RuntimeSessionTarget::Open { .. } => {
-            let mut client = bounded
-                .connect(NoTls)
-                .map_err(|_| RuntimeSessionErrorCode::StorageRefused)?;
-            let admitted = runtime_content(&mut client, campaign)?;
-            (
-                DurableMaterialRuntime::open(config, campaign, admitted.digest()),
-                digest_hex(&admitted.digest()),
-            )
+            DurableMaterialRuntime::open_with_foundation_admission(config, campaign, |snapshot| {
+                runtime_content(snapshot, campaign)
+            })
         }
         RuntimeSessionTarget::New { preset, .. } => {
             let foundation = new_foundation(*preset, defines_path, campaign)?;
-            let digest = digest_hex(&foundation.digest());
-            (
-                DurableMaterialRuntime::create_new(config, campaign, foundation),
-                digest,
-            )
+            DurableMaterialRuntime::create_new(config, campaign, foundation)
         }
     };
     let runtime = runtime.map_err(|error| match error {
@@ -175,8 +171,15 @@ pub(super) fn open(
         }
         _ => RuntimeSessionErrorCode::StorageRefused,
     })?;
+    let foundation_digest = digest_hex(&runtime.session().foundation_digest());
     let tail = durable_tail(config, campaign)?;
-    if runtime.session().completed_tick() != tail.resolve_tick {
+    let admitted_tail = RuntimeSessionTail {
+        resolve_tick: runtime.session().completed_tick(),
+        tick_content_hash: runtime
+            .tail()
+            .map(|identity| digest_hex(identity.tick_content_hash().as_bytes())),
+    };
+    if tail != admitted_tail {
         return Err(RuntimeSessionErrorCode::StorageRefused);
     }
     Ok((
@@ -196,9 +199,9 @@ fn new_foundation(
     campaign: CampaignId,
 ) -> Result<crate::material_runtime::MaterialRuntimeFoundation, RuntimeSessionErrorCode> {
     if preset == super::RuntimeSessionPreset::NationalWorld {
-        let captured = crate::economic_catalog::CapturedEconomicCatalog::capture(
+        let captured = crate::economic_catalog::CapturedEconomicCatalog::capture_national_campaign(
             crate::economic_catalog::national_catalog_input(),
-            None,
+            campaign,
         )
         .map_err(|error| {
             eprintln!("National source admission refused: {error}");
@@ -243,38 +246,41 @@ fn new_foundation(
 fn runtime_content(
     client: &mut impl postgres::GenericClient,
     campaign: CampaignId,
-) -> Result<EconomicContentAdmission, RuntimeSessionErrorCode> {
-    let row = client.query_opt("SELECT f.preset_id,f.duration_kind,f.final_period,f.content_sha256,f.foundation_sha256,g.foundation_sha256 AS graph_sha256,pg_catalog.sha256(g.content_bundle_bytes) AS source_sha256,f.foundation_bytes FROM babylon_state.material_campaign_foundation_v3 f JOIN babylon_state.campaign_foundation g USING(campaign_id) WHERE campaign_id=$1::uuid", &[campaign.as_uuid()])
-        .map_err(|_| RuntimeSessionErrorCode::StorageRefused)?;
+) -> Result<crate::material_runtime::MaterialRuntimeFoundation, MaterialRuntimeError> {
+    let row = client.query_opt("SELECT f.preset_id,f.duration_kind,f.final_period,f.content_sha256,f.foundation_sha256,g.foundation_sha256 AS graph_sha256,pg_catalog.sha256(g.content_bundle_bytes) AS source_sha256 FROM babylon_state.material_campaign_foundation_v3 f JOIN babylon_state.campaign_foundation g USING(campaign_id) WHERE campaign_id=$1::uuid", &[campaign.as_uuid()])?;
     let Some(row) = row else {
-        return Err(RuntimeSessionErrorCode::CampaignAbsent);
+        return Err(MaterialRuntimeError::MissingCampaign);
     };
-    let id: String = row
-        .try_get(0)
-        .map_err(|_| RuntimeSessionErrorCode::StorageRefused)?;
+    let id: String = row.try_get(0)?;
     let duration = crate::material_runtime::read_duration(&row)
-        .map_err(|_| RuntimeSessionErrorCode::ScenarioMismatch)?;
-    let content: Vec<u8> = row
-        .try_get("content_sha256")
-        .map_err(|_| RuntimeSessionErrorCode::StorageRefused)?;
-    let foundation: Vec<u8> = row
-        .try_get("foundation_sha256")
-        .map_err(|_| RuntimeSessionErrorCode::StorageRefused)?;
-    let graph: Vec<u8> = row
-        .try_get("graph_sha256")
-        .map_err(|_| RuntimeSessionErrorCode::StorageRefused)?;
-    let scenario: Vec<u8> = row
-        .try_get("source_sha256")
-        .map_err(|_| RuntimeSessionErrorCode::StorageRefused)?;
-    let bytes: Vec<u8> = row
-        .try_get("foundation_bytes")
-        .map_err(|_| RuntimeSessionErrorCode::StorageRefused)?;
-    let admitted = admit_economic_content(&id, duration, &content, &foundation, 0, &bytes)
-        .map_err(|_| RuntimeSessionErrorCode::ScenarioMismatch)?;
+        .map_err(|_| MaterialRuntimeError::FoundationMismatch)?;
+    let content: Vec<u8> = row.try_get("content_sha256")?;
+    let foundation: Vec<u8> = row.try_get("foundation_sha256")?;
+    let graph: Vec<u8> = row.try_get("graph_sha256")?;
+    let scenario: Vec<u8> = row.try_get("source_sha256")?;
+    let expected = foundation
+        .as_slice()
+        .try_into()
+        .map_err(|_| MaterialRuntimeError::FoundationMismatch)?;
+    let rebuilt = load_material_foundation_components(
+        client,
+        campaign,
+        expected,
+        FoundationReadSource::Runtime,
+    )
+    .map_err(|_| MaterialRuntimeError::FoundationMismatch)?;
+    let admitted = EconomicContentAdmission::from_foundation(rebuilt)
+        .map_err(|_| MaterialRuntimeError::FoundationMismatch)?;
+    if admitted.preset_id() != id {
+        return Err(MaterialRuntimeError::FoundationMismatch);
+    }
+    admitted
+        .validate_header(duration, &content, &foundation, 0)
+        .map_err(|_| MaterialRuntimeError::FoundationMismatch)?;
     admitted
         .validate_graph(&graph, &scenario)
-        .map_err(|_| RuntimeSessionErrorCode::ScenarioMismatch)?;
-    Ok(admitted)
+        .map_err(|_| MaterialRuntimeError::FoundationMismatch)?;
+    Ok(admitted.into_foundation())
 }
 
 #[cfg(test)]

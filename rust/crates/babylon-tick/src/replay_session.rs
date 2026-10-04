@@ -1199,6 +1199,29 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> ReplayT
         encode_stable_graph_state(&self.graph, &self.resolver).map_err(Into::into)
     }
 
+    /// Project the current typed material rows through the captured graph and scope.
+    ///
+    /// This also supplies tick-zero definitions to persistent campaign creation.
+    /// # Errors
+    /// Refuses graph identity, field typing, order, bounds or allocation without
+    /// mutating the replay session.
+    pub fn current_material_state_rows(&self) -> Result<MaterialStateRows, ReplayTickError> {
+        let graph = self.stable_graph_state()?;
+        self.material_state
+            .project_rows(
+                self.completed_tick,
+                &MaterialProjectionContext::new(
+                    &graph,
+                    &self.prepared.scenario_scope,
+                    &self.prepared.types,
+                    &self.prepared.enums,
+                    &self.resolver,
+                    &ProductionMaterialAllocationGate,
+                ),
+            )
+            .map_err(replay_material_error)
+    }
+
     /// Recompose the current completed-tick world-register set.
     ///
     /// # Errors

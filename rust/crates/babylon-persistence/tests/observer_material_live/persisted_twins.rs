@@ -60,9 +60,11 @@ impl RunPair {
 
     fn snapshots(&self, observer: &ObserverEconomyReader) -> [ObserverEconomySnapshot; 2] {
         [&self.uninterrupted, &self.restarted].map(|runtime| {
-            observer
+            let mut snapshot = observer
                 .snapshot(runtime.campaign_id(), runtime.session().completed_tick())
-                .unwrap()
+                .unwrap();
+            assert!(snapshot.production_evidence_digest().unwrap().is_some());
+            snapshot
         })
     }
 
@@ -75,17 +77,17 @@ impl RunPair {
         advance_material_period(&mut self.uninterrupted);
         advance_material_period(&mut self.restarted);
         self.assert_exact_continuation();
-        let current = self.snapshots(observer);
+        let mut current = self.snapshots(observer);
         assert_eq!(current[0].production, current[1].production);
         assert_eq!(current[0].nominal_world_hash, current[1].nominal_world_hash);
         assert_eq!(current[0].tick_content_hash, current[1].tick_content_hash);
         // The envelope, unlike the content identity, includes the campaign UUID.
         assert_ne!(current[0].campaign_id, current[1].campaign_id);
         assert_ne!(current[0].envelope_digest, current[1].envelope_digest);
-        let receipts = authenticated_receipts(connection, &self.uninterrupted, &current[0]);
+        let receipts = authenticated_receipts(connection, &self.uninterrupted, &mut current[0]);
         assert_eq!(
             receipts,
-            authenticated_receipts(connection, &self.restarted, &current[1])
+            authenticated_receipts(connection, &self.restarted, &mut current[1])
         );
         for (prior, next) in self.history.last().unwrap().iter().zip(&current) {
             assert_reconciled(prior, next, &receipts);
@@ -123,32 +125,72 @@ impl RunPair {
                 .into_iter()
                 .zip(&self.history[tick])
             {
-                assert_eq!(
-                    observer
-                        .snapshot(runtime.campaign_id(), held.resolve_tick)
-                        .unwrap(),
-                    *held
-                );
+                let mut historical = observer
+                    .snapshot(runtime.campaign_id(), held.resolve_tick)
+                    .unwrap();
+                // Both sides use the evidence API's canonical multiset order.
+                // Held snapshots were canonicalized when first admitted above.
+                assert!(historical.production_evidence_digest().unwrap().is_some());
+                assert_eq!(historical, *held);
             }
         }
     }
 }
 
+pub(super) fn stored_canonical_material(
+    connection: &mut Client,
+    campaign: CampaignId,
+    tick: u64,
+) -> (Vec<u8>, Vec<u8>) {
+    let base:Vec<u8>=connection.query_one("SELECT initial_register_bytes FROM public.v_observer_material_foundation_v1 WHERE campaign_id=$1::uuid",&[campaign.as_uuid()]).unwrap().get(0);
+    let opening = babylon_persistence::material_storage::seed(&base).unwrap();
+    let mut chain = babylon_persistence::material_storage::initial_lookup_chain(&opening).unwrap();
+    let mut loaded = None;
+    let tick_sql = i64::try_from(tick).unwrap();
+    let rows=connection.query("SELECT resolve_tick,lookup_delta_bytes FROM public.v_observer_material_state_v1 WHERE campaign_id=$1::uuid AND resolve_tick>=1 AND resolve_tick<=$2 ORDER BY resolve_tick",&[campaign.as_uuid(),&tick_sql]).unwrap();
+    assert_eq!(u64::try_from(rows.len()).unwrap(), tick);
+    for (index, row) in rows.iter().enumerate() {
+        assert_eq!(row.get::<_, i64>(0), i64::try_from(index + 1).unwrap());
+        let delta: &[u8] = row.get(1);
+        loaded = Some(
+            babylon_persistence::material_storage::read_period_lookup(
+                &opening,
+                u64::try_from(index + 1).unwrap(),
+                delta,
+                babylon_persistence::material_storage::LookupAnchor::Previous(chain),
+            )
+            .unwrap(),
+        );
+        chain = loaded.as_ref().unwrap().chain;
+    }
+    let lookup = loaded.unwrap();
+    let row=connection.query_one("SELECT register_storage_bytes,receipt_storage_bytes FROM public.v_observer_material_state_v1 WHERE campaign_id=$1::uuid AND resolve_tick=$2",&[campaign.as_uuid(),&tick_sql]).unwrap();
+    let register: &[u8] = row.get(0);
+    let receipts: &[u8] = row.get(1);
+    babylon_persistence::material_storage::decode(
+        &opening,
+        tick,
+        register,
+        receipts,
+        &lookup.lookup,
+        lookup.chain,
+    )
+    .unwrap()
+}
+
 fn authenticated_receipts(
     connection: &mut Client,
     runtime: &DurableMaterialRuntime,
-    snapshot: &ObserverEconomySnapshot,
+    snapshot: &mut ObserverEconomySnapshot,
 ) -> MaterialTickReceipts {
     let tail = runtime.tail().unwrap();
     let tick = i64::try_from(tail.resolve_tick()).unwrap();
-    let bytes: Vec<u8> = connection
-        .query_one(
-            "SELECT receipt_bytes FROM public.v_observer_material_state_v1 \
-             WHERE campaign_id=$1::uuid AND resolve_tick=$2",
-            &[runtime.campaign_id().as_uuid(), &tick],
-        )
-        .unwrap()
-        .get(0);
+    let (register, bytes) = stored_canonical_material(
+        connection,
+        runtime.campaign_id(),
+        u64::try_from(tick).unwrap(),
+    );
+    assert_eq!(register, runtime.session().material().canonical_bytes());
     assert_eq!(sha256_of(&bytes), tail.receipt_digest());
     assert_eq!(snapshot.resolve_tick, tail.resolve_tick());
     assert_eq!(
@@ -550,6 +592,11 @@ fn persisted_delivery_twins_reconcile_and_restart_at_dispatch_transit_and_arriva
     delayed_leg.travel_periods = 1;
     assert_eq!(*initial, normalized);
     let capacities = initial.capacities.clone();
+    assert!(!capacities.is_empty());
+    assert!(capacities.iter().all(|row| row.period == 1));
+    assert!(matches!(&initial.capacity_supply,
+        babylon_material_circuit::CapacitySupply::Rolling(rows)
+            if matches!(&rows.processes, babylon_material_circuit::RollingProcessSupply::CapturedNameplate(_))));
     assert_eq!(
         initial.labor.iter().map(|row| row.available).sum::<u64>(),
         4960
@@ -568,19 +615,7 @@ fn persisted_delivery_twins_reconcile_and_restart_at_dispatch_transit_and_arriva
         standard.advance(&target, &observer, &mut connection);
         delayed.advance(&target, &observer, &mut connection);
         for (index, pair) in [&standard, &delayed].into_iter().enumerate() {
-            assert_eq!(
-                pair.uninterrupted
-                    .session()
-                    .material()
-                    .state()
-                    .capacities
-                    .iter()
-                    .collect::<Vec<_>>(),
-                capacities
-                    .iter()
-                    .filter(|row| row.period > tick)
-                    .collect::<Vec<_>>()
-            );
+            assert_current_capacity_budget(pair, &capacities, tick);
             if subassembly_stock(&pair.history.last().unwrap()[0]) > 0 {
                 first[index].get_or_insert(tick);
             }
@@ -653,7 +688,7 @@ fn shared_freight_competition_is_committed_restart_safe_and_scope_confined() {
             let snapshot = &pair.history.last().unwrap()[0];
             assert_shared_reservations(snapshot, pair.preset, tick);
             super::assert_known_material_absence(
-                &preview
+                &mut preview
                     .snapshot(pair.uninterrupted.campaign_id(), tick)
                     .unwrap(),
             );
@@ -665,6 +700,8 @@ fn shared_freight_competition_is_committed_restart_safe_and_scope_confined() {
         (&constrained, 120, 40, 12, 40, (2, 2), (1, 1)),
     ] {
         let first = production(&pair.history[1][0]);
+        let orders =
+            babylon_persistence::production_observation::FreightOrderIndex::try_new(first).unwrap();
         let shared = first
             .freight_capacity_accounts
             .iter()
@@ -676,6 +713,7 @@ fn shared_freight_competition_is_committed_restart_safe_and_scope_confined() {
                 shared.completed.as_ref().unwrap().reservations[0]
                     .orders
                     .iter()
+                    .map(|reference| orders.get(reference).unwrap())
                     .find(|order| order.good_id == good_id)
                     .unwrap()
                     .dispatched,
@@ -714,7 +752,11 @@ fn assert_shared_reservations(
     preset: MichiganDeliveryPreset,
     tick: u64,
 ) {
-    let accounts = &production(snapshot).freight_capacity_accounts;
+    let production = production(snapshot);
+    let orders =
+        babylon_persistence::production_observation::FreightOrderIndex::try_new(production)
+            .unwrap();
+    let accounts = &production.freight_capacity_accounts;
     for account in accounts {
         let completed = account.completed.as_ref().unwrap();
         assert_eq!(completed.period, tick);
@@ -728,6 +770,7 @@ fn assert_shared_reservations(
                 reservation
                     .orders
                     .iter()
+                    .map(|reference| orders.get(reference).unwrap())
                     .map(|order| {
                         assert_eq!(
                             order.reserved_grams,
@@ -753,6 +796,31 @@ fn assert_shared_reservations(
                 reservation.newly_reserved_grams
             ),
             expected
+        );
+    }
+}
+
+fn assert_current_capacity_budget(
+    pair: &RunPair,
+    opening: &[babylon_material_circuit::CapacityRow],
+    tick: u64,
+) {
+    let period = tick.checked_add(1).unwrap();
+    let expected = opening
+        .iter()
+        .cloned()
+        .map(|mut row| {
+            row.period = period;
+            row
+        })
+        .collect::<Vec<_>>();
+    for runtime in [&pair.uninterrupted, &pair.restarted] {
+        let state = runtime.session().material().state();
+        assert_eq!(runtime.session().completed_tick(), tick);
+        assert_eq!(state.period, period);
+        assert_eq!(
+            state.capacities, expected,
+            "rolling nameplate retains exact site/process budgets for the next period"
         );
     }
 }

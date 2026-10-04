@@ -168,7 +168,15 @@ pub(crate) fn availability(
         }
         ObserverCommand::RoadLayer(_) | ObserverCommand::NetworkSector(_) => {
             if state.perspective == crate::observer::Perspective::FullObserver {
-                inspection_availability(state)
+                // These commands only repaint the installed committed snapshot.
+                // They neither change observation identity nor request a new read.
+                if state.advance_pending()
+                    && matches!(state.phase, SessionPhase::Ready | SessionPhase::Advancing)
+                {
+                    Enabled
+                } else {
+                    inspection_availability(state)
+                }
             } else {
                 Disabled("Economic networks are unavailable in player knowledge")
             }
@@ -519,6 +527,39 @@ mod tests {
         assert_eq!(
             availability(ObserverCommand::Step, &state),
             ControlAvailability::Enabled
+        );
+    }
+
+    #[test]
+    fn pending_local_network_reads_preserve_transport_and_context_guards() {
+        let mut state = ready(3);
+        state.begin_advance().unwrap();
+        for command in [
+            ObserverCommand::RoadLayer(crate::observer_ui::RoadLayer::EconomyNetwork),
+            ObserverCommand::NetworkSector(crate::observer_ui::NetworkSector::Manufacturing),
+        ] {
+            assert_eq!(availability(command, &state), ControlAvailability::Enabled);
+            state.perspective = crate::observer::Perspective::PlayerKnowledge;
+            assert!(matches!(
+                availability(command, &state),
+                ControlAvailability::Disabled(_)
+            ));
+            state.perspective = crate::observer::Perspective::FullObserver;
+        }
+        for command in [
+            ObserverCommand::Step,
+            ObserverCommand::PreviousPeriod,
+            ObserverCommand::Perspective,
+        ] {
+            assert_eq!(availability(command, &state), PENDING);
+        }
+        state.phase = SessionPhase::Loading;
+        assert_eq!(
+            availability(
+                ObserverCommand::RoadLayer(crate::observer_ui::RoadLayer::EconomyNetwork),
+                &state
+            ),
+            PENDING
         );
     }
 

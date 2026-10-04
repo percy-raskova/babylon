@@ -1,6 +1,12 @@
 //! Read-only presentation rows derived from a committed material envelope.
 //! These rows report exact stocks and receipts; they never adjudicate a tick.
 
+mod freight_orders;
+mod physical_routes;
+pub(crate) use freight_orders::FreightOrderRegistry;
+pub use freight_orders::{freight_order_identity, FreightOrderError, FreightOrderIndex};
+pub use physical_routes::{PhysicalRouteError, PhysicalRouteIndex};
+
 use serde::{Deserialize, Serialize};
 
 /// One complete role-scoped view of the committed circuit.
@@ -18,9 +24,13 @@ pub struct ProductionSnapshot {
     pub road_source: Option<ProductionRoadSource>,
     pub sites: Vec<ProductionSite>,
     pub routes: Vec<ProductionRoute>,
+    /// Shared physical definitions; supplier quantities remain on each relation.
+    pub physical_routes: Vec<PhysicalRouteDefinition>,
     pub freight: Vec<ProductionFreight>,
     /// Each mass-capacity principal is disclosed once, with distinct reservation periods.
     pub freight_capacity_accounts: Vec<ProductionFreightCapacityAccount>,
+    /// Exact complete order tuples shared by reservation occurrences.
+    pub freight_order_definitions: Vec<ProductionFreightOrderDefinition>,
     /// Events for this selected period; historical observations provide earlier receipts.
     pub events: Vec<ProductionEvent>,
     pub merchant_handling_accounts: Vec<ProductionMerchantHandlingAccount>,
@@ -338,12 +348,6 @@ pub struct ProductionRoute {
     pub unit_id: String,
     pub good: String,
     pub unit: String,
-    pub travel_periods: u64,
-    /// Timed stages identify shared capacities; geometry edges do not add time.
-    pub stages: Vec<ProductionRouteStage>,
-    pub transport_kind: ProductionRouteTransport,
-    pub physical_edge_ids: Vec<String>,
-    pub distance_mm: Option<u64>,
     pub grams_per_unit: u64,
     pub ordered: u64,
     pub shipped: u64,
@@ -351,6 +355,20 @@ pub struct ProductionRoute {
     pub lost: u64,
     pub realized: u64,
     pub backlog: u64,
+}
+
+/// One exact shared physical route, separate from supplier relationships.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PhysicalRouteDefinition {
+    pub id: String,
+    pub travel_periods: u64,
+    /// Stage indices order time; capacity memberships are unique multisets.
+    pub stages: Vec<ProductionRouteStage>,
+    pub transport_kind: ProductionRouteTransport,
+    /// Repeated edges and their sequence remain meaningful.
+    pub physical_edge_ids: Vec<String>,
+    pub distance_mm: Option<u64>,
 }
 
 /// One packet on screen corresponds to one actual in-transit freight lot.
@@ -450,7 +468,16 @@ pub struct ProductionFreightReservation {
     pub opening_available_grams: u64,
     pub newly_reserved_grams: u64,
     pub remaining_available_grams: u64,
-    pub orders: Vec<ProductionFreightCapacityOrder>,
+    pub orders: Vec<String>,
+    pub support_orders: Vec<ProductionAidCapacityOrder>,
+}
+
+/// One exact complete tuple; references remain on every reservation occurrence.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProductionFreightOrderDefinition {
+    pub id: String,
+    pub order: ProductionFreightCapacityOrder,
 }
 
 /// One order's opening request and actual committed dispatch for a reservation.
@@ -653,4 +680,20 @@ pub struct CompletedProductionMaintenance {
     pub completed_jobs: u64,
     pub consumed_spare_parts: u64,
     pub consumed_labor_hours: u64,
+}
+
+/// A household gift reserves route mass without implying a commercial site sale.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProductionAidCapacityOrder {
+    pub commitment_id: String,
+    pub mandate_id: String,
+    pub donor_principal_id: String,
+    pub recipient_principal_id: String,
+    pub route_id: String,
+    pub good_id: String,
+    pub unit_id: String,
+    pub dispatched: u64,
+    pub grams_per_unit: u64,
+    pub reserved_grams: u64,
 }

@@ -213,6 +213,40 @@ impl ObserverSession {
         Some(request)
     }
 
+    pub(crate) const fn pending_advance_request(&self) -> Option<u64> {
+        self.pending_request
+    }
+
+    pub(crate) fn validate_advance_stage(
+        &self,
+        request: u64,
+        tick: u64,
+        stage: babylon_persistence::runtime_session::RuntimeAdvanceStage,
+        prior: Option<babylon_persistence::runtime_session::RuntimeAdvanceStage>,
+    ) -> Result<(), String> {
+        use babylon_persistence::runtime_session::RuntimeAdvanceStage as Stage;
+        if self.pending_request != Some(request)
+            || self.durable_tick.checked_add(1) != Some(tick)
+            || !matches!(
+                self.phase,
+                SessionPhase::Ready | SessionPhase::Loading | SessionPhase::Advancing
+            )
+        {
+            return Err("Advance progress did not match its pending request and period".into());
+        }
+        let expected = match prior {
+            None => Some(Stage::PreparingCommitments),
+            Some(Stage::PreparingCommitments) => Some(Stage::ResolvingEconomy),
+            Some(Stage::ResolvingEconomy) => Some(Stage::PreparingStorage),
+            Some(Stage::PreparingStorage) => Some(Stage::SavingPeriod),
+            Some(Stage::SavingPeriod) => None,
+        };
+        if expected != Some(stage) {
+            return Err("Advance progress did not follow the required stage order".into());
+        }
+        Ok(())
+    }
+
     pub fn acknowledge(&mut self, request: u64, tick: u64, hash: Option<String>) -> bool {
         if self.pending_request != Some(request) || self.durable_tick.checked_add(1) != Some(tick) {
             return false;

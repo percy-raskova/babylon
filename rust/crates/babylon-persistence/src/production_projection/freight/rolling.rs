@@ -1,8 +1,8 @@
 //! Reconcile installed supply and dated booking changes against actual receipts.
 //! This reads committed accounts; it neither allocates nor creates capacity.
 use super::{
-    budgets, reservation_receipts, Budgets, CapacityKey, MaterialCircuitState,
-    ProductionFreightReservation, ProductionProjectionError, Reservations, Result,
+    budgets, reservation_receipts, Budgets, CompletedReservations, MaterialCircuitState,
+    ProductionProjectionError, ReservationInput, Result,
 };
 use babylon_material_circuit::{CorridorId, FutureCapacityReservation, RollingCapacitySupply};
 use std::collections::{BTreeMap, BTreeSet};
@@ -12,9 +12,9 @@ pub(super) fn reconcile(
     current: &MaterialCircuitState,
     before: &RollingCapacitySupply,
     after: &RollingCapacitySupply,
-    reservations: Reservations,
+    reservations: ReservationInput,
     receipt: &babylon_tick::material_world::MaterialTickReceipts,
-) -> Result<BTreeMap<CapacityKey, ProductionFreightReservation>> {
+) -> Result<CompletedReservations> {
     // Mutable assets may differ only after the actual installation/wear book join succeeds.
     super::super::equipment::validate(prior, current, receipt)?;
     let same_processes = match (&before.processes, &after.processes) {
@@ -37,7 +37,7 @@ pub(super) fn reconcile(
     }
     let previous_book = reservation_book(&before.future_reservations, prior.period)?;
     let mut dates: BTreeSet<_> = previous_book.keys().copied().collect();
-    dates.extend(reservations.keys().copied());
+    dates.extend(reservations.0.keys().copied());
     dates.extend(supply.keys().map(|id| (*id, current.period)));
     let mut opening = budgets(prior)?;
     for key in dates {

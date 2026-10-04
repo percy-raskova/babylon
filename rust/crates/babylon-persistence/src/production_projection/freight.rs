@@ -1,5 +1,6 @@
 //! Shared gram capacity from authenticated opening budgets and committed movements.
 
+mod aid;
 mod rolling;
 
 use super::{
@@ -7,11 +8,14 @@ use super::{
     ProductionProjectionError,
 };
 use crate::{
-    michigan_economy::digest_hex, production_observation::CompletedProductionFreightCapacity,
+    michigan_economy::digest_hex,
+    production_observation::CompletedProductionFreightCapacity,
     production_observation::ProductionCapacityKind,
     production_observation::ProductionFreightCapacityAccount,
     production_observation::ProductionFreightCapacityOrder,
-    production_observation::ProductionFreightReservation,
+    production_observation::{
+        FreightOrderRegistry, ProductionFreightOrderDefinition, ProductionFreightReservation,
+    },
 };
 use babylon_material_circuit::{
     CorridorId, MaterialCircuitState, RouteId, RouteStage, SiteId, SupplierTransport,
@@ -22,7 +26,84 @@ use std::collections::{BTreeMap, BTreeSet};
 type Result<T> = std::result::Result<T, ProductionProjectionError>;
 type CapacityKey = (CorridorId, u64);
 type Budgets = BTreeMap<CapacityKey, u64>;
-type Reservations = BTreeMap<CapacityKey, Vec<ProductionFreightCapacityOrder>>;
+type Reservations = BTreeMap<CapacityKey, ReservationOrders>;
+type ReservationInput = (Reservations, Vec<ProductionFreightCapacityOrder>);
+struct CompletedReservations {
+    rows: BTreeMap<CapacityKey, RawReservation>,
+    orders: Vec<ProductionFreightCapacityOrder>,
+}
+struct OrderDefinitions {
+    pending: Vec<Option<ProductionFreightCapacityOrder>>,
+    references: Vec<Option<String>>,
+}
+impl OrderDefinitions {
+    fn new(orders: Vec<ProductionFreightCapacityOrder>) -> Self {
+        let references = vec![None; orders.len()];
+        Self {
+            pending: orders.into_iter().map(Some).collect(),
+            references,
+        }
+    }
+    fn reference(
+        &mut self,
+        ordinal: usize,
+        definitions: &mut FreightOrderRegistry,
+    ) -> Result<String> {
+        let reference = self
+            .references
+            .get_mut(ordinal)
+            .ok_or(ProductionProjectionError::State)?;
+        if let Some(id) = reference {
+            return Ok(id.clone());
+        }
+        let order = self
+            .pending
+            .get_mut(ordinal)
+            .and_then(Option::take)
+            .ok_or(ProductionProjectionError::State)?;
+        let id = definitions
+            .intern(order)
+            .map_err(|_| ProductionProjectionError::State)?;
+        *reference = Some(id.clone());
+        Ok(id)
+    }
+}
+#[derive(Clone)]
+struct RawReservation {
+    reservation_period: u64,
+    opening_available_grams: u64,
+    newly_reserved_grams: u64,
+    remaining_available_grams: u64,
+    orders: Vec<usize>,
+    support_orders: Vec<crate::production_observation::ProductionAidCapacityOrder>,
+}
+impl RawReservation {
+    fn factor(
+        self,
+        definitions: &mut FreightOrderRegistry,
+        order_definitions: &mut OrderDefinitions,
+    ) -> Result<ProductionFreightReservation> {
+        let orders = self
+            .orders
+            .into_iter()
+            .map(|ordinal| order_definitions.reference(ordinal, definitions))
+            .collect::<Result<Vec<_>>>()?;
+        Ok(ProductionFreightReservation {
+            reservation_period: self.reservation_period,
+            opening_available_grams: self.opening_available_grams,
+            newly_reserved_grams: self.newly_reserved_grams,
+            remaining_available_grams: self.remaining_available_grams,
+            orders,
+            support_orders: self.support_orders,
+        })
+    }
+}
+
+#[derive(Default)]
+struct ReservationOrders {
+    commercial: Vec<usize>,
+    support: Vec<crate::production_observation::ProductionAidCapacityOrder>,
+}
 
 #[derive(Default)]
 struct Participants {
@@ -121,7 +202,10 @@ pub(super) fn project_freight_capacity_accounts(
     state: &MaterialCircuitState,
     opening: Option<&MaterialCircuitState>,
     receipt: Option<&MaterialTickReceipts>,
-) -> Result<Vec<ProductionFreightCapacityAccount>> {
+) -> Result<(
+    Vec<ProductionFreightCapacityAccount>,
+    Vec<ProductionFreightOrderDefinition>,
+)> {
     project_with_labels(state, opening, receipt, |id| {
         catalog.corridor_label(id).map(str::to_owned)
     })
@@ -132,7 +216,10 @@ pub(super) fn project_with_labels(
     opening: Option<&MaterialCircuitState>,
     receipt: Option<&MaterialTickReceipts>,
     label: impl Fn(CorridorId) -> Option<String>,
-) -> Result<Vec<ProductionFreightCapacityAccount>> {
+) -> Result<(
+    Vec<ProductionFreightCapacityAccount>,
+    Vec<ProductionFreightOrderDefinition>,
+)> {
     let current = budgets(state)?;
     let principals = participants(state)?;
     let completed = match (opening, receipt) {
@@ -146,21 +233,32 @@ pub(super) fn project_with_labels(
         )?),
         _ => return Err(ProductionProjectionError::History),
     };
+    let has_completed = completed.is_some();
     let mut completed_groups = BTreeMap::<_, Vec<_>>::new();
-    if let Some(rows) = &completed {
-        for ((id, _), row) in rows {
-            completed_groups.entry(*id).or_default().push(row.clone());
+    let mut order_definitions = OrderDefinitions::new(Vec::new());
+    if let Some(rows) = completed {
+        order_definitions = OrderDefinitions::new(rows.orders);
+        for ((id, _), row) in rows.rows {
+            completed_groups.entry(id).or_default().push(row);
         }
     }
-    principals
+    let mut definitions = FreightOrderRegistry::default();
+    let accounts = principals
         .into_iter()
         .map(|(id, participating)| {
-            let complete = completed
-                .as_ref()
-                .map(|_| CompletedProductionFreightCapacity {
+            let complete = if has_completed {
+                Some(CompletedProductionFreightCapacity {
                     period: state.period - 1,
-                    reservations: completed_groups.remove(&id).unwrap_or_default(),
-                });
+                    reservations: completed_groups
+                        .remove(&id)
+                        .unwrap_or_default()
+                        .into_iter()
+                        .map(|row| row.factor(&mut definitions, &mut order_definitions))
+                        .collect::<Result<Vec<_>>>()?,
+                })
+            } else {
+                None
+            };
             if complete
                 .as_ref()
                 .is_some_and(|row| row.reservations.is_empty())
@@ -193,7 +291,8 @@ pub(super) fn project_with_labels(
                 completed: complete,
             })
         })
-        .collect()
+        .collect::<Result<Vec<_>>>()?;
+    Ok((accounts, definitions.finish()))
 }
 
 fn capacity_order(fact: &OutboundFact) -> Result<ProductionFreightCapacityOrder> {
@@ -227,7 +326,7 @@ fn completed_reservations(
     receipt: &MaterialTickReceipts,
     current_budgets: &Budgets,
     principals: &BTreeMap<CorridorId, Participants>,
-) -> Result<BTreeMap<CapacityKey, ProductionFreightReservation>> {
+) -> Result<CompletedReservations> {
     if !same_rows(&prior.route_stages, &current.route_stages)
         || !same_rows(
             &prior.route_stage_capacities,
@@ -238,6 +337,7 @@ fn completed_reservations(
     }
     let facts = completed_facts(prior, current, receipt)?;
     let mut reservations = Reservations::new();
+    let mut orders = Vec::new();
     // A completed zero principal remains visible even after all finite orders finish.
     for id in principals.keys() {
         reservations.entry((*id, prior.period)).or_default();
@@ -247,6 +347,12 @@ fn completed_reservations(
     let dispatches: BTreeMap<_, _> = receipt.dispatches.iter().map(|r| (r.order_id, r)).collect();
     for fact in facts {
         let order = capacity_order(&fact)?;
+        if fact.transport != Some(SupplierTransport::Staged) && !merchants.contains_key(&fact.site)
+        {
+            continue;
+        }
+        let ordinal = orders.len();
+        orders.push(order);
         if fact.transport == Some(SupplierTransport::Staged) {
             let route = fact.route.ok_or(ProductionProjectionError::State)?;
             let mut departure = prior.period;
@@ -266,7 +372,8 @@ fn completed_reservations(
                     reservations
                         .entry((*capacity, departure))
                         .or_default()
-                        .push(order.clone());
+                        .commercial
+                        .push(ordinal);
                 }
                 departure = departure
                     .checked_add(u64::from(stage.travel_periods))
@@ -284,9 +391,11 @@ fn completed_reservations(
             reservations
                 .entry((merchant.capacity_id, prior.period))
                 .or_default()
-                .push(order);
+                .commercial
+                .push(ordinal);
         }
     }
+    aid::append(prior, current, receipt, &route_index, &mut reservations)?;
     match (&prior.capacity_supply, &current.capacity_supply) {
         (
             babylon_material_circuit::CapacitySupply::FiniteSchedule,
@@ -295,12 +404,19 @@ fn completed_reservations(
             &budgets(prior)?,
             current_budgets,
             current.period,
-            reservations,
+            (reservations, orders),
         ),
         (
             babylon_material_circuit::CapacitySupply::Rolling(before),
             babylon_material_circuit::CapacitySupply::Rolling(after),
-        ) => rolling::reconcile(prior, current, before, after, reservations, receipt),
+        ) => rolling::reconcile(
+            prior,
+            current,
+            before,
+            after,
+            (reservations, orders),
+            receipt,
+        ),
         _ => Err(ProductionProjectionError::State),
     }
 }
@@ -309,8 +425,8 @@ fn reconcile_reservation_budgets(
     prior: &Budgets,
     current: &Budgets,
     next_period: u64,
-    reservations: Reservations,
-) -> Result<BTreeMap<CapacityKey, ProductionFreightReservation>> {
+    reservations: ReservationInput,
+) -> Result<CompletedReservations> {
     let (mut expected, result) = reservation_receipts(prior, reservations)?;
     expected.retain(|(_, period), _| *period >= next_period);
     if expected != *current {
@@ -321,16 +437,40 @@ fn reconcile_reservation_budgets(
 
 fn reservation_receipts(
     prior: &Budgets,
-    reservations: Reservations,
-) -> Result<(Budgets, BTreeMap<CapacityKey, ProductionFreightReservation>)> {
+    input: ReservationInput,
+) -> Result<(Budgets, CompletedReservations)> {
+    let (reservations, orders_by_ordinal) = input;
     let mut expected = prior.clone();
     let mut result = BTreeMap::new();
     for (key, mut orders) in reservations {
-        orders.sort_unstable();
+        if orders
+            .commercial
+            .iter()
+            .any(|ordinal| orders_by_ordinal.get(*ordinal).is_none())
+        {
+            return Err(ProductionProjectionError::State);
+        }
+        orders.commercial.sort_unstable_by(|left, right| {
+            orders_by_ordinal
+                .get(*left)
+                .cmp(&orders_by_ordinal.get(*right))
+        });
+        orders.support.sort_unstable();
         let opening_available_grams = prior.get(&key).copied().unwrap_or(0);
         let newly_reserved_grams = orders
+            .commercial
             .iter()
-            .try_fold(0_u64, |sum, row| sum.checked_add(row.reserved_grams))
+            .try_fold(0_u64, |sum, ordinal| {
+                orders_by_ordinal
+                    .get(*ordinal)
+                    .and_then(|row| sum.checked_add(row.reserved_grams))
+            })
+            .and_then(|sum| {
+                orders
+                    .support
+                    .iter()
+                    .try_fold(sum, |sum, row| sum.checked_add(row.reserved_grams))
+            })
             .ok_or(ProductionProjectionError::Arithmetic)?;
         let remaining_available_grams = opening_available_grams
             .checked_sub(newly_reserved_grams)
@@ -340,16 +480,23 @@ fn reservation_receipts(
         }
         result.insert(
             key,
-            ProductionFreightReservation {
+            RawReservation {
                 reservation_period: key.1,
                 opening_available_grams,
                 newly_reserved_grams,
                 remaining_available_grams,
-                orders,
+                orders: orders.commercial,
+                support_orders: orders.support,
             },
         );
     }
-    Ok((expected, result))
+    Ok((
+        expected,
+        CompletedReservations {
+            rows: result,
+            orders: orders_by_ordinal,
+        },
+    ))
 }
 
 #[cfg(test)]

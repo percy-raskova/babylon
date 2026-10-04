@@ -1,0 +1,71 @@
+ADR280_development_budgets_prioritize_play:
+  status: accepted
+  date: '2026-10-03'
+  issue: PER-40
+  title: Development budgets favor the playable national economy
+  evidence_class: Designed
+  authority:
+    - Director explicitly approved these definitive provisional development benchmarks
+    - Exact accounting, county coverage, causal integrity and recovery remain required
+  context: |
+    The Director accepts roughly a minute to resolve a consequential national
+    period during development. The interface must stay responsive. The
+    decisions and consequences must justify the wait. The most recent completed
+    national observation was 64.617 seconds and 35,069,952 retained bytes.
+    One observation cannot prove p95, sustained growth or enjoyment.
+  decision: |
+    Use 40,000,000 decimal bytes of complete retained growth per committed
+    period as the development ceiling. Report 23,000,000 bytes as a later
+    optimization target. Keep 10,000,000,000 bytes at twenty-five model years
+    (325 periods) as the approved longer-term total-save target. Its actual
+    qualification remains separate. A projection does not pass it.
+
+    Keep benchmark thresholds in one configurable policy. Capture and hash the
+    selected policy before a run. Adjustments apply to later runs and
+    cannot relabel retained evidence. Check exact numeric types, bounds and
+    related thresholds.
+
+    Preserve county coverage, accounting and actual proof
+    requirements.
+
+    Use monotonic native timers and test-case execution times
+    that exclude compilation. Missing evidence remains incomplete.
+
+    Focused economic and game play controls must finish under sixty seconds,
+    excluding compilation. Aim for sixty to ninety seconds per national
+    committed advance, with a provisional development p95 ceiling of 120
+    seconds. Cold load must finish under 180 seconds with visible progress.
+
+    A two-period national smoke check with recovery must finish within 900
+    seconds. A complete 52-period milestone run preferably finishes within
+    four hours, including required recovery. Never truncate that proof to meet
+    the preference. Ten-second advances remain a later optimization milestone.
+
+
+    Immediately acknowledge resolution requests. Keep navigation through the
+    last committed map, reports, relationships and notes usable. Show actual
+    stages and elapsed time. Use percentages only when completion is measurable.
+    Present consequential changes linked to commitments after completion.
+    Let players skip extended consequence narration and animations.
+
+    Use small controls through the same engine for routine causal changes,
+    short national runs for integration and full qualification at meaningful
+    milestones. Keep one active national test game and retire only exact owned
+    disposable targets after preserving evidence and unique inputs. Defer
+    marginal compression, indexing and larger persistence redesign unless
+    measurements show a development or play blocker. Optimize immediately for
+    frozen interfaces, unexpected resource growth or impractical checks.
+  consequences: |
+    These development limits supersede the earlier interpretation that 23 MB
+    or ten-second advances block developmental play readiness. Historical
+    decisions and measured evidence remain unchanged. Correctness, sustained
+    national qualification, native play and enjoyment still need their own
+    evidence. Living obligations, shipments, consent and causal memory never
+    expire merely to reduce storage. This decision authorizes no merge.
+  verification:
+    - Separate development storage, optimization and actual long-save results.
+    - Charge all retained relations, indexes, checkpoints and restart growth.
+    - Preserve source, exact county roster, canonical hashes and cold recovery.
+    - Prove p95 from more than one committed advance, never one observation.
+    - Qualify responsive navigation and consequential choices through actual play.
+  source_record: reports/national-household-time-close-census-2026-10-02.md

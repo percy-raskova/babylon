@@ -146,7 +146,7 @@ fn live_worker_stop_rolls_back_uncommitted_pin_and_page_then_retry_drains() {
         .connect(NoTls)
         .expect("pin observer")
         .query_one(
-            "SELECT count(*) FROM babylon_meta.archive_tick_knowledge_v2 WHERE campaign_id=$1",
+            "SELECT count(*) FROM babylon_meta.archive_tick_knowledge_v3 WHERE campaign_id=$1",
             &[target.campaign_id.as_uuid()],
         )
         .expect("pin count")

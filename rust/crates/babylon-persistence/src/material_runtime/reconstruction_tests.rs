@@ -24,7 +24,6 @@ pub(super) fn stored_copy(original: &MaterialRuntimeFoundation) -> StoredMateria
     StoredMaterialFoundation {
         spec: original.spec.clone(),
         initial_register_bytes: original.register.canonical_bytes().to_vec(),
-        foundation_bytes: original.canonical_bytes().to_vec(),
         foundation_digest: original.digest(),
         graph_foundation_digest: sha256_of(original.graph_foundation.canonical_bytes()),
     }
@@ -200,7 +199,7 @@ fn reconstruction_refuses_component_changes_and_an_unadmitted_expected_identity(
         .create_foundation(&crate::test_support::catalog())
         .unwrap();
     let expected = original.digest();
-    for mutation in 0..6 {
+    for mutation in 0..5 {
         let mut stored = stored_copy(&original);
         match mutation {
             0 => stored.spec.content_digest[0] ^= 1,
@@ -209,9 +208,8 @@ fn reconstruction_refuses_component_changes_and_an_unadmitted_expected_identity(
                 stored.spec.duration =
                     babylon_kernel::clock::CampaignDuration::Finite { final_period: 17 }
             }
-            3 => stored.foundation_bytes[0] ^= 1,
-            4 => stored.foundation_digest[0] ^= 1,
-            5 => stored.graph_foundation_digest[0] ^= 1,
+            3 => stored.foundation_digest[0] ^= 1,
+            4 => stored.graph_foundation_digest[0] ^= 1,
             _ => unreachable!(),
         }
         assert!(matches!(
@@ -434,8 +432,15 @@ fn assert_delayed_panel_retention(
     use babylon_graph::stable_element::StableElementKey;
     let events = candidate.graph_report().successful_event_batch().events();
     assert_eq!(events.len(), 5);
+    let panel_name = crate::test_support::catalog()
+        .staffing()
+        .pools
+        .iter()
+        .find(|seed| seed.key == "panel-forming")
+        .unwrap()
+        .workplace_local_name();
     let panel = events.iter().find(|event| event.fields().iter().any(|(key,value)| {
-        key == "subject" && matches!(value, StableBslValue::Node(StableElementKey::Node{local_name,..}) if local_name == "workforce-panel-forming")
+        key == "subject" && matches!(value, StableBslValue::Node(StableElementKey::Node{local_name,..}) if *local_name == panel_name)
     })).unwrap();
     let field = |name| match &panel
         .fields()
@@ -562,7 +567,7 @@ fn assert_workforce_seed_evidence(
     assert_eq!(events.len(), 5);
     for seed in &catalog.staffing().pools {
         let event = events.iter().find(|event| event.fields().iter().any(|(key,value)| {
-            key == "subject" && matches!(value, StableBslValue::Node(StableElementKey::Node{local_name,..}) if *local_name == seed.local_name())
+            key == "subject" && matches!(value, StableBslValue::Node(StableElementKey::Node{local_name,..}) if *local_name == seed.workplace_local_name())
         })).unwrap();
         for (field, value) in [
             ("opening-employed", seed.employed),
@@ -687,6 +692,41 @@ fn captured_source_refuses_changed_tick_zero_organizer_agreements() {
         .unwrap(),
         altered_register,
         original.spec().clone(),
+    )
+    .is_err());
+}
+
+#[test]
+fn single_owner_components_preserve_binary_export_and_reject_framing_damage() {
+    let original = crate::michigan_content::MichiganContentPreset::FourWeekStandard
+        .create_foundation(&crate::test_support::catalog())
+        .unwrap();
+    let rebuilt = reconstruct_material_foundation(
+        stored_copy(&original),
+        persisted_graph_copy(original.graph_foundation()),
+        original.digest(),
+    )
+    .unwrap();
+    assert_eq!(rebuilt.canonical_bytes(), original.canonical_bytes());
+    assert_eq!(rebuilt.digest(), original.digest());
+    assert_eq!(
+        MaterialRuntimeFoundation::decode(original.canonical_bytes(), original.digest())
+            .unwrap()
+            .canonical_bytes(),
+        original.canonical_bytes()
+    );
+    let mut trailing = original.canonical_bytes().to_vec();
+    trailing.push(0);
+    assert!(matches!(
+        MaterialRuntimeFoundation::decode(&trailing, sha256_of(&trailing)),
+        Err(MaterialRuntimeError::FoundationMismatch)
+    ));
+    let mut damaged = stored_copy(&original);
+    damaged.initial_register_bytes.push(0);
+    assert!(reconstruct_material_foundation(
+        damaged,
+        persisted_graph_copy(original.graph_foundation()),
+        original.digest()
     )
     .is_err());
 }

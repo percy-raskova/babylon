@@ -27,26 +27,29 @@ fn domestic_counties() -> Vec<String> {
         .collect()
 }
 fn observation(campaign: CampaignId, counties: Vec<String>) -> ObserverFrame {
-    ObserverFrame(Some(ObserverEconomySnapshot {
-        campaign_id: campaign.as_uuid().to_string(),
-        resolve_tick: 0,
-        foundation_digest: "f".repeat(64),
-        tick_content_hash: None,
-        nominal_world_hash: None,
-        envelope_digest: None,
-        visibility: ObserverVisibility::FullObserver,
-        production: None,
-        counties: counties
-            .into_iter()
-            .map(|county_geoid| ObserverCountyEconomy {
-                county_geoid,
-                annual_avg_estabs_count: None,
-                annual_avg_emplvl: None,
-                total_annual_wages: None,
-                annual_avg_wkly_wage: None,
-            })
-            .collect(),
-    }))
+    ObserverFrame(
+        Some(ObserverEconomySnapshot {
+            campaign_id: campaign.as_uuid().to_string(),
+            resolve_tick: 0,
+            foundation_digest: "f".repeat(64),
+            tick_content_hash: None,
+            nominal_world_hash: None,
+            envelope_digest: None,
+            visibility: ObserverVisibility::FullObserver,
+            production: None,
+            counties: counties
+                .into_iter()
+                .map(|county_geoid| ObserverCountyEconomy {
+                    county_geoid,
+                    annual_avg_estabs_count: None,
+                    annual_avg_emplvl: None,
+                    total_annual_wages: None,
+                    annual_avg_wkly_wage: None,
+                })
+                .collect(),
+        }),
+        None,
+    )
 }
 fn scene(counties: Vec<String>) -> App {
     let campaign = CampaignId::from_uuid(uuid::Uuid::nil());

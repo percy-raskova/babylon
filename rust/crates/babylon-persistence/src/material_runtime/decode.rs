@@ -38,7 +38,7 @@ impl MaterialRuntimeFoundation {
         }
         let graph_foundation_digest = sha256_of(graph);
         let graph = decode_graph(graph)?;
-        reconstruct_material_foundation(
+        let reconstructed = reconstruct_material_foundation(
             StoredMaterialFoundation {
                 spec: MaterialFoundationSpec {
                     preset_id,
@@ -46,13 +46,16 @@ impl MaterialRuntimeFoundation {
                     content_digest,
                 },
                 initial_register_bytes: initial_register.to_vec(),
-                foundation_bytes: bytes.to_vec(),
                 foundation_digest: expected,
                 graph_foundation_digest,
             },
             graph,
             expected,
-        )
+        )?;
+        if reconstructed.canonical_bytes() != bytes {
+            return Err(MaterialRuntimeError::FoundationMismatch);
+        }
+        Ok(reconstructed)
     }
 }
 fn decode_graph(bytes: &[u8]) -> Result<CampaignFoundation, MaterialRuntimeError> {

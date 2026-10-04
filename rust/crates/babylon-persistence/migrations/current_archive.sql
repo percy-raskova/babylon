@@ -82,27 +82,41 @@ CREATE TABLE babylon_meta.archive_atom_v1 (
 );
 
 -- Publications at the same tick share one immutable disclosure snapshot.
-CREATE TABLE babylon_meta.archive_tick_knowledge_v2 (
+-- One complete base per Designed 13-period segment; pins bind actual admission.
+-- ARCHIVE_KNOWLEDGE_CHECKPOINT_PERIODS in tick_knowledge.rs owns publication cadence.
+CREATE TABLE babylon_meta.archive_tick_knowledge_v3 (
     campaign_id UUID NOT NULL REFERENCES babylon_meta.campaign(campaign_id) ON DELETE CASCADE,
     resolve_tick BIGINT NOT NULL CHECK (resolve_tick >= 1),
+    checkpoint_tick BIGINT NOT NULL CHECK (checkpoint_tick >= 1 AND checkpoint_tick <= resolve_tick),
     tick_content_hash BYTEA NOT NULL CHECK (octet_length(tick_content_hash) = 32),
     worker_contract_sha256 BYTEA NOT NULL CHECK (octet_length(worker_contract_sha256) = 32),
     knowledge_sha256 BYTEA NOT NULL CHECK (octet_length(knowledge_sha256) = 32),
     grant_count INTEGER NOT NULL CHECK (grant_count BETWEEN 0 AND 65535),
+    admitted_sha256 BYTEA NOT NULL CHECK (octet_length(admitted_sha256) = 32),
+    admitted_count INTEGER NOT NULL CHECK (admitted_count BETWEEN 0 AND grant_count),
+    CHECK (resolve_tick - checkpoint_tick < 13),
+    CHECK (checkpoint_tick <> resolve_tick OR (admitted_count = grant_count AND admitted_sha256 = knowledge_sha256)),
     PRIMARY KEY (campaign_id,resolve_tick),
-    FOREIGN KEY (campaign_id,resolve_tick) REFERENCES babylon_state.tick_commit(campaign_id,resolve_tick)
+    UNIQUE (campaign_id,resolve_tick,checkpoint_tick),
+    FOREIGN KEY (campaign_id,resolve_tick) REFERENCES babylon_state.tick_commit(campaign_id,resolve_tick),
+    FOREIGN KEY (campaign_id,checkpoint_tick) REFERENCES babylon_meta.archive_tick_knowledge_v3(campaign_id,resolve_tick)
 );
-CREATE TABLE babylon_meta.archive_tick_knowledge_member_v2 (
+CREATE TABLE babylon_meta.archive_knowledge_membership_v3 (
     campaign_id UUID NOT NULL,
-    resolve_tick BIGINT NOT NULL,
+    checkpoint_tick BIGINT NOT NULL,
+    admitted_at_tick BIGINT NOT NULL CHECK (admitted_at_tick >= checkpoint_tick),
     subject_kind TEXT NOT NULL CHECK (subject_kind IN ('county','place','workplace','organization')),
     subject_id TEXT NOT NULL,
     grant_key TEXT NOT NULL,
-    PRIMARY KEY (campaign_id,resolve_tick,subject_kind,subject_id,grant_key),
-    FOREIGN KEY (campaign_id,resolve_tick) REFERENCES babylon_meta.archive_tick_knowledge_v2 ON DELETE CASCADE,
+    PRIMARY KEY (campaign_id,checkpoint_tick,subject_kind,subject_id,grant_key),
+    FOREIGN KEY (campaign_id,checkpoint_tick) REFERENCES babylon_meta.archive_tick_knowledge_v3(campaign_id,resolve_tick) ON DELETE CASCADE,
+    FOREIGN KEY (campaign_id,admitted_at_tick,checkpoint_tick)
+        REFERENCES babylon_meta.archive_tick_knowledge_v3(campaign_id,resolve_tick,checkpoint_tick),
     FOREIGN KEY (campaign_id,subject_kind,subject_id,grant_key)
         REFERENCES babylon_meta.archive_knowledge_grant_v1(campaign_id,subject_kind,subject_id,grant_key)
 );
+CREATE INDEX archive_knowledge_admission_v3 ON babylon_meta.archive_knowledge_membership_v3
+    (campaign_id,checkpoint_tick,admitted_at_tick);
 
 CREATE TABLE babylon_meta.archive_page_revision_v2 (
     campaign_id UUID NOT NULL REFERENCES babylon_meta.campaign(campaign_id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED,
@@ -118,13 +132,13 @@ CREATE TABLE babylon_meta.archive_page_revision_v2 (
     template_sha256 BYTEA NOT NULL CHECK (octet_length(template_sha256) = 32),
     content_sha256 BYTEA NOT NULL CHECK (octet_length(content_sha256) = 32),
     revision_sha256 BYTEA NOT NULL CHECK (octet_length(revision_sha256) = 32),
-    title TEXT NOT NULL CHECK (octet_length(title) BETWEEN 1 AND 4096),
-    markdown TEXT NOT NULL CHECK (octet_length(markdown) <= 1048576),
     search_text TEXT NOT NULL CHECK (octet_length(search_text) <= 1048576),
-    provenance_json TEXT NOT NULL CHECK (octet_length(provenance_json) <= 1048576),
     atom_count INTEGER NOT NULL CHECK (atom_count BETWEEN 1 AND 513),
     grant_count INTEGER NOT NULL CHECK (grant_count BETWEEN 1 AND 513),
-    emission_json TEXT NOT NULL CHECK (octet_length(emission_json) <= 8388608),
+    body_encoding SMALLINT NOT NULL CHECK (body_encoding = 1),
+    body_decoded_length INTEGER NOT NULL CHECK (body_decoded_length BETWEEN 46 AND 11538477),
+    body_decoded_sha256 BYTEA NOT NULL CHECK (octet_length(body_decoded_sha256) = 32),
+    body_bytes BYTEA NOT NULL CHECK (octet_length(body_bytes) BETWEEN 1 AND 11584573),
     CHECK (source_tick = effective_tick),
     PRIMARY KEY (campaign_id, subject_kind, subject_id, effective_tick),
     FOREIGN KEY (campaign_id, source_tick) REFERENCES babylon_state.tick_commit(campaign_id, resolve_tick),
@@ -229,43 +243,93 @@ JOIN babylon_meta.archive_revision_grant_v2 dependency
 
 -- The safe view verifies the canonical knowledge encoding inside the database;
 -- it exposes neither private grant labels nor provenance to the confined login.
+-- Private projections are evaluated through the unchanged confined view contract.
+CREATE VIEW babylon_meta.archive_knowledge_membership_scope_v3 AS
+SELECT pin.campaign_id,pin.resolve_tick,pin.checkpoint_tick,member.admitted_at_tick,
+    member.subject_kind,member.subject_id,member.grant_key
+FROM babylon_meta.archive_tick_knowledge_v3 pin
+JOIN babylon_meta.archive_knowledge_membership_v3 member
+    ON member.campaign_id=pin.campaign_id AND member.checkpoint_tick=pin.checkpoint_tick
+    AND member.admitted_at_tick<=pin.resolve_tick;
+
+CREATE VIEW babylon_meta.archive_knowledge_member_bytes_v3 AS
+SELECT member.campaign_id,member.checkpoint_tick,member.admitted_at_tick,
+    member.subject_kind,member.subject_id,member.grant_key,
+    (grant_row.campaign_id IS NULL OR grant_row.granted_tick>member.admitted_at_tick) AS invalid,
+    CASE member.subject_kind WHEN 'county' THEN pg_catalog.decode('01','hex') WHEN 'place' THEN pg_catalog.decode('02','hex') WHEN 'workplace' THEN pg_catalog.decode('04','hex') ELSE pg_catalog.decode('05','hex') END
+    || pg_catalog.int8send(octet_length(member.subject_id)::BIGINT) || pg_catalog.convert_to(member.subject_id,'UTF8')
+    || pg_catalog.int8send(octet_length(member.grant_key)::BIGINT) || pg_catalog.convert_to(member.grant_key,'UTF8')
+    || pg_catalog.int8send(grant_row.granted_tick)
+    || pg_catalog.int8send(octet_length(grant_row.provenance_source_id)::BIGINT) || pg_catalog.convert_to(grant_row.provenance_source_id,'UTF8')
+    || pg_catalog.int8send(octet_length(grant_row.provenance_locator)::BIGINT) || pg_catalog.convert_to(grant_row.provenance_locator,'UTF8') AS bytes
+FROM babylon_meta.archive_knowledge_membership_v3 member
+LEFT JOIN babylon_meta.archive_knowledge_grant_v1 grant_row
+    USING(campaign_id,subject_kind,subject_id,grant_key);
+
+CREATE VIEW babylon_meta.archive_knowledge_cohort_v3 AS
+SELECT pin.campaign_id,pin.resolve_tick,FALSE AS admitted_only,
+    count(member.subject_kind) AS grant_count,
+    count(member.subject_kind) FILTER (WHERE member.invalid) AS invalid_count,
+    pg_catalog.sha256(pg_catalog.convert_to('babylon.semantic-archive-knowledge.v1','UTF8')
+        || pg_catalog.decode('00','hex') || pg_catalog.int8send(count(member.subject_kind))
+        || COALESCE(string_agg(member.bytes,pg_catalog.decode('','hex')
+            ORDER BY member.subject_kind,member.subject_id,member.grant_key),pg_catalog.decode('','hex'))) AS knowledge_sha256
+FROM babylon_meta.archive_tick_knowledge_v3 pin
+LEFT JOIN babylon_meta.archive_knowledge_member_bytes_v3 member
+    ON member.campaign_id=pin.campaign_id AND member.checkpoint_tick=pin.checkpoint_tick
+    AND member.admitted_at_tick<=pin.resolve_tick
+GROUP BY pin.campaign_id,pin.resolve_tick
+UNION ALL
+SELECT pin.campaign_id,pin.resolve_tick,TRUE AS admitted_only,
+    count(member.subject_kind) AS grant_count,
+    count(member.subject_kind) FILTER (WHERE member.invalid) AS invalid_count,
+    pg_catalog.sha256(pg_catalog.convert_to('babylon.semantic-archive-knowledge.v1','UTF8')
+        || pg_catalog.decode('00','hex') || pg_catalog.int8send(count(member.subject_kind))
+        || COALESCE(string_agg(member.bytes,pg_catalog.decode('','hex')
+            ORDER BY member.subject_kind,member.subject_id,member.grant_key),pg_catalog.decode('','hex'))) AS knowledge_sha256
+FROM babylon_meta.archive_tick_knowledge_v3 pin
+LEFT JOIN babylon_meta.archive_knowledge_member_bytes_v3 member
+    ON member.campaign_id=pin.campaign_id AND member.checkpoint_tick=pin.checkpoint_tick
+    AND member.admitted_at_tick=pin.resolve_tick
+GROUP BY pin.campaign_id,pin.resolve_tick
+;
+
 CREATE VIEW public.v_archive_tick_knowledge_v2 AS
 SELECT pin.campaign_id,pin.resolve_tick,pin.tick_content_hash,pin.worker_contract_sha256,pin.knowledge_sha256,
     (pin.tick_content_hash=marker.tick_content_hash
-     AND pin.grant_count=members.count AND members.invalid=0
-     AND pin.knowledge_sha256=pg_catalog.sha256(
-         pg_catalog.convert_to('babylon.semantic-archive-knowledge.v1','UTF8') || pg_catalog.decode('00','hex')
-         || pg_catalog.int8send(members.count) || members.bytes)) AS valid,
+     AND base.checkpoint_tick=base.resolve_tick
+     AND base.knowledge_sha256=base.admitted_sha256 AND base.grant_count=base.admitted_count
+     AND pin.grant_count=members.grant_count AND members.invalid_count=0
+     AND pin.knowledge_sha256=members.knowledge_sha256
+     AND NOT EXISTS (
+        SELECT 1 FROM babylon_state.tick_commit expected
+        LEFT JOIN babylon_meta.archive_tick_knowledge_v3 admission
+            USING(campaign_id,resolve_tick)
+        LEFT JOIN babylon_meta.archive_knowledge_cohort_v3 delta
+            ON delta.campaign_id=admission.campaign_id AND delta.resolve_tick=admission.resolve_tick AND delta.admitted_only
+        WHERE expected.campaign_id=pin.campaign_id AND expected.resolve_tick BETWEEN pin.checkpoint_tick AND pin.resolve_tick
+        AND (admission.campaign_id IS NULL OR admission.checkpoint_tick<>pin.checkpoint_tick
+            OR admission.tick_content_hash<>expected.tick_content_hash
+            OR admission.worker_contract_sha256<>pin.worker_contract_sha256
+            OR admission.admitted_count<>delta.grant_count OR delta.invalid_count<>0
+            OR admission.admitted_sha256<>delta.knowledge_sha256))) AS valid,
     EXISTS(SELECT 1 FROM babylon_meta.archive_knowledge_grant_v1 grant_row
         WHERE grant_row.campaign_id=pin.campaign_id AND grant_row.subject_kind IN ('county','place','workplace','organization')
         AND grant_row.granted_tick<=pin.resolve_tick
-        AND NOT EXISTS(SELECT 1 FROM babylon_meta.archive_tick_knowledge_member_v2 member
+        AND NOT EXISTS(SELECT 1 FROM babylon_meta.archive_knowledge_membership_scope_v3 member
             WHERE member.campaign_id=pin.campaign_id AND member.resolve_tick=pin.resolve_tick
             AND member.subject_kind=grant_row.subject_kind AND member.subject_id=grant_row.subject_id
             AND member.grant_key=grant_row.grant_key)) AS late_grants
-FROM babylon_meta.archive_tick_knowledge_v2 pin
+FROM babylon_meta.archive_tick_knowledge_v3 pin
 JOIN babylon_state.tick_commit marker USING(campaign_id,resolve_tick)
-CROSS JOIN LATERAL (
-    SELECT count(*) AS count,
-        count(*) FILTER (WHERE grant_row.campaign_id IS NULL OR grant_row.granted_tick>pin.resolve_tick) AS invalid,
-        COALESCE(string_agg(
-            CASE member.subject_kind WHEN 'county' THEN pg_catalog.decode('01','hex') WHEN 'place' THEN pg_catalog.decode('02','hex') WHEN 'workplace' THEN pg_catalog.decode('04','hex') ELSE pg_catalog.decode('05','hex') END
-            || pg_catalog.int8send(octet_length(member.subject_id)::BIGINT) || pg_catalog.convert_to(member.subject_id,'UTF8')
-            || pg_catalog.int8send(octet_length(member.grant_key)::BIGINT) || pg_catalog.convert_to(member.grant_key,'UTF8')
-            || pg_catalog.int8send(grant_row.granted_tick)
-            || pg_catalog.int8send(octet_length(grant_row.provenance_source_id)::BIGINT) || pg_catalog.convert_to(grant_row.provenance_source_id,'UTF8')
-            || pg_catalog.int8send(octet_length(grant_row.provenance_locator)::BIGINT) || pg_catalog.convert_to(grant_row.provenance_locator,'UTF8'),
-            pg_catalog.decode('','hex') ORDER BY member.subject_kind,member.subject_id,member.grant_key),
-            pg_catalog.decode('','hex')) AS bytes
-    FROM babylon_meta.archive_tick_knowledge_member_v2 member
-    LEFT JOIN babylon_meta.archive_knowledge_grant_v1 grant_row
-        USING(campaign_id,subject_kind,subject_id,grant_key)
-    WHERE member.campaign_id=pin.campaign_id AND member.resolve_tick=pin.resolve_tick
-) members;
+JOIN babylon_meta.archive_tick_knowledge_v3 base
+    ON base.campaign_id=pin.campaign_id AND base.resolve_tick=pin.checkpoint_tick
+JOIN babylon_meta.archive_knowledge_cohort_v3 members
+    ON members.campaign_id=pin.campaign_id AND members.resolve_tick=pin.resolve_tick AND NOT members.admitted_only;
 
 CREATE VIEW public.v_archive_subject_grant_v2 AS
 SELECT member.campaign_id,member.resolve_tick,member.subject_kind,member.subject_id,grant_row.granted_tick
-FROM babylon_meta.archive_tick_knowledge_member_v2 member
+FROM babylon_meta.archive_knowledge_membership_scope_v3 member
 JOIN babylon_meta.archive_knowledge_grant_v1 grant_row USING(campaign_id,subject_kind,subject_id,grant_key)
 WHERE member.grant_key='subject' AND grant_row.granted_tick<=member.resolve_tick;
 
@@ -279,13 +343,13 @@ SELECT revision.campaign_id,revision.subject_kind,revision.subject_id,revision.e
 FROM public.v_archive_revision_known_v2 revision
 JOIN babylon_state.tick_commit marker ON marker.campaign_id=revision.campaign_id
     AND marker.resolve_tick>=revision.effective_tick
-LEFT JOIN babylon_meta.archive_tick_knowledge_v2 pin
+LEFT JOIN babylon_meta.archive_tick_knowledge_v3 pin
     ON pin.campaign_id=marker.campaign_id AND pin.resolve_tick=marker.resolve_tick
 WHERE (pin.campaign_id IS NOT NULL AND NOT EXISTS (
     SELECT 1 FROM babylon_meta.archive_revision_grant_v2 dependency
     WHERE (dependency.campaign_id,dependency.subject_kind,dependency.subject_id,dependency.effective_tick)
         =(revision.campaign_id,revision.subject_kind,revision.subject_id,revision.effective_tick)
-    AND NOT EXISTS(SELECT 1 FROM babylon_meta.archive_tick_knowledge_member_v2 member
+    AND NOT EXISTS(SELECT 1 FROM babylon_meta.archive_knowledge_membership_scope_v3 member
         WHERE member.campaign_id=pin.campaign_id AND member.resolve_tick=pin.resolve_tick
         AND member.subject_kind=dependency.grant_subject_kind AND member.subject_id=dependency.grant_subject_id
         AND member.grant_key=dependency.grant_key)))
@@ -327,5 +391,8 @@ REVOKE ALL ON babylon_meta.archive_knowledge_grant_v1,
     babylon_meta.archive_receipt_consumption_v1, babylon_meta.archive_atom_v1,
     babylon_meta.archive_page_revision_v2,
     babylon_meta.archive_revision_atom_v2, babylon_meta.archive_revision_grant_v2,
-    babylon_meta.archive_tick_knowledge_v2,
-    babylon_meta.archive_tick_knowledge_member_v2 FROM PUBLIC;
+    babylon_meta.archive_tick_knowledge_v3,
+    babylon_meta.archive_knowledge_membership_v3,
+    babylon_meta.archive_knowledge_membership_scope_v3,
+    babylon_meta.archive_knowledge_member_bytes_v3,
+    babylon_meta.archive_knowledge_cohort_v3 FROM PUBLIC;

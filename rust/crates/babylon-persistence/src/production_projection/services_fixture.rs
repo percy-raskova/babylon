@@ -51,6 +51,8 @@ fn accounting(inventory: &[InventoryRow]) -> CircuitAccounting {
     )
     .unwrap();
     CircuitAccounting::Monetary(Box::new(MonetaryCircuit {
+        aid: babylon_material_circuit::AidBook::default(),
+        household_time: babylon_material_circuit::HouseholdTimeAccounting::NotModeled,
         financial: babylon_material_circuit::FinancialInstitutions::empty(),
         member_labor: (1..=3)
             .map(|n| babylon_material_circuit::MemberLaborCapacityRow {

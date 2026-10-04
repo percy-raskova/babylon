@@ -48,6 +48,24 @@ fn site(id: &str, suppliers: &[&str]) -> ProductionSite {
 
 fn snapshot() -> ProductionSnapshot {
     ProductionSnapshot {
+        physical_routes: vec![
+            babylon_persistence::production_observation::PhysicalRouteDefinition {
+                id: "a-b".into(),
+                travel_periods: 1,
+                stages: vec![
+                    babylon_persistence::production_observation::ProductionRouteStage {
+                        stage_index: 0,
+                        travel_periods: 1,
+                        capacity_ids: vec!["fixture-capacity".into()],
+                    },
+                ],
+                transport_kind:
+                    babylon_persistence::production_observation::ProductionRouteTransport::Staged,
+                physical_edge_ids: Vec::new(),
+                distance_mm: None,
+            },
+        ],
+
         household_accounts: Vec::new(),
         household_service_accounts: Vec::new(),
         goods_price_accounts: Vec::new(),
@@ -58,6 +76,7 @@ fn snapshot() -> ProductionSnapshot {
         merchant_handling_accounts: Vec::new(),
         final_demand_accounts: Vec::new(),
         freight_capacity_accounts: Vec::new(),
+        freight_order_definitions: Vec::new(),
         material_balance: None,
         labor_accounts: Vec::new(),
         staffing_accounts: Vec::new(),
@@ -73,12 +92,7 @@ fn snapshot() -> ProductionSnapshot {
         ],
         routes: vec![ProductionRoute {
             physical_route_id: "a-b".into(),
-            physical_edge_ids: Vec::new(),
-            distance_mm: None,
-            transport_kind:
-                babylon_persistence::production_observation::ProductionRouteTransport::Staged,
             grams_per_unit: 1000,
-            stages: Vec::new(),
             id: "a-b".into(),
             supplier_site_id: "a".into(),
             buyer_site_id: "b".into(),
@@ -86,7 +100,6 @@ fn snapshot() -> ProductionSnapshot {
             unit_id: "b".repeat(64),
             good: "steel".into(),
             unit: "kg".into(),
-            travel_periods: 1,
             ordered: 20,
             shipped: 10,
             delivered: 10,
@@ -267,8 +280,9 @@ fn merchant_reading_has_no_fake_production_and_separates_local_goods_from_arriva
     let merchant = &mut snapshot.sites[1];
     merchant.roles = vec![ProductionSiteRole::Retail];
     merchant.processes.clear();
-    snapshot.routes[0].transport_kind = ProductionRouteTransport::Local;
-    snapshot.routes[0].travel_periods = 0;
+    snapshot.physical_routes[0].transport_kind = ProductionRouteTransport::Local;
+    snapshot.physical_routes[0].travel_periods = 0;
+    snapshot.physical_routes[0].stages.clear();
     snapshot.material_balance = Some(CompletedMaterialBalance {
         period: 1,
         rows: vec![ProductionMaterialBalanceRow {
@@ -933,17 +947,20 @@ fn map_and_flat_controls_preserve_the_county_selected_on_geography() {
     let mut app = App::new();
     app.add_plugins(MinimalPlugins)
         .insert_resource(state)
-        .insert_resource(ObserverFrame(Some(ObserverEconomySnapshot {
-            campaign_id: campaign.as_uuid().to_string(),
-            resolve_tick: 1,
-            foundation_digest: "f".repeat(64),
-            tick_content_hash: Some("a".repeat(64)),
-            nominal_world_hash: None,
-            envelope_digest: None,
-            visibility: ObserverVisibility::FullObserver,
-            counties: Vec::new(),
-            production: Some(production),
-        })))
+        .insert_resource(ObserverFrame(
+            Some(ObserverEconomySnapshot {
+                campaign_id: campaign.as_uuid().to_string(),
+                resolve_tick: 1,
+                foundation_digest: "f".repeat(64),
+                tick_content_hash: Some("a".repeat(64)),
+                nominal_world_hash: None,
+                envelope_digest: None,
+                visibility: ObserverVisibility::FullObserver,
+                counties: Vec::new(),
+                production: Some(production),
+            }),
+            None,
+        ))
         .insert_resource(atlas)
         .insert_resource(PrimaryView::Production)
         .insert_resource(ProductionNavigation {
@@ -1002,17 +1019,20 @@ fn opening_focus_uses_current_capability_and_preserves_selection() {
     let campaign = CampaignId::from_uuid(uuid::Uuid::nil());
     let mut state = ObserverSession::new(campaign);
     state.ready(1, Some("a".repeat(64)));
-    let frame = ObserverFrame(Some(ObserverEconomySnapshot {
-        campaign_id: campaign.as_uuid().to_string(),
-        resolve_tick: 1,
-        foundation_digest: "b".repeat(64),
-        nominal_world_hash: None,
-        tick_content_hash: Some("a".repeat(64)),
-        envelope_digest: None,
-        visibility: ObserverVisibility::FullObserver,
-        counties: Vec::new(),
-        production: Some(snapshot()),
-    }));
+    let frame = ObserverFrame(
+        Some(ObserverEconomySnapshot {
+            campaign_id: campaign.as_uuid().to_string(),
+            resolve_tick: 1,
+            foundation_digest: "b".repeat(64),
+            nominal_world_hash: None,
+            tick_content_hash: Some("a".repeat(64)),
+            envelope_digest: None,
+            visibility: ObserverVisibility::FullObserver,
+            counties: Vec::new(),
+            production: Some(snapshot()),
+        }),
+        None,
+    );
     let mut app = App::new();
     app.insert_resource(state)
         .insert_resource(frame)
@@ -1154,17 +1174,20 @@ fn unstarted_dependency_navigation_app() -> App {
     let campaign = CampaignId::from_uuid(uuid::Uuid::nil());
     let mut state = ObserverSession::new(campaign);
     state.ready(1, Some("a".repeat(64)));
-    let frame = ObserverFrame(Some(ObserverEconomySnapshot {
-        campaign_id: campaign.as_uuid().to_string(),
-        resolve_tick: 1,
-        foundation_digest: "f".repeat(64),
-        tick_content_hash: Some("a".repeat(64)),
-        nominal_world_hash: None,
-        envelope_digest: None,
-        visibility: ObserverVisibility::FullObserver,
-        counties: Vec::new(),
-        production: Some(snapshot()),
-    }));
+    let frame = ObserverFrame(
+        Some(ObserverEconomySnapshot {
+            campaign_id: campaign.as_uuid().to_string(),
+            resolve_tick: 1,
+            foundation_digest: "f".repeat(64),
+            tick_content_hash: Some("a".repeat(64)),
+            nominal_world_hash: None,
+            envelope_digest: None,
+            visibility: ObserverVisibility::FullObserver,
+            counties: Vec::new(),
+            production: Some(snapshot()),
+        }),
+        None,
+    );
     let atlas = CountyAtlas::parse(include_bytes!(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../../../assets/map/county_atlas.bin"

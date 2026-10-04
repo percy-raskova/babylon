@@ -23,6 +23,7 @@ classifiers = [
 # src/babylon/ui/dashboard/ and the legacy Django/React client were deleted;
 # the live client is the Rust Bevy ``babylon-client`` crate.
 dependencies = [
+  "defusedxml>=0.7.1",
   "pydantic>=2.13.5",
   "numpy>=2.5.3",
   "sqlalchemy>=2.1.1",

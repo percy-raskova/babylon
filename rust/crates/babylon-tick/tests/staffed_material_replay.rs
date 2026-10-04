@@ -387,6 +387,8 @@ fn paid_material() -> MaterialCircuitState {
     material.accounting = CircuitAccounting::Monetary(Box::new({
         let book = book;
         MonetaryCircuit {
+            aid: babylon_material_circuit::AidBook::default(),
+            household_time: babylon_material_circuit::HouseholdTimeAccounting::NotModeled,
             financial: babylon_material_circuit::FinancialInstitutions::empty(),
             member_labor: material
                 .labor

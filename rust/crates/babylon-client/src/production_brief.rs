@@ -420,6 +420,8 @@ mod tests {
     }
     fn chain() -> ProductionSnapshot {
         ProductionSnapshot {
+            physical_routes: vec![],
+
             household_accounts: Vec::new(),
             household_service_accounts: Vec::new(),
             goods_price_accounts: Vec::new(),
@@ -430,6 +432,7 @@ mod tests {
             merchant_handling_accounts: Vec::new(),
             final_demand_accounts: Vec::new(),
             freight_capacity_accounts: Vec::new(),
+            freight_order_definitions: Vec::new(),
             material_balance: None,
             labor_accounts: Vec::new(),
             staffing_accounts: Vec::new(),
@@ -582,15 +585,28 @@ mod tests {
         );
     }
 
+    fn physical_route() -> babylon_persistence::production_observation::PhysicalRouteDefinition {
+        babylon_persistence::production_observation::PhysicalRouteDefinition {
+            id: "route-a-b".into(),
+            travel_periods: 2,
+            stages: vec![
+                babylon_persistence::production_observation::ProductionRouteStage {
+                    stage_index: 0,
+                    travel_periods: 2,
+                    capacity_ids: vec!["fixture-capacity".into()],
+                },
+            ],
+            transport_kind:
+                babylon_persistence::production_observation::ProductionRouteTransport::Staged,
+            physical_edge_ids: Vec::new(),
+            distance_mm: None,
+        }
+    }
+
     fn route() -> ProductionRoute {
         ProductionRoute {
             physical_route_id: "route-a-b".into(),
-            physical_edge_ids: Vec::new(),
-            distance_mm: None,
-            transport_kind:
-                babylon_persistence::production_observation::ProductionRouteTransport::Staged,
             grams_per_unit: 1000,
-            stages: Vec::new(),
             id: "route-a-b".into(),
             supplier_site_id: "a".into(),
             buyer_site_id: "b".into(),
@@ -598,7 +614,6 @@ mod tests {
             unit_id: "kg".into(),
             good: "Input a".into(),
             unit: "kg".into(),
-            travel_periods: 2,
             ordered: 120,
             shipped: 100,
             delivered: 80,
@@ -638,6 +653,7 @@ mod tests {
         );
         assert!(requirement.contains("shipment evidence unavailable"));
         assert!(!requirement.contains("goods in transit"));
+        snapshot.physical_routes = vec![physical_route()];
         snapshot.routes.push(route());
         snapshot.freight.push(freight());
         let moving = dependency_flow_summary(
@@ -696,6 +712,7 @@ mod tests {
         tonnes.unit_id = "tonne".into();
         tonnes.unit = "tonne".into();
         snapshot.sites[1].processes[0].inputs.extend([food, tonnes]);
+        snapshot.physical_routes = vec![physical_route()];
         snapshot.routes.extend([route(), route()]);
         snapshot.freight.extend([freight(), freight()]);
         let before = describe_overview(&snapshot);
@@ -715,6 +732,7 @@ mod tests {
     #[test]
     fn undisclosed_route_endpoints_cannot_supply_names_or_flow_facts() {
         let mut snapshot = chain();
+        snapshot.physical_routes = vec![physical_route()];
         snapshot.routes.push(route());
         snapshot.freight.push(freight());
         snapshot.sites.retain(|site| site.id == "b");

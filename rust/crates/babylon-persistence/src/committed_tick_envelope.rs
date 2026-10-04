@@ -4,8 +4,13 @@
 pub const COMMITTED_TICK_ROW_FAMILY_COUNT: usize = 6;
 /// Maximum aggregate typed component rows.
 pub const MAX_COMMITTED_TICK_ROWS: usize = 1_048_576;
-/// Maximum canonical row-body bytes in one family.
+/// Default maximum canonical row-body bytes in one family.
 pub const MAX_COMMITTED_TICK_ROW_BATCH_BYTES: usize = 67_108_864;
+/// Designed headroom for the measured 85,346,543-byte national graph batch.
+pub const MAX_COMMITTED_GRAPH_ROW_BATCH_BYTES: usize = 134_217_728;
+/// Derived sum of the six independent component-family byte ceilings.
+pub const MAX_COMMITTED_COMPONENT_BODY_BYTES: usize =
+    MAX_COMMITTED_GRAPH_ROW_BATCH_BYTES + 5 * MAX_COMMITTED_TICK_ROW_BATCH_BYTES;
 const ROW_LENGTH_BYTES: usize = 8;
 
 /// Closed, canonical order of durable outputs produced by one tick.
@@ -37,6 +42,19 @@ pub const ALL_COMMITTED_TICK_ROW_FAMILIES: [CommittedTickRowFamily;
 ];
 
 impl CommittedTickRowFamily {
+    /// Return this family's independent canonical row-body byte ceiling.
+    #[must_use]
+    pub const fn maximum_body_bytes(self) -> usize {
+        match self {
+            Self::Graph => MAX_COMMITTED_GRAPH_ROW_BATCH_BYTES,
+            Self::State
+            | Self::Event
+            | Self::ChoiceReceipt
+            | Self::Checkpoint
+            | Self::ArchiveDirtyReceipt => MAX_COMMITTED_TICK_ROW_BATCH_BYTES,
+        }
+    }
+
     /// Return the exact V2 section tag.
     #[must_use]
     pub const fn tag(self) -> u8 {
@@ -283,11 +301,11 @@ fn compose_batch(
     for index in 0..rows.len() {
         validate_row_order(family, &rows, index)?;
         body_bytes = checked_row_body_bytes(body_bytes, &rows[index])?;
-        if body_bytes > MAX_COMMITTED_TICK_ROW_BATCH_BYTES {
+        if body_bytes > family.maximum_body_bytes() {
             return Err(CommittedTickEnvelopeError::BatchBytes {
                 family,
                 actual: body_bytes,
-                maximum: MAX_COMMITTED_TICK_ROW_BATCH_BYTES,
+                maximum: family.maximum_body_bytes(),
             });
         }
     }
@@ -333,11 +351,11 @@ fn validate_batch_shape(
     rows: usize,
     body_bytes: usize,
 ) -> Result<(), CommittedTickEnvelopeError> {
-    if body_bytes > MAX_COMMITTED_TICK_ROW_BATCH_BYTES {
+    if body_bytes > family.maximum_body_bytes() {
         return Err(CommittedTickEnvelopeError::BatchBytes {
             family,
             actual: body_bytes,
-            maximum: MAX_COMMITTED_TICK_ROW_BATCH_BYTES,
+            maximum: family.maximum_body_bytes(),
         });
     }
     let minimum_body_bytes = rows.checked_mul(ROW_LENGTH_BYTES + 1).ok_or(

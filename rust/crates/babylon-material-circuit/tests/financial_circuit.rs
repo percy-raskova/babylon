@@ -92,6 +92,9 @@ fn opening(cash: [i128; 5]) -> MaterialCircuitState {
         capacity_supply: CapacitySupply::FiniteSchedule,
         period: 1,
         accounting: CircuitAccounting::Monetary(Box::new(MonetaryCircuit {
+            aid: AidBook::default(),
+
+            household_time: babylon_material_circuit::HouseholdTimeAccounting::NotModeled,
             member_labor: vec![],
             book,
             costs,

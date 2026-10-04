@@ -3,16 +3,24 @@
 use serde::{Deserialize, Serialize};
 
 use super::RuntimeSessionErrorCode;
-pub use crate::organizer_runtime::OrganizerSnapshot;
+pub use crate::organizer_runtime::{
+    OrganizerAidCapacity, OrganizerAidOrdinaryOffer, OrganizerAidPending, OrganizerAidResolution,
+    OrganizerAidRouteStage, OrganizerAidTime, OrganizerAidTransportPreview,
+    OrganizerCollectionPreview, OrganizerMaterialAidPreview, OrganizerSnapshot,
+};
 use crate::{identity::CampaignId, michigan_material::MichiganDeliveryPreset};
 pub use babylon_practice_contract::{
-    OrganizerAgreement, OrganizerChoice, OrganizerCommand, OrganizerCommitment, OrganizerInquiry,
-    OrganizerObservation, OrganizerOutcome, OrganizerPartnerResponse, OrganizerPauseReason,
-    OrganizerPosition, OrganizerPreview, OrganizerReceipt, OrganizerRefusal, OrganizerReport,
-    OrganizerStandingWork, OrganizerView,
+    OrganizerAgreement, OrganizerAidKind, OrganizerAidMaterialPostings, OrganizerAidOption,
+    OrganizerAidSupportStatus, OrganizerChoice, OrganizerCollectionOutcome,
+    OrganizerCollectionResolution, OrganizerCommand, OrganizerCommitment, OrganizerGiftConsent,
+    OrganizerInquiry, OrganizerObservation, OrganizerOutcome, OrganizerPartnerResponse,
+    OrganizerPauseReason, OrganizerPosition, OrganizerPreview, OrganizerReceipt, OrganizerRefusal,
+    OrganizerReport, OrganizerStandingWork, OrganizerView,
 };
 
-pub const RUNTIME_SESSION_PROTOCOL_VERSION: u16 = 5;
+pub use crate::material_runtime::MaterialAdvanceStage as RuntimeAdvanceStage;
+
+pub const RUNTIME_SESSION_PROTOCOL_VERSION: u16 = 10;
 pub const RUNTIME_SESSION_MAX_LINE_BYTES: usize = 131_072;
 
 /// A lifecycle incarnation, distinct even when the same campaign is reopened.
@@ -248,6 +256,12 @@ pub enum RuntimeSessionResponse {
         scope: RuntimeSessionScope,
         snapshot: Box<OrganizerSnapshot>,
     },
+    AdvanceProgress {
+        request_id: u64,
+        scope: RuntimeSessionScope,
+        resolve_tick: u64,
+        stage: RuntimeAdvanceStage,
+    },
     Committed {
         request_id: u64,
         scope: RuntimeSessionScope,
@@ -300,3 +314,27 @@ mod selection_tests {
         })).is_err());
     }
 }
+
+#[test]
+fn advance_progress_current_wire_is_closed_and_versioned() {
+    assert_eq!(RUNTIME_SESSION_PROTOCOL_VERSION, 10);
+    let valid = r#"{"type":"advance_progress","request_id":2,"scope":{"epoch":1,"campaign_id":"00000000-0000-0000-0000-000000000001"},"resolve_tick":1,"stage":"preparing_commitments"}"#;
+    let response: RuntimeSessionResponse =
+        serde_json::from_str(valid).expect("current actual progress wire");
+    assert_eq!(
+        serde_json::to_value(response).unwrap(),
+        serde_json::from_str::<serde_json::Value>(valid).unwrap()
+    );
+    assert!(serde_json::from_str::<RuntimeSessionResponse>(
+        &valid.replace("preparing_commitments", "invented_stage")
+    )
+    .is_err());
+    assert!(serde_json::from_str::<RuntimeSessionResponse>(
+        &valid.replace(r#""resolve_tick":1"#, r#""resolve_tick":1,"percent":50"#)
+    )
+    .is_err());
+}
+
+#[cfg(test)]
+#[path = "money_wire_tests.rs"]
+mod money_wire_tests;

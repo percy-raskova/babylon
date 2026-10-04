@@ -874,38 +874,38 @@ mod tests {
             counties: Vec::new(),
             production: None,
         };
-        assert!(ObserverFrame(Some(snapshot.clone()))
+        assert!(ObserverFrame(Some(snapshot.clone()), None)
             .for_session(&session)
             .is_some());
         snapshot.resolve_tick = 3;
-        assert!(ObserverFrame(Some(snapshot.clone()))
+        assert!(ObserverFrame(Some(snapshot.clone()), None)
             .for_session(&session)
             .is_none());
         snapshot.resolve_tick = 4;
         snapshot.visibility = ObserverVisibility::KnownPreview;
-        assert!(ObserverFrame(Some(snapshot.clone()))
+        assert!(ObserverFrame(Some(snapshot.clone()), None)
             .for_session(&session)
             .is_none());
         session.perspective = Perspective::PlayerKnowledge;
-        assert!(ObserverFrame(Some(snapshot.clone()))
+        assert!(ObserverFrame(Some(snapshot.clone()), None)
             .for_session(&session)
             .is_some());
         session.foundation_digest = Some("g".repeat(64));
-        assert!(ObserverFrame(Some(snapshot.clone()))
+        assert!(ObserverFrame(Some(snapshot.clone()), None)
             .for_session(&session)
             .is_none());
         session.foundation_digest = Some(snapshot.foundation_digest.clone());
         snapshot.tick_content_hash = Some("b".repeat(64));
-        assert!(ObserverFrame(Some(snapshot.clone()))
+        assert!(ObserverFrame(Some(snapshot.clone()), None)
             .for_session(&session)
             .is_none());
         session.viewed_tick = 3;
         snapshot.resolve_tick = 3;
-        assert!(ObserverFrame(Some(snapshot.clone()))
+        assert!(ObserverFrame(Some(snapshot.clone()), None)
             .for_session(&session)
             .is_some());
         snapshot.campaign_id = uuid::Uuid::from_u128(1).to_string();
-        assert!(ObserverFrame(Some(snapshot))
+        assert!(ObserverFrame(Some(snapshot), None)
             .for_session(&session)
             .is_none());
     }

@@ -65,22 +65,27 @@ overflow. ``--defines PATH`` selects the numeric source for New. Canonical
 numeric values ignore comments, whitespace, and table order. Source and
 qualification pins also contribute to a statewide campaign's identity.
 
-``MichiganCapturedContentV6`` retains ``MichiganNormalizedContentV4`` owners,
-recipes, stocks, workforce, orders, explicit preset overrides, and observed
-source cells. It also retains the material-cycle BSL, generated graph scenarios
-for the base and any workforce variants, and observed definitions. Maintenance
-content includes the provider, consumer binding, and opening service. Statewide
-capture includes selected physical paths, deduplicated edge geometry, county
-terminal attachments, vehicle profile, and network source identity. It excludes
-the full routing matrix and unselected road graph.
+Michigan control admission regenerates ``MichiganNormalizedContentV4`` from
+captured authored and observed sources, including preset overrides and physical
+network evidence. The normalized opening supplies owners, recipes, stocks,
+workforce, orders, and maintenance content. The source capture includes
+material-cycle BSL, graph declarations, and observed definitions. Statewide
+transport evidence retains selected physical paths, deduplicated edge geometry,
+county terminal attachments, vehicle profile, and network source identity.
+It excludes the full routing matrix and unselected road graph.
 
-``SectorBundleV4`` and ``StoredSectorBundleDefinesV4`` keep executable rows
-and staffing authority around that capture. The captured-content and total
-definitions limits are each 64 MiB. Each generated graph source and the BSL
-source have a 1 MiB limit. These are admission ceilings, not measured full-state
-performance claims. Open reconstructs admitted saved authority without rereading
-changed TOML, QCEW, or road files and without rerouting. Admission refuses unsupported
-versions without deleting their stored data.
+``CapturedEconomicCatalog`` stores exact source bytes and hashes with compiler,
+geography, duration, and optional organizer configuration. Admission regenerates
+and checks the typed ``EconomicOpening``. The catalog does not encode derived
+per-site or global opening rows.
+
+Each source artifact has a 32 MiB limit. The complete catalog has a 64 MiB limit.
+Graph declarations, prelude declarations, and BSL rules each have a 1 MiB limit.
+These are admission ceilings, not measured full-state performance claims.
+
+Open reconstructs admitted saved authority without rereading changed TOML,
+QCEW, or road files and without rerouting.
+Admission refuses unsupported versions without deleting their stored data.
 
 Regional parameters
 ^^^^^^^^^^^^^^^^^^^

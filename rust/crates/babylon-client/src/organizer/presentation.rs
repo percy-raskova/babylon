@@ -1,11 +1,11 @@
 //! Text projections over granted organizer records, never material ledger truth.
 
 use babylon_persistence::runtime_session::{
-    OrganizerChoice, OrganizerCommitment, OrganizerGiftConsent, OrganizerInquiry,
-    OrganizerObservation, OrganizerOutcome, OrganizerPartnerResponse, OrganizerPauseReason,
-    OrganizerRefusal, OrganizerReport, OrganizerView,
+    OrganizerChoice, OrganizerCollectionOutcome, OrganizerCollectionResolution,
+    OrganizerCommitment, OrganizerGiftConsent, OrganizerInquiry, OrganizerObservation,
+    OrganizerOutcome, OrganizerPartnerResponse, OrganizerPauseReason, OrganizerRefusal,
+    OrganizerReport, OrganizerView,
 };
-use babylon_practice_contract::{OrganizerCollectionOutcome, OrganizerCollectionResolution};
 use std::fmt::Write as _;
 
 use super::{evidence::EvidenceMode, OrganizerClient, OrganizerInspector};
@@ -544,6 +544,24 @@ fn accepted_aid_review(client: &OrganizerClient, commitment: &OrganizerCommitmen
     text
 }
 
+fn accepted_collection_review(
+    client: &OrganizerClient,
+    commitment: &OrganizerCommitment,
+) -> String {
+    let terms = client.collection_preview().map_or_else(
+        || "Captured original collection ruling".into(),
+        |m| {
+            format!(
+                "{} · up to {} currency · {} shared material hours",
+                m.contributor_label,
+                currency(m.maximum_cash_micros),
+                m.collection_hours
+            )
+        },
+    );
+    format!("ACCEPTED · collection resolution period {}\n{terms}. Protected needs and fixed shared time are checked at close.\nReplaces saved routine once; no standing fallback. Actual full, partial or refused payment appears after Advance. Later aid needs its own ruling.", commitment.resolves_period)
+}
+
 pub(super) fn review(
     client: &OrganizerClient,
     historical: bool,
@@ -567,18 +585,7 @@ pub(super) fn review(
             return accepted_aid_review(client, commitment);
         }
         if commitment.command.choice == OrganizerChoice::Collect {
-            let terms = client.collection_preview().map_or_else(
-                || "Captured original collection ruling".into(),
-                |m| {
-                    format!(
-                        "{} · up to {} currency · {} shared material hours",
-                        m.contributor_label,
-                        currency(m.maximum_cash_micros),
-                        m.collection_hours
-                    )
-                },
-            );
-            return format!("ACCEPTED · collection resolution period {}\n{terms}. Protected needs and fixed shared time are checked at close.\nReplaces saved routine once; no standing fallback. Actual full, partial or refused payment appears after Advance. Later aid needs its own ruling.", commitment.resolves_period);
+            return accepted_collection_review(client, commitment);
         }
         let mut text = format!(
             "ACCEPTED · resolves period {}\n{}",
@@ -860,11 +867,10 @@ fn collection_detail(client: &OrganizerClient, view: &OrganizerView) -> String {
     } else {
         "Saved neighborhood work is paused; collection runs once.".into()
     };
-    let source: String = m
-        .source_hash
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect();
+    let mut source = String::with_capacity(64);
+    for byte in m.source_hash {
+        let _ = write!(source, "{byte:02x}");
+    }
     format!("Contributor: {} (participant {}). Designed terms verified at period {}; source {}.\nVoluntary household gift: up to {} currency; {} shared material hours. Independent cash consent: {}. Protected cash floor: {} currency; mandatory protected needs and due payments are checked at close. Protected consumption, essential services and closing stocks come first. A positive amount below the cap is a partial gift and still uses the fixed hours. Organization cash now: {} currency.\nResolves period {}. {} No cash or time is reserved. Later aid needs its own ruling; no immediate membership, agreement or time gain.", m.contributor_label, m.contributor_id, m.period, source, currency(m.maximum_cash_micros), m.collection_hours, consent, currency(m.protected_cash_floor_micros), currency(m.organization_cash_micros), resolves, displacement)
 }
 
@@ -1853,32 +1859,6 @@ mod tests {
         assert!(
             !aftermath(&client, client.view.as_ref().unwrap(), 2).contains("collected 0 currency")
         );
-        // Captured from an actual shared-engine partial close; retain its exact
-        // amount, actor, original command and shared material time evidence.
-        let partial: OrganizerCollectionResolution = serde_json::from_str(include_str!(
-            "../../tests/fixtures/organizer_partial_collection.json"
-        ))
-        .unwrap();
-        let resolved_period = partial.fact.period;
-        let mut partial_view = view.clone();
-        partial_view.actor_id = partial.fact.actor_id;
-        partial_view.period = resolved_period;
-        partial_view.receipts = vec![partial.practice.clone()];
-        let partially_collected = OrganizerClient {
-            view: Some(partial_view.clone()),
-            collection_resolutions: vec![partial],
-            ..OrganizerClient::default()
-        };
-        let actual = aftermath(&partially_collected, &partial_view, resolved_period);
-        assert!(actual.contains("collected 0.000004 currency; 2 shared material hours"));
-        assert!(actual.contains("Partially collected"));
-        assert!(
-            collection_history(&partially_collected, &partial_view, resolved_period)
-                .contains("Partially collected")
-        );
-        assert!(
-            collection_history(&partially_collected, &partial_view, resolved_period - 1).is_empty()
-        );
         let text = collection_history(&client, &view, 3);
         assert!(text.contains("original admission 2; actual resolution 3"));
         assert!(text.contains("collected 0 currency; 0 shared material hours"));
@@ -1910,6 +1890,36 @@ mod tests {
         assert!(card.contains("No cash or time is reserved"));
         assert!(!card.contains("household cash now"));
     }
+    #[test]
+    fn actual_partial_collection_appears_in_aftermath_and_actor_scoped_history() {
+        // Captured from an actual shared-engine partial close; retain its exact
+        // amount, actor, original command and shared material time evidence.
+        let partial: OrganizerCollectionResolution = serde_json::from_str(include_str!(
+            "../../tests/fixtures/organizer_partial_collection.json"
+        ))
+        .unwrap();
+        let resolved_period = partial.fact.period;
+        let mut partial_view = aid_history_client().view.unwrap();
+        partial_view.actor_id = partial.fact.actor_id;
+        partial_view.period = resolved_period;
+        partial_view.receipts = vec![partial.practice.clone()];
+        let partially_collected = OrganizerClient {
+            view: Some(partial_view.clone()),
+            collection_resolutions: vec![partial],
+            ..OrganizerClient::default()
+        };
+        let actual = aftermath(&partially_collected, &partial_view, resolved_period);
+        assert!(actual.contains("collected 0.000004 currency; 2 shared material hours"));
+        assert!(actual.contains("Partially collected"));
+        assert!(
+            collection_history(&partially_collected, &partial_view, resolved_period)
+                .contains("Partially collected")
+        );
+        assert!(
+            collection_history(&partially_collected, &partial_view, resolved_period - 1).is_empty()
+        );
+    }
+
     #[test]
     fn collection_currency_preserves_exact_micro_units_without_float_rounding() {
         assert_eq!(currency(0), "0");

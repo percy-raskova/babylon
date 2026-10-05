@@ -338,6 +338,7 @@ def test_dev_selection_keeps_light_contracts_and_current_heavy_seams() -> None:
         "new_contract",
         "material_runtime",
         "michigan_material",
+        "national_trade_accounting",
         "statewide_material",
         "staffed_material_replay",
         "organizer_replay",

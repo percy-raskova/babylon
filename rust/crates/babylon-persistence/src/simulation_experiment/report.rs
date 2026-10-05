@@ -227,6 +227,7 @@ fn observations(
     candidate: &PreparedMaterialTick<HypergraphStore>,
     trajectory: &mut ExperimentTrajectory,
     evidence: &PeriodEvidence,
+    employment_subjects: &BTreeMap<String, String>,
 ) -> Result<()> {
     let period = candidate.identity().resolve_tick();
     if spec.profile == ExperimentProfile::HistoricalEmployment {
@@ -234,17 +235,20 @@ fn observations(
             spec.epoch.as_deref().ok_or(ExperimentError::Epoch)?,
             product(period, 28)?,
         )?;
-        for (subject, series) in [
-            ("workforce-sheet-rolling", "26163/331"),
-            ("workforce-panel-forming", "26099/332"),
-            ("workforce-subassembly-making", "26163/3363"),
-            ("workforce-meal-milling", "26161/311"),
-            ("workforce-meal-packaging", "26125/311"),
+        for series in [
+            "26163/331",
+            "26099/332",
+            "26163/3363",
+            "26161/311",
+            "26125/311",
         ] {
+            let subject = employment_subjects
+                .get(series)
+                .ok_or(ExperimentError::Observation)?;
             let row = evidence
                 .staffing
                 .iter()
-                .find(|r| r.subject == subject)
+                .find(|r| &r.subject == subject)
                 .ok_or(ExperimentError::Observation)?;
             trajectory.employment.push(EmploymentObservation {
                 series_id: series.to_owned(),
@@ -441,6 +445,7 @@ pub fn run(spec: &SimulationExperimentV1) -> Result<ExperimentRun> {
         .map_err(|_| ExperimentError::Foundation)?;
     let graph = foundation.graph_foundation();
     let process_keys = captured_process_keys(spec.profile, graph)?;
+    let employment_subjects = captured_employment_subjects(spec, &foundation)?;
     let (mut setup, mut trajectory) = initial_report(spec, &foundation, &session, initial_mass)?;
     let mut periods = Vec::new();
     for period in 1..=spec.horizon {
@@ -458,7 +463,13 @@ pub fn run(spec: &SimulationExperimentV1) -> Result<ExperimentRun> {
             trajectory.observed_choice_count,
             u64::try_from(report.choice_receipts.len()).map_err(|_| ExperimentError::Arithmetic)?,
         )?;
-        observations(spec, &candidate, &mut trajectory, &evidence)?;
+        observations(
+            spec,
+            &candidate,
+            &mut trajectory,
+            &evidence,
+            &employment_subjects,
+        )?;
         if period > spec.horizon - 13
             && evidence.produced_batches > 0
             && evidence.dispatched_units > 0
@@ -514,6 +525,55 @@ pub fn run(spec: &SimulationExperimentV1) -> Result<ExperimentRun> {
             .export_canonical_bytes()
             .map_err(|_| ExperimentError::Foundation)?,
     })
+}
+fn captured_employment_subjects(
+    spec: &SimulationExperimentV1,
+    foundation: &crate::material_runtime::MaterialRuntimeFoundation,
+) -> Result<BTreeMap<String, String>> {
+    if spec.profile != ExperimentProfile::HistoricalEmployment {
+        return Ok(BTreeMap::new());
+    }
+    let captured = foundation
+        .graph_foundation()
+        .content_bundle()
+        .economic_catalog()
+        .ok_or(ExperimentError::Content)?;
+    let crate::economic_catalog::EconomicSourceView::MichiganControl { catalog, .. } =
+        captured.view().sources
+    else {
+        return Err(ExperimentError::Content);
+    };
+    let mut subjects = BTreeMap::new();
+    for binding in foundation.labor().bindings() {
+        let site = catalog
+            .sites()
+            .iter()
+            .find(|site| site.id() == binding.pool().site_id())
+            .ok_or(ExperimentError::Content)?;
+        let StableElementKey::Node { local_name, .. } = binding.subject() else {
+            return Err(ExperimentError::Content);
+        };
+        if subjects
+            .insert(
+                format!("{}/{}", site.county_geoid, site.naics),
+                local_name.clone(),
+            )
+            .is_some()
+        {
+            return Err(ExperimentError::Content);
+        }
+    }
+    let Some(StartingSnapshot::Employment { series, .. }) = &spec.starting_snapshot else {
+        return Err(ExperimentError::StartingSnapshot);
+    };
+    if subjects.len() != series.len()
+        || series
+            .iter()
+            .any(|row| !subjects.contains_key(&row.series_id))
+    {
+        return Err(ExperimentError::Content);
+    }
+    Ok(subjects)
 }
 fn captured_process_keys(
     profile: ExperimentProfile,

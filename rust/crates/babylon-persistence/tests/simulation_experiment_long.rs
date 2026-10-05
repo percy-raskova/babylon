@@ -54,7 +54,8 @@ fn sustained_depletion_and_historical_profiles_close_replay_and_conservation() {
         ExperimentProfile::HistoricalEmployment,
         ExperimentProfile::HistoricalFreight,
     ] {
-        let result = report::run(&spec(profile)).unwrap();
+        let result =
+            report::run(&spec(profile)).unwrap_or_else(|error| panic!("{profile:?}: {error:?}"));
         assert_eq!(result.trajectory.completed_periods, profile.horizon());
         assert_eq!(result.trajectory.observed_choice_count, 0);
         assert!(result.captured_setup.checkpoint_restarts > 0);
@@ -67,6 +68,29 @@ fn sustained_depletion_and_historical_profiles_close_replay_and_conservation() {
         }
         if profile == ExperimentProfile::HistoricalEmployment {
             assert_eq!(result.trajectory.employment.len(), 5 * 132);
+            let first_period = result
+                .trajectory
+                .employment
+                .iter()
+                .filter(|row| row.period == 1)
+                .map(|row| {
+                    assert_eq!(row.date, "2010-01-29");
+                    assert_eq!(row.world_hash, result.periods[0].world_hash);
+                    (row.series_id.as_str(), row.jobs)
+                })
+                .collect::<std::collections::BTreeMap<_, _>>();
+            assert_eq!(
+                first_period,
+                [
+                    ("26099/332", 8143),
+                    ("26125/311", 2911),
+                    ("26161/311", 615),
+                    ("26163/331", 4464),
+                    ("26163/3363", 17378),
+                ]
+                .into_iter()
+                .collect()
+            );
         }
         if profile == ExperimentProfile::HistoricalFreight {
             assert_eq!(result.trajectory.freight.len(), 78);

@@ -580,17 +580,16 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> Materia
 }
 
 impl MaterialReplaySession<babylon_graph::hypergraph_store::HypergraphStore> {
-    /// Restore checked component checkpoint sections under the exact pinned foundation.
+    /// Restore checked graph sections and consume one already admitted material register.
     /// # Errors
-    /// Every decode, tick or graph restore refusal leaves both live owners unchanged.
+    /// Every tick or graph restore refusal leaves both live owners unchanged.
     pub fn restore_full_checkpoint(
         &mut self,
         graph_state: &StableGraphState,
         graph_material: &MaterialStateRows,
         graph_registers: &[u8],
-        material_bytes: &[u8],
+        material: MaterialWorldRegister,
     ) -> Result<(), MaterialReplayError> {
-        let material = MaterialWorldRegister::decode(material_bytes)?;
         let tick = material.completed_tick();
         if tick == 0 || !self.duration.contains(tick) {
             return Err(MaterialReplayError::Horizon);

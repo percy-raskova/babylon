@@ -9,7 +9,7 @@ use babylon_material_circuit::{GoodId, MaterialCircuitState, ProcessId};
 use babylon_practice_contract::OrderedPracticeActionBatch;
 use babylon_tick::{
     material_replay::{MaterialReplaySession, PreparedMaterialTick},
-    material_world::decode_material_receipts,
+    material_world::{decode_material_receipts, MaterialWorldRegister},
     replay_session::ReplayCommitDisposition,
 };
 use serde::Serialize;
@@ -487,7 +487,8 @@ pub fn run(spec: &SimulationExperimentV1) -> Result<ExperimentRun> {
                     replayed.graph_report().result_stable_graph(),
                     replayed.graph_report().material_state_rows(),
                     replayed.graph_report().result_registers().canonical_bytes(),
-                    replayed.material().register().canonical_bytes(),
+                    MaterialWorldRegister::decode(replayed.material().register().canonical_bytes())
+                        .map_err(|_| ExperimentError::Foundation)?,
                 )
                 .map_err(|_| ExperimentError::Foundation)?;
             Some(restored)

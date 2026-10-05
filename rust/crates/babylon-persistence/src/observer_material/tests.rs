@@ -1,6 +1,7 @@
 use super::*;
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_practice_contract::OrderedPracticeActionBatch;
+use babylon_tick::material_world::MaterialWorldRegister;
 use babylon_tick::replay_session::ReplayCommitDisposition;
 
 #[test]
@@ -261,7 +262,7 @@ fn verify_restart(
             next.graph_report().result_stable_graph(),
             next.graph_report().material_state_rows(),
             next.graph_report().result_registers().canonical_bytes(),
-            next.material().register().canonical_bytes(),
+            MaterialWorldRegister::decode(next.material().register().canonical_bytes()).unwrap(),
         )
         .unwrap();
     assert_eq!(resumed.completed_tick(), 17);

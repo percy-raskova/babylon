@@ -8,7 +8,7 @@ use babylon_persistence::michigan_material::{MichiganDeliveryPreset, MichiganMat
 use babylon_practice_contract::OrderedPracticeActionBatch;
 use babylon_tick::{
     material_replay::{MaterialReplaySession, PreparedMaterialTick},
-    material_world::{decode_material_receipts, MaterialTickReceipts},
+    material_world::{decode_material_receipts, MaterialTickReceipts, MaterialWorldRegister},
     replay_session::ReplayCommitDisposition,
 };
 
@@ -493,7 +493,10 @@ fn every_dispatch_transit_arrival_restart_reproduces_exact_continuation() {
                         .graph_report()
                         .result_registers()
                         .canonical_bytes(),
-                    candidate.material().register().canonical_bytes(),
+                    MaterialWorldRegister::decode(
+                        candidate.material().register().canonical_bytes(),
+                    )
+                    .unwrap(),
                 )
                 .unwrap();
             let encoded =

@@ -166,14 +166,51 @@ struct MaterialHistory {
     lookup: crate::material_storage::OpeningRegister,
     lookup_chain: [u8; 32],
     previous_lookup_chain: Option<[u8; 32]>,
-    register: MaterialWorldRegister,
-    opening: Option<MaterialWorldRegister>,
+    register: MaterialRegisterBoundary,
+    opening: Option<MaterialRegisterBoundary>,
     receipt: Option<(MaterialTickReceipts, [u8; 32])>,
     orders: OrderHistory,
     prior_world: Option<[u8; 32]>,
 }
 
+/// Foundation state belongs to the immutable admission. A history owns only
+/// committed period registers, including the previous period needed by proofs.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum MaterialRegisterBoundary {
+    Foundation,
+    Period(Box<MaterialWorldRegister>),
+}
+
+impl MaterialRegisterBoundary {
+    fn resolve<'a>(&'a self, expected: &'a EconomicContentAdmission) -> &'a MaterialWorldRegister {
+        match self {
+            Self::Foundation => expected.initial_register(),
+            Self::Period(register) => register,
+        }
+    }
+
+    fn completed_tick(&self) -> u64 {
+        match self {
+            Self::Foundation => 0,
+            Self::Period(register) => register.completed_tick(),
+        }
+    }
+}
+
 impl MaterialHistory {
+    fn register<'a>(&'a self, expected: &'a EconomicContentAdmission) -> &'a MaterialWorldRegister {
+        self.register.resolve(expected)
+    }
+
+    fn opening<'a>(
+        &'a self,
+        expected: &'a EconomicContentAdmission,
+    ) -> Option<&'a MaterialWorldRegister> {
+        self.opening
+            .as_ref()
+            .map(|register| register.resolve(expected))
+    }
+
     fn new(expected: &EconomicContentAdmission) -> Result<Self, ObserverEconomyError> {
         let lookup = expected
             .opening()
@@ -185,7 +222,7 @@ impl MaterialHistory {
             lookup,
             lookup_chain,
             previous_lookup_chain: None,
-            register: expected.initial_register().clone(),
+            register: MaterialRegisterBoundary::Foundation,
             opening: None,
             receipt: None,
             orders: OrderHistory::from_opening(expected.initial_register().state()).map_err(
@@ -244,7 +281,7 @@ impl MaterialHistory {
                 || receipts.is_some()
                 || identity.is_some()
                 || content_hash.is_some()
-                || self.register != *expected.initial_register()
+                || self.register(expected) != expected.initial_register()
             {
                 return Err(ObserverEconomyError::ScenarioMismatch);
             }
@@ -301,7 +338,10 @@ impl MaterialHistory {
             content_hash.as_deref(),
             admitted.receipts,
         )?;
-        let previous = std::mem::replace(&mut self.register, next);
+        let previous = std::mem::replace(
+            &mut self.register,
+            MaterialRegisterBoundary::Period(Box::new(next)),
+        );
         self.previous_lookup_chain = Some(self.lookup_chain);
         self.lookup_chain = lookup.chain;
         self.opening = Some(previous);
@@ -318,6 +358,7 @@ impl MaterialHistory {
         receipt: MaterialTickReceipts,
     ) -> Result<(), ObserverEconomyError> {
         let index = next.completed_tick();
+        let prior_register = self.register.resolve(expected);
         let identity = IdentifiedMaterialTick::decode(identity)
             .map_err(|_| diagnostics::invalid(Stage::ReceiptIdentity, index))?;
         if identity.resolve_tick() != index
@@ -326,7 +367,7 @@ impl MaterialHistory {
             || sha256_of(receipt_bytes) != identity.receipt_digest()
             || nominal_material_world_hash(identity.graph_world_after(), next)
                 != identity.result_world_hash()
-            || nominal_material_world_hash(identity.graph_world_before(), &self.register)
+            || nominal_material_world_hash(identity.graph_world_before(), prior_register)
                 != identity.prior_world_hash()
             || self
                 .prior_world
@@ -346,7 +387,7 @@ impl MaterialHistory {
             );
         }
         let period_orders = crate::production_projection::lifecycle::validate_period(
-            self.register.state(),
+            prior_register.state(),
             next.state(),
             &receipt,
         )
@@ -359,7 +400,7 @@ impl MaterialHistory {
         // A refusal discards the candidate, so a second index copy is redundant.
         let order_timing = diagnostics::Timing::start(Stage::OrderHistory, index);
         self.orders
-            .record(self.register.state(), &period_orders)
+            .record(prior_register.state(), &period_orders)
             .map_err(|error| {
                 let _ = diagnostics::projection::<()>(Stage::OrderHistory, index, Err(error));
                 ObserverEconomyError::InvalidProjection
@@ -468,8 +509,8 @@ pub(crate) fn material_observation(
     let projection_timing = diagnostics::Timing::start(Stage::CurrentProjection, tick);
     let mut production = project_economic_current(
         expected.view(),
-        &history.register,
-        history.opening.as_ref(),
+        history.register(expected),
+        history.opening(expected),
         history.receipt.as_ref(),
         &history.orders,
     )
@@ -545,11 +586,11 @@ pub(crate) fn production_history(
                     (
                         &history.lookup,
                         history.lookup_chain,
-                        [Some(&history.register), history.opening.as_ref()],
+                        [Some(history.register(expected)), history.opening(expected)],
                     ),
                 )
                 .map_err(|_| ObserverEconomyError::InvalidProjection)?;
-                if stored.register.as_ref() != &history.register
+                if stored.register.as_ref() != history.register(expected)
                     || Some(stored.identity.result_world_hash()) != history.prior_world
                 {
                     return Err(ObserverEconomyError::InvalidProjection);
@@ -559,7 +600,7 @@ pub(crate) fn production_history(
                 let projected = project_process(
                     &metadata,
                     &Quantities::new(
-                        history.register.state(),
+                        history.register(expected).state(),
                         history.receipt.as_ref().map(|(r, _)| r),
                     ),
                     process,
@@ -580,7 +621,7 @@ pub(crate) fn production_history(
 fn authenticated_history_endpoints<'w>(
     transaction: &mut impl GenericClient,
     campaign: CampaignId,
-    expected: &EconomicContentAdmission,
+    expected: &'w EconomicContentAdmission,
     history: &'w MaterialHistory,
 ) -> Result<
     (
@@ -590,7 +631,7 @@ fn authenticated_history_endpoints<'w>(
     ObserverEconomyError,
 > {
     let tick = history.register.completed_tick();
-    let register = &history.register;
+    let register = history.register(expected);
     let result_world = history.prior_world;
     let period_receipt = history.receipt.as_ref();
     let mut read = |requested: u64| {
@@ -614,7 +655,7 @@ fn authenticated_history_endpoints<'w>(
             (
                 &history.lookup,
                 chain,
-                [Some(&history.register), history.opening.as_ref()],
+                [Some(register), history.opening(expected)],
             ),
         )
         .map_err(|_| ObserverEconomyError::InvalidProjection)
@@ -639,7 +680,7 @@ fn authenticated_history_endpoints<'w>(
     } else {
         expected.initial_register()
     };
-    if Some(prior_register) != history.opening.as_ref() {
+    if Some(prior_register) != history.opening(expected) {
         return Err(ObserverEconomyError::InvalidProjection);
     }
     Ok((current, previous))
@@ -656,12 +697,13 @@ pub(crate) fn committed_receipts(
     let (current, _) = authenticated_history_endpoints(transaction, campaign, expected, &history)?;
     let identity = current.identity;
     drop(current);
-    take_committed_receipts(campaign, tick, &mut history, &identity)
+    take_committed_receipts(campaign, tick, expected, &mut history, &identity)
 }
 
 fn take_committed_receipts(
     campaign: CampaignId,
     tick: u64,
+    expected: &EconomicContentAdmission,
     history: &mut MaterialHistory,
     identity: &babylon_tick::material_replay::IdentifiedMaterialTick,
 ) -> Result<crate::observer_reader::CommittedMaterialReceipts, ObserverEconomyError> {
@@ -672,7 +714,7 @@ fn take_committed_receipts(
     if receipts.resolve_tick != tick || digest != identity.receipt_digest() {
         return Err(ObserverEconomyError::InvalidProjection);
     }
-    let household_contributions = match &history.register.state().accounting {
+    let household_contributions = match &history.register(expected).state().accounting {
         babylon_material_circuit::CircuitAccounting::PhysicalControl => Vec::new(),
         babylon_material_circuit::CircuitAccounting::Monetary(economy) => {
             match &economy.household_time {
@@ -724,8 +766,8 @@ pub(crate) fn committed_observation(
     let projection_timing = diagnostics::Timing::start(Stage::CurrentProjection, tick);
     let mut production = project_economic_current(
         expected.view(),
-        &history.register,
-        history.opening.as_ref(),
+        history.register(expected),
+        history.opening(expected),
         history.receipt.as_ref(),
         &history.orders,
     )
@@ -739,7 +781,7 @@ pub(crate) fn committed_observation(
         production: Some(production),
         nominal_world_hash: history.prior_world.map(|hash| digest_hex(&hash)),
     };
-    let accounting = take_committed_receipts(campaign, tick, &mut history, &identity)?;
+    let accounting = take_committed_receipts(campaign, tick, expected, &mut history, &identity)?;
     Ok((observation, accounting))
 }
 
@@ -750,7 +792,7 @@ fn authenticated_staffing(
     history: &MaterialHistory,
 ) -> Result<Vec<crate::production_observation::ProductionStaffingAccount>, ObserverEconomyError> {
     use crate::production_projection::staffing::project_staffing_accounts;
-    let register = &history.register;
+    let register = history.register(expected);
     let tick = register.completed_tick();
     if tick == 0 {
         return project_staffing_accounts(
@@ -778,7 +820,7 @@ fn project_authenticated_staffing(
     previous: Option<&crate::material_runtime::StoredMaterialTick<'_>>,
 ) -> Result<Vec<crate::production_observation::ProductionStaffingAccount>, ObserverEconomyError> {
     use crate::production_projection::staffing::project_staffing_accounts;
-    let register = &history.register;
+    let register = history.register(expected);
     let period_receipt = history.receipt.as_ref();
     let tick = register.completed_tick();
     let prior_graph = previous.map_or(expected.foundation_graph(), |row| &row.graph);

@@ -57,72 +57,6 @@ fn limits_from_bytes(bytes: &[u8]) -> Limits {
     }
 }
 
-#[cfg(test)]
-mod policy_tests {
-    use super::{hex, limits_from_bytes};
-    use serde_json::{json, Value};
-    use sha2::{Digest, Sha256};
-    use std::time::Duration;
-
-    const CURRENT_POLICY: &[u8] =
-        include_bytes!("../../../../../contracts/national_storage_qualification_v3.json");
-
-    #[test]
-    fn captured_qualification_policy_reads_current_contract() {
-        let limits = limits_from_bytes(CURRENT_POLICY);
-        assert_eq!(limits.archive, Duration::from_secs(180));
-        assert_eq!(limits.production, Duration::from_secs(180));
-        assert_eq!(limits.policy_sha256, hex(&Sha256::digest(CURRENT_POLICY)));
-    }
-
-    #[test]
-    fn captured_qualification_policy_uses_captured_overrides_and_byte_hash() {
-        let mut policy: Value = serde_json::from_slice(CURRENT_POLICY).unwrap();
-        policy["maximum_archive_catchup_seconds"] = json!(75);
-        policy["maximum_production_read_seconds"] = json!(120);
-        let bytes = serde_json::to_vec(&policy).unwrap();
-        let limits = limits_from_bytes(&bytes);
-        assert_eq!(limits.archive, Duration::from_secs(75));
-        assert_eq!(limits.production, Duration::from_secs(120));
-        assert_eq!(limits.policy_sha256, hex(&Sha256::digest(&bytes)));
-        let mut differently_spaced = bytes.clone();
-        differently_spaced.push(b'\n');
-        assert_eq!(
-            limits_from_bytes(&differently_spaced).archive,
-            limits.archive
-        );
-        assert_ne!(
-            limits_from_bytes(&differently_spaced).policy_sha256,
-            limits.policy_sha256
-        );
-    }
-
-    #[test]
-    fn captured_qualification_policy_refuses_unsupported_identity_and_budgets() {
-        for (key, invalid) in [
-            ("version", json!(1)),
-            ("version", json!(2)),
-            ("version", json!(4)),
-            ("version", Value::Null),
-            ("name", json!("national_storage_qualification_v2")),
-            ("storage_charge_method", json!("net_growth")),
-            ("county_count", json!(3_143)),
-            ("maximum_archive_catchup_seconds", json!(0)),
-            ("maximum_archive_catchup_seconds", json!(-1)),
-            ("maximum_production_read_seconds", json!(1.5)),
-            ("maximum_production_read_seconds", json!(u64::MAX)),
-        ] {
-            let mut policy: Value = serde_json::from_slice(CURRENT_POLICY).unwrap();
-            policy[key] = invalid.clone();
-            let bytes = serde_json::to_vec(&policy).unwrap();
-            assert!(
-                std::panic::catch_unwind(|| limits_from_bytes(&bytes)).is_err(),
-                "unsupported captured policy admitted: {key}={invalid}"
-            );
-        }
-    }
-}
-
 pub(super) fn hex(bytes: &[u8]) -> String {
     use std::fmt::Write;
     let mut result = String::with_capacity(bytes.len().checked_mul(2).unwrap());
@@ -292,4 +226,70 @@ pub(super) fn boundary(
         "register_storage_sha256":row.get::<_,String>(2),"receipt_storage_sha256":row.get::<_,String>(3),
         "lookup_storage_sha256":row.get::<_,String>(4),"canonical_receipt_sha256":hex(&admitted.receipt_digest()),
         "nominal_world_hash":hex(&admitted.result_world_hash()),"archive":archive,"production":production})
+}
+
+#[cfg(test)]
+mod policy_tests {
+    use super::{hex, limits_from_bytes};
+    use serde_json::{json, Value};
+    use sha2::{Digest, Sha256};
+    use std::time::Duration;
+
+    const CURRENT_POLICY: &[u8] =
+        include_bytes!("../../../../../contracts/national_storage_qualification_v3.json");
+
+    #[test]
+    fn captured_qualification_policy_reads_current_contract() {
+        let limits = limits_from_bytes(CURRENT_POLICY);
+        assert_eq!(limits.archive, Duration::from_secs(180));
+        assert_eq!(limits.production, Duration::from_secs(180));
+        assert_eq!(limits.policy_sha256, hex(&Sha256::digest(CURRENT_POLICY)));
+    }
+
+    #[test]
+    fn captured_qualification_policy_uses_captured_overrides_and_byte_hash() {
+        let mut policy: Value = serde_json::from_slice(CURRENT_POLICY).unwrap();
+        policy["maximum_archive_catchup_seconds"] = json!(75);
+        policy["maximum_production_read_seconds"] = json!(120);
+        let bytes = serde_json::to_vec(&policy).unwrap();
+        let limits = limits_from_bytes(&bytes);
+        assert_eq!(limits.archive, Duration::from_secs(75));
+        assert_eq!(limits.production, Duration::from_secs(120));
+        assert_eq!(limits.policy_sha256, hex(&Sha256::digest(&bytes)));
+        let mut differently_spaced = bytes.clone();
+        differently_spaced.push(b'\n');
+        assert_eq!(
+            limits_from_bytes(&differently_spaced).archive,
+            limits.archive
+        );
+        assert_ne!(
+            limits_from_bytes(&differently_spaced).policy_sha256,
+            limits.policy_sha256
+        );
+    }
+
+    #[test]
+    fn captured_qualification_policy_refuses_unsupported_identity_and_budgets() {
+        for (key, invalid) in [
+            ("version", json!(1)),
+            ("version", json!(2)),
+            ("version", json!(4)),
+            ("version", Value::Null),
+            ("name", json!("national_storage_qualification_v2")),
+            ("storage_charge_method", json!("net_growth")),
+            ("county_count", json!(3_143)),
+            ("maximum_archive_catchup_seconds", json!(0)),
+            ("maximum_archive_catchup_seconds", json!(-1)),
+            ("maximum_production_read_seconds", json!(1.5)),
+            ("maximum_production_read_seconds", json!(u64::MAX)),
+        ] {
+            let mut policy: Value = serde_json::from_slice(CURRENT_POLICY).unwrap();
+            policy[key] = invalid.clone();
+            let bytes = serde_json::to_vec(&policy).unwrap();
+            assert!(
+                std::panic::catch_unwind(|| limits_from_bytes(&bytes)).is_err(),
+                "unsupported captured policy admitted: {key}={invalid}"
+            );
+        }
+    }
 }

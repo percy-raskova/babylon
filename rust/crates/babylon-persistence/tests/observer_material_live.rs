@@ -543,6 +543,244 @@ impl Drop for DisposableTarget {
 }
 
 #[test]
+#[ignore = "requires the task-owned disposable PostgreSQL runtime"]
+fn live_material_observer_reuse_authenticates_actual_foundation_bytes() {
+    let mut target = DisposableTarget::create();
+    let catalog =
+        babylon_persistence::michigan_material::MichiganMaterialCatalog::from_defines_toml(
+            include_str!("../../../../content/scenarios/michigan/defines.toml"),
+        )
+        .unwrap();
+    let campaign =
+        CampaignId::from_uuid(Uuid::from_u128(0x0044_0000_0000_0000_0000_0000_0000_0041));
+    let mut runtime = DurableMaterialRuntime::create(
+        &target.writer,
+        campaign,
+        MichiganContentPreset::new_campaign(MichiganDeliveryPreset::Standard)
+            .create_foundation(&catalog)
+            .unwrap(),
+    )
+    .unwrap();
+    provision_observer_role(&target.writer).unwrap();
+    let observer_config = target.login("babylon_observer", "observer");
+    let observer =
+        ObserverEconomyReader::connect(&observer_config, ObserverVisibility::FullObserver).unwrap();
+    let mut cursor = None;
+    let admitted = observer
+        .snapshot_with_cursor(campaign, 0, &mut cursor)
+        .unwrap();
+    assert_eq!(cursor.as_ref().unwrap().completed_tick(), 0);
+    advance_material_period(&mut runtime);
+    let committed = observer
+        .committed_material_observation(campaign, 1)
+        .unwrap();
+    assert_eq!(
+        observer.committed_material_receipts(campaign, 1).unwrap(),
+        committed.accounting
+    );
+    let mut writer = target.writer.connect(NoTls).unwrap();
+    assert_foundation_byte_changes_refused(
+        &mut writer,
+        &observer,
+        campaign,
+        &mut cursor,
+        &admitted,
+    );
+    assert_foundation_identity_changes_refused(
+        &mut writer,
+        &observer,
+        campaign,
+        &mut cursor,
+        &admitted,
+    );
+    assert_foundation_clock_changes_refused(
+        &mut writer,
+        &observer,
+        campaign,
+        &mut cursor,
+        &admitted,
+    );
+    let recovered = observer
+        .committed_material_observation(campaign, 1)
+        .unwrap();
+    assert_eq!(recovered.snapshot, committed.snapshot);
+    assert_eq!(recovered.accounting, committed.accounting);
+    assert_eq!(recovered.production_evidence, committed.production_evidence);
+}
+
+fn assert_foundation_byte_changes_refused(
+    writer: &mut postgres::Client,
+    observer: &ObserverEconomyReader,
+    campaign: CampaignId,
+    cursor: &mut Option<babylon_persistence::observer_reader::ObserverMaterialCursor>,
+    admitted: &babylon_persistence::observer_reader::ObserverEconomySnapshot,
+) {
+    // All identifiers here are fixed test-owned SQL names, never player input.
+    for (table, column) in [
+        ("campaign_foundation", "stable_graph"),
+        ("campaign_foundation", "world_registers"),
+        ("campaign_foundation", "resolver_manifest"),
+        ("campaign_foundation", "prepared_environment"),
+        ("campaign_foundation", "content_bundle_bytes"),
+        ("campaign_foundation", "defines_hash"),
+        ("campaign_foundation", "rules_hash"),
+        ("campaign_foundation", "ref_digest"),
+        ("campaign_foundation", "foundation_sha256"),
+        ("material_campaign_foundation_v3", "initial_register_bytes"),
+        ("material_campaign_foundation_v3", "content_sha256"),
+        ("material_campaign_foundation_v3", "foundation_sha256"),
+    ] {
+        let original: Vec<u8> = writer
+            .query_one(
+                &format!("SELECT {column} FROM babylon_state.{table} WHERE campaign_id=$1"),
+                &[campaign.as_uuid()],
+            )
+            .unwrap()
+            .get(0);
+        let mut changed = original.clone();
+        changed[0] ^= 1;
+        let update = format!("UPDATE babylon_state.{table} SET {column}=$2 WHERE campaign_id=$1");
+        assert_eq!(
+            writer
+                .execute(&update, &[campaign.as_uuid(), &changed])
+                .unwrap(),
+            1
+        );
+        // For body mutations every stored hash claim remains unchanged.
+        let refused = observer.snapshot_with_cursor(campaign, 0, cursor);
+        let refused_receipts = observer.committed_material_receipts(campaign, 1);
+        let refused_production = observer.committed_material_observation(campaign, 1);
+        writer
+            .execute(&update, &[campaign.as_uuid(), &original])
+            .unwrap();
+        assert!(
+            matches!(refused, Err(ObserverEconomyError::ScenarioMismatch)),
+            "{table}.{column}"
+        );
+        assert!(
+            matches!(
+                refused_receipts,
+                Err(ObserverEconomyError::ScenarioMismatch)
+            ),
+            "{table}.{column} receipts"
+        );
+        assert!(
+            matches!(
+                refused_production,
+                Err(ObserverEconomyError::ScenarioMismatch)
+            ),
+            "{table}.{column} production"
+        );
+        assert_eq!(cursor.as_ref().unwrap().completed_tick(), 0);
+        assert_eq!(
+            observer.snapshot_with_cursor(campaign, 0, cursor).unwrap(),
+            *admitted
+        );
+    }
+}
+
+fn assert_foundation_identity_changes_refused(
+    writer: &mut postgres::Client,
+    observer: &ObserverEconomyReader,
+    campaign: CampaignId,
+    cursor: &mut Option<babylon_persistence::observer_reader::ObserverMaterialCursor>,
+    admitted: &babylon_persistence::observer_reader::ObserverEconomySnapshot,
+) {
+    let original = writer.query_one(
+        "SELECT replay_session_id,rng_seed FROM babylon_state.campaign_foundation WHERE campaign_id=$1",
+        &[campaign.as_uuid()],
+    ).unwrap();
+    let session: String = original.get(0);
+    let seed: i64 = original.get(1);
+    for change_session in [true, false] {
+        let changed_session = if change_session {
+            format!("{session}x")
+        } else {
+            session.clone()
+        };
+        let changed_seed = if change_session { seed } else { seed ^ 1 };
+        let update = "UPDATE babylon_state.campaign_foundation SET replay_session_id=$2,rng_seed=$3 WHERE campaign_id=$1";
+        writer
+            .execute(
+                update,
+                &[campaign.as_uuid(), &changed_session, &changed_seed],
+            )
+            .unwrap();
+        let refused = observer.snapshot_with_cursor(campaign, 0, cursor);
+        writer
+            .execute(update, &[campaign.as_uuid(), &session, &seed])
+            .unwrap();
+        assert!(matches!(
+            refused,
+            Err(ObserverEconomyError::ScenarioMismatch)
+        ));
+        assert_eq!(
+            observer.snapshot_with_cursor(campaign, 0, cursor).unwrap(),
+            *admitted
+        );
+    }
+}
+
+fn assert_foundation_clock_changes_refused(
+    writer: &mut postgres::Client,
+    observer: &ObserverEconomyReader,
+    campaign: CampaignId,
+    cursor: &mut Option<babylon_persistence::observer_reader::ObserverMaterialCursor>,
+    admitted: &babylon_persistence::observer_reader::ObserverEconomySnapshot,
+) {
+    let original = writer.query_one(
+        "SELECT preset_id,duration_kind,final_period FROM babylon_state.material_campaign_foundation_v3 WHERE campaign_id=$1",
+        &[campaign.as_uuid()],
+    ).unwrap();
+    let preset: String = original.get(0);
+    let duration: String = original.get(1);
+    let final_period: Option<i64> = original.get(2);
+    let clock_update = "UPDATE babylon_state.material_campaign_foundation_v3 SET preset_id=$2,duration_kind=$3,final_period=$4 WHERE campaign_id=$1";
+    for (changed_preset, changed_duration, changed_period) in [
+        ("national-world", duration.as_str(), final_period),
+        (preset.as_str(), "continuous", None),
+        (
+            preset.as_str(),
+            "finite",
+            Some(final_period.unwrap_or(0) + 1),
+        ),
+    ] {
+        if changed_preset == preset
+            && changed_duration == duration
+            && changed_period == final_period
+        {
+            continue;
+        }
+        writer
+            .execute(
+                clock_update,
+                &[
+                    campaign.as_uuid(),
+                    &changed_preset,
+                    &changed_duration,
+                    &changed_period,
+                ],
+            )
+            .unwrap();
+        let refused = observer.snapshot_with_cursor(campaign, 0, cursor);
+        writer
+            .execute(
+                clock_update,
+                &[campaign.as_uuid(), &preset, &duration, &final_period],
+            )
+            .unwrap();
+        assert!(matches!(
+            refused,
+            Err(ObserverEconomyError::ScenarioMismatch)
+        ));
+        assert_eq!(
+            observer.snapshot_with_cursor(campaign, 0, cursor).unwrap(),
+            *admitted
+        );
+    }
+}
+
+#[test]
 #[ignore = "requires the task-owned disposable PostgreSQL runtime and committed material ticks"]
 fn live_material_observer_preserves_history_and_denies_preview_blob_authority() {
     let mut target = DisposableTarget::create();

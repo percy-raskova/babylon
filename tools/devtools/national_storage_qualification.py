@@ -40,9 +40,10 @@ Positive = Annotated[StrictInt, Field(gt=0, le=2**63 - 1)]
 
 
 class Policy(FrozenRecord):
-    version: Literal[2]
-    name: Literal["national_storage_qualification_v2"]
+    version: Literal[3]
+    name: Literal["national_storage_qualification_v3"]
     evidence_class: Literal["Designed"]
+    storage_charge_method: Literal["positive_growth_by_component_and_boundary_v1"]
     model_year_ticks: Literal[13]
     qualification_ticks: Literal[52]
     county_count: Literal[3144]
@@ -443,6 +444,7 @@ class Growth(TypedDict):
     database_delta_bytes: int
     relation_delta_bytes: dict[str, int]
     positive_parent_relation_growth_bytes: int
+    unattributed_database_growth_bytes: int
     charged_growth_bytes: int
     wal_delta_bytes_container_wide: int
     restart_growth: NotRequired[Growth]
@@ -461,11 +463,13 @@ def growth(before: Snapshot, after: Snapshot) -> Growth:
     }
     positive = sum(max(0, d) for d in deltas.values())
     db_delta = after.database_bytes - before.database_bytes
+    unattributed = db_delta - sum(deltas.values())
     return {
         "database_delta_bytes": db_delta,
         "relation_delta_bytes": deltas,
         "positive_parent_relation_growth_bytes": positive,
-        "charged_growth_bytes": max(0, db_delta, positive),
+        "unattributed_database_growth_bytes": unattributed,
+        "charged_growth_bytes": positive + max(0, unattributed),
         "wal_delta_bytes_container_wide": lsn(after.wal_lsn_container_wide)
         - lsn(before.wal_lsn_container_wide),
     }
@@ -587,11 +591,9 @@ def evaluate(
             raise ValueError("restart changed county, authoritative hash or byte-column evidence")
         row = growth(previous, s)
         if reopened is not None:
-            restart_growth = growth(previous, reopened)
+            restart_growth = growth(s, reopened)
             row["restart_growth"] = restart_growth
-            row["charged_growth_bytes"] = max(
-                int(row["charged_growth_bytes"]), int(restart_growth["charged_growth_bytes"])
-            )
+            row["charged_growth_bytes"] += restart_growth["charged_growth_bytes"]
         row["tick"] = s.tick
         row["budget_passed"] = row["charged_growth_bytes"] <= policy.maximum_tick_growth_bytes
         row["optimization_target_met"] = (
@@ -643,7 +645,7 @@ def evaluate(
         "annualized_growth_bytes": fraction(annual) if annual is not None else None,
         "twelve_tick_comparison_bytes": fraction(twelve) if twelve is not None else None,
         "wal_scope": "container-wide; not campaign-attributable",
-        "measurement": "decimal bytes; parent totals include heap, indexes and TOAST; estimates do not determine charges",
+        "measurement": "decimal bytes; positive parent deltas plus positive unattributed database delta, charged separately at commit and recovery; parent totals include heap, indexes and TOAST; estimates do not determine charges",
     }
 
 
@@ -1232,7 +1234,7 @@ def main() -> int:
         "--policy",
         type=Path,
         default=Path(__file__).resolve().parents[2]
-        / "contracts/national_storage_qualification_v2.json",
+        / "contracts/national_storage_qualification_v3.json",
     )
     p.add_argument("--baseline", type=Path)
     p.add_argument("--opening", type=Path)

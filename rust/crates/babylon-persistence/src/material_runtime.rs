@@ -1114,11 +1114,11 @@ fn hydrate_material_foundation(
 
 enum CapturedGraphFoundation {
     Runtime(crate::runtime::CapturedCampaignFoundation),
-    FullObserver(postgres::Row),
+    FullObserver,
 }
 
 pub(crate) struct CapturedMaterialFoundation {
-    stored: StoredMaterialFoundation,
+    components: postgres::Row,
     graph: CapturedGraphFoundation,
     expected_foundation_digest: [u8; 32],
 }
@@ -1171,54 +1171,102 @@ pub(crate) fn capture_material_foundation_components(
             }
         });
     };
-    let stored = StoredMaterialFoundation::from_row(&row)?;
-    if stored.foundation_digest != expected_foundation_digest {
+    if row.try_get::<_, &[u8]>("foundation_sha256")? != expected_foundation_digest {
         return Err(MaterialRuntimeError::FoundationMismatch);
     }
     let graph = match source {
-        FoundationReadSource::Runtime => {
-            drop(row);
-            CapturedGraphFoundation::Runtime(crate::runtime::capture_campaign_foundation(
-                client, campaign,
-            )?)
-        }
-        FoundationReadSource::FullObserver => CapturedGraphFoundation::FullObserver(row),
+        FoundationReadSource::Runtime => CapturedGraphFoundation::Runtime(
+            crate::runtime::capture_campaign_foundation(client, campaign)?,
+        ),
+        FoundationReadSource::FullObserver => CapturedGraphFoundation::FullObserver,
     };
     Ok(CapturedMaterialFoundation {
-        stored,
+        components: row,
         graph,
         expected_foundation_digest,
     })
 }
 
 impl CapturedMaterialFoundation {
+    /// Every hit checks actual current snapshot components against an admitted
+    /// canonical source. Captured SQL buffers are released after this witness.
+    pub(crate) fn validate_against(
+        &self,
+        admitted: &crate::economic_content::EconomicContentAdmission,
+    ) -> Result<(), MaterialRuntimeError> {
+        let row = &self.components;
+        let foundation = admitted.foundation();
+        let spec = foundation.spec();
+        if row.try_get::<_, &str>("preset_id")? != spec.preset_id
+            || read_duration(row)? != spec.duration
+            || row.try_get::<_, &[u8]>("content_sha256")? != spec.content_digest
+            || row.try_get::<_, &[u8]>("initial_register_bytes")?
+                != foundation.initial_register().canonical_bytes()
+            || row.try_get::<_, &[u8]>("foundation_sha256")? != admitted.digest()
+            || self.expected_foundation_digest != admitted.digest()
+            || row.try_get::<_, &[u8]>("graph_foundation_sha256")? != admitted.graph_digest
+        {
+            return Err(MaterialRuntimeError::FoundationMismatch);
+        }
+        let graph = foundation.graph_foundation();
+        match &self.graph {
+            CapturedGraphFoundation::Runtime(captured) => {
+                captured.validate_against(graph, &admitted.graph_digest)?;
+            }
+            CapturedGraphFoundation::FullObserver => {
+                crate::runtime::verify_captured_foundation_components(
+                    row,
+                    graph,
+                    &admitted.graph_digest,
+                    "graph_foundation_sha256",
+                )?;
+            }
+        }
+        Ok(())
+    }
+
     pub(crate) fn admit(self) -> Result<MaterialRuntimeFoundation, MaterialRuntimeError> {
         use crate::production_projection::diagnostics::{Stage, Timing};
         let Self {
-            stored,
+            components: row,
             graph,
             expected_foundation_digest,
         } = self;
+        let stored = StoredMaterialFoundation::from_row(&row)?;
         let graph = match graph {
-            CapturedGraphFoundation::Runtime(captured) => captured.admit()?,
-            CapturedGraphFoundation::FullObserver(row) => {
+            CapturedGraphFoundation::Runtime(captured) => {
+                drop(row);
+                captured.admit()?
+            }
+            CapturedGraphFoundation::FullObserver => {
                 let _graph_admission_timing = Timing::start(Stage::FoundationGraphAdmission, 0);
                 let digest = |name: &str| -> Result<[u8; 32], MaterialRuntimeError> {
                     row.try_get::<_, Vec<u8>>(name)?
                         .try_into()
                         .map_err(|_| MaterialRuntimeError::FoundationMismatch)
                 };
+                let stable_graph = row.try_get("stable_graph")?;
+                let world_registers = row.try_get("world_registers")?;
+                let resolver_manifest = row.try_get("resolver_manifest")?;
+                let prepared_environment = row.try_get("prepared_environment")?;
+                let replay_session_id: String = row.try_get("replay_session_id")?;
+                let rng_seed = row.try_get("rng_seed")?;
+                let defines_hash = digest("defines_hash")?;
+                let rules_hash = digest("rules_hash")?;
+                let ref_digest = digest("ref_digest")?;
+                let bundle: Vec<u8> = row.try_get("content_bundle_bytes")?;
+                drop(row);
                 CampaignFoundation::from_persisted(
-                    row.try_get("stable_graph")?,
-                    row.try_get("world_registers")?,
-                    row.try_get("resolver_manifest")?,
-                    row.try_get("prepared_environment")?,
-                    &row.try_get::<_, String>("replay_session_id")?,
-                    row.try_get("rng_seed")?,
-                    digest("defines_hash")?,
-                    digest("rules_hash")?,
-                    digest("ref_digest")?,
-                    &row.try_get::<_, Vec<u8>>("content_bundle_bytes")?,
+                    stable_graph,
+                    world_registers,
+                    resolver_manifest,
+                    prepared_environment,
+                    &replay_session_id,
+                    rng_seed,
+                    defines_hash,
+                    rules_hash,
+                    ref_digest,
+                    &bundle,
                     stored.graph_foundation_digest,
                 )?
             }
@@ -1501,26 +1549,29 @@ pub(crate) fn capture_archive_organizer_register(
 }
 
 impl CapturedArchiveOrganizerRegister {
-    pub(crate) fn admit(self) -> Result<MaterialWorldRegister, MaterialRuntimeError> {
-        let foundation = self.foundation.admit()?;
-        let digest = foundation.digest;
-        let scope = foundation
-            .graph
-            .stable_graph_state()
-            .map_err(MaterialReplayError::Graph)?
-            .scenario_scope()
-            .to_owned();
-        let components = MaterialComponentIdentity::from_foundation(&foundation.graph_foundation);
-        let opening = material_storage::OpeningRegister::from_opening(&foundation.register)
-            .map_err(material_storage::Error::State)?;
-        // Opening shares admitted canonical bytes; replay/catalog owners are no longer needed.
-        drop(foundation);
-        let (lookup, prior_lookup) = admit_archive_lookup(self.lookup, self.tick, &opening)?;
+    pub(crate) fn admit(
+        self,
+        cached: Option<std::sync::Arc<crate::economic_content::EconomicContentAdmission>>,
+    ) -> Result<
+        (
+            MaterialWorldRegister,
+            std::sync::Arc<crate::economic_content::EconomicContentAdmission>,
+        ),
+        MaterialRuntimeError,
+    > {
+        let admitted = admit_archive_foundation(self.foundation, cached)?;
+        let digest = admitted.digest();
+        let scope = admitted.foundation_graph().scenario_scope();
+        let components = &admitted.component_identity;
+        let opening = admitted
+            .opening()
+            .map_err(|_| MaterialRuntimeError::FoundationMismatch)?;
+        let (lookup, prior_lookup) = admit_archive_lookup(self.lookup, self.tick, opening)?;
         let authority = MaterialReadAuthority {
-            scope: &scope,
+            scope,
             foundation_digest: digest,
-            components: &components,
-            opening: &opening,
+            components,
+            opening,
             lookup_chain: None,
             witnesses: [None, None],
         };
@@ -1598,7 +1649,24 @@ impl CapturedArchiveOrganizerRegister {
             accepted.as_ref(),
         )?;
         self.projection.validate(&register)?;
-        Ok(register.into_owned())
+        Ok((register.into_owned(), admitted))
+    }
+}
+
+fn admit_archive_foundation(
+    foundation: CapturedMaterialFoundation,
+    cached: Option<std::sync::Arc<crate::economic_content::EconomicContentAdmission>>,
+) -> Result<std::sync::Arc<crate::economic_content::EconomicContentAdmission>, MaterialRuntimeError>
+{
+    if let Some(admitted) = cached {
+        foundation.validate_against(&admitted)?;
+        drop(foundation);
+        Ok(admitted)
+    } else {
+        Ok(std::sync::Arc::new(
+            crate::economic_content::EconomicContentAdmission::from_foundation(foundation.admit()?)
+                .map_err(|_| MaterialRuntimeError::FoundationMismatch)?,
+        ))
     }
 }
 

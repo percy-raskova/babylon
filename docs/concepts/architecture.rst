@@ -368,17 +368,22 @@ atomic summary and immutable progress records. The collector is maintained under
 
 The national development storage benchmark has a Designed ceiling of
 40,000,000 bytes per committed tick, recorded in
-``contracts/national_storage_qualification_v2.json``. It reports the separate
+``contracts/national_storage_qualification_v3.json``. It reports the separate
 23,000,000-byte optimization target and the longer-term total-save result.
 Count all retained campaign relations and indexes, including receipts, graph
 history and checkpoint growth.
 Charge new shared objects and dictionaries to
 their creation tick.
 
-The allocation charge is the largest of zero, whole-database
-growth and summed positive growth of ordinary parent relations. This prevents
-shrinking another relation from concealing a growing history. Parent totals
-already include their TOAST heap and indexes.
+The allocation charge sums positive growth of ordinary parent relations and
+positive database growth outside those relations. Subtract signed parent deltas
+from the database delta to identify that remaining growth. Charge commit and
+recovery intervals separately. Shrinking another relation cannot conceal a
+growing history or unlisted allocation. Parent totals already include their
+TOAST heap and indexes.
+
+Policy version three records this measurement contract.
+Retained earlier results keep their captured policy and evaluator.
 
 ADR273 preserves the earlier interim decision. ADR280 owns current development
 readiness. The earlier 10 MB goal remains

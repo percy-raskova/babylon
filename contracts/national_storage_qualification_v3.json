@@ -1,7 +1,8 @@
 {
-  "version": 2,
-  "name": "national_storage_qualification_v2",
+  "version": 3,
+  "name": "national_storage_qualification_v3",
   "evidence_class": "Designed",
+  "storage_charge_method": "positive_growth_by_component_and_boundary_v1",
   "maximum_tick_growth_bytes": 40000000,
   "model_year_ticks": 13,
   "qualification_ticks": 52,

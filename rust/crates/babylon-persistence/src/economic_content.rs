@@ -1,11 +1,14 @@
 //! Immutable current campaign admission shared by material readers and projections.
 use crate::{
     economic_catalog::EconomicProjectionView,
+    identity::CampaignId,
     material_runtime::{MaterialComponentIdentity, MaterialRuntimeFoundation},
+    material_storage::OpeningRegister,
 };
 use babylon_graph::stable_state::StableGraphState;
 use babylon_kernel::{clock::CampaignDuration, content_digest::sha256_of};
 use babylon_tick::{material_staffing::StaffingComposition, material_world::MaterialWorldRegister};
+use std::sync::{Arc, Mutex, OnceLock};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum EconomicContentError {
@@ -13,6 +16,7 @@ pub enum EconomicContentError {
     Header,
     Foundation,
     Identity,
+    OwnerPoisoned,
 }
 impl std::fmt::Display for EconomicContentError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -29,6 +33,7 @@ pub struct EconomicContentAdmission {
     pub(crate) graph_digest: [u8; 32],
     pub(crate) source_digest: [u8; 32],
     pub(crate) component_identity: MaterialComponentIdentity,
+    opening: OnceLock<Result<OpeningRegister, EconomicContentError>>,
 }
 impl EconomicContentAdmission {
     /// Reuse an already checked current economic foundation.
@@ -53,12 +58,27 @@ impl EconomicContentAdmission {
             graph_digest,
             source_digest,
             component_identity,
+            opening: OnceLock::new(),
         })
     }
     /// Move the admitted authority into the durable runtime without regeneration.
     #[must_use]
     pub(crate) fn into_foundation(self) -> MaterialRuntimeFoundation {
         self.foundation
+    }
+    pub(crate) const fn foundation(&self) -> &MaterialRuntimeFoundation {
+        &self.foundation
+    }
+    /// Derive the immutable storage opening at most once. Runtime admission alone
+    /// does not pay for a lookup used only by read-side consumers.
+    pub(crate) fn opening(&self) -> Result<&OpeningRegister, EconomicContentError> {
+        self.opening
+            .get_or_init(|| {
+                OpeningRegister::from_opening(self.initial_register())
+                    .map_err(|_| EconomicContentError::Foundation)
+            })
+            .as_ref()
+            .map_err(|error| *error)
     }
     /// Borrow immutable metadata from the admitted economic source.
     /// # Panics
@@ -135,6 +155,49 @@ impl EconomicContentAdmission {
         Ok(())
     }
 }
+
+/// One explicit owner retains at most one campaign's immutable admitted source.
+/// No SQL rows, mutable material state, receipts or publication results live here.
+#[derive(Clone, Default)]
+pub(crate) struct EconomicAdmissionOwner {
+    candidate: Arc<Mutex<Option<EconomicAdmissionCandidate>>>,
+}
+struct EconomicAdmissionCandidate {
+    campaign: CampaignId,
+    admitted: Arc<EconomicContentAdmission>,
+}
+impl EconomicAdmissionOwner {
+    pub(crate) fn candidate(
+        &self,
+        campaign: CampaignId,
+    ) -> Result<Option<Arc<EconomicContentAdmission>>, EconomicContentError> {
+        let candidate = self
+            .candidate
+            .lock()
+            .map_err(|_| EconomicContentError::OwnerPoisoned)?;
+        Ok(candidate
+            .as_ref()
+            .filter(|candidate| candidate.campaign == campaign)
+            .map(|candidate| Arc::clone(&candidate.admitted)))
+    }
+    /// Call only after the complete consuming operation has succeeded.
+    pub(crate) fn publish(
+        &self,
+        campaign: CampaignId,
+        admitted: Arc<EconomicContentAdmission>,
+    ) -> Result<(), EconomicContentError> {
+        let previous = self
+            .candidate
+            .lock()
+            .map_err(|_| EconomicContentError::OwnerPoisoned)?
+            .replace(EconomicAdmissionCandidate { campaign, admitted });
+        // Releasing a previous campaign can destroy large source owners. The
+        // mutex protects only replacement, never that detached release work.
+        drop(previous);
+        Ok(())
+    }
+}
+
 /// Header checking alone never admits opaque material authority.
 /// # Errors
 /// Refuses unsupported presets, invalid clocks, absent or malformed identities.

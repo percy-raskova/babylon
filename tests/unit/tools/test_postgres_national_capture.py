@@ -44,7 +44,7 @@ def test_unknown_capture_mode_refuses_before_preparing_game(tmp_path: Path, mode
 @pytest.mark.parametrize("requested,expected", [(None, "3"), ("1", "1"), ("325", "325")])
 def test_default_period_count_uses_captured_routine_policy(tmp_path, requested, expected):
     data = json.loads(
-        (REPOSITORY / "contracts/national_storage_qualification_v2.json").read_bytes()
+        (REPOSITORY / "contracts/national_storage_qualification_v3.json").read_bytes()
     )
     data["routine_smoke_periods"] = 3
     (tmp_path / "policy.json").write_text(json.dumps(data))
@@ -132,7 +132,7 @@ def test_actual_national_measure_forwards_gate_and_preserves_refusal(
     tmp_path, mode, flag, evaluator_exit, capture_mode
 ):
     """Exercise the real publication path; synthetic files are not PG evidence."""
-    policy = REPOSITORY / "contracts/national_storage_qualification_v2.json"
+    policy = REPOSITORY / "contracts/national_storage_qualification_v3.json"
     (tmp_path / "policy.json").write_bytes(policy.read_bytes())
     (tmp_path / "storage-qualification-mode").write_text(mode + "\n")
     (tmp_path / "timing-qualification-mode").write_text("0\n")

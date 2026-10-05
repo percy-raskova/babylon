@@ -214,7 +214,12 @@ fn household_time_receipts_publish_atomically_and_replay_after_restart() {
     commit(&mut session, &mut sink, retry);
     let mut restored = household_time_session();
     restored
-        .restore_full_checkpoint(&graph, &graph_material, &registers, &material)
+        .restore_full_checkpoint(
+            &graph,
+            &graph_material,
+            &registers,
+            MaterialWorldRegister::decode(&material).unwrap(),
+        )
         .unwrap();
     assert_eq!(restored.material(), session.material());
     let mut restored_sink = CollectingSink::default();
@@ -286,7 +291,12 @@ fn household_admission_consumption_and_retirement_replay_atomically() {
     commit(&mut session, &mut sink, retry);
     let mut restored = self::session();
     restored
-        .restore_full_checkpoint(&graph, &graph_material, &registers, &material)
+        .restore_full_checkpoint(
+            &graph,
+            &graph_material,
+            &registers,
+            MaterialWorldRegister::decode(&material).unwrap(),
+        )
         .unwrap();
     let mut restored_sink = CollectingSink::default();
     let mut consumed = 0;

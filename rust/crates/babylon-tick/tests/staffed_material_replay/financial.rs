@@ -103,7 +103,12 @@ fn public_ownership_receipts_survive_failed_commit_and_staffed_checkpoint_replay
     commit(&mut session, &mut sink, retry);
     let mut restored = financial_session();
     restored
-        .restore_full_checkpoint(&graph, &graph_material, &registers, &material)
+        .restore_full_checkpoint(
+            &graph,
+            &graph_material,
+            &registers,
+            MaterialWorldRegister::decode(&material).unwrap(),
+        )
         .unwrap();
     let mut restored_sink = CollectingSink::default();
     let mut contributed = 0;

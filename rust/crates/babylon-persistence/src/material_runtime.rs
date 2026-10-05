@@ -589,7 +589,7 @@ impl DurableMaterialRuntime {
                 &stored.graph,
                 &stored.material,
                 &stored.sections[1],
-                stored.register.canonical_bytes(),
+                stored.register.into_owned(),
             )?;
             if session.current_world_hash()? != stored.identity.result_world_hash() {
                 return Err(MaterialRuntimeError::InvalidCheckpoint);

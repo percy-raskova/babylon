@@ -355,7 +355,10 @@ fn qualify_case(base: &MichiganMaterialCatalog, case: Case) {
                     graph.result_stable_graph(),
                     graph.material_state_rows(),
                     graph.result_registers().canonical_bytes(),
-                    candidate.material().register().canonical_bytes(),
+                    MaterialWorldRegister::decode(
+                        candidate.material().register().canonical_bytes(),
+                    )
+                    .unwrap(),
                 )
                 .unwrap();
         } else {

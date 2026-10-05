@@ -845,7 +845,12 @@ fn wage_and_dispatch_candidate_is_atomic_and_restarts_through_paid_arrival() {
     commit(&mut session, &mut sink, retry);
     let mut restored = paid_session();
     restored
-        .restore_full_checkpoint(&graph, &graph_material, &registers, &material)
+        .restore_full_checkpoint(
+            &graph,
+            &graph_material,
+            &registers,
+            MaterialWorldRegister::decode(&material).unwrap(),
+        )
         .unwrap();
     let mut restored_sink = CollectingSink::default();
     for _ in 2..=4 {
@@ -1018,7 +1023,12 @@ fn same_version_checkpoint_restores_retention_and_replays_arrival_with_identical
 
     let mut restored = session(WITNESS);
     restored
-        .restore_full_checkpoint(&graph, &graph_material, &registers, &physical)
+        .restore_full_checkpoint(
+            &graph,
+            &graph_material,
+            &registers,
+            MaterialWorldRegister::decode(&physical).unwrap(),
+        )
         .unwrap();
     assert_people(&restored, 0.0, 1.0, 0.0);
     assert_eq!(
@@ -1120,5 +1130,71 @@ fn removing_the_staffed_subject_is_refused_by_the_existing_shape_verb_loader() {
         assert!(message.contains("graph-shape verbs"), "{message}");
     }
 }
+#[test]
+fn admitted_checkpoint_refusal_preserves_both_owners_and_valid_retry_replays() {
+    let mut original = session(WITNESS);
+    let mut original_sink = CollectingSink::default();
+    let candidate = prepare(&original);
+    let graph = candidate.graph_report();
+    let registers = graph.result_registers().canonical_bytes();
+    let mut damaged_registers = registers.to_vec();
+    damaged_registers[0] ^= 1;
+    let admitted =
+        MaterialWorldRegister::decode(candidate.material().register().canonical_bytes()).unwrap();
+    let mut resumed = session(WITNESS);
+    let resumed_sink = CollectingSink::default();
+    let before = live(&resumed, &resumed_sink);
+
+    assert!(matches!(
+        resumed.restore_full_checkpoint(
+            graph.result_stable_graph(),
+            graph.material_state_rows(),
+            &damaged_registers,
+            admitted,
+        ),
+        Err(MaterialReplayError::Graph(
+            ReplayTickError::CheckpointMismatch {
+                section: "world registers",
+            }
+        ))
+    ));
+    assert_eq!(live(&resumed, &resumed_sink), before);
+
+    let opening = MaterialWorldRegister::decode(resumed.material().canonical_bytes()).unwrap();
+    assert!(matches!(
+        resumed.restore_full_checkpoint(
+            graph.result_stable_graph(),
+            graph.material_state_rows(),
+            registers,
+            opening,
+        ),
+        Err(MaterialReplayError::Horizon)
+    ));
+    assert_eq!(live(&resumed, &resumed_sink), before);
+
+    let admitted =
+        MaterialWorldRegister::decode(candidate.material().register().canonical_bytes()).unwrap();
+    resumed
+        .restore_full_checkpoint(
+            graph.result_stable_graph(),
+            graph.material_state_rows(),
+            registers,
+            admitted,
+        )
+        .unwrap();
+    assert_eq!(
+        resumed.current_world_hash().unwrap(),
+        candidate.identity().result_world_hash()
+    );
+    commit(&mut original, &mut original_sink, candidate);
+    let continued = prepare(&original);
+    let replayed = prepare(&resumed);
+    assert_eq!(replayed.identity(), continued.identity());
+    assert_eq!(
+        replayed.material().receipt_bytes(),
+        continued.material().receipt_bytes()
+    );
+}
+
 #[path = "staffed_material_replay/financial.rs"]
 mod financial;

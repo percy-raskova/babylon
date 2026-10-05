@@ -2,6 +2,7 @@
 //! Storage sections have compiled schemas; no identity position maps are stored.
 mod layout;
 mod lookup;
+mod offers;
 mod schema;
 #[cfg(test)]
 mod tests;
@@ -12,7 +13,7 @@ pub use lookup::{IdentityEntry, IdentityKind, TypedLookup};
 use schema::{sections, Cursor, Section};
 use sha2::{Digest, Sha256};
 use std::{collections::BTreeMap, fmt};
-const DOMAIN: &[u8] = b"babylon.state-storage.v3\0";
+const DOMAIN: &[u8] = b"babylon.state-storage.v4\0";
 const MAX_BYTES: usize = MAX_MATERIAL_WORLD_REGISTER_BYTES;
 // Canonical bytes retain their 1 GB limit; storage also owns compression and
 // framing for at most seventy sections. This stays below PostgreSQL's bytea bound.
@@ -420,6 +421,22 @@ fn block(
             encoded: Vec::new(),
         });
     }
+    if section.id == 34 {
+        let count = section.count.ok_or(StorageError::Count)?;
+        let literal = compressed(1, raw.to_vec())?;
+        // Reuse the exact existing prefix. A smaller frame cannot hide added
+        // lookup storage or shift references used by subsequent sections.
+        let body = match offers::encode(raw, count, lookup) {
+            Ok(body) => body,
+            Err(StorageError::LookupIndex) => return Ok(literal),
+            Err(error) => return Err(error),
+        };
+        let candidate = compressed(5, body)?;
+        if candidate.encoded.len() < literal.encoded.len() {
+            return Ok(candidate);
+        }
+        return Ok(literal);
+    }
     let Some(shape) = layout(section.id) else {
         return compressed(1, raw.to_vec());
     };
@@ -565,7 +582,7 @@ fn stored_section(c: &mut Cursor<'_>) -> Result<StoredSection, StorageError> {
     if id > 72 {
         return Err(StorageError::Layout);
     }
-    let mode = c.tag(&[0, 1, 2, 3, 4])?;
+    let mode = c.tag(&[0, 1, 2, 3, 4, 5])?;
     let count = c.number(4)?;
     let count = if count == usize::try_from(u32::MAX).map_err(|_| StorageError::Bounds)? {
         None
@@ -599,6 +616,16 @@ fn stored_section(c: &mut Cursor<'_>) -> Result<StoredSection, StorageError> {
     })
 }
 fn validate_body_length(stored: &StoredSection) -> Result<(), StorageError> {
+    if stored.mode == 5 {
+        if stored.id != 34 {
+            return Err(StorageError::Layout);
+        }
+        return offers::validate_lengths(
+            stored.count.ok_or(StorageError::Count)?,
+            stored.raw_length,
+            stored.body_length,
+        );
+    }
     if stored.mode == 1 {
         if stored.body_length != stored.raw_length {
             return Err(StorageError::Framing);
@@ -653,6 +680,15 @@ fn restore_section(
             return Err(StorageError::Framing);
         }
         return Ok(body);
+    }
+    if stored.mode == 5 {
+        return offers::decode(
+            &body,
+            stored.count.ok_or(StorageError::Count)?,
+            stored.raw_length,
+            lookup,
+            prefix,
+        );
     }
     let shape = layout(stored.id).ok_or(StorageError::Layout)?;
     let count = stored.count.ok_or(StorageError::Count)?;

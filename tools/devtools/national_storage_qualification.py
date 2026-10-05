@@ -114,6 +114,7 @@ LookupHashRow = tuple[Nonnegative, Sha256]
 
 class PackageClaim(FrozenRecord):
     storage_layout: Literal["period_local_lookup_v3"]
+    state_storage_version: Literal[4]
     tick: Nonnegative
     register_storage_bytes: Nonnegative
     receipt_storage_bytes: Nonnegative
@@ -139,6 +140,13 @@ class PackageClaim(FrozenRecord):
     claim_qualification: Literal[
         "Header claims authenticated by actual Rust cold-open; Python does not replace codec/canonical validation."
     ]
+
+    @field_validator("state_storage_version", mode="before")
+    @classmethod
+    def current_state_version(cls, value: object) -> object:
+        if type(value) is not int or value != 4:
+            raise ValueError("unsupported state storage evidence version")
+        return value
 
     @model_validator(mode="after")
     def checked_headers(self) -> PackageClaim:
@@ -181,7 +189,7 @@ class PackageClaim(FrozenRecord):
         if any(not 0 < value <= maximum for value, maximum in limits):
             raise ValueError("package or canonical length exceeds current Rust bound")
         if (
-            self.register_storage_bytes < len(b"babylon.state-storage.v3\0") + 142
+            self.register_storage_bytes < len(b"babylon.state-storage.v4\0") + 142
             or self.receipt_storage_bytes < len(b"BabylonReceiptStorageV2\0") + 88 + 36 * 59
             or self.lookup_delta_bytes < len(b"BabylonPeriodLookupV3\0") + 162
         ):
@@ -204,7 +212,7 @@ def package_claim_from_headers(
     lookup_size: int,
 ) -> PackageClaim:
     """Read current headers; full body authentication belongs to the Rust reopen."""
-    sd = b"babylon.state-storage.v3\0"
+    sd = b"babylon.state-storage.v4\0"
     rd = b"BabylonReceiptStorageV2\0"
     ld = b"BabylonPeriodLookupV3\0"
     for head, domain, fields in (
@@ -241,6 +249,7 @@ def package_claim_from_headers(
     opening_entries = receipt_prefix - period_entries
     return PackageClaim(
         storage_layout="period_local_lookup_v3",
+        state_storage_version=4,
         tick=tick,
         register_storage_bytes=state_size,
         receipt_storage_bytes=receipt_size,

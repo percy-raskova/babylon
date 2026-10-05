@@ -261,7 +261,7 @@ fn labor_coefficients() -> Vec<LaborCoefficient> {
         .collect()
 }
 
-pub(super) fn opening() -> MaterialCircuitState {
+pub(crate) fn opening() -> MaterialCircuitState {
     MaterialCircuitState {
         period: 1,
         accounting: accounting(),

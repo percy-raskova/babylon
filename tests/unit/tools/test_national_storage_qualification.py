@@ -75,6 +75,7 @@ def snapshot(tick=0, size=100, relation=100, opening=True):
         "actual_rust_storage_package_claims": [
             {
                 "storage_layout": "period_local_lookup_v3",
+                "state_storage_version": 4,
                 "tick": i,
                 "register_storage_bytes": 200,
                 "receipt_storage_bytes": 2300,
@@ -337,6 +338,10 @@ def test_new_tick_cannot_drop_recorded_lookup_history():
     "field,value",
     [
         ("tick", True),
+        ("state_storage_version", 3),
+        ("state_storage_version", 4.0),
+        ("state_storage_version", "4"),
+        ("state_storage_version", None),
         ("canonical_register_bytes", 1.5),
         ("complete_lookup_entries", 2**32),
         ("lookup_packed_bytes", 71),
@@ -413,7 +418,7 @@ def current_headers():
         b"BabylonPeriodLookupChainV1\0" + opening + tick + previous + packed_hash
     ).digest()
     state = (
-        b"babylon.state-storage.v3\0"
+        b"babylon.state-storage.v4\0"
         + opening
         + canonical
         + chain
@@ -449,6 +454,7 @@ def test_collector_current_headers_bind_opening_period_chain_and_local_prefix():
     state, receipt, lookup = current_headers()
     claim = package_claim_from_headers(1, state, receipt, lookup, 200, 2300, len(lookup) + 7)
     assert claim.storage_layout == "period_local_lookup_v3"
+    assert claim.state_storage_version == 4
     assert claim.lookup_descriptor_bytes == 20
     assert claim.lookup_descriptor_sha256 == "05" * 32
     assert claim.opening_lookup_entries == 100
@@ -460,7 +466,7 @@ def test_collector_current_headers_bind_opening_period_chain_and_local_prefix():
 def test_collector_refuses_unsupported_or_inconsistent_header_claims(fault):
     state, receipt, lookup = current_headers()
     if fault == "old":
-        state = state.replace(b"state-storage.v3", b"state-storage.v2")
+        state = state.replace(b"state-storage.v4", b"state-storage.v3")
     elif fault == "truncated":
         state = state[:-1]
     elif fault == "opening":
@@ -470,7 +476,7 @@ def test_collector_refuses_unsupported_or_inconsistent_header_claims(fault):
         offset = len(b"BabylonPeriodLookupV3\0") + 34
         lookup = lookup[:offset] + (2).to_bytes(8, "big") + lookup[offset + 8 :]
     elif fault == "chain":
-        offset = len(b"babylon.state-storage.v3\0") + 64
+        offset = len(b"babylon.state-storage.v4\0") + 64
         state = state[:offset] + bytes([state[offset] ^ 1]) + state[offset + 1 :]
     else:
         lookup = lookup[:-8] + (8).to_bytes(8, "big")
@@ -1846,8 +1852,8 @@ def test_collector_current_receipt_storage_domain_refuses_v1():
         package_claim_from_headers(1, state, receipt, lookup, 200, 2300, len(lookup) + 7)
 
 
-def test_collector_current_state_storage_domain_refuses_v2():
+def test_collector_current_state_storage_domain_refuses_v3():
     state, receipt, lookup = current_headers()
-    state = state.replace(b"state-storage.v3", b"state-storage.v2")
+    state = state.replace(b"state-storage.v4", b"state-storage.v3")
     with pytest.raises(ValueError):
         package_claim_from_headers(1, state, receipt, lookup, 200, 2300, len(lookup) + 7)

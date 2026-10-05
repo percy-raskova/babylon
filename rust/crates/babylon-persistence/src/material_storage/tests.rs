@@ -37,7 +37,7 @@ fn actual_two_periods_reload_independently_without_retaining_historic_lookup() {
         let encoded = encode(current, receipts, &opening, chain).unwrap();
         assert!(encoded
             .register_storage_bytes
-            .starts_with(b"babylon.state-storage.v3\0"));
+            .starts_with(b"babylon.state-storage.v4\0"));
         assert!(encoded
             .receipt_storage_bytes
             .starts_with(b"BabylonReceiptStorageV2\0"));
@@ -61,7 +61,7 @@ fn actual_two_periods_reload_independently_without_retaining_historic_lookup() {
         independent.bind_lookup_chain(encoded.lookup_chain).unwrap();
         assert_eq!(independent.package, encoded.register_storage_bytes);
         let mut shortened = encoded.register_storage_bytes.clone();
-        let offset = b"babylon.state-storage.v3\0".len() + 32 + 32 + 32 + 8;
+        let offset = b"babylon.state-storage.v4\0".len() + 32 + 32 + 32 + 8;
         shortened[offset..offset + 4].copy_from_slice(&0_u32.to_be_bytes());
         shortened[offset + 4..offset + 36].copy_from_slice(&sha256_of(&[]));
         assert_eq!(

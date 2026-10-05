@@ -1,5 +1,5 @@
-//! Source-model framing for every current state18 branch. Variable rows retain
-//! their full raw canonical section; their framing is still parsed and bounded.
+//! Source-model framing for every current state18 branch. Every variable row is
+//! parsed and bounded before its raw or closed variant storage encoding is chosen.
 use super::{layout::layout, StorageError, MAX_BYTES};
 pub(super) const REGISTER_DOMAIN: &[u8] = b"babylon.material-world-register.v4\0";
 const STATE_DOMAIN: &[u8] = b"babylon.material-circuit-state.v3\0";

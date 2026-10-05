@@ -23,7 +23,7 @@ pub(crate) mod prices;
 #[cfg(test)]
 mod prices_tests;
 #[cfg(test)]
-mod recurring_fixture;
+pub(crate) mod recurring_fixture;
 mod routes;
 mod services;
 #[cfg(test)]

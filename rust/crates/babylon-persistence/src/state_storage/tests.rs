@@ -2,6 +2,8 @@ use super::*;
 use crate::michigan_content::MichiganContentPreset;
 use babylon_practice_contract::OrderedPracticeActionBatch;
 
+use crate::production_projection::recurring_fixture as recurring_control;
+
 fn opening(preset: MichiganContentPreset) -> crate::material_runtime::MaterialRuntimeFoundation {
     preset
         .create_foundation(&crate::test_support::catalog())
@@ -1124,7 +1126,7 @@ fn previous_state_storage_domain_is_explicitly_unsupported() {
     )
     .unwrap();
     let mut old = encoded.package;
-    old[..DOMAIN.len()].copy_from_slice(b"babylon.state-storage.v2\0");
+    old[..DOMAIN.len()].copy_from_slice(b"babylon.state-storage.v3\0");
     assert_eq!(
         decode_admitted(&authority, &old, authority.lookup(), [0; 32]),
         Err(StorageError::Version)
@@ -1207,4 +1209,246 @@ fn opening_prefix_equal_frame_keeps_full_columns() {
     )
     .unwrap();
     assert_eq!(selected.mode, 2);
+}
+
+fn offer_lookup() -> TypedLookup {
+    TypedLookup::from_entries(
+        [
+            (IdentityKind::Site, 7),
+            (IdentityKind::Good, 9),
+            (IdentityKind::Unit, 11),
+        ]
+        .map(|(kind, byte)| IdentityEntry {
+            kind,
+            bytes: [byte; 32],
+        })
+        .to_vec(),
+    )
+    .unwrap()
+}
+fn offer_rows() -> Vec<u8> {
+    let mut raw = 6_u32.to_be_bytes().to_vec();
+    for (ordinal, tag) in [3_u8, 1, 2, 2, 1, 3].into_iter().enumerate() {
+        for byte in [7, 9, 11] {
+            raw.extend_from_slice(&[byte; 32]);
+        }
+        raw.extend_from_slice(&(i128::try_from(ordinal).unwrap() - 3).to_be_bytes());
+        raw.push(tag);
+        for byte in 0..match tag {
+            2 => 56,
+            3 => 48,
+            _ => 0,
+        } {
+            raw.push(byte + u8::try_from(ordinal).unwrap());
+        }
+    }
+    raw
+}
+#[test]
+fn offer_storage_retains_all_variants_and_original_order() {
+    let raw = offer_rows();
+    let lookup = offer_lookup();
+    let body = offers::encode(&raw, 6, &lookup).unwrap();
+    assert_eq!(lookup.entries().len(), 3);
+    assert_eq!(
+        offers::decode(&body, 6, raw.len(), &lookup, 3).unwrap(),
+        raw
+    );
+    let mut changed = raw.clone();
+    changed[100] ^= 1;
+    changed[120] ^= 1;
+    let body = offers::encode(&changed, 6, &lookup).unwrap();
+    assert_eq!(
+        offers::decode(&body, 6, changed.len(), &lookup, 3).unwrap(),
+        changed
+    );
+    assert_eq!(
+        offers::decode(&body, 6, changed.len(), &lookup, 0),
+        Err(StorageError::LookupIndex)
+    );
+    let wrong = TypedLookup::from_entries(vec![
+        IdentityEntry {
+            kind: IdentityKind::Good,
+            bytes: [7; 32],
+        },
+        lookup.entries()[1],
+        lookup.entries()[2],
+    ])
+    .unwrap();
+    assert_eq!(
+        offers::decode(&body, 6, changed.len(), &wrong, 3),
+        Err(StorageError::IdentityKind)
+    );
+    assert!(offers::decode(&body, 5, changed.len(), &lookup, 3).is_err());
+    assert!(offers::decode(&body, 6, changed.len() + 1, &lookup, 3).is_err());
+    let mut invalid = body.clone();
+    invalid[4] = 4;
+    assert!(offers::decode(&invalid, 6, changed.len(), &lookup, 3).is_err());
+    let mut trailing = body.clone();
+    trailing.push(0);
+    assert!(offers::decode(&trailing, 6, changed.len(), &lookup, 3).is_err());
+    assert!(offers::decode(&body[..body.len() - 1], 6, changed.len(), &lookup, 3).is_err());
+    assert!(offers::encode(&raw, 5, &lookup).is_err());
+    let mut lookup = lookup;
+    let section = prefix_section(34, &raw, 6);
+    let selected = block(&raw, &section, Some((&section, &raw)), &mut lookup).unwrap();
+    assert_eq!(selected.mode, 0);
+}
+#[test]
+fn offer_mode_refuses_wrong_section_and_damaged_body_digest() {
+    let raw = offer_rows();
+    let lookup = offer_lookup();
+    let body = offers::encode(&raw, 6, &lookup).unwrap();
+    let encoded = compressed(5, body).unwrap();
+    let mut stored = StoredSection {
+        id: 34,
+        mode: 5,
+        count: Some(6),
+        raw_length: raw.len(),
+        raw_digest: digest(&raw),
+        body_length: encoded.body_length,
+        body_digest: encoded.body_digest,
+        encoded: encoded.encoded,
+    };
+    assert_eq!(restore_section(&stored, None, &lookup, 3).unwrap(), raw);
+    stored.id = 33;
+    assert_eq!(
+        restore_section(&stored, None, &lookup, 3),
+        Err(StorageError::Layout)
+    );
+    stored.id = 34;
+    stored.body_digest[0] ^= 1;
+    assert_eq!(
+        restore_section(&stored, None, &lookup, 3),
+        Err(StorageError::Compression)
+    );
+}
+
+#[test]
+fn offer_selection_uses_frame_size_without_changing_existing_references() {
+    let mut raw = 1_u32.to_be_bytes().to_vec();
+    raw.extend_from_slice(&[0; 112]);
+    raw.push(1);
+    let entries = [IdentityKind::Site, IdentityKind::Good, IdentityKind::Unit]
+        .map(|kind| IdentityEntry {
+            kind,
+            bytes: [0; 32],
+        })
+        .to_vec();
+    let mut lookup = TypedLookup::from_entries(entries.clone()).unwrap();
+    let normalized = offers::encode(&raw, 1, &lookup).unwrap();
+    let normalized_size = compress_exact(&normalized, MAX_BYTES).unwrap().len();
+    let literal_size = compress_exact(&raw, MAX_BYTES).unwrap().len();
+    let selected = block(&raw, &prefix_section(34, &raw, 1), None, &mut lookup).unwrap();
+    assert_eq!(
+        selected.mode,
+        if normalized_size < literal_size { 5 } else { 1 }
+    );
+    assert_eq!(lookup.entries(), entries);
+    let empty = 0_u32.to_be_bytes();
+    let selected = block(&empty, &prefix_section(34, &empty, 0), None, &mut lookup).unwrap();
+    assert_eq!(selected.mode, 1); // Equal frames retain the literal representation.
+    assert_eq!(lookup.entries(), entries);
+}
+
+#[test]
+fn offer_candidate_cannot_enlarge_lookup_to_shrink_only_its_frame() {
+    let count = 512_u32;
+    let mut raw = count.to_be_bytes().to_vec();
+    for ordinal in 0..count {
+        for kind in 0..3_u8 {
+            let mut seed = ordinal.to_be_bytes().to_vec();
+            seed.push(kind);
+            raw.extend_from_slice(&digest(&seed));
+        }
+        raw.extend_from_slice(&1_i128.to_be_bytes());
+        raw.push(1);
+    }
+    let mut lookup = TypedLookup::default();
+    let selected = block(
+        &raw,
+        &prefix_section(34, &raw, count as usize),
+        None,
+        &mut lookup,
+    )
+    .unwrap();
+    assert!(
+        lookup.entries().is_empty(),
+        "offer candidate grew the shared lookup"
+    );
+    assert_eq!(selected.mode, 1);
+}
+
+#[test]
+fn offer_mode_preserves_complete_canonical_admission_and_parent_binding() {
+    let register = MaterialWorldRegister::try_new(0, recurring_control::opening()).unwrap();
+    let authority = OpeningRegister::from_opening(&register).unwrap();
+    let canonical = authority.canonical_bytes();
+    let parsed = sections(canonical).unwrap();
+    let mut lookup = authority.lookup().clone();
+    let mut blocks = Vec::new();
+    for section in &parsed {
+        let raw = section.raw(canonical);
+        blocks.push(if section.id == 34 {
+            compressed(
+                5,
+                offers::encode(raw, section.count.unwrap(), &lookup).unwrap(),
+            )
+            .unwrap()
+        } else {
+            block(canonical, section, Some((section, raw)), &mut lookup).unwrap()
+        });
+    }
+    assert!(parsed.iter().any(|section| section.id == 34));
+    let mut package = DOMAIN.to_vec();
+    package.extend_from_slice(&authority.digest());
+    package.extend_from_slice(&digest(canonical));
+    package.extend_from_slice(&[0; 32]);
+    package.extend_from_slice(&u64::try_from(canonical.len()).unwrap().to_be_bytes());
+    package.extend_from_slice(&u32::try_from(lookup.entries().len()).unwrap().to_be_bytes());
+    package.extend_from_slice(&lookup.prefix_digest(lookup.entries().len()).unwrap());
+    package.extend_from_slice(&u16::try_from(parsed.len()).unwrap().to_be_bytes());
+    for (section, block) in parsed.iter().zip(blocks) {
+        append_block(&mut package, canonical, section, &block).unwrap();
+    }
+    assert_eq!(
+        decode_admitted(&authority, &package, &lookup, [0; 32])
+            .unwrap()
+            .0,
+        canonical
+    );
+    package[DOMAIN.len()] ^= 1;
+    assert_eq!(
+        decode_admitted(&authority, &package, &lookup, [0; 32]),
+        Err(StorageError::ParentMismatch)
+    );
+}
+
+#[test]
+fn missing_offer_references_do_not_hide_malformed_later_bytes() {
+    let raw = offer_rows();
+    let lookup = TypedLookup::default();
+    assert_eq!(
+        offers::encode(&raw, 6, &lookup),
+        Err(StorageError::LookupIndex)
+    );
+    let mut invalid_tag = raw.clone();
+    invalid_tag[4 + 112] = 4;
+    assert_eq!(
+        offers::encode(&invalid_tag, 6, &lookup),
+        Err(StorageError::Framing)
+    );
+    let mut truncated = raw.clone();
+    truncated.pop();
+    assert_eq!(
+        offers::encode(&truncated, 6, &lookup),
+        Err(StorageError::Framing)
+    );
+    let mut trailing = raw;
+    trailing.push(0);
+    assert_eq!(
+        offers::encode(&trailing, 6, &lookup),
+        Err(StorageError::Trailing)
+    );
+    assert!(lookup.entries().is_empty());
 }

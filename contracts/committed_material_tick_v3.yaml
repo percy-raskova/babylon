@@ -571,6 +571,9 @@ receipts:
 persistence:
   material_rows: babylon_state.material_tick_v3
   register_storage: Compiled section layouts, typed lookup references, exact columns and opening-relative XOR.
+    Variable seller offers retain ordinal pricing tags, literal numeric bytes and typed Site/Good/Unit references;
+    normalization reuses the existing lookup prefix, falling back to literal storage for absent identities.
+    The normalized candidate is retained only when its compressed frame is smaller than the literal frame.
   receipt_storage: All thirty-six families, exact columns and checked redundant numeric factors.
   lookup_storage: One current period table shares the immutable opening seed and exact ordered recipe-or-literal
     state/receipt additions in the same transaction.
@@ -583,7 +586,7 @@ persistence:
   lookup_ownership: Retain opening plus one local period table; repeat surviving identities without retaining retired
     historical identities.
   storage_domains:
-    state: "babylon.state-storage.v3\0"
+    state: "babylon.state-storage.v4\0"
     period_lookup: "BabylonPeriodLookupV3\0"
     receipt: "BabylonReceiptStorageV2\0"
   canonical_reconstruction: Shared runtime and full-observer decoder verifies original bytes before envelope checks.

@@ -366,6 +366,13 @@ descendants cannot keep the lock after the runner exits. Failed runs retain an
 atomic summary and immutable progress records. The collector is maintained under
 ``tools/devtools`` and the runner pins ``PostgreSQL`` build and configuration sources.
 
+Playable evidence version three binds independent aid and trade accounting to
+the same authenticated complete observation. Derived trade totals reconcile
+original procurement terms, delivery, realization and matched settlement.
+The audit keeps only unresolved order terms. Full national and long-save
+checks test for settled trade in both directions and actual foreign production.
+The shorter smoke preserves incomplete transit evidence.
+
 The national development storage benchmark has a Designed ceiling of
 40,000,000 bytes per committed tick, recorded in
 ``contracts/national_storage_qualification_v3.json``. It reports the separate

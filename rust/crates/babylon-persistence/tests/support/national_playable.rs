@@ -31,6 +31,9 @@ mod national_aid_accounting;
 #[path = "national_boundary_evidence.rs"]
 mod national_boundary_evidence;
 
+#[path = "national_trade_accounting.rs"]
+mod national_trade_accounting;
+
 struct Session {
     input: UnixStream,
     output: BufReader<UnixStream>,
@@ -532,6 +535,12 @@ struct AccountedBoundary {
     production_timing: NativeTimingSample,
 }
 
+#[derive(Default)]
+struct QualificationAccounting {
+    aid: national_aid_accounting::Audit,
+    trade: national_trade_accounting::Audit,
+}
+
 impl<'a> QualificationRun<'a> {
     fn start(config: &'a Config, campaign: CampaignId, periods: u64, started: Instant) -> Self {
         let limits = national_boundary_evidence::limits();
@@ -630,7 +639,7 @@ impl<'a> QualificationRun<'a> {
         &self,
         session: &Session,
         observer: &ObserverEconomyReader,
-        accounting: &mut national_aid_accounting::Audit,
+        accounting: &mut QualificationAccounting,
         after: &OrganizerSnapshot,
         archive: &serde_json::Value,
     ) -> AccountedBoundary {
@@ -644,7 +653,7 @@ impl<'a> QualificationRun<'a> {
             elapsed <= self.limits.production,
             "complete production read exceeded captured budget"
         );
-        let admitted = accounting.read(
+        let admitted = accounting.aid.read(
             &observation.accounting,
             self.campaign,
             tick,
@@ -665,18 +674,31 @@ impl<'a> QualificationRun<'a> {
             &session.foundation,
             &admitted,
         );
+        let mut trade_fact = accounting
+            .trade
+            .read(
+                &observation.accounting.receipts,
+                &observation.snapshot.production.as_ref().unwrap().sites,
+            )
+            .expect("independent funded trade accounting agrees with committed receipts");
+        trade_fact["tick_content_hash"] = serde_json::json!(session.tail.tick_content_hash);
+        trade_fact["canonical_receipt_sha256"] =
+            serde_json::json!(national_boundary_evidence::hex(&admitted.receipt_digest()));
         drop(observation);
         write_progress(self.campaign, tick, "production", self.started, &production);
+        write_progress(self.campaign, tick, "trade", self.started, &trade_fact);
+        let mut proof = national_boundary_evidence::boundary(
+            self.config,
+            self.campaign,
+            tick,
+            &session.foundation,
+            &admitted,
+            archive,
+            &production,
+        );
+        proof["trade"] = trade_fact;
         AccountedBoundary {
-            proof: national_boundary_evidence::boundary(
-                self.config,
-                self.campaign,
-                tick,
-                &session.foundation,
-                &admitted,
-                archive,
-                &production,
-            ),
+            proof,
             roster,
             world: national_boundary_evidence::hex(&admitted.result_world_hash()),
             production_timing: NativeTimingSample {
@@ -693,7 +715,7 @@ pub(super) fn qualify(config: &Config, campaign: CampaignId, periods: u64, run_s
     assert_eq!(session.tail.resolve_tick, 0);
     snapshot("opening-created", campaign);
     let observer = national_aid_accounting::observer();
-    let mut accounting = national_aid_accounting::Audit::default();
+    let mut accounting = QualificationAccounting::default();
     let foundation = session.foundation.clone();
     let mut advances = Vec::new();
     let mut cold_reopens = Vec::new();
@@ -720,7 +742,7 @@ pub(super) fn qualify(config: &Config, campaign: CampaignId, periods: u64, run_s
             .as_ref()
             .and_then(|(commitment, _)| commitment.as_ref());
         if let Some(commitment) = commitment {
-            accounting.accept(commitment, &before);
+            accounting.aid.accept(commitment, &before);
         }
         let (acknowledged, timing) = run.advance(&mut session);
         advances.push(timing);
@@ -773,11 +795,11 @@ pub(super) fn qualify(config: &Config, campaign: CampaignId, periods: u64, run_s
     session.stop();
     write_report(
         "national-playable-qualification.json",
-        &serde_json::json!({"version":2,"capture_mode":"playable-aid","policy_sha256":run.limits.policy_sha256,
+        &serde_json::json!({"version":3,"capture_mode":"playable-aid","policy_sha256":run.limits.policy_sha256,
         "campaign":campaign.as_uuid().to_string(),"foundation_sha256":foundation,"county_geoids":county_geoids.unwrap(),"requested_periods":periods,"aid_periods":evidence,"continuations":continuations,"boundaries":boundaries,
         "canonical_protocol_recovery":"passed","positive_aid_consequences":if remote&&local {"passed"} else {"incomplete"},
-        "remote_consumed":remote,"local_consumed":local,"independent_finite_aid_practice":accounting.practice_report(),"native_window_evidence":"not_run",
-        "independent_account_posting_audit":accounting.report()}),
+        "remote_consumed":remote,"local_consumed":local,"independent_finite_aid_practice":accounting.aid.practice_report(),"native_window_evidence":"not_run",
+        "independent_account_posting_audit":accounting.aid.report(),"independent_trade_accounting":accounting.trade.report()}),
     );
     run.write_timings(
         periods,

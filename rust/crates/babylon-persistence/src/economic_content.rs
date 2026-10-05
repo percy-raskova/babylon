@@ -2,7 +2,9 @@
 use crate::{
     economic_catalog::EconomicProjectionView,
     identity::CampaignId,
-    material_runtime::{MaterialComponentIdentity, MaterialRuntimeFoundation},
+    material_runtime::{
+        MaterialComponentIdentity, MaterialRuntimeError, MaterialRuntimeFoundation,
+    },
     material_storage::OpeningRegister,
 };
 use babylon_graph::stable_state::StableGraphState;
@@ -120,9 +122,17 @@ impl EconomicContentAdmission {
     pub fn content_digest(&self) -> [u8; 32] {
         self.foundation.spec().content_digest
     }
-    #[must_use]
-    pub fn canonical_bytes(&self) -> &[u8] {
-        self.foundation.canonical_bytes()
+    /// Return the complete canonical length without allocating an export.
+    /// # Errors
+    /// Refuses invalid canonical component bounds or duration.
+    pub fn canonical_len(&self) -> Result<usize, MaterialRuntimeError> {
+        self.foundation.canonical_len()
+    }
+    /// Allocate the current binary export only when explicitly requested.
+    /// # Errors
+    /// Refuses invalid canonical framing or an allocation failure.
+    pub fn export_canonical_bytes(&self) -> Result<Vec<u8>, MaterialRuntimeError> {
+        self.foundation.export_canonical_bytes()
     }
     /// # Errors
     /// Refuses clocks or source/foundation identities from any other campaign.

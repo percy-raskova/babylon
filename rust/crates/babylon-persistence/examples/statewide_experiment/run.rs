@@ -141,7 +141,7 @@ fn run_case(
     let preset = MichiganContentPreset::new_campaign(delivery);
     let foundation = preset.create_foundation(catalog)?;
     let foundation_hash = hex(&foundation.digest());
-    let foundation_bytes = foundation.canonical_bytes().len();
+    let foundation_bytes = foundation.canonical_len()?;
     let captured_content_sha256 = hex(&foundation.spec().content_digest);
     let captured_bytes = foundation
         .graph_foundation()

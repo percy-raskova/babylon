@@ -13,7 +13,7 @@ use super::{
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_material_circuit::{GoodId, MaterialCircuitState, UnitId};
 use babylon_persistence::{
-    material_runtime::MAX_MATERIAL_FOUNDATION_BYTES,
+    material_runtime::{MaterialRuntimeFoundation, MAX_MATERIAL_FOUNDATION_BYTES},
     michigan_material::{MichiganMaterialCatalog, MAX_MICHIGAN_SOURCE_BYTES},
     production_observation::ProductionCapacityKind,
     production_observation::ProductionOutboundKind,
@@ -34,6 +34,16 @@ use std::{
     path::{Path, PathBuf},
     time::{Duration, Instant},
 };
+
+fn assert_same_foundation_bytes(
+    left: &MaterialRuntimeFoundation,
+    right: &MaterialRuntimeFoundation,
+) {
+    assert_eq!(
+        left.export_canonical_bytes().unwrap(),
+        right.export_canonical_bytes().unwrap()
+    );
+}
 
 type Session = MaterialReplaySession<HypergraphStore>;
 type Goods = BTreeMap<(GoodId, UnitId), u128>;
@@ -156,7 +166,7 @@ fn qualify_preset(delivery: MichiganDeliveryPreset, index: u128) {
     let foundation = preset.create_foundation(&captured).unwrap();
     let foundation_digest = foundation.digest();
     let twin = preset.create_foundation(&captured).unwrap();
-    assert_eq!(foundation.canonical_bytes(), twin.canonical_bytes());
+    assert_same_foundation_bytes(&foundation, &twin);
     let mut reference = twin.into_session().unwrap();
     let mut measured = Measurements {
         captured_bytes: foundation
@@ -164,7 +174,7 @@ fn qualify_preset(delivery: MichiganDeliveryPreset, index: u128) {
             .content_bundle()
             .canonical_bytes()
             .len(),
-        foundation_bytes: foundation.canonical_bytes().len(),
+        foundation_bytes: foundation.canonical_len().unwrap(),
         ..Measurements::default()
     };
     assert!(measured.captured_bytes < MAX_MICHIGAN_SOURCE_BYTES);

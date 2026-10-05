@@ -45,7 +45,7 @@ fn captured_rule_source_survives_restart_without_reopening_current_authored_rule
         &restored_foundation.spec().content_digest,
         &restored_foundation.digest(),
         0,
-        restored_foundation.canonical_bytes()
+        &restored_foundation.export_canonical_bytes().unwrap()
     )
     .is_ok());
 }

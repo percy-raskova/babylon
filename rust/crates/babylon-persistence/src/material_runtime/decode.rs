@@ -52,7 +52,7 @@ impl MaterialRuntimeFoundation {
             graph,
             expected,
         )?;
-        if reconstructed.canonical_bytes() != bytes {
+        if !reconstructed.canonical_encoding()?.matches_bytes(bytes) {
             return Err(MaterialRuntimeError::FoundationMismatch);
         }
         Ok(reconstructed)

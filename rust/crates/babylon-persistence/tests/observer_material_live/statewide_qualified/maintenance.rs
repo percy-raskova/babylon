@@ -1,11 +1,11 @@
 //! Four bounded maintenance experiments against admitted statewide content and owned `PostgreSQL`.
 use super::{
-    advance_pair, assert_history_and_preview, identity_hex, install_reader_role, observe,
-    provision_observer_role, reopen_runtime, witnessed_output, CampaignId, CollectingSink,
-    DisposableTarget, DurableMaterialRuntime, Measurements, MichiganContentPreset,
-    MichiganDeliveryPreset, MichiganMaterialCatalog, NoTls, ObserverEconomyReader,
-    ObserverVisibility, OrderedPracticeActionBatch, ProductionSnapshot, ReplayCommitDisposition,
-    Session, SourceCopies, Uuid, MAX_MATERIAL_TICK_RECEIPT_BYTES,
+    advance_pair, assert_history_and_preview, assert_same_foundation_bytes, identity_hex,
+    install_reader_role, observe, provision_observer_role, reopen_runtime, witnessed_output,
+    CampaignId, CollectingSink, DisposableTarget, DurableMaterialRuntime, Measurements,
+    MichiganContentPreset, MichiganDeliveryPreset, MichiganMaterialCatalog, NoTls,
+    ObserverEconomyReader, ObserverVisibility, OrderedPracticeActionBatch, ProductionSnapshot,
+    ReplayCommitDisposition, Session, SourceCopies, Uuid, MAX_MATERIAL_TICK_RECEIPT_BYTES,
     MAX_MATERIAL_WORLD_REGISTER_BYTES, MAX_MICHIGAN_SOURCE_BYTES,
 };
 use babylon_bsl::causal_contract::EvidenceClass;
@@ -79,7 +79,7 @@ fn qualify(case: Case, index: u128) {
     let foundation = preset.create_foundation(&catalog).unwrap();
     let foundation_digest = foundation.digest();
     let twin = preset.create_foundation(&catalog).unwrap();
-    assert_eq!(foundation.canonical_bytes(), twin.canonical_bytes());
+    assert_same_foundation_bytes(&foundation, &twin);
     let mut reference = twin.into_session().unwrap();
     let mut measured = Measurements {
         captured_bytes: foundation
@@ -87,7 +87,7 @@ fn qualify(case: Case, index: u128) {
             .content_bundle()
             .canonical_bytes()
             .len(),
-        foundation_bytes: foundation.canonical_bytes().len(),
+        foundation_bytes: foundation.canonical_len().unwrap(),
         ..Measurements::default()
     };
     assert!(measured.captured_bytes < MAX_MICHIGAN_SOURCE_BYTES);

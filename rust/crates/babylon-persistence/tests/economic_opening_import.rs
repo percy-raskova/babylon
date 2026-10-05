@@ -111,9 +111,15 @@ fn captured_control_restarts_and_advances_through_the_same_three_period_circuit(
             ReplaySeed::new(319),
         )
         .unwrap();
-    let restored =
-        MaterialRuntimeFoundation::decode(original.canonical_bytes(), original.digest()).unwrap();
-    assert_eq!(original.canonical_bytes(), restored.canonical_bytes());
+    let restored = MaterialRuntimeFoundation::decode(
+        &original.export_canonical_bytes().unwrap(),
+        original.digest(),
+    )
+    .unwrap();
+    assert_eq!(
+        original.export_canonical_bytes().unwrap(),
+        restored.export_canonical_bytes().unwrap()
+    );
     let mut direct = original.into_session().unwrap();
     let mut restart = restored.into_session().unwrap();
     for period in 1..=3 {

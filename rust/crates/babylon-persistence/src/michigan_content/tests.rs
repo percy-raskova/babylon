@@ -27,7 +27,10 @@ fn current_staffed_foundation_keeps_observed_cohorts_separate_from_five_designed
             .create_foundation(&crate::test_support::catalog())
             .unwrap();
         let expected = preset.admitted(&crate::test_support::catalog()).unwrap();
-        assert_eq!(foundation.canonical_bytes(), expected.canonical_bytes());
+        assert_eq!(
+            foundation.export_canonical_bytes().unwrap(),
+            expected.export_canonical_bytes().unwrap()
+        );
         assert_eq!(foundation.initial_register(), expected.initial_register());
         assert_eq!(expected.duration(), finite(16));
         let source = std::str::from_utf8(
@@ -101,10 +104,13 @@ fn admission_refuses_mixed_headers_graphs_and_unadmitted_versions() {
             &expected.content_digest(),
             &expected.digest(),
             16,
-            expected.canonical_bytes(),
+            &expected.export_canonical_bytes().unwrap(),
         )
         .unwrap();
-        assert_eq!(reopened.canonical_bytes(), expected.canonical_bytes());
+        assert_eq!(
+            reopened.export_canonical_bytes().unwrap(),
+            expected.export_canonical_bytes().unwrap()
+        );
         for tick in [0, 16] {
             assert!(expected
                 .validate_header(
@@ -146,7 +152,7 @@ fn admission_refuses_mixed_headers_graphs_and_unadmitted_versions() {
                 &mixed.content_digest(),
                 &mixed.digest(),
                 0,
-                expected.canonical_bytes()
+                &expected.export_canonical_bytes().unwrap()
             )
             .is_err());
             if expected.graph_digest != mixed.graph_digest {
@@ -166,7 +172,7 @@ fn admission_refuses_mixed_headers_graphs_and_unadmitted_versions() {
             &expected.content_digest(),
             &expected.digest(),
             0,
-            expected.canonical_bytes()
+            &expected.export_canonical_bytes().unwrap()
         )
         .is_err());
         assert!(admit_economic_content(
@@ -175,7 +181,7 @@ fn admission_refuses_mixed_headers_graphs_and_unadmitted_versions() {
             &expected.content_digest()[..31],
             &expected.digest(),
             0,
-            expected.canonical_bytes()
+            &expected.export_canonical_bytes().unwrap()
         )
         .is_err());
         assert!(admit_economic_content(
@@ -184,7 +190,7 @@ fn admission_refuses_mixed_headers_graphs_and_unadmitted_versions() {
             &expected.content_digest(),
             &expected.digest()[..31],
             0,
-            expected.canonical_bytes()
+            &expected.export_canonical_bytes().unwrap()
         )
         .is_err());
     }
@@ -246,7 +252,7 @@ fn edited_parameters_change_new_foundations_but_stored_campaign_keeps_its_own_va
         &original.content_digest(),
         &original.digest(),
         0,
-        original.canonical_bytes(),
+        &original.export_canonical_bytes().unwrap(),
     )
     .unwrap();
     assert_eq!(control(&reopened).staffing().hours_per_worker_period, 160);
@@ -258,10 +264,10 @@ fn edited_parameters_change_new_foundations_but_stored_campaign_keeps_its_own_va
         &next.content_digest(),
         &next.digest(),
         0,
-        original.canonical_bytes()
+        &original.export_canonical_bytes().unwrap()
     )
     .is_err());
-    let mut corrupted = original.canonical_bytes().to_vec();
+    let mut corrupted = original.export_canonical_bytes().unwrap();
     let end = corrupted.len() - 1;
     corrupted[end] ^= 1;
     assert!(admit_economic_content(
@@ -273,14 +279,14 @@ fn edited_parameters_change_new_foundations_but_stored_campaign_keeps_its_own_va
         &corrupted
     )
     .is_err());
-    for length in [0, 32, original.canonical_bytes().len() - 1] {
+    for length in [0, 32, original.canonical_len().unwrap() - 1] {
         assert!(admit_economic_content(
             preset.id(),
             finite(16),
             &original.content_digest(),
             &original.digest(),
             0,
-            &original.canonical_bytes()[..length]
+            &original.export_canonical_bytes().unwrap()[..length]
         )
         .is_err());
     }
@@ -319,7 +325,7 @@ fn stored_shared_freight_capacities_reconstruct_without_current_default_substitu
             &original.content_digest(),
             &original.digest(),
             0,
-            original.canonical_bytes(),
+            &original.export_canonical_bytes().unwrap(),
         )
         .unwrap();
         assert_eq!(reopened.view().opening, original.view().opening);
@@ -328,7 +334,10 @@ fn stored_shared_freight_capacities_reconstruct_without_current_default_substitu
             default_campaign.view().source_digest
         );
         assert_eq!(reopened.initial_register(), original.initial_register());
-        assert_eq!(reopened.canonical_bytes(), original.canonical_bytes());
+        assert_eq!(
+            reopened.export_canonical_bytes().unwrap(),
+            original.export_canonical_bytes().unwrap()
+        );
         let sheet = control(&reopened)
             .routes()
             .iter()
@@ -363,7 +372,7 @@ fn stored_shared_freight_capacities_reconstruct_without_current_default_substitu
             &default_campaign.content_digest(),
             &default_campaign.digest(),
             0,
-            original.canonical_bytes(),
+            &original.export_canonical_bytes().unwrap(),
         )
         .is_err());
     }

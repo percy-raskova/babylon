@@ -163,7 +163,10 @@ fn stored_content_reconstructs_exact_alternate_session_and_seed_without_factory_
         digest,
     )
     .unwrap();
-    assert_eq!(reconstructed.canonical_bytes(), original.canonical_bytes());
+    assert_eq!(
+        reconstructed.export_canonical_bytes().unwrap(),
+        original.export_canonical_bytes().unwrap()
+    );
     assert_eq!(
         reconstructed.initial_register(),
         original.initial_register()
@@ -286,7 +289,10 @@ fn large_stored_sources_reconstruct_the_same_circuit_without_factory_substitutio
         original.digest(),
     )
     .unwrap();
-    assert_eq!(restored.canonical_bytes(), original.canonical_bytes());
+    assert_eq!(
+        restored.export_canonical_bytes().unwrap(),
+        original.export_canonical_bytes().unwrap()
+    );
     let continued = original.into_session().unwrap();
     let reopened = restored.into_session().unwrap();
     let actions =
@@ -320,7 +326,10 @@ fn admitted_bundle_foundations_reconstruct_exactly_through_dispatch_transit_and_
                 .digest(),
         )
         .unwrap();
-        assert_eq!(restored.canonical_bytes(), original.canonical_bytes());
+        assert_eq!(
+            restored.export_canonical_bytes().unwrap(),
+            original.export_canonical_bytes().unwrap()
+        );
         assert_eq!(
             restored.graph_foundation().content_bundle().defines_bytes(),
             original.graph_foundation().content_bundle().defines_bytes()
@@ -707,15 +716,19 @@ fn single_owner_components_preserve_binary_export_and_reject_framing_damage() {
         original.digest(),
     )
     .unwrap();
-    assert_eq!(rebuilt.canonical_bytes(), original.canonical_bytes());
+    let exported = original.export_canonical_bytes().unwrap();
+    assert_eq!(original.canonical_len().unwrap(), exported.len());
+    assert_eq!(original.digest(), sha256_of(&exported));
+    assert_eq!(rebuilt.export_canonical_bytes().unwrap(), exported);
     assert_eq!(rebuilt.digest(), original.digest());
     assert_eq!(
-        MaterialRuntimeFoundation::decode(original.canonical_bytes(), original.digest())
+        MaterialRuntimeFoundation::decode(&exported, original.digest())
             .unwrap()
-            .canonical_bytes(),
-        original.canonical_bytes()
+            .export_canonical_bytes()
+            .unwrap(),
+        exported
     );
-    let mut trailing = original.canonical_bytes().to_vec();
+    let mut trailing = exported;
     trailing.push(0);
     assert!(matches!(
         MaterialRuntimeFoundation::decode(&trailing, sha256_of(&trailing)),

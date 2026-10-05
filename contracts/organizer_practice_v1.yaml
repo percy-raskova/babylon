@@ -110,6 +110,7 @@ knowledge:
   provenance: action_or_automatic_report_source_remains_inspectable
   stale: prior_observations_retained_with_their_original_period
   projection: player_preview_and_inspector_use_only_lawfully_acquired_observations
+  collection_history: exact_amount_outcome_and_commitment_for_controlled_actor_recent_eight_receipts
 
 replay_successor:
   material_register: material_world_register_v4

@@ -139,8 +139,11 @@ earliest possible arrival is a preview, not a promise. Follow the original
 shipment through arrival or failure before interpreting the result.
 
 Use **Last period** and **Practice history** to read the actual collection
-result. In **Practice history**, distinguish reserved aid cash, actual gift
-payment, refunds, dispatched food, consumption and later coordination. Receiving
+result. The eight recent practice receipts retain exact collection amounts
+and outcomes after a later period or reopen. Use the cited practice Archive
+for older receipts. In **Practice history**, distinguish reserved aid cash,
+actual gift payment, refunds, dispatched food, consumption and later
+coordination. Receiving
 a gift does not compel political participation. A declined practice does not
 revoke delivered food. Compare these choices with inquiry, workplace contact
 and retaining the routine: each uses time that can

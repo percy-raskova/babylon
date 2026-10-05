@@ -52,6 +52,7 @@ DEV_INTEGRATION_TARGETS: Final = {
         "archive_worker_contract",
         "archive_page_vectors",
         "michigan_material",
+        "national_trade_accounting",
         "statewide_material",
         "spatial_reference_installer_contract",
     ),

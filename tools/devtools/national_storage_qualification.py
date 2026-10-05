@@ -919,6 +919,74 @@ class ProductionBoundary(FrozenRecord):
     county_roster_sha256: Sha256
 
 
+class TradeDirectionEvidence(FrozenRecord):
+    settled_deliveries: Nonnegative
+    settled_cash_micros: str = Field(pattern=r"^(0|[1-9][0-9]{0,38})$")
+
+    @model_validator(mode="after")
+    def exact_positive_settlement(self) -> TradeDirectionEvidence:
+        cash = int(self.settled_cash_micros)
+        if cash > 2**127 - 1 or (cash > 0) != (self.settled_deliveries > 0):
+            raise ValueError("trade delivery counts need exact positive signed-range cash")
+        return self
+
+
+def _foreign_production_counts(receipts: int, sites: int) -> None:
+    if (receipts > 0) != (sites > 0) or sites > receipts:
+        raise ValueError("foreign production needs actual receipts and productive sites")
+
+
+class TradeBoundary(FrozenRecord):
+    period: Positive
+    tick_content_hash: Sha256
+    canonical_receipt_sha256: Sha256
+    imports: TradeDirectionEvidence
+    exports: TradeDirectionEvidence
+    positive_foreign_production_receipts: Nonnegative
+    productive_foreign_sites: Nonnegative
+    unresolved_trade_orders: Nonnegative
+
+    @model_validator(mode="after")
+    def coherent_foreign_production(self) -> TradeBoundary:
+        _foreign_production_counts(
+            self.positive_foreign_production_receipts, self.productive_foreign_sites
+        )
+        return self
+
+
+class TradeSummary(FrozenRecord):
+    version: Literal[1]
+    status: Literal["passed", "incomplete"]
+    periods: Nonnegative
+    basis: Literal["committed_recurring_procurement_delivery_realization_and_exact_settlement"]
+    imports: TradeDirectionEvidence
+    exports: TradeDirectionEvidence
+    positive_foreign_production_receipts: Nonnegative
+    productive_foreign_sites: Nonnegative
+    unresolved_trade_orders: Nonnegative
+
+    @field_validator("version", mode="before")
+    @classmethod
+    def exact_version(cls, value: object) -> object:
+        if type(value) is not int:
+            raise ValueError("trade version must be an exact integer")
+        return value
+
+    @model_validator(mode="after")
+    def actual_execution_status(self) -> TradeSummary:
+        _foreign_production_counts(
+            self.positive_foreign_production_receipts, self.productive_foreign_sites
+        )
+        passed = (
+            self.imports.settled_deliveries > 0
+            and self.exports.settled_deliveries > 0
+            and self.positive_foreign_production_receipts > 0
+        )
+        if (self.status == "passed") != passed:
+            raise ValueError("trade status must follow actual settled execution")
+        return self
+
+
 class PlayableBoundary(FrozenRecord):
     tick: Positive
     campaign: str
@@ -932,10 +1000,11 @@ class PlayableBoundary(FrozenRecord):
     nominal_world_hash: Sha256
     archive: ArchiveBoundary
     production: ProductionBoundary
+    trade: TradeBoundary
 
 
 class PlayableReport(FrozenRecord):
-    version: Literal[2]
+    version: Literal[3]
     capture_mode: Literal["playable-aid"]
     policy_sha256: Sha256
     campaign: str
@@ -951,6 +1020,7 @@ class PlayableReport(FrozenRecord):
     local_consumed: bool
     independent_finite_aid_practice: dict[str, object]
     independent_account_posting_audit: dict[str, object]
+    independent_trade_accounting: TradeSummary
     native_window_evidence: Literal["not_run"]
 
     @field_validator("version", mode="before")
@@ -980,6 +1050,31 @@ class PlayableReport(FrozenRecord):
             ):
                 raise ValueError("playable boundary campaign or foundation differs")
         return self
+
+
+def _consistent_trade_summary(playable: PlayableReport) -> str:
+    summary = playable.independent_trade_accounting
+    facts = tuple(boundary.trade for boundary in playable.boundaries)
+    if summary.periods != len(facts):
+        raise ValueError("trade summary must cover each actual committed boundary")
+    for direction in ("imports", "exports"):
+        rows = tuple(getattr(fact, direction) for fact in facts)
+        total = getattr(summary, direction)
+        if total.settled_deliveries != sum(row.settled_deliveries for row in rows) or int(
+            total.settled_cash_micros
+        ) != sum(int(row.settled_cash_micros) for row in rows):
+            raise ValueError("trade summary differs from committed settlements")
+    if summary.positive_foreign_production_receipts != sum(
+        fact.positive_foreign_production_receipts for fact in facts
+    ):
+        raise ValueError("trade summary differs from actual foreign production")
+    site_counts = tuple(fact.productive_foreign_sites for fact in facts)
+    if not max(site_counts, default=0) <= summary.productive_foreign_sites <= sum(site_counts):
+        raise ValueError("productive foreign site count disagrees with committed evidence")
+    pending = facts[-1].unresolved_trade_orders if facts else 0
+    if summary.unresolved_trade_orders != pending:
+        raise ValueError("trade summary differs from the current unresolved order set")
+    return summary.status
 
 
 def evaluate_playable(
@@ -1070,6 +1165,13 @@ def evaluate_playable(
             raise ValueError("playable roster differs from actual storage period roster")
         if production.county_roster_sha256 != county_roster_sha256:
             raise ValueError("Production read county roster digest differs")
+        trade = boundary.trade
+        if (
+            trade.period,
+            trade.tick_content_hash,
+            trade.canonical_receipt_sha256,
+        ) != (boundary.tick, boundary.tick_content_hash, boundary.canonical_receipt_sha256):
+            raise ValueError("trade period or canonical receipt identity differs")
         archive = boundary.archive
         if archive.expected_tick != boundary.tick:
             raise ValueError("Archive expected period differs from boundary")
@@ -1079,6 +1181,9 @@ def evaluate_playable(
             archive.processed_tick == archive.durable_tick == archive.expected_tick
             and archive.pending_count == 0
         )
+    trade_status = _consistent_trade_summary(playable)
+    trade_required = playable.requested_periods >= policy.qualification_ticks
+    incomplete |= trade_required and trade_status != "passed"
     audit = playable.independent_account_posting_audit
     required_audit = (
         "cash_and_in_kind_postings",
@@ -1222,9 +1327,11 @@ def evaluate_playable(
         "status": "failed" if failed else ("incomplete" if incomplete else "qualified"),
         "archive_catchup_status": "qualified" if archive_pass else "failed",
         "production_read_status": "qualified" if production_pass else "failed",
+        "trade_accounting_status": "qualified" if trade_status == "passed" else "incomplete",
+        "trade_required_for_run": trade_required,
         "native_window_status": "unqualified",
         "native_window_evidence": playable.native_window_evidence,
-        "scope": "Actual material aid, independent accounting/practice, Archive, full Production read, storage and recovery; native interaction and fun remain unqualified",
+        "scope": "Actual material aid, independent accounting/practice, settled trade evidence, Archive, full Production read, storage and recovery; native interaction and fun remain unqualified",
     }
 
 

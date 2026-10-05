@@ -1335,26 +1335,26 @@ def test_native_timing_rejects_old_shape():
         NativeTimings.model_validate(data)
 
 
-def playable_evidence():
+def playable_evidence(count=2):
     import json
 
     from tools.devtools.national_storage_qualification import NativeTimings
 
-    storage, native, baseline, opening, ticks, reopens = smoke_evidence()
+    storage, native, baseline, opening, ticks, reopens = smoke_evidence(count=count)
     data = native.model_dump()
     for phase in ("archive_catchups", "production_reads"):
-        data[phase] = [{"tick": n, "elapsed_ns": 1} for n in (1, 2)]
-    data["run"]["elapsed_ns"] += 4
+        data[phase] = [{"tick": n, "elapsed_ns": 1} for n in range(1, count + 1)]
+    data["run"]["elapsed_ns"] += 2 * count
     native = NativeTimings.model_validate(data)
     h = "ab" * 32
     commands = [[n] * 32 for n in (1, 2)]
     report = {
-        "version": 2,
+        "version": 3,
         "capture_mode": "playable-aid",
         "policy_sha256": h,
         "campaign": native.campaign,
         "foundation_sha256": h,
-        "requested_periods": 2,
+        "requested_periods": count,
         "county_geoids": opening["county_geoids"],
         "aid_periods": [
             {"period": n, "commitment": {"commitment_id": commands[n - 1]}} for n in (1, 2)
@@ -1391,8 +1391,18 @@ def playable_evidence():
                         json.dumps(opening["county_geoids"], separators=(",", ":")).encode("ascii")
                     ).hexdigest(),
                 },
+                "trade": {
+                    "period": n,
+                    "tick_content_hash": h,
+                    "canonical_receipt_sha256": h,
+                    "imports": {"settled_deliveries": 0, "settled_cash_micros": "0"},
+                    "exports": {"settled_deliveries": 0, "settled_cash_micros": "0"},
+                    "positive_foreign_production_receipts": 0,
+                    "productive_foreign_sites": 0,
+                    "unresolved_trade_orders": 2,
+                },
             }
-            for n in (1, 2)
+            for n in range(1, count + 1)
         ],
         "continuations": [
             {
@@ -1402,13 +1412,24 @@ def playable_evidence():
                 "latest_marker": [n, h, h],
                 "nominal_world_hash": h,
             }
-            for n in (1, 2)
+            for n in range(1, count + 1)
         ],
         "canonical_protocol_recovery": "passed",
         "positive_aid_consequences": "passed",
         "remote_consumed": True,
         "local_consumed": True,
         "native_window_evidence": "not_run",
+        "independent_trade_accounting": {
+            "version": 1,
+            "status": "incomplete",
+            "periods": count,
+            "basis": "committed_recurring_procurement_delivery_realization_and_exact_settlement",
+            "imports": {"settled_deliveries": 0, "settled_cash_micros": "0"},
+            "exports": {"settled_deliveries": 0, "settled_cash_micros": "0"},
+            "positive_foreign_production_receipts": 0,
+            "productive_foreign_sites": 0,
+            "unresolved_trade_orders": 2,
+        },
         "independent_finite_aid_practice": {
             "status": "passed",
             "completed_original_commands": commands,
@@ -1431,7 +1452,9 @@ def playable_evidence():
                             "quantity": 1,
                             "outcome": "Granted",
                         }
-                    ],
+                    ]
+                    if n <= 2
+                    else [],
                     "independent_practices": [
                         {
                             "original_commitment": commands[n - 1],
@@ -1442,16 +1465,18 @@ def playable_evidence():
                             "partner_response": "participated",
                             "outcome": "aid_practice_completed",
                         }
-                    ],
+                    ]
+                    if n <= 2
+                    else [],
                 }
-                for n in (1, 2)
+                for n in range(1, count + 1)
             ],
         },
     }
     return report, storage, native, baseline, opening, ticks, reopens
 
 
-def playable_result(report=None, timing=None):
+def playable_result(report=None, timing=None, count=2, selected_policy=None):
     from tools.devtools.national_storage_qualification import (
         PlayableReport,
         evaluate_playable,
@@ -1459,15 +1484,16 @@ def playable_result(report=None, timing=None):
         evaluate_timings,
     )
 
-    raw, storage, native, _baseline, opening, ticks, reopens = playable_evidence()
+    raw, storage, native, _baseline, opening, ticks, reopens = playable_evidence(count=count)
+    selected_policy = selected_policy or policy()
     native = timing or native
     parsed_ticks = tuple(Snapshot.model_validate(t) for t in ticks)
     timing_report = evaluate_timings(
-        policy(), native, parsed_ticks, tuple(Snapshot.model_validate(t) for t in reopens)
+        selected_policy, native, parsed_ticks, tuple(Snapshot.model_validate(t) for t in reopens)
     )
-    smoke = evaluate_smoke(policy(), storage, timing_report)
+    smoke = evaluate_smoke(selected_policy, storage, timing_report)
     return evaluate_playable(
-        policy(),
+        selected_policy,
         "ab" * 32,
         PlayableReport.model_validate(report or raw),
         native,
@@ -1484,6 +1510,126 @@ def test_actual_material_playable_admission_keeps_window_and_fun_unqualified():
     assert result["status"] == "qualified"
     assert result["native_window_status"] == "unqualified"
     assert "fun remain unqualified" in result["scope"]
+
+
+def test_playable_evidence_refuses_omitted_trade_accounting():
+    report = playable_evidence()[0]
+    report.pop("independent_trade_accounting", None)
+    for boundary in report["boundaries"]:
+        boundary.pop("trade", None)
+    with pytest.raises(ValueError, match="trade"):
+        playable_result(report)
+
+
+def settled_trade(report):
+    for index, direction in enumerate(("imports", "exports")):
+        fact = report["boundaries"][index]["trade"]
+        movement = {"settled_deliveries": 1, "settled_cash_micros": str(7 + index)}
+        fact[direction] = movement.copy()
+        fact["positive_foreign_production_receipts"] = 1
+        fact["productive_foreign_sites"] = 1
+        report["independent_trade_accounting"][direction] = movement.copy()
+    report["independent_trade_accounting"].update(
+        status="passed", positive_foreign_production_receipts=2, productive_foreign_sites=1
+    )
+    return report
+
+
+def test_smoke_preserves_pending_trade_without_claiming_economic_acceptance():
+    result = playable_result()
+    assert result["status"] == "qualified"
+    assert result["trade_accounting_status"] == "incomplete"
+    assert result["trade_required_for_run"] is False
+
+
+def test_full_national_admission_requires_settled_trade_and_foreign_production():
+    result = playable_result(count=52)
+    assert result["status"] == "incomplete"
+    assert result["trade_accounting_status"] == "incomplete"
+    assert result["trade_required_for_run"] is True
+    report = settled_trade(playable_evidence(count=52)[0])
+    result = playable_result(report, count=52)
+    assert result["status"] == "qualified"
+    assert result["trade_accounting_status"] == "qualified"
+    assert result["native_window_status"] == "unqualified"
+
+
+@pytest.mark.parametrize("missing", ["imports", "exports", "foreign-production"])
+def test_severed_trade_direction_or_production_removes_full_acceptance(missing):
+    report = settled_trade(playable_evidence(count=52)[0])
+    for boundary in report["boundaries"]:
+        if missing == "foreign-production":
+            boundary["trade"].update(
+                positive_foreign_production_receipts=0, productive_foreign_sites=0
+            )
+        else:
+            boundary["trade"][missing] = {"settled_deliveries": 0, "settled_cash_micros": "0"}
+    summary = report["independent_trade_accounting"]
+    summary["status"] = "incomplete"
+    if missing == "foreign-production":
+        summary.update(positive_foreign_production_receipts=0, productive_foreign_sites=0)
+    else:
+        summary[missing] = {"settled_deliveries": 0, "settled_cash_micros": "0"}
+    assert playable_result(report, count=52)["status"] == "incomplete"
+
+
+def test_smoke_override_cannot_bypass_full_run_trade_requirement():
+    selected = configured(routine_smoke_periods=52, maximum_routine_smoke_seconds=11_000)
+    result = playable_result(count=52, selected_policy=selected)
+    assert result["status"] == "incomplete"
+    assert result["trade_required_for_run"] is True
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        lambda r: r.update(version=2),
+        lambda r: r["boundaries"][0]["trade"].update(period=2),
+        lambda r: r["boundaries"][0]["trade"].update(tick_content_hash="cd" * 32),
+        lambda r: r["boundaries"][0]["trade"].update(canonical_receipt_sha256="cd" * 32),
+        lambda r: r["independent_trade_accounting"].update(periods=1),
+        lambda r: r["independent_trade_accounting"]["imports"].update(settled_cash_micros="9"),
+        lambda r: r["independent_trade_accounting"]["imports"].update(settled_deliveries=2),
+        lambda r: r["independent_trade_accounting"].update(positive_foreign_production_receipts=3),
+        lambda r: r["independent_trade_accounting"].update(unresolved_trade_orders=0),
+        lambda r: r["independent_trade_accounting"].update(status="incomplete"),
+        lambda r: r["independent_trade_accounting"].update(version=True),
+    ],
+    ids=[
+        "old-playable-version",
+        "period",
+        "tick-hash",
+        "receipt-hash",
+        "summary-periods",
+        "summary-cash",
+        "summary-deliveries",
+        "summary-production",
+        "summary-pending",
+        "summary-status",
+        "boolean-version",
+    ],
+)
+def test_trade_proofs_refuse_wrong_identity_or_unexplained_totals(mutation):
+    report = settled_trade(playable_evidence()[0])
+    mutation(report)
+    with pytest.raises(ValueError):
+        playable_result(report)
+
+
+@pytest.mark.parametrize("invalid", ["7.0", "-1", "07", 7, True, str(2**127)])
+def test_trade_cash_refuses_inexact_or_unsupported_values(invalid):
+    report = settled_trade(playable_evidence()[0])
+    report["boundaries"][0]["trade"]["imports"]["settled_cash_micros"] = invalid
+    with pytest.raises(ValueError):
+        playable_result(report)
+
+
+def test_trade_cash_preserves_integers_beyond_float_precision():
+    report = settled_trade(playable_evidence()[0])
+    exact = str(2**53 + 1)
+    report["boundaries"][0]["trade"]["imports"]["settled_cash_micros"] = exact
+    report["independent_trade_accounting"]["imports"]["settled_cash_micros"] = exact
+    assert playable_result(report)["trade_accounting_status"] == "qualified"
 
 
 @pytest.mark.parametrize(

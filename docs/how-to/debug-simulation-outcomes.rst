@@ -726,6 +726,20 @@ The complete production snapshot must also pass at each committed boundary.
 The captured policy allows at most 180 seconds each for Archive
 catch-up after acknowledgement and the complete production read.
 
+Playable evidence version three includes Derived trade facts tied to each
+committed period and canonical receipt. These facts reconcile funded procurement,
+delivery, realization and matched payments at the original admission price.
+The audit retains unresolved orders and retires completed or lost orders.
+It counts actual foreign production receipts. Counterpart presence and planned
+production cannot substitute for output. Cash totals use exact common-currency
+integers, without adding unlike goods or production batch quantities.
+
+The two-period smoke can finish while trade remains in transit. Full national
+and long-save checks test for settled imports, settled exports and actual
+foreign production. A run of 52 periods or more must pass these checks even
+with a changed smoke duration. Unsupported playable evidence versions fail.
+The separate native timing evidence remains version two.
+
 The runner enforces ``--qualify-playable`` against the resulting report. Campaign,
 foundation, period, county roster and canonical hashes must agree with the
 storage and recovery evidence. It preserves compact accounting facts and atomic

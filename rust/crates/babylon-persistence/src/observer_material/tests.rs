@@ -21,14 +21,24 @@ fn admitted_opening_row_reuses_its_canonical_owner_and_refuses_altered_evidence(
         content_hash: None,
     };
     let mut history = MaterialHistory::new(&expected).unwrap();
-    let canonical_owner = history.register.canonical_bytes().as_ptr();
+    assert!(std::ptr::eq(
+        history.register(&expected).state(),
+        expected.initial_register().state()
+    ));
+    let canonical_owner = history.register(&expected).canonical_bytes().as_ptr();
     history
         .append_decoded(campaign, &expected, 0, opening.clone())
         .unwrap();
     // Admission of identical, already validated opening bytes must not allocate
     // a second canonical register owner at national scale.
-    assert_eq!(history.register.canonical_bytes().as_ptr(), canonical_owner);
-    assert_eq!(history.register, *expected.initial_register());
+    assert_eq!(
+        history.register(&expected).canonical_bytes().as_ptr(),
+        canonical_owner
+    );
+    assert!(std::ptr::eq(
+        history.register(&expected),
+        expected.initial_register()
+    ));
     assert!(history.opening.is_none());
     assert!(history.receipt.is_none());
     assert!(history.prior_world.is_none());
@@ -69,16 +79,19 @@ fn admitted_opening_row_reuses_its_canonical_owner_and_refuses_altered_evidence(
         content,
     ] {
         let mut candidate = MaterialHistory::new(&expected).unwrap();
-        let original_owner = candidate.register.canonical_bytes().as_ptr();
+        let original_owner = candidate.register(&expected).canonical_bytes().as_ptr();
         let original_chain = candidate.lookup_chain;
         assert!(candidate
             .append_decoded(campaign, &expected, 0, refused)
             .is_err());
         assert_eq!(
-            candidate.register.canonical_bytes().as_ptr(),
+            candidate.register(&expected).canonical_bytes().as_ptr(),
             original_owner
         );
-        assert_eq!(candidate.register, *expected.initial_register());
+        assert!(std::ptr::eq(
+            candidate.register(&expected),
+            expected.initial_register()
+        ));
         assert_eq!(candidate.lookup_chain, original_chain);
         assert!(candidate.opening.is_none());
         assert!(candidate.receipt.is_none());
@@ -148,8 +161,14 @@ fn continuous_cursor_replays_beyond_sixteen_and_refuses_a_broken_tail() {
         history
             .append_decoded(campaign, &expected, period, row.clone())
             .unwrap();
+        if period == 1 {
+            assert!(std::ptr::eq(
+                history.opening(&expected).unwrap(),
+                expected.initial_register()
+            ));
+        }
         rows.push(row);
-        verify_published_period(&history, &expected_lookup, period);
+        verify_published_period(&history, &expected, &expected_lookup, period);
         session
             .commit_prepared_and_publish(&mut CollectingSink::default(), next, |_| {
                 Ok::<_, ()>(ReplayCommitDisposition::Committed)
@@ -166,8 +185,8 @@ fn continuous_cursor_replays_beyond_sixteen_and_refuses_a_broken_tail() {
     let project = |value: &MaterialHistory| {
         project_economic_current(
             expected.view(),
-            &value.register,
-            value.opening.as_ref(),
+            value.register(&expected),
+            value.opening(&expected),
             value.receipt.as_ref(),
             &value.orders,
         )
@@ -182,6 +201,7 @@ fn continuous_cursor_replays_beyond_sixteen_and_refuses_a_broken_tail() {
 
 fn verify_published_period(
     history: &MaterialHistory,
+    expected: &EconomicContentAdmission,
     expected_lookup: &crate::material_storage::OpeningRegister,
     period: u64,
 ) {
@@ -195,7 +215,7 @@ fn verify_published_period(
     );
     assert_eq!(history.receipt.as_ref().unwrap().0.resolve_tick, period);
     assert!(history
-        .register
+        .register(expected)
         .state()
         .capacities
         .iter()

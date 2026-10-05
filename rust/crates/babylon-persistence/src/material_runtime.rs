@@ -1559,18 +1559,7 @@ impl CapturedArchiveOrganizerRegister {
         ),
         MaterialRuntimeError,
     > {
-        let admitted = if let Some(admitted) = cached {
-            self.foundation.validate_against(&admitted)?;
-            drop(self.foundation);
-            admitted
-        } else {
-            std::sync::Arc::new(
-                crate::economic_content::EconomicContentAdmission::from_foundation(
-                    self.foundation.admit()?,
-                )
-                .map_err(|_| MaterialRuntimeError::FoundationMismatch)?,
-            )
-        };
+        let admitted = admit_archive_foundation(self.foundation, cached)?;
         let digest = admitted.digest();
         let scope = admitted.foundation_graph().scenario_scope();
         let components = &admitted.component_identity;
@@ -1661,6 +1650,23 @@ impl CapturedArchiveOrganizerRegister {
         )?;
         self.projection.validate(&register)?;
         Ok((register.into_owned(), admitted))
+    }
+}
+
+fn admit_archive_foundation(
+    foundation: CapturedMaterialFoundation,
+    cached: Option<std::sync::Arc<crate::economic_content::EconomicContentAdmission>>,
+) -> Result<std::sync::Arc<crate::economic_content::EconomicContentAdmission>, MaterialRuntimeError>
+{
+    if let Some(admitted) = cached {
+        foundation.validate_against(&admitted)?;
+        drop(foundation);
+        Ok(admitted)
+    } else {
+        Ok(std::sync::Arc::new(
+            crate::economic_content::EconomicContentAdmission::from_foundation(foundation.admit()?)
+                .map_err(|_| MaterialRuntimeError::FoundationMismatch)?,
+        ))
     }
 }
 

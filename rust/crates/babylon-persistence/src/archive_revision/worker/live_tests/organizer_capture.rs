@@ -92,9 +92,32 @@ fn organizer_owned_capture_survives_short_idle_and_preserves_historical_proofs()
         .unwrap();
     assert_eq!(recovered.batch().pages().len(), 4);
     assert_eq!(recovered.batch().resolve_tick(), 2);
+    assert_fresh_geography_and_subject_data(
+        &mut inspector,
+        &producer,
+        campaign,
+        &later,
+        &knowledge,
+        &recovered,
+    );
+    drop(runtime);
+    drop(publisher);
+    drop(client);
+    drop(inspector);
+    database.cleanup();
+}
+
+fn assert_fresh_geography_and_subject_data(
+    inspector: &mut postgres::Client,
+    producer: &OrganizerDossierProducer,
+    campaign: CampaignId,
+    later: &PendingArchiveReceipt,
+    knowledge: &ArchiveKnowledge,
+    recovered: &crate::ArchiveProducerOutcome,
+) {
     // An admitted source never stands in for fresh campaign geography witnesses.
     inspector.execute("UPDATE babylon_state.campaign SET geography_scope='national-counties' WHERE campaign_id=$1", &[campaign.as_uuid()]).unwrap();
-    let changed_geography = producer.produce(*campaign.as_uuid(), &later, &knowledge, 4);
+    let changed_geography = producer.produce(*campaign.as_uuid(), later, knowledge, 4);
     inspector.execute("UPDATE babylon_state.campaign SET geography_scope='michigan-control' WHERE campaign_id=$1", &[campaign.as_uuid()]).unwrap();
     assert!(matches!(
         changed_geography,
@@ -102,7 +125,7 @@ fn organizer_owned_capture_survives_short_idle_and_preserves_historical_proofs()
     ));
     assert_eq!(
         producer
-            .produce(*campaign.as_uuid(), &later, &knowledge, 4)
+            .produce(*campaign.as_uuid(), later, knowledge, 4)
             .unwrap()
             .batch()
             .pages(),
@@ -112,16 +135,11 @@ fn organizer_owned_capture_survives_short_idle_and_preserves_historical_proofs()
     inspector.execute("UPDATE babylon_state.organizer_subject_v1 SET title=title || ' altered' WHERE campaign_id=$1", &[campaign.as_uuid()]).unwrap();
     assert!(
         matches!(
-            producer.produce(*campaign.as_uuid(), &later, &knowledge, 4),
+            producer.produce(*campaign.as_uuid(), later, knowledge, 4),
             Err(SemanticArchiveError::StoredPageMismatch)
         ),
         "new pages must refuse changed mutable subject metadata"
     );
-    drop(runtime);
-    drop(publisher);
-    drop(client);
-    drop(inspector);
-    database.cleanup();
 }
 
 fn committed_organizer_periods(

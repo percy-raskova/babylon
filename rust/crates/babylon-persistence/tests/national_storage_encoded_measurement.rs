@@ -153,7 +153,7 @@ fn capture_foundation() -> (MaterialRuntimeFoundation, [u8; 32]) {
     eprintln!(
         "current national capture+foundation elapsed={:?}, bytes={}",
         started.elapsed(),
-        foundation.canonical_bytes().len()
+        foundation.canonical_len().unwrap()
     );
     (foundation, foundation_digest)
 }

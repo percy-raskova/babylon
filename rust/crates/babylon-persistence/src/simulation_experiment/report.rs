@@ -510,7 +510,9 @@ pub fn run(spec: &SimulationExperimentV1) -> Result<ExperimentRun> {
         periods,
         captured_setup: setup,
         captured_defines: graph.content_bundle().defines_bytes().to_vec(),
-        foundation_bytes: foundation.canonical_bytes().to_vec(),
+        foundation_bytes: foundation
+            .export_canonical_bytes()
+            .map_err(|_| ExperimentError::Foundation)?,
     })
 }
 fn captured_process_keys(

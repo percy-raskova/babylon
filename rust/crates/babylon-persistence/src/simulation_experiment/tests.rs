@@ -137,8 +137,11 @@ fn historical_jobs_initialize_only_the_named_five_workforce_accounts() {
     }
     let f = input.create_foundation().unwrap();
     assert_eq!(
-        f.reconstruct_captured().unwrap().canonical_bytes(),
-        f.canonical_bytes()
+        f.reconstruct_captured()
+            .unwrap()
+            .export_canonical_bytes()
+            .unwrap(),
+        f.export_canonical_bytes().unwrap()
     );
     let mut changed = input;
     changed.seed = 320;

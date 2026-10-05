@@ -5,7 +5,6 @@ use super::{
 };
 use babylon_persistence::{
     identity::CampaignId,
-    observer_reader::ObserverEconomyReader,
     runtime_session::{
         run_runtime_session, OrganizerAidKind, OrganizerAidSupportStatus,
         OrganizerAidTransportPreview, OrganizerChoice, OrganizerCommand, OrganizerCommitment,
@@ -638,16 +637,20 @@ impl<'a> QualificationRun<'a> {
     fn accounted_boundary(
         &self,
         session: &Session,
-        observer: &ObserverEconomyReader,
         accounting: &mut QualificationAccounting,
         after: &OrganizerSnapshot,
         archive: &serde_json::Value,
     ) -> AccountedBoundary {
         let tick = session.tail.resolve_tick;
         let started = Instant::now();
-        let observation = observer
-            .committed_material_observation(self.campaign, tick)
-            .unwrap();
+        // Each observation owns its evidence. Release the reader's admitted
+        // foundation before recovery and the next Archive reconstruction.
+        let observation = {
+            let observer = national_aid_accounting::observer();
+            observer
+                .committed_material_observation(self.campaign, tick)
+                .unwrap()
+        };
         let elapsed = started.elapsed();
         assert!(
             elapsed <= self.limits.production,
@@ -714,7 +717,6 @@ pub(super) fn qualify(config: &Config, campaign: CampaignId, periods: u64, run_s
     let mut session = Session::start(config, campaign, true);
     assert_eq!(session.tail.resolve_tick, 0);
     snapshot("opening-created", campaign);
-    let observer = national_aid_accounting::observer();
     let mut accounting = QualificationAccounting::default();
     let foundation = session.foundation.clone();
     let mut advances = Vec::new();
@@ -753,8 +755,7 @@ pub(super) fn qualify(config: &Config, campaign: CampaignId, periods: u64, run_s
         if tick == 1 {
             verify_dispatch(&after, commitment);
         }
-        let boundary =
-            run.accounted_boundary(&session, &observer, &mut accounting, &after, &archive);
+        let boundary = run.accounted_boundary(&session, &mut accounting, &after, &archive);
         production_reads.push(boundary.production_timing);
         if let Some(expected) = county_geoids.as_ref() {
             assert_eq!(&boundary.roster, expected);

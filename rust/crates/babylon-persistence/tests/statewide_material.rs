@@ -412,7 +412,7 @@ fn unsold_merchandise(state: &MaterialCircuitState) -> Goods {
 fn captured_session(catalog: &MichiganMaterialCatalog) -> (Session, usize) {
     let preset = MichiganContentPreset::new_campaign(MichiganDeliveryPreset::StatewideBaseline);
     let foundation = preset.create_foundation(catalog).unwrap();
-    let foundation_bytes = foundation.canonical_bytes().len();
+    let foundation_bytes = foundation.canonical_len().unwrap();
     assert!(foundation_bytes < MAX_MATERIAL_FOUNDATION_BYTES);
     assert_eq!(
         foundation
@@ -435,11 +435,11 @@ fn captured_session(catalog: &MichiganMaterialCatalog) -> (Session, usize) {
         &foundation.spec().content_digest,
         &foundation.digest(),
         0,
-        foundation.canonical_bytes(),
+        &foundation.export_canonical_bytes().unwrap(),
     )
     .unwrap();
     assert_eq!(admitted.digest(), foundation.digest());
-    let mut corrupted = foundation.canonical_bytes().to_vec();
+    let mut corrupted = foundation.export_canonical_bytes().unwrap();
     *corrupted.last_mut().unwrap() ^= 1;
     assert!(admit_economic_content(
         preset.id(),
@@ -532,7 +532,7 @@ fn new_reads_pinned_siblings_and_saved_open_survives_changed_or_missing_source_f
         &foundation.spec().content_digest,
         &foundation.digest(),
         0,
-        foundation.canonical_bytes(),
+        &foundation.export_canonical_bytes().unwrap(),
     )
     .unwrap();
     assert_eq!(opened.preset_id(), preset.id());

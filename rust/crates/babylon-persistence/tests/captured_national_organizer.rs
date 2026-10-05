@@ -64,9 +64,15 @@ fn actual_national_playable_source_and_cold_foundation_preserve_one_opening() {
         assert_admitted_inputs(foundation.initial_register(), campaign, session_id, policy);
     let register_digest = foundation.initial_register().digest();
     let foundation_digest = foundation.digest();
-    let cold =
-        MaterialRuntimeFoundation::decode(foundation.canonical_bytes(), foundation_digest).unwrap();
-    assert_eq!(cold.canonical_bytes(), foundation.canonical_bytes());
+    let cold = MaterialRuntimeFoundation::decode(
+        &foundation.export_canonical_bytes().unwrap(),
+        foundation_digest,
+    )
+    .unwrap();
+    assert_eq!(
+        cold.export_canonical_bytes().unwrap(),
+        foundation.export_canonical_bytes().unwrap()
+    );
     assert_eq!(cold.initial_register().digest(), register_digest);
     assert_eq!(
         cold.initial_register().organizer_config(),

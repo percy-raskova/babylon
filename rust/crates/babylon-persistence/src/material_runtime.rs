@@ -42,7 +42,6 @@ use babylon_tick::{
     replay_session::{ReplayCommitDisposition, ReplayTickSession},
 };
 use postgres::{fallible_iterator::FallibleIterator as _, Config, GenericClient, NoTls};
-use sha2::{Digest, Sha256};
 use std::time::{Duration, Instant};
 
 /// Actual operational stage starts; these observations never enter canonical output.
@@ -100,7 +99,6 @@ pub struct MaterialRuntimeFoundation {
     graph_foundation: CampaignFoundation,
     register: MaterialWorldRegister,
     spec: MaterialFoundationSpec,
-    bytes: Vec<u8>,
     digest: [u8; 32],
     labor: babylon_tick::material_staffing::StaffingComposition,
 }
@@ -285,46 +283,19 @@ impl MaterialRuntimeFoundation {
         } else {
             return Err(MaterialRuntimeError::FoundationMismatch);
         };
-        let length = envelope::material_foundation_length(
-            spec.preset_id.len(),
-            graph_foundation.canonical_bytes().len(),
-            register.canonical_bytes().len(),
-        )?;
-        let mut bytes = Vec::new();
-        bytes
-            .try_reserve_exact(length)
-            .map_err(|_| MaterialRuntimeError::Bounds)?;
-        bytes.extend_from_slice(FOUNDATION_DOMAIN);
-        bytes.extend_from_slice(&3_u32.to_be_bytes());
-        bytes.extend_from_slice(
-            &spec
-                .duration
-                .canonical_bytes()
-                .map_err(|_| MaterialRuntimeError::Bounds)?,
-        );
-        bytes.extend_from_slice(&spec.content_digest);
-        for part in [
+        let digest = envelope::CanonicalMaterialFoundation::new(
             spec.preset_id.as_bytes(),
+            spec.duration,
+            &spec.content_digest,
             graph_foundation.canonical_bytes(),
             register.canonical_bytes(),
-        ] {
-            bytes.extend_from_slice(
-                &u64::try_from(part.len())
-                    .map_err(|_| MaterialRuntimeError::Bounds)?
-                    .to_be_bytes(),
-            );
-            bytes.extend_from_slice(part);
-        }
-        if bytes.len() != length {
-            return Err(MaterialRuntimeError::Bounds);
-        }
-        let digest = sha256_of(&bytes);
+        )?
+        .digest();
         Ok(Self {
             graph,
             graph_foundation,
             register,
             spec,
-            bytes,
             digest,
             labor,
         })
@@ -370,9 +341,28 @@ impl MaterialRuntimeFoundation {
     pub const fn digest(&self) -> [u8; 32] {
         self.digest
     }
-    #[must_use]
-    pub fn canonical_bytes(&self) -> &[u8] {
-        &self.bytes
+    fn canonical_encoding(
+        &self,
+    ) -> Result<envelope::CanonicalMaterialFoundation<'_>, MaterialRuntimeError> {
+        envelope::CanonicalMaterialFoundation::new(
+            self.spec.preset_id.as_bytes(),
+            self.spec.duration,
+            &self.spec.content_digest,
+            self.graph_foundation.canonical_bytes(),
+            self.register.canonical_bytes(),
+        )
+    }
+    /// Return the complete canonical length without allocating an export.
+    /// # Errors
+    /// Refuses invalid canonical component bounds or duration.
+    pub fn canonical_len(&self) -> Result<usize, MaterialRuntimeError> {
+        Ok(self.canonical_encoding()?.len())
+    }
+    /// Allocate the complete binary export only for its caller's lifetime.
+    /// # Errors
+    /// Refuses invalid canonical framing or an allocation failure.
+    pub fn export_canonical_bytes(&self) -> Result<Vec<u8>, MaterialRuntimeError> {
+        self.canonical_encoding()?.export()
     }
     #[must_use]
     pub const fn initial_register(&self) -> &MaterialWorldRegister {
@@ -477,7 +467,10 @@ impl DurableMaterialRuntime {
         }
         if existed {
             let stored = hydrate_material_foundation(&mut tx, campaign, foundation.digest())?;
-            if stored.canonical_bytes() != foundation.canonical_bytes() {
+            if !stored
+                .canonical_encoding()?
+                .matches_encoding(&foundation.canonical_encoding()?)
+            {
                 return Err(MaterialRuntimeError::FoundationMismatch);
             }
             if read_tail_tick(&mut tx, campaign)? != 0 {
@@ -1289,30 +1282,14 @@ fn reconstruct_material_foundation(
     }
     // Authenticate canonical component framing before catalog regeneration.
     // This hashes borrowed components without allocating a second full export.
-    let mut hasher = Sha256::new();
-    hasher.update(FOUNDATION_DOMAIN);
-    hasher.update(3_u32.to_be_bytes());
-    hasher.update(
-        stored
-            .spec
-            .duration
-            .canonical_bytes()
-            .map_err(|_| MaterialRuntimeError::Bounds)?,
-    );
-    hasher.update(stored.spec.content_digest);
-    for part in [
+    let component_digest = envelope::CanonicalMaterialFoundation::new(
         stored.spec.preset_id.as_bytes(),
+        stored.spec.duration,
+        &stored.spec.content_digest,
         graph_foundation.canonical_bytes(),
         &stored.initial_register_bytes,
-    ] {
-        hasher.update(
-            u64::try_from(part.len())
-                .map_err(|_| MaterialRuntimeError::Bounds)?
-                .to_be_bytes(),
-        );
-        hasher.update(part);
-    }
-    let component_digest: [u8; 32] = hasher.finalize().into();
+    )?
+    .digest();
     if component_digest != expected_foundation_digest {
         return Err(MaterialRuntimeError::FoundationMismatch);
     }
@@ -1392,6 +1369,11 @@ fn admitted_marker_matches(
 enum StoredMaterialEnvelope {
     Complete(CommittedMaterialTickEnvelope),
     Attested(CommittedMaterialTickAttestation),
+}
+#[derive(Clone, Copy)]
+enum MaterialEnvelopeRead {
+    CanonicalBytes,
+    AuthenticatedRead,
 }
 impl StoredMaterialEnvelope {
     fn digest(&self) -> [u8; 32] {
@@ -1575,11 +1557,37 @@ impl CapturedArchiveOrganizerRegister {
             lookup_chain: None,
             witnesses: [None, None],
         };
+        // Admit the complete historical proof first, retaining only the small
+        // organizer inputs. Its decoded register and proof owners must leave
+        // scope before reconstructing the current national register.
+        let prior_organizer = if let Some(prior) = self.prior {
+            let prior = prior.admit(
+                self.campaign,
+                self.tick - 1,
+                authority,
+                prior_lookup.ok_or(MaterialRuntimeError::InvalidCheckpoint)?,
+                MaterialEnvelopeRead::AuthenticatedRead,
+            )?;
+            components.validate_sections(&prior.sections)?;
+            if prior.identity.foundation_digest() != digest {
+                return Err(MaterialRuntimeError::InvalidCheckpoint);
+            }
+            Some((
+                prior.register.organizer_config().cloned(),
+                prior.register.organizer_state().cloned(),
+            ))
+        } else {
+            None
+        };
         // Complete envelope/marker/section admission before releasing its proof owners.
         let register = {
-            let stored = self
-                .current
-                .admit(self.campaign, self.tick, authority, lookup)?;
+            let stored = self.current.admit(
+                self.campaign,
+                self.tick,
+                authority,
+                lookup,
+                MaterialEnvelopeRead::AuthenticatedRead,
+            )?;
             if stored.identity.foundation_digest() != digest
                 || stored.identity.tick_content_hash().as_bytes() != &self.content_hash
             {
@@ -1589,24 +1597,11 @@ impl CapturedArchiveOrganizerRegister {
             stored.register
         };
         let accepted = if let Some(config) = register.organizer_config() {
-            let prior_state = if let Some(prior) = self.prior {
-                let prior = prior.admit(
-                    self.campaign,
-                    self.tick - 1,
-                    authority,
-                    prior_lookup.ok_or(MaterialRuntimeError::InvalidCheckpoint)?,
-                )?;
-                components.validate_sections(&prior.sections)?;
-                if prior.identity.foundation_digest() != digest
-                    || prior.register.organizer_config() != Some(config)
-                {
+            let prior_state = if let Some((prior_config, prior_state)) = prior_organizer {
+                if prior_config.as_ref() != Some(config) {
                     return Err(MaterialRuntimeError::InvalidCheckpoint);
                 }
-                prior
-                    .register
-                    .organizer_state()
-                    .cloned()
-                    .ok_or(MaterialRuntimeError::InvalidCheckpoint)?
+                prior_state.ok_or(MaterialRuntimeError::InvalidCheckpoint)?
             } else {
                 babylon_practice_contract::initial_organizer_state(config)
                     .map_err(|_| MaterialRuntimeError::InvalidCheckpoint)?
@@ -1832,11 +1827,14 @@ fn read_stored_material_tick_rows<'w>(
     } else {
         read_material_lookup(client, source, campaign, tick, authority.opening)?
     };
-    captured.admit(campaign, tick, authority, decoded)
+    let envelope_read = match source {
+        StoredTickReadSource::Runtime => MaterialEnvelopeRead::CanonicalBytes,
+        StoredTickReadSource::FullObserver => MaterialEnvelopeRead::AuthenticatedRead,
+    };
+    captured.admit(campaign, tick, authority, decoded, envelope_read)
 }
 
 struct CapturedMaterialTick {
-    source: StoredTickReadSource,
     row: postgres::Row,
     graph: stored_tick::CapturedGraphState,
     material: stored_tick::CapturedMaterialRows,
@@ -1856,7 +1854,6 @@ impl CapturedMaterialTick {
         let tick_sql = i64::try_from(tick).map_err(|_| MaterialRuntimeError::Bounds)?;
         let row = client.query_opt(&format!("SELECT identity_bytes,register_storage_bytes,receipt_storage_bytes,lookup_delta_bytes FROM {} WHERE campaign_id=$1::uuid AND resolve_tick=$2",source.relation(StoredTickRelation::MaterialTick)), &[campaign.as_uuid(),&tick_sql])?.ok_or(MaterialRuntimeError::InvalidCheckpoint)?;
         Ok(Self {
-            source,
             row,
             graph: stored_tick::CapturedGraphState::capture(client, source, campaign, tick_sql)?,
             material: stored_tick::CapturedMaterialRows::capture(
@@ -1881,6 +1878,7 @@ impl CapturedMaterialTick {
         tick: u64,
         authority: MaterialReadAuthority<'_, 'w>,
         decoded: material_storage::DecodedPeriodLookup,
+        envelope_read: MaterialEnvelopeRead,
     ) -> Result<StoredMaterialTick<'w>, MaterialRuntimeError> {
         let MaterialReadAuthority {
             scope,
@@ -1943,8 +1941,8 @@ impl CapturedMaterialTick {
             checkpoint,
             archive_dirty_receipt: self.archive.admit()?,
         };
-        let envelope = match self.source {
-            StoredTickReadSource::Runtime => {
+        let envelope = match envelope_read {
+            MaterialEnvelopeRead::CanonicalBytes => {
                 StoredMaterialEnvelope::Complete(CommittedMaterialTickEnvelope::compose(
                     campaign,
                     &identity,
@@ -1953,7 +1951,7 @@ impl CapturedMaterialTick {
                     &admitted.receipt_bytes,
                 )?)
             }
-            StoredTickReadSource::FullObserver => {
+            MaterialEnvelopeRead::AuthenticatedRead => {
                 let attested = CommittedMaterialTickEnvelope::attest(
                     campaign,
                     &identity,

@@ -7,9 +7,10 @@ meta:
   scope: Captured Wayne collective, two independent partners, and one workplace
 
 encoding:
+  runtime_session_protocol_version: 11
   outer: exact_ASCII_domain_then_NUL_then_canonical_UTF8_JSON
-  version: config_and_state_schema_version_6_where_present
-  current_domains: {config: "babylon.organizer-config.v6\0", state: "babylon.organizer-state.v4\0",
+  version: config_and_state_schema_version_7_where_present
+  current_domains: {config: "babylon.organizer-config.v7\0", state: "babylon.organizer-state.v5\0",
                     receipt: "babylon.organizer-receipt.v2\0"}
   field_order: Rust_declared_struct_field_order
   numbers: whole_unsigned_integers_and_strict_nonnegative_i128_decimal_cash_strings
@@ -33,8 +34,11 @@ captured_content:
   promises: disjoint_actor_commitments_whose_sum_cannot_exceed_contributor_hours
   communication: workplace_record_permissions_and_bounded_contact_scope
   initial_knowledge: attributed_period_specific_observations
-  costs: captured_Michigan_defines_organizer_table
+  costs: captured_scenario_defines_organizer_table
   source_digest: authored_declarations_and_organizer_defines
+  collection: independent_cash_consent_cap_protected_floor_fixed_hours_and_mandate_source
+  collection_preview: controlled_actor_contributor_captured_participant_label_and_mandate_source_hash
+  collection_terms: Designed_with_current_committed_period_as_verification_date
 
 admission:
   inputs:
@@ -55,7 +59,12 @@ admission:
   failure: failed_tick_leaves_pending_commitment_available_for_retry
 
 causal_order:
-  - Existing material-cycle closes the current physical period and staffing.
+  - Within material-cycle, staffing, household reproduction and due payments precede collection.
+  - Collection freezes eligible cash after reproduction and due payments, before collection and distributions.
+  - A lawful gift is min(cap, max(0, eligible cash - protected floor)); zero refuses, positive below cap is partial.
+  - Full and partial gifts consume the captured fixed hours once; refusals transfer zero and perform zero hours.
+  - Same-period incoming gifts and later ownership payouts cannot fund another collection.
+  - Ownership distributions and the remaining material close finish before organizer-products.
   - organizer-products consumes only contact products in the opening committed state.
   - The reducer may publish a newly closed workplace work-reduction report within the same transaction.
   - organizer-practice resolves the admitted ruling or authorized routine after ooda.
@@ -78,10 +87,10 @@ practices:
   no_material_privilege: no_factory_stock_staffing_production_or_maintenance_writes
 
 cooperation:
-  initial_report_access: [1, 2, 3]
+  initial_report_access: through_captured_initial_agreement_period
   contact_T: participating_response_creates_attributed_product_and_receipt
   consumer_T_plus_1: validates_receipt_actor_partner_and_product_identity
-  renewal: same_agreement_for_T_plus_1_and_T_plus_2
+  renewal: same_agreement_for_captured_renewal_duration_after_T
   expiry: automatic_report_access_stops_but_existing_contact_remains_attemptable
   old_solidarity_bonuses: forbidden
   solidarity_funded_budgets: forbidden

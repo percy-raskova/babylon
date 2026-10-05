@@ -960,3 +960,474 @@ fn historical_actual_collection_preserves_original_consent_and_donor_pledge_admi
             .is_err()
     );
 }
+
+#[test]
+fn partial_collection_preserves_protected_floor_and_matches_actual_transfer_and_time() {
+    use babylon_material_circuit::{AccountId, OrganizationAccountId};
+    let base = collection_savings_control(true);
+    let mut cfg = base.material().organizer_config().unwrap().clone();
+    let terms = cfg.collection.as_mut().unwrap();
+    terms.maximum_cash_micros = 8;
+    terms.protected_cash_floor_micros = 2;
+    let session = try_session(
+        michigan_dynamic_hex_foundation::michigan_dynamic_hex_foundation().unwrap(),
+        &format!("{MATERIAL}\n{PRODUCTS}\n{PRACTICE}"),
+        base.material().state().clone(),
+        cfg,
+    )
+    .unwrap();
+    let accepted = commitment(&session, OrganizerChoice::Collect);
+    let before = session.material().canonical_bytes().to_vec();
+    let candidate = prepare(&session, Some(&accepted));
+    assert_eq!(session.material().canonical_bytes(), before);
+    let organizer = candidate.material().register().organizer_state().unwrap();
+    let actual = serde_json::to_value(organizer).unwrap();
+    let fact = &actual["collection_receipts"][0]["fact"];
+    assert_eq!(fact["requested_cash_micros"], "8");
+    assert_eq!(fact["collected_cash_micros"], "4");
+    assert_eq!(fact["outcome"], "partially_collected");
+    assert_eq!(fact["performed_hours"], 2);
+    assert_eq!(
+        organizer.receipts.last().unwrap().outcome,
+        OrganizerOutcome::CollectionCompleted
+    );
+    assert_eq!(
+        organizer.agreements,
+        session.material().organizer_state().unwrap().agreements
+    );
+    assert_eq!(
+        organizer.contact_products,
+        session
+            .material()
+            .organizer_state()
+            .unwrap()
+            .contact_products
+    );
+    let decoded = babylon_tick::material_world::decode_material_receipts(
+        candidate.material().receipt_bytes(),
+    )
+    .unwrap();
+    let donor = AccountId::Household(household());
+    let recipient = AccountId::Organization(OrganizationAccountId::from_bytes([96; 32]));
+    let ordinal = usize::try_from(fact["transfer_ordinal"].as_u64().unwrap()).unwrap();
+    assert_eq!(
+        decoded.money_transfers[ordinal].debit.delta.micro_units(),
+        -4
+    );
+    assert_eq!(
+        decoded.money_transfers[ordinal].credit.delta.micro_units(),
+        4
+    );
+    assert_eq!(
+        decoded
+            .income
+            .iter()
+            .find(|row| row.account == donor)
+            .unwrap()
+            .statement
+            .gift_expense
+            .micro_units(),
+        4
+    );
+    assert_eq!(
+        decoded
+            .income
+            .iter()
+            .find(|row| row.account == recipient)
+            .unwrap()
+            .statement
+            .gift_income
+            .micro_units(),
+        4
+    );
+    let CircuitAccounting::Monetary(e) = &candidate.material().register().state().accounting else {
+        unreachable!()
+    };
+    assert_eq!(e.book.cash(donor).unwrap().micro_units(), 2);
+    assert_eq!(e.book.cash(recipient).unwrap().micro_units(), 4);
+    let HouseholdTimeAccounting::Modeled(time) = &e.household_time else {
+        unreachable!()
+    };
+    assert_eq!(
+        time.contributions
+            .iter()
+            .filter(|row| row.contribution.contributor_id == 201)
+            .count(),
+        1
+    );
+    assert_eq!(
+        time.contributions
+            .iter()
+            .filter(|row| row.contribution.contributor_id == 201)
+            .map(|row| row.contribution.hours)
+            .sum::<u64>(),
+        2
+    );
+}
+
+fn capped_collection_session(cap: i128, floor: i128) -> Session {
+    let base = collection_savings_control(true);
+    let mut config = base.material().organizer_config().unwrap().clone();
+    let terms = config.collection.as_mut().unwrap();
+    terms.maximum_cash_micros = cap;
+    terms.protected_cash_floor_micros = floor;
+    try_session(
+        michigan_dynamic_hex_foundation::michigan_dynamic_hex_foundation().unwrap(),
+        &format!("{MATERIAL}\n{PRODUCTS}\n{PRACTICE}"),
+        base.material().state().clone(),
+        config,
+    )
+    .unwrap()
+}
+
+fn material_collection_input(
+    session: &Session,
+) -> babylon_material_circuit::CollectionResolveInput {
+    let accepted = commitment(session, OrganizerChoice::Collect);
+    let terms = session
+        .material()
+        .organizer_config()
+        .unwrap()
+        .collection
+        .as_ref()
+        .unwrap();
+    babylon_material_circuit::CollectionResolveInput {
+        original_commitment_id: accepted.commitment_id,
+        command_nonce: accepted.command.nonce,
+        admitted_period: accepted.command.expected_period,
+        resolve_period: accepted.resolves_period,
+        mandate_id: terms.mandate_id,
+        source_hash: terms.source_hash,
+        actor_id: terms.actor_id,
+        contributor_id: terms.contributor_id,
+        donor: babylon_material_circuit::FinalDemandPrincipalId::from_bytes(
+            terms.household_principal_id,
+        ),
+        recipient: babylon_material_circuit::OrganizationAccountId::from_bytes(
+            terms.organization_account_id,
+        ),
+        labor_unit_id: babylon_material_circuit::UnitId::from_bytes(terms.labor_unit_id),
+        cash_consent: true,
+        requested: money(terms.maximum_cash_micros),
+        protected_cash_floor: money(terms.protected_cash_floor_micros),
+        collection_hours: terms.collection_hours,
+        pledged_hours: session
+            .material()
+            .organizer_config()
+            .unwrap()
+            .participants
+            .iter()
+            .find(|row| row.contributor_id == terms.contributor_id)
+            .unwrap()
+            .commitments
+            .iter()
+            .filter(|row| row.actor_id == terms.actor_id)
+            .map(|row| row.hours)
+            .sum(),
+    }
+}
+
+#[test]
+fn collection_independent_consent_and_fixed_pledge_gate_admission_and_material_close() {
+    use babylon_practice_contract::{OrganizerError, OrganizerGiftConsent, OrganizerRefusal};
+    let session = capped_collection_session(8, 2);
+    let accepted = commitment(&session, OrganizerChoice::Collect);
+    let config = session.material().organizer_config().unwrap();
+    let state = session.material().organizer_state().unwrap();
+    for consent in [true, false] {
+        let mut refused = config.clone();
+        if consent {
+            refused.collection.as_mut().unwrap().cash_consent = OrganizerGiftConsent::Refuse;
+        } else {
+            refused
+                .participants
+                .iter_mut()
+                .find(|row| row.contributor_id == 201)
+                .unwrap()
+                .commitments
+                .iter_mut()
+                .find(|row| row.actor_id == 101)
+                .unwrap()
+                .hours = 1;
+        }
+        assert_eq!(
+            admit_organizer(&refused, state, &accepted.command),
+            Err(OrganizerError::Refused(if consent {
+                OrganizerRefusal::CollectionCashRefused
+            } else {
+                OrganizerRefusal::InsufficientCommittedTime
+            }))
+        );
+        let mut input = material_collection_input(&session);
+        if consent {
+            input.cash_consent = false;
+        } else {
+            input.pledged_hours = 1;
+        }
+        let closed = close_collection_control(session.material().state(), &[], &[input]).unwrap();
+        let row = &closed.collections[0];
+        assert_eq!(row.collected.micro_units(), 0);
+        assert_eq!(row.performed_hours, 0);
+        assert_eq!(row.transfer_ordinal, None);
+        assert_eq!(
+            row.outcome,
+            if consent {
+                babylon_material_circuit::CollectionOutcome::CashConsentRefused
+            } else {
+                babylon_material_circuit::CollectionOutcome::InsufficientContributionTime
+            }
+        );
+    }
+}
+
+#[test]
+fn collection_zero_eligible_cash_and_missing_actual_time_refuse_without_spending() {
+    for (session, expected) in [
+        (
+            capped_collection_session(8, 8),
+            babylon_practice_contract::OrganizerCollectionOutcome::InsufficientCash,
+        ),
+        (
+            collection_control_session(4, true),
+            babylon_practice_contract::OrganizerCollectionOutcome::InsufficientContributionTime,
+        ),
+    ] {
+        let accepted = commitment(&session, OrganizerChoice::Collect);
+        let candidate = prepare(&session, Some(&accepted));
+        let actual = candidate.material().register().organizer_state().unwrap();
+        let fact = &actual.collection_receipts[0].fact;
+        assert_eq!(fact.outcome, expected);
+        assert_eq!(fact.collected_cash_micros, 0);
+        assert_eq!(fact.performed_hours, 0);
+        assert_eq!(fact.transfer_ordinal, None);
+        let CircuitAccounting::Monetary(e) = &candidate.material().register().state().accounting
+        else {
+            unreachable!()
+        };
+        let HouseholdTimeAccounting::Modeled(time) = &e.household_time else {
+            unreachable!()
+        };
+        assert!(time.contributions.is_empty());
+    }
+}
+
+#[test]
+fn partial_collection_failure_exact_retry_and_reopen_publish_one_original_receipt() {
+    let mut session = capped_collection_session(8, 2);
+    let accepted = commitment(&session, OrganizerChoice::Collect);
+    let before = session.material().canonical_bytes().to_vec();
+    let graph_before = session
+        .graph_session()
+        .graph()
+        .encode_state()
+        .unwrap()
+        .as_bytes()
+        .to_vec();
+    let hash_before = session.current_world_hash().unwrap();
+    let candidate = prepare(&session, Some(&accepted));
+    let expected = *candidate.identity();
+    let expected_bytes = candidate.material().receipt_bytes().to_vec();
+    let mut sink = CollectingSink::default();
+    assert!(matches!(
+        session.commit_prepared_and_publish(&mut sink, candidate, |_| {
+            Err::<ReplayCommitDisposition, _>("injected collection durable failure")
+        }),
+        Err(babylon_tick::material_replay::MaterialCommitError::Commit(
+            "injected collection durable failure"
+        ))
+    ));
+    assert_eq!(session.material().canonical_bytes(), before);
+    assert_eq!(
+        session
+            .graph_session()
+            .graph()
+            .encode_state()
+            .unwrap()
+            .as_bytes(),
+        graph_before
+    );
+    assert_eq!(session.current_world_hash().unwrap(), hash_before);
+    assert_eq!(session.completed_tick(), 0);
+    assert!(sink.events.is_empty());
+    let retry = prepare(&session, Some(&accepted));
+    assert_eq!(*retry.identity(), expected);
+    assert_eq!(retry.material().receipt_bytes(), expected_bytes);
+    commit(&mut session, &mut sink, retry);
+    let reopened = MaterialWorldRegister::decode(session.material().canonical_bytes()).unwrap();
+    assert_eq!(reopened, *session.material());
+    let organizer = reopened.organizer_state().unwrap();
+    assert_eq!(organizer.collection_receipts.len(), 1);
+    assert_eq!(organizer.collection_receipts[0].commitment, accepted);
+    assert_eq!(
+        organizer.collection_receipts[0].fact.collected_cash_micros,
+        4
+    );
+    assert!(admit_organizer(
+        reopened.organizer_config().unwrap(),
+        organizer,
+        &accepted.command
+    )
+    .is_err());
+    let mut conflicting = accepted.command.clone();
+    conflicting.choice = OrganizerChoice::LocalAid;
+    assert!(admit_organizer(
+        reopened.organizer_config().unwrap(),
+        organizer,
+        &conflicting
+    )
+    .is_err());
+    assert_eq!(
+        reopened.canonical_bytes(),
+        session.material().canonical_bytes()
+    );
+}
+
+#[test]
+fn partial_collection_canonical_row_rejects_fabricated_amount_tag_time_and_join() {
+    let session = capped_collection_session(8, 2);
+    let accepted = commitment(&session, OrganizerChoice::Collect);
+    let candidate = prepare(&session, Some(&accepted));
+    let bytes = candidate.material().receipt_bytes();
+    let decoded = babylon_tick::material_world::decode_material_receipts(bytes).unwrap();
+    assert_eq!(decoded.collections.len(), 1);
+    assert_eq!(decoded.collections[0].outcome as u8, 9);
+    let row = bytes.len() - 317;
+    assert_eq!(bytes[row + 280], 9);
+    let original_fact = &candidate
+        .material()
+        .register()
+        .organizer_state()
+        .unwrap()
+        .collection_receipts[0]
+        .fact;
+    for (amount, outcome) in [(0_i128, 9_u8), (8, 9), (9, 9), (4, 1), (4, 10)] {
+        let mut changed = bytes.to_vec();
+        changed[row + 256..row + 272].copy_from_slice(&amount.to_be_bytes());
+        changed[row + 280] = outcome;
+        assert!(babylon_tick::material_world::decode_material_receipts(&changed).is_err());
+    }
+    for offset in [256_usize, 272, 281, 285] {
+        let mut changed = bytes.to_vec();
+        changed[row + offset] ^= 1;
+        assert!(
+            babylon_tick::material_world::decode_material_receipts(&changed).is_err(),
+            "offset {offset}"
+        );
+    }
+    for kind in 0..6 {
+        let mut fact = original_fact.clone();
+        match kind {
+            0 => fact.collected_cash_micros = 8,
+            1 => fact.collected_cash_micros = 0,
+            2 => fact.performed_hours = 1,
+            3 => fact.transfer_ordinal = None,
+            4 => fact.contribution_use_id = [0; 32],
+            _ => fact.requested_cash_micros = 9,
+        }
+        assert!(
+            babylon_practice_contract::validate_organizer_collection_fact(
+                session.material().organizer_config().unwrap(),
+                &accepted,
+                &fact,
+            )
+            .is_err()
+        );
+    }
+    let mut changed =
+        serde_json::to_value(candidate.material().register().organizer_state().unwrap()).unwrap();
+    changed["collection_receipts"][0]["fact"]["outcome"] = serde_json::json!("collected");
+    let changed: babylon_practice_contract::OrganizerState =
+        serde_json::from_value(changed).unwrap();
+    assert!(babylon_practice_contract::validate_organizer_state(&changed).is_err());
+}
+
+#[test]
+fn collection_duplicate_and_unfunded_due_commitment_never_mint_a_second_transfer() {
+    use babylon_material_circuit::{
+        AccountId, CapitalContributionOrder, CollectionOutcome, ContributionId,
+        EquityCarryingValue, HistoricalCostBook, MaterialCircuitError, OwnershipClaim,
+    };
+    let session = capped_collection_session(8, 2);
+    let input = material_collection_input(&session);
+    let opening = session.material().state();
+    let before = opening.clone();
+    let mut conflicting = input.clone();
+    conflicting.command_nonce = [8; 16];
+    for second in [input.clone(), conflicting] {
+        assert!(matches!(
+            close_collection_control(opening, &[], &[input.clone(), second],),
+            Err(MaterialCircuitError::RowLimit)
+        ));
+        assert_eq!(*opening, before);
+    }
+    let mut due = opening.clone();
+    let CircuitAccounting::Monetary(e) = &mut due.accounting else {
+        unreachable!()
+    };
+    let donor = AccountId::Household(household());
+    e.financial.ownership.push(OwnershipClaim {
+        issuer_site_id: site(1),
+        beneficiary: donor,
+        shares: 1,
+    });
+    let mut costs = e.costs.snapshot();
+    costs.equity.push(EquityCarryingValue {
+        owner: donor,
+        issuer_site_id: site(1),
+        amount: money(0),
+    });
+    e.costs = HistoricalCostBook::open(
+        &e.book,
+        costs.stocks,
+        costs.freight,
+        costs.equity,
+        costs.equipment,
+    )
+    .unwrap();
+    e.financial.contributions.push(CapitalContributionOrder {
+        id: ContributionId::from_bytes([80; 32]),
+        due_period: 1,
+        contributor: AccountId::Household(household()),
+        issuer_site_id: site(1),
+        amount: money(8),
+    });
+    let closed = close_collection_control(&due, &[], &[input]).unwrap();
+    assert_eq!(
+        closed.collections[0].outcome,
+        CollectionOutcome::DuePaymentUnmet
+    );
+    assert_eq!(closed.collections[0].collected.micro_units(), 0);
+    assert_eq!(closed.collections[0].performed_hours, 0);
+    assert!(closed
+        .contributions
+        .iter()
+        .any(|row| row.unfunded.micro_units() == 2));
+}
+
+fn close_collection_control(
+    opening: &babylon_material_circuit::MaterialCircuitState,
+    aid: &[babylon_material_circuit::AidResolveInput],
+    collection: &[babylon_material_circuit::CollectionResolveInput],
+) -> Result<
+    babylon_material_circuit::MaterialCircuitTransition,
+    babylon_material_circuit::MaterialCircuitError,
+> {
+    let closed =
+        babylon_material_circuit::close_material_period_with_support(opening, aid, collection)?;
+    let next_labor = opening
+        .labor
+        .iter()
+        .filter(|row| row.period == closed.next_period())
+        .cloned()
+        .collect();
+    let CircuitAccounting::Monetary(economy) = &opening.accounting else {
+        unreachable!()
+    };
+    let next_member_labor = economy
+        .member_labor
+        .iter()
+        .filter(|row| row.period == closed.next_period())
+        .cloned()
+        .collect();
+    closed.finish_with_workforce(next_labor, next_member_labor)
+}

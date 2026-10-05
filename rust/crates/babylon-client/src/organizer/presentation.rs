@@ -5,6 +5,7 @@ use babylon_persistence::runtime_session::{
     OrganizerObservation, OrganizerOutcome, OrganizerPartnerResponse, OrganizerPauseReason,
     OrganizerRefusal, OrganizerReport, OrganizerView,
 };
+use babylon_practice_contract::{OrganizerCollectionOutcome, OrganizerCollectionResolution};
 use std::fmt::Write as _;
 
 use super::{evidence::EvidenceMode, OrganizerClient, OrganizerInspector};
@@ -424,7 +425,7 @@ pub(super) fn approach(view: &OrganizerView, choice: OrganizerChoice) -> String 
     }
 }
 
-pub(super) fn aftermath(view: &OrganizerView, period: u64) -> String {
+pub(super) fn aftermath(client: &OrganizerClient, view: &OrganizerView, period: u64) -> String {
     let Some(receipt) = view
         .receipts
         .iter()
@@ -442,6 +443,18 @@ pub(super) fn aftermath(view: &OrganizerView, period: u64) -> String {
     } else {
         "saved routine"
     };
+    if receipt.choice == OrganizerChoice::Collect {
+        let actual = client.collection_resolutions.iter().find(|row| {
+            row.practice == *receipt
+                && row.fact.actor_id == view.actor_id
+                && row.fact.period == receipt.period
+                && Some(row.fact.original_commitment_id) == receipt.commitment_id
+        });
+        return actual.map_or_else(
+            || format!("Period {} · {origin}\nCollection ruling resolved. Open Our practice Archive for the actual cash and shared-time result.", receipt.period),
+            |row| format!("Period {} · {origin}\n{}\n{}", receipt.period, choice(receipt.choice), collection_result(row)),
+        );
+    }
     let participant = receipt.partner_actor_id.map_or_else(
         || "Partner participation".into(),
         |actor| partner(view, actor).to_owned(),
@@ -554,7 +567,18 @@ pub(super) fn review(
             return accepted_aid_review(client, commitment);
         }
         if commitment.command.choice == OrganizerChoice::Collect {
-            return format!("ACCEPTED · collection resolution period {}\n{}\nRuling fixed; replaces standing work once. Advance checks protected needs and shared time. A refusal remains this original collection ruling; no standing fallback. A successful gift funds later aid, with no immediate membership, agreement or time gain.", commitment.resolves_period, client.view.as_ref().map_or_else(|| "Refresh collection terms.".into(), |v| collection_detail(client,v)));
+            let terms = client.collection_preview().map_or_else(
+                || "Captured original collection ruling".into(),
+                |m| {
+                    format!(
+                        "{} · up to {} currency · {} shared material hours",
+                        m.contributor_label,
+                        currency(m.maximum_cash_micros),
+                        m.collection_hours
+                    )
+                },
+            );
+            return format!("ACCEPTED · collection resolution period {}\n{terms}. Protected needs and fixed shared time are checked at close.\nReplaces saved routine once; no standing fallback. Actual full, partial or refused payment appears after Advance. Later aid needs its own ruling.", commitment.resolves_period);
         }
         let mut text = format!(
             "ACCEPTED · resolves period {}\n{}",
@@ -800,11 +824,23 @@ pub(super) fn inspector(client: &OrganizerClient, period: u64) -> (String, Strin
     }
 }
 
+fn currency(micros: i128) -> String {
+    let amount = micros.unsigned_abs();
+    let whole = amount / 1_000_000;
+    let fraction = amount % 1_000_000;
+    let sign = if micros < 0 { "-" } else { "" };
+    if fraction == 0 {
+        format!("{sign}{whole}")
+    } else {
+        let fraction = format!("{fraction:06}");
+        format!("{sign}{whole}.{}", fraction.trim_end_matches('0'))
+    }
+}
+
 fn collection_detail(client: &OrganizerClient, view: &OrganizerView) -> String {
     let Some(m) = client
-        .collection
-        .as_ref()
-        .filter(|m| m.period == view.period)
+        .collection_preview()
+        .filter(|m| m.period == view.period && m.actor_id == view.actor_id)
     else {
         return "No authenticated current collection terms. Refresh before choosing collection."
             .into();
@@ -812,16 +848,67 @@ fn collection_detail(client: &OrganizerClient, view: &OrganizerView) -> String {
     let Some(resolves) = view.period.checked_add(1) else {
         return "Collection period exceeds the campaign bound.".into();
     };
-    format!("Voluntary household gift: cap {} cash micros; {} shared material hours. Independent cash consent: {:?}. Protected cash floor: {} micros; mandatory protected needs and due payments are checked at close. Protected consumption, essential services, closing stocks and due payments come first. Organization cash now: {} micros. Resolves period {}; replaces standing work once. No cash or time is reserved. Later aid needs its own ruling; no instant membership, agreement or time gain.", m.maximum_cash_micros,m.collection_hours,m.cash_consent,m.protected_cash_floor_micros,m.organization_cash_micros,resolves)
+    let consent = match m.cash_consent {
+        OrganizerGiftConsent::Accept => "accepted independently",
+        OrganizerGiftConsent::Refuse => "refused independently",
+    };
+    let displacement = if view.standing.authorized {
+        format!(
+            "Replaces saved neighborhood work this period ({} organizer-hours if eligible).",
+            view.contact_hours
+        )
+    } else {
+        "Saved neighborhood work is paused; collection runs once.".into()
+    };
+    let source: String = m
+        .source_hash
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
+    format!("Contributor: {} (participant {}). Designed terms verified at period {}; source {}.\nVoluntary household gift: up to {} currency; {} shared material hours. Independent cash consent: {}. Protected cash floor: {} currency; mandatory protected needs and due payments are checked at close. Protected consumption, essential services and closing stocks come first. A positive amount below the cap is a partial gift and still uses the fixed hours. Organization cash now: {} currency.\nResolves period {}. {} No cash or time is reserved. Later aid needs its own ruling; no immediate membership, agreement or time gain.", m.contributor_label, m.contributor_id, m.period, source, currency(m.maximum_cash_micros), m.collection_hours, consent, currency(m.protected_cash_floor_micros), currency(m.organization_cash_micros), resolves, displacement)
 }
+
+fn collection_outcome(outcome: OrganizerCollectionOutcome) -> &'static str {
+    match outcome {
+        OrganizerCollectionOutcome::Collected => "Collected in full",
+        OrganizerCollectionOutcome::PartiallyCollected => "Partially collected",
+        OrganizerCollectionOutcome::CashConsentRefused => "Household cash consent was refused",
+        OrganizerCollectionOutcome::ProtectedConsumptionUnmet => "Household consumption is unmet",
+        OrganizerCollectionOutcome::ProtectedServiceUnmet => {
+            "Essential household services are unmet"
+        }
+        OrganizerCollectionOutcome::ProtectedClosingStockUnmet => {
+            "Protected closing pantry or stocks are unmet"
+        }
+        OrganizerCollectionOutcome::DuePaymentUnmet => "Outstanding protected payments remain due",
+        OrganizerCollectionOutcome::InsufficientCash => {
+            "No eligible cash remains above the protected floor"
+        }
+        OrganizerCollectionOutcome::InsufficientContributionTime => {
+            "Insufficient actual authorized household time"
+        }
+    }
+}
+
+fn collection_result(row: &OrganizerCollectionResolution) -> String {
+    format!("Requested {} currency; collected {} currency; {} shared material hours. Result: {}. Original ruling resolved; no standing fallback. A collected gift can fund later aid; no membership, agreement or time gain is credited.", currency(row.fact.requested_cash_micros), currency(row.fact.collected_cash_micros), row.fact.performed_hours, collection_outcome(row.fact.outcome))
+}
+
 fn collection_history(client: &OrganizerClient, view: &OrganizerView, period: u64) -> String {
     let mut text = String::new();
-    for row in client
-        .collection_resolutions
-        .iter()
-        .filter(|r| r.practice.actor_id == view.actor_id && r.practice.period <= period)
-    {
-        let _ = writeln!(text,"COLLECTION · original admission {}; actual resolution {}. Requested {} cash micros; collected {}; {} shared material hours. Result: {:?}. Original ruling resolved; no standing fallback. A collected gift can fund later aid; no membership, agreement or time gain is credited.",row.fact.admitted_period,row.fact.period,row.fact.requested_cash_micros,row.fact.collected_cash_micros,row.fact.performed_hours,row.fact.outcome);
+    for row in client.collection_resolutions.iter().filter(|r| {
+        r.practice.actor_id == view.actor_id
+            && r.fact.actor_id == view.actor_id
+            && r.fact.period == r.practice.period
+            && r.practice.period <= period
+    }) {
+        let _ = writeln!(
+            text,
+            "COLLECTION · original admission {}; actual resolution {}. {}",
+            row.fact.admitted_period,
+            row.fact.period,
+            collection_result(row)
+        );
     }
     text
 }
@@ -849,7 +936,9 @@ mod tests {
         assert!(text.contains("Showing 0 recent receipt(s) of 325 committed through period 325"));
         assert!(text.contains("Open Our practice Archive"));
         assert!(!text.contains("No practice has completed"));
-        assert!(aftermath(&view, 1).contains("Open Our practice Archive"));
+        assert!(
+            aftermath(&OrganizerClient::default(), &view, 1).contains("Open Our practice Archive")
+        );
         assert!(situation(&view, 1).contains("Open Cited workplace Archive"));
     }
 
@@ -1579,7 +1668,7 @@ mod tests {
         receipt.hours_spent = 99;
         view.receipts.push(receipt);
 
-        let first = aftermath(&view, 1);
+        let first = aftermath(&OrganizerClient::default(), &view, 1);
         assert!(first.contains("Period 1 · accepted ruling"), "{first}");
         assert!(first.contains("12 organizer-hours spent"), "{first}");
         assert!(
@@ -1589,18 +1678,18 @@ mod tests {
         assert!(first.contains("No report obtained"), "{first}");
         assert!(!first.contains("withheld"), "{first}");
         assert!(!first.contains("Contact recorded"), "{first}");
-        let second = aftermath(&view, 5);
+        let second = aftermath(&OrganizerClient::default(), &view, 5);
         assert!(second.contains("Period 2 · saved routine"), "{second}");
         assert!(
             second.contains("Contact recorded; agreement can renew next period"),
             "{second}"
         );
         assert!(!second.contains("99 organizer-hours"), "{second}");
-        assert!(aftermath(&view, 0).contains("No practice completed"));
+        assert!(aftermath(&OrganizerClient::default(), &view, 0).contains("No practice completed"));
 
         // An explicit Hold still performs standing work, but its origin is an accepted ruling.
         view.receipts[1].commitment_id = Some([4; 32]);
-        assert!(aftermath(&view, 2).contains("accepted ruling"));
+        assert!(aftermath(&OrganizerClient::default(), &view, 2).contains("accepted ruling"));
     }
 
     #[test]
@@ -1753,10 +1842,47 @@ mod tests {
             practice,
         };
         client.collection_resolutions = vec![row.clone()];
+        client
+            .view
+            .as_mut()
+            .unwrap()
+            .receipts
+            .push(row.practice.clone());
+        assert!(aftermath(&client, client.view.as_ref().unwrap(), 3)
+            .contains("Household consumption is unmet"));
+        assert!(
+            !aftermath(&client, client.view.as_ref().unwrap(), 2).contains("collected 0 currency")
+        );
+        // Captured from an actual shared-engine partial close; retain its exact
+        // amount, actor, original command and shared material time evidence.
+        let partial: OrganizerCollectionResolution = serde_json::from_str(include_str!(
+            "../../tests/fixtures/organizer_partial_collection.json"
+        ))
+        .unwrap();
+        let resolved_period = partial.fact.period;
+        let mut partial_view = view.clone();
+        partial_view.actor_id = partial.fact.actor_id;
+        partial_view.period = resolved_period;
+        partial_view.receipts = vec![partial.practice.clone()];
+        let partially_collected = OrganizerClient {
+            view: Some(partial_view.clone()),
+            collection_resolutions: vec![partial],
+            ..OrganizerClient::default()
+        };
+        let actual = aftermath(&partially_collected, &partial_view, resolved_period);
+        assert!(actual.contains("collected 0.000004 currency; 2 shared material hours"));
+        assert!(actual.contains("Partially collected"));
+        assert!(
+            collection_history(&partially_collected, &partial_view, resolved_period)
+                .contains("Partially collected")
+        );
+        assert!(
+            collection_history(&partially_collected, &partial_view, resolved_period - 1).is_empty()
+        );
         let text = collection_history(&client, &view, 3);
         assert!(text.contains("original admission 2; actual resolution 3"));
-        assert!(text.contains("collected 0; 0 shared material hours"));
-        assert!(text.contains("ProtectedConsumptionUnmet"));
+        assert!(text.contains("collected 0 currency; 0 shared material hours"));
+        assert!(text.contains("Household consumption is unmet"));
         assert!(text.contains("no standing fallback"));
         assert!(collection_history(&client, &view, 2).is_empty());
         client.collection_resolutions[0].practice.actor_id = view.actor_id + 1;
@@ -1765,6 +1891,10 @@ mod tests {
             babylon_persistence::runtime_session::OrganizerCollectionPreview {
                 period: view.period,
                 mandate_id: [8; 32],
+                actor_id: view.actor_id,
+                contributor_id: 1,
+                contributor_label: "Fixture contributor".into(),
+                source_hash: [16; 32],
                 cash_consent: OrganizerGiftConsent::Accept,
                 maximum_cash_micros: 400_000,
                 protected_cash_floor_micros: 0,
@@ -1773,9 +1903,25 @@ mod tests {
             },
         );
         let card = client_approach(&client, &view, OrganizerChoice::Collect);
-        assert!(card.contains("cap 400000 cash micros; 2 shared material hours"));
+        assert!(card.contains("up to 0.4 currency; 2 shared material hours"));
+        assert!(card.contains("terms verified at period 3"));
+        assert!(card.contains("Designed"));
         assert!(card.contains("mandatory protected needs"));
         assert!(card.contains("No cash or time is reserved"));
         assert!(!card.contains("household cash now"));
+    }
+    #[test]
+    fn collection_currency_preserves_exact_micro_units_without_float_rounding() {
+        assert_eq!(currency(0), "0");
+        assert_eq!(currency(400_000), "0.4");
+        assert_eq!(currency(1), "0.000001");
+        assert_eq!(
+            currency(i128::MAX),
+            "170141183460469231731687303715884.105727"
+        );
+        assert_eq!(
+            currency(i128::MIN),
+            "-170141183460469231731687303715884.105728"
+        );
     }
 }

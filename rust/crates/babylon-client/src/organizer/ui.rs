@@ -973,6 +973,16 @@ fn unavailable_message(
         "Waiting for durable acceptance of this ruling. Refresh its status after the response."
     } else if client.commitment.is_some() {
         "A ruling is already accepted for this period. Advance or inspect its status."
+    } else if matches!(action, OrganizerAction::Choose(OrganizerChoice::Collect))
+        || client.choice() == OrganizerChoice::Collect
+    {
+        if client.collection_preview().is_some_and(|terms| {
+            terms.cash_consent == babylon_persistence::runtime_session::OrganizerGiftConsent::Refuse
+        }) {
+            "The household independently refused cash consent. Other work does not grant that permission."
+        } else {
+            "Refresh the current attributed collection terms before reviewing this ruling."
+        }
     } else {
         "Wait for the committed situation or review the selected approach."
     }
@@ -1230,7 +1240,7 @@ fn paint_text(scope: &Scope, focus: &InputFocus, paint: &mut Paint) {
                 else { format!("PERIOD {}{endpoint} · 4 weeks\n{} organizer-hours available", view.period, view.available_hours) }
             }),
             TextPart::Context => scope.client.view.as_ref().map_or_else(String::new, presentation::context),
-            TextPart::Aftermath => scope.client.view.as_ref().map_or_else(String::new, |view| presentation::aftermath(view, scope.session.viewed_tick)),
+            TextPart::Aftermath => scope.client.view.as_ref().map_or_else(String::new, |view| presentation::aftermath(&scope.client, view, scope.session.viewed_tick)),
             TextPart::ChoiceHeading => if complete { "CAMPAIGN COMPLETE".into() } else if historical { "CURRENT CHOICES · RETURN LIVE TO DECIDE".into() } else { "CHOOSE OUR WORK FOR THE NEXT PERIOD".into() },
             TextPart::Approach(choice) => if complete { "No further period remains. Inspect our practice history and retained reports.".into() } else { scope.client.view.as_ref().map_or_else(String::new, |view| presentation::client_approach(&scope.client, view, *choice)) },
             TextPart::ChoiceMarker(choice) => {
@@ -2526,6 +2536,10 @@ mod tests {
                 babylon_persistence::runtime_session::OrganizerCollectionPreview {
                     period: 3,
                     mandate_id: [8; 32],
+                    actor_id: client.view.as_ref().unwrap().actor_id,
+                    contributor_id: 1,
+                    contributor_label: "Fixture contributor".into(),
+                    source_hash: [16; 32],
                     cash_consent:
                         babylon_persistence::runtime_session::OrganizerGiftConsent::Accept,
                     maximum_cash_micros: 400_000,
@@ -2558,7 +2572,7 @@ mod tests {
                 matches!(part, TextPart::Approach(OrganizerChoice::Collect)).then(|| text.0.clone())
             })
             .unwrap();
-        assert!(card.contains("cap 400000 cash micros; 2 shared material hours"));
+        assert!(card.contains("up to 0.4 currency; 2 shared material hours"));
         review_selected(&mut app);
         // Paint the reviewed model before inspecting the actual native text.
         app.update();

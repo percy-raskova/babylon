@@ -143,6 +143,10 @@ fn collection_snapshot_requires_evidence_and_exact_cash_strings() {
     snapshot.collection = Some(OrganizerCollectionPreview {
         period: 0,
         mandate_id: [8; 32],
+        actor_id: snapshot.view.actor_id,
+        contributor_id: 1,
+        contributor_label: "Fixture contributor".into(),
+        source_hash: [16; 32],
         cash_consent: OrganizerGiftConsent::Accept,
         maximum_cash_micros: i128::MAX,
         protected_cash_floor_micros: 0,
@@ -173,6 +177,22 @@ fn collection_snapshot_requires_evidence_and_exact_cash_strings() {
         assert!(
             serde_json::from_value::<RuntimeSessionResponse>(missing).is_err(),
             "{field}"
+        );
+    }
+    for field in [
+        "actor_id",
+        "contributor_id",
+        "contributor_label",
+        "source_hash",
+    ] {
+        let mut missing = wire.clone();
+        missing["snapshot"]["collection"]
+            .as_object_mut()
+            .unwrap()
+            .remove(field);
+        assert!(
+            serde_json::from_value::<RuntimeSessionResponse>(missing).is_err(),
+            "collection attribution: {field}"
         );
     }
     let mut absent = wire;

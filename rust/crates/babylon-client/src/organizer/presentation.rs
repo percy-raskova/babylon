@@ -248,6 +248,36 @@ pub(super) fn client_approach(
     let Some(preview) = client.aid_preview(choice) else {
         return "No authenticated current material terms. Refresh before choosing aid.".into();
     };
+    if let Some(pending) = client
+        .pending_aid
+        .iter()
+        .find(|pending| {
+            pending.kind == preview.kind
+                && pending.mandate_id == preview.mandate_id
+                && pending.admitted_period <= view.period
+        })
+        .filter(|_| {
+            view.period == preview.period
+                && preview.receiving_consent == OrganizerGiftConsent::Accept
+                && !view
+                    .aid_options
+                    .iter()
+                    .any(|option| option.kind == preview.kind)
+        })
+    {
+        let kind = match pending.kind {
+            babylon_persistence::runtime_session::OrganizerAidKind::Local => "local aid",
+            babylon_persistence::runtime_session::OrganizerAidKind::Remote => "remote solidarity",
+        };
+        let progress = if view.period < pending.dispatch_period {
+            "Accepted support awaits its scheduled dispatch; no delivery is credited."
+        } else if pending.kind == babylon_persistence::runtime_session::OrganizerAidKind::Remote {
+            "Accepted support remains in transit; arrival is not yet credited."
+        } else {
+            "Accepted support remains pending. Read its actual result in Practice history."
+        };
+        return format!("PENDING SUPPORT · {kind}\nOriginal admission: period {}; dispatch: period {}.\n{progress}\nOpen Practice history to follow this commitment's dispatch, arrival or terminal failure.\nAnother {kind} ruling remains unavailable while this support is pending. Later coordination still needs independent authorization.", pending.admitted_period, pending.dispatch_period);
+    }
     let mut options = view
         .aid_options
         .iter()
@@ -1422,6 +1452,116 @@ mod tests {
             refused.contains("later practice needs a separate agreement"),
             "{refused}"
         );
+    }
+
+    fn pending_remote_card_client(period: u64) -> OrganizerClient {
+        use babylon_persistence::runtime_session::OrganizerAidPending;
+        let mut view = view();
+        view.period = period;
+        view.aid_options = aid_options()
+            .into_iter()
+            .filter(|option| option.kind == OrganizerAidKind::Local)
+            .collect();
+        let mut remote = aid_preview();
+        remote.period = period;
+        let pending = OrganizerAidPending {
+            kind: remote.kind,
+            original_commitment_id: [11; 32],
+            material_commitment_id: [12; 32],
+            mandate_id: remote.mandate_id,
+            admitted_period: 0,
+            dispatch_period: 1,
+            good_id: remote.good_id,
+            unit_id: remote.unit_id,
+        };
+        let mut local = remote.clone();
+        local.kind = OrganizerAidKind::Local;
+        local.transport = babylon_persistence::runtime_session::OrganizerAidTransportPreview::Local;
+        OrganizerClient {
+            view: Some(view),
+            aid: vec![remote, local],
+            pending_aid: vec![pending],
+            ..OrganizerClient::default()
+        }
+    }
+
+    #[test]
+    fn pending_support_card_uses_original_dates_and_keeps_new_admission_disabled() {
+        for period in [0, 1, 4] {
+            let client = pending_remote_card_client(period);
+            let text = client_approach(
+                &client,
+                client.view.as_ref().unwrap(),
+                OrganizerChoice::RemoteAid,
+            );
+            assert!(
+                text.contains("Original admission: period 0; dispatch: period 1"),
+                "{text}"
+            );
+            assert!(text.contains("Practice history"), "{text}");
+            assert!(
+                text.contains("Another remote solidarity ruling remains unavailable"),
+                "{text}"
+            );
+            if period == 0 {
+                assert!(text.contains("awaits its scheduled dispatch"), "{text}");
+                assert!(!text.contains("in transit"), "{text}");
+            } else {
+                assert!(
+                    text.contains("remains in transit; arrival is not yet credited"),
+                    "{text}"
+                );
+            }
+            assert!(!text.contains("Refresh"), "{text}");
+            assert!(!text.contains("consent is unverified"), "{text}");
+            assert!(!text.contains("Scheduled material resolution"), "{text}");
+            assert!(!client.choice_available(OrganizerChoice::RemoteAid));
+            assert!(client.choice_available(OrganizerChoice::LocalAid));
+            assert!(client.choice_available(OrganizerChoice::Hold));
+        }
+    }
+
+    #[test]
+    fn pending_support_card_preserves_missing_evidence_and_consent_refusal() {
+        let mut missing = pending_remote_card_client(1);
+        missing.aid.clear();
+        let text = client_approach(
+            &missing,
+            missing.view.as_ref().unwrap(),
+            OrganizerChoice::RemoteAid,
+        );
+        assert!(
+            text.contains("No authenticated current material terms"),
+            "{text}"
+        );
+        assert!(!text.contains("remains in transit"), "{text}");
+
+        let mut unrelated = pending_remote_card_client(1);
+        unrelated.pending_aid[0].mandate_id = [99; 32];
+        let text = client_approach(
+            &unrelated,
+            unrelated.view.as_ref().unwrap(),
+            OrganizerChoice::RemoteAid,
+        );
+        assert!(text.contains("Recipient attribution unavailable"), "{text}");
+        assert!(!text.contains("remains in transit"), "{text}");
+
+        let mut refused = pending_remote_card_client(1);
+        refused.aid[0].receiving_consent = OrganizerGiftConsent::Refuse;
+        let mut option = aid_options().remove(1);
+        option.receiving_consent = OrganizerGiftConsent::Refuse;
+        refused.view.as_mut().unwrap().aid_options.push(option);
+        let text = client_approach(
+            &refused,
+            refused.view.as_ref().unwrap(),
+            OrganizerChoice::RemoteAid,
+        );
+        assert!(
+            text.contains("Current recipient receiving consent: refused; gift unavailable"),
+            "{text}"
+        );
+        assert!(!text.contains("remains in transit"), "{text}");
+        assert!(!refused.choice_available(OrganizerChoice::RemoteAid));
     }
 
     #[test]

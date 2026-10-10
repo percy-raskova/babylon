@@ -227,3 +227,43 @@ pub(super) fn validate_state(
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use babylon_kernel::content_digest::sha256_of;
+
+    fn hex_bytes(hex: &str) -> Vec<u8> {
+        assert_eq!(hex.len() % 2, 0);
+        hex.as_bytes()
+            .chunks_exact(2)
+            .map(|pair| u8::from_str_radix(std::str::from_utf8(pair).unwrap(), 16).unwrap())
+            .collect()
+    }
+
+    #[test]
+    fn retained_pre_cutover_full_and_refusal_rows_reencode_identical_bytes_and_hashes() {
+        // Actual material close rows retained on 2026-10-05 before the partial
+        // collection cutover. Organizer capture epochs are checked separately.
+        for (outcome, hex, hash) in [
+            (CollectionOutcome::Collected, "00000000000000010000000000000000681a2c027bbe814e01b17fa13612eb8a5835b099f4a8d7e8c3b3960984524cd1070707070707070707070707070707075d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e000000000000006500000000000000c9010101010101010101010101010101010101010101010101010101010101010160606060606060606060606060606060606060606060606060606060606060600202020202020202020202020202020202020202020202020202020202020202000000000000000000000000000000020000000000000000000000000000000200000000000000020100000006055767ce140947603c8546cbcc13229b359077078c2afee7177209a242683d3c", "7bd8f3376a5b48a7c69f43fb4a9a25ceb1ef20dd3dd0d21f8f8b89c6f2c585aa"),
+            (CollectionOutcome::ProtectedClosingStockUnmet, "00000000000000010000000000000000681a2c027bbe814e01b17fa13612eb8a5835b099f4a8d7e8c3b3960984524cd1070707070707070707070707070707075d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e000000000000006500000000000000c90101010101010101010101010101010101010101010101010101010101010101606060606060606060606060606060606060606060606060606060606060606002020202020202020202020202020202020202020202020202020202020202020000000000000000000000000000000200000000000000000000000000000000000000000000000005ffffffff0000000000000000000000000000000000000000000000000000000000000000", "7ad0ba54644411bc61b010a40f9dc11d11eaab9336557d0b193e87cdff014bab"),
+        ] {
+            let bytes = hex_bytes(hex);
+            assert_eq!(bytes.len(), ROW_BYTES);
+            let expected_hash: [u8; 32] = hex_bytes(hash).try_into().unwrap();
+            assert_eq!(sha256_of(&bytes), expected_hash);
+            let mut cursor = ReceiptCursor { bytes: &bytes, position: 0 };
+            let row = decode(&mut cursor, 1).unwrap();
+            assert_eq!(cursor.position, ROW_BYTES);
+            assert_eq!(row.outcome, outcome);
+            let mut encoded = Vec::new();
+            encode(std::slice::from_ref(&row), 1, &mut encoded).unwrap();
+            assert_eq!(encoded, bytes);
+            assert_eq!(sha256_of(&encoded), expected_hash);
+            let mut unknown = bytes.clone();
+            unknown[280] = 10;
+            assert!(decode(&mut ReceiptCursor { bytes: &unknown, position: 0 }, 1).is_err());
+        }
+    }
+}

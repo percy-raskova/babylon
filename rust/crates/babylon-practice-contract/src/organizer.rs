@@ -18,7 +18,7 @@ pub use time_resources::*;
 pub use transition::*;
 
 /// Current organizer representation. Older representations are unsupported.
-pub const ORGANIZER_SCHEMA_VERSION: u16 = 6;
+pub const ORGANIZER_SCHEMA_VERSION: u16 = 7;
 
 /// Whole organizer-hours are Designed participant time commitments, not jobs.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

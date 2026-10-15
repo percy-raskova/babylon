@@ -31,7 +31,7 @@ path = "src/main.rs"
 dynamic_linking = ["bevy/dynamic_linking"]
 
 [dependencies]
-bevy = { version = "0.18", features = ["webp"] }
+bevy = { version = "0.20", features = ["webp"] }
 babylon-kernel = { path = "../babylon-kernel" }
 # Archive commands use the confined fog-safe reader. The explicit economy
 # status command uses the separately provisioned full-observer reader, as does

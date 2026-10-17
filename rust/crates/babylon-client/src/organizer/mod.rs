@@ -177,14 +177,22 @@ impl OrganizerClient {
             .find(|row| row.kind == kind && row.period == view.period)
     }
 
+    fn collection_preview(&self) -> Option<&OrganizerCollectionPreview> {
+        let view = self.view.as_ref()?;
+        self.collection.as_ref().filter(|terms| {
+            terms.period == view.period
+                && terms.actor_id == view.actor_id
+                && terms.contributor_id > 0
+                && !terms.contributor_label.is_empty()
+                && terms.source_hash != [0; 32]
+        })
+    }
+
     fn choice_available(&self, choice: OrganizerChoice) -> bool {
         if choice == OrganizerChoice::Collect {
-            return self.view.as_ref().is_some_and(|view| {
-                self.collection.as_ref().is_some_and(|m| {
-                    m.period == view.period
-                        && m.cash_consent
-                            == babylon_persistence::runtime_session::OrganizerGiftConsent::Accept
-                })
+            return self.collection_preview().is_some_and(|terms| {
+                terms.cash_consent
+                    == babylon_persistence::runtime_session::OrganizerGiftConsent::Accept
             });
         }
         if !matches!(
@@ -829,6 +837,10 @@ mod tests {
         client.collection = Some(OrganizerCollectionPreview {
             period,
             mandate_id: [8; 32],
+            actor_id: client.view.as_ref().unwrap().actor_id,
+            contributor_id: 1,
+            contributor_label: "Fixture contributor".into(),
+            source_hash: [16; 32],
             cash_consent: babylon_persistence::runtime_session::OrganizerGiftConsent::Accept,
             maximum_cash_micros: 400_000,
             protected_cash_floor_micros: 0,
@@ -836,6 +848,16 @@ mod tests {
             organization_cash_micros: 1_000_000,
         });
         assert!(client.choice_available(OrganizerChoice::Collect));
+        let mut unrelated = OrganizerClient {
+            view: client.view.clone(),
+            collection: client.collection.clone(),
+            ..OrganizerClient::default()
+        };
+        unrelated.collection.as_mut().unwrap().actor_id += 1;
+        assert!(!unrelated.choice_available(OrganizerChoice::Collect));
+        unrelated.collection.as_mut().unwrap().actor_id -= 1;
+        unrelated.collection.as_mut().unwrap().source_hash = [0; 32];
+        assert!(!unrelated.choice_available(OrganizerChoice::Collect));
         let command = client
             .make_command(&session, OrganizerChoice::Collect)
             .unwrap();

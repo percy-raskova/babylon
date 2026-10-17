@@ -746,7 +746,7 @@ def _smoke_transcript_children(
     *,
     refused: bool = False,
     economic_report: dict[str, object] | None = None,
-    protocol_version: int | float = 10,
+    protocol_version: int | float = 11,
     progress_rows: list[dict[str, Any]] | None = None,
     progress_before_ready: bool = False,
 ) -> list[list[str]]:
@@ -1036,10 +1036,10 @@ def test_national_smoke_refuses_incomplete_or_mismatched_economic_read(
     assert "national economic snapshot" in output.err
 
 
-def test_installation_check_admits_current_nine_and_exact_progress_stream(
+def test_installation_check_admits_current_protocol_and_exact_progress_stream(
     monkeypatch, tmp_path, capsys
 ):
-    _smoke_transcript_children(monkeypatch, tmp_path, protocol_version=10)
+    _smoke_transcript_children(monkeypatch, tmp_path, protocol_version=11)
     assert launcher.main(["--smoke", "--no-build", "--preset", "standard"]) == 0
     for index in (1, 2):
         requests = [
@@ -1047,7 +1047,7 @@ def test_installation_check_admits_current_nine_and_exact_progress_stream(
             for line in (tmp_path / f"requests-{index}.jsonl").read_text().splitlines()
         ]
         assert all(
-            type(row["protocol_version"]) is int and row["protocol_version"] == 10
+            type(row["protocol_version"]) is int and row["protocol_version"] == 11
             for row in requests
         )
         assert requests[0]["scope"] == {"epoch": 0, "campaign_id": None}
@@ -1057,13 +1057,13 @@ def test_installation_check_admits_current_nine_and_exact_progress_stream(
     assert json.loads(capsys.readouterr().out)["periods"] == 1
 
 
-@pytest.mark.parametrize("version", [5, 6, 7, 8, 9, 10.0])
+@pytest.mark.parametrize("version", [5, 6, 7, 8, 9, 10, 10.0, 11.0, 12])
 def test_installation_check_refuses_unsupported_or_untyped_version(
     monkeypatch, tmp_path, capsys, version
 ):
     _smoke_transcript_children(monkeypatch, tmp_path, protocol_version=version)
     assert launcher.main(["--smoke", "--no-build", "--preset", "standard"]) == 1
-    assert "requires runtime session protocol 10" in capsys.readouterr().err
+    assert "requires runtime session protocol 11" in capsys.readouterr().err
 
 
 @pytest.mark.parametrize(

@@ -372,11 +372,11 @@ pub fn validate_organizer_pair(
 
 pub fn encode_organizer_config(config: &OrganizerConfig) -> Result<Vec<u8>, OrganizerError> {
     validate_organizer_config(config)?;
-    canonical(b"babylon.organizer-config.v6", config)
+    canonical(b"babylon.organizer-config.v7", config)
 }
 
 pub fn decode_organizer_config(bytes: &[u8]) -> Result<OrganizerConfig, OrganizerError> {
-    let value = decode(b"babylon.organizer-config.v6", bytes)?;
+    let value = decode(b"babylon.organizer-config.v7", bytes)?;
     validate_organizer_config(&value)?;
     Ok(value)
 }
@@ -384,11 +384,11 @@ pub fn decode_organizer_config(bytes: &[u8]) -> Result<OrganizerConfig, Organize
 pub fn encode_organizer_state(state: &OrganizerState) -> Result<Vec<u8>, OrganizerError> {
     validate_organizer_state(state)?;
     super::aid::validate_completed_aid(state)?;
-    canonical(b"babylon.organizer-state.v4", state)
+    canonical(b"babylon.organizer-state.v5", state)
 }
 
 pub fn decode_organizer_state(bytes: &[u8]) -> Result<OrganizerState, OrganizerError> {
-    let value = decode(b"babylon.organizer-state.v4", bytes)?;
+    let value = decode(b"babylon.organizer-state.v5", bytes)?;
     validate_organizer_state(&value)?;
     super::aid::validate_completed_aid(&value)?;
     Ok(value)

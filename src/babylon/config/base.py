@@ -45,10 +45,8 @@ class BaseConfig:
     LOG_FORMAT: Final[str] = os.getenv(
         "LOG_FORMAT", "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     )
-    # Player data dir (ADR094/096 D3 provisioning canon), not a repo-relative
-    # path: logs are runtime player state, same root as model weights
-    # (`babylon.intelligence.provision.default_models_dir`). LOG_DIR env var
-    # still overrides for dev/CI (e.g. pointing logs at a repo-local dir).
+    # Player logs use the XDG data root. LOG_DIR overrides it for dev/CI,
+    # for example to keep logs in a checkout-local directory.
     LOG_DIR: Final[Path] = Path(os.getenv("LOG_DIR", str(player_data_dir() / "logs")))
 
     # === Metrics Configuration ===

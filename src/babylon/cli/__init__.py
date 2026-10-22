@@ -1,4 +1,4 @@
-"""Operator commands for Babylon's reference data and model configuration."""
+"""Operator commands for Babylon's runtime database and installation."""
 
 from __future__ import annotations
 
@@ -20,11 +20,9 @@ app = typer.Typer(
 def _register() -> None:
     """Register the operator subcommands."""
     from babylon.cli import doctor as doctor_cmd
-    from babylon.cli import login as login_cmd
     from babylon.cli import uninstall as uninstall_cmd
 
     app.command(name="doctor")(doctor_cmd.doctor)
-    app.command(name="login")(login_cmd.login)
     app.command(name="uninstall")(uninstall_cmd.uninstall)
 
 

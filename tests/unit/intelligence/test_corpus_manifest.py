@@ -1,8 +1,7 @@
 """Behavioral contract for the corpus manifest (ADR107, T5 U3).
 
 Replaces the hardcoded ``MVP_CORPUS`` tuple in ``tools/ingest_corpus.py``
-with a declarative manifest (mirrors
-:mod:`babylon.intelligence.model_manifest`'s validation style). Unit tests
+with a declarative manifest. Unit tests
 never touch the real ``~/Documents/ocr/`` tree — every glob-resolution test
 below builds its own tmp fixture tree.
 """

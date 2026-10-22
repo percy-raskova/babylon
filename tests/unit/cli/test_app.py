@@ -16,8 +16,9 @@ runner = CliRunner()
 def test_help_lists_supported_operator_subcommands() -> None:
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0
-    for name in ("doctor", "login", "uninstall"):
+    for name in ("doctor", "uninstall"):
         assert name in result.stdout
+    assert "login" not in result.stdout
     assert "self-update" not in result.stdout
 
 

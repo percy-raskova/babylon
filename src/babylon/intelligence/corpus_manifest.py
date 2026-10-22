@@ -2,10 +2,9 @@
 
 Replaces the hardcoded ``MVP_CORPUS`` tuple that used to live in
 ``tools/ingest_corpus.py`` (a fuzzy-keyword-matching search against an
-arbitrary external mirror path) with a declarative manifest of rows —
-mirroring :mod:`babylon.intelligence.model_manifest`'s shape (frozen
+arbitrary external mirror path) with a declarative manifest of rows: frozen
 Pydantic models, closed ``StrEnum`` vocabularies, a pure ``parse_manifest``
-function, loud validation).
+function, and loud validation.
 
 Each row names a ``path_glob`` that resolves against a *corpus root* — the
 durable OCR/extraction tree at ``~/Documents/ocr/`` (see that tree's own

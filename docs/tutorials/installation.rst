@@ -56,6 +56,29 @@ Installation Steps
 
       mise run rust:check-no-docs
 
+Refresh Certificate Bundles
+---------------------------
+
+The October 2026 ``eMudhra`` incident requires patched certificate bundles.
+Update your operating system CA certificates first. Babylon data downloads and
+setup commands use system trust, which project dependency updates do not refresh.
+Then install the current project tools and dependencies:
+
+.. code-block:: bash
+
+   mise install --locked python uv node
+   mise run install
+
+Existing pre-commit environments keep their own pip. Recreate the generated
+hook cache with ``mise exec -- uv run --frozen pre-commit clean`` before the next
+hook run. This clears the shared pre-commit cache for other repositories too.
+
+Use the project uv runner. The pinned Python interpreter still bundles an older
+pip in ``ensurepip``. It does not create the project's uv environment. This
+repair does not update system certificates or Python installations outside the
+project. Follow the `Python security advisory
+<https://discuss.python.org/t/109576>`_ for those installations.
+
 Open the Observer Game
 ----------------------
 

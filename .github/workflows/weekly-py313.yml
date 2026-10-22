@@ -40,7 +40,7 @@ jobs:
       # Documented exception to the mise-pinned toolchain: this leg exists
       # precisely to run a DIFFERENT python (3.13) than .mise.toml pins.
       - name: Install uv
-        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4
+        uses: jdx/mise-action@fc42bcc7ddbf51124c30f95a877a0c5168a3bfde # v5.2.1
         with:
           version: 2026.9.1
           install_args: uv

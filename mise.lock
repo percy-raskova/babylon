@@ -3,13 +3,13 @@
 lockfile_version = 1
 
 [[tools.node]]
-version = "22.22.2"
+version = "22.23.4"
 backend = "core:node"
-specifiers = ["22.22.2"]
+specifiers = ["22.23.4"]
 
 [tools.node."platforms.linux-x64"]
-checksum = "sha256:978978a635eef872fa68beae09f0aad0bbbae6757e444da80b570964a97e62a3"
-url = "https://nodejs.org/dist/v22.22.2/node-v22.22.2-linux-x64.tar.gz"
+checksum = "sha256:b8492284c76a54baf58d61668dd0e41ee0fc98adabf9503d30f05d08f55b4406"
+url = "https://nodejs.org/dist/v22.23.4/node-v22.23.4-linux-x64.tar.gz"
 
 [[tools.python]]
 version = "3.12.14"
@@ -22,12 +22,12 @@ url = "https://github.com/astral-sh/python-build-standalone/releases/download/20
 provenance = "github-attestations"
 
 [[tools.uv]]
-version = "0.9.8"
+version = "0.13.4"
 backend = "aqua:astral-sh/uv"
-specifiers = ["0.9.8"]
+specifiers = ["0.13.4"]
 
 [tools.uv."platforms.linux-x64"]
-checksum = "sha256:950bad4899800ab158db97081b30a601a3ff4237d705756fda8695342cfcc20a"
-url = "https://github.com/astral-sh/uv/releases/download/0.9.8/uv-x86_64-unknown-linux-gnu.tar.gz"
-url_api = "https://api.github.com/repos/astral-sh/uv/releases/assets/313854565"
+checksum = "sha256:2b428396f12572d4429cf210ca234dd599a33b3af0958a4d5ed569d63e3f344f"
+url = "https://github.com/astral-sh/uv/releases/download/0.13.4/uv-x86_64-unknown-linux-gnu.tar.gz"
+url_api = "https://api.github.com/repos/astral-sh/uv/releases/assets/659693663"
 provenance = "github-attestations"

@@ -62,7 +62,7 @@ dev = [
   "markdownify>=1.2.2,<2.0.0",
   "yamllint>=1.37.1,<2.0.0",
   "mido>=1.3.3,<2.0.0",
-  "pillow>=12.3.0",
+  "pillow>=13.0.0",
   "pip-audit>=2.7.3,<3.0.0",
   "pytest-randomly>=5.0.0,<6.0.0",
   "types-docutils>=0.23.0.20260923,<0.24.0",
@@ -79,6 +79,16 @@ docs = [
   "sphinx-autobuild>=2025.8,<2026.0.0",
   "sphinxcontrib-mermaid>=2.1.1,<3.0.0",
 ]
+[tool.uv]
+# eMudhra/emSign CA incident: reject vulnerable downloaders and bundled roots.
+# https://discuss.python.org/t/109576
+required-version = ">=0.13.4"
+constraint-dependencies = [
+  "certifi>=2026.10.19",
+  "pip>=26.2.2",
+  "virtualenv>=21.14.12",
+]
+
 [tool.hatch.build.targets.wheel]
 # babylon lives under src/ (src-layout): map src/babylon -> babylon in the
 # wheel, explicitly — no backend discovery magic.

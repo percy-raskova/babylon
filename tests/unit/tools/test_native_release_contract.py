@@ -53,7 +53,7 @@ def test_native_release_pins_validate_without_retired_environment_files(tmp_path
     ("path", "before", "after"),
     [
         (".python-version", "3.12.14", "3.12.13"),
-        (".mise.toml", 'uv = "0.9.8"', 'uv = "latest"'),
+        (".mise.toml", 'uv = "0.13.4"', 'uv = "latest"'),
         ("rust/rust-toolchain.toml", '"clippy"', '"rust-src"'),
         ("mise.lock", 'version = "3.12.14"', 'version = "3.12.13"'),
         ("mise.lock", 'specifiers = ["3.12.14"]', 'specifiers = ["latest"]'),

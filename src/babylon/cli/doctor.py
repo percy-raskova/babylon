@@ -1,26 +1,11 @@
-"""Report operator configuration, provider availability, and database reachability."""
+"""Report reachability of the current Babylon runtime database."""
 
 from __future__ import annotations
 
 import os
 
-import typer
 from rich.console import Console
 
-from babylon.intelligence.model_manifest import load_bundled_manifest
-from babylon.intelligence.providers import (
-    ProviderError,
-    _config_dir,
-    load_settings,
-    resolve_provider_probe,
-)
-from babylon.intelligence.provision import default_models_dir, provision_models
-
-#: soft_wrap avoids Rich's default 80-column word-wrap splitting long config
-#: paths (e.g. deep tmp_path fixtures, nested XDG dirs) across lines; disabling
-#: the ReprHighlighter (highlight=False) stops it from injecting a colour
-#: escape code mid-path (directory vs. filename). Both would otherwise break
-#: substring assertions on captured CliRunner stdout.
 console = Console(soft_wrap=True, highlight=False)
 
 
@@ -44,53 +29,7 @@ def check_database(dsn: str | None) -> tuple[bool, str]:
     return (True, "reachable")
 
 
-def doctor(
-    provision: bool = typer.Option(
-        False,
-        "--provision",
-        help="Fetch available model weights per the signed manifest (D3, ADR096).",
-    ),
-) -> None:
-    """Diagnose the local Babylon install (config, provider lane, database,
-    model provisioning)."""
-    cfg_dir = _config_dir(os.environ)
-    config_toml = cfg_dir / "config.toml"
-    credentials = cfg_dir / "credentials"
-
-    console.print(f"[bold]config dir:[/bold] {cfg_dir}")
-    console.print(
-        f"  config.toml: {'present' if config_toml.exists() else 'absent (defaults apply)'}"
-    )
-    console.print(
-        f"  credentials: {'present' if credentials.exists() else 'absent (mute/local only)'}"
-    )
-
-    config_ok = True
-    try:
-        settings = load_settings()
-        console.print(f"[bold]intelligence mode:[/bold] {settings.mode}")
-    except ProviderError as exc:
-        config_ok = False
-        console.print(f"[bold red]config error:[/bold red] {exc}")
-    else:
-        probe = resolve_provider_probe(settings)
-        health = probe.health()
-        lane = probe.endpoint.kind.value
-        mark = "ok" if health.ok else "degraded"
-        console.print(f"[bold]provider lane:[/bold] {lane} ({mark}: {health.detail})")
-
+def doctor() -> None:
+    """Diagnose runtime database reachability."""
     db_ok, db_detail = check_database(os.environ.get("BABYLON_RUNTIME_DSN"))
     console.print(f"[bold]database:[/bold] {'ok' if db_ok else 'unavailable'} — {db_detail}")
-
-    if provision:
-        console.print("[bold]provisioning models:[/bold]")
-        try:
-            results = provision_models(load_bundled_manifest(), default_models_dir())
-        except ValueError as exc:
-            console.print(f"[bold red]provisioning error:[/bold red] {exc}")
-            raise typer.Exit(code=1) from exc
-        for result in results:
-            style = "yellow" if result.status == "gated" else "green"
-            console.print(f"  [{style}]{result.name}: {result.status}[/{style}] — {result.detail}")
-
-    raise typer.Exit(code=0 if config_ok else 1)

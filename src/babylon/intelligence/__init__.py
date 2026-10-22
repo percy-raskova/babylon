@@ -1,1 +1,1 @@
-"""Corpus manifests and operator model provisioning."""
+"""Reference-corpus manifests and exclusion policy."""

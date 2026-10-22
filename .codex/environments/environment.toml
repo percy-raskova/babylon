@@ -253,7 +253,8 @@ fi
 CODEX_RUST_CACHE_ROOT="$codex_cache_root" "$CODEX_WORKTREE_PATH/.codex/host/install.sh" --check
 
 mise trust --yes
-mise install --locked
+# Install only project tools; unrelated global tools may have no lockfile.
+mise install --locked python uv node
 mise run install
 mise run hooks
 mise run check:env-contract

@@ -20,7 +20,10 @@ pub(crate) fn compress_exact(
     if bytes.len() > maximum {
         return Err(StorageCompressionError::LengthLimit);
     }
-    zstd::bulk::compress(bytes, 3).map_err(|_| StorageCompressionError::Compress)
+    // Designed storage setting: retained national frame measurements save about
+    // 0.8–1.0 MB per period for less than one second of added compression work.
+    // Canonical identity remains over the exact decoded bytes.
+    zstd::bulk::compress(bytes, 9).map_err(|_| StorageCompressionError::Compress)
 }
 
 pub(crate) fn decompress_exact(

@@ -183,8 +183,8 @@ impl CapturedEconomicCatalog {
     #[must_use]
     pub fn compiler_version(&self) -> &'static str {
         match self.input.geography {
-            CatalogGeography::MichiganControl => "michigan-control-v1",
-            _ => "national-world-v4",
+            CatalogGeography::MichiganControl => "michigan-control-v2",
+            _ => "national-world-v5",
         }
     }
     #[must_use]
@@ -234,12 +234,12 @@ fn compiler_for(input: &EconomicCatalogInput) -> Result<&'static str> {
                 && input.preset_id == "national-world"
                 && input.duration == CampaignDuration::Continuous =>
         {
-            Ok("national-world-v4")
+            Ok("national-world-v5")
         }
         CatalogGeography::MichiganControl
             if input.scenario_id == crate::michigan_cohorts::MICHIGAN_COHORT_SCENARIO =>
         {
-            Ok("michigan-control-v1")
+            Ok("michigan-control-v2")
         }
         _ => Err(EconomicCatalogError::Identity),
     }
@@ -412,5 +412,30 @@ mod tests {
                 SourceArtifactKind::MichiganSpatialProducts
             ))
         ));
+    }
+    fn previous_compiler_refuses(catalog: &CapturedEconomicCatalog, compiler: &str) {
+        let previous = codec::encode(&catalog.input, compiler).unwrap();
+        // Genuine prior compiler framing and an exact recomputed digest: refusal
+        // must come from supported authority, not damaged or unauthenticated bytes.
+        assert_eq!(
+            CapturedEconomicCatalog::decode(&previous, sha256_of(&previous)),
+            Err(EconomicCatalogError::CompilerVersion)
+        );
+    }
+    #[test]
+    fn previous_national_world_v4_compiler_is_refused() {
+        let catalog =
+            CapturedEconomicCatalog::capture(super::super::preset::national_catalog_input(), None)
+                .unwrap();
+        previous_compiler_refuses(&catalog, "national-world-v4");
+    }
+    #[test]
+    fn previous_michigan_control_v1_compiler_is_refused() {
+        let control = crate::michigan_material::MichiganMaterialCatalog::from_defines_toml(
+            include_str!("../../../../../content/scenarios/michigan/defines.toml"),
+        )
+        .unwrap();
+        let catalog = CapturedEconomicCatalog::from_michigan(&control).unwrap();
+        previous_compiler_refuses(&catalog, "michigan-control-v1");
     }
 }

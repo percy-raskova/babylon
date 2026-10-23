@@ -32,15 +32,23 @@ const MAX_PHYSICAL_ROWS: usize = 1_114_112;
 const MAX_EVIDENCE_BYTES: usize = 1_000_000_000;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct ProductionEvidenceDigest([u8; 32]);
+pub struct ProductionEvidenceDigest {
+    sha256: [u8; 32],
+    body_bytes: usize,
+}
 impl ProductionEvidenceDigest {
     #[must_use]
     pub const fn as_bytes(&self) -> &[u8; 32] {
-        &self.0
+        &self.sha256
+    }
+    /// Exact canonical JSON bytes streamed into the admitted evidence hash.
+    #[must_use]
+    pub const fn body_bytes(self) -> usize {
+        self.body_bytes
     }
     #[must_use]
     pub fn to_hex(self) -> String {
-        crate::michigan_economy::digest_hex(&self.0)
+        crate::michigan_economy::digest_hex(&self.sha256)
     }
 }
 
@@ -140,9 +148,10 @@ impl ObserverEconomySnapshot {
                 ProductionEvidenceError::Serialization
             });
         }
-        Ok(Some(ProductionEvidenceDigest(
-            output.hash.finalize().into(),
-        )))
+        Ok(Some(ProductionEvidenceDigest {
+            sha256: output.hash.finalize().into(),
+            body_bytes: MAX_EVIDENCE_BYTES - output.remaining,
+        }))
     }
 }
 

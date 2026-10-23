@@ -140,7 +140,7 @@ def test_installation_check_refuses_a_different_reopened_tail(
             ("foundation", {"resolve_tick": 1, "tick_content_hash": "b" * 64}),
         ]
     )
-    monkeypatch.setattr(launcher, "_check_session", lambda *_args, **_kwargs: next(observations))
+    monkeypatch.setattr(launcher, "run_lifecycle", lambda *_args, **_kwargs: next(observations))
     with pytest.raises(launcher.ObserverLaunchError, match="different foundation or durable tail"):
         launcher.check_installation(
             tmp_path / "runtime", tmp_path / "client", tmp_path, {}, {}, tmp_path / "defines", None
@@ -396,6 +396,127 @@ def test_two_anonymous_pipes_connect_children_without_parent_forwarding(
     for fd in fds:
         with pytest.raises(OSError):
             os.fstat(fd)
+
+
+def test_windowed_qualification_binds_owned_children_after_closing_parent_pipes(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    children: list[Any] = []
+    descriptors: list[int] = []
+    original_pipe = os.pipe
+
+    def pipe() -> tuple[int, int]:
+        pair = original_pipe()
+        descriptors.extend(pair)
+        return pair
+
+    class Child:
+        def __init__(self, args: list[str], **_kwargs: Any) -> None:
+            self.args = args
+            children.append(self)
+
+        def wait(self, timeout: float | None = None) -> int:
+            return 0
+
+        def poll(self) -> int:
+            return 0
+
+    admitted: list[tuple[Any, Any]] = []
+
+    def started(runtime: Any, client: Any) -> None:
+        assert (runtime, client) == tuple(children)
+        for descriptor in descriptors:
+            with pytest.raises(OSError):
+                os.fstat(descriptor)
+        admitted.append((runtime, client))
+
+    monkeypatch.setattr(launcher.os, "pipe", pipe)
+    monkeypatch.setattr(launcher.subprocess, "Popen", Child)
+    control = tmp_path / "control.sock"
+    assert (
+        launcher.run_pair(
+            tmp_path / "runtime",
+            tmp_path / "client",
+            tmp_path,
+            {},
+            {},
+            defines_path=tmp_path / "defines.toml",
+            initial_target=launcher.OpenCampaignTarget(CAMPAIGN),
+            qualification_control=control,
+            on_started=started,
+        )
+        == 0
+    )
+    assert len(children) == 2 and len(admitted) == 1
+    assert children[1].args[-2:] == ["--qualification-control", str(control)]
+
+
+def test_qualification_quit_bounds_client_exit_and_cleans_exact_pair(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    children: list[Any] = []
+    waits: list[tuple[int, float | None]] = []
+
+    class Child:
+        def __init__(self, _args: list[str], **_kwargs: Any) -> None:
+            self.index = len(children)
+            self.terminated = False
+            children.append(self)
+
+        def poll(self) -> int | None:
+            return 0 if self.terminated else None
+
+        def wait(self, timeout: float | None = None) -> int:
+            waits.append((self.index, timeout))
+            if self.index == 1 and not self.terminated and timeout is not None:
+                raise launcher.subprocess.TimeoutExpired("owned-client", timeout)
+            return 0
+
+        def terminate(self) -> None:
+            self.terminated = True
+
+    monkeypatch.setattr(launcher.subprocess, "Popen", Child)
+    with pytest.raises(launcher.ObserverLaunchError, match="exit"):
+        launcher.run_pair(
+            tmp_path / "runtime",
+            tmp_path / "client",
+            tmp_path,
+            {},
+            {},
+            defines_path=tmp_path / "defines.toml",
+            initial_target=launcher.OpenCampaignTarget(CAMPAIGN),
+            qualification_control=tmp_path / "control.sock",
+            on_started=lambda _runtime, _client: None,
+        )
+    assert waits[0] == (1, launcher.RUNTIME_SHUTDOWN_GRACE_SECONDS)
+    assert children[1].terminated
+    assert len(children) == 2
+
+
+@pytest.mark.parametrize("mode", ["socket-only", "observer-only", "relative"])
+def test_qualification_pair_refuses_incomplete_ownership_before_spawn(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, mode: str
+) -> None:
+    def child(*_args: Any, **_kwargs: Any) -> None:
+        pytest.fail("invalid qualification setup must not spawn either child")
+
+    monkeypatch.setattr(launcher.subprocess, "Popen", child)
+    with pytest.raises(launcher.ObserverLaunchError, match="qualification"):
+        launcher.run_pair(
+            tmp_path / "runtime",
+            tmp_path / "client",
+            tmp_path,
+            {},
+            {},
+            defines_path=tmp_path / "defines.toml",
+            initial_target=launcher.OpenCampaignTarget(CAMPAIGN),
+            qualification_control=None
+            if mode == "observer-only"
+            else Path("relative.sock")
+            if mode == "relative"
+            else tmp_path / "control.sock",
+            on_started=None if mode == "socket-only" else lambda _runtime, _client: None,
+        )
 
 
 class ShutdownChild:
@@ -749,6 +870,7 @@ def _smoke_transcript_children(
     protocol_version: int | float = 11,
     progress_rows: list[dict[str, Any]] | None = None,
     progress_before_ready: bool = False,
+    ready_changes: dict[str, object] | None = None,
 ) -> list[list[str]]:
     """Keep the real launcher/session code; replace only native process boundaries."""
     calls: list[list[str]] = []
@@ -795,6 +917,7 @@ def _smoke_transcript_children(
                         "scope": scope,
                         "foundation_digest": "b" * 64,
                         "tail": {"resolve_tick": 0, "tick_content_hash": None} if new else tail,
+                        **(ready_changes or {}),
                     }
                 )
                 if new:
@@ -802,7 +925,13 @@ def _smoke_transcript_children(
                     rows.append(
                         {"type": "committed", "request_id": 2, "scope": scope, "tail": tail}
                     )
-                rows.append({"type": "stopped", "request_id": 3 if new else 2, "scope": scope})
+                rows.append(
+                    {
+                        "type": "stopped",
+                        "request_id": 3 if new else 2,
+                        "scope": scope,
+                    }
+                )
             read_fd, write_fd = os.pipe()
             self.stdout = os.fdopen(read_fd, "rb")
             with os.fdopen(write_fd, "wb") as output:
@@ -1137,3 +1266,77 @@ def test_launcher_current_protocol_matches_rust_protocol_authority():
     match = re.search(r"pub const RUNTIME_SESSION_PROTOCOL_VERSION: u16 = ([0-9]+);", source)
     assert match is not None
     assert int(match.group(1)) == launcher.RUNTIME_SESSION_PROTOCOL_VERSION
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"tail": {"resolve_tick": 1, "tick_content_hash": "a" * 64}},
+        {"tail": {"resolve_tick": False, "tick_content_hash": None}},
+        {"scope": {"epoch": 1, "campaign_id": str(UUID(int=9))}},
+        {"scope": {"epoch": True, "campaign_id": str(CAMPAIGN)}},
+        {"foundation_digest": "invented"},
+    ],
+)
+def test_lifecycle_refuses_an_unadmitted_ready_boundary(monkeypatch, tmp_path, changes):
+    _smoke_transcript_children(monkeypatch, tmp_path, ready_changes=changes)
+    with pytest.raises(launcher.ObserverLaunchError):
+        launcher.run_lifecycle(
+            tmp_path / "runtime",
+            tmp_path,
+            {},
+            tmp_path / "defines.toml",
+            launcher.NewCampaignTarget(CAMPAIGN, "national-world"),
+        )
+    requests = [
+        json.loads(line) for line in (tmp_path / "requests-1.jsonl").read_text().splitlines()
+    ]
+    assert [row["type"] for row in requests] == ["switch"]
+
+
+@pytest.mark.parametrize("deadline", [0, -1, True, float("nan"), float("inf")])
+def test_lifecycle_refuses_invalid_operation_deadline_before_spawn(monkeypatch, tmp_path, deadline):
+    calls: list[object] = []
+    monkeypatch.setattr(launcher.subprocess, "Popen", lambda *a, **_kw: calls.append(a))
+    with pytest.raises(launcher.ObserverLaunchError, match="deadline"):
+        launcher.run_lifecycle(
+            tmp_path / "runtime",
+            tmp_path,
+            {},
+            tmp_path / "defines.toml",
+            launcher.NewCampaignTarget(CAMPAIGN, "national-world"),
+            operation_timeout=deadline,
+        )
+    assert not calls
+
+
+def test_native_children_do_not_inherit_supervisor_credentials():
+    private_names = (
+        "BABYLON_NATIONAL_STORAGE_WRITER_DSN",
+        "BABYLON_NATIONAL_STORAGE_OBSERVER_DSN",
+        "BABYLON_NATIONAL_STORAGE_READER_DSN",
+        "BABYLON_STORAGE_DSN",
+        "BABYLON_STORAGE_CANARY",
+        "BABYLON_POSTGRES_TEST_DSN",
+        "BABYLON_POSTGRES_DISPOSABLE_CANARY",
+        "BABYLON_POSTGRES_DISPOSABLE_ACK",
+    )
+    environment = dict.fromkeys(private_names, "supervisor-secret")
+    environment.update(
+        {
+            "BABYLON_RUNTIME_DSN": "writer-only",
+            "BABYLON_QUALIFICATION_POLICY": "/qualified/policy.json",
+            "DISPLAY": ":0",
+        }
+    )
+    runtime, client = launcher.child_environments(
+        environment, launcher.ReaderCredentials("observer-only", "reader-only")
+    )
+    assert all(name not in runtime and name not in client for name in private_names)
+    assert runtime["BABYLON_RUNTIME_DSN"] == "writer-only"
+    assert "BABYLON_RUNTIME_DSN" not in client
+    assert client["BABYLON_OBSERVER_DSN"] == "observer-only"
+    assert client["BABYLON_READER_DSN"] == "reader-only"
+    assert client["BABYLON_QUALIFICATION_POLICY"] == "/qualified/policy.json"
+    assert client["DISPLAY"] == ":0"
+    assert environment["BABYLON_STORAGE_CANARY"] == "supervisor-secret"

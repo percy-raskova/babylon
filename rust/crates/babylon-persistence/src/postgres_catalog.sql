@@ -3163,13 +3163,47 @@ extension_aggregate_payloads AS MATERIALIZED (
     JOIN pg_catalog.pg_aggregate AS aggregate_row ON aggregate_row.aggfnoid = routine.oid
     WHERE member.classid = 'pg_catalog.pg_proc'::pg_catalog.regclass
 ),
+extension_routine_acl_payloads AS MATERIALIZED (
+    SELECT acl.extension_oid, acl.routine_oid,
+           pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+               'grantor', acl.grantor_identity,
+               'grantee', acl.grantee_identity,
+               'privilege', acl.privilege_type,
+               'grantable', acl.is_grantable
+           ) ORDER BY acl.grantee_identity, acl.privilege_type,
+               acl.grantor_identity, acl.is_grantable) AS acl
+    FROM extension_routine_acls AS acl
+    GROUP BY acl.extension_oid, acl.routine_oid
+),
+-- Reuse one normalized overload for its definition and current privileges.
+extension_routine_normalized_overloads AS MATERIALIZED (
+    SELECT member.extension_oid, member.classid, member.objid, member.objsubid,
+           normalized.overload
+    FROM candidate_extension_member_addresses AS member
+    JOIN pg_catalog.pg_proc AS routine ON routine.oid = member.objid
+    JOIN routine_overloads AS overload ON overload.routine_oid = member.objid
+    JOIN extension_role_identity_profile AS owner_identity
+      ON owner_identity.role_oid = routine.proowner
+    LEFT JOIN extension_routine_acl_payloads AS acl_payload
+      ON acl_payload.extension_oid = member.extension_oid
+     AND acl_payload.routine_oid = member.objid
+    CROSS JOIN LATERAL (
+        SELECT
+            overload.overload - 'owner' - 'acl' ||
+            pg_catalog.jsonb_build_object(
+                'owner', owner_identity.identity,
+                'acl', coalesce(acl_payload.acl, '[]'::pg_catalog.jsonb)
+            ) AS overload
+    ) AS normalized
+    WHERE member.classid = 'pg_catalog.pg_proc'::pg_catalog.regclass
+),
 extension_routine_payloads AS (
     SELECT
         member.extension_oid,
         member.classid,
         member.objid,
         member.objsubid,
-        normalized.overload || pg_catalog.jsonb_build_object(
+        member.overload || pg_catalog.jsonb_build_object(
             'variadic', (
                 SELECT pg_catalog.jsonb_build_object(
                     'type', identified.type,
@@ -3197,34 +3231,9 @@ extension_routine_payloads AS (
             ),
             'aggregate', coalesce(aggregate.aggregate_payload, '{}'::pg_catalog.jsonb)
         ) AS definition,
-        normalized.overload -> 'acl' AS current_acl
-    FROM candidate_extension_member_addresses AS member
+        member.overload -> 'acl' AS current_acl
+    FROM extension_routine_normalized_overloads AS member
     JOIN pg_catalog.pg_proc AS routine ON routine.oid = member.objid
-    JOIN routine_overloads AS overload ON overload.routine_oid = member.objid
-    JOIN extension_role_identity_profile AS owner_identity
-      ON owner_identity.role_oid = routine.proowner
-    CROSS JOIN LATERAL (
-        SELECT
-            overload.overload - 'owner' - 'acl' ||
-            pg_catalog.jsonb_build_object(
-                'owner', owner_identity.identity,
-                'acl', coalesce((
-                    SELECT pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
-                        'grantor', acl.grantor_identity,
-                        'grantee', acl.grantee_identity,
-                        'privilege', acl.privilege_type,
-                        'grantable', acl.is_grantable
-                    ) ORDER BY
-                        acl.grantee_identity,
-                        acl.privilege_type,
-                        acl.grantor_identity,
-                        acl.is_grantable)
-                    FROM extension_routine_acls AS acl
-                    WHERE acl.extension_oid = member.extension_oid
-                      AND acl.routine_oid = member.objid
-                ), '[]'::pg_catalog.jsonb)
-            ) AS overload
-    ) AS normalized
     LEFT JOIN extension_routine_transform_addresses AS transform
       ON transform.extension_oid = member.extension_oid
      AND transform.routine_oid = member.objid
@@ -4043,6 +4052,21 @@ extension_member_payload_components AS MATERIALIZED (
     UNION ALL
     SELECT * FROM extension_type_payloads
 ),
+-- A full join permits a hash plan despite underestimated bounded membership.
+-- Materialize before removing dependency-only rows: every member and its
+-- multiplicity then match the original left join exactly.
+extension_members_with_dependencies AS MATERIALIZED (
+    SELECT member.extension_oid, member.classid, member.objid, member.objsubid,
+           member.catalog_name, member.address,
+           dependencies.outbound_dependencies, dependencies.inbound_dependencies,
+           member.extension_oid IS NOT NULL AS member_present
+    FROM extension_member_addresses AS member
+    FULL JOIN extension_member_dependency_payloads AS dependencies
+      ON dependencies.extension_oid = member.extension_oid
+     AND dependencies.member_classid = member.classid
+     AND dependencies.member_objid = member.objid
+     AND dependencies.member_objsubid = member.objsubid
+),
 extension_member_payloads AS (
     SELECT
         member.extension_oid,
@@ -4056,15 +4080,15 @@ extension_member_payloads AS (
             'current_acl', component.current_acl,
             'initial_acl', coalesce(initial.initial_acl, '[]'::pg_catalog.jsonb),
             'outbound_dependencies', coalesce(
-                dependencies.outbound_dependencies,
+                member.outbound_dependencies,
                 '[]'::pg_catalog.jsonb
             ),
             'inbound_dependencies', coalesce(
-                dependencies.inbound_dependencies,
+                member.inbound_dependencies,
                 '[]'::pg_catalog.jsonb
             )
         ) AS member_payload
-    FROM extension_member_addresses AS member
+    FROM extension_members_with_dependencies AS member
     JOIN extension_member_payload_components AS component
       ON component.extension_oid = member.extension_oid
      AND component.classid = member.classid
@@ -4075,11 +4099,7 @@ extension_member_payloads AS (
      AND initial.classid = member.classid
      AND initial.objid = member.objid
      AND initial.objsubid = member.objsubid
-    LEFT JOIN extension_member_dependency_payloads AS dependencies
-      ON dependencies.extension_oid = member.extension_oid
-     AND dependencies.member_classid = member.classid
-     AND dependencies.member_objid = member.objid
-     AND dependencies.member_objsubid = member.objsubid
+    WHERE member.member_present
 ),
 extension_member_counts AS (
     SELECT

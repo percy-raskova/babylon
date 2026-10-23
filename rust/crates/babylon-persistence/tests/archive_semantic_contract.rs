@@ -267,11 +267,17 @@ fn persistence_queries_enforce_grants_in_sql_and_hide_raw_ledgers() {
     fn assert_send_sync<T: Send + Sync>() {}
     assert_send_sync::<SemanticArchiveStore>();
 
-    assert!(ARCHIVE_KNOWLEDGE_SQL.contains("babylon_meta.archive_knowledge_grant_v1"));
+    assert!(ARCHIVE_KNOWLEDGE_SQL.contains("babylon_meta.archive_knowledge_grant_witness_v1"));
+    assert!(ARCHIVE_KNOWLEDGE_SQL.contains("WHERE campaign_id = $1::uuid"));
     assert!(ARCHIVE_KNOWLEDGE_SQL.contains("granted_tick <= $2"));
     assert!(ARCHIVE_KNOWLEDGE_SQL.contains("provenance_source_id"));
     assert!(ARCHIVE_KNOWLEDGE_SQL.contains("provenance_locator"));
     let revision = include_str!("../migrations/current_archive.sql");
+    assert!(revision.contains("CREATE VIEW babylon_meta.archive_knowledge_grant_witness_v1 AS"));
+    assert!(revision.contains(
+        "FROM babylon_meta.archive_knowledge_grant_v1 grant_row\n\
+JOIN babylon_meta.archive_provenance_v1 provenance USING(campaign_id,provenance_ref);"
+    ));
     assert!(revision.contains("grant_row.granted_tick = dependency.granted_tick"));
     for field in [
         "body_encoding SMALLINT NOT NULL",

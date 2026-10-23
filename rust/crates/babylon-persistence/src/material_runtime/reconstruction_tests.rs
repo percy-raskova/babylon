@@ -2,7 +2,7 @@ use super::*;
 use babylon_kernel::replay::{ReplaySeed, ReplaySessionId};
 use babylon_tick::material_state::{MaterialGeography, MaterialState};
 
-pub(super) fn persisted_graph_copy(original: &CampaignFoundation) -> CampaignFoundation {
+pub(crate) fn persisted_graph_copy(original: &CampaignFoundation) -> CampaignFoundation {
     let bundle = original.content_bundle();
     CampaignFoundation::from_persisted(
         original.stable_graph_bytes().to_vec(),

@@ -187,7 +187,7 @@ fn continuous_cursor_replays_beyond_sixteen_and_refuses_a_broken_tail() {
             expected.view(),
             value.register(&expected),
             value.opening(&expected),
-            value.receipt.as_ref(),
+            value.receipt(),
             &value.orders,
         )
         .unwrap()

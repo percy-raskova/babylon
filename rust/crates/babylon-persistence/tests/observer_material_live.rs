@@ -256,7 +256,7 @@ fn live_michigan_all_county_cards_keep_public_source_and_quiet_restart_freshness
     SemanticArchiveStore::new(&target.writer)
         .verify_schema()
         .unwrap();
-    // Keep revision tables without planner statistics through the full drain.
+    // Keep the revision table without planner statistics through the full drain.
     // This lock permits worker DML but blocks automatic VACUUM/ANALYZE without
     // changing the admitted schema. Knowledge tables remain unlocked because
     // pinning a cohort deliberately analyzes them before its first read.
@@ -265,9 +265,7 @@ fn live_michigan_all_county_cards_keep_public_source_and_quiet_restart_freshness
     cold_statistics
         .batch_execute(
             "SET LOCAL lock_timeout TO '5s'; \
-             LOCK TABLE babylon_meta.archive_page_revision_v2, \
-                        babylon_meta.archive_revision_grant_v2, \
-                        babylon_meta.archive_revision_atom_v2 \
+             LOCK TABLE babylon_meta.archive_page_revision_v2 \
              IN SHARE UPDATE EXCLUSIVE MODE",
         )
         .unwrap();
@@ -330,10 +328,7 @@ fn assert_revision_statistics_absent(client: &mut impl postgres::GenericClient) 
     let count: i64 = client
         .query_one(
             "SELECT count(*) FROM pg_catalog.pg_statistic \
-             WHERE starelid IN ( \
-                 'babylon_meta.archive_page_revision_v2'::pg_catalog.regclass, \
-                 'babylon_meta.archive_revision_grant_v2'::pg_catalog.regclass, \
-                 'babylon_meta.archive_revision_atom_v2'::pg_catalog.regclass)",
+             WHERE starelid='babylon_meta.archive_page_revision_v2'::pg_catalog.regclass",
             &[],
         )
         .unwrap()
@@ -1455,6 +1450,12 @@ mod tick_components;
 #[path = "observer_material_live/staffing_history.rs"]
 mod staffing_history;
 
+#[path = "observer_material_live/endpoint_reuse.rs"]
+mod endpoint_reuse;
+
+#[path = "observer_material_live/history_cursor.rs"]
+mod history_cursor;
+
 #[path = "observer_material_live/persisted_twins.rs"]
 mod persisted_twins;
 
@@ -1571,6 +1572,27 @@ mod current_authority {
         }
     }
 
+    fn exact_retained_graph_vectors(
+        sql: &mut postgres::Client,
+        campaign: CampaignId,
+    ) -> Vec<(i64, Vec<i64>)> {
+        let vectors = sql.query("SELECT vector_id,node_ids FROM babylon_state.graph_node_vector_v1 WHERE campaign_id=$1 ORDER BY vector_id", &[campaign.as_uuid()]).unwrap()
+            .into_iter().map(|row| (row.get(0), row.get(1))).collect::<Vec<_>>();
+        assert!(!vectors.is_empty());
+        for (expected, (actual, _)) in vectors.iter().enumerate() {
+            assert_eq!(*actual, i64::try_from(expected).unwrap());
+        }
+        assert_eq!(
+            vectors
+                .iter()
+                .map(|(_, ids)| ids)
+                .collect::<std::collections::BTreeSet<_>>()
+                .len(),
+            vectors.len()
+        );
+        vectors
+    }
+
     #[test]
     #[ignore = "requires task-owned disposable PostgreSQL runtime"]
     fn live_concurrent_identical_material_commit_publishes_one_exact_candidate() {
@@ -1609,6 +1631,8 @@ mod current_authority {
             .map(|handle| handle.join().unwrap())
             .collect::<Vec<_>>();
         assert!(attempts.iter().any(|(_, _, _, outcome)| outcome.is_ok()));
+        let mut vectors_sql = target.writer.connect(NoTls).unwrap();
+        let committed_vectors = exact_retained_graph_vectors(&mut vectors_sql, campaign);
         let mut results = Vec::new();
         for (mut runtime, actions, mut sink, outcome) in attempts {
             let identity = match outcome {
@@ -1643,6 +1667,10 @@ mod current_authority {
                 runtime.diagnostic_receipt().unwrap().commit_disposition(),
             ));
         }
+        assert_eq!(
+            exact_retained_graph_vectors(&mut vectors_sql, campaign),
+            committed_vectors
+        );
         let [a, b] = results.as_slice() else {
             panic!("both concurrent candidates must be acknowledged");
         };

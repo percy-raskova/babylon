@@ -5,6 +5,7 @@ use postgres::{GenericClient, Row};
 use super::record::{CheckedRevision, GrantDependency, RevisionRecord};
 use super::ArchiveReadScope;
 use crate::archive::{database, decode, decode_digest, decode_stored_atom, decode_subject_kind};
+use crate::production_projection::diagnostics::{Stage, Timing};
 use crate::{identity::CampaignId, ArchiveCitation, ArchivePageRef, SemanticArchiveError};
 
 pub(super) const COLUMNS: &str = "campaign_id, subject_kind, subject_id, effective_tick, \
@@ -20,6 +21,7 @@ const KEY_PREDICATE: &str = "campaign_id=$1 AND subject_kind=$2 AND subject_id=$
 
 #[derive(Clone, Copy)]
 pub(super) enum ReadAuthority {
+    #[cfg(test)]
     Writer,
     Confined,
 }
@@ -27,7 +29,8 @@ pub(super) enum ReadAuthority {
 impl ReadAuthority {
     fn grant(self) -> &'static str {
         match self {
-            Self::Writer => "babylon_meta.archive_revision_grant_v2",
+            #[cfg(test)]
+            Self::Writer => "babylon_meta.archive_revision_grant_members_v3",
             Self::Confined => "public.v_archive_revision_grant_v2",
         }
     }
@@ -225,8 +228,9 @@ fn capture_membership(
     authority: ReadAuthority,
 ) -> Result<(Vec<Row>, Vec<Row>), SemanticArchiveError> {
     let atom_query = match authority {
-        ReadAuthority::Writer => format!("SELECT {ATOM_COLUMNS} FROM babylon_meta.archive_revision_atom_v2 membership \
-            JOIN babylon_meta.archive_atom_v1 atom USING(atom_id) WHERE membership.campaign_id=$1 \
+        #[cfg(test)]
+        ReadAuthority::Writer => format!("SELECT {ATOM_COLUMNS} FROM babylon_meta.archive_revision_atom_members_v3 membership \
+            JOIN babylon_meta.archive_atom_witness_v1 atom USING(atom_id) WHERE membership.campaign_id=$1 \
             AND membership.subject_kind=$2 AND membership.subject_id=$3 AND membership.effective_tick=$4 \
             ORDER BY membership.position LIMIT 514"),
         ReadAuthority::Confined => format!("SELECT {} FROM public.v_archive_revision_atom_v2 atom \
@@ -291,7 +295,36 @@ fn decode_membership(
     Ok(())
 }
 
-pub(super) fn insert(
+/// Insert one bounded publication and authenticate every exact conflict before
+/// its caller can claim the receipt. The returned flags preserve input order.
+pub(super) fn insert_batch(
+    client: &mut impl GenericClient,
+    checked: &[&CheckedRevision],
+) -> Result<Vec<bool>, SemanticArchiveError> {
+    let Some(first) = checked.first() else {
+        return Ok(Vec::new());
+    };
+    if checked.len() > crate::ArchiveDirtyBatch::MAX_PAGES {
+        return Err(SemanticArchiveError::CollectionBound);
+    }
+    let mut subjects = std::collections::BTreeSet::new();
+    for revision in checked {
+        if revision.record().source != first.record().source {
+            return Err(SemanticArchiveError::ReceiptMismatch);
+        }
+        if !subjects.insert(&revision.record().subject) {
+            return Err(SemanticArchiveError::DuplicateKey);
+        }
+    }
+    let inserted = checked
+        .iter()
+        .map(|revision| insert_row(client, revision))
+        .collect::<Result<Vec<_>, _>>()?;
+    reconcile_batch(client, checked)?;
+    Ok(inserted)
+}
+
+fn insert_row(
     client: &mut impl GenericClient,
     checked: &CheckedRevision,
 ) -> Result<bool, SemanticArchiveError> {
@@ -311,11 +344,47 @@ pub(super) fn insert(
     let body = checked.body();
     let body_length =
         i32::try_from(body.decoded_length).map_err(|_| SemanticArchiveError::CollectionBound)?;
+    let atom_ids = record
+        .atoms
+        .iter()
+        .map(|atom| atom.atom_id().to_vec())
+        .collect::<Vec<_>>();
+    let grant_kinds = record
+        .grants
+        .iter()
+        .map(|grant| grant.subject.kind().as_str())
+        .collect::<Vec<_>>();
+    let grant_ids = record
+        .grants
+        .iter()
+        .map(|grant| grant.subject.id())
+        .collect::<Vec<_>>();
+    let grant_keys = record
+        .grants
+        .iter()
+        .map(|grant| grant.key.as_str())
+        .collect::<Vec<_>>();
+    let grant_ticks = record
+        .grants
+        .iter()
+        .map(|grant| signed(grant.granted_tick))
+        .collect::<Result<Vec<_>, _>>()?;
+    let citations = record
+        .grants
+        .iter()
+        .map(|grant| &grant.citation)
+        .collect::<Vec<_>>();
+    let grant_provenance_refs = {
+        let _timing = Timing::start(Stage::ArchiveProvenanceResolution, record.source.tick());
+        crate::archive_provenance::resolve_ordered(client, campaign, &citations)?
+    };
+    let insertion_timing = Timing::start(Stage::ArchiveRevisionInsert, record.source.tick());
     let inserted = client
         .execute(
             &format!(
-                "INSERT INTO babylon_meta.archive_page_revision_v2 ({COLUMNS}) \
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) \
+                "INSERT INTO babylon_meta.archive_page_revision_v2 ({COLUMNS},atom_ids, \
+        grant_subject_kinds,grant_subject_ids,grant_keys,grant_ticks,grant_provenance_refs) \
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22) \
         ON CONFLICT (campaign_id,subject_kind,subject_id,effective_tick) DO NOTHING"
             ),
             &[
@@ -335,83 +404,117 @@ pub(super) fn insert(
                 &body_length,
                 &&body.decoded_sha256[..],
                 &body.bytes,
+                &atom_ids,
+                &grant_kinds,
+                &grant_ids,
+                &grant_keys,
+                &grant_ticks,
+                &grant_provenance_refs,
             ],
         )
         .map_err(|error| database("insert immutable Archive publication", &error))?
         == 1;
-    if inserted {
-        insert_membership(client, record)?;
-    }
-    let row = client
-        .query_opt(
-            &format!(
-                "SELECT {COLUMNS} FROM babylon_meta.archive_page_revision_v2 WHERE {KEY_PREDICATE}"
-            ),
-            &[
-                campaign.as_uuid(),
-                &record.subject.kind().as_str(),
-                &record.subject.id(),
-                &effective,
-            ],
-        )
-        .map_err(|error| database("reconcile checked Archive revision", &error))?
-        .ok_or(SemanticArchiveError::ReceiptConflict)?;
-    if !capture_record(client, row, ReadAuthority::Writer)?.matches_prepared_bytes(checked)? {
-        return Err(SemanticArchiveError::ReceiptConflict);
-    }
+    drop(insertion_timing);
     Ok(inserted)
 }
 
-fn insert_membership(
+fn reconcile_batch(
     client: &mut impl GenericClient,
-    record: &RevisionRecord,
+    checked: &[&CheckedRevision],
 ) -> Result<(), SemanticArchiveError> {
+    let first = checked
+        .first()
+        .ok_or(SemanticArchiveError::CollectionBound)?;
+    let record = first.record();
     let campaign = record.source.campaign_id();
     let effective = signed(record.effective_tick)?;
-    for (position, atom) in record.atoms.iter().enumerate() {
-        let position =
-            i32::try_from(position).map_err(|_| SemanticArchiveError::CollectionBound)?;
-        client
-            .execute(
-                "INSERT INTO babylon_meta.archive_revision_atom_v2 \
-            (campaign_id,subject_kind,subject_id,effective_tick,position,atom_id) \
-            VALUES ($1,$2,$3,$4,$5,$6)",
-                &[
-                    campaign.as_uuid(),
-                    &record.subject.kind().as_str(),
-                    &record.subject.id(),
-                    &effective,
-                    &position,
-                    &&atom.atom_id()[..],
-                ],
-            )
-            .map_err(|error| database("insert immutable Archive membership", &error))?;
+    let kinds = checked
+        .iter()
+        .map(|revision| revision.record().subject.kind().as_str())
+        .collect::<Vec<_>>();
+    let ids = checked
+        .iter()
+        .map(|revision| revision.record().subject.id())
+        .collect::<Vec<_>>();
+    let params: &[&(dyn postgres::types::ToSql + Sync)] =
+        &[campaign.as_uuid(), &kinds, &ids, &effective];
+    // Arrays replace association FKs. Revalidate authoritative references in
+    // the same publication transaction, including ON CONFLICT retries, before
+    // reconciling every ordered member and exact body against its prepared page.
+    // All checked sources are equal: the common tick is an exact key, never an
+    // as-of fallback. Ordinals must be unique, complete and in caller order.
+    // Keep the exact keys inside each correlated visibility probe. A second
+    // result is a duplicate witness; the cardinality and ordinal checks refuse
+    // it without hiding corruption behind a one-row limit.
+    let visibility_timing = Timing::start(Stage::ArchiveReferenceVisibility, record.source.tick());
+    #[cfg(test)]
+    record_capture_query();
+    let visible = client
+        .query(
+            "SELECT wanted.ordinality \
+        FROM unnest($2::text[], $3::text[]) WITH ORDINALITY \
+        AS wanted(subject_kind,subject_id,ordinality) \
+        JOIN LATERAL (SELECT 1 FROM public.v_archive_revision_known_v2 revision \
+        WHERE revision.campaign_id=$1 AND revision.subject_kind=wanted.subject_kind \
+        AND revision.subject_id=wanted.subject_id AND revision.effective_tick=$4 \
+        LIMIT 2) visible ON true \
+        ORDER BY wanted.ordinality",
+            params,
+        )
+        .map_err(|error| database("validate immutable Archive batch references", &error))?;
+    drop(visibility_timing);
+    if visible.len() != checked.len() {
+        return Err(SemanticArchiveError::ReceiptConflict);
     }
-    for (position, grant) in record.grants.iter().enumerate() {
-        let position =
-            i32::try_from(position).map_err(|_| SemanticArchiveError::CollectionBound)?;
-        let granted = signed(grant.granted_tick)?;
-        client
-            .execute(
-                "INSERT INTO babylon_meta.archive_revision_grant_v2 \
-            (campaign_id,subject_kind,subject_id,effective_tick,position,grant_subject_kind, \
-            grant_subject_id,grant_key,granted_tick,provenance_source_id,provenance_locator) \
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)",
-                &[
-                    campaign.as_uuid(),
-                    &record.subject.kind().as_str(),
-                    &record.subject.id(),
-                    &effective,
-                    &position,
-                    &grant.subject.kind().as_str(),
-                    &grant.subject.id(),
-                    &grant.key,
-                    &granted,
-                    &grant.citation.source_id(),
-                    &grant.citation.locator(),
-                ],
-            )
-            .map_err(|error| database("insert immutable Archive grant dependency", &error))?;
+    for (index, row) in visible.iter().enumerate() {
+        if comparison_position(row, 0, checked.len())? != index {
+            return Err(SemanticArchiveError::ReceiptConflict);
+        }
+    }
+    let _timing = Timing::start(Stage::ArchiveRevisionReconciliation, record.source.tick());
+    #[cfg(test)]
+    record_capture_query();
+    let rows = client
+        .query(
+            &format!(
+                "SELECT captured.*, wanted.ordinality \
+        FROM unnest($2::text[], $3::text[]) WITH ORDINALITY \
+        AS wanted(subject_kind,subject_id,ordinality) \
+        JOIN LATERAL (SELECT {COLUMNS} FROM babylon_meta.archive_page_revision_v2 revision \
+        WHERE revision.campaign_id=$1 AND revision.subject_kind=wanted.subject_kind \
+        AND revision.subject_id=wanted.subject_id AND revision.effective_tick=$4) captured ON true \
+        ORDER BY wanted.ordinality"
+            ),
+            params,
+        )
+        .map_err(|error| database("reconcile checked Archive batch", &error))?;
+    if rows.len() != checked.len() {
+        return Err(SemanticArchiveError::ReceiptConflict);
+    }
+    let mut captured = Vec::with_capacity(rows.len());
+    for (index, row) in rows.into_iter().enumerate() {
+        if comparison_position(&row, 16, checked.len())? != index
+            || decode::<uuid::Uuid>(&row, 0)? != *campaign.as_uuid()
+            || decode::<String>(&row, 1)? != kinds[index]
+            || decode::<String>(&row, 2)? != ids[index]
+            || decode::<i64>(&row, 3)? != effective
+        {
+            return Err(SemanticArchiveError::ReceiptConflict);
+        }
+        captured.push((
+            index,
+            CapturedRevision {
+                row,
+                atoms: Vec::new(),
+                grants: Vec::new(),
+            },
+        ));
+    }
+    capture_batch_memberships(client, campaign, &mut captured)?;
+    for (index, revision) in captured {
+        if !revision.matches_prepared_bytes(checked[index])? {
+            return Err(SemanticArchiveError::ReceiptConflict);
+        }
     }
     Ok(())
 }
@@ -485,7 +588,7 @@ pub(super) fn capture_comparison_records(
             },
         ));
     }
-    capture_comparison_memberships(client, campaign, &mut captures)?;
+    capture_batch_memberships(client, campaign, &mut captures)?;
     let mut result = (0..subjects.len()).map(|_| None).collect::<Vec<_>>();
     for (position, captured) in captures {
         result[position] = Some(captured);
@@ -506,7 +609,7 @@ fn comparison_position(
     Ok(index)
 }
 
-fn capture_comparison_memberships(
+fn capture_batch_memberships(
     client: &mut impl GenericClient,
     campaign: CampaignId,
     captures: &mut [(usize, CapturedRevision)],
@@ -533,13 +636,13 @@ fn capture_comparison_memberships(
     let atoms = client.query(&format!("SELECT captured.*, wanted.ordinality \
         FROM unnest($2::text[], $3::text[], $4::bigint[]) WITH ORDINALITY \
         AS wanted(subject_kind,subject_id,effective_tick,ordinality) \
-        JOIN LATERAL (SELECT {ATOM_COLUMNS} FROM babylon_meta.archive_revision_atom_v2 membership \
-        JOIN babylon_meta.archive_atom_v1 atom USING(atom_id) \
+        JOIN LATERAL (SELECT {ATOM_COLUMNS} FROM babylon_meta.archive_revision_atom_members_v3 membership \
+        JOIN babylon_meta.archive_atom_witness_v1 atom USING(atom_id) \
         WHERE membership.campaign_id=$1 AND membership.subject_kind=wanted.subject_kind \
         AND membership.subject_id=wanted.subject_id AND membership.effective_tick=wanted.effective_tick \
         ORDER BY membership.position LIMIT 514) captured ON true \
         ORDER BY wanted.ordinality,captured.position"), params)
-        .map_err(|error| database("capture producer comparison atom memberships", &error))?;
+        .map_err(|error| database("capture exact Archive atom memberships", &error))?;
     for row in atoms {
         let index = comparison_position(&row, 16, captures.len())?;
         captures[index].1.atoms.push(row);
@@ -551,12 +654,12 @@ fn capture_comparison_memberships(
         AS wanted(subject_kind,subject_id,effective_tick,ordinality) \
         JOIN LATERAL (SELECT grant_subject_kind,grant_subject_id,grant_key,granted_tick, \
         provenance_source_id,provenance_locator,position \
-        FROM babylon_meta.archive_revision_grant_v2 membership \
+        FROM babylon_meta.archive_revision_grant_members_v3 membership \
         WHERE membership.campaign_id=$1 AND membership.subject_kind=wanted.subject_kind \
         AND membership.subject_id=wanted.subject_id AND membership.effective_tick=wanted.effective_tick \
         ORDER BY position LIMIT 514) captured ON true \
         ORDER BY wanted.ordinality,captured.position", params)
-        .map_err(|error| database("capture producer comparison grant memberships", &error))?;
+        .map_err(|error| database("capture exact Archive grant memberships", &error))?;
     for row in grants {
         let index = comparison_position(&row, 7, captures.len())?;
         captures[index].1.grants.push(row);

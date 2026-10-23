@@ -164,25 +164,30 @@ fn shared_freight_has_one_capacity_principal_and_competing_order_demand() {
             .unwrap();
     let receipts = advance(&mut session);
     let dispatched = |key| {
-        let id = changed
-            .routes()
-            .iter()
-            .find(|r| r.key == key)
-            .unwrap()
-            .order_id();
+        let route = changed.routes().iter().find(|r| r.key == key).unwrap();
         receipts
             .dispatches
             .iter()
-            .filter(|r| r.order_id == id)
-            .map(|r| r.quantity)
+            .filter(|r| r.order_id == route.order_id())
+            .map(|r| {
+                assert_eq!(r.route_id, route.id());
+                r.quantity
+            })
             .sum::<u64>()
     };
     assert_eq!(dispatched("sheet-transfer"), 141);
-    assert_eq!(dispatched("food-transfer"), 18);
-    assert_eq!(
-        160 - dispatched("sheet-transfer") - dispatched("food-transfer"),
-        1
-    );
+    // ADR285 assigns the last feasible whole-native residual to this food order.
+    assert_eq!(dispatched("food-transfer"), 19);
+    let dispatched_grams: u64 = ["sheet-transfer", "food-transfer"]
+        .into_iter()
+        .map(|key| {
+            let route = changed.routes().iter().find(|r| r.key == key).unwrap();
+            dispatched(key)
+                .checked_mul(changed.good(&route.good_key).unwrap().grams_per_unit)
+                .unwrap()
+        })
+        .sum();
+    assert_eq!(dispatched_grams, 160_000);
     assert_material_conserved(session.material().state());
 }
 

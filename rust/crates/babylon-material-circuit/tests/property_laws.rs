@@ -94,7 +94,7 @@ fn allocation_state(available: u64, first: u64, second: u64) -> MaterialCircuitS
 }
 
 #[test]
-fn proportional_allocation_exhaustively_conserves_small_stocks() {
+fn proportional_base_with_residual_exhaustively_conserves_small_stocks() {
     for available in 0_u64..=20 {
         for first in 1_u64..=10 {
             for second in 1_u64..=10 {
@@ -117,18 +117,15 @@ fn proportional_allocation_exhaustively_conserves_small_stocks() {
                     .iter()
                     .take(babylon_material_circuit::MAX_MATERIAL_CIRCUIT_ROWS + 1)
                     .all(|row| row.shipped <= row.ordered));
-                if available >= total_requested {
-                    assert_eq!(shipped, total_requested);
-                } else {
-                    assert_eq!(
-                        outcome.state.orders[0].shipped,
-                        available * first / total_requested
-                    );
-                    assert_eq!(
-                        outcome.state.orders[1].shipped,
-                        available * second / total_requested
-                    );
-                }
+                assert_eq!(shipped, available.min(total_requested));
+                assert!(
+                    outcome.state.orders[0].shipped
+                        >= available.min(total_requested) * first / total_requested
+                );
+                assert!(
+                    outcome.state.orders[1].shipped
+                        >= available.min(total_requested) * second / total_requested
+                );
                 let mut reversed = state;
                 reversed.orders.reverse();
                 reversed.backlog.reverse();

@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::sync::mpsc::{Receiver, TryRecvError};
 use std::time::{Duration, Instant};
@@ -243,6 +244,50 @@ pub(super) fn run(
     state.finish(sink)
 }
 
+// The ordered worker alone decides whether a receipt requires production.
+// Successful admission survives retries; failed admission never becomes authority.
+pub(super) fn sweep_with_factory<P: crate::ArchiveDossierProducer, T>(
+    owner: &RefCell<Option<P>>,
+    cancellation: &ArchiveWorkerCancellation,
+    factory: impl Fn() -> Result<P, SemanticArchiveError>,
+    sweep: impl FnOnce(&dyn crate::ArchiveDossierProducer) -> Result<T, SemanticArchiveError>,
+) -> Result<T, SemanticArchiveError> {
+    struct LazyProducer<'a, P, F> {
+        owner: &'a RefCell<Option<P>>,
+        cancellation: &'a ArchiveWorkerCancellation,
+        factory: F,
+    }
+    impl<P: crate::ArchiveDossierProducer, F: Fn() -> Result<P, SemanticArchiveError>>
+        crate::ArchiveDossierProducer for LazyProducer<'_, P, F>
+    {
+        fn produce(
+            &self,
+            campaign: uuid::Uuid,
+            receipt: &crate::PendingArchiveReceipt,
+            knowledge: &crate::ArchiveKnowledge,
+            page_budget: usize,
+        ) -> Result<crate::ArchiveProducerOutcome, SemanticArchiveError> {
+            self.cancellation.check()?;
+            let mut owner = self.owner.borrow_mut();
+            if owner.is_none() {
+                let admitted = (self.factory)()?;
+                *owner = Some(admitted);
+                self.cancellation.check()?;
+            }
+            owner
+                .as_ref()
+                .ok_or(SemanticArchiveError::StoredPageMismatch)?
+                .produce(campaign, receipt, knowledge, page_budget)
+        }
+    }
+    cancellation.check()?;
+    sweep(&LazyProducer {
+        owner,
+        cancellation,
+        factory,
+    })
+}
+
 fn maintain(
     state: &mut DriverState,
     config: &Config,
@@ -259,20 +304,14 @@ fn maintain(
             }
         }
     }
-    if state.producer.is_none() {
-        match crate::captured_archive_producer(config, campaign) {
-            Ok(producer) => state.producer = Some(producer),
-            Err(error) => {
-                state.failure(classify(error));
-                return;
-            }
-        }
-    }
-    let result = state
-        .producer
-        .as_ref()
-        .ok_or(SemanticArchiveError::StoredPageMismatch)
-        .and_then(|producer| worker.sweep_cancellable(campaign, producer, cancellation));
+    let owner = RefCell::new(state.producer.take());
+    let result = sweep_with_factory(
+        &owner,
+        cancellation,
+        || crate::captured_archive_producer(config, campaign),
+        |producer| worker.sweep_cancellable(campaign, producer, cancellation),
+    );
+    state.producer = owner.into_inner();
     match result {
         Ok(report) => {
             state.outbox.push(ArchiveDriverEvent::Progress {

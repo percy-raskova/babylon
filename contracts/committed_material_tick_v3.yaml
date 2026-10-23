@@ -30,7 +30,7 @@ envelope:
     - {tag: 5, name: graph_full_checkpoint, codec: existing_nine_checkpoint_sections_v1}
     - {tag: 6, name: archive_dirty_receipt, count: 1, hash: combined_material_tick_content_v3}
     - {tag: 7, name: complete_material_register, count: 1, key: empty, payload: exact_material_world_register_v4_bytes}
-    - {tag: 8, name: material_receipts, count: 1, key: empty, payload: exact_material_tick_receipts_v17_bytes}
+    - {tag: 8, name: material_receipts, count: 1, key: empty, payload: exact_material_tick_receipts_v18_bytes}
   family_frame: u8_tag_then_u64_big_endian_count
   row_frame: u32_big_endian_key_length_then_key_then_u32_big_endian_payload_length_then_payload
   ordering: Existing six families preserve strict canonical key order; singular added families cannot reorder.
@@ -46,9 +46,9 @@ envelope:
   maximum_complete_bytes: 2342374759
   maximum_complete_basis: register_1000000000_plus_graph_134217728_plus_five_component_families_67108864_each_plus_derived_receipts_872612528_plus_framing_183
 receipts:
-  version: 17
-  domain: "babylon.material-tick-receipts.v17\0"
-  header: u32_big_endian_version_17_then_u64_big_endian_positive_resolve_tick
+  version: 18
+  domain: "babylon.material-tick-receipts.v18\0"
+  header: u32_big_endian_version_18_then_u64_big_endian_positive_resolve_tick
   family_frame: u8_tag_then_u64_big_endian_count
   family_count: 36
   identities: exact_32_bytes
@@ -101,7 +101,7 @@ receipts:
     - tag: 7
       fields: [site_id, outbound_order_tag, order_id, feasible_quantity, handled_quantity, needed_hours, used_hours]
       width: 97
-      meaning: merchant_outbound_handling
+      meaning: independent_nonlabor_ceiling_and_actual_merchant_outbound_handling
     - tag: 8
       fields: [order_id, retailer_site_id, demand_principal_id, good_id, unit_id, quantity]
       width: 168
@@ -591,7 +591,7 @@ persistence:
   storage_domains:
     state: "babylon.state-storage.v4\0"
     period_lookup: "BabylonPeriodLookupV3\0"
-    receipt: "BabylonReceiptStorageV2\0"
+    receipt: "BabylonReceiptStorageV3\0"
   canonical_reconstruction: Shared runtime and full-observer decoder verifies original bytes before envelope checks.
   checkpoint_storage:
     relation: babylon_state.checkpoint_section_v1

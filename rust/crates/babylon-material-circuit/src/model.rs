@@ -339,7 +339,9 @@ pub enum OutboundOrderId {
     Service(OrderId),
 }
 
-/// Completed handling need before labor and actual outbound handling after labor.
+/// Independent per-order physical ceiling before handling labor, excluding
+/// competition, and actual outbound handling. The ceiling is a Designed demand
+/// approximation, not a jointly feasible allocation or promised employment.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MerchantHandlingReceipt {
     pub site_id: SiteId,

@@ -1,7 +1,7 @@
 //! Language-neutral signed income rows and exact arithmetic, independent of Rust layout.
 use babylon_tick::material_world::decode_material_receipts;
 
-const DOMAIN: &[u8] = b"babylon.material-tick-receipts.v17\0";
+const DOMAIN: &[u8] = b"babylon.material-tick-receipts.v18\0";
 const ROW_BYTES: usize = 505;
 
 fn row(id: u8) -> Vec<u8> {
@@ -19,7 +19,7 @@ fn row(id: u8) -> Vec<u8> {
 }
 fn envelope(rows: &[Vec<u8>]) -> Vec<u8> {
     let mut bytes = DOMAIN.to_vec();
-    bytes.extend_from_slice(&17_u32.to_be_bytes());
+    bytes.extend_from_slice(&18_u32.to_be_bytes());
     bytes.extend_from_slice(&1_u64.to_be_bytes());
     for tag in 1..=36_u8 {
         bytes.push(tag);

@@ -1,15 +1,15 @@
 //! Independent trade evidence over the complete authenticated national boundary.
+use crate::production_observation::ProductionSite;
 use babylon_kernel::economic_location::EconomicLocation;
 use babylon_material_circuit::{
     recurring_procurement_order_id, AccountId, MoneyLocation, MoneyTransferPurpose,
     MoneyTransferReceipt, OrderId, OutboundOrderId, SiteId, MAX_DELIVERY_ORDERS,
 };
-use babylon_persistence::production_observation::ProductionSite;
 use babylon_tick::material_world::MaterialTickReceipts;
 use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Debug, PartialEq, Eq)]
-pub(super) enum Refusal {
+pub enum Refusal {
     Period,
     SiteIdentity,
     MissingSite,
@@ -73,8 +73,8 @@ enum Payment {
 type Locations<'a> = BTreeMap<&'a str, EconomicLocation>;
 type Orders = BTreeMap<OrderId, Terms>;
 
-#[derive(Default)]
-pub(super) struct Audit {
+#[derive(Clone, Default)]
+pub struct Audit {
     period: u64,
     pending: Orders,
     imports: Totals,
@@ -86,7 +86,12 @@ pub(super) struct Audit {
 impl Audit {
     /// The caller has already admitted the complete committed receipt identity.
     /// A refusal leaves the accumulated proof unchanged; no whole-world cache is added.
-    pub(super) fn read(
+    /// # Errors
+    /// Refuses noncontiguous receipts, invalid site or order identities, unmatched
+    /// reservations, settlements or refunds, quantity overflow and pending limits.
+    /// # Panics
+    /// Panics only if an internal checked reconciliation invariant is broken.
+    pub fn read(
         &mut self,
         receipts: &MaterialTickReceipts,
         sites: &[ProductionSite],
@@ -138,7 +143,8 @@ impl Audit {
         Ok(fact)
     }
 
-    pub(super) fn report(&self) -> serde_json::Value {
+    #[must_use]
+    pub fn report(&self) -> serde_json::Value {
         let passed = self.imports.deliveries > 0
             && self.exports.deliveries > 0
             && self.foreign_production > 0;
@@ -426,7 +432,11 @@ fn production(
     Ok((count, productive_sites))
 }
 
-pub(super) fn hex(bytes: &[u8]) -> String {
+/// Encode an explicit byte identity in lowercase hexadecimal.
+/// # Panics
+/// Panics if the encoded length exceeds the host's addressable allocation limit.
+#[must_use]
+pub fn hex(bytes: &[u8]) -> String {
     use std::fmt::Write;
     let mut result = String::with_capacity(bytes.len().checked_mul(2).unwrap());
     for byte in bytes {

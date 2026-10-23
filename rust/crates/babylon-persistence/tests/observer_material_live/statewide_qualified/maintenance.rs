@@ -603,6 +603,7 @@ fn assert_no_maintenance_tick_rows(owner: &mut postgres::Client, campaign: Campa
     for table in [
         "graph_string_lookup_v1",
         "graph_node_lookup_v1",
+        "graph_node_vector_v1",
         "event_text_lookup_v1",
         "event_key_lookup_v1",
         "territory_definition_v1",

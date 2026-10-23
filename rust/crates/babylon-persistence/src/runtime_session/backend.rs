@@ -8,8 +8,8 @@ use crate::{
     economic_content::EconomicContentAdmission,
     identity::CampaignId,
     material_runtime::{
-        load_material_foundation_components, DurableMaterialRuntime, FoundationReadSource,
-        MaterialRuntimeError,
+        capture_material_foundation_components, CapturedMaterialFoundation, DurableMaterialRuntime,
+        FoundationReadSource, MaterialRuntimeError,
     },
     michigan_content::MichiganContentPreset,
     michigan_economy::digest_hex,
@@ -154,9 +154,12 @@ pub(super) fn open(
         .map_err(|_| RuntimeSessionErrorCode::StorageRefused)?;
     let runtime = match target {
         RuntimeSessionTarget::Open { .. } => {
-            DurableMaterialRuntime::open_with_foundation_admission(config, campaign, |snapshot| {
-                runtime_content(snapshot, campaign)
-            })
+            DurableMaterialRuntime::open_with_foundation_admission(
+                config,
+                campaign,
+                |snapshot| capture_runtime_content(snapshot, campaign),
+                |captured, header| admit_runtime_content(captured, &header),
+            )
         }
         RuntimeSessionTarget::New { preset, .. } => {
             let foundation = new_foundation(*preset, defines_path, campaign)?;
@@ -243,42 +246,47 @@ fn new_foundation(
         .map_err(|_| RuntimeSessionErrorCode::ScenarioMismatch)
 }
 
-fn runtime_content(
+fn capture_runtime_content(
     client: &mut impl postgres::GenericClient,
     campaign: CampaignId,
-) -> Result<crate::material_runtime::MaterialRuntimeFoundation, MaterialRuntimeError> {
-    let row = client.query_opt("SELECT f.preset_id,f.duration_kind,f.final_period,f.content_sha256,f.foundation_sha256,g.foundation_sha256 AS graph_sha256,pg_catalog.sha256(g.content_bundle_bytes) AS source_sha256 FROM babylon_state.material_campaign_foundation_v3 f JOIN babylon_state.campaign_foundation g USING(campaign_id) WHERE campaign_id=$1::uuid", &[campaign.as_uuid()])?;
-    let Some(row) = row else {
-        return Err(MaterialRuntimeError::MissingCampaign);
-    };
-    let id: String = row.try_get(0)?;
-    let duration = crate::material_runtime::read_duration(&row)
-        .map_err(|_| MaterialRuntimeError::FoundationMismatch)?;
-    let content: Vec<u8> = row.try_get("content_sha256")?;
-    let foundation: Vec<u8> = row.try_get("foundation_sha256")?;
-    let graph: Vec<u8> = row.try_get("graph_sha256")?;
-    let scenario: Vec<u8> = row.try_get("source_sha256")?;
-    let expected = foundation
-        .as_slice()
+) -> Result<(CapturedMaterialFoundation, postgres::Row), MaterialRuntimeError> {
+    let row = client.query_opt("SELECT f.preset_id,f.duration_kind,f.final_period,f.content_sha256,f.foundation_sha256,g.foundation_sha256 AS graph_sha256,pg_catalog.sha256(g.content_bundle_bytes) AS source_sha256 FROM babylon_state.material_campaign_foundation_v3 f JOIN babylon_state.campaign_foundation g USING(campaign_id) WHERE campaign_id=$1::uuid", &[campaign.as_uuid()])?.ok_or(MaterialRuntimeError::MissingCampaign)?;
+    let expected = row
+        .try_get::<_, &[u8]>("foundation_sha256")?
         .try_into()
         .map_err(|_| MaterialRuntimeError::FoundationMismatch)?;
-    let rebuilt = load_material_foundation_components(
+    let captured = capture_material_foundation_components(
         client,
         campaign,
         expected,
         FoundationReadSource::Runtime,
-    )
-    .map_err(|_| MaterialRuntimeError::FoundationMismatch)?;
+    )?;
+    Ok((captured, row))
+}
+
+fn admit_runtime_content(
+    captured: CapturedMaterialFoundation,
+    row: &postgres::Row,
+) -> Result<crate::material_runtime::MaterialRuntimeFoundation, MaterialRuntimeError> {
+    let id: &str = row.try_get(0)?;
+    let duration = crate::material_runtime::read_duration(row)
+        .map_err(|_| MaterialRuntimeError::FoundationMismatch)?;
+    let rebuilt = captured.admit()?;
     let admitted = EconomicContentAdmission::from_foundation(rebuilt)
         .map_err(|_| MaterialRuntimeError::FoundationMismatch)?;
     if admitted.preset_id() != id {
         return Err(MaterialRuntimeError::FoundationMismatch);
     }
     admitted
-        .validate_header(duration, &content, &foundation, 0)
+        .validate_header(
+            duration,
+            row.try_get("content_sha256")?,
+            row.try_get("foundation_sha256")?,
+            0,
+        )
         .map_err(|_| MaterialRuntimeError::FoundationMismatch)?;
     admitted
-        .validate_graph(&graph, &scenario)
+        .validate_graph(row.try_get("graph_sha256")?, row.try_get("source_sha256")?)
         .map_err(|_| MaterialRuntimeError::FoundationMismatch)?;
     Ok(admitted.into_foundation())
 }

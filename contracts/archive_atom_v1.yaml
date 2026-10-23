@@ -37,7 +37,9 @@ authority:
       relation (published to readers as public.v_committed_tick_status_v1),
       never MAX(tick) over a raw event ledger.
     - Atoms never mutate; new ticks mint new atoms and pages re-assert
-      their atom set through archive_revision_atom_v2.
+      their exact ordered atom set through packed revision arrays and
+      archive_revision_atom_members_v3. Publication validates authoritative
+      references; confined views refuse missing or changed members.
 
 constants:
   source_path: rust/crates/babylon-persistence/src/archive.rs

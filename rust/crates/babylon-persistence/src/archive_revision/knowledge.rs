@@ -38,7 +38,7 @@ pub(super) fn capture(
     let rows = client
         .query(
             "SELECT g.subject_kind,g.subject_id,g.grant_key,g.granted_tick, \
-        g.provenance_source_id,g.provenance_locator FROM babylon_meta.archive_knowledge_grant_v1 g \
+        g.provenance_source_id,g.provenance_locator FROM babylon_meta.archive_knowledge_grant_witness_v1 g \
         WHERE g.campaign_id=$1 AND g.granted_tick<=$3 \
         AND (g.subject_kind || '/' || g.subject_id || '@' || g.grant_key)=ANY($2::text[]) \
         ORDER BY g.subject_kind,g.subject_id,g.grant_key",

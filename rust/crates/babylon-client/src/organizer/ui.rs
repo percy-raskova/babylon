@@ -568,7 +568,7 @@ fn spawn_notes(body: &mut ChildSpawnerCommands) {
         });
 }
 
-fn visible(
+pub(super) fn visible(
     action: OrganizerAction,
     client: &OrganizerClient,
     session: &ObserverSession,
@@ -614,7 +614,11 @@ fn visible(
     view == PrimaryView::Organizer && client.inspector == OrganizerInspector::Closed
 }
 
-fn enabled(action: OrganizerAction, client: &OrganizerClient, session: &ObserverSession) -> bool {
+pub(super) fn enabled(
+    action: OrganizerAction,
+    client: &OrganizerClient,
+    session: &ObserverSession,
+) -> bool {
     match action {
         OrganizerAction::Choose(choice) => {
             client.available(session) && client.choice_available(choice)
@@ -782,8 +786,10 @@ fn actions(
     mut state: ActionState,
     mut commands: Commands,
     mut observer_commands: MessageWriter<ObserverCommand>,
+    mut qualification: Option<ResMut<super::qualification_input::HandlerReceipt>>,
 ) {
-    for action in events.read().copied() {
+    for (action, message_id) in events.read_with_id() {
+        let action = *action;
         if !visible(
             action,
             &state.client,
@@ -791,9 +797,15 @@ fn actions(
             &state.ui,
             *state.view,
         ) {
+            if let Some(receipt) = qualification.as_deref_mut() {
+                receipt.organizer_finished(message_id, false, &state.client);
+            }
             continue;
         }
         if !enabled(action, &state.client, &state.session) {
+            if let Some(receipt) = qualification.as_deref_mut() {
+                receipt.organizer_finished(message_id, false, &state.client);
+            }
             state.client.message =
                 unavailable_message(action, &state.client, &state.session).into();
             continue;
@@ -867,6 +879,9 @@ fn actions(
                     focus.set(entity);
                 }
             }
+        }
+        if let Some(receipt) = qualification.as_deref_mut() {
+            receipt.organizer_finished(message_id, true, &state.client);
         }
     }
 }

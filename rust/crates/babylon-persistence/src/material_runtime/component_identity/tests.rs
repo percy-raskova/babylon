@@ -17,22 +17,27 @@ fn identity() -> MaterialComponentIdentity {
 #[test]
 fn every_immutable_checkpoint_section_is_exact_and_mandatory() {
     let expected = identity();
-    let mut sections = vec![Vec::new(); 9];
-    sections[2..8].clone_from_slice(&expected.sections);
+    let sections = crate::stored_tick::CheckpointSections {
+        world_register: Vec::new(),
+        components: expected.sections.clone(),
+    };
     expected.validate_sections(&sections).unwrap();
-    for tag in 2..8 {
-        let mut altered = sections.clone();
-        altered[tag][0] ^= 1;
+    for component in 0..6 {
+        let mut altered = crate::stored_tick::CheckpointSections {
+            world_register: Vec::new(),
+            components: expected.sections.clone(),
+        };
+        altered.components[component][0] ^= 1;
+        assert!(matches!(
+            expected.validate_sections(&altered),
+            Err(MaterialRuntimeError::InvalidCheckpoint)
+        ));
+        altered.components[component].clear();
         assert!(matches!(
             expected.validate_sections(&altered),
             Err(MaterialRuntimeError::InvalidCheckpoint)
         ));
     }
-    sections.pop();
-    assert!(matches!(
-        expected.validate_sections(&sections),
-        Err(MaterialRuntimeError::InvalidCheckpoint)
-    ));
 }
 
 #[test]

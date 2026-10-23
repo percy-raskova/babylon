@@ -56,12 +56,12 @@ pub(crate) fn project_economic_current(
     view: EconomicProjectionView<'_>,
     register: &MaterialWorldRegister,
     opening: Option<&MaterialWorldRegister>,
-    receipt: Option<&(MaterialTickReceipts, [u8; 32])>,
+    receipt: Option<(&MaterialTickReceipts, [u8; 32])>,
     order_history: &history::OrderHistory,
 ) -> Result<ProductionSnapshot> {
     let tick = register.completed_tick();
     let metadata =
-        diagnostics::projection(diagnostics::Stage::Metadata, tick, Metadata::new(view))?;
+        diagnostics::timed_projection(diagnostics::Stage::Metadata, tick, || Metadata::new(view))?;
     let state = register.state();
     if !view.duration.contains(register.completed_tick()) {
         return diagnostics::projection(
@@ -74,69 +74,55 @@ pub(crate) fn project_economic_current(
     let done = receipt.map(|(r, _)| r);
     let mut events = Vec::new();
     if let Some((receipt, digest)) = receipt {
-        diagnostics::projection(
-            diagnostics::Stage::Events,
-            tick,
-            events::project_events(&metadata, order_history, receipt, *digest, &mut events),
-        )?;
+        diagnostics::timed_projection(diagnostics::Stage::Events, tick, || {
+            events::project_events(&metadata, order_history, receipt, digest, &mut events)
+        })?;
     }
-    let maintenance_account = diagnostics::projection(
-        diagnostics::Stage::Maintenance,
-        tick,
-        maintenance::project_maintenance(&metadata, state, prior, done),
-    )?;
-    let labor_accounts = diagnostics::projection(
-        diagnostics::Stage::Labor,
-        tick,
-        labor::project_labor_accounts(state, prior, done),
-    )?;
-    let household_accounts = diagnostics::projection(
-        diagnostics::Stage::Households,
-        tick,
-        households::project_with_labels(state, prior, done, |g, u| metadata.labels(g, u)),
-    )?;
-    let household_service_accounts = diagnostics::projection(
-        diagnostics::Stage::HouseholdServices,
-        tick,
-        households::services::project_with_labels(state, prior, done, |g, u| metadata.labels(g, u)),
-    )?;
-    let goods_price_accounts = diagnostics::projection(
-        diagnostics::Stage::Prices,
-        tick,
-        prices::project_with_labels(state, prior, done, |g, u| metadata.labels(g, u)),
-    )?;
-    let material_balance = diagnostics::projection(
-        diagnostics::Stage::MaterialBalance,
-        tick,
-        material_balance::project_with_labels(state, prior, done, |g, u| metadata.labels(g, u)),
-    )?;
-    let (freight_capacity_accounts, freight_order_definitions) = diagnostics::projection(
-        diagnostics::Stage::FreightCapacity,
-        tick,
-        freight::project_with_labels(state, prior, done, |id| metadata.capacity_label(id)),
-    )?;
-    let (merchant_handling_accounts, final_demand_accounts) = diagnostics::projection(
-        diagnostics::Stage::Merchants,
-        tick,
-        merchants::project_with_labels(state, prior, done, order_history, |g, u| {
-            metadata.labels(g, u)
-        }),
-    )?;
-    let sites = diagnostics::projection(
-        diagnostics::Stage::Sites,
-        tick,
-        sites::project(&metadata, state, done),
-    )?;
-    let (routes, physical_routes) = diagnostics::projection(
-        diagnostics::Stage::Routes,
-        tick,
-        routes::project(&metadata, state, order_history),
-    )?;
-    let freight = diagnostics::projection(
-        diagnostics::Stage::Freight,
-        tick,
-        project_freight(&metadata, state),
-    )?;
+    let maintenance_account =
+        diagnostics::timed_projection(diagnostics::Stage::Maintenance, tick, || {
+            maintenance::project_maintenance(&metadata, state, prior, done)
+        })?;
+    let labor_accounts = diagnostics::timed_projection(diagnostics::Stage::Labor, tick, || {
+        labor::project_labor_accounts(state, prior, done)
+    })?;
+    let household_accounts =
+        diagnostics::timed_projection(diagnostics::Stage::Households, tick, || {
+            households::project_with_labels(state, prior, done, |g, u| metadata.labels(g, u))
+        })?;
+    let household_service_accounts =
+        diagnostics::timed_projection(diagnostics::Stage::HouseholdServices, tick, || {
+            households::services::project_with_labels(state, prior, done, |g, u| {
+                metadata.labels(g, u)
+            })
+        })?;
+    let goods_price_accounts =
+        diagnostics::timed_projection(diagnostics::Stage::Prices, tick, || {
+            prices::project_with_labels(state, prior, done, |g, u| metadata.labels(g, u))
+        })?;
+    let material_balance =
+        diagnostics::timed_projection(diagnostics::Stage::MaterialBalance, tick, || {
+            material_balance::project_with_labels(state, prior, done, |g, u| metadata.labels(g, u))
+        })?;
+    let (freight_capacity_accounts, freight_order_definitions) =
+        diagnostics::timed_projection(diagnostics::Stage::FreightCapacity, tick, || {
+            freight::project_with_labels(state, prior, done, |id| metadata.capacity_label(id))
+        })?;
+    let (merchant_handling_accounts, final_demand_accounts) =
+        diagnostics::timed_projection(diagnostics::Stage::Merchants, tick, || {
+            merchants::project_with_labels(state, prior, done, order_history, |g, u| {
+                metadata.labels(g, u)
+            })
+        })?;
+    let sites = diagnostics::timed_projection(diagnostics::Stage::Sites, tick, || {
+        sites::project(&metadata, state, done)
+    })?;
+    let (routes, physical_routes) =
+        diagnostics::timed_projection(diagnostics::Stage::Routes, tick, || {
+            routes::project(&metadata, state, order_history)
+        })?;
+    let freight = diagnostics::timed_projection(diagnostics::Stage::Freight, tick, || {
+        project_freight(&metadata, state)
+    })?;
     let (physical_edges, road_source) = physical_context(&metadata);
     Ok(ProductionSnapshot {
 
@@ -265,7 +251,13 @@ pub(crate) fn project_material_observation(
         history.record(prior.state(), &period)?;
     }
     let last = rows.last().map(|(_, r, d)| (r.clone(), *d));
-    project_economic_current(source.view(), register, opening, last.as_ref(), &history)
+    project_economic_current(
+        source.view(),
+        register,
+        opening,
+        last.as_ref().map(|(rows, digest)| (rows, *digest)),
+        &history,
+    )
 }
 
 mod aid;

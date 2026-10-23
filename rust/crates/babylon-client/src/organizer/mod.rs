@@ -4,6 +4,7 @@ mod draft;
 mod editor;
 mod evidence;
 mod presentation;
+pub(crate) mod qualification_input;
 pub(crate) mod ui;
 
 use babylon_persistence::runtime_session::{
@@ -88,6 +89,11 @@ impl OrganizerClient {
         self.clear_review();
         self.status_due = true;
         self.message = "Period committed. Reading its practice receipts…".into();
+    }
+
+    pub(crate) fn require_status(&mut self, session: &mut ObserverSession) {
+        self.status_due = true;
+        session.set_organizer_control_pending(true);
     }
 
     fn clear_review(&mut self) {
@@ -458,6 +464,7 @@ fn transport(
     mut session: ResMut<ObserverSession>,
     pipe: Option<Res<RuntimePipe>>,
     time: Res<Time>,
+    mut qualification: Option<ResMut<crate::observer_io::qualification::NativeAudit>>,
 ) {
     if organizer
         .review_context
@@ -483,6 +490,14 @@ fn transport(
         organizer.queue(&mut session, RequestKind::Status, None);
     }
     if let (Some(pipe), Some(request)) = (pipe, organizer.outbox.clone()) {
+        if let Err(error) = qualification
+            .as_deref_mut()
+            .map(|audit| audit.stage(&session, &request, organizer.preview.as_ref()))
+            .transpose()
+        {
+            session.fail(error);
+            return;
+        }
         match pipe.send_request(request) {
             Ok(()) => organizer.outbox = None,
             Err(RuntimeSendError::Full) => {}
@@ -523,7 +538,7 @@ mod tests {
         OrganizerAgreement, OrganizerObservation, OrganizerReport, OrganizerStandingWork,
     };
 
-    fn ready() -> (OrganizerClient, ObserverSession) {
+    pub(super) fn ready() -> (OrganizerClient, ObserverSession) {
         let campaign = uuid::Uuid::from_u128(927);
         let mut session = ObserverSession::new(CampaignId::from_uuid(campaign));
         session.connected_fixture();

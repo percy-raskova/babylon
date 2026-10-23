@@ -1,4 +1,4 @@
-//! Compiled current state18 rows: fixed widths, bounds and typed identity fields.
+//! Compiled current state19 rows: fixed widths, bounds and typed identity fields.
 use super::{IdentityKind as K, StorageError};
 #[derive(Clone, Copy, Debug)]
 pub(super) enum FieldKind {

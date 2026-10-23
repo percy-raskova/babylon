@@ -69,8 +69,8 @@ source_roles:
   michigan_spatial_products: 34
   national_households: 35
 admission:
-  compilers: [national-world-v4, michigan-control-v1]
-  national_identity: {scenario: economy/national-world, preset: national-world, compiler: national-world-v4}
+  compilers: [national-world-v5, michigan-control-v2]
+  national_identity: {scenario: economy/national-world, preset: national-world, compiler: national-world-v5}
   source_coverage: Each importer requires its exact dependency set and refuses extra roles.
   source_semantics: Captured bytes enter their source-specific checked native readers.
   missingness: Suppression, absent observations and incomplete subtotals remain explicit.

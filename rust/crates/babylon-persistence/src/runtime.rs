@@ -478,6 +478,25 @@ pub(crate) fn capture_campaign_foundation(
 }
 
 impl CapturedCampaignFoundation {
+    pub(crate) fn capture_fingerprint(&self) -> Result<[u8; 32], RustPersistenceRuntimeError> {
+        let digest = |rows: &[postgres::Row]| {
+            crate::material_runtime::capture_rows_digest(rows.iter()).map_err(|error| {
+                RustPersistenceRuntimeError::postgres("fingerprint captured foundation", &error)
+            })
+        };
+        let foundation = digest(std::slice::from_ref(&self.foundation))?;
+        let geography = digest(std::slice::from_ref(&self.geography))?;
+        let mapping = digest(&self.county_mapping)?;
+        Ok(sha256_of(
+            &[
+                foundation.as_slice(),
+                geography.as_slice(),
+                mapping.as_slice(),
+            ]
+            .concat(),
+        ))
+    }
+
     /// An equality witness reuses only an already admitted immutable source.
     /// Geography and territory allocation remain fresh witnesses of this capture.
     pub(crate) fn validate_against(
@@ -1596,6 +1615,7 @@ pub fn prepare_committed_tick(
 
 #[cfg(test)]
 mod live_tests {
+    mod material_open;
     #[path = "territory_controls/controls.rs"]
     mod territory_controls;
     use super::*;

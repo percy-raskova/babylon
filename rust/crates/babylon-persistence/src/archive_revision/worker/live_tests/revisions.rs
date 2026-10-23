@@ -272,9 +272,9 @@ fn live_archive_atom_schema_rejects_every_non_finite_numeric_value() {
     let mut writer = target.config.connect(NoTls).expect("atom constraint probe");
     let insert = "INSERT INTO babylon_meta.archive_atom_v1 \
         (atom_id,campaign_id,subject_kind,subject_id,signal_key,grant_key,evidence_class,\
-        value_kind,value_f64,provenance_source_id,provenance_locator,valid_tick) \
+        value_kind,value_f64,provenance_ref,valid_tick) \
         VALUES($1,$2,'county','26163','employment','employment','Observed',\
-        'f64',$3,'qcew-2024','county/26163',1)";
+        'f64',$3,babylon_meta.archive_provenance_intern_v1($2,'qcew-2024','county/26163'),1)";
     for value in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
         let error = writer
             .execute(

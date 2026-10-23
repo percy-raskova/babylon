@@ -67,22 +67,28 @@ SELECT raw.campaign_id, raw.resolve_tick, raw.county_geoid,
        permission.weekly_wage AS weekly_wage_granted
 FROM public.v_observer_county_economy_v1 AS raw
 CROSS JOIN LATERAL (
+  -- County mappings use C collation; the grant primary key uses the database
+  -- default. Match that indexed collation explicitly for these ASCII IDs.
   SELECT
     EXISTS (SELECT 1 FROM babylon_meta.archive_knowledge_grant_v1 AS grant_row
       WHERE grant_row.campaign_id = raw.campaign_id AND grant_row.subject_kind = 'county'
-        AND grant_row.subject_id = raw.county_geoid AND grant_row.granted_tick <= raw.resolve_tick
+        AND grant_row.subject_id = raw.county_geoid COLLATE pg_catalog."default"
+        AND grant_row.granted_tick <= raw.resolve_tick
         AND grant_row.grant_key = 'qcew-establishments') AS establishments,
     EXISTS (SELECT 1 FROM babylon_meta.archive_knowledge_grant_v1 AS grant_row
       WHERE grant_row.campaign_id = raw.campaign_id AND grant_row.subject_kind = 'county'
-        AND grant_row.subject_id = raw.county_geoid AND grant_row.granted_tick <= raw.resolve_tick
+        AND grant_row.subject_id = raw.county_geoid COLLATE pg_catalog."default"
+        AND grant_row.granted_tick <= raw.resolve_tick
         AND grant_row.grant_key = 'qcew-employment') AS employment,
     EXISTS (SELECT 1 FROM babylon_meta.archive_knowledge_grant_v1 AS grant_row
       WHERE grant_row.campaign_id = raw.campaign_id AND grant_row.subject_kind = 'county'
-        AND grant_row.subject_id = raw.county_geoid AND grant_row.granted_tick <= raw.resolve_tick
+        AND grant_row.subject_id = raw.county_geoid COLLATE pg_catalog."default"
+        AND grant_row.granted_tick <= raw.resolve_tick
         AND grant_row.grant_key = 'qcew-total-annual-wages') AS annual_wages,
     EXISTS (SELECT 1 FROM babylon_meta.archive_knowledge_grant_v1 AS grant_row
       WHERE grant_row.campaign_id = raw.campaign_id AND grant_row.subject_kind = 'county'
-        AND grant_row.subject_id = raw.county_geoid AND grant_row.granted_tick <= raw.resolve_tick
+        AND grant_row.subject_id = raw.county_geoid COLLATE pg_catalog."default"
+        AND grant_row.granted_tick <= raw.resolve_tick
         AND grant_row.grant_key = 'qcew-average-weekly-wage') AS weekly_wage
 ) AS permission;
 

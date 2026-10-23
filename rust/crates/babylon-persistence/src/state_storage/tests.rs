@@ -32,7 +32,7 @@ fn current_tick_reconstructs_exact_canonical_register_without_current_input() {
     assert_eq!(
         decode_admitted(&authority, &encoded.package, &updated, [0; 32])
             .unwrap()
-            .0,
+            .canonical_bytes(),
         current
     );
     assert_eq!(
@@ -47,7 +47,7 @@ fn current_tick_reconstructs_exact_canonical_register_without_current_input() {
     assert_eq!(
         decode_admitted(&authority, &encoded.package, &later, [0; 32])
             .unwrap()
-            .0,
+            .canonical_bytes(),
         current
     );
 }
@@ -76,7 +76,7 @@ fn current_organizer_bytes_are_retained_instead_of_assuming_empty_trailer() {
     assert_eq!(
         decode_admitted(&authority, &encoded.package, &lookup, [0; 32])
             .unwrap()
-            .0,
+            .canonical_bytes(),
         base
     );
     let trailer = sections(base).unwrap().pop().unwrap();
@@ -1056,20 +1056,17 @@ fn opening_prefix_full_admission_rejects_rehashed_duplicate_and_out_of_order_row
     assert_eq!(
         decode_admitted(&authority, &package, &lookup, [0; 32])
             .unwrap()
-            .0,
+            .canonical_bytes(),
         canonical
     );
-    assert_eq!(
-        decode_against_admitted(
-            &authority,
-            &package,
-            &lookup,
-            [0; 32],
-            foundation.initial_register()
-        )
-        .unwrap(),
-        canonical
-    );
+    decode_against_admitted(
+        &authority,
+        &package,
+        &lookup,
+        [0; 32],
+        foundation.initial_register(),
+    )
+    .unwrap();
     for duplicate in [true, false] {
         let mut invalid = canonical.to_vec();
         let first = section.start + 4;
@@ -1414,7 +1411,7 @@ fn offer_mode_preserves_complete_canonical_admission_and_parent_binding() {
     assert_eq!(
         decode_admitted(&authority, &package, &lookup, [0; 32])
             .unwrap()
-            .0,
+            .canonical_bytes(),
         canonical
     );
     package[DOMAIN.len()] ^= 1;
@@ -1451,4 +1448,22 @@ fn missing_offer_references_do_not_hide_malformed_later_bytes() {
         Err(StorageError::Trailing)
     );
     assert!(lookup.entries().is_empty());
+}
+
+#[test]
+fn previous_schema18_register_is_refused_by_current_storage_framing() {
+    let foundation = opening(MichiganContentPreset::FourWeekStandard);
+    let mut previous = foundation.initial_register().canonical_bytes().to_vec();
+    let version = schema::REGISTER_DOMAIN.len()
+        + 4
+        + 8
+        + 8
+        + babylon_material_circuit::MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES.len()
+        + 1;
+    assert_eq!(&previous[version..version + 2], &19_u16.to_be_bytes());
+    previous[version..version + 2].copy_from_slice(&18_u16.to_be_bytes());
+    assert!(matches!(
+        schema::sections(&previous),
+        Err(StorageError::Version)
+    ));
 }

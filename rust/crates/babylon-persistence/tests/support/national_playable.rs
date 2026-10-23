@@ -24,14 +24,28 @@ use std::{
     time::{Duration, Instant},
 };
 
-#[path = "national_aid_accounting.rs"]
-mod national_aid_accounting;
-
 #[path = "national_boundary_evidence.rs"]
 mod national_boundary_evidence;
 
-#[path = "national_trade_accounting.rs"]
-mod national_trade_accounting;
+use babylon_persistence::qualification_audit::{
+    aid as national_aid_accounting, economic as national_economic_accounting,
+    production_renewal as national_production_renewal, trade as national_trade_accounting,
+};
+
+fn accounting_reader() -> babylon_persistence::observer_reader::ObserverEconomyReader {
+    let config: Config = std::env::var("BABYLON_NATIONAL_STORAGE_OBSERVER_DSN")
+        .unwrap()
+        .parse()
+        .unwrap();
+    babylon_persistence::observer_reader::ObserverEconomyReader::connect(
+        &config,
+        babylon_persistence::observer_reader::ObserverVisibility::FullObserver,
+    )
+    .unwrap()
+}
+
+#[path = "national_offer_controls.rs"]
+mod national_offer_controls;
 
 struct Session {
     input: UnixStream,
@@ -267,12 +281,11 @@ impl Session {
         let mut accepted = None;
         for _ in 0..2 {
             let id = self.id();
-            self.send(&RuntimeSessionRequest::SubmitOrganizer {
-                protocol_version: RUNTIME_SESSION_PROTOCOL_VERSION,
-                request_id: id,
-                scope: self.scope.clone(),
-                command: command.clone(),
-            });
+            self.send(&organizer_submission(
+                id,
+                self.scope.clone(),
+                command.clone(),
+            ));
             let RuntimeSessionResponse::OrganizerAccepted {
                 scope, commitment, ..
             } = self.reply(id)
@@ -296,18 +309,9 @@ impl Session {
         mut command: OrganizerCommand,
         accepted: &OrganizerCommitment,
     ) {
-        command.choice = match command.choice {
-            OrganizerChoice::RemoteAid => OrganizerChoice::LocalAid,
-            OrganizerChoice::LocalAid => OrganizerChoice::RemoteAid,
-            _ => panic!("aid command expected"),
-        };
+        command.choice = nonce_probe_choice(command.choice);
         let id = self.id();
-        self.send(&RuntimeSessionRequest::SubmitOrganizer {
-            protocol_version: RUNTIME_SESSION_PROTOCOL_VERSION,
-            request_id: id,
-            scope: self.scope.clone(),
-            command,
-        });
+        self.send(&organizer_submission(id, self.scope.clone(), command));
         self.correlated_reply(id, true);
         assert_eq!(self.status().pending.as_ref(), Some(accepted));
     }
@@ -398,6 +402,83 @@ impl Session {
     }
 }
 
+fn nonce_probe_choice(choice: OrganizerChoice) -> OrganizerChoice {
+    match choice {
+        OrganizerChoice::RemoteAid => OrganizerChoice::LocalAid,
+        OrganizerChoice::LocalAid => OrganizerChoice::RemoteAid,
+        OrganizerChoice::PauseStanding => OrganizerChoice::ResumeStanding,
+        OrganizerChoice::ResumeStanding => OrganizerChoice::PauseStanding,
+        _ => panic!("scheduled organizer command expected"),
+    }
+}
+
+fn organizer_submission(
+    request_id: u64,
+    scope: RuntimeSessionScope,
+    command: OrganizerCommand,
+) -> RuntimeSessionRequest {
+    if matches!(
+        command.choice,
+        OrganizerChoice::PauseStanding | OrganizerChoice::ResumeStanding
+    ) {
+        RuntimeSessionRequest::ConfigureOrganizerStanding {
+            protocol_version: RUNTIME_SESSION_PROTOCOL_VERSION,
+            request_id,
+            scope,
+            command,
+        }
+    } else {
+        RuntimeSessionRequest::SubmitOrganizer {
+            protocol_version: RUNTIME_SESSION_PROTOCOL_VERSION,
+            request_id,
+            scope,
+            command,
+        }
+    }
+}
+
+#[test]
+fn standing_pause_nonce_probe_is_a_distinct_valid_control() {
+    let choice = nonce_probe_choice(OrganizerChoice::PauseStanding);
+    assert_ne!(choice, OrganizerChoice::PauseStanding);
+    assert!(matches!(choice, OrganizerChoice::ResumeStanding));
+}
+
+#[test]
+fn standing_control_submission_retains_exact_command_envelope() {
+    let command = OrganizerCommand {
+        campaign_id: [1; 16],
+        actor_id: 101,
+        authority_id: [2; 16],
+        expected_period: 1,
+        content_digest: [3; 32],
+        resource_digest: [4; 32],
+        nonce: [5; 16],
+        choice: OrganizerChoice::PauseStanding,
+    };
+    let scope = RuntimeSessionScope {
+        epoch: 1,
+        campaign_id: Some(uuid::Uuid::from_bytes(command.campaign_id).to_string()),
+    };
+    let request = organizer_submission(17, scope.clone(), command.clone());
+    let decoded =
+        serde_json::from_slice::<RuntimeSessionRequest>(&serde_json::to_vec(&request).unwrap())
+            .unwrap();
+    let RuntimeSessionRequest::ConfigureOrganizerStanding {
+        protocol_version,
+        request_id,
+        scope: actual_scope,
+        command: actual_command,
+    } = decoded
+    else {
+        panic!("standing controls must reach the runtime's configuration port")
+    };
+    assert_eq!(protocol_version, RUNTIME_SESSION_PROTOCOL_VERSION);
+    assert_eq!(request_id, 17);
+    assert_eq!(actual_scope, scope);
+    assert_eq!(actual_command, command);
+}
+
 #[derive(serde::Serialize)]
 struct PeriodEvidence {
     period: u64,
@@ -416,16 +497,63 @@ fn identity_rows(config: &Config, campaign: CampaignId) -> Vec<(i64, String, Str
 fn verify_offers(snapshot: &OrganizerSnapshot) {
     assert_eq!(snapshot.view.actor_id, 2_616_301);
     assert_eq!(snapshot.aid.len(), 2);
-    assert_eq!(snapshot.view.aid_options.len(), 2);
-    for kind in [OrganizerAidKind::Local, OrganizerAidKind::Remote] {
-        let preview = snapshot.aid.iter().find(|p| p.kind == kind).unwrap();
-        let option = snapshot
+    let kinds = [OrganizerAidKind::Local, OrganizerAidKind::Remote];
+    let expected: Vec<_> = kinds
+        .into_iter()
+        .filter(|kind| !snapshot.pending_aid.iter().any(|row| row.kind == *kind))
+        .collect();
+    assert_eq!(
+        snapshot
             .view
             .aid_options
             .iter()
-            .find(|p| p.kind == kind)
-            .unwrap();
-        assert_ne!(preview.mandate_id, [0; 32]);
+            .map(|row| row.kind)
+            .collect::<Vec<_>>(),
+        expected,
+        "actionable aid kinds must exclude exactly the already pending kinds"
+    );
+    assert!(snapshot.pending_aid.len() <= 2);
+    for kind in [OrganizerAidKind::Local, OrganizerAidKind::Remote] {
+        verify_offer(snapshot, kind);
+    }
+}
+
+fn verify_offer(snapshot: &OrganizerSnapshot, kind: OrganizerAidKind) {
+    assert_eq!(
+        snapshot.aid.iter().filter(|row| row.kind == kind).count(),
+        1
+    );
+    let preview = snapshot.aid.iter().find(|p| p.kind == kind).unwrap();
+    let pending: Vec<_> = snapshot
+        .pending_aid
+        .iter()
+        .filter(|row| row.kind == kind)
+        .collect();
+    assert!(
+        pending.len() <= 1,
+        "one original commitment per pending kind"
+    );
+    if let Some(pending) = pending.first() {
+        assert_eq!(pending.mandate_id, preview.mandate_id);
+        assert_eq!(
+            (pending.good_id, pending.unit_id),
+            (preview.good_id, preview.unit_id)
+        );
+        assert_ne!(pending.original_commitment_id, [0; 32]);
+        assert!(pending.admitted_period < pending.dispatch_period);
+        assert!(pending.dispatch_period <= snapshot.view.period);
+        assert_eq!(
+            pending.material_commitment_id,
+            babylon_material_circuit::aid_commitment_id(
+                pending.mandate_id,
+                pending.dispatch_period
+            )
+            .as_bytes()
+        );
+    }
+    let option = snapshot.view.aid_options.iter().find(|p| p.kind == kind);
+    assert_ne!(preview.mandate_id, [0; 32]);
+    if let Some(option) = option {
         assert_eq!(
             option.partner_actor_id,
             if kind == OrganizerAidKind::Local {
@@ -435,20 +563,21 @@ fn verify_offers(snapshot: &OrganizerSnapshot) {
             }
         );
         assert_eq!(option.receiving_consent, OrganizerGiftConsent::Accept);
-        assert_eq!(preview.receiving_consent, OrganizerGiftConsent::Accept);
-        assert_ne!(preview.donor_id, preview.recipient_id);
-        assert_eq!(preview.maximum_quantity, 4);
-        assert_eq!(preview.gift_cash_per_unit, 100_000);
-        match (&preview.transport, kind) {
-            (OrganizerAidTransportPreview::Local, OrganizerAidKind::Local) => {}
-            (OrganizerAidTransportPreview::Routed { stages, .. }, OrganizerAidKind::Remote) => {
-                assert_eq!(stages.len(), 1);
-                assert_eq!(stages[0].travel_periods, 1);
-                assert_eq!(stages[0].loss_ppm, 0);
-                assert_eq!(stages[0].capacities.len(), 5);
-            }
-            _ => panic!("exact local/remote actual transport required"),
+        assert_eq!(option.coordination_hours, preview.coordination_hours);
+    }
+    assert_eq!(preview.receiving_consent, OrganizerGiftConsent::Accept);
+    assert_ne!(preview.donor_id, preview.recipient_id);
+    assert_eq!(preview.maximum_quantity, 4);
+    assert_eq!(preview.gift_cash_per_unit, 100_000);
+    match (&preview.transport, kind) {
+        (OrganizerAidTransportPreview::Local, OrganizerAidKind::Local) => {}
+        (OrganizerAidTransportPreview::Routed { stages, .. }, OrganizerAidKind::Remote) => {
+            assert_eq!(stages.len(), 1);
+            assert_eq!(stages[0].travel_periods, 1);
+            assert_eq!(stages[0].loss_ppm, 0);
+            assert_eq!(stages[0].capacities.len(), 5);
         }
+        _ => panic!("exact local/remote actual transport required"),
     }
 }
 fn positive(snapshot: &OrganizerSnapshot, commitment: Option<&OrganizerCommitment>) -> bool {
@@ -525,6 +654,7 @@ struct QualificationRun<'a> {
     campaign: CampaignId,
     started: Instant,
     limits: national_boundary_evidence::Limits,
+    renewal_seed_tick: u64,
 }
 
 struct AccountedBoundary {
@@ -538,9 +668,126 @@ struct AccountedBoundary {
 struct QualificationAccounting {
     aid: national_aid_accounting::Audit,
     trade: national_trade_accounting::Audit,
+    economic: national_economic_accounting::Audit,
+    production_renewal: Option<national_production_renewal::Audit>,
+    production_renewal_evidence: Option<serde_json::Value>,
+    production_cursor: Option<babylon_persistence::observer_reader::ObserverMaterialCursor>,
+}
+
+impl QualificationAccounting {
+    fn capture_aid(
+        &mut self,
+        before: &OrganizerSnapshot,
+        admission: Option<&(Option<OrganizerCommitment>, OrganizerPreview)>,
+    ) -> bool {
+        let Some((Some(commitment), preview)) = admission else {
+            return false;
+        };
+        if !matches!(
+            commitment.command.choice,
+            OrganizerChoice::RemoteAid | OrganizerChoice::LocalAid
+        ) {
+            return false;
+        }
+        self.aid
+            .accept(
+                national_aid_accounting::Accepted::capture(commitment, preview, before).unwrap(),
+            )
+            .unwrap();
+        true
+    }
+
+    fn renewal_fact(
+        &mut self,
+        observation: &babylon_persistence::observer_reader::CommittedMaterialObservation,
+        seed_tick: u64,
+    ) -> Option<serde_json::Value> {
+        let identity = &observation.accounting.identity;
+        let tick = identity.resolve_tick();
+        if tick < seed_tick {
+            return None;
+        }
+        let register = self
+            .production_cursor
+            .as_ref()
+            .unwrap()
+            .current_register()
+            .unwrap();
+        assert_eq!(register.completed_tick(), tick);
+        assert_eq!(
+            babylon_tick::material_world::nominal_material_world_hash(
+                identity.graph_world_after(),
+                register
+            ),
+            identity.result_world_hash()
+        );
+        let evidence = if tick == seed_tick {
+            assert!(self.production_renewal.is_none());
+            let audit =
+                national_production_renewal::Audit::seed(register.state(), tick, register.digest())
+                    .expect("renewal seed agrees with authenticated material state");
+            let evidence = audit.evidence().unwrap();
+            self.production_renewal = Some(audit);
+            evidence
+        } else {
+            self.production_renewal
+                .as_mut()
+                .expect("terminal production witness requires its exact committed seed")
+                .read(&observation.accounting.receipts)
+                .expect("renewal custody bounds agree with authenticated receipts")
+        };
+        let mut fact = serde_json::to_value(evidence).unwrap();
+        fact["through_tick_content_hash"] = serde_json::json!(national_boundary_evidence::hex(
+            identity.tick_content_hash().as_bytes()
+        ));
+        fact["canonical_receipt_sha256"] =
+            serde_json::json!(national_boundary_evidence::hex(&identity.receipt_digest()));
+        self.production_renewal_evidence = Some(fact.clone());
+        Some(fact)
+    }
+
+    fn economic_fact(
+        &mut self,
+        observation: &babylon_persistence::observer_reader::CommittedMaterialObservation,
+    ) -> serde_json::Value {
+        let mut fact = serde_json::to_value(
+            self.economic
+                .read(&observation.accounting.receipts)
+                .expect("independent economic accounting agrees with committed receipts"),
+        )
+        .unwrap();
+        let identity = &observation.accounting.identity;
+        fact["tick_content_hash"] = serde_json::json!(national_boundary_evidence::hex(
+            identity.tick_content_hash().as_bytes()
+        ));
+        fact["canonical_receipt_sha256"] =
+            serde_json::json!(national_boundary_evidence::hex(&identity.receipt_digest()));
+        fact
+    }
 }
 
 impl<'a> QualificationRun<'a> {
+    fn authenticated_opening(
+        &self,
+        session: &Session,
+        before: &OrganizerSnapshot,
+        accounting: &mut QualificationAccounting,
+    ) {
+        self.record_organizer_opening(session, before);
+        let reader = accounting_reader();
+        let opening = reader
+            .snapshot_with_cursor(self.campaign, 0, &mut accounting.production_cursor)
+            .unwrap();
+        assert_eq!(opening.foundation_digest, session.foundation);
+        assert_eq!(opening.resolve_tick, 0);
+        let cursor = accounting.production_cursor.as_ref().unwrap();
+        cursor
+            .with_opening_register(self.campaign, |register| {
+                accounting.aid.open(register, before)
+            })
+            .unwrap()
+            .unwrap();
+    }
     fn start(config: &'a Config, campaign: CampaignId, periods: u64, started: Instant) -> Self {
         let limits = national_boundary_evidence::limits();
         write_progress(
@@ -559,8 +806,26 @@ impl<'a> QualificationRun<'a> {
             config,
             campaign,
             started,
+            renewal_seed_tick: periods
+                .saturating_sub(limits.economic_renewal_window_ticks)
+                .max(1),
             limits,
         }
+    }
+
+    fn record_organizer_opening(&self, session: &Session, snapshot: &OrganizerSnapshot) {
+        assert_eq!(session.tail.resolve_tick, 0);
+        assert_eq!(snapshot.view.period, 0);
+        assert!(snapshot.pending.is_none());
+        write_report(
+            "organizer-opening.json",
+            &serde_json::json!({
+                "version":1,"source":"runtime_session.organizer_status",
+                "campaign":self.campaign.as_uuid().to_string(),
+                "foundation_sha256":session.foundation,"policy_sha256":self.limits.policy_sha256,
+                "scope":session.scope,"tail":session.tail,"snapshot":snapshot,
+            }),
+        );
     }
 
     fn advance(&self, session: &mut Session) -> (Instant, NativeTimingSample) {
@@ -643,12 +908,17 @@ impl<'a> QualificationRun<'a> {
     ) -> AccountedBoundary {
         let tick = session.tail.resolve_tick;
         let started = Instant::now();
-        // Each observation owns its evidence. Release the reader's admitted
-        // foundation before recovery and the next Archive reconstruction.
+        // Retain authenticated history while releasing the reader's foundation
+        // graph/catalogue before recovery and the next Archive reconstruction.
+        // The cursor's weak admission owner does not extend that lifetime.
         let observation = {
-            let observer = national_aid_accounting::observer();
+            let observer = accounting_reader();
             observer
-                .committed_material_observation(self.campaign, tick)
+                .committed_material_observation_with_cursor(
+                    self.campaign,
+                    tick,
+                    &mut accounting.production_cursor,
+                )
                 .unwrap()
         };
         let elapsed = started.elapsed();
@@ -656,13 +926,31 @@ impl<'a> QualificationRun<'a> {
             elapsed <= self.limits.production,
             "complete production read exceeded captured budget"
         );
-        let admitted = accounting.aid.read(
-            &observation.accounting,
-            self.campaign,
-            tick,
-            after,
-            session.tail.tick_content_hash.as_deref().unwrap(),
+        assert!(
+            observation.accounting.material_register_bytes <= self.limits.material_register_bytes,
+            "canonical material register exceeded captured byte budget"
         );
+        assert!(
+            observation.production_evidence.body_bytes()
+                <= self.limits.production_evidence_body_bytes,
+            "streamed production evidence exceeded captured byte budget"
+        );
+        let economic = accounting.economic_fact(&observation);
+        let production_renewal = accounting.renewal_fact(&observation, self.renewal_seed_tick);
+        accounting
+            .aid
+            .read(
+                &observation.accounting,
+                accounting
+                    .production_cursor
+                    .as_ref()
+                    .unwrap()
+                    .current_register()
+                    .unwrap(),
+                after,
+            )
+            .unwrap();
+        let admitted = observation.accounting.identity;
         write_progress(
             self.campaign,
             tick,
@@ -700,6 +988,17 @@ impl<'a> QualificationRun<'a> {
             &production,
         );
         proof["trade"] = trade_fact;
+        proof["economic"] = economic.clone();
+        write_progress(self.campaign, tick, "economic", self.started, &economic);
+        if let Some(renewal) = production_renewal {
+            write_progress(
+                self.campaign,
+                tick,
+                "production-renewal",
+                self.started,
+                &renewal,
+            );
+        }
         AccountedBoundary {
             proof,
             roster,
@@ -708,6 +1007,26 @@ impl<'a> QualificationRun<'a> {
                 tick,
                 elapsed_ns: elapsed_ns(elapsed),
             },
+        }
+    }
+}
+
+fn scheduled_admission(
+    session: &mut Session,
+    campaign: CampaignId,
+    before: &OrganizerSnapshot,
+    tick: u64,
+) -> Option<(Option<OrganizerCommitment>, OrganizerPreview)> {
+    match tick {
+        1 => Some(session.accept(campaign, before, OrganizerChoice::RemoteAid, 1)),
+        // Reserve the arrival period through a real organizer action.
+        // Without a command, ordinary standing work would consume the same
+        // finite participant commitment before remote aid.
+        2 => Some(session.accept(campaign, before, OrganizerChoice::PauseStanding, 2)),
+        3 => Some(session.accept(campaign, before, OrganizerChoice::LocalAid, 3)),
+        _ => {
+            assert!(before.pending.is_none());
+            None
         }
     }
 }
@@ -731,21 +1050,15 @@ pub(super) fn qualify(config: &Config, campaign: CampaignId, periods: u64, run_s
     let mut local = false;
     for tick in 1..=periods {
         let before = session.status();
+        if tick == 1 {
+            run.authenticated_opening(&session, &before, &mut accounting);
+        }
         verify_offers(&before);
-        let admission = match tick {
-            1 => Some(session.accept(campaign, &before, OrganizerChoice::RemoteAid, 1)),
-            2 => Some(session.accept(campaign, &before, OrganizerChoice::LocalAid, 2)),
-            _ => {
-                assert!(before.pending.is_none());
-                None
-            }
-        };
+        let admission = scheduled_admission(&mut session, campaign, &before, tick);
         let commitment = admission
             .as_ref()
             .and_then(|(commitment, _)| commitment.as_ref());
-        if let Some(commitment) = commitment {
-            accounting.aid.accept(commitment, &before);
-        }
+        let aid_admission = accounting.capture_aid(&before, admission.as_ref());
         let (acknowledged, timing) = run.advance(&mut session);
         advances.push(timing);
         let (archive, timing) = run.authenticated_archive(&mut session, acknowledged);
@@ -779,7 +1092,7 @@ pub(super) fn qualify(config: &Config, campaign: CampaignId, periods: u64, run_s
         );
         continuations.push(serde_json::json!({"period":tick,"tail":session.tail,
             "organizer_snapshot_sha256":snapshot_digest(&after),"latest_marker":hashes.last(),"nominal_world_hash":world}));
-        if let Some((commitment, preview)) = admission {
+        if let Some((commitment, preview)) = admission.filter(|_| aid_admission) {
             evidence.push(PeriodEvidence {
                 period: tick,
                 positive_consequence: positive(&after, commitment.as_ref()),
@@ -796,11 +1109,11 @@ pub(super) fn qualify(config: &Config, campaign: CampaignId, periods: u64, run_s
     session.stop();
     write_report(
         "national-playable-qualification.json",
-        &serde_json::json!({"version":3,"capture_mode":"playable-aid","policy_sha256":run.limits.policy_sha256,
+        &serde_json::json!({"version":6,"capture_mode":"playable-aid","policy_sha256":run.limits.policy_sha256,
         "campaign":campaign.as_uuid().to_string(),"foundation_sha256":foundation,"county_geoids":county_geoids.unwrap(),"requested_periods":periods,"aid_periods":evidence,"continuations":continuations,"boundaries":boundaries,
         "canonical_protocol_recovery":"passed","positive_aid_consequences":if remote&&local {"passed"} else {"incomplete"},
         "remote_consumed":remote,"local_consumed":local,"independent_finite_aid_practice":accounting.aid.practice_report(),"native_window_evidence":"not_run",
-        "independent_account_posting_audit":accounting.aid.report(),"independent_trade_accounting":accounting.trade.report()}),
+        "independent_account_posting_audit":accounting.aid.report(),"independent_trade_accounting":accounting.trade.report(),"independent_economic_accounting":accounting.economic.summary(),"independent_production_renewal":accounting.production_renewal_evidence}),
     );
     run.write_timings(
         periods,
@@ -834,7 +1147,10 @@ fn write_report(name: &str, report: &serde_json::Value) {
     assert!(!target.exists(), "never replace evidence");
     let temporary = directory.join(format!("{name}.partial"));
     let bytes = serde_json::to_vec(report).unwrap();
-    assert!(bytes.len() <= 1_048_576);
+    assert!(
+        bytes.len() <= 4_000_000,
+        "bounded qualification metadata includes 325 compact accounting boundaries"
+    );
     let mut file = OpenOptions::new()
         .write(true)
         .create_new(true)

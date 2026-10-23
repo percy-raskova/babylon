@@ -969,7 +969,7 @@ fn knowledge_at(
     tick: u64,
 ) -> babylon_persistence::ArchiveKnowledge {
     let rows=config.connect(NoTls).expect("knowledge fixture connection").query(
-        "SELECT subject_kind,subject_id,grant_key,granted_tick,provenance_source_id,provenance_locator FROM babylon_meta.archive_knowledge_grant_v1 WHERE campaign_id=$1 AND granted_tick<=$2 AND subject_kind IN ('county','place') ORDER BY subject_kind,subject_id,grant_key", &[campaign.as_uuid(), &i64::try_from(tick).expect("fixture tick")]).expect("fixture exact knowledge");
+        "SELECT subject_kind,subject_id,grant_key,granted_tick,provenance_source_id,provenance_locator FROM babylon_meta.archive_knowledge_grant_witness_v1 WHERE campaign_id=$1 AND granted_tick<=$2 AND subject_kind IN ('county','place') ORDER BY subject_kind,subject_id,grant_key", &[campaign.as_uuid(), &i64::try_from(tick).expect("fixture tick")]).expect("fixture exact knowledge");
     let grants = rows
         .iter()
         .map(|row| {

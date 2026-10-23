@@ -1325,3 +1325,18 @@ decisions:
     status: accepted
     date: '2026-10-04'
     file: ADR282_authenticated_archive_page_bodies.yaml
+  ADR283_exact_graph_membership_vectors:
+    title: Exact graph membership vectors share immutable campaign storage
+    status: accepted
+    date: '2026-10-06'
+    file: ADR283_exact_graph_membership_vectors.yaml
+  ADR284_exact_archive_provenance:
+    title: Exact Archive citations share immutable campaign provenance
+    status: accepted
+    date: '2026-10-06'
+    file: ADR284_exact_archive_provenance.yaml
+  ADR285_work_conserving_outbound_residuals:
+    title: Outbound allocation uses feasible residual resources within each existing pass
+    status: accepted
+    date: '2026-10-06'
+    file: ADR285_work_conserving_outbound_residuals.yaml

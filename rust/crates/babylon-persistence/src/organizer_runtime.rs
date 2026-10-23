@@ -33,6 +33,59 @@ pub struct OrganizerSnapshot {
     pub collection_resolutions: Vec<babylon_practice_contract::OrganizerCollectionResolution>,
 }
 
+/// Bind received aid disclosures to the exact authenticated material register.
+pub(crate) fn aid_snapshot_matches(
+    register: &babylon_tick::material_world::MaterialWorldRegister,
+    snapshot: &OrganizerSnapshot,
+) -> Result<bool, RuntimeSessionErrorCode> {
+    let config = register
+        .organizer_config()
+        .ok_or(RuntimeSessionErrorCode::OrganizerUnavailable)?;
+    let state = register
+        .organizer_state()
+        .ok_or(RuntimeSessionErrorCode::OrganizerUnavailable)?;
+    Ok(organizer_view(config, state, config.controlled_actor_id)
+        .map_err(|_| RuntimeSessionErrorCode::OrganizerRefused)?
+        == snapshot.view
+        && material_preview::projections(register.state(), config, state.period)? == snapshot.aid
+        && state
+            .pending_aid
+            .iter()
+            .map(material_preview::pending)
+            .collect::<Vec<_>>()
+            == snapshot.pending_aid
+        && material_preview::resolutions(state) == snapshot.aid_resolutions)
+}
+
+pub(crate) fn captured_organizer_snapshot(
+    register: &babylon_tick::material_world::MaterialWorldRegister,
+    pending: Option<OrganizerCommitment>,
+    duration: babylon_kernel::clock::CampaignDuration,
+) -> Result<OrganizerSnapshot, RuntimeSessionErrorCode> {
+    let config = register
+        .organizer_config()
+        .ok_or(RuntimeSessionErrorCode::OrganizerUnavailable)?;
+    let state = register
+        .organizer_state()
+        .ok_or(RuntimeSessionErrorCode::OrganizerUnavailable)?;
+    let view = organizer_view(config, state, config.controlled_actor_id)
+        .map_err(|_| RuntimeSessionErrorCode::OrganizerRefused)?;
+    Ok(OrganizerSnapshot {
+        aid: material_preview::projections(register.state(), config, state.period)?,
+        pending_aid: state
+            .pending_aid
+            .iter()
+            .map(material_preview::pending)
+            .collect(),
+        aid_resolutions: material_preview::resolutions(state),
+        collection: collection_preview::projection(register.state(), config, state.period)?,
+        collection_resolutions: collection_history(state, &view),
+        view,
+        pending,
+        duration,
+    })
+}
+
 // Collection amounts and outcomes follow the actor's retained practice
 // receipts, joined to their original command and period.
 fn collection_history(
@@ -175,14 +228,9 @@ impl DurableMaterialRuntime {
     /// Refuses unavailable authority, stale storage or malformed accepted inputs.
     pub fn organizer_snapshot(&self) -> Result<OrganizerSnapshot, RuntimeSessionErrorCode> {
         let register = self.session().material();
-        let config = register
-            .organizer_config()
-            .ok_or(RuntimeSessionErrorCode::OrganizerUnavailable)?;
         let state = register
             .organizer_state()
             .ok_or(RuntimeSessionErrorCode::OrganizerUnavailable)?;
-        let view = organizer_view(config, state, config.controlled_actor_id)
-            .map_err(|_| RuntimeSessionErrorCode::OrganizerRefused)?;
         let mut client = self
             .organizer_connection()
             .map_err(|error| classify(&error))?;
@@ -197,21 +245,7 @@ impl DurableMaterialRuntime {
                 .ok_or(RuntimeSessionErrorCode::CommitRefused)?,
         )
         .map_err(|error| classify(&error))?;
-        Ok(OrganizerSnapshot {
-            aid: material_preview::projections(register.state(), config, state.period)
-                .map_err(|_| RuntimeSessionErrorCode::OrganizerRefused)?,
-            pending_aid: state
-                .pending_aid
-                .iter()
-                .map(material_preview::pending)
-                .collect(),
-            aid_resolutions: material_preview::resolutions(state),
-            collection: collection_preview::projection(register.state(), config, state.period)?,
-            collection_resolutions: collection_history(state, &view),
-            view,
-            pending,
-            duration: self.session().duration(),
-        })
+        captured_organizer_snapshot(register, pending, self.session().duration())
     }
     /// Preview a ruling from the current actor-safe knowledge and commitments.
     /// # Errors

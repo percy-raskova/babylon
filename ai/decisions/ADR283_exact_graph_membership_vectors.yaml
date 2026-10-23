@@ -1,0 +1,63 @@
+ADR283_exact_graph_membership_vectors:
+  status: accepted
+  date: '2026-10-06'
+  issue: PER-343
+  title: Exact graph membership vectors share immutable campaign storage
+  evidence_class: Designed
+  authority:
+    - Director approved measured lossless PostgreSQL redesign
+    - Repository rules require an architecture decision record
+  context: |
+    The retained smoke006 census finds 120 ordered node-ID arrays in each of
+    two committed periods, with 90 distinct arrays across both periods. All
+    membership and attribute arrays repeat in period two. Their stored column
+    sizes identify duplication; they do not establish allocated relation savings.
+    Complete retained growth remains 42,188,800 and 32,129,024 decimal bytes.
+  decision: |
+    Intern complete ordered bigint node-ID arrays in one private campaign table.
+    Period membership chunks and attribute chunks reference the same immutable
+    vectors. Preserve the bounded 4,096-element chunks and literal attribute
+    value bits. Expand vectors through the existing logical graph views so
+    current and historical consumers reconstruct the original graph rows.
+
+    A nonunique PostgreSQL hash index selects equality candidates without large
+    B-tree tuple restrictions. Complete array equality determines identity;
+    neither hash equality nor insertion order substitutes for that comparison.
+    Rust locks the campaign before matching, assigning dense IDs and inserting.
+    SQL admission serializes raw additions against matching and publication.
+
+    Require campaign-qualified references, a committed origin or the current
+    marker-last transaction, equal attribute/vector lengths, dense IDs, exact
+    current membership and unique attributes. Keep the primary key and deferred
+    origin foreign key as independent admission constraints. Stale concurrent
+    appenders must either collide on the first unused ID or fail dense marker
+    admission. Retry cannot append another vector for an acknowledged commit.
+    Refuse late additions and definition updates or deletion.
+
+    Keep one current schema. Its constructed identity and actual four-role
+    catalog fingerprints reject older layouts before writes. Preserve the
+    failed fixture, verified PostgreSQL backup, matching runtime and source
+    evidence before cutover; add no compatibility path or migration.
+  alternatives: |
+    Repeating arrays charges the same memberships in every period and attribute.
+    Hashes alone cannot establish exact array identity. Unique B-tree indexing
+    of large arrays introduces tuple-size limits. Lifetime membership schedules
+    would prevent legitimate graph changes. No external history store is needed.
+  consequences: |
+    Changed membership creates a new vector while earlier periods keep their
+    original references. Allocation and reconstruction costs include the vector
+    table, indexes and TOAST. No economic account, county coverage, game law or
+    reserved theory line changes. ADR280 budgets remain authoritative; local
+    controls or diagnostic byte estimates cannot pass national qualification.
+  verification:
+    - Reuse reconstructs exact historical rows and literal binary64 bits.
+    - Missing, foreign, future and uncommitted references refuse publication.
+    - Wrong lengths, duplicates, gaps and late mutations are refused.
+    - Concurrent acknowledgement preserves the exact dense vector dictionary.
+    - Actual catalog fingerprints preserve restricted reader authority.
+    - Complete before/after storage measurements include every new relation.
+  sources:
+    - https://www.postgresql.org/docs/17/hash-index.html
+    - https://www.postgresql.org/docs/17/indexes-unique.html
+  source_record: reports/test-results/per342-qualification/2026-10-05/retained-graph-vector-census001/result.json
+  implementation_record: reports/test-results/per343-reconstruction/2026-10-05/graph-vector-reuse001

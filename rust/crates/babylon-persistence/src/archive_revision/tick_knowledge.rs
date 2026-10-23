@@ -178,6 +178,7 @@ fn insert_pin(
     client
         .batch_execute(
             "ANALYZE babylon_meta.archive_knowledge_grant_v1; \
+        ANALYZE babylon_meta.archive_provenance_v1; \
         ANALYZE babylon_meta.archive_tick_knowledge_v3; \
         ANALYZE babylon_meta.archive_knowledge_membership_v3",
         )
@@ -208,7 +209,7 @@ pub(super) fn load(
     }
     let rows = client.query("SELECT member.subject_kind,member.subject_id,member.grant_key, \
         grant_row.granted_tick,grant_row.provenance_source_id,grant_row.provenance_locator \
-        FROM babylon_meta.archive_knowledge_membership_scope_v3 member JOIN babylon_meta.archive_knowledge_grant_v1 grant_row \
+        FROM babylon_meta.archive_knowledge_membership_scope_v3 member JOIN babylon_meta.archive_knowledge_grant_witness_v1 grant_row \
         USING(campaign_id,subject_kind,subject_id,grant_key) WHERE member.campaign_id=$1 AND member.resolve_tick=$2 \
         ORDER BY member.subject_kind,member.subject_id,member.grant_key LIMIT 65536", &[campaign.as_uuid(),&tick])
         .map_err(|error|database("read frozen Archive membership projection",&error))?;

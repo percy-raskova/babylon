@@ -407,8 +407,8 @@ fn assert_owner_side_privilege_matrix(client: &mut postgres::Client) {
                  ('babylon_meta.archive_knowledge_grant_v1'), \
                  ('babylon_meta.archive_receipt_consumption_v1'), \
                  ('babylon_meta.archive_atom_v1'), \
-                 ('babylon_meta.archive_revision_atom_v2'), \
-                 ('babylon_meta.archive_revision_grant_v2'), \
+                 ('babylon_meta.archive_revision_atom_members_v3'), \
+                 ('babylon_meta.archive_revision_grant_members_v3'), \
                  ('babylon_meta.archive_tick_knowledge_v3'), \
                  ('babylon_meta.archive_knowledge_membership_v3'), \
                  ('babylon_meta.current_schema')) AS tables(relation) \
@@ -469,7 +469,8 @@ fn assert_owner_side_privilege_matrix(client: &mut postgres::Client) {
 /// `SET ROLE babylon_reader` on a superuser connection.
 fn assert_reader_query_refusals(client: &mut postgres::Client) {
     for relation in [
-        "archive_revision_grant_v2",
+        "archive_revision_grant_members_v3",
+        "archive_revision_atom_members_v3",
         "archive_tick_knowledge_v3",
         "archive_knowledge_membership_v3",
         "archive_atom_v1",
@@ -506,7 +507,7 @@ fn assert_reader_query_refusals(client: &mut postgres::Client) {
         ),
         (
             "read archive page atom composition",
-            "SELECT pg_catalog.count(*) FROM babylon_meta.archive_revision_atom_v2",
+            "SELECT pg_catalog.count(*) FROM babylon_meta.archive_revision_atom_members_v3",
         ),
         (
             "write through the tick-status view",
@@ -524,8 +525,8 @@ fn assert_reader_query_refusals(client: &mut postgres::Client) {
             "write archive knowledge grants",
             "INSERT INTO babylon_meta.archive_knowledge_grant_v1 \
              (campaign_id, subject_kind, subject_id, grant_key, granted_tick, \
-              provenance_source_id, provenance_locator) \
-             VALUES ('00000000-0000-0000-0000-000000000000', 'county', '26163', 'subject', 1, 's', 'l')",
+              provenance_ref) \
+             VALUES ('00000000-0000-0000-0000-000000000000', 'county', '26163', 'subject', 1, 1)",
         ),
     ] {
         let (label, sql) = label_sql;
@@ -1140,6 +1141,90 @@ fn assert_economic_grant_boundary(
         ungranted.is_err(),
         "observer credential is not a preview credential"
     );
+}
+
+#[test]
+#[ignore = "requires task-owned disposable PostgreSQL runtime template"]
+fn live_known_county_grants_read_at_national_scale_within_reader_deadline() {
+    let base = validated_base_config();
+    let database =
+        TestDatabase::create_from_template(&base, &validated_template_name(), "knowncountyscale");
+    let config = database.config(&base);
+    let campaign =
+        CampaignId::from_uuid(Uuid::from_u128(0x3190_0000_0000_0000_0000_0000_0000_0024));
+    let runtime = DurableMaterialRuntime::create(&config, campaign, current_material::foundation())
+        .expect("real captured campaign foundation");
+    install_reader_role(&config).expect("exact restricted reader views");
+    let login = ConfinedLogin::create(&base);
+    let mut owner = config.connect(NoTls).unwrap();
+    let mut tx = owner.transaction().unwrap();
+    // Synthetic identities exercise the national row count, not a national
+    // source capture. The real view retains its indexed/default grant collation
+    // and its C-collated county mapping, including the permission masks.
+    tx.execute(
+        "DELETE FROM babylon_meta.territory_county_map_v1 WHERE campaign_id = $1",
+        &[campaign.as_uuid()],
+    )
+    .unwrap();
+    tx.execute(
+        "INSERT INTO babylon_meta.territory_county_map_v1 \
+         SELECT $1, 'county-' || n::text, pg_catalog.lpad(n::text, 5, '0') \
+         FROM pg_catalog.generate_series(1, 3144) AS n",
+        &[campaign.as_uuid()],
+    )
+    .unwrap();
+    tx.execute(
+        "DELETE FROM babylon_meta.archive_knowledge_grant_v1 \
+         WHERE campaign_id = $1 AND subject_kind = 'county'",
+        &[campaign.as_uuid()],
+    )
+    .unwrap();
+    tx.execute(
+        "INSERT INTO babylon_meta.archive_knowledge_grant_v1 \
+         SELECT $1, 'county', mapping.county_geoid, grant_key, \
+           CASE WHEN (mapping.county_geoid, grant_key) IN \
+             (('00101', 'qcew-employment'), ('00102', 'qcew-total-annual-wages')) \
+           THEN 0 ELSE 1 END, provenance.ref \
+         FROM babylon_meta.territory_county_map_v1 AS mapping \
+         CROSS JOIN (VALUES ('qcew-establishments'), ('qcew-employment'), \
+           ('qcew-total-annual-wages'), ('qcew-average-weekly-wage')) AS keys(grant_key) \
+         CROSS JOIN (SELECT babylon_meta.archive_provenance_intern_v1( \
+           $1, 'reader-deadline-control', 'synthetic-county-scale') AS ref) AS provenance \
+         WHERE mapping.campaign_id = $1",
+        &[campaign.as_uuid()],
+    )
+    .unwrap();
+    tx.commit().unwrap();
+    let mut known = config.clone();
+    known.user(&login.name).password(ConfinedLogin::PASSWORD);
+    known.options("-c default_transaction_read_only=on -c statement_timeout=5000ms -c lock_timeout=5000ms -c search_path=pg_catalog -c jit=off -c event_triggers=off");
+    let rows = known
+        .connect(NoTls)
+        .unwrap()
+        .query(
+            "SELECT county_geoid, annual_avg_estabs_count, annual_avg_emplvl, \
+             total_annual_wages, annual_avg_wkly_wage, establishments_granted, \
+             employment_granted, annual_wages_granted, weekly_wage_granted \
+             FROM public.v_known_county_economy_v1 \
+             WHERE campaign_id = $1 AND resolve_tick = 0 ORDER BY county_geoid LIMIT 3145",
+            &[campaign.as_uuid()],
+        )
+        .expect("all county permissions resolve within the production five-second deadline");
+    assert_eq!(rows.len(), 3144);
+    for (index, row) in rows.iter().enumerate() {
+        assert_eq!(row.get::<_, String>(0), format!("{:05}", index + 1));
+        for column in 1..5 {
+            assert_eq!(row.get::<_, Option<i64>>(column), None);
+        }
+        assert!(!row.get::<_, bool>(5));
+        assert_eq!(row.get::<_, bool>(6), index == 100);
+        assert_eq!(row.get::<_, bool>(7), index == 101);
+        assert!(!row.get::<_, bool>(8));
+    }
+    drop(owner);
+    drop(runtime);
+    login.cleanup();
+    database.cleanup();
 }
 
 #[test]

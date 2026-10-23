@@ -266,6 +266,7 @@ fn full_observer_requires_every_view_and_preview_refuses_all_grant_paths() {
     for table in [
         "graph_string_lookup_v1",
         "graph_node_lookup_v1",
+        "graph_node_vector_v1",
         "graph_node_manifest_v1",
         "graph_node_chunk_v1",
         "graph_node_f64_chunk_v1",
@@ -395,18 +396,39 @@ fn committed_graph_target() -> (DisposableTarget, CampaignId) {
     (target, campaign)
 }
 
+fn graph_fault_vector(
+    tx: &mut postgres::Transaction<'_>,
+    campaign: CampaignId,
+    ids: &[i64],
+) -> i64 {
+    // A nonexistent vector is the independently authored missing-reference case.
+    if ids.iter().any(|id| *id < 0) {
+        return i64::MAX;
+    }
+    if let Some(row) = tx.query_opt("SELECT vector_id FROM babylon_state.graph_node_vector_v1 WHERE campaign_id=$1 AND node_ids=$2::bigint[]", &[campaign.as_uuid(), &ids]).unwrap() {
+        return row.get(0);
+    }
+    let id: i64 = tx.query_one("SELECT coalesce(max(vector_id),-1)+1 FROM babylon_state.graph_node_vector_v1 WHERE campaign_id=$1", &[campaign.as_uuid()]).unwrap().get(0);
+    tx.execute("INSERT INTO babylon_state.graph_node_vector_v1(campaign_id,vector_id,first_tick,node_ids) VALUES($1,$2,2,$3)", &[campaign.as_uuid(), &id, &ids]).unwrap();
+    id
+}
+
 fn clone_graph_marker(tx: &mut postgres::Transaction<'_>, campaign: CampaignId) {
+    clone_graph_marker_at(tx, campaign, 2);
+}
+
+fn clone_graph_marker_at(tx: &mut postgres::Transaction<'_>, campaign: CampaignId, tick: i64) {
     // Rollback-only SQL fault controls need the existing material-row presence
     // prerequisite. These copied packages are never read as a canonical tick or
     // committed; only the selected graph constraint is forced immediately.
-    tx.execute("INSERT INTO babylon_state.material_tick_v3 SELECT campaign_id,2,identity_bytes,register_storage_bytes,receipt_storage_bytes,lookup_delta_bytes FROM babylon_state.material_tick_v3 WHERE campaign_id=$1::uuid AND resolve_tick=1", &[campaign.as_uuid()]).unwrap();
+    tx.execute("INSERT INTO babylon_state.material_tick_v3 SELECT campaign_id,$2,identity_bytes,register_storage_bytes,receipt_storage_bytes,lookup_delta_bytes FROM babylon_state.material_tick_v3 WHERE campaign_id=$1::uuid AND resolve_tick=1", &[campaign.as_uuid(), &tick]).unwrap();
     // Preserve the real admitted territory membership while faulting graph rows.
     assert_eq!(
-        tx.execute("INSERT INTO babylon_state.territory_tick_manifest_v1 (campaign_id,resolve_tick,territory_count) SELECT campaign_id,2,territory_count FROM babylon_state.territory_tick_manifest_v1 WHERE campaign_id=$1::uuid AND resolve_tick=1", &[campaign.as_uuid()]).unwrap(),
+        tx.execute("INSERT INTO babylon_state.territory_tick_manifest_v1 (campaign_id,resolve_tick,territory_count) SELECT campaign_id,$2,territory_count FROM babylon_state.territory_tick_manifest_v1 WHERE campaign_id=$1::uuid AND resolve_tick=1", &[campaign.as_uuid(), &tick]).unwrap(),
         1
     );
-    tx.execute("INSERT INTO babylon_state.territory_tick_membership_v1 (campaign_id,resolve_tick,definition_id) SELECT campaign_id,2,definition_id FROM babylon_state.territory_tick_membership_v1 WHERE campaign_id=$1::uuid AND resolve_tick=1", &[campaign.as_uuid()]).unwrap();
-    tx.execute("INSERT INTO babylon_state.tick_commit SELECT campaign_id,2,envelope_layout_version,tick_content_hash,envelope_digest FROM babylon_state.tick_commit WHERE campaign_id=$1::uuid AND resolve_tick=1", &[campaign.as_uuid()]).unwrap();
+    tx.execute("INSERT INTO babylon_state.territory_tick_membership_v1 (campaign_id,resolve_tick,definition_id) SELECT campaign_id,$2,definition_id FROM babylon_state.territory_tick_membership_v1 WHERE campaign_id=$1::uuid AND resolve_tick=1", &[campaign.as_uuid(), &tick]).unwrap();
+    tx.execute("INSERT INTO babylon_state.tick_commit SELECT campaign_id,$2,envelope_layout_version,tick_content_hash,envelope_digest FROM babylon_state.tick_commit WHERE campaign_id=$1::uuid AND resolve_tick=1", &[campaign.as_uuid(), &tick]).unwrap();
 }
 
 #[test]
@@ -428,7 +450,7 @@ fn graph_marker_refuses_missing_mismatched_orphan_duplicate_and_gap_components()
             Some((1, 0, 1, 0)),
             Some((0, vec![-1_i64])),
             None,
-            "graph_node_reference_or_duplicate",
+            "graph_vector_reference",
         ),
         (
             Some((2, 0, 1, 0)),
@@ -470,17 +492,19 @@ fn graph_marker_refuses_missing_mismatched_orphan_duplicate_and_gap_components()
             .unwrap();
         }
         if let Some((ordinal, ids)) = membership {
+            let vector = graph_fault_vector(&mut tx, campaign, &ids);
             tx.execute(
                 "INSERT INTO babylon_state.graph_node_chunk_v1 VALUES ($1,2,$2,$3)",
-                &[campaign.as_uuid(), &i64::from(ordinal), &ids],
+                &[campaign.as_uuid(), &i64::from(ordinal), &vector],
             )
             .unwrap();
         }
         if let Some(ids) = attributes {
             let bits = vec![0_i64; ids.len()];
+            let vector = graph_fault_vector(&mut tx, campaign, &ids);
             tx.execute(
                 "INSERT INTO babylon_state.graph_node_f64_chunk_v1 VALUES ($1,2,$2,0,$3,$4)",
-                &[campaign.as_uuid(), &qname, &ids, &bits],
+                &[campaign.as_uuid(), &qname, &vector, &bits],
             )
             .unwrap();
         }
@@ -510,8 +534,8 @@ fn marked_graph_rows_and_late_foundation_lookup_are_immutable() {
     let mut writer = target.writer.connect(NoTls).unwrap();
     for sql in [
         "INSERT INTO babylon_state.graph_node_manifest_v1 VALUES ($1,1,0,0,0,0) ON CONFLICT DO NOTHING",
-        "INSERT INTO babylon_state.graph_node_chunk_v1 VALUES ($1,1,999999,ARRAY[0::bigint])",
-        "INSERT INTO babylon_state.graph_node_f64_chunk_v1 VALUES ($1,1,0,999999,ARRAY[0::bigint],ARRAY[0::bigint])",
+        "INSERT INTO babylon_state.graph_node_chunk_v1 VALUES ($1,1,999999,0)",
+        "INSERT INTO babylon_state.graph_node_f64_chunk_v1 VALUES ($1,1,0,999999,0,ARRAY[0::bigint])",
     ] {
         let mut tx=writer.transaction().unwrap();
         let outcome=tx.execute(sql,&[campaign.as_uuid()]);
@@ -526,6 +550,7 @@ fn marked_graph_rows_and_late_foundation_lookup_are_immutable() {
     for relation in [
         "graph_string_lookup_v1",
         "graph_node_lookup_v1",
+        "graph_node_vector_v1",
         "graph_node_manifest_v1",
         "graph_node_chunk_v1",
         "graph_node_f64_chunk_v1",
@@ -611,4 +636,177 @@ fn origin_zero_lookup_insert_waits_for_the_marker_publication_lock() {
     );
     tx.rollback().unwrap();
     pending.rollback().unwrap();
+}
+
+#[test]
+#[ignore = "requires the disposable PostgreSQL harness; independent clone ownership"]
+fn graph_vectors_reuse_exact_memberships_and_preserve_history() {
+    let target = prepared_target();
+    let campaign = CampaignId::from_uuid(Uuid::from_u128(41_012));
+    let mut runtime = DurableMaterialRuntime::create(
+        &target.writer,
+        campaign,
+        MichiganContentPreset::new_campaign(MichiganDeliveryPreset::Standard)
+            .create_foundation(&crate::test_support::catalog())
+            .unwrap(),
+    )
+    .unwrap();
+    advance_material_period(&mut runtime);
+    let mut writer = target.writer.connect(NoTls).unwrap();
+    let before: Vec<(String, String, i64)> = writer.query(
+        "SELECT local_name,qname,value_bits FROM babylon_state.graph_node_f64_v1 WHERE campaign_id=$1 AND resolve_tick=1 ORDER BY local_name,qname",
+        &[campaign.as_uuid()],
+    ).unwrap().into_iter().map(|r| (r.get(0), r.get(1), r.get(2))).collect();
+    advance_material_period(&mut runtime);
+    assert_eq!(writer.query_one(
+        "SELECT count(*) FROM babylon_state.graph_node_vector_v1 a JOIN babylon_state.graph_node_vector_v1 b ON a.campaign_id=b.campaign_id AND a.node_ids=b.node_ids AND a.vector_id<>b.vector_id WHERE a.campaign_id=$1",
+        &[campaign.as_uuid()],
+    ).unwrap().get::<_, i64>(0), 0);
+    assert!(writer.query_one(
+        "SELECT count(*) FROM babylon_state.graph_node_chunk_v1 a JOIN babylon_state.graph_node_chunk_v1 b USING(campaign_id,vector_id) WHERE a.campaign_id=$1 AND a.resolve_tick=1 AND b.resolve_tick=2",
+        &[campaign.as_uuid()],
+    ).unwrap().get::<_, i64>(0) > 0);
+    let after: Vec<(String, String, i64)> = writer.query(
+        "SELECT local_name,qname,value_bits FROM babylon_state.graph_node_f64_v1 WHERE campaign_id=$1 AND resolve_tick=1 ORDER BY local_name,qname",
+        &[campaign.as_uuid()],
+    ).unwrap().into_iter().map(|r| (r.get(0), r.get(1), r.get(2))).collect();
+    assert_eq!(after, before);
+}
+
+#[test]
+#[ignore = "requires the disposable PostgreSQL harness; independent clone ownership"]
+fn graph_reads_resolve_exact_ids_with_prior_campaign_statistics() {
+    let mut target = DisposableTarget::create();
+    let create = |id, preset| {
+        DurableMaterialRuntime::create(
+            &target.writer,
+            CampaignId::from_uuid(Uuid::from_u128(id)),
+            MichiganContentPreset::new_campaign(preset)
+                .create_foundation(&crate::test_support::catalog())
+                .unwrap(),
+        )
+        .unwrap()
+    };
+    let mut original = create(343_101, MichiganDeliveryPreset::Standard);
+    advance_material_period(&mut original);
+    let mut writer = target.writer.connect(NoTls).unwrap();
+    writer
+        .batch_execute(
+            "ANALYZE babylon_state.graph_node_lookup_v1, babylon_state.graph_string_lookup_v1",
+        )
+        .unwrap();
+    // Keep the prior campaign's statistics stable while creating a new one.
+    // This test-owned lock allows inserts and reads, but excludes background
+    // ANALYZE. It changes no schema, grants, data, or production planner setting.
+    let mut statistics_guard = writer.transaction().unwrap();
+    statistics_guard.batch_execute("SET LOCAL lock_timeout='5s'; LOCK TABLE babylon_state.graph_node_lookup_v1, babylon_state.graph_string_lookup_v1, babylon_state.graph_node_vector_v1, babylon_state.graph_node_chunk_v1, babylon_state.tick_commit IN SHARE UPDATE EXCLUSIVE MODE").unwrap();
+    let mut fresh = create(343_102, MichiganDeliveryPreset::Delayed);
+    advance_material_period(&mut fresh);
+    let expected = fresh
+        .session()
+        .graph_session()
+        .stable_graph_state()
+        .unwrap();
+    install(&target);
+    let config = target.login("babylon_observer", "graphstatistics");
+    let mut observer = config.connect(NoTls).unwrap();
+    let mut read = observer
+        .build_transaction()
+        .read_only(true)
+        .start()
+        .unwrap();
+    // A Designed fixture ceiling catches Cartesian lookup expansion promptly;
+    // the committed rows must still equal the independent live graph exactly.
+    read.batch_execute("SET LOCAL statement_timeout='5s'; SET LOCAL idle_in_transaction_session_timeout='5s'; SET LOCAL jit=off; SET LOCAL search_path=pg_catalog").unwrap();
+    let campaign = fresh.campaign_id();
+    let began = std::time::Instant::now();
+    let nodes: Vec<(String, String)> = read.query("SELECT local_name,node_type FROM public.v_observer_graph_node_v1 WHERE campaign_id=$1::uuid AND resolve_tick=1 ORDER BY local_name", &[campaign.as_uuid()]).unwrap().into_iter().map(|row| (row.get(0), row.get(1))).collect();
+    assert_eq!(nodes, expected.rows().nodes());
+    let nodes_elapsed = began.elapsed();
+    let began = std::time::Instant::now();
+    let attributes: Vec<(String, String, u64)> = read.query("SELECT local_name,qname,value_bits FROM public.v_observer_graph_node_f64_v1 WHERE campaign_id=$1::uuid AND resolve_tick=1 ORDER BY local_name,qname", &[campaign.as_uuid()]).unwrap().into_iter().map(|row| (row.get(0), row.get(1), u64::from_ne_bytes(row.get::<_, i64>(2).to_ne_bytes()))).collect();
+    assert_eq!(attributes, expected.rows().node_f64());
+    eprintln!("exact graph lookup stale-statistics control: nodes={} node_read_ms={} attributes={} attribute_read_ms={}", nodes.len(), nodes_elapsed.as_millis(), attributes.len(), began.elapsed().as_millis());
+    read.commit().unwrap();
+    statistics_guard.rollback().unwrap();
+}
+
+#[test]
+#[ignore = "requires the disposable PostgreSQL harness; independent clone ownership"]
+fn graph_vector_missing_future_foreign_and_wrong_length_refuse_marker() {
+    let (target, campaign) = committed_graph_target();
+    let mut writer = target.writer.connect(NoTls).unwrap();
+    let existing: i64 = writer.query_one("SELECT vector_id FROM babylon_state.graph_node_vector_v1 WHERE campaign_id=$1 ORDER BY vector_id LIMIT 1", &[campaign.as_uuid()]).unwrap().get(0);
+    let node: i64 = writer.query_one("SELECT node_id FROM babylon_state.graph_node_lookup_v1 WHERE campaign_id=$1 ORDER BY node_id LIMIT 1", &[campaign.as_uuid()]).unwrap().get(0);
+    let qname: i64 = writer.query_one("SELECT string_id FROM babylon_state.graph_string_lookup_v1 WHERE campaign_id=$1 ORDER BY string_id LIMIT 1", &[campaign.as_uuid()]).unwrap().get(0);
+    for case in ["missing", "future", "uncommitted", "foreign", "length"] {
+        let mut tx = writer.transaction().unwrap();
+        let tick = if case == "uncommitted" { 3_i64 } else { 2_i64 };
+        let vector = if matches!(case, "future" | "uncommitted") {
+            let id: i64 = tx.query_one("SELECT max(vector_id)+1 FROM babylon_state.graph_node_vector_v1 WHERE campaign_id=$1", &[campaign.as_uuid()]).unwrap().get(0);
+            // Full arrays differ from admitted vectors; origin tick 3 is future.
+            tx.execute("INSERT INTO babylon_state.graph_node_vector_v1(campaign_id,vector_id,first_tick,node_ids) VALUES($1,$2,$3,$4)", &[campaign.as_uuid(), &id, &if case == "future" { 3_i64 } else { 2_i64 }, &vec![node; 4096]]).unwrap();
+            id
+        } else if case == "length" {
+            existing
+        } else {
+            i64::MAX
+        };
+        if case == "foreign" {
+            // prepared_target owns a second genuinely admitted foundation and
+            // its opening node dictionary. No absent campaign or copied names
+            // should reject this independently authored reference first.
+            let foreign = CampaignId::from_uuid(Uuid::from_u128(FOUNDATION_CAMPAIGN));
+            let foreign_node: i64 = tx.query_one("SELECT node_id FROM babylon_state.graph_node_lookup_v1 WHERE campaign_id=$1 ORDER BY node_id LIMIT 1", &[foreign.as_uuid()]).unwrap().get(0);
+            tx.execute("INSERT INTO babylon_state.graph_node_vector_v1(campaign_id,vector_id,first_tick,node_ids) VALUES($1,$2,2,$3)", &[foreign.as_uuid(), &vector, &vec![foreign_node]]).unwrap();
+        }
+        let nodes: i64 = if case == "length" {
+            tx.query_one("SELECT cardinality(node_ids)::bigint FROM babylon_state.graph_node_vector_v1 WHERE campaign_id=$1 AND vector_id=$2", &[campaign.as_uuid(), &vector]).unwrap().get(0)
+        } else {
+            1
+        };
+        tx.execute(
+            "INSERT INTO babylon_state.graph_node_manifest_v1 VALUES($1,$2,$3,$4,1,$4)",
+            &[
+                campaign.as_uuid(),
+                &tick,
+                &nodes,
+                &i64::from(case == "length"),
+            ],
+        )
+        .unwrap();
+        tx.execute(
+            "INSERT INTO babylon_state.graph_node_chunk_v1 VALUES($1,$2,0,$3)",
+            &[campaign.as_uuid(), &tick, &vector],
+        )
+        .unwrap();
+        if case == "length" {
+            let bits = vec![
+                0_i64;
+                if nodes > 1 {
+                    usize::try_from(nodes - 1).unwrap()
+                } else {
+                    2
+                }
+            ];
+            tx.execute(
+                "INSERT INTO babylon_state.graph_node_f64_chunk_v1 VALUES($1,$2,$3,0,$4,$5)",
+                &[campaign.as_uuid(), &tick, &qname, &vector, &bits],
+            )
+            .unwrap();
+        }
+        clone_graph_marker_at(&mut tx, campaign, tick);
+        let error = tx
+            .batch_execute("SET CONSTRAINTS babylon_state.graph_node_marker_complete_v1 IMMEDIATE")
+            .unwrap_err();
+        assert_eq!(
+            error.as_db_error().unwrap().message(),
+            if case == "length" {
+                "graph_f64_vector_length"
+            } else {
+                "graph_vector_reference"
+            }
+        );
+        tx.rollback().unwrap();
+    }
 }

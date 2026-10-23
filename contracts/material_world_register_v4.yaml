@@ -17,7 +17,7 @@ encoding:
     - u32_big_endian_version_4
     - u64_big_endian_completed_tick
     - u64_big_endian_state_byte_length
-    - exact_material_circuit_state_bytes_schema_18
+    - exact_material_circuit_state_bytes_schema_19
     - organizer_presence_u8_zero_or_one
     - if_present_u64_big_endian_config_length_then_canonical_organizer_config
     - if_present_u64_big_endian_state_length_then_canonical_organizer_state

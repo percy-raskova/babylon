@@ -6,13 +6,14 @@ from __future__ import annotations
 import argparse
 import ipaddress
 import json
+import math
 import os
 import re
 import select
 import subprocess
 import sys
 import time
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -284,6 +285,9 @@ def _clean_environment(environment: Mapping[str, str]) -> dict[str, str]:
         key: value
         for key, value in environment.items()
         if not key.upper().startswith("PG")
+        and not key.startswith(
+            ("BABYLON_NATIONAL_STORAGE_", "BABYLON_STORAGE_", "BABYLON_POSTGRES_")
+        )
         and key
         not in {
             "BABYLON_RUNTIME_DSN",
@@ -483,15 +487,23 @@ def _finish_runtime(child: subprocess.Popen[bytes]) -> int:
         ) from error
 
 
-def _check_session(
+def run_lifecycle(
     runtime: Path,
     root: Path,
     environment: Mapping[str, str],
     defines: Path,
     target: NewCampaignTarget | OpenCampaignTarget,
     timings_us: dict[str, int] | None = None,
+    *,
+    operation_timeout: float = RUNTIME_SHUTDOWN_GRACE_SECONDS,
 ) -> tuple[str, dict[str, object]]:
     """Exercise the installed lifecycle protocol with one bounded native process."""
+    if (
+        type(operation_timeout) not in {int, float}
+        or not math.isfinite(operation_timeout)
+        or operation_timeout <= 0
+    ):
+        raise ObserverLaunchError("lifecycle operation deadline must be finite and positive")
     child = subprocess.Popen(
         [str(runtime), "session", "--stdio", "--defines", str(defines)],
         cwd=root,
@@ -511,7 +523,7 @@ def _check_session(
         advance_tick: int | None = None,
     ) -> dict[str, object]:
         nonlocal buffer
-        deadline = time.monotonic() + RUNTIME_SHUTDOWN_GRACE_SECONDS
+        deadline = time.monotonic() + operation_timeout
         stage_index = 0
         while True:
             while b"\n" not in buffer:
@@ -602,11 +614,28 @@ def _check_session(
             ) // 1000
         tail = ready["tail"]
         scope = ready["scope"]
+        if (
+            not isinstance(scope, dict)
+            or set(scope) != {"epoch", "campaign_id"}
+            or type(scope.get("epoch")) is not int
+            or scope.get("epoch") != 1
+            or scope.get("campaign_id") != str(target.campaign)
+        ):
+            raise ObserverLaunchError("installation check Ready changed campaign scope")
+        foundation = ready.get("foundation_digest")
+        if not isinstance(foundation, str) or re.fullmatch(r"[0-9a-f]{64}", foundation) is None:
+            raise ObserverLaunchError("installation check foundation identity was absent")
         if new:
-            if tail != {"resolve_tick": 0, "tick_content_hash": None}:
+            if (
+                not isinstance(tail, dict)
+                or type(tail.get("resolve_tick")) is not int
+                or tail != {"resolve_tick": 0, "tick_content_hash": None}
+            ):
                 raise ObserverLaunchError(
                     "installation check New did not return an empty durable tail"
                 )
+        advanced = new
+        if advanced:
             advance_started = time.monotonic_ns()
             send("advance", 2, scope, expected_tail=tail)
             committed = receive("committed", 2, advance_scope=scope, advance_tick=1)
@@ -615,23 +644,24 @@ def _check_session(
             if committed["scope"] != scope:
                 raise ObserverLaunchError("installation check commit changed campaign scope")
             tail = committed["tail"]
+        if not isinstance(tail, dict):
+            raise ObserverLaunchError("installation check durable tail is not an object")
         if (
-            not isinstance(tail, dict)
+            type(tail.get("resolve_tick")) is not int
             or tail.get("resolve_tick") != 1
             or re.fullmatch(r"[0-9a-f]{64}", str(tail.get("tick_content_hash"))) is None
         ):
             raise ObserverLaunchError(
                 "installation check did not observe one hashed committed period"
             )
-        stop_id = 3 if new else 2
+        stop_id = 3 if advanced else 2
         send("stop", stop_id, scope)
-        receive("stopped", stop_id)
+        stopped = receive("stopped", stop_id)
+        if stopped.get("scope") != scope:
+            raise ObserverLaunchError("installation check Stop changed campaign scope")
         child.stdin.close()
         if _finish_runtime(child) != 0:
             raise ObserverLaunchError("installation check runtime shutdown failed")
-        foundation = ready["foundation_digest"]
-        if not isinstance(foundation, str):
-            raise ObserverLaunchError("installation check foundation identity was absent")
         return foundation, tail
     finally:
         if not child.stdin.closed:
@@ -718,8 +748,8 @@ def check_installation(
     campaign = uuid4()
     target = _new_target(campaign, preset)
     timings_us: dict[str, int] = {}
-    first = _check_session(runtime, root, writer, defines, target, timings_us=timings_us)
-    reopened = _check_session(
+    first = run_lifecycle(runtime, root, writer, defines, target, timings_us=timings_us)
+    reopened = run_lifecycle(
         runtime,
         root,
         writer,
@@ -785,8 +815,16 @@ def run_pair(
     *,
     defines_path: Path,
     initial_target: NewCampaignTarget | OpenCampaignTarget,
+    qualification_control: Path | None = None,
+    on_started: Callable[[subprocess.Popen[bytes], subprocess.Popen[bytes]], None] | None = None,
 ) -> int:
     """Cross-connect two anonymous pipes; the parent never reads or forwards protocol bytes."""
+    if (qualification_control is None) != (on_started is None):
+        raise ObserverLaunchError(
+            "qualification requires its control socket and owned-process observer"
+        )
+    if qualification_control is not None and not qualification_control.is_absolute():
+        raise ObserverLaunchError("qualification control socket must be absolute")
     descriptors: list[int] = []
     runtime: subprocess.Popen[bytes] | None = None
     client: subprocess.Popen[bytes] | None = None
@@ -815,6 +853,8 @@ def run_pair(
             ]
         else:
             client_args = [str(client_binary), "--campaign", str(initial_target.campaign)]
+        if qualification_control is not None:
+            client_args.extend(["--qualification-control", str(qualification_control)])
         client = subprocess.Popen(
             client_args,
             cwd=root,
@@ -827,9 +867,20 @@ def run_pair(
         for descriptor in descriptors:
             os.close(descriptor)
         descriptors.clear()
+        if on_started is not None:
+            # Bind these actual owned children only after parent pipe ends are
+            # closed. A failed observation follows the same exact-child cleanup.
+            on_started(runtime, client)
         # The user may keep the game open indefinitely. The client bounds its
         # explicit Quit handshake; closing it also sends EOF through the pipe.
-        client_code = client.wait()
+        try:
+            client_code = client.wait(
+                timeout=RUNTIME_SHUTDOWN_GRACE_SECONDS if on_started is not None else None
+            )
+        except subprocess.TimeoutExpired:
+            raise ObserverLaunchError(
+                "qualification native client did not exit within shutdown grace"
+            ) from None
         runtime_shutdown_started = True
         runtime_code = _finish_runtime(runtime)
         return client_code if client_code != 0 else runtime_code

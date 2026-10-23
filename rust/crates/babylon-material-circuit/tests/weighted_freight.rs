@@ -135,7 +135,7 @@ fn dispatched(state: &MaterialCircuitState) -> Vec<u64> {
 }
 
 #[test]
-fn simultaneous_bottleneck_debits_only_actual_dispatch_and_keeps_residual() {
+fn simultaneous_bottleneck_residual_serves_other_feasible_requests() {
     let mut state = competition();
     state.route_stage_capacities.push(RouteStageCapacity {
         route_id: RouteId::from_bytes([1; 32]),
@@ -149,8 +149,8 @@ fn simultaneous_bottleneck_debits_only_actual_dispatch_and_keeps_residual() {
     });
     let result = advance_material_circuit(&state).unwrap();
     let quantities: Vec<_> = result.dispatches.iter().map(|row| row.quantity).collect();
-    assert_eq!(quantities, [2, 30]);
-    assert_eq!(60 - quantities[0] * 10 - quantities[1], 10);
+    assert_eq!(quantities, [2, 40]);
+    assert_eq!(60 - quantities[0] * 10 - quantities[1], 0);
     assert_eq!(25 - quantities[0] * 10, 5);
     assert_eq!(
         result
@@ -159,7 +159,7 @@ fn simultaneous_bottleneck_debits_only_actual_dispatch_and_keeps_residual() {
             .iter()
             .map(|row| row.quantity)
             .collect::<Vec<_>>(),
-        [8, 70]
+        [8, 60]
     );
     assert_eq!(
         result
@@ -174,22 +174,22 @@ fn simultaneous_bottleneck_debits_only_actual_dispatch_and_keeps_residual() {
 }
 
 #[test]
-fn reducing_competing_order_increases_panel_dispatch_without_reallocating_rounding() {
+fn reducing_competing_order_preserves_base_and_fills_feasible_residual() {
     let mut state = competition();
     state.orders[1].ordered = 40;
     state.backlog[1].quantity = 40;
-    assert_eq!(dispatched(&state), [4, 17]);
-    assert_eq!(60 - 4 * 10 - 17, 3);
+    assert_eq!(dispatched(&state), [4, 20]);
+    assert_eq!(60 - 4 * 10 - 20, 0);
     state = competition();
     state.corridor_capacities[0].available_grams = 61;
-    assert_eq!(dispatched(&state), [3, 30]);
+    assert_eq!(dispatched(&state), [3, 31]);
 }
 
 #[test]
-fn native_inventory_shortage_does_not_redistribute_another_orders_mass_grant() {
+fn native_inventory_shortage_releases_capacity_for_other_funded_requests() {
     let mut state = competition();
     state.inventory[0].quantity = 1;
-    assert_eq!(dispatched(&state), [1, 30]);
+    assert_eq!(dispatched(&state), [1, 50]);
 }
 
 #[test]

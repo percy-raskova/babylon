@@ -618,7 +618,7 @@ fn zero_production_does_not_create_an_empty_inventory_row() {
 }
 
 #[test]
-fn proportional_stock_allocation_has_no_order_priority() {
+fn proportional_base_and_canonical_residual_are_row_order_independent() {
     let mut state = base_state();
     state.process_outputs.clear();
     state.input_coefficients.clear();
@@ -654,9 +654,9 @@ fn proportional_stock_allocation_has_no_order_priority() {
 
     let a = advance_material_circuit(&state).expect("allocation must close");
     let b = advance_material_circuit(&reversed).expect("permuted allocation must close");
-    assert_eq!(a.state.orders[0].shipped, 1);
+    assert_eq!(a.state.orders[0].shipped, 2);
     assert_eq!(a.state.orders[1].shipped, 2);
-    assert_eq!(inventory_quantity(&a.state, SUPPLIER, GRAIN), 1);
+    assert_eq!(inventory_quantity(&a.state, SUPPLIER, GRAIN), 0);
     assert_eq!(
         material_circuit_state_digest(&a.state),
         material_circuit_state_digest(&b.state)

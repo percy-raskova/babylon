@@ -74,7 +74,7 @@ struct ProductionCaption(bool);
 #[derive(Component)]
 struct SkipProduction;
 #[derive(Message)]
-struct ProductionSkip;
+pub(crate) struct ProductionSkip;
 
 #[derive(AsBindGroup, Asset, TypePath, Debug, Clone)]
 struct SignatureMaterial {
@@ -281,7 +281,7 @@ fn keyboard(
     }
 }
 
-fn advance(
+pub(crate) fn advance(
     time: Res<Time>,
     mut opening: ResMut<OpeningPresentation>,
     mut ui: ResMut<ObserverUiState>,
@@ -490,6 +490,7 @@ impl Plugin for OpeningPlugin {
                 (advance, animate)
                     .chain()
                     .after(ObserverSet::Install)
+                    .after(crate::observer_warning::apply_continue)
                     .before(ObserverSet::Paint),
             );
     }

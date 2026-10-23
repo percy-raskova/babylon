@@ -436,3 +436,14 @@ mod order_principal_limits;
 
 #[path = "monetary_wire/delivery_limits.rs"]
 mod delivery_limits;
+
+#[test]
+fn previous_schema18_is_refused_before_replaying_the_new_allocation_policy() {
+    let mut previous = encode_material_circuit_state(&paid_state()).unwrap();
+    let version = MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES.len() + 1;
+    previous[version..version + 2].copy_from_slice(&18_u16.to_be_bytes());
+    assert_eq!(
+        decode_material_circuit_state(&previous),
+        Err(MaterialCircuitError::WireVersion)
+    );
+}

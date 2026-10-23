@@ -545,10 +545,8 @@ fn check_cash(
 ) -> Result<()> {
     let mut cash: BTreeMap<_, _> = before
         .book
-        .snapshot()
-        .accounts
-        .into_iter()
-        .map(|row| (row.id, row.cash.micro_units()))
+        .cash_accounts()
+        .map(|(&id, &cash)| (id, cash.micro_units()))
         .collect();
     for transfer in &receipts.money_transfers {
         if transfer.debit.delta.micro_units() >= 0
@@ -576,10 +574,8 @@ fn check_cash(
     }
     let closing: BTreeMap<_, _> = after
         .book
-        .snapshot()
-        .accounts
-        .into_iter()
-        .map(|row| (row.id, row.cash.micro_units()))
+        .cash_accounts()
+        .map(|(&id, &cash)| (id, cash.micro_units()))
         .collect();
     if cash != closing {
         return Err(ProductionProjectionError::State);
@@ -598,18 +594,11 @@ fn check_purchases(
         return Ok(());
     };
     check_cash(before, after, receipts)?;
-    let mut closing: BTreeMap<_, _> = after
-        .book
-        .snapshot()
-        .purchases
-        .into_iter()
-        .map(|row| (row.order, row))
-        .collect();
+    let mut closing: BTreeMap<_, _> = after.book.purchases().map(|row| (row.order, row)).collect();
     let mut principals: BTreeMap<_, _> = before
         .book
-        .snapshot()
-        .purchases
-        .into_iter()
+        .purchases()
+        .cloned()
         .map(|row| (row.order, row))
         .collect();
     for (id, row) in admissions {
@@ -654,7 +643,7 @@ fn check_purchases(
             amounts.remove(&id).unwrap_or_default(),
         )?;
         match closing.remove(&id) {
-            Some(value) if value == principal => {}
+            Some(value) if *value == principal => {}
             None if (recurring(prior).is_some() || matches!(id, OutboundOrderId::Service(_)))
                 && principal.delivered.checked_add(principal.refunded)
                     == Some(principal.quantity) => {}

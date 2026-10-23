@@ -29,9 +29,8 @@ pub(super) fn admit(
     admissions: &mut BTreeMap<OutboundOrderId, PurchaseEscrow>,
 ) -> Result<()> {
     let purchases: BTreeMap<_, _> = monetary(prior)
-        .map(|m| m.book.snapshot().purchases)
-        .unwrap_or_default()
         .into_iter()
+        .flat_map(|economy| economy.book.purchases())
         .map(|p| (p.order, p))
         .collect();
     let mut due = BTreeMap::new();
@@ -167,7 +166,7 @@ fn admit_generated(
 }
 fn requests(
     prior: &MaterialCircuitState,
-    purchases: &BTreeMap<OutboundOrderId, PurchaseEscrow>,
+    purchases: &BTreeMap<OutboundOrderId, &PurchaseEscrow>,
 ) -> Result<BTreeMap<OrderId, Request>> {
     let Some(recurring) = recurring(prior) else {
         return Ok(BTreeMap::new());

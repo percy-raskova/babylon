@@ -176,6 +176,12 @@ pub struct PlacePagePlan {
     county_links: Vec<PlaceCountySlice>,
 }
 
+impl crate::archive_revision::publication::ArchivePagePlan for PlacePagePlan {
+    fn page_ref(&self) -> Result<ArchivePageRef, SemanticArchiveError> {
+        ArchivePageRef::try_new(ArchiveSubjectKind::Place, self.place_geoid.clone())
+    }
+}
+
 impl PlacePagePlan {
     /// Construct one desired place page plan.
     ///
@@ -833,7 +839,13 @@ impl ArchiveDossierProducer for PlaceDossierProducer {
         if self.campaign.is_some_and(|expected| expected != campaign) {
             return Err(SemanticArchiveError::StoredPageMismatch);
         }
-        let desired = self.desired_pages()?;
+        let desired = {
+            let _timing = crate::production_projection::diagnostics::Timing::start(
+                crate::production_projection::diagnostics::Stage::ArchivePlacePlans,
+                receipt.resolve_tick(),
+            );
+            self.desired_pages()?
+        };
         crate::archive_revision::publication::select_dirty_pages(
             &self.config,
             campaign,

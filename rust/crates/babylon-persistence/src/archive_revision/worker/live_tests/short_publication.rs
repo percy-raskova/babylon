@@ -133,7 +133,8 @@ fn live_prepared_grant_or_receipt_drift_refuses_publication() {
                 writer
                     .execute(
                         "UPDATE babylon_meta.archive_knowledge_grant_v1 \
-                    SET provenance_locator='changed-after-prepare' WHERE campaign_id=$1 \
+                    SET provenance_ref=babylon_meta.archive_provenance_intern_v1(campaign_id, \
+                    (SELECT source_id FROM babylon_meta.archive_provenance_v1 p WHERE p.campaign_id=archive_knowledge_grant_v1.campaign_id AND p.provenance_ref=archive_knowledge_grant_v1.provenance_ref),'changed-after-prepare') WHERE campaign_id=$1 \
                     AND subject_kind='county' AND subject_id='99963' AND grant_key='subject'",
                         &[target.campaign_id.as_uuid()],
                     )
@@ -192,8 +193,8 @@ fn live_backdated_grant_after_prepare_refuses_new_knowledge_substitution() {
     let producer = DuringProduce(|| {
         target.config.connect(NoTls).unwrap().execute(
             "INSERT INTO babylon_meta.archive_knowledge_grant_v1 \
-             (campaign_id,subject_kind,subject_id,grant_key,granted_tick,provenance_source_id,provenance_locator) \
-             VALUES($1,'county','99963','identity',0,'late-proof','backdated')",
+             (campaign_id,subject_kind,subject_id,grant_key,granted_tick,provenance_ref) \
+             VALUES($1,'county','99963','identity',0,babylon_meta.archive_provenance_intern_v1($1,'late-proof','backdated'))",
             &[target.campaign_id.as_uuid()],
         ).unwrap();
         Ok(())
@@ -245,6 +246,15 @@ fn live_prepared_publication_preserves_historical_receipt_identity() {
     target.finish();
 }
 
+#[derive(Clone, Copy)]
+struct ComparisonPlan(u64);
+
+impl crate::archive_revision::publication::ArchivePagePlan for ComparisonPlan {
+    fn page_ref(&self) -> Result<crate::ArchivePageRef, SemanticArchiveError> {
+        Ok(stub_subject_spec(self.0).page_ref)
+    }
+}
+
 fn fixed_comparison_input(tick: u64, hash: [u8; 32]) -> ArchivePageInput {
     let base = stub_page_input(&PendingArchiveReceipt::try_new(1, hash).unwrap());
     ArchivePageInput::try_new(
@@ -287,9 +297,9 @@ fn live_dirty_comparison_renders_after_capture_commit() {
         target.campaign_id,
         &receipt,
         &known,
-        &[()],
+        &[ComparisonPlan(1)],
         1,
-        |(), tick, hash| {
+        |_plan, tick, hash| {
             if tick == 1 {
                 historical_calls.set(historical_calls.get() + 1);
                 let mut observer = target.config.connect(NoTls).unwrap();
@@ -421,10 +431,7 @@ fn assert_stored_revision_corruption_refused(
             &[target.campaign_id.as_uuid(), &original_search_text],
         )
         .unwrap();
-    client.execute(
-        "UPDATE babylon_meta.archive_revision_grant_v2 SET position=512 WHERE campaign_id=$1 AND position=0",
-        &[target.campaign_id.as_uuid()],
-    ).unwrap();
+    assert!(reverse_grant_membership(&mut client, target.campaign_id, None) > 0);
     assert!(
         store
             .materialize_receipt(
@@ -439,10 +446,7 @@ fn assert_stored_revision_corruption_refused(
         receipt_consumption_count(&target.config, target.campaign_id),
         0
     );
-    client.execute(
-        "UPDATE babylon_meta.archive_revision_grant_v2 SET position=0 WHERE campaign_id=$1 AND position=512",
-        &[target.campaign_id.as_uuid()],
-    ).unwrap();
+    assert!(reverse_grant_membership(&mut client, target.campaign_id, None) > 0);
     client.execute(
         "UPDATE babylon_meta.archive_page_revision_v2 SET body_bytes=body_bytes || decode('00','hex') WHERE campaign_id=$1",
         &[target.campaign_id.as_uuid()],
@@ -462,6 +466,27 @@ fn assert_stored_revision_corruption_refused(
         0
     );
     drop(client);
+}
+
+fn reverse_grant_membership(
+    client: &mut impl postgres::GenericClient,
+    campaign: CampaignId,
+    subject_id: Option<&str>,
+) -> u64 {
+    // Reverse complete parallel arrays: shape, count and reference validity
+    // remain intact, so ordered canonical reconciliation must detect the fault.
+    client
+        .execute(
+            "UPDATE babylon_meta.archive_page_revision_v2 SET \
+             grant_subject_kinds=ARRAY(SELECT value FROM unnest(grant_subject_kinds) WITH ORDINALITY item(value,position) ORDER BY position DESC), \
+             grant_subject_ids=ARRAY(SELECT value FROM unnest(grant_subject_ids) WITH ORDINALITY item(value,position) ORDER BY position DESC), \
+             grant_keys=ARRAY(SELECT value FROM unnest(grant_keys) WITH ORDINALITY item(value,position) ORDER BY position DESC), \
+             grant_ticks=ARRAY(SELECT value FROM unnest(grant_ticks) WITH ORDINALITY item(value,position) ORDER BY position DESC), \
+             grant_provenance_refs=ARRAY(SELECT value FROM unnest(grant_provenance_refs) WITH ORDINALITY item(value,position) ORDER BY position DESC) \
+             WHERE campaign_id=$1 AND ($2::text IS NULL OR subject_id=$2) AND grant_count>1",
+            &[campaign.as_uuid(), &subject_id],
+        )
+        .unwrap()
 }
 
 fn retained_comparison_input(
@@ -489,18 +514,252 @@ fn retained_comparison_input(
 
 #[test]
 #[ignore = "requires the task-owned disposable PostgreSQL runtime and committed ticks"]
+fn live_publication_reconciles_batch_and_exact_conflicts_with_constant_queries() {
+    let target = LiveWorkerTarget::create("batchpublication", 0x34112, 1);
+    let store = SemanticArchiveStore::new(&target.config);
+    let scope = scope_at(&target.config, target.campaign_id, 1);
+    let hash = scope.tick_content_hash().unwrap();
+    let batch = ArchiveDirtyBatch::try_new(
+        1,
+        hash,
+        (1..=3)
+            .map(|plan| retained_comparison_input(plan, 1, hash, false))
+            .collect(),
+    )
+    .unwrap();
+    let head = ArchiveDirtyBatch::try_new(1, hash, vec![batch.pages()[0].clone()]).unwrap();
+    let mut query_counts = Vec::new();
+    let mut previous: Option<crate::ArchiveMaterializeReport> = None;
+    for (input, mode, expected_insertions) in [
+        (&head, crate::ArchiveMaterializeMode::Stage, vec![true]),
+        (
+            &batch,
+            crate::ArchiveMaterializeMode::Stage,
+            vec![false, true, true],
+        ),
+        (
+            &batch,
+            crate::ArchiveMaterializeMode::Stage,
+            vec![false, false, false],
+        ),
+        (
+            &batch,
+            crate::ArchiveMaterializeMode::Consume,
+            vec![false, false, false],
+        ),
+    ] {
+        crate::archive_revision::storage::reset_capture_queries();
+        let report = store
+            .materialize_receipt(target.campaign_id, input, mode)
+            .unwrap();
+        query_counts.push(crate::archive_revision::storage::reset_capture_queries());
+        assert_eq!(report.pages().len(), input.pages().len());
+        assert_eq!(
+            report
+                .pages()
+                .iter()
+                .map(crate::MaterializedArchivePage::persisted)
+                .collect::<Vec<_>>(),
+            expected_insertions
+        );
+        for (page, expected) in report.pages().iter().zip(input.pages()) {
+            assert_eq!(page.page_ref(), expected.subject().page_ref());
+        }
+        if let Some(previous) = previous.as_ref() {
+            for (page, earlier) in report.pages().iter().zip(previous.pages()) {
+                assert_eq!(page.page(), earlier.page());
+            }
+        }
+        assert_eq!(
+            receipt_consumption_count(&target.config, target.campaign_id),
+            i64::from(mode == crate::ArchiveMaterializeMode::Consume)
+        );
+        previous = Some(report);
+    }
+    assert_eq!(archive_page_count(&target.config, target.campaign_id), 3);
+    target.finish();
+    // One existing-body capture (three when nonempty), then four exact batch
+    // authentication queries. Page count and conflict count cannot add queries.
+    assert_eq!(query_counts, [5, 7, 7, 7]);
+}
+
+#[test]
+#[ignore = "requires the task-owned disposable PostgreSQL runtime and committed ticks"]
+fn live_batch_tail_corruption_after_prepare_rolls_back_earlier_inserts_and_consumption() {
+    let target = LiveWorkerTarget::create("batchtailrefusal", 0x34113, 1);
+    let store = SemanticArchiveStore::new(&target.config);
+    let scope = scope_at(&target.config, target.campaign_id, 1);
+    let hash = scope.tick_content_hash().unwrap();
+    let batch = ArchiveDirtyBatch::try_new(
+        1,
+        hash,
+        (1..=3)
+            .map(|plan| retained_comparison_input(plan, 1, hash, false))
+            .collect(),
+    )
+    .unwrap();
+    let tail = ArchiveDirtyBatch::try_new(1, hash, vec![batch.pages()[2].clone()]).unwrap();
+    store
+        .materialize_receipt(
+            target.campaign_id,
+            &tail,
+            crate::ArchiveMaterializeMode::Stage,
+        )
+        .unwrap();
+    let mut client = target.config.connect(NoTls).unwrap();
+    let original = publication_row_counts(&mut client, target.campaign_id);
+    let tail_sql =
+        "SELECT row_to_json(revision)::text FROM babylon_meta.archive_page_revision_v2 revision \
+                    WHERE campaign_id=$1 AND subject_id='99925' AND effective_tick=1";
+    let original_tail: String = client
+        .query_one(tail_sql, &[target.campaign_id.as_uuid()])
+        .unwrap()
+        .get(0);
+    assert_eq!(original[0], 1);
+    assert_eq!(original[4], 0);
+    for fault in LATE_TAIL_FAULTS {
+        crate::archive_revision::publication::with_campaign_lock(
+            &mut client,
+            target.campaign_id,
+            |client| {
+                let (prepared, known) = prepare_checked_batch(client, &scope, &batch)?;
+                let mut tx = client
+                    .build_transaction()
+                    .isolation_level(postgres::IsolationLevel::Serializable)
+                    .start()
+                    .unwrap();
+                crate::archive_revision::tick_knowledge::pin_prepared(&mut tx, &scope, &known)?;
+                // Corruption occurs after detached authentication, inside the
+                // atomic write. The conflict is last, after two new pages.
+                assert_eq!(
+                    tx.execute(
+                        &format!(
+                            "UPDATE babylon_meta.archive_page_revision_v2 SET {fault} \
+                                  WHERE campaign_id=$1 AND subject_id='99925' AND effective_tick=1"
+                        ),
+                        &[target.campaign_id.as_uuid()],
+                    )
+                    .unwrap(),
+                    1
+                );
+                let refused = crate::archive_revision::publication::publish(
+                    &mut tx,
+                    prepared,
+                    crate::ArchiveMaterializeMode::Consume,
+                );
+                assert_eq!(
+                    refused,
+                    Err(SemanticArchiveError::ReceiptConflict),
+                    "{fault}"
+                );
+                let staged = publication_row_counts(&mut tx, target.campaign_id);
+                assert_eq!(
+                    staged[0], 3,
+                    "earlier pages were inserted before tail refusal"
+                );
+                assert!(
+                    staged[1] > original[1],
+                    "earlier atoms were inserted before refusal"
+                );
+                assert_eq!(staged[4], 0, "consumption must remain last");
+                tx.rollback().unwrap();
+                Ok(())
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            publication_row_counts(&mut client, target.campaign_id),
+            original
+        );
+        assert_eq!(
+            client
+                .query_one(tail_sql, &[target.campaign_id.as_uuid()])
+                .unwrap()
+                .get::<_, String>(0),
+            original_tail,
+            "rollback must restore every stored scalar, body byte and membership array"
+        );
+    }
+    drop(client);
+    target.finish();
+}
+
+fn prepare_checked_batch(
+    client: &mut postgres::Client,
+    scope: &crate::archive_revision::ArchiveReadScope,
+    batch: &ArchiveDirtyBatch,
+) -> Result<
+    (
+        crate::archive_revision::publication::PreparedPublication,
+        crate::ArchiveKnowledge,
+    ),
+    SemanticArchiveError,
+> {
+    let mut capture = client
+        .build_transaction()
+        .isolation_level(postgres::IsolationLevel::Serializable)
+        .read_only(true)
+        .start()
+        .unwrap();
+    let known = crate::archive_revision::tick_knowledge::capture(&mut capture, scope)?;
+    capture.commit().unwrap();
+    let receipt = PendingArchiveReceipt::try_new(scope.tick(), scope.tick_content_hash().unwrap())?;
+    let mut prepared = crate::archive_revision::publication::prepare(
+        scope.campaign_id(),
+        &receipt,
+        batch,
+        &known,
+    )?;
+    crate::archive_revision::publication::authenticate_existing(client, &mut prepared)?;
+    Ok((prepared, known))
+}
+
+const LATE_TAIL_FAULTS: [&str; 7] = [
+    "search_text=search_text || ' forged'",
+    "content_sha256=decode(repeat('00',32),'hex')",
+    "revision_sha256=decode(repeat('00',32),'hex')",
+    "body_bytes=set_byte(body_bytes,0,get_byte(body_bytes,0) # 1)",
+    "atom_ids=ARRAY(SELECT value FROM unnest(atom_ids) WITH ORDINALITY item(value,position) ORDER BY position DESC)",
+    "grant_subject_kinds=ARRAY(SELECT value FROM unnest(grant_subject_kinds) WITH ORDINALITY item(value,position) ORDER BY position DESC), \
+     grant_subject_ids=ARRAY(SELECT value FROM unnest(grant_subject_ids) WITH ORDINALITY item(value,position) ORDER BY position DESC), \
+     grant_keys=ARRAY(SELECT value FROM unnest(grant_keys) WITH ORDINALITY item(value,position) ORDER BY position DESC), \
+     grant_ticks=ARRAY(SELECT value FROM unnest(grant_ticks) WITH ORDINALITY item(value,position) ORDER BY position DESC), \
+     grant_provenance_refs=ARRAY(SELECT value FROM unnest(grant_provenance_refs) WITH ORDINALITY item(value,position) ORDER BY position DESC)",
+    "atom_ids[1]=decode(repeat('ff',32),'hex')",
+];
+
+fn publication_row_counts(
+    client: &mut impl postgres::GenericClient,
+    campaign: CampaignId,
+) -> [i64; 5] {
+    let row = client
+        .query_one(
+            "SELECT \
+         (SELECT count(*) FROM babylon_meta.archive_page_revision_v2 WHERE campaign_id=$1), \
+         (SELECT count(*) FROM babylon_meta.archive_atom_witness_v1 WHERE campaign_id=$1), \
+         (SELECT count(*) FROM babylon_meta.archive_tick_knowledge_v3 WHERE campaign_id=$1), \
+         (SELECT count(*) FROM babylon_meta.archive_knowledge_membership_v3 WHERE campaign_id=$1), \
+         (SELECT count(*) FROM babylon_meta.archive_receipt_consumption_v1 WHERE campaign_id=$1)",
+            &[campaign.as_uuid()],
+        )
+        .unwrap();
+    std::array::from_fn(|column| row.get(column))
+}
+
+#[test]
+#[ignore = "requires the task-owned disposable PostgreSQL runtime and committed ticks"]
 fn live_retained_comparison_has_constant_capture_queries_and_audits_beyond_head() {
     let target = LiveWorkerTarget::create("batchcomparison", 0x34111, 2);
     let store = SemanticArchiveStore::new(&target.config);
     let first = scope_at(&target.config, target.campaign_id, 1);
     let hash = first.tick_content_hash().unwrap();
-    let plans = [1_u64, 2, 3]; // Two county subjects and one place, all genuinely granted.
+    let plans = [ComparisonPlan(1), ComparisonPlan(2), ComparisonPlan(3)]; // Two county subjects and one place, all genuinely granted.
     let batch = ArchiveDirtyBatch::try_new(
         1,
         hash,
         plans
             .iter()
-            .map(|plan| retained_comparison_input(*plan, 1, hash, false))
+            .map(|plan| retained_comparison_input(plan.0, 1, hash, false))
             .collect(),
     )
     .unwrap();
@@ -523,7 +782,7 @@ fn live_retained_comparison_has_constant_capture_queries_and_audits_beyond_head(
         &known,
         &plans,
         1,
-        |plan, tick, hash| Ok(retained_comparison_input(*plan, tick, hash, false)),
+        |plan, tick, hash| Ok(retained_comparison_input(plan.0, tick, hash, false)),
     )
     .unwrap();
     assert!(quiet.batch().pages().is_empty());
@@ -536,7 +795,7 @@ fn live_retained_comparison_has_constant_capture_queries_and_audits_beyond_head(
         &known,
         &plans,
         1,
-        |plan, tick, hash| Ok(retained_comparison_input(*plan, tick, hash, true)),
+        |plan, tick, hash| Ok(retained_comparison_input(plan.0, tick, hash, true)),
     )
     .unwrap();
     assert_eq!(dirty.batch().pages().len(), 1);
@@ -549,14 +808,7 @@ fn live_retained_comparison_has_constant_capture_queries_and_audits_beyond_head(
     // The tail is not published or selected, but every captured membership must
     // still authenticate. Keeping only the head would hide this corruption.
     assert_eq!(
-        reader
-            .execute(
-                "UPDATE babylon_meta.archive_revision_grant_v2 \
-        SET position=512 WHERE campaign_id=$1 AND subject_kind='county' \
-        AND subject_id='99925' AND effective_tick=1 AND position=0",
-                &[target.campaign_id.as_uuid()]
-            )
-            .unwrap(),
+        reverse_grant_membership(&mut reader, target.campaign_id, Some("99925")),
         1
     );
     let refused = crate::archive_revision::publication::select_dirty_pages(
@@ -566,12 +818,18 @@ fn live_retained_comparison_has_constant_capture_queries_and_audits_beyond_head(
         &known,
         &plans,
         1,
-        |plan, tick, hash| Ok(retained_comparison_input(*plan, tick, hash, true)),
+        |plan, tick, hash| Ok(retained_comparison_input(plan.0, tick, hash, true)),
     );
-    assert!(matches!(
-        refused,
-        Err(SemanticArchiveError::StoredPageMismatch)
-    ));
+    assert!(
+        matches!(refused, Err(SemanticArchiveError::DuplicateGrant)),
+        "unordered frozen grants must be refused: {:?}",
+        refused.as_ref().err()
+    );
+    assert_eq!(
+        reverse_grant_membership(&mut reader, target.campaign_id, Some("99925")),
+        1
+    );
+    assert_changed_frozen_value_refused(&mut reader, &target, &receipt, &known, &plans);
     assert_eq!(archive_page_count(&target.config, target.campaign_id), 3);
     drop(reader);
     target.finish();
@@ -579,6 +837,43 @@ fn live_retained_comparison_has_constant_capture_queries_and_audits_beyond_head(
     assert_eq!(
         capture_queries, 3,
         "retained comparison must use three batched witness captures"
+    );
+}
+
+fn assert_changed_frozen_value_refused(
+    reader: &mut postgres::Client,
+    target: &LiveWorkerTarget,
+    receipt: &PendingArchiveReceipt,
+    known: &crate::ArchiveKnowledge,
+    plans: &[ComparisonPlan],
+) {
+    // Preserve order, cardinality, and all valid references while changing one
+    // frozen value within its allowed range. Canonical hashing must refuse this
+    // independent fault even though the ordering validator accepts the arrays.
+    assert_eq!(
+        reader
+            .execute(
+                "UPDATE babylon_meta.archive_page_revision_v2 \
+                 SET grant_ticks[1]=CASE WHEN grant_ticks[1]=0 THEN 1 ELSE 0 END \
+                 WHERE campaign_id=$1 AND subject_id='99925' AND source_tick=1",
+                &[target.campaign_id.as_uuid()],
+            )
+            .unwrap(),
+        1
+    );
+    let refused = crate::archive_revision::publication::select_dirty_pages(
+        &target.config,
+        target.campaign_id,
+        receipt,
+        known,
+        plans,
+        1,
+        |plan, tick, hash| Ok(retained_comparison_input(plan.0, tick, hash, true)),
+    );
+    assert!(
+        matches!(refused, Err(SemanticArchiveError::StoredPageMismatch)),
+        "changed frozen grants must be refused: {:?}",
+        refused.as_ref().err()
     );
 }
 

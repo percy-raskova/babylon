@@ -6,6 +6,7 @@ use super::{
     storage, tick_knowledge, ArchiveReadScope,
 };
 use crate::archive::{database, decode, decode_digest, mint_page_atoms, persist_atom_rows};
+use crate::production_projection::diagnostics::{Stage, Timing};
 use crate::{
     identity::CampaignId, ArchiveDirtyBatch, ArchiveKnowledge, ArchiveMaterializeDisposition,
     ArchiveMaterializeMode, ArchiveMaterializeReport, ArchivePageInput, FogSafeArchiveRenderer,
@@ -148,6 +149,7 @@ pub(super) fn prepare(
     batch: &ArchiveDirtyBatch,
     known: &ArchiveKnowledge,
 ) -> Result<PreparedPublication, SemanticArchiveError> {
+    let _timing = Timing::start(Stage::ArchivePublicationPreparation, receipt.resolve_tick());
     crate::archive_batch_matches_receipt(batch, receipt)?;
     let scope = ArchiveReadScope::committed(
         campaign,
@@ -174,6 +176,7 @@ pub(super) fn authenticate_existing(
     client: &mut postgres::Client,
     prepared: &mut PreparedPublication,
 ) -> Result<(), SemanticArchiveError> {
+    let _timing = Timing::start(Stage::ArchiveExistingAuthentication, prepared.scope.tick());
     let mut tx = client
         .build_transaction()
         .isolation_level(IsolationLevel::Serializable)
@@ -246,10 +249,41 @@ pub(super) fn publish(
     if tick_knowledge::load(client, &scope)? != known {
         return Err(SemanticArchiveError::ReceiptConflict);
     }
+    let mut minted = Vec::with_capacity(pages.len());
+    for (checked, _) in &pages {
+        let record = checked.record();
+        {
+            let _timing = Timing::start(Stage::ArchiveGrantCapture, record.source.tick());
+            if knowledge::capture(client, record)? != record.grants {
+                return Err(SemanticArchiveError::ReceiptConflict);
+            }
+        }
+        minted.push({
+            let _timing = Timing::start(Stage::ArchiveAtomPersistence, record.source.tick());
+            persist_atom_rows(client, campaign, &record.atoms)?
+        });
+    }
+    let persisted = {
+        let _timing = Timing::start(Stage::ArchiveRevisionPersistence, scope.tick());
+        let checked = pages.iter().map(|(checked, _)| checked).collect::<Vec<_>>();
+        storage::insert_batch(client, &checked)?
+    };
+    if persisted.len() != pages.len() {
+        return Err(SemanticArchiveError::StoredPageMismatch);
+    }
     let pages = pages
         .into_iter()
-        .map(|(record, page)| publish_page(client, &record, page))
-        .collect::<Result<Vec<_>, _>>()?;
+        .zip(minted)
+        .zip(persisted)
+        .map(
+            |(((checked, page), atoms), persisted)| MaterializedArchivePage {
+                page_ref: checked.record().subject.clone(),
+                page,
+                persisted,
+                atoms,
+            },
+        )
+        .collect();
     if mode == ArchiveMaterializeMode::Consume {
         claim(client, campaign, &batch, &known)?;
     }
@@ -354,25 +388,6 @@ fn prepare_page(
     Ok((CheckedRevision::new(record)?, page))
 }
 
-fn publish_page(
-    client: &mut impl GenericClient,
-    checked: &CheckedRevision,
-    page: RenderedArchivePage,
-) -> Result<MaterializedArchivePage, SemanticArchiveError> {
-    let record = checked.record();
-    if knowledge::capture(client, record)? != record.grants {
-        return Err(SemanticArchiveError::ReceiptConflict);
-    }
-    let minted = persist_atom_rows(client, record.source.campaign_id(), &record.atoms)?;
-    let persisted = storage::insert(client, checked)?;
-    Ok(MaterializedArchivePage {
-        page_ref: record.subject.clone(),
-        page,
-        persisted,
-        atoms: minted,
-    })
-}
-
 fn reconcile(
     client: &mut impl GenericClient,
     campaign: CampaignId,
@@ -413,10 +428,37 @@ fn claim(
     Ok(())
 }
 
+/// A validated plan exposes its subject before composing the complete page.
+pub(crate) trait ArchivePagePlan {
+    fn page_ref(&self) -> Result<crate::ArchivePageRef, SemanticArchiveError>;
+}
+
+fn known_page_inputs<'a, T: ArchivePagePlan>(
+    receipt: &PendingArchiveReceipt,
+    known: &ArchiveKnowledge,
+    plans: &'a [T],
+    make: &impl Fn(&T, u64, [u8; 32]) -> Result<ArchivePageInput, SemanticArchiveError>,
+) -> Result<Vec<(&'a T, ArchivePageInput)>, SemanticArchiveError> {
+    let _timing = Timing::start(Stage::ArchivePageInputs, receipt.resolve_tick());
+    let mut inputs = Vec::new();
+    for plan in plans {
+        let subject = plan.page_ref()?;
+        if !known.knows_subject(&subject) {
+            continue;
+        }
+        let input = make(plan, receipt.resolve_tick(), *receipt.tick_content_hash())?;
+        if input.subject().page_ref() != &subject {
+            return Err(SemanticArchiveError::StoredPageMismatch);
+        }
+        inputs.push((plan, input));
+    }
+    Ok(inputs)
+}
+
 /// Compare the full emitted profile at the original source K. This preserves a
 /// quiet page's K and citations while detecting changes in values, labels,
 /// question, unknown links, and the pinned knowledge projection at current T.
-pub(crate) fn select_dirty_pages<T>(
+pub(crate) fn select_dirty_pages<T: ArchivePagePlan>(
     config: &postgres::Config,
     campaign: CampaignId,
     receipt: &PendingArchiveReceipt,
@@ -425,13 +467,9 @@ pub(crate) fn select_dirty_pages<T>(
     budget: usize,
     make: impl Fn(&T, u64, [u8; 32]) -> Result<ArchivePageInput, SemanticArchiveError>,
 ) -> Result<crate::ArchiveProducerOutcome, SemanticArchiveError> {
-    let inputs = plans
-        .iter()
-        .map(|plan| {
-            make(plan, receipt.resolve_tick(), *receipt.tick_content_hash())
-                .map(|input| (plan, input))
-        })
-        .collect::<Result<Vec<_>, _>>()?;
+    let inputs = known_page_inputs(receipt, known, plans, &make)?;
+    let eligible = inputs.len();
+    let capture_timing = Timing::start(Stage::ArchiveComparisonCapture, receipt.resolve_tick());
     let mut client =
         SemanticArchiveStore::new(config).connect("connect retained producer comparison")?;
     let mut tx = client
@@ -440,10 +478,6 @@ pub(crate) fn select_dirty_pages<T>(
         .read_only(true)
         .start()
         .map_err(|error| database("begin retained producer comparison", &error))?;
-    let inputs = inputs
-        .into_iter()
-        .filter(|(_, input)| known.knows_subject(input.subject().page_ref()))
-        .collect::<Vec<_>>();
     let subjects = inputs
         .iter()
         .map(|(_, input)| input.subject().page_ref().clone())
@@ -457,6 +491,9 @@ pub(crate) fn select_dirty_pages<T>(
         .collect::<Vec<_>>();
     tx.commit()
         .map_err(|error| database("commit retained producer comparison read", &error))?;
+    drop(capture_timing);
+    let _comparison_timing =
+        Timing::start(Stage::ArchiveComparisonAdmission, receipt.resolve_tick());
     let renderer = FogSafeArchiveRenderer::new()?;
     let mut pages = Vec::new();
     let mut remaining = 0usize;
@@ -471,6 +508,9 @@ pub(crate) fn select_dirty_pages<T>(
                     .tick_content_hash()
                     .ok_or(SemanticArchiveError::StoredPageMismatch)?,
             )?;
+            if old.subject().page_ref() != input.subject().page_ref() {
+                return Err(SemanticArchiveError::StoredPageMismatch);
+            }
             let (expected, witness) = renderer.render_with_emission(&old, known)?;
             record.title == old.subject().title()
                 && record.markdown == expected.markdown()
@@ -492,8 +532,17 @@ pub(crate) fn select_dirty_pages<T>(
             }
         }
     }
+    if std::env::var("BABYLON_TIMINGS").as_deref() == Ok("1") {
+        eprintln!(
+            "archive_selection_counts tick={} plans={} eligible={eligible} selected={} remaining={remaining}",
+            receipt.resolve_tick(), plans.len(), pages.len()
+        );
+    }
     Ok(crate::ArchiveProducerOutcome::new(
         ArchiveDirtyBatch::try_new(receipt.resolve_tick(), *receipt.tick_content_hash(), pages)?,
         remaining,
     ))
 }
+
+#[cfg(test)]
+mod selection_tests;

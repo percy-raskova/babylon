@@ -1,0 +1,87 @@
+ADR285_work_conserving_outbound_residuals:
+  status: accepted
+  date: '2026-10-06'
+  issue: PER-31
+  title: Outbound allocation uses feasible residual resources within each existing pass
+  evidence_class: Designed
+  authority:
+    - Director-approved playable national economy and qualification implementation plans
+    - Recorded bounded PER-31 allocation-policy commitment before implementation
+    - Repository rules require an architecture decision record
+  partially_supersedes:
+    - ADR260 R2 residual allocation and R3 handling-demand definition only
+  context: |
+    Exact replay of the retained national aid failure reproduced its original
+    register, canonical receipt and world identity. Four requested native food
+    units weighed 56 kg. Donor stock and time were sufficient. The first outbound
+    pass consumed none of the inspected corridor resources. In the next pass,
+    independent proportional floors limited the request to zero native units on
+    one corridor, which retained 2,776,077 kg after all actual dispatches. Every
+    inspected route resource could accommodate the entire request in its final
+    residual. The original contract explicitly disallowed redistribution.
+  decision: |
+    Keep the existing eligible, included, already-funded outbound requests and
+    causal passes. Preserve a proportional base allocation with exact integer
+    floors. Aggregate repeated coefficients for each resource and request with
+    checked arithmetic. Every coefficient must describe a real debit or timed
+    reservation. The request ceiling is its admitted remaining native quantity.
+
+    After the base has been constrained by current handling labor, calculate
+    every resource residual from actual allocated quantities. Include inventory,
+    donor stock and time, funded handling labor, merchant capacity and all current
+    or future timed route principals. Visit requests by native order identity,
+    with a declared variant discriminator only when native identities are equal.
+    Grant each request its largest whole-native increment bounded by its unmet
+    admitted quantity and every remaining resource. Debit all cuts together.
+    Neither commercial requests nor aid receive a separate priority or exception.
+
+    One maximal augmentation per request suffices: resources only decrease, so
+    an earlier blocked request cannot become feasible later. At completion, each
+    unmet included eligible request lacks at least one resource sufficient for
+    another native unit. This establishes individual-increment work conservation,
+    not globally optimal throughput, neutral fairness, market clearing or aid
+    success. Stable identity tie-breaking is an explicit secondary priority.
+
+    Keep the base handling labor requests derived from proportional physical
+    base grants. The residual matrix includes full handling coefficients even
+    when those base grants are zero. A handling receipt's feasible_quantity is
+    the independent physical ceiling for that request: admitted remaining demand
+    limited by each opening nonlabor resource divided by its complete coefficient,
+    before shared competition or current handling labor. Its needed_hours uses
+    this ceiling; actual handled quantity and used_hours remain constrained by
+    funded current labor and all shared resources. Summed handling need is a
+    Designed prospective workload, not a simultaneous feasible dispatch plan.
+
+    Period services use the same residual policy within their existing stage.
+    Do not refill resources between production stages, reopen production, admit
+    another purchase, draw next-period resources or credit local buyers before
+    existing outbound passes finish. Retain escrow, loss, transit, arrival and
+    independent household/partner consequences through their current paths.
+  alternatives: |
+    Leaving feasible residuals unused reproduces the measured quantization
+    artifact. Aid-only rescue, free resources, larger capacities or a guaranteed
+    shipment bypass the shared circuit. A throughput optimization objective would
+    impose another unmeasured allocation preference and add unnecessary solving
+    machinery. Canonical bulk augmentation has bounded sparse work and explicit
+    tie-breaking; it does not claim to emulate a complete market institution.
+  consequences: |
+    The no-redistribution contract and controls intentionally change. Historical
+    records remain unchanged. Protect exact conservation, request bounds,
+    canonical replay, checked arithmetic and atomic refusal. This is a Designed
+    resource-allocation policy within existing material mechanics, not a new
+    mathematical kind, governed political term or reserved theoretical change.
+    A successful small control cannot establish national shipment, economic,
+    storage, sustained-play or enjoyment qualification.
+  verification:
+    - Commercial-only constraints with feasible residuals serve another whole unit.
+    - Zero-base requests still pay real handling labor; repeated coefficients sum.
+    - Future route reservations, donor time and funded quantities remain binding.
+    - Unmet requests have no feasible single-unit increment after allocation.
+    - Permuted input has identical canonical output and checked failure is atomic.
+    - Shared services and existing pass boundaries retain staged causal integrity.
+  compatibility: |
+    Revise the current national and Michigan capture compiler identities, raw
+    state version and receipt version. Refuse the previous floor-only authority
+    explicitly. Preserve old saves, failed-run evidence and matching binaries as
+    data; provide no migration or compatibility execution path.
+  source_record: reports/test-results/per342-aid-dispatch-diagnosis/2026-10-06/retained-smoke008-replay002/result.json

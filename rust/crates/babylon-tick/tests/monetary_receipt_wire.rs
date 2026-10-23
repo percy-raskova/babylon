@@ -1,7 +1,7 @@
 //! Independent vectors for exact monetary postings and finite attendance evidence.
 use babylon_tick::material_world::{decode_material_receipts, MaterialWorldError};
 
-const DOMAIN: &[u8] = b"babylon.material-tick-receipts.v17\0";
+const DOMAIN: &[u8] = b"babylon.material-tick-receipts.v18\0";
 
 fn tagged(tag: u8, subtag: u8, id: u8) -> Vec<u8> {
     let mut bytes = vec![tag, subtag];
@@ -77,7 +77,7 @@ fn member(labor: &[u8]) -> Vec<u8> {
 fn envelope(transfers: &[Vec<u8>], wages: &[Vec<u8>], labor: &[Vec<u8>]) -> Vec<u8> {
     let members: Vec<_> = labor.iter().map(|r| member(r)).collect();
     let mut bytes = DOMAIN.to_vec();
-    bytes.extend_from_slice(&17_u32.to_be_bytes());
+    bytes.extend_from_slice(&18_u32.to_be_bytes());
     bytes.extend_from_slice(&7_u64.to_be_bytes());
     for tag in 1..=36 {
         let rows = match tag {

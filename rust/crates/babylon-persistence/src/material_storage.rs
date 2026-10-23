@@ -1,7 +1,9 @@
 //! Atomic staging of the current state and complete receipt storage codecs.
 //! Lookup bytes are storage dependencies; canonical engine bytes remain unchanged.
 mod descriptors;
+mod receipt_witness;
 pub use descriptors::Error as DescriptorError;
+pub(crate) use receipt_witness::{AdmittedReceiptWitness, MaterialStorageWitnesses};
 
 use crate::receipt_storage;
 use crate::state_storage::{self, IdentityEntry, StorageError};
@@ -34,6 +36,7 @@ pub enum Error {
     Allocation,
     Descriptor(DescriptorError),
     CollectionJoin,
+    ReceiptWitness,
 }
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -362,15 +365,18 @@ pub fn decode(
         lookup,
         lookup_chain,
     )?;
-    Ok((admitted.register_bytes, admitted.receipt_bytes))
+    Ok((
+        admitted.register.canonical_bytes().to_vec(),
+        admitted.receipt_bytes,
+    ))
 }
 
 /// Typed values produced by complete canonical admission, never by framing alone.
 pub(crate) struct DecodedMaterial<R = MaterialWorldRegister> {
-    pub(crate) register_bytes: Vec<u8>,
     pub(crate) receipt_bytes: Vec<u8>,
     pub(crate) register: R,
-    pub(crate) receipts: MaterialTickReceipts,
+    pub(crate) receipts: std::sync::Arc<MaterialTickReceipts>,
+    pub(crate) receipt_witness: AdmittedReceiptWitness,
 }
 
 pub(crate) fn decode_typed(
@@ -384,24 +390,29 @@ pub(crate) fn decode_typed(
     if tick == 0 {
         return Err(Error::Tick);
     }
-    let (register_bytes, register) =
-        state_storage::decode_admitted(opening, state_package, lookup, lookup_chain)?;
+    let register = state_storage::decode_admitted(opening, state_package, lookup, lookup_chain)?;
     let (receipt_bytes, receipts) = receipt_storage::decode_admitted(receipt_package, lookup)?;
     if register.completed_tick() != tick || receipts.resolve_tick != tick {
         return Err(Error::Tick);
     }
     babylon_tick::material_world::validate_retained_collection(&register, &receipts)
         .map_err(|_| Error::CollectionJoin)?;
+    let receipts = std::sync::Arc::new(receipts);
+    let receipt_witness = AdmittedReceiptWitness::new(
+        std::sync::Arc::clone(&receipts),
+        receipt_package,
+        lookup,
+        lookup_chain,
+    )?;
     Ok(DecodedMaterial {
-        register_bytes,
         receipt_bytes,
         register,
         receipts,
+        receipt_witness,
     })
 }
 
-// A borrowed witness is usable only after the complete restored canonical
-// package is byte-identical to its already admitted register.
+// Each borrowed owner is usable only after exact storage/component equality.
 pub(crate) fn decode_typed_with_witness<'w>(
     opening: &OpeningRegister,
     tick: u64,
@@ -409,45 +420,50 @@ pub(crate) fn decode_typed_with_witness<'w>(
     receipt_package: &[u8],
     lookup: &TypedLookup,
     lookup_chain: [u8; 32],
-    witness: Option<&'w MaterialWorldRegister>,
+    witnesses: MaterialStorageWitnesses<'w>,
 ) -> Result<DecodedMaterial<std::borrow::Cow<'w, MaterialWorldRegister>>> {
-    let Some(witness) = witness else {
-        let admitted = decode_typed(
-            opening,
-            tick,
-            state_package,
-            receipt_package,
-            lookup,
-            lookup_chain,
-        )?;
-        return Ok(DecodedMaterial {
-            register_bytes: admitted.register_bytes,
-            receipt_bytes: admitted.receipt_bytes,
-            register: std::borrow::Cow::Owned(admitted.register),
-            receipts: admitted.receipts,
-        });
-    };
     if tick == 0 {
         return Err(Error::Tick);
     }
-    let register_bytes = state_storage::decode_against_admitted(
-        opening,
-        state_package,
-        lookup,
-        lookup_chain,
-        witness,
-    )?;
-    let (receipt_bytes, receipts) = receipt_storage::decode_admitted(receipt_package, lookup)?;
-    if witness.completed_tick() != tick || receipts.resolve_tick != tick {
+    let register = if let Some(witness) = witnesses.register {
+        state_storage::decode_against_admitted(
+            opening,
+            state_package,
+            lookup,
+            lookup_chain,
+            witness,
+        )?;
+        std::borrow::Cow::Borrowed(witness)
+    } else {
+        std::borrow::Cow::Owned(state_storage::decode_admitted(
+            opening,
+            state_package,
+            lookup,
+            lookup_chain,
+        )?)
+    };
+    let (receipt_bytes, receipts) = if let Some(witness) = witnesses.receipt {
+        witness.restore(tick, receipt_package, lookup, lookup_chain)?
+    } else {
+        let (bytes, receipts) = receipt_storage::decode_admitted(receipt_package, lookup)?;
+        (bytes, std::sync::Arc::new(receipts))
+    };
+    if register.completed_tick() != tick || receipts.resolve_tick != tick {
         return Err(Error::Tick);
     }
-    babylon_tick::material_world::validate_retained_collection(witness, &receipts)
+    babylon_tick::material_world::validate_retained_collection(&register, &receipts)
         .map_err(|_| Error::CollectionJoin)?;
+    let receipt_witness = AdmittedReceiptWitness::new(
+        std::sync::Arc::clone(&receipts),
+        receipt_package,
+        lookup,
+        lookup_chain,
+    )?;
     Ok(DecodedMaterial {
-        register_bytes,
         receipt_bytes,
-        register: std::borrow::Cow::Borrowed(witness),
+        register,
         receipts,
+        receipt_witness,
     })
 }
 
@@ -523,11 +539,14 @@ mod typed_decode_controls {
                 &encoded.receipt_storage_bytes,
                 &loaded.lookup,
                 loaded.chain,
-                witness,
+                MaterialStorageWitnesses {
+                    register: witness,
+                    receipt: None,
+                },
             )
             .unwrap();
             assert_eq!(actual.register.as_ref(), current);
-            assert_eq!(actual.register_bytes, current.canonical_bytes());
+            assert_eq!(actual.register.canonical_bytes(), current.canonical_bytes());
             assert_eq!(actual.receipt_bytes, bytes);
             assert_eq!(actual.receipts.collections.len(), 1);
             let row = &actual.receipts.collections[0];
@@ -576,13 +595,26 @@ mod typed_decode_controls {
                 &encoded.receipt_storage_bytes,
                 &loaded.lookup,
                 loaded.chain,
-                witness,
+                MaterialStorageWitnesses {
+                    register: witness,
+                    receipt: None,
+                },
             )
         };
         let borrowed = decode(&encoded.register_storage_bytes, Some(current)).unwrap();
         assert!(matches!(borrowed.register, std::borrow::Cow::Borrowed(_)));
         assert!(std::ptr::eq(borrowed.register.as_ref(), current));
-        assert_eq!(borrowed.register_bytes, current.canonical_bytes());
+        assert_eq!(
+            borrowed.register.canonical_bytes(),
+            current.canonical_bytes()
+        );
+        assert!(
+            std::ptr::eq(
+                borrowed.register.canonical_bytes().as_ptr(),
+                current.canonical_bytes().as_ptr()
+            ),
+            "authenticated immutable register bytes must reuse their admitted owner"
+        );
         assert!(!borrowed.receipts.aid.is_empty());
         let owned = decode(&encoded.register_storage_bytes, None).unwrap();
         assert!(matches!(owned.register, std::borrow::Cow::Owned(_)));
@@ -641,10 +673,13 @@ mod typed_decode_controls {
         )
         .unwrap();
         assert_eq!(admitted.register, *current);
-        assert_eq!(admitted.register_bytes, current.canonical_bytes());
+        assert_eq!(
+            admitted.register.canonical_bytes(),
+            current.canonical_bytes()
+        );
         assert_eq!(admitted.receipt_bytes, receipts);
         assert_eq!(
-            admitted.receipts,
+            *admitted.receipts,
             decode_material_receipts(receipts).unwrap()
         );
         assert!(!admitted.receipts.aid.is_empty());
@@ -658,7 +693,10 @@ mod typed_decode_controls {
                 loaded.chain
             )
             .unwrap(),
-            (admitted.register_bytes, admitted.receipt_bytes)
+            (
+                admitted.register.canonical_bytes().to_vec(),
+                admitted.receipt_bytes
+            )
         );
         assert!(decode_typed(
             &opening,

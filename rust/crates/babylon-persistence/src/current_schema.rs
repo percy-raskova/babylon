@@ -699,6 +699,8 @@ mod live_tests {
             "ALTER TABLE babylon_state.tick_commit DROP CONSTRAINT tick_commit_envelope_layout_v3",
             "GRANT SELECT ON babylon_state.tick_commit TO PUBLIC",
             "ALTER DEFAULT PRIVILEGES GRANT SELECT ON TABLES TO PUBLIC",
+            "REVOKE EXECUTE ON FUNCTION public.uuid_generate_v4() FROM PUBLIC",
+            "ALTER FUNCTION public.uuid_generate_v4() DEPENDS ON EXTENSION vector",
             "CREATE VIEW public.unregistered_view AS SELECT 1",
             "CREATE OR REPLACE FUNCTION babylon_state.event_storage_immutable_v1() RETURNS trigger LANGUAGE plpgsql SET search_path TO 'pg_catalog' AS $$ BEGIN RAISE EXCEPTION USING ERRCODE='P0001', MESSAGE='changed_event_storage_append_only'; END $$",
             "ALTER VIEW public.v_known_county_economy_v1 SET (security_barrier = false)",

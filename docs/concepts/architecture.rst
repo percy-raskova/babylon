@@ -61,9 +61,14 @@ freight presets route sheet metal and milled meal through one Designed regional
 kilogram pool, with 800 or 160 kg per period. Panel freight stays independent.
 Native good quantities keep exact gram coefficients. The compiler emits
 one budget for each active capacity principal and period. A timed journey
-reserves its distinct principals through the existing proportional-floor
-allocator, then debits actual movement and leaves unused residuals. The
-regional service remains schematic. Statewide physical paths keep road
+reserves its distinct principals through a proportional base allocation and
+canonical whole-unit residual allocation within each existing outbound pass.
+Every allocation remains bounded by admitted demand, stock, funded labor and
+all timed route capacities. After the residual phase, no unmet order can receive
+another whole native unit within the remaining resources. Stable order identity
+supplies a declared secondary priority. This does not prove optimal throughput
+or fairness.
+The regional service remains schematic. Statewide physical paths keep road
 geometry separate from one-period travel and Designed capacity groups.
 County terminal attachments do not identify factory locations.
 
@@ -73,8 +78,15 @@ pool. Source jobs and payroll remain context rather than modeled production
 or labor. An added upstream process changes executable content without adding
 another economic owner.
 
-Merchants keep commodity identity while spending handling capacity and
-labor. Routed arrivals precede outbound handling. County-local transfers
+Merchants keep commodity identity while spending handling capacity and labor.
+
+Handling receipts record an independent physical ceiling for each order
+before shared competition and current handling labor. Summed handling need
+describes prospective workload. It does not describe a simultaneous dispatch plan.
+Zero base grants still face full labor coefficients during residual allocation.
+ADR285 governs this Designed policy.
+
+Routed arrivals precede outbound handling. County-local transfers
 between owners debit the supplier and credit the buyer without a road stage,
 transit lot, or physical-arrival receipt. The allocator fixes all outbound
 grants before local credits, preventing recursive forwarding in the same close. Local
@@ -294,19 +306,158 @@ immutable definitions. Metadata, marker guards and canonical reconstruction
 protect completeness and temporal validity. This representation changes no
 engine quantities or hashes.
 
-An earlier two-period raw economic capture passes its development storage and
-timing checks with verified cold recovery. Charges are 33,202,176 and
-34,406,400 bytes. Opening growth is 265,371,648 bytes. That capture does not
-include authenticated Archive completion, the complete production reader or
-the playable aid circuit. SIGINT ended the later playable capture before
-Archive caught up. Neither result qualifies sustained play, p95 or the
-total-save target.
+ADR283 shares exact ordered graph memberships across periods and attribute
+chunks. A hash index finds candidate matches. Comparing complete arrays decides
+identity.
 
-Retained Archive catch-up later completed thirteen sweeps in 357.12 seconds,
-adding 16,572,416 database bytes without changing committed economic identity.
-One complete production read took 159.71 seconds. The combined presentation
-and accounting read took 156.12 seconds. Peak process memory remained 8.10 GB.
-These samples do not qualify a new smoke, sustained save, or playable build.
+References bind a campaign and committed origin. Dense IDs and fixed definitions
+protect historical reconstruction and concurrent retry. Local Postgres controls
+pass. National storage and timing measurements remain pending.
+
+The preceding smoke006 completed both committed periods, authenticated
+Archive publication, complete production evidence, independent accounting and
+exact restart recovery. It failed qualification: final native elapsed time was
+941.64 seconds against the 900-second limit. Charged retained growth was
+42,188,800 and 32,129,024 bytes. The first period exceeded the 40 MB ceiling.
+Neither restart added retained growth. Advances took 66.05 and 61.17 seconds.
+
+The opening allocated database was 284,808,883 bytes. The two-period average
+projects 12,361,455,283 bytes after 325 periods, above the 10 GB limit. This is
+not an actual long-save qualification. Peak sampled native memory was
+10,177,679,360 bytes, with 15,429,632 bytes of swap. Postgres memory was outside
+that sample. The failed smoke and its exact source and policy remain preserved
+under current-national-playable-smoke006.
+
+A later compatible lazy Archive repair reopened the same period-two
+campaign in 108.15 seconds. It refreshed settled Archive progress in 4.03 seconds
+and completed Stop in 0.38 seconds. Original material, commit and consumption
+identities stayed unchanged. This separate runtime process peaked at
+6,972,039,168 memory bytes without swap. It does not replace the failed smoke
+or qualify a fresh run.
+
+Storage uses independently authenticated lossless frames with canonical hashes
+over decoded bytes. A current-save screen restored every tested frame exactly.
+Compared with level three, the Designed ``zstd`` level-nine setting reduced
+fixed-mode payloads by 800,907 and 1,043,420 bytes. Compression required 0.83 and
+0.90 seconds more. These component measurements do not prove complete
+Postgres savings or committed advance timing.
+
+An exact provenance experiment reconstructed all copied atom, grant and page
+rows. Their combined storage fell from 12,320,768 to 8,658,944 bytes with indexes,
+TOAST and lookup overhead. This measurement covers the whole two-period corpus.
+
+ADR284 records private citation storage. Original strings define semantic
+identities. Frozen page references stay independent of later authoritative
+grants. Twenty-three local Postgres controls pass, including exact lookup
+reuse, corruption refusal, publication rollback, historical reads and confined
+consumers. Integrated national growth and timing still need qualification.
+
+Earlier failed fixtures keep their source records and independently verified
+backups. The smoke006 backup matched all 65 tables and sequence state. The matching
+preserved engine reopened the inactive restored copy in 108.46 seconds,
+refreshed Archive in 4.10 seconds and stopped in 0.41 seconds. Original state
+and its ownership lease remained unchanged. We retired that exact container
+and volume before opening smoke007 as the sole active national test fixture.
+
+Smoke007 committed period one. Archive published 2,816 pages before the
+180-second response deadline expired. Its consumption marker remains absent.
+The failed run and source records remain preserved. This incomplete boundary
+does not prove retained growth, a completed smoke or native play acceptance.
+
+An independent restore matched all 67 tables and sequence state. Its preserved
+engine reopened the partial campaign in 89.27 seconds and completed remaining
+Archive work in 50.84 seconds. All 3,144 county subjects were present and the
+consumption marker matched the committed tick. Material and commit components
+remained unchanged. The worker left the original failed database unchanged. This partial
+backlog recovery does not replace a fresh smoke qualification.
+
+Frozen page citations now resolve through an ordered read of existing campaign
+definitions. Four local Postgres controls passed, covering exact references,
+missing and foreign citations, publication rollback and historical receipt
+identity. National timing measurements remain pending.
+
+The focused resolver control also refused a duplicate definition combined with
+a missing citation. It completed in 20.89 seconds, excluding compilation.
+
+A catalog query screen preserved all 154 rows and digests. The revised query
+shares normalized routine privileges and materializes a complete dependency
+join. Execution fell from about 1.94 to 1.33 seconds across three samples of
+each query.
+
+Fresh authentication and collection bounds remain required. Live admission
+passed for all four role configurations. Changed extension privileges and
+dependencies caused admission refusal. This query measurement and these
+controls do not prove successful Archive catch-up.
+
+We preserved both partial and completed smoke007 backups. Independent restores
+matched all 67 tables and sequence state. Exact ownership checks then retired
+its container and volume. Smoke008 is the sole retained national test fixture.
+
+Smoke008 completed both committed periods, authenticated Archive publication,
+complete production evidence, independent accounting and exact restart recovery.
+It failed qualification: elapsed time was 972.20 seconds against the 900-second
+limit. Remote aid dispatched no goods and refunded all reserved cash. Local aid
+delivered four units and enabled an independently authorized practice. The
+positive aid check remains incomplete. Native play has not run.
+
+An exact detached first-period replay reproduced the original register, receipt
+and world identities. The planned 56 kg remote shipment had enough donor goods and time.
+Its final proportional corridor share floored to zero native units, while that
+corridor retained 2,776,077 kg after actual dispatches. Each inspected route
+resource had enough capacity for that shipment. The old no-redistribution policy
+caused this artifact. Small controls for its replacement do not prove national
+aid delivery.
+
+Charged retained growth was 37,707,776 and 29,401,088 bytes, below the 40 MB
+development ceiling but above the 23 MB target. Neither restart added retained
+growth.
+
+Advances took 69.28 and 63.54 seconds. Archive completed in 177.39 and
+99.42 seconds. Complete production reads took 120.11 and 120.80 seconds.
+Cold reopens took 85.22 and 105.45 seconds. These individual phase results do
+not pass the complete smoke or prove a 52-sample timing distribution.
+
+The opening allocated database was 284,456,627 bytes. The two-period average
+projects 11,189,647,027 bytes after 325 periods, above the 10 GB limit. This is
+not an actual long-save qualification. Native memory peaked at 10,166,202,368
+bytes without observed swap. Postgres memory was outside that measurement.
+The failed smoke, source, policy and corrected sampling metadata remain
+preserved under current-national-playable-smoke008.
+
+The 52-period, actual 325-period and native play qualifications remain incomplete.
+
+A later cold complete production read preserved the original evidence
+digest and its 809,432,538-byte body. It took 145.18 seconds and peaked at
+6,067,683,328 bytes without observed swap. The preceding read took 147.17 seconds
+and peaked at 6,024,806,400 bytes. These measurements show no material improvement.
+
+The native probe passed its identity checks. Its diagnostic launcher then
+mishandled a successful exit, so the wrapper result failed. Both records and an
+explicit closure remain preserved.
+
+The reader also held a read transaction during
+reconstruction, with sampled age reaching 131.02 seconds. This remains separate
+from the short Archive publication controls.
+
+Graph component views resolve nodes, names and types through exact lookup IDs.
+Separate dependent lookup queries prevent stale statistics from multiplying whole
+campaign lookup tables before matching those IDs. Marker checks, permissions
+and canonical component authentication remain required.
+
+A regression holds
+prior campaign statistics while adding a new campaign. The original node read
+timed out at five seconds. The revised views returned all 1,696 nodes in 26 ms
+and all 8,800 binary64 attributes in 60 ms, matching the live graph exactly.
+The control took 30.04 seconds. This scoped result does not prove national
+timing, memory, storage or play qualification.
+
+Persistence uses the pinned ``mimalloc`` heap allocator for its Rust consumers,
+including the runtime, client and qualification processes. In a separate
+authenticated cold read, releasing the reader and observation reduced remaining
+memory from 3,312,087,040 to 1,500,897,280 bytes. Peak memory remained
+5,199,081,472 bytes. This allocator reduces retained heap memory. Postgres
+growth and live reconstruction size still need independent measurement.
+The isolated read does not qualify national advances or sustained play.
 
 ADR280 records the Director's definitive provisional development benchmarks.
 Defer marginal storage redesign when measured development limits allow play.
@@ -329,7 +480,7 @@ time. Percentages need measurable completion. Link consequential changes to
 player commitments and let players skip lengthy narration or animation.
 Qualify these behaviors through actual play.
 
-Session protocol version 8 reports actual stage starts: preparing commitments,
+The session protocol reports actual stage starts: preparing commitments,
 resolving the economy, preparing storage and saving the period. Each report
 identifies its ``request_id``, lifecycle scope and next period. The client checks their
 order and changes only presentation. Stage changes preserve elapsed time and
@@ -356,25 +507,43 @@ responses, and compares exact bytes and digest. Runtime recovery also checks
 consumption against the private command ledger. Restricted previews keep
 their existing boundary.
 
-The national ``PostgreSQL`` runner preserves source, input and evidence manifests,
-then removes its exact disposable container and volume after successful native
-validation. A shared lease in the Git common directory prevents concurrent
-national games across worktrees. Retained legacy leases also block admission.
+The national Postgres runner preserves source, input and evidence manifests.
+Its default success disposition removes the exact disposable container and volume.
+The ``retain-for-native`` option preserves a successful playable
+fixture and its lease, recording the original scope, terminal markers and evidence
+hashes. Smoke success cannot claim full qualification. An existing-campaign
+native Open rechecks ownership, retained evidence, combined source and both
+executable hashes before launching the existing runtime/client pair. It holds the
+same supervisor lock through native exit and never provisions another game.
+A shared lease in the Git common directory prevents concurrent national games
+across worktrees. Retained legacy leases also block admission.
 Its exclusive lock uses a separate ``flock --close`` supervisor so worker
 descendants cannot keep the lock after the runner exits. Failed runs retain an
 atomic summary and immutable progress records. The collector is maintained under
 ``tools/devtools`` and the runner pins ``PostgreSQL`` build and configuration sources.
 
-Playable evidence version three binds independent aid and trade accounting to
-the same authenticated complete observation. Derived trade totals reconcile
+Playable evidence version five binds independent aid, trade, and economic
+accounting to the same authenticated complete observation. Derived trade totals reconcile
 original procurement terms, delivery, realization and matched settlement.
 The audit keeps only unresolved order terms. Full national and long-save
 checks test for settled trade in both directions and actual foreign production.
 The shorter smoke preserves incomplete transit evidence.
 
+Full national and long-save admission also requires recurrence within the
+captured terminal window, whose Designed default is thirteen periods. Paid
+purchases, consumption, funded wages, and procurement settlements each need
+more than one positive period. Their timing can differ.
+
+A separate bounded
+custody witness follows production through paid delivery and retail handoff to
+consumption. It starts from the authenticated register before that window and
+subtracts opening stocks, transit, aid, and unproven supply. Standing pantry
+buffers do not erase renewal, and sales of initial supplier stocks do not prove
+it. The shorter smoke records this witness without claiming sustained renewal.
+
 The national development storage benchmark has a Designed ceiling of
 40,000,000 bytes per committed tick, recorded in
-``contracts/national_storage_qualification_v3.json``. It reports the separate
+``contracts/national_storage_qualification_v5.json``. It reports the separate
 23,000,000-byte optimization target and the longer-term total-save result.
 Count all retained campaign relations and indexes, including receipts, graph
 history and checkpoint growth.
@@ -388,7 +557,8 @@ recovery intervals separately. Shrinking another relation cannot conceal a
 growing history or unlisted allocation. Parent totals already include their
 TOAST heap and indexes.
 
-Policy version three records this measurement contract.
+Policy version five records this measurement contract and separate material
+register and production-evidence byte budgets.
 Retained earlier results keep their captured policy and evaluator.
 
 ADR273 preserves the earlier interim decision. ADR280 owns current development
@@ -698,6 +868,10 @@ signal committed tick markers and campaign creation. The listener registers
 before reading durable work at startup and after reconnect. It drains retained
 work through the existing worker. An idle notification timeout performs no
 maintenance query. Notifications carry no world state or player intent.
+The ordered worker decides whether to produce before the driver admits the
+captured catalog producer. A settled sweep does not hydrate it. The driver
+reuses successful admission and checks cancellation before and after admission.
+Publication keeps its existing receipt and knowledge authentication.
 
 One coordinator owns the session control pipe and tick acknowledgements.
 It flushes ``Committed`` before handling the resulting Archive progress. Bevy accepts

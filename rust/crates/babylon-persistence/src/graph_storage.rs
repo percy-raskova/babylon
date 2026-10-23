@@ -27,6 +27,8 @@ pub enum Error {
     DictionaryReference,
     /// A count or reference exceeds `PostgreSQL` bigint.
     IdentityOverflow,
+    /// An immutable vector is absent or comes from an uncommitted future period.
+    VectorReference,
 }
 fn validate(nodes: &[(String, String)], values: &[(String, String, u64)]) -> Result<(), Error> {
     if nodes.len() > MAX_STABLE_GRAPH_NODES {
@@ -236,26 +238,81 @@ fn insert_nodes(
     writer.finish().map_err(|e| db("finish graph tuples", &e))?;
     Ok(tuples)
 }
+fn vector_inputs(packed: &Packed) -> BTreeSet<&Vec<i64>> {
+    packed
+        .nodes
+        .iter()
+        .chain(packed.values.iter().map(|(_, _, ids, _)| ids))
+        .collect()
+}
+fn intern_vectors(
+    client: &mut impl GenericClient,
+    campaign: CampaignId,
+    tick: i64,
+    packed: &Packed,
+) -> Result<BTreeMap<Vec<i64>, i64>, RustPersistenceRuntimeError> {
+    // The same lock used by dictionaries and the marker serializes exact lookup
+    // insertion. The hash index narrows candidates; full ordered arrays decide.
+    client.query_one("SELECT pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('babylon.graph-lookup.v1:'||$1::uuid::text,0))", &[campaign.as_uuid()])
+        .map_err(|e| db("lock graph vectors", &e))?;
+    let row = client.query_one("SELECT count(*),coalesce(max(vector_id),-1) FROM babylon_state.graph_node_vector_v1 WHERE campaign_id=$1", &[campaign.as_uuid()])
+        .map_err(|e| db("count graph vectors", &e))?;
+    let mut next: i64 = row.try_get(0).map_err(|e| db("decode vector count", &e))?;
+    let maximum: i64 = row
+        .try_get(1)
+        .map_err(|e| db("decode vector maximum", &e))?;
+    if maximum.checked_add(1) != Some(next) {
+        return Err(refused(Error::DictionaryGap));
+    }
+    let mut vectors = BTreeMap::new();
+    for ids in vector_inputs(packed) {
+        let matches = client.query("SELECT v.vector_id,v.first_tick,EXISTS(SELECT 1 FROM babylon_state.tick_commit m WHERE m.campaign_id=v.campaign_id AND m.resolve_tick=v.first_tick) FROM babylon_state.graph_node_vector_v1 v WHERE v.campaign_id=$1 AND v.node_ids=$2::bigint[]", &[campaign.as_uuid(), ids])
+            .map_err(|e| db("match exact graph vector", &e))?;
+        if matches.len() > 1 {
+            return Err(refused(Error::DictionaryDuplicate));
+        }
+        let vector_id = if let Some(row) = matches.first() {
+            let first_tick: i64 = row.try_get(1).map_err(|e| db("decode vector origin", &e))?;
+            let committed: bool = row.try_get(2).map_err(|e| db("decode vector marker", &e))?;
+            if first_tick > tick || (first_tick != tick && !committed) {
+                return Err(refused(Error::VectorReference));
+            }
+            row.try_get(0).map_err(|e| db("decode vector id", &e))?
+        } else {
+            let vector_id = next;
+            next = next
+                .checked_add(1)
+                .ok_or_else(|| refused(Error::IdentityOverflow))?;
+            client.execute("INSERT INTO babylon_state.graph_node_vector_v1(campaign_id,vector_id,first_tick,node_ids) VALUES($1,$2,$3,$4)", &[campaign.as_uuid(), &vector_id, &tick, ids])
+                .map_err(|e| db("write graph vector", &e))?;
+            vector_id
+        };
+        vectors.insert(ids.clone(), vector_id);
+    }
+    Ok(vectors)
+}
 fn insert_chunks(
     client: &mut impl GenericClient,
     campaign: CampaignId,
     tick: i64,
     packed: &Packed,
 ) -> Result<(), RustPersistenceRuntimeError> {
-    let sink = client.copy_in("COPY babylon_state.graph_node_chunk_v1 (campaign_id,resolve_tick,ordinal,node_ids) FROM STDIN BINARY").map_err(|e| db("begin graph node chunks", &e))?;
-    let mut writer = BinaryCopyInWriter::new(
-        sink,
-        &[Type::UUID, Type::INT8, Type::INT8, Type::INT8_ARRAY],
-    );
+    let vectors = intern_vectors(client, campaign, tick, packed)?;
+    let sink = client.copy_in("COPY babylon_state.graph_node_chunk_v1 (campaign_id,resolve_tick,ordinal,vector_id) FROM STDIN BINARY").map_err(|e| db("begin graph node chunks", &e))?;
+    let mut writer =
+        BinaryCopyInWriter::new(sink, &[Type::UUID, Type::INT8, Type::INT8, Type::INT8]);
     for (ordinal, chunk) in packed.nodes.iter().enumerate() {
+        let vector = vectors
+            .get(chunk)
+            .ok_or_else(|| refused(Error::VectorReference))?;
         writer
-            .write(&[campaign.as_uuid(), &tick, &next_id(ordinal)?, chunk])
+            .write(&[campaign.as_uuid(), &tick, &next_id(ordinal)?, vector])
             .map_err(|e| db("write graph node chunk", &e))?;
     }
     writer
         .finish()
         .map_err(|e| db("finish graph node chunks", &e))?;
-    let sink = client.copy_in("COPY babylon_state.graph_node_f64_chunk_v1 (campaign_id,resolve_tick,qname_id,ordinal,node_ids,value_bits) FROM STDIN BINARY").map_err(|e| db("begin graph f64 chunks", &e))?;
+    let sink = client.copy_in("COPY babylon_state.graph_node_f64_chunk_v1 (campaign_id,resolve_tick,qname_id,ordinal,vector_id,value_bits) FROM STDIN BINARY").map_err(|e| db("begin graph f64 chunks", &e))?;
     let mut writer = BinaryCopyInWriter::new(
         sink,
         &[
@@ -263,13 +320,16 @@ fn insert_chunks(
             Type::INT8,
             Type::INT8,
             Type::INT8,
-            Type::INT8_ARRAY,
+            Type::INT8,
             Type::INT8_ARRAY,
         ],
     );
     for (qname, ordinal, ids, bits) in &packed.values {
+        let vector = vectors
+            .get(ids)
+            .ok_or_else(|| refused(Error::VectorReference))?;
         writer
-            .write(&[campaign.as_uuid(), &tick, qname, ordinal, ids, bits])
+            .write(&[campaign.as_uuid(), &tick, qname, ordinal, vector, bits])
             .map_err(|e| db("write graph f64 chunk", &e))?;
     }
     writer
@@ -304,6 +364,32 @@ fn insert_manifest(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn exact_vectors_share_only_complete_ordered_arrays_and_keep_boundaries() {
+        let packed = Packed {
+            nodes: vec![(0..4096).collect(), vec![4096]],
+            values: vec![
+                (0, 0, (0..4096).collect(), vec![0; 4096]),
+                (1, 0, vec![4096], vec![i64::MIN]),
+                (2, 0, vec![4096, 0], vec![0, i64::MIN]),
+            ],
+        };
+        let unique = vector_inputs(&packed);
+        assert_eq!(unique.len(), 3);
+        assert!(unique.contains(&vec![4096, 0]));
+        assert!(!unique.contains(&vec![0, 4096]));
+        assert_eq!(packed.values[1].3, vec![i64::MIN]);
+        let empty = Packed {
+            nodes: vec![],
+            values: vec![],
+        };
+        assert!(vector_inputs(&empty).is_empty());
+        let changed = Packed {
+            nodes: vec![vec![0, 2]],
+            values: vec![],
+        };
+        assert_ne!(vector_inputs(&changed), BTreeSet::from([&vec![0, 1]]));
+    }
     #[test]
     fn graph_chunks_refuse_missing_and_duplicate_nodes() {
         let nodes = vec![("a".into(), "kind".into())];

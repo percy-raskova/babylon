@@ -4,11 +4,28 @@
 //! Sector hyperedges classify those aggregates; they imply no trade, employment,
 //! organization membership, physical production, or ownership relation.
 
-use std::{collections::BTreeMap, fmt::Write as _, sync::OnceLock};
+#[cfg(test)]
+mod tests;
 
-use babylon_graph::{hypergraph_store::HypergraphStore, stable_element::StableElementKey};
-use babylon_tick::replay_session::ReplayTickSession;
+#[path = "michigan_cohorts/build.rs"]
+mod build;
 
+#[cfg(test)]
+#[allow(unused_imports)]
+pub(crate) use build::michigan_staffed_scenario;
+#[allow(unused_imports)]
+use build::{
+    append_business, append_sectors, build_cohorts, build_cohorts_with_workforce, BUSINESS_FIELDS,
+};
+#[allow(unused_imports)]
+pub(crate) use build::{append_workforce_seed, build_cohorts_from_sources};
+pub use build::{
+    michigan_business_local_name, michigan_business_subject, michigan_business_subject_for_owner,
+    michigan_cohort_foundation, michigan_cohorts, michigan_sector_subject, MichiganCohorts,
+    MichiganCohortsError, MICHIGAN_COHORT_SCENARIO, MICHIGAN_COHORT_SESSION,
+};
+
+#[allow(unused_imports)]
 use crate::{
     michigan_economy::{
         append_county_observations, foundation_from_sources, michigan_economy,
@@ -21,246 +38,9 @@ use crate::{
     },
     FoundationContentBundle,
 };
-
-pub const MICHIGAN_COHORT_SCENARIO: &str = "production/michigan-observer-v2";
-pub const MICHIGAN_COHORT_SESSION: &str = "g4/michigan-observer-v2";
-
-const BUSINESS_FIELDS: [&str; 4] = [
-    "qcew-establishments",
-    "qcew-employment",
-    "qcew-total-annual-wages",
-    "qcew-average-weekly-wage",
-];
-
-/// Deterministic source composition with immutable source identities.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct MichiganCohorts {
-    scenario_source: String,
-    defines: Vec<u8>,
-}
-impl MichiganCohorts {
-    #[must_use]
-    pub fn scenario_source(&self) -> &str {
-        &self.scenario_source
-    }
-    #[must_use]
-    pub fn defines_bytes(&self) -> &[u8] {
-        &self.defines
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum MichiganCohortsError {
-    Economy(MichiganEconomyError),
-    Sectors(MichiganSectorsError),
-    NumericRepresentation,
-    Coverage,
-}
-impl std::fmt::Display for MichiganCohortsError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Michigan cohort foundation refused: {self:?}")
-    }
-}
-impl std::error::Error for MichiganCohortsError {}
-
-/// Exact composite NAICS code remains part of the stable local subject name.
-#[must_use]
-pub fn michigan_business_local_name(row: &MichiganCountySector) -> String {
-    format!(
-        "business-{}-{}",
-        row.county_geoid(),
-        row.sector_code().as_str()
-    )
-}
-
-#[must_use]
-pub fn michigan_business_subject(row: &MichiganCountySector) -> StableElementKey {
-    michigan_business_subject_for_owner(row.county_geoid(), row.sector_code().as_str())
-}
-
-/// Construct the same subject from captured owner identity without reading current sources.
-#[must_use]
-pub fn michigan_business_subject_for_owner(
-    county_geoid: &str,
-    sector_code: &str,
-) -> StableElementKey {
-    StableElementKey::Node {
-        scenario: MICHIGAN_COHORT_SCENARIO.to_owned(),
-        local_name: format!("business-{county_geoid}-{sector_code}"),
-    }
-}
-
-/// Code 99 has no classified sector subject or membership.
-#[must_use]
-pub fn michigan_sector_subject(code: MichiganSectorCode) -> Option<StableElementKey> {
-    (code.disposition() == MichiganSectorDisposition::Classified).then(|| {
-        StableElementKey::Hyperedge {
-            scenario: MICHIGAN_COHORT_SCENARIO.to_owned(),
-            local_name: format!("sector-{}", code.as_str()),
-        }
-    })
-}
-
-fn append_business(
-    source: &mut String,
-    row: &MichiganCountySector,
-) -> Result<(), MichiganCohortsError> {
-    writeln!(source, "  (node {} NodeType/ORGANIZATION\n    (organization/kind OrgKind/BUSINESS)\n    (organization/county-fips {})", michigan_business_local_name(row), row.county_geoid()).expect("String write");
-    let values = [
-        Some(row.annual_avg_estabs_count()),
-        row.annual_avg_emplvl(),
-        row.total_annual_wages(),
-        row.annual_avg_wkly_wage(),
-    ];
-    for (field, value) in BUSINESS_FIELDS.iter().zip(values) {
-        if let Some(value) = value {
-            // The graph stores these int fields through binary64. Refuse a
-            // value that could lose its exact public-record integer identity.
-            if value > 9_007_199_254_740_992 {
-                return Err(MichiganCohortsError::NumericRepresentation);
-            }
-            writeln!(source, "    (organization/{field} {value})").expect("String write");
-        }
-    }
-    source.push_str("  )\n");
-    Ok(())
-}
-
-fn append_sectors(
-    source: &mut String,
-    sectors: &MichiganCountySectors,
-) -> Result<(), MichiganCohortsError> {
-    let mut memberships = BTreeMap::<MichiganSectorCode, Vec<String>>::new();
-    for row in sectors.rows() {
-        if row.sector_code().disposition() == MichiganSectorDisposition::Classified {
-            memberships
-                .entry(row.sector_code())
-                .or_default()
-                .push(michigan_business_local_name(row));
-        }
-    }
-    if memberships.len() != 19 || memberships.values().map(Vec::len).sum::<usize>() != 1_522 {
-        return Err(MichiganCohortsError::Coverage);
-    }
-    for (code, members) in memberships {
-        write!(
-            source,
-            "  (hyperedge sector-{} HyperedgeType/ECONOMIC_SECTOR (members",
-            code.as_str()
-        )
-        .expect("String write");
-        for member in members {
-            write!(source, " {member}").expect("String write");
-        }
-        source.push_str("))\n");
-    }
-    Ok(())
-}
-
-fn build_cohorts() -> Result<MichiganCohorts, MichiganCohortsError> {
-    build_cohorts_with_workforce(&[])
-}
-
-fn build_cohorts_with_workforce(
-    workforce: &[crate::michigan_material::MichiganWorkforceSeed],
-) -> Result<MichiganCohorts, MichiganCohortsError> {
-    let economy = michigan_economy().map_err(MichiganCohortsError::Economy)?;
-    let sectors = michigan_county_sectors().map_err(MichiganCohortsError::Sectors)?;
-    build_cohorts_from_sources(
-        economy,
-        sectors,
-        include_str!("../../../../content/scenarios/michigan/cohort-declarations.bscn"),
-        workforce,
-    )
-}
-
-pub(crate) fn build_cohorts_from_sources(
-    economy: &crate::michigan_economy::MichiganEconomy,
-    sectors: &MichiganCountySectors,
-    declarations: &str,
-    workforce: &[crate::michigan_material::MichiganWorkforceSeed],
-) -> Result<MichiganCohorts, MichiganCohortsError> {
-    if sectors.rows().len() != 1_603 {
-        return Err(MichiganCohortsError::Coverage);
-    }
-    let workforce_type = if workforce.is_empty() {
-        ""
-    } else {
-        " BUSINESS SOCIAL_CLASS"
-    };
-    let mut source = format!("(scenario {MICHIGAN_COHORT_SCENARIO}\n  (defvocabulary NodeType (TERRITORY ORGANIZATION{workforce_type}))\n  (defvocabulary HyperedgeType (ECONOMIC_SECTOR))\n  (deffield territory/county-fips int extensive)\n");
-    append_county_observations(&mut source, economy.counties());
-    source.push_str(declarations);
-    for row in sectors.rows() {
-        append_business(&mut source, row)?;
-    }
-    append_sectors(&mut source, sectors)?;
-    if !workforce.is_empty() {
-        for field in babylon_tick::material_staffing::STAFFING_FIELDS {
-            writeln!(&mut source, "  (deffield {field} int extensive)").expect("String write");
-        }
-        for seed in workforce {
-            append_workforce_seed(&mut source, seed);
-        }
-    }
-    source.push_str(")\n");
-    let defines = format!("{{\"qcew_vintage\":2024,\"county_artifact_sha256\":\"{QCEW_ECONOMICS_ARTIFACT_SHA256}\",\"sector_artifact_sha256\":\"{QCEW_SECTORS_ARTIFACT_SHA256}\",\"sector_semantic_sha256\":\"{QCEW_SECTORS_SEMANTIC_SHA256}\",\"cohort_composition_version\":2}}").into_bytes();
-    Ok(MichiganCohorts {
-        scenario_source: source,
-        defines,
-    })
-}
-
-/// Material-only graph composition. The observed foundation has no workforce seeds.
-#[cfg(test)]
-pub(crate) fn michigan_staffed_scenario(
-    workforce: &[crate::michigan_material::MichiganWorkforceSeed],
-) -> Result<String, MichiganCohortsError> {
-    Ok(build_cohorts_with_workforce(workforce)?.scenario_source)
-}
-
-/// Construct only from the two admitted, digest-pinned observed artifacts.
-/// # Errors
-/// Refuses source, exact numeric representation, or coverage failures.
-pub fn michigan_cohorts() -> Result<&'static MichiganCohorts, MichiganCohortsError> {
-    static COHORTS: OnceLock<Result<MichiganCohorts, MichiganCohortsError>> = OnceLock::new();
-    COHORTS
-        .get_or_init(build_cohorts)
-        .as_ref()
-        .map_err(|error| *error)
-}
-
-/// Prepare the new content revision without admitting it to the runtime catalog.
-/// # Errors
-/// Refuses source, graph, or foundation construction errors.
-pub fn michigan_cohort_foundation(
-) -> Result<(ReplayTickSession<HypergraphStore>, FoundationContentBundle), MichiganCohortsError> {
-    let cohorts = michigan_cohorts()?;
-    foundation_from_sources(
-        cohorts.scenario_source(),
-        "",
-        MICHIGAN_COHORT_SESSION,
-        cohorts.defines_bytes(),
-    )
-    .map_err(MichiganCohortsError::Economy)
-}
-
-/// The workplace owns request memory; its resident member alone owns E/R stocks.
-pub(crate) fn append_workforce_seed(
-    source: &mut String,
-    seed: &crate::michigan_material::MichiganWorkforceSeed,
-) {
-    writeln!(
-        source,
-        "  (node {} NodeType/BUSINESS (business/previous-unretained-labor-hours {}))",
-        seed.workplace_local_name(),
-        seed.previous_unretained_hours
-    )
-    .expect("String write");
-    if seed.employed != 0 || seed.reserve != 0 {
-        writeln!(source, "  (node {} NodeType/SOCIAL_CLASS (social-class/employed-population {}) (social-class/reserve-population {}))", seed.local_name(), seed.employed, seed.reserve).expect("String write");
-    }
-}
-
-#[cfg(test)]
-mod tests;
+#[allow(unused_imports)]
+use babylon_graph::{hypergraph_store::HypergraphStore, stable_element::StableElementKey};
+#[allow(unused_imports)]
+use babylon_tick::replay_session::ReplayTickSession;
+#[allow(unused_imports)]
+use std::{collections::BTreeMap, fmt::Write as _, sync::OnceLock};

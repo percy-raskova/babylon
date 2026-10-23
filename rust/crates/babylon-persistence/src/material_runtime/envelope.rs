@@ -31,7 +31,7 @@ pub(super) fn material_foundation_length(
 }
 
 /// Borrow current canonical components; only the fixed framing is owned.
-pub(super) struct CanonicalMaterialFoundation<'a> {
+pub(crate) struct CanonicalMaterialFoundation<'a> {
     duration: [u8; 9],
     content_digest: &'a [u8; 32],
     sections: [&'a [u8]; 3],

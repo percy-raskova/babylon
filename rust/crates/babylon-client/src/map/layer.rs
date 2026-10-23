@@ -1,10 +1,12 @@
-//! Shared atlas and county selection for the durable observer's geographic views.
+//! Leaf implementation for the parent module; public paths stay on the parent.
 
-mod scope;
-pub(crate) use scope::CountyMapScope;
+#[allow(unused_imports)]
+use super::{scope, CountyMapScope};
 
 use crate::atlas::CountyAtlas;
+
 use bevy::input::InputPlugin;
+
 use bevy::prelude::*;
 
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]

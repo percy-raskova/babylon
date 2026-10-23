@@ -1,31 +1,30 @@
-//! Embedded visual assets and their typed Bevy loading surface.
+//! Leaf implementation for the parent module; public paths stay on the parent.
 
-mod catalog;
-mod fonts;
-mod gallery;
+#[allow(unused_imports)]
+use super::VisualAssetId;
 
-pub use catalog::{
-    FrameKind, InterfaceIcon, MarkerIcon, ProvenanceIcon, SurfaceKind, VisualAssetDescriptor,
-    VisualAssetId, VISUAL_ASSET_CATALOG,
-};
-pub use fonts::ObserverFonts;
-pub use gallery::{GalleryAssetLabel, GalleryScrollRoot, VisualAssetGalleryPlugin};
+#[allow(unused_imports)]
+use super::{catalog, fonts, gallery, ObserverFonts};
 
 use bevy::asset::io::embedded::EmbeddedAssetRegistry;
+
 use bevy::asset::{AssetApp, AssetServer, Assets, Handle};
+
 use bevy::image::{Image, ImageLoaderSettings, ImageSampler, TextureAtlasLayout};
+
 use bevy::prelude::{App, Plugin, Resource, UVec2};
+
 use std::path::{Path, PathBuf};
 
-fn nearest_image_settings(settings: &mut ImageLoaderSettings) {
+pub(crate) fn nearest_image_settings(settings: &mut ImageLoaderSettings) {
     settings.sampler = ImageSampler::nearest();
 }
 
-fn linear_image_settings(settings: &mut ImageLoaderSettings) {
+pub(crate) fn linear_image_settings(settings: &mut ImageLoaderSettings) {
     settings.sampler = ImageSampler::linear();
 }
 
-const EMBEDDED_VISUALS: [(&str, &[u8]); 17] = [
+pub(crate) const EMBEDDED_VISUALS: [(&str, &[u8]); 17] = [
     (
         "hero-liberty.webp",
         include_bytes!(concat!(
@@ -250,7 +249,7 @@ impl Plugin for VisualAssetsPlugin {
     }
 }
 
-fn register_visuals(registry: &EmbeddedAssetRegistry) {
+pub(crate) fn register_visuals(registry: &EmbeddedAssetRegistry) {
     for (name, bytes) in EMBEDDED_VISUALS {
         registry.insert_asset(
             PathBuf::from(concat!(
@@ -264,7 +263,7 @@ fn register_visuals(registry: &EmbeddedAssetRegistry) {
     }
 }
 
-type AtlasLayouts = (
+pub(crate) type AtlasLayouts = (
     Handle<TextureAtlasLayout>,
     Handle<TextureAtlasLayout>,
     Handle<TextureAtlasLayout>,
@@ -272,7 +271,7 @@ type AtlasLayouts = (
     Handle<TextureAtlasLayout>,
 );
 
-fn create_atlas_layouts(app: &mut App) -> AtlasLayouts {
+pub(crate) fn create_atlas_layouts(app: &mut App) -> AtlasLayouts {
     let mut layouts = app.world_mut().resource_mut::<Assets<TextureAtlasLayout>>();
     let interface_layout = layouts.add(TextureAtlasLayout::from_grid(
         UVec2::new(128, 128),

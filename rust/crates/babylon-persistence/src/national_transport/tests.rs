@@ -1,4 +1,8 @@
 use super::*;
+
+#[allow(unused_imports)]
+use super::parse;
+
 use serde_json::{json, Value};
 
 fn document() -> Value {

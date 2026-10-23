@@ -81,14 +81,6 @@ pub mod territory_storage;
 pub mod tick_commit_claim;
 
 pub use archive::*;
-pub use material_storage::Error as MaterialStorageError;
-/// Derived bound for a stored register, including compression and section framing.
-pub const MAX_STORED_MATERIAL_REGISTER_BYTES: usize = state_storage::MAX_STATE_PACKAGE_BYTES;
-/// Derived bound for a complete stored receipt package, including its framing.
-pub const MAX_STORED_MATERIAL_RECEIPT_BYTES: usize = receipt_storage::MAX_RECEIPT_STORAGE_BYTES;
-/// Derived bound for one stored lookup delta, including compression and framing.
-pub const MAX_STORED_MATERIAL_LOOKUP_DELTA_BYTES: usize =
-    material_storage::MAX_LOOKUP_PACKAGE_BYTES;
 pub use archive_foundation_grants::{
     foundation_grant_rows, foundation_grants_semantic_sha256, seed_foundation_grants,
     FoundationGrantReport, FoundationGrantRow, FoundationGrantsError,
@@ -122,6 +114,11 @@ pub use county_producer::{
     ARCHIVE_COUNTY_MAP_READ_SQL, ARCHIVE_COUNTY_PAGE_READ_SQL, COMMITTED_TICK_SOURCE_ID,
     COUNTY_DECISION_QUESTION, COUNTY_MEDIAN_WAGE_GRANT_KEY, COUNTY_MEDIAN_WAGE_LABEL,
     COUNTY_PHI_HOUR_GRANT_KEY, COUNTY_PHI_HOUR_LABEL, PINNED_COUNTY_IDENTITY_ARTIFACT_SHA256,
+};
+pub use material_storage::Error as MaterialStorageError;
+pub use material_storage::{
+    MAX_STORED_MATERIAL_LOOKUP_DELTA_BYTES, MAX_STORED_MATERIAL_RECEIPT_BYTES,
+    MAX_STORED_MATERIAL_REGISTER_BYTES,
 };
 
 pub use foundation::{

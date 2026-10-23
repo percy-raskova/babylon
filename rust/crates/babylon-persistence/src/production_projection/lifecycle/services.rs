@@ -10,7 +10,7 @@ use babylon_tick::material_world::MaterialTickReceipts;
 use std::collections::{BTreeMap, BTreeSet};
 type Key = (AccountId, SiteId, GoodId, UnitId);
 
-pub(super) struct ServiceWitness {
+pub(crate) struct ServiceWitness {
     pub order: ServiceOrder,
     pub performed: u64,
     pub expired: u64,

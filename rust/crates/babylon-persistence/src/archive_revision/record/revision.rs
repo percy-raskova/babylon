@@ -1,0 +1,273 @@
+//! Leaf implementation for the parent module; public paths stay on the parent.
+
+use std::collections::BTreeSet;
+
+use sha2::{Digest as _, Sha256};
+
+use super::super::emission::ArchiveEmissionManifest;
+
+use super::super::ArchiveReadScope;
+
+use crate::archive::{validate_text, MAX_LINKS, MAX_PAGE_BYTES, MAX_SIGNALS};
+
+use crate::{
+    ArchiveAtom, ArchiveAtomSubject, ArchiveCitation, ArchivePageRef, SemanticArchiveError,
+};
+
+pub(in crate::archive_revision) const REVISION_DOMAIN: &[u8] =
+    b"babylon.archive-page-revision.v2\0";
+
+/// Exact immutable grants needed by the retained rendered bytes.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(in crate::archive_revision) struct GrantDependency {
+    pub subject: ArchivePageRef,
+    pub key: String,
+    pub granted_tick: u64,
+    pub citation: ArchiveCitation,
+}
+
+/// Values remain private to the checked storage boundary, not a second renderer.
+#[derive(Clone, Debug, PartialEq)]
+pub(in crate::archive_revision) struct RevisionRecord {
+    pub source: ArchiveReadScope,
+    pub subject: ArchivePageRef,
+    pub effective_tick: u64,
+    pub title: String,
+    pub template_sha256: [u8; 32],
+    pub content_sha256: [u8; 32],
+    pub markdown: String,
+    pub search_text: String,
+    pub provenance_json: String,
+    pub atoms: Vec<ArchiveAtom>,
+    pub grants: Vec<GrantDependency>,
+    pub emission: ArchiveEmissionManifest,
+}
+
+/// A fully authenticated immutable record. Only the pure constructor can mint it.
+pub(in crate::archive_revision) struct CheckedRevision {
+    record: RevisionRecord,
+    digest: [u8; 32],
+    body: super::super::body_encoding::EncodedBody,
+    replay_body: Option<super::super::body_encoding::EncodedBody>,
+}
+
+impl CheckedRevision {
+    pub(in crate::archive_revision) fn new(
+        record: RevisionRecord,
+    ) -> Result<Self, SemanticArchiveError> {
+        let digest = record.digest()?;
+        // digest() has already performed complete semantic/emission admission.
+        let body = super::super::body_encoding::encode(&record)
+            .map_err(super::super::body_encoding::Error::into_semantic)?;
+        Ok(Self {
+            record,
+            digest,
+            body,
+            replay_body: None,
+        })
+    }
+
+    pub(in crate::archive_revision) fn body(&self) -> &super::super::body_encoding::EncodedBody {
+        &self.body
+    }
+    pub(in crate::archive_revision) fn accepted_body(
+        &self,
+    ) -> &super::super::body_encoding::EncodedBody {
+        self.replay_body.as_ref().unwrap_or(&self.body)
+    }
+    pub(in crate::archive_revision) fn bind_replay_body(
+        &mut self,
+        body: super::super::body_encoding::EncodedBody,
+    ) {
+        self.replay_body = Some(body);
+    }
+    pub(in crate::archive_revision) fn record(&self) -> &RevisionRecord {
+        &self.record
+    }
+    pub(in crate::archive_revision) fn digest(&self) -> [u8; 32] {
+        self.digest
+    }
+}
+
+impl RevisionRecord {
+    pub fn validate(&self) -> Result<(), SemanticArchiveError> {
+        validate_text(&self.title)?;
+        if self.source.tick() == 0
+            || self.effective_tick != self.source.tick()
+            || self.effective_tick > i64::MAX as u64
+        {
+            return Err(SemanticArchiveError::InvalidVerifiedTick);
+        }
+        for text in [&self.markdown, &self.search_text, &self.provenance_json] {
+            if text.len() > MAX_PAGE_BYTES || text.as_bytes().contains(&0) {
+                return Err(SemanticArchiveError::CollectionBound);
+            }
+        }
+        let actual: [u8; 32] = Sha256::digest(self.markdown.as_bytes()).into();
+        if actual != self.content_sha256 {
+            return Err(SemanticArchiveError::StoredPageMismatch);
+        }
+        self.citations()?;
+        self.validate_header()?;
+        self.validate_atoms()?;
+        self.validate_grants()?;
+        self.emission.verify(self)
+    }
+
+    fn validate_header(&self) -> Result<(), SemanticArchiveError> {
+        let source = self
+            .source
+            .tick_content_hash()
+            .ok_or(SemanticArchiveError::InvalidVerifiedTick)?;
+        let prefix = format!("---\nschema: babylon.archive-page.v1\nsubject: {}/{}\nverified_tick: {}\ntick_content_hash: {}\n---\n# {}\n",
+            self.subject.kind().as_str(), self.subject.id(), self.source.tick(),
+            crate::archive::hex_digest(&source), self.title);
+        if !self.markdown.starts_with(&prefix) {
+            return Err(SemanticArchiveError::StoredPageMismatch);
+        }
+        Ok(())
+    }
+
+    fn validate_grants(&self) -> Result<(), SemanticArchiveError> {
+        if self.grants.is_empty() || self.grants.len() > 1 + MAX_SIGNALS + MAX_LINKS {
+            return Err(SemanticArchiveError::CollectionBound);
+        }
+        let mut previous = None;
+        for grant in &self.grants {
+            crate::archive::validate_key(&grant.key)?;
+            if grant.granted_tick > self.source.tick() {
+                return Err(SemanticArchiveError::StoredPageMismatch);
+            }
+            let key = (grant.subject.kind(), grant.subject.id(), grant.key.as_str());
+            if previous.is_some_and(|value| value >= key) {
+                return Err(SemanticArchiveError::DuplicateGrant);
+            }
+            previous = Some(key);
+        }
+        for (position, atom) in self.atoms.iter().enumerate() {
+            let subject = if is_link(atom) {
+                let crate::ArchiveAtomValue::Text(target) = atom.value() else {
+                    return Err(SemanticArchiveError::StoredPageMismatch);
+                };
+                parse_page_key(target)?
+            } else {
+                self.subject.clone()
+            };
+            let matching = self
+                .grants
+                .iter()
+                .find(|grant| grant.subject == subject && grant.key == atom.grant_key());
+            if matching.is_none() {
+                return Err(SemanticArchiveError::StoredPageMismatch);
+            }
+            if (position == 0 || is_link(atom))
+                && matching.is_some_and(|grant| &grant.citation != atom.citation())
+            {
+                return Err(SemanticArchiveError::StoredPageMismatch);
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_atoms(&self) -> Result<(), SemanticArchiveError> {
+        if self.atoms.is_empty() || self.atoms.len() > 1 + MAX_SIGNALS + MAX_LINKS {
+            return Err(SemanticArchiveError::CollectionBound);
+        }
+        let subject = ArchiveAtomSubject::from_page_ref(&self.subject)?;
+        let mut ids = BTreeSet::new();
+        for atom in &self.atoms {
+            if *atom.campaign_id() != self.source.campaign_id()
+                || atom.subject() != &subject
+                || atom.valid_tick() != self.source.tick()
+                || !ids.insert(atom.atom_id())
+            {
+                return Err(SemanticArchiveError::StoredPageMismatch);
+            }
+        }
+        let first = &self.atoms[0];
+        if first.signal_key() != "subject"
+            || first.grant_key() != "subject"
+            || first.value() != &crate::ArchiveAtomValue::Text(self.title.clone())
+        {
+            return Err(SemanticArchiveError::StoredPageMismatch);
+        }
+        Ok(())
+    }
+
+    pub fn citations(&self) -> Result<Vec<ArchiveCitation>, SemanticArchiveError> {
+        serde_json::from_str(&self.provenance_json)
+            .map_err(|_| SemanticArchiveError::StoredPageMismatch)
+    }
+
+    pub fn digest(&self) -> Result<[u8; 32], SemanticArchiveError> {
+        self.validate()?;
+        let mut hash = Sha256::new();
+        hash.update(REVISION_DOMAIN);
+        hash.update(self.source.campaign_id().as_uuid().as_bytes());
+        hash_text(&mut hash, self.subject.kind().as_str());
+        hash_text(&mut hash, self.subject.id());
+        hash.update(self.effective_tick.to_be_bytes());
+        hash.update(self.source.tick().to_be_bytes());
+        hash.update(
+            self.source
+                .tick_content_hash()
+                .ok_or(SemanticArchiveError::InvalidVerifiedTick)?,
+        );
+        hash.update(self.template_sha256);
+        hash.update(self.content_sha256);
+        for text in [
+            &self.title,
+            &self.markdown,
+            &self.search_text,
+            &self.provenance_json,
+        ] {
+            hash_text(&mut hash, text);
+        }
+        hash.update(
+            u64::try_from(self.atoms.len())
+                .map_err(|_| SemanticArchiveError::CollectionBound)?
+                .to_be_bytes(),
+        );
+        for atom in &self.atoms {
+            hash.update(atom.atom_id());
+        }
+        hash.update(
+            u64::try_from(self.grants.len())
+                .map_err(|_| SemanticArchiveError::CollectionBound)?
+                .to_be_bytes(),
+        );
+        for grant in &self.grants {
+            hash_text(&mut hash, grant.subject.kind().as_str());
+            hash_text(&mut hash, grant.subject.id());
+            hash_text(&mut hash, &grant.key);
+            hash.update(grant.granted_tick.to_be_bytes());
+            hash_text(&mut hash, grant.citation.source_id());
+            hash_text(&mut hash, grant.citation.locator());
+        }
+        hash_text(&mut hash, &self.emission.encode()?);
+        Ok(hash.finalize().into())
+    }
+}
+
+pub(in crate::archive_revision) fn is_link(atom: &ArchiveAtom) -> bool {
+    atom.signal_key() == "link" && atom.grant_key() == "subject"
+}
+
+pub(in crate::archive_revision) fn parse_page_key(
+    key: &str,
+) -> Result<ArchivePageRef, SemanticArchiveError> {
+    let (kind, id) = key
+        .split_once('/')
+        .ok_or(SemanticArchiveError::InvalidIdentity)?;
+    let kind = crate::archive::decode_subject_kind(kind)?;
+    ArchivePageRef::try_new(kind, id.to_owned())
+}
+
+pub(in crate::archive_revision) fn hash_text(hash: &mut Sha256, text: &str) {
+    hash.update(
+        u64::try_from(text.len())
+            .expect("bounded text fits u64")
+            .to_be_bytes(),
+    );
+    hash.update(text.as_bytes());
+}

@@ -1,0 +1,1607 @@
+//! Leaf implementation for the parent module; public paths stay on the parent.
+
+#[allow(unused_imports)]
+use super::{merchant_admission, outbound};
+
+use crate::valuation::CostClose;
+
+use std::collections::{BTreeMap, BTreeSet};
+
+use babylon_kernel::content_digest::sha256_of;
+
+use crate::production::{
+    derive_shared_labor_requests, derive_shared_production, execute_shared_production,
+};
+
+use crate::{
+    ArrivalReceipt, BacklogRow, CorridorId, DeliveryReceipt, FreightLossReceipt, FreightLotId,
+    GoodId, InventoryRow, LaborCapacityRow, MaterialCircuitError, MaterialCircuitState,
+    MaterialCircuitTransition, OrderId, RealizationReceipt, RouteId, RouteStage,
+    RoutedDispatchReceipt, RoutedFreightLot, SiteId, StaffingPoolBinding, StaffingWorkRequest,
+    UnitId, FREIGHT_LOSS_PARTS_PER_MILLION, MAX_MATERIAL_CIRCUIT_ROWS, MAX_ROUTE_STAGES_PER_ROUTE,
+};
+
+use crate::inventory::{credit_inventory, publish_inventory, take_inventory, InventoryLedger};
+
+pub(crate) type SupplierKey = (SiteId, SiteId, GoodId, UnitId);
+
+pub(crate) type SupplyPath = (RouteId, crate::SupplierTransport);
+
+pub(crate) type CapacityKey = (u64, CorridorId);
+
+pub(crate) fn check_order_principal_limits(
+    delivery: usize,
+    retail: usize,
+    service: usize,
+) -> Result<(), MaterialCircuitError> {
+    let lengths = [delivery, retail, service];
+    if delivery > crate::MAX_DELIVERY_ORDERS
+        || retail > MAX_MATERIAL_CIRCUIT_ROWS
+        || service > crate::MAX_SERVICE_ORDERS
+    {
+        return Err(MaterialCircuitError::RowLimit);
+    }
+    let combined = lengths.into_iter().try_fold(0_usize, |total, count| {
+        total
+            .checked_add(count)
+            .ok_or(MaterialCircuitError::Arithmetic)
+    })?;
+    if combined > crate::MAX_MATERIAL_ORDER_PRINCIPALS {
+        return Err(MaterialCircuitError::RowLimit);
+    }
+    Ok(())
+}
+
+pub(crate) fn check_row_limits(state: &MaterialCircuitState) -> Result<(), MaterialCircuitError> {
+    check_order_principal_limits(
+        state.orders.len(),
+        state.final_demand_orders.len(),
+        state.service_orders.len(),
+    )?;
+    if state.backlog.len() > crate::MAX_DELIVERY_ORDERS {
+        return Err(MaterialCircuitError::RowLimit);
+    }
+    crate::capacity::row_limits(state)?;
+    if [
+        (
+            state.input_coefficients.len(),
+            crate::MAX_INPUT_COEFFICIENTS,
+        ),
+        (state.supplier_routes.len(), crate::MAX_SUPPLIER_ROUTES),
+        (
+            state.service_connections.len(),
+            crate::MAX_SERVICE_CONNECTIONS,
+        ),
+        (
+            state.route_stage_capacities.len(),
+            crate::MAX_ROUTE_CAPACITY_MEMBERSHIPS,
+        ),
+        (state.inventory.len(), crate::MAX_INVENTORY_ROWS),
+    ]
+    .into_iter()
+    .any(|(length, limit)| length > limit)
+    {
+        return Err(MaterialCircuitError::RowLimit);
+    }
+    let lengths = [
+        state.site_logistics_nodes.len(),
+        state.process_outputs.len(),
+        state.labor_coefficients.len(),
+        state.commodities.len(),
+        state.route_stages.len(),
+        state.freight.len(),
+        state.corridor_capacities.len(),
+        state.capacities.len(),
+        state.labor.len(),
+        state.production_commitments.len(),
+        state.merchants.len(),
+        state.handling_coefficients.len(),
+        state.final_demand_principals.len(),
+        state.final_demand_orders.len(),
+    ];
+    if lengths
+        .into_iter()
+        .any(|length| length > MAX_MATERIAL_CIRCUIT_ROWS)
+    {
+        return Err(MaterialCircuitError::RowLimit);
+    }
+    Ok(())
+}
+
+pub(crate) fn canonicalize_rows(state: &mut MaterialCircuitState) {
+    crate::services::canonicalize(state);
+    crate::capacity::canonicalize(&mut state.capacity_supply);
+    crate::payments::canonicalize(&mut state.accounting);
+    state.merchants.sort();
+    state.handling_coefficients.sort();
+    state.final_demand_principals.sort();
+    state.final_demand_orders.sort_by_key(|row| row.order_id);
+    state.site_logistics_nodes.sort();
+    state.process_outputs.sort();
+    state.input_coefficients.sort();
+    state.labor_coefficients.sort();
+    state.supplier_routes.sort();
+    state.commodities.sort();
+    state.route_stage_capacities.sort();
+    state.route_stages.sort();
+    state.inventory.sort();
+    state.orders.sort_by_key(|row| row.order_id);
+    state.backlog.sort_by_key(|row| row.order_id);
+    state
+        .freight
+        .sort_by_key(|row| (row.stage_arrival_period, row.lot_id));
+    state
+        .corridor_capacities
+        .sort_by_key(|row| (row.period, row.corridor_id));
+    state
+        .capacities
+        .sort_by_key(|row| (row.period, row.site_id, row.process_id));
+    state
+        .labor
+        .sort_by_key(|row| (row.period, row.site_id, row.unit_id));
+    state
+        .production_commitments
+        .sort_by_key(|row| (row.period, row.site_id, row.process_id));
+}
+
+pub(crate) fn has_duplicate<T, K: PartialEq>(rows: &[T], key: impl Fn(&T) -> K) -> bool {
+    rows.windows(2).any(|pair| key(&pair[0]) == key(&pair[1]))
+}
+
+pub(crate) fn validate_unique_rows(
+    state: &MaterialCircuitState,
+) -> Result<(), MaterialCircuitError> {
+    let dispatch_ids: BTreeSet<_> = state
+        .freight
+        .iter()
+        .take(MAX_MATERIAL_CIRCUIT_ROWS + 1)
+        .map(|row| (row.order_id, row.dispatch_period))
+        .collect();
+    let duplicate = has_duplicate(&state.commodities, |row| (row.good_id, row.unit_id))
+        || has_duplicate(&state.route_stage_capacities, |row| {
+            (row.route_id, row.stage_index, row.corridor_id)
+        })
+        || has_duplicate(&state.site_logistics_nodes, |row| row.site_id)
+        || has_duplicate(&state.supplier_routes, |row| {
+            (
+                row.buyer_site_id,
+                row.supplier_site_id,
+                row.good_id,
+                row.unit_id,
+            )
+        })
+        || has_duplicate(&state.route_stages, |row| (row.route_id, row.stage_index))
+        || has_duplicate(&state.inventory, |row| {
+            (row.site_id, row.good_id, row.unit_id)
+        })
+        || has_duplicate(&state.orders, |row| row.order_id)
+        || has_duplicate(&state.backlog, |row| row.order_id)
+        || has_duplicate(&state.freight, |row| row.lot_id)
+        || dispatch_ids.len() != state.freight.len()
+        || has_duplicate(&state.corridor_capacities, |row| {
+            (row.period, row.corridor_id)
+        });
+    if duplicate {
+        return Err(MaterialCircuitError::DuplicateRow);
+    }
+    Ok(())
+}
+
+pub(crate) fn route_stages(state: &MaterialCircuitState, route: RouteId) -> &[RouteStage] {
+    let start = state
+        .route_stages
+        .partition_point(|row| row.route_id < route);
+    let end = state
+        .route_stages
+        .partition_point(|row| row.route_id <= route);
+    &state.route_stages[start..end]
+}
+
+pub(crate) fn site_node(
+    state: &MaterialCircuitState,
+    site: SiteId,
+) -> Option<crate::LogisticsNodeId> {
+    state
+        .site_logistics_nodes
+        .binary_search_by_key(&site, |row| row.site_id)
+        .ok()
+        .map(|index| state.site_logistics_nodes[index].node_id)
+}
+
+pub(crate) fn validate_route_stages(legs: &[RouteStage]) -> Result<(), MaterialCircuitError> {
+    if legs.is_empty() || legs.len() > MAX_ROUTE_STAGES_PER_ROUTE {
+        return Err(MaterialCircuitError::RouteInvariant);
+    }
+    for (index, leg) in legs.iter().enumerate().take(MAX_ROUTE_STAGES_PER_ROUTE + 1) {
+        if usize::from(leg.stage_index) != index
+            || leg.travel_periods == 0
+            || leg.loss_ppm > FREIGHT_LOSS_PARTS_PER_MILLION
+        {
+            return Err(MaterialCircuitError::RouteInvariant);
+        }
+        if index > 0 && legs[index - 1].to_node_id != leg.from_node_id {
+            return Err(MaterialCircuitError::RouteInvariant);
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn stage_capacities(
+    state: &MaterialCircuitState,
+    route: RouteId,
+    ordinal: u16,
+) -> &[crate::RouteStageCapacity] {
+    let start = state
+        .route_stage_capacities
+        .partition_point(|row| (row.route_id, row.stage_index) < (route, ordinal));
+    let end = state
+        .route_stage_capacities
+        .partition_point(|row| (row.route_id, row.stage_index) <= (route, ordinal));
+    &state.route_stage_capacities[start..end]
+}
+
+pub(crate) fn grams_per_unit(
+    state: &MaterialCircuitState,
+    good: GoodId,
+    unit: UnitId,
+) -> Result<u64, MaterialCircuitError> {
+    let index = state
+        .commodities
+        .binary_search_by_key(&(good, unit), |r| (r.good_id, r.unit_id))
+        .map_err(|_| MaterialCircuitError::MassInvariant)?;
+    state.commodities[index].grams_per_unit()
+}
+
+pub(crate) fn validate_routes(state: &MaterialCircuitState) -> Result<(), MaterialCircuitError> {
+    let route_ids: BTreeSet<_> = state.route_stages.iter().map(|row| row.route_id).collect();
+    let stage_ids: BTreeSet<_> = state
+        .route_stages
+        .iter()
+        .map(|row| (row.route_id, row.stage_index))
+        .collect();
+    let mut corridors: BTreeSet<_> = state
+        .route_stage_capacities
+        .iter()
+        .map(|row| row.corridor_id)
+        .collect();
+    corridors.extend(state.merchants.iter().map(|row| row.capacity_id));
+    for route in route_ids {
+        validate_route_stages(route_stages(state, route))?;
+    }
+    if state
+        .route_stage_capacities
+        .iter()
+        .any(|row| !stage_ids.contains(&(row.route_id, row.stage_index)))
+        || state
+            .route_stages
+            .iter()
+            .any(|row| stage_capacities(state, row.route_id, row.stage_index).is_empty())
+    {
+        return Err(MaterialCircuitError::RouteInvariant);
+    }
+    let mut modes = BTreeMap::new();
+    for supplier in &state.supplier_routes {
+        if modes
+            .insert(supplier.route_id, supplier.transport_kind)
+            .is_some_and(|previous| previous != supplier.transport_kind)
+        {
+            return Err(MaterialCircuitError::RouteInvariant);
+        }
+        let stages = route_stages(state, supplier.route_id);
+        match supplier.transport_kind {
+            crate::SupplierTransport::Local => {
+                if !stages.is_empty()
+                    || supplier.supplier_site_id == supplier.buyer_site_id
+                    || site_node(state, supplier.supplier_site_id).is_none()
+                    || site_node(state, supplier.buyer_site_id).is_none()
+                {
+                    return Err(MaterialCircuitError::RouteInvariant);
+                }
+            }
+            crate::SupplierTransport::Staged => {
+                validate_route_stages(stages)?;
+                if site_node(state, supplier.supplier_site_id) != Some(stages[0].from_node_id)
+                    || site_node(state, supplier.buyer_site_id)
+                        != Some(stages[stages.len() - 1].to_node_id)
+                {
+                    return Err(MaterialCircuitError::RouteInvariant);
+                }
+            }
+        }
+        grams_per_unit(state, supplier.good_id, supplier.unit_id)?;
+    }
+    if state
+        .corridor_capacities
+        .iter()
+        .any(|row| !corridors.contains(&row.corridor_id))
+    {
+        return Err(MaterialCircuitError::CapacityInvariant);
+    }
+    if state.commodities.iter().any(|row| {
+        matches!(
+            row.kind,
+            crate::CommodityKind::Storable { grams_per_unit: 0 }
+        )
+    }) {
+        return Err(MaterialCircuitError::MassInvariant);
+    }
+    for order in &state.orders {
+        grams_per_unit(state, order.good_id, order.unit_id)?;
+    }
+    Ok(())
+}
+
+pub(crate) fn order_index(state: &MaterialCircuitState, order: OrderId) -> Option<usize> {
+    state
+        .orders
+        .binary_search_by_key(&order, |row| row.order_id)
+        .ok()
+}
+
+pub(crate) fn supplier_routes(state: &MaterialCircuitState) -> BTreeMap<SupplierKey, SupplyPath> {
+    state
+        .supplier_routes
+        .iter()
+        .map(|row| {
+            (
+                (
+                    row.buyer_site_id,
+                    row.supplier_site_id,
+                    row.good_id,
+                    row.unit_id,
+                ),
+                (row.route_id, row.transport_kind),
+            )
+        })
+        .collect()
+}
+
+pub(crate) fn expected_stage_arrival(
+    lot: &RoutedFreightLot,
+    legs: &[RouteStage],
+) -> Result<u64, MaterialCircuitError> {
+    legs.iter()
+        .take(usize::from(lot.current_stage_index) + 1)
+        .try_fold(lot.dispatch_period, |period, leg| {
+            period
+                .checked_add(u64::from(leg.travel_periods))
+                .ok_or(MaterialCircuitError::Arithmetic)
+        })
+}
+
+pub(crate) fn validate_orders_and_freight(
+    state: &MaterialCircuitState,
+) -> Result<(), MaterialCircuitError> {
+    if state.orders.len() != state.backlog.len() {
+        return Err(MaterialCircuitError::BacklogInvariant);
+    }
+    let routes = supplier_routes(state);
+    let mut in_transit = BTreeMap::<OrderId, u128>::new();
+    for lot in state.freight.iter().take(MAX_MATERIAL_CIRCUIT_ROWS + 1) {
+        let Some(index) = order_index(state, lot.order_id) else {
+            return Err(MaterialCircuitError::FreightInvariant);
+        };
+        let order = &state.orders[index];
+        let supplier_key = (
+            order.buyer_site_id,
+            order.supplier_site_id,
+            order.good_id,
+            order.unit_id,
+        );
+        let legs = route_stages(state, lot.route_id);
+        if lot.quantity == 0
+            || lot.lot_id != freight_lot_id(lot.order_id, lot.dispatch_period)
+            || lot.dispatch_period >= state.period
+            || lot.stage_arrival_period < state.period
+            || usize::from(lot.current_stage_index) >= legs.len()
+            || routes.get(&supplier_key) != Some(&(lot.route_id, crate::SupplierTransport::Staged))
+            || lot.source_site_id != order.supplier_site_id
+            || lot.destination_site_id != order.buyer_site_id
+            || lot.good_id != order.good_id
+            || lot.unit_id != order.unit_id
+        {
+            return Err(MaterialCircuitError::FreightInvariant);
+        }
+        if expected_stage_arrival(lot, legs)? != lot.stage_arrival_period {
+            return Err(MaterialCircuitError::FreightInvariant);
+        }
+        let total = in_transit.entry(lot.order_id).or_default();
+        *total = total
+            .checked_add(u128::from(lot.quantity))
+            .ok_or(MaterialCircuitError::Arithmetic)?;
+    }
+    for (order, backlog) in state.orders.iter().zip(&state.backlog) {
+        if order.ordered == 0 {
+            return Err(MaterialCircuitError::ZeroQuantity);
+        }
+        let accounted = order
+            .delivered
+            .checked_add(order.lost)
+            .ok_or(MaterialCircuitError::Arithmetic)?;
+        let local = routes
+            .get(&(
+                order.buyer_site_id,
+                order.supplier_site_id,
+                order.good_id,
+                order.unit_id,
+            ))
+            .is_some_and(|(_, mode)| *mode == crate::SupplierTransport::Local);
+        if (local
+            && (order.lost != 0
+                || order.shipped != order.delivered
+                || order.realized != order.delivered))
+            || order.realized > order.delivered
+            || accounted > order.shipped
+            || order.shipped > order.ordered
+        {
+            return Err(MaterialCircuitError::OrderInvariant);
+        }
+        if backlog.order_id != order.order_id || backlog.quantity != order.ordered - order.shipped {
+            return Err(MaterialCircuitError::BacklogInvariant);
+        }
+        if in_transit.get(&order.order_id).copied().unwrap_or(0)
+            != u128::from(order.shipped - accounted)
+        {
+            return Err(MaterialCircuitError::FreightInvariant);
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn canonical_state(
+    state: &MaterialCircuitState,
+) -> Result<MaterialCircuitState, MaterialCircuitError> {
+    check_row_limits(state)?;
+    let mut canonical = state.clone();
+    canonicalize_rows(&mut canonical);
+    validate_unique_rows(&canonical)?;
+    crate::services::validate(&canonical)?;
+    merchant_admission::validate_merchants(&canonical)?;
+    validate_routes(&canonical)?;
+    validate_orders_and_freight(&canonical)?;
+    crate::production::validate_unique_rows(&canonical)?;
+    crate::production::validate_processes(&canonical)?;
+    crate::production::validate_periods(&canonical)?;
+    crate::maintenance::validate(&canonical)?;
+    crate::payments::validate(&canonical)?;
+    crate::capacity::validate(&canonical)?;
+    crate::aid::validate(&canonical)?;
+    crate::valuation::validate(&canonical)?;
+    if canonical.period == 0
+        || canonical
+            .corridor_capacities
+            .iter()
+            .take(MAX_MATERIAL_CIRCUIT_ROWS + 1)
+            .any(|row| row.period < canonical.period)
+    {
+        return Err(MaterialCircuitError::PeriodInvariant);
+    }
+    Ok(canonical)
+}
+
+pub(crate) fn loss_quantity(quantity: u64, loss_ppm: u32) -> Result<u64, MaterialCircuitError> {
+    let loss = u128::from(quantity)
+        .checked_mul(u128::from(loss_ppm))
+        .ok_or(MaterialCircuitError::Arithmetic)?
+        / u128::from(FREIGHT_LOSS_PARTS_PER_MILLION);
+    u64::try_from(loss).map_err(|_| MaterialCircuitError::Arithmetic)
+}
+
+pub(crate) struct FreightStep {
+    stage_index: u16,
+    lost: u64,
+    retained: u64,
+    next_leg: Option<(u16, u16)>,
+}
+
+pub(crate) fn freight_step(
+    state: &MaterialCircuitState,
+    route: RouteId,
+    current_stage: u16,
+    quantity: u64,
+) -> Result<FreightStep, MaterialCircuitError> {
+    let legs = route_stages(state, route);
+    let index = usize::from(current_stage);
+    let leg = legs
+        .get(index)
+        .ok_or(MaterialCircuitError::FreightInvariant)?;
+    let next_leg = legs
+        .get(index + 1)
+        .map(|s| (s.stage_index, s.travel_periods));
+    let lost = loss_quantity(quantity, leg.loss_ppm)?;
+    let retained = quantity
+        .checked_sub(lost)
+        .ok_or(MaterialCircuitError::Arithmetic)?;
+    Ok(FreightStep {
+        stage_index: leg.stage_index,
+        lost,
+        retained,
+        next_leg,
+    })
+}
+
+pub(crate) fn process_due_freight(
+    state: &mut MaterialCircuitState,
+    inventory: &mut InventoryLedger,
+    losses: &mut Vec<FreightLossReceipt>,
+    arrivals: &mut Vec<ArrivalReceipt>,
+    deliveries: &mut Vec<DeliveryReceipt>,
+    realizations: &mut Vec<RealizationReceipt>,
+    costs: &mut CostClose,
+) -> Result<(), MaterialCircuitError> {
+    let opening = std::mem::take(&mut state.freight);
+    let mut remaining = Vec::with_capacity(opening.len());
+    for mut lot in opening.into_iter().take(MAX_MATERIAL_CIRCUIT_ROWS + 1) {
+        if lot.stage_arrival_period != state.period {
+            remaining.push(lot);
+            continue;
+        }
+        let FreightStep {
+            stage_index,
+            lost,
+            retained,
+            next_leg,
+        } = freight_step(state, lot.route_id, lot.current_stage_index, lot.quantity)?;
+        costs.freight(state, &lot, lost, next_leg.is_none())?;
+        let order_index =
+            order_index(state, lot.order_id).ok_or(MaterialCircuitError::FreightInvariant)?;
+        state.orders[order_index].lost = state.orders[order_index]
+            .lost
+            .checked_add(lost)
+            .ok_or(MaterialCircuitError::Arithmetic)?;
+        if lost > 0 {
+            losses.push(FreightLossReceipt {
+                lot_id: lot.lot_id,
+                order_id: lot.order_id,
+                route_id: lot.route_id,
+                stage_index,
+                quantity: lost,
+            });
+        }
+        if let Some((next_stage_index, next_travel_periods)) = next_leg.filter(|_| retained > 0) {
+            lot.current_stage_index = next_stage_index;
+            lot.stage_arrival_period = state
+                .period
+                .checked_add(u64::from(next_travel_periods))
+                .ok_or(MaterialCircuitError::Arithmetic)?;
+            lot.quantity = retained;
+            remaining.push(lot);
+            continue;
+        }
+        if retained > 0 {
+            credit_inventory(
+                inventory,
+                (lot.destination_site_id, lot.good_id, lot.unit_id),
+                retained,
+            )?;
+            let order = &mut state.orders[order_index];
+            order.delivered = order
+                .delivered
+                .checked_add(retained)
+                .ok_or(MaterialCircuitError::Arithmetic)?;
+            order.realized = order
+                .realized
+                .checked_add(retained)
+                .ok_or(MaterialCircuitError::Arithmetic)?;
+            arrivals.push(ArrivalReceipt {
+                order_id: lot.order_id,
+                quantity: retained,
+            });
+            deliveries.push(DeliveryReceipt {
+                order_id: lot.order_id,
+                quantity: retained,
+            });
+            realizations.push(RealizationReceipt {
+                order_id: lot.order_id,
+                quantity: retained,
+            });
+        }
+    }
+    state.freight = remaining;
+    Ok(())
+}
+
+pub(crate) fn freight_lot_id(order: OrderId, period: u64) -> FreightLotId {
+    let mut bytes = b"babylon.freight-lot.v2\0".to_vec();
+    bytes.extend_from_slice(&order.as_bytes());
+    bytes.extend_from_slice(&period.to_be_bytes());
+    FreightLotId::from_bytes(sha256_of(&bytes))
+}
+
+pub(crate) fn rebuild_backlog(state: &mut MaterialCircuitState) {
+    state.backlog = state
+        .orders
+        .iter()
+        .map(|order| BacklogRow {
+            order_id: order.order_id,
+            quantity: order.ordered - order.shipped,
+        })
+        .collect();
+}
+
+/// Detached physical close before next-opening labor and production planning.
+///
+/// This is not a canonical opening register: newly dispatched freight still
+/// shares its closing period. Only successful final planning yields a successor.
+/// Private fields prevent callers from replacing closed inventory or receipts.
+#[derive(Debug)]
+pub struct ClosedMaterialPeriod {
+    transition: MaterialCircuitTransition,
+    next_period: u64,
+}
+
+impl ClosedMaterialPeriod {
+    /// The interval whose arrivals, production and dispatch have completed.
+    #[must_use]
+    pub const fn closing_period(&self) -> u64 {
+        self.transition.state.period
+    }
+
+    /// The opening interval being requested and planned.
+    #[must_use]
+    pub const fn next_period(&self) -> u64 {
+        self.next_period
+    }
+
+    /// Exact closing stock after dispatch, without a second inventory owner.
+    #[must_use]
+    pub fn inventory(&self) -> &[InventoryRow] {
+        &self.transition.state.inventory
+    }
+
+    /// Request production work from next-opening inputs and capacity, and merchant
+    /// work from this close's recorded nonlabor-feasible handling need.
+    ///
+    /// Every admitted work source has one request, including zero. Its `period` is
+    /// this closing interval, as required by staffing. Neither current employment
+    /// nor any scheduled hours limit the recorded need.
+    ///
+    /// # Errors
+    /// Refuses incomplete, duplicate or foreign pool bindings, row bounds and
+    /// hours that cannot be represented exactly as `u64`.
+    pub fn staffing_requests(
+        &self,
+        bindings: &[StaffingPoolBinding],
+    ) -> Result<Vec<StaffingWorkRequest>, MaterialCircuitError> {
+        let state = &self.transition.state;
+        let owners = staffing_work_owners(bindings)?;
+        let production = derive_shared_labor_requests(state, self.next_period)?;
+        let mut requests = Vec::new();
+        let mut nonmerchant = BTreeMap::<(SiteId, UnitId), u64>::new();
+        for request in production {
+            let total = nonmerchant
+                .entry((request.site_id, request.unit_id))
+                .or_default();
+            *total = total
+                .checked_add(request.hours)
+                .ok_or(MaterialCircuitError::Arithmetic)?;
+            requests.push((
+                crate::StaffingWorkSource::Production(request.process_id),
+                request.site_id,
+                request.unit_id,
+                request.hours,
+            ));
+        }
+        let maintenance_request = self
+            .transition
+            .maintenance
+            .as_ref()
+            .map(
+                |receipt| -> Result<(SiteId, UnitId, u64), MaterialCircuitError> {
+                    let hours = receipt
+                        .requested_jobs
+                        .checked_mul(receipt.binding.labor_units_per_job)
+                        .ok_or(MaterialCircuitError::Arithmetic)?;
+                    let key = (
+                        receipt.binding.provider_site_id,
+                        receipt.binding.labor_unit_id,
+                    );
+                    let total = nonmerchant.entry(key).or_default();
+                    *total = total
+                        .checked_add(hours)
+                        .ok_or(MaterialCircuitError::Arithmetic)?;
+                    Ok((key.0, key.1, hours))
+                },
+            )
+            .transpose()?;
+        for (source, site, unit, hours) in crate::equipment::work_requests(state)? {
+            let total = nonmerchant.entry((site, unit)).or_default();
+            *total = total
+                .checked_add(hours)
+                .ok_or(MaterialCircuitError::Arithmetic)?;
+            requests.push((source, site, unit, hours));
+        }
+        let mut needed = BTreeMap::<SiteId, u64>::new();
+        for receipt in &self.transition.handling {
+            let hours = needed.entry(receipt.site_id).or_default();
+            *hours = hours
+                .checked_add(receipt.needed_hours)
+                .ok_or(MaterialCircuitError::Arithmetic)?;
+        }
+        for merchant in &state.merchants {
+            let key = (merchant.site_id, merchant.labor_unit_id);
+            let hours = recurring_merchant_hours(
+                state,
+                key,
+                needed.get(&merchant.site_id).copied().unwrap_or(0),
+                nonmerchant.get(&key).copied().unwrap_or(0),
+            )?;
+            requests.push((
+                crate::StaffingWorkSource::MerchantHandling(merchant.site_id),
+                merchant.site_id,
+                merchant.labor_unit_id,
+                hours,
+            ));
+        }
+        if let Some((site, unit, hours)) = maintenance_request {
+            requests.push((
+                crate::StaffingWorkSource::Maintenance(site),
+                site,
+                unit,
+                hours,
+            ));
+        }
+        if owners.len() != requests.len() {
+            return Err(MaterialCircuitError::ProcessInvariant);
+        }
+        requests
+            .into_iter()
+            .map(|(source, site, unit, hours)| {
+                let binding = owners
+                    .get(&source)
+                    .ok_or(MaterialCircuitError::ProcessInvariant)?;
+                if binding.site_id() != site || binding.unit_id() != unit {
+                    return Err(MaterialCircuitError::ProcessInvariant);
+                }
+                Ok(StaffingWorkRequest::new(
+                    self.closing_period(),
+                    binding.pool_id(),
+                    source,
+                    site,
+                    unit,
+                    hours,
+                ))
+            })
+            .collect()
+    }
+
+    /// Replace the labor schedule with one exact next-opening row per principal.
+    ///
+    /// Zero hours are explicit. No preseeded future row survives this staffing
+    /// ownership transfer. The normal planner still bounds commitments by both
+    /// shared inputs and supplied labor; requests do not become commitments.
+    ///
+    /// # Errors
+    /// Refuses missing/foreign/duplicate principals, wrong periods, row bounds,
+    /// arithmetic and any invalid final circuit. No partial successor escapes.
+    pub fn finish_with_labor(
+        mut self,
+        mut next_labor: Vec<LaborCapacityRow>,
+    ) -> Result<MaterialCircuitTransition, MaterialCircuitError> {
+        validate_next_labor(&self.transition.state, self.next_period, &next_labor)?;
+        // The allocator performs binary searches before final canonicalization.
+        next_labor.sort_unstable_by_key(|row| (row.period, row.site_id, row.unit_id));
+        self.transition.state.labor = next_labor;
+        self.finish()
+    }
+
+    /// Replace graph-derived aggregate and member hours together before planning.
+    /// # Errors
+    /// Refuses missing, duplicate, foreign or inconsistent hour principals.
+    pub fn finish_with_workforce(
+        mut self,
+        next_labor: Vec<LaborCapacityRow>,
+        member_labor: Vec<crate::MemberLaborCapacityRow>,
+    ) -> Result<MaterialCircuitTransition, MaterialCircuitError> {
+        if let crate::CircuitAccounting::Monetary(economy) = &mut self.transition.state.accounting {
+            economy.member_labor = member_labor;
+        }
+        self.finish_with_labor(next_labor)
+    }
+
+    fn finish(mut self) -> Result<MaterialCircuitTransition, MaterialCircuitError> {
+        let state = &mut self.transition.state;
+        derive_shared_production(state, self.next_period)?;
+        crate::capacity::roll_forward(state, self.next_period)?;
+        state.period = self.next_period;
+        if let crate::CircuitAccounting::Monetary(economy) = &mut state.accounting {
+            economy
+                .member_labor
+                .retain(|row| row.period >= self.next_period);
+        }
+        *state = canonical_state(state)?;
+        let mut uses = std::mem::take(&mut self.transition.aid_contributions);
+        uses.extend(
+            self.transition
+                .collections
+                .iter()
+                .filter_map(crate::CollectionReceipt::contribution_use),
+        );
+        uses.sort_by_key(|row| row.use_id);
+        if !uses.is_empty() {
+            crate::consume_household_contributions(
+                state,
+                self.next_period
+                    .checked_sub(1)
+                    .ok_or(MaterialCircuitError::Arithmetic)?,
+                &uses,
+            )?;
+        }
+        self.transition.aid_contributions = uses
+            .into_iter()
+            .filter(|row| {
+                !self
+                    .transition
+                    .collections
+                    .iter()
+                    .any(|c| c.contribution_use_id == row.use_id)
+            })
+            .collect();
+        Ok(self.transition)
+    }
+}
+
+pub(crate) fn recurring_merchant_hours(
+    state: &MaterialCircuitState,
+    key: (SiteId, UnitId),
+    physical_need: u64,
+    other_work: u64,
+) -> Result<u64, MaterialCircuitError> {
+    let crate::CircuitAccounting::Monetary(economy) = &state.accounting else {
+        return Ok(physical_need);
+    };
+    let Some(recurring) = &economy.recurring else {
+        return Ok(physical_need);
+    };
+    let index = recurring
+        .attendance
+        .binary_search_by_key(&key, |row| (row.site_id, row.unit_id))
+        .map_err(|_| MaterialCircuitError::PayrollInvariant)?;
+    if economy
+        .employment
+        .binary_search_by_key(&key, |row| (row.site_id, row.unit_id))
+        .is_err()
+    {
+        let labor = state
+            .labor
+            .binary_search_by_key(&(state.period, key.0, key.1), |row| {
+                (row.period, row.site_id, row.unit_id)
+            })
+            .map_err(|_| MaterialCircuitError::PayrollInvariant)?;
+        if recurring.attendance[index].planned_hours != 0 || state.labor[labor].available != 0 {
+            return Err(MaterialCircuitError::PayrollInvariant);
+        }
+        return Ok(physical_need);
+    }
+    recurring.attendance[index]
+        .planned_hours
+        .checked_sub(other_work)
+        .ok_or(MaterialCircuitError::PayrollInvariant)
+}
+
+pub(crate) fn staffing_work_owners(
+    bindings: &[StaffingPoolBinding],
+) -> Result<BTreeMap<crate::StaffingWorkSource, &StaffingPoolBinding>, MaterialCircuitError> {
+    if bindings.len() > MAX_MATERIAL_CIRCUIT_ROWS {
+        return Err(MaterialCircuitError::RowLimit);
+    }
+    let mut owners = BTreeMap::new();
+    let mut pools = BTreeSet::new();
+    let mut principals = BTreeSet::new();
+    for binding in bindings {
+        if !pools.insert(binding.pool_id())
+            || !principals.insert((binding.site_id(), binding.unit_id()))
+        {
+            return Err(MaterialCircuitError::DuplicateRow);
+        }
+        for process in binding.work_sources() {
+            if owners.insert(*process, binding).is_some() {
+                return Err(MaterialCircuitError::DuplicateRow);
+            }
+            if owners.len() > crate::MAX_STAFFING_WORK_SOURCES {
+                return Err(MaterialCircuitError::RowLimit);
+            }
+        }
+    }
+    Ok(owners)
+}
+
+pub(crate) fn validate_next_labor(
+    state: &MaterialCircuitState,
+    next_period: u64,
+    rows: &[LaborCapacityRow],
+) -> Result<(), MaterialCircuitError> {
+    if rows.len() > MAX_MATERIAL_CIRCUIT_ROWS {
+        return Err(MaterialCircuitError::RowLimit);
+    }
+    // The detached close preserves the checked, process-sorted recipe roster.
+    let mut expected: BTreeSet<_> = state
+        .process_outputs
+        .iter()
+        .zip(&state.labor_coefficients)
+        .map(|(output, coefficient)| (output.site_id, coefficient.unit_id))
+        .collect();
+    expected.extend(
+        state
+            .merchants
+            .iter()
+            .map(|row| (row.site_id, row.labor_unit_id)),
+    );
+    if let Some(binding) = &state.maintenance_binding {
+        expected.insert((binding.provider_site_id, binding.labor_unit_id));
+    }
+    let mut actual = BTreeSet::new();
+    for row in rows {
+        if row.period != next_period {
+            return Err(MaterialCircuitError::PeriodInvariant);
+        }
+        if !actual.insert((row.site_id, row.unit_id)) {
+            return Err(MaterialCircuitError::DuplicateRow);
+        }
+    }
+    if actual != expected {
+        return Err(MaterialCircuitError::CapacityInvariant);
+    }
+    Ok(())
+}
+
+/// Close one routed period atomically and return its canonical successor state.
+///
+/// # Errors
+/// Returns the first exact schema, route, conservation, bound, or arithmetic refusal.
+pub fn advance_material_circuit(
+    opening: &MaterialCircuitState,
+) -> Result<MaterialCircuitTransition, MaterialCircuitError> {
+    close_material_period(opening)?.finish()
+}
+
+/// Close a control using the same authenticated aid boundary as the tick adapter.
+/// # Errors
+/// Refuses unsupported authority, scarcity invariants or a malformed successor.
+pub fn advance_material_circuit_with_aid(
+    opening: &MaterialCircuitState,
+    inputs: &[crate::AidResolveInput],
+) -> Result<MaterialCircuitTransition, MaterialCircuitError> {
+    close_material_period_with_aid(opening, inputs)?.finish()
+}
+
+pub(crate) struct AidResolve<'a> {
+    inputs: &'a [crate::AidResolveInput],
+    services: &'a [crate::HouseholdServiceReceipt],
+    receipts: &'a mut Vec<crate::AidReceipt>,
+}
+
+pub(crate) fn dispatch_and_replenish(
+    state: &mut MaterialCircuitState,
+    dispatches: &mut Vec<RoutedDispatchReceipt>,
+    household_demand: &mut [crate::HouseholdDemandReceipt],
+    money_transfers: &mut Vec<crate::MoneyTransferReceipt>,
+    costs: &mut CostClose,
+    aid: AidResolve<'_>,
+) -> Result<(outbound::OutboundReceipts, Vec<crate::ProcurementReceipt>), MaterialCircuitError> {
+    let AidResolve {
+        inputs: aid_inputs,
+        services,
+        receipts: aid_receipts,
+    } = aid;
+    let mut inventory = take_inventory(state);
+    let mut outbound = outbound::dispatch_orders(
+        state,
+        &mut inventory,
+        dispatches,
+        &outbound::OutboundSelection::All,
+        costs,
+    )?;
+    publish_inventory(state, inventory);
+    crate::recurring::complete_household_orders(
+        state,
+        household_demand,
+        &outbound.local_fulfillments,
+        money_transfers,
+    )?;
+    crate::payments::settle_deliveries(state, money_transfers)?;
+    let (new_orders, procurement) =
+        crate::recurring::firms::replenish(state, &outbound.local_transfers, money_transfers)?;
+    let aid = crate::aid::prepare(
+        state,
+        aid_inputs,
+        costs,
+        services,
+        money_transfers,
+        aid_receipts,
+    )?;
+    let mut inventory = take_inventory(state);
+    if !new_orders.is_empty() || !aid.orders.is_empty() {
+        let replenishment = outbound::dispatch_orders_with_aid(
+            state,
+            &mut inventory,
+            dispatches,
+            &outbound::OutboundSelection::NewDeliveries(&new_orders),
+            costs,
+            outbound::AidDispatch {
+                prepared: &aid,
+                money: money_transfers,
+                receipts: aid_receipts,
+            },
+        )?;
+        outbound.handling.extend(replenishment.handling);
+        outbound
+            .local_transfers
+            .extend(replenishment.local_transfers);
+    }
+    outbound::credit_local_transfers(&mut inventory, &outbound.local_transfers)?;
+    for receipt in &outbound.local_transfers {
+        costs.receive_local(state, receipt)?;
+    }
+    publish_inventory(state, inventory);
+    crate::payments::settle_deliveries(state, money_transfers)?;
+    Ok((outbound, procurement))
+}
+
+pub(crate) struct NextPlans {
+    production: Vec<crate::ProductionPlanReceipt>,
+    prices: Vec<crate::PriceReceipt>,
+}
+
+pub(crate) fn next_plans(
+    state: &mut MaterialCircuitState,
+    dispatches: &[RoutedDispatchReceipt],
+    outbound: &outbound::OutboundReceipts,
+    household_demand: &[crate::HouseholdDemandReceipt],
+    maintenance: Option<&crate::MaintenanceReceipt>,
+    next_period: u64,
+    costs: &CostClose,
+) -> Result<NextPlans, MaterialCircuitError> {
+    let production_plans = crate::recurring::firms::plan_production(
+        state,
+        dispatches,
+        &outbound.local_transfers,
+        &outbound.local_fulfillments,
+        household_demand,
+        next_period,
+    )?;
+    crate::recurring::firms::plan_attendance(
+        state,
+        household_demand,
+        dispatches,
+        &outbound.local_transfers,
+        &outbound.local_fulfillments,
+        maintenance,
+        next_period,
+    )?;
+    let prices = crate::recurring::prices::update_prices(state, household_demand, costs)?;
+    Ok(NextPlans {
+        production: production_plans,
+        prices,
+    })
+}
+
+pub(crate) struct ProductionStageReceipts {
+    production: Vec<crate::ProductionReceipt>,
+    maintenance: Option<crate::MaintenanceReceipt>,
+    installation: Vec<crate::InstallationReceipt>,
+    installation_decisions: Vec<crate::InstallationDecisionReceipt>,
+}
+
+pub(crate) fn execute_production_stages(
+    opening: &MaterialCircuitState,
+    state: &mut MaterialCircuitState,
+    costs: &mut CostClose,
+    services: &mut crate::services::ServiceClose,
+    movements: &mut Vec<crate::MoneyTransferReceipt>,
+) -> Result<ProductionStageReceipts, MaterialCircuitError> {
+    let mut production = Vec::new();
+    for stage in [
+        crate::ServiceStage::UtilityProvision,
+        crate::ServiceStage::LocalServiceProvision,
+    ] {
+        production.extend(execute_shared_production(
+            state,
+            costs,
+            Some(stage),
+            services,
+        )?);
+        services.handoff(state, stage, costs, movements)?;
+    }
+    production.extend(execute_shared_production(state, costs, None, services)?);
+    production.sort_by_key(|r| (r.site_id, r.process_id));
+    services.finish(state, costs)?;
+    let maintenance = crate::maintenance::execute(opening, state, &production)?;
+    if let Some(receipt) = &maintenance {
+        costs.maintenance(state, receipt)?;
+    }
+    let installation = crate::equipment::install(state, costs)?;
+    Ok(ProductionStageReceipts {
+        production,
+        maintenance,
+        installation: installation.work,
+        installation_decisions: installation.decisions,
+    })
+}
+
+pub(crate) struct HouseholdCloseReceipts {
+    consumption: Vec<crate::HouseholdConsumptionReceipt>,
+    labor_use: Vec<crate::LaborUseReceipt>,
+    member_labor_use: Vec<crate::MemberLaborUseReceipt>,
+    time: Vec<crate::HouseholdTimeReceipt>,
+}
+
+pub(crate) fn close_household_reproduction(
+    state: &mut MaterialCircuitState,
+    costs: &mut CostClose,
+    services: &crate::services::ServiceClose,
+    wage_accruals: &[crate::WageAccrualReceipt],
+) -> Result<HouseholdCloseReceipts, MaterialCircuitError> {
+    let consumption = crate::recurring::consume_household_needs(state)?;
+    for receipt in &consumption {
+        costs.consume(receipt)?;
+    }
+    let (labor_use, member_labor_use) = costs.finish_attendance(state)?;
+    let time =
+        crate::household_time::close(state, &member_labor_use, &consumption, &services.household)?;
+    costs.payroll(state, &member_labor_use, wage_accruals)?;
+    Ok(HouseholdCloseReceipts {
+        consumption,
+        labor_use,
+        member_labor_use,
+        time,
+    })
+}
+
+pub(crate) fn canonicalize_outbound_receipts(
+    outbound: &mut outbound::OutboundReceipts,
+    dispatches: &mut [RoutedDispatchReceipt],
+) {
+    outbound
+        .handling
+        .sort_by_key(|row| (row.site_id, row.order));
+    outbound.local_transfers.sort_by_key(|row| row.order_id);
+    dispatches.sort_by_key(|row| row.order_id);
+}
+
+pub(crate) struct DueFreightReceipts {
+    losses: Vec<FreightLossReceipt>,
+    arrivals: Vec<ArrivalReceipt>,
+    deliveries: Vec<DeliveryReceipt>,
+    realizations: Vec<RealizationReceipt>,
+}
+
+pub(crate) fn close_due_freight(
+    state: &mut MaterialCircuitState,
+    costs: &mut CostClose,
+) -> Result<DueFreightReceipts, MaterialCircuitError> {
+    let mut inventory = take_inventory(state);
+    let mut result = DueFreightReceipts {
+        losses: Vec::new(),
+        arrivals: Vec::new(),
+        deliveries: Vec::new(),
+        realizations: Vec::new(),
+    };
+    process_due_freight(
+        state,
+        &mut inventory,
+        &mut result.losses,
+        &mut result.arrivals,
+        &mut result.deliveries,
+        &mut result.realizations,
+        costs,
+    )?;
+    publish_inventory(state, inventory);
+    Ok(result)
+}
+
+/// Execute due freight, prior production commitments and dispatch exactly once.
+///
+/// The result borrows no mutable opening state and cannot become a world
+/// register until next-opening labor and normal planning have been resolved.
+///
+/// # Errors
+/// Returns the same schema, route, conservation, bound or arithmetic refusals
+/// as the one-shot transition, leaving the opening state unchanged.
+pub fn close_material_period(
+    opening: &MaterialCircuitState,
+) -> Result<ClosedMaterialPeriod, MaterialCircuitError> {
+    close_material_period_with_aid(opening, &[])
+}
+
+/// Resolve authenticated previous-period household gifts in the ordinary close.
+/// # Errors
+/// Refuses stale/changed authority or any physical, monetary or time invariant.
+/// All effects remain detached until the caller publishes the complete period.
+pub fn close_material_period_with_aid(
+    opening: &MaterialCircuitState,
+    aid_inputs: &[crate::AidResolveInput],
+) -> Result<ClosedMaterialPeriod, MaterialCircuitError> {
+    close_material_period_with_support(opening, aid_inputs, &[])
+}
+
+pub(crate) struct FundedProductionReceipts {
+    finance: crate::financial::FinancialClose,
+    household_demand: Vec<crate::HouseholdDemandReceipt>,
+    services: crate::services::ServiceClose,
+    production: ProductionStageReceipts,
+}
+
+pub(crate) fn close_funded_production(
+    opening: &MaterialCircuitState,
+    state: &mut MaterialCircuitState,
+    costs: &mut CostClose,
+    money_transfers: &mut Vec<crate::MoneyTransferReceipt>,
+    wage_accruals: &mut Vec<crate::WageAccrualReceipt>,
+) -> Result<FundedProductionReceipts, MaterialCircuitError> {
+    crate::payments::settle_deliveries(state, money_transfers)?;
+    crate::recurring::firms::retire_resolved_purchases(state)?;
+    rebuild_backlog(state);
+    let finance = crate::financial::FinancialClose::opening(state, costs, money_transfers)?;
+    let attendance = crate::payments::fund_attendance(state, money_transfers, wage_accruals)?;
+    costs.admit_attendance(attendance);
+    let household_demand = crate::recurring::admit_household_orders(state, money_transfers)?;
+    let mut services = crate::services::ServiceClose::new(state, money_transfers)?;
+    let productive =
+        execute_production_stages(opening, state, costs, &mut services, money_transfers)?;
+    Ok(FundedProductionReceipts {
+        finance,
+        household_demand,
+        services,
+        production: productive,
+    })
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct HouseholdSupportInputs<'a> {
+    collections: &'a [crate::CollectionResolveInput],
+    aid: &'a [crate::AidReceipt],
+}
+
+pub(crate) fn close_household_finance(
+    state: &mut MaterialCircuitState,
+    costs: &mut CostClose,
+    services: &crate::services::ServiceClose,
+    wage_accruals: &[crate::WageAccrualReceipt],
+    finance: &mut crate::financial::FinancialClose,
+    money_transfers: &mut Vec<crate::MoneyTransferReceipt>,
+    support: HouseholdSupportInputs<'_>,
+) -> Result<(HouseholdCloseReceipts, Vec<crate::CollectionReceipt>), MaterialCircuitError> {
+    let households = close_household_reproduction(state, costs, services, wage_accruals)?;
+    finance.collect_taxes(state, costs, money_transfers)?;
+    let collections = crate::collection::close(
+        support.collections,
+        state,
+        costs,
+        money_transfers,
+        crate::collection::CollectionEvidence {
+            consumption: &households.consumption,
+            services: &services.household,
+            time: &households.time,
+            taxes: &finance.taxes,
+            contributions: &finance.contributions,
+            aid: support.aid,
+        },
+    )?;
+    finance.distribute(state, costs, money_transfers)?;
+    Ok((households, collections))
+}
+
+/// Close authenticated aid and voluntary collection under one detached period.
+/// # Errors
+/// Refuses changed authority, protected reproduction, or invalid actual evidence.
+pub fn close_material_period_with_support(
+    opening: &MaterialCircuitState,
+    aid_inputs: &[crate::AidResolveInput],
+    collection_inputs: &[crate::CollectionResolveInput],
+) -> Result<ClosedMaterialPeriod, MaterialCircuitError> {
+    let close = begin_close(opening)?;
+    let (mut state, mut costs) = (close.state, close.costs);
+    let (mut aid_receipts, mut money_transfers) = (close.aid_receipts, close.money_transfers);
+    let mut dispatches = Vec::new();
+    let mut wage_accruals = Vec::new();
+    let mut funded = close_funded_production(
+        opening,
+        &mut state,
+        &mut costs,
+        &mut money_transfers,
+        &mut wage_accruals,
+    )?;
+    let (mut outbound, procurement) = dispatch_and_replenish(
+        &mut state,
+        &mut dispatches,
+        &mut funded.household_demand,
+        &mut money_transfers,
+        &mut costs,
+        AidResolve {
+            inputs: aid_inputs,
+            services: &funded.services.household,
+            receipts: &mut aid_receipts,
+        },
+    )?;
+    let (households, collections) = close_household_finance(
+        &mut state,
+        &mut costs,
+        &funded.services,
+        &wage_accruals,
+        &mut funded.finance,
+        &mut money_transfers,
+        HouseholdSupportInputs {
+            collections: collection_inputs,
+            aid: &aid_receipts,
+        },
+    )?;
+    let next_period = following_period(&state)?;
+    let investment = crate::equipment::invest(&mut state, &costs, &mut money_transfers)?;
+    funded.services.plan(&mut state, next_period)?;
+    let plans = next_plans(
+        &mut state,
+        &dispatches,
+        &outbound,
+        &funded.household_demand,
+        funded.production.maintenance.as_ref(),
+        next_period,
+        &costs,
+    )?;
+    let settled = finish_close_accounting(
+        opening,
+        &mut state,
+        costs,
+        &mut aid_receipts,
+        &mut outbound,
+        &mut dispatches,
+    )?;
+    Ok(ClosedMaterialPeriod {
+        next_period,
+        transition: MaterialCircuitTransition {
+            collections,
+            aid: aid_receipts,
+            aid_contributions: settled.aid_contributions,
+            household_time: households.time,
+            installation: funded.production.installation,
+            installation_decisions: funded.production.installation_decisions,
+            equipment_wear: settled.equipment_wear,
+            investment,
+            public_budgets: funded.finance.public_budgets,
+            taxes: funded.finance.taxes,
+            distributions: funded.finance.distributions,
+            contributions: funded.finance.contributions,
+            staffing_members: vec![],
+            member_labor_use: households.member_labor_use,
+            service_performance: funded.services.performance,
+            household_services: funded.services.household,
+            service_markets: funded.services.markets,
+            service_outputs: funded.services.outputs,
+            income: settled.income,
+            state,
+            household_demand: funded.household_demand,
+            household_consumption: households.consumption,
+            procurement,
+            production_plans: plans.production,
+            prices: plans.prices,
+            money_transfers,
+            wage_accruals,
+            labor_use: households.labor_use,
+            production: funded.production.production,
+            dispatches,
+            losses: close.due.losses,
+            arrivals: close.due.arrivals,
+            deliveries: close.due.deliveries,
+            realizations: close.due.realizations,
+            handling: outbound.handling,
+            local_fulfillments: outbound.local_fulfillments,
+            local_transfers: outbound.local_transfers,
+            maintenance: funded.production.maintenance,
+        },
+    })
+}
+
+pub(crate) fn following_period(state: &MaterialCircuitState) -> Result<u64, MaterialCircuitError> {
+    state
+        .period
+        .checked_add(1)
+        .ok_or(MaterialCircuitError::Arithmetic)
+}
+
+pub(crate) struct FinalAccountingReceipts {
+    equipment_wear: Vec<crate::EquipmentWearReceipt>,
+    income: Vec<crate::IncomeReceipt>,
+    aid_contributions: Vec<crate::HouseholdContributionUse>,
+}
+
+pub(crate) fn finish_close_accounting(
+    opening: &MaterialCircuitState,
+    state: &mut MaterialCircuitState,
+    mut costs: CostClose,
+    aid_receipts: &mut [crate::AidReceipt],
+    outbound: &mut outbound::OutboundReceipts,
+    dispatches: &mut [RoutedDispatchReceipt],
+) -> Result<FinalAccountingReceipts, MaterialCircuitError> {
+    crate::recurring::firms::retire_resolved_purchases(state)?;
+    rebuild_backlog(state);
+    canonicalize_outbound_receipts(outbound, dispatches);
+    crate::payments::conserved(opening, state)?;
+    let mut equipment_wear = std::mem::take(&mut costs.wear_receipts);
+    equipment_wear.sort_by_key(|r| (r.process_id, r.cohort_id));
+    aid_receipts.sort_by_key(|r| (r.commitment_id, r.outcome as u8));
+    crate::aid::validate_receipts(state, aid_receipts)?;
+    let income = costs.finish(state)?;
+    let aid_contributions = crate::aid::contribution_uses(state, aid_receipts)?;
+    Ok(FinalAccountingReceipts {
+        equipment_wear,
+        income,
+        aid_contributions,
+    })
+}
+
+pub(crate) fn refund_lost_aid(
+    state: &mut MaterialCircuitState,
+    mandate: &crate::AidMandate,
+    lot: &crate::AidFreightLot,
+    lost_quantity: u64,
+    lost_cost: babylon_kernel::currency::Currency,
+    money: &mut Vec<crate::MoneyTransferReceipt>,
+    receipts: &mut Vec<crate::AidReceipt>,
+) -> Result<(), MaterialCircuitError> {
+    let crate::CircuitAccounting::Monetary(economy) = &mut state.accounting else {
+        return Err(MaterialCircuitError::AidInvariant);
+    };
+    let cumulative = economy
+        .book
+        .aid_reserve(lot.commitment_id)?
+        .refunded
+        .checked_add(lost_quantity)
+        .ok_or(MaterialCircuitError::Arithmetic)?;
+    money.push(
+        economy
+            .book
+            .resolve_aid(lot.commitment_id, cumulative, true)?,
+    );
+    let mut receipt = crate::aid::receipt(
+        mandate,
+        lot.commitment_id,
+        state.period,
+        crate::AidOutcome::Lost,
+        crate::aid::AidFlow {
+            quantity: lost_quantity,
+            carrying: lost_cost,
+            cash: crate::aid::cash_amount(lost_quantity, mandate)?,
+            hours: 0,
+        },
+    );
+    receipt.dispatch_period = lot.dispatch_period;
+    receipts.push(receipt);
+    Ok(())
+}
+
+pub(crate) fn close_due_aid(
+    state: &mut MaterialCircuitState,
+    costs: &mut CostClose,
+    money: &mut Vec<crate::MoneyTransferReceipt>,
+    receipts: &mut Vec<crate::AidReceipt>,
+) -> Result<(), MaterialCircuitError> {
+    let (opening, mandates) = match &mut state.accounting {
+        crate::CircuitAccounting::PhysicalControl => return Ok(()),
+        crate::CircuitAccounting::Monetary(economy) => (
+            std::mem::take(&mut economy.aid.freight),
+            economy.aid.mandates.clone(),
+        ),
+    };
+    let mut remaining = Vec::new();
+    for mut lot in opening {
+        if lot.stage_arrival_period != state.period {
+            remaining.push(lot);
+            continue;
+        }
+        let mandate = mandates
+            .binary_search_by_key(&lot.mandate_id, |m| m.id)
+            .ok()
+            .map(|i| &mandates[i])
+            .ok_or(MaterialCircuitError::AidAuthority)?;
+        let FreightStep {
+            lost,
+            retained,
+            next_leg: next,
+            ..
+        } = freight_step(state, lot.route_id, lot.current_stage_index, lot.quantity)?;
+        let (lost_cost, retained_cost) = costs.aid_freight(&lot, lost, next.is_none())?;
+        if lost > 0 {
+            refund_lost_aid(state, mandate, &lot, lost, lost_cost, money, receipts)?;
+        }
+        if let Some((stage, travel)) = next.filter(|_| retained > 0) {
+            lot.current_stage_index = stage;
+            lot.stage_arrival_period = state
+                .period
+                .checked_add(u64::from(travel))
+                .ok_or(MaterialCircuitError::Arithmetic)?;
+            lot.quantity = retained;
+            remaining.push(lot);
+            continue;
+        }
+        if retained > 0 {
+            let cash = crate::aid::cash_amount(retained, mandate)?;
+            crate::aid::grant_household_stock(state, mandate, retained)?;
+            costs.grant_aid(mandate, retained_cost, cash)?;
+            let crate::CircuitAccounting::Monetary(economy) = &mut state.accounting else {
+                return Err(MaterialCircuitError::AidInvariant);
+            };
+            let cumulative = economy
+                .book
+                .aid_reserve(lot.commitment_id)?
+                .granted
+                .checked_add(retained)
+                .ok_or(MaterialCircuitError::Arithmetic)?;
+            money.push(
+                economy
+                    .book
+                    .resolve_aid(lot.commitment_id, cumulative, false)?,
+            );
+            let mut receipt = crate::aid::receipt(
+                mandate,
+                lot.commitment_id,
+                state.period,
+                crate::AidOutcome::Granted,
+                crate::aid::AidFlow {
+                    quantity: retained,
+                    carrying: retained_cost,
+                    cash,
+                    hours: 0,
+                },
+            );
+            receipt.dispatch_period = lot.dispatch_period;
+            receipts.push(receipt);
+        }
+        let crate::CircuitAccounting::Monetary(economy) = &mut state.accounting else {
+            return Err(MaterialCircuitError::AidInvariant);
+        };
+        economy.book.retire_aid(lot.commitment_id)?;
+    }
+    if let crate::CircuitAccounting::Monetary(economy) = &mut state.accounting {
+        economy.aid.freight = remaining;
+    }
+    Ok(())
+}
+
+pub(crate) struct CloseOpening {
+    state: MaterialCircuitState,
+    costs: CostClose,
+    aid_receipts: Vec<crate::AidReceipt>,
+    money_transfers: Vec<crate::MoneyTransferReceipt>,
+    due: DueFreightReceipts,
+}
+
+pub(crate) fn begin_close(
+    opening: &MaterialCircuitState,
+) -> Result<CloseOpening, MaterialCircuitError> {
+    let mut state = canonical_state(opening)?;
+    let mut costs = CostClose::new(&state);
+    let mut aid_receipts = Vec::new();
+    let mut money_transfers = Vec::new();
+    close_due_aid(
+        &mut state,
+        &mut costs,
+        &mut money_transfers,
+        &mut aid_receipts,
+    )?;
+    let due = close_due_freight(&mut state, &mut costs)?;
+    Ok(CloseOpening {
+        state,
+        costs,
+        aid_receipts,
+        money_transfers,
+        due,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::outbound::ensure_resource_group_count;
+    use crate::{MaterialCircuitError, MAX_FREIGHT_RESOURCE_REQUESTS};
+
+    #[test]
+    fn resource_group_ceiling_accepts_maximum_and_refuses_plus_one() {
+        assert_eq!(
+            ensure_resource_group_count(MAX_FREIGHT_RESOURCE_REQUESTS),
+            Ok(())
+        );
+        assert_eq!(
+            ensure_resource_group_count(MAX_FREIGHT_RESOURCE_REQUESTS + 1),
+            Err(MaterialCircuitError::RowLimit)
+        );
+    }
+}

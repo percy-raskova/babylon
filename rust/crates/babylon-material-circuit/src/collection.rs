@@ -38,6 +38,7 @@ pub enum CollectionOutcome {
     DuePaymentUnmet = 6,
     InsufficientCash = 7,
     InsufficientContributionTime = 8,
+    PartiallyCollected = 9,
 }
 impl TryFrom<u8> for CollectionOutcome {
     type Error = MaterialCircuitError;
@@ -51,6 +52,7 @@ impl TryFrom<u8> for CollectionOutcome {
             6 => Ok(Self::DuePaymentUnmet),
             7 => Ok(Self::InsufficientCash),
             8 => Ok(Self::InsufficientContributionTime),
+            9 => Ok(Self::PartiallyCollected),
             _ => Err(MaterialCircuitError::CollectionInvariant),
         }
     }
@@ -101,7 +103,10 @@ impl CollectionReceipt {
     /// # Errors
     /// Refuses malformed periods, quantities, references and fabricated refusal work.
     pub fn validate(&self) -> Result<()> {
-        let paid = self.outcome == CollectionOutcome::Collected;
+        let paid = matches!(
+            self.outcome,
+            CollectionOutcome::Collected | CollectionOutcome::PartiallyCollected
+        );
         if self.period == 0
             || self.admitted_period.checked_add(1) != Some(self.period)
             || [
@@ -116,9 +121,11 @@ impl CollectionReceipt {
             || self.actor_id == 0
             || self.contributor_id == 0
             || self.requested.micro_units() <= 0
+            || (self.outcome == CollectionOutcome::Collected && self.collected != self.requested)
+            || (self.outcome == CollectionOutcome::PartiallyCollected
+                && (self.collected.micro_units() <= 0 || self.collected >= self.requested))
             || (paid
-                && (self.collected != self.requested
-                    || self.performed_hours == 0
+                && (self.performed_hours == 0
                     || self.transfer_ordinal.is_none()
                     || self.transfer_ordinal == Some(u32::MAX)
                     || self.contribution_use_id
@@ -144,7 +151,11 @@ impl CollectionReceipt {
     /// Borrow the exact shared use already consumed by material close.
     #[must_use]
     pub fn contribution_use(&self) -> Option<HouseholdContributionUse> {
-        (self.outcome == CollectionOutcome::Collected).then_some(HouseholdContributionUse {
+        matches!(
+            self.outcome,
+            CollectionOutcome::Collected | CollectionOutcome::PartiallyCollected
+        )
+        .then_some(HouseholdContributionUse {
             use_id: self.contribution_use_id,
             principal_id: self.donor,
             actor_id: self.actor_id,
@@ -353,12 +364,35 @@ fn incoming_gifts(money: &[MoneyTransferReceipt], donor: FinalDemandPrincipalId)
                 .ok_or(MaterialCircuitError::Arithmetic)
         })
 }
+// This boundary subtracts the exact protected floor and real incoming gift
+// postings before clamping. Its returned amount is frozen before distribution.
+fn eligible_cash(
+    input: &CollectionResolveInput,
+    actual: Currency,
+    money: &[MoneyTransferReceipt],
+) -> Result<Currency> {
+    let cash = actual
+        .micro_units()
+        .checked_sub(incoming_gifts(money, input.donor)?)
+        .and_then(|value| value.checked_sub(input.protected_cash_floor.micro_units()))
+        .ok_or(MaterialCircuitError::Arithmetic)?;
+    Ok(Currency::from_micro_units(
+        cash.max(0).min(input.requested.micro_units()),
+    ))
+}
+
+#[derive(Clone, Copy)]
+struct FrozenCollection {
+    refusal: Option<CollectionOutcome>,
+    amount: Currency,
+}
+
 fn frozen_outcomes(
     inputs: &[CollectionResolveInput],
     state: &MaterialCircuitState,
     money: &[MoneyTransferReceipt],
     facts: &CollectionEvidence<'_>,
-) -> Result<Vec<Option<CollectionOutcome>>> {
+) -> Result<Vec<FrozenCollection>> {
     // Freeze eligibility before any collection and ownership payout. Even an
     // identical credit later in the tick cannot change this source snapshot.
     let mut frozen = Vec::with_capacity(inputs.len());
@@ -368,13 +402,11 @@ fn frozen_outcomes(
         let CircuitAccounting::Monetary(e) = &state.accounting else {
             return Err(MaterialCircuitError::CollectionInvariant);
         };
-        let cash = e
-            .book
-            .cash(AccountId::Household(input.donor))?
-            .micro_units()
-            .checked_sub(incoming_gifts(money, input.donor)?)
-            .and_then(|value| value.checked_sub(input.protected_cash_floor.micro_units()))
-            .ok_or(MaterialCircuitError::Arithmetic)?;
+        let cash = eligible_cash(
+            input,
+            e.book.cash(AccountId::Household(input.donor))?,
+            money,
+        )?;
         let time = one(facts
             .time
             .iter()
@@ -398,7 +430,7 @@ fn frozen_outcomes(
             Some(CollectionOutcome::CashConsentRefused)
         } else if let Some(reason) = protected(state, input, facts)? {
             Some(reason)
-        } else if cash < input.requested.micro_units() {
+        } else if cash.micro_units() == 0 {
             Some(CollectionOutcome::InsufficientCash)
         } else if residual < input.collection_hours || input.pledged_hours < input.collection_hours
         {
@@ -406,7 +438,10 @@ fn frozen_outcomes(
         } else {
             None
         };
-        frozen.push(outcome);
+        frozen.push(FrozenCollection {
+            refusal: outcome,
+            amount: cash,
+        });
     }
     Ok(frozen)
 }
@@ -426,7 +461,7 @@ pub(crate) fn close(
     }
     let frozen = frozen_outcomes(inputs, state, money, &facts)?;
     let mut result = Vec::with_capacity(inputs.len());
-    for (input, outcome) in inputs.iter().zip(frozen) {
+    for (input, frozen) in inputs.iter().zip(frozen) {
         let mut row = CollectionReceipt {
             period: state.period,
             admitted_period: input.admitted_period,
@@ -442,11 +477,17 @@ pub(crate) fn close(
             requested: input.requested,
             collected: Currency::from_micro_units(0),
             performed_hours: 0,
-            outcome: outcome.unwrap_or(CollectionOutcome::Collected),
+            outcome: frozen
+                .refusal
+                .unwrap_or(if frozen.amount == input.requested {
+                    CollectionOutcome::Collected
+                } else {
+                    CollectionOutcome::PartiallyCollected
+                }),
             transfer_ordinal: None,
             contribution_use_id: [0; 32],
         };
-        if outcome.is_none() {
+        if frozen.refusal.is_none() {
             let ordinal = u32::try_from(money.len()).map_err(|_| MaterialCircuitError::RowLimit)?;
             if ordinal == u32::MAX {
                 return Err(MaterialCircuitError::RowLimit);
@@ -457,15 +498,15 @@ pub(crate) fn close(
             money.push(e.book.transfer_cash(
                 AccountId::Household(input.donor),
                 AccountId::Organization(input.recipient),
-                input.requested,
+                frozen.amount,
                 CashTransferPurpose::MutualAid,
             )?);
             costs.cash_gift(
                 AccountId::Household(input.donor),
                 AccountId::Organization(input.recipient),
-                input.requested,
+                frozen.amount,
             )?;
-            row.collected = input.requested;
+            row.collected = frozen.amount;
             row.performed_hours = input.collection_hours;
             row.transfer_ordinal = Some(ordinal);
             row.contribution_use_id = collection_contribution_id(
@@ -482,4 +523,80 @@ pub(crate) fn close(
         result.push(row);
     }
     Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{CashAccount, MonetaryBook};
+
+    #[test]
+    fn protective_cash_source_control_excludes_real_incoming_gift_before_clamping() {
+        let input = CollectionResolveInput {
+            original_commitment_id: [1; 32],
+            command_nonce: [2; 16],
+            admitted_period: 0,
+            resolve_period: 1,
+            mandate_id: [3; 32],
+            source_hash: [4; 32],
+            actor_id: 101,
+            contributor_id: 201,
+            donor: FinalDemandPrincipalId::from_bytes([5; 32]),
+            recipient: OrganizationAccountId::from_bytes([6; 32]),
+            labor_unit_id: UnitId::from_bytes([7; 32]),
+            cash_consent: true,
+            requested: Currency::from_micro_units(8),
+            protected_cash_floor: Currency::from_micro_units(1),
+            collection_hours: 2,
+            pledged_hours: 2,
+        };
+        let donor = AccountId::Household(input.donor);
+        let organization = AccountId::Organization(input.recipient);
+        let mut book = MonetaryBook::open(vec![
+            CashAccount {
+                id: donor,
+                cash: Currency::from_micro_units(3),
+            },
+            CashAccount {
+                id: organization,
+                cash: Currency::from_micro_units(9),
+            },
+        ])
+        .unwrap();
+        let total = book.total_cash_and_reserves().unwrap();
+        let gift = book
+            .transfer_cash(
+                organization,
+                donor,
+                Currency::from_micro_units(3),
+                CashTransferPurpose::MutualAid,
+            )
+            .unwrap();
+        assert_eq!(book.total_cash_and_reserves().unwrap(), total);
+        assert_eq!(book.cash(donor).unwrap().micro_units(), 6);
+        let money = vec![gift];
+        // This is an isolated protective source control. Captured aid donor and
+        // recipient sets stay disjoint; it does not claim an admitted reverse aid.
+        let frozen = eligible_cash(&input, book.cash(donor).unwrap(), &money).unwrap();
+        assert_eq!(frozen.micro_units(), 2);
+        let later = book
+            .transfer_cash(
+                organization,
+                donor,
+                Currency::from_micro_units(3),
+                CashTransferPurpose::OwnershipDistribution,
+            )
+            .unwrap();
+        assert_eq!(later.credit.delta.micro_units(), 3);
+        assert_eq!(book.cash(donor).unwrap().micro_units(), 9);
+        assert_eq!(frozen.micro_units(), 2);
+        let mut floor = input;
+        floor.protected_cash_floor = Currency::from_micro_units(8);
+        assert_eq!(
+            eligible_cash(&floor, Currency::from_micro_units(6), &money)
+                .unwrap()
+                .micro_units(),
+            0
+        );
+    }
 }

@@ -29,7 +29,7 @@ OBSERVER_CAPTURE_FILTER = "session=debug,babylon_client=debug"
 # The runtime's database statement timeout is 120 seconds. EOF/Stop gets time
 # to finish a transaction before any exact-child termination is attempted.
 RUNTIME_SHUTDOWN_GRACE_SECONDS = 150
-RUNTIME_SESSION_PROTOCOL_VERSION: int = 10
+RUNTIME_SESSION_PROTOCOL_VERSION: int = 11
 ADVANCE_STAGES = (
     "preparing_commitments",
     "resolving_economy",

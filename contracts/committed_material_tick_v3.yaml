@@ -376,7 +376,10 @@ receipts:
   collection_row_limit: 1
   collection_outcome_tag: {collected: 1, cash_consent_refused: 2, protected_consumption_unmet: 3,
                            protected_service_unmet: 4, protected_closing_stock_unmet: 5,
-                           due_payment_unmet: 6, insufficient_cash: 7, insufficient_contribution_time: 8}
+                           due_payment_unmet: 6, insufficient_cash: 7, insufficient_contribution_time: 8,
+                           partially_collected: 9}
+  collection_success: Collected equals the positive authorized cap; partially_collected is positive and below
+    the cap. Both consume the captured fixed hours once and join the same actual cash transfer and gift accounts.
   collection_transfer_ordinal: u32_big_endian; maximum_u32_means_no_posting_on_zero_refusal.
   collection_refusal: Explicit zero collected cash, zero performed hours, null ordinal and zero use identity.
   collection_join: Match original retained command and exact MutualAid household-to-organization cash ordinal;

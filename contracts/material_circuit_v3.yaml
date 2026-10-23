@@ -333,8 +333,11 @@ period_close:
     target, due tax and capital payment; existing purchase, payroll and aid reserves are never free cash
   - exclude earlier current-period MutualAid and aid cash grant credits from the frozen collection source;
     an ownership payout cannot retroactively fund this period's collection
-  - transfer one all-or-zero capped household cash gift to its existing aid mandate's organizational payer using
-    Cash(MutualAid); close gift expense and income once and retain its exact canonical transfer ordinal
+  - after independent cash consent, protected needs and sufficient fixed collection time pass, transfer
+    min(authorized cap, max(0, frozen eligible cash - protected floor)) to the existing organizational payer;
+    zero available cash refuses, a positive amount below the cap is partially_collected, and the cap is collected
+  - use Cash(MutualAid) for the actual gift; close gift expense and income once for that same amount and retain
+    its exact canonical transfer ordinal; full and partial gifts consume the captured fixed hours once
   - consume whole actual collection hours from the same finite donor household contribution capacity after
     physical aid fulfillment; an acknowledgment cannot consume those hours again, and it reduces the donor
     political promise once before delayed coordination

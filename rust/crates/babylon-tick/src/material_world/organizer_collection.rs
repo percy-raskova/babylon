@@ -79,6 +79,7 @@ pub(super) fn fact(row: &CollectionReceipt) -> OrganizerCollectionFact {
         performed_hours: row.performed_hours,
         outcome: match row.outcome {
             CollectionOutcome::Collected => OrganizerCollectionOutcome::Collected,
+            CollectionOutcome::PartiallyCollected => OrganizerCollectionOutcome::PartiallyCollected,
             CollectionOutcome::CashConsentRefused => OrganizerCollectionOutcome::CashConsentRefused,
             CollectionOutcome::ProtectedConsumptionUnmet => {
                 OrganizerCollectionOutcome::ProtectedConsumptionUnmet

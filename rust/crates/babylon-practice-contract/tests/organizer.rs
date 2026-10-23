@@ -1535,3 +1535,40 @@ fn omitted_collection_terms_are_refused_not_inferred_from_aid() {
     value.as_object_mut().unwrap().remove("collection");
     assert!(serde_json::from_value::<OrganizerConfig>(value).is_err());
 }
+
+#[test]
+fn partial_collection_epoch_refuses_previous_captures_and_roundtrips_current() {
+    let captured = config();
+    let opening = initial_organizer_state(&captured).unwrap();
+    assert_eq!(ORGANIZER_SCHEMA_VERSION, 7);
+    let config_bytes = encode_organizer_config(&captured).unwrap();
+    let state_bytes = encode_organizer_state(&opening).unwrap();
+    assert!(config_bytes.starts_with(b"babylon.organizer-config.v7\0"));
+    assert!(state_bytes.starts_with(b"babylon.organizer-state.v5\0"));
+    assert_eq!(decode_organizer_config(&config_bytes).unwrap(), captured);
+    assert_eq!(decode_organizer_state(&state_bytes).unwrap(), opening);
+    let mut previous_config = captured.clone();
+    previous_config.schema_version = 6;
+    let mut previous_state = opening.clone();
+    previous_state.schema_version = 6;
+    let mut previous_config_bytes = b"babylon.organizer-config.v6\0".to_vec();
+    previous_config_bytes.extend(serde_json::to_vec(&previous_config).unwrap());
+    let mut previous_state_bytes = b"babylon.organizer-state.v4\0".to_vec();
+    previous_state_bytes.extend(serde_json::to_vec(&previous_state).unwrap());
+    assert_eq!(
+        validate_organizer_config(&previous_config),
+        Err(OrganizerError::UnsupportedSchema)
+    );
+    assert_eq!(
+        validate_organizer_state(&previous_state),
+        Err(OrganizerError::UnsupportedSchema)
+    );
+    assert_eq!(
+        decode_organizer_config(&previous_config_bytes),
+        Err(OrganizerError::Codec)
+    );
+    assert_eq!(
+        decode_organizer_state(&previous_state_bytes),
+        Err(OrganizerError::Codec)
+    );
+}

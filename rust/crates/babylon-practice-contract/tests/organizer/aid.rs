@@ -968,19 +968,19 @@ fn later_support_cannot_repeat_dispatch_postings_or_foreign_actor_authority() {
 
 #[test]
 fn current_organizer_refuses_prior_schema_even_without_aid() {
-    assert_eq!(ORGANIZER_SCHEMA_VERSION, 6);
+    assert_eq!(ORGANIZER_SCHEMA_VERSION, 7);
     let mut prior = config();
-    prior.schema_version = 5;
+    prior.schema_version = 6;
     assert_eq!(
         validate_organizer_config(&prior),
         Err(OrganizerError::UnsupportedSchema)
     );
-    let mut config_bytes = b"babylon.organizer-config.v5\0".to_vec();
+    let mut config_bytes = b"babylon.organizer-config.v6\0".to_vec();
     config_bytes.extend_from_slice(&serde_json::to_vec(&prior).unwrap());
     assert!(decode_organizer_config(&config_bytes).is_err());
     let mut state = initial_organizer_state(&config()).unwrap();
-    state.schema_version = 5;
-    let mut state_bytes = b"babylon.organizer-state.v3\0".to_vec();
+    state.schema_version = 6;
+    let mut state_bytes = b"babylon.organizer-state.v4\0".to_vec();
     state_bytes.extend_from_slice(&serde_json::to_vec(&state).unwrap());
     assert!(decode_organizer_state(&state_bytes).is_err());
 }

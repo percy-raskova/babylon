@@ -23,6 +23,7 @@ pub struct OrganizerCollectionMandate {
 #[serde(rename_all = "snake_case")]
 pub enum OrganizerCollectionOutcome {
     Collected,
+    PartiallyCollected,
     CashConsentRefused,
     ProtectedConsumptionUnmet,
     ProtectedServiceUnmet,
@@ -150,7 +151,10 @@ pub fn validate_organizer_collection_fact(
         .as_ref()
         .ok_or(OrganizerError::CollectionSupportMismatch)?;
     let command = &commitment.command;
-    let paid = fact.outcome == OrganizerCollectionOutcome::Collected;
+    let paid = matches!(
+        fact.outcome,
+        OrganizerCollectionOutcome::Collected | OrganizerCollectionOutcome::PartiallyCollected
+    );
     if command.choice != OrganizerChoice::Collect
         || command.campaign_id != config.campaign_id
         || command.actor_id != row.actor_id
@@ -169,9 +173,13 @@ pub fn validate_organizer_collection_fact(
         || fact.organization_account_id != row.organization_account_id
         || fact.labor_unit_id != row.labor_unit_id
         || fact.requested_cash_micros != row.maximum_cash_micros
+        || (fact.outcome == OrganizerCollectionOutcome::Collected
+            && fact.collected_cash_micros != row.maximum_cash_micros)
+        || (fact.outcome == OrganizerCollectionOutcome::PartiallyCollected
+            && (fact.collected_cash_micros <= 0
+                || fact.collected_cash_micros >= row.maximum_cash_micros))
         || (paid
             && (row.cash_consent != OrganizerGiftConsent::Accept
-                || fact.collected_cash_micros != row.maximum_cash_micros
                 || fact.performed_hours != row.collection_hours
                 || fact.transfer_ordinal.is_none()
                 || fact.transfer_ordinal == Some(u32::MAX)
@@ -193,7 +201,10 @@ pub(super) fn acknowledge_collection(
     receipt: &mut OrganizerReceipt,
 ) -> Result<OrganizerCollectionResolution, OrganizerError> {
     validate_organizer_collection_fact(config, commitment, fact)?;
-    receipt.outcome = if fact.outcome == OrganizerCollectionOutcome::Collected {
+    receipt.outcome = if matches!(
+        fact.outcome,
+        OrganizerCollectionOutcome::Collected | OrganizerCollectionOutcome::PartiallyCollected
+    ) {
         OrganizerOutcome::CollectionCompleted
     } else {
         OrganizerOutcome::CollectionRefused
@@ -351,7 +362,10 @@ pub(super) fn validate_collection_state_shape(
         validate_organizer_commitment(&row.commitment)?;
         validate_organizer_receipt(&row.practice)?;
         let fact = &row.fact;
-        let paid = fact.outcome == OrganizerCollectionOutcome::Collected;
+        let paid = matches!(
+            fact.outcome,
+            OrganizerCollectionOutcome::Collected | OrganizerCollectionOutcome::PartiallyCollected
+        );
         if row.commitment.command.choice != OrganizerChoice::Collect
             || row.practice.choice != OrganizerChoice::Collect
             || fact.period == 0
@@ -371,9 +385,13 @@ pub(super) fn validate_collection_state_shape(
                 fact.labor_unit_id,
             ]
             .contains(&[0; 32])
+            || (fact.outcome == OrganizerCollectionOutcome::Collected
+                && fact.collected_cash_micros != fact.requested_cash_micros)
+            || (fact.outcome == OrganizerCollectionOutcome::PartiallyCollected
+                && (fact.collected_cash_micros <= 0
+                    || fact.collected_cash_micros >= fact.requested_cash_micros))
             || (paid
-                && (fact.collected_cash_micros != fact.requested_cash_micros
-                    || fact.performed_hours == 0
+                && (fact.performed_hours == 0
                     || fact.transfer_ordinal.is_none()
                     || fact.transfer_ordinal == Some(u32::MAX)
                     || fact.contribution_use_id != contribution_id(fact)))

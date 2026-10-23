@@ -420,7 +420,8 @@ fn malformed_actions_versions_campaigns_and_overlong_frames_cannot_advance() {
         (7, "campaign", RuntimeSessionErrorCode::UnsupportedVersion),
         (8, "campaign", RuntimeSessionErrorCode::UnsupportedVersion),
         (9, "campaign", RuntimeSessionErrorCode::UnsupportedVersion),
-        (11, "campaign", RuntimeSessionErrorCode::UnsupportedVersion),
+        (10, "campaign", RuntimeSessionErrorCode::UnsupportedVersion),
+        (12, "campaign", RuntimeSessionErrorCode::UnsupportedVersion),
         (
             RUNTIME_SESSION_PROTOCOL_VERSION,
             "other",

@@ -1,4 +1,13 @@
 use babylon_persistence::{
+    national_cohorts::national_cohort_reference,
+    national_economy::NationalGamePolicy,
+    national_household_allocation::HouseholdBudgetKey,
+    national_household_refinement::{
+        HouseholdLeafMargins, HouseholdRefinementError, HouseholdRefinementSpec,
+    },
+    national_resident_allocation::allocate_home_county,
+};
+use babylon_persistence::{
     national_counties::national_county_reference,
     national_household_allocation::allocate_households,
     national_household_refinement::refine_households,
@@ -42,15 +51,6 @@ fn empty_refinements_preserve_every_source_budget_and_identity() {
 
 #[test]
 fn designed_wayne_child_preserves_source_margins_and_sparse_workplace_mode_totals() {
-    use babylon_persistence::{
-        national_cohorts::national_cohort_reference,
-        national_economy::NationalGamePolicy,
-        national_household_allocation::HouseholdBudgetKey,
-        national_household_refinement::{
-            HouseholdLeafMargins, HouseholdRefinementError, HouseholdRefinementSpec,
-        },
-        national_resident_allocation::allocate_home_county,
-    };
     let counties = national_county_reference().unwrap();
     let workforce = national_resident_workforce_reference().unwrap();
     let budgets = allocate_households(

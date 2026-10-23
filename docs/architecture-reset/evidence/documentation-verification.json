@@ -1,0 +1,180 @@
+{
+  "schema_version": 1,
+  "verified_at_utc": "2026-10-23T13:03:23.983307+00:00",
+  "repository_head": "99f998e3dffb301a218a8a4e0ed809f440dafef2",
+  "documentation_only": true,
+  "markdown_documents": 10,
+  "checks": {
+    "local_markdown_links": {
+      "result": "pass",
+      "checked": 125,
+      "method": "Resolve each local link from the requested final directory; check actual source/staged destination exists. External URLs and deep-link UI navigation were not re-fetched during this mechanical pass."
+    },
+    "source_identity": {
+      "result": "pass",
+      "files": 55,
+      "manifest": "source-identity.json"
+    },
+    "sql_disposition": {
+      "result": "pass",
+      "current_create_table_declarations": 66,
+      "inventory_rows": 66
+    },
+    "state_disposition": {
+      "result": "pass",
+      "public_fields": 58,
+      "by_struct": {
+        "MaterialCircuitState": 27,
+        "MonetaryCircuit": 8,
+        "OrganizerState": 12,
+        "RecurringEconomy": 11
+      }
+    },
+    "receipt_inventory": {
+      "result": "pass",
+      "rows": 36,
+      "wire_tags": "1..36, unique"
+    },
+    "toml_examples": {
+      "result": "pass",
+      "blocks_parsed": 3,
+      "base_manifest_and_both_defines_digests": "match"
+    },
+    "bsl_bscn_examples": {
+      "result": "static grammar/source review only",
+      "executed": false
+    },
+    "sqlite_schema": {
+      "result": "proposed table/column contract reviewed",
+      "executed": false,
+      "note": "The dossier is not an executable migration or a completed SQLite witness."
+    },
+    "markdownlint": {
+      "result": "pass",
+      "version": "0.47.0",
+      "configuration_repository_relative": ".markdownlint.yaml",
+      "exit_code": 0
+    },
+    "vale": {
+      "result": "style findings remain",
+      "version": "vale version 3.17.0",
+      "exit_code": 1,
+      "error_level_findings": 890,
+      "summary": "vale-summary.json"
+    },
+    "material_review": {
+      "result": "identified contradictions resolved",
+      "scope": [
+        "backend witness versus representation reduction",
+        "historical run identity",
+        "command immutability and cardinality",
+        "durable service state",
+        "history-dependent versus current-index growth",
+        "mandatory saved BSL/BSCN campaign acceptance",
+        "self-contained content capture"
+      ]
+    }
+  },
+  "not_run": [
+    "game implementation",
+    "Cargo or game qualification",
+    "PostgreSQL or SQLite workload",
+    "native game launch",
+    "Sphinx",
+    "cargo doc",
+    "ci:rust"
+  ],
+  "limitations": [
+    "Performance figures remain historical; all target budgets await implementation evidence.",
+    "REA native providers and ELF dependency were unavailable; offline binary/resource inspection and available REA archive inspection are labeled separately.",
+    "This package does not ratify constitutional changes or update Linear status.",
+    "Vale editorial checks are not clean."
+  ],
+  "package_files_excluding_this_record": [
+    {
+      "path": "01-evidence-and-failed-approaches.md",
+      "bytes": 12537,
+      "sha256": "50e58c15b8199a71159ef78a66204b47e19de2b1e7d6802a8e8e1b1145d93b3f"
+    },
+    {
+      "path": "02-victoria-3-analysis.md",
+      "bytes": 14813,
+      "sha256": "9ac353244dcd23737d0d69f0181c3af89fb5b35ae92e6d68f82a02a2087af006"
+    },
+    {
+      "path": "03-bsl-bscn-and-modding.md",
+      "bytes": 25565,
+      "sha256": "e914482905ea421d2f9dca116f0e3af1d2ce4f1cc69a0c53671581c904466b96"
+    },
+    {
+      "path": "04-babylon-current-architecture.md",
+      "bytes": 12693,
+      "sha256": "ad32b34c65c17ea0e334ddd59c429e7bd21c28a89500bed2943e91f3ed5d3d3f"
+    },
+    {
+      "path": "05-data-and-model-contract.md",
+      "bytes": 11349,
+      "sha256": "535c05293c35a63fc548a3ec7008cf72ebed2ad4f752f997e3ec38ad66420c79"
+    },
+    {
+      "path": "06-target-runtime-and-sqlite.md",
+      "bytes": 19288,
+      "sha256": "f5c6a15a3af20ddd2b257674c5b378fb46b73f90413459ce7d1ab1a07d1b960e"
+    },
+    {
+      "path": "07-history-replay-and-archive.md",
+      "bytes": 14456,
+      "sha256": "4ae4be9aef5c30a246aecc5022d6812eba699ef93828289eeebb1bde1617529c"
+    },
+    {
+      "path": "08-implementation-packets.md",
+      "bytes": 21020,
+      "sha256": "ea4b4226b5d592d413c44451364f4d4a7f755238eac9ebd48fa660d405efbca5"
+    },
+    {
+      "path": "09-acceptance-and-governance.md",
+      "bytes": 14650,
+      "sha256": "960a1731e7df29c0eed3ce5a6b76e23d79670372ca95d93d99e079683c4fa1c0"
+    },
+    {
+      "path": "README.md",
+      "bytes": 8768,
+      "sha256": "85f20715c961d03c1927f415da16a30ea46e25c7e02ed25b303f5820d43cb71a"
+    },
+    {
+      "path": "evidence/chat-evidence-index.json",
+      "bytes": 14786,
+      "sha256": "3fee56e51a1a148fe336ab561579558cad8c0e054e45b842488f10a1c10d5cf1"
+    },
+    {
+      "path": "evidence/source-identity.json",
+      "bytes": 12809,
+      "sha256": "1c9a0406049187f9cc36587c1f458d3d03daa3307128e9695d766986b0c7c09b"
+    },
+    {
+      "path": "evidence/storage-receipt-disposition.tsv",
+      "bytes": 13697,
+      "sha256": "a0423f490102b54333f5b79bde97551c10f2e8778a0f723bf17971a9c8d9acc1"
+    },
+    {
+      "path": "evidence/storage-state-field-disposition.tsv",
+      "bytes": 13640,
+      "sha256": "5000873ebb595e6c0b78ab6577f65fa4e48498280fa673358d2a6e4f8cfe9d83"
+    },
+    {
+      "path": "evidence/storage-table-disposition.tsv",
+      "bytes": 20828,
+      "sha256": "55f5c560f0e9c70d283a3c9fbcac16e97c9f7d8381729f53552f6e8e091b8328"
+    },
+    {
+      "path": "evidence/vale-summary.json",
+      "bytes": 6212,
+      "sha256": "0a39add1833140b039ba879f197f2473eaed22f8e19b00916e2bbedd99f1cb40"
+    },
+    {
+      "path": "evidence-victoria/rea-archive-observation.json",
+      "bytes": 8940,
+      "sha256": "f7ad750bc066fc886f604fe75f3292d298c48d1020dd148cac322f9fe4d7ff55"
+    }
+  ]
+}

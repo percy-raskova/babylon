@@ -1,0 +1,368 @@
+{
+  "schema_version": 1,
+  "purpose": "Compact historical evidence for documentation-only architecture handoff; no raw transcripts.",
+  "reviewed_on": "2026-10-23",
+  "timezone": "America/New_York",
+  "root_verified_source_head": "99f998e3dffb301a218a8a4e0ed809f440dafef2",
+  "benchmark_refreshed": false,
+  "trackers_modified": false,
+  "source_modified": false,
+  "method": {
+    "inventory": [
+      "mcp__codex_app__list_threads(limit=50)",
+      "mcp__codex_app__list_archived_threads(limit=50)",
+      "mcp__codex_app__list_archived_threads(limit=50,cursor=<returned cursor>)"
+    ],
+    "targeted_reads": "mcp__codex_app__read_thread(threadId=<registry id>,turnLimit<=10,includeOutputs=false); integration pagination used returned opaque cursors.",
+    "extraction": "Extract selected user messages, agent final/commentary messages and historical Linear comment bodies; do not execute recorded tool arguments.",
+    "coverage": "Ten selected chats; not an exhaustive transcript audit. Older unarchived IDs were recovered from references in inspected chats.",
+    "archive_meaning": "Archive state from current inventories; unarchived does not mean currently running.",
+    "invalid_initial_calls": "Inventory limit100 and a later turnLimit20 were refused; retried within limits. Refusals added no evidence.",
+    "retained_raw_transcripts": false
+  },
+  "threads": [
+    {
+      "id": "01a1663a-af03-7521-8f60-29f533a0bca0",
+      "title": "Catch Babylon dev up and configure",
+      "kind": "codex",
+      "archived": false,
+      "pinned": false,
+      "evidence_period": "2026-10-22/2026-10-23",
+      "read_coverage": "2 recent turns",
+      "evidence": "Director permitted partial unfinished database integration; #999/#1021/#1022 merged; dev reached99f998e3.",
+      "limitation": "Source consolidation did not qualify database design or national play."
+    },
+    {
+      "id": "01a1045d-1ab8-7003-a92c-7e56cbf3a5ae",
+      "title": "Review economic engine design",
+      "kind": "codex",
+      "archived": false,
+      "pinned": false,
+      "evidence_period": "2026-10-06/2026-10-07",
+      "read_coverage": "24 recent turns across three pages",
+      "evidence": "National integration, incremental repairs, completed failed smoke021, and Director-requested update-only closeout.",
+      "limitation": "Historical measurements; no current-head benchmark; distinct from the archived chat with the same title."
+    },
+    {
+      "id": "01a0bd0a-3fd0-79d0-a206-7e0b1523e346",
+      "title": "Review economic engine design",
+      "kind": "codex",
+      "archived": true,
+      "pinned": false,
+      "evidence_period": "2026-10-05",
+      "read_coverage": "8 recent turns",
+      "evidence": "#990–997 merge coordination;44.19MB/period intermediate storage report; national acceptance stayed open.",
+      "limitation": "Coordination history; do not substitute these earlier measurements for smoke021."
+    },
+    {
+      "id": "01a10d62-9834-7332-8f59-e231243068bb",
+      "title": "Implement PER-345 economic choices",
+      "kind": "codex",
+      "archived": false,
+      "pinned": false,
+      "evidence_period": "2026-10-06",
+      "read_coverage": "5 recent turns",
+      "evidence": "Green draft#999; native acceptance waited for admitted national fixture/binary handoff; finite-hour opportunity-cost witness.",
+      "limitation": "Implementation checks and blocked handoff did not establish enjoyable or sustained native play."
+    },
+    {
+      "id": "01a09842-e79a-7b80-9831-d453c5864bc1",
+      "title": "Reconcile Babylon next work",
+      "kind": "codex",
+      "archived": true,
+      "pinned": false,
+      "evidence_period": "2026-09-12/2026-09-13",
+      "read_coverage": "8 recent turns",
+      "evidence": "Bounded Wayne native organizer loop and 1080p readability through#946.",
+      "limitation": "Bounded Wayne acceptance is not later national acceptance."
+    },
+    {
+      "id": "01a059b6-d150-7580-919f-0a35e98d0fe7",
+      "title": "Investigate CI technical debt",
+      "kind": "codex",
+      "archived": true,
+      "pinned": false,
+      "evidence_period": "2026-08-31/2026-09-01",
+      "read_coverage": "5 returned turns",
+      "evidence": "Measured CI improvements; explicit historical goal accounting; repeated setup and disk-copy pitfalls.",
+      "limitation": "CI timings are not campaign timings; token totals are chat-reported, not independently re-audited."
+    },
+    {
+      "id": "01a02bd0-c8d3-7883-ba1e-507a4c292e59",
+      "title": "Map PostgreSQL H3 inventory",
+      "kind": "codex",
+      "archived": true,
+      "pinned": false,
+      "evidence_period": "2026-08-22/2026-08-23",
+      "read_coverage": "4 returned turns",
+      "evidence": "Legacy H3/schema duplication, misleading coverage semantics, and Rust persistence ownership decision.",
+      "limitation": "Predecessor state; compatibility sequence is not a current obligation."
+    },
+    {
+      "id": "01a0306c-7372-7650-9103-b55fd45788aa",
+      "title": "Explore database kernel boundary",
+      "kind": "codex",
+      "archived": true,
+      "pinned": false,
+      "evidence_period": "2026-08-23",
+      "read_coverage": "1 returned turn",
+      "evidence": "Detached in-memory authoritative transition; database commit/reconstruction/projection boundary.",
+      "limitation": "Historical intended architecture; source implementation then was not current implementation."
+    },
+    {
+      "id": "6a99f713-a280-83ea-a915-ad4f55794e0f",
+      "title": "Review Babylon Theory",
+      "kind": "chatgpt",
+      "archived": false,
+      "pinned": true,
+      "evidence_period": "2026-09-03/2026-09-04",
+      "read_coverage": "5 returned turns",
+      "evidence": "Theoretical intent: math in service of material/ideological content; Lawvere/Capital synthesis.",
+      "limitation": "Pinned; some messages truncated; theory artifacts were not independently revalidated."
+    },
+    {
+      "id": "6a8daa4d-fce8-83e9-8b04-8ad0519cd5b3",
+      "title": "Dialectic Model Formalization",
+      "kind": "chatgpt",
+      "archived": false,
+      "pinned": true,
+      "evidence_period": "2026-08-25",
+      "read_coverage": "4 returned turns",
+      "evidence": "Formal proposals subordinate to dialectic, phase/rung discussion.",
+      "limitation": "Pinned; claims about then-current implementation are historical, not live source evidence."
+    }
+  ],
+  "smoke021": {
+    "evidence_class": "Historical reported completed measurement, not current-head benchmark",
+    "source_thread_id": "01a1045d-1ab8-7003-a92c-7e56cbf3a5ae",
+    "source_turn_id": "01a117ba-3dfe-7aa2-bb30-8bac34061e70",
+    "source_messages": "Recorded October7 Linear progress comments for PER-40 and PER-341–345",
+    "source_date": "2026-10-07",
+    "run_id": "current-native-playable-smoke021",
+    "exit_code": 2,
+    "admitted": false,
+    "unique_counties": 3144,
+    "committed_periods": 2,
+    "authenticated_checkpoint_reopens": 2,
+    "seconds": {
+      "advances": [
+        139.998,
+        119.109
+      ],
+      "archive_catchup": [
+        279,
+        178.889
+      ],
+      "boundary_production_reads": [
+        129.342,
+        153.232
+      ],
+      "cold_reopens_including_authenticated_read": [
+        340.876,
+        426.241
+      ],
+      "recovery_production_reads": [
+        189.247,
+        241.08
+      ],
+      "whole_smoke": 2249.19
+    },
+    "historical_policy": {
+      "advance_limit_seconds": 120,
+      "advance_p95_minimum_samples": 52,
+      "archive_catchup_limit_seconds": 180,
+      "boundary_production_read_limit_seconds": 180,
+      "cold_reopen_exclusive_limit_seconds": 180,
+      "whole_smoke_limit_seconds": 900,
+      "per_period_growth_ceiling_bytes": 40000000,
+      "per_period_growth_target_bytes": 23000000,
+      "long_save_target_bytes": 10000000000,
+      "memory_limit_bytes": 10000000000,
+      "maximum_sample_gap_seconds": 5
+    },
+    "timing_accounting": {
+      "compilation_included": false,
+      "sampler_logging_included": true
+    },
+    "bytes": {
+      "charged_postgresql_growth": [
+        37502976,
+        29032448
+      ],
+      "recovery_charged_growth": [
+        0,
+        0
+      ],
+      "opening_allocated_database": 342349491,
+      "period2_allocated_database": 408884915,
+      "mean_observed_charged_growth_per_period": 33267712,
+      "projected_325_period_total": 11154355891,
+      "period1_leading_collections": {
+        "material_tick": 23732224,
+        "archive_pages": 4546560,
+        "event_fields": 2621440,
+        "frozen_membership": 1605632,
+        "archive_atoms": 1507328,
+        "graph_vectors": 1327104
+      }
+    },
+    "storage_accounting": "Complete charged growth includes heap, indexes, TOAST, checkpoint/Archive/history and positive unattributed growth; container-wide WAL separate, not campaign-attributed.",
+    "long_save_projection": {
+      "observation_count": 2,
+      "actual_325_period_test": false,
+      "do_not_treat_as_measurement": true
+    },
+    "memory": {
+      "coherent_sample_count": 862,
+      "maximum_gap_seconds": 4.399,
+      "sampled_rss_upper_bound_peak_bytes": 11741294592,
+      "pss_diagnostic_peak_bytes": 11614540800,
+      "exact_shared_page_union_proven": false,
+      "continuous_peak_proven": false,
+      "admission": "incomplete"
+    },
+    "bounded_positive_evidence": [
+      "Authenticated Archive/dossiers at both committed boundaries.",
+      "Household purchases/consumption, funded wages, settled procurement, responsive prices and ownership payments in two periods.",
+      "Original remote aid dispatched four parcels at P1 and arrived/was consumed at P2; independent finite practice debited two recipient hours."
+    ],
+    "unresolved_acceptance": [
+      "Actual52-period qualification and at least52 samples for advance p95.",
+      "Actual325-period save test.",
+      "Sustained renewal beyond finite opening stocks/funds.",
+      "Local-versus-remote opportunity-cost contrast and contribution-funded later aid.",
+      "Actual native enjoyment assessment.",
+      "Operational timing and complete combined-memory admission."
+    ],
+    "historical_evidence_path": "/media/user/data/worktrees/427d/babylon/reports/test-results/per342-qualification/2026-10-07/current-native-playable-smoke021/",
+    "historical_path_may_be_retired": true,
+    "distinct_from_smoke008": true,
+    "forbid_cross_run_metric_substitution": true,
+    "recorded_hashes": {
+      "qualification_report_sha256": "b9b901c54acc7c2b25de791b9bef6dd5eeda39b03dc96c93cf0cd474ce0eeda4",
+      "native_timings_sha256": "260a11496910c73c9ea6c21394a0576abe4c2da9511c77f8c5add54fa161a29e",
+      "combined_memory_sha256": "69916f81a289415647b8c572491834bf28a7ca61cce09ca17d3a04b047e92cd7",
+      "policy_v6_sha256": "2f7a92f6e464e38c22f884300381da8386087d8cc3c3b771c604061504c1574b",
+      "source_capsule_sha256": "b866e33704a6543409e5f6d37d79ba17b707ad7cfb9ff4688fd377c10b626cd4"
+    },
+    "hashes_recomputed_in_this_review": false
+  },
+  "selected_optimizations": [
+    {
+      "observation": "Two reconstruction duplications removed",
+      "isolated_reader_peak_gb": [
+        4.94,
+        4.63
+      ],
+      "reported_saved_mb": 312,
+      "precision": "Rounded reported GB/MB figures, not exact subtraction",
+      "national_acceptance_proven": false
+    },
+    {
+      "observation": "Owned-buffer decoder",
+      "isolated_peak_further_reduction_demonstrated": false
+    },
+    {
+      "observation": "Three-page Archive authentication batching",
+      "queries_before": 15,
+      "queries_after": 7
+    },
+    {
+      "observation": "Exact-key Archive authentication",
+      "requested_pages": 256,
+      "previously_authenticated_pages": 3148,
+      "isolated_sql_median_ms_before": 1281.198,
+      "isolated_sql_median_ms_after": 89.635
+    },
+    {
+      "observation": "Repeated schema admission",
+      "publication_snapshots": 13,
+      "publication_seconds_approx": 30.4,
+      "receipt_captures": 15,
+      "receipt_seconds_approx": 38.2,
+      "jit_explanation": "Untested hypothesis"
+    },
+    {
+      "observation": "Memory sampler repeatedly hashed executable files",
+      "reread_gb_approx": 1.22
+    }
+  ],
+  "cost_evidence": {
+    "national_recent_slice": {
+      "turn_count": 24,
+      "turns_without_user_message": 23,
+      "recorded_turn_duration_hours": 14.645288888888889,
+      "means": "Recorded elapsed duration, not CPU time or token consumption",
+      "token_total_available": false
+    },
+    "separate_ci_chat": {
+      "thread_id": "01a059b6-d150-7580-919f-0a35e98d0fe7",
+      "postgres_ci_seconds": [
+        1176,
+        308
+      ],
+      "warm_rust_median_seconds": [
+        646,
+        398
+      ],
+      "reported_goals": [
+        {
+          "label": "CI tranche",
+          "tokens": 4145705,
+          "elapsed_approx": "8h45m"
+        },
+        {
+          "label": "Nextest/reporting",
+          "tokens": 989645,
+          "elapsed_approx": "2h19m"
+        }
+      ],
+      "accounting_class": "Explicit historical final-response claims; meter not independently re-audited.",
+      "delivered_improvements": true
+    }
+  },
+  "source_consolidation": {
+    "source_thread_id": "01a1663a-af03-7521-8f60-29f533a0bca0",
+    "merged_prs": [
+      999,
+      1021,
+      1022
+    ],
+    "resulting_head_prefix": "99f998e3",
+    "unfinished_database_delivery_explicitly_allowed": true,
+    "architecture_accepted_by_merge": false,
+    "national_qualification_established_by_merge": false
+  },
+  "live_issue_locations_not_refreshed": [
+    "https://linear.app/percy-raskova/issue/PER-40",
+    "https://linear.app/percy-raskova/issue/PER-341",
+    "https://linear.app/percy-raskova/issue/PER-342",
+    "https://linear.app/percy-raskova/issue/PER-343",
+    "https://linear.app/percy-raskova/issue/PER-344",
+    "https://linear.app/percy-raskova/issue/PER-345"
+  ],
+  "current_source_pointers_from_final_index": [
+    "../../../CONSTITUTION.md",
+    "../../concepts/architecture.rst",
+    "../../../rust/crates/babylon-bsl/src/typecheck.rs",
+    "../../../rust/crates/babylon-bsl/src/evaluator.rs"
+  ],
+  "interpretations": [
+    {
+      "claim": "Representation, retained history, reconstruction, authentication and instrumentation amplified costs.",
+      "classification": "Inference from observed repairs and whole-run failure; not a causal benchmark decomposition."
+    },
+    {
+      "claim": "PostgreSQL was the principal cause.",
+      "classification": "Not established."
+    },
+    {
+      "claim": "MongoDB would solve the observed costs.",
+      "classification": "Not established."
+    },
+    {
+      "claim": "Bounded gameplay should not be gated on national endurance admission.",
+      "classification": "Recommendation informed by blocked PER-345 native handoff."
+    }
+  ]
+}

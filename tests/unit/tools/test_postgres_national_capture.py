@@ -814,7 +814,8 @@ def test_native_handoff_receipt_refuses_changed_or_incomplete_evidence(tmp_path,
     (tmp_path / "native-handoff.json").write_text(json.dumps(receipt))
     source = (REPOSITORY / "tools/postgres_national_lifecycle.sh").read_text()
     # Execute the actual refusal code, with no shell, service, or native worker.
-    program = source.split("<<'PY_VERIFY'\n", 1)[1].split("\nPY_VERIFY", 1)[0]
+    heredoc = source.split("<<'PY_VERIFY'", 1)[1].split("\n", 1)[1]
+    program = heredoc.split("\nPY_VERIFY", 1)[0]
     result = subprocess.run(
         [sys.executable, "-", str(tmp_path), campaign],
         input=program,

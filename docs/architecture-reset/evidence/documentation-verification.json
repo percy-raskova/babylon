@@ -143,8 +143,8 @@
     },
     {
       "path": "evidence/chat-evidence-index.json",
-      "bytes": 14786,
-      "sha256": "3fee56e51a1a148fe336ab561579558cad8c0e054e45b842488f10a1c10d5cf1"
+      "bytes": 14785,
+      "sha256": "61ac443c5fe3b34292f2dc82caea3bd4fffea1d23a00176fd99a1869c912ea40"
     },
     {
       "path": "evidence/source-identity.json",

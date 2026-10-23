@@ -37,12 +37,12 @@
 
 use babylon_tick::run_once;
 
-const ORG_SCENARIO: &str = r#"
+const ORG_SCENARIO: &str = r"
 (scenario enum-arithmetic-e2e/one-org
   (defenum OrgKind (STATE_APPARATUS BUSINESS POLITICAL_FACTION CIVIL_SOCIETY))
   (deffield organization/kind enum OrgKind)
   (node acme NodeType/ORGANIZATION (organization/kind OrgKind/STATE_APPARATUS)))
-"#;
+";
 
 fn enum_op_rule(op: &str) -> String {
     format!(

@@ -1,6 +1,4 @@
 //! Post-commit evidence contracts that never feed engine judgment.
-#![forbid(unsafe_code)]
-#![warn(clippy::pedantic)]
 
 mod classifier;
 mod digest;

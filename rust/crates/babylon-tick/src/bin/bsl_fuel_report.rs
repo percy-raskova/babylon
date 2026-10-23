@@ -303,7 +303,11 @@ mod tests {
                     .to_string_lossy()
                     .into_owned()
             })
-            .filter(|name| name.ends_with(".bsl"))
+            .filter(|name| {
+                std::path::Path::new(name)
+                    .extension()
+                    .is_some_and(|extension| extension.eq_ignore_ascii_case("bsl"))
+            })
             .collect();
         on_disk.sort();
 

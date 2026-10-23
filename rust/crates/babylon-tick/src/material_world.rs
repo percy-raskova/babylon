@@ -4,6 +4,25 @@
 //! summary or a second inventory ledger. The graph-only digest stays unchanged.
 
 use babylon_kernel::content_digest::sha256_of;
+use babylon_material_circuit::ArrivalReceipt;
+use babylon_material_circuit::DeliveryReceipt;
+use babylon_material_circuit::FinalDemandPrincipalId;
+use babylon_material_circuit::FreightLossReceipt;
+use babylon_material_circuit::FreightLotId;
+use babylon_material_circuit::GoodId;
+use babylon_material_circuit::LocalRetailFulfillmentReceipt;
+use babylon_material_circuit::LocalTransferReceipt;
+use babylon_material_circuit::MerchantHandlingReceipt;
+use babylon_material_circuit::OrderId;
+use babylon_material_circuit::OutboundOrderId;
+use babylon_material_circuit::ProcessId;
+use babylon_material_circuit::ProductionReceipt;
+use babylon_material_circuit::RealizationReceipt;
+use babylon_material_circuit::RouteId;
+use babylon_material_circuit::RoutedDispatchReceipt;
+use babylon_material_circuit::SiteId;
+use babylon_material_circuit::UnitId;
+use babylon_material_circuit::MAX_ROUTE_STAGES_PER_ROUTE;
 use babylon_material_circuit::{
     advance_material_circuit, decode_material_circuit_state, encode_material_circuit_state,
     MaterialCircuitError, MaterialCircuitState, MaterialCircuitTransition,
@@ -99,6 +118,13 @@ pub struct MaterialWorldRegister {
     completed_tick: u64,
     state: MaterialCircuitState,
     organizer: Option<(OrganizerConfig, OrganizerState)>,
+    // The owned admission path must retain the caller's authenticated allocation
+    // (asserted by `organizer_aid_replay`); `Arc<Vec<u8>>` shares that buffer,
+    // while `Arc<[u8]>` copies it into a new Arc allocation.
+    #[allow(
+        clippy::rc_buffer,
+        reason = "owned register admission retains the caller's exact canonical byte allocation"
+    )]
     canonical_bytes: std::sync::Arc<Vec<u8>>,
     digest: [u8; 32],
 }
@@ -627,6 +653,7 @@ fn bounded_bytes(length: usize, maximum: usize) -> Result<Vec<u8>, MaterialWorld
 }
 /// Canonical collection limit for an admitted zero-based receipt family.
 /// Callers must first require `index < RECEIPT_FAMILY_COUNT`.
+#[must_use]
 pub const fn receipt_row_limit(index: usize) -> usize {
     match index {
         6 => babylon_material_circuit::MAX_HANDLING_RECEIPTS_PER_PERIOD,
@@ -668,6 +695,10 @@ fn encode_handling_receipts(
     Ok(())
 }
 
+#[allow(
+    clippy::too_many_lines,
+    reason = "one match arm per closed receipt family keeps each family's encoder beside the shared cursor"
+)]
 fn encode_material_receipts(
     tick: u64,
     transition: &MaterialCircuitTransition,
@@ -958,12 +989,16 @@ fn encode_material_receipts(
                 }
             }
             29 => {
-                equipment_receipt::encode_installation(&transition.installation, tick, &mut bytes)?
+                equipment_receipt::encode_installation(&transition.installation, tick, &mut bytes)?;
             }
             30 => equipment_receipt::encode_wear(&transition.equipment_wear, tick, &mut bytes)?,
             31 => equipment_receipt::encode_investment(&transition.investment, tick, &mut bytes)?,
             32 => {
-                installation_decision::encode(&transition.installation_decisions, tick, &mut bytes)?
+                installation_decision::encode(
+                    &transition.installation_decisions,
+                    tick,
+                    &mut bytes,
+                )?;
             }
             33 => household_time_receipt::encode(&transition.household_time, tick, &mut bytes)?,
             34 => aid_receipt::encode(&transition.aid, tick, &mut bytes)?,
@@ -1020,8 +1055,11 @@ pub struct MaterialTickReceipts {
 /// Decode a bounded receipt family. Hash/campaign binding belongs to its V3 envelope.
 /// # Errors
 /// Refuses versions, tags, counts, truncation, trailing bytes and invalid quantity relations.
+#[allow(
+    clippy::too_many_lines,
+    reason = "one match arm per closed receipt family keeps each family's decoder beside the shared cursor"
+)]
 pub fn decode_material_receipts(bytes: &[u8]) -> Result<MaterialTickReceipts, MaterialWorldError> {
-    use babylon_material_circuit::*;
     if bytes.len() > MAX_MATERIAL_TICK_RECEIPT_BYTES || !bytes.starts_with(RECEIPT_DOMAIN) {
         return Err(MaterialWorldError::Wire);
     }

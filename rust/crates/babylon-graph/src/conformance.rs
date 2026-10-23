@@ -723,7 +723,7 @@ where
     let a = graph.add_node("social_class").unwrap();
     let b = graph.add_node("social_class").unwrap();
     graph.add_edge("solidarity", a, b, 0.5).unwrap();
-    // Epsilon-diff, not assert_eq! (clippy::float_cmp, crate-wide #![warn(clippy::pedantic)] —
+    // Epsilon-diff, not assert_eq! (clippy::float_cmp, the workspace pedantic level —
     // matches this file's own precedent, e.g. removal_cascades_edges_memberships_and_attributes'
     // wealth check above): the value is an exact HashMap round-trip with no arithmetic, so the
     // comparison is deterministic regardless of the epsilon's width.

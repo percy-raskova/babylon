@@ -47,6 +47,12 @@ fn digest(bytes: &[u8]) -> [u8; 32] {
 /// Clones share this authority; period encoding never decodes the opening again.
 #[derive(Clone, Debug)]
 pub struct OpeningRegister {
+    // Shares the register's admitted canonical allocation without a copy, which
+    // the material runtime asserts with `Arc::ptr_eq`.
+    #[allow(
+        clippy::rc_buffer,
+        reason = "storage shares the register's exact admitted canonical byte allocation"
+    )]
     bytes: std::sync::Arc<Vec<u8>>,
     digest: [u8; 32],
     sections: std::sync::Arc<[Section]>,

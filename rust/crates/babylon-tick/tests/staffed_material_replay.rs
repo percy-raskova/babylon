@@ -964,7 +964,7 @@ fn later_anchored_rule_reads_this_candidates_staffing_before_graph_finalization(
     assert_eq!(
         events
             .iter()
-            .map(|event| event.emitting_rule())
+            .map(babylon_tick::replay_session::SuccessfulEvent::emitting_rule)
             .collect::<Vec<_>>(),
         [STAFFING_COMPOSITION_ID, "zz-staffing/witness"]
     );

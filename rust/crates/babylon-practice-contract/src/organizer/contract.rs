@@ -1,9 +1,32 @@
+use super::aid::OrganizerAidOption;
+use super::aid::OrganizerGiftConsent;
+use super::OrganizerAgreement;
+use super::OrganizerChoice;
+use super::OrganizerCommand;
+use super::OrganizerCommitment;
+use super::OrganizerConfig;
+use super::OrganizerError;
+use super::OrganizerObservation;
+use super::OrganizerOutcome;
+use super::OrganizerPartnerResponse;
+use super::OrganizerPosition;
+use super::OrganizerPreview;
+use super::OrganizerReceipt;
+use super::OrganizerRefusal;
+use super::OrganizerReport;
+use super::OrganizerStandingWork;
+use super::OrganizerState;
+use super::OrganizerTimeBindingMode;
+use super::OrganizerView;
+use super::ORGANIZER_RECENT_OBSERVATIONS;
+use super::ORGANIZER_RECENT_RECEIPTS;
+use super::ORGANIZER_SCHEMA_VERSION;
+use serde::Serialize;
+
 use std::collections::BTreeSet;
 
 use babylon_kernel::content_digest::sha256_of;
 use serde::de::DeserializeOwned;
-
-use super::*;
 
 const MAX_ORGANIZER_BYTES: usize = 32 * 1024 * 1024;
 const MAX_ORGANIZER_ROWS: usize = 65_536;
@@ -44,6 +67,13 @@ fn label_valid(value: &str) -> bool {
     !value.is_empty() && value.len() <= 512 && !value.chars().any(char::is_control)
 }
 
+/// Validate the schema version and bounded contents of a captured config.
+///
+/// # Errors
+///
+/// Returns [`OrganizerError::UnsupportedSchema`] for a foreign schema version
+/// and [`OrganizerError::InvalidConfig`] for a policy, partner, or binding
+/// value outside its declared bounds.
 pub fn validate_organizer_config(config: &OrganizerConfig) -> Result<(), OrganizerError> {
     if config.schema_version != ORGANIZER_SCHEMA_VERSION {
         return Err(OrganizerError::UnsupportedSchema);
@@ -166,6 +196,17 @@ fn validate_time_binding(config: &OrganizerConfig) -> Result<(), OrganizerError>
     Ok(())
 }
 
+/// Validate the schema version, size ceilings, and row invariants of a state.
+///
+/// # Errors
+///
+/// Returns [`OrganizerError::UnsupportedSchema`] for a foreign schema version,
+/// [`OrganizerError::SizeLimit`] past a row ceiling, and
+/// [`OrganizerError::InvalidState`] for a malformed stored row.
+#[allow(
+    clippy::too_many_lines,
+    reason = "one linear pass over each stored row family; splitting it would duplicate the ceiling and ordering invariants"
+)]
 pub fn validate_organizer_state(state: &OrganizerState) -> Result<(), OrganizerError> {
     if state.schema_version != ORGANIZER_SCHEMA_VERSION {
         return Err(OrganizerError::UnsupportedSchema);
@@ -278,6 +319,12 @@ pub fn validate_organizer_state(state: &OrganizerState) -> Result<(), OrganizerE
     Ok(())
 }
 
+/// Validate a config and its paired state through the two focused checks.
+///
+/// # Errors
+///
+/// Returns whatever [`validate_organizer_config`] or
+/// [`validate_organizer_state`] reports for the supplied pair.
 pub fn validate_organizer_pair(
     config: &OrganizerConfig,
     state: &OrganizerState,
@@ -370,23 +417,54 @@ pub fn validate_organizer_pair(
     Ok(())
 }
 
+/// Encode a validated config in its canonical domain-framed form.
+///
+/// # Errors
+///
+/// Returns [`OrganizerError::InvalidConfig`] or
+/// [`OrganizerError::UnsupportedSchema`] from validation, plus
+/// [`OrganizerError::Codec`] or [`OrganizerError::SizeLimit`] when canonical
+/// serialization fails or exceeds the encoded ceiling.
 pub fn encode_organizer_config(config: &OrganizerConfig) -> Result<Vec<u8>, OrganizerError> {
     validate_organizer_config(config)?;
     canonical(b"babylon.organizer-config.v7", config)
 }
 
+/// Decode a canonical config and refuse anything that would not re-encode.
+///
+/// # Errors
+///
+/// Returns [`OrganizerError::SizeLimit`] past the encoded ceiling,
+/// [`OrganizerError::Codec`] for a foreign domain frame or non-canonical body,
+/// and the validation faults [`validate_organizer_config`] reports.
 pub fn decode_organizer_config(bytes: &[u8]) -> Result<OrganizerConfig, OrganizerError> {
     let value = decode(b"babylon.organizer-config.v7", bytes)?;
     validate_organizer_config(&value)?;
     Ok(value)
 }
 
+/// Encode a validated state in its canonical domain-framed form.
+///
+/// # Errors
+///
+/// Returns [`OrganizerError::InvalidState`] or
+/// [`OrganizerError::UnsupportedSchema`] from validation, including completed
+/// aid receipts, plus [`OrganizerError::Codec`] or
+/// [`OrganizerError::SizeLimit`] when canonical serialization fails or
+/// exceeds the encoded ceiling.
 pub fn encode_organizer_state(state: &OrganizerState) -> Result<Vec<u8>, OrganizerError> {
     validate_organizer_state(state)?;
     super::aid::validate_completed_aid(state)?;
     canonical(b"babylon.organizer-state.v5", state)
 }
 
+/// Decode a canonical state and refuse anything that would not re-encode.
+///
+/// # Errors
+///
+/// Returns [`OrganizerError::SizeLimit`] past the encoded ceiling,
+/// [`OrganizerError::Codec`] for a foreign domain frame or non-canonical body,
+/// and the validation faults [`validate_organizer_state`] reports.
 pub fn decode_organizer_state(bytes: &[u8]) -> Result<OrganizerState, OrganizerError> {
     let value = decode(b"babylon.organizer-state.v5", bytes)?;
     validate_organizer_state(&value)?;
@@ -394,10 +472,22 @@ pub fn decode_organizer_state(bytes: &[u8]) -> Result<OrganizerState, OrganizerE
     Ok(value)
 }
 
+/// Hash the canonical state encoding.
+///
+/// # Errors
+///
+/// Returns every fault [`encode_organizer_state`] reports; no digest exists
+/// for a state that does not validate.
 pub fn organizer_state_digest(state: &OrganizerState) -> Result<[u8; 32], OrganizerError> {
     Ok(sha256_of(&encode_organizer_state(state)?))
 }
 
+/// Validate the hours, allocations, and row identity of one receipt.
+///
+/// # Errors
+///
+/// Returns [`OrganizerError::InvalidState`] when allocations repeat, exceed the
+/// recorded hours, or disagree with the receipt actor.
 pub fn validate_organizer_receipt(receipt: &OrganizerReceipt) -> Result<(), OrganizerError> {
     let mut allocations = BTreeSet::new();
     let own_hours = receipt
@@ -484,17 +574,37 @@ pub fn validate_organizer_receipt(receipt: &OrganizerReceipt) -> Result<(), Orga
     Ok(())
 }
 
+/// Encode a validated receipt in its canonical domain-framed form.
+///
+/// # Errors
+///
+/// Returns [`OrganizerError::InvalidState`] from validation plus
+/// [`OrganizerError::Codec`] or [`OrganizerError::SizeLimit`] when canonical
+/// serialization fails or exceeds the encoded ceiling.
 pub fn encode_organizer_receipt(receipt: &OrganizerReceipt) -> Result<Vec<u8>, OrganizerError> {
     validate_organizer_receipt(receipt)?;
     canonical(b"babylon.organizer-receipt.v2", receipt)
 }
 
+/// Decode a canonical receipt and refuse anything that would not re-encode.
+///
+/// # Errors
+///
+/// Returns [`OrganizerError::SizeLimit`] past the encoded ceiling,
+/// [`OrganizerError::Codec`] for a foreign domain frame or non-canonical body,
+/// and [`OrganizerError::InvalidState`] from receipt validation.
 pub fn decode_organizer_receipt(bytes: &[u8]) -> Result<OrganizerReceipt, OrganizerError> {
     let value = decode(b"babylon.organizer-receipt.v2", bytes)?;
     validate_organizer_receipt(&value)?;
     Ok(value)
 }
 
+/// Digest the installed practice resource allocation contract.
+///
+/// # Errors
+///
+/// Returns [`OrganizerError::ResourceAllocation`] when the contract's own
+/// validation refuses the conserved allocation table.
 pub fn organizer_resource_digest() -> Result<[u8; 32], OrganizerError> {
     crate::practice_resource_allocation_contract_digest(
         &crate::PracticeResourceAllocationContract::conservation_first(),
@@ -502,6 +612,12 @@ pub fn organizer_resource_digest() -> Result<[u8; 32], OrganizerError> {
     .map_err(|_| OrganizerError::ResourceAllocation)
 }
 
+/// Build the opening state for a freshly captured config.
+///
+/// # Errors
+///
+/// Returns the config faults [`validate_organizer_config`] reports and
+/// [`OrganizerError::Arithmetic`] when a period or hour sum overflows.
 pub fn initial_organizer_state(config: &OrganizerConfig) -> Result<OrganizerState, OrganizerError> {
     validate_organizer_config(config)?;
     let mut agreements: Vec<_> = [
@@ -553,6 +669,17 @@ pub(super) fn committed_hours(
         })
 }
 
+/// Project the controlled actor's bounded view of the committed state.
+///
+/// # Errors
+///
+/// Returns the pair faults from [`validate_organizer_pair`],
+/// [`OrganizerError::Refused`] with `WrongAuthority` for another actor, and
+/// [`OrganizerError::Arithmetic`] when a row count exceeds its window type.
+#[allow(
+    clippy::too_many_lines,
+    reason = "receipts and observations share one ordering pass so the visible window cannot diverge"
+)]
 pub fn organizer_view(
     config: &OrganizerConfig,
     state: &OrganizerState,
@@ -706,6 +833,16 @@ pub(super) fn required_hours(
     }
 }
 
+/// Preview one command without admitting it.
+///
+/// A rule refusal is a successful preview carrying a refusal reason, not an
+/// error.
+///
+/// # Errors
+///
+/// Returns the pair faults from [`validate_organizer_pair`],
+/// [`OrganizerError::ResourceAllocation`] for a changed resource contract, and
+/// [`OrganizerError::Arithmetic`] when the resolved period overflows.
 pub fn preview_organizer(
     config: &OrganizerConfig,
     state: &OrganizerState,
@@ -783,6 +920,14 @@ pub fn preview_organizer(
     })
 }
 
+/// Admit one command as an immutable commitment.
+///
+/// # Errors
+///
+/// Returns every [`preview_organizer`] fault,
+/// [`OrganizerError::Refused`] carrying the preview's refusal reason, and
+/// [`OrganizerError::InvalidCommitment`] when the derived identity or binding
+/// does not validate.
 pub fn admit_organizer(
     config: &OrganizerConfig,
     state: &OrganizerState,
@@ -803,6 +948,11 @@ pub fn admit_organizer(
 
 /// Verify the immutable input identity without re-admitting it against a later
 /// period. Durable exact retries use this after the original action resolves.
+///
+/// # Errors
+///
+/// Returns [`OrganizerError::InvalidCommitment`] when the actor, authority,
+/// resolved period, or derived identity does not match the captured command.
 pub fn validate_organizer_commitment(
     commitment: &OrganizerCommitment,
 ) -> Result<(), OrganizerError> {

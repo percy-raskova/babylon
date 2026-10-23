@@ -36,6 +36,12 @@
 //! `to_bits()` pin is needed (`query_lane_e2e.rs` pins bits only where a
 //! multiply introduces real rounding; nothing here multiplies).
 
+// Conformance fixtures exercise exact engine values, transcribe spec literals,
+// and build whole scenarios in one test. These pedantic lints would force
+// ceremony that hides those contracts, so they stay off in test code only.
+#![allow(clippy::unreadable_literal)]
+#![allow(clippy::float_cmp)]
+
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};

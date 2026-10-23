@@ -1,3 +1,8 @@
+// Conformance fixtures exercise exact engine values, transcribe spec literals,
+// and build whole scenarios in one test. These pedantic lints would force
+// ceremony that hides those contracts, so they stay off in test code only.
+#![allow(clippy::too_many_lines)]
+
 use babylon_material_circuit::SupplierTransport;
 use babylon_material_circuit::{
     advance_material_circuit, BacklogRow, CommodityDefinition, CorridorCapacity, CorridorId,
@@ -399,8 +404,8 @@ fn arrived_goods_are_available_to_retail_handling_in_the_same_close() {
     state.orders[0].supplier_site_id = incoming_source;
     state.supplier_routes[0].buyer_site_id = retailer;
     state.supplier_routes[0].supplier_site_id = incoming_source;
-    let stage = &mut state.route_stages[0];
-    std::mem::swap(&mut stage.from_node_id, &mut stage.to_node_id);
+    let route_stage = &mut state.route_stages[0];
+    std::mem::swap(&mut route_stage.from_node_id, &mut route_stage.to_node_id);
     let first = advance_material_circuit(&state).unwrap();
     assert_eq!(first.dispatches[0].quantity, 10);
     assert_eq!(first.handling[0].needed_hours, 0);

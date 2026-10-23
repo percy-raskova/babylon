@@ -1,5 +1,22 @@
 //! Explicit captured voluntary cash terms and original material acknowledgments.
-use super::*;
+use super::aid::OrganizerGiftConsent;
+use super::contract::organizer_resource_digest;
+use super::contract::validate_organizer_commitment;
+use super::contract::validate_organizer_config;
+use super::contract::validate_organizer_receipt;
+use super::nonnegative_decimal_i128;
+use super::OrganizerChoice;
+use super::OrganizerCommitment;
+use super::OrganizerConfig;
+use super::OrganizerError;
+use super::OrganizerOutcome;
+use super::OrganizerPartnerResponse;
+use super::OrganizerReceipt;
+use super::OrganizerRefusal;
+use super::OrganizerState;
+use super::OrganizerTimeBindingMode;
+use super::OrganizerTimeUse;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

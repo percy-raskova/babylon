@@ -19,6 +19,11 @@
 //!   high-entropy-county  biocapacity=0.0 max_biocapacity=99.95
 //! ```
 
+// Conformance fixtures exercise exact engine values, transcribe spec literals,
+// and build whole scenarios in one test. These pedantic lints would force
+// ceremony that hides those contracts, so they stay off in test code only.
+#![allow(clippy::float_cmp)]
+
 use babylon_graph::memory::MemoryGraph;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
 use babylon_tick::{run_once, run_once_into};

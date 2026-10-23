@@ -126,6 +126,12 @@ fn framed_domain(domain: &[u8]) -> Vec<u8> {
     output
 }
 
+/// Decode a framed organization budget delta.
+///
+/// # Errors
+///
+/// Returns [`PracticeContractError`] when the domain frame, schema version,
+/// field length, or trailing-byte check fails.
 pub fn decode_budget_delta(
     payload: &[u8],
 ) -> Result<OrganizationBudgetDelta, PracticeContractError> {

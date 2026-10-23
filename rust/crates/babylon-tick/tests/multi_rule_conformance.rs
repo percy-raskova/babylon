@@ -50,6 +50,11 @@
 //! double, and Rust parses a float literal correctly rounded — so e.g.
 //! `999.95_f64` IS the double Python printed.
 
+// Conformance fixtures exercise exact engine values, transcribe spec literals,
+// and build whole scenarios in one test. These pedantic lints would force
+// ceremony that hides those contracts, so they stay off in test code only.
+#![allow(clippy::float_cmp)]
+
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
@@ -82,8 +87,8 @@ const EXPECTED_TERRITORIES: [ExpectedTerritory; 4] = [
         pop_p: 6040.675,
         pop_d_prime: 1858.665,
         wealth_d_prime: 9_610_000.0,
-        dependency_ratio: 0.6545394347486001,
-        legitimation_index: 0.6038999999999999,
+        dependency_ratio: 0.654_539_434_748_600_1,
+        legitimation_index: 0.603_899_999_999_999_9,
         legitimation_crisis: 0.0,
         transmitted_ideology: 0.5,
     },
@@ -94,8 +99,8 @@ const EXPECTED_TERRITORIES: [ExpectedTerritory; 4] = [
         pop_p: 5060.3,
         pop_d_prime: 1548.0,
         wealth_d_prime: 4_805_000.0,
-        dependency_ratio: 0.876370966148252,
-        legitimation_index: 0.6038999999999999,
+        dependency_ratio: 0.876_370_966_148_252,
+        legitimation_index: 0.603_899_999_999_999_9,
         legitimation_crisis: 0.0,
         transmitted_ideology: 0.5,
     },
@@ -103,11 +108,11 @@ const EXPECTED_TERRITORIES: [ExpectedTerritory; 4] = [
         name: "recovering-county",
         id: 2,
         pop_d: 1963.7,
-        pop_p: 6962.099999999999,
+        pop_p: 6_962.099_999_999_999,
         pop_d_prime: 2071.1,
         wealth_d_prime: 19_220_000.0,
-        dependency_ratio: 0.5795377831401446,
-        legitimation_index: 0.6038999999999999,
+        dependency_ratio: 0.579_537_783_140_144_6,
+        legitimation_index: 0.603_899_999_999_999_9,
         legitimation_crisis: 0.0,
         transmitted_ideology: 0.5,
     },
@@ -116,10 +121,10 @@ const EXPECTED_TERRITORIES: [ExpectedTerritory; 4] = [
         id: 3,
         pop_d: 3836.45,
         pop_p: 5605.25,
-        pop_d_prime: 117.14999999999999,
+        pop_d_prime: 117.149_999_999_999_99,
         wealth_d_prime: 0.0,
-        dependency_ratio: 0.7053387449266313,
-        legitimation_index: 0.6038999999999999,
+        dependency_ratio: 0.705_338_744_926_631_3,
+        legitimation_index: 0.603_899_999_999_999_9,
         legitimation_crisis: 0.0,
         transmitted_ideology: 0.5,
     },

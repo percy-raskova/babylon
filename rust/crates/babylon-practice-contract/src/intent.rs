@@ -330,7 +330,7 @@ fn validate_parameters(value: &PracticeIntent) -> Result<(), PracticeIntentError
             if parameter.key_u8 == 1
                 && parameter.value_kind_u8 == 1
                 && parameter.value_length_u16 == 1
-                && matches!(parameter.value_bytes.as_slice(), [1] | [2])
+                && matches!(parameter.value_bytes.as_slice(), [1 | 2])
             {
                 return Ok(());
             }
@@ -344,10 +344,7 @@ fn validate_parameters(value: &PracticeIntent) -> Result<(), PracticeIntentError
         if parameter.key_u8 == 2
             && parameter.value_kind_u8 == 1
             && parameter.value_length_u16 == 1
-            && matches!(
-                parameter.value_bytes.as_slice(),
-                [1] | [2] | [3] | [4] | [5]
-            )
+            && matches!(parameter.value_bytes.as_slice(), [1..=5])
         {
             Ok(())
         } else {

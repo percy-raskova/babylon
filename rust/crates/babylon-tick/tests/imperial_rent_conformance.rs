@@ -1,4 +1,4 @@
-//! Registration + scenario-ceremony conformance for the ImperialRent BSL
+//! Registration + scenario-ceremony conformance for the `ImperialRent` BSL
 //! port train (Material Base @9.0, Checkpoint A campaign) — Task 1 of
 //! `docs/superpowers/plans/2026-08-18-imperialrent-port.md` (frozen source:
 //! `src/babylon/engine/systems/economic.py::ImperialRentSystem`, `step()` at
@@ -157,7 +157,7 @@
 //! `economy` graph attribute is QUANTIZED; BSL's own arithmetic is not.**
 //! `GlobalEconomy`'s three fields each carry Pydantic's `SnapToGrid`
 //! validator (`models/types.py:26-30,41-44`; `kernel/math.py:41-56`,
-//! ROUND_HALF_UP to 6 decimals), and `_save_economy` (`economic.py:831-836`)
+//! `ROUND_HALF_UP` to 6 decimals), and `_save_economy` (`economic.py:831-836`)
 //! constructs a `GlobalEconomy(...)` on every save — a frozen-Python-ONLY
 //! artifact with no BSL counterpart. The mirror below therefore prints BOTH
 //! the quantized `economy` dict (what the frozen engine actually stores)
@@ -243,7 +243,7 @@
 //! ONE named exception, fix round 1 (Important 1): the quantized
 //! `imperial_rent_pool`/`current_super_wage_rate`/`current_repression_level`
 //! fields inside the printed `economy` dict**, which additionally pass
-//! through Pydantic's `SnapToGrid` (ROUND_HALF_UP, 6 decimals) on their way
+//! through Pydantic's `SnapToGrid` (`ROUND_HALF_UP`, 6 decimals) on their way
 //! out of `_save_economy` — a frozen-Python-only step, header fact (d). For
 //! every OTHER number above (every node field, every edge `value_flow`),
 //! `bsl-language.rst` §4.3's claim holds without qualification, so later
@@ -329,6 +329,18 @@
 //! case + 1). Re-verified green across the FULL 25-test suite at this
 //! exact value.
 
+// Conformance fixtures exercise exact engine values, transcribe spec literals,
+// and build whole scenarios in one test. These pedantic lints would force
+// ceremony that hides those contracts, so they stay off in test code only.
+#![allow(clippy::too_many_lines)]
+#![allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_possible_wrap,
+    clippy::cast_precision_loss,
+    clippy::cast_sign_loss
+)]
+#![allow(clippy::float_cmp)]
+
 use babylon_bsl::evaluator::Value;
 use babylon_bsl::scenario::load_scenario;
 use babylon_bsl::structural_verbs::CollectingSink;
@@ -368,7 +380,7 @@ const W10_CARRIER: NodeId = NodeId(3);
 /// untouched by any phase Task 2 does not port, so this number IS directly
 /// mirror-comparable, bit-exact, unlike `core-bourgeoisie`'s cross-phase
 /// wealth (see the Task 2 doc section above).
-const RENT: f64 = 6.150769230769232;
+const RENT: f64 = 6.150_769_230_769_232;
 
 /// The frozen mirror's own printed TRIBUTE `value_flow` on world 1
 /// (`80.0`, this module doc's frozen-mirror provenance block above) —
@@ -598,13 +610,13 @@ fn social_role_order_is_the_ruled_ordinal() {
 /// INSTITUTION node the constant score and the discriminator score agree
 /// by construction"), so this is the world that actually exercises the
 /// discriminator's REASON to exist: `decoy-carrier` is declared FIRST
-/// (lower NodeId) with `rent-carrier 0`, `real-carrier` SECOND (higher
-/// NodeId) with `rent-carrier 1` — a naive constant-score `select-max`
+/// (lower `NodeId`) with `rent-carrier 0`, `real-carrier` SECOND (higher
+/// `NodeId`) with `rent-carrier 1` — a naive constant-score `select-max`
 /// (D45's ascending-id-first-wins) would resolve `decoy-carrier`; the
 /// discriminator score must resolve `real-carrier` instead.
 #[test]
 fn carrier_discriminator_resolves_over_a_lower_id_decoy() {
-    const TWO_INSTITUTION_SCENARIO: &str = r#"
+    const TWO_INSTITUTION_SCENARIO: &str = r"
 (scenario imperial-rent/carrier-discriminator-probe
   (defvocabulary NodeType (INSTITUTION))
   (deffield institution/rent-carrier int extensive)
@@ -617,7 +629,7 @@ fn carrier_discriminator_resolves_over_a_lower_id_decoy() {
   (node real-carrier NodeType/INSTITUTION
     (institution/rent-carrier 1)
     (institution/rent-pool 0)))
-"#;
+";
     const DISCRIMINATOR_RULE: &str = r#"
 (rule imperial-rent/discriminator-probe
   :role mechanic :evidence derived :material-basis "THE SPIKE item (f): the field-guarded select-max discriminator over a lower-id decoy INSTITUTION node (D198, plan §3.1)"
@@ -749,8 +761,8 @@ fn r01_writes_the_exploitation_value_flow() {
     );
 }
 
-/// `r01` emits exactly one SURPLUS_EXTRACTION, payload key-by-key —
-/// `source`/`target` NodeRefs (BLOCKER-5b's rename from the frozen
+/// `r01` emits exactly one `SURPLUS_EXTRACTION`, payload key-by-key —
+/// `source`/`target` `NodeRefs` (BLOCKER-5b's rename from the frozen
 /// `source_id`/`target_id` strings), `amount` — and **no** `mechanism` key
 /// (BLOCKER-5: there is no `Str` payload value).
 #[test]
@@ -790,7 +802,7 @@ fn r01_emits_surplus_extraction_above_the_negligible_floor() {
 /// 1's own core-bourgeoisie is always active, so this shape needs its own
 /// small world). REVISED fix round 1 (review Important 2 + Minor 6): the
 /// worker now carries a SECOND EXPLOITATION edge, to an ACTIVE
-/// PETTY_BOURGEOISIE target, so this one fixture proves THREE things at
+/// `PETTY_BOURGEOISIE` target, so this one fixture proves THREE things at
 /// once instead of one under-specified claim:
 /// (1) the inactive-target edge's seeded `exploitation/value-flow` is now a
 ///     NON-ZERO sentinel (`7`, not `0`) — Important 2's fix: with the OLD
@@ -801,19 +813,19 @@ fn r01_emits_surplus_extraction_above_the_negligible_floor() {
 /// (2) the petty-target edge IS processed by r01 (its own gate checks only
 ///     `active`, never `role`) — a genuine non-zero wealth transfer, which
 ///     r02 then correctly EXCLUDES from the carrier credit because its
-///     role fails the CORE_BOURGEOISIE gate. This is Minor 6's POSITIVE
+///     role fails the `CORE_BOURGEOISIE` gate. This is Minor 6's POSITIVE
 ///     EXCLUSION WITNESS: `r02_credits_only_a_core_bourgeoisie_target`'s
 ///     "only" claim previously rested on mutation vector 3 alone (no
 ///     Task-2 world contained a real non-CORE_BOURGEOISIE active target);
 ///     this fixture supplies one, assertion-checkable with no mutation at
 ///     all.
-/// (3) `r01`'s own SURPLUS_EXTRACTION emit still fires for the edge that
+/// (3) `r01`'s own `SURPLUS_EXTRACTION` emit still fires for the edge that
 ///     legitimately transfers wealth (petty-target's), so "no events at
 ///     all" is no longer the right claim — exactly one event, targeting
 ///     petty-target, is.
 #[test]
 fn r01_skips_an_inactive_counterparty() {
-    const INACTIVE_TARGET_SCENARIO: &str = r#"
+    const INACTIVE_TARGET_SCENARIO: &str = r"
 (scenario imperial-rent/inactive-counterparty-probe
   (defvocabulary NodeType (SOCIAL_CLASS INSTITUTION))
   ; TRIBUTE added Task 3 — the shared RULE now includes r03/r04, which
@@ -890,7 +902,7 @@ fn r01_skips_an_inactive_counterparty() {
   (edge-attr EdgeType/EXPLOITATION worker petty-target exploitation/value-flow 0)
   (edge EdgeType/TRIBUTE dummy-comprador dummy-recipient 1)
   (edge-attr EdgeType/TRIBUTE dummy-comprador dummy-recipient tribute/value-flow 0))
-"#;
+";
     const WORKER: NodeId = NodeId(0);
     const INACTIVE_TARGET: NodeId = NodeId(1);
     const CARRIER: NodeId = NodeId(2);
@@ -1332,7 +1344,7 @@ fn r03_writes_the_tribute_value_flow() {
 }
 
 /// Phase 2 carries no emit in the frozen engine — `r03` adds ZERO new
-/// events on top of r01's own SURPLUS_EXTRACTION. Asserts the TOTAL event
+/// events on top of r01's own `SURPLUS_EXTRACTION`. Asserts the TOTAL event
 /// count is unchanged from Task 2's own count (1), not merely that no
 /// TRIBUTE-flavoured event exists (there is no such event type to begin
 /// with — this is the strongest form of the claim available).
@@ -1534,7 +1546,7 @@ fn r03_skips_a_non_positive_comprador() {
 /// proving this is not a no-op rule.
 #[test]
 fn r03_and_r04_skip_an_inactive_recipient() {
-    const INACTIVE_RECIPIENT_SCENARIO: &str = r#"
+    const INACTIVE_RECIPIENT_SCENARIO: &str = r"
 (scenario imperial-rent/inactive-recipient-probe
   (defvocabulary NodeType (SOCIAL_CLASS INSTITUTION))
   (defvocabulary EdgeType (EXPLOITATION TRIBUTE))
@@ -1601,7 +1613,7 @@ fn r03_and_r04_skip_an_inactive_recipient() {
   (edge-attr EdgeType/TRIBUTE comprador active-recipient tribute/value-flow 0)
   (edge EdgeType/EXPLOITATION dummy-worker dummy-target 1)
   (edge-attr EdgeType/EXPLOITATION dummy-worker dummy-target exploitation/value-flow 0))
-"#;
+";
     const COMPRADOR: NodeId = NodeId(0);
     const INACTIVE_RECIPIENT: NodeId = NodeId(1);
     const ACTIVE_RECIPIENT: NodeId = NodeId(2);
@@ -1719,7 +1731,7 @@ fn r04_credits_the_pool_and_the_tribute_inflow() {
 /// frozen engine credits, only how much of the wealth moves.
 #[test]
 fn r04_credits_the_full_transfer_when_comprador_cut_is_zero() {
-    const ZERO_CUT_SCENARIO: &str = r#"
+    const ZERO_CUT_SCENARIO: &str = r"
 (scenario imperial-rent/zero-comprador-cut-probe
   (defvocabulary NodeType (SOCIAL_CLASS INSTITUTION))
   (defvocabulary EdgeType (EXPLOITATION TRIBUTE))
@@ -1780,7 +1792,7 @@ fn r04_credits_the_full_transfer_when_comprador_cut_is_zero() {
   (edge-attr EdgeType/TRIBUTE full-transfer-comprador full-transfer-recipient tribute/value-flow 0)
   (edge EdgeType/EXPLOITATION dummy-worker dummy-target 1)
   (edge-attr EdgeType/EXPLOITATION dummy-worker dummy-target exploitation/value-flow 0))
-"#;
+";
     const COMPRADOR: NodeId = NodeId(0);
     const RECIPIENT: NodeId = NodeId(1);
     const CARRIER: NodeId = NodeId(2);
@@ -1857,7 +1869,7 @@ fn r04_credits_the_full_transfer_when_comprador_cut_is_zero() {
 /// from the mutation's own small fuel-bound shift).
 #[test]
 fn r04_reads_the_edge_self_to_it_not_reversed() {
-    const REVERSED_EDGE_DECOY_SCENARIO: &str = r#"
+    const REVERSED_EDGE_DECOY_SCENARIO: &str = r"
 (scenario imperial-rent/reversed-edge-decoy-probe
   (defvocabulary NodeType (SOCIAL_CLASS INSTITUTION))
   (defvocabulary EdgeType (EXPLOITATION TRIBUTE))
@@ -1924,7 +1936,7 @@ fn r04_reads_the_edge_self_to_it_not_reversed() {
   (edge-attr EdgeType/TRIBUTE recipient comprador tribute/value-flow 999)
   (edge EdgeType/EXPLOITATION dummy-worker dummy-target 1)
   (edge-attr EdgeType/EXPLOITATION dummy-worker dummy-target exploitation/value-flow 0))
-"#;
+";
     const CARRIER: NodeId = NodeId(2);
 
     let mut graph = HypergraphStore::new();
@@ -1949,7 +1961,7 @@ fn r04_reads_the_edge_self_to_it_not_reversed() {
 /// this row (D116/D197 ledger row 7's forward note): asserts r04's carrier
 /// credit equals the SUM of both TRIBUTE edges' own published
 /// `tribute/value-flow` (r03's exact `set`s), bit-exact — NOT via a
-/// wealth-delta comparison (r01_and_r02_agree_on_the_rent's own doc
+/// wealth-delta comparison (`r01_and_r02_agree_on_the_rent`'s own doc
 /// explains why that class of comparison is unsafe in general). Asserted
 /// on world 10 for the SAME isolation reason as the row above.
 #[test]

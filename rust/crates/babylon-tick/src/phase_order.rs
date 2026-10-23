@@ -874,8 +874,8 @@ mod tests {
         assert_eq!(ranked[0].rule_id, "mods/a-before-faction");
         assert_eq!(ranked[1].rule_id, "mods/z-after-ooda");
         assert_eq!(ranked[0].execution_rank, ranked[1].execution_rank);
-        assert!(std::ptr::eq(ranked[0].form, &input[1].1));
-        assert!(std::ptr::eq(ranked[1].form, &input[0].1));
+        assert!(std::ptr::eq(ranked[0].form, &raw const input[1].1));
+        assert!(std::ptr::eq(ranked[1].form, &raw const input[0].1));
     }
 
     #[test]

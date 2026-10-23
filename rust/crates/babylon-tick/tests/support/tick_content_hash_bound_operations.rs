@@ -1,5 +1,15 @@
 //! Production-operation execution for the semantic maximum/+1 recipes.
 
+// Conformance fixtures exercise exact engine values, transcribe spec literals,
+// and build whole scenarios in one test. These pedantic lints would force
+// ceremony that hides those contracts, so they stay off in test code only.
+#![allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_possible_wrap,
+    clippy::cast_precision_loss,
+    clippy::cast_sign_loss
+)]
+
 use std::collections::HashMap;
 
 use babylon_bsl::evaluator::Value as BslValue;
@@ -96,25 +106,25 @@ fn execute_text(name: &str, recipe: &Value) -> Result<(), &'static str> {
                 .map_err(|error| replay_text_error(name, error))
         }
         "symbol_bytes" => execute_symbol("a".repeat(count(recipe, "symbol_bytes")))
-            .map_err(|error| bsl_text_error(name, error)),
+            .map_err(|error| bsl_text_error(name, &error)),
         "qname_bytes" | "qname_segments" => {
-            execute_qname(repeated_segments(recipe)).map_err(|error| bsl_text_error(name, error))
+            execute_qname(repeated_segments(recipe)).map_err(|error| bsl_text_error(name, &error))
         }
         "structural_type_bytes" => execute_structural_type("A".repeat(count(recipe, "type_bytes")))
             .map_err(|error| graph_text_error(name, error)),
         "intrinsic_identity_bytes" => {
             execute_intrinsic("a".repeat(count(recipe, "identity_bytes")))
-                .map_err(|error| bsl_text_error(name, error))
+                .map_err(|error| bsl_text_error(name, &error))
         }
-        "enum_type_bytes" => execute_enum_type(format!(
+        "enum_type_bytes" => execute_enum_type(&format!(
             "A{}",
             "a".repeat(count(recipe, "type_bytes").saturating_sub(1))
         ))
-        .map_err(|error| bsl_text_error(name, error)),
-        "enum_member_bytes" => execute_enum_member("A".repeat(count(recipe, "member_bytes")))
-            .map_err(|error| bsl_text_error(name, error)),
+        .map_err(|error| bsl_text_error(name, &error)),
+        "enum_member_bytes" => execute_enum_member(&"A".repeat(count(recipe, "member_bytes")))
+            .map_err(|error| bsl_text_error(name, &error)),
         "governance_utf8_bytes" => execute_governance("a".repeat(count(recipe, "utf8_bytes")))
-            .map_err(|error| bsl_text_error(name, error)),
+            .map_err(|error| bsl_text_error(name, &error)),
         _ => panic!("non-text production operation {name}"),
     }
 }
@@ -157,18 +167,18 @@ fn execute_intrinsic(identity: String) -> Result<(), IdentityCodecError> {
     )
 }
 
-fn execute_enum_type(enum_type: String) -> Result<(), IdentityCodecError> {
-    execute_enum(enum_type, "A".to_owned())
+fn execute_enum_type(enum_type: &str) -> Result<(), IdentityCodecError> {
+    execute_enum(enum_type, "A")
 }
 
-fn execute_enum_member(member: String) -> Result<(), IdentityCodecError> {
-    execute_enum("A".to_owned(), member)
+fn execute_enum_member(member: &str) -> Result<(), IdentityCodecError> {
+    execute_enum("A", member)
 }
 
-fn execute_enum(enum_type: String, member: String) -> Result<(), IdentityCodecError> {
+fn execute_enum(enum_type: &str, member: &str) -> Result<(), IdentityCodecError> {
     let mut enums = EnumRegistry::default();
     enums
-        .declare(&enum_type, &[member])
+        .declare(enum_type, &[member.to_owned()])
         .expect("one unique bounded enum member");
     encode_prepared(
         &empty_types(),
@@ -225,7 +235,7 @@ fn graph_text_error(name: &str, error: StableIdentityError) -> &'static str {
     }
 }
 
-fn bsl_text_error(name: &str, error: IdentityCodecError) -> &'static str {
+fn bsl_text_error(name: &str, error: &IdentityCodecError) -> &'static str {
     let IdentityCodecError::InvalidString { .. } = error else {
         panic!("unexpected BSL text bound error: {error:?}");
     };
@@ -538,7 +548,7 @@ impl GeneratedState {
             .collect()
     }
 
-    fn f64_rows(&self, recipe: AttributeRecipe) -> Vec<(NodeId, String, f64)> {
+    fn f64_rows(recipe: AttributeRecipe) -> Vec<(NodeId, String, f64)> {
         match recipe {
             AttributeRecipe::None => Vec::new(),
             AttributeRecipe::Indexed { count, pattern } => (0..=524_288)
@@ -567,7 +577,7 @@ impl CanonicalState for GeneratedState {
     }
 
     fn all_attributes(&self) -> Vec<(NodeId, String, f64)> {
-        self.f64_rows(self.node_f64.clone())
+        Self::f64_rows(self.node_f64.clone())
     }
 
     fn all_edges(&self) -> Vec<(String, NodeId, NodeId, f64)> {
@@ -1087,14 +1097,14 @@ fn carrier_error(error: StableIdentityError) -> &'static str {
 
 fn graph_error(error: StableIdentityError) -> &'static str {
     match error {
-        StableIdentityError::ResolverRowLimit { .. } => "row_limit",
         StableIdentityError::EdgeLimit { .. } => "edge_limit",
         StableIdentityError::StateSectionLimit { section, .. }
             if section.contains("hyperedge members") =>
         {
             "hyperedge_members"
         }
-        StableIdentityError::StateSectionLimit { .. } => "row_limit",
+        StableIdentityError::ResolverRowLimit { .. }
+        | StableIdentityError::StateSectionLimit { .. } => "row_limit",
         StableIdentityError::FactUnitLimit { .. } => "aggregate_row_limit",
         StableIdentityError::ByteLimit { .. } => "byte_limit",
         other => panic!("unexpected graph bound error: {other:?}"),

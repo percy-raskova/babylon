@@ -44,7 +44,7 @@
 //! and this callsite was not updated alongside it. A `:expr` binding
 //! containing a query form (`fold`/`neighbors`/`select-max`/`exists`/…)
 //! therefore still fails loud today ("needs the graph substrate … this
-//! EvalEnv carries none") through the REAL `run_once_into` driver, even
+//! `EvalEnv` carries none") through the REAL `run_once_into` driver, even
 //! though the underlying evaluator serves every one of those heads. Every
 //! rule below routes around this by writing its query forms directly
 //! inline inside a `(when …)` guard or an `(effects …)` operand — both of
@@ -80,6 +80,11 @@
 //! Tests-as-Behavioral-Contracts principle 4: basic IEEE-754 ops reproduce
 //! bit-exactly across languages, so a value independently computed in
 //! Python and asserted here as an exact `f64` literal is not a guess).
+
+// Conformance fixtures exercise exact engine values, transcribe spec literals,
+// and build whole scenarios in one test. These pedantic lints would force
+// ceremony that hides those contracts, so they stay off in test code only.
+#![allow(clippy::float_cmp)]
 
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;

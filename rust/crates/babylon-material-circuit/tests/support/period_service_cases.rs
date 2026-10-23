@@ -1,3 +1,8 @@
+// Conformance fixtures exercise exact engine values, transcribe spec literals,
+// and build whole scenarios in one test. These pedantic lints would force
+// ceremony that hides those contracts, so they stay off in test code only.
+#![allow(clippy::too_many_lines)]
+
 use super::*;
 
 // These finite fixtures explicitly supply one resident member per employer.

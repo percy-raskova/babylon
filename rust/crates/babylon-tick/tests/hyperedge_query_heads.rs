@@ -230,7 +230,7 @@ fn the_fuel_axis_bounds_a_hyperedge_fold_as_landed() {
 /// both maps lack the entry, so 045 fires first. (The 042-only state — a
 /// type ceiling with no max-members entry — is not constructible from
 /// content: the two maps fill together at the Task-4 seam. That path stays
-/// pinned by bound_checker.rs's own unit test plus Task 4's mutation
+/// pinned by `bound_checker.rs`'s own unit test plus Task 4's mutation
 /// vector, recorded here so the absence is explained, not silent.)
 #[test]
 fn a_members_of_fold_in_an_empty_census_world_is_e_load_045() {
@@ -286,10 +286,10 @@ fn a_hyperedge_element_in_a_numeric_position_refuses_at_load() {
     );
 }
 
-/// Step 6, the enum-ref operand position: a NodeType member where the head
-/// demands a HyperedgeType member refuses E-TYPE-011 (grammar.rs's own
-/// WrongEnumKind — the HyperedgeType positions pre-registered in
-/// ENUM_REF_POSITIONS are live).
+/// Step 6, the enum-ref operand position: a `NodeType` member where the head
+/// demands a `HyperedgeType` member refuses E-TYPE-011 (grammar.rs's own
+/// `WrongEnumKind` — the `HyperedgeType` positions pre-registered in
+/// `ENUM_REF_POSITIONS` are live).
 #[test]
 fn a_node_type_member_in_a_hyperedge_position_is_e_type_011() {
     let rule = r#"

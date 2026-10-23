@@ -1,9 +1,38 @@
+use super::aid::organizer_period_receipts;
+use super::aid::OrganizerAidResolutionReceipt;
+use super::aid::OrganizerAidSupport;
+use super::aid::OrganizerAidSupportStatus;
+use super::aid::OrganizerPendingAidPractice;
+use super::contract::admit_organizer;
+use super::contract::organizer_resource_digest;
+use super::contract::validate_organizer_config;
+use super::time_resources::organizer_fixed_time_resources;
+use super::time_resources::OrganizerPeriodTimeResources;
+use super::OrganizerChoice;
+use super::OrganizerCommand;
+use super::OrganizerCommitment;
+use super::OrganizerConfig;
+use super::OrganizerContactProduct;
+use super::OrganizerError;
+use super::OrganizerInquiry;
+use super::OrganizerMaterialSupport;
+use super::OrganizerObservation;
+use super::OrganizerOutcome;
+use super::OrganizerPartner;
+use super::OrganizerPartnerPolicy;
+use super::OrganizerPartnerResponse;
+use super::OrganizerPauseReason;
+use super::OrganizerReceipt;
+use super::OrganizerRefusal;
+use super::OrganizerReport;
+use super::OrganizerState;
+use super::OrganizerWorkplaceFacts;
+
 use std::collections::BTreeSet;
 
 use babylon_kernel::content_digest::sha256_of;
 
 use super::contract::{committed_hours, identity, required_hours, validate_organizer_pair};
-use super::*;
 use crate::{
     ActorOrganizationId, InputAuthorityId, PracticeId, PracticeIntent, PracticeParameter,
     PracticeTargetIdentity, PracticeTargetTag, ProposalNonce, TaggedPracticeTarget,
@@ -17,6 +46,13 @@ fn target_identity(domain: &[u8], id: u64) -> [u8; 32] {
 
 /// Bind every accepted ruling to the common practice input identity, including
 /// controls that spend no time and execute no contact work.
+///
+/// # Errors
+///
+/// Returns the pair faults from [`validate_organizer_pair`],
+/// [`OrganizerError::InvalidCommitment`] when re-admission or the choice
+/// binding refuses the commitment, and [`OrganizerError::Arithmetic`] when a
+/// period or target identity cannot be represented.
 pub fn organizer_practice_intent(
     config: &OrganizerConfig,
     state: &OrganizerState,
@@ -39,6 +75,17 @@ fn practice_intent_with_origin(
 }
 
 // Only current admitted input and validate_pending may enter this canonical builder.
+/// Bind one authorized commitment to its exact BSL practice intent.
+///
+/// # Errors
+///
+/// Returns [`OrganizerError::InvalidCommitment`] when the choice lacks its
+/// configured binding and [`OrganizerError::InvalidState`] when a target
+/// identity cannot be derived.
+#[allow(
+    clippy::too_many_lines,
+    reason = "one exhaustive match binds every organizer choice to its exact practice intent; splitting it would scatter the exhaustive binding"
+)]
 pub(super) fn intent_for_authorized_commitment(
     config: &OrganizerConfig,
     submit_after_tick: u64,
@@ -224,6 +271,11 @@ fn add_observation(
 /// Endogenous reducer: only products in the opening committed state can renew
 /// cooperation. Newly closed material facts can publish an attributed report
 /// inside the same detached transaction; no report escapes a failed tick.
+///
+/// # Errors
+///
+/// Returns every [`consume_organizer_contact_products`] and
+/// [`report_organizer_workplace`] fault for the supplied facts.
 pub fn reduce_organizer_products(
     config: &OrganizerConfig,
     opening: &OrganizerState,
@@ -235,6 +287,13 @@ pub fn reduce_organizer_products(
 
 /// Consume retained contact receipts without fabricating a report. This
 /// separately testable reducer is the causal consumer of completed contact.
+///
+/// # Errors
+///
+/// Returns [`OrganizerError::PeriodMismatch`] when `resolve_period` is not the
+/// opening period plus one, [`OrganizerError::InvalidState`] for a product
+/// without a matching agreement, and [`OrganizerError::Arithmetic`] on an
+/// overflowing renewal window.
 pub fn consume_organizer_contact_products(
     config: &OrganizerConfig,
     opening: &OrganizerState,
@@ -288,6 +347,13 @@ pub fn consume_organizer_contact_products(
 
 /// Publish the material signal only while an actual report-sharing agreement
 /// remains in force. Omitting the contact consumer cannot sustain this access.
+///
+/// # Errors
+///
+/// Returns the pair faults from [`validate_organizer_pair`],
+/// [`OrganizerError::PeriodMismatch`] when any input belongs to another
+/// period or workplace, and [`OrganizerError::Arithmetic`] when a report
+/// bound overflows.
 pub fn report_organizer_workplace(
     config: &OrganizerConfig,
     opening: &OrganizerState,
@@ -433,6 +499,12 @@ pub(super) fn response_intent(
 }
 
 /// Captured player/policy authority rows use the same existing identity law.
+///
+/// # Errors
+///
+/// Returns the config faults [`validate_organizer_config`] reports and
+/// [`OrganizerError::InvalidConfig`] when the assembled ledger fails its own
+/// identity validation.
 pub fn organizer_input_authority_ledger(
     config: &OrganizerConfig,
 ) -> Result<crate::PracticeInputAuthorityLedger, OrganizerError> {
@@ -485,6 +557,13 @@ pub fn organizer_input_authority_ledger(
 
 /// Bind accepted and standing work, including independent participating
 /// responses, to the existing canonical admission rail.
+///
+/// # Errors
+///
+/// Returns the pair faults from [`validate_organizer_pair`], the config and
+/// ledger faults of [`organizer_input_authority_ledger`], routine binding
+/// faults, and [`OrganizerError::Arithmetic`] when a period or hour sum
+/// overflows.
 pub fn organizer_resolved_action_batch(
     config: &OrganizerConfig,
     state: &OrganizerState,
@@ -555,6 +634,13 @@ pub fn organizer_resolved_action_batch(
     Ok(batch)
 }
 
+/// Project the resolved batch into the ordered replay action rail.
+///
+/// # Errors
+///
+/// Returns every [`organizer_resolved_action_batch`] fault and
+/// [`OrganizerError::InvalidCommitment`] when projection refuses the batch or
+/// its authority ledger.
 pub fn organizer_action_batch(
     config: &OrganizerConfig,
     state: &OrganizerState,
@@ -603,6 +689,13 @@ fn inquiry_report(question: OrganizerInquiry, opening: &OrganizerState) -> Optio
 /// The accepted commitment remains an input; it is never mutated on failure.
 /// Explicit fixed-time control path; captured campaigns supply real budgets
 /// through `resolve_organizer_practice_with_time` instead.
+///
+/// # Errors
+///
+/// Returns the pair faults from [`validate_organizer_pair`],
+/// [`OrganizerError::PeriodMismatch`] when the facts belong to another period,
+/// and the fixed-time resource and resolution faults of
+/// [`resolve_organizer_practice_with_time`].
 pub fn resolve_organizer_practice(
     config: &OrganizerConfig,
     opening: &OrganizerState,
@@ -843,6 +936,12 @@ fn execute_practice(
 }
 
 /// Compose the two separately scheduled BSL operations for replay contracts.
+///
+/// # Errors
+///
+/// Returns every [`reduce_organizer_products`] and
+/// [`resolve_organizer_practice`] fault; a reduction that fails publishes
+/// nothing.
 pub fn resolve_organizer_period(
     config: &OrganizerConfig,
     opening: &OrganizerState,

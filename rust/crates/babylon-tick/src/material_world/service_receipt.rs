@@ -2,7 +2,18 @@
 use super::monetary_receipt::{account, account_parts};
 use super::{MaterialWorldError, ReceiptCursor};
 use babylon_kernel::currency::Currency;
-use babylon_material_circuit::*;
+use babylon_material_circuit::FinalDemandPrincipalId;
+use babylon_material_circuit::GoodId;
+use babylon_material_circuit::HouseholdServiceReceipt;
+use babylon_material_circuit::MaterialCircuitError;
+use babylon_material_circuit::OrderId;
+use babylon_material_circuit::ProcessId;
+use babylon_material_circuit::ServiceMarketReceipt;
+use babylon_material_circuit::ServiceOutputReceipt;
+use babylon_material_circuit::ServicePerformanceReceipt;
+use babylon_material_circuit::ServicePriceDecision;
+use babylon_material_circuit::SiteId;
+use babylon_material_circuit::UnitId;
 pub(super) const PERFORMANCE_BYTES: usize = 233;
 pub(super) const HOUSEHOLD_BYTES: usize = 144;
 pub(super) const MARKET_BYTES: usize = 233;
@@ -270,6 +281,7 @@ pub(super) fn decode_output(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use babylon_material_circuit::AccountId;
     #[test]
     fn all_service_encoders_roundtrip_their_current_typed_receipts() {
         let money = Currency::from_micro_units;
@@ -352,6 +364,35 @@ mod tests {
 #[cfg(test)]
 mod engine_test {
     use super::*;
+    use babylon_material_circuit::admit_material_purchase;
+    use babylon_material_circuit::advance_material_circuit;
+    use babylon_material_circuit::AccountId;
+    use babylon_material_circuit::CapacityRow;
+    use babylon_material_circuit::CapacitySupply;
+    use babylon_material_circuit::CashAccount;
+    use babylon_material_circuit::CircuitAccounting;
+    use babylon_material_circuit::CommodityDefinition;
+    use babylon_material_circuit::CommodityKind;
+    use babylon_material_circuit::EmploymentTerms;
+    use babylon_material_circuit::FinalDemandPrincipal;
+    use babylon_material_circuit::HistoricalCostBook;
+    use babylon_material_circuit::LaborCapacityRow;
+    use babylon_material_circuit::LaborCoefficient;
+    use babylon_material_circuit::LogisticsNodeId;
+    use babylon_material_circuit::MaterialCircuitState;
+    use babylon_material_circuit::MaterialPurchase;
+    use babylon_material_circuit::MonetaryBook;
+    use babylon_material_circuit::MonetaryCircuit;
+    use babylon_material_circuit::ProcessOutput;
+    use babylon_material_circuit::ProductionCommitment;
+    use babylon_material_circuit::ServiceConnection;
+    use babylon_material_circuit::ServiceOrder;
+    use babylon_material_circuit::ServiceStage;
+    use babylon_material_circuit::SiteLogisticsNode;
+    #[allow(
+        clippy::too_many_lines,
+        reason = "one fixture assembles the whole conserved circuit so the decoder test starts from a real state"
+    )]
     fn opening() -> MaterialCircuitState {
         let site = SiteId::from_bytes([1; 32]);
         let person = FinalDemandPrincipalId::from_bytes([2; 32]);

@@ -337,13 +337,13 @@ fn counterpart_domestic_paid_need_competes_with_finite_import_supply() {
             .household_consumption
             .iter()
             .map(|r| r.consumed_quantity)
-            .try_fold(0_u64, |a, b| a.checked_add(b))
+            .try_fold(0_u64, u64::checked_add)
             .unwrap();
         let all_consumed = second
             .household_consumption
             .iter()
             .map(|r| r.consumed_quantity)
-            .try_fold(first_consumed, |a, b| a.checked_add(b))
+            .try_fold(first_consumed, u64::checked_add)
             .unwrap();
         assert_conservation(&first.state, first_consumed, 14, 202);
         assert_conservation(&second.state, all_consumed, 14, 202);

@@ -534,6 +534,7 @@ pub(crate) fn encode_tick_payload_for_prepared(
     )
 }
 
+#[derive(Clone, Copy)]
 struct TickPayloadEvidence<'a> {
     outcomes: &'a [(String, usize)],
     reported_fired: usize,

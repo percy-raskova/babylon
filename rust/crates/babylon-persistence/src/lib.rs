@@ -1,6 +1,4 @@
 //! Rust-owned `PostgreSQL` persistence contracts and adapters.
-#![forbid(unsafe_code)]
-#![warn(clippy::pedantic)]
 
 // National reconstruction retires large graphs, registers and receipt owners.
 // Use the same allocator in the runtime, client and persistence qualification

@@ -1,6 +1,3 @@
-#![forbid(unsafe_code)]
-#![warn(clippy::pedantic)]
-
 // Schema literals retain the language-neutral contract spelling.
 mod canonical;
 #[allow(clippy::unreadable_literal)]

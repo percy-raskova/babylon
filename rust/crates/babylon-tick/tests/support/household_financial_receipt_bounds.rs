@@ -34,7 +34,8 @@ fn assert_financial_bound(family: u8) {
         assert_eq!(decoded.distributions.last().unwrap().total_shares, 131_072);
     }
     let mut duplicate = rows.clone();
-    duplicate[LIMIT - 1] = duplicate[0].clone();
+    let first_row = duplicate[0].clone();
+    duplicate[LIMIT - 1] = first_row;
     assert_eq!(
         decode_material_receipts(&envelope(&[(family, duplicate)])),
         Err(MaterialWorldError::Wire)

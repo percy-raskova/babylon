@@ -12,6 +12,11 @@
 //! not exist (this file failed to compile); GREEN since the harness landed
 //! — this is now the smoke/regression guard for the shared API, kept alive.
 
+// Conformance fixtures exercise exact engine values, transcribe spec literals,
+// and build whole scenarios in one test. These pedantic lints would force
+// ceremony that hides those contracts, so they stay off in test code only.
+#![allow(clippy::float_cmp)]
+
 mod support;
 
 use babylon_graph::memory::MemoryGraph;

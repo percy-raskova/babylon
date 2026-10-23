@@ -6,6 +6,7 @@ use babylon_bsl::causal_contract::{MAX_AST_WALK_DEPTH, MAX_AST_WALK_NODES, MAX_A
 use babylon_bsl::reader::{Atom, SExpr, MAX_READER_NESTING_DEPTH};
 use proc_macro2::{LineColumn, TokenStream, TokenTree};
 use std::collections::{BTreeSet, VecDeque};
+use std::fmt::Write as _;
 use std::fs::File;
 use std::io::Read;
 use std::path::{Component, Path, PathBuf};
@@ -383,7 +384,9 @@ fn read_bounded(path: &Path, maximum: usize, kind: &str) -> Result<Vec<u8>, Stri
         .map_err(|error| format!("{kind} byte limit conversion failed: {error}"))?
         .checked_add(1)
         .ok_or_else(|| format!("{kind} byte limit overflow"))?;
-    let mut bytes = Vec::with_capacity(maximum.min(metadata.len() as usize));
+    let declared_length =
+        usize::try_from(metadata.len()).map_err(|error| format!("{kind} length: {error}"))?;
+    let mut bytes = Vec::with_capacity(maximum.min(declared_length));
     file.by_ref()
         .take(limit)
         .read_to_end(&mut bytes)
@@ -716,8 +719,7 @@ fn resolve_edges(
     let workspace_dependency_count = workspace_dependencies.map_or(0, toml::map::Map::len);
     if workspace_dependency_count > MAX_DEPENDENCIES {
         return Err(format!(
-            "workspace dependency entry count {} exceeds {}",
-            workspace_dependency_count, MAX_DEPENDENCIES
+            "workspace dependency entry count {workspace_dependency_count} exceeds {MAX_DEPENDENCIES}"
         ));
     }
     let mut pending = Vec::new();
@@ -882,10 +884,7 @@ fn collect_dependency_table<'a>(
         return Ok(());
     };
     if output.len().saturating_add(table.len()) > MAX_DEPENDENCIES {
-        return Err(format!(
-            "dependency entry count exceeds {}",
-            MAX_DEPENDENCIES
-        ));
+        return Err(format!("dependency entry count exceeds {MAX_DEPENDENCIES}"));
     }
     for index in 0..256 {
         let Some((alias, row)) = toml_table_entry_at(table, index) else {
@@ -1061,7 +1060,7 @@ fn package_path_less(workspace: &Workspace, left: &[usize], right: &[usize]) -> 
                 }
             }
             (None, Some(_)) => return true,
-            (Some(_), None) | (None, None) => return false,
+            (Some(_) | None, None) => return false,
         }
     }
     false
@@ -1274,7 +1273,7 @@ fn enumerate_sources(
                 ));
             }
             admit_source_entry(
-                entry,
+                &entry,
                 depth,
                 &canonical_root,
                 crate_root,
@@ -1297,7 +1296,7 @@ fn enumerate_sources(
 }
 
 fn admit_source_entry(
-    entry: std::fs::DirEntry,
+    entry: &std::fs::DirEntry,
     depth: usize,
     canonical_root: &Path,
     crate_root: &Path,
@@ -1625,7 +1624,7 @@ fn validate_registry_rows(rows: &[String]) -> Result<(), String> {
         let Some(byte) = digest.get(byte_index) else {
             return Err(format!("{REGISTRY_NAME} digest is incomplete"));
         };
-        digest_hex.push_str(&format!("{byte:02x}"));
+        write!(digest_hex, "{byte:02x}").expect("writing to a String cannot fail");
     }
     if digest_hex != REGISTRY_DIGEST {
         return Err(format!(
@@ -1891,8 +1890,8 @@ mod tests {
 
     fn nested_toml_arrays(depth: usize) -> toml::Value {
         let mut value = toml::Value::Integer(0);
-        for _depth_index in 0..33 {
-            if _depth_index >= depth {
+        for depth_index in 0..33 {
+            if depth_index >= depth {
                 break;
             }
             value = toml::Value::Array(vec![value]);

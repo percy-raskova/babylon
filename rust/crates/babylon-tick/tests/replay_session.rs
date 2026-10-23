@@ -483,7 +483,7 @@ where
             .collect(),
         draw_tickets: choice_receipts
             .iter()
-            .map(|receipt| receipt.draw_ticket())
+            .map(babylon_tick::choice_receipt::ChoiceReceipt::draw_ticket)
             .collect(),
         result_bits: [NodeId(0), NodeId(1)]
             .into_iter()
@@ -500,7 +500,7 @@ where
 
 #[test]
 fn replay_session_constructor_is_typed_to_identity() {
-    let _constructor = ReplayTickSession::<MemoryGraph>::new;
+    let _ = ReplayTickSession::<MemoryGraph>::new;
 }
 
 #[test]
@@ -934,6 +934,10 @@ fn completed_replay_retains_every_source_owned_material_family() {
 }
 
 #[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "one assertion walks every derived territory row in a single replay"
+)]
 fn territory_rows_are_derived_from_the_post_tick_graph() {
     let short_id = StableElementKey::Node {
         scenario: "demo/territory-derived".to_owned(),
@@ -1044,6 +1048,10 @@ fn territory_rows_are_derived_from_the_post_tick_graph() {
 }
 
 #[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "one assertion walks every derived organization row and its topology in a single replay"
+)]
 fn organization_rows_are_derived_from_the_post_tick_graph_and_presence_topology() {
     let organization_id = |local_name: &str| StableElementKey::Node {
         scenario: "demo/organization-derived".to_owned(),
@@ -1439,6 +1447,10 @@ fn register_tick_domain_is_checked() {
 }
 
 #[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "one replay asserts the exact payload and its order sensitivity together"
+)]
 fn tick_payload_is_exact_and_order_sensitive_without_reencoding_fired() {
     let mut graph = MemoryGraph::new();
     let node = graph.add_node("class").unwrap();

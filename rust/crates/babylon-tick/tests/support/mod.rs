@@ -190,6 +190,10 @@ pub struct ExpectedField {
 /// would MASK a real divergence rather than tolerate a benign one, so
 /// `assert_eq!` stays exact — matching every call site this generalizes
 /// from.
+#[allow(
+    clippy::float_cmp,
+    reason = "fixture attributes carry exact literal values, so bit-exact comparison is the contract"
+)]
 pub fn assert_expected<G: GraphSubstrate>(graph: &G, expected: &[ExpectedField]) {
     for e in expected {
         assert_eq!(

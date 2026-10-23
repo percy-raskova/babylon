@@ -92,6 +92,7 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> RuleDia
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::float_cmp)]
     use crate::diagnostic::RuleDiagnosticSession;
     use crate::{
         run_prepared_tick_with, EventRecord, HashBoundary, PreparedEventBatchSink, TickReport,

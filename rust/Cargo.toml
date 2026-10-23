@@ -74,8 +74,29 @@ edition = "2021"
 rust-version = "1.87"
 license = "AGPL-3.0-or-later"   # in-tree = babylon's own license, not the sibling BSD
 
-# PER-306: these lints become active only in packages that declare
-# `[lints] workspace = true`. That preserves the six-package pedantic boundary
-# formerly implemented through repeated package-specific Clippy executions.
+# PER-350: every workspace crate declares `[lints] workspace = true`, so these
+# levels are the single lint authority for the workspace (`docs/agents/rust-style.md`).
+# A crate-level `#![forbid(unsafe_code)]` or `#![warn(clippy::pedantic)]` is now
+# redundant and must not be reintroduced.
+[workspace.lints.rust]
+unsafe_code = "forbid"
+# `non_exhaustive_omitted_patterns` is deliberately absent: the lint is still
+# unstable on the pinned 1.91.1 toolchain (rust-lang/rust#89554), so declaring
+# it here emits `unknown_lints` on every crate and fails `-D warnings`. EXC-02
+# and the `bsl-lint google-rust-style` wildcard-arm check cover that obligation.
+
 [workspace.lints.clippy]
+# Baseline cursor for the CLI-planned lints below; the group stays a warning so
+# `-D warnings` in CI promotes it without hiding which lint fired.
 pedantic = { level = "warn", priority = -1 }
+# Denied outright: each of these has a mechanical rewrite that never changes
+# behavior, and leaving one to warning level let it accumulate.
+borrowed_box = "deny"
+for_kv_map = "deny"
+len_without_is_empty = "deny"
+new_without_default = "deny"
+ptr_arg = "deny"
+rc_buffer = "deny"
+should_implement_trait = "deny"
+wildcard_imports = "deny"
+wrong_self_convention = "deny"

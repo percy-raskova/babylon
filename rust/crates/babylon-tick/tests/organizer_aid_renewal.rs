@@ -74,7 +74,7 @@ fn paid_amount(
             );
             r.credit.delta.micro_units()
         })
-        .try_fold(0_i128, |a, b| a.checked_add(b))
+        .try_fold(0_i128, i128::checked_add)
         .unwrap()
 }
 fn exact_paid_handoff(rows: &MaterialTickReceipts) -> u64 {
@@ -82,7 +82,7 @@ fn exact_paid_handoff(rows: &MaterialTickReceipts) -> u64 {
         .iter()
         .filter(|r| r.principal_id == household() && r.good_id == good(2))
         .map(|d| paid_handoff(rows, d))
-        .try_fold(0_u64, |a, b| a.checked_add(b))
+        .try_fold(0_u64, u64::checked_add)
         .unwrap()
 }
 
@@ -112,7 +112,7 @@ fn produced_food(rows: &MaterialTickReceipts, state: &MaterialCircuitState) -> u
                 .checked_mul(recipe.quantity_per_batch)
                 .unwrap()
         })
-        .try_fold(0_u64, |a, b| a.checked_add(b))
+        .try_fold(0_u64, u64::checked_add)
         .unwrap()
 }
 fn paid_supply(rows: &MaterialTickReceipts, state: &MaterialCircuitState) -> u64 {
@@ -142,7 +142,7 @@ fn paid_supply(rows: &MaterialTickReceipts, state: &MaterialCircuitState) -> u64
             let id = OutboundOrderId::Delivery(order.order_id);
             let purchase = match &state.accounting {
                 CircuitAccounting::Monetary(e) => e.book.purchase(id).unwrap(),
-                _ => unreachable!(),
+                CircuitAccounting::PhysicalControl => unreachable!(),
             };
             let paid = paid_amount(
                 rows,
@@ -158,7 +158,7 @@ fn paid_supply(rows: &MaterialTickReceipts, state: &MaterialCircuitState) -> u64
             );
             delivered.quantity
         })
-        .try_fold(0_u64, |a, b| a.checked_add(b))
+        .try_fold(0_u64, u64::checked_add)
         .unwrap()
 }
 fn read_provision(
@@ -187,7 +187,7 @@ fn read_provision(
         .iter()
         .filter(|r| r.principal_id == household() && r.good_id == good(2))
         .map(|r| r.consumed_quantity)
-        .try_fold(0_u64, |a, b| a.checked_add(b))
+        .try_fold(0_u64, u64::checked_add)
         .unwrap();
     proof.donor_consumed = proof.donor_consumed.checked_add(used).unwrap();
 }

@@ -19,6 +19,11 @@
 //! tick 3: heat = 0.42868749999999994 cohesion = 0.68450475 edu = 0.18225000000000002 | r = 1.0 l = 0.0 f = 0.0 | cost-modifier = 0.875 | member-count = 1.0 density-sum = 1.0
 //! ```
 
+// Conformance fixtures exercise exact engine values, transcribe spec literals,
+// and build whole scenarios in one test. These pedantic lints would force
+// ceremony that hides those contracts, so they stay off in test code only.
+#![allow(clippy::unreadable_literal)]
+
 use babylon_bsl::scenario::{compose_declaration_preludes, load_scenario_with_prelude};
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;
@@ -253,7 +258,7 @@ const COLLISION_SCENARIO: &str =
 const CONTROL_RATIO_PACK: &str = include_str!("../content/rules/control-ratio.bsl");
 
 /// Step 1 (§3.7a): the two packs co-loaded over ONE carrier fire once
-/// each — the per-rule-id fired arithmetic (the carceral_arc_conformance
+/// each — the per-rule-id fired arithmetic (the `carceral_arc_conformance`
 /// style) and the decay-applied-ONCE read (0.475, never the
 /// double-application 0.45125). The mutation vector (a SECOND institution
 /// node in this world) reds §8c guard 4 first, then this arithmetic.
@@ -380,7 +385,7 @@ fn all_inactive_members_skip_every_membership_lane() {
 }
 
 /// Step 1 (§1.2's L1 analogue): a world with NO COMMUNITY hyperedge
-/// REFUSES the pack at load — MissingCeiling (E-LOAD-045), the driver's
+/// REFUSES the pack at load — `MissingCeiling` (E-LOAD-045), the driver's
 /// documented "fail loudly at load rather than quietly iterate nothing"
 /// (lib.rs:250-252) — where frozen silently no-ops. A refusal test, never
 /// a golden-pinned world.

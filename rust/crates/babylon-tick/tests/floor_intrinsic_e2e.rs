@@ -15,12 +15,17 @@
 //! `population = 11`, `rate = 0.5c` (exact in binary64 — no rounding
 //! ambiguity), `deaths = floor(population * rate) = floor(5.5) = 5`.
 
+// Conformance fixtures exercise exact engine values, transcribe spec literals,
+// and build whole scenarios in one test. These pedantic lints would force
+// ceremony that hides those contracts, so they stay off in test code only.
+#![allow(clippy::float_cmp)]
+
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::memory::MemoryGraph;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
 use babylon_tick::{run_once, run_once_into};
 
-const SCENARIO: &str = r#"
+const SCENARIO: &str = r"
 (scenario floor-e2e/one-class
   (deffield social-class/population int extensive)
   (deffield social-class/deaths int extensive)
@@ -28,7 +33,7 @@ const SCENARIO: &str = r#"
 
   (node core NodeType/SOCIAL_CLASS
     (social-class/population 11)))
-"#;
+";
 
 const RULE: &str = r#"
 (intrinsic floor :params (real) :returns int :cost 5)

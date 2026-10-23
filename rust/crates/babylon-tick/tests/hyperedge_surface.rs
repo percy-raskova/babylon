@@ -134,7 +134,7 @@ fn update_hyperedge_refuses_a_qname_owned_by_another_type() {
 /// Step 4's mechanism behind §8c guard 2: a hyperedge-namespace `:field`
 /// binding is invisible to subject derivation (D29 — a `:field` binding is
 /// node-scoped and stays node-scoped), so a rule whose ONLY field binding
-/// owns off a HyperedgeType refuses with the subject-type error rather
+/// owns off a `HyperedgeType` refuses with the subject-type error rather
 /// than silently iterating an empty population.
 #[test]
 fn a_hyperedge_owned_field_binding_names_no_subject_type() {

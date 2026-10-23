@@ -1,4 +1,10 @@
 //! Real BSL/tick gift, scarce time and independent partner controls.
+
+// Conformance fixtures exercise exact engine values, transcribe spec literals,
+// and build whole scenarios in one test. These pedantic lints would force
+// ceremony that hides those contracts, so they stay off in test code only.
+#![allow(clippy::too_many_lines)]
+
 #[path = "support/dual_aid_schedule.rs"]
 mod dual_aid_schedule;
 #[path = "../../babylon-persistence/src/michigan_dynamic_hex_foundation.rs"]
@@ -1550,7 +1556,7 @@ fn run_dual_aid_schedule(separated: bool, refuses_remote: bool) {
                     );
                     r.credit.delta.micro_units()
                 })
-                .try_fold(0_i128, |a, b| a.checked_add(b))
+                .try_fold(0_i128, i128::checked_add)
                 .unwrap();
             assert_eq!(posted, 3);
             actual_grants.insert(grant.commitment_id.as_bytes());

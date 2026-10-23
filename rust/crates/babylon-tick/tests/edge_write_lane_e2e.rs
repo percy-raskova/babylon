@@ -25,6 +25,11 @@
 //! binary64 (dyadic rationals only — `edge_lane_e2e.rs`'s discipline): plain
 //! `f64` equality is the right assertion throughout.
 
+// Conformance fixtures exercise exact engine values, transcribe spec literals,
+// and build whole scenarios in one test. These pedantic lints would force
+// ceremony that hides those contracts, so they stay off in test code only.
+#![allow(clippy::float_cmp)]
+
 use babylon_bsl::evaluator::Value;
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;
@@ -139,7 +144,7 @@ fn shape_1_for_each_over_edges_writes_every_edge_and_the_emit_reads_pre_state() 
 /// production path. Also pinned: the untouched second edge's tension was
 /// NEVER written and reads loud (the honest-null discipline end-to-end).
 ///
-/// **Determinism caveat (edge_lane_e2e.rs's own, restated):** the
+/// **Determinism caveat (`edge_lane_e2e.rs`'s own, restated):** the
 /// `select-max` scores by the constant `1` — deterministic ONLY because
 /// `base-a`'s `:out` SOLIDARITY neighbor set is a singleton (`base-b`).
 ///

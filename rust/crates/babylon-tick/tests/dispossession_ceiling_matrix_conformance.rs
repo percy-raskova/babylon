@@ -40,6 +40,11 @@
 //! `foreclosure_rate` in the payload is `0.0` (floored from `-6.0`), not the
 //! raw seed.
 
+// Conformance fixtures exercise exact engine values, transcribe spec literals,
+// and build whole scenarios in one test. These pedantic lints would force
+// ceremony that hides those contracts, so they stay off in test code only.
+#![allow(clippy::float_cmp)]
+
 use babylon_bsl::evaluator::Value;
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::memory::MemoryGraph;

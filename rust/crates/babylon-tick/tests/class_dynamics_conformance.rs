@@ -1,5 +1,5 @@
 //! Conformance vectors for the `class-dynamics/*` rule pack (Feature-016,
-//! issue #669 — the TickDynamics class-dynamics port train,
+//! issue #669 — the `TickDynamics` class-dynamics port train,
 //! `docs/superpowers/plans/2026-08-18-tickdynamics-port.md`).
 //!
 //! # Task 2 scope
@@ -117,6 +117,16 @@
 //! `rule class-dynamics/probe rejected: E-LOAD-002: rule class-dynamics/probe
 //! carries no anchor and its first id segment names no registered system —
 //! a rule cannot land nowhere (§2.3)`.
+
+// Conformance fixtures exercise exact engine values, transcribe spec literals,
+// and build whole scenarios in one test. These pedantic lints would force
+// ceremony that hides those contracts, so they stay off in test code only.
+#![allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_possible_wrap,
+    clippy::cast_precision_loss,
+    clippy::cast_sign_loss
+)]
 
 use babylon_bsl::scenario::load_scenario;
 use babylon_bsl::structural_verbs::CollectingSink;

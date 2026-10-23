@@ -1,4 +1,10 @@
 //! Real close controls for gift ownership, scarce work and delayed household food.
+
+// Conformance fixtures exercise exact engine values, transcribe spec literals,
+// and build whole scenarios in one test. These pedantic lints would force
+// ceremony that hides those contracts, so they stay off in test code only.
+#![allow(clippy::too_many_lines)]
+
 use super::*;
 
 fn recipient() -> FinalDemandPrincipalId {
@@ -376,10 +382,10 @@ fn generic_residual_protects_own_food_and_shared_actor_aliases_cannot_double_spe
 fn stale_changed_duplicate_and_uncaptured_aid_refuse_atomically() {
     let state = aid_opening(false);
     let before = encode_material_circuit_state(&state).unwrap();
-    let mut stale = input(2);
-    stale.admitted_period = 1;
+    let mut stale_input = input(2);
+    stale_input.admitted_period = 1;
     assert_eq!(
-        close_aid(&state, &[stale]),
+        close_aid(&state, &[stale_input]),
         Err(MaterialCircuitError::PeriodInvariant)
     );
     let mut changed = input(2);

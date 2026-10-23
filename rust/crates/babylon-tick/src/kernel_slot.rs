@@ -240,6 +240,11 @@ pub enum KernelSlotReservationMatch<'a> {
 }
 
 /// Validate one complete append-only reservation ledger.
+///
+/// # Errors
+///
+/// Returns [`KernelSlotLedgerError`] when a row ordinal, a sample binding, or a
+/// repeated reservation breaks the append-only ledger contract.
 pub fn validate_kernel_slot_ledger(
     reservations: &[KernelSlotReservationRef<'_>],
 ) -> Result<(), KernelSlotLedgerError> {
@@ -363,6 +368,12 @@ pub fn match_kernel_slot_reservation<'a>(
 
 /// Validate every live typed kernel against the permanent ledger. Historical
 /// reservations without a live kernel remain legal tombstones.
+///
+/// # Errors
+///
+/// Returns every [`validate_kernel_slot_ledger`] fault plus
+/// [`KernelSlotLedgerError`] when a live kernel's sample or slot has no
+/// matching reservation.
 pub fn validate_live_kernel_slots(
     reservations: &[KernelSlotReservationRef<'_>],
     kernels: &[(&str, &FiniteKernel)],

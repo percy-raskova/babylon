@@ -48,6 +48,10 @@ pub(super) fn facts(
     Ok(result)
 }
 
+#[allow(
+    clippy::too_many_lines,
+    reason = "one aid reducer keeps every mandate receipt and transfer in a single ordered pass"
+)]
 fn support(
     gift: &OrganizerAidCommitment,
     dispatch_period: u64,
@@ -186,6 +190,10 @@ fn support(
 
 // The detached material close remains the accounting authority. Select only the
 // admitted command's receipts and transfers; do not derive costs from balances.
+#[allow(
+    clippy::too_many_lines,
+    reason = "one posting selection keeps the admitted command's receipts and transfers in one ordered pass"
+)]
 fn actual_postings(
     mandate: &AidMandate,
     id: OrderId,
@@ -403,11 +411,11 @@ mod posting_tests {
             match defect {
                 0 => {
                     rows[0].debit.location =
-                        MoneyLocation::Cash(AccountId::Household(mandate.donor))
+                        MoneyLocation::Cash(AccountId::Household(mandate.donor));
                 }
                 1 => {
                     rows[1].credit.location =
-                        MoneyLocation::Cash(AccountId::Household(mandate.donor))
+                        MoneyLocation::Cash(AccountId::Household(mandate.donor));
                 }
                 2 => rows[1].debit.delta = Currency::from_micro_units(6),
                 3 => rows.push(rows[0].clone()),

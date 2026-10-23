@@ -7,7 +7,7 @@ use babylon_tick::{
     kernel_slot::KernelSlotReservationRef, ContentRuleSource, ForecastError, PrepareError,
 };
 
-const SCENARIO: &str = r#"
+const SCENARIO: &str = r"
 (scenario struggle/spark-projection-contract
   (defvocabulary NodeType (SOCIAL_CLASS))
   (defenum StruggleSparkOutcome (EXCESSIVE_FORCE NO_INCIDENT))
@@ -16,9 +16,9 @@ const SCENARIO: &str = r#"
   (node worker NodeType/SOCIAL_CLASS
     (social-class/last-incident 0)
     (social-class/earlier-choice 0)))
-"#;
+";
 
-const MULTI_CARRIER_SCENARIO: &str = r#"
+const MULTI_CARRIER_SCENARIO: &str = r"
 (scenario struggle/spark-projection-contract
   (defvocabulary NodeType (SOCIAL_CLASS))
   (defenum StruggleSparkOutcome (EXCESSIVE_FORCE NO_INCIDENT))
@@ -27,9 +27,9 @@ const MULTI_CARRIER_SCENARIO: &str = r#"
     (social-class/last-incident 0))
   (node second NodeType/SOCIAL_CLASS
     (social-class/last-incident 0)))
-"#;
+";
 
-const WRONG_SUBJECT_TYPE_SCENARIO: &str = r#"
+const WRONG_SUBJECT_TYPE_SCENARIO: &str = r"
 (scenario struggle/spark-projection-contract
   (defvocabulary NodeType (SOCIAL_CLASS INSTITUTION))
   (defenum StruggleSparkOutcome (EXCESSIVE_FORCE NO_INCIDENT))
@@ -37,16 +37,16 @@ const WRONG_SUBJECT_TYPE_SCENARIO: &str = r#"
   (node worker NodeType/SOCIAL_CLASS
     (social-class/last-incident 0))
   (node outsider NodeType/INSTITUTION))
-"#;
+";
 
-const PREFIX_DEPENDENT_SCENARIO: &str = r#"
+const PREFIX_DEPENDENT_SCENARIO: &str = r"
 (scenario struggle/spark-projection-contract
   (defvocabulary NodeType (SOCIAL_CLASS))
   (defenum StruggleSparkOutcome (EXCESSIVE_FORCE NO_INCIDENT))
   (deffield social-class/last-incident int extensive)
   (node worker NodeType/SOCIAL_CLASS
     (social-class/last-incident 9)))
-"#;
+";
 
 const DETERMINISTIC_PREFIX: &str = r#"
 (rule struggle/a-prefix

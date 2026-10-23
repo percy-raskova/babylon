@@ -1,5 +1,5 @@
 //! Registration + scenario-ceremony conformance for the joint Decomposition
-//! (@11.0) + ControlRatio (@12.0) port train — Task 1 of
+//! (@11.0) + `ControlRatio` (@12.0) port train — Task 1 of
 //! `docs/superpowers/plans/2026-08-17-decomposition-controlratio-port.md`
 //! (frozen source: `src/babylon/engine/systems/decomposition.py`, 370
 //! lines, + `src/babylon/engine/systems/control_ratio.py`, 248 lines).
@@ -214,7 +214,7 @@
 //! decomposition/p03-trigger static bound 176 exceeds its declared :fuel
 //! 169`. This is the direct, mechanical consequence of `p03`'s four
 //! `(fold sum (nodes NodeType/SOCIAL_CLASS) …)` bindings — each fold's
-//! static bound scales with the SOCIAL_CLASS `CardinalityCeiling` the
+//! static bound scales with the `SOCIAL_CLASS` `CardinalityCeiling` the
 //! LOADING scenario itself mints (plan §2's own "which also statically
 //! bounds every fold over it", Power-of-10 rule 2), so one rule's fuel
 //! must cover the WORST-CASE ceiling across every scenario that loads it,
@@ -222,11 +222,22 @@
 //! same E-LOAD-040 readback against the LARGER world: bound 176, declared
 //! `:fuel 177` (measured bound + 1) below — comfortably covers the
 //! 5-class primary world's bound (168) and the Task 4 zero-population
-//! inline world's (1 SOCIAL_CLASS node, smaller still) too.
+//! inline world's (1 `SOCIAL_CLASS` node, smaller still) too.
 //! `p04-enforcer-intake`/`p05-ip-intake`/`p06-la-deactivate` bind no
 //! `nodes`/`fold` query at all (every carrier read is a fixed-cost
 //! `select-max` over the ceiling-1 INSTITUTION singleton), so their own
 //! fuel is scenario-independent — declared once, measured once, below.
+
+// Conformance fixtures exercise exact engine values, transcribe spec literals,
+// and build whole scenarios in one test. These pedantic lints would force
+// ceremony that hides those contracts, so they stay off in test code only.
+#![allow(clippy::float_cmp)]
+#![allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_possible_wrap,
+    clippy::cast_precision_loss,
+    clippy::cast_sign_loss
+)]
 
 use babylon_bsl::evaluator::Value;
 use babylon_bsl::scenario::load_scenario;
@@ -335,9 +346,9 @@ fn p01_flags_the_dying_la() {
     );
 }
 
-/// p02 emits exactly one SUPERWAGE_CRISIS, with the flattened payload
+/// p02 emits exactly one `SUPERWAGE_CRISIS`, with the flattened payload
 /// (`payer_id`/`narrative_hint` dropped, D-record 4/5) — `receiver` is a
-/// NodeRef to the LA subject itself.
+/// `NodeRef` to the LA subject itself.
 #[test]
 fn p02_emits_superwage_crisis_once_with_the_receiver_ref() {
     let (_, sink) = run();
@@ -710,7 +721,7 @@ fn p06_deactivates_the_la_without_zeroing_it() {
     );
 }
 
-/// p06's CLASS_DECOMPOSITION payload, asserted key-by-key against the
+/// p06's `CLASS_DECOMPOSITION` payload, asserted key-by-key against the
 /// flattened shape (D-records 4/5 in decomposition.bsl's header): the two
 /// frozen nested dicts become four flat keys, `trigger_event`/
 /// `narrative_hint` are both dropped (no string payloads on `emit`).
@@ -776,8 +787,8 @@ fn p06_emits_class_decomposition_with_the_flattened_payload() {
     );
 }
 
-/// The non-participant vector: `bourgeois` is neither LA, CARCERAL_ENFORCER
-/// nor INTERNAL_PROLETARIAT — no rule in the whole pack's `when` clause
+/// The non-participant vector: `bourgeois` is neither LA, `CARCERAL_ENFORCER`
+/// nor `INTERNAL_PROLETARIAT` — no rule in the whole pack's `when` clause
 /// ever matches its role, so its population/wealth/active stay exactly at
 /// their seeded values through all six rules.
 #[test]

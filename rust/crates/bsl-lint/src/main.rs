@@ -44,14 +44,15 @@ fn main() -> ExitCode {
             ExitCode::from(0)
         }
         Some("all") => run_and_report(&args[1..], CHECKS),
-        Some(name) => match CHECKS.iter().find(|(n, _)| *n == name) {
-            Some(&entry) => run_and_report(&args[1..], std::slice::from_ref(&entry)),
-            None => {
+        Some(name) => {
+            if let Some(&entry) = CHECKS.iter().find(|(n, _)| *n == name) {
+                run_and_report(&args[1..], std::slice::from_ref(&entry))
+            } else {
                 eprintln!("bsl-lint: unknown check {name:?}");
                 print_usage();
                 ExitCode::from(2)
             }
-        },
+        }
     }
 }
 

@@ -34,7 +34,7 @@ impl StaffingMemberNodeBinding {
     }
 }
 
-/// One BUSINESS workplace owns memory; its resident SOCIAL_CLASS members own E/R.
+/// One `BUSINESS` workplace owns memory; its resident `SOCIAL_CLASS` members own E/R.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StaffingNodeBinding {
     subject: StableElementKey,

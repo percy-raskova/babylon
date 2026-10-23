@@ -7,6 +7,9 @@ rust-version.workspace = true
 license.workspace = true
 publish = false
 
+[lints]
+workspace = true
+
 [[bin]]
 name = "bsl-lint"
 path = "src/main.rs"

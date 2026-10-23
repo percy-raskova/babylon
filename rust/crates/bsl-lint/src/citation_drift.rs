@@ -359,7 +359,9 @@ fn check_citation(
     text: &str,
     span: &ResolvedSpan,
 ) -> Result<Vec<Finding>, String> {
-    let is_frozen = span.path_token.ends_with(".py");
+    let is_frozen = Path::new(&span.path_token)
+        .extension()
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("py"));
     let cited_display = if span.end == span.start {
         format!("{}:{}", span.path_token, span.start)
     } else {

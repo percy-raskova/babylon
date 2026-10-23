@@ -1,5 +1,16 @@
 //! Behavioral contracts for the T3 downstream non-authorability sentinel.
 
+// Conformance fixtures exercise exact engine values, transcribe spec literals,
+// and build whole scenarios in one test. These pedantic lints would force
+// ceremony that hides those contracts, so they stay off in test code only.
+#![allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_possible_wrap,
+    clippy::cast_precision_loss,
+    clippy::cast_sign_loss
+)]
+
+use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -454,7 +465,7 @@ fn dependency_count_max_passes_and_plus_one_refuses() {
     let mut manifest =
         String::from("[package]\nname = \"babylon-tick\"\nversion = \"0.0.0\"\n\n[dependencies]\n");
     for index in 0..256 {
-        manifest.push_str(&format!("external-{index:03} = \"1\"\n"));
+        let _ = writeln!(manifest, "external-{index:03} = \"1\"");
     }
     write_file(&tick_manifest, manifest.as_bytes());
     let (code, report) = run_root(&scratch.0);
@@ -486,12 +497,10 @@ fn resolved_local_edge_max_passes_and_shared_plus_one_refuses() {
         } else {
             &names[source_index + 1]
         };
-        let requested = if source_index < 28 {
-            9
-        } else if source_index == 28 {
-            4
-        } else {
-            0
+        let requested = match source_index {
+            ..28 => 9,
+            28 => 4,
+            _ => 0,
         };
         let mut manifest =
             format!("[package]\nname = \"{source}\"\nversion = \"0.0.0\"\n\n[dependencies]\n");
@@ -505,9 +514,10 @@ fn resolved_local_edge_max_passes_and_shared_plus_one_refuses() {
             } else {
                 &names[target_index + 1]
             };
-            manifest.push_str(&format!(
-                "edge-{target_offset} = {{ package = \"{target}\", path = \"../{target}\" }}\n"
-            ));
+            let _ = writeln!(
+                manifest,
+                "edge-{target_offset} = {{ package = \"{target}\", path = \"../{target}\" }}"
+            );
             edge_count = edge_count.saturating_add(1);
         }
         write_file(

@@ -264,7 +264,7 @@ fn production_conformance_hashes_are_pinned() {
     );
 }
 
-/// The WorldView mint's own golden (ADR204 W10, ceremony ADR206): the
+/// The `WorldView` mint's own golden (ADR204 W10, ceremony ADR206): the
 /// substrate LOAD of the mint scenario, byte-pinned. What this pin
 /// guards is the world's graph facts — the canonical state hash covers
 /// nodes/attributes/edges/hyperedges/edge attributes ONLY, so the
@@ -274,7 +274,7 @@ fn production_conformance_hashes_are_pinned() {
 /// registry assertion in `worldview_member_order_is_the_ruled_ordinal`
 /// below, not by this hash. The pack's one rule is a never-firing load
 /// probe (the rule pipeline refuses a zero-rule content set; the idiom
-/// is production_conformance.rs's own): the guard is false for every
+/// is `production_conformance.rs`'s own): the guard is false for every
 /// legal population, so `fired == 0` and `before == after` are the mint
 /// stage's honest expectations (the measured-ternary consumers land
 /// with the port train), NOT a bug — exactly the emit-only logic the
@@ -366,14 +366,14 @@ fn worldview_member_order_is_the_ruled_ordinal() {
 /// +`wages-inbox` on the reset/pushed classes. The fired-count spike (Step
 /// 3, measured against the EXPECTED "employer only, +1" hypothesis): the
 /// mirrored `active`-gated shape does not discriminate on WAGES-edge
-/// presence, so all thirteen SOCIAL_CLASS subjects fire (not one) — the
+/// presence, so all thirteen `SOCIAL_CLASS` subjects fire (not one) — the
 /// measured arithmetic is 50 + 13 = 63 (tick 1), 49 + 13 = 62 (tick 2, p0
 /// not re-firing) — recorded honestly per the house pattern this file's own
 /// `production_conformance_hashes_are_pinned` header sets.
 ///
 /// LOAD-MECHANISM CHANGE ONLY, HASHES UNCHANGED — Train B item 4 (issue
 /// #591, D157): the `.bscn`'s own `(defenum WorldView …)` re-declaration
-/// came out; the WorldView type now arrives from the shared declaration
+/// came out; the `WorldView` type now arrives from the shared declaration
 /// prelude (`content/declarations/worldview.bscn`) via
 /// `run_once_with_prelude`, and the scenario's `deffield … enum WorldView`
 /// resolves against the SAME registry contents it always did
@@ -386,7 +386,7 @@ fn worldview_member_order_is_the_ruled_ordinal() {
 /// value-level proof).
 ///
 /// TASK 5 PRACTICE PRELUDE — the scenario now composes the organization
-/// practice declarations before the WorldView prelude. Its already-active
+/// practice declarations before the `WorldView` prelude. Its already-active
 /// `org-solid` witness also seeds the promoted `organization/action-budget`
 /// field at 1. That explicit graph field moves both hashes below; the
 /// conformance suite proves that rule firings and material results stay
@@ -488,8 +488,8 @@ fn worldview_prelude_member_order_is_the_ruled_ordinal() {
 /// suite already pins every STRUCTURAL claim this hash summarizes (every
 /// witness target's post-tick value, the three skip gates, the
 /// multi-inbound last-write-wins divergence from frozen D-record 2, the
-/// clamp, the exact-0.6 boundary, the nine ordered CONSCIOUSNESS_TRANSMISSION
-/// / MASS_AWAKENING events) against the dual-implementation oracle
+/// clamp, the exact-0.6 boundary, the nine ordered `CONSCIOUSNESS_TRANSMISSION`
+/// / `MASS_AWAKENING` events) against the dual-implementation oracle
 /// (`content/scenarios/solidarity_conformance.py`, Task 4); this golden
 /// exists to catch ANY unintentional drift a structural assertion happens
 /// not to cover — the same class of blind spot
@@ -545,12 +545,12 @@ const DECOMPOSITION_RULE: &str = include_str!("../content/rules/decomposition.bs
 /// #591 family, Task 4 — closes Pack A): all SIX `decomposition/*` rules
 /// against the fallback-trigger conformance world (`la-dying`'s wealth 400
 /// already below subsistence 500 at tick 1, so `CLASS_DECOMPOSITION` fires
-/// the SAME tick as the SUPERWAGE_CRISIS early warning —
+/// the SAME tick as the `SUPERWAGE_CRISIS` early warning —
 /// `decomposition_conformance.rs`'s own module doc explains why the frozen
 /// mirror shows both firing together). `decomposition_conformance.rs`'s own
 /// suite already pins every STRUCTURAL claim this hash summarizes (the
 /// additive enforcer intake, the overwrite IP intake, the non-conserving LA
-/// deactivation, the flattened CLASS_DECOMPOSITION payload); this golden
+/// deactivation, the flattened `CLASS_DECOMPOSITION` payload); this golden
 /// exists to catch ANY unintentional drift a structural assertion happens
 /// not to cover — the same class of blind spot
 /// `territory_conformance_hashes_are_pinned`'s own header names.
@@ -632,7 +632,7 @@ const CONTROL_RATIO_ZERO_ENFORCER_SCENARIO: &str =
     include_str!("../content/scenarios/control-ratio-zero-enforcer-conformance.bscn");
 const CONTROL_RATIO_RULE: &str = include_str!("../content/rules/control-ratio.bsl");
 
-/// The ControlRatio Pack B primary golden (Task 8, closes the remaining
+/// The `ControlRatio` Pack B primary golden (Task 8, closes the remaining
 /// Pack B pins): all FOUR `control-ratio/*` rules against the PRIMARY
 /// (genocide) conformance world in one tick — this pack's own entry into
 /// the Rust byte gate, alongside `decomposition_conformance_hashes_are_
@@ -666,7 +666,7 @@ fn control_ratio_conformance_hashes_are_pinned() {
     );
 }
 
-/// The ControlRatio Pack B revolution companion golden — identical
+/// The `ControlRatio` Pack B revolution companion golden — identical
 /// structure to the primary world, organization 0.2 -> 0.6, routing
 /// REVOLUTION instead of GENOCIDE.
 #[test]
@@ -691,7 +691,7 @@ fn control_ratio_revolution_conformance_hashes_are_pinned() {
     );
 }
 
-/// The ControlRatio Pack B within-capacity companion golden — the `<=`
+/// The `ControlRatio` Pack B within-capacity companion golden — the `<=`
 /// boundary (prisoner population 40 == enforcer population 10 *
 /// control-capacity 4 exactly): NO crisis, so c03/c04 never fire this tick.
 #[test]
@@ -718,8 +718,8 @@ fn control_ratio_within_capacity_conformance_hashes_are_pinned() {
     );
 }
 
-/// The ControlRatio Pack B zero-enforcer companion golden — BLOCKER-4's
-/// guard-split branch: a REAL, active, zero-population CARCERAL_ENFORCER
+/// The `ControlRatio` Pack B zero-enforcer companion golden — BLOCKER-4's
+/// guard-split branch: a REAL, active, zero-population `CARCERAL_ENFORCER`
 /// class (not an absent one), so `max-controllable` is 0 and ANY nonzero
 /// prisoner population clears the `<=` boundary; the crisis payload omits
 /// `actual-ratio`/`control-ratio` entirely (loud absence, not `float("inf")`).

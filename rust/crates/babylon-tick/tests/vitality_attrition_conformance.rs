@@ -66,6 +66,11 @@
 //!    (`E-EVAL-020`) already covers every `wealth-mass-*` field by virtue
 //!    of its declared type — no new mechanism, cited not re-tested here.
 
+// Conformance fixtures exercise exact engine values, transcribe spec literals,
+// and build whole scenarios in one test. These pedantic lints would force
+// ceremony that hides those contracts, so they stay off in test code only.
+#![allow(clippy::float_cmp)]
+
 use babylon_bsl::evaluator::Value;
 use babylon_bsl::scenario::load_scenario;
 use babylon_bsl::structural_verbs::CollectingSink;
@@ -73,6 +78,7 @@ use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
 use babylon_kernel::currency::Currency;
 use babylon_tick::{hex, run_once, run_once_into};
+use std::fmt::Write as _;
 
 const SCENARIO: &str = include_str!("../content/scenarios/vitality-attrition-conformance.bscn");
 const RULE: &str = include_str!("../content/rules/vitality-attrition.bsl");
@@ -663,7 +669,7 @@ fn adr202_r2_more_dispersion_means_a_less_switch_like_transition() {
     // whole grid, so a sweep step can land on every rung boundary.
     let mut sweep: Vec<f64> = vec![SYNTHETIC_CUTS[0] - 0.05];
     for pair in SYNTHETIC_CUTS.windows(2) {
-        sweep.push((pair[0] + pair[1]) / 2.0);
+        sweep.push(f64::midpoint(pair[0], pair[1]));
     }
     sweep.push(SYNTHETIC_CUTS[14] + 0.05);
 
@@ -760,27 +766,29 @@ fn scratch_scenario(nodes: &[ScratchNode<'_>]) -> String {
     s.push_str("  (deffield social-class/s-bio currency intensive)\n");
     s.push_str("  (deffield social-class/s-class currency intensive)\n");
     for field in MASS_FIELDS {
-        s.push_str(&format!("  (deffield {field} coefficient intensive)\n"));
+        writeln!(s, "  (deffield {field} coefficient intensive)").expect("String write");
     }
     for (i, qname) in CUT_CONSTS.iter().enumerate() {
-        s.push_str(&format!("  (defconst {qname} {:?}r)\n", SYNTHETIC_CUTS[i]));
+        writeln!(s, "  (defconst {qname} {:?}r)", SYNTHETIC_CUTS[i]).expect("String write");
     }
     s.push_str("  (defconst vitality/subsistence-horizon 1.0r)\n");
     // T6: the mortality rule's own derived defconst — same value the shipped
     // scenario declares (the calibration derivation lives there, D198).
     s.push_str("  (defconst vitality/kappa 1.0c)\n");
     for (name, active, population, wealth, s_bio, s_class, masses) in nodes {
-        s.push_str(&format!(
+        write!(
+            s,
             "  (node {name} NodeType/SOCIAL_CLASS\n    \
              (social-class/active {active})\n    \
              (social-class/population {population})\n    \
              (social-class/wealth {wealth}$)\n    \
              (social-class/s-bio {s_bio}$)\n    \
              (social-class/s-class {s_class}$)\n"
-        ));
+        )
+        .expect("String write");
         for (i, field) in MASS_FIELDS.iter().enumerate() {
             if masses[i] != 0.0 {
-                s.push_str(&format!("    ({field} {:?}c)\n", masses[i]));
+                writeln!(s, "    ({field} {:?}c)", masses[i]).expect("String write");
             }
         }
         s.push_str("  )\n");
@@ -1042,8 +1050,7 @@ fn the_calibration_point_is_exact_and_last_worker_extincts() {
             payload
                 .iter()
                 .find(|(k, _)| k == key)
-                .map(|(_, v)| v)
-                .unwrap_or_else(|| panic!("payload missing {key}"))
+                .map_or_else(|| panic!("payload missing {key}"), |(_, v)| v)
         };
         assert_eq!(get("entity-id"), &Value::NodeRef(NodeId(id)));
         assert_eq!(get("deaths"), &Value::Int(deaths));

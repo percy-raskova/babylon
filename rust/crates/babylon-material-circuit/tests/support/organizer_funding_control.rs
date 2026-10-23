@@ -2,7 +2,7 @@
 //!
 //! The paper selects 12 people (8 donor, 4 recipient), 58,576 currency,
 //! 44 food parcels and 20 material bundles. Its omitted supplier workforce is
-//! supplied explicitly: five WorkingOwner persons in five households, 20 food
+//! supplied explicitly: five `WorkingOwner` persons in five households, 20 food
 //! parcels at zero opening carrying cost, zero extra cash, and finite service
 //! production and retail hours. Selected and supplementary stocks stay distinct.
 //! Attendance is an authored component input, excluding endogenous turnover as
@@ -12,6 +12,12 @@
 //! with zero finite capacity and no output or sales: its four workforce persons
 //! have a captured 160-hour attendance allowance each. No stock or receipt is
 //! replenished. Every supplementary supplier control here is Designed.
+
+// Conformance fixtures exercise exact engine values, transcribe spec literals,
+// and build whole scenarios in one test. These pedantic lints would force
+// ceremony that hides those contracts, so they stay off in test code only.
+#![allow(clippy::too_many_lines)]
+
 use babylon_kernel::{content_digest::sha256_of, currency::Currency};
 use babylon_material_circuit::*;
 

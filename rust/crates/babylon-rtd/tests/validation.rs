@@ -514,9 +514,7 @@ fn append_uses_every_closed_collection_limit_without_mutating_failure_input() {
 
 fn valid_json() -> String {
     format!(
-        r#"{{"schema":"{schema}","schema_version":1,"projection_version":1,"audience":"ADMIN_MATERIAL","durability":"IN_MEMORY","verified_tick":7,"graph_state_hash":"{zero}","nominal_world_hash":"{zero}","reference_digests":[],"definitions_digest":"{zero}","template_digest":"{zero}","fog_policy_digest":null,"knowledge_context_digest":null,"actor":null,"focus":[],"scale_memberships":[],"facets":[],"dyads":[],"hyperedges":[],"flows":[],"gaps":[],"provenance":[],"decision_surface":{{"question_id":{{"domain":"question","authority":"test","local_id":"administrative-question"}},"signal_refs":[],"action_refs":[],"receipt_refs":[],"archive_subject_refs":[]}}}}"#,
-        schema = RTD_SCHEMA_ID,
-        zero = ZERO_DIGEST,
+        r#"{{"schema":"{RTD_SCHEMA_ID}","schema_version":1,"projection_version":1,"audience":"ADMIN_MATERIAL","durability":"IN_MEMORY","verified_tick":7,"graph_state_hash":"{ZERO_DIGEST}","nominal_world_hash":"{ZERO_DIGEST}","reference_digests":[],"definitions_digest":"{ZERO_DIGEST}","template_digest":"{ZERO_DIGEST}","fog_policy_digest":null,"knowledge_context_digest":null,"actor":null,"focus":[],"scale_memberships":[],"facets":[],"dyads":[],"hyperedges":[],"flows":[],"gaps":[],"provenance":[],"decision_surface":{{"question_id":{{"domain":"question","authority":"test","local_id":"administrative-question"}},"signal_refs":[],"action_refs":[],"receipt_refs":[],"archive_subject_refs":[]}}}}"#,
     )
 }
 

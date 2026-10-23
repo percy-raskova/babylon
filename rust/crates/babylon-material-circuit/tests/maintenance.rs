@@ -1,4 +1,10 @@
 //! A bounded maintenance dependency conserves parts and hours across period closes.
+
+// Conformance fixtures exercise exact engine values, transcribe spec literals,
+// and build whole scenarios in one test. These pedantic lints would force
+// ceremony that hides those contracts, so they stay off in test code only.
+#![allow(clippy::too_many_lines)]
+
 use babylon_material_circuit::*;
 
 fn site(id: u8) -> SiteId {
@@ -427,37 +433,37 @@ fn invalid_maintenance_bindings_and_overflow_refuse_atomically() {
         |row: &mut MaterialCircuitState| row.maintenance_binding = None,
         |row: &mut MaterialCircuitState| row.maintenance_service.as_mut().unwrap().period = 2,
         |row: &mut MaterialCircuitState| {
-            row.maintenance_binding.as_mut().unwrap().provider_site_id = site(1)
+            row.maintenance_binding.as_mut().unwrap().provider_site_id = site(1);
         },
         |row: &mut MaterialCircuitState| {
             row.maintenance_binding
                 .as_mut()
                 .unwrap()
-                .consumer_process_id = ProcessId::from_bytes([9; 32])
+                .consumer_process_id = ProcessId::from_bytes([9; 32]);
         },
         |row: &mut MaterialCircuitState| {
             row.maintenance_binding
                 .as_mut()
                 .unwrap()
-                .spare_units_per_job = 0
+                .spare_units_per_job = 0;
         },
         |row: &mut MaterialCircuitState| {
             row.maintenance_binding
                 .as_mut()
                 .unwrap()
-                .labor_units_per_job = 0
+                .labor_units_per_job = 0;
         },
         |row: &mut MaterialCircuitState| {
             row.maintenance_binding
                 .as_mut()
                 .unwrap()
-                .enabled_batches_per_job = 0
+                .enabled_batches_per_job = 0;
         },
         |row: &mut MaterialCircuitState| {
             row.maintenance_binding
                 .as_mut()
                 .unwrap()
-                .maximum_jobs_per_period = 0
+                .maximum_jobs_per_period = 0;
         },
     ] {
         let mut invalid = state.clone();

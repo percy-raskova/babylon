@@ -323,8 +323,7 @@ impl PrepareError {
             Self::Scenario(e) => e.code,
             Self::Rule { error, .. } => error.spec_code(),
             Self::Intrinsic(e) => e.spec_code(),
-            Self::Probability { .. } => None,
-            Self::KernelSlot(_) => None,
+            Self::Probability { .. } | Self::KernelSlot(_) => None,
             Self::Composition { code, .. } => *code,
         }
     }
@@ -706,8 +705,8 @@ fn prepare_error_source_id(
         | PrepareError::Probability {
             rule_id: Some(rule_id),
             ..
-        } => Some(rule_id),
-        PrepareError::Composition {
+        }
+        | PrepareError::Composition {
             identity: Some(ErrorIdentity::RuleId(rule_id)),
             ..
         } => Some(rule_id),
@@ -768,6 +767,10 @@ fn prepare_error_source_id(
 /// Diagnostics retain exact rule source ownership. Source identity is
 /// authoring metadata only and cannot affect mechanics.
 #[must_use]
+#[allow(
+    clippy::too_many_lines,
+    reason = "one staged collection keeps every independent content-set failure in one ordered report"
+)]
 pub fn diagnose_content_set_sources(
     scenario_src: &str,
     prelude_src: Option<&str>,
@@ -1220,6 +1223,10 @@ pub fn forecast_event_likelihoods(
 /// Returns the same preparation, exact-enumeration, or execution refusal as
 /// [`forecast_event_likelihoods`], including a noncanonical or mismatched
 /// kernel-slot ledger.
+#[allow(
+    clippy::too_many_lines,
+    reason = "one preparation path pins each forecast to its committed kernel slot"
+)]
 pub fn forecast_event_likelihoods_with_kernel_slots(
     scenario_src: &str,
     prelude_src: Option<&str>,
@@ -2055,6 +2062,10 @@ where
     })
 }
 
+#[allow(
+    clippy::too_many_lines,
+    reason = "one governed causal schedule; extraction would hide the phase order phase_order.rs enumerates"
+)]
 fn execute_prepared_rules<G, C>(
     prepared: &PreparedRules,
     graph: &G,

@@ -986,6 +986,10 @@ fn current_organizer_refuses_prior_schema_even_without_aid() {
 }
 
 #[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "one scenario asserts the whole capture-to-resolution chain; splitting it would duplicate the fixture setup"
+)]
 fn collection_ack_does_not_recharge_material_time_before_delayed_aid() {
     let mut config = captured();
     config.collection = Some(OrganizerCollectionMandate {

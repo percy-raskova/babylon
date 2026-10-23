@@ -138,15 +138,28 @@
 //! control-ratio/c01-prisoner-census static bound 42 exceeds its declared
 //! :fuel 1`; `:fuel 43` (bound + 1) cleared both load and runtime. `c02`
 //! (once `c01`'s fuel was raised) refused at `static bound 63` against the
-//! PRIMARY/REVOLUTION worlds' own SOCIAL_CLASS ceiling (6 nodes — the
+//! PRIMARY/REVOLUTION worlds' own `SOCIAL_CLASS` ceiling (6 nodes — the
 //! LARGEST of this pack's four scenarios); `:fuel 64` (bound + 1) cleared
 //! load and runtime against ALL FOUR scenarios, since a fold's static
-//! bound scales with the LOADING scenario's own SOCIAL_CLASS
+//! bound scales with the LOADING scenario's own `SOCIAL_CLASS`
 //! `CardinalityCeiling` (`decomposition_conformance.rs`'s own Task 4
 //! addendum: "one rule's fuel must cover the WORST-CASE ceiling across
-//! every scenario that loads it") — the smaller worlds (3 SOCIAL_CLASS
-//! nodes) and the inline NOT-READY fixture (2 SOCIAL_CLASS nodes) both
+//! every scenario that loads it") — the smaller worlds (3 `SOCIAL_CLASS`
+//! nodes) and the inline NOT-READY fixture (2 `SOCIAL_CLASS` nodes) both
 //! have smaller true bounds, comfortably inside `:fuel 64`.
+
+// Conformance fixtures exercise exact engine values, transcribe spec literals,
+// and build whole scenarios in one test. These pedantic lints would force
+// ceremony that hides those contracts, so they stay off in test code only.
+#![allow(clippy::too_many_lines)]
+#![allow(clippy::items_after_statements)]
+#![allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_possible_wrap,
+    clippy::cast_precision_loss,
+    clippy::cast_sign_loss
+)]
+#![allow(clippy::float_cmp)]
 
 //! # Task 6 — `c03-crisis` (the crisis gate, the `<=` boundary, BLOCKER-4)
 //!
@@ -640,7 +653,7 @@ fn c02_publishes_the_three_aggregates_unconditionally() {
     // The NOT-READY world: decomposition-fired-known 0 — c03's future
     // readiness gate would refuse to act here, but c01/c02 have no such
     // gate at all.
-    const NOT_READY_SCENARIO: &str = r#"
+    const NOT_READY_SCENARIO: &str = r"
 (scenario control-ratio/not-ready-gate
   (defvocabulary NodeType (SOCIAL_CLASS INSTITUTION))
   (defenum SocialRole (CORE_BOURGEOISIE PERIPHERY_PROLETARIAT LABOR_ARISTOCRACY PETTY_BOURGEOISIE LUMPENPROLETARIAT COMPRADOR_BOURGEOISIE INTERNAL_PROLETARIAT CARCERAL_ENFORCER))
@@ -697,7 +710,7 @@ fn c02_publishes_the_three_aggregates_unconditionally() {
     (institution/enforcer-population 0)
     (institution/prisoner-population 0)
     (institution/prisoner-org-weighted 0)))
-"#;
+";
     const NOT_READY_CARCERAL_REGISTER: NodeId = NodeId(2);
     let (not_ready_graph, _) = run(NOT_READY_SCENARIO);
     assert_eq!(
@@ -838,7 +851,7 @@ fn c01_c02_on_the_within_capacity_companion() {
 
 /// The zero-enforcer companion's own census — BLOCKER-4's branch,
 /// exercised here for c01/c02 only. `enforcer-population` publishes 0
-/// from a REAL, active, zero-population CARCERAL_ENFORCER node (the
+/// from a REAL, active, zero-population `CARCERAL_ENFORCER` node (the
 /// scenario's own header distinction from an ABSENT enforcer class),
 /// cross-checked against the mirror's `census: enforcer_population=0
 /// prisoner_population=25 prisoner_org_weighted_sum=10.0`.
@@ -1095,7 +1108,7 @@ fn c03_does_not_emit_at_or_below_capacity() {
 }
 
 /// BLOCKER-4's guard-split branch: `enforcer-population == 0` (a REAL,
-/// active, zero-population CARCERAL_ENFORCER class, not an absent one).
+/// active, zero-population `CARCERAL_ENFORCER` class, not an absent one).
 /// The payload carries the OTHER six keys and OMITS `actual-ratio`/
 /// `control-ratio` entirely — loud absence, not the frozen `float("inf")`
 /// (`control_ratio.py:185`, unrepresentable — `E-EVAL-014`/`E-EVAL-012`) —
@@ -1214,7 +1227,7 @@ fn c03_latches_once() {
 /// for the silence.
 #[test]
 fn c03_stays_silent_before_the_readiness_gate() {
-    const NOT_READY_SCENARIO: &str = r#"
+    const NOT_READY_SCENARIO: &str = r"
 (scenario control-ratio/not-ready-readiness-gate
   (defvocabulary NodeType (SOCIAL_CLASS INSTITUTION))
   (defenum SocialRole (CORE_BOURGEOISIE PERIPHERY_PROLETARIAT LABOR_ARISTOCRACY PETTY_BOURGEOISIE LUMPENPROLETARIAT COMPRADOR_BOURGEOISIE INTERNAL_PROLETARIAT CARCERAL_ENFORCER))
@@ -1273,7 +1286,7 @@ fn c03_stays_silent_before_the_readiness_gate() {
     (institution/enforcer-population 0)
     (institution/prisoner-population 0)
     (institution/prisoner-org-weighted 0)))
-"#;
+";
     const NOT_READY_CARCERAL_REGISTER: NodeId = NodeId(2);
     let (graph, sink) = run(NOT_READY_SCENARIO);
 
@@ -1458,7 +1471,7 @@ fn c04_routes_to_revolution_at_or_above_the_threshold() {
 /// `outcome='revolution'` (this file's own header, 2026-08-17 run).
 #[test]
 fn c04_at_exactly_the_threshold_routes_to_revolution() {
-    const EXACT_THRESHOLD_SCENARIO: &str = r#"
+    const EXACT_THRESHOLD_SCENARIO: &str = r"
 (scenario control-ratio/exact-threshold
   (defvocabulary NodeType (SOCIAL_CLASS INSTITUTION))
   (defenum SocialRole (CORE_BOURGEOISIE PERIPHERY_PROLETARIAT LABOR_ARISTOCRACY PETTY_BOURGEOISIE LUMPENPROLETARIAT COMPRADOR_BOURGEOISIE INTERNAL_PROLETARIAT CARCERAL_ENFORCER))
@@ -1523,7 +1536,7 @@ fn c04_at_exactly_the_threshold_routes_to_revolution() {
     (institution/enforcer-population 0)
     (institution/prisoner-population 0)
     (institution/prisoner-org-weighted 0)))
-"#;
+";
     const ET_CARCERAL_REGISTER: NodeId = NodeId(3);
     let (graph, sink) = run(EXACT_THRESHOLD_SCENARIO);
     let decisions: Vec<_> = sink
@@ -1565,7 +1578,7 @@ fn c04_at_exactly_the_threshold_routes_to_revolution() {
 /// `c03_stays_silent_before_the_readiness_gate`.
 #[test]
 fn c04_respects_the_terminal_delay() {
-    const TERMINAL_DELAY_SCENARIO: &str = r#"
+    const TERMINAL_DELAY_SCENARIO: &str = r"
 (scenario control-ratio/terminal-delay
   (defvocabulary NodeType (SOCIAL_CLASS INSTITUTION))
   (defenum SocialRole (CORE_BOURGEOISIE PERIPHERY_PROLETARIAT LABOR_ARISTOCRACY PETTY_BOURGEOISIE LUMPENPROLETARIAT COMPRADOR_BOURGEOISIE INTERNAL_PROLETARIAT CARCERAL_ENFORCER))
@@ -1630,7 +1643,7 @@ fn c04_respects_the_terminal_delay() {
     (institution/enforcer-population 0)
     (institution/prisoner-population 0)
     (institution/prisoner-org-weighted 0)))
-"#;
+";
     const TD_CARCERAL_REGISTER: NodeId = NodeId(3);
     let mut session = RuleDiagnosticSession::new(
         TERMINAL_DELAY_SCENARIO,
@@ -1758,7 +1771,7 @@ fn c04_emits_once() {
 /// (this file's own header, 2026-08-17 run).
 #[test]
 fn the_avg_organization_is_population_weighted_not_a_bare_mean() {
-    const POPULATION_WEIGHTED_SCENARIO: &str = r#"
+    const POPULATION_WEIGHTED_SCENARIO: &str = r"
 (scenario control-ratio/population-weighted
   (defvocabulary NodeType (SOCIAL_CLASS INSTITUTION))
   (defenum SocialRole (CORE_BOURGEOISIE PERIPHERY_PROLETARIAT LABOR_ARISTOCRACY PETTY_BOURGEOISIE LUMPENPROLETARIAT COMPRADOR_BOURGEOISIE INTERNAL_PROLETARIAT CARCERAL_ENFORCER))
@@ -1823,7 +1836,7 @@ fn the_avg_organization_is_population_weighted_not_a_bare_mean() {
     (institution/enforcer-population 0)
     (institution/prisoner-population 0)
     (institution/prisoner-org-weighted 0)))
-"#;
+";
     let (_, sink) = run(POPULATION_WEIGHTED_SCENARIO);
     let decisions: Vec<_> = sink
         .events
@@ -1905,7 +1918,7 @@ fn the_avg_organization_is_population_weighted_not_a_bare_mean() {
 /// byte order. `c04` must stay silent.
 #[test]
 fn c04_does_not_emit_when_the_terminal_tick_census_has_zero_prisoners() {
-    const ZERO_PRISONERS_SCENARIO: &str = r#"
+    const ZERO_PRISONERS_SCENARIO: &str = r"
 (scenario control-ratio/terminal-gate-zero-prisoners
   (defvocabulary NodeType (SOCIAL_CLASS INSTITUTION))
   (defenum SocialRole (CORE_BOURGEOISIE PERIPHERY_PROLETARIAT LABOR_ARISTOCRACY PETTY_BOURGEOISIE LUMPENPROLETARIAT COMPRADOR_BOURGEOISIE INTERNAL_PROLETARIAT CARCERAL_ENFORCER))
@@ -1956,7 +1969,7 @@ fn c04_does_not_emit_when_the_terminal_tick_census_has_zero_prisoners() {
     (institution/enforcer-population 0)
     (institution/prisoner-population 0)
     (institution/prisoner-org-weighted 0)))
-"#;
+";
     const ZP_CARCERAL_REGISTER: NodeId = NodeId(1);
     let (graph, sink) = run(ZERO_PRISONERS_SCENARIO);
 
@@ -2026,7 +2039,7 @@ fn c04_does_not_emit_when_the_terminal_tick_census_has_zero_prisoners() {
 /// fired.
 #[test]
 fn c04_does_not_emit_when_the_terminal_tick_census_falls_back_within_capacity() {
-    const WITHIN_CAPACITY_AT_TERMINAL_SCENARIO: &str = r#"
+    const WITHIN_CAPACITY_AT_TERMINAL_SCENARIO: &str = r"
 (scenario control-ratio/terminal-gate-within-capacity
   (defvocabulary NodeType (SOCIAL_CLASS INSTITUTION))
   (defenum SocialRole (CORE_BOURGEOISIE PERIPHERY_PROLETARIAT LABOR_ARISTOCRACY PETTY_BOURGEOISIE LUMPENPROLETARIAT COMPRADOR_BOURGEOISIE INTERNAL_PROLETARIAT CARCERAL_ENFORCER))
@@ -2094,7 +2107,7 @@ fn c04_does_not_emit_when_the_terminal_tick_census_falls_back_within_capacity() 
     (institution/enforcer-population 0)
     (institution/prisoner-population 0)
     (institution/prisoner-org-weighted 0)))
-"#;
+";
     const WCT_CARCERAL_REGISTER: NodeId = NodeId(3);
     let (graph, sink) = run(WITHIN_CAPACITY_AT_TERMINAL_SCENARIO);
 

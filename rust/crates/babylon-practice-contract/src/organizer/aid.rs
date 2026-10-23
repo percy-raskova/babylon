@@ -1,5 +1,25 @@
 //! Captured gift receiving consent and later independent mutual-aid practice.
-use super::*;
+use super::contract::admit_organizer;
+use super::contract::organizer_resource_digest;
+use super::contract::validate_organizer_commitment;
+use super::contract::validate_organizer_config;
+use super::contract::validate_organizer_receipt;
+use super::nonnegative_decimal_i128;
+use super::transition::organizer_input_authority_ledger;
+use super::OrganizerChoice;
+use super::OrganizerCommand;
+use super::OrganizerCommitment;
+use super::OrganizerConfig;
+use super::OrganizerError;
+use super::OrganizerOutcome;
+use super::OrganizerPartner;
+use super::OrganizerPartnerResponse;
+use super::OrganizerReceipt;
+use super::OrganizerRefusal;
+use super::OrganizerState;
+use super::OrganizerTimeBindingMode;
+use serde::{Deserialize, Serialize};
+
 use std::collections::BTreeSet;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]

@@ -22,7 +22,7 @@
 //! oracle; the port stores the ternary directly and APPLIES Δl, diverging
 //! from frozen trajectories BY CONSTRUCTION — the re-point, pack D-row 1).
 //! Every expected value below is the generator's repr output pinned EXACTLY
-//! (no tolerance — the estate norm, lifecycle_conformance.rs's header).
+//! (no tolerance — the estate norm, `lifecycle_conformance.rs`'s header).
 //!
 //! # Provenance
 //!
@@ -109,7 +109,7 @@
 //! The fired-count arithmetic (the ceremony's spike, Step 3): the EXPECTED
 //! hypothesis was "employer only, +1" — MEASURED reality differs, recorded
 //! honestly rather than forced. `p2-wages-push`'s subject type is
-//! SOCIAL_CLASS (its one `:field` binding, `social-class/active`, pins it —
+//! `SOCIAL_CLASS` (its one `:field` binding, `social-class/active`, pins it —
 //! `tick.rs::subject_type_of`), mirroring `p2-org-solidarity-push`'s own
 //! `active`-gated shape exactly; EVERY social class in this world seeds
 //! `active 1` (all thirteen), so the `when` guard passes thirteen times —
@@ -120,8 +120,8 @@
 //! total, p0 not re-firing) + 13 = 62.
 //!
 //! Controller ruling 2026-08-15 (Ruling A, extended — resolving the Task-3
-//! NEEDS_CONTEXT): class-bribed's tick-1 dominant is LIBERAL — the vector's
-//! witness is the ADR016 ROUTING (Δf = +0.12, Δr = 0, eff_sol
+//! `NEEDS_CONTEXT)`: class-bribed's tick-1 dominant is LIBERAL — the vector's
+//! witness is the ADR016 ROUTING (Δf = +0.12, Δr = 0, `eff_sol`
 //! chauvinist-clamped to 0), not a one-tick flip; hegemony erodes, it
 //! doesn't snap. The FASCIST flip lands at tick 2 (the
 //! `tick_two_accumulation_witness` below).
@@ -160,6 +160,14 @@
 //!   that same class now reads the measured readout of its (0, 1, 0) rest
 //!   state — LIBERAL — and loud absence survives only for the genuinely
 //!   unread (class-unpositioned, employer).
+
+// Conformance fixtures exercise exact engine values, transcribe spec literals,
+// and build whole scenarios in one test. These pedantic lints would force
+// ceremony that hides those contracts, so they stay off in test code only.
+#![allow(clippy::float_cmp)]
+#![allow(clippy::unreadable_literal)]
+#![allow(clippy::too_many_lines)]
+#![allow(clippy::items_after_statements)]
 
 use babylon_bsl::scenario::compose_declaration_preludes;
 use babylon_graph::hypergraph_store::HypergraphStore;

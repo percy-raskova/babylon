@@ -98,19 +98,19 @@ fn shared_household_aliases_cannot_duplicate_contribution_time() {
     assert_eq!(state, before);
     let one = &uses[..1];
     let receipt = consume_household_contributions(&mut state, 1, one).unwrap();
-    let once = state.clone();
+    let unchanged = state.clone();
     assert_eq!(
         consume_household_contributions(&mut state, 1, one).unwrap(),
         receipt
     );
-    assert_eq!(state, once);
+    assert_eq!(state, unchanged);
     let mut conflicting = uses[0].clone();
     conflicting.hours = 3;
     assert_eq!(
         consume_household_contributions(&mut state, 1, &[conflicting]),
         Err(MaterialCircuitError::HouseholdTimeInvariant)
     );
-    assert_eq!(state, once);
+    assert_eq!(state, unchanged);
     let bytes = encode_material_circuit_state(&state).unwrap();
     assert_eq!(decode_material_circuit_state(&bytes).unwrap(), state);
 }
@@ -203,7 +203,7 @@ fn payment_of_an_earlier_wage_claim_does_not_charge_attendance_twice() {
         .unwrap();
     economy.book.accrue_shift(shift).unwrap();
     let costs = economy.costs.snapshot();
-    // The controlled continuation captures its existing claim and liability once.
+    // The controlled continuation captures its existing claim and liability unchanged.
     economy.costs =
         HistoricalCostBook::open(&economy.book, costs.stocks, costs.freight, vec![], vec![])
             .unwrap();

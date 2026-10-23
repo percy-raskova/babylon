@@ -6,7 +6,7 @@
 //! Retained control.json SHA-256:
 //! 5eb13e470f1b7ba3aa90a03b97608267fb9021c47c98fb0b446fffc956a4dcca.
 //! Organizer command admission and atomic campaign publication have separate
-//! MaterialReplaySession controls. It is not national play qualification.
+//! `MaterialReplaySession` controls. It is not national play qualification.
 #[path = "support/organizer_funding_control.rs"]
 mod control;
 

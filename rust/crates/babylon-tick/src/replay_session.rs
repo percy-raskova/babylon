@@ -2226,6 +2226,10 @@ mod tests {
     }
 
     #[test]
+    #[allow(
+        clippy::too_many_lines,
+        reason = "one scenario asserts every owner stays unpublished across each refusal stage"
+    )]
     fn material_detachment_allocation_refusals_leave_every_session_owner_unpublished() {
         for (actions, expected) in [
             (

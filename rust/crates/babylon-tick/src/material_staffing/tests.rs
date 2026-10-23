@@ -1,3 +1,5 @@
+#![allow(clippy::float_cmp)]
+
 use super::{
     apply_material_staffing, exact_real, read_stock, MaterialStaffingError, StaffingComposition,
     StaffingEffectContext, StaffingEffects, StaffingMemberNodeBinding, StaffingNodeBinding,

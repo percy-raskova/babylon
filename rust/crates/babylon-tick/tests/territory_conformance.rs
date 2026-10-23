@@ -31,6 +31,12 @@
 //! two TENANCY) — see `territory-conformance.bscn`'s own header for the
 //! full per-node conformance-case map.
 
+// Conformance fixtures exercise exact engine values, transcribe spec literals,
+// and build whole scenarios in one test. These pedantic lints would force
+// ceremony that hides those contracts, so they stay off in test code only.
+#![allow(clippy::unreadable_literal)]
+#![allow(clippy::float_cmp)]
+
 use babylon_bsl::scenario::load_scenario;
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
@@ -173,7 +179,7 @@ fn heat(graph: &HypergraphStore, id: NodeId) -> f64 {
         .unwrap_or_else(|e| panic!("node {id:?} territory/heat: {}", e.message))
 }
 
-/// `territory/p1-heat-dynamics`: HIGH_PROFILE gains exactly the defined
+/// `territory/p1-heat-dynamics`: `HIGH_PROFILE` gains exactly the defined
 /// `high_profile_heat_gain` (0.15) — `sub-threshold-high`'s seed 0.3 -> 0.45.
 #[test]
 fn p1_high_profile_gains_exactly_the_defined_gain() {
@@ -191,7 +197,7 @@ fn p1_high_profile_gains_exactly_the_defined_gain() {
     );
 }
 
-/// LOW_PROFILE decays by `(1 - heat_decay_rate)` = x0.9 —
+/// `LOW_PROFILE` decays by `(1 - heat_decay_rate)` = x0.9 —
 /// `sub-threshold-low`'s seed 0.4 -> ~0.36.
 #[test]
 fn p1_low_profile_decays_by_the_defined_rate() {
@@ -257,7 +263,7 @@ fn population(graph: &HypergraphStore, id: NodeId) -> f64 {
 /// `latch-tick-source` crosses the 0.8 threshold THIS tick (p1 pushes heat
 /// 0.68 -> 0.83): flag latches, rent spikes x1.5, population displaces
 /// `floor(1000 * 0.1) = 100`, and the EXTRACTION-priority tiebreak routes
-/// the transfer to `sink-penal` (PENAL_COLONY, priority 3) over
+/// the transfer to `sink-penal` (`PENAL_COLONY`, priority 3) over
 /// `sink-reservation` (RESERVATION, priority 2, declared FIRST as of the
 /// fix round's NIT-10 reorder — this test would flip if `select-max`
 /// silently fell back to declaration-id order instead of the score).
@@ -332,7 +338,7 @@ fn p2_no_sink_latched_territory_loses_population_with_nothing_gaining_it() {
 
 /// D123's frozen defect, witnessed directly (fix round MINOR-7): the
 /// `(edge EdgeType/ADJACENCY sink-penal latch-no-sink 1)` edge makes a
-/// PENAL_COLONY topologically ADJACENT to `latch-no-sink` — via
+/// `PENAL_COLONY` topologically ADJACENT to `latch-no-sink` — via
 /// `:any`, p3-spillover sees it (the heat pin above proves this) — but
 /// p2's DIRECTED `:out` sink walk requires `latch-no-sink` to be the
 /// edge's SOURCE, which it is not (the edge points INTO it), so the
@@ -501,7 +507,7 @@ fn p3_near_ceiling_chain_node_clamps_at_exactly_one() {
 /// `isolated-fallback` carries ZERO ADJACENCY edges — the `exists` guard's
 /// fallback branch takes `(- 0 0c)` (Real zero), so its heat ends the tick
 /// BYTE-UNMOVED from whatever p1 already wrote (0.25 * 0.9 =
-/// 0.225, LOW_PROFILE decay) — the write still happens (`set clamped`),
+/// 0.225, `LOW_PROFILE` decay) — the write still happens (`set clamped`),
 /// but the value is identical to what was already there.
 #[test]
 fn p3_isolated_territory_heat_is_byte_unmoved_by_spillover() {
@@ -564,7 +570,7 @@ fn p4_camp_decay_eats_this_ticks_displaced_arrivals() {
 }
 
 /// Both TENANCY-connected classes (`tenant-1`, `tenant-2`) have their
-/// organization zeroed by `sink-penal`'s PENAL_COLONY suppression.
+/// organization zeroed by `sink-penal`'s `PENAL_COLONY` suppression.
 #[test]
 fn p4_penal_suppression_zeroes_both_tenant_classes() {
     let (graph, _report) = run_territory();
@@ -586,14 +592,14 @@ fn p4_the_unconnected_class_is_untouched() {
 }
 
 /// A RESERVATION territory is untouched by EITHER p4 rule — neither
-/// `p4-camp-decay` (guards on CONCENTRATION_CAMP) nor
-/// `p4-penal-suppression` (guards on PENAL_COLONY) fires for it.
+/// `p4-camp-decay` (guards on `CONCENTRATION_CAMP`) nor
+/// `p4-penal-suppression` (guards on `PENAL_COLONY`) fires for it.
 /// `sink-reservation` lost the p2 tiebreak (population still its seed,
 /// 200 — fix round MINOR-4: seeded NONZERO specifically so this
 /// assertion discriminates; the previous 0 seed could not distinguish
 /// "untouched" from "touched by a mutated guard that computes
-/// `floor(0 * 0.8) = 0`" — a guard-flip mutation to CONCENTRATION_CAMP
-/// or PENAL_COLONY would leave a zero-seeded node looking identical
+/// `floor(0 * 0.8) = 0`" — a guard-flip mutation to `CONCENTRATION_CAMP`
+/// or `PENAL_COLONY` would leave a zero-seeded node looking identical
 /// either way), so this test isolates the p4-specific claim: nothing
 /// ELSE wrote to it either.
 #[test]

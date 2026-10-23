@@ -1,12 +1,10 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
-#[allow(unused_imports)]
 use super::{
     CommodityDefines, MerchantDefines, StatewideDefines, TemplateDefines, TransportDefines,
 };
 
-#[allow(unused_imports)]
-use super::{maintenance, statewide, MaintenanceDefines};
+use super::{statewide, MaintenanceDefines};
 
 use std::collections::BTreeMap;
 

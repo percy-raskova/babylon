@@ -1,10 +1,6 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
-#[allow(unused_imports)]
-use super::{
-    archive_reader, bounds, checkpoint_membership, current_material, organizer_capture,
-    packed_membership, provenance, revisions, short_publication, wakeup,
-};
+use super::current_material;
 
 use std::str::FromStr;
 

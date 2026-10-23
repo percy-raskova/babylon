@@ -1,12 +1,10 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
-#[allow(unused_imports)]
 use super::{
     OrganizerContribution, OrganizerHouseholdBinding, OrganizerObservation, OrganizerParticipant,
     OrganizerPartner, OrganizerTimeUse, PracticeResourceCapacity, PracticeResourceRequirement,
 };
 
-#[allow(unused_imports)]
 use super::{
     admit_organizer, allocate_practice_resources, decode_organizer_config,
     decode_organizer_receipt, decode_organizer_state, decode_practice_intent,
@@ -29,9 +27,6 @@ use super::{
     PracticeResourceAllocationOutcome, PracticeResourceId, PracticeResourceLocator,
     PracticeResourceOwner, PracticeUnitId, ResolvedPracticeBatch, ORGANIZER_SCHEMA_VERSION,
 };
-
-#[allow(unused_imports)]
-use super::aid;
 
 use babylon_kernel::replay::ReplaySessionId;
 

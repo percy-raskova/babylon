@@ -40,92 +40,50 @@ mod maintenance_tests;
 mod runtime;
 
 #[cfg(test)]
-#[allow(unused_imports)]
 pub(crate) use runtime::CommitFault;
-#[allow(unused_imports)]
 use runtime::{
-    admit_archive_foundation, admit_archive_lookup, admit_lookup_chain, admitted_marker_matches,
-    authenticated_organizer_actions, capture_marker, capture_material_lookup, commit_error,
-    commit_material_envelope, commit_material_transaction, hydrate_material_foundation,
-    marker_matches, observer_organizer_actions, read_authenticated_material_tick,
-    read_material_lookup, read_stored_material_tick, read_stored_material_tick_rows,
-    read_tail_tick, reconstruct_material_foundation, record_advance_timing,
-    validate_component_identity, validate_foundation_spec, CapturedGraphFoundation,
-    CapturedMaterialTick, MaterialEnvelopeRead, MaterialReadAuthority, StoredMaterialEnvelope,
-    StoredMaterialFoundation, FOUNDATION_DOMAIN, WRITER_CONNECT_TIMEOUT, WRITER_STARTUP_OPTIONS,
-    WRITER_TCP_USER_TIMEOUT,
+    admit_archive_lookup, capture_marker, capture_material_lookup,
+    read_authenticated_material_tick, read_tail_tick, reconstruct_material_foundation,
+    CapturedMaterialTick, MaterialEnvelopeRead, MaterialReadAuthority, StoredMaterialFoundation,
+    FOUNDATION_DOMAIN,
 };
-#[allow(unused_imports)]
 pub(crate) use runtime::{
     bounded_material_writer_config, capture_archive_organizer_register,
-    capture_material_foundation_components, duration_columns, load_material_foundation_components,
-    read_duration, read_observer_material_tick, ArchiveFoundationCandidate,
-    CapturedArchiveOrganizerRegister, CapturedMaterialFoundation, FoundationReadSource,
-    RegisterWitnesses, StoredMaterialTick,
+    capture_material_foundation_components, read_duration, read_observer_material_tick,
+    ArchiveFoundationCandidate, CapturedArchiveOrganizerRegister, CapturedMaterialFoundation,
+    FoundationReadSource, RegisterWitnesses, StoredMaterialTick,
 };
 pub use runtime::{
     DurableMaterialRuntime, MaterialAdvanceStage, MaterialFoundationSpec, MaterialRuntimeError,
     MaterialRuntimeFoundation,
 };
 
-#[allow(unused_imports)]
-use crate::stored_tick::{StoredEvent, StoredTickReadSource, StoredTickRelation};
-#[allow(unused_imports)]
+use crate::foundation::CampaignFoundation;
+#[cfg(test)]
+use crate::foundation::FoundationContentBundle;
+use crate::identity::CampaignId;
+use crate::material_storage;
+#[cfg(test)]
+use crate::runtime::reconstruct_graph_foundation_session;
+use crate::runtime::verify_runtime_schema_client;
+use crate::stored_tick::StoredTickReadSource;
+#[cfg(test)]
 use crate::CommittedTickReceipt;
-#[allow(unused_imports)]
-use crate::{
-    checkpoint::{CommittedFullCheckpoint, CommittedResolveTick},
-    committed_tick_envelope::CommittedTickRowFamilies,
-    foundation::{CampaignFoundation, FoundationContentBundle},
-    identity::CampaignId,
-    material_envelope::{CommittedMaterialTickAttestation, CommittedMaterialTickEnvelope},
-    runtime::{
-        insert_campaign_foundation_rows, insert_typed_tick_pre_marker_rows, prepare_committed_tick,
-        reconstruct_graph_foundation_session, verify_runtime_schema_client,
-        RustPersistenceRuntimeError,
-    },
-    semantic_batches::{
-        compose_graph_rows_with_encoder, compose_material_state_rows, StableGraphRowRef,
-    },
-    stored_tick,
-};
-#[allow(unused_imports)]
-use crate::{material_storage, state_storage::TypedLookup};
-#[allow(unused_imports)]
+#[cfg(test)]
 use babylon_bsl::structural_verbs::CollectingSink;
-#[allow(unused_imports)]
 use babylon_graph::hypergraph_store::HypergraphStore;
-#[allow(unused_imports)]
-use babylon_graph::stable_state::StableGraphState;
-#[allow(unused_imports)]
+#[cfg(test)]
 use babylon_kernel::content_digest::sha256_of;
-#[allow(unused_imports)]
-use babylon_material_circuit::MaterialCircuitState;
-#[allow(unused_imports)]
 use babylon_practice_contract::OrderedPracticeActionBatch;
-#[allow(unused_imports)]
-use babylon_tick::choice_receipt::ChoiceReceipt;
-#[allow(unused_imports)]
-use babylon_tick::{
-    material_replay::{
-        IdentifiedMaterialTick, MaterialCommitError, MaterialReplayError, MaterialReplaySession,
-    },
-    material_world::{MaterialWorldError, MaterialWorldRegister},
-    replay_session::{ReplayCommitDisposition, ReplayTickSession},
+use babylon_tick::material_replay::{
+    IdentifiedMaterialTick, MaterialReplayError, MaterialReplaySession,
 };
-#[allow(unused_imports)]
-use observer_endpoints::AuthenticatedPreviousMaterialTick;
-#[allow(unused_imports)]
-use postgres::{fallible_iterator::FallibleIterator as _, Config, GenericClient, NoTls};
-#[allow(unused_imports)]
-use std::time::{Duration, Instant};
+#[cfg(test)]
+use babylon_tick::material_world::MaterialWorldError;
+use babylon_tick::material_world::MaterialWorldRegister;
+#[cfg(test)]
+use babylon_tick::replay_session::{ReplayCommitDisposition, ReplayTickSession};
+use postgres::{Config, GenericClient, NoTls};
 
 #[cfg(test)]
-#[allow(unused_imports)]
 pub(crate) use runtime::COMMIT_FAULT;
-
-#[cfg(test)]
-#[allow(unused_imports)]
-use runtime::{
-    foundation_session_shares_the_exact_opening_canonical_allocation, inject_marker_trigger_failure,
-};

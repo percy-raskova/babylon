@@ -1,8 +1,5 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
-#[allow(unused_imports)]
-use super::services;
-
 use super::super::{lifecycle, ProductionProjectionError};
 
 use crate::michigan_economy::digest_hex;

@@ -1,9 +1,6 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
-#[allow(unused_imports)]
-use super::{
-    accounting, aid, capacity, equipment, financial, household_time, recurring, services, valuation,
-};
+use super::{accounting, capacity, services};
 
 use crate::SupplierTransport;
 

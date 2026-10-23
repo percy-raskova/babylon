@@ -2,11 +2,10 @@
 //! `docs/superpowers/plans/2026-08-18-bsl-refactor-program.md` §4 Task
 //! R2.1).
 //!
-//! Lives at `tests/support/mod.rs` — Rust's own convention for an
-//! integration-test helper module that is NOT itself compiled as a
-//! separate test binary (unlike every sibling `tests/*.rs` file, a
-//! `mod.rs` under a subdirectory is visible only to files that declare
-//! `mod support;` themselves).
+//! Lives at `tests/support.rs` with the helper bodies in
+//! `tests/support/helpers.rs`; sibling test files declare it with
+//! `mod support;`. Cargo also discovers `tests/support.rs` as a no-test
+//! helper target, so this root carries the helper-target lint allowances.
 //!
 //! **Genuinely-found shapes only.** `rust/crates/babylon-tick/tests/`
 //! comprises 31 files (12,158 lines) sharing a `run_once_into`/
@@ -41,21 +40,7 @@
 #[path = "support/helpers.rs"]
 mod helpers;
 
-#[allow(unused_imports)]
 pub use helpers::{
     assert_deterministic, assert_expected, attribute, run_conformance, run_conformance_with_report,
-    run_conformance_with_sink, ExpectedField, IntoNodeId,
+    run_conformance_with_sink, ExpectedField,
 };
-
-#[allow(unused_imports)]
-use babylon_bsl::structural_verbs::CollectingSink;
-#[allow(unused_imports)]
-use babylon_graph::allocator_state::AllocatorState;
-#[allow(unused_imports)]
-use babylon_graph::state_hash::CanonicalState;
-#[allow(unused_imports)]
-use babylon_graph::substrate::{GraphSubstrate, NodeId};
-#[allow(unused_imports)]
-use babylon_graph::working_copy::DetachedCopy;
-#[allow(unused_imports)]
-use babylon_tick::{run_once, run_once_into, TickReport};

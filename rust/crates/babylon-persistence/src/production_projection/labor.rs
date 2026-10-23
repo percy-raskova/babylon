@@ -8,24 +8,17 @@ mod tests;
 #[path = "labor/projection.rs"]
 mod projection;
 
-#[allow(unused_imports)]
 pub(super) use projection::project_labor_accounts;
-#[allow(unused_imports)]
-use projection::{
-    add_handling_time, add_time, budgets, completed_totals, process_labor, Budgets, LaborTotals,
-    Principal, Totals,
-};
+use projection::{add_time, Budgets, Principal, Totals};
+#[cfg(test)]
+use projection::{budgets, completed_totals};
 
-#[allow(unused_imports)]
 use super::ProductionProjectionError;
-#[allow(unused_imports)]
-use crate::{
-    michigan_economy::digest_hex, production_observation::CompletedProductionLabor,
-    production_observation::ProductionLaborAccount,
-};
-#[allow(unused_imports)]
-use babylon_material_circuit::{MaterialCircuitState, ProcessId, SiteId, UnitId};
-#[allow(unused_imports)]
+#[cfg(test)]
+use crate::michigan_economy::digest_hex;
+#[cfg(test)]
+use crate::production_observation::CompletedProductionLabor;
+use babylon_material_circuit::MaterialCircuitState;
+#[cfg(test)]
+use babylon_material_circuit::{ProcessId, SiteId, UnitId};
 use babylon_tick::material_world::MaterialTickReceipts;
-#[allow(unused_imports)]
-use std::collections::{BTreeMap, BTreeSet};

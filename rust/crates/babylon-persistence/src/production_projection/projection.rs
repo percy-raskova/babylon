@@ -1,10 +1,10 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
-#[allow(unused_imports)]
+#[cfg(test)]
+use super::lifecycle;
 use super::{
-    aid, context, diagnostics, equipment, events, freight, history, households, labor, lifecycle,
-    maintenance, material_balance, merchants, metadata, outbound, prices, routes, services, sites,
-    staffing,
+    diagnostics, events, freight, history, households, labor, maintenance, material_balance,
+    merchants, metadata, outbound, prices, routes, sites,
 };
 
 use crate::{

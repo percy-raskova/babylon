@@ -1,8 +1,5 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
-#[allow(unused_imports)]
-use super::content;
-
 use std::collections::TryReserveError;
 
 use babylon_bsl::canonical_ast::rules_hash_of;

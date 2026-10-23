@@ -1,8 +1,5 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
-#[allow(unused_imports)]
-use super::maintenance;
-
 use super::super::{
     advance_material_period, identity_hex, install_reader_role, provision_observer_role,
     CampaignId, CollectingSink, DisposableTarget, DurableMaterialRuntime, MichiganContentPreset,

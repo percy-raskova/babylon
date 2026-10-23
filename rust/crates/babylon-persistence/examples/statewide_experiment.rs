@@ -24,13 +24,11 @@ mod tests;
 #[path = "statewide_experiment/witness.rs"]
 mod witness;
 
-#[allow(unused_imports)]
 use std::{error::Error, process::ExitCode};
 
 #[path = "statewide_experiment/support.rs"]
 mod support;
 
-#[allow(unused_imports)]
 use support::{checked_sum, execute, hex, quantity, refused, Result};
 
 fn main() -> ExitCode {

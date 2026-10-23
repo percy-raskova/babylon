@@ -8,29 +8,25 @@ mod tests;
 #[path = "coordinator/session.rs"]
 mod session;
 
-#[allow(unused_imports)]
+use session::COMPLETION_CHECK;
 pub(super) use session::{serve, ArchiveControl, SessionEvent};
-#[allow(unused_imports)]
-use session::{
-    ArchiveEventSink, Coordinator, Factories, COMPLETION_CHECK, EVENT_CAPACITY, SHUTDOWN_GRACE,
-};
+#[cfg(test)]
+use session::{ArchiveEventSink, Coordinator, Factories};
 
-#[allow(unused_imports)]
+#[cfg(test)]
 use super::input::{InputEvent, SessionInput};
-#[allow(unused_imports)]
+#[cfg(test)]
 use super::{
-    emit, RuntimeSessionErrorCode, RuntimeSessionRequest, RuntimeSessionResponse,
-    RuntimeSessionScope, RuntimeSessionTarget, SessionBackend, RUNTIME_SESSION_PROTOCOL_VERSION,
+    RuntimeSessionErrorCode, RuntimeSessionRequest, RuntimeSessionResponse, RuntimeSessionScope,
+    RuntimeSessionTarget, SessionBackend, RUNTIME_SESSION_PROTOCOL_VERSION,
 };
-#[allow(unused_imports)]
-use crate::archive_driver::{ArchiveDriver, ArchiveDriverEvent, ArchiveDriverRequestError};
-#[allow(unused_imports)]
-use crate::identity::CampaignId;
-#[allow(unused_imports)]
+#[cfg(test)]
+use crate::archive_driver::ArchiveDriverEvent;
+#[cfg(test)]
 use active::Active;
-#[allow(unused_imports)]
+#[cfg(test)]
 use std::io::{BufRead, Write};
-#[allow(unused_imports)]
-use std::sync::mpsc::{self, Receiver, SyncSender};
-#[allow(unused_imports)]
+#[cfg(test)]
+use std::sync::mpsc::{self, Receiver};
+#[cfg(test)]
 use std::time::Duration;

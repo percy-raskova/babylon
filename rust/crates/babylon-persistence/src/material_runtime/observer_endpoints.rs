@@ -1,6 +1,10 @@
 //! One complete admission per endpoint in the observer's repeatable-read snapshot.
 
-use super::*;
+use super::{
+    material_storage, read_authenticated_material_tick, CampaignId, GenericClient,
+    MaterialComponentIdentity, MaterialReadAuthority, MaterialRuntimeError, MaterialWorldRegister,
+    RegisterWitnesses, StoredMaterialTick, StoredTickReadSource,
+};
 use crate::production_projection::diagnostics::{Stage, Timing};
 
 #[derive(Clone, Copy)]

@@ -20,12 +20,8 @@ pub(crate) use validation::{canonicalize, validate};
 #[path = "services/requirements.rs"]
 mod requirements;
 
-#[allow(unused_imports)]
-use requirements::InputRequirements;
-#[allow(unused_imports)]
 pub(crate) use requirements::{
     input_requirements, is_service, kind, planning_grants, required_input, stage, Result,
 };
 
-#[allow(unused_imports)]
-use crate::{GoodId, MaterialCircuitError, MaterialCircuitState, ProcessOutput, UnitId};
+use crate::{GoodId, MaterialCircuitError, MaterialCircuitState, UnitId};

@@ -38,6 +38,3 @@ pub use types::{
     OrganizerTimeUse, OrganizerView, OrganizerWorkplaceFacts, ORGANIZER_RECENT_OBSERVATIONS,
     ORGANIZER_RECENT_RECEIPTS, ORGANIZER_SCHEMA_VERSION,
 };
-
-#[allow(unused_imports)]
-use serde::{Deserialize, Serialize};

@@ -3,82 +3,40 @@
 #[path = "runtime/session.rs"]
 mod session;
 
-#[allow(unused_imports)]
-use session::{
-    bit_pattern_i64, checked_position, checked_u32_position, decode_digest_column,
-    decode_runtime_column, finish_binary_copy, insert_bsl_value_row, insert_choice_receipt_rows,
-    insert_dynamic_hex_rows, insert_full_checkpoint, insert_graph_value_rows,
-    insert_organization_state_rows, insert_typed_event_rows, insert_typed_graph_rows,
-    insert_typed_material_rows, require_copy_count, require_single_insert, stable_key_bytes,
-    verify_captured_campaign_geography, BslSqlValue,
-};
-#[allow(unused_imports)]
 pub(crate) use session::{
-    bytea_copy_text, capture_campaign_foundation, finish_csv_copy,
-    hydrate_campaign_foundation_client, insert_campaign_foundation_rows,
+    bytea_copy_text, capture_campaign_foundation, finish_csv_copy, insert_campaign_foundation_rows,
     insert_typed_tick_pre_marker_rows, reconstruct_graph_foundation_session,
     verify_captured_foundation_components, verify_runtime_schema, verify_runtime_schema_client,
     write_bsl_csv_row, write_csv_row, CapturedCampaignFoundation,
+};
+#[cfg(test)]
+use session::{
+    checked_u32_position, insert_bsl_value_row, insert_choice_receipt_rows,
+    insert_typed_event_rows, require_single_insert, BslSqlValue,
 };
 pub use session::{
     hydrate_campaign_foundation, prepare_committed_tick, CommittedTickReceipt,
     PreparedCommittedTick, RustPersistenceRuntimeError,
 };
 
-#[allow(unused_imports)]
-use crate::checkpoint::{
-    compose_archive_dirty_receipt, compose_checkpoint_rows, ArchiveDirtyReceipt, CheckpointRows,
-    CommittedFullCheckpoint, CommittedResolveTick, CommittedResolveTickError,
-};
-#[allow(unused_imports)]
-use crate::committed_tick_envelope::{
-    CommittedTickEnvelopeError, CommittedTickRow, CommittedTickRowFamilies,
-};
-#[allow(unused_imports)]
-use crate::foundation::{CampaignFoundation, FoundationContentBundle};
-#[allow(unused_imports)]
+#[cfg(test)]
 use crate::identity::CampaignId;
-#[allow(unused_imports)]
-use crate::metadata::ensure_campaign_catalog_row;
-#[allow(unused_imports)]
-use crate::michigan_dynamic_hex_foundation::michigan_dynamic_hex_foundation;
-#[allow(unused_imports)]
+#[cfg(test)]
 use crate::postgres_catalog::validate_connection_target;
-#[allow(unused_imports)]
-use crate::postgres_diagnostic::PostgresDiagnostic;
-#[allow(unused_imports)]
-use crate::semantic_batches::{
-    compose_graph_event_choice_semantic_batches, compose_material_state_rows,
-    GraphEventChoiceSemanticBatches, SemanticBatchError,
-};
-#[allow(unused_imports)]
-use crate::semantic_codec::SemanticCodecError;
-#[allow(unused_imports)]
+#[cfg(test)]
 use babylon_bsl::identity_codec::StableBslValue;
-#[allow(unused_imports)]
 #[cfg(test)]
 use babylon_bsl::structural_verbs::CollectingSink;
-#[allow(unused_imports)]
-use babylon_graph::hypergraph_store::HypergraphStore;
-#[allow(unused_imports)]
+#[cfg(test)]
 use babylon_kernel::content_digest::sha256_of;
-#[allow(unused_imports)]
-use babylon_kernel::tick_content_hash::TickContentHash;
-#[allow(unused_imports)]
 #[cfg(test)]
 use babylon_practice_contract::OrderedPracticeActionBatch;
-#[allow(unused_imports)]
-use babylon_tick::material_state::MaterialState;
-#[allow(unused_imports)]
-use babylon_tick::replay_session::{
-    IdentifiedTickReport, ReplayCommitDisposition, ReplayTickSession,
-};
-#[allow(unused_imports)]
-use postgres::binary_copy::BinaryCopyInWriter;
-#[allow(unused_imports)]
-use postgres::types::{ToSql, Type};
-#[allow(unused_imports)]
-use postgres::{Config, GenericClient, NoTls};
+#[cfg(test)]
+use babylon_tick::replay_session::{IdentifiedTickReport, ReplayCommitDisposition};
+#[cfg(test)]
+use postgres::types::ToSql;
+#[cfg(test)]
+use postgres::GenericClient;
 
 #[cfg(test)]
 mod live_tests {

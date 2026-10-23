@@ -16,21 +16,13 @@ pub use model::*;
 #[path = "national_resident_workforce/artifact.rs"]
 mod artifact;
 
-#[allow(unused_imports)]
-use artifact::{
-    decode, ARTIFACT, ARTIFACT_SHA256, COUNTY_COUNT, COUNTY_REFERENCE_SHA256, MAX_COMPRESSED_BYTES,
-    MAX_DECODED_BYTES, REFERENCE,
-};
+#[cfg(test)]
+use artifact::{decode, ARTIFACT};
 pub use artifact::{
     national_resident_workforce_reference, NationalResidentWorkforceReference,
     ResidentWorkforceReferenceError,
 };
+use artifact::{COUNTY_COUNT, MAX_DECODED_BYTES};
 
-#[allow(unused_imports)]
-use crate::national_counties::{
-    national_county_reference, NationalCountyReference, NationalCountyReferenceError,
-};
-#[allow(unused_imports)]
-use babylon_kernel::{content_digest::sha256_of, geography::CountyGeoid};
-#[allow(unused_imports)]
-use std::{io::Read, sync::OnceLock};
+#[cfg(test)]
+use crate::national_counties::national_county_reference;

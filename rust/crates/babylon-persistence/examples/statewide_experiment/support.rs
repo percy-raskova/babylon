@@ -1,10 +1,8 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
-#[allow(unused_imports)]
-use super::{Error, ExitCode};
+use super::Error;
 
-#[allow(unused_imports)]
-use super::{arguments, facts, report, run, witness};
+use super::{arguments, run};
 
 pub(crate) type Result<T> = std::result::Result<T, Box<dyn Error>>;
 

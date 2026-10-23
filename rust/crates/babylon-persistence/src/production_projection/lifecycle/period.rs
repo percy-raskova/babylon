@@ -1,6 +1,5 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
-#[allow(unused_imports)]
 use super::{investment, services};
 
 use super::super::ProductionProjectionError;

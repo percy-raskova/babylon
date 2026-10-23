@@ -1,10 +1,6 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
-#[allow(unused_imports)]
 use super::{EmploymentTerms, LaborCompensation};
-
-#[allow(unused_imports)]
-use super::attendance;
 
 use std::collections::BTreeSet;
 

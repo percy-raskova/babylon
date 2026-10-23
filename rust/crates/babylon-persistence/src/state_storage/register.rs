@@ -1,10 +1,8 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
-#[allow(unused_imports)]
 use super::{IdentityEntry, IdentityKind, TypedLookup};
 
-#[allow(unused_imports)]
-use super::{lookup, offers, schema};
+use super::offers;
 
 use crate::storage_compression::{compress_exact, decompress_exact};
 

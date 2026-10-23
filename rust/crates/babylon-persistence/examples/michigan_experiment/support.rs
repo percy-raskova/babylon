@@ -1,10 +1,8 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
-#[allow(unused_imports)]
-use super::{contract, Arc, Mutex, Output, Progress, Result, Watchdog};
+use super::{contract, Mutex, Output, Progress, Result};
 
-#[allow(unused_imports)]
-use super::{artifacts, json, observe, run, PathBuf};
+use super::{artifacts, json, run, PathBuf};
 
 pub(crate) fn output_argument(
     args: impl IntoIterator<Item = std::ffi::OsString>,

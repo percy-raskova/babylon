@@ -1,9 +1,6 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
-#[allow(unused_imports)]
-use super::{
-    actors, aid, equipment, external, financial, household_time, markets, routes, templates,
-};
+use super::{actors, aid, external, financial, household_time, markets, routes, templates};
 
 use super::super::{GameCommodity, NationalGamePolicy};
 

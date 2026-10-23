@@ -20,30 +20,11 @@ mod tests;
 #[path = "qualification_audit/audit.rs"]
 mod audit;
 
+use audit::hex;
 pub use audit::{
     county_roster, BoundaryFacts, CountyRoster, MaterialAudit, ReceiptFacts, Refusal, RenewalFacts,
     Scope,
 };
-#[allow(unused_imports)]
-use audit::{hex, validate_production};
 
-#[allow(unused_imports)]
-use crate::{
-    identity::CampaignId, observer_reader::CommittedMaterialObservation,
-    production_observation::ProductionSnapshot,
-};
-#[allow(unused_imports)]
-use babylon_kernel::economic_location::EconomicLocation;
-#[allow(unused_imports)]
-use babylon_tick::{
-    material_replay::IdentifiedMaterialTick,
-    material_world::{nominal_material_world_hash, MaterialWorldRegister},
-};
-#[allow(unused_imports)]
-use serde::Serialize;
-#[allow(unused_imports)]
-use serde_json::Value;
-#[allow(unused_imports)]
+#[cfg(test)]
 use sha2::{Digest, Sha256};
-#[allow(unused_imports)]
-use std::collections::BTreeSet;

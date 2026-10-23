@@ -1,8 +1,5 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
-#[allow(unused_imports)]
-use super::join;
-
 use super::super::{MaterialWorldError, ReceiptCursor};
 
 use babylon_kernel::currency::Currency;

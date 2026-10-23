@@ -14,22 +14,17 @@ mod run;
 #[path = "michigan_experiment/tests.rs"]
 mod tests;
 
-#[allow(unused_imports)]
 use std::path::PathBuf;
 
-#[allow(unused_imports)]
 use std::sync::{Arc, Mutex};
 
-#[allow(unused_imports)]
 use artifacts::{contract, Output, Progress, Result, Watchdog};
 
-#[allow(unused_imports)]
 use serde_json::json;
 
 #[path = "michigan_experiment/support.rs"]
 mod support;
 
-#[allow(unused_imports)]
 use support::{execute, output_argument};
 
 fn main() -> std::process::ExitCode {

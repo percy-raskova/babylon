@@ -1,8 +1,5 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
-#[allow(unused_imports)]
-use super::{freight_orders, physical_routes, FreightOrderRegistry};
-
 use serde::{Deserialize, Serialize};
 
 /// One complete role-scoped view of the committed circuit.

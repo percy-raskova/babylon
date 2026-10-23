@@ -1,10 +1,8 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
-#[allow(unused_imports)]
 use super::VisualAssetId;
 
-#[allow(unused_imports)]
-use super::{catalog, fonts, gallery, ObserverFonts};
+use super::fonts;
 
 use bevy::asset::io::embedded::EmbeddedAssetRegistry;
 

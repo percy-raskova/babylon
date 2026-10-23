@@ -1,10 +1,6 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
-#[allow(unused_imports)]
 use super::{PricePolicy, RecurringEconomy};
-
-#[allow(unused_imports)]
-use super::{firms, households, model, prices, recurring_household_order_id};
 
 use crate::{
     AccountId, CircuitAccounting, MaterialCircuitError, MaterialCircuitState, MerchantRole,

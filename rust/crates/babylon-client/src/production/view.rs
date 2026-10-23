@@ -1,7 +1,6 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
-#[allow(unused_imports)]
-use super::{maintenance, navigation, readings};
+use super::navigation;
 
 use babylon_persistence::{
     production_observation::ProductionSite, production_observation::ProductionSnapshot,

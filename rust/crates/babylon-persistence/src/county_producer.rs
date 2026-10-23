@@ -62,6 +62,9 @@ mod captured_tests;
 #[path = "county_producer/dossier.rs"]
 mod dossier;
 
+#[cfg(test)]
+use dossier::parse_signal_bullet;
+use dossier::verify_pinned_artifact_digests;
 pub use dossier::{
     county_committed_signals, county_page_input, county_page_semantic_sha256,
     desired_county_projection, filter_granted_county_plans, format_county_statblock_value,
@@ -72,43 +75,12 @@ pub use dossier::{
     COUNTY_DECISION_QUESTION, COUNTY_MEDIAN_WAGE_GRANT_KEY, COUNTY_MEDIAN_WAGE_LABEL,
     COUNTY_PHI_HOUR_GRANT_KEY, COUNTY_PHI_HOUR_LABEL, PINNED_COUNTY_IDENTITY_ARTIFACT_SHA256,
 };
-#[allow(unused_imports)]
-use dossier::{
-    hash_len, hash_text, parse_committed_locator, parse_signal_bullet, parse_subject_scheme_link,
-    verify_pinned_artifact_digests, COUNTY_IDENTITY_PRODUCT_CODE, COUNTY_SEMANTIC_DOMAIN,
-    COUNTY_SUBJECT_GRANT_KEY, INT_VALUE_TAG, MEDIAN_WAGE_FIELD, OVERLAP_PRODUCT_CODE,
-    PHI_HOUR_FIELD, PLACE_IDENTITY_PRODUCT_CODE, QCEW_LABELS, REAL_VALUE_TAG,
-};
 
-#[allow(unused_imports)]
-use crate::archive::{database, decode, validate_text, ARCHIVE_PAGE_TEMPLATE_SHA256};
-#[allow(unused_imports)]
-use crate::michigan_economy::{
-    QCEW_ECONOMICS_ARTIFACT_SHA256, QCEW_ECONOMICS_FIELD_KEYS, QCEW_ECONOMICS_SOURCE_ID,
-};
-#[allow(unused_imports)]
-use crate::place_producer::{
-    PINNED_COUNTY_PLACE_OVERLAP_ARTIFACT_SHA256, PINNED_PLACE_IDENTITY_ARTIFACT_SHA256,
-};
-#[allow(unused_imports)]
-use crate::{
-    h3_reference_cohort::representative_h3_reference_cohort, identity::CampaignId,
-    spatial_reference_products::michigan_spatial_reference_products,
-    spatial_reference_products::SpatialReferenceProducts, ArchiveCitation, ArchiveDirtySelection,
-    ArchiveDossierProducer, ArchiveLink, ArchivePageInput, ArchivePageRef, ArchiveProducerOutcome,
-    ArchiveSignal, ArchiveSubject, ArchiveSubjectKind, PendingArchiveReceipt, SemanticArchiveError,
-};
-#[allow(unused_imports)]
-use babylon_graph::stable_element::StableElementKey;
-#[allow(unused_imports)]
-use babylon_kernel::tick_content_hash::RefDigest;
-#[allow(unused_imports)]
-use postgres::{Config, NoTls};
-#[allow(unused_imports)]
-use sha2::{Digest as _, Sha256};
-#[allow(unused_imports)]
-use source::{signal_citation, NATIONAL_COUNTY_SOURCE_ID};
-#[allow(unused_imports)]
-use std::collections::{BTreeMap, BTreeSet};
-#[allow(unused_imports)]
-use uuid::Uuid;
+use crate::spatial_reference_products::SpatialReferenceProducts;
+use crate::{ArchiveCitation, SemanticArchiveError};
+#[cfg(test)]
+use crate::{ArchivePageRef, ArchiveSubjectKind};
+#[cfg(test)]
+use source::signal_citation;
+#[cfg(test)]
+use std::collections::BTreeMap;

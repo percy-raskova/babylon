@@ -1,21 +1,15 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
-#[allow(unused_imports)]
 use super::mpsc;
 
-#[allow(unused_imports)]
 use super::{ArchiveControl, BufRead, SessionBackend, Write};
 
-#[allow(unused_imports)]
 use super::{
     serve, Active, ArchiveDriverEvent, ArchiveEventSink, Coordinator, Duration, InputEvent,
     Receiver, RuntimeSessionErrorCode, RuntimeSessionRequest, RuntimeSessionResponse,
     RuntimeSessionScope, RuntimeSessionTarget, SessionEvent, SessionInput,
     RUNTIME_SESSION_PROTOCOL_VERSION,
 };
-
-#[allow(unused_imports)]
-use super::lifecycle;
 
 use crate::runtime_session::RuntimeSessionTail;
 

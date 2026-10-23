@@ -1,10 +1,8 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
-#[allow(unused_imports)]
 use super::CountyHouseholdMargins;
 
-#[allow(unused_imports)]
-use super::{model, parse};
+use super::parse;
 
 use crate::national_counties::{
     national_county_reference, NationalCountyReference, NationalCountyReferenceError,

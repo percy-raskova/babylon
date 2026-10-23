@@ -1,10 +1,8 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
-#[allow(unused_imports)]
 use super::ObserverMaterialCursor;
 
-#[allow(unused_imports)]
-use super::{counties, history};
+use super::counties;
 
 use babylon_kernel::content_digest::sha256_of;
 

@@ -18,10 +18,4 @@ pub(crate) use validation::{canonicalize, validate};
 #[path = "financial/arithmetic.rs"]
 mod arithmetic;
 
-#[allow(unused_imports)]
 use arithmetic::{add, available, fraction, sub, zero, Result};
-
-#[allow(unused_imports)]
-use crate::MaterialCircuitError;
-#[allow(unused_imports)]
-use babylon_kernel::currency::Currency;

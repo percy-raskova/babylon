@@ -1,7 +1,6 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
-#[allow(unused_imports)]
-use super::{advance, aid, read, recovery};
+use super::{advance, aid, recovery};
 
 use crate::observer::{ObservationContext, ObserverSession, SessionPhase};
 

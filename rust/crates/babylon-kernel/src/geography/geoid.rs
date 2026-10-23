@@ -1,8 +1,5 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
-#[allow(unused_imports)]
-use super::roster;
-
 /// Exact five ASCII digits of a county or county-equivalent GEOID.
 ///
 /// Construction checks syntax only. A captured, vintage-specific county roster

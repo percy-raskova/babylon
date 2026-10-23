@@ -1,7 +1,6 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
-#[allow(unused_imports)]
-use super::{aid, economic, policy, production_renewal, reader, trade};
+use super::{economic, production_renewal, trade};
 
 use crate::{
     identity::CampaignId, observer_reader::CommittedMaterialObservation,

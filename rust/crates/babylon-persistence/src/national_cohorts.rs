@@ -18,24 +18,10 @@ pub use model::{CohortKey, CohortReference, KnownSubtotal, QcewDisclosure, Sourc
 #[path = "national_cohorts/artifact.rs"]
 mod artifact;
 
-#[allow(unused_imports)]
-use artifact::{
-    decode_gzip, ADMITTED_COUNT, ARTIFACT, ARTIFACT_SHA256, GROUP_COUNT, MAX_COMPRESSED_BYTES,
-    MAX_CSV_BYTES, MEMBER_COUNT, REFERENCE,
-};
+#[cfg(test)]
+use artifact::{decode_gzip, ARTIFACT};
 pub use artifact::{
     national_cohort_reference, NationalCohortReference, NationalCohortReferenceError,
     LEAF_BASIS_SHA256,
 };
-
-#[allow(unused_imports)]
-use crate::national_counties::{
-    national_county_reference, NationalCountyReference, NationalCountyReferenceError,
-};
-#[allow(unused_imports)]
-use babylon_kernel::{
-    content_digest::sha256_of,
-    geography::{CountyGeoid, CountyGeoidError, NationalCountyRoster},
-};
-#[allow(unused_imports)]
-use std::{io::Read, sync::OnceLock};
+use artifact::{ADMITTED_COUNT, GROUP_COUNT, MEMBER_COUNT};

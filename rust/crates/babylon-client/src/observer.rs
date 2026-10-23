@@ -8,9 +8,3 @@ mod lifecycle;
 mod session;
 
 pub use session::{ObservationContext, ObserverSession, Perspective, SessionPhase};
-
-#[allow(unused_imports)]
-use babylon_persistence::identity::CampaignId;
-
-#[allow(unused_imports)]
-use bevy::prelude::*;

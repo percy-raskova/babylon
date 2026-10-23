@@ -1,8 +1,5 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
-#[allow(unused_imports)]
-use super::delivery_groups;
-
 use babylon_persistence::{
     observer_reader::{
         ObserverEconomyReader, ProductionHistoryTarget, ProductionOutputPoint as PeriodOutput,

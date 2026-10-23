@@ -1,10 +1,8 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
-#[allow(unused_imports)]
 use super::{AdmittedReceiptWitness, MaterialStorageWitnesses, OpeningRegister, TypedLookup};
 
-#[allow(unused_imports)]
-use super::{descriptors, receipt_witness, DescriptorError};
+use super::{descriptors, DescriptorError};
 
 use crate::receipt_storage;
 

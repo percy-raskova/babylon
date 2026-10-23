@@ -1,10 +1,6 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
-#[allow(unused_imports)]
 use super::{StoredTickReadSource, StoredTickRelation};
-
-#[allow(unused_imports)]
-use super::source;
 
 use std::collections::BTreeMap;
 

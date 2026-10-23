@@ -1,10 +1,8 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
-#[allow(unused_imports)]
 use super::{
-    capture_identity, capture_rows_digest, component_identity, decode, envelope, observer_actions,
-    observer_endpoints, open, runtime_checkpoint, MaterialComponentIdentity,
-    MAX_MATERIAL_FOUNDATION_BYTES,
+    capture_rows_digest, envelope, observer_actions, open, runtime_checkpoint,
+    MaterialComponentIdentity,
 };
 
 use super::observer_endpoints::AuthenticatedPreviousMaterialTick;

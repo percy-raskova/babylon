@@ -22,31 +22,25 @@ mod descriptor_guard_controls;
 #[path = "material_storage/register.rs"]
 mod register;
 
-#[allow(unused_imports)]
-use register::{
-    admitted_count, appended, encode_period_lookup, period_lookup_chain, Cursor, Result,
-    INITIAL_CHAIN_DOMAIN, LOOKUP_VERSION, PERIOD_CHAIN_DOMAIN,
-};
+use register::{admitted_count, Cursor, Result};
 pub use register::{
     decode, encode, initial_lookup_chain, lookup_identity, read_period_lookup, seed,
     DecodedPeriodLookup, EncodedMaterial, Error, LookupAnchor,
 };
-#[allow(unused_imports)]
-pub(crate) use register::{
-    decode_typed, decode_typed_with_witness, DecodedMaterial, LOOKUP_DOMAIN, MAX_LOOKUP_BYTES,
-    MAX_LOOKUP_PACKAGE_BYTES,
-};
+pub(crate) use register::{decode_typed, decode_typed_with_witness, MAX_LOOKUP_BYTES};
+#[cfg(test)]
+use register::{encode_period_lookup, period_lookup_chain};
+#[cfg(test)]
+pub(crate) use register::{DecodedMaterial, LOOKUP_DOMAIN};
 
-#[allow(unused_imports)]
-use crate::receipt_storage;
-#[allow(unused_imports)]
+#[cfg(test)]
 use crate::state_storage::{self, IdentityEntry, StorageError};
-#[allow(unused_imports)]
-use crate::storage_compression::{compress_exact, decompress_exact, StorageCompressionError};
-#[allow(unused_imports)]
+#[cfg(test)]
+use crate::storage_compression::{compress_exact, decompress_exact};
+#[cfg(test)]
 use babylon_kernel::content_digest::sha256_of;
-#[allow(unused_imports)]
-use babylon_tick::material_world::{MaterialTickReceipts, MaterialWorldRegister};
+#[cfg(test)]
+use babylon_tick::material_world::MaterialWorldRegister;
 
 pub use register::{
     MAX_STORED_MATERIAL_LOOKUP_DELTA_BYTES, MAX_STORED_MATERIAL_RECEIPT_BYTES,

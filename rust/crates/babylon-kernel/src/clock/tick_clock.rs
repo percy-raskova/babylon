@@ -1,8 +1,5 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
-#[allow(unused_imports)]
-use super::duration;
-
 /// Designed simulation interval in weeks: one adjudication and one committed tick.
 pub const WEEKS_PER_TICK: u64 = 4;
 

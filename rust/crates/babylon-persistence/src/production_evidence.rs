@@ -18,32 +18,17 @@ mod tests;
 #[path = "production_evidence/evidence.rs"]
 mod evidence;
 
-#[allow(unused_imports)]
+#[cfg(test)]
 use evidence::{
-    bound, canonicalize_production, check_bound, diagnostic_add_field, diagnostic_cardinalities,
-    diagnostic_encoded_size, diagnostic_field_sizes, diagnostic_production_fields,
-    diagnostic_validation, diagnostic_validation_refusal, diagnostic_value_bytes, encode_evidence,
-    unique, validate_account_rows, validate_collection_bounds, validate_goods_prices,
-    validate_household_services, validate_households, validate_identities, validate_maintenance,
-    validate_member_identities, validate_route_identities, validate_source_contexts, BoundReason,
-    CountingEvidenceWriter, EvidenceByteCounter, EvidenceScope, EvidenceWriter, Result, DOMAIN,
-    MAX_EVIDENCE_BYTES, MAX_PHYSICAL_ROWS, MAX_ROWS, VERSION,
+    canonicalize_production, diagnostic_field_sizes, diagnostic_production_fields,
+    diagnostic_value_bytes, encode_evidence, EvidenceScope, EvidenceWriter, DOMAIN,
+    MAX_EVIDENCE_BYTES, MAX_ROWS, VERSION,
 };
 pub use evidence::{ProductionEvidenceDigest, ProductionEvidenceError};
 
-#[allow(unused_imports)]
-use crate::production_projection::diagnostics::{Stage, Timing};
-#[allow(unused_imports)]
-use crate::{
-    observer_reader::ObserverEconomySnapshot, observer_reader::ObserverVisibility,
-    production_observation::ProductionSnapshot,
-};
-#[allow(unused_imports)]
-use serde::Serialize;
-#[allow(unused_imports)]
+#[cfg(test)]
+use crate::observer_reader::{ObserverEconomySnapshot, ObserverVisibility};
+#[cfg(test)]
 use sha2::{Digest as _, Sha256};
-#[allow(unused_imports)]
-use std::{
-    collections::BTreeSet,
-    io::{self, BufWriter, Write},
-};
+#[cfg(test)]
+use std::io::{self, Write};

@@ -26,13 +26,6 @@ pub use model::*;
 #[path = "valuation/arithmetic.rs"]
 mod arithmetic;
 
-#[allow(unused_imports)]
 pub(crate) use arithmetic::portion;
 pub use arithmetic::MAX_CARRYING_STOCKS;
-#[allow(unused_imports)]
 use arithmetic::{add, amount, sub, zero, Result};
-
-#[allow(unused_imports)]
-use crate::MaterialCircuitError;
-#[allow(unused_imports)]
-use babylon_kernel::currency::Currency;

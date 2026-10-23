@@ -1,6 +1,5 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
-#[allow(unused_imports)]
 use super::{
     AttendancePlan, CapacityRow, CashAccount, CommodityDefinition, CorridorCapacity,
     EmploymentTerms, FinalDemandOrder, FinalDemandPrincipal, HouseholdCohort, HouseholdNeed,
@@ -10,7 +9,6 @@ use super::{
     RouteStageCapacity, SellerOffer, SiteLogisticsNode, StockCarryingValue, SupplierRoute,
 };
 
-#[allow(unused_imports)]
 use super::{
     admit_material_purchase, advance_material_circuit, close_material_period,
     decode_material_circuit_state, encode_material_circuit_state, AccountId, AidBook,
@@ -20,13 +18,6 @@ use super::{
     OrderId, OutboundOrderId, PriceDecision, PricePolicy, ProcessId, RecurringEconomy, RouteId,
     SiteId, StaffingPolicy, StaffingPoolBinding, StaffingPoolId, StaffingWorkSource,
     SupplierTransport, UnitId, MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES,
-};
-
-#[allow(unused_imports)]
-use super::{
-    aid_cases, cost_income, economic_location_cases, empty_workforce_cases, goods_cost_prices,
-    household_budget_cases, household_need_basis_cases, household_time_cases, integrated_controls,
-    local_cost, rolling_capacity,
 };
 
 use babylon_kernel::currency::Currency;

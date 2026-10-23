@@ -28,12 +28,7 @@ pub(crate) use validation::{canonicalize, row_limits, validate};
 #[path = "equipment/lookup.rs"]
 mod lookup;
 
-#[allow(unused_imports)]
 use lookup::Result;
-#[allow(unused_imports)]
 pub(crate) use lookup::{get, get_mut};
 
-#[allow(unused_imports)]
-use crate::{
-    CapacitySupply, InstalledProcessCapacity, MaterialCircuitError, MaterialCircuitState, ProcessId,
-};
+use crate::{MaterialCircuitError, MaterialCircuitState, ProcessId};

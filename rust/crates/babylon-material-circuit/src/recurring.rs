@@ -26,18 +26,5 @@ mod households_tests;
 #[path = "recurring/validation.rs"]
 mod validation;
 
-#[allow(unused_imports)]
+use validation::Result;
 pub(crate) use validation::{canonicalize, validate};
-#[allow(unused_imports)]
-use validation::{
-    row_limits, unique, validate_attendance, validate_firm_policies, validate_households,
-    validate_offers, Result,
-};
-
-#[allow(unused_imports)]
-use crate::{
-    AccountId, CircuitAccounting, MaterialCircuitError, MaterialCircuitState, MerchantRole,
-    MAX_MATERIAL_CIRCUIT_ROWS,
-};
-#[allow(unused_imports)]
-use std::collections::{BTreeMap, BTreeSet};

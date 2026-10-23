@@ -15,27 +15,24 @@ pub(crate) mod ui;
 #[path = "organizer/client.rs"]
 mod client;
 
+#[cfg(test)]
+use client::transport;
 pub use client::OrganizerPlugin;
-#[allow(unused_imports)]
+use client::RequestKind;
 pub(crate) use client::{report_reading, OrganizerClient, OrganizerInspector};
-#[allow(unused_imports)]
-use client::{transport, PendingRequest, RequestKind};
 
-#[allow(unused_imports)]
-use crate::observer::{ObservationContext, ObserverSession, SessionPhase};
-#[allow(unused_imports)]
-use crate::observer_io::{ObserverSet, RuntimePipe, RuntimeSendError};
-#[allow(unused_imports)]
+#[cfg(test)]
+use crate::observer::{ObserverSession, SessionPhase};
+#[cfg(test)]
 use babylon_persistence::runtime_session::{
-    OrganizerAidPending, OrganizerAidResolution, OrganizerChoice, OrganizerCollectionPreview,
-    OrganizerCollectionResolution, OrganizerCommand, OrganizerCommitment,
-    OrganizerMaterialAidPreview, OrganizerPreview, OrganizerSnapshot, OrganizerView,
-    RuntimeSessionRequest, RUNTIME_SESSION_PROTOCOL_VERSION,
+    OrganizerAidPending, OrganizerChoice, OrganizerCollectionPreview, OrganizerCommand,
+    OrganizerCommitment, OrganizerMaterialAidPreview, OrganizerPreview, OrganizerSnapshot,
+    OrganizerView, RuntimeSessionRequest,
 };
-#[allow(unused_imports)]
+#[cfg(test)]
 use draft::OrganizerDraft;
 
-#[allow(unused_imports)]
+#[cfg(test)]
 use bevy::prelude::*;
 
 #[cfg(test)]

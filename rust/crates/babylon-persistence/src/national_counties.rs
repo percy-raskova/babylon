@@ -15,27 +15,19 @@ pub(crate) use parse::acs_cell;
 #[path = "national_counties/artifact.rs"]
 mod artifact;
 
-#[allow(unused_imports)]
 pub(crate) use artifact::ARTIFACT_SHA256;
-#[allow(unused_imports)]
-use artifact::{
-    decode_gzip, ARTIFACT, COUNTY_COUNT, MAX_COMPRESSED_BYTES, MAX_CSV_BYTES, REFERENCE,
-};
+#[cfg(test)]
+use artifact::{decode_gzip, ARTIFACT};
 pub use artifact::{
     national_county_reference, AcsEstimate, CountyReference, InternalPoint,
     NationalCountyReference, NationalCountyReferenceError, ObservationStatus, ResidentEstimates,
     SourceCell, WorkplaceObservations,
 };
+use artifact::{COUNTY_COUNT, MAX_CSV_BYTES};
 
-#[allow(unused_imports)]
-use babylon_kernel::{
-    content_digest::sha256_of,
-    geography::{CountyGeoid, CountyGeoidError, NationalCountyRoster, NATIONAL_COUNTY_COUNT},
-};
-#[allow(unused_imports)]
+#[cfg(test)]
+use babylon_kernel::geography::CountyGeoid;
+#[cfg(test)]
 use parse::parse_csv;
-#[allow(unused_imports)]
 #[cfg(test)]
 use parse::qcew;
-#[allow(unused_imports)]
-use std::{io::Read, sync::OnceLock};

@@ -1,5 +1,13 @@
 //! Capture one consistent Open snapshot; reconstruct only after its transaction ends.
-use super::*;
+use super::{
+    bounded_material_writer_config, capture_identity, capture_marker,
+    capture_material_foundation_components, material_storage, read_tail_tick, runtime_checkpoint,
+    verify_runtime_schema_client, CampaignId, CapturedMaterialFoundation, Config,
+    DurableMaterialRuntime, FoundationReadSource, HypergraphStore, IdentifiedMaterialTick,
+    MaterialComponentIdentity, MaterialEnvelopeRead, MaterialReadAuthority, MaterialReplayError,
+    MaterialReplaySession, MaterialRuntimeError, MaterialRuntimeFoundation, NoTls,
+    StoredMaterialTick, StoredTickReadSource,
+};
 
 struct CapturedOpen {
     tick: u64,

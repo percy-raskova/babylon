@@ -1,8 +1,5 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
-#[allow(unused_imports)]
-use super::active;
-
 use std::io::{BufRead, Write};
 
 use std::sync::mpsc::{self, Receiver, SyncSender};

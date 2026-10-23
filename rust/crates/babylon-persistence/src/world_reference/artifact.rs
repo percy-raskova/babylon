@@ -1,10 +1,8 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
-#[allow(unused_imports)]
 use super::{CounterpartReference, WorldMember, WorldScope};
 
-#[allow(unused_imports)]
-use super::{model, parse};
+use super::parse;
 
 use babylon_kernel::{
     content_digest::sha256_of,

@@ -245,7 +245,7 @@ that Babylon needs.
 | Site | Role |
 | --- | --- |
 | `babylon-kernel/src/geography/roster.rs` `NationalCountyRoster` | Immutable county identifier snapshot shared by every material reader. |
-| `babylon-tick/src/material_world.rs` `MaterialTickReceipts` | Immutable receipt family held as `Arc<MaterialTickReceipts>` between committed ticks. |
+| `babylon-tick/src/material_world/register.rs` `MaterialTickReceipts` | Immutable receipt family held as `Arc<MaterialTickReceipts>` between committed ticks. |
 | `babylon-persistence/src/economic_content.rs` `EconomicContentAdmission` | Admitted immutable foundation shared across worker and reader threads. |
 | `babylon-persistence/src/archive_worker.rs` `ArchiveWorkerCancellation` | `Arc<AtomicBool>` cancellation flag read by the worker thread. |
 | `babylon-client/src/logging.rs` `SinkState` | Cross-thread log writer behind `Arc<Mutex<SinkState>>`. |

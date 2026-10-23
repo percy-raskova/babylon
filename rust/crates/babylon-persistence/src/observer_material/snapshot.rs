@@ -1,6 +1,5 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
-#[allow(unused_imports)]
 use super::storage_witness;
 
 use crate::production_projection::diagnostics::{self, Stage};

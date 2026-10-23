@@ -1,10 +1,8 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
-#[allow(unused_imports)]
 use super::{
-    choice_receipt, committed_event, diagnostic, h3_runtime, kernel_slot, material_replay,
-    material_staffing, material_state, material_world, phase_order, replay_identity,
-    replay_session, world_hash,
+    choice_receipt, committed_event, kernel_slot, material_replay, material_staffing,
+    material_world, phase_order, replay_session, world_hash,
 };
 
 use babylon_bsl::bindings::BindingVocabulary;

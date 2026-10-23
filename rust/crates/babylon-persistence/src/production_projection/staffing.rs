@@ -12,32 +12,27 @@ mod paid_tests;
 #[path = "staffing/projection.rs"]
 mod projection;
 
-#[allow(unused_imports)]
 pub(crate) use projection::project_staffing_accounts;
-#[allow(unused_imports)]
-use projection::{
-    completed_account, current_labor, event_fields, event_receipts, integer,
-    reconcile_member_changes, Result, Stocks, EVENT, INTEGER_FIELDS,
-};
+#[cfg(test)]
+use projection::{completed_account, event_fields, INTEGER_FIELDS};
+use projection::{integer, Result, Stocks};
 
-#[allow(unused_imports)]
 use super::ProductionProjectionError;
-#[allow(unused_imports)]
-use crate::{
-    michigan_economy::digest_hex, production_observation::CompletedProductionStaffing,
-    production_observation::ProductionStaffingAccount,
-    production_observation::ProductionStaffingSubject, stored_tick::StoredEvent,
-};
-#[allow(unused_imports)]
+#[cfg(test)]
+use crate::michigan_economy::digest_hex;
+#[cfg(test)]
+use crate::production_observation::ProductionStaffingAccount;
+#[cfg(test)]
+use crate::stored_tick::StoredEvent;
+#[cfg(test)]
 use babylon_bsl::identity_codec::StableBslValue;
-#[allow(unused_imports)]
-use babylon_graph::{stable_element::StableElementKey, stable_state::StableGraphState};
-#[allow(unused_imports)]
-use babylon_tick::{
-    material_staffing::{StaffingComposition, STAFFING_COMPOSITION_ID},
-    material_world::{MaterialTickReceipts, MaterialWorldRegister},
-};
-#[allow(unused_imports)]
-use members::{StaffingGraph, StaffingWitnesses};
-#[allow(unused_imports)]
-use std::collections::BTreeMap;
+#[cfg(test)]
+use babylon_graph::stable_element::StableElementKey;
+#[cfg(test)]
+use babylon_graph::stable_state::StableGraphState;
+#[cfg(test)]
+use babylon_tick::material_staffing::StaffingComposition;
+#[cfg(test)]
+use babylon_tick::material_world::{MaterialTickReceipts, MaterialWorldRegister};
+#[cfg(test)]
+use members::StaffingGraph;

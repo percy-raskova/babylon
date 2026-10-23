@@ -1,8 +1,5 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
-#[allow(unused_imports)]
-use super::catalog;
-
 use bevy::asset::io::embedded::EmbeddedAssetRegistry;
 
 use bevy::audio::{AudioSinkPlayback, Volume};

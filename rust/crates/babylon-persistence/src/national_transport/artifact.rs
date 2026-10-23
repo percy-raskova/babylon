@@ -1,14 +1,12 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
-#[allow(unused_imports)]
 use super::{
     CountyAllocationFactor, CountyTransportAccess, TransportFacility, TransportFlows,
     TransportLink, TransportNode, TransportNodeKind, TransportPool, TransportService,
     TransportSource, UnavailableBulkAccess,
 };
 
-#[allow(unused_imports)]
-use super::{model, raw, validate};
+use super::{raw, validate};
 
 use crate::national_counties::{national_county_reference, NationalCountyReference};
 

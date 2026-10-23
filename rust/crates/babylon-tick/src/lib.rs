@@ -48,6 +48,7 @@ mod world_hash;
 
 mod tick_runner;
 
+use tick_runner::run_prepared_tick_with;
 pub use tick_runner::{
     analyze_content_set_sources, analyze_content_set_sources_with_kernel_slots, any_over_budget,
     diagnose_content_set_sources, forecast_event_likelihoods,
@@ -57,77 +58,14 @@ pub use tick_runner::{
     ContentSetSourceAnalysisError, ForecastError, FuelBoundRow, PrepareError, SourcedPrepareError,
     TickReport,
 };
-#[allow(unused_imports)]
+#[cfg(test)]
 use tick_runner::{
-    analyze_content_set_sources_before_kernel_slots, build_shared_load_inputs,
-    checked_considered_total, checked_fired_total, complete_tick_transaction,
-    enforce_ranked_composition, execute_prepared_rules, hydrate_scenario,
-    hydrate_scenario_instances, prepare_error_from_schedule, prepare_error_source_id,
-    prepare_rules_with_instances, prepare_rules_with_kernel_slots, prepare_tick_transaction,
-    probability_prepare_error, registered_systems, run_once_session, run_prepared_tick,
-    run_prepared_tick_transaction, run_prepared_tick_with, seed_implicit_edge_strength_fields,
-    transaction_error, validate_material_cycle_cardinality, ExecutedRules, ExecutionIdentity,
-    SharedLoadInputs, TickTransactionError, TickTransactionResult, TransactionPrelude,
+    checked_fired_total, prepare_rules_with_kernel_slots, run_prepared_tick_transaction,
+    ExecutionIdentity,
 };
-#[allow(unused_imports)]
 pub(crate) use tick_runner::{
     prepare_rules, prepare_rules_with_graph_seed, run_prepared_replay_tick, EventRecord,
-    HashBoundary, PreparedEventBatchSink, PreparedRules,
+    PreparedRules,
 };
-
-#[allow(unused_imports)]
-use babylon_bsl::bindings::BindingVocabulary;
-#[allow(unused_imports)]
-use babylon_bsl::causal_contract::{reduce_audit_receipts, AuditReceipt};
-#[allow(unused_imports)]
-use babylon_bsl::declarations::{parse_intrinsic_decls, DeclError, FieldRegistry};
-#[allow(unused_imports)]
-use babylon_bsl::error_identity::ErrorIdentity;
-#[allow(unused_imports)]
-use babylon_bsl::evaluator::Value;
-#[allow(unused_imports)]
-use babylon_bsl::fuel::{CardinalityCeilings, IntrinsicCosts};
-#[allow(unused_imports)]
-use babylon_bsl::intrinsic_host::KernelIntrinsicHost;
-#[allow(unused_imports)]
-use babylon_bsl::probability::{KernelInstanceIdentity, ProbabilityError};
-#[allow(unused_imports)]
-use babylon_bsl::reader::{FormPath, SExpr};
-#[allow(unused_imports)]
-use babylon_bsl::rule_pipeline::{
-    check_unique_rule_ids, load_rule_form, split_content, LoadContext, LoadError, LoadedRule,
-};
-#[allow(unused_imports)]
-use babylon_bsl::same_tick_order::{diagnose_ranked, ENFORCE_RANK_AWARE_AGGREGATE_ORDERING};
-#[allow(unused_imports)]
-use babylon_bsl::scenario::{
-    load_scenario, load_scenario_with_prelude, LoadedScenario, ScenarioError,
-};
-#[allow(unused_imports)]
-use babylon_bsl::structural_verbs::CollectingSink;
-#[allow(unused_imports)]
-use babylon_bsl::tick::run_tick_observed;
-#[allow(unused_imports)]
-use babylon_bsl::typecheck::TypeEnv;
-#[allow(unused_imports)]
-use babylon_bsl::types::{EnumRegistry, FieldDecl};
-#[allow(unused_imports)]
-use babylon_bsl::write_log::CollectingWriteLog;
-#[allow(unused_imports)]
-use babylon_graph::allocator_state::AllocatorState;
-#[allow(unused_imports)]
-use babylon_graph::hypergraph_store::HypergraphStore;
-#[allow(unused_imports)]
-use babylon_graph::stable_element::{StableElementKey, StableElementResolver};
-#[allow(unused_imports)]
-use babylon_graph::state_hash::CanonicalState;
-#[allow(unused_imports)]
-use babylon_graph::substrate::{GraphError, GraphSubstrate, HyperedgeId, NodeId};
-#[allow(unused_imports)]
-use babylon_graph::working_copy::DetachedCopy;
-#[allow(unused_imports)]
-use babylon_kernel::replay::{ReplaySeed, ReplaySessionId, RngSeedContext};
-#[allow(unused_imports)]
-use replay_session::{IdentifiedTickReport, ReplayTickError};
-#[allow(unused_imports)]
-use std::collections::{HashMap, HashSet};
+#[cfg(test)]
+pub(crate) use tick_runner::{HashBoundary, PreparedEventBatchSink};

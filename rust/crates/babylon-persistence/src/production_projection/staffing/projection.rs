@@ -1,8 +1,5 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
-#[allow(unused_imports)]
-use super::members;
-
 use std::collections::BTreeMap;
 
 use babylon_bsl::identity_codec::StableBslValue;

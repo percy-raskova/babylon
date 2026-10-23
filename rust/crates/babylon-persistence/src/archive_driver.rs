@@ -12,18 +12,16 @@ mod tests;
 
 mod driver;
 
-#[allow(unused_imports)]
-use driver::COMMAND_CAPACITY;
 pub use driver::{
     ArchiveDriver, ArchiveDriverEvent, ArchiveDriverFailure, ArchiveDriverRequestError,
     ArchiveDriverStartError,
 };
 
-#[allow(unused_imports)]
-use crate::{identity::CampaignId, ArchiveWorkerCancellation, SemanticArchiveError};
-#[allow(unused_imports)]
-use postgres::Config;
-#[allow(unused_imports)]
-use std::sync::mpsc::{self, SyncSender, TrySendError};
-#[allow(unused_imports)]
-use std::thread::{self, JoinHandle};
+#[cfg(test)]
+use crate::identity::CampaignId;
+#[cfg(test)]
+use crate::{ArchiveWorkerCancellation, SemanticArchiveError};
+#[cfg(test)]
+use std::sync::mpsc;
+#[cfg(test)]
+use std::thread;

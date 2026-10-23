@@ -68,22 +68,16 @@ mod aid_projection_tests;
 mod projection;
 
 #[cfg(test)]
-#[allow(unused_imports)]
 pub(crate) use projection::project_material_observation;
-#[allow(unused_imports)]
-use projection::{physical_context, project_freight, Result};
-#[allow(unused_imports)]
+#[cfg(test)]
+use projection::Result;
 pub(crate) use projection::{project_economic_current, ProductionProjectionError};
 
-#[allow(unused_imports)]
-use crate::{
-    economic_catalog::EconomicProjectionView,
-    michigan_economy::digest_hex,
-    production_observation::{
-        ProductionFreight, ProductionPhysicalEdge, ProductionRoadSource, ProductionSnapshot,
-    },
-};
-#[allow(unused_imports)]
-use babylon_tick::material_world::{MaterialTickReceipts, MaterialWorldRegister};
-#[allow(unused_imports)]
+#[cfg(test)]
+use crate::michigan_economy::digest_hex;
+#[cfg(test)]
+use crate::production_observation::ProductionSnapshot;
+#[cfg(test)]
+use babylon_tick::material_world::MaterialTickReceipts;
+#[cfg(test)]
 use metadata::Metadata;

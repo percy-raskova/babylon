@@ -1,6 +1,5 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
-#[allow(unused_imports)]
 use super::{
     aid_receipt, collection_receipt, equipment_receipt, financial_receipt, household_time_receipt,
     income_receipt, installation_decision, maintenance_receipt, monetary_receipt,

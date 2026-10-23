@@ -11,46 +11,30 @@ mod recovery;
 #[path = "qualification/state.rs"]
 mod state;
 
-#[allow(unused_imports)]
 pub(crate) use state::NativeAudit;
-#[allow(unused_imports)]
-use state::{
-    admit_tick, elapsed, exact_existing, hex, publication_matches, valid_record_name,
-    verify_directory, write_named_record, KnownBinding, Opening, Record, Scope, RECORD_BYTES,
-};
-#[allow(unused_imports)]
+#[cfg(test)]
+use state::{admit_tick, publication_matches, RECORD_BYTES};
 pub(super) use state::{awaiting_archive, Candidate, Configuration, Work};
+use state::{elapsed, hex, write_named_record, KnownBinding, Opening, Record, Scope};
 
-#[allow(unused_imports)]
 use super::PreparedObservation;
-#[allow(unused_imports)]
-use crate::observer::{ObservationContext, ObserverSession, Perspective, SessionPhase};
-#[allow(unused_imports)]
-use babylon_persistence::{
-    identity::CampaignId,
-    observer_reader::{
-        ObserverEconomyReader, ObserverEconomySnapshot, ObserverMaterialCursor, ObserverVisibility,
-    },
-    qualification_audit::{
-        policy::{canonical_digest, FrozenPolicy},
-        MaterialAudit,
-    },
+use crate::observer::{ObservationContext, Perspective};
+#[cfg(test)]
+use crate::observer::{ObserverSession, SessionPhase};
+#[cfg(test)]
+use babylon_persistence::identity::CampaignId;
+#[cfg(test)]
+use babylon_persistence::observer_reader::ObserverEconomySnapshot;
+use babylon_persistence::observer_reader::{
+    ObserverEconomyReader, ObserverMaterialCursor, ObserverVisibility,
 };
-#[allow(unused_imports)]
-use bevy::prelude::Resource;
-#[allow(unused_imports)]
-use serde::Serialize;
-#[allow(unused_imports)]
-use std::{
-    fs::{self, File, OpenOptions},
-    io::{Read, Write},
-    os::unix::fs::{MetadataExt, OpenOptionsExt},
-    path::{Path, PathBuf},
-    time::Instant,
-};
+use babylon_persistence::qualification_audit::policy::canonical_digest;
+#[cfg(test)]
+use babylon_persistence::qualification_audit::policy::FrozenPolicy;
+use babylon_persistence::qualification_audit::MaterialAudit;
+use std::time::Instant;
 
 #[cfg(test)]
-#[allow(unused_imports)]
 use state::write_record;
 
 #[cfg(test)]

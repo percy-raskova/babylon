@@ -16,30 +16,21 @@ pub use lookup::{IdentityEntry, IdentityKind, TypedLookup};
 #[path = "state_storage/register.rs"]
 mod register;
 
-#[allow(unused_imports)]
+#[cfg(test)]
 use register::{
-    append_block, array32, block, columns, compressed, digest, expand, normalize,
-    normalize_existing_bounded, normalize_with, normalized_width, opening_xor_columns,
-    restore_register, restore_section, restore_sections, rows, stored_section,
-    validate_body_length, validate_descriptors, validate_opening_section, Block, Normalized,
-    SectionDescriptors, StoredSection, DOMAIN, MAX_BYTES,
+    append_block, block, compressed, digest, expand, normalize, normalized_width, restore_section,
+    stored_section, Block, StoredSection, DOMAIN,
 };
-#[allow(unused_imports)]
+use register::{columns, rows, MAX_BYTES};
 pub(crate) use register::{decode_admitted, decode_against_admitted, MAX_STATE_PACKAGE_BYTES};
-#[allow(unused_imports)]
-pub use register::{
-    encode_lookup, encode_register_with_opening, EncodedState, OpeningRegister, StorageError,
-};
+pub use register::{encode_lookup, encode_register_with_opening, OpeningRegister, StorageError};
 
-#[allow(unused_imports)]
+#[cfg(test)]
 use crate::storage_compression::{compress_exact, decompress_exact};
-#[allow(unused_imports)]
-use babylon_tick::material_world::{MaterialWorldRegister, MAX_MATERIAL_WORLD_REGISTER_BYTES};
-#[allow(unused_imports)]
-use layout::{kind, layout, Layout};
-#[allow(unused_imports)]
-use schema::{sections, Cursor, Section};
-#[allow(unused_imports)]
-use sha2::{Digest, Sha256};
-#[allow(unused_imports)]
-use std::{collections::BTreeMap, fmt};
+#[cfg(test)]
+use babylon_tick::material_world::MaterialWorldRegister;
+#[cfg(test)]
+use layout::{kind, layout};
+use schema::Cursor;
+#[cfg(test)]
+use schema::{sections, Section};

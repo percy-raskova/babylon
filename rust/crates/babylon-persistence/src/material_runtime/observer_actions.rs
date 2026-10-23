@@ -7,20 +7,17 @@ mod tests;
 #[path = "observer_actions/cursor.rs"]
 mod cursor;
 
-#[allow(unused_imports)]
+#[cfg(test)]
+use cursor::parse;
 pub(super) use cursor::reconstruct;
-#[allow(unused_imports)]
-use cursor::{parse, Cursor, Result};
 
-#[allow(unused_imports)]
-use super::MaterialRuntimeError;
-#[allow(unused_imports)]
-use babylon_kernel::{content_digest::sha256_of, replay::ReplaySessionId};
-#[allow(unused_imports)]
+#[cfg(test)]
+use babylon_kernel::content_digest::sha256_of;
+#[cfg(test)]
+use babylon_kernel::replay::ReplaySessionId;
+#[cfg(test)]
 use babylon_practice_contract::{
-    admit_organizer, decode_practice_intent, encode_practice_action_id_preimage,
-    encode_practice_intent, organizer_action_batch, validate_organizer_pair,
-    OrderedPracticeActionBatch, OrganizerChoice, OrganizerCommand, OrganizerConfig, OrganizerState,
-    PracticeIntent, MAX_PRACTICE_INTENT_CANONICAL_BYTES, MAX_RESOLVED_PRACTICE_BATCH_ITEMS,
+    admit_organizer, encode_practice_action_id_preimage, encode_practice_intent,
+    organizer_action_batch, OrganizerConfig, OrganizerState, PracticeIntent,
     ORDERED_PRACTICE_ACTION_BATCH_DOMAIN_BYTES,
 };

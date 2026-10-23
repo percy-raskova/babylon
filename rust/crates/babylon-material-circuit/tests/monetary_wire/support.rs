@@ -1,6 +1,5 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
-#[allow(unused_imports)]
 use super::{
     advance_material_circuit, decode_material_circuit_state, encode_material_circuit_state,
     material_circuit_state_digest, AccountId, AidBook, BacklogRow, CashAccount, CircuitAccounting,
@@ -12,9 +11,6 @@ use super::{
     StockCarryingValue, SupplierRoute, SupplierTransport, UnitId,
     MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES,
 };
-
-#[allow(unused_imports)]
-use super::{delivery_limits, order_principal_limits};
 
 use babylon_kernel::{content_digest::sha256_of, currency::Currency};
 

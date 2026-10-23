@@ -1,13 +1,6 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
-#[allow(unused_imports)]
 use super::{EquipmentBinding, EquipmentDefinition, ProductiveEquipment, RollingProcessSupply};
-
-#[allow(unused_imports)]
-use super::{
-    choice, equipment_installation_id, equipment_purchase_order_id, installation, invest,
-    investment, model, receipts, validation,
-};
 
 use crate::{
     CapacitySupply, InstalledProcessCapacity, MaterialCircuitError, MaterialCircuitState, ProcessId,

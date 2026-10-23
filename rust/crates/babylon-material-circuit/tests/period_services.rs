@@ -13,16 +13,6 @@ mod inventory_limits;
 #[path = "period_services/support.rs"]
 mod support;
 
-#[allow(unused_imports)]
-use support::{
-    a_service_dependency_cycle_and_durable_service_stock_are_refused_atomically,
-    absent_utility_constrains_services_and_goods_without_spending_work_twice, funded, good,
-    household, money, native_services_feed_later_stages_without_freight_or_stored_service, opening,
-    process, site, unit,
-};
+use support::{funded, good, household, money, opening, process, site, unit};
 
-#[allow(unused_imports)]
-use babylon_kernel::currency::Currency;
-
-#[allow(unused_imports)]
 use babylon_material_circuit::*;

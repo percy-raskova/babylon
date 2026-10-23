@@ -9,24 +9,9 @@ mod wear;
 #[path = "equipment/facts.rs"]
 mod facts;
 
-#[allow(unused_imports)]
-use facts::{
-    add, add_cost, asset_book, validate_capacity, AssetBook, LaborKey, MaterialKey, Result,
-};
-#[allow(unused_imports)]
+use facts::{add, add_cost, AssetBook, Result};
 pub(super) use facts::{get, validate, Definitions, EquipmentFacts};
 
-#[allow(unused_imports)]
 use super::ProductionProjectionError;
-#[allow(unused_imports)]
-use babylon_kernel::currency::Currency;
-#[allow(unused_imports)]
-use babylon_material_circuit::{
-    CapacitySupply, CircuitAccounting, EquipmentAssetId, EquipmentBinding, EquipmentDefinition,
-    EquipmentDefinitionId, GoodId, MaterialCircuitState, ProcessId, ProductiveEquipment,
-    RollingProcessSupply, SiteId, UnitId,
-};
-#[allow(unused_imports)]
+use babylon_material_circuit::{MaterialCircuitState, ProductiveEquipment};
 use babylon_tick::material_world::MaterialTickReceipts;
-#[allow(unused_imports)]
-use std::collections::BTreeMap;

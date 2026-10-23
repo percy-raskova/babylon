@@ -1,6 +1,5 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
-#[allow(unused_imports)]
 use super::{
     MichiganFinalDemand, MichiganIndustryBaselineRow, MichiganIntervention, MichiganMaintenance,
     MichiganMaterialCorridor, MichiganMaterialGood, MichiganMaterialProcess, MichiganMaterialRoute,
@@ -8,8 +7,7 @@ use super::{
     MichiganPhysicalNetwork, MichiganStaffingDesign,
 };
 
-#[allow(unused_imports)]
-use super::{captured, maintenance, model, regional, source, statewide, validate};
+use super::{captured, maintenance, regional, source, statewide, validate};
 
 use crate::michigan_defines::{MichiganDefines, MichiganDefinesError};
 

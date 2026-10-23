@@ -1,14 +1,12 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
-#[allow(unused_imports)]
 use super::{
     OrganizerCommand, OrganizerCommitment, OrganizerPreview, OrganizerSnapshot,
     RuntimeAdvanceStage, RuntimeSessionResponse, RuntimeSessionTail,
     RUNTIME_SESSION_MAX_LINE_BYTES,
 };
 
-#[allow(unused_imports)]
-use super::{backend, coordinator, input, protocol};
+use super::{backend, coordinator};
 
 use postgres::Config;
 

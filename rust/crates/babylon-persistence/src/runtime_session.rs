@@ -13,13 +13,5 @@ pub use protocol::*;
 #[path = "runtime_session/session.rs"]
 mod session;
 
-#[allow(unused_imports)]
 use session::{emit, SessionBackend};
 pub use session::{run_runtime_session, run_runtime_session_stdio, RuntimeSessionErrorCode};
-
-#[allow(unused_imports)]
-use postgres::Config;
-#[allow(unused_imports)]
-use serde::{Deserialize, Serialize};
-#[allow(unused_imports)]
-use std::io::{BufRead, Write};

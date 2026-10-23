@@ -1,6 +1,5 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
-#[allow(unused_imports)]
 use super::{
     admit_material_purchase, advance_material_circuit, decode_material_circuit_state,
     encode_material_circuit_state, AccountId, AidBook, CapacityRow, CapacitySupply, CashAccount,
@@ -11,9 +10,6 @@ use super::{
     ProcessOutput, ProductionCommitment, ServiceConnection, ServiceOrder, ServiceStage, SiteId,
     SiteLogisticsNode, StockCarryingValue, UnitId,
 };
-
-#[allow(unused_imports)]
-use super::{household_service_time_cases, inventory_limits, order_limits, service_cases};
 
 use babylon_kernel::currency::Currency;
 

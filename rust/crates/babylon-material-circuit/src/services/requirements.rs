@@ -1,10 +1,6 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
-#[allow(unused_imports)]
 use super::{CommodityDefinition, CommodityKind, ServiceInputPolicy, ServiceStage};
-
-#[allow(unused_imports)]
-use super::{admission, close, market, model, validation, ServiceClose};
 
 use crate::{GoodId, MaterialCircuitError, MaterialCircuitState, ProcessOutput, UnitId};
 

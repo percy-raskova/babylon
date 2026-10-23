@@ -13,50 +13,39 @@ mod read_owner_tests;
 #[path = "observer_io/runtime.rs"]
 mod runtime;
 
-#[allow(unused_imports)]
-use runtime::{
-    admit_campaign, admits_response_scope, apply_archive_progress, apply_command,
-    apply_committed_response, apply_presentation_command, apply_response, collect_observation,
-    finish_shutdown, handle_commands, install_observation, next_response, playback,
-    queue_menu_campaign, receive, refuse_runtime_request, response_scope, send_advance,
-    send_campaign_switch, start_observation, start_pipe, CampaignAdmission, CampaignReset,
-    CommandContext, ContinuationPreference, ObservationCache, ObservationCacheKey, ObservationRead,
-    PendingObservation, PlaybackClock, PreparedObservation, ShutdownProgress,
-    SHUTDOWN_TIMEOUT_SECS,
-};
-#[allow(unused_imports)]
+use runtime::PreparedObservation;
 pub(crate) use runtime::{campaign_preset, RuntimePipe, RuntimeSendError, LAUNCHER_REQUIRED};
+#[cfg(test)]
+use runtime::{
+    collect_observation, finish_shutdown, handle_commands, install_observation, playback, receive,
+    send_campaign_switch, start_observation, ContinuationPreference, ObservationCache,
+    ObservationCacheKey, ObservationRead, PendingObservation, PlaybackClock, ShutdownProgress,
+};
 pub use runtime::{ObserverIoPlugin, ObserverSet};
 
-#[allow(unused_imports)]
-use crate::observer::{ObservationContext, ObserverSession, Perspective, SessionPhase};
-#[allow(unused_imports)]
+#[cfg(test)]
+use crate::observer::{ObserverSession, Perspective, SessionPhase};
+#[cfg(test)]
 use crate::observer_controls::{availability, ControlAvailability};
-#[allow(unused_imports)]
+#[cfg(test)]
 use crate::observer_ui::{ObserverCommand, ObserverFeedback, ObserverFrame, ObserverUiState};
-#[allow(unused_imports)]
+#[cfg(test)]
 use crate::ui::dossier_card::{
     ActiveCountyDossier, DossierCampaignId, DossierFetchState, DossierPageView, DossierRefresh,
 };
-#[allow(unused_imports)]
-use babylon_persistence::{
-    observer_reader::ObserverEconomyReader, observer_reader::ObserverEconomySnapshot,
-    observer_reader::ObserverVisibility, runtime_session::RuntimeSessionPreset,
-    runtime_session::RuntimeSessionRequest, runtime_session::RuntimeSessionResponse,
-    runtime_session::RuntimeSessionScope, runtime_session::RuntimeSessionTail,
-    runtime_session::RuntimeSessionTarget, runtime_session::RUNTIME_SESSION_MAX_LINE_BYTES,
-    runtime_session::RUNTIME_SESSION_PROTOCOL_VERSION,
+#[cfg(test)]
+use babylon_persistence::observer_reader::{
+    ObserverEconomyReader, ObserverEconomySnapshot, ObserverVisibility,
 };
-#[allow(unused_imports)]
-use bevy::ecs::system::SystemParam;
-#[allow(unused_imports)]
-use bevy::tasks::{block_on, AsyncComputeTaskPool, Task};
-#[allow(unused_imports)]
-use std::io::{BufRead, Read, Write};
-#[allow(unused_imports)]
+#[cfg(test)]
+use babylon_persistence::runtime_session::{
+    RuntimeSessionPreset, RuntimeSessionRequest, RuntimeSessionResponse, RuntimeSessionScope,
+    RuntimeSessionTail, RuntimeSessionTarget, RUNTIME_SESSION_PROTOCOL_VERSION,
+};
+#[cfg(test)]
 use std::sync::{mpsc, Mutex};
 
-#[allow(unused_imports)]
+#[cfg(test)]
 use bevy::prelude::*;
 
 #[cfg(test)]

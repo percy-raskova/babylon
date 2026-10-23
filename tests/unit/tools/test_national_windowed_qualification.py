@@ -6,10 +6,9 @@ import json
 import socket
 import sys
 import threading
-import time
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 import pytest
 from tools.devtools import national_game_memory as memory
@@ -236,30 +235,38 @@ def test_invalid_peer_frame_cannot_become_action_evidence(raw: bytes) -> None:
         peer.close()
 
 
-def test_slow_fragments_cannot_reset_the_overall_response_deadline() -> None:
-    parent, peer = socket.socketpair()
-    channel = windowed.ControlChannel(parent, CAMPAIGN, 0)
+def test_slow_fragments_cannot_reset_the_overall_response_deadline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FragmentPeer:
+        def __init__(self) -> None:
+            self.clock = 0.0
+            self.closed = False
+            self.timeouts: list[float] = []
+            self.fragments = iter(response(1))
 
-    def drip() -> None:
-        try:
-            with peer, peer.makefile("rb") as source:
-                source.readline()
-                for byte in response(1):
-                    peer.sendall(bytes([byte]))
-                    time.sleep(0.001)
-        except OSError:
-            pass  # The bounded parent intentionally closes before the last byte.
+        def settimeout(self, timeout: float) -> None:
+            self.timeouts.append(timeout)
 
-    worker = threading.Thread(target=drip)
-    worker.start()
-    try:
-        with pytest.raises(windowed.ControlRefusal, match="deadline"):
-            channel.observe(0.05)
-        assert not channel.records
-    finally:
-        channel.close()
-        worker.join(2)
-    assert not worker.is_alive()
+        def sendall(self, raw: bytes) -> None:
+            assert json.loads(raw)["action"] == "status"
+
+        def recv(self, maximum: int) -> bytes:
+            assert maximum > 0
+            self.clock += 0.02
+            return bytes([next(self.fragments)])
+
+        def close(self) -> None:
+            self.closed = True
+
+    peer = FragmentPeer()
+    monkeypatch.setattr(windowed.time, "monotonic", lambda: peer.clock)
+    channel = windowed.ControlChannel(cast(socket.socket, peer), CAMPAIGN, 0)
+    with pytest.raises(windowed.ControlRefusal, match="deadline"):
+        channel.observe(0.05)
+    assert not channel.records
+    assert peer.closed
+    assert peer.timeouts == pytest.approx([0.05, 0.05, 0.03, 0.01])
 
 
 def test_failed_evidence_write_still_closes_and_preserves_original_failure(

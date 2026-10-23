@@ -1484,7 +1484,7 @@ fn close_collection_control(
 }
 
 fn run_dual_aid_schedule(separated: bool, refuses_remote: bool) {
-    use babylon_practice_contract::{OrganizerAidSupportStatus, OrganizerPartnerResponse};
+    use babylon_practice_contract::OrganizerAidSupportStatus;
     use babylon_tick::material_world::decode_material_receipts;
     let mut session = dual_aid_schedule::session(refuses_remote);
     let mut sink = CollectingSink::default();
@@ -1587,29 +1587,7 @@ fn run_dual_aid_schedule(separated: bool, refuses_remote: bool) {
         } else {
             assert_actual_aid_postings(&row.support, 1, 2, 3, 3, 0);
         }
-        let controlled = row
-            .practice
-            .time_use
-            .iter()
-            .filter(|r| r.actor_id == 101)
-            .try_fold(0_u64, |a, r| a.checked_add(r.hours))
-            .unwrap();
-        let completed = row.practice.outcome == OrganizerOutcome::AidPracticeCompleted;
-        assert_eq!(controlled, row.practice.hours_spent);
-        assert_eq!(
-            controlled,
-            if row.practice.outcome == OrganizerOutcome::InsufficientTime {
-                0
-            } else {
-                2
-            }
-        );
-        if completed {
-            assert_eq!(
-                row.practice.partner_response,
-                OrganizerPartnerResponse::Participated
-            );
-        }
+        assert_dual_aid_practice_time(row);
     }
     assert_eq!(
         local.practice.outcome,
@@ -1653,6 +1631,33 @@ fn run_dual_aid_schedule(separated: bool, refuses_remote: bool) {
         *session.material()
     );
 }
+fn assert_dual_aid_practice_time(row: &babylon_practice_contract::OrganizerAidResolutionReceipt) {
+    use babylon_practice_contract::OrganizerPartnerResponse;
+    let controlled = row
+        .practice
+        .time_use
+        .iter()
+        .filter(|r| r.actor_id == 101)
+        .try_fold(0_u64, |a, r| a.checked_add(r.hours))
+        .unwrap();
+    let completed = row.practice.outcome == OrganizerOutcome::AidPracticeCompleted;
+    assert_eq!(controlled, row.practice.hours_spent);
+    assert_eq!(
+        controlled,
+        if row.practice.outcome == OrganizerOutcome::InsufficientTime {
+            0
+        } else {
+            2
+        }
+    );
+    if completed {
+        assert_eq!(
+            row.practice.partner_response,
+            OrganizerPartnerResponse::Participated
+        );
+    }
+}
+
 #[test]
 fn colliding_aid_practices_refuse_fictitious_second_time_debit() {
     run_dual_aid_schedule(false, false);

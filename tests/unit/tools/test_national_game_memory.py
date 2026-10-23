@@ -519,9 +519,11 @@ def test_opt_in_suspension_diagnostic_is_emitted_only_after_owned_children_resum
 
         with monkeypatch.context() as context:
             context.setattr(sys, "stderr", RestoredWriter())
+            now_ns = 1_000_000
+            context.setattr(memory.time, "monotonic_ns", lambda: now_ns)
             try:
                 with native.quiescent(timeout=2):
-                    time.sleep(0.01)
+                    now_ns += 10_000_000
                     if body_fails:
                         raise RuntimeError("controlled observation refusal")
             except RuntimeError as error:
@@ -532,7 +534,7 @@ def test_opt_in_suspension_diagnostic_is_emitted_only_after_owned_children_resum
     assert record["version"] == 1
     assert record["scope"] == "sampler_timing_not_memory_qualification"
     assert record["stage"] == "NativeStopToRestoration"
-    assert record["elapsed_ns"] >= 10_000_000
+    assert record["elapsed_ns"] == 10_000_000
     assert record["restored"] is True
     assert record["body_failed"] is body_fails
     assert "pid" not in record and "processes" not in record
@@ -1217,7 +1219,8 @@ def wait_for(predicate: Callable[[], bool]) -> None:
     deadline = time.monotonic() + 3
     while not predicate():
         assert time.monotonic() < deadline, "bounded collector observation timed out"
-        time.sleep(0.005)
+        # Poll only until the explicit three-second collector deadline.
+        time.sleep(0.005)  # nosemgrep: babylon.determinism.no-wall-clock-sleep-in-tests
 
 
 def capture_runner(

@@ -104,10 +104,9 @@ remain subject to that qualification.
 
 Ordinary BSL rules derive and write world data through governed causal
 operations. External shocks must not write downstream results directly.
-AI may parse, retrieve, and narrate; it must not judge a game rule. The retained
-Python provider interface serves operator health checks only. It probes an
-already running endpoint and has no generation, embedding, or server-start API.
-Model provisioning and credential login remain separate operator commands.
+AI may parse, retrieve, and narrate; it must not judge a game rule. The Python
+``babylon doctor`` command checks whether the runtime database is reachable.
+The corpus tools keep their declared sources and exclusion policy.
 
 Live Rust Path
 --------------

@@ -59,7 +59,7 @@ def test_ci_xdist_plugin_is_a_direct_dev_dependency() -> None:
 
 def test_core_stays_in_default_deps() -> None:
     core = _names(DATA["project"]["dependencies"])
-    for pkg in ("pydantic", "typer", "rich", "openai"):
+    for pkg in ("pydantic", "typer", "rich"):
         assert pkg in core
     assert "rustworkx" not in core
 

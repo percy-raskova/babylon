@@ -243,9 +243,9 @@ See [`SETUP_GUIDE.md`](SETUP_GUIDE.md) for launch options and host requirements.
 
 ## Why Python tests continue
 
-Python tests protect the retained data builders, repository commands, provider
-health checks, and operator tools. Rust tests own mechanics, persistence, and
-replay. Tests of the retired Python engine have been removed.
+Python tests protect the retained data builders, repository commands, and
+operator tools. Rust tests own mechanics, persistence, and replay. Git history
+preserves the retired Python engine and its tests.
 
 Use the smallest applicable test first. Then run the full gate for the changed
 area:

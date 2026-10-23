@@ -31,7 +31,25 @@ path = "src/main.rs"
 dynamic_linking = ["bevy/dynamic_linking"]
 
 [dependencies]
-bevy = { version = "0.18", features = ["webp"] }
+# Preserve Bevy 0.18's 2d/3d/ui defaults, expanding 3d because its 3d_api
+# aggregate forces ruzstd (RUSTSEC-2026-0344). The native zstd backend keeps
+# KTX2 textures and Bevy's bundled tonemapping LUTs available.
+bevy = { version = "0.18", default-features = false, features = [
+    "2d",
+    "bevy_anti_alias",
+    "bevy_gltf",
+    "bevy_light",
+    "bevy_mikktspace",
+    "bevy_pbr",
+    "gltf_animation",
+    "ktx2",
+    "morph",
+    "morph_animation",
+    "smaa_luts",
+    "tonemapping_luts",
+    "webp",
+    "zstd_c",
+] }
 babylon-kernel = { path = "../babylon-kernel" }
 # Archive commands use the confined fog-safe reader. The explicit economy
 # status command uses the separately provisioned full-observer reader, as does

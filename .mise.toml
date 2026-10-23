@@ -27,8 +27,8 @@ includes = [
 
 [tools]
 python = "3.12.14"
-uv = "0.9.8"
-node = "22.22.2"
+uv = "0.13.4"
+node = "22.23.4"
 
 [env]
 BABYLON_ENV = "development"

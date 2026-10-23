@@ -12,6 +12,7 @@ use crate::{
         NationalGamePolicy, ResidentWorkplaceTarget,
     },
     national_household_allocation::{CountyHouseholdAllocation, NationalHouseholdAllocation},
+    national_household_refinement::NationalHouseholdLeafRoster,
     national_resident_workforce::{NationalResidentWorkforceReference, WorkerClass},
 };
 use babylon_graph::stable_element::StableElementKey;
@@ -145,9 +146,11 @@ pub fn allocate_home_county(
     cohorts: &NationalCohortReference,
     classes: &NationalResidentWorkforceReference,
     household_budgets: &NationalHouseholdAllocation,
+    leaf_roster: &NationalHouseholdLeafRoster,
     policy: &NationalGamePolicy,
 ) -> Result<ResidentWorkplaceAllocation> {
-    if household_budgets.county_source_sha256 != counties.artifact_sha256()
+    if !leaf_roster.matches_sources(household_budgets)
+        || household_budgets.county_source_sha256 != counties.artifact_sha256()
         || household_budgets.classes_source_sha256 != classes.artifact_sha256()
         || household_budgets.private_owner_households_bps
             != policy.households.private_owner_households_bps
@@ -205,6 +208,7 @@ pub fn allocate_home_county(
             household_budgets
                 .county(county.geoid())
                 .map_err(|_| AllocationError::SourceScope)?,
+            leaf_roster,
         )?);
         result.counties.push(controls);
     }
@@ -237,6 +241,7 @@ fn assign_county(
     location: EconomicLocation,
     controls: &ResidentCountyAllocation,
     budgets: &CountyHouseholdAllocation,
+    leaf_roster: &NationalHouseholdLeafRoster,
 ) -> Result<Vec<AssignedResidentWorkplace>> {
     let mut pending = vec![];
     sites.sort_unstable_by_key(|row| row.target.site_id);
@@ -289,7 +294,7 @@ fn assign_county(
             members,
         });
     }
-    households::partition(&pending, budgets)
+    households::partition(&pending, budgets, leaf_roster)
 }
 struct PendingAssignedWorkplace {
     target: ResidentWorkplaceTarget,

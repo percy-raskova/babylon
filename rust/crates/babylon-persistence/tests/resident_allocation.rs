@@ -17,8 +17,15 @@ fn home_county_allocation_conserves_all_resident_controls_and_keeps_source_zero_
         "/../../../content/scenarios/national/defines.toml"
     )))
     .unwrap();
-    let allocation =
-        allocate_home_county(counties, cohorts, classes, &household_budgets(), &policy).unwrap();
+    let allocation = allocate_home_county(
+        counties,
+        cohorts,
+        classes,
+        &household_budgets(),
+        &empty_leaves(),
+        &policy,
+    )
+    .unwrap();
     assert_eq!(allocation.counties.len(), 3144);
     assert_eq!(allocation.workplaces.len(), 60454);
     let member_ids: std::collections::BTreeSet<_> = allocation
@@ -88,6 +95,7 @@ fn kalawao_employees_have_explicit_fallbacks_and_owner_activity_is_not_a_missing
         national_cohort_reference().unwrap(),
         national_resident_workforce_reference().unwrap(),
         &household_budgets(),
+        &empty_leaves(),
         &NationalGamePolicy::parse(include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../../../content/scenarios/national/defines.toml"
@@ -150,6 +158,7 @@ fn suppressed_jobs_remain_absent_when_peer_weights_place_resident_people() {
         cohorts,
         national_resident_workforce_reference().unwrap(),
         &household_budgets(),
+        &empty_leaves(),
         &policy,
     )
     .unwrap();
@@ -198,4 +207,16 @@ fn household_budgets(
         1_000,
     )
     .unwrap()
+}
+
+fn empty_leaves() -> babylon_persistence::national_household_refinement::NationalHouseholdLeafRoster
+{
+    let budgets = household_budgets();
+    let time = babylon_persistence::national_household_time_allocation::allocate_household_time(
+        national_county_reference().unwrap(),
+        &budgets,
+    )
+    .unwrap();
+    babylon_persistence::national_household_refinement::refine_households(&budgets, &time, &[])
+        .unwrap()
 }

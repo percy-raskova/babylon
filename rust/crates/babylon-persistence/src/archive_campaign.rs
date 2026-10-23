@@ -11,7 +11,8 @@ use crate::{
 };
 
 /// Construct a fixed-campaign Archive producer from its captured source authority.
-/// Call once at driver startup; the result retains immutable presentation inputs
+/// Admit when the ordered worker first requests production; the result retains
+/// immutable presentation inputs
 /// and does not regenerate the national opening during subsequent sweeps.
 /// # Errors
 /// Refuses an incompatible foundation, altered source or invalid county mapping.
@@ -19,6 +20,10 @@ pub fn captured_archive_producer(
     config: &Config,
     campaign: CampaignId,
 ) -> Result<CompositeArchiveDossierProducer, SemanticArchiveError> {
+    let _timing = crate::production_projection::diagnostics::Timing::start(
+        crate::production_projection::diagnostics::Stage::ArchiveProducerFoundation,
+        0,
+    );
     let foundation =
         crate::hydrate_campaign_foundation(config, campaign).map_err(|error| match error {
             RustPersistenceRuntimeError::CurrentSchema(error) => {
@@ -34,13 +39,13 @@ pub fn captured_archive_producer(
             _ => SemanticArchiveError::StoredPageMismatch,
         })?;
     let readers = crate::current_schema::bounded_config(config);
-    from_foundation(&readers, campaign, &foundation)
+    from_foundation(&readers, campaign, foundation)
 }
 
 fn from_foundation(
     config: &Config,
     campaign: CampaignId,
-    foundation: &CampaignFoundation,
+    foundation: CampaignFoundation,
 ) -> Result<CompositeArchiveDossierProducer, SemanticArchiveError> {
     let content = foundation.content_bundle();
     let mapping = content
@@ -60,6 +65,7 @@ fn from_foundation(
         })
         .collect();
     let mut producers: Vec<Box<dyn ArchiveDossierProducer>> = Vec::new();
+    let mut organizer = false;
     match content.kind() {
         FoundationContentKind::EconomicCatalog => {
             let catalog = content
@@ -75,9 +81,7 @@ fn from_foundation(
                     detail.ok_or(SemanticArchiveError::ArtifactDigest)?.clone(),
                 ),
             };
-            if catalog.has_organizer() {
-                producers.push(Box::new(crate::OrganizerDossierProducer::new(config)));
-            }
+            organizer = catalog.has_organizer();
             producers.push(Box::new(CountyDossierProducer::from_captured(
                 config, campaign, source, mapping,
             )));
@@ -109,6 +113,14 @@ fn from_foundation(
             )?));
         }
     }
+    if organizer {
+        producers.insert(
+            0,
+            Box::new(crate::OrganizerDossierProducer::from_captured(
+                config, campaign, foundation,
+            )),
+        );
+    }
     Ok(CompositeArchiveDossierProducer::new(producers))
 }
 
@@ -134,7 +146,7 @@ mod tests {
         let producer = from_foundation(
             &config,
             CampaignId::from_uuid(uuid::Uuid::nil()),
-            foundation.graph_foundation(),
+            crate::material_runtime::persisted_graph_copy(foundation.graph_foundation()),
         )
         .unwrap();
         assert_eq!(producer.producers().len(), 2);

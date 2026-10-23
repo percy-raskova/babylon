@@ -14,7 +14,13 @@ fn main() {
             print!("{}", cli::render_help(topic));
             return;
         }
-        CliRequest::Windowed { initial_target } => AppMode::Windowed { initial_target },
+        CliRequest::Windowed {
+            initial_target,
+            qualification_control,
+        } => AppMode::Windowed {
+            initial_target,
+            qualification_control,
+        },
         CliRequest::Headless {
             command,
             campaign_id,

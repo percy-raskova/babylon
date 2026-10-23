@@ -205,9 +205,9 @@ fn routed_and_local_orders_share_stock_handling_mass_and_opening_labor_once() {
     for receipt in &completed.handling {
         assert_eq!(
             (receipt.feasible_quantity, receipt.handled_quantity),
-            (5, 1)
+            (10, 1)
         );
-        assert_eq!((receipt.needed_hours, receipt.used_hours), (10, 2));
+        assert_eq!((receipt.needed_hours, receipt.used_hours), (20, 2));
     }
     assert_eq!(completed.state.inventory[0].quantity, 8);
     assert_eq!(completed.state.freight[0].quantity, 1);
@@ -220,7 +220,7 @@ fn routed_and_local_orders_share_stock_handling_mass_and_opening_labor_once() {
 }
 
 #[test]
-fn road_restriction_changes_feasible_need_and_labor_floor_leaves_residual_hours() {
+fn independent_physical_need_and_residual_handling_respect_the_road_cut() {
     let mut state = merchant();
     add_local_order(&mut state);
     let road = state.route_stage_capacities[0].corridor_id;
@@ -231,7 +231,7 @@ fn road_restriction_changes_feasible_need_and_labor_floor_leaves_residual_hours(
         .unwrap()
         .available_grams = 20;
     let completed = advance_material_circuit(&state).unwrap();
-    assert!(completed.dispatches.is_empty());
+    assert_eq!(completed.dispatches[0].quantity, 1);
     assert_eq!(completed.local_fulfillments[0].quantity, 1);
     assert_eq!(
         completed
@@ -244,9 +244,9 @@ fn road_restriction_changes_feasible_need_and_labor_floor_leaves_residual_hours(
                 row.used_hours
             ))
             .collect::<Vec<_>>(),
-        vec![(2, 0, 4, 0), (5, 1, 10, 2)]
+        vec![(2, 1, 4, 2), (10, 1, 20, 2)]
     );
-    assert_eq!(completed.state.inventory[0].quantity, 9);
+    assert_eq!(completed.state.inventory[0].quantity, 8);
 }
 
 #[test]
@@ -762,4 +762,31 @@ fn local_transfer_mode_and_wire_are_checked_and_buyer_overflow_is_atomic() {
         Err(MaterialCircuitError::Arithmetic)
     );
     assert_eq!(overflowing, preserved);
+}
+
+#[test]
+fn residual_zero_base_order_still_requires_funded_handling_hours() {
+    let mut state = merchant();
+    add_local_order(&mut state);
+    state.inventory[0].quantity = 1;
+    state.orders[0].ordered = 1;
+    state.backlog[0].quantity = 1;
+    state.final_demand_orders[0].ordered = 1;
+    state.labor[0].available = 2;
+    let completed = advance_material_circuit(&state).unwrap();
+    assert_eq!(completed.dispatches[0].quantity, 1);
+    assert!(completed.local_fulfillments.is_empty());
+    assert_eq!(
+        completed.handling.iter().map(|r| r.used_hours).sum::<u64>(),
+        2
+    );
+    assert!(completed
+        .handling
+        .iter()
+        .all(|r| r.feasible_quantity == 1 && r.needed_hours == 2));
+    state.labor[0].available = 1;
+    let blocked = advance_material_circuit(&state).unwrap();
+    assert!(blocked.dispatches.is_empty());
+    assert!(blocked.local_fulfillments.is_empty());
+    assert!(blocked.handling.iter().all(|r| r.used_hours == 0));
 }

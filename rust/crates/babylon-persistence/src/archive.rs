@@ -31,7 +31,7 @@ const ARCHIVE_ATOM_DOMAIN: &[u8] = b"babylon.semantic-archive-atom.v1\0";
 /// subject domain (ADR249 R3/R12) but never enter the page knowledge snapshot.
 pub const ARCHIVE_KNOWLEDGE_SQL: &str = "SELECT subject_kind, subject_id, grant_key, \
     granted_tick, provenance_source_id, provenance_locator \
-    FROM babylon_meta.archive_knowledge_grant_v1 \
+    FROM babylon_meta.archive_knowledge_grant_witness_v1 \
     WHERE campaign_id = $1::uuid AND granted_tick <= $2 \
       AND subject_kind IN ('county', 'place', 'workplace', 'organization') \
     ORDER BY subject_kind, subject_id, grant_key LIMIT $3";
@@ -1343,9 +1343,8 @@ pub(crate) fn insert_grant_row(
     let affected = client
         .execute(
             "INSERT INTO babylon_meta.archive_knowledge_grant_v1 \
-             (campaign_id, subject_kind, subject_id, grant_key, granted_tick, \
-              provenance_source_id, provenance_locator) \
-             VALUES ($1::uuid, $2, $3, $4, $5, $6, $7) \
+             (campaign_id, subject_kind, subject_id, grant_key, granted_tick, provenance_ref) \
+             VALUES ($1::uuid, $2, $3, $4, $5, babylon_meta.archive_provenance_intern_v1($1::uuid,$6::text,$7::text)) \
              ON CONFLICT (campaign_id, subject_kind, subject_id, grant_key) DO NOTHING",
             &[
                 campaign_id.as_uuid(),
@@ -1364,7 +1363,7 @@ pub(crate) fn insert_grant_row(
     let row = client
         .query_one(
             "SELECT granted_tick, provenance_source_id, provenance_locator \
-             FROM babylon_meta.archive_knowledge_grant_v1 \
+             FROM babylon_meta.archive_knowledge_grant_witness_v1 \
              WHERE campaign_id = $1::uuid AND subject_kind = $2 \
                AND subject_id = $3 AND grant_key = $4",
             &[
@@ -1578,9 +1577,8 @@ pub(crate) fn persist_atom_rows(
                 "INSERT INTO babylon_meta.archive_atom_v1 \
                  (atom_id, campaign_id, subject_kind, subject_id, signal_key, grant_key, \
                   evidence_class, value_kind, value_text, value_f64, value_u64, value_bool, \
-                  provenance_source_id, provenance_locator, valid_tick) \
-                 VALUES ($1::bytea, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, \
-                         $13, $14, $15) \
+                  provenance_ref, valid_tick) \
+                 VALUES ($1::bytea, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, babylon_meta.archive_provenance_intern_v1($2::uuid,$13::text,$14::text), $15) \
                  ON CONFLICT (atom_id) DO NOTHING",
                 &[
                     &&atom.atom_id()[..],
@@ -1595,8 +1593,8 @@ pub(crate) fn persist_atom_rows(
                     &f64_col,
                     &u64_col,
                     &bool_col,
-                    &atom.citation().source_id(),
-                    &atom.citation().locator(),
+                    &atom.citation.source_id,
+                    &atom.citation.locator,
                     &i64::try_from(atom.valid_tick())
                         .map_err(|_| SemanticArchiveError::InvalidVerifiedTick)?,
                 ],

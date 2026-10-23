@@ -15,6 +15,9 @@ use std::{collections::BTreeSet, path::PathBuf, time::Duration};
 pub(super) struct Limits {
     pub archive: Duration,
     pub production: Duration,
+    pub material_register_bytes: usize,
+    pub production_evidence_body_bytes: usize,
+    pub economic_renewal_window_ticks: u64,
     pub policy_sha256: String,
 }
 
@@ -28,12 +31,12 @@ fn limits_from_bytes(bytes: &[u8]) -> Limits {
     let policy: Value = serde_json::from_slice(bytes).expect("captured qualification policy JSON");
     assert_eq!(
         policy["version"].as_u64(),
-        Some(3),
+        Some(6),
         "unsupported captured qualification policy version"
     );
     assert_eq!(
         policy["name"].as_str(),
-        Some("national_storage_qualification_v3"),
+        Some("national_storage_qualification_v6"),
         "unsupported captured qualification policy identity"
     );
     assert_eq!(
@@ -42,6 +45,15 @@ fn limits_from_bytes(bytes: &[u8]) -> Limits {
         "unsupported captured qualification storage charge method"
     );
     assert_eq!(policy["county_count"].as_u64(), Some(3_144));
+    assert_eq!(policy["qualification_ticks"].as_u64(), Some(52));
+    assert_eq!(policy["model_year_ticks"].as_u64(), Some(13));
+    let economic_renewal_window_ticks = policy["economic_renewal_window_ticks"]
+        .as_u64()
+        .expect("captured exact economic renewal window");
+    assert!(
+        (2..=52).contains(&economic_renewal_window_ticks),
+        "economic renewal window must fit qualification ticks"
+    );
     let seconds = |key: &str| {
         let value = policy[key].as_u64().expect("captured exact phase budget");
         assert!(
@@ -50,7 +62,18 @@ fn limits_from_bytes(bytes: &[u8]) -> Limits {
         );
         Duration::from_secs(value)
     };
+    let byte_limit = |key: &str| {
+        let value = policy[key].as_u64().expect("captured exact byte budget");
+        assert!(
+            value > 0 && value <= 1_000_000_000,
+            "captured byte budget exceeds runtime hard limit"
+        );
+        usize::try_from(value).expect("captured byte budget fits this host")
+    };
     Limits {
+        economic_renewal_window_ticks,
+        material_register_bytes: byte_limit("maximum_material_register_bytes"),
+        production_evidence_body_bytes: byte_limit("maximum_production_evidence_body_bytes"),
         archive: seconds("maximum_archive_catchup_seconds"),
         production: seconds("maximum_production_read_seconds"),
         policy_sha256: hex(&Sha256::digest(bytes)),
@@ -196,7 +219,8 @@ pub(super) fn production_boundary(
     let roster_digest = hex(&Sha256::digest(serde_json::to_vec(&geoids).unwrap()));
     (
         json!({"tick":tick,"nominal_world_hash":world,"snapshot_sha256":digest.to_hex(),
-        "county_roster_sha256":roster_digest}),
+        "county_roster_sha256":roster_digest,"material_register_bytes":observation.accounting.material_register_bytes,
+        "production_evidence_body_bytes":digest.body_bytes()}),
         geoids,
     )
 }
@@ -236,13 +260,16 @@ mod policy_tests {
     use std::time::Duration;
 
     const CURRENT_POLICY: &[u8] =
-        include_bytes!("../../../../../contracts/national_storage_qualification_v3.json");
+        include_bytes!("../../../../../contracts/national_storage_qualification_v6.json");
 
     #[test]
     fn captured_qualification_policy_reads_current_contract() {
         let limits = limits_from_bytes(CURRENT_POLICY);
         assert_eq!(limits.archive, Duration::from_secs(180));
         assert_eq!(limits.production, Duration::from_secs(180));
+        assert_eq!(limits.material_register_bytes, 1_000_000_000);
+        assert_eq!(limits.production_evidence_body_bytes, 1_000_000_000);
+        assert_eq!(limits.economic_renewal_window_ticks, 13);
         assert_eq!(limits.policy_sha256, hex(&Sha256::digest(CURRENT_POLICY)));
     }
 
@@ -251,10 +278,16 @@ mod policy_tests {
         let mut policy: Value = serde_json::from_slice(CURRENT_POLICY).unwrap();
         policy["maximum_archive_catchup_seconds"] = json!(75);
         policy["maximum_production_read_seconds"] = json!(120);
+        policy["maximum_material_register_bytes"] = json!(750_000_000);
+        policy["maximum_production_evidence_body_bytes"] = json!(850_000_000);
+        policy["economic_renewal_window_ticks"] = json!(7);
         let bytes = serde_json::to_vec(&policy).unwrap();
         let limits = limits_from_bytes(&bytes);
         assert_eq!(limits.archive, Duration::from_secs(75));
         assert_eq!(limits.production, Duration::from_secs(120));
+        assert_eq!(limits.material_register_bytes, 750_000_000);
+        assert_eq!(limits.production_evidence_body_bytes, 850_000_000);
+        assert_eq!(limits.economic_renewal_window_ticks, 7);
         assert_eq!(limits.policy_sha256, hex(&Sha256::digest(&bytes)));
         let mut differently_spaced = bytes.clone();
         differently_spaced.push(b'\n');
@@ -273,15 +306,30 @@ mod policy_tests {
         for (key, invalid) in [
             ("version", json!(1)),
             ("version", json!(2)),
+            ("version", json!(3)),
             ("version", json!(4)),
+            ("version", json!(5)),
+            ("version", json!(7)),
             ("version", Value::Null),
             ("name", json!("national_storage_qualification_v2")),
             ("storage_charge_method", json!("net_growth")),
             ("county_count", json!(3_143)),
+            ("qualification_ticks", json!(51)),
+            ("model_year_ticks", json!(12)),
+            ("economic_renewal_window_ticks", Value::Null),
+            ("economic_renewal_window_ticks", json!(true)),
+            ("economic_renewal_window_ticks", json!(13.0)),
+            ("economic_renewal_window_ticks", json!(1)),
+            ("economic_renewal_window_ticks", json!(53)),
             ("maximum_archive_catchup_seconds", json!(0)),
             ("maximum_archive_catchup_seconds", json!(-1)),
             ("maximum_production_read_seconds", json!(1.5)),
             ("maximum_production_read_seconds", json!(u64::MAX)),
+            ("maximum_material_register_bytes", json!(0)),
+            (
+                "maximum_production_evidence_body_bytes",
+                json!(1_000_000_001_u64),
+            ),
         ] {
             let mut policy: Value = serde_json::from_slice(CURRENT_POLICY).unwrap();
             policy[key] = invalid.clone();

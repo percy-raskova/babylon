@@ -77,12 +77,80 @@ fn committed_pair(
     )
 }
 
+fn assert_shared_reservation(
+    reservation: &ProductionFreightReservation,
+    definitions: &[ProductionFreightOrderDefinition],
+    receipt: &MaterialTickReceipts,
+    capacity: u64,
+    expected: (u64, u64, u64),
+) {
+    assert_eq!(reservation.orders.len(), 2);
+    let dispatches: BTreeMap<_, _> = receipt
+        .dispatches
+        .iter()
+        .map(|row| (digest_hex(&row.order_id.as_bytes()), row.quantity))
+        .collect();
+    let projected_orders: Vec<_> = reservation
+        .orders
+        .iter()
+        .map(|reference| {
+            &definitions
+                .iter()
+                .find(|row| &row.id == reference)
+                .unwrap()
+                .order
+        })
+        .collect();
+    let catalog = crate::test_support::catalog();
+    for (good, quantity) in [("sheet", expected.0), ("meal", expected.1)] {
+        let route = catalog
+            .routes()
+            .iter()
+            .find(|row| row.good_key == good)
+            .unwrap();
+        let order_id = digest_hex(&route.order_id().as_bytes());
+        let order = projected_orders
+            .iter()
+            .find(|row| row.order_id == order_id)
+            .unwrap();
+        assert_eq!(order.dispatched, quantity);
+        assert_eq!(order.grams_per_unit, 1_000);
+        assert_eq!(dispatches.get(&order_id), Some(&quantity));
+        assert_eq!(
+            order.requested.checked_sub(order.dispatched),
+            Some(order.remaining_unshipped)
+        );
+    }
+    let reserved = projected_orders
+        .iter()
+        .try_fold(0_u64, |total, row| {
+            total.checked_add(row.dispatched.checked_mul(row.grams_per_unit)?)
+        })
+        .unwrap();
+    assert_eq!(reservation.newly_reserved_grams, reserved);
+    assert_eq!(
+        reservation.opening_available_grams,
+        reservation
+            .newly_reserved_grams
+            .checked_add(reservation.remaining_available_grams)
+            .unwrap()
+    );
+    assert_eq!(
+        (
+            reservation.reservation_period,
+            reservation.opening_available_grams,
+            reservation.remaining_available_grams
+        ),
+        (1, capacity * 1_000, expected.2 * 1_000)
+    );
+}
+
 #[test]
 fn shared_capacity_is_counted_once_with_exact_competing_dispatches_and_residual() {
     for (meal_order, capacity, expected) in [
         (200, 800, (320, 80, 400)),
         (200, 160, (120, 40, 0)),
-        (80, 160, (141, 18, 1)),
+        (80, 160, (141, 19, 0)),
     ] {
         let (opening, next, receipt) = committed_pair(shared_opening(meal_order, capacity));
         let (accounts, definitions) = project_freight_capacity_accounts(
@@ -105,40 +173,15 @@ fn shared_capacity_is_counted_once_with_exact_competing_dispatches_and_residual(
         assert_eq!(completed.period, 1);
         assert_eq!(completed.reservations.len(), 1);
         let reservation = &completed.reservations[0];
-        assert_eq!(
-            (
-                reservation.reservation_period,
-                reservation.opening_available_grams,
-                reservation.remaining_available_grams
-            ),
-            (1, capacity * 1_000, expected.2 * 1_000)
+        assert_shared_reservation(reservation, &definitions, &receipt, capacity, expected);
+        assert!(reservation.reservation_period < next.period);
+        assert!(
+            !next.corridor_capacities.iter().any(|row| {
+                digest_hex(&row.corridor_id.as_bytes()) == account.corridor_id
+                    && row.period == reservation.reservation_period
+            }),
+            "expired capacity is historical evidence, not next-period supply"
         );
-        assert_eq!(
-            reservation.newly_reserved_grams,
-            (expected.0 + expected.1) * 1_000
-        );
-        assert_eq!(reservation.orders.len(), 2);
-        let quantities: std::collections::BTreeSet<_> = reservation
-            .orders
-            .iter()
-            .map(|reference| {
-                definitions
-                    .iter()
-                    .find(|d| &d.id == reference)
-                    .unwrap()
-                    .order
-                    .dispatched
-            })
-            .collect();
-        assert_eq!(quantities, [expected.0, expected.1].into_iter().collect());
-        assert!(reservation.orders.iter().all(|reference| {
-            let row = &definitions
-                .iter()
-                .find(|d| &d.id == reference)
-                .unwrap()
-                .order;
-            row.requested.checked_sub(row.dispatched) == Some(row.remaining_unshipped)
-        }));
         let mut permuted_opening = opening.clone();
         permuted_opening.orders.reverse();
         permuted_opening.route_stages.reverse();

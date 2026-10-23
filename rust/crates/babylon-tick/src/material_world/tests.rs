@@ -3,8 +3,8 @@ use super::*;
 // A merchant's two physical handoffs share the same explicit handling account.
 // These bytes exercise the committed receipt boundary independently of its encoder.
 fn local_handoff_receipts() -> Vec<u8> {
-    let mut bytes = b"babylon.material-tick-receipts.v17\0".to_vec();
-    bytes.extend_from_slice(&17_u32.to_be_bytes());
+    let mut bytes = b"babylon.material-tick-receipts.v18\0".to_vec();
+    bytes.extend_from_slice(&18_u32.to_be_bytes());
     bytes.extend_from_slice(&1_u64.to_be_bytes());
     for tag in 1..=36_u8 {
         bytes.push(tag);
@@ -144,7 +144,7 @@ fn monetary_receipt_encoding_preserves_exact_cash_and_execution_order() {
         })
         .into();
     let mut bytes = RECEIPT_DOMAIN.to_vec();
-    bytes.extend_from_slice(&17_u32.to_be_bytes());
+    bytes.extend_from_slice(&18_u32.to_be_bytes());
     bytes.extend_from_slice(&7_u64.to_be_bytes());
     for tag in 1..=36 {
         bytes.push(tag);
@@ -245,7 +245,7 @@ fn attendance_receipt_encoding_roundtrips_without_sorting_hashed_shift_ids() {
         .collect();
     monetary_receipt::validate_order(&wages, &labor).unwrap();
     let mut bytes = RECEIPT_DOMAIN.to_vec();
-    bytes.extend_from_slice(&17_u32.to_be_bytes());
+    bytes.extend_from_slice(&18_u32.to_be_bytes());
     bytes.extend_from_slice(&7_u64.to_be_bytes());
     for tag in 1..=36 {
         bytes.push(tag);
@@ -301,5 +301,17 @@ fn register_byte_budget_is_one_gb_and_receipts_keep_their_independent_cap() {
             MAX_MATERIAL_TICK_RECEIPT_BYTES
         ),
         Err(MaterialWorldError::ByteLimit)
+    );
+}
+
+#[test]
+fn previous_receipt17_handling_semantics_are_not_admitted_as_current() {
+    let mut previous = local_handoff_receipts();
+    let domain = b"babylon.material-tick-receipts.v17\0";
+    previous[..domain.len()].copy_from_slice(domain);
+    previous[domain.len()..domain.len() + 4].copy_from_slice(&17_u32.to_be_bytes());
+    assert_eq!(
+        decode_material_receipts(&previous),
+        Err(MaterialWorldError::Wire)
     );
 }

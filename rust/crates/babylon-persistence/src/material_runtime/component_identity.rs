@@ -63,9 +63,9 @@ impl MaterialComponentIdentity {
 
     pub(super) fn validate_sections(
         &self,
-        sections: &[Vec<u8>],
+        sections: &crate::stored_tick::CheckpointSections,
     ) -> Result<(), MaterialRuntimeError> {
-        if sections.len() != 9 || sections[2..8] != self.sections {
+        if sections.components != self.sections {
             return Err(MaterialRuntimeError::InvalidCheckpoint);
         }
         Ok(())

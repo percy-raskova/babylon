@@ -552,6 +552,13 @@ pub(crate) struct CapturedCheckpointRows {
     sections: Vec<Row>,
     campaign_id: CampaignId,
 }
+
+// Graph and material bytes retain their own authenticated owners. Only these
+// restart/component sections need a separate owner after envelope admission.
+pub(crate) struct CheckpointSections {
+    pub(crate) world_register: Vec<u8>,
+    pub(crate) components: [Vec<u8>; 6],
+}
 impl CapturedCheckpointRows {
     pub(crate) fn capture(
         client: &mut impl GenericClient,
@@ -589,7 +596,11 @@ impl CapturedCheckpointRows {
         self,
         resolve_tick: u64,
         sources: CheckpointSectionSources<'_>,
-    ) -> Result<(Vec<CommittedTickRow>, Vec<Vec<u8>>), RustPersistenceRuntimeError> {
+    ) -> Result<(Vec<CommittedTickRow>, CheckpointSections), RustPersistenceRuntimeError> {
+        let _sections_timing = crate::production_projection::diagnostics::Timing::start(
+            crate::production_projection::diagnostics::Stage::CheckpointSections,
+            resolve_tick,
+        );
         let campaign_id = self.campaign_id;
         let CheckpointSectionSources {
             graph,
@@ -610,7 +621,8 @@ impl CapturedCheckpointRows {
             return Err(RustPersistenceRuntimeError::CampaignConflict);
         }
         let mut rows = Vec::new();
-        let mut sections = Vec::new();
+        let mut world_register = None;
+        let mut components = Vec::new();
         let graph_count = graph_row_count(graph)?;
         let material_count = u32::try_from(material.source_count())
             .map_err(|_| RustPersistenceRuntimeError::CampaignConflict)?;
@@ -641,25 +653,38 @@ impl CapturedCheckpointRows {
                     foundation_sections,
                     material.canonical_bytes(),
                 )
-                .map_err(|_| RustPersistenceRuntimeError::CampaignConflict)?
-                .to_vec();
+                .map_err(|_| RustPersistenceRuntimeError::CampaignConflict)?;
             let row_count = match tag_u8 {
                 1 => graph_count,
                 9 => material_count,
                 _ => 1,
             };
-            summaries.push((tag_u8, row_count, sha256_of(&bytes)));
-            rows.push(semantic_codec::encode_checkpoint_row(tag_u8, 0, 1, &bytes)?);
-            sections.push(bytes);
+            summaries.push((tag_u8, row_count, sha256_of(bytes)));
+            rows.push(semantic_codec::encode_checkpoint_row(tag_u8, 0, 1, bytes)?);
+            match tag_u8 {
+                2 => world_register = reference.inline,
+                3..=8 => components.push(bytes.to_vec()),
+                _ => {}
+            }
         }
-        if sections.first().map(Vec::as_slice) != Some(graph.canonical_bytes())
-            || sections.get(8).map(Vec::as_slice) != Some(material.canonical_bytes())
-            || semantic_codec::encode_full_checkpoint(campaign_id, resolve_tick, &summaries)?
-                != manifest_bytes
+        // Every reference resolved its exact typed source, length and digest;
+        // the complete ordered manifest and original envelope rows still bind
+        // all nine sections, including graph and material, without payload copies.
+        if semantic_codec::encode_full_checkpoint(campaign_id, resolve_tick, &summaries)?
+            != manifest_bytes
         {
             return Err(RustPersistenceRuntimeError::CampaignConflict);
         }
-        Ok((rows, sections))
+        Ok((
+            rows,
+            CheckpointSections {
+                world_register: world_register
+                    .ok_or(RustPersistenceRuntimeError::CampaignConflict)?,
+                components: components
+                    .try_into()
+                    .map_err(|_| RustPersistenceRuntimeError::CampaignConflict)?,
+            },
+        ))
     }
 }
 

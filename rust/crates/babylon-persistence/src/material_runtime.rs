@@ -1,11 +1,18 @@
 //! Explicit V3 durable material campaign, marker-last and checkpoint-complete.
 
+mod capture_identity;
 mod component_identity;
+mod open;
+mod runtime_checkpoint;
+pub(crate) use capture_identity::rows_digest as capture_rows_digest;
 mod decode;
 mod envelope;
 mod observer_actions;
+mod observer_endpoints;
 pub(crate) use component_identity::MaterialComponentIdentity;
 pub use envelope::MAX_MATERIAL_FOUNDATION_BYTES;
+use observer_endpoints::AuthenticatedPreviousMaterialTick;
+pub(crate) use observer_endpoints::{read_observer_material_endpoints, ObserverEndpointLookup};
 
 use crate::stored_tick::{StoredEvent, StoredTickReadSource, StoredTickRelation};
 
@@ -61,7 +68,7 @@ const FOUNDATION_DOMAIN: &[u8] = b"babylon.material-campaign-foundation.v3\0";
 const WRITER_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 const WRITER_TCP_USER_TIMEOUT: Duration = Duration::from_secs(30);
 // Tick computation is detached before these transactions begin. Individual
-// writer statements get a larger budget than the observer's read queries.
+// material statements get a larger budget than catalog checks.
 // Match the catalog reader's JIT setting: every fresh writer connection checks
 // the same census, whose compilation cost is not amortized across ticks.
 const WRITER_STARTUP_OPTIONS: &str = "-c search_path=pg_catalog -c quote_all_identifiers=off \
@@ -521,94 +528,37 @@ impl DurableMaterialRuntime {
         campaign: CampaignId,
         expected_foundation_digest: [u8; 32],
     ) -> Result<Self, MaterialRuntimeError> {
-        Self::open_with_foundation_admission(config, campaign, |snapshot| {
-            hydrate_material_foundation(snapshot, campaign, expected_foundation_digest)
-        })
+        Self::open_with_foundation_admission(
+            config,
+            campaign,
+            |snapshot| {
+                capture_material_foundation_components(
+                    snapshot,
+                    campaign,
+                    expected_foundation_digest,
+                    FoundationReadSource::Runtime,
+                )
+                .map(|captured| (captured, ()))
+            },
+            |captured, ()| captured.admit(),
+        )
     }
 
-    /// Admit one owned foundation and its checkpoint in the same Open snapshot.
-    /// The admission policy must authenticate stored components in that snapshot;
-    /// no cached foundation or independently read header enters this path.
-    /// Supply raw caller configuration; this path adds its own trusted bounds.
-    pub(crate) fn open_with_foundation_admission(
+    /// Capture the complete foundation/checkpoint in one consistent snapshot,
+    /// then authenticate and restore outside SQL transactions. The detached
+    /// result is refused if a fresh foundation or committed marker differs.
+    pub(crate) fn open_with_foundation_admission<C>(
         config: &Config,
         campaign: CampaignId,
-        admit: impl FnOnce(
+        capture: impl FnOnce(
             &mut postgres::Transaction<'_>,
+        ) -> Result<(CapturedMaterialFoundation, C), MaterialRuntimeError>,
+        admit: impl FnOnce(
+            CapturedMaterialFoundation,
+            C,
         ) -> Result<MaterialRuntimeFoundation, MaterialRuntimeError>,
     ) -> Result<Self, MaterialRuntimeError> {
-        let bounded = bounded_material_writer_config(config)?;
-        let mut client = bounded.connect(NoTls)?;
-        verify_runtime_schema_client(&mut client)?;
-        let mut tx = client
-            .build_transaction()
-            .isolation_level(postgres::IsolationLevel::RepeatableRead)
-            .read_only(true)
-            .start()?;
-        let foundation = admit(&mut tx)?;
-        if foundation
-            .register
-            .organizer_config()
-            .is_some_and(|organizer| organizer.campaign_id != *campaign.canonical_bytes())
-        {
-            return Err(MaterialRuntimeError::FoundationMismatch);
-        }
-        let tick = read_tail_tick(&mut tx, campaign)?;
-        let lookup = material_storage::OpeningRegister::from_opening(&foundation.register)
-            .map_err(material_storage::Error::State)?;
-        let initial_lookup_chain = material_storage::initial_lookup_chain(&lookup)?;
-        let stored = if tick == 0 {
-            None
-        } else {
-            let scope = foundation
-                .graph
-                .stable_graph_state()
-                .map_err(MaterialReplayError::Graph)?
-                .scenario_scope()
-                .to_owned();
-            let components =
-                MaterialComponentIdentity::from_foundation(&foundation.graph_foundation);
-            Some(read_authenticated_material_tick(
-                &mut tx,
-                StoredTickReadSource::Runtime,
-                campaign,
-                tick,
-                MaterialReadAuthority {
-                    scope: &scope,
-                    foundation_digest: foundation.digest(),
-                    components: &components,
-                    opening: &lookup,
-                    lookup_chain: None,
-                    witnesses: [None, None],
-                },
-            )?)
-        };
-        let mut session = foundation.into_session()?;
-        let (tail, lookup_chain) = if let Some(stored) = stored {
-            session.restore_full_checkpoint(
-                &stored.graph,
-                &stored.material,
-                &stored.sections[1],
-                stored.register.into_owned(),
-            )?;
-            if session.current_world_hash()? != stored.identity.result_world_hash() {
-                return Err(MaterialRuntimeError::InvalidCheckpoint);
-            }
-            (Some(stored.identity), stored.lookup_chain)
-        } else {
-            (None, initial_lookup_chain)
-        };
-        tx.commit()?;
-        Ok(Self {
-            config: bounded,
-            campaign,
-            session,
-            lookup,
-            lookup_chain,
-            tail,
-            last_receipt: None,
-            last_choice_receipts: Vec::new(),
-        })
+        open::restore(config, campaign, capture, admit)
     }
     pub(crate) fn organizer_connection(&self) -> Result<postgres::Client, MaterialRuntimeError> {
         self.config
@@ -888,6 +838,8 @@ impl DurableMaterialRuntime {
                         opening: &self.lookup,
                         lookup_chain: None,
                         witnesses: [None, None],
+                        receipt_witness: None,
+                        previous: None,
                     },
                     (&encoded.lookup, encoded.lookup_chain),
                 )
@@ -962,6 +914,8 @@ fn commit_material_envelope(
                     opening,
                     lookup_chain: None,
                     witnesses: [None, None],
+                    receipt_witness: None,
+                    previous: None,
                 },
             )?;
             if stored.identity != *identity
@@ -1181,6 +1135,22 @@ pub(crate) fn capture_material_foundation_components(
 }
 
 impl CapturedMaterialFoundation {
+    fn capture_fingerprint(&self) -> Result<[u8; 32], MaterialRuntimeError> {
+        let components = capture_rows_digest([&self.components])?;
+        let graph = match &self.graph {
+            CapturedGraphFoundation::Runtime(captured) => captured.capture_fingerprint()?,
+            CapturedGraphFoundation::FullObserver => [0; 32],
+        };
+        Ok(sha256_of(
+            &[
+                components.as_slice(),
+                graph.as_slice(),
+                self.expected_foundation_digest.as_slice(),
+            ]
+            .concat(),
+        ))
+    }
+
     /// Every hit checks actual current snapshot components against an admitted
     /// canonical source. Captured SQL buffers are released after this witness.
     pub(crate) fn validate_against(
@@ -1216,6 +1186,31 @@ impl CapturedMaterialFoundation {
             }
         }
         Ok(())
+    }
+
+    /// Reuse an owned graph only after comparing this capture's actual components.
+    /// Opening material admission and canonical foundation authentication stay complete.
+    fn admit_with_graph(
+        self,
+        graph_foundation: CampaignFoundation,
+    ) -> Result<MaterialRuntimeFoundation, MaterialRuntimeError> {
+        let stored = StoredMaterialFoundation::from_row(&self.components)?;
+        match &self.graph {
+            CapturedGraphFoundation::Runtime(captured) => {
+                captured.validate_against(&graph_foundation, &stored.graph_foundation_digest)?;
+            }
+            CapturedGraphFoundation::FullObserver => {
+                crate::runtime::verify_captured_foundation_components(
+                    &self.components,
+                    &graph_foundation,
+                    &stored.graph_foundation_digest,
+                    "graph_foundation_sha256",
+                )?;
+            }
+        }
+        let expected_foundation_digest = self.expected_foundation_digest;
+        drop(self);
+        reconstruct_material_foundation(stored, graph_foundation, expected_foundation_digest)
     }
 
     pub(crate) fn admit(self) -> Result<MaterialRuntimeFoundation, MaterialRuntimeError> {
@@ -1295,13 +1290,11 @@ fn reconstruct_material_foundation(
     }
     drop(component_timing);
     let register_timing = Timing::start(Stage::FoundationRegisterDecode, 0);
-    let register = MaterialWorldRegister::decode(&stored.initial_register_bytes)?;
+    let register = MaterialWorldRegister::decode_owned(stored.initial_register_bytes)?;
     if register.completed_tick() != 0 {
         return Err(MaterialRuntimeError::FoundationMismatch);
     }
     drop(register_timing);
-    // The decoded register owns its canonical bytes; release the database copy.
-    drop(stored.initial_register_bytes);
     let graph_timing = Timing::start(Stage::FoundationGraphSession, 0);
     let graph = reconstruct_graph_foundation_session(&graph_foundation)?;
     drop(graph_timing);
@@ -1375,6 +1368,40 @@ enum MaterialEnvelopeRead {
     CanonicalBytes,
     AuthenticatedRead,
 }
+
+impl MaterialEnvelopeRead {
+    fn admit(
+        self,
+        campaign: CampaignId,
+        identity: &IdentifiedMaterialTick,
+        families: CommittedTickRowFamilies,
+        register: &[u8],
+        receipts: &[u8],
+    ) -> Result<StoredMaterialEnvelope, MaterialRuntimeError> {
+        use crate::production_projection::diagnostics::{Stage, Timing};
+        let tick = identity.resolve_tick();
+        let _timing = Timing::start(Stage::TickEnvelope, tick);
+        Ok(match self {
+            Self::CanonicalBytes => {
+                StoredMaterialEnvelope::Complete(CommittedMaterialTickEnvelope::compose(
+                    campaign, identity, families, register, receipts,
+                )?)
+            }
+            Self::AuthenticatedRead => {
+                let attested = CommittedMaterialTickEnvelope::attest(
+                    campaign, identity, families, register, receipts,
+                )?;
+                if std::env::var("BABYLON_TIMINGS").as_deref() == Ok("1") {
+                    eprintln!(
+                        "material_envelope_attestation tick={tick} canonical_bytes={} scratch_limit_bytes=65536",
+                        attested.encoded_bytes(),
+                    );
+                }
+                StoredMaterialEnvelope::Attested(attested)
+            }
+        })
+    }
+}
 impl StoredMaterialEnvelope {
     fn digest(&self) -> [u8; 32] {
         match self {
@@ -1396,7 +1423,7 @@ pub(crate) struct StoredMaterialTick<'w> {
     envelope: StoredMaterialEnvelope,
     pub(crate) graph: babylon_graph::stable_state::StableGraphState,
     material: babylon_tick::material_state::MaterialStateRows,
-    sections: Vec<Vec<u8>>,
+    sections: stored_tick::CheckpointSections,
     pub(crate) register: std::borrow::Cow<'w, MaterialWorldRegister>,
     pub(crate) events: Vec<StoredEvent>,
     lookup_identity: (usize, [u8; 32]),
@@ -1433,6 +1460,8 @@ pub(crate) fn read_observer_material_tick<'w>(
             opening,
             lookup_chain: Some(chain),
             witnesses,
+            receipt_witness: None,
+            previous: None,
         },
     )
 }
@@ -1463,23 +1492,23 @@ fn read_stored_material_tick(
             opening,
             lookup_chain: None,
             witnesses: [None, None],
+            receipt_witness: None,
+            previous: None,
         },
     )
 }
 
 /// Authenticate one requested Archive period against the existing committed
 /// envelope and captured foundation, without replaying or restoring history.
+pub(crate) enum ArchiveFoundationCandidate {
+    Admitted(std::sync::Arc<crate::economic_content::EconomicContentAdmission>),
+    Graph(Box<CampaignFoundation>),
+}
+
 pub(crate) struct CapturedArchiveOrganizerRegister {
-    campaign: CampaignId,
-    tick: u64,
     content_hash: [u8; 32],
     foundation: CapturedMaterialFoundation,
-    current: CapturedMaterialTick,
-    prior: Option<CapturedMaterialTick>,
-    lookup: Vec<postgres::Row>,
-    actions: postgres::Row,
-    command: crate::organizer_runtime::CapturedOrganizerCommand,
-    projection: crate::organizer_archive::CapturedOrganizerProjection,
+    checkpoint: runtime_checkpoint::CapturedRuntimeCheckpoint,
 }
 
 pub(crate) fn capture_archive_organizer_register(
@@ -1487,53 +1516,37 @@ pub(crate) fn capture_archive_organizer_register(
     campaign: CampaignId,
     receipt: &crate::PendingArchiveReceipt,
 ) -> Result<Option<CapturedArchiveOrganizerRegister>, MaterialRuntimeError> {
+    let _capture_timing = crate::production_projection::diagnostics::Timing::start(
+        crate::production_projection::diagnostics::Stage::ArchiveRegisterCapture,
+        receipt.resolve_tick(),
+    );
     let Some(row) = client.query_opt("SELECT foundation_sha256 FROM babylon_state.material_campaign_foundation_v3 WHERE campaign_id=$1", &[campaign.as_uuid()])? else { return Ok(None); };
     let digest = row
         .try_get::<_, Vec<u8>>(0)?
         .try_into()
         .map_err(|_| MaterialRuntimeError::FoundationMismatch)?;
-    let tick = receipt.resolve_tick();
-    let tick_sql = i64::try_from(tick).map_err(|_| MaterialRuntimeError::Bounds)?;
     let foundation = capture_material_foundation_components(
         client,
         campaign,
         digest,
         FoundationReadSource::Runtime,
     )?;
-    let current =
-        CapturedMaterialTick::capture(client, StoredTickReadSource::Runtime, campaign, tick)?;
-    let prior = if tick > 1 {
-        Some(CapturedMaterialTick::capture(
-            client,
-            StoredTickReadSource::Runtime,
-            campaign,
-            tick - 1,
-        )?)
-    } else {
-        None
-    };
-    let lookup = capture_material_lookup(client, StoredTickReadSource::Runtime, campaign, tick)?;
-    let actions = client.query_opt("SELECT layout_version,action_batch_digest,exact_action_batch_bytes FROM babylon_state.tick_action_batch_v1 WHERE campaign_id=$1::uuid AND resolve_tick=$2", &[campaign.as_uuid(), &tick_sql])?.ok_or(MaterialRuntimeError::InvalidCheckpoint)?;
-    let command = crate::organizer_runtime::capture_pending(client, campaign, tick)?;
-    let projection = crate::organizer_archive::capture_projection(client, campaign, tick)?;
-    Ok(Some(CapturedArchiveOrganizerRegister {
+    let checkpoint = runtime_checkpoint::CapturedRuntimeCheckpoint::capture(
+        client,
         campaign,
-        tick,
+        receipt.resolve_tick(),
+    )?;
+    Ok(Some(CapturedArchiveOrganizerRegister {
         content_hash: *receipt.tick_content_hash(),
         foundation,
-        current,
-        prior,
-        lookup,
-        actions,
-        command,
-        projection,
+        checkpoint,
     }))
 }
 
 impl CapturedArchiveOrganizerRegister {
     pub(crate) fn admit(
         self,
-        cached: Option<std::sync::Arc<crate::economic_content::EconomicContentAdmission>>,
+        cached: Option<ArchiveFoundationCandidate>,
     ) -> Result<
         (
             MaterialWorldRegister,
@@ -1541,127 +1554,55 @@ impl CapturedArchiveOrganizerRegister {
         ),
         MaterialRuntimeError,
     > {
+        let foundation_timing = crate::production_projection::diagnostics::Timing::start(
+            crate::production_projection::diagnostics::Stage::ArchiveFoundationAdmission,
+            self.checkpoint.tick(),
+        );
         let admitted = admit_archive_foundation(self.foundation, cached)?;
-        let digest = admitted.digest();
-        let scope = admitted.foundation_graph().scenario_scope();
-        let components = &admitted.component_identity;
+        drop(foundation_timing);
         let opening = admitted
             .opening()
             .map_err(|_| MaterialRuntimeError::FoundationMismatch)?;
-        let (lookup, prior_lookup) = admit_archive_lookup(self.lookup, self.tick, opening)?;
-        let authority = MaterialReadAuthority {
-            scope,
-            foundation_digest: digest,
-            components,
-            opening,
-            lookup_chain: None,
-            witnesses: [None, None],
-        };
-        // Admit the complete historical proof first, retaining only the small
-        // organizer inputs. Its decoded register and proof owners must leave
-        // scope before reconstructing the current national register.
-        let prior_organizer = if let Some(prior) = self.prior {
-            let prior = prior.admit(
-                self.campaign,
-                self.tick - 1,
-                authority,
-                prior_lookup.ok_or(MaterialRuntimeError::InvalidCheckpoint)?,
-                MaterialEnvelopeRead::AuthenticatedRead,
-            )?;
-            components.validate_sections(&prior.sections)?;
-            if prior.identity.foundation_digest() != digest {
-                return Err(MaterialRuntimeError::InvalidCheckpoint);
-            }
-            Some((
-                prior.register.organizer_config().cloned(),
-                prior.register.organizer_state().cloned(),
-            ))
-        } else {
-            None
-        };
-        // Complete envelope/marker/section admission before releasing its proof owners.
-        let register = {
-            let stored = self.current.admit(
-                self.campaign,
-                self.tick,
-                authority,
-                lookup,
-                MaterialEnvelopeRead::AuthenticatedRead,
-            )?;
-            if stored.identity.foundation_digest() != digest
-                || stored.identity.tick_content_hash().as_bytes() != &self.content_hash
-            {
-                return Err(MaterialRuntimeError::InvalidCheckpoint);
-            }
-            components.validate_sections(&stored.sections)?;
-            stored.register
-        };
-        let accepted = if let Some(config) = register.organizer_config() {
-            let prior_state = if let Some((prior_config, prior_state)) = prior_organizer {
-                if prior_config.as_ref() != Some(config) {
-                    return Err(MaterialRuntimeError::InvalidCheckpoint);
-                }
-                prior_state.ok_or(MaterialRuntimeError::InvalidCheckpoint)?
-            } else {
-                babylon_practice_contract::initial_organizer_state(config)
-                    .map_err(|_| MaterialRuntimeError::InvalidCheckpoint)?
-            };
-            let command = self.command.admit()?;
-            if command.as_ref().is_some_and(|(_, consumed)| {
-                consumed.and_then(|period| u64::try_from(period).ok()) != Some(self.tick)
-            }) {
-                return Err(MaterialRuntimeError::InvalidCheckpoint);
-            }
-            let commitment = command.as_ref().map(|(commitment, _)| commitment);
-            let receipt = register
-                .organizer_state()
-                .and_then(|state| {
-                    state.receipts.iter().find(|row| {
-                        row.actor_id == config.controlled_actor_id && row.period == self.tick
-                    })
-                })
-                .ok_or(MaterialRuntimeError::InvalidCheckpoint)?;
-            if receipt.commitment_id != commitment.map(|input| input.commitment_id) {
-                return Err(MaterialRuntimeError::InvalidCheckpoint);
-            }
-            Some(
-                babylon_practice_contract::organizer_action_batch(
-                    config,
-                    &prior_state,
-                    commitment,
-                    components.session_id().clone(),
-                )
-                .map_err(|_| MaterialRuntimeError::InvalidCheckpoint)?,
-            )
-        } else {
-            None
-        };
-        components.validate_actions(
-            self.tick,
-            self.actions.try_get(0)?,
-            &self.actions.try_get::<_, Vec<u8>>(1)?,
-            &self.actions.try_get::<_, Vec<u8>>(2)?,
-            accepted.as_ref(),
+        let stored = self.checkpoint.admit(
+            MaterialReadAuthority::cold(
+                admitted.foundation_graph().scenario_scope(),
+                admitted.digest(),
+                &admitted.component_identity,
+                opening,
+            ),
+            MaterialEnvelopeRead::AuthenticatedRead,
         )?;
-        self.projection.validate(&register)?;
-        Ok((register.into_owned(), admitted))
+        if stored.identity.tick_content_hash().as_bytes() != &self.content_hash {
+            return Err(MaterialRuntimeError::InvalidCheckpoint);
+        }
+        Ok((stored.register.into_owned(), admitted))
     }
 }
 
 fn admit_archive_foundation(
     foundation: CapturedMaterialFoundation,
-    cached: Option<std::sync::Arc<crate::economic_content::EconomicContentAdmission>>,
+    cached: Option<ArchiveFoundationCandidate>,
 ) -> Result<std::sync::Arc<crate::economic_content::EconomicContentAdmission>, MaterialRuntimeError>
 {
-    if let Some(admitted) = cached {
-        foundation.validate_against(&admitted)?;
-        drop(foundation);
-        Ok(admitted)
-    } else {
-        Ok(std::sync::Arc::new(
+    match cached {
+        Some(ArchiveFoundationCandidate::Admitted(admitted)) => {
+            foundation.validate_against(&admitted)?;
+            drop(foundation);
+            Ok(admitted)
+        }
+        Some(ArchiveFoundationCandidate::Graph(graph)) => {
+            let admitted = std::sync::Arc::new(
+                crate::economic_content::EconomicContentAdmission::from_foundation(
+                    foundation.admit_with_graph(*graph)?,
+                )
+                .map_err(|_| MaterialRuntimeError::FoundationMismatch)?,
+            );
+            Ok(admitted)
+        }
+        None => Ok(std::sync::Arc::new(
             crate::economic_content::EconomicContentAdmission::from_foundation(foundation.admit()?)
                 .map_err(|_| MaterialRuntimeError::FoundationMismatch)?,
-        ))
+        )),
     }
 }
 
@@ -1673,6 +1614,39 @@ struct MaterialReadAuthority<'a, 'w> {
     opening: &'a material_storage::OpeningRegister,
     lookup_chain: Option<[u8; 32]>,
     witnesses: RegisterWitnesses<'w>,
+    receipt_witness: Option<&'w material_storage::AdmittedReceiptWitness>,
+    previous: Option<&'a AuthenticatedPreviousMaterialTick<'w>>,
+}
+
+impl<'a, 'w> MaterialReadAuthority<'a, 'w> {
+    fn cold(
+        scope: &'a str,
+        foundation_digest: [u8; 32],
+        components: &'a MaterialComponentIdentity,
+        opening: &'a material_storage::OpeningRegister,
+    ) -> Self {
+        Self {
+            scope,
+            foundation_digest,
+            components,
+            opening,
+            lookup_chain: None,
+            witnesses: [None, None],
+            receipt_witness: None,
+            previous: None,
+        }
+    }
+
+    fn storage_witnesses(self, tick: u64) -> material_storage::MaterialStorageWitnesses<'w> {
+        material_storage::MaterialStorageWitnesses {
+            register: self
+                .witnesses
+                .into_iter()
+                .flatten()
+                .find(|register| register.completed_tick() == tick),
+            receipt: self.receipt_witness,
+        }
+    }
 }
 
 fn read_authenticated_material_tick<'w>(
@@ -1682,26 +1656,11 @@ fn read_authenticated_material_tick<'w>(
     tick: u64,
     authority: MaterialReadAuthority<'_, 'w>,
 ) -> Result<StoredMaterialTick<'w>, MaterialRuntimeError> {
-    let MaterialReadAuthority {
-        foundation_digest,
-        components,
-        opening,
-        witnesses,
-        ..
-    } = authority;
     let stored = read_stored_material_tick_rows(client, source, campaign, tick, authority)?;
-    if stored.identity.foundation_digest() != foundation_digest {
+    if stored.identity.foundation_digest() != authority.foundation_digest {
         return Err(MaterialRuntimeError::InvalidCheckpoint);
     }
-    validate_component_identity(
-        client,
-        source,
-        campaign,
-        tick,
-        components,
-        &stored,
-        (opening, witnesses),
-    )?;
+    validate_component_identity(client, source, campaign, tick, &stored, authority)?;
     if source == StoredTickReadSource::Runtime {
         crate::organizer_archive::validate_projection(client, campaign, &stored.register)?;
     }
@@ -1722,7 +1681,11 @@ fn read_material_lookup(
         return Err(MaterialRuntimeError::InvalidCheckpoint);
     }
     let tick_sql = i64::try_from(tick).map_err(|_| MaterialRuntimeError::Bounds)?;
-    let query = format!("SELECT m.resolve_tick,m.lookup_delta_bytes FROM {} m JOIN {} c ON c.campaign_id=m.campaign_id AND c.resolve_tick=m.resolve_tick WHERE m.campaign_id=$1::uuid AND m.resolve_tick>=1 AND m.resolve_tick<=$2 ORDER BY m.resolve_tick", source.relation(StoredTickRelation::MaterialTick), source.relation(StoredTickRelation::TickCommit));
+    let query = format!(
+        "SELECT m.resolve_tick,m.lookup_delta_bytes FROM {} m JOIN {} c ON c.campaign_id=m.campaign_id AND c.resolve_tick=m.resolve_tick WHERE m.campaign_id=$1::uuid AND m.resolve_tick>=1 AND m.resolve_tick<=$2 ORDER BY m.resolve_tick",
+        source.relation(StoredTickRelation::MaterialTick),
+        source.relation(StoredTickRelation::TickCommit)
+    );
     let parameters: &[&(dyn postgres::types::ToSql + Sync)] = &[campaign.as_uuid(), &tick_sql];
     let mut rows = client.query_raw(&query, parameters.iter().copied())?;
     admit_lookup_chain(
@@ -1880,13 +1843,14 @@ impl CapturedMaterialTick {
         decoded: material_storage::DecodedPeriodLookup,
         envelope_read: MaterialEnvelopeRead,
     ) -> Result<StoredMaterialTick<'w>, MaterialRuntimeError> {
+        use crate::production_projection::diagnostics::{Stage, Timing};
         let MaterialReadAuthority {
             scope,
             opening,
             components,
-            witnesses,
             ..
         } = authority;
+        let storage_timing = Timing::start(Stage::TickStorageAdmission, tick);
         let row = self.row;
         let identity = IdentifiedMaterialTick::decode(&row.try_get::<_, Vec<u8>>(0)?)?;
         let register_storage: Vec<u8> = row.try_get(1)?;
@@ -1901,25 +1865,27 @@ impl CapturedMaterialTick {
             &receipt_storage,
             &decoded.lookup,
             lookup_chain,
-            witnesses
-                .into_iter()
-                .flatten()
-                .find(|register| register.completed_tick() == tick),
+            authority.storage_witnesses(tick),
         )?;
         drop(register_storage);
         drop(receipt_storage);
         let lookup_identity = material_storage::lookup_identity(&decoded.lookup)?;
         drop(decoded);
         let decoded_register = admitted.register;
-        // Storage admission proved exact equality with the immutable register,
-        // whether owned or borrowed. Frame that owner and release the raw copy.
-        drop(admitted.register_bytes);
+        // Storage admission proved the immutable register, whether owned or
+        // borrowed. Retain that owner while releasing the decoded receipt owners.
         drop(admitted.receipts);
+        drop(admitted.receipt_witness);
         if identity.resolve_tick() != tick || decoded_register.completed_tick() != tick {
             return Err(MaterialRuntimeError::InvalidCheckpoint);
         }
+        drop(storage_timing);
+        let graph_timing = Timing::start(Stage::TickGraphAdmission, tick);
         let graph = self.graph.admit(scope)?;
+        drop(graph_timing);
+        let material_timing = Timing::start(Stage::TickMaterialAdmission, tick);
         let material = self.material.admit()?;
+        drop(material_timing);
         let (checkpoint, sections) = self.checkpoint.admit(
             tick,
             stored_tick::CheckpointSectionSources {
@@ -1928,6 +1894,7 @@ impl CapturedMaterialTick {
                 foundation_sections: components.checkpoint_sources(),
             },
         )?;
+        let families_timing = Timing::start(Stage::CheckpointFamilies, tick);
         let (graph_rows, _) =
             compose_graph_rows_with_encoder(graph.rows(), &mut |row: StableGraphRowRef<'_>| {
                 row.encode()
@@ -1941,33 +1908,14 @@ impl CapturedMaterialTick {
             checkpoint,
             archive_dirty_receipt: self.archive.admit()?,
         };
-        let envelope = match envelope_read {
-            MaterialEnvelopeRead::CanonicalBytes => {
-                StoredMaterialEnvelope::Complete(CommittedMaterialTickEnvelope::compose(
-                    campaign,
-                    &identity,
-                    families,
-                    decoded_register.canonical_bytes(),
-                    &admitted.receipt_bytes,
-                )?)
-            }
-            MaterialEnvelopeRead::AuthenticatedRead => {
-                let attested = CommittedMaterialTickEnvelope::attest(
-                    campaign,
-                    &identity,
-                    families,
-                    decoded_register.canonical_bytes(),
-                    &admitted.receipt_bytes,
-                )?;
-                if std::env::var("BABYLON_TIMINGS").as_deref() == Ok("1") {
-                    eprintln!(
-                        "material_envelope_attestation tick={tick} canonical_bytes={} scratch_limit_bytes=65536",
-                        attested.encoded_bytes(),
-                    );
-                }
-                StoredMaterialEnvelope::Attested(attested)
-            }
-        };
+        drop(families_timing);
+        let envelope = envelope_read.admit(
+            campaign,
+            &identity,
+            families,
+            decoded_register.canonical_bytes(),
+            &admitted.receipt_bytes,
+        )?;
         drop(admitted.receipt_bytes);
         if !admitted_marker_matches(self.marker.as_ref(), &identity, envelope.digest())? {
             return Err(MaterialRuntimeError::InvalidCheckpoint);
@@ -2022,6 +1970,8 @@ fn authenticated_organizer_actions(
                 opening: foundation_opening,
                 lookup_chain: None,
                 witnesses: [None, None],
+                receipt_witness: None,
+                previous: None,
             },
         )?;
         components.validate_sections(&previous.sections)?;
@@ -2068,12 +2018,17 @@ fn observer_organizer_actions(
     client: &mut impl GenericClient,
     campaign: CampaignId,
     tick: u64,
-    components: &MaterialComponentIdentity,
     stored: &StoredMaterialTick<'_>,
-    register_authority: (&material_storage::OpeningRegister, RegisterWitnesses<'_>),
+    authority: MaterialReadAuthority<'_, '_>,
     bytes: &[u8],
 ) -> Result<Option<OrderedPracticeActionBatch>, MaterialRuntimeError> {
-    let (opening, witnesses) = register_authority;
+    let MaterialReadAuthority {
+        components,
+        opening,
+        witnesses,
+        previous,
+        ..
+    } = authority;
     let Some(config) = stored.register.organizer_config() else {
         return Ok(None);
     };
@@ -2083,6 +2038,15 @@ fn observer_organizer_actions(
     let prior = if previous_tick == 0 {
         babylon_practice_contract::initial_organizer_state(config)
             .map_err(|_| MaterialRuntimeError::InvalidCheckpoint)?
+    } else if let Some(previous) = previous {
+        let register = previous.register_for(campaign, stored, components)?;
+        if register.organizer_config() != Some(config) {
+            return Err(MaterialRuntimeError::InvalidCheckpoint);
+        }
+        register
+            .organizer_state()
+            .cloned()
+            .ok_or(MaterialRuntimeError::InvalidCheckpoint)?
     } else {
         let previous = read_stored_material_tick_rows(
             client,
@@ -2096,6 +2060,8 @@ fn observer_organizer_actions(
                 opening,
                 lookup_chain: None,
                 witnesses,
+                receipt_witness: None,
+                previous: None,
             },
         )?;
         components.validate_sections(&previous.sections)?;
@@ -2130,11 +2096,14 @@ fn validate_component_identity(
     source: StoredTickReadSource,
     campaign: CampaignId,
     tick: u64,
-    components: &MaterialComponentIdentity,
     stored: &StoredMaterialTick<'_>,
-    register_authority: (&material_storage::OpeningRegister, RegisterWitnesses<'_>),
+    authority: MaterialReadAuthority<'_, '_>,
 ) -> Result<(), MaterialRuntimeError> {
-    let (opening, witnesses) = register_authority;
+    let MaterialReadAuthority {
+        components,
+        opening,
+        ..
+    } = authority;
     components.validate_sections(&stored.sections)?;
     let tick_sql = i64::try_from(tick).map_err(|_| MaterialRuntimeError::Bounds)?;
     let row = client
@@ -2152,15 +2121,9 @@ fn validate_component_identity(
         StoredTickReadSource::Runtime => authenticated_organizer_actions(
             client, source, campaign, tick, components, stored, opening,
         )?,
-        StoredTickReadSource::FullObserver => observer_organizer_actions(
-            client,
-            campaign,
-            tick,
-            components,
-            stored,
-            (opening, witnesses),
-            &bytes,
-        )?,
+        StoredTickReadSource::FullObserver => {
+            observer_organizer_actions(client, campaign, tick, stored, authority, &bytes)?
+        }
     };
     components.validate_actions(
         tick,
@@ -2173,6 +2136,8 @@ fn validate_component_identity(
 
 #[cfg(test)]
 mod reconstruction_tests;
+#[cfg(test)]
+pub(crate) use reconstruction_tests::persisted_graph_copy;
 
 #[cfg(test)]
 mod writer_bounds_tests {

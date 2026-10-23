@@ -1,5 +1,7 @@
 //! Separate full-observer material capability and exact historical projection.
 
+mod storage_witness;
+
 use crate::production_projection::diagnostics::{self, Stage};
 use babylon_kernel::content_digest::sha256_of;
 use babylon_tick::{
@@ -7,13 +9,14 @@ use babylon_tick::{
     material_world::{nominal_material_world_hash, MaterialTickReceipts, MaterialWorldRegister},
 };
 use postgres::GenericClient;
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 
 use crate::{
     economic_content::{validate_economic_header, EconomicContentAdmission},
     identity::CampaignId,
     material_runtime::{
-        capture_material_foundation_components, read_observer_material_tick, FoundationReadSource,
+        capture_material_foundation_components, read_observer_material_endpoints,
+        read_observer_material_tick, FoundationReadSource, ObserverEndpointLookup,
     },
     michigan_economy::digest_hex,
     observer_reader::{
@@ -148,16 +151,89 @@ pub(crate) fn read_material_header(
 #[derive(Clone)]
 pub struct ObserverMaterialCursor {
     campaign: CampaignId,
-    admission: Arc<EconomicContentAdmission>,
+    admission: Weak<EconomicContentAdmission>,
+    admission_digest: [u8; 32],
     history: MaterialHistory,
 }
+
+/// Separate identities copied from the successfully authenticated opening.
+/// The composite material foundation includes the graph foundation; its digest
+/// is not the digest of that graph component or its projected graph state.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ObserverOpeningFoundations {
+    pub material_foundation_sha256: [u8; 32],
+    pub graph_foundation_sha256: [u8; 32],
+}
+
 impl ObserverMaterialCursor {
     pub(crate) fn admission(&self, campaign: CampaignId) -> Option<Arc<EconomicContentAdmission>> {
-        (self.campaign == campaign).then(|| Arc::clone(&self.admission))
+        (self.campaign == campaign)
+            .then(|| self.admission.upgrade())
+            .flatten()
     }
     #[must_use]
     pub fn completed_tick(&self) -> u64 {
         self.history.register.completed_tick()
+    }
+
+    /// Borrow the immutable register from the last successful complete observation.
+    /// This is retained historical evidence; a later read still authenticates the
+    /// database prefix before reuse. No state or canonical bytes are copied.
+    #[must_use]
+    pub fn current_register(&self) -> Option<&MaterialWorldRegister> {
+        match &self.history.register {
+            MaterialRegisterBoundary::Foundation => None,
+            MaterialRegisterBoundary::Period(register) => Some(register),
+        }
+    }
+
+    /// Borrow the exact authenticated opening while its admitted reader owner is
+    /// alive. The callback cannot retain a register reference; neither the typed
+    /// state nor canonical bytes are copied or added to the cursor's ownership.
+    /// # Errors
+    /// Refuses another campaign, a positive period, changed admission or an owner
+    /// already released. A cursor is evidence of its successful read, not a fresh
+    /// database authentication for later inputs.
+    pub fn with_opening_register<T>(
+        &self,
+        campaign: CampaignId,
+        observe: impl FnOnce(&MaterialWorldRegister) -> T,
+    ) -> Result<T, ObserverEconomyError> {
+        let owner = self.opening_admission(campaign)?;
+        Ok(observe(owner.initial_register()))
+    }
+
+    /// Copy the distinct foundation digests from the original admitted read.
+    /// No register, canonical export, or admission owner is retained or copied.
+    /// This is evidence of that opening read, not a new database authentication.
+    /// # Errors
+    /// Refuses another campaign, a period cursor, changed admission, or an owner
+    /// already released. Call before dropping the reader that owns admission.
+    pub fn opening_foundations(
+        &self,
+        campaign: CampaignId,
+    ) -> Result<ObserverOpeningFoundations, ObserverEconomyError> {
+        let owner = self.opening_admission(campaign)?;
+        Ok(ObserverOpeningFoundations {
+            material_foundation_sha256: owner.digest(),
+            graph_foundation_sha256: owner.graph_digest,
+        })
+    }
+
+    fn opening_admission(
+        &self,
+        campaign: CampaignId,
+    ) -> Result<Arc<EconomicContentAdmission>, ObserverEconomyError> {
+        if self.history.register != MaterialRegisterBoundary::Foundation {
+            return Err(ObserverEconomyError::TickAbsent);
+        }
+        let owner = self
+            .admission(campaign)
+            .ok_or(ObserverEconomyError::InvalidProjection)?;
+        if owner.digest() != self.admission_digest {
+            return Err(ObserverEconomyError::ScenarioMismatch);
+        }
+        Ok(owner)
     }
 }
 
@@ -168,9 +244,11 @@ struct MaterialHistory {
     previous_lookup_chain: Option<[u8; 32]>,
     register: MaterialRegisterBoundary,
     opening: Option<MaterialRegisterBoundary>,
-    receipt: Option<(MaterialTickReceipts, [u8; 32])>,
+    receipt: Option<(Arc<MaterialTickReceipts>, [u8; 32])>,
+    receipt_witness: Option<crate::material_storage::AdmittedReceiptWitness>,
     orders: OrderHistory,
     prior_world: Option<[u8; 32]>,
+    storage_prefix: [u8; 32],
 }
 
 /// Foundation state belongs to the immutable admission. A history owns only
@@ -178,7 +256,87 @@ struct MaterialHistory {
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum MaterialRegisterBoundary {
     Foundation,
-    Period(Box<MaterialWorldRegister>),
+    Period(Arc<MaterialWorldRegister>),
+}
+
+#[cfg(test)]
+mod opening_controls {
+    use super::*;
+
+    fn fixture() -> (
+        CampaignId,
+        Arc<EconomicContentAdmission>,
+        ObserverMaterialCursor,
+    ) {
+        let foundation = crate::michigan_content::MichiganContentPreset::FourWeekStandard
+            .create_foundation(&crate::test_support::catalog())
+            .unwrap();
+        let owner = Arc::new(EconomicContentAdmission::from_foundation(foundation).unwrap());
+        let campaign = CampaignId::from_uuid(uuid::Uuid::from_u128(0x342_000));
+        let cursor = ObserverMaterialCursor {
+            campaign,
+            admission: Arc::downgrade(&owner),
+            admission_digest: owner.digest(),
+            history: MaterialHistory::new(&owner).unwrap(),
+        };
+        (campaign, owner, cursor)
+    }
+
+    #[test]
+    fn opening_borrows_the_authenticated_owner_without_another_register() {
+        let (campaign, owner, cursor) = fixture();
+        assert!(cursor.current_register().is_none());
+        let digest = cursor
+            .with_opening_register(campaign, |register| {
+                assert!(std::ptr::eq(register, owner.initial_register()));
+                assert_eq!(register.completed_tick(), 0);
+                register.digest()
+            })
+            .unwrap();
+        assert_eq!(digest, owner.initial_register().digest());
+        assert_eq!(Arc::strong_count(&owner), 1);
+    }
+
+    #[test]
+    fn opening_borrow_refuses_another_campaign_digest_or_expired_owner() {
+        let (campaign, owner, mut cursor) = fixture();
+        let other = CampaignId::from_uuid(uuid::Uuid::from_u128(0x342_999));
+        assert!(cursor.with_opening_register(other, |_| ()).is_err());
+        cursor.admission_digest[0] ^= 1;
+        assert!(cursor.with_opening_register(campaign, |_| ()).is_err());
+        cursor.admission_digest = owner.digest();
+        drop(owner);
+        assert!(cursor.with_opening_register(campaign, |_| ()).is_err());
+    }
+
+    #[test]
+    fn opening_foundations_preserve_distinct_admitted_component_identities() {
+        let (campaign, owner, cursor) = fixture();
+        let identity = cursor.opening_foundations(campaign).unwrap();
+        assert_eq!(identity.material_foundation_sha256, owner.digest());
+        assert_eq!(identity.graph_foundation_sha256, owner.graph_digest);
+        assert_ne!(
+            identity.material_foundation_sha256,
+            identity.graph_foundation_sha256
+        );
+        assert_eq!(Arc::strong_count(&owner), 1);
+    }
+
+    #[test]
+    fn opening_foundations_refuse_changed_or_released_admission_and_period_cursors() {
+        let (campaign, owner, mut cursor) = fixture();
+        let other = CampaignId::from_uuid(uuid::Uuid::from_u128(0x342_999));
+        assert!(cursor.opening_foundations(other).is_err());
+        cursor.admission_digest[0] ^= 1;
+        assert!(cursor.opening_foundations(campaign).is_err());
+        cursor.admission_digest = owner.digest();
+        cursor.history.register =
+            MaterialRegisterBoundary::Period(Arc::new(owner.initial_register().clone()));
+        assert!(cursor.opening_foundations(campaign).is_err());
+        cursor.history.register = MaterialRegisterBoundary::Foundation;
+        drop(owner);
+        assert!(cursor.opening_foundations(campaign).is_err());
+    }
 }
 
 impl MaterialRegisterBoundary {
@@ -198,6 +356,12 @@ impl MaterialRegisterBoundary {
 }
 
 impl MaterialHistory {
+    fn receipt(&self) -> Option<(&MaterialTickReceipts, [u8; 32])> {
+        self.receipt
+            .as_ref()
+            .map(|(rows, digest)| (rows.as_ref(), *digest))
+    }
+
     fn register<'a>(&'a self, expected: &'a EconomicContentAdmission) -> &'a MaterialWorldRegister {
         self.register.resolve(expected)
     }
@@ -225,6 +389,7 @@ impl MaterialHistory {
             register: MaterialRegisterBoundary::Foundation,
             opening: None,
             receipt: None,
+            receipt_witness: None,
             orders: OrderHistory::from_opening(expected.initial_register().state()).map_err(
                 |error| {
                     let _ = diagnostics::projection::<()>(Stage::InitialHistory, 0, Err(error));
@@ -232,6 +397,7 @@ impl MaterialHistory {
                 },
             )?,
             prior_world: None,
+            storage_prefix: storage_witness::seed(),
         })
     }
 
@@ -264,6 +430,7 @@ impl MaterialHistory {
         {
             return Err(diagnostics::invalid(Stage::MaterialRow, index));
         }
+        let fingerprint = storage_witness::fingerprint(&row)?;
         let MaterialObservationRow {
             row_campaign,
             row_tick,
@@ -296,6 +463,7 @@ impl MaterialHistory {
                 );
                 return Err(ObserverEconomyError::ScenarioMismatch);
             }
+            self.storage_prefix = storage_witness::append(self.storage_prefix, fingerprint);
             return Ok(());
         }
         // This history is a detached read candidate, never a published cursor.
@@ -303,6 +471,7 @@ impl MaterialHistory {
         // obsolete prior state/receipts must not overlap the next full admission.
         self.opening = None;
         self.receipt = None;
+        self.receipt_witness = None;
         let delta = lookup_delta
             .as_deref()
             .ok_or(ObserverEconomyError::InvalidProjection)?;
@@ -328,23 +497,33 @@ impl MaterialHistory {
         if next.completed_tick() != index {
             return Err(diagnostics::invalid(Stage::RegisterDecode, index));
         }
+        // Complete codec admission already owns the typed register and receipts.
+        // Bind the original canonical receipt bytes, then release serialization
+        // and SQL package buffers before lifecycle/order validation allocates.
+        let receipt_digest = sha256_of(&admitted.receipt_bytes);
+        drop(admitted.receipt_bytes);
+        drop(register_storage_bytes);
+        drop(lookup_delta);
+        drop(receipts);
         self.append_receipt(
             expected,
             &next,
             identity
                 .as_deref()
                 .ok_or(ObserverEconomyError::InvalidProjection)?,
-            &admitted.receipt_bytes,
+            receipt_digest,
             content_hash.as_deref(),
             admitted.receipts,
         )?;
+        self.receipt_witness = Some(admitted.receipt_witness);
         let previous = std::mem::replace(
             &mut self.register,
-            MaterialRegisterBoundary::Period(Box::new(next)),
+            MaterialRegisterBoundary::Period(Arc::new(next)),
         );
         self.previous_lookup_chain = Some(self.lookup_chain);
         self.lookup_chain = lookup.chain;
         self.opening = Some(previous);
+        self.storage_prefix = storage_witness::append(self.storage_prefix, fingerprint);
         Ok(())
     }
 
@@ -353,9 +532,9 @@ impl MaterialHistory {
         expected: &EconomicContentAdmission,
         next: &MaterialWorldRegister,
         identity: &[u8],
-        receipt_bytes: &[u8],
+        receipt_digest: [u8; 32],
         content_hash: Option<&[u8]>,
-        receipt: MaterialTickReceipts,
+        receipt: Arc<MaterialTickReceipts>,
     ) -> Result<(), ObserverEconomyError> {
         let index = next.completed_tick();
         let prior_register = self.register.resolve(expected);
@@ -364,7 +543,7 @@ impl MaterialHistory {
         if identity.resolve_tick() != index
             || identity.foundation_digest() != expected.digest()
             || content_hash != Some(identity.tick_content_hash().as_bytes().as_slice())
-            || sha256_of(receipt_bytes) != identity.receipt_digest()
+            || receipt_digest != identity.receipt_digest()
             || nominal_material_world_hash(identity.graph_world_after(), next)
                 != identity.result_world_hash()
             || nominal_material_world_hash(identity.graph_world_before(), prior_register)
@@ -453,29 +632,28 @@ fn extend_history(
     Ok(())
 }
 
-/// Header reads are safe for preview. Complete material reads are never issued for preview.
-pub(crate) fn material_observation(
+fn history_for_read(
     transaction: &mut impl GenericClient,
     campaign: CampaignId,
     tick: u64,
-    visibility: ObserverVisibility,
     expected: &Arc<EconomicContentAdmission>,
     cursor: &mut Option<ObserverMaterialCursor>,
-) -> Result<MaterialObservation, ObserverEconomyError> {
-    if visibility == ObserverVisibility::KnownPreview {
-        return Ok(MaterialObservation {
-            foundation_digest: digest_hex(&expected.digest()),
-            production: None,
-            nominal_world_hash: None,
-        });
-    }
-    let history_timing = diagnostics::Timing::start(Stage::HistoryLoad, tick);
+) -> Result<MaterialHistory, ObserverEconomyError> {
     let reuse = cursor.as_ref().is_some_and(|c| {
         c.campaign == campaign
-            && c.admission.digest() == expected.digest()
+            && c.admission_digest == expected.digest()
             && c.completed_tick() <= tick
     });
     let (mut history, start) = if reuse {
+        let cached = cursor
+            .as_ref()
+            .ok_or(ObserverEconomyError::InvalidProjection)?;
+        storage_witness::verify_prefix(
+            transaction,
+            campaign,
+            cached.completed_tick(),
+            cached.history.storage_prefix,
+        )?;
         // The outer reader already owns a detached candidate until transaction commit.
         let cached = cursor
             .take()
@@ -496,6 +674,27 @@ pub(crate) fn material_observation(
         tick,
         extend_history(transaction, campaign, expected, &mut history, start, tick),
     )?;
+    Ok(history)
+}
+
+/// Header reads are safe for preview. Complete material reads are never issued for preview.
+pub(crate) fn material_observation(
+    transaction: &mut impl GenericClient,
+    campaign: CampaignId,
+    tick: u64,
+    visibility: ObserverVisibility,
+    expected: &Arc<EconomicContentAdmission>,
+    cursor: &mut Option<ObserverMaterialCursor>,
+) -> Result<MaterialObservation, ObserverEconomyError> {
+    if visibility == ObserverVisibility::KnownPreview {
+        return Ok(MaterialObservation {
+            foundation_digest: digest_hex(&expected.digest()),
+            production: None,
+            nominal_world_hash: None,
+        });
+    }
+    let history_timing = diagnostics::Timing::start(Stage::HistoryLoad, tick);
+    let history = history_for_read(transaction, campaign, tick, expected, cursor)?;
     drop(history_timing);
     // Authenticate endpoint graph/events before allocating the full current projection.
     // Only the projected staffing accounts survive the endpoint ownership scope.
@@ -511,7 +710,7 @@ pub(crate) fn material_observation(
         expected.view(),
         history.register(expected),
         history.opening(expected),
-        history.receipt.as_ref(),
+        history.receipt(),
         &history.orders,
     )
     .map_err(|error| {
@@ -523,12 +722,13 @@ pub(crate) fn material_observation(
     let prior_world = history.prior_world;
     if cursor.as_ref().is_none_or(|cached| {
         cached.campaign != campaign
-            || cached.admission.digest() != expected.digest()
+            || cached.admission_digest != expected.digest()
             || cached.completed_tick() <= tick
     }) {
         *cursor = Some(ObserverMaterialCursor {
             campaign,
-            admission: Arc::clone(expected),
+            admission: Arc::downgrade(expected),
+            admission_digest: expected.digest(),
             history,
         });
     }
@@ -601,7 +801,7 @@ pub(crate) fn production_history(
                     &metadata,
                     &Quantities::new(
                         history.register(expected).state(),
-                        history.receipt.as_ref().map(|(r, _)| r),
+                        history.receipt.as_ref().map(|(r, _)| r.as_ref()),
                     ),
                     process,
                 )
@@ -634,44 +834,28 @@ fn authenticated_history_endpoints<'w>(
     let register = history.register(expected);
     let result_world = history.prior_world;
     let period_receipt = history.receipt.as_ref();
-    let mut read = |requested: u64| {
-        let _envelope_timing = diagnostics::Timing::start(Stage::AuthenticatedEnvelope, requested);
-        let chain = if requested == tick {
-            history.lookup_chain
-        } else if requested.checked_add(1) == Some(tick) {
-            history
-                .previous_lookup_chain
-                .ok_or(ObserverEconomyError::InvalidProjection)?
-        } else {
-            return Err(ObserverEconomyError::InvalidProjection);
-        };
-        read_observer_material_tick(
-            transaction,
-            campaign,
-            requested,
-            expected.foundation_graph().scenario_scope(),
-            expected.digest(),
-            &expected.component_identity,
-            (
-                &history.lookup,
-                chain,
-                [Some(register), history.opening(expected)],
-            ),
-        )
-        .map_err(|_| ObserverEconomyError::InvalidProjection)
-    };
-    let current = read(tick)?;
+    let (current, previous) = read_observer_material_endpoints(
+        transaction,
+        campaign,
+        tick,
+        expected.foundation_graph().scenario_scope(),
+        expected.digest(),
+        &expected.component_identity,
+        ObserverEndpointLookup {
+            opening: &history.lookup,
+            current_chain: history.lookup_chain,
+            previous_chain: history.previous_lookup_chain,
+            registers: [Some(register), history.opening(expected)],
+            receipt: history.receipt_witness.as_ref(),
+        },
+    )
+    .map_err(|_| ObserverEconomyError::InvalidProjection)?;
     if current.register.as_ref() != register
         || Some(current.identity.result_world_hash()) != result_world
         || Some(current.identity.receipt_digest()) != period_receipt.map(|(_, digest)| *digest)
     {
         return Err(ObserverEconomyError::InvalidProjection);
     }
-    let previous = if tick > 1 {
-        Some(read(tick - 1)?)
-    } else {
-        None
-    };
     let prior_register = if let Some(previous) = &previous {
         if previous.identity.result_world_hash() != current.identity.prior_world_hash() {
             return Err(ObserverEconomyError::InvalidProjection);
@@ -697,21 +881,21 @@ pub(crate) fn committed_receipts(
     let (current, _) = authenticated_history_endpoints(transaction, campaign, expected, &history)?;
     let identity = current.identity;
     drop(current);
-    take_committed_receipts(campaign, tick, expected, &mut history, &identity)
+    read_committed_receipts(campaign, tick, expected, &history, &identity)
 }
 
-fn take_committed_receipts(
+fn read_committed_receipts(
     campaign: CampaignId,
     tick: u64,
     expected: &EconomicContentAdmission,
-    history: &mut MaterialHistory,
+    history: &MaterialHistory,
     identity: &babylon_tick::material_replay::IdentifiedMaterialTick,
 ) -> Result<crate::observer_reader::CommittedMaterialReceipts, ObserverEconomyError> {
     let (receipts, digest) = history
         .receipt
-        .take()
+        .as_ref()
         .ok_or(ObserverEconomyError::TickAbsent)?;
-    if receipts.resolve_tick != tick || digest != identity.receipt_digest() {
+    if receipts.resolve_tick != tick || *digest != identity.receipt_digest() {
         return Err(ObserverEconomyError::InvalidProjection);
     }
     let household_contributions = match &history.register(expected).state().accounting {
@@ -731,7 +915,8 @@ fn take_committed_receipts(
     Ok(crate::observer_reader::CommittedMaterialReceipts {
         campaign_id: campaign,
         identity: *identity,
-        receipts,
+        material_register_bytes: history.register(expected).canonical_bytes().len(),
+        receipts: Arc::clone(receipts),
         household_contributions,
     })
 }
@@ -740,7 +925,8 @@ pub(crate) fn committed_observation(
     transaction: &mut impl GenericClient,
     campaign: CampaignId,
     tick: u64,
-    expected: &EconomicContentAdmission,
+    expected: &Arc<EconomicContentAdmission>,
+    cursor: &mut Option<ObserverMaterialCursor>,
 ) -> Result<
     (
         MaterialObservation,
@@ -752,8 +938,7 @@ pub(crate) fn committed_observation(
         return Err(ObserverEconomyError::TickAbsent);
     }
     let history_timing = diagnostics::Timing::start(Stage::HistoryLoad, tick);
-    let mut history = MaterialHistory::new(expected)?;
-    extend_history(transaction, campaign, expected, &mut history, 0, tick)?;
+    let history = history_for_read(transaction, campaign, tick, expected, cursor)?;
     drop(history_timing);
     let staffing_timing = diagnostics::Timing::start(Stage::Staffing, tick);
     let (current, previous) =
@@ -768,7 +953,7 @@ pub(crate) fn committed_observation(
         expected.view(),
         history.register(expected),
         history.opening(expected),
-        history.receipt.as_ref(),
+        history.receipt(),
         &history.orders,
     )
     .map_err(|_| ObserverEconomyError::InvalidProjection)?;
@@ -781,7 +966,13 @@ pub(crate) fn committed_observation(
         production: Some(production),
         nominal_world_hash: history.prior_world.map(|hash| digest_hex(&hash)),
     };
-    let accounting = take_committed_receipts(campaign, tick, expected, &mut history, &identity)?;
+    let accounting = read_committed_receipts(campaign, tick, expected, &history, &identity)?;
+    *cursor = Some(ObserverMaterialCursor {
+        campaign,
+        admission: Arc::downgrade(expected),
+        admission_digest: expected.digest(),
+        history,
+    });
     Ok((observation, accounting))
 }
 
@@ -830,7 +1021,7 @@ fn project_authenticated_staffing(
         register,
         Some(prior_graph),
         &current.events,
-        period_receipt.map(|(rows, _)| rows),
+        period_receipt.map(|(rows, _)| rows.as_ref()),
     )
     .map_err(|error| {
         let _ = diagnostics::projection::<()>(Stage::Staffing, tick, Err(error));

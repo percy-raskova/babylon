@@ -1,6 +1,5 @@
 //! Qualification rejects presence, promises and unmatched payments as trade evidence.
-#[path = "support/national_trade_accounting.rs"]
-mod national_trade_accounting;
+use babylon_persistence::qualification_audit::trade as national_trade_accounting;
 
 use babylon_kernel::currency::Currency;
 use babylon_material_circuit::{

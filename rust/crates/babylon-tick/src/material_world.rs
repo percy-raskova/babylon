@@ -34,7 +34,7 @@ mod workforce_receipt;
 
 const REGISTER_DOMAIN: &[u8] = b"babylon.material-world-register.v4\0";
 const NOMINAL_DOMAIN: &[u8] = b"babylon.nominal-material-world.v3\0";
-const RECEIPT_DOMAIN: &[u8] = b"babylon.material-tick-receipts.v17\0";
+const RECEIPT_DOMAIN: &[u8] = b"babylon.material-tick-receipts.v18\0";
 /// Designed 1 GB operational headroom explicitly authorized by the Director.
 /// This standalone ceiling does not enlarge surrounding foundation or receipt bounds.
 pub const MAX_MATERIAL_WORLD_REGISTER_BYTES: usize = 1_000_000_000;
@@ -155,25 +155,8 @@ impl MaterialWorldRegister {
             return Err(MaterialWorldError::PeriodMismatch);
         }
         let state_bytes = encode_material_circuit_state(&state)?;
+        drop(state);
         let state = decode_material_circuit_state(&state_bytes)?;
-        Self::assemble(completed_tick, state, organizer, &state_bytes)
-    }
-
-    // Decode already admitted the complete typed circuit. Re-encode it and
-    // compare the complete outer wire below, without parsing that state twice.
-    fn build_admitted(
-        completed_tick: u64,
-        state: MaterialCircuitState,
-        organizer: Option<(OrganizerConfig, OrganizerState)>,
-    ) -> Result<Self, MaterialWorldError> {
-        if completed_tick
-            .checked_add(1)
-            .ok_or(MaterialWorldError::Arithmetic)?
-            != state.period
-        {
-            return Err(MaterialWorldError::PeriodMismatch);
-        }
-        let state_bytes = encode_material_circuit_state(&state)?;
         Self::assemble(completed_tick, state, organizer, &state_bytes)
     }
 
@@ -183,32 +166,7 @@ impl MaterialWorldRegister {
         organizer: Option<(OrganizerConfig, OrganizerState)>,
         state_bytes: &[u8],
     ) -> Result<Self, MaterialWorldError> {
-        if let Some((config, organizer)) = &organizer {
-            organizer_collection::validate_binding(config, &state)?;
-            organizer_collection::current(config, organizer, &state, completed_tick)?;
-        }
-        let mut organizer_bytes = Vec::new();
-        match &organizer {
-            None => organizer_bytes.push(0),
-            Some((config, state)) => {
-                babylon_practice_contract::validate_organizer_pair(config, state)?;
-                if state.period != completed_tick {
-                    return Err(MaterialWorldError::PeriodMismatch);
-                }
-                organizer_bytes.push(1);
-                for bytes in [
-                    encode_organizer_config(config)?,
-                    encode_organizer_state(state)?,
-                ] {
-                    organizer_bytes.extend_from_slice(
-                        &u64::try_from(bytes.len())
-                            .map_err(|_| MaterialWorldError::ByteLimit)?
-                            .to_be_bytes(),
-                    );
-                    organizer_bytes.extend_from_slice(&bytes);
-                }
-            }
-        }
+        let organizer_bytes = encode_bound_organizer(completed_tick, &state, organizer.as_ref())?;
         let length = REGISTER_DOMAIN
             .len()
             .checked_add(20)
@@ -282,6 +240,17 @@ impl MaterialWorldRegister {
     /// # Errors
     /// Refuses unsupported/truncated/trailing/noncanonical bytes and invalid state.
     pub fn decode(bytes: &[u8]) -> Result<Self, MaterialWorldError> {
+        Self::decode_canonical(std::borrow::Cow::Borrowed(bytes))
+    }
+
+    /// Decode an owned canonical register without retaining a second byte owner.
+    /// # Errors
+    /// Refuses unsupported/truncated/trailing/noncanonical bytes and invalid state.
+    pub fn decode_owned(bytes: Vec<u8>) -> Result<Self, MaterialWorldError> {
+        Self::decode_canonical(std::borrow::Cow::Owned(bytes))
+    }
+
+    fn decode_canonical(bytes: std::borrow::Cow<'_, [u8]>) -> Result<Self, MaterialWorldError> {
         let header = REGISTER_DOMAIN.len() + 20;
         if bytes.len() < header
             || bytes.len() > MAX_MATERIAL_WORLD_REGISTER_BYTES
@@ -310,7 +279,8 @@ impl MaterialWorldRegister {
         let state_bytes = bytes
             .get(header..state_end)
             .ok_or(MaterialWorldError::Wire)?;
-        let mut remaining = bytes.get(state_end..).ok_or(MaterialWorldError::Wire)?;
+        let organizer_wire = bytes.get(state_end..).ok_or(MaterialWorldError::Wire)?;
+        let mut remaining = organizer_wire;
         let organizer = match remaining.split_first() {
             Some((0, [])) => None,
             Some((1, tail)) => {
@@ -324,12 +294,42 @@ impl MaterialWorldRegister {
             }
             _ => return Err(MaterialWorldError::Wire),
         };
-        let register =
-            Self::build_admitted(tick, decode_material_circuit_state(state_bytes)?, organizer)?;
-        if register.canonical_bytes.as_slice() != bytes {
+        let state = decode_material_circuit_state(state_bytes)?;
+        if tick.checked_add(1).ok_or(MaterialWorldError::Arithmetic)? != state.period {
+            return Err(MaterialWorldError::PeriodMismatch);
+        }
+        // Validate the same canonical circuit and bound organizer as construction,
+        // without assembling a second full outer register during admission.
+        let canonical_state = encode_material_circuit_state(&state)?;
+        let canonical_organizer = encode_bound_organizer(tick, &state, organizer.as_ref())?;
+        let canonical_length = header
+            .checked_add(canonical_state.len())
+            .and_then(|count| count.checked_add(canonical_organizer.len()))
+            .ok_or(MaterialWorldError::Arithmetic)?;
+        if canonical_length > MAX_MATERIAL_WORLD_REGISTER_BYTES {
+            return Err(MaterialWorldError::ByteLimit);
+        }
+        if canonical_state != state_bytes || canonical_organizer != organizer_wire {
             return Err(MaterialWorldError::Wire);
         }
-        Ok(register)
+        drop(canonical_state);
+        drop(canonical_organizer);
+        let digest = sha256_of(&bytes);
+        let canonical_bytes = match bytes {
+            std::borrow::Cow::Owned(bytes) => bytes,
+            std::borrow::Cow::Borrowed(bytes) => {
+                let mut owned = bounded_bytes(bytes.len(), MAX_MATERIAL_WORLD_REGISTER_BYTES)?;
+                owned.extend_from_slice(bytes);
+                owned
+            }
+        };
+        Ok(Self {
+            completed_tick: tick,
+            state,
+            organizer,
+            canonical_bytes: std::sync::Arc::new(canonical_bytes),
+            digest,
+        })
     }
 
     /// Prepare one next-period successor without mutating this register.
@@ -476,6 +476,35 @@ impl PreparedMaterialWorld {
     pub fn into_register(self) -> MaterialWorldRegister {
         self.register
     }
+}
+
+fn encode_bound_organizer(
+    completed_tick: u64,
+    circuit: &MaterialCircuitState,
+    organizer: Option<&(OrganizerConfig, OrganizerState)>,
+) -> Result<Vec<u8>, MaterialWorldError> {
+    let Some((config, state)) = organizer else {
+        return Ok(vec![0]);
+    };
+    organizer_collection::validate_binding(config, circuit)?;
+    organizer_collection::current(config, state, circuit, completed_tick)?;
+    babylon_practice_contract::validate_organizer_pair(config, state)?;
+    if state.period != completed_tick {
+        return Err(MaterialWorldError::PeriodMismatch);
+    }
+    let mut result = vec![1];
+    for bytes in [
+        encode_organizer_config(config)?,
+        encode_organizer_state(state)?,
+    ] {
+        result.extend_from_slice(
+            &u64::try_from(bytes.len())
+                .map_err(|_| MaterialWorldError::ByteLimit)?
+                .to_be_bytes(),
+        );
+        result.extend_from_slice(&bytes);
+    }
+    Ok(result)
 }
 
 fn take_organizer_section<'a>(remaining: &mut &'a [u8]) -> Result<&'a [u8], MaterialWorldError> {
@@ -769,7 +798,7 @@ fn encode_material_receipts(
     )?;
     let mut bytes = bounded_bytes(length, MAX_MATERIAL_TICK_RECEIPT_BYTES)?;
     bytes.extend_from_slice(RECEIPT_DOMAIN);
-    bytes.extend_from_slice(&17_u32.to_be_bytes());
+    bytes.extend_from_slice(&18_u32.to_be_bytes());
     bytes.extend_from_slice(&tick.to_be_bytes());
     for (tag, (count, _)) in families.iter().enumerate() {
         bytes.push(u8::try_from(tag + 1).map_err(|_| MaterialWorldError::Arithmetic)?);
@@ -946,7 +975,7 @@ fn encode_material_receipts(
     Ok(bytes)
 }
 
-/// Typed material evidence decoded only from an exact committed V17 receipt family.
+/// Typed material evidence decoded only from an exact committed V18 receipt family.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MaterialTickReceipts {
     pub household_time: Vec<babylon_material_circuit::HouseholdTimeReceipt>,
@@ -1000,7 +1029,7 @@ pub fn decode_material_receipts(bytes: &[u8]) -> Result<MaterialTickReceipts, Ma
         bytes,
         position: RECEIPT_DOMAIN.len(),
     };
-    if cursor.take::<4>()? != 17_u32.to_be_bytes() {
+    if cursor.take::<4>()? != 18_u32.to_be_bytes() {
         return Err(MaterialWorldError::Wire);
     }
     let resolve_tick = cursor.u64()?;

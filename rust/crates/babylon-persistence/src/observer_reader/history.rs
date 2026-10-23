@@ -83,7 +83,7 @@ impl ObserverEconomyReader {
             .start()
             .map_err(|_| ObserverEconomyError::Database)?;
         transaction
-            .batch_execute("SET LOCAL idle_in_transaction_session_timeout = '120s'")
+            .batch_execute(super::MATERIAL_READ_TRANSACTION_OPTIONS)
             .map_err(|_| ObserverEconomyError::Database)?;
         let (_, _, header) = read_foundation(
             &mut transaction,

@@ -1,6 +1,61 @@
 -- Current Archive relations, confined views, and commit-only wake hints.
 -- Installed atomically with the material schema before its sole identity marker.
 
+-- Exact campaign-owned citation definitions. References are physical storage only.
+CREATE TABLE babylon_meta.archive_provenance_v1 (
+    campaign_id UUID NOT NULL REFERENCES babylon_meta.campaign(campaign_id) ON DELETE CASCADE,
+    provenance_ref INTEGER NOT NULL CHECK(provenance_ref > 0),
+    source_id TEXT COLLATE "C" NOT NULL CHECK(octet_length(source_id) BETWEEN 1 AND 4096),
+    locator TEXT COLLATE "C" NOT NULL CHECK(octet_length(locator) BETWEEN 1 AND 4096),
+    PRIMARY KEY(campaign_id,provenance_ref)
+);
+CREATE INDEX archive_provenance_pair_v1 ON babylon_meta.archive_provenance_v1
+    USING hash ((ARRAY[source_id,locator] COLLATE "C"));
+
+CREATE FUNCTION babylon_meta.archive_provenance_guard_v1() RETURNS trigger
+LANGUAGE plpgsql SET search_path=pg_catalog AS $body$
+DECLARE next_ref BIGINT;
+BEGIN
+    IF TG_OP='DELETE' AND NOT EXISTS(SELECT 1 FROM babylon_meta.campaign WHERE campaign_id=OLD.campaign_id) THEN
+        RETURN OLD;
+    END IF;
+    IF TG_OP <> 'INSERT' THEN RAISE EXCEPTION 'Archive provenance definitions are immutable' USING ERRCODE='55000'; END IF;
+    PERFORM pg_advisory_xact_lock(hashtextextended(NEW.campaign_id::TEXT, 343));
+    IF EXISTS(SELECT 1 FROM babylon_meta.archive_provenance_v1
+        WHERE campaign_id=NEW.campaign_id AND (ARRAY[source_id,locator] COLLATE "C")=(ARRAY[NEW.source_id,NEW.locator] COLLATE "C")
+        AND source_id=NEW.source_id COLLATE "C" AND locator=NEW.locator COLLATE "C") THEN
+        RAISE EXCEPTION 'duplicate exact Archive provenance definition' USING ERRCODE='23505';
+    END IF;
+    SELECT COALESCE(MAX(provenance_ref)::BIGINT,0)+1 INTO next_ref
+        FROM babylon_meta.archive_provenance_v1 WHERE campaign_id=NEW.campaign_id;
+    IF next_ref>2147483647 THEN RAISE EXCEPTION 'Archive provenance reference overflow' USING ERRCODE='22003'; END IF;
+    IF NEW.provenance_ref<>next_ref THEN RAISE EXCEPTION 'Archive provenance reference is not dense' USING ERRCODE='23514'; END IF;
+    RETURN NEW;
+END $body$;
+CREATE TRIGGER archive_provenance_guard_v1 BEFORE INSERT OR UPDATE OR DELETE ON babylon_meta.archive_provenance_v1
+FOR EACH ROW EXECUTE FUNCTION babylon_meta.archive_provenance_guard_v1();
+
+CREATE FUNCTION babylon_meta.archive_provenance_intern_v1(campaign UUID,source TEXT,location TEXT)
+RETURNS INTEGER LANGUAGE plpgsql SET search_path=pg_catalog AS $body$
+DECLARE result INTEGER; next_ref BIGINT;
+BEGIN
+    IF NOT COALESCE(octet_length(source) BETWEEN 1 AND 4096 AND octet_length(location) BETWEEN 1 AND 4096,FALSE) THEN
+        RAISE EXCEPTION 'invalid Archive provenance text bounds' USING ERRCODE='23514';
+    END IF;
+    PERFORM pg_advisory_xact_lock(hashtextextended(campaign::TEXT,343));
+    SELECT provenance_ref INTO result FROM babylon_meta.archive_provenance_v1
+        WHERE campaign_id=campaign AND (ARRAY[source_id,locator] COLLATE "C")=(ARRAY[source,location] COLLATE "C")
+        AND source_id=source COLLATE "C" AND locator=location COLLATE "C";
+    IF FOUND THEN RETURN result; END IF;
+    SELECT COALESCE(MAX(provenance_ref)::BIGINT,0)+1 INTO next_ref
+        FROM babylon_meta.archive_provenance_v1 WHERE campaign_id=campaign;
+    IF next_ref>2147483647 THEN RAISE EXCEPTION 'Archive provenance reference overflow' USING ERRCODE='22003'; END IF;
+    INSERT INTO babylon_meta.archive_provenance_v1 VALUES(campaign,next_ref::INTEGER,source,location);
+    RETURN next_ref::INTEGER;
+END $body$;
+REVOKE ALL ON FUNCTION babylon_meta.archive_provenance_guard_v1(),
+    babylon_meta.archive_provenance_intern_v1(UUID,TEXT,TEXT) FROM PUBLIC;
+
 CREATE TABLE babylon_meta.archive_knowledge_grant_v1 (
     campaign_id UUID NOT NULL,
     subject_kind TEXT NOT NULL CHECK (subject_kind IN ('county', 'place', 'concept', 'workplace', 'organization')),
@@ -12,12 +67,8 @@ CREATE TABLE babylon_meta.archive_knowledge_grant_v1 (
     ),
     grant_key TEXT NOT NULL CHECK (grant_key ~ '^[a-z0-9][a-z0-9-]{0,127}$'),
     granted_tick BIGINT NOT NULL CHECK (granted_tick >= 0),
-    provenance_source_id TEXT NOT NULL CHECK (
-        pg_catalog.octet_length(provenance_source_id) BETWEEN 1 AND 4096
-    ),
-    provenance_locator TEXT NOT NULL CHECK (
-        pg_catalog.octet_length(provenance_locator) BETWEEN 1 AND 4096
-    ),
+    provenance_ref INTEGER NOT NULL,
+    FOREIGN KEY(campaign_id,provenance_ref) REFERENCES babylon_meta.archive_provenance_v1(campaign_id,provenance_ref),
     PRIMARY KEY (campaign_id, subject_kind, subject_id, grant_key),
     FOREIGN KEY (campaign_id) REFERENCES babylon_meta.campaign(campaign_id) ON DELETE CASCADE
 );
@@ -68,12 +119,8 @@ CREATE TABLE babylon_meta.archive_atom_v1 (
     ),
     value_u64 BIGINT CHECK (value_u64 IS NULL OR value_u64 >= 0),
     value_bool BOOLEAN,
-    provenance_source_id TEXT NOT NULL CHECK (
-        pg_catalog.octet_length(provenance_source_id) BETWEEN 1 AND 4096
-    ),
-    provenance_locator TEXT NOT NULL CHECK (
-        pg_catalog.octet_length(provenance_locator) BETWEEN 1 AND 4096
-    ),
+    provenance_ref INTEGER NOT NULL,
+    FOREIGN KEY(campaign_id,provenance_ref) REFERENCES babylon_meta.archive_provenance_v1(campaign_id,provenance_ref),
     valid_tick BIGINT NOT NULL CHECK (valid_tick >= 0),
     CHECK ((value_kind = 'text') = (value_text IS NOT NULL)),
     CHECK ((value_kind = 'f64') = (value_f64 IS NOT NULL)),
@@ -82,6 +129,21 @@ CREATE TABLE babylon_meta.archive_atom_v1 (
 );
 
 -- Publications at the same tick share one immutable disclosure snapshot.
+-- Logical citation witnesses resolve the sole current physical representation.
+CREATE VIEW babylon_meta.archive_knowledge_grant_witness_v1 AS
+SELECT grant_row.campaign_id,grant_row.subject_kind,grant_row.subject_id,
+    grant_row.grant_key,grant_row.granted_tick,provenance.source_id AS provenance_source_id,
+    provenance.locator AS provenance_locator
+FROM babylon_meta.archive_knowledge_grant_v1 grant_row
+JOIN babylon_meta.archive_provenance_v1 provenance USING(campaign_id,provenance_ref);
+CREATE VIEW babylon_meta.archive_atom_witness_v1 AS
+SELECT atom.atom_id,atom.campaign_id,atom.subject_kind,atom.subject_id,
+    atom.signal_key,atom.grant_key,atom.evidence_class,atom.value_kind,
+    atom.value_text,atom.value_f64,atom.value_u64,atom.value_bool,
+    provenance.source_id AS provenance_source_id,provenance.locator AS provenance_locator,atom.valid_tick
+FROM babylon_meta.archive_atom_v1 atom
+JOIN babylon_meta.archive_provenance_v1 provenance USING(campaign_id,provenance_ref);
+
 -- One complete base per Designed 13-period segment; pins bind actual admission.
 -- ARCHIVE_KNOWLEDGE_CHECKPOINT_PERIODS in tick_knowledge.rs owns publication cadence.
 CREATE TABLE babylon_meta.archive_tick_knowledge_v3 (
@@ -118,6 +180,40 @@ CREATE TABLE babylon_meta.archive_knowledge_membership_v3 (
 CREATE INDEX archive_knowledge_admission_v3 ON babylon_meta.archive_knowledge_membership_v3
     (campaign_id,checkpoint_tick,admitted_at_tick);
 
+-- Pure bounded structural validation; no database reads or disclosure authority.
+CREATE FUNCTION babylon_meta.archive_revision_membership_valid_v1(
+    atom_count INTEGER, grant_count INTEGER, atom_ids BYTEA[],
+    grant_subject_kinds TEXT[], grant_subject_ids TEXT[], grant_keys TEXT[],
+    grant_ticks BIGINT[], grant_provenance_refs INTEGER[]
+) RETURNS BOOLEAN LANGUAGE sql IMMUTABLE PARALLEL SAFE
+SET search_path = pg_catalog AS $body$
+SELECT CASE WHEN COALESCE(
+    atom_count BETWEEN 1 AND 513 AND grant_count BETWEEN 1 AND 513
+    AND array_ndims(atom_ids)=1 AND array_lower(atom_ids,1)=1 AND cardinality(atom_ids)=atom_count
+    AND array_ndims(grant_subject_kinds)=1 AND array_lower(grant_subject_kinds,1)=1 AND cardinality(grant_subject_kinds)=grant_count
+    AND array_ndims(grant_subject_ids)=1 AND array_lower(grant_subject_ids,1)=1 AND cardinality(grant_subject_ids)=grant_count
+    AND array_ndims(grant_keys)=1 AND array_lower(grant_keys,1)=1 AND cardinality(grant_keys)=grant_count
+    AND array_ndims(grant_ticks)=1 AND array_lower(grant_ticks,1)=1 AND cardinality(grant_ticks)=grant_count
+    AND array_ndims(grant_provenance_refs)=1 AND array_lower(grant_provenance_refs,1)=1 AND cardinality(grant_provenance_refs)=grant_count,
+    FALSE) THEN
+    NOT EXISTS (SELECT 1 FROM unnest(atom_ids) atom(id)
+        WHERE NOT COALESCE(octet_length(atom.id)=32,FALSE))
+    AND (SELECT count(DISTINCT atom.id) FROM unnest(atom_ids) atom(id))=atom_count
+    AND NOT EXISTS (
+        SELECT 1 FROM unnest(grant_subject_kinds,grant_subject_ids,grant_keys,
+            grant_ticks,grant_provenance_refs)
+            member(kind,id,key,tick,provenance_ref)
+        WHERE NOT COALESCE(
+            ((member.kind='county' AND member.id ~ '^[0-9]{5}$')
+             OR (member.kind='place' AND member.id ~ '^[0-9]{7}$')
+             OR (member.kind IN ('workplace','organization') AND member.id ~ '^[1-9][0-9]{0,19}$'))
+            AND member.key ~ '^[a-z0-9][a-z0-9-]{0,127}$' AND member.tick>=0
+            AND member.provenance_ref>0,FALSE))
+    AND (SELECT count(DISTINCT (member.kind,member.id,member.key))
+        FROM unnest(grant_subject_kinds,grant_subject_ids,grant_keys) member(kind,id,key))=grant_count
+    ELSE FALSE END
+$body$;
+
 CREATE TABLE babylon_meta.archive_page_revision_v2 (
     campaign_id UUID NOT NULL REFERENCES babylon_meta.campaign(campaign_id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED,
     subject_kind TEXT NOT NULL CHECK (subject_kind IN ('county', 'place', 'workplace', 'organization')),
@@ -139,44 +235,59 @@ CREATE TABLE babylon_meta.archive_page_revision_v2 (
     body_decoded_length INTEGER NOT NULL CHECK (body_decoded_length BETWEEN 46 AND 11538477),
     body_decoded_sha256 BYTEA NOT NULL CHECK (octet_length(body_decoded_sha256) = 32),
     body_bytes BYTEA NOT NULL CHECK (octet_length(body_bytes) BETWEEN 1 AND 11584573),
+    atom_ids BYTEA[] NOT NULL,
+    grant_subject_kinds TEXT[] NOT NULL,
+    grant_subject_ids TEXT[] NOT NULL,
+    grant_keys TEXT[] NOT NULL,
+    grant_ticks BIGINT[] NOT NULL,
+    grant_provenance_refs INTEGER[] NOT NULL,
+    CHECK (COALESCE(babylon_meta.archive_revision_membership_valid_v1(
+        atom_count,grant_count,atom_ids,grant_subject_kinds,grant_subject_ids,
+        grant_keys,grant_ticks,grant_provenance_refs),FALSE)),
     CHECK (source_tick = effective_tick),
     PRIMARY KEY (campaign_id, subject_kind, subject_id, effective_tick),
     FOREIGN KEY (campaign_id, source_tick) REFERENCES babylon_state.tick_commit(campaign_id, resolve_tick),
     FOREIGN KEY (campaign_id, effective_tick) REFERENCES babylon_state.tick_commit(campaign_id, resolve_tick)
 );
 
-CREATE TABLE babylon_meta.archive_revision_atom_v2 (
-    campaign_id UUID NOT NULL,
-    subject_kind TEXT NOT NULL,
-    subject_id TEXT NOT NULL,
-    effective_tick BIGINT NOT NULL,
-    position INTEGER NOT NULL CHECK (position BETWEEN 0 AND 512),
-    atom_id BYTEA NOT NULL REFERENCES babylon_meta.archive_atom_v1(atom_id),
-    PRIMARY KEY (campaign_id, subject_kind, subject_id, effective_tick, position),
-    UNIQUE (campaign_id, subject_kind, subject_id, effective_tick, atom_id),
-    FOREIGN KEY (campaign_id, subject_kind, subject_id, effective_tick)
-        REFERENCES babylon_meta.archive_page_revision_v2 ON DELETE CASCADE
-);
+-- Private SQL projections over bounded ordered frozen page witnesses.
+CREATE VIEW babylon_meta.archive_revision_atom_members_v3 AS
+SELECT revision.campaign_id,revision.subject_kind,revision.subject_id,
+    revision.effective_tick,(member.ordinality-1)::INTEGER AS position,member.atom_id
+FROM babylon_meta.archive_page_revision_v2 revision
+CROSS JOIN LATERAL unnest(revision.atom_ids) WITH ORDINALITY member(atom_id,ordinality);
 
-CREATE TABLE babylon_meta.archive_revision_grant_v2 (
-    campaign_id UUID NOT NULL,
-    subject_kind TEXT NOT NULL,
-    subject_id TEXT NOT NULL,
-    effective_tick BIGINT NOT NULL,
-    position INTEGER NOT NULL CHECK (position BETWEEN 0 AND 512),
-    grant_subject_kind TEXT NOT NULL CHECK (grant_subject_kind IN ('county', 'place', 'workplace', 'organization')),
-    grant_subject_id TEXT NOT NULL,
-    grant_key TEXT NOT NULL CHECK (grant_key ~ '^[a-z0-9][a-z0-9-]{0,127}$'),
-    granted_tick BIGINT NOT NULL CHECK (granted_tick >= 0),
-    provenance_source_id TEXT NOT NULL CHECK (octet_length(provenance_source_id) BETWEEN 1 AND 4096),
-    provenance_locator TEXT NOT NULL CHECK (octet_length(provenance_locator) BETWEEN 1 AND 4096),
-    PRIMARY KEY (campaign_id, subject_kind, subject_id, effective_tick, position),
-    UNIQUE (campaign_id, subject_kind, subject_id, effective_tick, grant_subject_kind, grant_subject_id, grant_key),
-    FOREIGN KEY (campaign_id, subject_kind, subject_id, effective_tick)
-        REFERENCES babylon_meta.archive_page_revision_v2 ON DELETE CASCADE,
-    FOREIGN KEY (campaign_id, grant_subject_kind, grant_subject_id, grant_key)
-        REFERENCES babylon_meta.archive_knowledge_grant_v1(campaign_id, subject_kind, subject_id, grant_key)
-);
+CREATE VIEW babylon_meta.archive_revision_grant_members_v3 AS
+SELECT revision.campaign_id,revision.subject_kind,revision.subject_id,
+    revision.effective_tick,(member.ordinality-1)::INTEGER AS position,
+    member.grant_subject_kind,member.grant_subject_id,member.grant_key,
+    member.granted_tick,provenance.source_id AS provenance_source_id,
+    provenance.locator AS provenance_locator
+FROM babylon_meta.archive_page_revision_v2 revision
+CROSS JOIN LATERAL unnest(revision.grant_subject_kinds,revision.grant_subject_ids,
+    revision.grant_keys,revision.grant_ticks,revision.grant_provenance_refs)
+    WITH ORDINALITY member(grant_subject_kind,grant_subject_id,grant_key,granted_tick,provenance_ref,ordinality)
+LEFT JOIN babylon_meta.archive_provenance_v1 provenance
+    ON provenance.campaign_id=revision.campaign_id AND provenance.provenance_ref=member.provenance_ref;
+
+-- Array elements need the same campaign-qualified referential proof as scalar FKs.
+CREATE FUNCTION babylon_meta.archive_revision_provenance_guard_v1() RETURNS trigger
+LANGUAGE plpgsql SET search_path=pg_catalog AS $body$
+BEGIN
+    IF NOT COALESCE(babylon_meta.archive_revision_membership_valid_v1(NEW.atom_count,NEW.grant_count,NEW.atom_ids,NEW.grant_subject_kinds,NEW.grant_subject_ids,NEW.grant_keys,NEW.grant_ticks,NEW.grant_provenance_refs),FALSE) THEN
+        RETURN NEW; -- The table CHECK owns malformed array refusal.
+    END IF;
+    IF EXISTS(SELECT 1 FROM unnest(NEW.grant_provenance_refs) member(ref)
+        LEFT JOIN babylon_meta.archive_provenance_v1 provenance
+        ON provenance.campaign_id=NEW.campaign_id AND provenance.provenance_ref=member.ref
+        WHERE provenance.provenance_ref IS NULL) THEN
+        RAISE EXCEPTION 'missing campaign Archive provenance reference' USING ERRCODE='23503';
+    END IF;
+    RETURN NEW;
+END $body$;
+REVOKE ALL ON FUNCTION babylon_meta.archive_revision_provenance_guard_v1() FROM PUBLIC;
+CREATE TRIGGER archive_revision_provenance_guard_v1 BEFORE INSERT OR UPDATE ON babylon_meta.archive_page_revision_v2
+FOR EACH ROW EXECUTE FUNCTION babylon_meta.archive_revision_provenance_guard_v1();
 
 CREATE VIEW public.v_archive_revision_known_v2 WITH (security_barrier = true) AS
 SELECT revision.*
@@ -185,24 +296,38 @@ JOIN babylon_state.tick_commit source
   ON source.campaign_id = revision.campaign_id AND source.resolve_tick = revision.source_tick
  AND source.tick_content_hash = revision.source_content_hash
 WHERE EXISTS (
-    SELECT 1 FROM babylon_meta.archive_knowledge_grant_v1 grant_row
+    SELECT 1 FROM babylon_meta.archive_knowledge_grant_witness_v1 grant_row
     WHERE grant_row.campaign_id = revision.campaign_id
       AND grant_row.subject_kind = revision.subject_kind AND grant_row.subject_id = revision.subject_id
       AND grant_row.grant_key = 'subject' AND grant_row.granted_tick <= revision.source_tick
 )
+AND COALESCE(babylon_meta.archive_revision_membership_valid_v1(
+    revision.atom_count,revision.grant_count,revision.atom_ids,
+    revision.grant_subject_kinds,revision.grant_subject_ids,revision.grant_keys,
+    revision.grant_ticks,revision.grant_provenance_refs),FALSE)
 AND revision.grant_count = (
-    SELECT count(*) FROM babylon_meta.archive_revision_grant_v2 dependency
+    SELECT count(*) FROM babylon_meta.archive_revision_grant_members_v3 dependency
     WHERE (dependency.campaign_id, dependency.subject_kind, dependency.subject_id, dependency.effective_tick)
         = (revision.campaign_id, revision.subject_kind, revision.subject_id, revision.effective_tick)
 )
 AND revision.atom_count = (
-    SELECT count(*) FROM babylon_meta.archive_revision_atom_v2 membership
+    SELECT count(*) FROM babylon_meta.archive_revision_atom_members_v3 membership
     WHERE (membership.campaign_id, membership.subject_kind, membership.subject_id, membership.effective_tick)
         = (revision.campaign_id, revision.subject_kind, revision.subject_id, revision.effective_tick)
 )
 AND NOT EXISTS (
-    SELECT 1 FROM babylon_meta.archive_revision_grant_v2 dependency
-    LEFT JOIN babylon_meta.archive_knowledge_grant_v1 grant_row
+    SELECT 1 FROM babylon_meta.archive_revision_atom_members_v3 membership
+    LEFT JOIN babylon_meta.archive_atom_witness_v1 atom
+      ON atom.atom_id=membership.atom_id AND atom.campaign_id=revision.campaign_id
+     AND atom.subject_kind=revision.subject_kind AND atom.subject_id=revision.subject_id
+     AND atom.valid_tick=revision.source_tick
+    WHERE (membership.campaign_id,membership.subject_kind,membership.subject_id,membership.effective_tick)
+        = (revision.campaign_id,revision.subject_kind,revision.subject_id,revision.effective_tick)
+      AND atom.atom_id IS NULL
+)
+AND NOT EXISTS (
+    SELECT 1 FROM babylon_meta.archive_revision_grant_members_v3 dependency
+    LEFT JOIN babylon_meta.archive_knowledge_grant_witness_v1 grant_row
       ON grant_row.campaign_id = dependency.campaign_id
      AND grant_row.subject_kind = dependency.grant_subject_kind
      AND grant_row.subject_id = dependency.grant_subject_id
@@ -221,7 +346,7 @@ CREATE VIEW public.v_archive_revision_index_v2 WITH (security_barrier = true) AS
 SELECT revision.campaign_id, revision.subject_kind, revision.subject_id,
     revision.effective_tick, revision.revision_sha256
 FROM babylon_meta.archive_page_revision_v2 revision
-JOIN babylon_meta.archive_knowledge_grant_v1 grant_row
+JOIN babylon_meta.archive_knowledge_grant_witness_v1 grant_row
   ON grant_row.campaign_id = revision.campaign_id
  AND grant_row.subject_kind = revision.subject_kind AND grant_row.subject_id = revision.subject_id
  AND grant_row.grant_key = 'subject' AND grant_row.granted_tick <= revision.source_tick;
@@ -229,16 +354,16 @@ JOIN babylon_meta.archive_knowledge_grant_v1 grant_row
 CREATE VIEW public.v_archive_revision_atom_v2 WITH (security_barrier = true) AS
 SELECT atom.*, revision.effective_tick, membership.position
 FROM public.v_archive_revision_known_v2 revision
-JOIN babylon_meta.archive_revision_atom_v2 membership
+JOIN babylon_meta.archive_revision_atom_members_v3 membership
   USING (campaign_id, subject_kind, subject_id, effective_tick)
-JOIN babylon_meta.archive_atom_v1 atom
+JOIN babylon_meta.archive_atom_witness_v1 atom
   ON atom.atom_id = membership.atom_id AND atom.campaign_id = revision.campaign_id
  AND atom.subject_kind = revision.subject_kind AND atom.subject_id = revision.subject_id
  AND atom.valid_tick = revision.source_tick;
 
 CREATE VIEW public.v_archive_revision_grant_v2 WITH (security_barrier = true) AS
 SELECT dependency.* FROM public.v_archive_revision_known_v2 revision
-JOIN babylon_meta.archive_revision_grant_v2 dependency
+JOIN babylon_meta.archive_revision_grant_members_v3 dependency
   USING (campaign_id, subject_kind, subject_id, effective_tick);
 
 -- The safe view verifies the canonical knowledge encoding inside the database;
@@ -263,7 +388,7 @@ SELECT member.campaign_id,member.checkpoint_tick,member.admitted_at_tick,
     || pg_catalog.int8send(octet_length(grant_row.provenance_source_id)::BIGINT) || pg_catalog.convert_to(grant_row.provenance_source_id,'UTF8')
     || pg_catalog.int8send(octet_length(grant_row.provenance_locator)::BIGINT) || pg_catalog.convert_to(grant_row.provenance_locator,'UTF8') AS bytes
 FROM babylon_meta.archive_knowledge_membership_v3 member
-LEFT JOIN babylon_meta.archive_knowledge_grant_v1 grant_row
+LEFT JOIN babylon_meta.archive_knowledge_grant_witness_v1 grant_row
     USING(campaign_id,subject_kind,subject_id,grant_key);
 
 CREATE VIEW babylon_meta.archive_knowledge_cohort_v3 AS
@@ -313,7 +438,7 @@ SELECT pin.campaign_id,pin.resolve_tick,pin.tick_content_hash,pin.worker_contrac
             OR admission.worker_contract_sha256<>pin.worker_contract_sha256
             OR admission.admitted_count<>delta.grant_count OR delta.invalid_count<>0
             OR admission.admitted_sha256<>delta.knowledge_sha256))) AS valid,
-    EXISTS(SELECT 1 FROM babylon_meta.archive_knowledge_grant_v1 grant_row
+    EXISTS(SELECT 1 FROM babylon_meta.archive_knowledge_grant_witness_v1 grant_row
         WHERE grant_row.campaign_id=pin.campaign_id AND grant_row.subject_kind IN ('county','place','workplace','organization')
         AND grant_row.granted_tick<=pin.resolve_tick
         AND NOT EXISTS(SELECT 1 FROM babylon_meta.archive_knowledge_membership_scope_v3 member
@@ -330,7 +455,7 @@ JOIN babylon_meta.archive_knowledge_cohort_v3 members
 CREATE VIEW public.v_archive_subject_grant_v2 AS
 SELECT member.campaign_id,member.resolve_tick,member.subject_kind,member.subject_id,grant_row.granted_tick
 FROM babylon_meta.archive_knowledge_membership_scope_v3 member
-JOIN babylon_meta.archive_knowledge_grant_v1 grant_row USING(campaign_id,subject_kind,subject_id,grant_key)
+JOIN babylon_meta.archive_knowledge_grant_witness_v1 grant_row USING(campaign_id,subject_kind,subject_id,grant_key)
 WHERE member.grant_key='subject' AND grant_row.granted_tick<=member.resolve_tick;
 
 -- Admission proves all emitted fields/labels against requested T's pin. Before
@@ -346,7 +471,7 @@ JOIN babylon_state.tick_commit marker ON marker.campaign_id=revision.campaign_id
 LEFT JOIN babylon_meta.archive_tick_knowledge_v3 pin
     ON pin.campaign_id=marker.campaign_id AND pin.resolve_tick=marker.resolve_tick
 WHERE (pin.campaign_id IS NOT NULL AND NOT EXISTS (
-    SELECT 1 FROM babylon_meta.archive_revision_grant_v2 dependency
+    SELECT 1 FROM babylon_meta.archive_revision_grant_members_v3 dependency
     WHERE (dependency.campaign_id,dependency.subject_kind,dependency.subject_id,dependency.effective_tick)
         =(revision.campaign_id,revision.subject_kind,revision.subject_id,revision.effective_tick)
     AND NOT EXISTS(SELECT 1 FROM babylon_meta.archive_knowledge_membership_scope_v3 member
@@ -387,10 +512,11 @@ FOR EACH STATEMENT EXECUTE FUNCTION babylon_meta.archive_wakeup_v1();
 CREATE TRIGGER archive_wakeup_enrollment_v1 AFTER INSERT ON babylon_meta.campaign
 FOR EACH STATEMENT EXECUTE FUNCTION babylon_meta.archive_wakeup_v1();
 
-REVOKE ALL ON babylon_meta.archive_knowledge_grant_v1,
+REVOKE ALL ON babylon_meta.archive_provenance_v1, babylon_meta.archive_knowledge_grant_witness_v1,
+    babylon_meta.archive_atom_witness_v1, babylon_meta.archive_knowledge_grant_v1,
     babylon_meta.archive_receipt_consumption_v1, babylon_meta.archive_atom_v1,
     babylon_meta.archive_page_revision_v2,
-    babylon_meta.archive_revision_atom_v2, babylon_meta.archive_revision_grant_v2,
+    babylon_meta.archive_revision_atom_members_v3, babylon_meta.archive_revision_grant_members_v3,
     babylon_meta.archive_tick_knowledge_v3,
     babylon_meta.archive_knowledge_membership_v3,
     babylon_meta.archive_knowledge_membership_scope_v3,

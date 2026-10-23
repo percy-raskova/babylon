@@ -332,7 +332,7 @@ fn physical_loss_refunds_donor_cash_and_never_grants_phantom_food() {
 }
 
 #[test]
-fn scarce_donor_time_protects_own_food_and_shared_actor_aliases_cannot_double_spend() {
+fn generic_residual_protects_own_food_and_shared_actor_aliases_cannot_double_spend() {
     let mut state = aid_opening(false);
     let CircuitAccounting::Monetary(accounts) = &mut state.accounting else {
         panic!("monetary");
@@ -353,7 +353,7 @@ fn scarce_donor_time_protects_own_food_and_shared_actor_aliases_cannot_double_sp
             .filter(|r| r.outcome == AidOutcome::Granted)
             .map(|r| r.quantity)
             .sum::<u64>(),
-        2
+        3
     );
     assert_eq!(
         result
@@ -361,14 +361,14 @@ fn scarce_donor_time_protects_own_food_and_shared_actor_aliases_cannot_double_sp
             .iter()
             .map(|r| r.hours)
             .sum::<u64>(),
-        4
+        6
     );
     assert_eq!(
         economy(&result.state)
             .book
             .cash(AccountId::Household(recipient()))
             .unwrap(),
-        money(6)
+        money(9)
     );
 }
 
@@ -448,7 +448,7 @@ fn real_organization_funds_pay_gift_cash_while_household_goods_keep_their_owner(
     assert_eq!(accounts.book.total_cash_and_reserves().unwrap(), total);
     // A cash namespace alone is not authenticated institution geography.
     assert_eq!(
-        close_aid(&state, &[input(2)]),
+        close_aid(&state, &[input(4)]),
         Err(MaterialCircuitError::FinancialInvariant)
     );
     let location = state
@@ -467,7 +467,9 @@ fn real_organization_funds_pay_gift_cash_while_household_goods_keep_their_owner(
     let donor_account = AccountId::Household(household());
     let after_funding = economy(&state).book.cash(donor_account).unwrap();
     assert_eq!(after_funding, money(0));
-    let result = close_aid(&state, &[input(2)]).unwrap();
+    // Four authorized units compete for supply; the original organization cash
+    // funds only two. Residual physical capacity cannot re-admit unfunded units.
+    let result = close_aid(&state, &[input(4)]).unwrap();
     let donor_postings = result
         .money_transfers
         .iter()

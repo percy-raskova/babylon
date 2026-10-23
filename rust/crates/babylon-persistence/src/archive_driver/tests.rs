@@ -153,3 +153,77 @@ fn fatal_refusal_survives_later_progress_until_delivery() {
         "delivery releases the explicit recovery path"
     );
 }
+
+// Exercise the exact driver sweep seam: only the canonical worker calls produce.
+#[test]
+fn settled_sweep_does_not_admit_a_producer() {
+    let owner = RefCell::new(None::<NullArchiveDossierProducer>);
+    let calls = std::cell::Cell::new(0);
+    let cancellation = ArchiveWorkerCancellation::default();
+    let result = run::sweep_with_factory(
+        &owner,
+        &cancellation,
+        || {
+            calls.set(calls.get() + 1);
+            Ok(NullArchiveDossierProducer)
+        },
+        |_| Ok(()),
+    );
+    assert_eq!(result, Ok(()));
+    assert_eq!(calls.get(), 0);
+    assert!(owner.borrow().is_none());
+}
+
+#[test]
+fn pending_sweeps_admit_once_and_reuse_after_production_refusal() {
+    let owner = RefCell::new(None::<NullArchiveDossierProducer>);
+    let calls = std::cell::Cell::new(0);
+    let cancellation = ArchiveWorkerCancellation::default();
+    let receipt = crate::PendingArchiveReceipt::try_new(1, [7; 32]).unwrap();
+    let knowledge = crate::ArchiveKnowledge::try_new(Vec::new()).unwrap();
+    for _ in 0..2 {
+        let result = run::sweep_with_factory(
+            &owner,
+            &cancellation,
+            || {
+                calls.set(calls.get() + 1);
+                Ok(NullArchiveDossierProducer)
+            },
+            |producer| {
+                producer.produce(uuid::Uuid::nil(), &receipt, &knowledge, 1)?;
+                Err::<(), _>(SemanticArchiveError::ReceiptConflict)
+            },
+        );
+        assert_eq!(result, Err(SemanticArchiveError::ReceiptConflict));
+    }
+    assert_eq!(calls.get(), 1);
+}
+
+#[test]
+fn cancellation_never_starts_factory_and_stop_during_admission_refuses_production() {
+    let owner = RefCell::new(None::<NullArchiveDossierProducer>);
+    let cancellation = ArchiveWorkerCancellation::default();
+    cancellation.request_stop();
+    assert_eq!(
+        run::sweep_with_factory(
+            &owner,
+            &cancellation,
+            || panic!("stopped driver must not admit"),
+            |_| Ok(())
+        ),
+        Err(SemanticArchiveError::WorkerCanceled)
+    );
+    let cancellation = ArchiveWorkerCancellation::default();
+    let receipt = crate::PendingArchiveReceipt::try_new(1, [7; 32]).unwrap();
+    let knowledge = crate::ArchiveKnowledge::try_new(Vec::new()).unwrap();
+    let result = run::sweep_with_factory(
+        &owner,
+        &cancellation,
+        || {
+            cancellation.request_stop();
+            Ok(NullArchiveDossierProducer)
+        },
+        |producer| producer.produce(uuid::Uuid::nil(), &receipt, &knowledge, 1),
+    );
+    assert_eq!(result, Err(SemanticArchiveError::WorkerCanceled));
+}

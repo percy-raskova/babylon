@@ -379,3 +379,74 @@ fn purchase_and_shift_admission_refuse_invalid_principals() {
     );
     assert_eq!(ledger, before);
 }
+
+#[test]
+fn immutable_money_views_match_canonical_identity_order() {
+    let mut ledger = MonetaryBook::open(vec![
+        CashAccount {
+            id: buyer(),
+            cash: money(100),
+        },
+        CashAccount {
+            id: supplier(),
+            cash: money(40),
+        },
+    ])
+    .unwrap();
+    let service = OutboundOrderId::Service(OrderId::from_bytes([2; 32]));
+    ledger
+        .reserve_purchase(PurchaseEscrow::new(service, buyer(), supplier(), 2, money(3)).unwrap())
+        .unwrap();
+    ledger.reserve_purchase(purchase(10, 3)).unwrap();
+    ledger
+        .reserve_shift(FundedShift::new(shift(), supplier(), buyer(), 2, 4, money(3)).unwrap())
+        .unwrap();
+    let snapshot = ledger.snapshot();
+    assert_eq!(ledger.cash_accounts().len(), snapshot.accounts.len());
+    let accounts: Vec<_> = ledger
+        .cash_accounts()
+        .map(|(&id, &cash)| CashAccount { id, cash })
+        .collect();
+    assert_eq!(accounts, snapshot.accounts);
+    // Same identity bytes in different owner namespaces remain separate principals.
+    assert_eq!(accounts.len(), 2);
+    assert_ne!(accounts[0].id, accounts[1].id);
+    assert_eq!(ledger.purchases().len(), snapshot.purchases.len());
+    assert_eq!(
+        ledger.purchases().cloned().collect::<Vec<_>>(),
+        snapshot.purchases
+    );
+    for principal in ledger.purchases() {
+        assert!(std::ptr::eq(
+            principal,
+            ledger.purchase(principal.order).unwrap()
+        ));
+    }
+    assert_eq!(ledger.snapshot(), snapshot);
+    assert_eq!(MonetaryBook::from_snapshot(snapshot).unwrap(), ledger);
+}
+
+#[test]
+fn purchase_view_preserves_partial_settlement_and_retirement() {
+    let mut ledger = book();
+    assert!(ledger.purchases().next().is_none());
+    ledger.reserve_purchase(purchase(10, 3)).unwrap();
+    ledger.settle_purchase(order(), 4).unwrap();
+    ledger.refund_purchase(order(), 2).unwrap();
+    let snapshot = ledger.snapshot();
+    let principal = ledger.purchases().next().unwrap();
+    assert_eq!(principal, &snapshot.purchases[0]);
+    assert_eq!((principal.delivered, principal.refunded), (4, 2));
+    assert!(std::ptr::eq(principal, ledger.purchase(order()).unwrap()));
+    assert_eq!(
+        ledger.retire_purchase(order()),
+        Err(MonetaryError::OpenPrincipal)
+    );
+    assert_eq!(ledger.snapshot(), snapshot);
+    ledger.settle_purchase(order(), 8).unwrap();
+    ledger.retire_purchase(order()).unwrap();
+    assert!(ledger.purchases().next().is_none());
+    assert!(ledger.snapshot().purchases.is_empty());
+    assert_eq!(ledger.cash_accounts().len(), 2);
+    assert_eq!(ledger.total_cash_and_reserves().unwrap(), money(140));
+}

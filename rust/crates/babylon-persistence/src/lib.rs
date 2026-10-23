@@ -2,6 +2,12 @@
 #![forbid(unsafe_code)]
 #![warn(clippy::pedantic)]
 
+// National reconstruction retires large graphs, registers and receipt owners.
+// Use the same allocator in the runtime, client and persistence qualification
+// consumers so freed owners do not leave gigabytes of glibc arenas resident.
+#[global_allocator]
+static ALLOCATOR: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 // Share the integration fixture with private reconstruction tests in this crate.
 #[cfg(test)]
 extern crate self as babylon_persistence;
@@ -11,6 +17,7 @@ mod archive_campaign;
 pub use archive_campaign::captured_archive_producer;
 pub mod archive_driver;
 mod archive_foundation_grants;
+mod archive_provenance;
 pub mod archive_revision;
 mod archive_wakeup;
 mod archive_worker;
@@ -57,6 +64,7 @@ mod place_producer;
 pub mod postgres_catalog;
 mod postgres_diagnostic;
 pub(crate) mod production_projection;
+pub mod qualification_audit;
 mod reader;
 mod receipt_storage;
 mod runtime;

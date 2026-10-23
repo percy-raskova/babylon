@@ -1,7 +1,7 @@
 //! Independent vectors for recurring demand, consumption, firm plans and prices.
 use babylon_tick::material_world::{decode_material_receipts, MaterialWorldError};
 
-const DOMAIN: &[u8] = b"babylon.material-tick-receipts.v17\0";
+const DOMAIN: &[u8] = b"babylon.material-tick-receipts.v18\0";
 
 fn words(ids: &[u8], values: &[u64]) -> Vec<u8> {
     let mut bytes = Vec::new();
@@ -48,7 +48,7 @@ fn price(reason: u8, old: i128, next: i128, unserved: u64, stock: u64) -> Vec<u8
 
 fn envelope(family: u8, rows: &[Vec<u8>]) -> Vec<u8> {
     let mut bytes = DOMAIN.to_vec();
-    bytes.extend_from_slice(&17_u32.to_be_bytes());
+    bytes.extend_from_slice(&18_u32.to_be_bytes());
     bytes.extend_from_slice(&7_u64.to_be_bytes());
     for tag in 1..=36 {
         bytes.push(tag);

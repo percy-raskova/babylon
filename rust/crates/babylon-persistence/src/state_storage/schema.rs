@@ -1,4 +1,4 @@
-//! Source-model framing for every current state18 branch. Every variable row is
+//! Source-model framing for every current state19 branch. Every variable row is
 //! parsed and bounded before its raw or closed variant storage encoding is chosen.
 use super::{layout::layout, StorageError, MAX_BYTES};
 pub(super) const REGISTER_DOMAIN: &[u8] = b"babylon.material-world-register.v4\0";
@@ -172,7 +172,7 @@ impl StateParser<'_> {
     fn state(&mut self, tick: usize) -> Result<(), StorageError> {
         let start = self.cursor.pos;
         self.cursor.expect(STATE_DOMAIN)?;
-        if self.cursor.number(2)? != 18 {
+        if self.cursor.number(2)? != 19 {
             return Err(StorageError::Version);
         }
         if self.cursor.number(8)? != tick.checked_add(1).ok_or(StorageError::Bounds)? {

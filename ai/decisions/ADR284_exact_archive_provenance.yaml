@@ -1,0 +1,61 @@
+ADR284_exact_archive_provenance:
+  status: accepted
+  date: '2026-10-06'
+  issue: PER-343
+  title: Exact Archive citations share immutable campaign provenance
+  evidence_class: Designed
+  authority:
+    - Director approved measured lossless PostgreSQL redesign
+    - Repository rules require an architecture decision record
+  context: |
+    The retained smoke006 corpus has 22,044 citation references to 3,149 exact
+    source and locator pairs. A rollback-only physical experiment reconstructed
+    all atom, grant and page rows exactly. Including equivalent indexes, TOAST
+    and the lookup, copied relation storage fell from 12,320,768 to 8,658,944
+    decimal bytes. This is a two-period component result, not retained save
+    growth, production constraint evidence or national qualification.
+  decision: |
+    Store each complete bounded source and locator pair once per campaign.
+    Atoms and authoritative knowledge grants use positive integer references;
+    page revisions freeze ordered references independently of later grants.
+    Private witness views reconstruct the original strings for existing atom,
+    knowledge, revision and dossier authentication. Physical references never
+    enter those semantic hashes or replace the original citation text.
+
+    A nonunique C-collated hash index selects candidates. Complete C-collated
+    pair equality decides reuse. A campaign transaction lock serializes dense
+    allocation; primary keys independently reject competing reference IDs.
+    Refuse duplicate definitions, gaps, overflow, changed definitions and
+    unresolved campaign references. Validate every frozen array element as
+    well as its dimensions, order, count and complete subject membership.
+
+    Intern atom and grant citations within their existing insert statements.
+    Resolve each page's bounded ordered references in one batch. Keep planner
+    statistics on the physical grant and provenance tables. Preserve short
+    capture and publication transactions, detached authentication and exact
+    revalidation. Current grant drift must still invalidate a frozen witness.
+
+    Maintain one current schema and regenerate all four authentic role census
+    fixtures. Refuse earlier layouts before writes. Preserve failed evidence,
+    source and input capsules, a verified backup and its matching executable
+    before retiring the exact owned fixture. Add no compatibility path.
+  alternatives: |
+    Repeating citation strings in atoms, grants and frozen pages retains the
+    measured duplication. Hash-only identity weakens equality. Per-reference
+    client queries add avoidable round trips. External archives remain deferred
+    under ADR278 until total storage and recovery evidence justifies them.
+  consequences: |
+    The lookup and its indexes count toward full retained storage. Added joins
+    and interning work require measured timing. Economic accounts, all counties,
+    disclosure authority and the reserved theory line remain unchanged.
+    ADR280 budgets and the single qualification policy remain authoritative.
+    This record establishes neither national acceptance nor merge authority.
+  verification:
+    - Exact citations and canonical hashes survive typed current and historical reads.
+    - Missing or foreign references and mutable definitions are refused.
+    - Current or frozen citation drift withholds the corresponding body.
+    - Rollback, retry and late grants preserve exact original membership.
+    - Restricted reader roles cannot inspect the private lookup or witnesses.
+    - Actual whole-save measurements charge all relations, indexes and TOAST.
+  source_record: reports/test-results/per343-provenance/2026-10-06/physical001/result.json
+  implementation_record: reports/test-results/per343-provenance/2026-10-06/implementation001

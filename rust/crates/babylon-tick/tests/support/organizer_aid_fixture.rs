@@ -90,7 +90,7 @@ fn route(id: u8) -> RouteId {
 pub(crate) fn household() -> FinalDemandPrincipalId {
     FinalDemandPrincipalId::from_bytes([1; 32])
 }
-fn units() -> UnitId {
+pub(crate) fn units() -> UnitId {
     UnitId::from_bytes([1; 32])
 }
 fn hours() -> UnitId {
@@ -441,7 +441,7 @@ pub(crate) fn opening() -> MaterialCircuitState {
 pub(crate) fn recipient() -> FinalDemandPrincipalId {
     FinalDemandPrincipalId::from_bytes([76; 32])
 }
-fn aid_opening(routed: bool) -> MaterialCircuitState {
+pub(crate) fn aid_opening(routed: bool) -> MaterialCircuitState {
     let mut state = opening();
     state.final_demand_principals.push(FinalDemandPrincipal {
         id: recipient(),
@@ -523,7 +523,7 @@ fn aid_opening(routed: bool) -> MaterialCircuitState {
     };
     state
 }
-fn mandate(routed: bool) -> AidMandate {
+pub(crate) fn mandate(routed: bool) -> AidMandate {
     AidMandate {
         id: [91; 32],
         source_hash: [92; 32],

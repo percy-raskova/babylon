@@ -1,4 +1,17 @@
 #!/usr/bin/env bash
+national_success_selection() {
+  NATIONAL_SUCCESS_DISPOSITION="${BABYLON_NATIONAL_SUCCESS_DISPOSITION-cleanup}"
+  case "$NATIONAL_SUCCESS_DISPOSITION" in
+    cleanup) ;;
+    retain-for-native)
+      [ "${BABYLON_POSTGRES_LIVE_FOCUS:-runtime_smoke}" = national_storage ] &&
+        [ "${BABYLON_NATIONAL_CAPTURE_MODE:-raw-economic}" = playable-aid ] ||
+        die "native retention requires playable national scope"
+      ;;
+    *) die "unsupported national success disposition" ;;
+  esac
+}
+
 # Sourced by run_rust_postgres.sh; only its national_storage branch owns this lease.
 # Command-mode flock owns the descriptor; --close prevents inheritance by the
 # runner, Cargo, compiler caches, collectors, and every other worker descendant.
@@ -20,6 +33,7 @@ national_storage_qualification_flags() {
 }
 
 national_capture_selection() {
+  national_success_selection
   national_storage_qualification_selection
   case "${BABYLON_NATIONAL_CAPTURE_MODE-raw-economic}" in
     raw-economic | playable-aid)
@@ -112,7 +126,7 @@ national_begin() {
   # Execute the frozen compatible collector with its adjacent SQL and explicit
   # output directory. Its stage convention is <stage>.json, matching the test.
   export BABYLON_STORAGE_SNAPSHOT_SCRIPT="$BABYLON_STORAGE_REPORT_DIRECTORY/snapshot-source.py"
-  NATIONAL_POLICY_SOURCE="${BABYLON_STORAGE_POLICY_PATH:-$REPO_ROOT/contracts/national_storage_qualification_v3.json}"
+  NATIONAL_POLICY_SOURCE="${BABYLON_STORAGE_POLICY_PATH:-$REPO_ROOT/contracts/national_storage_qualification_v6.json}"
   [[ "$NATIONAL_POLICY_SOURCE" = /* ]] || die "storage policy override must be an absolute path"
   NATIONAL_POLICY_SOURCE="$(realpath -e -- "$NATIONAL_POLICY_SOURCE")" || die "storage policy must exist"
   [ -f "$NATIONAL_POLICY_SOURCE" ] || die "storage policy must be a regular file"
@@ -230,18 +244,80 @@ print(value)
 ' "$BABYLON_STORAGE_REPORT_DIRECTORY/policy.json" "${BABYLON_NATIONAL_STORAGE_PERIODS:-}"
 }
 
-national_verify_disposable() {
-  local identity inventory sessions
+# Shared nonmutating authority for live capture and terminal retention. A live
+# game admits only its confined capabilities; terminal retention still requires
+# every client to have exited. Neither path terminates a racing client.
+national_verify_identity() {
+  local identity inventory packet live=0 role_cte="" refused_sql=0
+  case "$#" in
+    0) ;;
+    1) [ "$1" = --live ] || return 1; live=1 ;;
+    *) return 1 ;;
+  esac
+  if [ "$live" -eq 1 ]; then
+    [[ "${CANARY:-}" =~ ^[0-9a-f]{32}$ ]] &&
+      [ "$NATIONAL_DATABASE" = "national_${CANARY:0:12}" ] &&
+      [ "$NATIONAL_WRITER" = "national_writer_${CANARY:0:12}" ] &&
+      [[ "${NATIONAL_DATABASE_OID:-}" =~ ^[1-9][0-9]*$ ]] || return 1
+  fi
   [ -f "$NATIONAL_RECORD" ] && [ ! -L "$NATIONAL_RECORD" ] || return 1
   [ "$(stat -c '%a' "$NATIONAL_RECORD")" = 600 ] || return 1
   cmp -s -- "$NATIONAL_RECORD" <(national_record_contents) || return 1
   identity="$(docker inspect --format '{{.Id}}|{{.Image}}|{{index .Config.Labels "babylon.disposable_runtime"}}|{{range .Mounts}}{{if eq .Destination "/var/lib/postgresql/data"}}{{.Name}}{{end}}{{end}}' "$CONTAINER_ID")" || return 1
   [ "$identity" = "$CONTAINER_ID|$IMAGE_ID|$CANARY|$VOLUME" ] || return 1
-  [ "$(national_sql "SELECT current_setting('babylon.disposable_runtime',true);")" = "$CANARY" ] || return 1
-  inventory="$(national_sql "SELECT string_agg(datname,',' ORDER BY datname COLLATE \"C\") FROM pg_catalog.pg_database;")" || return 1
-  [ "$inventory" = "babylon_test,$NATIONAL_DATABASE,postgres,template0,template1" ] || return 1
+  if [ "$live" -eq 1 ]; then
+    role_cte="
+WITH expected(name,login,parent) AS (VALUES
+  ('$NATIONAL_WRITER',true,NULL::text),
+  ('national_observer_${CANARY:0:12}',true,'babylon_observer'),
+  ('national_reader_${CANARY:0:12}',true,'babylon_reader'),
+  ('babylon_observer',false,NULL::text),
+  ('babylon_reader',false,NULL::text)
+), bad_roles AS (
+  SELECT e.name FROM expected e LEFT JOIN pg_catalog.pg_roles r ON r.rolname=e.name
+  WHERE r.oid IS NULL OR r.rolcanlogin IS DISTINCT FROM e.login
+    OR r.rolsuper OR r.rolcreatedb OR r.rolcreaterole OR r.rolreplication OR r.rolbypassrls
+    OR COALESCE((SELECT array_agg(p.rolname::text ORDER BY p.rolname COLLATE \"C\")
+       FROM pg_catalog.pg_auth_members m JOIN pg_catalog.pg_roles p ON p.oid=m.roleid
+       WHERE m.member=r.oid),ARRAY[]::text[])
+       IS DISTINCT FROM CASE WHEN e.parent IS NULL THEN ARRAY[]::text[] ELSE ARRAY[e.parent] END
+), bad_clients AS (
+  SELECT pid FROM pg_catalog.pg_stat_activity
+  WHERE backend_type='client backend' AND pid<>pg_backend_pid()
+    AND (datname IS DISTINCT FROM '$NATIONAL_DATABASE'
+      OR usename IS NULL OR usename NOT IN ('$NATIONAL_WRITER',
+        'national_observer_${CANARY:0:12}','national_reader_${CANARY:0:12}'))
+)
+"
+    refused_sql="(SELECT count(*) FROM bad_roles)+(SELECT count(*) FROM bad_clients)"
+  fi
+  # One fresh statement retains every database authority check. Live sampling
+  # runs it before pause and after restoration, never while PostgreSQL is frozen.
+  # Compare the entire packet: NULL, missing, extra or changed fields all refuse.
+  packet="$(national_sql "$role_cte
+SELECT pg_catalog.current_setting('babylon.disposable_runtime',true),
+  (SELECT string_agg(datname,',' ORDER BY datname COLLATE \"C\") FROM pg_catalog.pg_database),
+  CASE WHEN '$NATIONAL_DATABASE_OID'='' THEN '' ELSE
+    (SELECT oid::text FROM pg_catalog.pg_database WHERE datname='$NATIONAL_DATABASE'
+      AND datdba=(SELECT oid FROM pg_catalog.pg_roles WHERE rolname='$NATIONAL_WRITER')) END,
+  $refused_sql;")" || return 1
+  [ "$packet" = "$CANARY|babylon_test,$NATIONAL_DATABASE,postgres,template0,template1|$NATIONAL_DATABASE_OID|0" ] || return 1
+  if [ "$live" -eq 0 ]; then
+    inventory="${packet#*|}"
+    inventory="${inventory%%|*}"
+    printf '%s\n' "$identity" "$inventory"
+  fi
+}
+
+national_verify_live() {
+  [ "$#" -eq 0 ] || return 1
+  national_verify_identity --live
+}
+
+national_verify_success() {
+  local identity sessions
+  identity="$(national_verify_identity)" || return 1
   if [ -n "$NATIONAL_DATABASE_OID" ]; then
-    [ "$(national_sql "SELECT oid FROM pg_catalog.pg_database WHERE datname='$NATIONAL_DATABASE' AND datdba=(SELECT oid FROM pg_catalog.pg_roles WHERE rolname='$NATIONAL_WRITER');")" = "$NATIONAL_DATABASE_OID" ] || return 1
     sessions="$(national_sql "SELECT count(*) FROM pg_catalog.pg_stat_activity WHERE pid<>pg_backend_pid() AND backend_type='client backend';")" || return 1
     [ "$sessions" = 0 ] || return 1
     (cd "$BABYLON_STORAGE_REPORT_DIRECTORY" && sha256sum --check operator.sha256) || return 1
@@ -262,6 +338,15 @@ national_verify_disposable() {
     [ -s "$BABYLON_STORAGE_REPORT_DIRECTORY/qualification.json" ] || return 1
     [ -s "$BABYLON_STORAGE_REPORT_DIRECTORY/native-timings.json" ] || return 1
     (cd "$BABYLON_STORAGE_REPORT_DIRECTORY" && sha256sum --check evaluated-evidence.sha256) || return 1
+
+  fi
+  printf '%s\n' "$identity" > "$BABYLON_STORAGE_REPORT_DIRECTORY/success-proof"
+}
+
+national_verify_disposable() {
+  national_verify_success || return 1
+  if [ -n "$NATIONAL_DATABASE_OID" ]; then
+    local sessions
     # Only after all nonmutating validation succeeds, freeze the disposable game.
     # A racing client causes refusal and restoration, never session termination.
     national_sql "ALTER DATABASE $NATIONAL_DATABASE ALLOW_CONNECTIONS false;" || return 1
@@ -274,18 +359,18 @@ national_verify_disposable() {
       return 1
     fi
   fi
-  printf '%s\n' "$identity" "$inventory" > "$BABYLON_STORAGE_REPORT_DIRECTORY/cleanup-proof"
+  cp -- "$BABYLON_STORAGE_REPORT_DIRECTORY/success-proof" "$BABYLON_STORAGE_REPORT_DIRECTORY/cleanup-proof"
 }
 
 # Hash filesystem files, not Git's index: current untracked codecs participate.
 national_source_paths() {
   local crate dependency
-  for crate in babylon-persistence babylon-tick babylon-material-circuit babylon-bsl babylon-graph babylon-kernel babylon-practice-contract; do
+  for crate in babylon-client babylon-persistence babylon-tick babylon-material-circuit babylon-bsl babylon-graph babylon-kernel babylon-practice-contract; do
     # This is the measured target's complete current local dependency closure.
     # A new local dependency requires an explicit roster update, never omission.
     while IFS= read -r dependency; do
       case "$dependency" in
-        babylon-persistence | babylon-tick | babylon-material-circuit | babylon-bsl | babylon-graph | babylon-kernel | babylon-practice-contract) ;;
+        babylon-client | babylon-persistence | babylon-tick | babylon-material-circuit | babylon-bsl | babylon-graph | babylon-kernel | babylon-practice-contract) ;;
         *) die "unrecorded local native dependency: $dependency" ;;
       esac
     done < <(sed -n 's/.*path = "\.\.\/\([^"/]*\)".*/\1/p' "rust/crates/$crate/Cargo.toml")
@@ -301,7 +386,7 @@ national_source_paths() {
   done
   find content -type f -print0
   national_input_paths
-  printf '%s\0' tools/run_rust_postgres.sh tools/postgres_national_lifecycle.sh tools/devtools/national_storage_qualification.py tools/devtools/national_storage_snapshot.py tools/devtools/national_storage_relations.sql
+  printf '%s\0' tools/run_rust_postgres.sh tools/postgres_national_lifecycle.sh tools/run_observer_session.py tools/devtools/national_windowed_qualification.py tools/devtools/national_native_evidence.py tools/devtools/national_native_runner.py tools/devtools/national_game_memory.py tools/devtools/national_storage_qualification.py tools/devtools/national_storage_snapshot.py tools/devtools/national_storage_relations.sql
 }
 
 national_source_manifest() {
@@ -358,6 +443,17 @@ national_reproducibility() {
   cmp -- "$BABYLON_STORAGE_REPORT_DIRECTORY/source-before.sha256" "$BABYLON_STORAGE_REPORT_DIRECTORY/source-captured.sha256"
 }
 
+# Revalidate the original capture. Never regenerate the frozen run inputs while
+# admitting results: source edits must refuse instead of replacing the baseline.
+national_verify_source_capture() {
+  [ -s "$BABYLON_STORAGE_REPORT_DIRECTORY/source-before.sha256" ] || return 1
+  cmp -s -- "$BABYLON_STORAGE_REPORT_DIRECTORY/source-before.sha256" \
+    <(national_source_manifest) || return 1
+  (cd "$REPO_ROOT" && sha256sum --check --status "$BABYLON_STORAGE_REPORT_DIRECTORY/inputs.sha256") || return 1
+  sha256sum --check --status "$BABYLON_STORAGE_REPORT_DIRECTORY/source-archive.sha256" || return 1
+  sha256sum --check --status "$BABYLON_STORAGE_REPORT_DIRECTORY/input-archive.sha256" || return 1
+}
+
 
 national_measure() {
   (cd "$BABYLON_STORAGE_REPORT_DIRECTORY" && sha256sum --check operator.sha256) || return 1
@@ -385,7 +481,13 @@ print(value)
       [ -s "$BABYLON_STORAGE_REPORT_DIRECTORY/$stage" ] || return 1
       gameplay+=("$BABYLON_STORAGE_REPORT_DIRECTORY/$stage")
     done
-    playable_flags+=(--playable-report "$BABYLON_STORAGE_REPORT_DIRECTORY/national-playable-qualification.json" --qualify-playable)
+    playable_flags+=(--playable-report "$BABYLON_STORAGE_REPORT_DIRECTORY/national-playable-qualification.json")
+    # The two-period smoke retains every finite accounting proof. Both positive
+    # practices need separate periods under the actual shared commitment, and
+    # remain required by the longer material-playable admission.
+    if [ "$periods" -gt "$routine_periods" ]; then
+      playable_flags+=(--qualify-playable)
+    fi
     while IFS= read -r -d '' stage; do
       progress+=("$stage")
     done < <(find "$BABYLON_STORAGE_REPORT_DIRECTORY" -maxdepth 1 -type f -name 'progress-[0-9][0-9][0-9]-*.json' -print0 | LC_ALL=C sort -z)
@@ -412,6 +514,48 @@ print(value)
     ticks+=("$BABYLON_STORAGE_REPORT_DIRECTORY/$stage.json")
     reopens+=("$BABYLON_STORAGE_REPORT_DIRECTORY/$stage-reopened.json")
   done
+  local -a memory_flags=() memory_files=()
+  if [ -e "$BABYLON_STORAGE_REPORT_DIRECTORY/combined-memory.json" ]; then
+    local artifact
+    for artifact in combined-memory.json combined-memory-source.sha256 combined-memory-executables.json combined-memory-sampler-source.py combined-memory-tooling.json ownership; do
+      [ -s "$BABYLON_STORAGE_REPORT_DIRECTORY/$artifact" ] &&
+        [ ! -L "$BABYLON_STORAGE_REPORT_DIRECTORY/$artifact" ] || return 1
+      memory_files+=("$BABYLON_STORAGE_REPORT_DIRECTORY/$artifact")
+    done
+    memory_flags+=(--combined-memory-report "$BABYLON_STORAGE_REPORT_DIRECTORY/combined-memory.json")
+  fi
+  local -a native_flags=() native_files=() evaluator_command=()
+  local native_report="$BABYLON_STORAGE_REPORT_DIRECTORY/native-window-evidence.json"
+  evaluator_command=(python "$BABYLON_STORAGE_REPORT_DIRECTORY/national_storage_qualification.py")
+  if [ -e "$native_report" ] || [ -L "$native_report" ]; then
+    [ "$BABYLON_NATIONAL_CAPTURE_MODE" = playable-aid ] &&
+      [ "${#memory_files[@]}" -gt 0 ] || return 1
+    # The native evidence models import the canonical typed reader contracts.
+    # Execute that same frozen evaluator in the project module context; verify
+    # both its captured bytes and complete source closure before/after reads.
+    cmp -- "$REPO_ROOT/tools/devtools/national_storage_qualification.py" \
+      "$BABYLON_STORAGE_REPORT_DIRECTORY/national_storage_qualification.py" || return 1
+    national_verify_source_capture || return 1
+    local native_names artifact
+    native_names="$(cd "$REPO_ROOT" && mise exec -- uv run --frozen python - "$native_report" <<'PY_NATIVE_ROSTER'
+import sys
+from pathlib import Path
+from tools.devtools.national_native_evidence import MANIFEST_BYTES,NativeRunEvidence,private_bytes
+from tools.devtools.national_storage_qualification import strict_json_bytes
+evidence=NativeRunEvidence.model_validate(strict_json_bytes(private_bytes(Path(sys.argv[1]),MANIFEST_BYTES)))
+for artifact in (evidence.controls,evidence.opening,*evidence.boundaries,*evidence.advances,*evidence.archives,*evidence.recoveries,*evidence.aid_originals):
+    print(artifact.name)
+PY_NATIVE_ROSTER
+    )" || return 1
+    native_files+=("$native_report")
+    while IFS= read -r artifact; do
+      [ -n "$artifact" ] && [ -s "$BABYLON_STORAGE_REPORT_DIRECTORY/$artifact" ] &&
+        [ ! -L "$BABYLON_STORAGE_REPORT_DIRECTORY/$artifact" ] || return 1
+      native_files+=("$BABYLON_STORAGE_REPORT_DIRECTORY/$artifact")
+    done <<< "$native_names"
+    native_flags+=(--native-report "$native_report" --qualify-native)
+    evaluator_command=(python -c 'from tools.devtools.national_storage_qualification import main; raise SystemExit(main())')
+  fi
   local evidence_manifest="$BABYLON_STORAGE_REPORT_DIRECTORY/evaluated-evidence.sha256"
   [ ! -e "$evidence_manifest" ] && [ ! -e "$evidence_manifest.partial" ] || return 1
   # Authenticate the exact inputs before evaluation, then prove they did not
@@ -419,20 +563,21 @@ print(value)
   sha256sum "$BABYLON_STORAGE_REPORT_DIRECTORY/schema-baseline.json" \
     "$BABYLON_STORAGE_REPORT_DIRECTORY/opening-created.json" \
     "${ticks[@]}" "${reopens[@]}" \
-    "$BABYLON_STORAGE_REPORT_DIRECTORY/native-timings.json" "${gameplay[@]}" "${progress[@]}" \
+    "$BABYLON_STORAGE_REPORT_DIRECTORY/native-timings.json" "${gameplay[@]}" "${progress[@]}" "${memory_files[@]}" "${native_files[@]}" \
     > "$evidence_manifest.partial" || return 1
   # Matching routine runs enforce the separate smoke contract; explicit full
   # timing qualification remains independent. Explicit storage/save modes also
   # enforce their horizons; report-only runs do not claim acceptance. Refusal
   # retains the game.
-  mise exec -- uv run --frozen python "$BABYLON_STORAGE_REPORT_DIRECTORY/national_storage_qualification.py" \
+  mise exec -- uv run --frozen "${evaluator_command[@]}" \
     --policy "$BABYLON_STORAGE_REPORT_DIRECTORY/policy.json" \
     --baseline "$BABYLON_STORAGE_REPORT_DIRECTORY/schema-baseline.json" \
     --opening "$BABYLON_STORAGE_REPORT_DIRECTORY/opening-created.json" \
     --ticks "${ticks[@]}" --reopens "${reopens[@]}" \
-    --timings "$BABYLON_STORAGE_REPORT_DIRECTORY/native-timings.json" "${timing_flags[@]}" "${storage_flags[@]}" "${playable_flags[@]}" \
+    --timings "$BABYLON_STORAGE_REPORT_DIRECTORY/native-timings.json" "${timing_flags[@]}" "${storage_flags[@]}" "${playable_flags[@]}" "${memory_flags[@]}" "${native_flags[@]}" \
     > "$BABYLON_STORAGE_REPORT_DIRECTORY/qualification.json.partial" || return 1
   sha256sum --check "$evidence_manifest.partial" || return 1
+  if [ "${#native_flags[@]}" -gt 0 ]; then national_verify_source_capture || return 1; fi
   (cd "$BABYLON_STORAGE_REPORT_DIRECTORY" && sha256sum --check operator.sha256) || return 1
   mv -- "$BABYLON_STORAGE_REPORT_DIRECTORY/qualification.json.partial" "$BABYLON_STORAGE_REPORT_DIRECTORY/qualification.json"
   mise exec -- uv run --frozen python -c \
@@ -458,7 +603,7 @@ try:
     records=[]
     for path in sorted(root.iterdir()):
         if path.is_file() and (re.fullmatch(r"progress-[0-9]{3}-[a-z-]+\.json",path.name)
-            or re.fullmatch(r"(?:tick-[0-9]+(?:-reopened)?|schema-baseline|opening-created|native-timings|national-playable-qualification|qualification)\.json(?:\.partial)?",path.name)):
+            or re.fullmatch(r"(?:tick-[0-9]+(?:-reopened)?|schema-baseline|opening-created|native-timings|national-playable-qualification|qualification|native-window-evidence|native-controls|material-[0-9]+|advance-[0-9]+|recovery-[0-9]+-[0-9]+|aid-[0-9a-f]{64}|combined-memory(?:-progress)?)\.json(?:\.partial)?",path.name)):
             records.append({"file":path.name,"sha256":hashlib.sha256(path.read_bytes()).hexdigest(),"bytes":path.stat().st_size})
     progress=[record["file"] for record in records if record["file"].startswith("progress-")]
     # Modification time orders stages within the same tick without reading payloads.
@@ -474,4 +619,157 @@ try:
 except (OSError,ValueError):
     raise SystemExit("National failure summary could not be published") from None
 PY_FAILURE
+}
+
+
+# Success retention authenticates every cleanup prerequisite without freezing or
+# deleting the game. The persistent active record still refuses any second game.
+national_retain_success() {
+  [[ "${NATIONAL_DATABASE_OID:-}" =~ ^[1-9][0-9]*$ ]] || return 1
+  national_verify_success || return 1
+  local receipt="$BABYLON_STORAGE_REPORT_DIRECTORY/native-handoff.json"
+  [ ! -e "$receipt" ] && [ ! -L "$receipt" ] || return 1
+  mise exec -- uv run --frozen python - "$BABYLON_STORAGE_REPORT_DIRECTORY" <<'PY_RECEIPT'
+import hashlib,json,os,sys
+from pathlib import Path
+from datetime import datetime,timezone
+root=Path(sys.argv[1])
+qualification=json.loads((root/'qualification.json').read_bytes())
+policy=json.loads((root/'policy.json').read_bytes())
+timing=json.loads((root/'native-timings.json').read_bytes())
+periods=timing['run']['periods']
+if type(periods) is not int or periods <= 0 or qualification['status'] not in {'qualified','incomplete'}:
+    raise SystemExit('native retention refuses failed evidence')
+scope=('routine-smoke' if periods == policy['routine_smoke_periods'] else
+       'qualification-horizon' if periods >= policy['qualification_ticks'] else 'bounded-measurement')
+terminal=f'tick-{periods:02d}-reopened.json'
+files=['qualification.json','native-timings.json','evaluated-evidence.sha256','policy.json','campaign',terminal]
+reopened=json.loads((root/terminal).read_bytes())
+receipt={'version':1,'status':'success-retained-for-native','scope':scope,
+ 'qualification_status':qualification['status'],'periods':periods,
+ 'terminal_markers':reopened['acknowledged_markers'],
+ 'campaign':(root/'campaign').read_text().strip(),
+ 'recorded_at':datetime.now(timezone.utc).isoformat(),
+ 'evidence_sha256':{name:hashlib.sha256((root/name).read_bytes()).hexdigest() for name in files}}
+partial=root/'native-handoff.json.partial'
+with partial.open('x') as output:
+    json.dump(receipt,output,sort_keys=True); output.write('\n')
+os.replace(partial,root/'native-handoff.json')
+PY_RECEIPT
+}
+
+# An explicit existing-campaign Open acquires the same supervisor-owned lock.
+# No caller command is accepted; this dispatch invokes only the native launcher.
+national_native_open() {
+  local directory descriptor identity campaign
+  if [ "$#" = 2 ] && [ "$1" = --national-native-open ]; then
+    campaign="$2"
+    [[ "$campaign" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]] ||
+      die "canonical existing campaign required"
+    directory="$(national_control_directory)" || return 1
+    [ -f "$directory/active" ] && [ ! -L "$directory/active" ] || die "retained existing campaign required"
+    exec flock --nonblock --close --conflict-exit-code 75 "$directory/runner.lock"       bash "$REPO_ROOT/tools/run_rust_postgres.sh" --national-native-lock-held "$$" "$campaign"
+  fi
+  [ "$#" = 3 ] && [ "$1" = --national-native-lock-held ] && [ "$2" = "$PPID" ] || die "invalid native lock invocation"
+  [ "$(cat "/proc/$PPID/comm")" = flock ] || die "native lock supervisor is not flock"
+  campaign="$3"
+  directory="$(national_control_directory)" || return 1
+  identity="$(stat -Lc '%d:%i' "$directory/runner.lock")" || return 1
+  local locked=0
+  for descriptor in /proc/"$PPID"/fd/*; do
+    [ "$(stat -Lc '%d:%i' "$descriptor" 2>/dev/null || true)" != "$identity" ] || locked=1
+  done
+  [ "$locked" = 1 ] || die "native supervisor lacks exact lock inode"
+  NATIONAL_RECORD="$directory/active"
+  [ -f "$NATIONAL_RECORD" ] && [ ! -L "$NATIONAL_RECORD" ] &&
+    [ "$(stat -c '%a' "$NATIONAL_RECORD")" = 600 ] || die "private retained ownership required"
+  local -a record
+  mapfile -t record < "$NATIONAL_RECORD"
+  [ "${#record[@]}" = 11 ] && [ "${record[0]}" = national-storage-runner-v1 ] &&
+    [ "${record[1]}" = "$REPO_ROOT" ] || die "retained ownership scope mismatch"
+  CANARY="${record[2]}"; CONTAINER="${record[3]}"; CONTAINER_ID="${record[4]}"
+  VOLUME="${record[5]}"; IMAGE_ID="${record[6]}"; NATIONAL_DATABASE="${record[7]}"
+  NATIONAL_WRITER="${record[8]}"; NATIONAL_DATABASE_OID="${record[9]}"
+  BABYLON_STORAGE_REPORT_DIRECTORY="${record[10]}"
+  [[ "$CANARY" =~ ^[0-9a-f]{32}$ ]] && [[ "$CONTAINER_ID" =~ ^[0-9a-f]{64}$ ]] &&
+    [[ "$IMAGE_ID" =~ ^sha256:[0-9a-f]{64}$ ]] &&
+    [ "$CONTAINER" = "babylon-runtime-pg-${CANARY:0:12}" ] &&
+    [ "$NATIONAL_DATABASE" = "national_${CANARY:0:12}" ] &&
+    [ "$NATIONAL_WRITER" = "national_writer_${CANARY:0:12}" ] &&
+    [[ "$NATIONAL_DATABASE_OID" =~ ^[1-9][0-9]*$ ]] &&
+    [[ "$BABYLON_STORAGE_REPORT_DIRECTORY" = /* ]] || die "retained identity malformed"
+  [ "$(cat "$BABYLON_STORAGE_REPORT_DIRECTORY/campaign")" = "$campaign" ] || die "existing campaign differs from retained evidence"
+  [ "$(cat "$BABYLON_STORAGE_REPORT_DIRECTORY/capture-mode")" = playable-aid ] || die "retained campaign is not playable"
+  [ -f "$BABYLON_STORAGE_REPORT_DIRECTORY/native-handoff.json" ] &&
+    [ ! -L "$BABYLON_STORAGE_REPORT_DIRECTORY/native-handoff.json" ] || die "successful retention receipt required"
+  export BABYLON_STORAGE_REPORT_DIRECTORY
+  # Reuse captured policy for the same explicit period request, never a new default.
+  BABYLON_NATIONAL_STORAGE_PERIODS="$(mise exec -- uv run --frozen python - "$BABYLON_STORAGE_REPORT_DIRECTORY/native-timings.json" <<'PY_PERIODS'
+import json,sys
+periods=json.load(open(sys.argv[1]))['run']['periods']
+if type(periods) is not int or periods <= 0:
+    raise SystemExit('retained period count refused')
+print(periods)
+PY_PERIODS
+  )" || return 1
+  export BABYLON_NATIONAL_STORAGE_PERIODS
+  national_verify_success || die "retained ownership/evidence refused; game preserved"
+  local endpoint
+  endpoint="$(docker port "$CONTAINER_ID" 5432/tcp)" || return 1
+  [[ "$endpoint" =~ ^127\.0\.0\.1:([0-9]+)$ ]] || die "retained port must be exact loopback"
+  PORT="${BASH_REMATCH[1]}"
+  export BABYLON_RUNTIME_DSN="postgresql://$NATIONAL_WRITER:$CANARY@127.0.0.1:$PORT/$NATIONAL_DATABASE"
+  export BABYLON_OBSERVER_DSN="postgresql://national_observer_${CANARY:0:12}:$CANARY@127.0.0.1:$PORT/$NATIONAL_DATABASE"
+  export BABYLON_READER_DSN="postgresql://national_reader_${CANARY:0:12}:$CANARY@127.0.0.1:$PORT/$NATIONAL_DATABASE"
+  mise exec -- uv run --frozen python - "$BABYLON_STORAGE_REPORT_DIRECTORY" "$campaign" <<'PY_VERIFY' || return 1
+import hashlib,json,sys
+from pathlib import Path
+root=Path(sys.argv[1]); receipt=json.loads((root/'native-handoff.json').read_bytes())
+periods=json.loads((root/'native-timings.json').read_bytes())['run']['periods']
+expected={'qualification.json','native-timings.json','evaluated-evidence.sha256','policy.json','campaign',f'tick-{periods:02d}-reopened.json'}
+if receipt['version'] != 1 or receipt['periods'] != periods or receipt['status'] != 'success-retained-for-native' or receipt['campaign'] != sys.argv[2]:
+    raise SystemExit('retained receipt scope mismatch')
+for name,digest in receipt['evidence_sha256'].items():
+    if name not in expected or hashlib.sha256((root/name).read_bytes()).hexdigest()!=digest:
+        raise SystemExit('retained receipt evidence mismatch')
+if set(receipt['evidence_sha256']) != expected:
+    raise SystemExit('retained receipt evidence incomplete')
+PY_VERIFY
+  # Root supplies the exact combined-source admission before any live handoff.
+  local manifest
+  for manifest in native-combined-source.sha256 native-executables.sha256; do
+    [ -s "$BABYLON_STORAGE_REPORT_DIRECTORY/$manifest" ] &&
+      [ ! -L "$BABYLON_STORAGE_REPORT_DIRECTORY/$manifest" ] || die "native build admission manifest required"
+  done
+  (cd "$REPO_ROOT" && sha256sum --check --status "$BABYLON_STORAGE_REPORT_DIRECTORY/native-combined-source.sha256") ||
+    die "native combined source admission refused"
+  # Record stays active after native exit; another Open rechecks zero sessions.
+  mise exec -- uv run --frozen python - "$REPO_ROOT" "$campaign" <<'PY_OPEN'
+import hashlib,importlib.util,os,re,sys
+from pathlib import Path
+from uuid import UUID
+root=Path(sys.argv[1])
+spec=importlib.util.spec_from_file_location('national_native_launcher',root/'tools/run_observer_session.py')
+launcher=importlib.util.module_from_spec(spec); sys.modules[spec.name]=launcher; spec.loader.exec_module(launcher)
+environment=dict(os.environ)
+target=Path(environment.get('CARGO_TARGET_DIR','target'))
+if not target.is_absolute(): target=root/'rust'/target
+runtime=target/'debug/babylon-runtime'; client=target/'debug/babylon-client'
+if not runtime.is_file() or not client.is_file():
+    raise SystemExit('existing native binaries required; build separately')
+expected={str(runtime.resolve()),str(client.resolve())}
+rows={}
+for line in (Path(environment['BABYLON_STORAGE_REPORT_DIRECTORY'])/'native-executables.sha256').read_text().splitlines():
+    match=re.fullmatch(r'([0-9a-f]{64})  (/.+)',line)
+    if match is None or match[2] in rows: raise SystemExit('native executable manifest refused')
+    rows[match[2]]=match[1]
+if set(rows) != expected: raise SystemExit('native executable manifest scope refused')
+for name,digest in rows.items():
+    if hashlib.file_digest(open(name,'rb'),'sha256').hexdigest()!=digest:
+        raise SystemExit('native executable admission refused')
+credentials=launcher.ReaderCredentials(environment['BABYLON_OBSERVER_DSN'],environment['BABYLON_READER_DSN'])
+writer,reader=launcher.child_environments(environment,credentials)
+raise SystemExit(launcher.run_pair(runtime,client,root,writer,reader,
+    defines_path=launcher.DEFAULT_DEFINES,initial_target=launcher.OpenCampaignTarget(UUID(sys.argv[2]))))
+PY_OPEN
 }

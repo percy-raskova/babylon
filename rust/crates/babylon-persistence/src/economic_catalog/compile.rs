@@ -35,7 +35,10 @@ impl EconomicOpening {
         append_logistics(self, &mut state)?;
         let (staffing, member_labor) = append_staffing(self, &mut state)?;
         state.accounting = compile_accounting(self, &state, member_labor)?;
-        let state = decode_material_circuit_state(&encode_material_circuit_state(&state)?)?;
+        let bytes = encode_material_circuit_state(&state)?;
+        drop(state);
+        let state = decode_material_circuit_state(&bytes)?;
+        drop(bytes);
         Ok(CompiledEconomicOpening { state, staffing })
     }
 }

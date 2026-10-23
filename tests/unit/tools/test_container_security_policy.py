@@ -232,6 +232,7 @@ else:
         "reference_integrity",
         "runtime",
         "archive",
+        "archive_publication",
         "reader",
         "production_history",
         "statewide_synthetic",
@@ -292,6 +293,22 @@ def test_current_runtime_focuses_finish_with_checked_owned_cleanup(
         assert history_filter in history and "--skip" not in history
         assert "statewide::" in statewide and "--skip" not in statewide
         assert all("--ignored" in arguments for arguments in material)
+    if focus == "archive_publication":
+        tests = [
+            call["args"] for call in calls if call["name"] == "cargo" and call["args"][0] == "test"
+        ]
+        assert len(tests) == 4
+        assert "archive_revision::worker::live_tests::short_publication::" in tests[0]
+        assert (
+            "archive_revision::worker::live_tests::revisions::live_revision_refuses_later_tick_and_conflicting_stage_without_partial_publication"
+            in tests[1]
+        )
+        assert "--exact" in tests[1]
+        assert [arguments[arguments.index("--test") + 1] for arguments in tests[2:]] == [
+            "place_producer_live",
+            "county_producer_live",
+        ]
+        assert all("--ignored" in arguments and "--skip" not in arguments for arguments in tests)
 
 
 @pytest.mark.parametrize(

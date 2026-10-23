@@ -289,6 +289,12 @@ pub struct CountyPagePlan {
     decision_question: String,
 }
 
+impl crate::archive_revision::publication::ArchivePagePlan for CountyPagePlan {
+    fn page_ref(&self) -> Result<ArchivePageRef, SemanticArchiveError> {
+        ArchivePageRef::try_new(ArchiveSubjectKind::County, self.county_geoid.clone())
+    }
+}
+
 impl CountyPagePlan {
     /// Construct one desired county page plan.
     ///
@@ -1118,6 +1124,10 @@ impl CountyDossierProducer {
         campaign_id: CampaignId,
         resolve_tick: u64,
     ) -> Result<Vec<CountyPagePlan>, SemanticArchiveError> {
+        let _timing = crate::production_projection::diagnostics::Timing::start(
+            crate::production_projection::diagnostics::Stage::ArchiveCountyPlans,
+            resolve_tick,
+        );
         if self
             .campaign
             .is_some_and(|expected| expected != campaign_id)

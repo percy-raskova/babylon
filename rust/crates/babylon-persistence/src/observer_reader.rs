@@ -3,7 +3,7 @@
 mod counties;
 mod history;
 
-pub use crate::observer_material::ObserverMaterialCursor;
+pub use crate::observer_material::{ObserverMaterialCursor, ObserverOpeningFoundations};
 pub use history::{ProductionHistoryTarget, ProductionOutputPoint};
 
 use babylon_kernel::content_digest::sha256_of;
@@ -22,6 +22,9 @@ use crate::{
 
 pub const OBSERVER_DSN_ENV: &str = "BABYLON_OBSERVER_DSN";
 pub const OBSERVER_ROLE_NAME: &str = "babylon_observer";
+// Large material captures use the runtime query budget after catalog authority checks.
+const MATERIAL_READ_TRANSACTION_OPTIONS: &str =
+    "SET LOCAL statement_timeout = '120s'; SET LOCAL idle_in_transaction_session_timeout = '120s'";
 const SNAPSHOT_COLUMNS: &str = "campaign_id, resolve_tick, county_geoid, annual_avg_estabs_count, annual_avg_emplvl, total_annual_wages, annual_avg_wkly_wage, establishments_granted, employment_granted, annual_wages_granted, weekly_wage_granted";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -90,7 +93,9 @@ impl std::error::Error for ObserverEconomyError {}
 pub struct CommittedMaterialReceipts {
     pub campaign_id: CampaignId,
     pub identity: babylon_tick::material_replay::IdentifiedMaterialTick,
-    pub receipts: babylon_tick::material_world::MaterialTickReceipts,
+    /// Length of the canonical register authenticated with this receipt identity.
+    pub material_register_bytes: usize,
+    pub receipts: std::sync::Arc<babylon_tick::material_world::MaterialTickReceipts>,
     /// Once-only contribution debits from this period's authenticated closing time ledger.
     /// Gross `household_time` receipts precede these authorized debits.
     pub household_contributions: Vec<babylon_material_circuit::HouseholdContributionReceipt>,
@@ -177,7 +182,7 @@ impl ObserverEconomyReader {
             .start()
             .map_err(|_| ObserverEconomyError::Database)?;
         transaction
-            .batch_execute("SET LOCAL idle_in_transaction_session_timeout = '120s'")
+            .batch_execute(MATERIAL_READ_TRANSACTION_OPTIONS)
             .map_err(|_| ObserverEconomyError::Database)?;
         let candidate = self
             .foundation
@@ -224,12 +229,26 @@ impl ObserverEconomyReader {
         campaign: CampaignId,
         expected_tick: u64,
     ) -> Result<CommittedMaterialObservation, ObserverEconomyError> {
+        self.committed_material_observation_with_cursor(campaign, expected_tick, &mut None)
+    }
+
+    /// Reuse admitted history only after freshly authenticating its exact input prefix.
+    /// The caller's cursor changes only after commit and complete evidence validation.
+    /// # Errors
+    /// Refuses the same authority, clock and evidence failures as a cold observation.
+    pub fn committed_material_observation_with_cursor(
+        &self,
+        campaign: CampaignId,
+        expected_tick: u64,
+        cursor: &mut Option<ObserverMaterialCursor>,
+    ) -> Result<CommittedMaterialObservation, ObserverEconomyError> {
         if self.visibility != ObserverVisibility::FullObserver {
             return Err(ObserverEconomyError::Authority);
         }
         if expected_tick == 0 {
             return Err(ObserverEconomyError::TickAbsent);
         }
+        let mut cursor_candidate = cursor.clone();
         let tick = i64::try_from(expected_tick).map_err(|_| ObserverEconomyError::TickAbsent)?;
         let mut config = self.config.clone();
         config
@@ -247,7 +266,7 @@ impl ObserverEconomyReader {
             .start()
             .map_err(|_| ObserverEconomyError::Database)?;
         transaction
-            .batch_execute("SET LOCAL idle_in_transaction_session_timeout = '120s'")
+            .batch_execute(MATERIAL_READ_TRANSACTION_OPTIONS)
             .map_err(|_| ObserverEconomyError::Database)?;
         let candidate = self
             .foundation
@@ -279,6 +298,7 @@ impl ObserverEconomyReader {
             campaign,
             expected_tick,
             expected,
+            &mut cursor_candidate,
         )?;
         if tick_content_hash.as_deref()
             != Some(digest_hex(accounting.identity.tick_content_hash().as_bytes()).as_str())
@@ -308,6 +328,7 @@ impl ObserverEconomyReader {
         self.foundation
             .publish(campaign, std::sync::Arc::clone(expected))
             .map_err(|_| ObserverEconomyError::ScenarioMismatch)?;
+        *cursor = cursor_candidate;
         Ok(CommittedMaterialObservation {
             snapshot,
             accounting,
@@ -395,11 +416,11 @@ impl ObserverEconomyReader {
             .start()
             .map_err(|_| ObserverEconomyError::Database)?;
         if self.visibility == ObserverVisibility::FullObserver {
-            // Authentication reconstructs the captured statewide circuit in Rust
-            // between queries. Bound that work like material runtime reads while
-            // retaining the five-second SQL, lock and connection limits.
+            // Complete material captures transfer national registers and source bytes.
+            // Bound their SQL and Rust admission like runtime material reads;
+            // catalog, lock and connection checks keep their five-second limits.
             transaction
-                .batch_execute("SET LOCAL idle_in_transaction_session_timeout = '120s'")
+                .batch_execute(MATERIAL_READ_TRANSACTION_OPTIONS)
                 .map_err(|_| ObserverEconomyError::Database)?;
         }
         let cached_admission = if self.visibility == ObserverVisibility::FullObserver {

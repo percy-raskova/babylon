@@ -347,7 +347,7 @@ fn support_disclosure(production: &mut ProductionSnapshot) {
 
 #[test]
 fn diagnostic_field_census_reconciles_the_complete_serialized_scope() {
-    let observation = full_disclosure();
+    let mut observation = full_disclosure();
     let scope = EvidenceScope {
         campaign_id: &observation.campaign_id,
         resolve_tick: observation.resolve_tick,
@@ -362,6 +362,8 @@ fn diagnostic_field_census_reconciles_the_complete_serialized_scope() {
     assert_eq!(diagnostic_value_bytes(&scope).unwrap(), encoded.len());
     assert!(diagnostic_field_sizes(&scope, encoded.len()).is_ok());
     assert!(diagnostic_field_sizes(&scope, encoded.len() + 1).is_err());
+    let admitted = observation.production_evidence_digest().unwrap().unwrap();
+    assert_eq!(admitted.body_bytes(), encoded.len());
 }
 
 #[test]

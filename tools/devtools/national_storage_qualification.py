@@ -40,16 +40,22 @@ Positive = Annotated[StrictInt, Field(gt=0, le=2**63 - 1)]
 
 
 class Policy(FrozenRecord):
-    version: Literal[3]
-    name: Literal["national_storage_qualification_v3"]
+    version: Literal[6]
+    name: Literal["national_storage_qualification_v6"]
     evidence_class: Literal["Designed"]
     storage_charge_method: Literal["positive_growth_by_component_and_boundary_v1"]
     model_year_ticks: Literal[13]
     qualification_ticks: Literal[52]
     county_count: Literal[3144]
+    economic_renewal_window_ticks: Annotated[StrictInt, Field(ge=2)]
     maximum_tick_growth_bytes: Positive
     optimization_tick_growth_bytes: Positive
+    maximum_combined_running_game_memory_bytes: Positive
+    maximum_combined_memory_sample_gap_seconds: Positive
+    combined_memory_charge_method: Literal["smaps_rollup_rss_upper_bound_v1"]
     maximum_total_save_bytes: Positive
+    maximum_material_register_bytes: Positive
+    maximum_production_evidence_body_bytes: Positive
     provisional_duration_years: Positive
     save_qualification_ticks: Positive
     advance_aim_min_seconds: Positive
@@ -75,6 +81,11 @@ class Policy(FrozenRecord):
 
     @model_validator(mode="after")
     def coherent_targets(self) -> Policy:
+        if (
+            max(self.maximum_material_register_bytes, self.maximum_production_evidence_body_bytes)
+            > 1_000_000_000
+        ):
+            raise ValueError("selected byte budgets exceed current runtime hard limits")
         if self.optimization_tick_growth_bytes > self.maximum_tick_growth_bytes:
             raise ValueError("optimization target must not exceed development ceiling")
         if (
@@ -91,6 +102,8 @@ class Policy(FrozenRecord):
             raise ValueError("p95 samples must fit the admitted save horizon")
         if self.routine_smoke_periods > self.save_qualification_ticks:
             raise ValueError("routine smoke must fit the admitted save horizon")
+        if self.economic_renewal_window_ticks > self.qualification_ticks:
+            raise ValueError("economic renewal window must fit qualification ticks")
         if self.save_qualification_ticks < self.qualification_ticks:
             raise ValueError("save horizon must cover full correctness qualification")
         return self
@@ -115,6 +128,7 @@ LookupHashRow = tuple[Nonnegative, Sha256]
 class PackageClaim(FrozenRecord):
     storage_layout: Literal["period_local_lookup_v3"]
     state_storage_version: Literal[4]
+    receipt_storage_version: Literal[3]
     tick: Nonnegative
     register_storage_bytes: Nonnegative
     receipt_storage_bytes: Nonnegative
@@ -146,6 +160,13 @@ class PackageClaim(FrozenRecord):
     def current_state_version(cls, value: object) -> object:
         if type(value) is not int or value != 4:
             raise ValueError("unsupported state storage evidence version")
+        return value
+
+    @field_validator("receipt_storage_version", mode="before")
+    @classmethod
+    def current_receipt_version(cls, value: object) -> object:
+        if type(value) is not int or value != 3:
+            raise ValueError("unsupported receipt storage evidence version")
         return value
 
     @model_validator(mode="after")
@@ -182,7 +203,7 @@ class PackageClaim(FrozenRecord):
             (self.register_storage_bytes, 1_000_000_000 + 1_000_000_000 // 256 + 16_384),
             (
                 self.receipt_storage_bytes,
-                872_612_528 + len(b"BabylonReceiptStorageV2\0") + 88 + 36 * 59,
+                872_612_528 + len(b"BabylonReceiptStorageV3\0") + 88 + 36 * 59,
             ),
             (self.lookup_delta_bytes, 1_000_000_000 + 1_000_000_000 // 256 + 1024),
         )
@@ -190,7 +211,7 @@ class PackageClaim(FrozenRecord):
             raise ValueError("package or canonical length exceeds current Rust bound")
         if (
             self.register_storage_bytes < len(b"babylon.state-storage.v4\0") + 142
-            or self.receipt_storage_bytes < len(b"BabylonReceiptStorageV2\0") + 88 + 36 * 59
+            or self.receipt_storage_bytes < len(b"BabylonReceiptStorageV3\0") + 88 + 36 * 59
             or self.lookup_delta_bytes < len(b"BabylonPeriodLookupV3\0") + 162
         ):
             raise ValueError("storage package shorter than current header framing")
@@ -213,7 +234,7 @@ def package_claim_from_headers(
 ) -> PackageClaim:
     """Read current headers; full body authentication belongs to the Rust reopen."""
     sd = b"babylon.state-storage.v4\0"
-    rd = b"BabylonReceiptStorageV2\0"
+    rd = b"BabylonReceiptStorageV3\0"
     ld = b"BabylonPeriodLookupV3\0"
     for head, domain, fields in (
         (state_head, sd, 142),
@@ -250,6 +271,7 @@ def package_claim_from_headers(
     return PackageClaim(
         storage_layout="period_local_lookup_v3",
         state_storage_version=4,
+        receipt_storage_version=3,
         tick=tick,
         register_storage_bytes=state_size,
         receipt_storage_bytes=receipt_size,
@@ -458,6 +480,8 @@ class Growth(TypedDict):
     wal_delta_bytes_container_wide: int
     restart_growth: NotRequired[Growth]
     tick: NotRequired[int]
+    material_register_bytes: NotRequired[int]
+    material_register_budget_passed: NotRequired[bool]
     budget_passed: NotRequired[bool]
     optimization_target_met: NotRequired[bool]
     restart_verified: NotRequired[bool]
@@ -604,6 +628,12 @@ def evaluate(
             row["restart_growth"] = restart_growth
             row["charged_growth_bytes"] += restart_growth["charged_growth_bytes"]
         row["tick"] = s.tick
+        row["material_register_bytes"] = s.actual_rust_storage_package_claims[
+            -1
+        ].canonical_register_bytes
+        row["material_register_budget_passed"] = (
+            row["material_register_bytes"] <= policy.maximum_material_register_bytes
+        )
         row["budget_passed"] = row["charged_growth_bytes"] <= policy.maximum_tick_growth_bytes
         row["optimization_target_met"] = (
             row["charged_growth_bytes"] <= policy.optimization_tick_growth_bytes
@@ -613,7 +643,7 @@ def evaluate(
         # Restart storage growth belongs to this committed tick.
         previous = reopened if reopened is not None else s
     charged = sum(int(r["charged_growth_bytes"]) for r in rows)
-    budget = all(r["budget_passed"] for r in rows)
+    budget = all(r["budget_passed"] and r["material_register_budget_passed"] for r in rows)
     lookup_authenticated = all(s.lookup_delta_hashes is not None for s in (*ticks, *reopens))
     complete = (
         lookup_authenticated
@@ -926,6 +956,8 @@ class ProductionBoundary(FrozenRecord):
     nominal_world_hash: Sha256
     snapshot_sha256: Sha256
     county_roster_sha256: Sha256
+    material_register_bytes: Positive
+    production_evidence_body_bytes: Positive
 
 
 class TradeDirectionEvidence(FrozenRecord):
@@ -996,6 +1028,113 @@ class TradeSummary(FrozenRecord):
         return self
 
 
+Quantity = Annotated[StrictInt, Field(ge=0, le=2**64 - 1)]
+MoneyText = Annotated[str, Field(strict=True, pattern=r"^(0|[1-9][0-9]{0,38})$")]
+PriceReason = Literal["fixed", "hold", "unserved_demand", "excess_stock", "cost_pressure"]
+
+
+def _cash_value(text: str) -> int:
+    value = int(text)
+    if value > 2**127 - 1:
+        raise ValueError("economic cash exceeds exact signed currency range")
+    return value
+
+
+class EconomicQuantity(FrozenRecord):
+    good_id: Sha256
+    unit_id: Sha256
+    purchased: Quantity
+    consumed: Quantity
+    unmet: Quantity
+    purchased_consumption_lower_bound: Quantity
+
+    @model_validator(mode="after")
+    def coherent_native_quantity(self) -> EconomicQuantity:
+        if self.purchased_consumption_lower_bound > min(self.purchased, self.consumed):
+            raise ValueError(
+                "purchased consumption exceeds its native-unit purchases or consumption"
+            )
+        return self
+
+
+class EconomicPriceWitness(FrozenRecord):
+    site_id: Sha256
+    good_id: Sha256
+    unit_id: Sha256
+    reason: PriceReason
+    old_micros: MoneyText
+    next_micros: MoneyText
+
+    @model_validator(mode="after")
+    def coherent_price(self) -> EconomicPriceWitness:
+        old, next_price = _cash_value(self.old_micros), _cash_value(self.next_micros)
+        if old == 0 or next_price == 0:
+            raise ValueError("economic quotes must remain positive")
+        if self.reason in ("fixed", "hold") and old != next_price:
+            raise ValueError("fixed or held economic quote cannot change")
+        if self.reason in ("unserved_demand", "cost_pressure") and next_price < old:
+            raise ValueError("scarcity or cost pressure cannot lower its quote")
+        if self.reason == "excess_stock" and next_price > old:
+            raise ValueError("excess-stock quote cannot rise")
+        return self
+
+
+class EconomicBoundary(FrozenRecord):
+    period: Positive
+    tick_content_hash: Sha256
+    canonical_receipt_sha256: Sha256
+    households: tuple[EconomicQuantity, ...]
+    funded_wages_paid_micros: MoneyText
+    settled_procurement_orders: Quantity
+    ownership_paid_micros: MoneyText
+    price_reasons: dict[PriceReason, Quantity]
+    responsive_quotes: Quantity
+    price_examples: tuple[EconomicPriceWitness, ...] = Field(max_length=8)
+    completed_equipment_paths: Quantity
+    pending_procurement: Nonnegative
+    pending_wages: Nonnegative
+    pending_equipment: Nonnegative
+
+    @model_validator(mode="after")
+    def coherent_boundary(self) -> EconomicBoundary:
+        _cash_value(self.funded_wages_paid_micros)
+        _cash_value(self.ownership_paid_micros)
+        keys = [(row.good_id, row.unit_id) for row in self.households]
+        if len(keys) != len(set(keys)):
+            raise ValueError("economic native quantities must have unique good/unit identities")
+        quotes = sum(self.price_reasons.values())
+        if quotes > 2**64 - 1 or max(self.responsive_quotes, len(self.price_examples)) > quotes:
+            raise ValueError("economic quote witnesses exceed actual quote counts")
+        if self.period == 1 and self.completed_equipment_paths:
+            raise ValueError(
+                "post-opening equipment cannot become productive in its acquisition period"
+            )
+        return self
+
+
+class EconomicSummary(FrozenRecord):
+    version: Literal[1]
+    periods: Nonnegative
+    purchase_consumption_periods: Nonnegative
+    funded_wage_periods: Nonnegative
+    procurement_settlement_periods: Nonnegative
+    responsive_price_periods: Nonnegative
+    ownership_payment_periods: Nonnegative
+    equipment_paths: Quantity
+    renewal_status: Literal["observed", "incomplete"]
+    equipment_status: Literal["observed", "not_observed"]
+    pending_procurement: Nonnegative
+    pending_wages: Nonnegative
+    pending_equipment: Nonnegative
+
+    @field_validator("version", mode="before")
+    @classmethod
+    def exact_version(cls, value: object) -> object:
+        if type(value) is not int:
+            raise ValueError("economic evidence version must be an exact integer")
+        return value
+
+
 class PlayableBoundary(FrozenRecord):
     tick: Positive
     campaign: str
@@ -1010,10 +1149,120 @@ class PlayableBoundary(FrozenRecord):
     archive: ArchiveBoundary
     production: ProductionBoundary
     trade: TradeBoundary
+    economic: EconomicBoundary
+
+
+class ProductionOutputBasis(FrozenRecord):
+    site_id: Sha256
+    process_id: Sha256
+    quantity_per_batch: Annotated[StrictInt, Field(ge=1, le=2**64 - 1)]
+
+
+class ProductionRenewalSelection(FrozenRecord):
+    retailer: Sha256
+    producers: Annotated[tuple[Sha256, ...], Field(min_length=1, max_length=8)]
+    households: Annotated[tuple[Sha256, ...], Field(min_length=1, max_length=64)]
+    good_id: Sha256
+    unit_id: Sha256
+    direct_producer_retailer: Annotated[bool, Field(strict=True)]
+    output_basis: Annotated[tuple[ProductionOutputBasis, ...], Field(min_length=1, max_length=64)]
+
+    @model_validator(mode="after")
+    def coherent_selection(self) -> ProductionRenewalSelection:
+        for ids in (self.producers, self.households):
+            if ids != tuple(sorted(set(ids))):
+                raise ValueError("production renewal identities must be sorted and unique")
+        if self.direct_producer_retailer != (self.retailer in self.producers):
+            raise ValueError("production renewal direct custody differs from selected sites")
+        counts = dict.fromkeys(self.producers, 0)
+        processes: set[str] = set()
+        for basis in self.output_basis:
+            if basis.site_id not in counts or basis.process_id in processes:
+                raise ValueError(
+                    "production renewal output basis has an unselected or duplicate identity"
+                )
+            counts[basis.site_id] += 1
+            processes.add(basis.process_id)
+        if any(not 1 <= count <= 8 for count in counts.values()):
+            raise ValueError("production renewal output basis must cover each bounded producer")
+        return self
+
+
+class ProductionRenewalEvidence(FrozenRecord):
+    version: Literal[1]
+    seed_period: Positive
+    seed_register_sha256: Sha256
+    through_period: Positive
+    through_tick_content_hash: Sha256
+    canonical_receipt_sha256: Sha256
+    selection: ProductionRenewalSelection | None
+    status: Literal["no_usable_chain", "incomplete", "observed"]
+    produced: Quantity
+    producer_paid_deliveries: Quantity
+    proven_producer_supply: Quantity
+    paid_retail_handoffs: Quantity
+    proven_retail_handoffs: Quantity
+    consumed: Quantity
+    proven_consumed: Quantity
+    supplier_unproven_allowance: Quantity
+    retailer_unproven_allowance: Quantity
+    household_unproven_allowance: Quantity
+    pending_orders: Annotated[StrictInt, Field(ge=0, le=4096)]
+
+    @field_validator("version", mode="before")
+    @classmethod
+    def exact_version(cls, value: object) -> object:
+        if type(value) is not int:
+            raise ValueError("production renewal version must be an exact integer")
+        return value
+
+    @model_validator(mode="after")
+    def conservative_custody_bounds(self) -> ProductionRenewalEvidence:
+        if self.through_period < self.seed_period:
+            raise ValueError("production renewal window precedes its seed")
+        if self.selection is None:
+            quantities = (
+                self.produced,
+                self.producer_paid_deliveries,
+                self.proven_producer_supply,
+                self.paid_retail_handoffs,
+                self.proven_retail_handoffs,
+                self.consumed,
+                self.proven_consumed,
+                self.supplier_unproven_allowance,
+                self.retailer_unproven_allowance,
+                self.household_unproven_allowance,
+                self.pending_orders,
+            )
+            if self.status != "no_usable_chain" or any(quantities):
+                raise ValueError("absent production renewal chain cannot claim quantities")
+            return self
+        if self.proven_producer_supply > min(self.produced, self.producer_paid_deliveries):
+            raise ValueError(
+                "production renewal supplier bound exceeds actual output or paid deliveries"
+            )
+        if self.selection.direct_producer_retailer:
+            if (
+                self.producer_paid_deliveries != self.paid_retail_handoffs
+                or self.retailer_unproven_allowance != self.supplier_unproven_allowance
+            ):
+                raise ValueError("production renewal direct custody differs")
+            retail = min(self.proven_producer_supply, self.paid_retail_handoffs)
+        else:
+            retail = min(
+                self.proven_producer_supply,
+                max(0, self.paid_retail_handoffs - self.retailer_unproven_allowance),
+            )
+        consumed = min(retail, max(0, self.consumed - self.household_unproven_allowance))
+        if (self.proven_retail_handoffs, self.proven_consumed) != (retail, consumed):
+            raise ValueError("production renewal custody bounds differ from native quantities")
+        if self.status != ("observed" if consumed else "incomplete"):
+            raise ValueError("production renewal status must follow paid consumption bound")
+        return self
 
 
 class PlayableReport(FrozenRecord):
-    version: Literal[3]
+    version: Literal[6]
     capture_mode: Literal["playable-aid"]
     policy_sha256: Sha256
     campaign: str
@@ -1030,6 +1279,8 @@ class PlayableReport(FrozenRecord):
     independent_finite_aid_practice: dict[str, object]
     independent_account_posting_audit: dict[str, object]
     independent_trade_accounting: TradeSummary
+    independent_economic_accounting: EconomicSummary
+    independent_production_renewal: ProductionRenewalEvidence | None
     native_window_evidence: Literal["not_run"]
 
     @field_validator("version", mode="before")
@@ -1061,6 +1312,103 @@ class PlayableReport(FrozenRecord):
         return self
 
 
+def verify_economic_summary(
+    facts: list[EconomicBoundary], summary: EconomicSummary
+) -> dict[str, int]:
+    """Reconcile the audit totals with actual boundary facts, including prefixes."""
+    counts = {
+        "periods": len(facts),
+        "purchase_consumption_periods": sum(
+            any(q.purchased_consumption_lower_bound > 0 for q in f.households) for f in facts
+        ),
+        "funded_wage_periods": sum(_cash_value(f.funded_wages_paid_micros) > 0 for f in facts),
+        "procurement_settlement_periods": sum(f.settled_procurement_orders > 0 for f in facts),
+        "responsive_price_periods": sum(f.responsive_quotes > 0 for f in facts),
+        "ownership_payment_periods": sum(_cash_value(f.ownership_paid_micros) > 0 for f in facts),
+        "equipment_paths": sum(f.completed_equipment_paths for f in facts),
+    }
+    if any(getattr(summary, key) != value for key, value in counts.items()):
+        raise ValueError("economic summary disagrees with actual committed boundary facts")
+    renewal = all(
+        counts[key] > 1
+        for key in (
+            "purchase_consumption_periods",
+            "funded_wage_periods",
+            "procurement_settlement_periods",
+        )
+    )
+    renewal_status = "observed" if renewal else "incomplete"
+    equipment_status = "observed" if counts["equipment_paths"] > 0 else "not_observed"
+    if (summary.renewal_status, summary.equipment_status) != (renewal_status, equipment_status):
+        raise ValueError("economic observation statuses must follow actual evidence")
+    if any(
+        getattr(summary, key) != (getattr(facts[-1], key) if facts else 0)
+        for key in ("pending_procurement", "pending_wages", "pending_equipment")
+    ):
+        raise ValueError("economic pending joins differ from the final committed boundary")
+    return counts
+
+
+def _consistent_economic_summary(playable: PlayableReport, policy: Policy) -> dict[str, object]:
+    facts = [boundary.economic for boundary in playable.boundaries]
+    summary = playable.independent_economic_accounting
+    for boundary, fact in zip(playable.boundaries, facts, strict=True):
+        if (fact.period, fact.tick_content_hash, fact.canonical_receipt_sha256) != (
+            boundary.tick,
+            boundary.tick_content_hash,
+            boundary.canonical_receipt_sha256,
+        ):
+            raise ValueError("economic evidence differs from authenticated period or receipt")
+    counts = verify_economic_summary(facts, summary)
+    equipment_status = summary.equipment_status
+    end = playable.requested_periods
+    start = max(1, end - policy.economic_renewal_window_ticks + 1)
+    terminal = [fact for fact in facts if start <= fact.period <= end]
+    window = {
+        "start_tick": start,
+        "end_tick": end,
+        "selected_ticks": len(terminal),
+        "policy_window_ticks": policy.economic_renewal_window_ticks,
+        "paid_purchase_periods": sum(
+            any(q.purchased > 0 for q in fact.households) for fact in terminal
+        ),
+        "consumption_periods": sum(
+            any(q.consumed > 0 for q in fact.households) for fact in terminal
+        ),
+        "funded_wage_periods": sum(
+            _cash_value(fact.funded_wages_paid_micros) > 0 for fact in terminal
+        ),
+        "procurement_settlement_periods": sum(
+            fact.settled_procurement_orders > 0 for fact in terminal
+        ),
+    }
+    terminal_renewal = all(
+        window[key] > 1
+        for key in (
+            "paid_purchase_periods",
+            "consumption_periods",
+            "funded_wage_periods",
+            "procurement_settlement_periods",
+        )
+    )
+    complete = (
+        terminal_renewal
+        and counts["responsive_price_periods"] > 0
+        and counts["ownership_payment_periods"] > 0
+        and equipment_status == "observed"
+    )
+    return {
+        "status": "qualified" if complete else "incomplete",
+        "renewal_status": "observed" if terminal_renewal else "incomplete",
+        "renewal_window": {
+            **window,
+            "evidence_class": "Derived",
+            "status": "observed" if terminal_renewal else "incomplete",
+        },
+        "equipment_status": equipment_status,
+    }
+
+
 def _consistent_trade_summary(playable: PlayableReport) -> str:
     summary = playable.independent_trade_accounting
     facts = tuple(boundary.trade for boundary in playable.boundaries)
@@ -1084,6 +1432,41 @@ def _consistent_trade_summary(playable: PlayableReport) -> str:
     if summary.unresolved_trade_orders != pending:
         raise ValueError("trade summary differs from the current unresolved order set")
     return summary.status
+
+
+def _consistent_production_renewal(
+    playable: PlayableReport, policy: Policy, ticks: tuple[Snapshot, ...]
+) -> str:
+    evidence = playable.independent_production_renewal
+    seed = max(1, playable.requested_periods - policy.economic_renewal_window_ticks)
+    if evidence is None:
+        if len(ticks) >= seed:
+            raise ValueError("production renewal evidence omitted after its captured seed")
+        return "incomplete"
+    if evidence.seed_period != seed or evidence.through_period != len(ticks):
+        raise ValueError("production renewal does not cover the captured terminal window")
+    seed_claim = ticks[seed - 1].actual_rust_storage_package_claims[-1]
+    if evidence.seed_register_sha256 != seed_claim.canonical_register_sha256:
+        raise ValueError("production renewal seed differs from authenticated register")
+    latest = playable.boundaries[-1]
+    if (evidence.through_tick_content_hash, evidence.canonical_receipt_sha256) != (
+        latest.tick_content_hash,
+        latest.canonical_receipt_sha256,
+    ):
+        raise ValueError("production renewal differs from final authenticated receipt")
+    if evidence.selection is not None:
+        native = (evidence.selection.good_id, evidence.selection.unit_id)
+        quantities = [
+            q
+            for boundary in playable.boundaries[seed:]
+            for q in boundary.economic.households
+            if (q.good_id, q.unit_id) == native
+        ]
+        if evidence.paid_retail_handoffs > sum(
+            q.purchased for q in quantities
+        ) or evidence.consumed > sum(q.consumed for q in quantities):
+            raise ValueError("production renewal exceeds authenticated household native quantities")
+    return evidence.status
 
 
 def evaluate_playable(
@@ -1121,10 +1504,21 @@ def evaluate_playable(
         json.dumps(list(playable.county_geoids), separators=(",", ":")).encode("ascii")
     ).hexdigest()
     incomplete = len(ticks) != playable.requested_periods
+    economic = _consistent_economic_summary(playable, policy)
+    production_renewal = _consistent_production_renewal(playable, policy, ticks)
+    if production_renewal != "observed":
+        economic["status"] = "incomplete"
+    economic_required = playable.requested_periods >= policy.qualification_ticks
+    incomplete |= economic_required and economic["status"] != "qualified"
     for boundary, tick, continuation in zip(
         playable.boundaries, ticks, playable.continuations, strict=True
     ):
         marker = tick.marker_and_encoded_package_hashes[-1]
+        if (
+            boundary.production.material_register_bytes
+            != tick.actual_rust_storage_package_claims[-1].canonical_register_bytes
+        ):
+            raise ValueError("complete production register size differs from authenticated storage")
         if (
             boundary.tick,
             boundary.tick_content_hash,
@@ -1200,10 +1594,6 @@ def evaluate_playable(
         "exact_final_contribution_debit_ledger",
     )
     incomplete |= any(audit.get(name) != "passed" for name in required_audit)
-    incomplete |= (
-        type(audit.get("accepted_original_commands")) is not int
-        or audit.get("accepted_original_commands") != 2
-    )
     facts = audit.get("periods")
     if not isinstance(facts, (list, tuple)) or len(facts) != len(ticks):
         raise ValueError("independent accounting must cover every actual storage period")
@@ -1234,7 +1624,11 @@ def evaluate_playable(
         if command in accepted_commands:
             raise ValueError("duplicate accepted original aid command")
         accepted_commands.add(command)
-    incomplete |= len(accepted_commands) != 2
+    incomplete |= (
+        type(audit.get("accepted_original_commands")) is not int
+        or audit.get("accepted_original_commands") != len(accepted_commands)
+        or not 1 <= len(accepted_commands) <= 2
+    )
     positive_commands: set[tuple[int, ...]] = set()
     delivered_commands: set[tuple[int, ...]] = set()
     for boundary, fact in zip(playable.boundaries, facts, strict=True):
@@ -1288,26 +1682,27 @@ def evaluate_playable(
         if isinstance(terminal, (list, tuple))
         else set()
     )
-    incomplete |= not (
+    positive_practice_verified = (
         isinstance(terminal, (list, tuple))
-        and len(terminal) == len(terminal_commands) == 2
+        and len(terminal) == len(terminal_commands) == len(accepted_commands)
         and terminal_commands == completed_commands
-    )
-    incomplete |= not (
-        practice.get("status") == "passed"
+        and practice.get("status") == ("passed" if len(accepted_commands) == 2 else "incomplete")
         and practice.get("basis")
         == "actual_consumed_support_independent_partner_response_and_authenticated_finite_debits"
         and isinstance(completed, (list, tuple))
-        and len(completed) == len(completed_commands) == 2
+        and len(completed) == len(completed_commands) == len(accepted_commands)
         and completed_commands == positive_commands
         and positive_commands <= delivered_commands
         and positive_commands == accepted_commands
     )
-    incomplete |= not (
-        playable.remote_consumed
+    incomplete |= not positive_practice_verified
+    incomplete |= playable.canonical_protocol_recovery != "passed"
+    full_positive_aid = (
+        len(accepted_commands) == 2
+        and positive_practice_verified
+        and playable.remote_consumed
         and playable.local_consumed
         and playable.positive_aid_consequences == "passed"
-        and playable.canonical_protocol_recovery == "passed"
     )
     archive_pass = all(
         r.elapsed_ns <= policy.maximum_archive_catchup_seconds * 1_000_000_000
@@ -1330,17 +1725,346 @@ def evaluate_playable(
             )
         }
     )
-    failed = not archive_pass or not production_pass or admission["status"] == "failed"
+    byte_budgets_pass = all(
+        b.production.material_register_bytes <= policy.maximum_material_register_bytes
+        and b.production.production_evidence_body_bytes
+        <= policy.maximum_production_evidence_body_bytes
+        for b in playable.boundaries
+    )
+    failed = (
+        not archive_pass
+        or not production_pass
+        or not byte_budgets_pass
+        or admission["status"] == "failed"
+    )
     incomplete |= admission["status"] != "qualified"
     return {
-        "status": "failed" if failed else ("incomplete" if incomplete else "qualified"),
+        "status": "failed"
+        if failed
+        else ("incomplete" if incomplete or not full_positive_aid else "qualified"),
+        "operational_smoke_status": (
+            "not_applicable"
+            if playable.requested_periods != policy.routine_smoke_periods
+            else ("failed" if failed else ("incomplete" if incomplete else "qualified"))
+        ),
+        "positive_aid_practice_status": "qualified" if full_positive_aid else "incomplete",
         "archive_catchup_status": "qualified" if archive_pass else "failed",
         "production_read_status": "qualified" if production_pass else "failed",
         "trade_accounting_status": "qualified" if trade_status == "passed" else "incomplete",
         "trade_required_for_run": trade_required,
+        "economic_accounting_status": economic["status"],
+        "economic_renewal_status": economic["renewal_status"],
+        "economic_renewal_window": economic["renewal_window"],
+        "economic_production_renewal_status": production_renewal,
+        "equipment_path_status": economic["equipment_status"],
+        "economic_required_for_run": economic_required,
+        "separate_byte_budgets_status": "qualified" if byte_budgets_pass else "failed",
         "native_window_status": "unqualified",
         "native_window_evidence": playable.native_window_evidence,
         "scope": "Actual material aid, independent accounting/practice, settled trade evidence, Archive, full Production read, storage and recovery; native interaction and fun remain unqualified",
+    }
+
+
+MemoryRole = Literal["native-client", "engine-runtime", "game-postgresql", "native-test-composite"]
+
+
+class CombinedMemoryToolingReport(FrozenRecord):
+    version: Literal[1]
+    compilation_peak_rss_upper_bound_bytes: Nonnegative | None
+    external_test_tooling_peak_rss_upper_bound_bytes: Nonnegative | None
+    scope: Literal["separate_tooling_not_running_game_compliance"]
+
+    @field_validator("version", mode="before")
+    @classmethod
+    def exact_version(cls, value: object) -> object:
+        if type(value) is not int:
+            raise ValueError("tooling memory version must be an exact integer")
+        return value
+
+
+class MemoryProcess(FrozenRecord):
+    pid: Positive
+    start_time_ticks: Nonnegative
+    role: MemoryRole
+    executable_sha256: Sha256
+    rss_bytes: Nonnegative
+    pss_bytes: Nonnegative
+    swap_bytes: Nonnegative
+    private_hugetlb_bytes: Nonnegative
+    shared_hugetlb_bytes: Nonnegative
+
+    @model_validator(mode="after")
+    def kernel_units(self) -> MemoryProcess:
+        if self.pss_bytes > self.rss_bytes:
+            raise ValueError("combined memory PSS cannot exceed RSS")
+        if any(
+            value % 1024
+            for value in (
+                self.rss_bytes,
+                self.pss_bytes,
+                self.swap_bytes,
+                self.private_hugetlb_bytes,
+                self.shared_hugetlb_bytes,
+            )
+        ):
+            raise ValueError("smaps_rollup KiB observations must be exact multiples of 1024 bytes")
+        return self
+
+
+class MemorySample(FrozenRecord):
+    sequence: Positive
+    foundation_sha256: Sha256 | None
+    campaign_age_ticks: Nonnegative
+    tick_content_hash: Sha256 | None
+    monotonic_ns: Nonnegative
+    capture_duration_ns: Nonnegative
+    simultaneous_capture: Literal["owned_game_group_stopped", "sequential_unstopped"]
+    roster_complete: Literal["all_game_processes_in_owned_scope", "incomplete"]
+    native_client_mode: Literal["windowed", "headless", "not_running"]
+    processes: tuple[MemoryProcess, ...]
+
+    @model_validator(mode="after")
+    def exact_roster(self) -> MemorySample:
+        pids = tuple(process.pid for process in self.processes)
+        if not pids or len(pids) != len(set(pids)):
+            raise ValueError("combined memory requires unique nonempty process observations")
+        if (self.campaign_age_ticks == 0) != (self.tick_content_hash is None):
+            raise ValueError("combined memory age must bind its committed marker")
+        if self.foundation_sha256 is None and self.campaign_age_ticks:
+            raise ValueError("absent campaign foundation cannot have a committed period")
+        return self
+
+
+class CombinedMemoryEvidence(FrozenRecord):
+    version: Literal[2]
+    source: Literal["linux_proc_smaps_rollup_v1"]
+    evidence_class: Literal["Observed"]
+    policy_sha256: Sha256
+    campaign: str
+    foundation_sha256: Sha256
+    boot_id: str
+    ownership_record_sha256: Sha256
+    source_manifest_sha256: Sha256
+    executable_manifest_sha256: Sha256
+    capture_implementation_sha256: Sha256
+    tooling_report_sha256: Sha256
+    periods: Positive
+    interval_start_monotonic_ns: Nonnegative
+    interval_end_monotonic_ns: Positive
+    samples: tuple[MemorySample, ...]
+
+    @field_validator("version", mode="before")
+    @classmethod
+    def exact_version(cls, value: object) -> object:
+        if type(value) is not int:
+            raise ValueError("combined memory version must be an exact integer")
+        return value
+
+    @model_validator(mode="after")
+    def coherent_interval(self) -> CombinedMemoryEvidence:
+        if str(UUID(self.campaign)) != self.campaign or UUID(self.campaign).int == 0:
+            raise ValueError("combined memory campaign must be a nonzero canonical UUID")
+        if str(UUID(self.boot_id)) != self.boot_id:
+            raise ValueError("combined memory boot identity must be canonical")
+        if self.interval_start_monotonic_ns >= self.interval_end_monotonic_ns:
+            raise ValueError("combined memory observation interval must be positive")
+        previous = self.interval_start_monotonic_ns
+        age = 0
+        founded = False
+        for sequence, sample in enumerate(self.samples, 1):
+            if sample.foundation_sha256 is not None:
+                if sample.foundation_sha256 != self.foundation_sha256:
+                    raise ValueError("combined memory sample foundation differs")
+                founded = True
+            elif founded:
+                raise ValueError("combined memory campaign foundation disappeared")
+            if sample.sequence != sequence or not previous <= sample.monotonic_ns:
+                raise ValueError("combined memory samples must be consecutive and ordered")
+            if sample.monotonic_ns + sample.capture_duration_ns > self.interval_end_monotonic_ns:
+                raise ValueError("combined memory sample exceeds observation interval")
+            if not age <= sample.campaign_age_ticks <= self.periods:
+                raise ValueError("combined memory ages must be ordered within actual run")
+            previous = sample.monotonic_ns + sample.capture_duration_ns
+            age = sample.campaign_age_ticks
+        if not self.samples:
+            raise ValueError("combined memory requires actual observations")
+        return self
+
+
+def authenticate_combined_memory_capture(
+    evidence: CombinedMemoryEvidence, directory: Path
+) -> CombinedMemoryToolingReport:
+    """Authenticate frozen runner artifacts, without provisioning or OS admission.
+
+    Their existence/hashes do not create capture authority. The existing owned
+    runner must produce them, authenticate process scope and freeze the sampler.
+    Missing sampler output is a refusal; there is no legacy RSS-peak fallback.
+    """
+    artifacts = {
+        "ownership": evidence.ownership_record_sha256,
+        "combined-memory-source.sha256": evidence.source_manifest_sha256,
+        "combined-memory-executables.json": evidence.executable_manifest_sha256,
+        "combined-memory-sampler-source.py": evidence.capture_implementation_sha256,
+        "combined-memory-tooling.json": evidence.tooling_report_sha256,
+    }
+    for name, expected in artifacts.items():
+        path = directory / name
+        if path.is_symlink() or not path.is_file():
+            raise ValueError("combined memory frozen capture artifact missing")
+        if hashlib.sha256(path.read_bytes()).hexdigest() != expected:
+            raise ValueError("combined memory frozen capture artifact differs")
+    manifest = strict_json(directory / "combined-memory-executables.json")
+    if (
+        not isinstance(manifest, dict)
+        or set(manifest) != {"version", "roles"}
+        or type(manifest["version"]) is not int
+        or manifest["version"] != 1
+    ):
+        raise ValueError("unsupported combined memory executable manifest")
+    roles = manifest["roles"]
+    if not isinstance(roles, dict) or set(roles) - {
+        "native-client",
+        "engine-runtime",
+        "game-postgresql",
+        "native-test-composite",
+    }:
+        raise ValueError("combined memory executable role manifest differs")
+    for digests in roles.values():
+        if (
+            not isinstance(digests, list)
+            or not digests
+            or any(
+                not isinstance(value, str) or re.fullmatch(r"[0-9a-f]{64}", value) is None
+                for value in digests
+            )
+            or len(digests) != len(set(digests))
+        ):
+            raise ValueError("combined memory executable manifest requires exact unique digests")
+    for sample in evidence.samples:
+        for process in sample.processes:
+            if process.executable_sha256 not in roles.get(process.role, ()):
+                raise ValueError(
+                    "combined memory process executable differs from frozen role admission"
+                )
+    return CombinedMemoryToolingReport.model_validate(
+        strict_json(directory / "combined-memory-tooling.json")
+    )
+
+
+def evaluate_combined_memory(
+    policy: Policy,
+    policy_sha256: str,
+    evidence: CombinedMemoryEvidence,
+    campaign: str,
+    foundation_sha256: str,
+    tick_hashes: tuple[str, ...],
+) -> dict[str, object]:
+    """Bound sampled shared-once resident memory; do not label summed RSS exact.
+
+    Group RSS is an upper bound, including every mixed test-native process in
+    full. Group PSS is diagnostic only: outside-group sharing, KiB truncation
+    and kernel large-page mapping approximations prevent exact union claims or
+    unconditional violation proofs. Hugetlb mappings are charged in full in the upper bound.
+    Only coherent complete samples support comparisons.
+    Swap is a separate observed diagnostic, not part of the resident-RAM cap.
+    """
+    if (evidence.policy_sha256, evidence.campaign, evidence.foundation_sha256) != (
+        policy_sha256,
+        campaign,
+        foundation_sha256,
+    ):
+        raise ValueError("combined memory policy/campaign/foundation differs")
+    if evidence.periods != len(tick_hashes):
+        raise ValueError("combined memory horizon differs from actual authenticated periods")
+    required = {"native-client", "engine-runtime", "game-postgresql"}
+    rows = []
+    ages = set()
+    complete = True
+    bounded = True
+    peak_rss = peak_pss = peak_swap = maximum_gap = 0
+    prior_end = evidence.interval_start_monotonic_ns
+    for sample in evidence.samples:
+        age = sample.campaign_age_ticks
+        if age and sample.tick_content_hash != tick_hashes[age - 1]:
+            raise ValueError("combined memory marker differs from authenticated history")
+        # Hugetlb mappings are omitted by Linux RSS/PSS counters; add their
+        # full private/shared sizes to the conservative upper bound.
+        rss = sum(
+            process.rss_bytes + process.private_hugetlb_bytes + process.shared_hugetlb_bytes
+            for process in sample.processes
+        )
+        pss = sum(process.pss_bytes for process in sample.processes)
+        swap = sum(process.swap_bytes for process in sample.processes)
+        if max(rss, pss, swap) > 2**63 - 1:
+            raise ValueError("combined memory aggregate exceeds supported byte range")
+        admissible = (
+            sample.simultaneous_capture == "owned_game_group_stopped"
+            and sample.roster_complete == "all_game_processes_in_owned_scope"
+            and sample.native_client_mode == "windowed"
+            and required <= {process.role for process in sample.processes}
+        )
+        complete &= admissible
+        if admissible:
+            ages.add(age)
+        bounded &= admissible and rss <= policy.maximum_combined_running_game_memory_bytes
+        peak_rss, peak_pss, peak_swap = max(peak_rss, rss), max(peak_pss, pss), max(peak_swap, swap)
+        maximum_gap = max(maximum_gap, sample.monotonic_ns - prior_end)
+        prior_end = sample.monotonic_ns + sample.capture_duration_ns
+        rows.append(
+            {
+                "sequence": sample.sequence,
+                "campaign_age_ticks": age,
+                "foundation_sha256": sample.foundation_sha256,
+                "rss_upper_bound_bytes": rss,
+                "pss_diagnostic_bytes": pss,
+                "swap_sum_diagnostic_bytes": swap,
+                "simultaneous_complete_roster": admissible,
+            }
+        )
+    maximum_gap = max(maximum_gap, evidence.interval_end_monotonic_ns - prior_end)
+    creation_covered = (
+        evidence.samples[0].foundation_sha256 is None
+        and rows[0]["simultaneous_complete_roster"] is True
+        and any(
+            sample.foundation_sha256 == evidence.foundation_sha256
+            and row["simultaneous_complete_roster"] is True
+            for sample, row in zip(evidence.samples, rows, strict=True)
+        )
+    )
+    complete &= ages == set(range(evidence.periods + 1)) and creation_covered
+    permitted_gap = policy.maximum_combined_memory_sample_gap_seconds * 1_000_000_000
+    cadence_complete = maximum_gap <= permitted_gap
+    status = "qualified" if complete and bounded and cadence_complete else "incomplete"
+
+    def horizon_status(horizon: int) -> str:
+        return (
+            "qualified" if status == "qualified" and evidence.periods >= horizon else "incomplete"
+        )
+
+    return {
+        "version": 2,
+        "policy_version": policy.version,
+        "policy_sha256": policy_sha256,
+        "evidence_class": "Derived",
+        "method": policy.combined_memory_charge_method,
+        "status": status,
+        "actual_52_period_status": horizon_status(policy.qualification_ticks),
+        "actual_325_period_status": horizon_status(policy.save_qualification_ticks),
+        "actual_periods": evidence.periods,
+        "sample_count": len(rows),
+        "complete_actual_age_and_component_coverage": complete,
+        "campaign_creation_coverage": "qualified" if creation_covered else "incomplete",
+        "maximum_combined_running_game_memory_bytes": policy.maximum_combined_running_game_memory_bytes,
+        "observed_sample_peak_rss_upper_bound_bytes": peak_rss,
+        "observed_sample_peak_pss_diagnostic_bytes": peak_pss,
+        "observed_sample_peak_swap_sum_diagnostic_bytes": peak_swap,
+        "maximum_unsampled_gap_ns": maximum_gap,
+        "maximum_permitted_unsampled_gap_ns": permitted_gap,
+        "sample_cadence_status": "qualified" if cadence_complete else "incomplete",
+        "exact_shared_page_union_measured": False,
+        "continuous_high_water_mark_proven": False,
+        "samples": rows,
+        "scope": "Conservative resident-RAM bound at coherent samples across actual campaign ages; shared-page union is bounded, not measured exactly; compilation/test tooling, swap, save storage and native enjoyment are separately reported",
     }
 
 
@@ -1350,7 +2074,7 @@ def main() -> int:
         "--policy",
         type=Path,
         default=Path(__file__).resolve().parents[2]
-        / "contracts/national_storage_qualification_v3.json",
+        / "contracts/national_storage_qualification_v6.json",
     )
     p.add_argument("--baseline", type=Path)
     p.add_argument("--opening", type=Path)
@@ -1364,6 +2088,11 @@ def main() -> int:
     p.add_argument("--qualify-smoke", action="store_true")
     p.add_argument("--playable-report", type=Path)
     p.add_argument("--qualify-playable", action="store_true")
+    p.add_argument("--native-report", type=Path)
+    p.add_argument("--qualify-native", action="store_true")
+    p.add_argument("--combined-memory-report", type=Path)
+    p.add_argument("--qualify-memory", action="store_true")
+    p.add_argument("--qualify-memory-save", action="store_true")
     p.add_argument("--focused-junit", type=Path)
     p.add_argument("--qualify-focused", action="store_true")
     a = p.parse_args()
@@ -1379,6 +2108,9 @@ def main() -> int:
                 or a.qualify_timing
                 or a.qualify_focused
                 or a.qualify_playable
+                or a.qualify_native
+                or a.qualify_memory
+                or a.qualify_memory_save
                 or any(
                     value is not None
                     for value in (
@@ -1389,6 +2121,8 @@ def main() -> int:
                         a.timings,
                         a.focused_junit,
                         a.playable_report,
+                        a.native_report,
+                        a.combined_memory_report,
                     )
                 )
             ):
@@ -1405,6 +2139,17 @@ def main() -> int:
                 )
             )
             return 0
+        if (a.qualify_memory or a.qualify_memory_save) and a.combined_memory_report is None:
+            raise ValueError("combined memory qualification requires authenticated current capture")
+        if a.qualify_native and any(
+            value is None
+            for value in (a.native_report, a.playable_report, a.timings, a.combined_memory_report)
+        ):
+            raise ValueError(
+                "native qualification requires material, timing and combined-memory evidence"
+            )
+        if a.native_report is not None and (a.playable_report is None or a.timings is None):
+            raise ValueError("native evidence requires the actual material and timing report")
         a.reopens = a.reopens or []
         if a.focused_junit is not None:
             if (
@@ -1414,7 +2159,12 @@ def main() -> int:
                 or a.qualify_smoke
                 or a.timings is not None
                 or a.qualify_playable
+                or a.qualify_native
+                or a.native_report is not None
                 or a.playable_report is not None
+                or a.combined_memory_report is not None
+                or a.qualify_memory
+                or a.qualify_memory_save
             ):
                 raise ValueError("focused qualification is separate from storage/native timing")
             result = evaluate_focused(policy, a.focused_junit)
@@ -1475,6 +2225,77 @@ def main() -> int:
             ).hexdigest()
         elif a.qualify_playable:
             raise ValueError("playable qualification needs a current playable aid report")
+        memory_report: dict[str, object] = {
+            "version": 1,
+            "status": "incomplete",
+            "actual_52_period_status": "incomplete",
+            "actual_325_period_status": "incomplete",
+            "reason": "No authenticated combined running-game memory capture; native-test/runtime-only peak is not combined compliance",
+        }
+        memory = None
+        if a.combined_memory_report is not None:
+            if a.playable_report is None:
+                raise ValueError(
+                    "combined memory needs actual playable campaign/foundation evidence"
+                )
+            memory_bytes = a.combined_memory_report.read_bytes()
+            memory = CombinedMemoryEvidence.model_validate(strict_json_bytes(memory_bytes))
+            tooling = authenticate_combined_memory_capture(memory, a.combined_memory_report.parent)
+            playable = PlayableReport.model_validate(strict_json(a.playable_report))
+            memory_report = evaluate_combined_memory(
+                policy,
+                policy_sha256,
+                memory,
+                playable.campaign,
+                playable.foundation_sha256,
+                tuple(load(path).marker_and_encoded_package_hashes[-1][1] for path in a.ticks),
+            )
+            memory_report["excluded_tooling"] = tooling.model_dump()
+            result["combined_memory_report_sha256"] = hashlib.sha256(memory_bytes).hexdigest()
+        result["combined_running_game_memory"] = memory_report
+        native_report: dict[str, object] = {
+            "status": "incomplete",
+            "enjoyment_status": "unqualified",
+        }
+        if a.native_report is not None:
+            from tools.devtools.national_native_evidence import (
+                MANIFEST_BYTES,
+                NativeRunEvidence,
+                evaluate_native,
+                private_bytes,
+            )
+
+            native_bytes = private_bytes(a.native_report, MANIFEST_BYTES)
+            native_report = evaluate_native(
+                policy,
+                policy_sha256,
+                NativeRunEvidence.model_validate(strict_json_bytes(native_bytes)),
+                a.native_report.parent,
+                PlayableReport.model_validate(strict_json(a.playable_report)),
+                timing,
+                load(a.opening),
+                tuple(load(path) for path in a.ticks),
+                playable_report,
+                memory,
+            )
+            playable_report["native_window_status"] = native_report["status"]
+            playable_report["native_window_evidence"] = "native_material_timing_recovery_join_v4"
+            playable_report["scope"] = native_report["scope"]
+            result["native_report_sha256"] = hashlib.sha256(native_bytes).hexdigest()
+        result["native_window"] = native_report
+        result["qualification_report_version"] = 7
+        if len(a.ticks) >= policy.qualification_ticks and a.playable_report is not None:
+            memory_horizon = (
+                "actual_325_period_status"
+                if len(a.ticks) >= policy.save_qualification_ticks
+                else "actual_52_period_status"
+            )
+            playable_report["combined_memory_status"] = memory_report[memory_horizon]
+            if (
+                memory_report[memory_horizon] != "qualified"
+                or native_report["status"] != "qualified"
+            ) and playable_report["status"] != "failed":
+                playable_report["status"] = "incomplete"
     except (ValueError, OSError, ET.ParseError) as error:
         p.error(str(error))
     print(json.dumps(result, indent=2))
@@ -1490,8 +2311,17 @@ def main() -> int:
         and timing_report["status"] != "qualified"
         or a.qualify_smoke
         and smoke_report["status"] != "qualified"
+        or a.qualify_smoke
+        and a.playable_report is not None
+        and playable_report.get("operational_smoke_status") != "qualified"
         or a.qualify_playable
         and playable_report["status"] != "qualified"
+        or a.qualify_memory
+        and memory_report["actual_52_period_status"] != "qualified"
+        or a.qualify_memory_save
+        and memory_report["actual_325_period_status"] != "qualified"
+        or a.qualify_native
+        and native_report["status"] != "qualified"
     )
 
 

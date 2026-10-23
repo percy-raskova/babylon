@@ -20,7 +20,7 @@ mod national_capture;
 fn actual_national_playable_source_and_cold_foundation_preserve_one_opening() {
     let campaign = CampaignId::from_uuid(uuid::Uuid::from_u128(0x0026_1631_7031));
     let raw = CapturedEconomicCatalog::capture(national_capture::input(), None).unwrap();
-    assert_eq!(raw.compiler_version(), "national-world-v4");
+    assert_eq!(raw.compiler_version(), "national-world-v5");
     assert_eq!(
         &raw.canonical_bytes()[raw.canonical_bytes().len() - 5..],
         &[0; 5]

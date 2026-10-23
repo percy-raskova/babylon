@@ -46,6 +46,14 @@ enum TitleAction {
     GameQuit,
 }
 
+/// Activate the ordinary Continue control from an explicitly enabled harness.
+#[derive(Event)]
+pub(crate) struct ContinueTitle;
+
+pub(crate) fn continue_requested(_event: On<ContinueTitle>, mut input: TitleInput) {
+    input.activate(TitleAction::Continue);
+}
+
 fn label(value: &str, size: f32, role: ObserverFontRole) -> impl Bundle {
     (
         Text::new(value),
@@ -300,7 +308,7 @@ fn action_visible(
 }
 
 #[derive(SystemParam)]
-struct TitleInput<'w> {
+pub(crate) struct TitleInput<'w> {
     opening: ResMut<'w, OpeningPresentation>,
     session: Res<'w, ObserverSession>,
     ui: Res<'w, ObserverUiState>,
@@ -549,6 +557,7 @@ impl Plugin for ObserverTitlePlugin {
         app.init_resource::<OpeningPresentation>()
             .add_systems(Startup, spawn_title)
             .add_observer(focused_action)
+            .add_observer(continue_requested)
             .add_systems(
                 PreUpdate,
                 eligibility.in_set(ObserverFocusSystems::Eligibility),

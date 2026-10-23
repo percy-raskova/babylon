@@ -1,6 +1,6 @@
 {
-  "version": 3,
-  "name": "national_storage_qualification_v3",
+  "version": 6,
+  "name": "national_storage_qualification_v6",
   "evidence_class": "Designed",
   "storage_charge_method": "positive_growth_by_component_and_boundary_v1",
   "maximum_tick_growth_bytes": 40000000,
@@ -21,5 +21,11 @@
   "maximum_routine_smoke_seconds": 900,
   "preferred_qualification_seconds": 14400,
   "maximum_archive_catchup_seconds": 180,
-  "maximum_production_read_seconds": 180
+  "maximum_production_read_seconds": 180,
+  "maximum_material_register_bytes": 1000000000,
+  "maximum_production_evidence_body_bytes": 1000000000,
+  "economic_renewal_window_ticks": 13,
+  "maximum_combined_running_game_memory_bytes": 10000000000,
+  "maximum_combined_memory_sample_gap_seconds": 5,
+  "combined_memory_charge_method": "smaps_rollup_rss_upper_bound_v1"
 }

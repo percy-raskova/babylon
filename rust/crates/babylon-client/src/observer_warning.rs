@@ -29,7 +29,7 @@ enum WarningAction {
     Quit,
 }
 #[derive(Message)]
-struct ContinueWarning;
+pub(crate) struct ContinueWarning;
 
 fn text(value: &str, size: f32, color: Color) -> impl Bundle {
     (
@@ -254,7 +254,7 @@ fn keyboard(
     }
 }
 
-fn apply_continue(
+pub(crate) fn apply_continue(
     mut continues: MessageReader<ContinueWarning>,
     ui: Res<ObserverUiState>,
     mut opening: ResMut<OpeningPresentation>,

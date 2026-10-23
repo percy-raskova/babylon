@@ -39,6 +39,7 @@ babylon-kernel = { path = "../babylon-kernel" }
 babylon-persistence = { path = "../babylon-persistence" }
 earcut = "0.4.11"
 serde_json = "1"
+serde = { version = "1", features = ["derive"] }
 uuid = "1.24"
 # Client logging estate (Director directive 2026-07-28 for location +
 # rotation; Director-approved switch 2026-08-11, #503 item 7): the file

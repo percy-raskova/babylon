@@ -16,7 +16,8 @@ struct PathTree {
 /// Initialization-only shortest compatible paths. No route or source is invented.
 pub(super) struct Network<'a> {
     source: &'a NationalTransportReference,
-    nodes: BTreeMap<&'a str, usize>,
+    endpoints: Vec<(usize, usize)>,
+    node_count: usize,
     locations: BTreeMap<EconomicLocation, usize>,
     incoming: Vec<Vec<usize>>,
     trees: BTreeMap<(EconomicLocation, CargoClass), PathTree>,
@@ -30,10 +31,13 @@ impl<'a> Network<'a> {
             .map(|(i, n)| (n.id(), i))
             .collect();
         let mut incoming = vec![vec![]; nodes.len()];
+        let mut endpoints = Vec::with_capacity(source.links().len());
         for (i, link) in source.links().iter().enumerate() {
-            let (_, to) = link.endpoints();
-            let index = *nodes.get(to).ok_or(NationalOpeningError::Route)?;
-            incoming[index].push(i);
+            let (from, to) = link.endpoints();
+            let from = *nodes.get(from).ok_or(NationalOpeningError::Route)?;
+            let to = *nodes.get(to).ok_or(NationalOpeningError::Route)?;
+            endpoints.push((from, to));
+            incoming[to].push(i);
         }
         let mut locations = BTreeMap::new();
         for node in source.nodes() {
@@ -48,7 +52,8 @@ impl<'a> Network<'a> {
         }
         Ok(Self {
             source,
-            nodes,
+            endpoints,
+            node_count: nodes.len(),
             locations,
             incoming,
             trees: BTreeMap::new(),
@@ -61,8 +66,8 @@ impl<'a> Network<'a> {
                 .get(&buyer)
                 .ok_or(NationalOpeningError::Route)?;
             let mut tree = PathTree {
-                distance: vec![u16::MAX; self.nodes.len()],
-                next_link: vec![None; self.nodes.len()],
+                distance: vec![u16::MAX; self.node_count],
+                next_link: vec![None; self.node_count],
             };
             tree.distance[destination] = 0;
             let mut queue = VecDeque::from([destination]);
@@ -72,7 +77,7 @@ impl<'a> Network<'a> {
                     if !link.cargo().contains(&cargo) {
                         continue;
                     }
-                    let from = self.nodes[link.endpoints().0];
+                    let from = self.endpoints[edge].0;
                     if tree.distance[from] != u16::MAX {
                         continue;
                     }
@@ -138,8 +143,8 @@ impl<'a> Network<'a> {
         while from != destination {
             let edge = next_link[from].ok_or(NationalOpeningError::Route)?;
             path.push(edge);
-            from = self.nodes[self.source.links()[edge].endpoints().1];
-            if path.len() > self.nodes.len() {
+            from = self.endpoints[edge].1;
+            if path.len() > self.node_count {
                 return Err(NationalOpeningError::Route);
             }
         }
@@ -315,7 +320,7 @@ fn add_stage(
 }
 
 fn add_replenishment_routes(builder: &mut Builder<'_>) -> Result<()> {
-    for row in builder.opening.policies.replenishment.clone() {
+    for row in &builder.opening.policies.replenishment {
         let from = builder
             .actors
             .get(&row.supplier_site_id)
@@ -359,7 +364,8 @@ fn add_route_stages(
     network: &mut Network<'_>,
     routes: &mut BTreeSet<RouteId>,
 ) -> Result<()> {
-    for row in builder.opening.logistics.supplier_routes.clone() {
+    for index in 0..builder.opening.logistics.supplier_routes.len() {
+        let row = &builder.opening.logistics.supplier_routes[index];
         let from = builder
             .actors
             .get(&row.supplier_site_id)

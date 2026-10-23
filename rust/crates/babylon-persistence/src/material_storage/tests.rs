@@ -40,7 +40,7 @@ fn actual_two_periods_reload_independently_without_retaining_historic_lookup() {
             .starts_with(b"babylon.state-storage.v4\0"));
         assert!(encoded
             .receipt_storage_bytes
-            .starts_with(b"BabylonReceiptStorageV2\0"));
+            .starts_with(b"BabylonReceiptStorageV3\0"));
         let loaded = read_period_lookup(
             &opening,
             period,
@@ -359,4 +359,143 @@ fn encode_refuses_independently_valid_receipt_from_another_tick() {
         chain
     )
     .is_ok());
+}
+
+#[test]
+fn admitted_current_receipt_is_not_typed_decoded_again_for_endpoint_framing() {
+    let foundation = MichiganContentPreset::FourWeekStandard
+        .create_foundation(&crate::test_support::catalog())
+        .unwrap();
+    let session = foundation.into_session().unwrap();
+    let opening = OpeningRegister::from_opening(session.material()).unwrap();
+    let chain = initial_lookup_chain(&opening).unwrap();
+    let actions =
+        OrderedPracticeActionBatch::empty(session.graph_session().session_identity().clone(), 1)
+            .unwrap();
+    let candidate = session.prepare_advance(&actions).unwrap();
+    let encoded = encode(
+        candidate.material().register(),
+        candidate.material().receipt_bytes(),
+        &opening,
+        chain,
+    )
+    .unwrap();
+    let loaded = read_period_lookup(
+        &opening,
+        1,
+        &encoded.lookup_delta_bytes,
+        LookupAnchor::Previous(chain),
+    )
+    .unwrap();
+    let before = crate::receipt_storage::typed_admission_count();
+    let history = decode_typed(
+        &opening,
+        1,
+        &encoded.register_storage_bytes,
+        &encoded.receipt_storage_bytes,
+        &loaded.lookup,
+        loaded.chain,
+    )
+    .unwrap();
+    let endpoint = decode_typed_with_witness(
+        &opening,
+        1,
+        &encoded.register_storage_bytes,
+        &encoded.receipt_storage_bytes,
+        &loaded.lookup,
+        loaded.chain,
+        MaterialStorageWitnesses {
+            register: Some(&history.register),
+            receipt: Some(&history.receipt_witness),
+        },
+    )
+    .unwrap();
+    assert_eq!(endpoint.receipt_bytes, candidate.material().receipt_bytes());
+    assert!(std::sync::Arc::ptr_eq(
+        &endpoint.receipts,
+        &history.receipts
+    ));
+    assert_eq!(endpoint.receipts, history.receipts);
+    assert_eq!(
+        crate::receipt_storage::typed_admission_count() - before,
+        1,
+        "the complete reader must reuse the already admitted current typed receipt"
+    );
+    assert_receipt_witness_refusals(&opening, &encoded, &loaded, &history);
+    let cold = decode_typed(
+        &opening,
+        1,
+        &encoded.register_storage_bytes,
+        &encoded.receipt_storage_bytes,
+        &loaded.lookup,
+        loaded.chain,
+    )
+    .unwrap();
+    assert_eq!(cold.receipt_bytes, endpoint.receipt_bytes);
+    assert_eq!(cold.receipts, endpoint.receipts);
+    assert!(!std::sync::Arc::ptr_eq(&cold.receipts, &endpoint.receipts));
+    assert_eq!(crate::receipt_storage::typed_admission_count() - before, 2);
+}
+
+fn assert_receipt_witness_refusals(
+    opening: &OpeningRegister,
+    encoded: &EncodedMaterial,
+    loaded: &DecodedPeriodLookup,
+    history: &DecodedMaterial,
+) {
+    let unchanged = std::sync::Arc::clone(&history.receipts);
+    let witness = MaterialStorageWitnesses {
+        register: Some(&history.register),
+        receipt: Some(&history.receipt_witness),
+    };
+    let restored = |tick, package: &[u8], chain| {
+        decode_typed_with_witness(
+            opening,
+            tick,
+            &encoded.register_storage_bytes,
+            package,
+            &loaded.lookup,
+            chain,
+            witness,
+        )
+    };
+    let mut changed_package = encoded.receipt_storage_bytes.clone();
+    changed_package.push(0);
+    assert_eq!(
+        restored(1, &changed_package, loaded.chain).err(),
+        Some(Error::ReceiptWitness)
+    );
+    assert_eq!(
+        history
+            .receipt_witness
+            .restore(
+                2,
+                &encoded.receipt_storage_bytes,
+                &loaded.lookup,
+                loaded.chain
+            )
+            .err(),
+        Some(Error::Tick)
+    );
+    // A register's chain also refuses this input; exercise the receipt's own bound proof independently.
+    assert_eq!(
+        history
+            .receipt_witness
+            .restore(1, &encoded.receipt_storage_bytes, &loaded.lookup, [99; 32])
+            .err(),
+        Some(Error::LookupChain)
+    );
+    assert_eq!(
+        history
+            .receipt_witness
+            .restore(
+                1,
+                &encoded.receipt_storage_bytes,
+                &TypedLookup::default(),
+                loaded.chain
+            )
+            .err(),
+        Some(Error::LookupChain)
+    );
+    assert!(std::sync::Arc::ptr_eq(&unchanged, &history.receipts));
 }

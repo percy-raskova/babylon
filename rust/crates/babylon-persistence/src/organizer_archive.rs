@@ -17,6 +17,7 @@ use babylon_practice_contract::{
 use babylon_tick::material_world::MaterialWorldRegister;
 use postgres::{GenericClient, NoTls};
 use std::collections::BTreeMap;
+use std::sync::Mutex;
 
 fn hex(bytes: &[u8; 32]) -> String {
     crate::michigan_economy::digest_hex(bytes)
@@ -385,6 +386,7 @@ fn receipt_text(receipt: &OrganizerReceipt) -> String {
 pub struct OrganizerDossierProducer {
     config: postgres::Config,
     foundation: EconomicAdmissionOwner,
+    cold_foundation: Mutex<Option<(CampaignId, crate::CampaignFoundation)>>,
 }
 impl OrganizerDossierProducer {
     /// Bind the writer connection used by the existing Archive worker.
@@ -393,6 +395,19 @@ impl OrganizerDossierProducer {
         Self {
             config: config.clone(),
             foundation: EconomicAdmissionOwner::default(),
+            cold_foundation: Mutex::new(None),
+        }
+    }
+
+    pub(crate) fn from_captured(
+        config: &postgres::Config,
+        campaign: CampaignId,
+        foundation: crate::CampaignFoundation,
+    ) -> Self {
+        Self {
+            config: config.clone(),
+            foundation: EconomicAdmissionOwner::default(),
+            cold_foundation: Mutex::new(Some((campaign, foundation))),
         }
     }
 }
@@ -455,7 +470,22 @@ impl ArchiveDossierProducer for OrganizerDossierProducer {
         let candidate = self
             .foundation
             .candidate(campaign)
-            .map_err(|_| SemanticArchiveError::StoredPageMismatch)?;
+            .map_err(|_| SemanticArchiveError::StoredPageMismatch)?
+            .map(crate::material_runtime::ArchiveFoundationCandidate::Admitted);
+        let candidate = if candidate.is_some() || captured.register.is_none() {
+            candidate
+        } else {
+            let mut cold = self
+                .cold_foundation
+                .lock()
+                .map_err(|_| SemanticArchiveError::StoredPageMismatch)?;
+            if cold.as_ref().is_some_and(|(bound, _)| *bound != campaign) {
+                return Err(SemanticArchiveError::StoredPageMismatch);
+            }
+            cold.take().map(|(_, graph)| {
+                crate::material_runtime::ArchiveFoundationCandidate::Graph(Box::new(graph))
+            })
+        };
         let (outcome, admitted) = captured.admit_and_render(candidate)?;
         if let Some(admitted) = admitted {
             self.foundation
@@ -509,7 +539,7 @@ pub(crate) fn capture_organizer_pages(
 impl CapturedOrganizerPages {
     pub(crate) fn admit_and_render(
         self,
-        cached: Option<std::sync::Arc<EconomicContentAdmission>>,
+        cached: Option<crate::material_runtime::ArchiveFoundationCandidate>,
     ) -> Result<
         (
             ArchiveProducerOutcome,
@@ -533,6 +563,10 @@ impl CapturedOrganizerPages {
             ));
         };
         let (register, admitted) = captured.admit(cached).map_err(archive_register_error)?;
+        let _render_timing = crate::production_projection::diagnostics::Timing::start(
+            crate::production_projection::diagnostics::Stage::ArchiveOrganizerRendering,
+            self.tick,
+        );
         let subjects = self.subjects;
         let Some(state) = register.organizer_state() else {
             return Ok((
@@ -669,9 +703,14 @@ fn aid_support_text(evidence: &AidSupportEvidence<'_>) -> String {
     };
     format!(
         "Original human admission period: {}\nMaterial dispatch period: {}\nActual support resolution period: {}\nOriginal commitment: {}\nMaterial commitment: {}\nGood: {}; unit: {}\n{support}\nActual material postings in period {}: Dispatched food: {} units; donor household fulfillment: {} hours. Aid payer cash: reserved {}; gift paid {}; refunded {} micro-units. These are distinct movements, not repeated expenses; fulfillment is separate from independent coordination.\nDesigned eligibility requires a matching grant and positive same-period consumption. It does not prove donated units caused additional consumption or released time; receiving support does not authorize agreement or participation.",
-        evidence.admission, evidence.dispatch, evidence.resolution,
-        hex(evidence.original_commitment), hex(evidence.material_commitment),
-        hex(evidence.good), hex(evidence.unit), evidence.resolution,
+        evidence.admission,
+        evidence.dispatch,
+        evidence.resolution,
+        hex(evidence.original_commitment),
+        hex(evidence.material_commitment),
+        hex(evidence.good),
+        hex(evidence.unit),
+        evidence.resolution,
         evidence.material_postings.dispatched_quantity,
         evidence.material_postings.fulfillment_hours,
         evidence.material_postings.payer_cash_reserved_micros,
@@ -800,7 +839,16 @@ fn collection_signal(
     row: &babylon_practice_contract::OrganizerCollectionResolution,
 ) -> Result<ArchiveSignal, SemanticArchiveError> {
     let receipt = &row.practice;
-    let text = format!("{}\nOriginal collection admission {}; actual resolution {}. Requested {} cash micros; collected {}; performed {} shared material hours. Collection result: {:?}. This original ruling replaces standing work once; refusal has no standing fallback. A successful gift funds later aid; no membership, agreement or additional time is credited.", receipt_text(receipt),row.fact.admitted_period,row.fact.period,row.fact.requested_cash_micros,row.fact.collected_cash_micros,row.fact.performed_hours,row.fact.outcome);
+    let text = format!(
+        "{}\nOriginal collection admission {}; actual resolution {}. Requested {} cash micros; collected {}; performed {} shared material hours. Collection result: {:?}. This original ruling replaces standing work once; refusal has no standing fallback. A successful gift funds later aid; no membership, agreement or additional time is credited.",
+        receipt_text(receipt),
+        row.fact.admitted_period,
+        row.fact.period,
+        row.fact.requested_cash_micros,
+        row.fact.collected_cash_micros,
+        row.fact.performed_hours,
+        row.fact.outcome
+    );
     ArchiveSignal::try_new(
         format!("practice-{}", hex(&receipt.receipt_id)),
         format!("Collection in period {}", receipt.period),

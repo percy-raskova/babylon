@@ -4,6 +4,7 @@ mod draft;
 mod editor;
 mod evidence;
 mod presentation;
+pub(crate) mod qualification_input;
 pub(crate) mod ui;
 
 use babylon_persistence::runtime_session::{
@@ -88,6 +89,11 @@ impl OrganizerClient {
         self.clear_review();
         self.status_due = true;
         self.message = "Period committed. Reading its practice receipts…".into();
+    }
+
+    pub(crate) fn require_status(&mut self, session: &mut ObserverSession) {
+        self.status_due = true;
+        session.set_organizer_control_pending(true);
     }
 
     fn clear_review(&mut self) {
@@ -177,14 +183,22 @@ impl OrganizerClient {
             .find(|row| row.kind == kind && row.period == view.period)
     }
 
+    fn collection_preview(&self) -> Option<&OrganizerCollectionPreview> {
+        let view = self.view.as_ref()?;
+        self.collection.as_ref().filter(|terms| {
+            terms.period == view.period
+                && terms.actor_id == view.actor_id
+                && terms.contributor_id > 0
+                && !terms.contributor_label.is_empty()
+                && terms.source_hash != [0; 32]
+        })
+    }
+
     fn choice_available(&self, choice: OrganizerChoice) -> bool {
         if choice == OrganizerChoice::Collect {
-            return self.view.as_ref().is_some_and(|view| {
-                self.collection.as_ref().is_some_and(|m| {
-                    m.period == view.period
-                        && m.cash_consent
-                            == babylon_persistence::runtime_session::OrganizerGiftConsent::Accept
-                })
+            return self.collection_preview().is_some_and(|terms| {
+                terms.cash_consent
+                    == babylon_persistence::runtime_session::OrganizerGiftConsent::Accept
             });
         }
         if !matches!(
@@ -450,6 +464,7 @@ fn transport(
     mut session: ResMut<ObserverSession>,
     pipe: Option<Res<RuntimePipe>>,
     time: Res<Time>,
+    mut qualification: Option<ResMut<crate::observer_io::qualification::NativeAudit>>,
 ) {
     if organizer
         .review_context
@@ -475,6 +490,14 @@ fn transport(
         organizer.queue(&mut session, RequestKind::Status, None);
     }
     if let (Some(pipe), Some(request)) = (pipe, organizer.outbox.clone()) {
+        if let Err(error) = qualification
+            .as_deref_mut()
+            .map(|audit| audit.stage(&session, &request, organizer.preview.as_ref()))
+            .transpose()
+        {
+            session.fail(error);
+            return;
+        }
         match pipe.send_request(request) {
             Ok(()) => organizer.outbox = None,
             Err(RuntimeSendError::Full) => {}
@@ -515,7 +538,7 @@ mod tests {
         OrganizerAgreement, OrganizerObservation, OrganizerReport, OrganizerStandingWork,
     };
 
-    fn ready() -> (OrganizerClient, ObserverSession) {
+    pub(super) fn ready() -> (OrganizerClient, ObserverSession) {
         let campaign = uuid::Uuid::from_u128(927);
         let mut session = ObserverSession::new(CampaignId::from_uuid(campaign));
         session.connected_fixture();
@@ -829,6 +852,10 @@ mod tests {
         client.collection = Some(OrganizerCollectionPreview {
             period,
             mandate_id: [8; 32],
+            actor_id: client.view.as_ref().unwrap().actor_id,
+            contributor_id: 1,
+            contributor_label: "Fixture contributor".into(),
+            source_hash: [16; 32],
             cash_consent: babylon_persistence::runtime_session::OrganizerGiftConsent::Accept,
             maximum_cash_micros: 400_000,
             protected_cash_floor_micros: 0,
@@ -836,6 +863,16 @@ mod tests {
             organization_cash_micros: 1_000_000,
         });
         assert!(client.choice_available(OrganizerChoice::Collect));
+        let mut unrelated = OrganizerClient {
+            view: client.view.clone(),
+            collection: client.collection.clone(),
+            ..OrganizerClient::default()
+        };
+        unrelated.collection.as_mut().unwrap().actor_id += 1;
+        assert!(!unrelated.choice_available(OrganizerChoice::Collect));
+        unrelated.collection.as_mut().unwrap().actor_id -= 1;
+        unrelated.collection.as_mut().unwrap().source_hash = [0; 32];
+        assert!(!unrelated.choice_available(OrganizerChoice::Collect));
         let command = client
             .make_command(&session, OrganizerChoice::Collect)
             .unwrap();

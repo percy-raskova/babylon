@@ -14,6 +14,192 @@ import pytest
 REPOSITORY = Path(__file__).resolve().parents[3]
 
 
+def _supervisor_probe(tmp_path, *, packet=None, arguments=(), oid="42", live=True):
+    canary = "12" * 16
+    database = "national_" + canary[:12]
+    inventory = f"babylon_test,{database},postgres,template0,template1"
+    environment = {
+        "PATH": os.defpath,
+        "REPO_ROOT": str(tmp_path),
+        "NATIONAL_RECORD": str(tmp_path / "active"),
+        "CANARY": canary,
+        "CONTAINER": "owned-probe",
+        "CONTAINER_ID": "a1" * 32,
+        "VOLUME": "owned-probe-volume",
+        "IMAGE_ID": "sha256:" + "b2" * 32,
+        "NATIONAL_DATABASE": database,
+        "NATIONAL_WRITER": "national_writer_" + canary[:12],
+        "NATIONAL_DATABASE_OID": oid,
+        "BABYLON_STORAGE_REPORT_DIRECTORY": str(tmp_path),
+        "PROBE_INVENTORY": inventory,
+        "PROBE_PACKET": packet if packet is not None else f"{canary}|{inventory}|{oid}|0",
+        "PROBE_CALLS": str(tmp_path / "calls"),
+        "PROBE_QUERIES": str(tmp_path / "queries"),
+    }
+    script = r"""
+source "$1"
+shift
+national_record
+docker() {
+  [ "$1" = inspect ] || return 98
+  printf '%s\n' "$CONTAINER_ID|$IMAGE_ID|$CANARY|$VOLUME"
+}
+national_sql() {
+  printf 'call\n' >> "$PROBE_CALLS"
+  printf '%s\n' "$1" >> "$PROBE_QUERIES"
+  if [[ "$1" = *current_setting* && "$1" = *string_agg* ]]; then
+    printf '%s\n' "$PROBE_PACKET"
+  elif [[ "$1" = "SELECT current_setting"* ]]; then
+    printf '%s\n' "$CANARY"
+  elif [[ "$1" = "SELECT string_agg"* ]]; then
+    printf '%s\n' "$PROBE_INVENTORY"
+  elif [[ "$1" = "SELECT oid"* ]]; then
+    printf '%s\n' "$NATIONAL_DATABASE_OID"
+  else
+    printf '0\n'
+  fi
+}
+"""
+    script += 'national_verify_live "$@"' if live else 'national_verify_identity "$@"'
+    return subprocess.run(
+        [
+            "bash",
+            "-c",
+            script,
+            "supervisor-probe",
+            str(REPOSITORY / "tools/postgres_national_lifecycle.sh"),
+            *arguments,
+        ],
+        env=environment,
+        capture_output=True,
+        text=True,
+        timeout=5,
+        check=False,
+    )
+
+
+def test_live_supervisor_uses_one_fresh_complete_sql_observation(tmp_path):
+    result = _supervisor_probe(tmp_path)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == "", "live admission must keep private identities private"
+    assert (tmp_path / "calls").read_text().splitlines() == ["call"]
+    query = (tmp_path / "queries").read_text()
+    for authority in (
+        "babylon.disposable_runtime",
+        "pg_catalog.pg_database",
+        "datdba",
+        'COLLATE "C"',
+        "bad_roles",
+        "pg_catalog.pg_auth_members",
+        "rolbypassrls",
+        "bad_clients",
+        "pid<>pg_backend_pid()",
+    ):
+        assert authority in query
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        "canary",
+        "inventory",
+        "owner",
+        "clients_or_roles",
+        "null",
+        "empty",
+        "extra_column",
+        "extra_row",
+    ],
+)
+def test_live_supervisor_refuses_incomplete_or_changed_sql_observation(tmp_path, fault):
+    canary = "12" * 16
+    inventory = f"babylon_test,national_{canary[:12]},postgres,template0,template1"
+    fields = [canary, inventory, "42", "0"]
+    if fault in {"canary", "inventory", "owner", "clients_or_roles", "null"}:
+        column = {"canary": 0, "inventory": 1, "owner": 2, "clients_or_roles": 3, "null": 0}[fault]
+        fields[column] = "" if fault == "null" else "changed"
+    packet = "|".join(fields)
+    if fault == "empty":
+        packet = ""
+    elif fault == "extra_column":
+        packet += "|0"
+    elif fault == "extra_row":
+        packet += "\n" + packet
+    result = _supervisor_probe(tmp_path, packet=packet)
+    assert result.returncode != 0
+    assert result.stdout == ""
+    assert (tmp_path / "calls").read_text().splitlines() == ["call"]
+
+
+@pytest.mark.parametrize("oid", ["", "42"])
+def test_terminal_supervisor_preserves_private_identity_without_live_role_checks(tmp_path, oid):
+    result = _supervisor_probe(tmp_path, oid=oid, live=False)
+    assert result.returncode == 0, result.stderr
+    canary = "12" * 16
+    expected = (
+        f"{'a1' * 32}|sha256:{'b2' * 32}|{canary}|owned-probe-volume\n"
+        f"babylon_test,national_{canary[:12]},postgres,template0,template1\n"
+    )
+    assert result.stdout == expected
+    assert (tmp_path / "calls").read_text().splitlines() == ["call"]
+    assert "bad_clients" not in (tmp_path / "queries").read_text()
+
+
+@pytest.mark.parametrize("arguments", [("unknown",), ("--live", "extra")])
+def test_supervisor_refuses_unknown_or_extra_arguments_before_observation(tmp_path, arguments):
+    result = _supervisor_probe(tmp_path, arguments=arguments, live=False)
+    assert result.returncode != 0
+    assert not (tmp_path / "calls").exists()
+
+
+@pytest.mark.parametrize("oid", ["", "0", "042", "malformed"])
+def test_live_supervisor_refuses_unadmitted_owner_identity_before_observation(tmp_path, oid):
+    result = _supervisor_probe(tmp_path, oid=oid)
+    assert result.returncode != 0
+    assert result.stdout == ""
+    assert not (tmp_path / "calls").exists()
+
+
+@pytest.mark.parametrize("changed", [False, True])
+def test_frozen_source_revalidation_never_replaces_original_capture(tmp_path, changed):
+    """Real verification function over a bounded Designed source/input scope."""
+    source = tmp_path / "source"
+    source.write_text("captured source\n")
+    frozen = tmp_path / "source-before.sha256"
+    before = f"{hashlib.sha256(source.read_bytes()).hexdigest()}  {source}\n".encode()
+    frozen.write_bytes(before)
+    (tmp_path / "inputs.sha256").write_bytes(before)
+    for name in ("source-archive", "input-archive"):
+        archive = tmp_path / f"{name}.tar.gz"
+        archive.write_bytes(b"Designed immutable capsule control")
+        (tmp_path / f"{name}.sha256").write_text(
+            f"{hashlib.sha256(archive.read_bytes()).hexdigest()}  {archive}\n"
+        )
+    if changed:
+        source.write_text("source changed after original capture\n")
+    result = subprocess.run(
+        [
+            "bash",
+            "-c",
+            'source "$1"; national_source_manifest() { sha256sum "$REPO_ROOT/source"; }; national_verify_source_capture',
+            "verify-frozen-source",
+            str(REPOSITORY / "tools/postgres_national_lifecycle.sh"),
+        ],
+        env={
+            "PATH": os.defpath,
+            "REPO_ROOT": str(tmp_path),
+            "BABYLON_STORAGE_REPORT_DIRECTORY": str(tmp_path),
+        },
+        capture_output=True,
+        text=True,
+        timeout=10,
+        check=False,
+    )
+    assert (result.returncode == 0) == (not changed)
+    assert frozen.read_bytes() == before
+    assert not (tmp_path / "source-captured.sha256").exists()
+
+
 @pytest.mark.parametrize("mode", ["", "national", "playable-aids", "raw-economic/extra"])
 def test_unknown_capture_mode_refuses_before_preparing_game(tmp_path: Path, mode: str):
     tools = tmp_path / "tools"
@@ -44,7 +230,7 @@ def test_unknown_capture_mode_refuses_before_preparing_game(tmp_path: Path, mode
 @pytest.mark.parametrize("requested,expected", [(None, "3"), ("1", "1"), ("325", "325")])
 def test_default_period_count_uses_captured_routine_policy(tmp_path, requested, expected):
     data = json.loads(
-        (REPOSITORY / "contracts/national_storage_qualification_v3.json").read_bytes()
+        (REPOSITORY / "contracts/national_storage_qualification_v6.json").read_bytes()
     )
     data["routine_smoke_periods"] = 3
     (tmp_path / "policy.json").write_text(json.dumps(data))
@@ -128,11 +314,12 @@ def test_unknown_storage_qualification_refuses_before_owned_game(tmp_path, mode)
 @pytest.mark.parametrize("mode,flag", [("storage", "--qualify"), ("save", "--qualify-save")])
 @pytest.mark.parametrize("evaluator_exit", [0, 7])
 @pytest.mark.parametrize("capture_mode", ["raw-economic", "playable-aid"])
+@pytest.mark.parametrize("periods", [2, 3])
 def test_actual_national_measure_forwards_gate_and_preserves_refusal(
-    tmp_path, mode, flag, evaluator_exit, capture_mode
+    tmp_path, mode, flag, evaluator_exit, capture_mode, periods
 ):
     """Exercise the real publication path; synthetic files are not PG evidence."""
-    policy = REPOSITORY / "contracts/national_storage_qualification_v3.json"
+    policy = REPOSITORY / "contracts/national_storage_qualification_v6.json"
     (tmp_path / "policy.json").write_bytes(policy.read_bytes())
     (tmp_path / "storage-qualification-mode").write_text(mode + "\n")
     (tmp_path / "timing-qualification-mode").write_text("0\n")
@@ -140,12 +327,11 @@ def test_actual_national_measure_forwards_gate_and_preserves_refusal(
         "schema-baseline.json",
         "opening-created.json",
         "native-timings.json",
-        "tick-01.json",
-        "tick-01-reopened.json",
-        "tick-02.json",
-        "tick-02-reopened.json",
     ):
         (tmp_path / name).write_text("{}\n")
+    for tick in range(1, periods + 1):
+        (tmp_path / f"tick-{tick:02}.json").write_text("{}\n")
+        (tmp_path / f"tick-{tick:02}-reopened.json").write_text("{}\n")
     if capture_mode == "playable-aid":
         for name in (
             "national-capture-mode.json",
@@ -155,7 +341,7 @@ def test_actual_national_measure_forwards_gate_and_preserves_refusal(
             "observer-role",
         ):
             (tmp_path / name).write_text("{}\n")
-        for tick in (1, 2):
+        for tick in range(1, periods + 1):
             for boundary in ("committed", "archive", "accounting", "production", "reopened"):
                 (tmp_path / f"progress-{tick:03}-{boundary}.json").write_text("{}\n")
     evaluator = tmp_path / "national_storage_qualification.py"
@@ -201,7 +387,7 @@ def test_actual_national_measure_forwards_gate_and_preserves_refusal(
             "BABYLON_STORAGE_REPORT_DIRECTORY": str(tmp_path),
             "BABYLON_NATIONAL_CAPTURE_MODE": capture_mode,
             "BABYLON_NATIONAL_STORAGE_QUALIFICATION": mode,
-            "BABYLON_NATIONAL_STORAGE_PERIODS": "2",
+            "BABYLON_NATIONAL_STORAGE_PERIODS": str(periods),
             "ARGUMENT_RECORD": str(arguments),
             "EVALUATOR_EXIT": str(evaluator_exit),
         },
@@ -213,7 +399,7 @@ def test_actual_national_measure_forwards_gate_and_preserves_refusal(
     actual = json.loads(arguments.read_bytes())
     assert actual.count(flag) == 1
     if capture_mode == "playable-aid":
-        assert actual.count("--qualify-playable") == 1
+        assert actual.count("--qualify-playable") == int(periods > 2)
         assert actual[actual.index("--playable-report") + 1] == str(
             tmp_path / "national-playable-qualification.json"
         )
@@ -221,7 +407,7 @@ def test_actual_national_measure_forwards_gate_and_preserves_refusal(
         assert "--qualify-playable" not in actual
         assert "--playable-report" not in actual
     assert ("--qualify-save" if flag == "--qualify" else "--qualify") not in actual
-    assert "--qualify-smoke" in actual
+    assert ("--qualify-smoke" in actual) == (periods == 2)
     assert "--qualify-timing" not in actual
     assert actual[actual.index("--policy") + 1] == str(tmp_path / "policy.json")
     published = tmp_path / "qualification.json"
@@ -472,3 +658,218 @@ def test_playable_game_startup_admits_separate_confined_reader_credential(tmp_pa
     assert "NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS" in commands
     assert (tmp_path / "reader-role").read_text() == reader + "\n"
     assert canary not in result.stdout + result.stderr
+
+
+@pytest.mark.parametrize("choice", ["", "keep", "retain", "retain-for-native/extra"])
+def test_native_retention_disposition_refuses_unknown_choice(tmp_path, choice):
+    result = subprocess.run(
+        [
+            "bash",
+            "-c",
+            'source "$1"; die() { exit 2; }; national_success_selection',
+            "selection",
+            str(REPOSITORY / "tools/postgres_national_lifecycle.sh"),
+        ],
+        env={
+            "PATH": os.defpath,
+            "BABYLON_NATIONAL_SUCCESS_DISPOSITION": choice,
+            "BABYLON_POSTGRES_LIVE_FOCUS": "national_storage",
+            "BABYLON_NATIONAL_CAPTURE_MODE": "playable-aid",
+        },
+        capture_output=True,
+        timeout=5,
+        check=False,
+    )
+    assert result.returncode == 2
+
+
+@pytest.mark.parametrize(
+    "focus,mode", [("reader", "playable-aid"), ("national_storage", "raw-economic")]
+)
+def test_native_retention_requires_owned_playable_national_scope(focus, mode):
+    result = subprocess.run(
+        [
+            "bash",
+            "-c",
+            'source "$1"; die() { exit 2; }; national_success_selection',
+            "selection",
+            str(REPOSITORY / "tools/postgres_national_lifecycle.sh"),
+        ],
+        env={
+            "PATH": os.defpath,
+            "BABYLON_NATIONAL_SUCCESS_DISPOSITION": "retain-for-native",
+            "BABYLON_POSTGRES_LIVE_FOCUS": focus,
+            "BABYLON_NATIONAL_CAPTURE_MODE": mode,
+        },
+        capture_output=True,
+        timeout=5,
+        check=False,
+    )
+    assert result.returncode == 2
+
+
+@pytest.mark.parametrize("passed", [True, False])
+def test_native_success_retention_keeps_lease_and_never_freezes_database(tmp_path, passed):
+    (tmp_path / "active").write_text("private lease preimage")
+    (tmp_path / "campaign").write_text("00000000-0000-0000-0000-000000000001\n")
+    (tmp_path / "qualification.json").write_text(
+        json.dumps({"status": "incomplete", "required_ticks": 52})
+    )
+    (tmp_path / "policy.json").write_text(
+        json.dumps({"qualification_ticks": 52, "routine_smoke_periods": 2})
+    )
+    (tmp_path / "native-timings.json").write_text(json.dumps({"run": {"periods": 2}}))
+    (tmp_path / "evaluated-evidence.sha256").write_text("public evidence manifest")
+    (tmp_path / "tick-02-reopened.json").write_text(
+        json.dumps({"acknowledged_markers": {"material": {"tick": 2, "hash": "terminal"}}})
+    )
+    launcher = tmp_path / "mise"
+    launcher.write_text(
+        '#!/bin/sh\nshift 5\n[ "$1" = python ] || exit 99\nshift\nexec '
+        + shlex.quote(sys.executable)
+        + ' "$@"\n'
+    )
+    launcher.chmod(0o700)
+    script = (
+        'source "$1"; NATIONAL_RECORD="$2/active"; NATIONAL_DATABASE_OID=42; '
+        "national_verify_success() { return " + ("0" if passed else "1") + "; }; "
+        'national_sql() { printf "unexpected SQL" >&2; return 99; }; '
+        "national_retain_success"
+    )
+    result = subprocess.run(
+        [
+            "bash",
+            "-c",
+            script,
+            "retention",
+            str(REPOSITORY / "tools/postgres_national_lifecycle.sh"),
+            str(tmp_path),
+        ],
+        env={"PATH": f"{tmp_path}:{os.defpath}", "BABYLON_STORAGE_REPORT_DIRECTORY": str(tmp_path)},
+        capture_output=True,
+        text=True,
+        timeout=5,
+        check=False,
+    )
+    assert (result.returncode == 0) is passed
+    assert (tmp_path / "active").read_text() == "private lease preimage"
+    assert "unexpected SQL" not in result.stderr
+    if passed:
+        receipt = json.loads((tmp_path / "native-handoff.json").read_text())
+        assert receipt["scope"] == "routine-smoke"
+        assert receipt["status"] == "success-retained-for-native"
+        assert receipt["qualification_status"] == "incomplete"
+        assert "private lease preimage" not in json.dumps(receipt)
+    else:
+        assert not (tmp_path / "native-handoff.json").exists()
+
+
+def test_native_handoff_requires_explicit_canonical_existing_campaign(tmp_path):
+    result = subprocess.run(
+        ["bash", str(REPOSITORY / "tools/run_rust_postgres.sh"), "--national-native-open", "new"],
+        env={"PATH": os.defpath},
+        capture_output=True,
+        text=True,
+        timeout=5,
+        check=False,
+    )
+    assert result.returncode == 2
+    assert "existing campaign" in result.stderr
+
+
+@pytest.mark.parametrize(
+    "fault", [None, "campaign", "evidence", "missing-digest", "unexpected-digest"]
+)
+def test_native_handoff_receipt_refuses_changed_or_incomplete_evidence(tmp_path, fault):
+    campaign = "00000000-0000-0000-0000-000000000001"
+    files = {
+        "qualification.json": {"status": "incomplete"},
+        "native-timings.json": {"run": {"periods": 2}},
+        "policy.json": {"qualification_ticks": 52},
+        "tick-02-reopened.json": {"acknowledged_markers": {"material": 2}},
+    }
+    for name, value in files.items():
+        (tmp_path / name).write_text(json.dumps(value))
+    (tmp_path / "campaign").write_text(campaign + "\n")
+    (tmp_path / "evaluated-evidence.sha256").write_text("bounded manifest")
+    digests = {
+        name: hashlib.sha256((tmp_path / name).read_bytes()).hexdigest()
+        for name in [*files, "campaign", "evaluated-evidence.sha256"]
+    }
+    receipt = {
+        "version": 1,
+        "status": "success-retained-for-native",
+        "periods": 2,
+        "campaign": campaign,
+        "evidence_sha256": digests,
+    }
+    if fault == "campaign":
+        receipt["campaign"] = "00000000-0000-0000-0000-000000000002"
+    elif fault == "evidence":
+        (tmp_path / "qualification.json").write_text('{"status":"qualified"}')
+    elif fault == "missing-digest":
+        del digests["campaign"]
+    elif fault == "unexpected-digest":
+        digests["outside"] = "0" * 64
+    (tmp_path / "native-handoff.json").write_text(json.dumps(receipt))
+    source = (REPOSITORY / "tools/postgres_national_lifecycle.sh").read_text()
+    # Execute the actual refusal code, with no shell, service, or native worker.
+    program = source.split("<<'PY_VERIFY'\n", 1)[1].split("\nPY_VERIFY", 1)[0]
+    result = subprocess.run(
+        [sys.executable, "-", str(tmp_path), campaign],
+        input=program,
+        capture_output=True,
+        text=True,
+        timeout=5,
+        check=False,
+    )
+    assert (result.returncode == 0) is (fault is None)
+
+
+@pytest.mark.parametrize("fault", [None, "missing", "digest", "scope"])
+def test_native_handoff_binary_admission_refuses_before_process_pair(tmp_path, fault):
+    tools = tmp_path / "tools"
+    binaries = tmp_path / "rust/target/debug"
+    tools.mkdir()
+    binaries.mkdir(parents=True)
+    (tools / "run_observer_session.py").write_text(
+        "from pathlib import Path\n"
+        "DEFAULT_DEFINES = Path('defines')\n"
+        "def ReaderCredentials(*args): return args\n"
+        "def OpenCampaignTarget(value): return value\n"
+        "def child_environments(environment, credentials): return {}, {}\n"
+        "def run_pair(*args, **kwargs):\n"
+        "    (args[2] / 'pair-called').write_text('existing-only')\n"
+        "    return 0\n"
+    )
+    names = [binaries / "babylon-runtime", binaries / "babylon-client"]
+    for name in names:
+        name.write_bytes(b"owned executable preimage")
+    manifest = tmp_path / "native-executables.sha256"
+    rows = [(hashlib.sha256(name.read_bytes()).hexdigest(), str(name)) for name in names]
+    if fault == "digest":
+        names[0].write_bytes(b"changed executable")
+    elif fault == "scope":
+        rows.pop()
+    if fault != "missing":
+        manifest.write_text("".join(f"{digest}  {name}\n" for digest, name in rows))
+    source = (REPOSITORY / "tools/postgres_national_lifecycle.sh").read_text()
+    program = source.split("<<'PY_OPEN'\n", 1)[1].split("\nPY_OPEN", 1)[0]
+    result = subprocess.run(
+        [sys.executable, "-", str(tmp_path), "00000000-0000-0000-0000-000000000001"],
+        input=program,
+        capture_output=True,
+        text=True,
+        timeout=5,
+        check=False,
+        env={
+            "PATH": os.defpath,
+            "BABYLON_STORAGE_REPORT_DIRECTORY": str(tmp_path),
+            "BABYLON_OBSERVER_DSN": "private-observer",
+            "BABYLON_READER_DSN": "private-reader",
+        },
+    )
+    assert (result.returncode == 0) is (fault is None)
+    assert (tmp_path / "pair-called").exists() is (fault is None)
+    assert "private-observer" not in result.stdout + result.stderr
+    assert "private-reader" not in result.stdout + result.stderr

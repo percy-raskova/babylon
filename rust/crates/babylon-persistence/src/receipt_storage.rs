@@ -1,4 +1,4 @@
-//! Lossless storage of the one current complete V17 receipt format.
+//! Lossless storage of the one current complete V18 receipt format.
 //! Canonical identities/hashes remain the authoritative evidence; this is a storage codec.
 mod amount;
 mod layout;
@@ -10,8 +10,8 @@ use babylon_tick::material_world::{
     decode_material_receipts, receipt_row_limit, MaterialTickReceipts,
     MAX_MATERIAL_TICK_RECEIPT_BYTES, RECEIPT_FAMILY_COUNT, RECEIPT_ROW_BYTES,
 };
-const DOMAIN: &[u8] = b"BabylonReceiptStorageV2\0";
-const CANONICAL_DOMAIN: &[u8] = b"babylon.material-tick-receipts.v17\0";
+const DOMAIN: &[u8] = b"BabylonReceiptStorageV3\0";
+const CANONICAL_DOMAIN: &[u8] = b"babylon.material-tick-receipts.v18\0";
 pub(crate) const MAX_RECEIPT_STORAGE_BYTES: usize =
     MAX_MATERIAL_TICK_RECEIPT_BYTES + DOMAIN.len() + 88 + RECEIPT_FAMILY_COUNT * 59;
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -288,7 +288,7 @@ pub(crate) fn encode(admitted: &AdmittedReceipts<'_>, lookup: &mut TypedLookup) 
     if cursor.take(CANONICAL_DOMAIN.len())? != CANONICAL_DOMAIN {
         return Err(Error::Domain);
     }
-    if cursor.take(4)? != 17_u32.to_be_bytes() {
+    if cursor.take(4)? != 18_u32.to_be_bytes() {
         return Err(Error::Domain);
     }
     let tick = cursor.u64()?;
@@ -400,11 +400,29 @@ fn decode_header(cursor: &mut Cursor<'_>, lookup: &TypedLookup) -> Result<Header
         prefix,
     })
 }
+#[cfg(test)]
+thread_local! {
+    static TYPED_ADMISSIONS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+#[cfg(test)]
+pub(crate) fn typed_admission_count() -> usize {
+    TYPED_ADMISSIONS.with(std::cell::Cell::get)
+}
+
 /// Authenticate and reconstruct all canonical bytes before typed receipt validation.
 pub(crate) fn decode_admitted(
     encoded: &[u8],
     lookup: &TypedLookup,
 ) -> Result<(Vec<u8>, MaterialTickReceipts)> {
+    let out = restore_canonical(encoded, lookup)?;
+    #[cfg(test)]
+    TYPED_ADMISSIONS.with(|count| count.set(count.get() + 1));
+    let admitted = decode_material_receipts(&out).map_err(|_| Error::Canonical)?;
+    Ok((out, admitted))
+}
+
+pub(crate) fn restore_canonical(encoded: &[u8], lookup: &TypedLookup) -> Result<Vec<u8>> {
     let mut cursor = Cursor {
         bytes: encoded,
         pos: 0,
@@ -417,7 +435,7 @@ pub(crate) fn decode_admitted(
     } = decode_header(&mut cursor, lookup)?;
     let mut out = buffer(length)?;
     out.extend_from_slice(CANONICAL_DOMAIN);
-    out.extend_from_slice(&17_u32.to_be_bytes());
+    out.extend_from_slice(&18_u32.to_be_bytes());
     out.extend_from_slice(&tick.to_be_bytes());
     for (index, &canonical_width) in RECEIPT_ROW_BYTES.iter().enumerate() {
         let tag = u8::try_from(index + 1).map_err(|_| Error::Family)?;
@@ -469,6 +487,7 @@ pub(crate) fn decode_admitted(
         } else {
             (mode, width, transpose(&columns, count, width, true)?)
         };
+        drop(columns);
         out.push(tag);
         out.extend_from_slice(&(count as u64).to_be_bytes());
         for row in rows.chunks_exact(row_width) {
@@ -483,8 +502,7 @@ pub(crate) fn decode_admitted(
     if out.len() != length || sha256_of(&out) != expected {
         return Err(Error::Hash);
     }
-    let admitted = decode_material_receipts(&out).map_err(|_| Error::Canonical)?;
-    Ok((out, admitted))
+    Ok(out)
 }
 
 #[cfg(test)]
@@ -502,7 +520,7 @@ mod tests {
 
     fn empty_receipts() -> Vec<u8> {
         let mut bytes = CANONICAL_DOMAIN.to_vec();
-        bytes.extend_from_slice(&17_u32.to_be_bytes());
+        bytes.extend_from_slice(&18_u32.to_be_bytes());
         bytes.extend_from_slice(&1_u64.to_be_bytes());
         for tag in 1..=36 {
             bytes.push(tag);
@@ -655,7 +673,7 @@ mod tests {
 
     fn amount_receipts(amounts: &[i128]) -> Vec<u8> {
         let mut bytes = CANONICAL_DOMAIN.to_vec();
-        bytes.extend_from_slice(&17_u32.to_be_bytes());
+        bytes.extend_from_slice(&18_u32.to_be_bytes());
         bytes.extend_from_slice(&7_u64.to_be_bytes());
         for tag in 1..=36 {
             bytes.push(tag);
@@ -752,7 +770,7 @@ mod tests {
         let mut lookup = TypedLookup::default();
         let encoded = encode_raw(&original, &mut lookup).unwrap();
         let (count, unique, columns) = money_columns(&encoded);
-        assert!(encoded.starts_with(b"BabylonReceiptStorageV2\0"));
+        assert!(encoded.starts_with(b"BabylonReceiptStorageV3\0"));
         assert_eq!((count, unique), (10, 3));
         for (index, expected) in [1_i128, high, i128::MAX].into_iter().enumerate() {
             let mut exact = [0; 16];
@@ -801,7 +819,7 @@ mod tests {
         let original = amount_receipts(&[1, i128::MAX]);
         let mut lookup = TypedLookup::default();
         let encoded = encode_raw(&original, &mut lookup).unwrap();
-        assert!(encoded.starts_with(b"BabylonReceiptStorageV2\0"));
+        assert!(encoded.starts_with(b"BabylonReceiptStorageV3\0"));
         let start = money_family_offset();
         assert_eq!(encoded[start + 9], 1);
         assert_eq!(&encoded[start + 11..start + 15], &30_u32.to_be_bytes());
@@ -811,11 +829,14 @@ mod tests {
 
     #[test]
     fn amount_dictionary_damaged_claims_refuse_through_complete_decoder() {
-        let original = amount_receipts(&[1, 7, 1, 7, i128::MAX, 7, 1, 1, 1, 7]);
+        let high = (1_i128 << 100) + 3;
+        let amounts = [i128::MAX, 1, 1, i128::MAX, high, 1, i128::MAX, high, 1, 1];
+        let original = amount_receipts(&amounts);
         let mut lookup = TypedLookup::default();
         let encoded = encode_raw(&original, &mut lookup).unwrap();
         let (count, unique, columns) = money_columns(&encoded);
         assert_eq!(unique, 3);
+        assert_eq!(decode(&encoded, &lookup).unwrap(), original);
         let dictionary = count * 14;
         let references = dictionary + 3 * 16;
         for fault in 0..7 {
@@ -1010,5 +1031,27 @@ mod tests {
         let winner = prefer_family(selected, candidate);
         assert_eq!(winner.mode, 1);
         assert_eq!(winner.amount_count, 0);
+    }
+    #[test]
+    fn previous_v2_package_and_v17_canonical_receipts_refuse() {
+        let current = empty_receipts();
+        let mut lookup = TypedLookup::default();
+        let mut previous = encode_raw(&current, &mut lookup).unwrap();
+        let package_domain = b"BabylonReceiptStorageV2\0";
+        previous[..package_domain.len()].copy_from_slice(package_domain);
+        let mut old_canonical = current;
+        let old_domain = b"babylon.material-tick-receipts.v17\0";
+        old_canonical[..old_domain.len()].copy_from_slice(old_domain);
+        old_canonical[old_domain.len()..old_domain.len() + 4]
+            .copy_from_slice(&17_u32.to_be_bytes());
+        let digest = package_domain.len() + 8;
+        previous[digest..digest + 32].copy_from_slice(&sha256_of(&old_canonical));
+        assert_eq!(restore_canonical(&previous, &lookup), Err(Error::Domain));
+        let before = lookup.entries().to_vec();
+        assert!(matches!(
+            encode_raw(&old_canonical, &mut lookup),
+            Err(Error::Canonical)
+        ));
+        assert_eq!(lookup.entries(), before);
     }
 }

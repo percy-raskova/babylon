@@ -745,10 +745,9 @@ pub(crate) fn decode_admitted(
     package: &[u8],
     lookup: &TypedLookup,
     expected_lookup_chain: [u8; 32],
-) -> Result<(Vec<u8>, MaterialWorldRegister), StorageError> {
+) -> Result<MaterialWorldRegister, StorageError> {
     let result = restore_register(opening, package, lookup, expected_lookup_chain)?;
-    let admitted = MaterialWorldRegister::decode(&result).map_err(|_| StorageError::Canonical)?;
-    Ok((result, admitted))
+    MaterialWorldRegister::decode_owned(result).map_err(|_| StorageError::Canonical)
 }
 
 pub(crate) fn decode_against_admitted(
@@ -757,12 +756,29 @@ pub(crate) fn decode_against_admitted(
     lookup: &TypedLookup,
     expected_lookup_chain: [u8; 32],
     witness: &MaterialWorldRegister,
-) -> Result<Vec<u8>, StorageError> {
-    let result = restore_register(opening, package, lookup, expected_lookup_chain)?;
-    if result != witness.canonical_bytes() {
+) -> Result<(), StorageError> {
+    let bytes = witness.canonical_bytes();
+    let mut offset = 0_usize;
+    let mut equal = true;
+    let descriptors = restore_sections(
+        opening,
+        package,
+        lookup,
+        expected_lookup_chain,
+        |restored| {
+            let end = offset
+                .checked_add(restored.len())
+                .ok_or(StorageError::Bounds)?;
+            equal &= bytes.get(offset..end) == Some(restored);
+            offset = end;
+            Ok(())
+        },
+    )?;
+    if !equal || offset != bytes.len() {
         return Err(StorageError::Canonical);
     }
-    Ok(result)
+    validate_descriptors(bytes, &descriptors)?;
+    Ok(())
 }
 
 fn restore_register(
@@ -771,6 +787,33 @@ fn restore_register(
     lookup: &TypedLookup,
     expected_lookup_chain: [u8; 32],
 ) -> Result<Vec<u8>, StorageError> {
+    let mut result = Vec::new();
+    let descriptors = restore_sections(
+        opening,
+        package,
+        lookup,
+        expected_lookup_chain,
+        |restored| {
+            result.extend_from_slice(restored);
+            Ok(())
+        },
+    )?;
+    validate_descriptors(&result, &descriptors)?;
+    Ok(result)
+}
+
+type SectionDescriptors = Vec<(u16, Option<usize>, usize)>;
+
+// Both owned reconstruction and borrowed comparison authenticate the same
+// complete package. Only the consumer determines whether canonical bytes stay
+// allocated; each restored section is released before the next one is decoded.
+fn restore_sections(
+    opening: &OpeningRegister,
+    package: &[u8],
+    lookup: &TypedLookup,
+    expected_lookup_chain: [u8; 32],
+    mut consume: impl FnMut(&[u8]) -> Result<(), StorageError>,
+) -> Result<SectionDescriptors, StorageError> {
     let base = opening.canonical_bytes();
     if package.len() > MAX_STATE_PACKAGE_BYTES {
         return Err(StorageError::Bounds);
@@ -801,7 +844,8 @@ fn restore_register(
     if count > 73 {
         return Err(StorageError::Count);
     }
-    let mut result = Vec::new();
+    let mut restored_length = 0_usize;
+    let mut hash = Sha256::new();
     let mut descriptors = Vec::new();
     for _ in 0..count {
         let stored = stored_section(&mut cursor)?;
@@ -813,31 +857,38 @@ fn restore_register(
         if restored.len() != stored.raw_length || digest(&restored) != stored.raw_digest {
             return Err(StorageError::DigestMismatch);
         }
-        if result
-            .len()
+        restored_length = restored_length
             .checked_add(restored.len())
-            .ok_or(StorageError::Bounds)?
-            > length
-        {
+            .ok_or(StorageError::Bounds)?;
+        if restored_length > length {
             return Err(StorageError::Bounds);
         }
         descriptors.push((stored.id, stored.count, restored.len()));
-        result.extend_from_slice(&restored);
+        hash.update(&restored);
+        consume(&restored)?;
     }
     cursor.done()?;
-    if result.len() != length || digest(&result) != expected {
+    let actual_digest: [u8; 32] = hash.finalize().into();
+    if restored_length != length || actual_digest != expected {
         return Err(StorageError::DigestMismatch);
     }
-    let actual = sections(&result)?;
+    Ok(descriptors)
+}
+
+fn validate_descriptors(
+    canonical: &[u8],
+    descriptors: &SectionDescriptors,
+) -> Result<(), StorageError> {
+    let actual = sections(canonical)?;
     if actual
         .iter()
         .map(|s| (s.id, s.count, s.end - s.start))
         .collect::<Vec<_>>()
-        != descriptors
+        != *descriptors
     {
         return Err(StorageError::Layout);
     }
-    Ok(result)
+    Ok(())
 }
 /// One packed table/chunk, not one SQL row per identity. Tags are closed/versioned
 /// by the storage codec; preserve insertion order when appending.

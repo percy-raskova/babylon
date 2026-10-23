@@ -7,6 +7,8 @@ use super::{
     MaterialCircuitError, MaterialCircuitState, RouteId, RoutedDispatchReceipt, RoutedFreightLot,
     SiteId, SupplierKey, SupplyPath, UnitId,
 };
+mod residual;
+
 use crate::production::proportional_floor;
 use crate::valuation::CostClose;
 use crate::{
@@ -251,7 +253,8 @@ fn limit_allocations(
     allocations: &mut [u64],
     aid: &crate::aid::PreparedAid,
 ) -> Result<(), MaterialCircuitError> {
-    for (key, requests) in groups {
+    let groups = residual::aggregate(groups)?;
+    for (key, requests) in &groups {
         let total = requests.iter().try_fold(0_u128, |sum, request| {
             let requested = u128::from(request.requested) * u128::from(request.resource_per_unit);
             sum.checked_add(requested)
@@ -270,6 +273,73 @@ fn limit_allocations(
         }
     }
     Ok(())
+}
+
+fn allocation_matrix(
+    state: &MaterialCircuitState,
+    inventory: &InventoryLedger,
+    groups: &residual::Groups,
+    count: usize,
+    aid: &crate::aid::PreparedAid,
+) -> Result<residual::Matrix, MaterialCircuitError> {
+    let mut bounds = vec![0; count];
+    for (key, rows) in groups {
+        if matches!(
+            key,
+            FreightResourceKey::Inventory(_) | FreightResourceKey::HouseholdStock(_)
+        ) {
+            for row in rows {
+                bounds[row.order_index] = row.requested;
+            }
+        }
+    }
+    residual::Matrix::new(groups, bounds, |key| {
+        resource_available(state, inventory, key, aid)
+    })
+}
+
+fn canonical_requests(orders: &[OutboundOrder], aid: &crate::aid::PreparedAid) -> Vec<usize> {
+    let identities: Vec<_> = orders
+        .iter()
+        .map(|order| match order.id {
+            OutboundOrderId::Delivery(id) => (id, 0_u8),
+            OutboundOrderId::LocalFinalDemand(id) => (id, 1),
+            OutboundOrderId::Service(id) => (id, 2),
+        })
+        .chain(aid.orders.iter().map(|(_, id, _)| (*id, 3)))
+        .collect();
+    residual::identity_order(&identities)
+}
+
+fn complete_allocations(
+    state: &MaterialCircuitState,
+    inventory: &InventoryLedger,
+    orders: &[OutboundOrder],
+    groups: &residual::Groups,
+    count: usize,
+    aid: &crate::aid::PreparedAid,
+) -> Result<(Vec<u64>, Vec<u64>), MaterialCircuitError> {
+    let base_physical = order_allocations(state, inventory, groups, count, aid)?;
+    let physical = residual::aggregate(groups)?;
+    let ceilings = allocation_matrix(state, inventory, &physical, count, aid)?.ceilings();
+    let request_count = groups.values().try_fold(0_usize, |n, rows| {
+        n.checked_add(rows.len())
+            .ok_or(MaterialCircuitError::Arithmetic)
+    })?;
+    let base_labor = labor_groups(state, orders, &base_physical, request_count)?;
+    let mut allocations = base_physical;
+    limit_allocations(state, inventory, &base_labor, &mut allocations, aid)?;
+    // Zero base grants still require every handling coefficient in the residual
+    // cuts. Ceilings are independent of competition and current staffing.
+    let labor = labor_groups(state, orders, &ceilings, request_count)?;
+    let mut all = physical;
+    for (key, rows) in labor {
+        all.entry(key).or_default().extend(rows);
+    }
+    let all = residual::aggregate(&all)?;
+    let matrix = allocation_matrix(state, inventory, &all, count, aid)?;
+    matrix.augment(&mut allocations, &canonical_requests(orders, aid))?;
+    Ok((ceilings, allocations))
 }
 
 fn reserve_route_capacity(
@@ -589,15 +659,8 @@ pub(super) fn dispatch_orders_with_aid(
         .len()
         .checked_add(aid.orders.len())
         .ok_or(MaterialCircuitError::Arithmetic)?;
-    let feasible = order_allocations(state, inventory, &groups, count, aid)?;
-    let mut allocations = feasible.clone();
-    let request_count = groups.values().try_fold(0_usize, |count, rows| {
-        count
-            .checked_add(rows.len())
-            .ok_or(MaterialCircuitError::Arithmetic)
-    })?;
-    let labor = labor_groups(state, &orders, &feasible, request_count)?;
-    limit_allocations(state, inventory, &labor, &mut allocations, aid)?;
+    let (feasible, allocations) =
+        complete_allocations(state, inventory, &orders, &groups, count, aid)?;
     let handling = apply_handling(state, &orders, &feasible, &allocations, costs)?;
     let routed_count = state.orders.len();
     let local_transfers = apply_dispatches(
@@ -663,13 +726,12 @@ pub(crate) fn allocate_services(
         })
         .collect();
     let groups = resource_groups(state, &orders)?;
-    order_allocations(
-        state,
-        available,
-        &groups,
-        orders.len(),
-        &crate::aid::PreparedAid::empty(),
-    )
+    let aid = crate::aid::PreparedAid::empty();
+    let mut allocations = order_allocations(state, available, &groups, orders.len(), &aid)?;
+    let groups = residual::aggregate(&groups)?;
+    let matrix = allocation_matrix(state, available, &groups, orders.len(), &aid)?;
+    matrix.augment(&mut allocations, &canonical_requests(&orders, &aid))?;
+    Ok(allocations)
 }
 
 fn add_aid_requests(

@@ -6,6 +6,7 @@
 
 use std::ffi::OsString;
 use std::fmt;
+use std::path::{Component, PathBuf};
 
 use babylon_persistence::{
     identity::CampaignId, runtime_session::RuntimeSessionPreset,
@@ -23,6 +24,8 @@ pub const CAMPAIGN_FLAG: &str = "--campaign";
 pub const NEW_CAMPAIGN_FLAG: &str = "--new-campaign";
 /// Scenario preset, valid only alongside [`NEW_CAMPAIGN_FLAG`].
 pub const PRESET_FLAG: &str = "--preset";
+/// Explicit local control socket for automated windowed qualification only.
+pub const QUALIFICATION_CONTROL_FLAG: &str = "--qualification-control";
 /// Environment fallback for the campaign identity when `--campaign` is
 /// absent.
 pub const CAMPAIGN_ENV: &str = "BABYLON_CAMPAIGN_ID";
@@ -228,6 +231,8 @@ pub enum CliRequest {
     Windowed {
         /// Submitted through the normal lifecycle Switch path after Hello.
         initial_target: RuntimeSessionTarget,
+        /// Disabled in ordinary play; the owned harness supplies this private socket.
+        qualification_control: Option<PathBuf>,
     },
     /// Run exactly one headless dossier command.
     Headless {
@@ -282,6 +287,7 @@ pub fn parse(args: impl IntoIterator<Item = OsString>) -> Result<CliRequest, Cli
     let mut campaign: Option<String> = None;
     let mut new_campaign: Option<String> = None;
     let mut preset: Option<String> = None;
+    let mut qualification_control: Option<String> = None;
     let mut rest: Vec<String> = Vec::new();
     let mut iter = words.into_iter();
     while let Some(word) = iter.next() {
@@ -290,6 +296,9 @@ pub fn parse(args: impl IntoIterator<Item = OsString>) -> Result<CliRequest, Cli
             CAMPAIGN_FLAG => read_flag_value(&mut campaign, &word, &mut iter)?,
             NEW_CAMPAIGN_FLAG => read_flag_value(&mut new_campaign, &word, &mut iter)?,
             PRESET_FLAG => read_flag_value(&mut preset, &word, &mut iter)?,
+            QUALIFICATION_CONTROL_FLAG => {
+                read_flag_value(&mut qualification_control, &word, &mut iter)?;
+            }
             "--" => {
                 rest.extend(iter);
                 break;
@@ -308,7 +317,14 @@ pub fn parse(args: impl IntoIterator<Item = OsString>) -> Result<CliRequest, Cli
         }
         return Ok(CliRequest::Windowed {
             initial_target: windowed_target(campaign, new_campaign, preset)?,
+            qualification_control: qualification_control.map(control_path).transpose()?,
         });
+    }
+    if qualification_control.is_some() {
+        return Err(CliError::at(
+            concat!(file!(), ":", line!()),
+            "qualification controls require the actual windowed client".into(),
+        ));
     }
     if new_campaign.is_some() || preset.is_some() {
         return Err(CliError::at(
@@ -331,6 +347,80 @@ pub fn parse(args: impl IntoIterator<Item = OsString>) -> Result<CliRequest, Cli
         command,
         campaign_id,
     })
+}
+
+fn control_path(raw: String) -> Result<PathBuf, CliError> {
+    let path = PathBuf::from(raw);
+    if !path.is_absolute()
+        || path
+            .components()
+            .any(|part| matches!(part, Component::ParentDir | Component::CurDir))
+    {
+        return Err(CliError::at(
+            concat!(file!(), ":", line!()),
+            "qualification control socket must be an absolute normalized path".into(),
+        ));
+    }
+    Ok(path)
+}
+
+#[cfg(test)]
+mod qualification_controls {
+    use super::*;
+
+    #[test]
+    fn windowed_qualification_channel_is_explicit() {
+        let args = [
+            "--campaign",
+            "00000000-0000-0000-0000-000000000342",
+            "--qualification-control",
+            "/tmp/babylon-qualification-owned/control.sock",
+        ];
+        let CliRequest::Windowed {
+            qualification_control,
+            ..
+        } = parse(args.into_iter().map(OsString::from)).unwrap()
+        else {
+            panic!("the harness requires the real window");
+        };
+        assert_eq!(
+            qualification_control,
+            Some(PathBuf::from(
+                "/tmp/babylon-qualification-owned/control.sock"
+            ))
+        );
+    }
+
+    #[test]
+    fn qualification_controls_refuse_headless_relative_and_duplicate_flags() {
+        for args in [
+            vec![
+                "--headless",
+                "--campaign",
+                "00000000-0000-0000-0000-000000000342",
+                "--qualification-control",
+                "/tmp/owned/control.sock",
+                "tick",
+                "status",
+            ],
+            vec![
+                "--campaign",
+                "00000000-0000-0000-0000-000000000342",
+                "--qualification-control",
+                "relative.sock",
+            ],
+            vec![
+                "--campaign",
+                "00000000-0000-0000-0000-000000000342",
+                "--qualification-control",
+                "/tmp/one.sock",
+                "--qualification-control",
+                "/tmp/two.sock",
+            ],
+        ] {
+            assert!(parse(args.into_iter().map(OsString::from)).is_err());
+        }
+    }
 }
 
 fn read_flag_value(
@@ -621,7 +711,7 @@ mod tests {
     fn campaign_flag_opens_the_durable_window() {
         let request = parse(os(&[CAMPAIGN_FLAG, CAMPAIGN])).expect("campaign admits");
         assert!(
-            matches!(request, CliRequest::Windowed { initial_target: RuntimeSessionTarget::Open { campaign_id } } if campaign_id == CAMPAIGN),
+            matches!(request, CliRequest::Windowed { initial_target: RuntimeSessionTarget::Open { campaign_id }, qualification_control: None } if campaign_id == CAMPAIGN),
             "the window explicitly opens the existing campaign"
         );
     }
@@ -658,7 +748,7 @@ mod tests {
         ] {
             let request = parse(os(&flags)).expect("explicit New target admits");
             assert!(matches!(request,
-                CliRequest::Windowed { initial_target: RuntimeSessionTarget::New { campaign_id, preset } }
+                CliRequest::Windowed { initial_target: RuntimeSessionTarget::New { campaign_id, preset }, qualification_control: None }
                 if campaign_id == CAMPAIGN && preset == expected
             ));
         }
@@ -676,6 +766,7 @@ mod tests {
         assert!(matches!(
             request,
             CliRequest::Windowed {
+                qualification_control: None,
                 initial_target: RuntimeSessionTarget::New {
                     campaign_id,
                     preset: RuntimeSessionPreset::OrganizeInWayne,
@@ -965,7 +1056,11 @@ mod tests {
             "national-world",
         ]))
         .expect("the captured national economy is an explicit New choice");
-        let CliRequest::Windowed { initial_target } = request else {
+        let CliRequest::Windowed {
+            initial_target,
+            qualification_control: None,
+        } = request
+        else {
             panic!("national New must retain the connected window path")
         };
         assert_eq!(

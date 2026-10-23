@@ -12,6 +12,39 @@ pub(crate) enum Stage {
     FoundationRegisterDecode,
     FoundationGraphSession,
     FoundationAdmission,
+    ArchiveRegisterCapture,
+    ArchiveFoundationAdmission,
+    ArchivePriorCheckpoint,
+    ArchiveCurrentCheckpoint,
+    ArchiveOrganizerValidation,
+    ArchiveOrganizerRendering,
+    ArchiveProducerFoundation,
+    ArchiveReceiptCapture,
+    ArchiveProduction,
+    ArchiveCountyPlans,
+    ArchivePlacePlans,
+    ArchivePageInputs,
+    ArchiveComparisonCapture,
+    ArchiveComparisonAdmission,
+    ArchivePublicationPreparation,
+    ArchiveExistingAuthentication,
+    ArchiveKnowledgePin,
+    ArchivePublication,
+    ArchivePublicationSchema,
+    ArchivePublicationCommit,
+    ArchiveGrantCapture,
+    ArchiveAtomPersistence,
+    ArchiveRevisionPersistence,
+    ArchiveProvenanceResolution,
+    ArchiveRevisionInsert,
+    ArchiveReferenceVisibility,
+    ArchiveRevisionReconciliation,
+    TickStorageAdmission,
+    TickGraphAdmission,
+    TickMaterialAdmission,
+    CheckpointSections,
+    CheckpointFamilies,
+    TickEnvelope,
     HistoryLoad,
     AuthenticatedEnvelope,
     EvidenceValidation,
@@ -58,6 +91,15 @@ pub(crate) fn projection<T>(
     result: Result<T, ProductionProjectionError>,
 ) -> Result<T, ProductionProjectionError> {
     result.inspect_err(|error| report(stage, tick, Some(*error)))
+}
+
+pub(crate) fn timed_projection<T>(
+    stage: Stage,
+    tick: u64,
+    operation: impl FnOnce() -> Result<T, ProductionProjectionError>,
+) -> Result<T, ProductionProjectionError> {
+    let _timing = Timing::start(stage, tick);
+    projection(stage, tick, operation())
 }
 
 pub(crate) fn observer<T>(

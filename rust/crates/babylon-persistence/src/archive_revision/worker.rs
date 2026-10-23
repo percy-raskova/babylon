@@ -2,6 +2,7 @@
 
 use super::{publication, tick_knowledge, ArchiveReadScope};
 use crate::archive::{database, decode};
+use crate::production_projection::diagnostics::{Stage, Timing};
 use crate::{
     identity::CampaignId, ArchiveDossierProducer, ArchiveKnowledge, ArchiveMaterializeDisposition,
     ArchiveMaterializeMode, ArchiveReceiptDisposition, ArchiveWorkerCancellation,
@@ -44,12 +45,15 @@ fn sweep_locked(
         cancellation.check()?;
         // The campaign advisory lock remains held, but no worker publication
         // transaction or database snapshot spans producer authentication/rendering.
-        let outcome = producer.produce(
-            *campaign.as_uuid(),
-            &receipt,
-            &known,
-            crate::ArchiveDirtyBatch::MAX_PAGES,
-        )?;
+        let outcome = {
+            let _timing = Timing::start(Stage::ArchiveProduction, receipt.resolve_tick());
+            producer.produce(
+                *campaign.as_uuid(),
+                &receipt,
+                &known,
+                crate::ArchiveDirtyBatch::MAX_PAGES,
+            )?
+        };
         let mode = if outcome.remaining() == 0 {
             ArchiveMaterializeMode::Consume
         } else {
@@ -59,14 +63,18 @@ fn sweep_locked(
         let mut prepared = publication::prepare(campaign, &receipt, outcome.batch(), &known)?;
         publication::authenticate_existing(client, &mut prepared)?;
         cancellation.check()?;
+        let publication_timing = Timing::start(Stage::ArchivePublication, receipt.resolve_tick());
         let mut tx = client
             .build_transaction()
             .isolation_level(IsolationLevel::Serializable)
             .read_only(false)
             .start()
             .map_err(|error| database("begin ordered Archive publication transaction", &error))?;
-        crate::current_schema::require_current_schema(&mut tx)
-            .map_err(SemanticArchiveError::CurrentSchema)?;
+        {
+            let _timing = Timing::start(Stage::ArchivePublicationSchema, receipt.resolve_tick());
+            crate::current_schema::require_current_schema(&mut tx)
+                .map_err(SemanticArchiveError::CurrentSchema)?;
+        }
         let scope = ArchiveReadScope::committed(
             campaign,
             receipt.resolve_tick(),
@@ -76,12 +84,20 @@ fn sweep_locked(
         // changed unpinned grant cohort; existing pins remain the exact authority.
         publication::revalidate_prepared(&mut tx, campaign, &receipt)?;
         crate::archive_batch_matches_receipt(outcome.batch(), &receipt)?;
-        tick_knowledge::pin_prepared(&mut tx, &scope, &known)?;
+        {
+            let _timing = Timing::start(Stage::ArchiveKnowledgePin, receipt.resolve_tick());
+            tick_knowledge::pin_prepared(&mut tx, &scope, &known)?;
+        }
         cancellation.check()?;
         let report = publication::publish(&mut tx, prepared, mode)?;
         cancellation.check()?;
-        tx.commit()
-            .map_err(|error| database("commit ordered Archive publication transaction", &error))?;
+        {
+            let _timing = Timing::start(Stage::ArchivePublicationCommit, receipt.resolve_tick());
+            tx.commit().map_err(|error| {
+                database("commit ordered Archive publication transaction", &error)
+            })?;
+        }
+        drop(publication_timing);
         let disposition = match (mode, report.disposition()) {
             (_, ArchiveMaterializeDisposition::AlreadyConsumed) => {
                 ArchiveReceiptDisposition::AlreadyConsumed
@@ -102,6 +118,7 @@ fn capture_receipt(
     client: &mut Client,
     campaign: CampaignId,
 ) -> Result<Option<(PendingArchiveReceipt, ArchiveKnowledge)>, SemanticArchiveError> {
+    let _timing = Timing::start(Stage::ArchiveReceiptCapture, 0);
     let mut tx = client
         .build_transaction()
         .isolation_level(IsolationLevel::Serializable)

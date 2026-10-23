@@ -1,4 +1,6 @@
 //! Real BSL/tick gift, scarce time and independent partner controls.
+#[path = "support/dual_aid_schedule.rs"]
+mod dual_aid_schedule;
 #[path = "../../babylon-persistence/src/michigan_dynamic_hex_foundation.rs"]
 mod michigan_dynamic_hex_foundation;
 #[path = "support/organizer_aid_fixture.rs"]
@@ -707,7 +709,7 @@ fn actual_collection_wire_refuses_changed_posting_hours_use_and_previous_schema(
         );
     }
     let mut old = bytes.to_vec();
-    let domain = b"babylon.material-tick-receipts.v17\0".len();
+    let domain = b"babylon.material-tick-receipts.v18\0".len();
     old[domain - 2] = b'6';
     old[domain..domain + 4].copy_from_slice(&16_u32.to_be_bytes());
     assert!(babylon_tick::material_world::decode_material_receipts(&old).is_err());
@@ -959,4 +961,707 @@ fn historical_actual_collection_preserves_original_consent_and_donor_pledge_admi
         validate_organizer_collection_fact(&insufficient, &actual.commitment, &actual.fact)
             .is_err()
     );
+}
+
+#[test]
+fn partial_collection_preserves_protected_floor_and_matches_actual_transfer_and_time() {
+    use babylon_material_circuit::{AccountId, OrganizationAccountId};
+    let base = collection_savings_control(true);
+    let mut cfg = base.material().organizer_config().unwrap().clone();
+    let terms = cfg.collection.as_mut().unwrap();
+    terms.maximum_cash_micros = 8;
+    terms.protected_cash_floor_micros = 2;
+    let session = try_session(
+        michigan_dynamic_hex_foundation::michigan_dynamic_hex_foundation().unwrap(),
+        &format!("{MATERIAL}\n{PRODUCTS}\n{PRACTICE}"),
+        base.material().state().clone(),
+        cfg,
+    )
+    .unwrap();
+    let accepted = commitment(&session, OrganizerChoice::Collect);
+    let before = session.material().canonical_bytes().to_vec();
+    let candidate = prepare(&session, Some(&accepted));
+    assert_eq!(session.material().canonical_bytes(), before);
+    let organizer = candidate.material().register().organizer_state().unwrap();
+    let actual = serde_json::to_value(organizer).unwrap();
+    let fact = &actual["collection_receipts"][0]["fact"];
+    assert_eq!(fact["requested_cash_micros"], "8");
+    assert_eq!(fact["collected_cash_micros"], "4");
+    assert_eq!(fact["outcome"], "partially_collected");
+    assert_eq!(fact["performed_hours"], 2);
+    assert_eq!(
+        organizer.receipts.last().unwrap().outcome,
+        OrganizerOutcome::CollectionCompleted
+    );
+    assert_eq!(
+        organizer.agreements,
+        session.material().organizer_state().unwrap().agreements
+    );
+    assert_eq!(
+        organizer.contact_products,
+        session
+            .material()
+            .organizer_state()
+            .unwrap()
+            .contact_products
+    );
+    let decoded = babylon_tick::material_world::decode_material_receipts(
+        candidate.material().receipt_bytes(),
+    )
+    .unwrap();
+    let donor = AccountId::Household(household());
+    let recipient = AccountId::Organization(OrganizationAccountId::from_bytes([96; 32]));
+    let ordinal = usize::try_from(fact["transfer_ordinal"].as_u64().unwrap()).unwrap();
+    assert_eq!(
+        decoded.money_transfers[ordinal].debit.delta.micro_units(),
+        -4
+    );
+    assert_eq!(
+        decoded.money_transfers[ordinal].credit.delta.micro_units(),
+        4
+    );
+    assert_eq!(
+        decoded
+            .income
+            .iter()
+            .find(|row| row.account == donor)
+            .unwrap()
+            .statement
+            .gift_expense
+            .micro_units(),
+        4
+    );
+    assert_eq!(
+        decoded
+            .income
+            .iter()
+            .find(|row| row.account == recipient)
+            .unwrap()
+            .statement
+            .gift_income
+            .micro_units(),
+        4
+    );
+    let CircuitAccounting::Monetary(e) = &candidate.material().register().state().accounting else {
+        unreachable!()
+    };
+    assert_eq!(e.book.cash(donor).unwrap().micro_units(), 2);
+    assert_eq!(e.book.cash(recipient).unwrap().micro_units(), 4);
+    let HouseholdTimeAccounting::Modeled(time) = &e.household_time else {
+        unreachable!()
+    };
+    assert_eq!(
+        time.contributions
+            .iter()
+            .filter(|row| row.contribution.contributor_id == 201)
+            .count(),
+        1
+    );
+    assert_eq!(
+        time.contributions
+            .iter()
+            .filter(|row| row.contribution.contributor_id == 201)
+            .map(|row| row.contribution.hours)
+            .sum::<u64>(),
+        2
+    );
+}
+
+fn capped_collection_session(cap: i128, floor: i128) -> Session {
+    let base = collection_savings_control(true);
+    let mut config = base.material().organizer_config().unwrap().clone();
+    let terms = config.collection.as_mut().unwrap();
+    terms.maximum_cash_micros = cap;
+    terms.protected_cash_floor_micros = floor;
+    try_session(
+        michigan_dynamic_hex_foundation::michigan_dynamic_hex_foundation().unwrap(),
+        &format!("{MATERIAL}\n{PRODUCTS}\n{PRACTICE}"),
+        base.material().state().clone(),
+        config,
+    )
+    .unwrap()
+}
+
+fn material_collection_input(
+    session: &Session,
+) -> babylon_material_circuit::CollectionResolveInput {
+    let accepted = commitment(session, OrganizerChoice::Collect);
+    let terms = session
+        .material()
+        .organizer_config()
+        .unwrap()
+        .collection
+        .as_ref()
+        .unwrap();
+    babylon_material_circuit::CollectionResolveInput {
+        original_commitment_id: accepted.commitment_id,
+        command_nonce: accepted.command.nonce,
+        admitted_period: accepted.command.expected_period,
+        resolve_period: accepted.resolves_period,
+        mandate_id: terms.mandate_id,
+        source_hash: terms.source_hash,
+        actor_id: terms.actor_id,
+        contributor_id: terms.contributor_id,
+        donor: babylon_material_circuit::FinalDemandPrincipalId::from_bytes(
+            terms.household_principal_id,
+        ),
+        recipient: babylon_material_circuit::OrganizationAccountId::from_bytes(
+            terms.organization_account_id,
+        ),
+        labor_unit_id: babylon_material_circuit::UnitId::from_bytes(terms.labor_unit_id),
+        cash_consent: true,
+        requested: money(terms.maximum_cash_micros),
+        protected_cash_floor: money(terms.protected_cash_floor_micros),
+        collection_hours: terms.collection_hours,
+        pledged_hours: session
+            .material()
+            .organizer_config()
+            .unwrap()
+            .participants
+            .iter()
+            .find(|row| row.contributor_id == terms.contributor_id)
+            .unwrap()
+            .commitments
+            .iter()
+            .filter(|row| row.actor_id == terms.actor_id)
+            .map(|row| row.hours)
+            .sum(),
+    }
+}
+
+#[test]
+fn collection_independent_consent_and_fixed_pledge_gate_admission_and_material_close() {
+    use babylon_practice_contract::{OrganizerError, OrganizerGiftConsent, OrganizerRefusal};
+    let session = capped_collection_session(8, 2);
+    let accepted = commitment(&session, OrganizerChoice::Collect);
+    let config = session.material().organizer_config().unwrap();
+    let state = session.material().organizer_state().unwrap();
+    for consent in [true, false] {
+        let mut refused = config.clone();
+        if consent {
+            refused.collection.as_mut().unwrap().cash_consent = OrganizerGiftConsent::Refuse;
+        } else {
+            refused
+                .participants
+                .iter_mut()
+                .find(|row| row.contributor_id == 201)
+                .unwrap()
+                .commitments
+                .iter_mut()
+                .find(|row| row.actor_id == 101)
+                .unwrap()
+                .hours = 1;
+        }
+        assert_eq!(
+            admit_organizer(&refused, state, &accepted.command),
+            Err(OrganizerError::Refused(if consent {
+                OrganizerRefusal::CollectionCashRefused
+            } else {
+                OrganizerRefusal::InsufficientCommittedTime
+            }))
+        );
+        let mut input = material_collection_input(&session);
+        if consent {
+            input.cash_consent = false;
+        } else {
+            input.pledged_hours = 1;
+        }
+        let closed = close_collection_control(session.material().state(), &[], &[input]).unwrap();
+        let row = &closed.collections[0];
+        assert_eq!(row.collected.micro_units(), 0);
+        assert_eq!(row.performed_hours, 0);
+        assert_eq!(row.transfer_ordinal, None);
+        assert_eq!(
+            row.outcome,
+            if consent {
+                babylon_material_circuit::CollectionOutcome::CashConsentRefused
+            } else {
+                babylon_material_circuit::CollectionOutcome::InsufficientContributionTime
+            }
+        );
+    }
+}
+
+#[test]
+fn collection_zero_eligible_cash_and_missing_actual_time_refuse_without_spending() {
+    for (session, expected) in [
+        (
+            capped_collection_session(8, 8),
+            babylon_practice_contract::OrganizerCollectionOutcome::InsufficientCash,
+        ),
+        (
+            collection_control_session(4, true),
+            babylon_practice_contract::OrganizerCollectionOutcome::InsufficientContributionTime,
+        ),
+    ] {
+        let accepted = commitment(&session, OrganizerChoice::Collect);
+        let candidate = prepare(&session, Some(&accepted));
+        let actual = candidate.material().register().organizer_state().unwrap();
+        let fact = &actual.collection_receipts[0].fact;
+        assert_eq!(fact.outcome, expected);
+        assert_eq!(fact.collected_cash_micros, 0);
+        assert_eq!(fact.performed_hours, 0);
+        assert_eq!(fact.transfer_ordinal, None);
+        let CircuitAccounting::Monetary(e) = &candidate.material().register().state().accounting
+        else {
+            unreachable!()
+        };
+        let HouseholdTimeAccounting::Modeled(time) = &e.household_time else {
+            unreachable!()
+        };
+        assert!(time.contributions.is_empty());
+    }
+}
+
+#[test]
+fn owned_register_reopen_adopts_authenticated_bytes_and_rejects_wire_changes() {
+    let mut session = capped_collection_session(8, 2);
+    let accepted = commitment(&session, OrganizerChoice::Collect);
+    let candidate = prepare(&session, Some(&accepted));
+    commit(&mut session, &mut CollectingSink::default(), candidate);
+    let canonical = session.material().canonical_bytes();
+    let input = canonical.to_vec();
+    let allocation = input.as_ptr();
+    let owned = MaterialWorldRegister::decode_owned(input).unwrap();
+    let borrowed = MaterialWorldRegister::decode(canonical).unwrap();
+    assert_eq!(owned, borrowed);
+    assert_eq!(owned, *session.material());
+    assert_eq!(owned.digest(), session.material().digest());
+    assert_eq!(
+        owned.organizer_state().unwrap().collection_receipts.len(),
+        1
+    );
+    assert!(
+        std::ptr::eq(owned.canonical_bytes().as_ptr(), allocation),
+        "owned admission must retain the exact authenticated input allocation"
+    );
+    let domain = b"babylon.material-world-register.v4\0".len();
+    for offset in [0, domain, domain + 11, domain + 19, canonical.len() - 1] {
+        let mut invalid = canonical.to_vec();
+        invalid[offset] ^= 1;
+        let expected = MaterialWorldRegister::decode(&invalid).unwrap_err();
+        assert_eq!(
+            MaterialWorldRegister::decode_owned(invalid).unwrap_err(),
+            expected
+        );
+    }
+    for length in [0, domain + 19, canonical.len() - 1] {
+        let invalid = canonical[..length].to_vec();
+        let expected = MaterialWorldRegister::decode(&invalid).unwrap_err();
+        assert_eq!(
+            MaterialWorldRegister::decode_owned(invalid).unwrap_err(),
+            expected
+        );
+    }
+    let mut trailing = canonical.to_vec();
+    trailing.push(0);
+    let expected = MaterialWorldRegister::decode(&trailing).unwrap_err();
+    assert_eq!(
+        MaterialWorldRegister::decode_owned(trailing).unwrap_err(),
+        expected
+    );
+}
+
+#[test]
+fn partial_collection_failure_exact_retry_and_reopen_publish_one_original_receipt() {
+    let mut session = capped_collection_session(8, 2);
+    let accepted = commitment(&session, OrganizerChoice::Collect);
+    let before = session.material().canonical_bytes().to_vec();
+    let graph_before = session
+        .graph_session()
+        .graph()
+        .encode_state()
+        .unwrap()
+        .as_bytes()
+        .to_vec();
+    let hash_before = session.current_world_hash().unwrap();
+    let candidate = prepare(&session, Some(&accepted));
+    let expected = *candidate.identity();
+    let expected_bytes = candidate.material().receipt_bytes().to_vec();
+    let mut sink = CollectingSink::default();
+    assert!(matches!(
+        session.commit_prepared_and_publish(&mut sink, candidate, |_| {
+            Err::<ReplayCommitDisposition, _>("injected collection durable failure")
+        }),
+        Err(babylon_tick::material_replay::MaterialCommitError::Commit(
+            "injected collection durable failure"
+        ))
+    ));
+    assert_eq!(session.material().canonical_bytes(), before);
+    assert_eq!(
+        session
+            .graph_session()
+            .graph()
+            .encode_state()
+            .unwrap()
+            .as_bytes(),
+        graph_before
+    );
+    assert_eq!(session.current_world_hash().unwrap(), hash_before);
+    assert_eq!(session.completed_tick(), 0);
+    assert!(sink.events.is_empty());
+    let retry = prepare(&session, Some(&accepted));
+    assert_eq!(*retry.identity(), expected);
+    assert_eq!(retry.material().receipt_bytes(), expected_bytes);
+    commit(&mut session, &mut sink, retry);
+    let reopened = MaterialWorldRegister::decode(session.material().canonical_bytes()).unwrap();
+    assert_eq!(reopened, *session.material());
+    let organizer = reopened.organizer_state().unwrap();
+    assert_eq!(organizer.collection_receipts.len(), 1);
+    assert_eq!(organizer.collection_receipts[0].commitment, accepted);
+    assert_eq!(
+        organizer.collection_receipts[0].fact.collected_cash_micros,
+        4
+    );
+    assert!(admit_organizer(
+        reopened.organizer_config().unwrap(),
+        organizer,
+        &accepted.command
+    )
+    .is_err());
+    let mut conflicting = accepted.command.clone();
+    conflicting.choice = OrganizerChoice::LocalAid;
+    assert!(admit_organizer(
+        reopened.organizer_config().unwrap(),
+        organizer,
+        &conflicting
+    )
+    .is_err());
+    assert_eq!(
+        reopened.canonical_bytes(),
+        session.material().canonical_bytes()
+    );
+}
+
+#[test]
+fn partial_collection_canonical_row_rejects_fabricated_amount_tag_time_and_join() {
+    let session = capped_collection_session(8, 2);
+    let accepted = commitment(&session, OrganizerChoice::Collect);
+    let candidate = prepare(&session, Some(&accepted));
+    let bytes = candidate.material().receipt_bytes();
+    let decoded = babylon_tick::material_world::decode_material_receipts(bytes).unwrap();
+    assert_eq!(decoded.collections.len(), 1);
+    assert_eq!(decoded.collections[0].outcome as u8, 9);
+    let row = bytes.len() - 317;
+    assert_eq!(bytes[row + 280], 9);
+    let original_fact = &candidate
+        .material()
+        .register()
+        .organizer_state()
+        .unwrap()
+        .collection_receipts[0]
+        .fact;
+    for (amount, outcome) in [(0_i128, 9_u8), (8, 9), (9, 9), (4, 1), (4, 10)] {
+        let mut changed = bytes.to_vec();
+        changed[row + 256..row + 272].copy_from_slice(&amount.to_be_bytes());
+        changed[row + 280] = outcome;
+        assert!(babylon_tick::material_world::decode_material_receipts(&changed).is_err());
+    }
+    for offset in [256_usize, 272, 281, 285] {
+        let mut changed = bytes.to_vec();
+        changed[row + offset] ^= 1;
+        assert!(
+            babylon_tick::material_world::decode_material_receipts(&changed).is_err(),
+            "offset {offset}"
+        );
+    }
+    for kind in 0..6 {
+        let mut fact = original_fact.clone();
+        match kind {
+            0 => fact.collected_cash_micros = 8,
+            1 => fact.collected_cash_micros = 0,
+            2 => fact.performed_hours = 1,
+            3 => fact.transfer_ordinal = None,
+            4 => fact.contribution_use_id = [0; 32],
+            _ => fact.requested_cash_micros = 9,
+        }
+        assert!(
+            babylon_practice_contract::validate_organizer_collection_fact(
+                session.material().organizer_config().unwrap(),
+                &accepted,
+                &fact,
+            )
+            .is_err()
+        );
+    }
+    let mut changed =
+        serde_json::to_value(candidate.material().register().organizer_state().unwrap()).unwrap();
+    changed["collection_receipts"][0]["fact"]["outcome"] = serde_json::json!("collected");
+    let changed: babylon_practice_contract::OrganizerState =
+        serde_json::from_value(changed).unwrap();
+    assert!(babylon_practice_contract::validate_organizer_state(&changed).is_err());
+}
+
+#[test]
+fn collection_duplicate_and_unfunded_due_commitment_never_mint_a_second_transfer() {
+    use babylon_material_circuit::{
+        AccountId, CapitalContributionOrder, CollectionOutcome, ContributionId,
+        EquityCarryingValue, HistoricalCostBook, MaterialCircuitError, OwnershipClaim,
+    };
+    let session = capped_collection_session(8, 2);
+    let input = material_collection_input(&session);
+    let opening = session.material().state();
+    let before = opening.clone();
+    let mut conflicting = input.clone();
+    conflicting.command_nonce = [8; 16];
+    for second in [input.clone(), conflicting] {
+        assert!(matches!(
+            close_collection_control(opening, &[], &[input.clone(), second],),
+            Err(MaterialCircuitError::RowLimit)
+        ));
+        assert_eq!(*opening, before);
+    }
+    let mut due = opening.clone();
+    let CircuitAccounting::Monetary(e) = &mut due.accounting else {
+        unreachable!()
+    };
+    let donor = AccountId::Household(household());
+    e.financial.ownership.push(OwnershipClaim {
+        issuer_site_id: site(1),
+        beneficiary: donor,
+        shares: 1,
+    });
+    let mut costs = e.costs.snapshot();
+    costs.equity.push(EquityCarryingValue {
+        owner: donor,
+        issuer_site_id: site(1),
+        amount: money(0),
+    });
+    e.costs = HistoricalCostBook::open(
+        &e.book,
+        costs.stocks,
+        costs.freight,
+        costs.equity,
+        costs.equipment,
+    )
+    .unwrap();
+    e.financial.contributions.push(CapitalContributionOrder {
+        id: ContributionId::from_bytes([80; 32]),
+        due_period: 1,
+        contributor: AccountId::Household(household()),
+        issuer_site_id: site(1),
+        amount: money(8),
+    });
+    let closed = close_collection_control(&due, &[], &[input]).unwrap();
+    assert_eq!(
+        closed.collections[0].outcome,
+        CollectionOutcome::DuePaymentUnmet
+    );
+    assert_eq!(closed.collections[0].collected.micro_units(), 0);
+    assert_eq!(closed.collections[0].performed_hours, 0);
+    assert!(closed
+        .contributions
+        .iter()
+        .any(|row| row.unfunded.micro_units() == 2));
+}
+
+fn close_collection_control(
+    opening: &babylon_material_circuit::MaterialCircuitState,
+    aid: &[babylon_material_circuit::AidResolveInput],
+    collection: &[babylon_material_circuit::CollectionResolveInput],
+) -> Result<
+    babylon_material_circuit::MaterialCircuitTransition,
+    babylon_material_circuit::MaterialCircuitError,
+> {
+    let closed =
+        babylon_material_circuit::close_material_period_with_support(opening, aid, collection)?;
+    let next_labor = opening
+        .labor
+        .iter()
+        .filter(|row| row.period == closed.next_period())
+        .cloned()
+        .collect();
+    let CircuitAccounting::Monetary(economy) = &opening.accounting else {
+        unreachable!()
+    };
+    let next_member_labor = economy
+        .member_labor
+        .iter()
+        .filter(|row| row.period == closed.next_period())
+        .cloned()
+        .collect();
+    closed.finish_with_workforce(next_labor, next_member_labor)
+}
+
+fn run_dual_aid_schedule(separated: bool, refuses_remote: bool) {
+    use babylon_practice_contract::{OrganizerAidSupportStatus, OrganizerPartnerResponse};
+    use babylon_tick::material_world::decode_material_receipts;
+    let mut session = dual_aid_schedule::session(refuses_remote);
+    let mut sink = CollectingSink::default();
+    let schedule: &[OrganizerChoice] = if separated {
+        &[
+            OrganizerChoice::RemoteAid,
+            OrganizerChoice::PauseStanding,
+            OrganizerChoice::LocalAid,
+        ]
+    } else {
+        &[OrganizerChoice::RemoteAid, OrganizerChoice::LocalAid]
+    };
+    let mut original = Vec::new();
+    let mut actual_grants = std::collections::BTreeSet::new();
+    for &choice in schedule {
+        let accepted = commitment(&session, choice);
+        if matches!(
+            choice,
+            OrganizerChoice::RemoteAid | OrganizerChoice::LocalAid
+        ) {
+            original.push(accepted.commitment_id);
+        }
+        let candidate = prepare(&session, Some(&accepted));
+        let rows = decode_material_receipts(candidate.material().receipt_bytes()).unwrap();
+        for grant in rows.aid.iter().filter(|r| r.outcome == AidOutcome::Granted) {
+            assert_eq!((grant.quantity, grant.cash_amount), (1, money(3)));
+            let consumed = rows
+                .household_consumption
+                .iter()
+                .find(|r| r.principal_id == grant.recipient)
+                .unwrap();
+            assert_eq!(
+                (
+                    consumed.good_id,
+                    consumed.unit_id,
+                    consumed.consumed_quantity
+                ),
+                (grant.good_id, grant.unit_id, 1)
+            );
+            let posted = rows
+                .money_transfers
+                .iter()
+                .filter(|r| {
+                    r.purpose
+                        == babylon_material_circuit::MoneyTransferPurpose::AidGrant(
+                            grant.commitment_id,
+                        )
+                })
+                .map(|r| {
+                    assert_eq!(
+                        r.debit.location,
+                        babylon_material_circuit::MoneyLocation::AidReserve(grant.commitment_id)
+                    );
+                    assert_eq!(
+                        r.credit.location,
+                        babylon_material_circuit::MoneyLocation::Cash(
+                            babylon_material_circuit::AccountId::Household(grant.recipient)
+                        )
+                    );
+                    assert_eq!(
+                        r.debit.delta.micro_units().checked_neg(),
+                        Some(r.credit.delta.micro_units())
+                    );
+                    r.credit.delta.micro_units()
+                })
+                .try_fold(0_i128, |a, b| a.checked_add(b))
+                .unwrap();
+            assert_eq!(posted, 3);
+            actual_grants.insert(grant.commitment_id.as_bytes());
+        }
+        commit(&mut session, &mut sink, candidate);
+    }
+    let state = session.material().organizer_state().unwrap();
+    let remote = state
+        .aid_receipts
+        .iter()
+        .rev()
+        .find(|r| r.authorization.gift.kind == OrganizerAidKind::Remote)
+        .unwrap();
+    let local = state
+        .aid_receipts
+        .iter()
+        .rev()
+        .find(|r| r.authorization.gift.kind == OrganizerAidKind::Local)
+        .unwrap();
+    for (row, id) in [(remote, original[0]), (local, original[1])] {
+        assert_eq!(row.authorization.gift.commitment.commitment_id, id);
+        assert!(matches!(
+            row.support.status,
+            OrganizerAidSupportStatus::Granted {
+                granted_quantity: 1,
+                consumed_quantity: 1
+            }
+        ));
+        assert!(actual_grants.contains(&row.support.material_commitment_id));
+        // Remote terminal support describes arrival: dispatch/time/reservation were
+        // charged in the preceding period, never again on delivery.
+        if row.authorization.gift.kind == OrganizerAidKind::Remote {
+            assert_actual_aid_postings(&row.support, 0, 0, 0, 3, 0);
+        } else {
+            assert_actual_aid_postings(&row.support, 1, 2, 3, 3, 0);
+        }
+        let controlled = row
+            .practice
+            .time_use
+            .iter()
+            .filter(|r| r.actor_id == 101)
+            .try_fold(0_u64, |a, r| a.checked_add(r.hours))
+            .unwrap();
+        let completed = row.practice.outcome == OrganizerOutcome::AidPracticeCompleted;
+        assert_eq!(controlled, row.practice.hours_spent);
+        assert_eq!(
+            controlled,
+            if row.practice.outcome == OrganizerOutcome::InsufficientTime {
+                0
+            } else {
+                2
+            }
+        );
+        if completed {
+            assert_eq!(
+                row.practice.partner_response,
+                OrganizerPartnerResponse::Participated
+            );
+        }
+    }
+    assert_eq!(
+        local.practice.outcome,
+        OrganizerOutcome::AidPracticeCompleted
+    );
+    assert_eq!(
+        remote.practice.outcome,
+        if refuses_remote {
+            OrganizerOutcome::AidPracticeUncompleted
+        } else if separated {
+            OrganizerOutcome::AidPracticeCompleted
+        } else {
+            OrganizerOutcome::InsufficientTime
+        }
+    );
+    // Every actual period remains bounded by the same2h controlled-actor commitment.
+    for period in 1..=schedule.len() as u64 {
+        let ordinary = state
+            .receipts
+            .iter()
+            .filter(|r| r.period == period)
+            .flat_map(|r| &r.time_use);
+        let aid = state
+            .aid_receipts
+            .iter()
+            .filter(|r| r.practice.period == period)
+            .flat_map(|r| &r.practice.time_use);
+        let debit = ordinary
+            .chain(aid)
+            .filter(|r| r.actor_id == 101)
+            .try_fold(0_u64, |a, r| a.checked_add(r.hours))
+            .unwrap();
+        assert!(debit <= 2);
+    }
+    let CircuitAccounting::Monetary(e) = &session.material().state().accounting else {
+        unreachable!()
+    };
+    assert_eq!(e.book.total_cash_and_reserves().unwrap(), money(100));
+    assert_eq!(
+        MaterialWorldRegister::decode(session.material().canonical_bytes()).unwrap(),
+        *session.material()
+    );
+}
+#[test]
+fn colliding_aid_practices_refuse_fictitious_second_time_debit() {
+    run_dual_aid_schedule(false, false);
+}
+#[test]
+fn separated_aid_schedule_completes_both_original_independent_practices() {
+    run_dual_aid_schedule(true, false);
+}
+#[test]
+fn consumed_remote_gift_does_not_force_independent_participation() {
+    run_dual_aid_schedule(true, true);
 }

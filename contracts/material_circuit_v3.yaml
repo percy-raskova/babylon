@@ -1,6 +1,6 @@
 meta:
   contract: MaterialCircuitV3
-  schema_version: 18
+  schema_version: 19
   evidence_class: Designed
   rust_owner: babylon-material-circuit
 
@@ -263,21 +263,39 @@ admission:
   - responsive quotes remain inside positive captured bounds; admitted escrows retain their own prices
 
 allocation:
-  order_request: full remaining native quantity
+  order_request: full remaining already-admitted native quantity for included eligible requests
   inventory_request: native quantity
-  capacity_request: native quantity multiplied by grams_per_unit
-  intermediate: checked u128 request products and group sums
-  resource_grant: floor(available_resource * resource_request / total_requested)
-  native_grant: floor(resource_grant / resource_per_native_unit)
-  feasible_outbound: minimum native grant across inventory and every route or merchant handling capacity
-  labor_request: feasible merchant native quantity multiplied by hours_per_unit
-  actual_outbound: minimum feasible native quantity and the same proportional-floor reducer applied to opening labor
-  labor_scope: routed and local merchant orders share one site-unit labor budget
-  handling_reservation: actual native outbound multiplied by grams_per_unit once at departure period
+  capacity_request: native quantity multiplied by exact grams_per_unit
+  coefficient_aggregation: checked positive u64 coefficient sum for each resource and request; repeated memberships
+    incur every actual debit and inconsistent native bounds refuse
+  intermediate: checked u128 request products, group sums and actual resource-use sums
+  base_resource_grant: full request when capacity covers the group; otherwise floor(available_resource *
+    aggregated_resource_request / total_requested)
+  base_native_grant: floor(base_resource_grant / aggregated_resource_per_native_unit), capped by admitted request
+  base_physical_outbound: minimum base native grant across stock, donor time and every timed route or merchant capacity
+  base_labor_request: base physical merchant native quantity multiplied by hours_per_unit
+  base_actual_outbound: minimum base physical quantity and proportional-floor opening handling-labor grant
+  physical_ceiling: independent per-request minimum of admitted remaining quantity and floor(pass-opening available
+    resource / aggregated nonlabor coefficient), excluding shared competition and current merchant handling labor
+  handling_need: checked u64 physical_ceiling multiplied by hours_per_unit; this Designed demand approximation
+    need not be jointly feasible and guarantees no employment or performance
+  handling_feasible_quantity: physical_ceiling; actual handled_quantity never exceeds it
+  residual_matrix: all original physical cuts plus complete handling-labor coefficients, including zero-base requests
+  residual_budget: pass-opening resource availability minus exact actual base allocations across every membership
+  residual_order: raw OrderId bytes primary across all request kinds; discriminator delivery=0, local_final_demand=1,
+    service=2, aid=3 breaks only equal native identities
+  residual_grant: maximal whole-native addition in canonical order bounded by remaining admitted quantity and every
+    remaining resource cut, with exact joint debits
+  work_conservation: every unsatisfied included eligible request has at least one residual cut below its one-native-unit
+    coefficient; no feasible single-request native increment remains
+  residual_limits: no global throughput optimum, equal treatment, fairness, growth or guaranteed aid outcome is claimed
+  labor_scope: routed and local merchant requests share one current funded site-unit labor budget
+  handling_reservation: actual native outbound multiplied by grams_per_unit once per handling membership
   handling_labor_debit: actual native outbound multiplied by hours_per_unit once
-  handling_need: checked u64 feasible outbound multiplied by hours_per_unit, independent of current employment
-  reservation: actual native dispatch multiplied by grams_per_unit, once per unique capacity/departure principal
-  residual: no redistribution after proportional flooring or another resource limit
+  reservation: actual native dispatch multiplied by grams_per_unit for every timed capacity membership
+  funding: retain original purchase and aid admission bounds; no re-admission, credit, new cash or capacity inflation
+  passes: preserve existing outbound selections and service stages; no second grant for an excluded existing order,
+    no redistribution between production stages and no recursive same-close local buyer credits
   missing_route: leave unshipped order in backlog
   failed_close: publish no successor state or receipt
 
@@ -333,13 +351,16 @@ period_close:
     target, due tax and capital payment; existing purchase, payroll and aid reserves are never free cash
   - exclude earlier current-period MutualAid and aid cash grant credits from the frozen collection source;
     an ownership payout cannot retroactively fund this period's collection
-  - transfer one all-or-zero capped household cash gift to its existing aid mandate's organizational payer using
-    Cash(MutualAid); close gift expense and income once and retain its exact canonical transfer ordinal
+  - after independent cash consent, protected needs and sufficient fixed collection time pass, transfer
+    min(authorized cap, max(0, frozen eligible cash - protected floor)) to the existing organizational payer;
+    zero available cash refuses, a positive amount below the cap is partially_collected, and the cap is collected
+  - use Cash(MutualAid) for the actual gift; close gift expense and income once for that same amount and retain
+    its exact canonical transfer ordinal; full and partial gifts consume the captured fixed hours once
   - consume whole actual collection hours from the same finite donor household contribution capacity after
     physical aid fulfillment; an acknowledgment cannot consume those hours again, and it reduces the donor
     political promise once before delayed coordination
   - retain the original command, admission and resolve periods, captured mandate and source, exact donor and
-    payer, actual amount, refusal reason and shared contribution use in the bounded V17 receipt family36;
+    payer, actual amount, refusal reason and shared contribution use in the bounded V18 receipt family36;
     actual voluntary payment creates no membership, agreement, recurring withdrawal or new hour supply
   - distribute positive post-tax retained earnings only within cash, fraction and cap, using captured ownership
   - admit ordinary equipment orders from post-financial free cash and explicit replacement or expansion policies
@@ -918,5 +939,5 @@ household_aid:
     - A failed detached operation publishes no goods, cash, time use or aid receipt.
   host_boundary: Material aid and supplied resources do not establish completed organizer practice or independent
     partner consent.
-  persistence: State schema18 includes every aid vector even when empty in monetary mode; physical controls omit
+  persistence: State schema19 includes every aid vector even when empty in monetary mode; physical controls omit
     monetary branches.

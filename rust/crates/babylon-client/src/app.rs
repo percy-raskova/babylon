@@ -23,6 +23,8 @@ pub enum AppMode {
     Windowed {
         /// Explicit New or existing-only Open, submitted after runtime Hello.
         initial_target: babylon_persistence::runtime_session::RuntimeSessionTarget,
+        /// An explicitly requested private harness channel; ordinary play uses None.
+        qualification_control: Option<std::path::PathBuf>,
     },
     /// One headless dossier command: JSONL on stdout, logs on stderr,
     /// process exit after the first update.
@@ -44,8 +46,25 @@ pub enum AppMode {
 pub fn build_app(mode: AppMode) -> Result<App, String> {
     let mut app = App::new();
     match mode {
-        AppMode::Windowed { initial_target } => {
+        AppMode::Windowed {
+            initial_target,
+            qualification_control,
+        } => {
             let session = ObserverSession::with_initial_target(initial_target)?;
+            let qualification = qualification_control
+                .as_deref()
+                .map(|path| {
+                    crate::organizer::qualification_input::Transport::connect(
+                        path,
+                        &session.campaign.as_uuid().to_string(),
+                    )
+                })
+                .transpose()?;
+            let audit = if qualification.is_some() {
+                crate::observer_io::qualification::NativeAudit::from_env(session.campaign)?
+            } else {
+                None
+            };
             let campaign_id = session.campaign;
             app.add_plugins(
                 DefaultPlugins
@@ -93,6 +112,12 @@ pub fn build_app(mode: AppMode) -> Result<App, String> {
                 .insert_resource(ui::dossier_card::DossierCampaignId(campaign_id))
                 .insert_resource(ClearColor(crate::observer_theme::INK))
                 .add_systems(PreUpdate, forward_native_close);
+            if let Some(transport) = qualification {
+                crate::organizer::qualification_input::install(&mut app, transport);
+            }
+            if let Some(audit) = audit {
+                app.insert_resource(audit);
+            }
         }
         AppMode::Headless {
             command,
@@ -165,6 +190,7 @@ mod tests {
     #[test]
     fn invalid_initial_target_refuses_before_window_construction() {
         let result = build_app(AppMode::Windowed {
+            qualification_control: None,
             initial_target: babylon_persistence::runtime_session::RuntimeSessionTarget::Open {
                 campaign_id: "not-a-campaign".into(),
             },

@@ -18,6 +18,12 @@ mod checkpoint_membership;
 #[path = "live_tests/short_publication.rs"]
 mod short_publication;
 
+#[path = "live_tests/provenance.rs"]
+mod provenance;
+
+#[path = "live_tests/packed_membership.rs"]
+mod packed_membership;
+
 #[path = "live_tests/bounds.rs"]
 mod bounds;
 
@@ -1023,7 +1029,8 @@ fn live_foundation_grants_seed_at_campaign_foundation_and_reconcile_exactly() {
     client
         .execute(
             "UPDATE babylon_meta.archive_knowledge_grant_v1 \
-             SET provenance_locator = 'drifted' \
+             SET provenance_ref = babylon_meta.archive_provenance_intern_v1(campaign_id, \
+             (SELECT source_id FROM babylon_meta.archive_provenance_v1 p WHERE p.campaign_id=archive_knowledge_grant_v1.campaign_id AND p.provenance_ref=archive_knowledge_grant_v1.provenance_ref),'drifted') \
              WHERE campaign_id = $1::uuid AND subject_kind = 'county' \
                AND subject_id = '26001' AND grant_key = 'subject'",
             &[target.campaign_id.as_uuid()],

@@ -2,9 +2,14 @@ Play the Wayne organizer loop
 =============================
 
 Acknowledge Babylon's opening warning, then watch or skip the production card.
-Choose **New Game** on the Liberty start menu. This creates a separate Wayne
-organizer campaign and opens the organizer workspace. Choose **Load Game** to
-return to a saved campaign later. **Continue** enters the campaign already
+Choose **New Game · Wayne in the national world** on the Liberty start menu.
+This creates a national campaign and opens the Wayne organizer workspace.
+
+Wayne's households and workplaces share production, trade and freight with
+other counties and foreign counterparts. A sourcing policy does not guarantee
+that goods arrive or that a payment settles. The separately labeled Michigan
+organizer control does not offer household aid or collection.
+Choose **Load Game** to return to a saved campaign later. **Continue** enters the campaign already
 prepared or reopened by the launcher.
 
 During play, choose **Menu** or press Escape to open the campaign menu.
@@ -39,20 +44,23 @@ available at the inspected period, with its source and age. **Last period**
 describes the most recent completed practice.
 
 Each campaign period covers 28 days. The campaign has no designed final period.
-The collective has
-16 organizer-hours per period. Contact work uses 8 hours. An inquiry uses 12.
-A participating partner spends 2 of its own 8 hours. Unused time expires.
+The header shows the collective's available organizer-hours, bounded by its
+participants' actual household time and authorized commitments. Each choice
+card shows its captured cost. A participating partner uses its own authorized
+time. Unused time expires.
 
 The campaign opens at period 0 without a completed-period workplace report.
-If you confirm an inquiry and advance from period 0, it spends
-12 organizer-hours but cannot get that report. The choice card and review explain
-this before confirmation. Advancing first creates a completed period that a later inquiry
-can ask about. That does not guarantee that the collective receives a report.
+If you confirm an inquiry and advance from period 0, it asks about a period
+without a completed report. It can spend its captured hours if actual authorized
+time is available, without obtaining the report. The choice card and review
+explain this before confirmation. Advancing first creates a completed period
+that a later inquiry can ask about. That does not guarantee that the collective
+receives a report.
 
 Choose and review a practice
 ----------------------------
 
-Compare the four cards. Each gives its cost, partner, effect on the routine
+Compare the available cards. Each gives its cost, partner, effect on the routine
 and resolving period. For example, select **Keep current routine**, then
 **Review choice**. Check the terms before choosing **Confirm ruling**. The
 interface calls the ruling accepted only after the runtime acknowledges its
@@ -75,16 +83,16 @@ To resume it, open **Direction / routine** and select
 .. vale write-good.TooWordy = YES
 
 Review the cost and confirm the ruling. Resumption attempts the routine for
-8 hours during the resolving period. **Refresh committed situation** is also
-inside **Direction / routine**.
+the reviewed contact cost during the resolving period.
+**Refresh committed situation** is also inside **Direction / routine**.
 
 Respond to the workplace
 ------------------------
 
 Read **Workplace report** or open **Workplace evidence** before choosing a
 response. Check the observed period and source. Reports concern modeled
-labor-hours, production and received maintenance. Shift schedules and wage
-losses are not modeled.
+labor-hours, production and received maintenance. These reports do not disclose
+private household or workplace wage accounts.
 
 Compare the choices:
 
@@ -100,6 +108,46 @@ Compare the choices:
 An inquiry confirmed at period 5 asks about period 5 and resolves during
 period 6. Its report does not describe period 6. Review shows both periods.
 The partner's participation and receipt of a report are separate results.
+
+Fund aid and compare solidarity choices
+---------------------------------------
+
+**Collect a voluntary contribution** names the contributor, its independent
+cash consent and the committed period at which the runtime verified the terms.
+The scenario authors the mandate and its source as Designed content. Authority
+over the collective, a time pledge or a received gift grants no permission to
+spend another household's cash.
+
+The cap is an upper bound. Actual household consumption, essential services,
+closing pantry, due payments and the protected cash floor come first. A smaller
+available amount can produce a partial contribution.
+
+A positive contribution uses the full captured collection hours once. Collecting less cash does not
+create spare hours. A refused collection transfers no cash and performs no
+collection work. It still resolves the original accepted ruling, which replaces
+the routine for that period.
+
+Review reserves no funds or time. Advance closes the material period and reports
+the amount actually received. That money can fund a later aid ruling. It does
+not grant membership, partner participation or more hours.
+
+Compare **Organize local aid** with **Organize remote solidarity**. Both protect
+the donor's food needs and must use real organizational cash, finite household
+work and independent receiving consent. Local aid can arrive in its dispatch
+period. Remote solidarity shares freight capacity with ordinary trade. Its
+earliest possible arrival is a preview, not a promise. Follow the original
+shipment through arrival or failure before interpreting the result.
+
+Use **Last period** and **Practice history** to read the actual collection
+result. The eight recent practice receipts retain exact collection amounts
+and outcomes after a later period or reopen. Use the cited practice Archive
+for older receipts. In **Practice history**, distinguish reserved aid cash,
+actual gift payment, refunds, dispatched food, consumption and later
+coordination. Receiving
+a gift does not compel political participation. A declined practice does not
+revoke delivered food. Compare these choices with inquiry, workplace contact
+and retaining the routine: each uses time that can
+serve another practice.
 
 Use **Relationships** and **Direction / routine** to inspect existing
 agreements, participant promises, concerns, objections and review conditions.
@@ -142,14 +190,18 @@ do not repair the factory. Its recovery follows the maintenance economy.
 During the tick, the ruling panel shows **Resolving**. It credits no outcome
 before the period commits. Read the completed receipt after resolution.
 
-Initial report sharing lasts through period 3. An automatic workplace report
-appears only when performed labor-hours fall and workplace sharing remains
-active. It describes that reduction. A full report does not appear every period.
+**Relationships** shows the period through which workplace report sharing
+remains active. An automatic workplace report appears only when performed
+labor-hours fall and that sharing remains active. It describes that reduction.
+A full report does not appear every period.
 
-Contact completed in period T can sustain that partner's agreement for T+1 and
-T+2 when the following period consumes its receipt. Neighborhood contact renews
-the neighborhood agreement. It does not renew workplace report sharing. Use
-**Reinforce workplace contact** to try that contact, then advance again and
+Contact completed in period T can sustain that partner's agreement when the
+following period consumes its receipt. The captured renewal duration determines
+how many following periods it covers. Inspect **Relationships** for its endpoint.
+
+Neighborhood contact renews the neighborhood agreement. It does not renew
+workplace report sharing. Use **Reinforce workplace contact** to try that
+contact, then advance again and
 inspect **Relationships**. Expiry stops automatic workplace reports. Contact
 through the existing workplace relationship can restore the agreement even
 after it expires.
@@ -170,6 +222,10 @@ completed receipt. The runtime reconciles saved commitments without a new
 submission of your personal draft. Continuous campaigns accept later rulings.
 An explicit finite experiment stops at its saved endpoint, where evidence stays
 readable and the runtime refuses new rulings.
+
+The runtime refuses campaigns captured under an incompatible organizer format
+before writes. Their saved data remains on disk. Start a fresh campaign for the
+current collection rules.
 
 Unsupported older personal-draft formats remain on disk without conversion or
 overwrite. The workspace explains when saving the personal draft is unavailable.

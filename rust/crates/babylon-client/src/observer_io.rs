@@ -22,9 +22,15 @@ use crate::ui::dossier_card::{
     ActiveCountyDossier, DossierCampaignId, DossierFetchState, DossierPageView, DossierRefresh,
 };
 
+pub(crate) mod qualification;
+
 #[cfg(test)]
 #[path = "observer_io/lifecycle_tests.rs"]
 mod lifecycle_tests;
+
+#[cfg(test)]
+#[path = "observer_io/read_owner_tests.rs"]
+mod read_owner_tests;
 
 pub(crate) const LAUNCHER_REQUIRED: &str =
     "This window has no launcher connection. Close it and start Babylon through its launcher.";
@@ -84,6 +90,7 @@ struct PendingObservation(Option<(ObservationContext, Task<ObservationRead>)>);
 struct ObservationRead {
     result: Result<PreparedObservation, String>,
     cursor: Option<babylon_persistence::observer_reader::ObserverMaterialCursor>,
+    qualification: Option<qualification::Candidate>,
 }
 struct PreparedObservation {
     snapshot: ObserverEconomySnapshot,
@@ -103,22 +110,66 @@ struct ObservationCacheKey {
     epoch: Option<u64>,
     perspective: Perspective,
     foundation: Option<String>,
+    qualification: Option<qualification::Configuration>,
 }
 impl ObservationCacheKey {
-    fn from_session(session: &ObserverSession) -> Self {
+    fn from_session(
+        session: &ObserverSession,
+        qualification: Option<&qualification::NativeAudit>,
+    ) -> Self {
         Self {
             campaign: session.campaign,
             epoch: session.runtime_scope().map(|scope| scope.epoch),
             perspective: session.perspective,
             foundation: session.foundation_digest.clone(),
+            qualification: qualification.map(qualification::NativeAudit::key),
         }
     }
 }
-/// Owns the authenticated read cursor between asynchronous requests.
+/// Retains one scope's immutable source admission and authenticated read cursor.
 #[derive(Resource, Default)]
 struct ObservationCache {
     key: Option<ObservationCacheKey>,
     cursor: Option<babylon_persistence::observer_reader::ObserverMaterialCursor>,
+    full_reader: Option<ObserverEconomyReader>,
+}
+
+impl ObservationCache {
+    fn reconcile(&mut self, key: ObservationCacheKey) {
+        if self.key.as_ref() != Some(&key) {
+            *self = Self {
+                key: Some(key),
+                ..Self::default()
+            };
+        }
+    }
+
+    fn reader(
+        &mut self,
+        visibility: ObserverVisibility,
+        connect: impl FnOnce() -> Result<
+            ObserverEconomyReader,
+            babylon_persistence::observer_reader::ObserverEconomyError,
+        >,
+    ) -> Result<ObserverEconomyReader, babylon_persistence::observer_reader::ObserverEconomyError>
+    {
+        if visibility == ObserverVisibility::FullObserver {
+            if let Some(reader) = &self.full_reader {
+                return Ok(reader.clone());
+            }
+        }
+        let reader = connect()?;
+        if reader.visibility() != visibility {
+            return Err(babylon_persistence::observer_reader::ObserverEconomyError::Authority);
+        }
+        if visibility == ObserverVisibility::FullObserver {
+            // Clones share only the existing admitted immutable source owner.
+            // Each consuming read still authenticates actual stored components
+            // and publishes admission only after that read completely succeeds.
+            self.full_reader = Some(reader.clone());
+        }
+        Ok(reader)
+    }
 }
 
 #[derive(Resource, Default)]
@@ -227,7 +278,11 @@ fn start_pipe(mut commands: Commands, mut state: ResMut<ObserverSession>) {
     });
 }
 
-fn send_advance(pipe: &RuntimePipe, state: &mut ObserverSession) {
+fn send_advance(
+    pipe: &RuntimePipe,
+    state: &mut ObserverSession,
+    qualification: Option<&mut qualification::NativeAudit>,
+) {
     let Some(request_id) = state.begin_advance() else {
         return;
     };
@@ -243,8 +298,24 @@ fn send_advance(pipe: &RuntimePipe, state: &mut ObserverSession) {
             tick_content_hash: state.content_hash.clone(),
         },
     };
-    if let Err(error) = pipe.requests.try_send(request) {
-        state.fail(format!("Cannot request next period: {error}"));
+    let timing = match qualification
+        .as_deref()
+        .map(|audit| audit.prepare_advance(state, &request))
+        .transpose()
+    {
+        Ok(timing) => timing,
+        Err(error) => {
+            state.fail(error);
+            return;
+        }
+    };
+    match pipe.requests.try_send(request) {
+        Ok(()) => {
+            if let (Some(audit), Some(timing)) = (qualification, timing) {
+                audit.advance_sent(timing);
+            }
+        }
+        Err(error) => state.fail(format!("Cannot request next period: {error}")),
     }
 }
 
@@ -274,13 +345,71 @@ struct CampaignReset<'w> {
     fetch: Option<ResMut<'w, DossierFetchState>>,
     view: Option<ResMut<'w, DossierPageView>>,
     ui: Option<ResMut<'w, ObserverUiState>>,
+    qualification: Option<ResMut<'w, qualification::NativeAudit>>,
 }
 
 impl CampaignReset<'_> {
+    fn switching(
+        &mut self,
+        state: &mut ObserverSession,
+        refresh: &mut DossierRefresh,
+        request_id: u64,
+        previous: &RuntimeSessionScope,
+        scope: RuntimeSessionScope,
+    ) -> Result<(), String> {
+        let leaving_organizer = state.organizer_enabled;
+        state.switching(request_id, previous, scope)?;
+        if let Some(audit) = &mut self.qualification {
+            audit.switching(
+                request_id,
+                previous,
+                state
+                    .runtime_scope()
+                    .ok_or("native recovery switched scope absent")?,
+            )?;
+        }
+        if leaving_organizer {
+            state.set_perspective(Perspective::FullObserver);
+        }
+        self.clear(state);
+        refresh.bump();
+        Ok(())
+    }
     fn organizer(&mut self) -> Result<&mut crate::organizer::OrganizerClient, String> {
         self.organizer
             .as_deref_mut()
             .ok_or_else(|| "Organizer interface is not installed".into())
+    }
+
+    fn organizer_status(
+        &mut self,
+        state: &mut ObserverSession,
+        request_id: u64,
+        snapshot: babylon_persistence::runtime_session::OrganizerSnapshot,
+    ) -> Result<(), String> {
+        let original = self.qualification.is_some().then(|| snapshot.clone());
+        self.organizer()?.status(request_id, snapshot, state)?;
+        if let (Some(audit), Some(original)) = (&mut self.qualification, original) {
+            audit.status(state, original)?;
+        }
+        Ok(())
+    }
+
+    fn organizer_accepted(
+        &mut self,
+        state: &mut ObserverSession,
+        request_id: u64,
+        commitment: babylon_persistence::runtime_session::OrganizerCommitment,
+    ) -> Result<(), String> {
+        self.organizer()?
+            .accepted(request_id, commitment.clone(), state)?;
+        if let Some(audit) = &mut self.qualification {
+            audit.accepted(state, request_id, &commitment)?;
+            // Recovery must capture actual status including the pending ruling.
+            // The ordinary status request also prevents a second action meanwhile.
+            self.organizer()?.require_status(state);
+        }
+        Ok(())
     }
 
     fn clear(&mut self, state: &ObserverSession) {
@@ -451,6 +580,9 @@ fn admit_campaign(
             ui.history_open = false;
         }
     }
+    if let Some(audit) = &mut reset.qualification {
+        audit.reopened_ready(state, request_id)?;
+    }
     refresh.bump();
     if let Some(preference) = &reset.preference {
         if let Err(error) = crate::campaign_browser::write_preference(
@@ -491,6 +623,15 @@ fn refuse_runtime_request(
             state,
         )
     });
+    if let (Some(audit), Some(request_id)) = (
+        reset
+            .qualification
+            .as_deref_mut()
+            .filter(|_| organizer_refused),
+        request_id,
+    ) {
+        audit.refused(state, request_id);
+    }
     if !organizer_refused && !state.refuse_request(request_id, code) {
         return Err("Runtime refusal did not match an outstanding request".into());
     }
@@ -544,13 +685,7 @@ fn apply_response(
             previous_scope,
             scope,
         } => {
-            let leaving_organizer = state.organizer_enabled;
-            state.switching(request_id, &previous_scope, scope)?;
-            if leaving_organizer {
-                state.set_perspective(Perspective::FullObserver);
-            }
-            reset.clear(state);
-            refresh.bump();
+            reset.switching(state, refresh, request_id, &previous_scope, scope)?;
         }
         RuntimeSessionResponse::Ready {
             request_id,
@@ -586,7 +721,7 @@ fn apply_response(
             snapshot,
             ..
         } => {
-            reset.organizer()?.status(request_id, *snapshot, state)?;
+            reset.organizer_status(state, request_id, *snapshot)?;
         }
         RuntimeSessionResponse::OrganizerPreview {
             request_id,
@@ -600,7 +735,7 @@ fn apply_response(
             commitment,
             ..
         } => {
-            reset.organizer()?.accepted(request_id, commitment, state)?;
+            reset.organizer_accepted(state, request_id, commitment)?;
         }
         RuntimeSessionResponse::ArchiveProgress {
             durable_tick,
@@ -608,6 +743,9 @@ fn apply_response(
             ..
         } => {
             apply_archive_progress(state, refresh, durable_tick, verified_tick)?;
+            if let Some(audit) = reset.qualification.as_deref_mut() {
+                audit.advance_archive_progress(state)?;
+            }
         }
         RuntimeSessionResponse::Error {
             request_id,
@@ -636,6 +774,9 @@ fn apply_committed_response(
     if !state.acknowledge(request_id, tail.resolve_tick, tail.tick_content_hash) {
         return Err("Unexpected committed acknowledgement; reopen the campaign.".into());
     }
+    if let Some(audit) = reset.qualification.as_deref_mut() {
+        audit.advance_committed(state, request_id)?;
+    }
     if state.organizer_enabled {
         state.pause_playback();
         state.set_organizer_control_pending(true);
@@ -647,6 +788,7 @@ fn apply_committed_response(
 
 #[derive(SystemParam)]
 struct CommandContext<'w> {
+    qualification: Option<ResMut<'w, qualification::NativeAudit>>,
     opening: Option<ResMut<'w, crate::observer_opening::OpeningPresentation>>,
     state: ResMut<'w, ObserverSession>,
     ui: ResMut<'w, ObserverUiState>,
@@ -658,27 +800,61 @@ struct CommandContext<'w> {
     time: Res<'w, Time>,
 }
 
-fn handle_commands(mut commands: MessageReader<ObserverCommand>, mut context: CommandContext) {
-    for command in commands.read().copied() {
+fn handle_commands(
+    mut commands: MessageReader<ObserverCommand>,
+    mut context: CommandContext,
+    mut qualification: Option<ResMut<crate::organizer::qualification_input::HandlerReceipt>>,
+) {
+    for (command, message_id) in commands.read_with_id() {
+        let command = *command;
         if context.ui.splash_visible {
             if command != ObserverCommand::Quit {
+                if let Some(receipt) = qualification.as_deref_mut() {
+                    receipt.observer_finished(
+                        message_id,
+                        false,
+                        context.state.pending_advance_request(),
+                        &context.state,
+                    );
+                }
                 continue;
             }
         } else if context.ui.comparison_open {
+            if let Some(receipt) = qualification.as_deref_mut() {
+                receipt.observer_finished(
+                    message_id,
+                    false,
+                    context.state.pending_advance_request(),
+                    &context.state,
+                );
+            }
             continue;
         }
         if let ControlAvailability::Disabled(reason) = availability(command, &context.state) {
+            if let Some(receipt) = qualification.as_deref_mut() {
+                receipt.observer_finished(
+                    message_id,
+                    false,
+                    context.state.pending_advance_request(),
+                    &context.state,
+                );
+            }
             let now = context.time.elapsed_secs_f64();
             context.feedback.reject(reason, now);
             continue;
         }
         context.feedback.message = None;
+        let before = context.state.pending_advance_request();
         apply_command(command, &mut context);
+        if let Some(receipt) = qualification.as_deref_mut() {
+            receipt.observer_finished(message_id, true, before, &context.state);
+        }
     }
 }
 
 fn apply_command(command: ObserverCommand, context: &mut CommandContext) {
     let CommandContext {
+        qualification,
         state,
         ui,
         pipe,
@@ -707,7 +883,7 @@ fn apply_command(command: ObserverCommand, context: &mut CommandContext) {
         ObserverCommand::Step => {
             state.pause_playback();
             if let Some(pipe) = pipe {
-                send_advance(pipe, state);
+                send_advance(pipe, state, qualification.as_deref_mut());
             } else {
                 feedback.reject(
                     "No campaign connection. Reopen the campaign from Menu.",
@@ -920,47 +1096,90 @@ fn apply_presentation_command(command: ObserverCommand, context: &mut CommandCon
 }
 
 fn start_observation(
-    state: Res<ObserverSession>,
+    mut state: ResMut<ObserverSession>,
     mut pending: ResMut<PendingObservation>,
     mut cache: ResMut<ObservationCache>,
     mut frame: ResMut<ObserverFrame>,
+    mut qualification: Option<ResMut<qualification::NativeAudit>>,
 ) {
-    let key = ObservationCacheKey::from_session(&state);
-    if cache.key.as_ref() != Some(&key) {
-        cache.key = Some(key);
-        cache.cursor = None;
-    }
+    let key = ObservationCacheKey::from_session(&state, qualification.as_deref());
+    cache.reconcile(key);
     if state.quit_requested {
         pending.0 = None;
-        cache.cursor = None;
+        *cache = ObservationCache::default();
         return;
     }
     if let Some((context, _)) = &pending.0 {
         if !state.accepts(context) {
-            pending.0 = None;
             *frame = ObserverFrame::default();
+            // A blocking database reconstruction cannot be cancelled at an await
+            // point. Drain it before launching another large qualified read.
+            // collect_observation discards its stale result without publication.
+            if qualification.is_some() {
+                return;
+            }
+            pending.0 = None;
         }
     }
     if state.phase != SessionPhase::Loading || pending.0.is_some() {
         return;
     }
+    if qualification::awaiting_archive(&state, qualification.is_some()) {
+        return;
+    }
+    if qualification
+        .as_ref()
+        .is_some_and(|audit| audit.awaiting_recovery_status())
+    {
+        return;
+    }
+    let audit_work = match qualification
+        .as_deref_mut()
+        .map(|audit| audit.begin(&state))
+        .transpose()
+    {
+        Ok(work) => work.flatten(),
+        Err(error) => {
+            state.fail(error);
+            return;
+        }
+    };
     *frame = ObserverFrame::default();
     let context = state.context();
     let requested = context.clone();
+    let qualified = qualification.is_some();
+    let reader = match (audit_work.is_some(), requested.perspective) {
+        (true, _) | (_, Perspective::FullObserver) => cache.reader(
+            ObserverVisibility::FullObserver,
+            ObserverEconomyReader::from_observer_env,
+        ),
+        (false, Perspective::PlayerKnowledge) => cache.reader(
+            ObserverVisibility::KnownPreview,
+            ObserverEconomyReader::from_known_env,
+        ),
+    };
     let mut cursor = cache.cursor.take();
     let task = AsyncComputeTaskPool::get().spawn(async move {
         let started = std::time::Instant::now();
         let resumed_after = cursor
             .as_ref()
             .map(babylon_persistence::observer_reader::ObserverMaterialCursor::completed_tick);
+        let mut qualification = None;
         let result = (|| {
-            let reader = match requested.perspective {
-                Perspective::FullObserver => ObserverEconomyReader::from_observer_env(),
-                Perspective::PlayerKnowledge => ObserverEconomyReader::from_known_env(),
+            let reader = reader.map_err(|error| error.to_string())?;
+            if let Some(work) = audit_work {
+                let (prepared, candidate) = work.read(reader, &requested, &mut cursor)?;
+                qualification = Some(candidate);
+                return Ok(prepared);
             }
-            .map_err(|error| error.to_string())?;
-            reader
-                .snapshot_with_cursor(requested.campaign, requested.tick, &mut cursor)
+            // A known-only refresh has no material cursor. Preserve the private
+            // authenticated cursor for the next qualification boundary.
+            let snapshot = if qualified && requested.perspective == Perspective::PlayerKnowledge {
+                reader.snapshot(requested.campaign, requested.tick)
+            } else {
+                reader.snapshot_with_cursor(requested.campaign, requested.tick, &mut cursor)
+            };
+            snapshot
                 .map(PreparedObservation::new)
                 .map_err(|error| error.to_string())
         })();
@@ -974,7 +1193,11 @@ fn start_observation(
             elapsed_us = started.elapsed().as_micros(),
             success = result.is_ok(),
             "observer read completed");
-        ObservationRead { result, cursor }
+        ObservationRead {
+            result,
+            cursor,
+            qualification,
+        }
     });
     pending.0 = Some((context, task));
 }
@@ -985,6 +1208,7 @@ fn collect_observation(
     mut cache: ResMut<ObservationCache>,
     mut frame: ResMut<ObserverFrame>,
     ui: Res<ObserverUiState>,
+    mut qualification: Option<ResMut<qualification::NativeAudit>>,
 ) {
     let Some((context, task)) = &mut pending.0 else {
         return;
@@ -999,20 +1223,37 @@ fn collect_observation(
     }
     match result.result {
         Ok(snapshot) => {
-            install_observation(
+            let installed = install_observation(
                 &mut state,
                 &context,
                 snapshot,
                 &mut frame,
                 ui.stop_on_delivery,
             );
-            if state.phase != SessionPhase::Failed {
+            if installed {
+                if let Some(candidate) = result.qualification {
+                    let published = qualification
+                        .as_deref_mut()
+                        .ok_or_else(|| "native audit publication capability absent".to_string())
+                        .and_then(|audit| audit.commit(&state, candidate));
+                    if let Err(error) = published {
+                        state.fail(error);
+                        return;
+                    }
+                }
                 cache.cursor = result.cursor;
             }
         }
         Err(error) => {
             // Reader failures leave the previously authenticated cursor intact.
             cache.cursor = result.cursor;
+            bevy::log::error!(target: "babylon_client::timing",
+                campaign = %context.campaign.as_uuid(),
+                tick = context.tick,
+                generation = context.generation,
+                perspective = ?context.perspective,
+                reason = %error,
+                "authenticated observer read refused");
             state.fail(error);
         }
     }
@@ -1024,9 +1265,9 @@ fn install_observation(
     prepared: PreparedObservation,
     frame: &mut ObserverFrame,
     stop_on_delivery: bool,
-) {
+) -> bool {
     if !state.accepts(context) {
-        return;
+        return false;
     }
     let PreparedObservation { snapshot, evidence } = prepared;
     let visibility = match context.perspective {
@@ -1042,7 +1283,7 @@ fn install_observation(
         state.fail(
             "Observation identity mismatch; the last committed campaign was preserved.".into(),
         );
-        return;
+        return false;
     }
     if let Some(production) = &snapshot.production {
         if !production.duration.contains(snapshot.resolve_tick)
@@ -1051,7 +1292,7 @@ fn install_observation(
                 .is_some_and(|duration| duration != production.duration)
         {
             state.fail("Observation duration differs from the admitted campaign.".into());
-            return;
+            return false;
         }
         state.duration = Some(production.duration);
     }
@@ -1071,7 +1312,9 @@ fn install_observation(
             state.pause_playback();
         }
         *frame = ObserverFrame(Some(snapshot), Some(evidence));
+        return true;
     }
+    false
 }
 
 fn playback(
@@ -1080,6 +1323,7 @@ fn playback(
     pipe: Option<Res<RuntimePipe>>,
     mut clock: ResMut<PlaybackClock>,
     mut state: ResMut<ObserverSession>,
+    mut qualification: Option<ResMut<qualification::NativeAudit>>,
 ) {
     if state.quit_requested {
         return;
@@ -1097,14 +1341,18 @@ fn playback(
         clock.elapsed += time.delta_secs_f64();
         if clock.elapsed >= state.periods_per_second.recip() {
             clock.elapsed = 0.0;
-            send_advance(&pipe, &mut state);
+            send_advance(&pipe, &mut state, qualification.as_deref_mut());
         }
     } else {
         clock.elapsed = 0.0;
     }
 }
 
-fn send_campaign_switch(pipe: Option<Res<RuntimePipe>>, mut state: ResMut<ObserverSession>) {
+fn send_campaign_switch(
+    pipe: Option<Res<RuntimePipe>>,
+    mut state: ResMut<ObserverSession>,
+    mut qualification: Option<ResMut<qualification::NativeAudit>>,
+) {
     let Some(pipe) = pipe else {
         return;
     };
@@ -1114,6 +1362,12 @@ fn send_campaign_switch(pipe: Option<Res<RuntimePipe>>, mut state: ResMut<Observ
     let Some(request) = state.pending_switch_request() else {
         return;
     };
+    if let Some(audit) = qualification.as_deref_mut() {
+        if let Err(error) = audit.stage_reopen(&state, &request) {
+            state.fail(error);
+            return;
+        }
+    }
     match pipe.requests.try_send(request) {
         Ok(()) => state.switch_sent(),
         Err(mpsc::TrySendError::Full(_)) => {}
@@ -1529,7 +1783,9 @@ pub(crate) mod tests {
             .add_message::<AppExit>()
             .add_systems(
                 Update,
-                (handle_commands, send_campaign_switch, finish_shutdown).chain(),
+                (handle_commands, send_campaign_switch, finish_shutdown)
+                    .chain()
+                    .in_set(ObserverSet::Receive),
             );
         (app, receiver)
     }

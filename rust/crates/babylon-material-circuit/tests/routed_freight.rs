@@ -653,7 +653,7 @@ fn severed_corridor_changes_only_its_routed_inventory_and_realization() {
 }
 
 #[test]
-fn shared_corridor_allocation_exhaustively_conserves_permutations() {
+fn proportional_base_and_shared_corridor_residual_conserve_permutations() {
     for available in 0_u64..=10 {
         for corridor_available in 0_u64..=10 {
             for first_requested in 1_u64..=5 {
@@ -692,12 +692,15 @@ fn shared_corridor_allocation_exhaustively_conserves_permutations() {
                         effective * second_requested / total_requested
                     };
 
-                    assert_eq!(shipped_for(&outcome.state, order(ORDER)), expected_first);
-                    assert_eq!(shipped_for(&outcome.state, order(17)), expected_second);
+                    let actual_first = shipped_for(&outcome.state, order(ORDER));
+                    let actual_second = shipped_for(&outcome.state, order(17));
+                    assert!(actual_first >= expected_first && actual_first <= first_requested);
+                    assert!(actual_second >= expected_second && actual_second <= second_requested);
+                    assert_eq!(actual_first + actual_second, effective.min(total_requested));
                     assert_eq!(
                         inventory_quantity(&outcome.state, site(SUPPLIER))
-                            + expected_first
-                            + expected_second,
+                            + actual_first
+                            + actual_second,
                         available
                     );
                     assert_eq!(

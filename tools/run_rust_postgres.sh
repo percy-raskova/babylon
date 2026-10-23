@@ -12,6 +12,17 @@ readonly CARGO_BUILD_JOBS
 # after it proves exact ownership of the random-canary container below.
 readonly TEST_HARNESS_ACK="I_UNDERSTAND_THIS_DISPOSABLE_RUNTIME_DROPS_ITS_SCRATCH_DATABASES_AND_ROLES"
 readonly LIVE_FOCUS="${BABYLON_POSTGRES_LIVE_FOCUS-runtime_smoke}"
+if [ "${1:-}" = --national-native-open ] || [ "${1:-}" = --national-native-lock-held ]; then
+  source "$REPO_ROOT/tools/postgres_national_lifecycle.sh"
+  die() { printf 'run_rust_postgres: %s\n' "$*" >&2; exit 2; }
+  national_native_open "$@"
+  exit "$?"
+fi
+if [ "$LIVE_FOCUS" != national_storage ] &&
+    [ "${BABYLON_NATIONAL_SUCCESS_DISPOSITION-cleanup}" != cleanup ]; then
+  printf 'run_rust_postgres: native retention requires national scope\n' >&2
+  exit 2
+fi
 CANARY="$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
 readonly CANARY
 readonly CONTAINER="babylon-runtime-pg-${CANARY:0:12}"
@@ -44,7 +55,7 @@ if [ "${BABYLON_POSTGRES_IMAGE_ID+x}" = x ] &&
 fi
 
 case "$LIVE_FOCUS" in
-  runtime_smoke | session_progress | reference_integrity | runtime | territory | archive | reader | reader_recovery | production_history | statewide_synthetic | statewide_qualified | organizer | client | national_storage) ;;
+  runtime_smoke | session_progress | reference_integrity | runtime | runtime_open | territory | archive | archive_publication | reader | reader_recovery | production_history | statewide_synthetic | statewide_qualified | organizer | client | national_storage) ;;
   *) die "unsupported live focus: $LIVE_FOCUS" ;;
 esac
 
@@ -121,6 +132,10 @@ cleanup_checked() {
   [ "$OWNED" -eq 1 ] || return 0
   if [ "$LIVE_FOCUS" = national_storage ]; then
     [ "$status" -eq 0 ] || die "national failure retains the exact game and lease for diagnosis"
+    if [ "$NATIONAL_SUCCESS_DISPOSITION" = retain-for-native ]; then
+      national_retain_success || die "national retention refused; exact target and lease preserved"
+      return 0
+    fi
     national_verify_disposable || die "national ownership/evidence refusal; exact target and lease preserved"
   fi
   timeout --signal=TERM --kill-after=5s 30s \
@@ -392,11 +407,24 @@ if [ "$status" -eq 0 ]; then
   case "$LIVE_FOCUS" in
     national_storage)
       national_create_game
-      # This existing consumer installs its own fresh schema and reopens every tick.
-      # Qualification is uncapped, serialized by the lease, and retains exact saves.
-      BLAS=1 cargo test -p babylon-persistence --test national_storage_encoded_measurement \
-        actual_encoded_national_tick_measures_postgresql_growth_and_recovery \
-        --locked -- --ignored --nocapture --test-threads=1 || status=$?
+      if [ "$BABYLON_NATIONAL_CAPTURE_MODE" = playable-aid ]; then
+        # Compile before the measured lifecycle. One admitted native pair owns
+        # play and recovery; the existing evaluator still owns qualification.
+        BLAS=1 cargo build -p babylon-persistence -p babylon-client \
+          --bin babylon-runtime --bin babylon-client --bin babylon-material-audit \
+          --locked || status=$?
+        if [ "$status" -eq 0 ]; then
+          cd "$REPO_ROOT"
+          mise exec -- uv run --frozen python -c \
+            'from tools.devtools.national_native_runner import main; raise SystemExit(main())' \
+            || status=$?
+        fi
+      else
+        # Retain the small headless storage control as separate evidence.
+        BLAS=1 cargo test -p babylon-persistence --test national_storage_encoded_measurement \
+          actual_encoded_national_tick_measures_postgresql_growth_and_recovery \
+          --locked -- --ignored --nocapture --test-threads=1 || status=$?
+      fi
       if [ "$status" -eq 0 ]; then
         cd "$REPO_ROOT"
         national_measure || status=$?
@@ -424,6 +452,10 @@ if [ "$status" -eq 0 ]; then
           --locked -- --nocapture --ignored --test-threads=1 || status=$?
       fi
       ;;
+    runtime_open)
+      run_phase material_open 600 cargo test -p babylon-persistence --lib \
+        runtime::live_tests::material_open:: --locked -- --nocapture --ignored --test-threads=1 || status=$?
+      ;;
     runtime)
       run_phase runtime 600 cargo test -p babylon-persistence --lib \
         runtime::live_tests::live_ --locked -- --nocapture --ignored --test-threads=1 || status=$?
@@ -436,6 +468,10 @@ if [ "$status" -eq 0 ]; then
           cargo test -p babylon-persistence --lib \
           material_runtime::writer_bounds_tests::live_bounded_writer_verifies_authority_and_timeouts_in_read_only_transaction \
           --locked -- --nocapture --ignored --exact --test-threads=1 || status=$?
+      fi
+      if [ "$status" -eq 0 ]; then
+        run_phase material_open 600 cargo test -p babylon-persistence --lib \
+          runtime::live_tests::material_open:: --locked -- --nocapture --ignored --test-threads=1 || status=$?
       fi
       ;;
     territory)
@@ -450,6 +486,23 @@ if [ "$status" -eq 0 ]; then
         [ "$status" -eq 0 ] || break
         run_phase "territory_$territory_reader" 600 cargo test -p babylon-persistence --test observer_material_live \
           "tick_components::$territory_reader" --locked -- --nocapture --ignored --exact --test-threads=1 || status=$?
+      done
+      ;;
+    archive_publication)
+      # A focused publication repair still uses the owned current-schema
+      # template and checked cleanup. The full Archive gate remains separate.
+      run_phase archive_short_publication 600 cargo test -p babylon-persistence --lib \
+        archive_revision::worker::live_tests::short_publication:: \
+        --locked -- --nocapture --ignored --test-threads=1 || status=$?
+      if [ "$status" -eq 0 ]; then
+        run_phase archive_publication_conflict 600 cargo test -p babylon-persistence --lib \
+          archive_revision::worker::live_tests::revisions::live_revision_refuses_later_tick_and_conflicting_stage_without_partial_publication \
+          --locked -- --nocapture --ignored --exact --test-threads=1 || status=$?
+      fi
+      for archive_producer in place_producer_live county_producer_live; do
+        [ "$status" -eq 0 ] || break
+        run_phase "$archive_producer" 600 cargo test -p babylon-persistence \
+          --test "$archive_producer" --locked -- --nocapture --ignored --test-threads=1 || status=$?
       done
       ;;
     archive)
@@ -488,9 +541,11 @@ if [ "$status" -eq 0 ]; then
         --test observer_material_live --locked -- --nocapture --ignored \
         --test-threads=2 \
         cold_restart_and_history_refuse_corrupt_or_missing_earlier_period_lookup \
+        cached_history_refuses_earlier_receipt_corruption_and_preserves_the_cursor \
         held_staffing_history_survives_advance_reopen_and_does_not_mutate_authority \
         persisted_delivery_twins_reconcile_and_restart_at_dispatch_transit_and_arrival \
-        live_material_observer_preserves_history_and_denies_preview_blob_authority || status=$?
+        live_material_observer_preserves_history_and_denies_preview_blob_authority \
+        graph_reads_resolve_exact_ids_with_prior_campaign_statistics || status=$?
       ;;
     reader)
       for reader_suite in reader_role_live observer_material_live; do
@@ -545,6 +600,10 @@ fi
 cleanup_checked
 trap - EXIT INT TERM HUP
 if [ "$LIVE_FOCUS" = national_storage ]; then
+  if [ "$NATIONAL_SUCCESS_DISPOSITION" = retain-for-native ]; then
+    printf 'National lifecycle status=success-retained-for-native; scope and acceptance remain in native-handoff.json and qualification.json\n'
+    exit "$status"
+  fi
   printf 'National lifecycle status=success-cleaned; storage acceptance is recorded separately in qualification.json\n'
 fi
 printf 'Rust PostgreSQL cleanup verified: container=%s volume=%s elapsed_seconds=%s status=%s\n' \

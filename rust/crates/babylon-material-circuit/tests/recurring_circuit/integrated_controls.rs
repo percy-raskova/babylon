@@ -494,3 +494,6 @@ fn finite_foreign_imports_and_exports_settle_only_after_bidirectional_delivery()
         4
     );
 }
+
+#[path = "counterfactuals.rs"]
+mod counterfactuals;

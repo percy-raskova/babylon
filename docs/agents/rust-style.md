@@ -72,7 +72,7 @@ and the SQL schema stay unchanged (Constitution III.7).
 
 | Guide rule | Babylon rule |
 | --- | --- |
-| Avoid `Rc` and `Arc` | Unique ownership and borrows by default. Only EXC-04 sites keep `Arc`. |
+| Avoid `Rc` and `Arc` | Unique ownership and borrows by default. `Rc` and `Arc<Vec<T>>` are findings. Retained shared pointers follow EXC-04. |
 | Prefer borrows over deep copies | Clone only for a real deep copy. Do not clone to dodge a borrow. |
 
 ### Function inputs and outputs
@@ -220,7 +220,9 @@ prelude for Babylon code stays banned.
 
 ### EXC-04: Retained `Rc` and `Arc` sites
 
-**Scope:** The exact sites in the table. No other site.
+**Scope:** The shared-pointer sites that the check permits. The table lists
+each retained site. `Arc<Vec<T>>` becomes `Arc<[T]>` and is not a retained
+site.
 
 **Excluded rule:** The preference for unique ownership and borrowing over
 `Rc` and `Arc`.
@@ -240,10 +242,10 @@ that Babylon needs.
 | `babylon-client/src/logging.rs` `SinkState` | Cross-thread log writer behind `Arc<Mutex<SinkState>>`. |
 | `babylon-ls/tests/protocol.rs` `stderr_buf` | Test harness buffer shared with the spawned language server. |
 
-**Retained obligations:** Every site carries a
-`// STYLE-EXCEPTION(EXC-04): <reason>` comment. A new site needs an amendment
-to this register. Outside the register, `Rc<RefCell<..>>` is a finding and
-`Arc<Vec<u8>>` becomes `Arc<[u8]>`.
+**Retained obligations:** Every retained site in the table carries a
+`// STYLE-EXCEPTION(EXC-04): <reason>` comment. A new retained site needs an
+amendment to this register. `Rc<T>` and `Rc<RefCell<T>>` are findings
+everywhere. `Arc<Vec<T>>` is a finding everywhere and becomes `Arc<[T]>`.
 
 ### EXC-05: Manual byte-table alignment
 

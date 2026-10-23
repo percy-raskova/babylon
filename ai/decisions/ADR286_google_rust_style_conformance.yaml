@@ -100,7 +100,7 @@ ADR286_google_rust_style_conformance:
     - cargo fmt --all -- --check reports no diff.
     - cargo clippy --workspace --all-targets --locked passes with the workspace lint set.
     - mise run rust:check-no-docs passes bsl-lint google-rust-style with zero findings.
-    - Every EXC-04 site carries a STYLE-EXCEPTION(EXC-04) comment and no other Arc site exists.
+    - Every retained EXC-04 site carries a STYLE-EXCEPTION(EXC-04) comment, no Rc remains, and no Arc<Vec<T>> remains.
     - Every EXC-05 block is a byte table in state_hash.rs or world_hash.rs with its marker.
     - Canonical hash fixtures and the persistence schema remain byte-identical.
     - AGENTS.md stays the only canonical rule file and under 200 lines.

@@ -654,6 +654,10 @@ fn clearing_is_monotone_in_s_and_in_w_bar() {
 /// dispersed distribution (mass spread across every rung) sheds a little
 /// mass at every boundary — no single step is large.
 #[test]
+#[allow(
+    clippy::manual_midpoint,
+    reason = "the sweep pins exact midpoint values; f64::midpoint is not guaranteed bit-identical to (a + b) / 2.0"
+)]
 fn adr202_r2_more_dispersion_means_a_less_switch_like_transition() {
     let mut concentrated = [0.0_f64; 16];
     concentrated[7] = 1.0; // all mass in rung 8
@@ -669,7 +673,7 @@ fn adr202_r2_more_dispersion_means_a_less_switch_like_transition() {
     // whole grid, so a sweep step can land on every rung boundary.
     let mut sweep: Vec<f64> = vec![SYNTHETIC_CUTS[0] - 0.05];
     for pair in SYNTHETIC_CUTS.windows(2) {
-        sweep.push(f64::midpoint(pair[0], pair[1]));
+        sweep.push((pair[0] + pair[1]) / 2.0);
     }
     sweep.push(SYNTHETIC_CUTS[14] + 0.05);
 

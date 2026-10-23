@@ -1,10 +1,5 @@
 //! Real close controls for gift ownership, scarce work and delayed household food.
 
-// Conformance fixtures exercise exact engine values, transcribe spec literals,
-// and build whole scenarios in one test. These pedantic lints would force
-// ceremony that hides those contracts, so they stay off in test code only.
-#![allow(clippy::too_many_lines)]
-
 use super::*;
 
 fn recipient() -> FinalDemandPrincipalId {
@@ -190,6 +185,10 @@ fn local_gift_conserves_cash_and_basis_without_a_sale_and_debits_actual_time() {
 }
 
 #[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "a conformance scenario builds its whole fixture and asserts the full trajectory in one test"
+)]
 fn routed_gift_shares_commercial_capacity_and_grants_only_after_actual_arrival() {
     let mut state = aid_opening(true);
     let total = economy(&state).book.total_cash_and_reserves().unwrap();
@@ -408,6 +407,10 @@ fn stale_changed_duplicate_and_uncaptured_aid_refuse_atomically() {
 }
 
 #[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "a conformance scenario builds its whole fixture and asserts the full trajectory in one test"
+)]
 fn real_organization_funds_pay_gift_cash_while_household_goods_keep_their_owner() {
     let mut state = aid_opening(false);
     let total = economy(&state).book.total_cash_and_reserves().unwrap();

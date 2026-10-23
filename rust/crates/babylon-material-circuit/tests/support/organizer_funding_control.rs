@@ -13,11 +13,6 @@
 //! have a captured 160-hour attendance allowance each. No stock or receipt is
 //! replenished. Every supplementary supplier control here is Designed.
 
-// Conformance fixtures exercise exact engine values, transcribe spec literals,
-// and build whole scenarios in one test. These pedantic lints would force
-// ceremony that hides those contracts, so they stay off in test code only.
-#![allow(clippy::too_many_lines)]
-
 use babylon_kernel::{content_digest::sha256_of, currency::Currency};
 use babylon_material_circuit::*;
 
@@ -108,6 +103,10 @@ fn economy_mut(state: &mut MaterialCircuitState) -> &mut MonetaryCircuit {
     e
 }
 
+#[allow(
+    clippy::too_many_lines,
+    reason = "a conformance scenario builds its whole fixture and asserts the full trajectory in one test"
+)]
 fn recurring() -> RecurringEconomy {
     let households = [(donor(), 4, 8), (recipient(), 4, 4), (suppliers(), 5, 5)]
         .into_iter()
@@ -291,6 +290,10 @@ fn time() -> HouseholdTimeAccounting {
         .unwrap(),
     )
 }
+#[allow(
+    clippy::too_many_lines,
+    reason = "a conformance scenario builds its whole fixture and asserts the full trajectory in one test"
+)]
 pub fn opening() -> MaterialCircuitState {
     let location = "county:26163".parse().unwrap();
     let inventory = [(MATERIALS, 16), (FOOD, 36)]

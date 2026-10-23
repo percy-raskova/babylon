@@ -118,16 +118,6 @@
 //! carries no anchor and its first id segment names no registered system —
 //! a rule cannot land nowhere (§2.3)`.
 
-// Conformance fixtures exercise exact engine values, transcribe spec literals,
-// and build whole scenarios in one test. These pedantic lints would force
-// ceremony that hides those contracts, so they stay off in test code only.
-#![allow(
-    clippy::cast_possible_truncation,
-    clippy::cast_possible_wrap,
-    clippy::cast_precision_loss,
-    clippy::cast_sign_loss
-)]
-
 use babylon_bsl::scenario::load_scenario;
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;
@@ -252,7 +242,7 @@ fn defenum_ordinal_parity_with_the_frozen_order() {
     {
         assert_eq!(
             loaded.enums.ordinal(phase, member),
-            Some(expected as u32),
+            Some(u32::try_from(expected).expect("enum ordinal fits u32")),
             "CrisisPhase/{member} must be ordinal {expected}"
         );
     }
@@ -338,7 +328,9 @@ fn world1_constants_match_the_canonical_table_bit_exactly() {
             .unwrap_or_else(|| panic!("{name} missing from world 1"));
         let bits = match actual {
             babylon_bsl::evaluator::Value::Real(r) => *r,
-            babylon_bsl::evaluator::Value::Int(i) => *i as f64,
+            babylon_bsl::evaluator::Value::Int(i) => {
+                f64::from(i32::try_from(*i).expect("the pinned literal fits the exact real range"))
+            }
             other => panic!("{name} must be a real or int literal, got {other:?}"),
         };
         assert_eq!(

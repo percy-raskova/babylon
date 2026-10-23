@@ -232,12 +232,6 @@
 // and build whole scenarios in one test. These pedantic lints would force
 // ceremony that hides those contracts, so they stay off in test code only.
 #![allow(clippy::float_cmp)]
-#![allow(
-    clippy::cast_possible_truncation,
-    clippy::cast_possible_wrap,
-    clippy::cast_precision_loss,
-    clippy::cast_sign_loss
-)]
 
 use babylon_bsl::evaluator::Value;
 use babylon_bsl::scenario::load_scenario;
@@ -472,7 +466,7 @@ fn social_role_order_is_the_ruled_ordinal() {
     for (ordinal, member) in members.iter().enumerate() {
         assert_eq!(
             loaded.enums.ordinal(ty, member),
-            Some(ordinal as u32),
+            Some(u32::try_from(ordinal).expect("enum ordinal fits u32")),
             "SocialRole::{member} must sit at ordinal {ordinal} (ADR195)"
         );
     }

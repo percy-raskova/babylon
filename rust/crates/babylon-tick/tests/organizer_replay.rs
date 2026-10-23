@@ -1,10 +1,5 @@
 //! A small Designed maintenance workplace crosses the real BSL/tick boundary.
 
-// Conformance fixtures exercise exact engine values, transcribe spec literals,
-// and build whole scenarios in one test. These pedantic lints would force
-// ceremony that hides those contracts, so they stay off in test code only.
-#![allow(clippy::too_many_lines)]
-
 #[allow(dead_code, reason = "reuse the checked Michigan foundation loader")]
 #[path = "../../babylon-persistence/src/michigan_dynamic_hex_foundation.rs"]
 mod michigan_dynamic_hex_foundation;
@@ -88,6 +83,10 @@ fn process() -> ProcessId {
     ProcessId::from_bytes([1; 32])
 }
 
+#[allow(
+    clippy::too_many_lines,
+    reason = "a conformance scenario builds its whole fixture and asserts the full trajectory in one test"
+)]
 fn opening() -> MaterialCircuitState {
     MaterialCircuitState {
         capacity_supply: babylon_material_circuit::CapacitySupply::FiniteSchedule,

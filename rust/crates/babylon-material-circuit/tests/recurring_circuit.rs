@@ -1,10 +1,5 @@
 //! Executable witness for the independently worked eight-period accounting control.
 
-// Conformance fixtures exercise exact engine values, transcribe spec literals,
-// and build whole scenarios in one test. These pedantic lints would force
-// ceremony that hides those contracts, so they stay off in test code only.
-#![allow(clippy::too_many_lines)]
-
 use babylon_kernel::currency::Currency;
 use babylon_material_circuit::*;
 
@@ -65,6 +60,10 @@ fn inventory(owner: u8, commodity: u8, quantity: u64) -> InventoryRow {
     }
 }
 
+#[allow(
+    clippy::too_many_lines,
+    reason = "a conformance scenario builds its whole fixture and asserts the full trajectory in one test"
+)]
 fn opening() -> MaterialCircuitState {
     let offers = [(1, 1, 1), (2, 2, 3), (3, 2, 4)]
         .into_iter()
@@ -383,6 +382,10 @@ fn output(transition: &MaterialCircuitTransition, owner: u8) -> u64 {
 }
 
 #[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "a conformance scenario builds its whole fixture and asserts the full trajectory in one test"
+)]
 fn eight_period_control_reproduces_paid_idle_withdrawal_recovery_and_conservation() {
     let mut state = opening();
     let mut results = Vec::new();

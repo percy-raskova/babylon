@@ -1,8 +1,3 @@
-// Conformance fixtures exercise exact engine values, transcribe spec literals,
-// and build whole scenarios in one test. These pedantic lints would force
-// ceremony that hides those contracts, so they stay off in test code only.
-#![allow(clippy::too_many_lines)]
-
 use babylon_kernel::{content_digest::sha256_of, currency::Currency};
 use babylon_material_circuit::*;
 
@@ -10,6 +5,10 @@ fn money(value: i128) -> Currency {
     Currency::from_micro_units(value)
 }
 
+#[allow(
+    clippy::too_many_lines,
+    reason = "a conformance scenario builds its whole fixture and asserts the full trajectory in one test"
+)]
 fn paid_state() -> MaterialCircuitState {
     let seller = SiteId::from_bytes([1; 32]);
     let buyer = SiteId::from_bytes([2; 32]);

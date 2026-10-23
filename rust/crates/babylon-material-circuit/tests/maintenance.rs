@@ -1,10 +1,5 @@
 //! A bounded maintenance dependency conserves parts and hours across period closes.
 
-// Conformance fixtures exercise exact engine values, transcribe spec literals,
-// and build whole scenarios in one test. These pedantic lints would force
-// ceremony that hides those contracts, so they stay off in test code only.
-#![allow(clippy::too_many_lines)]
-
 use babylon_material_circuit::*;
 
 fn site(id: u8) -> SiteId {
@@ -19,6 +14,10 @@ fn unit(id: u8) -> UnitId {
 fn process() -> ProcessId {
     ProcessId::from_bytes([1; 32])
 }
+#[allow(
+    clippy::too_many_lines,
+    reason = "a conformance scenario builds its whole fixture and asserts the full trajectory in one test"
+)]
 fn opening(parts: u64, provider_hours: u64) -> MaterialCircuitState {
     MaterialCircuitState {
         capacity_supply: babylon_material_circuit::CapacitySupply::FiniteSchedule,

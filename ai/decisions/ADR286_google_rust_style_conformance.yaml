@@ -99,6 +99,10 @@ ADR286_google_rust_style_conformance:
   verification:
     - cargo fmt --all -- --check reports no diff.
     - cargo clippy --workspace --all-targets --locked passes with the workspace lint set.
+    - >-
+      non_exhaustive_omitted_patterns is dropped from the workspace table on the
+      pinned 1.91.1 toolchain (rust-lang/rust#89554); EXC-02 and the bsl-lint
+      google-rust-style wildcard-arm check carry its coverage.
     - mise run rust:check-no-docs passes bsl-lint google-rust-style with zero findings.
     - Every retained EXC-04 site carries a STYLE-EXCEPTION(EXC-04) comment, no Rc remains, and no Arc<Vec<T>> remains.
     - Every EXC-05 block is a byte table in state_hash.rs or world_hash.rs with its marker.

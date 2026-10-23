@@ -1,15 +1,5 @@
 //! Production-operation execution for the semantic maximum/+1 recipes.
 
-// Conformance fixtures exercise exact engine values, transcribe spec literals,
-// and build whole scenarios in one test. These pedantic lints would force
-// ceremony that hides those contracts, so they stay off in test code only.
-#![allow(
-    clippy::cast_possible_truncation,
-    clippy::cast_possible_wrap,
-    clippy::cast_precision_loss,
-    clippy::cast_sign_loss
-)]
-
 use std::collections::HashMap;
 
 use babylon_bsl::evaluator::Value as BslValue;
@@ -388,7 +378,7 @@ fn resolver_single_hyperedge(recipe: &Value) -> Result<(), StableIdentityError> 
     );
     let members: Vec<_> = (0..=65_534)
         .take(node_count)
-        .map(|index| NodeId(index as u64))
+        .map(|index| NodeId(u64::try_from(index).expect("synthetic node ordinal fits u64")))
         .collect();
     let hyperedge = graph
         .add_hyperedge(text(recipe, "hyperedge_type"), &members)
@@ -414,7 +404,7 @@ fn resolver_fact_units(recipe: &Value) -> Result<(), StableIdentityError> {
     {
         let members: Vec<_> = (0..65_534)
             .take(member_count)
-            .map(|member| NodeId(member as u64))
+            .map(|member| NodeId(u64::try_from(member).expect("synthetic member ordinal fits u64")))
             .collect();
         let hyperedge = graph
             .add_hyperedge("h", &members)
@@ -544,7 +534,12 @@ impl GeneratedState {
     fn nodes(&self) -> Vec<(NodeId, String)> {
         (0..=262_144)
             .take(self.node_count)
-            .map(|index| (NodeId(index as u64), self.node_type.clone()))
+            .map(|index| {
+                (
+                    NodeId(u64::try_from(index).expect("synthetic node ordinal fits u64")),
+                    self.node_type.clone(),
+                )
+            })
             .collect()
     }
 
@@ -590,7 +585,7 @@ impl CanonicalState for GeneratedState {
         };
         let members = (0..=65_534)
             .take(count)
-            .map(|index| NodeId(index as u64))
+            .map(|index| NodeId(u64::try_from(index).expect("synthetic node ordinal fits u64")))
             .collect();
         vec![(HyperedgeId(0), "h".to_owned(), members)]
     }
@@ -684,7 +679,7 @@ fn stable_graph_hyperedge(recipe: &Value) -> Result<(), StableIdentityError> {
     let names = add_nodes(&mut graph, sealed, "n", text(recipe, "node_name_pattern"));
     let members: Vec<_> = (0..65_534)
         .take(sealed)
-        .map(|index| NodeId(index as u64))
+        .map(|index| NodeId(u64::try_from(index).expect("synthetic node ordinal fits u64")))
         .collect();
     let hyperedge = graph
         .add_hyperedge("h", &members)

@@ -166,8 +166,6 @@
 // ceremony that hides those contracts, so they stay off in test code only.
 #![allow(clippy::float_cmp)]
 #![allow(clippy::unreadable_literal)]
-#![allow(clippy::too_many_lines)]
-#![allow(clippy::items_after_statements)]
 
 use babylon_bsl::scenario::compose_declaration_preludes;
 use babylon_graph::hypergraph_store::HypergraphStore;
@@ -219,6 +217,10 @@ const TV_TIE_ALL_TRUE: NodeId = NodeId(13);
 /// start; the full vector table lives in
 /// `measured_update_law_matches_the_dual_implementation_exactly` below.
 #[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "a conformance scenario builds its whole fixture and asserts the full trajectory in one test"
+)]
 fn unpositioned_class_gets_no_reading() {
     let mut graph = HypergraphStore::new();
     let mut sink = babylon_bsl::structural_verbs::CollectingSink::default();
@@ -429,6 +431,10 @@ fn unpositioned_class_gets_no_reading() {
 /// reads it same-tick: its dominant is the readout of the HEALED ternary
 /// (still LIBERAL). Every expected dominant below is unchanged by Task 3.
 #[test]
+#[allow(
+    clippy::items_after_statements,
+    reason = "scenario constants and local helpers sit beside their first use in one long assertion"
+)]
 fn dominant_worldview_readout_vectors() {
     let mut graph = HypergraphStore::new();
     let mut sink = babylon_bsl::structural_verbs::CollectingSink::default();
@@ -530,6 +536,14 @@ fn dominant_worldview_readout_vectors() {
 /// persisted baselines (previous-wages, previous-wealth) and the per-rule
 /// fired counts. The generator's verbatim output is in the module header.
 #[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "a conformance scenario builds its whole fixture and asserts the full trajectory in one test"
+)]
+#[allow(
+    clippy::items_after_statements,
+    reason = "scenario constants and local helpers sit beside their first use in one long assertion"
+)]
 fn measured_update_law_matches_the_dual_implementation_exactly() {
     let mut graph = HypergraphStore::new();
     let mut sink = babylon_bsl::structural_verbs::CollectingSink::default();
@@ -754,6 +768,14 @@ fn measured_update_law_matches_the_dual_implementation_exactly() {
 /// material consequence of C1, not a regression: relative, not absolute,
 /// material loss now drives the routing.
 #[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "a conformance scenario builds its whole fixture and asserts the full trajectory in one test"
+)]
+#[allow(
+    clippy::items_after_statements,
+    reason = "scenario constants and local helpers sit beside their first use in one long assertion"
+)]
 fn tick_two_accumulation_witness() {
     let mut session = babylon_tick::diagnostic::RuleDiagnosticSession::new(
         SCENARIO,

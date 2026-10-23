@@ -332,13 +332,6 @@
 // Conformance fixtures exercise exact engine values, transcribe spec literals,
 // and build whole scenarios in one test. These pedantic lints would force
 // ceremony that hides those contracts, so they stay off in test code only.
-#![allow(clippy::too_many_lines)]
-#![allow(
-    clippy::cast_possible_truncation,
-    clippy::cast_possible_wrap,
-    clippy::cast_precision_loss,
-    clippy::cast_sign_loss
-)]
 #![allow(clippy::float_cmp)]
 
 use babylon_bsl::evaluator::Value;
@@ -596,7 +589,7 @@ fn social_role_order_is_the_ruled_ordinal() {
     for (ordinal, member) in members.iter().enumerate() {
         assert_eq!(
             loaded.enums.ordinal(ty, member),
-            Some(ordinal as u32),
+            Some(u32::try_from(ordinal).expect("enum ordinal fits u32")),
             "SocialRole::{member} must sit at ordinal {ordinal} (ADR195)"
         );
     }
@@ -824,6 +817,10 @@ fn r01_emits_surplus_extraction_above_the_negligible_floor() {
 ///     all" is no longer the right claim — exactly one event, targeting
 ///     petty-target, is.
 #[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "a conformance scenario builds its whole fixture and asserts the full trajectory in one test"
+)]
 fn r01_skips_an_inactive_counterparty() {
     const INACTIVE_TARGET_SCENARIO: &str = r"
 (scenario imperial-rent/inactive-counterparty-probe
@@ -1376,6 +1373,10 @@ fn r03_emits_nothing() {
 /// credits ONLY the real, active comprador's tribute, never the wiped
 /// sentinel.
 #[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "a conformance scenario builds its whole fixture and asserts the full trajectory in one test"
+)]
 fn r03_skips_a_non_positive_comprador() {
     const NON_POSITIVE_COMPRADOR_SCENARIO: &str = r#"
 (scenario imperial-rent/non-positive-comprador-probe
@@ -1545,6 +1546,10 @@ fn r03_skips_a_non_positive_comprador() {
 /// is the positive-exclusion witness: a genuine transfer happens there,
 /// proving this is not a no-op rule.
 #[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "a conformance scenario builds its whole fixture and asserts the full trajectory in one test"
+)]
 fn r03_and_r04_skip_an_inactive_recipient() {
     const INACTIVE_RECIPIENT_SCENARIO: &str = r"
 (scenario imperial-rent/inactive-recipient-probe

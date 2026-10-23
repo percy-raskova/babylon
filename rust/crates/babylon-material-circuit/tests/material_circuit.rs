@@ -1,8 +1,3 @@
-// Conformance fixtures exercise exact engine values, transcribe spec literals,
-// and build whole scenarios in one test. These pedantic lints would force
-// ceremony that hides those contracts, so they stay off in test code only.
-#![allow(clippy::too_many_lines)]
-
 use babylon_material_circuit::{
     advance_material_circuit, material_circuit_state_digest, BacklogRow, CapacityRow,
     CommodityDefinition, CorridorCapacity, CorridorId, GoodId, InputOutputCoefficient,
@@ -71,6 +66,10 @@ fn labor_rows() -> Vec<LaborCapacityRow> {
         .collect()
 }
 
+#[allow(
+    clippy::too_many_lines,
+    reason = "a conformance scenario builds its whole fixture and asserts the full trajectory in one test"
+)]
 fn base_state() -> MaterialCircuitState {
     MaterialCircuitState {
         capacity_supply: babylon_material_circuit::CapacitySupply::FiniteSchedule,
@@ -310,6 +309,10 @@ fn leontief_output_is_bounded_by_labor_capacity_and_inputs() {
 }
 
 #[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "a conformance scenario builds its whole fixture and asserts the full trajectory in one test"
+)]
 fn production_debits_all_inputs_before_crediting_any_output() {
     let producer = process(1);
     let consumer = process(2);

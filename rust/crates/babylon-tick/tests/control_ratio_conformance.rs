@@ -151,14 +151,6 @@
 // Conformance fixtures exercise exact engine values, transcribe spec literals,
 // and build whole scenarios in one test. These pedantic lints would force
 // ceremony that hides those contracts, so they stay off in test code only.
-#![allow(clippy::too_many_lines)]
-#![allow(clippy::items_after_statements)]
-#![allow(
-    clippy::cast_possible_truncation,
-    clippy::cast_possible_wrap,
-    clippy::cast_precision_loss,
-    clippy::cast_sign_loss
-)]
 #![allow(clippy::float_cmp)]
 
 //! # Task 6 — `c03-crisis` (the crisis gate, the `<=` boundary, BLOCKER-4)
@@ -626,6 +618,14 @@ fn c01_premultiplies_population_by_organization() {
 /// records (Global Constraint: "the frozen system computes the census
 /// only past the readiness gate; the port publishes it every tick").
 #[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "a conformance scenario builds its whole fixture and asserts the full trajectory in one test"
+)]
+#[allow(
+    clippy::items_after_statements,
+    reason = "scenario constants and local helpers sit beside their first use in one long assertion"
+)]
 fn c02_publishes_the_three_aggregates_unconditionally() {
     let (graph, _) = run(PRIMARY_SCENARIO);
     assert_eq!(
@@ -958,7 +958,7 @@ fn social_role_order_is_the_ruled_ordinal() {
     for (ordinal, member) in members.iter().enumerate() {
         assert_eq!(
             loaded.enums.ordinal(ty, member),
-            Some(ordinal as u32),
+            Some(u32::try_from(ordinal).expect("enum ordinal fits u32")),
             "SocialRole::{member} must sit at ordinal {ordinal} (ADR195)"
         );
     }
@@ -1577,6 +1577,10 @@ fn c04_at_exactly_the_threshold_routes_to_revolution() {
 /// note) — a BSL rule-latch timing test, the same class as
 /// `c03_stays_silent_before_the_readiness_gate`.
 #[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "a conformance scenario builds its whole fixture and asserts the full trajectory in one test"
+)]
 fn c04_respects_the_terminal_delay() {
     const TERMINAL_DELAY_SCENARIO: &str = r"
 (scenario control-ratio/terminal-delay
@@ -2038,6 +2042,10 @@ fn c04_does_not_emit_when_the_terminal_tick_census_has_zero_prisoners() {
 /// nodes at organization 0.6) would clear the revolution threshold if it
 /// fired.
 #[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "a conformance scenario builds its whole fixture and asserts the full trajectory in one test"
+)]
 fn c04_does_not_emit_when_the_terminal_tick_census_falls_back_within_capacity() {
     const WITHIN_CAPACITY_AT_TERMINAL_SCENARIO: &str = r"
 (scenario control-ratio/terminal-gate-within-capacity

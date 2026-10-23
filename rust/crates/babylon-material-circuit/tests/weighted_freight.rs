@@ -1,8 +1,3 @@
-// Conformance fixtures exercise exact engine values, transcribe spec literals,
-// and build whole scenarios in one test. These pedantic lints would force
-// ceremony that hides those contracts, so they stay off in test code only.
-#![allow(clippy::too_many_lines)]
-
 use babylon_material_circuit::SupplierTransport;
 use babylon_material_circuit::{
     advance_material_circuit, decode_material_circuit_state, encode_material_circuit_state,
@@ -12,6 +7,10 @@ use babylon_material_circuit::{
     RouteStageCapacity, SiteId, SiteLogisticsNode, SupplierRoute, UnitId,
 };
 
+#[allow(
+    clippy::too_many_lines,
+    reason = "a conformance scenario builds its whole fixture and asserts the full trajectory in one test"
+)]
 fn competition() -> MaterialCircuitState {
     let mut state = MaterialCircuitState {
         capacity_supply: babylon_material_circuit::CapacitySupply::FiniteSchedule,

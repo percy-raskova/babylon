@@ -283,16 +283,6 @@
 //! mirror transcript above; Task 7 lands the world, the load-smoke, the
 //! ordinal parity, and §8c's four guards only.
 
-// Conformance fixtures exercise exact engine values, transcribe spec literals,
-// and build whole scenarios in one test. These pedantic lints would force
-// ceremony that hides those contracts, so they stay off in test code only.
-#![allow(
-    clippy::cast_possible_truncation,
-    clippy::cast_possible_wrap,
-    clippy::cast_precision_loss,
-    clippy::cast_sign_loss
-)]
-
 use babylon_bsl::scenario::{
     compose_declaration_preludes, load_scenario_with_prelude, LoadedScenario,
 };
@@ -382,7 +372,7 @@ fn defenum_ordinal_parity_with_the_frozen_order() {
     for (expected, member) in frozen_order.iter().enumerate() {
         assert_eq!(
             loaded.enums.ordinal(community, member),
-            Some(expected as u32),
+            Some(u32::try_from(expected).expect("enum ordinal fits u32")),
             "CommunityType/{member} must be ordinal {expected} (frozen declaration order)"
         );
     }
@@ -393,7 +383,7 @@ fn defenum_ordinal_parity_with_the_frozen_order() {
     for (expected, member) in ["LIBERAL", "FASCIST", "REVOLUTIONARY"].iter().enumerate() {
         assert_eq!(
             loaded.enums.ordinal(tendency, member),
-            Some(expected as u32),
+            Some(u32::try_from(expected).expect("enum ordinal fits u32")),
             "ConsciousnessTendency/{member} must be ordinal {expected} (frozen declaration order)"
         );
     }

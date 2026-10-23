@@ -142,7 +142,6 @@
 // ceremony that hides those contracts, so they stay off in test code only.
 #![allow(clippy::float_cmp)]
 #![allow(clippy::unreadable_literal)]
-#![allow(clippy::items_after_statements)]
 
 use babylon_bsl::evaluator::Value;
 use babylon_bsl::scenario::load_scenario;
@@ -435,6 +434,10 @@ fn sources_are_never_written_by_their_own_rule_firing() {
 /// `Value::NodeRef`/`Value::Real` equality — RED until both emits land in
 /// `solidarity.bsl`.
 #[test]
+#[allow(
+    clippy::items_after_statements,
+    reason = "scenario constants and local helpers sit beside their first use in one long assertion"
+)]
 fn events_land_in_declared_order_with_full_pinned_payloads() {
     let (_graph, sink, _report) = run();
 

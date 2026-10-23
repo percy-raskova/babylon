@@ -31,6 +31,15 @@ Three layers enforce the guide. PER-350 delivers all three in one change set.
 | Lints | `[workspace.lints]` inherited by every crate | `cargo clippy --workspace --all-targets` |
 | AST style | `bsl-lint google-rust-style` | `mise run rust:check-no-docs` |
 
+One lint needs a stated scope. `non_exhaustive_omitted_patterns` is unstable on
+the pinned 1.91.1 toolchain (rust-lang/rust#89554), so the workspace table drops
+it rather than emitting `unknown_lints` on every crate. EXC-02's exhaustive-match
+obligation and the `bsl-lint google-rust-style` wildcard-arm check carry that
+coverage. Conformance tests keep exactly two file-scope allows,
+`clippy::float_cmp` and `clippy::unreadable_literal`, because their fixtures
+assert exact authored values; every other pedantic finding in test code is fixed
+or annotated at the item that earns it.
+
 A change that fails one layer does not merge. A style refactoring must keep
 canonical bytes equal. `GraphStateHash`, `NominalWorldHash`, `TickContentHash`,
 and the SQL schema stay unchanged (Constitution III.7).

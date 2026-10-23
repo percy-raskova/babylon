@@ -1,15 +1,5 @@
 //! Behavioral contracts for the T3 downstream non-authorability sentinel.
 
-// Conformance fixtures exercise exact engine values, transcribe spec literals,
-// and build whole scenarios in one test. These pedantic lints would force
-// ceremony that hides those contracts, so they stay off in test code only.
-#![allow(
-    clippy::cast_possible_truncation,
-    clippy::cast_possible_wrap,
-    clippy::cast_precision_loss,
-    clippy::cast_sign_loss
-)]
-
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -334,9 +324,12 @@ fn exact_aggregate_manifest_byte_max_passes_and_plus_one_refuses() {
     let mut borrowed: Vec<&str> = names.iter().map(String::as_str).collect();
     borrowed.push("babylon-evidence");
     write_minimal_workspace(&scratch.0, &borrowed);
-    let root_bytes = std::fs::metadata(scratch.0.join("Cargo.toml"))
-        .expect("root metadata")
-        .len() as usize;
+    let root_bytes = usize::try_from(
+        std::fs::metadata(scratch.0.join("Cargo.toml"))
+            .expect("root metadata")
+            .len(),
+    )
+    .expect("root manifest length fits usize");
     for name in &names {
         pad_with_comment(
             &scratch.0.join(format!("crates/{name}/Cargo.toml")),

@@ -1,8 +1,3 @@
-// Conformance fixtures exercise exact engine values, transcribe spec literals,
-// and build whole scenarios in one test. These pedantic lints would force
-// ceremony that hides those contracts, so they stay off in test code only.
-#![allow(clippy::too_many_lines)]
-
 use super::*;
 
 fn padded_goods_inventory(include_output: bool) -> MaterialCircuitState {
@@ -107,6 +102,10 @@ fn a_new_durable_stock_key_above_its_own_limit_still_refuses_the_successor() {
     );
 }
 
+#[allow(
+    clippy::too_many_lines,
+    reason = "a conformance scenario builds its whole fixture and asserts the full trajectory in one test"
+)]
 fn padded_durable_carrying_book() -> MaterialCircuitState {
     let mut state = super::service_cases::recurring(padded_goods_inventory(true));
     let other = FinalDemandPrincipalId::from_bytes([10; 32]);

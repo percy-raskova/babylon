@@ -51,7 +51,6 @@ ALLOWED_TOP_LEVEL_DIRS: frozenset[str] = frozenset(
         "assets",
         "content",  # Authored campaign parameters captured by the native runtime (ADR258)
         "contracts",
-        "config-examples",  # §A3/§A8 player config templates (ADR096); never real secrets
         "design",
         "docker",
         "docs",

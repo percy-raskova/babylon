@@ -1953,6 +1953,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "bsl-test"
+version = "0.1.0"
+dependencies = [
+ "babylon-bsl",
+ "babylon-kernel",
+ "bsl-lint",
+]
+
+[[package]]
 name = "bumpalo"
 version = "3.20.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -146,6 +146,14 @@ fn designed_wayne_child_preserves_source_margins_and_sparse_workplace_mode_total
         Err(babylon_persistence::national_resident_allocation::AllocationError::SourceScope)
     );
     let child = leaves.parent_leaves(county, spec.parent_key)[0].principal_id;
+    assert_sparse_workplace_intersections(&base, &refined, child);
+}
+
+fn assert_sparse_workplace_intersections(
+    base: &babylon_persistence::national_resident_allocation::ResidentWorkplaceAllocation,
+    refined: &babylon_persistence::national_resident_allocation::ResidentWorkplaceAllocation,
+    child: babylon_material_circuit::FinalDemandPrincipalId,
+) {
     let mut child_totals = (0, 0);
     for (before, after) in base.workplaces.iter().zip(&refined.workplaces) {
         assert_eq!(before.target, after.target);

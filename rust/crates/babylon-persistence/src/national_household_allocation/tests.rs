@@ -236,6 +236,16 @@ fn sparse_workplace_members_pay_the_exact_allocated_resident_budgets() {
         national_cohort_reference().unwrap(),
         classes,
         &household_allocation,
+        &crate::national_household_refinement::refine_households(
+            &household_allocation,
+            &crate::national_household_time_allocation::allocate_household_time(
+                counties,
+                &household_allocation,
+            )
+            .unwrap(),
+            &[],
+        )
+        .unwrap(),
         &policy,
     )
     .unwrap();

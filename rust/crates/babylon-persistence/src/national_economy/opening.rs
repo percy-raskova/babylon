@@ -53,6 +53,7 @@ pub enum NationalOpeningError {
     Workforce(AllocationError),
     Households(HouseholdAllocationError),
     HouseholdTime(crate::national_household_time_allocation::HouseholdTimeAllocationError),
+    HouseholdRefinement(crate::national_household_refinement::HouseholdRefinementError),
     TimeAccount(babylon_material_circuit::MaterialCircuitError),
 }
 impl std::fmt::Display for NationalOpeningError {
@@ -144,9 +145,21 @@ pub fn build_national_opening(
     .map_err(NationalOpeningError::Households)?;
     let time_controls = allocate_household_time(counties, &household_budgets)
         .map_err(NationalOpeningError::HouseholdTime)?;
-    let mut allocation =
-        allocate_home_county(counties, cohorts, residents, &household_budgets, policy)
-            .map_err(NationalOpeningError::Workforce)?;
+    let leaf_roster = crate::national_household_refinement::refine_households(
+        &household_budgets,
+        &time_controls,
+        &[],
+    )
+    .map_err(NationalOpeningError::HouseholdRefinement)?;
+    let mut allocation = allocate_home_county(
+        counties,
+        cohorts,
+        residents,
+        &household_budgets,
+        &leaf_roster,
+        policy,
+    )
+    .map_err(NationalOpeningError::Workforce)?;
     let mut builder = Builder::new(policy, transport)?;
     aid::prepare(
         &mut builder,

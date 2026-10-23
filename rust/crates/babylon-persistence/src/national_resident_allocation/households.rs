@@ -4,7 +4,8 @@ use super::{
     PendingAssignedWorkplace, PendingResidentMember, ResidentAttendanceMode, Result,
 };
 use crate::{
-    national_economy::household_principal, national_household_allocation::HouseholdBudgetKey,
+    national_household_allocation::HouseholdBudgetKey,
+    national_household_refinement::NationalHouseholdLeafRoster,
 };
 use std::collections::BTreeMap;
 
@@ -17,6 +18,7 @@ struct Quota {
 pub(super) fn partition(
     pending: &[PendingAssignedWorkplace],
     budgets: &CountyHouseholdAllocation,
+    roster: &NationalHouseholdLeafRoster,
 ) -> Result<Vec<AssignedResidentWorkplace>> {
     let mut quotas: Vec<_> = budgets
         .budgets()
@@ -27,6 +29,7 @@ pub(super) fn partition(
             reserve: r.reserve,
         })
         .collect();
+    let mut leaves = leaf_quotas(budgets, roster)?;
     let mut output: Vec<_> = pending
         .iter()
         .map(|row| AssignedResidentWorkplace {
@@ -48,16 +51,22 @@ pub(super) fn partition(
                 continue;
             }
             let target = &pending[index].target;
-            output[index].members.push(super::member(
-                target,
-                row.mode,
-                household_principal(target.location, key),
-                employed,
-                reserve,
-            )?);
+            let quotas = leaves
+                .get_mut(&key)
+                .ok_or(AllocationError::PopulationControl)?;
+            for (principal, (employed, reserve)) in take_leaves(quotas, employed, reserve)? {
+                output[index].members.push(super::member(
+                    target, row.mode, principal, employed, reserve,
+                )?);
+            }
         }
     }
-    if quotas.iter().any(|q| q.employed != 0 || q.reserve != 0) {
+    if quotas.iter().any(|q| q.employed != 0 || q.reserve != 0)
+        || leaves
+            .values()
+            .flatten()
+            .any(|q| q.employed != 0 || q.reserve != 0)
+    {
         return Err(AllocationError::PopulationControl);
     }
     for row in &mut output {
@@ -65,6 +74,81 @@ pub(super) fn partition(
             .sort_unstable_by_key(|m| m.seed.member.member_id());
     }
     Ok(output)
+}
+struct LeafQuota {
+    principal: babylon_material_circuit::FinalDemandPrincipalId,
+    employed: u64,
+    reserve: u64,
+}
+fn leaf_quotas(
+    budgets: &CountyHouseholdAllocation,
+    roster: &NationalHouseholdLeafRoster,
+) -> Result<BTreeMap<HouseholdBudgetKey, Vec<LeafQuota>>> {
+    let mut result = BTreeMap::new();
+    for parent in budgets.budgets() {
+        let leaves = roster.parent_leaves(budgets.county(), parent.key);
+        let totals =
+            leaves
+                .iter()
+                .try_fold((0_u64, 0_u64), |(e, r), leaf| -> Result<(u64, u64)> {
+                    Ok((
+                        e.checked_add(leaf.margins.employed)
+                            .ok_or(AllocationError::Arithmetic)?,
+                        r.checked_add(leaf.margins.reserve)
+                            .ok_or(AllocationError::Arithmetic)?,
+                    ))
+                })?;
+        if leaves.is_empty() || totals != (parent.employed, parent.reserve) {
+            return Err(AllocationError::PopulationControl);
+        }
+        result.insert(
+            parent.key,
+            leaves
+                .iter()
+                .map(|leaf| LeafQuota {
+                    principal: leaf.principal_id,
+                    employed: leaf.margins.employed,
+                    reserve: leaf.margins.reserve,
+                })
+                .collect(),
+        );
+    }
+    Ok(result)
+}
+fn take_leaves(
+    quotas: &mut [LeafQuota],
+    mut employed: u64,
+    mut reserve: u64,
+) -> Result<BTreeMap<babylon_material_circuit::FinalDemandPrincipalId, (u64, u64)>> {
+    let mut result =
+        BTreeMap::<babylon_material_circuit::FinalDemandPrincipalId, (u64, u64)>::new();
+    for quota in quotas.iter_mut() {
+        let amount = quota.employed.min(employed);
+        quota.employed -= amount;
+        employed -= amount;
+        if amount > 0 {
+            result.insert(quota.principal, (amount, 0));
+        }
+    }
+    // Route reserve through the same canonical stream, preferring a used leaf.
+    let mut indices: Vec<_> = (0..quotas.len()).collect();
+    indices.sort_by_key(|i| (!result.contains_key(&quotas[*i].principal), *i));
+    for index in indices {
+        let quota = &mut quotas[index];
+        let amount = quota.reserve.min(reserve);
+        quota.reserve -= amount;
+        reserve -= amount;
+        if amount > 0 {
+            let used = &mut result.entry(quota.principal).or_default().1;
+            *used = used
+                .checked_add(amount)
+                .ok_or(AllocationError::Arithmetic)?;
+        }
+    }
+    if employed != 0 || reserve != 0 {
+        return Err(AllocationError::PopulationControl);
+    }
+    Ok(result)
 }
 fn priority(mode: ResidentAttendanceMode) -> u8 {
     match mode {

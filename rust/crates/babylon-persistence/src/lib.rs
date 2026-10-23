@@ -43,6 +43,7 @@ pub mod michigan_economy;
 pub mod national_cohorts;
 pub mod national_counties;
 pub mod national_household_allocation;
+pub mod national_household_refinement;
 pub mod national_household_time_allocation;
 pub mod national_households;
 pub mod national_resident_allocation;

@@ -461,11 +461,13 @@ dependencies = [
  "babylon-material-circuit",
  "babylon-practice-contract",
  "babylon-tick",
- "fallible-iterator",
+ "fallible-iterator 0.2.0",
  "flate2",
+ "libsqlite3-sys",
  "mimalloc",
  "minijinja",
  "postgres",
+ "rusqlite",
  "serde",
  "serde_json",
  "sha2",
@@ -2656,6 +2658,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4443176a9f2c162692bd3d352d745ef9413eec5782a80d8fd6f8a1ac692a07f7"
 
 [[package]]
+name = "fallible-iterator"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2acce4a10f12dc2fb14a218589d4f1f62ef011b2d0cc4b3cb1bba8e94da14649"
+
+[[package]]
+name = "fallible-streaming-iterator"
+version = "0.1.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7360491ce676a36bf9bb3c56c1aa791658183a54d2744120f27285738d90465a"
+
+[[package]]
 name = "fastrand"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3516,6 +3530,16 @@ dependencies = [
  "libc",
  "plain",
  "redox_syscall 0.9.1",
+]
+
+[[package]]
+name = "libsqlite3-sys"
+version = "0.38.0"
+source = "git+https://github.com/percy-raskova/libsqlite3-sys-babylon-pin?rev=da2ab1442ec2129b1cf2f2bae6207fb08e3ba566#da2ab1442ec2129b1cf2f2bae6207fb08e3ba566"
+dependencies = [
+ "cc",
+ "pkg-config",
+ "vcpkg",
 ]
 
 [[package]]
@@ -4479,7 +4503,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "33ad20e0aa0b24f5a394eab4f78c781d248982b22b25cecc7e3aa46a681605bd"
 dependencies = [
  "bytes",
- "fallible-iterator",
+ "fallible-iterator 0.2.0",
  "futures-util",
  "log",
  "tokio",
@@ -4495,7 +4519,7 @@ dependencies = [
  "base64",
  "byteorder",
  "bytes",
- "fallible-iterator",
+ "fallible-iterator 0.2.0",
  "hmac",
  "md-5",
  "memchr",
@@ -4511,7 +4535,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "851ca9db4932932d69f3ea811b1abe63087a0f740a47692619dd40d4899b68be"
 dependencies = [
  "bytes",
- "fallible-iterator",
+ "fallible-iterator 0.2.0",
  "postgres-protocol",
  "uuid",
 ]
@@ -4892,6 +4916,18 @@ name = "roxmltree"
 version = "0.20.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6c20b6793b5c2fa6553b250154b78d6d0db37e72700ae35fad9387a46f487c97"
+
+[[package]]
+name = "rusqlite"
+version = "0.40.0"
+source = "git+https://github.com/percy-raskova/rusqlite-babylon-pin?rev=c683415ee53a54ddf7a073e4aa0d7e76361e9867#c683415ee53a54ddf7a073e4aa0d7e76361e9867"
+dependencies = [
+ "bitflags 2.13.1",
+ "fallible-iterator 0.3.0",
+ "fallible-streaming-iterator",
+ "libsqlite3-sys",
+ "smallvec",
+]
 
 [[package]]
 name = "rustc-hash"
@@ -5493,7 +5529,7 @@ dependencies = [
  "async-trait",
  "byteorder",
  "bytes",
- "fallible-iterator",
+ "fallible-iterator 0.2.0",
  "futures-channel",
  "futures-util",
  "log",
@@ -5792,6 +5828,12 @@ dependencies = [
  "quote",
  "syn 2.0.119",
 ]
+
+[[package]]
+name = "vcpkg"
+version = "0.2.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "accd4ea62f7bb7a82fe23066fb0957d48ef677f6eeb8215f372f52e48bb32426"
 
 [[package]]
 name = "vec_map"

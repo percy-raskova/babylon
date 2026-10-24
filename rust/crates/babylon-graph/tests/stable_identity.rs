@@ -7,7 +7,8 @@ use babylon_graph::stable_element::{
     MAX_STABLE_CARRIER_ACTIVE_ELEMENTS, MAX_STABLE_CARRIER_BYTES,
     MAX_STABLE_RESOLVER_MANIFEST_BYTES, MAX_STABLE_RESOLVER_ROWS,
 };
-use babylon_graph::stable_state::{encode_stable_graph_state, StableGraphState};
+use babylon_graph::stable_state;
+use babylon_graph::stable_state::StableGraphState;
 use babylon_graph::state_hash::CanonicalState;
 use babylon_graph::substrate::{GraphSubstrate, HyperedgeId, NodeId};
 use babylon_kernel::currency::Currency;
@@ -24,15 +25,21 @@ struct StableFixture {
 
 fn fixture() -> StableFixture {
     let mut graph = MemoryGraph::new();
-    let owners = graph.add_node("class").unwrap();
-    let workers = graph.add_node("class").unwrap();
-    graph.add_edge("solidarity", workers, owners, 0.75).unwrap();
+    let owners = graph
+        .add_node("class")
+        .expect("the fixture adds a node with a registered kind");
+    let workers = graph
+        .add_node("class")
+        .expect("the fixture adds a node with a registered kind");
+    graph
+        .add_edge("solidarity", workers, owners, 0.75)
+        .expect("the fixture graph admits the authored edge");
     let coalition_a = graph
         .add_hyperedge("coalition", &[workers, owners])
-        .unwrap();
+        .expect("the fixture graph admits the authored hyperedge");
     let coalition_b = graph
         .add_hyperedge("coalition", &[owners, workers])
-        .unwrap();
+        .expect("the fixture graph admits the authored hyperedge");
     let node_names = HashMap::from([
         (workers, "workers".to_owned()),
         (owners, "owners".to_owned()),
@@ -59,12 +66,16 @@ fn resolver(value: &StableFixture) -> StableElementResolver {
         &value.node_names,
         &value.hyperedge_names,
     )
-    .unwrap()
+    .expect("the fixture seals the prepared period")
 }
 
 fn str32(value: &str) -> Vec<u8> {
     let mut output = Vec::new();
-    output.extend_from_slice(&u32::try_from(value.len()).unwrap().to_be_bytes());
+    output.extend_from_slice(
+        &u32::try_from(value.len())
+            .expect("the fixture value fits the target range")
+            .to_be_bytes(),
+    );
     output.extend_from_slice(value.as_bytes());
     output
 }
@@ -73,11 +84,15 @@ fn str32(value: &str) -> Vec<u8> {
 fn stable_element_binary_keys_and_ascii_segments_are_exact() {
     let value = fixture();
     let resolver = resolver(&value);
-    let node = resolver.node_key(value.workers).unwrap();
+    let node = resolver
+        .node_key(value.workers)
+        .expect("the fixture node has a key");
     let edge = resolver
         .edge_key("solidarity", value.workers, value.owners)
-        .unwrap();
-    let hyperedge = resolver.hyperedge_key(value.coalition_a).unwrap();
+        .expect("the fixture edge has a key");
+    let hyperedge = resolver
+        .hyperedge_key(value.coalition_a)
+        .expect("the fixture hyperedge has a key");
 
     let expected_node = [
         b"babylon.stable-element\0".as_slice(),
@@ -106,19 +121,39 @@ fn stable_element_binary_keys_and_ascii_segments_are_exact() {
     ]
     .concat();
 
-    assert_eq!(node.canonical_bytes().unwrap(), expected_node);
-    assert_eq!(edge.canonical_bytes().unwrap(), expected_edge);
-    assert_eq!(hyperedge.canonical_bytes().unwrap(), expected_hyperedge);
     assert_eq!(
-        node.carrier_segment().unwrap().as_str(),
+        node.canonical_bytes()
+            .expect("the graph value exposes canonical bytes"),
+        expected_node
+    );
+    assert_eq!(
+        edge.canonical_bytes()
+            .expect("the graph value exposes canonical bytes"),
+        expected_edge
+    );
+    assert_eq!(
+        hyperedge
+            .canonical_bytes()
+            .expect("the graph value exposes canonical bytes"),
+        expected_hyperedge
+    );
+    assert_eq!(
+        node.carrier_segment()
+            .expect("the fixture call `carrier_segment` succeeds for the authored inputs")
+            .as_str(),
         "4:node|10:demo/world|7:workers"
     );
     assert_eq!(
-        edge.carrier_segment().unwrap().as_str(),
+        edge.carrier_segment()
+            .expect("the fixture call `carrier_segment` succeeds for the authored inputs")
+            .as_str(),
         "4:edge|10:demo/world|10:solidarity|7:workers|6:owners"
     );
     assert_eq!(
-        hyperedge.carrier_segment().unwrap().as_str(),
+        hyperedge
+            .carrier_segment()
+            .expect("the fixture call `carrier_segment` succeeds for the authored inputs")
+            .as_str(),
         "9:hyperedge|10:demo/world|11:coalition-a"
     );
 }
@@ -127,25 +162,35 @@ fn stable_element_binary_keys_and_ascii_segments_are_exact() {
 fn carrier_reframes_resolved_elements_in_outermost_to_innermost_order() {
     let value = fixture();
     let resolver = resolver(&value);
-    let subject = resolver.node_key(value.workers).unwrap().clone();
+    let subject = resolver
+        .node_key(value.workers)
+        .expect("the fixture node has a key")
+        .clone();
     let edge = resolver
         .edge_key("solidarity", value.workers, value.owners)
-        .unwrap();
-    let hyperedge = resolver.hyperedge_key(value.coalition_a).unwrap().clone();
+        .expect("the fixture edge has a key");
+    let hyperedge = resolver
+        .hyperedge_key(value.coalition_a)
+        .expect("the fixture hyperedge has a key")
+        .clone();
     let mixed = resolver
         .carrier_key(&subject, &[edge, hyperedge], -7)
-        .unwrap();
+        .expect("the fixture call `carrier_key` succeeds for the authored inputs");
     assert_eq!(
         mixed.validated_bytes(),
         b"30:4:node|10:demo/world|7:workers|53:4:edge|10:demo/world|10:solidarity|7:workers|6:owners|40:9:hyperedge|10:demo/world|11:coalition-a|2:-7"
     );
 
-    let zero_active = resolver.carrier_key(&subject, &[], 0).unwrap();
+    let zero_active = resolver
+        .carrier_key(&subject, &[], 0)
+        .expect("the fixture call `carrier_key` succeeds for the authored inputs");
     assert_eq!(
         zero_active.validated_bytes(),
         b"30:4:node|10:demo/world|7:workers|1:0"
     );
-    let minimum_slot = resolver.carrier_key(&subject, &[], i64::MIN).unwrap();
+    let minimum_slot = resolver
+        .carrier_key(&subject, &[], i64::MIN)
+        .expect("the fixture call `carrier_key` succeeds for the authored inputs");
     assert!(minimum_slot
         .validated_bytes()
         .ends_with(b"|20:-9223372036854775808"));
@@ -155,9 +200,14 @@ fn carrier_reframes_resolved_elements_in_outermost_to_innermost_order() {
 fn carrier_accepts_256_active_elements_and_refuses_257_before_allocation() {
     let value = fixture();
     let resolver = resolver(&value);
-    let subject = resolver.node_key(value.workers).unwrap().clone();
+    let subject = resolver
+        .node_key(value.workers)
+        .expect("the fixture node has a key")
+        .clone();
     let active = vec![subject.clone(); MAX_STABLE_CARRIER_ACTIVE_ELEMENTS];
-    let maximum = resolver.carrier_key(&subject, &active, i64::MAX).unwrap();
+    let maximum = resolver
+        .carrier_key(&subject, &active, i64::MAX)
+        .expect("the fixture call `carrier_key` succeeds for the authored inputs");
     assert!(maximum.validated_bytes().len() <= MAX_STABLE_CARRIER_BYTES);
 
     let too_many = vec![subject.clone(); MAX_STABLE_CARRIER_ACTIVE_ELEMENTS + 1];
@@ -204,8 +254,12 @@ fn resolver_manifest_is_exact_sorted_and_parallel_hyperedges_stay_distinct() {
         ]
     );
     assert_ne!(
-        resolver.hyperedge_key(value.coalition_a).unwrap(),
-        resolver.hyperedge_key(value.coalition_b).unwrap()
+        resolver
+            .hyperedge_key(value.coalition_a)
+            .expect("the fixture hyperedge has a key"),
+        resolver
+            .hyperedge_key(value.coalition_b)
+            .expect("the fixture hyperedge has a key")
     );
     assert!(resolver.manifest().canonical_bytes().len() <= MAX_STABLE_RESOLVER_MANIFEST_BYTES);
 }
@@ -336,17 +390,23 @@ fn resolver_refuses_dangling_edges_and_never_falls_back_to_runtime_ids() {
 fn sealed_resolver_detects_every_topology_mutation() {
     let value = fixture();
     let resolver = resolver(&value);
-    resolver.validate_topology(&value.graph).unwrap();
+    resolver
+        .validate_topology(&value.graph)
+        .expect("the authored fixture satisfies the rule");
 
     let mut added = value.graph.clone();
-    added.add_node("class").unwrap();
+    added
+        .add_node("class")
+        .expect("the fixture adds a node with a registered kind");
     assert_eq!(
         resolver.validate_topology(&added),
         Err(StableIdentityError::TopologyChanged)
     );
 
     let mut removed = value.graph.clone();
-    removed.remove_node(value.owners).unwrap();
+    removed
+        .remove_node(value.owners)
+        .expect("the fixture node exists before removal");
     assert_eq!(
         resolver.validate_topology(&removed),
         Err(StableIdentityError::TopologyChanged)
@@ -355,7 +415,7 @@ fn sealed_resolver_detects_every_topology_mutation() {
     let mut edge_removed = value.graph.clone();
     edge_removed
         .remove_edge("solidarity", value.workers, value.owners)
-        .unwrap();
+        .expect("the fixture edge exists before removal");
     assert_eq!(
         resolver.validate_topology(&edge_removed),
         Err(StableIdentityError::TopologyChanged)
@@ -364,10 +424,10 @@ fn sealed_resolver_detects_every_topology_mutation() {
     let mut membership_changed = value.graph.clone();
     membership_changed
         .remove_hyperedge(value.coalition_a)
-        .unwrap();
+        .expect("the fixture hyperedge exists before removal");
     membership_changed
         .add_hyperedge("coalition", &[value.workers])
-        .unwrap();
+        .expect("the fixture graph admits the authored hyperedge");
     assert_eq!(
         resolver.validate_topology(&membership_changed),
         Err(StableIdentityError::TopologyChanged)
@@ -379,14 +439,18 @@ fn resolver_accepts_the_current_row_ceiling_and_refuses_the_next_before_allocati
     let mut graph = MemoryGraph::new();
     let mut names = HashMap::new();
     for index in 0..MAX_STABLE_RESOLVER_ROWS {
-        let node = graph.add_node("class").unwrap();
+        let node = graph
+            .add_node("class")
+            .expect("the fixture adds a node with a registered kind");
         names.insert(node, format!("n{index}"));
     }
-    let maximum =
-        StableElementResolver::seal(&graph, "demo/world", &names, &HashMap::new()).unwrap();
+    let maximum = StableElementResolver::seal(&graph, "demo/world", &names, &HashMap::new())
+        .expect("the fixture seals the prepared period");
     assert!(maximum.manifest().canonical_bytes().len() <= MAX_STABLE_RESOLVER_MANIFEST_BYTES);
 
-    let extra = graph.add_node("class").unwrap();
+    let extra = graph
+        .add_node("class")
+        .expect("the fixture adds a node with a registered kind");
     names.insert(extra, "overflow".to_owned());
     assert_eq!(
         StableElementResolver::seal(&graph, "demo/world", &names, &HashMap::new(),),
@@ -469,43 +533,63 @@ impl CanonicalState for StateFacts {
 fn state_fixture<G: GraphSubstrate + Default>(shift_handles: bool) -> StateFixture<G> {
     let mut graph = G::default();
     if shift_handles {
-        let discarded = graph.add_node("discarded").unwrap();
-        graph.remove_node(discarded).unwrap();
+        let discarded = graph
+            .add_node("discarded")
+            .expect("the fixture adds a node with a registered kind");
+        graph
+            .remove_node(discarded)
+            .expect("the fixture node exists before removal");
     }
     let (owners, workers) = if shift_handles {
-        let workers = graph.add_node("class").unwrap();
-        let owners = graph.add_node("class").unwrap();
+        let workers = graph
+            .add_node("class")
+            .expect("the fixture adds a node with a registered kind");
+        let owners = graph
+            .add_node("class")
+            .expect("the fixture adds a node with a registered kind");
         (owners, workers)
     } else {
-        let owners = graph.add_node("class").unwrap();
-        let workers = graph.add_node("class").unwrap();
+        let owners = graph
+            .add_node("class")
+            .expect("the fixture adds a node with a registered kind");
+        let workers = graph
+            .add_node("class")
+            .expect("the fixture adds a node with a registered kind");
         (owners, workers)
     };
-    graph.add_edge("solidarity", workers, owners, 0.75).unwrap();
+    graph
+        .add_edge("solidarity", workers, owners, 0.75)
+        .expect("the fixture graph admits the authored edge");
     if shift_handles {
         let discarded = graph
             .add_hyperedge("discarded", &[owners, workers])
-            .unwrap();
-        graph.remove_hyperedge(discarded).unwrap();
+            .expect("the fixture graph admits the authored hyperedge");
+        graph
+            .remove_hyperedge(discarded)
+            .expect("the fixture hyperedge exists before removal");
     }
     let coalition = graph
         .add_hyperedge("coalition", &[workers, owners])
-        .unwrap();
-    graph.update_node(owners, "class/power", -0.0).unwrap();
-    graph.update_node(workers, "class/wage", 1.5).unwrap();
+        .expect("the fixture graph admits the authored hyperedge");
+    graph
+        .update_node(owners, "class/power", -0.0)
+        .expect("the fixture node carries the authored attribute");
+    graph
+        .update_node(workers, "class/wage", 1.5)
+        .expect("the fixture node carries the authored attribute");
     graph
         .update_node_currency(
             owners,
             "class/wealth",
             Currency::from_micro_units(-123_456_789),
         )
-        .unwrap();
+        .expect("the fixture node carries the authored currency");
     graph
         .update_edge("solidarity", workers, owners, "solidarity/tension", -2.5)
-        .unwrap();
+        .expect("the fixture edge carries the authored attribute");
     graph
         .update_hyperedge_attribute(coalition, "coalition/cohesion", 0.25)
-        .unwrap();
+        .expect("the fixture hyperedge carries the authored attribute");
     StateFixture {
         graph,
         node_names: HashMap::from([
@@ -523,8 +607,9 @@ fn stable_state<G: GraphSubstrate + CanonicalState>(value: &StateFixture<G>) -> 
         &value.node_names,
         &value.hyperedge_names,
     )
-    .unwrap();
-    encode_stable_graph_state(&value.graph, &resolver).unwrap()
+    .expect("the fixture seals the prepared period");
+    stable_state::encode_stable_graph_state(&value.graph, &resolver)
+        .expect("the fixture graph encodes its stable state")
 }
 
 #[test]
@@ -588,15 +673,18 @@ fn stable_graph_state_eight_sections_and_scalar_bytes_are_exact() {
 #[test]
 fn stable_graph_state_writes_every_empty_section() {
     let mut graph = MemoryGraph::new();
-    let node = graph.add_node("class").unwrap();
+    let node = graph
+        .add_node("class")
+        .expect("the fixture adds a node with a registered kind");
     let resolver = StableElementResolver::seal(
         &graph,
         "demo/world",
         &HashMap::from([(node, "workers".to_owned())]),
         &HashMap::new(),
     )
-    .unwrap();
-    let state = encode_stable_graph_state(&graph, &resolver).unwrap();
+    .expect("the fixture seals the prepared period");
+    let state = stable_state::encode_stable_graph_state(&graph, &resolver)
+        .expect("the fixture graph encodes its stable state");
     let expected = [
         b"babylon.stable-graph\0".as_slice(),
         &1_u32.to_be_bytes(),
@@ -628,8 +716,14 @@ fn stable_graph_state_ignores_substrate_and_runtime_handle_allocation() {
     let memory = state_fixture::<MemoryGraph>(false);
     let hypergraph = state_fixture::<HypergraphStore>(true);
     assert_ne!(
-        memory.graph.state_hash().unwrap(),
-        hypergraph.graph.state_hash().unwrap(),
+        memory
+            .graph
+            .state_hash()
+            .expect("the fixture graph hashes its state"),
+        hypergraph
+            .graph
+            .state_hash()
+            .expect("the fixture graph hashes its state"),
         "the fixture must actually exercise different runtime handles"
     );
     let memory_state = stable_state(&memory);
@@ -650,33 +744,35 @@ fn stable_graph_state_refuses_topology_and_fact_ambiguity() {
         &value.node_names,
         &value.hyperedge_names,
     )
-    .unwrap();
+    .expect("the fixture seals the prepared period");
     let owners = *value
         .node_names
         .iter()
         .find_map(|(node, name)| (name == "owners").then_some(node))
-        .unwrap();
+        .expect("the fixture yields the searched value");
 
     let mut changed = value.graph.clone();
-    changed.add_node("class").unwrap();
+    changed
+        .add_node("class")
+        .expect("the fixture adds a node with a registered kind");
     assert_eq!(
-        encode_stable_graph_state(&changed, &resolver),
+        stable_state::encode_stable_graph_state(&changed, &resolver),
         Err(StableIdentityError::TopologyChanged)
     );
 
     let mut collision = value.graph.clone();
     collision
         .update_node_currency(owners, "class/power", Currency::from_micro_units(1))
-        .unwrap();
+        .expect("the fixture node carries the authored currency");
     assert!(matches!(
-        encode_stable_graph_state(&collision, &resolver),
+        stable_state::encode_stable_graph_state(&collision, &resolver),
         Err(StableIdentityError::NumericLaneCollision { .. })
     ));
 
     let mut duplicate = StateFacts::from_graph(&value.graph);
     duplicate.node_f64.push(duplicate.node_f64[0].clone());
     assert_eq!(
-        encode_stable_graph_state(&duplicate, &resolver),
+        stable_state::encode_stable_graph_state(&duplicate, &resolver),
         Err(StableIdentityError::DuplicateFact {
             section: "node f64 attributes",
         })
@@ -687,7 +783,7 @@ fn stable_graph_state_refuses_topology_and_fact_ambiguity() {
         .node_f64
         .push((NodeId(999), "class/ghost".to_owned(), 1.0));
     assert_eq!(
-        encode_stable_graph_state(&unknown_owner, &resolver),
+        stable_state::encode_stable_graph_state(&unknown_owner, &resolver),
         Err(StableIdentityError::UnknownNode { node: NodeId(999) })
     );
 
@@ -700,14 +796,14 @@ fn stable_graph_state_refuses_topology_and_fact_ambiguity() {
         1.0,
     ));
     assert!(matches!(
-        encode_stable_graph_state(&absent_edge, &resolver),
+        stable_state::encode_stable_graph_state(&absent_edge, &resolver),
         Err(StableIdentityError::UnknownEdge { .. })
     ));
 
     let mut duplicate_member = StateFacts::from_graph(&value.graph);
     duplicate_member.hyperedges[0].2.push(owners);
     assert_eq!(
-        encode_stable_graph_state(&duplicate_member, &resolver),
+        stable_state::encode_stable_graph_state(&duplicate_member, &resolver),
         Err(StableIdentityError::InvalidHyperedge {
             hyperedge: duplicate_member.hyperedges[0].0,
         })
@@ -716,14 +812,14 @@ fn stable_graph_state_refuses_topology_and_fact_ambiguity() {
     let mut empty_hyperedge = StateFacts::from_graph(&value.graph);
     empty_hyperedge.hyperedges[0].2.clear();
     assert!(matches!(
-        encode_stable_graph_state(&empty_hyperedge, &resolver),
+        stable_state::encode_stable_graph_state(&empty_hyperedge, &resolver),
         Err(StableIdentityError::InvalidHyperedge { .. })
     ));
 
     let mut unknown_member = StateFacts::from_graph(&value.graph);
     unknown_member.hyperedges[0].2[0] = NodeId(999);
     assert!(matches!(
-        encode_stable_graph_state(&unknown_member, &resolver),
+        stable_state::encode_stable_graph_state(&unknown_member, &resolver),
         Err(StableIdentityError::InvalidHyperedge { .. })
     ));
 }
@@ -737,24 +833,24 @@ fn stable_graph_state_refuses_non_finite_values_and_strength_aliases() {
         &value.node_names,
         &value.hyperedge_names,
     )
-    .unwrap();
+    .expect("the fixture seals the prepared period");
     let workers = *value
         .node_names
         .iter()
         .find_map(|(node, name)| (name == "workers").then_some(node))
-        .unwrap();
+        .expect("the fixture yields the searched value");
     let owners = *value
         .node_names
         .iter()
         .find_map(|(node, name)| (name == "owners").then_some(node))
-        .unwrap();
+        .expect("the fixture yields the searched value");
 
     let mut non_finite = value.graph.clone();
     non_finite
         .update_node(workers, "class/wage", f64::INFINITY)
-        .unwrap();
+        .expect("the fixture node carries the authored attribute");
     assert_eq!(
-        encode_stable_graph_state(&non_finite, &resolver),
+        stable_state::encode_stable_graph_state(&non_finite, &resolver),
         Err(StableIdentityError::NonFiniteValue {
             section: "node f64 attributes",
         })
@@ -763,7 +859,7 @@ fn stable_graph_state_refuses_non_finite_values_and_strength_aliases() {
     let mut nan = StateFacts::from_graph(&value.graph);
     nan.hyperedge_f64[0].2 = f64::NAN;
     assert_eq!(
-        encode_stable_graph_state(&nan, &resolver),
+        stable_state::encode_stable_graph_state(&nan, &resolver),
         Err(StableIdentityError::NonFiniteValue {
             section: "hyperedge f64 attributes",
         })
@@ -778,7 +874,7 @@ fn stable_graph_state_refuses_non_finite_values_and_strength_aliases() {
         1.0,
     )];
     assert_eq!(
-        encode_stable_graph_state(&invalid, &resolver),
+        stable_state::encode_stable_graph_state(&invalid, &resolver),
         Err(StableIdentityError::StrengthAttribute)
     );
 }

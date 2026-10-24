@@ -1,18 +1,19 @@
 //! One source-derived national organizer producer; no fixed-time fallback.
-use crate::{
-    economic_catalog::{
-        EconomicCatalogError, EconomicCatalogInput, EconomicOpening, SourceArtifactKind,
-    },
-    national_economy::{NationalAidCapture, NationalGamePolicy, NATIONAL_SCENARIO_ID},
+use crate::economic_catalog::{
+    EconomicCatalogError, EconomicCatalogInput, EconomicOpening, SourceArtifactKind,
 };
+use crate::national_economy::{NationalAidCapture, NationalGamePolicy, NATIONAL_SCENARIO_ID};
+
 use babylon_graph::stable_element::StableElementKey;
-use babylon_kernel::content_digest::sha256_of;
+use babylon_kernel::content_digest;
+use babylon_practice_contract::OrganizerCollectionMandate;
 use babylon_practice_contract::{
-    initial_organizer_state, OrganizerAidBinding, OrganizerAidKind, OrganizerConfig,
-    OrganizerContribution, OrganizerHouseholdBinding, OrganizerParticipant, OrganizerPartner,
-    OrganizerTimeBindingMode, ORGANIZER_SCHEMA_VERSION,
+    OrganizerAidBinding, OrganizerAidKind, OrganizerConfig, OrganizerContribution,
+    OrganizerHouseholdBinding, OrganizerParticipant, OrganizerPartner, OrganizerTimeBindingMode,
+    ORGANIZER_SCHEMA_VERSION,
 };
-type Result<T> = std::result::Result<T, EconomicCatalogError>;
+use std::result::Result as StdResult;
+type Result<T> = StdResult<T, EconomicCatalogError>;
 /// Digest of the exact current source frame with organizer field explicitly absent.
 /// The final catalog digest additionally authenticates the complete organizer config.
 #[derive(Clone, Copy)]
@@ -24,7 +25,7 @@ fn key(name: &str) -> StableElementKey {
     }
 }
 fn actor(key: &StableElementKey) -> Result<u64> {
-    let digest = sha256_of(
+    let digest = content_digest::sha256_of(
         &key.canonical_bytes()
             .map_err(|_| EconomicCatalogError::Identity)?,
     );
@@ -43,7 +44,7 @@ fn authority(campaign: [u8; 16], actor: u64) -> [u8; 16] {
     bytes.extend_from_slice(&campaign);
     bytes.extend_from_slice(&actor.to_be_bytes());
     let mut result = [0; 16];
-    result.copy_from_slice(&sha256_of(&bytes)[..16]);
+    result.copy_from_slice(&content_digest::sha256_of(&bytes)[..16]);
     result
 }
 pub(crate) fn assemble(
@@ -141,7 +142,8 @@ pub(crate) fn assemble(
         content_digest: source_basis.0,
         initial_observations: vec![],
     };
-    initial_organizer_state(&config).map_err(|_| EconomicCatalogError::Identity)?;
+    babylon_practice_contract::initial_organizer_state(&config)
+        .map_err(|_| EconomicCatalogError::Identity)?;
     Ok(config)
 }
 fn collection_mandate(
@@ -149,7 +151,7 @@ fn collection_mandate(
     source_hash: [u8; 32],
     aid: &NationalAidCapture,
     policy: &NationalGamePolicy,
-) -> Result<babylon_practice_contract::OrganizerCollectionMandate> {
+) -> Result<OrganizerCollectionMandate> {
     let donor = &aid.children[0];
     let d = &policy.organizer;
     let first = aid.mandates.first().ok_or(EconomicCatalogError::Identity)?;
@@ -170,14 +172,14 @@ fn collection_mandate(
     collection_identity.extend_from_slice(&donor.actor.to_be_bytes());
     collection_identity.extend_from_slice(&donor.principal.as_bytes());
     collection_identity.extend_from_slice(&account.as_bytes());
-    Ok(babylon_practice_contract::OrganizerCollectionMandate {
-        mandate_id: sha256_of(&collection_identity),
+    Ok(OrganizerCollectionMandate {
+        mandate_id: content_digest::sha256_of(&collection_identity),
         source_hash,
         actor_id: donor.actor,
         contributor_id: donor.contributor,
         household_principal_id: donor.principal.as_bytes(),
         organization_account_id: account.as_bytes(),
-        social_class_target: sha256_of(
+        social_class_target: content_digest::sha256_of(
             &donor
                 .class_subject
                 .canonical_bytes()
@@ -229,7 +231,7 @@ fn aid_bindings(
                 recipient_contributor_id: child.contributor,
                 donor_principal_id: donor.principal.as_bytes(),
                 recipient_principal_id: child.principal.as_bytes(),
-                social_class_target: sha256_of(
+                social_class_target: content_digest::sha256_of(
                     &child
                         .class_subject
                         .canonical_bytes()

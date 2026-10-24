@@ -23,7 +23,8 @@
 //!   `LoadedScenario::max_members_seen` count the seeded population, the
 //!   same way `node_types`/`edge_types` already do.
 
-use babylon_bsl::scenario::load_scenario;
+use babylon_bsl::scenario;
+
 use babylon_graph::memory::MemoryGraph;
 use babylon_graph::substrate::{Direction, GraphError, GraphSubstrate, HyperedgeId, NodeId};
 use babylon_kernel::currency::Currency;
@@ -48,7 +49,8 @@ fn a_genuinely_unknown_top_form_still_refuses_and_the_message_now_lists_hyperedg
     // message's own enumeration now names `hyperedge` — the change of
     // behaviour Step 1 asked to make visible in the diff.
     let mut graph = MemoryGraph::new();
-    let err = load_scenario(BOGUS_FORM, &mut graph).unwrap_err();
+    let err = scenario::load_scenario(BOGUS_FORM, &mut graph)
+        .expect_err("the malformed scenario is refused");
     assert!(
         err.message.contains("hyperedge"),
         "the catch-all message must now list `hyperedge` among the legal top-forms: {}",
@@ -74,7 +76,8 @@ const NEW_AFRIKAN: &str = r"
 #[test]
 fn the_hyperedge_top_form_mints_and_resolves_members_by_local_name() {
     let mut graph = MemoryGraph::new();
-    let loaded = load_scenario(NEW_AFRIKAN, &mut graph).expect("the hyperedge top-form now loads");
+    let loaded =
+        scenario::load_scenario(NEW_AFRIKAN, &mut graph).expect("the hyperedge top-form now loads");
 
     assert_eq!(loaded.hyperedge_types.get("COMMUNITY"), Some(&1));
     assert_eq!(loaded.max_members_seen.get("COMMUNITY"), Some(&2));
@@ -93,7 +96,9 @@ fn the_hyperedge_top_form_mints_and_resolves_members_by_local_name() {
         "alpha belongs to exactly one hyperedge"
     );
     assert_eq!(
-        graph.members_of(hyperedges[0]).unwrap(),
+        graph
+            .members_of(hyperedges[0])
+            .expect("the fixture hyperedge has members"),
         vec![alpha, beta],
         "members resolved through the same local-name table node/edge share"
     );
@@ -115,7 +120,8 @@ fn an_unknown_hyperedge_type_member_is_e_load_031_not_e_load_023() {
     // does not carry, vocabulary.rs:118/160/192), the same code
     // `check_enum_ref` raises for `(node x NodeType/NOWHERE)`.
     let mut graph = MemoryGraph::new();
-    let err = load_scenario(UNKNOWN_MEMBER, &mut graph).unwrap_err();
+    let err = scenario::load_scenario(UNKNOWN_MEMBER, &mut graph)
+        .expect_err("the malformed scenario is refused");
     assert_eq!(err.code, Some("E-LOAD-031"), "{}", err.message);
     assert!(err.message.contains("NOWHERE"), "{}", err.message);
 }
@@ -141,7 +147,8 @@ const UNKNOWN_MEMBER_NAME: &str = r"
 #[test]
 fn an_unknown_member_node_name_refuses_distinctly_from_an_unknown_hyperedge_type_member() {
     let mut graph = MemoryGraph::new();
-    let err = load_scenario(UNKNOWN_MEMBER_NAME, &mut graph).unwrap_err();
+    let err = scenario::load_scenario(UNKNOWN_MEMBER_NAME, &mut graph)
+        .expect_err("the malformed scenario is refused");
     assert!(
         err.message.contains("names unknown node `nosuch`"),
         "{}",
@@ -168,7 +175,8 @@ fn an_empty_member_list_refuses_before_ever_reaching_the_substrate() {
     // first, so a scenario-authoring mistake is diagnosed at the form that
     // caused it rather than bubbling up as a generic substrate refusal.
     let mut graph = MemoryGraph::new();
-    let err = load_scenario(EMPTY_MEMBERS, &mut graph).unwrap_err();
+    let err = scenario::load_scenario(EMPTY_MEMBERS, &mut graph)
+        .expect_err("the malformed scenario is refused");
     assert!(
         err.message
             .contains("hyperedge must have at least one member"),
@@ -206,7 +214,8 @@ const DUPLICATE_HYPEREDGE_NAME: &str = r"
 #[test]
 fn a_duplicate_hyperedge_local_name_refuses_mirroring_load_nodes_own_check() {
     let mut graph = MemoryGraph::new();
-    let err = load_scenario(DUPLICATE_HYPEREDGE_NAME, &mut graph).unwrap_err();
+    let err = scenario::load_scenario(DUPLICATE_HYPEREDGE_NAME, &mut graph)
+        .expect_err("the malformed scenario is refused");
     assert!(
         err.message.contains("duplicate scenario name `h0`"),
         "{}",
@@ -220,7 +229,10 @@ fn a_duplicate_hyperedge_local_name_refuses_mirroring_load_nodes_own_check() {
     );
     // Only ONE hyperedge minted — the second form's mint never runs.
     assert_eq!(
-        graph.hyperedges_of(NodeId(0), "COMMUNITY").unwrap().len(),
+        graph
+            .hyperedges_of(NodeId(0), "COMMUNITY")
+            .expect("the fixture graph holds the authored hyperedges")
+            .len(),
         1,
         "the duplicate form must refuse before minting a second hyperedge"
     );
@@ -248,9 +260,11 @@ const WITHOUT_HYPEREDGE: &str = r"
 #[test]
 fn inserting_a_hyperedge_form_does_not_shift_any_node_id() {
     let mut graph_with = MemoryGraph::new();
-    let loaded_with = load_scenario(WITH_HYPEREDGE, &mut graph_with).unwrap();
+    let loaded_with = scenario::load_scenario(WITH_HYPEREDGE, &mut graph_with)
+        .expect("the authored scenario compiles");
     let mut graph_without = MemoryGraph::new();
-    let loaded_without = load_scenario(WITHOUT_HYPEREDGE, &mut graph_without).unwrap();
+    let loaded_without = scenario::load_scenario(WITHOUT_HYPEREDGE, &mut graph_without)
+        .expect("the authored scenario compiles");
 
     // `gamma` is the THIRD `node` form in both files. A `hyperedge` form
     // sits between `beta` and `gamma` in WITH_HYPEREDGE only — if hyperedge
@@ -300,7 +314,8 @@ fn hyperedge_types_and_max_members_seen_pin_against_a_three_hyperedge_fixture() 
     // SEPARATE type (ECONOMIC_SECTOR, 2 members) — proving the maps are keyed per
     // type, not one global count/max.
     let mut graph = MemoryGraph::new();
-    let loaded = load_scenario(THREE_HYPEREDGES, &mut graph).unwrap();
+    let loaded = scenario::load_scenario(THREE_HYPEREDGES, &mut graph)
+        .expect("the authored scenario compiles");
 
     assert_eq!(loaded.hyperedge_types.get("COMMUNITY"), Some(&2));
     assert_eq!(loaded.hyperedge_types.get("ECONOMIC_SECTOR"), Some(&1));
@@ -504,7 +519,7 @@ fn the_loader_sorts_members_ascending_before_minting_matching_the_executors_law(
     // as `gamma alpha beta`, i.e. NodeId order [2, 0, 1]: deliberately
     // unsorted, exactly what the brief calls for.
     let mut graph = OrderSpyGraph::default();
-    load_scenario(UNSORTED_MEMBERS, &mut graph).unwrap();
+    scenario::load_scenario(UNSORTED_MEMBERS, &mut graph).expect("the authored scenario compiles");
     assert_eq!(
         graph.hyperedge_call_args,
         vec![vec![NodeId(0), NodeId(1), NodeId(2)]],

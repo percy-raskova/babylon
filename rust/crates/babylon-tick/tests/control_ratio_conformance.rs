@@ -138,15 +138,23 @@
 //! control-ratio/c01-prisoner-census static bound 42 exceeds its declared
 //! :fuel 1`; `:fuel 43` (bound + 1) cleared both load and runtime. `c02`
 //! (once `c01`'s fuel was raised) refused at `static bound 63` against the
-//! PRIMARY/REVOLUTION worlds' own SOCIAL_CLASS ceiling (6 nodes — the
+//! PRIMARY/REVOLUTION worlds' own `SOCIAL_CLASS` ceiling (6 nodes — the
 //! LARGEST of this pack's four scenarios); `:fuel 64` (bound + 1) cleared
 //! load and runtime against ALL FOUR scenarios, since a fold's static
-//! bound scales with the LOADING scenario's own SOCIAL_CLASS
+//! bound scales with the LOADING scenario's own `SOCIAL_CLASS`
 //! `CardinalityCeiling` (`decomposition_conformance.rs`'s own Task 4
 //! addendum: "one rule's fuel must cover the WORST-CASE ceiling across
-//! every scenario that loads it") — the smaller worlds (3 SOCIAL_CLASS
-//! nodes) and the inline NOT-READY fixture (2 SOCIAL_CLASS nodes) both
+//! every scenario that loads it") — the smaller worlds (3 `SOCIAL_CLASS`
+//! nodes) and the inline NOT-READY fixture (2 `SOCIAL_CLASS` nodes) both
 //! have smaller true bounds, comfortably inside `:fuel 64`.
+
+// Conformance fixtures exercise exact engine values, transcribe spec literals,
+// and build whole scenarios in one test. These pedantic lints would force
+// ceremony that hides those contracts, so they stay off in test code only.
+#![allow(
+    clippy::float_cmp,
+    reason = "these comparisons pin exact authored f64 values"
+)]
 
 //! # Task 6 — `c03-crisis` (the crisis gate, the `<=` boundary, BLOCKER-4)
 //!
@@ -400,12 +408,13 @@
 //! `terminal-decision-emitted` staying at its seeded 0.
 
 use babylon_bsl::evaluator::Value;
-use babylon_bsl::scenario::load_scenario;
+use babylon_bsl::scenario;
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
+use babylon_kernel::replay::ReplaySeed;
 use babylon_kernel::replay::ReplaySessionId;
-use babylon_tick::{diagnostic::RuleDiagnosticSession, run_once_into};
+use babylon_tick::diagnostic::RuleDiagnosticSession;
 
 /// The one-shot driver identity (D179): deterministic, never a UUID or clock.
 fn run_once_session() -> ReplaySessionId {
@@ -453,7 +462,8 @@ const ZE_CARCERAL_REGISTER: NodeId = NodeId(3);
 fn run(scenario: &str) -> (HypergraphStore, CollectingSink) {
     let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
-    run_once_into(scenario, RULE, &mut graph, &mut sink).expect("the Pack B rules must run");
+    babylon_tick::run_once_into(scenario, RULE, &mut graph, &mut sink)
+        .expect("the Pack B rules must run");
     (graph, sink)
 }
 
@@ -613,6 +623,14 @@ fn c01_premultiplies_population_by_organization() {
 /// records (Global Constraint: "the frozen system computes the census
 /// only past the readiness gate; the port publishes it every tick").
 #[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "a conformance scenario builds its whole fixture and asserts the full trajectory in one test"
+)]
+#[allow(
+    clippy::items_after_statements,
+    reason = "scenario constants and local helpers sit beside their first use in one long assertion"
+)]
 fn c02_publishes_the_three_aggregates_unconditionally() {
     let (graph, _) = run(PRIMARY_SCENARIO);
     assert_eq!(
@@ -640,7 +658,7 @@ fn c02_publishes_the_three_aggregates_unconditionally() {
     // The NOT-READY world: decomposition-fired-known 0 — c03's future
     // readiness gate would refuse to act here, but c01/c02 have no such
     // gate at all.
-    const NOT_READY_SCENARIO: &str = r#"
+    const NOT_READY_SCENARIO: &str = r"
 (scenario control-ratio/not-ready-gate
   (defvocabulary NodeType (SOCIAL_CLASS INSTITUTION))
   (defenum SocialRole (CORE_BOURGEOISIE PERIPHERY_PROLETARIAT LABOR_ARISTOCRACY PETTY_BOURGEOISIE LUMPENPROLETARIAT COMPRADOR_BOURGEOISIE INTERNAL_PROLETARIAT CARCERAL_ENFORCER))
@@ -697,7 +715,7 @@ fn c02_publishes_the_three_aggregates_unconditionally() {
     (institution/enforcer-population 0)
     (institution/prisoner-population 0)
     (institution/prisoner-org-weighted 0)))
-"#;
+";
     const NOT_READY_CARCERAL_REGISTER: NodeId = NodeId(2);
     let (not_ready_graph, _) = run(NOT_READY_SCENARIO);
     assert_eq!(
@@ -744,7 +762,7 @@ fn all_four_scenarios_load_clean_with_c01_c02() {
     ] {
         let mut graph = HypergraphStore::new();
         let mut sink = CollectingSink::default();
-        run_once_into(scenario, RULE, &mut graph, &mut sink)
+        babylon_tick::run_once_into(scenario, RULE, &mut graph, &mut sink)
             .unwrap_or_else(|e| panic!("{label} scenario must load and run clean: {e:?}"));
     }
 }
@@ -838,7 +856,7 @@ fn c01_c02_on_the_within_capacity_companion() {
 
 /// The zero-enforcer companion's own census — BLOCKER-4's branch,
 /// exercised here for c01/c02 only. `enforcer-population` publishes 0
-/// from a REAL, active, zero-population CARCERAL_ENFORCER node (the
+/// from a REAL, active, zero-population `CARCERAL_ENFORCER` node (the
 /// scenario's own header distinction from an ABSENT enforcer class),
 /// cross-checked against the mirror's `census: enforcer_population=0
 /// prisoner_population=25 prisoner_org_weighted_sum=10.0`.
@@ -908,7 +926,8 @@ fn c01_c02_on_the_zero_enforcer_companion() {
 #[test]
 fn the_primary_scenario_loads_clean_with_the_declared_census() {
     let mut graph = HypergraphStore::new();
-    let loaded = load_scenario(PRIMARY_SCENARIO, &mut graph).expect("the scenario must load clean");
+    let loaded = scenario::load_scenario(PRIMARY_SCENARIO, &mut graph)
+        .expect("the scenario must load clean");
     assert_eq!(loaded.node_count, 7, "6 social classes + 1 carrier");
     assert_eq!(
         loaded.edge_count, 0,
@@ -927,7 +946,8 @@ fn the_primary_scenario_loads_clean_with_the_declared_census() {
 #[test]
 fn social_role_order_is_the_ruled_ordinal() {
     let mut graph = HypergraphStore::new();
-    let loaded = load_scenario(PRIMARY_SCENARIO, &mut graph).expect("the scenario must load clean");
+    let loaded = scenario::load_scenario(PRIMARY_SCENARIO, &mut graph)
+        .expect("the scenario must load clean");
     let ty = loaded
         .enums
         .resolve("SocialRole")
@@ -945,7 +965,7 @@ fn social_role_order_is_the_ruled_ordinal() {
     for (ordinal, member) in members.iter().enumerate() {
         assert_eq!(
             loaded.enums.ordinal(ty, member),
-            Some(ordinal as u32),
+            Some(u32::try_from(ordinal).expect("enum ordinal fits u32")),
             "SocialRole::{member} must sit at ordinal {ordinal} (ADR195)"
         );
     }
@@ -970,7 +990,7 @@ fn c01_c02_emit_nothing() {
         .expect("c03-crisis must exist in RULE to split on");
     let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
-    run_once_into(PRIMARY_SCENARIO, c01_c02_only, &mut graph, &mut sink)
+    babylon_tick::run_once_into(PRIMARY_SCENARIO, c01_c02_only, &mut graph, &mut sink)
         .expect("c01/c02 alone must run");
     assert_eq!(
         sink.events.len(),
@@ -1095,7 +1115,7 @@ fn c03_does_not_emit_at_or_below_capacity() {
 }
 
 /// BLOCKER-4's guard-split branch: `enforcer-population == 0` (a REAL,
-/// active, zero-population CARCERAL_ENFORCER class, not an absent one).
+/// active, zero-population `CARCERAL_ENFORCER` class, not an absent one).
 /// The payload carries the OTHER six keys and OMITS `actual-ratio`/
 /// `control-ratio` entirely — loud absence, not the frozen `float("inf")`
 /// (`control_ratio.py:185`, unrepresentable — `E-EVAL-014`/`E-EVAL-012`) —
@@ -1175,7 +1195,7 @@ fn c03_latches_once() {
         RULE,
         HypergraphStore::new(),
         run_once_session(),
-        babylon_kernel::replay::ReplaySeed::new(0),
+        ReplaySeed::new(0),
     )
     .expect("the pack must load into a session");
     let mut sink = CollectingSink::default();
@@ -1214,7 +1234,7 @@ fn c03_latches_once() {
 /// for the silence.
 #[test]
 fn c03_stays_silent_before_the_readiness_gate() {
-    const NOT_READY_SCENARIO: &str = r#"
+    const NOT_READY_SCENARIO: &str = r"
 (scenario control-ratio/not-ready-readiness-gate
   (defvocabulary NodeType (SOCIAL_CLASS INSTITUTION))
   (defenum SocialRole (CORE_BOURGEOISIE PERIPHERY_PROLETARIAT LABOR_ARISTOCRACY PETTY_BOURGEOISIE LUMPENPROLETARIAT COMPRADOR_BOURGEOISIE INTERNAL_PROLETARIAT CARCERAL_ENFORCER))
@@ -1273,7 +1293,7 @@ fn c03_stays_silent_before_the_readiness_gate() {
     (institution/enforcer-population 0)
     (institution/prisoner-population 0)
     (institution/prisoner-org-weighted 0)))
-"#;
+";
     const NOT_READY_CARCERAL_REGISTER: NodeId = NodeId(2);
     let (graph, sink) = run(NOT_READY_SCENARIO);
 
@@ -1458,7 +1478,7 @@ fn c04_routes_to_revolution_at_or_above_the_threshold() {
 /// `outcome='revolution'` (this file's own header, 2026-08-17 run).
 #[test]
 fn c04_at_exactly_the_threshold_routes_to_revolution() {
-    const EXACT_THRESHOLD_SCENARIO: &str = r#"
+    const EXACT_THRESHOLD_SCENARIO: &str = r"
 (scenario control-ratio/exact-threshold
   (defvocabulary NodeType (SOCIAL_CLASS INSTITUTION))
   (defenum SocialRole (CORE_BOURGEOISIE PERIPHERY_PROLETARIAT LABOR_ARISTOCRACY PETTY_BOURGEOISIE LUMPENPROLETARIAT COMPRADOR_BOURGEOISIE INTERNAL_PROLETARIAT CARCERAL_ENFORCER))
@@ -1523,7 +1543,7 @@ fn c04_at_exactly_the_threshold_routes_to_revolution() {
     (institution/enforcer-population 0)
     (institution/prisoner-population 0)
     (institution/prisoner-org-weighted 0)))
-"#;
+";
     const ET_CARCERAL_REGISTER: NodeId = NodeId(3);
     let (graph, sink) = run(EXACT_THRESHOLD_SCENARIO);
     let decisions: Vec<_> = sink
@@ -1564,8 +1584,12 @@ fn c04_at_exactly_the_threshold_routes_to_revolution() {
 /// note) — a BSL rule-latch timing test, the same class as
 /// `c03_stays_silent_before_the_readiness_gate`.
 #[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "a conformance scenario builds its whole fixture and asserts the full trajectory in one test"
+)]
 fn c04_respects_the_terminal_delay() {
-    const TERMINAL_DELAY_SCENARIO: &str = r#"
+    const TERMINAL_DELAY_SCENARIO: &str = r"
 (scenario control-ratio/terminal-delay
   (defvocabulary NodeType (SOCIAL_CLASS INSTITUTION))
   (defenum SocialRole (CORE_BOURGEOISIE PERIPHERY_PROLETARIAT LABOR_ARISTOCRACY PETTY_BOURGEOISIE LUMPENPROLETARIAT COMPRADOR_BOURGEOISIE INTERNAL_PROLETARIAT CARCERAL_ENFORCER))
@@ -1630,7 +1654,7 @@ fn c04_respects_the_terminal_delay() {
     (institution/enforcer-population 0)
     (institution/prisoner-population 0)
     (institution/prisoner-org-weighted 0)))
-"#;
+";
     const TD_CARCERAL_REGISTER: NodeId = NodeId(3);
     let mut session = RuleDiagnosticSession::new(
         TERMINAL_DELAY_SCENARIO,
@@ -1638,7 +1662,7 @@ fn c04_respects_the_terminal_delay() {
         RULE,
         HypergraphStore::new(),
         run_once_session(),
-        babylon_kernel::replay::ReplaySeed::new(0),
+        ReplaySeed::new(0),
     )
     .expect("the pack must load into a session");
 
@@ -1720,7 +1744,7 @@ fn c04_emits_once() {
         RULE,
         HypergraphStore::new(),
         run_once_session(),
-        babylon_kernel::replay::ReplaySeed::new(0),
+        ReplaySeed::new(0),
     )
     .expect("the pack must load into a session");
     let mut sink = CollectingSink::default();
@@ -1758,7 +1782,7 @@ fn c04_emits_once() {
 /// (this file's own header, 2026-08-17 run).
 #[test]
 fn the_avg_organization_is_population_weighted_not_a_bare_mean() {
-    const POPULATION_WEIGHTED_SCENARIO: &str = r#"
+    const POPULATION_WEIGHTED_SCENARIO: &str = r"
 (scenario control-ratio/population-weighted
   (defvocabulary NodeType (SOCIAL_CLASS INSTITUTION))
   (defenum SocialRole (CORE_BOURGEOISIE PERIPHERY_PROLETARIAT LABOR_ARISTOCRACY PETTY_BOURGEOISIE LUMPENPROLETARIAT COMPRADOR_BOURGEOISIE INTERNAL_PROLETARIAT CARCERAL_ENFORCER))
@@ -1823,7 +1847,7 @@ fn the_avg_organization_is_population_weighted_not_a_bare_mean() {
     (institution/enforcer-population 0)
     (institution/prisoner-population 0)
     (institution/prisoner-org-weighted 0)))
-"#;
+";
     let (_, sink) = run(POPULATION_WEIGHTED_SCENARIO);
     let decisions: Vec<_> = sink
         .events
@@ -1905,7 +1929,7 @@ fn the_avg_organization_is_population_weighted_not_a_bare_mean() {
 /// byte order. `c04` must stay silent.
 #[test]
 fn c04_does_not_emit_when_the_terminal_tick_census_has_zero_prisoners() {
-    const ZERO_PRISONERS_SCENARIO: &str = r#"
+    const ZERO_PRISONERS_SCENARIO: &str = r"
 (scenario control-ratio/terminal-gate-zero-prisoners
   (defvocabulary NodeType (SOCIAL_CLASS INSTITUTION))
   (defenum SocialRole (CORE_BOURGEOISIE PERIPHERY_PROLETARIAT LABOR_ARISTOCRACY PETTY_BOURGEOISIE LUMPENPROLETARIAT COMPRADOR_BOURGEOISIE INTERNAL_PROLETARIAT CARCERAL_ENFORCER))
@@ -1956,7 +1980,7 @@ fn c04_does_not_emit_when_the_terminal_tick_census_has_zero_prisoners() {
     (institution/enforcer-population 0)
     (institution/prisoner-population 0)
     (institution/prisoner-org-weighted 0)))
-"#;
+";
     const ZP_CARCERAL_REGISTER: NodeId = NodeId(1);
     let (graph, sink) = run(ZERO_PRISONERS_SCENARIO);
 
@@ -2025,8 +2049,12 @@ fn c04_does_not_emit_when_the_terminal_tick_census_has_zero_prisoners() {
 /// nodes at organization 0.6) would clear the revolution threshold if it
 /// fired.
 #[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "a conformance scenario builds its whole fixture and asserts the full trajectory in one test"
+)]
 fn c04_does_not_emit_when_the_terminal_tick_census_falls_back_within_capacity() {
-    const WITHIN_CAPACITY_AT_TERMINAL_SCENARIO: &str = r#"
+    const WITHIN_CAPACITY_AT_TERMINAL_SCENARIO: &str = r"
 (scenario control-ratio/terminal-gate-within-capacity
   (defvocabulary NodeType (SOCIAL_CLASS INSTITUTION))
   (defenum SocialRole (CORE_BOURGEOISIE PERIPHERY_PROLETARIAT LABOR_ARISTOCRACY PETTY_BOURGEOISIE LUMPENPROLETARIAT COMPRADOR_BOURGEOISIE INTERNAL_PROLETARIAT CARCERAL_ENFORCER))
@@ -2094,7 +2122,7 @@ fn c04_does_not_emit_when_the_terminal_tick_census_falls_back_within_capacity() 
     (institution/enforcer-population 0)
     (institution/prisoner-population 0)
     (institution/prisoner-org-weighted 0)))
-"#;
+";
     const WCT_CARCERAL_REGISTER: NodeId = NodeId(3);
     let (graph, sink) = run(WITHIN_CAPACITY_AT_TERMINAL_SCENARIO);
 

@@ -1,9 +1,7 @@
 //! Authored input suppliers and route declarations in their captured order.
 //! Consumers retain their own endpoint visibility, aggregation, and labeling rules.
 
-use babylon_persistence::{
-    production_observation::ProductionRoute, production_observation::ProductionSnapshot,
-};
+use babylon_persistence::production_observation::{ProductionRoute, ProductionSnapshot};
 
 pub(crate) struct MaterialRelationDeclaration<'a> {
     pub(crate) supplier: &'a str,

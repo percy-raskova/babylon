@@ -1,5 +1,59 @@
 //! A bounded maintenance dependency conserves parts and hours across period closes.
-use babylon_material_circuit::*;
+use babylon_material_circuit::AccountId;
+use babylon_material_circuit::AidBook;
+use babylon_material_circuit::BacklogRow;
+use babylon_material_circuit::CapacityRow;
+use babylon_material_circuit::CapacitySupply;
+use babylon_material_circuit::CashAccount;
+use babylon_material_circuit::CircuitAccounting;
+use babylon_material_circuit::CommodityDefinition;
+use babylon_material_circuit::CommodityKind;
+use babylon_material_circuit::CorridorCapacity;
+use babylon_material_circuit::CorridorId;
+use babylon_material_circuit::EmploymentTerms;
+use babylon_material_circuit::FinalDemandPrincipal;
+use babylon_material_circuit::FinalDemandPrincipalId;
+use babylon_material_circuit::FinancialInstitutions;
+use babylon_material_circuit::GoodId;
+use babylon_material_circuit::HistoricalCostBook;
+use babylon_material_circuit::HouseholdTimeAccounting;
+use babylon_material_circuit::InputOutputCoefficient;
+use babylon_material_circuit::InventoryRow;
+use babylon_material_circuit::LaborCapacityRow;
+use babylon_material_circuit::LaborCoefficient;
+use babylon_material_circuit::LaborCompensation;
+use babylon_material_circuit::LogisticsNodeId;
+use babylon_material_circuit::MaintenanceBinding;
+use babylon_material_circuit::MaintenanceService;
+use babylon_material_circuit::MaterialCircuitError;
+use babylon_material_circuit::MaterialCircuitState;
+use babylon_material_circuit::MaterialCircuitTransition;
+use babylon_material_circuit::MonetaryBook;
+use babylon_material_circuit::MonetaryCircuit;
+use babylon_material_circuit::OrderAccessMode;
+use babylon_material_circuit::OrderId;
+use babylon_material_circuit::OrderRow;
+use babylon_material_circuit::ProcessId;
+use babylon_material_circuit::ProcessOutput;
+use babylon_material_circuit::ProductionCommitment;
+use babylon_material_circuit::RouteId;
+use babylon_material_circuit::RouteStage;
+use babylon_material_circuit::RouteStageCapacity;
+use babylon_material_circuit::SiteId;
+use babylon_material_circuit::SiteLogisticsNode;
+use babylon_material_circuit::StaffingMemberId;
+use babylon_material_circuit::StaffingPolicy;
+use babylon_material_circuit::StaffingPoolBinding;
+use babylon_material_circuit::StaffingPoolId;
+use babylon_material_circuit::StaffingPoolState;
+use babylon_material_circuit::StaffingState;
+use babylon_material_circuit::StaffingTransition;
+use babylon_material_circuit::StaffingWorkSource;
+use babylon_material_circuit::StockCarryingValue;
+use babylon_material_circuit::SupplierRoute;
+use babylon_material_circuit::SupplierTransport;
+use babylon_material_circuit::UnitId;
+use babylon_material_circuit::MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES;
 
 fn site(id: u8) -> SiteId {
     SiteId::from_bytes([id; 32])
@@ -13,9 +67,13 @@ fn unit(id: u8) -> UnitId {
 fn process() -> ProcessId {
     ProcessId::from_bytes([1; 32])
 }
+#[allow(
+    clippy::too_many_lines,
+    reason = "a conformance scenario builds its whole fixture and asserts the full trajectory in one test"
+)]
 fn opening(parts: u64, provider_hours: u64) -> MaterialCircuitState {
     MaterialCircuitState {
-        capacity_supply: babylon_material_circuit::CapacitySupply::FiniteSchedule,
+        capacity_supply: CapacitySupply::FiniteSchedule,
         period: 1,
         site_logistics_nodes: (1..=3)
             .map(|id| SiteLogisticsNode {
@@ -180,32 +238,37 @@ fn people(provider_employed: u64) -> StaffingState {
                 site(id),
                 unit(2),
                 total,
-                StaffingPolicy::one_period(160).unwrap(),
+                StaffingPolicy::one_period(160).expect("the one-period fixture advances"),
                 vec![source],
             )
-            .unwrap();
-            StaffingPoolState::try_new(binding, employed, total - employed, 0).unwrap()
+            .expect("the authored fixture satisfies the constructor invariants");
+            StaffingPoolState::try_new(binding, employed, total - employed, 0)
+                .expect("the authored fixture satisfies the constructor invariants")
         })
         .collect(),
     )
-    .unwrap()
+    .expect("the authored fixture satisfies the constructor invariants")
 }
 fn staffed(
     state: &MaterialCircuitState,
     people: &StaffingState,
 ) -> (MaterialCircuitTransition, StaffingTransition) {
-    let closed = close_material_period(state).unwrap();
+    let closed =
+        babylon_material_circuit::close_material_period(state).expect("the material period closes");
     let bindings: Vec<_> = people
         .pools()
         .iter()
         .map(|pool| pool.binding().clone())
         .collect();
-    let requests = closed.staffing_requests(&bindings).unwrap();
-    let staffing = advance_staffing(people, &requests).unwrap();
+    let requests = closed
+        .staffing_requests(&bindings)
+        .expect("the fixture staffing requests are present");
+    let staffing = babylon_material_circuit::advance_staffing(people, &requests)
+        .expect("the fixture staffing advances");
     (
         closed
             .finish_with_labor(staffing.next_labor().to_vec())
-            .unwrap(),
+            .expect("the fixture completes with labor"),
         staffing,
     )
 }
@@ -231,7 +294,10 @@ fn four_cases_bind_labor_and_parts_then_rehire_and_recover() {
         restock(&mut state);
         let original = state.clone();
         let (first, staff1) = staffed(&state, &people(employed));
-        let receipt = first.maintenance.as_ref().unwrap();
+        let receipt = first
+            .maintenance
+            .as_ref()
+            .expect("the fixture set the optional field before this read");
         assert_eq!(produced(&first), 960);
         assert_eq!(receipt.requested_jobs, 16);
         assert_eq!(
@@ -247,7 +313,7 @@ fn four_cases_bind_labor_and_parts_then_rehire_and_recover() {
                 .local_transfers
                 .iter()
                 .find(|row| row.buyer_site_id == site(2))
-                .unwrap()
+                .expect("the fixture holds the searched element")
                 .quantity,
             60
         );
@@ -262,7 +328,14 @@ fn four_cases_bind_labor_and_parts_then_rehire_and_recover() {
             if parts > 0 && employed > 0 { 960 } else { 0 }
         );
         if parts == 0 || employed == 0 {
-            assert_eq!(second.maintenance.as_ref().unwrap().completed_jobs, 16);
+            assert_eq!(
+                second
+                    .maintenance
+                    .as_ref()
+                    .expect("the fixture set the optional field before this read")
+                    .completed_jobs,
+                16
+            );
             let (third, _) = staffed(&second.state, staff2.state());
             assert_eq!(produced(&third), 960);
         }
@@ -276,11 +349,14 @@ fn whole_jobs_debit_exact_inputs_and_expire_unused_service() {
     state
         .maintenance_binding
         .as_mut()
-        .unwrap()
+        .expect("the fixture set the optional field before this borrow")
         .spare_units_per_job = 3;
     state.production_commitments[0].planned_batches = 4;
-    let result = advance_material_circuit(&state).unwrap();
-    let receipt = result.maintenance.unwrap();
+    let result = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
+    let receipt = result
+        .maintenance
+        .expect("the fixture receipt carries its maintenance section");
     assert_eq!(
         (
             receipt.completed_jobs,
@@ -314,14 +390,32 @@ fn expired_or_absent_service_never_enables_current_production_or_suppresses_dema
     state
         .maintenance_service
         .as_mut()
-        .unwrap()
+        .expect("the fixture set the optional field before this borrow")
         .available_batches = 0;
-    let first = advance_material_circuit(&state).unwrap();
+    let first = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
     assert_eq!(produced(&first), 0);
-    assert_eq!(first.maintenance.as_ref().unwrap().requested_jobs, 16);
-    assert_eq!(first.maintenance.as_ref().unwrap().completed_jobs, 16);
     assert_eq!(
-        produced(&advance_material_circuit(&first.state).unwrap()),
+        first
+            .maintenance
+            .as_ref()
+            .expect("the fixture set the optional field before this read")
+            .requested_jobs,
+        16
+    );
+    assert_eq!(
+        first
+            .maintenance
+            .as_ref()
+            .expect("the fixture set the optional field before this read")
+            .completed_jobs,
+        16
+    );
+    assert_eq!(
+        produced(
+            &babylon_material_circuit::advance_material_circuit(&first.state)
+                .expect("the authored material state advances one period")
+        ),
         960
     );
 
@@ -330,10 +424,13 @@ fn expired_or_absent_service_never_enables_current_production_or_suppresses_dema
     state
         .maintenance_service
         .as_mut()
-        .unwrap()
+        .expect("the fixture set the optional field before this borrow")
         .available_batches = 16;
-    let result = advance_material_circuit(&state).unwrap();
-    let receipt = result.maintenance.unwrap();
+    let result = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
+    let receipt = result
+        .maintenance
+        .expect("the fixture receipt carries its maintenance section");
     assert_eq!(
         (
             receipt.requested_jobs,
@@ -343,7 +440,11 @@ fn expired_or_absent_service_never_enables_current_production_or_suppresses_dema
         (0, 0, 16)
     );
     assert_eq!(
-        result.state.maintenance_service.unwrap().available_batches,
+        result
+            .state
+            .maintenance_service
+            .expect("the fixture state carries its maintenance service")
+            .available_batches,
         0
     );
 }
@@ -357,8 +458,11 @@ fn maintenance_capacity_is_per_period_and_demand_precedes_its_limit() {
         .capacities
         .iter_mut()
         .for_each(|row| row.available_batches = 40);
-    let result = advance_material_circuit(&state).unwrap();
-    let receipt = result.maintenance.unwrap();
+    let result = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
+    let receipt = result
+        .maintenance
+        .expect("the fixture receipt carries its maintenance section");
     assert_eq!(
         (
             receipt.prospective_batches,
@@ -376,18 +480,21 @@ fn zero_service_and_zero_employment_preserve_both_staffing_requests() {
     state
         .maintenance_service
         .as_mut()
-        .unwrap()
+        .expect("the fixture set the optional field before this borrow")
         .available_batches = 0;
     for row in &mut state.labor {
         row.available = 0;
     }
-    let closed = close_material_period(&state).unwrap();
+    let closed = babylon_material_circuit::close_material_period(&state)
+        .expect("the material period closes");
     let bindings: Vec<_> = people(0)
         .pools()
         .iter()
         .map(|pool| pool.binding().clone())
         .collect();
-    let requests = closed.staffing_requests(&bindings).unwrap();
+    let requests = closed
+        .staffing_requests(&bindings)
+        .expect("the fixture staffing requests are present");
     assert_eq!(requests[0].hours(), 960);
     assert_eq!(requests[1].hours(), 160);
 }
@@ -396,25 +503,32 @@ fn zero_service_and_zero_employment_preserve_both_staffing_requests() {
 fn canonical_replay_and_restart_preserve_maintenance_and_reject_old_version() {
     let mut state = opening(256, 160);
     restock(&mut state);
-    let expected = advance_material_circuit(&state).unwrap();
+    let expected = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
     state.inventory.reverse();
     state.labor.reverse();
     state.capacities.reverse();
     state.orders.reverse();
     state.backlog.reverse();
     state.supplier_routes.reverse();
-    assert_eq!(advance_material_circuit(&state).unwrap(), expected);
-    let bytes = encode_material_circuit_state(&expected.state).unwrap();
-    let restored = decode_material_circuit_state(&bytes).unwrap();
     assert_eq!(
-        advance_material_circuit(&restored),
-        advance_material_circuit(&expected.state)
+        babylon_material_circuit::advance_material_circuit(&state)
+            .expect("the authored material state advances one period"),
+        expected
+    );
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&expected.state)
+        .expect("the canonical material state encodes");
+    let restored = babylon_material_circuit::decode_material_circuit_state(&bytes)
+        .expect("the canonical material bytes decode");
+    assert_eq!(
+        babylon_material_circuit::advance_material_circuit(&restored),
+        babylon_material_circuit::advance_material_circuit(&expected.state)
     );
     let mut obsolete = bytes;
     let offset = MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES.len() + 1;
     obsolete[offset..offset + 2].copy_from_slice(&3_u16.to_be_bytes());
     assert_eq!(
-        decode_material_circuit_state(&obsolete),
+        babylon_material_circuit::decode_material_circuit_state(&obsolete),
         Err(MaterialCircuitError::WireVersion)
     );
 }
@@ -425,46 +539,54 @@ fn invalid_maintenance_bindings_and_overflow_refuse_atomically() {
     for mutate in [
         |row: &mut MaterialCircuitState| row.maintenance_service = None,
         |row: &mut MaterialCircuitState| row.maintenance_binding = None,
-        |row: &mut MaterialCircuitState| row.maintenance_service.as_mut().unwrap().period = 2,
         |row: &mut MaterialCircuitState| {
-            row.maintenance_binding.as_mut().unwrap().provider_site_id = site(1)
+            row.maintenance_service
+                .as_mut()
+                .expect("the fixture set the optional field before this borrow")
+                .period = 2;
         },
         |row: &mut MaterialCircuitState| {
             row.maintenance_binding
                 .as_mut()
-                .unwrap()
-                .consumer_process_id = ProcessId::from_bytes([9; 32])
+                .expect("the fixture set the optional field before this borrow")
+                .provider_site_id = site(1);
         },
         |row: &mut MaterialCircuitState| {
             row.maintenance_binding
                 .as_mut()
-                .unwrap()
-                .spare_units_per_job = 0
+                .expect("the fixture set the optional field before this borrow")
+                .consumer_process_id = ProcessId::from_bytes([9; 32]);
         },
         |row: &mut MaterialCircuitState| {
             row.maintenance_binding
                 .as_mut()
-                .unwrap()
-                .labor_units_per_job = 0
+                .expect("the fixture set the optional field before this borrow")
+                .spare_units_per_job = 0;
         },
         |row: &mut MaterialCircuitState| {
             row.maintenance_binding
                 .as_mut()
-                .unwrap()
-                .enabled_batches_per_job = 0
+                .expect("the fixture set the optional field before this borrow")
+                .labor_units_per_job = 0;
         },
         |row: &mut MaterialCircuitState| {
             row.maintenance_binding
                 .as_mut()
-                .unwrap()
-                .maximum_jobs_per_period = 0
+                .expect("the fixture set the optional field before this borrow")
+                .enabled_batches_per_job = 0;
+        },
+        |row: &mut MaterialCircuitState| {
+            row.maintenance_binding
+                .as_mut()
+                .expect("the fixture set the optional field before this borrow")
+                .maximum_jobs_per_period = 0;
         },
     ] {
         let mut invalid = state.clone();
         mutate(&mut invalid);
         let original = invalid.clone();
         assert_eq!(
-            advance_material_circuit(&invalid),
+            babylon_material_circuit::advance_material_circuit(&invalid),
             Err(MaterialCircuitError::MaintenanceInvariant)
         );
         assert_eq!(invalid, original);
@@ -473,10 +595,10 @@ fn invalid_maintenance_bindings_and_overflow_refuse_atomically() {
     overflow
         .maintenance_binding
         .as_mut()
-        .unwrap()
+        .expect("the fixture set the optional field before this borrow")
         .enabled_batches_per_job = u64::MAX;
     assert_eq!(
-        advance_material_circuit(&overflow),
+        babylon_material_circuit::advance_material_circuit(&overflow),
         Err(MaterialCircuitError::Arithmetic)
     );
 }
@@ -536,11 +658,23 @@ fn due_freight_supplies_jobs_before_local_outbound_credits() {
         period: 1,
         available_grams: 17_000,
     });
-    let first = advance_material_circuit(&state).unwrap();
-    assert_eq!(first.maintenance.as_ref().unwrap().completed_jobs, 0);
+    let first = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
+    assert_eq!(
+        first
+            .maintenance
+            .as_ref()
+            .expect("the fixture set the optional field before this read")
+            .completed_jobs,
+        0
+    );
     assert_eq!(first.dispatches[0].quantity, 17);
-    let second = advance_material_circuit(&first.state).unwrap();
-    let receipt = second.maintenance.as_ref().unwrap();
+    let second = babylon_material_circuit::advance_material_circuit(&first.state)
+        .expect("the authored material state advances one period");
+    let receipt = second
+        .maintenance
+        .as_ref()
+        .expect("the fixture set the optional field before this read");
     assert_eq!(produced(&second), 0);
     assert_eq!(
         (
@@ -556,7 +690,10 @@ fn due_freight_supplies_jobs_before_local_outbound_credits() {
     );
     assert_eq!(stock(&second.state, site(2), good(2)), 1);
     assert_eq!(
-        produced(&advance_material_circuit(&second.state).unwrap()),
+        produced(
+            &babylon_material_circuit::advance_material_circuit(&second.state)
+                .expect("the authored material state advances one period")
+        ),
         960
     );
 }
@@ -586,7 +723,7 @@ fn resource_sharing_is_refused_instead_of_imposing_hidden_priority() {
         quantity_per_batch: 1,
     });
     assert_eq!(
-        advance_material_circuit(&shared_process),
+        babylon_material_circuit::advance_material_circuit(&shared_process),
         Err(MaterialCircuitError::MaintenanceInvariant)
     );
     for (supplier, material) in [(site(2), good(2)), (site(1), good(1))] {
@@ -610,7 +747,7 @@ fn resource_sharing_is_refused_instead_of_imposing_hidden_priority() {
             quantity: 1,
         });
         assert_eq!(
-            advance_material_circuit(&shared_order),
+            babylon_material_circuit::advance_material_circuit(&shared_order),
             Err(MaterialCircuitError::MaintenanceInvariant)
         );
     }
@@ -622,7 +759,7 @@ fn failed_later_outbound_credit_publishes_no_maintenance_or_debits() {
     restock(&mut state);
     let original = state.clone();
     assert_eq!(
-        advance_material_circuit(&state),
+        babylon_material_circuit::advance_material_circuit(&state),
         Err(MaterialCircuitError::Arithmetic)
     );
     assert_eq!(state, original);
@@ -634,7 +771,7 @@ fn unrepresentable_maintenance_demand_does_not_disappear_with_zero_resources() {
     state
         .maintenance_service
         .as_mut()
-        .unwrap()
+        .expect("the fixture set the optional field before this borrow")
         .available_batches = 0;
     state.production_commitments.clear();
     state.inventory[0].quantity = u64::MAX;
@@ -644,7 +781,7 @@ fn unrepresentable_maintenance_demand_does_not_disappear_with_zero_resources() {
         row.available_batches = u64::MAX;
     }
     assert_eq!(
-        advance_material_circuit(&state),
+        babylon_material_circuit::advance_material_circuit(&state),
         Err(MaterialCircuitError::Arithmetic)
     );
 }
@@ -719,7 +856,13 @@ fn idle_consumer_and_provider_rehire_after_later_material_arrival() {
     for _ in 1..=7 {
         let (transition, next_staff) = staffed(&state, &staff);
         output.push(produced(&transition));
-        jobs.push(transition.maintenance.as_ref().unwrap().completed_jobs);
+        jobs.push(
+            transition
+                .maintenance
+                .as_ref()
+                .expect("the fixture set the optional field before this read")
+                .completed_jobs,
+        );
         employment.push((
             next_staff.state().pools()[0].employed(),
             next_staff.state().pools()[1].employed(),
@@ -738,14 +881,18 @@ fn idle_consumer_and_provider_rehire_after_later_material_arrival() {
 #[test]
 fn spare_quantity_and_labor_time_cannot_share_a_unit() {
     let mut state = opening(256, 160);
-    state.maintenance_binding.as_mut().unwrap().labor_unit_id = unit(1);
+    state
+        .maintenance_binding
+        .as_mut()
+        .expect("the fixture set the optional field before this borrow")
+        .labor_unit_id = unit(1);
     for row in &mut state.labor {
         if row.site_id == site(2) {
             row.unit_id = unit(1);
         }
     }
     assert_eq!(
-        advance_material_circuit(&state),
+        babylon_material_circuit::advance_material_circuit(&state),
         Err(MaterialCircuitError::MaintenanceInvariant)
     );
 }
@@ -756,10 +903,14 @@ fn spare_parts_independently_limit_positive_whole_jobs() {
     state
         .maintenance_binding
         .as_mut()
-        .unwrap()
+        .expect("the fixture set the optional field before this borrow")
         .spare_units_per_job = 3;
-    let result = advance_material_circuit(&state).unwrap();
-    let receipt = result.maintenance.as_ref().unwrap();
+    let result = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
+    let receipt = result
+        .maintenance
+        .as_ref()
+        .expect("the fixture set the optional field before this read");
     assert_eq!(receipt.requested_jobs, 16);
     assert_eq!(receipt.available_labor_hours, 160);
     assert_eq!(receipt.completed_jobs, 2);
@@ -777,7 +928,9 @@ fn paid_maintenance_opening() -> MaterialCircuitState {
     let payee = FinalDemandPrincipalId::from_bytes([7; 32]);
     state.final_demand_principals.push(FinalDemandPrincipal {
         id: payee,
-        location: "county:26163".parse().unwrap(),
+        location: "county:26163"
+            .parse()
+            .expect("the authored literal parses as the declared type"),
     });
     let book = MonetaryBook::open(vec![
         CashAccount {
@@ -797,7 +950,7 @@ fn paid_maintenance_opening() -> MaterialCircuitState {
             cash: money(0),
         },
     ])
-    .unwrap();
+    .expect("the fixture opens the authored source");
     let costs = HistoricalCostBook::open(
         &book,
         vec![
@@ -818,19 +971,17 @@ fn paid_maintenance_opening() -> MaterialCircuitState {
         vec![],
         vec![],
     )
-    .unwrap();
+    .expect("the fixture opens the authored source");
     state.accounting = CircuitAccounting::Monetary(Box::new(MonetaryCircuit {
         aid: AidBook::default(),
 
-        household_time: babylon_material_circuit::HouseholdTimeAccounting::NotModeled,
-        financial: babylon_material_circuit::FinancialInstitutions::empty(),
+        household_time: HouseholdTimeAccounting::NotModeled,
+        financial: FinancialInstitutions::empty(),
         member_labor: state
             .labor
             .iter()
             .map(|row| babylon_material_circuit::MemberLaborCapacityRow {
-                member_id: babylon_material_circuit::StaffingMemberId::from_bytes(
-                    row.site_id.as_bytes(),
-                ),
+                member_id: StaffingMemberId::from_bytes(row.site_id.as_bytes()),
                 period: row.period,
                 available_hours: row.available,
             })
@@ -840,13 +991,11 @@ fn paid_maintenance_opening() -> MaterialCircuitState {
         employment: [1, 2]
             .into_iter()
             .map(|id| EmploymentTerms {
-                member_id: babylon_material_circuit::StaffingMemberId::from_bytes(
-                    (site(id)).as_bytes(),
-                ),
+                member_id: StaffingMemberId::from_bytes((site(id)).as_bytes()),
                 site_id: site(id),
                 unit_id: unit(2),
                 payee,
-                compensation: babylon_material_circuit::LaborCompensation::Wage(money(1)),
+                compensation: LaborCompensation::Wage(money(1)),
             })
             .collect(),
         recurring: None,
@@ -859,25 +1008,32 @@ fn historical_cost_maintenance_and_idle_work_are_expenses_not_output_assets() {
     use babylon_kernel::currency::Currency;
     let money = Currency::from_micro_units;
     let state = paid_maintenance_opening();
-    let closed = advance_material_circuit(&state).unwrap();
+    let closed = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
     let producer = &closed
         .income
         .iter()
         .find(|row| row.account == AccountId::Site(site(1)))
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .statement;
     assert_eq!(producer.productive_labor_capitalized, money(960));
     assert_eq!(producer.idle_labor_expense, money(320));
-    assert_eq!(producer.net_income().unwrap(), money(-320));
+    assert_eq!(
+        producer.net_income().expect("the fixture book balances"),
+        money(-320)
+    );
     let provider = &closed
         .income
         .iter()
         .find(|row| row.account == AccountId::Site(site(2)))
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .statement;
     assert_eq!(provider.maintenance_material_expense, money(6));
     assert_eq!(provider.maintenance_labor_expense, money(20));
-    assert_eq!(provider.net_income().unwrap(), money(-26));
+    assert_eq!(
+        provider.net_income().expect("the fixture book balances"),
+        money(-26)
+    );
     let CircuitAccounting::Monetary(economy) = &closed.state.accounting else {
         unreachable!()
     };
@@ -888,9 +1044,15 @@ fn historical_cost_maintenance_and_idle_work_are_expenses_not_output_assets() {
             .stocks
             .iter()
             .find(|row| row.owner == AccountId::Site(site(1)) && row.good_id == good(2))
-            .unwrap()
+            .expect("the fixture holds the searched element")
             .amount,
         money(2240)
     );
-    assert_eq!(economy.book.total_cash_and_reserves().unwrap(), money(1300));
+    assert_eq!(
+        economy
+            .book
+            .total_cash_and_reserves()
+            .expect("the fixture book totals without overflow"),
+        money(1300)
+    );
 }

@@ -1,15 +1,19 @@
 //! Child of `runtime::live_tests`; never commit synthetic projection markers.
-use super::{validated_base_config, validated_template_name, TestDatabase};
+use super::TestDatabase;
 use crate::identity::CampaignId;
+use crate::material_runtime::DurableMaterialRuntime;
+use crate::michigan_content::MichiganContentPreset;
+use crate::michigan_material::MichiganDeliveryPreset;
 use crate::stored_tick::{CapturedMaterialRows, StoredTickReadSource};
-use crate::territory_storage::{insert, seed};
+use crate::territory_storage;
 use postgres::{Config, GenericClient, NoTls, Transaction};
 use uuid::Uuid;
 include!("values.rs");
 
 fn disposable_config(label: &str) -> (TestDatabase, Config) {
-    let base = validated_base_config();
-    let database = TestDatabase::create_from_template(&base, &validated_template_name(), label);
+    let base = super::validated_base_config();
+    let database =
+        TestDatabase::create_from_template(&base, &super::validated_template_name(), label);
     let config = database.config(&base);
     (database, config)
 }
@@ -18,14 +22,11 @@ fn foundation(config: &Config, suffix: u128) -> CampaignId {
     let campaign = CampaignId::from_uuid(Uuid::from_u128(
         (u128::from(std::process::id()) << 64) | suffix,
     ));
-    let foundation = crate::michigan_content::MichiganContentPreset::new_campaign(
-        crate::michigan_material::MichiganDeliveryPreset::Standard,
-    )
-    .create_foundation(&crate::test_support::catalog())
-    .unwrap();
-    let runtime =
-        crate::material_runtime::DurableMaterialRuntime::create(config, campaign, foundation)
-            .unwrap();
+    let foundation = MichiganContentPreset::new_campaign(MichiganDeliveryPreset::Standard)
+        .create_foundation(&crate::test_support::catalog())
+        .expect("the authored catalog builds the foundation");
+    let runtime = DurableMaterialRuntime::create(config, campaign, foundation)
+        .expect("the test database creates the fixture campaign");
     assert_eq!(runtime.session().completed_tick(), 0);
     campaign
 }
@@ -33,18 +34,18 @@ fn foundation(config: &Config, suffix: u128) -> CampaignId {
 fn marker_components(tx: &mut Transaction<'_>, campaign: CampaignId, tick: i64) {
     // Only SQL relational controls; values are deliberately not a canonical material tick.
     // No commit and no SET CONSTRAINTS ALL IMMEDIATE: target territory guard only.
-    tx.execute("INSERT INTO babylon_state.material_tick_v3(campaign_id,resolve_tick,identity_bytes,register_storage_bytes,receipt_storage_bytes,lookup_delta_bytes) VALUES($1,$2,$3,$3,$3,$3)", &[campaign.as_uuid(),&tick,&&[1_u8;32][..]]).unwrap();
+    tx.execute("INSERT INTO babylon_state.material_tick_v3(campaign_id,resolve_tick,identity_bytes,register_storage_bytes,receipt_storage_bytes,lookup_delta_bytes) VALUES($1,$2,$3,$3,$3,$3)", &[campaign.as_uuid(),&tick,&&[1_u8;32][..]]).expect("the test database applies the setup statement");
     tx.execute(
         "INSERT INTO babylon_state.graph_node_manifest_v1 VALUES($1,$2,0,0,0,0)",
         &[campaign.as_uuid(), &tick],
     )
-    .unwrap();
+    .expect("the test database applies the setup statement");
     tx.execute(
         "INSERT INTO babylon_state.event_manifest_v1 VALUES($1,$2,0,0,0,0)",
         &[campaign.as_uuid(), &tick],
     )
-    .unwrap();
-    tx.execute("INSERT INTO babylon_state.world_register_v1(campaign_id,resolve_tick,register_name,value_tag,int_value) VALUES($1,$2,'world/completed-tick',1,$2)", &[campaign.as_uuid(),&tick]).unwrap();
+    .expect("the test database applies the setup statement");
+    tx.execute("INSERT INTO babylon_state.world_register_v1(campaign_id,resolve_tick,register_name,value_tag,int_value) VALUES($1,$2,'world/completed-tick',1,$2)", &[campaign.as_uuid(),&tick]).expect("the test database applies the setup statement");
 }
 
 fn marker(tx: &mut Transaction<'_>, campaign: CampaignId, tick: i64) {
@@ -53,7 +54,7 @@ fn marker(tx: &mut Transaction<'_>, campaign: CampaignId, tick: i64) {
         "INSERT INTO babylon_state.tick_commit VALUES($1,$2,3,$3,$3)",
         &[campaign.as_uuid(), &tick, &&[1_u8; 32][..]],
     )
-    .unwrap();
+    .expect("the test database applies the setup statement");
 }
 
 fn definition_count(client: &mut impl GenericClient, campaign: CampaignId) -> i64 {
@@ -62,9 +63,9 @@ fn definition_count(client: &mut impl GenericClient, campaign: CampaignId) -> i6
             "SELECT count(*) FROM babylon_state.territory_definition_v1 WHERE campaign_id=$1",
             &[campaign.as_uuid()],
         )
-        .unwrap()
+        .expect("the seeded row is present exactly once")
         .try_get(0)
-        .unwrap()
+        .expect("the fixture row holds the addressed column")
 }
 
 fn canonical_rows(
@@ -74,9 +75,9 @@ fn canonical_rows(
     tick: i64,
 ) -> Vec<Vec<u8>> {
     CapturedMaterialRows::capture(tx, source, campaign, tick)
-        .unwrap()
+        .expect("the fixture captures the authored state")
         .admit()
-        .unwrap()
+        .expect("the fixture admits the authored value")
         .territories()
         .rows()
         .iter()
@@ -86,10 +87,16 @@ fn canonical_rows(
 
 #[test]
 #[ignore = "requires task-owned disposable PostgreSQL current schema"]
+#[allow(
+    clippy::too_many_lines,
+    reason = "`live_territory_definitions_reuse_exact_fields_and_preserve_history` keeps one authored boundary's fixture and assertions together"
+)]
 fn live_territory_definitions_reuse_exact_fields_and_preserve_history() {
     let (database, config) = disposable_config("territoryexact");
     let campaign = foundation(&config, 0x40_7e11);
-    let mut client = config.connect(NoTls).unwrap();
+    let mut client = config
+        .connect(NoTls)
+        .expect("the test database accepts the connection");
     let original = rows(false);
     let expected: Vec<_> = original
         .iter()
@@ -105,8 +112,11 @@ fn live_territory_definitions_reuse_exact_fields_and_preserve_history() {
         "a changed canonical value must not alias"
     );
     let before = definition_count(&mut client, campaign);
-    let mut tx = client.transaction().unwrap();
-    seed(&mut tx, campaign, &original).unwrap();
+    let mut tx = client
+        .transaction()
+        .expect("the test database opens a transaction");
+    territory_storage::seed(&mut tx, campaign, &original)
+        .expect("the fixture seeds the authored rows");
     assert_eq!(definition_count(&mut tx, campaign), before + 2);
     // The existing BSL canonical encoder identifies both signs of real zero.
     // Verify that equivalence without changing its governed numeric semantics.
@@ -125,8 +135,8 @@ fn live_territory_definitions_reuse_exact_fields_and_preserve_history() {
             )
         })
         .collect();
-    equivalent[1] =
-        TerritoryStateRow::try_new(equivalent[1].territory_id().clone(), fields).unwrap();
+    equivalent[1] = TerritoryStateRow::try_new(equivalent[1].territory_id().clone(), fields)
+        .expect("the authored fixture satisfies the constructor invariants");
     assert_eq!(
         original[1].canonical_bytes(),
         equivalent[1].canonical_bytes()
@@ -134,13 +144,14 @@ fn live_territory_definitions_reuse_exact_fields_and_preserve_history() {
     let signed_zero: i64 = tx.query_one(
         "SELECT f.real_bits FROM babylon_state.territory_definition_field_v1 f JOIN babylon_state.territory_definition_v1 d USING(campaign_id,definition_id) WHERE d.campaign_id=$1 AND d.canonical_sha256=$2 AND f.field_name='05-real'",
         &[campaign.as_uuid(), &&babylon_kernel::content_digest::sha256_of(original[1].canonical_bytes())[..]],
-    ).unwrap().get(0);
+    ).expect("the seeded row is present exactly once").get(0);
     assert_eq!(
         signed_zero,
         i64::from_be_bytes((-0.0_f64).to_bits().to_be_bytes())
     );
     for (tick, fields) in [(1_i64, &original), (2, &equivalent)] {
-        insert(&mut tx, campaign, tick, fields).unwrap();
+        territory_storage::insert(&mut tx, campaign, tick, fields)
+            .expect("the fixture call `insert` succeeds for the authored inputs");
         marker(&mut tx, campaign, tick);
         assert_eq!(
             definition_count(&mut tx, campaign),
@@ -148,7 +159,8 @@ fn live_territory_definitions_reuse_exact_fields_and_preserve_history() {
             "unchanged definition reused at tick {tick}"
         );
     }
-    insert(&mut tx, campaign, 3, &changed).unwrap();
+    territory_storage::insert(&mut tx, campaign, 3, &changed)
+        .expect("the fixture call `insert` succeeds for the authored inputs");
     marker(&mut tx, campaign, 3);
     assert_eq!(
         definition_count(&mut tx, campaign),
@@ -165,15 +177,16 @@ fn live_territory_definitions_reuse_exact_fields_and_preserve_history() {
             expected
         );
     }
-    insert(&mut tx, campaign, 4, &[]).unwrap();
+    territory_storage::insert(&mut tx, campaign, 4, &[])
+        .expect("the fixture call `insert` succeeds for the authored inputs");
     marker(&mut tx, campaign, 4);
     assert!(canonical_rows(&mut tx, StoredTickReadSource::Runtime, campaign, 4).is_empty());
     assert!(canonical_rows(&mut tx, StoredTickReadSource::FullObserver, campaign, 4).is_empty());
-    assert_eq!(tx.query_one("SELECT territory_count FROM babylon_state.territory_tick_manifest_v1 WHERE campaign_id=$1 AND resolve_tick=4", &[campaign.as_uuid()]).unwrap().try_get::<_,i64>(0).unwrap(), 0);
+    assert_eq!(tx.query_one("SELECT territory_count FROM babylon_state.territory_tick_manifest_v1 WHERE campaign_id=$1 AND resolve_tick=4", &[campaign.as_uuid()]).expect("the seeded row is present exactly once").try_get::<_,i64>(0).expect("the fixture world holds the addressed component"), 0);
     tx.batch_execute("SET CONSTRAINTS babylon_state.territory_definition_complete_v1 IMMEDIATE")
-        .unwrap();
+        .expect("the test database applies the schema statements");
     assert_header_corruption_refused(&mut tx, campaign, &original, &changed);
-    tx.rollback().unwrap();
+    tx.rollback().expect("the open transaction rolls back");
     assert_eq!(definition_count(&mut client, campaign), before);
     assert_eq!(
         client
@@ -181,9 +194,9 @@ fn live_territory_definitions_reuse_exact_fields_and_preserve_history() {
                 "SELECT count(*) FROM babylon_state.tick_commit WHERE campaign_id=$1",
                 &[campaign.as_uuid()]
             )
-            .unwrap()
+            .expect("the seeded row is present exactly once")
             .try_get::<_, i64>(0)
-            .unwrap(),
+            .expect("the fixture world holds the addressed component"),
         0
     );
     drop(client);

@@ -36,10 +36,17 @@
 //! genuinely positive: this is the reachable, meaningful case the guard
 //! exists for, not a degenerate `0/0`.
 
+// Conformance fixtures exercise exact engine values, transcribe spec literals,
+// and build whole scenarios in one test. These pedantic lints would force
+// ceremony that hides those contracts, so they stay off in test code only.
+#![allow(
+    clippy::float_cmp,
+    reason = "these comparisons pin exact authored f64 values"
+)]
+
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::memory::MemoryGraph;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
-use babylon_tick::run_once_into;
 
 const RULE: &str = include_str!("../content/rules/lifecycle.bsl");
 
@@ -55,7 +62,7 @@ const SCENARIO: &str = include_str!("../content/scenarios/lifecycle-zero-pop-p-c
 fn run() -> Result<(MemoryGraph, CollectingSink), String> {
     let mut graph = MemoryGraph::new();
     let mut sink = CollectingSink::default();
-    run_once_into(SCENARIO, RULE, &mut graph, &mut sink)?;
+    babylon_tick::run_once_into(SCENARIO, RULE, &mut graph, &mut sink)?;
     Ok((graph, sink))
 }
 

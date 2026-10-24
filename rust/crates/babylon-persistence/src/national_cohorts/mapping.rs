@@ -1,5 +1,7 @@
 use super::NationalCohortReferenceError as Error;
-use babylon_kernel::{content_digest::sha256_of, economic_identity::EconomicFunction};
+use babylon_kernel::economic_identity::EconomicFunction;
+
+use babylon_kernel::content_digest;
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -34,7 +36,7 @@ impl FunctionMapping {
         Self::decode_pinned(DOCUMENT)
     }
     pub(super) fn decode_pinned(bytes: &[u8]) -> Result<Self, Error> {
-        if bytes.len() > 16_384 || sha256_of(bytes) != MAPPING_SHA256 {
+        if bytes.len() > 16_384 || content_digest::sha256_of(bytes) != MAPPING_SHA256 {
             return Err(Error::FunctionMapping);
         }
         let doc: Document = serde_json::from_slice(bytes).map_err(|_| Error::FunctionMapping)?;

@@ -30,7 +30,11 @@ fn the_eight_w2_vectors_pin_predicate_order() {
         (&[0.0, 2.0, 2.0, 4.0, 4.0, 6.0, 6.0][..], SfsClass::Other),
     ];
     for (masses, expected) in cases {
-        assert_eq!(classify_sfs(2, masses).unwrap(), expected);
+        assert_eq!(
+            classify_sfs(2, masses)
+                .expect("the fixture call `classify_sfs` succeeds for the authored inputs"),
+            expected
+        );
         assert_eq!(expected.code(), expected as u8);
         assert_eq!(SfsClass::from_code(expected.code()), Some(expected));
     }
@@ -179,7 +183,11 @@ fn the_four_persistence_vectors_pin_predicate_order() {
         (&[2.0, 0.0, 1.0][..], PersistenceClass::Mixed),
     ];
     for (separations, expected) in cases {
-        assert_eq!(classify_persistence(2, separations).unwrap(), expected);
+        assert_eq!(
+            classify_persistence(2, separations)
+                .expect("the fixture call `classify_persistence` succeeds for the authored inputs"),
+            expected
+        );
         assert_eq!(expected.code(), expected as u8);
         assert_eq!(PersistenceClass::from_code(expected.code()), Some(expected));
     }

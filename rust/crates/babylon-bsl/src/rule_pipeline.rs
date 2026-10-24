@@ -27,44 +27,31 @@
 //! is rejected LOUDLY as unverifiable rather than passed unchecked (III.11:
 //! an unverified pass-through is the silent-degradation shape).
 
-use crate::bindings::{
-    check_free_variables, parse_bindings, resolve_bindings, BindingDecl, BindingError,
-    BindingVocabulary,
-};
+use crate::bindings::{BindingDecl, BindingError, BindingVocabulary};
 use crate::bound_checker::BoundError;
-use crate::causal_contract::{
-    authorize_rule_effects, parse_rule_contract, validate_ast_walk_bounds,
-    validate_governed_attribution, ContractError, RuleContract, AST_WALK_LIMITS,
-};
+use crate::causal_contract::{ContractError, RuleContract, AST_WALK_LIMITS};
 use crate::declarations::DeclError;
-use crate::default_lint::{lint_defaults, DefaultLintFinding};
-use crate::domain::{resolve_domain, DomainError, RuleDomain};
-use crate::evaluator::{evaluate, EvalEnv, Value};
+use crate::default_lint::DefaultLintFinding;
+use crate::domain::{DomainError, RuleDomain};
+use crate::evaluator::EvalError;
+use crate::evaluator::{EvalEnv, Value};
 use crate::fuel::{CardinalityCeilings, IntrinsicCosts};
-use crate::grammar::{
-    check_arities_and_closed_sets, check_enum_ref_kinds, check_enum_ref_membership,
-    check_field_init_owners, check_graph_flag_placement, check_string_positions,
-    check_type_operands_are_enum_refs, GrammarError,
-};
-use crate::material_basis::{check_rule_surface, SurfaceError};
-use crate::mod_anchors::{check_anchor, AnchorDecl, AnchorError};
+use crate::grammar::FoldOp;
+use crate::grammar::GrammarError;
+use crate::intrinsic_host::DrawContext;
+use crate::material_basis::SurfaceError;
+use crate::mod_anchors::{AnchorDecl, AnchorError};
 use crate::probability::{
-    compile_rule_probability, CompiledProbabilityFacts, FiniteKernel, FiniteProjection,
-    ProbabilityError,
+    CompiledProbabilityFacts, FiniteKernel, FiniteProjection, ProbabilityError,
 };
-use crate::reader::{read, read_all, Atom, FormPath, ReadError, SExpr};
+use crate::reader::{Atom, FormPath, ReadError, SExpr};
 use crate::same_tick_order::SameTickOrderError;
-use crate::scope::{
-    check_element_names, check_foreign_field_scoping, declared_element_names, ElementNameError,
-    ScopeError,
-};
-use crate::structural_verbs::check_no_deferred_shape_verbs;
-use crate::typecheck::{
-    check_kind_mixing, check_no_arithmetic_on_enum_field, check_reference_comparisons,
-    check_selection_scores, typecheck_aggregation, TypeEnv, TypeError,
-};
+use crate::scope::{ElementNameError, ScopeError};
+use crate::typecheck::{TypeEnv, TypeError};
 use crate::types::EnumRegistry;
 use std::collections::{HashMap, HashSet};
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 
 /// The authority that executes one fully checked rule body.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -259,7 +246,7 @@ impl LoadError {
 }
 
 impl std::fmt::Display for LoadError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         match self {
             Self::Read(e) => write!(f, "read: {}", e.message),
             Self::Surface(e) => write!(f, "{e}"),
@@ -307,7 +294,7 @@ impl std::error::Error for LoadError {}
 /// The first-failing stage's [`LoadError`]; a loaded content set has no
 /// partially-loaded rules.
 pub fn load_rule(source: &str, ctx: &LoadContext<'_>) -> Result<LoadedRule, LoadError> {
-    let (rule, _) = read(source).map_err(LoadError::Read)?;
+    let (rule, _) = crate::reader::read(source).map_err(LoadError::Read)?;
     load_rule_form(rule, vec![0], ctx)
 }
 
@@ -344,42 +331,51 @@ fn resolve_probability_carrier(
 ///
 /// The first-failing stage's [`LoadError`]; a loaded content set has no
 /// partially-loaded rules.
+// Module-qualified free-function calls (Google style) wrap this pipeline past
+// the Clippy line budget without changing its stages.
+#[allow(
+    clippy::too_many_lines,
+    reason = "`load_rule_form` keeps one authored sequence in a single place"
+)]
 pub fn load_rule_form(
     rule: SExpr,
     root_path: FormPath,
     ctx: &LoadContext<'_>,
 ) -> Result<LoadedRule, LoadError> {
-    check_rule_surface(&rule).map_err(LoadError::Surface)?;
-    let contract = parse_rule_contract(&rule).map_err(LoadError::Causal)?;
+    crate::material_basis::check_rule_surface(&rule).map_err(LoadError::Surface)?;
+    let contract = crate::causal_contract::parse_rule_contract(&rule).map_err(LoadError::Causal)?;
     // The reader is iterative, while several older semantic passes below are
     // recursive. Refuse hostile trees before any such pass can consume the
     // process stack. Ordinary, in-bound rules retain the established
     // E-PARSE/E-TYPE-before-causal-authority ordering.
-    validate_ast_walk_bounds(&rule, AST_WALK_LIMITS, "rule load preflight")
+    crate::causal_contract::validate_ast_walk_bounds(&rule, AST_WALK_LIMITS, "rule load preflight")
         .map_err(|error| LoadError::Causal(ContractError::AstWalkLimit(error)))?;
     let execution = crate::native_cycle::classify(&rule).map_err(LoadError::Surface)?;
     let bindings = match execution {
-        RuleExecution::Graph => parse_bindings(&rule).map_err(LoadError::Binding)?,
+        RuleExecution::Graph => {
+            crate::bindings::parse_bindings(&rule).map_err(LoadError::Binding)?
+        }
         RuleExecution::MaterialCycle
         | RuleExecution::OrganizerProducts
         | RuleExecution::OrganizerPractice => Vec::new(),
     };
     let binding_names: Vec<String> = bindings.iter().map(|d| d.name.clone()).collect();
-    check_element_names(&rule, &binding_names).map_err(LoadError::ElementName)?;
+    crate::scope::check_element_names(&rule, &binding_names).map_err(LoadError::ElementName)?;
     // §2's static shape rules run with the other E-TYPE-class checks: the
     // enum-ref class rule (D74) needs nothing but the form, and the
     // field-init owner rule (D37) needs the vocabulary.
-    check_arities_and_closed_sets(&rule).map_err(LoadError::Grammar)?;
-    check_string_positions(&rule).map_err(LoadError::Grammar)?;
-    check_enum_ref_kinds(&rule).map_err(LoadError::Grammar)?;
+    crate::grammar::check_arities_and_closed_sets(&rule).map_err(LoadError::Grammar)?;
+    crate::grammar::check_string_positions(&rule).map_err(LoadError::Grammar)?;
+    crate::grammar::check_enum_ref_kinds(&rule).map_err(LoadError::Grammar)?;
     // The type-operand position of emit/add-node/add-edge/remove-edge is
     // the one §2.6 class-rule position `check_enum_ref_kinds` does not
     // itself enforce as MANDATORY-enum-ref (it only checks the KIND of an
     // enum-ref that is already there) — #528 fix round Item D
     // (remove-edge added by #528 delta-verify rider R1), see this
     // function's own doc for why these four specifically need it.
-    check_type_operands_are_enum_refs(&rule).map_err(LoadError::MintingTypeOperand)?;
-    check_graph_flag_placement(&rule).map_err(LoadError::Grammar)?;
+    crate::grammar::check_type_operands_are_enum_refs(&rule)
+        .map_err(LoadError::MintingTypeOperand)?;
+    crate::grammar::check_graph_flag_placement(&rule).map_err(LoadError::Grammar)?;
     let mut domain = None;
     if let Some(vocabulary) = ctx.vocabulary_registry {
         // Task 8 (Organization foundation plan): the closed-vocabulary
@@ -388,23 +384,28 @@ pub fn load_rule_form(
         // Runs first in this block: it is the most basic fact about an
         // enum-ref (does it even name something registered), and nothing
         // below assumes it has run.
-        check_enum_ref_membership(&rule, vocabulary).map_err(LoadError::Grammar)?;
-        check_field_init_owners(&rule, vocabulary).map_err(LoadError::Grammar)?;
+        crate::grammar::check_enum_ref_membership(&rule, vocabulary).map_err(LoadError::Grammar)?;
+        crate::grammar::check_field_init_owners(&rule, vocabulary).map_err(LoadError::Grammar)?;
         // The domain resolves BEFORE the scoping check, which needs the
         // subject node type to know which `:field` bindings are foreign.
         if execution == RuleExecution::Graph {
-            let resolved =
-                resolve_domain(&rule, &bindings, vocabulary).map_err(LoadError::Domain)?;
+            let resolved = crate::domain::resolve_domain(&rule, &bindings, vocabulary)
+                .map_err(LoadError::Domain)?;
             let subject = match &resolved {
                 RuleDomain::Node(segment) => Some(segment.clone()),
                 RuleDomain::Graph => None,
             };
-            check_foreign_field_scoping(&rule, &bindings, subject.as_deref(), vocabulary)
-                .map_err(LoadError::Scope)?;
+            crate::scope::check_foreign_field_scoping(
+                &rule,
+                &bindings,
+                subject.as_deref(),
+                vocabulary,
+            )
+            .map_err(LoadError::Scope)?;
             domain = Some(resolved);
         }
     }
-    let compiled_probability = compile_rule_probability(
+    let compiled_probability = crate::probability::compile_rule_probability(
         &rule,
         &root_path,
         &contract,
@@ -419,8 +420,10 @@ pub fn load_rule_form(
     let projection = compiled_probability.projection;
     let probability_facts = compiled_probability.facts;
     typecheck_rule_folds(&rule, ctx.types, &bindings).map_err(LoadError::Type)?;
-    check_selection_scores(&rule, ctx.types, &bindings).map_err(LoadError::Type)?;
-    check_reference_comparisons(&rule, ctx.types, &bindings).map_err(LoadError::Type)?;
+    crate::typecheck::check_selection_scores(&rule, ctx.types, &bindings)
+        .map_err(LoadError::Type)?;
+    crate::typecheck::check_reference_comparisons(&rule, ctx.types, &bindings)
+        .map_err(LoadError::Type)?;
     // §2.13 (D101/D102): the D102 field-of-on-enum-field DEFERRAL gate that
     // used to run here is DISCHARGED (Task 1, P27 territory-port train) —
     // `field-of` over an enum-declared field now typechecks (the §2.7
@@ -439,31 +442,37 @@ pub fn load_rule_form(
     // type and the update-op's own symbol, so it belongs at load, not
     // left to the three eval-time guards alone (which stay, as defense
     // in depth).
-    check_no_arithmetic_on_enum_field(&rule, ctx.types).map_err(LoadError::Type)?;
+    crate::typecheck::check_no_arithmetic_on_enum_field(&rule, ctx.types)
+        .map_err(LoadError::Type)?;
     // §3.4's expression-kind arm (#491 T1, ADR202 R1(c)/OQ-I): `<arith>`
     // and `if` never mix intensive with extensive kind, `E-TYPE-040` — a
     // SEPARATE walk from `typecheck_rule_folds`/`typecheck_aggregation`
     // above (the fold arm), extending this pipeline's existing dispatch
     // rather than restructuring it.
-    check_kind_mixing(&rule, ctx.types, &bindings).map_err(LoadError::Type)?;
+    crate::typecheck::check_kind_mixing(&rule, ctx.types, &bindings).map_err(LoadError::Type)?;
     // Causal attribution and authority are E-LOAD-class checks. They run
     // only after every E-PARSE/E-TYPE pass, so a governed mismatch or
     // E-LOAD-060 cannot mask an earlier-class defect. Role authority stays
     // more specific than the engine's current inability to defer graph-
     // shape writes: restricted roles receive E-LOAD-060; a mechanic using
     // the same well-formed verb reaches DeferredShapeVerb below.
-    validate_governed_attribution(&contract).map_err(LoadError::Causal)?;
-    authorize_rule_effects(&rule, &contract).map_err(LoadError::Causal)?;
+    crate::causal_contract::validate_governed_attribution(&contract).map_err(LoadError::Causal)?;
+    crate::causal_contract::authorize_rule_effects(&rule, &contract).map_err(LoadError::Causal)?;
     // #519 fix round, fix 4: a rule using one of the six graph-shape verbs
     // Task 12's collect-then-apply split cannot yet defer must be refused
     // HERE, at load — not left to load clean and abort the first tick
     // whose guard admits a subject (structural_verbs.rs's own doc names
     // the regression this closes).
-    check_no_deferred_shape_verbs(&rule).map_err(LoadError::DeferredShapeVerb)?;
-    let anchor = check_anchor(&rule, ctx.systems).map_err(LoadError::Anchor)?;
-    resolve_bindings(&bindings, ctx.vocabulary).map_err(LoadError::Binding)?;
-    check_free_variables(&rule, &bindings, &declared_element_names(&rule))
-        .map_err(LoadError::Binding)?;
+    crate::structural_verbs::check_no_deferred_shape_verbs(&rule)
+        .map_err(LoadError::DeferredShapeVerb)?;
+    let anchor = crate::mod_anchors::check_anchor(&rule, ctx.systems).map_err(LoadError::Anchor)?;
+    crate::bindings::resolve_bindings(&bindings, ctx.vocabulary).map_err(LoadError::Binding)?;
+    crate::bindings::check_free_variables(
+        &rule,
+        &bindings,
+        &crate::scope::declared_element_names(&rule),
+    )
+    .map_err(LoadError::Binding)?;
     let probability_carrier = resolve_probability_carrier(
         kernel.as_ref(),
         projection.as_ref(),
@@ -477,7 +486,7 @@ pub fn load_rule_form(
         ctx.intrinsics,
     )
     .map_err(LoadError::Bound)?;
-    let default_findings = lint_defaults(ctx.rule_file, &bindings);
+    let default_findings = crate::default_lint::lint_defaults(ctx.rule_file, &bindings);
     let SExpr::List(rule_items) = &rule else {
         unreachable!("check_rule_surface accepted a non-list rule form")
     };
@@ -567,7 +576,7 @@ pub fn split_content(source: &str) -> Result<(Vec<SExpr>, Vec<SplitRuleForm>), L
 pub(crate) fn split_content_unchecked(
     source: &str,
 ) -> Result<(Vec<SExpr>, Vec<SplitRuleForm>), LoadError> {
-    let forms = read_all(source.as_bytes()).map_err(LoadError::Read)?;
+    let forms = crate::reader::read_all(source.as_bytes()).map_err(LoadError::Read)?;
     // An empty parsed program is an explicit zero-rule transition. Comments
     // and whitespace carry no content; intrinsic-only programs still refuse.
     if forms.is_empty() {
@@ -717,7 +726,10 @@ pub fn bind_environment<S: std::hash::BuildHasher>(
 ///
 /// [`crate::evaluator::EvalError`] from the operand expression, including `E-EVAL-040` when
 /// the shared meter runs out.
-#[allow(clippy::too_many_arguments)] // graph joins types/enums (Territory port, Task 6) — same shape as tick.rs::collect_pass's own exemption
+#[allow(
+    clippy::too_many_arguments,
+    reason = "`resolve_expr_bindings` takes every authored field explicitly"
+)] // graph joins types/enums (Territory port, Task 6) — same shape as tick.rs::collect_pass's own exemption
 pub fn resolve_expr_bindings<S: std::hash::BuildHasher + Clone>(
     decls: &[BindingDecl],
     env: &mut HashMap<String, Value, S>,
@@ -725,10 +737,10 @@ pub fn resolve_expr_bindings<S: std::hash::BuildHasher + Clone>(
     types: &TypeEnv,
     enums: &EnumRegistry,
     graph: Option<&dyn babylon_graph::substrate::GraphSubstrate>,
-    draw_context: Option<&crate::intrinsic_host::DrawContext<'_>>,
+    draw_context: Option<&DrawContext<'_>>,
     host: &dyn crate::intrinsic_host::IntrinsicHost,
     fuel: &mut u64,
-) -> Result<(), crate::evaluator::EvalError> {
+) -> Result<(), EvalError> {
     for decl in decls {
         let crate::bindings::BindSource::Expr(expr) = &decl.source else {
             continue;
@@ -748,7 +760,7 @@ pub fn resolve_expr_bindings<S: std::hash::BuildHasher + Clone>(
             // is reserved for callers that never construct a `DrawContext`.
             draw_context,
         };
-        let value = evaluate(expr, &scope, host, fuel)?;
+        let value = crate::evaluator::evaluate(expr, &scope, host, fuel)?;
         env.insert(decl.name.clone(), value);
     }
     Ok(())
@@ -761,7 +773,10 @@ fn literal_value(atom: &Atom) -> Value {
         Atom::Currency(c) => Value::Currency(*c),
         Atom::Scaled(s) => {
             // Unit-interval literal, unscaled < 10⁹ — exact in f64.
-            #[allow(clippy::cast_precision_loss)]
+            #[allow(
+                clippy::cast_precision_loss,
+                reason = "the authored integer magnitudes are exact in f64"
+            )]
             let value = s.unscaled as f64 / 10f64.powi(i32::from(s.scale));
             Value::Real(value)
         }
@@ -840,13 +855,10 @@ fn walk_folds(expr: &SExpr, types: &TypeEnv, bindings: &[BindingDecl]) -> Result
 /// so a sixth fold-op is a compile error here until this function decides
 /// it, rather than silently falling through the old `matches!(op.as_str(),
 /// "sum" | "mean" | "min" | "max")` string check.
-fn carries_body_kind(op: crate::grammar::FoldOp) -> bool {
+fn carries_body_kind(op: FoldOp) -> bool {
     match op {
-        crate::grammar::FoldOp::Sum
-        | crate::grammar::FoldOp::Mean
-        | crate::grammar::FoldOp::Min
-        | crate::grammar::FoldOp::Max => true,
-        crate::grammar::FoldOp::Count => false,
+        FoldOp::Sum | FoldOp::Mean | FoldOp::Min | FoldOp::Max => true,
+        FoldOp::Count => false,
     }
 }
 
@@ -904,9 +916,7 @@ fn field_ref_for(expr: &SExpr, bindings: &[BindingDecl], depth: u8) -> Option<SE
             // it stays with the loud Phase-1 rejection rather than getting
             // a synthetic entry in the field registry.
             [SExpr::Atom(Atom::Symbol(head)), SExpr::Atom(Atom::Symbol(op)), rest @ ..]
-                if head == "fold"
-                    && crate::grammar::FoldOp::parse(op.as_str())
-                        .is_some_and(carries_body_kind) =>
+                if head == "fold" && FoldOp::parse(op.as_str()).is_some_and(carries_body_kind) =>
             {
                 let inner = strip_elem_name(rest);
                 inner
@@ -948,9 +958,7 @@ fn typecheck_one_fold(
     // CT4P A3 (issue #525): routed through the same `FoldOp` boundary as
     // every other dispatch site, rather than a hand-rolled string compare.
     let is_count = match op {
-        SExpr::Atom(Atom::Symbol(name)) => {
-            crate::grammar::FoldOp::parse(name) == Some(crate::grammar::FoldOp::Count)
-        }
+        SExpr::Atom(Atom::Symbol(name)) => FoldOp::parse(name) == Some(FoldOp::Count),
         _ => false,
     };
     if is_count {
@@ -974,7 +982,7 @@ fn typecheck_one_fold(
         adapted.push(SExpr::Atom(Atom::Keyword("weight".to_owned())));
         adapted.push(w);
     }
-    typecheck_aggregation(&SExpr::List(adapted), types).map(|_| ())
+    crate::typecheck::typecheck_aggregation(&SExpr::List(adapted), types).map(|_| ())
 }
 
 /// Drop an optional `:as <symbol>` from a form's operand list (§2.6's
@@ -1010,7 +1018,7 @@ fn compound_fold_error() -> TypeError {
 
 #[cfg(test)]
 mod split_content_tests {
-    use super::{split_content, LoadError};
+    use super::LoadError;
 
     const RULE: &str = "(rule vitality/probe :role mechanic :evidence derived :material-basis \"x\" :fuel 8 (when #t))";
     const INTRINSIC: &str = "(intrinsic floor :params (real) :returns int :cost 5)";
@@ -1021,7 +1029,8 @@ mod split_content_tests {
     #[test]
     fn an_intrinsic_declaration_before_the_rule_splits_out() {
         let source = format!("{INTRINSIC}\n{RULE}");
-        let (intrinsics, rules) = split_content(&source).unwrap();
+        let (intrinsics, rules) =
+            super::split_content(&source).expect("the authored content splits into its sections");
         assert_eq!(intrinsics.len(), 1);
         assert_eq!(rules.len(), 1);
         assert!(matches!(rules[0].form, crate::reader::SExpr::List(_)));
@@ -1031,7 +1040,8 @@ mod split_content_tests {
     #[test]
     fn an_intrinsic_declaration_after_the_rule_splits_out_the_same_way() {
         let source = format!("{RULE}\n{INTRINSIC}");
-        let (intrinsics, rules) = split_content(&source).unwrap();
+        let (intrinsics, rules) =
+            super::split_content(&source).expect("the authored content splits into its sections");
         assert_eq!(intrinsics.len(), 1);
         assert_eq!(rules.len(), 1);
         assert!(matches!(rules[0].form, crate::reader::SExpr::List(_)));
@@ -1042,13 +1052,15 @@ mod split_content_tests {
     fn two_intrinsic_declarations_both_split_out() {
         const SECOND: &str = "(intrinsic exp :params (real) :returns real :cost 40)";
         let source = format!("{INTRINSIC}\n{SECOND}\n{RULE}");
-        let (intrinsics, _) = split_content(&source).unwrap();
+        let (intrinsics, _) =
+            super::split_content(&source).expect("the authored content splits into its sections");
         assert_eq!(intrinsics.len(), 2);
     }
 
     #[test]
     fn a_source_with_no_rule_form_is_a_loud_content_error() {
-        let err = split_content(INTRINSIC).unwrap_err();
+        let err = super::split_content(INTRINSIC)
+            .expect_err("the fixture call `split_content` fails for the authored inputs");
         assert!(matches!(err, LoadError::Content(_)));
         assert!(format!("{err}").contains("found 0"));
     }
@@ -1056,21 +1068,23 @@ mod split_content_tests {
     #[test]
     fn a_source_with_duplicate_rule_forms_is_a_typed_duplicate_error() {
         let source = format!("{RULE}\n{RULE}");
-        let err = split_content(&source).unwrap_err();
+        let err = super::split_content(&source)
+            .expect_err("the fixture call `split_content` fails for the authored inputs");
         assert!(matches!(err, LoadError::DuplicateRuleId { .. }));
         assert_eq!(err.spec_code(), Some("E-LOAD-001"));
     }
 
     #[test]
     fn a_source_with_no_forms_is_an_explicit_empty_program() {
-        let (intrinsics, rules) = split_content("").expect("empty program");
+        let (intrinsics, rules) = super::split_content("").expect("empty program");
         assert!(intrinsics.is_empty());
         assert!(rules.is_empty());
     }
 
     #[test]
     fn a_read_failure_propagates_as_load_error_read() {
-        let err = split_content("(unterminated").unwrap_err();
+        let err = super::split_content("(unterminated")
+            .expect_err("the fixture call `split_content` fails for the authored inputs");
         assert!(matches!(err, LoadError::Read(_)));
     }
 
@@ -1084,7 +1098,8 @@ mod split_content_tests {
   (bindings (binding v :field b/v))
   (effects (update-node self b/v (set v))))
 "#;
-        let (_intrinsics, rules) = split_content(source).expect("two distinct rule ids load");
+        let (_intrinsics, rules) =
+            super::split_content(source).expect("two distinct rule ids load");
         assert_eq!(rules.len(), 2);
         assert_eq!(rules[0].rule_id, "a/first");
         assert_eq!(rules[0].root_path, vec![0]);
@@ -1100,13 +1115,14 @@ mod split_content_tests {
         let source = r#"(rule a/only :role mechanic :evidence derived :material-basis "x" :fuel 10
   (bindings (binding v :field a/v))
   (effects (update-node self a/v (set v))))"#;
-        let (_intrinsics, rules) = split_content(source).expect("one rule still loads");
+        let (_intrinsics, rules) = super::split_content(source).expect("one rule still loads");
         assert_eq!(rules.len(), 1);
     }
 
     #[test]
     fn split_content_refuses_nonempty_intrinsic_only_sources() {
-        let err = split_content(INTRINSIC).unwrap_err();
+        let err = super::split_content(INTRINSIC)
+            .expect_err("the fixture call `split_content` fails for the authored inputs");
         assert!(err.to_string().contains("found 0"));
     }
 
@@ -1120,7 +1136,8 @@ mod split_content_tests {
   (bindings (binding v :field a/v2))
   (effects (update-node self a/v2 (set v))))
 "#;
-        let err = split_content(source).unwrap_err();
+        let err = super::split_content(source)
+            .expect_err("the fixture call `split_content` fails for the authored inputs");
         assert_eq!(err.spec_code(), Some("E-LOAD-001"));
         assert!(err.to_string().contains("E-LOAD-001"));
         assert!(err.to_string().contains("a/dup"));
@@ -1142,7 +1159,7 @@ mod split_content_tests {
   (when #t)
   (effects (update-node self ns/f (set 1))))
 "#;
-        let (_intrinsics, rules) = split_content(source)
+        let (_intrinsics, rules) = super::split_content(source)
             .expect("the splitter must defer rank-aware composition to aggregate loading");
         assert_eq!(rules.len(), 2);
     }
@@ -1154,7 +1171,7 @@ mod deferred_shape_verb_tests {
     // verbs Task 12's collect-then-apply split does not defer. Before this
     // gate, a rule using one of them loaded clean and only aborted at
     // RUNTIME, the first tick whose guard admitted a subject.
-    use super::{load_rule, LoadContext, LoadError};
+    use super::{LoadContext, LoadError};
     use crate::bindings::BindingVocabulary;
     use crate::causal_contract::{ContractError, EffectSignature, RuleRole, ShapeVerb};
     use crate::fuel::{CardinalityCeilings, IntrinsicCosts};
@@ -1198,13 +1215,13 @@ mod deferred_shape_verb_tests {
     #[test]
     fn a_rule_using_remove_node_refuses_at_load_naming_the_verb() {
         let ctx = load_ctx();
-        let err = load_rule(
+        let err = super::load_rule(
             r#"(rule geography/mint :role mechanic :evidence derived :material-basis "x" :fuel 64
   (bindings)
   (effects (remove-node self)))"#,
             &ctx,
         )
-        .unwrap_err();
+        .expect_err("the malformed rule is refused");
         assert!(
             matches!(err, LoadError::DeferredShapeVerb(_)),
             "expected LoadError::DeferredShapeVerb, got {err:?}"
@@ -1247,7 +1264,8 @@ mod deferred_shape_verb_tests {
                      (bindings (binding group :field geography/group)) \
                      (effects {effect}))"
                 );
-                let error = load_rule(&source, &ctx).unwrap_err();
+                let error =
+                    super::load_rule(&source, &ctx).expect_err("the malformed rule is refused");
                 assert_eq!(error.spec_code(), Some("E-LOAD-060"), "{source}: {error}");
                 assert!(matches!(
                     error,
@@ -1264,7 +1282,7 @@ mod deferred_shape_verb_tests {
     #[test]
     fn an_allowed_recognizer_event_ignores_verb_shaped_payload_labels() {
         let ctx = load_ctx();
-        load_rule(
+        super::load_rule(
             r#"(rule control-ratio/c03-crisis
   :role recognizer :evidence derived :material-basis "payload labels are data" :fuel 64
   (bindings)
@@ -1277,7 +1295,7 @@ mod deferred_shape_verb_tests {
     #[test]
     fn a_restricted_shape_inside_an_emit_payload_value_is_e_load_060() {
         let ctx = load_ctx();
-        let error = load_rule(
+        let error = super::load_rule(
             r#"(rule control-ratio/c03-crisis
   :role recognizer :evidence derived :material-basis "payload values are expressions" :fuel 64
   (bindings)
@@ -1285,7 +1303,7 @@ mod deferred_shape_verb_tests {
     (payload (add-node NodeType/TERRITORY made)))))"#,
             &ctx,
         )
-        .unwrap_err();
+        .expect_err("the malformed rule is refused");
         assert!(matches!(
             error,
             LoadError::Causal(ContractError::UnauthorizedEffect {
@@ -1300,13 +1318,13 @@ mod deferred_shape_verb_tests {
         // The walk must recurse through `guard` nesting, not just the
         // top-level effect-item list.
         let ctx = load_ctx();
-        let err = load_rule(
+        let err = super::load_rule(
             r#"(rule geography/mint :role mechanic :evidence derived :material-basis "x" :fuel 64
   (bindings)
   (effects (guard #t (remove-node self))))"#,
             &ctx,
         )
-        .unwrap_err();
+        .expect_err("the malformed rule is refused");
         assert!(matches!(err, LoadError::DeferredShapeVerb(_)), "{err}");
         assert!(err.to_string().contains("remove-node"), "{err}");
     }
@@ -1325,13 +1343,13 @@ mod deferred_shape_verb_tests {
     #[test]
     fn a_deferred_shape_verb_inside_an_emit_payload_value_still_refuses_at_load() {
         let ctx = load_ctx();
-        let err = load_rule(
+        let err = super::load_rule(
             r#"(rule geography/mint :role mechanic :evidence derived :material-basis "x" :fuel 64
   (bindings)
   (effects (emit EventType/RUPTURE (payload (add-node NodeType/SOCIAL_CLASS 5)))))"#,
             &ctx,
         )
-        .unwrap_err();
+        .expect_err("the malformed rule is refused");
         assert!(
             matches!(err, LoadError::DeferredShapeVerb(_)),
             "expected LoadError::DeferredShapeVerb, got {err:?}"
@@ -1342,13 +1360,13 @@ mod deferred_shape_verb_tests {
     #[test]
     fn a_deferred_shape_verb_inside_an_emit_payload_value_nested_in_a_guard_still_refuses() {
         let ctx = load_ctx();
-        let err = load_rule(
+        let err = super::load_rule(
             r#"(rule geography/mint :role mechanic :evidence derived :material-basis "x" :fuel 64
   (bindings)
   (effects (guard #t (emit EventType/RUPTURE (payload (remove-node self))))))"#,
             &ctx,
         )
-        .unwrap_err();
+        .expect_err("the malformed rule is refused");
         assert!(matches!(err, LoadError::DeferredShapeVerb(_)), "{err}");
         assert!(err.to_string().contains("remove-node"), "{err}");
     }
@@ -1362,7 +1380,7 @@ mod deferred_shape_verb_tests {
         // the rule loads clean end to end. Any failure here would mean the
         // gate over-fired on a verb it must never touch.
         let ctx = load_ctx();
-        load_rule(
+        super::load_rule(
             r#"(rule geography/mint :role mechanic :evidence derived :material-basis "x" :fuel 64
   (bindings)
   (effects (update-node self geography/heat (set 1))))"#,
@@ -1382,7 +1400,7 @@ mod governed_field_write_prohibition_tests {
     // surface is otherwise unrestricted — loaded such a write clean and
     // executed it mid-tick; the refusal must happen at load, for every
     // role, through the ordinary `load_rule` entry point.
-    use super::{load_rule, LoadContext, LoadError};
+    use super::{LoadContext, LoadError};
     use crate::bindings::BindingVocabulary;
     use crate::causal_contract::{ContractError, GOVERNED_WRITE_PROHIBITED_NODE_FIELDS};
     use crate::fuel::{CardinalityCeilings, IntrinsicCosts};
@@ -1431,7 +1449,7 @@ mod governed_field_write_prohibition_tests {
                  :material-basis \"captured source mutation probe\" :fuel 64 \
                  (bindings) (effects (update-node self {field} (set 1))))"
             );
-            let error = load_rule(&source, &ctx).unwrap_err();
+            let error = super::load_rule(&source, &ctx).expect_err("the malformed rule is refused");
             assert!(
                 matches!(
                     error,
@@ -1457,13 +1475,13 @@ mod governed_field_write_prohibition_tests {
     #[test]
     fn a_mechanic_rule_writing_governed_geography_identity_refuses_at_load() {
         let ctx = load_ctx();
-        let err = load_rule(
+        let err = super::load_rule(
             r#"(rule geography/county-probe :role mechanic :evidence derived :material-basis "x" :fuel 64
   (bindings)
   (effects (update-node self territory/county-fips (set 26163))))"#,
             &ctx,
         )
-        .unwrap_err();
+        .expect_err("the malformed rule is refused");
         assert!(
             matches!(
                 err,
@@ -1479,13 +1497,13 @@ mod governed_field_write_prohibition_tests {
         // The effect walk must recurse through guard nesting, exactly like
         // the deferred-shape-verb gate it extends.
         let ctx = load_ctx();
-        let err = load_rule(
+        let err = super::load_rule(
             r#"(rule geography/county-probe :role mechanic :evidence derived :material-basis "x" :fuel 64
   (bindings)
   (effects (guard #t (update-node self territory/county-fips (set 26163)))))"#,
             &ctx,
         )
-        .unwrap_err();
+        .expect_err("the malformed rule is refused");
         assert!(
             matches!(
                 err,
@@ -1500,7 +1518,7 @@ mod governed_field_write_prohibition_tests {
         // The regression guard: update-node on an ordinary field must not
         // trip the prohibition — mechanic write surface stays intact.
         let ctx = load_ctx();
-        load_rule(
+        super::load_rule(
             r#"(rule geography/heat-probe :role mechanic :evidence derived :material-basis "x" :fuel 64
   (bindings)
   (effects (update-node self geography/heat (set 1))))"#,
@@ -1521,7 +1539,7 @@ mod enum_fold_body_tests {
     // take to an enum-declared field: a `:field`-bound SYMBOL (§2.5) and
     // `field-of` (§2.10, D102 — discharged by Task 1 of this same train,
     // making this route newly reachable in the first place).
-    use super::{load_rule, LoadContext, LoadError};
+    use super::{LoadContext, LoadError};
     use crate::bindings::BindingVocabulary;
     use crate::fuel::{CardinalityCeilings, IntrinsicCosts};
     use crate::typecheck::{TypeCode, TypeEnv};
@@ -1545,7 +1563,7 @@ mod enum_fold_body_tests {
                 "OrgKind",
                 &["STATE_APPARATUS".to_owned(), "BUSINESS".to_owned()],
             )
-            .unwrap();
+            .expect("the scenario declares the authored entity");
         let fields = HashMap::from([(
             "organization/kind".to_owned(),
             FieldDecl {
@@ -1582,7 +1600,7 @@ mod enum_fold_body_tests {
     #[test]
     fn a_fold_sum_over_a_field_bound_enum_symbol_refuses_at_load_e_type_044() {
         let ctx = load_ctx();
-        let err = load_rule(
+        let err = super::load_rule(
             r#"(rule organization/enum-fold-probe
   :role mechanic :evidence derived :material-basis "x" :fuel 64
   (bindings (binding kind :field organization/kind))
@@ -1590,7 +1608,7 @@ mod enum_fold_body_tests {
   (effects (emit EventType/RUPTURE (probe 1))))"#,
             &ctx,
         )
-        .unwrap_err();
+        .expect_err("the malformed rule is refused");
         let LoadError::Type(type_err) = &err else {
             panic!("expected LoadError::Type, got {err:?}");
         };
@@ -1606,7 +1624,7 @@ mod enum_fold_body_tests {
     #[test]
     fn a_fold_sum_over_a_field_of_enum_accessor_refuses_at_load_e_type_044() {
         let ctx = load_ctx();
-        let err = load_rule(
+        let err = super::load_rule(
             r#"(rule organization/enum-fold-probe
   :role mechanic :evidence derived :material-basis "x" :fuel 64
   (bindings)
@@ -1615,7 +1633,7 @@ mod enum_fold_body_tests {
   (effects (emit EventType/RUPTURE (probe 1))))"#,
             &ctx,
         )
-        .unwrap_err();
+        .expect_err("the malformed rule is refused");
         let LoadError::Type(type_err) = &err else {
             panic!("expected LoadError::Type, got {err:?}");
         };
@@ -1630,7 +1648,7 @@ mod enum_fold_body_tests {
     #[test]
     fn a_fold_count_over_an_enum_declared_body_is_unaffected_through_both_routes() {
         let ctx = load_ctx();
-        load_rule(
+        super::load_rule(
             r#"(rule organization/enum-fold-count-probe
   :role mechanic :evidence derived :material-basis "x" :fuel 256
   (bindings (binding kind :field organization/kind))
@@ -1641,7 +1659,7 @@ mod enum_fold_body_tests {
         .expect("count over a :field-bound enum symbol must stay legal");
 
         let ctx = load_ctx();
-        load_rule(
+        super::load_rule(
             r#"(rule organization/enum-fold-count-probe
   :role mechanic :evidence derived :material-basis "x" :fuel 256
   (bindings)
@@ -1667,7 +1685,7 @@ mod vocabulary_membership_tests {
     // vocabulary — `emit` is not one of the six, and its type operand is
     // one of D74's own sixteen typed positions, so it is the one minting
     // form that actually proves THIS gate, not an earlier one.
-    use super::{load_rule, LoadContext, LoadError};
+    use super::{LoadContext, LoadError};
     use crate::bindings::BindingVocabulary;
     use crate::fuel::{CardinalityCeilings, IntrinsicCosts};
     use crate::grammar::GrammarError;
@@ -1676,7 +1694,8 @@ mod vocabulary_membership_tests {
     use std::collections::{HashMap, HashSet};
 
     fn vocabulary() -> ClosedVocabulary {
-        ClosedVocabulary::new([(EnumKind::EventType, vec!["RUPTURE".to_owned()])]).unwrap()
+        ClosedVocabulary::new([(EnumKind::EventType, vec!["RUPTURE".to_owned()])])
+            .expect("the constructor accepts the authored fixture arguments")
     }
 
     fn load_ctx(vocabulary_registry: Option<&ClosedVocabulary>) -> LoadContext<'_> {
@@ -1722,7 +1741,7 @@ mod vocabulary_membership_tests {
     fn an_unregistered_enum_ref_in_a_rule_is_e_load_031_under_a_declared_vocabulary() {
         let vocab = vocabulary();
         let ctx = load_ctx(Some(&vocab));
-        let err = load_rule(TYPO_RULE, &ctx).unwrap_err();
+        let err = super::load_rule(TYPO_RULE, &ctx).expect_err("the malformed rule is refused");
         assert_eq!(err.spec_code(), Some("E-LOAD-031"));
         assert!(
             matches!(
@@ -1742,7 +1761,7 @@ mod vocabulary_membership_tests {
     fn a_registered_enum_ref_loads_clean_under_a_declared_vocabulary() {
         let vocab = vocabulary();
         let ctx = load_ctx(Some(&vocab));
-        load_rule(RULE, &ctx).expect("a registered EventType member must load");
+        super::load_rule(RULE, &ctx).expect("a registered EventType member must load");
     }
 
     #[test]
@@ -1751,7 +1770,7 @@ mod vocabulary_membership_tests {
         // vocabulary, `EventType/NOWHERE` is exactly as legal as it was
         // before this task — membership is unchecked, opt-in per scenario.
         let ctx = load_ctx(None);
-        load_rule(TYPO_RULE, &ctx)
+        super::load_rule(TYPO_RULE, &ctx)
             .expect("no declared vocabulary means membership is unchecked (backward compat)");
     }
 }
@@ -1770,7 +1789,7 @@ mod vocabulary_membership_tests {
 /// `E-TYPE-041`/`042` (`r9_chapters.rs`/`conformance_corpus.rs`).
 #[cfg(test)]
 mod kind_mixing_wiring_tests {
-    use super::{load_rule, LoadContext, LoadError};
+    use super::{LoadContext, LoadError};
     use crate::bindings::BindingVocabulary;
     use crate::causal_contract::ContractError;
     use crate::fuel::{CardinalityCeilings, IntrinsicCosts};
@@ -1825,7 +1844,7 @@ mod kind_mixing_wiring_tests {
     #[test]
     fn a_rule_mixing_intensive_and_extensive_under_plus_refuses_at_load_e_type_040() {
         let ctx = load_ctx();
-        let err = load_rule(
+        let err = super::load_rule(
             r#"(rule organization/kind-mixing-probe
   :role mechanic :evidence derived :material-basis "x" :fuel 64
   (bindings
@@ -1834,7 +1853,7 @@ mod kind_mixing_wiring_tests {
   (effects (emit EventType/RUPTURE (probe (+ budget share)))))"#,
             &ctx,
         )
-        .unwrap_err();
+        .expect_err("the malformed rule is refused");
         let LoadError::Type(type_err) = &err else {
             panic!("expected LoadError::Type, got {err:?}");
         };
@@ -1846,14 +1865,14 @@ mod kind_mixing_wiring_tests {
     #[test]
     fn governed_attribution_mismatch_cannot_mask_an_e_parse_defect() {
         let ctx = load_ctx();
-        let err = load_rule(
+        let err = super::load_rule(
             r#"(rule economics/fundamental-theorem
   :role mechanic :evidence designed :material-basis "x" :fuel 64
   (bindings)
   (effects (update-node self organization/budget (unset 1))))"#,
             &ctx,
         )
-        .unwrap_err();
+        .expect_err("the malformed rule is refused");
         assert!(matches!(err, LoadError::Grammar(_)), "{err:?}");
         assert_eq!(err.spec_code(), Some("E-PARSE-015"));
     }
@@ -1861,7 +1880,7 @@ mod kind_mixing_wiring_tests {
     #[test]
     fn governed_attribution_mismatch_cannot_mask_an_e_type_defect() {
         let ctx = load_ctx();
-        let err = load_rule(
+        let err = super::load_rule(
             r#"(rule economics/fundamental-theorem
   :role mechanic :evidence designed :material-basis "x" :fuel 64
   (bindings
@@ -1870,7 +1889,7 @@ mod kind_mixing_wiring_tests {
   (effects (emit EventType/RUPTURE (probe (+ budget share)))))"#,
             &ctx,
         )
-        .unwrap_err();
+        .expect_err("the malformed rule is refused");
         assert!(matches!(err, LoadError::Type(_)), "{err:?}");
         assert_eq!(err.spec_code(), Some("E-TYPE-040"));
     }
@@ -1878,14 +1897,14 @@ mod kind_mixing_wiring_tests {
     #[test]
     fn a_well_typed_governed_attribution_mismatch_reaches_the_load_gate() {
         let ctx = load_ctx();
-        let err = load_rule(
+        let err = super::load_rule(
             r#"(rule economics/fundamental-theorem
   :role mechanic :evidence designed :material-basis "x" :fuel 8
   (bindings)
   (effects))"#,
             &ctx,
         )
-        .unwrap_err();
+        .expect_err("the malformed rule is refused");
         assert!(matches!(
             err,
             LoadError::Causal(ContractError::GovernedAttributionMismatch { .. })
@@ -1895,7 +1914,7 @@ mod kind_mixing_wiring_tests {
     #[test]
     fn unauthorized_role_effect_cannot_mask_an_e_type_defect() {
         let ctx = load_ctx();
-        let err = load_rule(
+        let err = super::load_rule(
             r#"(rule organization/kind-mixing-probe
   :role external-event :evidence designed :material-basis "x" :fuel 64
   (bindings
@@ -1904,7 +1923,7 @@ mod kind_mixing_wiring_tests {
   (effects (emit EventType/RUPTURE (probe (+ budget share)))))"#,
             &ctx,
         )
-        .unwrap_err();
+        .expect_err("the malformed rule is refused");
         assert!(matches!(err, LoadError::Type(_)), "{err:?}");
         assert_eq!(err.spec_code(), Some("E-TYPE-040"));
     }
@@ -1912,25 +1931,26 @@ mod kind_mixing_wiring_tests {
 
 #[cfg(test)]
 mod empty_program_tests {
-    use super::split_content;
-    use crate::canonical_ast::rules_hash_of;
-
     #[test]
     fn empty_program_spelling_has_one_empty_rule_hash() {
-        let expected = rules_hash_of(&[]).expect("empty canonical rule set");
+        let expected = crate::canonical_ast::rules_hash_of(&[]).expect("empty canonical rule set");
         for source in ["", " \n\t", "; immutable observer baseline\n"] {
-            let (intrinsics, rules) = split_content(source).expect("explicit empty program");
+            let (intrinsics, rules) = super::split_content(source).expect("explicit empty program");
             assert!(intrinsics.is_empty());
             assert!(rules.is_empty());
             let forms: Vec<_> = rules.into_iter().map(|rule| rule.form).collect();
-            assert_eq!(rules_hash_of(&forms).unwrap(), expected);
+            assert_eq!(
+                crate::canonical_ast::rules_hash_of(&forms)
+                    .expect("the rule set has a canonical hash"),
+                expected
+            );
         }
     }
 
     #[test]
     fn empty_program_does_not_swallow_malformed_or_intrinsic_only_content() {
-        assert!(split_content("(").is_err());
-        assert!(split_content("(intrinsic economy/foo :cost 1)").is_err());
-        assert!(split_content("(nonsense)").is_err());
+        assert!(super::split_content("(").is_err());
+        assert!(super::split_content("(intrinsic economy/foo :cost 1)").is_err());
+        assert!(super::split_content("(nonsense)").is_err());
     }
 }

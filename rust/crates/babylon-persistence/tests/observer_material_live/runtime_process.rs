@@ -14,20 +14,33 @@ use babylon_persistence::runtime_session::{
     RUNTIME_SESSION_PROTOCOL_VERSION,
 };
 
-use super::{
-    advance_material_period, validate_connection_target, CampaignId, Config, DisposableTarget,
-    DurableMaterialRuntime, Uuid,
-};
+use super::{CampaignId, Config, DisposableTarget, DurableMaterialRuntime, Uuid};
+use std::io::Cursor;
+use std::io::ErrorKind;
+use std::io::Result as IoResult;
+use thread::JoinHandle;
 
 const STARTUP_LIMIT: Duration = Duration::from_secs(60);
 const EXIT_LIMIT: Duration = Duration::from_secs(30);
 const CLEANUP_LIMIT: Duration = Duration::from_secs(5);
 
-struct RuntimeChild(
-    Child,
+/// Bounded stderr retained while the child is still running.
+#[derive(Clone, Default)]
+struct Diagnostics(
+    // STYLE-EXCEPTION(EXC-04): one stderr reader thread fills this bounded test buffer.
     Arc<Mutex<Vec<u8>>>,
-    Option<thread::JoinHandle<std::io::Result<()>>>,
 );
+impl Diagnostics {
+    fn writer(&self) -> Self {
+        // STYLE-EXCEPTION(EXC-04): the reader thread shares the bounded diagnostics buffer.
+        Self(Arc::clone(&self.0))
+    }
+    fn text(&self) -> String {
+        String::from_utf8_lossy(&self.0.lock().expect("diagnostics mutex")).into_owned()
+    }
+}
+
+struct RuntimeChild(Child, Diagnostics, Option<JoinHandle<IoResult<()>>>);
 
 impl RuntimeChild {
     fn start(target: &DisposableTarget) -> Self {
@@ -36,7 +49,7 @@ impl RuntimeChild {
 
     fn start_with_timings(target: &DisposableTarget, timings: bool) -> Self {
         let dsn = child_dsn(&target.writer);
-        let diagnostics = Arc::new(Mutex::new(Vec::new()));
+        let diagnostics = Diagnostics::default();
         let mut runtime = Self(
             Command::new(env!("CARGO_BIN_EXE_babylon-runtime"))
                 .args([
@@ -57,10 +70,14 @@ impl RuntimeChild {
                 .stderr(Stdio::piped())
                 .spawn()
                 .expect("start the actual runtime binary"),
-            Arc::clone(&diagnostics),
+            diagnostics.writer(),
             None,
         );
-        let mut stderr = runtime.0.stderr.take().unwrap();
+        let mut stderr = runtime
+            .0
+            .stderr
+            .take()
+            .expect("the fixture call `take` succeeds for the authored inputs");
         runtime.2 = Some(thread::spawn(move || {
             capture_diagnostics(&mut stderr, &diagnostics)
         }));
@@ -84,7 +101,7 @@ impl RuntimeChild {
     }
 
     fn diagnostics(&self) -> String {
-        String::from_utf8_lossy(&self.1.lock().unwrap()).into_owned()
+        self.1.text()
     }
 
     fn receive(
@@ -109,7 +126,9 @@ impl RuntimeChild {
         let (response, input) = receive
             .recv_timeout(STARTUP_LIMIT)
             .unwrap_or_else(|_| panic!("runtime response deadline: {}", self.diagnostics()));
-        reader.join().unwrap();
+        reader
+            .join()
+            .expect("the fixture worker finishes without panic");
         (
             response.unwrap_or_else(|| panic!("invalid runtime response: {}", self.diagnostics())),
             input,
@@ -117,7 +136,11 @@ impl RuntimeChild {
     }
 
     fn hello(&mut self) -> BufReader<ChildStdout> {
-        let stdout = self.0.stdout.take().unwrap();
+        let stdout = self
+            .0
+            .stdout
+            .take()
+            .expect("the fixture call `take` succeeds for the authored inputs");
         let (response, input) = self.receive(BufReader::new(stdout));
         assert!(
             matches!(response,
@@ -144,7 +167,7 @@ impl RuntimeChild {
                 campaign_id: campaign.as_uuid().to_string(),
             },
         })
-        .unwrap();
+        .expect("the receiver stays alive for the send");
         let (response, input) = self.receive(input);
         assert!(
             matches!(response, RuntimeSessionResponse::Switching { request_id: 1, scope, .. } if scope == campaign_scope(campaign, 1))
@@ -158,10 +181,15 @@ impl RuntimeChild {
         input
     }
 
-    fn send(&mut self, request: &RuntimeSessionRequest) -> std::io::Result<()> {
-        let mut bytes = serde_json::to_vec(request).unwrap();
+    fn send(&mut self, request: &RuntimeSessionRequest) -> IoResult<()> {
+        let mut bytes =
+            serde_json::to_vec(request).expect("the value serializes to canonical JSON bytes");
         bytes.push(b'\n');
-        let input = self.0.stdin.as_mut().unwrap();
+        let input = self
+            .0
+            .stdin
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow");
         input.write_all(&bytes).and_then(|()| input.flush())
     }
 
@@ -203,7 +231,7 @@ fn assert_broken_stdout_exits_with_stdin_open(target: &DisposableTarget, campaig
     };
     match child.send(&refresh) {
         Ok(()) => {}
-        Err(error) if error.kind() == std::io::ErrorKind::BrokenPipe => {
+        Err(error) if error.kind() == ErrorKind::BrokenPipe => {
             // Startup progress may already have detected the closed response pipe.
         }
         Err(error) => panic!("unexpected control-pipe error: {error}"),
@@ -229,7 +257,7 @@ fn assert_orderly_exit(target: &DisposableTarget, campaign: CampaignId, explicit
             .by_ref()
             .take(1_048_577)
             .read_to_end(&mut bytes)
-            .unwrap();
+            .expect("the fixture source is readable");
         assert!(bytes.len() <= 1_048_576, "bounded test transcript");
         bytes
     });
@@ -240,7 +268,7 @@ fn assert_orderly_exit(target: &DisposableTarget, campaign: CampaignId, explicit
                 scope: campaign_scope(campaign, 1),
                 request_id: 92,
             })
-            .unwrap();
+            .expect("the receiver stays alive for the send");
     } else {
         drop(child.0.stdin.take());
     }
@@ -252,11 +280,16 @@ fn assert_orderly_exit(target: &DisposableTarget, campaign: CampaignId, explicit
         "runtime exit refusal: {}",
         child.diagnostics()
     );
-    let bytes = drain.join().unwrap();
+    let bytes = drain
+        .join()
+        .expect("the fixture worker finishes without panic");
     let responses = bytes
         .split(|byte| *byte == b'\n')
         .filter(|row| !row.is_empty())
-        .map(|row| serde_json::from_slice::<RuntimeSessionResponse>(row).unwrap())
+        .map(|row| {
+            serde_json::from_slice::<RuntimeSessionResponse>(row)
+                .expect("the fixture world holds the addressed component")
+        })
         .collect::<Vec<_>>();
     assert!(responses.iter().all(|response| matches!(
         response,
@@ -305,7 +338,7 @@ fn switch_campaign(
             scope: previous.clone(),
             target,
         })
-        .unwrap();
+        .expect("the receiver stays alive for the send");
     for _ in 0..64 {
         let (response, next) = child.receive(input);
         input = next;
@@ -392,12 +425,12 @@ fn assert_missing_open_and_new_collision(
     let missing_count: i64 = target
         .writer
         .connect(postgres::NoTls)
-        .unwrap()
+        .expect("the test database accepts the connection")
         .query_one(
             "SELECT count(*) FROM babylon_state.campaign WHERE campaign_id=$1",
             &[missing.as_uuid()],
         )
-        .unwrap()
+        .expect("the seeded row is present exactly once")
         .get(0);
     assert_eq!(missing_count, 0, "Open must never found an absent campaign");
     let (reply, input) = switch_campaign(
@@ -441,7 +474,7 @@ fn assert_switch_stop(
             request_id: 7,
             scope: scope.clone(),
         })
-        .unwrap();
+        .expect("the receiver stays alive for the send");
     let (response, input) = next_control_response(child, input, scope);
     assert!(
         matches!(response, RuntimeSessionResponse::Stopped { request_id: 7, scope: stopped } if &stopped == scope)
@@ -451,7 +484,10 @@ fn assert_switch_stop(
         .expect("bounded orderly exit")
         .success());
     let mut after_stop = Vec::new();
-    input.take(1).read_to_end(&mut after_stop).unwrap();
+    input
+        .take(1)
+        .read_to_end(&mut after_stop)
+        .expect("the fixture source is readable");
     assert!(
         after_stop.is_empty(),
         "Stopped must be the terminal response"
@@ -471,12 +507,15 @@ fn live_runtime_child_switch_failure_retry_and_epoch_isolation_preserve_campaign
         first,
         preset
             .create_foundation(&crate::test_support::catalog())
-            .unwrap(),
+            .expect("the authored catalog builds the foundation"),
     )
-    .unwrap();
-    advance_material_period(&mut durable);
+    .expect("the test database creates the fixture campaign");
+    super::advance_material_period(&mut durable);
     let original_tail = durable.tail().copied();
-    let original_world = durable.session().current_world_hash().unwrap();
+    let original_world = durable
+        .session()
+        .current_world_hash()
+        .expect("the committed session publishes a world hash");
     drop(durable);
     let mut child = RuntimeChild::start(&target);
     let process = child.0.id();
@@ -503,7 +542,7 @@ fn live_runtime_child_switch_failure_retry_and_epoch_isolation_preserve_campaign
             scope: campaign_scope(first, 2),
             target: open_target(first),
         })
-        .unwrap();
+        .expect("the receiver stays alive for the send");
     let (response, input) = next_control_response(&child, input, &second_scope);
     assert!(
         matches!(response, RuntimeSessionResponse::Error { request_id: Some(5), scope, code: RuntimeSessionErrorCode::SessionMismatch, .. } if scope == second_scope)
@@ -528,13 +567,16 @@ fn live_runtime_child_switch_failure_retry_and_epoch_isolation_preserve_campaign
         first,
         preset
             .admitted(&crate::test_support::catalog())
-            .unwrap()
+            .expect("the fixture admits the authored value")
             .digest(),
     )
-    .unwrap();
+    .expect("the fixture opens the authored source");
     assert_eq!(reopened.tail(), original_tail.as_ref());
     assert_eq!(
-        reopened.session().current_world_hash().unwrap(),
+        reopened
+            .session()
+            .current_world_hash()
+            .expect("the committed session publishes a world hash"),
         original_world
     );
     let created = DurableMaterialRuntime::open(
@@ -542,10 +584,10 @@ fn live_runtime_child_switch_failure_retry_and_epoch_isolation_preserve_campaign
         second,
         MichiganContentPreset::new_campaign(MichiganDeliveryPreset::Delayed)
             .admitted(&crate::test_support::catalog())
-            .unwrap()
+            .expect("the fixture admits the authored value")
             .digest(),
     )
-    .unwrap();
+    .expect("the fixture opens the authored source");
     assert_eq!(created.session().completed_tick(), 0);
 }
 
@@ -558,15 +600,20 @@ fn live_runtime_child_open_admits_one_foundation_without_changing_world() {
         CampaignId::from_uuid(Uuid::from_u128(0x0044_0000_0000_0000_0000_0000_0000_0081));
     let foundation = MichiganContentPreset::new_campaign(MichiganDeliveryPreset::Standard)
         .create_foundation(&crate::test_support::catalog())
-        .unwrap();
+        .expect("the authored catalog builds the foundation");
     let digest = foundation.digest();
     let mut foundation_digest = String::with_capacity(64);
     for byte in digest {
-        write!(&mut foundation_digest, "{byte:02x}").unwrap();
+        write!(&mut foundation_digest, "{byte:02x}")
+            .expect("the in-memory formatter accepts the written text");
     }
-    let runtime = DurableMaterialRuntime::create(&target.writer, campaign, foundation).unwrap();
+    let runtime = DurableMaterialRuntime::create(&target.writer, campaign, foundation)
+        .expect("the test database creates the fixture campaign");
     let register = runtime.session().material().canonical_bytes().to_vec();
-    let world = runtime.session().current_world_hash().unwrap();
+    let world = runtime
+        .session()
+        .current_world_hash()
+        .expect("the committed session publishes a world hash");
     drop(runtime);
     // No period has been committed: Archive has no material receipt to admit.
     // Existing FoundationAdmission timings therefore count only this actual Open.
@@ -601,10 +648,17 @@ fn live_runtime_child_open_admits_one_foundation_without_changing_world() {
         admissions, 1,
         "product Open must reconstruct its admitted foundation once"
     );
-    let reopened = DurableMaterialRuntime::open(&target.writer, campaign, digest).unwrap();
+    let reopened = DurableMaterialRuntime::open(&target.writer, campaign, digest)
+        .expect("the fixture opens the authored source");
     assert_eq!(reopened.session().completed_tick(), 0);
     assert_eq!(reopened.session().material().canonical_bytes(), register);
-    assert_eq!(reopened.session().current_world_hash().unwrap(), world);
+    assert_eq!(
+        reopened
+            .session()
+            .current_world_hash()
+            .expect("the committed session publishes a world hash"),
+        world
+    );
 }
 
 enum ExitMode {
@@ -620,18 +674,23 @@ fn live_runtime_child_pipe_failure_and_orderly_exit_preserve_committed_world() {
     let campaign =
         CampaignId::from_uuid(Uuid::from_u128(0x0044_0000_0000_0000_0000_0000_0000_007f));
     let preset = MichiganContentPreset::new_campaign(MichiganDeliveryPreset::Standard);
-    let admitted = preset.admitted(&crate::test_support::catalog()).unwrap();
+    let admitted = preset
+        .admitted(&crate::test_support::catalog())
+        .expect("the fixture admits the authored value");
     let mut runtime = DurableMaterialRuntime::create(
         &target.writer,
         campaign,
         preset
             .create_foundation(&crate::test_support::catalog())
-            .unwrap(),
+            .expect("the authored catalog builds the foundation"),
     )
-    .unwrap();
-    advance_material_period(&mut runtime);
+    .expect("the test database creates the fixture campaign");
+    super::advance_material_period(&mut runtime);
     let expected_tail = runtime.tail().copied();
-    let expected_world = runtime.session().current_world_hash().unwrap();
+    let expected_world = runtime
+        .session()
+        .current_world_hash()
+        .expect("the committed session publishes a world hash");
     drop(runtime);
     for mode in [ExitMode::BrokenOutput, ExitMode::Stop, ExitMode::Eof] {
         match mode {
@@ -639,19 +698,22 @@ fn live_runtime_child_pipe_failure_and_orderly_exit_preserve_committed_world() {
             ExitMode::Stop => assert_orderly_exit(&target, campaign, true),
             ExitMode::Eof => assert_orderly_exit(&target, campaign, false),
         }
-        let reopened =
-            DurableMaterialRuntime::open(&target.writer, campaign, admitted.digest()).unwrap();
+        let reopened = DurableMaterialRuntime::open(&target.writer, campaign, admitted.digest())
+            .expect("the fixture opens the authored source");
         assert_eq!(reopened.session().completed_tick(), 1);
         assert_eq!(reopened.tail(), expected_tail.as_ref());
         assert_eq!(
-            reopened.session().current_world_hash().unwrap(),
+            reopened
+                .session()
+                .current_world_hash()
+                .expect("the committed session publishes a world hash"),
             expected_world
         );
     }
 }
 
 fn child_dsn(config: &Config) -> String {
-    validate_connection_target(config).unwrap();
+    super::validate_connection_target(config).expect("the authored fixture satisfies the rule");
     let [postgres::config::Host::Tcp(host)] = config.get_hosts() else {
         panic!("runtime process fixture requires one validated local TCP host");
     };
@@ -673,18 +735,18 @@ fn quote_dsn_value(value: &str) -> String {
     format!("'{}'", value.replace('\\', "\\\\").replace('\'', "\\'"))
 }
 
-fn capture_diagnostics(input: &mut impl Read, captured: &Mutex<Vec<u8>>) -> std::io::Result<()> {
+fn capture_diagnostics(input: &mut impl Read, captured: &Diagnostics) -> IoResult<()> {
     let mut buffer = [0_u8; 1024];
     loop {
         let size = match input.read(&mut buffer) {
             Ok(size) => size,
-            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(error) if error.kind() == ErrorKind::Interrupted => continue,
             Err(error) => return Err(error),
         };
         if size == 0 {
             return Ok(());
         }
-        let mut output = captured.lock().unwrap();
+        let mut output = captured.0.lock().expect("diagnostics mutex");
         let keep = size.min(8192_usize.saturating_sub(output.len()));
         output.extend_from_slice(&buffer[..keep]);
         // Keep draining after the retained-byte bound so diagnostics cannot stall
@@ -698,12 +760,17 @@ fn runtime_child_dsn_selects_owned_database_from_uri_and_keyword_configs() {
         "postgresql://test:test@127.0.0.1:5433/postgres",
         "host=127.0.0.1 port=5433 user=test password=test dbname=postgres",
     ] {
-        let mut config: Config = source.parse().unwrap();
+        let mut config: Config = source
+            .parse()
+            .expect("the authored literal parses as the declared type");
         config.dbname("per281_runtime_materialobserver_42");
         // Exercise exact libpq quoting without using or printing real credentials.
         config.password("fixture ' quote \\ slash");
-        let parsed: Config = child_dsn(&config).parse().unwrap();
-        validate_connection_target(&parsed).unwrap();
+        let parsed: Config = child_dsn(&config)
+            .parse()
+            .expect("the authored literal parses as the declared type");
+        super::validate_connection_target(&parsed)
+            .expect("the authored fixture satisfies the rule");
         assert_eq!(
             parsed.get_dbname(),
             Some("per281_runtime_materialobserver_42")
@@ -717,9 +784,12 @@ fn runtime_child_dsn_selects_owned_database_from_uri_and_keyword_configs() {
 
 #[test]
 fn runtime_child_diagnostics_are_bounded_and_fully_drained() {
-    let mut source = std::io::Cursor::new(vec![b'x'; 20_000]);
-    let captured = Mutex::new(Vec::new());
-    capture_diagnostics(&mut source, &captured).unwrap();
+    let mut source = Cursor::new(vec![b'x'; 20_000]);
+    let captured = Diagnostics::default();
+    capture_diagnostics(&mut source, &captured).expect("the fixture captures the authored state");
     assert_eq!(source.position(), 20_000);
-    assert_eq!(captured.into_inner().unwrap(), vec![b'x'; 8192]);
+    assert_eq!(
+        *captured.0.lock().expect("diagnostics mutex"),
+        vec![b'x'; 8192]
+    );
 }

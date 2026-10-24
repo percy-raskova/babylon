@@ -1,5 +1,6 @@
 //! Historical transaction costs, distinct from money and physical quantities.
 
+use crate::EquipmentCarryingValue;
 use crate::{AccountId, FreightLotId, GoodId, SiteId, UnitId};
 use babylon_kernel::currency::Currency;
 
@@ -45,7 +46,7 @@ pub struct HistoricalCostSnapshot {
     pub stocks: Vec<StockCarryingValue>,
     pub freight: Vec<FreightCarryingValue>,
     pub equity: Vec<EquityCarryingValue>,
-    pub equipment: Vec<crate::EquipmentCarryingValue>,
+    pub equipment: Vec<EquipmentCarryingValue>,
 }
 
 /// Nonnegative period flows; capitalization is disclosed but is not an expense.

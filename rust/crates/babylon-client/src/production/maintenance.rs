@@ -1,5 +1,5 @@
 //! Read one disclosed maintenance account without forecasting production.
-use crate::observer_ui::grouped;
+use crate::observer_ui;
 use babylon_persistence::production_observation::{
     ProductionMaintenanceAccount, ProductionSiteRole, ProductionSnapshot,
 };
@@ -57,14 +57,14 @@ pub(super) fn flow(value: &mut String, site: &str, snapshot: &ProductionSnapshot
     .expect("String write");
     if let Some(done) = &account.completed {
         writeln!(value, "Period {}: {} / {} jobs completed / requested\nParts: {} opened + {} arrived = {} {} available\nUsed: {} {} parts + {} labor-hours\n{} consumed + {} expired = {} opening batches",
-            done.period, grouped(done.completed_jobs), grouped(done.requested_jobs), grouped(done.opening_spare_parts),
-            grouped(done.arrived_spare_parts), grouped(done.available_spare_parts), account.spare_unit,
-            grouped(done.consumed_spare_parts), account.spare_unit, grouped(done.consumed_labor_hours),
-            grouped(done.consumed_service_batches), grouped(done.expired_service_batches), grouped(done.opening_service_batches)).expect("String write");
+            done.period, observer_ui::grouped(done.completed_jobs), observer_ui::grouped(done.requested_jobs), observer_ui::grouped(done.opening_spare_parts),
+            observer_ui::grouped(done.arrived_spare_parts), observer_ui::grouped(done.available_spare_parts), account.spare_unit,
+            observer_ui::grouped(done.consumed_spare_parts), account.spare_unit, observer_ui::grouped(done.consumed_labor_hours),
+            observer_ui::grouped(done.consumed_service_batches), observer_ui::grouped(done.expired_service_batches), observer_ui::grouped(done.opening_service_batches)).expect("String write");
         writeln!(
             value,
             "Next work request: {} material-feasible batches",
-            grouped(done.prospective_batches)
+            observer_ui::grouped(done.prospective_batches)
         )
         .expect("String write");
         writeln!(
@@ -72,20 +72,20 @@ pub(super) fn flow(value: &mut String, site: &str, snapshot: &ProductionSnapshot
             "Job limits: parts {} · labor {} · Designed maximum {}",
             limit(done.available_spare_parts, account.spare_units_per_job),
             limit(done.available_labor_hours, account.labor_units_per_job),
-            grouped(account.maximum_jobs_per_period)
+            observer_ui::grouped(account.maximum_jobs_per_period)
         )
         .expect("String write");
     } else {
         value.push_str("Foundation; no completed maintenance receipt.\n");
     }
     writeln!(value, "Service for period {}: {} batches / up to {} {}\nActual output needs the following production receipt.\nUnused service expires; service is not stock or a parts shipment.\n",
-        account.next_service_period, grouped(account.next_service_batches), next_output(account).map_or_else(|| "unavailable".into(),grouped), account.output_unit).expect("String write");
+        account.next_service_period, observer_ui::grouped(account.next_service_batches), next_output(account).map_or_else(|| "unavailable".into(),observer_ui::grouped), account.output_unit).expect("String write");
 }
 
 fn limit(available: u64, coefficient: u64) -> String {
     available
         .checked_div(coefficient)
-        .map_or_else(|| "unavailable".into(), grouped)
+        .map_or_else(|| "unavailable".into(), observer_ui::grouped)
 }
 
 pub(super) fn work(value: &mut String, site: &str, snapshot: &ProductionSnapshot) {
@@ -100,10 +100,10 @@ pub(super) fn work(value: &mut String, site: &str, snapshot: &ProductionSnapshot
         writeln!(
             value,
             "Maintenance: {} used / {} requested labor-hours",
-            grouped(done.consumed_labor_hours),
+            observer_ui::grouped(done.consumed_labor_hours),
             done.requested_jobs
                 .checked_mul(account.labor_units_per_job)
-                .map_or_else(|| "unavailable".into(), grouped)
+                .map_or_else(|| "unavailable".into(), observer_ui::grouped)
         )
         .expect("String write");
     } else {
@@ -117,8 +117,8 @@ pub(super) fn sources(value: &mut String, site: &str, snapshot: &ProductionSnaps
         return;
     };
     writeln!(value, "\nMAINTENANCE COEFFICIENTS\n{} {} parts + {} labor-hours per job / Designed\n{} enabled batches per job · maximum {} jobs per period / Designed\nBinding: provider {}\nConsumer {} / process {}\nParts {} / unit {}\nLabor unit {}\nOutput {} / unit {}",
-        grouped(account.spare_units_per_job), account.spare_unit, grouped(account.labor_units_per_job),
-        grouped(account.enabled_batches_per_job), grouped(account.maximum_jobs_per_period), account.provider_site_id,
+        observer_ui::grouped(account.spare_units_per_job), account.spare_unit, observer_ui::grouped(account.labor_units_per_job),
+        observer_ui::grouped(account.enabled_batches_per_job), observer_ui::grouped(account.maximum_jobs_per_period), account.provider_site_id,
         account.consumer_site_id, account.consumer_process_id, account.spare_good_id, account.spare_unit_id,
         account.labor_unit_id, account.output_good_id, account.output_unit_id).expect("String write");
 }
@@ -166,13 +166,13 @@ pub(crate) fn comparison(
     match (&a.completed, &b.completed) {
         (Some(x), Some(y)) if x.period == period && y.period == period => {
             writeln!(value, "CURRENT  {} / {} jobs completed / requested\nCOMPARED  {} / {} jobs completed / requested\nParts available: {} / {} {} · used {} / {}\nLabor available: {} / {} hours · used {} / {}\nExpired service: {} / {} batches\nConsumed service: {} / {} batches",
-                grouped(x.completed_jobs), grouped(x.requested_jobs), grouped(y.completed_jobs), grouped(y.requested_jobs),
-                grouped(x.available_spare_parts), grouped(y.available_spare_parts), a.spare_unit, grouped(x.consumed_spare_parts), grouped(y.consumed_spare_parts),
-                grouped(x.available_labor_hours), grouped(y.available_labor_hours), grouped(x.consumed_labor_hours), grouped(y.consumed_labor_hours),
-                grouped(x.expired_service_batches), grouped(y.expired_service_batches), grouped(x.consumed_service_batches), grouped(y.consumed_service_batches)).expect("String write");
+                observer_ui::grouped(x.completed_jobs), observer_ui::grouped(x.requested_jobs), observer_ui::grouped(y.completed_jobs), observer_ui::grouped(y.requested_jobs),
+                observer_ui::grouped(x.available_spare_parts), observer_ui::grouped(y.available_spare_parts), a.spare_unit, observer_ui::grouped(x.consumed_spare_parts), observer_ui::grouped(y.consumed_spare_parts),
+                observer_ui::grouped(x.available_labor_hours), observer_ui::grouped(y.available_labor_hours), observer_ui::grouped(x.consumed_labor_hours), observer_ui::grouped(y.consumed_labor_hours),
+                observer_ui::grouped(x.expired_service_batches), observer_ui::grouped(y.expired_service_batches), observer_ui::grouped(x.consumed_service_batches), observer_ui::grouped(y.consumed_service_batches)).expect("String write");
             writeln!(value, "Parts opened: {} / {} · arrived {} / {} {}\nProspective work: {} / {} material-feasible batches",
-                grouped(x.opening_spare_parts), grouped(y.opening_spare_parts), grouped(x.arrived_spare_parts), grouped(y.arrived_spare_parts), a.spare_unit,
-                grouped(x.prospective_batches), grouped(y.prospective_batches)).expect("String write");
+                observer_ui::grouped(x.opening_spare_parts), observer_ui::grouped(y.opening_spare_parts), observer_ui::grouped(x.arrived_spare_parts), observer_ui::grouped(y.arrived_spare_parts), a.spare_unit,
+                observer_ui::grouped(x.prospective_batches), observer_ui::grouped(y.prospective_batches)).expect("String write");
         }
         (None, None) if period == 0 => {
             value.push_str("Foundation; no completed maintenance receipt.\n");
@@ -183,7 +183,7 @@ pub(crate) fn comparison(
         }
     }
     writeln!(value, "Period {} service: {} / {} batches · up to {} / {} {}\nDesigned per job: {} {} parts, {} labor-hours, {} enabled batches; maximum {} jobs.\nActual output needs the following production receipt.",
-        a.next_service_period, grouped(a.next_service_batches), grouped(b.next_service_batches),
-        next_output(a).map_or_else(|| "unavailable".into(),grouped), next_output(b).map_or_else(|| "unavailable".into(),grouped), a.output_unit,
-        grouped(a.spare_units_per_job), a.spare_unit, grouped(a.labor_units_per_job), grouped(a.enabled_batches_per_job), grouped(a.maximum_jobs_per_period)).expect("String write");
+        a.next_service_period, observer_ui::grouped(a.next_service_batches), observer_ui::grouped(b.next_service_batches),
+        next_output(a).map_or_else(|| "unavailable".into(),observer_ui::grouped), next_output(b).map_or_else(|| "unavailable".into(),observer_ui::grouped), a.output_unit,
+        observer_ui::grouped(a.spare_units_per_job), a.spare_unit, observer_ui::grouped(a.labor_units_per_job), observer_ui::grouped(a.enabled_batches_per_job), observer_ui::grouped(a.maximum_jobs_per_period)).expect("String write");
 }

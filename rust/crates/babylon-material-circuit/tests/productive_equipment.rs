@@ -1,25 +1,99 @@
 use babylon_kernel::currency::Currency;
-use babylon_material_circuit::*;
+use babylon_material_circuit::AccountId;
+use babylon_material_circuit::AidBook;
+use babylon_material_circuit::AttendancePlan;
+use babylon_material_circuit::CapacityRow;
+use babylon_material_circuit::CapacitySupply;
+use babylon_material_circuit::CashAccount;
+use babylon_material_circuit::CircuitAccounting;
+use babylon_material_circuit::CommodityDefinition;
+use babylon_material_circuit::CommodityKind;
+use babylon_material_circuit::CorridorCapacity;
+use babylon_material_circuit::CorridorId;
+use babylon_material_circuit::EmploymentTerms;
+use babylon_material_circuit::EquipmentBinding;
+use babylon_material_circuit::EquipmentDefinition;
+use babylon_material_circuit::EquipmentDefinitionId;
+use babylon_material_circuit::FinalDemandPrincipal;
+use babylon_material_circuit::FinalDemandPrincipalId;
+use babylon_material_circuit::FinancialInstitutions;
+use babylon_material_circuit::GoodId;
+use babylon_material_circuit::GoodsPriceCostBasis;
+use babylon_material_circuit::GoodsPriceCostEvidence;
+use babylon_material_circuit::HistoricalCostBook;
+use babylon_material_circuit::InputOutputCoefficient;
+use babylon_material_circuit::InstallationInput;
+use babylon_material_circuit::InstallationPolicy;
+use babylon_material_circuit::InstallationTarget;
+use babylon_material_circuit::InventoryRow;
+use babylon_material_circuit::InvestmentPolicy;
+use babylon_material_circuit::LaborCapacityRow;
+use babylon_material_circuit::LaborCoefficient;
+use babylon_material_circuit::LaborCompensation;
+use babylon_material_circuit::LogisticsNodeId;
+use babylon_material_circuit::MaterialCircuitError;
+use babylon_material_circuit::MaterialCircuitState;
+use babylon_material_circuit::MaterialCircuitTransition;
+use babylon_material_circuit::MemberLaborCapacityRow;
+use babylon_material_circuit::MonetaryBook;
+use babylon_material_circuit::MonetaryCircuit;
+use babylon_material_circuit::PriceDecision;
+use babylon_material_circuit::PricePolicy;
+use babylon_material_circuit::ProcessId;
+use babylon_material_circuit::ProcessOutput;
+use babylon_material_circuit::ProductionDemandPolicy;
+use babylon_material_circuit::ProductiveEquipment;
+use babylon_material_circuit::RecurringEconomy;
+use babylon_material_circuit::RollingCapacitySupply;
+use babylon_material_circuit::RollingProcessSupply;
+use babylon_material_circuit::RouteId;
+use babylon_material_circuit::RouteStage;
+use babylon_material_circuit::RouteStageCapacity;
+use babylon_material_circuit::SellerOffer;
+use babylon_material_circuit::SharedCapacitySupply;
+use babylon_material_circuit::SiteId;
+use babylon_material_circuit::SiteLogisticsNode;
+use babylon_material_circuit::StaffingMemberId;
+use babylon_material_circuit::StaffingPolicy;
+use babylon_material_circuit::StaffingPoolBinding;
+use babylon_material_circuit::StaffingPoolId;
+use babylon_material_circuit::StaffingPoolState;
+use babylon_material_circuit::StaffingState;
+use babylon_material_circuit::StaffingWorkSource;
+use babylon_material_circuit::StockCarryingValue;
+use babylon_material_circuit::SupplierRoute;
+use babylon_material_circuit::SupplierTransport;
+use babylon_material_circuit::UnitId;
+use babylon_material_circuit::MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES;
 
 include!("support/equipment_fixture.rs");
 
 #[test]
 fn arrived_equipment_and_materials_wait_for_actual_work_before_next_period_capacity() {
-    let first = advance_material_circuit(&opening()).unwrap();
+    let first = babylon_material_circuit::advance_material_circuit(&opening())
+        .expect("the authored material state advances one period");
     assert_eq!(equipment(&first.state).pending[0].remaining_hours, 3);
     assert!(equipment(&first.state).cohorts.is_empty());
     assert_eq!(first.state.capacities[0].available_batches, 0);
     assert_eq!(equipment_cost(&first.state), money(26));
-    let second = advance_material_circuit(&first.state).unwrap();
+    let second = babylon_material_circuit::advance_material_circuit(&first.state)
+        .expect("the authored material state advances one period");
     assert_eq!(equipment(&second.state).pending[0].remaining_hours, 1);
     assert_eq!(equipment_cost(&second.state), money(30));
     assert_eq!(second.installation[0].used_hours, 2);
     assert_eq!(second.member_labor_use[0].installation_wages, money(4));
-    let restored =
-        decode_material_circuit_state(&encode_material_circuit_state(&second.state).unwrap())
-            .unwrap();
-    let third = advance_material_circuit(&second.state).unwrap();
-    assert_eq!(third, advance_material_circuit(&restored).unwrap());
+    let restored = babylon_material_circuit::decode_material_circuit_state(
+        &babylon_material_circuit::encode_material_circuit_state(&second.state)
+            .expect("the canonical material state encodes"),
+    )
+    .expect("the canonical material bytes decode");
+    let third = babylon_material_circuit::advance_material_circuit(&second.state)
+        .expect("the authored material state advances one period");
+    assert_eq!(
+        third,
+        babylon_material_circuit::advance_material_circuit(&restored)
+            .expect("the authored material state advances one period")
+    );
     assert_eq!(
         third
             .production
@@ -38,14 +112,18 @@ fn arrived_equipment_and_materials_wait_for_actual_work_before_next_period_capac
 fn actual_use_transfers_the_complete_carrying_remainder_to_unsold_output_without_cash_credit() {
     let mut state = opening();
     for _ in 0..3 {
-        state = advance_material_circuit(&state).unwrap().state;
+        state = babylon_material_circuit::advance_material_circuit(&state)
+            .expect("the authored material state advances one period")
+            .state;
     }
-    let fourth = advance_material_circuit(&state).unwrap();
+    let fourth = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
     assert_eq!(fourth.production[0].produced_batches, 2);
     assert_eq!(fourth.equipment_wear[0].carried_to_output, money(21));
     assert_eq!(equipment_cost(&fourth.state), money(11));
     assert_eq!(stock_cost(&fourth.state, good(4)), money(29));
-    let fifth = advance_material_circuit(&fourth.state).unwrap();
+    let fifth = babylon_material_circuit::advance_material_circuit(&fourth.state)
+        .expect("the authored material state advances one period");
     assert_eq!(fifth.production[0].produced_batches, 1);
     assert_eq!(fifth.equipment_wear[0].carried_to_output, money(11));
     assert!(equipment(&fifth.state).cohorts.is_empty());
@@ -55,7 +133,7 @@ fn actual_use_transfers_the_complete_carrying_remainder_to_unsold_output_without
         economy(&fifth.state)
             .book
             .cash(AccountId::Site(site()))
-            .unwrap(),
+            .expect("the fixture book holds the payer account"),
         money(88)
     );
     assert_eq!(
@@ -63,7 +141,7 @@ fn actual_use_transfers_the_complete_carrying_remainder_to_unsold_output_without
             .income
             .iter()
             .find(|r| r.account == AccountId::Site(site()))
-            .unwrap()
+            .expect("the fixture holds the searched element")
             .net_income,
         money(0)
     );
@@ -74,7 +152,9 @@ fn unpaid_owner_installation_performs_real_work_without_creating_wage_cost_or_ow
     let mut state = opening();
     economy_mut(&mut state).employment[0].compensation = LaborCompensation::WorkingOwner;
     for _ in 0..3 {
-        state = advance_material_circuit(&state).unwrap().state;
+        state = babylon_material_circuit::advance_material_circuit(&state)
+            .expect("the authored material state advances one period")
+            .state;
     }
     assert_eq!(equipment_cost(&state), money(26));
     assert_eq!(equipment(&state).cohorts[0].units, 1);
@@ -82,7 +162,7 @@ fn unpaid_owner_installation_performs_real_work_without_creating_wage_cost_or_ow
         economy(&state)
             .book
             .cash(AccountId::Household(household()))
-            .unwrap(),
+            .expect("the fixture book holds the payer account"),
         money(0)
     );
     assert!(economy(&state).financial.ownership.is_empty());
@@ -95,28 +175,31 @@ fn missing_complements_and_hoarding_do_not_turn_stocked_equipment_into_capacity(
         .inventory
         .iter_mut()
         .find(|r| r.good_id == good(2))
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .quantity = 0;
     let mut snapshot = economy(&missing).costs.snapshot();
     snapshot
         .stocks
         .iter_mut()
         .find(|r| r.good_id == good(2))
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .amount = money(0);
     snapshot
         .accounts
         .iter_mut()
         .find(|r| r.account == AccountId::Site(site()))
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .opening_capital = money(126);
-    economy_mut(&mut missing).costs = HistoricalCostBook::from_snapshot(snapshot).unwrap();
-    let closed = advance_material_circuit(&missing).unwrap();
+    economy_mut(&mut missing).costs =
+        HistoricalCostBook::from_snapshot(snapshot).expect("the snapshot admits the derived value");
+    let closed = babylon_material_circuit::advance_material_circuit(&missing)
+        .expect("the authored material state advances one period");
     assert!(equipment(&closed.state).pending.is_empty());
     assert_eq!(closed.state.capacities[0].available_batches, 0);
     let mut hoarded = opening();
     equipment_mut(&mut hoarded).installation_policies.clear();
-    let closed = advance_material_circuit(&hoarded).unwrap();
+    let closed = babylon_material_circuit::advance_material_circuit(&hoarded)
+        .expect("the authored material state advances one period");
     assert!(equipment(&closed.state).pending.is_empty());
     assert_eq!(
         closed
@@ -124,7 +207,7 @@ fn missing_complements_and_hoarding_do_not_turn_stocked_equipment_into_capacity(
             .inventory
             .iter()
             .find(|r| r.good_id == good(1))
-            .unwrap()
+            .expect("the fixture holds the searched element")
             .quantity,
         1
     );
@@ -135,7 +218,8 @@ fn missing_complements_and_hoarding_do_not_turn_stocked_equipment_into_capacity(
 fn replacement_can_use_cash_at_a_loss_while_positive_retained_income_cannot_replace_missing_cash() {
     let mut loss = opening();
     configure_investment(&mut loss, 100, -10);
-    let first = advance_material_circuit(&loss).unwrap();
+    let first = babylon_material_circuit::advance_material_circuit(&loss)
+        .expect("the authored material state advances one period");
     assert_eq!(first.investment[0].replacement_requested_units, 1);
     assert_eq!(first.investment[0].admitted_units, 1);
     assert_eq!(first.state.orders.len(), 1);
@@ -145,7 +229,7 @@ fn replacement_can_use_cash_at_a_loss_while_positive_retained_income_cannot_repl
         economy(&first.state)
             .book
             .cash(AccountId::Site(site()))
-            .unwrap(),
+            .expect("the fixture book holds the payer account"),
         money(80)
     );
     let mut cash_poor = opening();
@@ -153,11 +237,12 @@ fn replacement_can_use_cash_at_a_loss_while_positive_retained_income_cannot_repl
     economy_mut(&mut cash_poor)
         .recurring
         .as_mut()
-        .unwrap()
+        .expect("the fixture set the optional field before this borrow")
         .offers[0]
         .unit_price = money(5);
     equipment_mut(&mut cash_poor).investment_policies[0].replacement_target_units = 0;
-    let closed = advance_material_circuit(&cash_poor).unwrap();
+    let closed = babylon_material_circuit::advance_material_circuit(&cash_poor)
+        .expect("the authored material state advances one period");
     assert_eq!(closed.investment[0].expansion_requested_units, 1);
     assert_eq!(closed.investment[0].admitted_units, 0);
     assert!(closed.state.orders.is_empty());
@@ -167,18 +252,24 @@ fn replacement_can_use_cash_at_a_loss_while_positive_retained_income_cannot_repl
 fn funded_undelivered_equipment_is_not_repurchased_or_installed() {
     let mut state = opening();
     configure_investment(&mut state, 100, -10);
-    let first = advance_material_circuit(&state).unwrap();
-    let second = advance_material_circuit(&first.state).unwrap();
+    let first = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
+    let second = babylon_material_circuit::advance_material_circuit(&first.state)
+        .expect("the authored material state advances one period");
     assert_eq!(second.investment[0].outstanding_inbound_units, 1);
     assert_eq!(second.investment[0].admitted_units, 0);
     assert_eq!(second.state.freight.len(), 1);
     assert_eq!(second.state.capacities[0].available_batches, 0);
     assert!(equipment(&second.state).pending.is_empty());
-    let bytes = encode_material_circuit_state(&second.state).unwrap();
-    let restored = decode_material_circuit_state(&bytes).unwrap();
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&second.state)
+        .expect("the canonical material state encodes");
+    let restored = babylon_material_circuit::decode_material_circuit_state(&bytes)
+        .expect("the canonical material bytes decode");
     assert_eq!(
-        advance_material_circuit(&second.state).unwrap(),
-        advance_material_circuit(&restored).unwrap()
+        babylon_material_circuit::advance_material_circuit(&second.state)
+            .expect("the authored material state advances one period"),
+        babylon_material_circuit::advance_material_circuit(&restored)
+            .expect("the authored material state advances one period")
     );
 }
 
@@ -193,7 +284,8 @@ fn inactive_managed_process_keeps_its_checked_binding_without_assets_or_policies
     for row in &mut e.member_labor {
         row.available_hours = 0;
     }
-    let closed = advance_material_circuit(&state).unwrap();
+    let closed = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
     assert_eq!(equipment(&closed.state).bindings.len(), 1);
     assert!(equipment(&closed.state).cohorts.is_empty());
     assert!(equipment(&closed.state).pending.is_empty());
@@ -210,55 +302,67 @@ fn installation_overflow_after_attendance_discards_every_detached_change() {
         .inventory
         .iter_mut()
         .find(|r| r.good_id == good(1))
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .quantity = 2;
     state
         .inventory
         .iter_mut()
         .find(|r| r.good_id == good(2))
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .quantity = 4;
     equipment_mut(&mut state).installation_policies[0].maximum_started_units_per_period = 2;
     equipment_mut(&mut state).installation_policies[0].target = InstallationTarget::FixedUnits(2);
     equipment_mut(&mut state).definitions[0].installation_hours_per_unit = u64::MAX;
-    let before = encode_material_circuit_state(&state).unwrap();
+    let before = babylon_material_circuit::encode_material_circuit_state(&state)
+        .expect("the canonical material state encodes");
     assert_eq!(
-        advance_material_circuit(&state),
+        babylon_material_circuit::advance_material_circuit(&state),
         Err(MaterialCircuitError::Arithmetic)
     );
-    assert_eq!(encode_material_circuit_state(&state).unwrap(), before);
     assert_eq!(
-        economy(&state).book.cash(AccountId::Site(site())).unwrap(),
+        babylon_material_circuit::encode_material_circuit_state(&state)
+            .expect("the canonical material state encodes"),
+        before
+    );
+    assert_eq!(
+        economy(&state)
+            .book
+            .cash(AccountId::Site(site()))
+            .expect("the fixture book holds the payer account"),
         money(100)
     );
 }
 
 #[test]
 fn current_equipment_wire_refuses_previous_schema_and_inconsistent_physical_cost_owners() {
-    let state = advance_material_circuit(&opening()).unwrap().state;
-    let bytes = encode_material_circuit_state(&state).unwrap();
+    let state = babylon_material_circuit::advance_material_circuit(&opening())
+        .expect("the authored material state advances one period")
+        .state;
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&state)
+        .expect("the canonical material state encodes");
     let mut old = bytes.clone();
     let offset = MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES.len() + 1;
     old[offset..offset + 2].copy_from_slice(&14_u16.to_be_bytes());
     assert_eq!(
-        decode_material_circuit_state(&old),
+        babylon_material_circuit::decode_material_circuit_state(&old),
         Err(MaterialCircuitError::WireVersion)
     );
     for length in [0, offset, bytes.len() / 2, bytes.len() - 1] {
-        assert!(decode_material_circuit_state(&bytes[..length]).is_err());
+        assert!(babylon_material_circuit::decode_material_circuit_state(&bytes[..length]).is_err());
     }
     let mut absent = state.clone();
     let mut book = economy(&absent).costs.snapshot();
     book.equipment.clear();
-    economy_mut(&mut absent).costs = HistoricalCostBook::from_snapshot(book).unwrap();
+    economy_mut(&mut absent).costs =
+        HistoricalCostBook::from_snapshot(book).expect("the snapshot admits the derived value");
     assert_eq!(
-        encode_material_circuit_state(&absent),
+        babylon_material_circuit::encode_material_circuit_state(&absent),
         Err(MaterialCircuitError::ValuationInvariant)
     );
     let mut invalid = state;
     equipment_mut(&mut invalid).pending[0].remaining_hours = 0;
     assert_eq!(
-        encode_material_circuit_state(&invalid),
+        babylon_material_circuit::encode_material_circuit_state(&invalid),
         Err(MaterialCircuitError::EquipmentInvariant)
     );
 }
@@ -267,14 +371,18 @@ fn staffed_equipment_close(
     state: &MaterialCircuitState,
     people: &StaffingState,
 ) -> (MaterialCircuitTransition, StaffingState) {
-    let closed = close_material_period(state).unwrap();
+    let closed =
+        babylon_material_circuit::close_material_period(state).expect("the material period closes");
     let bindings = people
         .pools()
         .iter()
         .map(|r| r.binding().clone())
         .collect::<Vec<_>>();
-    let requests = closed.staffing_requests(&bindings).unwrap();
-    let next = advance_staffing(people, &requests).unwrap();
+    let requests = closed
+        .staffing_requests(&bindings)
+        .expect("the fixture staffing requests are present");
+    let next = babylon_material_circuit::advance_staffing(people, &requests)
+        .expect("the fixture staffing advances");
     let members = next
         .next_labor()
         .iter()
@@ -286,7 +394,7 @@ fn staffed_equipment_close(
         .collect();
     let result = closed
         .finish_with_workforce(next.next_labor().to_vec(), members)
-        .unwrap();
+        .expect("the fixture call `finish_with_workforce` succeeds for the authored inputs");
     (result, next.state().clone())
 }
 
@@ -304,18 +412,19 @@ fn eighty_staffed_periods_preserve_unfinished_installation_after_horizon_and_exa
         site(),
         hours(),
         1,
-        StaffingPolicy::one_period(1).unwrap(),
+        StaffingPolicy::one_period(1).expect("the one-period fixture advances"),
         vec![
             StaffingWorkSource::Production(process()),
             StaffingWorkSource::Installation(process()),
         ],
     )
-    .unwrap();
+    .expect("the authored fixture satisfies the constructor invariants");
     let mut people = StaffingState::try_new(
         1,
-        vec![StaffingPoolState::try_new(binding, 0, 1, 0).unwrap()],
+        vec![StaffingPoolState::try_new(binding, 0, 1, 0)
+            .expect("the authored fixture satisfies the constructor invariants")],
     )
-    .unwrap();
+    .expect("the authored fixture satisfies the constructor invariants");
     let mut fork = None;
     let mut installed_hours = 0;
     let mut paid_idle_hours = 0;
@@ -325,8 +434,11 @@ fn eighty_staffed_periods_preserve_unfinished_installation_after_horizon_and_exa
             assert_eq!(state.capacities[0].available_batches, 0);
             assert_eq!(equipment(&state).pending[0].remaining_hours, 10);
             fork = Some((
-                decode_material_circuit_state(&encode_material_circuit_state(&state).unwrap())
-                    .unwrap(),
+                babylon_material_circuit::decode_material_circuit_state(
+                    &babylon_material_circuit::encode_material_circuit_state(&state)
+                        .expect("the canonical material state encodes"),
+                )
+                .expect("the canonical material bytes decode"),
                 people.clone(),
             ));
         }
@@ -349,7 +461,9 @@ fn eighty_staffed_periods_preserve_unfinished_installation_after_horizon_and_exa
             .map(|r| r.used_hours)
             .sum::<u64>();
         for r in &closed.equipment_wear {
-            wear = wear.checked_add(r.carried_to_output).unwrap();
+            wear = wear
+                .checked_add(r.carried_to_output)
+                .expect("the fixture arithmetic stays in range");
         }
         state = closed.state;
         people = next;
@@ -362,14 +476,17 @@ fn eighty_staffed_periods_preserve_unfinished_installation_after_horizon_and_exa
     assert!(equipment(&state).cohorts.is_empty());
     assert_eq!(stock_cost(&state, good(4)), money(95));
     assert_eq!(
-        economy(&state).book.cash(AccountId::Site(site())).unwrap(),
+        economy(&state)
+            .book
+            .cash(AccountId::Site(site()))
+            .expect("the fixture book holds the payer account"),
         money(36)
     );
     assert_eq!(
         economy(&state)
             .book
             .cash(AccountId::Household(household()))
-            .unwrap(),
+            .expect("the fixture book holds the payer account"),
         money(64)
     );
     assert_eq!(
@@ -385,25 +502,29 @@ fn installed_capacity_cannot_replace_missing_inputs_or_avoid_paid_idle_loss() {
         .inventory
         .iter_mut()
         .find(|r| r.good_id == good(3))
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .quantity = 0;
     let mut book = economy(&state).costs.snapshot();
     book.stocks
         .iter_mut()
         .find(|r| r.good_id == good(3))
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .amount = money(0);
     book.accounts
         .iter_mut()
         .find(|r| r.account == AccountId::Site(site()))
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .opening_capital = money(126);
-    economy_mut(&mut state).costs = HistoricalCostBook::from_snapshot(book).unwrap();
+    economy_mut(&mut state).costs =
+        HistoricalCostBook::from_snapshot(book).expect("the snapshot admits the derived value");
     for _ in 0..3 {
-        state = advance_material_circuit(&state).unwrap().state;
+        state = babylon_material_circuit::advance_material_circuit(&state)
+            .expect("the authored material state advances one period")
+            .state;
     }
     assert_eq!(state.capacities[0].available_batches, 2);
-    let closed = advance_material_circuit(&state).unwrap();
+    let closed = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
     assert_eq!(
         closed
             .production
@@ -418,7 +539,7 @@ fn installed_capacity_cannot_replace_missing_inputs_or_avoid_paid_idle_loss() {
         .income
         .iter()
         .find(|r| r.account == AccountId::Site(site()))
-        .unwrap();
+        .expect("the fixture holds the searched element");
     assert_eq!(income.statement.idle_labor_expense, money(4));
     assert_eq!(income.net_income, money(-4));
 }
@@ -427,10 +548,13 @@ fn installed_capacity_cannot_replace_missing_inputs_or_avoid_paid_idle_loss() {
 fn goods_cost_actual_wear_inputs_and_wages_are_one_produced_basis_without_revaluation() {
     let mut state = opening();
     for _ in 0..3 {
-        state = advance_material_circuit(&state).unwrap().state;
+        state = babylon_material_circuit::advance_material_circuit(&state)
+            .expect("the authored material state advances one period")
+            .state;
     }
     configure_output_quote(&mut state);
-    let result = advance_material_circuit(&state).unwrap();
+    let result = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
     let row = &result.prices[0];
     assert_eq!(
         row.cost,
@@ -447,12 +571,16 @@ fn goods_cost_actual_wear_inputs_and_wages_are_one_produced_basis_without_revalu
     );
     assert_eq!(stock_cost(&result.state, good(4)), money(29));
     assert_eq!(equipment_cost(&result.state), money(11));
-    let restored =
-        decode_material_circuit_state(&encode_material_circuit_state(&result.state).unwrap())
-            .unwrap();
+    let restored = babylon_material_circuit::decode_material_circuit_state(
+        &babylon_material_circuit::encode_material_circuit_state(&result.state)
+            .expect("the canonical material state encodes"),
+    )
+    .expect("the canonical material bytes decode");
     assert_eq!(
-        advance_material_circuit(&result.state).unwrap(),
-        advance_material_circuit(&restored).unwrap()
+        babylon_material_circuit::advance_material_circuit(&result.state)
+            .expect("the authored material state advances one period"),
+        babylon_material_circuit::advance_material_circuit(&restored)
+            .expect("the authored material state advances one period")
     );
 }
 

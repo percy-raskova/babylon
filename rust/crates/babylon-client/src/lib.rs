@@ -1,7 +1,10 @@
 //! Durable campaign observer, geographic presentation, and headless Archive commands.
 
 // Bevy system parameters are passed by value by the SystemParam API.
-#![allow(clippy::needless_pass_by_value)]
+#![allow(
+    clippy::needless_pass_by_value,
+    reason = "Bevy system parameters are passed by value by the SystemParam API"
+)]
 
 pub mod app;
 pub mod atlas;

@@ -3,8 +3,11 @@
 use std::collections::BTreeSet;
 use std::sync::OnceLock;
 
+use babylon_kernel::content_digest;
 use babylon_kernel::tick_content_hash::RefDigest;
-use babylon_kernel::{content_digest::sha256_of, H3CellId, H3CellIdError};
+use babylon_kernel::{H3CellId, H3CellIdError};
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 
 const SOURCE_DOMAIN: &[u8] = b"babylon.h3.reference-source.v1\0";
 const ROW_DOMAIN: &[u8] = b"babylon.h3.reference-rows.v1\0";
@@ -229,7 +232,7 @@ impl H3ReferenceCohort {
 }
 
 /// Closed failures for representative H3 cohort construction.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum H3ReferenceCohortError {
     /// The checked-in fixture did not begin with the sole v1 domain.
     FixtureDomainMismatch,
@@ -287,7 +290,7 @@ pub enum H3ReferenceCohortError {
 }
 
 impl std::fmt::Display for H3ReferenceCohortError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> FmtResult {
         write!(formatter, "invalid H3 reference cohort: {self:?}")
     }
 }
@@ -378,7 +381,7 @@ fn parse_representative_h3_reference_cohort(
     }
 
     let expected_digest = RefDigest::from_bytes(EXPECTED_SOURCE_DIGEST);
-    let actual_digest = RefDigest::from_bytes(sha256_of(fixture));
+    let actual_digest = RefDigest::from_bytes(content_digest::sha256_of(fixture));
     if actual_digest != expected_digest {
         return Err(H3ReferenceCohortError::FixtureDigestMismatch {
             expected: expected_digest,
@@ -639,14 +642,14 @@ fn digest_source_cells(
     let mut bytes = Vec::with_capacity(capacity);
     bytes.extend_from_slice(SOURCE_DOMAIN);
     push_count(&mut bytes, count)?;
-    for cell in cells
+    let bounded_cells = cells
         .iter()
         .take(MAX_H3_REFERENCE_SOURCE_CELLS)
-        .filter(|cell| resolution.is_none_or(|wanted| cell.resolution() == wanted))
-    {
+        .filter(|cell| resolution.is_none_or(|wanted| cell.resolution() == wanted));
+    for cell in bounded_cells {
         bytes.extend_from_slice(&cell.to_be_bytes());
     }
-    Ok(RefDigest::from_bytes(sha256_of(&bytes)))
+    Ok(RefDigest::from_bytes(content_digest::sha256_of(&bytes)))
 }
 
 fn digest_closure_rows(rows: &[H3ReferenceCellRow]) -> Result<RefDigest, H3ReferenceCohortError> {
@@ -663,7 +666,7 @@ fn digest_closure_rows(rows: &[H3ReferenceCellRow]) -> Result<RefDigest, H3Refer
         push_optional_cell(&mut bytes, row.ancestor_r6);
         push_optional_cell(&mut bytes, row.ancestor_r7);
     }
-    Ok(RefDigest::from_bytes(sha256_of(&bytes)))
+    Ok(RefDigest::from_bytes(content_digest::sha256_of(&bytes)))
 }
 
 fn digest_membership_rows(
@@ -677,7 +680,7 @@ fn digest_membership_rows(
         bytes.extend_from_slice(&row.cell_id.to_be_bytes());
         bytes.push(row.origin.code());
     }
-    Ok(RefDigest::from_bytes(sha256_of(&bytes)))
+    Ok(RefDigest::from_bytes(content_digest::sha256_of(&bytes)))
 }
 
 fn digest_cohort(
@@ -696,7 +699,7 @@ fn digest_cohort(
     bytes.extend_from_slice(source_digest.as_bytes());
     bytes.extend_from_slice(closure_digest.as_bytes());
     bytes.extend_from_slice(membership_digest.as_bytes());
-    Ok(RefDigest::from_bytes(sha256_of(&bytes)))
+    Ok(RefDigest::from_bytes(content_digest::sha256_of(&bytes)))
 }
 
 fn framed_capacity(
@@ -731,7 +734,7 @@ mod fixture_tests {
 
     #[test]
     fn checked_in_fixture_has_the_exact_governed_receipt() {
-        let cohort = representative_h3_reference_cohort().unwrap();
+        let cohort = representative_h3_reference_cohort().expect("the fixture call `representative_h3_reference_cohort` succeeds for the authored inputs");
         assert_eq!(cohort.rows().len(), 59_849);
         assert_eq!(cohort.receipt().source_cell_count(), EXPECTED_SOURCE_CELLS);
         assert_eq!(
@@ -791,9 +794,12 @@ mod fixture_tests {
         let mut wrong_digest = SOURCE_FIXTURE.to_vec();
         let second = payload_offset + SOURCE_ROW_BYTES;
         let third = second + SOURCE_ROW_BYTES;
-        let first_cell: [u8; SOURCE_ROW_BYTES] =
-            wrong_digest[payload_offset..second].try_into().unwrap();
-        let second_cell: [u8; SOURCE_ROW_BYTES] = wrong_digest[second..third].try_into().unwrap();
+        let first_cell: [u8; SOURCE_ROW_BYTES] = wrong_digest[payload_offset..second]
+            .try_into()
+            .expect("the fixture slice has the target length");
+        let second_cell: [u8; SOURCE_ROW_BYTES] = wrong_digest[second..third]
+            .try_into()
+            .expect("the fixture slice has the target length");
         wrong_digest[payload_offset..second].copy_from_slice(&second_cell);
         wrong_digest[second..third].copy_from_slice(&first_cell);
         assert!(matches!(

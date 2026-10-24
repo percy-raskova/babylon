@@ -1,16 +1,27 @@
 //! Source-only durable capture and deterministic importer selection.
+use super::national::NationalSources;
 use super::{
-    codec, national::NationalSources, CatalogGeography, EconomicCatalogError, EconomicCatalogInput,
-    EconomicOpening, EconomicProjectionView, SourceArtifact, SourceArtifactKind,
+    codec, CatalogGeography, EconomicCatalogError, EconomicCatalogInput, EconomicOpening,
+    EconomicProjectionView, SourceArtifact, SourceArtifactKind,
 };
-use babylon_kernel::{clock::CampaignDuration, content_digest::sha256_of};
+
+use babylon_kernel::clock::CampaignDuration;
+
+use super::control::MichiganSources;
+use crate::identity::CampaignId;
+use crate::michigan_material::MichiganMaterialCatalog;
+use crate::national_economy::NationalAidCapture;
+use crate::spatial_reference_products::SpatialReferenceProducts;
+use babylon_kernel::content_digest;
+use babylon_tick::h3_runtime::MichiganDynamicHexFoundation;
 use std::collections::BTreeSet;
+use std::fmt::Formatter;
 
 type Result<T> = std::result::Result<T, EconomicCatalogError>;
 
 pub(super) enum CapturedSources {
     National(Box<NationalSources>),
-    Michigan(Box<super::control::MichiganSources>),
+    Michigan(Box<MichiganSources>),
 }
 /// One durable source table and current compiler pin. The opening is regenerated
 /// in memory; no derived per-site or global state is encoded inside the catalog.
@@ -20,11 +31,11 @@ pub struct CapturedEconomicCatalog {
     pub(super) opening: EconomicOpening,
     pub(super) bytes: Vec<u8>,
     pub(super) digest: [u8; 32],
-    pub(super) local_detail: Option<babylon_tick::h3_runtime::MichiganDynamicHexFoundation>,
-    spatial_detail: Option<crate::spatial_reference_products::SpatialReferenceProducts>,
+    pub(super) local_detail: Option<MichiganDynamicHexFoundation>,
+    spatial_detail: Option<SpatialReferenceProducts>,
 }
 impl std::fmt::Debug for CapturedEconomicCatalog {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("CapturedEconomicCatalog")
             .field("scenario", &self.input.scenario_id)
             .field("preset", &self.input.preset_id)
@@ -69,14 +80,14 @@ impl CapturedEconomicCatalog {
                 (CapturedSources::National(Box::new(sources)), opening)
             }
             CatalogGeography::MichiganControl => {
-                let (sources, opening) = super::control::MichiganSources::admit(&mut input)?;
+                let (sources, opening) = MichiganSources::admit(&mut input)?;
                 (CapturedSources::Michigan(Box::new(sources)), opening)
             }
         };
         if let (CapturedSources::National(national), Some(config)) = (&sources, &input.organizer) {
             let mut source_only = input.clone();
             source_only.organizer = None;
-            let source_basis = sha256_of(&codec::encode(&source_only, compiler)?);
+            let source_basis = content_digest::sha256_of(&codec::encode(&source_only, compiler)?);
             let expected_config = crate::national_economy::organizer::assemble(
                 config.campaign_id,
                 crate::national_economy::organizer::NationalOrganizerSourceBasis(source_basis),
@@ -92,7 +103,7 @@ impl CapturedEconomicCatalog {
             return Err(EconomicCatalogError::Opening("supplied opening mismatch"));
         }
         let bytes = codec::encode(&input, compiler)?;
-        let digest = sha256_of(&bytes);
+        let digest = content_digest::sha256_of(&bytes);
         Ok(Self {
             input,
             sources,
@@ -109,7 +120,7 @@ impl CapturedEconomicCatalog {
     /// invalid source-derived config or malformed current framing.
     pub fn capture_national_campaign(
         input: EconomicCatalogInput,
-        campaign: crate::identity::CampaignId,
+        campaign: CampaignId,
     ) -> Result<Self> {
         if input.organizer.is_some() {
             return Err(EconomicCatalogError::Identity);
@@ -128,7 +139,7 @@ impl CapturedEconomicCatalog {
             SourceArtifactKind::Rules,
             super::preset::national_organizer_rules(),
         );
-        let source_basis = sha256_of(&codec::encode(
+        let source_basis = content_digest::sha256_of(&codec::encode(
             &catalog.input,
             compiler_for(&catalog.input)?,
         )?);
@@ -141,12 +152,12 @@ impl CapturedEconomicCatalog {
         )?;
         catalog.input.organizer = Some(config);
         catalog.bytes = codec::encode(&catalog.input, compiler_for(&catalog.input)?)?;
-        catalog.digest = sha256_of(&catalog.bytes);
+        catalog.digest = content_digest::sha256_of(&catalog.bytes);
         Ok(catalog)
     }
     /// Captured national gift bindings, regenerated only from admitted source bytes.
     #[must_use]
-    pub fn national_aid_capture(&self) -> Option<&crate::national_economy::NationalAidCapture> {
+    pub fn national_aid_capture(&self) -> Option<&NationalAidCapture> {
         match &self.sources {
             CapturedSources::National(sources) => Some(&sources.aid),
             CapturedSources::Michigan(_) => None,
@@ -159,7 +170,7 @@ impl CapturedEconomicCatalog {
         if bytes.len() > codec::MAX_CATALOG_BYTES {
             return Err(EconomicCatalogError::Bound);
         }
-        if sha256_of(bytes) != expected_digest {
+        if content_digest::sha256_of(bytes) != expected_digest {
             return Err(EconomicCatalogError::Digest);
         }
         let (input, compiler) = codec::decode(bytes)?;
@@ -205,9 +216,7 @@ impl CapturedEconomicCatalog {
             },
         }
     }
-    pub(crate) fn spatial_detail(
-        &self,
-    ) -> Option<&crate::spatial_reference_products::SpatialReferenceProducts> {
+    pub(crate) fn spatial_detail(&self) -> Option<&SpatialReferenceProducts> {
         self.spatial_detail.as_ref()
     }
     pub(crate) fn has_organizer(&self) -> bool {
@@ -270,9 +279,7 @@ pub(super) fn source_coverage(
     }
     Ok(())
 }
-fn local_detail(
-    input: &EconomicCatalogInput,
-) -> Result<Option<babylon_tick::h3_runtime::MichiganDynamicHexFoundation>> {
+fn local_detail(input: &EconomicCatalogInput) -> Result<Option<MichiganDynamicHexFoundation>> {
     let bytes = input
         .sources
         .iter()
@@ -294,19 +301,16 @@ fn local_detail(
 
 fn spatial_detail(
     input: &EconomicCatalogInput,
-    local: Option<&babylon_tick::h3_runtime::MichiganDynamicHexFoundation>,
-) -> Result<Option<crate::spatial_reference_products::SpatialReferenceProducts>> {
+    local: Option<&MichiganDynamicHexFoundation>,
+) -> Result<Option<SpatialReferenceProducts>> {
     let kind = SourceArtifactKind::MichiganSpatialProducts;
     let bytes = input.sources.iter().find(|row| row.kind() == kind);
     match (local, bytes) {
         (None, None) => Ok(None),
         (Some(local), Some(bytes)) => {
-            crate::spatial_reference_products::SpatialReferenceProducts::decode_captured(
-                bytes.bytes(),
-                local,
-            )
-            .map(Some)
-            .map_err(|_| EconomicCatalogError::Source(kind))
+            SpatialReferenceProducts::decode_captured(bytes.bytes(), local)
+                .map(Some)
+                .map_err(|_| EconomicCatalogError::Source(kind))
         }
         _ => Err(EconomicCatalogError::Source(kind)),
     }
@@ -336,9 +340,7 @@ impl CapturedEconomicCatalog {
     /// decoding uses these bytes, never the current fixture accessor.
     /// # Errors
     /// Refuses missing original source inputs or any change during regeneration.
-    pub fn from_michigan(
-        catalog: &crate::michigan_material::MichiganMaterialCatalog,
-    ) -> Result<Self> {
+    pub fn from_michigan(catalog: &MichiganMaterialCatalog) -> Result<Self> {
         let mut sources = catalog.captured_sources().to_vec();
         if !sources
             .iter()
@@ -379,14 +381,16 @@ impl CapturedEconomicCatalog {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::michigan_material::MichiganMaterialCatalog;
 
     #[test]
     fn missing_or_changed_captured_detail_cannot_reload_the_embedded_fixture() {
-        let control = crate::michigan_material::MichiganMaterialCatalog::from_defines_toml(
-            include_str!("../../../../../content/scenarios/michigan/defines.toml"),
-        )
-        .unwrap();
-        let captured = CapturedEconomicCatalog::from_michigan(&control).unwrap();
+        let control = MichiganMaterialCatalog::from_defines_toml(include_str!(
+            "../../../../../content/scenarios/michigan/defines.toml"
+        ))
+        .expect("the authored input admits the derived value");
+        let captured = CapturedEconomicCatalog::from_michigan(&control)
+            .expect("the Michigan fixture content loads");
         let mut missing = captured.input.clone();
         missing
             .sources
@@ -402,7 +406,7 @@ mod tests {
             .sources
             .iter_mut()
             .find(|row| row.kind() == SourceArtifactKind::MichiganSpatialProducts)
-            .unwrap();
+            .expect("the fixture holds the searched element");
         let mut bytes = source.bytes().to_vec();
         bytes[52] ^= 1;
         *source = SourceArtifact::capture(SourceArtifactKind::MichiganSpatialProducts, bytes);
@@ -414,11 +418,12 @@ mod tests {
         ));
     }
     fn previous_compiler_refuses(catalog: &CapturedEconomicCatalog, compiler: &str) {
-        let previous = codec::encode(&catalog.input, compiler).unwrap();
+        let previous =
+            codec::encode(&catalog.input, compiler).expect("the fixture value encodes canonically");
         // Genuine prior compiler framing and an exact recomputed digest: refusal
         // must come from supported authority, not damaged or unauthenticated bytes.
         assert_eq!(
-            CapturedEconomicCatalog::decode(&previous, sha256_of(&previous)),
+            CapturedEconomicCatalog::decode(&previous, content_digest::sha256_of(&previous)),
             Err(EconomicCatalogError::CompilerVersion)
         );
     }
@@ -426,16 +431,17 @@ mod tests {
     fn previous_national_world_v4_compiler_is_refused() {
         let catalog =
             CapturedEconomicCatalog::capture(super::super::preset::national_catalog_input(), None)
-                .unwrap();
+                .expect("the fixture captures the authored state");
         previous_compiler_refuses(&catalog, "national-world-v4");
     }
     #[test]
     fn previous_michigan_control_v1_compiler_is_refused() {
-        let control = crate::michigan_material::MichiganMaterialCatalog::from_defines_toml(
-            include_str!("../../../../../content/scenarios/michigan/defines.toml"),
-        )
-        .unwrap();
-        let catalog = CapturedEconomicCatalog::from_michigan(&control).unwrap();
+        let control = MichiganMaterialCatalog::from_defines_toml(include_str!(
+            "../../../../../content/scenarios/michigan/defines.toml"
+        ))
+        .expect("the authored input admits the derived value");
+        let catalog = CapturedEconomicCatalog::from_michigan(&control)
+            .expect("the Michigan fixture content loads");
         previous_compiler_refuses(&catalog, "michigan-control-v1");
     }
 }

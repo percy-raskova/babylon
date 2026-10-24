@@ -1,4 +1,5 @@
 use babylon_client::observer::{ObservationContext, ObserverSession, Perspective, SessionPhase};
+use babylon_kernel::clock::CampaignDuration;
 use babylon_persistence::identity::CampaignId;
 use uuid::Uuid;
 
@@ -45,7 +46,9 @@ fn foreign_campaign_and_out_of_order_acknowledgements_do_not_install() {
     let mut state = session();
     state.ready(2, Some("head".into()));
     state.installed(&state.context());
-    let request = state.begin_advance().unwrap();
+    let request = state
+        .begin_advance()
+        .expect("the session begins the authored advance");
     assert!(!state.acknowledge(request + 1, 3, Some("wrong".into())));
     assert_eq!(state.durable_tick, 2);
     assert!(!state.acknowledge(request, 4, Some("skipped".into())));
@@ -60,7 +63,7 @@ fn foreign_campaign_and_out_of_order_acknowledgements_do_not_install() {
 fn completed_scenario_can_inspect_history_without_reopening_transport() {
     let mut state = session();
     state.ready(16, Some("complete".into()));
-    state.duration = Some(babylon_kernel::clock::CampaignDuration::Finite { final_period: 16 });
+    state.duration = Some(CampaignDuration::Finite { final_period: 16 });
     state.installed(&state.context());
     assert_eq!(state.phase, SessionPhase::Complete);
     assert!(state.begin_advance().is_none());
@@ -81,7 +84,9 @@ fn perspective_switch_while_advancing_does_not_allow_a_second_request() {
     let mut state = session();
     state.ready(0, None);
     state.installed(&state.context());
-    let request = state.begin_advance().unwrap();
+    let request = state
+        .begin_advance()
+        .expect("the session begins the authored advance");
     state.set_perspective(Perspective::PlayerKnowledge);
     state.installed(&state.context());
     assert!(state.begin_advance().is_none());
@@ -93,7 +98,7 @@ fn perspective_switch_while_advancing_does_not_allow_a_second_request() {
 #[test]
 fn continuous_campaign_can_play_and_advance_beyond_the_old_final_period() {
     let mut state = session();
-    state.duration = Some(babylon_kernel::clock::CampaignDuration::Continuous);
+    state.duration = Some(CampaignDuration::Continuous);
     state.ready(80, Some("period-80".into()));
     assert!(state.installed(&state.context()));
     assert_eq!(state.phase, SessionPhase::Ready);

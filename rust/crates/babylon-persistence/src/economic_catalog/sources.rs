@@ -1,7 +1,9 @@
 //! Singular captured source rows. Hashing a row identifies bytes; the catalog's
 //! source-specific admission must still prove its pinned schema and semantics.
 
-use babylon_kernel::content_digest::sha256_of;
+use super::EconomicCatalogError;
+use babylon_kernel::content_digest;
+use std::sync::Arc;
 
 /// Exact current source role. Aggregate or unknown roles never silently bind.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -54,14 +56,15 @@ pub enum SourceArtifactKind {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SourceArtifact {
     kind: SourceArtifactKind,
-    bytes: std::sync::Arc<[u8]>,
+    // STYLE-EXCEPTION(EXC-04): captured source bytes are immutable and shared by every clone.
+    bytes: Arc<[u8]>,
     digest: [u8; 32],
 }
 impl SourceArtifact {
     /// Identify owned bytes without implying source-specific admission.
     #[must_use]
     pub fn capture(kind: SourceArtifactKind, bytes: Vec<u8>) -> Self {
-        let digest = sha256_of(&bytes);
+        let digest = content_digest::sha256_of(&bytes);
         Self {
             kind,
             bytes: bytes.into(),
@@ -83,7 +86,7 @@ impl SourceArtifact {
 }
 
 impl TryFrom<u8> for SourceArtifactKind {
-    type Error = super::EconomicCatalogError;
+    type Error = EconomicCatalogError;
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
             1 => Ok(Self::GraphDeclarations),
@@ -121,7 +124,7 @@ impl TryFrom<u8> for SourceArtifactKind {
             33 => Ok(Self::MichiganControlOverrides),
             34 => Ok(Self::MichiganSpatialProducts),
             35 => Ok(Self::NationalHouseholds),
-            _ => Err(super::EconomicCatalogError::WireTag),
+            _ => Err(EconomicCatalogError::WireTag),
         }
     }
 }

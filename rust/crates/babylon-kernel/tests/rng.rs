@@ -1,5 +1,6 @@
 use babylon_kernel::replay::{ReplaySeed, ReplaySessionId, RngDomain};
-use babylon_kernel::{rng::seed_for, rng::KernelRng};
+use babylon_kernel::rng;
+use babylon_kernel::rng::KernelRng;
 use sha2::{Digest, Sha256};
 
 const VECTOR_SEED: i64 = -72_623_859_790_382_856;
@@ -24,9 +25,11 @@ const EXPECTED_DRAWS: [u64; 9] = [
 
 #[test]
 fn preimage_key_and_stream_match_the_language_neutral_vector() {
-    let session = ReplaySessionId::try_from("per60-replay/A9!").unwrap();
+    let session = ReplaySessionId::try_from("per60-replay/A9!")
+        .expect("the fixture value fits the target range");
     let seed = ReplaySeed::new(VECTOR_SEED);
-    let domain = RngDomain::try_from("vitality/per60-vector").unwrap();
+    let domain = RngDomain::try_from("vitality/per60-vector")
+        .expect("the fixture value fits the target range");
 
     let independent_preimage = [
         b"babylon.rng-stream\0".as_slice(),
@@ -49,7 +52,8 @@ fn preimage_key_and_stream_match_the_language_neutral_vector() {
     assert_eq!(independent_preimage, EXPECTED_PREIMAGE);
     assert_eq!(Sha256::digest(EXPECTED_PREIMAGE).as_slice(), EXPECTED_KEY);
     assert_eq!(
-        seed_for(&session, seed, VECTOR_TICK, &domain, VECTOR_CARRIER).unwrap(),
+        rng::seed_for(&session, seed, VECTOR_TICK, &domain, VECTOR_CARRIER)
+            .expect("the fixture call `seed_for` succeeds for the authored inputs"),
         EXPECTED_KEY
     );
 
@@ -58,53 +62,61 @@ fn preimage_key_and_stream_match_the_language_neutral_vector() {
     let reference_draws = draws_from_blocks(&first_block, &second_block);
     assert_eq!(reference_draws, EXPECTED_DRAWS);
 
-    let mut rng =
-        KernelRng::for_carrier(&session, seed, VECTOR_TICK, &domain, VECTOR_CARRIER).unwrap();
+    let mut rng = KernelRng::for_carrier(&session, seed, VECTOR_TICK, &domain, VECTOR_CARRIER)
+        .expect("the fixture call `for_carrier` succeeds for the authored inputs");
     let actual_draws = std::array::from_fn(|_| rng.next_u64());
     assert_eq!(actual_draws, EXPECTED_DRAWS);
 }
 
 #[test]
 fn seed_derivation_changes_when_any_identity_component_changes() {
-    let session = ReplaySessionId::try_from("per60-replay/A9!").unwrap();
-    let other_session = ReplaySessionId::try_from("per60-replay/A9?").unwrap();
+    let session = ReplaySessionId::try_from("per60-replay/A9!")
+        .expect("the fixture value fits the target range");
+    let other_session = ReplaySessionId::try_from("per60-replay/A9?")
+        .expect("the fixture value fits the target range");
     let seed = ReplaySeed::new(VECTOR_SEED);
-    let domain = RngDomain::try_from("vitality/per60-vector").unwrap();
-    let other_domain = RngDomain::try_from("vitality/per60-vectos").unwrap();
-    let original = seed_for(&session, seed, VECTOR_TICK, &domain, VECTOR_CARRIER).unwrap();
+    let domain = RngDomain::try_from("vitality/per60-vector")
+        .expect("the fixture value fits the target range");
+    let other_domain = RngDomain::try_from("vitality/per60-vectos")
+        .expect("the fixture value fits the target range");
+    let original = rng::seed_for(&session, seed, VECTOR_TICK, &domain, VECTOR_CARRIER)
+        .expect("the fixture call `seed_for` succeeds for the authored inputs");
 
     assert_ne!(
-        seed_for(
+        rng::seed_for(
             &session,
             ReplaySeed::new(VECTOR_SEED + 1),
             VECTOR_TICK,
             &domain,
             VECTOR_CARRIER,
         )
-        .unwrap(),
+        .expect("the fixture call `seed_for` succeeds for the authored inputs"),
         original
     );
     assert_ne!(
-        seed_for(&other_session, seed, VECTOR_TICK, &domain, VECTOR_CARRIER).unwrap(),
+        rng::seed_for(&other_session, seed, VECTOR_TICK, &domain, VECTOR_CARRIER)
+            .expect("the fixture call `seed_for` succeeds for the authored inputs"),
         original
     );
     assert_ne!(
-        seed_for(&session, seed, VECTOR_TICK + 1, &domain, VECTOR_CARRIER).unwrap(),
+        rng::seed_for(&session, seed, VECTOR_TICK + 1, &domain, VECTOR_CARRIER)
+            .expect("the fixture call `seed_for` succeeds for the authored inputs"),
         original
     );
     assert_ne!(
-        seed_for(&session, seed, VECTOR_TICK, &other_domain, VECTOR_CARRIER).unwrap(),
+        rng::seed_for(&session, seed, VECTOR_TICK, &other_domain, VECTOR_CARRIER)
+            .expect("the fixture call `seed_for` succeeds for the authored inputs"),
         original
     );
     assert_ne!(
-        seed_for(
+        rng::seed_for(
             &session,
             seed,
             VECTOR_TICK,
             &domain,
             b"33:4:node|12:per60/vector|8:worker-A|2:-8",
         )
-        .unwrap(),
+        .expect("the fixture call `seed_for` succeeds for the authored inputs"),
         original
     );
 }

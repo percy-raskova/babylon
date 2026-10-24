@@ -1,25 +1,31 @@
 //! Actual national source, optional organizer authority and cold foundation admission.
-use babylon_kernel::{
-    content_digest::sha256_of,
-    replay::{ReplaySeed, ReplaySessionId},
-};
-use babylon_persistence::{
-    economic_catalog::{CapturedEconomicCatalog, SourceArtifactKind as Kind},
-    economic_content::EconomicContentAdmission,
-    identity::CampaignId,
-    material_runtime::MaterialRuntimeFoundation,
-};
+use babylon_kernel::content_digest::sha256_of;
+use babylon_kernel::replay::{ReplaySeed, ReplaySessionId};
+
+use babylon_persistence::economic_catalog::{CapturedEconomicCatalog, SourceArtifactKind as Kind};
+use babylon_persistence::economic_content::EconomicContentAdmission;
+use babylon_persistence::identity::CampaignId;
+use babylon_persistence::material_runtime::MaterialRuntimeFoundation;
+
+use babylon_practice_contract::OrganizerConfig;
 use babylon_practice_contract::{
-    admit_organizer, organizer_action_batch, organizer_aid_commitment, OrganizerChoice,
-    OrganizerCommand, OrganizerError, OrganizerRefusal, OrganizerTimeBindingMode, PracticeId,
+    OrganizerChoice, OrganizerCommand, OrganizerError, OrganizerRefusal, OrganizerTimeBindingMode,
+    PracticeId,
 };
+use babylon_tick::material_world::MaterialWorldRegister;
+use uuid::Uuid;
 #[path = "fixtures/national_capture.rs"]
 mod national_capture;
 
 #[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "`actual_national_playable_source_and_cold_foundation_preserve_one_opening` keeps one authored boundary's fixture and assertions together"
+)]
 fn actual_national_playable_source_and_cold_foundation_preserve_one_opening() {
-    let campaign = CampaignId::from_uuid(uuid::Uuid::from_u128(0x0026_1631_7031));
-    let raw = CapturedEconomicCatalog::capture(national_capture::input(), None).unwrap();
+    let campaign = CampaignId::from_uuid(Uuid::from_u128(0x0026_1631_7031));
+    let raw = CapturedEconomicCatalog::capture(national_capture::input(), None)
+        .expect("the fixture captures the authored state");
     assert_eq!(raw.compiler_version(), "national-world-v5");
     assert_eq!(
         &raw.canonical_bytes()[raw.canonical_bytes().len() - 5..],
@@ -33,10 +39,14 @@ fn actual_national_playable_source_and_cold_foundation_preserve_one_opening() {
         env!("CARGO_MANIFEST_DIR"),
         "/../../../content/scenarios/national/organizer-cycle.bsl"
     ));
-    assert_eq!(raw.source(Kind::Rules).unwrap(), material_rules);
+    assert_eq!(
+        raw.source(Kind::Rules)
+            .expect("the fixture call `source` succeeds for the authored inputs"),
+        material_rules
+    );
     let playable =
         CapturedEconomicCatalog::capture_national_campaign(national_capture::input(), campaign)
-            .unwrap();
+            .expect("the fixture captures the authored state");
     // One complete comparison, without cloning a second expected national opening.
     // This includes every stock, cash, workforce and modeled household-time policy.
     assert_eq!(raw.opening(), playable.opening());
@@ -44,8 +54,17 @@ fn actual_national_playable_source_and_cold_foundation_preserve_one_opening() {
         env!("CARGO_MANIFEST_DIR"),
         "/../../../content/scenarios/national/defines.toml"
     ));
-    assert_eq!(raw.source(Kind::NationalGamePolicy).unwrap(), policy);
-    assert_eq!(playable.source(Kind::NationalGamePolicy).unwrap(), policy);
+    assert_eq!(
+        raw.source(Kind::NationalGamePolicy)
+            .expect("the fixture call `source` succeeds for the authored inputs"),
+        policy
+    );
+    assert_eq!(
+        playable
+            .source(Kind::NationalGamePolicy)
+            .expect("the fixture call `source` succeeds for the authored inputs"),
+        policy
+    );
     assert_eq!(raw.national_aid_capture(), playable.national_aid_capture());
     assert_ne!(raw.digest(), playable.digest());
     let raw_frame_size = raw.canonical_bytes().len();
@@ -53,25 +72,36 @@ fn actual_national_playable_source_and_cold_foundation_preserve_one_opening() {
     let mut rules = material_rules.to_vec();
     rules.push(b'\n');
     rules.extend_from_slice(organizer_rules);
-    assert_eq!(playable.source(Kind::Rules).unwrap(), rules);
+    assert_eq!(
+        playable
+            .source(Kind::Rules)
+            .expect("the fixture call `source` succeeds for the authored inputs"),
+        rules
+    );
     let catalog_digest = playable.digest();
     assert_eq!(catalog_digest, sha256_of(playable.canonical_bytes()));
-    let session_id = ReplaySessionId::try_from("national-organizer-cold-control").unwrap();
+    let session_id = ReplaySessionId::try_from("national-organizer-cold-control")
+        .expect("the fixture value fits the target range");
     let foundation = playable
         .create_foundation(session_id.clone(), ReplaySeed::new(319))
-        .unwrap();
+        .expect("the authored catalog builds the foundation");
     let expected_config =
         assert_admitted_inputs(foundation.initial_register(), campaign, session_id, policy);
     let register_digest = foundation.initial_register().digest();
     let foundation_digest = foundation.digest();
     let cold = MaterialRuntimeFoundation::decode(
-        &foundation.export_canonical_bytes().unwrap(),
+        &foundation
+            .export_canonical_bytes()
+            .expect("the content exports its canonical bytes"),
         foundation_digest,
     )
-    .unwrap();
+    .expect("the committed canonical bytes decode");
     assert_eq!(
-        cold.export_canonical_bytes().unwrap(),
-        foundation.export_canonical_bytes().unwrap()
+        cold.export_canonical_bytes()
+            .expect("the content exports its canonical bytes"),
+        foundation
+            .export_canonical_bytes()
+            .expect("the content exports its canonical bytes")
     );
     assert_eq!(cold.initial_register().digest(), register_digest);
     assert_eq!(
@@ -87,10 +117,12 @@ fn actual_national_playable_source_and_cold_foundation_preserve_one_opening() {
         .graph_foundation()
         .content_bundle()
         .economic_catalog()
-        .unwrap();
+        .expect("the fixture call `economic_catalog` succeeds for the authored inputs");
     assert_eq!(cold_catalog.digest(), catalog_digest);
     assert_eq!(
-        cold_catalog.source(Kind::NationalGamePolicy).unwrap(),
+        cold_catalog
+            .source(Kind::NationalGamePolicy)
+            .expect("the fixture call `source` succeeds for the authored inputs"),
         policy
     );
     let targets = assert_source_bindings(
@@ -100,29 +132,36 @@ fn actual_national_playable_source_and_cold_foundation_preserve_one_opening() {
         organizer_rules.len(),
     );
     // Actual native session admission validates the captured organizer rules.
-    let session = foundation.into_session().unwrap();
+    let session = foundation
+        .into_session()
+        .expect("the fixture opens a session");
     assert_eq!(session.completed_tick(), 0);
     assert_eq!(
         session.material().organizer_config(),
         Some(&expected_config)
     );
     drop(session);
-    let admitted = EconomicContentAdmission::from_foundation(cold).unwrap();
+    let admitted = EconomicContentAdmission::from_foundation(cold)
+        .expect("the foundation admits the derived value");
     admitted
         .validate_header(admitted.duration(), &catalog_digest, &foundation_digest, 0)
-        .unwrap();
+        .expect("the authored fixture satisfies the rule");
     assert_native_bindings(&admitted, &expected_config, &targets);
 }
 
 fn assert_admitted_inputs(
-    initial: &babylon_tick::material_world::MaterialWorldRegister,
+    initial: &MaterialWorldRegister,
     campaign: CampaignId,
     session_id: ReplaySessionId,
     policy: &[u8],
-) -> babylon_practice_contract::OrganizerConfig {
+) -> OrganizerConfig {
     assert_eq!(initial.completed_tick(), 0);
-    let config = initial.organizer_config().unwrap();
-    let state = initial.organizer_state().unwrap();
+    let config = initial
+        .organizer_config()
+        .expect("the fixture register carries organizer config");
+    let state = initial
+        .organizer_state()
+        .expect("the fixture register carries organizer state");
     assert_eq!(config.campaign_id, *campaign.canonical_bytes());
     assert!(
         matches!(&config.time_binding, OrganizerTimeBindingMode::Household{bindings} if bindings.len()==3)
@@ -138,17 +177,36 @@ fn assert_admitted_inputs(
         authority_id: config.input_authority_id,
         expected_period: 0,
         content_digest: config.content_digest,
-        resource_digest: babylon_practice_contract::organizer_resource_digest().unwrap(),
+        resource_digest: babylon_practice_contract::organizer_resource_digest()
+            .expect("the organizer resource set has a digest"),
         nonce: [nonce; 16],
         choice,
     };
-    let ordinary = admit_organizer(config, state, &command(OrganizerChoice::Hold, 1)).unwrap();
-    let ordinary_batch =
-        organizer_action_batch(config, state, Some(&ordinary), session_id.clone()).unwrap();
+    let ordinary = babylon_practice_contract::admit_organizer(
+        config,
+        state,
+        &command(OrganizerChoice::Hold, 1),
+    )
+    .expect("the fixture admits the organizer actor");
+    let ordinary_batch = babylon_practice_contract::organizer_action_batch(
+        config,
+        state,
+        Some(&ordinary),
+        session_id.clone(),
+    )
+    .expect("the authored action batch builds");
     assert!(!ordinary_batch.items().is_empty());
-    let gift = admit_organizer(config, state, &command(OrganizerChoice::RemoteAid, 2)).unwrap();
-    let gift_capture = organizer_aid_commitment(config, state, &gift).unwrap();
-    let aid_batch = organizer_action_batch(config, state, Some(&gift), session_id).unwrap();
+    let gift = babylon_practice_contract::admit_organizer(
+        config,
+        state,
+        &command(OrganizerChoice::RemoteAid, 2),
+    )
+    .expect("the fixture admits the organizer actor");
+    let gift_capture = babylon_practice_contract::organizer_aid_commitment(config, state, &gift)
+        .expect("the authored aid commitment builds");
+    let aid_batch =
+        babylon_practice_contract::organizer_action_batch(config, state, Some(&gift), session_id)
+            .expect("the authored action batch builds");
     assert!(aid_batch
         .items()
         .iter()
@@ -160,13 +218,13 @@ fn assert_admitted_inputs(
     let mut stale_command = command(OrganizerChoice::RemoteAid, 3);
     stale_command.expected_period = 1;
     assert_eq!(
-        admit_organizer(config, state, &stale_command),
+        babylon_practice_contract::admit_organizer(config, state, &stale_command),
         Err(OrganizerError::Refused(OrganizerRefusal::StalePeriod))
     );
     let mut forged = command(OrganizerChoice::RemoteAid, 4);
     forged.content_digest[0] ^= 1;
     assert_eq!(
-        admit_organizer(config, state, &forged),
+        babylon_practice_contract::admit_organizer(config, state, &forged),
         Err(OrganizerError::Refused(OrganizerRefusal::ContentChanged))
     );
     config.clone()
@@ -174,7 +232,7 @@ fn assert_admitted_inputs(
 
 fn assert_native_bindings(
     admitted: &EconomicContentAdmission,
-    expected_config: &babylon_practice_contract::OrganizerConfig,
+    expected_config: &OrganizerConfig,
     targets: &[String],
 ) {
     let nodes = admitted.foundation_graph().rows().nodes();
@@ -213,7 +271,10 @@ fn assert_native_bindings(
         expected_config.aid_bindings[1].partner.actor_id,
     ] {
         let name = format!("organizer-participant-body-{actor}");
-        let row = bodies.iter().find(|(id, _, _)| id == &name).unwrap();
+        let row = bodies
+            .iter()
+            .find(|(id, _, _)| id == &name)
+            .expect("the fixture holds the searched element");
         assert_eq!(row.1, "ORGANIZATION_BODY");
         assert_eq!(row.2.len(), 2);
     }
@@ -221,11 +282,12 @@ fn assert_native_bindings(
 
 fn assert_source_bindings(
     catalog: &CapturedEconomicCatalog,
-    config: &babylon_practice_contract::OrganizerConfig,
+    config: &OrganizerConfig,
     raw_frame_size: usize,
     organizer_rule_size: usize,
 ) -> Vec<String> {
-    let config_bytes = babylon_practice_contract::encode_organizer_config(config).unwrap();
+    let config_bytes = babylon_practice_contract::encode_organizer_config(config)
+        .expect("the fixture value encodes to its canonical bytes");
     assert_eq!(
         catalog.canonical_bytes().len(),
         raw_frame_size + 1 + organizer_rule_size + config_bytes.len()
@@ -236,7 +298,9 @@ fn assert_source_bindings(
     let mut basis = catalog.canonical_bytes()[..marker].to_vec();
     basis.extend_from_slice(&[0; 5]);
     assert_eq!(config.content_digest, sha256_of(&basis));
-    let aid = catalog.national_aid_capture().unwrap();
+    let aid = catalog
+        .national_aid_capture()
+        .expect("the fixture call `national_aid_capture` succeeds for the authored inputs");
     config
         .aid_bindings
         .iter()
@@ -245,7 +309,12 @@ fn assert_source_bindings(
             assert_eq!(binding.recipient_principal_id, child.principal.as_bytes());
             assert_eq!(
                 binding.social_class_target,
-                sha256_of(&child.class_subject.canonical_bytes().unwrap())
+                sha256_of(
+                    &child
+                        .class_subject
+                        .canonical_bytes()
+                        .expect("the graph value exposes canonical bytes")
+                )
             );
             let babylon_graph::stable_element::StableElementKey::Node { local_name, .. } =
                 &child.class_subject

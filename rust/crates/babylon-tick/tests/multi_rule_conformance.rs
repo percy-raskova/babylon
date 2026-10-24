@@ -50,10 +50,18 @@
 //! double, and Rust parses a float literal correctly rounded — so e.g.
 //! `999.95_f64` IS the double Python printed.
 
+// Conformance fixtures exercise exact engine values, transcribe spec literals,
+// and build whole scenarios in one test. These pedantic lints would force
+// ceremony that hides those contracts, so they stay off in test code only.
+#![allow(
+    clippy::float_cmp,
+    reason = "these comparisons pin exact authored f64 values"
+)]
+
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
-use babylon_tick::run_once_into; // `hex` is not needed here — neither test formats a hash
+// `hex` is not needed here — neither test formats a hash
 
 const SCENARIO: &str =
     include_str!("../content/scenarios/vitality-lifecycle-combined-conformance.bscn");
@@ -82,8 +90,8 @@ const EXPECTED_TERRITORIES: [ExpectedTerritory; 4] = [
         pop_p: 6040.675,
         pop_d_prime: 1858.665,
         wealth_d_prime: 9_610_000.0,
-        dependency_ratio: 0.6545394347486001,
-        legitimation_index: 0.6038999999999999,
+        dependency_ratio: 0.654_539_434_748_600_1,
+        legitimation_index: 0.603_899_999_999_999_9,
         legitimation_crisis: 0.0,
         transmitted_ideology: 0.5,
     },
@@ -94,8 +102,8 @@ const EXPECTED_TERRITORIES: [ExpectedTerritory; 4] = [
         pop_p: 5060.3,
         pop_d_prime: 1548.0,
         wealth_d_prime: 4_805_000.0,
-        dependency_ratio: 0.876370966148252,
-        legitimation_index: 0.6038999999999999,
+        dependency_ratio: 0.876_370_966_148_252,
+        legitimation_index: 0.603_899_999_999_999_9,
         legitimation_crisis: 0.0,
         transmitted_ideology: 0.5,
     },
@@ -103,11 +111,11 @@ const EXPECTED_TERRITORIES: [ExpectedTerritory; 4] = [
         name: "recovering-county",
         id: 2,
         pop_d: 1963.7,
-        pop_p: 6962.099999999999,
+        pop_p: 6_962.099_999_999_999,
         pop_d_prime: 2071.1,
         wealth_d_prime: 19_220_000.0,
-        dependency_ratio: 0.5795377831401446,
-        legitimation_index: 0.6038999999999999,
+        dependency_ratio: 0.579_537_783_140_144_6,
+        legitimation_index: 0.603_899_999_999_999_9,
         legitimation_crisis: 0.0,
         transmitted_ideology: 0.5,
     },
@@ -116,10 +124,10 @@ const EXPECTED_TERRITORIES: [ExpectedTerritory; 4] = [
         id: 3,
         pop_d: 3836.45,
         pop_p: 5605.25,
-        pop_d_prime: 117.14999999999999,
+        pop_d_prime: 117.149_999_999_999_99,
         wealth_d_prime: 0.0,
-        dependency_ratio: 0.7053387449266313,
-        legitimation_index: 0.6038999999999999,
+        dependency_ratio: 0.705_338_744_926_631_3,
+        legitimation_index: 0.603_899_999_999_999_9,
         legitimation_crisis: 0.0,
         transmitted_ideology: 0.5,
     },
@@ -220,7 +228,8 @@ fn governed_phase_order_reproduces_the_frozen_engine() {
     let rule_src = format!("{VITALITY}\n{LIFECYCLE}");
     let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
-    let report = run_once_into(SCENARIO, &rule_src, &mut graph, &mut sink).expect("tick");
+    let report =
+        babylon_tick::run_once_into(SCENARIO, &rule_src, &mut graph, &mut sink).expect("tick");
 
     // THE ORDER PROOF — the phase registry puts Vitality @1 before
     // Lifecycle @7 even though the rule ids sort in the opposite order.
@@ -257,11 +266,13 @@ fn file_order_is_never_observable_per_section_4_2() {
 
     let mut graph_a = HypergraphStore::new();
     let mut sink_a = CollectingSink::default();
-    let report_a = run_once_into(SCENARIO, &forward, &mut graph_a, &mut sink_a).expect("tick a");
+    let report_a =
+        babylon_tick::run_once_into(SCENARIO, &forward, &mut graph_a, &mut sink_a).expect("tick a");
 
     let mut graph_b = HypergraphStore::new();
     let mut sink_b = CollectingSink::default();
-    let report_b = run_once_into(SCENARIO, &reversed, &mut graph_b, &mut sink_b).expect("tick b");
+    let report_b = babylon_tick::run_once_into(SCENARIO, &reversed, &mut graph_b, &mut sink_b)
+        .expect("tick b");
 
     assert_eq!(report_a.before, report_b.before);
     assert_eq!(report_a.after, report_b.after);

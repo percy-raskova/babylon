@@ -1,18 +1,41 @@
-use super::readings::{describe_flow, describe_freight, describe_material_balance, describe_work};
-use super::*;
+use super::view;
+use super::view::{
+    PrimaryView, ProductionBrief, ProductionButton, ProductionCamera, ProductionCommand,
+    ProductionCountyCohorts, ProductionDependencies, ProductionDetailGroup, ProductionDetails,
+    ProductionDisclosureLabel, ProductionFreightReading, ProductionLabel, ProductionLeader,
+    ProductionNavigation, ProductionOrbit, ProductionPage, ProductionPanel, ProductionReadingBody,
+    ProductionReadingHeadline, ProductionReadingSection, ProductionReadingSubject,
+};
+use super::{navigation, readings};
 use crate::atlas::CountyAtlas;
 use crate::map::SelectedCounty;
-use babylon_persistence::{
-    identity::CampaignId, observer_reader::ObserverEconomySnapshot,
-    observer_reader::ObserverVisibility, production_observation::ProductionInput,
-    production_observation::ProductionRoute,
+use crate::observer::ObserverSession;
+use crate::observer::Perspective;
+use crate::observer_focus::{
+    ObserverFocusSystems, ObserverFocusTarget, ObserverKeyboardActivate, ObserverKeyboardClaim,
 };
+use crate::observer_ui::{ObserverFeedback, ObserverFrame, ObserverUiState, ObserverViewport};
+use crate::production_brief;
+use crate::production_brief::DependencyDirection;
+use crate::production_layout;
+use crate::production_layout::ProductionLayout;
+use babylon_persistence::identity::CampaignId;
+use babylon_persistence::observer_reader::{ObserverEconomySnapshot, ObserverVisibility};
+use babylon_persistence::production_observation::{ProductionInput, ProductionRoute};
+use babylon_persistence::production_observation::{ProductionSite, ProductionSnapshot};
+use bevy::input_focus::tab_navigation::TabGroup;
+use bevy::prelude::*;
+use bevy::window::PrimaryWindow;
+
+use uuid::Uuid;
 
 fn site(id: &str, suppliers: &[&str]) -> ProductionSite {
     ProductionSite {
         function: "manufacturing".into(),
         id: id.into(),
-        location: "county:26163".parse().unwrap(),
+        location: "county:26163"
+            .parse()
+            .expect("the authored literal parses as the declared type"),
         name: format!("Cohort {id}"),
         industry_code: Some("331".into()),
         observed_employment: Some(20),
@@ -153,7 +176,7 @@ fn reading_headline_uses_exact_output_identity_and_keeps_absence_distinct_from_z
     let mut selected = snapshot.sites[0].clone();
     selected.processes[0].planned_batches = None;
     selected.processes[0].produced_batches = None;
-    let foundation = reading_headline(&selected, &snapshot, 0);
+    let foundation = readings::reading_headline(&selected, &snapshot, 0);
     assert!(foundation.contains("Foundation / Designed"));
     assert!(foundation.contains("no committed production"));
     assert!(foundation.contains("Modeled workforce not disclosed"));
@@ -179,8 +202,12 @@ fn reading_headline_uses_exact_output_identity_and_keeps_absence_distinct_from_z
             closing: 999,
         }],
     });
-    assert!(!reading_headline(&selected, &snapshot, 5).contains("999"));
-    let row = &mut snapshot.material_balance.as_mut().unwrap().rows[0];
+    assert!(!readings::reading_headline(&selected, &snapshot, 5).contains("999"));
+    let row = &mut snapshot
+        .material_balance
+        .as_mut()
+        .expect("the fixture set the optional field before this borrow")
+        .rows[0];
     row.unit_id
         .clone_from(&selected.processes[0].output_unit_id);
     row.unit.clone_from(&selected.processes[0].output_unit);
@@ -189,7 +216,7 @@ fn reading_headline_uses_exact_output_identity_and_keeps_absence_distinct_from_z
     snapshot
         .staffing_accounts
         .push(staffing_account(&selected.id));
-    let completed = reading_headline(&selected, &snapshot, 5);
+    let completed = readings::reading_headline(&selected, &snapshot, 5);
     assert!(completed.contains(&format!(
         "0 {} produced / Derived",
         selected.processes[0].output_unit
@@ -205,7 +232,7 @@ fn stock_readings_keep_units_and_subjects_separate_and_do_not_invent_foundation_
     let mut snapshot = snapshot();
     let selected = snapshot.sites[0].clone();
     let mut value = String::new();
-    describe_material_balance(&mut value, &selected, &snapshot);
+    readings::describe_material_balance(&mut value, &selected, &snapshot);
     assert!(value.contains("No completed stock-movement account"));
     assert!(!value.contains("Opened 0"));
     let kilograms = ProductionMaterialBalanceRow {
@@ -254,7 +281,7 @@ fn stock_readings_keep_units_and_subjects_separate_and_do_not_invent_foundation_
         rows: vec![kilograms, tonnes, unrelated],
     });
     value.clear();
-    describe_material_balance(&mut value, &selected, &snapshot);
+    readings::describe_material_balance(&mut value, &selected, &snapshot);
     assert!(value.contains("STOCK MOVEMENT / PERIOD 5"));
     assert!(value.contains(
         "Ore / kg\nOpened 10 + arrived 5 + produced 4\n= consumed 3 + dispatched 6 + closed 10"
@@ -264,18 +291,18 @@ fn stock_readings_keep_units_and_subjects_separate_and_do_not_invent_foundation_
     ));
     assert!(!value.contains("Unrelated stock"));
     value.clear();
-    describe_material_balance(&mut value, &snapshot.sites[2], &snapshot);
+    readings::describe_material_balance(&mut value, &snapshot.sites[2], &snapshot);
     assert!(value.contains("No stock-movement account disclosed for this subject"));
     assert!(!value.contains("Opened"));
 }
 
 #[test]
 fn merchant_reading_has_no_fake_production_and_separates_local_goods_from_arrivals() {
-    use babylon_persistence::{
-        production_observation::ProductionRouteTransport,
-        production_observation::ProductionSiteRole, CompletedMaterialBalance,
-        ProductionMaterialBalanceRow,
+    use babylon_persistence::production_observation::{
+        ProductionRouteTransport, ProductionSiteRole,
     };
+    use babylon_persistence::{CompletedMaterialBalance, ProductionMaterialBalanceRow};
+
     let mut snapshot = snapshot();
     let merchant = &mut snapshot.sites[1];
     merchant.roles = vec![ProductionSiteRole::Retail];
@@ -304,23 +331,22 @@ fn merchant_reading_has_no_fake_production_and_separates_local_goods_from_arriva
             closing: 5,
         }],
     });
-    let flow = describe_flow(&snapshot.sites[1], &snapshot);
+    let flow = readings::describe_flow(&snapshot.sites[1], &snapshot);
     assert!(flow.contains("Retail / delivery to final demand"));
     assert!(!flow.contains("batch"));
     assert!(flow.contains("arrived 0 + received locally 2"));
     assert!(flow.contains("transferred locally 3 + final demand 4 + closed 5"));
-    let freight = describe_freight(&snapshot.sites[1], &snapshot);
+    let freight = readings::describe_freight(&snapshot.sites[1], &snapshot);
     assert!(freight.contains("Local inter-owner transfer"));
     assert!(!freight.contains("periods travel"));
 }
 
 #[test]
 fn merchant_handling_reading_uses_exact_kilograms_without_changing_work_hours() {
-    use babylon_persistence::{
-        production_observation::CompletedProductionMerchantHandling,
-        production_observation::ProductionMerchantHandlingAccount,
-        production_observation::ProductionSiteRole,
+    use babylon_persistence::production_observation::{
+        CompletedProductionMerchantHandling, ProductionMerchantHandlingAccount, ProductionSiteRole,
     };
+
     let mut snapshot = snapshot();
     snapshot.sites[1].roles = vec![ProductionSiteRole::Retail];
     snapshot.sites[1].processes.clear();
@@ -337,19 +363,18 @@ fn merchant_handling_reading_uses_exact_kilograms_without_changing_work_hours() 
             orders: Vec::new(),
         }),
     }];
-    let reading = describe_work(&snapshot.sites[1], &snapshot);
+    let reading = readings::describe_work(&snapshot.sites[1], &snapshot);
     assert!(reading.contains("Period 1: 160.001 kg handled · 3 / 8 labor-hours used / needed"));
     assert!(
         reading.contains("Handling moves existing goods; it does not create productive output.")
     );
-    assert!(!describe_work(&snapshot.sites[0], &snapshot).contains("MERCHANT HANDLING"));
+    assert!(!readings::describe_work(&snapshot.sites[0], &snapshot).contains("MERCHANT HANDLING"));
 }
 
 #[test]
 fn inspector_separates_committed_work_time_from_next_opening_and_other_sites() {
-    use babylon_persistence::{
-        production_observation::CompletedProductionLabor,
-        production_observation::ProductionLaborAccount,
+    use babylon_persistence::production_observation::{
+        CompletedProductionLabor, ProductionLaborAccount,
     };
 
     let mut snapshot = snapshot();
@@ -383,7 +408,7 @@ fn inspector_separates_committed_work_time_from_next_opening_and_other_sites() {
             completed: None,
         },
     ];
-    let text = describe(
+    let text = readings::describe(
         &snapshot.sites[0],
         &snapshot,
         ProductionReadingSection::Work,
@@ -410,7 +435,7 @@ fn foundation_labor_account_does_not_invent_a_completed_work_period() {
         next_opening_available: 120,
         completed: None,
     }];
-    let text = describe(
+    let text = readings::describe(
         &snapshot.sites[0],
         &snapshot,
         ProductionReadingSection::Work,
@@ -422,11 +447,10 @@ fn foundation_labor_account_does_not_invent_a_completed_work_period() {
 fn staffing_account(
     site_id: &str,
 ) -> babylon_persistence::production_observation::ProductionStaffingAccount {
-    use babylon_persistence::{
-        production_observation::CompletedProductionStaffing,
-        production_observation::ProductionStaffingAccount,
-        production_observation::ProductionStaffingSubject,
+    use babylon_persistence::production_observation::{
+        CompletedProductionStaffing, ProductionStaffingAccount, ProductionStaffingSubject,
     };
+
     ProductionStaffingAccount {
         members: vec![],
         pool_id: format!("pool-{site_id}"),
@@ -487,7 +511,7 @@ fn workforce_readings_use_exact_people_and_retention_for_only_the_selected_site(
             ),
         },
     );
-    let text = describe(
+    let text = readings::describe(
         &snapshot.sites[0],
         &snapshot,
         ProductionReadingSection::Work,
@@ -524,7 +548,7 @@ fn workforce_foundation_absence_and_zero_completed_flows_remain_distinct() {
             completed: None,
         },
     );
-    let foundation = describe(
+    let foundation = readings::describe(
         &snapshot.sites[0],
         &snapshot,
         ProductionReadingSection::Work,
@@ -536,14 +560,16 @@ fn workforce_foundation_absence_and_zero_completed_flows_remain_distinct() {
     assert!(!foundation.contains("STAFFING / PERIOD"));
     assert!(foundation.contains("Next opening (period 1): 80 labor-hours (Derived)"));
     assert_eq!(foundation.matches("Next opening").count(), 1);
-    let missing = describe(
+    let missing = readings::describe(
         &snapshot.sites[2],
         &snapshot,
         ProductionReadingSection::Work,
     );
     assert!(missing.contains("No workforce account disclosed for this subject."));
     assert!(!missing.contains("0 employed"));
-    let completed = staffing_account("a").completed.unwrap();
+    let completed = staffing_account("a")
+        .completed
+        .expect("the fixture account carries its completed state");
     snapshot.staffing_accounts[0].completed = Some(
         babylon_persistence::production_observation::CompletedProductionStaffing {
             opening_employed: 2,
@@ -570,7 +596,7 @@ fn workforce_foundation_absence_and_zero_completed_flows_remain_distinct() {
             unused: 40,
         },
     );
-    let quiet = describe(
+    let quiet = readings::describe(
         &snapshot.sites[0],
         &snapshot,
         ProductionReadingSection::Work,
@@ -582,11 +608,11 @@ fn workforce_foundation_absence_and_zero_completed_flows_remain_distinct() {
 }
 
 fn attributed_snapshot() -> ProductionSnapshot {
-    use babylon_persistence::{
-        production_observation::DesignedProcessAttribution,
-        production_observation::ObservedSectorContext,
-        production_observation::ProductionBusinessSubject, ArchiveEvidenceClass,
+    use babylon_persistence::production_observation::{
+        DesignedProcessAttribution, ObservedSectorContext, ProductionBusinessSubject,
     };
+    use babylon_persistence::ArchiveEvidenceClass;
+
     let mut snapshot = snapshot();
     let subject = ProductionBusinessSubject {
         scenario: "observed-fixture".into(),
@@ -614,7 +640,10 @@ fn attributed_snapshot() -> ProductionSnapshot {
             .push(DesignedProcessAttribution {
                 process_id: format!("process-{}", site.id),
                 site_id: site.id.clone(),
-                industry_code: site.industry_code.clone().unwrap(),
+                industry_code: site
+                    .industry_code
+                    .clone()
+                    .expect("the fixture value clones"),
                 cohort_subject: subject.clone(),
                 scenario_artifact_sha256: "c".repeat(64),
                 industry_artifact_sha256: "d".repeat(64),
@@ -627,7 +656,7 @@ fn attributed_snapshot() -> ProductionSnapshot {
 #[test]
 fn inspector_distinguishes_shared_sector_context_from_process_workers() {
     let snapshot = attributed_snapshot();
-    let text = describe(
+    let text = readings::describe(
         &snapshot.sites[0],
         &snapshot,
         ProductionReadingSection::Sources,
@@ -640,7 +669,7 @@ fn inspector_distinguishes_shared_sector_context_from_process_workers() {
     assert!(text.contains("Modeled processes sharing this context: Cohort a; Cohort b"));
     assert!(text.contains("This county-sector total does not assign workers to a process."));
     assert!(!text.contains("2,468"));
-    assert!(!describe(
+    assert!(!readings::describe(
         &snapshot.sites[2],
         &snapshot,
         ProductionReadingSection::Sources
@@ -655,7 +684,7 @@ fn inspector_keeps_undisclosed_sector_metrics_distinct_from_zero() {
     context.annual_avg_emplvl = None;
     context.total_annual_wages = Some(0);
     context.annual_avg_wkly_wage = None;
-    let text = describe(
+    let text = readings::describe(
         &snapshot.sites[0],
         &snapshot,
         ProductionReadingSection::Sources,
@@ -668,7 +697,7 @@ fn inspector_keeps_undisclosed_sector_metrics_distinct_from_zero() {
 #[test]
 fn dependency_buttons_deduplicate_real_relations_and_exclude_withheld_endpoints() {
     let snapshot = snapshot();
-    let links = dependency_sites(&snapshot.sites[1], &snapshot);
+    let links = production_brief::dependency_sites(&snapshot.sites[1], &snapshot);
     assert_eq!(
         links
             .into_iter()
@@ -696,10 +725,8 @@ fn flat_camera_projects_the_scene_and_plinths_inside_its_clip_volume() {
         .init_resource::<ObserverViewport>()
         .init_resource::<UiScale>()
         .init_resource::<ObserverFrame>()
-        .insert_resource(ObserverSession::new(CampaignId::from_uuid(
-            uuid::Uuid::nil(),
-        )))
-        .add_systems(Update, paint_scene);
+        .insert_resource(ObserverSession::new(CampaignId::from_uuid(Uuid::nil())))
+        .add_systems(Update, view::paint_scene);
     let camera = app
         .world_mut()
         .spawn((
@@ -710,9 +737,15 @@ fn flat_camera_projects_the_scene_and_plinths_inside_its_clip_volume() {
         ))
         .id();
     app.update();
-    let transform = *app.world().get::<Transform>(camera).unwrap();
-    let Projection::Orthographic(mut projection) =
-        app.world().get::<Projection>(camera).unwrap().clone()
+    let transform = *app
+        .world()
+        .get::<Transform>(camera)
+        .expect("the fixture world holds the addressed component");
+    let Projection::Orthographic(mut projection) = app
+        .world()
+        .get::<Projection>(camera)
+        .expect("the fixture world holds the addressed component")
+        .clone()
     else {
         panic!("flat view must install an orthographic projection");
     };
@@ -749,11 +782,18 @@ fn flat_camera_projects_the_scene_and_plinths_inside_its_clip_volume() {
 fn labels_remain_inside_the_scene_when_history_reduces_a_small_window() {
     let scene = Rect::new(16.0, 96.0, 965.0, 378.0);
     let size = Vec2::new(180.0, 64.0);
-    let position = place_label(Vec2::new(955.0, 375.0), scene, size, &[]).expect("visible anchor");
+    let position = production_layout::place_label(Vec2::new(955.0, 375.0), scene, size, &[])
+        .expect("visible anchor");
     assert!(scene.contains(position.min));
     assert!(scene.contains(position.max));
-    assert!(place_label(Vec2::new(500.0, 420.0), scene, size, &[]).is_none());
-    assert!(place_label(Vec2::new(20.0, 100.0), scene, Vec2::splat(1_000.0), &[]).is_none());
+    assert!(production_layout::place_label(Vec2::new(500.0, 420.0), scene, size, &[]).is_none());
+    assert!(production_layout::place_label(
+        Vec2::new(20.0, 100.0),
+        scene,
+        Vec2::splat(1_000.0),
+        &[]
+    )
+    .is_none());
 }
 
 #[test]
@@ -777,7 +817,7 @@ fn open_drawers_block_scene_gestures_without_replaying_them_on_close() {
         .init_resource::<ButtonInput<MouseButton>>()
         .add_message::<MouseMotion>()
         .add_message::<MouseWheel>()
-        .add_systems(Update, orbit_input);
+        .add_systems(Update, view::orbit_input);
     app.world_mut()
         .resource_mut::<ButtonInput<MouseButton>>()
         .press(MouseButton::Right);
@@ -828,14 +868,12 @@ fn open_drawers_block_scene_gestures_without_replaying_them_on_close() {
 #[test]
 fn inspector_scroll_resets_for_subject_or_capability_but_survives_tick_refresh() {
     let mut app = App::new();
-    app.insert_resource(ObserverSession::new(CampaignId::from_uuid(
-        uuid::Uuid::nil(),
-    )))
-    .insert_resource(ProductionNavigation {
-        selected_site: Some("a".into()),
-        ..default()
-    })
-    .add_systems(Update, reset_inspector_scroll);
+    app.insert_resource(ObserverSession::new(CampaignId::from_uuid(Uuid::nil())))
+        .insert_resource(ProductionNavigation {
+            selected_site: Some("a".into()),
+            ..default()
+        })
+        .add_systems(Update, view::reset_inspector_scroll);
     let panel = app
         .world_mut()
         .spawn((ProductionPanel, ScrollPosition::default()))
@@ -848,7 +886,7 @@ fn inspector_scroll_resets_for_subject_or_capability_but_survives_tick_refresh()
     app.world_mut()
         .entity_mut(panel)
         .get_mut::<ScrollPosition>()
-        .unwrap()
+        .expect("the fixture world holds the addressed component")
         .y = 240.0;
     app.world_mut()
         .resource_mut::<ObserverSession>()
@@ -858,7 +896,7 @@ fn inspector_scroll_resets_for_subject_or_capability_but_survives_tick_refresh()
     assert_eq!(
         app.world()
             .get::<ScrollPosition>(panel)
-            .unwrap()
+            .expect("the fixture world holds the addressed component")
             .y
             .to_bits(),
         240.0_f32.to_bits()
@@ -867,7 +905,7 @@ fn inspector_scroll_resets_for_subject_or_capability_but_survives_tick_refresh()
         app.world_mut()
             .entity_mut(panel)
             .get_mut::<ScrollPosition>()
-            .unwrap()
+            .expect("the fixture world holds the addressed component")
             .y = 180.0;
         match change {
             0 => {
@@ -878,11 +916,11 @@ fn inspector_scroll_resets_for_subject_or_capability_but_survives_tick_refresh()
             1 => {
                 app.world_mut()
                     .resource_mut::<ObserverSession>()
-                    .perspective = crate::observer::Perspective::PlayerKnowledge;
+                    .perspective = Perspective::PlayerKnowledge;
             }
             2 => {
                 app.world_mut().resource_mut::<ObserverSession>().campaign =
-                    CampaignId::from_uuid(uuid::Uuid::from_u128(1));
+                    CampaignId::from_uuid(Uuid::from_u128(1));
             }
             _ => {
                 app.world_mut()
@@ -894,7 +932,7 @@ fn inspector_scroll_resets_for_subject_or_capability_but_survives_tick_refresh()
         assert_eq!(
             app.world()
                 .get::<ScrollPosition>(panel)
-                .unwrap()
+                .expect("the fixture world holds the addressed component")
                 .y
                 .to_bits(),
             0.0_f32.to_bits()
@@ -902,7 +940,7 @@ fn inspector_scroll_resets_for_subject_or_capability_but_survives_tick_refresh()
         assert_eq!(
             app.world()
                 .get::<ScrollPosition>(other)
-                .unwrap()
+                .expect("the fixture world holds the addressed component")
                 .y
                 .to_bits(),
             77.0_f32.to_bits()
@@ -911,13 +949,13 @@ fn inspector_scroll_resets_for_subject_or_capability_but_survives_tick_refresh()
     app.world_mut()
         .entity_mut(panel)
         .get_mut::<ScrollPosition>()
-        .unwrap()
+        .expect("the fixture world holds the addressed component")
         .y = 120.0;
     app.update();
     assert_eq!(
         app.world()
             .get::<ScrollPosition>(panel)
-            .unwrap()
+            .expect("the fixture world holds the addressed component")
             .y
             .to_bits(),
         120.0_f32.to_bits()
@@ -926,7 +964,7 @@ fn inspector_scroll_resets_for_subject_or_capability_but_survives_tick_refresh()
 
 #[test]
 fn map_and_flat_controls_preserve_the_county_selected_on_geography() {
-    let campaign = CampaignId::from_uuid(uuid::Uuid::nil());
+    let campaign = CampaignId::from_uuid(Uuid::nil());
     let mut state = ObserverSession::new(campaign);
     state.ready(1, Some("a".repeat(64)));
     let context = state.context();
@@ -975,7 +1013,7 @@ fn map_and_flat_controls_preserve_the_county_selected_on_geography() {
             ..default()
         })
         .add_message::<ProductionCommand>()
-        .add_systems(Update, navigate);
+        .add_systems(Update, navigation::navigate);
     for command in [ProductionCommand::Map, ProductionCommand::Flat] {
         app.world_mut()
             .resource_mut::<Messages<ProductionCommand>>()
@@ -1016,7 +1054,7 @@ fn map_and_flat_controls_preserve_the_county_selected_on_geography() {
 
 #[test]
 fn opening_focus_uses_current_capability_and_preserves_selection() {
-    let campaign = CampaignId::from_uuid(uuid::Uuid::nil());
+    let campaign = CampaignId::from_uuid(Uuid::nil());
     let mut state = ObserverSession::new(campaign);
     state.ready(1, Some("a".repeat(64)));
     let frame = ObserverFrame(
@@ -1046,7 +1084,10 @@ fn opening_focus_uses_current_capability_and_preserves_selection() {
         )
         .init_resource::<SelectedCounty>()
         .init_resource::<ProductionNavigation>()
-        .add_systems(Update, (invalidate_navigation, focus_opening).chain());
+        .add_systems(
+            Update,
+            (navigation::invalidate_navigation, navigation::focus_opening).chain(),
+        );
     app.update();
     assert!(app
         .world()
@@ -1066,7 +1107,7 @@ fn opening_focus_uses_current_capability_and_preserves_selection() {
     );
     app.world_mut()
         .resource_mut::<ObserverSession>()
-        .set_perspective(crate::observer::Perspective::PlayerKnowledge);
+        .set_perspective(Perspective::PlayerKnowledge);
     app.update();
     assert!(app
         .world()
@@ -1107,9 +1148,7 @@ fn unchanged_scene_does_not_dirty_camera_or_label_components() {
     }
     let mut app = App::new();
     app.add_plugins(MinimalPlugins)
-        .insert_resource(ObserverSession::new(CampaignId::from_uuid(
-            uuid::Uuid::nil(),
-        )))
+        .insert_resource(ObserverSession::new(CampaignId::from_uuid(Uuid::nil())))
         .insert_resource(PrimaryView::Production)
         .init_resource::<ProductionNavigation>()
         .init_resource::<ObserverFrame>()
@@ -1118,7 +1157,10 @@ fn unchanged_scene_does_not_dirty_camera_or_label_components() {
         .init_resource::<ObserverViewport>()
         .init_resource::<UiScale>()
         .init_resource::<ChangedCounts>()
-        .add_systems(Update, (paint_scene, paint_labels, count_changes).chain());
+        .add_systems(
+            Update,
+            (view::paint_scene, view::paint_labels, count_changes).chain(),
+        );
     app.world_mut().spawn((
         Camera::default(),
         Transform::default(),
@@ -1171,7 +1213,7 @@ fn dependency_navigation_app() -> App {
 }
 
 fn unstarted_dependency_navigation_app() -> App {
-    let campaign = CampaignId::from_uuid(uuid::Uuid::nil());
+    let campaign = CampaignId::from_uuid(Uuid::nil());
     let mut state = ObserverSession::new(campaign);
     state.ready(1, Some("a".repeat(64)));
     let frame = ObserverFrame(
@@ -1208,12 +1250,12 @@ fn unstarted_dependency_navigation_app() -> App {
         .add_systems(
             Update,
             (
-                inputs,
-                invalidate_navigation,
-                navigate,
-                sync_world_county,
-                rebuild_dependencies,
-                rebuild_county_cohorts,
+                view::inputs,
+                navigation::invalidate_navigation,
+                navigation::navigate,
+                navigation::sync_world_county,
+                view::rebuild_dependencies,
+                view::rebuild_county_cohorts,
             )
                 .chain(),
         );
@@ -1231,7 +1273,7 @@ fn panel_text<T: Component>(app: &mut App) -> String {
     world
         .query_filtered::<&Text, With<T>>()
         .single(world)
-        .unwrap()
+        .expect("the fixture holds exactly one matching row")
         .0
         .clone()
 }
@@ -1242,9 +1284,9 @@ fn production_panel_app() -> App {
     let mut app = dependency_navigation_app();
     app.insert_resource(PrimaryView::Production);
     app.world_mut()
-        .run_system_once(setup)
+        .run_system_once(view::setup)
         .expect("production panel");
-    app.add_systems(Update, paint_disclosure.after(navigate));
+    app.add_systems(Update, view::paint_disclosure.after(navigation::navigate));
     app.update();
     app
 }
@@ -1285,8 +1327,14 @@ fn county_selection_keeps_readings_closed_until_a_cohort_is_chosen() {
     let macomb = {
         let atlas = app.world().resource::<CountyAtlas>();
         (0..atlas.len())
-            .find(|index| atlas.county(*index).unwrap().fips == "26099")
-            .unwrap()
+            .find(|index| {
+                atlas
+                    .county(*index)
+                    .expect("the fixture catalog holds the addressed county")
+                    .fips
+                    == "26099"
+            })
+            .expect("the fixture holds the searched element")
     };
     app.world_mut().resource_mut::<SelectedCounty>().0 = Some(macomb);
     app.update();
@@ -1321,36 +1369,45 @@ fn production_context_yields_its_rail_to_readings_and_returns_after_close() {
     let mut app = production_panel_app();
     app.init_resource::<ProductionOrbit>()
         .init_resource::<ObserverViewport>()
-        .add_systems(Update, paint_scene.after(navigate));
+        .add_systems(Update, view::paint_scene.after(navigation::navigate));
     send_command(&mut app, ProductionCommand::Open);
     let world = app.world_mut();
     let subject = world
         .query_filtered::<Entity, With<ProductionPanel>>()
         .single(world)
-        .unwrap();
+        .expect("the fixture holds exactly one matching row");
     assert_eq!(
-        world.get::<Node>(subject).unwrap().flex_direction,
+        world
+            .get::<Node>(subject)
+            .expect("the fixture world holds the addressed component")
+            .flex_direction,
         FlexDirection::Column
     );
     assert_eq!(
-        *world.get::<Visibility>(subject).unwrap(),
+        *world
+            .get::<Visibility>(subject)
+            .expect("the fixture world holds the addressed component"),
         Visibility::Visible
     );
     send_command(&mut app, ProductionCommand::Details);
     assert_eq!(
-        *app.world().get::<Visibility>(subject).unwrap(),
+        *app.world()
+            .get::<Visibility>(subject)
+            .expect("the fixture world holds the addressed component"),
         Visibility::Hidden
     );
     send_command(&mut app, ProductionCommand::Details);
     assert_eq!(
-        *app.world().get::<Visibility>(subject).unwrap(),
+        *app.world()
+            .get::<Visibility>(subject)
+            .expect("the fixture world holds the addressed component"),
         Visibility::Visible
     );
 }
 
 #[test]
 fn expanded_readings_use_the_side_panel_and_yield_to_modal_views() {
-    use crate::observer_layout::{ObserverLayout, ObserverRegion};
+    use crate::observer_layout::{HistoryDrawerState, ObserverLayout, ObserverRegion};
 
     let mut app = production_panel_app();
     send_command(&mut app, ProductionCommand::Open);
@@ -1369,12 +1426,18 @@ fn expanded_readings_use_the_side_panel_and_yield_to_modal_views() {
     );
     assert!(world.get::<ChildOf>(detail).is_none());
     for size in [Vec2::new(1366.0, 768.0), Vec2::new(1920.0, 1080.0)] {
-        let layout = ObserverLayout::new(size, 1.0, false);
+        let layout = ObserverLayout::new(size, 1.0, HistoryDrawerState::Closed);
         let reading = layout.region(ObserverRegion::Log);
         assert!(reading.height() > 600.0);
         assert!(reading.min.x > layout.world.max.x);
     }
-    assert_eq!(world.get::<Node>(detail).unwrap().display, Display::Flex);
+    assert_eq!(
+        world
+            .get::<Node>(detail)
+            .expect("the fixture world holds the addressed component")
+            .display,
+        Display::Flex
+    );
     // History owns this same rail while open; closing it restores the
     // current subject's existing reading preference without recreating it.
     app.world_mut()
@@ -1382,7 +1445,10 @@ fn expanded_readings_use_the_side_panel_and_yield_to_modal_views() {
         .history_open = true;
     app.update();
     assert_eq!(
-        app.world().get::<Node>(detail).unwrap().display,
+        app.world()
+            .get::<Node>(detail)
+            .expect("the fixture world holds the addressed component")
+            .display,
         Display::None
     );
     assert!(app.world().resource::<ProductionNavigation>().details_open);
@@ -1391,7 +1457,10 @@ fn expanded_readings_use_the_side_panel_and_yield_to_modal_views() {
         .history_open = false;
     app.update();
     assert_eq!(
-        app.world().get::<Node>(detail).unwrap().display,
+        app.world()
+            .get::<Node>(detail)
+            .expect("the fixture world holds the addressed component")
+            .display,
         Display::Flex
     );
     for modal in 0..4 {
@@ -1404,7 +1473,10 @@ fn expanded_readings_use_the_side_panel_and_yield_to_modal_views() {
         }
         app.update();
         assert_eq!(
-            app.world().get::<Node>(detail).unwrap().display,
+            app.world()
+                .get::<Node>(detail)
+                .expect("the fixture world holds the addressed component")
+                .display,
             Display::None
         );
     }
@@ -1415,12 +1487,18 @@ fn expanded_readings_use_the_side_panel_and_yield_to_modal_views() {
     };
     app.update();
     assert_eq!(
-        app.world().get::<Node>(detail).unwrap().display,
+        app.world()
+            .get::<Node>(detail)
+            .expect("the fixture world holds the addressed component")
+            .display,
         Display::Flex
     );
     send_command(&mut app, ProductionCommand::Map);
     assert_eq!(
-        app.world().get::<Node>(detail).unwrap().display,
+        app.world()
+            .get::<Node>(detail)
+            .expect("the fixture world holds the addressed component")
+            .display,
         Display::None
     );
 }
@@ -1428,7 +1506,12 @@ fn expanded_readings_use_the_side_panel_and_yield_to_modal_views() {
 #[test]
 fn undisclosed_scene_hides_controls_and_explains_keyboard_refusals() {
     let mut app = production_panel_app();
-    let full = app.world().resource::<ObserverFrame>().0.clone().unwrap();
+    let full = app
+        .world()
+        .resource::<ObserverFrame>()
+        .0
+        .clone()
+        .expect("the fixture value clones");
     assert_eq!(
         control_display(&mut app, &ProductionCommand::Back),
         Display::None
@@ -1439,15 +1522,20 @@ fn undisclosed_scene_hides_controls_and_explains_keyboard_refusals() {
     );
     for case in 0..4 {
         let mut frame = full.clone();
-        let mut perspective = crate::observer::Perspective::FullObserver;
+        let mut perspective = Perspective::FullObserver;
         match case {
             0 => {}
             1 => {
-                perspective = crate::observer::Perspective::PlayerKnowledge;
+                perspective = Perspective::PlayerKnowledge;
                 frame.visibility = ObserverVisibility::KnownPreview;
                 frame.production = None;
             }
-            2 => frame.production.as_mut().unwrap().sites.clear(),
+            2 => frame
+                .production
+                .as_mut()
+                .expect("the fixture set the optional field before this borrow")
+                .sites
+                .clear(),
             _ => frame.resolve_tick += 1,
         }
         app.world_mut()
@@ -1581,7 +1669,7 @@ fn scoped_back_and_display_preferences_survive_refresh_without_blocking_recovery
     send_command(&mut app, ProductionCommand::Details);
     app.world_mut()
         .resource_mut::<ObserverSession>()
-        .set_perspective(crate::observer::Perspective::PlayerKnowledge);
+        .set_perspective(Perspective::PlayerKnowledge);
     app.update();
     let navigation = app.world().resource::<ProductionNavigation>();
     assert!(navigation.flat);
@@ -1653,11 +1741,13 @@ fn exact_readings_are_collapsed_until_requested_and_clear_with_capability() {
     let mut app = dependency_navigation_app();
     *app.world_mut().resource_mut::<PrimaryView>() = PrimaryView::Production;
     app.world_mut()
-        .run_system_once(setup)
+        .run_system_once(view::setup)
         .expect("production panel");
     app.add_systems(
         Update,
-        (paint_readings, paint_disclosure).chain().after(navigate),
+        (view::paint_readings, view::paint_disclosure)
+            .chain()
+            .after(navigation::navigate),
     );
     app.world_mut()
         .resource_mut::<ProductionNavigation>()
@@ -1668,10 +1758,13 @@ fn exact_readings_are_collapsed_until_requested_and_clear_with_capability() {
         world
             .query_filtered::<Entity, With<ProductionDetailGroup>>()
             .single(world)
-            .unwrap()
+            .expect("the fixture holds exactly one matching row")
     };
     assert_eq!(
-        app.world().get::<Node>(group).unwrap().display,
+        app.world()
+            .get::<Node>(group)
+            .expect("the fixture world holds the addressed component")
+            .display,
         Display::None
     );
     assert!(panel_text::<ProductionBrief>(&mut app).contains("Committed plan partly completed"));
@@ -1686,7 +1779,10 @@ fn exact_readings_are_collapsed_until_requested_and_clear_with_capability() {
     app.update();
     assert!(app.world().resource::<ProductionNavigation>().details_open);
     assert_eq!(
-        app.world().get::<Node>(group).unwrap().display,
+        app.world()
+            .get::<Node>(group)
+            .expect("the fixture world holds the addressed component")
+            .display,
         Display::Flex
     );
     assert!(panel_text::<ProductionDetails>(&mut app).contains("INPUTS / ON HAND"));
@@ -1696,11 +1792,14 @@ fn exact_readings_are_collapsed_until_requested_and_clear_with_capability() {
     assert!(panel_text::<ProductionBrief>(&mut app).starts_with("Cohort a"));
     app.world_mut()
         .resource_mut::<ObserverSession>()
-        .set_perspective(crate::observer::Perspective::PlayerKnowledge);
+        .set_perspective(Perspective::PlayerKnowledge);
     app.update();
     assert!(!app.world().resource::<ProductionNavigation>().details_open);
     assert_eq!(
-        app.world().get::<Node>(group).unwrap().display,
+        app.world()
+            .get::<Node>(group)
+            .expect("the fixture world holds the addressed component")
+            .display,
         Display::None
     );
     assert!(panel_text::<ProductionDetails>(&mut app).is_empty());
@@ -1714,14 +1813,14 @@ fn shared_freight_participant_buttons_navigate_and_expire_with_observation_scope
     use bevy::ecs::system::RunSystemOnce;
     let mut app = dependency_navigation_app();
     app.world_mut()
-        .run_system_once(|mut commands: Commands| setup_readings_panel(&mut commands))
-        .unwrap();
-    app.add_systems(Update, paint_readings.after(navigate));
+        .run_system_once(|mut commands: Commands| view::setup_readings_panel(&mut commands))
+        .expect("the Bevy system completes one run");
+    app.add_systems(Update, view::paint_readings.after(navigation::navigate));
     app.world_mut()
         .resource_mut::<ObserverFrame>()
         .0
         .as_mut()
-        .unwrap()
+        .expect("the fixture set the optional field before this borrow")
         .production = Some(crate::production_freight::tests::fixture());
     let context = app.world().resource::<ObserverSession>().context();
     send_command(
@@ -1760,7 +1859,7 @@ fn shared_freight_participant_buttons_navigate_and_expire_with_observation_scope
     );
     app.world_mut()
         .resource_mut::<ObserverSession>()
-        .set_perspective(crate::observer::Perspective::PlayerKnowledge);
+        .set_perspective(Perspective::PlayerKnowledge);
     send_command(
         &mut app,
         ProductionCommand::Select {
@@ -1783,7 +1882,7 @@ fn shared_freight_participant_buttons_navigate_and_expire_with_observation_scope
 #[test]
 fn keyboard_dependency_activation_uses_the_pointer_queue_and_rejects_changed_scope() {
     let mut app = dependency_navigation_app();
-    app.add_observer(keyboard_activate);
+    app.add_observer(view::keyboard_activate);
     app.world_mut()
         .resource_mut::<ProductionNavigation>()
         .selected_site = Some("b".into());
@@ -1791,7 +1890,7 @@ fn keyboard_dependency_activation_uses_the_pointer_queue_and_rejects_changed_sco
     let context = app.world().resource::<ObserverSession>().context();
     let button = app
         .world_mut()
-        .spawn(button_node(ProductionCommand::Select {
+        .spawn(view::button_node(ProductionCommand::Select {
             site_id: "a".into(),
             context: context.clone(),
         }))
@@ -1826,7 +1925,7 @@ fn keyboard_dependency_activation_uses_the_pointer_queue_and_rejects_changed_sco
     });
     app.world_mut()
         .resource_mut::<ObserverSession>()
-        .set_perspective(crate::observer::Perspective::PlayerKnowledge);
+        .set_perspective(Perspective::PlayerKnowledge);
     app.update();
     assert!(app
         .world()
@@ -1873,7 +1972,7 @@ fn world_focus_keeps_the_overview_and_reuses_authenticated_circuit_navigation() 
     );
     app.world_mut()
         .resource_mut::<ObserverSession>()
-        .set_perspective(crate::observer::Perspective::PlayerKnowledge);
+        .set_perspective(Perspective::PlayerKnowledge);
     app.world_mut()
         .resource_mut::<Messages<ProductionCommand>>()
         .write(ProductionCommand::Focus {
@@ -1892,12 +1991,18 @@ fn world_focus_keeps_the_overview_and_reuses_authenticated_circuit_navigation() 
 #[test]
 fn world_county_list_enters_the_selected_circuit_and_rejects_old_observations() {
     let mut app = dependency_navigation_app();
-    app.add_observer(keyboard_activate);
+    app.add_observer(view::keyboard_activate);
     let county_index = |app: &App, fips: &str| {
         let atlas = app.world().resource::<CountyAtlas>();
         (0..atlas.len())
-            .find(|index| atlas.county(*index).unwrap().fips == fips)
-            .unwrap()
+            .find(|index| {
+                atlas
+                    .county(*index)
+                    .expect("the fixture catalog holds the addressed county")
+                    .fips
+                    == fips
+            })
+            .expect("the fixture holds the searched element")
     };
     let wayne = county_index(&app, "26163");
     app.world_mut().resource_mut::<SelectedCounty>().0 = Some(wayne);
@@ -1964,7 +2069,7 @@ fn world_county_list_enters_the_selected_circuit_and_rejects_old_observations() 
         .is_none());
     app.world_mut()
         .resource_mut::<ObserverSession>()
-        .set_perspective(crate::observer::Perspective::PlayerKnowledge);
+        .set_perspective(Perspective::PlayerKnowledge);
     send_command(
         &mut app,
         ProductionCommand::Select {
@@ -1986,10 +2091,16 @@ fn world_county_list_enters_the_selected_circuit_and_rejects_old_observations() 
 #[test]
 fn keyboard_pages_the_disclosed_county_then_enters_a_circuit_and_back() {
     let mut app = dependency_navigation_app();
-    app.add_observer(keyboard_activate);
+    app.add_observer(view::keyboard_activate);
     {
         let mut frame = app.world_mut().resource_mut::<ObserverFrame>();
-        let snapshot = frame.0.as_mut().unwrap().production.as_mut().unwrap();
+        let snapshot = frame
+            .0
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow")
+            .production
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow");
         snapshot.sites = (0..14)
             .map(|index| site(&format!("owner-{index:02}"), &[]))
             .collect();
@@ -2055,7 +2166,7 @@ fn keyboard_pages_the_disclosed_county_then_enters_a_circuit_and_back() {
     );
     app.world_mut()
         .resource_mut::<ObserverSession>()
-        .set_perspective(crate::observer::Perspective::PlayerKnowledge);
+        .set_perspective(Perspective::PlayerKnowledge);
     app.update();
     assert!(app
         .world()
@@ -2067,17 +2178,16 @@ fn keyboard_pages_the_disclosed_county_then_enters_a_circuit_and_back() {
 #[test]
 fn accepted_world_buttons_release_focus_and_focused_keys_do_not_run_world_shortcuts() {
     use crate::observer_focus::{ObserverFocusPlugin, ObserverFocusPolicy};
-    use bevy::input::{
-        keyboard::{Key, KeyboardInput, NativeKey},
-        ButtonState, InputPlugin,
-    };
+    use bevy::input::keyboard::{Key, KeyboardInput, NativeKey};
+    use bevy::input::{ButtonState, InputPlugin};
+
     use bevy::input_focus::InputFocus;
     let mut app = dependency_navigation_app();
     app.add_plugins((InputPlugin, ObserverFocusPlugin))
-        .add_observer(keyboard_activate)
+        .add_observer(view::keyboard_activate)
         .add_systems(
             PreUpdate,
-            focus_eligibility.in_set(ObserverFocusSystems::Eligibility),
+            view::focus_eligibility.in_set(ObserverFocusSystems::Eligibility),
         );
     let window = app
         .world_mut()
@@ -2093,7 +2203,7 @@ fn accepted_world_buttons_release_focus_and_focused_keys_do_not_run_world_shortc
         .id();
     let button = app
         .world_mut()
-        .spawn((button_node(ProductionCommand::Open), ChildOf(group)))
+        .spawn((view::button_node(ProductionCommand::Open), ChildOf(group)))
         .id();
     app.update();
     app.world_mut().resource_mut::<InputFocus>().set(button);
@@ -2151,14 +2261,16 @@ fn readings_focus_app() -> ReadingsFocusFixture {
     use bevy::input::InputPlugin;
     let mut app = unstarted_dependency_navigation_app();
     app.add_plugins((InputPlugin, ObserverFocusPlugin))
-        .add_observer(keyboard_activate)
+        .add_observer(view::keyboard_activate)
         .add_systems(
             PreUpdate,
-            focus_eligibility.in_set(ObserverFocusSystems::Eligibility),
+            view::focus_eligibility.in_set(ObserverFocusSystems::Eligibility),
         )
         .add_systems(
             Update,
-            (paint_readings, paint_disclosure).chain().after(navigate),
+            (view::paint_readings, view::paint_disclosure)
+                .chain()
+                .after(navigation::navigate),
         );
     let window = app
         .world_mut()
@@ -2178,24 +2290,24 @@ fn readings_focus_app() -> ReadingsFocusFixture {
         navigation.details_open = true;
     }
     app.world_mut()
-        .run_system_once(|mut commands: Commands| setup_readings_panel(&mut commands))
-        .unwrap();
+        .run_system_once(|mut commands: Commands| view::setup_readings_panel(&mut commands))
+        .expect("the Bevy system completes one run");
     let body = app
         .world_mut()
         .query_filtered::<Entity, With<ProductionReadingBody>>()
         .single(app.world())
-        .unwrap();
+        .expect("the fixture holds exactly one matching row");
     let reading = app
         .world_mut()
         .query_filtered::<Entity, With<ProductionDetails>>()
         .single(app.world())
-        .unwrap();
+        .expect("the fixture holds exactly one matching row");
     let find_button = |world: &mut World, command: fn(&ProductionCommand) -> bool| {
         world
             .query::<(Entity, &ProductionButton)>()
             .iter(world)
             .find_map(|(entity, button)| command(&button.0).then_some(entity))
-            .unwrap()
+            .expect("the fixture yields the searched value")
     };
     let close = find_button(app.world_mut(), |command| {
         matches!(command, ProductionCommand::Details)
@@ -2247,10 +2359,9 @@ fn readings_focus_app() -> ReadingsFocusFixture {
 }
 
 fn readings_key(app: &mut App, window: Entity, key_code: KeyCode) {
-    use bevy::input::{
-        keyboard::{Key, KeyboardInput, NativeKey},
-        ButtonState,
-    };
+    use bevy::input::keyboard::{Key, KeyboardInput, NativeKey};
+    use bevy::input::ButtonState;
+
     for state in [ButtonState::Pressed, ButtonState::Released] {
         app.world_mut().write_message(KeyboardInput {
             key_code,
@@ -2320,9 +2431,13 @@ fn readings_tab_order_reaches_the_text_after_controls_and_pages_its_scroll_ances
         ProductionReadingSection::Sources,
     ] {
         readings_key(&mut app, window, KeyCode::Tab);
-        let focused = app.world().resource::<InputFocus>().get().unwrap();
+        let focused = app
+            .world()
+            .resource::<InputFocus>()
+            .get()
+            .expect("the fixture holds the addressed entry");
         assert!(
-            matches!(&app.world().get::<ProductionButton>(focused).unwrap().0,
+            matches!(&app.world().get::<ProductionButton>(focused).expect("the fixture world holds the addressed component").0,
             ProductionCommand::Reading(current) if *current == section)
         );
     }
@@ -2334,12 +2449,19 @@ fn readings_tab_order_reaches_the_text_after_controls_and_pages_its_scroll_ances
     );
     let period = app.world().resource::<ObserverSession>().viewed_tick;
     readings_key(&mut app, window, KeyCode::PageDown);
-    assert!(app.world().get::<ScrollPosition>(body).unwrap().0.y > 0.0);
+    assert!(
+        app.world()
+            .get::<ScrollPosition>(body)
+            .expect("the fixture world holds the addressed component")
+            .0
+            .y
+            > 0.0
+    );
     readings_key(&mut app, window, KeyCode::End);
     assert_eq!(
         app.world()
             .get::<ScrollPosition>(body)
-            .unwrap()
+            .expect("the fixture world holds the addressed component")
             .0
             .y
             .to_bits(),
@@ -2347,7 +2469,10 @@ fn readings_tab_order_reaches_the_text_after_controls_and_pages_its_scroll_ances
     );
     readings_key(&mut app, window, KeyCode::Home);
     assert_eq!(
-        app.world().get::<ScrollPosition>(body).unwrap().0,
+        app.world()
+            .get::<ScrollPosition>(body)
+            .expect("the fixture world holds the addressed component")
+            .0,
         Vec2::ZERO
     );
     readings_key(&mut app, window, KeyCode::Enter);
@@ -2364,7 +2489,9 @@ fn readings_tab_order_reaches_the_text_after_controls_and_pages_its_scroll_ances
 
 #[test]
 fn shared_freight_reading_enters_tab_order_and_pages_its_scroll_ancestor() {
-    use bevy::input_focus::{tab_navigation::TabIndex, InputFocus};
+    use bevy::input_focus::tab_navigation::TabIndex;
+    use bevy::input_focus::InputFocus;
+
     let ReadingsFocusFixture {
         mut app,
         window,
@@ -2375,7 +2502,7 @@ fn shared_freight_reading_enters_tab_order_and_pages_its_scroll_ancestor() {
         .resource_mut::<ObserverFrame>()
         .0
         .as_mut()
-        .unwrap()
+        .expect("the fixture set the optional field before this borrow")
         .production = Some(crate::production_freight::tests::fixture());
     {
         let mut navigation = app.world_mut().resource_mut::<ProductionNavigation>();
@@ -2386,7 +2513,7 @@ fn shared_freight_reading_enters_tab_order_and_pages_its_scroll_ancestor() {
         .world_mut()
         .query_filtered::<Entity, With<ProductionDependencies>>()
         .single(app.world())
-        .unwrap();
+        .expect("the fixture holds exactly one matching row");
     app.world_mut().entity_mut(body).insert((
         Node {
             overflow: Overflow::scroll_y(),
@@ -2407,15 +2534,25 @@ fn shared_freight_reading_enters_tab_order_and_pages_its_scroll_ancestor() {
         .world_mut()
         .query_filtered::<Entity, With<ProductionFreightReading>>()
         .single(app.world())
-        .unwrap();
-    let target = app.world().get::<ObserverFocusTarget>(reading).unwrap();
+        .expect("the fixture holds exactly one matching row");
+    let target = app
+        .world()
+        .get::<ObserverFocusTarget>(reading)
+        .expect("the fixture world holds the addressed component");
     assert!(target.available);
     assert!(app.world().get::<TabIndex>(reading).is_some());
     app.world_mut().resource_mut::<InputFocus>().set(footer);
     readings_key(&mut app, window, KeyCode::Tab);
     assert_eq!(app.world().resource::<InputFocus>().get(), Some(reading));
     readings_key(&mut app, window, KeyCode::PageDown);
-    assert!(app.world().get::<ScrollPosition>(body).unwrap().0.y > 0.0);
+    assert!(
+        app.world()
+            .get::<ScrollPosition>(body)
+            .expect("the fixture world holds the addressed component")
+            .0
+            .y
+            > 0.0
+    );
     let period = app.world().resource::<ObserverSession>().viewed_tick;
     readings_key(&mut app, window, KeyCode::Enter);
     assert_eq!(
@@ -2427,7 +2564,7 @@ fn shared_freight_reading_enters_tab_order_and_pages_its_scroll_ancestor() {
     assert!(
         !app.world()
             .get::<ObserverFocusTarget>(reading)
-            .unwrap()
+            .expect("the fixture world holds the addressed component")
             .available
     );
     assert!(app.world().get::<TabIndex>(reading).is_none());
@@ -2449,7 +2586,10 @@ fn repainted_reading_scope_reenters_tab_order_after_a_committed_period_refresh()
     }
     {
         let mut frame = app.world_mut().resource_mut::<ObserverFrame>();
-        let snapshot = frame.0.as_mut().unwrap();
+        let snapshot = frame
+            .0
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow");
         snapshot.resolve_tick = 2;
         snapshot.tick_content_hash = Some(hash);
     }
@@ -2459,7 +2599,10 @@ fn repainted_reading_scope_reenters_tab_order_after_a_committed_period_refresh()
         .context = Some(context.clone());
     app.update(); // old scope is removed, then the reading is repainted
     app.update(); // the repainted target must be admitted without another UI action
-    let target = app.world().get::<ObserverFocusTarget>(reading).unwrap();
+    let target = app
+        .world()
+        .get::<ObserverFocusTarget>(reading)
+        .expect("the fixture world holds the addressed component");
     assert_eq!(target.context.as_ref(), Some(&context));
     assert!(target.available);
     assert!(app.world().get::<TabIndex>(reading).is_some());
@@ -2542,7 +2685,7 @@ fn native_dependency_navigation_preserves_back_and_rejects_late_contexts() {
     );
     app.world_mut()
         .resource_mut::<ObserverSession>()
-        .perspective = crate::observer::Perspective::PlayerKnowledge;
+        .perspective = Perspective::PlayerKnowledge;
     app.update();
     assert!(app
         .world()
@@ -2591,7 +2734,7 @@ fn only_actual_visible_in_transit_lots_get_static_markers() {
     let mut snapshot = snapshot();
     let layout = ProductionLayout::focused(&snapshot, Some("b"), 0);
     assert!(
-        freight_markers(&snapshot, &layout, 1).is_empty(),
+        view::freight_markers(&snapshot, &layout, 1).is_empty(),
         "orders and deliveries alone must not generate freight"
     );
     let lot = ProductionFreight {
@@ -2611,15 +2754,15 @@ fn only_actual_visible_in_transit_lots_get_static_markers() {
         arrival_period: 4,
     };
     snapshot.freight.push(lot.clone());
-    let first = freight_markers(&snapshot, &layout, 1);
+    let first = view::freight_markers(&snapshot, &layout, 1);
     assert_eq!(first.len(), 1);
     assert_eq!(
         first,
-        freight_markers(&snapshot, &layout, 2),
+        view::freight_markers(&snapshot, &layout, 2),
         "schematic markers do not invent continuous travel motion"
     );
-    assert!(freight_markers(&snapshot, &layout, 0).is_empty());
-    assert!(freight_markers(&snapshot, &layout, 4).is_empty());
+    assert!(view::freight_markers(&snapshot, &layout, 0).is_empty());
+    assert!(view::freight_markers(&snapshot, &layout, 4).is_empty());
     for case in 0..4 {
         let mut withheld = lot.clone();
         match case {
@@ -2629,17 +2772,20 @@ fn only_actual_visible_in_transit_lots_get_static_markers() {
             _ => withheld.good_id = "another-good".into(),
         }
         snapshot.freight = vec![withheld];
-        assert!(freight_markers(&snapshot, &layout, 1).is_empty());
+        assert!(view::freight_markers(&snapshot, &layout, 1).is_empty());
     }
 }
 
 #[test]
 fn maintenance_readings_keep_service_jobs_expiry_and_output_ceiling_distinct() {
     let snapshot = crate::maintenance_fixture::snapshot(&snapshot(), 1, Some(2));
-    let provider = snapshot.sites.last().unwrap();
+    let provider = snapshot
+        .sites
+        .last()
+        .expect("the fixture sequence is non-empty");
     let consumer = &snapshot.sites[0];
     for site in [provider, consumer] {
-        let flow = describe_flow(site, &snapshot);
+        let flow = readings::describe_flow(site, &snapshot);
         assert!(flow.contains("MAINTENANCE SERVICE"), "{flow}");
         assert!(flow.contains("2 / 4 jobs completed / requested"), "{flow}");
         assert!(
@@ -2652,7 +2798,7 @@ fn maintenance_readings_keep_service_jobs_expiry_and_output_ceiling_distinct() {
             "{flow}"
         );
     }
-    let work = describe_work(provider, &snapshot);
+    let work = readings::describe_work(provider, &snapshot);
     assert!(
         work.contains("Maintenance: 20 used / 40 requested labor-hours"),
         "{work}"
@@ -2669,8 +2815,19 @@ fn maintenance_readings_keep_service_jobs_expiry_and_output_ceiling_distinct() {
 fn maintenance_foundation_missing_and_completed_zero_remain_different() {
     let foundation = crate::maintenance_fixture::snapshot(&snapshot(), 0, None);
     let zero = crate::maintenance_fixture::snapshot(&snapshot(), 1, Some(0));
-    let initial = describe_flow(foundation.sites.last().unwrap(), &foundation);
-    let done = describe_flow(zero.sites.last().unwrap(), &zero);
+    let initial = readings::describe_flow(
+        foundation
+            .sites
+            .last()
+            .expect("the fixture sequence is non-empty"),
+        &foundation,
+    );
+    let done = readings::describe_flow(
+        zero.sites
+            .last()
+            .expect("the fixture sequence is non-empty"),
+        &zero,
+    );
     assert!(
         initial.contains("Foundation; no completed maintenance receipt"),
         "{initial}"
@@ -2683,10 +2840,13 @@ fn maintenance_foundation_missing_and_completed_zero_remain_different() {
 #[test]
 fn maintenance_is_navigable_both_ways_without_becoming_a_parts_route() {
     let snapshot = crate::maintenance_fixture::snapshot(&snapshot(), 1, Some(2));
-    let provider = snapshot.sites.last().unwrap();
+    let provider = snapshot
+        .sites
+        .last()
+        .expect("the fixture sequence is non-empty");
     let consumer = &snapshot.sites[0];
-    let from_consumer = dependency_sites(consumer, &snapshot);
-    let from_provider = dependency_sites(provider, &snapshot);
+    let from_consumer = production_brief::dependency_sites(consumer, &snapshot);
+    let from_provider = production_brief::dependency_sites(provider, &snapshot);
     assert!(from_consumer
         .iter()
         .any(|(direction, site)| site.id == provider.id

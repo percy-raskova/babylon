@@ -1,4 +1,7 @@
-use super::{FinancialInstitutions, PublicTransferTreatment, Result};
+use super::FinancialInstitutions;
+use super::PublicTransferTreatment;
+use super::Result;
+use crate::MonetaryBook;
 use crate::{
     AccountId, CircuitAccounting, MaterialCircuitError, MaterialCircuitState,
     MAX_MATERIAL_CIRCUIT_ROWS,
@@ -103,7 +106,7 @@ pub(crate) fn validate(state: &MaterialCircuitState) -> Result<()> {
     }
     Ok(())
 }
-fn validate_public(f: &FinancialInstitutions, book: &crate::MonetaryBook) -> Result<()> {
+fn validate_public(f: &FinancialInstitutions, book: &MonetaryBook) -> Result<()> {
     let mut budgets = BTreeSet::new();
     for r in &f.public_budgets {
         book.cash(AccountId::Public(r.public_account))?;

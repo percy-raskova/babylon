@@ -1,6 +1,21 @@
 //! Explicit control import contracts through the common source authority.
-use super::*;
+use super::load::{
+    MichiganDeliveryPreset, MichiganMaterialCatalog, MICHIGAN_INDUSTRY_BASELINE_SHA256,
+};
+use super::regional;
 use crate::economic_catalog::{CapturedEconomicCatalog, SourceArtifactKind};
+use crate::michigan_material::MichiganFinalDemand;
+use crate::michigan_material::MichiganIndustryBaselineRow;
+use crate::michigan_material::MichiganMaterialCorridor;
+use crate::michigan_material::MichiganMaterialInput;
+use crate::michigan_material::MichiganMaterialPath;
+use crate::michigan_material::MichiganMaterialRoute;
+use crate::michigan_material::MichiganMaterialSite;
+use crate::michigan_material::MichiganMerchant;
+use crate::michigan_material::MichiganNormalizedContent;
+use crate::michigan_material::MichiganSiteRole;
+use crate::michigan_material::MichiganWorkforceSeed;
+use babylon_material_circuit::SupplierTransport;
 use std::collections::BTreeMap;
 
 #[test]
@@ -11,11 +26,17 @@ fn captured_rule_source_survives_restart_without_reopening_current_authored_rule
     let mut control = original.capture.clone();
     control.rule_source = format!("; Captured campaign source.\n{}", control.rule_source);
     let rules = control.rule_source.as_bytes().to_vec();
-    let mut changed = original.keep_sources(MichiganMaterialCatalog::capture(control).unwrap());
+    let mut changed = original.keep_sources(
+        MichiganMaterialCatalog::capture(control).expect("the fixture captures the authored state"),
+    );
     changed.replace_source(SourceArtifactKind::Rules, rules);
     let preset = MichiganContentPreset::FourWeekStandard;
-    let original_foundation = preset.create_foundation(&original).unwrap();
-    let restored_foundation = preset.create_foundation(&changed).unwrap();
+    let original_foundation = preset
+        .create_foundation(&original)
+        .expect("the authored catalog builds the foundation");
+    let restored_foundation = preset
+        .create_foundation(&changed)
+        .expect("the authored catalog builds the foundation");
     assert_ne!(original_foundation.digest(), restored_foundation.digest());
     assert_eq!(
         original_foundation
@@ -45,7 +66,9 @@ fn captured_rule_source_survives_restart_without_reopening_current_authored_rule
         &restored_foundation.spec().content_digest,
         &restored_foundation.digest(),
         0,
-        &restored_foundation.export_canonical_bytes().unwrap()
+        &restored_foundation
+            .export_canonical_bytes()
+            .expect("the content exports its canonical bytes")
     )
     .is_ok());
 }
@@ -60,7 +83,8 @@ fn captured_material_content_refuses_missing_rules_and_a_graph_only_rule_set() {
         if rules.is_empty() {
             assert!(changed.is_err());
         } else {
-            let mut changed = original.keep_sources(changed.unwrap());
+            let mut changed = original
+                .keep_sources(changed.expect("the fixture mutation produces the changed value"));
             changed.replace_source(SourceArtifactKind::Rules, rules.as_bytes().to_vec());
             assert!(
                 crate::michigan_content::MichiganContentPreset::FourWeekStandard
@@ -82,26 +106,31 @@ fn normalized_permutations_and_preset_round_trips_preserve_common_authority() {
     control.normalized.industry.reverse();
     control.normalized.staffing.pools.reverse();
     control.interventions.reverse();
-    let reordered = original.keep_sources(MichiganMaterialCatalog::capture(control).unwrap());
-    let original_capture = CapturedEconomicCatalog::from_michigan(&original).unwrap();
-    let reordered_capture = CapturedEconomicCatalog::from_michigan(&reordered).unwrap();
+    let reordered = original.keep_sources(
+        MichiganMaterialCatalog::capture(control).expect("the fixture captures the authored state"),
+    );
+    let original_capture = CapturedEconomicCatalog::from_michigan(&original)
+        .expect("the Michigan fixture content loads");
+    let reordered_capture = CapturedEconomicCatalog::from_michigan(&reordered)
+        .expect("the Michigan fixture content loads");
     assert_eq!(
         original_capture.canonical_bytes(),
         reordered_capture.canonical_bytes()
     );
     let constrained = original
         .with_preset(MichiganDeliveryPreset::SharedFreightConstrained)
-        .unwrap();
-    let captured = CapturedEconomicCatalog::from_michigan(&constrained).unwrap();
-    let restored =
-        CapturedEconomicCatalog::decode(captured.canonical_bytes(), captured.digest()).unwrap();
+        .expect("the fixture builder accepts the authored options");
+    let captured = CapturedEconomicCatalog::from_michigan(&constrained)
+        .expect("the Michigan fixture content loads");
+    let restored = CapturedEconomicCatalog::decode(captured.canonical_bytes(), captured.digest())
+        .expect("the committed canonical bytes decode");
     assert_eq!(captured.opening(), restored.opening());
     assert_ne!(original_capture.digest(), captured.digest());
     assert_eq!(
         original,
         constrained
             .with_preset(MichiganDeliveryPreset::Standard)
-            .unwrap()
+            .expect("the fixture builder accepts the authored options")
     );
     assert!(constrained
         .with_preset(MichiganDeliveryPreset::StatewideBoth)
@@ -112,13 +141,13 @@ fn merchant_fixture() -> MichiganMaterialCatalog {
     let original = MichiganMaterialCatalog::from_defines_toml(include_str!(
         "../../../../../content/scenarios/michigan/defines.toml"
     ))
-    .unwrap();
+    .expect("the authored input admits the derived value");
     let mut c = original.capture.normalized;
     let mut second = c
         .processes
         .iter()
         .find(|p| p.key == "panel-forming")
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .clone();
     second.key = "second-panel-process".to_owned();
     second.inputs.push(MichiganMaterialInput {
@@ -130,7 +159,7 @@ fn merchant_fixture() -> MichiganMaterialCatalog {
         .pools
         .iter_mut()
         .find(|p| p.site_key == second.site_key)
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .process_keys
         .push(second.key.clone());
     c.processes.push(second);
@@ -139,7 +168,7 @@ fn merchant_fixture() -> MichiganMaterialCatalog {
         .processes
         .iter()
         .find(|p| p.key == "sheet-rolling")
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .site_key
         .clone();
     for (key, supplier, buyer) in [
@@ -172,21 +201,21 @@ fn merchant_fixture() -> MichiganMaterialCatalog {
         MichiganDeliveryPreset::Standard,
         Vec::new(),
     )
-    .unwrap()
+    .expect("the normalized content admits the value")
 }
 #[test]
 fn normalized_multi_input_owners_share_inventory_and_labor_and_merchants_have_no_fake_road() {
     let c = merchant_fixture();
     let state = crate::economic_catalog::import_michigan_opening(&c)
-        .unwrap()
+        .expect("the fixture call `import_michigan_opening` succeeds for the authored inputs")
         .compile()
-        .unwrap()
+        .expect("the authored scenario compiles")
         .state;
     let p = c
         .processes()
         .iter()
         .find(|p| p.key == "second-panel-process")
-        .unwrap();
+        .expect("the fixture holds the searched element");
     assert_eq!(
         state
             .input_coefficients
@@ -207,7 +236,11 @@ fn normalized_multi_input_owners_share_inventory_and_labor_and_merchants_have_no
         state
             .inventory
             .iter()
-            .filter(|r| r.site_id == p.site_id() && r.good_id == c.good("sheet").unwrap().id())
+            .filter(|r| r.site_id == p.site_id()
+                && r.good_id
+                    == c.good("sheet")
+                        .expect("the fixture catalog holds the addressed good")
+                        .id())
             .count(),
         1
     );
@@ -219,7 +252,7 @@ fn normalized_multi_input_owners_share_inventory_and_labor_and_merchants_have_no
     for route in state
         .supplier_routes
         .iter()
-        .filter(|r| r.transport_kind == babylon_material_circuit::SupplierTransport::Local)
+        .filter(|r| r.transport_kind == SupplierTransport::Local)
     {
         assert!(!state
             .route_stages
@@ -240,7 +273,8 @@ fn observed_suppression_remains_absent_and_zero_employment_can_recover_from_rese
     pool.employed = 0;
     pool.reserve = 5;
     pool.previous_unretained_hours = 0;
-    let accepted = MichiganMaterialCatalog::capture(capture.clone()).unwrap();
+    let accepted = MichiganMaterialCatalog::capture(capture.clone())
+        .expect("the fixture captures the authored state");
     assert_eq!(
         accepted.capture.normalized.industry[0].annual_avg_emplvl,
         None
@@ -262,7 +296,8 @@ fn complete_statewide_workforce_graph_stays_inside_the_source_bound() {
             previous_unretained_hours: 3200,
         })
         .collect::<Vec<_>>();
-    let source = crate::michigan_cohorts::michigan_staffed_scenario(&seeds).unwrap();
+    let source = crate::michigan_cohorts::michigan_staffed_scenario(&seeds)
+        .expect("the fixture call `michigan_staffed_scenario` succeeds for the authored inputs");
     assert!(source.len() < 1_048_576);
     eprintln!("397-pool observed graph source: {} bytes", source.len());
 }
@@ -272,8 +307,8 @@ fn append_fixture_merchants(c: &mut MichiganNormalizedContent) {
         ("42", MichiganSiteRole::Wholesale),
         ("44-45", MichiganSiteRole::Retail),
     ] {
-        let source =
-            regional::owner_source("26163", sector, MICHIGAN_INDUSTRY_BASELINE_SHA256).unwrap();
+        let source = regional::owner_source("26163", sector, MICHIGAN_INDUSTRY_BASELINE_SHA256)
+            .expect("the fixture call `owner_source` succeeds for the authored inputs");
         let key = format!("fixture-{sector}");
         c.industry.push(MichiganIndustryBaselineRow {
             area_fips: "26163".to_owned(),

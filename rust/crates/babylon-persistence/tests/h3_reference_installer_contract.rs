@@ -1,12 +1,13 @@
 //! Public contract for the bounded Michigan H3 reference-bundle installer.
 
 use babylon_kernel::tick_content_hash::RefDigest;
+use babylon_persistence::h3_reference_cohort::H3ReferenceCohort;
 use babylon_persistence::{
-    h3_reference_cohort::H3ReferenceCohort, install_michigan_h3_reference_bundle,
     H3ReferenceInstallDisposition, H3ReferenceInstallError, H3ReferenceInstallOperation,
     H3ReferenceInstallReport, H3ReferenceMembershipReadContext, PostgresDiagnostic,
     PostgresFailureClass,
 };
+
 use babylon_tick::h3_runtime::MichiganDynamicHexFoundation;
 use postgres::Config;
 
@@ -17,7 +18,7 @@ fn installer_signature_cannot_accept_unvalidated_rows_or_caller_provenance() {
         &H3ReferenceCohort,
         &MichiganDynamicHexFoundation,
     ) -> Result<H3ReferenceInstallReport, H3ReferenceInstallError> =
-        install_michigan_h3_reference_bundle;
+        babylon_persistence::install_michigan_h3_reference_bundle;
 
     let _ = install;
 }

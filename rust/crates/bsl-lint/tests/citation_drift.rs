@@ -7,6 +7,7 @@
 
 use std::path::PathBuf;
 use std::process::Command;
+use std::time::SystemTime;
 
 fn fixture_path() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/rules/stale_citation.bsl")
@@ -81,7 +82,7 @@ fn list_includes_citation_drift() {
 /// `git`, so this exercises the actual `git ls-tree`/`git show` failure path
 /// `repo.rs::tag_tree`/`show_tag_file` hit in a real shallow CI checkout.
 fn scratch_repo_dir(label: &str) -> PathBuf {
-    let nanos = std::time::SystemTime::now()
+    let nanos = SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .expect("system clock must be after the epoch")
         .as_nanos();

@@ -2,11 +2,18 @@
 
 use postgres::{GenericClient, Row};
 
+use super::body_encoding::EncodedBody;
+use super::body_encoding::Error;
+use super::emission::ArchiveEmissionManifest;
 use super::record::{CheckedRevision, GrantDependency, RevisionRecord};
 use super::ArchiveReadScope;
-use crate::archive::{database, decode, decode_digest, decode_stored_atom, decode_subject_kind};
+use crate::archive;
+use crate::identity::CampaignId;
 use crate::production_projection::diagnostics::{Stage, Timing};
-use crate::{identity::CampaignId, ArchiveCitation, ArchivePageRef, SemanticArchiveError};
+use crate::ArchiveDirtyBatch;
+use crate::{ArchiveCitation, ArchivePageRef, SemanticArchiveError};
+use std::collections::BTreeSet;
+use uuid::Uuid;
 
 pub(super) const COLUMNS: &str = "campaign_id, subject_kind, subject_id, effective_tick, \
     source_tick, source_content_hash, template_sha256, content_sha256, revision_sha256, \
@@ -44,8 +51,8 @@ pub(super) struct CapturedRevision {
 }
 
 impl CapturedRevision {
-    pub(super) fn body(&self) -> Result<super::body_encoding::EncodedBody, SemanticArchiveError> {
-        let length = decode::<i32>(&self.row, 13)?;
+    pub(super) fn body(&self) -> Result<EncodedBody, SemanticArchiveError> {
+        let length = archive::decode::<i32>(&self.row, 13)?;
         let decoded_length =
             u32::try_from(length).map_err(|_| SemanticArchiveError::CollectionBound)?;
         if usize::try_from(decoded_length).map_err(|_| SemanticArchiveError::CollectionBound)?
@@ -65,10 +72,10 @@ impl CapturedRevision {
             .try_reserve_exact(stored.len())
             .map_err(|_| SemanticArchiveError::CollectionBound)?;
         bytes.extend_from_slice(stored);
-        Ok(super::body_encoding::EncodedBody {
-            encoding: decode(&self.row, 12)?,
+        Ok(EncodedBody {
+            encoding: archive::decode(&self.row, 12)?,
             decoded_length,
-            decoded_sha256: decode_digest(&self.row, 14)?,
+            decoded_sha256: archive::decode_digest(&self.row, 14)?,
             bytes,
         })
     }
@@ -82,38 +89,40 @@ impl CapturedRevision {
     ) -> Result<bool, SemanticArchiveError> {
         let record = checked.record();
         if self.body()? != *checked.accepted_body()
-            || decode::<uuid::Uuid>(&self.row, 0)? != *record.source.campaign_id().as_uuid()
-            || decode::<String>(&self.row, 1)? != record.subject.kind().as_str()
-            || decode::<String>(&self.row, 2)? != record.subject.id()
-            || unsigned(decode(&self.row, 3)?)? != record.effective_tick
-            || unsigned(decode(&self.row, 4)?)? != record.source.tick()
-            || Some(decode_digest(&self.row, 5)?) != record.source.tick_content_hash()
-            || decode_digest(&self.row, 6)? != record.template_sha256
-            || decode_digest(&self.row, 7)? != record.content_sha256
-            || decode_digest(&self.row, 8)? != checked.digest()
-            || decode::<String>(&self.row, 9)? != record.search_text
-            || usize::try_from(decode::<i32>(&self.row, 10)?).ok() != Some(record.atoms.len())
-            || usize::try_from(decode::<i32>(&self.row, 11)?).ok() != Some(record.grants.len())
+            || archive::decode::<Uuid>(&self.row, 0)? != *record.source.campaign_id().as_uuid()
+            || archive::decode::<String>(&self.row, 1)? != record.subject.kind().as_str()
+            || archive::decode::<String>(&self.row, 2)? != record.subject.id()
+            || unsigned(archive::decode(&self.row, 3)?)? != record.effective_tick
+            || unsigned(archive::decode(&self.row, 4)?)? != record.source.tick()
+            || Some(archive::decode_digest(&self.row, 5)?) != record.source.tick_content_hash()
+            || archive::decode_digest(&self.row, 6)? != record.template_sha256
+            || archive::decode_digest(&self.row, 7)? != record.content_sha256
+            || archive::decode_digest(&self.row, 8)? != checked.digest()
+            || archive::decode::<String>(&self.row, 9)? != record.search_text
+            || usize::try_from(archive::decode::<i32>(&self.row, 10)?).ok()
+                != Some(record.atoms.len())
+            || usize::try_from(archive::decode::<i32>(&self.row, 11)?).ok()
+                != Some(record.grants.len())
             || self.atoms.len() != record.atoms.len()
             || self.grants.len() != record.grants.len()
         {
             return Ok(false);
         }
         for (position, (row, expected)) in self.atoms.iter().zip(&record.atoms).enumerate() {
-            if usize::try_from(decode::<i32>(row, 15)?).ok() != Some(position)
-                || decode_stored_atom(row)? != *expected
+            if usize::try_from(archive::decode::<i32>(row, 15)?).ok() != Some(position)
+                || archive::decode_stored_atom(row)? != *expected
             {
                 return Ok(false);
             }
         }
         for (position, (row, expected)) in self.grants.iter().zip(&record.grants).enumerate() {
-            if usize::try_from(decode::<i32>(row, 6)?).ok() != Some(position)
-                || decode::<String>(row, 0)? != expected.subject.kind().as_str()
-                || decode::<String>(row, 1)? != expected.subject.id()
-                || decode::<String>(row, 2)? != expected.key
-                || unsigned(decode(row, 3)?)? != expected.granted_tick
-                || decode::<String>(row, 4)? != expected.citation.source_id()
-                || decode::<String>(row, 5)? != expected.citation.locator()
+            if usize::try_from(archive::decode::<i32>(row, 6)?).ok() != Some(position)
+                || archive::decode::<String>(row, 0)? != expected.subject.kind().as_str()
+                || archive::decode::<String>(row, 1)? != expected.subject.id()
+                || archive::decode::<String>(row, 2)? != expected.key
+                || unsigned(archive::decode(row, 3)?)? != expected.granted_tick
+                || archive::decode::<String>(row, 4)? != expected.citation.source_id()
+                || archive::decode::<String>(row, 5)? != expected.citation.locator()
             {
                 return Ok(false);
             }
@@ -130,10 +139,10 @@ impl CapturedRevision {
     }
 
     fn decode(self) -> Result<(RevisionRecord, [u8; 32]), SemanticArchiveError> {
-        let campaign = CampaignId::from_uuid(decode(&self.row, 0)?);
+        let campaign = CampaignId::from_uuid(archive::decode(&self.row, 0)?);
         let subject = ArchivePageRef::try_new(
-            decode_subject_kind(&decode::<String>(&self.row, 1)?)?,
-            decode(&self.row, 2)?,
+            archive::decode_subject_kind(&archive::decode::<String>(&self.row, 1)?)?,
+            archive::decode(&self.row, 2)?,
         )?;
         let body = self.body()?;
         let decoded = super::body_encoding::decode(
@@ -142,29 +151,32 @@ impl CapturedRevision {
             body.decoded_sha256,
             &body.bytes,
         )
-        .map_err(super::body_encoding::Error::into_semantic)?;
-        if decoded.search_text != decode::<String>(&self.row, 9)? {
+        .map_err(Error::into_semantic)?;
+        if decoded.search_text != archive::decode::<String>(&self.row, 9)? {
             return Err(SemanticArchiveError::StoredPageMismatch);
         }
         let mut record = RevisionRecord {
             source: ArchiveReadScope::committed(
                 campaign,
-                unsigned(decode(&self.row, 4)?)?,
-                decode_digest(&self.row, 5)?,
+                unsigned(archive::decode(&self.row, 4)?)?,
+                archive::decode_digest(&self.row, 5)?,
             )?,
             subject,
-            effective_tick: unsigned(decode(&self.row, 3)?)?,
-            template_sha256: decode_digest(&self.row, 6)?,
-            content_sha256: decode_digest(&self.row, 7)?,
+            effective_tick: unsigned(archive::decode(&self.row, 3)?)?,
+            template_sha256: archive::decode_digest(&self.row, 6)?,
+            content_sha256: archive::decode_digest(&self.row, 7)?,
             title: decoded.title,
             markdown: decoded.markdown,
             search_text: decoded.search_text,
             provenance_json: decoded.provenance_json,
             atoms: Vec::new(),
             grants: Vec::new(),
-            emission: super::emission::ArchiveEmissionManifest::decode(&decoded.emission_json)?,
+            emission: ArchiveEmissionManifest::decode(&decoded.emission_json)?,
         };
-        let counts = (decode::<i32>(&self.row, 10)?, decode::<i32>(&self.row, 11)?);
+        let counts = (
+            archive::decode::<i32>(&self.row, 10)?,
+            archive::decode::<i32>(&self.row, 11)?,
+        );
         if !(1..=513).contains(&counts.0) || !(1..=513).contains(&counts.1) {
             return Err(SemanticArchiveError::StoredPageMismatch);
         }
@@ -176,7 +188,7 @@ impl CapturedRevision {
         {
             return Err(SemanticArchiveError::StoredPageMismatch);
         }
-        Ok((record, decode_digest(&self.row, 8)?))
+        Ok((record, archive::decode_digest(&self.row, 8)?))
     }
 }
 
@@ -193,12 +205,12 @@ pub(super) fn capture_record(
     row: Row,
     authority: ReadAuthority,
 ) -> Result<CapturedRevision, SemanticArchiveError> {
-    let campaign = CampaignId::from_uuid(decode(&row, 0)?);
+    let campaign = CampaignId::from_uuid(archive::decode(&row, 0)?);
     let subject = ArchivePageRef::try_new(
-        decode_subject_kind(&decode::<String>(&row, 1)?)?,
-        decode(&row, 2)?,
+        archive::decode_subject_kind(&archive::decode::<String>(&row, 1)?)?,
+        archive::decode(&row, 2)?,
     )?;
-    let tick = decode::<i64>(&row, 3)?;
+    let tick = archive::decode::<i64>(&row, 3)?;
     unsigned(tick)?;
     let (atoms, grants) = capture_membership(client, campaign, &subject, tick, authority)?;
     Ok(CapturedRevision { row, atoms, grants })
@@ -246,7 +258,7 @@ fn capture_membership(
     record_capture_query();
     let atoms = client
         .query(&atom_query, params)
-        .map_err(|error| database("read retained Archive membership", &error))?;
+        .map_err(|error| archive::database("read retained Archive membership", &error))?;
     #[cfg(test)]
     record_capture_query();
     let grants = client
@@ -259,7 +271,7 @@ fn capture_membership(
             ),
             params,
         )
-        .map_err(|error| database("read retained Archive grant dependencies", &error))?;
+        .map_err(|error| archive::database("read retained Archive grant dependencies", &error))?;
     Ok((atoms, grants))
 }
 
@@ -269,27 +281,27 @@ fn decode_membership(
     grants: &[Row],
 ) -> Result<(), SemanticArchiveError> {
     for (position, row) in atoms.iter().enumerate() {
-        if decode::<i32>(row, 15)?
+        if archive::decode::<i32>(row, 15)?
             != i32::try_from(position).map_err(|_| SemanticArchiveError::CollectionBound)?
         {
             return Err(SemanticArchiveError::StoredPageMismatch);
         }
-        record.atoms.push(decode_stored_atom(row)?);
+        record.atoms.push(archive::decode_stored_atom(row)?);
     }
     for (position, row) in grants.iter().enumerate() {
-        if decode::<i32>(row, 6)?
+        if archive::decode::<i32>(row, 6)?
             != i32::try_from(position).map_err(|_| SemanticArchiveError::CollectionBound)?
         {
             return Err(SemanticArchiveError::StoredPageMismatch);
         }
         record.grants.push(GrantDependency {
             subject: ArchivePageRef::try_new(
-                decode_subject_kind(&decode::<String>(row, 0)?)?,
-                decode(row, 1)?,
+                archive::decode_subject_kind(&archive::decode::<String>(row, 0)?)?,
+                archive::decode(row, 1)?,
             )?,
-            key: decode(row, 2)?,
-            granted_tick: unsigned(decode(row, 3)?)?,
-            citation: ArchiveCitation::try_new(decode(row, 4)?, decode(row, 5)?)?,
+            key: archive::decode(row, 2)?,
+            granted_tick: unsigned(archive::decode(row, 3)?)?,
+            citation: ArchiveCitation::try_new(archive::decode(row, 4)?, archive::decode(row, 5)?)?,
         });
     }
     Ok(())
@@ -304,10 +316,10 @@ pub(super) fn insert_batch(
     let Some(first) = checked.first() else {
         return Ok(Vec::new());
     };
-    if checked.len() > crate::ArchiveDirtyBatch::MAX_PAGES {
+    if checked.len() > ArchiveDirtyBatch::MAX_PAGES {
         return Err(SemanticArchiveError::CollectionBound);
     }
-    let mut subjects = std::collections::BTreeSet::new();
+    let mut subjects = BTreeSet::new();
     for revision in checked {
         if revision.record().source != first.record().source {
             return Err(SemanticArchiveError::ReceiptMismatch);
@@ -412,7 +424,7 @@ fn insert_row(
                 &grant_provenance_refs,
             ],
         )
-        .map_err(|error| database("insert immutable Archive publication", &error))?
+        .map_err(|error| archive::database("insert immutable Archive publication", &error))?
         == 1;
     drop(insertion_timing);
     Ok(inserted)
@@ -461,7 +473,9 @@ fn reconcile_batch(
         ORDER BY wanted.ordinality",
             params,
         )
-        .map_err(|error| database("validate immutable Archive batch references", &error))?;
+        .map_err(|error| {
+            archive::database("validate immutable Archive batch references", &error)
+        })?;
     drop(visibility_timing);
     if visible.len() != checked.len() {
         return Err(SemanticArchiveError::ReceiptConflict);
@@ -487,17 +501,17 @@ fn reconcile_batch(
             ),
             params,
         )
-        .map_err(|error| database("reconcile checked Archive batch", &error))?;
+        .map_err(|error| archive::database("reconcile checked Archive batch", &error))?;
     if rows.len() != checked.len() {
         return Err(SemanticArchiveError::ReceiptConflict);
     }
     let mut captured = Vec::with_capacity(rows.len());
     for (index, row) in rows.into_iter().enumerate() {
         if comparison_position(&row, 16, checked.len())? != index
-            || decode::<uuid::Uuid>(&row, 0)? != *campaign.as_uuid()
-            || decode::<String>(&row, 1)? != kinds[index]
-            || decode::<String>(&row, 2)? != ids[index]
-            || decode::<i64>(&row, 3)? != effective
+            || archive::decode::<Uuid>(&row, 0)? != *campaign.as_uuid()
+            || archive::decode::<String>(&row, 1)? != kinds[index]
+            || archive::decode::<String>(&row, 2)? != ids[index]
+            || archive::decode::<i64>(&row, 3)? != effective
         {
             return Err(SemanticArchiveError::ReceiptConflict);
         }
@@ -563,18 +577,20 @@ pub(super) fn capture_comparison_records(
             ),
             &[campaign.as_uuid(), &kinds, &ids, &signed(through)?],
         )
-        .map_err(|error| database("capture exact producer comparison revisions", &error))?;
+        .map_err(|error| {
+            archive::database("capture exact producer comparison revisions", &error)
+        })?;
     let mut captures = Vec::with_capacity(rows.len());
-    let mut positions = std::collections::BTreeSet::new();
+    let mut positions = BTreeSet::new();
     for row in rows {
         let position = comparison_position(&row, 16, subjects.len())?;
         let subject = ArchivePageRef::try_new(
-            decode_subject_kind(&decode::<String>(&row, 1)?)?,
-            decode(&row, 2)?,
+            archive::decode_subject_kind(&archive::decode::<String>(&row, 1)?)?,
+            archive::decode(&row, 2)?,
         )?;
-        if decode::<uuid::Uuid>(&row, 0)? != *campaign.as_uuid()
+        if archive::decode::<Uuid>(&row, 0)? != *campaign.as_uuid()
             || subject != subjects[position]
-            || unsigned(decode(&row, 3)?)? > through
+            || unsigned(archive::decode(&row, 3)?)? > through
             || !positions.insert(position)
         {
             return Err(SemanticArchiveError::StoredPageMismatch);
@@ -601,7 +617,7 @@ fn comparison_position(
     column: usize,
     length: usize,
 ) -> Result<usize, SemanticArchiveError> {
-    let index = decode::<i64>(row, column)?
+    let index = archive::decode::<i64>(row, column)?
         .checked_sub(1)
         .and_then(|value| usize::try_from(value).ok())
         .filter(|value| *value < length)
@@ -619,15 +635,15 @@ fn capture_batch_memberships(
     }
     let kinds = captures
         .iter()
-        .map(|(_, c)| decode::<String>(&c.row, 1))
+        .map(|(_, c)| archive::decode::<String>(&c.row, 1))
         .collect::<Result<Vec<_>, _>>()?;
     let ids = captures
         .iter()
-        .map(|(_, c)| decode::<String>(&c.row, 2))
+        .map(|(_, c)| archive::decode::<String>(&c.row, 2))
         .collect::<Result<Vec<_>, _>>()?;
     let ticks = captures
         .iter()
-        .map(|(_, c)| decode::<i64>(&c.row, 3))
+        .map(|(_, c)| archive::decode::<i64>(&c.row, 3))
         .collect::<Result<Vec<_>, _>>()?;
     let params: &[&(dyn postgres::types::ToSql + Sync)] =
         &[campaign.as_uuid(), &kinds, &ids, &ticks];
@@ -642,7 +658,7 @@ fn capture_batch_memberships(
         AND membership.subject_id=wanted.subject_id AND membership.effective_tick=wanted.effective_tick \
         ORDER BY membership.position LIMIT 514) captured ON true \
         ORDER BY wanted.ordinality,captured.position"), params)
-        .map_err(|error| database("capture exact Archive atom memberships", &error))?;
+        .map_err(|error| archive::database("capture exact Archive atom memberships", &error))?;
     for row in atoms {
         let index = comparison_position(&row, 16, captures.len())?;
         captures[index].1.atoms.push(row);
@@ -659,7 +675,7 @@ fn capture_batch_memberships(
         AND membership.subject_id=wanted.subject_id AND membership.effective_tick=wanted.effective_tick \
         ORDER BY position LIMIT 514) captured ON true \
         ORDER BY wanted.ordinality,captured.position", params)
-        .map_err(|error| database("capture exact Archive grant memberships", &error))?;
+        .map_err(|error| archive::database("capture exact Archive grant memberships", &error))?;
     for row in grants {
         let index = comparison_position(&row, 7, captures.len())?;
         captures[index].1.grants.push(row);

@@ -1,6 +1,5 @@
 //! Compact evidence from already authenticated receipts; never simulation authority.
 use babylon_material_circuit::{
-    recurring_household_order_id, recurring_procurement_order_id, validate_distribution_receipts,
     AccountId, AidOutcome, CapitalContributionReceipt, CashTransferPurpose, DistributionReceipt,
     EquipmentWearReceipt, FinalDemandPrincipalId, GoodId, HouseholdConsumptionReceipt,
     HouseholdDemandReceipt, InstallationId, InstallationReceipt, InvestmentReceipt, MoneyLocation,
@@ -11,9 +10,10 @@ use babylon_material_circuit::{
 use babylon_tick::material_world::MaterialTickReceipts;
 use serde::Serialize;
 use std::collections::{BTreeMap, BTreeSet};
+use std::result::Result as StdResult;
 
 const WITNESSES: usize = 8;
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Refusal {
     Period,
     Duplicate,
@@ -28,7 +28,7 @@ pub enum Refusal {
     Overflow,
     PendingLimit,
 }
-type Result<T> = std::result::Result<T, Refusal>;
+type Result<T> = StdResult<T, Refusal>;
 fn add(a: &mut u64, b: u64) -> Result<()> {
     *a = a.checked_add(b).ok_or(Refusal::Overflow)?;
     Ok(())
@@ -42,9 +42,14 @@ fn value(q: u64, p: i128) -> Result<i128> {
 }
 fn hex(bytes: &[u8]) -> String {
     use std::fmt::Write;
-    let mut result = String::with_capacity(bytes.len().checked_mul(2).unwrap());
+    let mut result = String::with_capacity(
+        bytes
+            .len()
+            .checked_mul(2)
+            .expect("the hex length fits the host address space"),
+    );
     for byte in bytes {
-        write!(&mut result, "{byte:02x}").unwrap();
+        write!(&mut result, "{byte:02x}").expect("writing to a String cannot fail");
     }
     result
 }
@@ -374,7 +379,7 @@ impl Audit {
         for row in rows {
             if row.period != tick
                 || row.order_id
-                    != recurring_household_order_id(
+                    != babylon_material_circuit::recurring_household_order_id(
                         tick,
                         (row.principal_id, row.good_id, row.unit_id),
                     )
@@ -516,7 +521,7 @@ impl Audit {
         for row in rows {
             if row.period != tick
                 || row.order_id
-                    != recurring_procurement_order_id(
+                    != babylon_material_circuit::recurring_procurement_order_id(
                         tick,
                         row.buyer_site_id,
                         row.supplier_site_id,
@@ -784,7 +789,8 @@ impl Audit {
     }
     fn ownership(&mut self, r: &MaterialTickReceipts, fact: &mut Boundary) -> Result<()> {
         let tick = r.resolve_tick;
-        validate_distribution_receipts(&r.distributions).map_err(|_| Refusal::Ownership)?;
+        babylon_material_circuit::validate_distribution_receipts(&r.distributions)
+            .map_err(|_| Refusal::Ownership)?;
         let mut ownership = 0i128;
         // Aggregate exact parties; neither row order nor split payments confer evidence.
         for kind in [

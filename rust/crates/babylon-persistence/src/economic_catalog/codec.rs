@@ -3,12 +3,11 @@ use super::{
     CatalogGeography, EconomicCatalogError, EconomicCatalogInput, SourceArtifact,
     SourceArtifactKind,
 };
-use babylon_kernel::{
-    clock::{CampaignDuration, DAYS_PER_TICK},
-    content_digest::sha256_of,
-};
+use babylon_kernel::clock::{CampaignDuration, DAYS_PER_TICK};
+use babylon_kernel::content_digest;
+use std::result::Result as StdResult;
 
-type Result<T> = std::result::Result<T, EconomicCatalogError>;
+type Result<T> = StdResult<T, EconomicCatalogError>;
 pub(super) const DOMAIN: &[u8] = b"babylon.economic-catalog.v1\0";
 pub(super) const MAX_CATALOG_BYTES: usize = 64 * 1024 * 1024;
 const MAX_SOURCE_BYTES: usize = 32 * 1024 * 1024;
@@ -173,7 +172,7 @@ pub(super) fn decode(bytes: &[u8]) -> Result<(EconomicCatalogInput, String)> {
             return Err(EconomicCatalogError::Bound);
         }
         let bytes = c.take(size)?;
-        if sha256_of(bytes) != digest {
+        if content_digest::sha256_of(bytes) != digest {
             return Err(EconomicCatalogError::Digest);
         }
         sources.push(SourceArtifact::capture(kind, bytes.to_vec()));
@@ -249,6 +248,9 @@ impl<'a> Cursor<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::identity::CampaignId;
+    use crate::michigan_defines::MichiganDefines;
+    use uuid::Uuid;
 
     // Independent wire fixture: three one-byte identities, continuous clock,
     // national geography, and one GraphDeclarations source containing "abc".
@@ -266,7 +268,7 @@ mod tests {
     #[test]
     fn independent_current_source_vector_round_trips_exactly() {
         let raw = vector();
-        let (input, compiler) = decode(&raw).unwrap();
+        let (input, compiler) = decode(&raw).expect("the committed canonical bytes decode");
         assert_eq!(compiler, "c");
         assert_eq!(input.scenario_id, "s");
         assert_eq!(input.preset_id, "p");
@@ -278,7 +280,10 @@ mod tests {
             SourceArtifactKind::GraphDeclarations
         );
         assert_eq!(input.sources[0].bytes(), b"abc");
-        assert_eq!(encode(&input, &compiler).unwrap(), raw);
+        assert_eq!(
+            encode(&input, &compiler).expect("the fixture value encodes canonically"),
+            raw
+        );
     }
     #[test]
     fn source_wire_refuses_wrong_version_timebase_scope_digest_and_trailing_data() {
@@ -350,37 +355,50 @@ mod tests {
             )],
             organizer: None,
         };
-        let d = crate::michigan_defines::MichiganDefines::parse(include_str!(concat!(
+        let d = MichiganDefines::parse(include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../../../content/scenarios/michigan/defines.toml"
         )))
-        .unwrap();
-        let campaign = crate::identity::CampaignId::from_uuid(uuid::Uuid::from_u128(26163));
-        let config = crate::organizer_content::config(campaign, &d.organizer, [7; 32]).unwrap();
+        .expect("the authored literal parses as the declared type");
+        let campaign = CampaignId::from_uuid(Uuid::from_u128(26163));
+        let config = crate::organizer_content::config(campaign, &d.organizer, [7; 32])
+            .expect("the fixture call `config` succeeds for the authored inputs");
         input.organizer = Some(config.clone());
-        let bytes = encode(&input, "michigan-control-v1").unwrap();
-        let (decoded, _) = decode(&bytes).unwrap();
+        let bytes =
+            encode(&input, "michigan-control-v1").expect("the fixture value encodes canonically");
+        let (decoded, _) = decode(&bytes).expect("the committed canonical bytes decode");
         assert_eq!(decoded.organizer, Some(config));
-        assert_eq!(encode(&decoded, "michigan-control-v1").unwrap(), bytes);
+        assert_eq!(
+            encode(&decoded, "michigan-control-v1").expect("the fixture value encodes canonically"),
+            bytes
+        );
         let mut old = bytes.clone();
         old[DOMAIN.len() + 1] = 1;
-        assert_eq!(decode(&old).unwrap_err(), EconomicCatalogError::WireVersion);
+        assert_eq!(
+            decode(&old).expect_err("the malformed bytes are refused"),
+            EconomicCatalogError::WireVersion
+        );
         let mut trailing = bytes.clone();
         trailing.push(0);
         assert_eq!(
-            decode(&trailing).unwrap_err(),
+            decode(&trailing).expect_err("the malformed bytes are refused"),
             EconomicCatalogError::WireTrailing
         );
         // Config presence and encoded length cannot disagree.
         let mut absent = bytes;
         let marker = absent.len()
-            - babylon_practice_contract::encode_organizer_config(input.organizer.as_ref().unwrap())
-                .unwrap()
-                .len()
+            - babylon_practice_contract::encode_organizer_config(
+                input
+                    .organizer
+                    .as_ref()
+                    .expect("the fixture set the optional field before this read"),
+            )
+            .expect("the fixture value encodes to its canonical bytes")
+            .len()
             - 5;
         absent[marker] = 0;
         assert_eq!(
-            decode(&absent).unwrap_err(),
+            decode(&absent).expect_err("the malformed bytes are refused"),
             EconomicCatalogError::WireNoncanonical
         );
     }

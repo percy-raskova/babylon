@@ -1,3 +1,4 @@
+use babylon_material_circuit::HouseholdTimeAccounting;
 fn money(n: i128) -> Currency {
     Currency::from_micro_units(n)
 }
@@ -33,18 +34,18 @@ fn opening_assets() -> (MonetaryBook, HistoricalCostBook) {
             cash: money(0),
         },
     ])
-    .unwrap();
+    .expect("the fixture opens the authored source");
     let stock_values = [20, 6, 6, 0]
         .into_iter()
         .enumerate()
         .map(|(n, amount)| StockCarryingValue {
             owner: AccountId::Site(site()),
-            good_id: good(u8::try_from(n + 1).unwrap()),
+            good_id: good(u8::try_from(n + 1).expect("the fixture value fits the target range")),
             unit_id: unit(),
             amount: money(amount),
         })
         .collect();
-    let costs = HistoricalCostBook::open(&book, stock_values, vec![], vec![], vec![]).unwrap();
+    let costs = HistoricalCostBook::open(&book, stock_values, vec![], vec![], vec![]).expect("the fixture opens the authored source");
     (book, costs)
 }
 fn opening_capacity() -> CapacitySupply {
@@ -92,7 +93,7 @@ fn opening_accounting(
     CircuitAccounting::Monetary(Box::new(MonetaryCircuit {
         aid: AidBook::default(),
 
-        household_time: babylon_material_circuit::HouseholdTimeAccounting::NotModeled,
+        household_time: HouseholdTimeAccounting::NotModeled,
         book,
         costs,
         financial: FinancialInstitutions::empty(),
@@ -122,7 +123,7 @@ fn opening() -> MaterialCircuitState {
         .map(|(n, available)| LaborCapacityRow {
             site_id: site(),
             unit_id: hours(),
-            period: u64::try_from(n + 1).unwrap(),
+            period: u64::try_from(n + 1).expect("the fixture value fits the target range"),
             available,
         })
         .collect();
@@ -164,7 +165,7 @@ fn opening() -> MaterialCircuitState {
             .enumerate()
             .map(|(n, quantity)| InventoryRow {
                 site_id: site(),
-                good_id: good(u8::try_from(n + 1).unwrap()),
+                good_id: good(u8::try_from(n + 1).expect("the fixture value fits the target range")),
                 unit_id: unit(),
                 quantity,
             })
@@ -179,7 +180,7 @@ fn opening() -> MaterialCircuitState {
         production_commitments: vec![],
         final_demand_principals: vec![FinalDemandPrincipal {
             id: household(),
-            location: "county:26163".parse().unwrap(),
+            location: "county:26163".parse().expect("the authored literal parses as the declared type"),
         }],
         service_connections: vec![],
         service_orders: vec![],
@@ -233,7 +234,7 @@ fn equipment_cost(state: &MaterialCircuitState) -> Currency {
         .snapshot()
         .equipment
         .iter()
-        .fold(money(0), |sum, r| sum.checked_add(r.amount).unwrap())
+        .fold(money(0), |sum, r| sum.checked_add(r.amount).expect("the fixture arithmetic stays in range"))
 }
 fn stock_cost(state: &MaterialCircuitState, id: GoodId) -> Currency {
     economy(state)
@@ -242,7 +243,7 @@ fn stock_cost(state: &MaterialCircuitState, id: GoodId) -> Currency {
         .stocks
         .iter()
         .find(|r| r.owner == AccountId::Site(site()) && r.good_id == id)
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .amount
 }
 
@@ -264,12 +265,12 @@ fn configure_investment(state: &mut MaterialCircuitState, cash: i128, retained: 
             cash: money(0),
         },
     ])
-    .unwrap();
+    .expect("the fixture opens the authored source");
     let mut stocks = e.costs.snapshot().stocks;
     stocks
         .iter_mut()
         .find(|r| r.good_id == good(1))
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .amount = money(0);
     stocks.push(StockCarryingValue {
         owner: AccountId::Site(seller),
@@ -277,19 +278,19 @@ fn configure_investment(state: &mut MaterialCircuitState, cash: i128, retained: 
         unit_id: unit(),
         amount: money(24),
     });
-    e.costs = HistoricalCostBook::open(&e.book, stocks, vec![], vec![], vec![]).unwrap();
+    e.costs = HistoricalCostBook::open(&e.book, stocks, vec![], vec![], vec![]).expect("the fixture opens the authored source");
     let mut costs = e.costs.snapshot();
     let account = costs
         .accounts
         .iter_mut()
         .find(|r| r.account == AccountId::Site(site()))
-        .unwrap();
+        .expect("the fixture holds the searched element");
     account.opening_capital = account
         .opening_capital
         .checked_sub(money(retained))
-        .unwrap();
+        .expect("the fixture arithmetic stays in range");
     account.retained_earnings = money(retained);
-    e.costs = HistoricalCostBook::from_snapshot(costs).unwrap();
+    e.costs = HistoricalCostBook::from_snapshot(costs).expect("the snapshot admits the derived value");
     e.recurring = Some(Box::new(RecurringEconomy {
         service_inputs: vec![],
         households: vec![],
@@ -333,7 +334,7 @@ fn configure_investment_supply(state: &mut MaterialCircuitState) {
         .inventory
         .iter_mut()
         .find(|r| r.good_id == good(1))
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .quantity = 0;
     state.inventory.push(InventoryRow {
         site_id: seller,

@@ -1,11 +1,13 @@
 //! Captured recurring policies and current stocks; quantities retain their units.
 
+use crate::MaterialCircuitError;
+use crate::ServiceInputPolicy;
 use crate::{FinalDemandPrincipalId, GoodId, OrderId, ProcessId, SiteId, UnitId};
 use babylon_kernel::currency::Currency;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RecurringEconomy {
-    pub service_inputs: Vec<crate::ServiceInputPolicy>,
+    pub service_inputs: Vec<ServiceInputPolicy>,
     pub households: Vec<HouseholdCohort>,
     pub household_stocks: Vec<HouseholdStock>,
     pub household_needs: Vec<HouseholdNeed>,
@@ -75,18 +77,15 @@ impl HouseholdNeed {
     /// Exact recurring requirement; this calculation changes neither count.
     /// # Errors
     /// Refuses the wrong principal, household-based collective needs, zero coefficients and overflow.
-    pub fn required_quantity(
-        &self,
-        cohort: &HouseholdCohort,
-    ) -> Result<u64, crate::MaterialCircuitError> {
+    pub fn required_quantity(&self, cohort: &HouseholdCohort) -> Result<u64, MaterialCircuitError> {
         if cohort.principal_id != self.principal_id
             || (cohort.kind == HouseholdKind::CollectiveResidence
                 && self.basis == HouseholdNeedBasis::Households)
         {
-            return Err(crate::MaterialCircuitError::FinalDemandInvariant);
+            return Err(MaterialCircuitError::FinalDemandInvariant);
         }
         if self.units_per_basis == 0 {
-            return Err(crate::MaterialCircuitError::ZeroQuantity);
+            return Err(MaterialCircuitError::ZeroQuantity);
         }
         let count = match self.basis {
             HouseholdNeedBasis::Persons => cohort.persons,
@@ -94,7 +93,7 @@ impl HouseholdNeed {
         };
         count
             .checked_mul(self.units_per_basis)
-            .ok_or(crate::MaterialCircuitError::Arithmetic)
+            .ok_or(MaterialCircuitError::Arithmetic)
     }
 }
 

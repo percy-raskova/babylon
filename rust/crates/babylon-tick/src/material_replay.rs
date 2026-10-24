@@ -3,34 +3,37 @@
 //! Physical closing and admitted staffing join the detached graph transaction
 //! before identity finalization. One acknowledgement publishes both owners.
 
-use crate::{
-    material_staffing::{
-        apply_material_staffing, validate_opening_labor, MaterialStaffingError,
-        StaffingComposition, StaffingEffectContext, StaffingEffects,
-    },
-    material_state::MaterialStateRows,
-    material_world::{
-        nominal_material_world_hash, MaterialWorldError, MaterialWorldRegister,
-        PreparedMaterialWorld,
-    },
-    replay_session::{
-        IdentifiedTickReport, PreparedReplayCommitError, PreparedReplayTick,
-        ReplayCommitDisposition, ReplayTickError, ReplayTickSession,
-    },
+use crate::material_staffing::{
+    MaterialStaffingError, StaffingComposition, StaffingEffectContext, StaffingEffects,
 };
+use crate::material_state::MaterialStateRows;
+use crate::material_world::{MaterialWorldError, MaterialWorldRegister, PreparedMaterialWorld};
+use crate::replay_session::{
+    IdentifiedTickReport, PreparedReplayCommitError, PreparedReplayTick, ReplayCommitDisposition,
+    ReplayTickError, ReplayTickSession,
+};
+
 use babylon_bsl::structural_verbs::CollectingSink;
-use babylon_graph::{
-    allocator_state::AllocatorState, stable_state::StableGraphState, state_hash::CanonicalState,
-    substrate::GraphSubstrate, working_copy::DetachedCopy,
-};
-use babylon_kernel::{content_digest::sha256_of, tick_content_hash::TickContentHash};
+use babylon_graph::allocator_state::AllocatorState;
+use babylon_graph::stable_state::StableGraphState;
+use babylon_graph::state_hash::CanonicalState;
+use babylon_graph::substrate::GraphSubstrate;
+use babylon_graph::working_copy::DetachedCopy;
+
+use babylon_kernel::tick_content_hash::TickContentHash;
+
+use crate::material_staffing;
+use crate::material_world;
+use babylon_bsl::causal_contract::ContractError;
+use babylon_graph::hypergraph_store::HypergraphStore;
+use babylon_kernel::clock::CampaignDuration;
+use babylon_kernel::content_digest;
 use babylon_material_circuit::{
-    close_material_period_with_support, AidResolveInput, AidTransport, CircuitAccounting,
-    MaterialCircuitError,
+    AidResolveInput, AidTransport, CircuitAccounting, MaterialCircuitError,
 };
-use babylon_practice_contract::{
-    organizer_action_batch, OrderedPracticeActionBatch, OrganizerCommitment,
-};
+use babylon_practice_contract::{OrderedPracticeActionBatch, OrganizerCommitment};
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 
 const TICK_DOMAIN: &[u8] = b"babylon.material-tick-content.v3\0";
 const TICK_IDENTITY_BYTES: usize = TICK_DOMAIN.len() + 12 + 7 * 32;
@@ -48,7 +51,7 @@ pub enum MaterialBaseError {
     /// The existing bounded effect analyzer refused the retained rule AST.
     StaffingEffectAnalysis {
         rule_id: String,
-        error: babylon_bsl::causal_contract::ContractError,
+        error: ContractError,
     },
     Period,
     MissingCandidate,
@@ -61,7 +64,7 @@ pub enum MaterialBaseError {
     },
 }
 impl std::fmt::Display for MaterialBaseError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         write!(f, "material-base composition refused: {self:?}")
     }
 }
@@ -97,7 +100,7 @@ impl MaterialBaseInputs<'_> {
             self.opening.organizer_state(),
         ) {
             (Some(config), Some(state)) => {
-                let expected = organizer_action_batch(
+                let expected = babylon_practice_contract::organizer_action_batch(
                     config,
                     state,
                     self.commitment,
@@ -183,7 +186,12 @@ impl MaterialBaseInputs<'_> {
         }
         let composition = self.labor;
         {
-            validate_opening_labor(graph, context, composition, self.opening.state())?;
+            material_staffing::validate_opening_labor(
+                graph,
+                context,
+                composition,
+                self.opening.state(),
+            )?;
             let aid_inputs = self.aid_inputs()?;
             let collection_inputs = match (
                 self.opening.organizer_config(),
@@ -200,7 +208,7 @@ impl MaterialBaseInputs<'_> {
                 (None, None) if self.commitment.is_none() => vec![],
                 _ => return Err(MaterialWorldError::Wire.into()),
             };
-            let closed = close_material_period_with_support(
+            let closed = babylon_material_circuit::close_material_period_with_support(
                 self.opening.state(),
                 &aid_inputs,
                 &collection_inputs,
@@ -211,7 +219,7 @@ impl MaterialBaseInputs<'_> {
                 .map(|row| row.pool().clone())
                 .collect::<Vec<_>>();
             let requests = closed.staffing_requests(&bindings)?;
-            let effects = apply_material_staffing(
+            let effects = material_staffing::apply_material_staffing(
                 graph,
                 context,
                 composition,
@@ -244,7 +252,7 @@ pub enum MaterialReplayError {
     Identity,
 }
 impl std::fmt::Display for MaterialReplayError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         write!(f, "material replay refused: {self:?}")
     }
 }
@@ -350,7 +358,7 @@ impl IdentifiedMaterialTick {
             canonical_bytes: bytes
                 .try_into()
                 .map_err(|_| MaterialReplayError::Identity)?,
-            tick_content_hash: TickContentHash::from_bytes(sha256_of(bytes)),
+            tick_content_hash: TickContentHash::from_bytes(content_digest::sha256_of(bytes)),
         })
     }
     fn compose(
@@ -363,10 +371,13 @@ impl IdentifiedMaterialTick {
         if u64::try_from(graph.result_registers().completed_tick()).ok() != Some(resolve_tick) {
             return Err(MaterialReplayError::Identity);
         }
-        let prior_world_hash = nominal_material_world_hash(graph.report().world_before, prior);
-        let result_world_hash =
-            nominal_material_world_hash(graph.report().world_after, material.register());
-        let receipt_digest = sha256_of(material.receipt_bytes());
+        let prior_world_hash =
+            material_world::nominal_material_world_hash(graph.report().world_before, prior);
+        let result_world_hash = material_world::nominal_material_world_hash(
+            graph.report().world_after,
+            material.register(),
+        );
+        let receipt_digest = content_digest::sha256_of(material.receipt_bytes());
         let mut canonical_bytes = [0_u8; TICK_IDENTITY_BYTES];
         let head = TICK_DOMAIN.len();
         canonical_bytes[..head].copy_from_slice(TICK_DOMAIN);
@@ -383,7 +394,8 @@ impl IdentifiedMaterialTick {
         ]) {
             slot.copy_from_slice(&digest);
         }
-        let tick_content_hash = TickContentHash::from_bytes(sha256_of(&canonical_bytes));
+        let tick_content_hash =
+            TickContentHash::from_bytes(content_digest::sha256_of(&canonical_bytes));
         Ok(Self {
             resolve_tick,
             foundation_digest: foundation,
@@ -404,7 +416,7 @@ pub struct MaterialReplaySession<G> {
     graph: ReplayTickSession<G>,
     material: MaterialWorldRegister,
     foundation_digest: [u8; 32],
-    duration: babylon_kernel::clock::CampaignDuration,
+    duration: CampaignDuration,
     labor: StaffingComposition,
 }
 /// Fully prepared candidate; dropping it publishes nothing.
@@ -443,7 +455,7 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> Materia
         graph: ReplayTickSession<G>,
         material: MaterialWorldRegister,
         foundation_digest: [u8; 32],
-        duration: babylon_kernel::clock::CampaignDuration,
+        duration: CampaignDuration,
         labor: StaffingComposition,
     ) -> Result<Self, MaterialReplayError> {
         if graph.completed_tick() != 0 || material.completed_tick() != 0 {
@@ -480,7 +492,7 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> Materia
         self.foundation_digest
     }
     #[must_use]
-    pub const fn duration(&self) -> babylon_kernel::clock::CampaignDuration {
+    pub const fn duration(&self) -> CampaignDuration {
         self.duration
     }
 
@@ -499,7 +511,10 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> Materia
             crate::phase_order::schedule_digest().map_err(|_| MaterialReplayError::Identity)?,
         )
         .map_err(|_| MaterialReplayError::Identity)?;
-        Ok(nominal_material_world_hash(nominal, &self.material))
+        Ok(material_world::nominal_material_world_hash(
+            nominal,
+            &self.material,
+        ))
     }
     /// Prepare one exact interval, with prior commitments and routed freight governed by V2.
     /// # Errors
@@ -579,7 +594,7 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> Materia
     }
 }
 
-impl MaterialReplaySession<babylon_graph::hypergraph_store::HypergraphStore> {
+impl MaterialReplaySession<HypergraphStore> {
     /// Restore checked graph sections and consume one already admitted material register.
     /// # Errors
     /// Every tick or graph restore refusal leaves both live owners unchanged.

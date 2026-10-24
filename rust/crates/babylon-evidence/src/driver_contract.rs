@@ -1,6 +1,7 @@
 //! Exact source-bound contract for the fixture-only synthetic driver.
 
-use babylon_kernel::content_digest::sha256_of;
+use babylon_kernel::content_digest;
+
 use babylon_practice_contract::PracticeIntent;
 
 use crate::driver;
@@ -31,7 +32,7 @@ pub struct ValidatedSyntheticDriver<'a> {
 }
 
 /// Exact driver-contract framing and identity refusals.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SyntheticDriverContractError {
     ManifestByteLimit { actual: usize },
     ManifestMalformed { row: usize },
@@ -220,5 +221,5 @@ fn domain_digest(domain: &[u8], payload: &[u8]) -> Digest32 {
     preimage.extend_from_slice(domain);
     preimage.push(0);
     preimage.extend_from_slice(payload);
-    Digest32::from_bytes(sha256_of(&preimage))
+    Digest32::from_bytes(content_digest::sha256_of(&preimage))
 }

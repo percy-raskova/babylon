@@ -3,11 +3,15 @@
 use crate::identity::CampaignId;
 use crate::runtime::RustPersistenceRuntimeError;
 use babylon_graph::stable_state::{MAX_STABLE_GRAPH_ATTRIBUTES, MAX_STABLE_GRAPH_NODES};
-use postgres::{binary_copy::BinaryCopyInWriter, types::Type, GenericClient};
+use postgres::binary_copy::BinaryCopyInWriter;
+use postgres::types::Type;
+use postgres::GenericClient;
+
+use postgres::Error as PostgresError;
 use std::collections::{BTreeMap, BTreeSet};
 const CHUNK: usize = 4096;
 /// Exact graph storage admission failures.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Error {
     /// Node rows exceed current stable graph admission.
     NodeLimit,
@@ -126,7 +130,7 @@ fn pack(
     Ok(packed)
 }
 
-fn db(operation: &'static str, error: &postgres::Error) -> RustPersistenceRuntimeError {
+fn db(operation: &'static str, error: &PostgresError) -> RustPersistenceRuntimeError {
     RustPersistenceRuntimeError::postgres(operation, error)
 }
 
@@ -420,7 +424,8 @@ mod tests {
             ("a".into(), "q".into(), u64::MAX),
             ("A".into(), "q".into(), 1 << 63),
         ];
-        let p = pack(&nodes, &values, &strings, &tuples).unwrap();
+        let p = pack(&nodes, &values, &strings, &tuples)
+            .expect("the fixture rows pack into the bounded frame");
         assert_eq!(p.nodes, vec![vec![1, 2]]);
         let inverse: BTreeMap<_, _> = tuples.iter().map(|(key, id)| (*id, *key)).collect();
         let text: BTreeMap<_, _> = strings.iter().map(|(s, id)| (*id, s.clone())).collect();
@@ -442,7 +447,8 @@ mod tests {
         reversed.reverse();
         let mut reversed_values = values.clone();
         reversed_values.reverse();
-        let other = pack(&reversed, &reversed_values, &strings, &tuples).unwrap();
+        let other = pack(&reversed, &reversed_values, &strings, &tuples)
+            .expect("the fixture rows pack into the bounded frame");
         assert_eq!(other.nodes, p.nodes);
         assert_eq!(other.values, p.values);
     }

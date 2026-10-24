@@ -4,6 +4,8 @@
 //! Campaign capture must still admit counties against its pinned geographic roster.
 
 use crate::geography::{CountyGeoid, CountyGeoidError, CountyJurisdiction};
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 
 /// One county in a US state or DC, subject to independent roster admission.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -244,7 +246,7 @@ impl EconomicLocation {
 }
 
 impl std::fmt::Display for EconomicLocation {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         match self {
             Self::County(county) => write!(f, "county:{}", county.geoid()),
             Self::Foreign(id) => write!(f, "foreign:{}", id.as_str()),
@@ -288,7 +290,7 @@ impl<'de> serde::Deserialize<'de> for EconomicLocation {
         impl serde::de::Visitor<'_> for LocationVisitor {
             type Value = EconomicLocation;
 
-            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            fn expecting(&self, formatter: &mut Formatter<'_>) -> FmtResult {
                 formatter.write_str("an exact county:, foreign:, or dependency: location key")
             }
 
@@ -302,7 +304,7 @@ impl<'de> serde::Deserialize<'de> for EconomicLocation {
 }
 
 impl std::fmt::Display for EconomicLocationError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         write!(f, "economic location refused: {self:?}")
     }
 }

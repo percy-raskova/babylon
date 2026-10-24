@@ -47,14 +47,17 @@
 //! remains historical evidence only; it is not active authority and no future
 //! `:prior-tick` vocabulary is required for this enforcement.
 
-use crate::bindings::{parse_bindings, BindSource};
+use crate::bindings::BindSource;
+use crate::bindings::BindingDecl;
 use crate::causal_contract::{
-    validate_ast_walk_bounds, AstWalkError, AstWalkLimit, AstWalkLimits, AST_WALK_LIMITS,
-    MAX_AST_WALK_NODES,
+    AstWalkError, AstWalkLimit, AstWalkLimits, AST_WALK_LIMITS, MAX_AST_WALK_NODES,
 };
 use crate::material_basis::keyword_value;
 use crate::reader::{Atom, SExpr};
+use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 
 const SAME_TICK_WALKER: &str = "same-tick field writes";
 
@@ -572,7 +575,7 @@ impl SameTickOrderError {
 }
 
 impl std::fmt::Display for SameTickOrderError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         match self {
             Self::RankedRuleInput(error) => match error {
                 RankedRuleInputError::InvalidRuleForm { supplied_rule_id } => write!(
@@ -726,10 +729,7 @@ impl Diagnosis {
     }
 }
 
-fn compare_stale_default_reads(
-    left: &StaleDefaultRead,
-    right: &StaleDefaultRead,
-) -> std::cmp::Ordering {
+fn compare_stale_default_reads(left: &StaleDefaultRead, right: &StaleDefaultRead) -> Ordering {
     (
         left.reader_rule.as_bytes(),
         left.binding_name.as_bytes(),
@@ -1012,7 +1012,7 @@ fn walk_for_writes_with_limits(
     expr: &SExpr,
     limits: AstWalkLimits,
 ) -> Result<Vec<FieldWrite>, AstWalkError> {
-    validate_ast_walk_bounds(expr, limits, SAME_TICK_WALKER)?;
+    crate::causal_contract::validate_ast_walk_bounds(expr, limits, SAME_TICK_WALKER)?;
     let mut out = Vec::new();
     let mut stack = vec![(expr, 0_usize, true)];
     for visited in 0..MAX_AST_WALK_NODES {
@@ -1064,7 +1064,7 @@ fn walk_for_writes_with_limits(
 
 /// Every write in the rule, with direct-effect execution proof retained.
 fn field_writes(rule: &SExpr) -> Result<Vec<FieldWrite>, AstWalkError> {
-    validate_ast_walk_bounds(rule, AST_WALK_LIMITS, SAME_TICK_WALKER)?;
+    crate::causal_contract::validate_ast_walk_bounds(rule, AST_WALK_LIMITS, SAME_TICK_WALKER)?;
     let SExpr::List(rule_items) = rule else {
         return Ok(Vec::new());
     };
@@ -1127,7 +1127,7 @@ fn cites_d127(rule_items: &[SExpr]) -> bool {
 struct RuleFacts<'a> {
     id: &'a str,
     execution_rank: u16,
-    bindings: Vec<crate::bindings::BindingDecl>,
+    bindings: Vec<BindingDecl>,
     writes: Vec<FieldWrite>,
     unconditional: bool,
     d127: bool,
@@ -1143,7 +1143,7 @@ struct WriterIndex<'a> {
 fn compare_ranked_rule_input_errors(
     left: &RankedRuleInputError,
     right: &RankedRuleInputError,
-) -> std::cmp::Ordering {
+) -> Ordering {
     fn key(error: &RankedRuleInputError) -> (u8, &[u8], &[u8]) {
         match error {
             RankedRuleInputError::InvalidRuleForm { supplied_rule_id } => {
@@ -1213,7 +1213,7 @@ fn collect_rule_facts<'a>(rules: &[RankedRule<'a>]) -> Result<Vec<RuleFacts<'a>>
         let SExpr::List(items) = rule.form else {
             continue;
         };
-        let Ok(bindings) = parse_bindings(rule.form) else {
+        let Ok(bindings) = crate::bindings::parse_bindings(rule.form) else {
             continue;
         };
         facts.push(RuleFacts {
@@ -1263,7 +1263,7 @@ impl<'a> WriterIndex<'a> {
 fn compare_stale_writer_sets(
     left: &StaleDefaultWriterSet,
     right: &StaleDefaultWriterSet,
-) -> std::cmp::Ordering {
+) -> Ordering {
     (
         left.reader_rule.as_bytes(),
         left.binding_name.as_bytes(),
@@ -1534,8 +1534,19 @@ mod tests {
 
         assert!(diagnosis.stale_default_reads.is_empty());
         assert!(diagnosis.unreset_fan_ins.is_empty());
-        assert_eq!(diagnosis.clone().into_result().unwrap_err(), expected);
-        assert_eq!(diagnosis.into_enforced_result().unwrap_err(), expected);
+        assert_eq!(
+            diagnosis
+                .clone()
+                .into_result()
+                .expect_err("the diagnosis reports the expected violation"),
+            expected
+        );
+        assert_eq!(
+            diagnosis
+                .into_enforced_result()
+                .expect_err("the diagnosis reports the expected violation"),
+            expected
+        );
     }
 
     #[test]
@@ -1580,11 +1591,15 @@ mod tests {
         });
 
         assert_eq!(
-            diagnose_ranked(&forward).into_result().unwrap_err(),
+            diagnose_ranked(&forward)
+                .into_result()
+                .expect_err("the diagnosis reports the expected violation"),
             expected
         );
         assert_eq!(
-            diagnose_ranked(&reverse).into_result().unwrap_err(),
+            diagnose_ranked(&reverse)
+                .into_result()
+                .expect_err("the diagnosis reports the expected violation"),
             expected
         );
     }
@@ -1599,7 +1614,9 @@ mod tests {
         }];
 
         assert_eq!(
-            diagnose_ranked(&ranked).into_result().unwrap_err(),
+            diagnose_ranked(&ranked)
+                .into_result()
+                .expect_err("the diagnosis reports the expected violation"),
             SameTickOrderError::RankedRuleInput(RankedRuleInputError::InvalidRuleForm {
                 supplied_rule_id: "invalid/form".to_owned(),
             })
@@ -1620,7 +1637,9 @@ mod tests {
         let diagnosis = diagnose_same_rank(&source);
         assert!(!diagnosis.is_clean());
         assert_eq!(
-            diagnosis.into_result().unwrap_err(),
+            diagnosis
+                .into_result()
+                .expect_err("the diagnosis reports the expected violation"),
             SameTickOrderError::AstWalkLimit(AstWalkError::new(
                 "same-tick field writes",
                 AstWalkLimit::Depth,
@@ -1649,7 +1668,9 @@ mod tests {
             ),
         ] {
             assert_eq!(
-                walk_for_writes_with_limits(&ast, limits).unwrap_err(),
+                walk_for_writes_with_limits(&ast, limits).expect_err(
+                    "the fixture call `walk_for_writes_with_limits` fails for the authored inputs"
+                ),
                 expected
             );
         }
@@ -1680,7 +1701,10 @@ mod tests {
                     .has_set
             );
             assert_eq!(
-                diagnosis.into_result().unwrap_err().spec_code(),
+                diagnosis
+                    .into_result()
+                    .expect_err("the diagnosis reports the expected violation")
+                    .spec_code(),
                 Some("E-LOAD-059")
             );
         }
@@ -1709,7 +1733,9 @@ mod tests {
         assert_eq!(finding.writer_rule, "b/writer");
         assert_eq!(finding.field, "ns/f");
         assert_eq!(finding.binding_name, "v");
-        let err = diagnosis.into_result().unwrap_err();
+        let err = diagnosis
+            .into_result()
+            .expect_err("the diagnosis reports the expected violation");
         assert_eq!(err.spec_code(), Some("E-LOAD-058"));
         assert!(err.to_string().contains("a/reader"), "{err}");
         assert!(err.to_string().contains("b/writer"), "{err}");
@@ -1822,7 +1848,9 @@ mod tests {
             finding.writers,
             vec!["a/first".to_owned(), "b/second".to_owned()]
         );
-        let err = diagnosis.into_result().unwrap_err();
+        let err = diagnosis
+            .into_result()
+            .expect_err("the diagnosis reports the expected violation");
         assert_eq!(err.spec_code(), Some("E-LOAD-059"));
         assert!(err.to_string().contains("ns/f"), "{err}");
     }
@@ -2548,7 +2576,9 @@ mod tests {
             diagnosis.stale_default_reads[0].writer_rule, "consciousness/p6-route",
             "the existing display writer remains byte-first"
         );
-        let error = diagnosis.into_enforced_result().unwrap_err();
+        let error = diagnosis
+            .into_enforced_result()
+            .expect_err("the diagnosis reports the expected violation");
         assert_eq!(error.spec_code(), Some("E-LOAD-058"));
     }
 
@@ -2573,7 +2603,7 @@ mod tests {
         let source = format!("{PRODUCTION_BSL}\n{new_writer}");
         let error = diagnose_same_rank(&source)
             .into_enforced_result()
-            .unwrap_err();
+            .expect_err("the diagnosis reports the expected violation");
 
         assert_eq!(error.spec_code(), Some("E-LOAD-059"));
         let SameTickOrderError::UnresetFanIn(finding) = error else {
@@ -2596,7 +2626,7 @@ mod tests {
 "#;
         let error = diagnose_same_rank(source)
             .into_enforced_result()
-            .unwrap_err();
+            .expect_err("the diagnosis reports the expected violation");
 
         assert_eq!(error.spec_code(), Some("E-LOAD-059"));
     }
@@ -2620,7 +2650,9 @@ mod tests {
                 10
             }
         });
-        let error = diagnosis.into_enforced_result().unwrap_err();
+        let error = diagnosis
+            .into_enforced_result()
+            .expect_err("the diagnosis reports the expected violation");
 
         assert_eq!(error.spec_code(), Some("E-LOAD-059"));
         let SameTickOrderError::UnresetFanIn(finding) = error else {
@@ -2644,7 +2676,7 @@ mod tests {
 "#;
         let error = diagnose_same_rank(source)
             .into_enforced_result()
-            .unwrap_err();
+            .expect_err("the diagnosis reports the expected violation");
 
         assert_eq!(error.spec_code(), Some("E-LOAD-058"));
         let SameTickOrderError::StaleDefaultRead(finding) = error else {
@@ -2668,10 +2700,10 @@ mod tests {
 
         let first = diagnose_same_rank(&forward)
             .into_enforced_result()
-            .unwrap_err();
+            .expect_err("the diagnosis reports the expected violation");
         let second = diagnose_same_rank(&reverse)
             .into_enforced_result()
-            .unwrap_err();
+            .expect_err("the diagnosis reports the expected violation");
         assert_eq!(first, second);
         let SameTickOrderError::StaleDefaultRead(finding) = first else {
             panic!("E058 retains precedence over E059")

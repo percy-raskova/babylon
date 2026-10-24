@@ -1,8 +1,10 @@
 //! Actual funded equipment purchase claims are joined to captured supplier policy.
-use super::{offer_index, PeriodOrders, ProductionProjectionError, Result};
+use super::super::equipment::Definitions;
+use super::{PeriodOrders, ProductionProjectionError, Result};
+use babylon_material_circuit::EquipmentDefinition;
 use babylon_material_circuit::{
-    equipment_purchase_order_id, AccountId, InvestmentReceipt, MaterialCircuitState,
-    OrderAccessMode, OrderRow, OutboundOrderId, PurchaseEscrow,
+    AccountId, InvestmentReceipt, MaterialCircuitState, OrderAccessMode, OrderRow, OutboundOrderId,
+    PurchaseEscrow,
 };
 use babylon_tick::material_world::MaterialTickReceipts;
 use std::collections::BTreeMap;
@@ -19,13 +21,13 @@ pub(super) fn admit(
             Err(ProductionProjectionError::State)
         };
     };
-    let definitions = super::super::equipment::Definitions::new(equipment)?;
+    let definitions = Definitions::new(equipment)?;
     let mut policies: BTreeMap<_, _> = equipment
         .investment_policies
         .iter()
         .map(|r| (r.process_id, r))
         .collect();
-    let offers = offer_index(prior)?;
+    let offers = super::offer_index(prior)?;
     for r in &receipt.investment {
         r.validate().map_err(|_| ProductionProjectionError::State)?;
         let policy = policies
@@ -33,7 +35,8 @@ pub(super) fn admit(
             .ok_or(ProductionProjectionError::State)?;
         let (binding, definition) = definitions.get(r.process_id)?;
         if r.period != prior.period
-            || r.order_id != equipment_purchase_order_id(prior.period, r.process_id)
+            || r.order_id
+                != babylon_material_circuit::equipment_purchase_order_id(prior.period, r.process_id)
             || r.site_id != binding.site_id
             || r.supplier_site_id != policy.supplier_site_id
             || r.admitted_units > policy.maximum_purchase_per_period
@@ -58,7 +61,7 @@ pub(super) fn admit(
 }
 fn admit_positive(
     r: &InvestmentReceipt,
-    definition: &babylon_material_circuit::EquipmentDefinition,
+    definition: &EquipmentDefinition,
     orders: &mut PeriodOrders,
     admissions: &mut BTreeMap<OutboundOrderId, PurchaseEscrow>,
 ) -> Result<()> {

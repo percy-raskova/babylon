@@ -1,10 +1,10 @@
 //! Language-neutral contracts for the frozen T3 proof-profile records.
 
 use babylon_evidence::{
-    canonical_envelope, decode_envelope, CanonicalProfileSet, CausalCone, ComponentKind,
-    DifferingLedgerKind, Digest32, InterventionDelta, InterventionDeltaRow, InterventionOperation,
-    PersistenceClassError, PersistenceComparison, SfsComponentProofProfile, SfsProfileRecordError,
-    SfsProofProfile, SfsWireError, T3Record,
+    CanonicalProfileSet, CausalCone, ComponentKind, DifferingLedgerKind, Digest32,
+    InterventionDelta, InterventionDeltaRow, InterventionOperation, PersistenceClassError,
+    PersistenceComparison, SfsComponentProofProfile, SfsProfileRecordError, SfsProofProfile,
+    SfsWireError, T3Record,
 };
 
 fn digest(tag: u8) -> Digest32 {
@@ -93,7 +93,7 @@ fn profile_set(field: &'static str, values: &[&str]) -> CanonicalProfileSet {
         field,
         values.iter().map(|value| (*value).to_owned()).collect(),
     )
-    .unwrap()
+    .expect("the constructor accepts the authored fixture arguments")
 }
 
 fn empty_set(field: &'static str) -> CanonicalProfileSet {
@@ -114,7 +114,7 @@ fn component(component_id: &str, field_reads: &[&str]) -> SfsComponentProofProfi
         empty_set("comparison_clamp_contexts"),
         empty_set("effects"),
     )
-    .unwrap()
+    .expect("the constructor accepts the authored fixture arguments")
 }
 
 fn proof_profile(components: Vec<SfsComponentProofProfile>) -> SfsProofProfile {
@@ -126,7 +126,7 @@ fn proof_profile(components: Vec<SfsComponentProofProfile>) -> SfsProofProfile {
         digest(5),
         components,
     )
-    .unwrap()
+    .expect("the constructor accepts the authored fixture arguments")
 }
 
 fn literal_proof_payload(components: &[Vec<u8>]) -> Vec<u8> {
@@ -155,7 +155,8 @@ fn maximum_profile_set() -> CanonicalProfileSet {
     for index in 0..64 {
         entries.push(format!("{index:02}{}", "x".repeat(94)));
     }
-    CanonicalProfileSet::new("maximum_set", entries).unwrap()
+    CanonicalProfileSet::new("maximum_set", entries)
+        .expect("the constructor accepts the authored fixture arguments")
 }
 
 fn maximum_component(index: usize) -> SfsComponentProofProfile {
@@ -174,7 +175,7 @@ fn maximum_component(index: usize) -> SfsComponentProofProfile {
         set.clone(),
         set,
     )
-    .unwrap()
+    .expect("the constructor accepts the authored fixture arguments")
 }
 
 #[test]
@@ -209,7 +210,8 @@ fn profile_domains_maxima_and_closed_codes_are_exact() {
 #[test]
 fn component_profile_proof_profile_and_cone_maximum_shapes_encode() {
     let component = maximum_component(0);
-    let component_bytes = canonical_envelope(&component).unwrap();
+    let component_bytes = babylon_evidence::canonical_envelope(&component)
+        .expect("the record exposes its canonical envelope");
     assert_eq!(
         payload_length::<SfsComponentProofProfile>(&component_bytes),
         50_483
@@ -219,10 +221,12 @@ fn component_profile_proof_profile_and_cone_maximum_shapes_encode() {
         components.push(maximum_component(index));
     }
     let profile = proof_profile(components);
-    let profile_bytes = canonical_envelope(&profile).unwrap();
+    let profile_bytes = babylon_evidence::canonical_envelope(&profile)
+        .expect("the record exposes its canonical envelope");
     assert_eq!(payload_length::<SfsProofProfile>(&profile_bytes), 3_233_944);
     assert_eq!(
-        decode_envelope::<SfsProofProfile>(&profile_bytes).unwrap(),
+        babylon_evidence::decode_envelope::<SfsProofProfile>(&profile_bytes)
+            .expect("the fixture world holds the addressed component"),
         profile
     );
 
@@ -230,10 +234,16 @@ fn component_profile_proof_profile_and_cone_maximum_shapes_encode() {
     for index in 0..64 {
         ids.push(format!("{index:02}{}", "i".repeat(254)));
     }
-    let cone = CausalCone::new(ids.clone(), ids.clone(), ids).unwrap();
-    let cone_bytes = canonical_envelope(&cone).unwrap();
+    let cone = CausalCone::new(ids.clone(), ids.clone(), ids)
+        .expect("the constructor accepts the authored fixture arguments");
+    let cone_bytes = babylon_evidence::canonical_envelope(&cone)
+        .expect("the record exposes its canonical envelope");
     assert_eq!(payload_length::<CausalCone>(&cone_bytes), 49_542);
-    assert_eq!(decode_envelope::<CausalCone>(&cone_bytes).unwrap(), cone);
+    assert_eq!(
+        babylon_evidence::decode_envelope::<CausalCone>(&cone_bytes)
+            .expect("the fixture world holds the addressed component"),
+        cone
+    );
 }
 
 #[test]
@@ -301,7 +311,7 @@ fn component_id_and_profile_set_string_bounds_are_closed() {
     );
     let non_nfc = literal_component_envelope("cafe\u{301}", &[]);
     assert_eq!(
-        decode_envelope::<SfsComponentProofProfile>(&non_nfc),
+        babylon_evidence::decode_envelope::<SfsComponentProofProfile>(&non_nfc),
         Err(SfsProfileRecordError::Wire(SfsWireError::NonNfc {
             field: "component_id",
         }))
@@ -339,7 +349,7 @@ fn profile_sets_sort_and_reject_counts_duplicates_non_nfc_and_wire_order() {
     );
     let out_of_order = literal_component_envelope("a", &["b", "a"]);
     assert_eq!(
-        decode_envelope::<SfsComponentProofProfile>(&out_of_order),
+        babylon_evidence::decode_envelope::<SfsComponentProofProfile>(&out_of_order),
         Err(SfsProfileRecordError::Wire(SfsWireError::OutOfOrder {
             field: "field_reads",
         }))
@@ -348,7 +358,7 @@ fn profile_sets_sort_and_reject_counts_duplicates_non_nfc_and_wire_order() {
     let count = payload_start::<SfsComponentProofProfile>() + 36;
     too_many[count..count + 2].copy_from_slice(&65_u16.to_be_bytes());
     assert_eq!(
-        decode_envelope::<SfsComponentProofProfile>(&too_many),
+        babylon_evidence::decode_envelope::<SfsComponentProofProfile>(&too_many),
         Err(SfsProfileRecordError::Wire(SfsWireError::CountTooLarge {
             field: "field_reads",
             limit: 64,
@@ -363,9 +373,14 @@ fn component_profile_literal_wire_and_kind_decoder_are_exact() {
     assert_eq!(value.component_kind(), ComponentKind::BslRule);
     assert_eq!(value.component_source_digest(), digest(1));
     let expected = literal_component_envelope("a", &["field"]);
-    assert_eq!(canonical_envelope(&value).unwrap(), expected);
     assert_eq!(
-        decode_envelope::<SfsComponentProofProfile>(&expected).unwrap(),
+        babylon_evidence::canonical_envelope(&value)
+            .expect("the record exposes its canonical envelope"),
+        expected
+    );
+    assert_eq!(
+        babylon_evidence::decode_envelope::<SfsComponentProofProfile>(&expected)
+            .expect("the fixture world holds the addressed component"),
         value
     );
     let kind_offset = payload_start::<SfsComponentProofProfile>() + 3;
@@ -377,14 +392,19 @@ fn component_profile_literal_wire_and_kind_decoder_are_exact() {
     ] {
         let mut encoded = expected.clone();
         encoded[kind_offset] = code;
-        let decoded = decode_envelope::<SfsComponentProofProfile>(&encoded).unwrap();
+        let decoded = babylon_evidence::decode_envelope::<SfsComponentProofProfile>(&encoded)
+            .expect("the fixture world holds the addressed component");
         assert_eq!(decoded.component_kind(), kind);
-        assert_eq!(canonical_envelope(&decoded).unwrap(), encoded);
+        assert_eq!(
+            babylon_evidence::canonical_envelope(&decoded)
+                .expect("the record exposes its canonical envelope"),
+            encoded
+        );
     }
     let mut invalid_kind = expected;
     invalid_kind[kind_offset] = 4;
     assert_eq!(
-        decode_envelope::<SfsComponentProofProfile>(&invalid_kind),
+        babylon_evidence::decode_envelope::<SfsComponentProofProfile>(&invalid_kind),
         Err(SfsProfileRecordError::InvalidComponentKind { value: 4 })
     );
 }
@@ -401,9 +421,14 @@ fn proof_profile_sorts_complete_nested_envelopes_and_closes_audit_semantics() {
         literal_component_envelope("b", &[]),
     ]);
     let expected = literal_envelope(SfsProofProfile::DOMAIN, &expected_payload);
-    assert_eq!(canonical_envelope(&profile).unwrap(), expected);
     assert_eq!(
-        decode_envelope::<SfsProofProfile>(&expected).unwrap(),
+        babylon_evidence::canonical_envelope(&profile)
+            .expect("the record exposes its canonical envelope"),
+        expected
+    );
+    assert_eq!(
+        babylon_evidence::decode_envelope::<SfsProofProfile>(&expected)
+            .expect("the fixture world holds the addressed component"),
         profile
     );
     assert_eq!(
@@ -456,16 +481,20 @@ fn proof_profile_sorts_complete_nested_envelopes_and_closes_audit_semantics() {
 #[test]
 fn proof_profile_empty_and_singleton_envelopes_round_trip() {
     let empty = proof_profile(vec![]);
-    let empty_bytes = canonical_envelope(&empty).unwrap();
+    let empty_bytes = babylon_evidence::canonical_envelope(&empty)
+        .expect("the record exposes its canonical envelope");
     assert_eq!(
-        decode_envelope::<SfsProofProfile>(&empty_bytes).unwrap(),
+        babylon_evidence::decode_envelope::<SfsProofProfile>(&empty_bytes)
+            .expect("the fixture world holds the addressed component"),
         empty
     );
 
     let singleton = proof_profile(vec![component("only-component", &["field"])]);
-    let singleton_bytes = canonical_envelope(&singleton).unwrap();
+    let singleton_bytes = babylon_evidence::canonical_envelope(&singleton)
+        .expect("the record exposes its canonical envelope");
     assert_eq!(
-        decode_envelope::<SfsProofProfile>(&singleton_bytes).unwrap(),
+        babylon_evidence::decode_envelope::<SfsProofProfile>(&singleton_bytes)
+            .expect("the fixture world holds the addressed component"),
         singleton
     );
 }
@@ -517,7 +546,7 @@ fn proof_profile_component_count_duplicates_order_and_trailing_are_closed() {
     ]);
     let reversed = literal_envelope(SfsProofProfile::DOMAIN, &reversed_payload);
     assert_eq!(
-        decode_envelope::<SfsProofProfile>(&reversed),
+        babylon_evidence::decode_envelope::<SfsProofProfile>(&reversed),
         Err(SfsProfileRecordError::Wire(SfsWireError::OutOfOrder {
             field: "components",
         }))
@@ -526,7 +555,7 @@ fn proof_profile_component_count_duplicates_order_and_trailing_are_closed() {
     trailing_payload.push(0xaa);
     let trailing = literal_envelope(SfsProofProfile::DOMAIN, &trailing_payload);
     assert_eq!(
-        decode_envelope::<SfsProofProfile>(&trailing),
+        babylon_evidence::decode_envelope::<SfsProofProfile>(&trailing),
         Err(SfsProfileRecordError::Wire(SfsWireError::TrailingBytes {
             count: 1,
         }))
@@ -540,7 +569,7 @@ fn causal_cone_canonicalizes_each_set_and_rejects_named_duplicates() {
         vec!["sink-b".to_owned(), "sink-a".to_owned()],
         vec!["component-b".to_owned(), "component-a".to_owned()],
     )
-    .unwrap();
+    .expect("the constructor accepts the authored fixture arguments");
     assert_eq!(cone.roots(), &["root-a", "root-b"]);
     assert_eq!(cone.sinks(), &["sink-a", "sink-b"]);
     assert_eq!(cone.components(), &["component-a", "component-b"]);
@@ -578,13 +607,21 @@ fn causal_cone_literal_wire_order_and_64_65_bounds_are_exact() {
         vec!["sink".to_owned()],
         vec!["component".to_owned()],
     )
-    .unwrap();
+    .expect("the constructor accepts the authored fixture arguments");
     let mut payload = literal_set(&["root"]);
     payload.extend_from_slice(&literal_set(&["sink"]));
     payload.extend_from_slice(&literal_set(&["component"]));
     let expected = literal_envelope(CausalCone::DOMAIN, &payload);
-    assert_eq!(canonical_envelope(&cone).unwrap(), expected);
-    assert_eq!(decode_envelope::<CausalCone>(&expected).unwrap(), cone);
+    assert_eq!(
+        babylon_evidence::canonical_envelope(&cone)
+            .expect("the record exposes its canonical envelope"),
+        expected
+    );
+    assert_eq!(
+        babylon_evidence::decode_envelope::<CausalCone>(&expected)
+            .expect("the fixture world holds the addressed component"),
+        cone
+    );
 
     let mut ids = Vec::new();
     for index in 0..65 {
@@ -604,7 +641,7 @@ fn causal_cone_literal_wire_order_and_64_65_bounds_are_exact() {
     reversed_payload.extend_from_slice(&literal_set(&[]));
     let reversed = literal_envelope(CausalCone::DOMAIN, &reversed_payload);
     assert_eq!(
-        decode_envelope::<CausalCone>(&reversed),
+        babylon_evidence::decode_envelope::<CausalCone>(&reversed),
         Err(SfsProfileRecordError::Wire(SfsWireError::OutOfOrder {
             field: "roots",
         }))
@@ -631,7 +668,8 @@ fn intervention_row(operation: InterventionOperation, stable: Digest32) -> Inter
         InterventionOperation::Remove => (digest(11), zero_digest()),
         InterventionOperation::Replace => (digest(12), digest(13)),
     };
-    InterventionDeltaRow::new(operation, stable, control, intervention).unwrap()
+    InterventionDeltaRow::new(operation, stable, control, intervention)
+        .expect("the constructor accepts the authored fixture arguments")
 }
 
 fn literal_delta_payload(
@@ -708,7 +746,7 @@ fn intervention_delta_literal_wire_sorts_and_rejects_duplicate_stable_ids() {
             intervention_row(InterventionOperation::Add, stable_a),
         ],
     )
-    .unwrap();
+    .expect("the constructor accepts the authored fixture arguments");
     assert_eq!(value.ledger_kind(), DifferingLedgerKind::PracticeAttempt);
     let payload = literal_delta_payload(
         1,
@@ -719,9 +757,14 @@ fn intervention_delta_literal_wire_sorts_and_rejects_duplicate_stable_ids() {
         ],
     );
     let expected = literal_envelope(InterventionDelta::DOMAIN, &payload);
-    assert_eq!(canonical_envelope(&value).unwrap(), expected);
     assert_eq!(
-        decode_envelope::<InterventionDelta>(&expected).unwrap(),
+        babylon_evidence::canonical_envelope(&value)
+            .expect("the record exposes its canonical envelope"),
+        expected
+    );
+    assert_eq!(
+        babylon_evidence::decode_envelope::<InterventionDelta>(&expected)
+            .expect("the fixture world holds the addressed component"),
         value
     );
     let duplicate = intervention_row(InterventionOperation::Add, stable_a);
@@ -741,7 +784,7 @@ fn intervention_delta_decoder_closes_kind_operation_order_and_row_rules() {
     let invalid_kind =
         literal_envelope(InterventionDelta::DOMAIN, &literal_delta_payload(2, 0, &[]));
     assert_eq!(
-        decode_envelope::<InterventionDelta>(&invalid_kind),
+        babylon_evidence::decode_envelope::<InterventionDelta>(&invalid_kind),
         Err(SfsProfileRecordError::InvalidLedgerKind { value: 2 })
     );
     let invalid_operation = literal_envelope(
@@ -749,7 +792,7 @@ fn intervention_delta_decoder_closes_kind_operation_order_and_row_rules() {
         &literal_delta_payload(0, 1, &[(3, digest(1), zero_digest(), digest(2))]),
     );
     assert_eq!(
-        decode_envelope::<InterventionDelta>(&invalid_operation),
+        babylon_evidence::decode_envelope::<InterventionDelta>(&invalid_operation),
         Err(SfsProfileRecordError::InvalidInterventionOperation { value: 3 })
     );
     let invalid_row = literal_envelope(
@@ -757,7 +800,7 @@ fn intervention_delta_decoder_closes_kind_operation_order_and_row_rules() {
         &literal_delta_payload(0, 1, &[(0, digest(1), digest(2), digest(3))]),
     );
     assert_eq!(
-        decode_envelope::<InterventionDelta>(&invalid_row),
+        babylon_evidence::decode_envelope::<InterventionDelta>(&invalid_row),
         Err(SfsProfileRecordError::InvalidInterventionRow)
     );
     let reversed = literal_envelope(
@@ -772,7 +815,7 @@ fn intervention_delta_decoder_closes_kind_operation_order_and_row_rules() {
         ),
     );
     assert_eq!(
-        decode_envelope::<InterventionDelta>(&reversed),
+        babylon_evidence::decode_envelope::<InterventionDelta>(&reversed),
         Err(SfsProfileRecordError::Wire(SfsWireError::OutOfOrder {
             field: "intervention_rows",
         }))
@@ -789,7 +832,7 @@ fn intervention_delta_decoder_closes_kind_operation_order_and_row_rules() {
         ),
     );
     assert_eq!(
-        decode_envelope::<InterventionDelta>(&duplicate),
+        babylon_evidence::decode_envelope::<InterventionDelta>(&duplicate),
         Err(SfsProfileRecordError::Wire(SfsWireError::DuplicateEntry {
             field: "intervention_rows",
         }))
@@ -814,18 +857,24 @@ fn intervention_count_maximum_succeeds_and_plus_one_preflights() {
         }))
     );
     rows.pop();
-    let maximum = InterventionDelta::new(DifferingLedgerKind::ExogenousInput, rows).unwrap();
-    let encoded = canonical_envelope(&maximum).unwrap();
+    let maximum = InterventionDelta::new(DifferingLedgerKind::ExogenousInput, rows)
+        .expect("the constructor accepts the authored fixture arguments");
+    let encoded = babylon_evidence::canonical_envelope(&maximum)
+        .expect("the record exposes its canonical envelope");
     assert_eq!(payload_length::<InterventionDelta>(&encoded), 6_356_900);
     assert_eq!(
-        decode_envelope::<InterventionDelta>(&encoded).unwrap(),
+        babylon_evidence::decode_envelope::<InterventionDelta>(&encoded)
+            .expect("the fixture world holds the addressed component"),
         maximum
     );
-    let empty = InterventionDelta::new(DifferingLedgerKind::PracticeAttempt, vec![]).unwrap();
-    let empty_bytes = canonical_envelope(&empty).unwrap();
+    let empty = InterventionDelta::new(DifferingLedgerKind::PracticeAttempt, vec![])
+        .expect("the constructor accepts the authored fixture arguments");
+    let empty_bytes = babylon_evidence::canonical_envelope(&empty)
+        .expect("the record exposes its canonical envelope");
     assert_eq!(payload_length::<InterventionDelta>(&empty_bytes), 5);
     assert_eq!(
-        decode_envelope::<InterventionDelta>(&empty_bytes).unwrap(),
+        babylon_evidence::decode_envelope::<InterventionDelta>(&empty_bytes)
+            .expect("the fixture world holds the addressed component"),
         empty
     );
 }
@@ -837,7 +886,7 @@ fn intervention_decoder_preflights_product_count_truncation_and_trailing() {
         &literal_delta_payload(0, u32::MAX, &[]),
     );
     assert_eq!(
-        decode_envelope::<InterventionDelta>(&overflow),
+        babylon_evidence::decode_envelope::<InterventionDelta>(&overflow),
         Err(SfsProfileRecordError::Wire(
             SfsWireError::ArithmeticOverflow {
                 field: "intervention_rows",
@@ -849,7 +898,7 @@ fn intervention_decoder_preflights_product_count_truncation_and_trailing() {
         &literal_delta_payload(0, 65_536, &[]),
     );
     assert_eq!(
-        decode_envelope::<InterventionDelta>(&too_many),
+        babylon_evidence::decode_envelope::<InterventionDelta>(&too_many),
         Err(SfsProfileRecordError::Wire(SfsWireError::CountTooLarge {
             field: "intervention_rows",
             limit: 65_535,
@@ -860,14 +909,14 @@ fn intervention_decoder_preflights_product_count_truncation_and_trailing() {
     truncated_payload.push(3);
     let truncated = literal_envelope(InterventionDelta::DOMAIN, &truncated_payload);
     assert_eq!(
-        decode_envelope::<InterventionDelta>(&truncated),
+        babylon_evidence::decode_envelope::<InterventionDelta>(&truncated),
         Err(SfsProfileRecordError::Wire(SfsWireError::TruncatedEnvelope))
     );
     let mut trailing_payload = literal_delta_payload(0, 0, &[]);
     trailing_payload.push(3);
     let trailing = literal_envelope(InterventionDelta::DOMAIN, &trailing_payload);
     assert_eq!(
-        decode_envelope::<InterventionDelta>(&trailing),
+        babylon_evidence::decode_envelope::<InterventionDelta>(&trailing),
         Err(SfsProfileRecordError::Wire(SfsWireError::TrailingBytes {
             count: 1,
         }))
@@ -924,7 +973,7 @@ fn persistence_comparison_literal_wire_accessors_and_all_classes_are_exact() {
         2,
         vec![2.0, 1.0, -1.0],
     )
-    .unwrap();
+    .expect("the fixture call `persistence` succeeds for the authored inputs");
     assert_eq!(value.control_trace_digest(), digest(30));
     assert_eq!(value.intervention_trace_digest(), digest(31));
     assert_eq!(
@@ -936,9 +985,14 @@ fn persistence_comparison_literal_wire_accessors_and_all_classes_are_exact() {
     assert_eq!(value.intervention_delta_digest(), digest(34));
     let expected_payload = literal_persistence_payload(1, &[2.0, 1.0, -1.0], 1);
     let expected = literal_envelope(PersistenceComparison::DOMAIN, &expected_payload);
-    assert_eq!(canonical_envelope(&value).unwrap(), expected);
     assert_eq!(
-        decode_envelope::<PersistenceComparison>(&expected).unwrap(),
+        babylon_evidence::canonical_envelope(&value)
+            .expect("the record exposes its canonical envelope"),
+        expected
+    );
+    assert_eq!(
+        babylon_evidence::decode_envelope::<PersistenceComparison>(&expected)
+            .expect("the fixture world holds the addressed component"),
         value
     );
     for (separations, class) in [
@@ -947,12 +1001,13 @@ fn persistence_comparison_literal_wire_accessors_and_all_classes_are_exact() {
         (vec![2.0, 1.0, 0.5], 2),
         (vec![2.0, 0.0, 1.0], 3),
     ] {
-        let encoded = canonical_envelope(
-            &persistence(DifferingLedgerKind::ExogenousInput, 2, separations).unwrap(),
+        let encoded = babylon_evidence::canonical_envelope(
+            &persistence(DifferingLedgerKind::ExogenousInput, 2, separations)
+                .expect("the fixture call `persistence` succeeds for the authored inputs"),
         )
-        .unwrap();
+        .expect("the record exposes its canonical envelope");
         assert_eq!(encoded.last(), Some(&class));
-        assert!(decode_envelope::<PersistenceComparison>(&encoded).is_ok());
+        assert!(babylon_evidence::decode_envelope::<PersistenceComparison>(&encoded).is_ok());
     }
 }
 
@@ -976,11 +1031,14 @@ fn persistence_requires_exact_p_plus_one_and_maximum_width() {
             }
         ))
     );
-    let maximum = persistence(DifferingLedgerKind::ExogenousInput, 52, vec![0.0; 53]).unwrap();
-    let maximum_bytes = canonical_envelope(&maximum).unwrap();
+    let maximum = persistence(DifferingLedgerKind::ExogenousInput, 52, vec![0.0; 53])
+        .expect("the fixture call `persistence` succeeds for the authored inputs");
+    let maximum_bytes = babylon_evidence::canonical_envelope(&maximum)
+        .expect("the record exposes its canonical envelope");
     assert_eq!(payload_length::<PersistenceComparison>(&maximum_bytes), 598);
     assert_eq!(
-        decode_envelope::<PersistenceComparison>(&maximum_bytes).unwrap(),
+        babylon_evidence::decode_envelope::<PersistenceComparison>(&maximum_bytes)
+            .expect("the fixture world holds the addressed component"),
         maximum
     );
 }
@@ -992,17 +1050,19 @@ fn persistence_decoder_rejects_ledger_and_class_codes_before_recompute_mismatch(
     invalid_ledger_payload[64] = 2;
     let invalid_ledger = literal_envelope(PersistenceComparison::DOMAIN, &invalid_ledger_payload);
     assert_eq!(
-        decode_envelope::<PersistenceComparison>(&invalid_ledger),
+        babylon_evidence::decode_envelope::<PersistenceComparison>(&invalid_ledger),
         Err(SfsProfileRecordError::InvalidLedgerKind { value: 2 })
     );
     let mut invalid_class_payload = valid_payload.clone();
-    *invalid_class_payload.last_mut().unwrap() = 4;
+    *invalid_class_payload
+        .last_mut()
+        .expect("the fixture sequence is non-empty") = 4;
     let separation_start = 64 + 1 + 96 + 8 + 2 + 2;
     invalid_class_payload[separation_start..separation_start + 8]
         .copy_from_slice(&f64::NAN.to_bits().to_be_bytes());
     let invalid_class = literal_envelope(PersistenceComparison::DOMAIN, &invalid_class_payload);
     assert_eq!(
-        decode_envelope::<PersistenceComparison>(&invalid_class),
+        babylon_evidence::decode_envelope::<PersistenceComparison>(&invalid_class),
         Err(SfsProfileRecordError::Wire(SfsWireError::InvalidCode {
             field: "persistence_class",
             value: 4,
@@ -1013,16 +1073,18 @@ fn persistence_decoder_rejects_ledger_and_class_codes_before_recompute_mismatch(
         .copy_from_slice(&f64::NAN.to_bits().to_be_bytes());
     let nonfinite = literal_envelope(PersistenceComparison::DOMAIN, &nonfinite_payload);
     assert_eq!(
-        decode_envelope::<PersistenceComparison>(&nonfinite),
+        babylon_evidence::decode_envelope::<PersistenceComparison>(&nonfinite),
         Err(SfsProfileRecordError::Classification(
             PersistenceClassError::NonFiniteSeparation { index: 0 }
         ))
     );
     let mut mismatch_payload = valid_payload;
-    *mismatch_payload.last_mut().unwrap() = 0;
+    *mismatch_payload
+        .last_mut()
+        .expect("the fixture sequence is non-empty") = 0;
     let mismatch = literal_envelope(PersistenceComparison::DOMAIN, &mismatch_payload);
     assert_eq!(
-        decode_envelope::<PersistenceComparison>(&mismatch),
+        babylon_evidence::decode_envelope::<PersistenceComparison>(&mismatch),
         Err(SfsProfileRecordError::ClassificationMismatch {
             stored: 0,
             computed: 1,

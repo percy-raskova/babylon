@@ -13,7 +13,7 @@ use bevy::window::PrimaryWindow;
 
 use crate::atlas::CountyAtlas;
 use crate::map::{HoveredCounty, SelectedCounty};
-use crate::map_economy_lens::{project_map_lens, MapLens};
+use crate::map_economy_lens::MapLens;
 use crate::observer::ObserverSession;
 use crate::observer_focus::ObserverKeyboardClaim;
 use crate::observer_io::ObserverSet;
@@ -25,7 +25,10 @@ use crate::production::PrimaryView;
 mod relationships;
 #[path = "map_scene.rs"]
 mod scene;
-use scene::setup_map;
+use crate::map_economy_lens;
+use crate::observer::ObservationContext;
+use crate::tessellate::Tessellation;
+use relationships::CountyAnchors;
 
 const MAP_LAYER: usize = 2;
 const METRES_TO_SCENE: f32 = 0.001;
@@ -102,7 +105,11 @@ struct MapObservation<'w> {
     hovered: Res<'w, HoveredCounty>,
 }
 
-#[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation)]
+#[allow(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    reason = "the cast feeds display geometry, where f64 approximation is invisible; the display value is range-checked before the f32 narrowing"
+)]
 fn height(value: Option<u64>, maximum: Option<u64>) -> f32 {
     let ratio = match (value, maximum) {
         (Some(value), Some(maximum)) if maximum > 0 => {
@@ -130,7 +137,7 @@ fn push_triangle(positions: &mut Vec<[f32; 3]>, normals: &mut Vec<[f32; 3]>, poi
 /// exterior/hole boundary. No bounding-box approximation or invented site.
 fn county_prism(
     atlas: &CountyAtlas,
-    triangles: &crate::tessellate::Tessellation,
+    triangles: &Tessellation,
     index: usize,
     origin: Vec2,
 ) -> (Mesh, Mesh) {
@@ -250,7 +257,11 @@ fn select_county(
     }
 }
 
-#[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation)]
+#[allow(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    reason = "the cast feeds display geometry, where f64 approximation is invisible; the display value is range-checked before the f32 narrowing"
+)]
 fn update_observation(
     input: MapObservation,
     mut counties: Query<(
@@ -260,7 +271,7 @@ fn update_observation(
     )>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut legend: Query<&mut Text, With<MapLegend>>,
-    mut last_context: Local<Option<(crate::observer::ObservationContext, MapLens)>>,
+    mut last_context: Local<Option<(ObservationContext, MapLens)>>,
 ) {
     let context = (input.session.context(), input.ui.lens.clone());
     let data_changed = input.frame.is_changed() || last_context.as_ref() != Some(&context);
@@ -272,7 +283,7 @@ fn update_observation(
         *last_context = Some(context);
     }
     let frame = input.frame.for_session(&input.session);
-    let projection = project_map_lens(frame, &input.ui.lens);
+    let projection = map_economy_lens::project_map_lens(frame, &input.ui.lens);
     let maximum = projection.maximum();
     for (county, mut transform, material) in &mut counties {
         let value = projection.county(&county.fips).value();
@@ -507,7 +518,11 @@ fn keyboard_orbit(
     }
 }
 
-#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+#[allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "the display value is range-checked before the f32 narrowing; the value is non-negative before the unsigned cast"
+)]
 fn sync_camera(
     mut orbit: ResMut<MapOrbit>,
     geometry: Res<MapGeometry>,
@@ -558,10 +573,10 @@ impl Plugin for ObserverMap3dPlugin {
         app.init_asset::<StandardMaterial>()
             .init_resource::<MapGeometry>()
             .init_resource::<MapOrbit>()
-            .init_resource::<relationships::CountyAnchors>()
+            .init_resource::<CountyAnchors>()
             .add_systems(
                 Update,
-                setup_map
+                scene::setup_map
                     .after(crate::map::MapScopeSet)
                     .before(ObserverSet::Paint),
             )
@@ -581,9 +596,13 @@ mod tests {
     use super::*;
     use crate::observer::Perspective;
     use crate::observer_focus::{ObserverFocusPlugin, ObserverFocusTarget, ObserverFocusWorld};
-    use babylon_persistence::{
-        observer_reader::ObserverEconomySnapshot, observer_reader::ObserverVisibility,
-    };
+    use babylon_persistence::observer_reader::{ObserverEconomySnapshot, ObserverVisibility};
+
+    use crate::map_economy_lens::EconomyMetric;
+    use crate::observer_layout::{HistoryDrawerState, ObserverLayout};
+    use crate::observer_ui::ObserverDisclosure;
+    use babylon_persistence::identity::CampaignId;
+    use bevy::asset::AssetPlugin;
     use bevy::ecs::system::RunSystemOnce;
     use bevy::input::keyboard::{Key, KeyboardInput, NativeKey};
     use bevy::input::{ButtonState, InputPlugin};
@@ -591,13 +610,15 @@ mod tests {
     use bevy::input_focus::InputFocus;
     use bevy::mesh::VertexAttributeValues;
     use bevy::time::TimeUpdateStrategy;
+    use std::time::Duration;
+    use uuid::Uuid;
 
     fn focused_navigation_app() -> (App, Entity, Entity) {
         let mut app = App::new();
         app.add_plugins((MinimalPlugins, InputPlugin, ObserverFocusPlugin))
-            .insert_resource(TimeUpdateStrategy::ManualDuration(
-                std::time::Duration::from_millis(16),
-            ))
+            .insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_millis(
+                16,
+            )))
             .insert_resource(PrimaryView::Map)
             .insert_resource(ObserverUiState {
                 menu_open: false,
@@ -719,7 +740,9 @@ mod tests {
             }
             // Exercise the same navigator using Bevy's accumulated pointer
             // input while the actual focused-reading claim remains active.
-            app.world_mut().run_system_once(navigate).unwrap();
+            app.world_mut()
+                .run_system_once(navigate)
+                .expect("the Bevy system completes one run");
             assert_ne!(app.world().resource::<MapOrbit>().transform(), before);
             assert_eq!(app.world().resource::<InputFocus>().get(), Some(reading));
             assert!(app
@@ -758,7 +781,7 @@ mod tests {
             .insert_resource(ObserverUiState {
                 splash_visible: false,
                 menu_open: false,
-                lens: MapLens::Qcew(crate::map_economy_lens::EconomyMetric::Employment),
+                lens: MapLens::Qcew(EconomyMetric::Employment),
                 ..default()
             })
             .init_resource::<ObserverViewport>()
@@ -777,10 +800,14 @@ mod tests {
         for window_size in [Vec2::new(1366.0, 768.0), Vec2::new(1920.0, 1080.0)] {
             for scale in [1.0, 1.15, 1.3] {
                 for history_open in [false, true] {
-                    let layout = crate::observer_layout::ObserverLayout::new(
+                    let layout = ObserverLayout::new(
                         window_size,
                         scale,
-                        history_open,
+                        if history_open {
+                            HistoryDrawerState::Open
+                        } else {
+                            HistoryDrawerState::Closed
+                        },
                     );
                     let world =
                         Rect::from_corners(layout.world.min * scale, layout.world.max * scale);
@@ -792,10 +819,13 @@ mod tests {
                     let measured = Vec2::new(500.0, 36.0) * scale;
                     app.world_mut()
                         .get_mut::<ComputedNode>(legend)
-                        .unwrap()
+                        .expect("the fixture world holds the addressed component")
                         .size = measured;
                     app.update();
-                    let node = app.world().get::<Node>(legend).unwrap();
+                    let node = app
+                        .world()
+                        .get::<Node>(legend)
+                        .expect("the fixture world holds the addressed component");
                     let (Val::Px(left), Val::Px(top)) = (node.left, node.top) else {
                         panic!("legend placement uses measured pixel coordinates");
                     };
@@ -803,7 +833,9 @@ mod tests {
                     assert!(min.cmpge(world.min).all());
                     assert!((min + measured).cmple(world.max).all());
                     assert_eq!(
-                        *app.world().get::<Visibility>(legend).unwrap(),
+                        *app.world()
+                            .get::<Visibility>(legend)
+                            .expect("the fixture world holds the addressed component"),
                         Visibility::Visible
                     );
                 }
@@ -812,23 +844,29 @@ mod tests {
         app.world_mut().resource_mut::<ObserverUiState>().lens = MapLens::Relationships;
         app.update();
         assert_eq!(
-            *app.world().get::<Visibility>(legend).unwrap(),
+            *app.world()
+                .get::<Visibility>(legend)
+                .expect("the fixture world holds the addressed component"),
             Visibility::Hidden
         );
         app.world_mut().resource_mut::<ObserverUiState>().lens =
-            MapLens::Qcew(crate::map_economy_lens::EconomyMetric::Employment);
+            MapLens::Qcew(EconomyMetric::Employment);
         *app.world_mut().resource_mut::<PrimaryView>() = PrimaryView::Production;
         app.update();
         assert_eq!(
-            *app.world().get::<Visibility>(legend).unwrap(),
+            *app.world()
+                .get::<Visibility>(legend)
+                .expect("the fixture world holds the addressed component"),
             Visibility::Hidden
         );
         *app.world_mut().resource_mut::<PrimaryView>() = PrimaryView::Map;
         app.world_mut().resource_mut::<ObserverUiState>().disclosure =
-            Some(crate::observer_ui::ObserverDisclosure::Lens);
+            Some(ObserverDisclosure::Lens);
         app.update();
         assert_eq!(
-            *app.world().get::<Visibility>(legend).unwrap(),
+            *app.world()
+                .get::<Visibility>(legend)
+                .expect("the fixture world holds the addressed component"),
             Visibility::Hidden
         );
     }
@@ -839,7 +877,8 @@ mod tests {
         for measured in [Vec2::ZERO, Vec2::new(100.0, 201.0), Vec2::new(605.0, 36.0)] {
             assert_eq!(legend_rect(world, measured), None);
         }
-        let rect = legend_rect(world, Vec2::new(500.0, 36.0)).unwrap();
+        let rect = legend_rect(world, Vec2::new(500.0, 36.0))
+            .expect("the fixture call `legend_rect` succeeds for the authored inputs");
         assert_eq!(rect.min, Vec2::new(24.0, 256.0));
         assert_eq!(rect.max, Vec2::new(524.0, 292.0));
     }
@@ -860,7 +899,7 @@ mod tests {
 
     #[test]
     fn stale_campaign_tick_and_visibility_never_feed_geographic_heights() {
-        let campaign = babylon_persistence::identity::CampaignId::from_uuid(uuid::Uuid::nil());
+        let campaign = CampaignId::from_uuid(Uuid::nil());
         let mut session = ObserverSession::new(campaign);
         session.ready(4, Some("a".repeat(64)));
         let mut snapshot = ObserverEconomySnapshot {
@@ -904,7 +943,7 @@ mod tests {
         assert!(ObserverFrame(Some(snapshot.clone()), None)
             .for_session(&session)
             .is_some());
-        snapshot.campaign_id = uuid::Uuid::from_u128(1).to_string();
+        snapshot.campaign_id = Uuid::from_u128(1).to_string();
         assert!(ObserverFrame(Some(snapshot), None)
             .for_session(&session)
             .is_none());
@@ -946,10 +985,7 @@ mod tests {
             .press(MouseButton::Right);
         let original = app.world().resource::<MapOrbit>().transform();
         let distance = app.world().resource::<MapOrbit>().distance.to_bits();
-        for drawer in [
-            crate::observer_ui::ObserverDisclosure::Time,
-            crate::observer_ui::ObserverDisclosure::Lens,
-        ] {
+        for drawer in [ObserverDisclosure::Time, ObserverDisclosure::Lens] {
             app.world_mut().resource_mut::<ObserverUiState>().disclosure = Some(drawer);
             app.update();
             assert_eq!(app.world().resource::<MapOrbit>().transform(), original);
@@ -1003,7 +1039,7 @@ mod tests {
                         position: Some(Vec3::ZERO),
                         normal: Some(Vec3::Y),
                     },
-                    duration: std::time::Duration::ZERO,
+                    duration: Duration::ZERO,
                 },
                 entity,
             )
@@ -1043,10 +1079,8 @@ mod tests {
     #[test]
     fn map_bootstrap_loads_the_atlas_without_creating_a_render_scene() {
         let mut app = App::new();
-        app.add_plugins((MinimalPlugins, bevy::asset::AssetPlugin::default()));
-        app.insert_resource(ObserverSession::new(
-            babylon_persistence::identity::CampaignId::from_uuid(uuid::Uuid::nil()),
-        ));
+        app.add_plugins((MinimalPlugins, AssetPlugin::default()));
+        app.insert_resource(ObserverSession::new(CampaignId::from_uuid(Uuid::nil())));
         app.add_plugins(crate::map::MapPlugin);
         app.update();
         assert!(app.world().contains_resource::<CountyAtlas>());

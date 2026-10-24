@@ -1,14 +1,14 @@
 //! World source admission cannot double-count reporting areas or invent missing people.
 
 use babylon_kernel::economic_location::{ForeignCounterpart, UsDependency};
+use babylon_persistence::world_reference;
 use babylon_persistence::world_reference::{
-    world_reference, PopulationStatus, UsRelationship, WorldReference, WorldReferenceError,
-    WorldScope,
+    PopulationStatus, UsRelationship, WorldReference, WorldReferenceError, WorldScope,
 };
 
 #[test]
 fn pinned_world_members_have_one_scope_and_nonduplicated_population() {
-    let reference = world_reference().unwrap();
+    let reference = world_reference::world_reference().expect("the world reference fixture loads");
     assert_eq!(reference.members().len(), 252);
     assert_eq!(reference.counterparts().len(), 12);
     assert_eq!(reference.known_population_persons(), 8_161_972_576);
@@ -34,26 +34,38 @@ fn pinned_world_members_have_one_scope_and_nonduplicated_population() {
         151_518_908
     );
     assert_eq!(
-        reference.member("m49:840").unwrap().scope(),
+        reference
+            .member("m49:840")
+            .expect("the fixture hyperedge holds the addressed member")
+            .scope(),
         WorldScope::DomesticContext
     );
     assert_eq!(
-        reference.member("m49:010").unwrap().scope(),
+        reference
+            .member("m49:010")
+            .expect("the fixture hyperedge holds the addressed member")
+            .scope(),
         WorldScope::Nonmarket
     );
     assert_eq!(
-        reference.member("m49:583").unwrap().scope(),
+        reference
+            .member("m49:583")
+            .expect("the fixture hyperedge holds the addressed member")
+            .scope(),
         WorldScope::Foreign(ForeignCounterpart::RemainingAsiaPacific)
     );
     assert_eq!(
-        reference.member("m49:583").unwrap().us_relationship(),
+        reference
+            .member("m49:583")
+            .expect("the fixture hyperedge holds the addressed member")
+            .us_relationship(),
         UsRelationship::FreelyAssociatedState
     );
 }
 
 #[test]
 fn dependency_missingness_and_designed_scope_remain_visible() {
-    let reference = world_reference().unwrap();
+    let reference = world_reference::world_reference().expect("the world reference fixture loads");
     let unknown = reference.dependency(UsDependency::MinorOutlyingIslands);
     assert_eq!(
         unknown.population().status(),
@@ -67,7 +79,9 @@ fn dependency_missingness_and_designed_scope_remain_visible() {
             .persons(),
         Some(3_242_204)
     );
-    let aland = reference.member("m49:248").unwrap();
+    let aland = reference
+        .member("m49:248")
+        .expect("the fixture hyperedge holds the addressed member");
     assert_eq!(
         aland.population().status(),
         PopulationStatus::DesignedScopeApportionment
@@ -76,7 +90,7 @@ fn dependency_missingness_and_designed_scope_remain_visible() {
     assert_eq!(
         reference
             .member("m49:246")
-            .unwrap()
+            .expect("the fixture hyperedge holds the addressed member")
             .population()
             .source_thousands_raw(),
         Some("5617.31")
@@ -90,8 +104,10 @@ fn dependency_missingness_and_designed_scope_remain_visible() {
 
 #[test]
 fn parent_populations_and_trade_children_remain_separate_measures() {
-    let reference = world_reference().unwrap();
-    let gaza = reference.member("census:5082").unwrap();
+    let reference = world_reference::world_reference().expect("the world reference fixture loads");
+    let gaza = reference
+        .member("census:5082")
+        .expect("the fixture hyperedge holds the addressed member");
     assert_eq!(gaza.population().status(), PopulationStatus::TradeOnly);
     assert_eq!(gaza.population().persons(), None);
     assert_eq!(gaza.population().accounted_in_identity(), Some("m49:275"));
@@ -104,18 +120,24 @@ fn parent_populations_and_trade_children_remain_separate_measures() {
         Some("0.559747")
     );
     assert_eq!(
-        reference.member("m49:275").unwrap().population().persons(),
+        reference
+            .member("m49:275")
+            .expect("the fixture hyperedge holds the addressed member")
+            .population()
+            .persons(),
         Some(5_495_443)
     );
     assert_eq!(
         reference
             .member("m49:275")
-            .unwrap()
+            .expect("the fixture hyperedge holds the addressed member")
             .goods_trade()
             .us_imports_annual_millions_raw(),
         None
     );
-    let christmas = reference.member("m49:162").unwrap();
+    let christmas = reference
+        .member("m49:162")
+        .expect("the fixture hyperedge holds the addressed member");
     assert_eq!(
         christmas.population().status(),
         PopulationStatus::IncludedInParent

@@ -72,11 +72,18 @@
 //! This pack's int-coded, genuinely edge-triggered guard fires
 //! `LEGITIMATION_CRISIS` for `entering-crisis` ONLY.
 
+// Conformance fixtures exercise exact engine values, transcribe spec literals,
+// and build whole scenarios in one test. These pedantic lints would force
+// ceremony that hides those contracts, so they stay off in test code only.
+#![allow(
+    clippy::float_cmp,
+    reason = "these comparisons pin exact authored f64 values"
+)]
+
 use babylon_bsl::evaluator::Value;
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::memory::MemoryGraph;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
-use babylon_tick::{run_once, run_once_into};
 
 const SCENARIO: &str = include_str!("../content/scenarios/lifecycle-crisis-conformance.bscn");
 const RULE: &str = include_str!("../content/rules/lifecycle.bsl");
@@ -102,7 +109,7 @@ const EXPECTED: [Expected; 2] = [
         pop_p: 6040.675,
         pop_d_prime: 1858.665,
         wealth_d_prime: 9_610_000.0,
-        dependency_ratio: 0.6545394347486001,
+        dependency_ratio: 0.654_539_434_748_600_1,
         legitimation_index: 0.1,
         legitimation_crisis: 2.0,
         transmitted_ideology: 0.47,
@@ -114,7 +121,7 @@ const EXPECTED: [Expected; 2] = [
         pop_p: 5060.3,
         pop_d_prime: 1548.0,
         wealth_d_prime: 4_805_000.0,
-        dependency_ratio: 0.876370966148252,
+        dependency_ratio: 0.876_370_966_148_252,
         legitimation_index: 0.1,
         legitimation_crisis: 2.0,
         transmitted_ideology: 0.47,
@@ -124,7 +131,8 @@ const EXPECTED: [Expected; 2] = [
 fn run() -> (MemoryGraph, CollectingSink) {
     let mut graph = MemoryGraph::new();
     let mut sink = CollectingSink::default();
-    run_once_into(SCENARIO, RULE, &mut graph, &mut sink).expect("the lifecycle pack must run");
+    babylon_tick::run_once_into(SCENARIO, RULE, &mut graph, &mut sink)
+        .expect("the lifecycle pack must run");
     (graph, sink)
 }
 
@@ -268,8 +276,8 @@ fn ideology_transmission_discriminates_the_two_weights() {
 /// Byte-determinism, same shape as the shipped-defaults suite.
 #[test]
 fn the_crisis_environment_tick_is_deterministic() {
-    let a = run_once(SCENARIO, RULE).expect("first run");
-    let b = run_once(SCENARIO, RULE).expect("second run");
+    let a = babylon_tick::run_once(SCENARIO, RULE).expect("first run");
+    let b = babylon_tick::run_once(SCENARIO, RULE).expect("second run");
     assert_eq!(a.after, b.after, "two runs, one post-state");
     assert_ne!(a.before, a.after, "the pack must move state");
     assert_eq!(a.fired, 2, "both territories pass the (unconditional) rule");

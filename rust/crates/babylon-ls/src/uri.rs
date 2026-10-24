@@ -5,9 +5,7 @@
 //! this crate ever resolves to a path is `file:`; every other URI is a
 //! legitimate "not a local file" condition, answered with `None`.
 
-use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
-use std::str::FromStr;
 
 use lsp_types::Uri;
 
@@ -26,6 +24,9 @@ const PATH_ENCODE_KEEP: &[u8] =
 /// represent (the same refusal conditions `url::Url::from_file_path` had).
 #[must_use]
 pub fn uri_from_file_path(path: &Path) -> Option<Uri> {
+    use std::fmt::Write as _;
+    use std::str::FromStr;
+
     let path = path.to_str()?;
     if !path.starts_with('/') {
         return None;
@@ -99,7 +100,7 @@ fn hex_digit(b: u8) -> u8 {
 
 #[cfg(test)]
 mod tests {
-    use super::{file_path_from_uri, uri_from_file_path};
+    use super::file_path_from_uri;
     use std::path::Path;
 
     fn uri(s: &str) -> lsp_types::Uri {
@@ -109,7 +110,7 @@ mod tests {
     #[test]
     fn absolute_unix_path_roundtrips_through_file_uri() {
         let path = Path::new("/virtual/rules/probe.bsl");
-        let uri = uri_from_file_path(path).expect("absolute path encodes");
+        let uri = super::uri_from_file_path(path).expect("absolute path encodes");
         assert_eq!(uri.as_str(), "file:///virtual/rules/probe.bsl");
         assert_eq!(file_path_from_uri(&uri).as_deref(), Some(path));
     }
@@ -117,14 +118,14 @@ mod tests {
     #[test]
     fn non_ascii_bytes_are_percent_encoded_and_decoded() {
         let path = Path::new("/tmp/naïve rule.bsl");
-        let uri = uri_from_file_path(path).expect("absolute path encodes");
+        let uri = super::uri_from_file_path(path).expect("absolute path encodes");
         assert_eq!(uri.as_str(), "file:///tmp/na%C3%AFve%20rule.bsl");
         assert_eq!(file_path_from_uri(&uri).as_deref(), Some(path));
     }
 
     #[test]
     fn relative_path_and_non_file_scheme_refuse() {
-        assert!(uri_from_file_path(Path::new("relative/probe.bsl")).is_none());
+        assert!(super::uri_from_file_path(Path::new("relative/probe.bsl")).is_none());
         assert!(file_path_from_uri(&uri("https://example.com/a.bsl")).is_none());
         assert!(file_path_from_uri(&uri("file://remotehost/a.bsl")).is_none());
     }

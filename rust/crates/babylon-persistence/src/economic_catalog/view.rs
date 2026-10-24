@@ -2,13 +2,16 @@
 //! quantities and flows remain authoritative in material state and receipts.
 
 use super::EconomicOpening;
-use crate::{
-    michigan_economy::MichiganEconomy, michigan_material::MichiganMaterialCatalog,
-    michigan_sectors::MichiganCountySectors, national_cohorts::NationalCohortReference,
-    national_counties::NationalCountyReference, national_households::NationalHouseholdReference,
-    national_resident_workforce::NationalResidentWorkforceReference,
-    national_transport::NationalTransportReference, world_reference::WorldReference,
-};
+use crate::michigan_economy::MichiganEconomy;
+use crate::michigan_material::MichiganMaterialCatalog;
+use crate::michigan_sectors::MichiganCountySectors;
+use crate::national_cohorts::NationalCohortReference;
+use crate::national_counties::NationalCountyReference;
+use crate::national_households::NationalHouseholdReference;
+use crate::national_resident_workforce::NationalResidentWorkforceReference;
+use crate::national_transport::NationalTransportReference;
+use crate::world_reference::WorldReference;
+
 use babylon_kernel::clock::CampaignDuration;
 
 /// Source observations retain their native missingness and scope. A control

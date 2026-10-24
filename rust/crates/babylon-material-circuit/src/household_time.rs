@@ -5,14 +5,16 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use crate::MonetaryCircuit;
 use crate::{
     CircuitAccounting, FinalDemandPrincipalId, GoodId, HouseholdCohort,
     HouseholdConsumptionReceipt, HouseholdNeed, HouseholdNeedBasis, HouseholdServiceReceipt,
     MaterialCircuitError, MaterialCircuitState, MemberLaborUseReceipt, UnitId,
     MAX_MATERIAL_CIRCUIT_ROWS,
 };
+use std::result::Result as StdResult;
 
-type Result<T> = std::result::Result<T, MaterialCircuitError>;
+type Result<T> = StdResult<T, MaterialCircuitError>;
 type Cohorts<'a> = BTreeMap<FinalDemandPrincipalId, &'a HouseholdCohort>;
 type Needs<'a> = BTreeMap<(FinalDemandPrincipalId, GoodId, UnitId), &'a HouseholdNeed>;
 type Policies<'a> = BTreeMap<FinalDemandPrincipalId, &'a HouseholdTimePolicy>;
@@ -273,7 +275,7 @@ pub(crate) fn validate(state: &MaterialCircuitState) -> Result<()> {
 
 fn validate_policies(
     state: &MaterialCircuitState,
-    economy: &crate::MonetaryCircuit,
+    economy: &MonetaryCircuit,
     book: &HouseholdTimeBook,
     cohorts: &Cohorts<'_>,
     needs: &Needs<'_>,

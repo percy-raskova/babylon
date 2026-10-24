@@ -1,5 +1,6 @@
 //! Real committed aid must remain readable through household accounting.
-use super::*;
+use super::projection::ProductionProjectionError;
+use super::{aid, freight, households};
 use crate::organizer_aid_fixture as fixture;
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_material_circuit::AidOutcome;
@@ -23,7 +24,7 @@ fn assert_aid_projection(routed: bool) {
         OrganizerChoice::LocalAid
     };
     let mut session = fixture::authored_session(
-        crate::michigan_dynamic_hex_foundation().unwrap(),
+        crate::michigan_dynamic_hex_foundation().expect("the Michigan hex foundation builds"),
         config,
         false,
         routed,
@@ -36,7 +37,7 @@ fn assert_aid_projection(routed: bool) {
         let receipts = babylon_tick::material_world::decode_material_receipts(
             candidate.material().receipt_bytes(),
         )
-        .unwrap();
+        .expect("the canonical bytes decode into the declared type");
         if period == 1 {
             assert!(receipts.aid.iter().any(|row| row.outcome
                 == if routed {
@@ -60,12 +61,14 @@ fn assert_aid_projection(routed: bool) {
             projected.is_ok(),
             "routed={routed} period={period}: {projected:?}"
         );
-        assert!(!projected.unwrap().is_empty());
+        assert!(!projected
+            .expect("the fixture projection returns its value")
+            .is_empty());
         let (capacity, _definitions) =
             freight::project_with_labels(current, Some(&prior), Some(&receipts), |_| {
                 Some("Shared route capacity".to_owned())
             })
-            .unwrap();
+            .expect("the fixture projection accepts the authored input");
         if routed && period == 1 {
             assert!(capacity
                 .iter()
@@ -83,8 +86,11 @@ fn assert_aid_projection(routed: bool) {
                 .aid
                 .iter_mut()
                 .find(|row| row.outcome != AidOutcome::Requested)
-                .unwrap();
-            movement.quantity = movement.quantity.checked_add(1).unwrap();
+                .expect("the fixture holds the searched element");
+            movement.quantity = movement
+                .quantity
+                .checked_add(1)
+                .expect("the fixture arithmetic stays in range");
             for corrupted in [missing, duplicate, changed] {
                 assert_eq!(
                     aid::join(&prior, current, &corrupted).err(),

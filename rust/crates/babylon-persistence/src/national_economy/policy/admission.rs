@@ -5,10 +5,13 @@ use super::{
     NationalGamePolicyError,
 };
 use crate::national_transport::CargoClass;
-use babylon_kernel::{
-    content_digest::sha256_of, currency::Currency, economic_identity::EconomicFunction,
-    economic_location::ForeignCounterpart,
-};
+use babylon_kernel::currency::Currency;
+use babylon_kernel::economic_identity::EconomicFunction;
+use babylon_kernel::economic_location::ForeignCounterpart;
+
+use super::GameAidPolicy;
+use super::GameOrganizerPolicy;
+use babylon_kernel::content_digest;
 use babylon_material_circuit::{CommodityKind, GoodId, HouseholdNeedBasis, ServiceStage, UnitId};
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet};
@@ -34,8 +37,8 @@ struct RawPolicy {
     financial: RawFinancial,
     households: RawHouseholds,
     household_time: RawHouseholdTime,
-    aid: super::GameAidPolicy,
-    organizer: super::GameOrganizerPolicy,
+    aid: GameAidPolicy,
+    organizer: GameOrganizerPolicy,
     markets: RawMarkets,
     equipment: RawEquipment,
     commodity: BTreeMap<String, RawCommodity>,
@@ -197,7 +200,7 @@ pub(super) fn parse(source: &str) -> Result<NationalGamePolicy, Error> {
     })
 }
 
-fn validate_organizer(organizer: &super::GameOrganizerPolicy) -> Result<(), Error> {
+fn validate_organizer(organizer: &GameOrganizerPolicy) -> Result<(), Error> {
     if organizer.collection_maximum_cash_micros <= 0
         || organizer.collection_protected_cash_floor_micros < 0
         || organizer
@@ -238,7 +241,7 @@ fn validate_organizer(organizer: &super::GameOrganizerPolicy) -> Result<(), Erro
     Ok(())
 }
 
-fn validate_aid(aid: &super::GameAidPolicy) -> Result<(), Error> {
+fn validate_aid(aid: &GameAidPolicy) -> Result<(), Error> {
     let actors = [
         aid.donor_actor,
         aid.local_recipient_actor,
@@ -463,8 +466,8 @@ fn commodity(key: &str, raw: RawCommodity) -> Result<GameCommodity, Error> {
     let mut unit_bytes = b"NationalUnitV1\0".to_vec();
     unit_bytes.extend_from_slice(raw.unit_label.as_bytes());
     Ok(GameCommodity {
-        good_id: GoodId::from_bytes(sha256_of(&good_bytes)),
-        unit_id: UnitId::from_bytes(sha256_of(&unit_bytes)),
+        good_id: GoodId::from_bytes(content_digest::sha256_of(&good_bytes)),
+        unit_id: UnitId::from_bytes(content_digest::sha256_of(&unit_bytes)),
         label: raw.label,
         unit_label: raw.unit_label,
         kind,

@@ -20,6 +20,7 @@
 //! #492/ADR194) — see [`Currency::mul_ratio`].
 use crate::scalars::{Coefficient, Ratio};
 use bnum::types::I256;
+use std::cmp::Ordering;
 
 /// A loud, non-recoverable-by-the-algebra overflow (III.11: run-time loud
 /// failure — the caller is expected to let this propagate, per spec §9
@@ -98,7 +99,10 @@ impl Currency {
         // Grid-safe recovery of the integer numerator: coeff ∈ [0,1] on the
         // 10⁻⁶ grid, so coeff·10⁶ is integer-valued up to float error and
         // bounded by 1_000_000 — the round+cast is exact by construction.
-        #[allow(clippy::cast_possible_truncation)]
+        #[allow(
+            clippy::cast_possible_truncation,
+            reason = "the bounded fixture index is range-checked before narrowing"
+        )]
         let numerator = (coeff.get() * MICRO_F64).round() as i128;
         let product = self.0.checked_mul(numerator).ok_or(CurrencyOverflow {
             op: "Currency * Coefficient (pre-round)",
@@ -135,7 +139,10 @@ impl Currency {
     /// Returns [`CurrencyOverflow`] if the pre-rounding product leaves the
     /// i128 range.
     pub fn mul_ratio(self, ratio: Ratio) -> Result<Self, CurrencyOverflow> {
-        #[allow(clippy::cast_possible_truncation)]
+        #[allow(
+            clippy::cast_possible_truncation,
+            reason = "the bounded fixture index is range-checked before narrowing"
+        )]
         let numerator = (ratio.get() * MICRO_F64).round() as i128;
         let product = self.0.checked_mul(numerator).ok_or(CurrencyOverflow {
             op: "Currency * Ratio (pre-round)",
@@ -158,7 +165,10 @@ impl Currency {
             .try_into()
             .expect("i256 intermediate must fit i128 for a [0,1] ratio");
         // as_i128 ∈ [0, 1_000_000] for an in-domain ratio — exact in f64.
-        #[allow(clippy::cast_precision_loss)]
+        #[allow(
+            clippy::cast_precision_loss,
+            reason = "the bounded micro-unit amount stays exact in f64"
+        )]
         let value = as_i128 as f64 / MICRO_F64;
         Coefficient::new(value).expect("out-of-[0,1] Currency ratio: III.11 caller bug")
     }
@@ -194,9 +204,9 @@ pub fn round_half_even_div(numerator: i128, denominator: i128) -> i128 {
     // this comparison for every input. `unsigned_abs` returns u128, where
     // every magnitude is representable, so the compare is total.
     match twice_r.unsigned_abs().cmp(&denominator.unsigned_abs()) {
-        std::cmp::Ordering::Less => q,
-        std::cmp::Ordering::Greater => q + numerator.signum() * denominator.signum(),
-        std::cmp::Ordering::Equal => {
+        Ordering::Less => q,
+        Ordering::Greater => q + numerator.signum() * denominator.signum(),
+        Ordering::Equal => {
             if q % 2 == 0 {
                 q
             } else {
@@ -228,9 +238,9 @@ fn round_half_even_div_i256(numerator: I256, denominator: I256) -> I256 {
     let twice_r = r * two; // i256 headroom: cannot overflow for i128-derived inputs
     let step = numerator.signum() * denominator.signum();
     match twice_r.abs().cmp(&denominator.abs()) {
-        std::cmp::Ordering::Less => q,
-        std::cmp::Ordering::Greater => q + step,
-        std::cmp::Ordering::Equal => {
+        Ordering::Less => q,
+        Ordering::Greater => q + step,
+        Ordering::Equal => {
             if q % two == widen(0) {
                 q
             } else {
@@ -242,7 +252,7 @@ fn round_half_even_div_i256(numerator: I256, denominator: I256) -> I256 {
 
 #[cfg(test)]
 mod tests {
-    use super::{round_half_even_div, Currency, CurrencyOverflow};
+    use super::{Currency, CurrencyOverflow};
     use crate::scalars::{Coefficient, Ratio};
 
     #[test]
@@ -257,11 +267,11 @@ mod tests {
         // 1 / i128::MIN is ≈ -5.9e-39, which half-even-rounds to 0. The
         // wrapped path returns -1. Wrong money, quietly, in release only —
         // the III.11 failure mode exactly.
-        assert_eq!(round_half_even_div(1, i128::MIN), 0);
-        assert_eq!(round_half_even_div(-1, i128::MIN), 0);
+        assert_eq!(super::round_half_even_div(1, i128::MIN), 0);
+        assert_eq!(super::round_half_even_div(-1, i128::MIN), 0);
         // The symmetric hazard on the numerator side: |2r| can itself reach
         // i128::MIN's magnitude for a large enough divisor.
-        assert_eq!(round_half_even_div(i128::MIN, i128::MIN), 1);
+        assert_eq!(super::round_half_even_div(i128::MIN, i128::MIN), 1);
     }
 
     #[test]
@@ -290,17 +300,17 @@ mod tests {
 
     #[test]
     fn round_half_even_div_ties_to_even() {
-        assert_eq!(round_half_even_div(5, 2), 2); // 2.5 -> 2 (even)
-        assert_eq!(round_half_even_div(7, 2), 4); // 3.5 -> 4 (even)
-        assert_eq!(round_half_even_div(-5, 2), -2); // -2.5 -> -2 (even)
-        assert_eq!(round_half_even_div(-7, 2), -4); // -3.5 -> -4 (even)
+        assert_eq!(super::round_half_even_div(5, 2), 2); // 2.5 -> 2 (even)
+        assert_eq!(super::round_half_even_div(7, 2), 4); // 3.5 -> 4 (even)
+        assert_eq!(super::round_half_even_div(-5, 2), -2); // -2.5 -> -2 (even)
+        assert_eq!(super::round_half_even_div(-7, 2), -4); // -3.5 -> -4 (even)
     }
 
     #[test]
     fn round_half_even_div_off_tie_rounds_to_nearest() {
-        assert_eq!(round_half_even_div(7, 3), 2); // 2.33 -> 2
-        assert_eq!(round_half_even_div(8, 3), 3); // 2.67 -> 3
-        assert_eq!(round_half_even_div(-8, 3), -3);
+        assert_eq!(super::round_half_even_div(7, 3), 2); // 2.33 -> 2
+        assert_eq!(super::round_half_even_div(8, 3), 3); // 2.67 -> 3
+        assert_eq!(super::round_half_even_div(-8, 3), -3);
     }
 
     #[test]
@@ -313,19 +323,36 @@ mod tests {
     fn mul_coefficient_is_exact_integer_arithmetic() {
         // 10.000000 units × 0.5 = 5.000000 units, exactly.
         let c = Currency::from_micro_units(10 * 1_000_000);
-        let half = Coefficient::new(0.5).unwrap();
-        assert_eq!(c.mul_coefficient(half).unwrap().micro_units(), 5_000_000);
+        let half =
+            Coefficient::new(0.5).expect("the constructor accepts the authored fixture arguments");
+        assert_eq!(
+            c.mul_coefficient(half)
+                .expect("the fixture call `mul_coefficient` succeeds for the authored inputs")
+                .micro_units(),
+            5_000_000
+        );
     }
 
     #[test]
     fn mul_coefficient_half_even_on_the_micro_unit_tie() {
         // 1 micro-unit × 0.5 = 0.5 micro-units -> 0 (even), not 1.
         let c = Currency::from_micro_units(1);
-        let half = Coefficient::new(0.5).unwrap();
-        assert_eq!(c.mul_coefficient(half).unwrap().micro_units(), 0);
+        let half =
+            Coefficient::new(0.5).expect("the constructor accepts the authored fixture arguments");
+        assert_eq!(
+            c.mul_coefficient(half)
+                .expect("the fixture call `mul_coefficient` succeeds for the authored inputs")
+                .micro_units(),
+            0
+        );
         // 3 micro-units × 0.5 = 1.5 -> 2 (even), not 1.
         let c3 = Currency::from_micro_units(3);
-        assert_eq!(c3.mul_coefficient(half).unwrap().micro_units(), 2);
+        assert_eq!(
+            c3.mul_coefficient(half)
+                .expect("the fixture call `mul_coefficient` succeeds for the authored inputs")
+                .micro_units(),
+            2
+        );
     }
 
     #[test]
@@ -333,9 +360,13 @@ mod tests {
         // 2^53 + 1 micro-units is exactly the value an f64 path would
         // silently round; the integer path must not.
         let beyond = Currency::from_micro_units((1_i128 << 53) + 1);
-        let one = Coefficient::new(1.0).unwrap();
+        let one =
+            Coefficient::new(1.0).expect("the constructor accepts the authored fixture arguments");
         assert_eq!(
-            beyond.mul_coefficient(one).unwrap().micro_units(),
+            beyond
+                .mul_coefficient(one)
+                .expect("the fixture call `mul_coefficient` succeeds for the authored inputs")
+                .micro_units(),
             (1_i128 << 53) + 1
         );
     }
@@ -345,9 +376,12 @@ mod tests {
         // 10.000000 units × 1.5 = 15.000000 units, exactly — the whole
         // point: 1.5 is outside Coefficient's [0,1] domain (#492/ADR194).
         let c = Currency::from_micro_units(10 * 1_000_000);
-        let one_point_five = Ratio::new(1.5).unwrap();
+        let one_point_five =
+            Ratio::new(1.5).expect("the constructor accepts the authored fixture arguments");
         assert_eq!(
-            c.mul_ratio(one_point_five).unwrap().micro_units(),
+            c.mul_ratio(one_point_five)
+                .expect("the fixture call `mul_ratio` succeeds for the authored inputs")
+                .micro_units(),
             15_000_000
         );
     }
@@ -358,19 +392,33 @@ mod tests {
         // no relation to Coefficient — use an equivalent tie via a Ratio
         // value: 1 micro-unit × 2.5 = 2.5 -> 2 (even), not 3.
         let c = Currency::from_micro_units(1);
-        let two_point_five = Ratio::new(2.5).unwrap();
-        assert_eq!(c.mul_ratio(two_point_five).unwrap().micro_units(), 2);
+        let two_point_five =
+            Ratio::new(2.5).expect("the constructor accepts the authored fixture arguments");
+        assert_eq!(
+            c.mul_ratio(two_point_five)
+                .expect("the fixture call `mul_ratio` succeeds for the authored inputs")
+                .micro_units(),
+            2
+        );
         // 3 micro-units × 2.5 = 7.5 -> 8 (even), not 7.
         let c3 = Currency::from_micro_units(3);
-        assert_eq!(c3.mul_ratio(two_point_five).unwrap().micro_units(), 8);
+        assert_eq!(
+            c3.mul_ratio(two_point_five)
+                .expect("the fixture call `mul_ratio` succeeds for the authored inputs")
+                .micro_units(),
+            8
+        );
     }
 
     #[test]
     fn mul_ratio_survives_beyond_f64_exact_range() {
         let beyond = Currency::from_micro_units((1_i128 << 53) + 1);
-        let one = Ratio::new(1.0).unwrap();
+        let one = Ratio::new(1.0).expect("the constructor accepts the authored fixture arguments");
         assert_eq!(
-            beyond.mul_ratio(one).unwrap().micro_units(),
+            beyond
+                .mul_ratio(one)
+                .expect("the fixture call `mul_ratio` succeeds for the authored inputs")
+                .micro_units(),
             (1_i128 << 53) + 1
         );
     }
@@ -382,15 +430,22 @@ mod tests {
         // pareto_alpha/carceral_transition_modifier's (0,10] ceiling class)
         // is ordinary arithmetic here, not a special case.
         let c = Currency::from_micro_units(1_000_000); // 1.0
-        let ten = Ratio::new(10.0).unwrap();
-        assert_eq!(c.mul_ratio(ten).unwrap().micro_units(), 10_000_000);
+        let ten = Ratio::new(10.0).expect("the constructor accepts the authored fixture arguments");
+        assert_eq!(
+            c.mul_ratio(ten)
+                .expect("the fixture call `mul_ratio` succeeds for the authored inputs")
+                .micro_units(),
+            10_000_000
+        );
     }
 
     #[test]
     fn mul_ratio_overflow_is_loud() {
         let huge = Currency::from_micro_units(i128::MAX);
-        let two = Ratio::new(2.0).unwrap();
-        let err = huge.mul_ratio(two).unwrap_err();
+        let two = Ratio::new(2.0).expect("the constructor accepts the authored fixture arguments");
+        let err = huge
+            .mul_ratio(two)
+            .expect_err("the fixture call `mul_ratio` fails for the authored inputs");
         assert_eq!(err.op, "Currency * Ratio (pre-round)");
     }
 

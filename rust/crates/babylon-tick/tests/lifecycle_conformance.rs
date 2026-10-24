@@ -96,12 +96,23 @@
 //! e.g. `2095.195_f64` IS the double Python printed. A tolerance here would
 //! hide exactly the transcription error it would appear to absorb.
 
+// Conformance fixtures exercise exact engine values, transcribe spec literals,
+// and build whole scenarios in one test. These pedantic lints would force
+// ceremony that hides those contracts, so they stay off in test code only.
+#![allow(
+    clippy::unreadable_literal,
+    reason = "the literal is an authored byte pattern"
+)]
+#![allow(
+    clippy::float_cmp,
+    reason = "these comparisons pin exact authored f64 values"
+)]
+
 use babylon_bsl::evaluator::Value;
-use babylon_bsl::scenario::load_scenario;
+use babylon_bsl::scenario;
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::memory::MemoryGraph;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
-use babylon_tick::{run_once, run_once_into};
 
 const SCENARIO: &str = include_str!("../content/scenarios/lifecycle-conformance.bscn");
 const RULE: &str = include_str!("../content/rules/lifecycle.bsl");
@@ -174,7 +185,8 @@ const EXPECTED: [Expected; 4] = [
 fn run() -> (MemoryGraph, CollectingSink) {
     let mut graph = MemoryGraph::new();
     let mut sink = CollectingSink::default();
-    run_once_into(SCENARIO, RULE, &mut graph, &mut sink).expect("the lifecycle pack must run");
+    babylon_tick::run_once_into(SCENARIO, RULE, &mut graph, &mut sink)
+        .expect("the lifecycle pack must run");
     (graph, sink)
 }
 
@@ -329,8 +341,8 @@ fn every_subject_emits_lifecycle_transition() {
 /// and the tick moved state at all.
 #[test]
 fn the_lifecycle_tick_is_deterministic() {
-    let a = run_once(SCENARIO, RULE).expect("first run");
-    let b = run_once(SCENARIO, RULE).expect("second run");
+    let a = babylon_tick::run_once(SCENARIO, RULE).expect("first run");
+    let b = babylon_tick::run_once(SCENARIO, RULE).expect("second run");
     assert_eq!(a.after, b.after, "two runs, one post-state");
     assert_ne!(a.before, a.after, "the pack must move state");
     assert_eq!(
@@ -350,7 +362,7 @@ fn a_rule_reading_an_undeclared_coefficient_is_refused_at_load() {
                   (binding pop-p :field territory/pop-p) \
                   (binding rate :const lifecycle/birth-rat)) \
                 (effects (update-node self territory/pop-p (set (* rate pop-p)))))";
-    let Err(err) = run_once(SCENARIO, rule) else {
+    let Err(err) = babylon_tick::run_once(SCENARIO, rule) else {
         panic!("a mistyped coefficient must not load");
     };
     assert!(
@@ -366,7 +378,7 @@ fn a_rule_reading_an_undeclared_coefficient_is_refused_at_load() {
 #[test]
 fn the_scenario_consts_match_the_provenance_script_exactly() {
     let mut seeds = MemoryGraph::new();
-    let scenario = load_scenario(SCENARIO, &mut seeds).expect("the scenario must load");
+    let scenario = scenario::load_scenario(SCENARIO, &mut seeds).expect("the scenario must load");
     let expect_const = |name: &str, value: f64| {
         let Some(Value::Real(actual)) = scenario.consts.get(name) else {
             panic!("the scenario must declare {name} as a scaled literal");

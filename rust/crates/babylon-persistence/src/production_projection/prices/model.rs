@@ -1,5 +1,7 @@
 //! Prices are per native unit; monetary fields are exact micro-currency.
+use super::ProductionProjectionError;
 use super::{PriceReceipt, Result};
+use babylon_kernel::currency::Currency;
 use babylon_material_circuit::{GoodsPriceCostBasis, PriceDecision};
 use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -69,8 +71,8 @@ pub(super) fn completed(row: &PriceReceipt) -> Result<CompletedGoodsPrice> {
         unit_cost_micro: row
             .cost
             .unit_cost()
-            .map_err(|_| super::ProductionProjectionError::State)?
-            .map(babylon_kernel::currency::Currency::micro_units),
+            .map_err(|_| ProductionProjectionError::State)?
+            .map(Currency::micro_units),
     })
 }
 
@@ -83,18 +85,14 @@ impl CompletedGoodsPrice {
                 GoodsPriceBasis::Released => GoodsPriceCostBasis::Released,
             },
             quantity: self.basis_quantity,
-            carrying_cost: babylon_kernel::currency::Currency::from_micro_units(
-                self.carrying_cost_micro,
-            ),
-            handling_wages: babylon_kernel::currency::Currency::from_micro_units(
-                self.handling_wages_micro,
-            ),
+            carrying_cost: Currency::from_micro_units(self.carrying_cost_micro),
+            handling_wages: Currency::from_micro_units(self.handling_wages_micro),
         };
         self.period == period
             && self.old_price_micro > 0
             && self.next_price_micro == current
-            && evidence.unit_cost().is_ok_and(|cost| {
-                cost.map(babylon_kernel::currency::Currency::micro_units) == self.unit_cost_micro
-            })
+            && evidence
+                .unit_cost()
+                .is_ok_and(|cost| cost.map(Currency::micro_units) == self.unit_cost_micro)
     }
 }

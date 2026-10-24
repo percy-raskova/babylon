@@ -3,11 +3,11 @@
 use super::NationalGamePolicyError;
 use crate::national_cohorts::CohortKey;
 use babylon_graph::stable_element::StableElementKey;
-use babylon_kernel::{
-    content_digest::sha256_of,
-    economic_identity::{EconomicFunction, QcewOwnership},
-    economic_location::EconomicLocation,
-};
+use babylon_kernel::economic_identity::{EconomicFunction, QcewOwnership};
+use babylon_kernel::economic_location::EconomicLocation;
+
+use crate::national_household_allocation::HouseholdBudgetKey;
+use babylon_kernel::content_digest;
 use babylon_material_circuit::{FinalDemandPrincipalId, SiteId, StaffingPoolId};
 
 /// Qualified BSCN scope shared by every national graph subject.
@@ -39,12 +39,12 @@ pub struct ResidentWorkplaceTarget {
 #[must_use]
 pub fn household_principal(
     location: EconomicLocation,
-    budget: crate::national_household_allocation::HouseholdBudgetKey,
+    budget: HouseholdBudgetKey,
 ) -> FinalDemandPrincipalId {
     let mut bytes = b"NationalHouseholdV2\0".to_vec();
     bytes.extend_from_slice(&location.canonical_bytes());
     bytes.push(budget as u8);
-    FinalDemandPrincipalId::from_bytes(sha256_of(&bytes))
+    FinalDemandPrincipalId::from_bytes(content_digest::sha256_of(&bytes))
 }
 
 /// Declare a source-supported county workplace; the compiler separately admits
@@ -150,12 +150,12 @@ fn target(
     local_name: String,
     source: ResidentWorkplaceSource,
 ) -> ResidentWorkplaceTarget {
-    let site_id = SiteId::from_bytes(sha256_of(identity));
+    let site_id = SiteId::from_bytes(content_digest::sha256_of(identity));
     let mut pool = b"NationalStaffingPoolV1\0".to_vec();
     pool.extend_from_slice(&site_id.as_bytes());
     ResidentWorkplaceTarget {
         site_id,
-        pool_id: StaffingPoolId::from_bytes(sha256_of(&pool)),
+        pool_id: StaffingPoolId::from_bytes(content_digest::sha256_of(&pool)),
         workplace: StableElementKey::Node {
             scenario: NATIONAL_SCENARIO_ID.to_owned(),
             local_name,

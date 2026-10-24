@@ -227,35 +227,40 @@ impl<T: Clone + PartialEq> Default for EventBus<T> {
 #[cfg(test)]
 mod tests {
     use super::{Event, EventBus, Intercept, Interceptor};
-    use std::cell::RefCell;
-    use std::rc::Rc;
+    use std::sync::mpsc;
+    use std::sync::mpsc::{Receiver, Sender};
 
     fn event(topic: &'static str, tick: u64) -> Event<&'static str> {
         Event { topic, tick }
     }
 
+    fn recorder_seen() -> (Sender<&'static str>, Receiver<&'static str>) {
+        mpsc::channel()
+    }
+
     #[test]
     fn handlers_fire_in_registration_order() {
         let mut bus: EventBus<&'static str> = EventBus::new();
-        let order = Rc::new(RefCell::new(Vec::<u32>::new()));
-        let o1 = Rc::clone(&order);
-        let o2 = Rc::clone(&order);
+        let (order, observed) = mpsc::channel();
+        let o1 = order.clone();
+        let o2 = order.clone();
         bus.subscribe(
             "t",
             Box::new(move |_| {
-                o1.borrow_mut().push(1);
+                o1.send(1).expect("ordered observation receiver");
                 Ok(())
             }),
         );
         bus.subscribe(
             "t",
             Box::new(move |_| {
-                o2.borrow_mut().push(2);
+                o2.send(2).expect("ordered observation receiver");
                 Ok(())
             }),
         );
-        bus.publish(event("t", 0)).unwrap();
-        assert_eq!(*order.borrow(), vec![1, 2]);
+        bus.publish(event("t", 0))
+            .expect("the fixture call `publish` succeeds for the authored inputs");
+        assert_eq!(observed.try_iter().collect::<Vec<_>>(), vec![1, 2]);
     }
 
     #[test]
@@ -263,13 +268,13 @@ mod tests {
         // Guarantee 4 — the one the plan's summary missed. Python raises an
         // ExceptionGroup AFTER the fan-out; Rust returns the collected list.
         let mut bus: EventBus<&'static str> = EventBus::new();
-        let ran = Rc::new(RefCell::new(Vec::<u32>::new()));
-        let r1 = Rc::clone(&ran);
-        let r3 = Rc::clone(&ran);
+        let (ran, observed) = mpsc::channel();
+        let r1 = ran.clone();
+        let r3 = ran.clone();
         bus.subscribe(
             "t",
             Box::new(move |_| {
-                r1.borrow_mut().push(1);
+                r1.send(1).expect("ordered observation receiver");
                 Ok(())
             }),
         );
@@ -277,12 +282,18 @@ mod tests {
         bus.subscribe(
             "t",
             Box::new(move |_| {
-                r3.borrow_mut().push(3);
+                r3.send(3).expect("ordered observation receiver");
                 Ok(())
             }),
         );
-        let failures = bus.publish(event("t", 5)).unwrap_err();
-        assert_eq!(*ran.borrow(), vec![1, 3], "later handlers must still run");
+        let failures = bus
+            .publish(event("t", 5))
+            .expect_err("the fixture call `publish` fails for the authored inputs");
+        assert_eq!(
+            observed.try_iter().collect::<Vec<_>>(),
+            vec![1, 3],
+            "later handlers must still run"
+        );
         assert_eq!(failures.len(), 1);
         assert_eq!(failures[0].handler_index, 1);
     }
@@ -300,17 +311,18 @@ mod tests {
     #[test]
     fn untargeted_topics_do_not_dispatch() {
         let mut bus: EventBus<&'static str> = EventBus::new();
-        let ran = Rc::new(RefCell::new(0u32));
-        let r = Rc::clone(&ran);
+        let (ran, observed) = mpsc::channel();
+        let r = ran.clone();
         bus.subscribe(
             "other",
             Box::new(move |_| {
-                *r.borrow_mut() += 1;
+                r.send(()).expect("dispatch observation receiver");
                 Ok(())
             }),
         );
-        bus.publish(event("t", 0)).unwrap();
-        assert_eq!(*ran.borrow(), 0);
+        bus.publish(event("t", 0))
+            .expect("the fixture call `publish` succeeds for the authored inputs");
+        assert!(observed.try_recv().is_err(), "no handler may run");
         assert_eq!(
             bus.history().len(),
             1,
@@ -323,7 +335,7 @@ mod tests {
     struct Recorder {
         label: &'static str,
         priority: i32,
-        seen: Rc<RefCell<Vec<&'static str>>>,
+        seen: Sender<&'static str>,
         verdict: fn(&Event<&'static str>) -> Intercept<&'static str>,
     }
 
@@ -335,7 +347,8 @@ mod tests {
             self.label
         }
         fn intercept(&mut self, event: &Event<&'static str>) -> Intercept<&'static str> {
-            self.seen.borrow_mut().push(self.label);
+            // A recorder without a live observation receiver records nothing.
+            let _ = self.seen.send(self.label);
             (self.verdict)(event)
         }
     }
@@ -347,42 +360,47 @@ mod tests {
     #[test]
     fn interceptors_run_priority_desc_with_registration_tiebreak() {
         let mut bus: EventBus<&'static str> = EventBus::new();
-        let seen = Rc::new(RefCell::new(Vec::new()));
+        let (seen, observed) = recorder_seen();
         for (label, priority) in [("low", 1), ("high", 9), ("mid_a", 5), ("mid_b", 5)] {
             bus.register_interceptor(Box::new(Recorder {
                 label,
                 priority,
-                seen: Rc::clone(&seen),
+                seen: seen.clone(),
                 verdict: allow,
             }));
         }
-        bus.publish(event("t", 0)).unwrap();
+        bus.publish(event("t", 0))
+            .expect("the fixture call `publish` succeeds for the authored inputs");
         // Descending priority; mid_a before mid_b because registered first.
-        assert_eq!(*seen.borrow(), vec!["high", "mid_a", "mid_b", "low"]);
+        assert_eq!(
+            observed.try_iter().collect::<Vec<_>>(),
+            vec!["high", "mid_a", "mid_b", "low"]
+        );
     }
 
     #[test]
     fn a_blocked_event_is_audited_and_never_reaches_history_or_handlers() {
         let mut bus: EventBus<&'static str> = EventBus::new();
-        let ran = Rc::new(RefCell::new(0u32));
-        let r = Rc::clone(&ran);
+        let (ran, observed) = mpsc::channel();
+        let r = ran.clone();
         bus.subscribe(
             "t",
             Box::new(move |_| {
-                *r.borrow_mut() += 1;
+                r.send(()).expect("dispatch observation receiver");
                 Ok(())
             }),
         );
         bus.register_interceptor(Box::new(Recorder {
             label: "censor",
             priority: 0,
-            seen: Rc::new(RefCell::new(Vec::new())),
+            seen: recorder_seen().0,
             verdict: |_| Intercept::Block {
                 reason: "state repression".into(),
             },
         }));
-        bus.publish(event("t", 3)).unwrap();
-        assert_eq!(*ran.borrow(), 0);
+        bus.publish(event("t", 3))
+            .expect("the fixture call `publish` succeeds for the authored inputs");
+        assert!(observed.try_recv().is_err(), "no handler may run");
         assert!(bus.history().is_empty());
         let blocked = bus.blocked_events();
         assert_eq!(blocked.len(), 1);
@@ -397,7 +415,7 @@ mod tests {
         bus.register_interceptor(Box::new(Recorder {
             label: "modifier",
             priority: 9,
-            seen: Rc::new(RefCell::new(Vec::new())),
+            seen: recorder_seen().0,
             verdict: |e| {
                 Intercept::Modify(Event {
                     topic: e.topic,
@@ -405,7 +423,8 @@ mod tests {
                 })
             },
         }));
-        bus.publish(event("t", 1)).unwrap();
+        bus.publish(event("t", 1))
+            .expect("the fixture call `publish` succeeds for the authored inputs");
         assert_eq!(bus.history(), &[event("t", 100)]);
 
         // ...and when a LOWER-priority blocker fires after a modifier, the
@@ -413,12 +432,13 @@ mod tests {
         bus.register_interceptor(Box::new(Recorder {
             label: "blocker",
             priority: 0,
-            seen: Rc::new(RefCell::new(Vec::new())),
+            seen: recorder_seen().0,
             verdict: |_| Intercept::Block {
                 reason: "after modify".into(),
             },
         }));
-        bus.publish(event("t", 2)).unwrap();
+        bus.publish(event("t", 2))
+            .expect("the fixture call `publish` succeeds for the authored inputs");
         assert_eq!(
             bus.blocked_events()[0].event,
             event("t", 2),

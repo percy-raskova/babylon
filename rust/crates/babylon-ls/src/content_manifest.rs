@@ -17,13 +17,14 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+use babylon_tick::kernel_slot;
 use babylon_tick::kernel_slot::KernelSlotLedgerError;
-use babylon_tick::kernel_slot::{
-    match_kernel_slot_reservation, validate_kernel_slot_ledger, KernelSlotReservationRef,
-};
+use babylon_tick::kernel_slot::KernelSlotReservationRef;
 use serde::Deserialize;
 
 use babylon_tick::kernel_slot::KernelSlotReservationMatch;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 
 /// The sole accepted `content-sets.toml` schema.
 pub const CONTENT_SET_MANIFEST_SCHEMA: u32 = 2;
@@ -124,7 +125,7 @@ pub enum ContentManifestError {
 }
 
 impl std::fmt::Display for ContentManifestError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         match self {
             Self::Io { path, detail } => {
                 write!(f, "reading {}: {detail}", path.display())
@@ -227,7 +228,7 @@ impl ContentSetManifest {
     }
 
     fn validate_kernel_slots(&self) -> Result<(), KernelSlotLedgerError> {
-        validate_kernel_slot_ledger(&self.borrowed_kernel_slots())
+        kernel_slot::validate_kernel_slot_ledger(&self.borrowed_kernel_slots())
     }
 
     #[must_use]
@@ -237,7 +238,12 @@ impl ContentSetManifest {
         sample: &str,
         slot: u32,
     ) -> KernelSlotReservationMatch<'_> {
-        match_kernel_slot_reservation(&self.borrowed_kernel_slots(), rule, sample, slot)
+        kernel_slot::match_kernel_slot_reservation(
+            &self.borrowed_kernel_slots(),
+            rule,
+            sample,
+            slot,
+        )
     }
 
     pub(crate) fn borrowed_kernel_slots(&self) -> Vec<KernelSlotReservationRef<'_>> {

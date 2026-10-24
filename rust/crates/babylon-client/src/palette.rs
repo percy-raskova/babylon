@@ -8,7 +8,10 @@
 //! guard has a complete table to check from day one — later milestones
 //! (map tiles, UI chrome) consume them. `dead_code` is allowed for that
 //! reason, not to paper over an unused mistake.
-#![allow(dead_code)]
+#![allow(
+    dead_code,
+    reason = "the authored palette keeps every named colour available"
+)]
 use bevy::color::Color;
 
 pub const FIELD: Color = Color::srgb_u8(26, 0, 0);

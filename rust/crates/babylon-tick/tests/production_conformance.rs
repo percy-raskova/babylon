@@ -44,13 +44,28 @@
 //! WAGES) — see `production-conformance.bscn`'s own header for the full
 //! per-node conformance-case map. `worker-tight`/`t-tight` (MINOR-2, fix
 //! round) are a pure addition at the end of the declaration order — every
-//! other node's NodeId is unchanged from the original landing.
+//! other node's `NodeId` is unchanged from the original landing.
 
-use babylon_bsl::scenario::load_scenario;
+// Conformance fixtures exercise exact engine values, transcribe spec literals,
+// and build whole scenarios in one test. These pedantic lints would force
+// ceremony that hides those contracts, so they stay off in test code only.
+#![allow(
+    clippy::unreadable_literal,
+    reason = "the literal is an authored byte pattern"
+)]
+#![allow(
+    clippy::float_cmp,
+    reason = "these comparisons pin exact authored f64 values"
+)]
+
+use babylon_bsl::scenario;
+use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
+use babylon_kernel::replay::ReplaySeed;
 use babylon_kernel::replay::ReplaySessionId;
-use babylon_tick::run_once_into;
+use babylon_tick::diagnostic::RuleDiagnosticSession;
+use babylon_tick::TickReport;
 
 const SCENARIO: &str = include_str!("../content/scenarios/production-conformance.bscn");
 
@@ -105,8 +120,8 @@ fn scenario_loads_with_a_probe_pack() {
     (update-node self social-class/wealth (set wealth))))
 "#;
     let mut graph = HypergraphStore::new();
-    let mut sink = babylon_bsl::structural_verbs::CollectingSink::default();
-    run_once_into(SCENARIO, PROBE_RULE, &mut graph, &mut sink)
+    let mut sink = CollectingSink::default();
+    babylon_tick::run_once_into(SCENARIO, PROBE_RULE, &mut graph, &mut sink)
         .expect("the scenario must load and run against a registered-system probe rule");
 }
 
@@ -114,7 +129,8 @@ fn scenario_loads_with_a_probe_pack() {
 #[test]
 fn the_scenario_loads_clean_with_the_declared_census() {
     let mut graph = HypergraphStore::new();
-    let loaded = load_scenario(SCENARIO, &mut graph).expect("the scenario must load clean");
+    let loaded =
+        scenario::load_scenario(SCENARIO, &mut graph).expect("the scenario must load clean");
     assert_eq!(loaded.node_count, 14, "9 social classes + 5 territories");
     assert_eq!(loaded.edge_count, 12, "9 TENANCY + 3 WAGES");
     assert_eq!(
@@ -139,7 +155,7 @@ fn the_scenario_loads_clean_with_the_declared_census() {
 #[test]
 fn every_node_seeds_all_its_declared_fields() {
     let mut graph = HypergraphStore::new();
-    load_scenario(SCENARIO, &mut graph).expect("the scenario must load clean");
+    scenario::load_scenario(SCENARIO, &mut graph).expect("the scenario must load clean");
     // NOT a contiguous NodeId range for either type: `worker-tight`
     // (MINOR-2, fix round) is declared AFTER the four original territories,
     // so SOCIAL_CLASS is {0..=7, 12} and TERRITORY is {8..=11, 13} — an
@@ -179,10 +195,10 @@ fn every_node_seeds_all_its_declared_fields() {
 
 const PRODUCTION_RULE: &str = include_str!("../content/rules/production.bsl");
 
-fn run_production() -> (HypergraphStore, babylon_tick::TickReport) {
+fn run_production() -> (HypergraphStore, TickReport) {
     let mut graph = HypergraphStore::new();
-    let mut sink = babylon_bsl::structural_verbs::CollectingSink::default();
-    let report = run_once_into(SCENARIO, PRODUCTION_RULE, &mut graph, &mut sink)
+    let mut sink = CollectingSink::default();
+    let report = babylon_tick::run_once_into(SCENARIO, PRODUCTION_RULE, &mut graph, &mut sink)
         .expect("the production pack must load and run");
     (graph, report)
 }
@@ -211,7 +227,7 @@ fn extraction_intensity(graph: &HypergraphStore, id: NodeId) -> f64 {
         .unwrap_or_else(|e| panic!("node {id:?} territory/extraction-intensity: {}", e.message))
 }
 
-/// `production/p1-direct-production`: `worker-pp` (PERIPHERY_PROLETARIAT,
+/// `production/p1-direct-production`: `worker-pp` (`PERIPHERY_PROLETARIAT`,
 /// TENANCY to `t-alpha`, biocapacity 80/100) accumulates its own wealth by
 /// exactly `(base_labor_power / weeks_per_year) * population * bio_ratio` =
 /// `(1.0/52) * 100 * 0.8` — measured, matching the frozen mirror's own
@@ -236,9 +252,9 @@ fn p1_direct_producer_accumulates_own_wealth() {
 }
 
 /// p1's `when` guard is role-scoped to `PERIPHERY_PROLETARIAT` alone —
-/// `comprador` (COMPRADOR_BOURGEOISIE, holds a TENANCY edge to `t-alpha`)
+/// `comprador` (`COMPRADOR_BOURGEOISIE`, holds a TENANCY edge to `t-alpha`)
 /// never matches ANY of the three producer rules' `when` guards (p1/p2/p3
-/// are all role-scoped to PERIPHERY_PROLETARIAT/LABOR_ARISTOCRACY), so its
+/// are all role-scoped to `PERIPHERY_PROLETARIAT/LABOR_ARISTOCRACY`), so its
 /// seed wealth (10.0) stays exactly as seeded across the WHOLE pack — the
 /// p4 filter vector's own precondition, witnessed here at the wealth field
 /// too, not just at `production-value` (p4's own test). Also never pushes
@@ -257,11 +273,11 @@ fn comprador_wealth_is_never_moved_by_any_producer_rule() {
 // ============================================================ p2/p3
 
 /// `production/p2-employed-routing`: BOTH `worker-la-one` and
-/// `worker-la-two` (LABOR_ARISTOCRACY, TENANCY to `t-beta`, WAGES from the
+/// `worker-la-two` (`LABOR_ARISTOCRACY`, TENANCY to `t-beta`, WAGES from the
 /// SAME `employer`) route their product to `employer`'s wealth — the
 /// D103/D104 accumulate-into-a-shared-target shape, this pack's first
 /// content-pack instance of it. `employer`'s seed wealth (10.0) plus BOTH
-/// contributions, added in subject (ascending NodeId) order — measured,
+/// contributions, added in subject (ascending `NodeId`) order — measured,
 /// matching the frozen mirror's own printed
 /// `employer wealth=10.961538461538462` bit for bit.
 #[test]
@@ -275,7 +291,7 @@ fn p2_two_la_products_accumulate_into_one_employer() {
     );
 }
 
-/// `worker-la-idle` (LABOR_ARISTOCRACY, active=0, TENANCY to `t-beta`,
+/// `worker-la-idle` (`LABOR_ARISTOCRACY`, active=0, TENANCY to `t-beta`,
 /// WAGES from `employer`) — p2's `when` guard is role+employer-existence+
 /// tenancy-existence, not `active`, so it FIRES (unlike the frozen engine's
 /// own `continue` skip for an inactive worker), but the active-gated
@@ -301,7 +317,7 @@ fn p2_idle_la_adds_nothing() {
     );
 }
 
-/// `production/p3-employed-fallback`: `worker-la-orphan` (LABOR_ARISTOCRACY,
+/// `production/p3-employed-fallback`: `worker-la-orphan` (`LABOR_ARISTOCRACY`,
 /// TENANCY to `t-alpha`, NO WAGES edge) keeps its own product — the frozen
 /// fallback (production.py:196-198). Measured, matching the frozen mirror's
 /// own printed `worker-la-orphan wealth=10.461538461538462` bit for bit.
@@ -369,7 +385,7 @@ fn p0_p1_p3_push_t_alphas_production_total_correctly() {
 /// `t-beta`'s own `production-total` — THE FIX ROUND'S OWN DISCHARGE
 /// VECTOR. `worker-pp-two-lands` holds TWO TENANCY edges (`t-alpha` AND
 /// `t-beta`), but its push effect targets ONLY the D45 tiebreak winner
-/// (`t-alpha`, the lower NodeId) — the SAME ref its `bio`/`max-bio`
+/// (`t-alpha`, the lower `NodeId`) — the SAME ref its `bio`/`max-bio`
 /// bindings already select — so `t-beta`'s own total is `worker-la-one` +
 /// `worker-la-two` + `worker-la-idle` (0, inactive) ONLY, excluding
 /// `worker-pp-two-lands` entirely. This is the corrected behaviour: the
@@ -515,14 +531,14 @@ fn p0_and_p4_fire_on_every_territory() {
 /// `0.05538461538461539`, EXACTLY DOUBLE tick 1's `0.027692307692307697`.
 #[test]
 fn p0_reset_keeps_extraction_intensity_stable_across_two_ticks() {
-    let mut sink = babylon_bsl::structural_verbs::CollectingSink::default();
-    let mut session = babylon_tick::diagnostic::RuleDiagnosticSession::new(
+    let mut sink = CollectingSink::default();
+    let mut session = RuleDiagnosticSession::new(
         SCENARIO,
         None,
         PRODUCTION_RULE,
         HypergraphStore::new(),
         ReplaySessionId::try_from("production-conformance-test").expect("literal is non-empty"),
-        babylon_kernel::replay::ReplaySeed::new(0),
+        ReplaySeed::new(0),
     )
     .expect("the pack must load into a session");
     session.advance(&mut sink).expect("tick 1");

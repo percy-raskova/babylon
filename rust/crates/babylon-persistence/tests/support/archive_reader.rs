@@ -1,10 +1,10 @@
 //! Confined reader credentials for callers that already validated the disposable canary.
 
-use super::{install_reader_role, ArchiveReadScope, CampaignId, SemanticArchiveReader};
+use super::{ArchiveReadScope, CampaignId, SemanticArchiveReader};
 use postgres::{Config, NoTls};
 
 pub fn with_reader<T>(config: &Config, operation: impl FnOnce(&SemanticArchiveReader) -> T) -> T {
-    install_reader_role(config).expect("install exact confined reader group");
+    super::install_reader_role(config).expect("install exact confined reader group");
     let role = format!(
         "per281_archive_reader_{}",
         format_args!(

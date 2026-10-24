@@ -1,10 +1,12 @@
 //! Shared language-neutral vectors for the pinned `ArchiveAtomV1` behavior.
 
+use babylon_persistence::identity::CampaignId;
 use babylon_persistence::{
-    archive_atom_visible, identity::CampaignId, ArchiveAtom, ArchiveAtomSubject,
-    ArchiveAtomSubjectKind, ArchiveAtomValue, ArchiveCitation, ArchiveEvidenceClass,
-    SemanticArchiveError,
+    archive_atom_visible, ArchiveAtom, ArchiveAtomSubject, ArchiveAtomSubjectKind,
+    ArchiveAtomValue, ArchiveCitation, ArchiveEvidenceClass, SemanticArchiveError,
 };
+
+use serde_json::Map;
 use serde_json::{json, Value};
 
 const VECTORS: &str = include_str!("../../../../contracts/archive_atom_v1_vectors.jsonl");
@@ -114,7 +116,10 @@ fn atom_from_data(data: &Value) -> ArchiveAtom {
     .expect("vector atom mints")
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "`atom_json` takes every authored field explicitly"
+)]
 fn atom_json(
     id: &str,
     subject_kind: &str,
@@ -212,7 +217,7 @@ fn refusal_json(id: &str, bits_hex: &str) -> Value {
 }
 
 fn tag_map(tags: &[(&str, u8)]) -> Value {
-    let mut map = serde_json::Map::new();
+    let mut map = Map::new();
     for (name, tag) in tags {
         map.insert((*name).to_owned(), json!(tag));
     }

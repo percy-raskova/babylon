@@ -18,13 +18,22 @@ use serde_json::{json, Value};
 
 use super::{ui, OrganizerClient, OrganizerInspector, RequestKind};
 use crate::observer::{ObservationContext, ObserverSession, SessionPhase};
+use crate::observer_controls::ControlAvailability;
 use crate::observer_io::{ObserverSet, RuntimePipe};
+use crate::observer_opening::MenuPage;
 use crate::observer_opening::{OpeningPresentation, OpeningStage};
 use crate::observer_ui::{ObserverCommand, ObserverUiState};
+use crate::observer_warning::ContinueWarning;
 use crate::production::PrimaryView;
 use babylon_persistence::runtime_session::{
     OrganizerChoice, OrganizerCommand, RuntimeSessionScope,
 };
+use mpsc::Receiver;
+use mpsc::SyncSender;
+use mpsc::TryRecvError;
+use thread::Builder;
+use ui::OrganizerAction;
+use uuid::Uuid;
 
 // Designed bounds for instrumentation, independent of the captured game policy.
 const INPUT_BYTES: u64 = 4096;
@@ -86,7 +95,7 @@ enum Action {
 }
 
 impl Action {
-    fn organizer(self) -> Option<ui::OrganizerAction> {
+    fn organizer(self) -> Option<OrganizerAction> {
         use ui::OrganizerAction as O;
         Some(match self {
             Self::OpenOrganizer => O::Open,
@@ -152,15 +161,14 @@ enum Incoming {
 
 #[derive(Resource)]
 pub(crate) struct Transport {
-    incoming: Mutex<mpsc::Receiver<Incoming>>,
-    outgoing: mpsc::SyncSender<Vec<u8>>,
+    incoming: Mutex<Receiver<Incoming>>,
+    outgoing: SyncSender<Vec<u8>>,
     socket: UnixStream,
 }
 
 impl Transport {
     pub(crate) fn connect(path: &Path, campaign: &str) -> Result<Self, String> {
-        let identity =
-            uuid::Uuid::parse_str(campaign).map_err(|_| "capture_startup_campaign_invalid")?;
+        let identity = Uuid::parse_str(campaign).map_err(|_| "capture_startup_campaign_invalid")?;
         if identity.is_nil() || identity.to_string() != campaign {
             return Err("capture_startup_campaign_invalid".into());
         }
@@ -210,7 +218,7 @@ impl Transport {
             .map_err(|_| "cannot restore qualification input after capture startup")?;
         let (incoming_tx, incoming) = mpsc::sync_channel(1);
         let (outgoing, outgoing_rx) = mpsc::sync_channel::<Vec<u8>>(1);
-        thread::Builder::new()
+        Builder::new()
             .name("qualification-input".into())
             .spawn(move || loop {
                 let (message, terminal) = match read_input(&mut reader) {
@@ -226,7 +234,7 @@ impl Transport {
                 let _ = socket.shutdown(Shutdown::Both);
                 "cannot start qualification input"
             })?;
-        thread::Builder::new()
+        Builder::new()
             .name("qualification-output".into())
             .spawn(move || {
                 while let Ok(bytes) = outgoing_rx.recv() {
@@ -293,7 +301,7 @@ pub(crate) struct HandlerReceipt {
 impl HandlerReceipt {
     pub(crate) fn organizer_finished(
         &mut self,
-        id: MessageId<ui::OrganizerAction>,
+        id: MessageId<OrganizerAction>,
         applied: bool,
         client: &OrganizerClient,
     ) {
@@ -426,7 +434,7 @@ fn available(
         Action::ContinueWarning => ui.splash_visible && opening.stage == OpeningStage::Warning,
         Action::ContinueTitle => {
             opening.stage == OpeningStage::Title
-                && opening.menu_page == crate::observer_opening::MenuPage::Home
+                && opening.menu_page == MenuPage::Home
                 && ui.menu_open
                 && !ui.splash_visible
                 && !ui.comparison_open
@@ -438,7 +446,7 @@ fn available(
                 && !ui.menu_open
                 && !ui.comparison_open
                 && crate::observer_controls::availability(ObserverCommand::Step, session)
-                    == crate::observer_controls::ControlAvailability::Enabled
+                    == ControlAvailability::Enabled
         }
         Action::Reopen => {
             pipe && !ui.splash_visible
@@ -451,7 +459,7 @@ fn available(
                 && session.viewed_tick == session.durable_tick
                 && matches!(session.phase, SessionPhase::Ready | SessionPhase::Complete)
                 && crate::observer_controls::availability(ObserverCommand::ReopenCampaign, session)
-                    == crate::observer_controls::ControlAvailability::Enabled
+                    == ControlAvailability::Enabled
         }
         Action::Quit => !ui.comparison_open && !session.quit_requested,
         _ => false,
@@ -525,15 +533,18 @@ fn flush_reply(transport: &Transport, controls: &mut Controls) -> OutputReady {
     }
 }
 
-#[allow(clippy::too_many_arguments)] // The three message writers route distinct existing input ports.
+#[allow(
+    clippy::too_many_arguments,
+    reason = "`dispatch` declares each Bevy parameter explicitly"
+)] // The three message writers route distinct existing input ports.
 fn dispatch(
     transport: Res<Transport>,
     mut controls: ResMut<Controls>,
     mut receipt: ResMut<HandlerReceipt>,
     situation: Situation,
-    mut organizer: MessageWriter<ui::OrganizerAction>,
+    mut organizer: MessageWriter<OrganizerAction>,
     mut observer: MessageWriter<ObserverCommand>,
-    mut warning: MessageWriter<crate::observer_warning::ContinueWarning>,
+    mut warning: MessageWriter<ContinueWarning>,
     mut commands: Commands,
 ) {
     match flush_reply(&transport, &mut controls) {
@@ -554,7 +565,7 @@ fn dispatch(
         Err(_) => Ok(Incoming::Failed("control_input_lock_failed")),
     };
     let input = match received {
-        Err(mpsc::TryRecvError::Empty) => return,
+        Err(TryRecvError::Empty) => return,
         Ok(Incoming::Input(input)) if controls.pending.is_none() => input,
         other => {
             let reason = match other {
@@ -600,7 +611,7 @@ fn dispatch(
     } else {
         match input.action {
             Action::ContinueWarning => {
-                warning.write(crate::observer_warning::ContinueWarning);
+                warning.write(ContinueWarning);
             }
             Action::ContinueTitle => {
                 commands.trigger(crate::observer_title::ContinueTitle);
@@ -706,12 +717,10 @@ fn outcome(pending: &Pending, s: &Situation) -> Option<Result<&'static str, &'st
         return organizer_outcome(pending, s);
     }
     let applied = match action.organizer() {
-        Some(ui::OrganizerAction::Choose(choice)) => s.client.choice() == choice,
-        Some(ui::OrganizerAction::Open) => *s.view == PrimaryView::Organizer,
-        Some(ui::OrganizerAction::Inspect(inspector)) => s.client.inspector == inspector,
-        Some(ui::OrganizerAction::CloseInspector) => {
-            s.client.inspector == OrganizerInspector::Closed
-        }
+        Some(OrganizerAction::Choose(choice)) => s.client.choice() == choice,
+        Some(OrganizerAction::Open) => *s.view == PrimaryView::Organizer,
+        Some(OrganizerAction::Inspect(inspector)) => s.client.inspector == inspector,
+        Some(OrganizerAction::CloseInspector) => s.client.inspector == OrganizerInspector::Closed,
         _ => match action {
             Action::ContinueWarning => s.opening.stage == OpeningStage::Production,
             Action::ContinueTitle => !s.ui.menu_open,
@@ -894,10 +903,20 @@ pub(crate) fn install(app: &mut App, transport: Transport) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::observer_opening::ProductionSkip;
+    use crate::observer_warning::ContinueWarning;
+    use babylon_kernel::clock::CampaignDuration;
+    use babylon_persistence::identity::CampaignId;
+    use bevy::time::TimeUpdateStrategy;
+    use fs::Permissions;
+    use std::io::Cursor;
     use std::os::unix::fs::PermissionsExt;
     use std::os::unix::net::UnixListener;
+    use std::path::PathBuf;
+    use ui::OrganizerAction;
+    use uuid::Uuid;
 
-    struct SocketFixture(std::path::PathBuf);
+    struct SocketFixture(PathBuf);
 
     impl Drop for SocketFixture {
         fn drop(&mut self) {
@@ -909,12 +928,15 @@ mod tests {
     #[test]
     fn qualification_socket_is_private_lossless_and_closes_on_drop() {
         let fixture =
-            SocketFixture(std::env::temp_dir().join(format!("babylon-q-{}", uuid::Uuid::new_v4())));
-        fs::create_dir(&fixture.0).unwrap();
-        fs::set_permissions(&fixture.0, fs::Permissions::from_mode(0o700)).unwrap();
+            SocketFixture(std::env::temp_dir().join(format!("babylon-q-{}", Uuid::new_v4())));
+        fs::create_dir(&fixture.0).expect("the fixture directory is creatable");
+        fs::set_permissions(&fixture.0, Permissions::from_mode(0o700))
+            .expect("the fixture file mode is settable");
         let path = fixture.0.join("control.sock");
-        let listener = UnixListener::bind(&path).unwrap();
-        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+        let listener = UnixListener::bind(&path)
+            .expect("the fixture call `bind` succeeds for the authored inputs");
+        fs::set_permissions(&path, Permissions::from_mode(0o600))
+            .expect("the fixture file mode is settable");
         let (started, ready) = mpsc::sync_channel(1);
         let connect_path = path.clone();
         let worker = thread::spawn(move || {
@@ -923,10 +945,13 @@ mod tests {
                     &connect_path,
                     "00000000-0000-0000-0000-000000000001",
                 ))
-                .unwrap();
+                .expect("the receiver stays alive for the send");
         });
-        let (mut peer, _) = listener.accept().unwrap();
-        peer.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+        let (mut peer, _) = listener
+            .accept()
+            .expect("the fixture call `accept` succeeds for the authored inputs");
+        peer.set_read_timeout(Some(Duration::from_secs(2)))
+            .expect("the fixture connection accepts the timeout");
         assert!(
             matches!(
                 ready.recv_timeout(Duration::from_millis(50)),
@@ -936,34 +961,61 @@ mod tests {
         );
         let mut admission = b"{\"version\":2,\"campaign_id\":\"00000000-0000-0000-0000-000000000001\",\"phase\":\"capture_ready\"}\n".to_vec();
         admission.extend(frame(""));
-        peer.write_all(&admission).unwrap();
-        let transport = ready.recv_timeout(Duration::from_secs(2)).unwrap().unwrap();
-        worker.join().unwrap();
-        let receiver = transport.incoming.lock().unwrap();
-        let Incoming::Input(input) = receiver.recv_timeout(Duration::from_secs(2)).unwrap() else {
+        peer.write_all(&admission)
+            .expect("the fixture sink accepts the authored bytes");
+        let transport = ready
+            .recv_timeout(Duration::from_secs(2))
+            .expect("the producer sends before the fixture timeout")
+            .expect("the nested fixture result is present");
+        worker
+            .join()
+            .expect("the fixture worker finishes without panic");
+        let receiver = transport
+            .incoming
+            .lock()
+            .expect("the fixture lock is never poisoned");
+        let Incoming::Input(input) = receiver
+            .recv_timeout(Duration::from_secs(2))
+            .expect("the producer sends before the fixture timeout")
+        else {
             panic!("private socket must preserve the input frame");
         };
         assert_eq!((input.sequence, input.action), (1, Action::Status));
         let bytes = response(Some(1), "observed", None, json!({}));
-        transport.outgoing.try_send(bytes.clone()).unwrap();
-        let mut read = BufReader::new(peer.try_clone().unwrap());
+        transport
+            .outgoing
+            .try_send(bytes.clone())
+            .expect("the bounded channel has capacity for the fixture message");
+        let mut read = BufReader::new(
+            peer.try_clone()
+                .expect("the fixture input satisfies the fallible conversion"),
+        );
         let mut decoded = Vec::new();
-        read.read_until(b'\n', &mut decoded).unwrap();
+        read.read_until(b'\n', &mut decoded)
+            .expect("the fixture source is readable");
         assert_eq!(decoded, bytes);
-        peer.shutdown(Shutdown::Write).unwrap();
+        peer.shutdown(Shutdown::Write)
+            .expect("the fixture call `shutdown` succeeds for the authored inputs");
         assert!(matches!(
-            receiver.recv_timeout(Duration::from_secs(2)).unwrap(),
+            receiver
+                .recv_timeout(Duration::from_secs(2))
+                .expect("the producer sends before the fixture timeout"),
             Incoming::Closed
         ));
         drop(receiver);
-        fs::set_permissions(&fixture.0, fs::Permissions::from_mode(0o755)).unwrap();
+        fs::set_permissions(&fixture.0, Permissions::from_mode(0o755))
+            .expect("the fixture file mode is settable");
         assert!(
             Transport::connect(&path, "00000000-0000-0000-0000-000000000001").is_err(),
             "a public directory cannot become a control channel"
         );
         drop(transport);
         let mut trailing = [0; 1];
-        assert_eq!(read.read(&mut trailing).unwrap(), 0);
+        assert_eq!(
+            read.read(&mut trailing)
+                .expect("the fixture reader returns its authored facts"),
+            0
+        );
     }
 
     fn pending(session: &ObserverSession, client: &OrganizerClient, action: Action) -> Pending {
@@ -1005,6 +1057,10 @@ mod tests {
     }
 
     #[test]
+    #[allow(
+        clippy::too_many_lines,
+        reason = "`qualification_opening_controls_wait_for_real_handlers_before_long_frame_progress` keeps one authored boundary's fixture and assertions together"
+    )]
     fn qualification_opening_controls_wait_for_real_handlers_before_long_frame_progress() {
         // Either plugin order must acknowledge the ordinary handler's exact
         // result, including when the same frame advances Production to Title.
@@ -1018,9 +1074,9 @@ mod tests {
                 .insert_resource(ObserverUiState::default())
                 .init_resource::<OpeningPresentation>()
                 .init_resource::<PrimaryView>()
-                .add_message::<ui::OrganizerAction>()
-                .add_message::<crate::observer_warning::ContinueWarning>()
-                .add_message::<crate::observer_opening::ProductionSkip>()
+                .add_message::<OrganizerAction>()
+                .add_message::<ContinueWarning>()
+                .add_message::<ProductionSkip>()
                 .add_observer(crate::observer_title::continue_requested)
                 .configure_sets(
                     Update,
@@ -1035,10 +1091,9 @@ mod tests {
             app.world_mut()
                 .resource_mut::<Time<Virtual>>()
                 .set_max_delta(Duration::from_secs(60));
-            app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
-                Duration::from_secs(60),
-            ));
-            let (socket, _peer) = UnixStream::pair().unwrap();
+            app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_secs(60)));
+            let (socket, _peer) = UnixStream::pair()
+                .expect("the fixture call `pair` succeeds for the authored inputs");
             let (incoming, receiver) = mpsc::channel();
             let (outgoing, output) = mpsc::sync_channel(1);
             let transport = Transport {
@@ -1060,11 +1115,18 @@ mod tests {
                 Action::ContinueWarning,
             )
             .input;
-            incoming.send(Incoming::Input(input)).unwrap();
+            incoming
+                .send(Incoming::Input(input))
+                .expect("the receiver stays alive for the send");
             app.update();
-            let reply: Value =
-                serde_json::from_slice(app.world().resource::<Controls>().reply.as_ref().unwrap())
-                    .unwrap();
+            let reply: Value = serde_json::from_slice(
+                app.world()
+                    .resource::<Controls>()
+                    .reply
+                    .as_ref()
+                    .expect("the fixture set the optional field before this read"),
+            )
+            .expect("the authored bytes match the declared schema");
             assert_eq!(
                 reply["event"], "applied",
                 "adapter_first={adapter_first}: {reply}"
@@ -1076,7 +1138,9 @@ mod tests {
                 "the real presentation may progress after the handler is acknowledged"
             );
             app.update();
-            output.try_recv().unwrap();
+            output
+                .try_recv()
+                .expect("the producer sends before this receive");
             let mut input = pending(
                 app.world().resource::<ObserverSession>(),
                 app.world().resource::<OrganizerClient>(),
@@ -1084,11 +1148,18 @@ mod tests {
             )
             .input;
             input.sequence = 2;
-            incoming.send(Incoming::Input(input)).unwrap();
+            incoming
+                .send(Incoming::Input(input))
+                .expect("the receiver stays alive for the send");
             app.update();
-            let reply: Value =
-                serde_json::from_slice(app.world().resource::<Controls>().reply.as_ref().unwrap())
-                    .unwrap();
+            let reply: Value = serde_json::from_slice(
+                app.world()
+                    .resource::<Controls>()
+                    .reply
+                    .as_ref()
+                    .expect("the fixture set the optional field before this read"),
+            )
+            .expect("the authored bytes match the declared schema");
             assert_eq!(
                 reply["event"], "applied",
                 "adapter_first={adapter_first}: {reply}"
@@ -1109,16 +1180,22 @@ mod tests {
     fn qualification_fast_preview_retains_its_exact_handler_witness() {
         let (mut client, mut session) = super::super::tests::ready();
         let mut pending = pending(&session, &client, Action::Review);
-        let mut messages = Messages::<ui::OrganizerAction>::default();
-        let id = messages.write(ui::OrganizerAction::Review);
+        let mut messages = Messages::<OrganizerAction>::default();
+        let id = messages.write(OrganizerAction::Review);
         let mut receipt = HandlerReceipt {
             tracked: Some(Tracked::Organizer(id.id, Action::Review)),
             ..default()
         };
-        let command = client.make_command(&session, client.choice()).unwrap();
+        let command = client
+            .make_command(&session, client.choice())
+            .expect("the fixture command builds");
         client.queue(&mut session, RequestKind::Preview, Some(command.clone()));
         receipt.organizer_finished(id, true, &client);
-        let request_id = client.pending.as_ref().unwrap().id;
+        let request_id = client
+            .pending
+            .as_ref()
+            .expect("the fixture set the optional field before this read")
+            .id;
         client
             .previewed(
                 request_id,
@@ -1134,9 +1211,17 @@ mod tests {
                 },
                 &mut session,
             )
-            .unwrap();
+            .expect("the fixture call `previewed` succeeds for the authored inputs");
         assert!(client.pending.is_none());
-        capture_handler(&mut pending, receipt.handled.take().unwrap().unwrap()).unwrap();
+        capture_handler(
+            &mut pending,
+            receipt
+                .handled
+                .take()
+                .expect("the fixture call `take` succeeds for the authored inputs")
+                .expect("the nested fixture result is present"),
+        )
+        .expect("the fixture captures the authored state");
         assert_eq!(pending.request, Some(request_id));
         assert_eq!(pending.reviewed, client.reviewed_command);
         assert_eq!(pending.reviewed.as_ref(), Some(&command));
@@ -1146,10 +1231,19 @@ mod tests {
     fn qualification_review_refuses_a_competing_choice() {
         let (mut client, mut session) = super::super::tests::ready();
         let mut pending = pending(&session, &client, Action::Review);
-        client.draft.as_mut().unwrap().choice = OrganizerChoice::Reinforce;
-        let command = client.make_command(&session, client.choice()).unwrap();
+        client
+            .draft
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow")
+            .choice = OrganizerChoice::Reinforce;
+        let command = client
+            .make_command(&session, client.choice())
+            .expect("the fixture command builds");
         client.queue(&mut session, RequestKind::Preview, Some(command.clone()));
-        let request = client.pending.as_ref().unwrap();
+        let request = client
+            .pending
+            .as_ref()
+            .expect("the fixture set the optional field before this read");
         assert_eq!(
             capture_handler(
                 &mut pending,
@@ -1177,7 +1271,9 @@ mod tests {
             Some(Tracked::Observer(id.id, Action::Step));
         app.update();
         assert!(matches!(
-            requests.try_recv().unwrap(),
+            requests
+                .try_recv()
+                .expect("the producer sends before this receive"),
             babylon_persistence::runtime_session::RuntimeSessionRequest::Advance { .. }
         ));
         assert!(
@@ -1203,12 +1299,18 @@ mod tests {
             verdict.0 = outcome(&input.0, &situation);
         }
         let (mut client, mut session) = super::super::tests::ready();
-        session.duration = Some(babylon_kernel::clock::CampaignDuration::Continuous);
-        let command = client.make_command(&session, client.choice()).unwrap();
+        session.duration = Some(CampaignDuration::Continuous);
+        let command = client
+            .make_command(&session, client.choice())
+            .expect("the fixture command builds");
         client.reviewed_command = Some(command.clone());
         let mut original = pending(&session, &client, Action::Confirm);
         client.queue(&mut session, RequestKind::Submit, Some(command.clone()));
-        let id = client.pending.as_ref().unwrap().id;
+        let id = client
+            .pending
+            .as_ref()
+            .expect("the fixture set the optional field before this read")
+            .id;
         capture_handler(
             &mut original,
             Witness::Organizer {
@@ -1217,7 +1319,7 @@ mod tests {
                 command: Some(command.clone()),
             },
         )
-        .unwrap();
+        .expect("the fixture captures the authored state");
         client
             .accepted(
                 id,
@@ -1228,15 +1330,21 @@ mod tests {
                 },
                 &mut session,
             )
-            .unwrap();
+            .expect("the fixture call `accepted` succeeds for the authored inputs");
         client.require_status(&mut session);
         assert!(session.begin_advance().is_none());
         client.queue(&mut session, RequestKind::Status, None);
-        let status_id = client.pending.as_ref().unwrap().id;
+        let status_id = client
+            .pending
+            .as_ref()
+            .expect("the fixture set the optional field before this read")
+            .id;
         let fresh = babylon_persistence::runtime_session::OrganizerSnapshot {
-            view: client.view.clone().unwrap(),
+            view: client.view.clone().expect("the fixture value clones"),
             pending: client.commitment.clone(),
-            duration: session.duration.unwrap(),
+            duration: session
+                .duration
+                .expect("the fixture session records its duration"),
             aid: client.aid.clone(),
             pending_aid: client.pending_aid.clone(),
             aid_resolutions: client.aid_resolutions.clone(),
@@ -1262,7 +1370,7 @@ mod tests {
                         fresh,
                         &mut world.resource_mut::<ObserverSession>(),
                     )
-                    .unwrap();
+                    .expect("the fixture command reports its status");
             });
         app.update();
         assert_eq!(
@@ -1296,15 +1404,21 @@ mod tests {
                 .into_bytes(),
             frame(""),
             valid.trim_end().as_bytes().to_vec(),
-            vec![b'x'; usize::try_from(INPUT_BYTES + 1).unwrap()],
+            vec![
+                b'x';
+                usize::try_from(INPUT_BYTES + 1).expect("the fixture value fits the target range")
+            ],
         ] {
-            let (socket, mut peer) = UnixStream::pair().unwrap();
+            let (socket, mut peer) = UnixStream::pair()
+                .expect("the fixture call `pair` succeeds for the authored inputs");
             let worker = thread::spawn(move || Transport::from_stream(socket, campaign));
-            peer.write_all(&bytes).unwrap();
-            peer.shutdown(Shutdown::Write).unwrap();
+            peer.write_all(&bytes)
+                .expect("the fixture sink accepts the authored bytes");
+            peer.shutdown(Shutdown::Write)
+                .expect("the fixture call `shutdown` succeeds for the authored inputs");
             let refusal = worker
                 .join()
-                .unwrap()
+                .expect("the fixture worker finishes without panic")
                 .err()
                 .expect("invalid startup must refuse");
             assert!(refusal.contains("capture_startup"));
@@ -1315,36 +1429,42 @@ mod tests {
     fn qualification_frames_reject_ambiguous_or_unbounded_input() {
         for bytes in [
             String::from_utf8(frame(""))
-                .unwrap()
+                .expect("the fixture bytes came from a UTF-8 string")
                 .replace("\"version\":2", "\"version\":1")
                 .into_bytes(),
             frame(",\"sequence\":2"),
             frame(",\"unused\":true"),
             String::from_utf8(frame(""))
-                .unwrap()
+                .expect("the fixture bytes came from a UTF-8 string")
                 .replace("\"scope_epoch\":null,", "")
                 .into_bytes(),
             frame("").into_iter().take_while(|b| *b != b'\n').collect(),
-            vec![b'x'; usize::try_from(INPUT_BYTES + 2).unwrap()],
+            vec![
+                b'x';
+                usize::try_from(INPUT_BYTES + 2).expect("the fixture value fits the target range")
+            ],
         ] {
-            assert!(read_input(&mut std::io::Cursor::new(bytes)).is_err());
+            assert!(read_input(&mut Cursor::new(bytes)).is_err());
         }
-        let mut input = std::io::Cursor::new(frame(""));
+        let mut input = Cursor::new(frame(""));
         assert_eq!(
-            read_input(&mut input).unwrap().unwrap().action,
+            read_input(&mut input)
+                .expect("the fixture source is readable")
+                .expect("the nested fixture result is present")
+                .action,
             Action::Status
         );
-        assert!(read_input(&mut input).unwrap().is_none());
+        assert!(read_input(&mut input)
+            .expect("the fixture source is readable")
+            .is_none());
     }
 
     #[test]
     fn qualification_preconditions_bind_campaign_scope_age_and_generation() {
-        let session = ObserverSession::new(babylon_persistence::identity::CampaignId::from_uuid(
-            uuid::Uuid::from_u128(0x342),
-        ));
-        let mut input = read_input(&mut std::io::Cursor::new(frame("")))
-            .unwrap()
-            .unwrap();
+        let session = ObserverSession::new(CampaignId::from_uuid(Uuid::from_u128(0x342)));
+        let mut input = read_input(&mut Cursor::new(frame("")))
+            .expect("the fixture source is readable")
+            .expect("the nested fixture result is present");
         assert!(precondition(&input, &session));
         input.expected_tick = 1;
         assert!(!precondition(&input, &session));
@@ -1355,7 +1475,7 @@ mod tests {
         input.scope_epoch = Some(1);
         assert!(!precondition(&input, &session));
         input.scope_epoch = None;
-        input.campaign_id = uuid::Uuid::from_u128(0x343).to_string();
+        input.campaign_id = Uuid::from_u128(0x343).to_string();
         assert!(!precondition(&input, &session));
     }
 }

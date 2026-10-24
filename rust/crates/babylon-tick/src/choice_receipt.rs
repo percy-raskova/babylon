@@ -6,9 +6,9 @@
 //! the encounter ordinal and publishes this value only with the rest of a
 //! successful tick.
 
+use babylon_bsl::probability;
 use babylon_bsl::probability::{
-    validate_kernel_realization, KernelInstanceIdentity, KernelRealization, ProbabilityError,
-    RealizedBranch,
+    KernelInstanceIdentity, KernelRealization, ProbabilityError, RealizedBranch,
 };
 use babylon_graph::stable_element::StableElementKey;
 
@@ -50,7 +50,7 @@ impl ChoiceReceipt {
         identity: &KernelInstanceIdentity,
         realization: KernelRealization,
     ) -> Result<Self, ProbabilityError> {
-        validate_kernel_realization(&realization, identity)?;
+        probability::validate_kernel_realization(&realization, identity)?;
         Ok(Self {
             encounter_ordinal,
             realization,
@@ -161,7 +161,8 @@ pub fn validate_choice_receipt_order(receipts: &[ChoiceReceipt]) -> Result<(), u
 #[cfg(test)]
 mod tests {
     use super::*;
-    use babylon_bsl::probability::{realize_kernel, FiniteKernel, KernelBranch, Mass};
+    use babylon_bsl::probability;
+    use babylon_bsl::probability::{FiniteKernel, KernelBranch, Mass};
     use babylon_bsl::reader::{Atom, SExpr};
     use babylon_bsl::types::EnumTypeId;
 
@@ -215,7 +216,7 @@ mod tests {
 
     fn receipt(ordinal: u32) -> ChoiceReceipt {
         let identity = identity();
-        let realization = realize_kernel(
+        let realization = probability::realize_kernel(
             &identity,
             &kernel(),
             &[Mass::from_nanounits(1), Mass::from_nanounits(1)],
@@ -244,7 +245,7 @@ mod tests {
     #[test]
     fn receipt_refuses_a_mutated_realization_digest() {
         let identity = identity();
-        let mut realization = realize_kernel(
+        let mut realization = probability::realize_kernel(
             &identity,
             &kernel(),
             &[Mass::from_nanounits(1), Mass::from_nanounits(1)],

@@ -2,7 +2,7 @@
 
 use babylon_kernel::currency::Currency;
 
-use super::{append_bounded_rows, append_rows, decode_bounded_rows, decode_rows, Cursor};
+use super::Cursor;
 use crate::{
     AccountId, CashAccount, CircuitAccounting, EmploymentTerms, FinalDemandPrincipalId,
     FundedShift, LaborCompensation, MaterialCircuitError, MemberLaborCapacityRow, MonetaryBook,
@@ -79,7 +79,7 @@ pub(super) fn append(
     };
     output.push(1);
     let snapshot = economy.book.snapshot();
-    append_bounded_rows(
+    super::append_bounded_rows(
         output,
         &snapshot.accounts,
         crate::MAX_MONETARY_ACCOUNTS,
@@ -88,7 +88,7 @@ pub(super) fn append(
             bytes.extend_from_slice(&row.cash.micro_units().to_be_bytes());
         },
     )?;
-    append_bounded_rows(
+    super::append_bounded_rows(
         output,
         &snapshot.purchases,
         crate::MAX_MATERIAL_ORDER_PRINCIPALS,
@@ -102,7 +102,7 @@ pub(super) fn append(
             bytes.extend_from_slice(&row.refunded.to_be_bytes());
         },
     )?;
-    append_rows(output, &snapshot.shifts, |bytes, row| {
+    super::append_rows(output, &snapshot.shifts, |bytes, row| {
         bytes.extend_from_slice(&row.id.as_bytes());
         append_account(bytes, row.employer);
         append_account(bytes, row.payee);
@@ -157,24 +157,25 @@ pub(super) fn decode(cursor: &mut Cursor<'_>) -> Result<CircuitAccounting, Mater
         1 => {}
         _ => return Err(MaterialCircuitError::WireEnum),
     }
-    let accounts = decode_bounded_rows(cursor, crate::MAX_MONETARY_ACCOUNTS, |bytes| {
+    let accounts = super::decode_bounded_rows(cursor, crate::MAX_MONETARY_ACCOUNTS, |bytes| {
         Ok(CashAccount {
             id: decode_account(bytes)?,
             cash: decode_currency(bytes)?,
         })
     })?;
-    let purchases = decode_bounded_rows(cursor, crate::MAX_MATERIAL_ORDER_PRINCIPALS, |bytes| {
-        Ok(PurchaseEscrow {
-            order: decode_order(bytes)?,
-            buyer: decode_account(bytes)?,
-            seller: decode_account(bytes)?,
-            quantity: bytes.u64()?,
-            unit_price: decode_currency(bytes)?,
-            delivered: bytes.u64()?,
-            refunded: bytes.u64()?,
-        })
-    })?;
-    let shifts = decode_rows(cursor, |bytes| {
+    let purchases =
+        super::decode_bounded_rows(cursor, crate::MAX_MATERIAL_ORDER_PRINCIPALS, |bytes| {
+            Ok(PurchaseEscrow {
+                order: decode_order(bytes)?,
+                buyer: decode_account(bytes)?,
+                seller: decode_account(bytes)?,
+                quantity: bytes.u64()?,
+                unit_price: decode_currency(bytes)?,
+                delivered: bytes.u64()?,
+                refunded: bytes.u64()?,
+            })
+        })?;
+    let shifts = super::decode_rows(cursor, |bytes| {
         Ok(FundedShift {
             id: ShiftId::from_bytes(bytes.array()?),
             employer: decode_account(bytes)?,

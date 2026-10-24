@@ -2,14 +2,12 @@
 
 use std::collections::TryReserveError;
 
-use babylon_bsl::identity_codec::{project_stable_value, IdentityCodecError, StableBslValue};
+use babylon_bsl::identity_codec::{IdentityCodecError, StableBslValue};
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::allocator_state::AllocatorState;
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_graph::stable_element::{StableElementResolver, StableIdentityError};
-use babylon_graph::stable_state::{
-    encode_stable_graph_state, StableGraphState, StableGraphStateHash,
-};
+use babylon_graph::stable_state::{StableGraphState, StableGraphStateHash};
 use babylon_graph::state_hash::CanonicalState;
 use babylon_graph::substrate::GraphSubstrate;
 use babylon_graph::working_copy::DetachedCopy;
@@ -25,16 +23,25 @@ use babylon_practice_contract::{
 
 use crate::choice_receipt::ChoiceReceiptRef;
 use crate::committed_event::CommittedEvent;
+use crate::material_replay::MaterialBaseInputs;
 use crate::material_state::{
     MaterialAllocationGate, MaterialProjectionContext, MaterialState, MaterialStateError,
     MaterialStateRows, ProductionMaterialAllocationGate,
 };
+use crate::material_world::PreparedMaterialWorld;
+use crate::replay_identity;
 use crate::replay_identity::{
-    encode_prepared_environment, encode_stable_world, encode_tick_payload_for_prepared,
-    encode_world_register_set, world_register_manifest, PreparedEnvironment,
-    ReplayTickIdentityError, StableWorld, TickPayload, WorldRegisterManifest, WorldRegisterSet,
+    PreparedEnvironment, ReplayTickIdentityError, StableWorld, TickPayload, WorldRegisterManifest,
+    WorldRegisterSet,
 };
-use crate::{prepare_rules, EventRecord, PreparedRules, TickReport};
+use crate::{EventRecord, PreparedRules, TickReport};
+use babylon_bsl::causal_contract;
+use babylon_bsl::evaluator::Value;
+use babylon_bsl::identity_codec;
+use babylon_graph::stable_state;
+use babylon_practice_contract::OrganizerReceipt;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 
 /// A checked replay-session construction or tick refusal.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -153,7 +160,7 @@ impl From<TickContentHashError> for ReplayTickError {
 }
 
 impl std::fmt::Display for ReplayTickError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> FmtResult {
         match self {
             Self::Preparation { message } => {
                 write!(formatter, "replay preparation failed: {message}")
@@ -329,7 +336,7 @@ trait SuccessfulEventRetention {
 
     fn project_value(
         &self,
-        value: &babylon_bsl::evaluator::Value,
+        value: &Value,
         resolver: &StableElementResolver,
     ) -> Result<StableBslValue, ReplayTickError>;
 }
@@ -351,10 +358,10 @@ impl SuccessfulEventRetention for ProductionSuccessfulEventRetention {
 
     fn project_value(
         &self,
-        value: &babylon_bsl::evaluator::Value,
+        value: &Value,
         resolver: &StableElementResolver,
     ) -> Result<StableBslValue, ReplayTickError> {
-        Ok(project_stable_value(value, resolver)?)
+        Ok(identity_codec::project_stable_value(value, resolver)?)
     }
 }
 
@@ -777,7 +784,7 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> ReplayT
                 &mut graph,
                 instances,
             ),
-            None => prepare_rules(scenario_src, prelude_src, rule_src, &mut graph),
+            None => crate::prepare_rules(scenario_src, prelude_src, rule_src, &mut graph),
         }
         .map_err(|error| ReplayTickError::Preparation {
             message: error.to_string(),
@@ -788,9 +795,13 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> ReplayT
             &prepared.node_content_ids,
             &prepared.hyperedge_content_ids,
         )?;
-        let register_manifest = world_register_manifest()?;
-        let prepared_environment =
-            encode_prepared_environment(&content, &prepared, &resolver, &register_manifest)?;
+        let register_manifest = replay_identity::world_register_manifest()?;
+        let prepared_environment = replay_identity::encode_prepared_environment(
+            &content,
+            &prepared,
+            &resolver,
+            &register_manifest,
+        )?;
         Ok(Self {
             graph,
             prepared,
@@ -853,10 +864,10 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> ReplayT
     pub(crate) fn validate_staffing_ownership(&self) -> Result<(), ReplayTickError> {
         use crate::material_replay::MaterialBaseError;
         use crate::material_staffing::STAFFING_FIELDS;
-        use babylon_bsl::causal_contract::{effect_footprint, EffectSignature};
+        use babylon_bsl::causal_contract::EffectSignature;
 
         for (rule_id, loaded) in &self.prepared.rules {
-            let effects = effect_footprint(&loaded.rule).map_err(|error| {
+            let effects = causal_contract::effect_footprint(&loaded.rule).map_err(|error| {
                 ReplayTickError::MaterialBase(MaterialBaseError::StaffingEffectAnalysis {
                     rule_id: rule_id.clone(),
                     error,
@@ -913,14 +924,8 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> ReplayT
     pub(crate) fn prepare_material_advance(
         &self,
         actions: &OrderedPracticeActionBatch,
-        material: crate::material_replay::MaterialBaseInputs<'_>,
-    ) -> Result<
-        (
-            PreparedReplayTick<G>,
-            crate::material_world::PreparedMaterialWorld,
-        ),
-        ReplayTickError,
-    > {
+        material: MaterialBaseInputs<'_>,
+    ) -> Result<(PreparedReplayTick<G>, PreparedMaterialWorld), ReplayTickError> {
         let (graph, material) = self.prepare_with_material(actions, Some(material))?;
         let material = material.ok_or(ReplayTickError::MaterialBase(
             crate::material_replay::MaterialBaseError::MissingCandidate,
@@ -931,14 +936,8 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> ReplayT
     fn prepare_with_material(
         &self,
         actions: &OrderedPracticeActionBatch,
-        material: Option<crate::material_replay::MaterialBaseInputs<'_>>,
-    ) -> Result<
-        (
-            PreparedReplayTick<G>,
-            Option<crate::material_world::PreparedMaterialWorld>,
-        ),
-        ReplayTickError,
-    > {
+        material: Option<MaterialBaseInputs<'_>>,
+    ) -> Result<(PreparedReplayTick<G>, Option<PreparedMaterialWorld>), ReplayTickError> {
         let next_tick = self
             .completed_tick
             .checked_add(1)
@@ -1196,7 +1195,7 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> ReplayT
     /// Returns the first stable identity, topology, bound, or allocation
     /// refusal without mutating the replay session.
     pub fn stable_graph_state(&self) -> Result<StableGraphState, ReplayTickError> {
-        encode_stable_graph_state(&self.graph, &self.resolver).map_err(Into::into)
+        stable_state::encode_stable_graph_state(&self.graph, &self.resolver).map_err(Into::into)
     }
 
     /// Project the current typed material rows through the captured graph and scope.
@@ -1228,7 +1227,8 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> ReplayT
     /// Returns the first completed-tick, bound, or allocation refusal without
     /// mutating the replay session.
     pub fn world_registers(&self) -> Result<WorldRegisterSet, ReplayTickError> {
-        encode_world_register_set(&self.register_manifest, self.completed_tick).map_err(Into::into)
+        replay_identity::encode_world_register_set(&self.register_manifest, self.completed_tick)
+            .map_err(Into::into)
     }
 
     /// Borrow the exact replay-session namespace.
@@ -1297,13 +1297,14 @@ impl ReplayTickSession<HypergraphStore> {
         }
         let mut graph = self.graph.detached_copy();
         graph.restore_stable_state(&self.resolver, graph_state)?;
-        let restored_graph = encode_stable_graph_state(&graph, &self.resolver)?;
+        let restored_graph = stable_state::encode_stable_graph_state(&graph, &self.resolver)?;
         if restored_graph.canonical_bytes() != graph_state.canonical_bytes() {
             return Err(ReplayTickError::CheckpointMismatch {
                 section: "stable graph",
             });
         }
-        let registers = encode_world_register_set(&self.register_manifest, completed_tick)?;
+        let registers =
+            replay_identity::encode_world_register_set(&self.register_manifest, completed_tick)?;
         if registers.canonical_bytes() != expected_world_registers {
             return Err(ReplayTickError::CheckpointMismatch {
                 section: "world registers",
@@ -1366,7 +1367,7 @@ pub(crate) struct ReplayIdentityInputs<'a, G, C> {
     pub(crate) result_graph: &'a G,
     pub(crate) report: &'a TickReport,
     pub(crate) events: &'a [EventRecord],
-    pub(crate) action_outcomes: &'a [babylon_practice_contract::OrganizerReceipt],
+    pub(crate) action_outcomes: &'a [OrganizerReceipt],
     pub(crate) resolve_tick: i64,
 }
 
@@ -1458,10 +1459,11 @@ pub(crate) fn compose_replay_prior<G: CanonicalState, C>(
     execution: &ReplayExecutionInputs<'_, C>,
     completed_tick: i64,
 ) -> Result<ReplayPriorIdentity, ReplayTickError> {
-    let stable_graph = encode_stable_graph_state(graph, execution.resolver)?;
+    let stable_graph = stable_state::encode_stable_graph_state(graph, execution.resolver)?;
     let stable_graph_digest = stable_graph.digest();
-    let registers = encode_world_register_set(execution.register_manifest, completed_tick)?;
-    let world = encode_stable_world(&stable_graph, &registers)?;
+    let registers =
+        replay_identity::encode_world_register_set(execution.register_manifest, completed_tick)?;
+    let world = replay_identity::encode_stable_world(&stable_graph, &registers)?;
     drop(stable_graph);
     Ok(ReplayPriorIdentity {
         registers,
@@ -1474,13 +1476,16 @@ fn compose_replay_identity_with_retention<G: CanonicalState, C, R: SuccessfulEve
     inputs: ReplayIdentityInputs<'_, G, C>,
     retention: &R,
 ) -> Result<ReplayIdentityArtifacts, ReplayTickError> {
-    let result_graph = encode_stable_graph_state(inputs.result_graph, inputs.execution.resolver)?;
+    let result_graph =
+        stable_state::encode_stable_graph_state(inputs.result_graph, inputs.execution.resolver)?;
     let result_stable_graph_digest = result_graph.digest();
-    let result_registers =
-        encode_world_register_set(inputs.execution.register_manifest, inputs.resolve_tick)?;
-    let result_world = encode_stable_world(&result_graph, &result_registers)?;
+    let result_registers = replay_identity::encode_world_register_set(
+        inputs.execution.register_manifest,
+        inputs.resolve_tick,
+    )?;
+    let result_world = replay_identity::encode_stable_world(&result_graph, &result_registers)?;
     validate_committed_event_sink(inputs.report, inputs.events)?;
-    let payload = encode_tick_payload_for_prepared(
+    let payload = replay_identity::encode_tick_payload_for_prepared(
         inputs.prepared,
         inputs.report,
         inputs.action_outcomes,
@@ -1557,8 +1562,8 @@ fn validate_committed_event_sink(
         }
         .into());
     }
-    for (ordinal, (committed, sink)) in report.committed_events.iter().zip(sink_events).enumerate()
-    {
+    let committed_with_sink = report.committed_events.iter().zip(sink_events).enumerate();
+    for (ordinal, (committed, sink)) in committed_with_sink {
         if committed.event_type() != sink.0 || committed.payload() != sink.1 {
             return Err(ReplayTickIdentityError::CommittedEventSinkMismatch { ordinal }.into());
         }
@@ -1656,22 +1661,21 @@ fn replay_material_error(error: MaterialStateError) -> ReplayTickError {
 mod tests {
     use std::cell::Cell;
 
-    use babylon_bsl::canonical_ast::rules_hash_of;
-    use babylon_bsl::rule_pipeline::split_content;
     use babylon_graph::allocator_state::AllocatorState;
     use babylon_graph::memory::MemoryGraph;
     use babylon_graph::state_hash::CanonicalState;
     use babylon_graph::substrate::GraphSubstrate;
+    use babylon_kernel::content_digest::ContentDigest;
     use babylon_kernel::replay::{ReplaySeed, ReplaySessionId};
     use babylon_kernel::tick_content_hash::RefDigest;
-    use babylon_kernel::{content_digest::ContentDigest, H3CellId};
+    use babylon_kernel::H3CellId;
+
     use babylon_practice_contract::ActorOrganizationId;
     use babylon_practice_contract::OrderedPracticeActionBatch;
     use babylon_practice_contract::{
-        input_authority_ledger_digest, CampaignId, InputAuthorityId, PracticeAuthorityKind,
-        PracticeId, PracticeInputAuthority, PracticeInputAuthorityLedger, PracticeIntent,
-        PracticeTargetIdentity, PracticeTargetTag, ProposalNonce, ResolvedPracticeBatch,
-        ResolvedPracticeBatchItem, TaggedPracticeTarget,
+        CampaignId, InputAuthorityId, PracticeAuthorityKind, PracticeId, PracticeInputAuthority,
+        PracticeInputAuthorityLedger, PracticeIntent, PracticeTargetIdentity, PracticeTargetTag,
+        ProposalNonce, ResolvedPracticeBatch, ResolvedPracticeBatchItem, TaggedPracticeTarget,
     };
 
     use super::{
@@ -1686,7 +1690,12 @@ mod tests {
     use crate::material_state::{
         MaterialAllocationGate, MaterialState, MaterialStateError, ProductionMaterialAllocationGate,
     };
+    use crate::ExecutionIdentity;
     use crate::{EventRecord, PreparedEventBatchSink};
+    use babylon_bsl::canonical_ast;
+    use babylon_bsl::evaluator::Value;
+    use babylon_bsl::rule_pipeline;
+    use babylon_practice_contract;
 
     const SCENARIO: &str = include_str!("../content/scenarios/two-classes.bscn");
     const RULE: &str = include_str!("../content/rules/fundamental-theorem.bsl");
@@ -1725,8 +1734,10 @@ mod tests {
     }
 
     fn session_for_rule(rule: &str) -> ReplayTickSession<MemoryGraph> {
-        let replay = ReplaySessionId::try_from("per60/atomic").unwrap();
-        let (_, rules) = split_content(rule).unwrap();
+        let replay = ReplaySessionId::try_from("per60/atomic")
+            .expect("the fixture value fits the target range");
+        let (_, rules) = rule_pipeline::split_content(rule)
+            .expect("the authored content splits into its sections");
         let forms = rules.into_iter().map(|rule| rule.form).collect::<Vec<_>>();
         ReplayTickSession::new(
             SCENARIO,
@@ -1737,12 +1748,13 @@ mod tests {
             ReplaySeed::new(17),
             ContentDigest {
                 defines_hash: [0x31; 32],
-                rules_hash: rules_hash_of(&forms).unwrap(),
+                rules_hash: canonical_ast::rules_hash_of(&forms)
+                    .expect("the rule set has a canonical hash"),
             },
             RefDigest::from_bytes(MICHIGAN_DYNAMIC_HEX_REFERENCE_BUNDLE_DIGEST),
             dynamic_fixture_material_state(),
         )
-        .unwrap()
+        .expect("the constructor accepts the authored fixture arguments")
     }
 
     #[test]
@@ -1759,17 +1771,19 @@ mod tests {
             vec![],
             vec![],
         )
-        .unwrap();
+        .expect("the authored fixture satisfies the constructor invariants");
         let replay = ReplayTickSession::new_with_graph_seed(
             "(scenario capture/aggregate-count (defvocabulary NodeType (BUSINESS)))",
             None,
             "",
             MemoryGraph::new(),
-            ReplaySessionId::try_from("capture/aggregate-count").unwrap(),
+            ReplaySessionId::try_from("capture/aggregate-count")
+                .expect("the fixture value fits the target range"),
             ReplaySeed::new(17),
             ContentDigest {
                 defines_hash: [0x73; 32],
-                rules_hash: rules_hash_of(&[]).unwrap(),
+                rules_hash: canonical_ast::rules_hash_of(&[])
+                    .expect("the rule set has a canonical hash"),
             },
             RefDigest::from_bytes(MICHIGAN_DYNAMIC_HEX_REFERENCE_BUNDLE_DIGEST),
             dynamic_fixture_material_state(),
@@ -1778,9 +1792,9 @@ mod tests {
         assert!(replay.is_ok(), "{:?}", replay.as_ref().err());
         assert_eq!(
             replay
-                .unwrap()
+                .expect("the fixture value `replay` is present before this read")
                 .stable_graph_state()
-                .unwrap()
+                .expect("the fixture graph has a stable state")
                 .rows()
                 .nodes()
                 .len(),
@@ -1810,16 +1824,22 @@ mod tests {
             vec![],
             vec![],
         )
-        .unwrap();
-        let authored = declarations.strip_suffix(')').unwrap().to_owned()
+        .expect("the authored fixture satisfies the constructor invariants");
+        let authored = declarations
+            .strip_suffix(')')
+            .expect("the fixture call `strip_suffix` succeeds for the authored inputs")
+            .to_owned()
             + "(node workers-a NodeType/SOCIAL_CLASS (social-class/wages 10))
                (node workers-b NodeType/SOCIAL_CLASS (social-class/wages 10)))";
-        let identity = ReplaySessionId::try_from("capture/native-replay").unwrap();
-        let (_, rules) = split_content(EVENT_RULE).unwrap();
+        let identity = ReplaySessionId::try_from("capture/native-replay")
+            .expect("the fixture value fits the target range");
+        let (_, rules) = rule_pipeline::split_content(EVENT_RULE)
+            .expect("the authored content splits into its sections");
         let forms = rules.into_iter().map(|rule| rule.form).collect::<Vec<_>>();
         let content = ContentDigest {
             defines_hash: [0x73; 32],
-            rules_hash: rules_hash_of(&forms).unwrap(),
+            rules_hash: canonical_ast::rules_hash_of(&forms)
+                .expect("the rule set has a canonical hash"),
         };
         let reference = RefDigest::from_bytes(MICHIGAN_DYNAMIC_HEX_REFERENCE_BUNDLE_DIGEST);
         let mut native = ReplayTickSession::new_with_graph_seed(
@@ -1834,7 +1854,7 @@ mod tests {
             dynamic_fixture_material_state(),
             &instances,
         )
-        .unwrap();
+        .expect("the fixture call `new_with_graph_seed` succeeds for the authored inputs");
         let mut text = ReplayTickSession::new(
             &authored,
             None,
@@ -1846,17 +1866,25 @@ mod tests {
             reference,
             dynamic_fixture_material_state(),
         )
-        .unwrap();
+        .expect("the constructor accepts the authored fixture arguments");
         assert_eq!(
-            native.stable_graph_state().unwrap(),
-            text.stable_graph_state().unwrap()
+            native
+                .stable_graph_state()
+                .expect("the fixture graph has a stable state"),
+            text.stable_graph_state()
+                .expect("the fixture graph has a stable state")
         );
         for period in 1..=3 {
-            let actions = OrderedPracticeActionBatch::empty(identity.clone(), period).unwrap();
+            let actions = OrderedPracticeActionBatch::empty(identity.clone(), period)
+                .expect("the empty authored batch constructs");
             let mut native_sink = babylon_bsl::structural_verbs::CollectingSink::default();
             let mut text_sink = babylon_bsl::structural_verbs::CollectingSink::default();
-            let native_report = native.advance(&mut native_sink, &actions).unwrap();
-            let text_report = text.advance(&mut text_sink, &actions).unwrap();
+            let native_report = native
+                .advance(&mut native_sink, &actions)
+                .expect("the fixture advances the authored period");
+            let text_report = text
+                .advance(&mut text_sink, &actions)
+                .expect("the fixture advances the authored period");
             assert_eq!(
                 native_report.tick_content_hash(),
                 text_report.tick_content_hash()
@@ -1879,7 +1907,8 @@ mod tests {
 
     fn dynamic_allocation_material_state() -> MaterialState {
         MaterialState::try_dynamic_runtime_fixture_for_test(vec![(
-            H3CellId::try_from(0x0872_6648_00ff_ffff_u64).unwrap(),
+            H3CellId::try_from(0x0872_6648_00ff_ffff_u64)
+                .expect("the fixture value fits the target range"),
             MichiganDynamicHexValueBits {
                 c: 1.0_f64.to_bits(),
                 v: 2.0_f64.to_bits(),
@@ -1892,12 +1921,14 @@ mod tests {
                 surveillance_coupling: 0.25_f64.to_bits(),
             },
         )])
-        .unwrap()
+        .expect("the fixture input satisfies the fallible conversion")
     }
 
     fn dynamic_allocation_session() -> ReplayTickSession<MemoryGraph> {
-        let replay = ReplaySessionId::try_from("per281/dynamic-allocation").unwrap();
-        let (_, rules) = split_content(EVENT_RULE).unwrap();
+        let replay = ReplaySessionId::try_from("per281/dynamic-allocation")
+            .expect("the fixture value fits the target range");
+        let (_, rules) = rule_pipeline::split_content(EVENT_RULE)
+            .expect("the authored content splits into its sections");
         let forms = rules.into_iter().map(|rule| rule.form).collect::<Vec<_>>();
         ReplayTickSession::new(
             MATERIAL_ATOMIC_SCENARIO,
@@ -1908,12 +1939,13 @@ mod tests {
             ReplaySeed::new(19),
             ContentDigest {
                 defines_hash: [0x51; 32],
-                rules_hash: rules_hash_of(&forms).unwrap(),
+                rules_hash: canonical_ast::rules_hash_of(&forms)
+                    .expect("the rule set has a canonical hash"),
             },
             RefDigest::from_bytes(MICHIGAN_DYNAMIC_HEX_REFERENCE_BUNDLE_DIGEST),
             dynamic_allocation_material_state(),
         )
-        .unwrap()
+        .expect("the constructor accepts the authored fixture arguments")
     }
 
     fn material_session() -> ReplayTickSession<MemoryGraph> {
@@ -1921,8 +1953,10 @@ mod tests {
     }
 
     fn material_session_for_scenario(scenario: &str) -> ReplayTickSession<MemoryGraph> {
-        let replay = ReplaySessionId::try_from("per281/material-allocation").unwrap();
-        let (_, rules) = split_content(EVENT_RULE).unwrap();
+        let replay = ReplaySessionId::try_from("per281/material-allocation")
+            .expect("the fixture value fits the target range");
+        let (_, rules) = rule_pipeline::split_content(EVENT_RULE)
+            .expect("the authored content splits into its sections");
         let forms = rules.into_iter().map(|rule| rule.form).collect::<Vec<_>>();
         ReplayTickSession::new(
             scenario,
@@ -1933,12 +1967,13 @@ mod tests {
             ReplaySeed::new(19),
             ContentDigest {
                 defines_hash: [0x51; 32],
-                rules_hash: rules_hash_of(&forms).unwrap(),
+                rules_hash: canonical_ast::rules_hash_of(&forms)
+                    .expect("the rule set has a canonical hash"),
             },
             RefDigest::from_bytes(MICHIGAN_DYNAMIC_HEX_REFERENCE_BUNDLE_DIGEST),
             material_state(),
         )
-        .unwrap()
+        .expect("the constructor accepts the authored fixture arguments")
     }
 
     struct RefusingComposer;
@@ -1982,10 +2017,10 @@ mod tests {
 
         fn project_value(
             &self,
-            value: &babylon_bsl::evaluator::Value,
+            value: &Value,
             resolver: &babylon_graph::stable_element::StableElementResolver,
         ) -> Result<babylon_bsl::identity_codec::StableBslValue, ReplayTickError> {
-            if matches!(value, babylon_bsl::evaluator::Value::NodeRef(_)) {
+            if matches!(value, Value::NodeRef(_)) {
                 return Err(ReplayTickError::Allocation {
                     field: "injected stable event value retention",
                     requested: 1,
@@ -2076,12 +2111,18 @@ mod tests {
             schema_version: 2,
             campaign_id: CampaignId::from_bytes([0x10; 16]),
             resolve_tick: 11,
-            authority_ledger_digest: input_authority_ledger_digest(&ledger).unwrap(),
+            authority_ledger_digest: babylon_practice_contract::input_authority_ledger_digest(
+                &ledger,
+            )
+            .expect(
+                "the fixture call `input_authority_ledger_digest` succeeds for the authored inputs",
+            ),
             resource_allocation_contract_digest: [0x40; 32],
             content_digest: [0x30; 32],
             items: vec![ResolvedPracticeBatchItem { authority, intent }],
         };
-        OrderedPracticeActionBatch::project(session, &source, &ledger).unwrap()
+        OrderedPracticeActionBatch::project(session, &source, &ledger)
+            .expect("the fixture projection accepts the authored state")
     }
 
     #[derive(Default)]
@@ -2104,9 +2145,18 @@ mod tests {
     #[test]
     fn topology_change_refuses_without_advancing_or_reverting_the_external_change() {
         let mut session = session();
-        session.graph.add_node("DYNAMIC").unwrap();
-        let before = session.graph.encode_state().unwrap().as_bytes().to_vec();
-        let actions = OrderedPracticeActionBatch::empty(session.session.clone(), 1).unwrap();
+        session
+            .graph
+            .add_node("DYNAMIC")
+            .expect("the fixture adds a node with a registered kind");
+        let before = session
+            .graph
+            .encode_state()
+            .expect("the graph encodes its canonical state")
+            .as_bytes()
+            .to_vec();
+        let actions = OrderedPracticeActionBatch::empty(session.session.clone(), 1)
+            .expect("the empty authored batch constructs");
         let mut sink = babylon_bsl::structural_verbs::CollectingSink::default();
 
         assert!(matches!(
@@ -2115,14 +2165,27 @@ mod tests {
         ));
         assert_eq!(session.completed_tick, 0);
         assert!(sink.events.is_empty());
-        assert_eq!(session.graph.encode_state().unwrap().as_bytes(), before);
+        assert_eq!(
+            session
+                .graph
+                .encode_state()
+                .expect("the graph encodes its canonical state")
+                .as_bytes(),
+            before
+        );
     }
 
     #[test]
     fn composer_refusal_leaves_graph_events_and_counter_unpublished() {
         let mut session = session();
-        let before = session.graph.encode_state().unwrap().as_bytes().to_vec();
-        let actions = OrderedPracticeActionBatch::empty(session.session.clone(), 1).unwrap();
+        let before = session
+            .graph
+            .encode_state()
+            .expect("the graph encodes its canonical state")
+            .as_bytes()
+            .to_vec();
+        let actions = OrderedPracticeActionBatch::empty(session.session.clone(), 1)
+            .expect("the empty authored batch constructs");
         let mut sink = babylon_bsl::structural_verbs::CollectingSink::default();
         let execution = ReplayExecutionInputs {
             session: &session.session,
@@ -2147,20 +2210,33 @@ mod tests {
             execution,
             None,
         )
-        .unwrap_err();
+        .expect_err("the fixture run completes");
         assert!(matches!(error, ReplayTickError::Composer { .. }));
         assert_eq!(session.completed_tick, 0);
         assert!(sink.events.is_empty());
-        assert_eq!(session.graph.encode_state().unwrap().as_bytes(), before);
+        assert_eq!(
+            session
+                .graph
+                .encode_state()
+                .expect("the graph encodes its canonical state")
+                .as_bytes(),
+            before
+        );
     }
 
     #[test]
     fn retention_allocation_refusal_leaves_graph_events_and_counter_unpublished() {
         let mut session = session_for_rule(EVENT_RULE);
-        let before = session.graph.encode_state().unwrap().as_bytes().to_vec();
+        let before = session
+            .graph
+            .encode_state()
+            .expect("the graph encodes its canonical state")
+            .as_bytes()
+            .to_vec();
         let before_cursors = session.graph.allocator_cursors();
         let before_completed_tick = session.completed_tick();
-        let actions = OrderedPracticeActionBatch::empty(session.session.clone(), 1).unwrap();
+        let actions = OrderedPracticeActionBatch::empty(session.session.clone(), 1)
+            .expect("the empty authored batch constructs");
         let mut sink = babylon_bsl::structural_verbs::CollectingSink {
             events: vec![("EventType/PRIOR".to_owned(), Vec::new())],
         };
@@ -2168,7 +2244,7 @@ mod tests {
 
         let error = session
             .advance_with_composer(&mut sink, &actions, &RetentionRefusingComposer)
-            .unwrap_err();
+            .expect_err("the fixture call `advance_with_composer` fails for the authored inputs");
         assert!(matches!(
             error,
             ReplayTickError::Allocation {
@@ -2178,17 +2254,32 @@ mod tests {
         ));
         assert_eq!(session.completed_tick(), before_completed_tick);
         assert_eq!(sink.events, before_events);
-        assert_eq!(session.graph.encode_state().unwrap().as_bytes(), before);
+        assert_eq!(
+            session
+                .graph
+                .encode_state()
+                .expect("the graph encodes its canonical state")
+                .as_bytes(),
+            before
+        );
         assert_eq!(session.graph.allocator_cursors(), before_cursors);
     }
 
     #[test]
     fn durable_commit_never_runs_when_publication_allocation_preflight_refuses() {
         let mut session = dynamic_allocation_session();
-        let actions = OrderedPracticeActionBatch::empty(session.session.clone(), 1).unwrap();
-        let prepared = session.prepare_advance(&actions).unwrap();
+        let actions = OrderedPracticeActionBatch::empty(session.session.clone(), 1)
+            .expect("the empty authored batch constructs");
+        let prepared = session
+            .prepare_advance(&actions)
+            .expect("the session prepares the authored advance");
         assert!(!prepared.events.is_empty());
-        let before_graph = session.graph.encode_state().unwrap().as_bytes().to_vec();
+        let before_graph = session
+            .graph
+            .encode_state()
+            .expect("the graph encodes its canonical state")
+            .as_bytes()
+            .to_vec();
         let before_material = dynamic_allocation_material_state();
         let mut sink = babylon_bsl::structural_verbs::CollectingSink {
             events: vec![("EventType/PRIOR".to_owned(), Vec::new())],
@@ -2206,7 +2297,7 @@ mod tests {
                 },
                 &RefusingPublicationAllocation,
             )
-            .unwrap_err();
+            .expect_err("the fixture call `commit_prepared_and_publish_with_allocation` fails for the authored inputs");
 
         assert_eq!(
             error,
@@ -2218,7 +2309,11 @@ mod tests {
         assert!(!commit_called.get());
         assert_eq!(session.completed_tick, 0);
         assert_eq!(
-            session.graph.encode_state().unwrap().as_bytes(),
+            session
+                .graph
+                .encode_state()
+                .expect("the graph encodes its canonical state")
+                .as_bytes(),
             before_graph
         );
         assert_eq!(session.material_state, before_material);
@@ -2226,28 +2321,35 @@ mod tests {
     }
 
     #[test]
+    #[allow(
+        clippy::too_many_lines,
+        reason = "one scenario asserts every owner stays unpublished across each refusal stage"
+    )]
     fn material_detachment_allocation_refusals_leave_every_session_owner_unpublished() {
         for (actions, expected) in [
             (
                 nonempty_action_batch(
-                    ReplaySessionId::try_from("per281/material-allocation").unwrap(),
+                    ReplaySessionId::try_from("per281/material-allocation")
+                        .expect("the fixture value fits the target range"),
                 ),
                 ReplayTickError::NonEmptyActionBatch { count: 1 },
             ),
             (
                 OrderedPracticeActionBatch::empty(
-                    ReplaySessionId::try_from("per281/material-allocation-other").unwrap(),
+                    ReplaySessionId::try_from("per281/material-allocation-other")
+                        .expect("the fixture value fits the target range"),
                     1,
                 )
-                .unwrap(),
+                .expect("the empty authored batch constructs"),
                 ReplayTickError::ActionSessionMismatch,
             ),
             (
                 OrderedPracticeActionBatch::empty(
-                    ReplaySessionId::try_from("per281/material-allocation").unwrap(),
+                    ReplaySessionId::try_from("per281/material-allocation")
+                        .expect("the fixture value fits the target range"),
                     2,
                 )
-                .unwrap(),
+                .expect("the empty authored batch constructs"),
                 ReplayTickError::ActionTickMismatch {
                     expected: 1,
                     actual: 2,
@@ -2255,7 +2357,12 @@ mod tests {
             ),
         ] {
             let mut session = material_session();
-            let before_graph = session.graph.encode_state().unwrap().as_bytes().to_vec();
+            let before_graph = session
+                .graph
+                .encode_state()
+                .expect("the graph encodes its canonical state")
+                .as_bytes()
+                .to_vec();
             let before_cursors = session.graph.allocator_cursors();
             let before_material = material_state();
             let before_tick = session.completed_tick();
@@ -2268,12 +2375,16 @@ mod tests {
             assert_eq!(
                 session
                     .advance_with_material_allocation(&mut sink, &actions, &gate)
-                    .unwrap_err(),
+                    .expect_err("the fixture call `advance_with_material_allocation` fails for the authored inputs"),
                 expected
             );
             assert_eq!(gate.observed.get(), 0);
             assert_eq!(
-                session.graph.encode_state().unwrap().as_bytes(),
+                session
+                    .graph
+                    .encode_state()
+                    .expect("the graph encodes its canonical state")
+                    .as_bytes(),
                 before_graph
             );
             assert_eq!(session.graph.allocator_cursors(), before_cursors);
@@ -2284,9 +2395,12 @@ mod tests {
 
         let baseline = {
             let mut session = material_session();
-            let actions = OrderedPracticeActionBatch::empty(session.session.clone(), 1).unwrap();
+            let actions = OrderedPracticeActionBatch::empty(session.session.clone(), 1)
+                .expect("the empty authored batch constructs");
             let mut sink = babylon_bsl::structural_verbs::CollectingSink::default();
-            let report = session.advance(&mut sink, &actions).unwrap();
+            let report = session
+                .advance(&mut sink, &actions)
+                .expect("the fixture advances the authored period");
             (
                 report.result_stable_graph().canonical_bytes().to_vec(),
                 report.result_registers().canonical_bytes().to_vec(),
@@ -2316,11 +2430,17 @@ mod tests {
             ("material organization row", 1),
         ] {
             let mut session = material_session();
-            let before_graph = session.graph.encode_state().unwrap().as_bytes().to_vec();
+            let before_graph = session
+                .graph
+                .encode_state()
+                .expect("the graph encodes its canonical state")
+                .as_bytes()
+                .to_vec();
             let before_cursors = session.graph.allocator_cursors();
             let before_material = material_state();
             let before_tick = session.completed_tick();
-            let actions = OrderedPracticeActionBatch::empty(session.session.clone(), 1).unwrap();
+            let actions = OrderedPracticeActionBatch::empty(session.session.clone(), 1)
+                .expect("the empty authored batch constructs");
             let mut sink = babylon_bsl::structural_verbs::CollectingSink {
                 events: vec![("EventType/PRIOR".to_owned(), Vec::new())],
             };
@@ -2336,7 +2456,11 @@ mod tests {
             ));
             assert_eq!(gate.observed.get(), occurrence);
             assert_eq!(
-                session.graph.encode_state().unwrap().as_bytes(),
+                session
+                    .graph
+                    .encode_state()
+                    .expect("the graph encodes its canonical state")
+                    .as_bytes(),
                 before_graph
             );
             assert_eq!(session.graph.allocator_cursors(), before_cursors);
@@ -2344,7 +2468,9 @@ mod tests {
             assert_eq!(session.completed_tick(), before_tick);
             assert_eq!(sink.events, before_events);
 
-            let recovered = session.advance(&mut sink, &actions).unwrap();
+            let recovered = session
+                .advance(&mut sink, &actions)
+                .expect("the fixture advances the authored period");
             assert_eq!(
                 (
                     recovered.result_stable_graph().canonical_bytes(),
@@ -2370,9 +2496,12 @@ mod tests {
     fn dynamic_runtime_detachment_and_projection_refusals_are_atomic_and_retry_identical() {
         let baseline = {
             let mut session = dynamic_allocation_session();
-            let actions = OrderedPracticeActionBatch::empty(session.session.clone(), 1).unwrap();
+            let actions = OrderedPracticeActionBatch::empty(session.session.clone(), 1)
+                .expect("the empty authored batch constructs");
             let mut sink = babylon_bsl::structural_verbs::CollectingSink::default();
-            let report = session.advance(&mut sink, &actions).unwrap();
+            let report = session
+                .advance(&mut sink, &actions)
+                .expect("the fixture advances the authored period");
             (
                 report
                     .material_state_rows()
@@ -2389,11 +2518,17 @@ mod tests {
             ("material dynamic row", 1),
         ] {
             let mut session = dynamic_allocation_session();
-            let before_graph = session.graph.encode_state().unwrap().as_bytes().to_vec();
+            let before_graph = session
+                .graph
+                .encode_state()
+                .expect("the graph encodes its canonical state")
+                .as_bytes()
+                .to_vec();
             let before_cursors = session.graph.allocator_cursors();
             let before_material = dynamic_allocation_material_state();
             let before_tick = session.completed_tick();
-            let actions = OrderedPracticeActionBatch::empty(session.session.clone(), 1).unwrap();
+            let actions = OrderedPracticeActionBatch::empty(session.session.clone(), 1)
+                .expect("the empty authored batch constructs");
             let mut sink = babylon_bsl::structural_verbs::CollectingSink {
                 events: vec![("EventType/PRIOR".to_owned(), Vec::new())],
             };
@@ -2406,7 +2541,11 @@ mod tests {
             ));
             assert_eq!(gate.observed.get(), occurrence);
             assert_eq!(
-                session.graph.encode_state().unwrap().as_bytes(),
+                session
+                    .graph
+                    .encode_state()
+                    .expect("the graph encodes its canonical state")
+                    .as_bytes(),
                 before_graph
             );
             assert_eq!(session.graph.allocator_cursors(), before_cursors);
@@ -2414,7 +2553,9 @@ mod tests {
             assert_eq!(session.completed_tick(), before_tick);
             assert_eq!(sink.events, before_events);
 
-            let recovered = session.advance(&mut sink, &actions).unwrap();
+            let recovered = session
+                .advance(&mut sink, &actions)
+                .expect("the fixture advances the authored period");
             assert_eq!(
                 recovered
                     .material_state_rows()
@@ -2441,23 +2582,38 @@ mod tests {
         ] {
             let mut session = material_session();
             let territory = session.graph.nodes("TERRITORY")[0];
-            session.graph.update_node(territory, qname, 7.0).unwrap();
-            let before_graph = session.graph.encode_state().unwrap().as_bytes().to_vec();
+            session
+                .graph
+                .update_node(territory, qname, 7.0)
+                .expect("the fixture node carries the authored attribute");
+            let before_graph = session
+                .graph
+                .encode_state()
+                .expect("the graph encodes its canonical state")
+                .as_bytes()
+                .to_vec();
             let before_cursors = session.graph.allocator_cursors();
             let before_material = material_state();
             let before_tick = session.completed_tick();
-            let actions = OrderedPracticeActionBatch::empty(session.session.clone(), 1).unwrap();
+            let actions = OrderedPracticeActionBatch::empty(session.session.clone(), 1)
+                .expect("the empty authored batch constructs");
             let mut sink = babylon_bsl::structural_verbs::CollectingSink {
                 events: vec![("EventType/PRIOR".to_owned(), Vec::new())],
             };
             let before_events = sink.events.clone();
 
             assert_eq!(
-                session.advance(&mut sink, &actions).unwrap_err(),
+                session
+                    .advance(&mut sink, &actions)
+                    .expect_err("the fixture call `advance` fails for the authored inputs"),
                 ReplayTickError::MaterialState(expected)
             );
             assert_eq!(
-                session.graph.encode_state().unwrap().as_bytes(),
+                session
+                    .graph
+                    .encode_state()
+                    .expect("the graph encodes its canonical state")
+                    .as_bytes(),
                 before_graph
             );
             assert_eq!(session.graph.allocator_cursors(), before_cursors);
@@ -2481,7 +2637,10 @@ mod tests {
         ] {
             let mut session = material_session();
             let organization = session.graph.nodes("ORGANIZATION")[0];
-            session.graph.update_node(organization, qname, 7.0).unwrap();
+            session
+                .graph
+                .update_node(organization, qname, 7.0)
+                .expect("the fixture node carries the authored attribute");
             assert_material_refusal_rolls_back(&mut session, expected);
         }
 
@@ -2507,22 +2666,34 @@ mod tests {
         session: &mut ReplayTickSession<MemoryGraph>,
         expected: MaterialStateError,
     ) {
-        let before_graph = session.graph.encode_state().unwrap().as_bytes().to_vec();
+        let before_graph = session
+            .graph
+            .encode_state()
+            .expect("the graph encodes its canonical state")
+            .as_bytes()
+            .to_vec();
         let before_cursors = session.graph.allocator_cursors();
         let before_material = material_state();
         let before_tick = session.completed_tick();
-        let actions = OrderedPracticeActionBatch::empty(session.session.clone(), 1).unwrap();
+        let actions = OrderedPracticeActionBatch::empty(session.session.clone(), 1)
+            .expect("the empty authored batch constructs");
         let mut sink = babylon_bsl::structural_verbs::CollectingSink {
             events: vec![("EventType/PRIOR".to_owned(), Vec::new())],
         };
         let before_events = sink.events.clone();
 
         assert_eq!(
-            session.advance(&mut sink, &actions).unwrap_err(),
+            session
+                .advance(&mut sink, &actions)
+                .expect_err("the fixture call `advance` fails for the authored inputs"),
             ReplayTickError::MaterialState(expected)
         );
         assert_eq!(
-            session.graph.encode_state().unwrap().as_bytes(),
+            session
+                .graph
+                .encode_state()
+                .expect("the graph encodes its canonical state")
+                .as_bytes(),
             before_graph
         );
         assert_eq!(session.graph.allocator_cursors(), before_cursors);
@@ -2534,8 +2705,14 @@ mod tests {
     #[test]
     fn event_reservation_refuses_after_identity_and_before_graph_publication() {
         let mut session = session();
-        let before = session.graph.encode_state().unwrap().as_bytes().to_vec();
-        let actions = OrderedPracticeActionBatch::empty(session.session.clone(), 1).unwrap();
+        let before = session
+            .graph
+            .encode_state()
+            .expect("the graph encodes its canonical state")
+            .as_bytes()
+            .to_vec();
+        let actions = OrderedPracticeActionBatch::empty(session.session.clone(), 1)
+            .expect("the empty authored batch constructs");
         let composer = super::ProductionReplayIdentityComposer;
         let execution = ReplayExecutionInputs {
             session: &session.session,
@@ -2556,7 +2733,7 @@ mod tests {
             &session.prepared,
             &mut session.graph,
             &mut sink,
-            &crate::ExecutionIdentity::Replay(execution),
+            &ExecutionIdentity::Replay(execution),
             1,
             |_boundary, graph: &MemoryGraph| graph.state_hash(),
             None,
@@ -2566,7 +2743,14 @@ mod tests {
         assert_eq!(sink.prepare_attempts, 1);
         assert_eq!(sink.commit_attempts, 0);
         assert_eq!(session.completed_tick, 0);
-        assert_eq!(session.graph.encode_state().unwrap().as_bytes(), before);
+        assert_eq!(
+            session
+                .graph
+                .encode_state()
+                .expect("the graph encodes its canonical state")
+                .as_bytes(),
+            before
+        );
     }
 
     #[test]
@@ -2580,8 +2764,9 @@ mod tests {
                 "social-class/wages",
                 f64::NAN,
             )
-            .unwrap();
-        let actions = OrderedPracticeActionBatch::empty(session.session.clone(), 1).unwrap();
+            .expect("the fixture node carries the authored attribute");
+        let actions = OrderedPracticeActionBatch::empty(session.session.clone(), 1)
+            .expect("the empty authored batch constructs");
         let mut sink = babylon_bsl::structural_verbs::CollectingSink::default();
 
         assert!(matches!(

@@ -2,13 +2,18 @@
 use std::collections::BTreeMap;
 
 use babylon_kernel::geography::{CountyGeoid, CountyJurisdiction};
-use babylon_persistence::{identity::CampaignId, observer_reader::ObserverCountyEconomy};
+use babylon_persistence::identity::CampaignId;
+use babylon_persistence::observer_reader::ObserverCountyEconomy;
+
 use bevy::prelude::*;
 
 use super::{HoveredCounty, SelectedCounty};
 use crate::atlas::CountyAtlas;
 use crate::observer::ObserverSession;
+use crate::observer::SessionPhase;
 use crate::observer_ui::ObserverFrame;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 
 /// Fixed geography remains visible while another period of the same campaign loads.
 #[derive(Resource, Clone, Debug, Default, PartialEq, Eq)]
@@ -28,7 +33,7 @@ pub(crate) enum MapScopeError {
     ChangedGeography,
 }
 impl std::fmt::Display for MapScopeError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> FmtResult {
         write!(formatter, "Campaign map scope refused: {self:?}")
     }
 }
@@ -155,7 +160,7 @@ pub(super) fn sync_county_scope(
     if !session.is_changed() && frame.as_ref().is_none_or(|frame| !frame.is_changed()) {
         return;
     }
-    if session.phase == crate::observer::SessionPhase::Failed
+    if session.phase == SessionPhase::Failed
         && frame.as_ref().is_none_or(|frame| !frame.is_changed())
     {
         return;
@@ -184,7 +189,7 @@ mod tests {
             env!("CARGO_MANIFEST_DIR"),
             "/../../../assets/map/county_atlas.bin"
         )))
-        .unwrap()
+        .expect("the authored literal parses as the declared type")
     }
     fn rows(ids: &[&str]) -> Vec<ObserverCountyEconomy> {
         ids.iter()
@@ -225,7 +230,8 @@ mod tests {
     #[test]
     fn keyboard_selection_wraps_only_within_the_installed_scope() {
         let atlas = atlas();
-        let counties = admit_counties(&atlas, &rows(&["02013", "15005"])).unwrap();
+        let counties = admit_counties(&atlas, &rows(&["02013", "15005"]))
+            .expect("the fixture admits the authored counties");
         let scope = CountyMapScope {
             counties: counties.clone(),
             ..default()
@@ -233,7 +239,11 @@ mod tests {
         assert_eq!(scope.adjacent(None, true), Some(counties[0]));
         assert_eq!(scope.adjacent(Some(counties[0]), false), Some(counties[1]));
         assert_eq!(scope.adjacent(Some(counties[1]), true), Some(counties[0]));
-        assert!(!scope.contains(atlas.index_of_fips("26163").unwrap()));
+        assert!(!scope.contains(
+            atlas
+                .index_of_fips("26163")
+                .expect("the fixture call `index_of_fips` succeeds for the authored inputs")
+        ));
         assert_eq!(CountyMapScope::default().adjacent(None, true), None);
     }
 }

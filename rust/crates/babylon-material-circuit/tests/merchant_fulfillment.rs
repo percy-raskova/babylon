@@ -1,12 +1,15 @@
 use babylon_material_circuit::SupplierTransport;
 use babylon_material_circuit::{
-    advance_material_circuit, BacklogRow, CommodityDefinition, CorridorCapacity, CorridorId,
-    GoodId, InventoryRow, LaborCapacityRow, LogisticsNodeId, MaterialCircuitState,
-    MerchantHandling, MerchantHandlingCoefficient, MerchantRole, OrderAccessMode, OrderId,
-    OrderRow, RouteId, RouteStage, RouteStageCapacity, SiteId, SiteLogisticsNode, SupplierRoute,
-    UnitId,
+    BacklogRow, CommodityDefinition, CorridorCapacity, CorridorId, GoodId, InventoryRow,
+    LaborCapacityRow, LogisticsNodeId, MaterialCircuitState, MerchantHandling,
+    MerchantHandlingCoefficient, MerchantRole, OrderAccessMode, OrderId, OrderRow, RouteId,
+    RouteStage, RouteStageCapacity, SiteId, SiteLogisticsNode, SupplierRoute, UnitId,
 };
 
+#[allow(
+    clippy::too_many_lines,
+    reason = "a conformance scenario builds its whole fixture and asserts the full trajectory in one test"
+)]
 fn merchant() -> MaterialCircuitState {
     let source = SiteId::from_bytes([1; 32]);
     let buyer = SiteId::from_bytes([2; 32]);
@@ -18,10 +21,12 @@ fn merchant() -> MaterialCircuitState {
     let source_node = LogisticsNodeId::from_bytes([1; 32]);
     let buyer_node = LogisticsNodeId::from_bytes([2; 32]);
     MaterialCircuitState {
-        capacity_supply: babylon_material_circuit::CapacitySupply::FiniteSchedule,
+        capacity_supply: CapacitySupply::FiniteSchedule,
         merchants: vec![MerchantHandling {
             site_id: source,
-            location: "county:26163".parse().unwrap(),
+            location: "county:26163"
+                .parse()
+                .expect("the authored literal parses as the declared type"),
             role: MerchantRole::Retail,
             capacity_id: CorridorId::from_bytes([9; 32]),
             labor_unit_id: UnitId::from_bytes([8; 32]),
@@ -34,7 +39,7 @@ fn merchant() -> MaterialCircuitState {
         }],
         final_demand_principals: vec![],
         final_demand_orders: vec![],
-        accounting: babylon_material_circuit::CircuitAccounting::PhysicalControl,
+        accounting: CircuitAccounting::PhysicalControl,
         maintenance_binding: None,
         maintenance_service: None,
         period: 1,
@@ -129,16 +134,17 @@ fn merchant() -> MaterialCircuitState {
 #[test]
 fn outbound_merchant_handling_requires_two_hours_per_native_unit() {
     let opening = merchant();
-    let result = advance_material_circuit(&opening).unwrap();
+    let result = babylon_material_circuit::advance_material_circuit(&opening)
+        .expect("the authored material state advances one period");
     assert_eq!(result.dispatches[0].quantity, 2);
 }
 
+use babylon_material_circuit::CapacitySupply;
+use babylon_material_circuit::CircuitAccounting;
 use babylon_material_circuit::{
-    advance_staffing, close_material_period, decode_material_circuit_state,
-    encode_material_circuit_state, material_circuit_state_digest, FinalDemandOrder,
-    FinalDemandPrincipal, FinalDemandPrincipalId, MaterialCircuitError, OutboundOrderId,
-    StaffingPolicy, StaffingPoolBinding, StaffingPoolId, StaffingPoolState, StaffingState,
-    StaffingWorkSource,
+    FinalDemandOrder, FinalDemandPrincipal, FinalDemandPrincipalId, MaterialCircuitError,
+    OutboundOrderId, StaffingPolicy, StaffingPoolBinding, StaffingPoolId, StaffingPoolState,
+    StaffingState, StaffingWorkSource,
 };
 
 fn add_local_order(state: &mut MaterialCircuitState) {
@@ -198,7 +204,8 @@ fn schedule(state: &mut MaterialCircuitState, periods: u64, hours: u64) {
 fn routed_and_local_orders_share_stock_handling_mass_and_opening_labor_once() {
     let mut state = merchant();
     add_local_order(&mut state);
-    let completed = advance_material_circuit(&state).unwrap();
+    let completed = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
     assert_eq!(completed.dispatches[0].quantity, 1);
     assert_eq!(completed.local_fulfillments[0].quantity, 1);
     assert_eq!(completed.handling.len(), 2);
@@ -228,9 +235,10 @@ fn independent_physical_need_and_residual_handling_respect_the_road_cut() {
         .corridor_capacities
         .iter_mut()
         .find(|row| row.corridor_id == road)
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .available_grams = 20;
-    let completed = advance_material_circuit(&state).unwrap();
+    let completed = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
     assert_eq!(completed.dispatches[0].quantity, 1);
     assert_eq!(completed.local_fulfillments[0].quantity, 1);
     assert_eq!(
@@ -254,7 +262,8 @@ fn local_handoff_consumes_handling_mass_without_a_road_or_freight_lot() {
     let mut state = local_store();
     state.labor[0].available = 100;
     state.corridor_capacities[0].available_grams = 30;
-    let completed = advance_material_circuit(&state).unwrap();
+    let completed = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
     assert_eq!(completed.local_fulfillments[0].quantity, 3);
     assert_eq!(completed.handling[0].needed_hours, 6);
     assert_eq!(completed.handling[0].used_hours, 6);
@@ -275,7 +284,8 @@ fn finite_local_orders_credit_once_and_finished_orders_report_completed_zero() {
     let mut handed_off = 0;
     for period in 1..=6 {
         assert_eq!(state.period, period);
-        let completed = advance_material_circuit(&state).unwrap();
+        let completed = babylon_material_circuit::advance_material_circuit(&state)
+            .expect("the authored material state advances one period");
         handed_off += completed
             .local_fulfillments
             .iter()
@@ -302,8 +312,10 @@ fn finite_local_orders_credit_once_and_finished_orders_report_completed_zero() {
                 (0, 0, 0, 0)
             );
         }
-        let bytes = encode_material_circuit_state(&completed.state).unwrap();
-        state = decode_material_circuit_state(&bytes).unwrap();
+        let bytes = babylon_material_circuit::encode_material_circuit_state(&completed.state)
+            .expect("the canonical material state encodes");
+        state = babylon_material_circuit::decode_material_circuit_state(&bytes)
+            .expect("the canonical material bytes decode");
     }
     assert_eq!(handed_off, 10);
 }
@@ -315,10 +327,10 @@ fn staffing_binding(state: &MaterialCircuitState) -> StaffingPoolBinding {
         merchant.site_id,
         merchant.labor_unit_id,
         10,
-        StaffingPolicy::one_period(2).unwrap(),
+        StaffingPolicy::one_period(2).expect("the one-period fixture advances"),
         vec![StaffingWorkSource::MerchantHandling(merchant.site_id)],
     )
-    .unwrap()
+    .expect("the authored fixture satisfies the constructor invariants")
 }
 
 #[test]
@@ -328,19 +340,22 @@ fn zero_employment_can_rehire_from_feasible_handling_need_without_current_dispat
     let binding = staffing_binding(&state);
     let opening_staffing = StaffingState::try_new(
         1,
-        vec![StaffingPoolState::try_new(binding.clone(), 0, 10, 0).unwrap()],
+        vec![StaffingPoolState::try_new(binding.clone(), 0, 10, 0)
+            .expect("the authored fixture satisfies the constructor invariants")],
     )
-    .unwrap();
-    let closed = close_material_period(&state).unwrap();
+    .expect("the authored fixture satisfies the constructor invariants");
+    let closed = babylon_material_circuit::close_material_period(&state)
+        .expect("the material period closes");
     let requests = closed
         .staffing_requests(std::slice::from_ref(&binding))
-        .unwrap();
+        .expect("the fixture staffing requests are present");
     assert_eq!(
         requests[0].work_source(),
         StaffingWorkSource::MerchantHandling(binding.site_id())
     );
     assert_eq!(requests[0].hours(), 20);
-    let staffing = advance_staffing(&opening_staffing, &requests).unwrap();
+    let staffing = babylon_material_circuit::advance_staffing(&opening_staffing, &requests)
+        .expect("the fixture staffing advances");
     assert_eq!(
         (
             staffing.receipts()[0].hires(),
@@ -351,7 +366,7 @@ fn zero_employment_can_rehire_from_feasible_handling_need_without_current_dispat
     );
     let completed = closed
         .finish_with_labor(staffing.next_labor().to_vec())
-        .unwrap();
+        .expect("the fixture completes with labor");
     assert!(completed.local_fulfillments.is_empty());
     assert_eq!(
         (
@@ -360,7 +375,8 @@ fn zero_employment_can_rehire_from_feasible_handling_need_without_current_dispat
         ),
         (20, 0)
     );
-    let next = advance_material_circuit(&completed.state).unwrap();
+    let next = babylon_material_circuit::advance_material_circuit(&completed.state)
+        .expect("the authored material state advances one period");
     assert_eq!(next.local_fulfillments[0].quantity, 10);
 }
 
@@ -368,15 +384,17 @@ fn zero_employment_can_rehire_from_feasible_handling_need_without_current_dispat
 fn empty_inventory_reports_zero_feasible_handling_and_staffing_need() {
     let mut state = local_store();
     state.inventory.clear();
-    let closed = close_material_period(&state).unwrap();
+    let closed = babylon_material_circuit::close_material_period(&state)
+        .expect("the material period closes");
     assert_eq!(
         closed
             .staffing_requests(&[staffing_binding(&state)])
-            .unwrap()[0]
+            .expect("the fixture staffing requests are present")[0]
             .hours(),
         0
     );
-    let result = advance_material_circuit(&state).unwrap();
+    let result = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
     assert_eq!(
         (
             result.handling[0].needed_hours,
@@ -399,12 +417,14 @@ fn arrived_goods_are_available_to_retail_handling_in_the_same_close() {
     state.orders[0].supplier_site_id = incoming_source;
     state.supplier_routes[0].buyer_site_id = retailer;
     state.supplier_routes[0].supplier_site_id = incoming_source;
-    let stage = &mut state.route_stages[0];
-    std::mem::swap(&mut stage.from_node_id, &mut stage.to_node_id);
-    let first = advance_material_circuit(&state).unwrap();
+    let route_stage = &mut state.route_stages[0];
+    std::mem::swap(&mut route_stage.from_node_id, &mut route_stage.to_node_id);
+    let first = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
     assert_eq!(first.dispatches[0].quantity, 10);
     assert_eq!(first.handling[0].needed_hours, 0);
-    let arrived = advance_material_circuit(&first.state).unwrap();
+    let arrived = babylon_material_circuit::advance_material_circuit(&first.state)
+        .expect("the authored material state advances one period");
     assert_eq!(arrived.arrivals[0].quantity, 10);
     assert_eq!(arrived.local_fulfillments[0].quantity, 2);
     assert_eq!(
@@ -432,7 +452,11 @@ fn merchant_admission_refuses_invalid_coefficients_county_role_and_capacity_owne
         |s| s.handling_coefficients[0].hours_per_unit = 0,
         |s| s.handling_coefficients.clear(),
         |s| s.final_demand_orders[0].fulfilled = 11,
-        |s| s.final_demand_principals[0].location = "county:26001".parse().unwrap(),
+        |s| {
+            s.final_demand_principals[0].location = "county:26001"
+                .parse()
+                .expect("the authored literal parses as the declared type");
+        },
         |s| s.merchants[0].role = MerchantRole::Wholesale,
         |s| s.merchants.push(s.merchants[0].clone()),
         |s| s.final_demand_orders.push(s.final_demand_orders[0].clone()),
@@ -441,13 +465,13 @@ fn merchant_admission_refuses_invalid_coefficients_county_role_and_capacity_owne
         let mut malformed = base.clone();
         mutate(&mut malformed);
         let preserved = malformed.clone();
-        assert!(advance_material_circuit(&malformed).is_err());
+        assert!(babylon_material_circuit::advance_material_circuit(&malformed).is_err());
         assert_eq!(malformed, preserved);
     }
     let mut overlap = merchant();
     overlap.merchants[0].capacity_id = overlap.route_stage_capacities[0].corridor_id;
     assert_eq!(
-        advance_material_circuit(&overlap),
+        babylon_material_circuit::advance_material_circuit(&overlap),
         Err(MaterialCircuitError::MerchantInvariant)
     );
 }
@@ -458,13 +482,16 @@ fn handling_hour_overflow_refuses_before_any_successor_or_local_receipt_escapes(
     state.handling_coefficients[0].hours_per_unit = u64::MAX;
     let preserved = state.clone();
     assert_eq!(
-        advance_material_circuit(&state),
+        babylon_material_circuit::advance_material_circuit(&state),
         Err(MaterialCircuitError::Arithmetic)
     );
     assert_eq!(state, preserved);
     for code in 20..=21 {
         assert_eq!(
-            u16::from(MaterialCircuitError::try_from(code).unwrap()),
+            u16::from(
+                MaterialCircuitError::try_from(code)
+                    .expect("the fixture value fits the target range")
+            ),
             code
         );
     }
@@ -483,8 +510,10 @@ fn new_families_are_canonical_hash_bound_and_local_routed_ids_are_disjoint() {
         unit_id: duplicate_good.unit_id,
         kind: babylon_material_circuit::CommodityKind::Storable { grams_per_unit: 10 },
     });
-    let original = encode_material_circuit_state(&state).unwrap();
-    let completed = advance_material_circuit(&state).unwrap();
+    let original = babylon_material_circuit::encode_material_circuit_state(&state)
+        .expect("the canonical material state encodes");
+    let completed = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
     assert_eq!(
         completed.handling[0].order,
         OutboundOrderId::Delivery(state.orders[0].order_id)
@@ -501,13 +530,26 @@ fn new_families_are_canonical_hash_bound_and_local_routed_ids_are_disjoint() {
     permuted.commodities.reverse();
     permuted.corridor_capacities.reverse();
     permuted.site_logistics_nodes.reverse();
-    assert_eq!(encode_material_circuit_state(&permuted).unwrap(), original);
-    assert_eq!(advance_material_circuit(&permuted).unwrap(), completed);
-    let baseline = material_circuit_state_digest(&state).unwrap();
+    assert_eq!(
+        babylon_material_circuit::encode_material_circuit_state(&permuted)
+            .expect("the canonical material state encodes"),
+        original
+    );
+    assert_eq!(
+        babylon_material_circuit::advance_material_circuit(&permuted)
+            .expect("the authored material state advances one period"),
+        completed
+    );
+    let baseline = babylon_material_circuit::material_circuit_state_digest(&state)
+        .expect("the material state has a digest");
     let mutations: &[fn(&mut MaterialCircuitState)] = &[
         |s| {
-            s.merchants[0].location = "county:26001".parse().unwrap();
-            s.final_demand_principals[0].location = "county:26001".parse().unwrap();
+            s.merchants[0].location = "county:26001"
+                .parse()
+                .expect("the authored literal parses as the declared type");
+            s.final_demand_principals[0].location = "county:26001"
+                .parse()
+                .expect("the authored literal parses as the declared type");
         },
         |s| s.handling_coefficients[0].hours_per_unit += 1,
         |s| {
@@ -521,7 +563,11 @@ fn new_families_are_canonical_hash_bound_and_local_routed_ids_are_disjoint() {
     for mutate in mutations {
         let mut changed = state.clone();
         mutate(&mut changed);
-        assert_ne!(material_circuit_state_digest(&changed).unwrap(), baseline);
+        assert_ne!(
+            babylon_material_circuit::material_circuit_state_digest(&changed)
+                .expect("the material state has a digest"),
+            baseline
+        );
     }
 }
 
@@ -531,7 +577,9 @@ fn multiple_merchants_and_county_accounts_preserve_identity_under_all_new_row_pe
     let second_site = state.site_logistics_nodes[1].site_id;
     let mut second_store = state.merchants[0].clone();
     second_store.site_id = second_site;
-    second_store.location = "county:26001".parse().unwrap();
+    second_store.location = "county:26001"
+        .parse()
+        .expect("the authored literal parses as the declared type");
     second_store.capacity_id = CorridorId::from_bytes([20; 32]);
     let mut coefficient = state.handling_coefficients[0].clone();
     coefficient.site_id = second_site;
@@ -561,8 +609,10 @@ fn multiple_merchants_and_county_accounts_preserve_identity_under_all_new_row_pe
     state.labor.push(labor);
     state.final_demand_principals.push(demand);
     state.final_demand_orders.push(order);
-    let bytes = encode_material_circuit_state(&state).unwrap();
-    let expected = advance_material_circuit(&state).unwrap();
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&state)
+        .expect("the canonical material state encodes");
+    let expected = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
     assert_eq!(
         expected
             .local_fulfillments
@@ -578,29 +628,35 @@ fn multiple_merchants_and_county_accounts_preserve_identity_under_all_new_row_pe
     state.inventory.reverse();
     state.labor.reverse();
     state.corridor_capacities.reverse();
-    assert_eq!(encode_material_circuit_state(&state).unwrap(), bytes);
-    assert_eq!(advance_material_circuit(&state).unwrap(), expected);
+    assert_eq!(
+        babylon_material_circuit::encode_material_circuit_state(&state)
+            .expect("the canonical material state encodes"),
+        bytes
+    );
+    assert_eq!(
+        babylon_material_circuit::advance_material_circuit(&state)
+            .expect("the authored material state advances one period"),
+        expected
+    );
 }
 
 #[test]
 fn merchant_role_encoding_rejects_unknown_tags() {
     let state = local_store();
-    let mut bytes = encode_material_circuit_state(&state).unwrap();
+    let mut bytes = babylon_material_circuit::encode_material_circuit_state(&state)
+        .expect("the canonical material state encodes");
     // Four trailing row families plus absent binding/service tags: counts,
     // merchant(103), coefficient(104), located principal(38), local order(176),
     // two absent options and the explicit physical-control tag. The merchant
     // role follows its site and location; two empty service row counts end the state.
     assert!(state.maintenance_binding.is_none() && state.maintenance_service.is_none());
-    assert_eq!(
-        state.accounting,
-        babylon_material_circuit::CircuitAccounting::PhysicalControl
-    );
+    assert_eq!(state.accounting, CircuitAccounting::PhysicalControl);
     assert_eq!(&bytes[bytes.len() - 4..], &[0, 0, 0, 0]);
     let role_offset = bytes.len() - (4 * 4 + 103 + 104 + 38 + 176 + 12) + 4 + 32 + 6;
     assert_eq!(bytes[role_offset], 2);
     bytes[role_offset] = 3;
     assert_eq!(
-        decode_material_circuit_state(&bytes),
+        babylon_material_circuit::decode_material_circuit_state(&bytes),
         Err(MaterialCircuitError::WireEnum)
     );
 }
@@ -615,7 +671,8 @@ fn local_inter_owner_transfer_needs_no_road_or_transit() {
     state
         .corridor_capacities
         .retain(|row| row.corridor_id == handling);
-    let completed = advance_material_circuit(&state).expect("explicit local circulation");
+    let completed = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("explicit local circulation");
     assert_eq!(completed.state.orders[0].delivered, 2);
     assert!(completed.state.freight.is_empty());
     assert!(completed.arrivals.is_empty());
@@ -636,7 +693,8 @@ fn local_supplier() -> MaterialCircuitState {
 #[test]
 fn local_transfer_has_explicit_receipt_and_still_requires_merchant_labor() {
     let mut state = local_supplier();
-    let completed = advance_material_circuit(&state).unwrap();
+    let completed = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
     assert_eq!(completed.local_transfers.len(), 1);
     assert_eq!(completed.local_transfers[0].quantity, 2);
     assert_eq!(
@@ -666,7 +724,8 @@ fn local_transfer_has_explicit_receipt_and_still_requires_merchant_labor() {
         10
     );
     state.labor[0].available = 0;
-    let stopped = advance_material_circuit(&state).unwrap();
+    let stopped = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
     assert!(stopped.local_transfers.is_empty());
     assert_eq!(stopped.handling[0].needed_hours, 20);
     assert_eq!(stopped.handling[0].used_hours, 0);
@@ -696,7 +755,8 @@ fn local_buyer_credits_wait_until_all_outbound_grants_are_fixed() {
     relation.buyer_site_id = next_buyer;
     state.supplier_routes.push(relation);
     state.orders.push(onward);
-    let first = advance_material_circuit(&state).unwrap();
+    let first = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
     assert_eq!(first.local_transfers.len(), 1);
     assert_eq!(first.state.orders[1].shipped, 0);
     assert!(first
@@ -704,7 +764,8 @@ fn local_buyer_credits_wait_until_all_outbound_grants_are_fixed() {
         .inventory
         .iter()
         .all(|row| row.site_id != next_buyer || row.quantity == 0));
-    let second = advance_material_circuit(&first.state).unwrap();
+    let second = babylon_material_circuit::advance_material_circuit(&first.state)
+        .expect("the authored material state advances one period");
     assert_eq!(second.state.orders[1].shipped, 2);
     assert_eq!(
         second
@@ -712,7 +773,7 @@ fn local_buyer_credits_wait_until_all_outbound_grants_are_fixed() {
             .inventory
             .iter()
             .find(|row| row.site_id == next_buyer)
-            .unwrap()
+            .expect("the fixture holds the searched element")
             .quantity,
         2
     );
@@ -728,27 +789,37 @@ fn local_buyer_credits_wait_until_all_outbound_grants_are_fixed() {
     state.orders.reverse();
     state.backlog.reverse();
     state.supplier_routes.reverse();
-    assert_eq!(advance_material_circuit(&state).unwrap(), first);
+    assert_eq!(
+        babylon_material_circuit::advance_material_circuit(&state)
+            .expect("the authored material state advances one period"),
+        first
+    );
 }
 
 #[test]
 fn local_transfer_mode_and_wire_are_checked_and_buyer_overflow_is_atomic() {
     let state = local_supplier();
-    let bytes = encode_material_circuit_state(&state).unwrap();
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&state)
+        .expect("the canonical material state encodes");
     assert_eq!(
-        advance_material_circuit(&decode_material_circuit_state(&bytes).unwrap()).unwrap(),
-        advance_material_circuit(&state).unwrap()
+        babylon_material_circuit::advance_material_circuit(
+            &babylon_material_circuit::decode_material_circuit_state(&bytes)
+                .expect("the canonical material bytes decode")
+        )
+        .expect("the authored material state advances one period"),
+        babylon_material_circuit::advance_material_circuit(&state)
+            .expect("the authored material state advances one period")
     );
     let mut wrong_mode = state.clone();
     wrong_mode.supplier_routes[0].transport_kind = SupplierTransport::Staged;
     assert_eq!(
-        advance_material_circuit(&wrong_mode),
+        babylon_material_circuit::advance_material_circuit(&wrong_mode),
         Err(MaterialCircuitError::RouteInvariant)
     );
     let mut wrongly_local = merchant();
     wrongly_local.supplier_routes[0].transport_kind = SupplierTransport::Local;
     assert_eq!(
-        advance_material_circuit(&wrongly_local),
+        babylon_material_circuit::advance_material_circuit(&wrongly_local),
         Err(MaterialCircuitError::RouteInvariant)
     );
     let mut overflowing = state.clone();
@@ -758,7 +829,7 @@ fn local_transfer_mode_and_wire_are_checked_and_buyer_overflow_is_atomic() {
     overflowing.inventory.push(buyer_stock);
     let preserved = overflowing.clone();
     assert_eq!(
-        advance_material_circuit(&overflowing),
+        babylon_material_circuit::advance_material_circuit(&overflowing),
         Err(MaterialCircuitError::Arithmetic)
     );
     assert_eq!(overflowing, preserved);
@@ -773,7 +844,8 @@ fn residual_zero_base_order_still_requires_funded_handling_hours() {
     state.backlog[0].quantity = 1;
     state.final_demand_orders[0].ordered = 1;
     state.labor[0].available = 2;
-    let completed = advance_material_circuit(&state).unwrap();
+    let completed = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
     assert_eq!(completed.dispatches[0].quantity, 1);
     assert!(completed.local_fulfillments.is_empty());
     assert_eq!(
@@ -785,7 +857,8 @@ fn residual_zero_base_order_still_requires_funded_handling_hours() {
         .iter()
         .all(|r| r.feasible_quantity == 1 && r.needed_hours == 2));
     state.labor[0].available = 1;
-    let blocked = advance_material_circuit(&state).unwrap();
+    let blocked = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
     assert!(blocked.dispatches.is_empty());
     assert!(blocked.local_fulfillments.is_empty());
     assert!(blocked.handling.iter().all(|r| r.used_hours == 0));

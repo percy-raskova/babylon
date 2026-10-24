@@ -1,5 +1,6 @@
 //! Isolated loading contract for embedded Bevy visual assets.
 
+use babylon_client::visual_assets::VisualAssets;
 use bevy::asset::AssetPlugin;
 use bevy::image::{ImagePlugin, ImageSampler};
 use bevy::prelude::*;
@@ -22,7 +23,7 @@ fn visual_assets_app() -> App {
 
 fn assert_loaded_asset_contract(app: &App) {
     let world = app.world();
-    let assets = world.resource::<babylon_client::visual_assets::VisualAssets>();
+    let assets = world.resource::<VisualAssets>();
     let images = world.resource::<Assets<Image>>();
     let nearest_images = [
         ("title-mark", &assets.title_mark),
@@ -116,9 +117,7 @@ fn every_typed_embedded_image_loads_within_one_hundred_thousand_updates() {
         app.update();
         std::thread::yield_now();
         let asset_server = app.world().resource::<AssetServer>();
-        let assets = app
-            .world()
-            .resource::<babylon_client::visual_assets::VisualAssets>();
+        let assets = app.world().resource::<VisualAssets>();
         if babylon_client::visual_assets::VISUAL_ASSET_CATALOG
             .iter()
             .all(|descriptor| {
@@ -131,9 +130,7 @@ fn every_typed_embedded_image_loads_within_one_hundred_thousand_updates() {
     }
 
     let asset_server = app.world().resource::<AssetServer>();
-    let assets = app
-        .world()
-        .resource::<babylon_client::visual_assets::VisualAssets>();
+    let assets = app.world().resource::<VisualAssets>();
     let unloaded: Vec<_> = babylon_client::visual_assets::VISUAL_ASSET_CATALOG
         .iter()
         .filter(|descriptor| {

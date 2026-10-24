@@ -1,14 +1,13 @@
 use babylon_practice_contract::ActorOrganizationId;
+use babylon_practice_contract::PracticeResourceOwner;
 use babylon_practice_contract::{
-    allocate_practice_resources, decode_practice_resource_allocation_contract,
-    decode_practice_resource_allocation_outcome, decode_practice_resource_capacity,
-    decode_practice_resource_request, derive_practice_resource_request,
-    encode_practice_resource_allocation_contract, encode_practice_resource_allocation_outcome,
-    encode_practice_resource_capacity, encode_practice_resource_request,
-    practice_resource_allocation_contract_digest, practice_resource_allocation_outcome_digest,
-    practice_resource_capacity_digest, practice_resource_request_digest, InputAuthorityId,
-    PracticeId, PracticeIntent, PracticeResourceAllocationContract, PracticeResourceAllocationMode,
-    PracticeResourceCapacity, PracticeResourceError, PracticeResourceId, PracticeResourceLocator,
+    decode_practice_resource_allocation_contract, decode_practice_resource_allocation_outcome,
+    decode_practice_resource_capacity, decode_practice_resource_request,
+    encode_practice_resource_allocation_contract, practice_resource_allocation_contract_digest,
+    practice_resource_allocation_outcome_digest, practice_resource_capacity_digest,
+    practice_resource_request_digest, InputAuthorityId, PracticeId, PracticeIntent,
+    PracticeResourceAllocationContract, PracticeResourceAllocationMode, PracticeResourceCapacity,
+    PracticeResourceError, PracticeResourceId, PracticeResourceLocator,
     PracticeResourceRequirement, PracticeTargetIdentity, PracticeTargetTag, PracticeUnitId,
     ProposalNonce, TaggedPracticeTarget, MAX_PRACTICE_RESOURCE_CAPACITIES,
     MAX_PRACTICE_RESOURCE_REQUESTS, PRACTICE_RESOURCE_ALLOCATION_OUTCOME_DOMAIN_BYTES,
@@ -65,12 +64,18 @@ fn shared_requirement(quantity: u64) -> PracticeResourceRequirement {
 #[test]
 fn divisible_scarcity_allocates_the_same_material_fulfillment_ratio() {
     let contract = PracticeResourceAllocationContract::conservation_first();
-    let large =
-        derive_practice_resource_request(&contract, &intent(1, 101), &shared_requirement(90))
-            .expect("matching practice derives its sealed request");
-    let small =
-        derive_practice_resource_request(&contract, &intent(2, 202), &shared_requirement(10))
-            .expect("matching practice derives its sealed request");
+    let large = babylon_practice_contract::derive_practice_resource_request(
+        &contract,
+        &intent(1, 101),
+        &shared_requirement(90),
+    )
+    .expect("matching practice derives its sealed request");
+    let small = babylon_practice_contract::derive_practice_resource_request(
+        &contract,
+        &intent(2, 202),
+        &shared_requirement(10),
+    )
+    .expect("matching practice derives its sealed request");
     let capacity = PracticeResourceCapacity {
         owner: large.owner(),
         resource_id: large.resource_id(),
@@ -79,8 +84,12 @@ fn divisible_scarcity_allocates_the_same_material_fulfillment_ratio() {
         available: 50,
     };
 
-    let outcome = allocate_practice_resources(&contract, &[large, small], &[capacity])
-        .expect("valid sealed requests allocate");
+    let outcome = babylon_practice_contract::allocate_practice_resources(
+        &contract,
+        &[large, small],
+        &[capacity],
+    )
+    .expect("valid sealed requests allocate");
 
     assert_eq!(outcome.allocations()[0].requested(), 90);
     assert_eq!(outcome.allocations()[0].allocated(), 45);
@@ -94,15 +103,16 @@ fn divisible_scarcity_allocates_the_same_material_fulfillment_ratio() {
 fn unused_capacity_remains_explicitly_unallocated() {
     let contract = PracticeResourceAllocationContract::conservation_first();
     let capacity = PracticeResourceCapacity {
-        owner: babylon_practice_contract::PracticeResourceOwner::Shared,
+        owner: PracticeResourceOwner::Shared,
         resource_id: PracticeResourceId::from_bytes([0x51; 32]),
         unit_id: PracticeUnitId::from_bytes([0x61; 32]),
         mode: PracticeResourceAllocationMode::DivisibleProRata,
         available: 7,
     };
 
-    let outcome = allocate_practice_resources(&contract, &[], &[capacity])
-        .expect("unused capacity is still conserved");
+    let outcome =
+        babylon_practice_contract::allocate_practice_resources(&contract, &[], &[capacity])
+            .expect("unused capacity is still conserved");
 
     assert_eq!(outcome.balances().len(), 1);
     assert_eq!(outcome.balances()[0].allocated(), 0);
@@ -112,12 +122,18 @@ fn unused_capacity_remains_explicitly_unallocated() {
 #[test]
 fn divisible_floor_residual_remains_unallocated() {
     let contract = PracticeResourceAllocationContract::conservation_first();
-    let first =
-        derive_practice_resource_request(&contract, &intent(1, 101), &shared_requirement(1))
-            .unwrap();
-    let second =
-        derive_practice_resource_request(&contract, &intent(2, 202), &shared_requirement(1))
-            .unwrap();
+    let first = babylon_practice_contract::derive_practice_resource_request(
+        &contract,
+        &intent(1, 101),
+        &shared_requirement(1),
+    )
+    .expect("the authored action derives its request");
+    let second = babylon_practice_contract::derive_practice_resource_request(
+        &contract,
+        &intent(2, 202),
+        &shared_requirement(1),
+    )
+    .expect("the authored action derives its request");
     let capacity = PracticeResourceCapacity {
         owner: first.owner(),
         resource_id: first.resource_id(),
@@ -126,7 +142,12 @@ fn divisible_floor_residual_remains_unallocated() {
         available: 1,
     };
 
-    let outcome = allocate_practice_resources(&contract, &[first, second], &[capacity]).unwrap();
+    let outcome = babylon_practice_contract::allocate_practice_resources(
+        &contract,
+        &[first, second],
+        &[capacity],
+    )
+    .expect("the fixture practice resources fit the authored budget");
 
     assert_eq!(outcome.allocations()[0].allocated(), 0);
     assert_eq!(outcome.allocations()[1].allocated(), 0);
@@ -137,12 +158,18 @@ fn divisible_floor_residual_remains_unallocated() {
 #[test]
 fn full_supply_grants_every_request_and_retains_surplus() {
     let contract = PracticeResourceAllocationContract::conservation_first();
-    let first =
-        derive_practice_resource_request(&contract, &intent(1, 101), &shared_requirement(3))
-            .unwrap();
-    let second =
-        derive_practice_resource_request(&contract, &intent(2, 202), &shared_requirement(2))
-            .unwrap();
+    let first = babylon_practice_contract::derive_practice_resource_request(
+        &contract,
+        &intent(1, 101),
+        &shared_requirement(3),
+    )
+    .expect("the authored action derives its request");
+    let second = babylon_practice_contract::derive_practice_resource_request(
+        &contract,
+        &intent(2, 202),
+        &shared_requirement(2),
+    )
+    .expect("the authored action derives its request");
     let capacity = PracticeResourceCapacity {
         owner: first.owner(),
         resource_id: first.resource_id(),
@@ -151,7 +178,12 @@ fn full_supply_grants_every_request_and_retains_surplus() {
         available: 10,
     };
 
-    let outcome = allocate_practice_resources(&contract, &[first, second], &[capacity]).unwrap();
+    let outcome = babylon_practice_contract::allocate_practice_resources(
+        &contract,
+        &[first, second],
+        &[capacity],
+    )
+    .expect("the fixture practice resources fit the authored budget");
 
     assert_eq!(outcome.allocations()[0].allocated(), 3);
     assert_eq!(outcome.allocations()[1].allocated(), 2);
@@ -162,12 +194,18 @@ fn full_supply_grants_every_request_and_retains_surplus() {
 #[test]
 fn exclusive_shared_scarcity_selects_no_winner_by_proposal_order() {
     let contract = PracticeResourceAllocationContract::conservation_first();
-    let first =
-        derive_practice_resource_request(&contract, &intent(1, 101), &shared_requirement(1))
-            .expect("first structurally valid cross-actor request enters resolution");
-    let second =
-        derive_practice_resource_request(&contract, &intent(2, 202), &shared_requirement(1))
-            .expect("second structurally valid cross-actor request enters resolution");
+    let first = babylon_practice_contract::derive_practice_resource_request(
+        &contract,
+        &intent(1, 101),
+        &shared_requirement(1),
+    )
+    .expect("first structurally valid cross-actor request enters resolution");
+    let second = babylon_practice_contract::derive_practice_resource_request(
+        &contract,
+        &intent(2, 202),
+        &shared_requirement(1),
+    )
+    .expect("second structurally valid cross-actor request enters resolution");
     let capacity = PracticeResourceCapacity {
         owner: first.owner(),
         resource_id: first.resource_id(),
@@ -176,8 +214,12 @@ fn exclusive_shared_scarcity_selects_no_winner_by_proposal_order() {
         available: 1,
     };
 
-    let outcome = allocate_practice_resources(&contract, &[first, second], &[capacity])
-        .expect("cross-actor contention is a material outcome, not a submission failure");
+    let outcome = babylon_practice_contract::allocate_practice_resources(
+        &contract,
+        &[first, second],
+        &[capacity],
+    )
+    .expect("cross-actor contention is a material outcome, not a submission failure");
 
     assert_eq!(outcome.allocations()[0].allocated(), 0);
     assert_eq!(outcome.allocations()[1].allocated(), 0);
@@ -188,13 +230,13 @@ fn exclusive_shared_scarcity_selects_no_winner_by_proposal_order() {
 #[test]
 fn same_authority_exclusive_conflict_refuses_the_complete_group() {
     let contract = PracticeResourceAllocationContract::conservation_first();
-    let first = derive_practice_resource_request(
+    let first = babylon_practice_contract::derive_practice_resource_request(
         &contract,
         &intent_with_nonce(1, 101, 1),
         &shared_requirement(1),
     )
     .expect("first proposal derives its sealed request");
-    let second = derive_practice_resource_request(
+    let second = babylon_practice_contract::derive_practice_resource_request(
         &contract,
         &intent_with_nonce(1, 101, 2),
         &shared_requirement(1),
@@ -209,7 +251,11 @@ fn same_authority_exclusive_conflict_refuses_the_complete_group() {
     };
 
     assert_eq!(
-        allocate_practice_resources(&contract, &[first, second], &[capacity]),
+        babylon_practice_contract::allocate_practice_resources(
+            &contract,
+            &[first, second],
+            &[capacity]
+        ),
         Err(PracticeResourceError::ResourceAuthorityConflict)
     );
 }
@@ -217,12 +263,18 @@ fn same_authority_exclusive_conflict_refuses_the_complete_group() {
 #[test]
 fn allocation_output_is_identical_for_every_request_permutation() {
     let contract = PracticeResourceAllocationContract::conservation_first();
-    let large =
-        derive_practice_resource_request(&contract, &intent(1, 101), &shared_requirement(90))
-            .expect("large request derives from sealed content");
-    let small =
-        derive_practice_resource_request(&contract, &intent(2, 202), &shared_requirement(10))
-            .expect("small request derives from sealed content");
+    let large = babylon_practice_contract::derive_practice_resource_request(
+        &contract,
+        &intent(1, 101),
+        &shared_requirement(90),
+    )
+    .expect("large request derives from sealed content");
+    let small = babylon_practice_contract::derive_practice_resource_request(
+        &contract,
+        &intent(2, 202),
+        &shared_requirement(10),
+    )
+    .expect("small request derives from sealed content");
     let capacity = PracticeResourceCapacity {
         owner: large.owner(),
         resource_id: large.resource_id(),
@@ -231,14 +283,18 @@ fn allocation_output_is_identical_for_every_request_permutation() {
         available: 50,
     };
 
-    let forward = allocate_practice_resources(
+    let forward = babylon_practice_contract::allocate_practice_resources(
         &contract,
         &[large.clone(), small.clone()],
         std::slice::from_ref(&capacity),
     )
     .expect("forward input allocates");
-    let reversed = allocate_practice_resources(&contract, &[small, large], &[capacity])
-        .expect("reversed input allocates");
+    let reversed = babylon_practice_contract::allocate_practice_resources(
+        &contract,
+        &[small, large],
+        &[capacity],
+    )
+    .expect("reversed input allocates");
 
     assert_eq!(forward, reversed);
 }
@@ -246,9 +302,12 @@ fn allocation_output_is_identical_for_every_request_permutation() {
 #[test]
 fn allocation_output_is_identical_for_every_capacity_permutation() {
     let contract = PracticeResourceAllocationContract::conservation_first();
-    let request =
-        derive_practice_resource_request(&contract, &intent(1, 101), &shared_requirement(1))
-            .unwrap();
+    let request = babylon_practice_contract::derive_practice_resource_request(
+        &contract,
+        &intent(1, 101),
+        &shared_requirement(1),
+    )
+    .expect("the authored action derives its request");
     let used = PracticeResourceCapacity {
         owner: request.owner(),
         resource_id: request.resource_id(),
@@ -257,20 +316,25 @@ fn allocation_output_is_identical_for_every_capacity_permutation() {
         available: 1,
     };
     let unused = PracticeResourceCapacity {
-        owner: babylon_practice_contract::PracticeResourceOwner::Shared,
+        owner: PracticeResourceOwner::Shared,
         resource_id: PracticeResourceId::from_bytes([0x51; 32]),
         unit_id: PracticeUnitId::from_bytes([0x61; 32]),
         mode: PracticeResourceAllocationMode::DivisibleProRata,
         available: 7,
     };
 
-    let forward = allocate_practice_resources(
+    let forward = babylon_practice_contract::allocate_practice_resources(
         &contract,
         std::slice::from_ref(&request),
         &[used.clone(), unused.clone()],
     )
-    .unwrap();
-    let reversed = allocate_practice_resources(&contract, &[request], &[unused, used]).unwrap();
+    .expect("the fixture practice resources fit the authored budget");
+    let reversed = babylon_practice_contract::allocate_practice_resources(
+        &contract,
+        &[request],
+        &[unused, used],
+    )
+    .expect("the fixture practice resources fit the authored budget");
 
     assert_eq!(forward, reversed);
 }
@@ -288,15 +352,17 @@ fn allocation_contract_bytes_freeze_every_material_law() {
     let contract = PracticeResourceAllocationContract::conservation_first();
 
     assert_eq!(
-        encode_practice_resource_allocation_contract(&contract).unwrap(),
+        encode_practice_resource_allocation_contract(&contract)
+            .expect("the fixture value encodes to its canonical bytes"),
         EXPECTED
     );
     assert_eq!(
-        decode_practice_resource_allocation_contract(EXPECTED).unwrap(),
+        decode_practice_resource_allocation_contract(EXPECTED)
+            .expect("the canonical bytes decode into the declared type"),
         contract
     );
     assert_eq!(
-        practice_resource_allocation_contract_digest(&contract).unwrap(),
+        practice_resource_allocation_contract_digest(&contract).expect("the fixture call `practice_resource_allocation_contract_digest` succeeds for the authored inputs"),
         EXPECTED_DIGEST
     );
 }
@@ -307,7 +373,7 @@ fn allocator_refuses_a_mutated_law_with_the_same_schema_version() {
     contract.max_requests_per_intent = 17;
 
     assert_eq!(
-        allocate_practice_resources(&contract, &[], &[]),
+        babylon_practice_contract::allocate_practice_resources(&contract, &[], &[]),
         Err(PracticeResourceError::ResourceContractValue)
     );
 }
@@ -319,7 +385,11 @@ fn request_derivation_refuses_a_different_quoted_resource_contract() {
     proposal.quoted_resource_contract_digest = [0x41; 32];
 
     assert_eq!(
-        derive_practice_resource_request(&contract, &proposal, &shared_requirement(1)),
+        babylon_practice_contract::derive_practice_resource_request(
+            &contract,
+            &proposal,
+            &shared_requirement(1)
+        ),
         Err(PracticeResourceError::ResourceContractDigestMismatch)
     );
 }
@@ -331,14 +401,22 @@ fn request_derivation_refuses_practice_mismatch_and_zero_quantity() {
     let mut requirement = shared_requirement(1);
     requirement.practice_id = PracticeId::Organize;
     assert_eq!(
-        derive_practice_resource_request(&contract, &proposal, &requirement),
+        babylon_practice_contract::derive_practice_resource_request(
+            &contract,
+            &proposal,
+            &requirement
+        ),
         Err(PracticeResourceError::ResourceRequirementPracticeMismatch)
     );
 
     requirement.practice_id = PracticeId::Strike;
     requirement.quantity = 0;
     assert_eq!(
-        derive_practice_resource_request(&contract, &proposal, &requirement),
+        babylon_practice_contract::derive_practice_resource_request(
+            &contract,
+            &proposal,
+            &requirement
+        ),
         Err(PracticeResourceError::ResourceRequestZero)
     );
 }
@@ -351,15 +429,21 @@ fn derived_request_bytes_bind_proposal_owner_resource_unit_and_quantity() {
         0x0e, 0x27,
     ];
     let contract = PracticeResourceAllocationContract::conservation_first();
-    let request =
-        derive_practice_resource_request(&contract, &intent(1, 101), &shared_requirement(90))
-            .expect("sealed content derives the request");
+    let request = babylon_practice_contract::derive_practice_resource_request(
+        &contract,
+        &intent(1, 101),
+        &shared_requirement(90),
+    )
+    .expect("sealed content derives the request");
 
-    let canonical = encode_practice_resource_request(&request).unwrap();
+    let canonical = babylon_practice_contract::encode_practice_resource_request(&request)
+        .expect("the fixture value encodes to its canonical bytes");
 
     assert_eq!(canonical.len(), 202);
     assert_eq!(
-        practice_resource_request_digest(&request).unwrap(),
+        practice_resource_request_digest(&request).expect(
+            "the fixture call `practice_resource_request_digest` succeeds for the authored inputs"
+        ),
         EXPECTED_DIGEST
     );
 }
@@ -367,13 +451,18 @@ fn derived_request_bytes_bind_proposal_owner_resource_unit_and_quantity() {
 #[test]
 fn request_decoder_round_trips_and_refuses_an_unknown_owner_scope() {
     let contract = PracticeResourceAllocationContract::conservation_first();
-    let request =
-        derive_practice_resource_request(&contract, &intent(1, 101), &shared_requirement(90))
-            .unwrap();
-    let canonical = encode_practice_resource_request(&request).unwrap();
+    let request = babylon_practice_contract::derive_practice_resource_request(
+        &contract,
+        &intent(1, 101),
+        &shared_requirement(90),
+    )
+    .expect("the authored action derives its request");
+    let canonical = babylon_practice_contract::encode_practice_resource_request(&request)
+        .expect("the fixture value encodes to its canonical bytes");
 
     assert_eq!(
-        decode_practice_resource_request(&canonical).unwrap(),
+        decode_practice_resource_request(&canonical)
+            .expect("the canonical bytes decode into the declared type"),
         request
     );
 
@@ -394,18 +483,21 @@ fn capacity_bytes_bind_owner_resource_unit_mode_and_available_quantity() {
         0x8e, 0x0e,
     ];
     let capacity = PracticeResourceCapacity {
-        owner: babylon_practice_contract::PracticeResourceOwner::Shared,
+        owner: PracticeResourceOwner::Shared,
         resource_id: PracticeResourceId::from_bytes([0x50; 32]),
         unit_id: PracticeUnitId::from_bytes([0x60; 32]),
         mode: PracticeResourceAllocationMode::DivisibleProRata,
         available: 50,
     };
 
-    let canonical = encode_practice_resource_capacity(&capacity).unwrap();
+    let canonical = babylon_practice_contract::encode_practice_resource_capacity(&capacity)
+        .expect("the fixture value encodes to its canonical bytes");
 
     assert_eq!(canonical.len(), 122);
     assert_eq!(
-        practice_resource_capacity_digest(&capacity).unwrap(),
+        practice_resource_capacity_digest(&capacity).expect(
+            "the fixture call `practice_resource_capacity_digest` succeeds for the authored inputs"
+        ),
         EXPECTED_DIGEST
     );
 }
@@ -413,16 +505,18 @@ fn capacity_bytes_bind_owner_resource_unit_mode_and_available_quantity() {
 #[test]
 fn capacity_decoder_round_trips_and_refuses_an_unknown_allocation_mode() {
     let capacity = PracticeResourceCapacity {
-        owner: babylon_practice_contract::PracticeResourceOwner::Shared,
+        owner: PracticeResourceOwner::Shared,
         resource_id: PracticeResourceId::from_bytes([0x50; 32]),
         unit_id: PracticeUnitId::from_bytes([0x60; 32]),
         mode: PracticeResourceAllocationMode::DivisibleProRata,
         available: 50,
     };
-    let canonical = encode_practice_resource_capacity(&capacity).unwrap();
+    let canonical = babylon_practice_contract::encode_practice_resource_capacity(&capacity)
+        .expect("the fixture value encodes to its canonical bytes");
 
     assert_eq!(
-        decode_practice_resource_capacity(&canonical).unwrap(),
+        decode_practice_resource_capacity(&canonical)
+            .expect("the canonical bytes decode into the declared type"),
         capacity
     );
 
@@ -443,12 +537,18 @@ fn outcome_bytes_bind_allocations_and_explicit_capacity_residuals() {
         0xdc, 0xd1,
     ];
     let contract = PracticeResourceAllocationContract::conservation_first();
-    let large =
-        derive_practice_resource_request(&contract, &intent(1, 101), &shared_requirement(90))
-            .unwrap();
-    let small =
-        derive_practice_resource_request(&contract, &intent(2, 202), &shared_requirement(10))
-            .unwrap();
+    let large = babylon_practice_contract::derive_practice_resource_request(
+        &contract,
+        &intent(1, 101),
+        &shared_requirement(90),
+    )
+    .expect("the authored action derives its request");
+    let small = babylon_practice_contract::derive_practice_resource_request(
+        &contract,
+        &intent(2, 202),
+        &shared_requirement(10),
+    )
+    .expect("the authored action derives its request");
     let capacity = PracticeResourceCapacity {
         owner: large.owner(),
         resource_id: large.resource_id(),
@@ -456,13 +556,20 @@ fn outcome_bytes_bind_allocations_and_explicit_capacity_residuals() {
         mode: PracticeResourceAllocationMode::DivisibleProRata,
         available: 50,
     };
-    let outcome = allocate_practice_resources(&contract, &[large, small], &[capacity]).unwrap();
+    let outcome = babylon_practice_contract::allocate_practice_resources(
+        &contract,
+        &[large, small],
+        &[capacity],
+    )
+    .expect("the fixture practice resources fit the authored budget");
 
-    let canonical = encode_practice_resource_allocation_outcome(&contract, &outcome).unwrap();
+    let canonical =
+        babylon_practice_contract::encode_practice_resource_allocation_outcome(&contract, &outcome)
+            .expect("the fixture value encodes to its canonical bytes");
 
     assert_eq!(canonical.len(), 218);
     assert_eq!(
-        practice_resource_allocation_outcome_digest(&contract, &outcome).unwrap(),
+        practice_resource_allocation_outcome_digest(&contract, &outcome).expect("the fixture call `practice_resource_allocation_outcome_digest` succeeds for the authored inputs"),
         EXPECTED_DIGEST
     );
 }
@@ -470,12 +577,18 @@ fn outcome_bytes_bind_allocations_and_explicit_capacity_residuals() {
 #[test]
 fn outcome_decoder_replays_the_allocator_and_refuses_a_forged_grant() {
     let contract = PracticeResourceAllocationContract::conservation_first();
-    let large =
-        derive_practice_resource_request(&contract, &intent(1, 101), &shared_requirement(90))
-            .unwrap();
-    let small =
-        derive_practice_resource_request(&contract, &intent(2, 202), &shared_requirement(10))
-            .unwrap();
+    let large = babylon_practice_contract::derive_practice_resource_request(
+        &contract,
+        &intent(1, 101),
+        &shared_requirement(90),
+    )
+    .expect("the authored action derives its request");
+    let small = babylon_practice_contract::derive_practice_resource_request(
+        &contract,
+        &intent(2, 202),
+        &shared_requirement(10),
+    )
+    .expect("the authored action derives its request");
     let capacity = PracticeResourceCapacity {
         owner: large.owner(),
         resource_id: large.resource_id(),
@@ -485,12 +598,16 @@ fn outcome_decoder_replays_the_allocator_and_refuses_a_forged_grant() {
     };
     let requests = [large, small];
     let capacities = [capacity];
-    let outcome = allocate_practice_resources(&contract, &requests, &capacities).unwrap();
-    let canonical = encode_practice_resource_allocation_outcome(&contract, &outcome).unwrap();
+    let outcome =
+        babylon_practice_contract::allocate_practice_resources(&contract, &requests, &capacities)
+            .expect("the fixture practice resources fit the authored budget");
+    let canonical =
+        babylon_practice_contract::encode_practice_resource_allocation_outcome(&contract, &outcome)
+            .expect("the fixture value encodes to its canonical bytes");
 
     assert_eq!(
         decode_practice_resource_allocation_outcome(&canonical, &contract, &requests, &capacities,)
-            .unwrap(),
+            .expect("the canonical bytes decode into the declared type"),
         outcome
     );
 
@@ -518,7 +635,12 @@ fn one_intent_refuses_a_seventeenth_distinct_resource_requirement() {
             unit_id: PracticeUnitId::from_bytes([0x60; 32]),
             quantity: 1,
         };
-        let request = derive_practice_resource_request(&contract, &proposal, &requirement).unwrap();
+        let request = babylon_practice_contract::derive_practice_resource_request(
+            &contract,
+            &proposal,
+            &requirement,
+        )
+        .expect("the authored action derives its request");
         capacities.push(PracticeResourceCapacity {
             owner: request.owner(),
             resource_id: request.resource_id(),
@@ -530,7 +652,7 @@ fn one_intent_refuses_a_seventeenth_distinct_resource_requirement() {
     }
 
     assert_eq!(
-        allocate_practice_resources(&contract, &requests, &capacities),
+        babylon_practice_contract::allocate_practice_resources(&contract, &requests, &capacities),
         Err(PracticeResourceError::ResourceRequestsPerIntentLimit)
     );
 }
@@ -538,9 +660,12 @@ fn one_intent_refuses_a_seventeenth_distinct_resource_requirement() {
 #[test]
 fn allocator_refuses_duplicate_requests_capacities_and_missing_capacity() {
     let contract = PracticeResourceAllocationContract::conservation_first();
-    let request =
-        derive_practice_resource_request(&contract, &intent(1, 101), &shared_requirement(1))
-            .unwrap();
+    let request = babylon_practice_contract::derive_practice_resource_request(
+        &contract,
+        &intent(1, 101),
+        &shared_requirement(1),
+    )
+    .expect("the authored action derives its request");
     let capacity = PracticeResourceCapacity {
         owner: request.owner(),
         resource_id: request.resource_id(),
@@ -550,7 +675,7 @@ fn allocator_refuses_duplicate_requests_capacities_and_missing_capacity() {
     };
 
     assert_eq!(
-        allocate_practice_resources(
+        babylon_practice_contract::allocate_practice_resources(
             &contract,
             &[request.clone(), request.clone()],
             std::slice::from_ref(&capacity),
@@ -558,11 +683,15 @@ fn allocator_refuses_duplicate_requests_capacities_and_missing_capacity() {
         Err(PracticeResourceError::ResourceRequestDuplicate)
     );
     assert_eq!(
-        allocate_practice_resources(&contract, &[], &[capacity.clone(), capacity]),
+        babylon_practice_contract::allocate_practice_resources(
+            &contract,
+            &[],
+            &[capacity.clone(), capacity]
+        ),
         Err(PracticeResourceError::ResourceCapacityDuplicate)
     );
     assert_eq!(
-        allocate_practice_resources(&contract, &[request], &[]),
+        babylon_practice_contract::allocate_practice_resources(&contract, &[request], &[]),
         Err(PracticeResourceError::ResourceCapacityMissing)
     );
 }
@@ -570,9 +699,12 @@ fn allocator_refuses_duplicate_requests_capacities_and_missing_capacity() {
 #[test]
 fn allocator_refuses_total_maximum_plus_one_before_nested_work() {
     let contract = PracticeResourceAllocationContract::conservation_first();
-    let request =
-        derive_practice_resource_request(&contract, &intent(1, 101), &shared_requirement(1))
-            .unwrap();
+    let request = babylon_practice_contract::derive_practice_resource_request(
+        &contract,
+        &intent(1, 101),
+        &shared_requirement(1),
+    )
+    .expect("the authored action derives its request");
     let capacity = PracticeResourceCapacity {
         owner: request.owner(),
         resource_id: request.resource_id(),
@@ -583,13 +715,17 @@ fn allocator_refuses_total_maximum_plus_one_before_nested_work() {
 
     let too_many_requests = vec![request; MAX_PRACTICE_RESOURCE_REQUESTS + 1];
     assert_eq!(
-        allocate_practice_resources(&contract, &too_many_requests, &[]),
+        babylon_practice_contract::allocate_practice_resources(&contract, &too_many_requests, &[]),
         Err(PracticeResourceError::ResourceRequestLimit)
     );
 
     let too_many_capacities = vec![capacity; MAX_PRACTICE_RESOURCE_CAPACITIES + 1];
     assert_eq!(
-        allocate_practice_resources(&contract, &[], &too_many_capacities),
+        babylon_practice_contract::allocate_practice_resources(
+            &contract,
+            &[],
+            &too_many_capacities
+        ),
         Err(PracticeResourceError::ResourceCapacityLimit)
     );
 }
@@ -597,7 +733,8 @@ fn allocator_refuses_total_maximum_plus_one_before_nested_work() {
 #[test]
 fn resource_refusal_codes_are_closed_and_language_neutral() {
     for code in 1_u16..=22 {
-        let decoded = PracticeResourceError::try_from(code).unwrap();
+        let decoded =
+            PracticeResourceError::try_from(code).expect("the fixture value fits the target range");
         assert_eq!(u16::from(decoded), code);
     }
     assert!(PracticeResourceError::try_from(0_u16).is_err());

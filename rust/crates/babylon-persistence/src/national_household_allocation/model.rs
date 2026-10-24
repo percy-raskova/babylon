@@ -1,4 +1,6 @@
 use babylon_kernel::geography::CountyGeoid;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 
 /// Historical earnings and Designed ownership exposure are independent axes.
 /// Labels describe opening authoring; subsequent hiring never changes identity.
@@ -87,7 +89,7 @@ impl NationalHouseholdAllocation {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum HouseholdAllocationError {
     SourceScope,
     MissingObservation,
@@ -97,7 +99,7 @@ pub enum HouseholdAllocationError {
     Arithmetic,
 }
 impl std::fmt::Display for HouseholdAllocationError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         write!(f, "household allocation refused: {self:?}")
     }
 }

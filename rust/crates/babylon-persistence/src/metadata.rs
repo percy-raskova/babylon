@@ -8,6 +8,8 @@ use postgres::{Config, GenericClient, NoTls, Row};
 use crate::foundation::CampaignFoundation;
 use crate::identity::CampaignId;
 use crate::runtime::RustPersistenceRuntimeError;
+use postgres::Client;
+use postgres::Error;
 
 /// Closed retained campaign status.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -318,10 +320,7 @@ impl RetainedMetadataStore {
         self.replace_navigation(campaign_id, entity_ids, NavigationTable::Breadcrumb)
     }
 
-    fn connect(
-        &self,
-        operation: &'static str,
-    ) -> Result<postgres::Client, RustPersistenceRuntimeError> {
+    fn connect(&self, operation: &'static str) -> Result<Client, RustPersistenceRuntimeError> {
         self.config
             .connect(NoTls)
             .map_err(|error| RustPersistenceRuntimeError::postgres(operation, &error))
@@ -695,7 +694,7 @@ fn require_one(affected: u64) -> Result<(), RustPersistenceRuntimeError> {
     }
 }
 
-fn database(operation: &'static str, error: &postgres::Error) -> RustPersistenceRuntimeError {
+fn database(operation: &'static str, error: &Error) -> RustPersistenceRuntimeError {
     RustPersistenceRuntimeError::postgres(operation, error)
 }
 

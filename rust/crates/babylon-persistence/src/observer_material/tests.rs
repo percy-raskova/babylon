@@ -1,16 +1,25 @@
-use super::*;
+use super::snapshot::{MaterialHistory, MaterialObservationRow};
+use crate::economic_content::EconomicContentAdmission;
+use crate::identity::CampaignId;
+use crate::material_storage::OpeningRegister;
+use crate::michigan_content::MichiganContentPreset;
+use crate::michigan_material::MichiganMaterialCatalog;
+use crate::production_projection;
 use babylon_bsl::structural_verbs::CollectingSink;
+use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_practice_contract::OrderedPracticeActionBatch;
+use babylon_tick::material_replay::PreparedMaterialTick;
 use babylon_tick::material_world::MaterialWorldRegister;
 use babylon_tick::replay_session::ReplayCommitDisposition;
+use uuid::Uuid;
 
 #[test]
 fn admitted_opening_row_reuses_its_canonical_owner_and_refuses_altered_evidence() {
     let catalog = crate::test_support::catalog();
-    let expected = crate::michigan_content::MichiganContentPreset::FourWeekStandard
+    let expected = MichiganContentPreset::FourWeekStandard
         .admitted(&catalog)
-        .unwrap();
-    let campaign = CampaignId::from_uuid(uuid::Uuid::from_u128(339));
+        .expect("the fixture admits the authored value");
+    let campaign = CampaignId::from_uuid(Uuid::from_u128(339));
     let opening = MaterialObservationRow {
         row_campaign: *campaign.as_uuid(),
         row_tick: 0,
@@ -20,7 +29,8 @@ fn admitted_opening_row_reuses_its_canonical_owner_and_refuses_altered_evidence(
         identity: None,
         content_hash: None,
     };
-    let mut history = MaterialHistory::new(&expected).unwrap();
+    let mut history = MaterialHistory::new(&expected)
+        .expect("the constructor accepts the authored fixture arguments");
     assert!(std::ptr::eq(
         history.register(&expected).state(),
         expected.initial_register().state()
@@ -28,7 +38,7 @@ fn admitted_opening_row_reuses_its_canonical_owner_and_refuses_altered_evidence(
     let canonical_owner = history.register(&expected).canonical_bytes().as_ptr();
     history
         .append_decoded(campaign, &expected, 0, opening.clone())
-        .unwrap();
+        .expect("the fixture call `append_decoded` succeeds for the authored inputs");
     // Admission of identical, already validated opening bytes must not allocate
     // a second canonical register owner at national scale.
     assert_eq!(
@@ -44,7 +54,7 @@ fn admitted_opening_row_reuses_its_canonical_owner_and_refuses_altered_evidence(
     assert!(history.prior_world.is_none());
 
     let mut wrong_campaign = opening.clone();
-    wrong_campaign.row_campaign = uuid::Uuid::from_u128(340);
+    wrong_campaign.row_campaign = Uuid::from_u128(340);
     let mut wrong_period = opening.clone();
     wrong_period.row_tick = 1;
     let mut trailing_register = opening.clone();
@@ -52,13 +62,12 @@ fn admitted_opening_row_reuses_its_canonical_owner_and_refuses_altered_evidence(
     let mut changed_register = opening.clone();
     changed_register.register_storage_bytes[0] ^= 1;
     let mut different_opening = opening.clone();
-    different_opening.register_storage_bytes =
-        crate::michigan_content::MichiganContentPreset::FourWeekDelayed
-            .admitted(&catalog)
-            .unwrap()
-            .initial_register()
-            .canonical_bytes()
-            .to_vec();
+    different_opening.register_storage_bytes = MichiganContentPreset::FourWeekDelayed
+        .admitted(&catalog)
+        .expect("the fixture admits the authored value")
+        .initial_register()
+        .canonical_bytes()
+        .to_vec();
     let mut lookup = opening.clone();
     lookup.lookup_delta = Some(Vec::new());
     let mut receipt = opening.clone();
@@ -78,7 +87,8 @@ fn admitted_opening_row_reuses_its_canonical_owner_and_refuses_altered_evidence(
         identity,
         content,
     ] {
-        let mut candidate = MaterialHistory::new(&expected).unwrap();
+        let mut candidate = MaterialHistory::new(&expected)
+            .expect("the constructor accepts the authored fixture arguments");
         let original_owner = candidate.register(&expected).canonical_bytes().as_ptr();
         let original_chain = candidate.lookup_chain;
         assert!(candidate
@@ -100,23 +110,29 @@ fn admitted_opening_row_reuses_its_canonical_owner_and_refuses_altered_evidence(
 }
 
 #[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "`continuous_cursor_replays_beyond_sixteen_and_refuses_a_broken_tail` keeps one authored boundary's fixture and assertions together"
+)]
 fn continuous_cursor_replays_beyond_sixteen_and_refuses_a_broken_tail() {
-    let catalog = crate::michigan_material::MichiganMaterialCatalog::from_defines_toml(
-        include_str!("../../../../../content/scenarios/michigan/defines.toml"),
-    )
-    .unwrap();
-    let preset = crate::michigan_content::MichiganContentPreset::FourWeekStandard;
-    let expected = preset.admitted(&catalog).unwrap();
+    let catalog = MichiganMaterialCatalog::from_defines_toml(include_str!(
+        "../../../../../content/scenarios/michigan/defines.toml"
+    ))
+    .expect("the authored input admits the derived value");
+    let preset = MichiganContentPreset::FourWeekStandard;
+    let expected = preset
+        .admitted(&catalog)
+        .expect("the fixture admits the authored value");
     let mut session = preset
         .create_foundation(&catalog)
-        .unwrap()
+        .expect("the authored catalog builds the foundation")
         .into_session()
-        .unwrap();
-    let campaign = CampaignId::from_uuid(uuid::Uuid::from_u128(338));
-    let mut history = MaterialHistory::new(&expected).unwrap();
-    let expected_lookup =
-        crate::material_storage::OpeningRegister::from_opening(expected.initial_register())
-            .unwrap();
+        .expect("the fixture opens a session");
+    let campaign = CampaignId::from_uuid(Uuid::from_u128(338));
+    let mut history = MaterialHistory::new(&expected)
+        .expect("the constructor accepts the authored fixture arguments");
+    let expected_lookup = OpeningRegister::from_opening(expected.initial_register())
+        .expect("the opening register admits its sections");
     let foundation = MaterialObservationRow {
         row_campaign: *campaign.as_uuid(),
         row_tick: 0,
@@ -128,15 +144,17 @@ fn continuous_cursor_replays_beyond_sixteen_and_refuses_a_broken_tail() {
     };
     history
         .append_decoded(campaign, &expected, 0, foundation.clone())
-        .unwrap();
+        .expect("the fixture call `append_decoded` succeeds for the authored inputs");
     let mut rows = vec![foundation];
     for period in 1..=20 {
         let actions = OrderedPracticeActionBatch::empty(
             session.graph_session().session_identity().clone(),
             period,
         )
-        .unwrap();
-        let next = session.prepare_advance(&actions).unwrap();
+        .expect("the empty authored batch constructs");
+        let next = session
+            .prepare_advance(&actions)
+            .expect("the session prepares the authored advance");
         if period == 17 {
             verify_restart(&catalog, preset, &next);
         }
@@ -146,10 +164,10 @@ fn continuous_cursor_replays_beyond_sixteen_and_refuses_a_broken_tail() {
             &history.lookup,
             history.lookup_chain,
         )
-        .unwrap();
+        .expect("the fixture value encodes canonically");
         let row = MaterialObservationRow {
             row_campaign: *campaign.as_uuid(),
-            row_tick: i64::try_from(period).unwrap(),
+            row_tick: i64::try_from(period).expect("the fixture value fits the target range"),
             register_storage_bytes: encoded.register_storage_bytes,
             lookup_delta: Some(encoded.lookup_delta_bytes),
             receipts: Some(encoded.receipt_storage_bytes),
@@ -160,10 +178,12 @@ fn continuous_cursor_replays_beyond_sixteen_and_refuses_a_broken_tail() {
         assert_eq!(history.register.completed_tick(), period - 1);
         history
             .append_decoded(campaign, &expected, period, row.clone())
-            .unwrap();
+            .expect("the fixture call `append_decoded` succeeds for the authored inputs");
         if period == 1 {
             assert!(std::ptr::eq(
-                history.opening(&expected).unwrap(),
+                history
+                    .opening(&expected)
+                    .expect("the fixture call `opening` succeeds for the authored inputs"),
                 expected.initial_register()
             ));
         }
@@ -173,24 +193,30 @@ fn continuous_cursor_replays_beyond_sixteen_and_refuses_a_broken_tail() {
             .commit_prepared_and_publish(&mut CollectingSink::default(), next, |_| {
                 Ok::<_, ()>(ReplayCommitDisposition::Committed)
             })
-            .unwrap();
+            .expect("the prepared period commits");
     }
-    let mut cold = MaterialHistory::new(&expected).unwrap();
+    let mut cold = MaterialHistory::new(&expected)
+        .expect("the constructor accepts the authored fixture arguments");
     for (period, row) in rows.into_iter().enumerate() {
-        cold.append_decoded(campaign, &expected, u64::try_from(period).unwrap(), row)
-            .unwrap();
+        cold.append_decoded(
+            campaign,
+            &expected,
+            u64::try_from(period).expect("the fixture value fits the target range"),
+            row,
+        )
+        .expect("the fixture call `append_decoded` succeeds for the authored inputs");
     }
     assert_eq!(cold.register, history.register);
     assert_eq!(cold.receipt, history.receipt);
     let project = |value: &MaterialHistory| {
-        project_economic_current(
+        production_projection::project_economic_current(
             expected.view(),
             value.register(&expected),
             value.opening(&expected),
             value.receipt(),
             &value.orders,
         )
-        .unwrap()
+        .expect("the fixture projection accepts the authored input")
     };
     assert_eq!(project(&cold), project(&history));
     assert!(project(&history)
@@ -202,7 +228,7 @@ fn continuous_cursor_replays_beyond_sixteen_and_refuses_a_broken_tail() {
 fn verify_published_period(
     history: &MaterialHistory,
     expected: &EconomicContentAdmission,
-    expected_lookup: &crate::material_storage::OpeningRegister,
+    expected_lookup: &OpeningRegister,
     period: u64,
 ) {
     assert_eq!(
@@ -210,10 +236,22 @@ fn verify_published_period(
         expected_lookup.lookup().entries()
     );
     assert_eq!(
-        history.opening.as_ref().unwrap().completed_tick(),
+        history
+            .opening
+            .as_ref()
+            .expect("the fixture set the optional field before this read")
+            .completed_tick(),
         period - 1
     );
-    assert_eq!(history.receipt.as_ref().unwrap().0.resolve_tick, period);
+    assert_eq!(
+        history
+            .receipt
+            .as_ref()
+            .expect("the fixture set the optional field before this read")
+            .0
+            .resolve_tick,
+        period
+    );
     assert!(history
         .register(expected)
         .state()
@@ -229,17 +267,27 @@ fn verify_refusals(
     history: &MaterialHistory,
 ) {
     let admitted_owner = history.clone();
-    let period = u64::try_from(row.row_tick).unwrap();
+    let period = u64::try_from(row.row_tick).expect("the fixture value fits the target range");
     let mut damaged = row.clone();
-    damaged.lookup_delta.as_mut().unwrap().push(0);
+    damaged
+        .lookup_delta
+        .as_mut()
+        .expect("the fixture set the optional field before this borrow")
+        .push(0);
     let mut absent = row.clone();
     absent.lookup_delta = None;
     let mut wrong_hash = row.clone();
-    wrong_hash.content_hash.as_mut().unwrap()[0] ^= 1;
+    wrong_hash
+        .content_hash
+        .as_mut()
+        .expect("the fixture set the optional field before this borrow")[0] ^= 1;
     let mut missing_receipts = row.clone();
     missing_receipts.receipts = None;
     let mut wrong_period = row.clone();
-    let delta = wrong_period.lookup_delta.as_mut().unwrap();
+    let delta = wrong_period
+        .lookup_delta
+        .as_mut()
+        .expect("the fixture set the optional field before this borrow");
     let offset = crate::material_storage::LOOKUP_DOMAIN.len() + 2 + 32;
     delta[offset..offset + 8].copy_from_slice(&(period + 1).to_be_bytes());
     for refused in [damaged, absent, wrong_hash, missing_receipts, wrong_period] {
@@ -266,28 +314,27 @@ fn verify_refusals(
 }
 
 fn verify_restart(
-    catalog: &crate::michigan_material::MichiganMaterialCatalog,
-    preset: crate::michigan_content::MichiganContentPreset,
-    next: &babylon_tick::material_replay::PreparedMaterialTick<
-        babylon_graph::hypergraph_store::HypergraphStore,
-    >,
+    catalog: &MichiganMaterialCatalog,
+    preset: MichiganContentPreset,
+    next: &PreparedMaterialTick<HypergraphStore>,
 ) {
     let mut resumed = preset
         .create_foundation(catalog)
-        .unwrap()
+        .expect("the authored catalog builds the foundation")
         .into_session()
-        .unwrap();
+        .expect("the fixture opens a session");
     resumed
         .restore_full_checkpoint(
             next.graph_report().result_stable_graph(),
             next.graph_report().material_state_rows(),
             next.graph_report().result_registers().canonical_bytes(),
-            MaterialWorldRegister::decode(next.material().register().canonical_bytes()).unwrap(),
+            MaterialWorldRegister::decode(next.material().register().canonical_bytes())
+                .expect("the committed canonical bytes decode"),
         )
-        .unwrap();
+        .expect("the committed checkpoint restores");
     assert_eq!(resumed.completed_tick(), 17);
     let subsequent =
         OrderedPracticeActionBatch::empty(resumed.graph_session().session_identity().clone(), 18)
-            .unwrap();
+            .expect("the empty authored batch constructs");
     assert!(resumed.prepare_advance(&subsequent).is_ok());
 }

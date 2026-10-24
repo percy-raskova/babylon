@@ -1,9 +1,9 @@
 //! Designed opening instruments with finite use, real sourcing and installation.
-use super::{
-    amount, markets, quantity, routes, ActorContext, Builder, NationalOpeningError, Result,
-};
+use super::{markets, routes, ActorContext, Builder, NationalOpeningError, Result};
 use crate::economic_catalog::CatalogCapacity;
-use babylon_kernel::{content_digest::sha256_of, currency::Currency};
+use babylon_kernel::currency::Currency;
+
+use babylon_kernel::content_digest;
 use babylon_material_circuit::{
     EquipmentAssetId, EquipmentBinding, EquipmentCarryingValue, EquipmentCohortId,
     EquipmentDefinition, EquipmentDefinitionId, InstallationInput, InstallationPolicy,
@@ -11,13 +11,16 @@ use babylon_material_circuit::{
     RollingProcessSupply, StaffingPoolBinding, StaffingWorkSource, SupplierRoute,
     SupplierTransport,
 };
+use markets::Preferences;
+use markets::Providers;
+use routes::Network;
 use std::collections::BTreeSet;
 
 pub(super) fn wire(
     builder: &mut Builder<'_>,
-    providers: &markets::Providers,
-    network: &mut routes::Network<'_>,
-    preferences: &mut markets::Preferences,
+    providers: &Providers,
+    network: &mut Network<'_>,
+    preferences: &mut Preferences,
 ) -> Result<()> {
     let definition = definition(builder)?;
     let mut equipment = ProductiveEquipment {
@@ -116,7 +119,7 @@ fn definition(builder: &Builder<'_>) -> Result<EquipmentDefinition> {
     identity.extend_from_slice(&good.good_id.as_bytes());
     identity.extend_from_slice(&good.unit_id.as_bytes());
     Ok(EquipmentDefinition {
-        id: EquipmentDefinitionId::from_bytes(sha256_of(&identity)),
+        id: EquipmentDefinitionId::from_bytes(content_digest::sha256_of(&identity)),
         equipment_good_id: good.good_id,
         equipment_unit_id: good.unit_id,
         batches_per_unit_per_period: policy.batches_per_unit_per_period,
@@ -147,7 +150,7 @@ fn opening_asset(
     if fraction == 0 || fraction > 10_000 {
         return Err(NationalOpeningError::Policy);
     }
-    let life = quantity(units, definition.service_batches_per_unit)?;
+    let life = super::quantity(units, definition.service_batches_per_unit)?;
     let remaining = u64::try_from(u128::from(life) * u128::from(fraction) / 10_000)
         .map_err(|_| NationalOpeningError::Arithmetic)?;
     if remaining == 0 {
@@ -155,7 +158,7 @@ fn opening_asset(
     }
     let mut identity = b"NationalOpeningEquipmentV1\0".to_vec();
     identity.extend_from_slice(&process.as_bytes());
-    let id = EquipmentCohortId::from_bytes(sha256_of(&identity));
+    let id = EquipmentCohortId::from_bytes(content_digest::sha256_of(&identity));
     equipment.cohorts.push(InstalledEquipmentCohort {
         id,
         process_id: process,
@@ -171,7 +174,7 @@ fn opening_asset(
         .scaled(actor.price_scale_bps)
         .map_err(|_| NationalOpeningError::Arithmetic)?
         .opening;
-    let original = amount(units, price)?.micro_units();
+    let original = super::amount(units, price)?.micro_units();
     let carrying = (original / 10_000)
         .checked_mul(i128::from(fraction))
         .and_then(|n| n.checked_add((original % 10_000) * i128::from(fraction) / 10_000))
@@ -195,8 +198,8 @@ fn machine_units(
         .recipes
         .get(&actor.function)
         .ok_or(NationalOpeningError::Policy)?;
-    let batches =
-        quantity(persons, builder.policy.work_hours_per_person)? / recipe.labor_hours_per_batch;
+    let batches = super::quantity(persons, builder.policy.work_hours_per_person)?
+        / recipe.labor_hours_per_batch;
     Ok(batches.div_ceil(definition.batches_per_unit_per_period))
 }
 
@@ -205,9 +208,9 @@ fn policies(
     actor: &ActorContext,
     definition: &EquipmentDefinition,
     equipment: &mut ProductiveEquipment,
-    providers: &markets::Providers,
-    network: &mut routes::Network<'_>,
-    preferences: &mut markets::Preferences,
+    providers: &Providers,
+    network: &mut Network<'_>,
+    preferences: &mut Preferences,
 ) -> Result<()> {
     let process = actor.process_id.ok_or(NationalOpeningError::Identity)?;
     let Some((starts, maximum)) = installation_policy(builder, actor, definition, equipment)?
@@ -223,7 +226,7 @@ fn policies(
             markets::ProcurementNeed {
                 buyer: actor.site_id,
                 key: &key,
-                required: quantity(starts, coefficient)?,
+                required: super::quantity(starts, coefficient)?,
                 buffer_periods: builder.policy.opening_input_periods,
             },
         )?;
@@ -293,7 +296,7 @@ fn installation_policy(
 ) -> Result<Option<(u64, u64)>> {
     let process = actor.process_id.ok_or(NationalOpeningError::Identity)?;
     let maximum = machine_units(builder, actor, actor.force, definition)?;
-    let hours = quantity(actor.force, builder.policy.work_hours_per_person)?;
+    let hours = super::quantity(actor.force, builder.policy.work_hours_per_person)?;
     let hours = u64::try_from(
         u128::from(hours) * u128::from(builder.policy.equipment.installation_workforce_hours_bps)
             / 10_000,

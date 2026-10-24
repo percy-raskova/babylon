@@ -1,0 +1,11 @@
+# Formatting authority for the workspace (`docs/agents/rust-style.md`).
+#
+# Every option here is stable: the workspace builds on the pinned 1.91.1
+# toolchain, and `cargo fmt --all -- --check` runs in `rust:check-no-docs`.
+# Nightly-only formatting (import grouping, hex literal case, macro matcher
+# layout) is deliberately absent; `bsl-lint google-rust-style` enforces those
+# shapes from the AST instead, so the formatter stays runnable on stable.
+edition = "2021"
+max_width = 100
+use_field_init_shorthand = true
+use_try_shorthand = true

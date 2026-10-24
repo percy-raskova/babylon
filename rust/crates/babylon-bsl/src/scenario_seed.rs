@@ -1,12 +1,8 @@
 //! Checked native instances for captured catalogs. Declarations and instance
 //! hydration use the authored loader's existing semantics, one row at a time.
 
-use super::{
-    effective_practice_attributes, err, invert_content_ids, invert_hyperedge_content_ids,
-    load_edge, load_edge_attr, load_hyperedge, load_hyperedge_attr, load_node,
-    map_practice_load_error, require_practice_field_signatures, LoadedScenario, ScenarioError,
-};
-use crate::reader::{read, Atom, SExpr, ScaledKind, ScaledLit};
+use super::{LoadedScenario, ScenarioError};
+use crate::reader::{Atom, SExpr, ScaledKind, ScaledLit};
 use babylon_graph::substrate::{GraphSubstrate, HyperedgeId, NodeId};
 use babylon_kernel::currency::Currency;
 use babylon_practice_contract::{PracticeTargetDomain, PracticeTopologyLoadCounter};
@@ -57,7 +53,9 @@ impl SeedValue {
         if valid {
             Ok(())
         } else {
-            Err(err("native seed literal is outside its canonical domain"))
+            Err(super::err(
+                "native seed literal is outside its canonical domain",
+            ))
         }
     }
 }
@@ -129,10 +127,12 @@ impl GraphSeed {
         mut hyperedges: Vec<HyperedgeSeed>,
     ) -> Result<Self, ScenarioError> {
         if nodes.len() > MAX_SEED_NODES {
-            return Err(err("native seed exceeds the 262,144-node bound"));
+            return Err(super::err("native seed exceeds the 262,144-node bound"));
         }
         if edges.len() > MAX_SEED_RELATIONS || hyperedges.len() > MAX_SEED_RELATIONS {
-            return Err(err("native seed exceeds the 65,536-row relationship bound"));
+            return Err(super::err(
+                "native seed exceeds the 65,536-row relationship bound",
+            ));
         }
         let mut names = BTreeSet::new();
         let mut values = 0_usize;
@@ -140,7 +140,7 @@ impl GraphSeed {
             validate_local(&node.local_name)?;
             validate_type("NodeType", &node.node_type)?;
             if !names.insert(node.local_name.clone()) {
-                return Err(err("duplicate native node identity"));
+                return Err(super::err("duplicate native node identity"));
             }
             validate_attributes(&mut node.attributes, &mut values)?;
         }
@@ -148,14 +148,14 @@ impl GraphSeed {
         for edge in &mut edges {
             validate_type("EdgeType", &edge.edge_type)?;
             if !names.contains(&edge.source) || !names.contains(&edge.target) {
-                return Err(err("native edge names an absent node"));
+                return Err(super::err("native edge names an absent node"));
             }
             if !keys.insert((
                 edge.edge_type.clone(),
                 edge.source.clone(),
                 edge.target.clone(),
             )) {
-                return Err(err("duplicate native edge identity"));
+                return Err(super::err("duplicate native edge identity"));
             }
             edge.strength.validate()?;
             validate_attributes(&mut edge.attributes, &mut values)?;
@@ -197,16 +197,18 @@ fn validate_hyperedges(
         validate_local(&row.local_name)?;
         validate_type("HyperedgeType", &row.hyperedge_type)?;
         if !names.insert(row.local_name.clone()) {
-            return Err(err("duplicate native hyperedge identity"));
+            return Err(super::err("duplicate native hyperedge identity"));
         }
         if row.members.is_empty() {
-            return Err(err("native hyperedge requires members"));
+            return Err(super::err("native hyperedge requires members"));
         }
         row.members.sort();
         if row.members.windows(2).any(|pair| pair[0] == pair[1])
             || row.members.iter().any(|name| !nodes.contains(name))
         {
-            return Err(err("native hyperedge has duplicate or absent members"));
+            return Err(super::err(
+                "native hyperedge has duplicate or absent members",
+            ));
         }
         add_values(values, row.members.len())?;
         validate_attributes(&mut row.attributes, values)?;
@@ -221,7 +223,7 @@ fn validate_attributes(
     add_values(values, rows.len())?;
     rows.sort_by(|a, b| a.field.cmp(&b.field));
     if rows.windows(2).any(|pair| pair[0].field == pair[1].field) {
-        return Err(err("duplicate native field authority"));
+        return Err(super::err("duplicate native field authority"));
     }
     for row in rows {
         validate_atom(&row.field, &Atom::QName(row.field.clone()))?;
@@ -234,7 +236,7 @@ fn add_values(count: &mut usize, additional: usize) -> Result<(), ScenarioError>
     *count = count
         .checked_add(additional)
         .filter(|n| *n <= MAX_SEED_VALUES)
-        .ok_or_else(|| err("native seed exceeds the value/membership bound"))?;
+        .ok_or_else(|| super::err("native seed exceeds the value/membership bound"))?;
     Ok(())
 }
 
@@ -254,13 +256,13 @@ fn validate_type(kind: &str, member: &str) -> Result<(), ScenarioError> {
 
 fn validate_atom(source: &str, expected: &Atom) -> Result<(), ScenarioError> {
     if source.len() > 128 {
-        return Err(err("native seed name exceeds its byte bound"));
+        return Err(super::err("native seed name exceeds its byte bound"));
     }
-    let (actual, consumed) = read(source)?;
+    let (actual, consumed) = crate::reader::read(source)?;
     if consumed == source.len() && actual == SExpr::Atom(expected.clone()) {
         Ok(())
     } else {
-        Err(err("native seed name is not one canonical atom"))
+        Err(super::err("native seed name is not one canonical atom"))
     }
 }
 
@@ -307,31 +309,35 @@ pub fn load_scenario_with_seed(
         None => super::load_scenario(declarations, graph)?,
     };
     if loaded.vocabulary.is_none() {
-        return Err(err("native seed requires a declared closed vocabulary"));
+        return Err(super::err(
+            "native seed requires a declared closed vocabulary",
+        ));
     }
     check_practice(seed, &loaded)?;
     let mut hydration = Hydration::default();
     hydration.nodes(seed, &mut loaded, graph)?;
     hydration.edges(seed, &mut loaded, graph)?;
     hydration.hyperedges(seed, &mut loaded, graph)?;
-    loaded.node_content_ids = invert_content_ids(&hydration.nodes);
-    loaded.hyperedge_content_ids = invert_hyperedge_content_ids(&hydration.hyperedges);
+    loaded.node_content_ids = super::invert_content_ids(&hydration.nodes);
+    loaded.hyperedge_content_ids = super::invert_hyperedge_content_ids(&hydration.hyperedges);
     Ok(loaded)
 }
 
 fn check_declaration_only(source: &str) -> Result<(), ScenarioError> {
     let forms = super::bounded_scenario_read(source)?;
     let [SExpr::List(parts)] = forms.as_slice() else {
-        return Err(err("native declarations require one scenario"));
+        return Err(super::err("native declarations require one scenario"));
     };
     for form in parts.iter().skip(2) {
         let SExpr::List(parts) = form else {
-            return Err(err("native declarations require declaration forms"));
+            return Err(super::err("native declarations require declaration forms"));
         };
         if !matches!(parts.first(), Some(SExpr::Atom(Atom::Symbol(tag)))
             if matches!(tag.as_str(), "defenum" | "defvocabulary" | "deffield" | "defconst"))
         {
-            return Err(err("native graph source cannot contain authored instances"));
+            return Err(super::err(
+                "native graph source cannot contain authored instances",
+            ));
         }
     }
     Ok(())
@@ -341,18 +347,19 @@ fn check_practice(seed: &GraphSeed, loaded: &LoadedScenario) -> Result<(), Scena
     if !loaded.fields.contains_key("organization/action-budget") {
         return Ok(());
     }
-    require_practice_field_signatures(&loaded.fields)?;
+    super::require_practice_field_signatures(&loaded.fields)?;
     let mut counter = PracticeTopologyLoadCounter::new();
     let mut names = HashMap::new();
     for (index, node) in seed.nodes.iter().enumerate() {
-        let ordinal = u64::try_from(index).map_err(|_| err("native node ordinal overflow"))?;
+        let ordinal =
+            u64::try_from(index).map_err(|_| super::err("native node ordinal overflow"))?;
         names.insert(node.local_name.as_str(), (ordinal, node.node_type.as_str()));
         if node.node_type == "ORGANIZATION" {
             let attrs: Vec<_> = node.attributes.iter().map(attribute).collect();
-            let (active, budget) = effective_practice_attributes(&attrs);
+            let (active, budget) = super::effective_practice_attributes(&attrs);
             counter
                 .observe_organization(ordinal, active, budget)
-                .map_err(map_practice_load_error)?;
+                .map_err(super::map_practice_load_error)?;
         }
     }
     for edge in &seed.edges {
@@ -364,10 +371,10 @@ fn check_practice(seed: &GraphSeed, loaded: &LoadedScenario) -> Result<(), Scena
         {
             counter
                 .observe_solidarity_edge(from, PracticeTargetDomain::SocialClass, to)
-                .map_err(map_practice_load_error)?;
+                .map_err(super::map_practice_load_error)?;
         }
     }
-    counter.finish().map_err(map_practice_load_error)
+    counter.finish().map_err(super::map_practice_load_error)
 }
 
 #[derive(Default)]
@@ -385,7 +392,7 @@ impl Hydration {
         graph: &mut dyn GraphSubstrate,
     ) -> Result<(), ScenarioError> {
         for row in &seed.nodes {
-            let kind = load_node(
+            let kind = super::load_node(
                 &node_form(row),
                 graph,
                 &mut self.nodes,
@@ -414,7 +421,7 @@ impl Hydration {
                 symbol(&row.target),
                 SExpr::Atom(row.strength.atom()),
             ];
-            let kind = load_edge(
+            let kind = super::load_edge(
                 &form,
                 graph,
                 &self.nodes,
@@ -433,7 +440,7 @@ impl Hydration {
                     SExpr::Atom(Atom::QName(attr.field.clone())),
                     SExpr::Atom(attr.value.atom()),
                 ];
-                load_edge_attr(
+                super::load_edge_attr(
                     &form,
                     graph,
                     &self.nodes,
@@ -464,7 +471,7 @@ impl Hydration {
                 enum_ref("HyperedgeType", &row.hyperedge_type),
                 SExpr::List(members),
             ];
-            let (kind, count) = load_hyperedge(
+            let (kind, count) = super::load_hyperedge(
                 &form,
                 graph,
                 &self.nodes,
@@ -485,7 +492,7 @@ impl Hydration {
                     SExpr::Atom(Atom::QName(attr.field.clone())),
                     SExpr::Atom(attr.value.atom()),
                 ];
-                load_hyperedge_attr(
+                super::load_hyperedge_attr(
                     &form,
                     graph,
                     &self.hyperedges,

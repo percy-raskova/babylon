@@ -1,6 +1,43 @@
 //! Integrated counterfactual controls: market withdrawal, resident work, and finite trade.
-use super::*;
+use crate::inventory;
 use babylon_kernel::economic_location::{EconomicLocation, ForeignCounterpart};
+use babylon_material_circuit::AccountId;
+use babylon_material_circuit::CapacitySupply;
+use babylon_material_circuit::CashAccount;
+use babylon_material_circuit::CircuitAccounting;
+use babylon_material_circuit::CorridorCapacity;
+use babylon_material_circuit::HistoricalCostBook;
+use babylon_material_circuit::InstalledProcessCapacity;
+use babylon_material_circuit::MaterialCircuitState;
+use babylon_material_circuit::MaterialCircuitTransition;
+use babylon_material_circuit::MemberLaborCapacityRow;
+use babylon_material_circuit::MerchantHandling;
+use babylon_material_circuit::MerchantHandlingCoefficient;
+use babylon_material_circuit::MerchantRole;
+use babylon_material_circuit::MonetaryBook;
+use babylon_material_circuit::MoneyLocation;
+use babylon_material_circuit::MoneyTransferPurpose;
+use babylon_material_circuit::OutboundOrderId;
+use babylon_material_circuit::PricePolicy;
+use babylon_material_circuit::RecurringEconomy;
+use babylon_material_circuit::ReplenishmentPolicy;
+use babylon_material_circuit::RollingCapacitySupply;
+use babylon_material_circuit::RollingProcessSupply;
+use babylon_material_circuit::SellerOffer;
+use babylon_material_circuit::SharedCapacitySupply;
+use babylon_material_circuit::StaffingMemberBinding;
+use babylon_material_circuit::StaffingMemberId;
+use babylon_material_circuit::StaffingMemberState;
+use babylon_material_circuit::StaffingPolicy;
+use babylon_material_circuit::StaffingPoolBinding;
+use babylon_material_circuit::StaffingPoolId;
+use babylon_material_circuit::StaffingPoolState;
+use babylon_material_circuit::StaffingReceipt;
+use babylon_material_circuit::StaffingState;
+use babylon_material_circuit::StaffingWorkSource;
+use babylon_material_circuit::StockCarryingValue;
+use babylon_material_circuit::SupplierRoute;
+use babylon_material_circuit::SupplierTransport;
 
 fn rolling(mut state: MaterialCircuitState) -> MaterialCircuitState {
     state.capacities.retain(|row| row.period == state.period);
@@ -8,7 +45,7 @@ fn rolling(mut state: MaterialCircuitState) -> MaterialCircuitState {
         .corridor_capacities
         .retain(|row| row.period == state.period);
     state.capacity_supply = CapacitySupply::Rolling(Box::new(RollingCapacitySupply {
-        processes: babylon_material_circuit::RollingProcessSupply::CapturedNameplate(
+        processes: RollingProcessSupply::CapturedNameplate(
             state
                 .capacities
                 .iter()
@@ -37,23 +74,25 @@ fn staffing() -> StaffingState {
         .into_iter()
         .map(|(owner, persons)| {
             let source = if owner == 3 {
-                StaffingWorkSource::MerchantHandling(site(owner))
+                StaffingWorkSource::MerchantHandling(crate::site(owner))
             } else {
-                StaffingWorkSource::Production(process(owner))
+                StaffingWorkSource::Production(crate::process(owner))
             };
             let binding = StaffingPoolBinding::try_new(
                 StaffingPoolId::from_bytes([owner; 32]),
-                site(owner),
-                hours(),
+                crate::site(owner),
+                crate::hours(),
                 persons,
-                StaffingPolicy::one_period(4).unwrap(),
+                StaffingPolicy::one_period(4).expect("the one-period fixture advances"),
                 vec![source],
             )
-            .unwrap();
-            StaffingPoolState::try_new(binding, persons, 0, persons * 4).unwrap()
+            .expect("the authored fixture satisfies the constructor invariants");
+            StaffingPoolState::try_new(binding, persons, 0, persons * 4)
+                .expect("the authored fixture satisfies the constructor invariants")
         })
         .collect();
-    StaffingState::try_new(1, pools).unwrap()
+    StaffingState::try_new(1, pools)
+        .expect("the authored fixture satisfies the constructor invariants")
 }
 
 fn residents() -> Vec<Vec<StaffingMemberState>> {
@@ -63,15 +102,17 @@ fn residents() -> Vec<Vec<StaffingMemberState>> {
             vec![StaffingMemberState::try_new(
                 StaffingMemberBinding::try_new(
                     StaffingMemberId::from_bytes([id; 32]),
-                    household(),
-                    "county:26163".parse().unwrap(),
+                    crate::household(),
+                    "county:26163"
+                        .parse()
+                        .expect("the authored literal parses as the declared type"),
                     persons,
                 )
-                .unwrap(),
+                .expect("the authored fixture satisfies the constructor invariants"),
                 persons,
                 0,
             )
-            .unwrap()]
+            .expect("the authored fixture satisfies the constructor invariants")]
         })
         .collect()
 }
@@ -84,18 +125,21 @@ fn assert_conservation(
 ) {
     let physical = state.inventory.iter().map(|r| r.quantity).sum::<u64>()
         + state.freight.iter().map(|r| r.quantity).sum::<u64>()
-        + economy(state)
+        + crate::economy(state)
             .recurring
             .as_ref()
-            .unwrap()
+            .expect("the fixture set the optional field before this read")
             .household_stocks
             .iter()
             .map(|r| r.quantity)
             .sum::<u64>();
     assert_eq!(physical + consumed, physical_total);
     assert_eq!(
-        economy(state).book.total_cash_and_reserves().unwrap(),
-        money(cash)
+        crate::economy(state)
+            .book
+            .total_cash_and_reserves()
+            .expect("the fixture book totals without overflow"),
+        crate::money(cash)
     );
 }
 
@@ -108,7 +152,9 @@ fn allocate_resident_work(
     let mut separations = 0;
     let mut hours_next = Vec::new();
     for (index, receipt) in receipts.iter().enumerate() {
-        let shares = distribute_staffing_members(receipt, &members[index]).unwrap();
+        let shares =
+            babylon_material_circuit::distribute_staffing_members(receipt, &members[index])
+                .expect("the fixture distributes the authored members");
         assert_eq!(
             shares.iter().map(|r| r.closing_employed).sum::<u64>(),
             receipt.closing_employed()
@@ -120,7 +166,8 @@ fn allocate_resident_work(
         members[index] = shares
             .iter()
             .map(|r| {
-                r.validate().unwrap();
+                r.validate()
+                    .expect("the authored fixture passes validation");
                 assert_eq!(
                     r.closing_employed + r.closing_reserve,
                     r.member.labor_force()
@@ -137,7 +184,7 @@ fn allocate_resident_work(
                     r.closing_employed,
                     r.closing_reserve,
                 )
-                .unwrap()
+                .expect("the authored fixture satisfies the constructor invariants")
             })
             .collect();
     }
@@ -162,11 +209,11 @@ fn circuit_activity(
         .state
         .inventory
         .iter()
-        .filter(|r| r.good_id == good(2))
+        .filter(|r| r.good_id == crate::good(2))
         .map(|r| r.quantity)
         .sum::<u64>();
     (
-        output(transition, 1) + output(transition, 2),
+        crate::output(transition, 1) + crate::output(transition, 2),
         planned,
         employed,
         stock,
@@ -175,7 +222,7 @@ fn circuit_activity(
 
 #[test]
 fn withdrawal_and_recovery_pass_through_plans_and_conserved_resident_workforce() {
-    let mut state = rolling(opening());
+    let mut state = rolling(crate::opening());
     state.labor.retain(|row| row.period == 1);
     if let CircuitAccounting::Monetary(e) = &mut state.accounting {
         e.member_labor.retain(|row| row.period == 1);
@@ -187,18 +234,22 @@ fn withdrawal_and_recovery_pass_through_plans_and_conserved_resident_workforce()
     let mut hires = 0;
     let mut consumed = 0;
     for period in 1..=12 {
-        recurring_mut(&mut state).household_purchases[0].enabled = ![3, 4].contains(&period);
-        let closed = close_material_period(&state).unwrap();
+        crate::recurring_mut(&mut state).household_purchases[0].enabled = ![3, 4].contains(&period);
+        let closed = babylon_material_circuit::close_material_period(&state)
+            .expect("the material period closes");
         let bindings: Vec<_> = pools.pools().iter().map(|p| p.binding().clone()).collect();
-        let requests = closed.staffing_requests(&bindings).unwrap();
-        let staffing = advance_staffing(&pools, &requests).unwrap();
+        let requests = closed
+            .staffing_requests(&bindings)
+            .expect("the fixture staffing requests are present");
+        let staffing = babylon_material_circuit::advance_staffing(&pools, &requests)
+            .expect("the fixture staffing advances");
         let (hours_next, period_hires, period_separations) =
             allocate_resident_work(staffing.receipts(), &mut members, period + 1);
         hires += period_hires;
         separations += period_separations;
         let transition = closed
             .finish_with_workforce(staffing.next_labor().to_vec(), hours_next)
-            .unwrap();
+            .expect("the fixture call `finish_with_workforce` succeeds for the authored inputs");
         trajectory.push(circuit_activity(&transition, &members));
         consumed += transition
             .household_consumption
@@ -215,10 +266,11 @@ fn withdrawal_and_recovery_pass_through_plans_and_conserved_resident_workforce()
             4
         );
         pools = staffing.state().clone();
-        state = decode_material_circuit_state(
-            &encode_material_circuit_state(&transition.state).unwrap(),
+        state = babylon_material_circuit::decode_material_circuit_state(
+            &babylon_material_circuit::encode_material_circuit_state(&transition.state)
+                .expect("the canonical material state encodes"),
         )
-        .unwrap();
+        .expect("the canonical material bytes decode");
     }
     assert!(
         separations > 0 && hires > 0,
@@ -241,7 +293,7 @@ fn withdrawal_and_recovery_pass_through_plans_and_conserved_resident_workforce()
 }
 
 fn foreign_trade_opening() -> MaterialCircuitState {
-    let mut state = opening();
+    let mut state = crate::opening();
     state.process_outputs.clear();
     state.input_coefficients.clear();
     state.labor_coefficients.clear();
@@ -249,19 +301,24 @@ fn foreign_trade_opening() -> MaterialCircuitState {
     state.capacities.clear();
     // Keep sixteen finite goods: four exports, four imports, and eight retail units.
     state.inventory = vec![inventory(1, 1, 4), inventory(2, 2, 4), inventory(3, 2, 8)];
-    recurring_mut(&mut state).household_stocks[0].quantity = 0;
+    crate::recurring_mut(&mut state).household_stocks[0].quantity = 0;
     state.merchants.extend(
         [
-            (1, "county:26163".parse().unwrap()),
+            (
+                1,
+                "county:26163"
+                    .parse()
+                    .expect("the authored literal parses as the declared type"),
+            ),
             (2, EconomicLocation::Foreign(ForeignCounterpart::Canada)),
         ]
         .into_iter()
         .map(|(id, location)| MerchantHandling {
-            site_id: site(id),
+            site_id: crate::site(id),
             location,
             role: MerchantRole::Wholesale,
-            capacity_id: corridor(id + 3),
-            labor_unit_id: hours(),
+            capacity_id: crate::corridor(id + 3),
+            labor_unit_id: crate::hours(),
         }),
     );
     state
@@ -270,34 +327,34 @@ fn foreign_trade_opening() -> MaterialCircuitState {
             [(1, 1), (2, 2)]
                 .into_iter()
                 .map(|(id, g)| MerchantHandlingCoefficient {
-                    site_id: site(id),
-                    good_id: good(g),
-                    unit_id: units(),
+                    site_id: crate::site(id),
+                    good_id: crate::good(g),
+                    unit_id: crate::units(),
                     hours_per_unit: 1,
                 }),
         );
     state.supplier_routes = [(1, 2, 1), (2, 1, 2)]
         .into_iter()
         .map(|(seller, buyer, g)| SupplierRoute {
-            supplier_site_id: site(seller),
-            buyer_site_id: site(buyer),
-            good_id: good(g),
-            unit_id: units(),
-            route_id: route(seller),
+            supplier_site_id: crate::site(seller),
+            buyer_site_id: crate::site(buyer),
+            good_id: crate::good(g),
+            unit_id: crate::units(),
+            route_id: crate::route(seller),
             transport_kind: SupplierTransport::Staged,
         })
         .collect();
-    state.route_stages[1].to_node_id = node(1);
+    state.route_stages[1].to_node_id = crate::node(1);
     // Warehouse handling and road freight are distinct physical capacity principals.
     state.corridor_capacities.extend((1..=9).flat_map(|period| {
         [4, 5].into_iter().map(move |id| CorridorCapacity {
-            corridor_id: corridor(id),
+            corridor_id: crate::corridor(id),
             period,
             available_grams: 4,
         })
     }));
     fund_foreign_trade(&mut state);
-    configure_trade_policies(recurring_mut(&mut state));
+    configure_trade_policies(crate::recurring_mut(&mut state));
     state
 }
 
@@ -308,40 +365,40 @@ fn fund_foreign_trade(state: &mut MaterialCircuitState) {
     e.book = MonetaryBook::open(
         [
             // The retailer pays its first handling shift before household admission.
-            (AccountId::Site(site(1)), 96),
-            (AccountId::Site(site(2)), 100),
-            (AccountId::Site(site(3)), 4),
-            (AccountId::Household(household()), 0),
+            (AccountId::Site(crate::site(1)), 96),
+            (AccountId::Site(crate::site(2)), 100),
+            (AccountId::Site(crate::site(3)), 4),
+            (AccountId::Household(crate::household()), 0),
         ]
         .into_iter()
         .map(|(id, cash)| CashAccount {
             id,
-            cash: money(cash),
+            cash: crate::money(cash),
         })
         .collect(),
     )
-    .unwrap();
+    .expect("the fixture opens the authored source");
     e.costs = HistoricalCostBook::open(
         &e.book,
         [
-            (AccountId::Site(site(1)), 1),
-            (AccountId::Site(site(2)), 2),
-            (AccountId::Site(site(3)), 2),
-            (AccountId::Household(household()), 2),
+            (AccountId::Site(crate::site(1)), 1),
+            (AccountId::Site(crate::site(2)), 2),
+            (AccountId::Site(crate::site(3)), 2),
+            (AccountId::Household(crate::household()), 2),
         ]
         .into_iter()
         .map(|(owner, g)| StockCarryingValue {
             owner,
-            good_id: good(g),
-            unit_id: units(),
-            amount: money(0),
+            good_id: crate::good(g),
+            unit_id: crate::units(),
+            amount: crate::money(0),
         })
         .collect(),
         vec![],
         vec![],
         vec![],
     )
-    .unwrap();
+    .expect("the fixture opens the authored source");
 }
 
 fn configure_trade_policies(recurring: &mut RecurringEconomy) {
@@ -349,23 +406,23 @@ fn configure_trade_policies(recurring: &mut RecurringEconomy) {
     recurring.offers = [(1, 1), (2, 2), (3, 2)]
         .into_iter()
         .map(|(id, g)| SellerOffer {
-            site_id: site(id),
-            good_id: good(g),
-            unit_id: units(),
-            unit_price: money(1),
+            site_id: crate::site(id),
+            good_id: crate::good(g),
+            unit_id: crate::units(),
+            unit_price: crate::money(1),
             pricing: PricePolicy::Fixed,
         })
         .collect();
     recurring.replenishment = [(1, 2, 1), (2, 1, 2)]
         .into_iter()
         .map(|(seller, buyer, g)| ReplenishmentPolicy {
-            buyer_site_id: site(buyer),
-            supplier_site_id: site(seller),
-            good_id: good(g),
-            unit_id: units(),
+            buyer_site_id: crate::site(buyer),
+            supplier_site_id: crate::site(seller),
+            good_id: crate::good(g),
+            unit_id: crate::units(),
             target_stock: 4,
             maximum_purchase: 2,
-            cash_floor: money(0),
+            cash_floor: crate::money(0),
         })
         .collect();
 }
@@ -381,14 +438,18 @@ fn record_trade_settlement(
             .orders
             .iter()
             .find(|r| r.order_id == receipt.order_id)
-            .unwrap();
-        delivered[usize::from(order.supplier_site_id == site(2))] += receipt.quantity;
+            .expect("the fixture holds the searched element");
+        delivered[usize::from(order.supplier_site_id == crate::site(2))] += receipt.quantity;
     }
     for transfer in &transition.money_transfers {
         if let MoneyTransferPurpose::DeliverySettlement(OutboundOrderId::Delivery(id)) =
             transfer.purpose
         {
-            let order = state.orders.iter().find(|r| r.order_id == id).unwrap();
+            let order = state
+                .orders
+                .iter()
+                .find(|r| r.order_id == id)
+                .expect("the fixture holds the searched element");
             assert_eq!(
                 transfer.credit.location,
                 MoneyLocation::Cash(AccountId::Site(order.supplier_site_id))
@@ -401,7 +462,7 @@ fn record_trade_settlement(
                 transfer.debit.delta.micro_units(),
                 -transfer.credit.delta.micro_units()
             );
-            settled[usize::from(order.supplier_site_id == site(2))] +=
+            settled[usize::from(order.supplier_site_id == crate::site(2))] +=
                 transfer.credit.delta.micro_units();
         }
     }
@@ -417,7 +478,8 @@ fn finite_foreign_imports_and_exports_settle_only_after_bidirectional_delivery()
     let mut purchased = 0;
     let mut consumed = 0;
     for period in 1..=8 {
-        let transition = advance_material_circuit(&state).unwrap();
+        let transition = babylon_material_circuit::advance_material_circuit(&state)
+            .expect("the authored material state advances one period");
         if !transition.dispatches.is_empty() {
             active_periods += 1;
         }
@@ -447,13 +509,15 @@ fn finite_foreign_imports_and_exports_settle_only_after_bidirectional_delivery()
         let retailer_work = transition
             .member_labor_use
             .iter()
-            .find(|r| r.site_id == site(3))
-            .unwrap();
-        retailer_work.validate().unwrap();
+            .find(|r| r.site_id == crate::site(3))
+            .expect("the fixture holds the searched element");
+        retailer_work
+            .validate()
+            .expect("the authored fixture passes validation");
         assert_eq!(retailer_work.handling_hours, period_purchases);
         assert_eq!(
             retailer_work.handling_wages,
-            money(i128::from(period_purchases))
+            crate::money(i128::from(period_purchases))
         );
         consumed += transition
             .household_consumption
@@ -463,10 +527,11 @@ fn finite_foreign_imports_and_exports_settle_only_after_bidirectional_delivery()
         assert_conservation(&transition.state, consumed, 16, 200);
         assert!(transition.production.is_empty());
         assert!(transition.local_transfers.is_empty());
-        state = decode_material_circuit_state(
-            &encode_material_circuit_state(&transition.state).unwrap(),
+        state = babylon_material_circuit::decode_material_circuit_state(
+            &babylon_material_circuit::encode_material_circuit_state(&transition.state)
+                .expect("the canonical material state encodes"),
         )
-        .unwrap();
+        .expect("the canonical material bytes decode");
     }
     assert!(active_periods >= 2);
     assert!(purchase_periods >= 2);
@@ -479,7 +544,7 @@ fn finite_foreign_imports_and_exports_settle_only_after_bidirectional_delivery()
         state
             .inventory
             .iter()
-            .filter(|r| r.site_id == site(1) && r.good_id == good(2))
+            .filter(|r| r.site_id == crate::site(1) && r.good_id == crate::good(2))
             .map(|r| r.quantity)
             .sum::<u64>(),
         4
@@ -488,7 +553,7 @@ fn finite_foreign_imports_and_exports_settle_only_after_bidirectional_delivery()
         state
             .inventory
             .iter()
-            .filter(|r| r.site_id == site(2) && r.good_id == good(1))
+            .filter(|r| r.site_id == crate::site(2) && r.good_id == crate::good(1))
             .map(|r| r.quantity)
             .sum::<u64>(),
         4

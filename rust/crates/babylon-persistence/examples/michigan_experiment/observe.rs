@@ -2,24 +2,27 @@
 use std::collections::BTreeMap;
 
 use babylon_bsl::identity_codec::StableBslValue;
-use babylon_graph::{hypergraph_store::HypergraphStore, stable_element::StableElementKey};
+use babylon_graph::hypergraph_store::HypergraphStore;
+use babylon_graph::stable_element::StableElementKey;
+
 use babylon_material_circuit::{MaterialCircuitState, SiteId};
 use babylon_persistence::michigan_material::{
     MichiganMaterialCatalog, MichiganMaterialInput, MichiganMaterialProcess,
 };
-use babylon_tick::{
-    material_replay::PreparedMaterialTick,
-    material_staffing::STAFFING_COMPOSITION_ID,
-    material_world::{decode_material_receipts, MaterialTickReceipts},
-    replay_session::SuccessfulEvent,
-};
+use babylon_tick::material_replay::PreparedMaterialTick;
+use babylon_tick::material_staffing::STAFFING_COMPOSITION_ID;
+use babylon_tick::material_world::MaterialTickReceipts;
+use babylon_tick::replay_session::SuccessfulEvent;
+
 use serde::Serialize;
 use serde_json::Value;
 
-use super::{
-    artifacts::{contract, Result},
-    run::{hex, Case, PERIODS},
-};
+use super::artifacts;
+use super::artifacts::Result;
+use super::run;
+use super::run::{Case, PERIODS};
+use babylon_material_circuit::RouteId;
+use babylon_tick::material_world;
 
 #[derive(Debug, Serialize, PartialEq, Eq)]
 pub struct Staffing {
@@ -145,11 +148,11 @@ impl PeriodRow {
 
 fn add(a: u64, b: u64) -> Result<u64> {
     a.checked_add(b)
-        .ok_or_else(|| contract("observation addition overflow"))
+        .ok_or_else(|| artifacts::contract("observation addition overflow"))
 }
 fn multiply(a: u64, b: u64) -> Result<u64> {
     a.checked_mul(b)
-        .ok_or_else(|| contract("observation multiplication overflow"))
+        .ok_or_else(|| artifacts::contract("observation multiplication overflow"))
 }
 fn total(mut values: impl Iterator<Item = u64>) -> Result<u64> {
     values.try_fold(0, add)
@@ -163,7 +166,7 @@ pub fn stock(
 ) -> Result<u64> {
     let good = catalog
         .good(good)
-        .ok_or_else(|| contract("unknown inventory good"))?;
+        .ok_or_else(|| artifacts::contract("unknown inventory good"))?;
     total(
         state
             .inventory
@@ -178,7 +181,7 @@ fn workforce(event: &SuccessfulEvent, period: u64) -> Result<(String, Staffing)>
         || event.choice_receipt().is_some()
         || event.fields().len() != 13
     {
-        return Err(contract("unexpected staffing evidence contract"));
+        return Err(artifacts::contract("unexpected staffing evidence contract"));
     }
     let fields: BTreeMap<_, _> = event
         .fields()
@@ -186,20 +189,19 @@ fn workforce(event: &SuccessfulEvent, period: u64) -> Result<(String, Staffing)>
         .map(|(key, value)| (key.as_str(), value))
         .collect();
     let number = |key: &str| match fields.get(key) {
-        Some(StableBslValue::Int(value)) => {
-            u64::try_from(*value).map_err(|_| contract(format!("negative staffing field {key}")))
-        }
-        _ => Err(contract(format!(
+        Some(StableBslValue::Int(value)) => u64::try_from(*value)
+            .map_err(|_| artifacts::contract(format!("negative staffing field {key}"))),
+        _ => Err(artifacts::contract(format!(
             "missing or non-integer staffing field {key}"
         ))),
     };
     if number("period")? != period {
-        return Err(contract("staffing period mismatch"));
+        return Err(artifacts::contract("staffing period mismatch"));
     }
     let Some(StableBslValue::Node(StableElementKey::Node { local_name, .. })) =
         fields.get("subject")
     else {
-        return Err(contract("missing stable staffing subject"));
+        return Err(artifacts::contract("missing stable staffing subject"));
     };
     Ok((
         local_name.clone(),
@@ -229,12 +231,14 @@ fn staffing(
         {
             let (key, row) = workforce(event, candidate.identity().resolve_tick())?;
             if rows.insert(key, row).is_some() {
-                return Err(contract("duplicate staffing account"));
+                return Err(artifacts::contract("duplicate staffing account"));
             }
         }
     }
     if rows.len() != 5 {
-        return Err(contract("expected five complete staffing accounts"));
+        return Err(artifacts::contract(
+            "expected five complete staffing accounts",
+        ));
     }
     Ok(rows)
 }
@@ -249,7 +253,7 @@ fn capacity(state: &MaterialCircuitState, process: &MichiganMaterialProcess) -> 
                 && row.period == state.period
         })
         .map(|row| row.available_batches)
-        .ok_or_else(|| contract("missing period capacity"))
+        .ok_or_else(|| artifacts::contract("missing period capacity"))
 }
 
 fn labor(state: &MaterialCircuitState, process: &MichiganMaterialProcess) -> Result<u64> {
@@ -258,7 +262,7 @@ fn labor(state: &MaterialCircuitState, process: &MichiganMaterialProcess) -> Res
         .iter()
         .find(|row| row.site_id == process.site_id() && row.period == state.period)
         .map(|row| row.available)
-        .ok_or_else(|| contract("missing period labor"))
+        .ok_or_else(|| artifacts::contract("missing period labor"))
 }
 
 fn plan(state: &MaterialCircuitState, process: &MichiganMaterialProcess) -> u64 {
@@ -294,7 +298,7 @@ fn next_opening(
             .current_unretained_hours
             .is_multiple_of(process.labor_hours_per_batch)
     {
-        return Err(contract(
+        return Err(artifacts::contract(
             "staffing request/labor does not match single-process account",
         ));
     }
@@ -332,7 +336,7 @@ fn production(
     let planned = plan(opening, process);
     let Some(row) = receipt else {
         if planned != 0 {
-            return Err(contract("missing completed production receipt"));
+            return Err(artifacts::contract("missing completed production receipt"));
         }
         return Ok(None);
     };
@@ -340,7 +344,9 @@ fn production(
         || row.planned_batches != planned
         || row.produced_batches > planned
     {
-        return Err(contract("production receipt/commitment mismatch"));
+        return Err(artifacts::contract(
+            "production receipt/commitment mismatch",
+        ));
     }
     Ok(Some(Production {
         planned_batches: planned,
@@ -364,7 +370,7 @@ fn processes(
         .iter()
         .map(|process| {
             let [input_recipe] = process.inputs.as_slice() else {
-                return Err(contract(
+                return Err(artifacts::contract(
                     "regional comparison expects one input per process",
                 ));
             };
@@ -375,20 +381,20 @@ fn processes(
                 .find(|pool| {
                     pool.site_key == process.site_key && pool.process_keys.contains(&process.key)
                 })
-                .ok_or_else(|| contract("unbound process workforce"))?;
+                .ok_or_else(|| artifacts::contract("unbound process workforce"))?;
             let staffing = staffing
                 .remove(&seed.workplace_local_name())
-                .ok_or_else(|| contract("missing process staffing receipt"))?;
+                .ok_or_else(|| artifacts::contract("missing process staffing receipt"))?;
             let input = catalog
                 .good(&input_recipe.good_key)
-                .ok_or_else(|| contract("missing input good"))?;
+                .ok_or_else(|| artifacts::contract("missing input good"))?;
             let output = catalog
                 .good(&process.output_good_key)
-                .ok_or_else(|| contract("missing output good"))?;
+                .ok_or_else(|| artifacts::contract("missing output good"))?;
             let closing_input = stock(catalog, closing, process.site_id(), &input_recipe.good_key)?;
             Ok(ProcessRow {
                 process: process.key.clone(),
-                site_id: hex(&process.site_id().as_bytes()),
+                site_id: run::hex(&process.site_id().as_bytes()),
                 input_good: input_recipe.good_key.clone(),
                 output_good: process.output_good_key.clone(),
                 input_unit: input.unit_key.clone(),
@@ -423,13 +429,13 @@ fn processes(
         .collect()
 }
 
-fn transit(state: &MaterialCircuitState, route: babylon_material_circuit::RouteId) -> Vec<Transit> {
+fn transit(state: &MaterialCircuitState, route: RouteId) -> Vec<Transit> {
     state
         .freight
         .iter()
         .filter(|row| row.route_id == route)
         .map(|row| Transit {
-            lot_id: hex(&row.lot_id.as_bytes()),
+            lot_id: run::hex(&row.lot_id.as_bytes()),
             quantity: row.quantity,
             dispatch_period: row.dispatch_period,
             arrival_period: row.stage_arrival_period,
@@ -439,7 +445,7 @@ fn transit(state: &MaterialCircuitState, route: babylon_material_circuit::RouteI
 
 fn regional_route_capacity(
     opening: &MaterialCircuitState,
-    route: babylon_material_circuit::RouteId,
+    route: RouteId,
     grams_per_unit: u64,
 ) -> Result<(u16, u64)> {
     let stages: Vec<_> = opening
@@ -448,7 +454,7 @@ fn regional_route_capacity(
         .filter(|stage| stage.route_id == route)
         .collect();
     let [stage] = stages.as_slice() else {
-        return Err(contract(
+        return Err(artifacts::contract(
             "regional comparison expects one timed stage per route",
         ));
     };
@@ -458,7 +464,7 @@ fn regional_route_capacity(
         .filter(|row| row.route_id == route && row.stage_index == stage.stage_index)
         .collect();
     let [membership] = memberships.as_slice() else {
-        return Err(contract(
+        return Err(artifacts::contract(
             "regional comparison expects one mass principal per route",
         ));
     };
@@ -467,7 +473,7 @@ fn regional_route_capacity(
         .iter()
         .find(|row| row.corridor_id == membership.corridor_id && row.period == opening.period)
         .map(|row| row.available_grams)
-        .ok_or_else(|| contract("missing corridor mass capacity"))?;
+        .ok_or_else(|| artifacts::contract("missing corridor mass capacity"))?;
     let capacity = capacity_grams / grams_per_unit;
     Ok((stage.travel_periods, capacity))
 }
@@ -487,21 +493,21 @@ fn routes(
                 .orders
                 .iter()
                 .find(|row| row.order_id == route.order_id())
-                .ok_or_else(|| contract("missing opening order"))?;
+                .ok_or_else(|| artifacts::contract("missing opening order"))?;
             let order = closing
                 .orders
                 .iter()
                 .find(|row| row.order_id == route.order_id())
-                .ok_or_else(|| contract("missing closing order"))?;
+                .ok_or_else(|| artifacts::contract("missing closing order"))?;
             let good = case
                 .catalog
                 .good(&route.good_key)
-                .ok_or_else(|| contract("missing route good"))?;
+                .ok_or_else(|| artifacts::contract("missing route good"))?;
             let produced = total(
                 processes
                     .iter()
                     .filter(|row| {
-                        row.site_id == hex(&prior.supplier_site_id.as_bytes())
+                        row.site_id == run::hex(&prior.supplier_site_id.as_bytes())
                             && row.output_good == route.good_key
                     })
                     .map(|row| {
@@ -522,12 +528,12 @@ fn routes(
             let unshipped = prior
                 .ordered
                 .checked_sub(prior.shipped)
-                .ok_or_else(|| contract("order shipped exceeds ordered"))?;
+                .ok_or_else(|| artifacts::contract("order shipped exceeds ordered"))?;
             let (travel_periods, capacity) =
                 regional_route_capacity(opening, route.id(), good.grams_per_unit)?;
             Ok(RouteRow {
                 route: route.key.clone(),
-                route_id: hex(&route.id().as_bytes()),
+                route_id: run::hex(&route.id().as_bytes()),
                 good: route.good_key.clone(),
                 unit: good.unit_key.clone(),
                 travel_periods,
@@ -586,7 +592,7 @@ fn conserved(case: &Case, state: &MaterialCircuitState) -> Result<(u64, u64)> {
         let good = case
             .catalog
             .good(key)
-            .ok_or_else(|| contract("missing conservation good"))?;
+            .ok_or_else(|| artifacts::contract("missing conservation good"))?;
         let held = total(
             state
                 .inventory
@@ -609,7 +615,9 @@ fn conserved(case: &Case, state: &MaterialCircuitState) -> Result<(u64, u64)> {
         }
     }
     if metal != add(600, case.spec.opening_sheet_kg)? || food != 200 {
-        return Err(contract("within-case material conservation failed"));
+        return Err(artifacts::contract(
+            "within-case material conservation failed",
+        ));
     }
     Ok((metal, food))
 }
@@ -620,11 +628,12 @@ pub fn period(
     candidate: &PreparedMaterialTick<HypergraphStore>,
 ) -> Result<PeriodRow> {
     let closing = candidate.material().register().state();
-    let receipts = decode_material_receipts(candidate.material().receipt_bytes())
-        .map_err(|error| contract(format!("material receipt decode: {error:?}")))?;
+    let receipts =
+        material_world::decode_material_receipts(candidate.material().receipt_bytes())
+            .map_err(|error| artifacts::contract(format!("material receipt decode: {error:?}")))?;
     let identity = candidate.identity();
     if receipts.resolve_tick != opening.period || closing.period != opening.period + 1 {
-        return Err(contract("observation period alignment failed"));
+        return Err(artifacts::contract("observation period alignment failed"));
     }
     let processes = processes(case, opening, closing, &receipts, staffing(candidate)?)?;
     let routes = routes(case, opening, closing, &receipts, &processes)?;
@@ -633,17 +642,19 @@ pub fn period(
         schema: "MichiganDeliveryStockPeriodV1",
         case: case.spec.id,
         period: opening.period,
-        tick_content_sha256: hex(identity.tick_content_hash().as_bytes()),
-        graph_tick_content_sha256: hex(identity.graph_tick_content_hash().as_bytes()),
-        graph_state_sha256: hex(&candidate.graph_report().report().after),
-        graph_world_sha256: hex(&identity.graph_world_after()),
-        prior_world_sha256: hex(&identity.prior_world_hash()),
-        world_sha256: hex(&identity.result_world_hash()),
-        material_receipts_sha256: hex(&identity.receipt_digest()),
-        graph_event_section_sha256: hex(&candidate
-            .graph_report()
-            .successful_event_batch()
-            .source_digest()),
+        tick_content_sha256: run::hex(identity.tick_content_hash().as_bytes()),
+        graph_tick_content_sha256: run::hex(identity.graph_tick_content_hash().as_bytes()),
+        graph_state_sha256: run::hex(&candidate.graph_report().report().after),
+        graph_world_sha256: run::hex(&identity.graph_world_after()),
+        prior_world_sha256: run::hex(&identity.prior_world_hash()),
+        world_sha256: run::hex(&identity.result_world_hash()),
+        material_receipts_sha256: run::hex(&identity.receipt_digest()),
+        graph_event_section_sha256: run::hex(
+            &candidate
+                .graph_report()
+                .successful_event_batch()
+                .source_digest(),
+        ),
         processes,
         routes,
         metal_input_equivalent_kg: metal,

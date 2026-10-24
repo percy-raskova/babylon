@@ -8,10 +8,11 @@ use std::ffi::OsString;
 use std::fmt;
 use std::path::{Component, PathBuf};
 
-use babylon_persistence::{
-    identity::CampaignId, runtime_session::RuntimeSessionPreset,
-    runtime_session::RuntimeSessionTarget,
-};
+use babylon_persistence::identity::CampaignId;
+use babylon_persistence::runtime_session::{RuntimeSessionPreset, RuntimeSessionTarget};
+
+use fmt::Formatter;
+use fmt::Result as FmtResult;
 use uuid::Uuid;
 
 /// The `--headless` flag: run exactly one read command against the
@@ -266,7 +267,7 @@ impl CliError {
 }
 
 impl fmt::Display for CliError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> FmtResult {
         write!(formatter, "babylon-client {}: {}", self.site, self.message)
     }
 }
@@ -379,7 +380,8 @@ mod qualification_controls {
         let CliRequest::Windowed {
             qualification_control,
             ..
-        } = parse(args.into_iter().map(OsString::from)).unwrap()
+        } = parse(args.into_iter().map(OsString::from))
+            .expect("the authored literal parses as the declared type")
         else {
             panic!("the harness requires the real window");
         };
@@ -695,6 +697,7 @@ fn levenshtein(left: &str, right: &str) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::EnvVarGuard;
     use std::os::unix::ffi::OsStringExt;
 
     fn os(words: &[&str]) -> Vec<OsString> {
@@ -888,7 +891,7 @@ mod tests {
 
     #[test]
     fn campaign_falls_back_to_the_environment() {
-        let env = crate::test_support::EnvVarGuard::lock(CAMPAIGN_ENV);
+        let env = EnvVarGuard::lock(CAMPAIGN_ENV);
         env.set(CAMPAIGN);
         let request = parse(os(&[HEADLESS_FLAG, "tick", "status"])).expect("env fallback admits");
         drop(env);
@@ -900,7 +903,7 @@ mod tests {
 
     #[test]
     fn missing_campaign_refuses_loudly() {
-        let env = crate::test_support::EnvVarGuard::lock(CAMPAIGN_ENV);
+        let env = EnvVarGuard::lock(CAMPAIGN_ENV);
         env.remove();
         let error =
             parse(os(&[HEADLESS_FLAG, "tick", "status"])).expect_err("missing campaign refuses");
@@ -1012,7 +1015,7 @@ mod tests {
 
     #[test]
     fn economic_summary_requires_an_explicit_headless_campaign_and_exact_command() {
-        let env = crate::test_support::EnvVarGuard::lock(CAMPAIGN_ENV);
+        let env = EnvVarGuard::lock(CAMPAIGN_ENV);
         env.remove();
         let parsed = parse(os(&[
             HEADLESS_FLAG,
@@ -1021,7 +1024,7 @@ mod tests {
             "economy",
             "status",
         ]))
-        .unwrap();
+        .expect("the authored literal parses as the declared type");
         assert!(matches!(
             parsed,
             CliRequest::Headless {
@@ -1064,7 +1067,7 @@ mod tests {
             panic!("national New must retain the connected window path")
         };
         assert_eq!(
-            serde_json::to_value(initial_target).unwrap()["preset"],
+            serde_json::to_value(initial_target).expect("the value serializes to JSON")["preset"],
             "national-world"
         );
         assert!(parse(os(&[

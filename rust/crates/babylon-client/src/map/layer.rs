@@ -1,11 +1,15 @@
-//! Shared atlas and county selection for the durable observer's geographic views.
+//! Leaf implementation for the parent module; public paths stay on the parent.
 
-mod scope;
-pub(crate) use scope::CountyMapScope;
+use super::{scope, CountyMapScope};
 
 use crate::atlas::CountyAtlas;
+
 use bevy::input::InputPlugin;
+
+use crate::observer_io::ObserverSet;
+use bevy::mesh::MeshPlugin;
 use bevy::prelude::*;
+use bevy::sprite_render::ColorMaterialPlugin;
 
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) struct MapScopeSet;
@@ -36,11 +40,11 @@ pub struct MapPlugin;
 
 impl Plugin for MapPlugin {
     fn build(&self, app: &mut App) {
-        if !app.is_plugin_added::<bevy::mesh::MeshPlugin>() {
-            app.add_plugins(bevy::mesh::MeshPlugin);
+        if !app.is_plugin_added::<MeshPlugin>() {
+            app.add_plugins(MeshPlugin);
         }
-        if !app.is_plugin_added::<bevy::sprite_render::ColorMaterialPlugin>() {
-            app.add_plugins(bevy::sprite_render::ColorMaterialPlugin);
+        if !app.is_plugin_added::<ColorMaterialPlugin>() {
+            app.add_plugins(ColorMaterialPlugin);
         }
         if !app.is_plugin_added::<InputPlugin>() {
             app.add_plugins(InputPlugin);
@@ -52,8 +56,8 @@ impl Plugin for MapPlugin {
                 Update,
                 scope::sync_county_scope
                     .in_set(MapScopeSet)
-                    .after(crate::observer_io::ObserverSet::Install)
-                    .before(crate::observer_io::ObserverSet::Paint),
+                    .after(ObserverSet::Install)
+                    .before(ObserverSet::Paint),
             )
             .add_systems(Startup, load_county_atlas);
     }

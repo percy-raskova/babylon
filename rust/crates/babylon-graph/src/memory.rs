@@ -605,9 +605,6 @@ impl GraphSubstrate for MemoryGraph {
 mod tests {
     use super::{CanonicalState, GraphSubstrate, MemoryGraph, NodeId};
     use crate::allocator_state::{AllocatorCursors, AllocatorState};
-    use crate::conformance::{
-        run_allocator_exhaustion_conformance, run_detached_working_copy_conformance,
-    };
     use crate::substrate::Direction;
 
     #[test]
@@ -618,21 +615,31 @@ mod tests {
         // failed `node_exists`, and `members_of` stopped being a set of live
         // nodes. Removal is whole.
         let mut graph = MemoryGraph::new();
-        let doomed = graph.add_node("social_class").unwrap();
-        let survivor = graph.add_node("social_class").unwrap();
-        let bystander = graph.add_node("social_class").unwrap();
-        graph.add_edge("solidarity", doomed, survivor, 1.0).unwrap();
+        let doomed = graph
+            .add_node("social_class")
+            .expect("the fixture adds a node with a registered kind");
+        let survivor = graph
+            .add_node("social_class")
+            .expect("the fixture adds a node with a registered kind");
+        let bystander = graph
+            .add_node("social_class")
+            .expect("the fixture adds a node with a registered kind");
+        graph
+            .add_edge("solidarity", doomed, survivor, 1.0)
+            .expect("the fixture graph admits the authored edge");
         graph
             .add_edge("solidarity", bystander, doomed, 1.0)
-            .unwrap();
+            .expect("the fixture graph admits the authored edge");
         graph
             .add_edge("solidarity", survivor, bystander, 1.0)
-            .unwrap();
+            .expect("the fixture graph admits the authored edge");
         let sector = graph
             .add_hyperedge("economic_sector", &[doomed, survivor, bystander])
-            .unwrap();
+            .expect("the fixture graph admits the authored hyperedge");
 
-        graph.remove_node(doomed).unwrap();
+        graph
+            .remove_node(doomed)
+            .expect("the fixture node exists before removal");
 
         assert_eq!(
             graph.edges("solidarity"),
@@ -643,7 +650,9 @@ mod tests {
             assert!(graph.node_exists(from) && graph.node_exists(to));
         }
         assert_eq!(
-            graph.members_of(sector).unwrap(),
+            graph
+                .members_of(sector)
+                .expect("the fixture hyperedge has members"),
             vec![survivor, bystander],
             "a member list is a set of LIVE nodes"
         );
@@ -654,21 +663,29 @@ mod tests {
 
     #[test]
     fn detached_working_copy_owns_every_mutable_lane() {
-        run_detached_working_copy_conformance(MemoryGraph::new);
+        crate::conformance::run_detached_working_copy_conformance(MemoryGraph::new);
     }
 
     #[test]
     fn exhausted_allocators_leave_memory_graph_unchanged() {
-        run_allocator_exhaustion_conformance(MemoryGraph::new);
+        crate::conformance::run_allocator_exhaustion_conformance(MemoryGraph::new);
     }
 
     #[test]
     fn allocator_cursors_report_the_next_ids_even_after_removal() {
         let mut graph = MemoryGraph::new();
-        let first = graph.add_node("social_class").unwrap();
-        let second = graph.add_node("social_class").unwrap();
-        graph.add_hyperedge("class", &[first, second]).unwrap();
-        graph.remove_node(second).unwrap();
+        let first = graph
+            .add_node("social_class")
+            .expect("the fixture adds a node with a registered kind");
+        let second = graph
+            .add_node("social_class")
+            .expect("the fixture adds a node with a registered kind");
+        graph
+            .add_hyperedge("class", &[first, second])
+            .expect("the fixture graph admits the authored hyperedge");
+        graph
+            .remove_node(second)
+            .expect("the fixture node exists before removal");
 
         assert_eq!(
             graph.allocator_cursors(),
@@ -682,23 +699,51 @@ mod tests {
     /// Build the same world twice, inserting in opposite orders.
     fn same_world_two_orders() -> (MemoryGraph, MemoryGraph) {
         let mut forward = MemoryGraph::new();
-        let a = forward.add_node("social_class").unwrap();
-        let b = forward.add_node("social_class").unwrap();
-        forward.update_node(a, "wages", 120.0).unwrap();
-        forward.update_node(a, "value_produced", 80.0).unwrap();
-        forward.update_node(b, "wages", 40.0).unwrap();
-        forward.add_edge("solidarity", a, b, 0.5).unwrap();
-        forward.add_hyperedge("economic_sector", &[a, b]).unwrap();
+        let a = forward
+            .add_node("social_class")
+            .expect("the fixture adds a node with a registered kind");
+        let b = forward
+            .add_node("social_class")
+            .expect("the fixture adds a node with a registered kind");
+        forward
+            .update_node(a, "wages", 120.0)
+            .expect("the fixture node carries the authored attribute");
+        forward
+            .update_node(a, "value_produced", 80.0)
+            .expect("the fixture node carries the authored attribute");
+        forward
+            .update_node(b, "wages", 40.0)
+            .expect("the fixture node carries the authored attribute");
+        forward
+            .add_edge("solidarity", a, b, 0.5)
+            .expect("the fixture graph admits the authored edge");
+        forward
+            .add_hyperedge("economic_sector", &[a, b])
+            .expect("the fixture graph admits the authored hyperedge");
 
         let mut reverse = MemoryGraph::new();
-        let a2 = reverse.add_node("social_class").unwrap();
-        let b2 = reverse.add_node("social_class").unwrap();
+        let a2 = reverse
+            .add_node("social_class")
+            .expect("the fixture adds a node with a registered kind");
+        let b2 = reverse
+            .add_node("social_class")
+            .expect("the fixture adds a node with a registered kind");
         // Same facts, opposite write order.
-        reverse.add_hyperedge("economic_sector", &[b2, a2]).unwrap();
-        reverse.add_edge("solidarity", a2, b2, 0.5).unwrap();
-        reverse.update_node(b2, "wages", 40.0).unwrap();
-        reverse.update_node(a2, "value_produced", 80.0).unwrap();
-        reverse.update_node(a2, "wages", 120.0).unwrap();
+        reverse
+            .add_hyperedge("economic_sector", &[b2, a2])
+            .expect("the fixture graph admits the authored hyperedge");
+        reverse
+            .add_edge("solidarity", a2, b2, 0.5)
+            .expect("the fixture graph admits the authored edge");
+        reverse
+            .update_node(b2, "wages", 40.0)
+            .expect("the fixture node carries the authored attribute");
+        reverse
+            .update_node(a2, "value_produced", 80.0)
+            .expect("the fixture node carries the authored attribute");
+        reverse
+            .update_node(a2, "wages", 120.0)
+            .expect("the fixture node carries the authored attribute");
 
         (forward, reverse)
     }
@@ -711,8 +756,12 @@ mod tests {
         // every run and replay would be impossible.
         let (forward, reverse) = same_world_two_orders();
         assert_eq!(
-            forward.state_hash().unwrap(),
-            reverse.state_hash().unwrap(),
+            forward
+                .state_hash()
+                .expect("the fixture graph hashes its state"),
+            reverse
+                .state_hash()
+                .expect("the fixture graph hashes its state"),
             "the same world must hash identically however it was built"
         );
     }
@@ -722,9 +771,16 @@ mod tests {
         // Guards against a hash that varies within one process too — the
         // failure a single equality check between two graphs would miss.
         let (graph, _) = same_world_two_orders();
-        let first = graph.state_hash().unwrap();
+        let first = graph
+            .state_hash()
+            .expect("the fixture graph hashes its state");
         for _ in 0..8 {
-            assert_eq!(graph.state_hash().unwrap(), first);
+            assert_eq!(
+                graph
+                    .state_hash()
+                    .expect("the fixture graph hashes its state"),
+                first
+            );
         }
     }
 
@@ -732,22 +788,34 @@ mod tests {
     fn any_real_change_moves_the_state_hash() {
         // The dual of determinism: a hash nothing changes is worthless.
         let (mut graph, _) = same_world_two_orders();
-        let before = graph.state_hash().unwrap();
+        let before = graph
+            .state_hash()
+            .expect("the fixture graph hashes its state");
 
-        graph.update_node(NodeId(0), "wages", 121.0).unwrap();
-        let after_attribute = graph.state_hash().unwrap();
+        graph
+            .update_node(NodeId(0), "wages", 121.0)
+            .expect("the fixture node carries the authored attribute");
+        let after_attribute = graph
+            .state_hash()
+            .expect("the fixture graph hashes its state");
         assert_ne!(before, after_attribute, "an attribute write moves it");
 
         graph
             .remove_edge("solidarity", NodeId(0), NodeId(1))
-            .unwrap();
-        let after_edge = graph.state_hash().unwrap();
+            .expect("the fixture edge exists before removal");
+        let after_edge = graph
+            .state_hash()
+            .expect("the fixture graph hashes its state");
         assert_ne!(after_attribute, after_edge, "an edge removal moves it");
 
-        graph.add_node("organization").unwrap();
+        graph
+            .add_node("organization")
+            .expect("the fixture adds a node with a registered kind");
         assert_ne!(
             after_edge,
-            graph.state_hash().unwrap(),
+            graph
+                .state_hash()
+                .expect("the fixture graph hashes its state"),
             "a new node moves it"
         );
     }
@@ -759,12 +827,22 @@ mod tests {
         // that recycles one would resurrect a corpse's attributes onto a
         // fresh node, silently, reading as real data.
         let mut graph = MemoryGraph::new();
-        let doomed = graph.add_node("social_class").unwrap();
-        let survivor = graph.add_node("social_class").unwrap();
-        graph.update_node(doomed, "wealth", 42.0).unwrap();
-        graph.update_node(survivor, "wealth", 7.0).unwrap();
+        let doomed = graph
+            .add_node("social_class")
+            .expect("the fixture adds a node with a registered kind");
+        let survivor = graph
+            .add_node("social_class")
+            .expect("the fixture adds a node with a registered kind");
+        graph
+            .update_node(doomed, "wealth", 42.0)
+            .expect("the fixture node carries the authored attribute");
+        graph
+            .update_node(survivor, "wealth", 7.0)
+            .expect("the fixture node carries the authored attribute");
 
-        graph.remove_node(doomed).unwrap();
+        graph
+            .remove_node(doomed)
+            .expect("the fixture node exists before removal");
 
         assert_eq!(
             graph.attribute_key_count(),
@@ -772,7 +850,12 @@ mod tests {
             "the removed node's attribute rows are gone, not orphaned"
         );
         assert!(
-            (graph.node_attribute(survivor, "wealth").unwrap() - 7.0).abs() < 1e-12,
+            (graph
+                .node_attribute(survivor, "wealth")
+                .expect("the fixture node carries the authored attribute")
+                - 7.0)
+                .abs()
+                < 1e-12,
             "and the survivor's are untouched"
         );
     }
@@ -783,12 +866,20 @@ mod tests {
         // empty member list — so leaving one behind would create BY DELETION
         // a state that cannot be created directly.
         let mut graph = MemoryGraph::new();
-        let only = graph.add_node("social_class").unwrap();
-        let sector = graph.add_hyperedge("economic_sector", &[only]).unwrap();
+        let only = graph
+            .add_node("social_class")
+            .expect("the fixture adds a node with a registered kind");
+        let sector = graph
+            .add_hyperedge("economic_sector", &[only])
+            .expect("the fixture graph admits the authored hyperedge");
 
-        graph.remove_node(only).unwrap();
+        graph
+            .remove_node(only)
+            .expect("the fixture node exists before removal");
 
-        let err = graph.members_of(sector).unwrap_err();
+        let err = graph
+            .members_of(sector)
+            .expect_err("the fixture call `members_of` fails for the authored inputs");
         assert!(err.message.contains("no such hyperedge"), "{}", err.message);
     }
 
@@ -805,20 +896,28 @@ mod tests {
         // Pine Ridge (FIPS 46102) has zero census rows at every vintage, so
         // that is a real shape in the data, not a hypothetical.
         let mut graph = MemoryGraph::new();
-        let lone = graph.add_node("social_class").unwrap();
+        let lone = graph
+            .add_node("social_class")
+            .expect("the fixture adds a node with a registered kind");
 
         assert_eq!(
-            graph.hyperedges_of(lone, "community").unwrap(),
+            graph
+                .hyperedges_of(lone, "community")
+                .expect("the fixture graph holds the authored hyperedges"),
             vec![],
             "a real node in no community of that type is an empty range"
         );
         assert_eq!(
-            graph.hyperedges_of(lone, "no_such_type").unwrap(),
+            graph
+                .hyperedges_of(lone, "no_such_type")
+                .expect("the fixture graph holds the authored hyperedges"),
             vec![],
             "an unknown TYPE is empty, not an error — E-TYPE-011 is BSL's job"
         );
 
-        let err = graph.hyperedges_of(NodeId(999), "community").unwrap_err();
+        let err = graph
+            .hyperedges_of(NodeId(999), "community")
+            .expect_err("the fixture call `hyperedges_of` fails for the authored inputs");
         assert!(
             err.message.contains("different facts"),
             "an absent NODE must be loud: {}",
@@ -829,15 +928,21 @@ mod tests {
     #[test]
     fn add_then_update_then_read_back() {
         let mut graph = MemoryGraph::new();
-        let node = graph.add_node("social_class").unwrap();
-        graph.update_node(node, "wealth", 42.0).unwrap();
+        let node = graph
+            .add_node("social_class")
+            .expect("the fixture adds a node with a registered kind");
+        graph
+            .update_node(node, "wealth", 42.0)
+            .expect("the fixture node carries the authored attribute");
         assert_eq!(graph.node_attribute(node, "wealth"), Ok(42.0));
     }
 
     #[test]
     fn an_unwritten_attribute_reads_loud_never_zero() {
         let mut graph = MemoryGraph::new();
-        let node = graph.add_node("social_class").unwrap();
+        let node = graph
+            .add_node("social_class")
+            .expect("the fixture adds a node with a registered kind");
         assert!(graph.node_attribute(node, "wealth").is_err());
     }
 
@@ -848,10 +953,12 @@ mod tests {
         // different rows, but this test only exercises one lane.
         use babylon_kernel::currency::Currency;
         let mut graph = MemoryGraph::new();
-        let node = graph.add_node("social_class").unwrap();
+        let node = graph
+            .add_node("social_class")
+            .expect("the fixture adds a node with a registered kind");
         graph
             .update_node_currency(node, "wages", Currency::from_micro_units(120_000_000))
-            .unwrap();
+            .expect("the fixture node carries the authored currency");
         assert_eq!(
             graph.node_attribute_currency(node, "wages"),
             Ok(Currency::from_micro_units(120_000_000))
@@ -861,7 +968,9 @@ mod tests {
     #[test]
     fn an_unwritten_currency_attribute_reads_loud_never_zero() {
         let mut graph = MemoryGraph::new();
-        let node = graph.add_node("social_class").unwrap();
+        let node = graph
+            .add_node("social_class")
+            .expect("the fixture adds a node with a registered kind");
         assert!(graph.node_attribute_currency(node, "wages").is_err());
     }
 
@@ -873,16 +982,22 @@ mod tests {
         // the f64 lane.
         use babylon_kernel::currency::Currency;
         let mut graph = MemoryGraph::new();
-        let doomed = graph.add_node("social_class").unwrap();
-        let survivor = graph.add_node("social_class").unwrap();
+        let doomed = graph
+            .add_node("social_class")
+            .expect("the fixture adds a node with a registered kind");
+        let survivor = graph
+            .add_node("social_class")
+            .expect("the fixture adds a node with a registered kind");
         graph
             .update_node_currency(doomed, "wages", Currency::from_micro_units(1))
-            .unwrap();
+            .expect("the fixture node carries the authored currency");
         graph
             .update_node_currency(survivor, "wages", Currency::from_micro_units(2))
-            .unwrap();
+            .expect("the fixture node carries the authored currency");
 
-        graph.remove_node(doomed).unwrap();
+        graph
+            .remove_node(doomed)
+            .expect("the fixture node exists before removal");
 
         assert_eq!(
             graph.currency_attribute_key_count(),
@@ -899,7 +1014,9 @@ mod tests {
     #[test]
     fn edge_to_nonexistent_node_is_a_loud_error() {
         let mut graph = MemoryGraph::new();
-        let node = graph.add_node("territory").unwrap();
+        let node = graph
+            .add_node("territory")
+            .expect("the fixture adds a node with a registered kind");
         assert!(graph
             .add_edge("adjacency", node, NodeId(9999), 1.0)
             .is_err());
@@ -910,11 +1027,19 @@ mod tests {
         // §2.8: absence is never success, and adding what exists is an
         // error, not an overwrite.
         let mut graph = MemoryGraph::new();
-        let a = graph.add_node("social_class").unwrap();
-        let b = graph.add_node("social_class").unwrap();
-        graph.add_edge("solidarity", a, b, 0.5).unwrap();
+        let a = graph
+            .add_node("social_class")
+            .expect("the fixture adds a node with a registered kind");
+        let b = graph
+            .add_node("social_class")
+            .expect("the fixture adds a node with a registered kind");
+        graph
+            .add_edge("solidarity", a, b, 0.5)
+            .expect("the fixture graph admits the authored edge");
         assert!(graph.add_edge("solidarity", a, b, 0.9).is_err());
-        graph.remove_edge("solidarity", a, b).unwrap();
+        graph
+            .remove_edge("solidarity", a, b)
+            .expect("the fixture edge exists before removal");
         assert!(graph.remove_edge("solidarity", a, b).is_err());
     }
 
@@ -922,14 +1047,22 @@ mod tests {
     fn hyperedge_members_come_back_sorted_not_in_declared_order() {
         // Amendment D / BSL D25: declared member order is unobservable.
         let mut graph = MemoryGraph::new();
-        let first = graph.add_node("social_class").unwrap();
-        let second = graph.add_node("social_class").unwrap();
-        let third = graph.add_node("social_class").unwrap();
+        let first = graph
+            .add_node("social_class")
+            .expect("the fixture adds a node with a registered kind");
+        let second = graph
+            .add_node("social_class")
+            .expect("the fixture adds a node with a registered kind");
+        let third = graph
+            .add_node("social_class")
+            .expect("the fixture adds a node with a registered kind");
         let sector = graph
             .add_hyperedge("economic_sector", &[third, first, second])
-            .unwrap();
+            .expect("the fixture graph admits the authored hyperedge");
         assert_eq!(
-            graph.members_of(sector).unwrap(),
+            graph
+                .members_of(sector)
+                .expect("the fixture hyperedge has members"),
             vec![first, second, third]
         );
     }
@@ -937,7 +1070,9 @@ mod tests {
     #[test]
     fn duplicate_member_is_a_loud_error() {
         let mut graph = MemoryGraph::new();
-        let member = graph.add_node("social_class").unwrap();
+        let member = graph
+            .add_node("social_class")
+            .expect("the fixture adds a node with a registered kind");
         assert!(graph
             .add_hyperedge("economic_sector", &[member, member])
             .is_err());
@@ -965,9 +1100,15 @@ mod tests {
         let mut graph = MemoryGraph::new();
         let mut class_ids = Vec::with_capacity(50);
         for _ in 0..50 {
-            class_ids.push(graph.add_node("social_class").unwrap());
+            class_ids.push(
+                graph
+                    .add_node("social_class")
+                    .expect("the fixture adds a node with a registered kind"),
+            );
         }
-        let territory = graph.add_node("territory").unwrap();
+        let territory = graph
+            .add_node("territory")
+            .expect("the fixture adds a node with a registered kind");
         let result = graph.nodes("social_class");
         assert_eq!(result, class_ids);
         assert!(
@@ -982,12 +1123,24 @@ mod tests {
     fn edges_query_ranges_over_one_type_in_source_target_order() {
         // §2.6 `(edges <enum-ref>)`: ascending (source-id, target-id) order.
         let mut graph = MemoryGraph::new();
-        let a = graph.add_node("social_class").unwrap();
-        let b = graph.add_node("social_class").unwrap();
-        let c = graph.add_node("social_class").unwrap();
-        graph.add_edge("solidarity", b, a, 0.4).unwrap();
-        graph.add_edge("solidarity", a, c, 0.6).unwrap();
-        graph.add_edge("wages", c, a, 0.9).unwrap();
+        let a = graph
+            .add_node("social_class")
+            .expect("the fixture adds a node with a registered kind");
+        let b = graph
+            .add_node("social_class")
+            .expect("the fixture adds a node with a registered kind");
+        let c = graph
+            .add_node("social_class")
+            .expect("the fixture adds a node with a registered kind");
+        graph
+            .add_edge("solidarity", b, a, 0.4)
+            .expect("the fixture graph admits the authored edge");
+        graph
+            .add_edge("solidarity", a, c, 0.6)
+            .expect("the fixture graph admits the authored edge");
+        graph
+            .add_edge("wages", c, a, 0.9)
+            .expect("the fixture graph admits the authored edge");
         assert_eq!(graph.edges("solidarity"), vec![(a, c), (b, a)]);
         assert_eq!(graph.edges("wages"), vec![(c, a)]);
         assert_eq!(graph.edges("tribute"), Vec::<(NodeId, NodeId)>::new());
@@ -999,27 +1152,47 @@ mod tests {
         // source->target, :in the reverse, :any their union — a NodeSet,
         // so a node reachable both ways appears once.
         let mut graph = MemoryGraph::new();
-        let org = graph.add_node("organization").unwrap();
-        let class_a = graph.add_node("social_class").unwrap();
-        let class_b = graph.add_node("social_class").unwrap();
-        graph.add_edge("membership", org, class_a, 1.0).unwrap();
-        graph.add_edge("membership", org, class_b, 1.0).unwrap();
-        graph.add_edge("membership", class_b, org, 0.2).unwrap();
+        let org = graph
+            .add_node("organization")
+            .expect("the fixture adds a node with a registered kind");
+        let class_a = graph
+            .add_node("social_class")
+            .expect("the fixture adds a node with a registered kind");
+        let class_b = graph
+            .add_node("social_class")
+            .expect("the fixture adds a node with a registered kind");
+        graph
+            .add_edge("membership", org, class_a, 1.0)
+            .expect("the fixture graph admits the authored edge");
+        graph
+            .add_edge("membership", org, class_b, 1.0)
+            .expect("the fixture graph admits the authored edge");
+        graph
+            .add_edge("membership", class_b, org, 0.2)
+            .expect("the fixture graph admits the authored edge");
         assert_eq!(
-            graph.neighbors(org, "membership", Direction::Out).unwrap(),
+            graph
+                .neighbors(org, "membership", Direction::Out)
+                .expect("the fixture node has neighbors"),
             vec![class_a, class_b]
         );
         assert_eq!(
-            graph.neighbors(org, "membership", Direction::In).unwrap(),
+            graph
+                .neighbors(org, "membership", Direction::In)
+                .expect("the fixture node has neighbors"),
             vec![class_b]
         );
         assert_eq!(
-            graph.neighbors(org, "membership", Direction::Any).unwrap(),
+            graph
+                .neighbors(org, "membership", Direction::Any)
+                .expect("the fixture node has neighbors"),
             vec![class_a, class_b]
         );
         // other edge types are invisible to this query
         assert_eq!(
-            graph.neighbors(org, "solidarity", Direction::Any).unwrap(),
+            graph
+                .neighbors(org, "solidarity", Direction::Any)
+                .expect("the fixture node has neighbors"),
             Vec::<NodeId>::new()
         );
     }
@@ -1041,26 +1214,40 @@ mod tests {
         // the same class are induced-adjacent; a third org organizing a
         // different class is not.
         let mut graph = MemoryGraph::new();
-        let org_a = graph.add_node("organization").unwrap();
-        let org_b = graph.add_node("organization").unwrap();
-        let org_c = graph.add_node("organization").unwrap();
-        let shared_class = graph.add_node("social_class").unwrap();
-        let other_class = graph.add_node("social_class").unwrap();
+        let org_a = graph
+            .add_node("organization")
+            .expect("the fixture adds a node with a registered kind");
+        let org_b = graph
+            .add_node("organization")
+            .expect("the fixture adds a node with a registered kind");
+        let org_c = graph
+            .add_node("organization")
+            .expect("the fixture adds a node with a registered kind");
+        let shared_class = graph
+            .add_node("social_class")
+            .expect("the fixture adds a node with a registered kind");
+        let other_class = graph
+            .add_node("social_class")
+            .expect("the fixture adds a node with a registered kind");
         graph
             .add_edge("membership", org_a, shared_class, 1.0)
-            .unwrap();
+            .expect("the fixture graph admits the authored edge");
         graph
             .add_edge("membership", org_b, shared_class, 1.0)
-            .unwrap();
+            .expect("the fixture graph admits the authored edge");
         graph
             .add_edge("membership", org_c, other_class, 1.0)
-            .unwrap();
+            .expect("the fixture graph admits the authored edge");
 
         let induced: Vec<NodeId> = graph
             .neighbors(org_a, "membership", Direction::Out)
-            .unwrap()
+            .expect("the fixture node has neighbors")
             .into_iter()
-            .flat_map(|base| graph.neighbors(base, "membership", Direction::In).unwrap())
+            .flat_map(|base| {
+                graph
+                    .neighbors(base, "membership", Direction::In)
+                    .expect("the fixture node has neighbors")
+            })
             .filter(|peer| *peer != org_a)
             .collect();
         assert_eq!(induced, vec![org_b]);
@@ -1070,13 +1257,19 @@ mod tests {
     fn a_hyperedge_mints_no_pairwise_edges() {
         // VIII.9 by construction: n members cost one object, not C(n,2) edges.
         let mut graph = MemoryGraph::new();
-        let first = graph.add_node("social_class").unwrap();
-        let second = graph.add_node("social_class").unwrap();
+        let first = graph
+            .add_node("social_class")
+            .expect("the fixture adds a node with a registered kind");
+        let second = graph
+            .add_node("social_class")
+            .expect("the fixture adds a node with a registered kind");
         let sector = graph
             .add_hyperedge("economic_sector", &[first, second])
-            .unwrap();
+            .expect("the fixture graph admits the authored hyperedge");
         assert_eq!(
-            graph.hyperedges_of(first, "economic_sector").unwrap(),
+            graph
+                .hyperedges_of(first, "economic_sector")
+                .expect("the fixture graph holds the authored hyperedges"),
             vec![sector]
         );
         // the dyadic half is untouched by minting a hyperedge

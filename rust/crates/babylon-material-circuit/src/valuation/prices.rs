@@ -1,5 +1,6 @@
 //! Ephemeral per-good evidence over existing carrying and actual-work postings.
-use super::{add, zero, Result};
+use super::CostClose;
+use super::Result;
 use crate::{
     GoodId, GoodsPriceCostBasis, GoodsPriceCostEvidence, MaterialCircuitError, SiteId, UnitId,
 };
@@ -20,18 +21,18 @@ fn record(
     cost: Currency,
 ) -> Result<()> {
     if quantity == 0 {
-        return if cost == zero() {
+        return if cost == super::zero() {
             Ok(())
         } else {
             Err(MaterialCircuitError::ValuationInvariant)
         };
     }
-    let value = rows.entry(key).or_insert((0, zero()));
+    let value = rows.entry(key).or_insert((0, super::zero()));
     value.0 = value
         .0
         .checked_add(quantity)
         .ok_or(MaterialCircuitError::Arithmetic)?;
-    value.1 = add(value.1, cost)?;
+    value.1 = super::add(value.1, cost)?;
     Ok(())
 }
 impl GoodsCostLedger {
@@ -56,9 +57,19 @@ impl GoodsCostLedger {
                 }
                 (GoodsPriceCostBasis::Released, quantity, carrying, wages)
             } else if let Some(&(quantity, carrying)) = self.produced.get(&key) {
-                (GoodsPriceCostBasis::Produced, quantity, carrying, zero())
+                (
+                    GoodsPriceCostBasis::Produced,
+                    quantity,
+                    carrying,
+                    super::zero(),
+                )
             } else if let Some(&(quantity, carrying)) = self.released.get(&key) {
-                (GoodsPriceCostBasis::Released, quantity, carrying, zero())
+                (
+                    GoodsPriceCostBasis::Released,
+                    quantity,
+                    carrying,
+                    super::zero(),
+                )
             } else {
                 return Ok(GoodsPriceCostEvidence::unavailable());
             };
@@ -73,7 +84,7 @@ impl GoodsCostLedger {
     }
 }
 
-impl super::CostClose {
+impl CostClose {
     pub(crate) fn goods_price_cost(&self, key: Key) -> Result<GoodsPriceCostEvidence> {
         self.goods.evidence(key)
     }

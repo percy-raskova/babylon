@@ -1,24 +1,40 @@
-use super::*;
+use super::metadata::Metadata;
+use super::projection::{ProductionProjectionError, Result};
+use super::{events, history, routes};
 use crate::michigan_material::MichiganMaterialCatalog;
 use crate::production_observation::{
     ProductionDeliveryEvidence, ProductionDeliveryStage, ProductionEvent,
 };
 use babylon_material_circuit::OrderId;
-fn order_history(catalog: &MichiganMaterialCatalog) -> history::OrderHistory {
-    let source = crate::economic_catalog::CapturedEconomicCatalog::from_michigan(catalog).unwrap();
-    history::OrderHistory::from_opening(&source.view().opening.compile().unwrap().state).unwrap()
+use babylon_tick::material_world::MaterialTickReceipts;
+fn order_history(catalog: &MichiganMaterialCatalog) -> OrderHistory {
+    let source = CapturedEconomicCatalog::from_michigan(catalog)
+        .expect("the Michigan fixture content loads");
+    OrderHistory::from_opening(
+        &source
+            .view()
+            .opening
+            .compile()
+            .expect("the authored scenario compiles")
+            .state,
+    )
+    .expect("the opening register admits its sections")
 }
 fn project_events(
     catalog: &MichiganMaterialCatalog,
-    history: &history::OrderHistory,
+    history: &OrderHistory,
     r: &MaterialTickReceipts,
     digest: [u8; 32],
     events: &mut Vec<ProductionEvent>,
 ) -> Result<()> {
-    let source = crate::economic_catalog::CapturedEconomicCatalog::from_michigan(catalog).unwrap();
+    let source = CapturedEconomicCatalog::from_michigan(catalog)
+        .expect("the Michigan fixture content loads");
     events::project_events(&Metadata::new(source.view())?, history, r, digest, events)
 }
+use crate::economic_catalog::CapturedEconomicCatalog;
+use crate::michigan_economy;
 use babylon_material_circuit::{ArrivalReceipt, DeliveryReceipt, RealizationReceipt};
+use history::OrderHistory;
 
 fn delivery_receipts(order_id: OrderId) -> MaterialTickReceipts {
     MaterialTickReceipts {
@@ -76,9 +92,15 @@ fn delivery_receipts(order_id: OrderId) -> MaterialTickReceipts {
 fn typed_delivery_preserves_original_rows_identifiers_sequence_and_descriptions() {
     let catalog = crate::test_support::catalog();
     let route = &catalog.routes()[0];
-    let supplier = catalog.site(&route.supplier_site_key).unwrap();
-    let buyer = catalog.site(&route.buyer_site_key).unwrap();
-    let good = catalog.good(&route.good_key).unwrap();
+    let supplier = catalog
+        .site(&route.supplier_site_key)
+        .expect("the fixture catalog holds the addressed site");
+    let buyer = catalog
+        .site(&route.buyer_site_key)
+        .expect("the fixture catalog holds the addressed site");
+    let good = catalog
+        .good(&route.good_key)
+        .expect("the fixture catalog holds the addressed good");
     let mut receipts = delivery_receipts(route.order_id());
     let mut events = Vec::new();
     project_events(
@@ -88,7 +110,7 @@ fn typed_delivery_preserves_original_rows_identifiers_sequence_and_descriptions(
         [1; 32],
         &mut events,
     )
-    .unwrap();
+    .expect("the fixture projection accepts the authored input");
     receipts.resolve_tick = 3;
     project_events(
         &catalog,
@@ -97,7 +119,7 @@ fn typed_delivery_preserves_original_rows_identifiers_sequence_and_descriptions(
         [2; 32],
         &mut events,
     )
-    .unwrap();
+    .expect("the fixture projection accepts the authored input");
     assert_eq!(events.len(), 8);
     let expected = [
         ("arrival", ProductionDeliveryStage::Arrival, 3),
@@ -112,7 +134,7 @@ fn typed_delivery_preserves_original_rows_identifiers_sequence_and_descriptions(
     for (index, event) in events.iter().enumerate() {
         let (kind, stage, quantity) = expected[index % 4];
         let digest = if index < 4 { [1; 32] } else { [2; 32] };
-        let digest = digest_hex(&digest);
+        let digest = michigan_economy::digest_hex(&digest);
         assert_eq!(event.id, format!("{digest}:{index}"));
         assert_eq!(event.receipt_digest, digest);
         assert_eq!(event.period, if index < 4 { 2 } else { 3 });
@@ -120,8 +142,8 @@ fn typed_delivery_preserves_original_rows_identifiers_sequence_and_descriptions(
         assert_eq!(
             event.subject_site_ids,
             vec![
-                digest_hex(&supplier.id().as_bytes()),
-                digest_hex(&buyer.id().as_bytes())
+                michigan_economy::digest_hex(&supplier.id().as_bytes()),
+                michigan_economy::digest_hex(&buyer.id().as_bytes())
             ]
         );
         assert_eq!(
@@ -141,10 +163,10 @@ fn typed_delivery_preserves_original_rows_identifiers_sequence_and_descriptions(
                     good.unit_id()
                 )),
                 stage,
-                order_id: digest_hex(&route.order_id().as_bytes()),
-                route_id: digest_hex(&route.id().as_bytes()),
-                good_id: digest_hex(&good.id().as_bytes()),
-                unit_id: digest_hex(&good.unit_id().as_bytes()),
+                order_id: michigan_economy::digest_hex(&route.order_id().as_bytes()),
+                route_id: michigan_economy::digest_hex(&route.id().as_bytes()),
+                good_id: michigan_economy::digest_hex(&good.id().as_bytes()),
+                unit_id: michigan_economy::digest_hex(&good.unit_id().as_bytes()),
                 quantity,
             })
         );
@@ -191,12 +213,20 @@ fn recurring_delivery_keeps_dated_order_identity_on_the_stable_supplier_route() 
         [3; 32],
         &mut events,
     )
-    .unwrap();
+    .expect("the fixture projection accepts the authored input");
     assert_eq!(events.len(), 4);
     for event in events {
         assert_eq!(event.period, 2);
-        let evidence = event.delivery_evidence.unwrap();
-        assert_eq!(evidence.order_id, digest_hex(&generated.as_bytes()));
-        assert_eq!(evidence.route_id, digest_hex(&route.id().as_bytes()));
+        let evidence = event
+            .delivery_evidence
+            .expect("the fixture event carries delivery evidence");
+        assert_eq!(
+            evidence.order_id,
+            michigan_economy::digest_hex(&generated.as_bytes())
+        );
+        assert_eq!(
+            evidence.route_id,
+            michigan_economy::digest_hex(&route.id().as_bytes())
+        );
     }
 }

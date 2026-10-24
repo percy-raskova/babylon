@@ -22,7 +22,7 @@
 //! oracle; the port stores the ternary directly and APPLIES Δl, diverging
 //! from frozen trajectories BY CONSTRUCTION — the re-point, pack D-row 1).
 //! Every expected value below is the generator's repr output pinned EXACTLY
-//! (no tolerance — the estate norm, lifecycle_conformance.rs's header).
+//! (no tolerance — the estate norm, `lifecycle_conformance.rs`'s header).
 //!
 //! # Provenance
 //!
@@ -109,7 +109,7 @@
 //! The fired-count arithmetic (the ceremony's spike, Step 3): the EXPECTED
 //! hypothesis was "employer only, +1" — MEASURED reality differs, recorded
 //! honestly rather than forced. `p2-wages-push`'s subject type is
-//! SOCIAL_CLASS (its one `:field` binding, `social-class/active`, pins it —
+//! `SOCIAL_CLASS` (its one `:field` binding, `social-class/active`, pins it —
 //! `tick.rs::subject_type_of`), mirroring `p2-org-solidarity-push`'s own
 //! `active`-gated shape exactly; EVERY social class in this world seeds
 //! `active 1` (all thirteen), so the `when` guard passes thirteen times —
@@ -120,8 +120,8 @@
 //! total, p0 not re-firing) + 13 = 62.
 //!
 //! Controller ruling 2026-08-15 (Ruling A, extended — resolving the Task-3
-//! NEEDS_CONTEXT): class-bribed's tick-1 dominant is LIBERAL — the vector's
-//! witness is the ADR016 ROUTING (Δf = +0.12, Δr = 0, eff_sol
+//! `NEEDS_CONTEXT)`: class-bribed's tick-1 dominant is LIBERAL — the vector's
+//! witness is the ADR016 ROUTING (Δf = +0.12, Δr = 0, `eff_sol`
 //! chauvinist-clamped to 0), not a one-tick flip; hegemony erodes, it
 //! doesn't snap. The FASCIST flip lands at tick 2 (the
 //! `tick_two_accumulation_witness` below).
@@ -161,11 +161,25 @@
 //!   state — LIBERAL — and loud absence survives only for the genuinely
 //!   unread (class-unpositioned, employer).
 
-use babylon_bsl::scenario::compose_declaration_preludes;
+// Conformance fixtures exercise exact engine values, transcribe spec literals,
+// and build whole scenarios in one test. These pedantic lints would force
+// ceremony that hides those contracts, so they stay off in test code only.
+#![allow(
+    clippy::float_cmp,
+    reason = "these comparisons pin exact authored f64 values"
+)]
+#![allow(
+    clippy::unreadable_literal,
+    reason = "the literal is an authored byte pattern"
+)]
+
+use babylon_bsl::scenario;
+use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
+use babylon_kernel::replay::ReplaySeed;
 use babylon_kernel::replay::ReplaySessionId;
-use babylon_tick::run_once_into_with_prelude;
+use babylon_tick::diagnostic::RuleDiagnosticSession;
 
 const SCENARIO: &str = include_str!("../content/scenarios/consciousness-ternary-conformance.bscn");
 // Train B item 4 (#591, D157): the scenario stopped re-declaring
@@ -177,7 +191,7 @@ const ORGANIZATION_PRACTICE_PRELUDE: &str =
 const CONSCIOUSNESS_RULES: &str = include_str!("../content/rules/consciousness.bsl");
 
 fn practice_worldview_prelude() -> String {
-    compose_declaration_preludes(&[ORGANIZATION_PRACTICE_PRELUDE, WORLDVIEW_PRELUDE])
+    scenario::compose_declaration_preludes(&[ORGANIZATION_PRACTICE_PRELUDE, WORLDVIEW_PRELUDE])
         .expect("the ordered organization and worldview preludes compose")
 }
 
@@ -211,10 +225,14 @@ const TV_TIE_ALL_TRUE: NodeId = NodeId(13);
 /// start; the full vector table lives in
 /// `measured_update_law_matches_the_dual_implementation_exactly` below.
 #[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "a conformance scenario builds its whole fixture and asserts the full trajectory in one test"
+)]
 fn unpositioned_class_gets_no_reading() {
     let mut graph = HypergraphStore::new();
-    let mut sink = babylon_bsl::structural_verbs::CollectingSink::default();
-    let report = run_once_into_with_prelude(
+    let mut sink = CollectingSink::default();
+    let report = babylon_tick::run_once_into_with_prelude(
         SCENARIO,
         &practice_worldview_prelude(),
         CONSCIOUSNESS_RULES,
@@ -421,10 +439,14 @@ fn unpositioned_class_gets_no_reading() {
 /// reads it same-tick: its dominant is the readout of the HEALED ternary
 /// (still LIBERAL). Every expected dominant below is unchanged by Task 3.
 #[test]
+#[allow(
+    clippy::items_after_statements,
+    reason = "scenario constants and local helpers sit beside their first use in one long assertion"
+)]
 fn dominant_worldview_readout_vectors() {
     let mut graph = HypergraphStore::new();
-    let mut sink = babylon_bsl::structural_verbs::CollectingSink::default();
-    let report = run_once_into_with_prelude(
+    let mut sink = CollectingSink::default();
+    let report = babylon_tick::run_once_into_with_prelude(
         SCENARIO,
         &practice_worldview_prelude(),
         CONSCIOUSNESS_RULES,
@@ -522,10 +544,18 @@ fn dominant_worldview_readout_vectors() {
 /// persisted baselines (previous-wages, previous-wealth) and the per-rule
 /// fired counts. The generator's verbatim output is in the module header.
 #[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "a conformance scenario builds its whole fixture and asserts the full trajectory in one test"
+)]
+#[allow(
+    clippy::items_after_statements,
+    reason = "scenario constants and local helpers sit beside their first use in one long assertion"
+)]
 fn measured_update_law_matches_the_dual_implementation_exactly() {
     let mut graph = HypergraphStore::new();
-    let mut sink = babylon_bsl::structural_verbs::CollectingSink::default();
-    let report = run_once_into_with_prelude(
+    let mut sink = CollectingSink::default();
+    let report = babylon_tick::run_once_into_with_prelude(
         SCENARIO,
         &practice_worldview_prelude(),
         CONSCIOUSNESS_RULES,
@@ -746,18 +776,26 @@ fn measured_update_law_matches_the_dual_implementation_exactly() {
 /// material consequence of C1, not a regression: relative, not absolute,
 /// material loss now drives the routing.
 #[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "a conformance scenario builds its whole fixture and asserts the full trajectory in one test"
+)]
+#[allow(
+    clippy::items_after_statements,
+    reason = "scenario constants and local helpers sit beside their first use in one long assertion"
+)]
 fn tick_two_accumulation_witness() {
-    let mut session = babylon_tick::diagnostic::RuleDiagnosticSession::new(
+    let mut session = RuleDiagnosticSession::new(
         SCENARIO,
         Some(&practice_worldview_prelude()),
         CONSCIOUSNESS_RULES,
         HypergraphStore::new(),
         ReplaySessionId::try_from("consciousness-ternary-conformance-test")
             .expect("literal is non-empty"),
-        babylon_kernel::replay::ReplaySeed::new(0),
+        ReplaySeed::new(0),
     )
     .expect("the consciousness ternary scenario plus the ten-rule pack must load into a session");
-    let mut sink = babylon_bsl::structural_verbs::CollectingSink::default();
+    let mut sink = CollectingSink::default();
     session.advance(&mut sink).expect("tick 1");
     let report2 = session.advance(&mut sink).expect("tick 2");
     let graph = session.graph();

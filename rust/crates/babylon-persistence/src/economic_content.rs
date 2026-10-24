@@ -1,16 +1,24 @@
 //! Immutable current campaign admission shared by material readers and projections.
-use crate::{
-    economic_catalog::EconomicProjectionView,
-    identity::CampaignId,
-    material_runtime::{
-        MaterialComponentIdentity, MaterialRuntimeError, MaterialRuntimeFoundation,
-    },
-    material_storage::OpeningRegister,
+use crate::economic_catalog::EconomicProjectionView;
+use crate::identity::CampaignId;
+use crate::material_runtime::{
+    MaterialComponentIdentity, MaterialRuntimeError, MaterialRuntimeFoundation,
 };
+use crate::material_storage::OpeningRegister;
+
 use babylon_graph::stable_state::StableGraphState;
-use babylon_kernel::{clock::CampaignDuration, content_digest::sha256_of};
-use babylon_tick::{material_staffing::StaffingComposition, material_world::MaterialWorldRegister};
-use std::sync::{Arc, Mutex, OnceLock};
+use babylon_kernel::clock::CampaignDuration;
+
+use babylon_tick::material_staffing::StaffingComposition;
+use babylon_tick::material_world::MaterialWorldRegister;
+
+use crate::michigan_material::MichiganDeliveryPreset;
+use crate::simulation_experiment::ExperimentProfile;
+use babylon_kernel::content_digest;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
+use std::ops::Deref;
+use std::sync::{Arc, Mutex, OnceLock, Weak};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum EconomicContentError {
@@ -21,7 +29,7 @@ pub enum EconomicContentError {
     OwnerPoisoned,
 }
 impl std::fmt::Display for EconomicContentError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         write!(f, "economic content admission refused: {self:?}")
     }
 }
@@ -48,8 +56,8 @@ impl EconomicContentAdmission {
         if graph.content_bundle().economic_catalog().is_none() {
             return Err(EconomicContentError::Foundation);
         }
-        let graph_digest = sha256_of(graph.canonical_bytes());
-        let source_digest = sha256_of(graph.content_bundle().canonical_bytes());
+        let graph_digest = content_digest::sha256_of(graph.canonical_bytes());
+        let source_digest = content_digest::sha256_of(graph.content_bundle().canonical_bytes());
         let component_identity = MaterialComponentIdentity::from_foundation(graph);
         let foundation_graph = foundation
             .opening_graph_state()
@@ -166,21 +174,73 @@ impl EconomicContentAdmission {
     }
 }
 
+/// Shared handle to one immutable admitted campaign foundation.
+///
+/// The admission is immutable and multi-megabyte; worker and reader threads
+/// share one owner instead of cloning the foundation or serializing readers.
+#[derive(Clone)]
+pub struct EconomicContentHandle(
+    // STYLE-EXCEPTION(EXC-04): one admitted foundation is shared across worker and reader threads.
+    Arc<EconomicContentAdmission>,
+);
+impl EconomicContentHandle {
+    pub(crate) fn new(admission: EconomicContentAdmission) -> Self {
+        // STYLE-EXCEPTION(EXC-04): first shared owner of the admitted foundation.
+        Self(Arc::new(admission))
+    }
+    /// The number of strong owners of this admission.
+    #[cfg(test)]
+    #[must_use]
+    pub(crate) fn strong_count(&self) -> usize {
+        // STYLE-EXCEPTION(EXC-04): the cursor's weak-reference contract is asserted here.
+        Arc::strong_count(&self.0)
+    }
+    pub(crate) fn downgrade(&self) -> EconomicContentRef {
+        // STYLE-EXCEPTION(EXC-04): an observation cursor tracks the admission without owning it.
+        EconomicContentRef(Arc::downgrade(&self.0))
+    }
+}
+impl Deref for EconomicContentHandle {
+    type Target = EconomicContentAdmission;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl AsRef<EconomicContentAdmission> for EconomicContentHandle {
+    fn as_ref(&self) -> &EconomicContentAdmission {
+        &self.0
+    }
+}
+
+/// Weak handle held by one observation cursor.
+#[derive(Clone, Debug)]
+pub(crate) struct EconomicContentRef(
+    // STYLE-EXCEPTION(EXC-04): a weak reference never extends the admission lifetime.
+    Weak<EconomicContentAdmission>,
+);
+impl EconomicContentRef {
+    pub(crate) fn upgrade(&self) -> Option<EconomicContentHandle> {
+        self.0.upgrade().map(EconomicContentHandle)
+    }
+}
+
 /// One explicit owner retains at most one campaign's immutable admitted source.
 /// No SQL rows, mutable material state, receipts or publication results live here.
 #[derive(Clone, Default)]
 pub(crate) struct EconomicAdmissionOwner {
+    // STYLE-EXCEPTION(EXC-04): cloned session owners share the one admission slot.
     candidate: Arc<Mutex<Option<EconomicAdmissionCandidate>>>,
 }
 struct EconomicAdmissionCandidate {
     campaign: CampaignId,
-    admitted: Arc<EconomicContentAdmission>,
+    admitted: EconomicContentHandle,
 }
 impl EconomicAdmissionOwner {
     pub(crate) fn candidate(
         &self,
         campaign: CampaignId,
-    ) -> Result<Option<Arc<EconomicContentAdmission>>, EconomicContentError> {
+    ) -> Result<Option<EconomicContentHandle>, EconomicContentError> {
         let candidate = self
             .candidate
             .lock()
@@ -188,13 +248,13 @@ impl EconomicAdmissionOwner {
         Ok(candidate
             .as_ref()
             .filter(|candidate| candidate.campaign == campaign)
-            .map(|candidate| Arc::clone(&candidate.admitted)))
+            .map(|candidate| candidate.admitted.clone()))
     }
     /// Call only after the complete consuming operation has succeeded.
     pub(crate) fn publish(
         &self,
         campaign: CampaignId,
-        admitted: Arc<EconomicContentAdmission>,
+        admitted: EconomicContentHandle,
     ) -> Result<(), EconomicContentError> {
         let previous = self
             .candidate
@@ -219,8 +279,8 @@ pub fn validate_economic_header(
     tick: u64,
 ) -> Result<(), EconomicContentError> {
     if preset != "national-world"
-        && crate::michigan_material::MichiganDeliveryPreset::from_id(preset).is_none()
-        && crate::simulation_experiment::ExperimentProfile::from_foundation_id(preset).is_none()
+        && MichiganDeliveryPreset::from_id(preset).is_none()
+        && ExperimentProfile::from_foundation_id(preset).is_none()
     {
         return Err(EconomicContentError::UnknownPreset);
     }

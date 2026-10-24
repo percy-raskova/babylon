@@ -1,5 +1,7 @@
 //! Captured campaign stopping policy, independent of the fixed causal interval.
 use serde::{Deserialize, Serialize};
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 
 /// Continuous campaigns have no designed final period. Finite controls do.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -12,7 +14,7 @@ pub enum CampaignDuration {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct InvalidCampaignDuration;
 impl std::fmt::Display for InvalidCampaignDuration {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         f.write_str("campaign duration must be continuous or a positive signed-64 final period")
     }
 }
@@ -90,7 +92,7 @@ impl CampaignDuration {
 }
 
 impl std::fmt::Display for CampaignDuration {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> FmtResult {
         match self {
             Self::Continuous => formatter.write_str("continuous"),
             Self::Finite { final_period } => write!(formatter, "finite {final_period}-period"),
@@ -119,11 +121,17 @@ mod tests {
             CampaignDuration::Finite { final_period: 131 },
         ] {
             assert_eq!(
-                CampaignDuration::decode(duration.canonical_bytes().unwrap()),
+                CampaignDuration::decode(
+                    duration
+                        .canonical_bytes()
+                        .expect("the graph value exposes canonical bytes")
+                ),
                 Ok(duration)
             );
         }
-        let mut padding = CampaignDuration::Continuous.canonical_bytes().unwrap();
+        let mut padding = CampaignDuration::Continuous
+            .canonical_bytes()
+            .expect("the graph value exposes canonical bytes");
         padding[8] = 1;
         assert!(CampaignDuration::decode(padding).is_err());
         let mut unknown = [0; 9];

@@ -1,6 +1,9 @@
 //! Checked immutable H3 runtime foundations owned below persistence.
 
-use babylon_kernel::{content_digest::sha256_of, H3CellId};
+use babylon_kernel::content_digest;
+use babylon_kernel::H3CellId;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 
 /// Canonical domain separator for Michigan Dynamic-Hex Foundation V1.
 pub const MICHIGAN_DYNAMIC_HEX_FOUNDATION_DOMAIN: &[u8] =
@@ -299,7 +302,7 @@ impl MichiganDynamicHexFoundation {
         for row in &rows {
             source_identity.extend_from_slice(&row.cell_id.to_be_bytes());
         }
-        if sha256_of(&source_identity) != MICHIGAN_DYNAMIC_HEX_SOURCE_R7_DIGEST {
+        if content_digest::sha256_of(&source_identity) != MICHIGAN_DYNAMIC_HEX_SOURCE_R7_DIGEST {
             return Err(MichiganDynamicHexFoundationError::SourceR7Digest);
         }
 
@@ -358,7 +361,7 @@ impl MichiganDynamicHexFoundation {
             r8_section.extend_from_slice(&row.child_id.to_be_bytes());
             r8_section.extend_from_slice(&row.parent_r7.to_be_bytes());
         }
-        let r8_child_parent_digest = sha256_of(&r8_section);
+        let r8_child_parent_digest = content_digest::sha256_of(&r8_section);
         if r8_child_parent_digest != MICHIGAN_DYNAMIC_HEX_R8_SECTION_DIGEST {
             return Err(MichiganDynamicHexFoundationError::R8SectionDigest);
         }
@@ -374,7 +377,9 @@ impl MichiganDynamicHexFoundation {
         reference_bundle.extend_from_slice(REFERENCE_BUNDLE_DOMAIN);
         reference_bundle.extend_from_slice(&MICHIGAN_DYNAMIC_HEX_BASE_REFERENCE_COHORT_DIGEST);
         reference_bundle.extend_from_slice(&r8_child_parent_digest);
-        if sha256_of(&reference_bundle) != MICHIGAN_DYNAMIC_HEX_REFERENCE_BUNDLE_DIGEST {
+        if content_digest::sha256_of(&reference_bundle)
+            != MICHIGAN_DYNAMIC_HEX_REFERENCE_BUNDLE_DIGEST
+        {
             return Err(MichiganDynamicHexFoundationError::ReferenceBundleDigest);
         }
 
@@ -411,7 +416,7 @@ impl MichiganDynamicHexFoundation {
         }
         canonical_bytes.extend_from_slice(&r8_section);
         debug_assert_eq!(canonical_bytes.len(), capacity);
-        let artifact_sha256 = sha256_of(&canonical_bytes);
+        let artifact_sha256 = content_digest::sha256_of(&canonical_bytes);
         if artifact_sha256 != MICHIGAN_DYNAMIC_HEX_FOUNDATION_ARTIFACT_SHA256 {
             return Err(MichiganDynamicHexFoundationError::ArtifactDigest);
         }
@@ -485,7 +490,7 @@ impl MichiganDynamicHexFoundation {
 }
 
 /// Closed Michigan foundation construction failures.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MichiganDynamicHexFoundationError {
     /// The H3 cell is not resolution seven.
     NonR7Cell { cell: H3CellId },
@@ -532,7 +537,7 @@ pub enum MichiganDynamicHexFoundationError {
 }
 
 impl std::fmt::Display for MichiganDynamicHexFoundationError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> FmtResult {
         write!(
             formatter,
             "invalid Michigan dynamic-H3 foundation: {self:?}"
@@ -550,9 +555,12 @@ mod tests {
 
     #[test]
     fn r8_coverage_refuses_length_mismatch_before_pairwise_comparison() {
-        let parent = H3CellId::from_str("872664800ffffff").unwrap();
-        let child = H3CellId::from_str("8826648001fffff").unwrap();
-        let expected = [MichiganH3R8ChildParent::try_new(child, parent).unwrap()];
+        let parent = H3CellId::from_str("872664800ffffff")
+            .expect("the authored JSON matches the declared schema");
+        let child = H3CellId::from_str("8826648001fffff")
+            .expect("the authored JSON matches the declared schema");
+        let expected = [MichiganH3R8ChildParent::try_new(child, parent)
+            .expect("the authored fixture satisfies the constructor invariants")];
 
         assert_eq!(
             validate_r8_coverage(&[], &expected),

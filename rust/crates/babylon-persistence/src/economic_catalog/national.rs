@@ -3,17 +3,23 @@ use super::{
     EconomicCatalogError, EconomicCatalogInput, EconomicOpening, EconomicSourceView,
     SourceArtifactKind as Kind,
 };
-use crate::{
-    national_cohorts::NationalCohortReference, national_counties::NationalCountyReference,
-    national_economy::NationalGamePolicy, national_households::NationalHouseholdReference,
-    national_resident_workforce::NationalResidentWorkforceReference,
-    national_transport::NationalTransportReference, world_reference::WorldReference,
-};
-type Result<T> = std::result::Result<T, EconomicCatalogError>;
+use crate::national_cohorts::NationalCohortReference;
+use crate::national_counties::NationalCountyReference;
+use crate::national_economy::NationalAidCapture;
+use crate::national_economy::NationalGamePolicy;
+use crate::national_households::NationalHouseholdReference;
+use crate::national_resident_workforce::NationalResidentWorkforceReference;
+use crate::national_transport::NationalTransportReference;
+use crate::world_reference::WorldReference;
+use babylon_bsl::scenario_seed::GraphSeed;
+use babylon_graph::hypergraph_store::HypergraphStore;
+use std::result::Result as StdResult;
+
+type Result<T> = StdResult<T, EconomicCatalogError>;
 
 pub(super) struct NationalSources {
     pub(super) counties: NationalCountyReference,
-    pub(super) aid: crate::national_economy::NationalAidCapture,
+    pub(super) aid: NationalAidCapture,
     cohorts: NationalCohortReference,
     residents: NationalResidentWorkforceReference,
     households: NationalHouseholdReference,
@@ -141,13 +147,12 @@ fn validate_declarations(input: &EconomicCatalogInput) -> Result<()> {
         .map(|row| std::str::from_utf8(row.bytes()))
         .transpose()
         .map_err(|_| EconomicCatalogError::Source(Kind::PreludeDeclarations))?;
-    let empty = babylon_bsl::scenario_seed::GraphSeed::try_new(vec![], vec![], vec![])
-        .map_err(EconomicCatalogError::from)?;
+    let empty = GraphSeed::try_new(vec![], vec![], vec![]).map_err(EconomicCatalogError::from)?;
     let loaded = babylon_bsl::scenario_seed::load_scenario_with_seed(
         text,
         prelude,
         &empty,
-        &mut babylon_graph::hypergraph_store::HypergraphStore::new(),
+        &mut HypergraphStore::new(),
     )
     .map_err(EconomicCatalogError::from)?;
     if loaded.id != input.scenario_id {

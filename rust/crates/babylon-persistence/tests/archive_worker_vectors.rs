@@ -1,8 +1,7 @@
 //! Shared language-neutral vectors for the pinned Archive worker behavior.
 
 use babylon_persistence::{
-    archive_batch_matches_receipt, archive_contiguous_watermark, classify_archive_receipt,
-    classify_archive_sweep, ArchiveDirtyBatch, ArchivePageInput, ArchiveProducerOutcome,
+    classify_archive_receipt, ArchiveDirtyBatch, ArchivePageInput, ArchiveProducerOutcome,
     ArchiveReceiptDisposition, ArchiveReceiptPlan, ArchiveSubject, ArchiveSubjectKind,
     PendingArchiveReceipt, SemanticArchiveError, ARCHIVE_PENDING_RECEIPTS_SQL,
     ARCHIVE_SWEEP_MAX_RECEIPTS, ARCHIVE_SWEEP_MAX_SCAN, ARCHIVE_SWEEP_WATERMARK_SQL,
@@ -405,7 +404,8 @@ fn shared_watermark_vectors_match_the_contiguous_derivation() {
         let data = &row["data"];
         let first_pending = data["first_pending_tick"].as_u64();
         let max_receipt_tick = data["max_receipt_tick"].as_u64().expect("u64 max receipt");
-        let actual = archive_contiguous_watermark(first_pending, max_receipt_tick);
+        let actual =
+            babylon_persistence::archive_contiguous_watermark(first_pending, max_receipt_tick);
         assert_eq!(
             actual,
             data["expected"].as_u64().expect("u64 expected watermark"),
@@ -424,7 +424,7 @@ fn shared_match_vectors_match_the_batch_identity_refusal() {
         let data = &row["data"];
         let batch = batch_from_ref(&data["batch"]);
         let receipt = receipt_from_ref(&data["receipt"]);
-        let result = archive_batch_matches_receipt(&batch, &receipt);
+        let result = babylon_persistence::archive_batch_matches_receipt(&batch, &receipt);
         if data.get("expected").and_then(Value::as_str) == Some("ok") {
             assert_eq!(result, Ok(()), "{}", row["id"]);
         } else {
@@ -474,7 +474,7 @@ fn shared_sweep_vectors_match_the_stop_on_first_error_planner() {
             .iter()
             .map(sweep_step)
             .collect();
-        let result = classify_archive_sweep(steps);
+        let result = babylon_persistence::classify_archive_sweep(steps);
         if let Some(expected_error) = data.get("expected_error").and_then(Value::as_str) {
             let error = result.expect_err("sweep vector must stop with an error");
             assert_eq!(error_name(&error), expected_error, "{}", row["id"]);

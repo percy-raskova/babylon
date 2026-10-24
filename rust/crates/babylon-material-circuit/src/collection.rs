@@ -1,4 +1,5 @@
 //! Bounded voluntary household cash after reproduction/taxes, before distributions.
+use crate::valuation::CostClose;
 use crate::{
     AccountId, AidReceipt, CapitalContributionReceipt, CashTransferPurpose, CircuitAccounting,
     CommodityKind, FinalDemandPrincipalId, FinancialInstitutions, HouseholdConsumptionReceipt,
@@ -6,8 +7,11 @@ use crate::{
     MaterialCircuitState, MoneyLocation, MoneyTransferPurpose, MoneyTransferReceipt,
     OrganizationAccountId, TaxReceipt, UnitId,
 };
-use babylon_kernel::{content_digest::sha256_of, currency::Currency};
-type Result<T> = std::result::Result<T, MaterialCircuitError>;
+use babylon_kernel::content_digest;
+use babylon_kernel::currency::Currency;
+use std::result::Result as StdResult;
+
+type Result<T> = StdResult<T, MaterialCircuitError>;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CollectionResolveInput {
     pub original_commitment_id: [u8; 32],
@@ -96,7 +100,7 @@ pub fn collection_contribution_id(
     }
     bytes.extend_from_slice(&donor.as_bytes());
     bytes.extend_from_slice(&unit.as_bytes());
-    sha256_of(&bytes)
+    content_digest::sha256_of(&bytes)
 }
 impl CollectionReceipt {
     /// Check complete actual/refusal identity; authority joins belong to the host.
@@ -449,7 +453,7 @@ fn frozen_outcomes(
 pub(crate) fn close(
     inputs: &[CollectionResolveInput],
     state: &mut MaterialCircuitState,
-    costs: &mut crate::valuation::CostClose,
+    costs: &mut CostClose,
     money: &mut Vec<MoneyTransferReceipt>,
     facts: CollectionEvidence<'_>,
 ) -> Result<Vec<CollectionReceipt>> {
@@ -562,8 +566,10 @@ mod tests {
                 cash: Currency::from_micro_units(9),
             },
         ])
-        .unwrap();
-        let total = book.total_cash_and_reserves().unwrap();
+        .expect("the fixture opens the authored source");
+        let total = book
+            .total_cash_and_reserves()
+            .expect("the fixture book totals without overflow");
         let gift = book
             .transfer_cash(
                 organization,
@@ -571,13 +577,28 @@ mod tests {
                 Currency::from_micro_units(3),
                 CashTransferPurpose::MutualAid,
             )
-            .unwrap();
-        assert_eq!(book.total_cash_and_reserves().unwrap(), total);
-        assert_eq!(book.cash(donor).unwrap().micro_units(), 6);
+            .expect("the fixture transfer stays funded");
+        assert_eq!(
+            book.total_cash_and_reserves()
+                .expect("the fixture book totals without overflow"),
+            total
+        );
+        assert_eq!(
+            book.cash(donor)
+                .expect("the fixture book holds the payer account")
+                .micro_units(),
+            6
+        );
         let money = vec![gift];
         // This is an isolated protective source control. Captured aid donor and
         // recipient sets stay disjoint; it does not claim an admitted reverse aid.
-        let frozen = eligible_cash(&input, book.cash(donor).unwrap(), &money).unwrap();
+        let frozen = eligible_cash(
+            &input,
+            book.cash(donor)
+                .expect("the fixture book holds the payer account"),
+            &money,
+        )
+        .expect("the fixture book holds the eligible cash account");
         assert_eq!(frozen.micro_units(), 2);
         let later = book
             .transfer_cash(
@@ -586,15 +607,20 @@ mod tests {
                 Currency::from_micro_units(3),
                 CashTransferPurpose::OwnershipDistribution,
             )
-            .unwrap();
+            .expect("the fixture transfer stays funded");
         assert_eq!(later.credit.delta.micro_units(), 3);
-        assert_eq!(book.cash(donor).unwrap().micro_units(), 9);
+        assert_eq!(
+            book.cash(donor)
+                .expect("the fixture book holds the payer account")
+                .micro_units(),
+            9
+        );
         assert_eq!(frozen.micro_units(), 2);
         let mut floor = input;
         floor.protected_cash_floor = Currency::from_micro_units(8);
         assert_eq!(
             eligible_cash(&floor, Currency::from_micro_units(6), &money)
-                .unwrap()
+                .expect("the fixture book holds the eligible cash account")
                 .micro_units(),
             0
         );

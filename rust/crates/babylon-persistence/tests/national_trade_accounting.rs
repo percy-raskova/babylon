@@ -3,10 +3,9 @@ use babylon_persistence::qualification_audit::trade as national_trade_accounting
 
 use babylon_kernel::currency::Currency;
 use babylon_material_circuit::{
-    recurring_procurement_order_id, AccountId, DeliveryReceipt, FreightLossReceipt, FreightLotId,
-    GoodId, MoneyLocation, MoneyPosting, MoneyTransferPurpose, MoneyTransferReceipt,
-    OutboundOrderId, ProcessId, ProcurementReceipt, ProductionReceipt, RealizationReceipt, RouteId,
-    SiteId, UnitId,
+    AccountId, DeliveryReceipt, FreightLossReceipt, FreightLotId, GoodId, MoneyLocation,
+    MoneyPosting, MoneyTransferPurpose, MoneyTransferReceipt, OutboundOrderId, ProcessId,
+    ProcurementReceipt, ProductionReceipt, RealizationReceipt, RouteId, SiteId, UnitId,
 };
 use babylon_persistence::production_observation::ProductionSite;
 use babylon_tick::material_world::MaterialTickReceipts;
@@ -15,7 +14,9 @@ use national_trade_accounting::{Audit, Refusal};
 fn site(id: u8, location: &str) -> ProductionSite {
     ProductionSite {
         id: national_trade_accounting::hex(&[id; 32]),
-        location: location.parse().unwrap(),
+        location: location
+            .parse()
+            .expect("the authored literal parses as the declared type"),
         name: location.into(),
         industry_code: None,
         observed_employment: None,
@@ -77,7 +78,7 @@ fn procurement(period: u64, supplier: u8, buyer: u8) -> ProcurementReceipt {
     let unit_id = UnitId::from_bytes([4; 32]);
     ProcurementReceipt {
         period,
-        order_id: recurring_procurement_order_id(
+        order_id: babylon_material_circuit::recurring_procurement_order_id(
             period,
             buyer_site_id,
             supplier_site_id,
@@ -165,7 +166,9 @@ fn awaiting_import() -> (Audit, ProcurementReceipt) {
     let mut opening = receipts(1);
     admit(&mut opening, import.clone());
     foreign_production(&mut opening);
-    audit.read(&opening, &sites()).unwrap();
+    audit
+        .read(&opening, &sites())
+        .expect("the fixture reader returns its authored facts");
     (audit, import)
 }
 fn foreign_production(rows: &mut MaterialTickReceipts) {
@@ -186,16 +189,22 @@ fn settled_bidirectional_trade_and_actual_foreign_production_are_required() {
     admit(&mut opening, import.clone());
     admit(&mut opening, export.clone());
     foreign_production(&mut opening);
-    audit.read(&opening, &sites()).unwrap();
+    audit
+        .read(&opening, &sites())
+        .expect("the fixture reader returns its authored facts");
     assert_eq!(audit.report()["status"], "incomplete");
     let mut arrival = receipts(2);
     settle(&mut arrival, &import, 2);
-    audit.read(&arrival, &sites()).unwrap();
+    audit
+        .read(&arrival, &sites())
+        .expect("the fixture reader returns its authored facts");
     assert_eq!(audit.report()["status"], "incomplete");
     let mut later = receipts(3);
     settle(&mut later, &export, 5);
     settle(&mut later, &import, 3);
-    audit.read(&later, &sites()).unwrap();
+    audit
+        .read(&later, &sites())
+        .expect("the fixture reader returns its authored facts");
     let report = audit.report();
     assert_eq!(report["status"], "passed");
     assert_eq!(report["imports"]["settled_deliveries"], 2);
@@ -211,7 +220,9 @@ fn counterpart_presence_and_planned_production_are_not_execution() {
     let mut period = receipts(1);
     foreign_production(&mut period);
     period.production[0].produced_batches = 0;
-    audit.read(&period, &sites()).unwrap();
+    audit
+        .read(&period, &sites())
+        .expect("the fixture reader returns its authored facts");
     assert_eq!(audit.report()["status"], "incomplete");
     assert_eq!(audit.report()["positive_foreign_production_receipts"], 0);
     assert_eq!(audit.report()["imports"]["settled_deliveries"], 0);
@@ -226,11 +237,15 @@ fn stocked_trade_in_both_directions_cannot_substitute_for_foreign_production() {
     let mut opening = receipts(1);
     admit(&mut opening, import.clone());
     admit(&mut opening, export.clone());
-    audit.read(&opening, &sites()).unwrap();
+    audit
+        .read(&opening, &sites())
+        .expect("the fixture reader returns its authored facts");
     let mut arrival = receipts(2);
     settle(&mut arrival, &import, 5);
     settle(&mut arrival, &export, 5);
-    audit.read(&arrival, &sites()).unwrap();
+    audit
+        .read(&arrival, &sites())
+        .expect("the fixture reader returns its authored facts");
     let report = audit.report();
     assert_eq!(report["imports"]["settled_deliveries"], 1);
     assert_eq!(report["exports"]["settled_deliveries"], 1);
@@ -275,7 +290,9 @@ fn balanced_but_wrong_price_account_or_realization_cannot_count_as_trade() {
             "failed audit cannot publish partial evidence"
         );
     }
-    audit.read(&valid, &sites()).unwrap();
+    audit
+        .read(&valid, &sites())
+        .expect("the fixture reader returns its authored facts");
     assert_eq!(audit.report()["imports"]["settled_cash_micros"], "14");
 }
 
@@ -291,7 +308,9 @@ fn new_orders_require_real_reservations_and_keep_their_admission_price() {
         Err(Refusal::Reservation)
     );
     let mut audit = Audit::default();
-    audit.read(&opening, &sites()).unwrap();
+    audit
+        .read(&opening, &sites())
+        .expect("the fixture reader returns its authored facts");
     let mut later = receipts(2);
     let mut changed_quote = import.clone();
     changed_quote.unit_price = Currency::from_micro_units(9);
@@ -299,7 +318,9 @@ fn new_orders_require_real_reservations_and_keep_their_admission_price() {
     assert_eq!(audit.read(&later, &sites()), Err(Refusal::Settlement));
     later = receipts(2);
     settle(&mut later, &import, 1);
-    audit.read(&later, &sites()).unwrap();
+    audit
+        .read(&later, &sites())
+        .expect("the fixture reader returns its authored facts");
     assert_eq!(audit.report()["imports"]["settled_cash_micros"], "7");
 }
 
@@ -319,7 +340,9 @@ fn partial_delivery_and_loss_refund_retire_terms_without_counting_refunds_as_sal
     missing_refund.money_transfers.pop();
     assert_eq!(audit.read(&missing_refund, &sites()), Err(Refusal::Refund));
     assert_eq!(audit.report(), before);
-    audit.read(&arrival, &sites()).unwrap();
+    audit
+        .read(&arrival, &sites())
+        .expect("the fixture reader returns its authored facts");
     assert_eq!(audit.report()["imports"]["settled_cash_micros"], "14");
     assert_eq!(audit.report()["unresolved_trade_orders"], 0);
 }
@@ -329,7 +352,9 @@ fn wholly_lost_goods_never_qualify_as_delivered_trade() {
     let (mut audit, import) = awaiting_import();
     let mut period = receipts(2);
     lose(&mut period, &import, 5);
-    audit.read(&period, &sites()).unwrap();
+    audit
+        .read(&period, &sites())
+        .expect("the fixture reader returns its authored facts");
     assert_eq!(audit.report()["imports"]["settled_deliveries"], 0);
     assert_eq!(audit.report()["imports"]["settled_cash_micros"], "0");
     assert_eq!(audit.report()["unresolved_trade_orders"], 0);
@@ -343,7 +368,9 @@ fn zero_admissions_remain_unfunded_and_duplicate_or_retired_ids_are_refused() {
     let mut empty = receipts(1);
     admit(&mut empty, zero.clone());
     let mut audit = Audit::default();
-    audit.read(&empty, &sites()).unwrap();
+    audit
+        .read(&empty, &sites())
+        .expect("the fixture reader returns its authored facts");
     assert_eq!(audit.report()["unresolved_trade_orders"], 0);
     empty.procurement.push(zero);
     assert_eq!(
@@ -353,7 +380,9 @@ fn zero_admissions_remain_unfunded_and_duplicate_or_retired_ids_are_refused() {
     let (mut audit, import) = awaiting_import();
     let mut arrival = receipts(2);
     settle(&mut arrival, &import, 5);
-    audit.read(&arrival, &sites()).unwrap();
+    audit
+        .read(&arrival, &sites())
+        .expect("the fixture reader returns its authored facts");
     let mut stale = receipts(3);
     let mut replayed = import;
     replayed.period = 3;
@@ -400,7 +429,9 @@ fn dependencies_and_unknown_or_duplicate_sites_cannot_become_foreign_trade() {
     foreign_production(&mut period);
     let dependent = vec![site(1, "county:26163"), site(2, "dependency:630")];
     let mut audit = Audit::default();
-    audit.read(&period, &dependent).unwrap();
+    audit
+        .read(&period, &dependent)
+        .expect("the fixture reader returns its authored facts");
     assert_eq!(audit.report()["positive_foreign_production_receipts"], 0);
     assert_eq!(audit.report()["unresolved_trade_orders"], 0);
     let mut audit = Audit::default();

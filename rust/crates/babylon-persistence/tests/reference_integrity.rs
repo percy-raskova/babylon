@@ -1,11 +1,14 @@
 //! Current H3 and reference-bundle integrity against an explicitly owned disposable runtime.
 
-use babylon_persistence::{
-    postgres_catalog::validate_connection_target, postgres_catalog::CATALOG_CONNECT_TIMEOUT,
-    postgres_catalog::CATALOG_STARTUP_OPTIONS, postgres_catalog::CATALOG_TCP_USER_TIMEOUT,
-    SCHEMA_ADVISORY_LOCK_KEY,
+use babylon_persistence::postgres_catalog::{
+    CATALOG_CONNECT_TIMEOUT, CATALOG_STARTUP_OPTIONS, CATALOG_TCP_USER_TIMEOUT,
 };
+use babylon_persistence::SCHEMA_ADVISORY_LOCK_KEY;
+
+use babylon_persistence::postgres_catalog;
 use postgres::config::Host;
+use postgres::Client;
+use postgres::Error;
 use postgres::{Config, NoTls};
 use std::str::FromStr;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -30,10 +33,12 @@ fn live_scratch_login_requires_scram() {
     let base = config_from_env();
     preflight_disposable_harness(&base);
     let admin = admin_config(&base);
-    let mut client = admin.connect(NoTls).unwrap();
+    let mut client = admin
+        .connect(NoTls)
+        .expect("the test database accepts the connection");
     client
         .batch_execute("SET password_encryption = 'md5'")
-        .unwrap();
+        .expect("the test database applies the schema statements");
     let name = scratch_name("scram");
     let password = create_scratch_login(&mut client, &name);
     let role = ScratchRole {
@@ -45,7 +50,7 @@ fn live_scratch_login_requires_scram() {
     let encoded: bool = client.query_one(
         "SELECT rolpassword LIKE 'SCRAM-SHA-256$%' FROM pg_catalog.pg_authid WHERE rolname = $1",
         &[&role.name],
-    ).unwrap().get(0);
+    ).expect("the seeded row is present exactly once").get(0);
     let mut login = base.clone();
     login.user(role.name()).password(role.password());
     let accepts_generated = login.connect(NoTls).is_ok();
@@ -95,7 +100,7 @@ fn live_h3_pg_semantic_oracle() {
 fn disposable_harness_accepts_only_the_owned_loopback_shape() {
     let config =
         Config::from_str("host=127.0.0.1 port=55433 user=test password=test dbname=postgres")
-            .unwrap();
+            .expect("the authored JSON matches the declared schema");
     assert_eq!(
         validate_disposable_harness_target(&config, Some(VALID_DISPOSABLE_CANARY)),
         Ok(())
@@ -116,7 +121,7 @@ fn disposable_harness_rejects_nonowned_targets_before_connect() {
         "host=127.0.0.1 user=test dbname=postgres",
     ];
     for dsn in cases.iter().take(9) {
-        let config = Config::from_str(dsn).unwrap();
+        let config = Config::from_str(dsn).expect("the authored JSON matches the declared schema");
         assert!(
             validate_disposable_harness_target(&config, Some(VALID_DISPOSABLE_CANARY)).is_err()
         );
@@ -127,7 +132,7 @@ fn disposable_harness_rejects_nonowned_targets_before_connect() {
 fn disposable_harness_rejects_missing_or_invalid_canary() {
     let config =
         Config::from_str("host=127.0.0.1 port=55433 user=test password=test dbname=postgres")
-            .unwrap();
+            .expect("the authored JSON matches the declared schema");
     for canary in [
         None,
         Some(""),
@@ -146,24 +151,26 @@ fn disposable_harness_rejects_missing_or_invalid_canary() {
 }
 
 fn assert_lock_released(config: &Config) {
-    let mut client = config.connect(NoTls).unwrap();
+    let mut client = config
+        .connect(NoTls)
+        .expect("the test database accepts the connection");
     let locked: bool = client
         .query_one(
             "SELECT pg_catalog.pg_try_advisory_lock($1)",
             &[&SCHEMA_ADVISORY_LOCK_KEY],
         )
-        .unwrap()
+        .expect("the seeded row is present exactly once")
         .try_get(0)
-        .unwrap();
+        .expect("the fixture row holds the addressed column");
     assert!(locked);
     let unlocked: bool = client
         .query_one(
             "SELECT pg_catalog.pg_advisory_unlock($1)",
             &[&SCHEMA_ADVISORY_LOCK_KEY],
         )
-        .unwrap()
+        .expect("the seeded row is present exactly once")
         .try_get(0)
-        .unwrap();
+        .expect("the fixture row holds the addressed column");
     assert!(unlocked);
 }
 
@@ -177,7 +184,9 @@ impl ScratchDatabase {
     fn empty(base: &Config, label: &str, owner: &str) -> Self {
         let name = scratch_name(label);
         let admin = admin_config(base);
-        let mut client = admin.connect(NoTls).unwrap();
+        let mut client = admin
+            .connect(NoTls)
+            .expect("the test database accepts the connection");
         client
             .batch_execute(
                 format!(
@@ -187,7 +196,7 @@ impl ScratchDatabase {
                 )
                 .as_str(),
             )
-            .unwrap();
+            .expect("the test database applies the schema statements");
         Self {
             name,
             admin,
@@ -198,7 +207,9 @@ impl ScratchDatabase {
     fn from_template(base: &Config, template: &str, label: &str) -> Self {
         let name = scratch_name(label);
         let admin = admin_config(base);
-        let mut client = admin.connect(NoTls).unwrap();
+        let mut client = admin
+            .connect(NoTls)
+            .expect("the test database accepts the connection");
         client
             .batch_execute(
                 format!(
@@ -208,7 +219,7 @@ impl ScratchDatabase {
                 )
                 .as_str(),
             )
-            .unwrap();
+            .expect("the test database applies the schema statements");
         Self {
             name,
             admin,
@@ -275,7 +286,10 @@ struct ScratchRole {
 impl ScratchRole {
     fn create(base: &Config) -> Self {
         let role = Self::create_without_event_trigger_set(base);
-        let mut client = role.admin.connect(NoTls).unwrap();
+        let mut client = role
+            .admin
+            .connect(NoTls)
+            .expect("the test database accepts the connection");
         client
             .batch_execute(
                 format!(
@@ -284,7 +298,7 @@ impl ScratchRole {
                 )
                 .as_str(),
             )
-            .unwrap();
+            .expect("the test database applies the schema statements");
         drop(client);
         role
     }
@@ -292,7 +306,9 @@ impl ScratchRole {
     fn create_without_event_trigger_set(base: &Config) -> Self {
         let name = scratch_name("owner");
         let admin = admin_config(base);
-        let mut client = admin.connect(NoTls).unwrap();
+        let mut client = admin
+            .connect(NoTls)
+            .expect("the test database accepts the connection");
         let password = create_scratch_login(&mut client, &name);
         Self {
             name,
@@ -320,7 +336,7 @@ impl ScratchRole {
         }
     }
 
-    fn try_cleanup(&self) -> Result<(), postgres::Error> {
+    fn try_cleanup(&self) -> Result<(), Error> {
         let mut client = self.admin.connect(NoTls)?;
         let role = quote_identifier(&self.name);
         let sql = format!(
@@ -330,7 +346,7 @@ impl ScratchRole {
     }
 }
 
-fn create_scratch_login(client: &mut postgres::Client, name: &str) -> String {
+fn create_scratch_login(client: &mut Client, name: &str) -> String {
     // Generate and register the credential server-side, so client SQL never
     // contains its cleartext value. The catalog receives a SCRAM verifier.
     client
@@ -345,10 +361,10 @@ fn create_scratch_login(client: &mut postgres::Client, name: &str) -> String {
              RETURN generated_password;
          END $$",
         )
-        .unwrap();
+        .expect("the test database applies the schema statements");
     client
         .query_one("SELECT pg_temp.create_scratch_login($1)", &[&name])
-        .unwrap()
+        .expect("the seeded row is present exactly once")
         .get(0)
 }
 
@@ -398,7 +414,8 @@ fn validate_disposable_harness_target(
     config: &Config,
     canary: Option<&str>,
 ) -> Result<(), DisposableHarnessRejection> {
-    validate_connection_target(config).map_err(|_| DisposableHarnessRejection::Target)?;
+    postgres_catalog::validate_connection_target(config)
+        .map_err(|_| DisposableHarnessRejection::Target)?;
     let target_is_exact = matches!(
         config.get_hosts(),
         [Host::Tcp(host)] if host == "127.0.0.1"
@@ -519,7 +536,7 @@ fn scratch_name(label: &str) -> String {
 fn unique_suffix() -> u128 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .unwrap()
+        .expect("the fixture call `duration_since` succeeds for the authored inputs")
         .as_nanos()
 }
 

@@ -75,26 +75,38 @@
 //! the rule.
 
 use crate::bindings::{BindSource, BindingDecl};
-use crate::evaluator::{charge, evaluate, EvalEnv, EvalError, Value};
-use crate::intrinsic_host::{
-    draw_finite_kernel_ticket, DrawContext, DrawIdentityContext, IntrinsicCallCtx, IntrinsicHost,
-};
+use crate::evaluator::{EvalEnv, EvalError, Value};
+use crate::fuel::IntrinsicCosts;
+use crate::intrinsic_host::{DrawContext, DrawIdentityContext, IntrinsicCallCtx, IntrinsicHost};
+use crate::probability::FiniteKernel;
 use crate::probability::{
-    evaluate_kernel_masses, forecast_event_likelihoods as exact_pushforward, BranchProjection,
-    EventLikelihood, KernelInstanceIdentity, KernelRealization, FINITE_KERNEL_DRAW_BASE,
+    BranchProjection, EventLikelihood, KernelInstanceIdentity, KernelRealization,
+    FINITE_KERNEL_DRAW_BASE,
 };
 use crate::reader::{Atom, SExpr};
 use crate::rule_pipeline::LoadedRule;
+use crate::rule_pipeline::RuleExecution;
+use crate::structural_verbs::CollectingSink;
+use crate::structural_verbs::PendingWrite;
 use crate::structural_verbs::{EffectExecutor, EventSink};
 use crate::typecheck::TypeEnv;
 use crate::types::{BslType, EnumRegistry};
+use crate::vocabulary::ClosedVocabulary;
+use crate::vocabulary::EnumKind;
 use crate::write_log::WriteObserver;
 use babylon_graph::stable_element::{StableElementKey, StableElementResolver};
 use babylon_graph::state_hash::CanonicalState;
+use babylon_graph::substrate::GraphError;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
 use babylon_graph::working_copy::DetachedCopy;
+#[cfg(test)]
+use babylon_kernel::replay::ReplaySeed;
+#[cfg(test)]
+use babylon_kernel::replay::ReplaySessionId;
 use babylon_kernel::replay::{RngDomain, RngSeedContext};
 use std::collections::HashMap;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 
 /// Why a tick would not run.
 #[derive(Debug, Clone, PartialEq)]
@@ -104,7 +116,7 @@ pub struct TickError {
 }
 
 impl std::fmt::Display for TickError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         write!(f, "{}", self.message)
     }
 }
@@ -156,7 +168,7 @@ pub struct ForecastContext<'a> {
     /// Deterministic named intrinsic host.
     pub host: &'a dyn IntrinsicHost,
     /// Declared intrinsic costs.
-    pub costs: &'a crate::fuel::IntrinsicCosts,
+    pub costs: &'a IntrinsicCosts,
     /// Constant values.
     pub defines: &'a DefinesEnv,
     /// Tick whose calendar bindings are evaluated.
@@ -211,7 +223,7 @@ pub(crate) fn namespace_to_node_type(namespace: &str) -> String {
 /// owner kind is unknowable and every namespace counts, exactly as before.
 pub(crate) fn subject_type_of_bindings(
     bindings: &[BindingDecl],
-    vocabulary: Option<&crate::vocabulary::ClosedVocabulary>,
+    vocabulary: Option<&ClosedVocabulary>,
 ) -> Result<String, TickError> {
     let mut namespaces: Vec<&str> = Vec::new();
     for binding in bindings {
@@ -225,7 +237,7 @@ pub(crate) fn subject_type_of_bindings(
                 // members only), and treating its unknown node namespaces as
                 // filtered would empty every subject population.
                 if let Ok((kind, _)) = vocabulary.owner_of(namespace) {
-                    if kind != crate::vocabulary::EnumKind::NodeType {
+                    if kind != EnumKind::NodeType {
                         continue;
                     }
                 }
@@ -263,7 +275,7 @@ pub(crate) fn subject_type_of_bindings(
 /// node-scoped field population or names more than one population.
 pub fn subject_type_of_rule(
     loaded: &LoadedRule,
-    vocabulary: Option<&crate::vocabulary::ClosedVocabulary>,
+    vocabulary: Option<&ClosedVocabulary>,
 ) -> Result<String, TickError> {
     subject_type_of_bindings(&loaded.bindings, vocabulary)
 }
@@ -395,7 +407,7 @@ fn bind_subject(
 fn field_default_or_err(
     binding: &BindingDecl,
     subject: NodeId,
-    graph_err: &babylon_graph::substrate::GraphError,
+    graph_err: &GraphError,
 ) -> Result<Value, TickError> {
     let Some(default) = binding.default.as_ref().filter(|_| binding.optional) else {
         return Err(err(format!("subject {subject:?}: {}", graph_err.message)));
@@ -477,7 +489,10 @@ pub(crate) fn bind_field_value(
             ty.0
         )));
     }
-    #[allow(clippy::cast_precision_loss)]
+    #[allow(
+        clippy::cast_precision_loss,
+        reason = "the authored integer magnitudes are exact in f64"
+    )]
     let member_count = member_count as f64;
     if stored >= member_count {
         return Err(err(format!(
@@ -487,7 +502,11 @@ pub(crate) fn bind_field_value(
             enums.name(ty)
         )));
     }
-    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "the bounded fixture index is range-checked before narrowing; the value is non-negative before the unsigned cast"
+    )]
     let ordinal = stored as u32;
     let member = enums
         .member(ty, ordinal)
@@ -504,7 +523,10 @@ fn atom_to_value(atom: &Atom) -> Option<Value> {
         Atom::Scaled(scaled) => {
             // `unscaled / 10^scale`, the canonical minimal-scale form. Both
             // operands are exact in f64 at these magnitudes (scale <= 9).
-            #[allow(clippy::cast_precision_loss)]
+            #[allow(
+                clippy::cast_precision_loss,
+                reason = "the authored integer magnitudes are exact in f64"
+            )]
             let numerator = scaled.unscaled as f64;
             Some(Value::Real(
                 numerator / 10_f64.powi(i32::from(scaled.scale)),
@@ -651,7 +673,11 @@ fn check_sources_servable(bindings: &[BindingDecl], defines: &DefinesEnv) -> Res
 ///
 /// Every execution supplies an explicit replay seed and sealed graph identities.
 /// Only a compiled finite kernel can consume draws from that context.
-#[allow(clippy::too_many_arguments, clippy::implicit_hasher)]
+#[allow(
+    clippy::too_many_arguments,
+    clippy::implicit_hasher,
+    reason = "`run_tick` takes every authored field explicitly and fixes the standard hasher"
+)]
 pub fn run_tick<G: GraphSubstrate + CanonicalState>(
     loaded: &LoadedRule,
     types: &TypeEnv,
@@ -659,7 +685,7 @@ pub fn run_tick<G: GraphSubstrate + CanonicalState>(
     host: &dyn IntrinsicHost,
     graph: &mut G,
     sink: &mut dyn EventSink,
-    costs: &crate::fuel::IntrinsicCosts,
+    costs: &IntrinsicCosts,
     defines: &DefinesEnv,
     tick: i64,
     rng_seed: RngSeedContext<'_>,
@@ -669,7 +695,7 @@ pub fn run_tick<G: GraphSubstrate + CanonicalState>(
     // Task 6). `None` is the registry-free unit-test lane, where the
     // filter cannot run and every binding namespace counts, exactly as
     // before this parameter existed.
-    vocabulary: Option<&crate::vocabulary::ClosedVocabulary>,
+    vocabulary: Option<&ClosedVocabulary>,
 ) -> Result<TickOutcome, TickError> {
     stable_resolver
         .validate_topology(graph)
@@ -700,7 +726,11 @@ pub fn run_tick<G: GraphSubstrate + CanonicalState>(
 /// # Errors
 ///
 /// The same [`TickError`] conditions as [`run_tick`].
-#[allow(clippy::too_many_arguments, clippy::implicit_hasher)]
+#[allow(
+    clippy::too_many_arguments,
+    clippy::implicit_hasher,
+    reason = "`run_tick_observed` takes every authored field explicitly and fixes the standard hasher"
+)]
 pub fn run_tick_observed<G>(
     loaded: &LoadedRule,
     types: &TypeEnv,
@@ -708,12 +738,12 @@ pub fn run_tick_observed<G>(
     host: &dyn IntrinsicHost,
     graph: &mut G,
     sink: &mut dyn EventSink,
-    costs: &crate::fuel::IntrinsicCosts,
+    costs: &IntrinsicCosts,
     defines: &DefinesEnv,
     tick: i64,
     rng_seed: RngSeedContext<'_>,
     stable_resolver: &StableElementResolver,
-    vocabulary: Option<&crate::vocabulary::ClosedVocabulary>,
+    vocabulary: Option<&ClosedVocabulary>,
     observer: &mut dyn WriteObserver,
 ) -> Result<TickOutcome, TickError>
 where
@@ -739,7 +769,11 @@ where
     )
 }
 
-#[allow(clippy::too_many_arguments, clippy::implicit_hasher)]
+#[allow(
+    clippy::too_many_arguments,
+    clippy::implicit_hasher,
+    reason = "`run_tick_with_observer` takes every authored field explicitly and fixes the standard hasher"
+)]
 fn run_tick_with_observer(
     loaded: &LoadedRule,
     types: &TypeEnv,
@@ -747,19 +781,19 @@ fn run_tick_with_observer(
     host: &dyn IntrinsicHost,
     graph: &mut dyn GraphSubstrate,
     sink: &mut dyn EventSink,
-    costs: &crate::fuel::IntrinsicCosts,
+    costs: &IntrinsicCosts,
     defines: &DefinesEnv,
     tick: i64,
     rng_seed: RngSeedContext<'_>,
     stable_resolver: &StableElementResolver,
-    vocabulary: Option<&crate::vocabulary::ClosedVocabulary>,
+    vocabulary: Option<&ClosedVocabulary>,
     observer: Option<&mut dyn WriteObserver>,
 ) -> Result<TickOutcome, TickError> {
     let native_operation = match loaded.execution {
-        crate::rule_pipeline::RuleExecution::Graph => None,
-        crate::rule_pipeline::RuleExecution::MaterialCycle => Some("material-cycle"),
-        crate::rule_pipeline::RuleExecution::OrganizerProducts => Some("organizer-products"),
-        crate::rule_pipeline::RuleExecution::OrganizerPractice => Some("organizer-practice"),
+        RuleExecution::Graph => None,
+        RuleExecution::MaterialCycle => Some("material-cycle"),
+        RuleExecution::OrganizerProducts => Some("organizer-products"),
+        RuleExecution::OrganizerPractice => Some("organizer-practice"),
     };
     if let Some(operation) = native_operation {
         return Err(err(format!(
@@ -859,7 +893,8 @@ fn run_tick_with_observer(
     clippy::too_many_arguments,
     clippy::implicit_hasher,
     clippy::too_many_lines,
-    clippy::type_complexity
+    clippy::type_complexity,
+    reason = "`collect_pass` takes every authored field explicitly, keeps one authored sequence in a single place, fixes the standard hasher, and spells out the authored nested shape"
 )]
 fn collect_pass(
     graph: &dyn GraphSubstrate,
@@ -871,7 +906,7 @@ fn collect_pass(
     enums: &EnumRegistry,
     host: &dyn IntrinsicHost,
     sink: &mut dyn EventSink,
-    costs: &crate::fuel::IntrinsicCosts,
+    costs: &IntrinsicCosts,
     defines: &DefinesEnv,
     tick: i64,
     // The rule's domain and explicit replay inputs are fixed across subjects.
@@ -880,7 +915,7 @@ fn collect_pass(
     stable_resolver: &StableElementResolver,
 ) -> Result<
     (
-        Vec<crate::structural_verbs::PendingWrite>,
+        Vec<PendingWrite>,
         usize,
         Vec<KernelRealization>,
         Vec<EmittedEventProvenance>,
@@ -888,10 +923,10 @@ fn collect_pass(
     TickError,
 > {
     let mut fired = 0_usize;
-    let mut all_pending: Vec<crate::structural_verbs::PendingWrite> = Vec::new();
+    let mut all_pending: Vec<PendingWrite> = Vec::new();
     let mut kernel_realizations = Vec::new();
     let mut event_provenance = Vec::new();
-    let mut collected_events = crate::structural_verbs::CollectingSink::default();
+    let mut collected_events = CollectingSink::default();
     // D69: never negative in practice (`run_tick`'s own callers start at
     // tick 1 and only ever increment), but checked rather than cast blind
     // — a silently wrapped tick would corrupt every draw key this rule's
@@ -991,7 +1026,7 @@ fn collect_pass(
         };
 
         if let Some(guard) = guard {
-            match evaluate(guard, &env, host, &mut fuel)? {
+            match crate::evaluator::evaluate(guard, &env, host, &mut fuel)? {
                 Value::Bool(true) => {}
                 Value::Bool(false) => continue,
                 other => {
@@ -1013,13 +1048,17 @@ fn collect_pass(
         let mut executor = EffectExecutor::new(types, enums);
         let events_before = collected_events.events.len();
         let pending = if let Some(kernel) = &loaded.kernel {
-            charge(&mut fuel, FINITE_KERNEL_DRAW_BASE)?;
-            let masses = evaluate_kernel_masses(kernel, &env, host, &mut fuel)?;
+            crate::evaluator::charge(&mut fuel, FINITE_KERNEL_DRAW_BASE)?;
+            let masses = crate::probability::evaluate_kernel_masses(kernel, &env, host, &mut fuel)?;
             let call_context = IntrinsicCallCtx {
                 draw_context: Some(&draw_context),
                 active_elements: Vec::new(),
             };
-            let draw = draw_finite_kernel_ticket(&kernel.sample, kernel.slot, &call_context)?;
+            let draw = crate::intrinsic_host::draw_finite_kernel_ticket(
+                &kernel.sample,
+                kernel.slot,
+                &call_context,
+            )?;
             let RngSeedContext { session, seed } = rng_seed;
             let instance = KernelInstanceIdentity {
                 replay_session: session.as_bytes().to_vec(),
@@ -1066,17 +1105,20 @@ fn collect_pass(
     Ok((all_pending, fired, kernel_realizations, event_provenance))
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "`collect_selected_kernel_effects` takes every authored field explicitly"
+)]
 fn collect_selected_kernel_effects(
     executor: &mut EffectExecutor<'_>,
     effects: &[SExpr],
-    kernel: &crate::probability::FiniteKernel,
+    kernel: &FiniteKernel,
     selected: usize,
     env: &EvalEnv<'_>,
     host: &dyn IntrinsicHost,
     sink: &mut dyn EventSink,
     fuel: &mut u64,
-) -> Result<Vec<crate::structural_verbs::PendingWrite>, EvalError> {
+) -> Result<Vec<PendingWrite>, EvalError> {
     let choose_component =
         kernel.form_path.last().copied().ok_or_else(|| {
             EvalError::plain("compiled choose has no effect-list path".to_owned())
@@ -1118,7 +1160,10 @@ fn collect_selected_kernel_effects(
 /// Refuses malformed/nonadjacent pairs, a guard-false mechanic (no choice
 /// instance exists), any evaluator/effect failure, or a projection that
 /// produces a material write despite its loader proof.
-#[allow(clippy::too_many_lines)]
+#[allow(
+    clippy::too_many_lines,
+    reason = "`forecast_event_likelihoods` keeps one authored sequence in a single place"
+)]
 pub fn forecast_event_likelihoods<G>(
     resolved_rules: &[LoadedRule],
     kernel_index: usize,
@@ -1185,7 +1230,7 @@ where
         draw_context: None,
     };
     if let Some(guard) = mechanic_guard {
-        match evaluate(guard, &mechanic_env, context.host, &mut mechanic_fuel)? {
+        match crate::evaluator::evaluate(guard, &mechanic_env, context.host, &mut mechanic_fuel)? {
             Value::Bool(true) => {}
             Value::Bool(false) => {
                 return Err(err(
@@ -1199,8 +1244,13 @@ where
             }
         }
     }
-    charge(&mut mechanic_fuel, FINITE_KERNEL_DRAW_BASE)?;
-    let masses = evaluate_kernel_masses(kernel, &mechanic_env, context.host, &mut mechanic_fuel)?;
+    crate::evaluator::charge(&mut mechanic_fuel, FINITE_KERNEL_DRAW_BASE)?;
+    let masses = crate::probability::evaluate_kernel_masses(
+        kernel,
+        &mechanic_env,
+        context.host,
+        &mut mechanic_fuel,
+    )?;
 
     check_sources_servable(&projection.bindings, context.defines)?;
     let (projection_guard, projection_effects) = guard_and_effects(&projection.rule)?;
@@ -1215,7 +1265,7 @@ where
         // real sink so payload evaluation and fuel remain faithful, then
         // deliberately discard it.  Emits inside a branch are already a
         // loader refusal.
-        let mut ignored_mechanic_events = crate::structural_verbs::CollectingSink::default();
+        let mut ignored_mechanic_events = CollectingSink::default();
         let mut mechanic_executor = EffectExecutor::new(context.types, context.enums);
         let pending = collect_selected_kernel_effects(
             &mut mechanic_executor,
@@ -1262,7 +1312,12 @@ where
             draw_context: None,
         };
         let emits = if let Some(guard) = projection_guard {
-            match evaluate(guard, &projection_env, context.host, &mut projection_fuel)? {
+            match crate::evaluator::evaluate(
+                guard,
+                &projection_env,
+                context.host,
+                &mut projection_fuel,
+            )? {
                 Value::Bool(true) => true,
                 Value::Bool(false) => false,
                 other => {
@@ -1274,7 +1329,7 @@ where
         } else {
             true
         };
-        let mut event_sink = crate::structural_verbs::CollectingSink::default();
+        let mut event_sink = CollectingSink::default();
         if emits {
             let mut projection_executor = EffectExecutor::new(context.types, context.enums);
             let writes = projection_executor.collect_effects(
@@ -1299,7 +1354,7 @@ where
                 .collect(),
         });
     }
-    exact_pushforward(kernel, projected, &masses, &branch_projections)
+    crate::probability::forecast_event_likelihoods(kernel, projected, &masses, &branch_projections)
         .map_err(|error| err(error.to_string()))
 }
 
@@ -1325,7 +1380,10 @@ pub(crate) fn fixture_resolver<G: CanonicalState + GraphSubstrate>(
 }
 
 #[cfg(test)]
-#[allow(clippy::too_many_arguments)]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "`run_fixture_rule` takes every authored field explicitly"
+)]
 pub(crate) fn run_fixture_rule<G: GraphSubstrate + CanonicalState>(
     loaded: &LoadedRule,
     types: &TypeEnv,
@@ -1333,12 +1391,12 @@ pub(crate) fn run_fixture_rule<G: GraphSubstrate + CanonicalState>(
     host: &dyn IntrinsicHost,
     graph: &mut G,
     sink: &mut dyn EventSink,
-    costs: &crate::fuel::IntrinsicCosts,
+    costs: &IntrinsicCosts,
     defines: &DefinesEnv,
     tick: i64,
     names: Option<&HashMap<NodeId, String>>,
-    session: &babylon_kernel::replay::ReplaySessionId,
-    vocabulary: Option<&crate::vocabulary::ClosedVocabulary>,
+    session: &ReplaySessionId,
+    vocabulary: Option<&ClosedVocabulary>,
 ) -> Result<TickOutcome, TickError> {
     let resolver = fixture_resolver(graph, names);
     run_tick(
@@ -1353,7 +1411,7 @@ pub(crate) fn run_fixture_rule<G: GraphSubstrate + CanonicalState>(
         tick,
         RngSeedContext {
             session,
-            seed: babylon_kernel::replay::ReplaySeed::new(0),
+            seed: ReplaySeed::new(0),
         },
         &resolver,
         vocabulary,
@@ -1362,21 +1420,30 @@ pub(crate) fn run_fixture_rule<G: GraphSubstrate + CanonicalState>(
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        bind_field_value, check_sources_servable, fixture_resolver, run_fixture_rule,
-        run_tick_observed, subject_type_of_bindings, DefinesEnv,
-    };
+
+    use super::DefinesEnv;
+    use crate::bindings::BindingVocabulary;
     use crate::bindings::{BindSource, BindingDecl};
     use crate::evaluator::Value;
+    use crate::fuel::CardinalityCeilings;
+    use crate::fuel::IntrinsicCosts;
+    use crate::rule_pipeline::LoadError;
+    use crate::structural_verbs::CollectingSink;
     use crate::types::EnumRegistry;
+    use crate::types::FieldDecl;
+    use crate::types::FieldKind;
+    use crate::vocabulary::ClosedVocabulary;
+    use crate::vocabulary::EnumKind;
     use crate::write_log::CollectingWriteLog;
+    use babylon_kernel::replay::ReplaySeed;
+    use babylon_kernel::replay::ReplaySessionId;
     use babylon_kernel::replay::RngSeedContext;
     use std::collections::HashMap;
+    use std::collections::HashSet;
 
     /// Explicit deterministic identity for these sealed fixtures.
-    fn test_session() -> babylon_kernel::replay::ReplaySessionId {
-        babylon_kernel::replay::ReplaySessionId::try_from("tick-test-session")
-            .expect("literal is non-empty")
+    fn test_session() -> ReplaySessionId {
+        ReplaySessionId::try_from("tick-test-session").expect("literal is non-empty")
     }
 
     fn field(name: &str, qname: &str) -> BindingDecl {
@@ -1400,7 +1467,7 @@ mod tests {
     #[test]
     fn a_const_the_driver_supplied_is_servable() {
         let env = DefinesEnv::from([("economy/base-subsistence".to_owned(), Value::Real(0.0005))]);
-        assert!(check_sources_servable(
+        assert!(super::check_sources_servable(
             &[constant("base-subsistence", "economy/base-subsistence")],
             &env
         )
@@ -1412,11 +1479,11 @@ mod tests {
         // Refused AT ENTRY rather than at the read: a rule that dies
         // mid-guard on an unbound variable names neither the source nor the
         // reason, and a defaulted coefficient would be silent degradation.
-        let err = check_sources_servable(
+        let err = super::check_sources_servable(
             &[constant("floor-wage", "economy/floor-wage")],
             &DefinesEnv::new(),
         )
-        .unwrap_err();
+        .expect_err("the malformed input is rejected by `check_sources_servable`");
         assert!(
             err.message.contains("economy/floor-wage"),
             "{}",
@@ -1442,7 +1509,7 @@ mod tests {
                 optional: false,
                 default: None,
             };
-            assert!(check_sources_servable(&[decl], &DefinesEnv::new()).is_err());
+            assert!(super::check_sources_servable(&[decl], &DefinesEnv::new()).is_err());
         }
     }
 
@@ -1453,7 +1520,9 @@ mod tests {
             field("value-produced", "social-class/value-produced"),
         ];
         assert_eq!(
-            subject_type_of_bindings(&bindings, None).unwrap(),
+            super::subject_type_of_bindings(&bindings, None).expect(
+                "the fixture call `subject_type_of_bindings` succeeds for the authored inputs"
+            ),
             "SOCIAL_CLASS"
         );
     }
@@ -1466,13 +1535,17 @@ mod tests {
             field("wages", "social-class/wages"),
             field("budget", "organization/budget"),
         ];
-        let err = subject_type_of_bindings(&bindings, None).unwrap_err();
+        let err = super::subject_type_of_bindings(&bindings, None).expect_err(
+            "the fixture call `subject_type_of_bindings` fails for the authored inputs",
+        );
         assert!(err.message.contains("ambiguous"), "{}", err.message);
     }
 
     #[test]
     fn a_rule_with_no_field_binding_names_no_population() {
-        let err = subject_type_of_bindings(&[], None).unwrap_err();
+        let err = super::subject_type_of_bindings(&[], None).expect_err(
+            "the fixture call `subject_type_of_bindings` fails for the authored inputs",
+        );
         assert!(
             err.message.contains("names no subject type"),
             "{}",
@@ -1490,20 +1563,11 @@ mod tests {
 
     /// A small vocabulary with one member per kind — the filter's truth
     /// table needs all three kinds present.
-    fn d29_vocabulary() -> crate::vocabulary::ClosedVocabulary {
-        crate::vocabulary::ClosedVocabulary::new([
-            (
-                crate::vocabulary::EnumKind::NodeType,
-                vec!["SOCIAL_CLASS".to_owned()],
-            ),
-            (
-                crate::vocabulary::EnumKind::EdgeType,
-                vec!["SOLIDARITY".to_owned()],
-            ),
-            (
-                crate::vocabulary::EnumKind::HyperedgeType,
-                vec!["COMMUNITY".to_owned()],
-            ),
+    fn d29_vocabulary() -> ClosedVocabulary {
+        ClosedVocabulary::new([
+            (EnumKind::NodeType, vec!["SOCIAL_CLASS".to_owned()]),
+            (EnumKind::EdgeType, vec!["SOLIDARITY".to_owned()]),
+            (EnumKind::HyperedgeType, vec!["COMMUNITY".to_owned()]),
         ])
         .expect("disjoint member sets build")
     }
@@ -1512,7 +1576,9 @@ mod tests {
     fn a_hyperedge_owned_field_binding_names_no_subject_type() {
         let vocabulary = d29_vocabulary();
         let bindings = vec![field("heat", "community/heat")];
-        let err = subject_type_of_bindings(&bindings, Some(&vocabulary)).unwrap_err();
+        let err = super::subject_type_of_bindings(&bindings, Some(&vocabulary)).expect_err(
+            "the fixture call `subject_type_of_bindings` fails for the authored inputs",
+        );
         assert!(
             err.message.contains("names no subject type"),
             "a hyperedge-owned :field binding is invisible to subject \
@@ -1527,7 +1593,9 @@ mod tests {
         // keeps both kinds out of subject derivation.
         let vocabulary = d29_vocabulary();
         let bindings = vec![field("strength", "solidarity/strength")];
-        let err = subject_type_of_bindings(&bindings, Some(&vocabulary)).unwrap_err();
+        let err = super::subject_type_of_bindings(&bindings, Some(&vocabulary)).expect_err(
+            "the fixture call `subject_type_of_bindings` fails for the authored inputs",
+        );
         assert!(
             err.message.contains("names no subject type"),
             "{}",
@@ -1543,7 +1611,9 @@ mod tests {
             field("heat", "community/heat"),
         ];
         assert_eq!(
-            subject_type_of_bindings(&bindings, Some(&vocabulary)).unwrap(),
+            super::subject_type_of_bindings(&bindings, Some(&vocabulary)).expect(
+                "the fixture call `subject_type_of_bindings` succeeds for the authored inputs"
+            ),
             "SOCIAL_CLASS",
             "the node-owned binding alone derives the subject type — the \
              hyperedge-owned one must not make the derivation ambiguous"
@@ -1558,7 +1628,9 @@ mod tests {
         // pass `Some`, so this lane is unit-test-only.
         let bindings = vec![field("heat", "community/heat")];
         assert_eq!(
-            subject_type_of_bindings(&bindings, None).unwrap(),
+            super::subject_type_of_bindings(&bindings, None).expect(
+                "the fixture call `subject_type_of_bindings` succeeds for the authored inputs"
+            ),
             "COMMUNITY"
         );
     }
@@ -1574,10 +1646,10 @@ mod tests {
     /// that need a registry this test has no reason to build.
     struct Fixture {
         types: crate::typecheck::TypeEnv,
-        vocabulary: crate::bindings::BindingVocabulary,
-        ceilings: crate::fuel::CardinalityCeilings,
-        intrinsics: crate::fuel::IntrinsicCosts,
-        systems: std::collections::HashSet<String>,
+        vocabulary: BindingVocabulary,
+        ceilings: CardinalityCeilings,
+        intrinsics: IntrinsicCosts,
+        systems: HashSet<String>,
         /// No fixture in this module declares an enum-typed field — an
         /// empty registry is the honest "no `defenum`s in scope" input to
         /// `run_tick`.
@@ -1586,25 +1658,25 @@ mod tests {
 
     impl Fixture {
         fn new(
-            fields: std::collections::HashMap<String, crate::types::FieldDecl>,
+            fields: std::collections::HashMap<String, FieldDecl>,
             edge_ceilings: std::collections::HashMap<String, u64>,
         ) -> Self {
             let types = crate::typecheck::TypeEnv {
                 fields,
                 exemptions: &[],
             };
-            let vocabulary = crate::bindings::BindingVocabulary {
+            let vocabulary = BindingVocabulary {
                 fields: types.fields.keys().cloned().collect(),
-                consts: std::collections::HashSet::new(),
-                probability_consts: std::collections::HashSet::new(),
-                metrics: std::collections::HashSet::new(),
+                consts: HashSet::new(),
+                probability_consts: HashSet::new(),
+                metrics: HashSet::new(),
             };
             Self {
                 types,
                 vocabulary,
-                ceilings: crate::fuel::CardinalityCeilings::new(edge_ceilings, HashMap::new()),
-                intrinsics: crate::fuel::IntrinsicCosts::default(),
-                systems: std::collections::HashSet::from(["geography".to_owned()]),
+                ceilings: CardinalityCeilings::new(edge_ceilings, HashMap::new()),
+                intrinsics: IntrinsicCosts::default(),
+                systems: HashSet::from(["geography".to_owned()]),
                 enums: EnumRegistry::default(),
             }
         }
@@ -1623,7 +1695,7 @@ mod tests {
             &self,
             rule_source: &str,
             rule_file: &str,
-        ) -> Result<crate::rule_pipeline::LoadedRule, crate::rule_pipeline::LoadError> {
+        ) -> Result<crate::rule_pipeline::LoadedRule, LoadError> {
             let ctx = crate::rule_pipeline::LoadContext {
                 vocabulary: &self.vocabulary,
                 types: &self.types,
@@ -1639,8 +1711,8 @@ mod tests {
         }
     }
 
-    fn territory_field(kind: crate::types::FieldKind) -> crate::types::FieldDecl {
-        crate::types::FieldDecl {
+    fn territory_field(kind: FieldKind) -> FieldDecl {
+        FieldDecl {
             ty: crate::types::BslType::Int,
             kind,
         }
@@ -1652,14 +1724,16 @@ mod tests {
         use babylon_graph::substrate::GraphSubstrate;
 
         let mut graph = MemoryGraph::new();
-        let territory = graph.add_node("TERRITORY").unwrap();
+        let territory = graph
+            .add_node("TERRITORY")
+            .expect("the fixture adds a node with a registered kind");
         graph
             .update_node(territory, "territory/heat", 10.0)
-            .unwrap();
+            .expect("the fixture node carries the authored attribute");
         let mut fixture = Fixture::new(
             HashMap::from([(
                 "territory/heat".to_owned(),
-                territory_field(crate::types::FieldKind::Extensive),
+                territory_field(FieldKind::Extensive),
             )]),
             HashMap::new(),
         );
@@ -1672,11 +1746,11 @@ mod tests {
   (effects (update-node self territory/heat (add 1))))"#,
             "caller-supplied-name-must-not-matter.bsl",
         );
-        let mut sink = crate::structural_verbs::CollectingSink::default();
+        let mut sink = CollectingSink::default();
         let mut write_log = CollectingWriteLog::new();
 
-        let resolver = fixture_resolver(&graph, None);
-        run_tick_observed(
+        let resolver = super::fixture_resolver(&graph, None);
+        super::run_tick_observed(
             &loaded,
             &fixture.types,
             &fixture.enums,
@@ -1688,7 +1762,7 @@ mod tests {
             1,
             RngSeedContext {
                 session: &test_session(),
-                seed: babylon_kernel::replay::ReplaySeed::new(0),
+                seed: ReplaySeed::new(0),
             },
             &resolver,
             None,
@@ -1720,16 +1794,26 @@ mod tests {
         use babylon_graph::substrate::GraphSubstrate;
 
         let mut graph = MemoryGraph::new();
-        let a = graph.add_node("TERRITORY").unwrap();
-        let b = graph.add_node("TERRITORY").unwrap();
-        graph.update_node(a, "territory/heat", 10.0).unwrap();
-        graph.update_node(b, "territory/heat", 100.0).unwrap();
-        graph.add_edge("ADJACENCY", a, b, 1.0).unwrap();
+        let a = graph
+            .add_node("TERRITORY")
+            .expect("the fixture adds a node with a registered kind");
+        let b = graph
+            .add_node("TERRITORY")
+            .expect("the fixture adds a node with a registered kind");
+        graph
+            .update_node(a, "territory/heat", 10.0)
+            .expect("the fixture node carries the authored attribute");
+        graph
+            .update_node(b, "territory/heat", 100.0)
+            .expect("the fixture node carries the authored attribute");
+        graph
+            .add_edge("ADJACENCY", a, b, 1.0)
+            .expect("the fixture graph admits the authored edge");
 
         let fixture = Fixture::new(
             HashMap::from([(
                 "territory/heat".to_owned(),
-                territory_field(crate::types::FieldKind::Extensive),
+                territory_field(FieldKind::Extensive),
             )]),
             HashMap::from([
                 ("NodeType/TERRITORY".to_owned(), 100),
@@ -1751,8 +1835,8 @@ mod tests {
             "geography/spillover.bsl",
         );
 
-        let mut sink = crate::structural_verbs::CollectingSink::default();
-        run_fixture_rule(
+        let mut sink = CollectingSink::default();
+        super::run_fixture_rule(
             &loaded,
             &fixture.types,
             &fixture.enums,
@@ -1768,8 +1852,12 @@ mod tests {
         )
         .expect("the tick must run");
 
-        let a_heat = graph.node_attribute(a, "territory/heat").unwrap();
-        let b_heat = graph.node_attribute(b, "territory/heat").unwrap();
+        let a_heat = graph
+            .node_attribute(a, "territory/heat")
+            .expect("the fixture node carries the authored attribute");
+        let b_heat = graph
+            .node_attribute(b, "territory/heat")
+            .expect("the fixture node carries the authored attribute");
         assert!(
             (a_heat - 110.0).abs() < 1e-9,
             "a's own 10 + b's PRE-TICK 100 = 110, got {a_heat}"
@@ -1813,27 +1901,33 @@ mod tests {
         use babylon_graph::substrate::GraphSubstrate;
 
         let mut graph = MemoryGraph::new();
-        let carrier = graph.add_node("ORGANIZATION").unwrap();
+        let carrier = graph
+            .add_node("ORGANIZATION")
+            .expect("the fixture adds a node with a registered kind");
         graph
             .update_node(carrier, "organization/pool", 0.0)
-            .unwrap();
+            .expect("the fixture node carries the authored attribute");
         for contribution in [1.0, 1.0e16, -1.0e16] {
-            let subject = graph.add_node("TERRITORY").unwrap();
+            let subject = graph
+                .add_node("TERRITORY")
+                .expect("the fixture adds a node with a registered kind");
             graph
                 .update_node(subject, "territory/contribution", contribution)
-                .unwrap();
-            graph.add_edge("ADJACENCY", subject, carrier, 1.0).unwrap();
+                .expect("the fixture node carries the authored attribute");
+            graph
+                .add_edge("ADJACENCY", subject, carrier, 1.0)
+                .expect("the fixture graph admits the authored edge");
         }
 
         let fixture = Fixture::new(
             HashMap::from([
                 (
                     "territory/contribution".to_owned(),
-                    territory_field(crate::types::FieldKind::Extensive),
+                    territory_field(FieldKind::Extensive),
                 ),
                 (
                     "organization/pool".to_owned(),
-                    territory_field(crate::types::FieldKind::Extensive),
+                    territory_field(FieldKind::Extensive),
                 ),
             ]),
             HashMap::from([
@@ -1858,8 +1952,8 @@ mod tests {
             "geography/pool-contribution.bsl",
         );
 
-        let mut sink = crate::structural_verbs::CollectingSink::default();
-        let outcome = run_fixture_rule(
+        let mut sink = CollectingSink::default();
+        let outcome = super::run_fixture_rule(
             &loaded,
             &fixture.types,
             &fixture.enums,
@@ -1876,13 +1970,18 @@ mod tests {
         .expect("the tick must run");
         assert_eq!(outcome.fired, 3, "all three territories fired");
 
-        let pool = graph.node_attribute(carrier, "organization/pool").unwrap();
+        let pool = graph
+            .node_attribute(carrier, "organization/pool")
+            .expect("the fixture node carries the authored attribute");
         // Exact IEEE-754 equality, deliberately (§4.3): the basic ops are
         // correctly rounded and reproduce bit-exactly, so an epsilon margin
         // here would obscure precisely the reduction-order property this
         // test exists to pin — the same reasoning `apply_equality`'s own
         // exact-comparison arm documents (evaluator.rs).
-        #[allow(clippy::float_cmp)]
+        #[allow(
+            clippy::float_cmp,
+            reason = "these comparisons pin exact authored f64 values"
+        )]
         let exact = pool == 0.0;
         assert!(
             exact,
@@ -1910,19 +2009,19 @@ mod tests {
                 "OrgKind",
                 &["STATE_APPARATUS".to_owned(), "BUSINESS".to_owned()],
             )
-            .unwrap();
+            .expect("the scenario declares the authored entity");
         let mut fixture = Fixture::new(
             HashMap::from([(
                 "organization/kind".to_owned(),
-                crate::types::FieldDecl {
+                FieldDecl {
                     ty: crate::types::BslType::Enum(ty),
-                    kind: crate::types::FieldKind::NotApplicable,
+                    kind: FieldKind::NotApplicable,
                 },
             )]),
             HashMap::from([("NodeType/ORGANIZATION".to_owned(), 100)]),
         );
         fixture.enums = enums;
-        fixture.systems = std::collections::HashSet::from(["organization".to_owned()]);
+        fixture.systems = HashSet::from(["organization".to_owned()]);
         fixture
     }
 
@@ -1933,14 +2032,18 @@ mod tests {
 
         let mut graph = MemoryGraph::new();
         // Declaration-order ordinals: STATE_APPARATUS=0, BUSINESS=1.
-        let state_org = graph.add_node("ORGANIZATION").unwrap();
+        let state_org = graph
+            .add_node("ORGANIZATION")
+            .expect("the fixture adds a node with a registered kind");
         graph
             .update_node(state_org, "organization/kind", 0.0)
-            .unwrap();
-        let biz_org = graph.add_node("ORGANIZATION").unwrap();
+            .expect("the fixture node carries the authored attribute");
+        let biz_org = graph
+            .add_node("ORGANIZATION")
+            .expect("the fixture adds a node with a registered kind");
         graph
             .update_node(biz_org, "organization/kind", 1.0)
-            .unwrap();
+            .expect("the fixture node carries the authored attribute");
 
         let fixture = org_kind_fixture();
         let loaded = fixture.load(
@@ -1957,8 +2060,8 @@ mod tests {
             "organization/kind-probe.bsl",
         );
 
-        let mut sink = crate::structural_verbs::CollectingSink::default();
-        let outcome = run_fixture_rule(
+        let mut sink = CollectingSink::default();
+        let outcome = super::run_fixture_rule(
             &loaded,
             &fixture.types,
             &fixture.enums,
@@ -2000,8 +2103,12 @@ mod tests {
         use babylon_graph::substrate::GraphSubstrate;
 
         let mut graph = MemoryGraph::new();
-        let org = graph.add_node("ORGANIZATION").unwrap();
-        graph.update_node(org, "organization/kind", 0.0).unwrap();
+        let org = graph
+            .add_node("ORGANIZATION")
+            .expect("the fixture adds a node with a registered kind");
+        graph
+            .update_node(org, "organization/kind", 0.0)
+            .expect("the fixture node carries the authored attribute");
 
         let fixture = org_kind_fixture();
         let loaded = fixture.load(
@@ -2018,8 +2125,8 @@ mod tests {
             "organization/kind-ordering-probe.bsl",
         );
 
-        let mut sink = crate::structural_verbs::CollectingSink::default();
-        let err = run_fixture_rule(
+        let mut sink = CollectingSink::default();
+        let err = super::run_fixture_rule(
             &loaded,
             &fixture.types,
             &fixture.enums,
@@ -2033,7 +2140,7 @@ mod tests {
             &test_session(),
             None,
         )
-        .unwrap_err();
+        .expect_err("the fixture run completes");
         assert!(
             err.to_string()
                 .contains("Enum and Bool compare with =/!= alone"),
@@ -2050,10 +2157,14 @@ mod tests {
         use babylon_graph::substrate::GraphSubstrate;
 
         let mut graph = MemoryGraph::new();
-        let org = graph.add_node("ORGANIZATION").unwrap();
+        let org = graph
+            .add_node("ORGANIZATION")
+            .expect("the fixture adds a node with a registered kind");
         // OrgKind here declares only 2 members (ordinals 0, 1) — 7.0 is
         // corrupt no matter which write path could have produced it.
-        graph.update_node(org, "organization/kind", 7.0).unwrap();
+        graph
+            .update_node(org, "organization/kind", 7.0)
+            .expect("the fixture node carries the authored attribute");
 
         let fixture = org_kind_fixture();
         let loaded = fixture.load(
@@ -2070,8 +2181,8 @@ mod tests {
             "organization/kind-integrity-probe.bsl",
         );
 
-        let mut sink = crate::structural_verbs::CollectingSink::default();
-        let err = run_fixture_rule(
+        let mut sink = CollectingSink::default();
+        let err = super::run_fixture_rule(
             &loaded,
             &fixture.types,
             &fixture.enums,
@@ -2085,7 +2196,7 @@ mod tests {
             &test_session(),
             None,
         )
-        .unwrap_err();
+        .expect_err("the fixture run completes");
         assert!(err.to_string().contains("organization/kind"), "{err}");
         assert!(err.to_string().contains('7'), "{err}");
         assert!(
@@ -2117,21 +2228,21 @@ mod tests {
                 "OrgKind",
                 &["STATE_APPARATUS".to_owned(), "BUSINESS".to_owned()],
             )
-            .unwrap();
+            .expect("the scenario declares the authored entity");
         let stranger = EnumRegistry::default();
 
         let types = crate::typecheck::TypeEnv {
             fields: HashMap::from([(
                 "organization/kind".to_owned(),
-                crate::types::FieldDecl {
+                FieldDecl {
                     ty: crate::types::BslType::Enum(ty),
-                    kind: crate::types::FieldKind::NotApplicable,
+                    kind: FieldKind::NotApplicable,
                 },
             )]),
             exemptions: &[],
         };
 
-        let err = bind_field_value("organization/kind", 0.0, &types, &stranger).expect_err(
+        let err = super::bind_field_value("organization/kind", 0.0, &types, &stranger).expect_err(
             "a ty not minted by the executing registry must refuse loudly, never panic",
         );
         assert!(err.message.contains("not minted"), "{}", err.message);
@@ -2162,14 +2273,18 @@ mod tests {
 
         let mut graph = MemoryGraph::new();
         // Declaration-order ordinals: STATE_APPARATUS=0, BUSINESS=1.
-        let state_org = graph.add_node("ORGANIZATION").unwrap();
+        let state_org = graph
+            .add_node("ORGANIZATION")
+            .expect("the fixture adds a node with a registered kind");
         graph
             .update_node(state_org, "organization/kind", 0.0)
-            .unwrap();
-        let biz_org = graph.add_node("ORGANIZATION").unwrap();
+            .expect("the fixture node carries the authored attribute");
+        let biz_org = graph
+            .add_node("ORGANIZATION")
+            .expect("the fixture adds a node with a registered kind");
         graph
             .update_node(biz_org, "organization/kind", 1.0)
-            .unwrap();
+            .expect("the fixture node carries the authored attribute");
 
         let fixture = org_kind_fixture();
         let loaded = fixture.load(
@@ -2187,8 +2302,8 @@ mod tests {
             "organization/field-of-probe.bsl",
         );
 
-        let mut sink = crate::structural_verbs::CollectingSink::default();
-        let outcome = run_fixture_rule(
+        let mut sink = CollectingSink::default();
+        let outcome = super::run_fixture_rule(
             &loaded,
             &fixture.types,
             &fixture.enums,
@@ -2236,7 +2351,7 @@ mod tests {
   (effects (update-node self organization/kind (add 1))))"#,
                 "organization/kind-arithmetic-probe.bsl",
             )
-            .unwrap_err();
+            .expect_err("`try_load` rejects the malformed input");
         let message = err.to_string();
         assert!(message.contains("D118"), "{message}");
         assert!(message.contains("organization/kind"), "{message}");
@@ -2271,7 +2386,7 @@ mod tests {
   (effects (emit EventType_RUPTURE (probe 1))))"#,
                 "organization/emit-typo-probe.bsl",
             )
-            .unwrap_err();
+            .expect_err("`try_load` rejects the malformed input");
         let message = err.to_string();
         assert!(message.contains("emit"), "{message}");
         assert!(message.contains("BareUpperIdent"), "{message}");

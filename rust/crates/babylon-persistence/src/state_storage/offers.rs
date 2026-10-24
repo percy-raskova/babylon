@@ -1,6 +1,6 @@
 //! Closed `SellerOffer` storage: ordinal tags, common columns, then variant columns.
 //! Only Site/Good/Unit identities are normalized; every numeric byte is literal.
-use super::{columns, rows, Cursor, IdentityEntry, IdentityKind, StorageError, TypedLookup};
+use super::{Cursor, IdentityEntry, IdentityKind, StorageError, TypedLookup};
 use babylon_material_circuit::MAX_MATERIAL_CIRCUIT_ROWS;
 
 const COMMON_WIDTH: usize = 28;
@@ -87,9 +87,9 @@ pub(super) fn encode(
         .to_be_bytes()
         .to_vec();
     body.extend_from_slice(&tags);
-    body.extend_from_slice(&columns(&common, count, COMMON_WIDTH)?);
-    body.extend_from_slice(&columns(&responsive, responsive.len() / 56, 56)?);
-    body.extend_from_slice(&columns(&service, service.len() / 48, 48)?);
+    body.extend_from_slice(&super::columns(&common, count, COMMON_WIDTH)?);
+    body.extend_from_slice(&super::columns(&responsive, responsive.len() / 56, 56)?);
+    body.extend_from_slice(&super::columns(&service, service.len() / 48, 48)?);
     validate_lengths(count, raw.len(), body.len())?;
     Ok(body)
 }
@@ -117,9 +117,9 @@ pub(super) fn decode(
     if raw_length != 4 + count * 113 + responsive_count * 56 + service_count * 48 {
         return Err(StorageError::Layout);
     }
-    let common = rows(cursor.take(count * COMMON_WIDTH)?, count, COMMON_WIDTH)?;
-    let responsive = rows(cursor.take(responsive_count * 56)?, responsive_count, 56)?;
-    let service = rows(cursor.take(service_count * 48)?, service_count, 48)?;
+    let common = super::rows(cursor.take(count * COMMON_WIDTH)?, count, COMMON_WIDTH)?;
+    let responsive = super::rows(cursor.take(responsive_count * 56)?, responsive_count, 56)?;
+    let service = super::rows(cursor.take(service_count * 48)?, service_count, 48)?;
     cursor.done()?;
     let mut responsive = Cursor::new(&responsive);
     let mut service = Cursor::new(&service);

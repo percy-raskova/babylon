@@ -1,4 +1,5 @@
-use super::*;
+use super::load::MichiganMaterialCatalog;
+use crate::economic_catalog::CapturedEconomicCatalog;
 use crate::simulation_experiment::{ExperimentProfile, SimulationExperimentV1};
 
 fn historical_spec() -> SimulationExperimentV1 {
@@ -15,14 +16,16 @@ fn historical_spec() -> SimulationExperimentV1 {
                 {"series_id":"26163/3363", "jobs":17378}
             ]}, "interventions":[]
         }))
-        .unwrap(),
+        .expect("the value serializes to canonical JSON bytes"),
     )
-    .unwrap()
+    .expect("the authored literal parses as the declared type")
 }
 
 #[test]
 fn stored_experiments_refuse_internally_consistent_but_underived_opening_rows() {
-    let catalog = historical_spec().regional_catalog().unwrap();
+    let catalog = historical_spec()
+        .regional_catalog()
+        .expect("the regional catalog fixture loads");
     for mutation in 0..8 {
         let mut capture = catalog.capture.clone();
         match mutation {
@@ -34,9 +37,14 @@ fn stored_experiments_refuse_internally_consistent_but_underived_opening_rows() 
             5 => capture.normalized.routes[0].ordered_quantity -= 1,
             6 => capture.normalized.corridors[0].capacity_grams_per_period -= 1,
             7 => {
-                let spec = capture.experiment.as_mut().unwrap();
+                let spec = capture
+                    .experiment
+                    .as_mut()
+                    .expect("the fixture set the optional field before this borrow");
                 let crate::simulation_experiment::StartingSnapshot::Employment { series, .. } =
-                    spec.starting_snapshot.as_mut().unwrap()
+                    spec.starting_snapshot
+                        .as_mut()
+                        .expect("the fixture set the optional field before this borrow")
                 else {
                     unreachable!()
                 };
@@ -84,14 +92,14 @@ fn stored_experiments_accept_derived_rows_and_joint_admitted_interventions() {
                 },
             ];
         }
-        let catalog = spec.regional_catalog().unwrap();
-        let captured =
-            crate::economic_catalog::CapturedEconomicCatalog::from_michigan(&catalog).unwrap();
-        let restored = crate::economic_catalog::CapturedEconomicCatalog::decode(
-            captured.canonical_bytes(),
-            captured.digest(),
-        )
-        .unwrap();
+        let catalog = spec
+            .regional_catalog()
+            .expect("the regional catalog fixture loads");
+        let captured = CapturedEconomicCatalog::from_michigan(&catalog)
+            .expect("the Michigan fixture content loads");
+        let restored =
+            CapturedEconomicCatalog::decode(captured.canonical_bytes(), captured.digest())
+                .expect("the committed canonical bytes decode");
         assert_eq!(restored.opening(), captured.opening());
     }
 }

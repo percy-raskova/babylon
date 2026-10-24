@@ -1,5 +1,5 @@
 //! Exact positive cash amounts shared only within one receipt family.
-use super::{buffer, Error, Result};
+use super::{Error, Result};
 
 pub(super) const ROW_WIDTH: usize = 18;
 const CONTEXT_WIDTH: usize = 14;
@@ -92,7 +92,7 @@ pub(super) fn pack(rows: &[u8], count: usize) -> Result<Option<PackedAmounts>> {
         Err(Error::Count) => return Ok(None),
         Err(error) => return Err(error),
     };
-    let mut columns = buffer(length)?;
+    let mut columns = super::buffer(length)?;
     columns.resize(length, 0);
     let dictionary_start = count * CONTEXT_WIDTH;
     let reference_start = dictionary_start + values.len() * 16;
@@ -142,9 +142,9 @@ pub(super) fn unpack(columns: &[u8], count: usize, unique: u32) -> Result<Vec<u8
         }
         values.push(value);
     }
-    let mut used = buffer(unique)?;
+    let mut used = super::buffer(unique)?;
     used.resize(unique, 0);
-    let mut rows = buffer(
+    let mut rows = super::buffer(
         count
             .checked_mul(NORMALIZED_WIDTH)
             .ok_or(Error::Arithmetic)?,
@@ -211,9 +211,14 @@ mod tests {
     #[test]
     fn dictionary_order_usage_and_exact_positive_values_are_required() {
         let rows = repeated_rows();
-        let packed = pack(&rows, 8).unwrap().unwrap();
+        let packed = pack(&rows, 8)
+            .expect("the fixture rows pack into the bounded frame")
+            .expect("the nested fixture result is present");
         assert_eq!(packed.dictionary_count, 2);
-        assert_eq!(unpack(&packed.columns, 8, 2).unwrap(), rows);
+        assert_eq!(
+            unpack(&packed.columns, 8, 2).expect("the framed bytes unpack"),
+            rows
+        );
         let dictionary = 8 * CONTEXT_WIDTH;
         for (second, expected) in [
             (1_i128, Error::AmountOrder),
@@ -247,6 +252,8 @@ mod tests {
         }
         assert_eq!(decoded_length(usize::MAX, u32::MAX), Err(Error::Arithmetic));
         assert_eq!(unpack(&[], 10, 2), Err(Error::Width));
-        assert!(pack(&[], 0).unwrap().is_none());
+        assert!(pack(&[], 0)
+            .expect("the fixture rows pack into the bounded frame")
+            .is_none());
     }
 }

@@ -1,21 +1,35 @@
-use super::*;
-use crate::{
-    national_counties::national_county_reference,
-    national_households::{national_household_reference, HistoricalEarnings},
-    national_resident_workforce::national_resident_workforce_reference,
+use super::model::{
+    CountyHouseholdAllocation, HouseholdAllocationError, HouseholdBudgetAllocation,
+    HouseholdBudgetKey, HouseholdCountyControls,
 };
+use super::{allocation, source};
+use crate::national_cohorts;
+use crate::national_counties;
+use crate::national_economy;
+use crate::national_households;
+use crate::national_households::CountyHouseholdMargins;
+use crate::national_households::HistoricalEarnings;
+use crate::national_resident_allocation;
+use crate::national_resident_workforce;
 
 #[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "`every_county_preserves_people_households_and_current_workforce_once` keeps one authored boundary's fixture and assertions together"
+)]
 fn every_county_preserves_people_households_and_current_workforce_once() {
-    let counties = national_county_reference().unwrap();
-    let margins = national_household_reference().unwrap();
-    let allocation = allocate_households(
+    let counties =
+        national_counties::national_county_reference().expect("the county reference fixture loads");
+    let margins = national_households::national_household_reference()
+        .expect("the household reference fixture loads");
+    let allocation = source::allocate_households(
         counties,
         margins,
-        national_resident_workforce_reference().unwrap(),
+        national_resident_workforce::national_resident_workforce_reference()
+            .expect("the workforce reference fixture loads"),
         1_000,
     )
-    .unwrap();
+    .expect("the fixture households fit the authored cohorts");
     assert_eq!(allocation.counties().len(), 3144);
     assert_eq!(
         allocation.household_source_sha256(),
@@ -24,23 +38,40 @@ fn every_county_preserves_people_households_and_current_workforce_once() {
     let mut totals = [0_u64; 5];
     let mut collective_count = 0;
     for row in allocation.counties() {
-        let source = margins.county(row.county()).unwrap();
-        let control = counties.county(row.county()).unwrap().residents();
+        let source = margins
+            .county(row.county())
+            .expect("the fixture catalog holds the addressed county");
+        let control = counties
+            .county(row.county())
+            .expect("the fixture catalog holds the addressed county")
+            .residents();
         assert!((1..=5).contains(&row.budgets().len()));
         let sum = |value: fn(&HouseholdBudgetAllocation) -> u64| {
             row.budgets().iter().map(value).sum::<u64>()
         };
         assert_eq!(
             sum(|r| r.persons),
-            control.population_persons.estimate.value().unwrap()
+            control
+                .population_persons
+                .estimate
+                .value()
+                .expect("the fixture value is present")
         );
         assert_eq!(
             sum(|r| r.households),
-            control.households.estimate.value().unwrap()
+            control
+                .households
+                .estimate
+                .value()
+                .expect("the fixture value is present")
         );
         assert_eq!(
             sum(|r| r.employed),
-            control.civilian_employed_persons.estimate.value().unwrap()
+            control
+                .civilian_employed_persons
+                .estimate
+                .value()
+                .expect("the fixture value is present")
         );
         assert_eq!(
             sum(|r| r.reserve),
@@ -48,7 +79,7 @@ fn every_county_preserves_people_households_and_current_workforce_once() {
                 .civilian_unemployed_persons
                 .estimate
                 .value()
-                .unwrap()
+                .expect("the fixture value is present")
         );
         for group in row.budgets() {
             assert!(group.persons > 0);
@@ -68,7 +99,7 @@ fn every_county_preserves_people_households_and_current_workforce_once() {
                 assert_eq!(group.households, 0);
                 assert_eq!(
                     group.persons,
-                    source.derived_group_quarters_persons().unwrap()
+                    source.derived_group_quarters_persons().expect("the fixture call `derived_group_quarters_persons` succeeds for the authored inputs")
                 );
                 totals[4] += group.persons;
             }
@@ -82,13 +113,14 @@ fn every_county_preserves_people_households_and_current_workforce_once() {
     );
     assert_eq!(
         allocation,
-        allocate_households(
+        source::allocate_households(
             counties,
             margins,
-            national_resident_workforce_reference().unwrap(),
+            national_resident_workforce::national_resident_workforce_reference()
+                .expect("the workforce reference fixture loads"),
             1_000
         )
-        .unwrap()
+        .expect("the fixture households fit the authored cohorts")
     );
 }
 
@@ -103,19 +135,20 @@ fn current_workers_fit_without_rewriting_historical_household_margins() {
         reserve: 3,
         working_owners: 1,
     };
-    let rows = allocate_county(controls, 1_000).unwrap();
+    let rows =
+        allocation::allocate_county(controls, 1_000).expect("the fixture county allocation fits");
     let earning = rows
         .iter()
         .find(|r| r.key == HouseholdBudgetKey::EarningNonowner)
-        .unwrap();
+        .expect("the fixture holds the searched element");
     let no_earner = rows
         .iter()
         .find(|r| r.key == HouseholdBudgetKey::NoEarnerNonowner)
-        .unwrap();
+        .expect("the fixture holds the searched element");
     let collective = rows
         .iter()
         .find(|r| r.key == HouseholdBudgetKey::CollectiveResidence)
-        .unwrap();
+        .expect("the fixture holds the searched element");
     assert_eq!((earning.households, no_earner.households), (1, 5));
     assert_eq!(no_earner.employed, 0);
     assert!(no_earner.reserve > 0);
@@ -123,7 +156,7 @@ fn current_workers_fit_without_rewriting_historical_household_margins() {
     let owner = rows
         .iter()
         .find(|r| r.key == HouseholdBudgetKey::EarningOwner)
-        .unwrap();
+        .expect("the fixture holds the searched element");
     assert!(owner.employed >= controls.working_owners);
     assert_eq!((collective.persons, collective.households), (4, 0));
     assert_eq!(rows.iter().map(|r| r.employed).sum::<u64>(), 12);
@@ -133,7 +166,7 @@ fn current_workers_fit_without_rewriting_historical_household_margins() {
 
 #[test]
 fn empty_source_groups_create_no_zero_person_budget_or_fake_household() {
-    let rows = allocate_county(
+    let rows = allocation::allocate_county(
         HouseholdCountyControls {
             population: 4,
             household_persons: 0,
@@ -145,7 +178,7 @@ fn empty_source_groups_create_no_zero_person_budget_or_fake_household() {
         },
         1_000,
     )
-    .unwrap();
+    .expect("the fixture county allocation fits");
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].key, HouseholdBudgetKey::CollectiveResidence);
     assert_eq!(
@@ -157,7 +190,7 @@ fn empty_source_groups_create_no_zero_person_budget_or_fake_household() {
         ),
         (4, 0, 2, 1)
     );
-    let rows = allocate_county(
+    let rows = allocation::allocate_county(
         HouseholdCountyControls {
             population: 8,
             household_persons: 8,
@@ -169,7 +202,7 @@ fn empty_source_groups_create_no_zero_person_budget_or_fake_household() {
         },
         1_000,
     )
-    .unwrap();
+    .expect("the fixture county allocation fits");
     assert_eq!(rows.len(), 2);
     assert!(rows.iter().all(|r| matches!(
         r.key,
@@ -189,7 +222,7 @@ fn infeasible_designed_joint_refuses_without_reclassifying_source_households() {
         working_owners: 0,
     };
     assert_eq!(
-        allocate_county(controls, 1_000),
+        allocation::allocate_county(controls, 1_000),
         Err(HouseholdAllocationError::DesignedAllocationInfeasible)
     );
     let invalid = HouseholdCountyControls {
@@ -202,38 +235,38 @@ fn infeasible_designed_joint_refuses_without_reclassifying_source_households() {
         working_owners: 0,
     };
     assert_eq!(
-        allocate_county(invalid, 1_000),
+        allocation::allocate_county(invalid, 1_000),
         Err(HouseholdAllocationError::Arithmetic)
     );
 }
 
 #[test]
 fn sparse_workplace_members_pay_the_exact_allocated_resident_budgets() {
-    use crate::{
-        national_cohorts::national_cohort_reference,
-        national_economy::{household_principal, NationalGamePolicy},
-        national_resident_allocation::allocate_home_county,
-    };
+    use crate::national_economy::NationalGamePolicy;
+
     use babylon_kernel::economic_location::EconomicLocation;
     use std::collections::{BTreeMap, BTreeSet};
 
-    let counties = national_county_reference().unwrap();
-    let classes = national_resident_workforce_reference().unwrap();
-    let household_allocation = allocate_households(
+    let counties =
+        national_counties::national_county_reference().expect("the county reference fixture loads");
+    let classes = national_resident_workforce::national_resident_workforce_reference()
+        .expect("the workforce reference fixture loads");
+    let household_allocation = source::allocate_households(
         counties,
-        national_household_reference().unwrap(),
+        national_households::national_household_reference()
+            .expect("the household reference fixture loads"),
         classes,
         1_000,
     )
-    .unwrap();
+    .expect("the fixture households fit the authored cohorts");
     let policy = NationalGamePolicy::parse(include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../../../content/scenarios/national/defines.toml"
     )))
-    .unwrap();
-    let workplaces = allocate_home_county(
+    .expect("the authored literal parses as the declared type");
+    let workplaces = national_resident_allocation::allocate_home_county(
         counties,
-        national_cohort_reference().unwrap(),
+        national_cohorts::national_cohort_reference().expect("the cohort reference fixture loads"),
         classes,
         &household_allocation,
         &crate::national_household_refinement::refine_households(
@@ -242,13 +275,13 @@ fn sparse_workplace_members_pay_the_exact_allocated_resident_budgets() {
                 counties,
                 &household_allocation,
             )
-            .unwrap(),
+            .expect("the fixture household time fits the authored budget"),
             &[],
         )
-        .unwrap(),
+        .expect("the fixture household refinement succeeds"),
         &policy,
     )
-    .unwrap();
+    .expect("the fixture home county allocation fits");
     let mut actual = BTreeMap::new();
     let mut identities = BTreeSet::new();
     let mut divided_workplaces = 0;
@@ -272,9 +305,10 @@ fn sparse_workplace_members_pay_the_exact_allocated_resident_budgets() {
     assert!(divided_workplaces > 0);
     let mut aggregate = (0_u64, 0_u64);
     for county in household_allocation.counties() {
-        let location = EconomicLocation::domestic_county(county.county()).unwrap();
+        let location = EconomicLocation::domestic_county(county.county())
+            .expect("the fixture geoid names a domestic county");
         for budget in county.budgets() {
-            let principal = household_principal(location, budget.key);
+            let principal = national_economy::household_principal(location, budget.key);
             let workforce = actual.remove(&(location, principal)).unwrap_or_default();
             assert_eq!(workforce, (budget.employed, budget.reserve));
             assert!(workforce.0 + workforce.1 <= budget.persons);
@@ -286,10 +320,7 @@ fn sparse_workplace_members_pay_the_exact_allocated_resident_budgets() {
     assert_eq!(aggregate, (161_297_155, 8_902_365));
 }
 
-fn assert_historical_margins(
-    row: &CountyHouseholdAllocation,
-    source: &crate::national_households::CountyHouseholdMargins,
-) {
+fn assert_historical_margins(row: &CountyHouseholdAllocation, source: &CountyHouseholdMargins) {
     for (source_kind, keys) in [
         (
             HistoricalEarnings::WithEarnings,
@@ -310,7 +341,7 @@ fn assert_historical_margins(
             .historical_earnings_households(source_kind)
             .estimate
             .value()
-            .unwrap();
+            .expect("the fixture value is present");
         assert_eq!(
             row.budgets()
                 .iter()
@@ -319,7 +350,11 @@ fn assert_historical_margins(
                 .sum::<u64>(),
             observed
         );
-        let owner = row.budgets().iter().find(|g| g.key == keys[1]).unwrap();
+        let owner = row
+            .budgets()
+            .iter()
+            .find(|g| g.key == keys[1])
+            .expect("the fixture holds the searched element");
         assert_eq!(owner.households, observed.div_ceil(10));
     }
 }

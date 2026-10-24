@@ -2,14 +2,17 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use babylon_kernel::{content_digest::sha256_of, currency::Currency};
+use babylon_kernel::currency::Currency;
 
 use super::AttendancePlan;
+use crate::LocalRetailFulfillmentReceipt;
+use crate::MaintenanceReceipt;
 use crate::{
     AccountId, CircuitAccounting, GoodId, HouseholdDemandReceipt, LocalTransferReceipt,
     MaterialCircuitError, MaterialCircuitState, MoneyTransferReceipt, OrderAccessMode, OrderId,
     OrderRow, OutboundOrderId, ProcessId, PurchaseEscrow, RoutedDispatchReceipt, SiteId, UnitId,
 };
+use babylon_kernel::content_digest;
 
 type StockKey = (SiteId, GoodId, UnitId);
 type StockLedger = BTreeMap<StockKey, u64>;
@@ -110,7 +113,7 @@ pub fn recurring_procurement_order_id(
     bytes.extend_from_slice(&supplier.as_bytes());
     bytes.extend_from_slice(&good.as_bytes());
     bytes.extend_from_slice(&unit.as_bytes());
-    OrderId::from_bytes(sha256_of(&bytes))
+    OrderId::from_bytes(content_digest::sha256_of(&bytes))
 }
 
 pub(crate) fn replenish(
@@ -219,7 +222,7 @@ pub(crate) fn plan_production(
     state: &mut MaterialCircuitState,
     dispatches: &[RoutedDispatchReceipt],
     local: &[LocalTransferReceipt],
-    retail: &[crate::LocalRetailFulfillmentReceipt],
+    retail: &[LocalRetailFulfillmentReceipt],
     demand: &[HouseholdDemandReceipt],
     next_period: u64,
 ) -> Result<Vec<ProductionPlanReceipt>, MaterialCircuitError> {
@@ -331,7 +334,7 @@ fn handling_quantities(
     demand: &[HouseholdDemandReceipt],
     dispatches: &[RoutedDispatchReceipt],
     local: &[LocalTransferReceipt],
-    retail: &[crate::LocalRetailFulfillmentReceipt],
+    retail: &[LocalRetailFulfillmentReceipt],
 ) -> Result<StockLedger, MaterialCircuitError> {
     let mut merchandise = BTreeMap::new();
     for row in demand {
@@ -392,8 +395,8 @@ pub(crate) fn plan_attendance(
     demand: &[HouseholdDemandReceipt],
     dispatches: &[RoutedDispatchReceipt],
     local: &[LocalTransferReceipt],
-    retail: &[crate::LocalRetailFulfillmentReceipt],
-    maintenance: Option<&crate::MaintenanceReceipt>,
+    retail: &[LocalRetailFulfillmentReceipt],
+    maintenance: Option<&MaintenanceReceipt>,
     next_period: u64,
 ) -> Result<(), MaterialCircuitError> {
     if !matches!(&state.accounting, CircuitAccounting::Monetary(economy) if economy.recurring.is_some())

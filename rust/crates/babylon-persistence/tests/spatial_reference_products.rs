@@ -1,17 +1,16 @@
 //! Pure contracts for the bounded PER-278 reference-product bundle.
 
-use babylon_persistence::{
-    h3_reference_cohort::representative_h3_reference_cohort,
-    spatial_reference_products::michigan_spatial_reference_products,
-    spatial_reference_products::CountyH3LandAreaRow,
-    spatial_reference_products::CountyPlaceH3LandAreaRow, spatial_reference_products::H3CountRow,
-    spatial_reference_products::ReferenceProduct,
+use babylon_persistence::h3_reference_cohort;
+use babylon_persistence::h3_reference_cohort::H3ReferenceCohort;
+use babylon_persistence::spatial_reference_products;
+use babylon_persistence::spatial_reference_products::{
+    CountyH3LandAreaRow, CountyPlaceH3LandAreaRow, H3CountRow, ReferenceProduct,
 };
 
 #[test]
 fn checked_bundle_has_exact_governed_products_and_counts() {
     let cohort = cohort();
-    let bundle = michigan_spatial_reference_products(&cohort)
+    let bundle = spatial_reference_products::michigan_spatial_reference_products(&cohort)
         .expect("checked PER-278 fixture must validate");
 
     assert_eq!(bundle.ref_digest(), cohort.receipt().ref_digest());
@@ -46,7 +45,9 @@ fn checked_bundle_has_exact_governed_products_and_counts() {
 #[test]
 fn checked_bundle_preserves_measure_and_absence_law() {
     let cohort = cohort();
-    let bundle = michigan_spatial_reference_products(&cohort).unwrap();
+    let bundle = spatial_reference_products::michigan_spatial_reference_products(&cohort).expect(
+        "the fixture call `michigan_spatial_reference_products` succeeds for the authored inputs",
+    );
 
     assert_eq!(
         bundle
@@ -88,8 +89,8 @@ fn checked_bundle_preserves_measure_and_absence_law() {
     assert!(bundle.workplace_counts().iter().all(|row| row.count() > 0));
 }
 
-fn cohort() -> babylon_persistence::h3_reference_cohort::H3ReferenceCohort {
-    representative_h3_reference_cohort()
+fn cohort() -> H3ReferenceCohort {
+    h3_reference_cohort::representative_h3_reference_cohort()
         .expect("the sole checked-in source fixture must validate")
         .clone()
 }

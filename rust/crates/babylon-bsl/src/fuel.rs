@@ -9,10 +9,11 @@
 //! language reference's completion of that model and are
 //! `[draft ruling — Phase 1 review]`. Neither tier is a tuning knob.
 
-use babylon_kernel::content_digest::sha256_of;
+use babylon_kernel::content_digest;
+
 use std::collections::HashMap;
 
-use crate::identity_codec::{validate_intrinsic_identity, IntrinsicIdentityViolation};
+use crate::identity_codec::IntrinsicIdentityViolation;
 
 const MAX_SFS_IDENTITY_ROWS: usize = 64;
 
@@ -64,7 +65,7 @@ pub enum SfsFuelIdentityError {
 }
 
 fn validate_identity_key(table: &'static str, key: &str) -> Result<(), SfsFuelIdentityError> {
-    validate_intrinsic_identity(key).map_err(|violation| match violation {
+    crate::identity_codec::validate_intrinsic_identity(key).map_err(|violation| match violation {
         IntrinsicIdentityViolation::Empty => SfsFuelIdentityError::KeyEmpty { table },
         IntrinsicIdentityViolation::TooLong { actual } => {
             SfsFuelIdentityError::KeyTooLong { table, actual }
@@ -129,7 +130,7 @@ fn table_identity(
         let Some(row) = rows.get(index) else { break };
         preimage.extend_from_slice(row.as_bytes());
     }
-    Ok(sha256_of(&preimage))
+    Ok(content_digest::sha256_of(&preimage))
 }
 
 /// The §3.7 cost table, one constant per row. Changing any constant here
@@ -318,13 +319,13 @@ impl IntrinsicCosts {
 
 #[cfg(test)]
 mod sfs_profile_tests {
-    use super::{table_identity, SfsFuelIdentityError};
+    use super::SfsFuelIdentityError;
 
     #[test]
     fn sfs_profile_identity_encoder_rejects_duplicate_rows() {
         let mut rows = vec!["intrinsic|same|1\n".to_owned(); 2];
         assert_eq!(
-            table_identity("intrinsic", b"test", &mut rows),
+            super::table_identity("intrinsic", b"test", &mut rows),
             Err(SfsFuelIdentityError::DuplicateRow {
                 table: "intrinsic",
                 row: "intrinsic|same|1\n".to_owned(),

@@ -1,15 +1,18 @@
 //! Authenticated native order movements shared by capacity and merchant accounts.
 //! These joins check committed facts; they never allocate or predict a shipment.
 
+use super::lifecycle::PeriodOrders;
 use super::ProductionProjectionError;
+use crate::production_observation::ProductionOutboundKind;
 use babylon_material_circuit::{
     GoodId, MaterialCircuitState, OrderId, OutboundOrderId, RouteId, SiteId, SupplierRoute,
     SupplierTransport, UnitId,
 };
 use babylon_tick::material_world::MaterialTickReceipts;
 use std::collections::BTreeMap;
+use std::result::Result as StdResult;
 
-type Result<T> = std::result::Result<T, ProductionProjectionError>;
+type Result<T> = StdResult<T, ProductionProjectionError>;
 
 #[derive(Clone)]
 pub(super) struct OutboundFact {
@@ -94,7 +97,7 @@ fn supplier_relations(
 
 fn delivery_facts(
     prior: &MaterialCircuitState,
-    orders: &super::lifecycle::PeriodOrders,
+    orders: &PeriodOrders,
     receipt: &MaterialTickReceipts,
 ) -> Result<Vec<OutboundFact>> {
     let mut next = BTreeMap::new();
@@ -200,7 +203,7 @@ fn delivery_facts(
 
 fn final_facts(
     prior: &MaterialCircuitState,
-    orders: &super::lifecycle::PeriodOrders,
+    orders: &PeriodOrders,
     receipt: &MaterialTickReceipts,
 ) -> Result<Vec<OutboundFact>> {
     let mut next = BTreeMap::new();
@@ -271,21 +274,10 @@ fn final_facts(
     Ok(facts)
 }
 
-pub(super) fn identity(
-    id: OutboundOrderId,
-) -> Result<(
-    OrderId,
-    crate::production_observation::ProductionOutboundKind,
-)> {
+pub(super) fn identity(id: OutboundOrderId) -> Result<(OrderId, ProductionOutboundKind)> {
     Ok(match id {
-        OutboundOrderId::Delivery(id) => (
-            id,
-            crate::production_observation::ProductionOutboundKind::Delivery,
-        ),
-        OutboundOrderId::LocalFinalDemand(id) => (
-            id,
-            crate::production_observation::ProductionOutboundKind::LocalFinalDemand,
-        ),
+        OutboundOrderId::Delivery(id) => (id, ProductionOutboundKind::Delivery),
+        OutboundOrderId::LocalFinalDemand(id) => (id, ProductionOutboundKind::LocalFinalDemand),
         OutboundOrderId::Service(_) => return Err(ProductionProjectionError::State),
     })
 }

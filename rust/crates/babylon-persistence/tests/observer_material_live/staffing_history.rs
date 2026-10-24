@@ -1,17 +1,15 @@
 //! Exact historical staffing and complete-envelope refusal in an owned clone.
 
 use super::{
-    advance_material_period, assert_known_material_absence, install_reader_role,
-    provision_observer_role, CampaignId, Config, DisposableTarget, DurableMaterialRuntime,
-    MichiganContentPreset, NoTls, ObserverEconomyError, ObserverEconomyReader, ObserverVisibility,
-    Uuid,
+    CampaignId, Config, DisposableTarget, DurableMaterialRuntime, MichiganContentPreset, NoTls,
+    ObserverEconomyError, ObserverEconomyReader, ObserverVisibility, Uuid,
 };
 use babylon_persistence::observer_reader::ObserverEconomySnapshot;
 use babylon_persistence::observer_reader::{ProductionHistoryTarget, ProductionOutputPoint};
-use postgres::{
-    types::{FromSqlOwned, ToSql},
-    Client,
-};
+use postgres::types::{FromSqlOwned, ToSql};
+use postgres::Client;
+use postgres::Row;
+use postgres::Transaction;
 
 struct Fixture {
     target: DisposableTarget,
@@ -29,20 +27,23 @@ impl Fixture {
         let campaign = CampaignId::from_uuid(Uuid::from_u128(41_101));
         let foundation = MichiganContentPreset::FourWeekDelayed
             .create_foundation(&crate::test_support::catalog())
-            .unwrap();
+            .expect("the authored catalog builds the foundation");
         let foundation_digest = foundation.digest();
-        let runtime = DurableMaterialRuntime::create(&target.writer, campaign, foundation).unwrap();
-        install_reader_role(&target.writer).unwrap();
-        provision_observer_role(&target.writer).unwrap();
+        let runtime = DurableMaterialRuntime::create(&target.writer, campaign, foundation)
+            .expect("the test database creates the fixture campaign");
+        super::install_reader_role(&target.writer)
+            .expect("the test database installs the reader role");
+        super::provision_observer_role(&target.writer)
+            .expect("the test database provisions the observer role");
         let observer_config = target.login("babylon_observer", "staffinghistory");
         let observer =
             ObserverEconomyReader::connect(&observer_config, ObserverVisibility::FullObserver)
-                .unwrap();
+                .expect("the test database accepts the connection");
         let preview = ObserverEconomyReader::connect(
             &target.login("babylon_reader", "staffingpreview"),
             ObserverVisibility::KnownPreview,
         )
-        .unwrap();
+        .expect("the test database accepts the connection");
         Self {
             target,
             campaign,
@@ -55,12 +56,14 @@ impl Fixture {
     }
 
     fn read(&self, tick: u64) -> ObserverEconomySnapshot {
-        self.observer.snapshot(self.campaign, tick).unwrap()
+        self.observer
+            .snapshot(self.campaign, tick)
+            .expect("the fixture captures a consistent snapshot")
     }
 
     fn advance_to(&mut self, tick: u64) {
         while self.runtime.session().completed_tick() < tick {
-            advance_material_period(&mut self.runtime);
+            super::advance_material_period(&mut self.runtime);
         }
     }
 }
@@ -69,7 +72,7 @@ fn history_targets(snapshot: &ObserverEconomySnapshot) -> Vec<ProductionHistoryT
     snapshot
         .production
         .as_ref()
-        .unwrap()
+        .expect("the fixture set the optional field before this read")
         .sites
         .iter()
         .flat_map(|site| {
@@ -92,11 +95,11 @@ fn snapshot_point(
     let process = snapshot
         .production
         .as_ref()
-        .unwrap()
+        .expect("the fixture set the optional field before this read")
         .sites
         .iter()
         .find(|site| site.id == target.site_id)
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .processes
         .iter()
         .find(|process| {
@@ -104,15 +107,19 @@ fn snapshot_point(
                 && process.output_good_id == target.output_good_id
                 && process.output_unit_id == target.output_unit_id
         })
-        .unwrap();
+        .expect("the fixture holds the searched element");
     ProductionOutputPoint {
         period: snapshot.resolve_tick,
-        planned: process
-            .planned_batches
-            .map(|batches| batches.checked_mul(process.output_per_batch).unwrap()),
-        produced: process
-            .produced_batches
-            .map(|batches| batches.checked_mul(process.output_per_batch).unwrap()),
+        planned: process.planned_batches.map(|batches| {
+            batches
+                .checked_mul(process.output_per_batch)
+                .expect("the fixture arithmetic stays in range")
+        }),
+        produced: process.produced_batches.map(|batches| {
+            batches
+                .checked_mul(process.output_per_batch)
+                .expect("the fixture arithmetic stays in range")
+        }),
     }
 }
 
@@ -133,7 +140,7 @@ fn production_history_matches_exact_snapshots_and_survives_reopen() {
         let actual = fixture
             .observer
             .production_history(fixture.campaign, 4, target)
-            .unwrap();
+            .expect("the fixture call `production_history` succeeds for the authored inputs");
         assert_eq!(actual, expected);
         assert_eq!(actual[0].planned, None);
         assert_eq!(actual[0].produced, None);
@@ -151,23 +158,34 @@ fn production_history_matches_exact_snapshots_and_survives_reopen() {
         fixture.campaign,
         fixture.foundation_digest,
     )
-    .unwrap();
+    .expect("the fixture opens the authored source");
     let reader =
         ObserverEconomyReader::connect(&fixture.observer_config, ObserverVisibility::FullObserver)
-            .unwrap();
-    let tail = *fixture.runtime.tail().unwrap();
-    let world = fixture.runtime.session().current_world_hash().unwrap();
+            .expect("the test database accepts the connection");
+    let tail = *fixture
+        .runtime
+        .tail()
+        .expect("the fixture sequence holds more than one row");
+    let world = fixture
+        .runtime
+        .session()
+        .current_world_hash()
+        .expect("the committed session publishes a world hash");
     for (target, expected) in targets.iter().zip(held) {
         assert_eq!(
             reader
                 .production_history(fixture.campaign, 4, target)
-                .unwrap(),
+                .expect("the fixture call `production_history` succeeds for the authored inputs"),
             expected
         );
     }
     assert_eq!(fixture.runtime.tail(), Some(&tail));
     assert_eq!(
-        fixture.runtime.session().current_world_hash().unwrap(),
+        fixture
+            .runtime
+            .session()
+            .current_world_hash()
+            .expect("the committed session publishes a world hash"),
         world
     );
     assert_eq!(
@@ -213,7 +231,12 @@ fn production_history_preview_refuses_without_target_or_campaign_disclosure() {
             );
         }
     }
-    assert_known_material_absence(&mut fixture.preview.snapshot(fixture.campaign, 2).unwrap());
+    super::assert_known_material_absence(
+        &mut fixture
+            .preview
+            .snapshot(fixture.campaign, 2)
+            .expect("the fixture captures a consistent snapshot"),
+    );
 }
 
 #[test]
@@ -225,15 +248,31 @@ fn production_history_authenticates_corruption_before_the_displayed_suffix() {
     let healthy = fixture
         .observer
         .production_history(fixture.campaign, 16, &target)
-        .unwrap();
+        .expect("the fixture call `production_history` succeeds for the authored inputs");
     assert_eq!(healthy.len(), 13);
-    assert_eq!(healthy.first().unwrap().period, 4);
-    assert_eq!(healthy.last().unwrap().period, 16);
     assert_eq!(
-        healthy.last().unwrap(),
+        healthy
+            .first()
+            .expect("the fixture sequence is non-empty")
+            .period,
+        4
+    );
+    assert_eq!(
+        healthy
+            .last()
+            .expect("the fixture sequence is non-empty")
+            .period,
+        16
+    );
+    assert_eq!(
+        healthy.last().expect("the fixture sequence is non-empty"),
         &snapshot_point(&fixture.read(16), &target)
     );
-    let mut writer = fixture.target.writer.connect(NoTls).unwrap();
+    let mut writer = fixture
+        .target
+        .writer
+        .connect(NoTls)
+        .expect("the test database accepts the connection");
     for (relation, column, predicate) in [
         ("material_tick_v3", "register_storage_bytes", "true"),
         ("material_tick_v3", "receipt_storage_bytes", "true"),
@@ -250,13 +289,13 @@ fn production_history_authenticates_corruption_before_the_displayed_suffix() {
         let row = writer.query_one(
             &format!("SELECT ctid::text, {column} FROM babylon_state.{relation} WHERE campaign_id=$1::uuid AND resolve_tick=1 AND {predicate} ORDER BY ctid LIMIT 1"),
             &[fixture.campaign.as_uuid()],
-        ).unwrap();
+        ).expect("the seeded row is present exactly once");
         let location: String = row.get(0);
         let original: Vec<u8> = row.get(1);
         let update = format!("UPDATE babylon_state.{relation} SET {column}=$1 WHERE ctid=$2::text::tid RETURNING ctid::text");
         let location: String = writer
             .query_one(&update, &[&flipped(&original), &location])
-            .unwrap()
+            .expect("the seeded row is present exactly once")
             .get(0);
         let refusal = fixture
             .observer
@@ -264,7 +303,7 @@ fn production_history_authenticates_corruption_before_the_displayed_suffix() {
         assert_eq!(
             writer
                 .query(&update, &[&original, &location])
-                .unwrap()
+                .expect("the seeded rows are readable")
                 .len(),
             1
         );
@@ -278,14 +317,17 @@ fn production_history_authenticates_corruption_before_the_displayed_suffix() {
         fixture
             .observer
             .production_history(fixture.campaign, 16, &target)
-            .unwrap(),
+            .expect("the fixture call `production_history` succeeds for the authored inputs"),
         healthy
     );
 }
 
 fn assert_foundation(fixture: &Fixture) {
     let snapshot = fixture.read(0);
-    let production = snapshot.production.as_ref().unwrap();
+    let production = snapshot
+        .production
+        .as_ref()
+        .expect("the fixture set the optional field before this read");
     let catalog = crate::test_support::catalog();
     assert_eq!(production.staffing_accounts.len(), 5);
     let mut employed = Vec::new();
@@ -294,7 +336,7 @@ fn assert_foundation(fixture: &Fixture) {
             .staffing_accounts
             .iter()
             .find(|account| account.subject.local_name == seed.workplace_local_name())
-            .unwrap();
+            .expect("the fixture holds the searched element");
         assert_eq!(account.members.len(), 1);
         let member = &account.members[0];
         assert_eq!(member.subject.local_name, seed.local_name());
@@ -323,15 +365,20 @@ fn assert_foundation(fixture: &Fixture) {
         .target
         .writer
         .connect(NoTls)
-        .unwrap()
+        .expect("the test database accepts the connection")
         .query_one(
             "SELECT count(*) FROM babylon_state.tick_event_v2 WHERE campaign_id=$1::uuid",
             &[fixture.campaign.as_uuid()],
         )
-        .unwrap()
+        .expect("the seeded row is present exactly once")
         .get(0);
     assert_eq!(count, 0);
-    assert_known_material_absence(&mut fixture.preview.snapshot(fixture.campaign, 0).unwrap());
+    super::assert_known_material_absence(
+        &mut fixture
+            .preview
+            .snapshot(fixture.campaign, 0)
+            .expect("the fixture captures a consistent snapshot"),
+    );
 }
 
 #[test]
@@ -341,39 +388,67 @@ fn held_staffing_history_survives_advance_reopen_and_does_not_mutate_authority()
     assert_foundation(&fixture);
     fixture.advance_to(2);
     let mut held = fixture.read(2);
-    let digest = held.production_evidence_digest().unwrap().unwrap();
-    let accounts = &held.production.as_ref().unwrap().staffing_accounts;
+    let digest = held
+        .production_evidence_digest()
+        .expect("the evidence body has a digest")
+        .expect("the nested fixture result is present");
+    let accounts = &held
+        .production
+        .as_ref()
+        .expect("the fixture set the optional field before this read")
+        .staffing_accounts;
     assert_eq!(accounts.len(), 5);
     assert!(accounts.iter().all(|row| row
         .completed
         .as_ref()
         .is_some_and(|period| period.period == 2)));
     fixture.advance_to(4);
-    let committed = *fixture.runtime.tail().unwrap();
-    let world = fixture.runtime.session().current_world_hash().unwrap();
+    let committed = *fixture
+        .runtime
+        .tail()
+        .expect("the fixture sequence holds more than one row");
+    let world = fixture
+        .runtime
+        .session()
+        .current_world_hash()
+        .expect("the committed session publishes a world hash");
     fixture.runtime = DurableMaterialRuntime::open(
         &fixture.target.writer,
         fixture.campaign,
         fixture.foundation_digest,
     )
-    .unwrap();
+    .expect("the fixture opens the authored source");
     let reader =
         ObserverEconomyReader::connect(&fixture.observer_config, ObserverVisibility::FullObserver)
-            .unwrap();
+            .expect("the test database accepts the connection");
     for tick in [4, 0, 2, 3, 2] {
-        let mut snapshot = reader.snapshot(fixture.campaign, tick).unwrap();
+        let mut snapshot = reader
+            .snapshot(fixture.campaign, tick)
+            .expect("the fixture captures a consistent snapshot");
         assert_eq!(snapshot.resolve_tick, tick);
-        assert_known_material_absence(
-            &mut fixture.preview.snapshot(fixture.campaign, tick).unwrap(),
+        super::assert_known_material_absence(
+            &mut fixture
+                .preview
+                .snapshot(fixture.campaign, tick)
+                .expect("the fixture captures a consistent snapshot"),
         );
         if tick == 2 {
-            assert_eq!(snapshot.production_evidence_digest().unwrap(), Some(digest));
+            assert_eq!(
+                snapshot
+                    .production_evidence_digest()
+                    .expect("the evidence body has a digest"),
+                Some(digest)
+            );
             assert_eq!(snapshot, held);
         }
         assert_eq!(fixture.runtime.session().completed_tick(), 4);
         assert_eq!(fixture.runtime.tail(), Some(&committed));
         assert_eq!(
-            fixture.runtime.session().current_world_hash().unwrap(),
+            fixture
+                .runtime
+                .session()
+                .current_world_hash()
+                .expect("the committed session publishes a world hash"),
             world
         );
     }
@@ -382,9 +457,15 @@ fn held_staffing_history_survives_advance_reopen_and_does_not_mutate_authority()
         fixture.campaign,
         fixture.foundation_digest,
     )
-    .unwrap();
+    .expect("the fixture opens the authored source");
     assert_eq!(reopened.tail(), Some(&committed));
-    assert_eq!(reopened.session().current_world_hash().unwrap(), world);
+    assert_eq!(
+        reopened
+            .session()
+            .current_world_hash()
+            .expect("the committed session publishes a world hash"),
+        world
+    );
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -421,13 +502,13 @@ fn assert_fault<T: FromSqlOwned + ToSql + Sync + PartialEq + std::fmt::Debug>(
     };
     let row = writer
         .query_one(&select, &[fixture.campaign.as_uuid(), &fault.tick])
-        .unwrap();
+        .expect("the seeded row is present exactly once");
     let location: String = row.get(0);
     let original: T = row.get(1);
     let changed = change(&original);
     assert_ne!(changed, original, "{fault:?}");
     let position = if graph_chunk {
-        Some(i32::try_from(row.get::<_, i64>(2)).unwrap())
+        Some(i32::try_from(row.get::<_, i64>(2)).expect("the fixture value fits the target range"))
     } else {
         None
     };
@@ -468,22 +549,30 @@ fn update_fault_value<T: ToSql + Sync>(
     value: &T,
     location: &str,
     position: Option<i32>,
-) -> Vec<postgres::Row> {
+) -> Vec<Row> {
     if let Some(position) = position {
-        let mut tx = writer.transaction().unwrap();
-        tx.batch_execute("ALTER TABLE babylon_state.graph_node_f64_chunk_v1 DISABLE TRIGGER graph_node_f64_chunk_immutable_v1").unwrap();
-        let rows = tx.query(sql, &[value, &location, &position]).unwrap();
-        tx.batch_execute("ALTER TABLE babylon_state.graph_node_f64_chunk_v1 ENABLE TRIGGER graph_node_f64_chunk_immutable_v1").unwrap();
-        tx.commit().unwrap();
+        let mut tx = writer
+            .transaction()
+            .expect("the test database opens a transaction");
+        tx.batch_execute("ALTER TABLE babylon_state.graph_node_f64_chunk_v1 DISABLE TRIGGER graph_node_f64_chunk_immutable_v1").expect("the test database applies the schema statements");
+        let rows = tx
+            .query(sql, &[value, &location, &position])
+            .expect("the seeded rows are readable");
+        tx.batch_execute("ALTER TABLE babylon_state.graph_node_f64_chunk_v1 ENABLE TRIGGER graph_node_f64_chunk_immutable_v1").expect("the test database applies the schema statements");
+        tx.commit().expect("the fixture transaction commits");
         rows
     } else {
-        writer.query(sql, &[value, &location]).unwrap()
+        writer
+            .query(sql, &[value, &location])
+            .expect("the seeded rows are readable")
     }
 }
 
 fn flipped(bytes: &[u8]) -> Vec<u8> {
     let mut changed = bytes.to_vec();
-    *changed.last_mut().unwrap() ^= 1;
+    *changed
+        .last_mut()
+        .expect("the fixture sequence is non-empty") ^= 1;
     changed
 }
 
@@ -589,27 +678,28 @@ struct EventCell {
     column: &'static str,
 }
 
-fn event_fixture_lock(tx: &mut postgres::Transaction<'_>, campaign: CampaignId) {
-    tx.query_one("SELECT pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('babylon.graph-lookup.v1:'||$1::uuid::text,0))",&[campaign.as_uuid()]).unwrap();
-    tx.query_one("SELECT pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('babylon.event-marker.v1:'||$1::uuid::text||':2',0))",&[campaign.as_uuid()]).unwrap();
+fn event_fixture_lock(tx: &mut Transaction<'_>, campaign: CampaignId) {
+    tx.query_one("SELECT pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('babylon.graph-lookup.v1:'||$1::uuid::text,0))",&[campaign.as_uuid()]).expect("the seeded row is present exactly once");
+    tx.query_one("SELECT pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('babylon.event-marker.v1:'||$1::uuid::text||':2',0))",&[campaign.as_uuid()]).expect("the seeded row is present exactly once");
 }
-fn fixture_guard(tx: &mut postgres::Transaction<'_>, table: &str, guard: &str, enabled: bool) {
+fn fixture_guard(tx: &mut Transaction<'_>, table: &str, guard: &str, enabled: bool) {
     // Identifiers come only from the closed enums and fixed fixture guards.
-    let state:String=tx.query_one("SELECT tgenabled::text FROM pg_catalog.pg_trigger WHERE tgrelid=$1::text::regclass AND tgname=$2",&[&format!("babylon_state.{table}"),&guard]).unwrap().get(0);
+    let state:String=tx.query_one("SELECT tgenabled::text FROM pg_catalog.pg_trigger WHERE tgrelid=$1::text::regclass AND tgname=$2",&[&format!("babylon_state.{table}"),&guard]).expect("the seeded row is present exactly once").get(0);
     assert_eq!(state, if enabled { "D" } else { "O" });
     if enabled {
         // A temporary lookup insert queues its deferred marker foreign key.
         // Drain that valid reference before restoring the fixture guard.
-        tx.batch_execute("SET CONSTRAINTS ALL IMMEDIATE").unwrap();
+        tx.batch_execute("SET CONSTRAINTS ALL IMMEDIATE")
+            .expect("the test database applies the schema statements");
     }
     tx.batch_execute(&format!(
         "ALTER TABLE babylon_state.{table} {} TRIGGER {guard}",
         if enabled { "ENABLE" } else { "DISABLE" }
     ))
-    .unwrap();
+    .expect("the test database applies the schema statements");
 }
 fn set_event_cell<T: ToSql + Sync>(
-    tx: &mut postgres::Transaction<'_>,
+    tx: &mut Transaction<'_>,
     cell: &EventCell,
     value: &T,
 ) -> String {
@@ -621,7 +711,7 @@ fn set_event_cell<T: ToSql + Sync>(
     );
     let rows = tx
         .query(&sql, &[value, &cell.location, &cell.index])
-        .unwrap();
+        .expect("the seeded rows are readable");
     assert_eq!(rows.len(), 1);
     let moved = rows[0].get(0);
     fixture_guard(tx, cell.chunk.table(), cell.chunk.guard(), true);
@@ -632,12 +722,12 @@ fn read_event_field_cell(
     campaign: CampaignId,
     name: &str,
     column: &'static str,
-) -> (EventCell, postgres::Row) {
+) -> (EventCell, Row) {
     assert!(matches!(column, "int_values" | "key_ids"));
     let sql=format!("SELECT c.ctid::text,p::integer,c.{column}[p],c.value_tag FROM babylon_state.event_field_chunk_v1 c CROSS JOIN LATERAL generate_subscripts(c.event_ordinals,1) AS idx(p) JOIN babylon_state.event_text_lookup_v1 n ON n.campaign_id=c.campaign_id AND n.text_id=c.name_ids[p] WHERE c.campaign_id=$1::uuid AND c.resolve_tick=2 AND n.value=$2 ORDER BY c.chunk,p LIMIT 1");
     let row = writer
         .query_one(&sql, &[campaign.as_uuid(), &name])
-        .unwrap();
+        .expect("the seeded row is present exactly once");
     let cell = EventCell {
         chunk: EventChunk::Field,
         location: row.get(0),
@@ -654,18 +744,24 @@ fn assert_event_integer_fault(
     let (mut cell, row) =
         read_event_field_cell(writer, fixture.campaign, "retained-hours", "int_values");
     let original: i64 = row.get(2);
-    let changed = original.checked_add(1).unwrap();
-    let mut tx = writer.transaction().unwrap();
+    let changed = original
+        .checked_add(1)
+        .expect("the fixture arithmetic stays in range");
+    let mut tx = writer
+        .transaction()
+        .expect("the test database opens a transaction");
     event_fixture_lock(&mut tx, fixture.campaign);
     cell.location = set_event_cell(&mut tx, &cell, &changed);
-    tx.commit().unwrap();
+    tx.commit().expect("the fixture transaction commits");
     let refusal = fixture
         .observer
         .snapshot(fixture.campaign, healthy.resolve_tick);
-    let mut tx = writer.transaction().unwrap();
+    let mut tx = writer
+        .transaction()
+        .expect("the test database opens a transaction");
     event_fixture_lock(&mut tx, fixture.campaign);
     let _ = set_event_cell(&mut tx, &cell, &original);
-    tx.commit().unwrap();
+    tx.commit().expect("the fixture transaction commits");
     assert_eq!(refusal, Err(ObserverEconomyError::InvalidProjection));
     assert_eq!(fixture.read(healthy.resolve_tick), *healthy);
 }
@@ -679,13 +775,15 @@ fn lookup_head(
         lookup.id_column(),
         lookup.table()
     );
-    let row = writer.query_one(&sql, &[campaign.as_uuid()]).unwrap();
+    let row = writer
+        .query_one(&sql, &[campaign.as_uuid()])
+        .expect("the seeded row is present exactly once");
     (row.get(0), row.get(1))
 }
 // Temporary foreign identity is test-owned, appended only while its exact guard
 // is disabled in this transaction. It changes one cell, never a shared lookup.
 fn append_foreign_lookup<T: ToSql + Sync>(
-    tx: &mut postgres::Transaction<'_>,
+    tx: &mut Transaction<'_>,
     campaign: CampaignId,
     lookup: EventLookup,
     value: &T,
@@ -699,17 +797,17 @@ fn append_foreign_lookup<T: ToSql + Sync>(
             ),
             &[campaign.as_uuid(), value],
         )
-        .unwrap()
+        .expect("the seeded row is present exactly once")
         .get::<_, i64>(0);
     assert_eq!(duplicate, 0, "foreign fixture identity must be distinct");
     let guard = lookup.insert_guard();
     fixture_guard(tx, lookup.table(), guard, false);
-    let changed=tx.execute(&format!("INSERT INTO babylon_state.{}(campaign_id,{},first_tick,value) VALUES($1::uuid,$2,2,$3)",lookup.table(),lookup.id_column()),&[campaign.as_uuid(),&id,value]).unwrap();
+    let changed=tx.execute(&format!("INSERT INTO babylon_state.{}(campaign_id,{},first_tick,value) VALUES($1::uuid,$2,2,$3)",lookup.table(),lookup.id_column()),&[campaign.as_uuid(),&id,value]).expect("the test database applies the setup statement");
     assert_eq!(changed, 1);
     fixture_guard(tx, lookup.table(), guard, true);
 }
 fn remove_foreign_lookup<T: ToSql + Sync>(
-    tx: &mut postgres::Transaction<'_>,
+    tx: &mut Transaction<'_>,
     campaign: CampaignId,
     lookup: EventLookup,
     value: &T,
@@ -717,7 +815,7 @@ fn remove_foreign_lookup<T: ToSql + Sync>(
 ) {
     let guard = lookup.immutable_guard();
     fixture_guard(tx, lookup.table(), guard, false);
-    let changed=tx.execute(&format!("DELETE FROM babylon_state.{} WHERE campaign_id=$1::uuid AND {}=$2 AND first_tick=2 AND value=$3",lookup.table(),lookup.id_column()),&[campaign.as_uuid(),&id,value]).unwrap();
+    let changed=tx.execute(&format!("DELETE FROM babylon_state.{} WHERE campaign_id=$1::uuid AND {}=$2 AND first_tick=2 AND value=$3",lookup.table(),lookup.id_column()),&[campaign.as_uuid(),&id,value]).expect("the test database applies the setup statement");
     assert_eq!(changed, 1);
     fixture_guard(tx, lookup.table(), guard, true);
 }
@@ -733,20 +831,24 @@ fn assert_event_lookup_fault<T: ToSql + Sync>(
     let before = lookup_head(writer, fixture.campaign, lookup);
     assert_eq!(before.1.checked_add(1), Some(before.0));
     let foreign_id = before.0;
-    let mut tx = writer.transaction().unwrap();
+    let mut tx = writer
+        .transaction()
+        .expect("the test database opens a transaction");
     event_fixture_lock(&mut tx, fixture.campaign);
     append_foreign_lookup(&mut tx, fixture.campaign, lookup, foreign, foreign_id);
     cell.location = set_event_cell(&mut tx, &cell, &foreign_id);
-    tx.commit().unwrap();
+    tx.commit().expect("the fixture transaction commits");
     // All trigger enable states are restored before the reader's schema census.
     let refusal = fixture
         .observer
         .snapshot(fixture.campaign, healthy.resolve_tick);
-    let mut tx = writer.transaction().unwrap();
+    let mut tx = writer
+        .transaction()
+        .expect("the test database opens a transaction");
     event_fixture_lock(&mut tx, fixture.campaign);
     let _ = set_event_cell(&mut tx, &cell, &original);
     remove_foreign_lookup(&mut tx, fixture.campaign, lookup, foreign, foreign_id);
-    tx.commit().unwrap();
+    tx.commit().expect("the fixture transaction commits");
     assert_eq!(lookup_head(writer, fixture.campaign, lookup), before);
     assert_eq!(refusal, Err(ObserverEconomyError::InvalidProjection));
     assert_eq!(fixture.read(healthy.resolve_tick), *healthy);
@@ -759,7 +861,7 @@ fn assert_event_subject_fault(
     let (cell, row) = read_event_field_cell(writer, fixture.campaign, "subject", "key_ids");
     let original: i64 = row.get(2);
     assert_eq!(row.get::<_, i16>(3), 7, "native staffing subject is a Node");
-    let name:String=writer.query_one("SELECT value FROM babylon_state.graph_string_lookup_v1 WHERE campaign_id=$1::uuid AND string_id=$2",&[fixture.campaign.as_uuid(),&original]).unwrap().get(0);
+    let name:String=writer.query_one("SELECT value FROM babylon_state.graph_string_lookup_v1 WHERE campaign_id=$1::uuid AND string_id=$2",&[fixture.campaign.as_uuid(),&original]).expect("the seeded row is present exactly once").get(0);
     let foreign = format!("{name}-foreign");
     assert_ne!(foreign, name);
     assert_event_lookup_fault(
@@ -777,7 +879,7 @@ fn assert_event_rule_fault(
     writer: &mut Client,
     healthy: &ObserverEconomySnapshot,
 ) {
-    let row=writer.query_one("SELECT c.ctid::text,p::integer,c.rule_ids[p],r.value FROM babylon_state.event_parent_chunk_v1 c CROSS JOIN LATERAL generate_subscripts(c.event_ordinals,1) AS idx(p) JOIN babylon_state.event_text_lookup_v1 t ON t.campaign_id=c.campaign_id AND t.text_id=c.type_ids[p] JOIN babylon_state.event_text_lookup_v1 r ON r.campaign_id=c.campaign_id AND r.text_id=c.rule_ids[p] WHERE c.campaign_id=$1::uuid AND c.resolve_tick=2 AND t.value='WORKFORCE_STAFFING' ORDER BY c.chunk,p LIMIT 1",&[fixture.campaign.as_uuid()]).unwrap();
+    let row=writer.query_one("SELECT c.ctid::text,p::integer,c.rule_ids[p],r.value FROM babylon_state.event_parent_chunk_v1 c CROSS JOIN LATERAL generate_subscripts(c.event_ordinals,1) AS idx(p) JOIN babylon_state.event_text_lookup_v1 t ON t.campaign_id=c.campaign_id AND t.text_id=c.type_ids[p] JOIN babylon_state.event_text_lookup_v1 r ON r.campaign_id=c.campaign_id AND r.text_id=c.rule_ids[p] WHERE c.campaign_id=$1::uuid AND c.resolve_tick=2 AND t.value='WORKFORCE_STAFFING' ORDER BY c.chunk,p LIMIT 1",&[fixture.campaign.as_uuid()]).expect("the seeded row is present exactly once");
     let cell = EventCell {
         chunk: EventChunk::Parent,
         location: row.get(0),
@@ -808,11 +910,15 @@ fn assert_event_faults(fixture: &Fixture, writer: &mut Client, healthy: &Observe
     assert_eq!(fixture.read(2), *healthy);
 }
 fn swap_event_fields(writer: &mut Client, campaign: CampaignId) {
-    let mut tx = writer.transaction().unwrap();
+    let mut tx = writer
+        .transaction()
+        .expect("the test database opens a transaction");
     event_fixture_lock(&mut tx, campaign);
-    let ordinal:i64=tx.query_one("SELECT ordinal FROM babylon_state.tick_event_v2 WHERE campaign_id=$1::uuid AND resolve_tick=2 AND event_type='WORKFORCE_STAFFING' ORDER BY ordinal LIMIT 1",&[campaign.as_uuid()]).unwrap().get(0);
-    let highest:i64=tx.query_one("SELECT max(position) FROM babylon_state.tick_event_field_v2 WHERE campaign_id=$1::uuid AND resolve_tick=2 AND ordinal=$2",&[campaign.as_uuid(),&ordinal]).unwrap().get(0);
-    let spare = highest.checked_add(1).unwrap();
+    let ordinal:i64=tx.query_one("SELECT ordinal FROM babylon_state.tick_event_v2 WHERE campaign_id=$1::uuid AND resolve_tick=2 AND event_type='WORKFORCE_STAFFING' ORDER BY ordinal LIMIT 1",&[campaign.as_uuid()]).expect("the seeded row is present exactly once").get(0);
+    let highest:i64=tx.query_one("SELECT max(position) FROM babylon_state.tick_event_field_v2 WHERE campaign_id=$1::uuid AND resolve_tick=2 AND ordinal=$2",&[campaign.as_uuid(),&ordinal]).expect("the seeded row is present exactly once").get(0);
+    let spare = highest
+        .checked_add(1)
+        .expect("the fixture arithmetic stays in range");
     assert!(spare <= i64::from(u32::MAX));
     fixture_guard(
         &mut tx,
@@ -821,10 +927,10 @@ fn swap_event_fields(writer: &mut Client, campaign: CampaignId) {
         false,
     );
     for (from, to) in [(11_i64, spare), (12, 11), (spare, 12)] {
-        let row=tx.query_one("SELECT c.ctid::text,p::integer FROM babylon_state.event_field_chunk_v1 c CROSS JOIN LATERAL generate_subscripts(c.event_ordinals,1) AS idx(p) WHERE c.campaign_id=$1::uuid AND c.resolve_tick=2 AND c.event_ordinals[p]=$2 AND c.positions[p]=$3 ORDER BY c.chunk,p LIMIT 1",&[campaign.as_uuid(),&ordinal,&from]).unwrap();
+        let row=tx.query_one("SELECT c.ctid::text,p::integer FROM babylon_state.event_field_chunk_v1 c CROSS JOIN LATERAL generate_subscripts(c.event_ordinals,1) AS idx(p) WHERE c.campaign_id=$1::uuid AND c.resolve_tick=2 AND c.event_ordinals[p]=$2 AND c.positions[p]=$3 ORDER BY c.chunk,p LIMIT 1",&[campaign.as_uuid(),&ordinal,&from]).expect("the seeded row is present exactly once");
         let location: String = row.get(0);
         let index: i32 = row.get(1);
-        assert_eq!(tx.execute("UPDATE babylon_state.event_field_chunk_v1 SET positions[$3]=$4 WHERE ctid=$1::text::tid AND campaign_id=$2::uuid",&[&location,campaign.as_uuid(),&index,&to]).unwrap(),1);
+        assert_eq!(tx.execute("UPDATE babylon_state.event_field_chunk_v1 SET positions[$3]=$4 WHERE ctid=$1::text::tid AND campaign_id=$2::uuid",&[&location,campaign.as_uuid(),&index,&to]).expect("the test database applies the setup statement"),1);
     }
     fixture_guard(
         &mut tx,
@@ -832,7 +938,7 @@ fn swap_event_fields(writer: &mut Client, campaign: CampaignId) {
         "event_field_chunk_v1_immutable",
         true,
     );
-    tx.commit().unwrap();
+    tx.commit().expect("the fixture transaction commits");
 }
 
 // A valid canonical body and matching reference digest still cannot replace
@@ -842,18 +948,20 @@ fn assert_valid_checkpoint_body_fault(
     writer: &mut Client,
     healthy: &ObserverEconomySnapshot,
 ) {
-    let manifest = babylon_tick::replay_identity::world_register_manifest().unwrap();
-    let replacement =
-        babylon_tick::replay_identity::encode_world_register_set(&manifest, 3).unwrap();
+    let manifest = babylon_tick::replay_identity::world_register_manifest()
+        .expect("the fixture call `world_register_manifest` succeeds for the authored inputs");
+    let replacement = babylon_tick::replay_identity::encode_world_register_set(&manifest, 3)
+        .expect("the world register set encodes canonically");
     assert_eq!(replacement.completed_tick(), 3);
     let original = writer.query_one(
         "SELECT inline_section_bytes,decoded_length,decoded_sha256 FROM babylon_state.checkpoint_section_v1 WHERE campaign_id=$1::uuid AND resolve_tick=2 AND section_tag=2 AND ordinal=0",
         &[fixture.campaign.as_uuid()],
-    ).unwrap();
+    ).expect("the seeded row is present exactly once");
     let bytes: Vec<u8> = original.get(0);
     let length: i64 = original.get(1);
     let digest: Vec<u8> = original.get(2);
-    let expected = babylon_tick::replay_identity::encode_world_register_set(&manifest, 2).unwrap();
+    let expected = babylon_tick::replay_identity::encode_world_register_set(&manifest, 2)
+        .expect("the world register set encodes canonically");
     assert_eq!(bytes, expected.canonical_bytes());
     assert_eq!(digest, expected.digest());
     assert_ne!(bytes, replacement.canonical_bytes());
@@ -861,13 +969,14 @@ fn assert_valid_checkpoint_body_fault(
         let row = client.query_one(
             "SELECT c.manifest_bytes,m.envelope_digest FROM babylon_state.checkpoint_manifest c JOIN babylon_state.tick_commit m USING(campaign_id,resolve_tick) WHERE c.campaign_id=$1::uuid AND c.resolve_tick=2",
             &[fixture.campaign.as_uuid()],
-        ).unwrap();
+        ).expect("the seeded row is present exactly once");
         (row.get::<_, Vec<u8>>(0), row.get::<_, Vec<u8>>(1))
     };
     let before = authority(writer);
     let update = "UPDATE babylon_state.checkpoint_section_v1 SET inline_section_bytes=$2,decoded_length=$3,decoded_sha256=$4 WHERE campaign_id=$1::uuid AND resolve_tick=2 AND section_tag=2 AND ordinal=0";
     let changed = replacement.canonical_bytes().to_vec();
-    let changed_length = i64::try_from(changed.len()).unwrap();
+    let changed_length =
+        i64::try_from(changed.len()).expect("the fixture value fits the target range");
     let changed_digest = replacement.digest().to_vec();
     assert_eq!(
         writer
@@ -880,7 +989,7 @@ fn assert_valid_checkpoint_body_fault(
                     &changed_digest
                 ]
             )
-            .unwrap(),
+            .expect("the test database applies the setup statement"),
         1
     );
     assert_eq!(authority(writer), before);
@@ -893,7 +1002,7 @@ fn assert_valid_checkpoint_body_fault(
                 update,
                 &[fixture.campaign.as_uuid(), &bytes, &length, &digest]
             )
-            .unwrap(),
+            .expect("the test database applies the setup statement"),
         1
     );
     assert_eq!(authority(writer), before);
@@ -934,17 +1043,37 @@ fn complete_marker_authentication_refuses_independent_staffing_and_auxiliary_row
     let mut fixture = Fixture::new();
     fixture.advance_to(4);
     let healthy = fixture.read(2);
-    let tail = *fixture.runtime.tail().unwrap();
-    let world = fixture.runtime.session().current_world_hash().unwrap();
-    let mut writer = fixture.target.writer.connect(NoTls).unwrap();
+    let tail = *fixture
+        .runtime
+        .tail()
+        .expect("the fixture sequence holds more than one row");
+    let world = fixture
+        .runtime
+        .session()
+        .current_world_hash()
+        .expect("the committed session publishes a world hash");
+    let mut writer = fixture
+        .target
+        .writer
+        .connect(NoTls)
+        .expect("the test database accepts the connection");
     assert_graph_and_state_faults(&fixture, &mut writer, &healthy);
     assert_event_faults(&fixture, &mut writer, &healthy);
     assert_commit_faults(&fixture, &mut writer, &healthy);
     assert_valid_checkpoint_body_fault(&fixture, &mut writer, &healthy);
-    assert_known_material_absence(&mut fixture.preview.snapshot(fixture.campaign, 2).unwrap());
+    super::assert_known_material_absence(
+        &mut fixture
+            .preview
+            .snapshot(fixture.campaign, 2)
+            .expect("the fixture captures a consistent snapshot"),
+    );
     assert_eq!(fixture.runtime.tail(), Some(&tail));
     assert_eq!(
-        fixture.runtime.session().current_world_hash().unwrap(),
+        fixture
+            .runtime
+            .session()
+            .current_world_hash()
+            .expect("the committed session publishes a world hash"),
         world
     );
     let reopened = DurableMaterialRuntime::open(
@@ -952,7 +1081,13 @@ fn complete_marker_authentication_refuses_independent_staffing_and_auxiliary_row
         fixture.campaign,
         fixture.foundation_digest,
     )
-    .unwrap();
+    .expect("the fixture opens the authored source");
     assert_eq!(reopened.tail(), Some(&tail));
-    assert_eq!(reopened.session().current_world_hash().unwrap(), world);
+    assert_eq!(
+        reopened
+            .session()
+            .current_world_hash()
+            .expect("the committed session publishes a world hash"),
+        world
+    );
 }

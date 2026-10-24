@@ -1,16 +1,17 @@
 //! Bounded world cohorts. Trade dollars create neither people nor capacity.
-use super::{actors, quantity, ActorContext, Builder, NationalOpeningError, Result, FUNCTIONS};
-use crate::{
-    economic_catalog::{EconomicSiteSource, ResidentStaffingMemberSeed, ResidentStaffingPoolSeed},
-    national_economy::{household_principal, GameProfile},
-    national_household_allocation::HouseholdBudgetKey,
-    world_reference::WorldReference,
+use super::{actors, ActorContext, Builder, NationalOpeningError, Result, FUNCTIONS};
+use crate::economic_catalog::{
+    EconomicSiteSource, ResidentStaffingMemberSeed, ResidentStaffingPoolSeed,
 };
+use crate::national_economy::GameProfile;
+use crate::national_household_allocation::HouseholdBudgetKey;
+use crate::world_reference::WorldReference;
+
 use babylon_graph::stable_element::StableElementKey;
-use babylon_kernel::{
-    content_digest::sha256_of,
-    economic_location::{EconomicLocation, ForeignCounterpart, UsDependency},
-};
+use babylon_kernel::economic_location::{EconomicLocation, ForeignCounterpart, UsDependency};
+
+use crate::national_economy;
+use babylon_kernel::content_digest;
 use babylon_material_circuit::{
     EmploymentTerms, LaborCompensation, SiteId, StaffingMemberBinding, StaffingMemberId,
     StaffingPolicy, StaffingPoolBinding, StaffingPoolId,
@@ -75,7 +76,7 @@ fn add(
         let mut identity = b"NationalExternalSiteV1\0".to_vec();
         identity.extend_from_slice(&location.canonical_bytes());
         identity.extend_from_slice(function.source_key().as_bytes());
-        let site_id = SiteId::from_bytes(sha256_of(&identity));
+        let site_id = SiteId::from_bytes(content_digest::sha256_of(&identity));
         let workforce = employed[index]
             .checked_add(reserve[index])
             .ok_or(NationalOpeningError::Arithmetic)?;
@@ -121,7 +122,7 @@ fn staffing(
     let mut pool_bytes = b"NationalStaffingPoolV1\0".to_vec();
     pool_bytes.extend_from_slice(&site.as_bytes());
     let pool = StaffingPoolBinding::try_new(
-        StaffingPoolId::from_bytes(sha256_of(&pool_bytes)),
+        StaffingPoolId::from_bytes(content_digest::sha256_of(&pool_bytes)),
         site,
         builder.labor_unit,
         context.force,
@@ -132,11 +133,14 @@ fn staffing(
     .map_err(|_| NationalOpeningError::Policy)?;
     let mut members = vec![];
     if context.force > 0 {
-        let principal = household_principal(context.location, HouseholdBudgetKey::PooledExternal);
+        let principal = national_economy::household_principal(
+            context.location,
+            HouseholdBudgetKey::PooledExternal,
+        );
         let mut bytes = b"NationalExternalWorkforceV2\0".to_vec();
         bytes.extend_from_slice(&site.as_bytes());
         bytes.extend_from_slice(&principal.as_bytes());
-        let identity = sha256_of(&bytes);
+        let identity = content_digest::sha256_of(&bytes);
         let member = StaffingMemberBinding::try_new(
             StaffingMemberId::from_bytes(identity),
             principal,
@@ -166,7 +170,7 @@ fn staffing(
     builder.opening.staffing.push(ResidentStaffingPoolSeed {
         workplace,
         pool,
-        previous_unretained_hours: quantity(employed, builder.policy.work_hours_per_person)?,
+        previous_unretained_hours: super::quantity(employed, builder.policy.work_hours_per_person)?,
         members,
     });
     Ok(())

@@ -31,8 +31,6 @@
 //! `CanonicalState` where the canonical byte encoding is needed); construct
 //! whichever store the call site needs (production: `HypergraphStore`;
 //! tests wanting the reference implementation or an oracle: `MemoryGraph`).
-#![forbid(unsafe_code)]
-#![warn(clippy::pedantic)]
 
 pub mod allocator_state;
 pub mod backfire;

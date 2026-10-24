@@ -1,22 +1,58 @@
+use super::aid::OrganizerAidResolutionReceipt;
+use super::aid::OrganizerAidSupport;
+use super::aid::OrganizerAidSupportStatus;
+use super::aid::OrganizerPendingAidPractice;
+use super::time_resources::OrganizerPeriodTimeResources;
+use super::OrganizerChoice;
+use super::OrganizerCommand;
+use super::OrganizerCommitment;
+use super::OrganizerConfig;
+use super::OrganizerContactProduct;
+use super::OrganizerError;
+use super::OrganizerInquiry;
+use super::OrganizerMaterialSupport;
+use super::OrganizerObservation;
+use super::OrganizerOutcome;
+use super::OrganizerPartner;
+use super::OrganizerPartnerPolicy;
+use super::OrganizerPartnerResponse;
+use super::OrganizerPauseReason;
+use super::OrganizerReceipt;
+use super::OrganizerRefusal;
+use super::OrganizerReport;
+use super::OrganizerState;
+use super::OrganizerWorkplaceFacts;
+
 use std::collections::BTreeSet;
 
-use babylon_kernel::content_digest::sha256_of;
+use babylon_kernel::content_digest;
 
-use super::contract::{committed_hours, identity, required_hours, validate_organizer_pair};
-use super::*;
+use crate::CampaignId;
+use crate::OrderedPracticeActionBatch;
+use crate::PracticeAuthorityKind;
+use crate::PracticeInputAuthorityLedger;
+use crate::ResolvedPracticeBatch;
 use crate::{
     ActorOrganizationId, InputAuthorityId, PracticeId, PracticeIntent, PracticeParameter,
     PracticeTargetIdentity, PracticeTargetTag, ProposalNonce, TaggedPracticeTarget,
 };
+use babylon_kernel::replay::ReplaySessionId;
 
 fn target_identity(domain: &[u8], id: u64) -> [u8; 32] {
     let mut bytes = Vec::from(domain);
     bytes.extend_from_slice(&id.to_be_bytes());
-    sha256_of(&bytes)
+    content_digest::sha256_of(&bytes)
 }
 
 /// Bind every accepted ruling to the common practice input identity, including
 /// controls that spend no time and execute no contact work.
+///
+/// # Errors
+///
+/// Returns the pair faults from [`validate_organizer_pair`],
+/// [`OrganizerError::InvalidCommitment`] when re-admission or the choice
+/// binding refuses the commitment, and [`OrganizerError::Arithmetic`] when a
+/// period or target identity cannot be represented.
 pub fn organizer_practice_intent(
     config: &OrganizerConfig,
     state: &OrganizerState,
@@ -31,14 +67,25 @@ fn practice_intent_with_origin(
     commitment: &OrganizerCommitment,
     standing_origin: bool,
 ) -> Result<PracticeIntent, OrganizerError> {
-    validate_organizer_pair(config, state)?;
-    if admit_organizer(config, state, &commitment.command)? != *commitment {
+    super::contract::validate_organizer_pair(config, state)?;
+    if super::contract::admit_organizer(config, state, &commitment.command)? != *commitment {
         return Err(OrganizerError::InvalidCommitment);
     }
     intent_for_authorized_commitment(config, state.period, commitment, standing_origin)
 }
 
 // Only current admitted input and validate_pending may enter this canonical builder.
+/// Bind one authorized commitment to its exact BSL practice intent.
+///
+/// # Errors
+///
+/// Returns [`OrganizerError::InvalidCommitment`] when the choice lacks its
+/// configured binding and [`OrganizerError::InvalidState`] when a target
+/// identity cannot be derived.
+#[allow(
+    clippy::too_many_lines,
+    reason = "one exhaustive match binds every organizer choice to its exact practice intent; splitting it would scatter the exhaustive binding"
+)]
 pub(super) fn intent_for_authorized_commitment(
     config: &OrganizerConfig,
     submit_after_tick: u64,
@@ -189,7 +236,7 @@ fn add_observation(
     receipt_id: Option<[u8; 32]>,
     report: OrganizerReport,
 ) -> Result<[u8; 32], OrganizerError> {
-    let observation_id = identity(
+    let observation_id = super::contract::identity(
         b"babylon.organizer-observation.v1",
         &(
             config.controlled_actor_id,
@@ -224,6 +271,11 @@ fn add_observation(
 /// Endogenous reducer: only products in the opening committed state can renew
 /// cooperation. Newly closed material facts can publish an attributed report
 /// inside the same detached transaction; no report escapes a failed tick.
+///
+/// # Errors
+///
+/// Returns every [`consume_organizer_contact_products`] and
+/// [`report_organizer_workplace`] fault for the supplied facts.
 pub fn reduce_organizer_products(
     config: &OrganizerConfig,
     opening: &OrganizerState,
@@ -235,12 +287,19 @@ pub fn reduce_organizer_products(
 
 /// Consume retained contact receipts without fabricating a report. This
 /// separately testable reducer is the causal consumer of completed contact.
+///
+/// # Errors
+///
+/// Returns [`OrganizerError::PeriodMismatch`] when `resolve_period` is not the
+/// opening period plus one, [`OrganizerError::InvalidState`] for a product
+/// without a matching agreement, and [`OrganizerError::Arithmetic`] on an
+/// overflowing renewal window.
 pub fn consume_organizer_contact_products(
     config: &OrganizerConfig,
     opening: &OrganizerState,
     resolve_period: u64,
 ) -> Result<OrganizerState, OrganizerError> {
-    validate_organizer_pair(config, opening)?;
+    super::contract::validate_organizer_pair(config, opening)?;
     if opening.period.checked_add(1) != Some(resolve_period) {
         return Err(OrganizerError::PeriodMismatch);
     }
@@ -282,20 +341,27 @@ pub fn consume_organizer_contact_products(
         }
         next.consumed_product_ids.push(product.product_id);
     }
-    validate_organizer_pair(config, &next)?;
+    super::contract::validate_organizer_pair(config, &next)?;
     Ok(next)
 }
 
 /// Publish the material signal only while an actual report-sharing agreement
 /// remains in force. Omitting the contact consumer cannot sustain this access.
+///
+/// # Errors
+///
+/// Returns the pair faults from [`validate_organizer_pair`],
+/// [`OrganizerError::PeriodMismatch`] when any input belongs to another
+/// period or workplace, and [`OrganizerError::Arithmetic`] when a report
+/// bound overflows.
 pub fn report_organizer_workplace(
     config: &OrganizerConfig,
     opening: &OrganizerState,
     contacts: &OrganizerState,
     facts: &OrganizerWorkplaceFacts,
 ) -> Result<OrganizerState, OrganizerError> {
-    validate_organizer_pair(config, opening)?;
-    validate_organizer_pair(config, contacts)?;
+    super::contract::validate_organizer_pair(config, opening)?;
+    super::contract::validate_organizer_pair(config, contacts)?;
     if opening.period.checked_add(1) != Some(facts.period)
         || contacts.period != opening.period
         || facts.workplace_id != config.workplace_id
@@ -330,7 +396,7 @@ pub fn report_organizer_workplace(
             }
         }
     }
-    validate_organizer_pair(config, &next)?;
+    super::contract::validate_organizer_pair(config, &next)?;
     Ok(next)
 }
 
@@ -342,7 +408,7 @@ fn routine_commitment(
         .period
         .checked_add(1)
         .ok_or(OrganizerError::Arithmetic)?;
-    let digest = identity(
+    let digest = super::contract::identity(
         b"babylon.organizer-routine-nonce.v1",
         &(
             config.campaign_id,
@@ -358,12 +424,12 @@ fn routine_commitment(
         authority_id: config.input_authority_id,
         expected_period: opening.period,
         content_digest: config.content_digest,
-        resource_digest: organizer_resource_digest()?,
+        resource_digest: super::contract::organizer_resource_digest()?,
         nonce,
         choice: OrganizerChoice::Hold,
     };
     Ok(OrganizerCommitment {
-        commitment_id: identity(b"babylon.organizer-commitment.v1", &command)?,
+        commitment_id: super::contract::identity(b"babylon.organizer-commitment.v1", &command)?,
         command,
         resolves_period,
     })
@@ -393,7 +459,9 @@ fn partner_response(
         OrganizerPartnerPolicy::Refuse => Ok(OrganizerPartnerResponse::Refused),
         OrganizerPartnerPolicy::NoResponse => Ok(OrganizerPartnerResponse::NoResponse),
         OrganizerPartnerPolicy::Participate => Ok(
-            if committed_hours(config, partner.actor_id)? >= config.partner_response_hours {
+            if super::contract::committed_hours(config, partner.actor_id)?
+                >= config.partner_response_hours
+            {
                 OrganizerPartnerResponse::Participated
             } else {
                 OrganizerPartnerResponse::UnableToParticipate
@@ -409,7 +477,7 @@ pub(super) fn response_intent(
 ) -> Result<PracticeIntent, OrganizerError> {
     let originating_digest =
         crate::practice_intent_digest(intent).map_err(|_| OrganizerError::InvalidCommitment)?;
-    let digest = identity(
+    let digest = super::contract::identity(
         b"babylon.organizer-response-nonce.v1",
         &(originating_digest, partner.actor_id),
     )?;
@@ -433,39 +501,45 @@ pub(super) fn response_intent(
 }
 
 /// Captured player/policy authority rows use the same existing identity law.
+///
+/// # Errors
+///
+/// Returns the config faults [`validate_organizer_config`] reports and
+/// [`OrganizerError::InvalidConfig`] when the assembled ledger fails its own
+/// identity validation.
 pub fn organizer_input_authority_ledger(
     config: &OrganizerConfig,
-) -> Result<crate::PracticeInputAuthorityLedger, OrganizerError> {
-    validate_organizer_config(config)?;
+) -> Result<PracticeInputAuthorityLedger, OrganizerError> {
+    super::contract::validate_organizer_config(config)?;
     let mut rows = vec![];
     let mut actors = vec![
         (
             config.controlled_actor_id,
             config.input_authority_id,
-            crate::PracticeAuthorityKind::PlayerSeat,
+            PracticeAuthorityKind::PlayerSeat,
         ),
         (
             config.workplace_partner.actor_id,
             config.workplace_partner.authority_id,
-            crate::PracticeAuthorityKind::DeterministicPolicy,
+            PracticeAuthorityKind::DeterministicPolicy,
         ),
         (
             config.neighborhood_partner.actor_id,
             config.neighborhood_partner.authority_id,
-            crate::PracticeAuthorityKind::DeterministicPolicy,
+            PracticeAuthorityKind::DeterministicPolicy,
         ),
     ];
     actors.extend(config.aid_bindings.iter().map(|row| {
         (
             row.partner.actor_id,
             row.partner.authority_id,
-            crate::PracticeAuthorityKind::DeterministicPolicy,
+            PracticeAuthorityKind::DeterministicPolicy,
         )
     }));
     for (actor_id, authority_id, authority_kind) in actors {
         rows.push(crate::PracticeInputAuthority {
             schema_version: 2,
-            campaign_id: crate::CampaignId::from_bytes(config.campaign_id),
+            campaign_id: CampaignId::from_bytes(config.campaign_id),
             authority_kind,
             input_authority_id: InputAuthorityId::from_bytes(authority_id),
             actor_org_id: ActorOrganizationId::from_bytes(actor_id.to_be_bytes()),
@@ -475,7 +549,7 @@ pub fn organizer_input_authority_ledger(
         });
     }
     rows.sort_by_key(|row| row.input_authority_id);
-    let ledger = crate::PracticeInputAuthorityLedger {
+    let ledger = PracticeInputAuthorityLedger {
         schema_version: 2,
         rows,
     };
@@ -485,21 +559,28 @@ pub fn organizer_input_authority_ledger(
 
 /// Bind accepted and standing work, including independent participating
 /// responses, to the existing canonical admission rail.
+///
+/// # Errors
+///
+/// Returns the pair faults from [`validate_organizer_pair`], the config and
+/// ledger faults of [`organizer_input_authority_ledger`], routine binding
+/// faults, and [`OrganizerError::Arithmetic`] when a period or hour sum
+/// overflows.
 pub fn organizer_resolved_action_batch(
     config: &OrganizerConfig,
     state: &OrganizerState,
     accepted: Option<&OrganizerCommitment>,
-) -> Result<crate::ResolvedPracticeBatch, OrganizerError> {
-    validate_organizer_pair(config, state)?;
+) -> Result<ResolvedPracticeBatch, OrganizerError> {
+    super::contract::validate_organizer_pair(config, state)?;
     let ledger = organizer_input_authority_ledger(config)?;
     let routine = routine_commitment(config, state)?;
     let commitment = accepted.unwrap_or(&routine);
     let mut intents = vec![];
     // Ineligible saved work pauses during resolution and submits no action.
-    let cost = required_hours(config, state, commitment.command.choice);
+    let cost = super::contract::required_hours(config, state, commitment.command.choice);
     if accepted.is_some()
         || (state.standing.authorized
-            && cost <= committed_hours(config, config.controlled_actor_id)?)
+            && cost <= super::contract::committed_hours(config, config.controlled_actor_id)?)
     {
         let intent = practice_intent_with_origin(config, state, commitment, accepted.is_none())?;
         if cost > 0 {
@@ -537,16 +618,16 @@ pub fn organizer_resolved_action_batch(
             Ok(crate::ResolvedPracticeBatchItem { authority, intent })
         })
         .collect::<Result<Vec<_>, OrganizerError>>()?;
-    let batch = crate::ResolvedPracticeBatch {
+    let batch = ResolvedPracticeBatch {
         schema_version: 2,
-        campaign_id: crate::CampaignId::from_bytes(config.campaign_id),
+        campaign_id: CampaignId::from_bytes(config.campaign_id),
         resolve_tick: state
             .period
             .checked_add(1)
             .ok_or(OrganizerError::Arithmetic)?,
         authority_ledger_digest: crate::input_authority_ledger_digest(&ledger)
             .map_err(|_| OrganizerError::InvalidConfig)?,
-        resource_allocation_contract_digest: organizer_resource_digest()?,
+        resource_allocation_contract_digest: super::contract::organizer_resource_digest()?,
         content_digest: config.content_digest,
         items,
     };
@@ -555,13 +636,20 @@ pub fn organizer_resolved_action_batch(
     Ok(batch)
 }
 
+/// Project the resolved batch into the ordered replay action rail.
+///
+/// # Errors
+///
+/// Returns every [`organizer_resolved_action_batch`] fault and
+/// [`OrganizerError::InvalidCommitment`] when projection refuses the batch or
+/// its authority ledger.
 pub fn organizer_action_batch(
     config: &OrganizerConfig,
     state: &OrganizerState,
     accepted: Option<&OrganizerCommitment>,
-    session: babylon_kernel::replay::ReplaySessionId,
-) -> Result<crate::OrderedPracticeActionBatch, OrganizerError> {
-    crate::OrderedPracticeActionBatch::project(
+    session: ReplaySessionId,
+) -> Result<OrderedPracticeActionBatch, OrganizerError> {
+    OrderedPracticeActionBatch::project(
         session,
         &organizer_resolved_action_batch(config, state, accepted)?,
         &organizer_input_authority_ledger(config)?,
@@ -603,6 +691,13 @@ fn inquiry_report(question: OrganizerInquiry, opening: &OrganizerState) -> Optio
 /// The accepted commitment remains an input; it is never mutated on failure.
 /// Explicit fixed-time control path; captured campaigns supply real budgets
 /// through `resolve_organizer_practice_with_time` instead.
+///
+/// # Errors
+///
+/// Returns the pair faults from [`validate_organizer_pair`],
+/// [`OrganizerError::PeriodMismatch`] when the facts belong to another period,
+/// and the fixed-time resource and resolution faults of
+/// [`resolve_organizer_practice_with_time`].
 pub fn resolve_organizer_practice(
     config: &OrganizerConfig,
     opening: &OrganizerState,
@@ -610,11 +705,11 @@ pub fn resolve_organizer_practice(
     facts: &OrganizerWorkplaceFacts,
     accepted: Option<&OrganizerCommitment>,
 ) -> Result<OrganizerState, OrganizerError> {
-    validate_organizer_pair(config, opening)?;
+    super::contract::validate_organizer_pair(config, opening)?;
     if opening.period.checked_add(1) != Some(facts.period) {
         return Err(OrganizerError::PeriodMismatch);
     }
-    let resources = organizer_fixed_time_resources(config, facts.period)?;
+    let resources = super::time_resources::organizer_fixed_time_resources(config, facts.period)?;
     resolve_organizer_practice_with_time(
         config,
         opening,
@@ -644,8 +739,8 @@ pub fn resolve_organizer_practice_with_time(
 ) -> Result<OrganizerState, OrganizerError> {
     let aid_support = material_support.aid;
     let collection_fact = material_support.collection;
-    validate_organizer_pair(config, opening)?;
-    validate_organizer_pair(config, reduced)?;
+    super::contract::validate_organizer_pair(config, opening)?;
+    super::contract::validate_organizer_pair(config, reduced)?;
     if opening.period.checked_add(1) != Some(facts.period)
         || reduced.period != facts.period
         || reduced.last_workplace_facts.as_ref() != Some(facts)
@@ -658,13 +753,13 @@ pub fn resolve_organizer_practice_with_time(
     let routine = routine_commitment(config, opening)?;
     let commitment = accepted.unwrap_or(&routine);
     if let Some(accepted) = accepted {
-        if admit_organizer(config, opening, &accepted.command)? != *accepted {
+        if super::contract::admit_organizer(config, opening, &accepted.command)? != *accepted {
             return Err(OrganizerError::InvalidCommitment);
         }
     }
     super::aid::require_support_rows(opening, fresh_aid, facts.period, aid_support)?;
     let choice = commitment.command.choice;
-    let receipt_id = identity(
+    let receipt_id = super::contract::identity(
         b"babylon.organizer-receipt.v1",
         &(
             config.campaign_id,
@@ -693,7 +788,7 @@ pub fn resolve_organizer_practice_with_time(
         contact_product_id: None,
         time_use: vec![],
     };
-    let required = required_hours(config, opening, choice);
+    let required = super::contract::required_hours(config, opening, choice);
     if choice == OrganizerChoice::Collect {
         let fact = collection_fact.ok_or(OrganizerError::CollectionSupportMissing)?;
         let resolution =
@@ -709,7 +804,7 @@ pub fn resolve_organizer_practice_with_time(
         next.standing.authorized = false;
         next.standing.paused_reason = Some(OrganizerPauseReason::Explicit);
         receipt.outcome = OrganizerOutcome::StandingPaused;
-    } else if required > committed_hours(config, config.controlled_actor_id)? {
+    } else if required > super::contract::committed_hours(config, config.controlled_actor_id)? {
         // A saved practice can lose eligibility between periods; no invented
         // resource refill or silent execution replaces missing commitments.
         if super::aid::aid_kind(choice).is_none() {
@@ -737,7 +832,7 @@ pub fn resolve_organizer_practice_with_time(
         resources,
         aid_support,
     )?;
-    validate_organizer_pair(config, &next)?;
+    super::contract::validate_organizer_pair(config, &next)?;
     Ok(next)
 }
 
@@ -751,7 +846,7 @@ fn execute_practice(
     standing_origin: bool,
 ) -> Result<(), OrganizerError> {
     let choice = commitment.command.choice;
-    let required = required_hours(config, opening, choice);
+    let required = super::contract::required_hours(config, opening, choice);
     let period = next.period;
     let receipt_id = receipt.receipt_id;
     let partner = partner_for_choice(config, choice).ok_or(OrganizerError::InvalidCommitment)?;
@@ -813,7 +908,7 @@ fn execute_practice(
         }
         OrganizerChoice::Reinforce | OrganizerChoice::Hold | OrganizerChoice::ResumeStanding => {
             if receipt.partner_response == OrganizerPartnerResponse::Participated {
-                let product_id = identity(
+                let product_id = super::contract::identity(
                     b"babylon.organizer-contact-product.v1",
                     &(
                         receipt_id,
@@ -843,6 +938,12 @@ fn execute_practice(
 }
 
 /// Compose the two separately scheduled BSL operations for replay contracts.
+///
+/// # Errors
+///
+/// Returns every [`reduce_organizer_products`] and
+/// [`resolve_organizer_practice`] fault; a reduction that fails publishes
+/// nothing.
 pub fn resolve_organizer_period(
     config: &OrganizerConfig,
     opening: &OrganizerState,
@@ -909,7 +1010,7 @@ fn resolve_pending_aid(
     next.pending_aid.clear();
     let remaining_pledge =
         super::collection::remaining_collection_pledge(config, next, next.period)?;
-    let mut performed = organizer_period_receipts(next, next.period)
+    let mut performed = super::aid::organizer_period_receipts(next, next.period)
         .filter(|row| row.choice != OrganizerChoice::Collect)
         .flat_map(|row| row.time_use.iter())
         .cloned()
@@ -990,7 +1091,7 @@ fn aid_attempt_receipt(
 ) -> Result<OrganizerReceipt, OrganizerError> {
     let choice = authorization.gift.commitment.command.choice;
     Ok(OrganizerReceipt {
-        receipt_id: identity(
+        receipt_id: super::contract::identity(
             b"babylon.organizer-aid-resolution.v1",
             &(authorization.gift.commitment.commitment_id, period),
         )?,

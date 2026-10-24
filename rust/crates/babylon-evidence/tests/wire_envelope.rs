@@ -1,8 +1,7 @@
 //! Language-neutral behavioral contracts for the canonical T3 wire envelope.
 
 use babylon_evidence::{
-    canonical_envelope, decode_envelope, record_digest, Digest32, PayloadCursor, PayloadEncoder,
-    RecordDigest, SfsWireError, T3Record,
+    Digest32, PayloadCursor, PayloadEncoder, RecordDigest, SfsWireError, T3Record,
 };
 use babylon_kernel::content_digest::sha256_of;
 
@@ -201,8 +200,13 @@ fn envelope_bytes_are_domain_nul_version_length_payload() {
         &[0xaa],
     ]
     .concat();
-    assert_eq!(canonical_envelope(&OneByte(0xaa)).unwrap(), expected);
-    let digest: RecordDigest = record_digest(&OneByte(0xaa)).unwrap();
+    assert_eq!(
+        babylon_evidence::canonical_envelope(&OneByte(0xaa))
+            .expect("the record exposes its canonical envelope"),
+        expected
+    );
+    let digest: RecordDigest =
+        babylon_evidence::record_digest(&OneByte(0xaa)).expect("the record has a canonical digest");
     assert_eq!(digest.as_bytes(), &sha256_of(&expected));
     assert_eq!(digest.to_hex().len(), 64);
 
@@ -213,24 +217,29 @@ fn envelope_bytes_are_domain_nul_version_length_payload() {
 
 #[test]
 fn decode_refuses_wrong_version_trailing_and_truncated_envelopes() {
-    let bytes = canonical_envelope(&OneByte(0xaa)).unwrap();
-    assert_eq!(decode_envelope::<OneByte>(&bytes).unwrap(), OneByte(0xaa));
+    let bytes = babylon_evidence::canonical_envelope(&OneByte(0xaa))
+        .expect("the record exposes its canonical envelope");
     assert_eq!(
-        decode_envelope::<OneByte>(&bytes[..bytes.len() - 1]),
+        babylon_evidence::decode_envelope::<OneByte>(&bytes)
+            .expect("the fixture world holds the addressed component"),
+        OneByte(0xaa)
+    );
+    assert_eq!(
+        babylon_evidence::decode_envelope::<OneByte>(&bytes[..bytes.len() - 1]),
         Err(SfsWireError::TruncatedEnvelope)
     );
 
     let mut trailing = bytes.clone();
     trailing.push(0);
     assert_eq!(
-        decode_envelope::<OneByte>(&trailing),
+        babylon_evidence::decode_envelope::<OneByte>(&trailing),
         Err(SfsWireError::TrailingBytes { count: 1 })
     );
 
     let mut wrong_domain = bytes.clone();
     wrong_domain[0] = b'B';
     assert_eq!(
-        decode_envelope::<OneByte>(&wrong_domain),
+        babylon_evidence::decode_envelope::<OneByte>(&wrong_domain),
         Err(SfsWireError::WrongDomain)
     );
 
@@ -238,7 +247,7 @@ fn decode_refuses_wrong_version_trailing_and_truncated_envelopes() {
     let version_index = OneByte::DOMAIN.len() + 1;
     version_two[version_index..version_index + 2].copy_from_slice(&2_u16.to_be_bytes());
     assert_eq!(
-        decode_envelope::<OneByte>(&version_two),
+        babylon_evidence::decode_envelope::<OneByte>(&version_two),
         Err(SfsWireError::UnsupportedSchemaVersion { found: 2 })
     );
 }
@@ -246,29 +255,33 @@ fn decode_refuses_wrong_version_trailing_and_truncated_envelopes() {
 #[test]
 fn static_domains_and_record_payload_maximum_are_closed() {
     assert_eq!(
-        canonical_envelope(&EmptyDomain),
+        babylon_evidence::canonical_envelope(&EmptyDomain),
         Err(SfsWireError::DomainEmpty)
     );
     assert_eq!(
-        canonical_envelope(&NulDomain),
+        babylon_evidence::canonical_envelope(&NulDomain),
         Err(SfsWireError::DomainContainsNul)
     );
     assert_eq!(
-        canonical_envelope(&NonAsciiDomain),
+        babylon_evidence::canonical_envelope(&NonAsciiDomain),
         Err(SfsWireError::DomainNonAscii)
     );
     assert_eq!(
-        canonical_envelope(&OverlongDomain),
+        babylon_evidence::canonical_envelope(&OverlongDomain),
         Err(SfsWireError::DomainTooLong)
     );
-    let max_domain = canonical_envelope(&MaxDomain).unwrap();
-    assert_eq!(decode_envelope::<MaxDomain>(&max_domain), Ok(MaxDomain));
+    let max_domain = babylon_evidence::canonical_envelope(&MaxDomain)
+        .expect("the record exposes its canonical envelope");
     assert_eq!(
-        decode_envelope::<EmptyDomain>(&[]),
+        babylon_evidence::decode_envelope::<MaxDomain>(&max_domain),
+        Ok(MaxDomain)
+    );
+    assert_eq!(
+        babylon_evidence::decode_envelope::<EmptyDomain>(&[]),
         Err(SfsWireError::DomainEmpty)
     );
     assert_eq!(
-        canonical_envelope(&TooMuchPayload(1)),
+        babylon_evidence::canonical_envelope(&TooMuchPayload(1)),
         Err(SfsWireError::PayloadTooLong {
             limit: 0,
             actual: 1,
@@ -276,7 +289,7 @@ fn static_domains_and_record_payload_maximum_are_closed() {
     );
     let oversized = literal_envelope(TooMuchPayload::DOMAIN, 1, &[1]);
     assert_eq!(
-        decode_envelope::<TooMuchPayload>(&oversized),
+        babylon_evidence::decode_envelope::<TooMuchPayload>(&oversized),
         Err(SfsWireError::PayloadTooLong {
             limit: 0,
             actual: 1,
@@ -287,22 +300,29 @@ fn static_domains_and_record_payload_maximum_are_closed() {
 #[test]
 fn ascii_strings_are_nonempty_bounded_and_ascii() {
     let valid = AsciiText("sha256".to_owned());
-    let encoded = canonical_envelope(&valid).unwrap();
-    assert_eq!(decode_envelope::<AsciiText>(&encoded).unwrap(), valid);
-    let exact_max = AsciiText("a".repeat(64));
-    let exact_max_bytes = canonical_envelope(&exact_max).unwrap();
+    let encoded = babylon_evidence::canonical_envelope(&valid)
+        .expect("the record exposes its canonical envelope");
     assert_eq!(
-        decode_envelope::<AsciiText>(&exact_max_bytes).unwrap(),
+        babylon_evidence::decode_envelope::<AsciiText>(&encoded)
+            .expect("the fixture world holds the addressed component"),
+        valid
+    );
+    let exact_max = AsciiText("a".repeat(64));
+    let exact_max_bytes = babylon_evidence::canonical_envelope(&exact_max)
+        .expect("the record exposes its canonical envelope");
+    assert_eq!(
+        babylon_evidence::decode_envelope::<AsciiText>(&exact_max_bytes)
+            .expect("the fixture world holds the addressed component"),
         exact_max
     );
     assert_eq!(
-        canonical_envelope(&AsciiText(String::new())),
+        babylon_evidence::canonical_envelope(&AsciiText(String::new())),
         Err(SfsWireError::StringEmpty {
             field: "algorithm_id"
         })
     );
     assert_eq!(
-        canonical_envelope(&AsciiText("a".repeat(65))),
+        babylon_evidence::canonical_envelope(&AsciiText("a".repeat(65))),
         Err(SfsWireError::StringTooLong {
             field: "algorithm_id",
             limit: 64,
@@ -310,7 +330,7 @@ fn ascii_strings_are_nonempty_bounded_and_ascii() {
         })
     );
     assert_eq!(
-        canonical_envelope(&AsciiText("café".to_owned())),
+        babylon_evidence::canonical_envelope(&AsciiText("café".to_owned())),
         Err(SfsWireError::NonAscii {
             field: "algorithm_id"
         })
@@ -323,18 +343,25 @@ fn unicode_17_nfc_accepts_the_full_scalar_witness_corpus() {
     let witnesses = ["café", "\u{100}", "مرحبا", "漢字", "q\u{307}", "\u{10000}"];
     for witness in witnesses {
         let value = NfcText(witness.to_owned());
-        let bytes = canonical_envelope(&value).unwrap();
-        assert_eq!(decode_envelope::<NfcText>(&bytes).unwrap(), value);
+        let bytes = babylon_evidence::canonical_envelope(&value)
+            .expect("the record exposes its canonical envelope");
+        assert_eq!(
+            babylon_evidence::decode_envelope::<NfcText>(&bytes)
+                .expect("the fixture world holds the addressed component"),
+            value
+        );
     }
     let exact_max = NfcText("a".repeat(256));
-    let exact_max_bytes = canonical_envelope(&exact_max).unwrap();
+    let exact_max_bytes = babylon_evidence::canonical_envelope(&exact_max)
+        .expect("the record exposes its canonical envelope");
     assert_eq!(
-        decode_envelope::<NfcText>(&exact_max_bytes).unwrap(),
+        babylon_evidence::decode_envelope::<NfcText>(&exact_max_bytes)
+            .expect("the fixture world holds the addressed component"),
         exact_max
     );
 
     assert_eq!(
-        canonical_envelope(&NfcText("cafe\u{301}".to_owned())),
+        babylon_evidence::canonical_envelope(&NfcText("cafe\u{301}".to_owned())),
         Err(SfsWireError::NonNfc { field: "text" })
     );
     let decomposed = "cafe\u{301}".as_bytes();
@@ -347,11 +374,11 @@ fn unicode_17_nfc_accepts_the_full_scalar_witness_corpus() {
     decomposed_payload.extend_from_slice(decomposed);
     let decomposed_envelope = literal_envelope(NfcText::DOMAIN, 1, &decomposed_payload);
     assert_eq!(
-        decode_envelope::<NfcText>(&decomposed_envelope),
+        babylon_evidence::decode_envelope::<NfcText>(&decomposed_envelope),
         Err(SfsWireError::NonNfc { field: "text" })
     );
     assert_eq!(
-        canonical_envelope(&NfcText("a".repeat(257))),
+        babylon_evidence::canonical_envelope(&NfcText("a".repeat(257))),
         Err(SfsWireError::StringTooLong {
             field: "text",
             limit: 256,
@@ -361,7 +388,7 @@ fn unicode_17_nfc_accepts_the_full_scalar_witness_corpus() {
 
     let invalid_utf8 = literal_envelope(NfcText::DOMAIN, 1, &[0, 1, 0xff]);
     assert_eq!(
-        decode_envelope::<NfcText>(&invalid_utf8),
+        babylon_evidence::decode_envelope::<NfcText>(&invalid_utf8),
         Err(SfsWireError::InvalidUtf8 { field: "text" })
     );
 }
@@ -387,26 +414,36 @@ fn nfc_comparison_uses_exactly_256_loop_iterations_then_checks_exhaustion() {
 fn finite_binary64_is_big_endian_and_normalizes_either_zero_sign() {
     let signed = SignedFloat(-1.5);
     let expected = literal_envelope(SignedFloat::DOMAIN, 1, &(-1.5_f64).to_bits().to_be_bytes());
-    assert_eq!(canonical_envelope(&signed).unwrap(), expected);
-    assert_eq!(decode_envelope::<SignedFloat>(&expected).unwrap(), signed);
+    assert_eq!(
+        babylon_evidence::canonical_envelope(&signed)
+            .expect("the record exposes its canonical envelope"),
+        expected
+    );
+    assert_eq!(
+        babylon_evidence::decode_envelope::<SignedFloat>(&expected)
+            .expect("the fixture world holds the addressed component"),
+        signed
+    );
 
-    let negative_zero = canonical_envelope(&SignedFloat(-0.0)).unwrap();
+    let negative_zero = babylon_evidence::canonical_envelope(&SignedFloat(-0.0))
+        .expect("the record exposes its canonical envelope");
     assert_eq!(&negative_zero[negative_zero.len() - 8..], &[0; 8]);
-    let decoded_zero = decode_envelope::<SignedFloat>(&negative_zero).unwrap();
+    let decoded_zero = babylon_evidence::decode_envelope::<SignedFloat>(&negative_zero)
+        .expect("the fixture world holds the addressed component");
     assert_eq!(decoded_zero.0.to_bits(), 0);
 
     assert_eq!(
-        canonical_envelope(&NonNegativeFloat(-1.0)),
+        babylon_evidence::canonical_envelope(&NonNegativeFloat(-1.0)),
         Err(SfsWireError::Negative { field: "value" })
     );
     for value in [f64::INFINITY, f64::NEG_INFINITY, f64::NAN] {
         assert_eq!(
-            canonical_envelope(&SignedFloat(value)),
+            babylon_evidence::canonical_envelope(&SignedFloat(value)),
             Err(SfsWireError::NonFinite { field: "value" })
         );
         let nonfinite = literal_envelope(SignedFloat::DOMAIN, 1, &value.to_bits().to_be_bytes());
         assert_eq!(
-            decode_envelope::<SignedFloat>(&nonfinite),
+            babylon_evidence::decode_envelope::<SignedFloat>(&nonfinite),
             Err(SfsWireError::NonFinite { field: "value" })
         );
     }
@@ -416,7 +453,7 @@ fn finite_binary64_is_big_endian_and_normalizes_either_zero_sign() {
         &(-1.0_f64).to_bits().to_be_bytes(),
     );
     assert_eq!(
-        decode_envelope::<NonNegativeFloat>(&encoded_negative),
+        babylon_evidence::decode_envelope::<NonNegativeFloat>(&encoded_negative),
         Err(SfsWireError::Negative { field: "value" })
     );
 }
@@ -434,8 +471,13 @@ fn primitive_helpers_and_complete_nested_envelopes_are_exact_inverses() {
         text: "café".to_owned(),
         nested: OneByte(0xaa),
     };
-    let bytes = canonical_envelope(&value).unwrap();
-    assert_eq!(decode_envelope::<PrimitiveRecord>(&bytes).unwrap(), value);
+    let bytes = babylon_evidence::canonical_envelope(&value)
+        .expect("the record exposes its canonical envelope");
+    assert_eq!(
+        babylon_evidence::decode_envelope::<PrimitiveRecord>(&bytes)
+            .expect("the fixture world holds the addressed component"),
+        value
+    );
 
     let mut underflow = PayloadCursor::new(&[0; 7]);
     assert_eq!(underflow.read_u64(), Err(SfsWireError::TruncatedEnvelope));

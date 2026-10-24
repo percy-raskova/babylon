@@ -1,6 +1,7 @@
 //! Exact source-vintage membership, independent of county syntax.
 use super::{CountyGeoid, CountyJurisdiction};
-use crate::content_digest::sha256_of;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 use std::sync::Arc;
 
 /// The qualified TIGER2024 fifty-state/DC county and county-equivalent count.
@@ -13,7 +14,10 @@ const ROSTER_SHA256: [u8; 32] = [
 
 /// An immutable, cheap-to-share proof of exact current domestic county membership.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct NationalCountyRoster(Arc<[CountyGeoid]>);
+pub struct NationalCountyRoster(
+    // STYLE-EXCEPTION(EXC-04): county membership is one immutable snapshot shared by every reader.
+    Arc<[CountyGeoid]>,
+);
 
 /// Membership failures never repair, sort or invent a county.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -54,7 +58,7 @@ impl NationalCountyRoster {
             bytes.extend_from_slice(&county.as_bytes());
             bytes.push(b'\n');
         }
-        if sha256_of(&bytes) != ROSTER_SHA256 {
+        if crate::content_digest::sha256_of(&bytes) != ROSTER_SHA256 {
             return Err(NationalCountyRosterError::Digest);
         }
         Ok(Self(counties.into()))
@@ -76,7 +80,7 @@ impl NationalCountyRoster {
     }
 }
 impl std::fmt::Display for NationalCountyRosterError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         write!(f, "national county roster refused: {self:?}")
     }
 }

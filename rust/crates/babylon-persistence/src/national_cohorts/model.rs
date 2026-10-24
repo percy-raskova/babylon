@@ -1,7 +1,5 @@
-use babylon_kernel::{
-    economic_identity::{EconomicFunction, QcewOwnership},
-    geography::CountyGeoid,
-};
+use babylon_kernel::economic_identity::{EconomicFunction, QcewOwnership};
+use babylon_kernel::geography::CountyGeoid;
 
 /// Disjoint source grouping; `None` means unclassified evidence, never an executable function.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]

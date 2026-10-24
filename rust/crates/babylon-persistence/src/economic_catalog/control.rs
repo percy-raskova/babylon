@@ -1,15 +1,16 @@
 //! Explicit Michigan importer authority. No current reference file is reopened.
 use super::{
-    capture::{source, source_coverage},
     EconomicCatalogError, EconomicCatalogInput, EconomicOpening, EconomicSourceView,
     SourceArtifactKind as K,
 };
-use crate::{
-    michigan_economy::MichiganEconomy,
-    michigan_material::{MichiganDeliveryPreset, MichiganMaterialCatalog},
-    michigan_sectors::MichiganCountySectors,
-};
-type Result<T> = std::result::Result<T, EconomicCatalogError>;
+
+use super::capture;
+use crate::michigan_economy::MichiganEconomy;
+use crate::michigan_material::{MichiganDeliveryPreset, MichiganMaterialCatalog};
+use crate::michigan_sectors::MichiganCountySectors;
+use std::result::Result as StdResult;
+
+type Result<T> = StdResult<T, EconomicCatalogError>;
 
 pub(super) struct MichiganSources {
     pub(super) catalog: MichiganMaterialCatalog,
@@ -19,11 +20,12 @@ pub(super) struct MichiganSources {
 impl MichiganSources {
     pub(super) fn admit(input: &mut EconomicCatalogInput) -> Result<(Self, EconomicOpening)> {
         coverage(input)?;
-        let counties = MichiganEconomy::decode_captured(source(input, K::MichiganCountyEvidence)?)
-            .map_err(|_| EconomicCatalogError::Source(K::MichiganCountyEvidence))?;
+        let counties =
+            MichiganEconomy::decode_captured(capture::source(input, K::MichiganCountyEvidence)?)
+                .map_err(|_| EconomicCatalogError::Source(K::MichiganCountyEvidence))?;
         let sectors = MichiganCountySectors::decode_captured(
-            source(input, K::MichiganSectorEvidence)?,
-            source(input, K::MichiganSectorSources)?,
+            capture::source(input, K::MichiganSectorEvidence)?,
+            capture::source(input, K::MichiganSectorSources)?,
         )
         .map_err(|_| EconomicCatalogError::Source(K::MichiganSectorEvidence))?;
         let catalog = MichiganMaterialCatalog::from_captured_sources(input, &counties, &sectors)
@@ -103,5 +105,5 @@ fn coverage(input: &EconomicCatalogInput) -> Result<()> {
     if experiment {
         required.push(K::MichiganExperiment);
     }
-    source_coverage(input, &required, &[])
+    capture::source_coverage(input, &required, &[])
 }

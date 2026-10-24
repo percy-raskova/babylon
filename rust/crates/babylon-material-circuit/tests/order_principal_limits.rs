@@ -10,7 +10,11 @@ const COMBINED: usize = 5 * FAMILY;
 
 fn identity(index: usize) -> [u8; 32] {
     let mut bytes = [0; 32];
-    bytes[..8].copy_from_slice(&u64::try_from(index).unwrap().to_be_bytes());
+    bytes[..8].copy_from_slice(
+        &u64::try_from(index)
+            .expect("the fixture value fits the target range")
+            .to_be_bytes(),
+    );
     bytes
 }
 fn buyer() -> AccountId {
@@ -27,7 +31,8 @@ fn purchase(index: usize) -> PurchaseEscrow {
     } else {
         OutboundOrderId::Service(OrderId::from_bytes(identity(index - 3 * FAMILY)))
     };
-    PurchaseEscrow::new(order, buyer(), seller(), 1, Currency::from_micro_units(1)).unwrap()
+    PurchaseEscrow::new(order, buyer(), seller(), 1, Currency::from_micro_units(1))
+        .expect("the constructor accepts the authored fixture arguments")
 }
 fn snapshot(count: usize) -> MonetaryBookSnapshot {
     MonetaryBookSnapshot {
@@ -49,12 +54,25 @@ fn snapshot(count: usize) -> MonetaryBookSnapshot {
 }
 #[test]
 fn disjoint_purchase_principals_fill_the_combined_bound_without_losing_cash() {
-    let mut book = MonetaryBook::from_snapshot(snapshot(COMBINED - 1)).unwrap();
-    let before = book.total_cash_and_reserves().unwrap();
-    book.reserve_purchase(purchase(COMBINED - 1)).unwrap();
+    let mut book = MonetaryBook::from_snapshot(snapshot(COMBINED - 1))
+        .expect("the snapshot admits the derived value");
+    let before = book
+        .total_cash_and_reserves()
+        .expect("the fixture book totals without overflow");
+    book.reserve_purchase(purchase(COMBINED - 1))
+        .expect("the fixture reserve admits the purchase");
     assert_eq!(book.snapshot().purchases.len(), COMBINED);
-    assert_eq!(book.total_cash_and_reserves().unwrap(), before);
-    assert_eq!(book.cash(buyer()).unwrap().micro_units(), 6);
+    assert_eq!(
+        book.total_cash_and_reserves()
+            .expect("the fixture book totals without overflow"),
+        before
+    );
+    assert_eq!(
+        book.cash(buyer())
+            .expect("the fixture book holds the payer account")
+            .micro_units(),
+        6
+    );
     let mut excess = purchase(COMBINED - 1);
     excess.order = OutboundOrderId::Service(OrderId::from_bytes(identity(2 * FAMILY)));
     let unchanged = book.clone();
@@ -87,7 +105,7 @@ fn a_larger_purchase_book_does_not_enlarge_funded_shift_capacity() {
                 1,
                 Currency::from_micro_units(1),
             )
-            .unwrap()
+            .expect("the constructor accepts the authored fixture arguments")
         })
         .collect();
     assert_eq!(

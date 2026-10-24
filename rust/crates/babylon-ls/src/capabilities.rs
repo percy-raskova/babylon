@@ -99,12 +99,11 @@ pub fn server_capabilities() -> ServerCapabilities {
 
 #[cfg(test)]
 mod tests {
-    use super::server_capabilities;
-
     /// Exact golden JSON for capability drift, not just a smoke test.
     #[test]
     fn capability_advertisement_is_pinned_exactly() {
-        let value = serde_json::to_value(server_capabilities()).expect("capabilities serialize");
+        let value =
+            serde_json::to_value(super::server_capabilities()).expect("capabilities serialize");
         let expected = serde_json::json!({
             "textDocumentSync": { "openClose": true, "change": 1 },
             "hoverProvider": true,

@@ -1,35 +1,50 @@
 //! Source-only economic authority, independently of the initial mutable checkpoint.
 use std::collections::BTreeSet;
 
-use babylon_graph::{stable_element::StableElementKey, stable_state::StableGraphStateRows};
-use babylon_kernel::content_digest::sha256_of;
+use babylon_graph::stable_element::StableElementKey;
+use babylon_graph::stable_state::StableGraphStateRows;
+
 use babylon_persistence::economic_catalog::{
     CapturedEconomicCatalog, CatalogCapacity, SourceArtifact, SourceArtifactKind as Kind,
 };
 
 #[path = "fixtures/national_capture.rs"]
 mod national_capture;
-use national_capture::input;
+use babylon_kernel::content_digest;
+use babylon_kernel::replay::ReplaySeed;
+use babylon_kernel::replay::ReplaySessionId;
+use babylon_persistence::economic_content::EconomicContentAdmission;
+use babylon_persistence::material_runtime::MaterialRuntimeFoundation;
+use babylon_persistence::national_economy::AidChildCapture;
+use babylon_persistence::national_economy::NationalAidCapture;
 
 #[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "`capture_retains_sources_once_and_regenerates_the_exact_native_opening` keeps one authored boundary's fixture and assertions together"
+)]
 fn capture_retains_sources_once_and_regenerates_the_exact_native_opening() {
-    let supplied = input();
+    let supplied = national_capture::input();
     let source_bytes: usize = supplied.sources.iter().map(|row| row.bytes().len()).sum();
-    let catalog = CapturedEconomicCatalog::capture(supplied, None).unwrap();
+    let catalog = CapturedEconomicCatalog::capture(supplied, None)
+        .expect("the fixture captures the authored state");
     // Framing holds only source identities, compiler selection and exact source blobs.
     // There is no per-firm or generated global-state serialization inside this envelope.
     assert!(catalog.canonical_bytes().len() < source_bytes + 4096);
-    assert_eq!(catalog.digest(), sha256_of(catalog.canonical_bytes()));
+    assert_eq!(
+        catalog.digest(),
+        content_digest::sha256_of(catalog.canonical_bytes())
+    );
     assert_eq!(catalog.compiler_version(), "national-world-v5");
     let mut obsolete = catalog.canonical_bytes().to_vec();
     let compiler = b"national-world-v5";
     let offset = obsolete
         .windows(compiler.len())
         .position(|s| s == compiler)
-        .unwrap();
+        .expect("the fixture sequence holds the addressed position");
     obsolete[offset + compiler.len() - 1] = b'1';
     assert_eq!(
-        CapturedEconomicCatalog::decode(&obsolete, sha256_of(&obsolete)),
+        CapturedEconomicCatalog::decode(&obsolete, content_digest::sha256_of(&obsolete)),
         Err(babylon_persistence::economic_catalog::EconomicCatalogError::CompilerVersion)
     );
     assert_eq!(catalog.opening().sites.len(), 60_634);
@@ -50,22 +65,24 @@ fn capture_retains_sources_once_and_regenerates_the_exact_native_opening() {
         catalog.opening().capacity,
         CatalogCapacity::Rolling(babylon_material_circuit::RollingProcessSupply::Equipment(_))
     ));
-    let aid = catalog.national_aid_capture().unwrap().clone();
+    let aid = catalog
+        .national_aid_capture()
+        .expect("the fixture call `national_aid_capture` succeeds for the authored inputs")
+        .clone();
     let catalog_bytes = catalog.canonical_bytes().len();
     let catalog_digest = catalog.digest();
     let expected_opening = catalog.opening().clone();
     let original = catalog
         .create_foundation(
-            babylon_kernel::replay::ReplaySessionId::try_from("national-captured-contract")
-                .unwrap(),
-            babylon_kernel::replay::ReplaySeed::new(319),
+            ReplaySessionId::try_from("national-captured-contract")
+                .expect("the fixture value fits the target range"),
+            ReplaySeed::new(319),
         )
-        .unwrap();
+        .expect("the authored catalog builds the foundation");
     let graph_bytes = original.graph_foundation().canonical_bytes().len();
-    let graph_digest = sha256_of(original.graph_foundation().canonical_bytes());
-    let original =
-        babylon_persistence::economic_content::EconomicContentAdmission::from_foundation(original)
-            .unwrap();
+    let graph_digest = content_digest::sha256_of(original.graph_foundation().canonical_bytes());
+    let original = EconomicContentAdmission::from_foundation(original)
+        .expect("the foundation admits the derived value");
     let expected_nodes = 3_144
         + expected_opening.sites.len()
         + expected_opening.households.len()
@@ -84,7 +101,7 @@ fn capture_retains_sources_once_and_regenerates_the_exact_native_opening() {
         catalog_bytes,
         graph_bytes,
         original.initial_register().canonical_bytes().len(),
-        original.canonical_len().unwrap(),
+        original.canonical_len().expect("the fixture call `canonical_len` succeeds for the authored inputs"),
         original.foundation_graph().rows().nodes().len(),
     );
     eprintln!(
@@ -92,29 +109,35 @@ fn capture_retains_sources_once_and_regenerates_the_exact_native_opening() {
         original.initial_register().digest(),
         original.digest(),
     );
-    let restored = babylon_persistence::material_runtime::MaterialRuntimeFoundation::decode(
-        &original.export_canonical_bytes().unwrap(),
+    let restored = MaterialRuntimeFoundation::decode(
+        &original
+            .export_canonical_bytes()
+            .expect("the content exports its canonical bytes"),
         original.digest(),
     )
-    .unwrap();
+    .expect("the committed canonical bytes decode");
     assert_eq!(
-        restored.export_canonical_bytes().unwrap(),
-        original.export_canonical_bytes().unwrap()
+        restored
+            .export_canonical_bytes()
+            .expect("the content exports its canonical bytes"),
+        original
+            .export_canonical_bytes()
+            .expect("the content exports its canonical bytes")
     );
     assert_eq!(restored.initial_register(), original.initial_register());
     let catalog = restored
         .graph_foundation()
         .content_bundle()
         .economic_catalog()
-        .unwrap();
+        .expect("the fixture call `economic_catalog` succeeds for the authored inputs");
     assert_eq!(catalog.opening(), &expected_opening);
 }
 
 // These Designed children refine captured household budgets. Recipient classes
 // have no fabricated workplace; the employed donor reuses its staffing node.
 fn admitted_aid_class_count(
-    admitted: &babylon_persistence::economic_content::EconomicContentAdmission,
-    aid: &babylon_persistence::national_economy::NationalAidCapture,
+    admitted: &EconomicContentAdmission,
+    aid: &NationalAidCapture,
 ) -> usize {
     let opening = admitted.view().opening;
     let rows = admitted.foundation_graph().rows();
@@ -150,7 +173,7 @@ fn admitted_aid_class_count(
             .households
             .iter()
             .find(|h| h.principal_id == child.principal)
-            .unwrap();
+            .expect("the fixture holds the searched element");
         assert_eq!(household.subject, child.subject);
         assert_eq!(household.location, child.location);
         assert_eq!(
@@ -186,10 +209,7 @@ fn admitted_aid_class_count(
     extra_classes.len()
 }
 
-fn assert_inactive_recipient(
-    child: &babylon_persistence::national_economy::AidChildCapture,
-    rows: &StableGraphStateRows,
-) {
+fn assert_inactive_recipient(child: &AidChildCapture, rows: &StableGraphStateRows) {
     let class = node_name(&child.class_subject);
     assert_eq!((child.employed, child.reserve), (0, 0));
     assert_eq!((child.persons, child.households, child.inactive), (4, 4, 4));
@@ -201,9 +221,10 @@ fn assert_inactive_recipient(
     assert_eq!(
         child.location,
         babylon_kernel::economic_location::EconomicLocation::domestic_county(
-            babylon_kernel::geography::CountyGeoid::try_from(county).unwrap()
+            babylon_kernel::geography::CountyGeoid::try_from(county)
+                .expect("the fixture value fits the target range")
         )
-        .unwrap()
+        .expect("the fixture geoid names a domestic county")
     );
     let attributes: BTreeSet<_> = rows
         .node_f64()
@@ -238,25 +259,25 @@ fn node_name(key: &StableElementKey) -> &str {
 
 #[test]
 fn absent_duplicate_or_forged_sources_never_fall_back_to_current_files() {
-    let mut missing = input();
+    let mut missing = national_capture::input();
     missing
         .sources
         .retain(|source| source.kind() != Kind::NationalCohorts);
     assert!(CapturedEconomicCatalog::capture(missing, None).is_err());
-    let mut absent_households = input();
+    let mut absent_households = national_capture::input();
     absent_households
         .sources
         .retain(|source| source.kind() != Kind::NationalHouseholds);
     assert!(CapturedEconomicCatalog::capture(absent_households, None).is_err());
-    let mut duplicate = input();
+    let mut duplicate = national_capture::input();
     duplicate.sources.push(duplicate.sources[0].clone());
     assert!(CapturedEconomicCatalog::capture(duplicate, None).is_err());
-    let mut changed = input();
+    let mut changed = national_capture::input();
     let index = changed
         .sources
         .iter()
         .position(|row| row.kind() == Kind::NationalCounties)
-        .unwrap();
+        .expect("the fixture sequence holds the addressed position");
     let mut bytes = changed.sources[index].bytes().to_vec();
     bytes[20] ^= 1;
     changed.sources[index] = SourceArtifact::capture(Kind::NationalCounties, bytes);

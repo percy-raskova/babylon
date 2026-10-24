@@ -1,13 +1,16 @@
 //! Active order witnesses and bounded cumulative totals from authenticated periods.
 //! This index is presentation evidence, never retained simulation state.
+use super::lifecycle::PeriodOrders;
 use super::ProductionProjectionError;
+use babylon_material_circuit::OrderRow;
 use babylon_material_circuit::{
     FinalDemandOrder, FinalDemandPrincipalId, GoodId, MaterialCircuitState, OrderId, RouteId,
     SiteId, UnitId,
 };
 use std::collections::{BTreeMap, BTreeSet};
+use std::result::Result as StdResult;
 
-type Result<T> = std::result::Result<T, ProductionProjectionError>;
+type Result<T> = StdResult<T, ProductionProjectionError>;
 #[derive(Clone, PartialEq, Eq)]
 pub(crate) struct Delivery {
     pub route: RouteId,
@@ -187,11 +190,7 @@ impl OrderHistory {
     }
 
     /// Retain only the single lifecycle validator's completed witnesses.
-    pub fn record(
-        &mut self,
-        prior: &MaterialCircuitState,
-        period: &super::lifecycle::PeriodOrders,
-    ) -> Result<()> {
+    pub fn record(&mut self, prior: &MaterialCircuitState, period: &PeriodOrders) -> Result<()> {
         self.retire(prior)?;
         let prior_delivery: BTreeSet<_> = prior.orders.iter().map(|r| r.order_id).collect();
         let prior_final: BTreeSet<_> = prior
@@ -277,7 +276,7 @@ impl OrderHistory {
         }
     }
 }
-fn delivery(row: &babylon_material_circuit::OrderRow, route: RouteId) -> Delivery {
+fn delivery(row: &OrderRow, route: RouteId) -> Delivery {
     Delivery {
         route,
         supplier: row.supplier_site_id,
@@ -316,7 +315,9 @@ mod tests {
                 },
             );
         }
-        history.retire(&state).unwrap();
+        history
+            .retire(&state)
+            .expect("the fixture call `retire` succeeds for the authored inputs");
         assert!(history.deliveries.is_empty());
         assert_eq!(history.retired_deliveries.len(), 2);
         assert_eq!(

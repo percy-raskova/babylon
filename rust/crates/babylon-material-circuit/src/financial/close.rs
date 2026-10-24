@@ -1,11 +1,14 @@
-use super::{
-    add, available, fraction, sub, zero, CapitalContributionReceipt, DistributionReceipt,
-    PublicBudgetReceipt, Result, TaxReceipt,
-};
+use super::CapitalContributionReceipt;
+use super::DistributionReceipt;
+use super::PublicBudgetReceipt;
+use super::Result;
+use super::TaxReceipt;
+use crate::valuation::CostClose;
 use crate::{
-    valuation::CostClose, AccountId, CashTransferPurpose, CircuitAccounting, MaterialCircuitState,
-    MoneyTransferReceipt,
+    AccountId, CashTransferPurpose, CircuitAccounting, MaterialCircuitState, MoneyTransferReceipt,
 };
+
+use crate::MaterialCircuitError;
 use babylon_kernel::currency::Currency;
 use std::collections::BTreeMap;
 
@@ -56,10 +59,10 @@ impl FinancialClose {
             }
             let balance = remaining
                 .get_mut(&r.contributor)
-                .ok_or(crate::MaterialCircuitError::FinancialInvariant)?;
+                .ok_or(MaterialCircuitError::FinancialInvariant)?;
             let paid = r.amount.min(*balance);
-            *balance = sub(*balance, paid)?;
-            if paid > zero() {
+            *balance = super::sub(*balance, paid)?;
+            if paid > super::zero() {
                 movements.push(e.book.transfer_cash(
                     r.contributor,
                     AccountId::Site(r.issuer_site_id),
@@ -75,7 +78,7 @@ impl FinancialClose {
                 issuer_site_id: r.issuer_site_id,
                 requested: r.amount,
                 paid,
-                unfunded: sub(r.amount, paid)?,
+                unfunded: super::sub(r.amount, paid)?,
             });
         }
         e.financial.contributions = future;
@@ -95,16 +98,16 @@ impl FinancialClose {
             let cash = e.book.cash(AccountId::Public(r.public_account))?;
             budgets.insert(
                 r.public_account,
-                r.period_cap.min(available(cash, r.cash_floor)?),
+                r.period_cap.min(super::available(cash, r.cash_floor)?),
             );
         }
         for r in &e.financial.public_allocations {
             let remaining = budgets
                 .get_mut(&r.public_account)
-                .ok_or(crate::MaterialCircuitError::FinancialInvariant)?;
+                .ok_or(MaterialCircuitError::FinancialInvariant)?;
             let paid = r.amount_per_period.min(*remaining);
-            *remaining = sub(*remaining, paid)?;
-            if paid > zero() {
+            *remaining = super::sub(*remaining, paid)?;
+            if paid > super::zero() {
                 let sender = AccountId::Public(r.public_account);
                 movements.push(e.book.transfer_cash(
                     sender,
@@ -122,7 +125,7 @@ impl FinancialClose {
                 priority: r.priority,
                 requested: r.amount_per_period,
                 paid,
-                unfunded: sub(r.amount_per_period, paid)?,
+                unfunded: super::sub(r.amount_per_period, paid)?,
             });
         }
         Ok(())
@@ -143,8 +146,9 @@ impl FinancialClose {
             .iter()
             .map(|r| {
                 let taxable_amount = costs.tax_base(r.payer, r.basis)?;
-                let assessed = fraction(taxable_amount, u64::from(r.rate_bps), 10_000)?;
-                let collected = assessed.min(available(e.book.cash(r.payer)?, r.cash_floor)?);
+                let assessed = super::fraction(taxable_amount, u64::from(r.rate_bps), 10_000)?;
+                let collected =
+                    assessed.min(super::available(e.book.cash(r.payer)?, r.cash_floor)?);
                 Ok(TaxReceipt {
                     period: state.period,
                     payer: r.payer,
@@ -154,12 +158,12 @@ impl FinancialClose {
                     taxable_amount,
                     assessed,
                     collected,
-                    uncollected: sub(assessed, collected)?,
+                    uncollected: super::sub(assessed, collected)?,
                 })
             })
             .collect::<Result<Vec<_>>>()?;
         for r in assessments {
-            if r.collected > zero() {
+            if r.collected > super::zero() {
                 let recipient = AccountId::Public(r.public_recipient);
                 movements.push(e.book.transfer_cash(
                     r.payer,
@@ -191,9 +195,10 @@ impl FinancialClose {
             .map(|r| {
                 let issuer = AccountId::Site(r.issuer_site_id);
                 let earnings = costs.eligible_earnings(issuer)?;
-                let declared = fraction(earnings, u64::from(r.earnings_fraction_bps), 10_000)?
-                    .min(r.period_cap)
-                    .min(available(e.book.cash(issuer)?, r.cash_floor)?);
+                let declared =
+                    super::fraction(earnings, u64::from(r.earnings_fraction_bps), 10_000)?
+                        .min(r.period_cap)
+                        .min(super::available(e.book.cash(issuer)?, r.cash_floor)?);
                 Ok((r.issuer_site_id, earnings, declared))
             })
             .collect::<Result<Vec<_>>>()?;
@@ -209,20 +214,20 @@ impl FinancialClose {
             let claims = &e.financial.ownership[start..end];
             let total = claims.iter().try_fold(0_u64, |n, r| {
                 n.checked_add(r.shares)
-                    .ok_or(crate::MaterialCircuitError::Arithmetic)
+                    .ok_or(MaterialCircuitError::Arithmetic)
             })?;
-            let floors = claims
-                .iter()
-                .try_fold(zero(), |n, r| add(n, fraction(declared, r.shares, total)?))?;
-            let mut remainder = sub(declared, floors)?.micro_units();
+            let floors = claims.iter().try_fold(super::zero(), |n, r| {
+                super::add(n, super::fraction(declared, r.shares, total)?)
+            })?;
+            let mut remainder = super::sub(declared, floors)?.micro_units();
             for r in claims {
                 let extra = i128::from(remainder > 0);
                 remainder -= extra;
-                let paid = add(
-                    fraction(declared, r.shares, total)?,
+                let paid = super::add(
+                    super::fraction(declared, r.shares, total)?,
                     Currency::from_micro_units(extra),
                 )?;
-                if paid > zero() {
+                if paid > super::zero() {
                     movements.push(e.book.transfer_cash(
                         AccountId::Site(issuer),
                         r.beneficiary,

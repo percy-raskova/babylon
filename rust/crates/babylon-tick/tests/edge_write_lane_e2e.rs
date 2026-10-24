@@ -25,12 +25,19 @@
 //! binary64 (dyadic rationals only — `edge_lane_e2e.rs`'s discipline): plain
 //! `f64` equality is the right assertion throughout.
 
+// Conformance fixtures exercise exact engine values, transcribe spec literals,
+// and build whole scenarios in one test. These pedantic lints would force
+// ceremony that hides those contracts, so they stay off in test code only.
+#![allow(
+    clippy::float_cmp,
+    reason = "these comparisons pin exact authored f64 values"
+)]
+
 use babylon_bsl::evaluator::Value;
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_graph::state_hash::CanonicalState;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
-use babylon_tick::run_once_into;
 
 const SCENARIO: &str = include_str!("../content/scenarios/edge-write-lane-e2e.bscn");
 
@@ -75,23 +82,23 @@ const RULE_FOR_EACH_WRITES: &str = r#"
 fn shape_1_for_each_over_edges_writes_every_edge_and_the_emit_reads_pre_state() {
     let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
-    let report = run_once_into(SCENARIO, RULE_FOR_EACH_WRITES, &mut graph, &mut sink)
+    let report = babylon_tick::run_once_into(SCENARIO, RULE_FOR_EACH_WRITES, &mut graph, &mut sink)
         .expect("the for-each write rule must load and run through run_once_into");
     assert_eq!(report.fired, 1, "only writer (shape=1) fires");
 
     // The writes landed, per element, through the production collect path.
     let strength_ab = graph
         .edge_attribute("SOLIDARITY", BASE_A, BASE_B, "solidarity/strength")
-        .unwrap();
+        .expect("the fixture edge carries the authored attribute");
     let strength_bc = graph
         .edge_attribute("SOLIDARITY", BASE_B, BASE_C, "solidarity/strength")
-        .unwrap();
+        .expect("the fixture edge carries the authored attribute");
     assert_eq!(strength_ab, 0.25, "0.5 scaled by 0.5");
     assert_eq!(strength_bc, 0.125, "0.25 scaled by 0.5");
     for (from, to) in [(BASE_A, BASE_B), (BASE_B, BASE_C)] {
         let tension = graph
             .edge_attribute("SOLIDARITY", from, to, "solidarity/tension")
-            .unwrap();
+            .expect("the fixture edge carries the authored attribute");
         assert_eq!(tension, 0.75, "the deffield field set per element");
     }
 
@@ -125,8 +132,9 @@ fn shape_1_for_each_over_edges_writes_every_edge_and_the_emit_reads_pre_state() 
     // hashes.
     let mut graph2 = HypergraphStore::new();
     let mut sink2 = CollectingSink::default();
-    let report2 = run_once_into(SCENARIO, RULE_FOR_EACH_WRITES, &mut graph2, &mut sink2)
-        .expect("the determinism leg's run must succeed");
+    let report2 =
+        babylon_tick::run_once_into(SCENARIO, RULE_FOR_EACH_WRITES, &mut graph2, &mut sink2)
+            .expect("the determinism leg's run must succeed");
     assert_eq!(report.before, report2.before);
     assert_eq!(report.after, report2.after);
 }
@@ -139,7 +147,7 @@ fn shape_1_for_each_over_edges_writes_every_edge_and_the_emit_reads_pre_state() 
 /// production path. Also pinned: the untouched second edge's tension was
 /// NEVER written and reads loud (the honest-null discipline end-to-end).
 ///
-/// **Determinism caveat (edge_lane_e2e.rs's own, restated):** the
+/// **Determinism caveat (`edge_lane_e2e.rs`'s own, restated):** the
 /// `select-max` scores by the constant `1` — deterministic ONLY because
 /// `base-a`'s `:out` SOLIDARITY neighbor set is a singleton (`base-b`).
 ///
@@ -170,22 +178,22 @@ const RULE_TARGETED_WRITE: &str = r#"
 fn shape_2_edge_between_targets_one_edges_write_and_the_other_stays_honest_null() {
     let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
-    let report = run_once_into(SCENARIO, RULE_TARGETED_WRITE, &mut graph, &mut sink)
+    let report = babylon_tick::run_once_into(SCENARIO, RULE_TARGETED_WRITE, &mut graph, &mut sink)
         .expect("the targeted write rule must load and run through run_once_into");
     assert_eq!(report.fired, 1, "only base-a (shape=2) fires");
 
     let strength_ab = graph
         .edge_attribute("SOLIDARITY", BASE_A, BASE_B, "solidarity/strength")
-        .unwrap();
+        .expect("the fixture edge carries the authored attribute");
     assert_eq!(strength_ab, 0.75, "0.5 + 0.25, exact");
     let tension_ab = graph
         .edge_attribute("SOLIDARITY", BASE_A, BASE_B, "solidarity/tension")
-        .unwrap();
+        .expect("the fixture edge carries the authored attribute");
     assert_eq!(tension_ab, 0.5, "the set landed");
 
     let strength_bc = graph
         .edge_attribute("SOLIDARITY", BASE_B, BASE_C, "solidarity/strength")
-        .unwrap();
+        .expect("the fixture edge carries the authored attribute");
     assert_eq!(strength_bc, 0.25, "the untouched edge's strength stands");
     assert!(
         graph

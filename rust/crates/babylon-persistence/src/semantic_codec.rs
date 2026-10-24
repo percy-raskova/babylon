@@ -2,15 +2,16 @@
 //! writer, restart reconstruction, and exact contract vectors.
 
 use crate::committed_tick_envelope::{
-    compose_row_families, CommittedTickEnvelopeError, CommittedTickRow, CommittedTickRowFamilies,
-    CommittedTickRowFamily,
+    CommittedTickEnvelopeError, CommittedTickRow, CommittedTickRowFamilies, CommittedTickRowFamily,
 };
 use crate::identity::CampaignId;
-use babylon_bsl::identity_codec::{
-    canonical_f64_bits, encode_stable_bsl_value, IdentityCodecError, StableBslValue,
-};
+use babylon_bsl::identity_codec::{IdentityCodecError, StableBslValue};
 use babylon_graph::stable_element::StableElementKey;
-use babylon_kernel::{content_digest::sha256_of, H3CellId};
+use babylon_kernel::H3CellId;
+
+use crate::committed_tick_envelope;
+use babylon_bsl::identity_codec;
+use babylon_kernel::content_digest;
 use std::collections::TryReserveError;
 
 const LAYOUT: u32 = 1;
@@ -240,7 +241,7 @@ pub(crate) fn encode_i128(value: i128) -> Result<Vec<u8>, SemanticCodecError> {
 }
 
 pub(crate) fn encode_f64(value: f64) -> Result<Vec<u8>, SemanticCodecError> {
-    encode_fixed(&canonical_f64_bits(value)?.to_be_bytes())
+    encode_fixed(&identity_codec::canonical_f64_bits(value)?.to_be_bytes())
 }
 
 pub(crate) fn encode_h3(raw: i128) -> Result<Vec<u8>, SemanticCodecError> {
@@ -265,7 +266,7 @@ pub(crate) fn encode_optional_utf8(value: Option<&str>) -> Result<Vec<u8>, Seman
 
 pub(crate) fn encode_stable_bsl(value: &StableBslValue) -> Result<Vec<u8>, SemanticCodecError> {
     let mut output = Vec::new();
-    encode_stable_bsl_value(value, &mut output)?;
+    identity_codec::encode_stable_bsl_value(value, &mut output)?;
     let mut checked = SemanticWriter::new("stable BSL value", MAX_BYTES);
     checked.write_all(&output)?;
     Ok(checked.finish())
@@ -658,7 +659,9 @@ mod foundation_content_bounds_tests {
 
     #[test]
     fn complete_bundle_includes_framing_and_enforces_exact_aggregate_bound() {
-        let overhead = foundation_content_length(0, None, 0, 0, 0).unwrap();
+        let overhead = foundation_content_length(0, None, 0, 0, 0).expect(
+            "the fixture call `foundation_content_length` succeeds for the authored inputs",
+        );
         assert_eq!(
             foundation_content_length(0, None, 0, MAX_BYTES - overhead, 0),
             Ok(MAX_BYTES)
@@ -672,15 +675,21 @@ mod foundation_content_bounds_tests {
             Ok(overhead + 4)
         );
         let encoded =
-            encode_foundation_content("scenario", Some("prelude"), "", b"defines", b"ref").unwrap();
+            encode_foundation_content("scenario", Some("prelude"), "", b"defines", b"ref")
+                .expect("the fixture value encodes to its canonical bytes");
         assert_eq!(
             encoded.len(),
-            foundation_content_length(8, Some(7), 0, 7, 3).unwrap()
+            foundation_content_length(8, Some(7), 0, 7, 3).expect(
+                "the fixture call `foundation_content_length` succeeds for the authored inputs"
+            )
         );
     }
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "`encode_foundation` takes every authored field explicitly"
+)]
 pub(crate) fn encode_foundation(
     stable_graph: &[u8],
     world_registers: &[u8],
@@ -776,7 +785,7 @@ pub(crate) fn validate_duplicate_row_keys(key_ids: &[String]) -> Result<(), Sema
         checkpoint: Vec::new(),
         archive_dirty_receipt: encode_archive_dirty_receipt(&[0; 32])?,
     };
-    match compose_row_families(input) {
+    match committed_tick_envelope::compose_row_families(input) {
         Err(CommittedTickEnvelopeError::DuplicateRowKey { .. }) => Err(
             SemanticCodecError::Refusal(SemanticRefusalCode::DuplicateRowKey),
         ),
@@ -887,7 +896,7 @@ pub(crate) fn validate_utf8_length(length: usize) -> Result<(), SemanticCodecErr
 }
 
 pub(crate) fn digest(bytes: &[u8]) -> [u8; 32] {
-    sha256_of(bytes)
+    content_digest::sha256_of(bytes)
 }
 
 fn row_prefix(
@@ -939,7 +948,7 @@ fn append_bytes(output: &mut SemanticWriter, value: &[u8]) -> Result<(), Semanti
 }
 
 fn append_f64(output: &mut SemanticWriter, value: f64) -> Result<(), SemanticCodecError> {
-    output.write_all(&canonical_f64_bits(value)?.to_be_bytes())?;
+    output.write_all(&identity_codec::canonical_f64_bits(value)?.to_be_bytes())?;
     Ok(())
 }
 
@@ -1094,7 +1103,7 @@ fn compose_row(
 
 #[cfg(test)]
 mod allocation_tests {
-    use super::{checked_semantic_capacity, SemanticCodecError, SemanticWriter};
+    use super::{SemanticCodecError, SemanticWriter};
 
     fn refuse_reservation(_bytes: &mut Vec<u8>, _additional: usize) -> Result<(), ()> {
         Err(())
@@ -1119,7 +1128,7 @@ mod allocation_tests {
     #[test]
     fn writer_reports_arithmetic_overflow_before_allocation() {
         assert_eq!(
-            checked_semantic_capacity(usize::MAX, 1, "writer overflow", usize::MAX),
+            super::checked_semantic_capacity(usize::MAX, 1, "writer overflow", usize::MAX),
             Err(SemanticCodecError::CapacityOverflow {
                 field: "writer overflow",
             })

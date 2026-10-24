@@ -1,8 +1,9 @@
 //! Clock custody stays with the live client, outside detached reader candidates.
 
-use super::{canonical_digest, hex, Configuration, NativeAudit, Record};
+use super::MaterialAudit;
+use super::{Configuration, NativeAudit, Record};
 use crate::observer::{ObserverSession, SessionPhase};
-use babylon_kernel::content_digest::sha256_of;
+use babylon_kernel::content_digest;
 use babylon_persistence::runtime_session::{
     RuntimeSessionRequest, RuntimeSessionScope, RuntimeSessionTail,
     RUNTIME_SESSION_PROTOCOL_VERSION,
@@ -99,18 +100,20 @@ impl Pending {
             request_id: self.request_id,
             runtime_scope: &self.scope,
             foundation_sha256: &self.foundation,
-            policy_sha256: hex(&configuration
-                .policy
-                .scope(
-                    configuration.campaign,
-                    canonical_digest(&self.foundation).map_err(|e| e.to_string())?,
-                )
-                .policy),
+            policy_sha256: super::hex(
+                &configuration
+                    .policy
+                    .scope(
+                        configuration.campaign,
+                        super::canonical_digest(&self.foundation).map_err(|e| e.to_string())?,
+                    )
+                    .policy,
+            ),
             expected_tail: &self.expected,
             committed_tail: &committed.tail,
             advance_elapsed_ns: committed.advance_elapsed_ns,
             archive_elapsed_ns,
-            material_record_sha256: hex(&sha256_of(material_bytes)),
+            material_record_sha256: super::hex(&content_digest::sha256_of(material_bytes)),
         };
         let mut bytes =
             serde_json::to_vec(&receipt).map_err(|_| "native advance timing encoding failed")?;
@@ -153,11 +156,7 @@ impl NativeAudit {
             || session.runtime_scope() != Some(scope)
             || scope.epoch != bound.epoch
             || !source.agrees(session)
-            || self
-                .audit
-                .as_ref()
-                .map(super::MaterialAudit::completed_tick)
-                != Some(source.tick)
+            || self.audit.as_ref().map(MaterialAudit::completed_tick) != Some(source.tick)
             || session.phase != SessionPhase::Advancing
             || session.pending_advance_request() != Some(*request_id)
             || session.archive_verified_tick != source.tick
@@ -175,7 +174,7 @@ impl NativeAudit {
         Ok(Pending {
             request_id: *request_id,
             scope: scope.clone(),
-            foundation: hex(&bound.foundation),
+            foundation: super::hex(&bound.foundation),
             expected: expected_tail.clone(),
             started: Instant::now(),
             committed: None,
@@ -205,7 +204,7 @@ impl NativeAudit {
             || session
                 .content_hash
                 .as_deref()
-                .is_none_or(|hash| canonical_digest(hash).is_err())
+                .is_none_or(|hash| super::canonical_digest(hash).is_err())
         {
             return Err("native Commit clock differs from its sent request".into());
         }
@@ -252,31 +251,39 @@ impl NativeAudit {
 
 #[cfg(test)]
 mod tests {
-    use super::super::recovery::tests::source;
+    use super::super::recovery::tests as recovery_tests;
     use super::super::NativeAudit;
     use crate::observer::{ObserverSession, SessionPhase};
-    use crate::observer_io::{playback, tests::quit_app};
+    use crate::observer_io::runtime;
+    use crate::observer_io::tests as io_tests;
+
+    use crate::observer_io::RuntimePipe;
     use crate::observer_ui::{ObserverCommand, ObserverUiState};
+    use crate::organizer::OrganizerClient;
     use babylon_persistence::runtime_session::{
         RuntimeSessionRequest, RuntimeSessionResponse, RuntimeSessionTail,
         RUNTIME_SESSION_PROTOCOL_VERSION,
     };
     use bevy::prelude::*;
+    use std::time::Duration;
 
     #[test]
     fn ordinary_manual_and_playback_paths_own_commit_and_archive_clock_custody() {
         for automated in [false, true] {
-            let (_directory, audit, session, _status) = source();
-            let (mut app, requests, responses) = quit_app();
-            let scope = session.runtime_scope().unwrap().clone();
+            let (_directory, audit, session, _status) = recovery_tests::source();
+            let (mut app, requests, responses) = io_tests::quit_app();
+            let scope = session
+                .runtime_scope()
+                .expect("the fixture runtime scope exists")
+                .clone();
             app.insert_resource(audit)
                 .insert_resource(session)
-                .init_resource::<crate::organizer::OrganizerClient>();
+                .init_resource::<OrganizerClient>();
             if automated {
-                app.add_systems(Update, playback.after(crate::observer_io::handle_commands));
+                app.add_systems(Update, runtime::playback.after(runtime::handle_commands));
                 app.world_mut()
                     .resource_mut::<Time>()
-                    .advance_by(std::time::Duration::from_secs(1));
+                    .advance_by(Duration::from_secs(1));
             }
             app.world_mut()
                 .resource_mut::<ObserverUiState>()
@@ -289,7 +296,9 @@ mod tests {
                     ObserverCommand::Step
                 });
             app.update();
-            let RuntimeSessionRequest::Advance { request_id, .. } = requests.try_recv().unwrap()
+            let RuntimeSessionRequest::Advance { request_id, .. } = requests
+                .try_recv()
+                .expect("the producer sends before this receive")
             else {
                 panic!("ordinary client must send Advance");
             };
@@ -301,14 +310,14 @@ mod tests {
                     durable_tick: 0,
                     verified_tick: 0,
                 }))
-                .unwrap();
+                .expect("the receiver stays alive for the send");
             app.update();
             assert!(app
                 .world()
                 .resource::<NativeAudit>()
                 .advance
                 .as_ref()
-                .unwrap()
+                .expect("the fixture set the optional field before this read")
                 .committed
                 .is_none());
             responses
@@ -320,15 +329,25 @@ mod tests {
                         tick_content_hash: Some("ab".repeat(32)),
                     },
                 }))
-                .unwrap();
+                .expect("the receiver stays alive for the send");
             app.update();
             assert_eq!(
                 app.world().resource::<ObserverSession>().phase,
                 SessionPhase::Loading
             );
             let audit = app.world().resource::<NativeAudit>();
-            assert!(audit.advance.as_ref().unwrap().committed.is_some());
-            assert!(audit.advance.as_ref().unwrap().archive_elapsed_ns.is_none());
+            assert!(audit
+                .advance
+                .as_ref()
+                .expect("the fixture set the optional field before this read")
+                .committed
+                .is_some());
+            assert!(audit
+                .advance
+                .as_ref()
+                .expect("the fixture set the optional field before this read")
+                .archive_elapsed_ns
+                .is_none());
             responses
                 .send(Ok(RuntimeSessionResponse::ArchiveProgress {
                     request_id: None,
@@ -336,14 +355,14 @@ mod tests {
                     durable_tick: 1,
                     verified_tick: 1,
                 }))
-                .unwrap();
+                .expect("the receiver stays alive for the send");
             app.update();
             assert!(app
                 .world()
                 .resource::<NativeAudit>()
                 .advance
                 .as_ref()
-                .unwrap()
+                .expect("the fixture set the optional field before this read")
                 .archive_elapsed_ns
                 .is_some());
         }
@@ -351,19 +370,22 @@ mod tests {
 
     #[test]
     fn failed_enqueue_retains_no_clock_or_completed_timing_record() {
-        let (directory, audit, session, _status) = source();
-        let (mut app, _requests, _responses) = quit_app();
-        let scope = session.runtime_scope().unwrap().clone();
+        let (directory, audit, session, _status) = recovery_tests::source();
+        let (mut app, _requests, _responses) = io_tests::quit_app();
+        let scope = session
+            .runtime_scope()
+            .expect("the fixture runtime scope exists")
+            .clone();
         app.insert_resource(audit).insert_resource(session);
         app.world()
-            .resource::<crate::observer_io::RuntimePipe>()
+            .resource::<RuntimePipe>()
             .requests
             .try_send(RuntimeSessionRequest::Stop {
                 protocol_version: RUNTIME_SESSION_PROTOCOL_VERSION,
                 scope,
                 request_id: 999,
             })
-            .unwrap();
+            .expect("the bounded channel has capacity for the fixture message");
         app.world_mut()
             .resource_mut::<Messages<ObserverCommand>>()
             .write(ObserverCommand::Step);
@@ -378,47 +400,95 @@ mod tests {
 
     #[test]
     fn commit_and_archive_clocks_require_the_exact_sent_request() {
-        let (_directory, mut audit, mut session, _status) = source();
-        let request_id = session.begin_advance().unwrap();
+        let (_directory, mut audit, mut session, _status) = recovery_tests::source();
+        let request_id = session
+            .begin_advance()
+            .expect("the session begins the authored advance");
         let request = RuntimeSessionRequest::Advance {
             protocol_version: RUNTIME_SESSION_PROTOCOL_VERSION,
-            scope: session.runtime_scope().unwrap().clone(),
+            scope: session
+                .runtime_scope()
+                .expect("the fixture runtime scope exists")
+                .clone(),
             request_id,
             expected_tail: RuntimeSessionTail {
                 resolve_tick: 0,
                 tick_content_hash: None,
             },
         };
-        let pending = audit.prepare_advance(&session, &request).unwrap();
+        let pending = audit
+            .prepare_advance(&session, &request)
+            .expect("the session prepares the authored advance");
         assert!(audit.advance.is_none(), "failed enqueue cannot own a clock");
         audit.advance = Some(pending);
         assert!(audit.prepare_advance(&session, &request).is_err());
-        audit.advance_archive_progress(&session).unwrap();
-        assert!(audit.advance.as_ref().unwrap().archive_elapsed_ns.is_none());
+        audit
+            .advance_archive_progress(&session)
+            .expect("the fixture call `advance_archive_progress` succeeds for the authored inputs");
+        assert!(audit
+            .advance
+            .as_ref()
+            .expect("the fixture set the optional field before this read")
+            .archive_elapsed_ns
+            .is_none());
         assert!(session.acknowledge(request_id, 1, Some("ab".repeat(32))));
         assert!(audit.advance_committed(&session, request_id + 1).is_err());
-        assert!(audit.advance.as_ref().unwrap().committed.is_none());
-        audit.advance_committed(&session, request_id).unwrap();
+        assert!(audit
+            .advance
+            .as_ref()
+            .expect("the fixture set the optional field before this read")
+            .committed
+            .is_none());
+        audit
+            .advance_committed(&session, request_id)
+            .expect("the fixture call `advance_committed` succeeds for the authored inputs");
         assert!(audit.advance_committed(&session, request_id).is_err());
-        audit.advance_archive_progress(&session).unwrap();
-        assert!(audit.advance.as_ref().unwrap().archive_elapsed_ns.is_none());
+        audit
+            .advance_archive_progress(&session)
+            .expect("the fixture call `advance_archive_progress` succeeds for the authored inputs");
+        assert!(audit
+            .advance
+            .as_ref()
+            .expect("the fixture set the optional field before this read")
+            .archive_elapsed_ns
+            .is_none());
         session.archive_verified_tick = 1;
-        audit.advance_archive_progress(&session).unwrap();
-        let original = audit.advance.as_ref().unwrap().archive_elapsed_ns;
+        audit
+            .advance_archive_progress(&session)
+            .expect("the fixture call `advance_archive_progress` succeeds for the authored inputs");
+        let original = audit
+            .advance
+            .as_ref()
+            .expect("the fixture set the optional field before this read")
+            .archive_elapsed_ns;
         assert!(original.is_some());
-        audit.advance_archive_progress(&session).unwrap();
-        assert_eq!(audit.advance.as_ref().unwrap().archive_elapsed_ns, original);
+        audit
+            .advance_archive_progress(&session)
+            .expect("the fixture call `advance_archive_progress` succeeds for the authored inputs");
+        assert_eq!(
+            audit
+                .advance
+                .as_ref()
+                .expect("the fixture set the optional field before this read")
+                .archive_elapsed_ns,
+            original
+        );
         session.content_hash = Some("cd".repeat(32));
         assert!(audit.advance_archive_progress(&session).is_err());
     }
 
     #[test]
     fn unadmitted_source_and_changed_scope_cannot_start_or_complete_a_clock() {
-        let (_directory, mut audit, mut session, _status) = source();
-        let request_id = session.begin_advance().unwrap();
+        let (_directory, mut audit, mut session, _status) = recovery_tests::source();
+        let request_id = session
+            .begin_advance()
+            .expect("the session begins the authored advance");
         let request = RuntimeSessionRequest::Advance {
             protocol_version: RUNTIME_SESSION_PROTOCOL_VERSION,
-            scope: session.runtime_scope().unwrap().clone(),
+            scope: session
+                .runtime_scope()
+                .expect("the fixture runtime scope exists")
+                .clone(),
             request_id,
             expected_tail: RuntimeSessionTail {
                 resolve_tick: 0,
@@ -430,10 +500,19 @@ mod tests {
         if let RuntimeSessionRequest::Advance { expected_tail, .. } = &mut request {
             expected_tail.tick_content_hash = None;
         }
-        audit.advance = Some(audit.prepare_advance(&session, &request).unwrap());
+        audit.advance = Some(
+            audit
+                .prepare_advance(&session, &request)
+                .expect("the session prepares the authored advance"),
+        );
         assert!(session.acknowledge(request_id, 1, Some("ab".repeat(32))));
         session.foundation_digest = Some("cd".repeat(32));
         assert!(audit.advance_committed(&session, request_id).is_err());
-        assert!(audit.advance.as_ref().unwrap().committed.is_none());
+        assert!(audit
+            .advance
+            .as_ref()
+            .expect("the fixture set the optional field before this read")
+            .committed
+            .is_none());
     }
 }

@@ -31,11 +31,26 @@
 //! two TENANCY) — see `territory-conformance.bscn`'s own header for the
 //! full per-node conformance-case map.
 
-use babylon_bsl::scenario::load_scenario;
+// Conformance fixtures exercise exact engine values, transcribe spec literals,
+// and build whole scenarios in one test. These pedantic lints would force
+// ceremony that hides those contracts, so they stay off in test code only.
+#![allow(
+    clippy::unreadable_literal,
+    reason = "the literal is an authored byte pattern"
+)]
+#![allow(
+    clippy::float_cmp,
+    reason = "these comparisons pin exact authored f64 values"
+)]
+
+use babylon_bsl::scenario;
+use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
+use babylon_kernel::replay::ReplaySeed;
 use babylon_kernel::replay::ReplaySessionId;
-use babylon_tick::run_once_into;
+use babylon_tick::diagnostic::RuleDiagnosticSession;
+use babylon_tick::TickReport;
 
 const SCENARIO: &str = include_str!("../content/scenarios/territory-conformance.bscn");
 
@@ -53,27 +68,54 @@ const SCENARIO: &str = include_str!("../content/scenarios/territory-conformance.
 // select-max that fell back to plain id-order would still have passed).
 const SUB_THRESHOLD_HIGH: NodeId = NodeId(0);
 const SUB_THRESHOLD_LOW: NodeId = NodeId(1);
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "the named constant keeps the scenario identity map readable"
+)]
 const LATCH_TICK_SOURCE: NodeId = NodeId(2);
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "the named constant keeps the scenario identity map readable"
+)]
 const SINK_RESERVATION: NodeId = NodeId(3);
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "the named constant keeps the scenario identity map readable"
+)]
 const SINK_PENAL: NodeId = NodeId(4);
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "the named constant keeps the scenario identity map readable"
+)]
 const LATCH_NO_SINK: NodeId = NodeId(5);
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "the named constant keeps the scenario identity map readable"
+)]
 const ALREADY_LATCHED_TO_CAMP: NodeId = NodeId(6);
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "the named constant keeps the scenario identity map readable"
+)]
 const CONCENTRATION_CAMP: NodeId = NodeId(7);
 const CHAIN_1: NodeId = NodeId(8);
 const CHAIN_2: NodeId = NodeId(9);
 const CHAIN_3: NodeId = NodeId(10);
 const ISOLATED_FALLBACK: NodeId = NodeId(11);
-#[allow(dead_code)] // named for documentation symmetry with the id map above
+#[allow(
+    dead_code,
+    reason = "the named constant keeps the scenario identity map readable"
+)] // named for documentation symmetry with the id map above
 const TENANT_1: NodeId = NodeId(12);
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "the named constant keeps the scenario identity map readable"
+)]
 const TENANT_2: NodeId = NodeId(13);
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "the named constant keeps the scenario identity map readable"
+)]
 const NON_TENANT: NodeId = NodeId(14);
 
 /// Task 3, Step 2: the scenario loads clean and the node/edge census
@@ -81,7 +123,8 @@ const NON_TENANT: NodeId = NodeId(14);
 #[test]
 fn the_scenario_loads_clean_with_the_declared_census() {
     let mut graph = HypergraphStore::new();
-    let loaded = load_scenario(SCENARIO, &mut graph).expect("the scenario must load clean");
+    let loaded =
+        scenario::load_scenario(SCENARIO, &mut graph).expect("the scenario must load clean");
     assert_eq!(loaded.node_count, 15, "12 territories + 3 social classes");
     assert_eq!(loaded.edge_count, 8, "6 ADJACENCY + 2 TENANCY");
     assert_eq!(
@@ -105,7 +148,7 @@ fn the_scenario_loads_clean_with_the_declared_census() {
 #[test]
 fn every_territory_seeds_all_six_declared_fields() {
     let mut graph = HypergraphStore::new();
-    load_scenario(SCENARIO, &mut graph).expect("the scenario must load clean");
+    scenario::load_scenario(SCENARIO, &mut graph).expect("the scenario must load clean");
     for id in 0..12u64 {
         let node = NodeId(id);
         for field in [
@@ -136,18 +179,18 @@ fn a_no_op_rule_is_deterministic_across_two_independent_loads() {
   (effects
     (update-node self territory/heat (set heat))))
 "#;
-    let a = run_once_into(
+    let a = babylon_tick::run_once_into(
         SCENARIO,
         NO_OP_RULE,
         &mut HypergraphStore::new(),
-        &mut babylon_bsl::structural_verbs::CollectingSink::default(),
+        &mut CollectingSink::default(),
     )
     .expect("the scenario plus a never-firing rule must still run");
-    let b = run_once_into(
+    let b = babylon_tick::run_once_into(
         SCENARIO,
         NO_OP_RULE,
         &mut HypergraphStore::new(),
-        &mut babylon_bsl::structural_verbs::CollectingSink::default(),
+        &mut CollectingSink::default(),
     )
     .expect("second run");
     assert_eq!(a.before, b.before, "pre-tick hash reproducible");
@@ -159,10 +202,10 @@ fn a_no_op_rule_is_deterministic_across_two_independent_loads() {
 
 const TERRITORY_RULES: &str = include_str!("../content/rules/territory.bsl");
 
-fn run_territory() -> (HypergraphStore, babylon_tick::TickReport) {
+fn run_territory() -> (HypergraphStore, TickReport) {
     let mut graph = HypergraphStore::new();
-    let mut sink = babylon_bsl::structural_verbs::CollectingSink::default();
-    let report = run_once_into(SCENARIO, TERRITORY_RULES, &mut graph, &mut sink)
+    let mut sink = CollectingSink::default();
+    let report = babylon_tick::run_once_into(SCENARIO, TERRITORY_RULES, &mut graph, &mut sink)
         .expect("the territory pack must load and run");
     (graph, report)
 }
@@ -173,7 +216,7 @@ fn heat(graph: &HypergraphStore, id: NodeId) -> f64 {
         .unwrap_or_else(|e| panic!("node {id:?} territory/heat: {}", e.message))
 }
 
-/// `territory/p1-heat-dynamics`: HIGH_PROFILE gains exactly the defined
+/// `territory/p1-heat-dynamics`: `HIGH_PROFILE` gains exactly the defined
 /// `high_profile_heat_gain` (0.15) — `sub-threshold-high`'s seed 0.3 -> 0.45.
 #[test]
 fn p1_high_profile_gains_exactly_the_defined_gain() {
@@ -191,7 +234,7 @@ fn p1_high_profile_gains_exactly_the_defined_gain() {
     );
 }
 
-/// LOW_PROFILE decays by `(1 - heat_decay_rate)` = x0.9 —
+/// `LOW_PROFILE` decays by `(1 - heat_decay_rate)` = x0.9 —
 /// `sub-threshold-low`'s seed 0.4 -> ~0.36.
 #[test]
 fn p1_low_profile_decays_by_the_defined_rate() {
@@ -257,7 +300,7 @@ fn population(graph: &HypergraphStore, id: NodeId) -> f64 {
 /// `latch-tick-source` crosses the 0.8 threshold THIS tick (p1 pushes heat
 /// 0.68 -> 0.83): flag latches, rent spikes x1.5, population displaces
 /// `floor(1000 * 0.1) = 100`, and the EXTRACTION-priority tiebreak routes
-/// the transfer to `sink-penal` (PENAL_COLONY, priority 3) over
+/// the transfer to `sink-penal` (`PENAL_COLONY`, priority 3) over
 /// `sink-reservation` (RESERVATION, priority 2, declared FIRST as of the
 /// fix round's NIT-10 reorder — this test would flip if `select-max`
 /// silently fell back to declaration-id order instead of the score).
@@ -332,7 +375,7 @@ fn p2_no_sink_latched_territory_loses_population_with_nothing_gaining_it() {
 
 /// D123's frozen defect, witnessed directly (fix round MINOR-7): the
 /// `(edge EdgeType/ADJACENCY sink-penal latch-no-sink 1)` edge makes a
-/// PENAL_COLONY topologically ADJACENT to `latch-no-sink` — via
+/// `PENAL_COLONY` topologically ADJACENT to `latch-no-sink` — via
 /// `:any`, p3-spillover sees it (the heat pin above proves this) — but
 /// p2's DIRECTED `:out` sink walk requires `latch-no-sink` to be the
 /// edge's SOURCE, which it is not (the edge points INTO it), so the
@@ -390,14 +433,14 @@ fn p2_sub_threshold_territory_is_untouched() {
 /// they just do not change the rent value this test pins.
 #[test]
 fn p2_already_latched_territory_compounds_rent_across_two_ticks() {
-    let mut sink = babylon_bsl::structural_verbs::CollectingSink::default();
-    let mut session = babylon_tick::diagnostic::RuleDiagnosticSession::new(
+    let mut sink = CollectingSink::default();
+    let mut session = RuleDiagnosticSession::new(
         SCENARIO,
         None,
         TERRITORY_RULES,
         HypergraphStore::new(),
         ReplaySessionId::try_from("territory-conformance-test").expect("literal is non-empty"),
-        babylon_kernel::replay::ReplaySeed::new(0),
+        ReplaySeed::new(0),
     )
     .expect("the pack must load into a session");
     session.advance(&mut sink).expect("tick 1");
@@ -501,7 +544,7 @@ fn p3_near_ceiling_chain_node_clamps_at_exactly_one() {
 /// `isolated-fallback` carries ZERO ADJACENCY edges — the `exists` guard's
 /// fallback branch takes `(- 0 0c)` (Real zero), so its heat ends the tick
 /// BYTE-UNMOVED from whatever p1 already wrote (0.25 * 0.9 =
-/// 0.225, LOW_PROFILE decay) — the write still happens (`set clamped`),
+/// 0.225, `LOW_PROFILE` decay) — the write still happens (`set clamped`),
 /// but the value is identical to what was already there.
 #[test]
 fn p3_isolated_territory_heat_is_byte_unmoved_by_spillover() {
@@ -564,7 +607,7 @@ fn p4_camp_decay_eats_this_ticks_displaced_arrivals() {
 }
 
 /// Both TENANCY-connected classes (`tenant-1`, `tenant-2`) have their
-/// organization zeroed by `sink-penal`'s PENAL_COLONY suppression.
+/// organization zeroed by `sink-penal`'s `PENAL_COLONY` suppression.
 #[test]
 fn p4_penal_suppression_zeroes_both_tenant_classes() {
     let (graph, _report) = run_territory();
@@ -586,14 +629,14 @@ fn p4_the_unconnected_class_is_untouched() {
 }
 
 /// A RESERVATION territory is untouched by EITHER p4 rule — neither
-/// `p4-camp-decay` (guards on CONCENTRATION_CAMP) nor
-/// `p4-penal-suppression` (guards on PENAL_COLONY) fires for it.
+/// `p4-camp-decay` (guards on `CONCENTRATION_CAMP`) nor
+/// `p4-penal-suppression` (guards on `PENAL_COLONY`) fires for it.
 /// `sink-reservation` lost the p2 tiebreak (population still its seed,
 /// 200 — fix round MINOR-4: seeded NONZERO specifically so this
 /// assertion discriminates; the previous 0 seed could not distinguish
 /// "untouched" from "touched by a mutated guard that computes
-/// `floor(0 * 0.8) = 0`" — a guard-flip mutation to CONCENTRATION_CAMP
-/// or PENAL_COLONY would leave a zero-seeded node looking identical
+/// `floor(0 * 0.8) = 0`" — a guard-flip mutation to `CONCENTRATION_CAMP`
+/// or `PENAL_COLONY` would leave a zero-seeded node looking identical
 /// either way), so this test isolates the p4-specific claim: nothing
 /// ELSE wrote to it either.
 #[test]

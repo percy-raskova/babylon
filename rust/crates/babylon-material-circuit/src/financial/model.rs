@@ -1,6 +1,7 @@
 //! Captured claims and budgets; identity does not infer class or jurisdiction.
 use crate::{AccountId, PublicAccountId, SiteId};
-use babylon_kernel::{currency::Currency, economic_location::EconomicLocation};
+use babylon_kernel::currency::Currency;
+use babylon_kernel::economic_location::EconomicLocation;
 
 crate::model::identity_type!(ContributionId);
 

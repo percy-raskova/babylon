@@ -36,10 +36,21 @@
 //! `to_bits()` pin is needed (`query_lane_e2e.rs` pins bits only where a
 //! multiply introduces real rounding; nothing here multiplies).
 
+// Conformance fixtures exercise exact engine values, transcribe spec literals,
+// and build whole scenarios in one test. These pedantic lints would force
+// ceremony that hides those contracts, so they stay off in test code only.
+#![allow(
+    clippy::unreadable_literal,
+    reason = "the literal is an authored byte pattern"
+)]
+#![allow(
+    clippy::float_cmp,
+    reason = "these comparisons pin exact authored f64 values"
+)]
+
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
-use babylon_tick::run_once_into;
 
 const SCENARIO: &str = include_str!("../content/scenarios/edge-lane-e2e.bscn");
 
@@ -81,13 +92,13 @@ const RULE_EDGES_FOLD: &str = r#"
 fn shape_1_edges_fold_sums_every_solidarity_edge_in_the_graph() {
     let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
-    let report = run_once_into(SCENARIO, RULE_EDGES_FOLD, &mut graph, &mut sink)
+    let report = babylon_tick::run_once_into(SCENARIO, RULE_EDGES_FOLD, &mut graph, &mut sink)
         .expect("the edges-fold rule must load and run through run_once_into");
     assert_eq!(report.fired, 1, "only fold-reporter (shape=1) fires");
 
     let fold_total = graph
         .node_attribute(FOLD_REPORTER, "social-class/fold-total")
-        .unwrap();
+        .expect("the fixture node carries the authored attribute");
     assert_eq!(
         fold_total, 0.796875,
         "0.125 + 0.03125 + 0.015625 + 0.0625 + 0.125 + 0.1875 + 0.25 = \
@@ -153,13 +164,14 @@ const RULE_EDGE_BETWEEN_MISSING: &str = r#"
 fn shape_2a_edge_between_resolves_and_reads_strength() {
     let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
-    let report = run_once_into(SCENARIO, RULE_EDGE_BETWEEN_RESOLVES, &mut graph, &mut sink)
-        .expect("the edge-between-resolves rule must load and run through run_once_into");
+    let report =
+        babylon_tick::run_once_into(SCENARIO, RULE_EDGE_BETWEEN_RESOLVES, &mut graph, &mut sink)
+            .expect("the edge-between-resolves rule must load and run through run_once_into");
     assert_eq!(report.fired, 1, "only pair-x (shape=2) fires");
 
     let fold_total = graph
         .node_attribute(PAIR_X, "social-class/fold-total")
-        .unwrap();
+        .expect("the fixture node carries the authored attribute");
     assert_eq!(
         fold_total, 0.03125,
         "the strength seeded at (edge … pair-x pair-y 0.03125c), read back \
@@ -171,10 +183,12 @@ fn shape_2a_edge_between_resolves_and_reads_strength() {
 fn shape_2b_edge_between_on_a_missing_pair_is_e_eval_034() {
     let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
-    let err = run_once_into(SCENARIO, RULE_EDGE_BETWEEN_MISSING, &mut graph, &mut sink).expect_err(
-        "looking up the REVERSE of a seeded directional edge must abort \
+    let err =
+        babylon_tick::run_once_into(SCENARIO, RULE_EDGE_BETWEEN_MISSING, &mut graph, &mut sink)
+            .expect_err(
+                "looking up the REVERSE of a seeded directional edge must abort \
              the tick (E-EVAL-034), never yield an absent reference",
-    );
+            );
     assert!(err.contains("E-EVAL-034"), "{err}");
 }
 
@@ -209,13 +223,13 @@ const RULE_SELF_ANCHORED: &str = r#"
 fn shape_3_self_anchored_neighbors_and_edge_between_sums_incoming_strength() {
     let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
-    let report = run_once_into(SCENARIO, RULE_SELF_ANCHORED, &mut graph, &mut sink)
+    let report = babylon_tick::run_once_into(SCENARIO, RULE_SELF_ANCHORED, &mut graph, &mut sink)
         .expect("the self-anchored rule must load and run through run_once_into");
     assert_eq!(report.fired, 1, "only hub (shape=3) fires");
 
     let fold_total = graph
         .node_attribute(HUB, "social-class/fold-total")
-        .unwrap();
+        .expect("the fixture node carries the authored attribute");
     assert_eq!(
         fold_total, 0.375,
         "0.0625 + 0.125 + 0.1875 = 0.375 exactly — hub's three incoming \
@@ -239,12 +253,12 @@ fn every_succeeding_shape_is_deterministic_across_two_independent_runs() {
     ] {
         let mut graph_a = HypergraphStore::new();
         let mut sink_a = CollectingSink::default();
-        let report_a = run_once_into(SCENARIO, rule, &mut graph_a, &mut sink_a)
+        let report_a = babylon_tick::run_once_into(SCENARIO, rule, &mut graph_a, &mut sink_a)
             .unwrap_or_else(|e| panic!("{label}: first run: {e}"));
 
         let mut graph_b = HypergraphStore::new();
         let mut sink_b = CollectingSink::default();
-        let report_b = run_once_into(SCENARIO, rule, &mut graph_b, &mut sink_b)
+        let report_b = babylon_tick::run_once_into(SCENARIO, rule, &mut graph_b, &mut sink_b)
             .unwrap_or_else(|e| panic!("{label}: second run: {e}"));
 
         assert_eq!(report_a.before, report_b.before, "{label}: before hash");
@@ -264,7 +278,7 @@ fn every_succeeding_shape_is_deterministic_across_two_independent_runs() {
 fn shape_2b_error_is_deterministic_across_two_independent_runs() {
     let mut graph_a = HypergraphStore::new();
     let mut sink_a = CollectingSink::default();
-    let err_a = run_once_into(
+    let err_a = babylon_tick::run_once_into(
         SCENARIO,
         RULE_EDGE_BETWEEN_MISSING,
         &mut graph_a,
@@ -274,7 +288,7 @@ fn shape_2b_error_is_deterministic_across_two_independent_runs() {
 
     let mut graph_b = HypergraphStore::new();
     let mut sink_b = CollectingSink::default();
-    let err_b = run_once_into(
+    let err_b = babylon_tick::run_once_into(
         SCENARIO,
         RULE_EDGE_BETWEEN_MISSING,
         &mut graph_b,

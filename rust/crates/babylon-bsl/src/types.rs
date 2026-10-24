@@ -29,6 +29,8 @@
 /// against a DIFFERENT registry instance is a caller bug, the same
 /// out-of-band-identity risk `babylon_graph`'s own id newtypes (`NodeId`,
 /// …) already carry and document there.
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct EnumTypeId(pub u32);
 
@@ -75,7 +77,7 @@ pub enum EnumRegistryError {
 }
 
 impl std::fmt::Display for EnumRegistryError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         match self {
             Self::DuplicateType { name } => {
                 write!(f, "duplicate defenum type name: {name}")
@@ -141,7 +143,10 @@ impl EnumRegistry {
         // a merge or an override.
         if let Some(existing) = self.types.iter().position(|d| d.name == name) {
             if self.types[existing].members.as_slice() == members {
-                #[allow(clippy::cast_possible_truncation)]
+                #[allow(
+                    clippy::cast_possible_truncation,
+                    reason = "the bounded fixture index is range-checked before narrowing"
+                )]
                 let id = existing as u32;
                 return Ok(EnumTypeId(id));
             }
@@ -159,7 +164,10 @@ impl EnumRegistry {
             }
             seen.push(member.as_str());
         }
-        #[allow(clippy::cast_possible_truncation)]
+        #[allow(
+            clippy::cast_possible_truncation,
+            reason = "the bounded fixture index is range-checked before narrowing"
+        )]
         let id = EnumTypeId(self.types.len() as u32);
         self.types.push(EnumDecl {
             name: name.to_owned(),
@@ -172,7 +180,10 @@ impl EnumRegistry {
     #[must_use]
     pub fn resolve(&self, name: &str) -> Option<EnumTypeId> {
         self.types.iter().position(|d| d.name == name).map(|i| {
-            #[allow(clippy::cast_possible_truncation)]
+            #[allow(
+                clippy::cast_possible_truncation,
+                reason = "the bounded fixture index is range-checked before narrowing"
+            )]
             let id = i as u32;
             EnumTypeId(id)
         })
@@ -184,7 +195,10 @@ impl EnumRegistry {
     pub fn ordinal(&self, ty: EnumTypeId, member: &str) -> Option<u32> {
         let decl = self.types.get(ty.0 as usize)?;
         decl.members.iter().position(|m| m == member).map(|i| {
-            #[allow(clippy::cast_possible_truncation)]
+            #[allow(
+                clippy::cast_possible_truncation,
+                reason = "the bounded fixture index is range-checked before narrowing"
+            )]
             let ordinal = i as u32;
             ordinal
         })
@@ -316,7 +330,7 @@ mod tests {
                     "CIVIL_SOCIETY".into(),
                 ],
             )
-            .unwrap();
+            .expect("the scenario declares the authored entity");
         assert_eq!(r.ordinal(ty, "STATE_APPARATUS"), Some(0));
         assert_eq!(r.ordinal(ty, "CIVIL_SOCIETY"), Some(3));
         assert_eq!(r.member(ty, 1), Some("BUSINESS"));
@@ -331,8 +345,12 @@ mod tests {
         // ordinals live in their OWN member list, never mixed with the
         // first's.
         let mut r = EnumRegistry::default();
-        let a = r.declare("A", &["X".into()]).unwrap();
-        let b = r.declare("B", &["Y".into(), "Z".into()]).unwrap();
+        let a = r
+            .declare("A", &["X".into()])
+            .expect("the scenario declares the authored entity");
+        let b = r
+            .declare("B", &["Y".into(), "Z".into()])
+            .expect("the scenario declares the authored entity");
         assert_ne!(a, b);
         assert_eq!(r.ordinal(a, "X"), Some(0));
         assert_eq!(r.ordinal(b, "Z"), Some(1));
@@ -343,7 +361,8 @@ mod tests {
     fn an_empty_member_list_refuses_loudly() {
         let mut r = EnumRegistry::default();
         assert_eq!(
-            r.declare("K", &[]).unwrap_err(),
+            r.declare("K", &[])
+                .expect_err("the malformed declaration is refused"),
             EnumRegistryError::EmptyMemberList { name: "K".into() }
         );
     }
@@ -352,7 +371,8 @@ mod tests {
     fn a_duplicate_member_within_one_declaration_refuses_loudly() {
         let mut r = EnumRegistry::default();
         assert_eq!(
-            r.declare("K", &["A".into(), "A".into()]).unwrap_err(),
+            r.declare("K", &["A".into(), "A".into()])
+                .expect_err("the malformed declaration is refused"),
             EnumRegistryError::DuplicateMember {
                 name: "K".into(),
                 member: "A".into()
@@ -363,9 +383,11 @@ mod tests {
     #[test]
     fn a_duplicate_type_name_refuses_loudly() {
         let mut r = EnumRegistry::default();
-        r.declare("K", &["A".into()]).unwrap();
+        r.declare("K", &["A".into()])
+            .expect("the scenario declares the authored entity");
         assert_eq!(
-            r.declare("K", &["B".into()]).unwrap_err(),
+            r.declare("K", &["B".into()])
+                .expect_err("the malformed declaration is refused"),
             EnumRegistryError::DuplicateType { name: "K".into() }
         );
     }
@@ -381,13 +403,13 @@ mod tests {
                 "WorldView",
                 &["REVOLUTIONARY".into(), "LIBERAL".into(), "FASCIST".into()],
             )
-            .unwrap();
+            .expect("the scenario declares the authored entity");
         let second = r
             .declare(
                 "WorldView",
                 &["REVOLUTIONARY".into(), "LIBERAL".into(), "FASCIST".into()],
             )
-            .unwrap();
+            .expect("the scenario declares the authored entity");
         assert_eq!(
             first, second,
             "an identical re-declaration must mint no new id"
@@ -406,13 +428,13 @@ mod tests {
             "WorldView",
             &["REVOLUTIONARY".into(), "LIBERAL".into(), "FASCIST".into()],
         )
-        .unwrap();
+        .expect("the scenario declares the authored entity");
         assert_eq!(
             r.declare(
                 "WorldView",
                 &["LIBERAL".into(), "REVOLUTIONARY".into(), "FASCIST".into()]
             )
-            .unwrap_err(),
+            .expect_err("the malformed declaration is refused"),
             EnumRegistryError::DuplicateType {
                 name: "WorldView".into()
             }
@@ -426,7 +448,7 @@ mod tests {
             "WorldView",
             &["REVOLUTIONARY".into(), "LIBERAL".into(), "FASCIST".into()],
         )
-        .unwrap();
+        .expect("the scenario declares the authored entity");
         assert_eq!(
             r.declare(
                 "WorldView",
@@ -437,7 +459,7 @@ mod tests {
                     "CENTRIST".into()
                 ]
             )
-            .unwrap_err(),
+            .expect_err("the malformed declaration is refused"),
             EnumRegistryError::DuplicateType {
                 name: "WorldView".into()
             }
@@ -447,7 +469,9 @@ mod tests {
     #[test]
     fn resolve_finds_a_declared_type_and_refuses_an_unknown_one() {
         let mut r = EnumRegistry::default();
-        let ty = r.declare("OrgKind", &["BUSINESS".into()]).unwrap();
+        let ty = r
+            .declare("OrgKind", &["BUSINESS".into()])
+            .expect("the scenario declares the authored entity");
         assert_eq!(r.resolve("OrgKind"), Some(ty));
         assert_eq!(r.resolve("Nowhere"), None);
     }
@@ -455,7 +479,9 @@ mod tests {
     #[test]
     fn member_and_ordinal_refuse_an_out_of_range_query() {
         let mut r = EnumRegistry::default();
-        let ty = r.declare("OrgKind", &["BUSINESS".into()]).unwrap();
+        let ty = r
+            .declare("OrgKind", &["BUSINESS".into()])
+            .expect("the scenario declares the authored entity");
         assert_eq!(r.member(ty, 5), None);
         assert_eq!(r.ordinal(ty, "NOWHERE"), None);
     }

@@ -61,17 +61,23 @@ fn build<G: GraphSubstrate + CanonicalState, F: Fn() -> G>(
         } else {
             "territory"
         };
-        nodes.push(graph.add_node(ty).unwrap());
+        nodes.push(
+            graph
+                .add_node(ty)
+                .expect("the fixture adds a node with a registered kind"),
+        );
     }
     for i in 0..(node_count - 1) {
         graph
             .add_edge("adjacency", nodes[i], nodes[i + 1], 1.0)
-            .unwrap();
+            .expect("the fixture graph admits the authored edge");
     }
     for e in 0..hyperedge_count {
         let start = (e * members_per_edge) % (node_count - members_per_edge);
         let members: Vec<NodeId> = (0..members_per_edge).map(|m| nodes[start + m]).collect();
-        graph.add_hyperedge("economic_sector", &members).unwrap();
+        graph
+            .add_hyperedge("economic_sector", &members)
+            .expect("the fixture graph admits the authored hyperedge");
     }
     (graph, nodes)
 }
@@ -94,15 +100,33 @@ fn measure_size(hyperedge_count: usize, members_per_edge: usize) {
     let probe_node = memory_nodes[memory_nodes.len() / 2];
     assert_eq!(probe_node, hyper_nodes[hyper_nodes.len() / 2]);
 
-    let (_, t) = time_it(|| memory.hyperedges_of(probe_node, "economic_sector").unwrap());
+    let (_, t) = time_it(|| {
+        memory
+            .hyperedges_of(probe_node, "economic_sector")
+            .expect("the fixture graph holds the authored hyperedges")
+    });
     println!("MemoryGraph::hyperedges_of      {t:?}");
-    let (_, t) = time_it(|| hyper.hyperedges_of(probe_node, "economic_sector").unwrap());
+    let (_, t) = time_it(|| {
+        hyper
+            .hyperedges_of(probe_node, "economic_sector")
+            .expect("the fixture graph holds the authored hyperedges")
+    });
     println!("HypergraphStore::hyperedges_of  {t:?}");
 
-    let some_edge = memory.hyperedges_of(probe_node, "economic_sector").unwrap()[0];
-    let (_, t) = time_it(|| memory.members_of(some_edge).unwrap());
+    let some_edge = memory
+        .hyperedges_of(probe_node, "economic_sector")
+        .expect("the fixture graph holds the authored hyperedges")[0];
+    let (_, t) = time_it(|| {
+        memory
+            .members_of(some_edge)
+            .expect("the fixture hyperedge has members")
+    });
     println!("MemoryGraph::members_of         {t:?}");
-    let (_, t) = time_it(|| hyper.members_of(some_edge).unwrap());
+    let (_, t) = time_it(|| {
+        hyper
+            .members_of(some_edge)
+            .expect("the fixture hyperedge has members")
+    });
     println!("HypergraphStore::members_of     {t:?}");
 
     let (_, t) = time_it(|| memory.nodes("social_class"));
@@ -118,19 +142,27 @@ fn measure_size(hyperedge_count: usize, members_per_edge: usize) {
     let (_, t) = time_it(|| {
         memory
             .neighbors(probe_node, "adjacency", Direction::Any)
-            .unwrap()
+            .expect("the fixture node has neighbors")
     });
     println!("MemoryGraph::neighbors          {t:?}");
     let (_, t) = time_it(|| {
         hyper
             .neighbors(probe_node, "adjacency", Direction::Any)
-            .unwrap()
+            .expect("the fixture node has neighbors")
     });
     println!("HypergraphStore::neighbors      {t:?}");
 
-    let (_, t) = time_it(|| memory.encode_state().unwrap());
+    let (_, t) = time_it(|| {
+        memory
+            .encode_state()
+            .expect("the graph encodes its canonical state")
+    });
     println!("MemoryGraph::encode_state       {t:?}");
-    let (_, t) = time_it(|| hyper.encode_state().unwrap());
+    let (_, t) = time_it(|| {
+        hyper
+            .encode_state()
+            .expect("the graph encodes its canonical state")
+    });
     println!("HypergraphStore::encode_state   {t:?}");
 }
 

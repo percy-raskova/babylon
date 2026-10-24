@@ -4,6 +4,7 @@ use super::{
     ProductionProjectionError, Result,
 };
 use babylon_material_circuit::{CommodityKind, GoodsPriceCostBasis, OutboundOrderId, SiteId};
+use lifecycle::PeriodOrders;
 use std::collections::{BTreeMap, BTreeSet};
 #[derive(Default)]
 pub(super) struct Flows {
@@ -34,7 +35,7 @@ impl Flows {
         prior: &MaterialCircuitState,
         current: &MaterialCircuitState,
         receipt: &MaterialTickReceipts,
-        orders: &lifecycle::PeriodOrders,
+        orders: &PeriodOrders,
     ) -> Result<Self> {
         let mut result = Self::default();
         result.production(prior, receipt)?;
@@ -206,12 +207,12 @@ impl Flows {
             .filter(|(key, quantity)| **quantity > 0 && !quoted.contains(key))
             .map(|(key, _)| key.0)
             .collect();
-        for site in actual
+        let involved_sites = actual
             .keys()
             .chain(amounts.keys())
             .copied()
-            .collect::<BTreeSet<_>>()
-        {
+            .collect::<BTreeSet<_>>();
+        for site in involved_sites {
             let claimed = amounts.get(&site).copied().unwrap_or(0);
             let total = actual.get(&site).copied().unwrap_or(0);
             // A site's unquoted commodities may legitimately own the remaining wages.

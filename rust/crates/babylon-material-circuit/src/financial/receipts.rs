@@ -1,7 +1,9 @@
-use super::{
-    add, fraction, zero, CapitalContributionReceipt, DistributionReceipt, PublicBudgetReceipt,
-    PublicTransferTreatment, Result, TaxReceipt,
-};
+use super::CapitalContributionReceipt;
+use super::DistributionReceipt;
+use super::PublicBudgetReceipt;
+use super::PublicTransferTreatment;
+use super::Result;
+use super::TaxReceipt;
 use crate::{AccountId, MaterialCircuitError};
 use babylon_kernel::currency::Currency;
 fn partition(period: u64, requested: Currency, paid: Currency, unfunded: Currency) -> Result<()> {
@@ -9,7 +11,7 @@ fn partition(period: u64, requested: Currency, paid: Currency, unfunded: Currenc
         || requested.micro_units() <= 0
         || paid.micro_units() < 0
         || unfunded.micro_units() < 0
-        || requested != add(paid, unfunded)?
+        || requested != super::add(paid, unfunded)?
     {
         return Err(MaterialCircuitError::FinancialInvariant);
     }
@@ -54,11 +56,12 @@ impl TaxReceipt {
         if self.period == 0
             || self.payer == AccountId::Public(self.public_recipient)
             || self.rate_bps > 10_000
-            || self.taxable_amount < zero()
-            || self.collected < zero()
-            || self.uncollected < zero()
-            || self.assessed != add(self.collected, self.uncollected)?
-            || self.assessed != fraction(self.taxable_amount, u64::from(self.rate_bps), 10_000)?
+            || self.taxable_amount < super::zero()
+            || self.collected < super::zero()
+            || self.uncollected < super::zero()
+            || self.assessed != super::add(self.collected, self.uncollected)?
+            || self.assessed
+                != super::fraction(self.taxable_amount, u64::from(self.rate_bps), 10_000)?
         {
             return Err(MaterialCircuitError::FinancialInvariant);
         }
@@ -73,10 +76,10 @@ impl DistributionReceipt {
             || self.beneficiary == AccountId::Site(self.issuer_site_id)
             || self.shares == 0
             || self.shares > self.total_shares
-            || self.eligible_earnings < zero()
-            || self.declared_total < zero()
+            || self.eligible_earnings < super::zero()
+            || self.declared_total < super::zero()
             || self.declared_total > self.eligible_earnings
-            || self.paid < zero()
+            || self.paid < super::zero()
             || self.paid > self.declared_total
         {
             return Err(MaterialCircuitError::FinancialInvariant);
@@ -101,7 +104,7 @@ pub fn validate_distribution_receipts(rows: &[DistributionReceipt]) -> Result<()
             start + rows[start..].partition_point(|r| r.issuer_site_id == first.issuer_site_id);
         let group = &rows[start..end];
         let mut shares = 0_u64;
-        let mut floors = zero();
+        let mut floors = super::zero();
         for r in group {
             r.validate()?;
             if (
@@ -120,9 +123,9 @@ pub fn validate_distribution_receipts(rows: &[DistributionReceipt]) -> Result<()
             shares = shares
                 .checked_add(r.shares)
                 .ok_or(MaterialCircuitError::Arithmetic)?;
-            floors = add(
+            floors = super::add(
                 floors,
-                fraction(r.declared_total, r.shares, r.total_shares)?,
+                super::fraction(r.declared_total, r.shares, r.total_shares)?,
             )?;
         }
         if shares != first.total_shares {
@@ -132,8 +135,8 @@ pub fn validate_distribution_receipts(rows: &[DistributionReceipt]) -> Result<()
         for r in group {
             let extra = i128::from(remainder > 0);
             remainder -= extra;
-            let expected = add(
-                fraction(r.declared_total, r.shares, r.total_shares)?,
+            let expected = super::add(
+                super::fraction(r.declared_total, r.shares, r.total_shares)?,
                 Currency::from_micro_units(extra),
             )?;
             if r.paid != expected {

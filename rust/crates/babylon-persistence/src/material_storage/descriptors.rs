@@ -1,15 +1,16 @@
 //! Exact generated identity representation; never generates economic outcomes.
-use super::{admitted_count, Error as StorageError, OpeningRegister, MAX_LOOKUP_BYTES};
+use super::{Error as StorageError, OpeningRegister, MAX_LOOKUP_BYTES};
+#[cfg(test)]
+use crate::organizer_aid_fixture::Session;
 use crate::state_storage::{IdentityEntry, IdentityKind as K};
-use babylon_kernel::content_digest::sha256_of;
+use babylon_kernel::content_digest;
 use babylon_material_circuit::{
-    equipment_purchase_order_id, recurring_household_order_id, recurring_procurement_order_id,
-    recurring_service_order_id, AccountId, FinalDemandPrincipalId, GoodId, ProcessId, SiteId,
-    UnitId,
+    AccountId, FinalDemandPrincipalId, GoodId, ProcessId, SiteId, UnitId,
 };
 use std::collections::BTreeMap;
+use std::result::Result as StdResult;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Error {
     Recipe,
     Reference,
@@ -19,7 +20,7 @@ pub enum Error {
     Framing,
     Allocation,
 }
-type Result<T> = std::result::Result<T, StorageError>;
+type Result<T> = StdResult<T, StorageError>;
 #[derive(Clone, Copy, Debug)]
 enum Descriptor {
     Literal(IdentityEntry),
@@ -70,7 +71,7 @@ fn row_value(
         .1;
     let field = |index, kind| identity(opening, section, row, index, kind);
     let order = match recipe {
-        HOUSEHOLD => recurring_household_order_id(
+        HOUSEHOLD => babylon_material_circuit::recurring_household_order_id(
             period,
             (
                 FinalDemandPrincipalId::from_bytes(field(0, K::FinalDemandPrincipal)?),
@@ -78,7 +79,7 @@ fn row_value(
                 UnitId::from_bytes(field(2, K::Unit)?),
             ),
         ),
-        PROCUREMENT => recurring_procurement_order_id(
+        PROCUREMENT => babylon_material_circuit::recurring_procurement_order_id(
             period,
             SiteId::from_bytes(field(0, K::Site)?),
             SiteId::from_bytes(field(1, K::Site)?),
@@ -94,7 +95,7 @@ fn row_value(
                     K::FinalDemandPrincipal,
                 )?))
             };
-            recurring_service_order_id(
+            babylon_material_circuit::recurring_service_order_id(
                 period,
                 buyer,
                 SiteId::from_bytes(field(1, K::Site)?),
@@ -102,9 +103,10 @@ fn row_value(
                 UnitId::from_bytes(field(3, K::Unit)?),
             )
         }
-        EQUIPMENT => {
-            equipment_purchase_order_id(period, ProcessId::from_bytes(field(0, K::Process)?))
-        }
+        EQUIPMENT => babylon_material_circuit::equipment_purchase_order_id(
+            period,
+            ProcessId::from_bytes(field(0, K::Process)?),
+        ),
         SHIFT => {
             // The public member_shift_id constructor hashes only these four typed identities.
             let mut bytes = b"babylon.member-funded-attendance.v1\0".to_vec();
@@ -117,7 +119,7 @@ fn row_value(
             }
             return Ok(IdentityEntry {
                 kind: K::Shift,
-                bytes: sha256_of(&bytes),
+                bytes: content_digest::sha256_of(&bytes),
             });
         }
         POOL => {
@@ -126,7 +128,7 @@ fn row_value(
             bytes.extend_from_slice(&field(0, K::Site)?);
             return Ok(IdentityEntry {
                 kind: K::StaffingPool,
-                bytes: sha256_of(&bytes),
+                bytes: content_digest::sha256_of(&bytes),
             });
         }
         _ => return Err(failure(Error::Recipe)),
@@ -142,7 +144,7 @@ fn freight(order: [u8; 32], period: u64) -> IdentityEntry {
     bytes.extend_from_slice(&period.to_be_bytes());
     IdentityEntry {
         kind: K::FreightLot,
-        bytes: sha256_of(&bytes),
+        bytes: content_digest::sha256_of(&bytes),
     }
 }
 fn candidates(
@@ -176,13 +178,13 @@ fn candidates(
         }
     }
     if additions.iter().any(|entry| entry.kind == K::FreightLot) {
-        for (index, entry) in opening
+        let enumerated_entries = opening
             .lookup()
             .entries()
             .iter()
             .chain(additions)
-            .enumerate()
-        {
+            .enumerate();
+        for (index, entry) in enumerated_entries {
             if entry.kind == K::Order {
                 let reference = u32::try_from(index).map_err(|_| failure(Error::Reference))?;
                 values
@@ -201,7 +203,7 @@ pub(super) fn encode(
     tick: u64,
     additions: &[IdentityEntry],
 ) -> Result<Vec<u8>> {
-    admitted_count(opening.lookup().entries().len(), additions.len())?;
+    super::admitted_count(opening.lookup().entries().len(), additions.len())?;
     if additions.is_empty() {
         return Ok(0_u32.to_be_bytes().to_vec());
     }
@@ -260,7 +262,7 @@ fn parse(bytes: &[u8], tick: u64, expected_count: usize) -> Result<Vec<Descripto
     if count != expected_count {
         return Err(failure(Error::Framing));
     }
-    admitted_count(0, count)?;
+    super::admitted_count(0, count)?;
     // Every descriptor needs at least five bytes; refuse hostile count before allocation.
     if count > bytes.len().saturating_sub(4) / 5 {
         return Err(failure(Error::Framing));
@@ -326,7 +328,7 @@ pub(super) fn decode(
     if bytes.len() > MAX_LOOKUP_BYTES {
         return Err(StorageError::Bounds);
     }
-    admitted_count(opening.lookup().entries().len(), expected_count)?;
+    super::admitted_count(opening.lookup().entries().len(), expected_count)?;
     let rows = parse(bytes, tick, expected_count)?;
     let mut entries = Vec::new();
     entries
@@ -360,9 +362,9 @@ pub(super) fn decode(
 }
 
 #[cfg(test)]
-fn monetary_fixture() -> crate::organizer_aid_fixture::Session {
+fn monetary_fixture() -> Session {
     crate::organizer_aid_fixture::authored_session(
-        crate::michigan_dynamic_hex_foundation().unwrap(),
+        crate::michigan_dynamic_hex_foundation().expect("the Michigan hex foundation builds"),
         crate::organizer_aid_fixture::config(),
         false,
         false,
@@ -375,7 +377,8 @@ mod tests {
     use crate::state_storage::StorageError as StateError;
     fn opening() -> OpeningRegister {
         let session = monetary_fixture();
-        OpeningRegister::from_opening(session.material()).unwrap()
+        OpeningRegister::from_opening(session.material())
+            .expect("the opening register admits its sections")
     }
     #[test]
     fn opening_row_accessor_refuses_variable_sections_wrong_kinds_and_bounds() {
@@ -388,7 +391,11 @@ mod tests {
             opening.recipe_row_identity(2, 0, 0, K::Unit),
             Err(StateError::IdentityKind)
         );
-        let count = opening.section(2).unwrap().1.unwrap();
+        let count = opening
+            .section(2)
+            .expect("the fixture call `section` succeeds for the authored inputs")
+            .1
+            .expect("the fixture value `1` is present before this read");
         assert_eq!(
             opening.recipe_row_identity(2, count, 0, K::Site),
             Err(StateError::LookupIndex)
@@ -401,7 +408,8 @@ mod tests {
     #[test]
     fn shift_tuple_matches_the_current_engine_constructor_without_recomputing_pay() {
         let session = monetary_fixture();
-        let opening = OpeningRegister::from_opening(session.material()).unwrap();
+        let opening = OpeningRegister::from_opening(session.material())
+            .expect("the opening register admits its sections");
         let babylon_material_circuit::CircuitAccounting::Monetary(economy) =
             &session.material().state().accounting
         else {
@@ -409,7 +417,8 @@ mod tests {
         };
         let expected = babylon_material_circuit::member_shift_id(7, &economy.employment[0]);
         assert_eq!(
-            row_value(&opening, SHIFT, 0, 7).unwrap(),
+            row_value(&opening, SHIFT, 0, 7)
+                .expect("the fixture call `row_value` succeeds for the authored inputs"),
             IdentityEntry {
                 kind: K::Shift,
                 bytes: expected.as_bytes()
@@ -428,7 +437,8 @@ mod tests {
     #[test]
     fn closed_dependencies_refuse_cycles_wrong_kind_rows_periods_and_trailing_bytes() {
         let opening = opening();
-        let seed_count = u32::try_from(opening.lookup().entries().len()).unwrap();
+        let seed_count = u32::try_from(opening.lookup().entries().len())
+            .expect("the fixture value fits the target range");
         assert_eq!(
             decode(&opening, 2, &body(FREIGHT, seed_count, 2), 1),
             Err(failure(Error::Kind))
@@ -458,12 +468,16 @@ mod tests {
             .entries()
             .iter()
             .position(|e| e.kind != K::Order)
-            .unwrap();
+            .expect("the fixture sequence holds the addressed position");
         assert_eq!(
             decode(
                 &opening,
                 2,
-                &body(FREIGHT, u32::try_from(wrong).unwrap(), 2),
+                &body(
+                    FREIGHT,
+                    u32::try_from(wrong).expect("the fixture value fits the target range"),
+                    2
+                ),
                 1,
             ),
             Err(failure(Error::Kind))
@@ -489,20 +503,28 @@ mod freight_controls {
     #[test]
     fn ordinary_freight_can_reference_forward_order_without_a_previous_table() {
         let session = monetary_fixture();
-        let opening = OpeningRegister::from_opening(session.material()).unwrap();
+        let opening = OpeningRegister::from_opening(session.material())
+            .expect("the opening register admits its sections");
         let order = IdentityEntry {
             kind: K::Order,
             bytes: [249; 32],
         };
         let lot = freight(order.bytes, 3);
         let table = [lot, order];
-        let bytes = encode(&opening, 3, &table).unwrap();
+        let bytes = encode(&opening, 3, &table).expect("the fixture value encodes canonically");
         assert_eq!(bytes.len(), 4 + 13 + 33);
         assert_eq!(bytes[4], FREIGHT);
         assert_eq!(
-            u32::from_be_bytes(bytes[5..9].try_into().unwrap()) as usize,
+            u32::from_be_bytes(
+                bytes[5..9]
+                    .try_into()
+                    .expect("the fixture slice has the target length")
+            ) as usize,
             opening.lookup().entries().len() + 1
         );
-        assert_eq!(decode(&opening, 3, &bytes, 2).unwrap(), table);
+        assert_eq!(
+            decode(&opening, 3, &bytes, 2).expect("the committed canonical bytes decode"),
+            table
+        );
     }
 }

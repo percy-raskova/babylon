@@ -27,7 +27,7 @@ MAIN_RELEASE_SURFACES = (
 MERGE_COMMAND = "mise run pr:merge -- N"
 COPILOT_ADVISORY_SURFACES = (
     *GOVERNANCE_SURFACES,
-    Path("CLAUDE.md"),
+    Path("AGENTS.md"),
     Path(".mise.toml"),
 )
 COPILOT_ADVISORY_ADR_NAME = "ADR241_copilot_advisory_merge_policy"

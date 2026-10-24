@@ -24,8 +24,6 @@
 //! from that stack yet — `babylon-bsl`/`babylon-tick`/`babylon-graph`
 //! become real dependencies only when Task 5.4 (manifest loading) and
 //! Task 6 (diagnostics) need them.
-#![forbid(unsafe_code)]
-#![warn(clippy::pedantic)]
 
 pub mod authoring;
 pub mod capabilities;

@@ -5,7 +5,8 @@ Content-oriented catalog of all agent-facing documentation. Updated after every 
 ## Architecture & Code
 
 - [Architecture Overview](architecture.md) — canonical Rust, persistence, and observer boundary
-- [Coding Standards](coding-standards.md) — Pydantic, TDD, commits, docstrings, imports
+- [Coding Standards](coding-standards.md) — typed contracts, TDD, commits, and mechanical style
+- [Rust Style](rust-style.md) — Google Rust Style Guide conformance and the EXC-01 to EXC-05 register
 
 ## Operations
 
@@ -20,12 +21,15 @@ Content-oriented catalog of all agent-facing documentation. Updated after every 
 ## Architecture Decision Records
 
 - [ADR Index](adrs/README.md) — refactoring sequence proposed against the knowledge graph
+<!-- Vale: the ADR titles below are historical identifiers and keep their spelling. -->
+<!-- vale Vale.Spelling = NO -->
   - [ADR-001](adrs/ADR-001-mechanical-file-splits.md) — Mechanical splits (defines.py, enums.py, OODA dedup)
   - [ADR-002](adrs/ADR-002-protocol-kit-and-source-registry.md) — protocol_kit + SourceRegistry
   - [ADR-003](adrs/ADR-003-system-abc.md) — Lift `System` Protocol to ABC
   - [ADR-004](adrs/ADR-004-discriminated-event-union.md) — Discriminated `TickEvent` union
   - [ADR-005](adrs/ADR-005-god-class-decomposition.md) — Decompose `postgres_runtime.py` + `simulation.py`
   - [ADR-006](adrs/ADR-006-cleanup-batch.md) — Scenario ABC + remaining splits + orphan schemas
+<!-- vale Vale.Spelling = YES -->
 
 ## Specifications
 

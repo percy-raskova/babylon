@@ -8,29 +8,15 @@
 //! W2), not here.
 //!
 //! Shape mirrors `tools/sentinel_check.py`: a positional check name selects
-//! one registered check (`--list` prints the registry, `all` runs every
-//! check), optional trailing `paths` scope it. Exit contract: 0 clean, 1 a
-//! `Fail`-severity finding was printed, 2 usage/infrastructure error.
+//! one registered check (`--list` prints the registry, `all` runs every check
+//! whose registry row opts into the default set), optional trailing `paths`
+//! scope it. Exit contract: 0 clean, 1 a `Fail`-severity finding was printed,
+//! 2 usage/infrastructure error.
 
-mod citation_drift;
-mod finding;
-mod namespace_unique;
-mod repo;
-mod rust_contract_authority;
-mod sfs_non_authorability;
-
-use finding::{Finding, Severity};
-use repo::Repo;
+use bsl_lint::finding::Severity;
+use bsl_lint::repo::Repo;
+use bsl_lint::{Check, CHECKS};
 use std::process::ExitCode;
-
-type CheckFn = fn(&Repo, &[String]) -> Result<Vec<Finding>, String>;
-
-const CHECKS: &[(&str, CheckFn)] = &[
-    (citation_drift::CHECK, citation_drift::run),
-    (namespace_unique::CHECK, namespace_unique::run),
-    (rust_contract_authority::CHECK, rust_contract_authority::run),
-    (sfs_non_authorability::CHECK, sfs_non_authorability::run),
-];
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -43,15 +29,22 @@ fn main() -> ExitCode {
             print_registry();
             ExitCode::from(0)
         }
-        Some("all") => run_and_report(&args[1..], CHECKS),
-        Some(name) => match CHECKS.iter().find(|(n, _)| *n == name) {
-            Some(&entry) => run_and_report(&args[1..], std::slice::from_ref(&entry)),
-            None => {
+        Some("all") => {
+            let default_checks = CHECKS
+                .iter()
+                .filter(|check| check.in_default_all)
+                .collect::<Vec<_>>();
+            run_and_report(&args[1..], &default_checks)
+        }
+        Some(name) => {
+            if let Some(check) = CHECKS.iter().find(|check| check.name == name) {
+                run_and_report(&args[1..], &[check])
+            } else {
                 eprintln!("bsl-lint: unknown check {name:?}");
                 print_usage();
                 ExitCode::from(2)
             }
-        },
+        }
     }
 }
 
@@ -60,24 +53,24 @@ fn print_usage() {
 }
 
 fn print_registry() {
-    for (name, _) in CHECKS {
-        println!("{name}");
+    for check in CHECKS {
+        println!("{}", check.name);
     }
     println!("all");
 }
 
-fn run_and_report(paths: &[String], checks: &[(&'static str, CheckFn)]) -> ExitCode {
+fn run_and_report(paths: &[String], checks: &[&Check]) -> ExitCode {
     let repo = match Repo::discover() {
-        Ok(r) => r,
-        Err(e) => {
-            eprintln!("bsl-lint: {e}");
+        Ok(repo) => repo,
+        Err(error) => {
+            eprintln!("bsl-lint: {error}");
             return ExitCode::from(2);
         }
     };
 
     let mut any_fail = false;
-    for (name, run) in checks {
-        match run(&repo, paths) {
+    for check in checks {
+        match (check.run)(&repo, paths) {
             Ok(findings) => {
                 for finding in findings {
                     if finding.severity == Severity::Fail {
@@ -86,8 +79,8 @@ fn run_and_report(paths: &[String], checks: &[(&'static str, CheckFn)]) -> ExitC
                     println!("{finding}");
                 }
             }
-            Err(e) => {
-                eprintln!("bsl-lint: {name}: {e}");
+            Err(error) => {
+                eprintln!("bsl-lint: {}: {error}", check.name);
                 return ExitCode::from(2);
             }
         }

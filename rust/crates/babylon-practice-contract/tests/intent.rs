@@ -1,6 +1,6 @@
 use babylon_practice_contract::ActorOrganizationId;
 use babylon_practice_contract::{
-    decode_practice_intent, encode_practice_intent, practice_intent_digest, practice_proposal_key,
+    decode_practice_intent, encode_practice_intent, practice_proposal_key,
     validate_practice_intent, validate_practice_intent_authority, CampaignId, InputAuthorityId,
     PracticeAuthorityError, PracticeAuthorityKind, PracticeId, PracticeInputAuthority,
     PracticeInputAuthorityLedger, PracticeIntent, PracticeIntentAuthorityError,
@@ -89,10 +89,17 @@ fn intent_round_trips_independent_literal_bytes() {
     ));
     let intent = strike_intent();
 
-    assert_eq!(encode_practice_intent(&intent).unwrap(), expected);
-    assert_eq!(decode_practice_intent(&expected).unwrap(), intent);
     assert_eq!(
-        practice_intent_digest(&intent).unwrap(),
+        encode_practice_intent(&intent).expect("the practice intent encodes canonically"),
+        expected
+    );
+    assert_eq!(
+        decode_practice_intent(&expected).expect("the practice intent bytes decode"),
+        intent
+    );
+    assert_eq!(
+        babylon_practice_contract::practice_intent_digest(&intent)
+            .expect("the practice intent has a digest"),
         hex_digest("0537e9106faaa91dd9b54e3dc68fcb6a45e7154d9086a835085ce85e9479f80b")
     );
 }
@@ -319,7 +326,8 @@ fn intent_bounds_refuse_maximum_plus_one_before_unbounded_work() {
 #[test]
 fn intent_digest_binds_every_valid_scalar_and_collection_identity() {
     let base = strike_intent();
-    let expected = practice_intent_digest(&base).unwrap();
+    let expected = babylon_practice_contract::practice_intent_digest(&base)
+        .expect("the practice intent has a digest");
     let mut variants = Vec::with_capacity(9);
 
     let mut timing = base.clone();
@@ -354,6 +362,10 @@ fn intent_digest_binds_every_valid_scalar_and_collection_identity() {
 
     assert_eq!(variants.len(), 9);
     for variant in variants.iter().take(9) {
-        assert_ne!(practice_intent_digest(variant).unwrap(), expected);
+        assert_ne!(
+            babylon_practice_contract::practice_intent_digest(variant)
+                .expect("the practice intent has a digest"),
+            expected
+        );
     }
 }

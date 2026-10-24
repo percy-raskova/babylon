@@ -1,17 +1,21 @@
 //! Explicit external inventory and Detroit port entry, without county attribution.
-use super::{
-    product, sum, ExperimentError, ExperimentProfile, Result, SimulationExperimentV1,
-    StartingSnapshot,
-};
+use super::{ExperimentError, ExperimentProfile, Result, SimulationExperimentV1, StartingSnapshot};
 use crate::material_runtime::{MaterialFoundationSpec, MaterialRuntimeFoundation};
-use babylon_kernel::content_digest::sha256_of;
 use babylon_material_circuit::{
-    decode_material_circuit_state, encode_material_circuit_state, BacklogRow, CommodityDefinition,
-    CorridorCapacity, CorridorId, GoodId, InventoryRow, LogisticsNodeId, MaterialCircuitState,
-    OrderAccessMode, OrderId, OrderRow, RouteId, RouteStage, RouteStageCapacity, SiteId,
-    SiteLogisticsNode, SupplierRoute, SupplierTransport, UnitId,
+    BacklogRow, CommodityDefinition, CorridorCapacity, CorridorId, GoodId, InventoryRow,
+    LogisticsNodeId, MaterialCircuitState, OrderAccessMode, OrderId, OrderRow, RouteId, RouteStage,
+    RouteStageCapacity, SiteId, SiteLogisticsNode, SupplierRoute, SupplierTransport, UnitId,
 };
-use babylon_tick::{material_staffing::StaffingComposition, material_world::MaterialWorldRegister};
+use babylon_tick::material_staffing::StaffingComposition;
+use babylon_tick::material_world::MaterialWorldRegister;
+
+use super::setup::FreightSetup;
+use crate::michigan_defines::MichiganDefines;
+use crate::CampaignFoundation;
+use babylon_kernel::content_digest;
+use babylon_kernel::replay::ReplaySeed;
+use babylon_material_circuit::CapacitySupply;
+use babylon_material_circuit::CircuitAccounting;
 use serde::{Deserialize, Serialize};
 
 const SCENARIO: &str = "diagnostic/detroit-hs72-import-v1";
@@ -49,7 +53,7 @@ struct CapturedFreight {
     opening_inventory_kg: u64,
 }
 fn id(kind: &str) -> [u8; 32] {
-    sha256_of(format!("babylon.diagnostic.detroit-hs72.v1\0{kind}").as_bytes())
+    content_digest::sha256_of(format!("babylon.diagnostic.detroit-hs72.v1\0{kind}").as_bytes())
 }
 pub(super) fn good_id() -> GoodId {
     GoodId::from_bytes(id("hs72-iron-and-steel-aggregate"))
@@ -63,26 +67,29 @@ fn source_id() -> SiteId {
 fn new_capture(spec: &SimulationExperimentV1) -> Result<CapturedFreight> {
     let boundary: Boundary =
         serde_json::from_str(BOUNDARY).map_err(|_| ExperimentError::Content)?;
-    let defines = crate::michigan_defines::MichiganDefines::parse(include_str!(
+    let defines = MichiganDefines::parse(include_str!(
         "../../../../../content/scenarios/michigan/defines.toml"
     ))
     .map_err(|_| ExperimentError::Content)?;
     let travel_periods = defines.transport.road_travel_periods;
-    let transport_defines_sha256 = super::hex(&sha256_of(
+    let transport_defines_sha256 = super::hex(&content_digest::sha256_of(
         &serde_json::to_vec(&defines.transport).map_err(|_| ExperimentError::Content)?,
     ));
     let Some(StartingSnapshot::Freight { arrived_kg, .. }) = &spec.starting_snapshot else {
         return Err(ExperimentError::StartingSnapshot);
     };
-    let base = product(*arrived_kg, babylon_kernel::clock::DAYS_PER_TICK)? / 31;
+    let base = super::product(*arrived_kg, babylon_kernel::clock::DAYS_PER_TICK)? / 31;
     let captured = CapturedFreight {
         schema: "DiagnosticFreightContentV1".to_owned(),
         experiment: spec.clone(),
         travel_periods,
         transport_defines_sha256,
-        capacity_kg_per_period: product(base, spec.transport_permille())? / 1000,
-        ordered_kg: product(base, spec.horizon)?,
-        opening_inventory_kg: product(base, sum(spec.horizon, u64::from(travel_periods))?)?,
+        capacity_kg_per_period: super::product(base, spec.transport_permille())? / 1000,
+        ordered_kg: super::product(base, spec.horizon)?,
+        opening_inventory_kg: super::product(
+            base,
+            super::sum(spec.horizon, u64::from(travel_periods))?,
+        )?,
         boundary,
     };
     captured.validate()?;
@@ -120,18 +127,22 @@ impl CapturedFreight {
         else {
             return Err(ExperimentError::StartingSnapshot);
         };
-        let base = product(*arrived_kg, babylon_kernel::clock::DAYS_PER_TICK)? / 31;
+        let base = super::product(*arrived_kg, babylon_kernel::clock::DAYS_PER_TICK)? / 31;
         if self.capacity_kg_per_period
-            != product(base, self.experiment.transport_permille())? / 1000
-            || self.ordered_kg != product(base, self.experiment.horizon)?
-            || self.opening_inventory_kg != product(base, sum(self.experiment.horizon, 1)?)?
+            != super::product(base, self.experiment.transport_permille())? / 1000
+            || self.ordered_kg != super::product(base, self.experiment.horizon)?
+            || self.opening_inventory_kg
+                != super::product(base, super::sum(self.experiment.horizon, 1)?)?
             || self.capacity_kg_per_period == 0
         {
             return Err(ExperimentError::Content);
         }
         Ok(())
     }
-    #[allow(clippy::too_many_lines)] // Keep the complete closed inventory boundary visible together.
+    #[allow(
+        clippy::too_many_lines,
+        reason = "`state` keeps one authored sequence in a single place"
+    )] // Keep the complete closed inventory boundary visible together.
     fn state(&self) -> Result<MaterialCircuitState> {
         self.validate()?;
         let source = source_id();
@@ -144,7 +155,7 @@ impl CapturedFreight {
         let from = LogisticsNodeId::from_bytes(id("canadian-inventory-terminal"));
         let to = LogisticsNodeId::from_bytes(id("detroit-port-entry-terminal"));
         let state = MaterialCircuitState {
-            capacity_supply: babylon_material_circuit::CapacitySupply::FiniteSchedule,
+            capacity_supply: CapacitySupply::FiniteSchedule,
             period: 1,
             site_logistics_nodes: vec![
                 SiteLogisticsNode {
@@ -166,7 +177,7 @@ impl CapturedFreight {
             handling_coefficients: vec![],
             final_demand_principals: vec![],
             final_demand_orders: vec![],
-            accounting: babylon_material_circuit::CircuitAccounting::PhysicalControl,
+            accounting: CircuitAccounting::PhysicalControl,
             maintenance_binding: None,
             maintenance_service: None,
             service_connections: vec![],
@@ -236,13 +247,14 @@ impl CapturedFreight {
                     Ok(CorridorCapacity {
                         corridor_id: corridor,
                         period,
-                        available_grams: product(self.capacity_kg_per_period, 1000)?,
+                        available_grams: super::product(self.capacity_kg_per_period, 1000)?,
                     })
                 })
                 .collect::<Result<Vec<_>>>()?,
         };
-        decode_material_circuit_state(
-            &encode_material_circuit_state(&state).map_err(|_| ExperimentError::Content)?,
+        babylon_material_circuit::decode_material_circuit_state(
+            &babylon_material_circuit::encode_material_circuit_state(&state)
+                .map_err(|_| ExperimentError::Content)?,
         )
         .map_err(|_| ExperimentError::Content)
     }
@@ -277,13 +289,13 @@ pub(super) fn foundation(spec: &SimulationExperimentV1) -> Result<MaterialRuntim
             duration: babylon_kernel::clock::CampaignDuration::Finite {
                 final_period: spec.horizon,
             },
-            content_digest: sha256_of(&defines),
+            content_digest: content_digest::sha256_of(&defines),
         },
     )
     .map_err(|_| ExperimentError::Foundation)
 }
 pub(super) fn validate_authority(
-    graph: &crate::CampaignFoundation,
+    graph: &CampaignFoundation,
     register: &MaterialWorldRegister,
     spec: &MaterialFoundationSpec,
 ) -> Result<StaffingComposition> {
@@ -297,8 +309,8 @@ pub(super) fn validate_authority(
     if captured.bytes() != Ok(bytes.to_vec())
         || spec.preset_id != captured.experiment.profile.foundation_id()
         || spec.duration.final_period() != Some(captured.experiment.horizon)
-        || spec.content_digest != sha256_of(bytes)
-        || graph.rng_seed() != babylon_kernel::replay::ReplaySeed::new(captured.experiment.seed)
+        || spec.content_digest != content_digest::sha256_of(bytes)
+        || graph.rng_seed() != ReplaySeed::new(captured.experiment.seed)
         || graph.content_bundle().scenario_source_bytes() != scenario().as_bytes()
         || graph.content_bundle().rule_source_bytes() != RULES.as_bytes()
         || register.organizer_config().is_some()
@@ -309,12 +321,12 @@ pub(super) fn validate_authority(
     StaffingComposition::inventory_only(register.state()).map_err(|_| ExperimentError::Foundation)
 }
 
-pub(super) fn resolved_setup(bytes: &[u8]) -> Result<super::setup::FreightSetup> {
+pub(super) fn resolved_setup(bytes: &[u8]) -> Result<FreightSetup> {
     let c: CapturedFreight = serde_json::from_slice(bytes).map_err(|_| ExperimentError::Content)?;
     c.validate()?;
     let Some(StartingSnapshot::Freight { arrived_kg, .. }) = c.experiment.starting_snapshot else {
         return Err(ExperimentError::StartingSnapshot);
     };
     let b = c.boundary;
-    Ok(super::setup::FreightSetup{source_site:b.source_site,destination_site:b.destination_site,commodity:b.commodity,unit:b.unit,port_code:b.port_code,partner_code:b.partner_code,mode_code:b.mode_code,trade_type_code:b.trade_type_code,hs_chapter:b.hs_chapter,geographic_scope:b.geographic_scope,january_observed_kg:arrived_kg,capacity_derivation:"floor(January observed kg * 28 / 31); optional Designed transport permille is then multiplied and floored by /1000",capacity_kg_per_period:c.capacity_kg_per_period,ordered_kg:c.ordered_kg,opening_inventory_kg:c.opening_inventory_kg,travel_periods:c.travel_periods,inventory_evidence:b.inventory_evidence,order_evidence:b.order_evidence,capacity_evidence:b.capacity_evidence,inventory_derivation:"base period capacity * (horizon + travel periods), finite and Designed",order_derivation:"base period capacity * horizon, finite and Designed"})
+    Ok(FreightSetup{source_site:b.source_site,destination_site:b.destination_site,commodity:b.commodity,unit:b.unit,port_code:b.port_code,partner_code:b.partner_code,mode_code:b.mode_code,trade_type_code:b.trade_type_code,hs_chapter:b.hs_chapter,geographic_scope:b.geographic_scope,january_observed_kg:arrived_kg,capacity_derivation:"floor(January observed kg * 28 / 31); optional Designed transport permille is then multiplied and floored by /1000",capacity_kg_per_period:c.capacity_kg_per_period,ordered_kg:c.ordered_kg,opening_inventory_kg:c.opening_inventory_kg,travel_periods:c.travel_periods,inventory_evidence:b.inventory_evidence,order_evidence:b.order_evidence,capacity_evidence:b.capacity_evidence,inventory_derivation:"base period capacity * (horizon + travel periods), finite and Designed",order_derivation:"base period capacity * horizon, finite and Designed"})
 }

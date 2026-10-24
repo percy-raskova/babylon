@@ -5,6 +5,7 @@ use std::collections::BTreeMap;
 use babylon_kernel::clock::WEEKS_PER_TICK;
 use serde::{Deserialize, Serialize};
 
+use super::MichiganDefines;
 use super::{MichiganDefinesError, MAX_EXACT_INTEGER};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
@@ -114,7 +115,7 @@ fn workforce(employed: u64, reserve: u64, hours_per_period: u64) -> bool {
         .is_some_and(|people| positive(people) && product(people, hours_per_period))
 }
 
-pub(super) fn validate(defines: &super::MichiganDefines) -> Result<(), MichiganDefinesError> {
+pub(super) fn validate(defines: &MichiganDefines) -> Result<(), MichiganDefinesError> {
     use MichiganDefinesError::Value;
     if defines.commodity.is_empty()
         || defines.commodity.len() > 64
@@ -155,7 +156,7 @@ pub(super) fn validate(defines: &super::MichiganDefines) -> Result<(), MichiganD
 }
 
 fn validate_template(
-    defines: &super::MichiganDefines,
+    defines: &MichiganDefines,
     name: &str,
     template: &TemplateDefines,
 ) -> Result<(), MichiganDefinesError> {
@@ -210,9 +211,7 @@ fn validate_template(
     Ok(())
 }
 
-fn validate_transport_and_handling(
-    defines: &super::MichiganDefines,
-) -> Result<(), MichiganDefinesError> {
+fn validate_transport_and_handling(defines: &MichiganDefines) -> Result<(), MichiganDefinesError> {
     use MichiganDefinesError::Value;
     let transport = &defines.transport;
     if let Some(experiment) = &defines.statewide.experiment {

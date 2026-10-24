@@ -2,7 +2,7 @@
 //!
 //! The paper selects 12 people (8 donor, 4 recipient), 58,576 currency,
 //! 44 food parcels and 20 material bundles. Its omitted supplier workforce is
-//! supplied explicitly: five WorkingOwner persons in five households, 20 food
+//! supplied explicitly: five `WorkingOwner` persons in five households, 20 food
 //! parcels at zero opening carrying cost, zero extra cash, and finite service
 //! production and retail hours. Selected and supplementary stocks stay distinct.
 //! Attendance is an authored component input, excluding endogenous turnover as
@@ -12,8 +12,77 @@
 //! with zero finite capacity and no output or sales: its four workforce persons
 //! have a captured 160-hour attendance allowance each. No stock or receipt is
 //! replenished. Every supplementary supplier control here is Designed.
-use babylon_kernel::{content_digest::sha256_of, currency::Currency};
-use babylon_material_circuit::*;
+
+use babylon_kernel::content_digest;
+use babylon_kernel::currency::Currency;
+use babylon_material_circuit::AccountId;
+use babylon_material_circuit::AidBook;
+use babylon_material_circuit::AidMandate;
+use babylon_material_circuit::AidOutcome;
+use babylon_material_circuit::AidResolveInput;
+use babylon_material_circuit::AidTransport;
+use babylon_material_circuit::AttendancePlan;
+use babylon_material_circuit::CapacityRow;
+use babylon_material_circuit::CapacitySupply;
+use babylon_material_circuit::CashAccount;
+use babylon_material_circuit::CircuitAccounting;
+use babylon_material_circuit::CollectionResolveInput;
+use babylon_material_circuit::CommodityDefinition;
+use babylon_material_circuit::CommodityKind;
+use babylon_material_circuit::CorridorCapacity;
+use babylon_material_circuit::CorridorId;
+use babylon_material_circuit::EmploymentTerms;
+use babylon_material_circuit::FinalDemandPrincipal;
+use babylon_material_circuit::FinalDemandPrincipalId;
+use babylon_material_circuit::FinancialInstitutions;
+use babylon_material_circuit::GoodId;
+use babylon_material_circuit::HistoricalCostBook;
+use babylon_material_circuit::HouseholdCohort;
+use babylon_material_circuit::HouseholdContributionUse;
+use babylon_material_circuit::HouseholdKind;
+use babylon_material_circuit::HouseholdNeed;
+use babylon_material_circuit::HouseholdNeedBasis;
+use babylon_material_circuit::HouseholdPurchasePolicy;
+use babylon_material_circuit::HouseholdStock;
+use babylon_material_circuit::HouseholdTimeAccounting;
+use babylon_material_circuit::HouseholdTimeBook;
+use babylon_material_circuit::HouseholdTimeCommitment;
+use babylon_material_circuit::HouseholdTimePolicy;
+use babylon_material_circuit::HouseholdUnmetTimeBurden;
+use babylon_material_circuit::InstitutionLocation;
+use babylon_material_circuit::InventoryRow;
+use babylon_material_circuit::LaborCapacityRow;
+use babylon_material_circuit::LaborCoefficient;
+use babylon_material_circuit::LaborCompensation;
+use babylon_material_circuit::LogisticsNodeId;
+use babylon_material_circuit::MaterialCircuitError;
+use babylon_material_circuit::MaterialCircuitState;
+use babylon_material_circuit::MaterialCircuitTransition;
+use babylon_material_circuit::MemberLaborCapacityRow;
+use babylon_material_circuit::MerchantHandling;
+use babylon_material_circuit::MerchantHandlingCoefficient;
+use babylon_material_circuit::MerchantRole;
+use babylon_material_circuit::MonetaryBook;
+use babylon_material_circuit::MonetaryCircuit;
+use babylon_material_circuit::OrganizationAccountId;
+use babylon_material_circuit::PricePolicy;
+use babylon_material_circuit::ProcessId;
+use babylon_material_circuit::ProcessOutput;
+use babylon_material_circuit::ProductionCommitment;
+use babylon_material_circuit::ProductionDemandPolicy;
+use babylon_material_circuit::PublicAccountId;
+use babylon_material_circuit::RecurringEconomy;
+use babylon_material_circuit::SellerOffer;
+use babylon_material_circuit::ServiceConnection;
+use babylon_material_circuit::ServiceStage;
+use babylon_material_circuit::SiteId;
+use babylon_material_circuit::SiteLogisticsNode;
+use babylon_material_circuit::StaffingMemberId;
+use babylon_material_circuit::StockCarryingValue;
+use babylon_material_circuit::TaxBasis;
+use babylon_material_circuit::TaxPolicy;
+use babylon_material_circuit::UnitId;
+use std::ops::RangeInclusive;
 
 pub const PAPER_CASH: i128 = 58_576_000_000;
 pub const COLLECTION: i128 = 400_000;
@@ -21,7 +90,7 @@ pub const FOOD: u8 = 2;
 pub const MATERIALS: u8 = 1;
 pub const EMPLOYER: u8 = 1;
 pub const RETAILER: u8 = 2;
-const PERIODS: std::ops::RangeInclusive<u64> = 1..=5;
+const PERIODS: RangeInclusive<u64> = 1..=5;
 
 pub fn money(micros: i128) -> Currency {
     Currency::from_micro_units(micros)
@@ -102,6 +171,10 @@ fn economy_mut(state: &mut MaterialCircuitState) -> &mut MonetaryCircuit {
     e
 }
 
+#[allow(
+    clippy::too_many_lines,
+    reason = "a conformance scenario builds its whole fixture and asserts the full trajectory in one test"
+)]
 fn recurring() -> RecurringEconomy {
     let households = [(donor(), 4, 8), (recipient(), 4, 4), (suppliers(), 5, 5)]
         .into_iter()
@@ -282,11 +355,17 @@ fn time() -> HouseholdTimeAccounting {
                 })
                 .collect(),
         )
-        .unwrap(),
+        .expect("the constructor accepts the authored fixture arguments"),
     )
 }
+#[allow(
+    clippy::too_many_lines,
+    reason = "a conformance scenario builds its whole fixture and asserts the full trajectory in one test"
+)]
 pub fn opening() -> MaterialCircuitState {
-    let location = "county:26163".parse().unwrap();
+    let location = "county:26163"
+        .parse()
+        .expect("the authored literal parses as the declared type");
     let inventory = [(MATERIALS, 16), (FOOD, 36)]
         .map(|(g, quantity)| InventoryRow {
             site_id: site(RETAILER),
@@ -313,7 +392,7 @@ pub fn opening() -> MaterialCircuitState {
             )
             .collect(),
     )
-    .unwrap();
+    .expect("the fixture opens the authored source");
     let stocks = inventory
         .iter()
         .map(|r| StockCarryingValue {
@@ -337,7 +416,8 @@ pub fn opening() -> MaterialCircuitState {
             }),
         )
         .collect();
-    let costs = HistoricalCostBook::open(&book, stocks, vec![], vec![], vec![]).unwrap();
+    let costs = HistoricalCostBook::open(&book, stocks, vec![], vec![], vec![])
+        .expect("the fixture opens the authored source");
     let financial = FinancialInstitutions {
         locations: [organization(), public()]
             .map(|account| InstitutionLocation { account, location })
@@ -503,15 +583,15 @@ pub fn controlled_opening(mut state: MaterialCircuitState) -> MaterialCircuitSta
     economy_mut(&mut state)
         .recurring
         .as_mut()
-        .unwrap()
+        .expect("the fixture set the optional field before this borrow")
         .attendance = attendance(period);
     state.production_commitments = production(period);
     state
 }
 pub fn collection(period: u64) -> CollectionResolveInput {
     CollectionResolveInput {
-        original_commitment_id: sha256_of(&period.to_be_bytes()),
-        command_nonce: [u8::try_from(period).unwrap(); 16],
+        original_commitment_id: content_digest::sha256_of(&period.to_be_bytes()),
+        command_nonce: [u8::try_from(period).expect("the fixture value fits the target range"); 16],
         admitted_period: period - 1,
         resolve_period: period,
         mandate_id: [93; 32],
@@ -544,7 +624,7 @@ pub fn close(
     collection: &[CollectionResolveInput],
 ) -> Result<MaterialCircuitTransition, MaterialCircuitError> {
     let period = state.period + 1;
-    close_material_period_with_support(state, aid, collection)?
+    babylon_material_circuit::close_material_period_with_support(state, aid, collection)?
         .finish_with_workforce(labor(period), members(period))
 }
 pub fn coordinate(transition: &mut MaterialCircuitTransition) {
@@ -565,33 +645,41 @@ pub fn coordinate(transition: &mut MaterialCircuitTransition) {
     // admission and consent refusals belong to the MaterialReplaySession controls.
     let uses = [(donor(), 101_u64, 201_u64), (recipient(), 120_u64, 204_u64)].map(
         |(principal_id, actor_id, contributor_id)| HouseholdContributionUse {
-            use_id: sha256_of(&contributor_id.to_be_bytes()),
+            use_id: content_digest::sha256_of(&contributor_id.to_be_bytes()),
             principal_id,
             actor_id,
             contributor_id,
             hours: 2,
         },
     );
-    consume_household_contributions(&mut transition.state, 2, &uses).unwrap();
-    let bytes = encode_material_circuit_state(&transition.state).unwrap();
-    consume_household_contributions(&mut transition.state, 2, &uses).unwrap();
+    babylon_material_circuit::consume_household_contributions(&mut transition.state, 2, &uses)
+        .expect("the fixture consumes the authored contributions");
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&transition.state)
+        .expect("the canonical material state encodes");
+    babylon_material_circuit::consume_household_contributions(&mut transition.state, 2, &uses)
+        .expect("the fixture consumes the authored contributions");
     assert_eq!(
-        encode_material_circuit_state(&transition.state).unwrap(),
+        babylon_material_circuit::encode_material_circuit_state(&transition.state)
+            .expect("the canonical material state encodes"),
         bytes
     );
 }
 pub fn cash(state: &MaterialCircuitState, account: AccountId) -> i128 {
-    economy(state).book.cash(account).unwrap().micro_units()
+    economy(state)
+        .book
+        .cash(account)
+        .expect("the fixture book holds the payer account")
+        .micro_units()
 }
 pub fn stock(state: &MaterialCircuitState, principal: FinalDemandPrincipalId, g: u8) -> u64 {
     economy(state)
         .recurring
         .as_ref()
-        .unwrap()
+        .expect("the fixture set the optional field before this read")
         .household_stocks
         .iter()
         .find(|r| r.principal_id == principal && r.good_id == good(g))
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .quantity
 }
 pub fn remaining(state: &MaterialCircuitState, principal: FinalDemandPrincipalId) -> u64 {
@@ -602,7 +690,7 @@ pub fn remaining(state: &MaterialCircuitState, principal: FinalDemandPrincipalId
         .receipts
         .iter()
         .find(|r| r.principal_id == principal)
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .contribution_available_hours;
     available
         - time

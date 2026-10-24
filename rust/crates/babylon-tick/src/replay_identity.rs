@@ -2,25 +2,28 @@
 
 use std::collections::TryReserveError;
 
-use babylon_bsl::canonical_ast::rules_hash_of;
 use babylon_bsl::causal_contract::AuditReceipt;
 use babylon_bsl::identity_codec::{IdentityCodecError, MAX_IDENTITY_SECTION_BYTES};
-use babylon_bsl::identity_sections::{
-    encode_prepared_bsl_sections, encode_tick_payload_sections, MAX_PREPARED_AGGREGATE_ROWS,
-    MAX_PREPARED_ROWS,
-};
+use babylon_bsl::identity_sections::{MAX_PREPARED_AGGREGATE_ROWS, MAX_PREPARED_ROWS};
 use babylon_graph::stable_element::{
     StableElementResolver, StableIdentityError, MAX_STABLE_RESOLVER_ROWS,
 };
 use babylon_graph::stable_state::{StableGraphState, STABLE_GRAPH_STATE_LAYOUT_VERSION};
+use babylon_kernel::content_digest::ContentDigest;
 use babylon_kernel::tick_content_hash::{
     PreparedEnvironmentDigest, StableWorldDigest, TickPayloadDigest,
 };
-use babylon_kernel::{content_digest::sha256_of, content_digest::ContentDigest};
 
-use crate::choice_receipt::{validate_choice_receipt_order, ChoiceReceipt};
+use crate::choice_receipt;
+use crate::choice_receipt::ChoiceReceipt;
 use crate::committed_event::CommittedEvent;
+use crate::phase_order::PhaseSchedule;
+use crate::TickReport;
 use crate::{phase_order, PreparedRules};
+use babylon_bsl::canonical_ast;
+use babylon_bsl::identity_sections;
+use babylon_kernel::content_digest;
+use babylon_practice_contract::OrganizerReceipt;
 
 /// Prepared-environment layout version.
 pub const PREPARED_ENVIRONMENT_LAYOUT_VERSION: u32 = 1;
@@ -284,7 +287,7 @@ pub(crate) fn encode_prepared_environment(
     resolver: &StableElementResolver,
     registers: &WorldRegisterManifest,
 ) -> Result<PreparedEnvironment, ReplayTickIdentityError> {
-    let computed = rules_hash_of(&prepared.rule_forms).map_err(|error| {
+    let computed = canonical_ast::rules_hash_of(&prepared.rule_forms).map_err(|error| {
         ReplayTickIdentityError::CanonicalRules {
             message: error.message,
         }
@@ -296,7 +299,7 @@ pub(crate) fn encode_prepared_environment(
         });
     }
     validate_prepared_rows(prepared)?;
-    let bsl = encode_prepared_bsl_sections(
+    let bsl = identity_sections::encode_prepared_bsl_sections(
         &prepared.types,
         &prepared.intrinsics,
         &prepared.consts,
@@ -308,7 +311,10 @@ pub(crate) fn encode_prepared_environment(
         phase_order::phase_schedule().map_err(|error| ReplayTickIdentityError::PhaseSchedule {
             message: error.to_string(),
         })?;
-    debug_assert_eq!(sha256_of(schedule.canonical_bytes()), schedule.digest());
+    debug_assert_eq!(
+        content_digest::sha256_of(schedule.canonical_bytes()),
+        schedule.digest()
+    );
 
     let mut writer = Writer::new("prepared environment");
     writer.extend(PREPARED_ENVIRONMENT_DOMAIN)?;
@@ -316,7 +322,7 @@ pub(crate) fn encode_prepared_environment(
     writer.push(0x01)?;
     writer.extend(&computed)?;
     writer.push(0x02)?;
-    writer.u32(phase_order::PhaseSchedule::layout_version())?;
+    writer.u32(PhaseSchedule::layout_version())?;
     writer.extend(&schedule.digest())?;
     writer.push(0x03)?;
     writer.count32("prepared rule count", prepared.rules.len())?;
@@ -340,7 +346,7 @@ pub(crate) fn encode_prepared_environment(
     writer.u32(WORLD_REGISTER_MANIFEST_LAYOUT_VERSION)?;
     writer.extend(&registers.digest())?;
     let canonical_bytes = writer.finish();
-    let digest = PreparedEnvironmentDigest::from_bytes(sha256_of(&canonical_bytes));
+    let digest = PreparedEnvironmentDigest::from_bytes(content_digest::sha256_of(&canonical_bytes));
     Ok(PreparedEnvironment {
         canonical_bytes,
         digest,
@@ -419,7 +425,7 @@ pub fn world_register_manifest() -> Result<WorldRegisterManifest, ReplayTickIden
     writer.str32(COMPLETED_TICK_REGISTER)?;
     writer.u32(COMPLETED_TICK_REGISTER_LAYOUT_VERSION)?;
     let canonical_bytes = writer.finish();
-    let digest = sha256_of(&canonical_bytes);
+    let digest = content_digest::sha256_of(&canonical_bytes);
     Ok(WorldRegisterManifest {
         canonical_bytes,
         digest,
@@ -452,7 +458,7 @@ pub fn encode_world_register_set(
     writer.u32(8)?;
     writer.extend(&completed_tick.to_be_bytes())?;
     let canonical_bytes = writer.finish();
-    let digest = sha256_of(&canonical_bytes);
+    let digest = content_digest::sha256_of(&canonical_bytes);
     Ok(WorldRegisterSet {
         canonical_bytes,
         digest,
@@ -478,7 +484,7 @@ pub fn encode_stable_world(
     writer.u32(WORLD_REGISTER_SET_LAYOUT_VERSION)?;
     writer.extend(&registers.digest())?;
     let canonical_bytes = writer.finish();
-    let digest = StableWorldDigest::from_bytes(sha256_of(&canonical_bytes));
+    let digest = StableWorldDigest::from_bytes(content_digest::sha256_of(&canonical_bytes));
     Ok(StableWorld {
         canonical_bytes,
         digest,
@@ -515,8 +521,8 @@ pub fn encode_tick_payload(
 
 pub(crate) fn encode_tick_payload_for_prepared(
     prepared: &PreparedRules,
-    report: &crate::TickReport,
-    action_outcomes: &[babylon_practice_contract::OrganizerReceipt],
+    report: &TickReport,
+    action_outcomes: &[OrganizerReceipt],
     resolver: &StableElementResolver,
 ) -> Result<TickPayload, ReplayTickIdentityError> {
     encode_tick_payload_with_order(
@@ -534,13 +540,14 @@ pub(crate) fn encode_tick_payload_for_prepared(
     )
 }
 
+#[derive(Clone, Copy)]
 struct TickPayloadEvidence<'a> {
     outcomes: &'a [(String, usize)],
     reported_fired: usize,
     committed_events: &'a [CommittedEvent],
     choice_receipts: &'a [ChoiceReceipt],
     audit_receipts: &'a [AuditReceipt],
-    action_outcomes: &'a [babylon_practice_contract::OrganizerReceipt],
+    action_outcomes: &'a [OrganizerReceipt],
     resolver: &'a StableElementResolver,
 }
 
@@ -576,18 +583,23 @@ fn encode_tick_payload_with_order<'a>(
             reported: reported_fired,
         });
     }
-    validate_choice_receipt_order(choice_receipts)
+    choice_receipt::validate_choice_receipt_order(choice_receipts)
         .map_err(|actual| ReplayTickIdentityError::ChoiceReceiptOrder { actual })?;
     let sink_events = committed_events
         .iter()
         .map(CommittedEvent::sink_record)
         .collect::<Vec<_>>();
-    let sections = encode_tick_payload_sections(outcomes, &sink_events, audit_receipts, resolver)?
-        .with_action_outcomes(action_outcomes)?;
+    let sections = identity_sections::encode_tick_payload_sections(
+        outcomes,
+        &sink_events,
+        audit_receipts,
+        resolver,
+    )?
+    .with_action_outcomes(action_outcomes)?;
     let event_section = encode_committed_event_section(committed_events, sections.events())?;
     let choice_receipt_section = encode_choice_receipt_section(choice_receipts)?;
-    let event_section_digest = sha256_of(&event_section);
-    let choice_receipt_section_digest = sha256_of(&choice_receipt_section);
+    let event_section_digest = content_digest::sha256_of(&event_section);
+    let choice_receipt_section_digest = content_digest::sha256_of(&choice_receipt_section);
     let mut writer = Writer::new("tick payload");
     writer.extend(TICK_PAYLOAD_DOMAIN)?;
     writer.u32(TICK_PAYLOAD_LAYOUT_VERSION)?;
@@ -602,7 +614,7 @@ fn encode_tick_payload_with_order<'a>(
         writer.extend(section)?;
     }
     let canonical_bytes = writer.finish();
-    let digest = TickPayloadDigest::from_bytes(sha256_of(&canonical_bytes));
+    let digest = TickPayloadDigest::from_bytes(content_digest::sha256_of(&canonical_bytes));
     Ok(TickPayload {
         canonical_bytes,
         digest,
@@ -755,8 +767,6 @@ impl Writer {
 
 #[cfg(test)]
 mod tests {
-    use babylon_bsl::canonical_ast::rules_hash_of;
-    use babylon_bsl::identity_sections::encode_prepared_bsl_sections;
     use babylon_graph::hypergraph_store::HypergraphStore;
     use babylon_graph::stable_element::{
         StableElementResolver, STABLE_ELEMENT_RESOLVER_MANIFEST_LAYOUT_VERSION,
@@ -764,10 +774,13 @@ mod tests {
     use babylon_kernel::content_digest::ContentDigest;
 
     use super::{
-        encode_prepared_environment, world_register_manifest, ReplayTickIdentityError,
-        PREPARED_ENVIRONMENT_LAYOUT_VERSION, WORLD_REGISTER_MANIFEST_LAYOUT_VERSION,
+        ReplayTickIdentityError, PREPARED_ENVIRONMENT_LAYOUT_VERSION,
+        WORLD_REGISTER_MANIFEST_LAYOUT_VERSION,
     };
-    use crate::{phase_order, prepare_rules};
+    use crate::phase_order;
+    use crate::phase_order::PhaseSchedule;
+    use babylon_bsl::canonical_ast;
+    use babylon_bsl::identity_sections;
 
     const SCENARIO: &str =
         include_str!("../content/scenarios/vitality-lifecycle-combined-conformance.bscn");
@@ -778,49 +791,62 @@ mod tests {
     );
 
     fn push_str32(output: &mut Vec<u8>, value: &str) {
-        output.extend_from_slice(&u32::try_from(value.len()).unwrap().to_be_bytes());
+        output.extend_from_slice(
+            &u32::try_from(value.len())
+                .expect("the fixture value fits the target range")
+                .to_be_bytes(),
+        );
         output.extend_from_slice(value.as_bytes());
     }
 
     #[test]
     fn prepared_environment_is_exact_and_recomputes_loaded_rules_hash() {
         let mut graph = HypergraphStore::new();
-        let mut prepared = prepare_rules(SCENARIO, None, RULES, &mut graph).unwrap();
+        let mut prepared = crate::prepare_rules(SCENARIO, None, RULES, &mut graph)
+            .expect("the fixture prepares the authored state");
         let resolver = StableElementResolver::seal(
             &graph,
             &prepared.scenario_scope,
             &prepared.node_content_ids,
             &prepared.hyperedge_content_ids,
         )
-        .unwrap();
-        let rules_hash = rules_hash_of(&prepared.rule_forms).unwrap();
+        .expect("the fixture seals the prepared period");
+        let rules_hash = canonical_ast::rules_hash_of(&prepared.rule_forms)
+            .expect("the rule set has a canonical hash");
         let content = ContentDigest {
             defines_hash: [0x5a; 32],
             rules_hash,
         };
-        let registers = world_register_manifest().unwrap();
+        let registers = super::world_register_manifest()
+            .expect("the fixture call `world_register_manifest` succeeds for the authored inputs");
         let environment =
-            encode_prepared_environment(&content, &prepared, &resolver, &registers).unwrap();
+            super::encode_prepared_environment(&content, &prepared, &resolver, &registers)
+                .expect("the fixture value encodes to its canonical bytes");
 
-        let schedule = phase_order::phase_schedule().unwrap();
-        let bsl = encode_prepared_bsl_sections(
+        let schedule = phase_order::phase_schedule()
+            .expect("the fixture call `phase_schedule` succeeds for the authored inputs");
+        let bsl = identity_sections::encode_prepared_bsl_sections(
             &prepared.types,
             &prepared.intrinsics,
             &prepared.consts,
             &prepared.enums,
             prepared.vocabulary.as_ref(),
         )
-        .unwrap();
+        .expect("the fixture value encodes to its canonical bytes");
         let mut expected = Vec::new();
         expected.extend_from_slice(b"babylon.prepared-environment\0");
         expected.extend_from_slice(&PREPARED_ENVIRONMENT_LAYOUT_VERSION.to_be_bytes());
         expected.push(0x01);
         expected.extend_from_slice(&rules_hash);
         expected.push(0x02);
-        expected.extend_from_slice(&phase_order::PhaseSchedule::layout_version().to_be_bytes());
+        expected.extend_from_slice(&PhaseSchedule::layout_version().to_be_bytes());
         expected.extend_from_slice(&schedule.digest());
         expected.push(0x03);
-        expected.extend_from_slice(&u32::try_from(prepared.rules.len()).unwrap().to_be_bytes());
+        expected.extend_from_slice(
+            &u32::try_from(prepared.rules.len())
+                .expect("the fixture value fits the target range")
+                .to_be_bytes(),
+        );
         for (rule_id, _) in &prepared.rules {
             push_str32(&mut expected, rule_id);
         }
@@ -845,7 +871,8 @@ mod tests {
         let original = environment.digest();
         prepared.rules.reverse();
         let reordered =
-            encode_prepared_environment(&content, &prepared, &resolver, &registers).unwrap();
+            super::encode_prepared_environment(&content, &prepared, &resolver, &registers)
+                .expect("the fixture value encodes to its canonical bytes");
         assert_ne!(original, reordered.digest());
 
         let mismatch = ContentDigest {
@@ -853,7 +880,7 @@ mod tests {
             rules_hash: [0xa5; 32],
         };
         assert!(matches!(
-            encode_prepared_environment(&mismatch, &prepared, &resolver, &registers),
+            super::encode_prepared_environment(&mismatch, &prepared, &resolver, &registers),
             Err(ReplayTickIdentityError::RulesHashMismatch { .. })
         ));
     }

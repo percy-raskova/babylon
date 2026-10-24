@@ -74,7 +74,7 @@ fn rows(changed: bool) -> Vec<TerritoryStateRow> {
                 },
                 fields,
             )
-            .unwrap()
+            .expect("the authored fixture satisfies the constructor invariants")
         })
         .collect()
 }

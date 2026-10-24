@@ -1,16 +1,20 @@
 //! Custody of actual status, review, submission and accepted responses.
-use super::{write_named_record, Configuration, Scope};
+use super::{Configuration, Scope};
 use crate::observer::{ObservationContext, ObserverSession};
 use babylon_kernel::clock::CampaignDuration;
-use babylon_persistence::{
-    observer_reader::CommittedMaterialReceipts,
-    qualification_audit::aid::{self, Accepted, Audit, Boundary, MaterialWorldRegister},
-    runtime_session::{
-        OrganizerChoice, OrganizerCommand, OrganizerCommitment, OrganizerPreview,
-        OrganizerSnapshot, RuntimeSessionRequest, RuntimeSessionScope,
-    },
+use babylon_persistence::observer_reader::CommittedMaterialReceipts;
+use babylon_persistence::qualification_audit::aid;
+use babylon_persistence::qualification_audit::aid::{
+    Accepted, Audit, Boundary, MaterialWorldRegister,
 };
+use babylon_persistence::runtime_session::{
+    OrganizerChoice, OrganizerCommand, OrganizerCommitment, OrganizerPreview, OrganizerSnapshot,
+    RuntimeSessionRequest, RuntimeSessionScope,
+};
+
+use aid::Summary;
 use serde::Serialize;
+use serde_json::Value;
 
 #[derive(Clone, Default)]
 pub(super) struct Custody {
@@ -287,7 +291,7 @@ impl Custody {
         let mut bytes =
             serde_json::to_vec(&original).map_err(|_| "native aid witness encoding failed")?;
         bytes.push(b'\n');
-        write_named_record(
+        super::write_named_record(
             &configuration.directory,
             &format!("aid-{}", super::hex(&commitment.commitment_id)),
             &bytes,
@@ -315,11 +319,11 @@ impl Custody {
         Ok(fact)
     }
 
-    pub(super) fn practices(&self) -> serde_json::Value {
+    pub(super) fn practices(&self) -> Value {
         self.audit.practice_report()
     }
 
-    pub(super) fn summary(&self) -> aid::Summary {
+    pub(super) fn summary(&self) -> Summary {
         self.audit.summary()
     }
 
@@ -347,7 +351,9 @@ fn matches_source(source: &OrganizerSnapshot, snapshot: &OrganizerSnapshot) -> R
 #[cfg(test)]
 mod tests {
     use super::*;
-    use babylon_persistence::{identity::CampaignId, runtime_session::OrganizerAidKind};
+    use babylon_persistence::identity::CampaignId;
+    use babylon_persistence::runtime_session::OrganizerAidKind;
+    use uuid::Uuid;
 
     fn fixture() -> (
         Custody,
@@ -359,8 +365,8 @@ mod tests {
         let snapshot: OrganizerSnapshot = serde_json::from_str(include_str!(
             "../../../../babylon-persistence/tests/fixtures/national_organizer_opening_v11.json"
         ))
-        .unwrap();
-        let mut session = ObserverSession::new(CampaignId::from_uuid(uuid::Uuid::from_u128(1)));
+        .expect("the authored JSON matches the declared schema");
+        let mut session = ObserverSession::new(CampaignId::from_uuid(Uuid::from_u128(1)));
         session.connected_fixture();
         session.ready(0, None);
         session.duration = Some(snapshot.duration);
@@ -383,7 +389,7 @@ mod tests {
                 .aid
                 .iter()
                 .find(|r| r.kind == OrganizerAidKind::Local)
-                .unwrap()
+                .expect("the fixture holds the searched element")
                 .coordination_hours,
             replaces_standing_work: snapshot.view.standing.authorized,
             refusal: None,
@@ -392,7 +398,10 @@ mod tests {
         let request = RuntimeSessionRequest::SubmitOrganizer {
             protocol_version:
                 babylon_persistence::runtime_session::RUNTIME_SESSION_PROTOCOL_VERSION,
-            scope: session.runtime_scope().unwrap().clone(),
+            scope: session
+                .runtime_scope()
+                .expect("the fixture runtime scope exists")
+                .clone(),
             request_id: 7,
             command,
         };
@@ -402,15 +411,28 @@ mod tests {
     #[test]
     fn status_arriving_during_opening_survives_the_asynchronous_material_install() {
         let (mut custody, session, snapshot, request, preview) = fixture();
-        custody.status(&session, snapshot.clone()).unwrap();
+        custody
+            .status(&session, snapshot.clone())
+            .expect("the fixture command reports its status");
         assert!(custody.stage(&session, &request, Some(&preview)).is_err());
         let candidate = Custody {
             material: Some(snapshot.clone()),
             ..Custody::default()
         };
-        custody.install(candidate).unwrap();
-        assert_eq!(custody.status.as_ref().unwrap().1, snapshot);
-        custody.stage(&session, &request, Some(&preview)).unwrap();
+        custody
+            .install(candidate)
+            .expect("the fixture call `install` succeeds for the authored inputs");
+        assert_eq!(
+            custody
+                .status
+                .as_ref()
+                .expect("the fixture set the optional field before this read")
+                .1,
+            snapshot
+        );
+        custody
+            .stage(&session, &request, Some(&preview))
+            .expect("the fixture call `stage` succeeds for the authored inputs");
         assert!(custody.review.is_some());
     }
 
@@ -418,22 +440,36 @@ mod tests {
     fn exact_submission_retry_preserves_the_original_status_and_review() {
         let (mut custody, session, snapshot, request, preview) = fixture();
         custody.material = Some(snapshot.clone());
-        custody.status(&session, snapshot).unwrap();
-        custody.stage(&session, &request, Some(&preview)).unwrap();
-        let original = custody.review.clone().unwrap();
-        custody.stage(&session, &request, Some(&preview)).unwrap();
+        custody
+            .status(&session, snapshot)
+            .expect("the fixture command reports its status");
+        custody
+            .stage(&session, &request, Some(&preview))
+            .expect("the fixture call `stage` succeeds for the authored inputs");
+        let original = custody.review.clone().expect("the fixture value clones");
+        custody
+            .stage(&session, &request, Some(&preview))
+            .expect("the fixture call `stage` succeeds for the authored inputs");
         let mut changed = preview;
         changed.available_hours += 1;
         assert!(custody.stage(&session, &request, Some(&changed)).is_err());
         assert!(custody.stage(&session, &request, None).is_err());
-        assert!(custody.review.as_ref().unwrap() == &original);
+        assert!(
+            custody
+                .review
+                .as_ref()
+                .expect("the fixture set the optional field before this read")
+                == &original
+        );
     }
 
     #[test]
     fn changed_offer_or_observation_cannot_replace_the_original_source() {
         let (mut custody, mut session, snapshot, request, preview) = fixture();
         custody.material = Some(snapshot.clone());
-        custody.status(&session, snapshot.clone()).unwrap();
+        custody
+            .status(&session, snapshot.clone())
+            .expect("the fixture command reports its status");
         let mut changed = snapshot;
         changed.aid[0].payer_cash += 1;
         assert!(custody.status(&session, changed).is_err());
@@ -446,13 +482,19 @@ mod tests {
     fn late_candidate_cannot_erase_an_acceptance_or_its_submitted_review() {
         let (mut custody, session, snapshot, request, preview) = fixture();
         custody.material = Some(snapshot.clone());
-        custody.status(&session, snapshot).unwrap();
-        custody.stage(&session, &request, Some(&preview)).unwrap();
+        custody
+            .status(&session, snapshot)
+            .expect("the fixture command reports its status");
+        custody
+            .stage(&session, &request, Some(&preview))
+            .expect("the fixture call `stage` succeeds for the authored inputs");
         let original = custody.review.clone();
         let mut candidate = custody.clone();
         candidate.status = None;
         candidate.review = None;
-        custody.install(candidate.clone()).unwrap();
+        custody
+            .install(candidate.clone())
+            .expect("the fixture call `install` succeeds for the authored inputs");
         assert!(custody.review == original);
         custody.revision = 1;
         assert!(custody.install(candidate).is_err());
@@ -464,9 +506,15 @@ mod tests {
     fn acknowledged_refusal_releases_only_its_own_review_for_a_fresh_submission() {
         let (mut custody, session, snapshot, mut request, preview) = fixture();
         custody.material = Some(snapshot.clone());
-        custody.status(&session, snapshot).unwrap();
-        custody.stage(&session, &request, Some(&preview)).unwrap();
-        let scope = session.runtime_scope().unwrap();
+        custody
+            .status(&session, snapshot)
+            .expect("the fixture command reports its status");
+        custody
+            .stage(&session, &request, Some(&preview))
+            .expect("the fixture call `stage` succeeds for the authored inputs");
+        let scope = session
+            .runtime_scope()
+            .expect("the fixture runtime scope exists");
         custody.refused(scope, 99);
         assert!(custody.review.is_some());
         let mut crossed = scope.clone();
@@ -485,7 +533,16 @@ mod tests {
         };
         *request_id = 8;
         command.nonce = [12; 16];
-        custody.stage(&session, &request, Some(&preview)).unwrap();
-        assert_eq!(custody.review.as_ref().unwrap().request_id, 8);
+        custody
+            .stage(&session, &request, Some(&preview))
+            .expect("the fixture call `stage` succeeds for the authored inputs");
+        assert_eq!(
+            custody
+                .review
+                .as_ref()
+                .expect("the fixture set the optional field before this read")
+                .request_id,
+            8
+        );
     }
 }

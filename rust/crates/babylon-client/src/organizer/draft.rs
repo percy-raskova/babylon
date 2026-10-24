@@ -8,6 +8,10 @@ use babylon_persistence::runtime_session::OrganizerChoice;
 use serde_json::json;
 
 use super::editor::NoteEditor;
+use fs::File;
+use serde_json::Value;
+use std::io::ErrorKind;
+use uuid::Uuid;
 
 pub(super) const MAX_EVIDENCE_REFERENCES: usize = 32;
 
@@ -32,7 +36,7 @@ impl OrganizerDraft {
     }
 }
 
-fn path(campaign: uuid::Uuid) -> Result<PathBuf, String> {
+fn path(campaign: Uuid) -> Result<PathBuf, String> {
     let preference = crate::campaign_browser::preference_path()?;
     let base = preference
         .parent()
@@ -42,14 +46,14 @@ fn path(campaign: uuid::Uuid) -> Result<PathBuf, String> {
         .join(format!("{campaign}.json")))
 }
 
-pub(super) fn load(campaign: uuid::Uuid, workplace_id: u64) -> Result<OrganizerDraft, String> {
+pub(super) fn load(campaign: Uuid, workplace_id: u64) -> Result<OrganizerDraft, String> {
     read_at(&path(campaign)?, campaign, workplace_id)
 }
 
-fn read_at(path: &Path, campaign: uuid::Uuid, workplace_id: u64) -> Result<OrganizerDraft, String> {
-    let file = match fs::File::open(path) {
+fn read_at(path: &Path, campaign: Uuid, workplace_id: u64) -> Result<OrganizerDraft, String> {
+    let file = match File::open(path) {
         Ok(file) => file,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+        Err(error) if error.kind() == ErrorKind::NotFound => {
             return Ok(OrganizerDraft::new(workplace_id))
         }
         Err(_) => return Err("Cannot read this campaign's personal draft.".into()),
@@ -61,7 +65,7 @@ fn read_at(path: &Path, campaign: uuid::Uuid, workplace_id: u64) -> Result<Organ
     if bytes.len() > 16_384 {
         return Err("Personal draft exceeds the supported size.".into());
     }
-    let value: serde_json::Value = serde_json::from_slice(&bytes)
+    let value: Value = serde_json::from_slice(&bytes)
         .map_err(|_| "Personal draft is invalid; retained for recovery.")?;
     let object = value
         .as_object()
@@ -98,17 +102,17 @@ fn read_at(path: &Path, campaign: uuid::Uuid, workplace_id: u64) -> Result<Organ
     })
 }
 
-pub(super) fn save(campaign: uuid::Uuid, draft: &OrganizerDraft) -> Result<(), String> {
+pub(super) fn save(campaign: Uuid, draft: &OrganizerDraft) -> Result<(), String> {
     write_at(&path(campaign)?, campaign, draft)
 }
 
-fn write_at(path: &Path, campaign: uuid::Uuid, draft: &OrganizerDraft) -> Result<(), String> {
+fn write_at(path: &Path, campaign: Uuid, draft: &OrganizerDraft) -> Result<(), String> {
     validate_references(&draft.references, draft.selected_reference)?;
     let parent = path
         .parent()
         .ok_or("Personal draft directory is unavailable.")?;
     fs::create_dir_all(parent).map_err(|_| "Cannot create the personal draft directory.")?;
-    let temporary = parent.join(format!(".{}.tmp", uuid::Uuid::new_v4()));
+    let temporary = parent.join(format!(".{}.tmp", Uuid::new_v4()));
     let mut options = OpenOptions::new();
     options.write(true).create_new(true);
     #[cfg(unix)]
@@ -151,39 +155,51 @@ fn validate_references(references: &[[u8; 32]], selected: Option<[u8; 32]>) -> R
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::Value;
+    use uuid::Uuid;
 
     #[test]
     fn draft_references_roundtrip_without_executable_authority() {
-        let campaign = uuid::Uuid::new_v4();
+        let campaign = Uuid::new_v4();
         let directory = std::env::temp_dir().join(format!("babylon-draft-references-{campaign}"));
-        fs::create_dir_all(&directory).unwrap();
+        fs::create_dir_all(&directory).expect("the fixture directory is creatable");
         let path = directory.join("draft.json");
         let first = [1u8; 32];
         let second = [2u8; 32];
         let value = json!({"schema":2,"campaign":campaign.to_string(),"workplace":42,
             "choice":"reinforce","notes":"Keep the café report.",
             "references":[first,second],"selected_reference":second});
-        fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
+        fs::write(
+            &path,
+            serde_json::to_vec(&value).expect("the value serializes to canonical JSON bytes"),
+        )
+        .expect("the fixture sink accepts the authored bytes");
         let draft = read_at(&path, campaign, 42).expect("current draft references must load");
         assert_eq!(draft.notes.text, "Keep the café report.");
-        write_at(&path, campaign, &draft).unwrap();
-        assert_eq!(read_at(&path, campaign, 42).unwrap(), draft);
-        let saved: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        write_at(&path, campaign, &draft).expect("the fixture file accepts the authored bytes");
+        assert_eq!(
+            read_at(&path, campaign, 42).expect("the fixture file holds the authored range"),
+            draft
+        );
+        let saved: Value = serde_json::from_slice(
+            &fs::read(&path).expect("the fixture reader returns its authored facts"),
+        )
+        .expect("the authored bytes match the declared schema");
         assert_eq!(saved, value);
         for key in ["nonce", "authority_id", "commitment", "command"] {
             assert!(saved.get(key).is_none());
         }
-        assert!(read_at(&path, uuid::Uuid::new_v4(), 42).is_err());
+        assert!(read_at(&path, Uuid::new_v4(), 42).is_err());
         assert!(read_at(&path, campaign, 43).is_err());
-        fs::remove_file(path).unwrap();
-        fs::remove_dir(directory).unwrap();
+        fs::remove_file(path).expect("the fixture file exists before removal");
+        fs::remove_dir(directory).expect("the fixture directory exists before removal");
     }
 
     #[test]
     fn draft_references_refuse_old_or_malformed_files_without_overwriting_them() {
-        let campaign = uuid::Uuid::new_v4();
+        let campaign = Uuid::new_v4();
         let directory = std::env::temp_dir().join(format!("babylon-draft-refusals-{campaign}"));
-        fs::create_dir_all(&directory).unwrap();
+        fs::create_dir_all(&directory).expect("the fixture directory is creatable");
         let path = directory.join("draft.json");
         let first = [1u8; 32];
         let second = [2u8; 32];
@@ -193,8 +209,12 @@ mod tests {
         let mut malformed = Vec::new();
         let mut old = current.clone();
         old["schema"] = json!(1);
-        old.as_object_mut().unwrap().remove("references");
-        old.as_object_mut().unwrap().remove("selected_reference");
+        old.as_object_mut()
+            .expect("the JSON fixture field is an object")
+            .remove("references");
+        old.as_object_mut()
+            .expect("the JSON fixture field is an object")
+            .remove("selected_reference");
         malformed.push(old);
         let mut duplicate = current.clone();
         duplicate["references"] = json!([first, first]);
@@ -205,42 +225,55 @@ mod tests {
         let mut unknown_selection = current.clone();
         unknown_selection
             .as_object_mut()
-            .unwrap()
+            .expect("the JSON fixture field is an object")
             .remove("selected_reference");
-        unknown_selection["unknown_selection"] = serde_json::Value::Null;
+        unknown_selection["unknown_selection"] = Value::Null;
         malformed.push(unknown_selection);
         let mut excessive = current.clone();
         excessive["references"] = json!((0..33).map(|value| [value; 32]).collect::<Vec<_>>());
         malformed.push(excessive);
         for value in malformed {
-            let bytes = serde_json::to_vec(&value).unwrap();
-            fs::write(&path, &bytes).unwrap();
+            let bytes =
+                serde_json::to_vec(&value).expect("the value serializes to canonical JSON bytes");
+            fs::write(&path, &bytes).expect("the fixture sink accepts the authored bytes");
             assert!(read_at(&path, campaign, 42).is_err());
-            assert_eq!(fs::read(&path).unwrap(), bytes);
+            assert_eq!(
+                fs::read(&path).expect("the fixture reader returns its authored facts"),
+                bytes
+            );
         }
-        fs::remove_file(path).unwrap();
-        fs::remove_dir(directory).unwrap();
+        fs::remove_file(path).expect("the fixture file exists before removal");
+        fs::remove_dir(directory).expect("the fixture directory exists before removal");
     }
 
     #[test]
     fn saved_draft_is_campaign_bound_and_carries_no_command_authority() {
-        let campaign = uuid::Uuid::new_v4();
+        let campaign = Uuid::new_v4();
         let directory = std::env::temp_dir().join(format!("babylon-organizer-draft-{campaign}"));
         let path = directory.join("draft.json");
         let mut draft = OrganizerDraft::new(42);
         draft.notes.insert("Keep the workplace objection.");
         draft.choice = OrganizerChoice::Reinforce;
-        write_at(&path, campaign, &draft).unwrap();
-        assert_eq!(read_at(&path, campaign, 42).unwrap(), draft);
-        assert!(read_at(&path, uuid::Uuid::new_v4(), 42).is_err());
+        write_at(&path, campaign, &draft).expect("the fixture file accepts the authored bytes");
+        assert_eq!(
+            read_at(&path, campaign, 42).expect("the fixture file holds the authored range"),
+            draft
+        );
+        assert!(read_at(&path, Uuid::new_v4(), 42).is_err());
         assert!(read_at(&path, campaign, 43).is_err());
-        let bytes = fs::read(&path).unwrap();
-        let value: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let bytes = fs::read(&path).expect("the fixture reader returns its authored facts");
+        let value: Value =
+            serde_json::from_slice(&bytes).expect("the authored bytes match the declared schema");
         assert!(value.get("nonce").is_none());
         assert!(value.get("authority_id").is_none());
         assert!(value.get("commitment").is_none());
-        assert_eq!(fs::read_dir(&directory).unwrap().count(), 1);
-        fs::remove_file(path).unwrap();
-        fs::remove_dir(directory).unwrap();
+        assert_eq!(
+            fs::read_dir(&directory)
+                .expect("the fixture directory is readable")
+                .count(),
+            1
+        );
+        fs::remove_file(path).expect("the fixture file exists before removal");
+        fs::remove_dir(directory).expect("the fixture directory exists before removal");
     }
 }

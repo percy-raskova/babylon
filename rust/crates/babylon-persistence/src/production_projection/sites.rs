@@ -1,31 +1,38 @@
 //! Common workplace presentation; source jobs never supply runtime headcounts.
-use super::{metadata::Metadata, ProductionProjectionError};
-use crate::{
-    economic_catalog::{EconomicSiteSource, RecipeTemplate},
-    michigan_economy::digest_hex,
-    production_observation::{
-        ProductionInput, ProductionLabor, ProductionProcess, ProductionSite, ProductionSiteRole,
-        ProductionStock,
-    },
+use super::metadata::Metadata;
+use super::ProductionProjectionError;
+
+use crate::economic_catalog::{EconomicSiteSource, RecipeTemplate};
+use crate::production_observation::{
+    ProductionInput, ProductionLabor, ProductionProcess, ProductionSite, ProductionSiteRole,
+    ProductionStock,
 };
+
+use crate::economic_catalog::EconomicSiteSeed;
+use crate::michigan_economy;
+use babylon_kernel::economic_location::EconomicLocation;
+use babylon_material_circuit::InventoryRow;
+use babylon_material_circuit::ProcessOutput;
+use babylon_material_circuit::ProductionReceipt;
 use babylon_material_circuit::{
     CommodityKind, GoodId, MaterialCircuitState, MerchantRole, ProcessId, SiteId, UnitId,
 };
 use babylon_tick::material_world::MaterialTickReceipts;
 use std::collections::BTreeMap;
-type Result<T> = std::result::Result<T, ProductionProjectionError>;
+use std::result::Result as StdResult;
+type Result<T> = StdResult<T, ProductionProjectionError>;
 type StockKey = (SiteId, GoodId, UnitId);
 pub(crate) struct Quantities<'a> {
     inventory: BTreeMap<StockKey, u64>,
-    stocks: BTreeMap<SiteId, Vec<&'a babylon_material_circuit::InventoryRow>>,
+    stocks: BTreeMap<SiteId, Vec<&'a InventoryRow>>,
     inputs: BTreeMap<ProcessId, BTreeMap<(GoodId, UnitId), u64>>,
     labor_requirements: BTreeMap<ProcessId, BTreeMap<UnitId, u64>>,
-    outputs: BTreeMap<ProcessId, &'a babylon_material_circuit::ProcessOutput>,
+    outputs: BTreeMap<ProcessId, &'a ProcessOutput>,
     capacity: BTreeMap<ProcessId, u64>,
     labor: BTreeMap<(SiteId, UnitId), u64>,
     suppliers: BTreeMap<StockKey, Vec<SiteId>>,
     kinds: BTreeMap<(GoodId, UnitId), CommodityKind>,
-    receipts: Option<BTreeMap<ProcessId, &'a babylon_material_circuit::ProductionReceipt>>,
+    receipts: Option<BTreeMap<ProcessId, &'a ProductionReceipt>>,
 }
 impl<'a> Quantities<'a> {
     pub(crate) fn new(
@@ -165,8 +172,8 @@ pub(super) fn project(
             .map(|row| {
                 let good = metadata.good(row.good_id, row.unit_id)?;
                 Ok(ProductionStock {
-                    good_id: digest_hex(&row.good_id.as_bytes()),
-                    unit_id: digest_hex(&row.unit_id.as_bytes()),
+                    good_id: michigan_economy::digest_hex(&row.good_id.as_bytes()),
+                    unit_id: michigan_economy::digest_hex(&row.unit_id.as_bytes()),
                     good: good.label.clone(),
                     unit: good.unit_label.clone(),
                     quantity: row.quantity,
@@ -174,7 +181,7 @@ pub(super) fn project(
             })
             .collect::<Result<_>>()?;
         result.push(ProductionSite {
-            id: digest_hex(&site.site_id.as_bytes()),
+            id: michigan_economy::digest_hex(&site.site_id.as_bytes()),
             location: site.location,
             name: site.label.clone(),
             industry_code,
@@ -195,10 +202,7 @@ pub(super) fn project(
 }
 
 type SourceContext = (Option<String>, Option<String>, Option<u64>);
-fn source_context(
-    metadata: &Metadata<'_>,
-    site: &crate::economic_catalog::EconomicSiteSeed,
-) -> Result<SourceContext> {
+fn source_context(metadata: &Metadata<'_>, site: &EconomicSiteSeed) -> Result<SourceContext> {
     use crate::economic_catalog::EconomicSourceView;
     match (&site.source, metadata.view.sources) {
         (
@@ -214,10 +218,8 @@ fn source_context(
                 .find(|r| r.id() == site.site_id)
                 .ok_or(ProductionProjectionError::Content)?;
             if site.location
-                != babylon_kernel::economic_location::EconomicLocation::domestic_county(
-                    *county_geoid,
-                )
-                .map_err(|_| ProductionProjectionError::Content)?
+                != EconomicLocation::domestic_county(*county_geoid)
+                    .map_err(|_| ProductionProjectionError::Content)?
                 || authored.county_geoid != county_geoid.as_str()
                 || authored.sector_code != sector_code.as_str()
             {
@@ -234,7 +236,7 @@ fn source_context(
         }
         (EconomicSiteSource::Qcew(key), EconomicSourceView::National { cohorts, .. }) => {
             if site.location
-                != babylon_kernel::economic_location::EconomicLocation::domestic_county(key.county)
+                != EconomicLocation::domestic_county(key.county)
                     .map_err(|_| ProductionProjectionError::Content)?
                 || key.function != Some(site.function)
             {
@@ -305,10 +307,10 @@ pub(crate) fn project_process(
         })
         .collect();
     Ok(ProductionProcess {
-        id: digest_hex(&id.as_bytes()),
+        id: michigan_economy::digest_hex(&id.as_bytes()),
         name: format!("{}: {}", site.label, good.label),
-        output_good_id: digest_hex(&good.good_id.as_bytes()),
-        output_unit_id: digest_hex(&good.unit_id.as_bytes()),
+        output_good_id: michigan_economy::digest_hex(&good.good_id.as_bytes()),
+        output_unit_id: michigan_economy::digest_hex(&good.unit_id.as_bytes()),
         output_good: good.label.clone(),
         output_unit: good.unit_label.clone(),
         output_per_batch: output.quantity_per_batch,
@@ -346,8 +348,8 @@ fn inputs(
                 CommodityKind::PeriodService { .. } => None,
             };
             Ok(ProductionInput {
-                good_id: digest_hex(&r.good_id.as_bytes()),
-                unit_id: digest_hex(&r.unit_id.as_bytes()),
+                good_id: michigan_economy::digest_hex(&r.good_id.as_bytes()),
+                unit_id: michigan_economy::digest_hex(&r.unit_id.as_bytes()),
                 good: good.label.clone(),
                 unit: good.unit_label.clone(),
                 quantity_per_batch: r.quantity,
@@ -357,7 +359,7 @@ fn inputs(
                     .get(&key)
                     .into_iter()
                     .flatten()
-                    .map(|id| digest_hex(&id.as_bytes()))
+                    .map(|id| michigan_economy::digest_hex(&id.as_bytes()))
                     .collect(),
             })
         })

@@ -1,5 +1,10 @@
 //! Bounded, explicit equipment and installation relationships.
-use super::{MaterialCircuitError, MaterialCircuitState, ProductiveEquipment, Result};
+use super::MaterialCircuitError;
+use super::MaterialCircuitState;
+use super::ProductiveEquipment;
+use super::Result;
+use crate::GoodId;
+use crate::UnitId;
 use crate::{CircuitAccounting, CommodityKind, MAX_MATERIAL_CIRCUIT_ROWS};
 use std::collections::BTreeSet;
 pub(crate) fn row_limits(e: &ProductiveEquipment) -> Result<()> {
@@ -200,7 +205,7 @@ fn validate_policies(state: &MaterialCircuitState, e: &ProductiveEquipment) -> R
     Ok(())
 }
 
-fn storable(state: &MaterialCircuitState, good: crate::GoodId, unit: crate::UnitId) -> bool {
+fn storable(state: &MaterialCircuitState, good: GoodId, unit: UnitId) -> bool {
     state
         .commodities
         .binary_search_by_key(&(good, unit), |r| (r.good_id, r.unit_id))

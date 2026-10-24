@@ -31,7 +31,7 @@ pub(super) fn material_foundation_length(
 }
 
 /// Borrow current canonical components; only the fixed framing is owned.
-pub(super) struct CanonicalMaterialFoundation<'a> {
+pub(crate) struct CanonicalMaterialFoundation<'a> {
     duration: [u8; 9],
     content_digest: &'a [u8; 32],
     sections: [&'a [u8]; 3],
@@ -128,12 +128,14 @@ impl<'a> CanonicalMaterialFoundation<'a> {
 
 #[cfg(test)]
 mod tests {
+    use super::CanonicalMaterialFoundation;
     #[test]
     fn measured_national_register_fits_the_current_foundation_envelope() {
         // Actual native register measurement; this is a byte-bound witness,
         // not a fabricated valid graph foundation or register.
         let register_bytes = 240_132_229;
-        let length = super::material_foundation_length(14, 4096, register_bytes).unwrap();
+        let length = super::material_foundation_length(14, 4096, register_bytes)
+            .expect("the material foundation exposes its length");
         assert_eq!(
             length,
             super::super::FOUNDATION_DOMAIN.len() + 4 + 9 + 32 + 3 * 8 + 14 + 4096 + register_bytes
@@ -156,11 +158,13 @@ mod tests {
     #[test]
     fn measured_household_foundation_and_maximum_components_fit_exactly() {
         assert_eq!(
-            super::material_foundation_length(14, 57_018_148, 284_889_820).unwrap(),
+            super::material_foundation_length(14, 57_018_148, 284_889_820)
+                .expect("the material foundation exposes its length"),
             341_908_091
         );
         assert_eq!(
-            super::material_foundation_length(128, 67_108_864, 1_000_000_000).unwrap(),
+            super::material_foundation_length(128, 67_108_864, 1_000_000_000)
+                .expect("the material foundation exposes its length"),
             super::MAX_MATERIAL_FOUNDATION_BYTES
         );
         assert_eq!(super::MAX_MATERIAL_FOUNDATION_BYTES, 1_067_109_101);
@@ -171,7 +175,9 @@ mod tests {
 
     #[test]
     fn streamed_framing_matches_exact_current_export_and_digest() {
-        use babylon_kernel::{clock::CampaignDuration, content_digest::sha256_of};
+        use babylon_kernel::clock::CampaignDuration;
+        use babylon_kernel::content_digest::sha256_of;
+
         for duration in [
             CampaignDuration::Continuous,
             CampaignDuration::Finite { final_period: 16 },
@@ -181,36 +187,47 @@ mod tests {
             let preset = b"framing-control";
             let graph = b"graph-section";
             let register = b"register-section";
-            let encoding = super::CanonicalMaterialFoundation::new(
-                preset, duration, &content, graph, register,
-            )
-            .unwrap();
+            let encoding =
+                CanonicalMaterialFoundation::new(preset, duration, &content, graph, register)
+                    .expect("the constructor accepts the authored fixture arguments");
             let mut expected = Vec::new();
             expected.extend_from_slice(super::super::FOUNDATION_DOMAIN);
             expected.extend_from_slice(&3_u32.to_be_bytes());
-            expected.extend_from_slice(&duration.canonical_bytes().unwrap());
+            expected.extend_from_slice(
+                &duration
+                    .canonical_bytes()
+                    .expect("the graph value exposes canonical bytes"),
+            );
             expected.extend_from_slice(&content);
             for part in [preset.as_slice(), graph.as_slice(), register.as_slice()] {
-                expected.extend_from_slice(&u64::try_from(part.len()).unwrap().to_be_bytes());
+                expected.extend_from_slice(
+                    &u64::try_from(part.len())
+                        .expect("the fixture value fits the target range")
+                        .to_be_bytes(),
+                );
                 expected.extend_from_slice(part);
             }
             assert_eq!(encoding.len(), expected.len());
             assert_eq!(encoding.digest(), sha256_of(&expected));
-            assert_eq!(encoding.export().unwrap(), expected);
+            assert_eq!(
+                encoding
+                    .export()
+                    .expect("the fixture call `export` succeeds for the authored inputs"),
+                expected
+            );
             assert!(encoding.matches_bytes(&expected));
-            let same = super::CanonicalMaterialFoundation::new(
-                preset, duration, &content, graph, register,
-            )
-            .unwrap();
+            let same =
+                CanonicalMaterialFoundation::new(preset, duration, &content, graph, register)
+                    .expect("the constructor accepts the authored fixture arguments");
             assert!(encoding.matches_encoding(&same));
-            let changed = super::CanonicalMaterialFoundation::new(
+            let changed = CanonicalMaterialFoundation::new(
                 preset,
                 duration,
                 &content,
                 graph,
                 b"different-register-section",
             )
-            .unwrap();
+            .expect("the constructor accepts the authored fixture arguments");
             assert!(!encoding.matches_encoding(&changed));
         }
     }
@@ -219,15 +236,17 @@ mod tests {
     fn streamed_equality_refuses_any_damage_truncation_or_trailing_bytes() {
         use babylon_kernel::clock::CampaignDuration;
         let content = [47; 32];
-        let encoding = super::CanonicalMaterialFoundation::new(
+        let encoding = CanonicalMaterialFoundation::new(
             b"equality-control",
             CampaignDuration::Continuous,
             &content,
             b"graph-framing",
             b"register-framing",
         )
-        .unwrap();
-        let bytes = encoding.export().unwrap();
+        .expect("the constructor accepts the authored fixture arguments");
+        let bytes = encoding
+            .export()
+            .expect("the fixture call `export` succeeds for the authored inputs");
         for index in 0..bytes.len() {
             let mut damaged = bytes.clone();
             damaged[index] ^= 1;
@@ -241,7 +260,7 @@ mod tests {
         trailing.push(0);
         assert!(!encoding.matches_bytes(&trailing));
         for final_period in [0, u64::MAX] {
-            assert!(super::CanonicalMaterialFoundation::new(
+            assert!(CanonicalMaterialFoundation::new(
                 b"equality-control",
                 CampaignDuration::Finite { final_period },
                 &content,

@@ -1,6 +1,7 @@
 //! Elapsed wall time for acknowledged client lifecycle phases, never a forecast.
 use crate::observer::{ObservationContext, ObserverSession, SessionPhase};
 use babylon_persistence::identity::CampaignId;
+use babylon_persistence::runtime_session::RuntimeAdvanceStage;
 use bevy::prelude::*;
 use std::time::Duration;
 
@@ -48,7 +49,7 @@ pub(crate) struct OperationProgress {
     operation: Option<Operation>,
     started: Duration,
     seconds: u64,
-    stage: Option<babylon_persistence::runtime_session::RuntimeAdvanceStage>,
+    stage: Option<RuntimeAdvanceStage>,
     hidden: bool,
 }
 impl OperationProgress {
@@ -69,7 +70,7 @@ impl OperationProgress {
         session: &ObserverSession,
         request: u64,
         tick: u64,
-        stage: babylon_persistence::runtime_session::RuntimeAdvanceStage,
+        stage: RuntimeAdvanceStage,
         now: Duration,
     ) -> Result<(), String> {
         let prior = if Operation::current(session) == self.operation {
@@ -132,38 +133,49 @@ pub(crate) fn track(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use uuid::Uuid;
     #[test]
     fn progress_distinguishes_open_commit_and_authenticated_read_without_advancing_time() {
-        let mut state = ObserverSession::new(CampaignId::from_uuid(uuid::Uuid::from_u128(7)));
+        let mut state = ObserverSession::new(CampaignId::from_uuid(Uuid::from_u128(7)));
         let mut progress = OperationProgress::default();
         progress.observe(&state, Duration::from_secs(10));
         progress.observe(&state, Duration::from_secs(22));
         assert_eq!(
-            progress.caption().unwrap(),
+            progress
+                .caption()
+                .expect("the fixture call `caption` succeeds for the authored inputs"),
             "Opening campaign · 12s elapsed"
         );
         state.ready(0, None);
         progress.observe(&state, Duration::from_secs(25));
         assert_eq!(
-            progress.caption().unwrap(),
+            progress
+                .caption()
+                .expect("the fixture call `caption` succeeds for the authored inputs"),
             "Loading opening observation · 0s elapsed"
         );
         assert!(state.installed(&state.context()));
         progress.observe(&state, Duration::from_secs(29));
         assert!(progress.caption().is_none());
-        let request = state.begin_advance().unwrap();
+        let request = state
+            .begin_advance()
+            .expect("the session begins the authored advance");
         assert!(state.begin_advance().is_none());
         progress.observe(&state, Duration::from_secs(30));
         progress.observe(&state, Duration::from_secs(37));
         assert_eq!(
-            progress.caption().unwrap(),
+            progress
+                .caption()
+                .expect("the fixture call `caption` succeeds for the authored inputs"),
             "Period 1 requested; awaiting commit · 7s elapsed"
         );
         assert_eq!(state.durable_tick, 0);
         assert!(state.acknowledge(request, 1, Some("committed".into())));
         progress.observe(&state, Duration::from_secs(38));
         assert_eq!(
-            progress.caption().unwrap(),
+            progress
+                .caption()
+                .expect("the fixture call `caption` succeeds for the authored inputs"),
             "Loading saved period 1 · 0s elapsed"
         );
         assert!(state.begin_advance().is_none());
@@ -175,11 +187,13 @@ mod tests {
     fn real_stage_before_tracker_preserves_elapsed_and_clears_on_ack_or_failure() {
         use babylon_persistence::runtime_session::RuntimeAdvanceStage as Stage;
         for terminal in ["commit", "failure", "reopen"] {
-            let mut state = ObserverSession::new(CampaignId::from_uuid(uuid::Uuid::from_u128(7)));
+            let mut state = ObserverSession::new(CampaignId::from_uuid(Uuid::from_u128(7)));
             state.ready(3, None);
             let context = state.context();
             assert!(state.installed(&context));
-            let request = state.begin_advance().unwrap();
+            let request = state
+                .begin_advance()
+                .expect("the session begins the authored advance");
             let mut progress = OperationProgress::default();
             // First stage arrives before track has seen the pending request.
             progress
@@ -190,7 +204,7 @@ mod tests {
                     Stage::PreparingCommitments,
                     Duration::from_secs(30),
                 )
-                .unwrap();
+                .expect("the fixture call `report_stage` succeeds for the authored inputs");
             progress
                 .report_stage(
                     &state,
@@ -199,9 +213,11 @@ mod tests {
                     Stage::ResolvingEconomy,
                     Duration::from_secs(37),
                 )
-                .unwrap();
+                .expect("the fixture call `report_stage` succeeds for the authored inputs");
             assert_eq!(
-                progress.caption().unwrap(),
+                progress
+                    .caption()
+                    .expect("the fixture call `caption` succeeds for the authored inputs"),
                 "Period 4 · Resolving economy · 7s elapsed"
             );
             let before = progress.caption();
@@ -233,7 +249,7 @@ mod tests {
             } else {
                 assert!(progress
                     .caption()
-                    .unwrap()
+                    .expect("the fixture call `caption` succeeds for the authored inputs")
                     .starts_with("Loading saved period"));
             }
         }
@@ -241,14 +257,16 @@ mod tests {
 
     #[test]
     fn failed_or_replaced_read_has_no_stale_elapsed_progress() {
-        let mut state = ObserverSession::new(CampaignId::from_uuid(uuid::Uuid::from_u128(7)));
+        let mut state = ObserverSession::new(CampaignId::from_uuid(Uuid::from_u128(7)));
         state.ready(2, None);
         let mut progress = OperationProgress::default();
         progress.observe(&state, Duration::from_secs(5));
         state.inspect_tick(1);
         progress.observe(&state, Duration::from_secs(25));
         assert_eq!(
-            progress.caption().unwrap(),
+            progress
+                .caption()
+                .expect("the fixture call `caption` succeeds for the authored inputs"),
             "Loading saved period 1 · 0s elapsed"
         );
         state.fail("Read refused".into());

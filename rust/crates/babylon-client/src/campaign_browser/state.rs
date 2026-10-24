@@ -1,0 +1,3502 @@
+//! Leaf implementation for the parent module; public paths stay on the parent.
+
+use super::aggregate;
+
+use crate::workforce::StaffingIdentity;
+
+use std::collections::BTreeSet;
+
+use std::fmt::Write as _;
+
+use std::fs::{self, OpenOptions};
+
+use std::io::Write;
+
+use std::path::{Path, PathBuf};
+
+use crate::observer_opening::OpeningPresentation;
+
+use babylon_persistence::identity::CampaignId;
+use babylon_persistence::observer_reader::{
+    CampaignSummary, ObserverEconomyReader, ObserverEconomySnapshot, ObserverVisibility,
+};
+use babylon_persistence::production_observation::{
+    ProductionSite, ProductionSnapshot, ProductionStaffingAccount,
+};
+
+use bevy::ecs::query::QueryData;
+use bevy::ecs::system::SystemParam;
+
+use bevy::input_focus::tab_navigation::TabGroup;
+
+use bevy::prelude::*;
+
+use bevy::tasks::{AsyncComputeTaskPool, Task};
+
+use crate::decision_surface::{DeclaredSurface, SurfaceId};
+
+use crate::observer::{ObservationContext, ObserverSession, Perspective};
+
+use crate::observer_controls::ControlAvailability;
+
+use crate::observer_focus::{
+    ObserverFocusPolicy, ObserverFocusSystems, ObserverFocusTarget, ObserverKeyboardActivate,
+    ObserverKeyboardClaim,
+};
+
+use crate::observer_io::{ObserverSet, RuntimePipe, LAUNCHER_REQUIRED};
+
+use crate::observer_theme as theme;
+
+use crate::map_economy_lens::MapLens;
+use crate::observer_controls;
+use crate::observer_opening::OpeningStage;
+use crate::observer_ui::{
+    ObserverCampaignCatalog, ObserverCommand, ObserverFontRole, ObserverFrame, ObserverUiState,
+};
+use crate::production::ProductionNavigation;
+use crate::workforce;
+use babylon_persistence::production_observation::ProductionProcess;
+use bevy::tasks;
+use bevy::text::LineBreak;
+use std::io::ErrorKind;
+use uuid::Uuid;
+
+#[derive(Message, Clone, Copy, Debug)]
+pub enum CampaignBrowserCommand {
+    Previous,
+    Next,
+    Open,
+    Compare,
+    ComparisonSection(ComparisonSection),
+    CloseComparison,
+    Refresh,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ComparisonSection {
+    #[default]
+    Cohorts,
+    SharedFreight,
+    CampaignTotals,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct BrowserScope {
+    active: ObservationContext,
+    generation: u64,
+    target: Option<CampaignId>,
+}
+
+pub(crate) type CatalogTask = (BrowserScope, Task<Result<Vec<CampaignSummary>, String>>);
+
+pub(crate) type ComparisonTask = (BrowserScope, Task<Result<ObserverEconomySnapshot, String>>);
+
+#[derive(Resource, Default)]
+pub(crate) struct CampaignBrowserState {
+    context: Option<ObservationContext>,
+    generation: u64,
+    catalog_task: Option<CatalogTask>,
+    comparison_task: Option<ComparisonTask>,
+    catalog: Vec<CampaignSummary>,
+    selected: Option<String>,
+    comparison: Option<ObserverEconomySnapshot>,
+    comparison_target: Option<CampaignId>,
+    comparison_section: ComparisonSection,
+    menu_was_open: bool,
+    status: String,
+}
+
+impl CampaignBrowserState {
+    fn selection(&self) -> Option<(usize, &CampaignSummary)> {
+        let selected = self.selected.as_deref()?;
+        self.catalog
+            .iter()
+            .enumerate()
+            .find(|(_, entry)| entry.id == selected)
+    }
+
+    fn selected_campaign(&self) -> Option<&CampaignSummary> {
+        self.selection().map(|(_, entry)| entry)
+    }
+
+    fn install_catalog(&mut self, catalog: Vec<CampaignSummary>, active: CampaignId) {
+        if self.selected.is_none() {
+            let active = active.as_uuid().to_string();
+            self.selected = catalog
+                .iter()
+                .find(|entry| entry.id != active)
+                .or_else(|| catalog.first())
+                .map(|entry| entry.id.clone());
+        }
+        self.catalog = catalog;
+        self.status = if self.catalog.is_empty() {
+            "No committed material campaigns are available.".into()
+        } else if self.selected_campaign().is_none() {
+            "Selected campaign unavailable; choose another save.".into()
+        } else {
+            String::new()
+        };
+    }
+
+    fn step_selection(&mut self, backwards: bool) {
+        let length = self.catalog.len();
+        if length == 0 {
+            return;
+        }
+        let index = match (backwards, self.selection().map(|(index, _)| index)) {
+            (true, Some(index)) => (index + length - 1) % length,
+            (false, Some(index)) => (index + 1) % length,
+            (true, None) => length - 1,
+            (false, None) => 0,
+        };
+        self.selected = Some(self.catalog[index].id.clone());
+        self.comparison_task = None;
+        self.comparison = None;
+        self.comparison_target = None;
+        self.status.clear();
+    }
+
+    fn invalidate(&mut self, context: ObservationContext, ui: &mut ObserverUiState) {
+        if self
+            .context
+            .as_ref()
+            .is_some_and(|previous| previous.campaign != context.campaign)
+        {
+            self.selected = None;
+        }
+        self.context = Some(context);
+        self.catalog_task = None;
+        self.comparison_task = None;
+        self.catalog.clear();
+        self.comparison = None;
+        self.comparison_target = None;
+        self.comparison_section = ComparisonSection::default();
+        ui.comparison_open = false;
+        self.menu_was_open = false;
+        self.status.clear();
+    }
+
+    fn next_generation(&mut self) -> Option<u64> {
+        let Some(generation) = self.generation.checked_add(1) else {
+            self.status = "Catalog request counter exhausted; reopen the campaign.".into();
+            return None;
+        };
+        self.generation = generation;
+        Some(generation)
+    }
+
+    fn accepts(&self, scope: &BrowserScope, session: &ObserverSession) -> bool {
+        session.accepts(&scope.active)
+            && self.context.as_ref() == Some(&scope.active)
+            && self.generation == scope.generation
+            && (scope.target.is_none() || scope.target == self.comparison_target)
+    }
+}
+
+#[derive(Component, Clone, Copy)]
+pub(crate) struct BrowserButton(CampaignBrowserCommand);
+
+#[derive(Component)]
+pub(crate) struct CatalogText;
+
+#[derive(Component)]
+pub(crate) struct ComparisonPanel;
+
+#[derive(Component)]
+pub(crate) struct ComparisonText;
+
+#[derive(Component)]
+pub(crate) struct ComparisonReadingBody;
+
+pub(crate) fn text(value: impl Into<String>, size: f32, color: Color) -> impl Bundle {
+    (
+        Text::new(value),
+        TextFont {
+            font_size: size,
+            ..default()
+        },
+        TextColor(color),
+        ObserverFontRole::Body,
+        DeclaredSurface::new(SurfaceId::ObserverShell),
+    )
+}
+
+pub(crate) fn button(
+    parent: &mut ChildSpawnerCommands,
+    label: &str,
+    command: CampaignBrowserCommand,
+) {
+    parent
+        .spawn((
+            Button,
+            BrowserButton(command),
+            ObserverFocusTarget::action(None),
+            Node {
+                padding: UiRect::axes(px(10), px(8)),
+                border: UiRect::all(px(2)),
+                border_radius: BorderRadius::ZERO,
+                flex_shrink: 0.0,
+                ..default()
+            },
+            BackgroundColor(theme::PANEL),
+            BorderColor::all(theme::PAPER),
+            DeclaredSurface::new(SurfaceId::ObserverShell),
+        ))
+        .with_child(text(label, 13.0, theme::PAPER));
+}
+
+pub(crate) fn comparison_controls(panel: &mut ChildSpawnerCommands) {
+    panel
+        .spawn(Node {
+            justify_content: JustifyContent::SpaceBetween,
+            align_items: AlignItems::Center,
+            flex_wrap: FlexWrap::Wrap,
+            column_gap: px(12),
+            row_gap: px(8),
+            flex_shrink: 0.0,
+            min_width: px(0),
+            ..default()
+        })
+        .with_children(|header| {
+            header
+                .spawn((
+                    text("COMPARE CAMPAIGNS", 22.0, theme::YELLOW),
+                    Node {
+                        flex_shrink: 0.0,
+                        min_width: px(0),
+                        ..default()
+                    },
+                ))
+                .insert(ObserverFontRole::Display);
+            button(
+                header,
+                "Close comparison  [Escape]",
+                CampaignBrowserCommand::CloseComparison,
+            );
+        });
+    panel
+        .spawn(Node {
+            column_gap: px(8),
+            row_gap: px(8),
+            flex_wrap: FlexWrap::Wrap,
+            flex_shrink: 0.0,
+            min_width: px(0),
+            ..default()
+        })
+        .with_children(|sections| {
+            for (label, section) in [
+                ("Cohorts", ComparisonSection::Cohorts),
+                ("Shared freight", ComparisonSection::SharedFreight),
+                ("Campaign totals", ComparisonSection::CampaignTotals),
+            ] {
+                button(
+                    sections,
+                    label,
+                    CampaignBrowserCommand::ComparisonSection(section),
+                );
+            }
+        });
+    panel.spawn((
+        text(
+            "Scroll the reading below. Tab to the reading, then use Page Up / Page Down.",
+            12.0,
+            theme::GRAY,
+        ),
+        Node {
+            flex_shrink: 0.0,
+            min_width: px(0),
+            ..default()
+        },
+    ));
+}
+
+pub(crate) fn setup(mut commands: Commands, menu: Query<Entity, With<ObserverCampaignCatalog>>) {
+    if let Ok(menu) = menu.single() {
+        commands.entity(menu).with_children(|panel| {
+            panel
+                .spawn((
+                    text("SAVED CAMPAIGNS", 19.0, theme::YELLOW),
+                    Node {
+                        flex_shrink: 0.0,
+                        min_width: px(0),
+                        ..default()
+                    },
+                ))
+                .insert(ObserverFontRole::Display);
+            panel.spawn((
+                text("Loading campaign catalog...", 13.0, theme::PAPER),
+                CatalogText,
+                ObserverFocusTarget::reading(None),
+                Node {
+                    flex_shrink: 0.0,
+                    min_width: px(0),
+                    max_width: percent(100),
+                    ..default()
+                },
+            ));
+            panel
+                .spawn(Node {
+                    column_gap: px(8),
+                    row_gap: px(8),
+                    flex_wrap: FlexWrap::Wrap,
+                    flex_shrink: 0.0,
+                    min_width: px(0),
+                    ..default()
+                })
+                .with_children(|row| {
+                    button(row, "<  [Left]", CampaignBrowserCommand::Previous);
+                    button(row, ">  [Right]", CampaignBrowserCommand::Next);
+                    button(row, "Open selected", CampaignBrowserCommand::Open);
+                    button(row, "Compare  [X]", CampaignBrowserCommand::Compare);
+                    button(row, "Refresh", CampaignBrowserCommand::Refresh);
+                });
+        });
+    }
+    commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: percent(8),
+                right: percent(8),
+                top: px(105),
+                bottom: px(148),
+                padding: UiRect::all(px(18)),
+                row_gap: px(10),
+                flex_direction: FlexDirection::Column,
+                overflow: Overflow::clip(),
+                border: UiRect::all(px(2)),
+                border_radius: BorderRadius::ZERO,
+                ..default()
+            },
+            BackgroundColor(theme::INK),
+            BorderColor::all(theme::YELLOW),
+            ZIndex(21),
+            Visibility::Hidden,
+            ComparisonPanel,
+            TabGroup::modal(),
+            DeclaredSurface::new(SurfaceId::ObserverShell),
+        ))
+        .with_children(|panel| {
+            comparison_controls(panel);
+            panel
+                .spawn((
+                    ComparisonReadingBody,
+                    Node {
+                        flex_direction: FlexDirection::Column,
+                        flex_grow: 1.0,
+                        flex_basis: px(0),
+                        min_height: px(0),
+                        min_width: px(0),
+                        overflow: Overflow::scroll_y(),
+                        ..default()
+                    },
+                    ScrollPosition::default(),
+                ))
+                .with_children(|body| {
+                    body.spawn((
+                        text("", 15.0, theme::PAPER),
+                        ComparisonText,
+                        ObserverFocusTarget::reading(None),
+                        Node {
+                            flex_shrink: 0.0,
+                            min_width: px(0),
+                            max_width: percent(100),
+                            ..default()
+                        },
+                        TextLayout::new_with_linebreak(LineBreak::AnyCharacter),
+                    ))
+                    .insert(ObserverFontRole::Exact);
+                });
+        });
+}
+
+pub(crate) fn input(
+    buttons: Query<(&Interaction, &BrowserButton), Changed<Interaction>>,
+    keyboard: Res<ButtonInput<KeyCode>>,
+    claimed: Res<ObserverKeyboardClaim>,
+    ui: Res<ObserverUiState>,
+    mut messages: MessageWriter<CampaignBrowserCommand>,
+    opening: Option<Res<OpeningPresentation>>,
+) {
+    for (interaction, button) in &buttons {
+        if *interaction == Interaction::Pressed {
+            dispatch_button(button.0, &ui, &mut messages, opening.as_deref());
+        }
+    }
+    if ui.menu_open
+        && !ui.splash_visible
+        && !ui.comparison_open
+        && opening
+            .as_deref()
+            .is_none_or(OpeningPresentation::saved_games_visible)
+    {
+        for (key, command) in [
+            (KeyCode::ArrowLeft, CampaignBrowserCommand::Previous),
+            (KeyCode::ArrowRight, CampaignBrowserCommand::Next),
+            (KeyCode::Enter, CampaignBrowserCommand::Open),
+            (KeyCode::KeyX, CampaignBrowserCommand::Compare),
+        ] {
+            if keyboard.just_pressed(key) && !claimed.claimed(key) {
+                dispatch_button(command, &ui, &mut messages, opening.as_deref());
+            }
+        }
+    }
+    if ui.comparison_open && keyboard.just_pressed(KeyCode::Escape) {
+        messages.write(CampaignBrowserCommand::CloseComparison);
+    }
+}
+
+pub(crate) fn button_visible(
+    command: CampaignBrowserCommand,
+    ui: &ObserverUiState,
+    opening: Option<&OpeningPresentation>,
+) -> bool {
+    !ui.splash_visible
+        && match command {
+            CampaignBrowserCommand::CloseComparison
+            | CampaignBrowserCommand::ComparisonSection(_) => ui.comparison_open,
+            _ => {
+                ui.menu_open
+                    && !ui.comparison_open
+                    && opening.is_none_or(OpeningPresentation::saved_games_visible)
+            }
+        }
+}
+
+pub(crate) fn dispatch_button(
+    command: CampaignBrowserCommand,
+    ui: &ObserverUiState,
+    messages: &mut MessageWriter<CampaignBrowserCommand>,
+    opening: Option<&OpeningPresentation>,
+) {
+    if button_visible(command, ui, opening) {
+        messages.write(command);
+    }
+}
+
+pub(crate) fn keyboard_button(
+    event: On<ObserverKeyboardActivate>,
+    buttons: Query<(&BrowserButton, &ObserverFocusTarget)>,
+    ui: Res<ObserverUiState>,
+    session: Res<ObserverSession>,
+    mut messages: MessageWriter<CampaignBrowserCommand>,
+    opening: Option<Res<OpeningPresentation>>,
+) {
+    let Ok((button, target)) = buttons.get(event.entity) else {
+        return;
+    };
+    if event.context == target.context && event.context.as_ref() == Some(&session.context()) {
+        dispatch_button(button.0, &ui, &mut messages, opening.as_deref());
+    }
+}
+
+pub(crate) type BrowserFocusTargets<'w, 's> = Query<
+    'w,
+    's,
+    (
+        &'static mut ObserverFocusTarget,
+        Option<&'static BrowserButton>,
+        Has<CatalogText>,
+        Has<ComparisonText>,
+    ),
+>;
+
+pub(crate) fn sync_focus_targets(
+    ui: Res<ObserverUiState>,
+    session: Res<ObserverSession>,
+    browser: Res<CampaignBrowserState>,
+    mut targets: BrowserFocusTargets,
+    opening: Option<Res<OpeningPresentation>>,
+) {
+    let context = session.context();
+    for (mut target, button, catalog, comparison) in &mut targets {
+        if button.is_none() && !catalog && !comparison {
+            continue;
+        }
+        let mut next = target.clone();
+        next.context = Some(context.clone());
+        next.available = if let Some(button) = button {
+            button_visible(button.0, &ui, opening.as_deref())
+                && !session.quit_requested
+                && match button.0 {
+                    CampaignBrowserCommand::CloseComparison
+                    | CampaignBrowserCommand::ComparisonSection(_)
+                    | CampaignBrowserCommand::Refresh => true,
+                    CampaignBrowserCommand::Previous | CampaignBrowserCommand::Next => {
+                        browser.context.as_ref() == Some(&context) && browser.catalog.len() > 1
+                    }
+                    CampaignBrowserCommand::Open => {
+                        browser.context.as_ref() == Some(&context)
+                            && browser.selected_campaign().is_some()
+                            && observer_controls::availability(
+                                ObserverCommand::NewCampaign,
+                                &session,
+                            ) == ControlAvailability::Enabled
+                    }
+                    CampaignBrowserCommand::Compare => {
+                        comparison_availability(&session) == ControlAvailability::Enabled
+                            && browser.context.as_ref() == Some(&context)
+                            && browser.selected_campaign().is_some_and(|selected| {
+                                selected.id != session.campaign.as_uuid().to_string()
+                                    && selected.durable_tick >= session.viewed_tick
+                            })
+                    }
+                }
+        } else {
+            !ui.splash_visible
+                && if comparison {
+                    ui.comparison_open
+                } else {
+                    ui.menu_open
+                        && !ui.comparison_open
+                        && opening
+                            .as_deref()
+                            .is_none_or(OpeningPresentation::saved_games_visible)
+                }
+        };
+        target.set_if_neq(next);
+    }
+}
+
+pub(crate) fn reader(perspective: Perspective) -> Result<ObserverEconomyReader, String> {
+    match perspective {
+        Perspective::FullObserver => ObserverEconomyReader::from_observer_env(),
+        Perspective::PlayerKnowledge => ObserverEconomyReader::from_known_env(),
+    }
+    .map_err(|error| error.to_string())
+}
+
+pub(crate) fn request_catalog(browser: &mut CampaignBrowserState, session: &ObserverSession) {
+    let Some(generation) = browser.next_generation() else {
+        return;
+    };
+    let scope = BrowserScope {
+        active: session.context(),
+        generation,
+        target: None,
+    };
+    let perspective = scope.active.perspective;
+    browser.catalog_task = Some((
+        scope,
+        AsyncComputeTaskPool::get().spawn(async move {
+            reader(perspective)?
+                .campaigns()
+                .map_err(|error| error.to_string())
+        }),
+    ));
+    browser.status = "Loading campaign catalog...".into();
+}
+
+pub(crate) fn comparison_availability(session: &ObserverSession) -> ControlAvailability {
+    if session.lifecycle_pending() || session.organizer_control_pending() {
+        ControlAvailability::Disabled("Wait for the current campaign operation to finish")
+    } else {
+        observer_controls::inspection_availability(session)
+    }
+}
+
+pub(crate) fn commands(
+    mut messages: MessageReader<CampaignBrowserCommand>,
+    mut browser: ResMut<CampaignBrowserState>,
+    mut session: ResMut<ObserverSession>,
+    mut ui: ResMut<ObserverUiState>,
+    pipe: Option<Res<RuntimePipe>>,
+    mut opening: Option<ResMut<OpeningPresentation>>,
+) {
+    for command in messages.read() {
+        if session.quit_requested {
+            "Closing the campaign; committed periods are saved automatically."
+                .clone_into(&mut browser.status);
+            continue;
+        }
+        if !button_visible(*command, &ui, opening.as_deref()) {
+            continue;
+        }
+        match command {
+            CampaignBrowserCommand::Previous | CampaignBrowserCommand::Next => {
+                browser.step_selection(matches!(command, CampaignBrowserCommand::Previous));
+            }
+            CampaignBrowserCommand::Open => {
+                if open_selected_campaign(&mut browser, &mut session, pipe.as_deref()) {
+                    if let Some(opening) = &mut opening {
+                        opening.launch_pending = true;
+                    }
+                }
+            }
+            CampaignBrowserCommand::Compare => {
+                if let ControlAvailability::Disabled(reason) = comparison_availability(&session) {
+                    browser.status = reason.into();
+                    continue;
+                }
+                let Some(selected) = browser.selected_campaign() else {
+                    continue;
+                };
+                if selected.id == session.campaign.as_uuid().to_string() {
+                    browser.status = "Select another committed campaign to compare.".into();
+                    continue;
+                }
+                if selected.durable_tick < session.viewed_tick {
+                    browser.status = format!(
+                        "That campaign is committed only through period {}. Inspect that period or an earlier period first.",
+                        selected.durable_tick
+                    );
+                    continue;
+                }
+                let target = match parse_campaign(&selected.id) {
+                    Ok(campaign) => campaign,
+                    Err(error) => {
+                        browser.status = error;
+                        continue;
+                    }
+                };
+                let Some(generation) = browser.next_generation() else {
+                    continue;
+                };
+                session.playing = false;
+                let scope = BrowserScope {
+                    active: session.context(),
+                    generation,
+                    target: Some(target),
+                };
+                let requested = scope.clone();
+                browser.comparison_target = Some(target);
+                browser.comparison = None;
+                browser.comparison_section = ComparisonSection::default();
+                ui.comparison_open = true;
+                browser.comparison_task = Some((
+                    scope,
+                    AsyncComputeTaskPool::get().spawn(async move {
+                        reader(requested.active.perspective)?
+                            .snapshot(target, requested.active.tick)
+                            .map_err(|error| error.to_string())
+                    }),
+                ));
+                browser.status = "Loading the other campaign's committed period...".into();
+                ui.menu_open = false;
+            }
+            CampaignBrowserCommand::CloseComparison => {
+                ui.comparison_open = false;
+                if opening
+                    .as_ref()
+                    .is_some_and(|opening| opening.stage == OpeningStage::Title)
+                {
+                    ui.menu_open = true;
+                }
+                browser.comparison_task = None;
+                browser.comparison = None;
+                browser.comparison_target = None;
+            }
+            CampaignBrowserCommand::ComparisonSection(section) => {
+                browser.comparison_section = *section;
+            }
+            CampaignBrowserCommand::Refresh => request_catalog(&mut browser, &session),
+        }
+    }
+}
+
+pub(crate) fn open_selected_campaign(
+    browser: &mut CampaignBrowserState,
+    session: &mut ObserverSession,
+    pipe: Option<&RuntimePipe>,
+) -> bool {
+    if let ControlAvailability::Disabled(reason) =
+        observer_controls::availability(ObserverCommand::NewCampaign, session)
+    {
+        reason.clone_into(&mut browser.status);
+        return false;
+    }
+    if pipe.is_none() {
+        LAUNCHER_REQUIRED.clone_into(&mut browser.status);
+        return false;
+    }
+    let Some(selected) = browser.selected_campaign() else {
+        return false;
+    };
+    let campaign = match parse_campaign(&selected.id) {
+        Ok(campaign) => campaign,
+        Err(error) => {
+            browser.status = error;
+            return false;
+        }
+    };
+    match session.queue_campaign(
+        babylon_persistence::runtime_session::RuntimeSessionTarget::Open {
+            campaign_id: campaign.as_uuid().to_string(),
+        },
+    ) {
+        Ok(()) => {
+            browser.status = "Opening the selected campaign...".into();
+            true
+        }
+        Err(error) => {
+            browser.status = error;
+            false
+        }
+    }
+}
+
+pub(crate) fn refresh_scope(
+    session: Res<ObserverSession>,
+    mut ui: ResMut<ObserverUiState>,
+    mut browser: ResMut<CampaignBrowserState>,
+    opening: Option<Res<OpeningPresentation>>,
+) {
+    if session.quit_requested {
+        return;
+    }
+    let context = session.context();
+    if browser.context.as_ref() != Some(&context) {
+        browser.invalidate(context, &mut ui);
+    }
+    let menu_open = ui.menu_open
+        && !ui.splash_visible
+        && !ui.comparison_open
+        && opening
+            .as_deref()
+            .is_none_or(OpeningPresentation::saved_games_visible);
+    if menu_open && !browser.menu_was_open {
+        request_catalog(&mut browser, &session);
+    }
+    if browser.menu_was_open != menu_open {
+        browser.menu_was_open = menu_open;
+    }
+}
+
+pub(crate) fn collect(session: Res<ObserverSession>, mut browser: ResMut<CampaignBrowserState>) {
+    // Polling an unfinished task has no presentation meaning. Only installed
+    // results and explicit state changes invalidate the rendered text.
+    if let Some((scope, task)) = &mut browser.bypass_change_detection().catalog_task {
+        if let Some(result) = tasks::block_on(bevy::tasks::futures_lite::future::poll_once(task)) {
+            let scope = scope.clone();
+            browser.catalog_task = None;
+            if browser.accepts(&scope, &session) {
+                match result {
+                    Ok(catalog) => browser.install_catalog(catalog, session.campaign),
+                    Err(error) => browser.status = error,
+                }
+            }
+        }
+    }
+    if let Some((scope, task)) = &mut browser.bypass_change_detection().comparison_task {
+        if let Some(result) = tasks::block_on(bevy::tasks::futures_lite::future::poll_once(task)) {
+            let scope = scope.clone();
+            browser.comparison_task = None;
+            if !browser.accepts(&scope, &session) {
+                return;
+            }
+            match result {
+                Ok(snapshot) if matches_comparison(&snapshot, &scope) => {
+                    browser.comparison = Some(snapshot);
+                    browser.status.clear();
+                }
+                Ok(_) => browser.status =
+                    "Comparison campaign, perspective or committed period did not match the request."
+                        .into(),
+                Err(error) => browser.status = error,
+            }
+        }
+    }
+}
+
+pub(crate) fn matches_comparison(snapshot: &ObserverEconomySnapshot, scope: &BrowserScope) -> bool {
+    let visibility = match scope.active.perspective {
+        Perspective::FullObserver => ObserverVisibility::FullObserver,
+        Perspective::PlayerKnowledge => ObserverVisibility::KnownPreview,
+    };
+    scope
+        .target
+        .is_some_and(|target| snapshot.campaign_id == target.as_uuid().to_string())
+        && snapshot.resolve_tick == scope.active.tick
+        && snapshot.visibility == visibility
+        && snapshot.foundation_digest.len() == 64
+        && (snapshot.resolve_tick == 0 || snapshot.tick_content_hash.is_some())
+}
+
+pub(crate) fn receipt_text(site: &ProductionProcess, tick: u64) -> String {
+    match (site.produced_batches, site.planned_batches) {
+        (Some(produced), Some(planned)) => {
+            let quantity = produced.checked_mul(site.output_per_batch).map_or_else(
+                || "produced output unavailable: quantity overflow".into(),
+                |quantity| format!("{quantity} {} produced", site.output_unit),
+            );
+            format!("{quantity} | {produced}/{planned} batches produced/planned")
+        }
+        (None, None) if tick == 0 => "no production receipt at foundation".into(),
+        (None, None) => "no production receipt this period".into(),
+        _ => "production receipt unavailable".into(),
+    }
+}
+
+pub(crate) fn staffing_difference(output: &mut String, label: &str, current: u64, compared: u64) {
+    let difference = i128::from(current) - i128::from(compared);
+    writeln!(
+        output,
+        "{label}: {current} / {compared} people | difference {difference:+}"
+    )
+    .expect("writing to a String cannot fail");
+}
+
+pub(crate) fn compare_staffing(
+    output: &mut String,
+    site_id: &str,
+    tick: u64,
+    current: &[ProductionStaffingAccount],
+    compared: &[ProductionStaffingAccount],
+) {
+    let identities: BTreeSet<_> = current
+        .iter()
+        .chain(compared)
+        .filter(|account| account.site_id == site_id)
+        .map(StaffingIdentity::from)
+        .collect();
+    if identities.is_empty() {
+        output.push_str(
+            "Modeled workforce unavailable: no staffing account disclosed for this cohort.\n",
+        );
+        return;
+    }
+    for identity in identities {
+        let mut current_accounts = current
+            .iter()
+            .filter(|account| StaffingIdentity::from(*account) == identity);
+        let mut compared_accounts = compared
+            .iter()
+            .filter(|account| StaffingIdentity::from(*account) == identity);
+        let (Some(current), Some(compared)) = (current_accounts.next(), compared_accounts.next())
+        else {
+            output.push_str("Modeled workforce unavailable: no matching pool, site and labor unit in both campaigns.\n");
+            continue;
+        };
+        if current_accounts.next().is_some() || compared_accounts.next().is_some() {
+            output
+                .push_str("Modeled workforce unavailable: duplicate pool, site and labor unit.\n");
+            continue;
+        }
+        writeln!(output, "Modeled workforce: {}", current.subject.local_name)
+            .expect("writing to a String cannot fail");
+        if let Err(error) = workforce::validate_staffing_period(current, tick) {
+            writeln!(output, "CURRENT workforce unavailable: {error}.")
+                .expect("writing to a String cannot fail");
+            continue;
+        }
+        if let Err(error) = workforce::validate_staffing_period(compared, tick) {
+            writeln!(output, "COMPARED workforce unavailable: {error}.")
+                .expect("writing to a String cannot fail");
+            continue;
+        }
+        let (employed, reserve) = if tick == 0 {
+            ("Foundation employed", "Foundation reserve")
+        } else {
+            ("Closing employed", "Closing reserve")
+        };
+        staffing_difference(output, employed, current.employed, compared.employed);
+        staffing_difference(output, reserve, current.reserve, compared.reserve);
+        if let (Some(current), Some(compared)) = (&current.completed, &compared.completed) {
+            staffing_difference(output, "Hires this period", current.hires, compared.hires);
+            staffing_difference(
+                output,
+                "Separations this period",
+                current.separations,
+                compared.separations,
+            );
+        } else {
+            output.push_str("No completed staffing receipt at foundation; hires and separations are unavailable.\n");
+        }
+    }
+}
+
+pub(crate) fn comparison_cohort_ids<'a>(
+    current: &'a babylon_persistence::production_observation::ProductionSnapshot,
+    selected_site: Option<&str>,
+) -> BTreeSet<&'a str> {
+    let mut cohort_ids = BTreeSet::new();
+    if let Some(site) = selected_site.and_then(|id| current.sites.iter().find(|site| site.id == id))
+    {
+        cohort_ids.insert(site.id.as_str());
+        for (_, neighbor) in crate::production_brief::dependency_sites(site, current)
+            .into_iter()
+            .take(6)
+        {
+            cohort_ids.insert(neighbor.id.as_str());
+        }
+    } else {
+        let first_site_ids = current
+            .sites
+            .iter()
+            .map(|site| site.id.as_str())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .take(6);
+        for id in first_site_ids {
+            cohort_ids.insert(id);
+        }
+    }
+    cohort_ids
+}
+
+pub(crate) fn write_comparison_cohort(
+    output: &mut String,
+    site: &ProductionSite,
+    current: &ProductionSnapshot,
+    compared: &ProductionSnapshot,
+    period: u64,
+) {
+    writeln!(
+        output,
+        "{} | {}",
+        site.name,
+        site.industry_code.as_ref().map_or_else(
+            || format!("Function {}", site.function),
+            |code| format!("NAICS {code}")
+        )
+    )
+    .expect("writing to a String cannot fail");
+    let Some(other_site) = compared.sites.iter().find(|other| other.id == site.id) else {
+        output.push_str("Comparable cohort unavailable.\n\n");
+        return;
+    };
+    for process in &site.processes {
+        let Some(other_process) = other_site.processes.iter().find(|other| {
+            other.id == process.id
+                && other.output_good_id == process.output_good_id
+                && other.output_unit_id == process.output_unit_id
+        }) else {
+            writeln!(output, "{}: compatible process unavailable.", process.name)
+                .expect("String write");
+            continue;
+        };
+        writeln!(
+            output,
+            "{} / {} ({})\nCURRENT  {}\nCOMPARED  {}\nNext-period capacity: {} / {} batches.",
+            process.name,
+            process.output_good,
+            process.output_unit,
+            receipt_text(process, period),
+            receipt_text(other_process, period),
+            process.available_batches,
+            other_process.available_batches
+        )
+        .expect("String write");
+    }
+    if site.processes.is_empty() {
+        writeln!(
+            output,
+            "{}",
+            crate::production_brief::committed_plan_status(site)
+        )
+        .expect("String write");
+    }
+    crate::production::maintenance::comparison(output, &site.id, current, compared, period);
+    for stock in &site.inventory {
+        let other_stock = other_site
+            .inventory
+            .iter()
+            .find(|other| other.good_id == stock.good_id && other.unit_id == stock.unit_id);
+        let value =
+            other_stock.map_or_else(|| "unavailable".into(), |other| other.quantity.to_string());
+        writeln!(
+            output,
+            "{} on hand: {} / {} {}",
+            stock.good, stock.quantity, value, stock.unit
+        )
+        .expect("writing to a String cannot fail");
+    }
+    compare_staffing(
+        output,
+        &site.id,
+        period,
+        &current.staffing_accounts,
+        &compared.staffing_accounts,
+    );
+    output.push('\n');
+}
+
+pub(crate) fn comparison_text(
+    active: &ObserverEconomySnapshot,
+    other: &ObserverEconomySnapshot,
+    selected_site: Option<&str>,
+    lens: &MapLens,
+    section: ComparisonSection,
+) -> String {
+    let mut output = format!(
+        "Period {} | {}\n",
+        active.resolve_tick,
+        match active.visibility {
+            ObserverVisibility::FullObserver => "full observer",
+            ObserverVisibility::KnownPreview => "player knowledge",
+        },
+    );
+    if active.visibility != ObserverVisibility::FullObserver
+        || other.visibility != ObserverVisibility::FullObserver
+        || active.resolve_tick != other.resolve_tick
+    {
+        output.push_str(
+            "Material comparison unavailable: matching full-observer periods are required.",
+        );
+        return output;
+    }
+    let (Some(current), Some(compared)) = (&active.production, &other.production) else {
+        output.push_str("Material observations are unavailable in this perspective. Missing knowledge is not zero production.");
+        return output;
+    };
+    writeln!(output, "CURRENT  {}\nCOMPARED  {}\nCounts read current / compared. Signed difference = current minus compared.\n", current.scenario_label, compared.scenario_label).expect("writing to a String cannot fail");
+    match section {
+        ComparisonSection::CampaignTotals => {
+            aggregate::write(&mut output, active, other, lens);
+            writeln!(output, "\nCampaign identities\nCurrent {}\nCompared {}\nRead the same committed period in both campaigns. No world is advanced by this comparison.", active.campaign_id, other.campaign_id).expect("String write");
+            return output;
+        }
+        ComparisonSection::SharedFreight => {
+            output.push_str(&crate::production_freight::comparison_reading(
+                active.resolve_tick,
+                current,
+                compared,
+                selected_site,
+            ));
+            return output;
+        }
+        ComparisonSection::Cohorts => {}
+    }
+    let cohort_ids = comparison_cohort_ids(current, selected_site);
+    let selected = selected_site.and_then(|id| current.sites.iter().find(|site| site.id == id));
+    let guidance = if selected.is_some() {
+        "Selected cohort first, then its neighborhood."
+    } else {
+        "Select a cohort in Circuit to compare its neighborhood."
+    };
+    writeln!(
+        output,
+        "Comparing {} disclosed cohorts. {guidance}\n",
+        cohort_ids.len()
+    )
+    .expect("String write");
+    let neighbors = current.sites.iter().filter(|site| {
+        cohort_ids.contains(site.id.as_str()) && Some(site.id.as_str()) != selected_site
+    });
+    for site in selected.into_iter().chain(neighbors) {
+        write_comparison_cohort(&mut output, site, current, compared, active.resolve_tick);
+    }
+    output.push_str("Modeled workforce counts are people, separate from observed QCEW jobs and labor-hours. Staffing receipts do not record wage payments or class migration. Retail fulfillment records delivery to final demand; remaining inventory stays on hand.");
+    output
+}
+
+#[derive(Default)]
+pub(crate) struct BrowserPaintScope {
+    context: Option<ObservationContext>,
+    catalog_visible: bool,
+    comparison_visible: bool,
+    comparison_section: ComparisonSection,
+    comparison_target: Option<CampaignId>,
+    selected_site: Option<String>,
+}
+
+#[derive(SystemParam)]
+pub(crate) struct BrowserPaintInput<'w> {
+    opening: Option<Res<'w, OpeningPresentation>>,
+    session: Res<'w, ObserverSession>,
+    ui: Res<'w, ObserverUiState>,
+    browser: Res<'w, CampaignBrowserState>,
+    frame: Res<'w, ObserverFrame>,
+    navigation: Option<Res<'w, ProductionNavigation>>,
+}
+
+pub(crate) fn scoped_comparison_text(
+    context: &ObservationContext,
+    browser: &CampaignBrowserState,
+    frame: &ObserverFrame,
+    selected_site: Option<&str>,
+    lens: &MapLens,
+) -> String {
+    let (Some(active), Some(compared)) = (&frame.0, &browser.comparison) else {
+        return browser.status.clone();
+    };
+    let scope = BrowserScope {
+        active: context.clone(),
+        generation: browser.generation,
+        target: browser.comparison_target,
+    };
+    if active.campaign_id == context.campaign.as_uuid().to_string()
+        && active.resolve_tick == context.tick
+        && active.visibility == compared.visibility
+        && browser.comparison_target != Some(context.campaign)
+        && matches_comparison(compared, &scope)
+    {
+        comparison_text(
+            active,
+            compared,
+            selected_site,
+            lens,
+            browser.comparison_section,
+        )
+    } else {
+        "Waiting for the current campaign's matching observation...".into()
+    }
+}
+
+pub(crate) fn paint(
+    input: BrowserPaintInput,
+    mut previous: Local<BrowserPaintScope>,
+    mut catalog_text: Query<&mut Text, With<CatalogText>>,
+    mut comparison_texts: Query<&mut Text, (With<ComparisonText>, Without<CatalogText>)>,
+    mut panels: Query<&mut Visibility, With<ComparisonPanel>>,
+    mut readings: Query<&mut ScrollPosition, With<ComparisonReadingBody>>,
+) {
+    let BrowserPaintInput {
+        opening,
+        session,
+        ui,
+        browser,
+        frame,
+        navigation,
+    } = input;
+    let valid = browser
+        .context
+        .as_ref()
+        .is_some_and(|context| session.accepts(context));
+    let context = session.context();
+    let context_changed = previous.context.as_ref() != Some(&context);
+    let catalog_visible = valid
+        && ui.menu_open
+        && !ui.splash_visible
+        && !ui.comparison_open
+        && opening
+            .as_deref()
+            .is_none_or(OpeningPresentation::saved_games_visible);
+    let comparison_visible = valid && ui.comparison_open && !ui.menu_open;
+    let selected_site = navigation
+        .as_ref()
+        .and_then(|navigation| navigation.selected_site.as_deref());
+    if context_changed
+        || previous.comparison_visible != comparison_visible
+        || previous.comparison_section != browser.comparison_section
+        || previous.comparison_target != browser.comparison_target
+        || previous.selected_site.as_deref() != selected_site
+    {
+        for mut position in &mut readings {
+            if position.0 != Vec2::ZERO {
+                position.0 = Vec2::ZERO;
+            }
+        }
+    }
+    if browser.is_changed() || context_changed || previous.catalog_visible != catalog_visible {
+        let value = if !catalog_visible {
+            String::new()
+        } else if let Some((index, selected)) = browser.selection() {
+            format!(
+                "{} / {} | {}\n{}\nCommitted period {}\n{}",
+                index + 1,
+                browser.catalog.len(),
+                selected.label,
+                selected.id,
+                selected.durable_tick,
+                browser.status
+            )
+        } else {
+            browser.status.clone()
+        };
+        for mut text in &mut catalog_text {
+            if text.0 != value {
+                text.0.clone_from(&value);
+            }
+        }
+    }
+    if previous.comparison_visible != comparison_visible || context_changed {
+        let desired = if comparison_visible {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
+        for mut visibility in &mut panels {
+            visibility.set_if_neq(desired);
+        }
+    }
+    if browser.is_changed()
+        || frame.is_changed()
+        || ui.is_changed()
+        || navigation.as_ref().is_some_and(DetectChanges::is_changed)
+        || context_changed
+        || previous.comparison_visible != comparison_visible
+    {
+        let value = if comparison_visible {
+            scoped_comparison_text(&context, &browser, &frame, selected_site, &ui.lens)
+        } else {
+            String::new()
+        };
+        for mut text in &mut comparison_texts {
+            if text.0 != value {
+                text.0.clone_from(&value);
+            }
+        }
+    }
+    previous.context = Some(context);
+    previous.catalog_visible = catalog_visible;
+    previous.comparison_visible = comparison_visible;
+    previous.comparison_section = browser.comparison_section;
+    previous.comparison_target = browser.comparison_target;
+    previous.selected_site = selected_site.map(str::to_owned);
+}
+
+#[derive(QueryData)]
+#[query_data(mutable)]
+pub(crate) struct BrowserButtonAppearance {
+    command: &'static BrowserButton,
+    interaction: Ref<'static, Interaction>,
+    background: &'static mut BackgroundColor,
+    border: &'static mut BorderColor,
+}
+
+pub(crate) fn paint_buttons(
+    session: Res<ObserverSession>,
+    browser: Res<CampaignBrowserState>,
+    mut buttons: Query<BrowserButtonAppearance, With<BrowserButton>>,
+) {
+    for mut button in &mut buttons {
+        if !session.is_changed() && !browser.is_changed() && !button.interaction.is_changed() {
+            continue;
+        }
+        let disabled = match button.command.0 {
+            CampaignBrowserCommand::Open => {
+                browser.selected_campaign().is_none()
+                    || observer_controls::availability(ObserverCommand::NewCampaign, &session)
+                        != ControlAvailability::Enabled
+            }
+            CampaignBrowserCommand::Compare => {
+                browser.selected_campaign().is_none()
+                    || comparison_availability(&session) != ControlAvailability::Enabled
+            }
+            _ => false,
+        };
+        let selected = matches!(button.command.0, CampaignBrowserCommand::ComparisonSection(section) if section == browser.comparison_section);
+        let background = if !disabled && (*button.interaction == Interaction::Pressed || selected) {
+            theme::BLUE
+        } else {
+            theme::PANEL
+        };
+        let border = if disabled {
+            theme::GRAY
+        } else if *button.interaction == Interaction::None && !selected {
+            theme::PAPER
+        } else {
+            theme::YELLOW
+        };
+        button.background.set_if_neq(BackgroundColor(background));
+        button.border.set_if_neq(BorderColor::all(border));
+    }
+}
+
+pub(crate) fn parse_campaign(value: &str) -> Result<CampaignId, String> {
+    let id =
+        Uuid::parse_str(value).map_err(|_| "Selected campaign identity is invalid.".to_owned())?;
+    if id.is_nil() || id.to_string() != value {
+        return Err("Selected campaign identity is invalid.".into());
+    }
+    Ok(CampaignId::from_uuid(id))
+}
+
+pub(crate) fn preference_path() -> Result<PathBuf, String> {
+    let base =
+        if let Some(path) = std::env::var_os("XDG_STATE_HOME").filter(|path| !path.is_empty()) {
+            PathBuf::from(path)
+        } else {
+            PathBuf::from(std::env::var_os("HOME").ok_or_else(|| {
+                "Personal campaign preference directory is unavailable.".to_owned()
+            })?)
+            .join(".local/state")
+        };
+    if !base.is_absolute() {
+        return Err("Personal campaign preference directory must be absolute.".into());
+    }
+    Ok(base.join("babylon/observer-campaign"))
+}
+
+pub(crate) fn write_preference(
+    path: &Path,
+    campaign: CampaignId,
+    generation: u64,
+) -> Result<(), String> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| "Personal campaign preference directory is unavailable.".to_owned())?;
+    fs::create_dir_all(parent)
+        .map_err(|_| "Cannot create the personal campaign preference directory.".to_owned())?;
+    let mut temporary = None;
+    for attempt in 0..8_u8 {
+        let candidate = parent.join(format!(
+            ".observer-campaign-{}-{generation}-{attempt}.tmp",
+            std::process::id()
+        ));
+        let mut options = OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        match options.open(&candidate) {
+            Ok(file) => {
+                temporary = Some((candidate, file));
+                break;
+            }
+            Err(error) if error.kind() == ErrorKind::AlreadyExists => {}
+            Err(_) => return Err("Cannot save the selected campaign preference.".into()),
+        }
+    }
+    let (temporary, mut file) =
+        temporary.ok_or_else(|| "Cannot allocate a campaign preference file.".to_owned())?;
+    let result = writeln!(file, "{}", campaign.as_uuid())
+        .and_then(|()| file.sync_all())
+        .and_then(|()| fs::rename(&temporary, path));
+    if result.is_err() {
+        let _ = fs::remove_file(&temporary);
+    }
+    result.map_err(|_| "Cannot save the selected campaign preference.".to_owned())
+}
+
+pub struct CampaignBrowserPlugin;
+
+impl Plugin for CampaignBrowserPlugin {
+    fn build(&self, app: &mut App) {
+        app.init_resource::<CampaignBrowserState>()
+            .init_resource::<ObserverKeyboardClaim>()
+            .add_message::<CampaignBrowserCommand>()
+            .add_systems(PostStartup, setup)
+            .add_systems(Update, input.in_set(ObserverSet::Input))
+            .add_observer(keyboard_button)
+            .add_systems(
+                PreUpdate,
+                sync_focus_targets
+                    .in_set(ObserverFocusSystems::Eligibility)
+                    .run_if(resource_exists::<ObserverFocusPolicy>),
+            )
+            .add_systems(
+                Update,
+                (refresh_scope, commands, collect)
+                    .chain()
+                    .in_set(ObserverSet::Install),
+            )
+            .add_systems(Update, (paint, paint_buttons).in_set(ObserverSet::Paint));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::map_economy_lens::MapLens;
+    use crate::map_economy_lens::MaterialLensKind;
+    use crate::observer_opening::MenuPage;
+    use crate::observer_opening::OpeningStage;
+    use crate::production::ProductionNavigation;
+    use crate::test_support::EnvVarGuard;
+    use babylon_persistence::production_observation::ProductionProcess;
+    use babylon_persistence::production_observation::ProductionSite;
+    use bevy::tasks::TaskPoolBuilder;
+    use bevy::text::CosmicFontSystem;
+    use bevy::ui::ui_surface::UiSurface;
+    use bevy::ui::ContentSize;
+    use std::time::Duration;
+    use std::time::Instant;
+    use uuid::Uuid;
+
+    fn staffing_snapshot(
+        campaign: CampaignId,
+        tick: u64,
+        employed: u64,
+        hires: u64,
+        separations: u64,
+    ) -> ObserverEconomySnapshot {
+        use babylon_persistence::production_observation::{
+            CompletedProductionStaffing, ProductionSnapshot, ProductionStaffingSubject,
+        };
+
+        let site_id = "1".repeat(64);
+        let opening_employed = employed + separations - hires;
+        ObserverEconomySnapshot {
+            campaign_id: campaign.as_uuid().to_string(),
+            resolve_tick: tick,
+            foundation_digest: "a".repeat(64),
+            nominal_world_hash: Some("b".repeat(64)),
+            tick_content_hash: (tick > 0).then(|| "c".repeat(64)),
+            envelope_digest: (tick > 0).then(|| "d".repeat(64)),
+            visibility: ObserverVisibility::FullObserver,
+            counties: Vec::new(),
+            production: Some(ProductionSnapshot {
+                physical_routes: vec![],
+
+                household_accounts: Vec::new(),
+                household_service_accounts: Vec::new(),
+                goods_price_accounts: Vec::new(),
+                maintenance_account: None,
+                content_authority_sha256: "a".repeat(64),
+                road_source: None,
+                physical_edges: Vec::new(),
+                merchant_handling_accounts: Vec::new(),
+                final_demand_accounts: Vec::new(),
+                freight_capacity_accounts: Vec::new(),
+                freight_order_definitions: Vec::new(),
+                scenario_label: "Staffing comparison fixture".into(),
+                duration: babylon_kernel::clock::CampaignDuration::Finite { final_period: 520 },
+                sites: vec![ProductionSite {
+                    function: "manufacturing".into(),
+                    id: site_id.clone(),
+                    location: "county:26163"
+                        .parse()
+                        .expect("the authored literal parses as the declared type"),
+                    name: "Wayne manufacturing cohort".into(),
+                    industry_code: Some("331".into()),
+                    observed_employment: Some(20),
+                    inventory: Vec::new(),
+                    roles: vec![
+                        babylon_persistence::production_observation::ProductionSiteRole::Production,
+                    ],
+                    sector_code: Some("31-33".into()),
+                    processes: vec![ProductionProcess {
+                        id: "fixture-process".into(),
+                        name: "Fixture process".into(),
+                        output_good_id: "4".repeat(64),
+                        output_unit_id: "5".repeat(64),
+                        output_good: "steel".into(),
+                        output_unit: "kg".into(),
+                        output_per_batch: 10,
+                        available_batches: 8,
+                        planned_batches: (tick > 0).then_some(8),
+                        produced_batches: (tick > 0).then_some(7),
+                        inputs: Vec::new(),
+                        labor: Vec::new(),
+                    }],
+                }],
+                staffing_accounts: vec![ProductionStaffingAccount {
+                    members: vec![],
+                    pool_id: "2".repeat(64),
+                    site_id,
+                    unit_id: "3".repeat(64),
+                    subject: ProductionStaffingSubject {
+                        scenario: "fixture".into(),
+                        local_name: "Cohort workforce".into(),
+                    },
+                    hours_per_person: 40,
+                    labor_force: 10,
+                    employed,
+                    reserve: 10 - employed,
+                    previous_unretained_hours: 0,
+                    next_opening_period: tick + 1,
+                    next_opening_hours: employed * 40,
+                    completed: (tick > 0).then_some(CompletedProductionStaffing {
+                        period: tick,
+                        opening_employed,
+                        opening_reserve: 10 - opening_employed,
+                        previous_unretained_hours: 0,
+                        current_unretained_hours: 0,
+                        retained_hours: employed * 40,
+                        target_employed: employed,
+                        hires,
+                        separations,
+                    }),
+                }],
+                routes: Vec::new(),
+                freight: Vec::new(),
+                events: Vec::new(),
+                labor_accounts: Vec::new(),
+                material_balance: None,
+                observed_contexts: Vec::new(),
+                national_observed_contexts: Vec::new(),
+                process_attributions: Vec::new(),
+                provenance: Vec::new(),
+            }),
+        }
+    }
+
+    fn staffing_comparison_app(tick: u64) -> (App, Entity) {
+        let campaign = CampaignId::from_uuid(Uuid::from_u128(1));
+        let other = CampaignId::from_uuid(Uuid::from_u128(2));
+        let mut session = ObserverSession::new(campaign);
+        session.ready(tick, None);
+        let context = session.context();
+        let mut app = App::new();
+        app.insert_resource(session)
+            .insert_resource(CampaignBrowserState {
+                context: Some(context),
+                comparison_target: Some(other),
+                comparison: Some(staffing_snapshot(other, tick, 4, 0, 1)),
+                ..default()
+            })
+            .insert_resource(ObserverFrame(
+                Some(staffing_snapshot(campaign, tick, 6, 2, 0)),
+                None,
+            ))
+            .insert_resource(ObserverUiState {
+                menu_open: false,
+                splash_visible: false,
+                comparison_open: true,
+                ..default()
+            })
+            .add_message::<CampaignBrowserCommand>()
+            .add_systems(Startup, setup)
+            .add_systems(Update, (commands, paint).chain());
+        let text = app.world_mut().spawn((Text::new(""), ComparisonText)).id();
+        (app, text)
+    }
+
+    fn painted_comparison(app: &mut App, text: Entity) -> String {
+        app.update();
+        app.world()
+            .get::<Text>(text)
+            .expect("the fixture world holds the addressed component")
+            .0
+            .clone()
+    }
+
+    fn select_comparison_section(app: &mut App, label: &str) {
+        app.update();
+        let mut buttons = app.world_mut().query::<(&BrowserButton, &Children)>();
+        let command = buttons
+            .iter(app.world())
+            .find_map(|(button, children)| {
+                children
+                    .iter()
+                    .any(|child| {
+                        app.world()
+                            .get::<Text>(child)
+                            .is_some_and(|text| text.0 == label)
+                    })
+                    .then_some(button.0)
+            })
+            .unwrap_or_else(|| panic!("Missing comparison section button: {label}"));
+        app.world_mut()
+            .resource_mut::<Messages<CampaignBrowserCommand>>()
+            .write(command);
+    }
+
+    fn freight_comparison_app() -> (App, Entity) {
+        let (mut app, text) = staffing_comparison_app(1);
+        let freight = crate::production_freight::tests::fixture();
+        edit_comparison_production(&mut app, |production| {
+            production.routes = freight.routes.clone();
+            production.physical_routes = freight.physical_routes.clone();
+            production.freight_capacity_accounts = freight.freight_capacity_accounts.clone();
+            production.freight_order_definitions = freight.freight_order_definitions.clone();
+            production.sites.extend(freight.sites.clone());
+        });
+        (app, text)
+    }
+
+    #[test]
+    fn comparison_starts_with_selected_cohort_before_its_neighborhood() {
+        let (mut app, text) = freight_comparison_app();
+        let mut navigation = ProductionNavigation::default();
+        navigation.selected_site = Some("panels".into());
+        app.insert_resource(navigation);
+        let reading = painted_comparison(&mut app, text);
+        assert!(
+            reading
+                .find("panels | NAICS")
+                .expect("the fixture holds the searched element")
+                < reading
+                    .find("steel | NAICS")
+                    .expect("the fixture holds the searched element")
+        );
+        assert!(reading.contains("Comparing 2 disclosed cohorts"));
+        assert!(!reading.contains("mill | NAICS"));
+        assert!(!reading.contains("MODELED CAMPAIGN TOTALS"));
+        assert!(!reading.contains("Designed regional freight pool"));
+        assert!(!reading.contains("00000000-0000-0000-0000-000000000001"));
+    }
+
+    #[test]
+    fn comparison_shows_produced_output_in_each_process_native_unit() {
+        let (mut app, text) = staffing_comparison_app(3);
+        edit_comparison_production(&mut app, |snapshot| {
+            let process = &mut snapshot.sites[0].processes[0];
+            process.output_per_batch = 100;
+            process.planned_batches = Some(16);
+            process.produced_batches = Some(16);
+        });
+        {
+            let mut browser = app.world_mut().resource_mut::<CampaignBrowserState>();
+            let process = &mut browser
+                .comparison
+                .as_mut()
+                .expect("the fixture set the optional field before this borrow")
+                .production
+                .as_mut()
+                .expect("the fixture set the optional field before this borrow")
+                .sites[0]
+                .processes[0];
+            process.produced_batches = Some(8);
+        }
+        let reading = painted_comparison(&mut app, text);
+        assert!(reading.contains("CURRENT  1600 kg produced | 16/16 batches produced/planned"));
+        assert!(reading.contains("COMPARED  800 kg produced | 8/16 batches produced/planned"));
+    }
+
+    #[test]
+    fn comparison_keeps_unavailable_output_distinct_from_completed_zero() {
+        for (period, produced, planned, expected) in [
+            (0, None, None, "no production receipt at foundation"),
+            (1, None, None, "no production receipt this period"),
+            (1, Some(8), None, "production receipt unavailable"),
+            (
+                1,
+                Some(u64::MAX),
+                Some(u64::MAX),
+                "produced output unavailable: quantity overflow",
+            ),
+            (1, Some(0), Some(16), "0 kg produced | 0/16 batches"),
+        ] {
+            let (mut app, text) = staffing_comparison_app(period);
+            edit_comparison_production(&mut app, |snapshot| {
+                let process = &mut snapshot.sites[0].processes[0];
+                process.output_per_batch = 100;
+                process.produced_batches = produced;
+                process.planned_batches = planned;
+            });
+            let reading = painted_comparison(&mut app, text);
+            assert!(
+                reading.contains(expected),
+                "{period}/{produced:?}: {reading}"
+            );
+            if produced != Some(0) {
+                assert!(!reading.contains("CURRENT  0 kg produced"), "{reading}");
+            }
+        }
+    }
+
+    #[test]
+    fn comparison_section_buttons_select_readings_without_advancing_campaigns() {
+        let (mut app, text) = freight_comparison_app();
+        assert!(painted_comparison(&mut app, text).contains("Closing employed:"));
+        let mut scrolls = app
+            .world_mut()
+            .query_filtered::<&mut ScrollPosition, With<ComparisonReadingBody>>();
+        scrolls
+            .single_mut(app.world_mut())
+            .expect("the fixture holds exactly one matching row")
+            .y = 500.0;
+        select_comparison_section(&mut app, "Shared freight");
+        let reading = painted_comparison(&mut app, text);
+        assert_eq!(
+            scrolls
+                .single(app.world())
+                .expect("the fixture holds exactly one matching row")
+                .y
+                .to_bits(),
+            0.0_f32.to_bits()
+        );
+        assert!(reading.contains("Designed regional freight pool"));
+        assert!(reading.contains("Dispatched: 120 / 120 kg"));
+        assert!(!reading.contains("Closing employed:"));
+        assert!(!reading.contains("MODELED CAMPAIGN TOTALS"));
+        select_comparison_section(&mut app, "Campaign totals");
+        let reading = painted_comparison(&mut app, text);
+        assert!(reading.contains("MODELED CAMPAIGN TOTALS"));
+        assert!(reading.contains("Current 00000000-0000-0000-0000-000000000001"));
+        assert!(reading.contains("Compared 00000000-0000-0000-0000-000000000002"));
+        assert!(!reading.contains("Designed regional freight pool"));
+        select_comparison_section(&mut app, "Cohorts");
+        assert!(painted_comparison(&mut app, text).contains("Closing employed:"));
+        assert_eq!(app.world().resource::<ObserverSession>().viewed_tick, 1);
+        assert_eq!(
+            app.world()
+                .resource::<ObserverFrame>()
+                .0
+                .as_ref()
+                .expect("the fixture set the optional field before this read")
+                .resolve_tick,
+            1
+        );
+        assert_eq!(
+            app.world()
+                .resource::<CampaignBrowserState>()
+                .comparison
+                .as_ref()
+                .expect("the fixture set the optional field before this read")
+                .resolve_tick,
+            1
+        );
+    }
+
+    #[test]
+    fn comparison_sections_reject_other_periods_and_hidden_observations() {
+        for label in ["Cohorts", "Shared freight", "Campaign totals"] {
+            for mismatch in ["period", "perspective", "missing"] {
+                let (mut app, text) = freight_comparison_app();
+                select_comparison_section(&mut app, label);
+                assert!(!painted_comparison(&mut app, text).is_empty());
+                {
+                    let mut browser = app.world_mut().resource_mut::<CampaignBrowserState>();
+                    let compared = browser
+                        .comparison
+                        .as_mut()
+                        .expect("the fixture set the optional field before this borrow");
+                    match mismatch {
+                        "period" => compared.resolve_tick = 0,
+                        "perspective" => compared.visibility = ObserverVisibility::KnownPreview,
+                        "missing" => compared.production = None,
+                        _ => unreachable!(),
+                    }
+                }
+                let reading = painted_comparison(&mut app, text);
+                for private_reading in [
+                    "Closing employed:",
+                    "MODELED CAMPAIGN TOTALS",
+                    "Designed regional freight pool",
+                ] {
+                    assert!(
+                        !reading.contains(private_reading),
+                        "{label}/{mismatch}: {reading}"
+                    );
+                }
+                if mismatch == "missing" {
+                    assert!(reading.contains("Missing knowledge is not zero production"));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn comparison_controls_stay_outside_the_scrollable_reading() {
+        let mut app = App::new();
+        app.add_systems(Startup, setup);
+        app.update();
+        let mut panels = app
+            .world_mut()
+            .query_filtered::<(Entity, &Node), With<ComparisonPanel>>();
+        let (panel, node) = panels
+            .single(app.world())
+            .expect("the fixture holds exactly one matching row");
+        assert_ne!(node.overflow.y, OverflowAxis::Scroll);
+        let mut readings = app
+            .world_mut()
+            .query_filtered::<&ChildOf, With<ComparisonText>>();
+        let body = readings
+            .single(app.world())
+            .expect("the fixture holds exactly one matching row")
+            .parent();
+        assert_ne!(body, panel);
+        assert_eq!(
+            app.world()
+                .get::<Node>(body)
+                .expect("the fixture world holds the addressed component")
+                .overflow
+                .y,
+            OverflowAxis::Scroll
+        );
+        let mut buttons = app
+            .world_mut()
+            .query_filtered::<Entity, With<BrowserButton>>();
+        let controls = buttons.iter(app.world()).collect::<Vec<_>>();
+        assert_eq!(controls.len(), 4);
+        for control in controls {
+            let mut ancestor = control;
+            while ancestor != panel {
+                assert_ne!(ancestor, body);
+                assert_ne!(
+                    app.world()
+                        .get::<Node>(ancestor)
+                        .expect("the fixture world holds the addressed component")
+                        .overflow
+                        .y,
+                    OverflowAxis::Scroll
+                );
+                ancestor = app
+                    .world()
+                    .get::<ChildOf>(ancestor)
+                    .expect("the fixture world holds the addressed component")
+                    .parent();
+            }
+        }
+        let mut texts = app.world_mut().query::<&Text>();
+        assert!(texts
+            .iter(app.world())
+            .any(|text| text.0.contains("Scroll")));
+    }
+
+    fn comparison_layout_app(viewport: UVec2) -> App {
+        use bevy::app::{HierarchyPropagatePlugin, PropagateSet};
+        use bevy::camera::{ComputedCameraValues, RenderTargetInfo, Viewport};
+        use bevy::ui;
+        use bevy::ui::update;
+
+        let mut app = App::new();
+        app.add_plugins((
+            HierarchyPropagatePlugin::<ComputedUiTargetCamera>::new(PostUpdate),
+            HierarchyPropagatePlugin::<ComputedUiRenderTargetInfo>::new(PostUpdate),
+        ))
+        .init_resource::<UiScale>()
+        .init_resource::<UiSurface>()
+        .init_resource::<CosmicFontSystem>()
+        .add_systems(Startup, setup)
+        .add_systems(
+            PostUpdate,
+            (update::propagate_ui_target_cameras, ui::ui_layout_system).chain(),
+        )
+        .configure_sets(
+            PostUpdate,
+            (
+                PropagateSet::<ComputedUiTargetCamera>::default(),
+                PropagateSet::<ComputedUiRenderTargetInfo>::default(),
+            )
+                .after(update::propagate_ui_target_cameras)
+                .before(ui::ui_layout_system),
+        );
+        app.world_mut().spawn((
+            Camera2d,
+            Camera {
+                computed: ComputedCameraValues {
+                    target_info: Some(RenderTargetInfo {
+                        physical_size: viewport,
+                        scale_factor: 1.0,
+                    }),
+                    ..default()
+                },
+                viewport: Some(Viewport {
+                    physical_size: viewport,
+                    ..default()
+                }),
+                ..default()
+            },
+        ));
+        app.update();
+        let mut texts = app
+            .world_mut()
+            .query_filtered::<(Entity, Option<&ComparisonText>), With<Text>>();
+        let measurements = texts
+            .iter(app.world())
+            .map(|(entity, reading)| {
+                let height = if reading.is_some() { 1800.0 } else { 20.0 };
+                (entity, Vec2::new(320.0, height))
+            })
+            .collect::<Vec<_>>();
+        for (entity, size) in measurements {
+            // Supply intrinsic text measurements while exercising Bevy's real layout.
+            app.world_mut()
+                .entity_mut(entity)
+                .insert(ContentSize::fixed_size(size));
+        }
+        app.update();
+        app
+    }
+
+    fn comparison_layout_rect(world: &World, entity: Entity) -> Rect {
+        Rect::from_center_size(
+            world
+                .get::<UiGlobalTransform>(entity)
+                .expect("the fixture world holds the addressed component")
+                .translation,
+            world
+                .get::<ComputedNode>(entity)
+                .expect("the fixture world holds the addressed component")
+                .size(),
+        )
+    }
+
+    #[test]
+    fn comparison_layout_keeps_the_full_reading_reachable_after_scrolling() {
+        for resolution in [UVec2::new(1366, 768), UVec2::new(1920, 1080)] {
+            let mut app = comparison_layout_app(resolution);
+            let mut readings = app
+                .world_mut()
+                .query_filtered::<Entity, With<ComparisonText>>();
+            let reading = readings
+                .single(app.world())
+                .expect("the fixture holds exactly one matching row");
+            let body = app
+                .world()
+                .get::<ChildOf>(reading)
+                .expect("the fixture world holds the addressed component")
+                .parent();
+            let viewport = comparison_layout_rect(app.world(), body);
+            let full_reading = comparison_layout_rect(app.world(), reading);
+            assert!(viewport.height() > 100.0);
+            assert!(
+                full_reading.height() >= 1800.0,
+                "{resolution:?}: wrapped reading shrank to {} pixels in a {}-pixel viewport",
+                full_reading.height(),
+                viewport.height(),
+            );
+            let mut controls = app
+                .world_mut()
+                .query_filtered::<Entity, With<BrowserButton>>();
+            let fixed_controls = controls
+                .iter(app.world())
+                .map(|entity| (entity, comparison_layout_rect(app.world(), entity)))
+                .collect::<Vec<_>>();
+            for offset in [viewport.height(), full_reading.height() - viewport.height()] {
+                app.world_mut()
+                    .get_mut::<ScrollPosition>(body)
+                    .expect("the fixture world holds the addressed component")
+                    .y = offset;
+                app.update();
+                let scrolled_reading = comparison_layout_rect(app.world(), reading);
+                assert!(scrolled_reading.min.y < full_reading.min.y);
+                assert!(
+                    scrolled_reading.intersect(viewport).height() >= viewport.height() - 1.0,
+                    "{resolution:?}: scrolling left blank space before the reading ended",
+                );
+                assert_eq!(comparison_layout_rect(app.world(), body), viewport);
+                for &(entity, expected) in &fixed_controls {
+                    assert_eq!(comparison_layout_rect(app.world(), entity), expected);
+                }
+            }
+        }
+    }
+
+    fn edit_comparison_production(
+        app: &mut App,
+        mut edit: impl FnMut(&mut babylon_persistence::production_observation::ProductionSnapshot),
+    ) {
+        edit(
+            app.world_mut()
+                .resource_mut::<ObserverFrame>()
+                .0
+                .as_mut()
+                .expect("the fixture set the optional field before this borrow")
+                .production
+                .as_mut()
+                .expect("the fixture set the optional field before this borrow"),
+        );
+        edit(
+            app.world_mut()
+                .resource_mut::<CampaignBrowserState>()
+                .comparison
+                .as_mut()
+                .expect("the fixture set the optional field before this borrow")
+                .production
+                .as_mut()
+                .expect("the fixture set the optional field before this borrow"),
+        );
+    }
+
+    fn retail_comparison_app(tick: u64) -> (App, Entity) {
+        use babylon_persistence::production_observation::{
+            CompletedProductionFinalDemand, ProductionFinalDemandAccount,
+            ProductionFinalDemandOrder, ProductionSiteRole, ProductionStock,
+        };
+
+        let (mut app, text) = staffing_comparison_app(tick);
+        edit_comparison_production(&mut app, |snapshot| {
+            let mut retailer = snapshot.sites[0].clone();
+            retailer.id = "retailer".into();
+            retailer.roles = vec![ProductionSiteRole::Retail];
+            retailer.processes.clear();
+            let mut workforce = snapshot.staffing_accounts[0].clone();
+            workforce.pool_id = "retail-workforce".into();
+            workforce.site_id.clone_from(&retailer.id);
+            snapshot.staffing_accounts.push(workforce);
+            for (unit_id, unit, stock, fulfilled) in [("5", "kg", 10, 3), ("6", "tonne", 900, 11)] {
+                let fulfilled = if tick == 0 { 0 } else { fulfilled };
+                retailer.inventory.push(ProductionStock {
+                    good_id: "4".repeat(64),
+                    unit_id: unit_id.repeat(64),
+                    good: "Steel".into(),
+                    unit: unit.into(),
+                    quantity: stock,
+                });
+                snapshot
+                    .final_demand_accounts
+                    .push(ProductionFinalDemandAccount {
+                        total_order_count: 1,
+                        expired: 0,
+                        demand_principal_id: format!("demand-{unit}"),
+                        location: "county:26163"
+                            .parse()
+                            .expect("the authored literal parses as the declared type"),
+                        good_id: "4".repeat(64),
+                        unit_id: unit_id.repeat(64),
+                        good: "Steel".into(),
+                        unit: unit.into(),
+                        ordered: 20,
+                        fulfilled,
+                        outstanding: 20 - fulfilled,
+                        retail_stock_on_hand: stock,
+                        retailer_site_ids: vec![retailer.id.clone()],
+                        orders: vec![ProductionFinalDemandOrder {
+                            expired: 0,
+                            order_id: format!("retail-order-{unit}"),
+                            retailer_site_id: retailer.id.clone(),
+                            ordered: 20,
+                            fulfilled,
+                            outstanding: 20 - fulfilled,
+                        }],
+                        completed: (tick > 0).then_some(CompletedProductionFinalDemand {
+                            period: tick,
+                            opening_fulfilled: 0,
+                            newly_fulfilled: fulfilled,
+                            closing_fulfilled: fulfilled,
+                        }),
+                    });
+            }
+            snapshot.sites.push(retailer);
+        });
+        app.world_mut().resource_mut::<ObserverUiState>().lens = MapLens::Material {
+            kind: MaterialLensKind::OnHand,
+            good: Some(crate::map_economy_lens::MaterialGoodKey {
+                good_id: "4".repeat(64),
+                unit_id: "5".repeat(64),
+            }),
+        };
+        select_comparison_section(&mut app, "Campaign totals");
+        (app, text)
+    }
+
+    #[test]
+    fn comparison_aggregate_covers_every_owner_once_beyond_neighborhood_paging() {
+        let (mut app, text) = staffing_comparison_app(2);
+        select_comparison_section(&mut app, "Campaign totals");
+        edit_comparison_production(&mut app, |snapshot| {
+            for index in 0..7 {
+                let mut site = snapshot.sites[0].clone();
+                site.id = format!("owner-{index}");
+                site.processes[0].id = format!("process-{index}");
+                let mut workforce = snapshot.staffing_accounts[0].clone();
+                workforce.site_id.clone_from(&site.id);
+                workforce.pool_id = format!("workforce-{index}");
+                snapshot.sites.push(site);
+                snapshot.staffing_accounts.push(workforce);
+            }
+        });
+        app.world_mut()
+            .resource_mut::<CampaignBrowserState>()
+            .comparison
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow")
+            .production
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow")
+            .staffing_accounts
+            .reverse();
+        let reading = painted_comparison(&mut app, text);
+        assert!(reading.contains("MODELED CAMPAIGN TOTALS / 8 owners / 1 counties"));
+        assert_eq!(
+            reading
+                .matches("All modeled employed: 48 / 32 people")
+                .count(),
+            1
+        );
+        assert!(reading.contains("All modeled reserve: 32 / 48 people"));
+        assert!(!reading.contains("Comparing 6 disclosed cohorts"));
+        select_comparison_section(&mut app, "Cohorts");
+        let reading = painted_comparison(&mut app, text);
+        assert!(reading.contains("Comparing 6 disclosed cohorts"));
+        assert!(!reading.contains("All modeled employed:"));
+    }
+
+    #[test]
+    fn comparison_aggregate_refuses_duplicate_principals_and_incompatible_owner_coverage() {
+        for mismatch in [
+            "duplicate workforce",
+            "duplicate owner",
+            "owner coverage",
+            "missing workforce",
+            "bad balance",
+            "overflow",
+        ] {
+            let (mut app, text) = staffing_comparison_app(2);
+            select_comparison_section(&mut app, "Campaign totals");
+            {
+                let mut browser = app.world_mut().resource_mut::<CampaignBrowserState>();
+                let snapshot = browser
+                    .comparison
+                    .as_mut()
+                    .expect("the fixture set the optional field before this borrow")
+                    .production
+                    .as_mut()
+                    .expect("the fixture set the optional field before this borrow");
+                match mismatch {
+                    "duplicate workforce" => snapshot
+                        .staffing_accounts
+                        .push(snapshot.staffing_accounts[0].clone()),
+                    "duplicate owner" => snapshot.sites.push(snapshot.sites[0].clone()),
+                    "owner coverage" => {
+                        snapshot.sites[0].location = "county:26001"
+                            .parse()
+                            .expect("the authored literal parses as the declared type");
+                    }
+                    "missing workforce" => snapshot.staffing_accounts.clear(),
+                    "bad balance" => snapshot.staffing_accounts[0].reserve = 100,
+                    "overflow" => snapshot.staffing_accounts[0].employed = u64::MAX,
+                    _ => unreachable!(),
+                }
+            }
+            let reading = painted_comparison(&mut app, text);
+            assert!(
+                reading.contains("Aggregate workforce unavailable:"),
+                "{mismatch}: {reading}"
+            );
+            assert!(
+                !reading.contains("All modeled employed:"),
+                "{mismatch}: {reading}"
+            );
+        }
+    }
+
+    #[test]
+    fn comparison_aggregate_uses_the_exact_world_good_and_unit_and_repaints_selection() {
+        let (mut app, text) = retail_comparison_app(2);
+        let reading = painted_comparison(&mut app, text);
+        assert!(reading.contains("Selected material / Steel / kg"));
+        assert!(reading.contains("Inventory on hand: 10 / 10 kg"));
+        assert!(reading.contains("Delivered to end buyers to date: 3 / 3 kg"));
+        assert!(reading.contains("Unsold retail stock: 10 / 10 kg"));
+        if let MapLens::Material {
+            good: Some(good), ..
+        } = &mut app.world_mut().resource_mut::<ObserverUiState>().lens
+        {
+            good.unit_id = "6".repeat(64);
+        }
+        let reading = painted_comparison(&mut app, text);
+        assert!(reading.contains("Inventory on hand: 900 / 900 tonne"));
+        assert!(reading.contains("Delivered to end buyers to date: 11 / 11 tonne"));
+        assert!(reading.contains("Unsold retail stock: 900 / 900 tonne"));
+        assert!(!reading.contains("Inventory on hand: 910"));
+        app.world_mut().resource_mut::<ObserverUiState>().lens = MapLens::default();
+        let reading = painted_comparison(&mut app, text);
+        assert!(reading.contains("Select an exact good and unit in World's material lens"));
+        assert!(!reading.contains("Delivered to end buyers to date:"));
+    }
+
+    #[test]
+    fn campaign_totals_include_foreign_household_markets_outside_the_county_map() {
+        let (mut app, text) = retail_comparison_app(2);
+        edit_comparison_production(&mut app, |snapshot| {
+            for site in &mut snapshot.sites {
+                site.location = "foreign:canada"
+                    .parse()
+                    .expect("the authored literal parses as the declared type");
+            }
+            for household in &mut snapshot.final_demand_accounts {
+                household.location = "foreign:canada"
+                    .parse()
+                    .expect("the authored literal parses as the declared type");
+            }
+        });
+        let reading = painted_comparison(&mut app, text);
+        assert!(
+            reading.contains("2 owners / 0 counties / 1 external locations"),
+            "{reading}"
+        );
+        assert!(
+            reading.contains("Inventory on hand: 10 / 10 kg"),
+            "{reading}"
+        );
+        assert!(
+            reading.contains("Delivered to end buyers to date: 3 / 3 kg"),
+            "{reading}"
+        );
+        assert!(
+            reading.contains("Unsold retail stock: 10 / 10 kg"),
+            "{reading}"
+        );
+    }
+
+    #[test]
+    fn comparison_aggregate_refuses_missing_or_duplicate_selected_material_principals() {
+        for mismatch in [
+            "missing stock",
+            "duplicate stock",
+            "wrong unit",
+            "duplicate process",
+        ] {
+            let (mut app, text) = retail_comparison_app(2);
+            if mismatch == "duplicate process" {
+                if let MapLens::Material { kind, .. } =
+                    &mut app.world_mut().resource_mut::<ObserverUiState>().lens
+                {
+                    *kind = MaterialLensKind::ProducedThisPeriod;
+                }
+            }
+            {
+                let mut browser = app.world_mut().resource_mut::<CampaignBrowserState>();
+                let snapshot = browser
+                    .comparison
+                    .as_mut()
+                    .expect("the fixture set the optional field before this borrow")
+                    .production
+                    .as_mut()
+                    .expect("the fixture set the optional field before this borrow");
+                match mismatch {
+                    "missing stock" => {
+                        snapshot.sites[1].inventory.remove(0);
+                    }
+                    "duplicate stock" => {
+                        let duplicate = snapshot.sites[1].inventory[0].clone();
+                        snapshot.sites[1].inventory.push(duplicate);
+                    }
+                    "wrong unit" => snapshot.sites[1].inventory[0].unit_id = "7".repeat(64),
+                    "duplicate process" => {
+                        let duplicate = snapshot.sites[0].processes[0].clone();
+                        snapshot.sites[0].processes.push(duplicate);
+                    }
+                    _ => unreachable!(),
+                }
+            }
+            let reading = painted_comparison(&mut app, text);
+            assert!(
+                reading.contains("Selected material unavailable:"),
+                "{mismatch}: {reading}"
+            );
+            assert!(
+                !reading.contains("Inventory on hand:"),
+                "{mismatch}: {reading}"
+            );
+            assert!(
+                !reading.contains("Production this period:"),
+                "{mismatch}: {reading}"
+            );
+        }
+    }
+
+    #[test]
+    fn comparison_aggregate_distinguishes_zero_production_from_foundation() {
+        for tick in [0, 2] {
+            let (mut app, text) = retail_comparison_app(tick);
+            if let MapLens::Material { kind, .. } =
+                &mut app.world_mut().resource_mut::<ObserverUiState>().lens
+            {
+                *kind = MaterialLensKind::ProducedThisPeriod;
+            }
+            edit_comparison_production(&mut app, |snapshot| {
+                snapshot.sites[0].processes[0].produced_batches = (tick > 0).then_some(0);
+            });
+            let reading = painted_comparison(&mut app, text);
+            if tick == 0 {
+                assert!(reading.contains(
+                    "Selected material unavailable: foundation; no completed production period"
+                ));
+                assert!(!reading.contains("Production this period:"));
+            } else {
+                assert!(reading.contains("Production this period: 0 / 0 kg"));
+            }
+        }
+    }
+
+    #[test]
+    fn comparison_aggregate_refuses_unmatched_retail_principals_and_missing_periods() {
+        for mismatch in [
+            "resident",
+            "county",
+            "duplicate",
+            "missing",
+            "receipt period",
+            "retailer",
+        ] {
+            let (mut app, text) = retail_comparison_app(2);
+            {
+                let mut browser = app.world_mut().resource_mut::<CampaignBrowserState>();
+                let rows = &mut browser
+                    .comparison
+                    .as_mut()
+                    .expect("the fixture set the optional field before this borrow")
+                    .production
+                    .as_mut()
+                    .expect("the fixture set the optional field before this borrow")
+                    .final_demand_accounts;
+                match mismatch {
+                    "resident" => rows[0].demand_principal_id = "different-resident".into(),
+                    "county" => {
+                        rows[0].location = "county:26001"
+                            .parse()
+                            .expect("the authored literal parses as the declared type");
+                    }
+                    "duplicate" => rows.push(rows[0].clone()),
+                    "missing" => rows[0].completed = None,
+                    "receipt period" => {
+                        rows[0]
+                            .completed
+                            .as_mut()
+                            .expect("the fixture set the optional field before this borrow")
+                            .period = 1;
+                    }
+                    "retailer" => rows[0].retailer_site_ids = vec!["withheld".into()],
+                    _ => unreachable!(),
+                }
+            }
+            let reading = painted_comparison(&mut app, text);
+            assert!(
+                reading.contains("Retail totals unavailable:"),
+                "{mismatch}: {reading}"
+            );
+            assert!(
+                !reading.contains("Delivered to end buyers this period:"),
+                "{mismatch}: {reading}"
+            );
+            assert!(
+                !reading.contains("Unsold retail stock:"),
+                "{mismatch}: {reading}"
+            );
+        }
+    }
+
+    #[test]
+    fn comparison_uses_resident_identity_and_counts_shared_retail_stock_once() {
+        let (mut app, text) = retail_comparison_app(2);
+        edit_comparison_production(&mut app, |snapshot| {
+            let mut cohort = snapshot.final_demand_accounts[0].clone();
+            cohort.demand_principal_id = "second-resident-cohort".into();
+            cohort.orders[0].order_id = "second-household-order".into();
+            snapshot.final_demand_accounts.push(cohort);
+        });
+        {
+            let mut browser = app.world_mut().resource_mut::<CampaignBrowserState>();
+            let rows = &mut browser
+                .comparison
+                .as_mut()
+                .expect("the fixture set the optional field before this borrow")
+                .production
+                .as_mut()
+                .expect("the fixture set the optional field before this borrow")
+                .final_demand_accounts;
+            for row in rows {
+                row.orders[0]
+                    .order_id
+                    .push_str("-different-scenario-period");
+            }
+        }
+        let reading = painted_comparison(&mut app, text);
+        assert!(!reading.contains("Retail totals unavailable:"), "{reading}");
+        assert!(
+            reading.contains("Delivered to end buyers this period: 6 / 6 kg"),
+            "{reading}"
+        );
+        assert!(
+            reading.contains("Unsold retail stock: 10 / 10 kg"),
+            "{reading}"
+        );
+    }
+
+    #[test]
+    fn comparison_aggregate_distinguishes_completed_zero_from_foundation() {
+        for tick in [0, 2] {
+            let (mut app, text) = retail_comparison_app(tick);
+            edit_comparison_production(&mut app, |snapshot| {
+                let row = &mut snapshot.final_demand_accounts[0];
+                row.fulfilled = 0;
+                row.outstanding = 20;
+                row.retail_stock_on_hand = 0;
+                row.orders[0].fulfilled = 0;
+                row.orders[0].outstanding = 20;
+                if let Some(completed) = &mut row.completed {
+                    completed.newly_fulfilled = 0;
+                    completed.closing_fulfilled = 0;
+                }
+                snapshot.sites[1].inventory[0].quantity = 0;
+            });
+            let reading = painted_comparison(&mut app, text);
+            assert!(reading.contains("Unsold retail stock: 0 / 0 kg"));
+            if tick == 0 {
+                assert!(reading.contains("Foundation; no completed retail deliveries"));
+                assert!(!reading.contains("Delivered to end buyers this period:"));
+            } else {
+                assert!(reading.contains("Delivered to end buyers this period: 0 / 0 kg"));
+                assert!(!reading.contains("Foundation; no completed retail deliveries"));
+            }
+        }
+    }
+
+    #[test]
+    fn comparison_renders_signed_staffing_counts_for_the_selected_completed_period() {
+        let (mut app, text) = staffing_comparison_app(2);
+        let value = painted_comparison(&mut app, text);
+        assert!(value.starts_with("Period 2 | full observer\nCURRENT  Staffing comparison fixture\nCOMPARED  Staffing comparison fixture"));
+        assert!(value.contains("Signed difference = current minus compared"));
+        assert!(value.contains("Closing employed: 6 / 4 people | difference +2"));
+        assert!(value.contains("Closing reserve: 4 / 6 people | difference -2"));
+        assert!(value.contains("Hires this period: 2 / 0 people | difference +2"));
+        assert!(value.contains("Separations this period: 0 / 1 people | difference -1"));
+        assert!(value.contains("separate from observed QCEW jobs and labor-hours"));
+        assert!(value.contains("do not record wage payments or class migration"));
+    }
+
+    #[test]
+    fn comparison_joins_canonical_staffing_identity_independent_of_names_and_row_order() {
+        let (mut app, text) = staffing_comparison_app(2);
+        let mut extra = app
+            .world()
+            .resource::<ObserverFrame>()
+            .0
+            .as_ref()
+            .expect("the fixture set the optional field before this read")
+            .production
+            .as_ref()
+            .expect("the fixture set the optional field before this read")
+            .staffing_accounts[0]
+            .clone();
+        extra.pool_id = "6".repeat(64);
+        extra.subject.local_name = "Second workforce".into();
+        app.world_mut()
+            .resource_mut::<ObserverFrame>()
+            .0
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow")
+            .production
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow")
+            .staffing_accounts
+            .insert(0, extra.clone());
+        {
+            let mut browser = app.world_mut().resource_mut::<CampaignBrowserState>();
+            let compared = browser
+                .comparison
+                .as_mut()
+                .expect("the fixture set the optional field before this borrow")
+                .production
+                .as_mut()
+                .expect("the fixture set the optional field before this borrow");
+            compared.sites[0].name = "A renamed cohort".into();
+            compared.staffing_accounts[0].subject.local_name = "A renamed workforce".into();
+            compared.staffing_accounts.push(extra);
+        }
+        let value = painted_comparison(&mut app, text);
+        assert!(value.contains("Closing employed: 6 / 4 people | difference +2"));
+        assert!(value.contains("Closing employed: 6 / 6 people | difference +0"));
+        assert!(!value.contains("workforce unavailable"));
+    }
+
+    #[test]
+    fn comparison_does_not_join_missing_mismatched_or_duplicate_staffing_rows() {
+        for mismatch in ["pool", "site", "unit", "duplicate", "missing"] {
+            let (mut app, text) = staffing_comparison_app(2);
+            {
+                let mut browser = app.world_mut().resource_mut::<CampaignBrowserState>();
+                let accounts = &mut browser
+                    .comparison
+                    .as_mut()
+                    .expect("the fixture set the optional field before this borrow")
+                    .production
+                    .as_mut()
+                    .expect("the fixture set the optional field before this borrow")
+                    .staffing_accounts;
+                match mismatch {
+                    "pool" => accounts[0].pool_id = "9".repeat(64),
+                    "site" => accounts[0].site_id = "9".repeat(64),
+                    "unit" => accounts[0].unit_id = "9".repeat(64),
+                    "duplicate" => accounts.push(accounts[0].clone()),
+                    "missing" => accounts.clear(),
+                    _ => unreachable!(),
+                }
+            }
+            let value = painted_comparison(&mut app, text);
+            assert!(
+                value.contains("Modeled workforce unavailable:"),
+                "{mismatch}: {value}"
+            );
+            assert!(!value.contains("Closing employed:"), "{mismatch}: {value}");
+            assert!(!value.contains("Hires this period:"), "{mismatch}: {value}");
+        }
+    }
+
+    #[test]
+    fn comparison_distinguishes_foundation_real_zero_and_missing_or_wrong_period_receipts() {
+        let (mut app, text) = staffing_comparison_app(0);
+        let foundation = painted_comparison(&mut app, text);
+        assert!(foundation.contains("Foundation employed: 6 / 4 people | difference +2"));
+        assert!(foundation.contains("No completed staffing receipt at foundation"));
+        assert!(!foundation.contains("Hires this period:"));
+        assert!(!foundation.contains("Closing employed:"));
+
+        let (mut app, text) = staffing_comparison_app(2);
+        {
+            let mut frame = app.world_mut().resource_mut::<ObserverFrame>();
+            let receipt = frame
+                .0
+                .as_mut()
+                .expect("the fixture set the optional field before this borrow")
+                .production
+                .as_mut()
+                .expect("the fixture set the optional field before this borrow")
+                .staffing_accounts[0]
+                .completed
+                .as_mut()
+                .expect("the fixture set the optional field before this borrow");
+            receipt.hires = 0;
+            receipt.opening_employed = 6;
+            receipt.opening_reserve = 4;
+        }
+        {
+            let mut browser = app.world_mut().resource_mut::<CampaignBrowserState>();
+            let receipt = browser
+                .comparison
+                .as_mut()
+                .expect("the fixture set the optional field before this borrow")
+                .production
+                .as_mut()
+                .expect("the fixture set the optional field before this borrow")
+                .staffing_accounts[0]
+                .completed
+                .as_mut()
+                .expect("the fixture set the optional field before this borrow");
+            receipt.separations = 0;
+            receipt.opening_employed = 4;
+            receipt.opening_reserve = 6;
+        }
+        let zero = painted_comparison(&mut app, text);
+        assert!(zero.contains("Hires this period: 0 / 0 people | difference +0"));
+        assert!(zero.contains("Separations this period: 0 / 0 people | difference +0"));
+
+        for mismatch in ["missing receipt", "receipt period", "account period"] {
+            let (mut app, text) = staffing_comparison_app(2);
+            {
+                let mut browser = app.world_mut().resource_mut::<CampaignBrowserState>();
+                let account = &mut browser
+                    .comparison
+                    .as_mut()
+                    .expect("the fixture set the optional field before this borrow")
+                    .production
+                    .as_mut()
+                    .expect("the fixture set the optional field before this borrow")
+                    .staffing_accounts[0];
+                match mismatch {
+                    "missing receipt" => account.completed = None,
+                    "receipt period" => {
+                        account
+                            .completed
+                            .as_mut()
+                            .expect("the fixture set the optional field before this borrow")
+                            .period = 1;
+                    }
+                    "account period" => account.next_opening_period = 2,
+                    _ => unreachable!(),
+                }
+            }
+            let value = painted_comparison(&mut app, text);
+            assert!(
+                value.contains("COMPARED workforce unavailable:"),
+                "{mismatch}: {value}"
+            );
+            assert!(!value.contains("Hires this period:"), "{mismatch}: {value}");
+            assert!(!value.contains("Closing employed:"), "{mismatch}: {value}");
+        }
+    }
+
+    #[test]
+    fn comparison_repaint_removes_staffing_counts_outside_its_campaign_period_or_perspective() {
+        for mismatch in [
+            "campaign",
+            "same campaign",
+            "period",
+            "perspective",
+            "active period",
+            "session perspective",
+        ] {
+            let (mut app, text) = staffing_comparison_app(2);
+            assert!(painted_comparison(&mut app, text).contains("Closing employed:"));
+            match mismatch {
+                "active period" => {
+                    app.world_mut()
+                        .resource_mut::<ObserverFrame>()
+                        .0
+                        .as_mut()
+                        .expect("the fixture set the optional field before this borrow")
+                        .resolve_tick = 1;
+                }
+                "session perspective" => {
+                    app.world_mut()
+                        .resource_mut::<ObserverSession>()
+                        .set_perspective(Perspective::PlayerKnowledge);
+                }
+                _ => {
+                    let mut browser = app.world_mut().resource_mut::<CampaignBrowserState>();
+                    if mismatch == "same campaign" {
+                        browser.comparison_target = Some(CampaignId::from_uuid(Uuid::from_u128(1)));
+                    }
+                    let compared = browser
+                        .comparison
+                        .as_mut()
+                        .expect("the fixture set the optional field before this borrow");
+                    match mismatch {
+                        "campaign" => compared.campaign_id = Uuid::from_u128(3).to_string(),
+                        "same campaign" => {
+                            compared.campaign_id = Uuid::from_u128(1).to_string();
+                        }
+                        "period" => compared.resolve_tick = 1,
+                        "perspective" => compared.visibility = ObserverVisibility::KnownPreview,
+                        _ => unreachable!(),
+                    }
+                }
+            }
+            let value = painted_comparison(&mut app, text);
+            assert!(!value.contains("Closing employed:"), "{mismatch}: {value}");
+            assert!(!value.contains("Hires this period:"), "{mismatch}: {value}");
+        }
+    }
+
+    #[test]
+    fn comparison_keeps_freight_and_cohort_readings_in_sections_and_clears_on_scope_change() {
+        let (mut app, text) = freight_comparison_app();
+        let value = painted_comparison(&mut app, text);
+        assert!(value.contains("Closing employed:"));
+        assert!(value.contains("Next-period capacity:"));
+        assert!(!value.contains("Designed regional freight pool"));
+        select_comparison_section(&mut app, "Shared freight");
+        let value = painted_comparison(&mut app, text);
+        assert_eq!(value.matches("Designed regional freight pool").count(), 1);
+        assert!(value.contains("Dispatched: 120 / 120 kg"));
+        assert!(!value.contains("Closing employed:"));
+        app.world_mut()
+            .resource_mut::<ObserverSession>()
+            .set_perspective(Perspective::PlayerKnowledge);
+        let value = painted_comparison(&mut app, text);
+        assert!(!value.contains("Dispatched:"));
+        assert!(!value.contains("Designed regional freight pool"));
+    }
+
+    #[test]
+    fn staffing_difference_preserves_the_full_unsigned_count_range() {
+        let mut output = String::new();
+        staffing_difference(&mut output, "Employed", u64::MAX, 0);
+        staffing_difference(&mut output, "Reserve", 0, u64::MAX);
+        assert!(output.contains("difference +18446744073709551615"));
+        assert!(output.contains("difference -18446744073709551615"));
+    }
+
+    fn catalog_handoff_app(with_pipe: bool) -> (App, CampaignId) {
+        let campaign = CampaignId::from_uuid(Uuid::from_u128(1));
+        let selected = CampaignId::from_uuid(Uuid::from_u128(2));
+        let mut session = ObserverSession::new(campaign);
+        session.fail("Campaign admission refused".into());
+        session.connected_fixture();
+        let mut app = App::new();
+        app.insert_resource(session)
+            .insert_resource(CampaignBrowserState {
+                selected: Some(selected.as_uuid().to_string()),
+                catalog: vec![CampaignSummary {
+                    id: selected.as_uuid().to_string(),
+                    preset: "standard".into(),
+                    label: "Saved campaign".into(),
+                    durable_tick: 3,
+                }],
+                ..default()
+            })
+            .insert_resource(ObserverUiState {
+                menu_open: true,
+                splash_visible: false,
+                ..default()
+            })
+            .add_message::<CampaignBrowserCommand>()
+            .add_message::<AppExit>()
+            .add_systems(Update, commands);
+        if with_pipe {
+            app.insert_resource(crate::observer_io::RuntimePipe::detached_fixture());
+        }
+        (app, selected)
+    }
+
+    #[test]
+    fn comparison_returns_to_load_game_when_opened_from_the_title() {
+        let (mut app, _) = catalog_handoff_app(false);
+        app.insert_resource(crate::observer_opening::OpeningPresentation {
+            stage: OpeningStage::Title,
+            menu_page: MenuPage::SavedGames,
+            ..default()
+        });
+        {
+            let mut ui = app.world_mut().resource_mut::<ObserverUiState>();
+            ui.menu_open = false;
+            ui.comparison_open = true;
+        }
+        app.world_mut()
+            .write_message(CampaignBrowserCommand::CloseComparison);
+        app.update();
+        let ui = app.world().resource::<ObserverUiState>();
+        assert!(!ui.comparison_open);
+        assert!(ui.menu_open);
+        assert!(app
+            .world()
+            .resource::<crate::observer_opening::OpeningPresentation>()
+            .saved_games_visible());
+    }
+
+    #[test]
+    fn launcher_handoff_catalog_without_pipe_preserves_preferences_and_window() {
+        let environment = EnvVarGuard::lock("XDG_STATE_HOME");
+        let directory =
+            std::env::temp_dir().join(format!("babylon-detached-handoff-{}", Uuid::new_v4()));
+        environment.set(directory.to_str().expect("the fixture path is UTF-8"));
+        let path = preference_path()
+            .expect("the fixture call `preference_path` succeeds for the authored inputs");
+        let original = CampaignId::from_uuid(Uuid::from_u128(1));
+        write_preference(&path, original, 0).expect("the fixture sink accepts the authored bytes");
+        let (mut app, _) = catalog_handoff_app(false);
+        app.world_mut()
+            .resource_mut::<Messages<CampaignBrowserCommand>>()
+            .write(CampaignBrowserCommand::Open);
+        app.update();
+        assert!(
+            app.world().resource::<Messages<AppExit>>().is_empty(),
+            "Opening a saved campaign closed a standalone window"
+        );
+        assert_eq!(
+            fs::read_to_string(&path).expect("the fixture source is readable"),
+            format!("{}\n", original.as_uuid())
+        );
+        assert_eq!(
+            fs::read_dir(
+                path.parent()
+                    .expect("the fixture call `parent` succeeds for the authored inputs")
+            )
+            .expect("the fixture directory is readable")
+            .count(),
+            1
+        );
+        assert_eq!(
+            app.world().resource::<CampaignBrowserState>().status,
+            "This window has no launcher connection. Close it and start Babylon through its launcher."
+        );
+        fs::remove_dir_all(directory).expect("the fixture directory exists before removal");
+    }
+
+    #[test]
+    fn catalog_after_failed_admission_queues_open_without_saving_or_exiting() {
+        let environment = EnvVarGuard::lock("XDG_STATE_HOME");
+        let directory =
+            std::env::temp_dir().join(format!("babylon-connected-handoff-{}", Uuid::new_v4()));
+        environment.set(directory.to_str().expect("the fixture path is UTF-8"));
+        let (mut app, selected) = catalog_handoff_app(true);
+        app.world_mut()
+            .resource_mut::<Messages<CampaignBrowserCommand>>()
+            .write(CampaignBrowserCommand::Open);
+        app.update();
+        assert!(app.world().resource::<Messages<AppExit>>().is_empty());
+        let request = app
+            .world_mut()
+            .resource_mut::<ObserverSession>()
+            .pending_switch_request()
+            .expect("the fixture call `pending_switch_request` succeeds for the authored inputs");
+        assert!(
+            matches!(request, babylon_persistence::runtime_session::RuntimeSessionRequest::Switch {
+            target: babylon_persistence::runtime_session::RuntimeSessionTarget::Open { campaign_id }, ..
+        } if campaign_id == selected.as_uuid().to_string())
+        );
+        assert!(
+            !preference_path()
+                .expect("the fixture call `preference_path` succeeds for the authored inputs")
+                .exists(),
+            "An unadmitted target became the saved continuation"
+        );
+    }
+
+    #[test]
+    fn open_before_ready_keeps_transport_and_failed_ui_recoverable() {
+        let environment = EnvVarGuard::lock("XDG_STATE_HOME");
+        let directory =
+            std::env::temp_dir().join(format!("babylon-connecting-handoff-{}", Uuid::new_v4()));
+        environment.set(directory.to_str().expect("the fixture path is UTF-8"));
+        let (mut catalog, _) = catalog_handoff_app(false);
+        let browser = catalog
+            .world_mut()
+            .remove_resource::<CampaignBrowserState>()
+            .expect("the fixture world holds the addressed component");
+        let (mut app, requests, responses) = crate::observer_io::tests::quit_app();
+        let campaign = app.world().resource::<ObserverSession>().campaign;
+        app.insert_resource(ObserverSession::new(campaign))
+            .insert_resource(browser)
+            .add_message::<CampaignBrowserCommand>()
+            .add_systems(PreUpdate, commands);
+        app.world_mut()
+            .resource_mut::<Messages<CampaignBrowserCommand>>()
+            .write(CampaignBrowserCommand::Open);
+        app.update();
+        let exited_before_ready = !app.world().resource::<Messages<AppExit>>().is_empty();
+        assert!(app.world().contains_resource::<RuntimePipe>());
+
+        let admitted_target =
+            crate::observer_io::tests::refuse_initial_switch(&mut app, &requests, &responses);
+        if directory.exists() {
+            fs::remove_dir_all(directory).expect("the fixture directory exists before removal");
+        }
+
+        assert!(
+            !exited_before_ready,
+            "Open closed the runtime response pipe before Ready"
+        );
+        assert!(
+            app.world().resource::<Messages<AppExit>>().is_empty(),
+            "Startup failure closed the recovery UI"
+        );
+        assert!(app.world().contains_resource::<RuntimePipe>());
+        assert!(app.world().resource::<ObserverUiState>().menu_open);
+        let state = app.world().resource::<ObserverSession>();
+        assert_eq!(state.phase, crate::observer::SessionPhase::Failed);
+        assert_eq!(state.campaign, admitted_target);
+        assert_eq!(state.durable_tick, 0);
+        assert_eq!(
+            state.error.as_deref(),
+            Some(
+                babylon_persistence::runtime_session::RuntimeSessionErrorCode::StorageRefused
+                    .to_string()
+                    .as_str()
+            )
+        );
+        assert_eq!(
+            observer_controls::availability(ObserverCommand::ReopenCampaign, state),
+            ControlAvailability::Enabled
+        );
+    }
+
+    fn ready_catalog_handoff_app() -> (App, CampaignId) {
+        let (mut app, selected) = catalog_handoff_app(true);
+        let context = {
+            let mut session = app.world_mut().resource_mut::<ObserverSession>();
+            session.ready(3, None);
+            let context = session.context();
+            assert!(session.installed(&context));
+            context
+        };
+        app.world_mut()
+            .resource_mut::<CampaignBrowserState>()
+            .context = Some(context);
+        (app, selected)
+    }
+
+    #[test]
+    fn compare_after_open_keeps_the_title_visible_until_campaign_admission() {
+        AsyncComputeTaskPool::get_or_init(|| TaskPoolBuilder::new().num_threads(1).build());
+        let (mut app, _) = ready_catalog_handoff_app();
+        app.insert_resource(OpeningPresentation {
+            stage: OpeningStage::Title,
+            menu_page: MenuPage::SavedGames,
+            ..default()
+        })
+        .add_systems(PreUpdate, sync_focus_targets)
+        .add_systems(Update, paint_buttons.after(commands));
+        let compare = app
+            .world_mut()
+            .spawn((
+                BrowserButton(CampaignBrowserCommand::Compare),
+                ObserverFocusTarget::action(None),
+                Interaction::Hovered,
+                BackgroundColor(theme::PANEL),
+                BorderColor::all(theme::PAPER),
+            ))
+            .id();
+        app.update();
+        assert!(
+            app.world()
+                .get::<ObserverFocusTarget>(compare)
+                .expect("the fixture world holds the addressed component")
+                .available
+        );
+
+        app.world_mut().write_message(CampaignBrowserCommand::Open);
+        app.world_mut()
+            .write_message(CampaignBrowserCommand::Compare);
+        app.update();
+
+        assert!(app
+            .world()
+            .resource::<ObserverSession>()
+            .lifecycle_pending());
+        let ui = app.world().resource::<ObserverUiState>();
+        assert!(ui.menu_open, "Compare dismissed the title during Open");
+        assert!(!ui.comparison_open);
+        assert!(app
+            .world()
+            .resource::<CampaignBrowserState>()
+            .comparison_task
+            .is_none());
+        app.update();
+        assert!(
+            !app.world()
+                .get::<ObserverFocusTarget>(compare)
+                .expect("the fixture world holds the addressed component")
+                .available
+        );
+        assert_eq!(
+            *app.world()
+                .get::<BorderColor>(compare)
+                .expect("the fixture world holds the addressed component"),
+            BorderColor::all(theme::GRAY)
+        );
+    }
+
+    #[test]
+    fn catalog_handoff_pending_commit_queues_without_abandoning_ack_or_saving_target() {
+        let environment = EnvVarGuard::lock("XDG_STATE_HOME");
+        let directory =
+            std::env::temp_dir().join(format!("babylon-pending-handoff-{}", Uuid::new_v4()));
+        environment.set(directory.to_str().expect("the fixture path is UTF-8"));
+        for (keyboard, failed) in [(false, false), (true, false), (true, true)] {
+            let (mut app, selected) = ready_catalog_handoff_app();
+            let active = app.world().resource::<ObserverSession>().campaign;
+            let context = app.world().resource::<ObserverSession>().context();
+            let path = preference_path()
+                .expect("the fixture call `preference_path` succeeds for the authored inputs");
+            write_preference(&path, active, 0)
+                .expect("the fixture sink accepts the authored bytes");
+            app.add_observer(keyboard_button);
+            let mut target = ObserverFocusTarget::action(Some(context.clone()));
+            target.available = true;
+            let button = app
+                .world_mut()
+                .spawn((BrowserButton(CampaignBrowserCommand::Open), target))
+                .id();
+            let request = {
+                let mut session = app.world_mut().resource_mut::<ObserverSession>();
+                let request = session
+                    .begin_advance()
+                    .expect("the session begins the authored advance");
+                if failed {
+                    session.fail("Commit acknowledgement lost".into());
+                }
+                request
+            };
+            if keyboard {
+                // The rendered control was enabled before this period began.
+                app.world_mut().trigger(ObserverKeyboardActivate {
+                    entity: button,
+                    context: Some(context.clone()),
+                });
+            } else {
+                app.world_mut()
+                    .resource_mut::<Messages<CampaignBrowserCommand>>()
+                    .write(CampaignBrowserCommand::Open);
+            }
+            app.update();
+            assert!(
+                app.world().resource::<Messages<AppExit>>().is_empty(),
+                "Saved-campaign handoff abandoned the pending commit"
+            );
+            let session = app.world().resource::<ObserverSession>();
+            assert!(session.advance_pending());
+            assert_eq!(session.context(), context);
+            assert_eq!(session.campaign, active);
+            assert_eq!(session.durable_tick, 3);
+            assert_eq!(
+                fs::read_to_string(&path).expect("the fixture source is readable"),
+                format!("{}\n", active.as_uuid())
+            );
+            assert_eq!(
+                fs::read_dir(
+                    path.parent()
+                        .expect("the fixture call `parent` succeeds for the authored inputs")
+                )
+                .expect("the fixture directory is readable")
+                .count(),
+                1
+            );
+            assert_eq!(
+                app.world().resource::<CampaignBrowserState>().status,
+                "Opening the selected campaign..."
+            );
+            assert!(app
+                .world_mut()
+                .resource_mut::<ObserverSession>()
+                .pending_switch_request()
+                .is_none());
+            assert!(app
+                .world_mut()
+                .resource_mut::<ObserverSession>()
+                .acknowledge(request, 4, None));
+            app.world_mut()
+                .resource_mut::<Messages<CampaignBrowserCommand>>()
+                .write(CampaignBrowserCommand::Open);
+            app.update();
+            assert!(app.world().resource::<Messages<AppExit>>().is_empty());
+            let request = app
+                .world_mut()
+                .resource_mut::<ObserverSession>()
+                .pending_switch_request()
+                .expect(
+                    "the fixture call `pending_switch_request` succeeds for the authored inputs",
+                );
+            assert!(
+                matches!(request, babylon_persistence::runtime_session::RuntimeSessionRequest::Switch {
+                target: babylon_persistence::runtime_session::RuntimeSessionTarget::Open { campaign_id }, ..
+            } if campaign_id == selected.as_uuid().to_string())
+            );
+            assert_eq!(
+                fs::read_to_string(&path).expect("the fixture source is readable"),
+                format!("{}\n", active.as_uuid())
+            );
+        }
+        fs::remove_dir_all(directory).expect("the fixture directory exists before removal");
+    }
+
+    #[test]
+    fn catalog_open_remains_queueable_during_pending_commit_without_pointer_motion() {
+        let (mut app, _) = ready_catalog_handoff_app();
+        app.add_systems(PreUpdate, sync_focus_targets)
+            .add_systems(Update, paint_buttons.after(commands));
+        let button = app
+            .world_mut()
+            .spawn((
+                BrowserButton(CampaignBrowserCommand::Open),
+                ObserverFocusTarget::action(None),
+                Interaction::Hovered,
+                BackgroundColor(theme::PANEL),
+                BorderColor::all(theme::PAPER),
+            ))
+            .id();
+        app.update();
+        assert!(
+            app.world()
+                .get::<ObserverFocusTarget>(button)
+                .expect("the fixture world holds the addressed component")
+                .available
+        );
+        assert_eq!(
+            *app.world()
+                .get::<BorderColor>(button)
+                .expect("the fixture world holds the addressed component"),
+            BorderColor::all(theme::YELLOW)
+        );
+        app.world_mut()
+            .resource_mut::<ObserverSession>()
+            .begin_advance()
+            .expect("the session begins the authored advance");
+        app.update();
+        assert!(
+            app.world()
+                .get::<ObserverFocusTarget>(button)
+                .expect("the fixture world holds the addressed component")
+                .available
+        );
+        assert_eq!(
+            *app.world()
+                .get::<BorderColor>(button)
+                .expect("the fixture world holds the addressed component"),
+            BorderColor::all(theme::YELLOW)
+        );
+        assert_eq!(
+            *app.world()
+                .get::<Interaction>(button)
+                .expect("the fixture world holds the addressed component"),
+            Interaction::Hovered
+        );
+    }
+
+    #[test]
+    fn browser_keyboard_request_revalidates_perspective_and_visible_menu() {
+        let session = ObserverSession::new(CampaignId::from_uuid(Uuid::from_u128(1)));
+        let original = session.context();
+        let mut app = App::new();
+        app.insert_resource(session)
+            .insert_resource(ObserverUiState {
+                splash_visible: false,
+                ..default()
+            })
+            .add_message::<CampaignBrowserCommand>()
+            .add_observer(keyboard_button);
+        let button = app
+            .world_mut()
+            .spawn((
+                BrowserButton(CampaignBrowserCommand::Refresh),
+                ObserverFocusTarget::action(Some(original.clone())),
+            ))
+            .id();
+        app.world_mut().trigger(ObserverKeyboardActivate {
+            entity: button,
+            context: Some(original.clone()),
+        });
+        assert!(matches!(
+            app.world_mut()
+                .resource_mut::<Messages<CampaignBrowserCommand>>()
+                .drain()
+                .collect::<Vec<_>>()
+                .as_slice(),
+            [CampaignBrowserCommand::Refresh]
+        ));
+        app.world_mut()
+            .resource_mut::<ObserverSession>()
+            .perspective = Perspective::PlayerKnowledge;
+        app.world_mut().trigger(ObserverKeyboardActivate {
+            entity: button,
+            context: Some(original),
+        });
+        assert!(app
+            .world()
+            .resource::<Messages<CampaignBrowserCommand>>()
+            .is_empty());
+        let current = app.world().resource::<ObserverSession>().context();
+        app.world_mut()
+            .get_mut::<ObserverFocusTarget>(button)
+            .expect("the fixture world holds the addressed component")
+            .context = Some(current.clone());
+        app.world_mut().resource_mut::<ObserverUiState>().menu_open = false;
+        app.world_mut().trigger(ObserverKeyboardActivate {
+            entity: button,
+            context: Some(current),
+        });
+        assert!(app
+            .world()
+            .resource::<Messages<CampaignBrowserCommand>>()
+            .is_empty());
+    }
+
+    #[test]
+    fn shutdown_consumes_queued_browser_commands_without_changing_selection_or_exiting_again() {
+        let mut session = ObserverSession::new(CampaignId::from_uuid(Uuid::from_u128(1)));
+        session.quit_requested = true;
+        let browser = CampaignBrowserState {
+            // Invalid fixture identities make a regression incapable of writing user preferences.
+            catalog: ["unavailable-a", "unavailable-b"]
+                .map(|id| CampaignSummary {
+                    id: id.into(),
+                    preset: "standard".into(),
+                    label: id.into(),
+                    durable_tick: 3,
+                })
+                .into(),
+            ..default()
+        };
+        let mut app = App::new();
+        app.insert_resource(session)
+            .insert_resource(browser)
+            .init_resource::<ObserverUiState>()
+            .add_message::<CampaignBrowserCommand>()
+            .add_message::<AppExit>()
+            .add_systems(Update, commands);
+        app.world_mut()
+            .resource_mut::<Messages<CampaignBrowserCommand>>()
+            .write_batch([CampaignBrowserCommand::Next, CampaignBrowserCommand::Open]);
+        app.update();
+        let browser = app.world().resource::<CampaignBrowserState>();
+        assert!(browser.selected.is_none());
+        assert!(browser.status.starts_with("Closing the campaign"));
+        assert!(app.world().resource::<Messages<AppExit>>().is_empty());
+        assert!(browser.catalog_task.is_none() && browser.comparison_task.is_none());
+    }
+
+    #[test]
+    fn comparison_scope_rejects_changed_perspective_period_campaign_and_generation() {
+        let first = parse_campaign("81b979ee-a9c1-48fd-8835-06cbfe594675")
+            .expect("the authored campaign parses");
+        let other = parse_campaign("fc7d28a0-a29a-49ea-bf3b-ef07ee163cd4")
+            .expect("the authored campaign parses");
+        let mut session = ObserverSession::new(first);
+        let mut browser = CampaignBrowserState::default();
+        browser.invalidate(session.context(), &mut ObserverUiState::default());
+        browser.comparison_target = Some(other);
+        let scope = BrowserScope {
+            active: session.context(),
+            generation: 0,
+            target: Some(other),
+        };
+        assert!(browser.accepts(&scope, &session));
+        session.set_perspective(Perspective::PlayerKnowledge);
+        assert!(!browser.accepts(&scope, &session));
+        session = ObserverSession::new(first);
+        session.viewed_tick = 1;
+        assert!(!browser.accepts(&scope, &session));
+        session = ObserverSession::new(other);
+        assert!(!browser.accepts(&scope, &session));
+        session = ObserverSession::new(first);
+        browser.generation = 1;
+        assert!(!browser.accepts(&scope, &session));
+    }
+
+    fn selection_catalog(entries: &[(u128, &str)]) -> Vec<CampaignSummary> {
+        entries
+            .iter()
+            .map(|(id, label)| CampaignSummary {
+                id: Uuid::from_u128(*id).to_string(),
+                preset: "standard".into(),
+                label: (*label).into(),
+                durable_tick: 5,
+            })
+            .collect()
+    }
+
+    fn deliver_selection_catalog(app: &mut App, entries: &[(u128, &str)]) {
+        let pool =
+            AsyncComputeTaskPool::get_or_init(|| TaskPoolBuilder::new().num_threads(1).build());
+        let catalog = selection_catalog(entries);
+        let task = pool.spawn(async move { Ok(catalog) });
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !task.is_finished() {
+            assert!(Instant::now() < deadline, "catalog fixture task stalled");
+            std::thread::yield_now();
+        }
+        let context = app.world().resource::<ObserverSession>().context();
+        {
+            let mut browser = app.world_mut().resource_mut::<CampaignBrowserState>();
+            let scope = BrowserScope {
+                active: context,
+                generation: browser.generation,
+                target: None,
+            };
+            browser.catalog_task = Some((scope, task));
+        }
+        app.update();
+    }
+
+    fn selected_freight_catalog_app() -> (App, Entity) {
+        let mut session = ObserverSession::new(CampaignId::from_uuid(Uuid::from_u128(10)));
+        session.ready(5, None);
+        session.viewed_tick = 1;
+        let mut app = App::new();
+        app.insert_resource(CampaignBrowserState {
+            context: Some(session.context()),
+            ..default()
+        })
+        .insert_resource(session)
+        .insert_resource(ObserverUiState {
+            menu_open: true,
+            splash_visible: false,
+            ..default()
+        })
+        .init_resource::<ObserverFrame>()
+        .add_message::<CampaignBrowserCommand>()
+        .add_systems(
+            Update,
+            (commands, collect, paint, sync_focus_targets).chain(),
+        );
+        let text = app.world_mut().spawn((Text::new(""), CatalogText)).id();
+        for command in [
+            CampaignBrowserCommand::Open,
+            CampaignBrowserCommand::Compare,
+        ] {
+            app.world_mut()
+                .spawn((BrowserButton(command), ObserverFocusTarget::action(None)));
+        }
+        deliver_selection_catalog(
+            &mut app,
+            &[(10, "Active"), (30, "Parts shortage"), (50, "Freight")],
+        );
+        app.world_mut()
+            .resource_mut::<Messages<CampaignBrowserCommand>>()
+            .write(CampaignBrowserCommand::Next);
+        app.update();
+        assert!(app
+            .world()
+            .get::<Text>(text)
+            .expect("the fixture world holds the addressed component")
+            .0
+            .contains("Freight"));
+        (app, text)
+    }
+
+    #[test]
+    fn catalog_refresh_keeps_the_selected_campaign_when_other_saves_reorder_the_roster() {
+        let (mut app, text) = selected_freight_catalog_app();
+        deliver_selection_catalog(
+            &mut app,
+            &[
+                (10, "Active"),
+                (20, "New save"),
+                (30, "Parts shortage"),
+                (50, "Freight"),
+            ],
+        );
+        let reading = &app
+            .world()
+            .get::<Text>(text)
+            .expect("the fixture world holds the addressed component")
+            .0;
+        assert!(
+            reading.contains("Freight"),
+            "refresh substituted a different campaign: {reading}"
+        );
+        assert!(reading.contains(&Uuid::from_u128(50).to_string()));
+    }
+
+    #[test]
+    fn catalog_period_change_clears_old_readings_but_keeps_the_selected_save() {
+        let (mut app, text) = selected_freight_catalog_app();
+        app.world_mut()
+            .resource_mut::<ObserverSession>()
+            .viewed_tick = 3;
+        let context = app.world().resource::<ObserverSession>().context();
+        app.world_mut()
+            .resource_scope(|world, mut browser: Mut<CampaignBrowserState>| {
+                browser.invalidate(context, &mut world.resource_mut::<ObserverUiState>());
+            });
+        app.update();
+        assert!(app
+            .world()
+            .get::<Text>(text)
+            .expect("the fixture world holds the addressed component")
+            .0
+            .is_empty());
+        deliver_selection_catalog(
+            &mut app,
+            &[(10, "Active"), (30, "Parts shortage"), (50, "Freight")],
+        );
+        let reading = &app
+            .world()
+            .get::<Text>(text)
+            .expect("the fixture world holds the addressed component")
+            .0;
+        assert!(
+            reading.contains("Freight"),
+            "period change substituted a different campaign: {reading}"
+        );
+    }
+
+    #[test]
+    fn catalog_missing_selected_save_disables_actions_without_substituting_another_campaign() {
+        let (mut app, text) = selected_freight_catalog_app();
+        deliver_selection_catalog(&mut app, &[(10, "Active"), (30, "Parts shortage")]);
+        let reading = &app
+            .world()
+            .get::<Text>(text)
+            .expect("the fixture world holds the addressed component")
+            .0;
+        assert!(
+            reading.contains("Selected campaign unavailable"),
+            "removed selection silently changed: {reading}"
+        );
+        let mut buttons = app
+            .world_mut()
+            .query::<(&BrowserButton, &ObserverFocusTarget)>();
+        assert!(buttons
+            .iter(app.world())
+            .all(|(_, target)| !target.available));
+        app.world_mut()
+            .resource_mut::<Messages<CampaignBrowserCommand>>()
+            .write(CampaignBrowserCommand::Next);
+        app.update();
+        assert!(app
+            .world()
+            .get::<Text>(text)
+            .expect("the fixture world holds the addressed component")
+            .0
+            .contains("Active"));
+        assert!(!app
+            .world()
+            .get::<Text>(text)
+            .expect("the fixture world holds the addressed component")
+            .0
+            .contains("unavailable"));
+    }
+
+    #[test]
+    fn pending_comparison_stays_modal_without_repainting_until_scope_changes() {
+        #[derive(Resource, Default)]
+        struct Changes(u32);
+
+        fn record_changes(browser: Res<CampaignBrowserState>, mut changes: ResMut<Changes>) {
+            if browser.is_changed() {
+                changes.0 += 1;
+            }
+        }
+
+        let campaign = parse_campaign("81b979ee-a9c1-48fd-8835-06cbfe594675")
+            .expect("the authored campaign parses");
+        let other = parse_campaign("fc7d28a0-a29a-49ea-bf3b-ef07ee163cd4")
+            .expect("the authored campaign parses");
+        let session = ObserverSession::new(campaign);
+        let scope = BrowserScope {
+            active: session.context(),
+            generation: 0,
+            target: Some(other),
+        };
+        let pool =
+            AsyncComputeTaskPool::get_or_init(|| TaskPoolBuilder::new().num_threads(1).build());
+        let browser = CampaignBrowserState {
+            context: Some(session.context()),
+            comparison_target: Some(other),
+            comparison_task: Some((scope, pool.spawn(std::future::pending()))),
+            ..default()
+        };
+        let mut app = App::new();
+        app.insert_resource(session)
+            .insert_resource(browser)
+            .insert_resource(ObserverUiState {
+                menu_open: false,
+                splash_visible: false,
+                comparison_open: true,
+                ..default()
+            })
+            .init_resource::<Changes>()
+            .add_systems(Update, (refresh_scope, collect, record_changes).chain());
+        app.update();
+        app.update();
+        assert!(app.world().resource::<ObserverUiState>().comparison_open);
+        let browser = app.world().resource::<CampaignBrowserState>();
+        assert!(browser.comparison_task.is_some());
+        assert!(browser.comparison.is_none());
+        assert_eq!(app.world().resource::<Changes>().0, 1);
+
+        app.world_mut()
+            .resource_mut::<ObserverSession>()
+            .set_perspective(Perspective::PlayerKnowledge);
+        app.update();
+        assert!(!app.world().resource::<ObserverUiState>().comparison_open);
+        let browser = app.world().resource::<CampaignBrowserState>();
+        assert!(browser.comparison_task.is_none());
+        assert!(browser.comparison_target.is_none());
+        assert_eq!(app.world().resource::<Changes>().0, 2);
+    }
+
+    #[test]
+    fn catalog_preference_is_exact_personal_uuid_and_atomic_replacement() {
+        let root = std::env::temp_dir().join(format!(
+            "babylon-campaign-preference-{}",
+            std::process::id()
+        ));
+        fs::create_dir(&root).expect("the fixture directory is creatable");
+        let path = root.join("observer-campaign");
+        let first = parse_campaign("81b979ee-a9c1-48fd-8835-06cbfe594675")
+            .expect("the authored campaign parses");
+        let next = parse_campaign("fc7d28a0-a29a-49ea-bf3b-ef07ee163cd4")
+            .expect("the authored campaign parses");
+        write_preference(&path, first, 0).expect("the fixture sink accepts the authored bytes");
+        write_preference(&path, next, 1).expect("the fixture sink accepts the authored bytes");
+        assert_eq!(
+            fs::read_to_string(&path).expect("the fixture source is readable"),
+            format!("{}\n", next.as_uuid())
+        );
+        assert_eq!(
+            fs::read_dir(&root)
+                .expect("the fixture directory is readable")
+                .count(),
+            1
+        );
+        fs::remove_file(path).expect("the fixture file exists before removal");
+        fs::remove_dir(root).expect("the fixture directory exists before removal");
+        assert!(parse_campaign("not-a-campaign").is_err());
+        assert!(parse_campaign("00000000-0000-0000-0000-000000000000").is_err());
+    }
+    #[test]
+    fn maintenance_comparison_keeps_jobs_constraints_expiry_and_identity() {
+        let mut active = staffing_snapshot(CampaignId::from_uuid(Uuid::from_u128(1)), 1, 5, 0, 0);
+        let mut other = staffing_snapshot(CampaignId::from_uuid(Uuid::from_u128(2)), 1, 5, 0, 0);
+        active.production = Some(crate::maintenance_fixture::snapshot(
+            active
+                .production
+                .as_ref()
+                .expect("the fixture set the optional field before this read"),
+            1,
+            Some(4),
+        ));
+        other.production = Some(crate::maintenance_fixture::snapshot(
+            other
+                .production
+                .as_ref()
+                .expect("the fixture set the optional field before this read"),
+            1,
+            Some(2),
+        ));
+        let selected = "9".repeat(64);
+        let read = |other: &ObserverEconomySnapshot| {
+            comparison_text(
+                &active,
+                other,
+                Some(&selected),
+                &MapLens::default(),
+                ComparisonSection::Cohorts,
+            )
+        };
+        let reading = read(&other);
+        assert!(reading.contains("CURRENT  4 / 4 jobs"), "{reading}");
+        assert!(reading.contains("COMPARED  2 / 4 jobs"), "{reading}");
+        assert!(
+            reading.contains("Expired service: 2 / 2 batches"),
+            "{reading}"
+        );
+        assert!(reading.contains("up to 80 / 40 kg"), "{reading}");
+        assert!(!reading.contains("Merchant owner / handling and distribution"));
+        let mut mismatched = serde_json::to_value(&other).expect("the value serializes to JSON");
+        mismatched["production"]["maintenance_account"]["spare_unit_id"] =
+            serde_json::json!("7".repeat(64));
+        let mismatched =
+            serde_json::from_value(mismatched).expect("the JSON value matches the declared type");
+        assert!(read(&mismatched).contains("Compatible maintenance account unavailable"));
+        other.resolve_tick = 2;
+        assert!(!read(&other).contains("jobs completed"));
+        other.resolve_tick = 1;
+        other.visibility = ObserverVisibility::KnownPreview;
+        assert!(!read(&other).contains("Wayne maintenance"));
+    }
+}

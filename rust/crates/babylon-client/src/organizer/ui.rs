@@ -2,10 +2,9 @@
 
 use babylon_persistence::runtime_session::{OrganizerChoice, OrganizerInquiry};
 use bevy::ecs::system::SystemParam;
-use bevy::input::{
-    keyboard::{Key, KeyboardInput},
-    ButtonState,
-};
+use bevy::input::keyboard::{Key, KeyboardInput};
+use bevy::input::ButtonState;
+
 use bevy::input_focus::tab_navigation::TabGroup;
 use bevy::input_focus::{FocusedInput, InputFocus};
 use bevy::prelude::*;
@@ -20,7 +19,15 @@ use crate::observer_theme as theme;
 use crate::observer_ui::{ObserverCommand, ObserverFontRole, ObserverUiState};
 use crate::production::PrimaryView;
 
+use super::editor::FocusState;
+use super::qualification_input::HandlerReceipt;
 use super::{presentation, OrganizerClient, OrganizerInspector, RequestKind};
+use crate::observer::SessionPhase;
+use crate::observer_controls::ControlAvailability;
+use babylon_kernel::clock::CampaignDuration;
+use babylon_persistence::runtime_session::OrganizerGiftConsent;
+use bevy::text::LineBreak;
+use bevy::ui::UiSystems;
 
 #[derive(Message, Clone, Copy, Debug)]
 pub(crate) enum OrganizerAction {
@@ -95,7 +102,7 @@ fn text(value: impl Into<String>, size: f32, color: Color) -> impl Bundle {
             ..default()
         },
         TextColor(color),
-        TextLayout::new_with_linebreak(bevy::text::LineBreak::WordOrCharacter),
+        TextLayout::new_with_linebreak(LineBreak::WordOrCharacter),
         Node {
             min_width: px(0),
             max_width: percent(100),
@@ -628,7 +635,7 @@ pub(super) fn enabled(
         }
         OrganizerAction::Advance => {
             crate::observer_controls::availability(ObserverCommand::Step, session)
-                == crate::observer_controls::ControlAvailability::Enabled
+                == ControlAvailability::Enabled
         }
         OrganizerAction::Confirm => {
             client.available(session)
@@ -653,15 +660,13 @@ pub(super) fn enabled(
         }
         OrganizerAction::ArchiveWorkplace | OrganizerAction::ArchiveOrganization => {
             client.view.is_some()
-                && (matches!(
-                    session.phase,
-                    crate::observer::SessionPhase::Ready | crate::observer::SessionPhase::Complete
-                ) || (session.phase == crate::observer::SessionPhase::Advancing
-                    && session.advance_pending()
-                    && client
-                        .view
-                        .as_ref()
-                        .is_some_and(|view| view.period == session.viewed_tick)))
+                && (matches!(session.phase, SessionPhase::Ready | SessionPhase::Complete)
+                    || (session.phase == SessionPhase::Advancing
+                        && session.advance_pending()
+                        && client
+                            .view
+                            .as_ref()
+                            .is_some_and(|view| view.period == session.viewed_tick)))
         }
         OrganizerAction::Open | OrganizerAction::CloseInspector => true,
     }
@@ -786,7 +791,7 @@ fn actions(
     mut state: ActionState,
     mut commands: Commands,
     mut observer_commands: MessageWriter<ObserverCommand>,
-    mut qualification: Option<ResMut<super::qualification_input::HandlerReceipt>>,
+    mut qualification: Option<ResMut<HandlerReceipt>>,
 ) {
     for (action, message_id) in events.read_with_id() {
         let action = *action;
@@ -953,7 +958,7 @@ fn unavailable_message(
 ) -> &'static str {
     match action {
         OrganizerAction::Advance => {
-            if let crate::observer_controls::ControlAvailability::Disabled(reason) =
+            if let ControlAvailability::Disabled(reason) =
                 crate::observer_controls::availability(ObserverCommand::Step, session)
             {
                 return reason;
@@ -978,7 +983,7 @@ fn unavailable_message(
     }
     if session.viewed_tick != session.durable_tick {
         "Return Live before changing the organization's commitments."
-    } else if session.phase == crate::observer::SessionPhase::Complete {
+    } else if session.phase == SessionPhase::Complete {
         "This campaign is complete. Its reports and practice receipts remain available."
     } else if client
         .pending
@@ -991,9 +996,10 @@ fn unavailable_message(
     } else if matches!(action, OrganizerAction::Choose(OrganizerChoice::Collect))
         || client.choice() == OrganizerChoice::Collect
     {
-        if client.collection_preview().is_some_and(|terms| {
-            terms.cash_consent == babylon_persistence::runtime_session::OrganizerGiftConsent::Refuse
-        }) {
+        if client
+            .collection_preview()
+            .is_some_and(|terms| terms.cash_consent == OrganizerGiftConsent::Refuse)
+        {
             "The household independently refused cash consent. Other work does not grant that permission."
         } else {
             "Refresh the current attributed collection terms before reviewing this ruling."
@@ -1239,18 +1245,23 @@ fn paint_layout(scope: &Scope, primary: bool, paint: &mut Paint) {
 
 fn paint_text(scope: &Scope, focus: &InputFocus, paint: &mut Paint) {
     let historical = scope.session.viewed_tick != scope.session.durable_tick;
-    let complete = scope.session.phase == crate::observer::SessionPhase::Complete;
+    let complete = scope.session.phase == SessionPhase::Complete;
     let (inspector_title, inspector_body) =
         presentation::inspector(&scope.client, scope.session.viewed_tick);
     let note_focused = focus
         .get()
         .is_some_and(|entity| paint.notes.contains(entity));
+    let note_focus = if note_focused {
+        FocusState::Focused
+    } else {
+        FocusState::Unfocused
+    };
     for (part, mut text) in &mut paint.texts {
         let value = match part {
             TextPart::Title => scope.client.view.as_ref().map_or_else(|| "Wayne Organizing Collective".into(), |view| view.organization_label.clone()),
             TextPart::Situation => scope.client.view.as_ref().map_or_else(|| "Awaiting the committed organizer situation…".into(), |view| presentation::situation(view, scope.session.viewed_tick)),
             TextPart::Means => scope.client.view.as_ref().map_or_else(String::new, |view| {
-                let endpoint = scope.session.duration.and_then(babylon_kernel::clock::CampaignDuration::final_period).map_or_else(String::new, |value| format!(" / {value}"));
+                let endpoint = scope.session.duration.and_then(CampaignDuration::final_period).map_or_else(String::new, |value| format!(" / {value}"));
                 if historical { format!("HISTORY · period {}{endpoint}\nCurrent period {} · {} organizer-hours", scope.session.viewed_tick, view.period, view.available_hours) }
                 else { format!("PERIOD {}{endpoint} · 4 weeks\n{} organizer-hours available", view.period, view.available_hours) }
             }),
@@ -1264,13 +1275,13 @@ fn paint_text(scope: &Scope, focus: &InputFocus, paint: &mut Paint) {
                 else if scope.client.choice() == *choice { "SELECTED DRAFT".into() }
                 else { "SELECT".into() }
             },
-            TextPart::Review => presentation::review(&scope.client, historical, complete, scope.session.phase == crate::observer::SessionPhase::Advancing),
+            TextPart::Review => presentation::review(&scope.client, historical, complete, scope.session.phase == SessionPhase::Advancing),
             TextPart::ReferenceSummary => format!("{} report reference(s) in this personal draft. References help you review evidence; they never execute a practice.", scope.client.draft.as_ref().map_or(0, |draft| draft.references.len())),
             TextPart::DraftStatus => if !scope.client.draft_writable { "Draft saving unavailable · original file retained".into() } else if scope.client.draft_dirty { "Draft changes awaiting save".into() } else { "Personal draft saved".into() },
             TextPart::Message => scope.client.message.clone(),
             TextPart::Notes => scope.client.draft.as_ref().map_or_else(String::new, |draft| {
-                if draft.notes.text.is_empty() && !note_focused { "Click or Tab here to write personal notes.".into() }
-                else { draft.notes.display(note_focused) }
+                if draft.notes.text.is_empty() && note_focus == FocusState::Unfocused { "Click or Tab here to write personal notes.".into() }
+                else { draft.notes.display(note_focus) }
             }),
             TextPart::InspectorTitle => inspector_title.clone(), TextPart::InspectorBody => inspector_body.clone(),
         };
@@ -1365,10 +1376,7 @@ pub(super) fn install(app: &mut App) {
                 .in_set(ObserverSet::Input),
         )
         .add_systems(Update, paint.in_set(ObserverSet::Paint))
-        .add_systems(
-            PostUpdate,
-            paint_scroll_hints.after(bevy::ui::UiSystems::Layout),
-        )
+        .add_systems(PostUpdate, paint_scroll_hints.after(UiSystems::Layout))
         .add_observer(requested)
         .add_observer(keyboard_button)
         .add_observer(notes_input)
@@ -1377,14 +1385,28 @@ pub(super) fn install(app: &mut App) {
 
 #[cfg(test)]
 mod tests {
-    use super::super::{draft::OrganizerDraft, editor::NoteEditor};
+    use super::super::draft::OrganizerDraft;
+    use super::super::editor::NoteEditor;
+
+    use super::super::OrganizerCommand;
+    use super::super::OrganizerPreview;
     use super::*;
     use crate::atlas::CountyAtlas;
     use crate::map::SelectedCounty;
+    use crate::observer::ObservationContext;
+    use crate::observer::SessionPhase;
     use crate::observer_focus::ObserverKeyboardClaim;
     use crate::observer_ui::ObserverCommand;
+    use crate::observer_ui::ObserverFrame;
     use babylon_persistence::identity::CampaignId;
+    use babylon_persistence::observer_reader::ObserverEconomySnapshot;
+    use babylon_persistence::runtime_session::OrganizerGiftConsent;
+    use babylon_persistence::runtime_session::OrganizerPauseReason;
+    use babylon_persistence::runtime_session::RuntimeSessionResponse;
     use babylon_persistence::runtime_session::{OrganizerStandingWork, OrganizerView};
+    use bevy::time::TimeUpdateStrategy;
+    use std::sync::mpsc::Sender;
+    use uuid::Uuid;
 
     #[derive(Resource, Default)]
     struct ArchiveRequests(Vec<bool>);
@@ -1409,51 +1431,66 @@ mod tests {
                 .id();
             app.update();
             assert_eq!(
-                app.world().get::<Text>(hint).unwrap().0,
+                app.world()
+                    .get::<Text>(hint)
+                    .expect("the fixture world holds the addressed component")
+                    .0,
                 "More below · scroll this panel"
             );
             // Bevy resolves physical scroll offsets without marking this
             // component changed. The hint must still update at larger UI scales.
             app.world_mut()
                 .get_mut::<ComputedNode>(reading)
-                .unwrap()
+                .expect("the fixture world holds the addressed component")
                 .bypass_change_detection()
                 .scroll_position
                 .y = 190.0 * scale;
             app.update();
             assert_eq!(
-                app.world().get::<Text>(hint).unwrap().0,
+                app.world()
+                    .get::<Text>(hint)
+                    .expect("the fixture world holds the addressed component")
+                    .0,
                 "More above and below · scroll this panel"
             );
             app.world_mut()
                 .get_mut::<ComputedNode>(reading)
-                .unwrap()
+                .expect("the fixture world holds the addressed component")
                 .bypass_change_detection()
                 .scroll_position
                 .y = 200.0 * scale;
             app.update();
             assert_eq!(
-                app.world().get::<Text>(hint).unwrap().0,
+                app.world()
+                    .get::<Text>(hint)
+                    .expect("the fixture world holds the addressed component")
+                    .0,
                 "More above · scroll this panel"
             );
             app.world_mut()
                 .get_mut::<ComputedNode>(reading)
-                .unwrap()
+                .expect("the fixture world holds the addressed component")
                 .bypass_change_detection()
                 .content_size = Vec2::new(400.0, 100.0) * scale;
             app.update();
-            assert!(app.world().get::<Text>(hint).unwrap().0.is_empty());
+            assert!(app
+                .world()
+                .get::<Text>(hint)
+                .expect("the fixture world holds the addressed component")
+                .0
+                .is_empty());
         }
     }
 
     fn organizer_navigation() -> (App, Entity, OrganizerDraft) {
-        let mut session = ObserverSession::new(CampaignId::from_uuid(uuid::Uuid::from_u128(927)));
-        session.phase = crate::observer::SessionPhase::Ready;
+        let mut session = ObserverSession::new(CampaignId::from_uuid(Uuid::from_u128(927)));
+        session.phase = SessionPhase::Ready;
         session.organizer_enabled = true;
         let draft = OrganizerDraft {
             workplace_id: 91,
             choice: OrganizerChoice::Reinforce,
-            notes: NoteEditor::from_text("Keep this draft while reading evidence.".into()).unwrap(),
+            notes: NoteEditor::from_text("Keep this draft while reading evidence.".into())
+                .expect("the authored input admits the derived value"),
             references: Vec::new(),
             selected_reference: None,
         };
@@ -1515,7 +1552,7 @@ mod tests {
                     env!("CARGO_MANIFEST_DIR"),
                     "/../../../assets/map/county_atlas.bin"
                 )))
-                .unwrap(),
+                .expect("the authored literal parses as the declared type"),
             )
             .insert_resource(SelectedCounty(Some(0)))
             .init_resource::<InputFocus>()
@@ -1576,7 +1613,7 @@ mod tests {
             .resource_mut::<OrganizerClient>()
             .view
             .as_mut()
-            .unwrap()
+            .expect("the fixture set the optional field before this borrow")
             .period = 3;
         app.add_systems(Update, super::super::transport.before(ObserverSet::Paint));
         review_selected(&mut app);
@@ -1588,18 +1625,24 @@ mod tests {
         app.world_mut()
             .resource_scope(|world, mut client: Mut<OrganizerClient>| {
                 let mut session = world.resource_mut::<ObserverSession>();
-                let command = client.make_command(&session, client.choice()).unwrap();
+                let command = client
+                    .make_command(&session, client.choice())
+                    .expect("the fixture command builds");
                 client.queue(&mut session, RequestKind::Preview, Some(command.clone()));
-                let request = client.pending.as_ref().unwrap().id;
+                let request = client
+                    .pending
+                    .as_ref()
+                    .expect("the fixture set the optional field before this read")
+                    .id;
                 let _ = client.outbox.take();
                 client
                     .previewed(request, preview_for(&command), &mut session)
-                    .unwrap();
+                    .expect("the fixture call `previewed` succeeds for the authored inputs");
             });
     }
 
-    fn preview_for(command: &super::super::OrganizerCommand) -> super::super::OrganizerPreview {
-        super::super::OrganizerPreview {
+    fn preview_for(command: &OrganizerCommand) -> OrganizerPreview {
+        OrganizerPreview {
             choice: command.choice,
             current_period: command.expected_period,
             resolves_period: command.expected_period + 1,
@@ -1656,7 +1699,7 @@ mod tests {
                     || (!inspector && matches!(part, TextPart::Review)))
                 .then(|| text.0.clone())
             })
-            .unwrap()
+            .expect("the fixture yields the searched value")
     }
 
     fn reference_fixture() -> (App, OrganizerDraft) {
@@ -1671,13 +1714,18 @@ mod tests {
         }
         {
             let mut client = app.world_mut().resource_mut::<OrganizerClient>();
-            client.campaign = Some(uuid::Uuid::from_u128(927));
+            client.campaign = Some(Uuid::from_u128(927));
             client.draft_writable = true;
-            let view = client.view.as_mut().unwrap();
+            let view = client
+                .view
+                .as_mut()
+                .expect("the fixture set the optional field before this borrow");
             view.period = 3;
             for period in [2, 3] {
                 view.observations.push(OrganizerObservation {
-                    observation_id: [u8::try_from(period).unwrap(); 32],
+                    observation_id: [u8::try_from(period)
+                        .expect("the fixture value fits the target range");
+                        32],
                     actor_id: view.actor_id,
                     subject_id: view.workplace_id,
                     source_actor_id: view.workplace_partner_id,
@@ -1802,12 +1850,12 @@ mod tests {
             .world_mut()
             .query_filtered::<Entity, With<NotesField>>()
             .single(app.world())
-            .unwrap();
+            .expect("the fixture holds exactly one matching row");
         app.update();
         assert!(
             !app.world()
                 .get::<ObserverFocusTarget>(notes)
-                .unwrap()
+                .expect("the fixture world holds the addressed component")
                 .available,
             "notes must not capture decision-screen typing before they are opened"
         );
@@ -1816,7 +1864,7 @@ mod tests {
         assert!(
             app.world()
                 .get::<ObserverFocusTarget>(notes)
-                .unwrap()
+                .expect("the fixture world holds the addressed component")
                 .available
         );
         assert_eq!(
@@ -1829,7 +1877,7 @@ mod tests {
         assert!(
             !app.world()
                 .get::<ObserverFocusTarget>(notes)
-                .unwrap()
+                .expect("the fixture world holds the addressed component")
                 .available
         );
         assert_eq!(app.world().resource::<InputFocus>().get(), Some(focus));
@@ -1852,7 +1900,7 @@ mod tests {
         // Exercise a shell consumer that runs after the inspector closes in this frame.
         app.world_mut()
             .run_system_once(crate::observer_ui::keyboard)
-            .unwrap();
+            .expect("the Bevy system completes one run");
         let client = app.world().resource::<OrganizerClient>();
         assert_eq!(client.inspector, OrganizerInspector::Closed);
         assert_eq!(client.draft.as_ref(), Some(&draft));
@@ -1902,7 +1950,7 @@ mod tests {
             .resource::<OrganizerClient>()
             .draft
             .clone()
-            .unwrap();
+            .expect("the fixture value clones");
         assert_ne!(saved, before);
         assert_eq!(saved.choice, before.choice);
         assert_eq!(saved.notes, before.notes);
@@ -1947,7 +1995,10 @@ mod tests {
         let retained = app.world().resource::<OrganizerClient>().draft.clone();
         {
             let mut client = app.world_mut().resource_mut::<OrganizerClient>();
-            let view = client.view.as_mut().unwrap();
+            let view = client
+                .view
+                .as_mut()
+                .expect("the fixture set the optional field before this borrow");
             view.total_observation_count = 325;
             view.observations.pop();
         }
@@ -1972,8 +2023,14 @@ mod tests {
             press_named(&mut app, "Return to decision [Esc]");
             {
                 let mut client = app.world_mut().resource_mut::<OrganizerClient>();
-                let observations = &mut client.view.as_mut().unwrap().observations;
-                let selected = observations.last_mut().unwrap();
+                let observations = &mut client
+                    .view
+                    .as_mut()
+                    .expect("the fixture set the optional field before this borrow")
+                    .observations;
+                let selected = observations
+                    .last_mut()
+                    .expect("the fixture sequence is non-empty");
                 match fault {
                     0 => selected.acquired_period = 4,
                     1 => selected.actor_id = 999,
@@ -2002,15 +2059,17 @@ mod tests {
         {
             let mut client = app.world_mut().resource_mut::<OrganizerClient>();
             client.commitment = Some(super::super::OrganizerCommitment {
-                command: client.reviewed_command.clone().unwrap(),
+                command: client
+                    .reviewed_command
+                    .clone()
+                    .expect("the fixture value clones"),
                 resolves_period: 4,
                 commitment_id: [4; 32],
             });
         }
         app.update();
         assert!(painted_text(&mut app, false).contains("ACCEPTED"));
-        app.world_mut().resource_mut::<ObserverSession>().phase =
-            crate::observer::SessionPhase::Advancing;
+        app.world_mut().resource_mut::<ObserverSession>().phase = SessionPhase::Advancing;
         app.update();
         let text = painted_text(&mut app, false);
         assert!(text.contains("RESOLVING · period 4"));
@@ -2021,7 +2080,7 @@ mod tests {
             .resource::<OrganizerClient>()
             .view
             .as_ref()
-            .unwrap()
+            .expect("the fixture set the optional field before this read")
             .receipts
             .is_empty());
     }
@@ -2032,13 +2091,15 @@ mod tests {
         {
             let mut client = app.world_mut().resource_mut::<OrganizerClient>();
             client.commitment = None;
-            let standing = &mut client.view.as_mut().unwrap().standing;
+            let standing = &mut client
+                .view
+                .as_mut()
+                .expect("the fixture set the optional field before this borrow")
+                .standing;
             standing.authorized = false;
-            standing.paused_reason =
-                Some(babylon_persistence::runtime_session::OrganizerPauseReason::Explicit);
+            standing.paused_reason = Some(OrganizerPauseReason::Explicit);
         }
-        app.world_mut().resource_mut::<ObserverSession>().phase =
-            crate::observer::SessionPhase::Advancing;
+        app.world_mut().resource_mut::<ObserverSession>().phase = SessionPhase::Advancing;
         app.update();
         let text = painted_text(&mut app, false);
         assert!(text.contains("RESOLVING · period 4"));
@@ -2054,7 +2115,7 @@ mod tests {
             .resource::<OrganizerClient>()
             .view
             .as_ref()
-            .unwrap()
+            .expect("the fixture set the optional field before this read")
             .receipts
             .is_empty());
     }
@@ -2085,9 +2146,16 @@ mod tests {
             .world_mut()
             .resource_scope(|world, mut client: Mut<OrganizerClient>| {
                 let mut session = world.resource_mut::<ObserverSession>();
-                let command = client.reviewed_command.clone().unwrap();
+                let command = client
+                    .reviewed_command
+                    .clone()
+                    .expect("the fixture value clones");
                 client.queue(&mut session, RequestKind::Submit, Some(command.clone()));
-                let request = client.pending.as_ref().unwrap().id;
+                let request = client
+                    .pending
+                    .as_ref()
+                    .expect("the fixture set the optional field before this read")
+                    .id;
                 let _ = client.outbox.take();
                 let accepted = super::super::OrganizerCommitment {
                     command,
@@ -2096,7 +2164,7 @@ mod tests {
                 };
                 client
                     .accepted(request, accepted.clone(), &mut session)
-                    .unwrap();
+                    .expect("the fixture call `accepted` succeeds for the authored inputs");
                 accepted
             });
         inspect_period(&mut app, 2);
@@ -2119,9 +2187,15 @@ mod tests {
         app.world_mut()
             .resource_scope(|world, mut client: Mut<OrganizerClient>| {
                 let mut session = world.resource_mut::<ObserverSession>();
-                let command = client.make_command(&session, client.choice()).unwrap();
+                let command = client
+                    .make_command(&session, client.choice())
+                    .expect("the fixture command builds");
                 client.queue(&mut session, RequestKind::Preview, Some(command.clone()));
-                let request = client.pending.as_ref().unwrap().id;
+                let request = client
+                    .pending
+                    .as_ref()
+                    .expect("the fixture set the optional field before this read")
+                    .id;
                 let _ = client.outbox.take();
                 session.inspect_tick(2);
                 let context = session.context();
@@ -2131,7 +2205,7 @@ mod tests {
                 assert!(session.installed(&context));
                 client
                     .previewed(request, preview_for(&command), &mut session)
-                    .unwrap();
+                    .expect("the fixture call `previewed` succeeds for the authored inputs");
             });
         assert!(!confirmation_enabled(&app));
         let client = app.world().resource::<OrganizerClient>();
@@ -2185,9 +2259,7 @@ mod tests {
         use std::time::Duration;
 
         let (mut app, window, notes, draft) = focused_organizer(true);
-        app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
-            Duration::ZERO,
-        ));
+        app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::ZERO));
         let (requests, replies) =
             crate::observer_io::tests::install_pending_command_fixture(&mut app);
         let (status, reading, measures) =
@@ -2196,7 +2268,7 @@ mod tests {
             .world()
             .resource::<CountyAtlas>()
             .index_of_fips("26163")
-            .unwrap();
+            .expect("the fixture call `index_of_fips` succeeds for the authored inputs");
         app.world_mut().resource_mut::<SelectedCounty>().0 = Some(county);
         app.world_mut()
             .resource_mut::<ObserverSession>()
@@ -2211,7 +2283,7 @@ mod tests {
             .resource_mut::<OrganizerClient>()
             .view
             .as_mut()
-            .unwrap()
+            .expect("the fixture set the optional field before this borrow")
             .period = 3;
         let mut committed = crate::observer_io::tests::snapshot_with_event(
             app.world().resource::<ObserverSession>(),
@@ -2219,36 +2291,38 @@ mod tests {
             3,
         );
         committed.production = Some(crate::production_freight::tests::fixture());
-        app.world_mut()
-            .resource_mut::<crate::observer_ui::ObserverFrame>()
-            .0 = Some(committed.clone());
+        app.world_mut().resource_mut::<ObserverFrame>().0 = Some(committed.clone());
         app.update();
         let context = app.world().resource::<ObserverSession>().context();
         app.world_mut().write_message(ObserverCommand::Step);
         app.update();
-        let request = requests.try_recv().unwrap();
+        let request = requests
+            .try_recv()
+            .expect("the producer sends before this receive");
         assert!(matches!(
             request,
             RuntimeSessionRequest::Advance { request_id: 1, .. }
         ));
         assert_eq!(
-            app.world().get::<Text>(status).unwrap().0,
+            app.world()
+                .get::<Text>(status)
+                .expect("the fixture world holds the addressed component")
+                .0,
             "Period 4 requested; awaiting commit · 0s elapsed"
         );
         assert_eq!(app.world().resource::<ObserverSession>().durable_tick, 3);
         assert_pending_frame(&app, &context, &committed);
 
-        app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
-            Duration::from_secs(7),
-        ));
+        app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_secs(7)));
         app.update();
         assert_eq!(
-            app.world().get::<Text>(status).unwrap().0,
+            app.world()
+                .get::<Text>(status)
+                .expect("the fixture world holds the addressed component")
+                .0,
             "Period 4 requested; awaiting commit · 7s elapsed"
         );
-        app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
-            Duration::ZERO,
-        ));
+        app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::ZERO));
         exercise_actual_advance_progress(&mut app, &replies, status, &context, &committed);
         typing_key(&mut app, window, KeyCode::KeyX, "x");
         assert_eq!(app.world().resource::<InputFocus>().get(), Some(notes));
@@ -2257,7 +2331,7 @@ mod tests {
                 .resource::<OrganizerClient>()
                 .draft
                 .as_ref()
-                .unwrap()
+                .expect("the fixture set the optional field before this read")
                 .notes
                 .text,
             draft.notes.text
@@ -2275,18 +2349,16 @@ mod tests {
 
     fn exercise_actual_advance_progress(
         app: &mut App,
-        replies: &std::sync::mpsc::Sender<
-            Result<babylon_persistence::runtime_session::RuntimeSessionResponse, String>,
-        >,
+        replies: &Sender<Result<RuntimeSessionResponse, String>>,
         status: Entity,
-        context: &crate::observer::ObservationContext,
-        committed: &babylon_persistence::observer_reader::ObserverEconomySnapshot,
+        context: &ObservationContext,
+        committed: &ObserverEconomySnapshot,
     ) {
         let scope = app
             .world()
             .resource::<ObserverSession>()
             .runtime_scope()
-            .unwrap()
+            .expect("the fixture runtime scope exists")
             .clone();
         for (index, (stage, caption)) in [
             ("preparing_commitments", "Preparing commitments"),
@@ -2303,26 +2375,31 @@ mod tests {
                 "resolve_tick": 4, "stage": stage
             }))
             .expect("current protocol must admit real advance phase messages");
-            replies.send(Ok(response)).unwrap();
-            app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
+            replies
+                .send(Ok(response))
+                .expect("the receiver stays alive for the send");
+            app.insert_resource(TimeUpdateStrategy::ManualDuration(
                 std::time::Duration::from_secs(1),
             ));
             app.update();
             assert_eq!(
-                app.world().get::<Text>(status).unwrap().0,
+                app.world()
+                    .get::<Text>(status)
+                    .expect("the fixture world holds the addressed component")
+                    .0,
                 format!("Period 4 · {caption} · {}s elapsed", index + 8)
             );
             assert_pending_frame(app, context, committed);
         }
-        app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
+        app.insert_resource(TimeUpdateStrategy::ManualDuration(
             std::time::Duration::ZERO,
         ));
     }
 
     fn assert_pending_frame(
         app: &App,
-        context: &crate::observer::ObservationContext,
-        committed: &babylon_persistence::observer_reader::ObserverEconomySnapshot,
+        context: &ObservationContext,
+        committed: &ObserverEconomySnapshot,
     ) {
         let state = app.world().resource::<ObserverSession>();
         assert_eq!(&state.context(), context);
@@ -2332,9 +2409,7 @@ mod tests {
             Some("3".repeat(64)).as_deref()
         );
         assert_eq!(
-            app.world()
-                .resource::<crate::observer_ui::ObserverFrame>()
-                .for_session(state),
+            app.world().resource::<ObserverFrame>().for_session(state),
             Some(committed)
         );
     }
@@ -2374,7 +2449,10 @@ mod tests {
         assert_eq!(*app.world().resource::<PrimaryView>(), PrimaryView::Map);
         assert_eq!(app.world().resource::<ArchiveRequests>().0, vec![false]);
         assert_eq!(
-            app.world().get::<Text>(reading).unwrap().0,
+            app.world()
+                .get::<Text>(reading)
+                .expect("the fixture world holds the addressed component")
+                .0,
             "Choose a cohort to follow its commodities, freight and workers in Circuit."
         );
         for command in [
@@ -2392,7 +2470,10 @@ mod tests {
                 .is_none());
         }
         assert_eq!(
-            app.world().get::<Text>(measures).unwrap().0,
+            app.world()
+                .get::<Text>(measures)
+                .expect("the fixture world holds the addressed component")
+                .0,
             "Choose an economic lens to inspect exact county readings."
         );
     }
@@ -2422,7 +2503,7 @@ mod tests {
             app.world_mut()
                 .query_filtered::<Entity, With<NotesField>>()
                 .single(app.world())
-                .unwrap()
+                .expect("the fixture holds exactly one matching row")
         } else {
             app.world_mut()
                 .query::<(Entity, &ActionButton)>()
@@ -2434,7 +2515,7 @@ mod tests {
                     )
                     .then_some(entity)
                 })
-                .unwrap()
+                .expect("the fixture yields the searched value")
         };
         app.world_mut().resource_mut::<InputFocus>().set(focus);
         app.update();
@@ -2467,7 +2548,12 @@ mod tests {
         assert_eq!(client.return_focus, Some(focus));
         assert_eq!(client.draft.as_ref(), Some(&draft));
         assert!(
-            client.view.as_ref().unwrap().observations.is_empty(),
+            client
+                .view
+                .as_ref()
+                .expect("the fixture set the optional field before this read")
+                .observations
+                .is_empty(),
             "opening the inspector cannot fabricate earned evidence"
         );
         assert!(
@@ -2514,7 +2600,10 @@ mod tests {
         );
         assert!(app.world().resource::<ArchiveRequests>().0.is_empty());
         assert!(!app.world().resource::<ObserverUiState>().archive_open);
-        let edited = client.draft.as_ref().unwrap();
+        let edited = client
+            .draft
+            .as_ref()
+            .expect("the fixture set the optional field before this read");
         assert_eq!(edited.notes.text, format!("{}pi", draft.notes.text));
         assert_eq!(edited.workplace_id, draft.workplace_id);
         assert_eq!(edited.choice, draft.choice);
@@ -2551,12 +2640,15 @@ mod tests {
                 babylon_persistence::runtime_session::OrganizerCollectionPreview {
                     period: 3,
                     mandate_id: [8; 32],
-                    actor_id: client.view.as_ref().unwrap().actor_id,
+                    actor_id: client
+                        .view
+                        .as_ref()
+                        .expect("the fixture set the optional field before this read")
+                        .actor_id,
                     contributor_id: 1,
                     contributor_label: "Fixture contributor".into(),
                     source_hash: [16; 32],
-                    cash_consent:
-                        babylon_persistence::runtime_session::OrganizerGiftConsent::Accept,
+                    cash_consent: OrganizerGiftConsent::Accept,
                     maximum_cash_micros: 400_000,
                     protected_cash_floor_micros: 0,
                     collection_hours: 2,
@@ -2586,7 +2678,7 @@ mod tests {
             .find_map(|(part, text)| {
                 matches!(part, TextPart::Approach(OrganizerChoice::Collect)).then(|| text.0.clone())
             })
-            .unwrap();
+            .expect("the fixture yields the searched value");
         assert!(card.contains("up to 0.4 currency; 2 shared material hours"));
         review_selected(&mut app);
         // Paint the reviewed model before inspecting the actual native text.

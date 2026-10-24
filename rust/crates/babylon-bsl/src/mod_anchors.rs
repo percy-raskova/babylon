@@ -12,6 +12,8 @@
 
 use crate::reader::{Atom, SExpr};
 use std::collections::HashSet;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 
 /// Which side of the named system the rule lands on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -84,7 +86,7 @@ impl AnchorError {
 }
 
 impl std::fmt::Display for AnchorError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         match self {
             Self::NoSystemForRule { rule_id } => write!(
                 f,
@@ -212,14 +214,12 @@ pub fn check_anchor<S: std::hash::BuildHasher>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::reader::read;
-
     fn systems() -> HashSet<String> {
         HashSet::from(["survival".to_owned(), "consciousness".to_owned()])
     }
 
     fn rule(source: &str) -> SExpr {
-        read(source).expect("test rule must parse").0
+        crate::reader::read(source).expect("test rule must parse").0
     }
 
     #[test]
@@ -253,7 +253,8 @@ mod tests {
              (anchor :after survival) (anchor :before consciousness) (bindings) \
              (effects (update-node self social-class/agitation (add 0.05i))))",
         );
-        let err = check_anchor(&r, &systems()).unwrap_err();
+        let err = check_anchor(&r, &systems())
+            .expect_err("the malformed input is rejected by `check_anchor`");
         assert!(
             matches!(&err, AnchorError::Malformed { message } if message.contains("one (anchor")),
             "expected the single-anchor rejection, got: {err:?}"
@@ -277,7 +278,8 @@ mod tests {
              (bindings) \
              (effects (update-node self social-class/agitation (add 0.05i))))",
         );
-        let err = check_anchor(&r, &systems()).unwrap_err();
+        let err = check_anchor(&r, &systems())
+            .expect_err("the malformed input is rejected by `check_anchor`");
         assert_eq!(
             err,
             AnchorError::NoSystemForRule {
@@ -294,7 +296,8 @@ mod tests {
              (anchor :during survival) (bindings) \
              (effects (update-node self social-class/agitation (add 0.05i))))",
         );
-        let err = check_anchor(&r, &systems()).unwrap_err();
+        let err = check_anchor(&r, &systems())
+            .expect_err("the malformed input is rejected by `check_anchor`");
         assert_eq!(err.spec_code(), Some("E-PARSE-013"));
     }
 
@@ -311,7 +314,8 @@ mod tests {
              (anchor :after vitalty) (bindings) \
              (effects (update-node self social-class/agitation (add 0.05i))))",
         );
-        let err = check_anchor(&r, &systems()).unwrap_err();
+        let err = check_anchor(&r, &systems())
+            .expect_err("the malformed input is rejected by `check_anchor`");
         assert_eq!(
             err,
             AnchorError::UnregisteredAnchorSystem {

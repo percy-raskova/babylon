@@ -7,11 +7,13 @@ use babylon_tick::choice_receipt::ChoiceReceipt;
 use babylon_tick::material_state::{MaterialStateRowRef, MaterialStateRows};
 use babylon_tick::replay_session::{IdentifiedTickReport, SuccessfulEvent, SuccessfulEventBatch};
 
+use crate::committed_tick_envelope;
 use crate::committed_tick_envelope::{
-    validate_committed_tick_envelope_bounds, CommittedTickEnvelopeError, CommittedTickRow,
-    CommittedTickRowFamily, COMMITTED_TICK_ROW_FAMILY_COUNT,
+    CommittedTickEnvelopeError, CommittedTickRow, CommittedTickRowFamily,
+    COMMITTED_TICK_ROW_FAMILY_COUNT,
 };
 use crate::semantic_codec::{self, SemanticCodecError};
+use babylon_tick::choice_receipt::ChoiceReceiptRef;
 
 const ROW_LENGTH_BYTES: usize = 8;
 const MINIMUM_NONEMPTY_ROW_BYTES: usize = ROW_LENGTH_BYTES + 1;
@@ -302,7 +304,8 @@ pub(crate) fn preflight_graph_event_choice_bounds(
     body_bytes[2] = event_body_bytes;
     body_bytes[3] = choice_body_bytes;
     body_bytes[5] = archive_body_bytes;
-    validate_committed_tick_envelope_bounds(row_counts, body_bytes).map_err(Into::into)
+    committed_tick_envelope::validate_committed_tick_envelope_bounds(row_counts, body_bytes)
+        .map_err(Into::into)
 }
 
 fn row_body_bytes(row: &CommittedTickRow) -> Result<usize, SemanticBatchError> {
@@ -490,7 +493,7 @@ fn encode_successful_event(
         event.emitting_rule(),
         event
             .choice_receipt()
-            .map(babylon_tick::choice_receipt::ChoiceReceiptRef::encounter_ordinal),
+            .map(ChoiceReceiptRef::encounter_ordinal),
         event.event_type(),
         &fields,
     )
@@ -592,8 +595,6 @@ fn checked_sum(values: &[usize], field: &'static str) -> Result<usize, SemanticB
 mod tests {
     use std::cell::Cell;
 
-    use babylon_bsl::canonical_ast::rules_hash_of;
-    use babylon_bsl::rule_pipeline::split_content;
     use babylon_bsl::structural_verbs::CollectingSink;
     use babylon_graph::hypergraph_store::HypergraphStore;
     use babylon_kernel::content_digest::ContentDigest;
@@ -604,19 +605,18 @@ mod tests {
     use babylon_tick::replay_session::{IdentifiedTickReport, ReplayTickSession};
 
     use crate::committed_tick_envelope::{
-        compose_row_families, CommittedTickEnvelopeError, CommittedTickRow,
-        CommittedTickRowFamilies, CommittedTickRowFamily, MAX_COMMITTED_GRAPH_ROW_BATCH_BYTES,
-        MAX_COMMITTED_TICK_ROWS,
+        CommittedTickEnvelopeError, CommittedTickRow, CommittedTickRowFamilies,
+        CommittedTickRowFamily, MAX_COMMITTED_GRAPH_ROW_BATCH_BYTES, MAX_COMMITTED_TICK_ROWS,
     };
-    use crate::michigan_dynamic_hex_foundation;
     use crate::semantic_codec::SemanticCodecError;
 
     use super::{
-        compose_graph_event_choice_semantic_batches, compose_graph_rows_with_encoder,
-        preflight_graph_event_choice_bounds, push_encoded_row, SemanticBatchError,
-        SemanticFamilyBatch, StableGraphRowRef, StableGraphRowsEmptyProof,
+        SemanticBatchError, SemanticFamilyBatch, StableGraphRowRef, StableGraphRowsEmptyProof,
         SuccessfulEventBatchEmptyProof,
     };
+    use crate::committed_tick_envelope;
+    use babylon_bsl::canonical_ast;
+    use babylon_bsl::rule_pipeline;
 
     const SCENARIO: &str = r"
 (scenario demo/persistence-batches
@@ -655,15 +655,15 @@ mod tests {
 "#;
 
     fn report_for(scenario: &str, session_name: &str) -> IdentifiedTickReport {
-        let (_, rules) = split_content(RULE).expect("test rule parses");
+        let (_, rules) = rule_pipeline::split_content(RULE).expect("test rule parses");
         let forms = rules.into_iter().map(|rule| rule.form).collect::<Vec<_>>();
         let content = ContentDigest {
             defines_hash: [0x21; 32],
-            rules_hash: rules_hash_of(&forms).expect("test rule hashes"),
+            rules_hash: canonical_ast::rules_hash_of(&forms).expect("test rule hashes"),
         };
         let session_id = ReplaySessionId::try_from(session_name).expect("test session id");
         let foundation =
-            michigan_dynamic_hex_foundation().expect("governed foundation must decode once");
+            crate::michigan_dynamic_hex_foundation().expect("governed foundation must decode once");
         let mut session = ReplayTickSession::new(
             scenario,
             None,
@@ -695,7 +695,7 @@ mod tests {
         assert_send::<SuccessfulEventBatchEmptyProof>();
 
         let empty_report = report_for(EMPTY_SCENARIO, "per281/semantic-batches-empty");
-        let empty = compose_graph_event_choice_semantic_batches(&empty_report)
+        let empty = super::compose_graph_event_choice_semantic_batches(&empty_report)
             .expect("true typed empty sources compose");
         let SemanticFamilyBatch::Empty(graph_proof) = empty.graph else {
             panic!("true empty graph source must produce its typed proof")
@@ -712,7 +712,7 @@ mod tests {
             empty_report.successful_event_batch().source_digest()
         );
 
-        let nonempty = compose_graph_event_choice_semantic_batches(&report())
+        let nonempty = super::compose_graph_event_choice_semantic_batches(&report())
             .expect("real report composes graph and event rows");
         assert!(matches!(nonempty.graph, SemanticFamilyBatch::Rows { .. }));
         assert!(matches!(nonempty.event, SemanticFamilyBatch::Rows { .. }));
@@ -721,7 +721,7 @@ mod tests {
     #[test]
     fn preflight_accepts_exact_count_body_and_aggregate_bounds_and_refuses_plus_one() {
         let minimum_body = MAX_COMMITTED_TICK_ROWS * 9;
-        preflight_graph_event_choice_bounds(
+        super::preflight_graph_event_choice_bounds(
             MAX_COMMITTED_TICK_ROWS - 1,
             minimum_body - 9,
             0,
@@ -732,7 +732,7 @@ mod tests {
         )
         .expect("exact aggregate row ceiling");
         assert!(matches!(
-            preflight_graph_event_choice_bounds(
+            super::preflight_graph_event_choice_bounds(
                 MAX_COMMITTED_TICK_ROWS,
                 minimum_body,
                 0,
@@ -745,10 +745,18 @@ mod tests {
                 CommittedTickEnvelopeError::AggregateRows { .. }
             ))
         ));
-        preflight_graph_event_choice_bounds(1, MAX_COMMITTED_GRAPH_ROW_BATCH_BYTES, 0, 0, 0, 0, 9)
-            .expect("exact graph body ceiling");
+        super::preflight_graph_event_choice_bounds(
+            1,
+            MAX_COMMITTED_GRAPH_ROW_BATCH_BYTES,
+            0,
+            0,
+            0,
+            0,
+            9,
+        )
+        .expect("exact graph body ceiling");
         assert!(matches!(
-            preflight_graph_event_choice_bounds(
+            super::preflight_graph_event_choice_bounds(
                 1,
                 MAX_COMMITTED_GRAPH_ROW_BATCH_BYTES + 1,
                 0,
@@ -773,7 +781,7 @@ mod tests {
         let mut rows = Vec::new();
 
         assert_eq!(
-            push_encoded_row(
+            super::push_encoded_row(
                 CommittedTickRowFamily::Graph,
                 &mut rows,
                 &mut body_bytes,
@@ -795,7 +803,7 @@ mod tests {
     fn second_row_codec_refusal_returns_only_error_without_partial_batch() {
         let report = report();
         let calls = Cell::new(0_usize);
-        let result = compose_graph_rows_with_encoder(
+        let result = super::compose_graph_rows_with_encoder(
             report.result_stable_graph().rows(),
             &mut |row: StableGraphRowRef<'_>| {
                 let call = calls.get();
@@ -818,7 +826,7 @@ mod tests {
     #[test]
     fn real_report_rows_are_vector_compatible_ordered_and_envelope_accepted() {
         let report = report();
-        let batches = compose_graph_event_choice_semantic_batches(&report)
+        let batches = super::compose_graph_event_choice_semantic_batches(&report)
             .expect("real report semantic batches");
         let (graph, graph_body_bytes) = batches.graph.into_rows().expect("graph rows");
         let (event, event_body_bytes) = batches.event.into_rows().expect("event rows");
@@ -839,7 +847,7 @@ mod tests {
         assert!(graph.windows(2).all(|rows| rows[0].key() < rows[1].key()));
         assert!(event.windows(2).all(|rows| rows[0].key() < rows[1].key()));
 
-        compose_row_families(CommittedTickRowFamilies {
+        committed_tick_envelope::compose_row_families(CommittedTickRowFamilies {
             graph,
             state: vec![],
             event,
@@ -856,7 +864,7 @@ mod tests {
             VARIABLE_KEY_LENGTH_SCENARIO,
             "per281/semantic-batches-variable-keys",
         );
-        let batches = compose_graph_event_choice_semantic_batches(&report)
+        let batches = super::compose_graph_event_choice_semantic_batches(&report)
             .expect("variable-length graph keys compose");
         let (graph, _) = batches.graph.into_rows().expect("graph rows");
         assert!(graph.windows(2).all(|rows| rows[0].key() < rows[1].key()));

@@ -1,0 +1,151 @@
+ADR286_google_rust_style_conformance:
+  status: accepted
+  date: '2026-10-23'
+  issue: PER-350
+  title: Babylon Rust code follows the Google Rust Style Guide under a bounded exception register
+  evidence_class: Designed
+  authority:
+    - Director-approved PER-350 Google Rust Style conformance plan
+    - Google Rust Style Guide as the named external standard
+    - Repository rules require an architecture decision record
+  context: |
+    Twelve Rust crates grew from a Python engine cutover. Formatting,
+    import shape, ownership, and error handling drifted between them. Reviewers
+    had no single written Rust standard, so each review re-derived the same
+    expectations. Rustfmt and Clippy covered formatting and common lints only.
+    Neither tool can reject a glob import, an implementation in a non-leaf
+    module, a mod.rs layout, a bool API parameter, an unjustified Arc, or a
+    wildcard arm that hides a known variant. The repository also carried two
+    agent instruction files. AGENTS.md was a symlink to CLAUDE.md, so harness
+    reads and repository edits could disagree about the canonical source.
+  decision: |
+    Adopt the Google Rust Style Guide as the binding style authority for every
+    Babylon Rust target: all crate sources, tests, benches, binaries, and
+    examples. The public Rust style rules and the Rust API Guidelines remain
+    binding where the Google guide defers to them.
+
+    Enforce the guide in three layers. Rustfmt enforces formatting with
+    max_width 100. Workspace Cargo lints inherited by every crate enforce the
+    compiler and Clippy set. The bsl-lint google-rust-style AST check enforces
+    the rules that no compiler lint can express. All three layers run in
+    mise run rust:check-no-docs and in pull-request CI.
+
+    Permit exactly five named exceptions. docs/agents/rust-style.md holds the
+    scope, justification, and retained obligations for each one. The AST check
+    allows an exception only at its registered scope or marker. A new exception
+    needs Director approval and an ADR amendment that updates the register and
+    the check in the same commit.
+
+    Keep canonical bytes equal across every style refactoring. GraphStateHash,
+    NominalWorldHash, TickContentHash, and the SQL schema stay unchanged
+    (Constitution III.7). A style change cannot alter a material result.
+
+    Make AGENTS.md the sole canonical agent instruction file. CLAUDE.md becomes
+    a three-line deprecated shim. The repository also requires Subagent-Driven
+    Development through the Superpowers package as its execution method.
+  exceptions:
+    - id: EXC-01
+      definition: >-
+        Chromium/Fuchsia platform rules ([chrome]/[Fuchsia] tags:
+        chromium::import!, rust_gtest_interop, fuchsia_sync::Mutex, no
+        std::thread, flat GN layout) — platform-scoped N/A; Babylon uses
+        standard Cargo workspace, std::sync/thread, cargo-nextest; still
+        forbids mod.rs + enforces leaf-only impls.
+    - id: EXC-02
+      definition: >-
+        #[non_exhaustive] on public enums/structs — monorepo LSC exception;
+        exhaustive matching is load-bearing compile-time safety; all callers
+        updated atomically.
+    - id: EXC-03
+      definition: >-
+        bevy::prelude::* glob — approved reviewer prelude, ONLY in
+        babylon-client; all other globs banned except `use super::*` in inline
+        #[cfg(test)] mods, local `use Enum::*` in fns, `pub use submodule::*`
+        in non-leaf mods.
+    - id: EXC-04
+      definition: >-
+        retained Arc sites only (cross-thread AtomicBool/Mutex + multi-MB
+        immutable zero-copy snapshots: NationalCountyRoster,
+        MaterialTickReceipts, EconomicContentAdmission,
+        ArchiveWorkerCancellation, client logging SinkState, babylon-ls test
+        stderr_buf); each needs `// STYLE-EXCEPTION(EXC-04): <reason>`;
+        eliminate Rc<RefCell> + Arc<Vec<u8>> elsewhere.
+    - id: EXC-05
+      definition: >-
+        #[rustfmt::skip] manual byte-table alignment only (state_hash.rs,
+        world_hash.rs); each needs `// STYLE-EXCEPTION(EXC-05)` comment.
+  alternatives: |
+    Keeping rustfmt and Clippy as the whole standard leaves the readability
+    rules unenforced. A new reviewer cannot tell an accepted pattern from
+    drift. Adopting the guide without exceptions would break the Bevy client
+    prelude, force wildcard matching on closed material enums, and add shared
+    pointer churn that copies multi-MB snapshots. A local in-house Rust style
+    guide duplicates a public standard and invites divergence on the next
+    review. Adopting the guide per crate fragments the workspace and makes a
+    cross-crate large-scale change impossible to review. Deferring the change
+    keeps two instruction files and an unwritten standard.
+  consequences: |
+    Every Rust change answers to one published standard. Review raises a style
+    point once, against a named rule. The AST check turns each registered
+    exception into a positive assertion, so a stray glob, mod.rs, or Arc fails
+    the gate instead of relying on reviewer memory. Five exceptions stay
+    visible with their reasons and their retained obligations.
+
+    The refactoring series changes source layout and API shape without changing
+    behavior. Canonical encodings, world hashes, receipts, and the SQL schema
+    stay byte-identical. Historical ADRs and reports stay unchanged. The
+    exception register is the only path to a deviation, and it needs Director
+    approval to grow.
+  verification:
+    - cargo fmt --all -- --check reports no diff.
+    - cargo clippy --workspace --all-targets --locked passes with the workspace lint set.
+    - >-
+      non_exhaustive_omitted_patterns is dropped from the workspace table on the
+      pinned 1.91.1 toolchain (rust-lang/rust#89554); EXC-02 keeps the attribute
+      off internal enums and structs, so rustc's E004 non-exhaustive-match error
+      and review carry the coverage.
+    - >-
+      mise run rust:check-no-docs passes bsl-lint google-rust-style with zero
+      gating findings. The bool-parameter class prints warnings without gating,
+      and bsl-lint/data/google_rust_style_macro_residual.txt records the known
+      macro-token-stream import residual (it can only shrink).
+    - Every retained EXC-04 site carries a STYLE-EXCEPTION(EXC-04) comment, no Rc remains, and no Arc<Vec<T>> remains.
+    - Every EXC-05 block is a byte table in state_hash.rs or world_hash.rs with its marker.
+    - Canonical hash fixtures and the persistence schema remain byte-identical.
+    - AGENTS.md stays the only canonical rule file and under 200 lines.
+    - Vale reports zero errors on AGENTS.md and the changed agent documentation.
+  compatibility: |
+    No serialized format, database schema, or save version changes. The
+    refactor retires superseded module layouts and import forms only. Provide no
+    compatibility path for the retired layouts.
+  source_record: docs/superpowers/plans/2026-10-23-google-rust-style.md
+  riders:
+    - date: '2026-10-24'
+      issue: PER-350
+      task: Task 8 (ownership and borrowing audit)
+      summary: |
+        Task 8 reconciled every workspace Arc and Rc site against EXC-04.
+        Retained owner types grew from six to twelve rows because the audit
+        found real cross-thread and test-scope owners that the first register
+        missed; every added row names one owner type, not a per-use allowance.
+        All Rc sites were eliminated: the event-bus and archive observation
+        helpers now report through mpsc channels, scoped threads borrow their
+        barriers, and the child-process and coordinator harnesses own their
+        buffers. Arc<Vec<u8>> survives only inside SharedCanonicalBytes,
+        because owned register admission adopts the caller's authenticated
+        allocation and organizer_aid_replay pins that no-copy behavior. The
+        handle hides the mutable vector, so the previous mutation path through
+        a retained clone is closed. Consumers now name MaterialReceiptHandle,
+        EconomicContentHandle, PeriodRegister, and SharedCanonicalBytes instead
+        of the backing shared pointer.
+      superseded_claims:
+        - >-
+          The EXC-04 definition above lists six sites and says Arc<Vec<u8>> is
+          eliminated elsewhere. docs/agents/rust-style.md owns the live table.
+        - >-
+          The verification bullet "no Arc<Vec<T>> remains" is superseded: one
+          registered adopted-allocation site remains.
+      verification:
+        - cargo clippy --workspace --all-targets --locked -- -D warnings exits 0.
+        - bsl-lint google-rust-style reports zero Arc or Rc findings.
+        - organizer_aid_replay and foundation_session_shares_the_exact_opening_canonical_allocation pass.

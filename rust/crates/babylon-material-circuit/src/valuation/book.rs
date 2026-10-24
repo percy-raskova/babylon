@@ -1,8 +1,13 @@
 //! Bounded carrying amounts and captured equity; no duplicate money balances.
-use super::{
-    add, portion, sub, zero, CapitalAccount, EquityCarryingValue, FreightCarryingValue,
-    HistoricalCostSnapshot, Result, StockCarryingValue, MAX_CARRYING_STOCKS,
-};
+use super::CapitalAccount;
+use super::EquityCarryingValue;
+use super::FreightCarryingValue;
+use super::HistoricalCostSnapshot;
+use super::Result;
+use super::StockCarryingValue;
+use super::MAX_CARRYING_STOCKS;
+use crate::EquipmentAssetId;
+use crate::EquipmentCarryingValue;
 use crate::{
     AccountId, FreightLotId, GoodId, MaterialCircuitError, MonetaryBook, SiteId, UnitId,
     MAX_MATERIAL_CIRCUIT_ROWS,
@@ -25,7 +30,7 @@ pub struct HistoricalCostBook {
     pub(super) stocks: BTreeMap<StockKey, Currency>,
     pub(super) freight: BTreeMap<FreightLotId, (AccountId, Currency)>,
     pub(super) equity: BTreeMap<(AccountId, SiteId), Currency>,
-    pub(super) equipment: BTreeMap<crate::EquipmentAssetId, (SiteId, Currency)>,
+    pub(super) equipment: BTreeMap<EquipmentAssetId, (SiteId, Currency)>,
 }
 
 impl HistoricalCostBook {
@@ -39,7 +44,7 @@ impl HistoricalCostBook {
         stocks: Vec<StockCarryingValue>,
         freight: Vec<FreightCarryingValue>,
         equity: Vec<EquityCarryingValue>,
-        equipment: Vec<crate::EquipmentCarryingValue>,
+        equipment: Vec<EquipmentCarryingValue>,
     ) -> Result<Self> {
         let accounts = money
             .snapshot()
@@ -47,9 +52,9 @@ impl HistoricalCostBook {
             .into_iter()
             .map(|row| CapitalAccount {
                 account: row.id,
-                opening_capital: zero(),
-                contributed_capital: zero(),
-                retained_earnings: zero(),
+                opening_capital: super::zero(),
+                contributed_capital: super::zero(),
+                retained_earnings: super::zero(),
             })
             .collect();
         let mut book = Self::from_snapshot(HistoricalCostSnapshot {
@@ -164,7 +169,7 @@ impl HistoricalCostBook {
             equipment: self
                 .equipment
                 .iter()
-                .map(|(&asset, &(owner, amount))| crate::EquipmentCarryingValue {
+                .map(|(&asset, &(owner, amount))| EquipmentCarryingValue {
                     asset,
                     owner,
                     amount,
@@ -209,14 +214,14 @@ impl HistoricalCostBook {
         quantity: u64,
     ) -> Result<Currency> {
         if quantity == 0 {
-            return Ok(zero());
+            return Ok(super::zero());
         }
         let cost = self
             .stocks
             .get_mut(&key)
             .ok_or(MaterialCircuitError::ValuationInvariant)?;
-        let taken = portion(*cost, available, quantity)?;
-        *cost = sub(*cost, taken)?;
+        let taken = super::portion(*cost, available, quantity)?;
+        *cost = super::sub(*cost, taken)?;
         Ok(taken)
     }
 
@@ -224,8 +229,8 @@ impl HistoricalCostBook {
         if !self.stocks.contains_key(&key) && self.stocks.len() >= MAX_WORKING_CARRYING_STOCKS {
             return Err(MaterialCircuitError::RowLimit);
         }
-        let cost = self.stocks.entry(key).or_insert_with(zero);
-        *cost = add(*cost, value)?;
+        let cost = self.stocks.entry(key).or_insert_with(super::zero);
+        *cost = super::add(*cost, value)?;
         Ok(())
     }
 
@@ -244,7 +249,11 @@ impl HistoricalCostBook {
         for shift in snapshot.shifts {
             accumulate(&mut totals, shift.employer, shift.reserved_amount()?)?;
             let owed = shift.outstanding_wages()?;
-            accumulate(&mut totals, shift.employer, sub(zero(), owed)?)?;
+            accumulate(
+                &mut totals,
+                shift.employer,
+                super::sub(super::zero(), owed)?,
+            )?;
             accumulate(&mut totals, shift.payee, owed)?;
         }
         for ((owner, _, _), &value) in &self.stocks {
@@ -271,7 +280,7 @@ fn accumulate(
     let total = totals
         .get_mut(&owner)
         .ok_or(MaterialCircuitError::ValuationInvariant)?;
-    *total = add(*total, value)?;
+    *total = super::add(*total, value)?;
     Ok(())
 }
 
@@ -281,7 +290,11 @@ mod tests {
 
     fn key(index: usize) -> StockKey {
         let mut identity = [0; 32];
-        identity[24..].copy_from_slice(&u64::try_from(index).unwrap().to_be_bytes());
+        identity[24..].copy_from_slice(
+            &u64::try_from(index)
+                .expect("the fixture value fits the target range")
+                .to_be_bytes(),
+        );
         (
             AccountId::Site(SiteId::from_bytes([1; 32])),
             GoodId::from_bytes(identity),
@@ -292,35 +305,36 @@ mod tests {
     fn empty_book() -> HistoricalCostBook {
         let money = MonetaryBook::open(vec![crate::CashAccount {
             id: key(0).0,
-            cash: zero(),
+            cash: crate::valuation::zero(),
         }])
-        .unwrap();
-        HistoricalCostBook::open(&money, vec![], vec![], vec![], vec![]).unwrap()
+        .expect("the fixture opens the authored source");
+        HistoricalCostBook::open(&money, vec![], vec![], vec![], vec![])
+            .expect("the fixture opens the authored source")
     }
 
     #[test]
     fn transient_carrying_keys_have_an_exact_separate_insertion_bound() {
         let mut book = empty_book();
         book.stocks = (0..MAX_WORKING_CARRYING_STOCKS - 1)
-            .map(|i| (key(i), zero()))
+            .map(|i| (key(i), crate::valuation::zero()))
             .collect();
         book.credit_stock(
             key(MAX_WORKING_CARRYING_STOCKS - 1),
             Currency::from_micro_units(7),
         )
-        .unwrap();
+        .expect("the fixture stock account admits the credit");
         assert_eq!(book.stocks.len(), 393_216);
         book.credit_stock(
             key(MAX_WORKING_CARRYING_STOCKS - 1),
             Currency::from_micro_units(3),
         )
-        .unwrap();
+        .expect("the fixture stock account admits the credit");
         assert_eq!(
             book.stocks[&key(MAX_WORKING_CARRYING_STOCKS - 1)],
             Currency::from_micro_units(10)
         );
         assert_eq!(
-            book.credit_stock(key(MAX_WORKING_CARRYING_STOCKS), zero()),
+            book.credit_stock(key(MAX_WORKING_CARRYING_STOCKS), crate::valuation::zero()),
             Err(MaterialCircuitError::RowLimit)
         );
         assert_eq!(book.stocks.len(), MAX_WORKING_CARRYING_STOCKS);
@@ -334,12 +348,16 @@ mod tests {
     #[test]
     fn durable_carrying_snapshot_still_refuses_the_first_excess_key() {
         let mut book = empty_book();
-        book.stocks = (0..MAX_CARRYING_STOCKS).map(|i| (key(i), zero())).collect();
+        book.stocks = (0..MAX_CARRYING_STOCKS)
+            .map(|i| (key(i), crate::valuation::zero()))
+            .collect();
         assert_eq!(
-            HistoricalCostBook::from_snapshot(book.snapshot()).unwrap(),
+            HistoricalCostBook::from_snapshot(book.snapshot())
+                .expect("the snapshot admits the derived value"),
             book
         );
-        book.credit_stock(key(MAX_CARRYING_STOCKS), zero()).unwrap();
+        book.credit_stock(key(MAX_CARRYING_STOCKS), crate::valuation::zero())
+            .expect("the fixture stock account admits the credit");
         assert_eq!(
             HistoricalCostBook::from_snapshot(book.snapshot()),
             Err(MaterialCircuitError::RowLimit)

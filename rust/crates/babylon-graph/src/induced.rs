@@ -56,30 +56,57 @@ mod tests {
         // (count 2); org_c shares one territory-shaped base under a
         // DIFFERENT edge type and must be invisible to this projection.
         let mut graph = MemoryGraph::new();
-        let org_a = graph.add_node("organization").unwrap();
-        let org_b = graph.add_node("organization").unwrap();
-        let org_c = graph.add_node("organization").unwrap();
-        let class_x = graph.add_node("social_class").unwrap();
-        let class_y = graph.add_node("social_class").unwrap();
-        let territory = graph.add_node("territory").unwrap();
-        graph.add_edge("membership", org_a, class_x, 1.0).unwrap();
-        graph.add_edge("membership", org_a, class_y, 1.0).unwrap();
-        graph.add_edge("membership", org_b, class_x, 1.0).unwrap();
-        graph.add_edge("membership", org_b, class_y, 1.0).unwrap();
-        graph.add_edge("presence", org_a, territory, 1.0).unwrap();
-        graph.add_edge("presence", org_c, territory, 1.0).unwrap();
+        let org_a = graph
+            .add_node("organization")
+            .expect("the fixture adds a node with a registered kind");
+        let org_b = graph
+            .add_node("organization")
+            .expect("the fixture adds a node with a registered kind");
+        let org_c = graph
+            .add_node("organization")
+            .expect("the fixture adds a node with a registered kind");
+        let class_x = graph
+            .add_node("social_class")
+            .expect("the fixture adds a node with a registered kind");
+        let class_y = graph
+            .add_node("social_class")
+            .expect("the fixture adds a node with a registered kind");
+        let territory = graph
+            .add_node("territory")
+            .expect("the fixture adds a node with a registered kind");
+        graph
+            .add_edge("membership", org_a, class_x, 1.0)
+            .expect("the fixture graph admits the authored edge");
+        graph
+            .add_edge("membership", org_a, class_y, 1.0)
+            .expect("the fixture graph admits the authored edge");
+        graph
+            .add_edge("membership", org_b, class_x, 1.0)
+            .expect("the fixture graph admits the authored edge");
+        graph
+            .add_edge("membership", org_b, class_y, 1.0)
+            .expect("the fixture graph admits the authored edge");
+        graph
+            .add_edge("presence", org_a, territory, 1.0)
+            .expect("the fixture graph admits the authored edge");
+        graph
+            .add_edge("presence", org_c, territory, 1.0)
+            .expect("the fixture graph admits the authored edge");
 
         assert_eq!(
-            co_projected_peers(&graph, org_a, "membership").unwrap(),
+            co_projected_peers(&graph, org_a, "membership")
+                .expect("the fixture call `co_projected_peers` succeeds for the authored inputs"),
             vec![(org_b, 2)]
         );
         assert_eq!(
-            co_projected_peers(&graph, org_a, "presence").unwrap(),
+            co_projected_peers(&graph, org_a, "presence")
+                .expect("the fixture call `co_projected_peers` succeeds for the authored inputs"),
             vec![(org_c, 1)]
         );
         // org_b holds no presence edges: an empty projection, not an error.
         assert_eq!(
-            co_projected_peers(&graph, org_b, "presence").unwrap(),
+            co_projected_peers(&graph, org_b, "presence")
+                .expect("the fixture call `co_projected_peers` succeeds for the authored inputs"),
             vec![]
         );
     }
@@ -89,19 +116,40 @@ mod tests {
         let mut graph = MemoryGraph::new();
         // peer `b` shares MORE bases than peer `a` but has the higher id —
         // the result must order by id, never by count.
-        let subject = graph.add_node("organization").unwrap();
-        let a = graph.add_node("organization").unwrap();
-        let b = graph.add_node("organization").unwrap();
-        let class_x = graph.add_node("social_class").unwrap();
-        let class_y = graph.add_node("social_class").unwrap();
-        graph.add_edge("membership", subject, class_x, 1.0).unwrap();
-        graph.add_edge("membership", subject, class_y, 1.0).unwrap();
-        graph.add_edge("membership", a, class_x, 1.0).unwrap();
-        graph.add_edge("membership", b, class_x, 1.0).unwrap();
-        graph.add_edge("membership", b, class_y, 1.0).unwrap();
+        let subject = graph
+            .add_node("organization")
+            .expect("the fixture adds a node with a registered kind");
+        let a = graph
+            .add_node("organization")
+            .expect("the fixture adds a node with a registered kind");
+        let b = graph
+            .add_node("organization")
+            .expect("the fixture adds a node with a registered kind");
+        let class_x = graph
+            .add_node("social_class")
+            .expect("the fixture adds a node with a registered kind");
+        let class_y = graph
+            .add_node("social_class")
+            .expect("the fixture adds a node with a registered kind");
+        graph
+            .add_edge("membership", subject, class_x, 1.0)
+            .expect("the fixture graph admits the authored edge");
+        graph
+            .add_edge("membership", subject, class_y, 1.0)
+            .expect("the fixture graph admits the authored edge");
+        graph
+            .add_edge("membership", a, class_x, 1.0)
+            .expect("the fixture graph admits the authored edge");
+        graph
+            .add_edge("membership", b, class_x, 1.0)
+            .expect("the fixture graph admits the authored edge");
+        graph
+            .add_edge("membership", b, class_y, 1.0)
+            .expect("the fixture graph admits the authored edge");
 
         assert_eq!(
-            co_projected_peers(&graph, subject, "membership").unwrap(),
+            co_projected_peers(&graph, subject, "membership")
+                .expect("the fixture call `co_projected_peers` succeeds for the authored inputs"),
             vec![(a, 1), (b, 2)]
         );
     }

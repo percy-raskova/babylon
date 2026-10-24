@@ -16,18 +16,20 @@ use std::str::FromStr;
 
 #[path = "support/archive_reader.rs"]
 mod archive_reader;
-use archive_reader::{scope_at, with_reader};
 use babylon_persistence::archive_revision::ArchiveReadScope;
 use babylon_persistence::archive_revision::{ArchiveDossierBounds, ArchiveDossierState};
 use babylon_persistence::{install_reader_role, SemanticArchiveReader};
 
 use babylon_bsl::structural_verbs::CollectingSink;
+use babylon_persistence::identity::CampaignId;
 use babylon_persistence::material_runtime::DurableMaterialRuntime;
 use babylon_persistence::{
-    identity::CampaignId, postgres_catalog::validate_connection_target, ArchiveReceiptDisposition,
-    ArchiveSubjectKind, ArchiveWorker, CountyDossierProducer, SemanticArchiveStore,
-    COUNTY_DECISION_QUESTION,
+    ArchiveReceiptDisposition, ArchiveSubjectKind, ArchiveWorker, CountyDossierProducer,
+    SemanticArchiveStore, COUNTY_DECISION_QUESTION,
 };
+
+use babylon_persistence::postgres_catalog;
+use babylon_persistence::ArchivePageRef;
 use babylon_practice_contract::OrderedPracticeActionBatch;
 use postgres::{Config, NoTls};
 use uuid::Uuid;
@@ -136,7 +138,7 @@ fn validated_base_config() -> Config {
     assert_eq!(canary.len(), 32);
     let dsn = std::env::var(DSN_ENV).expect("runner supplies the disposable DSN");
     let config = Config::from_str(&dsn).expect("runner DSN parses");
-    validate_connection_target(&config).expect("loopback target");
+    postgres_catalog::validate_connection_target(&config).expect("loopback target");
     assert_eq!(config.get_user(), Some("test"));
     assert_eq!(config.get_dbname(), Some("postgres"));
     let actual: Option<String> = config
@@ -245,17 +247,18 @@ fn receipt_consumption_count(config: &Config, campaign_id: CampaignId) -> i64 {
 }
 
 fn county_page_markdown(config: &Config, campaign_id: CampaignId, geoid: &str) -> String {
-    let tick: i64 = config.connect(NoTls).unwrap().query_one("SELECT effective_tick FROM babylon_meta.archive_page_revision_v2 WHERE campaign_id=$1 AND subject_kind='county' AND subject_id=$2 ORDER BY effective_tick DESC LIMIT 1", &[campaign_id.as_uuid(), &geoid]).unwrap().get(0);
+    let tick: i64 = config.connect(NoTls).expect("the test database accepts the connection").query_one("SELECT effective_tick FROM babylon_meta.archive_page_revision_v2 WHERE campaign_id=$1 AND subject_kind='county' AND subject_id=$2 ORDER BY effective_tick DESC LIMIT 1", &[campaign_id.as_uuid(), &geoid]).expect("the seeded row is present exactly once").get(0);
     archive_reader::with_reader(config, |reader| {
-        let scope = archive_reader::scope_at(config, campaign_id, u64::try_from(tick).unwrap());
-        let subject = babylon_persistence::ArchivePageRef::try_new(
-            ArchiveSubjectKind::County,
-            geoid.to_owned(),
-        )
-        .unwrap();
+        let scope = archive_reader::scope_at(
+            config,
+            campaign_id,
+            u64::try_from(tick).expect("the fixture value fits the target range"),
+        );
+        let subject = ArchivePageRef::try_new(ArchiveSubjectKind::County, geoid.to_owned())
+            .expect("the authored fixture satisfies the constructor invariants");
         let read = reader
             .dossier_as_of(&scope, &subject, &ArchiveDossierBounds::default())
-            .unwrap();
+            .expect("the fixture dossier exists at the authored period");
         let ArchiveDossierState::Ready { page, .. } = read.state else {
             panic!("county ready");
         };
@@ -339,8 +342,8 @@ fn live_county_producer_publishes_committed_signals_then_verifies_quiet_receipts
     assert_public_county_signals(&wayne, "26163", [36_727, 725_504, 55_436_615_328, 1_469]);
     assert_public_county_signals(&oakland, "26125", [43_047, 723_862, 56_401_482_100, 1_498]);
 
-    with_reader(&target.config, |reader| {
-        let scope = scope_at(&target.config, target.campaign_id, 3);
+    archive_reader::with_reader(&target.config, |reader| {
+        let scope = archive_reader::scope_at(&target.config, target.campaign_id, 3);
         let hits = reader
             .search_as_of(&scope, "55436615328", 10)
             .expect("known-only search");

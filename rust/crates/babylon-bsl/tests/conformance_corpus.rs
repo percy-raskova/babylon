@@ -12,14 +12,22 @@
 //! `MemoryGraph` nodes and pin the result and fuel (§6.1). Metric fixtures
 //! use explicitly supplied bindings: they exercise expression evaluation
 //! and collect-and-apply effects, not a runtime metric provider.
-#![allow(clippy::doc_markdown)] // doc comments cite Python test names and file paths verbatim
+#![allow(
+    clippy::doc_markdown,
+    reason = "the doc comment quotes the authored identifier"
+)] // doc comments cite Python test names and file paths verbatim
 
 use babylon_bsl::bindings::BindingVocabulary;
-use babylon_bsl::evaluator::{evaluate, EvalEnv, Value};
+use babylon_bsl::evaluator;
+use babylon_bsl::evaluator::{EvalEnv, Value};
 use babylon_bsl::fuel::{CardinalityCeilings, IntrinsicCosts};
 use babylon_bsl::intrinsic_host::EmptyIntrinsicHost;
-use babylon_bsl::reader::read;
-use babylon_bsl::rule_pipeline::{bind_environment, load_rule, LoadContext, LoadError, LoadedRule};
+use babylon_bsl::reader;
+
+use babylon_bsl::evaluator::EvalError;
+use babylon_bsl::reader::SExpr;
+use babylon_bsl::rule_pipeline;
+use babylon_bsl::rule_pipeline::{LoadContext, LoadError, LoadedRule};
 use babylon_bsl::structural_verbs::{CollectingSink, EffectExecutor};
 use babylon_bsl::typecheck::TypeEnv;
 use babylon_bsl::types::{BslType, EnumRegistry, FieldDecl, FieldKind};
@@ -161,21 +169,21 @@ fn load(source: &str, rule_file: &str) -> Result<LoadedRule, LoadError> {
         vocabulary_registry: None,
         rule_file,
     };
-    load_rule(source, &ctx)
+    rule_pipeline::load_rule(source, &ctx)
 }
 
 /// The `<when>` clause of a loaded rule — shared by `eval_when` and its
 /// graph-bearing twin `eval_when_over_graph` (PR 4, Task 14), plus the
 /// slice-2-refusal vector for `event_edge_count.bsl`.
-fn when_clause(rule: &LoadedRule) -> &babylon_bsl::reader::SExpr {
-    let babylon_bsl::reader::SExpr::List(items) = &rule.rule else {
+fn when_clause(rule: &LoadedRule) -> &SExpr {
+    let SExpr::List(items) = &rule.rule else {
         unreachable!()
     };
     items
         .iter()
         .find_map(|child| match child {
-            babylon_bsl::reader::SExpr::List(inner)
-                if matches!(inner.first(), Some(babylon_bsl::reader::SExpr::Atom(babylon_bsl::reader::Atom::Symbol(h))) if h == "when") =>
+            SExpr::List(inner)
+                if matches!(inner.first(), Some(SExpr::Atom(babylon_bsl::reader::Atom::Symbol(h))) if h == "when") =>
             {
                 inner.get(1)
             }
@@ -189,7 +197,8 @@ fn when_clause(rule: &LoadedRule) -> &babylon_bsl::reader::SExpr {
 /// (`evaluate_trap_condition(expr, env, coeffs)`) reconstructed from the
 /// composed pipeline.
 fn eval_when(rule: &LoadedRule, supplied: &HashMap<String, Value>) -> bool {
-    let env_map = bind_environment(&rule.bindings, supplied).expect("environment must bind");
+    let env_map =
+        rule_pipeline::bind_environment(&rule.bindings, supplied).expect("environment must bind");
     let costs = IntrinsicCosts::default();
     let env = EvalEnv {
         bindings: env_map,
@@ -201,7 +210,7 @@ fn eval_when(rule: &LoadedRule, supplied: &HashMap<String, Value>) -> bool {
         draw_context: None,
     };
     let mut fuel = 10_000;
-    match evaluate(when_clause(rule), &env, &EmptyIntrinsicHost, &mut fuel)
+    match evaluator::evaluate(when_clause(rule), &env, &EmptyIntrinsicHost, &mut fuel)
         .expect("condition must evaluate")
     {
         Value::Bool(b) => b,
@@ -221,7 +230,8 @@ fn eval_when_over_graph(
     graph: &dyn GraphSubstrate,
     fuel: &mut u64,
 ) -> bool {
-    let env_map = bind_environment(&rule.bindings, supplied).expect("environment must bind");
+    let env_map =
+        rule_pipeline::bind_environment(&rule.bindings, supplied).expect("environment must bind");
     let costs = IntrinsicCosts::default();
     let declared_types = types();
     let enums = EnumRegistry::default();
@@ -234,7 +244,7 @@ fn eval_when_over_graph(
         elements: Vec::new(),
         draw_context: None,
     };
-    match evaluate(when_clause(rule), &env, &EmptyIntrinsicHost, fuel)
+    match evaluator::evaluate(when_clause(rule), &env, &EmptyIntrinsicHost, fuel)
         .expect("condition must evaluate")
     {
         Value::Bool(b) => b,
@@ -260,7 +270,8 @@ const ABSORBING: &str = include_str!("conformance/doctrine_liquidation_absorbing
 /// trap conditions, behavior preserved exactly.
 #[test]
 fn real_mvp_conditions() {
-    let adventurism = load(ADVENTURISM, "tests/conformance/doctrine_adventurism.bsl").unwrap();
+    let adventurism = load(ADVENTURISM, "tests/conformance/doctrine_adventurism.bsl")
+        .expect("the fixture artifact loads");
     assert!(eval_when(&adventurism, &owned(vec![("mass-link", int(0))])));
     assert!(!eval_when(
         &adventurism,
@@ -271,7 +282,7 @@ fn real_mvp_conditions() {
         LIQUIDATIONISM,
         "tests/conformance/doctrine_liquidationism.bsl",
     )
-    .unwrap();
+    .expect("the fixture artifact loads");
     assert!(eval_when(
         &liquidationism,
         &owned(vec![("class-analysis", int(0)), ("militancy", int(0))])
@@ -287,7 +298,8 @@ fn real_mvp_conditions() {
 /// `:optional :default 0`, carried on the DEFAULT_ALLOWLIST.
 #[test]
 fn missing_tag_reads_the_declared_default() {
-    let adventurism = load(ADVENTURISM, "tests/conformance/doctrine_adventurism.bsl").unwrap();
+    let adventurism = load(ADVENTURISM, "tests/conformance/doctrine_adventurism.bsl")
+        .expect("the fixture artifact loads");
     // No value supplied at all: the declared default 0 applies -> fires.
     assert!(eval_when(&adventurism, &HashMap::new()));
     // The allowlist covers every :default this corpus declares — zero
@@ -297,7 +309,7 @@ fn missing_tag_reads_the_declared_default() {
         ABSORBING,
         "tests/conformance/doctrine_liquidation_absorbing.bsl",
     )
-    .unwrap();
+    .expect("the fixture artifact loads");
     assert!(absorbing.default_findings.is_empty());
 }
 
@@ -309,7 +321,7 @@ fn liquidation_absorbing_state() {
         ABSORBING,
         "tests/conformance/doctrine_liquidation_absorbing.bsl",
     )
-    .unwrap();
+    .expect("the fixture artifact loads");
     let coeffs = [
         ("solidarity-liquidation-floor", real(0.05)),
         ("co-optive-liquidation-threshold", real(0.6)),
@@ -345,12 +357,14 @@ fn unknown_coefficient_and_variable_fail_loud_at_load() {
         ":const doctrine/solidarity-liquidation-floor",
         ":const doctrine/no-such-threshold",
     );
-    let err = load(&unknown_coeff, "x.bsl").unwrap_err();
+    let err = load(&unknown_coeff, "x.bsl")
+        .expect_err("the fixture call `load` fails for the authored inputs");
     assert_eq!(err.spec_code(), Some("E-LOAD-010"), "{err}");
 
     // Unknown variable: a free symbol no binding declares.
     let unknown_var = ADVENTURISM.replace("(<= mass-link 0)", "(<= not-a-variable 0)");
-    let err = load(&unknown_var, "x.bsl").unwrap_err();
+    let err = load(&unknown_var, "x.bsl")
+        .expect_err("the fixture call `load` fails for the authored inputs");
     assert_eq!(err.spec_code(), Some("E-LOAD-010"), "{err}");
 }
 
@@ -419,7 +433,7 @@ fn full_condition_grammar() {
 #[test]
 fn malformed_conditions_fail_loud() {
     // "" — nothing to read.
-    assert!(read("").is_err());
+    assert!(reader::read("").is_err());
     // "MASS_LINK <=" — dangling operator: strictly binary arity.
     let err = eval_cond_err("(<= ml)", &[("ml", Value::Int(0))]);
     assert!(err.message.contains("E-PARSE-040"), "{err}");
@@ -439,11 +453,13 @@ fn malformed_conditions_fail_loud() {
     // "MASS_LINK <= zero" — a non-literal RHS is a free variable: load error.
     let with_free = ADVENTURISM.replace("(<= mass-link 0)", "(<= mass-link zero)");
     assert_eq!(
-        load(&with_free, "x.bsl").unwrap_err().spec_code(),
+        load(&with_free, "x.bsl")
+            .expect_err("the fixture call `load` fails for the authored inputs")
+            .spec_code(),
         Some("E-LOAD-010")
     );
     // "MASS_LINK <= 0 AND" / "(MASS_LINK <= 0" — unterminated forms.
-    assert!(read("(and (<= ml 0)").is_err());
+    assert!(reader::read("(and (<= ml 0)").is_err());
 }
 
 /// test_mechanics.py:249-258 (TestTheoreticalLabourAccrual) — surplus ×
@@ -473,7 +489,10 @@ fn theoretical_labor_accrual_vectors() {
             ),
             Value::Int(n) => {
                 // The zero arms return the Int literal 0.
-                #[allow(clippy::cast_precision_loss)]
+                #[allow(
+                    clippy::cast_precision_loss,
+                    reason = "the authored integer magnitudes are exact in f64"
+                )]
                 let as_real = n as f64;
                 assert!((as_real - expected).abs() < 1e-9);
             }
@@ -548,12 +567,14 @@ fn nested_paths_are_qnames_and_absence_is_declared() {
     // ...an undeclared one is E-LOAD-010 at load, never a skipped None.
     let missing = NODE_CONDITION.replace("social-class/agitation", "social-class/missing");
     assert_eq!(
-        load(&missing, "x.bsl").unwrap_err().spec_code(),
+        load(&missing, "x.bsl")
+            .expect_err("the fixture call `load` fails for the authored inputs")
+            .spec_code(),
         Some("E-LOAD-010")
     );
     // A required binding with no supplied value is loud at bind time.
-    let loaded = load(NODE_CONDITION, "x.bsl").unwrap();
-    assert!(bind_environment(&loaded.bindings, &HashMap::new()).is_err());
+    let loaded = load(NODE_CONDITION, "x.bsl").expect("the fixture artifact loads");
+    assert!(rule_pipeline::bind_environment(&loaded.bindings, &HashMap::new()).is_err());
 }
 
 /// test_event_evaluator.py:182-214 + 244-323 — aggregations become folds:
@@ -583,7 +604,7 @@ fn aggregation_fixtures_load_and_bound() {
 /// The equality and empty-query rows retain the declared boundary semantics.
 #[test]
 fn node_condition_exists_executes_over_a_real_graph() {
-    let loaded = load(NODE_CONDITION, "x.bsl").unwrap();
+    let loaded = load(NODE_CONDITION, "x.bsl").expect("the fixture artifact loads");
     let cases: [(&str, &[f64], f64, bool, u64); 4] = [
         ("mixed, second node passes", &[0.25, 0.75], 0.1, true, 9),
         ("all below threshold", &[0.25, 0.5], 0.9, false, 9),
@@ -611,7 +632,7 @@ fn node_condition_exists_executes_over_a_real_graph() {
 /// forall over an empty population remains vacuously true (§4.4).
 #[test]
 fn forall_executes_over_a_real_graph() {
-    let loaded = load(FORALL, "x.bsl").unwrap();
+    let loaded = load(FORALL, "x.bsl").expect("the fixture artifact loads");
     let cases: [(&str, &[f64], f64, bool, u64); 3] = [
         ("all pass, including boundary", &[0.75, 0.5], 0.1, true, 9),
         ("mixed, second node fails", &[0.75, 0.25], 0.9, false, 9),
@@ -637,10 +658,12 @@ fn forall_executes_over_a_real_graph() {
 fn agitation_graph(values: &[f64]) -> MemoryGraph {
     let mut graph = MemoryGraph::new();
     for value in values {
-        let node = graph.add_node("SOCIAL_CLASS").unwrap();
+        let node = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
         graph
             .update_node(node, "social-class/agitation", *value)
-            .unwrap();
+            .expect("the fixture node carries the authored attribute");
     }
     graph
 }
@@ -655,20 +678,22 @@ type ClassValues = (i64, f64, u32);
 fn wealth_graph(rows: &[ClassValues]) -> MemoryGraph {
     let mut graph = MemoryGraph::new();
     for &(wealth, agitation, population) in rows {
-        let node = graph.add_node("SOCIAL_CLASS").unwrap();
+        let node = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
         graph
             .update_node_currency(
                 node,
                 "social-class/wealth",
                 Currency::from_micro_units(i128::from(wealth) * 1_000_000),
             )
-            .unwrap();
+            .expect("the fixture node carries the authored currency");
         graph
             .update_node(node, "social-class/agitation", agitation)
-            .unwrap();
+            .expect("the fixture node carries the authored attribute");
         graph
             .update_node(node, "social-class/population", f64::from(population))
-            .unwrap();
+            .expect("the fixture node carries the authored attribute");
     }
     graph
 }
@@ -687,7 +712,7 @@ fn wealth_subject_bindings() -> HashMap<String, Value> {
 /// sum, extrema and the population-weighted mean from constant-body folds.
 #[test]
 fn wealth_aggregates_execute_over_a_real_graph() {
-    let loaded = load(WEALTH_AGGREGATES, "x.bsl").unwrap();
+    let loaded = load(WEALTH_AGGREGATES, "x.bsl").expect("the fixture artifact loads");
     let graph = wealth_graph(&[(500, 0.75, 1), (50, 0.25, 3)]);
     let bindings = wealth_subject_bindings();
     for (operator, expected) in [
@@ -727,7 +752,7 @@ fn wealth_aggregates_execute_over_a_real_graph() {
 /// also distinguish the intended weighted mean from an unweighted mean.
 #[test]
 fn wealth_aggregate_conditions_discriminate_each_threshold() {
-    let loaded = load(WEALTH_AGGREGATES, "x.bsl").unwrap();
+    let loaded = load(WEALTH_AGGREGATES, "x.bsl").expect("the fixture artifact loads");
     let cases: [(&str, &[ClassValues]); 4] = [
         ("sum", &[(500, 0.75, 1), (49, 0.25, 3)]),
         ("maximum", &[(250, 0.75, 1), (250, 0.75, 1), (50, 0.25, 3)]),
@@ -762,10 +787,10 @@ fn wealth_aggregate_conditions_discriminate_each_threshold() {
 /// it)` is `0`, and `(>= 0 1)` is `false` — the exact vector T2 exists to unblock.
 #[test]
 fn edge_count_evaluates_for_real_on_an_empty_graph() {
-    let loaded = load(EDGE_COUNT, "x.bsl").unwrap();
+    let loaded = load(EDGE_COUNT, "x.bsl").expect("the fixture artifact loads");
     let graph = MemoryGraph::new();
     let costs = IntrinsicCosts::default();
-    let env_map = bind_environment(&loaded.bindings, &HashMap::new())
+    let env_map = rule_pipeline::bind_environment(&loaded.bindings, &HashMap::new())
         .expect("EDGE_COUNT's bindings are empty — nothing to resolve");
     let env = EvalEnv {
         bindings: env_map,
@@ -777,7 +802,8 @@ fn edge_count_evaluates_for_real_on_an_empty_graph() {
         draw_context: None,
     };
     let mut fuel = 10_000;
-    let result = evaluate(when_clause(&loaded), &env, &EmptyIntrinsicHost, &mut fuel).unwrap();
+    let result = evaluator::evaluate(when_clause(&loaded), &env, &EmptyIntrinsicHost, &mut fuel)
+        .expect("the authored expression evaluates");
     assert_eq!(
         result,
         Value::Bool(false),
@@ -788,13 +814,19 @@ fn edge_count_evaluates_for_real_on_an_empty_graph() {
 /// The non-empty companion: one SOLIDARITY edge is enough to cross the `>= 1` threshold.
 #[test]
 fn edge_count_evaluates_for_real_on_a_non_empty_graph() {
-    let loaded = load(EDGE_COUNT, "x.bsl").unwrap();
+    let loaded = load(EDGE_COUNT, "x.bsl").expect("the fixture artifact loads");
     let mut graph = MemoryGraph::new();
-    let a = graph.add_node("SOCIAL_CLASS").unwrap();
-    let b = graph.add_node("SOCIAL_CLASS").unwrap();
-    graph.add_edge("SOLIDARITY", a, b, 0.5).unwrap();
+    let a = graph
+        .add_node("SOCIAL_CLASS")
+        .expect("the fixture adds a node with a registered kind");
+    let b = graph
+        .add_node("SOCIAL_CLASS")
+        .expect("the fixture adds a node with a registered kind");
+    graph
+        .add_edge("SOLIDARITY", a, b, 0.5)
+        .expect("the fixture graph admits the authored edge");
     let costs = IntrinsicCosts::default();
-    let env_map = bind_environment(&loaded.bindings, &HashMap::new())
+    let env_map = rule_pipeline::bind_environment(&loaded.bindings, &HashMap::new())
         .expect("EDGE_COUNT's bindings are empty — nothing to resolve");
     let env = EvalEnv {
         bindings: env_map,
@@ -806,7 +838,8 @@ fn edge_count_evaluates_for_real_on_a_non_empty_graph() {
         draw_context: None,
     };
     let mut fuel = 10_000;
-    let result = evaluate(when_clause(&loaded), &env, &EmptyIntrinsicHost, &mut fuel).unwrap();
+    let result = evaluator::evaluate(when_clause(&loaded), &env, &EmptyIntrinsicHost, &mut fuel)
+        .expect("the authored expression evaluates");
     assert_eq!(
         result,
         Value::Bool(true),
@@ -827,7 +860,9 @@ fn intensive_aggregation_is_rejected_where_python_allowed_it() {
         "(fold sum (edges EdgeType/SOLIDARITY) solidarity/strength)",
     );
     assert_eq!(
-        load(&sum_strength, "x.bsl").unwrap_err().spec_code(),
+        load(&sum_strength, "x.bsl")
+            .expect_err("the fixture call `load` fails for the authored inputs")
+            .spec_code(),
         Some("E-TYPE-041")
     );
     let avg_strength = EDGE_COUNT.replace(
@@ -835,7 +870,9 @@ fn intensive_aggregation_is_rejected_where_python_allowed_it() {
         "(fold mean (edges EdgeType/SOLIDARITY) solidarity/strength)",
     );
     assert_eq!(
-        load(&avg_strength, "x.bsl").unwrap_err().spec_code(),
+        load(&avg_strength, "x.bsl")
+            .expect_err("the fixture call `load` fails for the authored inputs")
+            .spec_code(),
         Some("E-TYPE-042")
     );
 }
@@ -845,7 +882,7 @@ fn intensive_aggregation_is_rejected_where_python_allowed_it() {
 /// load, and their conjunction evaluates in the expression core.
 #[test]
 fn metric_conditions_load_and_evaluate() {
-    let loaded = load(METRIC_CONDITIONS, "x.bsl").unwrap();
+    let loaded = load(METRIC_CONDITIONS, "x.bsl").expect("the fixture artifact loads");
     // solidarity_graph analogue: density 2/6, wealth 550, agitation 0.4.
     let fires = [
         ("solidarity-density", real(2.0 / 6.0)),
@@ -883,7 +920,7 @@ fn precondition_logic_vectors() {
 /// driver deliberately refuses metric bindings without a runtime provider.
 #[test]
 fn bifurcation_routes_by_solidarity_density() {
-    let loaded = load(BIFURCATION, "x.bsl").unwrap();
+    let loaded = load(BIFURCATION, "x.bsl").expect("the fixture artifact loads");
     for (agitation, density, expected_national, expected_class) in [
         (0.49, 0.05, 0.2_f64, 0.4_f64),
         (0.49, 0.1, 0.2, 0.4),
@@ -892,20 +929,23 @@ fn bifurcation_routes_by_solidarity_density() {
         (0.5, 0.2, 0.2, 0.4 + 0.15),
     ] {
         let mut graph = MemoryGraph::new();
-        let self_id = graph.add_node("SOCIAL_CLASS").unwrap();
+        let self_id = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
         graph
             .update_node(self_id, "social-class/national-identity", 0.2)
-            .unwrap();
+            .expect("the fixture node carries the authored attribute");
         graph
             .update_node(self_id, "social-class/class-consciousness", 0.4)
-            .unwrap();
+            .expect("the fixture node carries the authored attribute");
 
         let supplied = owned(vec![
             ("agitation", real(agitation)),
             ("solidarity-density", real(density)),
             ("self", Value::NodeRef(self_id)),
         ]);
-        let mut env_map = bind_environment(&loaded.bindings, &supplied).unwrap();
+        let mut env_map = rule_pipeline::bind_environment(&loaded.bindings, &supplied)
+            .expect("the fixture call `bind_environment` succeeds for the authored inputs");
         env_map.insert("self".to_owned(), Value::NodeRef(self_id));
         let costs = IntrinsicCosts::default();
         let registries = registries();
@@ -918,41 +958,47 @@ fn bifurcation_routes_by_solidarity_density() {
             elements: Vec::new(),
             draw_context: None,
         };
-        let babylon_bsl::reader::SExpr::List(items) = &loaded.rule else {
+        let SExpr::List(items) = &loaded.rule else {
             unreachable!()
         };
         let effects = items
             .iter()
             .find_map(|child| match child {
-                babylon_bsl::reader::SExpr::List(inner)
-                    if matches!(inner.first(), Some(babylon_bsl::reader::SExpr::Atom(babylon_bsl::reader::Atom::Symbol(h))) if h == "effects") =>
+                SExpr::List(inner)
+                    if matches!(inner.first(), Some(SExpr::Atom(babylon_bsl::reader::Atom::Symbol(h))) if h == "effects") =>
                 {
                     Some(&inner[1..])
                 }
                 _ => None,
             })
-            .unwrap();
+            .expect("the fixture yields the searched value");
         let mut executor = EffectExecutor::new(&registries.types, &registries.enums);
         let mut sink = CollectingSink::default();
         let mut fuel = loaded.declared_fuel;
-        let pending = match evaluate(when_clause(&loaded), &env, &EmptyIntrinsicHost, &mut fuel)
-            .expect("the bifurcation condition must evaluate")
-        {
-            Value::Bool(true) => executor
-                .collect_effects(effects, &env, &EmptyIntrinsicHost, &mut sink, &mut fuel)
-                .unwrap(),
-            Value::Bool(false) => Vec::new(),
-            other => panic!("a condition must be Bool, got {other:?}"),
-        };
+        let pending =
+            match evaluator::evaluate(when_clause(&loaded), &env, &EmptyIntrinsicHost, &mut fuel)
+                .expect("the bifurcation condition must evaluate")
+            {
+                Value::Bool(true) => executor
+                    .collect_effects(effects, &env, &EmptyIntrinsicHost, &mut sink, &mut fuel)
+                    .expect("the fixture call `collect_effects` succeeds for the authored inputs"),
+                Value::Bool(false) => Vec::new(),
+                other => panic!("a condition must be Bool, got {other:?}"),
+            };
         for write in &pending {
-            executor.apply_pending_write(write, &mut graph).unwrap();
+            executor
+                .apply_pending_write(write, &mut graph)
+                .expect("the fixture call `apply_pending_write` succeeds for the authored inputs");
         }
         for (field, expected) in [
             ("social-class/national-identity", expected_national),
             ("social-class/class-consciousness", expected_class),
         ] {
             assert_eq!(
-                graph.node_attribute(self_id, field).unwrap().to_bits(),
+                graph
+                    .node_attribute(self_id, field)
+                    .expect("the fixture node carries the authored attribute")
+                    .to_bits(),
                 expected.to_bits(),
                 "agitation {agitation}, density {density}: {field}",
             );
@@ -968,7 +1014,8 @@ fn bifurcation_routes_by_solidarity_density() {
 /// the rule never loads, nothing reads a phantom zero.
 #[test]
 fn correction_1_unknown_metric_is_e_load_011_not_zero() {
-    let err = load(UNKNOWN_METRIC, "x.bsl").unwrap_err();
+    let err = load(UNKNOWN_METRIC, "x.bsl")
+        .expect_err("the fixture call `load` fails for the authored inputs");
     assert_eq!(err.spec_code(), Some("E-LOAD-011"), "{err}");
 }
 
@@ -988,7 +1035,8 @@ fn correction_2_unknown_aggregation_is_e_parse_015_not_false() {
         "(fold count (edges EdgeType/SOLIDARITY) it)",
         "(fold median (edges EdgeType/SOLIDARITY) solidarity/strength)",
     );
-    let err = load(&median, "x.bsl").unwrap_err();
+    let err =
+        load(&median, "x.bsl").expect_err("the fixture call `load` fails for the authored inputs");
     assert_eq!(err.spec_code(), Some("E-PARSE-015"), "{err}");
 }
 
@@ -998,7 +1046,8 @@ fn correction_2_unknown_aggregation_is_e_parse_015_not_false() {
 /// an atom — E-LEX-003 at read time.
 #[test]
 fn correction_3_unknown_comparison_operator_is_a_lex_error_not_false() {
-    let err = read("(~= agitation 0.5p)").unwrap_err();
+    let err =
+        reader::read("(~= agitation 0.5p)").expect_err("the malformed read request is refused");
     assert!(matches!(
         err.kind,
         babylon_bsl::reader::ReadErrorKind::Lex(babylon_bsl::reader::LexCode::UnclassifiableToken)
@@ -1011,9 +1060,10 @@ fn correction_3_unknown_comparison_operator_is_a_lex_error_not_false() {
 /// omitting the clause — explicit intent, never an accident.
 #[test]
 fn correction_4_empty_when_is_rejected_and_omission_is_the_legal_always() {
-    let err = load(EMPTY_WHEN, "x.bsl").unwrap_err();
+    let err = load(EMPTY_WHEN, "x.bsl")
+        .expect_err("the fixture call `load` fails for the authored inputs");
     assert!(err.to_string().contains("E-PARSE-020"), "{err}");
-    let unconditional = load(UNCONDITIONAL, "x.bsl").unwrap();
+    let unconditional = load(UNCONDITIONAL, "x.bsl").expect("the fixture artifact loads");
     assert_eq!(
         unconditional.static_bound, 3,
         "an omitted <when> contributes 0; the emit costs 3"
@@ -1040,9 +1090,9 @@ fn eval_value(source: &str, env_pairs: &[(&str, Value)]) -> Value {
         elements: Vec::new(),
         draw_context: None,
     };
-    let (expr, _) = read(source).expect("vector source must parse");
+    let (expr, _) = reader::read(source).expect("vector source must parse");
     let mut fuel = 10_000;
-    evaluate(&expr, &env, &EmptyIntrinsicHost, &mut fuel).expect("vector must evaluate")
+    evaluator::evaluate(&expr, &env, &EmptyIntrinsicHost, &mut fuel).expect("vector must evaluate")
 }
 
 /// `eval_value`'s graph-bearing twin (PR 4, Task 14): `env.graph =
@@ -1066,8 +1116,8 @@ fn eval_value_over_graph(
         elements: Vec::new(),
         draw_context: None,
     };
-    let (expr, _) = read(source).expect("vector source must parse");
-    evaluate(&expr, &env, &EmptyIntrinsicHost, fuel).expect("vector must evaluate")
+    let (expr, _) = reader::read(source).expect("vector source must parse");
+    evaluator::evaluate(&expr, &env, &EmptyIntrinsicHost, fuel).expect("vector must evaluate")
 }
 
 fn eval_cond(source: &str, env_pairs: &[(&str, Value)]) -> bool {
@@ -1077,7 +1127,7 @@ fn eval_cond(source: &str, env_pairs: &[(&str, Value)]) -> bool {
     }
 }
 
-fn eval_cond_err(source: &str, env_pairs: &[(&str, Value)]) -> babylon_bsl::evaluator::EvalError {
+fn eval_cond_err(source: &str, env_pairs: &[(&str, Value)]) -> EvalError {
     let costs = IntrinsicCosts::default();
     let env = EvalEnv {
         bindings: owned(env_pairs.to_vec()),
@@ -1088,7 +1138,7 @@ fn eval_cond_err(source: &str, env_pairs: &[(&str, Value)]) -> babylon_bsl::eval
         elements: Vec::new(),
         draw_context: None,
     };
-    let (expr, _) = read(source).expect("vector source must parse");
+    let (expr, _) = reader::read(source).expect("vector source must parse");
     let mut fuel = 10_000;
-    evaluate(&expr, &env, &EmptyIntrinsicHost, &mut fuel).expect_err("vector must fail")
+    evaluator::evaluate(&expr, &env, &EmptyIntrinsicHost, &mut fuel).expect_err("vector must fail")
 }

@@ -1,7 +1,7 @@
 //! Independent current-format receipt vectors for the bounded maintenance close.
 //! These bytes exercise the decoder without constructing a circuit implementation.
 
-use babylon_tick::material_world::decode_material_receipts;
+use babylon_tick::material_world;
 
 const DOMAIN: &[u8] = b"babylon.material-tick-receipts.v18\0";
 const ROW_START: usize = DOMAIN.len() + 12 + 10 * 9;
@@ -58,9 +58,12 @@ fn current_maintenance_receipts_admit_completed_and_zero_job_closes() {
         [1, 16, 8, 8, 16, 16, 0, 60, 60, 160, 16, 16, 160, 2, 16],
     ];
     for quantities in values {
-        let decoded = decode_material_receipts(&receipt(quantities)).unwrap();
+        let decoded = material_world::decode_material_receipts(&receipt(quantities))
+            .expect("the canonical bytes decode into the declared type");
         assert_eq!(decoded.resolve_tick, 1);
-        let row = decoded.maintenance.unwrap();
+        let row = decoded
+            .maintenance
+            .expect("the fixture receipt carries its maintenance section");
         assert_eq!(row.binding.provider_site_id.as_bytes(), [1; 32]);
         assert_eq!(row.binding.consumer_process_id.as_bytes(), [2; 32]);
         assert_eq!(row.binding.spare_good_id.as_bytes(), [3; 32]);
@@ -80,7 +83,7 @@ fn old_receipt_format_is_refused_without_a_compatibility_reader() {
         bytes.push(tag);
         bytes.extend_from_slice(&0_u64.to_be_bytes());
     }
-    assert!(decode_material_receipts(&bytes).is_err());
+    assert!(material_world::decode_material_receipts(&bytes).is_err());
 }
 
 #[test]
@@ -106,7 +109,7 @@ fn maintenance_receipts_refuse_corrupt_identity_period_conservation_and_grants()
         let mut bytes = baseline();
         replace_u64(&mut bytes, QUANTITIES + index * 8, value);
         assert!(
-            decode_material_receipts(&bytes).is_err(),
+            material_world::decode_material_receipts(&bytes).is_err(),
             "quantity {index}"
         );
     }
@@ -114,7 +117,7 @@ fn maintenance_receipts_refuse_corrupt_identity_period_conservation_and_grants()
         let mut bytes = baseline();
         replace_u64(&mut bytes, ROW_START + 5 * 32 + index * 8, 0);
         assert!(
-            decode_material_receipts(&bytes).is_err(),
+            material_world::decode_material_receipts(&bytes).is_err(),
             "coefficient {index}"
         );
     }
@@ -122,7 +125,7 @@ fn maintenance_receipts_refuse_corrupt_identity_period_conservation_and_grants()
     let spare_unit = bytes[ROW_START + 3 * 32..ROW_START + 4 * 32].to_vec();
     bytes[ROW_START + 4 * 32..ROW_START + 5 * 32].copy_from_slice(&spare_unit);
     assert!(
-        decode_material_receipts(&bytes).is_err(),
+        material_world::decode_material_receipts(&bytes).is_err(),
         "labor is not a spare unit"
     );
 }
@@ -133,36 +136,36 @@ fn maintenance_receipts_refuse_duplicate_truncated_trailing_and_overflow_rows() 
     let mut bytes = original.clone();
     replace_u64(&mut bytes, ROW_START - 8, 2);
     bytes.extend_from_slice(&original[ROW_START..]);
-    assert!(decode_material_receipts(&bytes).is_err());
+    assert!(material_world::decode_material_receipts(&bytes).is_err());
     for end in [ROW_START, original.len() - 1] {
-        assert!(decode_material_receipts(&original[..end]).is_err());
+        assert!(material_world::decode_material_receipts(&original[..end]).is_err());
     }
     let mut bytes = original.clone();
     bytes.push(0);
-    assert!(decode_material_receipts(&bytes).is_err());
+    assert!(material_world::decode_material_receipts(&bytes).is_err());
     let mut bytes = original;
     replace_u64(&mut bytes, QUANTITIES + 6 * 8, u64::MAX);
     replace_u64(&mut bytes, QUANTITIES + 7 * 8, 1);
     replace_u64(&mut bytes, QUANTITIES + 8 * 8, 0);
-    assert!(decode_material_receipts(&bytes).is_err());
+    assert!(material_world::decode_material_receipts(&bytes).is_err());
 }
 
 #[test]
 fn maintenance_receipts_distinguish_unrestricted_request_from_capacity_and_ceil_jobs() {
     let capped = receipt([1, 16, 16, 0, 20, 20, 256, 0, 256, 160, 16, 16, 160, 2, 16]);
-    let row = decode_material_receipts(&capped)
-        .unwrap()
+    let row = material_world::decode_material_receipts(&capped)
+        .expect("the canonical bytes decode into the declared type")
         .maintenance
-        .unwrap();
+        .expect("the fixture receipt carries its maintenance section");
     assert_eq!((row.requested_jobs, row.completed_jobs), (20, 16));
     let rounded = receipt_with_coefficients(
         [1, 10, 2, 8],
         [1, 16, 16, 0, 17, 9, 256, 0, 256, 160, 8, 8, 80, 2, 16],
     );
-    let row = decode_material_receipts(&rounded)
-        .unwrap()
+    let row = material_world::decode_material_receipts(&rounded)
+        .expect("the canonical bytes decode into the declared type")
         .maintenance
-        .unwrap();
+        .expect("the fixture receipt carries its maintenance section");
     assert_eq!(
         (
             row.requested_jobs,
@@ -179,14 +182,14 @@ fn absent_maintenance_is_distinct_from_a_bound_completed_zero_close() {
     absent.truncate(ROW_START);
     replace_u64(&mut absent, ROW_START - 8, 0);
     append_remaining_families(&mut absent);
-    assert!(decode_material_receipts(&absent)
-        .unwrap()
+    assert!(material_world::decode_material_receipts(&absent)
+        .expect("the canonical bytes decode into the declared type")
         .maintenance
         .is_none());
     let zero = receipt([1, 16, 16, 0, 16, 16, 0, 0, 0, 0, 0, 0, 0, 2, 0]);
-    let row = decode_material_receipts(&zero)
-        .unwrap()
+    let row = material_world::decode_material_receipts(&zero)
+        .expect("the canonical bytes decode into the declared type")
         .maintenance
-        .unwrap();
+        .expect("the fixture receipt carries its maintenance section");
     assert_eq!((row.requested_jobs, row.completed_jobs), (16, 0));
 }

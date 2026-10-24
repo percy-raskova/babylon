@@ -1,12 +1,12 @@
 //! Explicit budget and ownership opening assumptions, separate from source class.
-use super::{amount, quantity, sum_amount, ActorContext, Builder, NationalOpeningError, Result};
+use super::{ActorContext, Builder, NationalOpeningError, Result};
 use crate::national_household_allocation::HouseholdBudgetKey;
-use babylon_kernel::{
-    content_digest::sha256_of,
-    currency::Currency,
-    economic_identity::{EconomicFunction, QcewOwnership},
-    economic_location::{EconomicLocation, ForeignCounterpart},
-};
+use babylon_kernel::currency::Currency;
+use babylon_kernel::economic_identity::{EconomicFunction, QcewOwnership};
+use babylon_kernel::economic_location::{EconomicLocation, ForeignCounterpart};
+
+use babylon_kernel::content_digest;
+use babylon_material_circuit::FinalDemandPrincipalId;
 use babylon_material_circuit::{
     AccountId, CashAccount, DistributionPolicy, EquityCarryingValue, InstitutionLocation,
     OwnershipClaim, PublicAccountId, PublicAllocation, PublicBudget, PublicTransferTreatment,
@@ -15,13 +15,7 @@ use babylon_material_circuit::{
 use std::collections::BTreeMap;
 
 pub(super) fn wire(builder: &mut Builder<'_>) -> Result<()> {
-    let mut reserve = BTreeMap::<
-        (
-            babylon_material_circuit::FinalDemandPrincipalId,
-            EconomicLocation,
-        ),
-        u64,
-    >::new();
+    let mut reserve = BTreeMap::<(FinalDemandPrincipalId, EconomicLocation), u64>::new();
     for member in builder
         .opening
         .staffing
@@ -80,7 +74,7 @@ pub(super) fn wire(builder: &mut Builder<'_>) -> Result<()> {
         let account = public(location);
         builder.opening.institutional_cash.push(CashAccount {
             id: AccountId::Public(account),
-            cash: amount(builder.policy.working_capital_periods, period_cap)?,
+            cash: super::amount(builder.policy.working_capital_periods, period_cap)?,
         });
         builder
             .opening
@@ -105,13 +99,7 @@ pub(super) fn wire(builder: &mut Builder<'_>) -> Result<()> {
 
 fn household_support(
     builder: &mut Builder<'_>,
-    reserves: &BTreeMap<
-        (
-            babylon_material_circuit::FinalDemandPrincipalId,
-            EconomicLocation,
-        ),
-        u64,
-    >,
+    reserves: &BTreeMap<(FinalDemandPrincipalId, EconomicLocation), u64>,
     budgets: &mut BTreeMap<EconomicLocation, Currency>,
 ) -> Result<()> {
     let policy = &builder.policy.financial;
@@ -130,8 +118,8 @@ fn household_support(
             .scaled(scale)
             .map_err(|_| NationalOpeningError::Arithmetic)?
             .opening;
-        let support = amount(
-            quantity(*persons, policy.reserve_food_support_periods)?,
+        let support = super::amount(
+            super::quantity(*persons, policy.reserve_food_support_periods)?,
             unit_price,
         )?;
         if support.micro_units() == 0 {
@@ -153,8 +141,7 @@ fn household_support(
     Ok(())
 }
 
-type PrivateOwners =
-    BTreeMap<EconomicLocation, Vec<(babylon_material_circuit::FinalDemandPrincipalId, u64)>>;
+type PrivateOwners = BTreeMap<EconomicLocation, Vec<(FinalDemandPrincipalId, u64)>>;
 
 fn ownership(
     builder: &mut Builder<'_>,
@@ -205,7 +192,7 @@ fn ownership(
         .get(&actor.site_id)
         .and_then(|i| builder.opening.sites.get(*i))
         .ok_or(NationalOpeningError::Identity)?;
-    let period_cap = amount(1, site.opening_cash)?;
+    let period_cap = super::amount(1, site.opening_cash)?;
     builder
         .opening
         .institutions
@@ -309,9 +296,9 @@ fn public_provider_grant(builder: &Builder<'_>, actor: &ActorContext) -> Result<
             .scaled(actor.price_scale_bps)
             .map_err(|_| NationalOpeningError::Arithmetic)?
             .opening;
-        cost = sum_amount(
+        cost = super::sum_amount(
             cost,
-            amount(quantity(actor.planned_batches, *coefficient)?, price)?,
+            super::amount(super::quantity(actor.planned_batches, *coefficient)?, price)?,
         )?;
     }
     let output = builder.commodity(&recipe.output)?;
@@ -322,8 +309,8 @@ fn public_provider_grant(builder: &Builder<'_>, actor: &ActorContext) -> Result<
         .scaled(actor.price_scale_bps)
         .map_err(|_| NationalOpeningError::Arithmetic)?
         .opening;
-    let receipts = amount(
-        quantity(actor.planned_batches, recipe.output_units_per_batch)?,
+    let receipts = super::amount(
+        super::quantity(actor.planned_batches, recipe.output_units_per_batch)?,
         fee,
     )?;
     Ok(Currency::from_micro_units(
@@ -334,8 +321,8 @@ fn public_provider_grant(builder: &Builder<'_>, actor: &ActorContext) -> Result<
     ))
 }
 fn payroll(builder: &Builder<'_>, actor: &ActorContext) -> Result<Currency> {
-    amount(
-        quantity(actor.employee_persons, builder.policy.work_hours_per_person)?,
+    super::amount(
+        super::quantity(actor.employee_persons, builder.policy.work_hours_per_person)?,
         actor.wage,
     )
 }
@@ -359,11 +346,11 @@ fn add_budget(
     let value = budgets
         .get_mut(&location)
         .ok_or(NationalOpeningError::Identity)?;
-    *value = sum_amount(*value, amount)?;
+    *value = super::sum_amount(*value, amount)?;
     Ok(())
 }
 fn public(location: EconomicLocation) -> PublicAccountId {
     let mut bytes = b"NationalPublicProvisioningV1\0".to_vec();
     bytes.extend_from_slice(&location.canonical_bytes());
-    PublicAccountId::from_bytes(sha256_of(&bytes))
+    PublicAccountId::from_bytes(content_digest::sha256_of(&bytes))
 }

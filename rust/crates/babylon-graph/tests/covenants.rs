@@ -103,18 +103,22 @@ fn covenant_2_default_features_false_and_generators_never_enabled() {
 #[test]
 fn covenant_3_and_4_unknown_member_is_loud_before_the_library_ever_sees_it() {
     let mut graph = HypergraphStore::new();
-    let known = graph.add_node("social_class").unwrap();
+    let known = graph
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
     // NodeId(999_999) was never minted by add_node, so it exists in NEITHER
     // this adapter's nodes map NOR the library's agent registry (the two
     // are always minted together) — the preamble must catch it.
     let err = graph
         .add_hyperedge("economic_sector", &[known, NodeId(999_999)])
-        .unwrap_err();
+        .expect_err("the fixture call `add_hyperedge` fails for the authored inputs");
     assert!(!err.message.is_empty());
     // And the hyperedge must not have been partially minted — a second,
     // now-valid attempt gets a FRESH id, proving nothing leaked from the
     // rejected attempt.
-    let id = graph.add_hyperedge("economic_sector", &[known]).unwrap();
+    let id = graph
+        .add_hyperedge("economic_sector", &[known])
+        .expect("the fixture graph admits the authored hyperedge");
     assert_eq!(id.0, 0, "the rejected attempt must not have consumed an id");
 }
 
@@ -136,13 +140,19 @@ fn covenant_3_and_4_unknown_member_is_loud_before_the_library_ever_sees_it() {
 #[test]
 fn covenant_5_strength_and_attributes_round_trip_exactly_never_a_default() {
     let mut graph = HypergraphStore::new();
-    let a = graph.add_node("social_class").unwrap();
-    let b = graph.add_node("social_class").unwrap();
+    let a = graph
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
+    let b = graph
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
     let written_strength = 0.123_456_789;
     graph
         .add_edge("solidarity", a, b, written_strength)
-        .unwrap();
-    graph.update_node(a, "wealth", 987.654_321).unwrap();
+        .expect("the fixture graph admits the authored edge");
+    graph
+        .update_node(a, "wealth", 987.654_321)
+        .expect("the fixture node carries the authored attribute");
 
     // edges() only returns (NodeId, NodeId) — no strength — so existence
     // alone proves nothing about the covenant. Read the strength back
@@ -159,7 +169,12 @@ fn covenant_5_strength_and_attributes_round_trip_exactly_never_a_default() {
          corrupted write would both pass a bare existence check"
     );
     assert!(
-        (graph.node_attribute(a, "wealth").unwrap() - 987.654_321).abs() < f64::EPSILON,
+        (graph
+            .node_attribute(a, "wealth")
+            .expect("the fixture node carries the authored attribute")
+            - 987.654_321)
+            .abs()
+            < f64::EPSILON,
         "the attribute must round-trip exactly, never default"
     );
 
@@ -172,7 +187,7 @@ fn covenant_5_strength_and_attributes_round_trip_exactly_never_a_default() {
     let written_tension = 0.333_333_333_333_333_3;
     graph
         .update_edge("solidarity", a, b, "solidarity/tension", written_tension)
-        .unwrap();
+        .expect("the fixture edge carries the authored attribute");
     let read_tension = graph
         .all_edge_attributes()
         .into_iter()
@@ -232,7 +247,10 @@ fn covenant_8_identical_mint_sequences_assign_identical_ids() {
         let mut g = HypergraphStore::new();
         let ids: Vec<NodeId> = ["social_class", "territory", "social_class", "organization"]
             .iter()
-            .map(|ty| g.add_node(ty).unwrap())
+            .map(|ty| {
+                g.add_node(ty)
+                    .expect("the fixture adds a node with a registered kind")
+            })
             .collect();
         ids
     };

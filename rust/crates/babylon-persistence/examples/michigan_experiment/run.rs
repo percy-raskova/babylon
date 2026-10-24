@@ -2,7 +2,6 @@ use std::collections::BTreeMap;
 
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;
-use babylon_kernel::content_digest::sha256_of;
 use babylon_persistence::michigan_material::{MichiganDeliveryPreset, MichiganMaterialCatalog};
 use babylon_persistence::simulation_experiment::SimulationExperimentV1;
 use babylon_practice_contract::OrderedPracticeActionBatch;
@@ -11,8 +10,13 @@ use babylon_tick::replay_session::ReplayCommitDisposition;
 use serde::Serialize;
 use serde_json::{json, Value};
 
-use super::artifacts::{contract, Result};
+use super::artifacts;
+use super::artifacts::Result;
 use super::observe::{self, PeriodRow};
+use babylon_kernel::content_digest;
+use babylon_persistence::economic_catalog::CapturedEconomicCatalog;
+use serde_json::Map;
+use std::convert::Infallible;
 
 pub const BASELINE: &str = include_str!("../../../../../content/scenarios/michigan/defines.toml");
 pub const PERIODS: u64 = 16;
@@ -62,7 +66,7 @@ pub fn hex(bytes: &[u8]) -> String {
 }
 
 pub fn digest_json(value: &impl Serialize) -> Result<String> {
-    Ok(hex(&sha256_of(&serde_json::to_vec(value)?)))
+    Ok(hex(&content_digest::sha256_of(&serde_json::to_vec(value)?)))
 }
 
 fn regional_parameters(catalog: &MichiganMaterialCatalog) -> Result<Value> {
@@ -70,7 +74,7 @@ fn regional_parameters(catalog: &MichiganMaterialCatalog) -> Result<Value> {
     let definitions = capture
         .get("defines")
         .and_then(Value::as_object)
-        .ok_or_else(|| contract("missing current captured numeric definitions"))?;
+        .ok_or_else(|| artifacts::contract("missing current captured numeric definitions"))?;
     let parameters = [
         "SCHEMA_VERSION",
         "TICK_DURATION_DAYS",
@@ -88,9 +92,9 @@ fn regional_parameters(catalog: &MichiganMaterialCatalog) -> Result<Value> {
             .get(key)
             .cloned()
             .map(|value| (key.to_owned(), value))
-            .ok_or_else(|| contract(format!("missing regional parameter {key}")))
+            .ok_or_else(|| artifacts::contract(format!("missing regional parameter {key}")))
     })
-    .collect::<Result<serde_json::Map<String, Value>>>()?;
+    .collect::<Result<Map<String, Value>>>()?;
     Ok(Value::Object(parameters))
 }
 
@@ -99,7 +103,7 @@ pub fn cases() -> Result<Vec<Case>> {
         "DURATION = { kind = \"continuous\" }",
         "DURATION = { kind = \"finite\", final_period = 16 }",
     ))
-    .map_err(|error| contract(format!("baseline validation: {error}")))?;
+    .map_err(|error| artifacts::contract(format!("baseline validation: {error}")))?;
     let baseline = regional_parameters(&original)?;
     if baseline["DURATION"]["final_period"] != PERIODS
         || baseline["process"]["panel_forming"]["OPENING_INPUT_UNITS"] != 0
@@ -107,7 +111,7 @@ pub fn cases() -> Result<Vec<Case>> {
         || original.processes().len() != 5
         || original.routes().len() != 3
     {
-        return Err(contract(
+        return Err(artifacts::contract(
             "embedded baseline is outside the accepted Michigan comparison",
         ));
     }
@@ -122,15 +126,15 @@ pub fn cases() -> Result<Vec<Case>> {
                     {"kind": "regional_delivery", "delivery": match spec.delivery {
                         MichiganDeliveryPreset::Standard => "standard",
                         MichiganDeliveryPreset::Delayed => "delayed",
-                        _ => return Err(contract("unadmitted causal delivery profile")),
+                        _ => return Err(artifacts::contract("unadmitted causal delivery profile")),
                     }},
                     {"kind": "opening_sheet_stock", "kilograms": spec.opening_sheet_kg}
                 ]
             }))?)
-            .map_err(|error| contract(format!("case inputs: {error}")))?;
+            .map_err(|error| artifacts::contract(format!("case inputs: {error}")))?;
             let catalog = experiment
                 .regional_catalog()
-                .map_err(|error| contract(format!("{} validation: {error}", spec.id)))?;
+                .map_err(|error| artifacts::contract(format!("{} validation: {error}", spec.id)))?;
             Ok(Case {
                 spec,
                 catalog,
@@ -145,11 +149,8 @@ pub fn experiment_identity(cases: &[Case]) -> Result<Value> {
         .iter()
         .map(|case| {
             let report = serde_json::to_string(&case.catalog.resolved_report())?;
-            let capture =
-                babylon_persistence::economic_catalog::CapturedEconomicCatalog::from_michigan(
-                    &case.catalog,
-                )
-                .map_err(|error| contract(format!("captured case: {error}")))?;
+            let capture = CapturedEconomicCatalog::from_michigan(&case.catalog)
+                .map_err(|error| artifacts::contract(format!("captured case: {error}")))?;
             Ok(json!({
                 "case": case.spec.id,
                 "preset": case.spec.delivery.id(),
@@ -157,7 +158,7 @@ pub fn experiment_identity(cases: &[Case]) -> Result<Value> {
                 "experiment": case.experiment,
                 "resolved_defines": serde_json::from_str::<Value>(&report)?,
                 "canonical_defines_utf8": report,
-                "defines_sha256": hex(&sha256_of(report.as_bytes())),
+                "defines_sha256": hex(&content_digest::sha256_of(report.as_bytes())),
                 "catalog_sha256": hex(&capture.digest())
             }))
         })
@@ -176,11 +177,13 @@ fn foundation(case: &Case) -> Result<(Value, MaterialReplaySession<HypergraphSto
     let foundation = case
         .experiment
         .create_foundation()
-        .map_err(|error| contract(format!("{} foundation: {error:?}", case.spec.id)))?;
+        .map_err(|error| artifacts::contract(format!("{} foundation: {error:?}", case.spec.id)))?;
     let graph = foundation.graph_foundation();
     let seed = i64::from_be_bytes(graph.rng_seed().to_be_bytes());
     if seed != 319 || foundation.spec().duration.final_period() != Some(PERIODS) {
-        return Err(contract("selected composition changed its seed or horizon"));
+        return Err(artifacts::contract(
+            "selected composition changed its seed or horizon",
+        ));
     }
     let identity = json!({
         "foundation_sha256": hex(&foundation.digest()),
@@ -193,24 +196,24 @@ fn foundation(case: &Case) -> Result<(Value, MaterialReplaySession<HypergraphSto
     });
     let session = foundation
         .into_session()
-        .map_err(|error| contract(format!("material session: {error:?}")))?;
+        .map_err(|error| artifacts::contract(format!("material session: {error:?}")))?;
     Ok((identity, session))
 }
 
 pub fn run_case(case: &Case, mut emit: impl FnMut(&PeriodRow) -> Result<()>) -> Result<CaseResult> {
     let (identity, mut session) = foundation(case)?;
-    let period_count =
-        usize::try_from(PERIODS).map_err(|_| contract("period bound exceeds platform capacity"))?;
+    let period_count = usize::try_from(PERIODS)
+        .map_err(|_| artifacts::contract("period bound exceeds platform capacity"))?;
     let mut rows = Vec::with_capacity(period_count);
     for period in 1..=PERIODS {
         let actions = OrderedPracticeActionBatch::empty(
             session.graph_session().session_identity().clone(),
             period,
         )
-        .map_err(|error| contract(format!("empty actions: {error:?}")))?;
-        let candidate = session
-            .prepare_advance(&actions)
-            .map_err(|error| contract(format!("{} period {period}: {error:?}", case.spec.id)))?;
+        .map_err(|error| artifacts::contract(format!("empty actions: {error:?}")))?;
+        let candidate = session.prepare_advance(&actions).map_err(|error| {
+            artifacts::contract(format!("{} period {period}: {error:?}", case.spec.id))
+        })?;
         let report = candidate.graph_report().report();
         if !report.choice_receipts.is_empty()
             || report.per_rule_considered != [("material/period".to_owned(), 1)]
@@ -218,16 +221,16 @@ pub fn run_case(case: &Case, mut emit: impl FnMut(&PeriodRow) -> Result<()>) -> 
             || report.considered != 1
             || report.fired != 1
         {
-            return Err(contract(
+            return Err(artifacts::contract(
                 "expected exactly one deterministic material/period invocation",
             ));
         }
         let row = observe::period(case, session.material().state(), &candidate)?;
         session
             .commit_prepared_and_publish(&mut CollectingSink::default(), candidate, |_| {
-                Ok::<_, std::convert::Infallible>(ReplayCommitDisposition::Committed)
+                Ok::<_, Infallible>(ReplayCommitDisposition::Committed)
             })
-            .map_err(|error| contract(format!("local publication: {error:?}")))?;
+            .map_err(|error| artifacts::contract(format!("local publication: {error:?}")))?;
         emit(&row)?;
         rows.push(row);
     }
@@ -284,26 +287,26 @@ fn comparison(results: &[CaseResult], left: usize, right: usize, label: &str) ->
 }
 
 pub fn summarize(results: &[CaseResult]) -> Result<Value> {
-    let period_count =
-        usize::try_from(PERIODS).map_err(|_| contract("period bound exceeds platform capacity"))?;
+    let period_count = usize::try_from(PERIODS)
+        .map_err(|_| artifacts::contract("period bound exceeds platform capacity"))?;
     if results.len() != 4
         || results
             .iter()
             .zip(SPECS)
             .any(|(result, spec)| result.case != spec.id || result.rows.len() != period_count)
     {
-        return Err(contract(
+        return Err(artifacts::contract(
             "summary requires the exact complete four-case matrix",
         ));
     }
     let control = results
         .first()
-        .ok_or_else(|| contract("missing baseline control"))?;
+        .ok_or_else(|| artifacts::contract("missing baseline control"))?;
     let mut cases = Vec::new();
     for result in results {
         for (a, b) in control.rows.iter().zip(&result.rows) {
             if a.food_evidence() != b.food_evidence() {
-                return Err(contract(format!(
+                return Err(artifacts::contract(format!(
                     "food control diverged in {} period {}",
                     result.case, b.period
                 )));
@@ -327,7 +330,7 @@ pub fn summarize(results: &[CaseResult]) -> Result<Value> {
         let last = result
             .rows
             .last()
-            .ok_or_else(|| contract("missing final period"))?;
+            .ok_or_else(|| artifacts::contract("missing final period"))?;
         let durations: BTreeMap<_, _> = bounds
             .iter()
             .map(|(process, constraints)| {
@@ -412,7 +415,7 @@ pub fn qualify(results: &[CaseResult], summary: &Value) -> Result<()> {
                     || row.cumulative_lost != 0
             })
         {
-            return Err(contract(format!(
+            return Err(artifacts::contract(format!(
                 "causal qualification failed for {}",
                 results[index].case
             )));
@@ -423,7 +426,7 @@ pub fn qualify(results: &[CaseResult], summary: &Value) -> Result<()> {
             .processes
             .iter()
             .find(|p| p.process == key)
-            .ok_or_else(|| contract("qualification process missing"))
+            .ok_or_else(|| artifacts::contract("qualification process missing"))
     };
     let arriving = process(0, 2, "panel-forming")?;
     if arriving.completed_receipt.is_some()
@@ -440,7 +443,9 @@ pub fn qualify(results: &[CaseResult], summary: &Value) -> Result<()> {
         || process(3, 5, "subassembly-making")?.staffing.separations != 4
         || process(3, 6, "subassembly-making")?.staffing.hires != 4
     {
-        return Err(contract("causal timing or staffing qualification failed"));
+        return Err(artifacts::contract(
+            "causal timing or staffing qualification failed",
+        ));
     }
     Ok(())
 }

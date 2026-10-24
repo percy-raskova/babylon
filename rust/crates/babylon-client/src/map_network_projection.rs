@@ -1,15 +1,15 @@
 //! Read every disclosed account, then retain only one county's direct relations.
 use super::{
-    disclosed_snapshot, node_caption, node_position, site_sector, CountyAnchors, ExternalPeer,
-    NetworkLink, NetworkLinkKind, NetworkNode, NetworkProjection, NetworkSector, NodeKey,
+    CountyAnchors, ExternalPeer, NetworkLink, NetworkLinkKind, NetworkNode, NetworkProjection,
+    NetworkSector, NodeKey,
 };
+use crate::map_economy_lens::MaterialGoodKey;
 use crate::observer::ObserverSession;
 use crate::observer_ui::ObserverFrame;
 use babylon_kernel::economic_location::EconomicLocation;
 use babylon_persistence::production_observation::{
     ProductionSite, ProductionSiteRole, ProductionSnapshot,
 };
-use bevy::prelude::default;
 use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -110,7 +110,7 @@ fn sector_matches(
         NetworkSector::Retail => site.roles.contains(&ProductionSiteRole::Retail),
         NetworkSector::Wholesale => site.roles.contains(&ProductionSiteRole::Wholesale),
         NetworkSector::Maintenance => site.roles.contains(&ProductionSiteRole::Maintenance),
-        _ => site_sector(site) == filter,
+        _ => super::site_sector(site) == filter,
     }
 }
 fn admitted_link(
@@ -118,7 +118,7 @@ fn admitted_link(
     sites: &BTreeMap<&str, &ProductionSite>,
     selected: &str,
     sector: NetworkSector,
-    good: Option<&crate::map_economy_lens::MaterialGoodKey>,
+    good: Option<&MaterialGoodKey>,
 ) -> bool {
     (link.from.in_county(sites, selected) || link.to.in_county(sites, selected))
         && (sector_matches(link.from, sites, sector) || sector_matches(link.to, sites, sector))
@@ -131,9 +131,9 @@ pub(super) fn project_network(
     anchors: &CountyAnchors,
     selected: Option<usize>,
     sector: NetworkSector,
-    good: Option<&crate::map_economy_lens::MaterialGoodKey>,
+    good: Option<&MaterialGoodKey>,
 ) -> NetworkProjection {
-    let Some(snapshot) = disclosed_snapshot(frame, session) else {
+    let Some(snapshot) = super::disclosed_snapshot(frame, session) else {
         return NetworkProjection::default();
     };
     let sites: BTreeMap<_, _> = snapshot.sites.iter().map(|s| (s.id.as_str(), s)).collect();
@@ -149,7 +149,7 @@ pub(super) fn project_network(
         available: true,
         total_cohorts: sites.len(),
         total_links: declarations.len(),
-        ..default()
+        ..crate::observer_map3d::default()
     };
     let Some(county) = anchors.selected(selected) else {
         return result;
@@ -216,8 +216,8 @@ fn add_nodes(
                 let site = sites[id];
                 (
                     id,
-                    node_caption(site, workforce.get(id).copied()),
-                    site_sector(site),
+                    super::node_caption(site, workforce.get(id).copied()),
+                    super::site_sector(site),
                 )
             }
             Endpoint::Demand(location) => {
@@ -254,7 +254,7 @@ fn add_nodes(
                     site_id: site_id.to_owned(),
                     county,
                     sector,
-                    position: node_position(anchor.position, *rank),
+                    position: super::node_position(anchor.position, *rank),
                     caption,
                 },
             );

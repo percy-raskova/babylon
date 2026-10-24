@@ -44,7 +44,7 @@
 //! and this callsite was not updated alongside it. A `:expr` binding
 //! containing a query form (`fold`/`neighbors`/`select-max`/`exists`/…)
 //! therefore still fails loud today ("needs the graph substrate … this
-//! EvalEnv carries none") through the REAL `run_once_into` driver, even
+//! `EvalEnv` carries none") through the REAL `run_once_into` driver, even
 //! though the underlying evaluator serves every one of those heads. Every
 //! rule below routes around this by writing its query forms directly
 //! inline inside a `(when …)` guard or an `(effects …)` operand — both of
@@ -81,10 +81,17 @@
 //! bit-exactly across languages, so a value independently computed in
 //! Python and asserted here as an exact `f64` literal is not a guess).
 
+// Conformance fixtures exercise exact engine values, transcribe spec literals,
+// and build whole scenarios in one test. These pedantic lints would force
+// ceremony that hides those contracts, so they stay off in test code only.
+#![allow(
+    clippy::float_cmp,
+    reason = "these comparisons pin exact authored f64 values"
+)]
+
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
-use babylon_tick::run_once_into;
 
 const SCENARIO: &str = include_str!("../content/scenarios/query-lane-e2e.bscn");
 
@@ -95,12 +102,18 @@ const T0: NodeId = NodeId(0);
 const T1: NodeId = NodeId(1);
 const T2: NodeId = NodeId(2);
 const T3: NodeId = NodeId(3);
-#[allow(dead_code)] // named for documentation symmetry with the id map above
+#[allow(
+    dead_code,
+    reason = "the named constant keeps the scenario identity map readable"
+)] // named for documentation symmetry with the id map above
 const SOURCE_B: NodeId = NodeId(4);
 const SINK_A: NodeId = NodeId(5);
 const SINK_B: NodeId = NodeId(6);
 const ISOLATED_C: NodeId = NodeId(7);
-#[allow(dead_code)] // named for documentation symmetry with the id map above
+#[allow(
+    dead_code,
+    reason = "the named constant keeps the scenario identity map readable"
+)] // named for documentation symmetry with the id map above
 const PENAL_COLONY_D: NodeId = NodeId(8);
 const TENANT_1: NodeId = NodeId(9);
 const TENANT_2: NodeId = NodeId(10);
@@ -172,14 +185,18 @@ const RULE_SPILLOVER: &str = r#"
 fn shape_a_heat_spillover_reads_pre_tick_neighbour_state() {
     let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
-    let report = run_once_into(SCENARIO, RULE_SPILLOVER, &mut graph, &mut sink)
+    let report = babylon_tick::run_once_into(SCENARIO, RULE_SPILLOVER, &mut graph, &mut sink)
         .expect("the spillover rule must load and run through run_once_into");
     assert_eq!(
         report.fired, 4,
         "exactly the four shape=0 chain territories fire"
     );
 
-    let heat = |id: NodeId| graph.node_attribute(id, "territory/heat").unwrap();
+    let heat = |id: NodeId| {
+        graph
+            .node_attribute(id, "territory/heat")
+            .expect("the fixture node carries the authored attribute")
+    };
     assert_eq!(
         heat(T0).to_bits(),
         0.275_f64.to_bits(),
@@ -260,13 +277,13 @@ const RULE_SINK_SELECTION: &str = r#"
 fn shape_b_priority_sink_selection_with_a_tie() {
     let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
-    let report = run_once_into(SCENARIO, RULE_SINK_SELECTION, &mut graph, &mut sink)
+    let report = babylon_tick::run_once_into(SCENARIO, RULE_SINK_SELECTION, &mut graph, &mut sink)
         .expect("the sink-selection rule must load and run through run_once_into");
     assert_eq!(report.fired, 1, "only source-b (shape=1) fires");
 
     let sink_a_population = graph
         .node_attribute(SINK_A, "territory/population")
-        .unwrap();
+        .expect("the fixture node carries the authored attribute");
     assert_eq!(
         sink_a_population, 10.0,
         "sink-a (the lower-id, tied-priority sink) received the transfer: \
@@ -321,16 +338,17 @@ const RULE_FALLBACK: &str = r#"
 fn shape_c_empty_neighbourhood_takes_the_fallback_branch_never_e_eval_021() {
     let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
-    let report = run_once_into(SCENARIO, RULE_FALLBACK, &mut graph, &mut sink).expect(
-        "an empty ADJACENCY neighbourhood must take the fallback branch, \
+    let report = babylon_tick::run_once_into(SCENARIO, RULE_FALLBACK, &mut graph, &mut sink)
+        .expect(
+            "an empty ADJACENCY neighbourhood must take the fallback branch, \
          never raise E-EVAL-021 — a returned Err here would be exactly \
          that failure",
-    );
+        );
     assert_eq!(report.fired, 1, "only isolated-c (shape=3) fires");
 
     let priority = graph
         .node_attribute(ISOLATED_C, "territory/priority")
-        .unwrap();
+        .expect("the fixture node carries the authored attribute");
     assert_eq!(
         priority, 1.0,
         "the update-node target resolved to self (isolated-c) via the \
@@ -368,14 +386,14 @@ const RULE_PENAL_COLONY: &str = r#"
 fn shape_d_penal_colony_suppression_writes_only_tenant_classes() {
     let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
-    let report = run_once_into(SCENARIO, RULE_PENAL_COLONY, &mut graph, &mut sink)
+    let report = babylon_tick::run_once_into(SCENARIO, RULE_PENAL_COLONY, &mut graph, &mut sink)
         .expect("the penal-colony rule must load and run through run_once_into");
     assert_eq!(report.fired, 1, "only penal-colony-d (shape=4) fires");
 
     let organization = |id: NodeId| {
         graph
             .node_attribute(id, "social-class/organization")
-            .unwrap()
+            .expect("the fixture node carries the authored attribute")
     };
     assert_eq!(organization(TENANT_1), 0.0, "tenant-1: zeroed via TENANCY");
     assert_eq!(organization(TENANT_2), 0.0, "tenant-2: zeroed via TENANCY");
@@ -408,12 +426,12 @@ fn every_shape_is_deterministic_across_two_independent_runs() {
     ] {
         let mut graph_a = HypergraphStore::new();
         let mut sink_a = CollectingSink::default();
-        let report_a = run_once_into(SCENARIO, rule, &mut graph_a, &mut sink_a)
+        let report_a = babylon_tick::run_once_into(SCENARIO, rule, &mut graph_a, &mut sink_a)
             .unwrap_or_else(|e| panic!("{label}: first run: {e}"));
 
         let mut graph_b = HypergraphStore::new();
         let mut sink_b = CollectingSink::default();
-        let report_b = run_once_into(SCENARIO, rule, &mut graph_b, &mut sink_b)
+        let report_b = babylon_tick::run_once_into(SCENARIO, rule, &mut graph_b, &mut sink_b)
             .unwrap_or_else(|e| panic!("{label}: second run: {e}"));
 
         assert_eq!(report_a.before, report_b.before, "{label}: before hash");

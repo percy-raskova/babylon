@@ -1,27 +1,32 @@
 //! Aggregate resident/workplace opening assignments, not simulated individuals.
-use super::{
-    amount, quantity, sum_amount, templates, ActorContext, Builder, NationalOpeningError, Result,
+use super::{templates, ActorContext, Builder, NationalOpeningError, Result};
+use crate::economic_catalog::{
+    CommodityAmount, EconomicHouseholdSeed, EconomicSiteSeed, EconomicSiteSource,
+    HouseholdTemplateId, MerchantSeed, OpeningCommodityStock, ProcessInstallation,
 };
-use crate::{
-    economic_catalog::{
-        CommodityAmount, EconomicHouseholdSeed, EconomicSiteSeed, EconomicSiteSource,
-        HouseholdTemplateId, MerchantSeed, OpeningCommodityStock, ProcessInstallation,
-    },
-    national_counties::NationalCountyReference,
-    national_economy::{household_principal, ResidentWorkplaceSource},
-    national_household_allocation::{HouseholdBudgetKey, NationalHouseholdAllocation},
-    national_resident_allocation::{ResidentAttendanceMode, ResidentWorkplaceAllocation},
-};
+use crate::national_counties::NationalCountyReference;
+use crate::national_economy::ResidentWorkplaceSource;
+use crate::national_household_allocation::{HouseholdBudgetKey, NationalHouseholdAllocation};
+use crate::national_resident_allocation::{ResidentAttendanceMode, ResidentWorkplaceAllocation};
+
 use babylon_graph::stable_element::StableElementKey;
-use babylon_kernel::{
-    content_digest::sha256_of, currency::Currency, economic_identity::EconomicFunction,
-    economic_location::EconomicLocation,
-};
+use babylon_kernel::currency::Currency;
+use babylon_kernel::economic_identity::EconomicFunction;
+use babylon_kernel::economic_location::EconomicLocation;
+
+use crate::economic_catalog::EconomicOpening;
+use crate::economic_catalog::HandlingRequirement;
+use crate::national_economy;
+use crate::national_resident_allocation::AllocationError;
+use crate::national_resident_allocation::AssignedResidentWorkplace;
+use babylon_kernel::content_digest;
+use babylon_material_circuit::FinalDemandPrincipalId;
 use babylon_material_circuit::{
     CommodityKind, CorridorId, EmploymentTerms, HouseholdKind, HouseholdNeedBasis,
     LaborCompensation, LogisticsNodeId, MerchantRole, ProcessId, StaffingPolicy,
     StaffingWorkSource,
 };
+use std::collections::BTreeMap;
 
 pub(super) fn domestic(
     builder: &mut Builder<'_>,
@@ -104,16 +109,16 @@ pub(super) fn domestic(
             let actor = builder
                 .actors
                 .get(&target.site_id)
-                .ok_or(crate::national_resident_allocation::AllocationError::Identity)?;
+                .ok_or(AllocationError::Identity)?;
             let work_sources = sources(actor);
             let previous = actor
                 .employed
                 .checked_mul(builder.policy.work_hours_per_person)
-                .ok_or(crate::national_resident_allocation::AllocationError::Arithmetic)?;
+                .ok_or(AllocationError::Arithmetic)?;
             Ok((
                 builder.labor_unit,
                 StaffingPolicy::one_period(builder.policy.work_hours_per_person)
-                    .map_err(|_| crate::national_resident_allocation::AllocationError::Policy)?,
+                    .map_err(|_| AllocationError::Policy)?,
                 previous,
                 work_sources,
             ))
@@ -122,10 +127,7 @@ pub(super) fn domestic(
     Ok(())
 }
 
-fn employment(
-    builder: &mut Builder<'_>,
-    row: &crate::national_resident_allocation::AssignedResidentWorkplace,
-) {
+fn employment(builder: &mut Builder<'_>, row: &AssignedResidentWorkplace) {
     for member in &row.members {
         let compensation = match member.mode {
             ResidentAttendanceMode::Employee => {
@@ -167,7 +169,7 @@ pub(super) fn household(
         households,
         price_scale_bps,
         (
-            household_principal(location, budget),
+            national_economy::household_principal(location, budget),
             subject(location, &format!("household-{}", budget.label())),
         ),
     )
@@ -179,10 +181,7 @@ pub(super) fn household_identity(
     persons: u64,
     households: u64,
     price_scale_bps: u16,
-    identity: (
-        babylon_material_circuit::FinalDemandPrincipalId,
-        StableElementKey,
-    ),
+    identity: (FinalDemandPrincipalId, StableElementKey),
 ) -> Result<()> {
     let kind = if budget == HouseholdBudgetKey::CollectiveResidence {
         HouseholdKind::CollectiveResidence
@@ -201,7 +200,7 @@ pub(super) fn household_identity(
             continue;
         }
         let good = builder.commodity(&need.key)?;
-        let units = quantity(
+        let units = super::quantity(
             match need.basis {
                 HouseholdNeedBasis::Persons => persons,
                 HouseholdNeedBasis::Households => households,
@@ -215,16 +214,16 @@ pub(super) fn household_identity(
             .scaled(price_scale_bps)
             .map_err(|_| NationalOpeningError::Arithmetic)?
             .opening;
-        period_needs_cost = sum_amount(period_needs_cost, amount(units, price)?)?;
+        period_needs_cost = super::sum_amount(period_needs_cost, super::amount(units, price)?)?;
         if matches!(good.kind, CommodityKind::Storable { .. }) {
             stock.push(OpeningCommodityStock {
                 amount: CommodityAmount {
                     good_id: good.good_id,
                     unit_id: good.unit_id,
-                    quantity: quantity(units, builder.policy.opening_pantry_periods)?,
+                    quantity: super::quantity(units, builder.policy.opening_pantry_periods)?,
                 },
-                total_cost: amount(
-                    quantity(units, builder.policy.opening_pantry_periods)?,
+                total_cost: super::amount(
+                    super::quantity(units, builder.policy.opening_pantry_periods)?,
                     price,
                 )?,
             });
@@ -251,7 +250,7 @@ pub(super) fn household_identity(
             1
         }),
         opening_stock: stock,
-        opening_cash: amount(builder.policy.working_capital_periods, period_needs_cost)?,
+        opening_cash: super::amount(builder.policy.working_capital_periods, period_needs_cost)?,
     });
     Ok(())
 }
@@ -275,7 +274,7 @@ pub(super) fn site(
         capacity.extend_from_slice(&context.site_id.as_bytes());
         Some(MerchantSeed {
             role: MerchantRole::Retail,
-            capacity_id: CorridorId::from_bytes(sha256_of(&capacity)),
+            capacity_id: CorridorId::from_bytes(content_digest::sha256_of(&capacity)),
             labor_unit_id: builder.labor_unit,
             handling: handling_requirements(builder)?,
         })
@@ -285,16 +284,16 @@ pub(super) fn site(
         inputs_cost = cost;
         None
     };
-    let wages = amount(
-        quantity(
+    let wages = super::amount(
+        super::quantity(
             context.employee_persons,
             builder.policy.work_hours_per_person,
         )?,
         context.wage,
     )?;
-    let opening_cash = amount(
+    let opening_cash = super::amount(
         builder.policy.working_capital_periods,
-        sum_amount(wages, inputs_cost)?,
+        super::sum_amount(wages, inputs_cost)?,
     )?;
     builder.add_site(
         context.clone(),
@@ -328,13 +327,14 @@ fn process(
     if recipe.labor_hours_per_batch == 0 {
         return Err(NationalOpeningError::Policy);
     }
-    context.planned_batches = quantity(context.employed, builder.policy.work_hours_per_person)?
-        / recipe.labor_hours_per_batch;
+    context.planned_batches =
+        super::quantity(context.employed, builder.policy.work_hours_per_person)?
+            / recipe.labor_hours_per_batch;
     let mut identity = b"NationalProcessV1\0".to_vec();
     identity.extend_from_slice(&context.site_id.as_bytes());
-    let process_id = ProcessId::from_bytes(sha256_of(&identity));
+    let process_id = ProcessId::from_bytes(content_digest::sha256_of(&identity));
     context.process_id = Some(process_id);
-    let output_units = quantity(context.planned_batches, recipe.output_units_per_batch)?;
+    let output_units = super::quantity(context.planned_batches, recipe.output_units_per_batch)?;
     let output = builder.commodity(&recipe.output)?;
     let stored_output = matches!(output.kind, CommodityKind::Storable { .. });
     let installation = ProcessInstallation {
@@ -345,13 +345,13 @@ fn process(
     };
     for (key, coefficient) in &recipe.inputs {
         let good = builder.commodity(key)?;
-        let needed = quantity(context.planned_batches, *coefficient)?;
+        let needed = super::quantity(context.planned_batches, *coefficient)?;
         if let Some(price) = &good.price {
             let price = price
                 .scaled(context.price_scale_bps)
                 .map_err(|_| NationalOpeningError::Arithmetic)?
                 .opening;
-            inputs_cost = sum_amount(inputs_cost, amount(needed, price)?)?;
+            inputs_cost = super::sum_amount(inputs_cost, super::amount(needed, price)?)?;
         }
         if matches!(good.kind, CommodityKind::Storable { .. }) {
             let periods = if key == "resource_deposit" {
@@ -362,7 +362,7 @@ fn process(
             opening_stock.push(stock(
                 builder,
                 key,
-                quantity(needed, periods)?,
+                super::quantity(needed, periods)?,
                 context.price_scale_bps,
             )?);
         }
@@ -387,7 +387,7 @@ pub(super) fn stock(
 ) -> Result<OpeningCommodityStock> {
     let good = builder.commodity(key)?;
     let cost = match &good.price {
-        Some(price) => amount(
+        Some(price) => super::amount(
             units,
             price
                 .scaled(price_scale_bps)
@@ -426,19 +426,17 @@ pub(super) fn subject(location: EconomicLocation, prefix: &str) -> StableElement
 pub(super) fn node_id(source: &str) -> LogisticsNodeId {
     let mut bytes = b"NationalLogisticsNodeV1\0".to_vec();
     bytes.extend_from_slice(source.as_bytes());
-    LogisticsNodeId::from_bytes(sha256_of(&bytes))
+    LogisticsNodeId::from_bytes(content_digest::sha256_of(&bytes))
 }
 
-pub(super) fn handling_requirements(
-    builder: &Builder<'_>,
-) -> Result<Vec<crate::economic_catalog::HandlingRequirement>> {
+pub(super) fn handling_requirements(builder: &Builder<'_>) -> Result<Vec<HandlingRequirement>> {
     builder
         .policy
         .household_needs
         .iter()
         .filter_map(|need| match builder.commodity(&need.key) {
             Ok(good) if matches!(good.kind, CommodityKind::Storable { .. }) => {
-                Some(Ok(crate::economic_catalog::HandlingRequirement {
+                Some(Ok(HandlingRequirement {
                     good_id: good.good_id,
                     unit_id: good.unit_id,
                     hours_per_unit: builder.policy.handling_hours_per_unit,
@@ -451,8 +449,8 @@ pub(super) fn handling_requirements(
 }
 
 /// National authoring guard: no graph member force is funded by invented residents.
-pub(super) fn validate_people(opening: &crate::economic_catalog::EconomicOpening) -> Result<()> {
-    let households: std::collections::BTreeMap<_, _> = opening
+pub(super) fn validate_people(opening: &EconomicOpening) -> Result<()> {
+    let households: BTreeMap<_, _> = opening
         .households
         .iter()
         .map(|h| (h.principal_id, h))
@@ -460,7 +458,7 @@ pub(super) fn validate_people(opening: &crate::economic_catalog::EconomicOpening
     if households.len() != opening.households.len() {
         return Err(NationalOpeningError::Identity);
     }
-    let mut forces = std::collections::BTreeMap::<_, u64>::new();
+    let mut forces = BTreeMap::<_, u64>::new();
     for member in opening.staffing.iter().flat_map(|pool| &pool.members) {
         let household = households
             .get(&member.member.household_id())
@@ -474,7 +472,7 @@ pub(super) fn validate_people(opening: &crate::economic_catalog::EconomicOpening
             .ok_or(NationalOpeningError::Arithmetic)?;
         if *force > household.persons {
             return Err(NationalOpeningError::Workforce(
-                crate::national_resident_allocation::AllocationError::PopulationControl,
+                AllocationError::PopulationControl,
             ));
         }
     }

@@ -3,10 +3,10 @@ use super::{
     AllocationError, AssignedResidentWorkplace, CountyHouseholdAllocation,
     PendingAssignedWorkplace, PendingResidentMember, ResidentAttendanceMode, Result,
 };
-use crate::{
-    national_household_allocation::HouseholdBudgetKey,
-    national_household_refinement::NationalHouseholdLeafRoster,
-};
+use crate::national_household_allocation::HouseholdBudgetKey;
+use crate::national_household_refinement::NationalHouseholdLeafRoster;
+
+use babylon_material_circuit::FinalDemandPrincipalId;
 use std::collections::BTreeMap;
 
 struct Quota {
@@ -76,7 +76,7 @@ pub(super) fn partition(
     Ok(output)
 }
 struct LeafQuota {
-    principal: babylon_material_circuit::FinalDemandPrincipalId,
+    principal: FinalDemandPrincipalId,
     employed: u64,
     reserve: u64,
 }
@@ -119,9 +119,8 @@ fn take_leaves(
     quotas: &mut [LeafQuota],
     mut employed: u64,
     mut reserve: u64,
-) -> Result<BTreeMap<babylon_material_circuit::FinalDemandPrincipalId, (u64, u64)>> {
-    let mut result =
-        BTreeMap::<babylon_material_circuit::FinalDemandPrincipalId, (u64, u64)>::new();
+) -> Result<BTreeMap<FinalDemandPrincipalId, (u64, u64)>> {
+    let mut result = BTreeMap::<FinalDemandPrincipalId, (u64, u64)>::new();
     for quota in quotas.iter_mut() {
         let amount = quota.employed.min(employed);
         quota.employed -= amount;

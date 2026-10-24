@@ -134,7 +134,10 @@
 //! no rounding, no locale.
 
 use crate::substrate::{GraphError, HyperedgeId, NodeId};
-use babylon_kernel::{content_digest::sha256_of, currency::Currency};
+use babylon_kernel::content_digest;
+use babylon_kernel::currency::Currency;
+#[cfg(test)]
+use std::collections::HashSet;
 
 const TAG_NODES: u8 = 0x01;
 const TAG_ATTRIBUTES: u8 = 0x02;
@@ -162,7 +165,7 @@ fn tag_constants_are_pairwise_distinct() {
         TAG_CURRENCY_ATTRIBUTES,
         TAG_HYPEREDGE_ATTRIBUTES,
     ];
-    let mut seen = std::collections::HashSet::new();
+    let mut seen = HashSet::new();
     for tag in tags {
         assert!(
             seen.insert(tag),
@@ -408,7 +411,7 @@ impl StateEncoder {
     /// SHA-256 over the canonical encoding.
     #[must_use]
     pub fn finish(&self) -> [u8; 32] {
-        sha256_of(&self.bytes)
+        content_digest::sha256_of(&self.bytes)
     }
 }
 
@@ -632,6 +635,7 @@ mod tests {
             hyperedge_attributes: Vec::new(),
         };
 
+        // STYLE-EXCEPTION(EXC-05): manual byte-table alignment
         #[rustfmt::skip]
         let expected: &[u8] = &[
             0x01,
@@ -642,13 +646,13 @@ mod tests {
             0x00, 0x00, 0x00, 0x01,
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
             0x00, 0x00, 0x00, 0x01, b'w',
-            0x3F, 0xF0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x3f, 0xf0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
             0x03,
             0x00, 0x00, 0x00, 0x01,
             0x00, 0x00, 0x00, 0x01, b'E',
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02,
-            0x3F, 0xE0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x3f, 0xe0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
             0x04,
             0x00, 0x00, 0x00, 0x01,
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x07,
@@ -658,7 +662,9 @@ mod tests {
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02,
         ];
 
-        let bytes = facts.encode_state().unwrap();
+        let bytes = facts
+            .encode_state()
+            .expect("the graph encodes its canonical state");
         assert_eq!(
             bytes.as_bytes(),
             expected,
@@ -667,7 +673,7 @@ mod tests {
 
         let hex = facts
             .state_hash()
-            .unwrap()
+            .expect("the fixture graph hashes its state")
             .iter()
             .fold(String::new(), |mut acc, b| {
                 let _ = write!(acc, "{b:02x}");
@@ -694,7 +700,10 @@ mod tests {
     // functions would obscure the "same facts, deliberately scrambled
     // order" pairing the test's whole point rests on, worse than the length
     // itself.
-    #[allow(clippy::too_many_lines)]
+    #[allow(
+        clippy::too_many_lines,
+        reason = "`the_provided_encode_state_sorts_regardless_of_listing_order` keeps one authored sequence in a single place"
+    )]
     #[test]
     fn the_provided_encode_state_sorts_regardless_of_listing_order() {
         let sorted = Facts {
@@ -807,24 +816,36 @@ mod tests {
         };
 
         assert_eq!(
-            sorted.encode_state().unwrap().as_bytes(),
-            scrambled.encode_state().unwrap().as_bytes(),
+            sorted
+                .encode_state()
+                .expect("the graph encodes its canonical state")
+                .as_bytes(),
+            scrambled
+                .encode_state()
+                .expect("the graph encodes its canonical state")
+                .as_bytes(),
             "the provided encode_state must be invariant to listing order"
         );
         assert_eq!(
-            sorted.state_hash().unwrap(),
-            scrambled.state_hash().unwrap()
+            sorted
+                .state_hash()
+                .expect("the fixture graph hashes its state"),
+            scrambled
+                .state_hash()
+                .expect("the fixture graph hashes its state")
         );
     }
 
     fn encoder_with_one_attribute(value: f64) -> [u8; 32] {
         let mut enc = StateEncoder::new();
         enc.write_nodes(&[(NodeId(1), "social_class".to_owned())])
-            .unwrap();
+            .expect("the fixture graph writes its nodes");
         enc.write_attributes(&[(NodeId(1), "wealth".to_owned(), value)])
-            .unwrap();
-        enc.write_edges(&[]).unwrap();
-        enc.write_hyperedges(&[]).unwrap();
+            .expect("the fixture graph writes its attributes");
+        enc.write_edges(&[])
+            .expect("the fixture graph writes its edges");
+        enc.write_hyperedges(&[])
+            .expect("the fixture graph writes its hyperedges");
         enc.finish()
     }
 
@@ -845,14 +866,16 @@ mod tests {
     #[test]
     fn the_canonical_encoding_is_pinned_byte_for_byte() {
         let mut enc = StateEncoder::new();
-        enc.write_nodes(&[(NodeId(1), "c".to_owned())]).unwrap();
+        enc.write_nodes(&[(NodeId(1), "c".to_owned())])
+            .expect("the fixture graph writes its nodes");
         enc.write_attributes(&[(NodeId(1), "w".to_owned(), 1.0)])
-            .unwrap();
+            .expect("the fixture graph writes its attributes");
         enc.write_edges(&[("E".to_owned(), NodeId(1), NodeId(2), 0.5)])
-            .unwrap();
+            .expect("the fixture graph writes its edges");
         enc.write_hyperedges(&[(HyperedgeId(7), "H".to_owned(), vec![NodeId(1), NodeId(2)])])
-            .unwrap();
+            .expect("the fixture graph writes its hyperedges");
 
+        // STYLE-EXCEPTION(EXC-05): manual byte-table alignment
         #[rustfmt::skip]
         let expected: &[u8] = &[
             // ── section 0x01: nodes ──────────────────────────────────
@@ -865,14 +888,14 @@ mod tests {
             0x00, 0x00, 0x00, 0x01,                          // u32 count = 1
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,  // u64 id = 1
             0x00, 0x00, 0x00, 0x01, b'w',                    // str "w"
-            0x3F, 0xF0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // f64 1.0 bits
+            0x3f, 0xf0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // f64 1.0 bits
             // ── section 0x03: edges ──────────────────────────────────
             0x03,                                            // tag
             0x00, 0x00, 0x00, 0x01,                          // u32 count = 1
             0x00, 0x00, 0x00, 0x01, b'E',                    // str "E" FIRST
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,  // u64 from = 1
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02,  // u64 to   = 2
-            0x3F, 0xE0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // f64 0.5 bits
+            0x3f, 0xe0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // f64 0.5 bits
             // ── section 0x04: hyperedges ─────────────────────────────
             0x04,                                            // tag
             0x00, 0x00, 0x00, 0x01,                          // u32 count = 1
@@ -898,13 +921,14 @@ mod tests {
     #[test]
     fn the_golden_vector_hashes_to_its_pinned_digest() {
         let mut enc = StateEncoder::new();
-        enc.write_nodes(&[(NodeId(1), "c".to_owned())]).unwrap();
+        enc.write_nodes(&[(NodeId(1), "c".to_owned())])
+            .expect("the fixture graph writes its nodes");
         enc.write_attributes(&[(NodeId(1), "w".to_owned(), 1.0)])
-            .unwrap();
+            .expect("the fixture graph writes its attributes");
         enc.write_edges(&[("E".to_owned(), NodeId(1), NodeId(2), 0.5)])
-            .unwrap();
+            .expect("the fixture graph writes its edges");
         enc.write_hyperedges(&[(HyperedgeId(7), "H".to_owned(), vec![NodeId(1), NodeId(2)])])
-            .unwrap();
+            .expect("the fixture graph writes its hyperedges");
 
         // `fold` + `write!` rather than `map(format!).collect()`: the latter
         // allocates a String per byte and clippy::pedantic refuses it.
@@ -927,16 +951,18 @@ mod tests {
     #[test]
     fn the_fifth_section_is_pinned_byte_for_byte() {
         let mut enc = StateEncoder::new();
-        enc.write_nodes(&[(NodeId(1), "c".to_owned())]).unwrap();
+        enc.write_nodes(&[(NodeId(1), "c".to_owned())])
+            .expect("the fixture graph writes its nodes");
         enc.write_attributes(&[(NodeId(1), "w".to_owned(), 1.0)])
-            .unwrap();
+            .expect("the fixture graph writes its attributes");
         enc.write_edges(&[("E".to_owned(), NodeId(1), NodeId(2), 0.5)])
-            .unwrap();
+            .expect("the fixture graph writes its edges");
         enc.write_hyperedges(&[(HyperedgeId(7), "H".to_owned(), vec![NodeId(1), NodeId(2)])])
-            .unwrap();
+            .expect("the fixture graph writes its hyperedges");
         enc.write_edge_attributes(&[("E".to_owned(), NodeId(1), NodeId(2), "t".to_owned(), 0.25)])
-            .unwrap();
+            .expect("the fixture graph writes its edge attributes");
 
+        // STYLE-EXCEPTION(EXC-05): manual byte-table alignment
         #[rustfmt::skip]
         let expected: &[u8] = &[
             // ── sections 0x01-0x04: the version-1 golden vector, verbatim ──
@@ -948,13 +974,13 @@ mod tests {
             0x00, 0x00, 0x00, 0x01,                          // u32 count = 1
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,  // u64 id = 1
             0x00, 0x00, 0x00, 0x01, b'w',                    // str "w"
-            0x3F, 0xF0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // f64 1.0 bits
+            0x3f, 0xf0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // f64 1.0 bits
             0x03,                                            // tag
             0x00, 0x00, 0x00, 0x01,                          // u32 count = 1
             0x00, 0x00, 0x00, 0x01, b'E',                    // str "E" FIRST
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,  // u64 from = 1
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02,  // u64 to   = 2
-            0x3F, 0xE0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // f64 0.5 bits
+            0x3f, 0xe0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // f64 0.5 bits
             0x04,                                            // tag
             0x00, 0x00, 0x00, 0x01,                          // u32 count = 1
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x07,  // u64 id = 7
@@ -969,7 +995,7 @@ mod tests {
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,  // u64 from = 1
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02,  // u64 to   = 2
             0x00, 0x00, 0x00, 0x01, b't',                    // str qname "t"
-            0x3F, 0xD0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // f64 0.25 bits
+            0x3f, 0xd0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // f64 0.25 bits
         ];
 
         assert_eq!(
@@ -990,22 +1016,24 @@ mod tests {
     #[test]
     fn the_sixth_section_is_pinned_byte_for_byte() {
         let mut enc = StateEncoder::new();
-        enc.write_nodes(&[(NodeId(1), "c".to_owned())]).unwrap();
+        enc.write_nodes(&[(NodeId(1), "c".to_owned())])
+            .expect("the fixture graph writes its nodes");
         enc.write_attributes(&[(NodeId(1), "w".to_owned(), 1.0)])
-            .unwrap();
+            .expect("the fixture graph writes its attributes");
         enc.write_edges(&[("E".to_owned(), NodeId(1), NodeId(2), 0.5)])
-            .unwrap();
+            .expect("the fixture graph writes its edges");
         enc.write_hyperedges(&[(HyperedgeId(7), "H".to_owned(), vec![NodeId(1), NodeId(2)])])
-            .unwrap();
+            .expect("the fixture graph writes its hyperedges");
         enc.write_edge_attributes(&[("E".to_owned(), NodeId(1), NodeId(2), "t".to_owned(), 0.25)])
-            .unwrap();
+            .expect("the fixture graph writes its edge attributes");
         enc.write_currency_attributes(&[(
             NodeId(1),
             "m".to_owned(),
             Currency::from_micro_units(1),
         )])
-        .unwrap();
+        .expect("the fixture sink accepts the authored bytes");
 
+        // STYLE-EXCEPTION(EXC-05): manual byte-table alignment
         #[rustfmt::skip]
         let expected: &[u8] = &[
             // ── sections 0x01-0x05: the version-2 golden vector, verbatim ──
@@ -1017,13 +1045,13 @@ mod tests {
             0x00, 0x00, 0x00, 0x01,
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
             0x00, 0x00, 0x00, 0x01, b'w',
-            0x3F, 0xF0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x3f, 0xf0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
             0x03,
             0x00, 0x00, 0x00, 0x01,
             0x00, 0x00, 0x00, 0x01, b'E',
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02,
-            0x3F, 0xE0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x3f, 0xe0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
             0x04,
             0x00, 0x00, 0x00, 0x01,
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x07,
@@ -1037,7 +1065,7 @@ mod tests {
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02,
             0x00, 0x00, 0x00, 0x01, b't',
-            0x3F, 0xD0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x3f, 0xd0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
             // ── section 0x06: Currency node attributes (layout version 3) ──
             0x06,                                                              // tag
             0x00, 0x00, 0x00, 0x01,                                            // u32 count = 1
@@ -1072,18 +1100,23 @@ mod tests {
             hyperedge_attributes: Vec::new(),
         };
         let mut manual = StateEncoder::new();
-        manual.write_nodes(&[(NodeId(1), "c".to_owned())]).unwrap();
+        manual
+            .write_nodes(&[(NodeId(1), "c".to_owned())])
+            .expect("the fixture graph writes its nodes");
         manual
             .write_attributes(&[(NodeId(1), "w".to_owned(), 1.0)])
-            .unwrap();
+            .expect("the fixture graph writes its attributes");
         manual
             .write_edges(&[("E".to_owned(), NodeId(1), NodeId(2), 0.5)])
-            .unwrap();
+            .expect("the fixture graph writes its edges");
         manual
             .write_hyperedges(&[(HyperedgeId(7), "H".to_owned(), vec![NodeId(1), NodeId(2)])])
-            .unwrap();
+            .expect("the fixture graph writes its hyperedges");
         assert_eq!(
-            facts.encode_state().unwrap().as_bytes(),
+            facts
+                .encode_state()
+                .expect("the graph encodes its canonical state")
+                .as_bytes(),
             manual.as_bytes(),
             "an empty fifth listing must contribute ZERO bytes (ADR198 R2's empty-elision)"
         );
@@ -1118,12 +1151,19 @@ mod tests {
         };
 
         assert_ne!(
-            bare.state_hash().unwrap(),
-            with_attribute.state_hash().unwrap(),
+            bare.state_hash()
+                .expect("the fixture graph hashes its state"),
+            with_attribute
+                .state_hash()
+                .expect("the fixture graph hashes its state"),
             "one stored edge attribute must move the hash"
         );
-        let bare_encoding = bare.encode_state().unwrap();
-        let with_encoding = with_attribute.encode_state().unwrap();
+        let bare_encoding = bare
+            .encode_state()
+            .expect("the graph encodes its canonical state");
+        let with_encoding = with_attribute
+            .encode_state()
+            .expect("the graph encodes its canonical state");
         let bare_bytes = bare_encoding.as_bytes();
         let with_bytes = with_encoding.as_bytes();
         assert_eq!(
@@ -1155,21 +1195,26 @@ mod tests {
             hyperedge_attributes: Vec::new(),
         };
         let mut manual = StateEncoder::new();
-        manual.write_nodes(&[(NodeId(1), "c".to_owned())]).unwrap();
+        manual
+            .write_nodes(&[(NodeId(1), "c".to_owned())])
+            .expect("the fixture graph writes its nodes");
         manual
             .write_attributes(&[(NodeId(1), "w".to_owned(), 1.0)])
-            .unwrap();
+            .expect("the fixture graph writes its attributes");
         manual
             .write_edges(&[("E".to_owned(), NodeId(1), NodeId(2), 0.5)])
-            .unwrap();
+            .expect("the fixture graph writes its edges");
         manual
             .write_hyperedges(&[(HyperedgeId(7), "H".to_owned(), vec![NodeId(1), NodeId(2)])])
-            .unwrap();
+            .expect("the fixture graph writes its hyperedges");
         manual
             .write_edge_attributes(&[("E".to_owned(), NodeId(1), NodeId(2), "t".to_owned(), 0.25)])
-            .unwrap();
+            .expect("the fixture graph writes its edge attributes");
         assert_eq!(
-            facts.encode_state().unwrap().as_bytes(),
+            facts
+                .encode_state()
+                .expect("the graph encodes its canonical state")
+                .as_bytes(),
             manual.as_bytes(),
             "an empty sixth listing must contribute ZERO bytes (the 0x05 elision precedent, \
              extended to 0x06)"
@@ -1205,12 +1250,19 @@ mod tests {
         };
 
         assert_ne!(
-            bare.state_hash().unwrap(),
-            with_attribute.state_hash().unwrap(),
+            bare.state_hash()
+                .expect("the fixture graph hashes its state"),
+            with_attribute
+                .state_hash()
+                .expect("the fixture graph hashes its state"),
             "one stored Currency attribute must move the hash"
         );
-        let bare_encoding = bare.encode_state().unwrap();
-        let with_encoding = with_attribute.encode_state().unwrap();
+        let bare_encoding = bare
+            .encode_state()
+            .expect("the graph encodes its canonical state");
+        let with_encoding = with_attribute
+            .encode_state()
+            .expect("the graph encodes its canonical state");
         let bare_bytes = bare_encoding.as_bytes();
         let with_bytes = with_encoding.as_bytes();
         assert_eq!(
@@ -1245,28 +1297,33 @@ mod tests {
             hyperedge_attributes: Vec::new(),
         };
         let mut manual = StateEncoder::new();
-        manual.write_nodes(&[(NodeId(1), "c".to_owned())]).unwrap();
+        manual
+            .write_nodes(&[(NodeId(1), "c".to_owned())])
+            .expect("the fixture graph writes its nodes");
         manual
             .write_attributes(&[(NodeId(1), "w".to_owned(), 1.0)])
-            .unwrap();
+            .expect("the fixture graph writes its attributes");
         manual
             .write_edges(&[("E".to_owned(), NodeId(1), NodeId(2), 0.5)])
-            .unwrap();
+            .expect("the fixture graph writes its edges");
         manual
             .write_hyperedges(&[(HyperedgeId(7), "H".to_owned(), vec![NodeId(1), NodeId(2)])])
-            .unwrap();
+            .expect("the fixture graph writes its hyperedges");
         manual
             .write_edge_attributes(&[("E".to_owned(), NodeId(1), NodeId(2), "t".to_owned(), 0.25)])
-            .unwrap();
+            .expect("the fixture graph writes its edge attributes");
         manual
             .write_currency_attributes(&[(
                 NodeId(1),
                 "m".to_owned(),
                 Currency::from_micro_units(1),
             )])
-            .unwrap();
+            .expect("the fixture sink accepts the authored bytes");
         assert_eq!(
-            facts.encode_state().unwrap().as_bytes(),
+            facts
+                .encode_state()
+                .expect("the graph encodes its canonical state")
+                .as_bytes(),
             manual.as_bytes(),
             "an empty seventh listing must contribute ZERO bytes (the 0x05/0x06 elision \
              precedent, extended to 0x07)"
@@ -1302,12 +1359,19 @@ mod tests {
         };
 
         assert_ne!(
-            bare.state_hash().unwrap(),
-            with_attribute.state_hash().unwrap(),
+            bare.state_hash()
+                .expect("the fixture graph hashes its state"),
+            with_attribute
+                .state_hash()
+                .expect("the fixture graph hashes its state"),
             "one stored hyperedge attribute must move the hash"
         );
-        let bare_encoding = bare.encode_state().unwrap();
-        let with_encoding = with_attribute.encode_state().unwrap();
+        let bare_encoding = bare
+            .encode_state()
+            .expect("the graph encodes its canonical state");
+        let with_encoding = with_attribute
+            .encode_state()
+            .expect("the graph encodes its canonical state");
         let bare_bytes = bare_encoding.as_bytes();
         let with_bytes = with_encoding.as_bytes();
         assert_eq!(
@@ -1359,8 +1423,11 @@ mod tests {
             }
         };
         assert_eq!(
-            base.state_hash().unwrap(),
-            reversed.state_hash().unwrap(),
+            base.state_hash()
+                .expect("the fixture graph hashes its state"),
+            reversed
+                .state_hash()
+                .expect("the fixture graph hashes its state"),
             "listing order is never observable — the encoder sorts by (id, qname)"
         );
         // …and the order IS pinned against a hand-driven encoder, so a
@@ -1368,23 +1435,31 @@ mod tests {
         // is id-then-qname, (3, zeta) before (7, heat); a qname-only sort
         // would write (7, heat) first ("heat" < "zeta") and red this.
         let mut manual = StateEncoder::new();
-        manual.write_nodes(&[(NodeId(1), "c".to_owned())]).unwrap();
-        manual.write_attributes(&[]).unwrap();
-        manual.write_edges(&[]).unwrap();
+        manual
+            .write_nodes(&[(NodeId(1), "c".to_owned())])
+            .expect("the fixture graph writes its nodes");
+        manual
+            .write_attributes(&[])
+            .expect("the fixture graph writes its attributes");
+        manual
+            .write_edges(&[])
+            .expect("the fixture graph writes its edges");
         manual
             .write_hyperedges(&[
                 (HyperedgeId(3), "H".to_owned(), vec![NodeId(1)]),
                 (HyperedgeId(7), "H".to_owned(), vec![NodeId(1)]),
             ])
-            .unwrap();
+            .expect("the fixture graph writes its hyperedges");
         manual
             .write_hyperedge_attributes(&[
                 (HyperedgeId(3), "community/zeta".to_owned(), 0.75),
                 (HyperedgeId(7), "community/heat".to_owned(), 0.5),
             ])
-            .unwrap();
+            .expect("the fixture graph writes its hyperedge attributes");
         assert_eq!(
-            base.encode_state().unwrap().as_bytes(),
+            base.encode_state()
+                .expect("the graph encodes its canonical state")
+                .as_bytes(),
             manual.as_bytes(),
             "the seventh section writes id-then-qname order, pinned"
         );
@@ -1412,11 +1487,14 @@ mod tests {
         // bit arriving from upstream arithmetic must not move the hash.
         let encode = |value: f64| {
             let mut enc = StateEncoder::new();
-            enc.write_nodes(&[(NodeId(1), "c".to_owned())]).unwrap();
-            enc.write_attributes(&[]).unwrap();
+            enc.write_nodes(&[(NodeId(1), "c".to_owned())])
+                .expect("the fixture graph writes its nodes");
+            enc.write_attributes(&[])
+                .expect("the fixture graph writes its attributes");
             enc.write_edges(&[("E".to_owned(), NodeId(1), NodeId(2), 0.5)])
-                .unwrap();
-            enc.write_hyperedges(&[]).unwrap();
+                .expect("the fixture graph writes its edges");
+            enc.write_hyperedges(&[])
+                .expect("the fixture graph writes its hyperedges");
             enc.write_edge_attributes(&[(
                 "E".to_owned(),
                 NodeId(1),
@@ -1424,7 +1502,7 @@ mod tests {
                 "t".to_owned(),
                 value,
             )])
-            .unwrap();
+            .expect("the fixture graph writes its edge attributes");
             enc.finish()
         };
         assert!(
@@ -1445,7 +1523,7 @@ mod tests {
                 "t".to_owned(),
                 f64::NAN,
             )])
-            .unwrap_err();
+            .expect_err("the sink rejects the invalid write");
         assert!(
             err.message.contains("could not be reproduced"),
             "{}",
@@ -1487,10 +1565,10 @@ mod tests {
     fn a_non_finite_value_is_refused_never_hashed() {
         let mut enc = StateEncoder::new();
         enc.write_nodes(&[(NodeId(1), "social_class".to_owned())])
-            .unwrap();
+            .expect("the fixture graph writes its nodes");
         let err = enc
             .write_attributes(&[(NodeId(1), "wealth".to_owned(), f64::NAN)])
-            .unwrap_err();
+            .expect_err("the sink rejects the invalid write");
         assert!(
             err.message.contains("could not be reproduced"),
             "{}",
@@ -1502,17 +1580,24 @@ mod tests {
     fn section_tags_keep_shapes_distinct() {
         // One node and no edges must not collide with no nodes and one edge.
         let mut a = StateEncoder::new();
-        a.write_nodes(&[(NodeId(1), "x".to_owned())]).unwrap();
-        a.write_attributes(&[]).unwrap();
-        a.write_edges(&[]).unwrap();
-        a.write_hyperedges(&[]).unwrap();
+        a.write_nodes(&[(NodeId(1), "x".to_owned())])
+            .expect("the fixture graph writes its nodes");
+        a.write_attributes(&[])
+            .expect("the fixture graph writes its attributes");
+        a.write_edges(&[])
+            .expect("the fixture graph writes its edges");
+        a.write_hyperedges(&[])
+            .expect("the fixture graph writes its hyperedges");
 
         let mut b = StateEncoder::new();
-        b.write_nodes(&[]).unwrap();
-        b.write_attributes(&[]).unwrap();
+        b.write_nodes(&[])
+            .expect("the fixture graph writes its nodes");
+        b.write_attributes(&[])
+            .expect("the fixture graph writes its attributes");
         b.write_edges(&[("x".to_owned(), NodeId(1), NodeId(1), 1.0)])
-            .unwrap();
-        b.write_hyperedges(&[]).unwrap();
+            .expect("the fixture graph writes its edges");
+        b.write_hyperedges(&[])
+            .expect("the fixture graph writes its hyperedges");
 
         assert_ne!(a.finish(), b.finish());
     }
@@ -1531,18 +1616,24 @@ mod tests {
         let members = vec![NodeId(1), NodeId(2)];
 
         let mut a = StateEncoder::new();
-        a.write_nodes(&nodes).unwrap();
-        a.write_attributes(&[]).unwrap();
-        a.write_edges(&[]).unwrap();
+        a.write_nodes(&nodes)
+            .expect("the fixture graph writes its nodes");
+        a.write_attributes(&[])
+            .expect("the fixture graph writes its attributes");
+        a.write_edges(&[])
+            .expect("the fixture graph writes its edges");
         a.write_hyperedges(&[(HyperedgeId(0), "sector".to_owned(), members.clone())])
-            .unwrap();
+            .expect("the fixture graph writes its hyperedges");
 
         let mut b = StateEncoder::new();
-        b.write_nodes(&nodes).unwrap();
-        b.write_attributes(&[]).unwrap();
-        b.write_edges(&[]).unwrap();
+        b.write_nodes(&nodes)
+            .expect("the fixture graph writes its nodes");
+        b.write_attributes(&[])
+            .expect("the fixture graph writes its attributes");
+        b.write_edges(&[])
+            .expect("the fixture graph writes its edges");
         b.write_hyperedges(&[(HyperedgeId(1), "sector".to_owned(), members)])
-            .unwrap();
+            .expect("the fixture graph writes its hyperedges");
 
         assert_ne!(a.finish(), b.finish());
     }
@@ -1554,7 +1645,7 @@ mod tests {
         // 0x01, so it stops at the first section on purpose.
         let mut enc = StateEncoder::new();
         enc.write_nodes(&[(NodeId(1), "social_class".to_owned())])
-            .unwrap();
+            .expect("the fixture graph writes its nodes");
         let bytes = enc.as_bytes();
         assert_eq!(bytes[0], 0x01, "section tag leads");
         assert_eq!(

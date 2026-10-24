@@ -1,23 +1,28 @@
 //! Source-controlled persons reach sparse graph seed partitions, never inferred jobs.
-use babylon_persistence::{
-    national_cohorts::national_cohort_reference,
-    national_counties::national_county_reference,
-    national_economy::{NationalGamePolicy, ResidentWorkplaceSource},
-    national_resident_allocation::{allocate_home_county, ResidentAttendanceMode},
-    national_resident_workforce::national_resident_workforce_reference,
-};
+use babylon_persistence::national_cohorts;
+use babylon_persistence::national_counties;
+use babylon_persistence::national_economy::{NationalGamePolicy, ResidentWorkplaceSource};
+use babylon_persistence::national_household_allocation::NationalHouseholdAllocation;
+use babylon_persistence::national_household_refinement::NationalHouseholdLeafRoster;
+use babylon_persistence::national_resident_allocation;
+use babylon_persistence::national_resident_allocation::ResidentAttendanceMode;
+use babylon_persistence::national_resident_workforce;
+use std::collections::BTreeSet;
 
 #[test]
 fn home_county_allocation_conserves_all_resident_controls_and_keeps_source_zero_pools() {
-    let counties = national_county_reference().unwrap();
-    let cohorts = national_cohort_reference().unwrap();
-    let classes = national_resident_workforce_reference().unwrap();
+    let counties =
+        national_counties::national_county_reference().expect("the county reference fixture loads");
+    let cohorts =
+        national_cohorts::national_cohort_reference().expect("the cohort reference fixture loads");
+    let classes = national_resident_workforce::national_resident_workforce_reference()
+        .expect("the workforce reference fixture loads");
     let policy = NationalGamePolicy::parse(include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../../../content/scenarios/national/defines.toml"
     )))
-    .unwrap();
-    let allocation = allocate_home_county(
+    .expect("the authored literal parses as the declared type");
+    let allocation = national_resident_allocation::allocate_home_county(
         counties,
         cohorts,
         classes,
@@ -25,10 +30,10 @@ fn home_county_allocation_conserves_all_resident_controls_and_keeps_source_zero_
         &empty_leaves(),
         &policy,
     )
-    .unwrap();
+    .expect("the fixture home county allocation fits");
     assert_eq!(allocation.counties.len(), 3144);
     assert_eq!(allocation.workplaces.len(), 60454);
-    let member_ids: std::collections::BTreeSet<_> = allocation
+    let member_ids: BTreeSet<_> = allocation
         .workplaces
         .iter()
         .flat_map(|r| &r.members)
@@ -90,20 +95,23 @@ fn home_county_allocation_conserves_all_resident_controls_and_keeps_source_zero_
 
 #[test]
 fn kalawao_employees_have_explicit_fallbacks_and_owner_activity_is_not_a_missing_job_residual() {
-    let allocation = allocate_home_county(
-        national_county_reference().unwrap(),
-        national_cohort_reference().unwrap(),
-        national_resident_workforce_reference().unwrap(),
+    let allocation = national_resident_allocation::allocate_home_county(
+        national_counties::national_county_reference().expect("the county reference fixture loads"),
+        national_cohorts::national_cohort_reference().expect("the cohort reference fixture loads"),
+        national_resident_workforce::national_resident_workforce_reference()
+            .expect("the workforce reference fixture loads"),
         &household_budgets(),
         &empty_leaves(),
         &NationalGamePolicy::parse(include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../../../content/scenarios/national/defines.toml"
         )))
-        .unwrap(),
+        .expect("the authored literal parses as the declared type"),
     )
-    .unwrap();
-    let county = "15005".parse().unwrap();
+    .expect("the fixture home county allocation fits");
+    let county = "15005"
+        .parse()
+        .expect("the authored literal parses as the declared type");
     let rows:Vec<_>=allocation.workplaces.iter().filter(|r|matches!(r.target.location,babylon_kernel::economic_location::EconomicLocation::County(c) if c.geoid()==county)).collect();
     assert_eq!(rows.len(), 4);
     assert_eq!(
@@ -123,7 +131,7 @@ fn kalawao_employees_have_explicit_fallbacks_and_owner_activity_is_not_a_missing
                 ResidentWorkplaceSource::HouseholdEnterprise
             )
         })
-        .unwrap();
+        .expect("the fixture holds the searched element");
     assert!(enterprise
         .members
         .iter()
@@ -147,21 +155,23 @@ fn kalawao_employees_have_explicit_fallbacks_and_owner_activity_is_not_a_missing
 
 #[test]
 fn suppressed_jobs_remain_absent_when_peer_weights_place_resident_people() {
-    let cohorts = national_cohort_reference().unwrap();
+    let cohorts =
+        national_cohorts::national_cohort_reference().expect("the cohort reference fixture loads");
     let policy = NationalGamePolicy::parse(include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../../../content/scenarios/national/defines.toml"
     )))
-    .unwrap();
-    let allocation = allocate_home_county(
-        national_county_reference().unwrap(),
+    .expect("the authored literal parses as the declared type");
+    let allocation = national_resident_allocation::allocate_home_county(
+        national_counties::national_county_reference().expect("the county reference fixture loads"),
         cohorts,
-        national_resident_workforce_reference().unwrap(),
+        national_resident_workforce::national_resident_workforce_reference()
+            .expect("the workforce reference fixture loads"),
         &household_budgets(),
         &empty_leaves(),
         &policy,
     )
-    .unwrap();
+    .expect("the fixture home county allocation fits");
     assert_eq!(
         allocation.function_mapping_sha256,
         cohorts.function_mapping_sha256()
@@ -171,8 +181,13 @@ fn suppressed_jobs_remain_absent_when_peer_weights_place_resident_people() {
         let ResidentWorkplaceSource::Qcew(key) = assigned.target.source else {
             continue;
         };
-        let source = cohorts.group(key).unwrap();
-        let weight = assigned.weight.as_ref().unwrap();
+        let source = cohorts
+            .group(key)
+            .expect("the fixture call `group` succeeds for the authored inputs");
+        let weight = assigned
+            .weight
+            .as_ref()
+            .expect("the fixture set the optional field before this read");
         assert_eq!(weight.published_jobs, source.jobs().known_subtotal());
         assert_eq!(
             weight.source_jobs_complete,
@@ -186,7 +201,7 @@ fn suppressed_jobs_remain_absent_when_peer_weights_place_resident_people() {
                 .members()
                 .iter()
                 .find(|r| r.naics_code == imputed.naics_code)
-                .unwrap();
+                .expect("the fixture holds the searched element");
             assert_eq!(original.annual_average_jobs, None);
             assert_eq!(
                 original.annual_average_establishments,
@@ -198,25 +213,25 @@ fn suppressed_jobs_remain_absent_when_peer_weights_place_resident_people() {
     assert!(suppressed_groups > 0);
 }
 
-fn household_budgets(
-) -> babylon_persistence::national_household_allocation::NationalHouseholdAllocation {
+fn household_budgets() -> NationalHouseholdAllocation {
     babylon_persistence::national_household_allocation::allocate_households(
-        national_county_reference().unwrap(),
-        babylon_persistence::national_households::national_household_reference().unwrap(),
-        national_resident_workforce_reference().unwrap(),
+        national_counties::national_county_reference().expect("the county reference fixture loads"),
+        babylon_persistence::national_households::national_household_reference()
+            .expect("the household reference fixture loads"),
+        national_resident_workforce::national_resident_workforce_reference()
+            .expect("the workforce reference fixture loads"),
         1_000,
     )
-    .unwrap()
+    .expect("the fixture households fit the authored cohorts")
 }
 
-fn empty_leaves() -> babylon_persistence::national_household_refinement::NationalHouseholdLeafRoster
-{
+fn empty_leaves() -> NationalHouseholdLeafRoster {
     let budgets = household_budgets();
     let time = babylon_persistence::national_household_time_allocation::allocate_household_time(
-        national_county_reference().unwrap(),
+        national_counties::national_county_reference().expect("the county reference fixture loads"),
         &budgets,
     )
-    .unwrap();
+    .expect("the fixture household time fits the authored budget");
     babylon_persistence::national_household_refinement::refine_households(&budgets, &time, &[])
-        .unwrap()
+        .expect("the fixture household refinement succeeds")
 }

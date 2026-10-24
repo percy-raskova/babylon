@@ -1,5 +1,6 @@
 //! One source-qualified service provider added only to the maintenance family.
 
+use super::captured::MichiganObservedSources;
 use super::{
     regional, MichiganDefinesError, MichiganDeliveryPreset, MichiganIndustryBaselineRow,
     MichiganIntervention, MichiganMaintenance, MichiganMaintenanceOverride,
@@ -7,8 +8,11 @@ use super::{
     MichiganMaterialSite, MichiganNormalizedContent, MichiganSiteRole, MichiganWorkforceSeed,
     SOURCE_URL,
 };
+use crate::economic_catalog::SourceArtifact;
+use crate::economic_catalog::SourceArtifactKind;
 use crate::michigan_defines::MaintenanceDefines;
-use babylon_kernel::content_digest::sha256_of;
+use crate::michigan_sectors::MichiganCountySectors;
+use babylon_kernel::content_digest;
 use serde::Deserialize;
 use std::collections::BTreeMap;
 
@@ -36,7 +40,7 @@ struct RepairIndustryObservation {
 
 fn source(artifact: &[u8]) -> Result<MichiganIndustryBaselineRow, MichiganMaterialError> {
     use MichiganMaterialError::{ArtifactDecode, ArtifactDigest, SourceValue};
-    if crate::michigan_economy::digest_hex(&sha256_of(artifact)) != ARTIFACT_HASH {
+    if crate::michigan_economy::digest_hex(&content_digest::sha256_of(artifact)) != ARTIFACT_HASH {
         return Err(ArtifactDigest);
     }
     let source: RepairIndustryObservation =
@@ -82,20 +86,18 @@ fn is_maintenance_observation(row: &MichiganIndustryBaselineRow) -> bool {
 pub(super) fn compile(
     base: &MichiganMaterialCatalog,
 ) -> Result<MichiganMaterialCatalog, MichiganDefinesError> {
-    let mut context = super::captured::MichiganObservedSources::fresh()?;
+    let mut context = MichiganObservedSources::fresh()?;
     context.artifacts.clone_from(&base.source_inputs);
-    context
-        .artifacts
-        .push(crate::economic_catalog::SourceArtifact::capture(
-            crate::economic_catalog::SourceArtifactKind::MichiganMaintenanceIndustry,
-            ARTIFACT.to_vec(),
-        ));
+    context.artifacts.push(SourceArtifact::capture(
+        SourceArtifactKind::MichiganMaintenanceIndustry,
+        ARTIFACT.to_vec(),
+    ));
     compile_with_sources(base, ARTIFACT, &context)
 }
 pub(super) fn compile_with_sources(
     base: &MichiganMaterialCatalog,
     artifact: &[u8],
-    observed: &super::captured::MichiganObservedSources<'_>,
+    observed: &MichiganObservedSources<'_>,
 ) -> Result<MichiganMaterialCatalog, MichiganDefinesError> {
     use MichiganDefinesError::Material;
     if base.preset() != MichiganDeliveryPreset::StatewideBaseline || base.maintenance().is_some() {
@@ -146,7 +148,7 @@ fn append_provider(
     d: &MaintenanceDefines,
     hours_per_period: u64,
     artifact: &[u8],
-    sectors: &crate::michigan_sectors::MichiganCountySectors,
+    sectors: &MichiganCountySectors,
 ) -> Result<(), MichiganDefinesError> {
     use MichiganDefinesError::Material;
     c.sites.push(MichiganMaterialSite {

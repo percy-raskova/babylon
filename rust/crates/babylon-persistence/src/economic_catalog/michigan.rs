@@ -7,17 +7,23 @@ use super::{
     OpeningCommodityStock, ProcessInstallation, RecipeTemplate, RecipeTemplateId,
     ResidentStaffingMemberSeed, ResidentStaffingPoolSeed,
 };
-use crate::{
-    michigan_cohorts::MICHIGAN_COHORT_SCENARIO,
-    michigan_material::{
-        MichiganMaterialCatalog, MichiganMaterialPath, MichiganMaterialSite, MichiganSiteRole,
-    },
+use crate::michigan_cohorts::MICHIGAN_COHORT_SCENARIO;
+use crate::michigan_material::{
+    MichiganMaterialCatalog, MichiganMaterialPath, MichiganMaterialSite, MichiganSiteRole,
 };
+
 use babylon_graph::stable_element::StableElementKey;
-use babylon_kernel::{
-    clock::CampaignDuration, content_digest::sha256_of, currency::Currency,
-    economic_identity::EconomicFunction, economic_location::EconomicLocation,
-};
+use babylon_kernel::clock::CampaignDuration;
+use babylon_kernel::currency::Currency;
+use babylon_kernel::economic_identity::EconomicFunction;
+use babylon_kernel::economic_location::EconomicLocation;
+
+use crate::michigan_material::MichiganMaterialCorridor;
+use crate::michigan_material::MichiganWorkforceSeed;
+use crate::michigan_sectors::MichiganSectorCode;
+use babylon_kernel::content_digest;
+use babylon_material_circuit::AidBook;
+use babylon_material_circuit::HouseholdTimeAccounting;
 use babylon_material_circuit::{
     CapacityRow, CommodityDefinition, CommodityKind, CorridorCapacity, CorridorId,
     FinalDemandOrder, FinalDemandPrincipal, FinalDemandPrincipalId, FinancialInstitutions,
@@ -27,12 +33,15 @@ use babylon_material_circuit::{
     StaffingWorkSource, SupplierRoute, SupplierTransport, UnitId,
 };
 use std::collections::{BTreeMap, BTreeSet};
-type Result<T> = std::result::Result<T, EconomicCatalogError>;
+use std::result::Result as StdResult;
+type Result<T> = StdResult<T, EconomicCatalogError>;
 fn zero() -> Currency {
     Currency::from_micro_units(0)
 }
 fn labor_unit() -> UnitId {
-    UnitId::from_bytes(sha256_of(b"babylon.michigan-material.v1\0unit\0labor-hour"))
+    UnitId::from_bytes(content_digest::sha256_of(
+        b"babylon.michigan-material.v1\0unit\0labor-hour",
+    ))
 }
 fn subject(local_name: String) -> StableElementKey {
     StableElementKey::Node {
@@ -122,8 +131,8 @@ pub fn import_michigan_opening(catalog: &MichiganMaterialCatalog) -> Result<Econ
         equipment: vec![],
         capacity,
         policies: CatalogPolicies {
-            aid: babylon_material_circuit::AidBook::default(),
-            household_time: babylon_material_circuit::HouseholdTimeAccounting::NotModeled,
+            aid: AidBook::default(),
+            household_time: HouseholdTimeAccounting::NotModeled,
             offers: vec![],
             replenishment: vec![],
             household_purchases: vec![],
@@ -141,12 +150,12 @@ fn import_site(
 ) -> Result<EconomicSiteSeed> {
     let mut quantities = BTreeMap::<String, u64>::new();
     let mut processes = Vec::new();
-    for (index, p) in catalog
+    let site_processes = catalog
         .processes()
         .iter()
         .enumerate()
-        .filter(|(_, p)| p.site_key == site.key)
-    {
+        .filter(|(_, p)| p.site_key == site.key);
+    for (index, p) in site_processes {
         quantities.entry(p.output_good_key.clone()).or_default();
         for input in &p.inputs {
             let amount = quantities.entry(input.good_key.clone()).or_default();
@@ -223,10 +232,8 @@ fn import_site(
                 .county_geoid
                 .parse()
                 .map_err(|_| EconomicCatalogError::Identity)?,
-            sector_code: crate::michigan_sectors::MichiganSectorCode::try_from(
-                site.sector_code.as_str(),
-            )
-            .map_err(|_| EconomicCatalogError::Identity)?,
+            sector_code: MichiganSectorCode::try_from(site.sector_code.as_str())
+                .map_err(|_| EconomicCatalogError::Identity)?,
         },
         // Explicit coarse Designed role for these authored controls; no national
         // function mapping or political-class inference is asserted here.
@@ -252,12 +259,12 @@ fn corridor(catalog: &MichiganMaterialCatalog, key: &str) -> Result<CorridorId> 
         .corridors()
         .iter()
         .find(|r| r.key == key)
-        .map(crate::michigan_material::MichiganMaterialCorridor::id)
+        .map(MichiganMaterialCorridor::id)
         .ok_or(EconomicCatalogError::Opening("Michigan corridor"))
 }
 fn import_pool(
     catalog: &MichiganMaterialCatalog,
-    seed: &crate::michigan_material::MichiganWorkforceSeed,
+    seed: &MichiganWorkforceSeed,
 ) -> Result<ResidentStaffingPoolSeed> {
     let site = catalog
         .site(&seed.site_key)
@@ -266,7 +273,7 @@ fn import_pool(
         .employed
         .checked_add(seed.reserve)
         .ok_or(EconomicCatalogError::Arithmetic)?;
-    let pool_id = StaffingPoolId::from_bytes(sha256_of(
+    let pool_id = StaffingPoolId::from_bytes(content_digest::sha256_of(
         format!("babylon.michigan-staffing.v1\0pool\0{}", seed.key).as_bytes(),
     ));
     let mut work_sources = seed
@@ -302,7 +309,7 @@ fn import_pool(
         let id = |kind: &str| {
             let mut bytes = format!("babylon.michigan-control-resident.v1\0{kind}\0").into_bytes();
             bytes.extend_from_slice(&pool_id.as_bytes());
-            sha256_of(&bytes)
+            content_digest::sha256_of(&bytes)
         };
         let member = StaffingMemberBinding::try_new(
             StaffingMemberId::from_bytes(id("member")),

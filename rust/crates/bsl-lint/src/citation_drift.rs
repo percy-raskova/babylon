@@ -32,7 +32,8 @@
 
 use crate::finding::{Finding, Severity};
 use crate::repo::Repo;
-use babylon_bsl::{reader::read_all, reader::Atom, reader::SExpr};
+use babylon_bsl::reader;
+use babylon_bsl::reader::{Atom, SExpr};
 use regex::Regex;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
@@ -130,7 +131,7 @@ fn list_bsl_files(dir: &Path) -> Result<Vec<PathBuf>, String> {
 fn check_file(repo: &Repo, file: &Path) -> Result<Vec<Finding>, String> {
     let display_file = repo.display_path(file);
     let bytes = std::fs::read(file).map_err(|e| format!("{display_file}: {e}"))?;
-    let forms = read_all(&bytes).map_err(|e| format!("{display_file}: {e:?}"))?;
+    let forms = reader::read_all(&bytes).map_err(|e| format!("{display_file}: {e:?}"))?;
     let raw_text = String::from_utf8_lossy(&bytes).into_owned();
     let raw_lines: Vec<&str> = raw_text.lines().collect();
 
@@ -359,7 +360,9 @@ fn check_citation(
     text: &str,
     span: &ResolvedSpan,
 ) -> Result<Vec<Finding>, String> {
-    let is_frozen = span.path_token.ends_with(".py");
+    let is_frozen = Path::new(&span.path_token)
+        .extension()
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("py"));
     let cited_display = if span.end == span.start {
         format!("{}:{}", span.path_token, span.start)
     } else {

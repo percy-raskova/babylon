@@ -1,43 +1,46 @@
-use super::*;
+use super::rows;
+use crate::economic_catalog::CapturedEconomicCatalog;
 use crate::michigan_content::MichiganContentPreset;
-use crate::{
-    michigan_material::MichiganDeliveryPreset, production_projection::project_material_observation,
-};
+use crate::michigan_material::MichiganDeliveryPreset;
+use crate::observer_reader::ObserverVisibility;
+use crate::production_observation::ProductionSnapshot;
+use crate::production_projection;
+use crate::ArchiveEvidenceClass;
 
 fn opening() -> ProductionSnapshot {
     let preset = MichiganDeliveryPreset::Standard;
     let foundation = MichiganContentPreset::new_campaign(preset)
         .create_foundation(&crate::test_support::catalog())
-        .unwrap();
-    project_material_observation(
+        .expect("the authored catalog builds the foundation");
+    production_projection::project_material_observation(
         &crate::test_support::catalog(),
         preset,
         foundation.initial_register(),
         None,
         &[],
     )
-    .unwrap()
+    .expect("the fixture projection accepts the authored input")
 }
 
 #[test]
 fn five_designed_processes_share_four_cited_observed_contexts_without_allocating_labor() {
     let mut snapshot = opening();
     let before = snapshot.clone();
-    attach_observed_context(
+    rows::attach_observed_context(
         &MichiganContentPreset::FourWeekStandard
             .admitted(&crate::test_support::catalog())
-            .unwrap(),
+            .expect("the fixture admits the authored value"),
         ObserverVisibility::FullObserver,
         &mut snapshot,
     )
-    .unwrap();
+    .expect("the fixture call `attach_observed_context` succeeds for the authored inputs");
     assert_eq!(snapshot.observed_contexts.len(), 4);
     assert_eq!(snapshot.process_attributions.len(), 5);
     let wayne = snapshot
         .observed_contexts
         .iter()
         .find(|row| row.county_geoid == "26163")
-        .unwrap();
+        .expect("the fixture holds the searched element");
     assert_eq!(wayne.subject.local_name, "business-26163-31-33");
     assert_eq!(
         wayne.subject.scenario,
@@ -61,7 +64,7 @@ fn five_designed_processes_share_four_cited_observed_contexts_without_allocating
             context.artifact_sha256,
             crate::test_support::catalog()
                 .owner_source(&context.county_geoid, &context.sector_code)
-                .unwrap()
+                .expect("the fixture call `owner_source` succeeds for the authored inputs")
                 .sector_artifact_sha256
         );
         assert_eq!(context.source_sha256.len(), 64);
@@ -88,7 +91,7 @@ fn missing_or_misidentified_visible_owner_refuses_without_partial_publication() 
     let catalog = crate::test_support::catalog();
     let admitted = MichiganContentPreset::FourWeekStandard
         .admitted(&catalog)
-        .unwrap();
+        .expect("the fixture admits the authored value");
     for mutate in [
         |snapshot: &mut ProductionSnapshot| {
             snapshot.sites.pop();
@@ -103,7 +106,7 @@ fn missing_or_misidentified_visible_owner_refuses_without_partial_publication() 
         let mut snapshot = opening();
         mutate(&mut snapshot);
         let unchanged = snapshot.clone();
-        assert!(attach_observed_context(
+        assert!(rows::attach_observed_context(
             &admitted,
             ObserverVisibility::FullObserver,
             &mut snapshot
@@ -120,10 +123,12 @@ fn captured_disclosure_retains_absent_source_cells_instead_of_inventing_zero() {
     source.annual_avg_emplvl = None;
     source.total_annual_wages = None;
     source.annual_avg_wkly_wage = None;
-    let absent = checked_context(&source, catalog.source_url()).unwrap();
+    let absent = rows::checked_context(&source, catalog.source_url())
+        .expect("the fixture call `checked_context` succeeds for the authored inputs");
     assert_eq!(absent.annual_avg_emplvl, None);
     source.annual_avg_emplvl = Some(0);
-    let zero = checked_context(&source, catalog.source_url()).unwrap();
+    let zero = rows::checked_context(&source, catalog.source_url())
+        .expect("the fixture call `checked_context` succeeds for the authored inputs");
     assert_eq!(zero.annual_avg_emplvl, Some(0));
     assert_ne!(absent, zero);
 }
@@ -133,8 +138,9 @@ fn preview_clears_context_for_both_current_staffed_presets() {
     let mut disclosed = opening();
     let admitted = MichiganContentPreset::FourWeekStandard
         .admitted(&crate::test_support::catalog())
-        .unwrap();
-    attach_observed_context(&admitted, ObserverVisibility::FullObserver, &mut disclosed).unwrap();
+        .expect("the fixture admits the authored value");
+    rows::attach_observed_context(&admitted, ObserverVisibility::FullObserver, &mut disclosed)
+        .expect("the fixture call `attach_observed_context` succeeds for the authored inputs");
     for preset in crate::michigan_content::MICHIGAN_CONTENT_PRESETS
         .into_iter()
         .filter(|preset| !preset.delivery().is_statewide())
@@ -144,12 +150,14 @@ fn preview_clears_context_for_both_current_staffed_presets() {
             ObserverVisibility::KnownPreview,
         ] {
             let mut candidate = disclosed.clone();
-            attach_observed_context(
-                &preset.admitted(&crate::test_support::catalog()).unwrap(),
+            rows::attach_observed_context(
+                &preset
+                    .admitted(&crate::test_support::catalog())
+                    .expect("the fixture admits the authored value"),
                 visibility,
                 &mut candidate,
             )
-            .unwrap();
+            .expect("the fixture call `attach_observed_context` succeeds for the authored inputs");
             let allowed = visibility == ObserverVisibility::FullObserver;
             assert_eq!(
                 candidate.observed_contexts.len(),
@@ -171,12 +179,14 @@ fn delivery_presets_share_observed_context_without_assigning_jobs() {
         (MichiganContentPreset::FourWeekStandard, &mut standard),
         (MichiganContentPreset::FourWeekDelayed, &mut delayed),
     ] {
-        attach_observed_context(
-            &preset.admitted(&crate::test_support::catalog()).unwrap(),
+        rows::attach_observed_context(
+            &preset
+                .admitted(&crate::test_support::catalog())
+                .expect("the fixture admits the authored value"),
             ObserverVisibility::FullObserver,
             snapshot,
         )
-        .unwrap();
+        .expect("the fixture call `attach_observed_context` succeeds for the authored inputs");
     }
     assert_eq!(standard.observed_contexts, delayed.observed_contexts);
     assert_eq!(
@@ -193,11 +203,16 @@ fn delivery_presets_share_observed_context_without_assigning_jobs() {
 fn source_and_visible_site_order_does_not_change_context_or_duplicate_wayne_jobs() {
     let catalog = crate::test_support::catalog();
     let mut snapshot = opening();
-    let capture =
-        crate::economic_catalog::CapturedEconomicCatalog::from_michigan(&catalog).unwrap();
-    let expected = context_rows(capture.view(), &snapshot).unwrap();
+    let capture = CapturedEconomicCatalog::from_michigan(&catalog)
+        .expect("the Michigan fixture content loads");
+    let expected = rows::context_rows(capture.view(), &snapshot)
+        .expect("the fixture call `context_rows` succeeds for the authored inputs");
     snapshot.sites.reverse();
-    assert_eq!(context_rows(capture.view(), &snapshot).unwrap(), expected);
+    assert_eq!(
+        rows::context_rows(capture.view(), &snapshot)
+            .expect("the fixture call `context_rows` succeeds for the authored inputs"),
+        expected
+    );
     assert_eq!(
         expected
             .0
@@ -210,12 +225,13 @@ fn source_and_visible_site_order_does_not_change_context_or_duplicate_wayne_jobs
 
 #[test]
 fn national_known_subtotals_keep_suppressed_members_explicit() {
-    let reference = crate::national_cohorts::national_cohort_reference().unwrap();
+    let reference = crate::national_cohorts::national_cohort_reference()
+        .expect("the cohort reference fixture loads");
     let row = reference
         .admitted_cohorts()
         .find(|r| r.jobs().missing_members() > 0)
-        .unwrap();
-    let disclosed = subtotal(row.jobs());
+        .expect("the fixture holds the searched element");
+    let disclosed = rows::subtotal(row.jobs());
     assert!(disclosed.missing_members > 0);
     assert_eq!(disclosed.known_subtotal, row.jobs().known_subtotal());
     assert_eq!(

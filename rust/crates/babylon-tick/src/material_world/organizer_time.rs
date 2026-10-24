@@ -1,10 +1,11 @@
 //! Actual residual household time, shared by every organizational alias.
 use super::MaterialWorldError;
-use babylon_kernel::content_digest::sha256_of;
+use babylon_kernel::content_digest;
 use babylon_material_circuit::{
     CircuitAccounting, FinalDemandPrincipalId, HouseholdContributionUse, HouseholdTimeAccounting,
     HouseholdTimeBook, MaterialCircuitState,
 };
+use babylon_practice_contract::OrganizerChoice;
 use babylon_practice_contract::{
     OrganizerConfig, OrganizerError, OrganizerPeriodTimeResources, OrganizerState,
     OrganizerTimeBinding, OrganizerTimeBindingMode, PracticeResourceAllocationMode,
@@ -69,7 +70,7 @@ pub(super) fn resources(
         let mut identity = b"babylon.household-organizer-budget.v1\0".to_vec();
         identity.extend_from_slice(&principal.as_bytes());
         identity.extend_from_slice(&row.labor_unit_id.as_bytes());
-        let resource_id = PracticeResourceId::from_bytes(sha256_of(&identity));
+        let resource_id = PracticeResourceId::from_bytes(content_digest::sha256_of(&identity));
         let available = row
             .contribution_available_hours
             .checked_sub(*spent.get(&principal).unwrap_or(&0))
@@ -123,7 +124,7 @@ pub(super) fn uses(
         .collect();
     let mut result = Vec::new();
     for receipt in babylon_practice_contract::organizer_period_receipts(organizer, period) {
-        if receipt.choice == babylon_practice_contract::OrganizerChoice::Collect {
+        if receipt.choice == OrganizerChoice::Collect {
             let row = organizer
                 .collection_receipts
                 .iter()
@@ -181,7 +182,7 @@ pub(super) fn uses(
             identity.extend_from_slice(&usage.actor_id.to_be_bytes());
             identity.extend_from_slice(&usage.contributor_id.to_be_bytes());
             result.push(HouseholdContributionUse {
-                use_id: sha256_of(&identity),
+                use_id: content_digest::sha256_of(&identity),
                 principal_id,
                 actor_id: usage.actor_id,
                 contributor_id: usage.contributor_id,

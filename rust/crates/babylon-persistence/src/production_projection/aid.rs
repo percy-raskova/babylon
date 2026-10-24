@@ -7,7 +7,8 @@ use babylon_material_circuit::{
 };
 use babylon_tick::material_world::MaterialTickReceipts;
 use std::collections::{BTreeMap, BTreeSet};
-type Result<T> = std::result::Result<T, ProductionProjectionError>;
+use std::result::Result as StdResult;
+type Result<T> = StdResult<T, ProductionProjectionError>;
 pub(super) type Key = (FinalDemandPrincipalId, GoodId, UnitId);
 #[derive(Default)]
 pub(super) struct Gifts {

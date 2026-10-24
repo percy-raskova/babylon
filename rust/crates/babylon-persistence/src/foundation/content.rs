@@ -1,6 +1,13 @@
 //! Explicit current source disposition and strict singular-envelope admission.
 use super::{FoundationContentBundle, FoundationSources};
+use crate::economic_catalog::CapturedEconomicCatalog;
+use crate::economic_catalog::SourceArtifactKind;
+use crate::territory_county_map::TerritoryCountyMapRow;
 use crate::RustPersistenceRuntimeError;
+use babylon_bsl::canonical_ast;
+use babylon_bsl::rule_pipeline;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 
 const DOMAIN: &[u8] = b"babylon.campaign-foundation-content.v3\0";
 const MAX_BYTES: usize = 67_108_864;
@@ -32,7 +39,7 @@ pub enum FoundationContentError {
     Noncanonical,
 }
 impl std::fmt::Display for FoundationContentError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> FmtResult {
         write!(formatter, "foundation content refused: {self:?}")
     }
 }
@@ -61,7 +68,7 @@ impl FoundationContentBundle {
             2 => {
                 cursor.tag(1)?;
                 let raw = cursor.blob(MAX_BYTES)?;
-                let catalog = crate::economic_catalog::CapturedEconomicCatalog::decode(
+                let catalog = CapturedEconomicCatalog::decode(
                     raw,
                     babylon_kernel::content_digest::sha256_of(raw),
                 )
@@ -100,19 +107,20 @@ impl FoundationContentBundle {
     /// # Errors
     /// Refuses invalid rules or an envelope exceeding the complete byte bound.
     pub fn from_economic_catalog(
-        catalog: crate::economic_catalog::CapturedEconomicCatalog,
+        catalog: CapturedEconomicCatalog,
     ) -> Result<Self, RustPersistenceRuntimeError> {
-        use babylon_bsl::{canonical_ast::rules_hash_of, rule_pipeline::split_content};
-        use babylon_kernel::{content_digest::ContentDigest, tick_content_hash::RefDigest};
+        use babylon_kernel::content_digest::ContentDigest;
+        use babylon_kernel::tick_content_hash::RefDigest;
+
         let rules = catalog
-            .source_text(crate::economic_catalog::SourceArtifactKind::Rules)
+            .source_text(SourceArtifactKind::Rules)
             .map_err(RustPersistenceRuntimeError::EconomicCatalog)?;
-        let (_, rules) =
-            split_content(rules).map_err(|_| RustPersistenceRuntimeError::ReplaySource)?;
+        let (_, rules) = rule_pipeline::split_content(rules)
+            .map_err(|_| RustPersistenceRuntimeError::ReplaySource)?;
         let rules = rules.into_iter().map(|rule| rule.form).collect::<Vec<_>>();
         let content_digest = ContentDigest {
             defines_hash: catalog.digest(),
-            rules_hash: rules_hash_of(&rules)
+            rules_hash: canonical_ast::rules_hash_of(&rules)
                 .map_err(|_| RustPersistenceRuntimeError::ReplaySource)?,
         };
         let reference_digest = RefDigest::from_bytes(catalog.digest());
@@ -143,7 +151,7 @@ impl FoundationContentBundle {
     }
     /// Borrow the already admitted source-derived opening without regeneration.
     #[must_use]
-    pub fn economic_catalog(&self) -> Option<&crate::economic_catalog::CapturedEconomicCatalog> {
+    pub fn economic_catalog(&self) -> Option<&CapturedEconomicCatalog> {
         match &self.sources {
             FoundationSources::Economic(catalog) => Some(catalog),
             FoundationSources::Authored(_) => None,
@@ -152,8 +160,7 @@ impl FoundationContentBundle {
 
     pub(crate) fn territory_county_map(
         &self,
-    ) -> Result<Vec<crate::territory_county_map::TerritoryCountyMapRow>, RustPersistenceRuntimeError>
-    {
+    ) -> Result<Vec<TerritoryCountyMapRow>, RustPersistenceRuntimeError> {
         if let Some(catalog) = self.economic_catalog() {
             return catalog
                 .county_map()

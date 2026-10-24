@@ -1,16 +1,20 @@
 //! The paid opening uses the same four-person recurring control as goods projections.
-use super::*;
-use babylon_graph::stable_state::{
-    compose_stable_graph_state_from_rows, StableGraphStateRowsInput,
-};
+use super::super::ProductionProjectionError;
+use super::projection;
+use babylon_graph::stable_element::StableElementKey;
+use babylon_graph::stable_state;
+use babylon_graph::stable_state::StableGraphState;
+use babylon_graph::stable_state::StableGraphStateRowsInput;
 use babylon_material_circuit::{
     CircuitAccounting, StaffingMemberBinding, StaffingPolicy, StaffingPoolBinding, StaffingPoolId,
     StaffingWorkSource,
 };
+use babylon_tick::material_staffing::StaffingComposition;
 use babylon_tick::material_staffing::{
     StaffingMemberNodeBinding, StaffingNodeBinding, EMPLOYED_POPULATION, PREVIOUS_UNRETAINED_HOURS,
     RESERVE_POPULATION,
 };
+use babylon_tick::material_world::MaterialWorldRegister;
 
 fn paid_opening() -> (StaffingComposition, StableGraphState, MaterialWorldRegister) {
     let state = crate::production_projection::recurring_fixture::opening();
@@ -32,7 +36,7 @@ fn paid_opening() -> (StaffingComposition, StableGraphState, MaterialWorldRegist
             .member_labor
             .iter()
             .find(|row| row.period == 1 && row.member_id == terms.member_id)
-            .unwrap()
+            .expect("the fixture holds the searched element")
             .available_hours;
         let people = hours / 4;
         nodes.extend([
@@ -48,7 +52,8 @@ fn paid_opening() -> (StaffingComposition, StableGraphState, MaterialWorldRegist
             (
                 member.clone(),
                 EMPLOYED_POPULATION.into(),
-                f64::from(u32::try_from(people).unwrap()).to_bits(),
+                f64::from(u32::try_from(people).expect("the fixture value fits the target range"))
+                    .to_bits(),
             ),
             (member.clone(), RESERVE_POPULATION.into(), 0_f64.to_bits()),
         ]);
@@ -64,23 +69,26 @@ fn paid_opening() -> (StaffingComposition, StableGraphState, MaterialWorldRegist
             terms.site_id,
             terms.unit_id,
             people,
-            StaffingPolicy::one_period(4).unwrap(),
+            StaffingPolicy::one_period(4).expect("the one-period fixture advances"),
             vec![source],
         )
-        .unwrap();
+        .expect("the authored fixture satisfies the constructor invariants");
         let member_binding =
             StaffingMemberBinding::try_new(terms.member_id, terms.payee, residence, people)
-                .unwrap();
+                .expect("the authored fixture satisfies the constructor invariants");
         bindings.push(
             StaffingNodeBinding::try_new(
                 key(&workplace),
                 pool,
-                vec![StaffingMemberNodeBinding::try_new(key(&member), member_binding).unwrap()],
+                vec![
+                    StaffingMemberNodeBinding::try_new(key(&member), member_binding)
+                        .expect("the authored fixture satisfies the constructor invariants"),
+                ],
             )
-            .unwrap(),
+            .expect("the authored fixture satisfies the constructor invariants"),
         );
     }
-    let graph = compose_stable_graph_state_from_rows(
+    let graph = stable_state::compose_stable_graph_state_from_rows(
         "paid-opening",
         StableGraphStateRowsInput {
             nodes,
@@ -92,11 +100,13 @@ fn paid_opening() -> (StaffingComposition, StableGraphState, MaterialWorldRegist
             hyperedge_f64: vec![],
         },
     )
-    .unwrap();
+    .expect("the authored rows compose a stable graph state");
     (
-        StaffingComposition::try_new(bindings).unwrap(),
+        StaffingComposition::try_new(bindings)
+            .expect("the authored fixture satisfies the constructor invariants"),
         graph,
-        MaterialWorldRegister::try_new(0, state).unwrap(),
+        MaterialWorldRegister::try_new(0, state)
+            .expect("the authored fixture satisfies the constructor invariants"),
     )
 }
 
@@ -104,7 +114,8 @@ fn paid_opening() -> (StaffingComposition, StableGraphState, MaterialWorldRegist
 fn paid_projection_joins_resident_accounts_hours_and_compensation() {
     let (composition, graph, register) = paid_opening();
     let accounts =
-        project_staffing_accounts(&composition, &graph, &register, None, &[], None).unwrap();
+        projection::project_staffing_accounts(&composition, &graph, &register, None, &[], None)
+            .expect("the fixture projection accepts the authored input");
     assert_eq!(accounts.iter().map(|r| r.employed).sum::<u64>(), 4);
     assert_eq!(
         accounts
@@ -134,19 +145,25 @@ fn paid_projection_joins_resident_accounts_hours_and_compensation() {
     let changed = StaffingMemberBinding::try_new(
         member.member().member_id(),
         member.member().household_id(),
-        "county:26099".parse().unwrap(),
+        "county:26099"
+            .parse()
+            .expect("the authored literal parses as the declared type"),
         member.member().labor_force(),
     )
-    .unwrap();
+    .expect("the authored fixture satisfies the constructor invariants");
     bindings[0] = StaffingNodeBinding::try_new(
         first.subject().clone(),
         first.pool().clone(),
-        vec![StaffingMemberNodeBinding::try_new(member.subject().clone(), changed).unwrap()],
+        vec![
+            StaffingMemberNodeBinding::try_new(member.subject().clone(), changed)
+                .expect("the authored fixture satisfies the constructor invariants"),
+        ],
     )
-    .unwrap();
-    let forged = StaffingComposition::try_new(bindings).unwrap();
+    .expect("the authored fixture satisfies the constructor invariants");
+    let forged = StaffingComposition::try_new(bindings)
+        .expect("the authored fixture satisfies the constructor invariants");
     assert_eq!(
-        project_staffing_accounts(&forged, &graph, &register, None, &[], None),
+        projection::project_staffing_accounts(&forged, &graph, &register, None, &[], None),
         Err(ProductionProjectionError::State)
     );
 }

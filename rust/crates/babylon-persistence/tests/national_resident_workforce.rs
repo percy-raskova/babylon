@@ -1,32 +1,35 @@
 use babylon_kernel::geography::CountyGeoid;
-use babylon_persistence::{
-    national_counties::{national_county_reference, ObservationStatus},
-    national_resident_workforce::{
-        national_resident_workforce_reference, NationalResidentWorkforceReference,
-        ResidentWorkforceReferenceError, SourceSex, WorkerClass,
-    },
+use babylon_persistence::national_counties;
+use babylon_persistence::national_counties::ObservationStatus;
+use babylon_persistence::national_resident_workforce;
+use babylon_persistence::national_resident_workforce::{
+    NationalResidentWorkforceReference, ResidentWorkforceReferenceError, SourceSex, WorkerClass,
 };
 
 #[test]
 fn resident_classes_partition_existing_county_people_without_adding_source_subtotals() {
-    let reference = national_resident_workforce_reference().unwrap();
-    let counties = national_county_reference().unwrap();
+    let reference = national_resident_workforce::national_resident_workforce_reference()
+        .expect("the workforce reference fixture loads");
+    let counties =
+        national_counties::national_county_reference().expect("the county reference fixture loads");
     assert_eq!(reference.counties().len(), 3144);
     let mut total = 0_u64;
     for row in reference.counties() {
         let employed = counties
             .county(row.geoid())
-            .unwrap()
+            .expect("the fixture catalog holds the addressed county")
             .residents()
             .civilian_employed_persons
             .estimate
             .value()
-            .unwrap();
+            .expect("the fixture value is present");
         assert_eq!(row.total().estimate.value(), Some(employed));
         assert_eq!(
             WorkerClass::ALL
                 .into_iter()
-                .map(|class| row.persons(class).unwrap())
+                .map(|class| row
+                    .persons(class)
+                    .expect("the fixture call `persons` succeeds for the authored inputs"))
                 .sum::<u64>(),
             employed
         );
@@ -37,7 +40,8 @@ fn resident_classes_partition_existing_county_people_without_adding_source_subto
 
 #[test]
 fn self_employment_and_unpaid_family_are_distinct_residents_not_suppressed_jobs() {
-    let reference = national_resident_workforce_reference().unwrap();
+    let reference = national_resident_workforce::national_resident_workforce_reference()
+        .expect("the workforce reference fixture loads");
     for (class, expected) in [
         (WorkerClass::IncorporatedSelfEmployed, 6_410_561),
         (WorkerClass::UnincorporatedSelfEmployed, 9_642_196),
@@ -47,14 +51,16 @@ fn self_employment_and_unpaid_family_are_distinct_residents_not_suppressed_jobs(
             reference
                 .counties()
                 .iter()
-                .map(|row| row.persons(class).unwrap())
+                .map(|row| row
+                    .persons(class)
+                    .expect("the fixture call `persons` succeeds for the authored inputs"))
                 .sum::<u64>(),
             expected
         );
     }
     let kalawao = reference
-        .county(CountyGeoid::try_from("15005").unwrap())
-        .unwrap();
+        .county(CountyGeoid::try_from("15005").expect("the fixture value fits the target range"))
+        .expect("the fixture catalog holds the addressed county");
     assert_eq!(kalawao.total().estimate.value(), Some(49));
     assert_eq!(
         kalawao.persons(WorkerClass::UnincorporatedSelfEmployed),
@@ -77,8 +83,12 @@ fn changed_source_bytes_and_foreign_counties_refuse_without_partial_capture() {
         NationalResidentWorkforceReference::decode_pinned(&bytes),
         Err(ResidentWorkforceReferenceError::ArtifactDigest)
     );
-    assert!(national_resident_workforce_reference()
-        .unwrap()
-        .county(CountyGeoid::try_from("72001").unwrap())
-        .is_err());
+    assert!(
+        national_resident_workforce::national_resident_workforce_reference()
+            .expect("the workforce reference fixture loads")
+            .county(
+                CountyGeoid::try_from("72001").expect("the fixture value fits the target range")
+            )
+            .is_err()
+    );
 }

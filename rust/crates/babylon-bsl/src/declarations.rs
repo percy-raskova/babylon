@@ -23,6 +23,8 @@ use crate::reader::{Atom, SExpr};
 use crate::types::{BslType, EnumRegistry, EnumRegistryError, EnumTypeId, FieldDecl, FieldKind};
 use crate::vocabulary::{render_member, ClosedVocabulary, EnumKind, VocabularyError};
 use std::collections::HashMap;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 
 /// The §5.2 form tags that are valid `symbol`s, and are therefore reserved
 /// against the intrinsic namespace (D33). The operator tags (`<`, `+`, …)
@@ -238,7 +240,7 @@ impl DeclError {
 }
 
 impl std::fmt::Display for DeclError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         match self {
             Self::Duplicate { name, what } => {
                 write!(f, "E-LOAD-001: duplicate {what} declaration: {name}")
@@ -1080,11 +1082,10 @@ pub fn parse_intrinsic_decls(forms: &[SExpr]) -> Result<HashMap<String, Intrinsi
 #[cfg(test)]
 mod tests {
     use super::{
-        check_intrinsic_cap, check_intrinsic_name, kernel_signature, parse_intrinsic_decl,
-        parse_intrinsic_type_name, DeclError, FieldRegistry, IntrinsicDecl, IntrinsicTypeName,
-        DECLARABLE_INTRINSICS, RESERVED_FORM_TAGS,
+        DeclError, FieldRegistry, IntrinsicDecl, IntrinsicTypeName, DECLARABLE_INTRINSICS,
+        RESERVED_FORM_TAGS,
     };
-    use crate::reader::{read, SExpr};
+    use crate::reader::SExpr;
     use crate::types::{BslType, EnumRegistry, EnumRegistryError, FieldDecl, FieldKind};
     use crate::vocabulary::{ClosedVocabulary, EnumKind};
     use std::collections::HashMap;
@@ -1107,11 +1108,13 @@ mod tests {
             ),
             (EnumKind::HyperedgeType, vec!["ECONOMIC_SECTOR".to_owned()]),
         ])
-        .unwrap()
+        .expect("the constructor accepts the authored fixture arguments")
     }
 
     fn form(source: &str) -> crate::reader::SExpr {
-        read(source).expect("test source must parse").0
+        crate::reader::read(source)
+            .expect("test source must parse")
+            .0
     }
 
     #[test]
@@ -1138,7 +1141,7 @@ mod tests {
                 &vocabulary(),
                 &enums(),
             )
-            .unwrap_err();
+            .expect_err("the malformed declaration is refused");
         assert_eq!(err.spec_code(), Some("E-LOAD-001"));
     }
 
@@ -1154,11 +1157,17 @@ mod tests {
             registry.declare(&form(source), &v, &enums()).expect(source);
         }
         assert_eq!(
-            registry.get("exploitation/tension").unwrap().owner_kind,
+            registry
+                .get("exploitation/tension")
+                .expect("the fixture holds the addressed entry")
+                .owner_kind,
             EnumKind::EdgeType
         );
         assert_eq!(
-            registry.get("economic-sector/output").unwrap().owner_kind,
+            registry
+                .get("economic-sector/output")
+                .expect("the fixture holds the addressed entry")
+                .owner_kind,
             EnumKind::HyperedgeType
         );
     }
@@ -1172,7 +1181,7 @@ mod tests {
                 &vocabulary(),
                 &enums(),
             )
-            .unwrap_err();
+            .expect_err("the malformed declaration is refused");
         assert_eq!(err.spec_code(), Some("E-LOAD-023"));
     }
 
@@ -1181,11 +1190,13 @@ mod tests {
         let v = vocabulary();
         let mut registry = FieldRegistry::default();
         let source = "(deffield social-class/wealth :type currency :kind extensive)";
-        registry.declare(&form(source), &v, &enums()).unwrap();
+        registry
+            .declare(&form(source), &v, &enums())
+            .expect("the scenario declares the authored entity");
         assert_eq!(
             registry
                 .declare(&form(source), &v, &enums())
-                .unwrap_err()
+                .expect_err("the malformed declaration is refused")
                 .spec_code(),
             Some("E-LOAD-001")
         );
@@ -1201,7 +1212,7 @@ mod tests {
                 &v,
                 &enums(),
             )
-            .unwrap();
+            .expect("the scenario declares the authored entity");
         let kernel = HashMap::from([(
             "social-class/wealth".to_owned(),
             FieldDecl {
@@ -1212,7 +1223,7 @@ mod tests {
         assert_eq!(
             registry
                 .check_against_kernel(&kernel)
-                .unwrap_err()
+                .expect_err("the malformed input is rejected by `check_against_kernel`")
                 .spec_code(),
             Some("E-LOAD-022")
         );
@@ -1221,16 +1232,18 @@ mod tests {
     #[test]
     fn every_form_head_symbol_is_reserved_against_the_intrinsic_namespace() {
         for tag in RESERVED_FORM_TAGS {
-            let err = check_intrinsic_name(tag).unwrap_err();
+            let err = super::check_intrinsic_name(tag)
+                .expect_err("the malformed input is rejected by `check_intrinsic_name`");
             assert_eq!(err.spec_code(), Some("E-LOAD-024"), "{tag}");
         }
-        assert_eq!(check_intrinsic_name("exp"), Ok(()));
-        assert_eq!(check_intrinsic_name("log"), Ok(()));
+        assert_eq!(super::check_intrinsic_name("exp"), Ok(()));
+        assert_eq!(super::check_intrinsic_name("log"), Ok(()));
     }
 
     #[test]
     fn sigmoid_is_prohibited_outright_not_merely_undeclared() {
-        let err = check_intrinsic_name("sigmoid").unwrap_err();
+        let err = super::check_intrinsic_name("sigmoid")
+            .expect_err("the malformed input is rejected by `check_intrinsic_name`");
         assert_eq!(err.spec_code(), Some("E-LOAD-024"));
         assert!(format!("{err}").contains("ADR172"), "{err}");
     }
@@ -1247,8 +1260,8 @@ mod tests {
     /// about sign).
     #[test]
     fn floor_is_declarable_under_adr188_row_2() {
-        assert_eq!(check_intrinsic_name("floor"), Ok(()));
-        assert_eq!(check_intrinsic_cap("floor"), Ok(()));
+        assert_eq!(super::check_intrinsic_name("floor"), Ok(()));
+        assert_eq!(super::check_intrinsic_cap("floor"), Ok(()));
         // The array grew from four names to ten under ADR219 (Director
         // ruling 2026-08-22) — the exact-arithmetic rider train; see the
         // c13 family in r9_chapters.rs for the full authority chain.
@@ -1273,9 +1286,9 @@ mod tests {
     /// kernel signature.
     #[test]
     fn rng_draw_is_not_author_visible_after_amendment_aj() {
-        assert_eq!(check_intrinsic_name("rng-draw"), Ok(()));
-        assert!(check_intrinsic_cap("rng-draw").is_err());
-        assert_eq!(kernel_signature("rng-draw"), None);
+        assert_eq!(super::check_intrinsic_name("rng-draw"), Ok(()));
+        assert!(super::check_intrinsic_cap("rng-draw").is_err());
+        assert_eq!(super::kernel_signature("rng-draw"), None);
     }
 
     /// The rider ratifies `floor`, not a second `trunc` intrinsic — ADR188
@@ -1283,7 +1296,7 @@ mod tests {
     /// silently widened the cap to both names would flip this test.
     #[test]
     fn trunc_is_not_a_separate_declarable_name() {
-        assert!(check_intrinsic_cap("trunc").is_err());
+        assert!(super::check_intrinsic_cap("trunc").is_err());
     }
 
     /// ADR219 (Director ruling 2026-08-22): the exact-arithmetic rider
@@ -1319,9 +1332,9 @@ mod tests {
                 ],
             ),
         ] {
-            assert_eq!(check_intrinsic_cap(name), Ok(()), "{name}");
+            assert_eq!(super::check_intrinsic_cap(name), Ok(()), "{name}");
             assert_eq!(
-                kernel_signature(name),
+                super::kernel_signature(name),
                 Some((params, IntrinsicTypeName::Real)),
                 "{name}"
             );
@@ -1331,13 +1344,14 @@ mod tests {
     // ---- parse_intrinsic_decl (the declared-cost seam content needs) ----
 
     fn decl(source: &str) -> Result<IntrinsicDecl, DeclError> {
-        let (form, _) = read(source).expect("test source must parse");
-        parse_intrinsic_decl(&form)
+        let (form, _) = crate::reader::read(source).expect("test source must parse");
+        super::parse_intrinsic_decl(&form)
     }
 
     #[test]
     fn a_well_formed_floor_declaration_parses() {
-        let parsed = decl("(intrinsic floor :params (real) :returns int :cost 5)").unwrap();
+        let parsed = decl("(intrinsic floor :params (real) :returns int :cost 5)")
+            .expect("the authored declaration parses");
         assert_eq!(parsed.name, "floor");
         assert_eq!(parsed.params, vec![IntrinsicTypeName::Real]);
         assert_eq!(parsed.returns, IntrinsicTypeName::Scalar(BslType::Int));
@@ -1354,7 +1368,7 @@ mod tests {
     #[test]
     fn real_resolves_per_position_after_train_b_item_6() {
         assert_eq!(
-            parse_intrinsic_type_name("real"),
+            super::parse_intrinsic_type_name("real"),
             Ok(IntrinsicTypeName::Real)
         );
         assert_eq!(super::parse_type_name("real"), Ok(BslType::Real));
@@ -1364,7 +1378,8 @@ mod tests {
     /// for `tanh` (ratified nowhere) never becomes an `IntrinsicDecl`.
     #[test]
     fn a_declaration_for_a_name_outside_the_cap_is_refused_at_parse_time() {
-        let err = decl("(intrinsic tanh :params (real) :returns real :cost 40)").unwrap_err();
+        let err = decl("(intrinsic tanh :params (real) :returns real :cost 40)")
+            .expect_err("the malformed declaration is refused");
         assert!(format!("{err}").contains("outside the declarable intrinsic set"));
     }
 
@@ -1390,23 +1405,27 @@ mod tests {
     #[test]
     fn a_wrong_returns_type_is_e_load_020() {
         // floor's kernel signature returns int, not real.
-        let err = decl("(intrinsic floor :params (real) :returns real :cost 5)").unwrap_err();
+        let err = decl("(intrinsic floor :params (real) :returns real :cost 5)")
+            .expect_err("the malformed declaration is refused");
         assert_eq!(err.spec_code(), Some("E-LOAD-020"));
     }
 
     #[test]
     fn a_wrong_arity_is_e_load_020() {
         // floor takes exactly one parameter.
-        let zero = decl("(intrinsic floor :params () :returns int :cost 5)").unwrap_err();
+        let zero = decl("(intrinsic floor :params () :returns int :cost 5)")
+            .expect_err("the malformed declaration is refused");
         assert_eq!(zero.spec_code(), Some("E-LOAD-020"));
-        let two = decl("(intrinsic floor :params (real real) :returns int :cost 5)").unwrap_err();
+        let two = decl("(intrinsic floor :params (real real) :returns int :cost 5)")
+            .expect_err("the malformed declaration is refused");
         assert_eq!(two.spec_code(), Some("E-LOAD-020"));
     }
 
     #[test]
     fn a_wrong_param_type_is_e_load_020() {
         // floor's kernel signature takes `real`, not `int`.
-        let err = decl("(intrinsic floor :params (int) :returns int :cost 5)").unwrap_err();
+        let err = decl("(intrinsic floor :params (int) :returns int :cost 5)")
+            .expect_err("the malformed declaration is refused");
         assert_eq!(err.spec_code(), Some("E-LOAD-020"));
     }
 
@@ -1416,7 +1435,7 @@ mod tests {
         assert!(decl("(intrinsic log :params (real) :returns real :cost 40)").is_ok());
         assert_eq!(
             decl("(intrinsic exp :params (int) :returns real :cost 40)")
-                .unwrap_err()
+                .expect_err("the malformed declaration is refused")
                 .spec_code(),
             Some("E-LOAD-020")
         );
@@ -1426,8 +1445,8 @@ mod tests {
 
     #[test]
     fn a_repeated_cost_keyword_is_refused_never_last_one_wins() {
-        let err =
-            decl("(intrinsic floor :params (real) :returns int :cost 5 :cost 9)").unwrap_err();
+        let err = decl("(intrinsic floor :params (real) :returns int :cost 5 :cost 9)")
+            .expect_err("the malformed declaration is refused");
         assert!(format!("{err}").contains("declared twice"), "{err}");
     }
 
@@ -1457,7 +1476,8 @@ mod tests {
             "(intrinsic floor :params (real) :returns int :cost 5) \
              (intrinsic floor :params (real) :returns int :cost 9)",
         );
-        let err = super::parse_intrinsic_decls(&two_decls).unwrap_err();
+        let err = super::parse_intrinsic_decls(&two_decls)
+            .expect_err("`parse_intrinsic_decls` rejects the malformed declaration");
         assert_eq!(err.spec_code(), Some("E-LOAD-001"));
     }
 
@@ -1467,7 +1487,8 @@ mod tests {
             "(intrinsic floor :params (real) :returns int :cost 5) \
              (intrinsic exp :params (real) :returns real :cost 40)",
         );
-        let decls = super::parse_intrinsic_decls(&two_decls).unwrap();
+        let decls = super::parse_intrinsic_decls(&two_decls)
+            .expect("the authored intrinsic declarations parse");
         assert_eq!(decls.len(), 2);
         assert_eq!(decls["floor"].cost, 5);
         assert_eq!(decls["exp"].cost, 40);
@@ -1529,7 +1550,7 @@ mod tests {
             &form("(defenum OrgKind (NodeType/SOCIAL_CLASS))"),
             &mut registry,
         )
-        .unwrap_err();
+        .expect_err("`parse_defenum` rejects the malformed declaration");
         assert!(matches!(err, DeclError::Malformed { .. }), "{err:?}");
     }
 
@@ -1540,7 +1561,7 @@ mod tests {
         // parser, not the reader, must catch this.
         let mut registry = super::EnumRegistry::default();
         let err = super::parse_defenum(&form("(defenum Org_Kind (BUSINESS))"), &mut registry)
-            .unwrap_err();
+            .expect_err("`parse_defenum` rejects the malformed declaration");
         assert!(matches!(err, DeclError::Malformed { .. }), "{err:?}");
     }
 
@@ -1549,8 +1570,8 @@ mod tests {
         // `Business` lexes fine but is not a valid <enum-member>
         // (lowercase) — same split, the other direction.
         let mut registry = super::EnumRegistry::default();
-        let err =
-            super::parse_defenum(&form("(defenum OrgKind (Business))"), &mut registry).unwrap_err();
+        let err = super::parse_defenum(&form("(defenum OrgKind (Business))"), &mut registry)
+            .expect_err("`parse_defenum` rejects the malformed declaration");
         assert!(matches!(err, DeclError::Malformed { .. }), "{err:?}");
     }
 
@@ -1560,7 +1581,8 @@ mod tests {
         // shape violation the registry reports as EmptyMemberList (uncoded
         // — never a duplicate-declaration lie).
         let mut registry = super::EnumRegistry::default();
-        let err = super::parse_defenum(&form("(defenum OrgKind ())"), &mut registry).unwrap_err();
+        let err = super::parse_defenum(&form("(defenum OrgKind ())"), &mut registry)
+            .expect_err("`parse_defenum` rejects the malformed declaration");
         assert_eq!(err.spec_code(), None);
         assert!(matches!(
             err,
@@ -1571,9 +1593,10 @@ mod tests {
     #[test]
     fn a_duplicate_defenum_type_name_is_e_load_001() {
         let mut registry = super::EnumRegistry::default();
-        super::parse_defenum(&form("(defenum OrgKind (BUSINESS))"), &mut registry).unwrap();
+        super::parse_defenum(&form("(defenum OrgKind (BUSINESS))"), &mut registry)
+            .expect("the authored enum definition parses");
         let err = super::parse_defenum(&form("(defenum OrgKind (CIVIL_SOCIETY))"), &mut registry)
-            .unwrap_err();
+            .expect_err("`parse_defenum` rejects the malformed declaration");
         assert_eq!(err.spec_code(), Some("E-LOAD-001"));
     }
 
@@ -1590,7 +1613,12 @@ mod tests {
         let BslType::Enum(id) = ty else {
             panic!("expected BslType::Enum, got {ty:?}")
         };
-        assert_eq!(id, registry.resolve("OrgKind").unwrap());
+        assert_eq!(
+            id,
+            registry
+                .resolve("OrgKind")
+                .expect("the fixture call `resolve` succeeds for the authored inputs")
+        );
     }
 
     #[test]
@@ -1598,7 +1626,7 @@ mod tests {
         let registry = org_kind();
         let err =
             super::parse_deffield(&form("(deffield organization/kind :type enum)"), &registry)
-                .unwrap_err();
+                .expect_err("`parse_deffield` rejects the malformed declaration");
         assert_eq!(err.spec_code(), Some("E-LOAD-053"));
     }
 
@@ -1612,7 +1640,7 @@ mod tests {
             ),
             &registry,
         )
-        .unwrap_err();
+        .expect_err("`parse_deffield` rejects the malformed declaration");
         assert_eq!(err.spec_code(), Some("E-LOAD-053"));
     }
 
@@ -1626,7 +1654,7 @@ mod tests {
             ),
             &registry,
         )
-        .unwrap_err();
+        .expect_err("`parse_deffield` rejects the malformed declaration");
         assert_eq!(err.spec_code(), Some("E-LOAD-053"));
     }
 
@@ -1637,7 +1665,7 @@ mod tests {
             &form("(deffield organization/kind :type enum :enum-type Nowhere)"),
             &registry,
         )
-        .unwrap_err();
+        .expect_err("`parse_deffield` rejects the malformed declaration");
         assert_eq!(err.spec_code(), Some("E-LOAD-054"));
     }
 }

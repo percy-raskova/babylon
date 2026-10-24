@@ -9,12 +9,12 @@
 use std::collections::BTreeMap;
 use std::str::FromStr;
 
+use babylon_persistence::PendingArchiveReceipt;
 use babylon_persistence::{
-    desired_place_projection, parse_stored_place_page, place_page_input,
-    place_page_semantic_sha256, select_dirty_place_pages, ArchiveCitation, ArchiveDirtyBatch,
-    ArchiveKnowledge, ArchiveKnowledgeGrant, ArchivePageInput, ArchivePageRef, ArchiveSubjectKind,
-    FogSafeArchiveRenderer, PlaceCountySlice, PlaceDossierProducer, PlaceGrantIndex, PlacePagePlan,
-    SemanticArchiveError, ARCHIVE_PLACE_GRANTS_SQL, ARCHIVE_PLACE_PAGE_READ_SQL,
+    ArchiveCitation, ArchiveDirtyBatch, ArchiveKnowledge, ArchiveKnowledgeGrant, ArchivePageInput,
+    ArchivePageRef, ArchiveSubjectKind, FogSafeArchiveRenderer, PlaceCountySlice,
+    PlaceDossierProducer, PlaceGrantIndex, PlacePagePlan, SemanticArchiveError,
+    ARCHIVE_PLACE_GRANTS_SQL, ARCHIVE_PLACE_PAGE_READ_SQL,
     PINNED_COUNTY_PLACE_OVERLAP_ARTIFACT_SHA256, PINNED_PLACE_IDENTITY_ARTIFACT_SHA256,
     PLACE_DECISION_QUESTION, PLACE_IDENTITY_GRANT_KEY,
 };
@@ -199,7 +199,8 @@ fn cross_county_places_keep_every_county_slice() {
     sorted.sort_unstable();
     assert_eq!(geoids, sorted, "county slices stay sorted by county GEOID");
 
-    let input = place_page_input(three, 42, [0x11; 32]).expect("three-county page input");
+    let input = babylon_persistence::place_page_input(three, 42, [0x11; 32])
+        .expect("three-county page input");
     let links = input.links();
     assert_eq!(links.len(), 3, "every overlapping county becomes one link");
     for link in links {
@@ -239,7 +240,7 @@ fn dirty_drain_beyond_one_receipt_pages_in_geoid_order_without_truncating() {
     let pages = desired_pages();
     let grants =
         PlaceGrantIndex::try_from_rows(full_grant_rows(&pages)).expect("full grant index builds");
-    let selection = select_dirty_place_pages(
+    let selection = babylon_persistence::select_dirty_place_pages(
         &pages,
         &BTreeMap::new(),
         &grants,
@@ -281,7 +282,7 @@ fn dirty_drain_beyond_one_receipt_pages_in_geoid_order_without_truncating() {
         .collect();
     let tail_grants =
         PlaceGrantIndex::try_from_rows(full_grant_rows(&tail)).expect("tail grant index builds");
-    let next = select_dirty_place_pages(
+    let next = babylon_persistence::select_dirty_place_pages(
         &tail,
         &BTreeMap::new(),
         &tail_grants,
@@ -303,7 +304,7 @@ fn dirty_drain_beyond_one_receipt_pages_in_geoid_order_without_truncating() {
         .collect();
     let last_grants = PlaceGrantIndex::try_from_rows(full_grant_rows(&last_plans))
         .expect("last grant index builds");
-    let last = select_dirty_place_pages(
+    let last = babylon_persistence::select_dirty_place_pages(
         &last_plans,
         &BTreeMap::new(),
         &last_grants,
@@ -319,7 +320,7 @@ fn dirty_drain_beyond_one_receipt_pages_in_geoid_order_without_truncating() {
         .take(ArchiveDirtyBatch::MAX_PAGES)
         .cloned()
         .collect();
-    let drained = select_dirty_place_pages(
+    let drained = babylon_persistence::select_dirty_place_pages(
         &subset,
         &BTreeMap::new(),
         &grants,
@@ -334,9 +335,12 @@ fn dirty_drain_beyond_one_receipt_pages_in_geoid_order_without_truncating() {
 fn dirty_diff_excludes_receipt_stamped_fields() {
     let plan = detroit_plan();
     let grants = full_grants(&plan);
-    let projection = desired_place_projection(&plan, &grants).expect("desired projection");
-    let first_hash = place_page_semantic_sha256(plan.place_geoid(), &projection);
-    let second_hash = place_page_semantic_sha256(plan.place_geoid(), &projection);
+    let projection =
+        babylon_persistence::desired_place_projection(&plan, &grants).expect("desired projection");
+    let first_hash =
+        babylon_persistence::place_page_semantic_sha256(plan.place_geoid(), &projection);
+    let second_hash =
+        babylon_persistence::place_page_semantic_sha256(plan.place_geoid(), &projection);
     assert_eq!(
         first_hash, second_hash,
         "the projection hash is deterministic"
@@ -347,28 +351,36 @@ fn dirty_diff_excludes_receipt_stamped_fields() {
     let knowledge = knowledge_for(&[&plan], true);
     let stamped_first = renderer
         .render(
-            &place_page_input(&plan, 1, [0x11; 32]).expect("first page input"),
+            &babylon_persistence::place_page_input(&plan, 1, [0x11; 32]).expect("first page input"),
             &knowledge,
         )
         .expect("first receipt page renders");
     let stamped_second = renderer
         .render(
-            &place_page_input(&plan, 2, [0x22; 32]).expect("second page input"),
+            &babylon_persistence::place_page_input(&plan, 2, [0x22; 32])
+                .expect("second page input"),
             &knowledge,
         )
         .expect("second receipt page renders");
-    let stored_first = parse_stored_place_page("2622000", "Detroit city", stamped_first.markdown())
-        .expect("first page parses back");
-    let stored_second =
-        parse_stored_place_page("2622000", "Detroit city", stamped_second.markdown())
-            .expect("second page parses back");
+    let stored_first = babylon_persistence::parse_stored_place_page(
+        "2622000",
+        "Detroit city",
+        stamped_first.markdown(),
+    )
+    .expect("first page parses back");
+    let stored_second = babylon_persistence::parse_stored_place_page(
+        "2622000",
+        "Detroit city",
+        stamped_second.markdown(),
+    )
+    .expect("second page parses back");
     assert_eq!(
-        place_page_semantic_sha256("2622000", &stored_first),
+        babylon_persistence::place_page_semantic_sha256("2622000", &stored_first),
         first_hash,
         "the stored projection strips the first receipt stamp"
     );
     assert_eq!(
-        place_page_semantic_sha256("2622000", &stored_second),
+        babylon_persistence::place_page_semantic_sha256("2622000", &stored_second),
         second_hash,
         "a later receipt stamp alone never re-publishes an unchanged page"
     );
@@ -376,8 +388,9 @@ fn dirty_diff_excludes_receipt_stamped_fields() {
     let mut stored_map = BTreeMap::new();
     stored_map.insert("2622000".to_owned(), stored_first);
     let pages = [detroit_plan()];
-    let clean = select_dirty_place_pages(&pages, &stored_map, &grants, usize::MAX)
-        .expect("clean selection");
+    let clean =
+        babylon_persistence::select_dirty_place_pages(&pages, &stored_map, &grants, usize::MAX)
+            .expect("clean selection");
     assert!(
         clean.head().is_empty(),
         "unchanged semantic content is not re-published"
@@ -387,7 +400,7 @@ fn dirty_diff_excludes_receipt_stamped_fields() {
 #[test]
 fn semantic_hash_covers_signal_citation_county_names_and_template_identity() {
     let plan = detroit_plan();
-    let granted = desired_place_projection(&plan, &full_grants(&plan))
+    let granted = babylon_persistence::desired_place_projection(&plan, &full_grants(&plan))
         .expect("fully granted desired projection");
     assert_eq!(granted.signals().len(), 1);
     assert_eq!(granted.signals()[0].label(), "Census identity");
@@ -404,18 +417,18 @@ fn semantic_hash_covers_signal_citation_county_names_and_template_identity() {
         &[("26163".to_owned(), Some("Wayne County".to_owned()))]
     );
 
-    let baseline = place_page_semantic_sha256(plan.place_geoid(), &granted);
+    let baseline = babylon_persistence::place_page_semantic_sha256(plan.place_geoid(), &granted);
 
     // Losing the identity grant drops the signal and changes the hash.
     let subject_and_county = grant_index(&[
         (ArchiveSubjectKind::Place, "2622000", "subject"),
         (ArchiveSubjectKind::County, "26163", "subject"),
     ]);
-    let redacted = desired_place_projection(&plan, &subject_and_county)
+    let redacted = babylon_persistence::desired_place_projection(&plan, &subject_and_county)
         .expect("signal-redacted desired projection");
     assert!(redacted.signals().is_empty());
     assert_ne!(
-        place_page_semantic_sha256(plan.place_geoid(), &redacted),
+        babylon_persistence::place_page_semantic_sha256(plan.place_geoid(), &redacted),
         baseline,
         "losing the identity grant changes the semantic hash"
     );
@@ -429,17 +442,17 @@ fn semantic_hash_covers_signal_citation_county_names_and_template_identity() {
             PLACE_IDENTITY_GRANT_KEY,
         ),
     ]);
-    let redlinked =
-        desired_place_projection(&plan, &no_county).expect("county-redlink desired projection");
+    let redlinked = babylon_persistence::desired_place_projection(&plan, &no_county)
+        .expect("county-redlink desired projection");
     assert_eq!(redlinked.counties(), &[("26163".to_owned(), None)]);
     assert_ne!(
-        place_page_semantic_sha256(plan.place_geoid(), &redlinked),
+        babylon_persistence::place_page_semantic_sha256(plan.place_geoid(), &redlinked),
         baseline,
         "losing the county subject grant changes the semantic hash"
     );
     assert_ne!(
-        place_page_semantic_sha256(plan.place_geoid(), &redacted),
-        place_page_semantic_sha256(plan.place_geoid(), &redlinked),
+        babylon_persistence::place_page_semantic_sha256(plan.place_geoid(), &redacted),
+        babylon_persistence::place_page_semantic_sha256(plan.place_geoid(), &redlinked),
         "signal redaction and county redlink redaction hash differently"
     );
 }
@@ -447,16 +460,23 @@ fn semantic_hash_covers_signal_citation_county_names_and_template_identity() {
 #[test]
 fn semantic_hash_matches_the_pinned_place_page_vectors() {
     let plan = detroit_plan();
-    let granted = desired_place_projection(&plan, &full_grants(&plan))
+    let granted = babylon_persistence::desired_place_projection(&plan, &full_grants(&plan))
         .expect("fully granted desired projection");
     assert_eq!(
-        hex_digest(place_page_semantic_sha256(plan.place_geoid(), &granted)),
+        hex_digest(babylon_persistence::place_page_semantic_sha256(
+            plan.place_geoid(),
+            &granted
+        )),
         "e1956add538ffeaa7a225af0e723986f185ddc65b59e19b7b0d5f27bdecabc37"
     );
     let subject_only = grant_index(&[(ArchiveSubjectKind::Place, "2622000", "subject")]);
-    let redacted = desired_place_projection(&plan, &subject_only).expect("subject-only projection");
+    let redacted = babylon_persistence::desired_place_projection(&plan, &subject_only)
+        .expect("subject-only projection");
     assert_eq!(
-        hex_digest(place_page_semantic_sha256(plan.place_geoid(), &redacted)),
+        hex_digest(babylon_persistence::place_page_semantic_sha256(
+            plan.place_geoid(),
+            &redacted
+        )),
         "dbc6bf5247431dcf54031d15109bb28a872e914636a538fffc94ab70b6c92e79"
     );
 }
@@ -470,13 +490,16 @@ fn grant_refresh_republication_folds_grant_visibility_into_dirty_detection() {
     // Publish with only the subject grant: no signal section, county redlinks.
     let redacted_render = renderer
         .render(
-            &place_page_input(&plan, 1, [0x11; 32]).expect("page input"),
+            &babylon_persistence::place_page_input(&plan, 1, [0x11; 32]).expect("page input"),
             &knowledge_for(&[&plan], false),
         )
         .expect("subject-granted page renders");
-    let redacted_stored =
-        parse_stored_place_page("2622000", "Detroit city", redacted_render.markdown())
-            .expect("redacted page parses back");
+    let redacted_stored = babylon_persistence::parse_stored_place_page(
+        "2622000",
+        "Detroit city",
+        redacted_render.markdown(),
+    )
+    .expect("redacted page parses back");
     assert!(redacted_stored.signals().is_empty());
     assert_eq!(redacted_stored.counties(), &[("26163".to_owned(), None)]);
 
@@ -484,8 +507,13 @@ fn grant_refresh_republication_folds_grant_visibility_into_dirty_detection() {
     let mut stored_map = BTreeMap::new();
     stored_map.insert("2622000".to_owned(), redacted_stored);
     let pages = [detroit_plan()];
-    let refreshed = select_dirty_place_pages(&pages, &stored_map, &full_grants(&plan), usize::MAX)
-        .expect("grant-refresh selection");
+    let refreshed = babylon_persistence::select_dirty_place_pages(
+        &pages,
+        &stored_map,
+        &full_grants(&plan),
+        usize::MAX,
+    )
+    .expect("grant-refresh selection");
     assert_eq!(
         refreshed.head().len(),
         1,
@@ -493,8 +521,13 @@ fn grant_refresh_republication_folds_grant_visibility_into_dirty_detection() {
     );
 
     // The same stale grant set stays clean.
-    let stale = select_dirty_place_pages(&pages, &stored_map, &subject_only, usize::MAX)
-        .expect("stale-grant selection");
+    let stale = babylon_persistence::select_dirty_place_pages(
+        &pages,
+        &stored_map,
+        &subject_only,
+        usize::MAX,
+    )
+    .expect("stale-grant selection");
     assert!(
         stale.head().is_empty(),
         "without a grant change the redacted page stays clean"
@@ -503,13 +536,17 @@ fn grant_refresh_republication_folds_grant_visibility_into_dirty_detection() {
     // The republished page, rendered with the refreshed grants, is clean.
     let revealed_render = renderer
         .render(
-            &place_page_input(&plan, 2, [0x22; 32]).expect("republished page input"),
+            &babylon_persistence::place_page_input(&plan, 2, [0x22; 32])
+                .expect("republished page input"),
             &knowledge_for(&[&plan], true),
         )
         .expect("revealed page renders");
-    let revealed_stored =
-        parse_stored_place_page("2622000", "Detroit city", revealed_render.markdown())
-            .expect("revealed page parses back");
+    let revealed_stored = babylon_persistence::parse_stored_place_page(
+        "2622000",
+        "Detroit city",
+        revealed_render.markdown(),
+    )
+    .expect("revealed page parses back");
     assert_eq!(revealed_stored.signals().len(), 1);
     assert_eq!(
         revealed_stored.counties(),
@@ -517,21 +554,40 @@ fn grant_refresh_republication_folds_grant_visibility_into_dirty_detection() {
     );
     let mut revealed_map = BTreeMap::new();
     revealed_map.insert("2622000".to_owned(), revealed_stored);
-    let settled = select_dirty_place_pages(&pages, &revealed_map, &full_grants(&plan), usize::MAX)
-        .expect("settled selection");
+    let settled = babylon_persistence::select_dirty_place_pages(
+        &pages,
+        &revealed_map,
+        &full_grants(&plan),
+        usize::MAX,
+    )
+    .expect("settled selection");
     assert!(settled.head().is_empty(), "the revealed page stays clean");
 }
 
 #[test]
 fn malformed_stored_pages_are_dirty_not_fatal() {
-    assert!(parse_stored_place_page("2622000", "Detroit city", "not a page").is_none());
-    assert!(parse_stored_place_page("2622000", "Other title", "# Detroit city\n\nq").is_none());
+    assert!(
+        babylon_persistence::parse_stored_place_page("2622000", "Detroit city", "not a page")
+            .is_none()
+    );
+    assert!(babylon_persistence::parse_stored_place_page(
+        "2622000",
+        "Other title",
+        "# Detroit city\n\nq"
+    )
+    .is_none());
 
     // A stored row whose title column disagrees with its markdown republishes.
     let title_drift = render_markdown(&detroit_plan());
-    assert!(parse_stored_place_page("2622000", "Different city", &title_drift).is_none());
-    let parsed = parse_stored_place_page("2622000", "Detroit city", &title_drift)
-        .expect("well-formed stored page parses");
+    assert!(babylon_persistence::parse_stored_place_page(
+        "2622000",
+        "Different city",
+        &title_drift
+    )
+    .is_none());
+    let parsed =
+        babylon_persistence::parse_stored_place_page("2622000", "Detroit city", &title_drift)
+            .expect("well-formed stored page parses");
 
     // A drifted signal bullet line refuses to parse, so the page republishes.
     let corrupted_signals = title_drift.replace(
@@ -540,7 +596,8 @@ fn malformed_stored_pages_are_dirty_not_fatal() {
         "- **Census identity:** Detroit city",
     );
     assert!(
-        parse_stored_place_page("2622000", "Detroit city", &corrupted_signals).is_none(),
+        babylon_persistence::parse_stored_place_page("2622000", "Detroit city", &corrupted_signals)
+            .is_none(),
         "a signal bullet that lost its citation is drifted"
     );
 
@@ -548,8 +605,8 @@ fn malformed_stored_pages_are_dirty_not_fatal() {
     let grants = full_grants(&detroit_plan());
     let mut stored = BTreeMap::new();
     stored.insert("2622000".to_owned(), parsed);
-    let clean =
-        select_dirty_place_pages(&pages, &stored, &grants, usize::MAX).expect("clean selection");
+    let clean = babylon_persistence::select_dirty_place_pages(&pages, &stored, &grants, usize::MAX)
+        .expect("clean selection");
     assert_eq!(clean.head().len(), 0);
 }
 
@@ -600,17 +657,22 @@ ORDER BY subject_kind, subject_id, grant_key"
 
 #[test]
 fn batch_from_produced_pages_matches_the_receipt() {
-    let receipt = babylon_persistence::PendingArchiveReceipt::try_new(7, [0x77; 32])
-        .expect("receipt boundary");
+    let receipt = PendingArchiveReceipt::try_new(7, [0x77; 32]).expect("receipt boundary");
     let pages: Vec<PlacePagePlan> = desired_pages().iter().take(3).cloned().collect();
     let grants =
         PlaceGrantIndex::try_from_rows(full_grant_rows(&pages)).expect("subset grant index builds");
-    let dirty = select_dirty_place_pages(&pages, &BTreeMap::new(), &grants, 3)
+    let dirty = babylon_persistence::select_dirty_place_pages(&pages, &BTreeMap::new(), &grants, 3)
         .expect("small dirty set drains");
     let inputs = dirty
         .head()
         .iter()
-        .map(|page| place_page_input(page, receipt.resolve_tick(), *receipt.tick_content_hash()))
+        .map(|page| {
+            babylon_persistence::place_page_input(
+                page,
+                receipt.resolve_tick(),
+                *receipt.tick_content_hash(),
+            )
+        })
         .collect::<Result<Vec<ArchivePageInput>, _>>()
         .expect("page inputs");
     for input in &inputs {
@@ -691,7 +753,7 @@ fn knowledge_for(plans: &[&PlacePagePlan], reveal_fields: bool) -> ArchiveKnowle
 
 fn render_markdown(plan: &PlacePagePlan) -> String {
     let renderer = FogSafeArchiveRenderer::new().expect("pinned template compiles");
-    let input = place_page_input(plan, 9, [0x99; 32]).expect("page input");
+    let input = babylon_persistence::place_page_input(plan, 9, [0x99; 32]).expect("page input");
     let knowledge = knowledge_for(&[plan], true);
     renderer
         .render(&input, &knowledge)

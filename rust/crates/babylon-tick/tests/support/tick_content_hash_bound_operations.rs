@@ -6,26 +6,24 @@ use babylon_bsl::evaluator::Value as BslValue;
 use babylon_bsl::exemptions::IntensiveAggregationExemption;
 use babylon_bsl::fuel::IntrinsicCosts;
 use babylon_bsl::identity_codec::IdentityCodecError;
-use babylon_bsl::identity_sections::{encode_prepared_bsl_sections, encode_tick_payload_sections};
+use babylon_bsl::identity_sections;
 use babylon_bsl::typecheck::TypeEnv;
 use babylon_bsl::types::EnumRegistry;
 use babylon_bsl::vocabulary::{ClosedVocabulary, EnumKind};
 use babylon_graph::memory::MemoryGraph;
 use babylon_graph::stable_element::{StableElementKey, StableElementResolver, StableIdentityError};
-use babylon_graph::stable_state::{
-    compose_stable_graph_state_from_rows, encode_stable_graph_state, StableGraphStateRowsInput,
-};
+use babylon_graph::stable_state;
+use babylon_graph::stable_state::StableGraphStateRowsInput;
 use babylon_graph::state_hash::CanonicalState;
 use babylon_graph::substrate::{GraphSubstrate, HyperedgeId, NodeId};
 use babylon_kernel::currency::Currency;
 use babylon_kernel::replay::{ReplayIdentityError, ReplaySessionId, RngDomain};
 use babylon_practice_contract::ActorOrganizationId;
 use babylon_practice_contract::{
-    input_authority_ledger_digest, CampaignId, InputAuthorityId, PracticeAuthorityKind,
-    PracticeBatchError, PracticeId, PracticeInputAuthority, PracticeInputAuthorityLedger,
-    PracticeIntent, PracticeTargetIdentity, PracticeTargetTag, ProposalNonce,
-    ResolvedPracticeBatch, ResolvedPracticeBatchError, ResolvedPracticeBatchItem,
-    TaggedPracticeTarget,
+    CampaignId, InputAuthorityId, PracticeAuthorityKind, PracticeBatchError, PracticeId,
+    PracticeInputAuthority, PracticeInputAuthorityLedger, PracticeIntent, PracticeTargetIdentity,
+    PracticeTargetTag, ProposalNonce, ResolvedPracticeBatch, ResolvedPracticeBatchError,
+    ResolvedPracticeBatchItem, TaggedPracticeTarget,
 };
 use babylon_practice_contract::{OrderedPracticeActionBatch, OrderedPracticeActionError};
 use serde_json::Value;
@@ -96,32 +94,33 @@ fn execute_text(name: &str, recipe: &Value) -> Result<(), &'static str> {
                 .map_err(|error| replay_text_error(name, error))
         }
         "symbol_bytes" => execute_symbol("a".repeat(count(recipe, "symbol_bytes")))
-            .map_err(|error| bsl_text_error(name, error)),
+            .map_err(|error| bsl_text_error(name, &error)),
         "qname_bytes" | "qname_segments" => {
-            execute_qname(repeated_segments(recipe)).map_err(|error| bsl_text_error(name, error))
+            execute_qname(repeated_segments(recipe)).map_err(|error| bsl_text_error(name, &error))
         }
         "structural_type_bytes" => execute_structural_type("A".repeat(count(recipe, "type_bytes")))
             .map_err(|error| graph_text_error(name, error)),
         "intrinsic_identity_bytes" => {
             execute_intrinsic("a".repeat(count(recipe, "identity_bytes")))
-                .map_err(|error| bsl_text_error(name, error))
+                .map_err(|error| bsl_text_error(name, &error))
         }
-        "enum_type_bytes" => execute_enum_type(format!(
+        "enum_type_bytes" => execute_enum_type(&format!(
             "A{}",
             "a".repeat(count(recipe, "type_bytes").saturating_sub(1))
         ))
-        .map_err(|error| bsl_text_error(name, error)),
-        "enum_member_bytes" => execute_enum_member("A".repeat(count(recipe, "member_bytes")))
-            .map_err(|error| bsl_text_error(name, error)),
+        .map_err(|error| bsl_text_error(name, &error)),
+        "enum_member_bytes" => execute_enum_member(&"A".repeat(count(recipe, "member_bytes")))
+            .map_err(|error| bsl_text_error(name, &error)),
         "governance_utf8_bytes" => execute_governance("a".repeat(count(recipe, "utf8_bytes")))
-            .map_err(|error| bsl_text_error(name, error)),
+            .map_err(|error| bsl_text_error(name, &error)),
         _ => panic!("non-text production operation {name}"),
     }
 }
 
 fn execute_symbol(symbol: String) -> Result<(), IdentityCodecError> {
     let events = vec![("EventType/A".to_owned(), vec![(symbol, BslValue::Int(0))])];
-    encode_tick_payload_sections(&[], &events, &[], &empty_resolver()).map(|_| ())
+    identity_sections::encode_tick_payload_sections(&[], &events, &[], &empty_resolver())
+        .map(|_| ())
 }
 
 fn execute_qname(qname: String) -> Result<(), IdentityCodecError> {
@@ -157,18 +156,18 @@ fn execute_intrinsic(identity: String) -> Result<(), IdentityCodecError> {
     )
 }
 
-fn execute_enum_type(enum_type: String) -> Result<(), IdentityCodecError> {
-    execute_enum(enum_type, "A".to_owned())
+fn execute_enum_type(enum_type: &str) -> Result<(), IdentityCodecError> {
+    execute_enum(enum_type, "A")
 }
 
-fn execute_enum_member(member: String) -> Result<(), IdentityCodecError> {
-    execute_enum("A".to_owned(), member)
+fn execute_enum_member(member: &str) -> Result<(), IdentityCodecError> {
+    execute_enum("A", member)
 }
 
-fn execute_enum(enum_type: String, member: String) -> Result<(), IdentityCodecError> {
+fn execute_enum(enum_type: &str, member: &str) -> Result<(), IdentityCodecError> {
     let mut enums = EnumRegistry::default();
     enums
-        .declare(&enum_type, &[member])
+        .declare(enum_type, &[member.to_owned()])
         .expect("one unique bounded enum member");
     encode_prepared(
         &empty_types(),
@@ -225,7 +224,7 @@ fn graph_text_error(name: &str, error: StableIdentityError) -> &'static str {
     }
 }
 
-fn bsl_text_error(name: &str, error: IdentityCodecError) -> &'static str {
+fn bsl_text_error(name: &str, error: &IdentityCodecError) -> &'static str {
     let IdentityCodecError::InvalidString { .. } = error else {
         panic!("unexpected BSL text bound error: {error:?}");
     };
@@ -259,7 +258,10 @@ fn counts(recipe: &Value, field: &str) -> Vec<usize> {
         .expect("bound recipe counts")
         .iter()
         .take(32)
-        .map(|value| usize::try_from(value.as_u64().expect("bound recipe count")).unwrap())
+        .map(|value| {
+            usize::try_from(value.as_u64().expect("bound recipe count"))
+                .expect("the fixture value fits the target range")
+        })
         .collect()
 }
 
@@ -378,7 +380,7 @@ fn resolver_single_hyperedge(recipe: &Value) -> Result<(), StableIdentityError> 
     );
     let members: Vec<_> = (0..=65_534)
         .take(node_count)
-        .map(|index| NodeId(index as u64))
+        .map(|index| NodeId(u64::try_from(index).expect("synthetic node ordinal fits u64")))
         .collect();
     let hyperedge = graph
         .add_hyperedge(text(recipe, "hyperedge_type"), &members)
@@ -397,14 +399,14 @@ fn resolver_fact_units(recipe: &Value) -> Result<(), StableIdentityError> {
         text(recipe, "node_name_pattern"),
     );
     let mut hyperedge_names = HashMap::new();
-    for (index, member_count) in counts(recipe, "hyperedge_member_rows")
+    let bounded_counts = counts(recipe, "hyperedge_member_rows")
         .into_iter()
         .take(32)
-        .enumerate()
-    {
+        .enumerate();
+    for (index, member_count) in bounded_counts {
         let members: Vec<_> = (0..65_534)
             .take(member_count)
-            .map(|member| NodeId(member as u64))
+            .map(|member| NodeId(u64::try_from(member).expect("synthetic member ordinal fits u64")))
             .collect();
         let hyperedge = graph
             .add_hyperedge("h", &members)
@@ -439,7 +441,9 @@ fn resolver_manifest_nodes(recipe: &Value) -> Result<(), StableIdentityError> {
     let resolver =
         StableElementResolver::seal(&graph, text(recipe, "scenario"), &names, &HashMap::new())?;
     assert_eq!(
-        resolver.node_key(final_node).unwrap(),
+        resolver
+            .node_key(final_node)
+            .expect("the fixture node has a key"),
         &StableElementKey::Node {
             scenario: text(recipe, "scenario").to_owned(),
             local_name: names[&final_node].clone(),
@@ -534,11 +538,16 @@ impl GeneratedState {
     fn nodes(&self) -> Vec<(NodeId, String)> {
         (0..=262_144)
             .take(self.node_count)
-            .map(|index| (NodeId(index as u64), self.node_type.clone()))
+            .map(|index| {
+                (
+                    NodeId(u64::try_from(index).expect("synthetic node ordinal fits u64")),
+                    self.node_type.clone(),
+                )
+            })
             .collect()
     }
 
-    fn f64_rows(&self, recipe: AttributeRecipe) -> Vec<(NodeId, String, f64)> {
+    fn f64_rows(recipe: AttributeRecipe) -> Vec<(NodeId, String, f64)> {
         match recipe {
             AttributeRecipe::None => Vec::new(),
             AttributeRecipe::Indexed { count, pattern } => (0..=524_288)
@@ -567,7 +576,7 @@ impl CanonicalState for GeneratedState {
     }
 
     fn all_attributes(&self) -> Vec<(NodeId, String, f64)> {
-        self.f64_rows(self.node_f64.clone())
+        Self::f64_rows(self.node_f64.clone())
     }
 
     fn all_edges(&self) -> Vec<(String, NodeId, NodeId, f64)> {
@@ -580,7 +589,7 @@ impl CanonicalState for GeneratedState {
         };
         let members = (0..=65_534)
             .take(count)
-            .map(|index| NodeId(index as u64))
+            .map(|index| NodeId(u64::try_from(index).expect("synthetic node ordinal fits u64")))
             .collect();
         vec![(HyperedgeId(0), "h".to_owned(), members)]
     }
@@ -650,7 +659,7 @@ fn stable_graph_nodes(recipe: &Value) -> Result<(), StableIdentityError> {
         node_currency: AttributeRecipe::None,
         hyperedge_members: None,
     };
-    encode_stable_graph_state(&state, &resolver).map(|_| ())
+    stable_state::encode_stable_graph_state(&state, &resolver).map(|_| ())
 }
 
 fn stable_graph_attributes(recipe: &Value) -> Result<(), StableIdentityError> {
@@ -665,7 +674,7 @@ fn stable_graph_attributes(recipe: &Value) -> Result<(), StableIdentityError> {
         node_currency: AttributeRecipe::None,
         hyperedge_members: None,
     };
-    encode_stable_graph_state(&state, &resolver).map(|_| ())
+    stable_state::encode_stable_graph_state(&state, &resolver).map(|_| ())
 }
 
 fn stable_graph_hyperedge(recipe: &Value) -> Result<(), StableIdentityError> {
@@ -674,7 +683,7 @@ fn stable_graph_hyperedge(recipe: &Value) -> Result<(), StableIdentityError> {
     let names = add_nodes(&mut graph, sealed, "n", text(recipe, "node_name_pattern"));
     let members: Vec<_> = (0..65_534)
         .take(sealed)
-        .map(|index| NodeId(index as u64))
+        .map(|index| NodeId(u64::try_from(index).expect("synthetic node ordinal fits u64")))
         .collect();
     let hyperedge = graph
         .add_hyperedge("h", &members)
@@ -692,7 +701,7 @@ fn stable_graph_hyperedge(recipe: &Value) -> Result<(), StableIdentityError> {
         node_currency: AttributeRecipe::None,
         hyperedge_members: Some(count(recipe, "state_member_rows")),
     };
-    encode_stable_graph_state(&state, &resolver).map(|_| ())
+    stable_state::encode_stable_graph_state(&state, &resolver).map(|_| ())
 }
 
 fn stable_graph_facts(recipe: &Value) -> Result<(), StableIdentityError> {
@@ -710,7 +719,7 @@ fn stable_graph_facts(recipe: &Value) -> Result<(), StableIdentityError> {
         },
         hyperedge_members: None,
     };
-    encode_stable_graph_state(&state, &resolver).map(|_| ())
+    stable_state::encode_stable_graph_state(&state, &resolver).map(|_| ())
 }
 
 fn stable_graph_bytes(recipe: &Value) -> Result<(), StableIdentityError> {
@@ -726,7 +735,7 @@ fn stable_graph_bytes(recipe: &Value) -> Result<(), StableIdentityError> {
         node_currency: AttributeRecipe::None,
         hyperedge_members: None,
     };
-    encode_stable_graph_state(&state, &resolver).map(|_| ())
+    stable_state::encode_stable_graph_state(&state, &resolver).map(|_| ())
 }
 
 fn execute_prepared(recipe: &Value) -> Result<(), IdentityCodecError> {
@@ -755,7 +764,8 @@ fn encode_prepared(
     enums: &EnumRegistry,
     vocabulary: Option<&ClosedVocabulary>,
 ) -> Result<(), IdentityCodecError> {
-    encode_prepared_bsl_sections(types, intrinsics, constants, enums, vocabulary).map(|_| ())
+    identity_sections::encode_prepared_bsl_sections(types, intrinsics, constants, enums, vocabulary)
+        .map(|_| ())
 }
 
 fn prepared_constants(recipe: &Value) -> Result<(), IdentityCodecError> {
@@ -941,7 +951,7 @@ fn execute_tick(recipe: &Value) -> Result<(), IdentityCodecError> {
         "tick_payload_byte_boundary" => (Vec::new(), tick_byte_event(recipe)),
         _ => panic!("unknown tick bound fixture {fixture}"),
     };
-    encode_tick_payload_sections(&outcomes, &events, &[], &resolver).map(|_| ())
+    identity_sections::encode_tick_payload_sections(&outcomes, &events, &[], &resolver).map(|_| ())
 }
 
 fn tick_outcomes(count: usize, pattern: &str) -> Vec<(String, usize)> {
@@ -1013,7 +1023,7 @@ fn execute_ordered_actions(recipe: &Value) -> Result<(), OrderedPracticeActionEr
         schema_version: 2,
         campaign_id: CampaignId::from_bytes([0x10; 16]),
         resolve_tick: 11,
-        authority_ledger_digest: input_authority_ledger_digest(&ledger)
+        authority_ledger_digest: babylon_practice_contract::input_authority_ledger_digest(&ledger)
             .expect("bounded action ledger digest"),
         resource_allocation_contract_digest: [0x40; 32],
         content_digest: [0x30; 32],
@@ -1087,14 +1097,14 @@ fn carrier_error(error: StableIdentityError) -> &'static str {
 
 fn graph_error(error: StableIdentityError) -> &'static str {
     match error {
-        StableIdentityError::ResolverRowLimit { .. } => "row_limit",
         StableIdentityError::EdgeLimit { .. } => "edge_limit",
         StableIdentityError::StateSectionLimit { section, .. }
             if section.contains("hyperedge members") =>
         {
             "hyperedge_members"
         }
-        StableIdentityError::StateSectionLimit { .. } => "row_limit",
+        StableIdentityError::ResolverRowLimit { .. }
+        | StableIdentityError::StateSectionLimit { .. } => "row_limit",
         StableIdentityError::FactUnitLimit { .. } => "aggregate_row_limit",
         StableIdentityError::ByteLimit { .. } => "byte_limit",
         other => panic!("unexpected graph bound error: {other:?}"),
@@ -1144,7 +1154,7 @@ fn resolver_hyperedges(recipe: &Value) -> Result<(), StableIdentityError> {
 fn stable_graph_hyperedge_rows(recipe: &Value) -> Result<(), StableIdentityError> {
     let count = count(recipe, "state_hyperedge_rows");
     assert!(count <= 65_537);
-    compose_stable_graph_state_from_rows(
+    stable_state::compose_stable_graph_state_from_rows(
         "s",
         StableGraphStateRowsInput {
             nodes: vec![("n".to_owned(), "n".to_owned())],

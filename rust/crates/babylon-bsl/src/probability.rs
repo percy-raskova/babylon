@@ -5,14 +5,21 @@
 //! allocation is integer-only and covers the complete `2^64` draw space.
 
 use crate::bindings::{BindSource, BindingDecl};
-use crate::causal_contract::{effect_footprint, EffectSignature, RuleContract, RuleRole};
-use crate::evaluator::{evaluate, EvalEnv, EvalError, Value};
+use crate::causal_contract::{EffectSignature, RuleContract, RuleRole};
+use crate::evaluator::{EvalEnv, EvalError, Value};
 use crate::intrinsic_host::IntrinsicHost;
 use crate::reader::{Atom, FormPath, SExpr, ScaledKind};
+use crate::rule_pipeline::LoadedRule;
 use crate::typecheck::TypeEnv;
 use crate::types::{BslType, EnumRegistry, EnumTypeId};
 use babylon_graph::stable_element::StableElementKey;
-use babylon_kernel::content_digest::sha256_of;
+use babylon_kernel::content_digest;
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
+use std::collections::HashMap;
+use std::collections::HashSet;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 
 /// The fixed decimal scale of a BSL `m` literal.
 pub const MASS_NANOUNITS_PER_UNIT: u64 = 1_000_000_000;
@@ -553,7 +560,7 @@ impl ProbabilityError {
 }
 
 impl std::fmt::Display for ProbabilityError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         match self {
             Self::MassOverflow => write!(f, "Mass nanounit arithmetic overflowed u64"),
             Self::MassUnderflow => write!(f, "Mass subtraction would be negative"),
@@ -667,7 +674,7 @@ fn mass_expression_is_typed(
     expr: &SExpr,
     types: &TypeEnv,
     bindings: &[BindingDecl],
-    consts: &std::collections::HashMap<String, Value>,
+    consts: &HashMap<String, Value>,
     resolving: &mut Vec<String>,
 ) -> bool {
     match expr {
@@ -727,12 +734,15 @@ fn declared_numeric_type(types: &TypeEnv, name: &str) -> bool {
         .is_some_and(|declaration| bsl_type_is_quantizable(&declaration.ty))
 }
 
-#[allow(clippy::too_many_lines)]
+#[allow(
+    clippy::too_many_lines,
+    reason = "`ordinary_numeric_expression_is_typed` keeps one authored sequence in a single place"
+)]
 fn ordinary_numeric_expression_is_typed(
     expr: &SExpr,
     types: &TypeEnv,
     bindings: &[BindingDecl],
-    consts: &std::collections::HashMap<String, Value>,
+    consts: &HashMap<String, Value>,
     resolving: &mut Vec<String>,
 ) -> bool {
     match expr {
@@ -857,7 +867,7 @@ fn ordinary_numeric_expression_is_statically_int(
     expr: &SExpr,
     types: &TypeEnv,
     bindings: &[BindingDecl],
-    consts: &std::collections::HashMap<String, Value>,
+    consts: &HashMap<String, Value>,
     resolving: &mut Vec<String>,
 ) -> bool {
     match expr {
@@ -951,7 +961,7 @@ fn expression_contains_typed_mass(
     expr: &SExpr,
     types: &TypeEnv,
     bindings: &[BindingDecl],
-    consts: &std::collections::HashMap<String, Value>,
+    consts: &HashMap<String, Value>,
     resolving: &mut Vec<String>,
 ) -> bool {
     if mass_expression_is_typed(expr, types, bindings, consts, resolving) {
@@ -986,7 +996,7 @@ fn expression_is_typed_probability(
     expr: &SExpr,
     types: &TypeEnv,
     bindings: &[BindingDecl],
-    probability_consts: &std::collections::HashSet<String>,
+    probability_consts: &HashSet<String>,
     resolving: &mut Vec<String>,
 ) -> bool {
     match expr {
@@ -1078,7 +1088,7 @@ fn validate_authored_event_payloads(
     root_path: &[u32],
     types: &TypeEnv,
     bindings: &[BindingDecl],
-    probability_consts: &std::collections::HashSet<String>,
+    probability_consts: &HashSet<String>,
 ) -> Result<(), ProbabilityError> {
     let mut stack = vec![(rule, root_path.to_vec())];
     while let Some((current, path)) = stack.pop() {
@@ -1131,7 +1141,10 @@ enum StaticNumeric {
 }
 
 impl StaticNumeric {
-    #[allow(clippy::cast_precision_loss)]
+    #[allow(
+        clippy::cast_precision_loss,
+        reason = "the authored integer magnitudes are exact in f64"
+    )]
     fn as_f64(self) -> f64 {
         match self {
             Self::Int(value) => value as f64,
@@ -1143,13 +1156,16 @@ impl StaticNumeric {
 fn static_numeric_expression(
     expr: &SExpr,
     bindings: &[BindingDecl],
-    consts: &std::collections::HashMap<String, Value>,
+    consts: &HashMap<String, Value>,
     resolving: &mut Vec<String>,
 ) -> Option<StaticNumeric> {
     match expr {
         SExpr::Atom(Atom::Int(value)) => Some(StaticNumeric::Int(*value)),
         SExpr::Atom(Atom::Scaled(value)) if value.kind != ScaledKind::Ratio => {
-            #[allow(clippy::cast_precision_loss)]
+            #[allow(
+                clippy::cast_precision_loss,
+                reason = "the authored integer magnitudes are exact in f64"
+            )]
             let numeric = value.unscaled as f64 / 10f64.powi(i32::from(value.scale));
             Some(StaticNumeric::Real(numeric))
         }
@@ -1229,7 +1245,7 @@ fn static_numeric_expression(
 fn static_mass_expression(
     expr: &SExpr,
     bindings: &[BindingDecl],
-    consts: &std::collections::HashMap<String, Value>,
+    consts: &HashMap<String, Value>,
     resolving: &mut Vec<String>,
 ) -> Result<Option<Mass>, ProbabilityError> {
     match expr {
@@ -1317,7 +1333,7 @@ fn validate_quantize_mass_operands(
     root_path: &[u32],
     types: &TypeEnv,
     bindings: &[BindingDecl],
-    consts: &std::collections::HashMap<String, Value>,
+    consts: &HashMap<String, Value>,
 ) -> Result<(), ProbabilityError> {
     let mut stack = vec![(rule, root_path.to_vec())];
     while let Some((current, path)) = stack.pop() {
@@ -1469,7 +1485,7 @@ fn validate_mass_usage(
     kernel: Option<&FiniteKernel>,
     types: &TypeEnv,
     bindings: &[BindingDecl],
-    consts: &std::collections::HashMap<String, Value>,
+    consts: &HashMap<String, Value>,
 ) -> Result<(), ProbabilityError> {
     let mut allowed_roots: Vec<FormPath> = kernel
         .into_iter()
@@ -1480,7 +1496,7 @@ fn validate_mass_usage(
                 .map(|branch| branch.mass_path.clone())
         })
         .collect();
-    let mass_bindings: std::collections::BTreeSet<&str> = bindings
+    let mass_bindings: BTreeSet<&str> = bindings
         .iter()
         .filter(|binding| match &binding.source {
             BindSource::Const(qname) => matches!(consts.get(qname), Some(Value::Mass(_))),
@@ -1575,7 +1591,7 @@ fn parse_branch(
     enums: &EnumRegistry,
     types: &TypeEnv,
     bindings: &[BindingDecl],
-    consts: &std::collections::HashMap<String, Value>,
+    consts: &HashMap<String, Value>,
 ) -> Result<(EnumTypeId, KernelBranch), ProbabilityError> {
     let SExpr::List(items) = expr else {
         return Err(invalid(
@@ -1655,7 +1671,7 @@ fn parse_choose(
     enums: &EnumRegistry,
     types: &TypeEnv,
     bindings: &[BindingDecl],
-    consts: &std::collections::HashMap<String, Value>,
+    consts: &HashMap<String, Value>,
 ) -> Result<FiniteKernel, ProbabilityError> {
     let SExpr::List(items) = expr else {
         return Err(invalid(&path, "choose must be a list form"));
@@ -1741,7 +1757,8 @@ fn parse_choose(
 #[allow(
     clippy::implicit_hasher,
     clippy::too_many_arguments,
-    clippy::too_many_lines
+    clippy::too_many_lines,
+    reason = "`compile_rule_probability` takes every authored field explicitly, keeps one authored sequence in a single place, and fixes the standard hasher"
 )]
 pub fn compile_rule_probability(
     rule: &SExpr,
@@ -1750,8 +1767,8 @@ pub fn compile_rule_probability(
     enums: &EnumRegistry,
     types: &TypeEnv,
     bindings: &[BindingDecl],
-    consts: &std::collections::HashMap<String, Value>,
-    probability_consts: &std::collections::HashSet<String>,
+    consts: &HashMap<String, Value>,
+    probability_consts: &HashSet<String>,
 ) -> Result<CompiledRuleProbability, ProbabilityError> {
     let SExpr::List(rule_items) = rule else {
         return Err(invalid(
@@ -1865,8 +1882,8 @@ pub fn compile_rule_probability(
                 "a finite projection cannot bind a graph-global :metric source",
             ));
         }
-        let footprint =
-            effect_footprint(rule).map_err(|error| invalid(&root, error.to_string()))?;
+        let footprint = crate::causal_contract::effect_footprint(rule)
+            .map_err(|error| invalid(&root, error.to_string()))?;
         if !footprint
             .iter()
             .all(|effect| matches!(effect, EffectSignature::Event(_)))
@@ -1995,10 +2012,8 @@ pub fn compile_rule_probability(
 /// resolves different runtime populations. An adjacent, carrier-matched pair
 /// also returns a located [`ProbabilityError::InvalidForm`] when the kernel's
 /// material effects are not carrier-local enough for exact V1 projection.
-pub fn validate_probability_content_set(
-    rules: &[crate::rule_pipeline::LoadedRule],
-) -> Result<(), ProbabilityError> {
-    let mut samples = std::collections::BTreeSet::new();
+pub fn validate_probability_content_set(rules: &[LoadedRule]) -> Result<(), ProbabilityError> {
+    let mut samples = BTreeSet::new();
     for rule in rules {
         let Some(kernel) = &rule.kernel else {
             continue;
@@ -2093,7 +2108,7 @@ pub fn evaluate_kernel_masses(
 ) -> Result<Vec<Mass>, EvalError> {
     let mut masses = Vec::with_capacity(kernel.branches.len());
     for branch in &kernel.branches {
-        match evaluate(&branch.mass, env, host, fuel)? {
+        match crate::evaluator::evaluate(&branch.mass, env, host, fuel)? {
             Value::Mass(mass) => masses.push(mass),
             other => {
                 return Err(EvalError::plain(format!(
@@ -2114,10 +2129,11 @@ pub fn evaluate_kernel_masses(
 ///
 /// Returns [`ProbabilityError`] when schedule linkage, exact static
 /// allocation, or a retained source path violates the loaded contract.
-#[allow(clippy::too_many_lines)]
-pub fn analyze_content_set(
-    rules: &[crate::rule_pipeline::LoadedRule],
-) -> Result<ContentSetAnalysis, ProbabilityError> {
+#[allow(
+    clippy::too_many_lines,
+    reason = "`analyze_content_set` keeps one authored sequence in a single place"
+)]
+pub fn analyze_content_set(rules: &[LoadedRule]) -> Result<ContentSetAnalysis, ProbabilityError> {
     validate_probability_content_set(rules)?;
 
     let mut analyzed = Vec::with_capacity(rules.len());
@@ -2216,15 +2232,15 @@ pub fn forecast_event_likelihoods(
         }
     }
     let allocation = allocate_tickets(masses)?;
-    let mut favorable: std::collections::BTreeMap<String, (Vec<String>, u128)> = projection
+    let mut favorable: BTreeMap<String, (Vec<String>, u128)> = projection
         .event_types
         .iter()
         .cloned()
         .map(|event_type| (event_type, (Vec::new(), 0)))
         .collect();
-    for ((branch, projection), interval) in kernel.branches.iter().zip(projections).zip(&allocation)
-    {
-        let mut unique = std::collections::BTreeSet::new();
+    let branches_with_allocations = kernel.branches.iter().zip(projections).zip(&allocation);
+    for ((branch, projection), interval) in branches_with_allocations {
+        let mut unique = BTreeSet::new();
         for event_type in &projection.event_types {
             if unique.insert(event_type.as_str()) {
                 let Some(row) = favorable.get_mut(event_type) else {
@@ -2381,7 +2397,10 @@ fn push_stable_identity(
 ///
 /// Returns [`ProbabilityError`] when the evaluated masses do not match the
 /// kernel, cannot be allocated exactly, or stable identity encoding fails.
-#[allow(clippy::too_many_arguments)]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "`realize_kernel` takes every authored field explicitly"
+)]
 pub fn realize_kernel(
     identity: &KernelInstanceIdentity,
     kernel: &FiniteKernel,
@@ -2436,7 +2455,7 @@ fn compose_realization(
         allocation_bytes.extend_from_slice(&branch.tickets.start.to_be_bytes());
         allocation_bytes.extend_from_slice(&branch.tickets.end.to_be_bytes());
     }
-    let allocation_digest = sha256_of(&allocation_bytes);
+    let allocation_digest = content_digest::sha256_of(&allocation_bytes);
 
     let mut instance_bytes = b"babylon.finite-kernel-instance.v1\0".to_vec();
     push_bytes_len_prefixed(&mut instance_bytes, &identity.replay_session)?;
@@ -2455,7 +2474,7 @@ fn compose_realization(
         push_stable_identity(&mut instance_bytes, element)?;
     }
     instance_bytes.extend_from_slice(&allocation_digest);
-    let instance_digest = sha256_of(&instance_bytes);
+    let instance_digest = content_digest::sha256_of(&instance_bytes);
 
     Ok(KernelRealization {
         rule_id: identity.rule_id.clone(),
@@ -2550,16 +2569,30 @@ pub fn validate_kernel_realization(
 
 #[cfg(test)]
 mod tests {
+
     use super::*;
+    use crate::causal_contract::EvidenceClass;
+    use std::collections::HashMap;
+    use std::collections::HashSet;
 
     #[test]
-    #[allow(clippy::cast_precision_loss)]
+    #[allow(
+        clippy::cast_precision_loss,
+        reason = "the authored integer magnitudes are exact in f64"
+    )]
     fn quantize_mass_rounds_the_exact_binary64_rational_with_ties_to_even() {
         // These are exact binary fractions whose products by 10^9 are exact
         // half-integers. 976562 is even; 2929687 is odd.
-        assert_eq!(Mass::quantize(1.0 / 1_024.0).unwrap().nanounits(), 976_562);
         assert_eq!(
-            Mass::quantize(3.0 / 1_024.0).unwrap().nanounits(),
+            Mass::quantize(1.0 / 1_024.0)
+                .expect("the fixture call `quantize` succeeds for the authored inputs")
+                .nanounits(),
+            976_562
+        );
+        assert_eq!(
+            Mass::quantize(3.0 / 1_024.0)
+                .expect("the fixture call `quantize` succeeds for the authored inputs")
+                .nanounits(),
             2_929_688
         );
 
@@ -2568,12 +2601,25 @@ mod tests {
         let half_nanounit = 0.5 / MASS_NANOUNITS_PER_UNIT as f64;
         let below = f64::from_bits(half_nanounit.to_bits() - 1);
         let above = f64::from_bits(half_nanounit.to_bits() + 1);
-        assert_eq!(Mass::quantize(below).unwrap().nanounits(), 0);
-        assert_eq!(Mass::quantize(above).unwrap().nanounits(), 1);
+        assert_eq!(
+            Mass::quantize(below)
+                .expect("the fixture call `quantize` succeeds for the authored inputs")
+                .nanounits(),
+            0
+        );
+        assert_eq!(
+            Mass::quantize(above)
+                .expect("the fixture call `quantize` succeeds for the authored inputs")
+                .nanounits(),
+            1
+        );
     }
 
     #[test]
-    #[allow(clippy::cast_precision_loss)]
+    #[allow(
+        clippy::cast_precision_loss,
+        reason = "the authored integer magnitudes are exact in f64"
+    )]
     fn quantize_mass_checks_the_last_representable_binary64_values_near_u64_overflow() {
         let first_obvious_overflow = TICKET_DENOMINATOR as f64 / MASS_NANOUNITS_PER_UNIT as f64;
         let previous = f64::from_bits(first_obvious_overflow.to_bits() - 1);
@@ -2610,7 +2656,7 @@ mod tests {
         let mut enums = EnumRegistry::default();
         enums
             .declare("Outcome", &["LEFT".to_owned(), "RIGHT".to_owned()])
-            .unwrap();
+            .expect("the scenario declares the authored entity");
         let rule = crate::reader::read(
             "(rule demo/kernel :role mechanic :evidence designed \
              :material-basis \"digest contract\" :fuel 64 (bindings) \
@@ -2618,12 +2664,12 @@ mod tests {
                (branch Outcome/LEFT :mass 1m (effects)) \
                (branch Outcome/RIGHT :mass 1m (effects)))))",
         )
-        .unwrap()
+        .expect("the fixture reader returns its authored facts")
         .0;
         let contract = RuleContract {
             rule_id: "demo/kernel".to_owned(),
             role: RuleRole::Mechanic,
-            evidence: crate::causal_contract::EvidenceClass::Designed,
+            evidence: EvidenceClass::Designed,
         };
         let compiled = compile_rule_probability(
             &rule,
@@ -2631,15 +2677,17 @@ mod tests {
             &contract,
             &enums,
             &crate::typecheck::TypeEnv {
-                fields: std::collections::HashMap::new(),
+                fields: HashMap::new(),
                 exemptions: &[],
             },
             &[],
-            &std::collections::HashMap::new(),
-            &std::collections::HashSet::new(),
+            &HashMap::new(),
+            &HashSet::new(),
         )
-        .unwrap();
-        let kernel = compiled.kernel.unwrap();
+        .expect("the authored probability rule compiles");
+        let kernel = compiled
+            .kernel
+            .expect("the compiled fixture carries its kernel");
         let identity = KernelInstanceIdentity {
             replay_session: b"demo/replay".to_vec(),
             replay_seed: 7_i64.to_be_bytes(),
@@ -2652,17 +2700,22 @@ mod tests {
             active_elements: Vec::new(),
         };
         let masses = [Mass::from_nanounits(1), Mass::from_nanounits(1)];
-        let left = realize_kernel(&identity, &kernel, &masses, 0).unwrap();
-        let right = realize_kernel(&identity, &kernel, &masses, u64::MAX).unwrap();
+        let left = realize_kernel(&identity, &kernel, &masses, 0)
+            .expect("the fixture call `realize_kernel` succeeds for the authored inputs");
+        let right = realize_kernel(&identity, &kernel, &masses, u64::MAX)
+            .expect("the fixture call `realize_kernel` succeeds for the authored inputs");
         assert_ne!(left.selected_outcome, right.selected_outcome);
         assert_eq!(left.allocation_digest, right.allocation_digest);
         assert_eq!(left.instance_digest, right.instance_digest);
-        validate_kernel_realization(&left, &identity).unwrap();
-        validate_kernel_realization(&right, &identity).unwrap();
+        validate_kernel_realization(&left, &identity)
+            .expect("the authored fixture satisfies the rule");
+        validate_kernel_realization(&right, &identity)
+            .expect("the authored fixture satisfies the rule");
 
         let mut other_tick = identity.clone();
         other_tick.tick = 2;
-        let changed = realize_kernel(&other_tick, &kernel, &masses, 0).unwrap();
+        let changed = realize_kernel(&other_tick, &kernel, &masses, 0)
+            .expect("the fixture call `realize_kernel` succeeds for the authored inputs");
         assert_ne!(left.instance_digest, changed.instance_digest);
     }
 }

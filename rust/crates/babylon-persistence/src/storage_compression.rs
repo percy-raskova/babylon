@@ -1,6 +1,6 @@
 //! Bounded lossless storage frames; canonical hashes remain over decoded bytes.
 
-use babylon_kernel::content_digest::sha256_of;
+use babylon_kernel::content_digest;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StorageCompressionError {
@@ -48,7 +48,7 @@ pub(crate) fn decompress_exact(
     if bytes.len() != expected_length {
         return Err(StorageCompressionError::DecodedLength);
     }
-    if sha256_of(&bytes) != expected_sha256 {
+    if content_digest::sha256_of(&bytes) != expected_sha256 {
         return Err(StorageCompressionError::DigestMismatch);
     }
     Ok(bytes)
@@ -61,9 +61,16 @@ mod tests {
     #[test]
     fn single_frame_restores_every_byte_with_a_bounded_canonical_claim() {
         for bytes in [b"".as_slice(), b"exact currency bits and typed identities"] {
-            let encoded = compress_exact(bytes, bytes.len()).unwrap();
+            let encoded = compress_exact(bytes, bytes.len())
+                .expect("the body fits the exact compressed bound");
             assert_eq!(
-                decompress_exact(&encoded, bytes.len(), sha256_of(bytes), bytes.len()).unwrap(),
+                decompress_exact(
+                    &encoded,
+                    bytes.len(),
+                    content_digest::sha256_of(bytes),
+                    bytes.len()
+                )
+                .expect("the compressed body decodes"),
                 bytes
             );
         }
@@ -72,9 +79,16 @@ mod tests {
     #[test]
     fn appended_empty_frame_cannot_hide_behind_the_same_decoded_digest() {
         let bytes = b"committed state";
-        let mut encoded = compress_exact(bytes, bytes.len()).unwrap();
-        encoded.extend(compress_exact(&[], 0).unwrap());
-        assert!(decompress_exact(&encoded, bytes.len(), sha256_of(bytes), bytes.len()).is_err());
+        let mut encoded =
+            compress_exact(bytes, bytes.len()).expect("the body fits the exact compressed bound");
+        encoded.extend(compress_exact(&[], 0).expect("the body fits the exact compressed bound"));
+        assert!(decompress_exact(
+            &encoded,
+            bytes.len(),
+            content_digest::sha256_of(bytes),
+            bytes.len()
+        )
+        .is_err());
     }
 
     #[test]
@@ -84,13 +98,19 @@ mod tests {
             compress_exact(bytes, 1),
             Err(StorageCompressionError::LengthLimit)
         );
-        let encoded = compress_exact(bytes, bytes.len()).unwrap();
+        let encoded =
+            compress_exact(bytes, bytes.len()).expect("the body fits the exact compressed bound");
         assert_eq!(
-            decompress_exact(&encoded, bytes.len(), sha256_of(bytes), 1),
+            decompress_exact(&encoded, bytes.len(), content_digest::sha256_of(bytes), 1),
             Err(StorageCompressionError::LengthLimit)
         );
         assert_eq!(
-            decompress_exact(&encoded, bytes.len() + 1, sha256_of(bytes), bytes.len() + 1),
+            decompress_exact(
+                &encoded,
+                bytes.len() + 1,
+                content_digest::sha256_of(bytes),
+                bytes.len() + 1
+            ),
             Err(StorageCompressionError::DecodedLength)
         );
         assert_eq!(
@@ -100,7 +120,7 @@ mod tests {
         assert!(decompress_exact(
             &encoded[..encoded.len() - 1],
             bytes.len(),
-            sha256_of(bytes),
+            content_digest::sha256_of(bytes),
             bytes.len()
         )
         .is_err());

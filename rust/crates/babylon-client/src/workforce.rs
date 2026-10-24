@@ -1,6 +1,8 @@
 //! Identity, period, and conservation checks for disclosed staffing accounts.
 
 use babylon_persistence::production_observation::ProductionStaffingAccount;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct StaffingIdentity<'a> {
@@ -41,7 +43,7 @@ impl StaffingError {
 }
 
 impl std::fmt::Display for StaffingError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> FmtResult {
         formatter.write_str(self.message())
     }
 }

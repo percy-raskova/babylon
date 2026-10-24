@@ -1,7 +1,11 @@
-use super::{
-    is_service, kind, stage, CommodityKind, GoodId, MaterialCircuitError, MaterialCircuitState,
-    Result, ServiceConnection, UnitId,
-};
+use super::CommodityKind;
+use super::GoodId;
+use super::MaterialCircuitError;
+use super::MaterialCircuitState;
+use super::Result;
+use super::ServiceConnection;
+use super::UnitId;
+use crate::SiteId;
 use crate::{AccountId, CircuitAccounting, PricePolicy, MAX_MATERIAL_CIRCUIT_ROWS};
 use std::collections::BTreeSet;
 
@@ -31,7 +35,7 @@ fn account_exists(state: &MaterialCircuitState, account: AccountId) -> bool {
 }
 fn connection(
     state: &MaterialCircuitState,
-    provider: crate::SiteId,
+    provider: SiteId,
     buyer: AccountId,
     good: GoodId,
     unit: UnitId,
@@ -65,7 +69,7 @@ pub(crate) fn validate(state: &MaterialCircuitState) -> Result<()> {
     }
     let mut providers = BTreeSet::new();
     for output in &state.process_outputs {
-        if let Some(output_stage) = stage(state, output)? {
+        if let Some(output_stage) = super::stage(state, output)? {
             if !providers.insert((output.site_id, output.good_id, output.unit_id)) {
                 return Err(MaterialCircuitError::ServiceInvariant);
             }
@@ -76,7 +80,7 @@ pub(crate) fn validate(state: &MaterialCircuitState) -> Result<()> {
                 .input_coefficients
                 .partition_point(|r| r.process_id <= output.process_id);
             for input in &state.input_coefficients[start..end] {
-                if matches!(kind(state,input.good_id,input.unit_id)?,CommodityKind::PeriodService{stage} if stage>=output_stage)
+                if matches!(super::kind(state,input.good_id,input.unit_id)?,CommodityKind::PeriodService{stage} if stage>=output_stage)
                 {
                     return Err(MaterialCircuitError::ServiceInvariant);
                 }
@@ -84,11 +88,11 @@ pub(crate) fn validate(state: &MaterialCircuitState) -> Result<()> {
         }
     }
     for input in &state.input_coefficients {
-        kind(state, input.good_id, input.unit_id)?;
+        super::kind(state, input.good_id, input.unit_id)?;
     }
     for row in &state.inventory {
         if !matches!(
-            kind(state, row.good_id, row.unit_id)?,
+            super::kind(state, row.good_id, row.unit_id)?,
             CommodityKind::Storable { .. }
         ) {
             return Err(MaterialCircuitError::ServiceInvariant);
@@ -120,7 +124,7 @@ pub(crate) fn validate(state: &MaterialCircuitState) -> Result<()> {
 }
 fn validate_policies(
     state: &MaterialCircuitState,
-    providers: &BTreeSet<(crate::SiteId, GoodId, UnitId)>,
+    providers: &BTreeSet<(SiteId, GoodId, UnitId)>,
 ) -> Result<()> {
     let CircuitAccounting::Monetary(e) = &state.accounting else {
         return if state.service_orders.is_empty() {
@@ -158,7 +162,7 @@ fn validate_policies(
         }
     }
     for offer in &r.offers {
-        let service = is_service(state, offer.good_id, offer.unit_id);
+        let service = super::is_service(state, offer.good_id, offer.unit_id);
         match offer.pricing {
             PricePolicy::ServiceResponsive {
                 minimum,
@@ -193,13 +197,13 @@ fn validate_policies(
             .get(first)
             .filter(|o| o.process_id == policy.process_id)
             .ok_or(MaterialCircuitError::ProcessInvariant)?;
-        if is_service(state, output.good_id, output.unit_id) && policy.output_buffer != 0 {
+        if super::is_service(state, output.good_id, output.unit_id) && policy.output_buffer != 0 {
             return Err(MaterialCircuitError::ServiceInvariant);
         }
     }
     for row in &r.household_stocks {
         if !matches!(
-            kind(state, row.good_id, row.unit_id)?,
+            super::kind(state, row.good_id, row.unit_id)?,
             CommodityKind::Storable { .. }
         ) {
             return Err(MaterialCircuitError::ServiceInvariant);

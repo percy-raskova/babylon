@@ -1,11 +1,16 @@
 //! Bind the common initialization compiler to the existing authoritative replay.
-use super::{capture::CapturedSources, CapturedEconomicCatalog, EconomicCatalogError};
-use crate::{
-    material_runtime::{MaterialFoundationSpec, MaterialRuntimeError, MaterialRuntimeFoundation},
-    CampaignFoundation, FoundationContentBundle,
+use super::capture::CapturedSources;
+use super::{CapturedEconomicCatalog, EconomicCatalogError};
+
+use crate::material_runtime::{
+    MaterialFoundationSpec, MaterialRuntimeError, MaterialRuntimeFoundation,
 };
+use crate::{CampaignFoundation, FoundationContentBundle};
+
+use crate::RustPersistenceRuntimeError;
 use babylon_kernel::replay::{ReplaySeed, ReplaySessionId};
-use babylon_tick::{material_staffing::StaffingComposition, material_world::MaterialWorldRegister};
+use babylon_tick::material_staffing::StaffingComposition;
+use babylon_tick::material_world::MaterialWorldRegister;
 
 impl CapturedEconomicCatalog {
     /// Initialize through the same graph/material replay and marker-last runtime.
@@ -81,5 +86,5 @@ impl CapturedEconomicCatalog {
     }
 }
 fn catalog_error(error: EconomicCatalogError) -> MaterialRuntimeError {
-    MaterialRuntimeError::Graph(crate::RustPersistenceRuntimeError::EconomicCatalog(error))
+    MaterialRuntimeError::Graph(RustPersistenceRuntimeError::EconomicCatalog(error))
 }

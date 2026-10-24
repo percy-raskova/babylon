@@ -1,34 +1,51 @@
 //! Real commit-bound hints, cancellable publication, and listener catch-up.
-use super::*;
-use crate::archive_driver::{ArchiveDriver, ArchiveDriverEvent};
-use crate::{
-    material_runtime::{CommitFault, DurableMaterialRuntime, MaterialRuntimeError, COMMIT_FAULT},
-    michigan_content::MichiganContentPreset,
-    michigan_material::MichiganDeliveryPreset,
-    ArchiveWorkerCancellation, ARCHIVE_WAKEUP_CHANNEL,
+use super::current_material;
+use super::support::{
+    archive_page_count, receipt_consumption_count, LiveWorkerTarget, StubPageProducer, TestDatabase,
 };
+use crate::archive_driver::{ArchiveDriver, ArchiveDriverEvent};
+use crate::identity::CampaignId;
+use crate::material_runtime::{
+    CommitFault, DurableMaterialRuntime, MaterialRuntimeError, COMMIT_FAULT,
+};
+use crate::michigan_content::MichiganContentPreset;
+use crate::michigan_material::MichiganDeliveryPreset;
+use crate::{
+    ArchiveDossierProducer, ArchiveProducerOutcome, ArchiveWorker, PendingArchiveReceipt,
+    SemanticArchiveError, SemanticArchiveStore,
+};
+use crate::{ArchiveWorkerCancellation, ARCHIVE_WAKEUP_CHANNEL};
+use babylon_bsl::structural_verbs::CollectingSink;
+use babylon_practice_contract::OrderedPracticeActionBatch;
+use postgres::{Config, NoTls};
+use uuid::Uuid;
+
+use super::support;
+use crate::territory_county_map::TerritoryCountyMapError;
+use crate::ArchiveKnowledge;
+use crate::PostgresDiagnostic;
+use crate::RustPersistenceRuntimeError;
 use postgres::fallible_iterator::FallibleIterator as _;
+use postgres::Client;
+use postgres::Notification;
 use std::sync::mpsc::{self, Receiver};
 use std::time::{Duration, Instant};
 
-fn listen(config: &Config) -> postgres::Client {
+fn listen(config: &Config) -> Client {
     let mut client = config.connect(NoTls).expect("listener connection");
     client
         .batch_execute("LISTEN babylon_archive_wakeup_v1")
         .expect("autocommit LISTEN");
     client
 }
-fn next_hint(client: &mut postgres::Client, wait: Duration) -> Option<postgres::Notification> {
+fn next_hint(client: &mut Client, wait: Duration) -> Option<Notification> {
     client
         .notifications()
         .timeout_iter(wait)
         .next()
         .expect("notification connection")
 }
-fn assert_verifier_refuses_wakeup_drift(
-    store: &SemanticArchiveStore,
-    writer: &mut postgres::Client,
-) {
+fn assert_verifier_refuses_wakeup_drift(store: &SemanticArchiveStore, writer: &mut Client) {
     writer
         .batch_execute(
             "ALTER TABLE babylon_state.tick_commit DISABLE TRIGGER archive_wakeup_tick_v1",
@@ -55,7 +72,7 @@ fn assert_verifier_refuses_wakeup_drift(
         .expect("restore owner-only function");
     store.verify_schema().expect("exact restored schema");
 }
-fn assert_empty_hint(listener: &mut postgres::Client) {
+fn assert_empty_hint(listener: &mut Client) {
     let hint = next_hint(listener, Duration::from_secs(2)).expect("committed hint");
     assert_eq!(hint.channel(), ARCHIVE_WAKEUP_CHANNEL);
     assert_eq!(hint.payload(), "");
@@ -113,7 +130,7 @@ impl ArchiveDossierProducer for CancelAfterProduce {
         &self,
         campaign: Uuid,
         receipt: &PendingArchiveReceipt,
-        knowledge: &crate::ArchiveKnowledge,
+        knowledge: &ArchiveKnowledge,
         page_budget: usize,
     ) -> Result<ArchiveProducerOutcome, SemanticArchiveError> {
         let result = StubPageProducer.produce(campaign, receipt, knowledge, page_budget);
@@ -206,7 +223,7 @@ impl ArchiveDossierProducer for DelayedPageProducer {
         &self,
         campaign: Uuid,
         receipt: &PendingArchiveReceipt,
-        knowledge: &crate::ArchiveKnowledge,
+        knowledge: &ArchiveKnowledge,
         page_budget: usize,
     ) -> Result<ArchiveProducerOutcome, SemanticArchiveError> {
         // Real producers authenticate and render on separate connections while
@@ -245,7 +262,7 @@ fn live_worker_publishes_delayed_production_without_losing_the_receipt() {
 #[test]
 #[ignore = "requires the task-owned disposable PostgreSQL runtime"]
 fn live_organizer_timeout_diagnostics_survive_direct_and_graph_reads() {
-    let config = validated_base_config();
+    let config = support::validated_base_config();
     for variant in 0..3 {
         let mut client = config.connect(NoTls).expect("owned timeout probe");
         client
@@ -257,15 +274,13 @@ fn live_organizer_timeout_diagnostics_survive_direct_and_graph_reads() {
         let error = client
             .query_one("SELECT 1", &[])
             .expect_err("server closes the idle probe connection");
-        let diagnostic = crate::PostgresDiagnostic::capture(&error);
+        let diagnostic = PostgresDiagnostic::capture(&error);
         assert!(matches!(
             diagnostic.classification(),
             crate::PostgresFailureClass::Timeout | crate::PostgresFailureClass::Reachability
         ));
-        let nested = crate::RustPersistenceRuntimeError::postgres(
-            "read graph for organizer Archive",
-            &error,
-        );
+        let nested =
+            RustPersistenceRuntimeError::postgres("read graph for organizer Archive", &error);
         assert_eq!(
             crate::organizer_archive::archive_register_error(MaterialRuntimeError::Graph(nested)),
             SemanticArchiveError::Database {
@@ -273,9 +288,8 @@ fn live_organizer_timeout_diagnostics_survive_direct_and_graph_reads() {
                 diagnostic: diagnostic.clone(),
             }
         );
-        let territory = crate::RustPersistenceRuntimeError::TerritoryCountyMap(
-            crate::territory_county_map::TerritoryCountyMapError::from(error),
-        );
+        let territory =
+            RustPersistenceRuntimeError::TerritoryCountyMap(TerritoryCountyMapError::from(error));
         assert_eq!(
             crate::organizer_archive::archive_register_error(MaterialRuntimeError::Graph(
                 territory
@@ -288,7 +302,7 @@ fn live_organizer_timeout_diagnostics_survive_direct_and_graph_reads() {
         let error = client
             .query_one("SELECT 1", &[])
             .expect_err("idle probe connection remains closed");
-        let diagnostic = crate::PostgresDiagnostic::capture(&error);
+        let diagnostic = PostgresDiagnostic::capture(&error);
         let direct = match variant {
             0 => MaterialRuntimeError::Database(error),
             1 => MaterialRuntimeError::DatabaseLockRefused(error),
@@ -307,18 +321,16 @@ fn live_organizer_timeout_diagnostics_survive_direct_and_graph_reads() {
         SemanticArchiveError::StoredPageMismatch
     );
     for nested in [
-        crate::RustPersistenceRuntimeError::Database {
+        RustPersistenceRuntimeError::Database {
             operation: "untyped graph failure",
             diagnostic: None,
         },
-        crate::RustPersistenceRuntimeError::TerritoryCountyMap(
-            crate::territory_county_map::TerritoryCountyMapError::Database {
-                operation: "untyped territory failure",
-                diagnostic: None,
-            },
-        ),
-        crate::RustPersistenceRuntimeError::TerritoryCountyMap(
-            crate::territory_county_map::TerritoryCountyMapError::StoredMappingDiverged {
+        RustPersistenceRuntimeError::TerritoryCountyMap(TerritoryCountyMapError::Database {
+            operation: "untyped territory failure",
+            diagnostic: None,
+        }),
+        RustPersistenceRuntimeError::TerritoryCountyMap(
+            TerritoryCountyMapError::StoredMappingDiverged {
                 stored_rows: 0,
                 declared_rows: 1,
             },
@@ -342,7 +354,7 @@ fn stop(driver: &mut ArchiveDriver) {
         .expect("driver did not panic")
         .is_ok());
 }
-fn listener_pid(client: &mut postgres::Client, database: &str) -> i32 {
+fn listener_pid(client: &mut Client, database: &str) -> i32 {
     client.query_one("SELECT pid FROM pg_catalog.pg_stat_activity WHERE datname=$1 AND application_name='babylon-archive-listener-v1'", &[&database])
         .expect("one dedicated listener").get(0)
 }
@@ -364,7 +376,7 @@ fn commit_next(config: &Config, campaign: CampaignId, tick: u64) {
     );
 }
 
-fn assert_offline_gap_catches_up(target: &LiveWorkerTarget, observer: &mut postgres::Client) {
+fn assert_offline_gap_catches_up(target: &LiveWorkerTarget, observer: &mut Client) {
     let listeners: i64 = observer.query_one(
         "SELECT count(*) FROM pg_catalog.pg_stat_activity WHERE datname=$1 AND application_name='babylon-archive-listener-v1'",
         &[&target.database.name],
@@ -423,22 +435,21 @@ fn live_driver_catches_startup_backlog_and_reconnect_then_stops_under_backpressu
     drop(driver);
     assert_offline_gap_catches_up(&target, &mut observer);
     drop(observer);
-    let backpressure_seen = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-    let sink_signal = backpressure_seen.clone();
+    let (sink_signal, backpressure_seen) = mpsc::channel::<()>();
     let mut blocked = ArchiveDriver::start(&target.config, target.campaign_id, move |_| {
-        sink_signal.store(true, std::sync::atomic::Ordering::Release);
+        let _ = sink_signal.send(());
         false
     })
     .expect("saturated sink driver");
     let deadline = Instant::now() + Duration::from_secs(90);
-    while !backpressure_seen.load(std::sync::atomic::Ordering::Acquire) && Instant::now() < deadline
-    {
-        std::thread::sleep(Duration::from_millis(10));
+    let mut refused = false;
+    while !refused && Instant::now() < deadline {
+        refused = backpressure_seen.try_recv().is_ok();
+        if !refused {
+            std::thread::sleep(Duration::from_millis(10));
+        }
     }
-    assert!(
-        backpressure_seen.load(std::sync::atomic::Ordering::Acquire),
-        "the sink actually refused an event before stop"
-    );
+    assert!(refused, "the sink actually refused an event before stop");
     blocked
         .request_refresh(99)
         .expect("bounded refresh accepted");
@@ -449,7 +460,7 @@ fn live_driver_catches_startup_backlog_and_reconnect_then_stops_under_backpressu
 
 /// Census every persisted family keyed by this campaign and resolve tick, rather
 /// than checking only the final marker while leaving earlier writes unexamined.
-fn assert_no_candidate_rows(client: &mut postgres::Client, campaign: CampaignId, tick: i64) {
+fn assert_no_candidate_rows(client: &mut Client, campaign: CampaignId, tick: i64) {
     let tables = client.query(
         "SELECT namespace.nspname,relation.relname FROM pg_catalog.pg_class relation \
         JOIN pg_catalog.pg_namespace namespace ON namespace.oid=relation.relnamespace \
@@ -501,10 +512,7 @@ fn material_actions(runtime: &DurableMaterialRuntime, tick: u64) -> OrderedPract
     .expect("empty authoritative action batch")
 }
 
-fn assert_marker_fault_rolls_back(
-    runtime: &mut DurableMaterialRuntime,
-    writer: &mut postgres::Client,
-) {
+fn assert_marker_fault_rolls_back(runtime: &mut DurableMaterialRuntime, writer: &mut Client) {
     let prior_tail = runtime.tail().copied().expect("committed opening tail");
     let prior_world = runtime
         .session()
@@ -564,9 +572,12 @@ fn assert_marker_fault_rolls_back(
 #[test]
 #[ignore = "requires the task-owned disposable PostgreSQL runtime"]
 fn live_notification_failure_rolls_back_material_commit_and_preserves_memory_before_retry() {
-    let base = validated_base_config();
-    let database =
-        TestDatabase::create_from_template(&base, &validated_template_name(), "wakeupatomic");
+    let base = support::validated_base_config();
+    let database = TestDatabase::create_from_template(
+        &base,
+        &support::validated_template_name(),
+        "wakeupatomic",
+    );
     let config = database.config(&base);
     let campaign =
         CampaignId::from_uuid(Uuid::from_u128(0x2200_0000_0000_0000_0000_0000_0000_00f5));

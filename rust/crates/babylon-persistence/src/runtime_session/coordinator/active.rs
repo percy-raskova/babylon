@@ -2,9 +2,11 @@
 
 use super::{ArchiveControl, SessionEvent, COMPLETION_CHECK};
 use crate::archive_driver::ArchiveDriverEvent;
+use crate::runtime_session;
 use crate::runtime_session::{
-    emit, RuntimeSessionErrorCode, RuntimeSessionResponse, RuntimeSessionScope, SessionBackend,
+    RuntimeSessionErrorCode, RuntimeSessionResponse, RuntimeSessionScope, SessionBackend,
 };
+use mpsc::RecvTimeoutError;
 use std::io::Write;
 use std::sync::mpsc::{self, Receiver};
 use std::time::{Duration, Instant};
@@ -31,7 +33,7 @@ impl<B: SessionBackend, D: ArchiveControl> Active<B, D> {
         request_id: Option<u64>,
         code: RuntimeSessionErrorCode,
     ) -> Result<(), RuntimeSessionErrorCode> {
-        emit(
+        runtime_session::emit(
             output,
             &RuntimeSessionResponse::Error {
                 request_id,
@@ -119,7 +121,7 @@ impl<B: SessionBackend, D: ArchiveControl> Active<B, D> {
             );
         }
         self.verified_tick = verified_tick;
-        emit(
+        runtime_session::emit(
             output,
             &RuntimeSessionResponse::ArchiveProgress {
                 request_id,
@@ -154,8 +156,8 @@ impl<B: SessionBackend, D: ArchiveControl> Active<B, D> {
             };
             match events.recv_timeout(remaining.min(COMPLETION_CHECK)) {
                 Ok(event) => self.retiring_event(output, scope, event, expose_progress)?,
-                Err(mpsc::RecvTimeoutError::Timeout) => {}
-                Err(mpsc::RecvTimeoutError::Disconnected) => {
+                Err(RecvTimeoutError::Timeout) => {}
+                Err(RecvTimeoutError::Disconnected) => {
                     std::thread::park_timeout(remaining.min(COMPLETION_CHECK));
                 }
             }

@@ -20,6 +20,14 @@ use crate::capabilities::{
     TOKEN_TYPE_VARIABLE,
 };
 use crate::line_index::LineIndex;
+use babylon_bsl::probability::AllocationAnalysis;
+use babylon_bsl::probability::ContentSetAnalysis;
+use babylon_bsl::probability::FiniteKernel;
+use babylon_bsl::probability::KernelBranch;
+use babylon_bsl::probability::Mass;
+use babylon_bsl::probability::ProbabilityAnalysisNodeKind;
+use babylon_bsl::probability::RuleProbabilityAnalysis;
+use babylon_bsl::reader::SpanTable;
 
 /// One byte range in the current source buffer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -361,7 +369,7 @@ fn path_child(path: &[u32], index: u32) -> Vec<u32> {
     child
 }
 
-fn byte_span(spans: &babylon_bsl::reader::SpanTable, path: &[u32]) -> Option<ByteSpan> {
+fn byte_span(spans: &SpanTable, path: &[u32]) -> Option<ByteSpan> {
     spans.span_of(path).map(|span| ByteSpan {
         start: span.start,
         end: span.end,
@@ -369,7 +377,7 @@ fn byte_span(spans: &babylon_bsl::reader::SpanTable, path: &[u32]) -> Option<Byt
 }
 
 fn fact(
-    spans: &babylon_bsl::reader::SpanTable,
+    spans: &SpanTable,
     token_path: &[u32],
     form_path: &[u32],
     kind: AuthoringKind,
@@ -381,10 +389,7 @@ fn fact(
     })
 }
 
-fn argument_spans(
-    spans: &babylon_bsl::reader::SpanTable,
-    paths: impl IntoIterator<Item = Vec<u32>>,
-) -> Vec<ByteSpan> {
+fn argument_spans(spans: &SpanTable, paths: impl IntoIterator<Item = Vec<u32>>) -> Vec<ByteSpan> {
     paths
         .into_iter()
         .filter_map(|path| byte_span(spans, &path))
@@ -392,11 +397,11 @@ fn argument_spans(
 }
 
 fn allocation_fact(
-    kernel: &babylon_bsl::probability::FiniteKernel,
-    allocation: Option<&babylon_bsl::probability::AllocationAnalysis>,
+    kernel: &FiniteKernel,
+    allocation: Option<&AllocationAnalysis>,
 ) -> Option<AllocationFact> {
     match allocation? {
-        babylon_bsl::probability::AllocationAnalysis::Exact(exact) => Some(AllocationFact::Exact(
+        AllocationAnalysis::Exact(exact) => Some(AllocationFact::Exact(
             kernel
                 .branches
                 .iter()
@@ -411,17 +416,15 @@ fn allocation_fact(
                 })
                 .collect(),
         )),
-        babylon_bsl::probability::AllocationAnalysis::Unavailable { reason } => {
-            Some(AllocationFact::Unavailable {
-                reason: reason.clone(),
-            })
-        }
+        AllocationAnalysis::Unavailable { reason } => Some(AllocationFact::Unavailable {
+            reason: reason.clone(),
+        }),
     }
 }
 
 fn branch_facts(
-    spans: &babylon_bsl::reader::SpanTable,
-    branch: &babylon_bsl::probability::KernelBranch,
+    spans: &SpanTable,
+    branch: &KernelBranch,
     allocation: Option<&AllocationFact>,
 ) -> Vec<AuthoringFact> {
     let mut facts = Vec::new();
@@ -449,9 +452,7 @@ fn branch_facts(
         &branch.form_path,
         AuthoringKind::Branch {
             outcome: branch.member.clone(),
-            mass_nanounits: branch
-                .static_mass
-                .map(babylon_bsl::probability::Mass::nanounits),
+            mass_nanounits: branch.static_mass.map(Mass::nanounits),
             tickets,
             allocation_ambiguity: None,
             argument_spans: arguments,
@@ -494,8 +495,8 @@ fn branch_facts(
 }
 
 fn kernel_facts(
-    spans: &babylon_bsl::reader::SpanTable,
-    kernel: &babylon_bsl::probability::FiniteKernel,
+    spans: &SpanTable,
+    kernel: &FiniteKernel,
     allocation: Option<&AllocationFact>,
     linkage: Option<KernelProjectionFact>,
 ) -> Vec<AuthoringFact> {
@@ -545,7 +546,7 @@ fn kernel_facts(
 #[must_use]
 pub fn snapshot_from_rule_analysis(
     source: &str,
-    analysis: &babylon_bsl::probability::RuleProbabilityAnalysis,
+    analysis: &RuleProbabilityAnalysis,
     linkage: Option<KernelProjectionFact>,
     projection_likelihood: Option<EventLikelihoodAnalysisFact>,
 ) -> AuthoringSnapshot {
@@ -597,7 +598,7 @@ pub fn snapshot_from_rule_analysis(
         }
     }
     for node in &analysis.nodes {
-        if node.kind != babylon_bsl::probability::ProbabilityAnalysisNodeKind::QuantizeMass {
+        if node.kind != ProbabilityAnalysisNodeKind::QuantizeMass {
             continue;
         }
         let head_path = &node.form_path;
@@ -626,7 +627,7 @@ pub fn snapshot_from_rule_analysis(
 pub fn snapshot_from_content_analysis(
     source_id: &str,
     source: &str,
-    analysis: &babylon_bsl::probability::ContentSetAnalysis,
+    analysis: &ContentSetAnalysis,
     likelihood_overrides: &[(String, EventLikelihoodAnalysisFact)],
 ) -> AuthoringSnapshot {
     let mut facts = Vec::new();
@@ -1418,7 +1419,10 @@ pub fn semantic_tokens(
 
 #[cfg(test)]
 mod tests {
+
     use super::*;
+    use babylon_bsl::rule_pipeline::RuleExecution;
+    use std::collections::HashSet;
 
     fn span(start: usize, end: usize) -> ByteSpan {
         ByteSpan { start, end }
@@ -1572,11 +1576,9 @@ mod tests {
     #[test]
     fn loader_analysis_drives_exact_mass_allocation_hover_and_tokens() {
         use babylon_bsl::causal_contract::{EvidenceClass, RuleContract, RuleRole};
-        use babylon_bsl::probability::{analyze_content_set, compile_rule_probability};
+        use babylon_bsl::rule_pipeline::LoadedRule;
         use babylon_bsl::typecheck::TypeEnv;
-        use babylon_bsl::{
-            bindings::parse_bindings, reader::read, rule_pipeline::LoadedRule, types::EnumRegistry,
-        };
+        use babylon_bsl::types::EnumRegistry;
         use std::collections::HashMap;
 
         let source = "(rule demo/spark :role mechanic :evidence designed \
@@ -1588,7 +1590,7 @@ mod tests {
             (choose :sample struggle/spark :slot 0 \
               (branch SparkOutcome/YES :mass 1m (effects)) \
               (branch SparkOutcome/NO :mass 3m (effects)))))";
-        let rule = read(source).expect("rule parses").0;
+        let rule = babylon_bsl::reader::read(source).expect("rule parses").0;
         let contract = RuleContract {
             rule_id: "demo/spark".to_owned(),
             role: RuleRole::Mechanic,
@@ -1598,12 +1600,12 @@ mod tests {
         enums
             .declare("SparkOutcome", &["YES".to_owned(), "NO".to_owned()])
             .expect("enum");
-        let bindings = parse_bindings(&rule).expect("bindings");
+        let bindings = babylon_bsl::bindings::parse_bindings(&rule).expect("bindings");
         let types = TypeEnv {
             fields: HashMap::new(),
             exemptions: &[],
         };
-        let compiled = compile_rule_probability(
+        let compiled = babylon_bsl::probability::compile_rule_probability(
             &rule,
             &[0],
             &contract,
@@ -1611,11 +1613,11 @@ mod tests {
             &types,
             &bindings,
             &HashMap::new(),
-            &std::collections::HashSet::new(),
+            &HashSet::new(),
         )
         .expect("probability compiles");
         let loaded = LoadedRule {
-            execution: babylon_bsl::rule_pipeline::RuleExecution::Graph,
+            execution: RuleExecution::Graph,
             source_id: "spark.bsl".to_owned(),
             root_path: vec![0],
             rule,
@@ -1631,7 +1633,8 @@ mod tests {
             declared_fuel: 64,
             default_findings: Vec::new(),
         };
-        let content = analyze_content_set(&[loaded]).expect("content analysis");
+        let content =
+            babylon_bsl::probability::analyze_content_set(&[loaded]).expect("content analysis");
         let snapshot = snapshot_from_rule_analysis(source, &content.rules[0], None, None);
         let index = LineIndex::new(source);
 

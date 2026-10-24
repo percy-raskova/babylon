@@ -1,7 +1,7 @@
 //! Nominal replay digests and the fixed `TickContentHashV1` outer codec.
 
+use crate::content_digest::ContentDigest;
 use crate::replay::{ReplaySeed, ReplaySessionId};
-use crate::{content_digest::sha256_of, content_digest::ContentDigest};
 use std::collections::TryReserveError;
 
 const TICK_CONTENT_DOMAIN: &[u8] = b"babylon.tick-content\0";
@@ -164,7 +164,7 @@ impl TickContentPreimage {
     /// Hash the exact canonical preimage.
     #[must_use]
     pub fn digest(&self) -> TickContentHash {
-        TickContentHash::from_bytes(sha256_of(&self.0))
+        TickContentHash::from_bytes(crate::content_digest::sha256_of(&self.0))
     }
 }
 

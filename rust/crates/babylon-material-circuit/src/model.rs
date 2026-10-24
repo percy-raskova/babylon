@@ -57,6 +57,38 @@ macro_rules! identity_type {
     };
 }
 
+use crate::AidReceipt;
+use crate::CapitalContributionReceipt;
+use crate::CircuitAccounting;
+use crate::CollectionReceipt;
+use crate::CommodityDefinition;
+use crate::DistributionReceipt;
+use crate::EquipmentWearReceipt;
+use crate::HouseholdConsumptionReceipt;
+use crate::HouseholdContributionUse;
+use crate::HouseholdDemandReceipt;
+use crate::HouseholdServiceReceipt;
+use crate::HouseholdTimeReceipt;
+use crate::IncomeReceipt;
+use crate::InstallationDecisionReceipt;
+use crate::InstallationReceipt;
+use crate::InvestmentReceipt;
+use crate::LaborUseReceipt;
+use crate::MemberLaborUseReceipt;
+use crate::MoneyTransferReceipt;
+use crate::PriceReceipt;
+use crate::ProcurementReceipt;
+use crate::ProductionPlanReceipt;
+use crate::PublicBudgetReceipt;
+use crate::RollingProcessSupply;
+use crate::ServiceConnection;
+use crate::ServiceMarketReceipt;
+use crate::ServiceOrder;
+use crate::ServiceOutputReceipt;
+use crate::ServicePerformanceReceipt;
+use crate::StaffingMemberReceipt;
+use crate::TaxReceipt;
+use crate::WageAccrualReceipt;
 pub(crate) use identity_type;
 
 identity_type!(SiteId);
@@ -441,7 +473,7 @@ pub struct FutureCapacityReservation {
 /// Current residuals live only in the state's dated current-period budgets.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RollingCapacitySupply {
-    pub processes: crate::RollingProcessSupply,
+    pub processes: RollingProcessSupply,
     pub shared: Vec<SharedCapacitySupply>,
     pub future_reservations: Vec<FutureCapacityReservation>,
 }
@@ -451,14 +483,14 @@ pub struct RollingCapacitySupply {
 pub struct MaterialCircuitState {
     pub capacity_supply: CapacitySupply,
     pub period: u64,
-    pub accounting: crate::CircuitAccounting,
+    pub accounting: CircuitAccounting,
     pub site_logistics_nodes: Vec<SiteLogisticsNode>,
     pub process_outputs: Vec<ProcessOutput>,
     pub input_coefficients: Vec<InputOutputCoefficient>,
     pub labor_coefficients: Vec<LaborCoefficient>,
-    pub commodities: Vec<crate::CommodityDefinition>,
-    pub service_connections: Vec<crate::ServiceConnection>,
-    pub service_orders: Vec<crate::ServiceOrder>,
+    pub commodities: Vec<CommodityDefinition>,
+    pub service_connections: Vec<ServiceConnection>,
+    pub service_orders: Vec<ServiceOrder>,
     pub supplier_routes: Vec<SupplierRoute>,
     pub route_stages: Vec<RouteStage>,
     pub route_stage_capacities: Vec<RouteStageCapacity>,
@@ -581,40 +613,40 @@ pub struct FreightLossReceipt {
 /// Atomic successor with native quantity receipts.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MaterialCircuitTransition {
-    pub aid: Vec<crate::AidReceipt>,
-    pub collections: Vec<crate::CollectionReceipt>,
-    pub aid_contributions: Vec<crate::HouseholdContributionUse>,
-    pub household_time: Vec<crate::HouseholdTimeReceipt>,
-    pub installation: Vec<crate::InstallationReceipt>,
-    pub installation_decisions: Vec<crate::InstallationDecisionReceipt>,
-    pub equipment_wear: Vec<crate::EquipmentWearReceipt>,
-    pub investment: Vec<crate::InvestmentReceipt>,
-    pub public_budgets: Vec<crate::PublicBudgetReceipt>,
-    pub taxes: Vec<crate::TaxReceipt>,
-    pub distributions: Vec<crate::DistributionReceipt>,
-    pub contributions: Vec<crate::CapitalContributionReceipt>,
-    pub staffing_members: Vec<crate::StaffingMemberReceipt>,
-    pub member_labor_use: Vec<crate::MemberLaborUseReceipt>,
-    pub service_performance: Vec<crate::ServicePerformanceReceipt>,
-    pub household_services: Vec<crate::HouseholdServiceReceipt>,
-    pub service_markets: Vec<crate::ServiceMarketReceipt>,
-    pub service_outputs: Vec<crate::ServiceOutputReceipt>,
-    pub income: Vec<crate::IncomeReceipt>,
+    pub aid: Vec<AidReceipt>,
+    pub collections: Vec<CollectionReceipt>,
+    pub aid_contributions: Vec<HouseholdContributionUse>,
+    pub household_time: Vec<HouseholdTimeReceipt>,
+    pub installation: Vec<InstallationReceipt>,
+    pub installation_decisions: Vec<InstallationDecisionReceipt>,
+    pub equipment_wear: Vec<EquipmentWearReceipt>,
+    pub investment: Vec<InvestmentReceipt>,
+    pub public_budgets: Vec<PublicBudgetReceipt>,
+    pub taxes: Vec<TaxReceipt>,
+    pub distributions: Vec<DistributionReceipt>,
+    pub contributions: Vec<CapitalContributionReceipt>,
+    pub staffing_members: Vec<StaffingMemberReceipt>,
+    pub member_labor_use: Vec<MemberLaborUseReceipt>,
+    pub service_performance: Vec<ServicePerformanceReceipt>,
+    pub household_services: Vec<HouseholdServiceReceipt>,
+    pub service_markets: Vec<ServiceMarketReceipt>,
+    pub service_outputs: Vec<ServiceOutputReceipt>,
+    pub income: Vec<IncomeReceipt>,
     pub state: MaterialCircuitState,
-    pub household_demand: Vec<crate::HouseholdDemandReceipt>,
-    pub household_consumption: Vec<crate::HouseholdConsumptionReceipt>,
-    pub procurement: Vec<crate::ProcurementReceipt>,
-    pub production_plans: Vec<crate::ProductionPlanReceipt>,
-    pub prices: Vec<crate::PriceReceipt>,
-    pub money_transfers: Vec<crate::MoneyTransferReceipt>,
-    pub wage_accruals: Vec<crate::WageAccrualReceipt>,
-    pub labor_use: Vec<crate::LaborUseReceipt>,
+    pub household_demand: Vec<HouseholdDemandReceipt>,
+    pub household_consumption: Vec<HouseholdConsumptionReceipt>,
+    pub procurement: Vec<ProcurementReceipt>,
+    pub production_plans: Vec<ProductionPlanReceipt>,
+    pub prices: Vec<PriceReceipt>,
+    pub money_transfers: Vec<MoneyTransferReceipt>,
+    pub wage_accruals: Vec<WageAccrualReceipt>,
+    pub labor_use: Vec<LaborUseReceipt>,
     pub production: Vec<ProductionReceipt>,
     pub dispatches: Vec<RoutedDispatchReceipt>,
     pub losses: Vec<FreightLossReceipt>,
-    pub arrivals: Vec<crate::ArrivalReceipt>,
-    pub deliveries: Vec<crate::DeliveryReceipt>,
-    pub realizations: Vec<crate::RealizationReceipt>,
+    pub arrivals: Vec<ArrivalReceipt>,
+    pub deliveries: Vec<DeliveryReceipt>,
+    pub realizations: Vec<RealizationReceipt>,
     pub handling: Vec<MerchantHandlingReceipt>,
     pub local_fulfillments: Vec<LocalRetailFulfillmentReceipt>,
     pub local_transfers: Vec<LocalTransferReceipt>,

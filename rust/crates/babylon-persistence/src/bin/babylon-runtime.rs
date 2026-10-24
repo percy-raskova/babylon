@@ -8,26 +8,23 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 #[cfg(test)]
-use babylon_bsl::canonical_ast::rules_hash_of;
+use babylon_bsl::canonical_ast;
 #[cfg(test)]
-use babylon_bsl::rule_pipeline::split_content;
+use babylon_bsl::rule_pipeline;
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::stable_state::StableGraphState;
-use babylon_kernel::content_digest::sha256_of;
 #[cfg(test)]
 use babylon_kernel::content_digest::ContentDigest;
 #[cfg(test)]
 use babylon_kernel::replay::{ReplaySeed, ReplaySessionId};
 #[cfg(test)]
 use babylon_kernel::tick_content_hash::RefDigest;
+use babylon_persistence::identity::CampaignId;
 use babylon_persistence::material_runtime::DurableMaterialRuntime;
-#[cfg(test)]
-use babylon_persistence::michigan_dynamic_hex_foundation;
 use babylon_persistence::{
-    bootstrap_current_runtime, h3_reference_cohort::representative_h3_reference_cohort,
-    identity::CampaignId, preflight_current_schema, CampaignFoundation, CommittedTickReceipt,
-    PostgresDiagnostic, SemanticArchiveStore,
+    CampaignFoundation, CommittedTickReceipt, PostgresDiagnostic, SemanticArchiveStore,
 };
+
 use babylon_practice_contract::OrderedPracticeActionBatch;
 use babylon_tick::choice_receipt::ChoiceReceipt;
 #[cfg(test)]
@@ -211,7 +208,7 @@ fn main() -> ExitCode {
         eprintln!("babylon-runtime: {DSN_ENV} is not a valid PostgreSQL DSN");
         return ExitCode::from(2);
     };
-    if let Err(error) = representative_h3_reference_cohort() {
+    if let Err(error) = h3_reference_cohort::representative_h3_reference_cohort() {
         eprintln!("babylon-runtime: embedded H3 reference fixture is invalid: {error}");
         return ExitCode::FAILURE;
     }
@@ -229,11 +226,13 @@ fn execute(command: Command, config: &Config) -> Result<(), String> {
     match command {
         Command::Describe => return Err("content description requires no database".to_owned()),
         Command::Preflight => {
-            preflight_current_schema(config).map_err(|error| error.to_string())?;
+            babylon_persistence::preflight_current_schema(config)
+                .map_err(|error| error.to_string())?;
             println!("Rust schema target and owner preflight complete.");
         }
         Command::Bootstrap => {
-            let report = bootstrap_current_runtime(config).map_err(|error| error.to_string())?;
+            let report = babylon_persistence::bootstrap_current_runtime(config)
+                .map_err(|error| error.to_string())?;
             println!(
                 "Rust current schema ready ({:?}, sha256={}).",
                 report.schema.disposition,
@@ -254,7 +253,8 @@ fn execute(command: Command, config: &Config) -> Result<(), String> {
                 .as_deref()
                 .map(ChoiceReceiptJsonlWriter::create)
                 .transpose()?;
-            bootstrap_current_runtime(config).map_err(|error| error.to_string())?;
+            babylon_persistence::bootstrap_current_runtime(config)
+                .map_err(|error| error.to_string())?;
             run_to_tick(
                 config,
                 campaign_id()?,
@@ -277,7 +277,8 @@ fn execute(command: Command, config: &Config) -> Result<(), String> {
                 .as_deref()
                 .map(ChoiceReceiptJsonlWriter::create)
                 .transpose()?;
-            bootstrap_current_runtime(config).map_err(|error| error.to_string())?;
+            babylon_persistence::bootstrap_current_runtime(config)
+                .map_err(|error| error.to_string())?;
             run_to_tick(
                 config,
                 campaign_id()?,
@@ -318,8 +319,8 @@ fn configured_campaign_id() -> Result<Option<CampaignId>, String> {
             Uuid::parse_str(&value)
                 .map_err(|_| format!("{CAMPAIGN_ENV} must be a canonical UUID"))?,
         ),
-        Err(std::env::VarError::NotPresent) => None,
-        Err(std::env::VarError::NotUnicode(_)) => {
+        Err(VarError::NotPresent) => None,
+        Err(VarError::NotUnicode(_)) => {
             return Err(format!("{CAMPAIGN_ENV} must be valid UTF-8"));
         }
     };
@@ -391,11 +392,7 @@ fn run_to_tick(
         if reopened_after_commit {
             runtime = DurableMaterialRuntime::open(config, campaign, expected_digest)
                 .map_err(|error| error.to_string())?;
-            if runtime
-                .tail()
-                .map(babylon_tick::material_replay::IdentifiedMaterialTick::resolve_tick)
-                != Some(completed)
-            {
+            if runtime.tail().map(IdentifiedMaterialTick::resolve_tick) != Some(completed) {
                 return Err("restart did not recover the acknowledged tail".to_owned());
             }
         }
@@ -462,7 +459,7 @@ struct ObservableTickReport {
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct FoundationIdentityTickReport {
     replay_seed: i64,
-    duration: babylon_kernel::clock::CampaignDuration,
+    duration: CampaignDuration,
     foundation: [u8; 32],
     defines: [u8; 32],
     rules: [u8; 32],
@@ -567,7 +564,7 @@ impl SimulationTickReport {
         })
     }
 
-    fn json_value(&self) -> Result<serde_json::Value, String> {
+    fn json_value(&self) -> Result<Value, String> {
         let per_rule = self
             .per_rule
             .iter()
@@ -652,28 +649,24 @@ impl SimulationTickReport {
     }
 }
 
-fn observable_json_values(
-    observables: &[ObservableTickReport],
-) -> Result<Vec<serde_json::Value>, String> {
+fn observable_json_values(observables: &[ObservableTickReport]) -> Result<Vec<Value>, String> {
     observables
         .iter()
         .map(|observable| {
-            let before_value =
-                serde_json::Number::from_f64(f64::from_bits(observable.before_value_bits))
-                    .ok_or_else(|| {
-                        format!(
-                            "tick report observable {} pre-value is not finite",
-                            observable.name
-                        )
-                    })?;
-            let after_value =
-                serde_json::Number::from_f64(f64::from_bits(observable.after_value_bits))
-                    .ok_or_else(|| {
-                        format!(
-                            "tick report observable {} post-value is not finite",
-                            observable.name
-                        )
-                    })?;
+            let before_value = Number::from_f64(f64::from_bits(observable.before_value_bits))
+                .ok_or_else(|| {
+                    format!(
+                        "tick report observable {} pre-value is not finite",
+                        observable.name
+                    )
+                })?;
+            let after_value = Number::from_f64(f64::from_bits(observable.after_value_bits))
+                .ok_or_else(|| {
+                    format!(
+                        "tick report observable {} post-value is not finite",
+                        observable.name
+                    )
+                })?;
             Ok(serde_json::json!({
                 "name": observable.name.as_str(),
                 "entity": observable.entity.as_str(),
@@ -814,12 +807,12 @@ fn observable_bits<'a>(
 
 fn foundation_identity(
     foundation: &CampaignFoundation,
-    duration: babylon_kernel::clock::CampaignDuration,
+    duration: CampaignDuration,
 ) -> FoundationIdentityTickReport {
     FoundationIdentityTickReport {
         replay_seed: i64::from_be_bytes(foundation.rng_seed().to_be_bytes()),
         duration,
-        foundation: sha256_of(foundation.canonical_bytes()),
+        foundation: content_digest::sha256_of(foundation.canonical_bytes()),
         defines: foundation.content_digest().defines_hash,
         rules: foundation.content_digest().rules_hash,
         reference: *foundation.reference_digest().as_bytes(),
@@ -940,7 +933,7 @@ fn choice_receipt_json_value(
     resolve_tick: u64,
     choice_receipt_digest: [u8; 32],
     choices: &[ChoiceReceipt],
-) -> Result<serde_json::Value, String> {
+) -> Result<Value, String> {
     let mut receipts = Vec::with_capacity(choices.len());
     for choice in choices {
         let stable_carrier = choice.stable_carrier().canonical_bytes().map_err(|_| {
@@ -999,7 +992,7 @@ fn choice_receipt_json_value(
     }))
 }
 
-fn content_descriptor() -> Result<serde_json::Value, String> {
+fn content_descriptor() -> Result<Value, String> {
     let foundation = material_diagnostic_foundation()?;
     let identity = foundation_identity(foundation.graph_foundation(), foundation.spec().duration);
     let session = foundation
@@ -1040,27 +1033,23 @@ fn content_descriptor() -> Result<serde_json::Value, String> {
     }))
 }
 
-fn material_diagnostic_foundation(
-) -> Result<babylon_persistence::material_runtime::MaterialRuntimeFoundation, String> {
-    let catalog =
-        babylon_persistence::michigan_material::MichiganMaterialCatalog::from_defines_toml(
-            &include_str!("../../../../../content/scenarios/michigan/defines.toml").replace(
-                "DURATION = { kind = \"continuous\" }",
-                "DURATION = { kind = \"finite\", final_period = 16 }",
-            ),
-        )
-        .map_err(|error| error.to_string())?;
-    babylon_persistence::michigan_content::MichiganContentPreset::new_campaign(
-        babylon_persistence::michigan_material::MichiganDeliveryPreset::Standard,
+fn material_diagnostic_foundation() -> Result<MaterialRuntimeFoundation, String> {
+    let catalog = MichiganMaterialCatalog::from_defines_toml(
+        &include_str!("../../../../../content/scenarios/michigan/defines.toml").replace(
+            "DURATION = { kind = \"continuous\" }",
+            "DURATION = { kind = \"finite\", final_period = 16 }",
+        ),
     )
-    .create_foundation(&catalog)
-    .map_err(|error| error.to_string())
+    .map_err(|error| error.to_string())?;
+    MichiganContentPreset::new_campaign(MichiganDeliveryPreset::Standard)
+        .create_foundation(&catalog)
+        .map_err(|error| error.to_string())
 }
 
 fn open_or_create_runtime(
     config: &Config,
     campaign: CampaignId,
-    foundation: babylon_persistence::material_runtime::MaterialRuntimeFoundation,
+    foundation: MaterialRuntimeFoundation,
 ) -> Result<DurableMaterialRuntime, String> {
     let expected = foundation.digest();
     let stored = {
@@ -1087,29 +1076,44 @@ fn open_or_create_runtime(
 
 #[cfg(test)]
 use babylon_graph::hypergraph_store::HypergraphStore;
+use babylon_kernel::clock::CampaignDuration;
+use babylon_kernel::content_digest;
+use babylon_persistence::h3_reference_cohort;
+use babylon_persistence::material_runtime::MaterialRuntimeFoundation;
+use babylon_persistence::michigan_content::MichiganContentPreset;
+use babylon_persistence::michigan_material::MichiganDeliveryPreset;
+use babylon_persistence::michigan_material::MichiganMaterialCatalog;
+use babylon_persistence::ArchiveWorker;
 #[cfg(test)]
 use babylon_persistence::FoundationContentBundle;
+use babylon_tick::material_replay::IdentifiedMaterialTick;
 #[cfg(test)]
 use babylon_tick::replay_session::ReplayTickSession;
+use postgres::Error;
+use serde_json::Number;
+use serde_json::Value;
+use std::env::VarError;
 
 #[cfg(test)]
 fn smoke_foundation(
 ) -> Result<(ReplayTickSession<HypergraphStore>, FoundationContentBundle), String> {
-    let (_, rules) = split_content(RULE).map_err(|_| "runtime rule parse refused".to_owned())?;
+    let (_, rules) =
+        rule_pipeline::split_content(RULE).map_err(|_| "runtime rule parse refused".to_owned())?;
     let forms = rules.into_iter().map(|rule| rule.form).collect::<Vec<_>>();
     let content = ContentDigest {
-        defines_hash: sha256_of(DEFINES),
-        rules_hash: rules_hash_of(&forms).map_err(|_| "runtime rule hash refused".to_owned())?,
+        defines_hash: content_digest::sha256_of(DEFINES),
+        rules_hash: canonical_ast::rules_hash_of(&forms)
+            .map_err(|_| "runtime rule hash refused".to_owned())?,
     };
     let session_id = ReplaySessionId::try_from("per281/rust-runtime")
         .map_err(|_| "runtime replay identity refused".to_owned())?;
     let seed = ReplaySeed::new(FIXED_REPLAY_SEED);
-    let foundation = michigan_dynamic_hex_foundation()
+    let foundation = babylon_persistence::michigan_dynamic_hex_foundation()
         .map_err(|error| format!("Michigan foundation refused: {error}"))?;
     let mut reference_manifest = REFERENCE_BUNDLE_DOMAIN.to_vec();
     reference_manifest.extend_from_slice(&foundation.base_reference_cohort_digest());
     reference_manifest.extend_from_slice(&foundation.r8_section_digest());
-    if sha256_of(&reference_manifest) != foundation.reference_bundle_digest() {
+    if content_digest::sha256_of(&reference_manifest) != foundation.reference_bundle_digest() {
         return Err("Michigan reference-bundle digest mismatch".to_owned());
     }
     let reference = RefDigest::from_bytes(foundation.reference_bundle_digest());
@@ -1190,7 +1194,7 @@ fn run_archive_worker_once(config: &Config) -> Result<(), String> {
     let campaign = campaign_id()?;
     let producer = babylon_persistence::captured_archive_producer(config, campaign)
         .map_err(|error| format!("Archive captured source refused: {error}"))?;
-    let mut worker = babylon_persistence::ArchiveWorker::new(config);
+    let mut worker = ArchiveWorker::new(config);
     let report = worker
         .sweep_once(campaign, &producer)
         .map_err(|error| format!("Archive worker sweep refused: {error}"))?;
@@ -1255,7 +1259,7 @@ fn inspect_archive(config: &Config) -> Result<(), String> {
     Ok(())
 }
 
-fn postgres_failure(operation: &'static str, error: &postgres::Error) -> String {
+fn postgres_failure(operation: &'static str, error: &Error) -> String {
     format!(
         "{operation} failed: {:?}",
         PostgresDiagnostic::capture(error)
@@ -1405,9 +1409,7 @@ mod tests {
     use std::path::PathBuf;
     use std::sync::atomic::{AtomicU64, Ordering};
 
-    use babylon_bsl::probability::{
-        realize_kernel, FiniteKernel, KernelBranch, KernelInstanceIdentity, Mass,
-    };
+    use babylon_bsl::probability::{FiniteKernel, KernelBranch, KernelInstanceIdentity, Mass};
     use babylon_bsl::reader::{Atom, SExpr};
     use babylon_bsl::structural_verbs::CollectingSink;
     use babylon_bsl::types::EnumTypeId;
@@ -1420,26 +1422,30 @@ mod tests {
     use babylon_tick::diagnostic::RuleDiagnosticSession;
 
     use super::{
-        collect_event_type_counts, collect_observable_transitions, foundation_identity,
-        parse_command, should_reopen_after_commit, smoke_foundation as runtime_foundation,
         ChoiceReceiptJsonlWriter, Command, EventTypeTickReport, FoundationIdentityTickReport,
         ObservableTickReport, RuleTickReport, SimulationTickReport, TickReportJsonlWriter,
         MICHIGAN_SMOKE_RESTART_TICKS, MICHIGAN_SMOKE_TICKS, RULE, SCENARIO, TICK_REPORT_SCHEMA,
     };
+    use babylon_bsl::probability;
+    use babylon_graph::stable_state;
+    use babylon_kernel::clock::CampaignDuration;
+    use serde_json::Value;
 
     static REPORT_PATH_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
     #[test]
     fn content_preflight_describes_the_captured_foundation_without_a_database() {
         assert_eq!(
-            parse_command(["describe".into()].into_iter()),
+            super::parse_command(["describe".into()].into_iter()),
             Ok(Command::Describe)
         );
         let descriptor = super::content_descriptor().expect("captured content description");
-        let foundation = super::material_diagnostic_foundation().unwrap();
+        let foundation = super::material_diagnostic_foundation().expect(
+            "the fixture call `material_diagnostic_foundation` succeeds for the authored inputs",
+        );
         assert_eq!(
             descriptor["scope"]["duration"],
-            serde_json::to_value(foundation.spec().duration).unwrap()
+            serde_json::to_value(foundation.spec().duration).expect("the value serializes to JSON")
         );
         assert_eq!(
             descriptor["scope"]["duration"],
@@ -1449,19 +1455,33 @@ mod tests {
             descriptor["scope"]["fixed_replay_seed"],
             i64::from_be_bytes(foundation.graph_foundation().rng_seed().to_be_bytes())
         );
-        let session = foundation.into_session().unwrap();
-        let state = session.graph_session().stable_graph_state().unwrap();
+        let session = foundation
+            .into_session()
+            .expect("the fixture opens a session");
+        let state = session
+            .graph_session()
+            .stable_graph_state()
+            .expect("the fixture graph has a stable state");
         assert_eq!(descriptor["scope"]["scenario"], state.scenario_scope());
-        let inventory = descriptor["observables"].as_array().unwrap();
+        let inventory = descriptor["observables"]
+            .as_array()
+            .expect("the JSON fixture field is an array");
         assert!(!inventory.is_empty());
         assert_eq!(inventory.len(), state.rows().node_f64().len());
-        assert!(inventory
-            .iter()
-            .all(|row| row.as_object().unwrap().len() == 5));
+        assert!(inventory.iter().all(|row| row
+            .as_object()
+            .expect("the JSON fixture field is an object")
+            .len()
+            == 5));
         for namespace in ["territory/qcew-", "organization/qcew-"] {
             let fixed: Vec<_> = inventory
                 .iter()
-                .filter(|row| row["field"].as_str().unwrap().starts_with(namespace))
+                .filter(|row| {
+                    row["field"]
+                        .as_str()
+                        .expect("the JSON fixture field is a string")
+                        .starts_with(namespace)
+                })
                 .collect();
             assert!(!fixed.is_empty());
             assert!(fixed.iter().all(|row| row["role"] == "observed_baseline"));
@@ -1478,15 +1498,16 @@ mod tests {
 
     #[test]
     fn cohort_report_refuses_removed_or_replaced_observable_identities() {
-        use babylon_graph::stable_state::{
-            compose_stable_graph_state_from_rows, StableGraphStateRowsInput,
-        };
+        use babylon_graph::stable_state::StableGraphStateRowsInput;
 
         let session = super::material_diagnostic_foundation()
-            .unwrap()
+            .expect("the fixture call `material_diagnostic_foundation` succeeds for the authored inputs")
             .into_session()
-            .unwrap();
-        let before = session.graph_session().stable_graph_state().unwrap();
+            .expect("the fixture opens a session");
+        let before = session
+            .graph_session()
+            .stable_graph_state()
+            .expect("the fixture graph has a stable state");
         let rows = before.rows();
         for remove in [true, false] {
             let mut node_f64 = rows.node_f64().to_vec();
@@ -1495,7 +1516,7 @@ mod tests {
             } else {
                 node_f64[0].1 = "territory/replacement-observation".to_owned();
             }
-            let after = compose_stable_graph_state_from_rows(
+            let after = stable_state::compose_stable_graph_state_from_rows(
                 before.scenario_scope(),
                 StableGraphStateRowsInput {
                     nodes: rows.nodes().to_vec(),
@@ -1507,9 +1528,9 @@ mod tests {
                     hyperedge_f64: rows.hyperedge_f64().to_vec(),
                 },
             )
-            .unwrap();
+            .expect("the authored rows compose a stable graph state");
             assert!(
-                collect_observable_transitions(&before, &after).is_err(),
+                super::collect_observable_transitions(&before, &after).is_err(),
                 "captured observable identities must survive the tick (remove={remove})"
             );
         }
@@ -1597,7 +1618,7 @@ mod tests {
             persistence_reopened_after_commit: true,
             foundation: FoundationIdentityTickReport {
                 replay_seed: super::FIXED_REPLAY_SEED,
-                duration: babylon_kernel::clock::CampaignDuration::Finite { final_period: 16 },
+                duration: CampaignDuration::Finite { final_period: 16 },
                 foundation: [0x25; 32],
                 defines: [0x26; 32],
                 rules: [0x27; 32],
@@ -1650,7 +1671,7 @@ mod tests {
             form_path: vec![0, 1],
             head_path: vec![0, 1, 0],
         };
-        let realization = realize_kernel(
+        let realization = probability::realize_kernel(
             &identity,
             &kernel,
             &[Mass::from_nanounits(1), Mass::from_nanounits(3)],
@@ -1660,7 +1681,7 @@ mod tests {
         ChoiceReceipt::try_new(0, &identity, realization).expect("valid choice receipt")
     }
 
-    fn assert_report_core_json(row: &serde_json::Value) {
+    fn assert_report_core_json(row: &Value) {
         assert_eq!(row["schema"], TICK_REPORT_SCHEMA);
         assert_eq!(row["resolve_tick"], 7);
         assert_eq!(
@@ -1691,7 +1712,7 @@ mod tests {
         assert_eq!(row["scope"]["dynamic_h3_updates"], false);
     }
 
-    fn assert_report_event_and_observable_json(row: &serde_json::Value) {
+    fn assert_report_event_and_observable_json(row: &Value) {
         assert_eq!(row["events"]["count"], 1);
         assert_eq!(
             row["events"]["per_type"][0]["event_type"],
@@ -1715,7 +1736,7 @@ mod tests {
         assert_eq!(row["observables"][4]["role"], "dynamic");
     }
 
-    fn assert_report_persistence_json(row: &serde_json::Value) {
+    fn assert_report_persistence_json(row: &Value) {
         assert_eq!(row["persistence"]["reopened_after_commit"], true);
         assert_eq!(
             row["foundation"]["foundation_sha256"],
@@ -1827,7 +1848,7 @@ mod tests {
 
     #[test]
     fn report_captures_tick_one_observable_transitions_and_sorted_event_counts() {
-        let (mut session, _) = runtime_foundation().expect("Michigan runtime foundation");
+        let (mut session, _) = super::smoke_foundation().expect("Michigan runtime foundation");
         let before = session
             .stable_graph_state()
             .expect("Michigan pre-tick graph state recomposes");
@@ -1839,7 +1860,7 @@ mod tests {
         let after = session
             .stable_graph_state()
             .expect("Michigan post-tick graph state recomposes");
-        let observables = collect_observable_transitions(&before, &after)
+        let observables = super::collect_observable_transitions(&before, &after)
             .expect("paired observable allowlist is complete");
         let fields = observables
             .iter()
@@ -1871,7 +1892,7 @@ mod tests {
         sink.events.push(("EventType/ZETA".to_owned(), Vec::new()));
         sink.events.push(("EventType/ALPHA".to_owned(), Vec::new()));
         sink.events.push(("EventType/ZETA".to_owned(), Vec::new()));
-        let per_type = collect_event_type_counts(&sink, 3).expect("event total matches");
+        let per_type = super::collect_event_type_counts(&sink, 3).expect("event total matches");
         assert_eq!(
             per_type,
             [
@@ -1885,28 +1906,50 @@ mod tests {
                 },
             ]
         );
-        assert!(collect_event_type_counts(&sink, 2).is_err());
+        assert!(super::collect_event_type_counts(&sink, 2).is_err());
     }
 
     #[test]
     fn persistence_readback_marks_intervals_smoke_boundaries_and_final_reports() {
-        assert!(!should_reopen_after_commit(1, 520, &[], Some(52), true));
-        assert!(should_reopen_after_commit(52, 520, &[], Some(52), true));
-        assert!(should_reopen_after_commit(51, 60, &[51], None, false));
-        assert!(should_reopen_after_commit(520, 520, &[], None, true));
-        assert!(!should_reopen_after_commit(520, 520, &[], None, false));
+        assert!(!super::should_reopen_after_commit(
+            1,
+            520,
+            &[],
+            Some(52),
+            true
+        ));
+        assert!(super::should_reopen_after_commit(
+            52,
+            520,
+            &[],
+            Some(52),
+            true
+        ));
+        assert!(super::should_reopen_after_commit(
+            51,
+            60,
+            &[51],
+            None,
+            false
+        ));
+        assert!(super::should_reopen_after_commit(520, 520, &[], None, true));
+        assert!(!super::should_reopen_after_commit(
+            520,
+            520,
+            &[],
+            None,
+            false
+        ));
     }
 
     #[test]
     fn report_foundation_identity_is_derived_from_exact_runtime_sources() {
-        let (session, bundle) = runtime_foundation().expect("Michigan runtime foundation");
+        let (session, bundle) = super::smoke_foundation().expect("Michigan runtime foundation");
         let foundation = babylon_persistence::CampaignFoundation::capture(&session, bundle)
             .expect("tick-zero foundation captures");
 
-        let identity = foundation_identity(
-            &foundation,
-            babylon_kernel::clock::CampaignDuration::Finite { final_period: 16 },
-        );
+        let identity =
+            super::foundation_identity(&foundation, CampaignDuration::Finite { final_period: 16 });
 
         assert_eq!(
             identity.foundation,
@@ -1920,10 +1963,7 @@ mod tests {
         );
         assert_eq!(
             identity,
-            foundation_identity(
-                &foundation,
-                babylon_kernel::clock::CampaignDuration::Finite { final_period: 16 }
-            )
+            super::foundation_identity(&foundation, CampaignDuration::Finite { final_period: 16 })
         );
     }
 
@@ -1942,8 +1982,7 @@ mod tests {
 
         assert_eq!(first_bytes, second_bytes);
         assert_eq!(first_bytes.last(), Some(&b'\n'));
-        let row: serde_json::Value =
-            serde_json::from_slice(&first_bytes).expect("one valid JSON object");
+        let row: Value = serde_json::from_slice(&first_bytes).expect("one valid JSON object");
         assert_report_core_json(&row);
         assert_report_event_and_observable_json(&row);
         assert_report_persistence_json(&row);
@@ -2004,11 +2043,11 @@ mod tests {
 
         assert_eq!(first_bytes, second_bytes);
         assert_eq!(first_bytes.last(), Some(&b'\n'));
-        let row: serde_json::Value =
+        let row: Value =
             serde_json::from_slice(&first_bytes).expect("one valid choice JSON object");
         assert_eq!(
             row["schema"],
-            serde_json::Value::String(super::CHOICE_RECEIPT_REPORT_SCHEMA.to_owned())
+            Value::String(super::CHOICE_RECEIPT_REPORT_SCHEMA.to_owned())
         );
         assert_eq!(row["authority"], "post_commit_operational_observation_only");
         assert_eq!(row["resolve_tick"], 7);
@@ -2057,22 +2096,22 @@ mod tests {
 
     #[test]
     fn production_run_commands_accept_the_closed_supported_surface() {
-        assert!(parse_command(vec!["activate".into()].into_iter()).is_err());
-        assert!(parse_command(vec!["observer-schema".into()].into_iter()).is_err());
+        assert!(super::parse_command(vec!["activate".into()].into_iter()).is_err());
+        assert!(super::parse_command(vec!["observer-schema".into()].into_iter()).is_err());
         assert_eq!(
-            parse_command(vec!["provision-readers".into()].into_iter()),
+            super::parse_command(vec!["provision-readers".into()].into_iter()),
             Ok(Command::ProvisionReaders)
         );
         assert_eq!(
-            parse_command(vec!["bootstrap".into()].into_iter()),
+            super::parse_command(vec!["bootstrap".into()].into_iter()),
             Ok(Command::Bootstrap)
         );
         assert_eq!(
-            parse_command(vec!["preflight".into()].into_iter()),
+            super::parse_command(vec!["preflight".into()].into_iter()),
             Ok(Command::Preflight)
         );
         assert_eq!(
-            parse_command(vec!["run".into(), "--ticks".into(), "5".into()].into_iter()),
+            super::parse_command(vec!["run".into(), "--ticks".into(), "5".into()].into_iter()),
             Ok(Command::Run {
                 ticks: 5,
                 report_jsonl: None,
@@ -2081,7 +2120,7 @@ mod tests {
             })
         );
         assert_eq!(
-            parse_command(
+            super::parse_command(
                 vec![
                     "run".into(),
                     "--report-jsonl".into(),
@@ -2099,7 +2138,7 @@ mod tests {
             })
         );
         assert_eq!(
-            parse_command(
+            super::parse_command(
                 vec![
                     "run".into(),
                     "--ticks".into(),
@@ -2117,7 +2156,7 @@ mod tests {
             })
         );
         assert_eq!(
-            parse_command(
+            super::parse_command(
                 vec![
                     "run".into(),
                     "--restart-every".into(),
@@ -2143,26 +2182,26 @@ mod tests {
     #[test]
     fn production_nonrun_commands_accept_the_closed_supported_surface() {
         assert_eq!(
-            parse_command(vec!["probe".into()].into_iter()),
+            super::parse_command(vec!["probe".into()].into_iter()),
             Ok(Command::Probe)
         );
         assert_eq!(
-            parse_command(vec!["archive".into()].into_iter()),
+            super::parse_command(vec!["archive".into()].into_iter()),
             Ok(Command::Archive)
         );
         assert_eq!(
-            parse_command(vec!["archive-worker".into(), "--once".into()].into_iter()),
+            super::parse_command(vec!["archive-worker".into(), "--once".into()].into_iter()),
             Ok(Command::ArchiveWorker)
         );
         assert_eq!(
-            parse_command(vec!["michigan-smoke".into()].into_iter()),
+            super::parse_command(vec!["michigan-smoke".into()].into_iter()),
             Ok(Command::MichiganSmoke {
                 report_jsonl: None,
                 choice_receipts_jsonl: None,
             })
         );
         assert_eq!(
-            parse_command(
+            super::parse_command(
                 vec![
                     "michigan-smoke".into(),
                     "--report-jsonl".into(),
@@ -2176,7 +2215,7 @@ mod tests {
             })
         );
         assert_eq!(
-            parse_command(
+            super::parse_command(
                 vec![
                     "michigan-smoke".into(),
                     "--choice-receipts-jsonl".into(),
@@ -2195,14 +2234,17 @@ mod tests {
 
     #[test]
     fn production_commands_refuse_invalid_or_ambiguous_arguments() {
-        assert_eq!(parse_command(Vec::new().into_iter()), Err(()));
-        assert_eq!(parse_command(vec!["run".into()].into_iter()), Err(()));
+        assert_eq!(super::parse_command(Vec::new().into_iter()), Err(()));
         assert_eq!(
-            parse_command(vec!["run".into(), "--ticks".into(), "0".into()].into_iter()),
+            super::parse_command(vec!["run".into()].into_iter()),
             Err(())
         );
         assert_eq!(
-            parse_command(
+            super::parse_command(vec!["run".into(), "--ticks".into(), "0".into()].into_iter()),
+            Err(())
+        );
+        assert_eq!(
+            super::parse_command(
                 vec![
                     "run".into(),
                     "--ticks".into(),
@@ -2215,7 +2257,7 @@ mod tests {
             Err(())
         );
         assert_eq!(
-            parse_command(
+            super::parse_command(
                 vec![
                     "run".into(),
                     "--ticks".into(),
@@ -2228,7 +2270,7 @@ mod tests {
             Err(())
         );
         assert_eq!(
-            parse_command(
+            super::parse_command(
                 vec![
                     "run".into(),
                     "--ticks".into(),
@@ -2243,7 +2285,7 @@ mod tests {
             Err(())
         );
         assert_eq!(
-            parse_command(
+            super::parse_command(
                 vec![
                     "michigan-smoke".into(),
                     "--report-jsonl".into(),
@@ -2256,23 +2298,26 @@ mod tests {
             Err(())
         );
         assert_eq!(
-            parse_command(vec!["michigan-smoke".into(), "--unknown".into()].into_iter()),
+            super::parse_command(vec!["michigan-smoke".into(), "--unknown".into()].into_iter()),
             Err(())
         );
         assert_eq!(
-            parse_command(vec!["archive-worker".into()].into_iter()),
+            super::parse_command(vec!["archive-worker".into()].into_iter()),
             Err(())
         );
         assert_eq!(
-            parse_command(vec!["archive-worker".into(), "--unknown".into()].into_iter()),
+            super::parse_command(vec!["archive-worker".into(), "--unknown".into()].into_iter()),
             Err(())
         );
         assert_eq!(
-            parse_command(
+            super::parse_command(
                 vec!["archive-worker".into(), "--once".into(), "--poll".into()].into_iter()
             ),
             Err(())
         );
-        assert_eq!(parse_command(vec!["unknown".into()].into_iter()), Err(()));
+        assert_eq!(
+            super::parse_command(vec!["unknown".into()].into_iter()),
+            Err(())
+        );
     }
 }

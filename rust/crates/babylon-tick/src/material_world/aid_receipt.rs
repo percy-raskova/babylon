@@ -1,11 +1,11 @@
 //! Fixed canonical gift evidence. Source authority remains in captured mandates.
-use super::monetary_receipt::{account, account_parts};
-use super::{MaterialWorldError, ReceiptCursor};
+use super::monetary_receipt;
+use super::MaterialWorldError;
+use super::ReceiptCursor;
 use babylon_kernel::currency::Currency;
 use babylon_material_circuit::{
-    aid_commitment_id, AidOutcome, AidReceipt, AidTransport, CircuitAccounting,
-    FinalDemandPrincipalId, GoodId, LogisticsNodeId, MaterialCircuitState, OrderId, RouteId,
-    UnitId,
+    AidOutcome, AidReceipt, AidTransport, CircuitAccounting, FinalDemandPrincipalId, GoodId,
+    LogisticsNodeId, MaterialCircuitState, OrderId, RouteId, UnitId,
 };
 
 pub(super) const ROW_BYTES: usize = 387;
@@ -29,7 +29,8 @@ fn validate_row(row: &AidReceipt, tick: u64) -> Result<(), MaterialWorldError> {
         && row.dispatch_period > 0
         && row.dispatch_period <= tick
         && row.mandate_id != [0; 32]
-        && row.commitment_id == aid_commitment_id(row.mandate_id, row.dispatch_period)
+        && row.commitment_id
+            == babylon_material_circuit::aid_commitment_id(row.mandate_id, row.dispatch_period)
         && row.donor != row.recipient
         && row.quantity > 0
         && row.carrying_amount.micro_units() >= 0
@@ -113,7 +114,7 @@ pub(super) fn encode(
         for id in [route, from, to] {
             bytes.extend_from_slice(&id);
         }
-        let (payer, id) = account_parts(row.payer);
+        let (payer, id) = monetary_receipt::account_parts(row.payer);
         bytes.push(payer);
         bytes.extend_from_slice(&id);
         for id in [
@@ -155,7 +156,7 @@ pub(super) fn decode(
         _ => return Err(MaterialWorldError::Wire),
     };
     let [payer_tag] = cursor.take()?;
-    let payer = account(payer_tag, cursor.take()?)?;
+    let payer = monetary_receipt::account(payer_tag, cursor.take()?)?;
     let donor = FinalDemandPrincipalId::from_bytes(cursor.take()?);
     let recipient = FinalDemandPrincipalId::from_bytes(cursor.take()?);
     let good_id = GoodId::from_bytes(cursor.take()?);

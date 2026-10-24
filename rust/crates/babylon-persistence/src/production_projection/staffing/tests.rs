@@ -1,17 +1,30 @@
 use std::sync::OnceLock;
 
 use babylon_bsl::structural_verbs::CollectingSink;
-use babylon_graph::stable_state::{
-    compose_stable_graph_state_from_rows, StableGraphStateRowsInput,
-};
+use babylon_graph::stable_state::StableGraphStateRowsInput;
 use babylon_practice_contract::OrderedPracticeActionBatch;
 use babylon_tick::replay_session::ReplayCommitDisposition;
 
-use super::*;
+use super::super::ProductionProjectionError;
+use super::members::StaffingGraph;
+use super::projection;
+use super::projection::{Result, Stocks, INTEGER_FIELDS};
 use crate::michigan_content::MichiganContentPreset;
+use crate::michigan_economy;
+use crate::production_observation::ProductionStaffingAccount;
+use crate::stored_tick::StoredEvent;
+use babylon_bsl::identity_codec::StableBslValue;
+use babylon_graph::stable_element::StableElementKey;
+use babylon_graph::stable_state;
+use babylon_graph::stable_state::StableGraphState;
+use babylon_material_circuit::StaffingMemberBinding;
+use babylon_tick::choice_receipt::ChoiceReceiptRef;
+use babylon_tick::material_staffing::StaffingComposition;
 use babylon_tick::material_staffing::{
     EMPLOYED_POPULATION, PREVIOUS_UNRETAINED_HOURS, RESERVE_POPULATION,
 };
+use babylon_tick::material_world::{MaterialTickReceipts, MaterialWorldRegister};
+use std::collections::BTreeSet;
 
 #[derive(Clone)]
 struct Window {
@@ -24,7 +37,7 @@ struct Window {
 
 impl Window {
     fn project(&self) -> Result<Vec<ProductionStaffingAccount>> {
-        project_staffing_accounts(
+        projection::project_staffing_accounts(
             &fixture().composition,
             &self.graph,
             &self.register,
@@ -47,32 +60,42 @@ fn fixture() -> &'static PublishedFixture {
     FIXTURE.get_or_init(|| {
         let foundation = MichiganContentPreset::FourWeekStandard
             .create_foundation(&crate::test_support::catalog())
-            .unwrap();
+            .expect("the authored catalog builds the foundation");
         let composition = foundation.labor().clone();
-        let mut session = foundation.into_session().unwrap();
+        let mut session = foundation
+            .into_session()
+            .expect("the fixture opens a session");
         let mut windows = vec![Window {
             opening: None,
-            graph: session.graph_session().stable_graph_state().unwrap(),
+            graph: session
+                .graph_session()
+                .stable_graph_state()
+                .expect("the fixture graph has a stable state"),
             register: session.material().clone(),
             events: vec![],
             receipts: None,
         }];
         let mut sink = CollectingSink::default();
         for tick in 1..=8 {
-            let opening = session.graph_session().stable_graph_state().unwrap();
+            let opening = session
+                .graph_session()
+                .stable_graph_state()
+                .expect("the fixture graph has a stable state");
             let actions = OrderedPracticeActionBatch::empty(
                 session.graph_session().session_identity().clone(),
                 tick,
             )
-            .unwrap();
-            let prepared = session.prepare_advance(&actions).unwrap();
+            .expect("the empty authored batch constructs");
+            let prepared = session
+                .prepare_advance(&actions)
+                .expect("the session prepares the authored advance");
             let window = Window {
                 opening: Some(opening),
                 receipts: Some(
                     babylon_tick::material_world::decode_material_receipts(
                         prepared.material().receipt_bytes(),
                     )
-                    .unwrap(),
+                    .expect("the canonical bytes decode into the declared type"),
                 ),
                 graph: prepared.graph_report().result_stable_graph().clone(),
                 register: prepared.material().register().clone(),
@@ -85,7 +108,7 @@ fn fixture() -> &'static PublishedFixture {
                         emitting_rule: event.emitting_rule().to_owned(),
                         choice_receipt_ordinal: event
                             .choice_receipt()
-                            .map(babylon_tick::choice_receipt::ChoiceReceiptRef::encounter_ordinal),
+                            .map(ChoiceReceiptRef::encounter_ordinal),
                         event_type: event.event_type().to_owned(),
                         fields: event.fields().to_vec(),
                     })
@@ -95,11 +118,14 @@ fn fixture() -> &'static PublishedFixture {
                 .commit_prepared_and_publish(&mut sink, prepared, |_| {
                     Ok::<_, ()>(ReplayCommitDisposition::Committed)
                 })
-                .unwrap();
+                .expect("the prepared period commits");
             assert_eq!(window.register, *session.material());
             assert_eq!(
                 window.graph,
-                session.graph_session().stable_graph_state().unwrap()
+                session
+                    .graph_session()
+                    .stable_graph_state()
+                    .expect("the fixture graph has a stable state")
             );
             windows.push(window);
         }
@@ -119,16 +145,21 @@ fn field_mut<'a>(event: &'a mut StoredEvent, name: &str) -> &'a mut StableBslVal
         .fields
         .iter_mut()
         .find(|(key, _)| key == name)
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .1
 }
 
 fn event_integer(event: &StoredEvent, name: &str) -> u64 {
-    let value = &event.fields.iter().find(|(key, _)| key == name).unwrap().1;
+    let value = &event
+        .fields
+        .iter()
+        .find(|(key, _)| key == name)
+        .expect("the fixture holds the searched element")
+        .1;
     let StableBslValue::Int(value) = value else {
         panic!("integer event fixture");
     };
-    u64::try_from(*value).unwrap()
+    u64::try_from(*value).expect("the fixture value fits the target range")
 }
 
 fn local_name() -> &'static str {
@@ -170,7 +201,8 @@ fn change_graph(
 ) -> StableGraphState {
     let mut rows = graph_rows(graph);
     edit(&mut rows);
-    compose_stable_graph_state_from_rows(graph.scenario_scope(), rows).unwrap()
+    stable_state::compose_stable_graph_state_from_rows(graph.scenario_scope(), rows)
+        .expect("the authored rows compose a stable graph state")
 }
 
 fn set_graph_number(graph: &StableGraphState, field: &str, value: f64) -> StableGraphState {
@@ -178,7 +210,7 @@ fn set_graph_number(graph: &StableGraphState, field: &str, value: f64) -> Stable
         rows.node_f64
             .iter_mut()
             .find(|(node, key, _)| node == stock_subject(field) && key == field)
-            .unwrap()
+            .expect("the fixture holds the searched element")
             .2 = value.to_bits();
     })
 }
@@ -186,22 +218,30 @@ fn set_graph_number(graph: &StableGraphState, field: &str, value: f64) -> Stable
 #[test]
 fn foundation_reports_modeled_people_without_a_completed_staffing_event() {
     let foundation = &fixture().windows[0];
-    let accounts = foundation.project().unwrap();
+    let accounts = foundation
+        .project()
+        .expect("the fixture projection accepts the authored state");
     assert_eq!(accounts.len(), 5);
     assert_eq!(accounts.iter().map(|row| row.employed).sum::<u64>(), 31);
     assert!(accounts
         .iter()
         .all(|row| row.reserve == 0 && row.completed.is_none()));
-    let pools: std::collections::BTreeSet<_> = accounts.iter().map(|row| &row.pool_id).collect();
+    let pools: BTreeSet<_> = accounts.iter().map(|row| &row.pool_id).collect();
     assert_eq!(pools.len(), 5);
     for binding in fixture().composition.bindings() {
         let pool = binding.pool();
         let account = accounts
             .iter()
-            .find(|row| row.pool_id == digest_hex(&pool.pool_id().as_bytes()))
-            .unwrap();
-        assert_eq!(account.site_id, digest_hex(&pool.site_id().as_bytes()));
-        assert_eq!(account.unit_id, digest_hex(&pool.unit_id().as_bytes()));
+            .find(|row| row.pool_id == michigan_economy::digest_hex(&pool.pool_id().as_bytes()))
+            .expect("the fixture holds the searched element");
+        assert_eq!(
+            account.site_id,
+            michigan_economy::digest_hex(&pool.site_id().as_bytes())
+        );
+        assert_eq!(
+            account.unit_id,
+            michigan_economy::digest_hex(&pool.unit_id().as_bytes())
+        );
         assert_eq!(account.labor_force, pool.labor_force());
     }
     for account in accounts {
@@ -225,7 +265,9 @@ fn published_windows_keep_all_pools_exact_and_disclose_retention_release_and_reh
     let mut saw_rehire = false;
     let mut saw_quiet = false;
     for window in &fixture().windows[1..] {
-        let accounts = window.project().unwrap();
+        let accounts = window
+            .project()
+            .expect("the fixture projection accepts the authored state");
         assert_eq!(accounts.len(), 5);
         for account in accounts {
             assert_eq!(account.hours_per_person, 160);
@@ -235,7 +277,9 @@ fn published_windows_keep_all_pools_exact_and_disclose_retention_release_and_reh
                 window.register.completed_tick() + 1
             );
             assert_eq!(account.next_opening_hours, account.employed * 160);
-            let completed = account.completed.unwrap();
+            let completed = account
+                .completed
+                .expect("the fixture account carries its completed state");
             assert_eq!(completed.period, window.register.completed_tick());
             assert_eq!(
                 account.previous_unretained_hours,
@@ -245,7 +289,7 @@ fn published_windows_keep_all_pools_exact_and_disclose_retention_release_and_reh
                 matches!(event.fields.iter().find(|(name, _)| name == "subject"),
                     Some((_, StableBslValue::Node(StableElementKey::Node { scenario, local_name })))
                         if *scenario == account.subject.scenario && *local_name == account.subject.local_name)
-            }).unwrap();
+            }).expect("the fixture holds the searched element");
             assert_eq!(
                 completed.retained_hours,
                 event_integer(event, "retained-hours")
@@ -276,10 +320,17 @@ fn published_windows_keep_all_pools_exact_and_disclose_retention_release_and_reh
 #[test]
 fn receipt_order_is_irrelevant_but_missing_duplicate_and_extra_subjects_refuse() {
     let original = committed();
-    let expected = original.project().unwrap();
+    let expected = original
+        .project()
+        .expect("the fixture projection accepts the authored state");
     let mut reordered = original.clone();
     reordered.events.reverse();
-    assert_eq!(reordered.project().unwrap(), expected);
+    assert_eq!(
+        reordered
+            .project()
+            .expect("the fixture projection accepts the authored state"),
+        expected
+    );
     let mut missing = original.clone();
     missing.events.remove(0);
     assert_eq!(missing.project(), Err(ProductionProjectionError::History));
@@ -339,12 +390,19 @@ fn staffing_emitter_choice_and_subject_contracts_are_closed() {
         );
     }
     let mut window = committed();
-    let expected = window.project().unwrap();
+    let expected = window
+        .project()
+        .expect("the fixture projection accepts the authored state");
     let mut unrelated = window.events[0].clone();
     unrelated.emitting_rule = "unrelated-rule".into();
     unrelated.event_type = "UNRELATED_EVENT".into();
     window.events.push(unrelated);
-    assert_eq!(window.project().unwrap(), expected);
+    assert_eq!(
+        window
+            .project()
+            .expect("the fixture projection accepts the authored state"),
+        expected
+    );
 }
 
 #[test]
@@ -415,7 +473,10 @@ fn opening_and_closing_stocks_memory_owner_and_scope_are_bound() {
         ] {
             let mut window = committed();
             let graph = if opening {
-                window.opening.as_ref().unwrap()
+                window
+                    .opening
+                    .as_ref()
+                    .expect("the fixture set the optional field before this read")
             } else {
                 &window.graph
             };
@@ -424,7 +485,7 @@ fn opening_and_closing_stocks_memory_owner_and_scope_are_bound() {
                     .node_f64
                     .iter_mut()
                     .find(|(node, key, _)| node == stock_subject(field) && key == field)
-                    .unwrap();
+                    .expect("the fixture holds the searched element");
                 row.2 = (f64::from_bits(row.2) + 1.0).to_bits();
             });
             if opening {
@@ -436,7 +497,10 @@ fn opening_and_closing_stocks_memory_owner_and_scope_are_bound() {
         }
         let mut window = committed();
         let graph = if opening {
-            window.opening.as_ref().unwrap()
+            window
+                .opening
+                .as_ref()
+                .expect("the fixture set the optional field before this read")
         } else {
             &window.graph
         };
@@ -444,7 +508,7 @@ fn opening_and_closing_stocks_memory_owner_and_scope_are_bound() {
             rows.nodes
                 .iter_mut()
                 .find(|(node, _)| node == local_name())
-                .unwrap()
+                .expect("the fixture holds the searched element")
                 .1 = "ORGANIZATION".into();
         });
         if opening {
@@ -455,12 +519,16 @@ fn opening_and_closing_stocks_memory_owner_and_scope_are_bound() {
         assert_eq!(window.project(), Err(ProductionProjectionError::State));
         let mut window = committed();
         let graph = if opening {
-            window.opening.as_ref().unwrap()
+            window
+                .opening
+                .as_ref()
+                .expect("the fixture set the optional field before this read")
         } else {
             &window.graph
         };
         let changed =
-            compose_stable_graph_state_from_rows("foreign-scope", graph_rows(graph)).unwrap();
+            stable_state::compose_stable_graph_state_from_rows("foreign-scope", graph_rows(graph))
+                .expect("the authored rows compose a stable graph state");
         if opening {
             window.opening = Some(changed);
         } else {
@@ -485,9 +553,9 @@ fn graph_numeric_lane_and_exact_integer_boundary_are_enforced() {
     );
     assert_eq!(
         StaffingGraph::new(&exact)
-            .unwrap()
+            .expect("the constructor accepts the authored fixture arguments")
             .stocks(&fixture().composition.bindings()[0])
-            .unwrap()
+            .expect("the fixture call `stocks` succeeds for the authored inputs")
             .previous,
         1_u64 << 53
     );
@@ -521,18 +589,18 @@ fn next_labor_budget_and_pool_conservation_cannot_be_invented() {
                 && row.unit_id == pool.unit_id()
                 && row.period == state.period
         })
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .available += 1;
-    changed.register =
-        MaterialWorldRegister::try_new(changed.register.completed_tick(), state).unwrap();
+    changed.register = MaterialWorldRegister::try_new(changed.register.completed_tick(), state)
+        .expect("the authored fixture satisfies the constructor invariants");
     assert_eq!(changed.project(), Err(ProductionProjectionError::State));
     let mut changed = original.clone();
     let mut state = changed.register.state().clone();
     state
         .labor
         .retain(|row| row.site_id != pool.site_id() || row.unit_id != pool.unit_id());
-    changed.register =
-        MaterialWorldRegister::try_new(changed.register.completed_tick(), state).unwrap();
+    changed.register = MaterialWorldRegister::try_new(changed.register.completed_tick(), state)
+        .expect("the authored fixture satisfies the constructor invariants");
     assert_eq!(changed.project(), Err(ProductionProjectionError::State));
     let mut changed = original;
     let event = &mut changed.events[0];
@@ -551,16 +619,20 @@ fn full_typed_integer_hours_above_graph_precision_survive_the_complete_account_p
         1, people, 0, request, request, request, people, 0, 0, people, 0, next_hours,
     ];
     for (field, value) in INTEGER_FIELDS.iter().zip(values) {
-        *field_mut(&mut event, field) = StableBslValue::Int(i64::try_from(value).unwrap());
+        *field_mut(&mut event, field) = StableBslValue::Int(
+            i64::try_from(value).expect("the fixture value fits the target range"),
+        );
     }
-    let (_, values) = event_fields(&event).unwrap();
+    let (_, values) = projection::event_fields(&event)
+        .expect("the fixture call `event_fields` succeeds for the authored inputs");
     assert_eq!(values[11], (1_u64 << 53) + 8);
     let opening = Stocks {
         employed: people,
         reserve: 0,
         previous: request,
     };
-    let result = completed_account(1, opening, opening, next_hours, values).unwrap();
+    let result = projection::completed_account(1, opening, opening, next_hours, values)
+        .expect("the fixture call `completed_account` succeeds for the authored inputs");
     assert_eq!(result.current_unretained_hours, request);
     assert_eq!(result.retained_hours, request);
     assert_eq!(result.target_employed, people);
@@ -571,27 +643,45 @@ fn full_typed_integer_hours_above_graph_precision_survive_the_complete_account_p
 #[test]
 fn member_receipt_omission_duplication_and_residence_forgery_refuse_even_with_valid_pool_totals() {
     let original = committed();
-    original.project().unwrap();
+    original
+        .project()
+        .expect("the fixture projection accepts the authored state");
     let mut missing = original.clone();
-    missing.receipts.as_mut().unwrap().staffing_members.pop();
+    missing
+        .receipts
+        .as_mut()
+        .expect("the fixture set the optional field before this borrow")
+        .staffing_members
+        .pop();
     assert_eq!(missing.project(), Err(ProductionProjectionError::History));
     let mut duplicate = original.clone();
-    let row = duplicate.receipts.as_ref().unwrap().staffing_members[0].clone();
+    let row = duplicate
+        .receipts
+        .as_ref()
+        .expect("the fixture set the optional field before this read")
+        .staffing_members[0]
+        .clone();
     duplicate
         .receipts
         .as_mut()
-        .unwrap()
+        .expect("the fixture set the optional field before this borrow")
         .staffing_members
         .push(row);
     assert_eq!(duplicate.project(), Err(ProductionProjectionError::History));
     let mut changed = original;
-    let row = &mut changed.receipts.as_mut().unwrap().staffing_members[0];
-    row.member = babylon_material_circuit::StaffingMemberBinding::try_new(
+    let row = &mut changed
+        .receipts
+        .as_mut()
+        .expect("the fixture set the optional field before this borrow")
+        .staffing_members[0];
+    row.member = StaffingMemberBinding::try_new(
         row.member.member_id(),
         row.member.household_id(),
-        "county:26099".parse().unwrap(),
+        "county:26099"
+            .parse()
+            .expect("the authored literal parses as the declared type"),
         row.member.labor_force(),
     )
-    .unwrap();
+    .expect("the authored fixture satisfies the constructor invariants");
     assert_eq!(changed.project(), Err(ProductionProjectionError::History));
 }

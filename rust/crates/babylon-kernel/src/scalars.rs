@@ -4,8 +4,6 @@
 //! validates (the Gatekeeper pattern, ported from Pydantic's
 //! `AfterValidator`) — an out-of-range value is a loud `Err`, never
 //! silently clamped.
-use crate::grid::quantize;
-
 /// A scalar out of its sort's declared bound (III.11 load-time rejection).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct OutOfBoundsError {
@@ -30,7 +28,7 @@ macro_rules! bounded_scalar {
             /// Returns [`OutOfBoundsError`] if the quantized value falls
             /// outside the sort's declared bound (III.11) — never clamps.
             pub fn new(value: f64) -> Result<Self, OutOfBoundsError> {
-                let q = quantize(value);
+                let q = crate::grid::quantize(value);
                 if !($lower..=$upper).contains(&q) {
                     return Err(OutOfBoundsError {
                         value: q,
@@ -72,7 +70,7 @@ impl Ratio {
     /// Returns [`OutOfBoundsError`] if the quantized value is not finite
     /// and strictly positive (III.11) — never clamps.
     pub fn new(value: f64) -> Result<Self, OutOfBoundsError> {
-        let q = quantize(value);
+        let q = crate::grid::quantize(value);
         if !q.is_finite() || q <= 0.0 {
             return Err(OutOfBoundsError {
                 value: q,
@@ -102,7 +100,8 @@ mod tests {
 
     #[test]
     fn probability_quantizes_on_construction() {
-        let p = Probability::new(0.123_456_789).unwrap();
+        let p = Probability::new(0.123_456_789)
+            .expect("the constructor accepts the authored fixture arguments");
         assert!((p.get() - 0.123_457).abs() < 1e-12);
     }
 

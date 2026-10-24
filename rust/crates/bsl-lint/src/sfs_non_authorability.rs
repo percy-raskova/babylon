@@ -6,10 +6,13 @@ use babylon_bsl::causal_contract::{MAX_AST_WALK_DEPTH, MAX_AST_WALK_NODES, MAX_A
 use babylon_bsl::reader::{Atom, SExpr, MAX_READER_NESTING_DEPTH};
 use proc_macro2::{LineColumn, TokenStream, TokenTree};
 use std::collections::{BTreeSet, VecDeque};
+use std::fs::DirEntry;
 use std::fs::File;
-use std::io::Read;
+use std::io::ErrorKind;
 use std::path::{Component, Path, PathBuf};
-use std::str::FromStr;
+use syn::Lit;
+use toml::map::Map;
+use toml::Value;
 
 pub const CHECK: &str = "sfs-non-authorability";
 
@@ -64,7 +67,7 @@ struct ManifestDoc {
     path: PathBuf,
     crate_root: PathBuf,
     package: String,
-    value: toml::Value,
+    value: Value,
 }
 
 #[derive(Debug)]
@@ -309,11 +312,11 @@ fn sort_manifests(manifests: &mut [ManifestDoc]) {
     }
 }
 
-fn workspace_members(value: &toml::Value) -> Result<Vec<String>, String> {
+fn workspace_members(value: &Value) -> Result<Vec<String>, String> {
     let members = value
         .get("workspace")
         .and_then(|workspace| workspace.get("members"))
-        .and_then(toml::Value::as_array)
+        .and_then(Value::as_array)
         .ok_or_else(|| "root Cargo.toml lacks [workspace].members".to_owned())?;
     if members.len() >= MAX_MANIFESTS {
         return Err(format!(
@@ -340,16 +343,16 @@ fn workspace_members(value: &toml::Value) -> Result<Vec<String>, String> {
     Ok(output)
 }
 
-fn package_name(value: &toml::Value, path: &Path) -> Result<String, String> {
+fn package_name(value: &Value, path: &Path) -> Result<String, String> {
     let name = value
         .get("package")
         .and_then(|package| package.get("name"))
-        .and_then(toml::Value::as_str)
+        .and_then(Value::as_str)
         .ok_or_else(|| format!("{}: missing string package.name", path.display()))?;
     Ok(name.to_owned())
 }
 
-fn read_manifest(path: &Path, aggregate: &mut usize) -> Result<toml::Value, String> {
+fn read_manifest(path: &Path, aggregate: &mut usize) -> Result<Value, String> {
     let bytes = read_bounded(path, MAX_MANIFEST_BYTES, "manifest")?;
     *aggregate = aggregate
         .checked_add(bytes.len())
@@ -361,14 +364,16 @@ fn read_manifest(path: &Path, aggregate: &mut usize) -> Result<toml::Value, Stri
         ));
     }
     preflight_toml(path, &bytes)?;
-    let value: toml::Value = toml::from_slice(&bytes)
+    let value: Value = toml::from_slice(&bytes)
         .map_err(|error| format!("{}: malformed Cargo TOML: {error}", path.display()))?;
     preflight_toml_value(path, &value)?;
     Ok(value)
 }
 
 fn read_bounded(path: &Path, maximum: usize, kind: &str) -> Result<Vec<u8>, String> {
-    let mut file = File::open(path).map_err(|error| format!("{}: {error}", path.display()))?;
+    use std::io::Read;
+
+    let mut file = File::open(path).map_err(|error| format!("{}:  {error}", path.display()))?;
     let metadata = file
         .metadata()
         .map_err(|error| format!("{}: {error}", path.display()))?;
@@ -383,7 +388,9 @@ fn read_bounded(path: &Path, maximum: usize, kind: &str) -> Result<Vec<u8>, Stri
         .map_err(|error| format!("{kind} byte limit conversion failed: {error}"))?
         .checked_add(1)
         .ok_or_else(|| format!("{kind} byte limit overflow"))?;
-    let mut bytes = Vec::with_capacity(maximum.min(metadata.len() as usize));
+    let declared_length =
+        usize::try_from(metadata.len()).map_err(|error| format!("{kind} length: {error}"))?;
+    let mut bytes = Vec::with_capacity(maximum.min(declared_length));
     file.by_ref()
         .take(limit)
         .read_to_end(&mut bytes)
@@ -541,7 +548,7 @@ fn next_toml_state(bytes: &[u8], index: usize, byte: u8) -> TomlState {
     }
 }
 
-fn preflight_toml_value(path: &Path, root: &toml::Value) -> Result<(), String> {
+fn preflight_toml_value(path: &Path, root: &Value) -> Result<(), String> {
     let mut stack = vec![(root, 0_usize)];
     for visited in 0..65_536 {
         let Some((value, depth)) = stack.pop() else {
@@ -556,8 +563,8 @@ fn preflight_toml_value(path: &Path, root: &toml::Value) -> Result<(), String> {
             ));
         }
         let child_count = match value {
-            toml::Value::Array(values) => values.len(),
-            toml::Value::Table(values) => values.len(),
+            Value::Array(values) => values.len(),
+            Value::Table(values) => values.len(),
             _ => 0,
         };
         check_toml_stack_capacity(path, stack.len(), child_count)?;
@@ -566,8 +573,8 @@ fn preflight_toml_value(path: &Path, root: &toml::Value) -> Result<(), String> {
                 break;
             };
             let child = match value {
-                toml::Value::Array(values) => values.get(child_index),
-                toml::Value::Table(values) => toml_table_value_at(values, child_index),
+                Value::Array(values) => values.get(child_index),
+                Value::Table(values) => toml_table_value_at(values, child_index),
                 _ => None,
             };
             let Some(child) = child else {
@@ -607,10 +614,7 @@ fn check_toml_stack_capacity(path: &Path, current: usize, added: usize) -> Resul
     Ok(())
 }
 
-fn toml_table_value_at(
-    table: &toml::map::Map<String, toml::Value>,
-    selected: usize,
-) -> Option<&toml::Value> {
+fn toml_table_value_at(table: &Map<String, Value>, selected: usize) -> Option<&Value> {
     let mut entries = table.iter();
     for index in 0..65_536 {
         let (_key, value) = entries.next()?;
@@ -686,7 +690,7 @@ fn inspect_path_components(root: &Path, path: &Path) -> Result<(), String> {
                 ));
             }
             Ok(_) => {}
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(error) if error.kind() == ErrorKind::NotFound => return Ok(()),
             Err(error) => return Err(format!("{}: {error}", current.display())),
         }
     }
@@ -706,18 +710,17 @@ fn inspect_path_components(root: &Path, path: &Path) -> Result<(), String> {
 
 fn resolve_edges(
     root: &Path,
-    root_value: &toml::Value,
+    root_value: &Value,
     manifests: &[ManifestDoc],
 ) -> Result<Vec<(usize, usize)>, String> {
     let workspace_dependencies = root_value
         .get("workspace")
         .and_then(|workspace| workspace.get("dependencies"))
-        .and_then(toml::Value::as_table);
-    let workspace_dependency_count = workspace_dependencies.map_or(0, toml::map::Map::len);
+        .and_then(Value::as_table);
+    let workspace_dependency_count = workspace_dependencies.map_or(0, Map::len);
     if workspace_dependency_count > MAX_DEPENDENCIES {
         return Err(format!(
-            "workspace dependency entry count {} exceeds {}",
-            workspace_dependency_count, MAX_DEPENDENCIES
+            "workspace dependency entry count {workspace_dependency_count} exceeds {MAX_DEPENDENCIES}"
         ));
     }
     let mut pending = Vec::new();
@@ -750,7 +753,7 @@ fn resolve_edges(
         let Some(table) = resolved.as_table() else {
             continue;
         };
-        let Some(path_text) = table.get("path").and_then(toml::Value::as_str) else {
+        let Some(path_text) = table.get("path").and_then(Value::as_str) else {
             continue;
         };
         let target_root = normalize_beneath(base, Path::new(path_text), root)?;
@@ -770,7 +773,7 @@ fn resolve_edges(
             ));
         };
         let target_name = &manifests[to].package;
-        if let Some(declared_name) = table.get("package").and_then(toml::Value::as_str) {
+        if let Some(declared_name) = table.get("package").and_then(Value::as_str) {
             if declared_name != target_name {
                 return Err(format!(
                     "{}: dependency alias `{alias}` declares package `{declared_name}` but path resolves `{target_name}`",
@@ -824,15 +827,15 @@ fn dedup_edges(edges: &mut Vec<(usize, usize)>) {
 
 fn resolve_workspace_row<'a>(
     alias: &str,
-    row: &'a toml::Value,
-    workspace_dependencies: Option<&'a toml::map::Map<String, toml::Value>>,
+    row: &'a Value,
+    workspace_dependencies: Option<&'a Map<String, Value>>,
     root: &'a Path,
     manifest_parent: &'a Path,
-) -> Result<(&'a toml::Value, &'a Path), String> {
+) -> Result<(&'a Value, &'a Path), String> {
     let inherited = row
         .as_table()
         .and_then(|table| table.get("workspace"))
-        .and_then(toml::Value::as_bool)
+        .and_then(Value::as_bool)
         .unwrap_or(false);
     if !inherited {
         return Ok((row, manifest_parent));
@@ -847,13 +850,13 @@ fn resolve_workspace_row<'a>(
 
 fn collect_manifest_dependencies<'a>(
     from: usize,
-    value: &'a toml::Value,
-    output: &mut Vec<(usize, String, &'a toml::Value)>,
+    value: &'a Value,
+    output: &mut Vec<(usize, String, &'a Value)>,
 ) -> Result<(), String> {
     for table_name in ["dependencies", "dev-dependencies", "build-dependencies"] {
         collect_dependency_table(from, value.get(table_name), output)?;
     }
-    if let Some(targets) = value.get("target").and_then(toml::Value::as_table) {
+    if let Some(targets) = value.get("target").and_then(Value::as_table) {
         if targets.len() > MAX_DEPENDENCIES {
             return Err(format!(
                 "target dependency table count {} exceeds {}",
@@ -875,17 +878,14 @@ fn collect_manifest_dependencies<'a>(
 
 fn collect_dependency_table<'a>(
     from: usize,
-    value: Option<&'a toml::Value>,
-    output: &mut Vec<(usize, String, &'a toml::Value)>,
+    value: Option<&'a Value>,
+    output: &mut Vec<(usize, String, &'a Value)>,
 ) -> Result<(), String> {
-    let Some(table) = value.and_then(toml::Value::as_table) else {
+    let Some(table) = value.and_then(Value::as_table) else {
         return Ok(());
     };
     if output.len().saturating_add(table.len()) > MAX_DEPENDENCIES {
-        return Err(format!(
-            "dependency entry count exceeds {}",
-            MAX_DEPENDENCIES
-        ));
+        return Err(format!("dependency entry count exceeds {MAX_DEPENDENCIES}"));
     }
     for index in 0..256 {
         let Some((alias, row)) = toml_table_entry_at(table, index) else {
@@ -896,10 +896,7 @@ fn collect_dependency_table<'a>(
     Ok(())
 }
 
-fn toml_table_entry_at(
-    table: &toml::map::Map<String, toml::Value>,
-    selected: usize,
-) -> Option<(&String, &toml::Value)> {
+fn toml_table_entry_at(table: &Map<String, Value>, selected: usize) -> Option<(&String, &Value)> {
     let mut entries = table.iter();
     for index in 0..65_536 {
         let entry = entries.next()?;
@@ -1061,7 +1058,7 @@ fn package_path_less(workspace: &Workspace, left: &[usize], right: &[usize]) -> 
                 }
             }
             (None, Some(_)) => return true,
-            (Some(_), None) | (None, None) => return false,
+            (Some(_) | None, None) => return false,
         }
     }
     false
@@ -1274,7 +1271,7 @@ fn enumerate_sources(
                 ));
             }
             admit_source_entry(
-                entry,
+                &entry,
                 depth,
                 &canonical_root,
                 crate_root,
@@ -1297,7 +1294,7 @@ fn enumerate_sources(
 }
 
 fn admit_source_entry(
-    entry: std::fs::DirEntry,
+    entry: &DirEntry,
     depth: usize,
     canonical_root: &Path,
     crate_root: &Path,
@@ -1395,6 +1392,8 @@ fn scan_rust_source(
     bytes: &[u8],
     registry_declarations: &mut usize,
 ) -> Result<Vec<SourceFinding>, String> {
+    use std::str::FromStr;
+
     let source = std::str::from_utf8(bytes)
         .map_err(|error| format!("{}: Rust source is not UTF-8: {error}", path.display()))?;
     let stream = TokenStream::from_str(source)
@@ -1483,8 +1482,7 @@ fn bounded_rust_tokens(path: &Path, stream: TokenStream) -> Result<Vec<RustToken
                 span,
             }),
             TokenTree::Literal(literal) => {
-                if let Ok(syn::Lit::Str(string)) = syn::parse_str::<syn::Lit>(&literal.to_string())
-                {
+                if let Ok(Lit::Str(string)) = syn::parse_str::<Lit>(&literal.to_string()) {
                     inspected.push(RustToken {
                         value: string.value(),
                         span,
@@ -1584,7 +1582,7 @@ fn inspect_registry(
                 inspection.error = Some(format!("{REGISTRY_NAME} contains a non-literal row"));
                 return inspection;
             };
-            let syn::Lit::Str(value) = &expression.lit else {
+            let Lit::Str(value) = &expression.lit else {
                 inspection.error = Some(format!("{REGISTRY_NAME} contains a non-string row"));
                 return inspection;
             };
@@ -1604,6 +1602,8 @@ fn inspect_registry(
 }
 
 fn validate_registry_rows(rows: &[String]) -> Result<(), String> {
+    use std::fmt::Write as _;
+
     for row_index in 1..10 {
         if rows[row_index - 1].as_bytes() >= rows[row_index].as_bytes() {
             return Err(format!(
@@ -1625,7 +1625,7 @@ fn validate_registry_rows(rows: &[String]) -> Result<(), String> {
         let Some(byte) = digest.get(byte_index) else {
             return Err(format!("{REGISTRY_NAME} digest is incomplete"));
         };
-        digest_hex.push_str(&format!("{byte:02x}"));
+        write!(digest_hex, "{byte:02x}").expect("writing to a String cannot fail");
     }
     if digest_hex != REGISTRY_DIGEST {
         return Err(format!(
@@ -1889,18 +1889,18 @@ fn is_reserved_qname(qname: &str) -> bool {
 mod tests {
     use super::*;
 
-    fn nested_toml_arrays(depth: usize) -> toml::Value {
-        let mut value = toml::Value::Integer(0);
-        for _depth_index in 0..33 {
-            if _depth_index >= depth {
+    fn nested_toml_arrays(depth: usize) -> Value {
+        let mut value = Value::Integer(0);
+        for depth_index in 0..33 {
+            if depth_index >= depth {
                 break;
             }
-            value = toml::Value::Array(vec![value]);
+            value = Value::Array(vec![value]);
         }
         value
     }
 
-    fn toml_value_fixture(overflow: bool) -> toml::Value {
+    fn toml_value_fixture(overflow: bool) -> Value {
         let mut groups = Vec::with_capacity(256);
         for group_index in 0..256 {
             let mut leaf_count: usize = if group_index == 255 { 254 } else { 255 };
@@ -1912,11 +1912,11 @@ mod tests {
                 if leaf_index >= leaf_count {
                     break;
                 }
-                leaves.push(toml::Value::Integer(0));
+                leaves.push(Value::Integer(0));
             }
-            groups.push(toml::Value::Array(leaves));
+            groups.push(Value::Array(leaves));
         }
-        toml::Value::Array(groups)
+        Value::Array(groups)
     }
 
     fn sexpr_node_fixture(overflow: bool) -> SExpr {

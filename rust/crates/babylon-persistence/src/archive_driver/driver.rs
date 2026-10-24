@@ -1,0 +1,152 @@
+//! Leaf implementation for the parent module; public paths stay on the parent.
+
+use super::run;
+
+use std::sync::mpsc::{self, SyncSender, TrySendError};
+
+use std::thread::{self, JoinHandle};
+
+use postgres::Config;
+
+use crate::identity::CampaignId;
+use crate::{ArchiveWorkerCancellation, SemanticArchiveError};
+use thread::Builder;
+use thread::Result as ThreadResult;
+
+pub(super) const COMMAND_CAPACITY: usize = 8;
+
+/// One coherent maintenance result or explicit failure from the dedicated driver.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ArchiveDriverEvent {
+    /// Marker tail, contiguous processed prefix and validated seal share a snapshot.
+    Progress {
+        /// Present only for the explicit refresh that requested this observation.
+        request_id: Option<u64>,
+        /// Durable marker tail in the driver campaign.
+        durable_tick: u64,
+        /// Contiguous completed Archive prefix, never above the durable tail.
+        verified_tick: u64,
+    },
+    /// A typed failure; integrity errors never become successful progress.
+    Failure {
+        /// Explicit refresh correlation when applicable.
+        request_id: Option<u64>,
+        /// Classified transport or canonical worker refusal.
+        failure: ArchiveDriverFailure,
+        /// Whether a bounded retry is scheduled without requiring another hint.
+        retrying: bool,
+    },
+    /// Worker has stopped initiating work. Thread completion remains authoritative.
+    Stopped,
+}
+
+/// Closed distinction between retryable transport failure and integrity refusal.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ArchiveDriverFailure {
+    /// The dedicated listening connection closed without a server error.
+    Disconnected,
+    /// A specifically admitted transient database error.
+    Transient(SemanticArchiveError),
+    /// Authentication, source, schema or publication refusal; no automatic retry.
+    Refused(SemanticArchiveError),
+}
+
+/// Thread creation and untrusted target admission failures.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ArchiveDriverStartError {
+    /// The connection target violates the existing local target boundary.
+    InvalidTarget,
+    /// The host refused creation of the one dedicated driver thread.
+    Spawn,
+}
+
+/// A refresh request was not accepted; no success response will be fabricated.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ArchiveDriverRequestError {
+    /// All bounded request slots are occupied.
+    Full,
+    /// Stop was requested or the worker has already exited.
+    Stopped,
+}
+
+/// One owned listener/worker thread and its nonblocking control boundary.
+pub struct ArchiveDriver {
+    pub(super) requests: SyncSender<u64>,
+    pub(super) cancellation: ArchiveWorkerCancellation,
+    pub(super) thread: Option<JoinHandle<Result<(), ArchiveDriverFailure>>>,
+}
+
+impl ArchiveDriver {
+    /// Start one fixed-campaign driver. The sink returns false on backpressure.
+    ///
+    /// The driver retains unsent correlated results and coalesces automatic
+    /// progress; the sink must be nonblocking and must not perform database work.
+    ///
+    /// # Errors
+    /// Refuses an unsafe target or inability to create the dedicated thread.
+    pub fn start(
+        config: &Config,
+        campaign: CampaignId,
+        sink: impl Fn(ArchiveDriverEvent) -> bool + Send + 'static,
+    ) -> Result<Self, ArchiveDriverStartError> {
+        crate::postgres_catalog::validate_connection_target(config)
+            .map_err(|_| ArchiveDriverStartError::InvalidTarget)?;
+        // Keep external admission separate from the internally bounded connections.
+        let config = config.clone();
+        let cancellation = ArchiveWorkerCancellation::default();
+        let worker_stop = cancellation.clone();
+        let (requests, receiver) = mpsc::sync_channel(COMMAND_CAPACITY);
+        let thread = Builder::new()
+            .name("babylon-archive".into())
+            .spawn(move || run::run(&config, campaign, &receiver, &worker_stop, &sink))
+            .map_err(|_| ArchiveDriverStartError::Spawn)?;
+        Ok(Self {
+            requests,
+            cancellation,
+            thread: Some(thread),
+        })
+    }
+
+    /// Request reconciliation without blocking the runtime coordinator.
+    ///
+    /// # Errors
+    /// Returns `Full` or `Stopped` rather than dropping request correlation.
+    pub fn request_refresh(&self, request_id: u64) -> Result<(), ArchiveDriverRequestError> {
+        if self.cancellation.is_stopped() || self.is_finished() {
+            return Err(ArchiveDriverRequestError::Stopped);
+        }
+        self.requests
+            .try_send(request_id)
+            .map_err(|error| match error {
+                TrySendError::Full(_) => ArchiveDriverRequestError::Full,
+                TrySendError::Disconnected(_) => ArchiveDriverRequestError::Stopped,
+            })
+    }
+
+    /// Request cooperative shutdown even when every message queue is full.
+    pub fn request_stop(&self) {
+        self.cancellation.request_stop();
+    }
+
+    /// Observe actual thread completion, independent of event queue delivery.
+    #[must_use]
+    pub fn is_finished(&self) -> bool {
+        self.thread.as_ref().is_none_or(JoinHandle::is_finished)
+    }
+
+    /// Reap only an already-finished thread; this never waits for active SQL.
+    /// The inner result preserves any unrecovered fatal Archive refusal even
+    /// when the event sink could not deliver it before stop.
+    pub fn join_if_finished(&mut self) -> Option<ThreadResult<Result<(), ArchiveDriverFailure>>> {
+        if !self.is_finished() {
+            return None;
+        }
+        self.thread.take().map(JoinHandle::join)
+    }
+}
+
+impl Drop for ArchiveDriver {
+    fn drop(&mut self) {
+        self.request_stop();
+    }
+}

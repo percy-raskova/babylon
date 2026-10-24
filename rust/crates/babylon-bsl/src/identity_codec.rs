@@ -4,12 +4,12 @@ use std::collections::TryReserveError;
 
 use babylon_graph::stable_element::{StableElementKey, StableElementResolver, StableIdentityError};
 
-use crate::causal_contract::{
-    canonical_event_type, EffectSignature, EvidenceClass, RuleRole, ShapeVerb,
-};
+use crate::causal_contract::{EffectSignature, EvidenceClass, RuleRole, ShapeVerb};
 use crate::evaluator::Value;
 use crate::types::{BslType, EnumRegistry, EnumTypeId, FieldDecl, FieldKind};
 use crate::vocabulary::EnumKind;
+use babylon_kernel::scalars::Ratio;
+use babylon_practice_contract::OrganizerError;
 
 /// Maximum bytes one BSL-owned identity section may contain.
 pub const MAX_IDENTITY_SECTION_BYTES: usize = 67_108_864;
@@ -53,7 +53,7 @@ pub(crate) fn validate_intrinsic_identity(value: &str) -> Result<(), IntrinsicId
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum IdentityCodecError {
     /// A connected organizer receipt violates its canonical typed contract.
-    OrganizerReceipt(babylon_practice_contract::OrganizerError),
+    OrganizerReceipt(OrganizerError),
     /// A graph reference did not resolve through the sealed stable resolver.
     StableIdentity(StableIdentityError),
     /// A binary64 value was NaN or infinite.
@@ -275,7 +275,10 @@ pub fn project_stored_field_value(
             {
                 return Err(IdentityCodecError::NonCanonicalStoredInt { bits });
             }
-            #[allow(clippy::cast_possible_truncation)]
+            #[allow(
+                clippy::cast_possible_truncation,
+                reason = "the bounded fixture index is range-checked before narrowing"
+            )]
             let value = value as i64;
             Ok(StableBslValue::Int(value))
         }
@@ -288,7 +291,11 @@ pub fn project_stored_field_value(
             {
                 return Err(IdentityCodecError::InvalidStoredEnumOrdinal { bits });
             }
-            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+            #[allow(
+                clippy::cast_possible_truncation,
+                clippy::cast_sign_loss,
+                reason = "the bounded fixture index is range-checked before narrowing; the value is non-negative before the unsigned cast"
+            )]
             let ordinal = value as u32;
             let declaration = enums
                 .declaration(*enum_type)
@@ -564,7 +571,7 @@ fn encode_real(value: f64, output: &mut IdentityWriter) -> Result<(), IdentityCo
 }
 
 fn encode_ratio_option(
-    value: Option<babylon_kernel::scalars::Ratio>,
+    value: Option<Ratio>,
     output: &mut IdentityWriter,
 ) -> Result<(), IdentityCodecError> {
     match value {
@@ -580,14 +587,7 @@ fn validate_stable_ratio(
     value: u64,
     floor: Option<u64>,
     cap: Option<u64>,
-) -> Result<
-    (
-        babylon_kernel::scalars::Ratio,
-        Option<babylon_kernel::scalars::Ratio>,
-        Option<babylon_kernel::scalars::Ratio>,
-    ),
-    IdentityCodecError,
-> {
+) -> Result<(Ratio, Option<Ratio>, Option<Ratio>), IdentityCodecError> {
     let value = stable_ratio_component(value)?;
     let floor = floor.map(stable_ratio_component).transpose()?;
     let cap = cap.map(stable_ratio_component).transpose()?;
@@ -600,16 +600,13 @@ fn validate_stable_ratio(
     Ok((value, floor, cap))
 }
 
-fn stable_ratio_component(
-    value: u64,
-) -> Result<babylon_kernel::scalars::Ratio, IdentityCodecError> {
+fn stable_ratio_component(value: u64) -> Result<Ratio, IdentityCodecError> {
     let raw = f64::from_bits(value);
     canonical_f64_bits(raw)?;
     if raw <= 0.0 {
         return Err(IdentityCodecError::NonPositiveRatio);
     }
-    let ratio = babylon_kernel::scalars::Ratio::new(raw)
-        .map_err(|_| IdentityCodecError::NonCanonicalRatio)?;
+    let ratio = Ratio::new(raw).map_err(|_| IdentityCodecError::NonCanonicalRatio)?;
     if ratio.get().to_bits() != value {
         return Err(IdentityCodecError::NonCanonicalRatio);
     }
@@ -798,9 +795,11 @@ fn encode_effect_field(
 /// # Errors
 /// Returns a semantic-string error for malformed event identities.
 pub fn canonical_event_name(value: &str) -> Result<String, IdentityCodecError> {
-    let canonical = canonical_event_type(value).map_err(|_| IdentityCodecError::InvalidString {
-        field: "event name",
-        index: value.len(),
+    let canonical = crate::causal_contract::canonical_event_type(value).map_err(|_| {
+        IdentityCodecError::InvalidString {
+            field: "event name",
+            index: value.len(),
+        }
     })?;
     let member = canonical
         .strip_prefix("EventType/")
@@ -977,8 +976,7 @@ mod tests {
     use babylon_graph::stable_element::StableElementKey;
 
     use super::{
-        encode_stable_bsl_value, project_stable_value, project_stored_field_value,
-        IdentityCodecError, StableBslValue,
+        project_stable_value, project_stored_field_value, IdentityCodecError, StableBslValue,
     };
     use crate::evaluator::Value;
     use crate::types::{BslType, EnumRegistry, EnumTypeId, FieldDecl, FieldKind};
@@ -1024,7 +1022,7 @@ mod tests {
     #[test]
     fn stable_encoder_closes_scalar_and_key_invariants_without_partial_output() {
         let mut real = Vec::new();
-        encode_stable_bsl_value(&StableBslValue::RealBits((-0.0_f64).to_bits()), &mut real)
+        super::encode_stable_bsl_value(&StableBslValue::RealBits((-0.0_f64).to_bits()), &mut real)
             .expect("negative zero canonicalizes");
         assert_eq!(real, [vec![0x03], 0_u64.to_be_bytes().to_vec()].concat());
 
@@ -1034,7 +1032,7 @@ mod tests {
             cap: Some(1.0_f64.to_bits()),
         };
         let mut ratio = Vec::new();
-        encode_stable_bsl_value(&valid_ratio, &mut ratio).expect("positive ratios encode");
+        super::encode_stable_bsl_value(&valid_ratio, &mut ratio).expect("positive ratios encode");
         assert_eq!(ratio[0], 0x04);
 
         for (invalid, expected) in [
@@ -1096,7 +1094,7 @@ mod tests {
         ] {
             let mut output = vec![0xaa];
             assert_eq!(
-                encode_stable_bsl_value(&invalid, &mut output),
+                super::encode_stable_bsl_value(&invalid, &mut output),
                 Err(expected)
             );
             assert_eq!(output, vec![0xaa]);
@@ -1108,7 +1106,7 @@ mod tests {
         };
         let mut output = vec![0xbb];
         assert_eq!(
-            encode_stable_bsl_value(&invalid_enum, &mut output),
+            super::encode_stable_bsl_value(&invalid_enum, &mut output),
             Err(IdentityCodecError::InvalidString {
                 field: "ValueV1 enum type",
                 index: 0,
@@ -1205,7 +1203,7 @@ mod tests {
                 "TerritoryType",
                 &["CORE".to_owned(), "PERIPHERY".to_owned()],
             )
-            .unwrap();
+            .expect("the scenario declares the authored entity");
         let declared = field(BslType::Enum(territory_type));
         assert_eq!(
             project_stored_field_value(&declared, Some(1.0_f64.to_bits()), None, &enums,),

@@ -1,5 +1,8 @@
 //! Instrument cost follows finite productive use; installation remains an asset.
-use super::{add, portion, sub, zero, CostClose, HistoricalCostBook, Result};
+use super::CostClose;
+use super::HistoricalCostBook;
+use super::Result;
+use crate::payments::LaborUse;
 use crate::{
     AccountId, EquipmentAssetId, EquipmentCohortId, EquipmentWearReceipt, InstallationId,
     MaterialCircuitError, MaterialCircuitState, ProcessId, SiteId, UnitId,
@@ -15,10 +18,10 @@ impl CostClose {
     ) -> Result<Currency> {
         let period = state.period;
         let Some(e) = crate::equipment::get_mut(state) else {
-            return Ok(zero());
+            return Ok(super::zero());
         };
         if batches == 0 {
-            return Ok(zero());
+            return Ok(super::zero());
         }
         let (binding, definition) = e.definition(process)?;
         let site = binding.site_id;
@@ -28,7 +31,7 @@ impl CostClose {
             .as_mut()
             .ok_or(MaterialCircuitError::EquipmentInvariant)?;
         let mut remaining = batches;
-        let mut total = zero();
+        let mut total = super::zero();
         let range = e.cohorts_for(process);
         for cohort in &mut e.cohorts[range] {
             if remaining == 0 {
@@ -57,8 +60,8 @@ impl CostClose {
             if owner != site {
                 return Err(MaterialCircuitError::ValuationInvariant);
             }
-            let taken = portion(opening, cohort.remaining_service_batches, used)?;
-            let retained = sub(opening, taken)?;
+            let taken = super::portion(opening, cohort.remaining_service_batches, used)?;
+            let retained = super::sub(opening, taken)?;
             let row = EquipmentWearReceipt {
                 period,
                 cohort_id: cohort.id,
@@ -80,13 +83,14 @@ impl CostClose {
             } else {
                 active.book.equipment.insert(key, (site, retained));
             }
-            total = add(total, taken)?;
+            total = super::add(total, taken)?;
         }
         if remaining != 0 {
             return Err(MaterialCircuitError::EquipmentInvariant);
         }
         let statement = active.statement(AccountId::Site(site))?;
-        statement.equipment_wear_capitalized = add(statement.equipment_wear_capitalized, total)?;
+        statement.equipment_wear_capitalized =
+            super::add(statement.equipment_wear_capitalized, total)?;
         Ok(total)
     }
     pub(crate) fn installation_start(
@@ -115,9 +119,9 @@ impl CostClose {
         unit: UnitId,
         hours: u64,
     ) -> Result<(Currency, Currency)> {
-        let wages =
-            self.attendance
-                .consume(site, unit, hours, crate::payments::LaborUse::Installation)?;
+        let wages = self
+            .attendance
+            .consume(site, unit, hours, LaborUse::Installation)?;
         let a = self
             .active
             .as_mut()
@@ -130,11 +134,11 @@ impl CostClose {
         if *owner != site {
             return Err(MaterialCircuitError::ValuationInvariant);
         }
-        *amount = add(*amount, wages)?;
+        *amount = super::add(*amount, wages)?;
         let closing = *amount;
         let statement = a.statement(AccountId::Site(site))?;
         statement.installation_labor_capitalized =
-            add(statement.installation_labor_capitalized, wages)?;
+            super::add(statement.installation_labor_capitalized, wages)?;
         Ok((wages, closing))
     }
     pub(crate) fn installation_carrying(&self, id: InstallationId) -> Result<Currency> {
@@ -169,14 +173,17 @@ impl CostClose {
     }
     pub(crate) fn investment_earnings(&self, site: SiteId) -> Result<Currency> {
         let Some(a) = &self.active else {
-            return Ok(zero());
+            return Ok(super::zero());
         };
         let owner = AccountId::Site(site);
-        Ok(sub(
+        Ok(super::sub(
             self.eligible_earnings(owner)?,
-            a.distributions.get(&owner).copied().unwrap_or_else(zero),
+            a.distributions
+                .get(&owner)
+                .copied()
+                .unwrap_or_else(super::zero),
         )?
-        .max(zero()))
+        .max(super::zero()))
     }
 }
 pub(super) fn validate_assets(

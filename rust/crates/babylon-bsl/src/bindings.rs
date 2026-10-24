@@ -27,6 +27,8 @@
 
 use crate::reader::{Atom, SExpr};
 use std::collections::HashSet;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 
 /// The two reserved, always-in-scope symbols (§2.5) — never declared,
 /// never shadowed (`E-PARSE-022`).
@@ -189,7 +191,7 @@ impl BindingError {
 }
 
 impl std::fmt::Display for BindingError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         match self {
             Self::BadCycleLength { name, length } => write!(
                 f,
@@ -681,8 +683,6 @@ fn check_expr_binding_scope(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::reader::read;
-
     /// The §5.6 worked example — one `:field` binding named `wealth`.
     const DEMO_RULE: &str = r#"
         (rule demo/hunger
@@ -696,7 +696,9 @@ mod tests {
     "#;
 
     fn parse(source: &str) -> SExpr {
-        read(source).expect("test source must parse").0
+        crate::reader::read(source)
+            .expect("test source must parse")
+            .0
     }
 
     fn rule_with_bindings(rows: &str) -> SExpr {
@@ -719,7 +721,7 @@ mod tests {
     #[test]
     fn the_worked_example_parses_resolves_and_closes_its_variables() {
         let rule = parse(DEMO_RULE);
-        let decls = parse_bindings(&rule).unwrap();
+        let decls = parse_bindings(&rule).expect("the authored bindings parse");
         assert_eq!(
             decls,
             vec![BindingDecl {
@@ -741,7 +743,7 @@ mod tests {
              (binding tension :metric mean-tension) \
              (binding now :tick)",
         );
-        let decls = parse_bindings(&rule).unwrap();
+        let decls = parse_bindings(&rule).expect("the authored bindings parse");
         assert_eq!(decls.len(), 4);
         assert_eq!(
             decls[1].source,
@@ -759,7 +761,8 @@ mod tests {
     fn reserved_names_are_never_declared_e_parse_022() {
         for name in ["self", "it"] {
             let rule = rule_with_bindings(&format!("(binding {name} :tick)"));
-            let err = parse_bindings(&rule).unwrap_err();
+            let err = parse_bindings(&rule)
+                .expect_err("`parse_bindings` rejects the malformed declaration");
             assert_eq!(
                 err,
                 BindingError::ReservedName {
@@ -775,19 +778,21 @@ mod tests {
         let rule = rule_with_bindings(
             "(binding wealth :field social-class/wealth) (binding wealth :tick)",
         );
-        let err = parse_bindings(&rule).unwrap_err();
+        let err =
+            parse_bindings(&rule).expect_err("`parse_bindings` rejects the malformed declaration");
         assert_eq!(err.spec_code(), Some("E-PARSE-030"));
     }
 
     #[test]
     fn bare_optional_without_default_is_e_parse_031() {
         let rule = rule_with_bindings("(binding wealth :field social-class/wealth :optional)");
-        let err = parse_bindings(&rule).unwrap_err();
+        let err =
+            parse_bindings(&rule).expect_err("`parse_bindings` rejects the malformed declaration");
         assert_eq!(err.spec_code(), Some("E-PARSE-031"));
         // The pair is legal, and the default is captured as a literal atom.
         let ok =
             rule_with_bindings("(binding wealth :field social-class/wealth :optional :default 0$)");
-        let decls = parse_bindings(&ok).unwrap();
+        let decls = parse_bindings(&ok).expect("the authored bindings parse");
         assert!(decls[0].optional);
         assert!(decls[0].default.is_some());
     }
@@ -806,7 +811,8 @@ mod tests {
     #[test]
     fn an_unknown_binding_keyword_is_e_parse_013() {
         let rule = rule_with_bindings("(binding wealth :bogus social-class/wealth)");
-        let err = parse_bindings(&rule).unwrap_err();
+        let err =
+            parse_bindings(&rule).expect_err("`parse_bindings` rejects the malformed declaration");
         assert_eq!(
             err,
             BindingError::UnknownKeyword {
@@ -819,15 +825,27 @@ mod tests {
     #[test]
     fn unresolved_sources_are_load_errors_per_source_kind() {
         let field = rule_with_bindings("(binding x :field social-class/unknowable)");
-        let err = resolve_bindings(&parse_bindings(&field).unwrap(), &vocabulary()).unwrap_err();
+        let err = resolve_bindings(
+            &parse_bindings(&field).expect("the authored bindings parse"),
+            &vocabulary(),
+        )
+        .expect_err("`resolve_bindings` rejects the unresolvable reference");
         assert_eq!(err.spec_code(), Some("E-LOAD-010"));
 
         let konst = rule_with_bindings("(binding x :const survival/unknowable)");
-        let err = resolve_bindings(&parse_bindings(&konst).unwrap(), &vocabulary()).unwrap_err();
+        let err = resolve_bindings(
+            &parse_bindings(&konst).expect("the authored bindings parse"),
+            &vocabulary(),
+        )
+        .expect_err("`resolve_bindings` rejects the unresolvable reference");
         assert_eq!(err.spec_code(), Some("E-LOAD-010"));
 
         let metric = rule_with_bindings("(binding x :metric unknowable)");
-        let err = resolve_bindings(&parse_bindings(&metric).unwrap(), &vocabulary()).unwrap_err();
+        let err = resolve_bindings(
+            &parse_bindings(&metric).expect("the authored bindings parse"),
+            &vocabulary(),
+        )
+        .expect_err("`resolve_bindings` rejects the unresolvable reference");
         assert_eq!(err.spec_code(), Some("E-LOAD-011"), "never 0.0 (§6.3)");
     }
 
@@ -839,8 +857,9 @@ mod tests {
              (when (< undeclared 5)) \
              (effects (update-node self social-class/agitation (add 0.05i))))",
         );
-        let decls = parse_bindings(&rule).unwrap();
-        let err = check_free_variables(&rule, &decls, &[]).unwrap_err();
+        let decls = parse_bindings(&rule).expect("the authored bindings parse");
+        let err = check_free_variables(&rule, &decls, &[])
+            .expect_err("the malformed input is rejected by `check_free_variables`");
         assert_eq!(err.spec_code(), Some("E-LOAD-010"));
     }
 
@@ -854,7 +873,7 @@ mod tests {
              (when (< (fold sum (nodes NodeType/SOCIAL_CLASS) it) 5)) \
              (effects (update-node self social-class/agitation (add 0.05i))))",
         );
-        let decls = parse_bindings(&rule).unwrap();
+        let decls = parse_bindings(&rule).expect("the authored bindings parse");
         assert_eq!(check_free_variables(&rule, &decls, &[]), Ok(()));
     }
 }

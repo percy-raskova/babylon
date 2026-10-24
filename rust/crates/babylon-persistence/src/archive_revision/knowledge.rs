@@ -4,9 +4,10 @@ use std::collections::BTreeSet;
 
 use postgres::GenericClient;
 
-use super::record::{is_link, parse_page_key, GrantDependency, RevisionRecord};
-use super::storage::{signed, unsigned};
-use crate::archive::{database, decode, decode_subject_kind};
+use super::record;
+use super::record::{GrantDependency, RevisionRecord};
+use super::storage;
+use crate::archive;
 use crate::{ArchiveAtomValue, ArchiveCitation, ArchivePageRef, SemanticArchiveError};
 
 pub(super) fn capture(
@@ -16,11 +17,11 @@ pub(super) fn capture(
     let mut keys = BTreeSet::new();
     keys.insert((record.subject.clone(), "subject".to_owned()));
     for atom in &record.atoms {
-        let subject = if is_link(atom) {
+        let subject = if record::is_link(atom) {
             let ArchiveAtomValue::Text(target) = atom.value() else {
                 return Err(SemanticArchiveError::StoredPageMismatch);
             };
-            parse_page_key(target)?
+            record::parse_page_key(target)?
         } else {
             record.subject.clone()
         };
@@ -34,7 +35,7 @@ pub(super) fn capture(
         .map(|(subject, key)| format!("{}/{}@{key}", subject.kind().as_str(), subject.id()))
         .collect();
     let campaign = record.source.campaign_id();
-    let tick = signed(record.source.tick())?;
+    let tick = storage::signed(record.source.tick())?;
     let rows = client
         .query(
             "SELECT g.subject_kind,g.subject_id,g.grant_key,g.granted_tick, \
@@ -44,7 +45,7 @@ pub(super) fn capture(
         ORDER BY g.subject_kind,g.subject_id,g.grant_key",
             &[campaign.as_uuid(), &wanted, &tick],
         )
-        .map_err(|error| database("capture exact Archive revision grants", &error))?;
+        .map_err(|error| archive::database("capture exact Archive revision grants", &error))?;
     if rows.len() != keys.len() {
         return Err(SemanticArchiveError::UnknownSubject);
     }
@@ -52,12 +53,15 @@ pub(super) fn capture(
         .map(|row| {
             Ok(GrantDependency {
                 subject: ArchivePageRef::try_new(
-                    decode_subject_kind(&decode::<String>(row, 0)?)?,
-                    decode(row, 1)?,
+                    archive::decode_subject_kind(&archive::decode::<String>(row, 0)?)?,
+                    archive::decode(row, 1)?,
                 )?,
-                key: decode(row, 2)?,
-                granted_tick: unsigned(decode(row, 3)?)?,
-                citation: ArchiveCitation::try_new(decode(row, 4)?, decode(row, 5)?)?,
+                key: archive::decode(row, 2)?,
+                granted_tick: storage::unsigned(archive::decode(row, 3)?)?,
+                citation: ArchiveCitation::try_new(
+                    archive::decode(row, 4)?,
+                    archive::decode(row, 5)?,
+                )?,
             })
         })
         .collect()

@@ -1,21 +1,21 @@
-use super::{
-    arguments::Inputs,
-    facts, hex, refused,
-    report::{Candidate, Case, OwnerIdentity, ProcessIdentity, Report, RouteIdentity, Witnesses},
-    witness, Result,
+use super::arguments::Inputs;
+use super::report::{
+    Candidate, Case, OwnerIdentity, ProcessIdentity, Report, RouteIdentity, Witnesses,
 };
+use super::{facts, witness, Result};
+
 use babylon_bsl::structural_verbs::CollectingSink;
-use babylon_kernel::content_digest::sha256_of;
-use babylon_persistence::{
-    michigan_content::MichiganContentPreset,
-    michigan_material::{
-        MichiganCapacityOverride, MichiganDeliveryPreset, MichiganIntervention,
-        MichiganMaterialCatalog, MichiganOpeningStockOverride,
-    },
+use babylon_persistence::michigan_content::MichiganContentPreset;
+use babylon_persistence::michigan_material::{
+    MichiganCapacityOverride, MichiganDeliveryPreset, MichiganIntervention,
+    MichiganMaterialCatalog, MichiganOpeningStockOverride,
 };
+
+use babylon_kernel::content_digest;
 use babylon_practice_contract::OrderedPracticeActionBatch;
 use babylon_tick::replay_session::ReplayCommitDisposition;
-use std::{collections::BTreeMap, time::Instant};
+use std::collections::BTreeMap;
+use std::time::Instant;
 
 pub const BASELINE: &str = "baseline";
 pub const FREIGHT: &str = "freight_constraint";
@@ -25,9 +25,11 @@ pub const PERIODS: u64 = 16;
 
 fn catalog(inputs: &Inputs, candidate: &Candidate) -> Result<(MichiganMaterialCatalog, u64, u64)> {
     if inputs.physical.terminal_source_pins.get("defines_sha256")
-        != Some(&hex(&sha256_of(inputs.defines.as_bytes())))
+        != Some(&super::hex(&content_digest::sha256_of(
+            inputs.defines.as_bytes(),
+        )))
     {
-        return Err(refused(
+        return Err(super::refused(
             "physical terminal authority uses different defines bytes",
         ));
     }
@@ -41,7 +43,7 @@ fn catalog(inputs: &Inputs, candidate: &Candidate) -> Result<(MichiganMaterialCa
         .corridors()
         .iter()
         .find(|row| row.key == candidate.capacity_key)
-        .ok_or_else(|| refused("selected capacity key is absent"))?
+        .ok_or_else(|| super::refused("selected capacity key is absent"))?
         .capacity_grams_per_period;
     if !inputs
         .physical
@@ -49,7 +51,7 @@ fn catalog(inputs: &Inputs, candidate: &Candidate) -> Result<(MichiganMaterialCa
         .iter()
         .any(|group| group.key == candidate.capacity_key)
     {
-        return Err(refused(
+        return Err(super::refused(
             "selected capacity must be an authored physical network group",
         ));
     }
@@ -57,28 +59,30 @@ fn catalog(inputs: &Inputs, candidate: &Candidate) -> Result<(MichiganMaterialCa
         .processes()
         .iter()
         .find(|row| row.key == candidate.food_process)
-        .ok_or_else(|| refused("selected food process is absent"))?;
+        .ok_or_else(|| super::refused("selected food process is absent"))?;
     if process.output_good_key != "prepared_food" {
-        return Err(refused("selected process must produce prepared_food"));
+        return Err(super::refused(
+            "selected process must produce prepared_food",
+        ));
     }
     let opening = process
         .inputs
         .iter()
         .find(|input| input.good_key == "paper_packaging")
-        .ok_or_else(|| refused("selected food process does not use paper_packaging"))?
+        .ok_or_else(|| super::refused("selected food process does not use paper_packaging"))?
         .opening_quantity;
     if candidate.constrained_grams == 0 || candidate.constrained_grams >= capacity {
-        return Err(refused(
+        return Err(super::refused(
             "constrained capacity must be positive and strictly below baseline",
         ));
     }
     if candidate.shortage_opening >= opening {
-        return Err(refused(
+        return Err(super::refused(
             "shortage opening stock must be strictly below baseline; zero is allowed",
         ));
     }
     if !base.duration().contains(PERIODS) {
-        return Err(refused(
+        return Err(super::refused(
             "candidate must admit the explicit sixteen-period observation window",
         ));
     }
@@ -140,9 +144,9 @@ fn run_case(
     let selected = catalog.with_preset(delivery)?;
     let preset = MichiganContentPreset::new_campaign(delivery);
     let foundation = preset.create_foundation(catalog)?;
-    let foundation_hash = hex(&foundation.digest());
+    let foundation_hash = super::hex(&foundation.digest());
     let foundation_bytes = foundation.canonical_len()?;
-    let captured_content_sha256 = hex(&foundation.spec().content_digest);
+    let captured_content_sha256 = super::hex(&foundation.spec().content_digest);
     let captured_bytes = foundation
         .graph_foundation()
         .content_bundle()
@@ -156,7 +160,7 @@ fn run_case(
         .iter()
         .any(|stage| stage.stage_index != 0 || stage.travel_periods != 1)
     {
-        return Err(refused(
+        return Err(super::refused(
             "road qualification expects one 28-day journey stage per routed relationship",
         ));
     }
@@ -169,16 +173,18 @@ fn run_case(
             period,
         )
         .map_err(|error| {
-            refused(format!(
+            super::refused(format!(
                 "{} period {period} actions: {error:?}",
                 preset.id()
             ))
         })?;
         let prepared = session
             .prepare_advance(&actions)
-            .map_err(|error| refused(format!("{} period {period}: {error}", preset.id())))?;
-        if sha256_of(prepared.material().receipt_bytes()) != prepared.identity().receipt_digest() {
-            return Err(refused("material receipt identity mismatch"));
+            .map_err(|error| super::refused(format!("{} period {period}: {error}", preset.id())))?;
+        if content_digest::sha256_of(prepared.material().receipt_bytes())
+            != prepared.identity().receipt_digest()
+        {
+            return Err(super::refused("material receipt identity mismatch"));
         }
         let row = facts::period(
             &selected,
@@ -191,13 +197,15 @@ fn run_case(
                 Ok::<_, ()>(ReplayCommitDisposition::Committed)
             })
             .map_err(|error| {
-                refused(format!(
+                super::refused(format!(
                     "{} period {period} publication: {error:?}",
                     preset.id()
                 ))
             })?;
-        if hex(&session.current_world_hash()?) != row.world_sha256 {
-            return Err(refused("published world differs from committed report"));
+        if super::hex(&session.current_world_hash()?) != row.world_sha256 {
+            return Err(super::refused(
+                "published world differs from committed report",
+            ));
         }
         periods.push(row);
     }
@@ -247,7 +255,7 @@ pub fn experiment(inputs: &Inputs, candidate: &Candidate) -> Result<Report> {
         .map(|process| {
             let good = catalog
                 .good(&process.output_good_key)
-                .ok_or_else(|| refused("process output good missing"))?;
+                .ok_or_else(|| super::refused("process output good missing"))?;
             Ok((
                 process.key.clone(),
                 ProcessIdentity {
@@ -264,7 +272,7 @@ pub fn experiment(inputs: &Inputs, candidate: &Candidate) -> Result<Report> {
         .map(|route| {
             let good = catalog
                 .good(&route.good_key)
-                .ok_or_else(|| refused("route good missing"))?;
+                .ok_or_else(|| super::refused("route good missing"))?;
             Ok((
                 route.key.clone(),
                 RouteIdentity {

@@ -11,6 +11,8 @@
 
 use crate::reader::{Atom, SExpr};
 use crate::vocabulary::{ClosedVocabulary, EnumKind, VocabularyError};
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 
 /// A static shape rejection.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -124,7 +126,7 @@ impl GrammarError {
 }
 
 impl std::fmt::Display for GrammarError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         match self {
             Self::WrongEnumKind {
                 form,
@@ -944,10 +946,7 @@ pub fn check_graph_flag_placement(expr: &SExpr) -> Result<(), GrammarError> {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        check_enum_ref_kinds, check_enum_ref_membership, check_field_init_owners, GrammarError,
-    };
-    use crate::reader::read;
+    use super::GrammarError;
     use crate::vocabulary::{ClosedVocabulary, EnumKind, VocabularyError};
 
     fn vocabulary() -> ClosedVocabulary {
@@ -960,11 +959,13 @@ mod tests {
             (EnumKind::HyperedgeType, vec!["COMMUNITY".to_owned()]),
             (EnumKind::EventType, vec!["RUPTURE".to_owned()]),
         ])
-        .unwrap()
+        .expect("the constructor accepts the authored fixture arguments")
     }
 
     fn e(source: &str) -> crate::reader::SExpr {
-        read(source).expect("test source must parse").0
+        crate::reader::read(source)
+            .expect("test source must parse")
+            .0
     }
 
     #[test]
@@ -982,7 +983,7 @@ mod tests {
             "(add-node EdgeType/SOLIDARITY n1)",
             "(add-hyperedge EdgeType/SOLIDARITY h1 (members a b))",
         ] {
-            let err = check_enum_ref_kinds(&e(source)).expect_err(source);
+            let err = super::check_enum_ref_kinds(&e(source)).expect_err(source);
             assert_eq!(err.spec_code(), "E-TYPE-011", "{source}");
         }
     }
@@ -991,12 +992,12 @@ mod tests {
     fn neighbors_rejects_the_two_operands_swapped_at_both_positions() {
         // §2.6 (C8): operand 2 is the EdgeType traversed, operand 4 the
         // result NodeType. Swapping them is E-TYPE-011 at both.
-        let err = check_enum_ref_kinds(&e(
+        let err = super::check_enum_ref_kinds(&e(
             "(neighbors self NodeType/SOCIAL_CLASS :out EdgeType/SOLIDARITY)",
         ))
-        .unwrap_err();
+        .expect_err("the malformed input is rejected by `check_enum_ref_kinds`");
         assert_eq!(err.spec_code(), "E-TYPE-011");
-        assert!(check_enum_ref_kinds(&e(
+        assert!(super::check_enum_ref_kinds(&e(
             "(neighbors self EdgeType/SOLIDARITY :out NodeType/SOCIAL_CLASS)"
         ))
         .is_ok());
@@ -1005,7 +1006,7 @@ mod tests {
     #[test]
     fn an_enum_ref_in_an_untyped_position_is_a_value_not_a_mis_kinded_operand() {
         // §3.1's `Enum<T>` compares with =/!=; that position types nothing.
-        assert!(check_enum_ref_kinds(&e("(= NodeType/POLITY NodeType/POLITY)")).is_ok());
+        assert!(super::check_enum_ref_kinds(&e("(= NodeType/POLITY NodeType/POLITY)")).is_ok());
     }
 
     // ---- the minting/emitting type-operand shape gate (#528 fix round
@@ -1135,32 +1136,32 @@ mod tests {
 
     #[test]
     fn an_add_edge_field_init_naming_strength_is_e_parse_041() {
-        let err = check_field_init_owners(
+        let err = super::check_field_init_owners(
             &e("(add-edge EdgeType/SOLIDARITY a b :strength 0.5c (solidarity/strength 0.9c))"),
             &vocabulary(),
         )
-        .unwrap_err();
+        .expect_err("the malformed input is rejected by `check_field_init_owners`");
         assert_eq!(err.spec_code(), "E-PARSE-041");
     }
 
     #[test]
     fn a_field_init_owning_off_the_wrong_type_is_e_type_014() {
-        let err = check_field_init_owners(
+        let err = super::check_field_init_owners(
             &e("(add-node NodeType/SOCIAL_CLASS n1 (polity/imperial-rent-pool 5$))"),
             &vocabulary(),
         )
-        .unwrap_err();
+        .expect_err("the malformed input is rejected by `check_field_init_owners`");
         assert_eq!(err.spec_code(), "E-TYPE-014");
     }
 
     #[test]
     fn a_field_init_owning_off_the_verbs_own_type_accepts() {
-        assert!(check_field_init_owners(
+        assert!(super::check_field_init_owners(
             &e("(add-node NodeType/SOCIAL_CLASS n1 (social-class/wealth 5$))"),
             &vocabulary(),
         )
         .is_ok());
-        assert!(check_field_init_owners(
+        assert!(super::check_field_init_owners(
             &e("(add-edge EdgeType/SOLIDARITY a b :strength 0.5c (solidarity/tension 0.1i))"),
             &vocabulary(),
         )
@@ -1177,11 +1178,11 @@ mod tests {
         // declaration reader's rejection" was true only for the field's OWN
         // `deffield`, never for a field-init here naming a segment no
         // `deffield` — nor any registered graph-element type — ever named.
-        let err = check_field_init_owners(
+        let err = super::check_field_init_owners(
             &e("(add-node NodeType/SOCIAL_CLASS n1 (imperium/rent 5$))"),
             &vocabulary(),
         )
-        .unwrap_err();
+        .expect_err("the malformed input is rejected by `check_field_init_owners`");
         assert_eq!(err.spec_code(), "E-LOAD-023");
         assert!(matches!(
             &err,
@@ -1207,7 +1208,8 @@ mod tests {
             "(add-edge EdgeType/NOWHERE a b)",
             "(add-hyperedge HyperedgeType/NOWHERE h1 (members a b))",
         ] {
-            let err = check_enum_ref_membership(&e(source), &vocabulary()).expect_err(source);
+            let err =
+                super::check_enum_ref_membership(&e(source), &vocabulary()).expect_err(source);
             assert_eq!(err.spec_code(), "E-LOAD-031", "{source}");
         }
     }
@@ -1222,7 +1224,7 @@ mod tests {
             "(add-hyperedge HyperedgeType/COMMUNITY h1 (members a b))",
         ] {
             assert!(
-                check_enum_ref_membership(&e(source), &vocabulary()).is_ok(),
+                super::check_enum_ref_membership(&e(source), &vocabulary()).is_ok(),
                 "{source}"
             );
         }
@@ -1236,19 +1238,24 @@ mod tests {
         // overreach into it (a content-declared custom enum type, e.g.
         // `OrgKind`, lives in a wholly different registry and must stay
         // uncoupled from this one).
-        assert!(check_enum_ref_membership(
+        assert!(super::check_enum_ref_membership(
             &e("(= NodeType/NOWHERE NodeType/NOWHERE)"),
             &vocabulary(),
         )
         .is_ok());
-        assert!(check_enum_ref_membership(&e("(= kind OrgKind/BUSINESS)"), &vocabulary()).is_ok());
+        assert!(
+            super::check_enum_ref_membership(&e("(= kind OrgKind/BUSINESS)"), &vocabulary())
+                .is_ok()
+        );
     }
 
     #[test]
     fn membership_recurses_into_nested_forms() {
-        let err =
-            check_enum_ref_membership(&e("(guard #t (emit EventType/NOWHERE))"), &vocabulary())
-                .unwrap_err();
+        let err = super::check_enum_ref_membership(
+            &e("(guard #t (emit EventType/NOWHERE))"),
+            &vocabulary(),
+        )
+        .expect_err("the malformed input is rejected by `check_enum_ref_membership`");
         assert_eq!(err.spec_code(), "E-LOAD-031");
     }
 
@@ -1257,8 +1264,8 @@ mod tests {
         // F6 (#534 fix round item 6): §4.6 requires load-time errors to
         // report the offending form — the raw `VocabularyError` alone
         // names only the type/member, not which verb wrote it.
-        let err =
-            check_enum_ref_membership(&e("(emit EventType/NOWHERE)"), &vocabulary()).unwrap_err();
+        let err = super::check_enum_ref_membership(&e("(emit EventType/NOWHERE)"), &vocabulary())
+            .expect_err("the malformed input is rejected by `check_enum_ref_membership`");
         assert!(err.to_string().contains("emit"), "{err}");
         assert!(err.to_string().contains("EventType/NOWHERE"), "{err}");
     }
@@ -1278,7 +1285,7 @@ mod tests {
         // getting caught — is already pinned by
         // `membership_recurses_into_nested_forms` above (nested inside a
         // `guard`, not inside `emit`'s own payload).
-        assert!(check_enum_ref_membership(
+        assert!(super::check_enum_ref_membership(
             &e("(emit EventType/RUPTURE (emit EventType/NOWHERE))"),
             &vocabulary(),
         )
@@ -1298,9 +1305,10 @@ mod tests {
         // E-LOAD-031 for a kind that was never even opted into vocabulary
         // checking.
         let partial =
-            ClosedVocabulary::new([(EnumKind::NodeType, vec!["SOCIAL_CLASS".to_owned()])]).unwrap();
+            ClosedVocabulary::new([(EnumKind::NodeType, vec!["SOCIAL_CLASS".to_owned()])])
+                .expect("the constructor accepts the authored fixture arguments");
         assert!(
-            check_enum_ref_membership(&e("(emit EventType/ANYTHING)"), &partial).is_ok(),
+            super::check_enum_ref_membership(&e("(emit EventType/ANYTHING)"), &partial).is_ok(),
             "EventType was never declared in this vocabulary — its checking must stay inert"
         );
     }
@@ -1320,7 +1328,7 @@ mod tests {
         // typed NodeType position (D74), and NOWHERE is unregistered.
         // Before the fix, `head_is_emit` returned `Ok(())` before the
         // recursion ever reached this nested form at all.
-        let err = check_enum_ref_membership(
+        let err = super::check_enum_ref_membership(
             &e("(emit EventType/RUPTURE (m (the NodeType/NOWHERE)))"),
             &vocabulary(),
         )
@@ -1336,7 +1344,7 @@ mod tests {
         // payload VALUE (never re-entering `emit`'s own head-position-only
         // branch, since `fold`/`nodes` are neither `emit` nor a match for
         // `demanded_kind`'s own head set at the wrong operand).
-        let err = check_enum_ref_membership(
+        let err = super::check_enum_ref_membership(
             &e("(emit EventType/RUPTURE (m (fold sum (nodes NodeType/NOWHERE) 1)))"),
             &vocabulary(),
         )
@@ -1353,7 +1361,7 @@ mod tests {
         // EventType/NOWHERE))` shape; this is its sibling probe with a
         // DIFFERENT label, isolating that the fix is about position
         // (label vs. value), not about the specific label spelling.
-        assert!(check_enum_ref_membership(
+        assert!(super::check_enum_ref_membership(
             &e("(emit EventType/RUPTURE (foo EventType/NOWHERE))"),
             &vocabulary(),
         )
@@ -1378,7 +1386,7 @@ mod tests {
         // silently treated as "the confirmed type operand" and skipped,
         // so the `NodeType/NOWHERE` typed position inside it never got
         // checked. The fallback must fully recurse instead.
-        let err = check_enum_ref_membership(
+        let err = super::check_enum_ref_membership(
             &e("(emit EventType/RUPTURE (m (emit (the NodeType/NOWHERE))))"),
             &vocabulary(),
         )
@@ -1393,7 +1401,7 @@ mod tests {
         // so `pair.get(1)` alone (the literal `1`) never reached
         // `pair[2]`, the `(the NodeType/NOWHERE)` typed position. The fix
         // descends `pair[1..]`, every element after the label.
-        let err = check_enum_ref_membership(
+        let err = super::check_enum_ref_membership(
             &e("(emit EventType/RUPTURE (m 1 (the NodeType/NOWHERE)))"),
             &vocabulary(),
         )

@@ -10,9 +10,13 @@ use crate::{
 };
 use serde::de::{Error as DeError, MapAccess, SeqAccess, Visitor};
 use serde::Deserialize;
+use serde_json::Error;
+use serde_json::Number;
 use serde_json::{Map, Value};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 use unicode_normalization::UnicodeNormalization;
 
 const MAX_COLLECTION_ITEMS: usize = 65_535;
@@ -97,7 +101,7 @@ impl RtdError {
 }
 
 impl fmt::Display for RtdError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> FmtResult {
         formatter.write_str(self.code())
     }
 }
@@ -119,7 +123,7 @@ impl<'de> Deserialize<'de> for UniqueValue {
 impl<'de> Visitor<'de> for UniqueValueVisitor {
     type Value = UniqueValue;
 
-    fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn expecting(&self, formatter: &mut Formatter<'_>) -> FmtResult {
         formatter.write_str("bounded JSON without duplicate object keys")
     }
 
@@ -136,7 +140,7 @@ impl<'de> Visitor<'de> for UniqueValueVisitor {
     }
 
     fn visit_f64<E: DeError>(self, value: f64) -> Result<Self::Value, E> {
-        serde_json::Number::from_f64(value).map_or_else(
+        Number::from_f64(value).map_or_else(
             || Err(E::custom("non-finite JSON number")),
             |number| Ok(UniqueValue(Value::Number(number))),
         )
@@ -332,7 +336,7 @@ fn provenance_enums(object: &Map<String, Value>) -> Result<(), RtdError> {
     require_string_enum(object, "evidence_class")
 }
 
-fn classify_json_error(error: &serde_json::Error) -> RtdError {
+fn classify_json_error(error: &Error) -> RtdError {
     let message = error.to_string();
     if message.contains("RTD_DUPLICATE_KEY") {
         RtdError::DuplicateKey
@@ -343,7 +347,7 @@ fn classify_json_error(error: &serde_json::Error) -> RtdError {
     }
 }
 
-fn classify_structural_error(error: &serde_json::Error) -> RtdError {
+fn classify_structural_error(error: &Error) -> RtdError {
     let message = error.to_string();
     if message.contains("unknown field") {
         RtdError::UnknownField

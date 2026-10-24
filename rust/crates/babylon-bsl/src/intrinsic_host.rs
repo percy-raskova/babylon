@@ -665,8 +665,8 @@ fn eval_clamp(args: &[Value]) -> Result<Value, EvalError> {
 #[cfg(test)]
 mod tests {
     use super::{
-        draw_finite_kernel_ticket, DrawContext, DrawIdentityContext, EvalCode, IntrinsicCallCtx,
-        IntrinsicHost, KernelIntrinsicHost, Value,
+        DrawContext, DrawIdentityContext, EvalCode, IntrinsicCallCtx, IntrinsicHost,
+        KernelIntrinsicHost, Value,
     };
 
     fn floor(x: f64) -> Result<Value, crate::evaluator::EvalError> {
@@ -1257,9 +1257,9 @@ mod tests {
     /// as it is NOT the fallthrough's "no intrinsic registered".
     #[test]
     fn every_declarable_intrinsic_has_a_signature_row_and_a_dispatch_arm() {
-        use crate::declarations::{kernel_signature, IntrinsicTypeName, DECLARABLE_INTRINSICS};
+        use crate::declarations::{IntrinsicTypeName, DECLARABLE_INTRINSICS};
         for name in DECLARABLE_INTRINSICS {
-            let (params, _) = kernel_signature(name)
+            let (params, _) = crate::declarations::kernel_signature(name)
                 .unwrap_or_else(|| panic!("{name}: in the cap but no signature row"));
             let args: Vec<Value> = params
                 .iter()
@@ -1369,7 +1369,7 @@ mod tests {
                 },
                 tick: key.tick,
             };
-            draw_finite_kernel_ticket(
+            super::draw_finite_kernel_ticket(
                 key.sample,
                 key.slot,
                 &IntrinsicCallCtx {

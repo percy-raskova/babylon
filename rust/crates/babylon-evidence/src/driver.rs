@@ -1,15 +1,12 @@
 //! Source-bound synthetic driver predicates; never an authoritative producer.
 #![allow(dead_code, reason = "called only by the source-bound driver handle")]
 
-use babylon_practice_contract::{
-    fixed_practice_target_digest, practice_intent_digest, practice_parameter_bytes_digest,
-    PracticeIntent,
-};
+use babylon_practice_contract::PracticeIntent;
 
 use crate::{
-    canonical_envelope, classify_sfs, record_digest, DifferingLedgerKind, Digest32,
-    InterventionDelta, PersistenceComparison, PracticeAttemptLedger, PracticeCandidateSchedule,
-    RunIdentity, RunIdentityField, SfsClass, SfsPreregistration, SfsTrace,
+    DifferingLedgerKind, Digest32, InterventionDelta, PersistenceComparison, PracticeAttemptLedger,
+    PracticeCandidateSchedule, RunIdentity, RunIdentityField, SfsClass, SfsPreregistration,
+    SfsTrace,
 };
 
 /// One fixture-only material sample admitted to the aligned comparator.
@@ -180,9 +177,9 @@ pub(crate) fn validate_candidate_projection(
     let projected = attempts
         .project_candidates()
         .map_err(|_| SyntheticDriverError::CandidateProjectionMismatch)?;
-    if canonical_envelope(&projected)
+    if crate::canonical_envelope(&projected)
         .map_err(|_| SyntheticDriverError::CandidateProjectionMismatch)?
-        != canonical_envelope(schedule)
+        != crate::canonical_envelope(schedule)
             .map_err(|_| SyntheticDriverError::CandidateProjectionMismatch)?
     {
         return Err(SyntheticDriverError::CandidateProjectionMismatch);
@@ -233,10 +230,10 @@ fn validate_intent(
     row: &crate::PracticeCandidateRow,
     intent: &PracticeIntent,
 ) -> Result<(), SyntheticDriverError> {
-    let parameter_digest = practice_parameter_bytes_digest(intent)
+    let parameter_digest = babylon_practice_contract::practice_parameter_bytes_digest(intent)
         .map(Digest32::from_bytes)
         .map_err(|_| SyntheticDriverError::CandidateParameterBytesMismatch { index })?;
-    let complete_digest = practice_intent_digest(intent)
+    let complete_digest = babylon_practice_contract::practice_intent_digest(intent)
         .map(Digest32::from_bytes)
         .map_err(|_| SyntheticDriverError::CandidateIntentDigestMismatch { index })?;
     if complete_digest != row.practice_intent_digest() {
@@ -248,7 +245,7 @@ fn validate_intent(
     if intent.practice_id != preregistration.practice_code() {
         return Err(SyntheticDriverError::CandidatePracticeMismatch { index });
     }
-    let target = Digest32::from_bytes(fixed_practice_target_digest(
+    let target = Digest32::from_bytes(babylon_practice_contract::fixed_practice_target_digest(
         intent.target.tag,
         intent.target.identity,
     ));
@@ -365,10 +362,11 @@ pub(crate) fn validate_cumulative_driver_shapes(
         ("attempted-quanta", attempted_quanta),
         ("governed-costs", governed_costs),
     ] {
-        let class =
-            classify_sfs(window_width, values).map_err(|_| SyntheticDriverError::SampleLimit {
+        let class = crate::classify_sfs(window_width, values).map_err(|_| {
+            SyntheticDriverError::SampleLimit {
                 actual: values.len(),
-            })?;
+            }
+        })?;
         if matches!(class, SfsClass::Continuing | SfsClass::LatePlateau) {
             return Err(SyntheticDriverError::DriverAuthoredShape { driver, class });
         }
@@ -476,7 +474,7 @@ fn compare_material_rows(
 }
 
 fn digest_record<T: crate::T3Record>(record: &T) -> Result<Digest32, SyntheticDriverError> {
-    record_digest(record)
+    crate::record_digest(record)
         .map(|digest| Digest32::from_bytes(*digest.as_bytes()))
         .map_err(|_| SyntheticDriverError::CandidateProjectionMismatch)
 }
@@ -666,8 +664,8 @@ mod tests {
         let left = PracticeCandidateSchedule::new(vec![first.clone(), second.clone()]).unwrap();
         let right = PracticeCandidateSchedule::new(vec![second.clone(), first.clone()]).unwrap();
         assert_eq!(
-            canonical_envelope(&left).unwrap(),
-            canonical_envelope(&right).unwrap()
+            crate::canonical_envelope(&left).unwrap(),
+            crate::canonical_envelope(&right).unwrap()
         );
         let left_attempts = PracticeAttemptLedger::new(
             digest(6),
@@ -688,8 +686,8 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            canonical_envelope(&left_attempts).unwrap(),
-            canonical_envelope(&right_attempts).unwrap()
+            crate::canonical_envelope(&left_attempts).unwrap(),
+            crate::canonical_envelope(&right_attempts).unwrap()
         );
     }
 
@@ -708,12 +706,12 @@ mod tests {
         )])
         .unwrap();
         assert_ne!(
-            canonical_envelope(&original).unwrap(),
-            canonical_envelope(&changed).unwrap()
+            crate::canonical_envelope(&original).unwrap(),
+            crate::canonical_envelope(&changed).unwrap()
         );
         assert_ne!(
-            record_digest(&original).unwrap(),
-            record_digest(&changed).unwrap()
+            crate::record_digest(&original).unwrap(),
+            crate::record_digest(&changed).unwrap()
         );
     }
 }

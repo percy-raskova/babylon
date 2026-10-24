@@ -605,9 +605,6 @@ impl GraphSubstrate for MemoryGraph {
 mod tests {
     use super::{CanonicalState, GraphSubstrate, MemoryGraph, NodeId};
     use crate::allocator_state::{AllocatorCursors, AllocatorState};
-    use crate::conformance::{
-        run_allocator_exhaustion_conformance, run_detached_working_copy_conformance,
-    };
     use crate::substrate::Direction;
 
     #[test]
@@ -654,12 +651,12 @@ mod tests {
 
     #[test]
     fn detached_working_copy_owns_every_mutable_lane() {
-        run_detached_working_copy_conformance(MemoryGraph::new);
+        crate::conformance::run_detached_working_copy_conformance(MemoryGraph::new);
     }
 
     #[test]
     fn exhausted_allocators_leave_memory_graph_unchanged() {
-        run_allocator_exhaustion_conformance(MemoryGraph::new);
+        crate::conformance::run_allocator_exhaustion_conformance(MemoryGraph::new);
     }
 
     #[test]

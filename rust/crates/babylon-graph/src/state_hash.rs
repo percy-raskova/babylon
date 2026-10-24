@@ -134,7 +134,10 @@
 //! no rounding, no locale.
 
 use crate::substrate::{GraphError, HyperedgeId, NodeId};
-use babylon_kernel::{content_digest::sha256_of, currency::Currency};
+use babylon_kernel::content_digest;
+use babylon_kernel::currency::Currency;
+#[cfg(test)]
+use std::collections::HashSet;
 
 const TAG_NODES: u8 = 0x01;
 const TAG_ATTRIBUTES: u8 = 0x02;
@@ -162,7 +165,7 @@ fn tag_constants_are_pairwise_distinct() {
         TAG_CURRENCY_ATTRIBUTES,
         TAG_HYPEREDGE_ATTRIBUTES,
     ];
-    let mut seen = std::collections::HashSet::new();
+    let mut seen = HashSet::new();
     for tag in tags {
         assert!(
             seen.insert(tag),
@@ -408,7 +411,7 @@ impl StateEncoder {
     /// SHA-256 over the canonical encoding.
     #[must_use]
     pub fn finish(&self) -> [u8; 32] {
-        sha256_of(&self.bytes)
+        content_digest::sha256_of(&self.bytes)
     }
 }
 

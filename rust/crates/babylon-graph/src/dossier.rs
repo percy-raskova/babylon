@@ -271,7 +271,6 @@ impl Dossier {
 #[cfg(test)]
 mod tests {
     use super::Dossier;
-    use crate::exposure::decapitation_value;
     use crate::memory::MemoryGraph;
     use crate::substrate::{GraphSubstrate, NodeId};
 
@@ -414,7 +413,8 @@ mod tests {
         // omniscience and this whole split is decoration.
         let (graph, hub, all) = star(6);
 
-        let truth = decapitation_value(&graph, &all, "coordination", hub, 1).unwrap();
+        let truth =
+            crate::exposure::decapitation_value(&graph, &all, "coordination", hub, 1).unwrap();
 
         let mut dossier = Dossier::new(OBSERVER);
         dossier.resolve_node(hub);
@@ -422,7 +422,8 @@ mod tests {
             dossier.resolve_edge("coordination", hub, *leaf);
         }
         let believed =
-            decapitation_value(&graph, &dossier.scope(), "coordination", hub, 1).unwrap();
+            crate::exposure::decapitation_value(&graph, &dossier.scope(), "coordination", hub, 1)
+                .unwrap();
 
         assert!(
             believed < truth,
@@ -437,14 +438,16 @@ mod tests {
         // consequence of PARTIAL knowledge, not an artefact of scoping. When
         // the state has resolved everything, its belief must converge.
         let (graph, hub, all) = star(6);
-        let truth = decapitation_value(&graph, &all, "coordination", hub, 1).unwrap();
+        let truth =
+            crate::exposure::decapitation_value(&graph, &all, "coordination", hub, 1).unwrap();
 
         let mut dossier = Dossier::new(OBSERVER);
         dossier
             .resolve_neighborhood(&graph, hub, "coordination")
             .unwrap();
         let believed =
-            decapitation_value(&graph, &dossier.scope(), "coordination", hub, 1).unwrap();
+            crate::exposure::decapitation_value(&graph, &dossier.scope(), "coordination", hub, 1)
+                .unwrap();
 
         assert!(
             (believed - truth).abs() < 1e-12,
@@ -493,10 +496,21 @@ mod tests {
 
         // And the disagreement is not cosmetic: it changes what each one
         // believes a strike on the hub would be worth.
-        let police_view =
-            decapitation_value(&graph, &wide_and_shallow.scope(), "coordination", hub, 1);
-        let local_view =
-            decapitation_value(&graph, &narrow_and_deep.scope(), "coordination", hub, 1).unwrap();
+        let police_view = crate::exposure::decapitation_value(
+            &graph,
+            &wide_and_shallow.scope(),
+            "coordination",
+            hub,
+            1,
+        );
+        let local_view = crate::exposure::decapitation_value(
+            &graph,
+            &narrow_and_deep.scope(),
+            "coordination",
+            hub,
+            1,
+        )
+        .unwrap();
         assert!(
             police_view.is_err() || police_view.unwrap() < local_view,
             "a dossier that never resolved the hub cannot value striking it \

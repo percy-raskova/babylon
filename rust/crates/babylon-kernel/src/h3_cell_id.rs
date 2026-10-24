@@ -1,6 +1,8 @@
 //! Canonical checked H3 cell identity shared by tick and persistence.
 
 use h3o::{CellIndex, Resolution};
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 use std::str::FromStr;
 
 /// Canonical checked H3 cell identity for cross-layer material state.
@@ -212,7 +214,7 @@ impl FromStr for H3CellId {
 }
 
 impl std::fmt::Display for H3CellId {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> FmtResult {
         write!(formatter, "{:x}", self.0)
     }
 }
@@ -220,7 +222,7 @@ impl std::fmt::Display for H3CellId {
 impl std::error::Error for H3CellIdError {}
 
 impl std::fmt::Display for H3CellIdError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> FmtResult {
         write!(formatter, "invalid H3 cell identity: {self:?}")
     }
 }

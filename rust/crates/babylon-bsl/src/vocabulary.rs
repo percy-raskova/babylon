@@ -22,6 +22,8 @@
 //! type owns no fields.
 
 use std::collections::HashMap;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 
 /// The four closed enum kinds an `<enum-ref>` operand position may demand
 /// (§2.6's class rule, D74).
@@ -166,7 +168,7 @@ impl VocabularyError {
 }
 
 impl std::fmt::Display for VocabularyError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         match self {
             Self::UnknownEnumType { enum_type, member } => write!(
                 f,

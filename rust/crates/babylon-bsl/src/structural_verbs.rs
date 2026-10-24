@@ -2,13 +2,11 @@
 //! Node, edge, and hyperedge updates share one pending-write algebra. Events retain
 //! prestate observations. Graph-shape verbs remain refused by the content loader.
 
-use crate::evaluator::{
-    charge, check_edge_referent_type, check_node_referent_type, evaluate, require_graph, EvalCode,
-    EvalEnv, EvalError, Value,
-};
+use crate::evaluator::{EvalCode, EvalEnv, EvalError, Value};
 use crate::fuel::cost;
 use crate::intrinsic_host::IntrinsicHost;
 use crate::query::EdgeKey;
+use crate::query::Element;
 use crate::reader::{Atom, SExpr};
 use crate::typecheck::TypeEnv;
 use crate::types::{BslType, EnumRegistry, EnumTypeId};
@@ -335,8 +333,8 @@ impl<'a> EffectExecutor<'a> {
         env: &EvalEnv<'_>,
         host: &dyn IntrinsicHost,
         fuel: &mut u64,
-    ) -> Result<(Option<String>, &'e [SExpr], Vec<crate::query::Element>), EvalError> {
-        charge(fuel, cost::FOR_EACH_BASE)?;
+    ) -> Result<(Option<String>, &'e [SExpr], Vec<Element>), EvalError> {
+        crate::evaluator::charge(fuel, cost::FOR_EACH_BASE)?;
         let [_, query, rest @ ..] = items else {
             return Err(plain(
                 "(for-each <query> <elem-name>? <effect-item>+) — missing query",
@@ -424,14 +422,14 @@ impl<'a> EffectExecutor<'a> {
         };
         match head.as_str() {
             "guard" => {
-                charge(fuel, cost::GUARD_BASE)?;
+                crate::evaluator::charge(fuel, cost::GUARD_BASE)?;
                 let [_, cond, nested @ ..] = items.as_slice() else {
                     return Err(plain("(guard <cond> <effect-item>+) — missing condition"));
                 };
                 if nested.is_empty() {
                     return Err(plain("(guard …) requires at least one effect item"));
                 }
-                let taken = crate::evaluator::as_bool(evaluate(cond, env, host, fuel)?)?;
+                let taken = crate::evaluator::as_bool(crate::evaluator::evaluate(cond, env, host, fuel)?)?;
                 if taken {
                     self.collect_items(nested, env, host, sink, fuel, pending)?;
                 }
@@ -487,15 +485,15 @@ impl<'a> EffectExecutor<'a> {
         host: &dyn IntrinsicHost,
         fuel: &mut u64,
     ) -> Result<PendingWrite, EvalError> {
-        charge(fuel, cost::STRUCTURAL_VERB_BASE)?;
+        crate::evaluator::charge(fuel, cost::STRUCTURAL_VERB_BASE)?;
         let [_, node, SExpr::Atom(Atom::QName(field)), op_form] = items else {
             return Err(plain(
                 "(update-node <expr> <qname> <update-op>) — unrecognized shape",
             ));
         };
         let id = Self::resolve_node(node, env, host, fuel)?;
-        let graph = require_graph(env, "update-node")?;
-        check_node_referent_type(graph, id, field, "update-node")?;
+        let graph = crate::evaluator::require_graph(env, "update-node")?;
+        crate::evaluator::check_node_referent_type(graph, id, field, "update-node")?;
         let SExpr::List(op_items) = op_form else {
             return Err(plain(
                 "update-op must be a form: (add|sub|set|scale <expr>)",
@@ -504,7 +502,7 @@ impl<'a> EffectExecutor<'a> {
         let [SExpr::Atom(Atom::Symbol(op)), operand] = op_items.as_slice() else {
             return Err(plain("update-op must be (add|sub|set|scale <expr>)"));
         };
-        charge(fuel, cost::UPDATE_OP_BASE)?;
+        crate::evaluator::charge(fuel, cost::UPDATE_OP_BASE)?;
         // Preserve exact Currency operands before entering the f64 lane.
         // Domain checks occur in apply_pending_write for both lanes.
         if matches!(
@@ -518,7 +516,7 @@ impl<'a> EffectExecutor<'a> {
                      operators (§3.2), which this typed-storage train does not license"
                 )));
             }
-            let value = evaluate(operand, env, host, fuel)?;
+            let value = crate::evaluator::evaluate(operand, env, host, fuel)?;
             let currency = currency_write_value(value, field, "update-node")?;
             return Ok(PendingWrite {
                 target: WriteTarget::Node(id),
@@ -572,14 +570,14 @@ impl<'a> EffectExecutor<'a> {
         host: &dyn IntrinsicHost,
         fuel: &mut u64,
     ) -> Result<PendingWrite, EvalError> {
-        charge(fuel, cost::STRUCTURAL_VERB_BASE)?;
+        crate::evaluator::charge(fuel, cost::STRUCTURAL_VERB_BASE)?;
         let [_, edge, SExpr::Atom(Atom::QName(field)), op_form] = items else {
             return Err(plain(
                 "(update-edge <expr> <qname> <update-op>) — unrecognized shape",
             ));
         };
         let key = Self::resolve_edge(edge, env, host, fuel)?;
-        check_edge_referent_type(&key, field, "update-edge")?;
+        crate::evaluator::check_edge_referent_type(&key, field, "update-edge")?;
         let SExpr::List(op_items) = op_form else {
             return Err(plain(
                 "update-op must be a form: (add|sub|set|scale <expr>)",
@@ -588,7 +586,7 @@ impl<'a> EffectExecutor<'a> {
         let [SExpr::Atom(Atom::Symbol(op)), operand] = op_items.as_slice() else {
             return Err(plain("update-op must be (add|sub|set|scale <expr>)"));
         };
-        charge(fuel, cost::UPDATE_OP_BASE)?;
+        crate::evaluator::charge(fuel, cost::UPDATE_OP_BASE)?;
         let operand_value =
             self.numeric_write_value(operand, env, host, fuel, field, "update-edge")?;
         let update_op = match op.as_str() {
@@ -630,7 +628,7 @@ impl<'a> EffectExecutor<'a> {
         host: &dyn IntrinsicHost,
         fuel: &mut u64,
     ) -> Result<PendingWrite, EvalError> {
-        charge(fuel, cost::STRUCTURAL_VERB_BASE)?;
+        crate::evaluator::charge(fuel, cost::STRUCTURAL_VERB_BASE)?;
         let [_, hyperedge, SExpr::Atom(Atom::QName(field)), op_form] = items else {
             return Err(plain(
                 "(update-hyperedge <expr> <qname> <update-op>) — unrecognized shape",
@@ -654,7 +652,7 @@ impl<'a> EffectExecutor<'a> {
         let [SExpr::Atom(Atom::Symbol(op)), operand] = op_items.as_slice() else {
             return Err(plain("update-op must be (add|sub|set|scale <expr>)"));
         };
-        charge(fuel, cost::UPDATE_OP_BASE)?;
+        crate::evaluator::charge(fuel, cost::UPDATE_OP_BASE)?;
         let operand_value =
             self.numeric_write_value(operand, env, host, fuel, field, "update-hyperedge")?;
         let update_op = match op.as_str() {
@@ -911,7 +909,7 @@ impl<'a> EffectExecutor<'a> {
         sink: &mut dyn EventSink,
         fuel: &mut u64,
     ) -> Result<(), EvalError> {
-        charge(fuel, cost::STRUCTURAL_VERB_BASE)?;
+        crate::evaluator::charge(fuel, cost::STRUCTURAL_VERB_BASE)?;
         let [_, type_ref, payload_items @ ..] = items else {
             return Err(plain(
                 "(emit <enum-ref> <payload-item>*) — missing event type",
@@ -930,7 +928,10 @@ impl<'a> EffectExecutor<'a> {
                     "a payload item must be (<symbol> <expr>), found {pair:?}"
                 )));
             };
-            payload.push((name.clone(), evaluate(value_expr, env, host, fuel)?));
+            payload.push((
+                name.clone(),
+                crate::evaluator::evaluate(value_expr, env, host, fuel)?,
+            ));
         }
         sink.emit(event_type, payload);
         Ok(())
@@ -953,7 +954,7 @@ impl<'a> EffectExecutor<'a> {
         host: &dyn IntrinsicHost,
         fuel: &mut u64,
     ) -> Result<NodeId, EvalError> {
-        match evaluate(expr, env, host, fuel)? {
+        match crate::evaluator::evaluate(expr, env, host, fuel)? {
             Value::NodeRef(id) => Ok(id),
             other => Err(plain(format!(
                 "expected a NodeRef operand, got {other:?} (§3.1)"
@@ -968,7 +969,7 @@ impl<'a> EffectExecutor<'a> {
         host: &dyn IntrinsicHost,
         fuel: &mut u64,
     ) -> Result<HyperedgeId, EvalError> {
-        match evaluate(expr, env, host, fuel)? {
+        match crate::evaluator::evaluate(expr, env, host, fuel)? {
             Value::HyperedgeRef(id) => Ok(id),
             other => Err(plain(format!(
                 "expected a HyperedgeRef operand, got {other:?} (§3.1)"
@@ -989,7 +990,7 @@ impl<'a> EffectExecutor<'a> {
         host: &dyn IntrinsicHost,
         fuel: &mut u64,
     ) -> Result<EdgeKey, EvalError> {
-        match evaluate(expr, env, host, fuel)? {
+        match crate::evaluator::evaluate(expr, env, host, fuel)? {
             Value::EdgeRef(key) => Ok(key),
             other => Err(plain(format!(
                 "(update-edge …)'s first operand must evaluate to an EdgeRef, got {other:?} \
@@ -1038,7 +1039,7 @@ impl<'a> EffectExecutor<'a> {
         field: &str,
         verb: &str,
     ) -> Result<f64, EvalError> {
-        let value = evaluate(expr, env, host, fuel)?;
+        let value = crate::evaluator::evaluate(expr, env, host, fuel)?;
         if let Some(BslType::Enum(ty)) = self.types.fields.get(field).map(|decl| &decl.ty) {
             return self.enum_write_value(value, field, *ty, verb);
         }
@@ -1430,10 +1431,11 @@ impl EffectExecutor<'_> {
 
 #[cfg(test)]
 mod tests {
+
     use super::*;
     use crate::fuel::IntrinsicCosts;
     use crate::intrinsic_host::EmptyIntrinsicHost;
-    use crate::reader::read;
+    use crate::intrinsic_host::IntrinsicCallCtx;
     use crate::types::{FieldDecl, FieldKind};
     use crate::write_log::CollectingWriteLog;
     use babylon_graph::memory::MemoryGraph;
@@ -1498,7 +1500,7 @@ mod tests {
             effects_source: &str,
             fuel: &mut u64,
         ) -> Result<Vec<(String, Vec<(String, Value)>)>, EvalError> {
-            let (form, _) = read(effects_source).expect("effects source must parse");
+            let (form, _) = crate::reader::read(effects_source).expect("effects source must parse");
             let SExpr::List(items) = form else {
                 unreachable!()
             };
@@ -1535,7 +1537,7 @@ mod tests {
             effects_source: &str,
             fuel: &mut u64,
         ) -> (Result<(), EvalError>, CollectingWriteLog) {
-            let (form, _) = read(effects_source).expect("effects source must parse");
+            let (form, _) = crate::reader::read(effects_source).expect("effects source must parse");
             let SExpr::List(items) = form else {
                 unreachable!()
             };
@@ -1670,7 +1672,7 @@ mod tests {
                 -(1.0_f64 / 19.0_f64),
             ),
         ] {
-            let (form, _) = read(effects).expect("effects source must parse");
+            let (form, _) = crate::reader::read(effects).expect("effects source must parse");
             let SExpr::List(items) = form else {
                 unreachable!()
             };
@@ -1816,8 +1818,10 @@ mod tests {
     #[test]
     fn ordinal_overflow_is_refused_before_any_substrate_mutation() {
         for observed in [false, true] {
-            let (form, _) = read("(effects (update-node self social-class/agitation (set 0.9i)))")
-                .expect("effects source must parse");
+            let (form, _) = crate::reader::read(
+                "(effects (update-node self social-class/agitation (set 0.9i)))",
+            )
+            .expect("effects source must parse");
             let SExpr::List(items) = form else {
                 unreachable!()
             };
@@ -1917,7 +1921,7 @@ mod tests {
             &self,
             _name: &str,
             _args: &[Value],
-            _ctx: crate::intrinsic_host::IntrinsicCallCtx<'_>,
+            _ctx: IntrinsicCallCtx<'_>,
         ) -> Result<Value, EvalError> {
             Ok(Value::Real(f64::NAN))
         }
@@ -1932,7 +1936,7 @@ mod tests {
         let source = "(effects (update-node self social-class/head-count (set (rogue))))";
         let mut fixture = Fixture::new();
         let mut fuel = 256;
-        let (form, _) = read(source).expect("effects source must parse");
+        let (form, _) = crate::reader::read(source).expect("effects source must parse");
         let SExpr::List(items) = form else {
             unreachable!()
         };
@@ -2109,7 +2113,7 @@ mod tests {
         effects_source: &str,
         fuel: &mut u64,
     ) -> Result<Vec<(String, Vec<(String, Value)>)>, EvalError> {
-        let (form, _) = read(effects_source).expect("effects source must parse");
+        let (form, _) = crate::reader::read(effects_source).expect("effects source must parse");
         let SExpr::List(items) = form else {
             unreachable!()
         };
@@ -2158,7 +2162,7 @@ mod tests {
         effects_source: &str,
         fuel: &mut u64,
     ) -> Result<Vec<PendingWrite>, EvalError> {
-        let (form, _) = read(effects_source).expect("effects source must parse");
+        let (form, _) = crate::reader::read(effects_source).expect("effects source must parse");
         let SExpr::List(items) = form else {
             unreachable!()
         };
@@ -2970,16 +2974,16 @@ mod tests {
         // nested verb invocation. The buggy walk treated every child
         // list's head as a fresh candidate and wrongly refused this exact
         // form.
-        let (probe, _) =
-            read("(emit EventType/RUPTURE (add-node 5) (severity 1))").expect("probe must parse");
+        let (probe, _) = crate::reader::read("(emit EventType/RUPTURE (add-node 5) (severity 1))")
+            .expect("probe must parse");
         assert!(
             super::check_no_deferred_shape_verbs(&probe).is_ok(),
             "a payload item's own LABEL must never be mistaken for a nested verb invocation"
         );
         // The same shape with a different label was always Ok — proves the
         // probe isolates the label collision, not some other cause.
-        let (control, _) =
-            read("(emit EventType/RUPTURE (foo 5) (severity 1))").expect("control must parse");
+        let (control, _) = crate::reader::read("(emit EventType/RUPTURE (foo 5) (severity 1))")
+            .expect("control must parse");
         assert!(super::check_no_deferred_shape_verbs(&control).is_ok());
     }
 
@@ -2995,7 +2999,8 @@ mod tests {
             "(guard #t (remove-node self))",
             "(for-each (edges EdgeType/SOLIDARITY) (remove-edge EdgeType/SOLIDARITY a b))",
         ] {
-            let (probe, _) = read(source).unwrap_or_else(|e| panic!("{source}: {e:?}"));
+            let (probe, _) =
+                crate::reader::read(source).unwrap_or_else(|e| panic!("{source}: {e:?}"));
             let err = super::check_no_deferred_shape_verbs(&probe).expect_err(source);
             assert!(
                 err.contains("remove-node") || err.contains("remove-edge"),
@@ -3022,9 +3027,10 @@ mod tests {
         // invocation itself) was silently treated as "the confirmed type
         // operand" and skipped, so `add-node` was never inspected as a
         // head at all.
-        let (probe, _) =
-            read("(emit EventType/RUPTURE (m (emit (add-node NodeType/SOCIAL_CLASS 5))))")
-                .expect("probe must parse");
+        let (probe, _) = crate::reader::read(
+            "(emit EventType/RUPTURE (m (emit (add-node NodeType/SOCIAL_CLASS 5))))",
+        )
+        .expect("probe must parse");
         let err = super::check_no_deferred_shape_verbs(&probe)
             .expect_err("add-node behind a malformed nested emit must still be caught");
         assert!(err.contains("add-node"), "{err}");
@@ -3034,8 +3040,9 @@ mod tests {
     fn remove_node_behind_a_type_operand_less_nested_emit_still_refuses() {
         // The sibling probe with a REMOVAL verb (`remove-node`), not a
         // minting one — proves the fix is not scoped to `add-node` alone.
-        let (probe, _) = read("(emit EventType/RUPTURE (m (emit (remove-node self))))")
-            .expect("probe must parse");
+        let (probe, _) =
+            crate::reader::read("(emit EventType/RUPTURE (m (emit (remove-node self))))")
+                .expect("probe must parse");
         let err = super::check_no_deferred_shape_verbs(&probe)
             .expect_err("remove-node behind a malformed nested emit must still be caught");
         assert!(err.contains("remove-node"), "{err}");
@@ -3048,8 +3055,10 @@ mod tests {
         // `(<symbol> <expr>)` two — so `pair.get(1)` alone (the literal
         // `1`) never reached `pair[2]`, the real `add-node` invocation.
         // The fix descends `pair[1..]`, every element after the label.
-        let (probe, _) = read("(emit EventType/RUPTURE (m 1 (add-node NodeType/SOCIAL_CLASS 5)))")
-            .expect("probe must parse");
+        let (probe, _) = crate::reader::read(
+            "(emit EventType/RUPTURE (m 1 (add-node NodeType/SOCIAL_CLASS 5)))",
+        )
+        .expect("probe must parse");
         let err = super::check_no_deferred_shape_verbs(&probe)
             .expect_err("every value after an over-arity payload item's label must be checked");
         assert!(err.contains("add-node"), "{err}");
@@ -3497,8 +3506,9 @@ mod tests {
             elements: Vec::new(),
             draw_context: None,
         };
-        let (form, _) = read("(effects (update-hyperedge h community/heat (set 0.5c)))")
-            .expect("effects source must parse");
+        let (form, _) =
+            crate::reader::read("(effects (update-hyperedge h community/heat (set 0.5c)))")
+                .expect("effects source must parse");
         let SExpr::List(items) = form else {
             unreachable!()
         };

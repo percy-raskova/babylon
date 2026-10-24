@@ -26,14 +26,20 @@
 //! III.7), never silently skipped.
 
 use babylon_bsl::bindings::BindingVocabulary;
-use babylon_bsl::bound_checker::{expr_cost, rule_bound, BoundError};
-use babylon_bsl::declarations::{check_intrinsic_name, FieldRegistry};
+use babylon_bsl::bound_checker;
+use babylon_bsl::bound_checker::BoundError;
+use babylon_bsl::declarations::FieldRegistry;
 use babylon_bsl::evaluator::EvalCode;
 use babylon_bsl::fuel::{CardinalityCeilings, IntrinsicCosts};
-use babylon_bsl::reader::{read, SExpr};
-use babylon_bsl::rule_pipeline::{load_rule, LoadContext};
-use babylon_bsl::scope::check_foreign_field_scoping;
-use babylon_bsl::typecheck::{typecheck_aggregation, TypeCode, TypeEnv};
+use babylon_bsl::reader;
+use babylon_bsl::reader::SExpr;
+use babylon_bsl::rule_pipeline;
+use babylon_bsl::rule_pipeline::LoadContext;
+
+use babylon_bsl::rule_pipeline::LoadError;
+use babylon_bsl::rule_pipeline::LoadedRule;
+use babylon_bsl::typecheck;
+use babylon_bsl::typecheck::{TypeCode, TypeEnv};
 use babylon_bsl::types::EnumRegistry;
 use babylon_bsl::vocabulary::{ClosedVocabulary, EnumKind};
 use std::collections::{HashMap, HashSet};
@@ -89,15 +95,15 @@ fn ceilings() -> CardinalityCeilings {
 }
 
 fn e(source: &str) -> SExpr {
-    read(source).expect("test source must parse").0
+    reader::read(source).expect("test source must parse").0
 }
 
 fn cost(source: &str) -> Result<u64, BoundError> {
-    expr_cost(&e(source), &ceilings(), &IntrinsicCosts::default())
+    bound_checker::expr_cost(&e(source), &ceilings(), &IntrinsicCosts::default())
 }
 
 fn bound(source: &str) -> Result<u64, BoundError> {
-    rule_bound(&e(source), &ceilings(), &IntrinsicCosts::default())
+    bound_checker::rule_bound(&e(source), &ceilings(), &IntrinsicCosts::default())
 }
 
 /// No family in this file declares an enum-typed field — an empty registry
@@ -141,9 +147,7 @@ fn type_env() -> TypeEnv {
 /// could still be rejected by `load_rule` — which is what happened to every
 /// `:as`-using rule, including §2.6's own worked example. Vectors that
 /// claim a construct is *authorable* must go through here.
-fn load(
-    source: &str,
-) -> Result<babylon_bsl::rule_pipeline::LoadedRule, babylon_bsl::rule_pipeline::LoadError> {
+fn load(source: &str) -> Result<LoadedRule, LoadError> {
     let v = vocabulary();
     let types = type_env();
     let ceilings = ceilings();
@@ -168,7 +172,7 @@ fn load(
         vocabulary_registry: Some(&v),
         rule_file: "tests/r9_chapters.rs",
     };
-    load_rule(source, &ctx)
+    rule_pipeline::load_rule(source, &ctx)
 }
 
 /// The spec code `load_rule` reports for `source`, or `None` if it loads.
@@ -180,7 +184,7 @@ fn load_code(source: &str) -> Option<&'static str> {
 }
 
 fn aggregation_code(source: &str) -> Option<TypeCode> {
-    match typecheck_aggregation(&e(source), &type_env()) {
+    match typecheck::typecheck_aggregation(&e(source), &type_env()) {
         Ok(_) => None,
         Err(err) => Some(err.code.expect("a §3.4 rejection carries its code")),
     }
@@ -202,11 +206,8 @@ fn rule(body: &str) -> String {
 // below; their raise sites arrive with the Phase-2 evaluator.
 mod c1_edge_and_hyperedge_attributes {
     use super::{
-        aggregation_code, bound, check_foreign_field_scoping, check_intrinsic_name, cost, e, enums,
-        vocabulary, ClosedVocabulary, EnumKind, EvalCode, FieldRegistry, TypeCode,
+        aggregation_code, cost, ClosedVocabulary, EnumKind, EvalCode, FieldRegistry, TypeCode,
     };
-    use babylon_bsl::bindings::parse_bindings;
-
     /// §2.4's coverage row, both halves: `sum_strength` folds over the
     /// implicit `<edge-type>/strength` (extensive, so `sum` is legal), and
     /// `avg_strength` is its unweighted `mean` — also legal, for the same
@@ -231,7 +232,7 @@ mod c1_edge_and_hyperedge_attributes {
             Some(TypeCode::UnweightedMeanOfIntensive)
         );
         assert!(babylon_bsl::typecheck::typecheck_aggregation(
-            &e("(mean exploitation/tension :weight exploitation/value-flow)"),
+            &super::e("(mean exploitation/tension :weight exploitation/value-flow)"),
             &super::type_env()
         )
         .is_ok());
@@ -245,7 +246,7 @@ mod c1_edge_and_hyperedge_attributes {
         assert_eq!(cost("(field-of it solidarity/strength)"), Ok(2));
         assert_eq!(cost("(field-of self social-class/wealth)"), Ok(2));
         assert_eq!(
-            bound(&super::rule(
+            super::bound(&super::rule(
                 "(bindings) (effects (emit EventType/RUPTURE \
                  (t (fold mean (edges EdgeType/EXPLOITATION) \
                      (field-of it exploitation/tension) \
@@ -259,13 +260,13 @@ mod c1_edge_and_hyperedge_attributes {
     /// field declaration, so its type and kind have exactly one home.
     #[test]
     fn redeclaring_the_implicit_strength_field_is_e_load_001() {
-        let v = vocabulary();
+        let v = super::vocabulary();
         let mut registry = FieldRegistry::with_implicit_edge_strength(&v);
         let err = registry
             .declare(
-                &e("(deffield exploitation/strength :type coefficient :kind extensive)"),
+                &super::e("(deffield exploitation/strength :type coefficient :kind extensive)"),
                 &v,
-                &enums(),
+                &super::enums(),
             )
             .unwrap_err();
         assert_eq!(err.spec_code(), Some("E-LOAD-001"));
@@ -275,13 +276,13 @@ mod c1_edge_and_hyperedge_attributes {
     /// `NodeType`, `EdgeType` or `HyperedgeType` member.
     #[test]
     fn an_unregistered_field_owner_is_e_load_023() {
-        let v = vocabulary();
+        let v = super::vocabulary();
         let mut registry = FieldRegistry::default();
         let err = registry
             .declare(
-                &e("(deffield imperium/rent :type currency :kind extensive)"),
+                &super::e("(deffield imperium/rent :type currency :kind extensive)"),
                 &v,
-                &enums(),
+                &super::enums(),
             )
             .unwrap_err();
         assert_eq!(err.spec_code(), Some("E-LOAD-023"));
@@ -309,10 +310,15 @@ mod c1_edge_and_hyperedge_attributes {
                         (fold max (nodes NodeType/ORGANIZATION) claim)) 5)) \
              (effects (update-node self social-class/agitation (add 0.05i)))",
         );
-        let form = e(&source);
-        let decls = parse_bindings(&form).unwrap();
-        let err = check_foreign_field_scoping(&form, &decls, Some("social-class"), &vocabulary())
-            .unwrap_err();
+        let form = super::e(&source);
+        let decls = babylon_bsl::bindings::parse_bindings(&form).unwrap();
+        let err = babylon_bsl::scope::check_foreign_field_scoping(
+            &form,
+            &decls,
+            Some("social-class"),
+            &super::vocabulary(),
+        )
+        .unwrap_err();
         assert_eq!(err.spec_code(), "E-TYPE-013");
     }
 
@@ -322,7 +328,9 @@ mod c1_edge_and_hyperedge_attributes {
     fn an_intrinsic_named_for_a_form_head_is_e_load_024() {
         for name in ["field-of", "fold", "the", "edge-between", "select-max"] {
             assert_eq!(
-                check_intrinsic_name(name).unwrap_err().spec_code(),
+                babylon_bsl::declarations::check_intrinsic_name(name)
+                    .unwrap_err()
+                    .spec_code(),
                 Some("E-LOAD-024"),
                 "{name}"
             );
@@ -354,10 +362,8 @@ mod c1_edge_and_hyperedge_attributes {
 // `E-EVAL-030` I.15 transition are **not** pinned as executions here; the
 // verb's grammar, cost, static checks and codes are.
 mod c2_edge_mutation {
-    use super::{bound, cost, e, vocabulary};
+    use super::cost;
     use babylon_bsl::evaluator::EvalCode;
-    use babylon_bsl::grammar::{check_enum_ref_kinds, check_field_init_owners};
-    use babylon_bsl::scenario::load_scenario;
     use babylon_graph::memory::MemoryGraph;
 
     /// D35: `update-edge` is a structural verb and costs like one —
@@ -399,7 +405,7 @@ mod c2_edge_mutation {
     #[test]
     fn the_self_anchored_endpoint_idiom_is_bounded() {
         assert_eq!(
-            bound(&super::rule(
+            super::bound(&super::rule(
                 "(bindings) (effects (emit EventType/RUPTURE \
                  (s (fold sum (neighbors self EdgeType/SOLIDARITY :in \
                                 NodeType/SOCIAL_CLASS) \
@@ -414,9 +420,11 @@ mod c2_edge_mutation {
     /// mint time — two writers in one form is an authoring bug.
     #[test]
     fn an_add_edge_field_init_naming_strength_is_e_parse_041() {
-        let err = check_field_init_owners(
-            &e("(add-edge EdgeType/SOLIDARITY a b :strength 0.5c (solidarity/strength 0.9c))"),
-            &vocabulary(),
+        let err = babylon_bsl::grammar::check_field_init_owners(
+            &super::e(
+                "(add-edge EdgeType/SOLIDARITY a b :strength 0.5c (solidarity/strength 0.9c))",
+            ),
+            &super::vocabulary(),
         )
         .unwrap_err();
         assert_eq!(err.spec_code(), "E-PARSE-041");
@@ -425,9 +433,9 @@ mod c2_edge_mutation {
     /// D37's other half, static on the minting verbs.
     #[test]
     fn an_add_edge_field_init_owning_off_another_type_is_e_type_014() {
-        let err = check_field_init_owners(
-            &e("(add-edge EdgeType/SOLIDARITY a b :strength 0.5c (social-class/wealth 5$))"),
-            &vocabulary(),
+        let err = babylon_bsl::grammar::check_field_init_owners(
+            &super::e("(add-edge EdgeType/SOLIDARITY a b :strength 0.5c (social-class/wealth 5$))"),
+            &super::vocabulary(),
         )
         .unwrap_err();
         assert_eq!(err.spec_code(), "E-TYPE-014");
@@ -436,7 +444,10 @@ mod c2_edge_mutation {
     /// D74 at `edge-between`'s operand: a `NodeType` there is a kind error.
     #[test]
     fn an_edge_between_naming_a_node_type_is_e_type_011() {
-        let err = check_enum_ref_kinds(&e("(edge-between NodeType/SOCIAL_CLASS a b)")).unwrap_err();
+        let err = babylon_bsl::grammar::check_enum_ref_kinds(&super::e(
+            "(edge-between NodeType/SOCIAL_CLASS a b)",
+        ))
+        .unwrap_err();
         assert_eq!(err.spec_code(), "E-TYPE-011");
     }
 
@@ -451,7 +462,7 @@ mod c2_edge_mutation {
   (edge EdgeType/SOLIDARITY core periphery 1)
   (edge EdgeType/SOLIDARITY core periphery 1))";
         let mut graph = MemoryGraph::default();
-        let err = load_scenario(source, &mut graph).unwrap_err();
+        let err = babylon_bsl::scenario::load_scenario(source, &mut graph).unwrap_err();
         assert_eq!(err.code, Some("E-LOAD-044"));
     }
 
@@ -465,7 +476,12 @@ mod c2_edge_mutation {
   (edge EdgeType/SOLIDARITY core periphery 1)
   (edge EdgeType/EXPLOITATION core periphery 1))";
         let mut graph = MemoryGraph::default();
-        assert_eq!(load_scenario(source, &mut graph).unwrap().edge_count, 2);
+        assert_eq!(
+            babylon_bsl::scenario::load_scenario(source, &mut graph)
+                .unwrap()
+                .edge_count,
+            2
+        );
     }
 
     /// D36: `edge-between` never yields an absent reference and never
@@ -484,10 +500,9 @@ mod c2_edge_mutation {
 // value is sensitive to §4.2's subject order — all need the query evaluator
 // and D44's subject enumeration. Their codes and static gates are pinned.
 mod c3_graph_scope_carriers {
-    use super::{cost, e};
+    use super::cost;
     use babylon_bsl::evaluator::EvalCode;
-    use babylon_bsl::grammar::check_enum_ref_kinds;
-    use babylon_bsl::manifest::{check_rule_against_manifest, Manifest};
+    use babylon_bsl::manifest::Manifest;
 
     const MANIFEST: &str = "(manifest r9
        (ceiling NodeType/SOCIAL_CLASS :ceiling 100)
@@ -500,11 +515,11 @@ mod c3_graph_scope_carriers {
        (ceiling HyperedgeType/ECONOMIC_SECTOR :ceiling 500 :max-members 32))";
 
     fn manifest() -> Manifest {
-        Manifest::parse(&e(MANIFEST)).expect("the R9 manifest is well formed")
+        Manifest::parse(&super::e(MANIFEST)).expect("the R9 manifest is well formed")
     }
 
     fn carrier_rule(body: &str) -> babylon_bsl::reader::SExpr {
-        e(&super::rule(&format!("(bindings) (effects {body})")))
+        super::e(&super::rule(&format!("(bindings) (effects {body})")))
     }
 
     /// D40 + §3.7's `cost(the) = 1`: reaching a singleton carrier costs a
@@ -527,7 +542,7 @@ mod c3_graph_scope_carriers {
     #[test]
     fn the_against_a_ceiling_one_carrier_loads_and_otherwise_is_e_load_043() {
         assert_eq!(
-            check_rule_against_manifest(
+            babylon_bsl::manifest::check_rule_against_manifest(
                 &carrier_rule(
                     "(update-node (the NodeType/POLITY) polity/imperial-rent-pool (sub 5$))"
                 ),
@@ -535,7 +550,7 @@ mod c3_graph_scope_carriers {
             ),
             Ok(())
         );
-        let err = check_rule_against_manifest(
+        let err = babylon_bsl::manifest::check_rule_against_manifest(
             &carrier_rule("(update-node (the NodeType/SOCIAL_CLASS) social-class/wealth (add 5$))"),
             &manifest(),
         )
@@ -548,7 +563,7 @@ mod c3_graph_scope_carriers {
     #[test]
     fn a_carrier_field_reads_with_field_of_and_writes_with_update_node() {
         assert_eq!(
-            check_rule_against_manifest(
+            babylon_bsl::manifest::check_rule_against_manifest(
                 &carrier_rule(
                     "(guard (< (field-of (the NodeType/POLITY) polity/imperial-rent-pool) 5$) \
                      (update-node (the NodeType/POLITY) polity/imperial-rent-pool (set 0$)))"
@@ -562,7 +577,9 @@ mod c3_graph_scope_carriers {
     /// D74 at `the`'s operand.
     #[test]
     fn the_against_an_edge_type_is_e_type_011() {
-        let err = check_enum_ref_kinds(&e("(the EdgeType/SOLIDARITY)")).unwrap_err();
+        let err =
+            babylon_bsl::grammar::check_enum_ref_kinds(&super::e("(the EdgeType/SOLIDARITY)"))
+                .unwrap_err();
         assert_eq!(err.spec_code(), "E-TYPE-011");
     }
 
@@ -571,7 +588,7 @@ mod c3_graph_scope_carriers {
     /// the omission must be its own rejection.
     #[test]
     fn a_manifest_with_no_row_for_the_carrier_type_is_e_load_045() {
-        let err = check_rule_against_manifest(
+        let err = babylon_bsl::manifest::check_rule_against_manifest(
             &carrier_rule("(update-node (the NodeType/SOVEREIGN) social-class/wealth (add 5$))"),
             &manifest(),
         )
@@ -603,16 +620,11 @@ mod c3_graph_scope_carriers {
 // multi-node graph needs the tick loop's subject enumeration (D44). The
 // static resolution that decides it is pinned here in full.
 mod c4_rule_domain {
-    use super::{e, vocabulary};
-    use babylon_bsl::bindings::parse_bindings;
-    use babylon_bsl::canonical_ast::canonical_bytes;
-    use babylon_bsl::domain::{resolve_domain, DomainError, RuleDomain};
-    use babylon_bsl::grammar::{check_enum_ref_kinds, check_graph_flag_placement};
-
+    use babylon_bsl::domain::{DomainError, RuleDomain};
     fn domain_of(body: &str) -> Result<RuleDomain, DomainError> {
-        let form = e(&super::rule(body));
-        let decls = parse_bindings(&form).expect("bindings must parse");
-        resolve_domain(&form, &decls, &vocabulary())
+        let form = super::e(&super::rule(body));
+        let decls = babylon_bsl::bindings::parse_bindings(&form).expect("bindings must parse");
+        babylon_bsl::domain::resolve_domain(&form, &decls, &super::vocabulary())
     }
 
     /// §5.6's rule, unchanged, is an inferred node domain — the property
@@ -625,14 +637,16 @@ mod c4_rule_domain {
              (bindings (binding wealth :field social-class/wealth)) \
              (when (< wealth 1000.5$)) \
              (effects (update-node self social-class/agitation (add 0.05i))))";
-        let form = e(worked);
-        let decls = parse_bindings(&form).unwrap();
+        let form = super::e(worked);
+        let decls = babylon_bsl::bindings::parse_bindings(&form).unwrap();
         assert_eq!(
-            resolve_domain(&form, &decls, &vocabulary()),
+            babylon_bsl::domain::resolve_domain(&form, &decls, &super::vocabulary()),
             Ok(RuleDomain::Node("social-class".to_owned()))
         );
         assert_eq!(
-            canonical_bytes(&form).unwrap().len(),
+            babylon_bsl::canonical_ast::canonical_bytes(&form)
+                .unwrap()
+                .len(),
             500,
             "§5.6's bytes retain the optional, absent <domain>"
         );
@@ -720,7 +734,7 @@ mod c4_rule_domain {
     /// D42: `:graph` is a flag of the `domain` form and illegal elsewhere.
     #[test]
     fn graph_outside_a_domain_form_is_e_parse_013() {
-        let err = check_graph_flag_placement(&e(&super::rule(
+        let err = babylon_bsl::grammar::check_graph_flag_placement(&super::e(&super::rule(
             "(bindings (binding g :metric density :graph)) \
              (effects (emit EventType/RUPTURE (x 1)))",
         )))
@@ -731,7 +745,9 @@ mod c4_rule_domain {
     /// D74 at `domain`'s operand.
     #[test]
     fn a_domain_naming_an_edge_type_is_e_type_011() {
-        let err = check_enum_ref_kinds(&e("(domain EdgeType/SOLIDARITY)")).unwrap_err();
+        let err =
+            babylon_bsl::grammar::check_enum_ref_kinds(&super::e("(domain EdgeType/SOLIDARITY)"))
+                .unwrap_err();
         assert_eq!(err.spec_code(), "E-TYPE-011");
     }
 
@@ -741,8 +757,12 @@ mod c4_rule_domain {
     /// and neither is a keyword in value position.
     #[test]
     fn both_domain_shapes_have_distinct_canonical_bytes() {
-        let typed = canonical_bytes(&e("(domain NodeType/SOCIAL_CLASS)")).unwrap();
-        let graph = canonical_bytes(&e("(domain :graph)")).unwrap();
+        let typed = babylon_bsl::canonical_ast::canonical_bytes(&super::e(
+            "(domain NodeType/SOCIAL_CLASS)",
+        ))
+        .unwrap();
+        let graph =
+            babylon_bsl::canonical_ast::canonical_bytes(&super::e("(domain :graph)")).unwrap();
         assert_ne!(typed, graph);
         // D20's flag shape, assembled from §5.1-§5.2 rather than compared
         // against `(domain :graph #t)` — `:graph` takes no operand (§1.6),
@@ -773,30 +793,31 @@ mod c4_rule_domain {
 // declared source, which needs `BindSource::Expr` to exist. The rst's §7
 // order is a dependency order; this is one it does not name.
 mod c7_computed_bindings {
-    use super::{bound, e};
-    use super::{enums, type_env};
-    use babylon_bsl::bindings::{parse_bindings, BindSource};
+
+    use babylon_bsl::bindings::BindSource;
+    use babylon_bsl::bindings::BindingDecl;
     use babylon_bsl::evaluator::Value;
     use babylon_bsl::fuel::IntrinsicCosts;
     use babylon_bsl::intrinsic_host::EmptyIntrinsicHost;
-    use babylon_bsl::rule_pipeline::resolve_expr_bindings;
     use babylon_kernel::currency::Currency;
     use std::collections::HashMap;
 
-    fn decls(bindings: &str) -> Vec<babylon_bsl::bindings::BindingDecl> {
-        let form = e(&super::rule(&format!(
+    fn decls(bindings: &str) -> Vec<BindingDecl> {
+        let form = super::e(&super::rule(&format!(
             "(bindings {bindings}) \
              (effects (update-node self social-class/agitation (add 0.05i)))"
         )));
-        parse_bindings(&form).expect("bindings must parse")
+        babylon_bsl::bindings::parse_bindings(&form).expect("bindings must parse")
     }
 
     fn binding_error(bindings: &str) -> Option<&'static str> {
-        let form = e(&super::rule(&format!(
+        let form = super::e(&super::rule(&format!(
             "(bindings {bindings}) \
              (effects (update-node self social-class/agitation (add 0.05i)))"
         )));
-        parse_bindings(&form).err().and_then(|e| e.spec_code())
+        babylon_bsl::bindings::parse_bindings(&form)
+            .err()
+            .and_then(|e| e.spec_code())
     }
 
     /// §2.5's own worked example: a rule may name an intermediate value.
@@ -848,14 +869,14 @@ mod c7_computed_bindings {
     /// `bound = 7` rests on.
     #[test]
     fn only_expr_bindings_enter_the_static_bound() {
-        let external = bound(&super::rule(
+        let external = super::bound(&super::rule(
             "(bindings (binding wealth :field social-class/wealth) (binding now :tick)) \
              (when (< wealth 1000.5$)) \
              (effects (update-node self social-class/agitation (add 0.05i)))",
         ));
         assert_eq!(external, Ok(7), "§5.6's worked bound, unmoved");
         // + cost((- wealth 1000.5$)) = 1 + 1 + 0 = 2.
-        let computed = bound(&super::rule(
+        let computed = super::bound(&super::rule(
             "(bindings (binding wealth :field social-class/wealth) \
                        (binding drained :expr (- wealth 1000.5$))) \
              (when (< wealth 1000.5$)) \
@@ -885,12 +906,12 @@ mod c7_computed_bindings {
         );
         let mut env = supplied("wealth");
         let mut fuel_named = 1_000;
-        resolve_expr_bindings(
+        babylon_bsl::rule_pipeline::resolve_expr_bindings(
             &named,
             &mut env,
             &costs,
-            &type_env(),
-            &enums(),
+            &super::type_env(),
+            &super::enums(),
             None,
             None,
             &EmptyIntrinsicHost,
@@ -908,12 +929,12 @@ mod c7_computed_bindings {
         );
         let mut env2 = supplied("wealth");
         let mut fuel_inline = 1_000;
-        resolve_expr_bindings(
+        babylon_bsl::rule_pipeline::resolve_expr_bindings(
             &inline,
             &mut env2,
             &costs,
-            &type_env(),
-            &enums(),
+            &super::type_env(),
+            &super::enums(),
             None,
             None,
             &EmptyIntrinsicHost,
@@ -931,12 +952,12 @@ mod c7_computed_bindings {
     /// anywhere else at rule scope.
     #[test]
     fn a_foreign_field_inside_an_expr_is_e_type_010() {
-        let form = e(&super::rule(
+        let form = super::e(&super::rule(
             "(bindings (binding claim :field organization/claim-strength) \
                        (binding doubled :expr (+ claim claim))) \
              (effects (update-node self social-class/agitation (add 0.05i)))",
         ));
-        let d = parse_bindings(&form).unwrap();
+        let d = babylon_bsl::bindings::parse_bindings(&form).unwrap();
         let err = babylon_bsl::scope::check_foreign_field_scoping(
             &form,
             &d,
@@ -952,15 +973,17 @@ mod c7_computed_bindings {
 // The calendar bind-srcs (§2.5, D68). The rest of family 22 — the intrinsic
 // cap and the RNG carrier key — lands with C13 proper.
 mod c13_calendar_bindings {
-    use super::e;
-    use babylon_bsl::bindings::{parse_bindings, BindSource};
 
-    fn decls_of(bindings: &str) -> Result<Vec<babylon_bsl::bindings::BindingDecl>, &'static str> {
-        let form = e(&super::rule(&format!(
+    use babylon_bsl::bindings::BindSource;
+    use babylon_bsl::bindings::BindingDecl;
+
+    fn decls_of(bindings: &str) -> Result<Vec<BindingDecl>, &'static str> {
+        let form = super::e(&super::rule(&format!(
             "(bindings {bindings}) \
              (effects (update-node self social-class/agitation (add 0.05i)))"
         )));
-        parse_bindings(&form).map_err(|err| err.spec_code().unwrap_or("<uncoded>"))
+        babylon_bsl::bindings::parse_bindings(&form)
+            .map_err(|err| err.spec_code().unwrap_or("<uncoded>"))
     }
 
     /// D68: calendar reads are **bindings, not arithmetic** — a kernel
@@ -1010,14 +1033,13 @@ mod c13_calendar_bindings {
 // silent skip. The result-type rule, the `E-TYPE-016` score rule and the
 // §3.7 cost row stay load-time static, exactly as before.
 mod c5_element_selection {
-    use super::{cost, e, enums, type_env};
-    use babylon_bsl::bindings::parse_bindings;
-    use babylon_bsl::evaluator::{evaluate, EvalCode, EvalEnv, EvalError, Value};
+    use super::cost;
+    use babylon_bsl::evaluator::{EvalCode, EvalEnv, EvalError, Value};
     use babylon_bsl::fuel::IntrinsicCosts;
     use babylon_bsl::intrinsic_host::EmptyIntrinsicHost;
     use babylon_bsl::score_class::{selection_result_class, ScoreClass};
     use babylon_bsl::structural_verbs::{CollectingSink, EffectExecutor};
-    use babylon_bsl::typecheck::{check_selection_scores, TypeCode};
+    use babylon_bsl::typecheck::TypeCode;
     use babylon_graph::memory::MemoryGraph;
     use babylon_graph::substrate::GraphSubstrate;
     use std::collections::HashMap;
@@ -1034,8 +1056,8 @@ mod c5_element_selection {
         fuel: &mut u64,
     ) -> Result<Value, EvalError> {
         let costs = IntrinsicCosts::default();
-        let types = type_env();
-        let enums = enums();
+        let types = super::type_env();
+        let enums = super::enums();
         // PR A verifier fix round (2026-08-12): `field_of_node` now
         // refuses loudly on a `None` types/enums pair (mirroring
         // `require_graph`) rather than silently degrading to `Value::
@@ -1051,13 +1073,13 @@ mod c5_element_selection {
             elements: Vec::new(),
             draw_context: None,
         };
-        evaluate(&e(source), &env, &EmptyIntrinsicHost, fuel)
+        babylon_bsl::evaluator::evaluate(&super::e(source), &env, &EmptyIntrinsicHost, fuel)
     }
 
     fn score_error(body: &str) -> Option<TypeCode> {
-        let form = e(&super::rule(body));
-        let decls = parse_bindings(&form).expect("bindings must parse");
-        check_selection_scores(&form, &type_env(), &decls)
+        let form = super::e(&super::rule(body));
+        let decls = babylon_bsl::bindings::parse_bindings(&form).expect("bindings must parse");
+        babylon_bsl::typecheck::check_selection_scores(&form, &super::type_env(), &decls)
             .err()
             .and_then(|err| err.code)
     }
@@ -1088,7 +1110,11 @@ mod c5_element_selection {
             ),
         ];
         for (query, expected) in cases {
-            assert_eq!(selection_result_class(&e(query)), expected, "{query}");
+            assert_eq!(
+                selection_result_class(&super::e(query)),
+                expected,
+                "{query}"
+            );
         }
     }
 
@@ -1386,8 +1412,8 @@ mod c5_element_selection {
         let babylon_bsl::reader::SExpr::List(items) = form else {
             unreachable!()
         };
-        let types = type_env();
-        let enum_registry = enums();
+        let types = super::type_env();
+        let enum_registry = super::enums();
         // PR A verifier fix round (2026-08-12): same coincidental-safety
         // gap as this module's other direct `EvalEnv` constructions —
         // `types`/`enum_registry` were already built for `EffectExecutor`
@@ -1454,7 +1480,7 @@ mod c5_element_selection {
 // unchanged. The grammar, the arity, the static bound and the
 // `E-LOAD-040` interaction stay pinned exactly as before.
 mod c6_effect_position_iteration {
-    use super::{bound, cost, enums, type_env};
+    use super::cost;
     use babylon_bsl::evaluator::{EvalEnv, EvalError, Value};
     use babylon_bsl::fuel::IntrinsicCosts;
     use babylon_bsl::intrinsic_host::EmptyIntrinsicHost;
@@ -1512,13 +1538,12 @@ mod c6_effect_position_iteration {
     /// (`E-LOAD-040`), which is the whole point of §3.7 being static.
     #[test]
     fn a_for_each_one_short_of_its_bound_is_e_load_040() {
-        use babylon_bsl::bound_checker::check_rule;
         use babylon_bsl::fuel::IntrinsicCosts;
         let body = "(bindings) (effects (for-each (edges EdgeType/SOLIDARITY) \
                     (update-edge it solidarity/strength (scale 0.95c))))";
         let starved =
             format!("(rule demo/r9 :role mechanic :evidence derived :material-basis \"the wage relation\" :fuel 202 {body})");
-        let err = check_rule(
+        let err = babylon_bsl::bound_checker::check_rule(
             &super::e(&starved),
             &super::ceilings(),
             &IntrinsicCosts::default(),
@@ -1530,7 +1555,7 @@ mod c6_effect_position_iteration {
         let funded =
             format!("(rule demo/r9 :role mechanic :evidence derived :material-basis \"the wage relation\" :fuel 204 {body})");
         assert_eq!(
-            check_rule(
+            babylon_bsl::bound_checker::check_rule(
                 &super::e(&funded),
                 &super::ceilings(),
                 &IntrinsicCosts::default()
@@ -1544,7 +1569,7 @@ mod c6_effect_position_iteration {
     #[test]
     fn a_for_each_enters_bound_rule_as_one_effect_item() {
         assert_eq!(
-            bound(&super::rule(
+            super::bound(&super::rule(
                 "(bindings) (effects \
                  (for-each (edges EdgeType/SOLIDARITY) \
                   (update-edge it solidarity/strength (scale 0.95c))))"
@@ -1574,8 +1599,8 @@ mod c6_effect_position_iteration {
         let babylon_bsl::reader::SExpr::List(items) = form else {
             unreachable!()
         };
-        let types = type_env();
-        let enum_registry = enums();
+        let types = super::type_env();
+        let enum_registry = super::enums();
         let mut sink = CollectingSink::default();
         let pending = {
             // PR A verifier fix round (2026-08-12): `types`/`enum_registry`
@@ -1830,12 +1855,10 @@ mod c6_effect_position_iteration {
 // serves — the spec's own worked example uses `hyperedges`/`members-of`,
 // slice 3, so its static accept-and-bound pin stays alongside).
 mod c8_typed_neighbours_and_naming {
-    use super::{cost, e};
-    use babylon_bsl::evaluator::{evaluate, EvalEnv, Value};
+    use super::cost;
+    use babylon_bsl::evaluator::{EvalEnv, Value};
     use babylon_bsl::fuel::IntrinsicCosts;
-    use babylon_bsl::grammar::{check_arities_and_closed_sets, check_enum_ref_kinds};
     use babylon_bsl::intrinsic_host::EmptyIntrinsicHost;
-    use babylon_bsl::scope::check_element_names;
     use babylon_bsl::typecheck::TypeEnv;
     use babylon_bsl::types::EnumRegistry;
     use babylon_graph::memory::MemoryGraph;
@@ -1846,19 +1869,23 @@ mod c8_typed_neighbours_and_naming {
     /// is an arity error rather than a silently edge-type-only bound.
     #[test]
     fn a_three_operand_neighbors_is_e_parse_042() {
-        let err = check_arities_and_closed_sets(&e("(neighbors self EdgeType/SOLIDARITY :out)"))
-            .unwrap_err();
-        assert_eq!(err.spec_code(), "E-PARSE-042");
-        assert!(check_arities_and_closed_sets(&e(
-            "(neighbors self EdgeType/SOLIDARITY :out NodeType/SOCIAL_CLASS)"
+        let err = babylon_bsl::grammar::check_arities_and_closed_sets(&super::e(
+            "(neighbors self EdgeType/SOLIDARITY :out)",
         ))
-        .is_ok());
+        .unwrap_err();
+        assert_eq!(err.spec_code(), "E-PARSE-042");
+        assert!(
+            babylon_bsl::grammar::check_arities_and_closed_sets(&super::e(
+                "(neighbors self EdgeType/SOLIDARITY :out NodeType/SOCIAL_CLASS)"
+            ))
+            .is_ok()
+        );
     }
 
     /// D74: swapping the two operands is `E-TYPE-011` at both positions.
     #[test]
     fn the_two_operands_swapped_is_e_type_011() {
-        let err = check_enum_ref_kinds(&e(
+        let err = babylon_bsl::grammar::check_enum_ref_kinds(&super::e(
             "(neighbors self NodeType/SOCIAL_CLASS :out EdgeType/SOLIDARITY)",
         ))
         .unwrap_err();
@@ -1889,17 +1916,20 @@ mod c8_typed_neighbours_and_naming {
     /// inside the body. Six systems need exactly this read.
     #[test]
     fn a_fold_body_over_neighbors_legalises_the_annotated_types_fields() {
-        use babylon_bsl::bindings::parse_bindings;
-        use babylon_bsl::scope::check_foreign_field_scoping;
-        let form = e(&super::rule(
+        let form = super::e(&super::rule(
             "(bindings (binding claim :field organization/claim-strength)) \
              (when (< (fold mean (neighbors self EdgeType/SOLIDARITY :in \
                                    NodeType/ORGANIZATION) claim) 5)) \
              (effects (update-node self social-class/agitation (add 0.05i)))",
         ));
-        let decls = parse_bindings(&form).unwrap();
+        let decls = babylon_bsl::bindings::parse_bindings(&form).unwrap();
         assert_eq!(
-            check_foreign_field_scoping(&form, &decls, Some("social-class"), &super::vocabulary()),
+            babylon_bsl::scope::check_foreign_field_scoping(
+                &form,
+                &decls,
+                Some("social-class"),
+                &super::vocabulary()
+            ),
             Ok(())
         );
     }
@@ -1910,19 +1940,20 @@ mod c8_typed_neighbours_and_naming {
     #[test]
     fn as_it_and_as_self_are_e_parse_022_and_a_collision_is_e_parse_030() {
         for reserved in ["it", "self"] {
-            let form = e(&super::rule(&format!(
+            let form = super::e(&super::rule(&format!(
                 "(bindings) (when (exists (nodes NodeType/ORGANIZATION) :as {reserved} #t)) \
                  (effects (update-node self social-class/agitation (add 0.05i)))"
             )));
-            let err = check_element_names(&form, &[]).unwrap_err();
+            let err = babylon_bsl::scope::check_element_names(&form, &[]).unwrap_err();
             assert_eq!(err.spec_code(), "E-PARSE-022", "{reserved}");
         }
-        let form = e(&super::rule(
+        let form = super::e(&super::rule(
             "(bindings (binding sector :field social-class/wealth)) \
              (when (exists (hyperedges HyperedgeType/ECONOMIC_SECTOR) :as sector #t)) \
              (effects (update-node self social-class/agitation (add 0.05i)))",
         ));
-        let err = check_element_names(&form, &["sector".to_owned()]).unwrap_err();
+        let err =
+            babylon_bsl::scope::check_element_names(&form, &["sector".to_owned()]).unwrap_err();
         assert_eq!(err.spec_code(), "E-PARSE-030");
     }
 
@@ -1935,8 +1966,8 @@ mod c8_typed_neighbours_and_naming {
              (fold sum (members-of sector HyperedgeType/ECONOMIC_SECTOR) \
                    (field-of it social-class/wealth)))";
         assert_eq!(
-            check_element_names(
-                &e(&super::rule(&format!(
+            babylon_bsl::scope::check_element_names(
+                &super::e(&super::rule(&format!(
                     "(bindings) (when (< {source} 5)) \
                      (effects (update-node self social-class/agitation (add 0.05i)))"
                 ))),
@@ -1954,11 +1985,11 @@ mod c8_typed_neighbours_and_naming {
     /// C5 vector already pinned.
     #[test]
     fn it_outside_every_body_is_e_type_012() {
-        let form = e(&super::rule(
+        let form = super::e(&super::rule(
             "(bindings) (when (< it 5)) \
              (effects (update-node self social-class/agitation (add 0.05i)))",
         ));
-        let err = check_element_names(&form, &[]).unwrap_err();
+        let err = babylon_bsl::scope::check_element_names(&form, &[]).unwrap_err();
         assert_eq!(err.spec_code(), "E-TYPE-012");
     }
 
@@ -1992,7 +2023,8 @@ mod c8_typed_neighbours_and_naming {
             elements: Vec::new(),
             draw_context: None,
         };
-        evaluate(&e(source), &env, &EmptyIntrinsicHost, fuel).expect("vector must evaluate")
+        babylon_bsl::evaluator::evaluate(&super::e(source), &env, &EmptyIntrinsicHost, fuel)
+            .expect("vector must evaluate")
     }
 
     /// The §6.2 family-17 multiplicity vector (D72), EXECUTED: two
@@ -2096,12 +2128,10 @@ mod c8_typed_neighbours_and_naming {
 // *provider* (§2.11's list), enforced by review and by the determinism
 // contract's golden vectors, and is recorded there rather than faked here.
 mod c9_metric_registration {
-    use super::{cost, e};
-    use babylon_bsl::bindings::parse_bindings;
-    use babylon_bsl::canonical_ast::canonical_bytes;
+    use super::cost;
     use babylon_bsl::evaluator::EvalCode;
     use babylon_bsl::metrics::{MetricDomain, MetricRegistry};
-    use babylon_bsl::typecheck::{typecheck_aggregation, TypeCode, TypeEnv};
+    use babylon_bsl::typecheck::{TypeCode, TypeEnv};
     use std::collections::HashMap;
 
     const GRAPH: &str = "(metric solidarity-density :type coefficient :kind intensive \
@@ -2111,14 +2141,14 @@ mod c9_metric_registration {
 
     fn registry() -> MetricRegistry {
         let mut r = MetricRegistry::default();
-        r.declare(&e(GRAPH)).expect("graph metric");
-        r.declare(&e(ELEMENT)).expect("element metric");
+        r.declare(&super::e(GRAPH)).expect("graph metric");
+        r.declare(&super::e(ELEMENT)).expect("element metric");
         r
     }
 
     fn reading(body: &str) -> Option<&'static str> {
-        let form = e(&super::rule(body));
-        let decls = parse_bindings(&form).expect("bindings must parse");
+        let form = super::e(&super::rule(body));
+        let decls = babylon_bsl::bindings::parse_bindings(&form).expect("bindings must parse");
         registry()
             .check_reading_forms(&form, &decls)
             .err()
@@ -2214,9 +2244,12 @@ mod c9_metric_registration {
             exemptions: &[],
         };
         assert_eq!(
-            typecheck_aggregation(&e("(mean solidarity-density)"), &env)
-                .unwrap_err()
-                .code,
+            babylon_bsl::typecheck::typecheck_aggregation(
+                &super::e("(mean solidarity-density)"),
+                &env
+            )
+            .unwrap_err()
+            .code,
             Some(TypeCode::UnweightedMeanOfIntensive)
         );
     }
@@ -2239,8 +2272,8 @@ mod c9_metric_registration {
     /// the two shapes are distinct bytes.
     #[test]
     fn both_domain_shapes_have_distinct_canonical_bytes() {
-        let graph = canonical_bytes(&e(GRAPH)).unwrap();
-        let element = canonical_bytes(&e(ELEMENT)).unwrap();
+        let graph = babylon_bsl::canonical_ast::canonical_bytes(&super::e(GRAPH)).unwrap();
+        let element = babylon_bsl::canonical_ast::canonical_bytes(&super::e(ELEMENT)).unwrap();
         assert_ne!(graph, element);
         assert!(!graph.is_empty() && !element.is_empty());
     }
@@ -2259,9 +2292,7 @@ mod c9_metric_registration {
 // absences are pinned as loudly as the presences, plus the accepting pairs
 // that prove each re-modelling works.
 mod c10_deliberate_absences {
-    use super::{cost, e};
-    use babylon_bsl::grammar::{check_arities_and_closed_sets, check_string_positions};
-
+    use super::cost;
     /// §3.8 item 1 / D13: there is no `bound?` predicate.
     ///
     /// The rst's family-19 row spells it `(bound? x)` and expects
@@ -2272,9 +2303,9 @@ mod c10_deliberate_absences {
     /// undeclared-intrinsic gate.
     #[test]
     fn bound_is_not_a_predicate_and_neither_spelling_survives() {
-        use babylon_bsl::reader::{read, LexCode, ReadErrorKind};
+        use babylon_bsl::reader::{LexCode, ReadErrorKind};
         assert_eq!(
-            read("(bound? x)").unwrap_err().kind,
+            babylon_bsl::reader::read("(bound? x)").unwrap_err().kind,
             ReadErrorKind::Lex(LexCode::UnclassifiableToken)
         );
         assert_eq!(
@@ -2287,7 +2318,7 @@ mod c10_deliberate_absences {
     /// `E-PARSE-010` — the string lexes, the position rejects it.
     #[test]
     fn a_string_literal_in_an_emit_payload_is_e_parse_010() {
-        let err = check_string_positions(&e(&super::rule(
+        let err = babylon_bsl::grammar::check_string_positions(&super::e(&super::rule(
             "(bindings) (effects (emit EventType/RUPTURE (why \"a description\")))",
         )))
         .unwrap_err();
@@ -2295,7 +2326,7 @@ mod c10_deliberate_absences {
         // …while `:material-basis`'s own string is untouched: it is a
         // rule-level option, not an expression.
         assert_eq!(
-            check_string_positions(&e(&super::rule(
+            babylon_bsl::grammar::check_string_positions(&super::e(&super::rule(
                 "(bindings) (effects (emit EventType/RUPTURE (severity 0.9c)))"
             ))),
             Ok(())
@@ -2306,9 +2337,10 @@ mod c10_deliberate_absences {
     /// `(unset …)` the frozen estate reaches for is `E-PARSE-015`.
     #[test]
     fn an_unset_update_op_is_e_parse_015() {
-        let err =
-            check_arities_and_closed_sets(&e("(update-node self social-class/agitation (unset))"))
-                .unwrap_err();
+        let err = babylon_bsl::grammar::check_arities_and_closed_sets(&super::e(
+            "(update-node self social-class/agitation (unset))",
+        ))
+        .unwrap_err();
         assert_eq!(err.spec_code(), "E-PARSE-015");
     }
 
@@ -2357,8 +2389,8 @@ mod c10_deliberate_absences {
 // ====================================================== family 20 — C11
 // Invariant substrate and the scale lattice (§3.9).
 mod c11_invariant_substrate {
-    use super::{cost, e};
-    use babylon_bsl::manifest::{check_rule_against_manifest, Manifest};
+    use super::cost;
+    use babylon_bsl::manifest::Manifest;
 
     const MANIFEST: &str = "(manifest r9
        (ceiling NodeType/SOCIAL_CLASS :ceiling 100)
@@ -2368,11 +2400,11 @@ mod c11_invariant_substrate {
        (ceiling HyperedgeType/COMMUNITY :ceiling 200 :max-members 64))";
 
     fn manifest() -> Manifest {
-        Manifest::parse(&e(MANIFEST)).expect("well formed")
+        Manifest::parse(&super::e(MANIFEST)).expect("well formed")
     }
 
     fn rule(body: &str) -> babylon_bsl::reader::SExpr {
-        e(&super::rule(&format!("(bindings) (effects {body})")))
+        super::e(&super::rule(&format!("(bindings) (effects {body})")))
     }
 
     /// §3.9: aggregation up one rung is an ordinary one-hop fold, and
@@ -2409,7 +2441,8 @@ mod c11_invariant_substrate {
             "(add-edge EdgeType/IN_SCALE a b :strength 0.5c)",
             "(remove-edge EdgeType/IN_SCALE a b)",
         ] {
-            let err = check_rule_against_manifest(&rule(body), &manifest()).expect_err(body);
+            let err = babylon_bsl::manifest::check_rule_against_manifest(&rule(body), &manifest())
+                .expect_err(body);
             assert_eq!(err.spec_code(), Some("E-LOAD-013"), "{body}");
         }
     }
@@ -2421,7 +2454,7 @@ mod c11_invariant_substrate {
     #[test]
     fn a_field_write_on_an_invariant_type_must_accept() {
         assert_eq!(
-            check_rule_against_manifest(
+            babylon_bsl::manifest::check_rule_against_manifest(
                 &rule("(update-node self territory/wage-bill (add 5$))"),
                 &manifest()
             ),
@@ -2432,7 +2465,7 @@ mod c11_invariant_substrate {
     /// §2.9: `:invariant` is illegal on a `HyperedgeType` row.
     #[test]
     fn invariant_on_a_hyperedge_row_is_e_load_042() {
-        let err = Manifest::parse(&e(
+        let err = Manifest::parse(&super::e(
             "(manifest m (ceiling HyperedgeType/COMMUNITY :ceiling 2 :max-members 3 :invariant))",
         ))
         .unwrap_err();
@@ -2446,14 +2479,14 @@ mod c11_invariant_substrate {
     /// (§3.5's plain-binding rule, `E-LOAD-010`).
     #[test]
     fn a_reference_series_is_read_with_an_ordinary_field_binding() {
-        use babylon_bsl::bindings::{parse_bindings, resolve_bindings, BindingVocabulary};
+        use babylon_bsl::bindings::{resolve_bindings, BindingVocabulary};
         use std::collections::HashSet;
-        let form = e(&super::rule(
+        let form = super::e(&super::rule(
             "(bindings (binding wage :field territory/wage-bill)) \
              (when (< wage 5$)) \
              (effects (update-node self territory/wage-bill (add 1$)))",
         ));
-        let decls = parse_bindings(&form).unwrap();
+        let decls = babylon_bsl::bindings::parse_bindings(&form).unwrap();
         let seeded = BindingVocabulary {
             fields: HashSet::from(["territory/wage-bill".to_owned()]),
             consts: HashSet::new(),
@@ -2478,16 +2511,14 @@ mod c11_invariant_substrate {
 // executions are not pinned as executions. The verb's grammar, cost,
 // arity and codes are.
 mod c12_hyperedge_fields_and_identity {
-    use super::{cost, e, type_env};
-    use babylon_bsl::bindings::parse_bindings;
+    use super::cost;
     use babylon_bsl::evaluator::EvalCode;
-    use babylon_bsl::grammar::check_arities_and_closed_sets;
-    use babylon_bsl::typecheck::{check_reference_comparisons, TypeCode};
+    use babylon_bsl::typecheck::TypeCode;
 
     fn comparison_error(body: &str) -> Option<TypeCode> {
-        let form = e(&super::rule(body));
-        let decls = parse_bindings(&form).expect("bindings must parse");
-        check_reference_comparisons(&form, &type_env(), &decls)
+        let form = super::e(&super::rule(body));
+        let decls = babylon_bsl::bindings::parse_bindings(&form).expect("bindings must parse");
+        babylon_bsl::typecheck::check_reference_comparisons(&form, &super::type_env(), &decls)
             .err()
             .and_then(|err| err.code)
     }
@@ -2507,7 +2538,7 @@ mod c12_hyperedge_fields_and_identity {
             );
         }
         // A fifth head there is E-PARSE-015: the set is closed (§2.8).
-        let err = check_arities_and_closed_sets(&e(
+        let err = babylon_bsl::grammar::check_arities_and_closed_sets(&super::e(
             "(update-hyperedge it economic-sector/output (unset))",
         ))
         .unwrap_err();
@@ -2604,9 +2635,7 @@ mod c12_hyperedge_fields_and_identity {
 // The intrinsic cap (§3.10). The calendar-binding half of this family
 // landed with C7; the RNG half is named below.
 mod c13_intrinsic_cap {
-    use babylon_bsl::declarations::{
-        check_intrinsic_cap, check_intrinsic_name, DECLARABLE_INTRINSICS,
-    };
+    use babylon_bsl::declarations::{check_intrinsic_cap, DECLARABLE_INTRINSICS};
 
     /// §3.10 gate 1, mechanical: the transcendental cap is `{exp, log}`,
     /// and R10 is operative for R9/R10 purposes. `floor` joins under ADR188
@@ -2648,7 +2677,7 @@ mod c13_intrinsic_cap {
     /// the one part of gate 2 that can be made mechanical, and made so.
     #[test]
     fn sigmoid_is_e_load_024_not_merely_outside_the_cap() {
-        let err = check_intrinsic_name("sigmoid").unwrap_err();
+        let err = babylon_bsl::declarations::check_intrinsic_name("sigmoid").unwrap_err();
         assert_eq!(err.spec_code(), Some("E-LOAD-024"));
         assert_eq!(
             check_intrinsic_cap("sigmoid").unwrap_err().spec_code(),
@@ -2695,12 +2724,8 @@ mod c14_rng_draw_retirement {
 // the two things the original suite never did, and the reason four
 // blocker-class defects survived a green run.
 mod verification_repairs {
-    use super::{ceilings, e, load_code, vocabulary};
-    use babylon_bsl::bindings::parse_bindings;
-    use babylon_bsl::canonical_ast::canonical_bytes;
+    use super::load_code;
     use babylon_bsl::fuel::IntrinsicCosts;
-    use babylon_bsl::scope::check_foreign_field_scoping;
-
     const PRE: &str =
         ":role mechanic :evidence derived :material-basis \"the wage relation\" :fuel 262144";
 
@@ -2980,15 +3005,20 @@ mod verification_repairs {
     /// either reading and pinned nothing.
     #[test]
     fn a_neighbors_operand_is_outside_the_body_it_introduces() {
-        let form = e(&rule(
+        let form = super::e(&rule(
             "(bindings (binding claim :field organization/claim-strength)) \
              (when (< (fold count (neighbors claim EdgeType/SOLIDARITY :out \
                                     NodeType/ORGANIZATION) 1) 5)) \
              (effects (update-node self social-class/agitation (add 0.05i)))",
         ));
-        let decls = parse_bindings(&form).unwrap();
-        let err = check_foreign_field_scoping(&form, &decls, Some("social-class"), &vocabulary())
-            .unwrap_err();
+        let decls = babylon_bsl::bindings::parse_bindings(&form).unwrap();
+        let err = babylon_bsl::scope::check_foreign_field_scoping(
+            &form,
+            &decls,
+            Some("social-class"),
+            &super::vocabulary(),
+        )
+        .unwrap_err();
         assert_eq!(err.spec_code(), "E-TYPE-010");
     }
 
@@ -3000,16 +3030,21 @@ mod verification_repairs {
         // The `neighbors` result type must BE the owner type, or
         // `matches_owner` is false and the vector passes against the
         // pre-fix walk too — the vacuity the re-review caught.
-        let form = e(&rule(
+        let form = super::e(&rule(
             "(bindings (binding claim :field organization/claim-strength)) \
              (when (< (fold sum (nodes NodeType/ORGANIZATION) \
                         (fold count (neighbors claim EdgeType/SOLIDARITY :out \
                                       NodeType/ORGANIZATION) 1)) 5)) \
              (effects (update-node self social-class/agitation (add 0.05i)))",
         ));
-        let decls = parse_bindings(&form).unwrap();
+        let decls = babylon_bsl::bindings::parse_bindings(&form).unwrap();
         assert_eq!(
-            check_foreign_field_scoping(&form, &decls, Some("social-class"), &vocabulary()),
+            babylon_bsl::scope::check_foreign_field_scoping(
+                &form,
+                &decls,
+                Some("social-class"),
+                &super::vocabulary()
+            ),
             Ok(())
         );
     }
@@ -3060,7 +3095,8 @@ mod verification_repairs {
             ),
         ];
         for (tag, children, source) in cases {
-            let bytes = canonical_bytes(&e(source)).expect(source);
+            let bytes =
+                babylon_bsl::canonical_ast::canonical_bytes(&super::e(source)).expect(source);
             let mut header = vec![0x02, u8::try_from(tag.len()).unwrap()];
             header.extend_from_slice(tag.as_bytes());
             header.extend_from_slice(&u32::try_from(children).unwrap().to_be_bytes());
@@ -3104,13 +3140,13 @@ mod verification_repairs {
     fn the_worked_examples_500_bytes_and_digests_include_causal_metadata() {
         use babylon_bsl::canonical_ast::rules_hash_of;
         use sha2::{Digest, Sha256};
-        let worked = e("(rule demo/hunger \
+        let worked = super::e("(rule demo/hunger \
              :role mechanic :evidence derived :material-basis \"subsistence deficit at the point of reproduction\" \
              :fuel 64 \
              (bindings (binding wealth :field social-class/wealth)) \
              (when (< wealth 1000.5$)) \
              (effects (update-node self social-class/agitation (add 0.05i))))");
-        let bytes = canonical_bytes(&worked).unwrap();
+        let bytes = babylon_bsl::canonical_ast::canonical_bytes(&worked).unwrap();
         assert_eq!(bytes.len(), 500);
         let hex = |b: &[u8]| {
             use std::fmt::Write as _;
@@ -3133,15 +3169,14 @@ mod verification_repairs {
     /// the accessors stay keyed lookups.
     #[test]
     fn the_two_hop_bound_is_unchanged() {
-        use babylon_bsl::bound_checker::expr_cost;
         assert_eq!(
-            expr_cost(
-                &e(
+            babylon_bsl::bound_checker::expr_cost(
+                &super::e(
                     "(fold sum (hyperedges HyperedgeType/ECONOMIC_SECTOR) :as sector \
                     (fold sum (members-of sector HyperedgeType/ECONOMIC_SECTOR) \
                           (field-of it social-class/wealth)))"
                 ),
-                &ceilings(),
+                &super::ceilings(),
                 &IntrinsicCosts::default()
             ),
             Ok(34_003)
@@ -3156,10 +3191,9 @@ mod verification_repairs {
 // had not reached, and D90 arriving from PR #481. Every vector here drives
 // `load_rule`.
 mod reverification_repairs {
-    use super::{e, load_code, type_env, vocabulary};
-    use babylon_bsl::bindings::parse_bindings;
-    use babylon_bsl::domain::{resolve_domain, RuleDomain};
-    use babylon_bsl::typecheck::{typecheck_aggregation, TypeCode, TypeEnv};
+    use super::load_code;
+    use babylon_bsl::domain::RuleDomain;
+    use babylon_bsl::typecheck::{TypeCode, TypeEnv};
 
     const PRE: &str =
         ":role mechanic :evidence derived :material-basis \"the wage relation\" :fuel 262144";
@@ -3294,14 +3328,14 @@ mod reverification_repairs {
     /// every query child as inside a body and mis-inferred `E-LOAD-004`.
     #[test]
     fn a_binding_read_only_in_a_query_operand_still_determines_the_domain() {
-        let form = e(&rule(
+        let form = super::e(&rule(
             "(bindings (binding home :field social-class/wealth)) \
              (when (< (fold count (members-of home HyperedgeType/COMMUNITY) 1) 5)) \
              (effects (emit EventType/RUPTURE (x 1)))",
         ));
-        let decls = parse_bindings(&form).unwrap();
+        let decls = babylon_bsl::bindings::parse_bindings(&form).unwrap();
         assert_eq!(
-            resolve_domain(&form, &decls, &vocabulary()),
+            babylon_bsl::domain::resolve_domain(&form, &decls, &super::vocabulary()),
             Ok(RuleDomain::Node("social-class".to_owned())),
             "an element operand is evaluated at rule scope, so the binding is \
              self-scoped and `|U| = 1`"
@@ -3313,15 +3347,15 @@ mod reverification_repairs {
     /// property, which the fix must not break.
     #[test]
     fn a_binding_read_only_inside_a_query_body_still_stays_out_of_the_inference() {
-        let form = e(&rule(
+        let form = super::e(&rule(
             "(domain :graph) \
              (bindings (binding claim :field organization/claim-strength)) \
              (when (< (fold sum (nodes NodeType/ORGANIZATION) claim) 5)) \
              (effects (emit EventType/RUPTURE (x 1)))",
         ));
-        let decls = parse_bindings(&form).unwrap();
+        let decls = babylon_bsl::bindings::parse_bindings(&form).unwrap();
         assert_eq!(
-            resolve_domain(&form, &decls, &vocabulary()),
+            babylon_bsl::domain::resolve_domain(&form, &decls, &super::vocabulary()),
             Ok(RuleDomain::Graph)
         );
     }
@@ -3371,16 +3405,19 @@ mod reverification_repairs {
     /// result kind an enclosing fold sees, not about the inner fold.
     #[test]
     fn the_weighted_intensive_mean_is_itself_legal() {
-        let env: TypeEnv = type_env();
-        assert!(typecheck_aggregation(
-            &e("(mean social-class/agitation :weight social-class/population)"),
+        let env: TypeEnv = super::type_env();
+        assert!(babylon_bsl::typecheck::typecheck_aggregation(
+            &super::e("(mean social-class/agitation :weight social-class/population)"),
             &env
         )
         .is_ok());
         assert_eq!(
-            typecheck_aggregation(&e("(mean social-class/agitation)"), &env)
-                .unwrap_err()
-                .code,
+            babylon_bsl::typecheck::typecheck_aggregation(
+                &super::e("(mean social-class/agitation)"),
+                &env
+            )
+            .unwrap_err()
+            .code,
             Some(TypeCode::UnweightedMeanOfIntensive)
         );
     }

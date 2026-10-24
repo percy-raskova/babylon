@@ -27,6 +27,8 @@
 
 use crate::reader::{Atom, SExpr};
 use std::collections::HashSet;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 
 /// The two reserved, always-in-scope symbols (§2.5) — never declared,
 /// never shadowed (`E-PARSE-022`).
@@ -189,7 +191,7 @@ impl BindingError {
 }
 
 impl std::fmt::Display for BindingError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         match self {
             Self::BadCycleLength { name, length } => write!(
                 f,
@@ -681,8 +683,6 @@ fn check_expr_binding_scope(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::reader::read;
-
     /// The §5.6 worked example — one `:field` binding named `wealth`.
     const DEMO_RULE: &str = r#"
         (rule demo/hunger
@@ -696,7 +696,9 @@ mod tests {
     "#;
 
     fn parse(source: &str) -> SExpr {
-        read(source).expect("test source must parse").0
+        crate::reader::read(source)
+            .expect("test source must parse")
+            .0
     }
 
     fn rule_with_bindings(rows: &str) -> SExpr {

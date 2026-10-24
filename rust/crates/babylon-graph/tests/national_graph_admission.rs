@@ -4,9 +4,8 @@ use std::collections::HashMap;
 
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_graph::stable_element::{StableElementKey, StableElementResolver, StableIdentityError};
-use babylon_graph::stable_state::{
-    compose_stable_graph_state_from_rows, StableGraphStateRowsInput,
-};
+use babylon_graph::stable_state;
+use babylon_graph::stable_state::StableGraphStateRowsInput;
 use babylon_graph::substrate::GraphSubstrate;
 
 const MEASURED_NODES: usize = 179_772;
@@ -33,7 +32,9 @@ fn rows(count: usize) -> StableGraphStateRowsInput {
 #[test]
 fn canonical_node_admission_covers_the_measured_aggregate_opening() {
     for count in [MEASURED_NODES, NODE_CEILING] {
-        let admitted = compose_stable_graph_state_from_rows("national-world", rows(count)).unwrap();
+        let admitted =
+            stable_state::compose_stable_graph_state_from_rows("national-world", rows(count))
+                .unwrap();
         assert_eq!(admitted.rows().nodes().len(), count);
         assert_eq!(
             admitted.rows().nodes().last(),
@@ -42,12 +43,15 @@ fn canonical_node_admission_covers_the_measured_aggregate_opening() {
         let mut duplicate = rows(count);
         duplicate.nodes[count - 1].0 = local_name(0);
         assert!(matches!(
-            compose_stable_graph_state_from_rows("national-world", duplicate),
+            stable_state::compose_stable_graph_state_from_rows("national-world", duplicate),
             Err(StableIdentityError::DuplicateFact { section: "nodes" })
         ));
     }
     assert!(matches!(
-        compose_stable_graph_state_from_rows("national-world", rows(NODE_CEILING + 1)),
+        stable_state::compose_stable_graph_state_from_rows(
+            "national-world",
+            rows(NODE_CEILING + 1)
+        ),
         Err(StableIdentityError::StateSectionLimit {
             section: "nodes",
             actual: 262_145,

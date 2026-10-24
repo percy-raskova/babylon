@@ -1,8 +1,7 @@
 use babylon_practice_contract::{
-    decode_input_authority, decode_resolved_practice_batch, encode_resolved_practice_batch,
-    resolved_practice_batch_digest, PracticeBatchError, PracticeInputAuthorityLedger,
-    ResolvedPracticeBatchError, RESOLVED_PRACTICE_BATCH_FIELD_ORDER,
-    RESOLVED_PRACTICE_BATCH_SOURCE_SHA256,
+    decode_input_authority, encode_resolved_practice_batch, resolved_practice_batch_digest,
+    PracticeBatchError, PracticeInputAuthorityLedger, ResolvedPracticeBatchError,
+    RESOLVED_PRACTICE_BATCH_FIELD_ORDER, RESOLVED_PRACTICE_BATCH_SOURCE_SHA256,
 };
 use serde_json::Value;
 
@@ -68,7 +67,8 @@ fn resolved_batch_schema_and_vectors_drive_the_rust_boundary() {
         .unwrap();
     let canonical = hex_bytes(valid["data"]["canonical_hex"].as_str().unwrap());
     let ledger = authority_ledger();
-    let batch = decode_resolved_practice_batch(&canonical, &ledger).unwrap();
+    let batch =
+        babylon_practice_contract::decode_resolved_practice_batch(&canonical, &ledger).unwrap();
 
     assert_eq!(manifest["data"]["canonical_example_bytes"], canonical.len());
     assert_eq!(manifest["data"]["max_items"], 4_096);
@@ -92,7 +92,8 @@ fn resolved_batch_schema_and_vectors_drive_the_rust_boundary() {
         )
         .unwrap();
         assert_eq!(
-            decode_resolved_practice_batch(&payload, &ledger).map(|_| ()),
+            babylon_practice_contract::decode_resolved_practice_batch(&payload, &ledger)
+                .map(|_| ()),
             Err(ResolvedPracticeBatchError::Batch(expected))
         );
     }

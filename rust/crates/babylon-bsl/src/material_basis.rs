@@ -12,6 +12,8 @@
 //! `:fuel` must be present, `> 0` and `≤ 1_000_000` (`E-PARSE-012`).
 
 use crate::reader::{Atom, SExpr};
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 
 /// §2.2's upper budget bound: `:fuel ≤ 1_000_000` (`E-PARSE-012`).
 pub const MAX_FUEL: i64 = 1_000_000;
@@ -50,7 +52,7 @@ impl SurfaceError {
 }
 
 impl std::fmt::Display for SurfaceError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         match self {
             Self::EmptyMaterialBasis => write!(
                 f,
@@ -143,14 +145,14 @@ pub fn check_rule_surface(rule: &SExpr) -> Result<(), SurfaceError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::reader::read;
-
     fn rule_with(material_basis: &str, fuel: &str) -> SExpr {
         let source = format!(
             "(rule demo/surface :role mechanic :evidence derived :material-basis {material_basis} :fuel {fuel} \
              (bindings) (effects (update-node self social-class/agitation (add 0.05i))))"
         );
-        read(&source).expect("test rule must parse").0
+        crate::reader::read(&source)
+            .expect("test rule must parse")
+            .0
     }
 
     #[test]
@@ -170,7 +172,7 @@ mod tests {
 
     #[test]
     fn a_missing_material_basis_violates_the_rule_production() {
-        let (rule, _) = read(
+        let (rule, _) = crate::reader::read(
             "(rule demo/ungrounded :fuel 64 (bindings) \
              (effects (update-node self social-class/agitation (add 0.05i))))",
         )

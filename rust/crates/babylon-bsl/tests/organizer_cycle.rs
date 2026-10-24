@@ -3,9 +3,11 @@
 use babylon_bsl::bindings::BindingVocabulary;
 use babylon_bsl::fuel::{CardinalityCeilings, IntrinsicCosts};
 use babylon_bsl::intrinsic_host::EmptyIntrinsicHost;
-use babylon_bsl::rule_pipeline::{load_rule, LoadContext, LoadError, LoadedRule, RuleExecution};
+use babylon_bsl::rule_pipeline;
+use babylon_bsl::rule_pipeline::{LoadContext, LoadError, LoadedRule, RuleExecution};
 use babylon_bsl::structural_verbs::CollectingSink;
-use babylon_bsl::tick::{run_tick, DefinesEnv};
+use babylon_bsl::tick;
+use babylon_bsl::tick::DefinesEnv;
 use babylon_bsl::typecheck::TypeEnv;
 use babylon_bsl::types::EnumRegistry;
 use babylon_bsl::vocabulary::ClosedVocabulary;
@@ -23,7 +25,7 @@ fn source(operation: &str, role: &str, position: &str) -> String {
 }
 
 fn load(source: &str) -> Result<LoadedRule, LoadError> {
-    load_rule(
+    rule_pipeline::load_rule(
         source,
         &LoadContext {
             vocabulary: &BindingVocabulary::default(),
@@ -72,7 +74,7 @@ fn organizer_graph_refusal_identifies_the_operation_even_without_subjects() {
         )
         .unwrap();
         let mut sink = CollectingSink::default();
-        let error = run_tick(
+        let error = tick::run_tick(
             &loaded,
             &TypeEnv {
                 fields: HashMap::new(),

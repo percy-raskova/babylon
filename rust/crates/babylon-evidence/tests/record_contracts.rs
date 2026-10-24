@@ -1,12 +1,12 @@
 //! Language-neutral contracts for the six frozen T3 run-record envelopes.
 
 use babylon_evidence::{
-    canonical_envelope, decode_envelope, practice_attempt_row_id, record_digest, Digest32,
-    PracticeAttemptLedger, PracticeAttemptRow, PracticeCandidateRow, PracticeCandidateSchedule,
-    PracticeDisposition, RunIdentity, RunIdentityField, SfsPreregistration, SfsRecordError,
-    SfsSample, SfsTrace, SfsWireError, T3Record,
+    decode_envelope, Digest32, PracticeAttemptLedger, PracticeAttemptRow, PracticeCandidateRow,
+    PracticeCandidateSchedule, PracticeDisposition, RunIdentity, RunIdentityField,
+    SfsPreregistration, SfsRecordError, SfsSample, SfsTrace, SfsWireError, T3Record,
 };
-use babylon_kernel::{clock::SessionId, content_digest::sha256_of};
+use babylon_kernel::clock::SessionId;
+use babylon_kernel::content_digest;
 use babylon_practice_contract::PracticeId;
 
 fn digest(tag: u8) -> Digest32 {
@@ -234,7 +234,10 @@ fn record_domains_and_payload_maxima_are_exact() {
 fn run_identity_encodes_all_eighteen_fields_in_exact_order() {
     let run = run_identity(None);
     let expected = literal_envelope(RunIdentity::DOMAIN, &expected_run_payload());
-    assert_eq!(canonical_envelope(&run).unwrap(), expected);
+    assert_eq!(
+        babylon_evidence::canonical_envelope(&run).unwrap(),
+        expected
+    );
     assert_eq!(decode_envelope::<RunIdentity>(&expected).unwrap(), run);
     assert_eq!(run.host_component_manifest_digest(), digest(5));
     assert_eq!(run.governed_footprint_manifest_digest(), digest(9));
@@ -263,13 +266,19 @@ fn run_identity_encodes_all_eighteen_fields_in_exact_order() {
         RunIdentityField::RngAlgorithmId,
         RunIdentityField::GraphContractId,
     ];
-    let baseline_bytes = canonical_envelope(&run).unwrap();
-    let baseline_digest = record_digest(&run).unwrap();
+    let baseline_bytes = babylon_evidence::canonical_envelope(&run).unwrap();
+    let baseline_digest = babylon_evidence::record_digest(&run).unwrap();
     for field in fields {
         let mutated = run_identity(Some(field));
         assert_eq!(run.differing_fields(&mutated), vec![field]);
-        assert_ne!(canonical_envelope(&mutated).unwrap(), baseline_bytes);
-        assert_ne!(record_digest(&mutated).unwrap(), baseline_digest);
+        assert_ne!(
+            babylon_evidence::canonical_envelope(&mutated).unwrap(),
+            baseline_bytes
+        );
+        assert_ne!(
+            babylon_evidence::record_digest(&mutated).unwrap(),
+            baseline_digest
+        );
     }
     let all_different = RunIdentity::new(
         SessionId::new("all-mutated").unwrap(),
@@ -299,7 +308,8 @@ fn run_identity_encodes_all_eighteen_fields_in_exact_order() {
 fn run_identity_session_and_ascii_id_bounds_are_closed() {
     let one = run_with_strings(SessionId::new("s").unwrap(), "r", "g").unwrap();
     assert_eq!(
-        decode_envelope::<RunIdentity>(&canonical_envelope(&one).unwrap()).unwrap(),
+        decode_envelope::<RunIdentity>(&babylon_evidence::canonical_envelope(&one).unwrap())
+            .unwrap(),
         one
     );
     let maximum = run_with_strings(
@@ -308,7 +318,7 @@ fn run_identity_session_and_ascii_id_bounds_are_closed() {
         &"g".repeat(64),
     )
     .unwrap();
-    let maximum_bytes = canonical_envelope(&maximum).unwrap();
+    let maximum_bytes = babylon_evidence::canonical_envelope(&maximum).unwrap();
     assert_eq!(payload_length::<RunIdentity>(&maximum_bytes), 870);
     assert_eq!(
         decode_envelope::<RunIdentity>(&maximum_bytes).unwrap(),
@@ -356,7 +366,10 @@ fn sample_wire_is_fixed_and_aggregate_validation_is_exact() {
     payload.extend_from_slice(digest(22).as_bytes());
     payload.extend_from_slice(&0_u64.to_be_bytes());
     let expected = literal_envelope(SfsSample::DOMAIN, &payload);
-    assert_eq!(canonical_envelope(&value).unwrap(), expected);
+    assert_eq!(
+        babylon_evidence::canonical_envelope(&value).unwrap(),
+        expected
+    );
     assert_eq!(decode_envelope::<SfsSample>(&expected).unwrap(), value);
     assert_eq!(
         SfsSample::new(0, digest(1), digest(2), digest(3), -1.0),
@@ -377,7 +390,7 @@ fn sample_wire_is_fixed_and_aggregate_validation_is_exact() {
 #[test]
 fn trace_requires_exact_window_count_start_and_consecutive_ticks() {
     let valid = SfsTrace::new(digest(40), digest(41), 42, 10, 2, continuing_samples(10)).unwrap();
-    let encoded = canonical_envelope(&valid).unwrap();
+    let encoded = babylon_evidence::canonical_envelope(&valid).unwrap();
     assert_eq!(encoded.last(), Some(&(2_u8)));
     assert_eq!(decode_envelope::<SfsTrace>(&encoded).unwrap(), valid);
     assert_eq!(valid.run_identity_digest(), digest(40));
@@ -429,14 +442,17 @@ fn trace_requires_exact_window_count_start_and_consecutive_ticks() {
 fn trace_wire_is_one_complete_literal_envelope_with_nested_sample_envelopes() {
     let trace = SfsTrace::new(digest(40), digest(41), 42, 10, 2, continuing_samples(10)).unwrap();
     let expected = literal_trace_envelope();
-    assert_eq!(canonical_envelope(&trace).unwrap(), expected);
+    assert_eq!(
+        babylon_evidence::canonical_envelope(&trace).unwrap(),
+        expected
+    );
     assert_eq!(decode_envelope::<SfsTrace>(&expected).unwrap(), trace);
 }
 
 #[test]
 fn trace_decode_refusal_precedence_pins_interval_and_classification() {
     let trace = SfsTrace::new(digest(40), digest(41), 42, 10, 2, continuing_samples(10)).unwrap();
-    let encoded = canonical_envelope(&trace).unwrap();
+    let encoded = babylon_evidence::canonical_envelope(&trace).unwrap();
     let mut invalid_code = encoded.clone();
     *invalid_code.last_mut().unwrap() = 6;
     assert_eq!(
@@ -471,7 +487,7 @@ fn trace_maximum_of_157_complete_sample_envelopes_round_trips() {
         samples.push(sample(tick, 0.0));
     }
     let trace = SfsTrace::new(digest(1), digest(2), 3, 0, 52, samples).unwrap();
-    let envelope = canonical_envelope(&trace).unwrap();
+    let envelope = babylon_evidence::canonical_envelope(&trace).unwrap();
     assert_eq!(payload_length::<SfsTrace>(&envelope), 22_067);
     assert_eq!(decode_envelope::<SfsTrace>(&envelope).unwrap(), trace);
 }
@@ -486,11 +502,23 @@ fn candidate_row_id_uses_the_exact_preimage_and_changes_with_every_field() {
     preimage.extend_from_slice(&7_u64.to_be_bytes());
     preimage.extend_from_slice(authority.as_bytes());
     preimage.extend_from_slice(intent.as_bytes());
-    let expected = Digest32::from_bytes(sha256_of(&preimage));
-    assert_eq!(practice_attempt_row_id(7, authority, intent), expected);
-    assert_ne!(practice_attempt_row_id(8, authority, intent), expected);
-    assert_ne!(practice_attempt_row_id(7, digest(52), intent), expected);
-    assert_ne!(practice_attempt_row_id(7, authority, digest(53)), expected);
+    let expected = Digest32::from_bytes(content_digest::sha256_of(&preimage));
+    assert_eq!(
+        babylon_evidence::practice_attempt_row_id(7, authority, intent),
+        expected
+    );
+    assert_ne!(
+        babylon_evidence::practice_attempt_row_id(8, authority, intent),
+        expected
+    );
+    assert_ne!(
+        babylon_evidence::practice_attempt_row_id(7, digest(52), intent),
+        expected
+    );
+    assert_ne!(
+        babylon_evidence::practice_attempt_row_id(7, authority, digest(53)),
+        expected
+    );
 }
 
 #[test]
@@ -498,13 +526,14 @@ fn candidate_schedule_sorts_exact_rows_and_rejects_duplicates_or_bad_ids() {
     let later = candidate(2, 1, 2);
     let same_tick_a = candidate(1, 3, 4);
     let same_tick_b = candidate(1, 3, 5);
-    let expected_first_intent = if practice_attempt_row_id(1, digest(3), digest(4))
-        < practice_attempt_row_id(1, digest(3), digest(5))
-    {
-        digest(4)
-    } else {
-        digest(5)
-    };
+    let expected_first_intent =
+        if babylon_evidence::practice_attempt_row_id(1, digest(3), digest(4))
+            < babylon_evidence::practice_attempt_row_id(1, digest(3), digest(5))
+        {
+            digest(4)
+        } else {
+            digest(5)
+        };
     let schedule = PracticeCandidateSchedule::new(vec![later, same_tick_b, same_tick_a]).unwrap();
     assert_eq!(schedule.rows()[0].attempt_tick(), 1);
     assert_eq!(
@@ -512,7 +541,7 @@ fn candidate_schedule_sorts_exact_rows_and_rejects_duplicates_or_bad_ids() {
         expected_first_intent
     );
     assert_eq!(schedule.rows()[2].attempt_tick(), 2);
-    let round_trip = canonical_envelope(&schedule).unwrap();
+    let round_trip = babylon_evidence::canonical_envelope(&schedule).unwrap();
     assert_eq!(
         decode_envelope::<PracticeCandidateSchedule>(&round_trip).unwrap(),
         schedule
@@ -529,12 +558,17 @@ fn candidate_schedule_sorts_exact_rows_and_rejects_duplicates_or_bad_ids() {
     let one_schedule = PracticeCandidateSchedule::new(vec![one.clone()]).unwrap();
     let mut expected_payload = Vec::new();
     expected_payload.extend_from_slice(&1_u32.to_be_bytes());
-    expected_payload.extend_from_slice(practice_attempt_row_id(7, digest(8), digest(9)).as_bytes());
+    expected_payload.extend_from_slice(
+        babylon_evidence::practice_attempt_row_id(7, digest(8), digest(9)).as_bytes(),
+    );
     expected_payload.extend_from_slice(&7_u64.to_be_bytes());
     expected_payload.extend_from_slice(digest(8).as_bytes());
     expected_payload.extend_from_slice(digest(9).as_bytes());
     let expected = literal_envelope(PracticeCandidateSchedule::DOMAIN, &expected_payload);
-    assert_eq!(canonical_envelope(&one_schedule).unwrap(), expected);
+    assert_eq!(
+        babylon_evidence::canonical_envelope(&one_schedule).unwrap(),
+        expected
+    );
     let mut bad_id = expected;
     bad_id[payload_start::<PracticeCandidateSchedule>() + 4] ^= 0xff;
     assert_eq!(
@@ -585,7 +619,7 @@ fn preregistration_derives_start_and_closes_codes_and_accessors() {
         PracticeId::CapitalStrike,
     ] {
         let value = preregistration(10, 2, practice).unwrap();
-        let bytes = canonical_envelope(&value).unwrap();
+        let bytes = babylon_evidence::canonical_envelope(&value).unwrap();
         assert_eq!(
             decode_envelope::<SfsPreregistration>(&bytes).unwrap(),
             value
@@ -619,7 +653,7 @@ fn preregistration_derives_start_and_closes_codes_and_accessors() {
     payload.extend_from_slice(digest(40).as_bytes());
     payload.extend_from_slice(digest(37).as_bytes());
     assert_eq!(
-        canonical_envelope(&exact).unwrap(),
+        babylon_evidence::canonical_envelope(&exact).unwrap(),
         literal_envelope(SfsPreregistration::DOMAIN, &payload)
     );
     assert_eq!(
@@ -637,7 +671,7 @@ fn preregistration_derives_start_and_closes_codes_and_accessors() {
 #[test]
 fn preregistration_decode_rejects_stored_start_policy_cadence_and_practice_code() {
     let value = preregistration(10, 2, PracticeId::Organize).unwrap();
-    let encoded = canonical_envelope(&value).unwrap();
+    let encoded = babylon_evidence::canonical_envelope(&value).unwrap();
     let payload = payload_start::<SfsPreregistration>();
     let mut wrong_start = encoded.clone();
     wrong_start[payload + 8..payload + 16].copy_from_slice(&99_u64.to_be_bytes());
@@ -695,11 +729,11 @@ fn attempt_ledger_sorts_keeps_rejections_and_projects_exact_candidates() {
     let expected =
         PracticeCandidateSchedule::new(vec![accepted_candidate, rejected_candidate]).unwrap();
     assert_eq!(
-        canonical_envelope(&projected).unwrap(),
-        canonical_envelope(&expected).unwrap()
+        babylon_evidence::canonical_envelope(&projected).unwrap(),
+        babylon_evidence::canonical_envelope(&expected).unwrap()
     );
     assert_eq!(projected.rows().len(), 2);
-    let bytes = canonical_envelope(&ledger).unwrap();
+    let bytes = babylon_evidence::canonical_envelope(&ledger).unwrap();
     assert_eq!(
         decode_envelope::<PracticeAttemptLedger>(&bytes).unwrap(),
         ledger
@@ -732,11 +766,13 @@ fn attempt_rows_reject_zero_duplicate_unknown_and_mismatched_identity() {
     let row = PracticeAttemptRow::new(candidate(1, 2, 3), PracticeDisposition::Accepted, digest(4))
         .unwrap();
     let ledger = PracticeAttemptLedger::new(digest(5), vec![row]).unwrap();
-    let encoded = canonical_envelope(&ledger).unwrap();
+    let encoded = babylon_evidence::canonical_envelope(&ledger).unwrap();
     let mut expected_payload = Vec::new();
     expected_payload.extend_from_slice(digest(5).as_bytes());
     expected_payload.extend_from_slice(&1_u32.to_be_bytes());
-    expected_payload.extend_from_slice(practice_attempt_row_id(1, digest(2), digest(3)).as_bytes());
+    expected_payload.extend_from_slice(
+        babylon_evidence::practice_attempt_row_id(1, digest(2), digest(3)).as_bytes(),
+    );
     expected_payload.extend_from_slice(&1_u64.to_be_bytes());
     expected_payload.extend_from_slice(digest(2).as_bytes());
     expected_payload.extend_from_slice(digest(3).as_bytes());
@@ -829,13 +865,13 @@ fn row_count_maximum_succeeds_and_plus_one_refuses_before_sorting() {
     candidates.pop();
     attempts.pop();
     let schedule = PracticeCandidateSchedule::new(candidates).unwrap();
-    let schedule_bytes = canonical_envelope(&schedule).unwrap();
+    let schedule_bytes = babylon_evidence::canonical_envelope(&schedule).unwrap();
     assert_eq!(
         payload_length::<PracticeCandidateSchedule>(&schedule_bytes),
         6_815_644
     );
     let ledger = PracticeAttemptLedger::new(digest(73), attempts).unwrap();
-    let ledger_bytes = canonical_envelope(&ledger).unwrap();
+    let ledger_bytes = babylon_evidence::canonical_envelope(&ledger).unwrap();
     assert_eq!(
         payload_length::<PracticeAttemptLedger>(&ledger_bytes),
         8_978_331

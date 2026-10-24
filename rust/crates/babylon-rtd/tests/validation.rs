@@ -1,4 +1,9 @@
-use babylon_rtd::*;
+use babylon_rtd::{
+    Audience, Coverage, DecisionSurface, DimensionCoordinate, Durability, Dyad, DyadKind,
+    EvidenceClass, Facet, FacetFamily, FlowKind, Gap, GapReason, Hyperedge, HyperedgeKind,
+    MembershipKind, ReferenceDigest, ReferenceFlow, RtdCollectionKind, RtdDossierDraft, RtdError,
+    ScaleMembership, Status, TypedIdentity, ValueKind, RTD_SCHEMA_ID,
+};
 
 const ZERO_DIGEST: &str = "0000000000000000000000000000000000000000000000000000000000000000";
 const QCEW_DIGEST: &str = "34c2bbb935f79b3c8076a97092b004b14cca120e8272b93c35b3ac9dc2721d13";
@@ -164,46 +169,55 @@ fn commuter_flow(flow_id: TypedIdentity, payload: Vec<TypedIdentity>) -> Referen
 }
 
 fn assert_error(expected: RtdError, draft: &RtdDossierDraft) {
-    assert_eq!(validate_draft(draft), Err(expected));
+    assert_eq!(babylon_rtd::validate_draft(draft), Err(expected));
 }
 
 #[test]
 fn empty_administrative_draft_and_focus_permutations_validate() {
-    assert_eq!(validate_draft(&base_draft()), Ok(()));
+    assert_eq!(babylon_rtd::validate_draft(&base_draft()), Ok(()));
     let mut first = base_draft();
     first.focus = vec![test_identity("a"), test_identity("b")];
     let mut second = base_draft();
     second.focus = vec![test_identity("b"), test_identity("a")];
-    assert_eq!(validate_draft(&first), Ok(()));
-    assert_eq!(validate_draft(&second), Ok(()));
+    assert_eq!(babylon_rtd::validate_draft(&first), Ok(()));
+    assert_eq!(babylon_rtd::validate_draft(&second), Ok(()));
     let mut ordered_surface = base_draft();
     ordered_surface.focus.push(test_identity("a"));
     ordered_surface.decision_surface.signal_refs = vec![test_identity("a"), test_identity("a")];
-    assert_eq!(validate_draft(&ordered_surface), Ok(()));
+    assert_eq!(babylon_rtd::validate_draft(&ordered_surface), Ok(()));
 }
 
 #[test]
 fn untrusted_json_boundary_classifies_shape_and_normalizes_float_negative_zero() {
-    assert_eq!(parse_draft_json(b"{"), Err(RtdError::Json));
-    assert_eq!(parse_draft_json(b"{}"), Err(RtdError::Json));
-    assert_eq!(parse_draft_json(b"{}{}"), Err(RtdError::Json));
+    assert_eq!(babylon_rtd::parse_draft_json(b"{"), Err(RtdError::Json));
+    assert_eq!(babylon_rtd::parse_draft_json(b"{}"), Err(RtdError::Json));
+    assert_eq!(babylon_rtd::parse_draft_json(b"{}{}"), Err(RtdError::Json));
     let deep = format!("{}{}", "[".repeat(33), "]".repeat(33));
-    assert_eq!(parse_draft_json(deep.as_bytes()), Err(RtdError::JsonDepth));
+    assert_eq!(
+        babylon_rtd::parse_draft_json(deep.as_bytes()),
+        Err(RtdError::JsonDepth)
+    );
     let duplicate = br#"{"schema":"x","schema":"y"}"#;
-    assert_eq!(parse_draft_json(duplicate), Err(RtdError::DuplicateKey));
+    assert_eq!(
+        babylon_rtd::parse_draft_json(duplicate),
+        Err(RtdError::DuplicateKey)
+    );
     let unknown = valid_json().replace(
         "\"decision_surface\"",
         "\"unexpected\":true,\"decision_surface\"",
     );
     assert_eq!(
-        parse_draft_json(unknown.as_bytes()),
+        babylon_rtd::parse_draft_json(unknown.as_bytes()),
         Err(RtdError::UnknownField)
     );
     let bad_enum = valid_json().replace("\"ADMIN_MATERIAL\"", "\"SECRET\"");
-    assert_eq!(parse_draft_json(bad_enum.as_bytes()), Err(RtdError::Enum));
+    assert_eq!(
+        babylon_rtd::parse_draft_json(bad_enum.as_bytes()),
+        Err(RtdError::Enum)
+    );
     let bad_version = valid_json().replace("\"schema_version\":1", "\"schema_version\":2");
     assert_eq!(
-        parse_draft_json(bad_version.as_bytes()),
+        babylon_rtd::parse_draft_json(bad_version.as_bytes()),
         Err(RtdError::SchemaVersion)
     );
     let mut facet = county_facet();
@@ -212,7 +226,8 @@ fn untrusted_json_boundary_classifies_shape_and_normalizes_float_negative_zero()
     facet.value_kind = ValueKind::Float64Bits;
     facet.value_bits_or_null = Some("8000000000000000".to_owned());
     let payload = facet_json(&facet);
-    let parsed = parse_draft_json(payload.as_bytes()).expect("valid negative-zero draft");
+    let parsed =
+        babylon_rtd::parse_draft_json(payload.as_bytes()).expect("valid negative-zero draft");
     assert_eq!(
         parsed.facets[0].value_bits_or_null.as_deref(),
         Some("0000000000000000")
@@ -223,7 +238,7 @@ fn untrusted_json_boundary_classifies_shape_and_normalizes_float_negative_zero()
 fn structural_refusal_taxonomy_matches_contract_for_numeric_enums_and_missing_versions() {
     let numeric_audience = valid_json().replace("\"ADMIN_MATERIAL\"", "7");
     assert_eq!(
-        parse_draft_json(numeric_audience.as_bytes()),
+        babylon_rtd::parse_draft_json(numeric_audience.as_bytes()),
         Err(RtdError::Enum)
     );
 
@@ -232,16 +247,19 @@ fn structural_refusal_taxonomy_matches_contract_for_numeric_enums_and_missing_ve
     facet.unit_id = registry_identity("unit", "usd-current");
     facet.value_kind = ValueKind::Float64Bits;
     let nested = facet_json(&facet).replace("\"coverage\":\"COMPLETE\"", "\"coverage\":7");
-    assert_eq!(parse_draft_json(nested.as_bytes()), Err(RtdError::Enum));
+    assert_eq!(
+        babylon_rtd::parse_draft_json(nested.as_bytes()),
+        Err(RtdError::Enum)
+    );
 
     let missing_schema_version = valid_json().replace("\"schema_version\":1,", "");
     assert_eq!(
-        parse_draft_json(missing_schema_version.as_bytes()),
+        babylon_rtd::parse_draft_json(missing_schema_version.as_bytes()),
         Err(RtdError::SchemaVersion)
     );
     let missing_projection_version = valid_json().replace("\"projection_version\":1,", "");
     assert_eq!(
-        parse_draft_json(missing_projection_version.as_bytes()),
+        babylon_rtd::parse_draft_json(missing_projection_version.as_bytes()),
         Err(RtdError::SchemaVersion)
     );
 }
@@ -324,7 +342,7 @@ fn every_relation_binding_and_payload_mutation_is_checked() {
     ] {
         let mut draft = base_draft();
         draft.dyads.push(dyad(kind));
-        assert_eq!(validate_draft(&draft), Ok(()));
+        assert_eq!(babylon_rtd::validate_draft(&draft), Ok(()));
     }
     let mut command_draft = base_draft();
     command_draft.dyads.push(dyad(DyadKind::Command));
@@ -333,7 +351,7 @@ fn every_relation_binding_and_payload_mutation_is_checked() {
     border.destination_ref = identity("canada", "external", "iso3166-1");
     border.native_scale = identity("border", "native-scale", "test");
     command_draft.flows.push(border);
-    assert_eq!(validate_draft(&command_draft), Ok(()));
+    assert_eq!(babylon_rtd::validate_draft(&command_draft), Ok(()));
     let mut wrong = dyad(DyadKind::Presence);
     wrong.native_scale = identity("wrong", "native-scale", "test");
     let mut draft = base_draft();
@@ -349,7 +367,7 @@ fn every_relation_binding_and_payload_mutation_is_checked() {
         .flows
         .push(commuter_flow(flow_id, vec![facet.facet_id.clone()]));
     draft.facets.push(facet);
-    assert_eq!(validate_draft(&draft), Ok(()));
+    assert_eq!(babylon_rtd::validate_draft(&draft), Ok(()));
     draft.flows[0].payload_facets.clear();
     assert_error(RtdError::NativeGrain, &draft);
     let flow_id = identity("flow-2", "flow", "test");
@@ -431,7 +449,7 @@ fn geography_and_administration_refusals_are_exact() {
     };
     let mut draft = base_draft();
     draft.hyperedges.push(edge);
-    assert_eq!(validate_draft(&draft), Ok(()));
+    assert_eq!(babylon_rtd::validate_draft(&draft), Ok(()));
 }
 
 #[test]
@@ -476,7 +494,7 @@ fn membership_and_h3_gap_refusals_are_exact() {
     };
     let mut draft = base_draft();
     draft.gaps.push(gap.clone());
-    assert_eq!(validate_draft(&draft), Ok(()));
+    assert_eq!(babylon_rtd::validate_draft(&draft), Ok(()));
     draft.gaps[0].required_producer_or_null = Some("PER-99".to_owned());
     assert_error(RtdError::H3BeforePer21, &draft);
 }
@@ -505,7 +523,7 @@ fn append_uses_every_closed_collection_limit_without_mutating_failure_input() {
         let original = vec![0_u8; limit];
         let before = original.clone();
         assert_eq!(
-            append_bounded(&original, 1, kind),
+            babylon_rtd::append_bounded(&original, 1, kind),
             Err(RtdError::LimitExceeded)
         );
         assert_eq!(original, before);

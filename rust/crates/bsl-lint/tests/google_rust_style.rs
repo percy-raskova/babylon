@@ -205,6 +205,12 @@ fn a_module_import_used_as_a_namespace_is_clean() {
 }
 
 #[test]
+fn a_module_import_whose_name_is_a_local_function_is_clean() {
+    let source = "use babylon_bsl::scenario;\n\nfn scenario(body: &str) -> String {\n    body.to_owned()\n}\n\npub fn run() {\n    let _ = scenario(\"x\");\n    let _ = scenario::load();\n}\n";
+    assert_clean(LEAF, source);
+}
+
+#[test]
 fn local_function_and_closure_calls_are_not_free_function_imports() {
     let source = "pub fn run() {\n    let helper = |value: u8| value + 1;\n    let _ = helper(1);\n    local(2);\n}\n\nfn local(value: u8) -> u8 {\n    value\n}\n";
     assert_clean(LEAF, source);

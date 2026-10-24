@@ -38,6 +38,7 @@ struct ImportCandidate {
     name: String,
     line: usize,
     rendered: String,
+    scope: Vec<String>,
 }
 
 /// An inline `module::Type` reference that should normally be imported instead.
@@ -87,6 +88,8 @@ struct StyleVisitor<'a> {
     non_leaf: bool,
     in_client_crate: bool,
     module_stack: Vec<bool>,
+    scope: Vec<String>,
+    local_fns: BTreeMap<Vec<String>, BTreeSet<String>>,
     fn_depth: usize,
     item_depth: usize,
     lines: SourceLines<'a>,
@@ -104,6 +107,8 @@ impl<'a> StyleVisitor<'a> {
             non_leaf,
             in_client_crate,
             module_stack: Vec::new(),
+            scope: Vec::new(),
+            local_fns: BTreeMap::new(),
             fn_depth: 0,
             item_depth: 0,
             lines: SourceLines::new(source),
@@ -136,6 +141,17 @@ impl<'a> StyleVisitor<'a> {
 
     fn finish_imports(&mut self) {
         for candidate in std::mem::take(&mut self.imports) {
+            let shadowed = self
+                .local_fns
+                .get(&candidate.scope)
+                .is_some_and(|names| names.contains(&candidate.name));
+            if shadowed {
+                // The same module defines `fn <name>`, so the lowercase leaf can
+                // only be a module import: modules and functions live in
+                // different namespaces, and a bare call resolves to the local
+                // function.
+                continue;
+            }
             if self.calls.contains(&candidate.name) {
                 self.push(
                     candidate.line,
@@ -303,6 +319,7 @@ impl<'a> StyleVisitor<'a> {
             name: name.to_owned(),
             line: use_line,
             rendered,
+            scope: self.scope.clone(),
         });
     }
 
@@ -431,14 +448,22 @@ impl<'ast> Visit<'ast> for StyleVisitor<'_> {
         let inline = item.content.is_some();
         if inline {
             self.module_stack.push(has_cfg_test(&item.attrs));
+            self.scope.push(item.ident.to_string());
         }
         syn::visit::visit_item_mod(self, item);
         if inline {
             self.module_stack.pop();
+            self.scope.pop();
         }
     }
 
     fn visit_item_fn(&mut self, item: &'ast ItemFn) {
+        if self.fn_depth == 0 {
+            self.local_fns
+                .entry(self.scope.clone())
+                .or_default()
+                .insert(item.sig.ident.to_string());
+        }
         self.fn_depth += 1;
         syn::visit::visit_item_fn(self, item);
         self.fn_depth -= 1;

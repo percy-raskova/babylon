@@ -2,12 +2,13 @@
 
 use std::collections::TryReserveError;
 
-use babylon_kernel::content_digest::sha256_of;
+use babylon_kernel::content_digest;
+
 use babylon_kernel::replay::{ReplayIdentityError, ReplaySessionId};
 use babylon_kernel::tick_content_hash::OrderedPracticeActionBatchDigest;
 
+use crate::ResolvedPracticeBatchItem;
 use crate::{
-    encode_practice_intent, practice_intent_digest, validate_resolved_practice_batch,
     PracticeInputAuthorityLedger, PracticeIntent, PracticeIntentError, ResolvedPracticeBatch,
     ResolvedPracticeBatchError, MAX_PRACTICE_INTENT_CANONICAL_BYTES,
     MAX_RESOLVED_PRACTICE_BATCH_ITEMS,
@@ -185,7 +186,7 @@ pub fn encode_practice_action_id_preimage(
     output.extend_from_slice(&PRACTICE_ACTION_ID_SCHEMA_VERSION.to_be_bytes());
     output.extend_from_slice(&session_bytes);
     output.extend_from_slice(&PRACTICE_INTENT_SCHEMA_VERSION.to_be_bytes());
-    output.extend_from_slice(&practice_intent_digest(intent)?);
+    output.extend_from_slice(&crate::practice_intent_digest(intent)?);
     debug_assert_eq!(output.len(), capacity);
     Ok(output)
 }
@@ -199,7 +200,7 @@ pub fn practice_action_id(
     intent: &PracticeIntent,
 ) -> Result<PracticeActionId, OrderedPracticeActionError> {
     let preimage = encode_practice_action_id_preimage(session, intent)?;
-    Ok(PracticeActionId(sha256_of(&preimage)))
+    Ok(PracticeActionId(content_digest::sha256_of(&preimage)))
 }
 
 impl OrderedPracticeActionBatch {
@@ -227,7 +228,7 @@ impl OrderedPracticeActionBatch {
         source: &ResolvedPracticeBatch,
         trusted_ledger: &PracticeInputAuthorityLedger,
     ) -> Result<Self, OrderedPracticeActionError> {
-        validate_resolved_practice_batch(source, trusted_ledger)?;
+        crate::validate_resolved_practice_batch(source, trusted_ledger)?;
         build_batch(session, source.resolve_tick, &source.items)
     }
 
@@ -271,7 +272,7 @@ impl OrderedPracticeActionBatch {
 fn build_batch(
     session: ReplaySessionId,
     resolve_tick: u64,
-    source_items: &[crate::ResolvedPracticeBatchItem],
+    source_items: &[ResolvedPracticeBatchItem],
 ) -> Result<OrderedPracticeActionBatch, OrderedPracticeActionError> {
     let mut items = reserve_items(source_items.len())?;
     let mut capacity = ORDERED_BATCH_FIXED_BYTES
@@ -289,7 +290,7 @@ fn build_batch(
                 field: "canonical input ordinal",
                 value: index,
             })?;
-        let intent_bytes = encode_practice_intent(&source.intent)?;
+        let intent_bytes = crate::encode_practice_intent(&source.intent)?;
         validate_intent_length(index, intent_bytes.len())?;
         capacity = checked_batch_capacity(capacity, intent_bytes.len())?;
         items.push(OrderedPracticeAction {
@@ -322,7 +323,8 @@ fn encode_batch(
     canonical_bytes.extend_from_slice(&item_count.to_be_bytes());
     append_ordered_items(&mut canonical_bytes, &items)?;
     debug_assert_eq!(canonical_bytes.len(), capacity);
-    let digest = OrderedPracticeActionBatchDigest::from_bytes(sha256_of(&canonical_bytes));
+    let digest =
+        OrderedPracticeActionBatchDigest::from_bytes(content_digest::sha256_of(&canonical_bytes));
     Ok(OrderedPracticeActionBatch {
         session,
         resolve_tick,
@@ -337,7 +339,7 @@ fn append_ordered_items(
     items: &[OrderedPracticeAction],
 ) -> Result<(), OrderedPracticeActionError> {
     for item in items.iter().take(MAX_RESOLVED_PRACTICE_BATCH_ITEMS + 1) {
-        let intent_bytes = encode_practice_intent(&item.intent)?;
+        let intent_bytes = crate::encode_practice_intent(&item.intent)?;
         let intent_length = u16::try_from(intent_bytes.len()).map_err(|_| {
             OrderedPracticeActionError::IntegerConversion {
                 field: "ordered practice action intent length",
@@ -417,18 +419,18 @@ fn reserve_bytes(
 #[cfg(test)]
 mod tests {
     use super::{
-        checked_batch_capacity, validate_intent_length, OrderedPracticeActionError,
-        MAX_ORDERED_PRACTICE_ACTION_BATCH_BYTES, MAX_PRACTICE_INTENT_CANONICAL_BYTES,
+        OrderedPracticeActionError, MAX_ORDERED_PRACTICE_ACTION_BATCH_BYTES,
+        MAX_PRACTICE_INTENT_CANONICAL_BYTES,
     };
 
     #[test]
     fn ordered_action_encoders_accept_each_maximum_and_refuse_plus_one() {
         assert_eq!(
-            validate_intent_length(0, MAX_PRACTICE_INTENT_CANONICAL_BYTES),
+            super::validate_intent_length(0, MAX_PRACTICE_INTENT_CANONICAL_BYTES),
             Ok(())
         );
         assert_eq!(
-            validate_intent_length(0, MAX_PRACTICE_INTENT_CANONICAL_BYTES + 1),
+            super::validate_intent_length(0, MAX_PRACTICE_INTENT_CANONICAL_BYTES + 1),
             Err(OrderedPracticeActionError::IntentLength {
                 index: 0,
                 actual: MAX_PRACTICE_INTENT_CANONICAL_BYTES + 1,
@@ -436,11 +438,11 @@ mod tests {
         );
         let accepted_capacity = MAX_ORDERED_PRACTICE_ACTION_BATCH_BYTES - 37;
         assert_eq!(
-            checked_batch_capacity(accepted_capacity, 1),
+            super::checked_batch_capacity(accepted_capacity, 1),
             Ok(MAX_ORDERED_PRACTICE_ACTION_BATCH_BYTES)
         );
         assert_eq!(
-            checked_batch_capacity(accepted_capacity + 1, 1),
+            super::checked_batch_capacity(accepted_capacity + 1, 1),
             Err(OrderedPracticeActionError::BatchLength {
                 actual: MAX_ORDERED_PRACTICE_ACTION_BATCH_BYTES + 1,
             })

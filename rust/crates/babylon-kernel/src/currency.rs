@@ -20,6 +20,7 @@
 //! #492/ADR194) — see [`Currency::mul_ratio`].
 use crate::scalars::{Coefficient, Ratio};
 use bnum::types::I256;
+use std::cmp::Ordering;
 
 /// A loud, non-recoverable-by-the-algebra overflow (III.11: run-time loud
 /// failure — the caller is expected to let this propagate, per spec §9
@@ -194,9 +195,9 @@ pub fn round_half_even_div(numerator: i128, denominator: i128) -> i128 {
     // this comparison for every input. `unsigned_abs` returns u128, where
     // every magnitude is representable, so the compare is total.
     match twice_r.unsigned_abs().cmp(&denominator.unsigned_abs()) {
-        std::cmp::Ordering::Less => q,
-        std::cmp::Ordering::Greater => q + numerator.signum() * denominator.signum(),
-        std::cmp::Ordering::Equal => {
+        Ordering::Less => q,
+        Ordering::Greater => q + numerator.signum() * denominator.signum(),
+        Ordering::Equal => {
             if q % 2 == 0 {
                 q
             } else {
@@ -228,9 +229,9 @@ fn round_half_even_div_i256(numerator: I256, denominator: I256) -> I256 {
     let twice_r = r * two; // i256 headroom: cannot overflow for i128-derived inputs
     let step = numerator.signum() * denominator.signum();
     match twice_r.abs().cmp(&denominator.abs()) {
-        std::cmp::Ordering::Less => q,
-        std::cmp::Ordering::Greater => q + step,
-        std::cmp::Ordering::Equal => {
+        Ordering::Less => q,
+        Ordering::Greater => q + step,
+        Ordering::Equal => {
             if q % two == widen(0) {
                 q
             } else {
@@ -242,7 +243,7 @@ fn round_half_even_div_i256(numerator: I256, denominator: I256) -> I256 {
 
 #[cfg(test)]
 mod tests {
-    use super::{round_half_even_div, Currency, CurrencyOverflow};
+    use super::{Currency, CurrencyOverflow};
     use crate::scalars::{Coefficient, Ratio};
 
     #[test]
@@ -257,11 +258,11 @@ mod tests {
         // 1 / i128::MIN is ≈ -5.9e-39, which half-even-rounds to 0. The
         // wrapped path returns -1. Wrong money, quietly, in release only —
         // the III.11 failure mode exactly.
-        assert_eq!(round_half_even_div(1, i128::MIN), 0);
-        assert_eq!(round_half_even_div(-1, i128::MIN), 0);
+        assert_eq!(super::round_half_even_div(1, i128::MIN), 0);
+        assert_eq!(super::round_half_even_div(-1, i128::MIN), 0);
         // The symmetric hazard on the numerator side: |2r| can itself reach
         // i128::MIN's magnitude for a large enough divisor.
-        assert_eq!(round_half_even_div(i128::MIN, i128::MIN), 1);
+        assert_eq!(super::round_half_even_div(i128::MIN, i128::MIN), 1);
     }
 
     #[test]
@@ -290,17 +291,17 @@ mod tests {
 
     #[test]
     fn round_half_even_div_ties_to_even() {
-        assert_eq!(round_half_even_div(5, 2), 2); // 2.5 -> 2 (even)
-        assert_eq!(round_half_even_div(7, 2), 4); // 3.5 -> 4 (even)
-        assert_eq!(round_half_even_div(-5, 2), -2); // -2.5 -> -2 (even)
-        assert_eq!(round_half_even_div(-7, 2), -4); // -3.5 -> -4 (even)
+        assert_eq!(super::round_half_even_div(5, 2), 2); // 2.5 -> 2 (even)
+        assert_eq!(super::round_half_even_div(7, 2), 4); // 3.5 -> 4 (even)
+        assert_eq!(super::round_half_even_div(-5, 2), -2); // -2.5 -> -2 (even)
+        assert_eq!(super::round_half_even_div(-7, 2), -4); // -3.5 -> -4 (even)
     }
 
     #[test]
     fn round_half_even_div_off_tie_rounds_to_nearest() {
-        assert_eq!(round_half_even_div(7, 3), 2); // 2.33 -> 2
-        assert_eq!(round_half_even_div(8, 3), 3); // 2.67 -> 3
-        assert_eq!(round_half_even_div(-8, 3), -3);
+        assert_eq!(super::round_half_even_div(7, 3), 2); // 2.33 -> 2
+        assert_eq!(super::round_half_even_div(8, 3), 3); // 2.67 -> 3
+        assert_eq!(super::round_half_even_div(-8, 3), -3);
     }
 
     #[test]

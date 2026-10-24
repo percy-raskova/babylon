@@ -21,8 +21,12 @@
 //! that operand.
 
 use crate::fuel::{cost, CardinalityCeilings, IntrinsicCosts};
+use crate::probability::FiniteKernel;
 use crate::probability::{FINITE_KERNEL_DRAW_BASE, QUANTIZE_MASS_BASE};
 use crate::reader::{Atom, SExpr};
+use crate::rule_pipeline::RuleExecution;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 
 /// The nine typed structural verbs plus `emit` (§2.8) — `update-edge` and
 /// `update-hyperedge` are R9 chapters C2 and C12's additions (D35, D65).
@@ -151,7 +155,7 @@ impl BoundError {
 }
 
 impl std::fmt::Display for BoundError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         match self {
             Self::BoundExceeded {
                 rule_id,
@@ -653,7 +657,7 @@ pub fn rule_bound(
 ) -> Result<u64, BoundError> {
     let items = rule_items(rule)?;
     if crate::native_cycle::classify(rule).map_err(|error| malformed(error.to_string()))?
-        != crate::rule_pipeline::RuleExecution::Graph
+        != RuleExecution::Graph
     {
         return Ok(crate::fuel::MATERIAL_CYCLE_INVOCATION_COST);
     }
@@ -865,7 +869,7 @@ fn replace_at_path(expr: &mut SExpr, path: &[u32]) -> Result<(), BoundError> {
 /// kernel expression exceeds or violates the configured static bounds.
 pub fn check_rule_with_kernel(
     rule: &SExpr,
-    kernel: Option<&crate::probability::FiniteKernel>,
+    kernel: Option<&FiniteKernel>,
     ceilings: &CardinalityCeilings,
     intrinsics: &IntrinsicCosts,
 ) -> Result<u64, BoundError> {
@@ -905,7 +909,6 @@ pub fn check_rule_with_kernel(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::reader::read;
     use std::collections::HashMap;
 
     /// The §5.6 worked example, verbatim — the same source `canonical_ast`
@@ -923,7 +926,9 @@ mod tests {
     "#;
 
     fn e(source: &str) -> crate::reader::SExpr {
-        read(source).expect("test source must parse").0
+        crate::reader::read(source)
+            .expect("test source must parse")
+            .0
     }
 
     fn ceilings() -> CardinalityCeilings {

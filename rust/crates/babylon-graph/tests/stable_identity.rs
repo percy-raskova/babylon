@@ -7,7 +7,8 @@ use babylon_graph::stable_element::{
     MAX_STABLE_CARRIER_ACTIVE_ELEMENTS, MAX_STABLE_CARRIER_BYTES,
     MAX_STABLE_RESOLVER_MANIFEST_BYTES, MAX_STABLE_RESOLVER_ROWS,
 };
-use babylon_graph::stable_state::{encode_stable_graph_state, StableGraphState};
+use babylon_graph::stable_state;
+use babylon_graph::stable_state::StableGraphState;
 use babylon_graph::state_hash::CanonicalState;
 use babylon_graph::substrate::{GraphSubstrate, HyperedgeId, NodeId};
 use babylon_kernel::currency::Currency;
@@ -524,7 +525,7 @@ fn stable_state<G: GraphSubstrate + CanonicalState>(value: &StateFixture<G>) -> 
         &value.hyperedge_names,
     )
     .unwrap();
-    encode_stable_graph_state(&value.graph, &resolver).unwrap()
+    stable_state::encode_stable_graph_state(&value.graph, &resolver).unwrap()
 }
 
 #[test]
@@ -596,7 +597,7 @@ fn stable_graph_state_writes_every_empty_section() {
         &HashMap::new(),
     )
     .unwrap();
-    let state = encode_stable_graph_state(&graph, &resolver).unwrap();
+    let state = stable_state::encode_stable_graph_state(&graph, &resolver).unwrap();
     let expected = [
         b"babylon.stable-graph\0".as_slice(),
         &1_u32.to_be_bytes(),
@@ -660,7 +661,7 @@ fn stable_graph_state_refuses_topology_and_fact_ambiguity() {
     let mut changed = value.graph.clone();
     changed.add_node("class").unwrap();
     assert_eq!(
-        encode_stable_graph_state(&changed, &resolver),
+        stable_state::encode_stable_graph_state(&changed, &resolver),
         Err(StableIdentityError::TopologyChanged)
     );
 
@@ -669,14 +670,14 @@ fn stable_graph_state_refuses_topology_and_fact_ambiguity() {
         .update_node_currency(owners, "class/power", Currency::from_micro_units(1))
         .unwrap();
     assert!(matches!(
-        encode_stable_graph_state(&collision, &resolver),
+        stable_state::encode_stable_graph_state(&collision, &resolver),
         Err(StableIdentityError::NumericLaneCollision { .. })
     ));
 
     let mut duplicate = StateFacts::from_graph(&value.graph);
     duplicate.node_f64.push(duplicate.node_f64[0].clone());
     assert_eq!(
-        encode_stable_graph_state(&duplicate, &resolver),
+        stable_state::encode_stable_graph_state(&duplicate, &resolver),
         Err(StableIdentityError::DuplicateFact {
             section: "node f64 attributes",
         })
@@ -687,7 +688,7 @@ fn stable_graph_state_refuses_topology_and_fact_ambiguity() {
         .node_f64
         .push((NodeId(999), "class/ghost".to_owned(), 1.0));
     assert_eq!(
-        encode_stable_graph_state(&unknown_owner, &resolver),
+        stable_state::encode_stable_graph_state(&unknown_owner, &resolver),
         Err(StableIdentityError::UnknownNode { node: NodeId(999) })
     );
 
@@ -700,14 +701,14 @@ fn stable_graph_state_refuses_topology_and_fact_ambiguity() {
         1.0,
     ));
     assert!(matches!(
-        encode_stable_graph_state(&absent_edge, &resolver),
+        stable_state::encode_stable_graph_state(&absent_edge, &resolver),
         Err(StableIdentityError::UnknownEdge { .. })
     ));
 
     let mut duplicate_member = StateFacts::from_graph(&value.graph);
     duplicate_member.hyperedges[0].2.push(owners);
     assert_eq!(
-        encode_stable_graph_state(&duplicate_member, &resolver),
+        stable_state::encode_stable_graph_state(&duplicate_member, &resolver),
         Err(StableIdentityError::InvalidHyperedge {
             hyperedge: duplicate_member.hyperedges[0].0,
         })
@@ -716,14 +717,14 @@ fn stable_graph_state_refuses_topology_and_fact_ambiguity() {
     let mut empty_hyperedge = StateFacts::from_graph(&value.graph);
     empty_hyperedge.hyperedges[0].2.clear();
     assert!(matches!(
-        encode_stable_graph_state(&empty_hyperedge, &resolver),
+        stable_state::encode_stable_graph_state(&empty_hyperedge, &resolver),
         Err(StableIdentityError::InvalidHyperedge { .. })
     ));
 
     let mut unknown_member = StateFacts::from_graph(&value.graph);
     unknown_member.hyperedges[0].2[0] = NodeId(999);
     assert!(matches!(
-        encode_stable_graph_state(&unknown_member, &resolver),
+        stable_state::encode_stable_graph_state(&unknown_member, &resolver),
         Err(StableIdentityError::InvalidHyperedge { .. })
     ));
 }
@@ -754,7 +755,7 @@ fn stable_graph_state_refuses_non_finite_values_and_strength_aliases() {
         .update_node(workers, "class/wage", f64::INFINITY)
         .unwrap();
     assert_eq!(
-        encode_stable_graph_state(&non_finite, &resolver),
+        stable_state::encode_stable_graph_state(&non_finite, &resolver),
         Err(StableIdentityError::NonFiniteValue {
             section: "node f64 attributes",
         })
@@ -763,7 +764,7 @@ fn stable_graph_state_refuses_non_finite_values_and_strength_aliases() {
     let mut nan = StateFacts::from_graph(&value.graph);
     nan.hyperedge_f64[0].2 = f64::NAN;
     assert_eq!(
-        encode_stable_graph_state(&nan, &resolver),
+        stable_state::encode_stable_graph_state(&nan, &resolver),
         Err(StableIdentityError::NonFiniteValue {
             section: "hyperedge f64 attributes",
         })
@@ -778,7 +779,7 @@ fn stable_graph_state_refuses_non_finite_values_and_strength_aliases() {
         1.0,
     )];
     assert_eq!(
-        encode_stable_graph_state(&invalid, &resolver),
+        stable_state::encode_stable_graph_state(&invalid, &resolver),
         Err(StableIdentityError::StrengthAttribute)
     );
 }

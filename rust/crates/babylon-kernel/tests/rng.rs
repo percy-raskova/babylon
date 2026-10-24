@@ -1,5 +1,6 @@
 use babylon_kernel::replay::{ReplaySeed, ReplaySessionId, RngDomain};
-use babylon_kernel::{rng::seed_for, rng::KernelRng};
+use babylon_kernel::rng;
+use babylon_kernel::rng::KernelRng;
 use sha2::{Digest, Sha256};
 
 const VECTOR_SEED: i64 = -72_623_859_790_382_856;
@@ -49,7 +50,7 @@ fn preimage_key_and_stream_match_the_language_neutral_vector() {
     assert_eq!(independent_preimage, EXPECTED_PREIMAGE);
     assert_eq!(Sha256::digest(EXPECTED_PREIMAGE).as_slice(), EXPECTED_KEY);
     assert_eq!(
-        seed_for(&session, seed, VECTOR_TICK, &domain, VECTOR_CARRIER).unwrap(),
+        rng::seed_for(&session, seed, VECTOR_TICK, &domain, VECTOR_CARRIER).unwrap(),
         EXPECTED_KEY
     );
 
@@ -71,10 +72,10 @@ fn seed_derivation_changes_when_any_identity_component_changes() {
     let seed = ReplaySeed::new(VECTOR_SEED);
     let domain = RngDomain::try_from("vitality/per60-vector").unwrap();
     let other_domain = RngDomain::try_from("vitality/per60-vectos").unwrap();
-    let original = seed_for(&session, seed, VECTOR_TICK, &domain, VECTOR_CARRIER).unwrap();
+    let original = rng::seed_for(&session, seed, VECTOR_TICK, &domain, VECTOR_CARRIER).unwrap();
 
     assert_ne!(
-        seed_for(
+        rng::seed_for(
             &session,
             ReplaySeed::new(VECTOR_SEED + 1),
             VECTOR_TICK,
@@ -85,19 +86,19 @@ fn seed_derivation_changes_when_any_identity_component_changes() {
         original
     );
     assert_ne!(
-        seed_for(&other_session, seed, VECTOR_TICK, &domain, VECTOR_CARRIER).unwrap(),
+        rng::seed_for(&other_session, seed, VECTOR_TICK, &domain, VECTOR_CARRIER).unwrap(),
         original
     );
     assert_ne!(
-        seed_for(&session, seed, VECTOR_TICK + 1, &domain, VECTOR_CARRIER).unwrap(),
+        rng::seed_for(&session, seed, VECTOR_TICK + 1, &domain, VECTOR_CARRIER).unwrap(),
         original
     );
     assert_ne!(
-        seed_for(&session, seed, VECTOR_TICK, &other_domain, VECTOR_CARRIER).unwrap(),
+        rng::seed_for(&session, seed, VECTOR_TICK, &other_domain, VECTOR_CARRIER).unwrap(),
         original
     );
     assert_ne!(
-        seed_for(
+        rng::seed_for(
             &session,
             seed,
             VECTOR_TICK,

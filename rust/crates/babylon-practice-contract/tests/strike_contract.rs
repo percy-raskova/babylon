@@ -1,14 +1,12 @@
 use babylon_practice_contract::ActorOrganizationId;
 use babylon_practice_contract::{
-    admitted_strike_proposal_digest, decode_admitted_strike_proposal,
-    decode_strike_labor_process_register, decode_strike_proposal_contract,
-    encode_admitted_strike_proposal, encode_strike_labor_process_register,
-    encode_strike_proposal_contract, input_authority_ledger_digest, practice_proposal_key,
-    practice_resource_allocation_contract_digest, strike_labor_process_register_digest,
-    strike_proposal_contract_digest, CampaignId, InputAuthorityId, PracticeAuthorityKind,
-    PracticeId, PracticeInputAuthority, PracticeInputAuthorityLedger, PracticeIntent,
-    PracticeResourceAllocationContract, PracticeTargetIdentity, PracticeTargetTag, ProposalNonce,
-    ResolvedPracticeBatch, ResolvedPracticeBatchItem, StrikeProposalError, TaggedPracticeTarget,
+    admitted_strike_proposal_digest, encode_admitted_strike_proposal,
+    encode_strike_labor_process_register, encode_strike_proposal_contract,
+    strike_labor_process_register_digest, strike_proposal_contract_digest, CampaignId,
+    InputAuthorityId, PracticeAuthorityKind, PracticeId, PracticeInputAuthority,
+    PracticeInputAuthorityLedger, PracticeIntent, PracticeResourceAllocationContract,
+    PracticeTargetIdentity, PracticeTargetTag, ProposalNonce, ResolvedPracticeBatch,
+    ResolvedPracticeBatchItem, StrikeProposalError, TaggedPracticeTarget,
     STRIKE_PROPOSAL_SOURCE_SHA256,
 };
 use serde_json::Value;
@@ -64,10 +62,11 @@ fn strike_intent() -> PracticeIntent {
         },
         proposal_nonce: ProposalNonce::from_bytes([0x20; 16]),
         quoted_content_digest: [0x30; 32],
-        quoted_resource_contract_digest: practice_resource_allocation_contract_digest(
-            &PracticeResourceAllocationContract::conservation_first(),
-        )
-        .unwrap(),
+        quoted_resource_contract_digest:
+            babylon_practice_contract::practice_resource_allocation_contract_digest(
+                &PracticeResourceAllocationContract::conservation_first(),
+            )
+            .unwrap(),
         parameters: Vec::new(),
         evidence_digests: Vec::new(),
     }
@@ -94,7 +93,8 @@ fn authoritative_context(
         schema_version: 2,
         campaign_id: authority.campaign_id,
         resolve_tick: intent.resolve_tick,
-        authority_ledger_digest: input_authority_ledger_digest(&ledger).unwrap(),
+        authority_ledger_digest: babylon_practice_contract::input_authority_ledger_digest(&ledger)
+            .unwrap(),
         resource_allocation_contract_digest: intent.quoted_resource_contract_digest,
         content_digest: intent.quoted_content_digest,
         items: vec![ResolvedPracticeBatchItem {
@@ -125,7 +125,8 @@ fn language_neutral_strike_vectors_drive_every_rust_digest() {
 
     let contract_case = case(&cases, "strike-contract");
     let contract_bytes = hex_bytes(contract_case["data"]["canonical_hex"].as_str().unwrap());
-    let contract = decode_strike_proposal_contract(&contract_bytes).unwrap();
+    let contract =
+        babylon_practice_contract::decode_strike_proposal_contract(&contract_bytes).unwrap();
     assert_eq!(
         encode_strike_proposal_contract(&contract).unwrap(),
         contract_bytes
@@ -137,7 +138,8 @@ fn language_neutral_strike_vectors_drive_every_rust_digest() {
 
     let register_case = case(&cases, "labor-process-register");
     let register_bytes = hex_bytes(register_case["data"]["canonical_hex"].as_str().unwrap());
-    let register = decode_strike_labor_process_register(&register_bytes).unwrap();
+    let register =
+        babylon_practice_contract::decode_strike_labor_process_register(&register_bytes).unwrap();
     assert_eq!(
         encode_strike_labor_process_register(&register).unwrap(),
         register_bytes
@@ -153,12 +155,12 @@ fn language_neutral_strike_vectors_drive_every_rust_digest() {
     let admission_bytes = hex_bytes(admission_case["data"]["canonical_hex"].as_str().unwrap());
     let intent = strike_intent();
     let (ledger, batch) = authoritative_context(&intent);
-    let admission = decode_admitted_strike_proposal(
+    let admission = babylon_practice_contract::decode_admitted_strike_proposal(
         &admission_bytes,
         &contract,
         &batch,
         &ledger,
-        practice_proposal_key(&intent),
+        babylon_practice_contract::practice_proposal_key(&intent),
         &register,
     )
     .unwrap();
@@ -184,7 +186,7 @@ fn language_neutral_invalid_contract_vectors_keep_exact_refusals() {
         let code = u16::try_from(value["data"]["error"].as_u64().unwrap()).unwrap();
         let expected = StrikeProposalError::try_from(code).unwrap();
         assert_eq!(
-            decode_strike_proposal_contract(&payload),
+            babylon_practice_contract::decode_strike_proposal_contract(&payload),
             Err(expected),
             "{}",
             value["case_id"]

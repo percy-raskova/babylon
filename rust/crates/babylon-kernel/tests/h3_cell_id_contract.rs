@@ -8,13 +8,13 @@ use std::str::FromStr;
 mod h3_cell_vectors;
 
 use h3_cell_vectors::{
-    load_fixture, INVALID_ANCESTOR_VECTOR_COUNT, INVALID_RAW_VECTOR_COUNT,
-    INVALID_SQL_VECTOR_COUNT, INVALID_TEXT_VECTOR_COUNT, PENTAGON_VECTOR_COUNT, VALID_VECTOR_COUNT,
+    INVALID_ANCESTOR_VECTOR_COUNT, INVALID_RAW_VECTOR_COUNT, INVALID_SQL_VECTOR_COUNT,
+    INVALID_TEXT_VECTOR_COUNT, PENTAGON_VECTOR_COUNT, VALID_VECTOR_COUNT,
 };
 
 #[test]
 fn h3_cell_id_layout_and_order_follow_unsigned_identity() {
-    let fixture = load_fixture();
+    let fixture = h3_cell_vectors::load_fixture();
     let ordinary = fixture
         .valid
         .iter()
@@ -70,7 +70,7 @@ fn h3_cell_id_layout_and_order_follow_unsigned_identity() {
 
 #[test]
 fn h3_cell_id_round_trips_display_bytes_sql_and_semantic_parents_from_vectors() {
-    let fixture = load_fixture();
+    let fixture = h3_cell_vectors::load_fixture();
     let pentagons = fixture
         .valid
         .iter()
@@ -127,7 +127,7 @@ fn h3_cell_id_round_trips_display_bytes_sql_and_semantic_parents_from_vectors() 
 
 #[test]
 fn h3_cell_id_validation_rejects_invalid_raw_vectors() {
-    let fixture = load_fixture();
+    let fixture = h3_cell_vectors::load_fixture();
 
     for vector in fixture.invalid_raw.iter().take(INVALID_RAW_VECTOR_COUNT) {
         assert_eq!(
@@ -143,7 +143,7 @@ fn h3_cell_id_validation_rejects_invalid_raw_vectors() {
 
 #[test]
 fn h3_cell_id_validation_rejects_invalid_sql_and_text_vectors() {
-    let fixture = load_fixture();
+    let fixture = h3_cell_vectors::load_fixture();
 
     for vector in fixture.invalid_sql.iter().take(INVALID_SQL_VECTOR_COUNT) {
         assert_eq!(
@@ -176,7 +176,7 @@ fn h3_cell_id_validation_rejects_invalid_sql_and_text_vectors() {
 
 #[test]
 fn h3_cell_id_ancestor_requests_reject_too_fine_or_out_of_range_resolution() {
-    let fixture = load_fixture();
+    let fixture = h3_cell_vectors::load_fixture();
 
     for vector in fixture
         .invalid_ancestor

@@ -1476,11 +1476,10 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::run_substrate_conformance;
     use crate::memory::MemoryGraph;
 
     #[test]
     fn memory_graph_passes_the_conformance_suite() {
-        run_substrate_conformance(MemoryGraph::new);
+        super::run_substrate_conformance(MemoryGraph::new);
     }
 }

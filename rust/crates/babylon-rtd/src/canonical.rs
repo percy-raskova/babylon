@@ -1,14 +1,17 @@
 use crate::{
-    validate_draft, Audience, Coverage, DecisionSurface, DimensionCoordinate, Durability, Dyad,
-    DyadKind, EvidenceClass, Facet, FacetFamily, FlowKind, Gap, GapReason, Hyperedge,
-    HyperedgeKind, MembershipKind, Provenance, ReferenceDigest, ReferenceFlow,
-    RelationalTerritoryDossier, RtdDossierDraft, RtdError, ScaleMembership, Status, TypedIdentity,
-    ValueKind, RTD_MAX_CANONICAL_BYTES,
+    Audience, Coverage, DecisionSurface, DimensionCoordinate, Durability, Dyad, DyadKind,
+    EvidenceClass, Facet, FacetFamily, FlowKind, Gap, GapReason, Hyperedge, HyperedgeKind,
+    MembershipKind, Provenance, ReferenceDigest, ReferenceFlow, RelationalTerritoryDossier,
+    RtdDossierDraft, RtdError, ScaleMembership, Status, TypedIdentity, ValueKind,
+    RTD_MAX_CANONICAL_BYTES,
 };
 use serde::de::{Error as DeError, MapAccess, SeqAccess, Visitor};
 use serde::Deserialize;
+use serde_json::Error;
+use serde_json::Number;
 use serde_json::{Map, Value};
-use std::fmt;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 use unicode_normalization::UnicodeNormalization;
 
 const MAX_COLLECTION_ITEMS: usize = 65_535;
@@ -63,7 +66,7 @@ impl<'de> Deserialize<'de> for UniqueVectorValue {
 impl<'de> Visitor<'de> for UniqueVectorValueVisitor {
     type Value = UniqueVectorValue;
 
-    fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn expecting(&self, formatter: &mut Formatter<'_>) -> FmtResult {
         formatter.write_str("bounded vector JSON without duplicate keys")
     }
 
@@ -80,7 +83,7 @@ impl<'de> Visitor<'de> for UniqueVectorValueVisitor {
     }
 
     fn visit_f64<E: DeError>(self, value: f64) -> Result<Self::Value, E> {
-        serde_json::Number::from_f64(value).map_or_else(
+        Number::from_f64(value).map_or_else(
             || Err(E::custom("non-finite vector number")),
             |number| Ok(UniqueVectorValue(Value::Number(number))),
         )
@@ -275,7 +278,7 @@ fn take_draft_json(object: &mut Map<String, Value>) -> Result<Vec<u8>, RtdError>
     serde_json::to_vec(&draft).map_err(|_error| RtdError::Json)
 }
 
-fn classify_vector_json_error(error: &serde_json::Error) -> RtdError {
+fn classify_vector_json_error(error: &Error) -> RtdError {
     let message = error.to_string();
     if message.contains("RTD_DUPLICATE_KEY") {
         RtdError::DuplicateKey
@@ -879,7 +882,7 @@ fn normalize_negative_zero(draft: &mut RtdDossierDraft) {
 pub fn canonical_draft_bytes(draft: &RtdDossierDraft) -> Result<Vec<u8>, RtdError> {
     let mut normalized = draft.clone();
     normalize_negative_zero(&mut normalized);
-    validate_draft(&normalized)?;
+    crate::validate_draft(&normalized)?;
     let mut writer = CanonicalWriter::new();
     write_draft(&mut writer, &normalized)?;
     Ok(writer.finish())

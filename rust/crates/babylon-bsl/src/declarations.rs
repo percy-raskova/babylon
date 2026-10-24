@@ -23,6 +23,8 @@ use crate::reader::{Atom, SExpr};
 use crate::types::{BslType, EnumRegistry, EnumRegistryError, EnumTypeId, FieldDecl, FieldKind};
 use crate::vocabulary::{render_member, ClosedVocabulary, EnumKind, VocabularyError};
 use std::collections::HashMap;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 
 /// The §5.2 form tags that are valid `symbol`s, and are therefore reserved
 /// against the intrinsic namespace (D33). The operator tags (`<`, `+`, …)
@@ -238,7 +240,7 @@ impl DeclError {
 }
 
 impl std::fmt::Display for DeclError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         match self {
             Self::Duplicate { name, what } => {
                 write!(f, "E-LOAD-001: duplicate {what} declaration: {name}")
@@ -1080,11 +1082,10 @@ pub fn parse_intrinsic_decls(forms: &[SExpr]) -> Result<HashMap<String, Intrinsi
 #[cfg(test)]
 mod tests {
     use super::{
-        check_intrinsic_cap, check_intrinsic_name, kernel_signature, parse_intrinsic_decl,
-        parse_intrinsic_type_name, DeclError, FieldRegistry, IntrinsicDecl, IntrinsicTypeName,
-        DECLARABLE_INTRINSICS, RESERVED_FORM_TAGS,
+        DeclError, FieldRegistry, IntrinsicDecl, IntrinsicTypeName, DECLARABLE_INTRINSICS,
+        RESERVED_FORM_TAGS,
     };
-    use crate::reader::{read, SExpr};
+    use crate::reader::SExpr;
     use crate::types::{BslType, EnumRegistry, EnumRegistryError, FieldDecl, FieldKind};
     use crate::vocabulary::{ClosedVocabulary, EnumKind};
     use std::collections::HashMap;
@@ -1111,7 +1112,9 @@ mod tests {
     }
 
     fn form(source: &str) -> crate::reader::SExpr {
-        read(source).expect("test source must parse").0
+        crate::reader::read(source)
+            .expect("test source must parse")
+            .0
     }
 
     #[test]
@@ -1221,16 +1224,16 @@ mod tests {
     #[test]
     fn every_form_head_symbol_is_reserved_against_the_intrinsic_namespace() {
         for tag in RESERVED_FORM_TAGS {
-            let err = check_intrinsic_name(tag).unwrap_err();
+            let err = super::check_intrinsic_name(tag).unwrap_err();
             assert_eq!(err.spec_code(), Some("E-LOAD-024"), "{tag}");
         }
-        assert_eq!(check_intrinsic_name("exp"), Ok(()));
-        assert_eq!(check_intrinsic_name("log"), Ok(()));
+        assert_eq!(super::check_intrinsic_name("exp"), Ok(()));
+        assert_eq!(super::check_intrinsic_name("log"), Ok(()));
     }
 
     #[test]
     fn sigmoid_is_prohibited_outright_not_merely_undeclared() {
-        let err = check_intrinsic_name("sigmoid").unwrap_err();
+        let err = super::check_intrinsic_name("sigmoid").unwrap_err();
         assert_eq!(err.spec_code(), Some("E-LOAD-024"));
         assert!(format!("{err}").contains("ADR172"), "{err}");
     }
@@ -1247,8 +1250,8 @@ mod tests {
     /// about sign).
     #[test]
     fn floor_is_declarable_under_adr188_row_2() {
-        assert_eq!(check_intrinsic_name("floor"), Ok(()));
-        assert_eq!(check_intrinsic_cap("floor"), Ok(()));
+        assert_eq!(super::check_intrinsic_name("floor"), Ok(()));
+        assert_eq!(super::check_intrinsic_cap("floor"), Ok(()));
         // The array grew from four names to ten under ADR219 (Director
         // ruling 2026-08-22) — the exact-arithmetic rider train; see the
         // c13 family in r9_chapters.rs for the full authority chain.
@@ -1273,9 +1276,9 @@ mod tests {
     /// kernel signature.
     #[test]
     fn rng_draw_is_not_author_visible_after_amendment_aj() {
-        assert_eq!(check_intrinsic_name("rng-draw"), Ok(()));
-        assert!(check_intrinsic_cap("rng-draw").is_err());
-        assert_eq!(kernel_signature("rng-draw"), None);
+        assert_eq!(super::check_intrinsic_name("rng-draw"), Ok(()));
+        assert!(super::check_intrinsic_cap("rng-draw").is_err());
+        assert_eq!(super::kernel_signature("rng-draw"), None);
     }
 
     /// The rider ratifies `floor`, not a second `trunc` intrinsic — ADR188
@@ -1283,7 +1286,7 @@ mod tests {
     /// silently widened the cap to both names would flip this test.
     #[test]
     fn trunc_is_not_a_separate_declarable_name() {
-        assert!(check_intrinsic_cap("trunc").is_err());
+        assert!(super::check_intrinsic_cap("trunc").is_err());
     }
 
     /// ADR219 (Director ruling 2026-08-22): the exact-arithmetic rider
@@ -1319,9 +1322,9 @@ mod tests {
                 ],
             ),
         ] {
-            assert_eq!(check_intrinsic_cap(name), Ok(()), "{name}");
+            assert_eq!(super::check_intrinsic_cap(name), Ok(()), "{name}");
             assert_eq!(
-                kernel_signature(name),
+                super::kernel_signature(name),
                 Some((params, IntrinsicTypeName::Real)),
                 "{name}"
             );
@@ -1331,8 +1334,8 @@ mod tests {
     // ---- parse_intrinsic_decl (the declared-cost seam content needs) ----
 
     fn decl(source: &str) -> Result<IntrinsicDecl, DeclError> {
-        let (form, _) = read(source).expect("test source must parse");
-        parse_intrinsic_decl(&form)
+        let (form, _) = crate::reader::read(source).expect("test source must parse");
+        super::parse_intrinsic_decl(&form)
     }
 
     #[test]
@@ -1354,7 +1357,7 @@ mod tests {
     #[test]
     fn real_resolves_per_position_after_train_b_item_6() {
         assert_eq!(
-            parse_intrinsic_type_name("real"),
+            super::parse_intrinsic_type_name("real"),
             Ok(IntrinsicTypeName::Real)
         );
         assert_eq!(super::parse_type_name("real"), Ok(BslType::Real));

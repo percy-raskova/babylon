@@ -2,7 +2,7 @@
 
 use std::cmp::Ordering;
 
-use crate::classifier::{classify_persistence, PersistenceClass, PersistenceClassError};
+use crate::classifier::{PersistenceClass, PersistenceClassError};
 use crate::digest::Digest32;
 use crate::wire::{PayloadCursor, PayloadEncoder, SfsWireError, T3Record};
 
@@ -590,7 +590,7 @@ impl PersistenceComparison {
         post_width: u16,
         mut separations: Vec<f64>,
     ) -> Result<Self, SfsProfileRecordError> {
-        let persistence_class = classify_persistence(post_width, &separations)?;
+        let persistence_class = crate::classifier::classify_persistence(post_width, &separations)?;
         normalize_separation_zeros(&mut separations);
         Ok(Self {
             control_trace_digest,

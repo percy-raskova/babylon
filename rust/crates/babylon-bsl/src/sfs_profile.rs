@@ -1,16 +1,17 @@
 //! Opt-in, downstream-only footprint auditing for synthetic-emergence evidence.
 
-use crate::bindings::{parse_bindings, BindSource};
-use crate::bound_checker::{check_rule, declared_fuel, BoundError};
-use crate::canonical_ast::canonical_bytes;
+use crate::bindings::BindSource;
+use crate::bound_checker::BoundError;
 use crate::causal_contract::{
-    effect_footprint, validate_ast_walk_bounds, EffectSignature, ShapeVerb, AST_WALK_LIMITS,
-    MAX_AST_WALK_DEPTH, MAX_AST_WALK_NODES, MAX_AST_WALK_STACK,
+    EffectSignature, ShapeVerb, AST_WALK_LIMITS, MAX_AST_WALK_DEPTH, MAX_AST_WALK_NODES,
+    MAX_AST_WALK_STACK,
 };
 use crate::fuel::{CardinalityCeilings, IntrinsicCosts, SfsFuelIdentityError};
 use crate::reader::{Atom, SExpr};
 use crate::vocabulary::{ClosedVocabulary, EnumKind};
-use babylon_kernel::content_digest::sha256_of;
+use babylon_kernel::content_digest;
+
+use crate::rule_pipeline::RuleExecution;
 use std::collections::{BTreeMap, BTreeSet};
 
 const MAX_POLICY_ENTRIES: usize = 64;
@@ -481,13 +482,13 @@ fn reject_forbidden_expected(sets: [&BTreeSet<String>; 7]) -> Result<(), SfsProf
 }
 
 fn preflight_ast(rule: &SExpr) -> Result<(), SfsProfileError> {
-    validate_ast_walk_bounds(rule, AST_WALK_LIMITS, AUDITOR)
+    crate::causal_contract::validate_ast_walk_bounds(rule, AST_WALK_LIMITS, AUDITOR)
         .map_err(|_error| SfsProfileError::AstWalkLimit)
 }
 
 fn canonical_digest(rule: &SExpr) -> Result<[u8; 32], SfsProfileError> {
-    canonical_bytes(rule)
-        .map(|bytes| sha256_of(&bytes))
+    crate::canonical_ast::canonical_bytes(rule)
+        .map(|bytes| content_digest::sha256_of(&bytes))
         .map_err(|_error| SfsProfileError::CanonicalAst)
 }
 
@@ -540,7 +541,7 @@ fn site_digest(source_digest: [u8; 32], path: &[u32]) -> Result<[u8; 32], SfsPro
         };
         preimage.extend_from_slice(&component.to_be_bytes());
     }
-    Ok(sha256_of(&preimage))
+    Ok(content_digest::sha256_of(&preimage))
 }
 
 fn lower_hex(bytes: &[u8; 32]) -> String {
@@ -624,13 +625,13 @@ fn preflight(
     let source_digest = canonical_digest(rule)?;
     let cardinality_digest = ceilings.sfs_identity_digest()?;
     let intrinsic_digest = intrinsic_costs.sfs_identity_digest()?;
-    let computed_bound = check_rule(rule, ceilings, intrinsic_costs)?;
+    let computed_bound = crate::bound_checker::check_rule(rule, ceilings, intrinsic_costs)?;
     if crate::native_cycle::classify(rule).map_err(|_| SfsProfileError::CanonicalAst)?
-        != crate::rule_pipeline::RuleExecution::Graph
+        != RuleExecution::Graph
     {
         return Err(SfsProfileError::NativeMaterialCycleUnsupported);
     }
-    let declared_fuel = declared_fuel(rule_items(rule)?)?;
+    let declared_fuel = crate::bound_checker::declared_fuel(rule_items(rule)?)?;
     Ok(Preflight {
         source_digest,
         computed_bound,
@@ -645,7 +646,8 @@ fn binding_facts(
     vocabulary: &ClosedVocabulary,
     facts: &mut SemanticFacts,
 ) -> Result<(), SfsProfileError> {
-    let bindings = parse_bindings(rule).map_err(|_error| SfsProfileError::CanonicalAst)?;
+    let bindings =
+        crate::bindings::parse_bindings(rule).map_err(|_error| SfsProfileError::CanonicalAst)?;
     for index in 0..MAX_AST_WALK_NODES {
         let Some(binding) = bindings.get(index) else {
             break;
@@ -844,7 +846,7 @@ fn numeric_key(expr: &SExpr) -> Option<Vec<u8>> {
     if !is_numeric(expr) {
         return None;
     }
-    canonical_bytes(expr).ok()
+    crate::canonical_ast::canonical_bytes(expr).ok()
 }
 
 fn threshold_pair(expr: &SExpr) -> Option<(String, Vec<u8>)> {
@@ -1010,7 +1012,8 @@ fn effect_row(effect: EffectSignature) -> String {
 }
 
 fn collect_effects(rule: &SExpr, facts: &mut SemanticFacts) -> Result<(), SfsProfileError> {
-    let effects = effect_footprint(rule).map_err(|_error| SfsProfileError::AstWalkLimit)?;
+    let effects = crate::causal_contract::effect_footprint(rule)
+        .map_err(|_error| SfsProfileError::AstWalkLimit)?;
     for index in 0..MAX_AST_WALK_NODES {
         let Some(effect) = effects.get(index) else {
             break;

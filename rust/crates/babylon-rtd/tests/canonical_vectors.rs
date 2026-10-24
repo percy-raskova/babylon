@@ -1,7 +1,6 @@
 use babylon_rtd::{
-    canonical_draft_bytes, parse_draft_json, parse_vector_corpus, projection_hash, seal_draft,
-    validate_draft, EvidenceClass, Provenance, RtdDossierDraft, RtdError, RtdVectorCase,
-    TypedIdentity, RTD_ERROR_REGISTRY,
+    canonical_draft_bytes, projection_hash, EvidenceClass, Provenance, RtdDossierDraft, RtdError,
+    RtdVectorCase, TypedIdentity, RTD_ERROR_REGISTRY,
 };
 
 const CORPUS: &str =
@@ -37,7 +36,7 @@ fn provenance_row(row_index: usize, locator: String) -> Provenance {
 }
 
 fn canonical_size_witness(one_extra_x: bool) -> RtdDossierDraft {
-    let cases = parse_vector_corpus(CORPUS.as_bytes()).expect("checked corpus parses");
+    let cases = babylon_rtd::parse_vector_corpus(CORPUS.as_bytes()).expect("checked corpus parses");
     let mut draft = None;
     for case_index in 0..256_usize {
         if case_index == cases.len() {
@@ -50,7 +49,8 @@ fn canonical_size_witness(one_extra_x: bool) -> RtdDossierDraft {
         } = &cases[case_index]
         {
             if case_id == "minimal-admin" {
-                draft = Some(parse_draft_json(draft_json).expect("valid minimal draft"));
+                draft =
+                    Some(babylon_rtd::parse_draft_json(draft_json).expect("valid minimal draft"));
                 break;
             }
         }
@@ -68,7 +68,7 @@ fn canonical_size_witness(one_extra_x: bool) -> RtdDossierDraft {
     );
     provenance.push(provenance_row(SIZE_WITNESS_UNIFORM_ROWS, final_locator));
     draft.provenance = provenance;
-    validate_draft(&draft).expect("size witness remains contract-valid");
+    babylon_rtd::validate_draft(&draft).expect("size witness remains contract-valid");
     draft
 }
 
@@ -83,7 +83,7 @@ fn hex(bytes: &[u8]) -> String {
 
 #[test]
 fn shared_valid_vectors_pin_bytes_and_hashes() {
-    let cases = parse_vector_corpus(CORPUS.as_bytes()).expect("checked corpus parses");
+    let cases = babylon_rtd::parse_vector_corpus(CORPUS.as_bytes()).expect("checked corpus parses");
     let mut minimal_bytes = None;
     let mut minimal_hash = None;
     for case_index in 0..256_usize {
@@ -99,7 +99,7 @@ fn shared_valid_vectors_pin_bytes_and_hashes() {
             ..
         } = case
         {
-            let draft = parse_draft_json(draft_json).expect("valid vector draft");
+            let draft = babylon_rtd::parse_draft_json(draft_json).expect("valid vector draft");
             assert_eq!(
                 hex(&canonical_draft_bytes(&draft).expect("canonical bytes")),
                 *canonical_utf8_hex
@@ -109,7 +109,9 @@ fn shared_valid_vectors_pin_bytes_and_hashes() {
                 *expected_hash
             );
             assert_eq!(
-                seal_draft(draft).expect("sealed draft").projection_hash,
+                babylon_rtd::seal_draft(draft)
+                    .expect("sealed draft")
+                    .projection_hash,
                 *expected_hash
             );
             if case_id == "minimal-admin" {
@@ -127,7 +129,7 @@ fn shared_valid_vectors_pin_bytes_and_hashes() {
 
 #[test]
 fn shared_semantic_invalid_vectors_pin_refusals() {
-    let cases = parse_vector_corpus(CORPUS.as_bytes()).expect("checked corpus parses");
+    let cases = babylon_rtd::parse_vector_corpus(CORPUS.as_bytes()).expect("checked corpus parses");
     let reader_only = ["RTD_JSON_DEPTH", "RTD_VECTOR_LIMIT", "RTD_CANONICAL_SIZE"];
     let mut seen = [false; 20];
     for case_index in 0..256_usize {
@@ -148,7 +150,7 @@ fn shared_semantic_invalid_vectors_pin_refusals() {
                 continue;
             }
             assert_eq!(
-                parse_draft_json(draft_json)
+                babylon_rtd::parse_draft_json(draft_json)
                     .expect_err("invalid vector must refuse")
                     .to_string(),
                 *error
@@ -161,13 +163,13 @@ fn shared_semantic_invalid_vectors_pin_refusals() {
 #[test]
 fn vector_reader_refuses_raw_line_count_and_line_size_limits() {
     assert_eq!(
-        parse_vector_corpus(&vec![b'x'; 1_048_577])
+        babylon_rtd::parse_vector_corpus(&vec![b'x'; 1_048_577])
             .expect_err("raw corpus limit")
             .to_string(),
         "RTD_VECTOR_LIMIT"
     );
     assert_eq!(
-        parse_vector_corpus(&vec![b'x'; 262_145])
+        babylon_rtd::parse_vector_corpus(&vec![b'x'; 262_145])
             .expect_err("line limit")
             .to_string(),
         "RTD_VECTOR_LIMIT"
@@ -182,7 +184,7 @@ fn vector_reader_refuses_raw_line_count_and_line_size_limits() {
         );
     }
     assert_eq!(
-        parse_vector_corpus(&lines)
+        babylon_rtd::parse_vector_corpus(&lines)
             .expect_err("line count limit")
             .to_string(),
         "RTD_VECTOR_LIMIT"
@@ -202,11 +204,11 @@ fn vector_reader_is_lf_oriented_with_crlf_and_cr_only_parity() {
     ]
     .concat();
     assert_eq!(
-        parse_vector_corpus(&crlf).expect("CRLF corpus"),
-        parse_vector_corpus(&lf).expect("LF corpus")
+        babylon_rtd::parse_vector_corpus(&crlf).expect("CRLF corpus"),
+        babylon_rtd::parse_vector_corpus(&lf).expect("LF corpus")
     );
     assert_eq!(
-        parse_vector_corpus(&invalid_vector_line("a", "\r"))
+        babylon_rtd::parse_vector_corpus(&invalid_vector_line("a", "\r"))
             .expect("one CR-terminated record")
             .len(),
         1
@@ -217,7 +219,7 @@ fn vector_reader_is_lf_oriented_with_crlf_and_cr_only_parity() {
     ]
     .concat();
     assert_eq!(
-        parse_vector_corpus(&cr_only).expect_err("CR does not separate records"),
+        babylon_rtd::parse_vector_corpus(&cr_only).expect_err("CR does not separate records"),
         RtdError::Json
     );
 }
@@ -249,7 +251,7 @@ fn public_canonical_apis_refuse_limit_plus_one_without_result() {
     let draft = canonical_size_witness(true);
     assert_eq!(canonical_draft_bytes(&draft), Err(RtdError::CanonicalSize));
     assert_eq!(projection_hash(&draft), Err(RtdError::CanonicalSize));
-    assert_eq!(seal_draft(draft), Err(RtdError::CanonicalSize));
+    assert_eq!(babylon_rtd::seal_draft(draft), Err(RtdError::CanonicalSize));
 }
 
 #[test]
@@ -267,11 +269,11 @@ fn vector_reader_refuses_closed_envelope_and_depth_violations() {
         "{\"case_id\":\"e\\u0301\",\"kind\":\"invalid\",\"draft\":{},\"error\":\"RTD_JSON\"}\n".to_owned(),
     ];
     for index in 0..6_usize {
-        assert!(parse_vector_corpus(witnesses[index].as_bytes()).is_err());
+        assert!(babylon_rtd::parse_vector_corpus(witnesses[index].as_bytes()).is_err());
     }
     let line = b"{\"case_id\":\"a\",\"kind\":\"invalid\",\"draft\":{},\"error\":\"RTD_JSON\"}\n";
     assert_eq!(
-        parse_vector_corpus(&[line.as_slice(), line.as_slice()].concat())
+        babylon_rtd::parse_vector_corpus(&[line.as_slice(), line.as_slice()].concat())
             .expect_err("duplicate case")
             .to_string(),
         "RTD_DUPLICATE_KEY"
@@ -282,7 +284,7 @@ fn vector_reader_refuses_closed_envelope_and_depth_violations() {
         "}".repeat(32)
     );
     assert_eq!(
-        parse_vector_corpus(nested.as_bytes())
+        babylon_rtd::parse_vector_corpus(nested.as_bytes())
             .expect_err("depth 33")
             .to_string(),
         "RTD_JSON_DEPTH"
@@ -291,7 +293,7 @@ fn vector_reader_refuses_closed_envelope_and_depth_violations() {
 
 #[test]
 fn direct_draft_negative_zero_is_normalized_before_sealing() {
-    let cases = parse_vector_corpus(CORPUS.as_bytes()).expect("checked corpus parses");
+    let cases = babylon_rtd::parse_vector_corpus(CORPUS.as_bytes()).expect("checked corpus parses");
     for case_index in 0..256_usize {
         if case_index == cases.len() {
             break;
@@ -312,7 +314,7 @@ fn direct_draft_negative_zero_is_normalized_before_sealing() {
                 raw.scale_memberships[0].weight_bits_or_null.as_deref(),
                 Some("8000000000000000")
             );
-            let sealed = seal_draft(raw).expect("negative zero seals");
+            let sealed = babylon_rtd::seal_draft(raw).expect("negative zero seals");
             assert_eq!(
                 sealed.scale_memberships[0].weight_bits_or_null.as_deref(),
                 Some("0000000000000000")

@@ -2,13 +2,12 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use babylon_kernel::content_digest::sha256_of;
+use babylon_kernel::content_digest;
 
 use crate::actor::ActorOrganizationId;
-use crate::intent::target_is_valid;
 use crate::{
-    practice_proposal_key, InputAuthorityId, PracticeId, PracticeIntent, PracticeProposalKey,
-    PracticeTargetIdentity, PracticeTargetTag, ProposalNonce, TaggedPracticeTarget,
+    InputAuthorityId, PracticeId, PracticeIntent, PracticeProposalKey, PracticeTargetIdentity,
+    PracticeTargetTag, ProposalNonce, TaggedPracticeTarget,
 };
 
 const SCHEMA_VERSION: u16 = 2;
@@ -300,7 +299,9 @@ pub fn encode_practice_resource_request(
 pub fn practice_resource_request_digest(
     value: &PracticeResourceRequest,
 ) -> Result<[u8; 32], PracticeResourceError> {
-    Ok(sha256_of(&encode_practice_resource_request(value)?))
+    Ok(content_digest::sha256_of(
+        &encode_practice_resource_request(value)?,
+    ))
 }
 
 /// One true available-capacity row from the sealed material snapshot.
@@ -375,7 +376,9 @@ pub fn decode_practice_resource_capacity(
 pub fn practice_resource_capacity_digest(
     value: &PracticeResourceCapacity,
 ) -> Result<[u8; 32], PracticeResourceError> {
-    Ok(sha256_of(&encode_practice_resource_capacity(value)?))
+    Ok(content_digest::sha256_of(
+        &encode_practice_resource_capacity(value)?,
+    ))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -649,9 +652,9 @@ pub fn practice_resource_allocation_outcome_digest(
     contract: &PracticeResourceAllocationContract,
     value: &PracticeResourceAllocationOutcome,
 ) -> Result<[u8; 32], PracticeResourceError> {
-    Ok(sha256_of(&encode_practice_resource_allocation_outcome(
-        contract, value,
-    )?))
+    Ok(content_digest::sha256_of(
+        &encode_practice_resource_allocation_outcome(contract, value)?,
+    ))
 }
 
 /// Frozen law identity quoted by every `PracticeIntent`.
@@ -815,7 +818,7 @@ fn decode_proposal_key(
             .map_err(|_| PracticeResourceError::ResourceEnumCode)?,
         identity: PracticeTargetIdentity::from_bytes(cursor.array()?),
     };
-    if !target_is_valid(practice_id, target.tag) {
+    if !crate::intent::target_is_valid(practice_id, target.tag) {
         return Err(PracticeResourceError::ResourceEnumCode);
     }
     Ok(PracticeProposalKey {
@@ -914,9 +917,9 @@ pub fn decode_practice_resource_allocation_contract(
 pub fn practice_resource_allocation_contract_digest(
     value: &PracticeResourceAllocationContract,
 ) -> Result<[u8; 32], PracticeResourceError> {
-    Ok(sha256_of(&encode_practice_resource_allocation_contract(
-        value,
-    )?))
+    Ok(content_digest::sha256_of(
+        &encode_practice_resource_allocation_contract(value)?,
+    ))
 }
 
 type CapacityKey = (PracticeResourceOwner, PracticeResourceId, PracticeUnitId);
@@ -990,7 +993,7 @@ pub fn derive_practice_resource_request(
         }
     };
     Ok(PracticeResourceRequest {
-        proposal_key: practice_proposal_key(intent),
+        proposal_key: crate::practice_proposal_key(intent),
         owner,
         resource_id: requirement.resource_id,
         unit_id: requirement.unit_id,

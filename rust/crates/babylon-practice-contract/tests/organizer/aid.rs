@@ -1,7 +1,19 @@
-use super::*;
+use super::support;
+use babylon_practice_contract::{
+    OrganizerAidBinding, OrganizerAidKind, OrganizerAidMaterialPostings, OrganizerAidSupport,
+    OrganizerAidSupportStatus, OrganizerChoice, OrganizerCollectionFact,
+    OrganizerCollectionMandate, OrganizerCollectionOutcome, OrganizerCommitment, OrganizerConfig,
+    OrganizerContribution, OrganizerError, OrganizerGiftConsent, OrganizerHouseholdBinding,
+    OrganizerOutcome, OrganizerParticipant, OrganizerPartner, OrganizerPartnerPolicy,
+    OrganizerPartnerResponse, OrganizerPeriodTimeResources, OrganizerRefusal, OrganizerState,
+    OrganizerTimeBinding, OrganizerTimeBindingMode, OrganizerTimeUse, OrganizerWorkplaceFacts,
+    PracticeId, PracticeResourceAllocationMode, PracticeResourceCapacity, PracticeResourceId,
+    PracticeResourceOwner, PracticeTargetTag, ORGANIZER_SCHEMA_VERSION,
+};
+use std::collections::BTreeSet;
 
 fn captured() -> OrganizerConfig {
-    let mut config = config();
+    let mut config = support::config();
     for (contributor_id, actor_id) in [(204, 105), (205, 106)] {
         config.participants.push(OrganizerParticipant {
             contributor_id,
@@ -49,11 +61,11 @@ fn captured() -> OrganizerConfig {
         coordination_hours: 3,
     })
     .collect();
-    validate_organizer_config(&config).unwrap();
+    babylon_practice_contract::validate_organizer_config(&config).unwrap();
     config
 }
 fn time(config: &OrganizerConfig, recipient: u64, available: u64) -> OrganizerPeriodTimeResources {
-    let unit = organizer_time_unit_id();
+    let unit = babylon_practice_contract::organizer_time_unit_id();
     OrganizerPeriodTimeResources {
         period: 1,
         unit_id: unit,
@@ -90,20 +102,21 @@ fn time(config: &OrganizerConfig, recipient: u64, available: u64) -> OrganizerPe
 #[test]
 fn gift_admission_precedes_recipient_time_and_practice_can_fail_afterward() {
     let config = captured();
-    let opening = initial_organizer_state(&config).unwrap();
-    let accepted = admit_organizer(
+    let opening = babylon_practice_contract::initial_organizer_state(&config).unwrap();
+    let accepted = babylon_practice_contract::admit_organizer(
         &config,
         &opening,
-        &command(&config, &opening, OrganizerChoice::LocalAid),
+        &support::command(&config, &opening, OrganizerChoice::LocalAid),
     )
     .unwrap();
-    let gift = organizer_aid_commitment(&config, &opening, &accepted).unwrap();
+    let gift =
+        babylon_practice_contract::organizer_aid_commitment(&config, &opening, &accepted).unwrap();
     assert_eq!(gift.commitment.resolves_period, 1);
     assert_eq!(gift.recipient_actor_id, 105);
     let next = resolve_supported_aid(
         &config,
         &opening,
-        &facts(1, 160),
+        &support::facts(1, 160),
         Some(&accepted),
         &time(&config, 204, 0),
     )
@@ -115,29 +128,34 @@ fn gift_admission_precedes_recipient_time_and_practice_can_fail_afterward() {
     assert!(next.contact_products.is_empty());
     assert_eq!(
         next.agreements,
-        reduce_organizer_products(&config, &opening, &facts(1, 160))
-            .unwrap()
-            .agreements
+        babylon_practice_contract::reduce_organizer_products(
+            &config,
+            &opening,
+            &support::facts(1, 160)
+        )
+        .unwrap()
+        .agreements
     );
-    validate_organizer_aid_commitment(&config, &gift).unwrap();
+    babylon_practice_contract::validate_organizer_aid_commitment(&config, &gift).unwrap();
 }
 
 #[test]
 fn captured_receiving_consent_does_not_force_partner_practice() {
     let mut config = captured();
     config.aid_bindings[0].partner.policy = OrganizerPartnerPolicy::Refuse;
-    let opening = initial_organizer_state(&config).unwrap();
-    let accepted = admit_organizer(
+    let opening = babylon_practice_contract::initial_organizer_state(&config).unwrap();
+    let accepted = babylon_practice_contract::admit_organizer(
         &config,
         &opening,
-        &command(&config, &opening, OrganizerChoice::LocalAid),
+        &support::command(&config, &opening, OrganizerChoice::LocalAid),
     )
     .unwrap();
-    let gift = organizer_aid_commitment(&config, &opening, &accepted).unwrap();
+    let gift =
+        babylon_practice_contract::organizer_aid_commitment(&config, &opening, &accepted).unwrap();
     let next = resolve_supported_aid(
         &config,
         &opening,
-        &facts(1, 160),
+        &support::facts(1, 160),
         Some(&accepted),
         &time(&config, 204, 0),
     )
@@ -151,22 +169,27 @@ fn captured_receiving_consent_does_not_force_partner_practice() {
         .iter()
         .all(|row| row.actor_id == config.controlled_actor_id));
     assert!(next.contact_products.is_empty());
-    validate_organizer_aid_commitment(&config, &gift).unwrap();
+    babylon_practice_contract::validate_organizer_aid_commitment(&config, &gift).unwrap();
 }
 
 #[test]
 fn both_actual_practices_use_mutual_aid_and_separate_authorities() {
     let config = captured();
-    let opening = initial_organizer_state(&config).unwrap();
-    let accepted = admit_organizer(
+    let opening = babylon_practice_contract::initial_organizer_state(&config).unwrap();
+    let accepted = babylon_practice_contract::admit_organizer(
         &config,
         &opening,
-        &command(&config, &opening, OrganizerChoice::LocalAid),
+        &support::command(&config, &opening, OrganizerChoice::LocalAid),
     )
     .unwrap();
-    let batch = organizer_resolved_action_batch(&config, &opening, Some(&accepted)).unwrap();
+    let batch = babylon_practice_contract::organizer_resolved_action_batch(
+        &config,
+        &opening,
+        Some(&accepted),
+    )
+    .unwrap();
     assert_eq!(batch.items.len(), 2);
-    let mut authorities = std::collections::BTreeSet::new();
+    let mut authorities = BTreeSet::new();
     for row in &batch.items {
         assert_eq!(row.intent.practice_id, PracticeId::MutualAid);
         assert_eq!(row.intent.target.tag, PracticeTargetTag::SocialClass);
@@ -182,7 +205,7 @@ fn both_actual_practices_use_mutual_aid_and_separate_authorities() {
     let next = resolve_supported_aid(
         &config,
         &opening,
-        &facts(1, 160),
+        &support::facts(1, 160),
         Some(&accepted),
         &time(&config, 204, 8),
     )
@@ -196,17 +219,30 @@ fn both_actual_practices_use_mutual_aid_and_separate_authorities() {
 #[test]
 fn pending_gift_is_exact_retry_and_refuses_conflicting_nonce_stale_or_source() {
     let config = captured();
-    let opening = initial_organizer_state(&config).unwrap();
-    let command = command(&config, &opening, OrganizerChoice::LocalAid);
-    let first = admit_organizer_aid_pending(&config, &opening, &command, None).unwrap();
+    let opening = babylon_practice_contract::initial_organizer_state(&config).unwrap();
+    let command = support::command(&config, &opening, OrganizerChoice::LocalAid);
+    let first =
+        babylon_practice_contract::admit_organizer_aid_pending(&config, &opening, &command, None)
+            .unwrap();
     assert_eq!(
-        admit_organizer_aid_pending(&config, &opening, &command, Some(&first)).unwrap(),
+        babylon_practice_contract::admit_organizer_aid_pending(
+            &config,
+            &opening,
+            &command,
+            Some(&first)
+        )
+        .unwrap(),
         first
     );
     let mut conflict = command.clone();
     conflict.nonce[0] ^= 1;
     assert_eq!(
-        admit_organizer_aid_pending(&config, &opening, &conflict, Some(&first)),
+        babylon_practice_contract::admit_organizer_aid_pending(
+            &config,
+            &opening,
+            &conflict,
+            Some(&first)
+        ),
         Err(OrganizerError::Refused(
             OrganizerRefusal::PendingAidConflict
         ))
@@ -214,37 +250,37 @@ fn pending_gift_is_exact_retry_and_refuses_conflicting_nonce_stale_or_source() {
     let mut stale = command.clone();
     stale.expected_period = 1;
     assert_eq!(
-        admit_organizer_aid_pending(&config, &opening, &stale, None),
+        babylon_practice_contract::admit_organizer_aid_pending(&config, &opening, &stale, None),
         Err(OrganizerError::Refused(OrganizerRefusal::StalePeriod))
     );
     let mut corrupt = first;
     corrupt.source_hash[0] ^= 1;
     assert_eq!(
-        validate_organizer_aid_commitment(&config, &corrupt),
+        babylon_practice_contract::validate_organizer_aid_commitment(&config, &corrupt),
         Err(OrganizerError::InvalidCommitment)
     );
 }
 
 #[test]
 fn missing_or_refused_receiving_capture_is_not_fallback_authorization() {
-    let config = config();
-    let opening = initial_organizer_state(&config).unwrap();
+    let config = support::config();
+    let opening = babylon_practice_contract::initial_organizer_state(&config).unwrap();
     assert_eq!(
-        admit_organizer(
+        babylon_practice_contract::admit_organizer(
             &config,
             &opening,
-            &command(&config, &opening, OrganizerChoice::LocalAid)
+            &support::command(&config, &opening, OrganizerChoice::LocalAid)
         ),
         Err(OrganizerError::Refused(OrganizerRefusal::AidUnavailable))
     );
     let mut config = captured();
     config.aid_bindings[0].receiving_consent = OrganizerGiftConsent::Refuse;
-    let opening = initial_organizer_state(&config).unwrap();
+    let opening = babylon_practice_contract::initial_organizer_state(&config).unwrap();
     assert_eq!(
-        admit_organizer(
+        babylon_practice_contract::admit_organizer(
             &config,
             &opening,
-            &command(&config, &opening, OrganizerChoice::LocalAid)
+            &support::command(&config, &opening, OrganizerChoice::LocalAid)
         ),
         Err(OrganizerError::Refused(
             OrganizerRefusal::AidReceivingRefused
@@ -255,24 +291,25 @@ fn missing_or_refused_receiving_capture_is_not_fallback_authorization() {
 #[test]
 fn later_donor_scarcity_and_wrong_authority_do_not_create_practice_time() {
     let config = captured();
-    let opening = initial_organizer_state(&config).unwrap();
-    let mut cmd = command(&config, &opening, OrganizerChoice::LocalAid);
+    let opening = babylon_practice_contract::initial_organizer_state(&config).unwrap();
+    let mut cmd = support::command(&config, &opening, OrganizerChoice::LocalAid);
     cmd.authority_id = [99; 16];
     assert_eq!(
-        admit_organizer_aid_pending(&config, &opening, &cmd, None),
+        babylon_practice_contract::admit_organizer_aid_pending(&config, &opening, &cmd, None),
         Err(OrganizerError::Refused(OrganizerRefusal::WrongAuthority))
     );
-    let accepted = admit_organizer(
+    let accepted = babylon_practice_contract::admit_organizer(
         &config,
         &opening,
-        &command(&config, &opening, OrganizerChoice::LocalAid),
+        &support::command(&config, &opening, OrganizerChoice::LocalAid),
     )
     .unwrap();
-    let gift = organizer_aid_commitment(&config, &opening, &accepted).unwrap();
+    let gift =
+        babylon_practice_contract::organizer_aid_commitment(&config, &opening, &accepted).unwrap();
     let next = resolve_supported_aid(
         &config,
         &opening,
-        &facts(1, 160),
+        &support::facts(1, 160),
         Some(&accepted),
         &time(&config, 201, 2),
     )
@@ -289,23 +326,23 @@ fn later_donor_scarcity_and_wrong_authority_do_not_create_practice_time() {
         .time_use
         .is_empty());
     assert_eq!(next.standing, opening.standing);
-    validate_organizer_aid_commitment(&config, &gift).unwrap();
+    babylon_practice_contract::validate_organizer_aid_commitment(&config, &gift).unwrap();
 }
 
 #[test]
 fn aid_receipt_cannot_be_retyped_into_automatic_contact_agreement() {
     let config = captured();
-    let opening = initial_organizer_state(&config).unwrap();
-    let accepted = admit_organizer(
+    let opening = babylon_practice_contract::initial_organizer_state(&config).unwrap();
+    let accepted = babylon_practice_contract::admit_organizer(
         &config,
         &opening,
-        &command(&config, &opening, OrganizerChoice::LocalAid),
+        &support::command(&config, &opening, OrganizerChoice::LocalAid),
     )
     .unwrap();
     let next = resolve_supported_aid(
         &config,
         &opening,
-        &facts(1, 160),
+        &support::facts(1, 160),
         Some(&accepted),
         &time(&config, 204, 8),
     )
@@ -314,7 +351,7 @@ fn aid_receipt_cannot_be_retyped_into_automatic_contact_agreement() {
     receipt.outcome = OrganizerOutcome::ContactCompleted;
     receipt.contact_product_id = Some([91; 32]);
     assert_eq!(
-        validate_organizer_receipt(&receipt),
+        babylon_practice_contract::validate_organizer_receipt(&receipt),
         Err(OrganizerError::InvalidState)
     );
 }
@@ -385,7 +422,7 @@ fn resolve_supported_aid(
             consumed_quantity: 1,
         },
     );
-    resolve_organizer_period_with_time(
+    babylon_practice_contract::resolve_organizer_period_with_time(
         config,
         opening,
         facts,
@@ -406,11 +443,11 @@ fn next_resources(config: &OrganizerConfig, period: u64) -> OrganizerPeriodTimeR
 
 fn remote_pending() -> (OrganizerConfig, OrganizerCommitment, OrganizerState) {
     let config = captured();
-    let opening = initial_organizer_state(&config).unwrap();
-    let accepted = admit_organizer(
+    let opening = babylon_practice_contract::initial_organizer_state(&config).unwrap();
+    let accepted = babylon_practice_contract::admit_organizer(
         &config,
         &opening,
-        &command(&config, &opening, OrganizerChoice::RemoteAid),
+        &support::command(&config, &opening, OrganizerChoice::RemoteAid),
     )
     .unwrap();
     let support = support_for(
@@ -419,10 +456,10 @@ fn remote_pending() -> (OrganizerConfig, OrganizerCommitment, OrganizerState) {
         1,
         OrganizerAidSupportStatus::AwaitingDelivery,
     );
-    let next = resolve_organizer_period_with_time(
+    let next = babylon_practice_contract::resolve_organizer_period_with_time(
         &config,
         &opening,
-        &facts(1, 160),
+        &support::facts(1, 160),
         Some(&accepted),
         &next_resources(&config, 1),
         babylon_practice_contract::OrganizerMaterialSupport {
@@ -447,12 +484,12 @@ fn remote_authorization_survives_then_attempts_after_real_grant_and_consumption(
         OrganizerOutcome::AidAwaitingSupport
     );
     assert_eq!(organizer_actual_time_uses(&pending, 1).count(), 0);
-    let encoded = encode_organizer_state(&pending).unwrap();
-    let restored = decode_organizer_state(&encoded).unwrap();
+    let encoded = babylon_practice_contract::encode_organizer_state(&pending).unwrap();
+    let restored = babylon_practice_contract::decode_organizer_state(&encoded).unwrap();
     assert_eq!(restored, pending);
     // A later ordinary command cannot re-admit the original stale gift.
     assert_eq!(
-        admit_organizer(&config, &restored, &accepted.command),
+        babylon_practice_contract::admit_organizer(&config, &restored, &accepted.command),
         Err(OrganizerError::Refused(OrganizerRefusal::StalePeriod))
     );
     let support = support_for(
@@ -464,10 +501,10 @@ fn remote_authorization_survives_then_attempts_after_real_grant_and_consumption(
             consumed_quantity: 1,
         },
     );
-    let next = resolve_organizer_period_with_time(
+    let next = babylon_practice_contract::resolve_organizer_period_with_time(
         &config,
         &restored,
-        &facts(2, 160),
+        &support::facts(2, 160),
         None,
         &next_resources(&config, 2),
         babylon_practice_contract::OrganizerMaterialSupport {
@@ -485,10 +522,10 @@ fn remote_authorization_survives_then_attempts_after_real_grant_and_consumption(
     assert!(row.practice.contact_product_id.is_none());
     assert!(row.practice.observation_ids.is_empty());
     assert!(next.receipts.last().unwrap().standing_work);
-    let later = resolve_organizer_period_with_time(
+    let later = babylon_practice_contract::resolve_organizer_period_with_time(
         &config,
         &next,
-        &facts(3, 160),
+        &support::facts(3, 160),
         None,
         &next_resources(&config, 3),
         babylon_practice_contract::OrganizerMaterialSupport {
@@ -517,10 +554,10 @@ fn awaiting_surviving_freight_does_not_turn_ordinary_scarcity_into_aid_failure()
     for row in &mut resources.capacities {
         row.available = 0;
     }
-    let next = resolve_organizer_period_with_time(
+    let next = babylon_practice_contract::resolve_organizer_period_with_time(
         &config,
         &opening,
-        &facts(2, 160),
+        &support::facts(2, 160),
         None,
         &resources,
         babylon_practice_contract::OrganizerMaterialSupport {
@@ -551,18 +588,18 @@ fn unshipped_or_granted_unconsumed_support_never_completes_and_retires_once() {
         },
     ] {
         let config = captured();
-        let opening = initial_organizer_state(&config).unwrap();
-        let accepted = admit_organizer(
+        let opening = babylon_practice_contract::initial_organizer_state(&config).unwrap();
+        let accepted = babylon_practice_contract::admit_organizer(
             &config,
             &opening,
-            &command(&config, &opening, OrganizerChoice::LocalAid),
+            &support::command(&config, &opening, OrganizerChoice::LocalAid),
         )
         .unwrap();
         let support = support_for(&config, &accepted, 1, status);
-        let next = resolve_organizer_period_with_time(
+        let next = babylon_practice_contract::resolve_organizer_period_with_time(
             &config,
             &opening,
-            &facts(1, 160),
+            &support::facts(1, 160),
             Some(&accepted),
             &next_resources(&config, 1),
             babylon_practice_contract::OrganizerMaterialSupport {
@@ -579,9 +616,13 @@ fn unshipped_or_granted_unconsumed_support_never_completes_and_retires_once() {
         assert_eq!(organizer_actual_time_uses(&next, 1).count(), 0);
         assert_eq!(
             next.agreements,
-            reduce_organizer_products(&config, &opening, &facts(1, 160))
-                .unwrap()
-                .agreements
+            babylon_practice_contract::reduce_organizer_products(
+                &config,
+                &opening,
+                &support::facts(1, 160)
+            )
+            .unwrap()
+            .agreements
         );
     }
 }
@@ -600,10 +641,10 @@ fn missing_foreign_duplicate_future_and_changed_support_fail_without_mutating_op
         },
     );
     assert_eq!(
-        resolve_organizer_period_with_time(
+        babylon_practice_contract::resolve_organizer_period_with_time(
             &config,
             &opening,
-            &facts(2, 160),
+            &support::facts(2, 160),
             None,
             &next_resources(&config, 2),
             babylon_practice_contract::OrganizerMaterialSupport {
@@ -623,10 +664,10 @@ fn missing_foreign_duplicate_future_and_changed_support_fail_without_mutating_op
             _ => row.recipient_principal_id[0] ^= 1,
         }
         assert_eq!(
-            resolve_organizer_period_with_time(
+            babylon_practice_contract::resolve_organizer_period_with_time(
                 &config,
                 &opening,
-                &facts(2, 160),
+                &support::facts(2, 160),
                 None,
                 &next_resources(&config, 2),
                 babylon_practice_contract::OrganizerMaterialSupport {
@@ -638,10 +679,10 @@ fn missing_foreign_duplicate_future_and_changed_support_fail_without_mutating_op
         );
     }
     assert_eq!(
-        resolve_organizer_period_with_time(
+        babylon_practice_contract::resolve_organizer_period_with_time(
             &config,
             &opening,
-            &facts(2, 160),
+            &support::facts(2, 160),
             None,
             &next_resources(&config, 2),
             babylon_practice_contract::OrganizerMaterialSupport {
@@ -659,21 +700,22 @@ fn delayed_partner_authority_tamper_and_third_pending_slot_refuse() {
     let (config, _accepted, opening) = remote_pending();
     let mut altered = opening.clone();
     altered.pending_aid[0].partner_authorization.authority_id = [99; 16];
-    assert!(validate_organizer_pair(&config, &altered).is_err());
+    assert!(babylon_practice_contract::validate_organizer_pair(&config, &altered).is_err());
     let mut oversized = opening.clone();
     oversized.pending_aid = vec![opening.pending_aid[0].clone(); 3];
     assert_eq!(
-        validate_organizer_state(&oversized),
+        babylon_practice_contract::validate_organizer_state(&oversized),
         Err(OrganizerError::SizeLimit)
     );
-    let fresh = command(&config, &opening, OrganizerChoice::RemoteAid);
+    let fresh = support::command(&config, &opening, OrganizerChoice::RemoteAid);
     assert_eq!(
-        admit_organizer(&config, &opening, &fresh),
+        babylon_practice_contract::admit_organizer(&config, &opening, &fresh),
         Err(OrganizerError::Refused(
             OrganizerRefusal::PendingAidConflict
         ))
     );
-    let batch = organizer_resolved_action_batch(&config, &opening, None).unwrap();
+    let batch = babylon_practice_contract::organizer_resolved_action_batch(&config, &opening, None)
+        .unwrap();
     let delayed = batch
         .items
         .iter()
@@ -722,10 +764,10 @@ fn later_ordinary_work_precedes_aid_and_cannot_double_spend_actual_supply() {
             consumed_quantity: 1,
         },
     );
-    let next = resolve_organizer_period_with_time(
+    let next = babylon_practice_contract::resolve_organizer_period_with_time(
         &config,
         &opening,
-        &facts(2, 160),
+        &support::facts(2, 160),
         None,
         &resources,
         babylon_practice_contract::OrganizerMaterialSupport {
@@ -756,11 +798,11 @@ fn later_ordinary_work_precedes_aid_and_cannot_double_spend_actual_supply() {
 fn independently_refused_delayed_practice_keeps_valid_grant_and_consumption_evidence() {
     let mut config = captured();
     config.aid_bindings[1].partner.policy = OrganizerPartnerPolicy::Refuse;
-    let opening = initial_organizer_state(&config).unwrap();
-    let accepted = admit_organizer(
+    let opening = babylon_practice_contract::initial_organizer_state(&config).unwrap();
+    let accepted = babylon_practice_contract::admit_organizer(
         &config,
         &opening,
-        &command(&config, &opening, OrganizerChoice::RemoteAid),
+        &support::command(&config, &opening, OrganizerChoice::RemoteAid),
     )
     .unwrap();
     let wait = support_for(
@@ -769,10 +811,10 @@ fn independently_refused_delayed_practice_keeps_valid_grant_and_consumption_evid
         1,
         OrganizerAidSupportStatus::AwaitingDelivery,
     );
-    let dispatched = resolve_organizer_period_with_time(
+    let dispatched = babylon_practice_contract::resolve_organizer_period_with_time(
         &config,
         &opening,
-        &facts(1, 160),
+        &support::facts(1, 160),
         Some(&accepted),
         &next_resources(&config, 1),
         babylon_practice_contract::OrganizerMaterialSupport {
@@ -790,10 +832,10 @@ fn independently_refused_delayed_practice_keeps_valid_grant_and_consumption_evid
             consumed_quantity: 1,
         },
     );
-    let next = resolve_organizer_period_with_time(
+    let next = babylon_practice_contract::resolve_organizer_period_with_time(
         &config,
         &dispatched,
-        &facts(2, 160),
+        &support::facts(2, 160),
         None,
         &next_resources(&config, 2),
         babylon_practice_contract::OrganizerMaterialSupport {
@@ -824,10 +866,15 @@ fn independently_refused_delayed_practice_keeps_valid_grant_and_consumption_evid
 #[test]
 fn product_reduction_can_carry_pending_authorization_but_cannot_be_saved_before_resolution() {
     let (config, _accepted, opening) = remote_pending();
-    let reduced = reduce_organizer_products(&config, &opening, &facts(2, 160)).unwrap();
+    let reduced = babylon_practice_contract::reduce_organizer_products(
+        &config,
+        &opening,
+        &support::facts(2, 160),
+    )
+    .unwrap();
     assert_eq!(reduced.pending_aid, opening.pending_aid);
     assert_eq!(
-        encode_organizer_state(&reduced),
+        babylon_practice_contract::encode_organizer_state(&reduced),
         Err(OrganizerError::InvalidState)
     );
 }
@@ -836,7 +883,8 @@ fn organizer_actual_time_uses(
     state: &OrganizerState,
     period: u64,
 ) -> impl Iterator<Item = &OrganizerTimeUse> {
-    organizer_period_receipts(state, period).flat_map(|row| row.time_use.iter())
+    babylon_practice_contract::organizer_period_receipts(state, period)
+        .flat_map(|row| row.time_use.iter())
 }
 
 #[test]
@@ -851,8 +899,11 @@ fn pending_original_date_and_nonce_cannot_be_rewritten_as_current_admission() {
             1 => original.command.nonce[0] ^= 1,
             _ => original.commitment_id[0] ^= 1,
         }
-        assert!(organizer_resolved_action_batch(&config, &forged, None).is_err());
-        assert!(encode_organizer_state(&forged).is_err());
+        assert!(
+            babylon_practice_contract::organizer_resolved_action_batch(&config, &forged, None)
+                .is_err()
+        );
+        assert!(babylon_practice_contract::encode_organizer_state(&forged).is_err());
     }
     assert_eq!(opening, before);
     assert_eq!(opening.pending_aid[0].gift.commitment, accepted);
@@ -869,10 +920,10 @@ fn cutting_real_support_with_unrelated_free_time_blocks_delayed_completion() {
         },
     ] {
         let support = support_for(&config, &accepted, 2, status);
-        let next = resolve_organizer_period_with_time(
+        let next = babylon_practice_contract::resolve_organizer_period_with_time(
             &config,
             &opening,
-            &facts(2, 160),
+            &support::facts(2, 160),
             None,
             &next_resources(&config, 2),
             babylon_practice_contract::OrganizerMaterialSupport {
@@ -946,10 +997,10 @@ fn later_support_cannot_repeat_dispatch_postings_or_foreign_actor_authority() {
         row["material_postings"][field] = value;
         let row: OrganizerAidSupport = serde_json::from_value(row).unwrap();
         assert_eq!(
-            resolve_organizer_period_with_time(
+            babylon_practice_contract::resolve_organizer_period_with_time(
                 &config,
                 &opening,
-                &facts(2, 160),
+                &support::facts(2, 160),
                 None,
                 &next_resources(&config, 2),
                 babylon_practice_contract::OrganizerMaterialSupport {
@@ -962,27 +1013,27 @@ fn later_support_cannot_repeat_dispatch_postings_or_foreign_actor_authority() {
     }
     let mut foreign = opening.clone();
     foreign.pending_aid[0].gift.donor_actor_id = config.aid_bindings[0].partner.actor_id;
-    assert!(validate_organizer_pair(&config, &foreign).is_err());
+    assert!(babylon_practice_contract::validate_organizer_pair(&config, &foreign).is_err());
     assert_eq!(opening.pending_aid[0].gift.commitment, accepted);
 }
 
 #[test]
 fn current_organizer_refuses_prior_schema_even_without_aid() {
     assert_eq!(ORGANIZER_SCHEMA_VERSION, 7);
-    let mut prior = config();
+    let mut prior = support::config();
     prior.schema_version = 6;
     assert_eq!(
-        validate_organizer_config(&prior),
+        babylon_practice_contract::validate_organizer_config(&prior),
         Err(OrganizerError::UnsupportedSchema)
     );
     let mut config_bytes = b"babylon.organizer-config.v6\0".to_vec();
     config_bytes.extend_from_slice(&serde_json::to_vec(&prior).unwrap());
-    assert!(decode_organizer_config(&config_bytes).is_err());
-    let mut state = initial_organizer_state(&config()).unwrap();
+    assert!(babylon_practice_contract::decode_organizer_config(&config_bytes).is_err());
+    let mut state = babylon_practice_contract::initial_organizer_state(&support::config()).unwrap();
     state.schema_version = 6;
     let mut state_bytes = b"babylon.organizer-state.v4\0".to_vec();
     state_bytes.extend_from_slice(&serde_json::to_vec(&state).unwrap());
-    assert!(decode_organizer_state(&state_bytes).is_err());
+    assert!(babylon_practice_contract::decode_organizer_state(&state_bytes).is_err());
 }
 
 #[test]
@@ -1000,17 +1051,17 @@ fn collection_ack_does_not_recharge_material_time_before_delayed_aid() {
         household_principal_id: [201; 32],
         organization_account_id: [96; 32],
         social_class_target: [98; 32],
-        labor_unit_id: organizer_time_unit_id().as_bytes(),
+        labor_unit_id: babylon_practice_contract::organizer_time_unit_id().as_bytes(),
         cash_consent: OrganizerGiftConsent::Accept,
         maximum_cash_micros: 2,
         protected_cash_floor_micros: 0,
         collection_hours: 2,
     });
-    let first = initial_organizer_state(&config).unwrap();
-    let gift = admit_organizer(
+    let first = babylon_practice_contract::initial_organizer_state(&config).unwrap();
+    let gift = babylon_practice_contract::admit_organizer(
         &config,
         &first,
-        &command(&config, &first, OrganizerChoice::RemoteAid),
+        &support::command(&config, &first, OrganizerChoice::RemoteAid),
     )
     .unwrap();
     let waiting = support_for(
@@ -1019,10 +1070,10 @@ fn collection_ack_does_not_recharge_material_time_before_delayed_aid() {
         1,
         OrganizerAidSupportStatus::AwaitingDelivery,
     );
-    let pending = resolve_organizer_period_with_time(
+    let pending = babylon_practice_contract::resolve_organizer_period_with_time(
         &config,
         &first,
-        &facts(1, 160),
+        &support::facts(1, 160),
         Some(&gift),
         &next_resources(&config, 1),
         babylon_practice_contract::OrganizerMaterialSupport {
@@ -1031,10 +1082,10 @@ fn collection_ack_does_not_recharge_material_time_before_delayed_aid() {
         },
     )
     .unwrap();
-    let accepted = admit_organizer(
+    let accepted = babylon_practice_contract::admit_organizer(
         &config,
         &pending,
-        &command(&config, &pending, OrganizerChoice::Collect),
+        &support::command(&config, &pending, OrganizerChoice::Collect),
     )
     .unwrap();
     let grant = support_for(
@@ -1062,7 +1113,7 @@ fn collection_ack_does_not_recharge_material_time_before_delayed_aid() {
         bytes.extend_from_slice(&value.to_be_bytes());
     }
     bytes.extend_from_slice(&[201; 32]);
-    bytes.extend_from_slice(&organizer_time_unit_id().as_bytes());
+    bytes.extend_from_slice(&babylon_practice_contract::organizer_time_unit_id().as_bytes());
     let fact = OrganizerCollectionFact {
         period: 2,
         admitted_period: 1,
@@ -1074,7 +1125,7 @@ fn collection_ack_does_not_recharge_material_time_before_delayed_aid() {
         contributor_id: 201,
         household_principal_id: [201; 32],
         organization_account_id: [96; 32],
-        labor_unit_id: organizer_time_unit_id().as_bytes(),
+        labor_unit_id: babylon_practice_contract::organizer_time_unit_id().as_bytes(),
         requested_cash_micros: 2,
         collected_cash_micros: 2,
         performed_hours: 2,
@@ -1082,10 +1133,10 @@ fn collection_ack_does_not_recharge_material_time_before_delayed_aid() {
         transfer_ordinal: Some(0),
         contribution_use_id: babylon_kernel::content_digest::sha256_of(&bytes),
     };
-    let next = resolve_organizer_period_with_time(
+    let next = babylon_practice_contract::resolve_organizer_period_with_time(
         &config,
         &pending,
-        &facts(2, 160),
+        &support::facts(2, 160),
         Some(&accepted),
         &resources,
         babylon_practice_contract::OrganizerMaterialSupport {
@@ -1111,18 +1162,20 @@ fn collection_ack_does_not_recharge_material_time_before_delayed_aid() {
             2 => changed.contribution_use_id = [4; 32],
             _ => changed.actor_id = 102,
         }
-        assert!(resolve_organizer_period_with_time(
-            &config,
-            &pending,
-            &facts(2, 160),
-            Some(&accepted),
-            &resources,
-            babylon_practice_contract::OrganizerMaterialSupport {
-                aid: std::slice::from_ref(&grant),
-                collection: Some(&changed),
-            }
-        )
-        .is_err());
+        assert!(
+            babylon_practice_contract::resolve_organizer_period_with_time(
+                &config,
+                &pending,
+                &support::facts(2, 160),
+                Some(&accepted),
+                &resources,
+                babylon_practice_contract::OrganizerMaterialSupport {
+                    aid: std::slice::from_ref(&grant),
+                    collection: Some(&changed),
+                }
+            )
+            .is_err()
+        );
     }
     assert_eq!(pending.pending_aid.len(), 1);
 }

@@ -4,6 +4,8 @@
 ///
 /// Construction checks syntax only. A captured, vintage-specific county roster
 /// must independently admit the identity before it becomes campaign geography.
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct CountyGeoid([u8; 5]);
 
@@ -108,13 +110,13 @@ impl std::str::FromStr for CountyGeoid {
 }
 
 impl std::fmt::Display for CountyGeoid {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         f.write_str(self.as_str())
     }
 }
 
 impl std::fmt::Display for CountyGeoidError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         write!(f, "county GEOID refused: {self:?}")
     }
 }

@@ -29,6 +29,8 @@
 /// against a DIFFERENT registry instance is a caller bug, the same
 /// out-of-band-identity risk `babylon_graph`'s own id newtypes (`NodeId`,
 /// …) already carry and document there.
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct EnumTypeId(pub u32);
 
@@ -75,7 +77,7 @@ pub enum EnumRegistryError {
 }
 
 impl std::fmt::Display for EnumRegistryError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         match self {
             Self::DuplicateType { name } => {
                 write!(f, "duplicate defenum type name: {name}")

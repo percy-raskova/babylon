@@ -30,6 +30,8 @@ use crate::fuel::CardinalityCeilings;
 use crate::reader::{Atom, SExpr};
 use crate::vocabulary::EnumKind;
 use std::collections::{HashMap, HashSet};
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 
 /// A manifest rejection.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -86,7 +88,7 @@ impl ManifestError {
 }
 
 impl std::fmt::Display for ManifestError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         match self {
             Self::RowFlagMismatch { row, detail } => {
                 write!(f, "E-LOAD-042: manifest row {row}: {detail} (§2.9)")
@@ -405,11 +407,11 @@ fn check_invariant_and_the(rule: &SExpr, manifest: &Manifest) -> Result<(), Mani
 
 #[cfg(test)]
 mod tests {
-    use super::{check_rule_against_manifest, Manifest};
-    use crate::reader::read;
-
+    use super::Manifest;
     fn e(source: &str) -> crate::reader::SExpr {
-        read(source).expect("test source must parse").0
+        crate::reader::read(source)
+            .expect("test source must parse")
+            .0
     }
 
     const MANIFEST: &str = "(manifest demo
@@ -478,7 +480,7 @@ mod tests {
             "(add-edge EdgeType/IN_SCALE a b :strength 0.5c)",
             "(remove-edge EdgeType/IN_SCALE a b)",
         ] {
-            let err = check_rule_against_manifest(&rule(body), &manifest()).expect_err(body);
+            let err = super::check_rule_against_manifest(&rule(body), &manifest()).expect_err(body);
             assert_eq!(err.spec_code(), Some("E-LOAD-013"), "{body}");
         }
     }
@@ -488,7 +490,7 @@ mod tests {
         // D63: the flag constrains STRUCTURE, not state — a territory's
         // stock changes every tick while its existence does not.
         assert_eq!(
-            check_rule_against_manifest(
+            super::check_rule_against_manifest(
                 &rule("(update-node self territory/wage-bill (add 5$))"),
                 &manifest()
             ),
@@ -498,7 +500,7 @@ mod tests {
 
     #[test]
     fn the_against_a_non_singleton_ceiling_is_e_load_043() {
-        let err = check_rule_against_manifest(
+        let err = super::check_rule_against_manifest(
             &rule("(update-node (the NodeType/SOCIAL_CLASS) social-class/wealth (add 5$))"),
             &manifest(),
         )
@@ -509,7 +511,7 @@ mod tests {
     #[test]
     fn the_against_a_ceiling_one_carrier_accepts() {
         assert_eq!(
-            check_rule_against_manifest(
+            super::check_rule_against_manifest(
                 &rule("(update-node (the NodeType/POLITY) polity/imperial-rent-pool (sub 5$))"),
                 &manifest()
             ),
@@ -519,14 +521,14 @@ mod tests {
 
     #[test]
     fn a_type_the_manifest_has_no_row_for_is_e_load_045() {
-        let err = check_rule_against_manifest(
+        let err = super::check_rule_against_manifest(
             &rule("(update-node (the NodeType/SOVEREIGN) social-class/wealth (add 5$))"),
             &manifest(),
         )
         .unwrap_err();
         assert_eq!(err.spec_code(), Some("E-LOAD-045"));
         // …and a queried type, likewise.
-        let err = check_rule_against_manifest(
+        let err = super::check_rule_against_manifest(
             &rule("(guard (exists (nodes NodeType/SOVEREIGN)) (remove-node self))"),
             &manifest(),
         )

@@ -1,8 +1,8 @@
 //! Pure detached organization-practice topology validation.
 
 use crate::{
-    read_action_budget, OrganizationPracticeTopology, PracticeContractError, PracticeTargetDomain,
-    MAX_ORGANIZATIONS, MAX_ORG_SOLIDARITY_EDGES_PER_ORG,
+    OrganizationPracticeTopology, PracticeContractError, PracticeTargetDomain, MAX_ORGANIZATIONS,
+    MAX_ORG_SOLIDARITY_EDGES_PER_ORG,
 };
 use std::collections::{HashMap, HashSet};
 
@@ -40,7 +40,7 @@ impl PracticeTopologyLoadCounter {
             return Err(PracticeContractError::PracticeTopologyOrganizationLimit);
         }
         if let Some(storage) = action_budget_storage {
-            read_action_budget(storage)?;
+            crate::read_action_budget(storage)?;
         } else if active {
             return Err(PracticeContractError::PracticeTopologyBudgetMissing);
         }

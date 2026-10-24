@@ -3,6 +3,8 @@
 
 use crate::reader::{Atom, SExpr};
 use crate::write_log::{Write, WriteRecord};
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 
 /// Maximum source-tree depth inspected by a load-time AST walker.
 ///
@@ -51,7 +53,7 @@ impl AstWalkError {
 }
 
 impl std::fmt::Display for AstWalkError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> FmtResult {
         write!(
             formatter,
             "{} exceeded its {:?} bound of {} while inspecting the rule AST",
@@ -687,7 +689,7 @@ impl ContractError {
 }
 
 impl std::fmt::Display for ContractError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> FmtResult {
         match self {
             Self::MissingMetadata { keyword } => {
                 write!(formatter, ":{keyword} is mandatory on every rule")
@@ -1189,18 +1191,21 @@ pub fn reduce_audit_receipts(
 
 #[cfg(test)]
 mod tests {
+
     use super::*;
     use crate::bindings::BindingVocabulary;
     use crate::fuel::{CardinalityCeilings, IntrinsicCosts};
-    use crate::reader::read;
-    use crate::rule_pipeline::{load_rule, LoadContext, LoadError};
+    use crate::rule_pipeline::{LoadContext, LoadError};
     use crate::typecheck::TypeEnv;
+    use crate::types::EnumRegistry;
     use crate::write_log::{Write, WriteRecord};
     use babylon_graph::substrate::NodeId;
     use std::collections::{HashMap, HashSet};
 
     fn rule(source: &str) -> SExpr {
-        read(source).expect("test rule must lex and parse").0
+        crate::reader::read(source)
+            .expect("test rule must lex and parse")
+            .0
     }
 
     fn wrapped(options: &str, effects: &str) -> SExpr {
@@ -1222,7 +1227,7 @@ mod tests {
                 fields: HashMap::new(),
                 exemptions: &[],
             })),
-            enums: Box::leak(Box::new(crate::types::EnumRegistry::default())),
+            enums: Box::leak(Box::new(EnumRegistry::default())),
             const_values: Box::leak(Box::new(HashMap::new())),
             ceilings: Box::leak(Box::new(CardinalityCeilings::new(
                 HashMap::new(),
@@ -1247,7 +1252,8 @@ mod tests {
              (bindings) (effects {effect}))"
         );
 
-        let error = load_rule(&source, &load_ctx()).expect_err("hostile nesting must refuse");
+        let error = crate::rule_pipeline::load_rule(&source, &load_ctx())
+            .expect_err("hostile nesting must refuse");
         assert_eq!(error.spec_code(), None);
         assert!(matches!(
             error,

@@ -2,10 +2,11 @@
 
 use std::cmp::Ordering;
 
-use babylon_kernel::{clock::SessionId, content_digest::sha256_of};
+use babylon_kernel::clock::SessionId;
+use babylon_kernel::content_digest;
 use babylon_practice_contract::PracticeId;
 
-use crate::classifier::{classify_sfs, SfsClass, SfsClassError};
+use crate::classifier::{SfsClass, SfsClassError};
 use crate::digest::Digest32;
 use crate::wire::{PayloadCursor, PayloadEncoder, SfsWireError, T3Record};
 
@@ -460,7 +461,7 @@ impl SfsTrace {
             }
             masses.push(samples[index].aggregate);
         }
-        let classification = classify_sfs(window_width, &masses)?;
+        let classification = crate::classifier::classify_sfs(window_width, &masses)?;
         Ok(Self {
             run_identity_digest,
             relational_scope_digest,
@@ -605,7 +606,7 @@ pub fn practice_attempt_row_id(
     preimage.extend_from_slice(&attempt_tick.to_be_bytes());
     preimage.extend_from_slice(authority_digest.as_bytes());
     preimage.extend_from_slice(intent_digest.as_bytes());
-    Digest32::from_bytes(sha256_of(&preimage))
+    Digest32::from_bytes(content_digest::sha256_of(&preimage))
 }
 
 /// Predeclared canonical practice candidates without dispositions.

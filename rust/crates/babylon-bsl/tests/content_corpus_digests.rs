@@ -17,7 +17,8 @@
 //! here instead of silently under-covering the corpus again. Amendment AJ
 //! retired the five author-visible `rng-draw` conformance fixtures; the
 //! private finite-kernel draw boundary has typed contracts instead.
-use babylon_bsl::reader::read_all;
+use babylon_bsl::reader;
+
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 
@@ -34,14 +35,12 @@ const CORPUS_DIRS: &[(&str, &str)] = &[
 
 #[test]
 fn live_michigan_rule_passes_the_native_loader_without_scenario_declarations() {
-    use babylon_bsl::{
-        bindings::BindingVocabulary,
-        fuel::{CardinalityCeilings, IntrinsicCosts, MATERIAL_CYCLE_INVOCATION_COST},
-        rule_pipeline::{load_rule, LoadContext, RuleExecution},
-        typecheck::TypeEnv,
-        types::EnumRegistry,
-        vocabulary::ClosedVocabulary,
-    };
+    use babylon_bsl::bindings::BindingVocabulary;
+    use babylon_bsl::fuel::{CardinalityCeilings, IntrinsicCosts, MATERIAL_CYCLE_INVOCATION_COST};
+    use babylon_bsl::rule_pipeline::{LoadContext, RuleExecution};
+    use babylon_bsl::typecheck::TypeEnv;
+    use babylon_bsl::types::EnumRegistry;
+    use babylon_bsl::vocabulary::ClosedVocabulary;
     use std::collections::{HashMap, HashSet};
 
     let vocabulary = BindingVocabulary::default();
@@ -56,7 +55,7 @@ fn live_michigan_rule_passes_the_native_loader_without_scenario_declarations() {
     let systems = HashSet::from(["metabolism".to_owned()]);
     let closed_vocabulary = ClosedVocabulary::default();
     let source = include_str!("../../../../content/scenarios/michigan/material-cycle.bsl");
-    let loaded = load_rule(
+    let loaded = babylon_bsl::rule_pipeline::load_rule(
         source,
         &LoadContext {
             vocabulary: &vocabulary,
@@ -483,7 +482,7 @@ fn read_all_digest_is_pinned_across_the_full_content_corpus() {
             .to_string();
         let bytes =
             std::fs::read(path).unwrap_or_else(|e| panic!("reading {}: {e}", path.display()));
-        let forms = read_all(&bytes)
+        let forms = reader::read_all(&bytes)
             .unwrap_or_else(|e| panic!("{} failed to read_all: {e:?}", path.display()));
         let digest = sha256_hex(format!("{forms:#?}").as_bytes());
         actual.push((label, digest));

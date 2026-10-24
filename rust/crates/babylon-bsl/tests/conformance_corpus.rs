@@ -15,11 +15,16 @@
 #![allow(clippy::doc_markdown)] // doc comments cite Python test names and file paths verbatim
 
 use babylon_bsl::bindings::BindingVocabulary;
-use babylon_bsl::evaluator::{evaluate, EvalEnv, Value};
+use babylon_bsl::evaluator;
+use babylon_bsl::evaluator::{EvalEnv, Value};
 use babylon_bsl::fuel::{CardinalityCeilings, IntrinsicCosts};
 use babylon_bsl::intrinsic_host::EmptyIntrinsicHost;
-use babylon_bsl::reader::read;
-use babylon_bsl::rule_pipeline::{bind_environment, load_rule, LoadContext, LoadError, LoadedRule};
+use babylon_bsl::reader;
+
+use babylon_bsl::evaluator::EvalError;
+use babylon_bsl::reader::SExpr;
+use babylon_bsl::rule_pipeline;
+use babylon_bsl::rule_pipeline::{LoadContext, LoadError, LoadedRule};
 use babylon_bsl::structural_verbs::{CollectingSink, EffectExecutor};
 use babylon_bsl::typecheck::TypeEnv;
 use babylon_bsl::types::{BslType, EnumRegistry, FieldDecl, FieldKind};
@@ -161,21 +166,21 @@ fn load(source: &str, rule_file: &str) -> Result<LoadedRule, LoadError> {
         vocabulary_registry: None,
         rule_file,
     };
-    load_rule(source, &ctx)
+    rule_pipeline::load_rule(source, &ctx)
 }
 
 /// The `<when>` clause of a loaded rule — shared by `eval_when` and its
 /// graph-bearing twin `eval_when_over_graph` (PR 4, Task 14), plus the
 /// slice-2-refusal vector for `event_edge_count.bsl`.
-fn when_clause(rule: &LoadedRule) -> &babylon_bsl::reader::SExpr {
-    let babylon_bsl::reader::SExpr::List(items) = &rule.rule else {
+fn when_clause(rule: &LoadedRule) -> &SExpr {
+    let SExpr::List(items) = &rule.rule else {
         unreachable!()
     };
     items
         .iter()
         .find_map(|child| match child {
-            babylon_bsl::reader::SExpr::List(inner)
-                if matches!(inner.first(), Some(babylon_bsl::reader::SExpr::Atom(babylon_bsl::reader::Atom::Symbol(h))) if h == "when") =>
+            SExpr::List(inner)
+                if matches!(inner.first(), Some(SExpr::Atom(babylon_bsl::reader::Atom::Symbol(h))) if h == "when") =>
             {
                 inner.get(1)
             }
@@ -189,7 +194,8 @@ fn when_clause(rule: &LoadedRule) -> &babylon_bsl::reader::SExpr {
 /// (`evaluate_trap_condition(expr, env, coeffs)`) reconstructed from the
 /// composed pipeline.
 fn eval_when(rule: &LoadedRule, supplied: &HashMap<String, Value>) -> bool {
-    let env_map = bind_environment(&rule.bindings, supplied).expect("environment must bind");
+    let env_map =
+        rule_pipeline::bind_environment(&rule.bindings, supplied).expect("environment must bind");
     let costs = IntrinsicCosts::default();
     let env = EvalEnv {
         bindings: env_map,
@@ -201,7 +207,7 @@ fn eval_when(rule: &LoadedRule, supplied: &HashMap<String, Value>) -> bool {
         draw_context: None,
     };
     let mut fuel = 10_000;
-    match evaluate(when_clause(rule), &env, &EmptyIntrinsicHost, &mut fuel)
+    match evaluator::evaluate(when_clause(rule), &env, &EmptyIntrinsicHost, &mut fuel)
         .expect("condition must evaluate")
     {
         Value::Bool(b) => b,
@@ -221,7 +227,8 @@ fn eval_when_over_graph(
     graph: &dyn GraphSubstrate,
     fuel: &mut u64,
 ) -> bool {
-    let env_map = bind_environment(&rule.bindings, supplied).expect("environment must bind");
+    let env_map =
+        rule_pipeline::bind_environment(&rule.bindings, supplied).expect("environment must bind");
     let costs = IntrinsicCosts::default();
     let declared_types = types();
     let enums = EnumRegistry::default();
@@ -234,7 +241,7 @@ fn eval_when_over_graph(
         elements: Vec::new(),
         draw_context: None,
     };
-    match evaluate(when_clause(rule), &env, &EmptyIntrinsicHost, fuel)
+    match evaluator::evaluate(when_clause(rule), &env, &EmptyIntrinsicHost, fuel)
         .expect("condition must evaluate")
     {
         Value::Bool(b) => b,
@@ -419,7 +426,7 @@ fn full_condition_grammar() {
 #[test]
 fn malformed_conditions_fail_loud() {
     // "" — nothing to read.
-    assert!(read("").is_err());
+    assert!(reader::read("").is_err());
     // "MASS_LINK <=" — dangling operator: strictly binary arity.
     let err = eval_cond_err("(<= ml)", &[("ml", Value::Int(0))]);
     assert!(err.message.contains("E-PARSE-040"), "{err}");
@@ -443,7 +450,7 @@ fn malformed_conditions_fail_loud() {
         Some("E-LOAD-010")
     );
     // "MASS_LINK <= 0 AND" / "(MASS_LINK <= 0" — unterminated forms.
-    assert!(read("(and (<= ml 0)").is_err());
+    assert!(reader::read("(and (<= ml 0)").is_err());
 }
 
 /// test_mechanics.py:249-258 (TestTheoreticalLabourAccrual) — surplus ×
@@ -553,7 +560,7 @@ fn nested_paths_are_qnames_and_absence_is_declared() {
     );
     // A required binding with no supplied value is loud at bind time.
     let loaded = load(NODE_CONDITION, "x.bsl").unwrap();
-    assert!(bind_environment(&loaded.bindings, &HashMap::new()).is_err());
+    assert!(rule_pipeline::bind_environment(&loaded.bindings, &HashMap::new()).is_err());
 }
 
 /// test_event_evaluator.py:182-214 + 244-323 — aggregations become folds:
@@ -765,7 +772,7 @@ fn edge_count_evaluates_for_real_on_an_empty_graph() {
     let loaded = load(EDGE_COUNT, "x.bsl").unwrap();
     let graph = MemoryGraph::new();
     let costs = IntrinsicCosts::default();
-    let env_map = bind_environment(&loaded.bindings, &HashMap::new())
+    let env_map = rule_pipeline::bind_environment(&loaded.bindings, &HashMap::new())
         .expect("EDGE_COUNT's bindings are empty — nothing to resolve");
     let env = EvalEnv {
         bindings: env_map,
@@ -777,7 +784,8 @@ fn edge_count_evaluates_for_real_on_an_empty_graph() {
         draw_context: None,
     };
     let mut fuel = 10_000;
-    let result = evaluate(when_clause(&loaded), &env, &EmptyIntrinsicHost, &mut fuel).unwrap();
+    let result =
+        evaluator::evaluate(when_clause(&loaded), &env, &EmptyIntrinsicHost, &mut fuel).unwrap();
     assert_eq!(
         result,
         Value::Bool(false),
@@ -794,7 +802,7 @@ fn edge_count_evaluates_for_real_on_a_non_empty_graph() {
     let b = graph.add_node("SOCIAL_CLASS").unwrap();
     graph.add_edge("SOLIDARITY", a, b, 0.5).unwrap();
     let costs = IntrinsicCosts::default();
-    let env_map = bind_environment(&loaded.bindings, &HashMap::new())
+    let env_map = rule_pipeline::bind_environment(&loaded.bindings, &HashMap::new())
         .expect("EDGE_COUNT's bindings are empty — nothing to resolve");
     let env = EvalEnv {
         bindings: env_map,
@@ -806,7 +814,8 @@ fn edge_count_evaluates_for_real_on_a_non_empty_graph() {
         draw_context: None,
     };
     let mut fuel = 10_000;
-    let result = evaluate(when_clause(&loaded), &env, &EmptyIntrinsicHost, &mut fuel).unwrap();
+    let result =
+        evaluator::evaluate(when_clause(&loaded), &env, &EmptyIntrinsicHost, &mut fuel).unwrap();
     assert_eq!(
         result,
         Value::Bool(true),
@@ -905,7 +914,7 @@ fn bifurcation_routes_by_solidarity_density() {
             ("solidarity-density", real(density)),
             ("self", Value::NodeRef(self_id)),
         ]);
-        let mut env_map = bind_environment(&loaded.bindings, &supplied).unwrap();
+        let mut env_map = rule_pipeline::bind_environment(&loaded.bindings, &supplied).unwrap();
         env_map.insert("self".to_owned(), Value::NodeRef(self_id));
         let costs = IntrinsicCosts::default();
         let registries = registries();
@@ -918,14 +927,14 @@ fn bifurcation_routes_by_solidarity_density() {
             elements: Vec::new(),
             draw_context: None,
         };
-        let babylon_bsl::reader::SExpr::List(items) = &loaded.rule else {
+        let SExpr::List(items) = &loaded.rule else {
             unreachable!()
         };
         let effects = items
             .iter()
             .find_map(|child| match child {
-                babylon_bsl::reader::SExpr::List(inner)
-                    if matches!(inner.first(), Some(babylon_bsl::reader::SExpr::Atom(babylon_bsl::reader::Atom::Symbol(h))) if h == "effects") =>
+                SExpr::List(inner)
+                    if matches!(inner.first(), Some(SExpr::Atom(babylon_bsl::reader::Atom::Symbol(h))) if h == "effects") =>
                 {
                     Some(&inner[1..])
                 }
@@ -935,15 +944,16 @@ fn bifurcation_routes_by_solidarity_density() {
         let mut executor = EffectExecutor::new(&registries.types, &registries.enums);
         let mut sink = CollectingSink::default();
         let mut fuel = loaded.declared_fuel;
-        let pending = match evaluate(when_clause(&loaded), &env, &EmptyIntrinsicHost, &mut fuel)
-            .expect("the bifurcation condition must evaluate")
-        {
-            Value::Bool(true) => executor
-                .collect_effects(effects, &env, &EmptyIntrinsicHost, &mut sink, &mut fuel)
-                .unwrap(),
-            Value::Bool(false) => Vec::new(),
-            other => panic!("a condition must be Bool, got {other:?}"),
-        };
+        let pending =
+            match evaluator::evaluate(when_clause(&loaded), &env, &EmptyIntrinsicHost, &mut fuel)
+                .expect("the bifurcation condition must evaluate")
+            {
+                Value::Bool(true) => executor
+                    .collect_effects(effects, &env, &EmptyIntrinsicHost, &mut sink, &mut fuel)
+                    .unwrap(),
+                Value::Bool(false) => Vec::new(),
+                other => panic!("a condition must be Bool, got {other:?}"),
+            };
         for write in &pending {
             executor.apply_pending_write(write, &mut graph).unwrap();
         }
@@ -998,7 +1008,7 @@ fn correction_2_unknown_aggregation_is_e_parse_015_not_false() {
 /// an atom — E-LEX-003 at read time.
 #[test]
 fn correction_3_unknown_comparison_operator_is_a_lex_error_not_false() {
-    let err = read("(~= agitation 0.5p)").unwrap_err();
+    let err = reader::read("(~= agitation 0.5p)").unwrap_err();
     assert!(matches!(
         err.kind,
         babylon_bsl::reader::ReadErrorKind::Lex(babylon_bsl::reader::LexCode::UnclassifiableToken)
@@ -1040,9 +1050,9 @@ fn eval_value(source: &str, env_pairs: &[(&str, Value)]) -> Value {
         elements: Vec::new(),
         draw_context: None,
     };
-    let (expr, _) = read(source).expect("vector source must parse");
+    let (expr, _) = reader::read(source).expect("vector source must parse");
     let mut fuel = 10_000;
-    evaluate(&expr, &env, &EmptyIntrinsicHost, &mut fuel).expect("vector must evaluate")
+    evaluator::evaluate(&expr, &env, &EmptyIntrinsicHost, &mut fuel).expect("vector must evaluate")
 }
 
 /// `eval_value`'s graph-bearing twin (PR 4, Task 14): `env.graph =
@@ -1066,8 +1076,8 @@ fn eval_value_over_graph(
         elements: Vec::new(),
         draw_context: None,
     };
-    let (expr, _) = read(source).expect("vector source must parse");
-    evaluate(&expr, &env, &EmptyIntrinsicHost, fuel).expect("vector must evaluate")
+    let (expr, _) = reader::read(source).expect("vector source must parse");
+    evaluator::evaluate(&expr, &env, &EmptyIntrinsicHost, fuel).expect("vector must evaluate")
 }
 
 fn eval_cond(source: &str, env_pairs: &[(&str, Value)]) -> bool {
@@ -1077,7 +1087,7 @@ fn eval_cond(source: &str, env_pairs: &[(&str, Value)]) -> bool {
     }
 }
 
-fn eval_cond_err(source: &str, env_pairs: &[(&str, Value)]) -> babylon_bsl::evaluator::EvalError {
+fn eval_cond_err(source: &str, env_pairs: &[(&str, Value)]) -> EvalError {
     let costs = IntrinsicCosts::default();
     let env = EvalEnv {
         bindings: owned(env_pairs.to_vec()),
@@ -1088,7 +1098,7 @@ fn eval_cond_err(source: &str, env_pairs: &[(&str, Value)]) -> babylon_bsl::eval
         elements: Vec::new(),
         draw_context: None,
     };
-    let (expr, _) = read(source).expect("vector source must parse");
+    let (expr, _) = reader::read(source).expect("vector source must parse");
     let mut fuel = 10_000;
-    evaluate(&expr, &env, &EmptyIntrinsicHost, &mut fuel).expect_err("vector must fail")
+    evaluator::evaluate(&expr, &env, &EmptyIntrinsicHost, &mut fuel).expect_err("vector must fail")
 }

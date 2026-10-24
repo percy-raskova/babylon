@@ -5,14 +5,21 @@
 //! allocation is integer-only and covers the complete `2^64` draw space.
 
 use crate::bindings::{BindSource, BindingDecl};
-use crate::causal_contract::{effect_footprint, EffectSignature, RuleContract, RuleRole};
-use crate::evaluator::{evaluate, EvalEnv, EvalError, Value};
+use crate::causal_contract::{EffectSignature, RuleContract, RuleRole};
+use crate::evaluator::{EvalEnv, EvalError, Value};
 use crate::intrinsic_host::IntrinsicHost;
 use crate::reader::{Atom, FormPath, SExpr, ScaledKind};
+use crate::rule_pipeline::LoadedRule;
 use crate::typecheck::TypeEnv;
 use crate::types::{BslType, EnumRegistry, EnumTypeId};
 use babylon_graph::stable_element::StableElementKey;
-use babylon_kernel::content_digest::sha256_of;
+use babylon_kernel::content_digest;
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
+use std::collections::HashMap;
+use std::collections::HashSet;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 
 /// The fixed decimal scale of a BSL `m` literal.
 pub const MASS_NANOUNITS_PER_UNIT: u64 = 1_000_000_000;
@@ -553,7 +560,7 @@ impl ProbabilityError {
 }
 
 impl std::fmt::Display for ProbabilityError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         match self {
             Self::MassOverflow => write!(f, "Mass nanounit arithmetic overflowed u64"),
             Self::MassUnderflow => write!(f, "Mass subtraction would be negative"),
@@ -667,7 +674,7 @@ fn mass_expression_is_typed(
     expr: &SExpr,
     types: &TypeEnv,
     bindings: &[BindingDecl],
-    consts: &std::collections::HashMap<String, Value>,
+    consts: &HashMap<String, Value>,
     resolving: &mut Vec<String>,
 ) -> bool {
     match expr {
@@ -732,7 +739,7 @@ fn ordinary_numeric_expression_is_typed(
     expr: &SExpr,
     types: &TypeEnv,
     bindings: &[BindingDecl],
-    consts: &std::collections::HashMap<String, Value>,
+    consts: &HashMap<String, Value>,
     resolving: &mut Vec<String>,
 ) -> bool {
     match expr {
@@ -857,7 +864,7 @@ fn ordinary_numeric_expression_is_statically_int(
     expr: &SExpr,
     types: &TypeEnv,
     bindings: &[BindingDecl],
-    consts: &std::collections::HashMap<String, Value>,
+    consts: &HashMap<String, Value>,
     resolving: &mut Vec<String>,
 ) -> bool {
     match expr {
@@ -951,7 +958,7 @@ fn expression_contains_typed_mass(
     expr: &SExpr,
     types: &TypeEnv,
     bindings: &[BindingDecl],
-    consts: &std::collections::HashMap<String, Value>,
+    consts: &HashMap<String, Value>,
     resolving: &mut Vec<String>,
 ) -> bool {
     if mass_expression_is_typed(expr, types, bindings, consts, resolving) {
@@ -986,7 +993,7 @@ fn expression_is_typed_probability(
     expr: &SExpr,
     types: &TypeEnv,
     bindings: &[BindingDecl],
-    probability_consts: &std::collections::HashSet<String>,
+    probability_consts: &HashSet<String>,
     resolving: &mut Vec<String>,
 ) -> bool {
     match expr {
@@ -1078,7 +1085,7 @@ fn validate_authored_event_payloads(
     root_path: &[u32],
     types: &TypeEnv,
     bindings: &[BindingDecl],
-    probability_consts: &std::collections::HashSet<String>,
+    probability_consts: &HashSet<String>,
 ) -> Result<(), ProbabilityError> {
     let mut stack = vec![(rule, root_path.to_vec())];
     while let Some((current, path)) = stack.pop() {
@@ -1143,7 +1150,7 @@ impl StaticNumeric {
 fn static_numeric_expression(
     expr: &SExpr,
     bindings: &[BindingDecl],
-    consts: &std::collections::HashMap<String, Value>,
+    consts: &HashMap<String, Value>,
     resolving: &mut Vec<String>,
 ) -> Option<StaticNumeric> {
     match expr {
@@ -1229,7 +1236,7 @@ fn static_numeric_expression(
 fn static_mass_expression(
     expr: &SExpr,
     bindings: &[BindingDecl],
-    consts: &std::collections::HashMap<String, Value>,
+    consts: &HashMap<String, Value>,
     resolving: &mut Vec<String>,
 ) -> Result<Option<Mass>, ProbabilityError> {
     match expr {
@@ -1317,7 +1324,7 @@ fn validate_quantize_mass_operands(
     root_path: &[u32],
     types: &TypeEnv,
     bindings: &[BindingDecl],
-    consts: &std::collections::HashMap<String, Value>,
+    consts: &HashMap<String, Value>,
 ) -> Result<(), ProbabilityError> {
     let mut stack = vec![(rule, root_path.to_vec())];
     while let Some((current, path)) = stack.pop() {
@@ -1469,7 +1476,7 @@ fn validate_mass_usage(
     kernel: Option<&FiniteKernel>,
     types: &TypeEnv,
     bindings: &[BindingDecl],
-    consts: &std::collections::HashMap<String, Value>,
+    consts: &HashMap<String, Value>,
 ) -> Result<(), ProbabilityError> {
     let mut allowed_roots: Vec<FormPath> = kernel
         .into_iter()
@@ -1480,7 +1487,7 @@ fn validate_mass_usage(
                 .map(|branch| branch.mass_path.clone())
         })
         .collect();
-    let mass_bindings: std::collections::BTreeSet<&str> = bindings
+    let mass_bindings: BTreeSet<&str> = bindings
         .iter()
         .filter(|binding| match &binding.source {
             BindSource::Const(qname) => matches!(consts.get(qname), Some(Value::Mass(_))),
@@ -1575,7 +1582,7 @@ fn parse_branch(
     enums: &EnumRegistry,
     types: &TypeEnv,
     bindings: &[BindingDecl],
-    consts: &std::collections::HashMap<String, Value>,
+    consts: &HashMap<String, Value>,
 ) -> Result<(EnumTypeId, KernelBranch), ProbabilityError> {
     let SExpr::List(items) = expr else {
         return Err(invalid(
@@ -1655,7 +1662,7 @@ fn parse_choose(
     enums: &EnumRegistry,
     types: &TypeEnv,
     bindings: &[BindingDecl],
-    consts: &std::collections::HashMap<String, Value>,
+    consts: &HashMap<String, Value>,
 ) -> Result<FiniteKernel, ProbabilityError> {
     let SExpr::List(items) = expr else {
         return Err(invalid(&path, "choose must be a list form"));
@@ -1750,8 +1757,8 @@ pub fn compile_rule_probability(
     enums: &EnumRegistry,
     types: &TypeEnv,
     bindings: &[BindingDecl],
-    consts: &std::collections::HashMap<String, Value>,
-    probability_consts: &std::collections::HashSet<String>,
+    consts: &HashMap<String, Value>,
+    probability_consts: &HashSet<String>,
 ) -> Result<CompiledRuleProbability, ProbabilityError> {
     let SExpr::List(rule_items) = rule else {
         return Err(invalid(
@@ -1865,8 +1872,8 @@ pub fn compile_rule_probability(
                 "a finite projection cannot bind a graph-global :metric source",
             ));
         }
-        let footprint =
-            effect_footprint(rule).map_err(|error| invalid(&root, error.to_string()))?;
+        let footprint = crate::causal_contract::effect_footprint(rule)
+            .map_err(|error| invalid(&root, error.to_string()))?;
         if !footprint
             .iter()
             .all(|effect| matches!(effect, EffectSignature::Event(_)))
@@ -1995,10 +2002,8 @@ pub fn compile_rule_probability(
 /// resolves different runtime populations. An adjacent, carrier-matched pair
 /// also returns a located [`ProbabilityError::InvalidForm`] when the kernel's
 /// material effects are not carrier-local enough for exact V1 projection.
-pub fn validate_probability_content_set(
-    rules: &[crate::rule_pipeline::LoadedRule],
-) -> Result<(), ProbabilityError> {
-    let mut samples = std::collections::BTreeSet::new();
+pub fn validate_probability_content_set(rules: &[LoadedRule]) -> Result<(), ProbabilityError> {
+    let mut samples = BTreeSet::new();
     for rule in rules {
         let Some(kernel) = &rule.kernel else {
             continue;
@@ -2093,7 +2098,7 @@ pub fn evaluate_kernel_masses(
 ) -> Result<Vec<Mass>, EvalError> {
     let mut masses = Vec::with_capacity(kernel.branches.len());
     for branch in &kernel.branches {
-        match evaluate(&branch.mass, env, host, fuel)? {
+        match crate::evaluator::evaluate(&branch.mass, env, host, fuel)? {
             Value::Mass(mass) => masses.push(mass),
             other => {
                 return Err(EvalError::plain(format!(
@@ -2115,9 +2120,7 @@ pub fn evaluate_kernel_masses(
 /// Returns [`ProbabilityError`] when schedule linkage, exact static
 /// allocation, or a retained source path violates the loaded contract.
 #[allow(clippy::too_many_lines)]
-pub fn analyze_content_set(
-    rules: &[crate::rule_pipeline::LoadedRule],
-) -> Result<ContentSetAnalysis, ProbabilityError> {
+pub fn analyze_content_set(rules: &[LoadedRule]) -> Result<ContentSetAnalysis, ProbabilityError> {
     validate_probability_content_set(rules)?;
 
     let mut analyzed = Vec::with_capacity(rules.len());
@@ -2216,7 +2219,7 @@ pub fn forecast_event_likelihoods(
         }
     }
     let allocation = allocate_tickets(masses)?;
-    let mut favorable: std::collections::BTreeMap<String, (Vec<String>, u128)> = projection
+    let mut favorable: BTreeMap<String, (Vec<String>, u128)> = projection
         .event_types
         .iter()
         .cloned()
@@ -2224,7 +2227,7 @@ pub fn forecast_event_likelihoods(
         .collect();
     for ((branch, projection), interval) in kernel.branches.iter().zip(projections).zip(&allocation)
     {
-        let mut unique = std::collections::BTreeSet::new();
+        let mut unique = BTreeSet::new();
         for event_type in &projection.event_types {
             if unique.insert(event_type.as_str()) {
                 let Some(row) = favorable.get_mut(event_type) else {
@@ -2436,7 +2439,7 @@ fn compose_realization(
         allocation_bytes.extend_from_slice(&branch.tickets.start.to_be_bytes());
         allocation_bytes.extend_from_slice(&branch.tickets.end.to_be_bytes());
     }
-    let allocation_digest = sha256_of(&allocation_bytes);
+    let allocation_digest = content_digest::sha256_of(&allocation_bytes);
 
     let mut instance_bytes = b"babylon.finite-kernel-instance.v1\0".to_vec();
     push_bytes_len_prefixed(&mut instance_bytes, &identity.replay_session)?;
@@ -2455,7 +2458,7 @@ fn compose_realization(
         push_stable_identity(&mut instance_bytes, element)?;
     }
     instance_bytes.extend_from_slice(&allocation_digest);
-    let instance_digest = sha256_of(&instance_bytes);
+    let instance_digest = content_digest::sha256_of(&instance_bytes);
 
     Ok(KernelRealization {
         rule_id: identity.rule_id.clone(),
@@ -2550,7 +2553,11 @@ pub fn validate_kernel_realization(
 
 #[cfg(test)]
 mod tests {
+
     use super::*;
+    use crate::causal_contract::EvidenceClass;
+    use std::collections::HashMap;
+    use std::collections::HashSet;
 
     #[test]
     #[allow(clippy::cast_precision_loss)]
@@ -2623,7 +2630,7 @@ mod tests {
         let contract = RuleContract {
             rule_id: "demo/kernel".to_owned(),
             role: RuleRole::Mechanic,
-            evidence: crate::causal_contract::EvidenceClass::Designed,
+            evidence: EvidenceClass::Designed,
         };
         let compiled = compile_rule_probability(
             &rule,
@@ -2631,12 +2638,12 @@ mod tests {
             &contract,
             &enums,
             &crate::typecheck::TypeEnv {
-                fields: std::collections::HashMap::new(),
+                fields: HashMap::new(),
                 exemptions: &[],
             },
             &[],
-            &std::collections::HashMap::new(),
-            &std::collections::HashSet::new(),
+            &HashMap::new(),
+            &HashSet::new(),
         )
         .unwrap();
         let kernel = compiled.kernel.unwrap();

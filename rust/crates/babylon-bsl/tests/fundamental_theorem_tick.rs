@@ -31,13 +31,17 @@
 use babylon_bsl::bindings::BindingVocabulary;
 use babylon_bsl::fuel::{CardinalityCeilings, IntrinsicCosts};
 use babylon_bsl::intrinsic_host::EmptyIntrinsicHost;
-use babylon_bsl::rule_pipeline::{load_rule, LoadContext};
-use babylon_bsl::scenario::load_scenario;
+use babylon_bsl::rule_pipeline;
+use babylon_bsl::rule_pipeline::LoadContext;
+use babylon_bsl::scenario;
+
 use babylon_bsl::structural_verbs::CollectingSink;
-use babylon_bsl::tick::{run_tick, DefinesEnv};
+use babylon_bsl::tick;
+use babylon_bsl::tick::DefinesEnv;
 use babylon_bsl::typecheck::TypeEnv;
 use babylon_bsl::types::{BslType, EnumRegistry, FieldDecl, FieldKind};
 use babylon_graph::memory::MemoryGraph;
+use babylon_graph::stable_element::StableElementResolver;
 use babylon_graph::state_hash::CanonicalState;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
 use babylon_kernel::replay::{ReplaySeed, ReplaySessionId, RngSeedContext};
@@ -134,7 +138,8 @@ fn registries() -> Registries {
 fn run_one_tick() -> (MemoryGraph, usize, usize) {
     let r = registries();
     let mut graph = MemoryGraph::new();
-    let loaded_scenario = load_scenario(SCENARIO, &mut graph).expect("the scenario must load");
+    let loaded_scenario =
+        scenario::load_scenario(SCENARIO, &mut graph).expect("the scenario must load");
 
     let ctx = LoadContext {
         vocabulary: &r.vocabulary,
@@ -147,17 +152,18 @@ fn run_one_tick() -> (MemoryGraph, usize, usize) {
         vocabulary_registry: None,
         rule_file: "economics/fundamental-theorem.bsl",
     };
-    let loaded = load_rule(FUNDAMENTAL_THEOREM, &ctx).expect("the rule must pass every load gate");
+    let loaded = rule_pipeline::load_rule(FUNDAMENTAL_THEOREM, &ctx)
+        .expect("the rule must pass every load gate");
 
     let mut sink = CollectingSink::default();
-    let resolver = babylon_graph::stable_element::StableElementResolver::seal(
+    let resolver = StableElementResolver::seal(
         &graph,
         &loaded_scenario.id,
         &loaded_scenario.node_content_ids,
         &HashMap::new(),
     )
     .unwrap();
-    let outcome = run_tick(
+    let outcome = tick::run_tick(
         &loaded,
         &r.types,
         &r.enums,
@@ -228,7 +234,7 @@ fn the_tick_actually_changed_the_world() {
     // a run_tick that returned Ok and executed no effect would pass every
     // other test in this file.
     let mut before = MemoryGraph::new();
-    load_scenario(SCENARIO, &mut before).unwrap();
+    scenario::load_scenario(SCENARIO, &mut before).unwrap();
     let untouched = before.state_hash().unwrap();
 
     let (after, _, fired) = run_one_tick();
@@ -245,7 +251,7 @@ fn a_changed_scenario_changes_the_hash() {
     // The world is part of the fingerprint, not just the rules.
     let r = registries();
     let mut richer = MemoryGraph::new();
-    let loaded_scenario = load_scenario(
+    let loaded_scenario = scenario::load_scenario(
         r"
 (scenario ft/two-classes
   (deffield social-class/wages int extensive)
@@ -273,16 +279,16 @@ fn a_changed_scenario_changes_the_hash() {
         vocabulary_registry: None,
         rule_file: "economics/fundamental-theorem.bsl",
     };
-    let loaded = load_rule(FUNDAMENTAL_THEOREM, &ctx).unwrap();
+    let loaded = rule_pipeline::load_rule(FUNDAMENTAL_THEOREM, &ctx).unwrap();
     let mut sink = CollectingSink::default();
-    let resolver = babylon_graph::stable_element::StableElementResolver::seal(
+    let resolver = StableElementResolver::seal(
         &richer,
         &loaded_scenario.id,
         &loaded_scenario.node_content_ids,
         &HashMap::new(),
     )
     .unwrap();
-    run_tick(
+    tick::run_tick(
         &loaded,
         &r.types,
         &r.enums,
@@ -387,7 +393,8 @@ fn expr_registries() -> Registries {
 fn run_expr_tick(rule: &str) -> Result<(MemoryGraph, usize), String> {
     let r = expr_registries();
     let mut graph = MemoryGraph::new();
-    let loaded_scenario = load_scenario(EXPR_SCENARIO, &mut graph).expect("the scenario must load");
+    let loaded_scenario =
+        scenario::load_scenario(EXPR_SCENARIO, &mut graph).expect("the scenario must load");
     let ctx = LoadContext {
         vocabulary: &r.vocabulary,
         types: &r.types,
@@ -399,16 +406,16 @@ fn run_expr_tick(rule: &str) -> Result<(MemoryGraph, usize), String> {
         vocabulary_registry: None,
         rule_file: "economics/drained.bsl",
     };
-    let loaded = load_rule(rule, &ctx).map_err(|e| format!("load: {e}"))?;
+    let loaded = rule_pipeline::load_rule(rule, &ctx).map_err(|e| format!("load: {e}"))?;
     let mut sink = CollectingSink::default();
-    let resolver = babylon_graph::stable_element::StableElementResolver::seal(
+    let resolver = StableElementResolver::seal(
         &graph,
         &loaded_scenario.id,
         &loaded_scenario.node_content_ids,
         &HashMap::new(),
     )
     .unwrap();
-    let outcome = run_tick(
+    let outcome = tick::run_tick(
         &loaded,
         &r.types,
         &r.enums,
@@ -435,7 +442,7 @@ fn run_expr_tick(rule: &str) -> Result<(MemoryGraph, usize), String> {
 fn a_expr_binding_drives_a_real_tick() {
     let before = {
         let mut g = MemoryGraph::new();
-        load_scenario(EXPR_SCENARIO, &mut g).unwrap();
+        scenario::load_scenario(EXPR_SCENARIO, &mut g).unwrap();
         g.state_hash().unwrap()
     };
     let (graph, fired) = run_expr_tick(EXPR_RULE).expect("the :expr rule must run");

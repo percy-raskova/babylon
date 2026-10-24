@@ -25,8 +25,11 @@ use serde::Serialize;
 
 use std::collections::BTreeSet;
 
-use babylon_kernel::content_digest::sha256_of;
+use babylon_kernel::content_digest;
+
+use crate::PracticeResourceAllocationContract;
 use serde::de::DeserializeOwned;
+use std::collections::BTreeMap;
 
 const MAX_ORGANIZER_BYTES: usize = 32 * 1024 * 1024;
 const MAX_ORGANIZER_ROWS: usize = 65_536;
@@ -60,7 +63,7 @@ fn decode<T: Serialize + DeserializeOwned>(
 }
 
 pub(super) fn identity<T: Serialize>(domain: &[u8], value: &T) -> Result<[u8; 32], OrganizerError> {
-    Ok(sha256_of(&canonical(domain, value)?))
+    Ok(content_digest::sha256_of(&canonical(domain, value)?))
 }
 
 fn label_valid(value: &str) -> bool {
@@ -479,7 +482,7 @@ pub fn decode_organizer_state(bytes: &[u8]) -> Result<OrganizerState, OrganizerE
 /// Returns every fault [`encode_organizer_state`] reports; no digest exists
 /// for a state that does not validate.
 pub fn organizer_state_digest(state: &OrganizerState) -> Result<[u8; 32], OrganizerError> {
-    Ok(sha256_of(&encode_organizer_state(state)?))
+    Ok(content_digest::sha256_of(&encode_organizer_state(state)?))
 }
 
 /// Validate the hours, allocations, and row identity of one receipt.
@@ -607,7 +610,7 @@ pub fn decode_organizer_receipt(bytes: &[u8]) -> Result<OrganizerReceipt, Organi
 /// validation refuses the conserved allocation table.
 pub fn organizer_resource_digest() -> Result<[u8; 32], OrganizerError> {
     crate::practice_resource_allocation_contract_digest(
-        &crate::PracticeResourceAllocationContract::conservation_first(),
+        &PracticeResourceAllocationContract::conservation_first(),
     )
     .map_err(|_| OrganizerError::ResourceAllocation)
 }
@@ -720,7 +723,7 @@ pub fn organizer_view(
         u32::try_from(observations.len()).map_err(|_| OrganizerError::Arithmetic)?;
     observations.sort_by_key(|row| (row.acquired_period, row.observed_period, row.observation_id));
     // Preserve the latest materially distinct report even when it predates the recent window.
-    let mut latest = std::collections::BTreeMap::new();
+    let mut latest = BTreeMap::new();
     for row in &observations {
         let kind = match row.report {
             OrganizerReport::Work { .. } => 0_u8,

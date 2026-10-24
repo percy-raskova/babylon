@@ -1,22 +1,31 @@
 //! Behavioral contract for the opt-in synthetic-emergence BSL auditor.
 
+use babylon_bsl::bindings::BindingVocabulary;
+use babylon_bsl::bound_checker;
+use babylon_bsl::bound_checker::BoundError;
+use babylon_bsl::canonical_ast;
 use babylon_bsl::causal_contract::MAX_AST_WALK_DEPTH;
 use babylon_bsl::declarations::FieldRegistry;
-use babylon_bsl::rule_pipeline::{load_rule, LoadContext};
-use babylon_bsl::scenario::{load_scenario, LoadedScenario};
-use babylon_bsl::typecheck::TypeEnv;
-use babylon_bsl::vocabulary::EnumKind;
-use babylon_bsl::{
-    bindings::BindingVocabulary, bound_checker::check_rule, bound_checker::BoundError,
-    canonical_ast::canonical_bytes, evaluator::Value, fuel::CardinalityCeilings,
-    fuel::IntrinsicCosts, fuel::SfsFuelIdentityError, reader::read, reader::Atom, reader::SExpr,
-    sfs_profile::audit_rule_footprint, sfs_profile::validate_sfs_rule_profile,
-    sfs_profile::ForbiddenBindingSource, sfs_profile::GovernedComparisonSite,
-    sfs_profile::SfsAuditPolicy, sfs_profile::SfsComparisonContext, sfs_profile::SfsProfileError,
-    vocabulary::ClosedVocabulary,
+use babylon_bsl::evaluator::Value;
+use babylon_bsl::fuel::{CardinalityCeilings, IntrinsicCosts, SfsFuelIdentityError};
+use babylon_bsl::reader;
+use babylon_bsl::reader::{Atom, SExpr};
+use babylon_bsl::rule_pipeline;
+use babylon_bsl::rule_pipeline::LoadContext;
+use babylon_bsl::scenario;
+use babylon_bsl::scenario::LoadedScenario;
+use babylon_bsl::sfs_profile;
+use babylon_bsl::sfs_profile::{
+    ForbiddenBindingSource, GovernedComparisonSite, SfsAuditPolicy, SfsComparisonContext,
+    SfsProfileError,
 };
+use babylon_bsl::typecheck::TypeEnv;
+use babylon_bsl::vocabulary::ClosedVocabulary;
+use babylon_bsl::vocabulary::EnumKind;
 use babylon_graph::memory::MemoryGraph;
-use babylon_kernel::content_digest::sha256_of;
+use babylon_kernel::content_digest;
+
+use babylon_bsl::types::EnumRegistry;
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fmt::Write as _;
 use std::fs::File;
@@ -42,7 +51,7 @@ const FORBIDDEN_INTRINSIC_HEX: &str =
 const FORBIDDEN_MANIFEST_HEX: &str =
     "e3e7d0c90b7302c441005a4cb482a1aff86c2e9178b06a514b2f9c6304aeca74";
 const AUDIT_SOURCE_MANIFEST_HEX: &str =
-    "981ed1a68e58275790376c5be2ca9218099ebd385452166420a94948e20a8a56";
+    "256380c650643c99c24945a931dcaa45b4f16bad6f2dbc88c14190e9d1cc5fea";
 static READER_SCRATCH_COUNTER: AtomicU64 = AtomicU64::new(0);
 const FIXTURE_DECLARATIONS: &str = r"(scenario synthetic-source/declarations
   (defvocabulary NodeType (SYNTHETIC_SOURCE ORGANIZATION))
@@ -136,7 +145,7 @@ fn strict_text(bytes: &[u8]) -> &str {
 fn fixture_rule(relative: &str) -> SExpr {
     let bytes = read_bounded(&fixture_root(), Path::new(relative)).unwrap();
     let source = strict_text(&bytes);
-    let (rule, consumed) = read(source).unwrap();
+    let (rule, consumed) = reader::read(source).unwrap();
     assert!(source[consumed..]
         .bytes()
         .all(|byte| byte.is_ascii_whitespace()));
@@ -144,7 +153,7 @@ fn fixture_rule(relative: &str) -> SExpr {
 }
 
 fn fixture_declarations() -> LoadedScenario {
-    load_scenario(FIXTURE_DECLARATIONS, &mut MemoryGraph::new()).unwrap()
+    scenario::load_scenario(FIXTURE_DECLARATIONS, &mut MemoryGraph::new()).unwrap()
 }
 
 fn fixture_vocabulary() -> ClosedVocabulary {
@@ -212,7 +221,7 @@ fn assert_allowed_fixture_loads_through_declaration_and_type_gates() {
     let ceilings = fixture_cardinality_ceilings();
     let costs = IntrinsicCosts::default();
     let systems = HashSet::from(["synthetic-source".to_owned()]);
-    let enums = babylon_bsl::types::EnumRegistry::default();
+    let enums = EnumRegistry::default();
     let context = LoadContext {
         vocabulary: &binding_vocabulary,
         types: &types,
@@ -224,7 +233,7 @@ fn assert_allowed_fixture_loads_through_declaration_and_type_gates() {
         vocabulary_registry: Some(&vocabulary),
         rule_file: "tests/fixtures/sfs_profile/allowed/scoped_mechanic.bsl",
     };
-    load_rule(&source, &context).unwrap();
+    rule_pipeline::load_rule(&source, &context).unwrap();
 }
 
 fn forbidden_intrinsic_costs() -> IntrinsicCosts {
@@ -256,7 +265,7 @@ fn allowed_sites(rule: &SExpr) -> Vec<GovernedComparisonSite> {
 fn allowed_policy(rule: &SExpr) -> SfsAuditPolicy {
     SfsAuditPolicy::new(
         "synthetic-source/scoped-mechanic",
-        sha256_of(&canonical_bytes(rule).unwrap()),
+        content_digest::sha256_of(&canonical_ast::canonical_bytes(rule).unwrap()),
         31,
         ["synthetic-source/quanta"],
         ["synthetic-link/strength"],
@@ -280,7 +289,8 @@ fn allowed_rule_equals_its_complete_opt_in_profile() {
     let vocabulary = fixture_vocabulary();
     let ceilings = fixture_cardinality_ceilings();
     let intrinsic_costs = IntrinsicCosts::default();
-    let canonical_digest = sha256_of(&canonical_bytes(&rule).unwrap());
+    let canonical_digest =
+        content_digest::sha256_of(&canonical_ast::canonical_bytes(&rule).unwrap());
     assert_eq!(canonical_digest, hex_digest(ALLOWED_AST_HEX));
     let sites = allowed_sites(&rule);
     assert_eq!(sites[0].site_digest(), &hex_digest(FIRST_SITE_HEX));
@@ -294,8 +304,14 @@ fn allowed_rule_equals_its_complete_opt_in_profile() {
         format!("eligibility-no-effect:{SECOND_SITE_HEX}")
     );
     let policy = allowed_policy(&rule);
-    let audit = validate_sfs_rule_profile(&rule, &vocabulary, &ceilings, &intrinsic_costs, &policy)
-        .unwrap();
+    let audit = sfs_profile::validate_sfs_rule_profile(
+        &rule,
+        &vocabulary,
+        &ceilings,
+        &intrinsic_costs,
+        &policy,
+    )
+    .unwrap();
     let footprint = audit.footprint();
     assert_eq!(footprint.rule_id(), "synthetic-source/scoped-mechanic");
     assert_eq!(footprint.source_digest(), &canonical_digest);
@@ -400,7 +416,7 @@ fn source_manifest() -> (Vec<ManifestRow>, Vec<u8>) {
 }
 
 fn verify_source_row(row: &ManifestRow, bytes: &[u8]) -> Result<(), SfsProfileError> {
-    if sha256_of(bytes) != hex_digest(&row.source_hex) {
+    if content_digest::sha256_of(bytes) != hex_digest(&row.source_hex) {
         return Err(SfsProfileError::SourceDigestMismatch);
     }
     Ok(())
@@ -422,7 +438,10 @@ fn audit_source_manifest_pins_two_bounded_exact_files_and_mutation_teeth() {
     assert!(read_bounded(&source_root(), Path::new("../Cargo.toml")).is_err());
     let mut preimage = b"babylon.sfs-audit-source-manifest.v1\0".to_vec();
     preimage.extend_from_slice(&manifest_bytes);
-    assert_eq!(sha256_of(&preimage), hex_digest(AUDIT_SOURCE_MANIFEST_HEX));
+    assert_eq!(
+        content_digest::sha256_of(&preimage),
+        hex_digest(AUDIT_SOURCE_MANIFEST_HEX)
+    );
 
     let fuel_bytes = read_bounded(&source_root(), Path::new("fuel.rs")).unwrap();
     let needle = b"const MAX_SFS_IDENTITY_ROWS: usize = 64;";
@@ -438,13 +457,13 @@ fn audit_source_manifest_pins_two_bounded_exact_files_and_mutation_teeth() {
     );
     let changed_manifest = strict_text(&manifest_bytes).replacen(
         &rows[0].source_hex,
-        &render_digest(&sha256_of(&mutated)),
+        &render_digest(&content_digest::sha256_of(&mutated)),
         1,
     );
     let mut changed_preimage = b"babylon.sfs-audit-source-manifest.v1\0".to_vec();
     changed_preimage.extend_from_slice(changed_manifest.as_bytes());
     assert_ne!(
-        sha256_of(&changed_preimage),
+        content_digest::sha256_of(&changed_preimage),
         hex_digest(AUDIT_SOURCE_MANIFEST_HEX)
     );
 }
@@ -501,13 +520,11 @@ fn bounded_reader_accepts_262144_and_rejects_262145_bytes() {
 #[cfg(unix)]
 #[test]
 fn bounded_reader_rejects_a_direct_source_manifest_symlink() {
-    use std::os::unix::fs::symlink;
-
     let scratch = ReaderScratch::new();
     let target = scratch.root.join("manifest-target.txt");
     let link = scratch.root.join("sfs_audit_source_manifest_v1.txt");
     std::fs::write(&target, b"fuel.rs|00\n").unwrap();
-    symlink(&target, &link).unwrap();
+    std::os::unix::fs::symlink(&target, &link).unwrap();
     assert_eq!(
         read_bounded(&scratch.root, Path::new("sfs_audit_source_manifest_v1.txt")),
         Err("fixture path contains a symlink".to_owned())
@@ -549,7 +566,7 @@ fn policy_with_sets(
 ) -> SfsAuditPolicy {
     SfsAuditPolicy::new(
         forbidden_rule_id(&row.label),
-        sha256_of(&canonical_bytes(rule).unwrap()),
+        content_digest::sha256_of(&canonical_ast::canonical_bytes(rule).unwrap()),
         bound,
         field_reads,
         EMPTY,
@@ -722,7 +739,7 @@ fn forbidden_corpus_exact() {
         let Some(row) = rows.get(index) else { break };
         let rule = fixture_rule(&row.relative);
         assert_eq!(
-            sha256_of(&canonical_bytes(&rule).unwrap()),
+            content_digest::sha256_of(&canonical_ast::canonical_bytes(&rule).unwrap()),
             hex_digest(&row.source_hex),
             "{}",
             row.label
@@ -732,15 +749,19 @@ fn forbidden_corpus_exact() {
             "forbidden-v1" => forbidden_intrinsic_costs(),
             other => panic!("unknown intrinsic table {other}"),
         };
-        let bound = check_rule(&rule, &ceilings, &costs).unwrap();
+        let bound = bound_checker::check_rule(&rule, &ceilings, &costs).unwrap();
         let policy = forbidden_policy(row, &rule, bound);
         let error =
-            validate_sfs_rule_profile(&rule, &vocabulary, &ceilings, &costs, &policy).unwrap_err();
+            sfs_profile::validate_sfs_rule_profile(&rule, &vocabulary, &ceilings, &costs, &policy)
+                .unwrap_err();
         assert_expected_error(row, &error);
     }
     let mut preimage = b"babylon.sfs-forbidden-corpus-manifest.v1\0".to_vec();
     preimage.extend_from_slice(&manifest_bytes);
-    assert_eq!(sha256_of(&preimage), hex_digest(FORBIDDEN_MANIFEST_HEX));
+    assert_eq!(
+        content_digest::sha256_of(&preimage),
+        hex_digest(FORBIDDEN_MANIFEST_HEX)
+    );
     assert_eq!(
         forbidden_intrinsic_costs().sfs_identity_digest().unwrap(),
         hex_digest(FORBIDDEN_INTRINSIC_HEX)
@@ -750,14 +771,14 @@ fn forbidden_corpus_exact() {
 #[test]
 fn forbidden_intrinsic_cost_preflight_precedes_semantic_refusal() {
     let rule = fixture_rule("forbidden/rng_read.bsl");
-    assert!(check_rule(
+    assert!(bound_checker::check_rule(
         &rule,
         &fixture_cardinality_ceilings(),
         &forbidden_intrinsic_costs()
     )
     .is_ok());
     assert_eq!(
-        check_rule(
+        bound_checker::check_rule(
             &rule,
             &fixture_cardinality_ceilings(),
             &IntrinsicCosts::default()
@@ -779,7 +800,7 @@ fn absolute_schedule_requires_the_time_value_to_participate() {
   (effects (update-node self synthetic-source/quanta (set 1))))"#;
     let rule = parsed_rule(source);
     assert_eq!(
-        audit_rule_footprint(
+        sfs_profile::audit_rule_footprint(
             &rule,
             &fixture_vocabulary(),
             &fixture_cardinality_ceilings(),
@@ -803,7 +824,7 @@ fn forbidden_binding_sources_choose_the_byte_least_entry() {
   (effects (update-node self synthetic-source/quanta (set 1))))"#,
     );
     assert_eq!(
-        audit_rule_footprint(
+        sfs_profile::audit_rule_footprint(
             &rule,
             &fixture_vocabulary(),
             &fixture_cardinality_ceilings(),
@@ -1000,8 +1021,8 @@ fn comparison_sites(rule: &SExpr, count: usize) -> Vec<GovernedComparisonSite> {
 fn comparison_limit_policy(rule: &SExpr, sites: Vec<GovernedComparisonSite>) -> SfsAuditPolicy {
     SfsAuditPolicy::new(
         "synthetic-source/comparison-ceiling",
-        sha256_of(&canonical_bytes(rule).unwrap()),
-        check_rule(
+        content_digest::sha256_of(&canonical_ast::canonical_bytes(rule).unwrap()),
+        bound_checker::check_rule(
             rule,
             &CardinalityCeilings::default(),
             &IntrinsicCosts::default(),
@@ -1023,7 +1044,7 @@ fn comparison_limit_policy(rule: &SExpr, sites: Vec<GovernedComparisonSite>) -> 
 fn comparison_scan_accepts_64_and_reports_the_byte_largest_65th_site() {
     let maximum = comparison_rule(64);
     let maximum_sites = comparison_sites(&maximum, 64);
-    assert!(validate_sfs_rule_profile(
+    assert!(sfs_profile::validate_sfs_rule_profile(
         &maximum,
         &fixture_vocabulary(),
         &CardinalityCeilings::default(),
@@ -1037,7 +1058,7 @@ fn comparison_scan_accepts_64_and_reports_the_byte_largest_65th_site() {
     let omitted = *governed.pop().unwrap().site_digest();
     let policy = comparison_limit_policy(&plus_one, governed);
     assert_eq!(
-        validate_sfs_rule_profile(
+        sfs_profile::validate_sfs_rule_profile(
             &plus_one,
             &fixture_vocabulary(),
             &CardinalityCeilings::default(),
@@ -1051,7 +1072,7 @@ fn comparison_scan_accepts_64_and_reports_the_byte_largest_65th_site() {
     assert_eq!(
         SfsAuditPolicy::new(
             "synthetic-source/comparison-ceiling",
-            sha256_of(&canonical_bytes(&plus_one).unwrap()),
+            content_digest::sha256_of(&canonical_ast::canonical_bytes(&plus_one).unwrap()),
             1,
             EMPTY,
             EMPTY,
@@ -1105,8 +1126,8 @@ fn wide_policy(rule: &SExpr, kind: &str, rows: &[&'static str]) -> SfsAuditPolic
     };
     SfsAuditPolicy::new(
         "synthetic-source/complete-scan",
-        sha256_of(&canonical_bytes(rule).unwrap()),
-        check_rule(
+        content_digest::sha256_of(&canonical_ast::canonical_bytes(rule).unwrap()),
+        bound_checker::check_rule(
             rule,
             &CardinalityCeilings::default(),
             &IntrinsicCosts::default(),
@@ -1128,7 +1149,7 @@ fn wide_policy(rule: &SExpr, kind: &str, rows: &[&'static str]) -> SfsAuditPolic
 fn actual_read_scan_reports_the_65th_extra_before_set_mismatch() {
     let (read_rule, reads) = wide_rule("read");
     assert_eq!(
-        validate_sfs_rule_profile(
+        sfs_profile::validate_sfs_rule_profile(
             &read_rule,
             &fixture_vocabulary(),
             &CardinalityCeilings::default(),
@@ -1145,7 +1166,7 @@ fn actual_read_scan_reports_the_65th_extra_before_set_mismatch() {
 fn actual_effect_scan_reports_the_65th_extra_before_set_mismatch() {
     let (effect_rule, effects) = wide_rule("effect");
     assert_eq!(
-        validate_sfs_rule_profile(
+        sfs_profile::validate_sfs_rule_profile(
             &effect_rule,
             &fixture_vocabulary(),
             &CardinalityCeilings::default(),
@@ -1183,8 +1204,8 @@ fn separated_governed_thresholds_pass_but_a_nested_ladder_refuses() {
     ];
     let policy = SfsAuditPolicy::new(
         "synthetic-source/separated-thresholds",
-        sha256_of(&canonical_bytes(&separated).unwrap()),
-        check_rule(
+        content_digest::sha256_of(&canonical_ast::canonical_bytes(&separated).unwrap()),
+        bound_checker::check_rule(
             &separated,
             &CardinalityCeilings::default(),
             &IntrinsicCosts::default(),
@@ -1200,7 +1221,7 @@ fn separated_governed_thresholds_pass_but_a_nested_ladder_refuses() {
         ["node:synthetic-source/quanta"],
     )
     .unwrap();
-    assert!(validate_sfs_rule_profile(
+    assert!(sfs_profile::validate_sfs_rule_profile(
         &separated,
         &fixture_vocabulary(),
         &CardinalityCeilings::default(),
@@ -1211,7 +1232,7 @@ fn separated_governed_thresholds_pass_but_a_nested_ladder_refuses() {
 
     let nested = fixture_rule("forbidden/threshold_ladder.bsl");
     assert_eq!(
-        audit_rule_footprint(
+        sfs_profile::audit_rule_footprint(
             &nested,
             &fixture_vocabulary(),
             &fixture_cardinality_ceilings(),
@@ -1223,7 +1244,7 @@ fn separated_governed_thresholds_pass_but_a_nested_ladder_refuses() {
 }
 
 fn nested_comparison(depth: usize) -> SExpr {
-    let mut expression = read("(> 1 0)").unwrap().0;
+    let mut expression = reader::read("(> 1 0)").unwrap().0;
     for index in 0..MAX_AST_WALK_DEPTH {
         if index == depth {
             break;
@@ -1338,7 +1359,7 @@ fn allowed_source() -> String {
 }
 
 fn parsed_rule(source: &str) -> SExpr {
-    let (rule, consumed) = read(source).unwrap();
+    let (rule, consumed) = reader::read(source).unwrap();
     assert!(source[consumed..]
         .bytes()
         .all(|byte| byte.is_ascii_whitespace()));
@@ -1351,9 +1372,12 @@ fn formatting_only_preserves_identity() {
     let formatted = format!("; formatting-only witness\n\n  {source}");
     let original = parsed_rule(&source);
     let rewrite = parsed_rule(&formatted);
-    assert_eq!(canonical_bytes(&original), canonical_bytes(&rewrite));
+    assert_eq!(
+        canonical_ast::canonical_bytes(&original),
+        canonical_ast::canonical_bytes(&rewrite)
+    );
     let policy = allowed_policy(&original);
-    let audit = validate_sfs_rule_profile(
+    let audit = sfs_profile::validate_sfs_rule_profile(
         &rewrite,
         &fixture_vocabulary(),
         &fixture_cardinality_ceilings(),
@@ -1370,8 +1394,11 @@ fn semantic_change_moves_identity() {
     let changed_source = source.replacen("(> available quantum)", "(>= available quantum)", 1);
     let original = parsed_rule(&source);
     let changed = parsed_rule(&changed_source);
-    assert_ne!(canonical_bytes(&original), canonical_bytes(&changed));
-    let original_audit = audit_rule_footprint(
+    assert_ne!(
+        canonical_ast::canonical_bytes(&original),
+        canonical_ast::canonical_bytes(&changed)
+    );
+    let original_audit = sfs_profile::audit_rule_footprint(
         &original,
         &fixture_vocabulary(),
         &fixture_cardinality_ceilings(),
@@ -1379,7 +1406,7 @@ fn semantic_change_moves_identity() {
         &allowed_sites(&original),
     )
     .unwrap();
-    let changed_audit = audit_rule_footprint(
+    let changed_audit = sfs_profile::audit_rule_footprint(
         &changed,
         &fixture_vocabulary(),
         &fixture_cardinality_ceilings(),
@@ -1394,7 +1421,7 @@ fn semantic_change_moves_identity() {
 fn sealed_audit_moves_when_equal_bound_inputs_or_declared_fuel_move() {
     let source = allowed_source();
     let original = parsed_rule(&source);
-    let original_audit = audit_rule_footprint(
+    let original_audit = sfs_profile::audit_rule_footprint(
         &original,
         &fixture_vocabulary(),
         &fixture_cardinality_ceilings(),
@@ -1403,7 +1430,7 @@ fn sealed_audit_moves_when_equal_bound_inputs_or_declared_fuel_move() {
     )
     .unwrap();
     let changed_fuel = parsed_rule(&source.replacen(":fuel 128", ":fuel 129", 1));
-    let fuel_audit = audit_rule_footprint(
+    let fuel_audit = sfs_profile::audit_rule_footprint(
         &changed_fuel,
         &fixture_vocabulary(),
         &fixture_cardinality_ceilings(),
@@ -1419,7 +1446,7 @@ fn sealed_audit_moves_when_equal_bound_inputs_or_declared_fuel_move() {
         HashMap::from([("EdgeType/SYNTHETIC_LINK".to_owned(), 8)]),
         HashMap::from([("HyperedgeType/SYNTHETIC_UNUSED".to_owned(), 4)]),
     );
-    let cardinality_audit = audit_rule_footprint(
+    let cardinality_audit = sfs_profile::audit_rule_footprint(
         &original,
         &fixture_vocabulary(),
         &extra_cardinality,
@@ -1435,7 +1462,7 @@ fn sealed_audit_moves_when_equal_bound_inputs_or_declared_fuel_move() {
     assert_ne!(cardinality_audit, original_audit);
 
     let unused_cost = IntrinsicCosts::new(HashMap::from([("synthetic-unused".to_owned(), 7)]));
-    let intrinsic_audit = audit_rule_footprint(
+    let intrinsic_audit = sfs_profile::audit_rule_footprint(
         &original,
         &fixture_vocabulary(),
         &fixture_cardinality_ceilings(),
@@ -1475,7 +1502,7 @@ fn static_bound_and_source_mutations_fail_in_declared_precedence() {
     )
     .unwrap();
     assert_eq!(
-        validate_sfs_rule_profile(
+        sfs_profile::validate_sfs_rule_profile(
             &original,
             &fixture_vocabulary(),
             &fixture_cardinality_ceilings(),
@@ -1487,7 +1514,7 @@ fn static_bound_and_source_mutations_fail_in_declared_precedence() {
 
     let underfunded = parsed_rule(&source.replacen(":fuel 128", ":fuel 30", 1));
     assert!(matches!(
-        validate_sfs_rule_profile(
+        sfs_profile::validate_sfs_rule_profile(
             &underfunded,
             &fixture_vocabulary(),
             &fixture_cardinality_ceilings(),
@@ -1501,7 +1528,7 @@ fn static_bound_and_source_mutations_fail_in_declared_precedence() {
         }))
     ));
     assert_eq!(
-        validate_sfs_rule_profile(
+        sfs_profile::validate_sfs_rule_profile(
             &original,
             &fixture_vocabulary(),
             &CardinalityCeilings::default(),
@@ -1522,7 +1549,7 @@ fn changed_ceiling_refuses_equal_source_before_semantic_walk() {
         HashMap::new(),
     );
     assert_eq!(
-        validate_sfs_rule_profile(
+        sfs_profile::validate_sfs_rule_profile(
             &rule,
             &fixture_vocabulary(),
             &changed,
@@ -1593,7 +1620,7 @@ fn expected_observable_rows_cannot_authorize_downstream_state() {
   (effects (update-node self synthetic-source/quanta (set prohibited))))"#,
     );
     assert!(matches!(
-        audit_rule_footprint(
+        sfs_profile::audit_rule_footprint(
             &actual_const,
             &fixture_vocabulary(),
             &fixture_cardinality_ceilings(),
@@ -1611,9 +1638,12 @@ fn role_relabel_moves_identity_and_fails_profile() {
     let policy = allowed_policy(&original);
     let intent_source = source.replacen(":role mechanic", ":role intent", 1);
     let relabeled = parsed_rule(&intent_source);
-    assert_ne!(canonical_bytes(&original), canonical_bytes(&relabeled));
+    assert_ne!(
+        canonical_ast::canonical_bytes(&original),
+        canonical_ast::canonical_bytes(&relabeled)
+    );
     assert_eq!(
-        validate_sfs_rule_profile(
+        sfs_profile::validate_sfs_rule_profile(
             &relabeled,
             &fixture_vocabulary(),
             &fixture_cardinality_ceilings(),
@@ -1624,10 +1654,10 @@ fn role_relabel_moves_identity_and_fails_profile() {
     );
     let restored = parsed_rule(&source);
     assert_eq!(
-        sha256_of(&canonical_bytes(&restored).unwrap()),
+        content_digest::sha256_of(&canonical_ast::canonical_bytes(&restored).unwrap()),
         hex_digest(ALLOWED_AST_HEX)
     );
-    assert!(validate_sfs_rule_profile(
+    assert!(sfs_profile::validate_sfs_rule_profile(
         &restored,
         &fixture_vocabulary(),
         &fixture_cardinality_ceilings(),

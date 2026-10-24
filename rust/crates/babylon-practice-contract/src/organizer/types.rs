@@ -9,6 +9,8 @@ use super::{
 use super::collection;
 
 use serde::{Deserialize, Serialize};
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 
 /// Current organizer representation. Older representations are unsupported.
 pub const ORGANIZER_SCHEMA_VERSION: u16 = 7;
@@ -401,7 +403,7 @@ pub enum OrganizerError {
 }
 
 impl std::fmt::Display for OrganizerError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> FmtResult {
         write!(formatter, "organizer contract: {self:?}")
     }
 }

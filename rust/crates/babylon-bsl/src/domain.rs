@@ -28,9 +28,10 @@
 
 use crate::bindings::{BindSource, BindingDecl};
 use crate::reader::{Atom, SExpr};
-use crate::scope::referenced_at_rule_scope;
-use crate::vocabulary::{render_member, ClosedVocabulary, EnumKind};
+use crate::vocabulary::{ClosedVocabulary, EnumKind};
 use std::collections::BTreeSet;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 
 /// What a rule fires over (§2.3).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -89,7 +90,7 @@ impl DomainError {
 }
 
 impl std::fmt::Display for DomainError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         match self {
             Self::Undeterminable { candidates } => write!(
                 f,
@@ -223,7 +224,7 @@ pub fn resolve_domain(
                      E-TYPE-011's and should have rejected this already"
                 )));
             }
-            let declared = render_member(member);
+            let declared = crate::vocabulary::render_member(member);
             for found in &self_scoped {
                 if *found != declared {
                     return Err(DomainError::DomainDisagreement {
@@ -266,7 +267,7 @@ fn self_scoped_segments(
         }
         if sites
             .iter()
-            .any(|site| referenced_at_rule_scope(site, &decl.name))
+            .any(|site| crate::scope::referenced_at_rule_scope(site, &decl.name))
         {
             set.insert(segment.to_owned());
         }
@@ -301,9 +302,9 @@ fn check_graph_domain(sites: &[&SExpr], self_scoped: &BTreeSet<String>) -> Resul
 
 #[cfg(test)]
 mod tests {
-    use super::{resolve_domain, RuleDomain};
-    use crate::bindings::parse_bindings;
-    use crate::reader::read;
+
+    use super::DomainError;
+    use super::RuleDomain;
     use crate::vocabulary::{ClosedVocabulary, EnumKind};
 
     fn vocabulary() -> ClosedVocabulary {
@@ -321,10 +322,10 @@ mod tests {
         .unwrap()
     }
 
-    fn domain(source: &str) -> Result<RuleDomain, super::DomainError> {
-        let (rule, _) = read(source).expect("test source must parse");
-        let decls = parse_bindings(&rule).expect("bindings must parse");
-        resolve_domain(&rule, &decls, &vocabulary())
+    fn domain(source: &str) -> Result<RuleDomain, DomainError> {
+        let (rule, _) = crate::reader::read(source).expect("test source must parse");
+        let decls = crate::bindings::parse_bindings(&rule).expect("bindings must parse");
+        super::resolve_domain(&rule, &decls, &vocabulary())
     }
 
     const PREAMBLE: &str =

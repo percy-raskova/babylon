@@ -36,7 +36,7 @@
 
 use crate::allocator_state::{AllocatorCursors, AllocatorState};
 use crate::stable_element::{StableElementResolver, StableIdentityError};
-use crate::stable_state::{encode_stable_graph_state, StableGraphState};
+use crate::stable_state::StableGraphState;
 use crate::state_hash::CanonicalState;
 use crate::substrate::{Direction, GraphError, GraphSubstrate, HyperedgeId, NodeId};
 use crate::working_copy::DetachedCopy;
@@ -179,7 +179,7 @@ impl HypergraphStore {
         state: &StableGraphState,
     ) -> Result<(), StableIdentityError> {
         resolver.validate_topology(self)?;
-        let current = encode_stable_graph_state(self, resolver)?;
+        let current = crate::stable_state::encode_stable_graph_state(self, resolver)?;
         let source = state.rows();
         let live = current.rows();
         let same_nodes = source.nodes() == live.nodes();
@@ -882,10 +882,6 @@ impl CanonicalState for HypergraphStore {
 mod tests {
     use super::HypergraphStore;
     use crate::allocator_state::{AllocatorCursors, AllocatorState, AllocatorTestControl};
-    use crate::conformance::{
-        run_allocator_exhaustion_conformance, run_detached_working_copy_conformance,
-        run_substrate_conformance,
-    };
     use crate::state_hash::CanonicalState;
     use crate::substrate::GraphSubstrate;
     use crate::working_copy::DetachedCopy;
@@ -893,17 +889,17 @@ mod tests {
 
     #[test]
     fn hypergraph_store_passes_the_conformance_suite() {
-        run_substrate_conformance(HypergraphStore::new);
+        crate::conformance::run_substrate_conformance(HypergraphStore::new);
     }
 
     #[test]
     fn detached_working_copy_owns_every_mutable_lane() {
-        run_detached_working_copy_conformance(HypergraphStore::new);
+        crate::conformance::run_detached_working_copy_conformance(HypergraphStore::new);
     }
 
     #[test]
     fn exhausted_allocators_leave_hypergraph_store_unchanged() {
-        run_allocator_exhaustion_conformance(HypergraphStore::new);
+        crate::conformance::run_allocator_exhaustion_conformance(HypergraphStore::new);
     }
 
     #[test]

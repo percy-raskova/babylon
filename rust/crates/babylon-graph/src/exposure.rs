@@ -274,10 +274,7 @@ pub fn decapitation_value(
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        components, decapitation_value, degree_signature, giant_component_fraction,
-        removal_differential, signature_class_size,
-    };
+    use super::degree_signature;
     use crate::memory::MemoryGraph;
     use crate::substrate::{GraphSubstrate, NodeId};
 
@@ -320,7 +317,7 @@ mod tests {
         graph.add_edge("coordination", b, a, 1.0).unwrap();
         // declared b->a, asked in a different order: output is by id anyway
         assert_eq!(
-            components(&graph, &[isolate, b, a], "coordination").unwrap(),
+            super::components(&graph, &[isolate, b, a], "coordination").unwrap(),
             vec![vec![a, b], vec![isolate]]
         );
     }
@@ -333,7 +330,7 @@ mod tests {
         graph.add_edge("coordination", a, b, 1.0).unwrap();
         // one component, though the only edge points a -> b
         assert_eq!(
-            components(&graph, &[a, b], "coordination").unwrap(),
+            super::components(&graph, &[a, b], "coordination").unwrap(),
             vec![vec![a, b]]
         );
     }
@@ -341,26 +338,27 @@ mod tests {
     #[test]
     fn an_empty_scope_is_loud_never_zero() {
         let graph = MemoryGraph::new();
-        assert!(giant_component_fraction(&graph, &[], "coordination").is_err());
+        assert!(super::giant_component_fraction(&graph, &[], "coordination").is_err());
     }
 
     #[test]
     fn giant_fraction_measures_fragmentation() {
         let (graph, _hub, all) = star(3);
         assert!(
-            (giant_component_fraction(&graph, &all, "coordination").unwrap() - 1.0).abs() < 1e-12
+            (super::giant_component_fraction(&graph, &all, "coordination").unwrap() - 1.0).abs()
+                < 1e-12
         );
         // the three leaves alone share no ties: three singleton components
         let leaves = &all[1..];
-        let fraction = giant_component_fraction(&graph, leaves, "coordination").unwrap();
+        let fraction = super::giant_component_fraction(&graph, leaves, "coordination").unwrap();
         assert!((fraction - 1.0 / 3.0).abs() < 1e-12);
     }
 
     #[test]
     fn removing_a_hub_costs_more_than_removing_a_leaf() {
         let (graph, hub, all) = star(3);
-        let hub_loss = removal_differential(&graph, &all, "coordination", hub).unwrap();
-        let leaf_loss = removal_differential(&graph, &all, "coordination", all[1]).unwrap();
+        let hub_loss = super::removal_differential(&graph, &all, "coordination", hub).unwrap();
+        let leaf_loss = super::removal_differential(&graph, &all, "coordination", all[1]).unwrap();
         // hub: 1.0 -> 1/3 ; leaf: 1.0 -> 1.0
         assert!((hub_loss - (1.0 - 1.0 / 3.0)).abs() < 1e-12);
         assert!((leaf_loss - 0.0).abs() < 1e-12);
@@ -372,7 +370,8 @@ mod tests {
         let mut graph = MemoryGraph::new();
         let only = graph.add_node("cadre").unwrap();
         assert!(
-            (removal_differential(&graph, &[only], "coordination", only).unwrap() - 1.0).abs()
+            (super::removal_differential(&graph, &[only], "coordination", only).unwrap() - 1.0)
+                .abs()
                 < 1e-12
         );
     }
@@ -395,18 +394,18 @@ mod tests {
         let (graph, hub, all) = star(3);
         // the hub is a specialist: nobody shares its signature
         assert_eq!(
-            signature_class_size(&graph, &all, "coordination", hub, 2).unwrap(),
+            super::signature_class_size(&graph, &all, "coordination", hub, 2).unwrap(),
             1
         );
         // each leaf is interchangeable with the other two
         assert_eq!(
-            signature_class_size(&graph, &all, "coordination", all[1], 2).unwrap(),
+            super::signature_class_size(&graph, &all, "coordination", all[1], 2).unwrap(),
             3
         );
         // a ring is wholly redundant: every node shares one class
         let (ring_graph, ring_nodes) = ring(6);
         assert_eq!(
-            signature_class_size(&ring_graph, &ring_nodes, "coordination", ring_nodes[0], 2)
+            super::signature_class_size(&ring_graph, &ring_nodes, "coordination", ring_nodes[0], 2)
                 .unwrap(),
             6
         );
@@ -421,9 +420,10 @@ mod tests {
         let (ring_graph, ring_nodes) = ring(6);
 
         let centralized =
-            decapitation_value(&star_graph, &star_nodes, "coordination", hub, 2).unwrap();
+            super::decapitation_value(&star_graph, &star_nodes, "coordination", hub, 2).unwrap();
         let distributed =
-            decapitation_value(&ring_graph, &ring_nodes, "coordination", ring_nodes[0], 2).unwrap();
+            super::decapitation_value(&ring_graph, &ring_nodes, "coordination", ring_nodes[0], 2)
+                .unwrap();
 
         assert!(
             centralized > distributed,
@@ -453,22 +453,22 @@ mod tests {
         graph.add_edge("coordination", h1, h2, 1.0).unwrap();
         let all: Vec<NodeId> = [h1, h2].into_iter().chain(leaves).collect();
 
-        let differential = removal_differential(&graph, &all, "coordination", h1).unwrap();
+        let differential = super::removal_differential(&graph, &all, "coordination", h1).unwrap();
         assert!((differential - 0.4).abs() < 1e-12, "Δφ was {differential}");
         assert_eq!(
-            signature_class_size(&graph, &all, "coordination", h1, 2).unwrap(),
+            super::signature_class_size(&graph, &all, "coordination", h1, 2).unwrap(),
             2,
             "the two hubs are structurally interchangeable"
         );
         // …so the strike is worth exactly half what its fragmentation alone
         // would suggest. Remove the quotient and this reads 0.4.
-        let value = decapitation_value(&graph, &all, "coordination", h1, 2).unwrap();
+        let value = super::decapitation_value(&graph, &all, "coordination", h1, 2).unwrap();
         assert!(
             (value - 0.2).abs() < 1e-12,
             "decapitation value was {value}"
         );
         // symmetric by construction: neither hub is the better target
-        let sibling = decapitation_value(&graph, &all, "coordination", h2, 2).unwrap();
+        let sibling = super::decapitation_value(&graph, &all, "coordination", h2, 2).unwrap();
         assert!((value - sibling).abs() < 1e-12);
     }
 
@@ -483,20 +483,23 @@ mod tests {
         let (mut graph, hub, mut all) = star(2);
         let isolate = graph.add_node("cadre").unwrap();
         all.push(isolate);
-        let isolate_value = removal_differential(&graph, &all, "coordination", isolate).unwrap();
+        let isolate_value =
+            super::removal_differential(&graph, &all, "coordination", isolate).unwrap();
         assert!(
             isolate_value < 0.0,
             "expected a negative differential, got {isolate_value}"
         );
-        assert!(removal_differential(&graph, &all, "coordination", hub).unwrap() > isolate_value);
+        assert!(
+            super::removal_differential(&graph, &all, "coordination", hub).unwrap() > isolate_value
+        );
     }
 
     #[test]
     fn a_dangling_or_out_of_scope_target_is_loud() {
         let (graph, _hub, all) = star(2);
-        assert!(removal_differential(&graph, &all, "coordination", NodeId(404)).is_err());
+        assert!(super::removal_differential(&graph, &all, "coordination", NodeId(404)).is_err());
         assert!(degree_signature(&graph, &all, "coordination", NodeId(404), 2).is_err());
-        assert!(components(&graph, &[NodeId(404)], "coordination").is_err());
+        assert!(super::components(&graph, &[NodeId(404)], "coordination").is_err());
     }
 
     #[test]
@@ -507,12 +510,12 @@ mod tests {
         let (graph, hub, all) = star(2);
         let mut poisoned = all.clone();
         poisoned.push(NodeId(404));
-        assert!(components(&graph, &poisoned, "coordination").is_err());
-        assert!(giant_component_fraction(&graph, &poisoned, "coordination").is_err());
-        assert!(removal_differential(&graph, &poisoned, "coordination", hub).is_err());
+        assert!(super::components(&graph, &poisoned, "coordination").is_err());
+        assert!(super::giant_component_fraction(&graph, &poisoned, "coordination").is_err());
+        assert!(super::removal_differential(&graph, &poisoned, "coordination", hub).is_err());
         assert!(degree_signature(&graph, &poisoned, "coordination", hub, 2).is_err());
-        assert!(signature_class_size(&graph, &poisoned, "coordination", hub, 2).is_err());
-        assert!(decapitation_value(&graph, &poisoned, "coordination", hub, 2).is_err());
+        assert!(super::signature_class_size(&graph, &poisoned, "coordination", hub, 2).is_err());
+        assert!(super::decapitation_value(&graph, &poisoned, "coordination", hub, 2).is_err());
     }
 
     #[test]
@@ -521,7 +524,8 @@ mod tests {
         // through to "target is not in the node set", which is true but
         // misleading.
         let graph = MemoryGraph::new();
-        let error = removal_differential(&graph, &[], "coordination", NodeId(0)).unwrap_err();
+        let error =
+            super::removal_differential(&graph, &[], "coordination", NodeId(0)).unwrap_err();
         assert!(
             error.message.contains("empty node set"),
             "{}",

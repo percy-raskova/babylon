@@ -4,6 +4,7 @@ use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
+use toml::Value;
 
 const CHECK: &str = "sfs-non-authorability";
 static SCRATCH_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -261,30 +262,28 @@ fn absent_or_missing_evidence_member_is_a_fail_finding() {
 fn workspace_lock_pins_one_unicode_normalizer_for_bsl_and_evidence() {
     let lock_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../Cargo.lock");
     let lock_bytes = std::fs::read(&lock_path).expect("workspace lock must be readable");
-    let lock: toml::Value = toml::from_slice(&lock_bytes).expect("workspace lock must parse");
+    let lock: Value = toml::from_slice(&lock_bytes).expect("workspace lock must parse");
     let packages = lock
         .get("package")
-        .and_then(toml::Value::as_array)
+        .and_then(Value::as_array)
         .expect("Cargo.lock package array");
     let normalizers: Vec<_> = packages
         .iter()
-        .filter(|row| {
-            row.get("name").and_then(toml::Value::as_str) == Some("unicode-normalization")
-        })
+        .filter(|row| row.get("name").and_then(Value::as_str) == Some("unicode-normalization"))
         .collect();
     assert_eq!(normalizers.len(), 1);
     assert_eq!(
-        normalizers[0].get("version").and_then(toml::Value::as_str),
+        normalizers[0].get("version").and_then(Value::as_str),
         Some("0.1.25")
     );
     for crate_name in ["babylon-bsl", "babylon-evidence"] {
         let package = packages
             .iter()
-            .find(|row| row.get("name").and_then(toml::Value::as_str) == Some(crate_name))
+            .find(|row| row.get("name").and_then(Value::as_str) == Some(crate_name))
             .unwrap_or_else(|| panic!("missing {crate_name} lock row"));
         let dependencies = package
             .get("dependencies")
-            .and_then(toml::Value::as_array)
+            .and_then(Value::as_array)
             .expect("package dependency array");
         assert!(
             dependencies
@@ -1017,8 +1016,6 @@ fn multiline_strings_close_on_the_final_three_quotes_of_valid_quote_runs() {
 #[cfg(unix)]
 #[test]
 fn intermediate_package_symlinks_and_canonical_escape_are_refused() {
-    use std::os::unix::fs::symlink;
-
     let workspace = ScratchRoot::new("intermediate-symlink");
     let outside = ScratchRoot::new("outside-package");
     write_file(
@@ -1030,7 +1027,8 @@ fn intermediate_package_symlinks_and_canonical_escape_are_refused() {
         b"[workspace]\nmembers = [\"crates/link/babylon-evidence\"]\nresolver = \"2\"\n",
     );
     std::fs::create_dir_all(workspace.0.join("crates")).expect("workspace crates directory");
-    symlink(&outside.0, workspace.0.join("crates/link")).expect("intermediate symlink");
+    std::os::unix::fs::symlink(&outside.0, workspace.0.join("crates/link"))
+        .expect("intermediate symlink");
     let (code, report) = run_root(&workspace.0);
     assert_eq!(code, 2);
     assert!(
@@ -1042,13 +1040,12 @@ fn intermediate_package_symlinks_and_canonical_escape_are_refused() {
 #[cfg(unix)]
 #[test]
 fn a_live_source_symlink_is_refused_instead_of_followed() {
-    use std::os::unix::fs::symlink;
-
     let scratch = ScratchRoot::new("source-symlink");
     write_minimal_workspace(&scratch.0, &["babylon-tick", "babylon-evidence"]);
     let source_dir = scratch.0.join("crates/babylon-tick/src");
     std::fs::create_dir_all(&source_dir).expect("source directory");
-    symlink("../Cargo.toml", source_dir.join("linked.rs")).expect("fixture symlink");
+    std::os::unix::fs::symlink("../Cargo.toml", source_dir.join("linked.rs"))
+        .expect("fixture symlink");
     let (code, report) = run_root(&scratch.0);
     assert_eq!(code, 2);
     assert!(report.contains("symlinks are forbidden"), "{report}");

@@ -1,9 +1,8 @@
 use babylon_practice_contract::ActorOrganizationId;
 use babylon_practice_contract::{
-    decode_input_authority, decode_input_authority_ledger, encode_input_authority,
-    encode_input_authority_ledger, input_authority_digest, input_authority_ledger_digest,
-    CampaignId, InputAuthorityId, PracticeAuthorityError, PracticeAuthorityKind,
-    PracticeInputAuthority, PRACTICE_INPUT_AUTHORITY_SOURCE_SHA256,
+    encode_input_authority, encode_input_authority_ledger, input_authority_digest,
+    input_authority_ledger_digest, CampaignId, InputAuthorityId, PracticeAuthorityError,
+    PracticeAuthorityKind, PracticeInputAuthority, PRACTICE_INPUT_AUTHORITY_SOURCE_SHA256,
 };
 use serde_json::Value;
 
@@ -87,7 +86,10 @@ fn authority_contract_schema_and_vectors_drive_the_rust_boundary() {
         u64::try_from(canonical.len()).unwrap()
     );
     assert_eq!(encode_input_authority(&row).unwrap(), canonical);
-    assert_eq!(decode_input_authority(&canonical).unwrap(), row);
+    assert_eq!(
+        babylon_practice_contract::decode_input_authority(&canonical).unwrap(),
+        row
+    );
     assert_eq!(
         input_authority_digest(&row).unwrap().to_vec(),
         hex_bytes(row_case["data"]["digest_hex"].as_str().unwrap())
@@ -98,7 +100,7 @@ fn authority_contract_schema_and_vectors_drive_the_rust_boundary() {
         .find(|case| case["case_id"] == "ledger-one")
         .unwrap();
     let ledger_bytes = hex_bytes(ledger_case["data"]["canonical_hex"].as_str().unwrap());
-    let ledger = decode_input_authority_ledger(&ledger_bytes).unwrap();
+    let ledger = babylon_practice_contract::decode_input_authority_ledger(&ledger_bytes).unwrap();
     assert_eq!(ledger.rows, vec![row]);
     assert_eq!(
         encode_input_authority_ledger(&ledger).unwrap(),
@@ -116,8 +118,10 @@ fn authority_contract_schema_and_vectors_drive_the_rust_boundary() {
         )
         .unwrap();
         let actual = match case["data"]["codec"].as_str().unwrap() {
-            "authority" => decode_input_authority(&payload).map(|_| ()),
-            "ledger" => decode_input_authority_ledger(&payload).map(|_| ()),
+            "authority" => babylon_practice_contract::decode_input_authority(&payload).map(|_| ()),
+            "ledger" => {
+                babylon_practice_contract::decode_input_authority_ledger(&payload).map(|_| ())
+            }
             unknown => panic!("unknown current vector codec {unknown}"),
         };
         assert_eq!(actual, Err(expected));

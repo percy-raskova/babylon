@@ -1,12 +1,11 @@
 //! Language-neutral T3 contract vectors consumed by Rust.
 
 use babylon_evidence::{
-    canonical_envelope, classify_persistence, classify_sfs, record_digest, CanonicalProfileSet,
-    CausalCone, ComponentKind, DifferingLedgerKind, Digest32, InterventionDelta,
-    InterventionDeltaRow, InterventionOperation, PersistenceComparison, PracticeAttemptLedger,
-    PracticeAttemptRow, PracticeCandidateRow, PracticeCandidateSchedule, PracticeDisposition,
-    RunIdentity, SfsComponentProofProfile, SfsPreregistration, SfsProofProfile, SfsSample,
-    SfsTrace, T3Record,
+    classify_persistence, classify_sfs, CanonicalProfileSet, CausalCone, ComponentKind,
+    DifferingLedgerKind, Digest32, InterventionDelta, InterventionDeltaRow, InterventionOperation,
+    PersistenceComparison, PracticeAttemptLedger, PracticeAttemptRow, PracticeCandidateRow,
+    PracticeCandidateSchedule, PracticeDisposition, RunIdentity, SfsComponentProofProfile,
+    SfsPreregistration, SfsProofProfile, SfsSample, SfsTrace, T3Record,
 };
 use babylon_kernel::clock::SessionId;
 use babylon_practice_contract::PracticeId;
@@ -81,9 +80,12 @@ fn assert_record<T: T3Record>(record: &T, domain: &str, envelope_hex: &str, dige
     let fixture_envelope = decode_hex(envelope_hex);
     let fixture_digest = decode_hex(digest_hex);
     assert_eq!(fixture_digest.len(), 32);
-    assert_eq!(canonical_envelope(record).unwrap(), fixture_envelope);
     assert_eq!(
-        record_digest(record).unwrap().as_bytes(),
+        babylon_evidence::canonical_envelope(record).unwrap(),
+        fixture_envelope
+    );
+    assert_eq!(
+        babylon_evidence::record_digest(record).unwrap().as_bytes(),
         fixture_digest.as_slice()
     );
 }
@@ -388,16 +390,16 @@ fn all_classifier_vectors_match_the_independent_literal_bits() {
 #[allow(clippy::needless_range_loop)] // The eighteen-row ceiling is part of the fixture contract.
 fn every_run_identity_mutation_changes_bytes_and_digest_and_reconstructs() {
     let base = run_identity_with_mutation("");
-    let base_bytes = canonical_envelope(&base).unwrap();
-    let base_digest = record_digest(&base).unwrap();
+    let base_bytes = babylon_evidence::canonical_envelope(&base).unwrap();
+    let base_digest = babylon_evidence::record_digest(&base).unwrap();
     let lines = fixture_lines(IDENTITY_MUTATIONS, 18);
     for index in 0..18 {
         let parts = five_fields(lines[index]);
         assert_eq!(parts[0], "mutation");
         assert_eq!(parts[1], "run-identity");
         let mutated = run_identity_with_mutation(parts[2]);
-        let mutated_bytes = canonical_envelope(&mutated).unwrap();
-        let mutated_digest = record_digest(&mutated).unwrap();
+        let mutated_bytes = babylon_evidence::canonical_envelope(&mutated).unwrap();
+        let mutated_digest = babylon_evidence::record_digest(&mutated).unwrap();
         assert_eq!(mutated_bytes, decode_hex(parts[3]));
         assert_eq!(mutated_digest.to_hex(), parts[4]);
         assert_ne!(mutated_bytes, base_bytes);

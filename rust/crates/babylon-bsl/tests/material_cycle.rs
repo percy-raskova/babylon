@@ -1,14 +1,17 @@
 //! The authored native invocation is closed and cannot silently become a graph rule.
 
 use babylon_bsl::bindings::BindingVocabulary;
+use babylon_bsl::causal_contract;
 use babylon_bsl::causal_contract::{
-    authorize_rule_effects, effect_footprint, parse_rule_contract, ContractError, EffectSignature,
+    authorize_rule_effects, effect_footprint, ContractError, EffectSignature,
 };
 use babylon_bsl::fuel::{CardinalityCeilings, IntrinsicCosts};
 use babylon_bsl::intrinsic_host::EmptyIntrinsicHost;
-use babylon_bsl::rule_pipeline::{load_rule, LoadContext, LoadError, LoadedRule, RuleExecution};
+use babylon_bsl::rule_pipeline;
+use babylon_bsl::rule_pipeline::{LoadContext, LoadError, LoadedRule, RuleExecution};
 use babylon_bsl::structural_verbs::CollectingSink;
-use babylon_bsl::tick::{run_tick, DefinesEnv};
+use babylon_bsl::tick;
+use babylon_bsl::tick::DefinesEnv;
 use babylon_bsl::typecheck::TypeEnv;
 use babylon_bsl::types::EnumRegistry;
 use babylon_bsl::vocabulary::{ClosedVocabulary, EnumKind};
@@ -25,7 +28,7 @@ const RULE: &str = r#"(rule material/period
   (material-cycle))"#;
 
 fn load(source: &str) -> Result<LoadedRule, LoadError> {
-    load_rule(
+    rule_pipeline::load_rule(
         source,
         &LoadContext {
             vocabulary: &BindingVocabulary::default(),
@@ -96,7 +99,7 @@ fn material_cycle_has_an_explicit_mechanic_only_effect_footprint() {
         effect_footprint(&rule).unwrap(),
         [EffectSignature::MaterialCycle]
     );
-    let contract = parse_rule_contract(&rule).unwrap();
+    let contract = causal_contract::parse_rule_contract(&rule).unwrap();
     assert!(authorize_rule_effects(&rule, &contract).is_ok());
     for role in ["recognizer", "external-event", "intent"] {
         let source = RULE
@@ -218,7 +221,7 @@ fn material_cycle_graph_evaluator_refuses_without_host_even_with_zero_subjects()
         StableElementResolver::seal(&graph, "material/fixture", &HashMap::new(), &HashMap::new())
             .unwrap();
     let mut sink = CollectingSink::default();
-    let error = run_tick(
+    let error = tick::run_tick(
         &loaded,
         &TypeEnv {
             fields: HashMap::new(),

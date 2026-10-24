@@ -29,6 +29,7 @@ use lsp_server::{ErrorCode, Message, Notification, Request, RequestId};
 use lsp_types::notification::{Exit, Initialized, Notification as _};
 use lsp_types::request::{Initialize, Request as _, Shutdown};
 use lsp_types::{ClientCapabilities, InitializeParams, InitializedParams};
+use mpsc::Receiver;
 
 /// Bounds the reader thread's frame loop (Power-of-10 rule 2: every loop
 /// statically bounded). No test in this file exchanges anywhere near 64
@@ -79,7 +80,7 @@ impl ChildGuard {
 struct TestServer {
     child: ChildGuard,
     stdin: ChildStdin,
-    rx: mpsc::Receiver<Message>,
+    rx: Receiver<Message>,
     stderr: Arc<Mutex<Vec<u8>>>,
 }
 

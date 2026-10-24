@@ -37,6 +37,7 @@
 //!   a loud error here pending the Phase-1 review.
 
 use crate::fuel::{cost, IntrinsicCosts};
+use crate::grammar::FoldOp;
 use crate::intrinsic_host::{DrawContext, IntrinsicCallCtx, IntrinsicHost};
 use crate::probability::{Mass, QUANTIZE_MASS_BASE};
 use crate::query::{EdgeKey, Element};
@@ -45,8 +46,11 @@ use crate::typecheck::TypeEnv;
 use crate::types::{BslType, EnumRegistry};
 use babylon_graph::stable_element::{StableElementKey, StableElementResolver};
 use babylon_graph::substrate::GraphSubstrate;
-use babylon_kernel::{currency::Currency, scalars::Coefficient, scalars::Ratio};
+use babylon_kernel::currency::Currency;
+use babylon_kernel::scalars::{Coefficient, Ratio};
 use std::collections::HashMap;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 
 /// A runtime BSL value. The static type system (§3.1) is finer than this —
 /// `Probability`/`Intensity`/`Coefficient`/`Real` are all the binary64 lane
@@ -283,7 +287,7 @@ impl EvalError {
 }
 
 impl std::fmt::Display for EvalError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         match self.code {
             Some(code) => write!(f, "{}: {}", code.spec_code(), self.message),
             None => write!(f, "{}", self.message),
@@ -933,7 +937,7 @@ fn eval_fold(
     // CT4P A3 (issue #525): `op` converts to `FoldOp` ONCE, here, and the
     // dispatch below matches it EXHAUSTIVELY — no wildcard. The
     // unrecognized-operator message is preserved byte-for-byte.
-    let Some(fold_op) = crate::grammar::FoldOp::parse(op.as_str()) else {
+    let Some(fold_op) = FoldOp::parse(op.as_str()) else {
         return Err(EvalError::plain(format!(
             "unknown fold-op '{op}' — the closed set is sum|mean|min|max|count \
              (§2.7; E-PARSE-015 at load)"
@@ -942,8 +946,8 @@ fn eval_fold(
     match fold_op {
         // P4: count is CARDINALITY (§3.4 row 6) — no body/weight/env/host/
         // fuel operand needed; see fold_count's own doc for why.
-        crate::grammar::FoldOp::Count => fold_count(&elements),
-        crate::grammar::FoldOp::Sum => fold_sum(
+        FoldOp::Count => fold_count(&elements),
+        FoldOp::Sum => fold_sum(
             &elements,
             elem_name.as_deref(),
             body,
@@ -952,7 +956,7 @@ fn eval_fold(
             host,
             fuel,
         ),
-        crate::grammar::FoldOp::Mean => fold_mean(
+        FoldOp::Mean => fold_mean(
             &elements,
             elem_name.as_deref(),
             body,
@@ -961,7 +965,7 @@ fn eval_fold(
             host,
             fuel,
         ),
-        crate::grammar::FoldOp::Min => fold_min_max(
+        FoldOp::Min => fold_min_max(
             &elements,
             elem_name.as_deref(),
             body,
@@ -971,7 +975,7 @@ fn eval_fold(
             fuel,
             true,
         ),
-        crate::grammar::FoldOp::Max => fold_min_max(
+        FoldOp::Max => fold_min_max(
             &elements,
             elem_name.as_deref(),
             body,
@@ -2064,7 +2068,6 @@ fn apply_equality(op: &str, lhs: &Value, rhs: &Value) -> Result<Value, EvalError
 mod tests {
     use super::*;
     use crate::intrinsic_host::EmptyIntrinsicHost;
-    use crate::reader::read;
     use std::collections::HashMap;
 
     fn costs() -> IntrinsicCosts {
@@ -2100,7 +2103,7 @@ mod tests {
             elements: Vec::new(),
             draw_context: None,
         };
-        let (expr, _) = read(source).expect("test source must parse");
+        let (expr, _) = crate::reader::read(source).expect("test source must parse");
         evaluate(&expr, &env, &EmptyIntrinsicHost, fuel)
     }
 
@@ -2582,7 +2585,7 @@ mod tests {
             elements: Vec::new(),
             draw_context: None,
         };
-        let (expr, _) = read("(double 5)").unwrap();
+        let (expr, _) = crate::reader::read("(double 5)").unwrap();
         let mut fuel = 100;
         let result = evaluate(&expr, &env, &Doubler, &mut fuel).unwrap();
         assert_eq!(result, Value::Int(10));
@@ -2612,7 +2615,7 @@ mod tests {
             elements: Vec::new(),
             draw_context: None,
         };
-        let (expr, _) = read("(floor x)").unwrap();
+        let (expr, _) = crate::reader::read("(floor x)").unwrap();
         let mut fuel = 100;
         let result = evaluate(
             &expr,
@@ -2768,7 +2771,8 @@ mod tests {
             draw_context: None,
         };
         let (form, _) =
-            read("(effects (update-edge e solidarity/strength (scale 0.5c)))").expect("must parse");
+            crate::reader::read("(effects (update-edge e solidarity/strength (scale 0.5c)))")
+                .expect("must parse");
         let SExpr::List(items) = form else {
             unreachable!()
         };
@@ -2795,7 +2799,8 @@ mod tests {
         // message before Task 6, a plain write now. `set` never reads the
         // prior value, so the never-written field is no obstacle.
         let (form, _) =
-            read("(effects (update-hyperedge h community/heat (set 0.5c)))").expect("must parse");
+            crate::reader::read("(effects (update-hyperedge h community/heat (set 0.5c)))")
+                .expect("must parse");
         let SExpr::List(items) = form else {
             unreachable!()
         };
@@ -2963,7 +2968,7 @@ mod tests {
             elements: Vec::new(),
             draw_context: None,
         };
-        let (expr, _) = read(source).expect("test source must parse");
+        let (expr, _) = crate::reader::read(source).expect("test source must parse");
         evaluate(&expr, &env, &EmptyIntrinsicHost, fuel)
     }
 
@@ -3125,7 +3130,8 @@ mod tests {
             elements: Vec::new(),
             draw_context: None,
         };
-        let (expr, _) = read("(field-of self organization/kind)").expect("must parse");
+        let (expr, _) =
+            crate::reader::read("(field-of self organization/kind)").expect("must parse");
         let mut fuel = 1_000;
         let err = evaluate(&expr, &env, &EmptyIntrinsicHost, &mut fuel).unwrap_err();
         assert!(
@@ -3258,7 +3264,7 @@ mod tests {
             elements: Vec::new(),
             draw_context: None,
         };
-        let (expr, _) = read(source).expect("test source must parse");
+        let (expr, _) = crate::reader::read(source).expect("test source must parse");
         evaluate(&expr, &env, &EmptyIntrinsicHost, fuel)
     }
 
@@ -3454,7 +3460,7 @@ mod tests {
             elements: Vec::new(),
             draw_context: None,
         };
-        let (expr, _) = read(source).expect("test source must parse");
+        let (expr, _) = crate::reader::read(source).expect("test source must parse");
         evaluate(&expr, &env, &EmptyIntrinsicHost, fuel)
     }
 
@@ -3557,7 +3563,7 @@ mod tests {
     /// deliberately no more", so this tightens rather than widens it.
     #[test]
     fn static_additive_identity_refuses_currency_times_currency() {
-        let (expr, _) = read("(* 5$ 3$)").unwrap();
+        let (expr, _) = crate::reader::read("(* 5$ 3$)").unwrap();
         assert_eq!(static_additive_identity(&expr), None);
     }
 

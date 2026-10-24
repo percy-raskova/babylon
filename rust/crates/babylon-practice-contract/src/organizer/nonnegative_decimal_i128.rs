@@ -1,4 +1,5 @@
-use serde::{de::Error, Deserialize, Deserializer, Serializer};
+use serde::de::Error;
+use serde::{Deserialize, Deserializer, Serializer};
 
 pub fn serialize<S: Serializer>(value: &i128, serializer: S) -> Result<S::Ok, S::Error> {
     if *value < 0 {

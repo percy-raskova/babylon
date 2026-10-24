@@ -17,25 +17,22 @@ use std::path::{Path, PathBuf};
 
 use lsp_types::{Diagnostic, DiagnosticSeverity, Uri};
 
-use babylon_bsl::{
-    probability::ContentSetAnalysis, reader::FormPath, scenario::compose_declaration_preludes,
-};
+use babylon_bsl::probability::ContentSetAnalysis;
+use babylon_bsl::reader::FormPath;
+use babylon_bsl::scenario;
 use babylon_tick::{
-    analyze_content_set_sources_with_kernel_slots, diagnose_content_set_sources,
-    forecast_scenario_determined_event_likelihoods_with_kernel_slots, ContentRuleSource,
-    ContentSetSourceAnalysisError, ForecastError, SourcedPrepareError,
+    ContentRuleSource, ContentSetSourceAnalysisError, ForecastError, SourcedPrepareError,
 };
 
 use crate::authoring::{
-    merge_content_set_snapshots, snapshot_from_content_analysis, AuthoringSnapshot,
-    EventLikelihoodAnalysisFact, EventLikelihoodFact, ForecastRefusalStage,
+    AuthoringSnapshot, EventLikelihoodAnalysisFact, EventLikelihoodFact, ForecastRefusalStage,
 };
 use crate::content_manifest::ContentSetManifest;
-use crate::diagnostics::{diagnostics_for_file, missing_manifest_row_diagnostic, Located};
+use crate::diagnostics::{missing_manifest_row_diagnostic, Located};
 use crate::document_store::DocumentStore;
 use crate::line_index::LineIndex;
-use crate::uri::{file_path_from_uri, uri_from_file_path};
 use babylon_tick::kernel_slot::KernelSlotReservationMatch;
+use lsp_types::Range;
 
 /// Obtain a content-root-relative file's current text — open-document
 /// content when open, disk content otherwise (§6.1: "on-disk edits
@@ -74,7 +71,7 @@ pub struct LiveSourceReader<'a> {
 impl SourceReader for LiveSourceReader<'_> {
     fn read(&self, content_relative_path: &str) -> Option<String> {
         let absolute = self.content_root.join(content_relative_path);
-        if let Some(uri) = uri_from_file_path(&absolute) {
+        if let Some(uri) = crate::uri::uri_from_file_path(&absolute) {
             if let Some(document) = self.store.get(&uri) {
                 return Some(document.text.clone());
             }
@@ -172,7 +169,7 @@ pub fn diagnose_bsl(
         let prelude_src = if prelude_refs.is_empty() {
             None
         } else {
-            match compose_declaration_preludes(&prelude_refs) {
+            match scenario::compose_declaration_preludes(&prelude_refs) {
                 Ok(composed) => Some(composed),
                 Err(error) => {
                     located.push(Located::from_scenario_error(&error));
@@ -192,8 +189,11 @@ pub fn diagnose_bsl(
                 source: rule_src,
             })
             .collect::<Vec<_>>();
-        let errors =
-            diagnose_content_set_sources(&scenario_src, prelude_src.as_deref(), &named_sources);
+        let errors = babylon_tick::diagnose_content_set_sources(
+            &scenario_src,
+            prelude_src.as_deref(),
+            &named_sources,
+        );
         located.extend(prepare_refusals_for_source(&errors, content_relative_path));
         located.extend(kernel_slot_refusals_from_sources(
             ContentRuleSource {
@@ -206,7 +206,7 @@ pub fn diagnose_bsl(
             content_relative_path,
         ));
     }
-    diagnostics_for_file(uri, &text, &line_index, &located)
+    crate::diagnostics::diagnostics_for_file(uri, &text, &line_index, &located)
 }
 
 fn prepare_refusals_for_source(errors: &[SourcedPrepareError], source_id: &str) -> Vec<Located> {
@@ -230,7 +230,7 @@ fn kernel_slot_refusals_from_sources(
     source_id: &str,
 ) -> Vec<Located> {
     let kernel_slots = manifest.borrowed_kernel_slots();
-    match analyze_content_set_sources_with_kernel_slots(
+    match babylon_tick::analyze_content_set_sources_with_kernel_slots(
         scenario_source,
         prelude_sources,
         rule_sources,
@@ -312,7 +312,7 @@ fn likelihood_analysis_facts(
         .links
         .iter()
         .map(|link| {
-            let fact = match forecast_scenario_determined_event_likelihoods_with_kernel_slots(
+            let fact = match babylon_tick::forecast_scenario_determined_event_likelihoods_with_kernel_slots(
                 scenario_src,
                 prelude_src,
                 rule_sources,
@@ -386,7 +386,7 @@ pub fn analyze_probability_authoring(
         let prelude = if prelude_refs.is_empty() {
             None
         } else {
-            let Ok(composed) = compose_declaration_preludes(&prelude_refs) else {
+            let Ok(composed) = scenario::compose_declaration_preludes(&prelude_refs) else {
                 continue;
             };
             Some(composed)
@@ -408,7 +408,7 @@ pub fn analyze_probability_authoring(
         | Err(ContentSetSourceAnalysisError {
             partial_analysis: Some(analysis),
             ..
-        })) = analyze_content_set_sources_with_kernel_slots(
+        })) = babylon_tick::analyze_content_set_sources_with_kernel_slots(
             ContentRuleSource {
                 source_id: &set.scenario,
                 source: &scenario_src,
@@ -429,7 +429,7 @@ pub fn analyze_probability_authoring(
         );
         snapshots.push((
             set.id.clone(),
-            snapshot_from_content_analysis(
+            crate::authoring::snapshot_from_content_analysis(
                 content_relative_path,
                 &text,
                 &analysis,
@@ -437,7 +437,7 @@ pub fn analyze_probability_authoring(
             ),
         ));
     }
-    merge_content_set_snapshots(snapshots)
+    crate::authoring::merge_content_set_snapshots(snapshots)
 }
 
 fn source_refusal(message: impl Into<String>) -> Located {
@@ -465,7 +465,7 @@ fn kernel_slot_refusal(form_path: FormPath, message: impl Into<String>) -> Locat
 }
 
 fn source_refusal_diagnostic(message: impl Into<String>) -> Diagnostic {
-    let mut diagnostic = Diagnostic::new_simple(lsp_types::Range::default(), message.into());
+    let mut diagnostic = Diagnostic::new_simple(Range::default(), message.into());
     diagnostic.severity = Some(DiagnosticSeverity::ERROR);
     diagnostic.source = Some("bsl-ls".to_owned());
     diagnostic.data = Some(serde_json::json!({
@@ -491,7 +491,7 @@ pub fn content_root_of(manifest_path: &Path) -> PathBuf {
 /// resolves to a content set at all).
 #[must_use]
 pub fn content_relative_path(content_root: &Path, uri: &Uri) -> Option<String> {
-    let absolute = file_path_from_uri(uri)?;
+    let absolute = crate::uri::file_path_from_uri(uri)?;
     let relative = absolute.strip_prefix(content_root).ok()?;
     // TOML paths use forward slashes (§4.1's own examples); this crate
     // only ever runs on Unix (the flake's own devshells), where `Path`'s
@@ -501,7 +501,7 @@ pub fn content_relative_path(content_root: &Path, uri: &Uri) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{analyze_probability_authoring, diagnose_bsl, FixtureSourceReader, SourceReader};
+    use super::{FixtureSourceReader, SourceReader};
     use crate::authoring::{AuthoringKind, EventLikelihoodAnalysisFact, ForecastRefusalStage};
     use crate::content_manifest::ContentSetManifest;
     use lsp_types::Uri;
@@ -740,7 +740,7 @@ note = "kernel slot governance fixture"
             .into_iter()
             .collect(),
         };
-        let diags = diagnose_bsl(&uri(), "rules/probe.bsl", &manifest, &source);
+        let diags = super::diagnose_bsl(&uri(), "rules/probe.bsl", &manifest, &source);
         assert!(diags.is_empty(), "{diags:?}");
     }
 
@@ -757,7 +757,7 @@ slot = 0
         );
         let source_text = kernel_source("struggle/spark", 0);
         let source = kernel_source_reader(&source_text);
-        let diagnostics = diagnose_bsl(
+        let diagnostics = super::diagnose_bsl(
             &"file:///rules/kernel.bsl"
                 .parse::<Uri>()
                 .expect("valid test URI"),
@@ -777,8 +777,8 @@ slot = 0
             .parse::<Uri>()
             .expect("valid test URI");
 
-        let first = diagnose_bsl(&kernel_uri, "rules/kernel.bsl", &manifest, &source);
-        let second = diagnose_bsl(&kernel_uri, "rules/kernel.bsl", &manifest, &source);
+        let first = super::diagnose_bsl(&kernel_uri, "rules/kernel.bsl", &manifest, &source);
+        let second = super::diagnose_bsl(&kernel_uri, "rules/kernel.bsl", &manifest, &source);
         assert_eq!(first, second);
         assert_eq!(first.len(), 1, "{first:?}");
         assert!(first[0].message.contains("no permanent [[kernel_slot]]"));
@@ -795,7 +795,7 @@ slot = 0
             sample_start + u32::try_from("struggle/spark".len()).expect("bounded sample")
         );
 
-        let sibling = diagnose_bsl(
+        let sibling = super::diagnose_bsl(
             &"file:///rules/sibling.bsl"
                 .parse::<Uri>()
                 .expect("valid test URI"),
@@ -822,7 +822,7 @@ slot = 0
         );
         let sample_source_text = kernel_source("struggle/live", 0);
         let sample_source = kernel_source_reader(&sample_source_text);
-        let sample = diagnose_bsl(
+        let sample = super::diagnose_bsl(
             &"file:///rules/kernel.bsl"
                 .parse::<Uri>()
                 .expect("valid test URI"),
@@ -858,7 +858,7 @@ slot = 0
         );
         let slot_source_text = kernel_source("struggle/spark", 1);
         let slot_source = kernel_source_reader(&slot_source_text);
-        let slot = diagnose_bsl(
+        let slot = super::diagnose_bsl(
             &"file:///rules/kernel.bsl"
                 .parse::<Uri>()
                 .expect("valid test URI"),
@@ -896,7 +896,7 @@ slot = 0
         );
         let source_text = kernel_source("struggle/spark", 0);
         let source = kernel_source_reader(&source_text);
-        let diagnostics = diagnose_bsl(
+        let diagnostics = super::diagnose_bsl(
             &"file:///rules/kernel.bsl"
                 .parse::<Uri>()
                 .expect("valid test URI"),
@@ -949,8 +949,8 @@ slot = 0
             .collect(),
         };
 
-        let first = analyze_probability_authoring("rules/probe.bsl", &manifest, &source);
-        let second = analyze_probability_authoring("rules/probe.bsl", &manifest, &source);
+        let first = super::analyze_probability_authoring("rules/probe.bsl", &manifest, &source);
+        let second = super::analyze_probability_authoring("rules/probe.bsl", &manifest, &source);
 
         assert_eq!(first, second);
         assert!(first
@@ -990,7 +990,7 @@ slot = 0
             .collect(),
         };
 
-        let snapshot = analyze_probability_authoring("rules/probe.bsl", &manifest, &source);
+        let snapshot = super::analyze_probability_authoring("rules/probe.bsl", &manifest, &source);
         let choose = snapshot
             .facts
             .iter()
@@ -1029,7 +1029,7 @@ slot = 0
             .collect(),
         };
 
-        let diagnostics = diagnose_bsl(&uri(), "rules/probe.bsl", &manifest, &source);
+        let diagnostics = super::diagnose_bsl(&uri(), "rules/probe.bsl", &manifest, &source);
         assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
         assert_eq!(
             diagnostics[0].data,
@@ -1097,7 +1097,7 @@ note = "Mass declaration ownership fixture"
             ("scenario.bscn", 250_000_000_u64),
             ("prelude.bsl", 750_000_000_u64),
         ] {
-            let snapshot = analyze_probability_authoring(source_id, &manifest, &source);
+            let snapshot = super::analyze_probability_authoring(source_id, &manifest, &source);
             let masses = snapshot
                 .facts
                 .iter()
@@ -1139,7 +1139,7 @@ note = "Mass declaration ownership fixture"
             .collect(),
         };
 
-        let good = diagnose_bsl(
+        let good = super::diagnose_bsl(
             &"file:///rules/good.bsl"
                 .parse::<Uri>()
                 .expect("valid test URI"),
@@ -1147,7 +1147,7 @@ note = "Mass declaration ownership fixture"
             &manifest,
             &source,
         );
-        let bad = diagnose_bsl(
+        let bad = super::diagnose_bsl(
             &"file:///rules/bad.bsl"
                 .parse::<Uri>()
                 .expect("valid test URI"),
@@ -1191,7 +1191,7 @@ note = "Mass declaration ownership fixture"
         };
 
         let snapshot =
-            analyze_probability_authoring("rules/spark-recognizer.bsl", &manifest, &source);
+            super::analyze_probability_authoring("rules/spark-recognizer.bsl", &manifest, &source);
         let projection = snapshot.facts.iter().find_map(|fact| match &fact.kind {
             AuthoringKind::ProjectsKernel {
                 linkage,
@@ -1226,8 +1226,11 @@ note = "Mass declaration ownership fixture"
             "scenario.bscn".to_owned(),
             MULTI_CARRIER_PROJECTION_SCENARIO.to_owned(),
         );
-        let dynamic =
-            analyze_probability_authoring("rules/spark-recognizer.bsl", &manifest, &multi_carrier);
+        let dynamic = super::analyze_probability_authoring(
+            "rules/spark-recognizer.bsl",
+            &manifest,
+            &multi_carrier,
+        );
         let reason = dynamic.facts.iter().find_map(|fact| match &fact.kind {
             AuthoringKind::ProjectsKernel {
                 likelihood: Some(EventLikelihoodAnalysisFact::StateDependent { reason }),
@@ -1261,7 +1264,7 @@ note = "Mass declaration ownership fixture"
         };
 
         let ambiguity = |reverse| {
-            let snapshot = analyze_probability_authoring(
+            let snapshot = super::analyze_probability_authoring(
                 "rules/spark-recognizer.bsl",
                 &conflicting_projection_manifest(reverse),
                 &source,
@@ -1311,7 +1314,7 @@ note = "Mass declaration ownership fixture"
         };
 
         let snapshot =
-            analyze_probability_authoring("rules/spark-recognizer.bsl", &manifest, &source);
+            super::analyze_probability_authoring("rules/spark-recognizer.bsl", &manifest, &source);
         let likelihood = snapshot.facts.iter().find_map(|fact| match &fact.kind {
             AuthoringKind::ProjectsKernel { likelihood, .. } => likelihood.as_ref(),
             _ => None,
@@ -1349,7 +1352,7 @@ note = "Mass declaration ownership fixture"
         };
 
         let snapshot =
-            analyze_probability_authoring("rules/spark-recognizer.bsl", &manifest, &source);
+            super::analyze_probability_authoring("rules/spark-recognizer.bsl", &manifest, &source);
         let likelihood = snapshot.facts.iter().find_map(|fact| match &fact.kind {
             AuthoringKind::ProjectsKernel { likelihood, .. } => likelihood.as_ref(),
             _ => None,
@@ -1373,7 +1376,7 @@ note = "Mass declaration ownership fixture"
                 .into_iter()
                 .collect(),
         };
-        let diags = diagnose_bsl(&uri(), "orphan.bsl", &manifest, &source);
+        let diags = super::diagnose_bsl(&uri(), "orphan.bsl", &manifest, &source);
         assert_eq!(diags.len(), 1);
         assert_eq!(
             diags[0].severity,
@@ -1399,8 +1402,8 @@ note = "Mass declaration ownership fixture"
             .into_iter()
             .collect(),
         };
-        let first = diagnose_bsl(&uri(), "rules/probe.bsl", &manifest, &source);
-        let second = diagnose_bsl(&uri(), "rules/probe.bsl", &manifest, &source);
+        let first = super::diagnose_bsl(&uri(), "rules/probe.bsl", &manifest, &source);
+        let second = super::diagnose_bsl(&uri(), "rules/probe.bsl", &manifest, &source);
         assert_eq!(
             serde_json::to_string(&first).unwrap(),
             serde_json::to_string(&second).unwrap()
@@ -1459,7 +1462,7 @@ note = "ordered prelude fixture"
         let ordered =
             two_prelude_manifest("\"declarations/enum.bscn\", \"declarations/field.bscn\"");
         let source = two_prelude_source();
-        let ordered_diagnostics = diagnose_bsl(&uri(), "rules/probe.bsl", &ordered, &source);
+        let ordered_diagnostics = super::diagnose_bsl(&uri(), "rules/probe.bsl", &ordered, &source);
         assert!(
             ordered_diagnostics.is_empty(),
             "both sources in declared order must satisfy the real loader: {ordered_diagnostics:?}"
@@ -1468,13 +1471,13 @@ note = "ordered prelude fixture"
         let reversed =
             two_prelude_manifest("\"declarations/field.bscn\", \"declarations/enum.bscn\"");
         assert!(
-            !diagnose_bsl(&uri(), "rules/probe.bsl", &reversed, &source).is_empty(),
+            !super::diagnose_bsl(&uri(), "rules/probe.bsl", &reversed, &source).is_empty(),
             "reversing the dependency order must fail"
         );
 
         let mut missing = two_prelude_source();
         missing.files.remove("declarations/field.bscn");
-        let diagnostics = diagnose_bsl(&uri(), "rules/probe.bsl", &ordered, &missing);
+        let diagnostics = super::diagnose_bsl(&uri(), "rules/probe.bsl", &ordered, &missing);
         assert_eq!(diagnostics.len(), 1);
         assert!(diagnostics[0].message.contains("declarations/field.bscn"));
     }
@@ -1508,7 +1511,7 @@ note = "ordered prelude fixture"
             files: HashMap::new(),
             reads: RefCell::new(Vec::new()),
         };
-        let diagnostics = diagnose_bsl(&uri(), "rules/probe.bsl", &manifest, &source);
+        let diagnostics = super::diagnose_bsl(&uri(), "rules/probe.bsl", &manifest, &source);
         assert_eq!(diagnostics.len(), 1);
         assert!(diagnostics[0].message.contains("at most 16"));
         assert!(source.reads.borrow().is_empty());

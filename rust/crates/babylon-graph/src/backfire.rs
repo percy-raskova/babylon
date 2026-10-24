@@ -142,7 +142,7 @@ fn count_as_f64(count: usize) -> Result<f64, GraphError> {
 
 #[cfg(test)]
 mod tests {
-    use super::{measure, Backfire};
+    use super::Backfire;
     use crate::memory::MemoryGraph;
     use crate::substrate::{GraphSubstrate, NodeId};
 
@@ -163,7 +163,7 @@ mod tests {
         // Santiago de María: nobody stands inside anything, and the
         // repression suppresses. Not a coded exception — an empty count.
         let (graph, people, ..) = population(10);
-        let measured = measure(&graph, &people, "protection", "membership").unwrap();
+        let measured = super::measure(&graph, &people, "protection", "membership").unwrap();
         assert!(measured.protected_fraction.abs() < 1e-12);
         assert!(measured.interpreted_fraction.abs() < 1e-12);
         assert!(measured.total().abs() < 1e-12);
@@ -177,7 +177,7 @@ mod tests {
         for person in people.iter().take(6) {
             graph.add_edge("membership", commune, *person, 1.0).unwrap();
         }
-        let measured = measure(&graph, &people, "protection", "membership").unwrap();
+        let measured = super::measure(&graph, &people, "protection", "membership").unwrap();
         assert!(measured.protected_fraction.abs() < 1e-12);
         assert!((measured.interpreted_fraction - 0.6).abs() < 1e-12);
         assert!((measured.total() - 0.6).abs() < 1e-12);
@@ -189,7 +189,7 @@ mod tests {
         for person in people.iter().take(3) {
             graph.add_edge("protection", rival, *person, 1.0).unwrap();
         }
-        let measured = measure(&graph, &people, "protection", "membership").unwrap();
+        let measured = super::measure(&graph, &people, "protection", "membership").unwrap();
         assert!((measured.protected_fraction - 0.3).abs() < 1e-12);
         assert!(measured.interpreted_fraction.abs() < 1e-12);
     }
@@ -205,7 +205,7 @@ mod tests {
             graph.add_edge("protection", rival, *person, 1.0).unwrap();
             graph.add_edge("membership", commune, *person, 1.0).unwrap();
         }
-        let measured = measure(&graph, &people, "protection", "membership").unwrap();
+        let measured = super::measure(&graph, &people, "protection", "membership").unwrap();
         assert!(
             (measured.protected_fraction - 1.0).abs() < 1e-12,
             "all four are protected"
@@ -230,7 +230,7 @@ mod tests {
         for person in people.iter().skip(2).take(2) {
             graph.add_edge("membership", commune, *person, 1.0).unwrap();
         }
-        let measured = measure(&graph, &people, "protection", "membership").unwrap();
+        let measured = super::measure(&graph, &people, "protection", "membership").unwrap();
         assert!((measured.protected_fraction - 0.4).abs() < 1e-12);
         assert!((measured.interpreted_fraction - 0.4).abs() < 1e-12);
         assert!((measured.total() - 0.8).abs() < 1e-12);
@@ -241,7 +241,7 @@ mod tests {
         // Returning 0.0 here would read as "this repression was safe", which
         // is the opposite of what an empty population means.
         let (graph, ..) = population(3);
-        let err = measure(&graph, &[], "protection", "membership").unwrap_err();
+        let err = super::measure(&graph, &[], "protection", "membership").unwrap_err();
         assert!(err.message.contains("undefined"), "{}", err.message);
     }
 
@@ -252,7 +252,7 @@ mod tests {
         let (graph, people, ..) = population(3);
         let mut affected = people;
         affected.push(NodeId(999));
-        let err = measure(&graph, &affected, "protection", "membership").unwrap_err();
+        let err = super::measure(&graph, &affected, "protection", "membership").unwrap_err();
         assert!(
             err.message.contains("never reads as unaffiliated"),
             "{}",

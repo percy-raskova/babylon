@@ -1,12 +1,15 @@
 //! Captured typed instances share the authored scenario admission semantics.
 use babylon_bsl::reader::{ScaledKind, ScaledLit};
-use babylon_bsl::scenario::{load_scenario, LoadedScenario};
+use babylon_bsl::scenario;
+use babylon_bsl::scenario::LoadedScenario;
+use babylon_bsl::scenario_seed;
 use babylon_bsl::scenario_seed::{
-    load_scenario_with_seed, EdgeSeed, GraphSeed, HyperedgeSeed, NodeSeed, SeedAttribute, SeedValue,
+    EdgeSeed, GraphSeed, HyperedgeSeed, NodeSeed, SeedAttribute, SeedValue,
 };
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_graph::stable_element::StableElementResolver;
-use babylon_graph::stable_state::encode_stable_graph_state;
+use babylon_graph::stable_state;
+
 use babylon_kernel::currency::Currency;
 
 const DECLARATIONS: &str = r"
@@ -47,7 +50,7 @@ fn graph_bytes(graph: &HypergraphStore, loaded: &LoadedScenario) -> Vec<u8> {
         &loaded.hyperedge_content_ids,
     )
     .unwrap();
-    encode_stable_graph_state(graph, &resolver)
+    stable_state::encode_stable_graph_state(graph, &resolver)
         .unwrap()
         .canonical_bytes()
         .to_vec()
@@ -77,7 +80,8 @@ fn typed_nodes_edges_and_native_membership_equal_authored_instances() {
     )
     .unwrap();
     let mut typed = HypergraphStore::new();
-    let loaded = load_scenario_with_seed(DECLARATIONS, None, &seed, &mut typed).unwrap();
+    let loaded =
+        scenario_seed::load_scenario_with_seed(DECLARATIONS, None, &seed, &mut typed).unwrap();
     let authored = DECLARATIONS.strip_suffix(')').unwrap().to_owned()
         + r"
  (node workers-a NodeType/SOCIAL_CLASS
@@ -89,7 +93,7 @@ fn typed_nodes_edges_and_native_membership_equal_authored_instances() {
  (edge EdgeType/SOLIDARITY workers-a workers-b 0.5c)
  (hyperedge sector HyperedgeType/ECONOMIC_SECTOR (members workers-a workers-b)))";
     let mut text = HypergraphStore::new();
-    let authored = load_scenario(&authored, &mut text).unwrap();
+    let authored = scenario::load_scenario(&authored, &mut text).unwrap();
     assert_eq!(graph_bytes(&typed, &loaded), graph_bytes(&text, &authored));
     assert_eq!(loaded.node_count, 2);
     assert_eq!(loaded.edge_count, 1);
@@ -133,10 +137,13 @@ fn seed_admission_requires_declared_fields_closed_types_and_known_endpoints() {
     unknown_type.node_type = "INVENTED_CLASS".to_owned();
     for row in [unknown_field, unknown_type] {
         let seed = GraphSeed::try_new(vec![row], vec![], vec![]).unwrap();
-        assert!(
-            load_scenario_with_seed(DECLARATIONS, None, &seed, &mut HypergraphStore::new())
-                .is_err()
-        );
+        assert!(scenario_seed::load_scenario_with_seed(
+            DECLARATIONS,
+            None,
+            &seed,
+            &mut HypergraphStore::new()
+        )
+        .is_err());
     }
     assert!(GraphSeed::try_new(
         vec![node("workers", 1)],
@@ -151,7 +158,7 @@ fn seed_admission_requires_declared_fields_closed_types_and_known_endpoints() {
     )
     .is_err());
     let seed = GraphSeed::try_new(vec![node("workers", 1)], vec![], vec![]).unwrap();
-    assert!(load_scenario_with_seed(
+    assert!(scenario_seed::load_scenario_with_seed(
         "(scenario capture/control (node hidden NodeType/SOCIAL_CLASS))",
         None,
         &seed,
@@ -179,8 +186,13 @@ fn native_seed_preserves_practice_topology_admission() {
         vec![],
     )
     .unwrap();
-    let error = load_scenario_with_seed(declarations, None, &seed, &mut HypergraphStore::new())
-        .unwrap_err();
+    let error = scenario_seed::load_scenario_with_seed(
+        declarations,
+        None,
+        &seed,
+        &mut HypergraphStore::new(),
+    )
+    .unwrap_err();
     assert_eq!(error.code, Some("E-LOAD-063"));
 }
 

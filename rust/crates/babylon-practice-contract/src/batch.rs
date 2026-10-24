@@ -2,17 +2,14 @@
 
 use std::collections::BTreeMap;
 
-use babylon_kernel::content_digest::sha256_of;
+use babylon_kernel::content_digest;
 
 use crate::actor::ActorOrganizationId;
-use crate::authority::validate_input_authority_row;
 use crate::{
-    decode_input_authority, decode_practice_intent, encode_input_authority, encode_practice_intent,
-    input_authority_ledger_digest, practice_proposal_key, validate_practice_intent, CampaignId,
-    InputAuthorityId, PracticeAuthorityError, PracticeInputAuthority, PracticeInputAuthorityLedger,
-    PracticeIntent, PracticeIntentError, PracticeProposalKey, MAX_PRACTICE_INPUT_AUTHORITY_ROWS,
-    MAX_PRACTICE_INTENT_CANONICAL_BYTES, MIN_PRACTICE_INTENT_CANONICAL_BYTES,
-    PRACTICE_INPUT_AUTHORITY_CANONICAL_BYTES,
+    CampaignId, InputAuthorityId, PracticeAuthorityError, PracticeInputAuthority,
+    PracticeInputAuthorityLedger, PracticeIntent, PracticeIntentError, PracticeProposalKey,
+    MAX_PRACTICE_INPUT_AUTHORITY_ROWS, MAX_PRACTICE_INTENT_CANONICAL_BYTES,
+    MIN_PRACTICE_INTENT_CANONICAL_BYTES, PRACTICE_INPUT_AUTHORITY_CANONICAL_BYTES,
 };
 
 const SCHEMA_VERSION: u16 = 2;
@@ -163,7 +160,7 @@ fn validate_ledger_digest(
     expected: [u8; 32],
     ledger: &PracticeInputAuthorityLedger,
 ) -> Result<(), ResolvedPracticeBatchError> {
-    let actual = input_authority_ledger_digest(ledger)?;
+    let actual = crate::input_authority_ledger_digest(ledger)?;
     if expected == actual {
         Ok(())
     } else {
@@ -186,8 +183,8 @@ fn validate_item_identity(
     batch: &ResolvedPracticeBatch,
     item: &ResolvedPracticeBatchItem,
 ) -> Result<(), ResolvedPracticeBatchError> {
-    validate_input_authority_row(&item.authority)?;
-    validate_practice_intent(&item.intent)?;
+    crate::authority::validate_input_authority_row(&item.authority)?;
+    crate::validate_practice_intent(&item.intent)?;
     if item.intent.resolve_tick != batch.resolve_tick {
         return Err(PracticeBatchError::BatchResolveTick.into());
     }
@@ -275,7 +272,7 @@ fn validate_batch_items_against_validated_ledger(
     {
         validate_item_identity(batch, item)?;
         validate_item_authority(item, &authority_index)?;
-        let current = practice_proposal_key(&item.intent);
+        let current = crate::practice_proposal_key(&item.intent);
         validate_key_order(previous, current)?;
         previous = Some(current);
     }
@@ -316,8 +313,8 @@ fn append_item(
     output: &mut Vec<u8>,
     item: &ResolvedPracticeBatchItem,
 ) -> Result<(), ResolvedPracticeBatchError> {
-    let authority = encode_input_authority(&item.authority)?;
-    let intent = encode_practice_intent(&item.intent)?;
+    let authority = crate::encode_input_authority(&item.authority)?;
+    let intent = crate::encode_practice_intent(&item.intent)?;
     if authority.len() != PRACTICE_INPUT_AUTHORITY_CANONICAL_BYTES
         || intent.len() > MAX_PRACTICE_INTENT_CANONICAL_BYTES
     {
@@ -447,12 +444,12 @@ fn decode_item(
     if authority_length != PRACTICE_INPUT_AUTHORITY_CANONICAL_BYTES {
         return Err(PracticeBatchError::BatchItemLength.into());
     }
-    let authority = decode_input_authority(cursor.take(authority_length)?)?;
+    let authority = crate::decode_input_authority(cursor.take(authority_length)?)?;
     let intent_length = usize::from(cursor.u16()?);
     if intent_length > MAX_PRACTICE_INTENT_CANONICAL_BYTES {
         return Err(PracticeBatchError::BatchItemLength.into());
     }
-    let intent = decode_practice_intent(cursor.take(intent_length)?)?;
+    let intent = crate::decode_practice_intent(cursor.take(intent_length)?)?;
     Ok(ResolvedPracticeBatchItem { authority, intent })
 }
 
@@ -512,5 +509,7 @@ pub fn resolved_practice_batch_digest(
     batch: &ResolvedPracticeBatch,
     ledger: &PracticeInputAuthorityLedger,
 ) -> Result<[u8; 32], ResolvedPracticeBatchError> {
-    Ok(sha256_of(&encode_resolved_practice_batch(batch, ledger)?))
+    Ok(content_digest::sha256_of(&encode_resolved_practice_batch(
+        batch, ledger,
+    )?))
 }

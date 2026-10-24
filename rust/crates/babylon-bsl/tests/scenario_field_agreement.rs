@@ -7,7 +7,8 @@
 
 use std::path::Path;
 
-use babylon_bsl::scenario::{load_scenario, LoadedScenario};
+use babylon_bsl::scenario;
+use babylon_bsl::scenario::LoadedScenario;
 use babylon_bsl::types::BslType;
 use babylon_graph::memory::MemoryGraph;
 
@@ -76,7 +77,7 @@ fn load_world(filename: &str) -> LoadedScenario {
         .join(filename);
     let source = std::fs::read_to_string(&path)
         .unwrap_or_else(|error| panic!("reading {}: {error}", path.display()));
-    load_scenario(&source, &mut MemoryGraph::new())
+    scenario::load_scenario(&source, &mut MemoryGraph::new())
         .unwrap_or_else(|error| panic!("loading {}: {error}", path.display()))
 }
 

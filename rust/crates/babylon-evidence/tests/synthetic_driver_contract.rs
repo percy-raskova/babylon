@@ -1,8 +1,8 @@
 use babylon_evidence::{
-    bind_synthetic_driver, parse_synthetic_driver_contract, Digest32, SfsPreregistration,
-    SyntheticDriverContractError,
+    bind_synthetic_driver, Digest32, SfsPreregistration, SyntheticDriverContractError,
 };
-use babylon_kernel::content_digest::sha256_of;
+use babylon_kernel::content_digest;
+
 use babylon_practice_contract::PracticeId;
 
 const DRIVER: &[u8] = include_bytes!("fixtures/sfs_synthetic_driver_contract.txt");
@@ -37,19 +37,19 @@ fn preregistration(driver: Digest32) -> SfsPreregistration {
 
 #[test]
 fn exact_contract_binds_an_opaque_handle() {
-    let contract = parse_synthetic_driver_contract(DRIVER).unwrap();
+    let contract = babylon_evidence::parse_synthetic_driver_contract(DRIVER).unwrap();
     let prereg = preregistration(contract.manifest_digest());
     assert!(bind_synthetic_driver(&prereg, &contract).is_ok());
 }
 
 #[test]
 fn source_predicate_and_preregistration_mutations_refuse() {
-    let contract = parse_synthetic_driver_contract(DRIVER).unwrap();
+    let contract = babylon_evidence::parse_synthetic_driver_contract(DRIVER).unwrap();
     let changed_predicate = String::from_utf8(DRIVER.to_vec())
         .unwrap()
         .replace("candidate-projection|2", "candidate-projection|3");
     assert!(matches!(
-        parse_synthetic_driver_contract(changed_predicate.as_bytes()),
+        babylon_evidence::parse_synthetic_driver_contract(changed_predicate.as_bytes()),
         Err(SyntheticDriverContractError::ManifestMalformed { row: 2 })
     ));
     assert!(matches!(
@@ -65,7 +65,7 @@ fn source_predicate_and_preregistration_mutations_refuse() {
         b'0'
     };
     assert_eq!(
-        parse_synthetic_driver_contract(&changed_source),
+        babylon_evidence::parse_synthetic_driver_contract(&changed_source),
         Err(SyntheticDriverContractError::SourceDigestMismatch)
     );
 }
@@ -73,38 +73,38 @@ fn source_predicate_and_preregistration_mutations_refuse() {
 #[test]
 fn seven_row_schema_refuses_missing_extra_reordered_and_renamed_rows() {
     assert_eq!(
-        parse_synthetic_driver_contract(&vec![b'x'; 4_097]),
+        babylon_evidence::parse_synthetic_driver_contract(&vec![b'x'; 4_097]),
         Err(SyntheticDriverContractError::ManifestByteLimit { actual: 4_097 })
     );
     let text = String::from_utf8(DRIVER.to_vec()).unwrap();
     let rows = text.lines().collect::<Vec<_>>();
     let missing = format!("{}\n", rows[..6].join("\n"));
     assert!(matches!(
-        parse_synthetic_driver_contract(missing.as_bytes()),
+        babylon_evidence::parse_synthetic_driver_contract(missing.as_bytes()),
         Err(SyntheticDriverContractError::ManifestMalformed { .. })
     ));
     let extra = format!("{text}extra|row\n");
     assert_eq!(
-        parse_synthetic_driver_contract(extra.as_bytes()),
+        babylon_evidence::parse_synthetic_driver_contract(extra.as_bytes()),
         Err(SyntheticDriverContractError::ManifestMalformed { row: 8 })
     );
     let mut reordered = rows.clone();
     reordered.swap(1, 2);
     let reordered = format!("{}\n", reordered.join("\n"));
     assert_eq!(
-        parse_synthetic_driver_contract(reordered.as_bytes()),
+        babylon_evidence::parse_synthetic_driver_contract(reordered.as_bytes()),
         Err(SyntheticDriverContractError::ManifestMalformed { row: 2 })
     );
     let renamed = text.replace("candidate-projection", "candidate-projector");
     assert_eq!(
-        parse_synthetic_driver_contract(renamed.as_bytes()),
+        babylon_evidence::parse_synthetic_driver_contract(renamed.as_bytes()),
         Err(SyntheticDriverContractError::ManifestMalformed { row: 2 })
     );
 }
 
 #[test]
 fn rust_recomputes_both_driver_vector_preimages_and_digests() {
-    let contract = parse_synthetic_driver_contract(DRIVER).unwrap();
+    let contract = babylon_evidence::parse_synthetic_driver_contract(DRIVER).unwrap();
     let rows = DRIVER_VECTORS.lines().collect::<Vec<_>>();
     assert_eq!(rows.len(), 2);
     for row in rows {
@@ -137,5 +137,7 @@ fn hex_bytes(value: &str) -> Vec<u8> {
 }
 
 fn domain_digest(domain: &[u8], payload: &[u8]) -> Digest32 {
-    Digest32::from_bytes(sha256_of(&[domain, b"\0", payload].concat()))
+    Digest32::from_bytes(content_digest::sha256_of(
+        &[domain, b"\0", payload].concat(),
+    ))
 }

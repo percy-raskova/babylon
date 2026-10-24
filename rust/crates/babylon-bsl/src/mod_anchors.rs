@@ -12,6 +12,8 @@
 
 use crate::reader::{Atom, SExpr};
 use std::collections::HashSet;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 
 /// Which side of the named system the rule lands on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -84,7 +86,7 @@ impl AnchorError {
 }
 
 impl std::fmt::Display for AnchorError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         match self {
             Self::NoSystemForRule { rule_id } => write!(
                 f,
@@ -212,14 +214,12 @@ pub fn check_anchor<S: std::hash::BuildHasher>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::reader::read;
-
     fn systems() -> HashSet<String> {
         HashSet::from(["survival".to_owned(), "consciousness".to_owned()])
     }
 
     fn rule(source: &str) -> SExpr {
-        read(source).expect("test rule must parse").0
+        crate::reader::read(source).expect("test rule must parse").0
     }
 
     #[test]

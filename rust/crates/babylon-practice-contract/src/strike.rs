@@ -2,14 +2,14 @@
 
 use std::collections::BTreeSet;
 
-use babylon_kernel::content_digest::sha256_of;
+use babylon_kernel::content_digest;
 
 use crate::actor::ActorOrganizationId;
 use crate::{
-    practice_proposal_key, resolved_practice_batch_digest, InputAuthorityId, PracticeId,
-    PracticeInputAuthorityLedger, PracticeIntent, PracticeProposalKey, PracticeTargetIdentity,
-    PracticeTargetTag, ProposalNonce, ResolvedPracticeBatch, ResolvedPracticeBatchError,
-    TaggedPracticeTarget, MAX_RESOLVED_PRACTICE_BATCH_ITEMS,
+    InputAuthorityId, PracticeId, PracticeInputAuthorityLedger, PracticeIntent,
+    PracticeProposalKey, PracticeTargetIdentity, PracticeTargetTag, ProposalNonce,
+    ResolvedPracticeBatch, ResolvedPracticeBatchError, TaggedPracticeTarget,
+    MAX_RESOLVED_PRACTICE_BATCH_ITEMS,
 };
 
 const SCHEMA_VERSION: u16 = 2;
@@ -377,7 +377,9 @@ pub fn encode_strike_proposal_contract(
 pub fn strike_proposal_contract_digest(
     value: &StrikeProposalContract,
 ) -> Result<[u8; 32], StrikeProposalError> {
-    Ok(sha256_of(&encode_strike_proposal_contract(value)?))
+    Ok(content_digest::sha256_of(&encode_strike_proposal_contract(
+        value,
+    )?))
 }
 
 struct StrikeCursor<'a> {
@@ -523,7 +525,9 @@ pub fn encode_strike_labor_process_register(
 pub fn strike_labor_process_register_digest(
     value: &StrikeLaborProcessRegister,
 ) -> Result<[u8; 32], StrikeProposalError> {
-    Ok(sha256_of(&encode_strike_labor_process_register(value)?))
+    Ok(content_digest::sha256_of(
+        &encode_strike_labor_process_register(value)?,
+    ))
 }
 
 fn decode_affected_cohorts(
@@ -653,7 +657,7 @@ fn admit_strike_intent(
         return Err(StrikeProposalError::StrikeOrganizationNotConnected.into());
     }
     Ok(AdmittedStrikeProposal {
-        proposal_key: practice_proposal_key(intent),
+        proposal_key: crate::practice_proposal_key(intent),
         resolved_practice_batch_digest,
         labor_process_register_digest: strike_labor_process_register_digest(register)?,
         participation_rows: rows,
@@ -668,7 +672,7 @@ fn accepted_intent(
         .items
         .iter()
         .take(MAX_RESOLVED_PRACTICE_BATCH_ITEMS + 1)
-        .find(|item| practice_proposal_key(&item.intent) == proposal_key)
+        .find(|item| crate::practice_proposal_key(&item.intent) == proposal_key)
         .map(|item| &item.intent)
         .ok_or(StrikeProposalError::StrikeProposalNotAccepted)
 }
@@ -685,7 +689,7 @@ pub fn admit_strike_proposal(
     proposal_key: PracticeProposalKey,
     register: &StrikeLaborProcessRegister,
 ) -> Result<AdmittedStrikeProposal, ResolveStrikeProposalError> {
-    let batch_digest = resolved_practice_batch_digest(batch, authority_ledger)?;
+    let batch_digest = crate::resolved_practice_batch_digest(batch, authority_ledger)?;
     let intent = accepted_intent(batch, proposal_key)?;
     admit_strike_intent(contract, intent, register, batch_digest)
 }
@@ -843,7 +847,7 @@ pub fn decode_admitted_strike_proposal(
         return Err(StrikeProposalError::StrikeAdmissionContractDigest.into());
     }
     let batch_digest = cursor.array()?;
-    if batch_digest != resolved_practice_batch_digest(batch, authority_ledger)? {
+    if batch_digest != crate::resolved_practice_batch_digest(batch, authority_ledger)? {
         return Err(StrikeProposalError::StrikeAdmissionBatchDigest.into());
     }
     let register_digest = cursor.array()?;
@@ -873,7 +877,7 @@ pub fn admitted_strike_proposal_digest(
     contract: &StrikeProposalContract,
     value: &AdmittedStrikeProposal,
 ) -> Result<[u8; 32], StrikeProposalError> {
-    Ok(sha256_of(&encode_admitted_strike_proposal(
+    Ok(content_digest::sha256_of(&encode_admitted_strike_proposal(
         contract, value,
     )?))
 }

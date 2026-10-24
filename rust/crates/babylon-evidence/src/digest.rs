@@ -1,8 +1,8 @@
 //! Private-field digest wrappers for canonical evidence records.
 
-use babylon_kernel::content_digest::sha256_of;
+use babylon_kernel::content_digest;
 
-use crate::wire::{canonical_envelope, SfsWireError, T3Record};
+use crate::wire::{SfsWireError, T3Record};
 
 /// One opaque SHA-256 value supplied to or decoded from a T3 record.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -66,6 +66,8 @@ impl RecordDigest {
 /// Returns the exact domain, payload, string, or numeric refusal produced while
 /// constructing the canonical envelope.
 pub fn record_digest<T: T3Record>(record: &T) -> Result<RecordDigest, SfsWireError> {
-    let envelope = canonical_envelope(record)?;
-    Ok(RecordDigest(Digest32::from_bytes(sha256_of(&envelope))))
+    let envelope = crate::wire::canonical_envelope(record)?;
+    Ok(RecordDigest(Digest32::from_bytes(
+        content_digest::sha256_of(&envelope),
+    )))
 }

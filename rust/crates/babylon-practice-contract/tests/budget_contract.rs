@@ -1,7 +1,6 @@
 use babylon_practice_contract::{
-    budget_delta_digest, decode_budget_delta, encode_budget_delta, practice_machine_verb,
-    OrganizationBudgetDelta, PracticeContractError, PracticeId, VerbMode, VerbStem,
-    PRACTICE_BUDGET_TOPOLOGY_SOURCE_SHA256,
+    budget_delta_digest, decode_budget_delta, encode_budget_delta, OrganizationBudgetDelta,
+    PracticeContractError, PracticeId, VerbMode, VerbStem, PRACTICE_BUDGET_TOPOLOGY_SOURCE_SHA256,
 };
 use serde_json::Value;
 
@@ -72,9 +71,9 @@ fn retained_budget_bytes_and_refusals_match_the_independent_contract() {
 
 #[test]
 fn machine_verbs_exist_only_for_the_declared_material_mappings() {
-    let organize = practice_machine_verb(PracticeId::Organize).unwrap();
-    let agitate = practice_machine_verb(PracticeId::Agitate).unwrap();
-    let aid = practice_machine_verb(PracticeId::MutualAid).unwrap();
+    let organize = babylon_practice_contract::practice_machine_verb(PracticeId::Organize).unwrap();
+    let agitate = babylon_practice_contract::practice_machine_verb(PracticeId::Agitate).unwrap();
+    let aid = babylon_practice_contract::practice_machine_verb(PracticeId::MutualAid).unwrap();
     assert_eq!(
         (organize.stem, organize.mode),
         (VerbStem::Mobilize, Some(VerbMode::Canvass))
@@ -91,6 +90,9 @@ fn machine_verbs_exist_only_for_the_declared_material_mappings() {
         PracticeId::Damage,
         PracticeId::CapitalStrike,
     ] {
-        assert_eq!(practice_machine_verb(practice), None);
+        assert_eq!(
+            babylon_practice_contract::practice_machine_verb(practice),
+            None
+        );
     }
 }

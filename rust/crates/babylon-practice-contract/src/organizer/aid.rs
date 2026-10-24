@@ -1,11 +1,5 @@
 //! Captured gift receiving consent and later independent mutual-aid practice.
-use super::contract::admit_organizer;
-use super::contract::organizer_resource_digest;
-use super::contract::validate_organizer_commitment;
-use super::contract::validate_organizer_config;
-use super::contract::validate_organizer_receipt;
 use super::nonnegative_decimal_i128;
-use super::transition::organizer_input_authority_ledger;
 use super::OrganizerChoice;
 use super::OrganizerCommand;
 use super::OrganizerCommitment;
@@ -20,6 +14,10 @@ use super::OrganizerState;
 use super::OrganizerTimeBindingMode;
 use serde::{Deserialize, Serialize};
 
+use crate::CampaignId;
+use crate::PracticeIntent;
+use crate::ProposalNonce;
+use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -160,7 +158,7 @@ pub fn organizer_aid_commitment(
     opening: &OrganizerState,
     accepted: &OrganizerCommitment,
 ) -> Result<OrganizerAidCommitment, OrganizerError> {
-    if admit_organizer(config, opening, &accepted.command)? != *accepted {
+    if super::contract::admit_organizer(config, opening, &accepted.command)? != *accepted {
         return Err(OrganizerError::InvalidCommitment);
     }
     gift_commitment(config, accepted)
@@ -172,14 +170,14 @@ pub fn validate_organizer_aid_commitment(
     config: &OrganizerConfig,
     gift: &OrganizerAidCommitment,
 ) -> Result<(), OrganizerError> {
-    validate_organizer_config(config)?;
-    validate_organizer_commitment(&gift.commitment)?;
+    super::contract::validate_organizer_config(config)?;
+    super::contract::validate_organizer_commitment(&gift.commitment)?;
     let command = &gift.commitment.command;
     if command.campaign_id != config.campaign_id
         || command.actor_id != config.controlled_actor_id
         || command.authority_id != config.input_authority_id
         || command.content_digest != config.content_digest
-        || command.resource_digest != organizer_resource_digest()?
+        || command.resource_digest != super::contract::organizer_resource_digest()?
         || gift_commitment(config, &gift.commitment)? != *gift
     {
         return Err(OrganizerError::InvalidCommitment);
@@ -195,7 +193,7 @@ pub fn admit_organizer_aid_pending(
     command: &OrganizerCommand,
     pending: Option<&OrganizerAidCommitment>,
 ) -> Result<OrganizerAidCommitment, OrganizerError> {
-    let accepted = admit_organizer(config, opening, command)?;
+    let accepted = super::contract::admit_organizer(config, opening, command)?;
     let gift = organizer_aid_commitment(config, opening, &accepted)?;
     if let Some(pending) = pending {
         validate_organizer_aid_commitment(config, pending)?;
@@ -299,7 +297,7 @@ fn partner_authorization(
 ) -> Result<OrganizerAidPartnerAuthorization, OrganizerError> {
     let binding = aid_binding(config, gift.commitment.command.choice)
         .ok_or(OrganizerError::AidSupportMismatch)?;
-    let ledger = organizer_input_authority_ledger(config)?;
+    let ledger = super::transition::organizer_input_authority_ledger(config)?;
     let row = ledger
         .rows
         .iter()
@@ -314,7 +312,7 @@ fn partner_authorization(
         authority_digest: crate::input_authority_digest(row)
             .map_err(|_| OrganizerError::InvalidCommitment)?,
         content_digest: config.content_digest,
-        resource_digest: organizer_resource_digest()?,
+        resource_digest: super::contract::organizer_resource_digest()?,
         target: binding.social_class_target,
     })
 }
@@ -322,7 +320,7 @@ fn partner_authorization(
 pub(super) fn validate_pending_shape(
     pending: &OrganizerPendingAidPractice,
 ) -> Result<(), OrganizerError> {
-    validate_organizer_commitment(&pending.gift.commitment)?;
+    super::contract::validate_organizer_commitment(&pending.gift.commitment)?;
     let auth = &pending.partner_authorization;
     if pending.dispatch_period != pending.gift.commitment.resolves_period
         || pending.material_commitment_id == [0; 32]
@@ -436,7 +434,7 @@ pub(super) fn delayed_aid_intents(
     config: &OrganizerConfig,
     pending: &OrganizerPendingAidPractice,
     period: u64,
-) -> Result<(crate::PracticeIntent, crate::PracticeIntent), OrganizerError> {
+) -> Result<(PracticeIntent, PracticeIntent), OrganizerError> {
     validate_pending(config, pending)?;
     if period < pending.dispatch_period {
         return Err(OrganizerError::PeriodMismatch);
@@ -456,7 +454,7 @@ pub(super) fn delayed_aid_intents(
             b"babylon.organizer-delayed-aid-nonce.v1",
             &(pending.gift.commitment.commitment_id, period),
         )?;
-        intent.proposal_nonce = crate::ProposalNonce::from_bytes(
+        intent.proposal_nonce = ProposalNonce::from_bytes(
             digest[..16]
                 .try_into()
                 .map_err(|_| OrganizerError::InvalidCommitment)?,
@@ -474,14 +472,14 @@ pub(super) fn delayed_aid_intents(
         .ok_or(OrganizerError::AidSupportMismatch)?
         .partner;
     let response = super::transition::response_intent(&intent, config, partner)?;
-    let ledger = organizer_input_authority_ledger(config)?;
+    let ledger = super::transition::organizer_input_authority_ledger(config)?;
     let batch = crate::ResolvedPracticeBatch {
         schema_version: 2,
-        campaign_id: crate::CampaignId::from_bytes(config.campaign_id),
+        campaign_id: CampaignId::from_bytes(config.campaign_id),
         resolve_tick: period,
         authority_ledger_digest: crate::input_authority_ledger_digest(&ledger)
             .map_err(|_| OrganizerError::InvalidConfig)?,
-        resource_allocation_contract_digest: organizer_resource_digest()?,
+        resource_allocation_contract_digest: super::contract::organizer_resource_digest()?,
         content_digest: config.content_digest,
         items: {
             let mut items = vec![];
@@ -511,7 +509,7 @@ pub(super) fn validate_resolution_shape(
 ) -> Result<(), OrganizerError> {
     validate_pending_shape(&row.authorization)?;
     validate_support(&row.authorization, &row.support, row.practice.period)?;
-    validate_organizer_receipt(&row.practice)?;
+    super::contract::validate_organizer_receipt(&row.practice)?;
     let expected = super::contract::identity(
         b"babylon.organizer-aid-resolution.v1",
         &(
@@ -613,8 +611,7 @@ pub(super) fn validate_aid_state(state: &OrganizerState) -> Result<(), Organizer
         }
         previous_kind = Some(pending.gift.kind);
     }
-    let mut histories =
-        std::collections::BTreeMap::<[u8; 32], (u64, bool, &OrganizerPendingAidPractice)>::new();
+    let mut histories = BTreeMap::<[u8; 32], (u64, bool, &OrganizerPendingAidPractice)>::new();
     let mut last_key = None;
     for row in &state.aid_receipts {
         validate_resolution_shape(row)?;
@@ -697,8 +694,8 @@ pub(super) fn validate_period_allocations(
     config: &OrganizerConfig,
     state: &OrganizerState,
 ) -> Result<(), OrganizerError> {
-    let mut promised = std::collections::BTreeMap::<(u64, u64, u64), u64>::new();
-    let mut total = std::collections::BTreeMap::<(u64, u64), u64>::new();
+    let mut promised = BTreeMap::<(u64, u64, u64), u64>::new();
+    let mut total = BTreeMap::<(u64, u64), u64>::new();
     for receipt in state
         .receipts
         .iter()

@@ -6,14 +6,13 @@ use babylon_bsl::causal_contract::{
 use babylon_bsl::evaluator::Value;
 use babylon_bsl::exemptions::IntensiveAggregationExemption;
 use babylon_bsl::fuel::IntrinsicCosts;
+use babylon_bsl::identity_codec;
 use babylon_bsl::identity_codec::{
-    decode_option_presence, encode_bsl_type, encode_const_value, encode_effect_signature,
-    encode_enum_kind, encode_evidence_class, encode_field_kind, encode_rule_role,
-    encode_runtime_value, encode_shape_verb, IdentityCodecError,
+    decode_option_presence, encode_enum_kind, encode_evidence_class, encode_field_kind,
+    encode_rule_role, encode_shape_verb, IdentityCodecError,
 };
-use babylon_bsl::identity_sections::{
-    encode_prepared_bsl_sections, encode_tick_payload_sections, PreparedBslSections,
-};
+use babylon_bsl::identity_sections;
+use babylon_bsl::identity_sections::PreparedBslSections;
 use babylon_bsl::query::EdgeKey;
 use babylon_bsl::typecheck::TypeEnv;
 use babylon_bsl::types::{BslType, EnumRegistry, EnumTypeId, FieldDecl, FieldKind};
@@ -21,7 +20,8 @@ use babylon_bsl::vocabulary::{ClosedVocabulary, EnumKind};
 use babylon_graph::memory::MemoryGraph;
 use babylon_graph::stable_element::StableElementResolver;
 use babylon_graph::substrate::{GraphSubstrate, HyperedgeId, NodeId};
-use babylon_kernel::{currency::Currency, scalars::Ratio};
+use babylon_kernel::currency::Currency;
+use babylon_kernel::scalars::Ratio;
 
 struct GraphFixture {
     owners: NodeId,
@@ -58,7 +58,7 @@ fn graph_fixture() -> GraphFixture {
 
 fn encoded_value(value: &Value, resolver: &StableElementResolver) -> Vec<u8> {
     let mut output = Vec::new();
-    encode_runtime_value(value, resolver, &mut output).unwrap();
+    identity_codec::encode_runtime_value(value, resolver, &mut output).unwrap();
     output
 }
 
@@ -198,6 +198,9 @@ fn reference_value_discriminants_and_stable_encoding_are_exact() {
 }
 
 #[test]
+// The Google-style module-qualified calls wrap this exact-value table past the
+// Clippy line budget without changing what it pins.
+#[allow(clippy::too_many_lines)]
 fn governed_type_and_contract_discriminants_are_exact() {
     let mut enums = EnumRegistry::default();
     let org_kind = enums.declare("OrgKind", &["BUSINESS".to_owned()]).unwrap();
@@ -224,7 +227,7 @@ fn governed_type_and_contract_discriminants_are_exact() {
     ];
     for (value, expected) in type_cases {
         let mut output = Vec::new();
-        encode_bsl_type(&value, &enums, &mut output).unwrap();
+        identity_codec::encode_bsl_type(&value, &enums, &mut output).unwrap();
         assert_eq!(output, expected);
     }
     assert_eq!(encode_field_kind(FieldKind::Intensive), 0x01);
@@ -257,23 +260,29 @@ fn governed_type_and_contract_discriminants_are_exact() {
         assert_eq!(encode_enum_kind(kind), tag);
     }
     let mut effect = Vec::new();
-    encode_effect_signature(&EffectSignature::Event("RUPTURE".to_owned()), &mut effect).unwrap();
+    identity_codec::encode_effect_signature(
+        &EffectSignature::Event("RUPTURE".to_owned()),
+        &mut effect,
+    )
+    .unwrap();
     assert_eq!(effect, [vec![0x04], str32("EventType/RUPTURE")].concat());
     effect.clear();
-    encode_effect_signature(
+    identity_codec::encode_effect_signature(
         &EffectSignature::Shape(ShapeVerb::RemoveHyperedge),
         &mut effect,
     )
     .unwrap();
     assert_eq!(effect, vec![0x05, 0x06]);
     effect.clear();
-    encode_effect_signature(&EffectSignature::MaterialCycle, &mut effect).unwrap();
+    identity_codec::encode_effect_signature(&EffectSignature::MaterialCycle, &mut effect).unwrap();
     assert_eq!(effect, vec![0x06]);
     effect.clear();
-    encode_effect_signature(&EffectSignature::OrganizerProducts, &mut effect).unwrap();
+    identity_codec::encode_effect_signature(&EffectSignature::OrganizerProducts, &mut effect)
+        .unwrap();
     assert_eq!(effect, vec![0x07]);
     effect.clear();
-    encode_effect_signature(&EffectSignature::OrganizerPractice, &mut effect).unwrap();
+    identity_codec::encode_effect_signature(&EffectSignature::OrganizerPractice, &mut effect)
+        .unwrap();
     assert_eq!(effect, vec![0x08]);
     for (signature, tag, name) in [
         (
@@ -293,7 +302,7 @@ fn governed_type_and_contract_discriminants_are_exact() {
         ),
     ] {
         effect.clear();
-        encode_effect_signature(&signature, &mut effect).unwrap();
+        identity_codec::encode_effect_signature(&signature, &mut effect).unwrap();
         assert_eq!(effect, [vec![tag], str32(name)].concat());
     }
 }
@@ -308,10 +317,10 @@ fn options_constants_and_invalid_identity_values_refuse_loudly() {
         Err(IdentityCodecError::InvalidOptionByte { value: 2 })
     );
     let mut output = Vec::new();
-    encode_const_value(&Value::Bool(true), &mut output).unwrap();
+    identity_codec::encode_const_value(&Value::Bool(true), &mut output).unwrap();
     assert_eq!(output, vec![0x05, 1]);
     assert!(matches!(
-        encode_const_value(
+        identity_codec::encode_const_value(
             &Value::Enum {
                 enum_type: "OrgKind".to_owned(),
                 member: "BUSINESS".to_owned()
@@ -321,11 +330,11 @@ fn options_constants_and_invalid_identity_values_refuse_loudly() {
         Err(IdentityCodecError::InvalidConstantKind)
     ));
     assert!(matches!(
-        encode_const_value(&Value::NodeRef(fixture.owners), &mut Vec::new()),
+        identity_codec::encode_const_value(&Value::NodeRef(fixture.owners), &mut Vec::new()),
         Err(IdentityCodecError::InvalidConstantKind)
     ));
     assert!(matches!(
-        encode_bsl_type(
+        identity_codec::encode_bsl_type(
             &BslType::Enum(EnumTypeId(99)),
             &EnumRegistry::default(),
             &mut Vec::new()
@@ -333,7 +342,7 @@ fn options_constants_and_invalid_identity_values_refuse_loudly() {
         Err(IdentityCodecError::UnknownEnumType { .. })
     ));
     assert!(matches!(
-        encode_runtime_value(
+        identity_codec::encode_runtime_value(
             &Value::NodeRef(NodeId(999)),
             &fixture.resolver,
             &mut Vec::new()
@@ -341,7 +350,11 @@ fn options_constants_and_invalid_identity_values_refuse_loudly() {
         Err(IdentityCodecError::StableIdentity(_))
     ));
     assert!(matches!(
-        encode_runtime_value(&Value::Real(f64::NAN), &fixture.resolver, &mut Vec::new()),
+        identity_codec::encode_runtime_value(
+            &Value::Real(f64::NAN),
+            &fixture.resolver,
+            &mut Vec::new()
+        ),
         Err(IdentityCodecError::NonFiniteValue)
     ));
 }
@@ -393,10 +406,17 @@ fn prepared_sections() -> (PreparedBslSections, PreparedBslSections) {
         (EnumKind::EdgeType, vec!["SOLIDARITY".to_owned()]),
     ])
     .unwrap();
-    let present =
-        encode_prepared_bsl_sections(&types, &intrinsics, &consts, &enums, Some(&vocabulary))
+    let present = identity_sections::encode_prepared_bsl_sections(
+        &types,
+        &intrinsics,
+        &consts,
+        &enums,
+        Some(&vocabulary),
+    )
+    .unwrap();
+    let absent =
+        identity_sections::encode_prepared_bsl_sections(&types, &intrinsics, &consts, &enums, None)
             .unwrap();
-    let absent = encode_prepared_bsl_sections(&types, &intrinsics, &consts, &enums, None).unwrap();
     (present, absent)
 }
 
@@ -431,9 +451,14 @@ fn prepared_intrinsic_identity_accepts_96_bytes_and_refuses_97() {
     let constants = HashMap::new();
     let enums = EnumRegistry::default();
 
-    assert!(encode_prepared_bsl_sections(&types, &maximum, &constants, &enums, None,).is_ok());
+    assert!(identity_sections::encode_prepared_bsl_sections(
+        &types, &maximum, &constants, &enums, None,
+    )
+    .is_ok());
     assert_eq!(
-        encode_prepared_bsl_sections(&types, &oversized, &constants, &enums, None,),
+        identity_sections::encode_prepared_bsl_sections(
+            &types, &oversized, &constants, &enums, None,
+        ),
         Err(IdentityCodecError::InvalidString {
             field: "intrinsic name",
             index: 97,
@@ -529,16 +554,21 @@ fn payload_sections_preserve_governed_and_live_vector_order() {
             effect: EffectSignature::Event("SECOND".to_owned()),
         },
     ];
-    let sections =
-        encode_tick_payload_sections(&outcomes, &events, &receipts, &fixture.resolver).unwrap();
-    let reversed_events = encode_tick_payload_sections(
+    let sections = identity_sections::encode_tick_payload_sections(
+        &outcomes,
+        &events,
+        &receipts,
+        &fixture.resolver,
+    )
+    .unwrap();
+    let reversed_events = identity_sections::encode_tick_payload_sections(
         &outcomes,
         &events.iter().cloned().rev().collect::<Vec<_>>(),
         &receipts,
         &fixture.resolver,
     )
     .unwrap();
-    let reversed_receipts = encode_tick_payload_sections(
+    let reversed_receipts = identity_sections::encode_tick_payload_sections(
         &outcomes,
         &events,
         &receipts.iter().cloned().rev().collect::<Vec<_>>(),

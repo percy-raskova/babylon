@@ -33,8 +33,6 @@ pub fn quantize(value: f64) -> f64 {
 
 #[cfg(test)]
 mod tests {
-    use super::quantize;
-
     /// Cross-language conformance vector: expected values computed by
     /// running `babylon.kernel.math.quantize` in Python (verified
     /// 2026-07-30: `0.123456789 -> 0.123457`, `-0.123456789 -> -0.123457`,
@@ -50,9 +48,9 @@ mod tests {
         ];
         for &(input, expected) in cases {
             assert!(
-                (quantize(input) - expected).abs() < 1e-12,
+                (super::quantize(input) - expected).abs() < 1e-12,
                 "quantize({input}) = {}, expected {expected}",
-                quantize(input)
+                super::quantize(input)
             );
         }
     }
@@ -61,7 +59,7 @@ mod tests {
     fn is_idempotent() {
         // L-GRID: q ∘ q = q
         let v = 0.987_654_321;
-        assert!((quantize(quantize(v)) - quantize(v)).abs() < 1e-15);
+        assert!((super::quantize(super::quantize(v)) - super::quantize(v)).abs() < 1e-15);
     }
 
     #[test]
@@ -69,7 +67,7 @@ mod tests {
         // -0.0 >= 0.0 is true in IEEE-754, so it takes the positive branch;
         // the output is 0.0 (positive), not -0.0 — pinned so the tick hash's
         // bit-pattern encoding never sees a quantized -0.0.
-        let q = quantize(-0.0);
+        let q = super::quantize(-0.0);
         assert_eq!(q.to_bits(), 0.0_f64.to_bits());
     }
 
@@ -81,7 +79,7 @@ mod tests {
     #[test]
     fn small_negative_inputs_snap_to_positive_zero() {
         for v in [-4e-7, -4.9999e-7, -1e-9] {
-            let q = quantize(v);
+            let q = super::quantize(v);
             assert_eq!(
                 q.to_bits(),
                 0.0_f64.to_bits(),
@@ -90,6 +88,6 @@ mod tests {
         }
         // The half-step boundary itself still rounds away from zero, per
         // the Python probe: quantize(-5e-7) -> -1e-6 on both sides.
-        assert_eq!(quantize(-5e-7).to_bits(), (-1e-6_f64).to_bits());
+        assert_eq!(super::quantize(-5e-7).to_bits(), (-1e-6_f64).to_bits());
     }
 }

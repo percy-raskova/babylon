@@ -29,17 +29,17 @@ use lsp_types::{
     Uri,
 };
 
+use babylon_bsl::error_identity::ErrorIdentity;
+use babylon_bsl::reader;
+use babylon_bsl::reader::{FormPath, SExpr, SpanTable};
 use babylon_bsl::rule_pipeline::LoadError;
 use babylon_bsl::scenario::ScenarioError;
-use babylon_bsl::{
-    error_identity::ErrorIdentity, reader::read_all_spanned, reader::FormPath, reader::SExpr,
-    reader::SpanTable,
-};
 use babylon_tick::kernel_slot::KernelSlotLedgerError;
 use babylon_tick::PrepareError;
 
 use crate::line_index::LineIndex;
-use crate::locator::{locate, LocateOutcome};
+use crate::locator::LocateOutcome;
+use babylon_bsl::causal_contract::ContractError;
 
 /// `data.precision` (§6.2's own three wave-1 tiers).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -268,19 +268,19 @@ pub fn family_of_load_error(err: &LoadError) -> &'static str {
         | LoadError::SameTickOrder(_)
         | LoadError::MintingTypeOperand(_) => "E-LOAD",
         LoadError::Causal(error) => match error {
-            babylon_bsl::causal_contract::ContractError::MissingMetadata { .. }
-            | babylon_bsl::causal_contract::ContractError::MalformedMetadata { .. }
-            | babylon_bsl::causal_contract::ContractError::UnknownMetadataValue { .. }
-            | babylon_bsl::causal_contract::ContractError::MalformedRule => "E-PARSE",
-            babylon_bsl::causal_contract::ContractError::UnauthorizedEffect { .. }
-            | babylon_bsl::causal_contract::ContractError::GovernedFieldWriteProhibited { .. }
-            | babylon_bsl::causal_contract::ContractError::GovernedAttributionMismatch { .. }
-            | babylon_bsl::causal_contract::ContractError::MismatchedRuleContract { .. }
-            | babylon_bsl::causal_contract::ContractError::AstWalkLimit(_)
-            | babylon_bsl::causal_contract::ContractError::MismatchedWriteAttribution { .. }
-            | babylon_bsl::causal_contract::ContractError::MismatchedWriteOrdinal { .. }
-            | babylon_bsl::causal_contract::ContractError::MalformedEventType { .. }
-            | babylon_bsl::causal_contract::ContractError::ReceiptOrdinalOverflow => "E-LOAD",
+            ContractError::MissingMetadata { .. }
+            | ContractError::MalformedMetadata { .. }
+            | ContractError::UnknownMetadataValue { .. }
+            | ContractError::MalformedRule => "E-PARSE",
+            ContractError::UnauthorizedEffect { .. }
+            | ContractError::GovernedFieldWriteProhibited { .. }
+            | ContractError::GovernedAttributionMismatch { .. }
+            | ContractError::MismatchedRuleContract { .. }
+            | ContractError::AstWalkLimit(_)
+            | ContractError::MismatchedWriteAttribution { .. }
+            | ContractError::MismatchedWriteOrdinal { .. }
+            | ContractError::MalformedEventType { .. }
+            | ContractError::ReceiptOrdinalOverflow => "E-LOAD",
         },
         LoadError::Surface(_)
         | LoadError::Binding(_)
@@ -413,7 +413,7 @@ pub fn map_to_diagnostic(
                 (byte_range_to_lsp_range(text, line_index, start, end), None)
             }
             (Precision::Form, _, _, Some(identity)) => match parsed {
-                Some((forest, spans)) => match locate(identity, forest, spans) {
+                Some((forest, spans)) => match crate::locator::locate(identity, forest, spans) {
                     LocateOutcome::Unique(span) => (
                         byte_range_to_lsp_range(text, line_index, span.start, span.end),
                         None,
@@ -514,7 +514,7 @@ pub fn diagnostics_for_file(
     line_index: &LineIndex,
     located: &[Located],
 ) -> Vec<Diagnostic> {
-    let parsed = read_all_spanned(text.as_bytes()).ok();
+    let parsed = reader::read_all_spanned(text.as_bytes()).ok();
     let mut diagnostics: Vec<Diagnostic> = located
         .iter()
         .map(|loc| map_to_diagnostic(uri, text, line_index, parsed.as_ref(), loc))
@@ -551,15 +551,20 @@ pub fn compute_result_id(entries: &[(&Uri, &[u8])], manifest_bytes: &[u8]) -> St
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        compute_result_id, diagnostics_for_file, family_from_code, family_of_load_error,
-        family_of_scenario_error, missing_manifest_row_diagnostic, precision_of, token_span_at,
-        Located, Precision,
-    };
+
+    use super::{Located, Precision};
     use crate::line_index::LineIndex;
+    use babylon_bsl::causal_contract::AstWalkLimit;
+    use babylon_bsl::causal_contract::ContractError;
+    use babylon_bsl::causal_contract::EffectSignature;
+    use babylon_bsl::causal_contract::EvidenceClass;
+    use babylon_bsl::causal_contract::RuleRole;
+    use babylon_bsl::declarations::DeclError;
+    use babylon_bsl::error_identity::ErrorIdentity;
+    use babylon_bsl::fuel::CardinalityCeilings;
+    use babylon_bsl::fuel::IntrinsicCosts;
     use babylon_bsl::rule_pipeline::LoadError;
-    use babylon_bsl::scenario::{load_scenario, ScenarioError};
-    use babylon_bsl::{declarations::DeclError, error_identity::ErrorIdentity, reader::read};
+    use babylon_bsl::scenario::ScenarioError;
     use babylon_graph::hypergraph_store::HypergraphStore;
     use lsp_types::{DiagnosticSeverity, Uri};
 
@@ -578,7 +583,7 @@ mod tests {
             message: "bad token".to_owned(),
             severity: DiagnosticSeverity::ERROR,
         };
-        assert_eq!(precision_of(&located), Precision::Exact);
+        assert_eq!(super::precision_of(&located), Precision::Exact);
     }
 
     #[test]
@@ -592,7 +597,7 @@ mod tests {
             message: "duplicate".to_owned(),
             severity: DiagnosticSeverity::ERROR,
         };
-        assert_eq!(precision_of(&located), Precision::Form);
+        assert_eq!(super::precision_of(&located), Precision::Form);
     }
 
     #[test]
@@ -606,7 +611,7 @@ mod tests {
             message: "malformed".to_owned(),
             severity: DiagnosticSeverity::ERROR,
         };
-        assert_eq!(precision_of(&located), Precision::File);
+        assert_eq!(super::precision_of(&located), Precision::File);
     }
 
     #[test]
@@ -619,7 +624,7 @@ mod tests {
                 form_path: vec![0, 1],
             });
         let located = Located::from_load_error(&error);
-        let diagnostics = diagnostics_for_file(&uri(), text, &line_index, &[located]);
+        let diagnostics = super::diagnostics_for_file(&uri(), text, &line_index, &[located]);
         assert_eq!(diagnostics.len(), 1);
         assert_eq!(diagnostics[0].range.start.character, 5);
         assert_eq!(diagnostics[0].range.end.character, 8);
@@ -633,10 +638,10 @@ mod tests {
 
     #[test]
     fn family_from_code_splits_at_the_last_dash() {
-        assert_eq!(family_from_code("E-LEX-003"), "E-LEX");
-        assert_eq!(family_from_code("E-PARSE-020"), "E-PARSE");
-        assert_eq!(family_from_code("E-LOAD-001"), "E-LOAD");
-        assert_eq!(family_from_code("E-TYPE-010"), "E-TYPE");
+        assert_eq!(super::family_from_code("E-LEX-003"), "E-LEX");
+        assert_eq!(super::family_from_code("E-PARSE-020"), "E-PARSE");
+        assert_eq!(super::family_from_code("E-LOAD-001"), "E-LOAD");
+        assert_eq!(super::family_from_code("E-TYPE-010"), "E-TYPE");
     }
 
     #[test]
@@ -646,7 +651,7 @@ mod tests {
             name: "floor".to_owned(),
             what: "intrinsic",
         });
-        assert_eq!(family_of_load_error(&err), "E-LOAD");
+        assert_eq!(super::family_of_load_error(&err), "E-LOAD");
     }
 
     #[test]
@@ -663,13 +668,13 @@ mod tests {
         .0;
         let err = babylon_bsl::bound_checker::check_rule(
             &rule,
-            &babylon_bsl::fuel::CardinalityCeilings::default(),
-            &babylon_bsl::fuel::IntrinsicCosts::default(),
+            &CardinalityCeilings::default(),
+            &IntrinsicCosts::default(),
         )
         .expect_err("missing :fuel must be rejected");
         let load_err = LoadError::Bound(err);
         assert_eq!(load_err.spec_code(), None);
-        assert_eq!(family_of_load_error(&load_err), "E-PARSE");
+        assert_eq!(super::family_of_load_error(&load_err), "E-PARSE");
     }
 
     #[test]
@@ -679,86 +684,76 @@ mod tests {
         let err = babylon_bsl::reader::read("(rule foo").expect_err("must be a read error");
         let load_err = LoadError::Read(err);
         assert_eq!(load_err.spec_code(), None);
-        assert_eq!(family_of_load_error(&load_err), "E-LEX");
+        assert_eq!(super::family_of_load_error(&load_err), "E-LEX");
     }
 
     #[test]
     fn causal_metadata_and_authorization_keep_their_parse_and_load_families() {
-        let missing = LoadError::Causal(
-            babylon_bsl::causal_contract::ContractError::MissingMetadata { keyword: "role" },
-        );
+        let missing = LoadError::Causal(ContractError::MissingMetadata { keyword: "role" });
         assert_eq!(missing.spec_code(), None);
-        assert_eq!(family_of_load_error(&missing), "E-PARSE");
+        assert_eq!(super::family_of_load_error(&missing), "E-PARSE");
 
-        let unauthorized = LoadError::Causal(
-            babylon_bsl::causal_contract::ContractError::UnauthorizedEffect {
-                rule_id: "vitality/probe".to_owned(),
-                role: babylon_bsl::causal_contract::RuleRole::ExternalEvent,
-                effect: babylon_bsl::causal_contract::EffectSignature::NodeField(
-                    "social-class/deaths".to_owned(),
-                ),
-            },
-        );
+        let unauthorized = LoadError::Causal(ContractError::UnauthorizedEffect {
+            rule_id: "vitality/probe".to_owned(),
+            role: RuleRole::ExternalEvent,
+            effect: EffectSignature::NodeField("social-class/deaths".to_owned()),
+        });
         assert_eq!(unauthorized.spec_code(), Some("E-LOAD-060"));
-        assert_eq!(family_of_load_error(&unauthorized), "E-LOAD");
+        assert_eq!(super::family_of_load_error(&unauthorized), "E-LOAD");
 
-        let mismatch = LoadError::Causal(
-            babylon_bsl::causal_contract::ContractError::GovernedAttributionMismatch {
-                rule_id: "control-ratio/c03-crisis".to_owned(),
-                expected_role: babylon_bsl::causal_contract::RuleRole::Recognizer,
-                actual_role: babylon_bsl::causal_contract::RuleRole::Mechanic,
-                expected_evidence: babylon_bsl::causal_contract::EvidenceClass::Derived,
-                actual_evidence: babylon_bsl::causal_contract::EvidenceClass::Derived,
-            },
-        );
+        let mismatch = LoadError::Causal(ContractError::GovernedAttributionMismatch {
+            rule_id: "control-ratio/c03-crisis".to_owned(),
+            expected_role: RuleRole::Recognizer,
+            actual_role: RuleRole::Mechanic,
+            expected_evidence: EvidenceClass::Derived,
+            actual_evidence: EvidenceClass::Derived,
+        });
         assert_eq!(mismatch.spec_code(), None);
-        assert_eq!(family_of_load_error(&mismatch), "E-LOAD");
+        assert_eq!(super::family_of_load_error(&mismatch), "E-LOAD");
 
-        let paired_with_wrong_contract = LoadError::Causal(
-            babylon_bsl::causal_contract::ContractError::MismatchedRuleContract {
-                ast_contract: babylon_bsl::causal_contract::RuleContract {
-                    rule_id: "vitality/probe".to_owned(),
-                    role: babylon_bsl::causal_contract::RuleRole::ExternalEvent,
-                    evidence: babylon_bsl::causal_contract::EvidenceClass::Designed,
-                },
-                supplied_contract: babylon_bsl::causal_contract::RuleContract {
-                    rule_id: "control-ratio/c03-crisis".to_owned(),
-                    role: babylon_bsl::causal_contract::RuleRole::Recognizer,
-                    evidence: babylon_bsl::causal_contract::EvidenceClass::Derived,
-                },
+        let paired_with_wrong_contract = LoadError::Causal(ContractError::MismatchedRuleContract {
+            ast_contract: babylon_bsl::causal_contract::RuleContract {
+                rule_id: "vitality/probe".to_owned(),
+                role: RuleRole::ExternalEvent,
+                evidence: EvidenceClass::Designed,
             },
-        );
+            supplied_contract: babylon_bsl::causal_contract::RuleContract {
+                rule_id: "control-ratio/c03-crisis".to_owned(),
+                role: RuleRole::Recognizer,
+                evidence: EvidenceClass::Derived,
+            },
+        });
         assert_eq!(paired_with_wrong_contract.spec_code(), None);
-        assert_eq!(family_of_load_error(&paired_with_wrong_contract), "E-LOAD");
-
-        let bounded_walk =
-            LoadError::Causal(babylon_bsl::causal_contract::ContractError::AstWalkLimit(
-                babylon_bsl::causal_contract::AstWalkError {
-                    analyzer: "causal effect footprint",
-                    limit: babylon_bsl::causal_contract::AstWalkLimit::Depth,
-                    maximum: 256,
-                },
-            ));
-        assert_eq!(bounded_walk.spec_code(), None);
-        assert_eq!(family_of_load_error(&bounded_walk), "E-LOAD");
-
-        let ordinal = LoadError::Causal(
-            babylon_bsl::causal_contract::ContractError::MismatchedWriteOrdinal {
-                expected: 0,
-                actual: 1,
-            },
+        assert_eq!(
+            super::family_of_load_error(&paired_with_wrong_contract),
+            "E-LOAD"
         );
+
+        let bounded_walk = LoadError::Causal(ContractError::AstWalkLimit(
+            babylon_bsl::causal_contract::AstWalkError {
+                analyzer: "causal effect footprint",
+                limit: AstWalkLimit::Depth,
+                maximum: 256,
+            },
+        ));
+        assert_eq!(bounded_walk.spec_code(), None);
+        assert_eq!(super::family_of_load_error(&bounded_walk), "E-LOAD");
+
+        let ordinal = LoadError::Causal(ContractError::MismatchedWriteOrdinal {
+            expected: 0,
+            actual: 1,
+        });
         assert_eq!(ordinal.spec_code(), None);
-        assert_eq!(family_of_load_error(&ordinal), "E-LOAD");
+        assert_eq!(super::family_of_load_error(&ordinal), "E-LOAD");
     }
 
     #[test]
     fn family_of_scenario_error_is_e_lex_when_position_is_set() {
         let mut graph = HypergraphStore::new();
-        let err = load_scenario("(scenario ft/bad (defconst", &mut graph)
+        let err = babylon_bsl::scenario::load_scenario("(scenario ft/bad (defconst", &mut graph)
             .expect_err("must be a read error routed through ScenarioError");
         assert!(err.position.is_some(), "{err:?}");
-        assert_eq!(family_of_scenario_error(&err), "E-LEX");
+        assert_eq!(super::family_of_scenario_error(&err), "E-LEX");
     }
 
     #[test]
@@ -769,20 +764,20 @@ mod tests {
             position: None,
             identity: None,
         };
-        assert_eq!(family_of_scenario_error(&err), "E-LOAD");
+        assert_eq!(super::family_of_scenario_error(&err), "E-LOAD");
     }
 
     #[test]
     fn token_span_at_expands_to_the_enclosing_word() {
         let text = "(rule bogus-token)";
-        let (start, end) = token_span_at(text, 8); // inside "bogus-token"
+        let (start, end) = super::token_span_at(text, 8); // inside "bogus-token"
         assert_eq!(&text[start..end], "bogus-token");
     }
 
     #[test]
     fn token_span_at_a_delimiter_is_one_byte() {
         let text = "(rule)";
-        let (start, end) = token_span_at(text, 0); // the '(' itself
+        let (start, end) = super::token_span_at(text, 0); // the '(' itself
         assert_eq!(&text[start..end], "(");
     }
 
@@ -791,7 +786,8 @@ mod tests {
         // `~=` is not a valid comparison operator — `ReadErrorKind::Lex
         // (LexCode::UnclassifiableToken)`, `E-LEX-003`, the same vector
         // `conformance_corpus.rs`'s own correction-3 test uses.
-        let err = read("(~= agitation 0.5p)").expect_err("must be a read error");
+        let err =
+            babylon_bsl::reader::read("(~= agitation 0.5p)").expect_err("must be a read error");
         let located = Located {
             code: Some(match &err.kind {
                 babylon_bsl::reader::ReadErrorKind::Lex(code) => code.spec_code(),
@@ -804,9 +800,9 @@ mod tests {
             message: err.message.clone(),
             severity: DiagnosticSeverity::ERROR,
         };
-        assert_eq!(precision_of(&located), Precision::Exact);
+        assert_eq!(super::precision_of(&located), Precision::Exact);
         assert_eq!(located.family, "E-LEX");
-        let (start, end) = token_span_at("(~= agitation 0.5p)", located.position.unwrap());
+        let (start, end) = super::token_span_at("(~= agitation 0.5p)", located.position.unwrap());
         assert_eq!(&"(~= agitation 0.5p)"[start..end], "~=");
     }
 
@@ -814,7 +810,7 @@ mod tests {
     fn missing_manifest_row_is_information_severity_file_level_no_code() {
         let text = "(rule x (bindings) (effects))";
         let line_index = LineIndex::new(text);
-        let d = missing_manifest_row_diagnostic(text, &line_index, "orphan.bsl");
+        let d = super::missing_manifest_row_diagnostic(text, &line_index, "orphan.bsl");
         assert_eq!(d.severity, Some(DiagnosticSeverity::INFORMATION));
         assert_eq!(d.code, None);
         assert!(d.message.contains("orphan.bsl"));
@@ -847,7 +843,7 @@ mod tests {
                 severity: DiagnosticSeverity::ERROR,
             },
         ];
-        let diags = diagnostics_for_file(&uri(), text, &line_index, &located);
+        let diags = super::diagnostics_for_file(&uri(), text, &line_index, &located);
         assert_eq!(diags.len(), 2);
         // Both fall back to file-level (ambiguous "floor" + File-tier
         // prose) — the SAME range — so the total order's `message`
@@ -870,7 +866,8 @@ mod tests {
         let located = Located::from_load_error(&load_err);
         assert_eq!(located.code, Some("E-LOAD-001"));
         assert_eq!(located.family, "E-LOAD");
-        let diags = diagnostics_for_file(&uri(), text, &line_index, std::slice::from_ref(&located));
+        let diags =
+            super::diagnostics_for_file(&uri(), text, &line_index, std::slice::from_ref(&located));
         assert_eq!(diags.len(), 1);
         assert_eq!(diags[0].data.as_ref().unwrap()["family"], "E-LOAD");
         let related = diags[0]
@@ -890,9 +887,9 @@ mod tests {
         let uri_a = "file:///a.bsl".parse::<Uri>().unwrap();
         let uri_b = "file:///b.bsl".parse::<Uri>().unwrap();
         let manifest = b"schema = 2";
-        let ab = compute_result_id(&[(&uri_a, b"one"), (&uri_b, b"two")], manifest);
-        let ab_again = compute_result_id(&[(&uri_a, b"one"), (&uri_b, b"two")], manifest);
-        let ba = compute_result_id(&[(&uri_b, b"two"), (&uri_a, b"one")], manifest);
+        let ab = super::compute_result_id(&[(&uri_a, b"one"), (&uri_b, b"two")], manifest);
+        let ab_again = super::compute_result_id(&[(&uri_a, b"one"), (&uri_b, b"two")], manifest);
+        let ba = super::compute_result_id(&[(&uri_b, b"two"), (&uri_a, b"one")], manifest);
         assert_eq!(ab, ab_again);
         assert_ne!(ab, ba, "entry order is part of the hashed contract");
     }

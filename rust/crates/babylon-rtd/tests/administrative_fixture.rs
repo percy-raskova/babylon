@@ -1,8 +1,7 @@
 //! Rust authority over the fixed Detroit-Windsor administrative dossier.
 
-use babylon_rtd::{
-    canonical_draft_bytes, parse_draft_json, parse_vector_corpus, seal_draft, RtdVectorCase,
-};
+use babylon_rtd::{seal_draft, RtdVectorCase};
+use serde_json::Value;
 
 const CONTROL: &[u8] =
     include_bytes!("../../../../contracts/fixtures/detroit_windsor_rtd_v1_admin_control.json");
@@ -17,7 +16,7 @@ const EXTRACTION_LEDGER_SHA256: [u8; 32] = [
 
 #[test]
 fn administrative_control_is_the_shared_rust_vector() {
-    let mut sealed_value: serde_json::Value =
+    let mut sealed_value: Value =
         serde_json::from_slice(CONTROL).expect("closed sealed control JSON");
     let sealed_object = sealed_value
         .as_object_mut()
@@ -27,15 +26,16 @@ fn administrative_control_is_the_shared_rust_vector() {
         .and_then(|value| value.as_str().map(str::to_owned))
         .expect("sealed control projection hash");
     let draft_json = serde_json::to_vec(&sealed_value).expect("control draft JSON");
-    let control = parse_draft_json(&draft_json).expect("closed control draft");
-    let control_bytes = canonical_draft_bytes(&control).expect("canonical control bytes");
+    let control = babylon_rtd::parse_draft_json(&draft_json).expect("closed control draft");
+    let control_bytes =
+        babylon_rtd::canonical_draft_bytes(&control).expect("canonical control bytes");
     assert_eq!(
         seal_draft(control.clone())
             .expect("sealed control")
             .projection_hash,
         sealed_hash
     );
-    let cases = parse_vector_corpus(VECTORS).expect("closed RTD vector corpus");
+    let cases = babylon_rtd::parse_vector_corpus(VECTORS).expect("closed RTD vector corpus");
     let mut vector = None;
     for index in 0..256 {
         if index == cases.len() {
@@ -50,8 +50,8 @@ fn administrative_control_is_the_shared_rust_vector() {
         {
             if case_id == "detroit-windsor-admin-control" {
                 vector = Some((
-                    canonical_draft_bytes(
-                        &parse_draft_json(draft_json).expect("vector control draft"),
+                    babylon_rtd::canonical_draft_bytes(
+                        &babylon_rtd::parse_draft_json(draft_json).expect("vector control draft"),
                     )
                     .expect("vector canonical bytes"),
                     projection_hash,

@@ -401,7 +401,11 @@ pub fn identity_of(err: &LoadError) -> Option<ErrorIdentity> {
 
 #[cfg(test)]
 mod tests {
+
     use super::*;
+    use crate::causal_contract::AstWalkLimit;
+    use crate::causal_contract::EvidenceClass;
+    use crate::causal_contract::RuleRole;
 
     #[test]
     fn identity_of_names_a_decl_duplicate() {
@@ -470,7 +474,7 @@ mod tests {
 
         let unauthorized = LoadError::Causal(ContractError::UnauthorizedEffect {
             rule_id: "vitality/probe".to_owned(),
-            role: crate::causal_contract::RuleRole::ExternalEvent,
+            role: RuleRole::ExternalEvent,
             effect: EffectSignature::NodeField("social-class/deaths".to_owned()),
         });
         assert_eq!(
@@ -480,10 +484,10 @@ mod tests {
 
         let mismatch = LoadError::Causal(ContractError::GovernedAttributionMismatch {
             rule_id: "control-ratio/c03-crisis".to_owned(),
-            expected_role: crate::causal_contract::RuleRole::Recognizer,
-            actual_role: crate::causal_contract::RuleRole::Mechanic,
-            expected_evidence: crate::causal_contract::EvidenceClass::Derived,
-            actual_evidence: crate::causal_contract::EvidenceClass::Derived,
+            expected_role: RuleRole::Recognizer,
+            actual_role: RuleRole::Mechanic,
+            expected_evidence: EvidenceClass::Derived,
+            actual_evidence: EvidenceClass::Derived,
         });
         assert_eq!(
             identity_of(&mismatch),
@@ -493,13 +497,13 @@ mod tests {
         let paired_with_wrong_contract = LoadError::Causal(ContractError::MismatchedRuleContract {
             ast_contract: crate::causal_contract::RuleContract {
                 rule_id: "vitality/probe".to_owned(),
-                role: crate::causal_contract::RuleRole::ExternalEvent,
-                evidence: crate::causal_contract::EvidenceClass::Designed,
+                role: RuleRole::ExternalEvent,
+                evidence: EvidenceClass::Designed,
             },
             supplied_contract: crate::causal_contract::RuleContract {
                 rule_id: "control-ratio/c03-crisis".to_owned(),
-                role: crate::causal_contract::RuleRole::Recognizer,
-                evidence: crate::causal_contract::EvidenceClass::Derived,
+                role: RuleRole::Recognizer,
+                evidence: EvidenceClass::Derived,
             },
         });
         assert_eq!(
@@ -510,7 +514,7 @@ mod tests {
         let bounded_walk = LoadError::Causal(ContractError::AstWalkLimit(
             crate::causal_contract::AstWalkError {
                 analyzer: "causal effect footprint",
-                limit: crate::causal_contract::AstWalkLimit::Depth,
+                limit: AstWalkLimit::Depth,
                 maximum: 256,
             },
         ));
@@ -537,7 +541,7 @@ mod tests {
         let bounded_walk = LoadError::SameTickOrder(SameTickOrderError::AstWalkLimit(
             crate::causal_contract::AstWalkError {
                 analyzer: "same-tick field writes",
-                limit: crate::causal_contract::AstWalkLimit::Stack,
+                limit: AstWalkLimit::Stack,
                 maximum: 65_536,
             },
         ));

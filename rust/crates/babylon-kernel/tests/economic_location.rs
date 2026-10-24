@@ -1,9 +1,7 @@
 //! Trade markets, domestic counties and dependencies cannot alias one another.
 
-use babylon_kernel::{
-    economic_location::{EconomicLocation, ForeignCounterpart, UsDependency},
-    geography::CountyGeoid,
-};
+use babylon_kernel::economic_location::{EconomicLocation, ForeignCounterpart, UsDependency};
+use babylon_kernel::geography::CountyGeoid;
 use std::collections::BTreeSet;
 
 #[test]

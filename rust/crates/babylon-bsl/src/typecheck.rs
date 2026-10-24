@@ -81,7 +81,7 @@
 
 use crate::exemptions::IntensiveAggregationExemption;
 use crate::reader::{Atom, SExpr};
-use crate::score_class::{classify, selection_result_class, ClassEnv, ScoreClass};
+use crate::score_class::{ClassEnv, ScoreClass};
 use crate::types::{BslType, FieldDecl, FieldKind};
 use std::collections::HashMap;
 
@@ -807,10 +807,10 @@ fn element_bindings_of(items: &[SExpr]) -> HashMap<String, ScoreClass> {
     // A query form's own predicate ranges over that query's elements; an
     // iterating form's body ranges over its `<query>` operand's.
     let element_class = if crate::scope::is_query(items) {
-        selection_result_class(&SExpr::List(items.to_vec()))
+        crate::score_class::selection_result_class(&SExpr::List(items.to_vec()))
     } else {
         match crate::scope::iterating_query_index(head).and_then(|i| items.get(i)) {
-            Some(query) => selection_result_class(query),
+            Some(query) => crate::score_class::selection_result_class(query),
             None => return out,
         }
     };
@@ -907,7 +907,7 @@ fn check_one_selection(items: &[SExpr], env: &ClassEnv<'_>) -> Result<(), TypeEr
         fields: env.fields,
         element_names: &inner,
     };
-    let class = classify(score, &scoped);
+    let class = crate::score_class::classify(score, &scoped);
     if class.is_comparable_scalar() {
         return Ok(());
     }
@@ -925,7 +925,10 @@ fn check_one_comparison(items: &[SExpr], env: &ClassEnv<'_>) -> Result<(), TypeE
     let [SExpr::Atom(Atom::Operator(op)), lhs, rhs] = items else {
         return Ok(());
     };
-    let (left, right) = (classify(lhs, env), classify(rhs, env));
+    let (left, right) = (
+        crate::score_class::classify(lhs, env),
+        crate::score_class::classify(rhs, env),
+    );
     if !(left.is_reference() || right.is_reference()) {
         return Ok(());
     }
@@ -951,13 +954,13 @@ fn check_one_comparison(items: &[SExpr], env: &ClassEnv<'_>) -> Result<(), TypeE
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        check_kind_mixing, check_reference_comparisons, check_selection_scores,
-        typecheck_aggregation, TypeCode, TypeEnv,
-    };
+
+    use super::ExprKind;
+    use super::TypeError;
+    use super::{check_reference_comparisons, TypeCode, TypeEnv};
     use crate::bindings::{BindSource, BindingDecl};
     use crate::exemptions::IntensiveAggregationExemption;
-    use crate::reader::read;
+    use crate::types::EnumRegistry;
     use crate::types::{BslType, FieldDecl, FieldKind};
     use std::collections::HashMap;
 
@@ -1009,9 +1012,9 @@ mod tests {
         }
     }
 
-    fn check(source: &str, env: &TypeEnv) -> Result<BslType, super::TypeError> {
-        let (expr, _) = read(source).expect("test source should parse");
-        typecheck_aggregation(&expr, env)
+    fn check(source: &str, env: &TypeEnv) -> Result<BslType, TypeError> {
+        let (expr, _) = crate::reader::read(source).expect("test source should parse");
+        super::typecheck_aggregation(&expr, env)
     }
 
     fn code_of(source: &str, env: &TypeEnv) -> Option<TypeCode> {
@@ -1255,7 +1258,7 @@ mod tests {
     // §1 Q12) ----
 
     fn org_env() -> TypeEnv {
-        let mut registry = crate::types::EnumRegistry::default();
+        let mut registry = EnumRegistry::default();
         let ty = registry
             .declare(
                 "OrgKind",
@@ -1299,10 +1302,11 @@ mod tests {
     /// already carries (§2.5's read parity, D102's whole point).
     #[test]
     fn field_of_over_an_enum_declared_field_typechecks_as_enum() {
-        use crate::score_class::{classify, ClassEnv, ScoreClass};
-        let (expr, _) = read("(field-of self organization/kind)").expect("must parse");
+        use crate::score_class::{ClassEnv, ScoreClass};
+        let (expr, _) =
+            crate::reader::read("(field-of self organization/kind)").expect("must parse");
         let env = org_env();
-        let class = classify(
+        let class = crate::score_class::classify(
             &expr,
             &ClassEnv {
                 bindings: &[],
@@ -1320,8 +1324,9 @@ mod tests {
     /// classifies correctly deep inside another form, not just at the top.
     #[test]
     fn field_of_over_an_enum_field_nested_inside_another_form_still_classifies_as_enum() {
-        let (expr, _) = read("(and #t (= (field-of self organization/kind) OrgKind/BUSINESS))")
-            .expect("must parse");
+        let (expr, _) =
+            crate::reader::read("(and #t (= (field-of self organization/kind) OrgKind/BUSINESS))")
+                .expect("must parse");
         // A same-enum-type `=` comparison is D67-legal (both sides Enum, no
         // ordering operator involved) — this must load clean, proving the
         // nested field-of classified correctly rather than as `Unknown`
@@ -1336,10 +1341,11 @@ mod tests {
     /// BY.
     #[test]
     fn field_of_over_an_enum_field_as_a_select_max_score_still_refuses_e_type_016() {
-        let (expr, _) =
-            read("(select-max (nodes NodeType/ORGANIZATION) (field-of it organization/kind))")
-                .expect("must parse");
-        let err = check_selection_scores(&expr, &org_env(), &[]).unwrap_err();
+        let (expr, _) = crate::reader::read(
+            "(select-max (nodes NodeType/ORGANIZATION) (field-of it organization/kind))",
+        )
+        .expect("must parse");
+        let err = super::check_selection_scores(&expr, &org_env(), &[]).unwrap_err();
         assert_eq!(err.code, Some(TypeCode::NonComparableScore));
         assert!(err.message.contains("E-TYPE-016"), "{}", err.message);
     }
@@ -1349,7 +1355,8 @@ mod tests {
 
     #[test]
     fn add_on_an_enum_declared_field_refuses_citing_d118() {
-        let (expr, _) = read("(update-node self organization/kind (add 1))").expect("must parse");
+        let (expr, _) = crate::reader::read("(update-node self organization/kind (add 1))")
+            .expect("must parse");
         let err = super::check_no_arithmetic_on_enum_field(&expr, &org_env()).unwrap_err();
         assert_eq!(
             err.code, None,
@@ -1363,7 +1370,7 @@ mod tests {
     fn sub_and_scale_on_an_enum_declared_field_both_refuse() {
         for op in ["sub", "scale"] {
             let source = format!("(update-node self organization/kind ({op} 1))");
-            let (expr, _) = read(&source).expect("must parse");
+            let (expr, _) = crate::reader::read(&source).expect("must parse");
             assert!(
                 super::check_no_arithmetic_on_enum_field(&expr, &org_env()).is_err(),
                 "{op} must refuse"
@@ -1375,15 +1382,16 @@ mod tests {
     fn set_on_an_enum_declared_field_is_untouched() {
         // `set` is the ONE coherent op on an enum field (§2.13) — the
         // guard must never widen to refuse it.
-        let (expr, _) = read("(update-node self organization/kind (set OrgKind/BUSINESS))")
-            .expect("must parse");
+        let (expr, _) =
+            crate::reader::read("(update-node self organization/kind (set OrgKind/BUSINESS))")
+                .expect("must parse");
         assert!(super::check_no_arithmetic_on_enum_field(&expr, &org_env()).is_ok());
     }
 
     #[test]
     fn add_on_a_non_enum_field_is_untouched() {
-        let (expr, _) =
-            read("(update-node self organization/budget (add 5$))").expect("must parse");
+        let (expr, _) = crate::reader::read("(update-node self organization/budget (add 5$))")
+            .expect("must parse");
         assert!(super::check_no_arithmetic_on_enum_field(&expr, &org_env()).is_ok());
     }
 
@@ -1392,7 +1400,8 @@ mod tests {
         // The walk must recurse into (guard/for-each/…) effect bodies, not
         // just the top-level effect item.
         let (expr, _) =
-            read("(guard #t (update-node self organization/kind (add 1)))").expect("must parse");
+            crate::reader::read("(guard #t (update-node self organization/kind (add 1)))")
+                .expect("must parse");
         assert!(super::check_no_arithmetic_on_enum_field(&expr, &org_env()).is_err());
     }
 
@@ -1458,8 +1467,8 @@ mod tests {
         ]
     }
 
-    fn kind_of(source: &str) -> Result<Option<super::ExprKind>, super::TypeError> {
-        let (expr, _) = read(source).expect("test source should parse");
+    fn kind_of(source: &str) -> Result<Option<ExprKind>, TypeError> {
+        let (expr, _) = crate::reader::read(source).expect("test source should parse");
         super::expr_kind(&expr, &env(), &kind_bindings())
     }
 
@@ -1467,10 +1476,7 @@ mod tests {
     fn extensive_divided_by_extensive_is_intensive_the_licensed_case() {
         // (a): w̄ = wealth ÷ population — D90/D181's unit algebra, the
         // definition of an intensive quantity (density = mass ÷ volume).
-        assert_eq!(
-            kind_of("(/ wealth-b pop)"),
-            Ok(Some(super::ExprKind::Intensive))
-        );
+        assert_eq!(kind_of("(/ wealth-b pop)"), Ok(Some(ExprKind::Intensive)));
     }
 
     #[test]
@@ -1516,12 +1522,12 @@ mod tests {
         // either branch instead, exactly as it does for `+`, `-` and `*`.
         assert_eq!(
             kind_of("(if #t (- 1 (/ wealth-b pop)) (- 1 0c))"),
-            Ok(Some(super::ExprKind::Intensive))
+            Ok(Some(ExprKind::Intensive))
         );
         // The symmetric direction (neutral then-branch, non-neutral else).
         assert_eq!(
             kind_of("(if #t (- 1 0c) (- 1 (/ wealth-b pop)))"),
-            Ok(Some(super::ExprKind::Intensive))
+            Ok(Some(ExprKind::Intensive))
         );
     }
 
@@ -1536,14 +1542,8 @@ mod tests {
         // broke this genuine content; extensive × intensive is licensed,
         // legal in EITHER operand order (kind carries no operand-order
         // information, unlike the value itself).
-        assert_eq!(
-            kind_of("(* wealth-b ws)"),
-            Ok(Some(super::ExprKind::Extensive))
-        );
-        assert_eq!(
-            kind_of("(* ws wealth-b)"),
-            Ok(Some(super::ExprKind::Extensive))
-        );
+        assert_eq!(kind_of("(* wealth-b ws)"), Ok(Some(ExprKind::Extensive)));
+        assert_eq!(kind_of("(* ws wealth-b)"), Ok(Some(ExprKind::Extensive)));
     }
 
     #[test]
@@ -1559,8 +1559,8 @@ mod tests {
         // a rate scaled by a dimensionless coefficient is still a rate.
         // Legal in either operand order (kind carries no operand-order
         // information).
-        assert_eq!(kind_of("(* ws cons)"), Ok(Some(super::ExprKind::Intensive)));
-        assert_eq!(kind_of("(* cons ws)"), Ok(Some(super::ExprKind::Intensive)));
+        assert_eq!(kind_of("(* ws cons)"), Ok(Some(ExprKind::Intensive)));
+        assert_eq!(kind_of("(* cons ws)"), Ok(Some(ExprKind::Intensive)));
     }
 
     #[test]
@@ -1575,8 +1575,8 @@ mod tests {
         // quantities is a dimensionless share — simplex normalization is
         // the canonical intensive operation. Legal in either operand
         // order (kind carries no operand-order information).
-        assert_eq!(kind_of("(/ ws cons)"), Ok(Some(super::ExprKind::Intensive)));
-        assert_eq!(kind_of("(/ cons ws)"), Ok(Some(super::ExprKind::Intensive)));
+        assert_eq!(kind_of("(/ ws cons)"), Ok(Some(ExprKind::Intensive)));
+        assert_eq!(kind_of("(/ cons ws)"), Ok(Some(ExprKind::Intensive)));
     }
 
     #[test]
@@ -1611,7 +1611,7 @@ mod tests {
             kind_of("(/ (fold mean (nodes NodeType/SOCIAL_CLASS) ws :weight pop) wealth-b)");
         assert_ne!(
             result,
-            Ok(Some(super::ExprKind::Extensive)),
+            Ok(Some(ExprKind::Extensive)),
             "must not silently become extensive: {result:?}"
         );
         let err = result.unwrap_err();
@@ -1625,7 +1625,7 @@ mod tests {
         // `typecheck_aggregation`, which this repair does not touch).
         assert_eq!(
             kind_of("(fold mean (nodes NodeType/SOCIAL_CLASS) ws :weight pop)"),
-            Ok(Some(super::ExprKind::Intensive))
+            Ok(Some(ExprKind::Intensive))
         );
     }
 
@@ -1633,13 +1633,10 @@ mod tests {
     fn kind_neutral_absorbs_on_every_operator() {
         // A literal is kind-neutral (§3.4): mixing it with any single kind
         // is always legal and carries that kind through.
-        assert_eq!(
-            kind_of("(+ wealth-b 1$)"),
-            Ok(Some(super::ExprKind::Extensive))
-        );
-        assert_eq!(kind_of("(- ws 0.1c)"), Ok(Some(super::ExprKind::Intensive)));
-        assert_eq!(kind_of("(* pop 2)"), Ok(Some(super::ExprKind::Extensive)));
-        assert_eq!(kind_of("(/ cons 2)"), Ok(Some(super::ExprKind::Intensive)));
+        assert_eq!(kind_of("(+ wealth-b 1$)"), Ok(Some(ExprKind::Extensive)));
+        assert_eq!(kind_of("(- ws 0.1c)"), Ok(Some(ExprKind::Intensive)));
+        assert_eq!(kind_of("(* pop 2)"), Ok(Some(ExprKind::Extensive)));
+        assert_eq!(kind_of("(/ cons 2)"), Ok(Some(ExprKind::Intensive)));
     }
 
     #[test]
@@ -1650,14 +1647,14 @@ mod tests {
         // nested-guard coverage above. `check_kind_mixing` is a raw tree
         // walker, agnostic of `guard`'s own effect grammar, so this proves
         // the recursion without needing a full valid rule.
-        let (expr, _) = read("(guard #t (+ ws pop))").expect("must parse");
-        let err = check_kind_mixing(&expr, &env(), &kind_bindings()).unwrap_err();
+        let (expr, _) = crate::reader::read("(guard #t (+ ws pop))").expect("must parse");
+        let err = super::check_kind_mixing(&expr, &env(), &kind_bindings()).unwrap_err();
         assert_eq!(err.code, Some(TypeCode::KindMixing));
     }
 
     #[test]
     fn check_kind_mixing_accepts_a_clean_tree() {
-        let (expr, _) = read("(guard #t (+ wealth-b 1$))").expect("must parse");
-        assert!(check_kind_mixing(&expr, &env(), &kind_bindings()).is_ok());
+        let (expr, _) = crate::reader::read("(guard #t (+ wealth-b 1$))").expect("must parse");
+        assert!(super::check_kind_mixing(&expr, &env(), &kind_bindings()).is_ok());
     }
 }

@@ -1,6 +1,6 @@
 use babylon_practice_contract::{
-    compute_budget_delta, read_action_budget, write_action_budget, PracticeBudgetTerms,
-    PracticeContractError, PracticeId, PracticeTargetDomain, SolidarityFootprintEdge,
+    read_action_budget, write_action_budget, PracticeBudgetTerms, PracticeContractError,
+    PracticeId, PracticeTargetDomain, SolidarityFootprintEdge,
 };
 
 const WORLD_HASH: [u8; 32] = [0x5a; 32];
@@ -55,7 +55,7 @@ fn storage_conversion_refusals_pin_codes_28_through_32() {
 
 #[test]
 fn transition_derives_cost_count_credit_and_snapshot() {
-    let delta = compute_budget_delta(
+    let delta = babylon_practice_contract::compute_budget_delta(
         11,
         7,
         WORLD_HASH,
@@ -86,7 +86,16 @@ fn every_practice_cost_and_none_zero_cost_are_exhaustive() {
         (Some(PracticeId::Agitate), 2),
         (Some(PracticeId::MutualAid), 3),
     ] {
-        let delta = compute_budget_delta(11, 7, WORLD_HASH, 3, practice, &[], terms()).unwrap();
+        let delta = babylon_practice_contract::compute_budget_delta(
+            11,
+            7,
+            WORLD_HASH,
+            3,
+            practice,
+            &[],
+            terms(),
+        )
+        .unwrap();
         assert_eq!(delta.governed_cost, expected);
         assert_eq!(delta.budget_after, 3 - expected);
     }
@@ -95,7 +104,7 @@ fn every_practice_cost_and_none_zero_cost_are_exhaustive() {
 #[test]
 fn insufficient_and_checked_addition_refusals_pin_codes_33_and_34() {
     assert_eq!(
-        compute_budget_delta(
+        babylon_practice_contract::compute_budget_delta(
             11,
             7,
             WORLD_HASH,
@@ -111,7 +120,7 @@ fn insufficient_and_checked_addition_refusals_pin_codes_33_and_34() {
         ..terms()
     };
     assert_eq!(
-        compute_budget_delta(
+        babylon_practice_contract::compute_budget_delta(
             11,
             7,
             WORLD_HASH,
@@ -130,7 +139,7 @@ fn ceiling_binds_only_after_valid_checked_addition() {
         storage_ceiling: 3,
         ..terms()
     };
-    let delta = compute_budget_delta(
+    let delta = babylon_practice_contract::compute_budget_delta(
         11,
         7,
         WORLD_HASH,
@@ -163,7 +172,15 @@ fn footprint_bound_order_duplicate_and_source_refusals_are_exact() {
         ),
     ] {
         assert_eq!(
-            compute_budget_delta(11, 7, WORLD_HASH, 3, None, &edges, terms()),
+            babylon_practice_contract::compute_budget_delta(
+                11,
+                7,
+                WORLD_HASH,
+                3,
+                None,
+                &edges,
+                terms()
+            ),
             Err(expected)
         );
     }
@@ -190,12 +207,29 @@ fn footprint_strength_refusals_and_maximum_are_exact() {
         ),
     ] {
         assert_eq!(
-            compute_budget_delta(11, 7, WORLD_HASH, 3, None, &[edge(7, 1, strength)], terms(),),
+            babylon_practice_contract::compute_budget_delta(
+                11,
+                7,
+                WORLD_HASH,
+                3,
+                None,
+                &[edge(7, 1, strength)],
+                terms(),
+            ),
             Err(expected)
         );
     }
     let maximum: Vec<_> = (0_u64..256).map(|target| edge(7, target, 1.0)).collect();
-    let delta = compute_budget_delta(11, 7, WORLD_HASH, 0, None, &maximum, terms()).unwrap();
+    let delta = babylon_practice_contract::compute_budget_delta(
+        11,
+        7,
+        WORLD_HASH,
+        0,
+        None,
+        &maximum,
+        terms(),
+    )
+    .unwrap();
     assert_eq!(delta.footprint_count, 256);
     assert_eq!(delta.raw_credit, 256);
 }
@@ -210,7 +244,15 @@ fn practices_without_declared_budget_prices_fail_explicitly() {
         PracticeId::CapitalStrike,
     ] {
         assert_eq!(
-            compute_budget_delta(1, 7, [0; 32], 4, Some(practice), &[], terms()),
+            babylon_practice_contract::compute_budget_delta(
+                1,
+                7,
+                [0; 32],
+                4,
+                Some(practice),
+                &[],
+                terms()
+            ),
             Err(PracticeContractError::PracticeBudgetUnpriced)
         );
     }

@@ -1,11 +1,11 @@
 //! Pure current practice-proposal identity and authority validation.
 
-use babylon_kernel::content_digest::sha256_of;
+use babylon_kernel::content_digest;
 
 use crate::actor::ActorOrganizationId;
 use crate::{
-    resolve_input_authority, CampaignId, InputAuthorityId, PracticeAuthorityError,
-    PracticeInputAuthority, PracticeInputAuthorityLedger,
+    CampaignId, InputAuthorityId, PracticeAuthorityError, PracticeInputAuthority,
+    PracticeInputAuthorityLedger,
 };
 
 const SCHEMA_VERSION: u16 = 2;
@@ -620,7 +620,7 @@ pub fn decode_practice_intent(payload: &[u8]) -> Result<PracticeIntent, Practice
 /// # Errors
 /// Returns the exact encoding refusal without publishing a digest.
 pub fn practice_intent_digest(value: &PracticeIntent) -> Result<[u8; 32], PracticeIntentError> {
-    Ok(sha256_of(&encode_practice_intent(value)?))
+    Ok(content_digest::sha256_of(&encode_practice_intent(value)?))
 }
 
 /// Return the complete unique proposal key. Its ordering grants no priority.
@@ -646,7 +646,7 @@ pub fn validate_practice_intent_authority<'a>(
     intent: &PracticeIntent,
 ) -> Result<&'a PracticeInputAuthority, PracticeIntentAuthorityError> {
     validate_practice_intent(intent).map_err(PracticeIntentAuthorityError::Intent)?;
-    resolve_input_authority(
+    crate::resolve_input_authority(
         ledger,
         campaign_id,
         intent.input_authority_id,
@@ -666,7 +666,7 @@ pub fn practice_parameter_bytes_digest(
     validate_parameters(value)?;
     let mut preimage = Vec::from(&b"babylon.practice-parameter-bytes.v1\0"[..]);
     append_parameters(&mut preimage, &value.parameters)?;
-    Ok(sha256_of(&preimage))
+    Ok(content_digest::sha256_of(&preimage))
 }
 
 /// Hash a fixed selection of a stable, tagged material target.
@@ -679,5 +679,5 @@ pub fn fixed_practice_target_digest(
     preimage.extend_from_slice(b"babylon.fixed-target-selection.v2\0");
     preimage.push(tag as u8);
     preimage.extend_from_slice(&identity.as_bytes());
-    sha256_of(&preimage)
+    content_digest::sha256_of(&preimage)
 }

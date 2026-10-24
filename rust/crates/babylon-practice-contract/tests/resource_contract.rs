@@ -1,9 +1,7 @@
 use babylon_practice_contract::{
-    decode_practice_resource_allocation_contract, decode_practice_resource_capacity,
-    decode_practice_resource_request, encode_practice_resource_allocation_contract,
-    encode_practice_resource_capacity, encode_practice_resource_request,
-    practice_resource_allocation_contract_digest, practice_resource_capacity_digest,
-    practice_resource_request_digest, PracticeResourceError,
+    encode_practice_resource_allocation_contract, encode_practice_resource_capacity,
+    encode_practice_resource_request, practice_resource_allocation_contract_digest,
+    practice_resource_capacity_digest, practice_resource_request_digest, PracticeResourceError,
     PRACTICE_RESOURCE_ALLOCATION_SOURCE_SHA256,
 };
 use serde_json::Value;
@@ -66,7 +64,9 @@ fn language_neutral_resource_vectors_drive_every_rust_digest() {
 
     let contract_case = case(&cases, "allocation-contract");
     let contract_bytes = hex_bytes(contract_case["data"]["canonical_hex"].as_str().unwrap());
-    let contract = decode_practice_resource_allocation_contract(&contract_bytes).unwrap();
+    let contract =
+        babylon_practice_contract::decode_practice_resource_allocation_contract(&contract_bytes)
+            .unwrap();
     assert_eq!(
         encode_practice_resource_allocation_contract(&contract).unwrap(),
         contract_bytes
@@ -80,7 +80,8 @@ fn language_neutral_resource_vectors_drive_every_rust_digest() {
 
     let request_case = case(&cases, "request-shared-90");
     let request_bytes = hex_bytes(request_case["data"]["canonical_hex"].as_str().unwrap());
-    let request = decode_practice_resource_request(&request_bytes).unwrap();
+    let request =
+        babylon_practice_contract::decode_practice_resource_request(&request_bytes).unwrap();
     assert_eq!(
         encode_practice_resource_request(&request).unwrap(),
         request_bytes
@@ -92,7 +93,8 @@ fn language_neutral_resource_vectors_drive_every_rust_digest() {
 
     let capacity_case = case(&cases, "capacity-shared-50");
     let capacity_bytes = hex_bytes(capacity_case["data"]["canonical_hex"].as_str().unwrap());
-    let capacity = decode_practice_resource_capacity(&capacity_bytes).unwrap();
+    let capacity =
+        babylon_practice_contract::decode_practice_resource_capacity(&capacity_bytes).unwrap();
     assert_eq!(
         encode_practice_resource_capacity(&capacity).unwrap(),
         capacity_bytes
@@ -122,7 +124,7 @@ fn language_neutral_invalid_contract_vectors_keep_exact_refusals() {
         let code = u16::try_from(value["data"]["error"].as_u64().unwrap()).unwrap();
         let expected = PracticeResourceError::try_from(code).unwrap();
         assert_eq!(
-            decode_practice_resource_allocation_contract(&payload),
+            babylon_practice_contract::decode_practice_resource_allocation_contract(&payload),
             Err(expected),
             "{}",
             value["case_id"]

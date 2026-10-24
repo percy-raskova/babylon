@@ -12,7 +12,7 @@
 //! Task 1.3) and are **byte-pinned thereafter** — any later divergence is a
 //! determinism regression, never "the math got better."
 
-use babylon_kernel::transcendental::{exp, ln};
+use babylon_kernel::transcendental;
 
 /// `exp` roster: zeros (both signs), unit inputs, a mid-range value, the two
 /// boundary values nearest `f64::exp`'s overflow edge (`709.0` finite,
@@ -33,7 +33,7 @@ fn exp_golden_vectors() {
         (1e-300, 0x3ff0_0000_0000_0000),
     ];
     for (x, expected_bits) in roster {
-        let observed = exp(x).to_bits();
+        let observed = transcendental::exp(x).to_bits();
         assert_eq!(
             observed, expected_bits,
             "exp({x}) = 0x{observed:016x}, expected 0x{expected_bits:016x}"
@@ -57,7 +57,7 @@ fn ln_golden_vectors() {
         (1.000_000_000_000_000_2, 0x3caf_ffff_ffff_ffff),
     ];
     for (x, expected_bits) in roster {
-        let observed = ln(x).to_bits();
+        let observed = transcendental::ln(x).to_bits();
         assert_eq!(
             observed, expected_bits,
             "ln({x}) = 0x{observed:016x}, expected 0x{expected_bits:016x}"

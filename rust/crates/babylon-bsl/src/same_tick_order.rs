@@ -47,14 +47,17 @@
 //! remains historical evidence only; it is not active authority and no future
 //! `:prior-tick` vocabulary is required for this enforcement.
 
-use crate::bindings::{parse_bindings, BindSource};
+use crate::bindings::BindSource;
+use crate::bindings::BindingDecl;
 use crate::causal_contract::{
-    validate_ast_walk_bounds, AstWalkError, AstWalkLimit, AstWalkLimits, AST_WALK_LIMITS,
-    MAX_AST_WALK_NODES,
+    AstWalkError, AstWalkLimit, AstWalkLimits, AST_WALK_LIMITS, MAX_AST_WALK_NODES,
 };
 use crate::material_basis::keyword_value;
 use crate::reader::{Atom, SExpr};
+use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 
 const SAME_TICK_WALKER: &str = "same-tick field writes";
 
@@ -572,7 +575,7 @@ impl SameTickOrderError {
 }
 
 impl std::fmt::Display for SameTickOrderError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         match self {
             Self::RankedRuleInput(error) => match error {
                 RankedRuleInputError::InvalidRuleForm { supplied_rule_id } => write!(
@@ -726,10 +729,7 @@ impl Diagnosis {
     }
 }
 
-fn compare_stale_default_reads(
-    left: &StaleDefaultRead,
-    right: &StaleDefaultRead,
-) -> std::cmp::Ordering {
+fn compare_stale_default_reads(left: &StaleDefaultRead, right: &StaleDefaultRead) -> Ordering {
     (
         left.reader_rule.as_bytes(),
         left.binding_name.as_bytes(),
@@ -1012,7 +1012,7 @@ fn walk_for_writes_with_limits(
     expr: &SExpr,
     limits: AstWalkLimits,
 ) -> Result<Vec<FieldWrite>, AstWalkError> {
-    validate_ast_walk_bounds(expr, limits, SAME_TICK_WALKER)?;
+    crate::causal_contract::validate_ast_walk_bounds(expr, limits, SAME_TICK_WALKER)?;
     let mut out = Vec::new();
     let mut stack = vec![(expr, 0_usize, true)];
     for visited in 0..MAX_AST_WALK_NODES {
@@ -1064,7 +1064,7 @@ fn walk_for_writes_with_limits(
 
 /// Every write in the rule, with direct-effect execution proof retained.
 fn field_writes(rule: &SExpr) -> Result<Vec<FieldWrite>, AstWalkError> {
-    validate_ast_walk_bounds(rule, AST_WALK_LIMITS, SAME_TICK_WALKER)?;
+    crate::causal_contract::validate_ast_walk_bounds(rule, AST_WALK_LIMITS, SAME_TICK_WALKER)?;
     let SExpr::List(rule_items) = rule else {
         return Ok(Vec::new());
     };
@@ -1127,7 +1127,7 @@ fn cites_d127(rule_items: &[SExpr]) -> bool {
 struct RuleFacts<'a> {
     id: &'a str,
     execution_rank: u16,
-    bindings: Vec<crate::bindings::BindingDecl>,
+    bindings: Vec<BindingDecl>,
     writes: Vec<FieldWrite>,
     unconditional: bool,
     d127: bool,
@@ -1143,7 +1143,7 @@ struct WriterIndex<'a> {
 fn compare_ranked_rule_input_errors(
     left: &RankedRuleInputError,
     right: &RankedRuleInputError,
-) -> std::cmp::Ordering {
+) -> Ordering {
     fn key(error: &RankedRuleInputError) -> (u8, &[u8], &[u8]) {
         match error {
             RankedRuleInputError::InvalidRuleForm { supplied_rule_id } => {
@@ -1213,7 +1213,7 @@ fn collect_rule_facts<'a>(rules: &[RankedRule<'a>]) -> Result<Vec<RuleFacts<'a>>
         let SExpr::List(items) = rule.form else {
             continue;
         };
-        let Ok(bindings) = parse_bindings(rule.form) else {
+        let Ok(bindings) = crate::bindings::parse_bindings(rule.form) else {
             continue;
         };
         facts.push(RuleFacts {
@@ -1263,7 +1263,7 @@ impl<'a> WriterIndex<'a> {
 fn compare_stale_writer_sets(
     left: &StaleDefaultWriterSet,
     right: &StaleDefaultWriterSet,
-) -> std::cmp::Ordering {
+) -> Ordering {
     (
         left.reader_rule.as_bytes(),
         left.binding_name.as_bytes(),

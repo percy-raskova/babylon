@@ -2,14 +2,16 @@
 
 use std::collections::BTreeSet;
 
-use babylon_bsl::{canonical_ast::canonical_bytes, reader::SExpr, sfs_profile::SfsRuleAuditResult};
-use babylon_kernel::content_digest::sha256_of;
-use unicode_normalization::is_nfc;
+use babylon_bsl::canonical_ast;
+use babylon_bsl::reader::SExpr;
+use babylon_bsl::sfs_profile::SfsRuleAuditResult;
+use babylon_kernel::content_digest;
 
+use crate::SfsPreregistration;
 use crate::{
-    record_digest, CanonicalProfileSet, CausalCone, ComponentKind, Digest32, RunIdentity,
-    SfsClassError, SfsComponentProofProfile, SfsProfileRecordError, SfsProofProfile,
-    SfsRecordError, SfsWireError, SyntheticDriverContractError, SyntheticDriverError,
+    CanonicalProfileSet, CausalCone, ComponentKind, Digest32, RunIdentity, SfsClassError,
+    SfsComponentProofProfile, SfsProfileRecordError, SfsProofProfile, SfsRecordError, SfsWireError,
+    SyntheticDriverContractError, SyntheticDriverError,
 };
 
 const MAX_GOVERNED_MANIFEST_BYTES: usize = 1_048_576;
@@ -474,7 +476,9 @@ fn parse_component(
         })?;
     let source_digest = digest_hex(fields.values[5], row)?;
     let computed = match source_mode {
-        SourceMode::CanonicalBsl => Digest32::from_bytes(sha256_of(&source_payload)),
+        SourceMode::CanonicalBsl => {
+            Digest32::from_bytes(content_digest::sha256_of(&source_payload))
+        }
         SourceMode::SyntheticDescriptor => domain_digest(COMPONENT_SOURCE_DOMAIN, &source_payload),
     };
     if computed != source_digest {
@@ -631,9 +635,9 @@ fn close_sources(
     rule: &SExpr,
     audit: &SfsRuleAuditResult,
 ) -> Result<(), SfsValidationError> {
-    let canonical = canonical_bytes(rule)
+    let canonical = canonical_ast::canonical_bytes(rule)
         .map_err(|_| SfsValidationError::GovernedManifestMalformed { row: 0 })?;
-    let source_digest = Digest32::from_bytes(sha256_of(&canonical));
+    let source_digest = Digest32::from_bytes(content_digest::sha256_of(&canonical));
     if source_digest != Digest32::from_bytes(*audit.footprint().source_digest()) {
         return Err(SfsValidationError::ComponentSourceDigestMismatch {
             component_id: "scoped-bsl-rule".to_owned(),
@@ -863,7 +867,8 @@ pub fn validate_synthetic_cone(
     if profile.governed_manifest_digest() != governed_manifest.manifest_digest {
         return Err(SfsValidationError::GovernedManifestDigestMismatch);
     }
-    if Digest32::from_bytes(*record_digest(cone)?.as_bytes()) != profile.causal_cone_digest() {
+    if Digest32::from_bytes(*crate::record_digest(cone)?.as_bytes()) != profile.causal_cone_digest()
+    {
         return Err(SfsValidationError::CausalConeDigestMismatch);
     }
     validate_endpoints(cone, governed_manifest)?;
@@ -1121,7 +1126,7 @@ fn component_index(manifest: &SyntheticGovernedManifest, id: &str) -> Option<usi
 pub fn validate_synthetic_profile_identity(
     run_identity: &RunIdentity,
     proof_profile: &SfsProofProfile,
-    preregistration: &crate::SfsPreregistration,
+    preregistration: &SfsPreregistration,
     governed_manifest: &SyntheticGovernedManifest,
     mutation_manifest_digest: Digest32,
 ) -> Result<(), SfsValidationError> {
@@ -1136,7 +1141,7 @@ pub fn validate_synthetic_profile_identity(
     if proof_profile.governed_manifest_digest() != governed_manifest.manifest_digest {
         return Err(SfsValidationError::GovernedManifestDigestMismatch);
     }
-    let profile_digest = Digest32::from_bytes(*record_digest(proof_profile)?.as_bytes());
+    let profile_digest = Digest32::from_bytes(*crate::record_digest(proof_profile)?.as_bytes());
     if run_identity.sfs_proof_profile_digest() != profile_digest
         || preregistration.sfs_proof_profile_digest() != profile_digest
     {
@@ -1145,7 +1150,7 @@ pub fn validate_synthetic_profile_identity(
     if preregistration.mutation_manifest_digest() != mutation_manifest_digest {
         return Err(SfsValidationError::MutationManifestDigestMismatch);
     }
-    let prereg_digest = Digest32::from_bytes(*record_digest(preregistration)?.as_bytes());
+    let prereg_digest = Digest32::from_bytes(*crate::record_digest(preregistration)?.as_bytes());
     if run_identity.sfs_preregistration_digest() != prereg_digest {
         return Err(SfsValidationError::PreregistrationDigestMismatch);
     }
@@ -1158,7 +1163,7 @@ pub fn validate_synthetic_profile_identity(
 /// Returns the first framing, schema, coverage, activation, or digest refusal.
 pub fn validate_synthetic_mutation_manifest(
     bytes: &[u8],
-    preregistration: &crate::SfsPreregistration,
+    preregistration: &SfsPreregistration,
 ) -> Result<Digest32, SfsValidationError> {
     if bytes.len() > MAX_MUTATION_MANIFEST_BYTES {
         return Err(SfsValidationError::MutationManifestByteLimit {
@@ -1316,7 +1321,7 @@ fn digest_hex(value: &str, row: usize) -> Result<Digest32, SfsValidationError> {
 }
 
 fn validate_nfc(value: &str, maximum: usize, row: usize) -> Result<(), SfsValidationError> {
-    if value.is_empty() || value.len() > maximum || !is_nfc(value) {
+    if value.is_empty() || value.len() > maximum || !unicode_normalization::is_nfc(value) {
         return malformed(row);
     }
     Ok(())
@@ -1351,7 +1356,7 @@ fn domain_digest(domain: &[u8], payload: &[u8]) -> Digest32 {
     bytes.extend_from_slice(domain);
     bytes.push(0);
     bytes.extend_from_slice(payload);
-    Digest32::from_bytes(sha256_of(&bytes))
+    Digest32::from_bytes(content_digest::sha256_of(&bytes))
 }
 
 fn malformed<T>(row: usize) -> Result<T, SfsValidationError> {

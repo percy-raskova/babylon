@@ -5,11 +5,11 @@ use babylon_practice_contract::{
     OrderedPracticeActionError,
 };
 use babylon_practice_contract::{
-    input_authority_ledger_digest, CampaignId, InputAuthorityId, PracticeAuthorityKind,
-    PracticeBatchError, PracticeId, PracticeInputAuthority, PracticeInputAuthorityLedger,
-    PracticeIntent, PracticeIntentError, PracticeParameter, PracticeTargetIdentity,
-    PracticeTargetTag, ProposalNonce, ResolvedPracticeBatch, ResolvedPracticeBatchError,
-    ResolvedPracticeBatchItem, TaggedPracticeTarget, MAX_RESOLVED_PRACTICE_BATCH_ITEMS,
+    CampaignId, InputAuthorityId, PracticeAuthorityKind, PracticeBatchError, PracticeId,
+    PracticeInputAuthority, PracticeInputAuthorityLedger, PracticeIntent, PracticeIntentError,
+    PracticeParameter, PracticeTargetIdentity, PracticeTargetTag, ProposalNonce,
+    ResolvedPracticeBatch, ResolvedPracticeBatchError, ResolvedPracticeBatchItem,
+    TaggedPracticeTarget, MAX_RESOLVED_PRACTICE_BATCH_ITEMS,
 };
 
 fn actor_id(value: u64) -> ActorOrganizationId {
@@ -90,7 +90,8 @@ fn batch(items: Vec<ResolvedPracticeBatchItem>) -> ResolvedPracticeBatch {
         schema_version: 2,
         campaign_id: CampaignId::from_bytes([0x10; 16]),
         resolve_tick: 11,
-        authority_ledger_digest: input_authority_ledger_digest(&ledger()).unwrap(),
+        authority_ledger_digest:
+            babylon_practice_contract::input_authority_ledger_digest(&ledger()).unwrap(),
         resource_allocation_contract_digest: [0x40; 32],
         content_digest: [0x30; 32],
         items,

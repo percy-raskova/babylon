@@ -20,20 +20,28 @@
 
 use std::collections::{HashMap, HashSet};
 
-use babylon_bsl::rule_pipeline::{load_rule, LoadContext, LoadError};
-use babylon_bsl::scenario::load_scenario;
-use babylon_bsl::{
-    bindings::BindingVocabulary, declarations::DeclError, evaluator::Value,
-    fuel::CardinalityCeilings, fuel::IntrinsicCosts, typecheck::TypeEnv, types::EnumRegistry,
-};
+use babylon_bsl::rule_pipeline;
+use babylon_bsl::rule_pipeline::{LoadContext, LoadError};
+use babylon_bsl::scenario;
+
+use babylon_bsl::bindings::BindingVocabulary;
+use babylon_bsl::declarations::DeclError;
+use babylon_bsl::evaluator::Value;
+use babylon_bsl::fuel::{CardinalityCeilings, IntrinsicCosts};
+use babylon_bsl::typecheck::TypeEnv;
+use babylon_bsl::types::EnumRegistry;
 use babylon_graph::hypergraph_store::HypergraphStore;
-use babylon_tick::{diagnose_content_set_sources, ContentRuleSource};
+use babylon_tick::ContentRuleSource;
 use lsp_types::{DiagnosticSeverity, NumberOrString, Uri};
 
 use babylon_ls::content_manifest::ContentSetManifest;
-use babylon_ls::diagnostics::{diagnostics_for_file, Located};
+use babylon_ls::diagnostics;
+use babylon_ls::diagnostics::Located;
 use babylon_ls::line_index::LineIndex;
-use babylon_ls::pass::{diagnose_bsl, FixtureSourceReader};
+use babylon_ls::pass;
+use babylon_ls::pass::FixtureSourceReader;
+use lsp_types::Diagnostic;
+use std::path::Path;
 
 /// `babylon-bsl`'s own conformance corpus — the deliberately-rejecting
 /// `E-PARSE-020` vector this crate's fixtures reuse rather than
@@ -46,14 +54,14 @@ fn uri(path: &str) -> Uri {
         .expect("valid test URI")
 }
 
-fn code_of(d: &lsp_types::Diagnostic) -> Option<&str> {
+fn code_of(d: &Diagnostic) -> Option<&str> {
     match &d.code {
         Some(NumberOrString::String(s)) => Some(s.as_str()),
         _ => None,
     }
 }
 
-fn precision_of(d: &lsp_types::Diagnostic) -> String {
+fn precision_of(d: &Diagnostic) -> String {
     d.data
         .as_ref()
         .and_then(|v| v.get("precision"))
@@ -62,7 +70,7 @@ fn precision_of(d: &lsp_types::Diagnostic) -> String {
         .to_owned()
 }
 
-fn family_of(d: &lsp_types::Diagnostic) -> String {
+fn family_of(d: &Diagnostic) -> String {
     d.data
         .as_ref()
         .and_then(|v| v.get("family"))
@@ -125,10 +133,15 @@ impl Minimal {
 fn row_1_empty_when_is_one_e_parse_020_file_tier_diagnostic() {
     let registries = Minimal::with_systems(&["event"]);
     let ctx = registries.context("empty_when.bsl");
-    let err = load_rule(EMPTY_WHEN, &ctx).expect_err("(when) must be rejected");
+    let err = rule_pipeline::load_rule(EMPTY_WHEN, &ctx).expect_err("(when) must be rejected");
     let located = Located::from_load_error(&err);
     let line_index = LineIndex::new(EMPTY_WHEN);
-    let diags = diagnostics_for_file(&uri("empty_when.bsl"), EMPTY_WHEN, &line_index, &[located]);
+    let diags = diagnostics::diagnostics_for_file(
+        &uri("empty_when.bsl"),
+        EMPTY_WHEN,
+        &line_index,
+        &[located],
+    );
     assert_eq!(diags.len(), 1, "{diags:?}");
     assert_eq!(code_of(&diags[0]), Some("E-PARSE-020"));
     assert_eq!(precision_of(&diags[0]), "file");
@@ -147,7 +160,7 @@ fn row_2_a_lexical_error_is_exact_tier_over_the_offending_token() {
         babylon_bsl::reader::read(source).expect_err("~= is not a valid comparison operator");
     let located = Located::from_load_error(&LoadError::Read(read_err));
     let line_index = LineIndex::new(source);
-    let diags = diagnostics_for_file(&uri("x.bsl"), source, &line_index, &[located]);
+    let diags = diagnostics::diagnostics_for_file(&uri("x.bsl"), source, &line_index, &[located]);
     assert_eq!(diags.len(), 1, "{diags:?}");
     assert_eq!(code_of(&diags[0]), Some("E-LEX-003"));
     assert_eq!(precision_of(&diags[0]), "exact");
@@ -174,8 +187,7 @@ rules = ["rules/probe.bsl"]
 consumers = []
 note = "diagnostics_conformance row 3 fixture"
 "#;
-    ContentSetManifest::parse(std::path::Path::new("content-sets.toml"), toml)
-        .expect("valid manifest")
+    ContentSetManifest::parse(Path::new("content-sets.toml"), toml).expect("valid manifest")
 }
 
 /// **Row 3**: a duplicate-intrinsic content set ⇒ `code == "E-LOAD-001"`,
@@ -198,7 +210,7 @@ fn row_3_duplicate_intrinsic_is_form_tier_with_the_second_declaration_related() 
         .into_iter()
         .collect(),
     };
-    let diags = diagnose_bsl(
+    let diags = pass::diagnose_bsl(
         &uri("rules/probe.bsl"),
         "rules/probe.bsl",
         &manifest,
@@ -235,10 +247,11 @@ fn row_4_bscn_duplicate_defconst_is_form_tier() {
   (defconst economy/base-subsistence 0.5c))
 ";
     let mut graph = HypergraphStore::new();
-    let err = load_scenario(source, &mut graph).expect_err("a duplicate defconst must be rejected");
+    let err = scenario::load_scenario(source, &mut graph)
+        .expect_err("a duplicate defconst must be rejected");
     let located = Located::from_scenario_error(&err);
     let line_index = LineIndex::new(source);
-    let diags = diagnostics_for_file(&uri("ft.bscn"), source, &line_index, &[located]);
+    let diags = diagnostics::diagnostics_for_file(&uri("ft.bscn"), source, &line_index, &[located]);
     assert_eq!(diags.len(), 1, "{diags:?}");
     assert_eq!(
         code_of(&diags[0]),
@@ -262,7 +275,7 @@ fn row_5_a_bsl_with_no_manifest_row_gets_the_information_notice() {
             .into_iter()
             .collect(),
     };
-    let diags = diagnose_bsl(
+    let diags = pass::diagnose_bsl(
         &uri("rules/orphan.bsl"),
         "rules/orphan.bsl",
         &manifest,
@@ -297,8 +310,8 @@ rules = ["rules/a.bsl", "rules/b.bsl"]
 consumers = []
 note = "determinism row fixture"
 "#;
-    let manifest = ContentSetManifest::parse(std::path::Path::new("content-sets.toml"), toml)
-        .expect("valid manifest");
+    let manifest =
+        ContentSetManifest::parse(Path::new("content-sets.toml"), toml).expect("valid manifest");
     // Two INDEPENDENT static-shape rejections, each uncoded/File-tier —
     // `(when)`'s own `E-PARSE-020` in one file, a missing `:fuel` in the
     // other — chosen so their outcome does not depend on load ORDER, only
@@ -316,8 +329,8 @@ note = "determinism row fixture"
         .into_iter()
         .collect(),
     };
-    let first = diagnose_bsl(&uri("rules/a.bsl"), "rules/a.bsl", &manifest, &source);
-    let second = diagnose_bsl(&uri("rules/a.bsl"), "rules/a.bsl", &manifest, &source);
+    let first = pass::diagnose_bsl(&uri("rules/a.bsl"), "rules/a.bsl", &manifest, &source);
+    let second = pass::diagnose_bsl(&uri("rules/a.bsl"), "rules/a.bsl", &manifest, &source);
     assert_eq!(
         serde_json::to_string(&first).unwrap(),
         serde_json::to_string(&second).unwrap()
@@ -332,9 +345,9 @@ note = "determinism row fixture"
         r#"rules = ["rules/b.bsl", "rules/a.bsl"]"#,
     );
     let reversed_manifest =
-        ContentSetManifest::parse(std::path::Path::new("content-sets.toml"), &reversed_toml)
+        ContentSetManifest::parse(Path::new("content-sets.toml"), &reversed_toml)
             .expect("valid manifest");
-    let reversed = diagnose_bsl(
+    let reversed = pass::diagnose_bsl(
         &uri("rules/a.bsl"),
         "rules/a.bsl",
         &reversed_manifest,
@@ -354,7 +367,7 @@ note = "determinism row fixture"
 #[test]
 fn diagnose_content_set_duplicate_intrinsic_carries_e_load_001() {
     let rule_source = format!("{FLOOR_INTRINSIC} {FLOOR_INTRINSIC} {PROBE_RULE}");
-    let errors = diagnose_content_set_sources(
+    let errors = babylon_tick::diagnose_content_set_sources(
         PROBE_SCENARIO,
         None,
         &[ContentRuleSource {
@@ -383,7 +396,7 @@ fn diagnose_content_set_duplicate_intrinsic_carries_e_load_001() {
 
 #[test]
 fn diagnose_content_set_duplicate_rule_carries_typed_location_data() {
-    let errors = diagnose_content_set_sources(
+    let errors = babylon_tick::diagnose_content_set_sources(
         PROBE_SCENARIO,
         None,
         &[

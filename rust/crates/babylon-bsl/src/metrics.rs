@@ -40,11 +40,14 @@
 //! ([`crate::bound_checker`]'s `ACCESSORS` row); the kernel's own budget
 //! for provider work lives in the determinism contract.
 
-use crate::declarations::{parse_type_name, DeclError};
+use crate::bindings::BindingDecl;
+use crate::declarations::DeclError;
 use crate::reader::{Atom, SExpr};
 use crate::types::{BslType, FieldDecl, FieldKind};
-use crate::vocabulary::{render_member, EnumKind};
+use crate::vocabulary::EnumKind;
 use std::collections::HashMap;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 
 /// What a metric is indexed by (§2.11, reusing §2.3's `<domain>`).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -126,7 +129,7 @@ impl MetricError {
 }
 
 impl std::fmt::Display for MetricError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         match self {
             Self::Unregistered { name } => write!(
                 f,
@@ -224,7 +227,7 @@ impl MetricRegistry {
     pub fn check_reading_forms(
         &self,
         rule: &SExpr,
-        decls: &[crate::bindings::BindingDecl],
+        decls: &[BindingDecl],
     ) -> Result<(), MetricError> {
         for decl in decls {
             let crate::bindings::BindSource::Metric(name) = &decl.source else {
@@ -323,7 +326,12 @@ fn parse_metric(form: &SExpr) -> Result<MetricDecl, MetricError> {
         match cursor {
             [SExpr::Atom(Atom::Keyword(kw)), SExpr::Atom(Atom::Symbol(value)), tail @ ..] => {
                 match kw.as_str() {
-                    "type" => ty = Some(parse_type_name(value).map_err(|e| from_decl(&e))?),
+                    "type" => {
+                        ty = Some(
+                            crate::declarations::parse_type_name(value)
+                                .map_err(|e| from_decl(&e))?,
+                        );
+                    }
                     "kind" => {
                         kind = Some(match value.as_str() {
                             "intensive" => FieldKind::Intensive,
@@ -387,7 +395,9 @@ fn parse_domain(items: &[SExpr]) -> Result<MetricDomain, MetricError> {
                      is a NodeType member (E-TYPE-011)"
                 )));
             }
-            Ok(MetricDomain::Element(render_member(member)))
+            Ok(MetricDomain::Element(crate::vocabulary::render_member(
+                member,
+            )))
         }
         other => Err(malformed(format!(
             "(domain <enum-ref> | :graph) — unrecognized shape {other:?}"
@@ -404,13 +414,13 @@ fn from_decl(e: &DeclError) -> MetricError {
 #[cfg(test)]
 mod tests {
     use super::{MetricDomain, MetricRegistry};
-    use crate::bindings::parse_bindings;
-    use crate::reader::read;
     use crate::types::FieldKind;
     use std::collections::HashMap;
 
     fn e(source: &str) -> crate::reader::SExpr {
-        read(source).expect("test source must parse").0
+        crate::reader::read(source)
+            .expect("test source must parse")
+            .0
     }
 
     const GRAPH_METRIC: &str = "(metric solidarity-density \
@@ -453,7 +463,7 @@ mod tests {
                        (binding c :expr (metric-of self betweenness-centrality))) \
              (effects (update-node self social-class/agitation (add 0.05i)))",
         );
-        let decls = parse_bindings(&ok).unwrap();
+        let decls = crate::bindings::parse_bindings(&ok).unwrap();
         assert_eq!(r.check_reading_forms(&ok, &decls), Ok(()));
     }
 
@@ -464,7 +474,7 @@ mod tests {
             "(bindings (binding c :metric betweenness-centrality)) \
              (effects (update-node self social-class/agitation (add 0.05i)))",
         );
-        let decls = parse_bindings(&via_binding).unwrap();
+        let decls = crate::bindings::parse_bindings(&via_binding).unwrap();
         assert_eq!(
             r.check_reading_forms(&via_binding, &decls)
                 .unwrap_err()
@@ -476,7 +486,7 @@ mod tests {
             "(bindings (binding d :expr (metric-of self solidarity-density))) \
              (effects (update-node self social-class/agitation (add 0.05i)))",
         );
-        let decls = parse_bindings(&via_accessor).unwrap();
+        let decls = crate::bindings::parse_bindings(&via_accessor).unwrap();
         assert_eq!(
             r.check_reading_forms(&via_accessor, &decls)
                 .unwrap_err()
@@ -495,7 +505,7 @@ mod tests {
              (effects (update-node self social-class/agitation (add 0.05i)))",
         ] {
             let form = rule(body);
-            let decls = parse_bindings(&form).unwrap();
+            let decls = crate::bindings::parse_bindings(&form).unwrap();
             assert_eq!(
                 r.check_reading_forms(&form, &decls)
                     .unwrap_err()
@@ -524,14 +534,15 @@ mod tests {
         // D55 supersedes D12's metric clause: a metric carries the kind its
         // registration declares, so an intensive one feeding an unweighted
         // mean is E-TYPE-042 exactly as an intensive field is.
-        use crate::typecheck::{typecheck_aggregation, TypeCode, TypeEnv};
+        use crate::typecheck::{TypeCode, TypeEnv};
         let mut fields = HashMap::new();
         registry().merge_into_kind_env(&mut fields);
         let env = TypeEnv {
             fields,
             exemptions: &[],
         };
-        let err = typecheck_aggregation(&e("(mean solidarity-density)"), &env).unwrap_err();
+        let err = crate::typecheck::typecheck_aggregation(&e("(mean solidarity-density)"), &env)
+            .unwrap_err();
         assert_eq!(err.code, Some(TypeCode::UnweightedMeanOfIntensive));
     }
 

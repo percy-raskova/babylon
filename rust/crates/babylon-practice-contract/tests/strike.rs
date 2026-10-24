@@ -1,20 +1,20 @@
 use babylon_practice_contract::ActorOrganizationId;
+use babylon_practice_contract::AdmittedStrikeProposal;
+use babylon_practice_contract::PracticeProposalKey;
 use babylon_practice_contract::{
-    admit_strike_proposal, admitted_strike_proposal_digest, decode_admitted_strike_proposal,
+    admitted_strike_proposal_digest, decode_admitted_strike_proposal,
     decode_strike_labor_process_register, decode_strike_proposal_contract,
-    encode_admitted_strike_proposal, encode_strike_labor_process_register,
-    encode_strike_proposal_contract, input_authority_ledger_digest, practice_proposal_key,
-    practice_resource_allocation_contract_digest, strike_labor_process_register_digest,
-    strike_proposal_contract_digest, validate_strike_labor_process_register, CampaignId,
-    InputAuthorityId, PracticeAuthorityKind, PracticeId, PracticeInputAuthority,
-    PracticeInputAuthorityLedger, PracticeIntent, PracticeIntentError, PracticeParameter,
-    PracticeResourceAllocationContract, PracticeTargetIdentity, PracticeTargetTag, ProposalNonce,
-    ResolveStrikeProposalError, ResolvedPracticeBatch, ResolvedPracticeBatchItem,
-    StrikeAffectedWorkerCohort, StrikeLaborProcessRegister, StrikeParticipationState,
-    StrikeProposalContract, StrikeProposalError, StrikeWorkerCohortIdentity,
-    StrikeWorkerOrganizationRelation, TaggedPracticeTarget, ADMITTED_STRIKE_PROPOSAL_DOMAIN_BYTES,
-    MAX_STRIKE_AFFECTED_COHORTS, MAX_STRIKE_ORGANIZATION_RELATIONS,
-    STRIKE_LABOR_PROCESS_REGISTER_DOMAIN_BYTES, STRIKE_PROPOSAL_CONTRACT_DOMAIN_BYTES,
+    strike_labor_process_register_digest, strike_proposal_contract_digest,
+    validate_strike_labor_process_register, CampaignId, InputAuthorityId, PracticeAuthorityKind,
+    PracticeId, PracticeInputAuthority, PracticeInputAuthorityLedger, PracticeIntent,
+    PracticeIntentError, PracticeParameter, PracticeResourceAllocationContract,
+    PracticeTargetIdentity, PracticeTargetTag, ProposalNonce, ResolveStrikeProposalError,
+    ResolvedPracticeBatch, ResolvedPracticeBatchItem, StrikeAffectedWorkerCohort,
+    StrikeLaborProcessRegister, StrikeParticipationState, StrikeProposalContract,
+    StrikeProposalError, StrikeWorkerCohortIdentity, StrikeWorkerOrganizationRelation,
+    TaggedPracticeTarget, ADMITTED_STRIKE_PROPOSAL_DOMAIN_BYTES, MAX_STRIKE_AFFECTED_COHORTS,
+    MAX_STRIKE_ORGANIZATION_RELATIONS, STRIKE_LABOR_PROCESS_REGISTER_DOMAIN_BYTES,
+    STRIKE_PROPOSAL_CONTRACT_DOMAIN_BYTES,
 };
 
 const CONTENT_DIGEST: [u8; 32] = [0x30; 32];
@@ -41,10 +41,11 @@ fn strike_intent(actor_org_id: u64) -> PracticeIntent {
         },
         proposal_nonce: ProposalNonce::from_bytes([0x20; 16]),
         quoted_content_digest: CONTENT_DIGEST,
-        quoted_resource_contract_digest: practice_resource_allocation_contract_digest(
-            &PracticeResourceAllocationContract::conservation_first(),
-        )
-        .expect("the governed allocation contract has a digest"),
+        quoted_resource_contract_digest:
+            babylon_practice_contract::practice_resource_allocation_contract_digest(
+                &PracticeResourceAllocationContract::conservation_first(),
+            )
+            .expect("the governed allocation contract has a digest"),
         parameters: Vec::new(),
         evidence_digests: Vec::new(),
     }
@@ -55,7 +56,7 @@ fn authoritative_context(
 ) -> (
     PracticeInputAuthorityLedger,
     ResolvedPracticeBatch,
-    babylon_practice_contract::PracticeProposalKey,
+    PracticeProposalKey,
 ) {
     let authority = PracticeInputAuthority {
         schema_version: 2,
@@ -75,7 +76,8 @@ fn authoritative_context(
         schema_version: 2,
         campaign_id: authority.campaign_id,
         resolve_tick: intent.resolve_tick,
-        authority_ledger_digest: input_authority_ledger_digest(&ledger).unwrap(),
+        authority_ledger_digest: babylon_practice_contract::input_authority_ledger_digest(&ledger)
+            .unwrap(),
         resource_allocation_contract_digest: intent.quoted_resource_contract_digest,
         content_digest: intent.quoted_content_digest,
         items: vec![ResolvedPracticeBatchItem {
@@ -83,16 +85,26 @@ fn authoritative_context(
             intent: intent.clone(),
         }],
     };
-    (ledger, batch, practice_proposal_key(intent))
+    (
+        ledger,
+        batch,
+        babylon_practice_contract::practice_proposal_key(intent),
+    )
 }
 
 fn admit(
     intent: &PracticeIntent,
     register: &StrikeLaborProcessRegister,
-) -> Result<babylon_practice_contract::AdmittedStrikeProposal, ResolveStrikeProposalError> {
+) -> Result<AdmittedStrikeProposal, ResolveStrikeProposalError> {
     let contract = StrikeProposalContract::materially_connected_workers();
     let (ledger, batch, proposal_key) = authoritative_context(intent);
-    admit_strike_proposal(&contract, &batch, &ledger, proposal_key, register)
+    babylon_practice_contract::admit_strike_proposal(
+        &contract,
+        &batch,
+        &ledger,
+        proposal_key,
+        register,
+    )
 }
 
 fn affected(labor_process: [u8; 32], cohort: [u8; 32]) -> StrikeAffectedWorkerCohort {
@@ -172,7 +184,13 @@ fn proposal_must_exist_in_the_authoritative_resolved_batch() {
     proposal_key.proposal_nonce = ProposalNonce::from_bytes([0x21; 16]);
 
     assert_eq!(
-        admit_strike_proposal(&contract, &batch, &ledger, proposal_key, &register(101)),
+        babylon_practice_contract::admit_strike_proposal(
+            &contract,
+            &batch,
+            &ledger,
+            proposal_key,
+            &register(101)
+        ),
         Err(ResolveStrikeProposalError::Strike(
             StrikeProposalError::StrikeProposalNotAccepted
         ))
@@ -261,9 +279,12 @@ fn contract_register_and_admission_round_trip_exact_bytes() {
     let register = register(101);
     let admission = admit(&intent, &register).unwrap();
 
-    let contract_bytes = encode_strike_proposal_contract(&contract).unwrap();
-    let register_bytes = encode_strike_labor_process_register(&register).unwrap();
-    let admission_bytes = encode_admitted_strike_proposal(&contract, &admission).unwrap();
+    let contract_bytes =
+        babylon_practice_contract::encode_strike_proposal_contract(&contract).unwrap();
+    let register_bytes =
+        babylon_practice_contract::encode_strike_labor_process_register(&register).unwrap();
+    let admission_bytes =
+        babylon_practice_contract::encode_admitted_strike_proposal(&contract, &admission).unwrap();
     let (ledger, batch, proposal_key) = authoritative_context(&intent);
 
     assert_eq!(contract_bytes.len(), 48);
@@ -314,7 +335,7 @@ fn contract_bytes_have_an_independent_literal_layout() {
     expected.extend_from_slice(&65_536_u32.to_be_bytes());
 
     assert_eq!(
-        encode_strike_proposal_contract(&contract).unwrap(),
+        babylon_practice_contract::encode_strike_proposal_contract(&contract).unwrap(),
         expected
     );
     assert_eq!(
@@ -329,7 +350,8 @@ fn forged_admission_cannot_omit_an_affected_worker_cohort() {
     let intent = strike_intent(101);
     let register = register(101);
     let admission = admit(&intent, &register).unwrap();
-    let mut payload = encode_admitted_strike_proposal(&contract, &admission).unwrap();
+    let mut payload =
+        babylon_practice_contract::encode_admitted_strike_proposal(&contract, &admission).unwrap();
     let (ledger, batch, proposal_key) = authoritative_context(&intent);
     let row_count_offset = ADMITTED_STRIKE_PROPOSAL_DOMAIN_BYTES.len() + 1 + 2 + 32 + 32 + 32 + 82;
     payload[row_count_offset..row_count_offset + 4].copy_from_slice(&1_u32.to_be_bytes());
@@ -356,7 +378,8 @@ fn forged_admission_cannot_substitute_an_affected_worker_cohort() {
     let intent = strike_intent(101);
     let register = register(101);
     let admission = admit(&intent, &register).unwrap();
-    let mut payload = encode_admitted_strike_proposal(&contract, &admission).unwrap();
+    let mut payload =
+        babylon_practice_contract::encode_admitted_strike_proposal(&contract, &admission).unwrap();
     let (ledger, batch, proposal_key) = authoritative_context(&intent);
     let first_row_offset =
         ADMITTED_STRIKE_PROPOSAL_DOMAIN_BYTES.len() + 1 + 2 + 32 + 32 + 32 + 82 + 4;
@@ -383,7 +406,8 @@ fn admission_decoder_refuses_a_non_strike_proposal_key_kind() {
     let intent = strike_intent(101);
     let register = register(101);
     let admission = admit(&intent, &register).unwrap();
-    let payload = encode_admitted_strike_proposal(&contract, &admission).unwrap();
+    let payload =
+        babylon_practice_contract::encode_admitted_strike_proposal(&contract, &admission).unwrap();
     let (ledger, batch, proposal_key) = authoritative_context(&intent);
     let proposal_key_offset = ADMITTED_STRIKE_PROPOSAL_DOMAIN_BYTES.len() + 1 + 2 + 32 + 32 + 32;
     let practice_offset = proposal_key_offset + 8 + 16 + 8;
@@ -497,7 +521,7 @@ fn maximum_plus_one_cohorts_refuses_before_encoding_rows() {
     };
 
     assert_eq!(
-        encode_strike_labor_process_register(&register),
+        babylon_practice_contract::encode_strike_labor_process_register(&register),
         Err(StrikeProposalError::StrikeAffectedCohortLimit)
     );
 }
@@ -514,7 +538,7 @@ fn maximum_plus_one_organization_relations_refuses_before_encoding_rows() {
     };
 
     assert_eq!(
-        encode_strike_labor_process_register(&register),
+        babylon_practice_contract::encode_strike_labor_process_register(&register),
         Err(StrikeProposalError::StrikeOrganizationRelationLimit)
     );
 }

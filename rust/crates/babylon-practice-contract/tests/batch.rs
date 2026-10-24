@@ -1,12 +1,11 @@
 use babylon_practice_contract::ActorOrganizationId;
 use babylon_practice_contract::{
-    decode_resolved_practice_batch, encode_practice_intent, encode_resolved_practice_batch,
-    input_authority_ledger_digest, resolved_practice_batch_digest,
-    validate_resolved_practice_batch, CampaignId, InputAuthorityId, PracticeAuthorityError,
-    PracticeAuthorityKind, PracticeBatchError, PracticeId, PracticeInputAuthority,
-    PracticeInputAuthorityLedger, PracticeIntent, PracticeIntentError, PracticeTargetIdentity,
-    PracticeTargetTag, ProposalNonce, ResolvedPracticeBatch, ResolvedPracticeBatchError,
-    ResolvedPracticeBatchItem, TaggedPracticeTarget, MAX_RESOLVED_PRACTICE_BATCH_CANONICAL_BYTES,
+    decode_resolved_practice_batch, encode_practice_intent, validate_resolved_practice_batch,
+    CampaignId, InputAuthorityId, PracticeAuthorityError, PracticeAuthorityKind,
+    PracticeBatchError, PracticeId, PracticeInputAuthority, PracticeInputAuthorityLedger,
+    PracticeIntent, PracticeIntentError, PracticeTargetIdentity, PracticeTargetTag, ProposalNonce,
+    ResolvedPracticeBatch, ResolvedPracticeBatchError, ResolvedPracticeBatchItem,
+    TaggedPracticeTarget, MAX_RESOLVED_PRACTICE_BATCH_CANONICAL_BYTES,
     MAX_RESOLVED_PRACTICE_BATCH_ITEMS, MIN_PRACTICE_INTENT_CANONICAL_BYTES,
     RESOLVED_PRACTICE_BATCH_DOMAIN_BYTES,
 };
@@ -140,7 +139,7 @@ fn resolved_batch_round_trips_independent_literal_bytes() {
 
     assert_eq!(expected.len(), 541);
     assert_eq!(
-        encode_resolved_practice_batch(&value, &ledger()).unwrap(),
+        babylon_practice_contract::encode_resolved_practice_batch(&value, &ledger()).unwrap(),
         expected
     );
     assert_eq!(
@@ -148,7 +147,7 @@ fn resolved_batch_round_trips_independent_literal_bytes() {
         value
     );
     assert_eq!(
-        resolved_practice_batch_digest(&value, &ledger()).unwrap(),
+        babylon_practice_contract::resolved_practice_batch_digest(&value, &ledger()).unwrap(),
         hex_digest("04292b2d21ec9512d0e5c7c7d184595c1f32904475007736a41f6dfba1f28594")
     );
 }
@@ -191,7 +190,8 @@ fn resolved_batch_preserves_missing_inactive_and_actor_authority_refusals() {
         rows: Vec::new(),
     };
     let mut missing = batch(vec![item(0x60)]);
-    missing.authority_ledger_digest = input_authority_ledger_digest(&empty_ledger).unwrap();
+    missing.authority_ledger_digest =
+        babylon_practice_contract::input_authority_ledger_digest(&empty_ledger).unwrap();
     assert_eq!(
         validate_resolved_practice_batch(&missing, &empty_ledger),
         Err(ResolvedPracticeBatchError::Authority(
@@ -204,7 +204,8 @@ fn resolved_batch_preserves_missing_inactive_and_actor_authority_refusals() {
         ..authority()
     });
     let mut inactive = batch(vec![item(0x60)]);
-    inactive.authority_ledger_digest = input_authority_ledger_digest(&empty_ledger).unwrap();
+    inactive.authority_ledger_digest =
+        babylon_practice_contract::input_authority_ledger_digest(&empty_ledger).unwrap();
     assert_eq!(
         validate_resolved_practice_batch(&inactive, &empty_ledger),
         Err(ResolvedPracticeBatchError::Authority(
@@ -306,8 +307,11 @@ fn resolved_batch_refuses_maximum_plus_one_before_nested_work() {
 #[test]
 fn resolved_batch_refuses_bad_ledger_before_nested_decode() {
     let authoritative = ledger();
-    let mut payload =
-        encode_resolved_practice_batch(&batch(vec![item(0x60)]), &authoritative).unwrap();
+    let mut payload = babylon_practice_contract::encode_resolved_practice_batch(
+        &batch(vec![item(0x60)]),
+        &authoritative,
+    )
+    .unwrap();
     let ledger_digest_offset = RESOLVED_PRACTICE_BATCH_DOMAIN_BYTES.len() + 1 + 2 + 16 + 8;
     let header_length = ledger_digest_offset + 32 + 32 + 32 + 2;
     payload[ledger_digest_offset] ^= 0x01;
@@ -363,7 +367,8 @@ fn resolved_batch_error_table_is_exact() {
 fn resolved_batch_digest_binds_top_level_identity_and_items() {
     let authoritative = ledger();
     let empty = batch(Vec::new());
-    let expected = resolved_practice_batch_digest(&empty, &authoritative).unwrap();
+    let expected =
+        babylon_practice_contract::resolved_practice_batch_digest(&empty, &authoritative).unwrap();
     let mut variants = Vec::with_capacity(5);
 
     let mut campaign = empty.clone();
@@ -383,7 +388,8 @@ fn resolved_batch_digest_binds_top_level_identity_and_items() {
     assert_eq!(variants.len(), 5);
     for variant in variants.iter().take(5) {
         assert_ne!(
-            resolved_practice_batch_digest(variant, &authoritative).unwrap(),
+            babylon_practice_contract::resolved_practice_batch_digest(variant, &authoritative)
+                .unwrap(),
             expected
         );
     }

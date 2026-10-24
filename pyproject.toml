@@ -84,6 +84,7 @@ docs = [
 required-version = ">=0.13.4"
 constraint-dependencies = [
   "certifi>=2026.10.19",
+  "filelock>=4.2.1",
   "pip>=26.2.2",
   "virtualenv>=21.14.12",
 ]

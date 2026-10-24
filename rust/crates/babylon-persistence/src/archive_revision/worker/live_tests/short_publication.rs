@@ -145,7 +145,8 @@ fn live_cancel_or_fail_after_prepare_creates_no_pin() {
             &cancellation,
         );
         assert_eq!(
-            result.expect_err("the fixture call returns its expected result"),
+            result
+                .expect_err("sweep_cancellable propagates the producer's cancellation or failure",),
             if cancel {
                 SemanticArchiveError::WorkerCanceled
             } else {

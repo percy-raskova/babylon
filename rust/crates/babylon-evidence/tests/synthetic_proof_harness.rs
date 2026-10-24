@@ -1217,6 +1217,8 @@ fn synthetic_profile_identity_fields_refuse_independently() {
 }
 
 #[test]
+// The proof header, preregistration and mutation identities form one ordered
+// scenario; splitting the assertions would hide the sequence each digest binds.
 #[allow(
     clippy::too_many_lines,
     reason = "`proof_header_preregistration_and_mutation_identities_are_closed` keeps one authored sequence in a single place"
@@ -1340,6 +1342,8 @@ fn proof_header_preregistration_and_mutation_identities_are_closed() {
     );
 }
 
+// The ledger, schedule, exogenous and cadence precedence checks share one
+// candidate bundle; helpers would duplicate it and obscure the precedence order.
 #[allow(
     clippy::too_many_lines,
     reason = "`candidate_ledger_schedule_exogenous_and_cadence_precedence_is_exact` keeps one authored sequence in a single place"

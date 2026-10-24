@@ -18,7 +18,15 @@ mod register;
 
 use register::{columns, rows, MAX_BYTES};
 pub(crate) use register::{decode_admitted, decode_against_admitted, MAX_STATE_PACKAGE_BYTES};
-pub use register::{encode_lookup, encode_register_with_opening, OpeningRegister, StorageError};
+// Task 5 condition (b): `EncodedState` stays reachable at its old state_storage
+// path even though this module is private and no in-tree caller names it yet.
+#[allow(
+    unused_imports,
+    reason = "Task 5 condition (b): preserve EncodedState's old module path"
+)]
+pub use register::{
+    encode_lookup, encode_register_with_opening, EncodedState, OpeningRegister, StorageError,
+};
 
 use layout::layout;
 use schema::Cursor;

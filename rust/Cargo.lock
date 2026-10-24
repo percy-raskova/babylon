@@ -1957,7 +1957,6 @@ name = "bsl-test"
 version = "0.1.0"
 dependencies = [
  "babylon-bsl",
- "babylon-kernel",
  "bsl-lint",
 ]
 

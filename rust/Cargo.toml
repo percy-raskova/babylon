@@ -62,16 +62,16 @@ split-debuginfo = "unpacked"
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
-# 1.87 is bnum 0.14's MSRV, not a preference — declaring 1.85 while
+# 1.87 is bnum 0.14's declared MSRV, not a preference — declaring 1.85 while
 # depending on a crate that needs 1.87 would be a false claim about who
 # can build this workspace. The toolchain pin (rust-toolchain.toml) is
 # 1.91.1, so this is the floor we support, not the one we use.
-# Best-effort/advisory (issue #525 rider, Director ruling 2): this number
-# is copied from bnum's declared MSRV, not independently verified against
-# this workspace — no cargo-msrv (or equivalent) check runs here, so 1.87
-# has never been mechanically confirmed as the actual minimum this crate
-# graph builds under. Treat it as the floor bnum forces us to declare, not
-# a tested promise.
+# The toolchain/dependency report (2026-10-23) found the true floor of this
+# crate graph is 1.89.0, set by bevy and uuid — bnum's 1.87 is not the
+# maximum requirement. The declared number stays 1.87 until PER-351 rules on
+# the bump; treat it as advisory (issue #525 rider, Director ruling 2), not a
+# tested promise: no cargo-msrv (or equivalent) check runs here, so no value
+# in this field has been mechanically confirmed as the actual minimum.
 rust-version = "1.87"
 license = "AGPL-3.0-or-later"   # in-tree = babylon's own license, not the sibling BSD
 
@@ -84,7 +84,8 @@ unsafe_code = "forbid"
 # `non_exhaustive_omitted_patterns` is deliberately absent: the lint is still
 # unstable on the pinned 1.91.1 toolchain (rust-lang/rust#89554), so declaring
 # it here emits `unknown_lints` on every crate and fails `-D warnings`. EXC-02
-# and the `bsl-lint google-rust-style` wildcard-arm check cover that obligation.
+# bans internal `#[non_exhaustive]`, so rustc's E004 non-exhaustive-match error
+# and review carry that obligation; no wildcard-arm check exists.
 
 [workspace.lints.clippy]
 # Baseline cursor for the CLI-planned lints below; the group stays a warning so

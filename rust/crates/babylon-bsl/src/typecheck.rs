@@ -1621,7 +1621,8 @@ mod tests {
             Ok(Some(ExprKind::Extensive)),
             "must not silently become extensive: {result:?}"
         );
-        let err = result.expect_err("the fixture call returns its expected result");
+        let err =
+            result.expect_err("the mixed intensive/extensive division is refused as E-TYPE-040");
         assert_eq!(err.code, Some(TypeCode::KindMixing));
     }
 

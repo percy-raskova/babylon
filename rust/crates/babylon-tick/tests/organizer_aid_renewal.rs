@@ -47,7 +47,7 @@ fn paid_handoff(rows: &MaterialTickReceipts, d: &HouseholdDemandReceipt) -> u64 
         assert!(actual.is_none());
         return 0;
     }
-    let actual = actual.expect("the fixture call returns its actual value");
+    let actual = actual.expect("a fulfilled demand has a matching local fulfillment row");
     assert_eq!(
         (
             actual.retailer_site_id,

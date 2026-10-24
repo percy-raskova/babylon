@@ -31,12 +31,19 @@ HOSTED_STATIC_TASKS = [
 ]
 
 PEDANTIC_RUST_PACKAGES = [
-    "babylon-kernel",
-    "babylon-persistence",
     "babylon-bsl",
-    "babylon-graph",
-    "babylon-ls",
     "babylon-client",
+    "babylon-evidence",
+    "babylon-graph",
+    "babylon-kernel",
+    "babylon-ls",
+    "babylon-material-circuit",
+    "babylon-persistence",
+    "babylon-practice-contract",
+    "babylon-rtd",
+    "babylon-tick",
+    "bsl-lint",
+    "bsl-test",
 ]
 
 
@@ -556,7 +563,7 @@ def test_rust_reporter_tasks_and_nextest_profile_are_agent_first() -> None:
 
 
 def test_single_clippy_pass_preserves_the_existing_pedantic_package_boundary() -> None:
-    """Manifest lint policy must preserve every formerly scoped pedantic pass."""
+    """Every workspace crate must opt into the workspace pedantic lint table."""
     workspace = tomllib.loads((REPOSITORY_ROOT / "rust" / "Cargo.toml").read_text())
 
     assert workspace["workspace"]["lints"]["clippy"]["pedantic"] == {

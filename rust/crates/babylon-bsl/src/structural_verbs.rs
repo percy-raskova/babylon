@@ -1830,7 +1830,7 @@ mod tests {
         let mut observed = Fixture::new();
         let mut observed_fuel = 256;
         let (result, _log) = observed.run_observed(EVERY_VERB, &mut observed_fuel);
-        result.expect("the fixture call returns its expected result");
+        result.expect("the observed run admits the authored verb program");
 
         assert_eq!(
             snapshot(&unobserved.graph),
@@ -1907,7 +1907,7 @@ mod tests {
         let mut fixture = Fixture::new();
         let mut fuel = 256;
         let (result, log) = fixture.run_observed(EVERY_VERB, &mut fuel);
-        result.expect("the fixture call returns its expected result");
+        result.expect("the recorded run admits the authored verb program");
 
         let self_id = fixture.self_id;
         assert_eq!(
@@ -2080,7 +2080,7 @@ mod tests {
         );
         assert_eq!(
             result
-                .expect_err("the fixture call returns its expected result")
+                .expect_err("the out-of-range social-class value is refused")
                 .code,
             Some(EvalCode::StoreRangeViolation)
         );
@@ -2105,7 +2105,7 @@ mod tests {
                (update-node self social-class/agitation (add 0.05i))))",
             &mut fuel,
         );
-        result.expect("the fixture call returns its expected result");
+        result.expect("the guarded verb program runs with its branch untaken");
         assert!(
             log.records.is_empty(),
             "the ordinal counts writes, not effect items considered"
@@ -2125,7 +2125,7 @@ mod tests {
                (update-node self social-class/head-count (set 250)))",
             &mut fuel,
         );
-        result.expect("the fixture call returns its expected result");
+        result.expect("the two-set program admits both authored writes");
         let previous: Vec<_> = log
             .records
             .iter()

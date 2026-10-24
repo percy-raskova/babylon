@@ -12,5 +12,4 @@ workspace = true
 
 [dependencies]
 babylon-bsl = { path = "../babylon-bsl" }
-babylon-kernel = { path = "../babylon-kernel" }
 bsl-lint = { path = "../bsl-lint" }

@@ -1601,7 +1601,7 @@ mod marker_integrity_controls {
                 );
                 assert_eq!(db.message(), message, "{case}");
             } else {
-                result.expect("the fixture call returns its expected result");
+                result.expect("a complete marker row satisfies the deferred constraint check");
             }
             tx.rollback().expect("the open transaction rolls back");
             assert_eq!(counts(&mut client), before, "{case}");

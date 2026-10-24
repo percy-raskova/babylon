@@ -127,7 +127,7 @@ fn resolver_manifest_admits_exact_sixteen_mib_and_rejects_plus_one() {
             ));
             continue;
         }
-        let admitted = result.expect("the fixture call returns its expected result");
+        let admitted = result.expect("the resolver admits a manifest exactly at the 16 MiB limit");
         assert_eq!(
             admitted
                 .node_key(final_node)

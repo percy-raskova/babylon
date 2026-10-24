@@ -2594,7 +2594,7 @@ mod tests {
         let mut fuel = 100;
         let result = eval_with("(if (< 0 1) 1 undeclared-var)", HashMap::new(), &mut fuel);
         assert_eq!(
-            result.expect("the fixture call returns its expected result"),
+            result.expect("the taken branch evaluates without reading the untaken one"),
             Value::Int(1)
         );
         // if(1) + cmp(1) + two literals(0) + taken literal(0) = 2 consumed.

@@ -135,7 +135,8 @@ not silently skip its work, substitute a plausible default, or leave a
 declared guardrail inactive.
 
 <!-- Vale: the ratified four-week Article V wording is kept verbatim. -->
-<!-- vale off -->
+<!-- vale ste.ParagraphLength = NO -->
+<!-- vale ste.Semicolon = NO -->
 The Rust engine adjudicates one four-week tick, exactly 28 days, as a pure
 transformation over a working copy. Each period has one causal traversal and
 one atomic commit, with no internal weekly substeps. Thirteen periods span
@@ -144,10 +145,16 @@ BSL supplies governed rules, shocks, policies, and action
 semantics as content. Database access, wall-clock time, narration, rendering,
 and network services must not take part in adjudication. A failed rule aborts
 the whole working copy. No partial tick becomes visible.
-<!-- vale on -->
+<!-- vale ste.Semicolon = YES -->
+<!-- vale ste.ParagraphLength = YES -->
 
 <!-- Vale: Article V wording is ratified by Amendment AL and stays verbatim. -->
-<!-- vale off -->
+<!-- vale ste.SentenceLength = NO -->
+<!-- vale ste.Semicolon = NO -->
+<!-- vale ste.Modals = NO -->
+<!-- vale ste.Dictionary = NO -->
+<!-- vale write-good.TooWordy = NO -->
+<!-- vale strunk.ActiveVoice = NO -->
 Publication of a completed economic period occurs only after detached
 adjudication. One Rust campaign owner commits the current world, required
 causal registers, accepted-input consumption, choice and player receipts,
@@ -160,7 +167,12 @@ remain immutable inputs. Historical engineering detail may be bounded under
 the declared retention contract; current causal state, permanent player
 history, required choice evidence and deterministic replay inputs must remain
 sufficient for their declared consumers.
-<!-- vale on -->
+<!-- vale strunk.ActiveVoice = YES -->
+<!-- vale write-good.TooWordy = YES -->
+<!-- vale ste.Dictionary = YES -->
+<!-- vale ste.Modals = YES -->
+<!-- vale ste.Semicolon = YES -->
+<!-- vale ste.SentenceLength = YES -->
 
 State is data, the engine is transformation, and clients are projections. AI
 can observe, retrieve knowledge allowed by fog, and narrate with citations. AI
@@ -381,7 +393,9 @@ determinism, and atomic publication remain binding. This amendment adds no
 mathematical primitive and changes no reserved theoretical commitment.
 
 <!-- Vale: the ratified Amendment AK wording is kept verbatim. -->
-<!-- vale off -->
+<!-- vale ste.Dictionary = NO -->
+<!-- vale write-good.TooWordy = NO -->
+<!-- vale ste.Semicolon = NO -->
 New campaign content binds the duration into its admitted identity.
 Incompatible weekly campaigns remain preserved but cannot resume under the
 new interval. Historical ADRs, contracts, and codec vectors retain their
@@ -394,7 +408,9 @@ executable and native acceptance require separate evidence.
 AK advances the Constitution from v4.1.0 to v4.2.0. Its behavioral contract is
 `contracts/simulation_interval_v1.yaml`; its transition record is
 `ai/decisions/ADR257_four_week_simulation_interval.yaml`.
-<!-- vale on -->
+<!-- vale ste.Semicolon = YES -->
+<!-- vale write-good.TooWordy = YES -->
+<!-- vale ste.Dictionary = YES -->
 
 ### Amendment AL — Embedded SQLite Campaign Owner and Bounded Technical Retention
 

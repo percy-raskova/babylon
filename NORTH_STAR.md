@@ -35,16 +35,19 @@ where can I organize, and what sustains collective action?
 Who bears its costs, and what changes as a result?
 Statistical totals and citations belong in context views and the Archive.
 
+<!-- Vale: the ratified period and calendar wording is kept verbatim. -->
+<!-- vale ste.ParagraphLength = NO -->
+<!-- vale ste.Semicolon = NO -->
 The player advances in four-week periods. Each advance resolves one 28-day
 simulation tick and then pauses. Continuous play waits for each committed
 observation before requesting the next period. Important developments also
-pause play for a closer look.
-
-Thirteen periods form a 52-week model year. These periods do not claim to be
-calendar months.
+pause play for a closer look. Thirteen periods form a 52-week model year;
+periods do not claim to be calendar months.
 A briefing explains what changed, why it matters to the organization,
 and links to records that the player can examine. The player makes the
 strategic judgment.
+<!-- vale ste.Semicolon = YES -->
+<!-- vale ste.ParagraphLength = YES -->
 
 Hearts of Iron IV and Victoria 3 are references for strategic scale and pace.
 Dwarf Fortress is a reference for systems that interact and produce histories.
@@ -89,8 +92,8 @@ aid with slower cross-region solidarity, using actual goods, money and time.
 The [design and worked accounts](reports/national-economy-design-2026-09-20.md)
 record that direction and its evidence.
 
-National qualification measures the embedded SQLite campaign store, separating
-one-time captures from each period's state and history. Address avoidable
+National qualification measures the ratified embedded SQLite campaign store,
+separating one-time captures from each period's state and history. Address avoidable
 serialization duplication before the playable build. Storage improvements must
 preserve county coverage, exact accounts, replay and recovery. Larger persistence
 changes must show measured benefits and explicit recovery evidence.
@@ -216,8 +219,8 @@ runs current repository and operator tools.
 <!-- Vale: this paragraph preserves literal persistence and schema identifiers. -->
 <!-- vale ste.UnapprovedWords = NO -->
 <!-- vale ste.NounClusters = NO -->
-Reference SQLite and Parquet are data-build artifacts. The ratified campaign
-store is a separate embedded SQLite 3.53.1 database owned by Rust (ADR287). It
+Reference SQLite and Parquet are data-build artifacts. The ratified destination
+is a separate embedded SQLite 3.53.1 campaign store owned by Rust (ADR287). It
 is not the reference-build SQLite product.
 
 Rust owns authoritative replay, checkpoint

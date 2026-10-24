@@ -64,7 +64,7 @@ Same-rank rules compose sequentially. `MaterialReplaySession` publishes material
 
 Rust's executable `phase_order.rs` owns the causal schedule. The removed Python engine is recoverable at `p27-python-freeze`. BSL citations read that Git tag. Historical detector labels are not promised outcomes.
 
-Reference Parquet and reference-build SQLite are immutable build artifacts. The campaign store is a separate embedded SQLite 3.53.1 database (ADR287). Retained Python builds reference data and runs repository and operator tools.
+Reference Parquet and reference-build SQLite are immutable build artifacts. Retained Python builds reference data and runs repository and operator tools.
 
 Rust owns the current Postgres three-schema boundary, marker-last commits, checkpoint restart, and Archive dirty receipts. The ratified destination is one embedded SQLite campaign database (ADR287). Archive and checkpoint read paths move with that cutover.
 
@@ -76,7 +76,7 @@ The semantic Archive worker and restricted reader supply cited county, place, wo
 PER-48 is decided.
 <!-- vale ste.PassiveVoice = YES -->
 <!-- vale strunk.ActiveVoice = YES -->
-The one-way cutover is complete. Rust owns authoritative campaign state. Amendment AL makes one embedded SQLite 3.53.1 owner the durable publication boundary, and PER-354 is retiring the Postgres campaign owner. Do not add dual-write, a storage trait, or a silent Postgres fallback. Python retains only current data, repository, and operator consumers. It has no simulation engine, mutable game SQLite, transition reader, or Django browser.
+The one-way cutover is complete. Rust owns authoritative campaign state. Amendment AL ratifies one embedded SQLite 3.53.1 owner as the durable publication boundary, and PER-354 is retiring the Postgres campaign owner. Do not add dual-write, a storage trait, or a silent Postgres fallback. Python retains only current data, repository, and operator consumers. It has no simulation engine, mutable game SQLite, transition reader, or Django browser.
 <!-- vale ste.NounClusters = YES -->
 <!-- vale ste.UnapprovedWords = YES -->
 
@@ -134,7 +134,7 @@ Keep unrelated user changes unchanged. Report an unrelated fault unless the owne
 ## Toolchain and host safety
 
 Use native libraries and `.mise.toml`, `mise.lock`, and `.python-version` pins (ADR252). Install with `mise install --locked` and `mise run install`.
-Run Cargo from `rust/` to use `rust-toolchain.toml`. Reference tools use `mise exec -- uv run --frozen python` in the project `.venv`. The builder checks SQLite 3.53.1. Rust links the bundled 3.53.1 runtime and refuses a mismatch.
+Run Cargo from `rust/` to use `rust-toolchain.toml`. Reference tools use `mise exec -- uv run --frozen python` in the project `.venv`. The builder checks SQLite 3.53.1. The ratified destination links a bundled SQLite 3.53.1 runtime and refuses a mismatch (ADR287 R2), and no crate consumes it yet.
 
 Do not set `PYTHONPATH`. Run heavy gates uncapped and serially. Keep `BLAS=1`.
 

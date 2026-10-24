@@ -1,8 +1,13 @@
 //! Shared test-only synthetic scale fixture; no real infrastructure claim.
 
 use babylon_persistence::michigan_material::{MichiganMaterialCatalog, MichiganPhysicalNetwork};
+use flate2::read::GzDecoder;
+use flate2::Compression;
+use flate2::GzBuilder;
 use serde::Deserialize;
+use std::io::ErrorKind;
 use std::io::Read;
+use std::path::PathBuf;
 
 const CANONICAL_DEFINES: &str =
     include_str!("../../../../../content/scenarios/michigan/defines.toml");
@@ -18,7 +23,7 @@ pub struct SyntheticFixture {
 pub fn load() -> SyntheticFixture {
     let encoded = include_bytes!("statewide_synthetic.json.gz");
     let mut bytes = Vec::new();
-    flate2::read::GzDecoder::new(encoded.as_slice())
+    GzDecoder::new(encoded.as_slice())
         .take(1_048_577)
         .read_to_end(&mut bytes)
         .unwrap();
@@ -57,7 +62,7 @@ pub fn catalog() -> MichiganMaterialCatalog {
 
 /// Owned sibling files for the real fresh-campaign loader, with synthetic interventions only.
 pub struct SyntheticSources {
-    directory: std::path::PathBuf,
+    directory: PathBuf,
 }
 
 impl SyntheticSources {
@@ -72,7 +77,7 @@ impl SyntheticSources {
             ));
             match std::fs::create_dir(&candidate) {
                 Ok(()) => break candidate,
-                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+                Err(error) if error.kind() == ErrorKind::AlreadyExists => {}
                 Err(error) => panic!("create exact synthetic fixture directory: {error}"),
             }
         };
@@ -81,7 +86,7 @@ impl SyntheticSources {
         sources
     }
 
-    pub fn path(&self, name: &str) -> std::path::PathBuf {
+    pub fn path(&self, name: &str) -> PathBuf {
         self.directory.join(name)
     }
 
@@ -149,9 +154,9 @@ fn hex_digest(bytes: &[u8]) -> String {
 
 fn gzip_json(value: &impl serde::Serialize) -> Vec<u8> {
     use std::io::Write;
-    let mut writer = flate2::GzBuilder::new()
+    let mut writer = GzBuilder::new()
         .mtime(0)
-        .write(Vec::new(), flate2::Compression::default());
+        .write(Vec::new(), Compression::default());
     writer
         .write_all(&serde_json::to_vec(value).unwrap())
         .unwrap();

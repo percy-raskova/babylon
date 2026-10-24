@@ -93,6 +93,12 @@ unsafe_code = "forbid"
 pedantic = { level = "warn", priority = -1 }
 # Denied outright: each of these has a mechanical rewrite that never changes
 # behavior, and leaving one to warning level let it accumulate.
+#
+# An `allow`/`expect` attribute is a claim that a lint is wrong here, so it must
+# carry the argument (`reason = "..."`) in the same place a reader meets the
+# suppression. Verified present on the pinned 1.91.1 clippy (`restriction`);
+# reasoning standard is `docs/agents/rust-style.md` and Task 10b.
+allow_attributes_without_reason = "deny"
 borrowed_box = "deny"
 for_kv_map = "deny"
 len_without_is_empty = "deny"

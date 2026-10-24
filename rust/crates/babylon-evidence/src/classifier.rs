@@ -75,7 +75,7 @@ impl PersistenceClass {
 }
 
 /// Exact refusals for the SFS output classifier.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SfsClassError {
     /// The window width lies outside 2 through 52.
     InvalidWindowWidth { found: u16 },
@@ -90,7 +90,7 @@ pub enum SfsClassError {
 }
 
 /// Exact refusals for the control/intervention persistence classifier.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PersistenceClassError {
     /// The post width lies outside 2 through 52.
     InvalidPostWidth { found: u16 },

@@ -588,7 +588,7 @@ mod tests {
     use babylon_persistence::observer_reader::{ObserverEconomySnapshot, ObserverVisibility};
 
     use crate::map_economy_lens::EconomyMetric;
-    use crate::observer_layout::ObserverLayout;
+    use crate::observer_layout::{HistoryDrawerState, ObserverLayout};
     use crate::observer_ui::ObserverDisclosure;
     use babylon_persistence::identity::CampaignId;
     use bevy::asset::AssetPlugin;
@@ -787,7 +787,15 @@ mod tests {
         for window_size in [Vec2::new(1366.0, 768.0), Vec2::new(1920.0, 1080.0)] {
             for scale in [1.0, 1.15, 1.3] {
                 for history_open in [false, true] {
-                    let layout = ObserverLayout::new(window_size, scale, history_open);
+                    let layout = ObserverLayout::new(
+                        window_size,
+                        scale,
+                        if history_open {
+                            HistoryDrawerState::Open
+                        } else {
+                            HistoryDrawerState::Closed
+                        },
+                    );
                     let world =
                         Rect::from_corners(layout.world.min * scale, layout.world.max * scale);
                     app.world_mut().resource_mut::<ObserverViewport>().0 = Some(world);

@@ -221,7 +221,7 @@ impl NationalTransportReference {
 }
 
 /// Specific source/capture refusals, never an inferred zero or partial graph.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NationalTransportError {
     /// Byte, row or path bound exceeded.
     Bound,

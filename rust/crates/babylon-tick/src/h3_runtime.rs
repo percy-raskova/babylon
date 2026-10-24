@@ -490,7 +490,7 @@ impl MichiganDynamicHexFoundation {
 }
 
 /// Closed Michigan foundation construction failures.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MichiganDynamicHexFoundationError {
     /// The H3 cell is not resolution seven.
     NonR7Cell { cell: H3CellId },

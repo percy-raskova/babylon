@@ -19,6 +19,7 @@ use crate::observer_theme as theme;
 use crate::observer_ui::{ObserverCommand, ObserverFontRole, ObserverUiState};
 use crate::production::PrimaryView;
 
+use super::editor::FocusState;
 use super::qualification_input::HandlerReceipt;
 use super::{presentation, OrganizerClient, OrganizerInspector, RequestKind};
 use crate::observer::SessionPhase;
@@ -1250,6 +1251,11 @@ fn paint_text(scope: &Scope, focus: &InputFocus, paint: &mut Paint) {
     let note_focused = focus
         .get()
         .is_some_and(|entity| paint.notes.contains(entity));
+    let note_focus = if note_focused {
+        FocusState::Focused
+    } else {
+        FocusState::Unfocused
+    };
     for (part, mut text) in &mut paint.texts {
         let value = match part {
             TextPart::Title => scope.client.view.as_ref().map_or_else(|| "Wayne Organizing Collective".into(), |view| view.organization_label.clone()),
@@ -1274,8 +1280,8 @@ fn paint_text(scope: &Scope, focus: &InputFocus, paint: &mut Paint) {
             TextPart::DraftStatus => if !scope.client.draft_writable { "Draft saving unavailable · original file retained".into() } else if scope.client.draft_dirty { "Draft changes awaiting save".into() } else { "Personal draft saved".into() },
             TextPart::Message => scope.client.message.clone(),
             TextPart::Notes => scope.client.draft.as_ref().map_or_else(String::new, |draft| {
-                if draft.notes.text.is_empty() && !note_focused { "Click or Tab here to write personal notes.".into() }
-                else { draft.notes.display(note_focused) }
+                if draft.notes.text.is_empty() && note_focus == FocusState::Unfocused { "Click or Tab here to write personal notes.".into() }
+                else { draft.notes.display(note_focus) }
             }),
             TextPart::InspectorTitle => inspector_title.clone(), TextPart::InspectorBody => inspector_body.clone(),
         };

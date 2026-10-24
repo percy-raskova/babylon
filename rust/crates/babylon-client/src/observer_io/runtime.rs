@@ -29,7 +29,7 @@ use crate::observer_ui::{ObserverCommand, ObserverFeedback, ObserverFrame, Obser
 
 use crate::atlas::CountyAtlas;
 use crate::map::SelectedCounty;
-use crate::map_economy_lens::MapLens;
+use crate::map_economy_lens::{CycleDirection, MapLens, ScopeTransition};
 use crate::observer_audio::ObserverAudioSettings;
 use crate::observer_controls;
 use crate::observer_opening::OpeningPresentation;
@@ -1066,11 +1066,17 @@ pub(crate) fn apply_presentation_command(command: ObserverCommand, context: &mut
                 MapLens::Relationships | MapLens::Qcew(_) | MapLens::Workforce(_) => None,
             };
             ui.lens = MapLens::Material { kind, good };
-            ui.lens.reconcile(frame.for_session(state), false);
+            ui.lens
+                .reconcile(frame.for_session(state), ScopeTransition::Unchanged);
             ui.disclosure = None;
         }
         ObserverCommand::CycleGood(backwards) => {
-            ui.lens.cycle_good(frame.for_session(state), backwards);
+            let direction = if backwards {
+                CycleDirection::Backward
+            } else {
+                CycleDirection::Forward
+            };
+            ui.lens.cycle_good(frame.for_session(state), direction);
         }
         ObserverCommand::Archive => ui.archive_open = !ui.archive_open,
         ObserverCommand::Menu => {

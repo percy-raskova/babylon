@@ -123,7 +123,7 @@ pub struct SimulationExperimentV1 {
     pub interventions: Vec<ExperimentIntervention>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ExperimentError {
     Input,
     Profile,

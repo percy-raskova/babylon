@@ -75,21 +75,33 @@ impl DossierSegment {
     }
 }
 
+/// Whether the Archive page behind a known place trails the durable tick.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PendingState {
+    /// The place page's verified tick sits behind the durable tick.
+    Pending,
+    /// The place page is verified at the durable tick.
+    Ready,
+}
+
 /// One place-link chip on the dossier card (ADR249 R5).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PlaceChip {
     geoid: String,
     label: Option<String>,
-    pending: bool,
+    pending: PendingState,
 }
 
 impl PlaceChip {
     /// A labeled chip: the Archive acknowledges a known page for the place.
-    /// `pending` marks the Archive-lag case (the place page's verified tick
-    /// sits behind the durable tick) — rendered DIM with a "· pending"
+    /// `pending` marks the Archive-lag case — rendered DIM with a "· pending"
     /// suffix instead of a glyph strikethrough.
     #[must_use]
-    pub fn known(geoid: impl Into<String>, label: impl Into<String>, pending: bool) -> Self {
+    pub fn known(
+        geoid: impl Into<String>,
+        label: impl Into<String>,
+        pending: PendingState,
+    ) -> Self {
         Self {
             geoid: geoid.into(),
             label: Some(label.into()),
@@ -104,7 +116,7 @@ impl PlaceChip {
         Self {
             geoid: geoid.into(),
             label: None,
-            pending: false,
+            pending: PendingState::Ready,
         }
     }
 
@@ -123,7 +135,7 @@ impl PlaceChip {
     /// Return whether this chip renders in the pending (Archive-lag) state.
     #[must_use]
     pub const fn is_pending(&self) -> bool {
-        self.pending
+        matches!(self.pending, PendingState::Pending)
     }
 }
 
@@ -133,7 +145,7 @@ impl PlaceChip {
 #[must_use]
 pub fn chip_text(chip: &PlaceChip) -> String {
     match &chip.label {
-        Some(label) if chip.pending => format!("{label} · pending"),
+        Some(label) if chip.is_pending() => format!("{label} · pending"),
         Some(label) => label.clone(),
         None => babylon_persistence::fog_chip("place", &chip.geoid),
     }
@@ -200,14 +212,26 @@ pub fn signal_row_segments(atom: &ArchiveAtom) -> Vec<DossierSegment> {
     ]
 }
 
+/// How much of a retained signal row's evidence the card shows.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SignalDetailLevel {
+    /// Label and value only.
+    Collapsed,
+    /// Label, value, and the exact source, locator, and field.
+    Expanded,
+}
+
 /// Exact retained display labels and values, with evidence expanded inline.
 #[must_use]
-pub fn retained_signal_segments(signal: &ArchiveSignal, details: bool) -> Vec<DossierSegment> {
+pub fn retained_signal_segments(
+    signal: &ArchiveSignal,
+    detail: SignalDetailLevel,
+) -> Vec<DossierSegment> {
     let mut parts = vec![
         DossierSegment::new(format!("{}: ", signal.label()), DossierTone::BoneDim),
         DossierSegment::new(signal.value(), DossierTone::Bone),
     ];
-    if details {
+    if detail == SignalDetailLevel::Expanded {
         parts.push(DossierSegment::new(
             format!(
                 "\nSource: {}\nLocator: {}\nField: {}",
@@ -373,7 +397,7 @@ mod tests {
 
     #[test]
     fn granted_chip_renders_its_label() {
-        let chip = PlaceChip::known("2622000", "Detroit", false);
+        let chip = PlaceChip::known("2622000", "Detroit", PendingState::Ready);
         assert!(chip.is_known());
         assert!(!chip.is_pending());
         assert_eq!(chip_text(&chip), "Detroit");
@@ -381,7 +405,7 @@ mod tests {
 
     #[test]
     fn pending_chip_renders_dim_suffix_without_strikethrough_glyphs() {
-        let chip = PlaceChip::known("2622000", "Detroit", true);
+        let chip = PlaceChip::known("2622000", "Detroit", PendingState::Pending);
         assert_eq!(chip_text(&chip), "Detroit · pending");
         // Decision 2: no combining-glyph or strike bytes anywhere.
         assert!(!chip_text(&chip).contains('\u{336}'));
@@ -392,6 +416,7 @@ mod tests {
     fn fog_chip_synthesizes_kind_and_id_with_zero_label_bytes() {
         let chip = PlaceChip::unknown("2674900");
         assert!(!chip.is_known());
+        assert!(!chip.is_pending());
         let text = chip_text(&chip);
         assert_eq!(text, "unknown place · 2674900");
         // The hidden label must not leak into the synthesized bytes (R5).

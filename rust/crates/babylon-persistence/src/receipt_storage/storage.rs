@@ -24,7 +24,7 @@ pub(crate) const CANONICAL_DOMAIN: &[u8] = b"babylon.material-tick-receipts.v18\
 pub(crate) const MAX_RECEIPT_STORAGE_BYTES: usize =
     MAX_MATERIAL_TICK_RECEIPT_BYTES + DOMAIN.len() + 88 + RECEIPT_FAMILY_COUNT * 59;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Error {
     Canonical,
     Tick,

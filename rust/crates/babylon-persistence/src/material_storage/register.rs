@@ -28,7 +28,7 @@ pub(crate) const MAX_LOOKUP_BYTES: usize = 1_000_000_000;
 // Includes zstd's compressBound allowance plus this wrapper's complete metadata.
 pub(crate) const MAX_LOOKUP_PACKAGE_BYTES: usize = MAX_LOOKUP_BYTES + MAX_LOOKUP_BYTES / 256 + 1024;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Error {
     State(StorageError),
     Receipt(ReceiptStorageError),

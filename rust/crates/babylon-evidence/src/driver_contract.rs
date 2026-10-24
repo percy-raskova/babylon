@@ -32,7 +32,7 @@ pub struct ValidatedSyntheticDriver<'a> {
 }
 
 /// Exact driver-contract framing and identity refusals.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SyntheticDriverContractError {
     ManifestByteLimit { actual: usize },
     ManifestMalformed { row: usize },

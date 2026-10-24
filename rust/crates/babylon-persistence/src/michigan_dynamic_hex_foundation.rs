@@ -32,7 +32,7 @@ static FOUNDATION: OnceLock<
 > = OnceLock::new();
 
 /// Closed decoding failures for the immutable Michigan foundation artifact.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MichiganDynamicHexFoundationDecodeError {
     /// The supplied byte sequence is shorter than the one governed artifact.
     Truncated,
@@ -196,7 +196,7 @@ pub fn michigan_dynamic_hex_foundation(
         decode_michigan_dynamic_hex_foundation(&joined)
     }) {
         Ok(foundation) => Ok(foundation),
-        Err(error) => Err(error.clone()),
+        Err(error) => Err(*error),
     }
 }
 

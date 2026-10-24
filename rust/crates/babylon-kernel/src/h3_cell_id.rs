@@ -44,7 +44,7 @@ impl H3ImmediateChildren {
 }
 
 /// Typed H3 cell identity failures with no catch-all variant.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum H3CellIdError {
     /// The raw unsigned value is not a valid H3 cell index.
     InvalidCellIndex { raw: u64 },

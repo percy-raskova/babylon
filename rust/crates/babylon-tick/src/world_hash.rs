@@ -148,6 +148,7 @@ mod tests {
         )
         .unwrap();
 
+        // STYLE-EXCEPTION(EXC-05): manual byte-table alignment
         #[rustfmt::skip]
         let expected: &[u8] = &[
             // Domain + u32 layout version 1.

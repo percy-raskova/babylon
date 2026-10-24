@@ -9,7 +9,7 @@ use babylon_tick::material_world::MaterialTickReceipts;
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Refusal {
     Period,
     SiteIdentity,

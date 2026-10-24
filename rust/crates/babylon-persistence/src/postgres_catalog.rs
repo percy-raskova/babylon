@@ -107,7 +107,7 @@ pub struct CatalogCensus {
 }
 
 /// Strict fixture parser failures.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CatalogCensusParseError {
     /// Fixture bytes exceeded the public ceiling.
     TooManyBytes { actual: usize, max: usize },

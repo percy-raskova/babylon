@@ -134,7 +134,7 @@ impl NationalCohortReference {
 }
 
 /// Specific source refusals; no repair, zero fill or partial capture fallback.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NationalCohortReferenceError {
     /// Compressed bytes, decoded bytes, rows or members exceed the bound.
     Bound,

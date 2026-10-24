@@ -97,7 +97,7 @@ impl NationalHouseholdReference {
 }
 
 /// Exact refusal boundaries for source capture; missing values never become zero.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum HouseholdReferenceError {
     /// Compressed, decoded or row bound exceeded.
     Bound,

@@ -98,7 +98,7 @@ impl NationalResidentWorkforceReference {
 }
 
 /// Specific source refusals; unavailable counts never become numeric zero.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ResidentWorkforceReferenceError {
     /// Compressed, decoded or row bounds were exceeded.
     Bound,

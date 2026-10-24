@@ -268,7 +268,7 @@ impl NationalCountyReference {
 }
 
 /// Specific admission failures; no fallback to a partial roster or inferred value.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NationalCountyReferenceError {
     /// Compressed bytes, decompressed bytes or row count exceeded the bound.
     Bound,

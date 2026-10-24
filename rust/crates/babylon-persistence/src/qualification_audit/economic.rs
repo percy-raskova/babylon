@@ -13,7 +13,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::result::Result as StdResult;
 
 const WITNESSES: usize = 8;
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Refusal {
     Period,
     Duplicate,

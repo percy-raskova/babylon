@@ -24,7 +24,7 @@ use babylon_tick::material_world;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Formatter;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Refusal {
     Admission,
     OriginalOffer,
@@ -126,7 +126,7 @@ pub(in crate::qualification_audit) fn one<T>(
     mut rows: impl Iterator<Item = T>,
     refusal: Refusal,
 ) -> Result<T> {
-    let row = rows.next().ok_or_else(|| refusal.clone())?;
+    let row = rows.next().ok_or(refusal)?;
     if rows.next().is_some() {
         return Err(refusal);
     }

@@ -31,7 +31,7 @@ use crate::organizer::OrganizerClient;
 use crate::palette;
 use crate::ui::dossier_compose;
 use crate::ui::dossier_compose::{
-    chronicle_header, chronicle_row_segments, DossierSegment, DossierTone,
+    chronicle_header, chronicle_row_segments, DossierSegment, DossierTone, SignalDetailLevel,
     DOSSIER_DECISION_QUESTION, INVESTIGATE_SEALED_CHIP,
 };
 use babylon_persistence::archive_revision::{
@@ -1424,7 +1424,11 @@ fn paint_zones(
                         .map(|signal| {
                             dossier_compose::retained_signal_segments(
                                 signal,
-                                presentation.details_open,
+                                if presentation.details_open {
+                                    SignalDetailLevel::Expanded
+                                } else {
+                                    SignalDetailLevel::Collapsed
+                                },
                             )
                         })
                         .collect()
@@ -2285,17 +2289,22 @@ mod tests {
     #[test]
     fn retained_signal_labels_and_citations_are_not_reconstructed_from_atom_keys() {
         let signal = signal();
-        let collapsed = dossier_compose::retained_signal_segments(&signal, false);
+        let collapsed =
+            dossier_compose::retained_signal_segments(&signal, SignalDetailLevel::Collapsed);
         assert_eq!(collapsed[0].text, "Original jobs label: ");
         assert_eq!(collapsed[1].text, "1469 annual average jobs");
-        let expanded = dossier_compose::retained_signal_segments(&signal, true);
+        let expanded =
+            dossier_compose::retained_signal_segments(&signal, SignalDetailLevel::Expanded);
         assert!(expanded[2].text.contains("observed-source"));
         assert!(expanded[2].text.contains("exact/locator"));
     }
 
     #[test]
     fn rendered_signal_rows_stack_and_wrap_without_losing_citation_bytes() {
-        let rows = vec![dossier_compose::retained_signal_segments(&signal(), true)];
+        let rows = vec![dossier_compose::retained_signal_segments(
+            &signal(),
+            SignalDetailLevel::Expanded,
+        )];
         let expected: String = rows[0].iter().map(|part| part.text.as_str()).collect();
         let mut app = App::new();
         app.add_plugins(MinimalPlugins)

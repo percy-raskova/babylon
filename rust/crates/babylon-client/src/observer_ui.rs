@@ -15,7 +15,9 @@ use crate::map::CountyMapScope;
 use crate::map::{HoveredCounty, SelectedCounty};
 use crate::map_economy_lens;
 use crate::map_economy_lens::WorkforceMetric;
-use crate::map_economy_lens::{CountyLensReading, EconomyMetric, MapLens, MaterialLensKind};
+use crate::map_economy_lens::{
+    CountyLensReading, EconomyMetric, MapLens, MaterialLensKind, ScopeTransition,
+};
 use crate::observer::ObserverSession;
 use crate::observer::Perspective;
 use crate::observer_audio::ObserverAudioSettings;
@@ -25,7 +27,7 @@ use crate::observer_focus::{
     ObserverFocusPolicy, ObserverFocusSystems, ObserverFocusTarget, ObserverKeyboardActivate,
     ObserverKeyboardClaim,
 };
-use crate::observer_layout::{ObserverLayout, ObserverRegion};
+use crate::observer_layout::{HistoryDrawerState, ObserverLayout, ObserverRegion};
 use crate::observer_opening::ProductionRoot;
 use crate::observer_opening::{MenuPage, OpeningPresentation, OpeningStage};
 use crate::observer_progress::OperationProgress;
@@ -2077,7 +2079,11 @@ fn fit_viewport(
     let layout = ObserverLayout::new(
         Vec2::new(window.width(), window.height()),
         scale.0,
-        ui.history_open,
+        if ui.history_open {
+            HistoryDrawerState::Open
+        } else {
+            HistoryDrawerState::Closed
+        },
     );
     for (region, mut node) in &mut regions {
         let rect = layout.region(*region);
@@ -2112,7 +2118,14 @@ fn reconcile_lens(
         return;
     }
     let mut lens = ui.lens.clone();
-    lens.reconcile(frame.for_session(&session), changed);
+    lens.reconcile(
+        frame.for_session(&session),
+        if changed {
+            ScopeTransition::Changed
+        } else {
+            ScopeTransition::Unchanged
+        },
+    );
     if ui.lens != lens {
         ui.lens = lens;
     }

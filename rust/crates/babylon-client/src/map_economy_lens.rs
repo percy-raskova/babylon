@@ -113,6 +113,24 @@ pub enum WorkforceMetric {
     Employed,
     Reserve,
 }
+
+/// Whether the observation scope changed since the previous reconciliation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ScopeTransition {
+    /// The campaign or perspective changed; a selected material identity cannot cross the boundary.
+    Changed,
+    /// The same campaign and perspective still scope the observation.
+    Unchanged,
+}
+
+/// The direction one material-good cycle advances.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CycleDirection {
+    /// Advance to the following good in retained order.
+    Forward,
+    /// Step back to the preceding good in retained order.
+    Backward,
+}
 impl WorkforceMetric {
     #[must_use]
     pub const fn label(self) -> &'static str {
@@ -153,11 +171,15 @@ impl MapLens {
 
     /// Preserve the selected identity across periods. A different campaign or
     /// capability clears it, including while its new observation is pending.
-    pub fn reconcile(&mut self, snapshot: Option<&ObserverEconomySnapshot>, scope_changed: bool) {
+    pub fn reconcile(
+        &mut self,
+        snapshot: Option<&ObserverEconomySnapshot>,
+        scope: ScopeTransition,
+    ) {
         let Self::Material { kind, good } = self else {
             return;
         };
-        if scope_changed {
+        if scope == ScopeTransition::Changed {
             *good = None;
         }
         let Some(snapshot) = snapshot else {
@@ -169,7 +191,11 @@ impl MapLens {
         }
     }
 
-    pub fn cycle_good(&mut self, snapshot: Option<&ObserverEconomySnapshot>, backwards: bool) {
+    pub fn cycle_good(
+        &mut self,
+        snapshot: Option<&ObserverEconomySnapshot>,
+        direction: CycleDirection,
+    ) {
         let Self::Material { kind, good } = self else {
             return;
         };
@@ -185,7 +211,7 @@ impl MapLens {
             .iter()
             .position(|row| Some(&row.key) == good.as_ref());
         let next = index.map_or(0, |index| {
-            if backwards {
+            if direction == CycleDirection::Backward {
                 (index + choices.len() - 1) % choices.len()
             } else {
                 (index + 1) % choices.len()
@@ -1011,7 +1037,7 @@ freight_order_definitions: Vec::new(),
         let mut selection = lens(MaterialLensKind::ProducedThisPeriod);
         assert!(selection.label_for_log(Some(&snapshot)).contains("Good a"));
         assert!(!selection.label_for_log(None).contains("Good a"));
-        selection.reconcile(None, true);
+        selection.reconcile(None, ScopeTransition::Changed);
         assert_eq!(
             selection,
             MapLens::Material {
@@ -1021,7 +1047,7 @@ freight_order_definitions: Vec::new(),
         );
         // Even an accidentally attached full payload cannot open preview choices.
         snapshot.visibility = ObserverVisibility::KnownPreview;
-        selection.reconcile(Some(&snapshot), false);
+        selection.reconcile(Some(&snapshot), ScopeTransition::Unchanged);
         assert!(
             material_choices(&snapshot, MaterialLensKind::ProducedThisPeriod)
                 .unwrap()
@@ -1041,7 +1067,7 @@ freight_order_definitions: Vec::new(),
     fn selected_good_survives_same_scope_history_loading_and_cycles_by_identity() {
         let snapshot = snapshot();
         let mut selection = lens(MaterialLensKind::ProducedThisPeriod);
-        selection.cycle_good(Some(&snapshot), false);
+        selection.cycle_good(Some(&snapshot), CycleDirection::Forward);
         assert_eq!(
             selection,
             MapLens::Material {
@@ -1049,10 +1075,10 @@ freight_order_definitions: Vec::new(),
                 good: Some(key('b'))
             }
         );
-        selection.reconcile(None, false);
-        selection.reconcile(Some(&snapshot), false);
+        selection.reconcile(None, ScopeTransition::Unchanged);
+        selection.reconcile(Some(&snapshot), ScopeTransition::Unchanged);
         assert!(selection.label_for_log(Some(&snapshot)).contains("Good b"));
-        selection.cycle_good(Some(&snapshot), true);
+        selection.cycle_good(Some(&snapshot), CycleDirection::Backward);
         assert_eq!(selection, lens(MaterialLensKind::ProducedThisPeriod));
     }
 }

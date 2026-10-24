@@ -27,7 +27,7 @@ use std::collections::BTreeSet;
 use std::fmt::Formatter;
 use std::fmt::Result as FmtResult;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Refusal {
     Scope,
     Period,

@@ -22,7 +22,7 @@ use std::io::Write;
 pub(crate) const CHUNK: usize = 4096;
 
 /// Exact event storage admission failure, before durable publication.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Error {
     /// A lookup or event identity exceeds its native integer representation.
     IdentityOverflow,

@@ -12,7 +12,7 @@ use std::fmt::Result as FmtResult;
 use std::time::Instant;
 use uuid::Uuid;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Refusal {
     Version,
     Hash,

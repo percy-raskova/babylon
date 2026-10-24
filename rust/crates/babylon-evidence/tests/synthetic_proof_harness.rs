@@ -36,7 +36,7 @@ const AUDIT_SOURCES: &[u8] =
     include_bytes!("../../babylon-bsl/tests/fixtures/sfs_profile/sfs_audit_source_manifest_v1.txt");
 const WIRE_VECTORS: &str = include_str!("fixtures/sfs_wire_vectors.txt");
 const IDENTITY_MUTATIONS: &str = include_str!("fixtures/sfs_identity_mutations.txt");
-const SYNTHETIC_EMPTY_EXOGENOUS_DIGEST: Digest32 = Digest32::from_bytes([0xE0; 32]);
+const SYNTHETIC_EMPTY_EXOGENOUS_DIGEST: Digest32 = Digest32::from_bytes([0xe0; 32]);
 const MEMBERSHIP_DESCRIPTOR: &[u8] =
     b"membership-reducer maps one synthetic field value to one reducer output";
 const PRODUCER_DESCRIPTOR: &[u8] =

@@ -14,7 +14,7 @@ use babylon_kernel::content_digest;
 use std::collections::BTreeMap;
 
 /// Exact territory definition admission failures.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Error {
     /// A period is negative or a tick writer attempts opening period zero.
     InvalidTick,

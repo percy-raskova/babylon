@@ -37,7 +37,7 @@ use weights::Peers;
 pub(crate) type Result<T> = std::result::Result<T, AllocationError>;
 
 /// Explicit refusal of incomplete source controls or inconsistent captured placement.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AllocationError {
     SourceScope,
     MissingObservation,

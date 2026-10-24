@@ -1372,7 +1372,7 @@ fn production_context_yields_its_rail_to_readings_and_returns_after_close() {
 
 #[test]
 fn expanded_readings_use_the_side_panel_and_yield_to_modal_views() {
-    use crate::observer_layout::{ObserverLayout, ObserverRegion};
+    use crate::observer_layout::{HistoryDrawerState, ObserverLayout, ObserverRegion};
 
     let mut app = production_panel_app();
     send_command(&mut app, ProductionCommand::Open);
@@ -1391,7 +1391,7 @@ fn expanded_readings_use_the_side_panel_and_yield_to_modal_views() {
     );
     assert!(world.get::<ChildOf>(detail).is_none());
     for size in [Vec2::new(1366.0, 768.0), Vec2::new(1920.0, 1080.0)] {
-        let layout = ObserverLayout::new(size, 1.0, false);
+        let layout = ObserverLayout::new(size, 1.0, HistoryDrawerState::Closed);
         let reading = layout.region(ObserverRegion::Log);
         assert!(reading.height() > 600.0);
         assert!(reading.min.x > layout.world.max.x);

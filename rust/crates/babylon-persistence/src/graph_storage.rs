@@ -11,7 +11,7 @@ use postgres::Error as PostgresError;
 use std::collections::{BTreeMap, BTreeSet};
 const CHUNK: usize = 4096;
 /// Exact graph storage admission failures.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Error {
     /// Node rows exceed current stable graph admission.
     NodeLimit,

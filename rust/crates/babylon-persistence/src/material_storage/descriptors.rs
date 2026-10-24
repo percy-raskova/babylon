@@ -10,7 +10,7 @@ use babylon_material_circuit::{
 use std::collections::BTreeMap;
 use std::result::Result as StdResult;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Error {
     Recipe,
     Reference,

@@ -89,7 +89,7 @@ impl NationalHouseholdAllocation {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum HouseholdAllocationError {
     SourceScope,
     MissingObservation,

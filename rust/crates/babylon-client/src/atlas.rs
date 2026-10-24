@@ -710,7 +710,7 @@ mod tests {
     #[test]
     fn rejects_a_tampered_byte() {
         let mut bytes = ATLAS_BYTES.to_vec();
-        bytes[200_000] ^= 0xFF;
+        bytes[200_000] ^= 0xff;
         assert_eq!(
             CountyAtlas::parse(&bytes).unwrap_err(),
             AtlasError::HashMismatch
@@ -822,7 +822,7 @@ mod tests {
         let mut bytes = ATLAS_BYTES.to_vec();
         // First county's fips field starts at byte 128; 0xFF is not a
         // valid UTF-8 lead byte.
-        bytes[128] = 0xFF;
+        bytes[128] = 0xff;
         recompute_hash(&mut bytes);
         assert_eq!(
             CountyAtlas::parse(&bytes).unwrap_err(),

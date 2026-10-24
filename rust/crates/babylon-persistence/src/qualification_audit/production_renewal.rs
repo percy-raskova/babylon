@@ -20,7 +20,7 @@ const MAX_PENDING: usize = 4096;
 type Native = (GoodId, UnitId);
 type Group = (SiteId, GoodId, UnitId);
 type Result<T> = StdResult<T, Refusal>;
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Refusal {
     SeedPeriod,
     Period,

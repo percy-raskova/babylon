@@ -232,7 +232,7 @@ impl H3ReferenceCohort {
 }
 
 /// Closed failures for representative H3 cohort construction.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum H3ReferenceCohortError {
     /// The checked-in fixture did not begin with the sole v1 domain.
     FixtureDomainMismatch,

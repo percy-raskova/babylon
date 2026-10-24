@@ -14,7 +14,7 @@ use std::fmt::Formatter;
 use std::fmt::Result as FmtResult;
 
 /// One lock shared by schema construction, reference installation and role provisioning.
-pub const SCHEMA_ADVISORY_LOCK_KEY: i64 = 0xBAB1_0537;
+pub const SCHEMA_ADVISORY_LOCK_KEY: i64 = 0xbab1_0537;
 /// Exact current native schema source; historical SQL is not a runtime input.
 pub const CURRENT_SCHEMA_SQL: &str = include_str!("../migrations/current_schema.sql");
 const CURRENT_ARCHIVE_SQL: &str = include_str!("../migrations/current_archive.sql");

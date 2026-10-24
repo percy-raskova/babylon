@@ -96,6 +96,7 @@ use babylon_practice_contract::{
 use std::borrow::Cow;
 use std::fmt::Formatter;
 use std::fmt::Result as FmtResult;
+use std::ops::Deref;
 use std::sync::Arc;
 
 pub(crate) const REGISTER_DOMAIN: &[u8] = b"babylon.material-world-register.v4\0";
@@ -165,20 +166,57 @@ pub(crate) const fn maximum_material_receipt_bytes() -> usize {
     total
 }
 
+/// Immutable canonical register bytes that can be shared without copying.
+///
+/// The owned admission path adopts the caller's authenticated `Vec<u8>`
+/// allocation, which `organizer_aid_replay` pins with a pointer comparison.
+/// `Arc<[u8]>` cannot adopt an existing vector: it allocates a new inline
+/// header and copies the bytes. The handle therefore keeps the `Arc<Vec<u8>>`
+/// and hides the mutable vector behind [`Self::as_slice`], so no caller can
+/// change canonical bytes through a retained clone.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SharedCanonicalBytes(
+    #[allow(
+        clippy::rc_buffer,
+        reason = "owned register admission adopts the caller's exact canonical byte allocation"
+    )]
+    // STYLE-EXCEPTION(EXC-04): the handle adopts the caller's authenticated canonical allocation.
+    Arc<Vec<u8>>,
+);
+
+impl SharedCanonicalBytes {
+    fn from_vec(bytes: Vec<u8>) -> Self {
+        // STYLE-EXCEPTION(EXC-04): adopts the caller's canonical byte allocation.
+        Self(Arc::new(bytes))
+    }
+
+    fn from_slice(bytes: &[u8]) -> Result<Self, MaterialWorldError> {
+        let mut owned = bounded_bytes(bytes.len(), MAX_MATERIAL_WORLD_REGISTER_BYTES)?;
+        owned.extend_from_slice(bytes);
+        Ok(Self::from_vec(owned))
+    }
+
+    /// Borrow the exact admitted canonical bytes.
+    #[must_use]
+    pub fn as_slice(&self) -> &[u8] {
+        self.0.as_slice()
+    }
+
+    /// Whether both handles share one admitted allocation.
+    #[must_use]
+    pub fn shares_allocation(&self, other: &Self) -> bool {
+        // STYLE-EXCEPTION(EXC-04): the no-copy sharing contract is asserted here.
+        Arc::ptr_eq(&self.0, &other.0)
+    }
+}
+
 /// One checked complete material register at a completed four-week boundary.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MaterialWorldRegister {
     completed_tick: u64,
     state: MaterialCircuitState,
     organizer: Option<(OrganizerConfig, OrganizerState)>,
-    // The owned admission path must retain the caller's authenticated allocation
-    // (asserted by `organizer_aid_replay`); `Arc<Vec<u8>>` shares that buffer,
-    // while `Arc<[u8]>` copies it into a new Arc allocation.
-    #[allow(
-        clippy::rc_buffer,
-        reason = "owned register admission retains the caller's exact canonical byte allocation"
-    )]
-    canonical_bytes: Arc<Vec<u8>>,
+    canonical_bytes: SharedCanonicalBytes,
     digest: [u8; 32],
 }
 
@@ -272,7 +310,7 @@ impl MaterialWorldRegister {
             completed_tick,
             state,
             organizer,
-            canonical_bytes: Arc::new(bytes),
+            canonical_bytes: SharedCanonicalBytes::from_vec(bytes),
             digest,
         })
     }
@@ -307,12 +345,12 @@ impl MaterialWorldRegister {
     }
     #[must_use]
     pub fn canonical_bytes(&self) -> &[u8] {
-        &self.canonical_bytes
+        self.canonical_bytes.as_slice()
     }
     /// Share the immutable canonical allocation without cloning the state or bytes.
     #[must_use]
-    pub fn shared_canonical_bytes(&self) -> Arc<Vec<u8>> {
-        Arc::clone(&self.canonical_bytes)
+    pub fn shared_canonical_bytes(&self) -> SharedCanonicalBytes {
+        self.canonical_bytes.clone()
     }
     #[must_use]
     pub const fn digest(&self) -> [u8; 32] {
@@ -403,18 +441,14 @@ impl MaterialWorldRegister {
         drop(canonical_organizer);
         let digest = content_digest::sha256_of(&bytes);
         let canonical_bytes = match bytes {
-            Cow::Owned(bytes) => bytes,
-            Cow::Borrowed(bytes) => {
-                let mut owned = bounded_bytes(bytes.len(), MAX_MATERIAL_WORLD_REGISTER_BYTES)?;
-                owned.extend_from_slice(bytes);
-                owned
-            }
+            Cow::Owned(bytes) => SharedCanonicalBytes::from_vec(bytes),
+            Cow::Borrowed(bytes) => SharedCanonicalBytes::from_slice(bytes)?,
         };
         Ok(Self {
             completed_tick: tick,
             state,
             organizer,
-            canonical_bytes: Arc::new(canonical_bytes),
+            canonical_bytes,
             digest,
         })
     }
@@ -1112,6 +1146,46 @@ pub struct MaterialTickReceipts {
     pub local_fulfillments: Vec<babylon_material_circuit::LocalRetailFulfillmentReceipt>,
     pub local_transfers: Vec<babylon_material_circuit::LocalTransferReceipt>,
     pub maintenance: Option<MaintenanceReceipt>,
+}
+
+/// Shared handle to one immutable committed receipt family.
+///
+/// Storage admission and every observer hold this handle instead of naming the
+/// backing shared pointer, so the ownership decision stays in one place.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MaterialReceiptHandle(
+    // STYLE-EXCEPTION(EXC-04): one immutable receipt family shared by storage and observers.
+    Arc<MaterialTickReceipts>,
+);
+
+impl MaterialReceiptHandle {
+    /// Bind a decoded receipt family into its one shared owner.
+    #[must_use]
+    pub fn new(receipts: MaterialTickReceipts) -> Self {
+        // STYLE-EXCEPTION(EXC-04): one immutable receipt family shared by storage and observers.
+        Self(Arc::new(receipts))
+    }
+
+    /// Whether both handles share one admitted receipt family.
+    #[must_use]
+    pub fn shares_allocation(&self, other: &Self) -> bool {
+        // STYLE-EXCEPTION(EXC-04): witness reuse is asserted through this allocation check.
+        Arc::ptr_eq(&self.0, &other.0)
+    }
+}
+
+impl Deref for MaterialReceiptHandle {
+    type Target = MaterialTickReceipts;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl AsRef<MaterialTickReceipts> for MaterialReceiptHandle {
+    fn as_ref(&self) -> &MaterialTickReceipts {
+        &self.0
+    }
 }
 
 /// Decode a bounded receipt family. Hash/campaign binding belongs to its V3 envelope.

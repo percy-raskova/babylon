@@ -1,6 +1,8 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
-use super::{Mutex, Output, Progress, Result};
+use super::{Output, Result};
+use crate::artifacts::Progress;
+use std::sync::Mutex;
 
 use super::{artifacts, json, run, PathBuf};
 use std::ffi::OsString;

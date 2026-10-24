@@ -17,7 +17,8 @@ use crate::simulation_experiment::ExperimentProfile;
 use babylon_kernel::content_digest;
 use std::fmt::Formatter;
 use std::fmt::Result as FmtResult;
-use std::sync::{Arc, Mutex, OnceLock};
+use std::ops::Deref;
+use std::sync::{Arc, Mutex, OnceLock, Weak};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum EconomicContentError {
@@ -173,21 +174,73 @@ impl EconomicContentAdmission {
     }
 }
 
+/// Shared handle to one immutable admitted campaign foundation.
+///
+/// The admission is immutable and multi-megabyte; worker and reader threads
+/// share one owner instead of cloning the foundation or serializing readers.
+#[derive(Clone)]
+pub struct EconomicContentHandle(
+    // STYLE-EXCEPTION(EXC-04): one admitted foundation is shared across worker and reader threads.
+    Arc<EconomicContentAdmission>,
+);
+impl EconomicContentHandle {
+    pub(crate) fn new(admission: EconomicContentAdmission) -> Self {
+        // STYLE-EXCEPTION(EXC-04): first shared owner of the admitted foundation.
+        Self(Arc::new(admission))
+    }
+    /// The number of strong owners of this admission.
+    #[cfg(test)]
+    #[must_use]
+    pub(crate) fn strong_count(&self) -> usize {
+        // STYLE-EXCEPTION(EXC-04): the cursor's weak-reference contract is asserted here.
+        Arc::strong_count(&self.0)
+    }
+    pub(crate) fn downgrade(&self) -> EconomicContentRef {
+        // STYLE-EXCEPTION(EXC-04): an observation cursor tracks the admission without owning it.
+        EconomicContentRef(Arc::downgrade(&self.0))
+    }
+}
+impl Deref for EconomicContentHandle {
+    type Target = EconomicContentAdmission;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl AsRef<EconomicContentAdmission> for EconomicContentHandle {
+    fn as_ref(&self) -> &EconomicContentAdmission {
+        &self.0
+    }
+}
+
+/// Weak handle held by one observation cursor.
+#[derive(Clone, Debug)]
+pub(crate) struct EconomicContentRef(
+    // STYLE-EXCEPTION(EXC-04): a weak reference never extends the admission lifetime.
+    Weak<EconomicContentAdmission>,
+);
+impl EconomicContentRef {
+    pub(crate) fn upgrade(&self) -> Option<EconomicContentHandle> {
+        self.0.upgrade().map(EconomicContentHandle)
+    }
+}
+
 /// One explicit owner retains at most one campaign's immutable admitted source.
 /// No SQL rows, mutable material state, receipts or publication results live here.
 #[derive(Clone, Default)]
 pub(crate) struct EconomicAdmissionOwner {
+    // STYLE-EXCEPTION(EXC-04): cloned session owners share the one admission slot.
     candidate: Arc<Mutex<Option<EconomicAdmissionCandidate>>>,
 }
 struct EconomicAdmissionCandidate {
     campaign: CampaignId,
-    admitted: Arc<EconomicContentAdmission>,
+    admitted: EconomicContentHandle,
 }
 impl EconomicAdmissionOwner {
     pub(crate) fn candidate(
         &self,
         campaign: CampaignId,
-    ) -> Result<Option<Arc<EconomicContentAdmission>>, EconomicContentError> {
+    ) -> Result<Option<EconomicContentHandle>, EconomicContentError> {
         let candidate = self
             .candidate
             .lock()
@@ -195,13 +248,13 @@ impl EconomicAdmissionOwner {
         Ok(candidate
             .as_ref()
             .filter(|candidate| candidate.campaign == campaign)
-            .map(|candidate| Arc::clone(&candidate.admitted)))
+            .map(|candidate| candidate.admitted.clone()))
     }
     /// Call only after the complete consuming operation has succeeded.
     pub(crate) fn publish(
         &self,
         campaign: CampaignId,
-        admitted: Arc<EconomicContentAdmission>,
+        admitted: EconomicContentHandle,
     ) -> Result<(), EconomicContentError> {
         let previous = self
             .candidate

@@ -12,8 +12,9 @@ use babylon_practice_contract::{
     OrganizerAidKind, OrganizerChoice, OrganizerCommitment, OrganizerPreview,
 };
 use babylon_practice_contract::{OrganizerOutcome, OrganizerPartnerPolicy};
+use babylon_tick::material_world;
+use babylon_tick::material_world::MaterialReceiptHandle;
 use fixture::Session;
-use std::sync::Arc;
 use uuid::Uuid;
 
 fn snapshot(session: &Session) -> OrganizerSnapshot {
@@ -68,11 +69,8 @@ fn advance(
 ) -> (CommittedMaterialReceipts, OrganizerSnapshot) {
     let candidate = fixture::prepare(session, accepted);
     let identity = *candidate.identity();
-    let receipts = Arc::new(
-        babylon_tick::material_world::decode_material_receipts(
-            candidate.material().receipt_bytes(),
-        )
-        .unwrap(),
+    let receipts = MaterialReceiptHandle::new(
+        material_world::decode_material_receipts(candidate.material().receipt_bytes()).unwrap(),
     );
     fixture::commit(session, &mut CollectingSink::default(), candidate);
     let CircuitAccounting::Monetary(economy) = &session.material().state().accounting else {

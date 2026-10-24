@@ -81,7 +81,7 @@ and the SQL schema stay unchanged (Constitution III.7).
 
 | Guide rule | Babylon rule |
 | --- | --- |
-| Avoid `Rc` and `Arc` | Unique ownership and borrows by default. `Rc` and `Arc<Vec<T>>` are findings. Retained shared pointers follow EXC-04. |
+| Avoid `Rc` and `Arc` | Unique ownership and borrows by default. `Rc` is a finding everywhere. `Arc<Vec<T>>` is a finding unless a registered site adopts the caller's allocation. Retained shared pointers follow EXC-04. |
 | Prefer borrows over deep copies | Clone only for a real deep copy. Do not clone to dodge a borrow. |
 
 ### Function inputs and outputs
@@ -229,9 +229,12 @@ prelude for Babylon code stays banned.
 
 ### EXC-04: Retained `Rc` and `Arc` sites
 
-**Scope:** The shared-pointer sites that the check permits. The table lists
-each retained site. `Arc<Vec<T>>` becomes `Arc<[T]>` and is not a retained
-site.
+**Scope:** The shared-pointer owner types that the check permits. The table
+lists each retained site. `Arc<Vec<T>>` becomes `Arc<[T]>` except at the
+registered adopted-allocation site. A vector cannot move into an `Arc<[T]>`
+without a copy. The owning handle hides the mutable vector, so canonical bytes
+cannot change through a retained clone. Consumers name the handle, not the
+shared pointer.
 
 **Excluded rule:** The preference for unique ownership and borrowing over
 `Rc` and `Arc`.
@@ -245,16 +248,24 @@ that Babylon needs.
 | Site | Role |
 | --- | --- |
 | `babylon-kernel/src/geography/roster.rs` `NationalCountyRoster` | Immutable county identifier snapshot shared by every material reader. |
-| `babylon-tick/src/material_world/register.rs` `MaterialTickReceipts` | Immutable receipt family held as `Arc<MaterialTickReceipts>` between committed ticks. |
-| `babylon-persistence/src/economic_content.rs` `EconomicContentAdmission` | Admitted immutable foundation shared across worker and reader threads. |
+| `babylon-tick/src/material_world/register.rs` `MaterialReceiptHandle` | One immutable committed receipt family shared by storage and observers. |
+| `babylon-tick/src/material_world/register.rs` `SharedCanonicalBytes` | Immutable canonical register bytes. This is the only retained `Arc<Vec<u8>>`, because owned admission adopts the caller's authenticated allocation. |
+| `babylon-persistence/src/economic_content.rs` `EconomicContentHandle`, `EconomicContentRef`, `EconomicAdmissionOwner` | Admitted immutable foundation shared across worker and reader threads. The cursor holds only a weak reference. |
+| `babylon-persistence/src/state_storage/register.rs` `OpeningRegister` | Cloned opening readers share one parsed section table and one interned lookup. |
+| `babylon-persistence/src/observer_material/snapshot.rs` `PeriodRegister` | Observation-history clones share one immutable completed period register. |
+| `babylon-persistence/src/economic_catalog/sources.rs` `SourceArtifact` | Captured immutable source bytes shared by every artifact clone. |
 | `babylon-persistence/src/archive_worker.rs` `ArchiveWorkerCancellation` | `Arc<AtomicBool>` cancellation flag read by the worker thread. |
 | `babylon-client/src/logging.rs` `SinkState` | Cross-thread log writer behind `Arc<Mutex<SinkState>>`. |
-| `babylon-ls/tests/protocol.rs` `stderr_buf` | Test harness buffer shared with the spawned language server. |
+| `babylon-persistence/examples/michigan_experiment/artifacts.rs` `ProgressHandle` | Example only: the timeout watchdog reads the live progress snapshot from its own thread. |
+| `babylon-persistence/src/runtime_session/coordinator/tests/support.rs` `DriverStateHandle` | Test only: one backend, its driver and the progress writer share the control state. |
+| `babylon-persistence/tests/observer_material_live/runtime_process.rs` `Diagnostics` | Test only: one standard-error reader thread fills a bounded buffer that the test can read while the child runs. |
 
 **Retained obligations:** Every retained site in the table carries a
-`// STYLE-EXCEPTION(EXC-04): <reason>` comment. A new retained site needs an
-amendment to this register. `Rc<T>` and `Rc<RefCell<T>>` are findings
-everywhere. `Arc<Vec<T>>` is a finding everywhere and becomes `Arc<[T]>`.
+`// STYLE-EXCEPTION(EXC-04): <reason>` comment at each shared-pointer token.
+A new retained site needs an amendment to this register. `Rc<T>` and
+`Rc<RefCell<T>>` are findings everywhere and cannot carry a marker.
+`Arc<Vec<T>>` is a finding unless the registered adopted-allocation site marks
+it, and a new `Arc<Vec<T>>` site is a finding.
 
 ### EXC-05: Manual byte-table alignment
 

@@ -56,6 +56,7 @@ pub enum SourceArtifactKind {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SourceArtifact {
     kind: SourceArtifactKind,
+    // STYLE-EXCEPTION(EXC-04): captured source bytes are immutable and shared by every clone.
     bytes: Arc<[u8]>,
     digest: [u8; 32],
 }

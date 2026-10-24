@@ -5,14 +5,19 @@ use super::storage_witness;
 use crate::production_projection::diagnostics::{self, Stage};
 
 use babylon_tick::material_replay::IdentifiedMaterialTick;
-use babylon_tick::material_world::{MaterialTickReceipts, MaterialWorldRegister};
+use babylon_tick::material_world::{
+    MaterialReceiptHandle, MaterialTickReceipts, MaterialWorldRegister,
+};
 
 use postgres::GenericClient;
 
-use std::sync::{Arc, Weak};
+use std::ops::Deref;
+use std::sync::Arc;
 
 use crate::economic_content;
-use crate::economic_content::EconomicContentAdmission;
+use crate::economic_content::{
+    EconomicContentAdmission, EconomicContentHandle, EconomicContentRef,
+};
 use crate::identity::CampaignId;
 use crate::material_runtime;
 use crate::material_runtime::StoredMaterialTick;
@@ -73,7 +78,7 @@ pub(crate) fn decode_material_row(row: &Row) -> Result<MaterialObservationRow, E
 
 pub(crate) struct MaterialHeader {
     pub(crate) foundation_digest: Vec<u8>,
-    pub(crate) admission: Option<Arc<EconomicContentAdmission>>,
+    pub(crate) admission: Option<EconomicContentHandle>,
 }
 
 pub(crate) fn read_material_header(
@@ -81,7 +86,7 @@ pub(crate) fn read_material_header(
     campaign: CampaignId,
     tick: u64,
     visibility: ObserverVisibility,
-    cached: Option<&Arc<EconomicContentAdmission>>,
+    cached: Option<&EconomicContentHandle>,
 ) -> Result<Option<MaterialHeader>, ObserverEconomyError> {
     let header = transaction.query_opt("SELECT campaign_id, preset_id, duration_kind, final_period, content_sha256, foundation_sha256 FROM public.v_material_campaign_identity_v2 WHERE campaign_id=$1", &[campaign.as_uuid()]).map_err(|_| ObserverEconomyError::Database)?;
     let Some(header) = header else {
@@ -135,7 +140,7 @@ pub(crate) fn read_material_header(
             captured
                 .validate_against(cached)
                 .map_err(|_| ObserverEconomyError::ScenarioMismatch)?;
-            Some(Arc::clone(cached))
+            Some(cached.clone())
         } else {
             let rebuilt = captured
                 .admit()
@@ -150,7 +155,7 @@ pub(crate) fn read_material_header(
             admitted
                 .validate_header(duration, &content, &foundation_digest, tick)
                 .map_err(|_| ObserverEconomyError::ScenarioMismatch)?;
-            Some(Arc::new(admitted))
+            Some(EconomicContentHandle::new(admitted))
         }
     } else {
         // Public header shape is valid. Config, seed quantities and material
@@ -168,7 +173,7 @@ pub(crate) fn read_material_header(
 #[derive(Clone)]
 pub struct ObserverMaterialCursor {
     campaign: CampaignId,
-    admission: Weak<EconomicContentAdmission>,
+    admission: EconomicContentRef,
     admission_digest: [u8; 32],
     history: MaterialHistory,
 }
@@ -183,7 +188,7 @@ pub struct ObserverOpeningFoundations {
 }
 
 impl ObserverMaterialCursor {
-    pub(crate) fn admission(&self, campaign: CampaignId) -> Option<Arc<EconomicContentAdmission>> {
+    pub(crate) fn admission(&self, campaign: CampaignId) -> Option<EconomicContentHandle> {
         (self.campaign == campaign)
             .then(|| self.admission.upgrade())
             .flatten()
@@ -240,7 +245,7 @@ impl ObserverMaterialCursor {
     fn opening_admission(
         &self,
         campaign: CampaignId,
-    ) -> Result<Arc<EconomicContentAdmission>, ObserverEconomyError> {
+    ) -> Result<EconomicContentHandle, ObserverEconomyError> {
         if self.history.register != MaterialRegisterBoundary::Foundation {
             return Err(ObserverEconomyError::TickAbsent);
         }
@@ -261,11 +266,30 @@ pub(crate) struct MaterialHistory {
     pub(super) previous_lookup_chain: Option<[u8; 32]>,
     pub(super) register: MaterialRegisterBoundary,
     pub(super) opening: Option<MaterialRegisterBoundary>,
-    pub(super) receipt: Option<(Arc<MaterialTickReceipts>, [u8; 32])>,
+    pub(super) receipt: Option<(MaterialReceiptHandle, [u8; 32])>,
     receipt_witness: Option<AdmittedReceiptWitness>,
     pub(super) orders: OrderHistory,
     pub(super) prior_world: Option<[u8; 32]>,
     storage_prefix: [u8; 32],
+}
+
+/// One completed period register shared by every clone of an observation history.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct PeriodRegister(
+    // STYLE-EXCEPTION(EXC-04): history clones share the immutable completed register.
+    Arc<MaterialWorldRegister>,
+);
+impl PeriodRegister {
+    fn new(register: MaterialWorldRegister) -> Self {
+        // STYLE-EXCEPTION(EXC-04): first shared owner of the completed register.
+        Self(Arc::new(register))
+    }
+}
+impl Deref for PeriodRegister {
+    type Target = MaterialWorldRegister;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
 }
 
 /// Foundation state belongs to the immutable admission. A history owns only
@@ -273,7 +297,7 @@ pub(crate) struct MaterialHistory {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum MaterialRegisterBoundary {
     Foundation,
-    Period(Arc<MaterialWorldRegister>),
+    Period(PeriodRegister),
 }
 
 impl MaterialRegisterBoundary {
@@ -296,7 +320,7 @@ impl MaterialHistory {
     pub(super) fn receipt(&self) -> Option<(&MaterialTickReceipts, [u8; 32])> {
         self.receipt
             .as_ref()
-            .map(|(rows, digest)| (rows.as_ref(), *digest))
+            .map(|(rows, digest)| (&**rows, *digest))
     }
 
     pub(super) fn register<'a>(
@@ -458,7 +482,7 @@ impl MaterialHistory {
         self.receipt_witness = Some(admitted.receipt_witness);
         let previous = std::mem::replace(
             &mut self.register,
-            MaterialRegisterBoundary::Period(Arc::new(next)),
+            MaterialRegisterBoundary::Period(PeriodRegister::new(next)),
         );
         self.previous_lookup_chain = Some(self.lookup_chain);
         self.lookup_chain = lookup.chain;
@@ -474,7 +498,7 @@ impl MaterialHistory {
         identity: &[u8],
         receipt_digest: [u8; 32],
         content_hash: Option<&[u8]>,
-        receipt: Arc<MaterialTickReceipts>,
+        receipt: MaterialReceiptHandle,
     ) -> Result<(), ObserverEconomyError> {
         let index = next.completed_tick();
         let prior_register = self.register.resolve(expected);
@@ -578,7 +602,7 @@ pub(crate) fn history_for_read(
     transaction: &mut impl GenericClient,
     campaign: CampaignId,
     tick: u64,
-    expected: &Arc<EconomicContentAdmission>,
+    expected: &EconomicContentAdmission,
     cursor: &mut Option<ObserverMaterialCursor>,
 ) -> Result<MaterialHistory, ObserverEconomyError> {
     let reuse = cursor.as_ref().is_some_and(|c| {
@@ -625,7 +649,7 @@ pub(crate) fn material_observation(
     campaign: CampaignId,
     tick: u64,
     visibility: ObserverVisibility,
-    expected: &Arc<EconomicContentAdmission>,
+    expected: &EconomicContentHandle,
     cursor: &mut Option<ObserverMaterialCursor>,
 ) -> Result<MaterialObservation, ObserverEconomyError> {
     if visibility == ObserverVisibility::KnownPreview {
@@ -669,7 +693,7 @@ pub(crate) fn material_observation(
     }) {
         *cursor = Some(ObserverMaterialCursor {
             campaign,
-            admission: Arc::downgrade(expected),
+            admission: expected.downgrade(),
             admission_digest: expected.digest(),
             history,
         });
@@ -850,7 +874,7 @@ pub(crate) fn read_committed_receipts(
         campaign_id: campaign,
         identity: *identity,
         material_register_bytes: history.register(expected).canonical_bytes().len(),
-        receipts: Arc::clone(receipts),
+        receipts: receipts.clone(),
         household_contributions,
     })
 }
@@ -859,7 +883,7 @@ pub(crate) fn committed_observation(
     transaction: &mut impl GenericClient,
     campaign: CampaignId,
     tick: u64,
-    expected: &Arc<EconomicContentAdmission>,
+    expected: &EconomicContentHandle,
     cursor: &mut Option<ObserverMaterialCursor>,
 ) -> Result<(MaterialObservation, CommittedMaterialReceipts), ObserverEconomyError> {
     if tick == 0 {
@@ -899,7 +923,7 @@ pub(crate) fn committed_observation(
     let accounting = read_committed_receipts(campaign, tick, expected, &history, &identity)?;
     *cursor = Some(ObserverMaterialCursor {
         campaign,
-        admission: Arc::downgrade(expected),
+        admission: expected.downgrade(),
         admission_digest: expected.digest(),
         history,
     });
@@ -981,19 +1005,17 @@ mod opening_controls {
     use crate::michigan_content::MichiganContentPreset;
     use uuid::Uuid;
 
-    fn fixture() -> (
-        CampaignId,
-        Arc<EconomicContentAdmission>,
-        ObserverMaterialCursor,
-    ) {
+    fn fixture() -> (CampaignId, EconomicContentHandle, ObserverMaterialCursor) {
         let foundation = MichiganContentPreset::FourWeekStandard
             .create_foundation(&crate::test_support::catalog())
             .unwrap();
-        let owner = Arc::new(EconomicContentAdmission::from_foundation(foundation).unwrap());
+        let owner = EconomicContentHandle::new(
+            EconomicContentAdmission::from_foundation(foundation).unwrap(),
+        );
         let campaign = CampaignId::from_uuid(Uuid::from_u128(0x342_000));
         let cursor = ObserverMaterialCursor {
             campaign,
-            admission: Arc::downgrade(&owner),
+            admission: owner.downgrade(),
             admission_digest: owner.digest(),
             history: MaterialHistory::new(&owner).unwrap(),
         };
@@ -1012,7 +1034,7 @@ mod opening_controls {
             })
             .unwrap();
         assert_eq!(digest, owner.initial_register().digest());
-        assert_eq!(Arc::strong_count(&owner), 1);
+        assert_eq!(owner.strong_count(), 1);
     }
 
     #[test]
@@ -1037,7 +1059,7 @@ mod opening_controls {
             identity.material_foundation_sha256,
             identity.graph_foundation_sha256
         );
-        assert_eq!(Arc::strong_count(&owner), 1);
+        assert_eq!(owner.strong_count(), 1);
     }
 
     #[test]
@@ -1049,7 +1071,7 @@ mod opening_controls {
         assert!(cursor.opening_foundations(campaign).is_err());
         cursor.admission_digest = owner.digest();
         cursor.history.register =
-            MaterialRegisterBoundary::Period(Arc::new(owner.initial_register().clone()));
+            MaterialRegisterBoundary::Period(PeriodRegister::new(owner.initial_register().clone()));
         assert!(cursor.opening_foundations(campaign).is_err());
         cursor.history.register = MaterialRegisterBoundary::Foundation;
         drop(owner);

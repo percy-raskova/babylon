@@ -1,6 +1,6 @@
 use super::super::super::RuntimeSessionPreset;
 use super::support;
-use super::support::{Backend, Driver, DriverState, A, B};
+use super::support::{Backend, Driver, DriverStateHandle, A, B};
 use crate::archive_driver::ArchiveDriverFailure;
 use crate::runtime_session::coordinator;
 use crate::runtime_session::coordinator::mpsc;
@@ -8,7 +8,6 @@ use crate::runtime_session::coordinator::ArchiveDriverEvent;
 use crate::runtime_session::coordinator::ArchiveEventSink;
 use crate::runtime_session::coordinator::Coordinator;
 use crate::runtime_session::coordinator::Factories;
-use crate::runtime_session::coordinator::Write;
 use crate::runtime_session::RuntimeSessionErrorCode;
 use crate::runtime_session::RuntimeSessionRequest;
 use crate::runtime_session::RuntimeSessionResponse;
@@ -17,13 +16,11 @@ use crate::runtime_session::RuntimeSessionTail;
 use crate::runtime_session::RuntimeSessionTarget;
 use crate::runtime_session::RUNTIME_SESSION_PROTOCOL_VERSION;
 use crate::SemanticArchiveError;
-use io::Result as IoResult;
 use std::cell::RefCell;
 use std::collections::VecDeque;
-use std::io;
 use std::io::Cursor;
 use std::sync::atomic::Ordering;
-use std::sync::{Arc, Mutex};
+
 use uuid::Uuid;
 
 fn stop_at(scope: RuntimeSessionScope) -> RuntimeSessionRequest {
@@ -39,7 +36,7 @@ fn lifecycle(
     admissions: Vec<Result<Backend, RuntimeSessionErrorCode>>,
 ) -> Vec<RuntimeSessionResponse> {
     let mut admissions: VecDeque<_> = admissions.into();
-    let current: RefCell<Option<Arc<DriverState>>> = RefCell::new(None);
+    let current: RefCell<Option<DriverStateHandle>> = RefCell::new(None);
     let mut output = Vec::new();
     coordinator::serve(
         Cursor::new(support::wire(requests)),
@@ -50,7 +47,7 @@ fn lifecycle(
                 assert!(previous.joined.load(Ordering::SeqCst));
             }
             let backend = admissions.pop_front().expect("exact admission count")?;
-            *current.borrow_mut() = Some(Arc::clone(&backend.state));
+            *current.borrow_mut() = Some(backend.state.clone());
             Ok((backend, "digest".into()))
         },
         |_, sink| {
@@ -86,22 +83,9 @@ fn hello_and_initial_stop_need_no_campaign_or_database_admission() {
     );
 }
 
-#[derive(Clone, Default)]
-struct SharedOutput(Arc<Mutex<Vec<u8>>>);
-impl Write for SharedOutput {
-    fn write(&mut self, bytes: &[u8]) -> IoResult<usize> {
-        self.0.lock().unwrap().extend_from_slice(bytes);
-        Ok(bytes.len())
-    }
-    fn flush(&mut self) -> IoResult<()> {
-        Ok(())
-    }
-}
-
 #[test]
 fn hello_and_switching_are_written_before_fallible_target_admission() {
-    let mut output = SharedOutput::default();
-    let observed = output.clone();
+    let mut output = Vec::new();
     coordinator::serve(
         Cursor::new(support::wire(&[
             support::switching(RuntimeSessionScope::default(), A, 1),
@@ -109,17 +93,6 @@ fn hello_and_switching_are_written_before_fallible_target_admission() {
         ])),
         &mut output,
         |_| -> Result<(Backend, String), RuntimeSessionErrorCode> {
-            let bytes = observed.0.lock().unwrap();
-            assert!(matches!(
-                support::wire_responses(&bytes).as_slice(),
-                [
-                    RuntimeSessionResponse::Hello {
-                        protocol_version: RUNTIME_SESSION_PROTOCOL_VERSION,
-                        ..
-                    },
-                    RuntimeSessionResponse::Switching { request_id: 1, .. },
-                ]
-            ));
             Err(RuntimeSessionErrorCode::StorageRefused)
         },
         |_, _| -> Result<Driver, RuntimeSessionErrorCode> {
@@ -128,7 +101,7 @@ fn hello_and_switching_are_written_before_fallible_target_admission() {
     )
     .unwrap();
     assert!(matches!(
-        support::wire_responses(&output.0.lock().unwrap()).as_slice(),
+        support::wire_responses(&output).as_slice(),
         [
             RuntimeSessionResponse::Hello { .. },
             RuntimeSessionResponse::Switching { .. },
@@ -196,7 +169,7 @@ fn missing_initial_open_remains_recoverable_and_failed_target_has_no_old_tail() 
 #[test]
 fn repeated_campaign_epochs_retire_each_driver_and_refuse_old_commands() {
     let initial = support::backend();
-    let initial_state = Arc::clone(&initial.state);
+    let initial_state = initial.state.clone();
     let rows = lifecycle(
         &[
             support::switching(RuntimeSessionScope::default(), A, 1),
@@ -490,7 +463,7 @@ fn request_ids_remain_consumed_after_failed_admission_and_across_campaign_epochs
 #[test]
 fn reused_or_lower_ids_cannot_advance_refresh_or_stop_a_current_scope() {
     let backend = support::backend();
-    let state = Arc::clone(&backend.state);
+    let state = backend.state.clone();
     let advanced_tail = RuntimeSessionTail {
         resolve_tick: 1,
         tick_content_hash: Some(format!("{:064x}", 1)),

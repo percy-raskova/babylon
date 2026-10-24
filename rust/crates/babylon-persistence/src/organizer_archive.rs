@@ -1,6 +1,6 @@
 //! Period-specific organizer knowledge, inserted before the material tick marker.
 
-use crate::economic_content::{EconomicAdmissionOwner, EconomicContentAdmission};
+use crate::economic_content::{EconomicAdmissionOwner, EconomicContentHandle};
 use crate::identity::CampaignId;
 use crate::material_runtime::MaterialRuntimeError;
 use crate::{
@@ -27,7 +27,6 @@ use postgres::IsolationLevel;
 use postgres::Row;
 use postgres::{GenericClient, NoTls};
 use std::collections::BTreeMap;
-use std::sync::Arc;
 use std::sync::Mutex;
 use uuid::Uuid;
 
@@ -551,13 +550,7 @@ impl CapturedOrganizerPages {
     pub(crate) fn admit_and_render(
         self,
         cached: Option<ArchiveFoundationCandidate>,
-    ) -> Result<
-        (
-            ArchiveProducerOutcome,
-            Option<Arc<EconomicContentAdmission>>,
-        ),
-        SemanticArchiveError,
-    > {
+    ) -> Result<(ArchiveProducerOutcome, Option<EconomicContentHandle>), SemanticArchiveError> {
         let receipt = PendingArchiveReceipt::try_new(self.tick, self.content_hash)?;
         let page_budget = self.page_budget;
         let Some(captured) = self.register else {

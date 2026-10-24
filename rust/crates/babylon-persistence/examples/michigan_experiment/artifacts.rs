@@ -3,6 +3,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
+use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{mpsc, Arc, Mutex};
@@ -197,12 +198,25 @@ fn timed_out(receiver: &Receiver<()>, duration: Duration) -> bool {
         Err(mpsc::RecvTimeoutError::Timeout)
     )
 }
+/// Progress snapshot that the timeout watchdog may read from its own thread.
+#[derive(Clone, Default)]
+pub struct ProgressHandle(
+    // STYLE-EXCEPTION(EXC-04): the timeout watchdog reads the live progress snapshot.
+    Arc<Mutex<Progress>>,
+);
+impl Deref for ProgressHandle {
+    type Target = Mutex<Progress>;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
 pub struct Watchdog {
     cancel: Sender<()>,
     worker: JoinHandle<()>,
 }
 impl Watchdog {
-    pub fn start(path: &Path, progress: Arc<Mutex<Progress>>) -> Self {
+    pub fn start(path: &Path, progress: ProgressHandle) -> Self {
         let path = path.to_owned();
         let (cancel, receiver) = mpsc::channel();
         let worker = thread::spawn(move || {

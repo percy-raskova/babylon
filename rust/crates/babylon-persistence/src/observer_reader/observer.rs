@@ -9,7 +9,9 @@ use postgres::{Config, IsolationLevel, NoTls};
 use serde::{Deserialize, Serialize};
 
 use crate::economic_content;
-use crate::economic_content::{EconomicAdmissionOwner, EconomicContentAdmission};
+use crate::economic_content::{
+    EconomicAdmissionOwner, EconomicContentAdmission, EconomicContentHandle,
+};
 use crate::identity::CampaignId;
 use crate::michigan_content::{MichiganContentPreset, MICHIGAN_CONTENT_PRESETS};
 use crate::michigan_economy;
@@ -22,14 +24,13 @@ use crate::ProductionEvidenceDigest;
 use babylon_kernel::content_digest;
 use babylon_material_circuit::HouseholdContributionReceipt;
 use babylon_tick::material_replay::IdentifiedMaterialTick;
-use babylon_tick::material_world::MaterialTickReceipts;
+use babylon_tick::material_world::MaterialReceiptHandle;
 use postgres::Client;
 use postgres::Row;
 use postgres::Transaction;
 use std::collections::BTreeSet;
 use std::fmt::Formatter;
 use std::fmt::Result as FmtResult;
-use std::sync::Arc;
 use std::sync::OnceLock;
 use uuid::Uuid;
 
@@ -113,7 +114,7 @@ pub struct CommittedMaterialReceipts {
     pub identity: IdentifiedMaterialTick,
     /// Length of the canonical register authenticated with this receipt identity.
     pub material_register_bytes: usize,
-    pub receipts: Arc<MaterialTickReceipts>,
+    pub receipts: MaterialReceiptHandle,
     /// Once-only contribution debits from this period's authenticated closing time ledger.
     /// Gross `household_time` receipts precede these authorized debits.
     pub household_contributions: Vec<HouseholdContributionReceipt>,
@@ -238,7 +239,7 @@ impl ObserverEconomyReader {
             .commit()
             .map_err(|_| ObserverEconomyError::Database)?;
         self.foundation
-            .publish(campaign, Arc::clone(expected))
+            .publish(campaign, expected.clone())
             .map_err(|_| ObserverEconomyError::ScenarioMismatch)?;
         Ok(result)
     }
@@ -352,7 +353,7 @@ impl ObserverEconomyReader {
             .map_err(|_| ObserverEconomyError::InvalidProjection)?
             .ok_or(ObserverEconomyError::InvalidProjection)?;
         self.foundation
-            .publish(campaign, Arc::clone(expected))
+            .publish(campaign, expected.clone())
             .map_err(|_| ObserverEconomyError::ScenarioMismatch)?;
         *cursor = cursor_candidate;
         Ok(CommittedMaterialObservation {
@@ -509,7 +510,7 @@ impl ObserverEconomyReader {
             .map_err(|_| ObserverEconomyError::Database)?;
         if let Some(admitted) = admission {
             self.foundation
-                .publish(campaign, Arc::clone(admitted))
+                .publish(campaign, admitted.clone())
                 .map_err(|_| ObserverEconomyError::ScenarioMismatch)?;
         }
         *cursor = candidate;
@@ -532,7 +533,7 @@ pub(crate) fn read_foundation(
     campaign: CampaignId,
     tick: u64,
     visibility: ObserverVisibility,
-    cached: Option<&Arc<EconomicContentAdmission>>,
+    cached: Option<&EconomicContentHandle>,
 ) -> Result<(Vec<u8>, String, Option<MaterialHeader>), ObserverEconomyError> {
     let foundation = transaction.query_opt("SELECT campaign_id, foundation_sha256, source_sha256, geography_scope FROM public.v_observer_economy_foundation_v1 WHERE campaign_id = $1", &[campaign.as_uuid()]).map_err(|_| ObserverEconomyError::Database)?.ok_or(ObserverEconomyError::CampaignAbsent)?;
     let found_campaign: Uuid = foundation

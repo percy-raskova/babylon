@@ -65,6 +65,7 @@ fn log_dir_from(xdg_data_home: Option<PathBuf>, home: Option<PathBuf>) -> PathBu
 /// layer's `MakeWriter` hands a clone to every event.
 #[derive(Clone)]
 pub struct RotatingSink {
+    // STYLE-EXCEPTION(EXC-04): every log event clone shares one rotating sink.
     inner: Arc<Mutex<SinkState>>,
 }
 
@@ -97,6 +98,7 @@ impl RotatingSink {
             .map_err(|e| format!("log file size {}: {e}", live.display()))?
             .len();
         Ok(Self {
+            // STYLE-EXCEPTION(EXC-04): first shared owner of the rotating sink state.
             inner: Arc::new(Mutex::new(SinkState {
                 dir: dir.to_path_buf(),
                 max_bytes,

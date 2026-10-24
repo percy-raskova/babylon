@@ -1483,7 +1483,6 @@ mod current_authority {
     use babylon_persistence::SemanticArchiveStore;
     use postgres::Client;
     use postgres::NoTls;
-    use std::sync::Arc;
     use std::sync::Barrier;
 
     fn foundation() -> MaterialRuntimeFoundation {
@@ -1619,30 +1618,32 @@ mod current_authority {
         let second = DurableMaterialRuntime::open(&target.writer, campaign, digest).unwrap();
         let initial_world = first.session().current_world_hash().unwrap();
         let initial_material = first.session().material().canonical_bytes().to_vec();
-        let barrier = Arc::new(Barrier::new(2));
-        let handles = [first, second]
-            .into_iter()
-            .map(|mut runtime| {
-                let barrier = barrier.clone();
-                std::thread::spawn(move || {
-                    let actions = OrderedPracticeActionBatch::empty(
-                        runtime.session().graph_session().session_identity().clone(),
-                        1,
-                    )
-                    .unwrap();
-                    let mut sink = CollectingSink::default();
-                    barrier.wait();
-                    let outcome = runtime.advance_and_commit(&mut sink, &actions);
-                    (runtime, actions, sink, outcome)
-                })
-            })
-            .collect::<Vec<_>>();
+        let barrier = Barrier::new(2);
         // Join both initial attempts before a refused contender can retry. One
         // attempt must have succeeded; an unrelated failure never becomes a retry.
-        let attempts = handles
-            .into_iter()
-            .map(|handle| handle.join().unwrap())
-            .collect::<Vec<_>>();
+        let attempts = std::thread::scope(|scope| {
+            let handles = [first, second]
+                .into_iter()
+                .map(|mut runtime| {
+                    let barrier = &barrier;
+                    scope.spawn(move || {
+                        let actions = OrderedPracticeActionBatch::empty(
+                            runtime.session().graph_session().session_identity().clone(),
+                            1,
+                        )
+                        .unwrap();
+                        let mut sink = CollectingSink::default();
+                        barrier.wait();
+                        let outcome = runtime.advance_and_commit(&mut sink, &actions);
+                        (runtime, actions, sink, outcome)
+                    })
+                })
+                .collect::<Vec<_>>();
+            handles
+                .into_iter()
+                .map(|handle| handle.join().unwrap())
+                .collect::<Vec<_>>()
+        });
         assert!(attempts.iter().any(|(_, _, _, outcome)| outcome.is_ok()));
         let mut vectors_sql = target.writer.connect(NoTls).unwrap();
         let committed_vectors = exact_retained_graph_vectors(&mut vectors_sql, campaign);

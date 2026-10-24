@@ -14,7 +14,10 @@ const ROSTER_SHA256: [u8; 32] = [
 
 /// An immutable, cheap-to-share proof of exact current domestic county membership.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct NationalCountyRoster(Arc<[CountyGeoid]>);
+pub struct NationalCountyRoster(
+    // STYLE-EXCEPTION(EXC-04): county membership is one immutable snapshot shared by every reader.
+    Arc<[CountyGeoid]>,
+);
 
 /// Membership failures never repair, sort or invent a county.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

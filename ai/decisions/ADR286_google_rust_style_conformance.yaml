@@ -114,3 +114,33 @@ ADR286_google_rust_style_conformance:
     refactor retires superseded module layouts and import forms only. Provide no
     compatibility path for the retired layouts.
   source_record: docs/superpowers/plans/2026-10-23-google-rust-style.md
+  riders:
+    - date: '2026-10-24'
+      issue: PER-350
+      task: Task 8 (ownership and borrowing audit)
+      summary: |
+        Task 8 reconciled every workspace Arc and Rc site against EXC-04.
+        Retained owner types grew from six to twelve rows because the audit
+        found real cross-thread and test-scope owners that the first register
+        missed; every added row names one owner type, not a per-use allowance.
+        All Rc sites were eliminated: the event-bus and archive observation
+        helpers now report through mpsc channels, scoped threads borrow their
+        barriers, and the child-process and coordinator harnesses own their
+        buffers. Arc<Vec<u8>> survives only inside SharedCanonicalBytes,
+        because owned register admission adopts the caller's authenticated
+        allocation and organizer_aid_replay pins that no-copy behavior. The
+        handle hides the mutable vector, so the previous mutation path through
+        a retained clone is closed. Consumers now name MaterialReceiptHandle,
+        EconomicContentHandle, PeriodRegister, and SharedCanonicalBytes instead
+        of the backing shared pointer.
+      superseded_claims:
+        - >-
+          The EXC-04 definition above lists six sites and says Arc<Vec<u8>> is
+          eliminated elsewhere. docs/agents/rust-style.md owns the live table.
+        - >-
+          The verification bullet "no Arc<Vec<T>> remains" is superseded: one
+          registered adopted-allocation site remains.
+      verification:
+        - cargo clippy --workspace --all-targets --locked -- -D warnings exits 0.
+        - bsl-lint google-rust-style reports zero Arc or Rc findings.
+        - organizer_aid_replay and foundation_session_shares_the_exact_opening_canonical_allocation pass.

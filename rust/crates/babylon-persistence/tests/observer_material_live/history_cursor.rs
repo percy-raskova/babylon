@@ -48,10 +48,10 @@ fn cached_history_refuses_earlier_receipt_corruption_and_preserves_the_cursor() 
         owned_register_address,
         register_address(complete_cursor.as_ref())
     );
-    assert!(std::sync::Arc::ptr_eq(
-        &complete.accounting.receipts,
-        &repeated.accounting.receipts
-    ));
+    assert!(complete
+        .accounting
+        .receipts
+        .shares_allocation(&repeated.accounting.receipts));
     // Retained history must survive expiry of its weak foundation owner. The
     // new capability captures and admits the foundation again before reuse.
     drop(observer);

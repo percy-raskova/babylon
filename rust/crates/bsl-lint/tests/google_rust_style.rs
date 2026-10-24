@@ -282,10 +282,18 @@ fn an_rc_is_flagged_even_with_a_marker() {
 }
 
 #[test]
-fn an_arc_vec_is_flagged_even_with_a_marker() {
-    let source =
-        "// STYLE-EXCEPTION(EXC-04): snapshot.\npub struct Holder {\n    value: Arc<Vec<u8>>,\n}\n";
-    assert_flags(LEAF, source, "Arc<Vec");
+fn an_arc_vec_without_a_marker_is_flagged() {
+    assert_flags(
+        LEAF,
+        "pub struct Holder {\n    value: Arc<Vec<u8>>,\n}\n",
+        "Arc<Vec",
+    );
+}
+
+#[test]
+fn an_arc_vec_with_a_registered_marker_is_allowed() {
+    let source = "pub struct Holder {\n    // STYLE-EXCEPTION(EXC-04): adopts the caller's allocation.\n    value: Arc<Vec<u8>>,\n}\n";
+    assert_clean(LEAF, source);
 }
 
 #[test]

@@ -13,6 +13,7 @@ use super::{
 use crate::runtime_session::RuntimeSessionTail;
 
 use std::cell::Cell;
+use std::ops::Deref;
 
 use std::io::{self, Cursor, Read};
 
@@ -38,8 +39,21 @@ pub(in crate::runtime_session::coordinator) struct DriverState {
     pub(super) sink: Mutex<Option<ArchiveEventSink>>,
 }
 
+/// Control state shared by one test backend, its driver and the progress writer.
+#[derive(Clone, Default)]
+pub(in crate::runtime_session::coordinator) struct DriverStateHandle(
+    // STYLE-EXCEPTION(EXC-04): the test backend, driver and progress writer share one control state.
+    Arc<DriverState>,
+);
+impl Deref for DriverStateHandle {
+    type Target = DriverState;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
 pub(in crate::runtime_session::coordinator) struct Driver {
-    state: Arc<DriverState>,
+    state: DriverStateHandle,
     finishes_on_stop: bool,
     refresh_full: bool,
     join_fails: bool,
@@ -93,7 +107,7 @@ pub(in crate::runtime_session::coordinator) struct Backend {
     tick: u64,
     fail_commit: bool,
     notify_inside_advance: bool,
-    pub(super) state: Arc<DriverState>,
+    pub(super) state: DriverStateHandle,
 }
 
 impl SessionBackend for Backend {
@@ -142,13 +156,13 @@ pub(in crate::runtime_session::coordinator) fn backend() -> Backend {
         tick: 0,
         fail_commit: false,
         notify_inside_advance: false,
-        state: Arc::default(),
+        state: DriverStateHandle::default(),
     }
 }
 
-pub(in crate::runtime_session::coordinator) fn driver(state: &Arc<DriverState>) -> Driver {
+pub(in crate::runtime_session::coordinator) fn driver(state: &DriverStateHandle) -> Driver {
     Driver {
-        state: Arc::clone(state),
+        state: state.clone(),
         finishes_on_stop: true,
         refresh_full: false,
         join_fails: false,
@@ -322,7 +336,7 @@ pub(in crate::runtime_session::coordinator) fn run(
     backend: &mut Backend,
     output: &mut impl Write,
 ) -> Result<(), RuntimeSessionErrorCode> {
-    let shared = Arc::clone(&backend.state);
+    let shared = backend.state.clone();
     serve_open(Cursor::new(input), output, backend, move |sink| {
         *shared.sink.lock().unwrap() = Some(sink);
         Ok(driver(&shared))
@@ -373,7 +387,7 @@ pub(in crate::runtime_session::coordinator) fn completion_queued_inside_advance_
 pub(in crate::runtime_session::coordinator) fn ready_precedes_archive_completion_queued_during_driver_start(
 ) {
     let mut backend = backend();
-    let state = Arc::clone(&backend.state);
+    let state = backend.state.clone();
     let mut output = Vec::new();
     serve_open(
         Cursor::new(wire(&[stop()])),
@@ -592,7 +606,7 @@ pub(in crate::runtime_session::coordinator) fn old_future_and_invalid_progress_n
 pub(in crate::runtime_session::coordinator) fn timeout_refuses_stopped_and_never_joins_an_unfinished_driver(
 ) {
     let mut backend = backend();
-    let state = Arc::clone(&backend.state);
+    let state = backend.state.clone();
     let mut archive = driver(&state);
     archive.finishes_on_stop = false;
     let mut output = Vec::new();
@@ -669,7 +683,7 @@ impl Write for BrokenOutput {
 pub(in crate::runtime_session::coordinator) fn broken_output_requests_stop_without_waiting_for_sync_driver_teardown(
 ) {
     let mut backend = backend();
-    let state = Arc::clone(&backend.state);
+    let state = backend.state.clone();
     let mut archive = driver(&state);
     archive.finishes_on_stop = false;
     let result = serve_open(
@@ -718,7 +732,7 @@ pub(in crate::runtime_session::coordinator) fn full_refresh_queue_refuses_the_re
 pub(in crate::runtime_session::coordinator) fn unexpected_driver_stop_refuses_active_session_before_queued_advance(
 ) {
     let mut backend = backend();
-    let state = Arc::clone(&backend.state);
+    let state = backend.state.clone();
     let mut output = Vec::new();
     let result = serve_open(
         Cursor::new(wire(&[advance()])),
@@ -809,7 +823,7 @@ impl BufRead for OpenInput {
 pub(in crate::runtime_session::coordinator) fn silent_driver_panic_refuses_while_input_remains_open(
 ) {
     let mut backend = backend();
-    let state = Arc::clone(&backend.state);
+    let state = backend.state.clone();
     let (started, entered) = mpsc::sync_channel(1);
     let (release, waiting) = mpsc::sync_channel(1);
     let (sender, _receiver) = mpsc::sync_channel(1);
@@ -851,7 +865,7 @@ pub(in crate::runtime_session::coordinator) fn silent_driver_panic_refuses_while
 pub(in crate::runtime_session::coordinator) fn cooperative_shutdown_waits_for_completion_after_last_sender_drops(
 ) {
     let mut backend = backend();
-    let state = Arc::clone(&backend.state);
+    let state = backend.state.clone();
     let archive = driver(&state);
     archive.finishing_checks.set(1);
     let (sender, receiver) = mpsc::sync_channel(1);
@@ -872,7 +886,7 @@ pub(in crate::runtime_session::coordinator) fn cooperative_shutdown_waits_for_co
 
 pub(in crate::runtime_session::coordinator) struct ProgressOutput {
     bytes: Vec<u8>,
-    state: Arc<DriverState>,
+    state: DriverStateHandle,
     fail_progress: bool,
     attempts: usize,
     flushed: usize,
@@ -918,7 +932,7 @@ pub(in crate::runtime_session::coordinator) fn progress_output(
 ) -> ProgressOutput {
     ProgressOutput {
         bytes: Vec::new(),
-        state: Arc::clone(&backend.state),
+        state: backend.state.clone(),
         fail_progress,
         attempts: 0,
         flushed: 0,

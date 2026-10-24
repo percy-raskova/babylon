@@ -28,10 +28,7 @@ use crate::RustPersistenceRuntimeError;
 use postgres::fallible_iterator::FallibleIterator as _;
 use postgres::Client;
 use postgres::Notification;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering;
 use std::sync::mpsc::{self, Receiver};
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 fn listen(config: &Config) -> Client {
@@ -438,21 +435,21 @@ fn live_driver_catches_startup_backlog_and_reconnect_then_stops_under_backpressu
     drop(driver);
     assert_offline_gap_catches_up(&target, &mut observer);
     drop(observer);
-    let backpressure_seen = Arc::new(AtomicBool::new(false));
-    let sink_signal = backpressure_seen.clone();
+    let (sink_signal, backpressure_seen) = mpsc::channel::<()>();
     let mut blocked = ArchiveDriver::start(&target.config, target.campaign_id, move |_| {
-        sink_signal.store(true, Ordering::Release);
+        let _ = sink_signal.send(());
         false
     })
     .expect("saturated sink driver");
     let deadline = Instant::now() + Duration::from_secs(90);
-    while !backpressure_seen.load(Ordering::Acquire) && Instant::now() < deadline {
-        std::thread::sleep(Duration::from_millis(10));
+    let mut refused = false;
+    while !refused && Instant::now() < deadline {
+        refused = backpressure_seen.try_recv().is_ok();
+        if !refused {
+            std::thread::sleep(Duration::from_millis(10));
+        }
     }
-    assert!(
-        backpressure_seen.load(Ordering::Acquire),
-        "the sink actually refused an event before stop"
-    );
+    assert!(refused, "the sink actually refused an event before stop");
     blocked
         .request_refresh(99)
         .expect("bounded refresh accepted");

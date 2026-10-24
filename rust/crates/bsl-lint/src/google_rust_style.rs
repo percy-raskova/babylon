@@ -390,13 +390,14 @@ impl<'a> StyleVisitor<'a> {
         for segment in &path.segments {
             let line = segment.ident.span().start().line;
             if segment.ident == "Arc" {
-                if arc_holds_vec(&segment.arguments) {
+                let marked = self.lines.has_marker(line, EXC_04, MARKER_LOOKBACK);
+                if arc_holds_vec(&segment.arguments) && !marked {
                     self.push(
                         line,
                         "Arc<Vec<_>> copies a heap buffer; use Arc<[_]>",
-                        "Arc<Vec<_>> is a finding everywhere, even with an EXC-04 marker",
+                        "only a registered EXC-04 site that adopts the caller's allocation may keep Arc<Vec<_>>",
                     );
-                } else if !self.lines.has_marker(line, EXC_04, MARKER_LOOKBACK) {
+                } else if !marked {
                     self.push(
                         line,
                         "shared pointer Arc is outside the EXC-04 register",

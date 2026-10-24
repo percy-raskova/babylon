@@ -12,12 +12,11 @@ use crate::storage_compression::StorageCompressionError;
 
 use crate::storage_compression;
 use babylon_kernel::content_digest;
-use babylon_tick::material_world::{MaterialTickReceipts, MaterialWorldRegister};
+use babylon_tick::material_world::{MaterialReceiptHandle, MaterialWorldRegister};
 use receipt_storage::AdmittedReceipts;
 use receipt_storage::Error as ReceiptStorageError;
 use std::borrow::Cow;
 use std::fmt::Formatter;
-use std::sync::Arc;
 
 pub(crate) const LOOKUP_DOMAIN: &[u8] = b"BabylonPeriodLookupV3\0";
 
@@ -406,7 +405,7 @@ pub fn decode(
 pub(crate) struct DecodedMaterial<R = MaterialWorldRegister> {
     pub(crate) receipt_bytes: Vec<u8>,
     pub(crate) register: R,
-    pub(crate) receipts: Arc<MaterialTickReceipts>,
+    pub(crate) receipts: MaterialReceiptHandle,
     pub(crate) receipt_witness: AdmittedReceiptWitness,
 }
 
@@ -428,9 +427,9 @@ pub(crate) fn decode_typed(
     }
     babylon_tick::material_world::validate_retained_collection(&register, &receipts)
         .map_err(|_| Error::CollectionJoin)?;
-    let receipts = Arc::new(receipts);
+    let receipts = MaterialReceiptHandle::new(receipts);
     let receipt_witness =
-        AdmittedReceiptWitness::new(Arc::clone(&receipts), receipt_package, lookup, lookup_chain)?;
+        AdmittedReceiptWitness::new(receipts.clone(), receipt_package, lookup, lookup_chain)?;
     Ok(DecodedMaterial {
         receipt_bytes,
         register,
@@ -473,7 +472,7 @@ pub(crate) fn decode_typed_with_witness<'w>(
         witness.restore(tick, receipt_package, lookup, lookup_chain)?
     } else {
         let (bytes, receipts) = receipt_storage::decode_admitted(receipt_package, lookup)?;
-        (bytes, Arc::new(receipts))
+        (bytes, MaterialReceiptHandle::new(receipts))
     };
     if register.completed_tick() != tick || receipts.resolve_tick != tick {
         return Err(Error::Tick);
@@ -481,7 +480,7 @@ pub(crate) fn decode_typed_with_witness<'w>(
     babylon_tick::material_world::validate_retained_collection(&register, &receipts)
         .map_err(|_| Error::CollectionJoin)?;
     let receipt_witness =
-        AdmittedReceiptWitness::new(Arc::clone(&receipts), receipt_package, lookup, lookup_chain)?;
+        AdmittedReceiptWitness::new(receipts.clone(), receipt_package, lookup, lookup_chain)?;
     Ok(DecodedMaterial {
         receipt_bytes,
         register,

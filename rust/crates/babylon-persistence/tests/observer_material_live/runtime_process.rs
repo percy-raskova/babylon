@@ -24,7 +24,23 @@ const STARTUP_LIMIT: Duration = Duration::from_secs(60);
 const EXIT_LIMIT: Duration = Duration::from_secs(30);
 const CLEANUP_LIMIT: Duration = Duration::from_secs(5);
 
-struct RuntimeChild(Child, Arc<Mutex<Vec<u8>>>, Option<JoinHandle<IoResult<()>>>);
+/// Bounded stderr retained while the child is still running.
+#[derive(Clone, Default)]
+struct Diagnostics(
+    // STYLE-EXCEPTION(EXC-04): one stderr reader thread fills this bounded test buffer.
+    Arc<Mutex<Vec<u8>>>,
+);
+impl Diagnostics {
+    fn writer(&self) -> Self {
+        // STYLE-EXCEPTION(EXC-04): the reader thread shares the bounded diagnostics buffer.
+        Self(Arc::clone(&self.0))
+    }
+    fn text(&self) -> String {
+        String::from_utf8_lossy(&self.0.lock().expect("diagnostics mutex")).into_owned()
+    }
+}
+
+struct RuntimeChild(Child, Diagnostics, Option<JoinHandle<IoResult<()>>>);
 
 impl RuntimeChild {
     fn start(target: &DisposableTarget) -> Self {
@@ -33,7 +49,7 @@ impl RuntimeChild {
 
     fn start_with_timings(target: &DisposableTarget, timings: bool) -> Self {
         let dsn = child_dsn(&target.writer);
-        let diagnostics = Arc::new(Mutex::new(Vec::new()));
+        let diagnostics = Diagnostics::default();
         let mut runtime = Self(
             Command::new(env!("CARGO_BIN_EXE_babylon-runtime"))
                 .args([
@@ -54,7 +70,7 @@ impl RuntimeChild {
                 .stderr(Stdio::piped())
                 .spawn()
                 .expect("start the actual runtime binary"),
-            Arc::clone(&diagnostics),
+            diagnostics.writer(),
             None,
         );
         let mut stderr = runtime.0.stderr.take().unwrap();
@@ -81,7 +97,7 @@ impl RuntimeChild {
     }
 
     fn diagnostics(&self) -> String {
-        String::from_utf8_lossy(&self.1.lock().unwrap()).into_owned()
+        self.1.text()
     }
 
     fn receive(
@@ -670,7 +686,7 @@ fn quote_dsn_value(value: &str) -> String {
     format!("'{}'", value.replace('\\', "\\\\").replace('\'', "\\'"))
 }
 
-fn capture_diagnostics(input: &mut impl Read, captured: &Mutex<Vec<u8>>) -> IoResult<()> {
+fn capture_diagnostics(input: &mut impl Read, captured: &Diagnostics) -> IoResult<()> {
     let mut buffer = [0_u8; 1024];
     loop {
         let size = match input.read(&mut buffer) {
@@ -681,7 +697,7 @@ fn capture_diagnostics(input: &mut impl Read, captured: &Mutex<Vec<u8>>) -> IoRe
         if size == 0 {
             return Ok(());
         }
-        let mut output = captured.lock().unwrap();
+        let mut output = captured.0.lock().expect("diagnostics mutex");
         let keep = size.min(8192_usize.saturating_sub(output.len()));
         output.extend_from_slice(&buffer[..keep]);
         // Keep draining after the retained-byte bound so diagnostics cannot stall
@@ -715,8 +731,11 @@ fn runtime_child_dsn_selects_owned_database_from_uri_and_keyword_configs() {
 #[test]
 fn runtime_child_diagnostics_are_bounded_and_fully_drained() {
     let mut source = Cursor::new(vec![b'x'; 20_000]);
-    let captured = Mutex::new(Vec::new());
+    let captured = Diagnostics::default();
     capture_diagnostics(&mut source, &captured).unwrap();
     assert_eq!(source.position(), 20_000);
-    assert_eq!(captured.into_inner().unwrap(), vec![b'x'; 8192]);
+    assert_eq!(
+        *captured.0.lock().expect("diagnostics mutex"),
+        vec![b'x'; 8192]
+    );
 }

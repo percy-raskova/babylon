@@ -560,7 +560,10 @@ pub fn model_archive_sweep_pages_with_bounds(
 
 /// Shared cooperative stop token. It never cancels an acknowledged game tick.
 #[derive(Clone, Debug, Default)]
-pub struct ArchiveWorkerCancellation(Arc<AtomicBool>);
+pub struct ArchiveWorkerCancellation(
+    // STYLE-EXCEPTION(EXC-04): the worker thread reads the one cooperative stop token.
+    Arc<AtomicBool>,
+);
 
 impl ArchiveWorkerCancellation {
     /// Stop before the next publication; any uncommitted work rolls back.

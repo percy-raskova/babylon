@@ -10,9 +10,8 @@ use crate::{ArchiveWorkerCancellation, SemanticArchiveError};
 use run::Outbox;
 use std::cell::Cell;
 use std::cell::RefCell;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
-use std::sync::Arc;
+use std::sync::mpsc::RecvTimeoutError;
 use std::thread;
 use std::time::{Duration, Instant};
 use uuid::Uuid;
@@ -86,13 +85,12 @@ fn stop_refuses_before_connecting_or_minting_a_receipt() {
 #[test]
 fn full_commands_do_not_block_stop_or_try_to_join_active_worker() {
     let (sender, _receiver) = mpsc::sync_channel(1);
-    let release = Arc::new(AtomicBool::new(false));
-    let worker_release = release.clone();
-    let handle = thread::spawn(move || {
-        while !worker_release.load(Ordering::Acquire) {
-            thread::park_timeout(Duration::from_millis(1));
+    let (release, released) = mpsc::channel::<()>();
+    let handle = thread::spawn(move || loop {
+        match released.recv_timeout(Duration::from_millis(1)) {
+            Ok(()) | Err(RecvTimeoutError::Disconnected) => return Ok(()),
+            Err(RecvTimeoutError::Timeout) => {}
         }
-        Ok(())
     });
     let mut driver = ArchiveDriver {
         requests: sender,
@@ -110,7 +108,9 @@ fn full_commands_do_not_block_stop_or_try_to_join_active_worker() {
         Err(ArchiveDriverRequestError::Stopped)
     );
     assert!(driver.join_if_finished().is_none());
-    release.store(true, Ordering::Release);
+    release
+        .send(())
+        .expect("worker release receiver stays live");
     let deadline = Instant::now() + Duration::from_secs(2);
     while !driver.is_finished() && Instant::now() < deadline {
         thread::yield_now();

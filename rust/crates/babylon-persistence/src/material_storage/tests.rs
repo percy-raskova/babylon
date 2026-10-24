@@ -14,7 +14,6 @@ use babylon_kernel::content_digest;
 use babylon_practice_contract::OrderedPracticeActionBatch;
 use babylon_tick::material_world::MaterialWorldRegister;
 use babylon_tick::replay_session::ReplayCommitDisposition;
-use std::sync::Arc;
 
 #[test]
 #[allow(
@@ -461,7 +460,7 @@ fn admitted_current_receipt_is_not_typed_decoded_again_for_endpoint_framing() {
     )
     .unwrap();
     assert_eq!(endpoint.receipt_bytes, candidate.material().receipt_bytes());
-    assert!(Arc::ptr_eq(&endpoint.receipts, &history.receipts));
+    assert!(endpoint.receipts.shares_allocation(&history.receipts));
     assert_eq!(endpoint.receipts, history.receipts);
     assert_eq!(
         crate::receipt_storage::typed_admission_count() - before,
@@ -480,7 +479,7 @@ fn admitted_current_receipt_is_not_typed_decoded_again_for_endpoint_framing() {
     .unwrap();
     assert_eq!(cold.receipt_bytes, endpoint.receipt_bytes);
     assert_eq!(cold.receipts, endpoint.receipts);
-    assert!(!Arc::ptr_eq(&cold.receipts, &endpoint.receipts));
+    assert!(!cold.receipts.shares_allocation(&endpoint.receipts));
     assert_eq!(crate::receipt_storage::typed_admission_count() - before, 2);
 }
 
@@ -490,7 +489,7 @@ fn assert_receipt_witness_refusals(
     loaded: &DecodedPeriodLookup,
     history: &DecodedMaterial,
 ) {
-    let unchanged = Arc::clone(&history.receipts);
+    let unchanged = history.receipts.clone();
     let witness = MaterialStorageWitnesses {
         register: Some(&history.register),
         receipt: Some(&history.receipt_witness),
@@ -544,5 +543,5 @@ fn assert_receipt_witness_refusals(
             .err(),
         Some(Error::LookupChain)
     );
-    assert!(Arc::ptr_eq(&unchanged, &history.receipts));
+    assert!(unchanged.shares_allocation(&history.receipts));
 }

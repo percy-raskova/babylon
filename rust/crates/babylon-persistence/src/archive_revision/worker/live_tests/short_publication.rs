@@ -24,7 +24,7 @@ use postgres::Client;
 use postgres::IsolationLevel;
 use postgres::{Config, NoTls};
 use std::cell::Cell;
-use std::rc::Rc;
+use std::sync::mpsc::{self, Sender};
 use std::time::Duration;
 use uuid::Uuid;
 use zstd::bulk::Compressor;
@@ -1009,8 +1009,8 @@ fn live_alternate_valid_body_retry_preserves_canonical_frame_outside_publication
     assert_eq!(restored, original);
     assert_eq!(restored.digest().unwrap(), digest);
     body_encoding::reset_decode_counts();
-    let observations = Rc::new(Cell::new(0_usize));
-    let guard = observe_detached_body_replay(&target.config, &application, observations.clone());
+    let (observations, observed) = mpsc::channel();
+    let guard = observe_detached_body_replay(&target.config, &application, observations);
     let consumed = store
         .materialize_receipt(target.campaign_id, &batch, ArchiveMaterializeMode::Consume)
         .unwrap();
@@ -1030,7 +1030,7 @@ fn live_alternate_valid_body_retry_preserves_canonical_frame_outside_publication
         in_publication, 0,
         "publication guard surrounds the real writer path"
     );
-    assert_eq!(observations.get(), decodes);
+    assert_eq!(observed.try_iter().count(), decodes);
     let row=inspector.query_one("SELECT body_bytes,revision_sha256 FROM babylon_meta.archive_page_revision_v2 WHERE campaign_id=$1", &[target.campaign_id.as_uuid()]).unwrap();
     assert_eq!(
         row.get::<_, Vec<u8>>(0),
@@ -1131,7 +1131,7 @@ fn install_equivalent_body_frame(
 fn observe_detached_body_replay(
     config: &Config,
     application: &str,
-    counter: Rc<Cell<usize>>,
+    counter: Sender<()>,
 ) -> DecodeObservation {
     use crate::archive_revision::body_encoding;
     let observer_config = config.clone();
@@ -1149,6 +1149,6 @@ fn observe_detached_body_replay(
             Some(true),
             "replay decompression occurs after capture commits and before writer starts"
         );
-        counter.set(counter.get().checked_add(1).unwrap());
+        counter.send(()).expect("observation receiver stays live");
     })
 }

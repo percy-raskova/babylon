@@ -19,10 +19,10 @@
 //! convert a hang into a FAILURE, never change a diagnostic, and no
 //! assertion in this file depends on HOW FAST the server answers.
 
+use std::cell::RefCell;
 use std::io::{BufReader, Read};
 use std::process::{Child, ChildStdin, Command, ExitStatus, Stdio};
 use std::sync::mpsc::{self, RecvTimeoutError};
-use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use lsp_server::{ErrorCode, Message, Notification, Request, RequestId};
@@ -81,7 +81,8 @@ struct TestServer {
     child: ChildGuard,
     stdin: ChildStdin,
     rx: Receiver<Message>,
-    stderr: Arc<Mutex<Vec<u8>>>,
+    stderr: Receiver<Vec<u8>>,
+    stderr_text: RefCell<Vec<u8>>,
 }
 
 impl TestServer {
@@ -117,21 +118,18 @@ impl TestServer {
             }
         });
 
-        // Drains stderr into a shared buffer so a timeout's failure message
+        // Drains stderr into one owned buffer so a timeout's failure message
         // can print it (below) — `read_to_end` is ONE library call, not a
         // loop this file writes, so it carries no Power-of-10 rule 2
         // obligation of its own; it unblocks when the pipe closes, which
         // `ChildGuard::drop` forces if nothing else already did.
-        let stderr_buf: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::new()));
+        let (stderr_buf, stderr_rx) = mpsc::channel();
         {
-            let stderr_buf = Arc::clone(&stderr_buf);
             let mut stderr = stderr;
             std::thread::spawn(move || {
                 let mut buf = Vec::new();
                 let _ = stderr.read_to_end(&mut buf);
-                if let Ok(mut guard) = stderr_buf.lock() {
-                    *guard = buf;
-                }
+                let _ = stderr_buf.send(buf);
             });
         }
 
@@ -139,7 +137,8 @@ impl TestServer {
             child: ChildGuard(child),
             stdin,
             rx,
-            stderr: stderr_buf,
+            stderr: stderr_rx,
+            stderr_text: RefCell::new(Vec::new()),
         }
     }
 
@@ -149,8 +148,11 @@ impl TestServer {
     }
 
     fn stderr_text(&self) -> String {
-        let buf = self.stderr.lock().expect("stderr mutex poisoned");
-        String::from_utf8_lossy(&buf).into_owned()
+        let mut text = self.stderr_text.borrow_mut();
+        while let Ok(chunk) = self.stderr.try_recv() {
+            text.extend_from_slice(&chunk);
+        }
+        String::from_utf8_lossy(&text).into_owned()
     }
 
     /// Waits for the next message, failing fast (never hanging past

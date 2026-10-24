@@ -2,12 +2,11 @@
 use super::{Error, Result, TypedLookup};
 use crate::receipt_storage;
 use babylon_kernel::content_digest;
-use babylon_tick::material_world::{MaterialTickReceipts, MaterialWorldRegister};
-use std::sync::Arc;
+use babylon_tick::material_world::{MaterialReceiptHandle, MaterialWorldRegister};
 
 #[derive(Clone)]
 pub(crate) struct AdmittedReceiptWitness {
-    receipts: Arc<MaterialTickReceipts>,
+    receipts: MaterialReceiptHandle,
     storage_digest: [u8; 32],
     lookup_identity: (usize, [u8; 32]),
     lookup_chain: [u8; 32],
@@ -15,7 +14,7 @@ pub(crate) struct AdmittedReceiptWitness {
 
 impl AdmittedReceiptWitness {
     pub(super) fn new(
-        receipts: Arc<MaterialTickReceipts>,
+        receipts: MaterialReceiptHandle,
         package: &[u8],
         lookup: &TypedLookup,
         lookup_chain: [u8; 32],
@@ -34,7 +33,7 @@ impl AdmittedReceiptWitness {
         package: &[u8],
         lookup: &TypedLookup,
         chain: [u8; 32],
-    ) -> Result<(Vec<u8>, Arc<MaterialTickReceipts>)> {
+    ) -> Result<(Vec<u8>, MaterialReceiptHandle)> {
         if self.receipts.resolve_tick != tick {
             return Err(Error::Tick);
         }
@@ -47,7 +46,7 @@ impl AdmittedReceiptWitness {
         // Every frame, bound, compressed family and canonical digest is checked
         // afresh. Exact input equality permits reuse of its admitted typed owner.
         let canonical = receipt_storage::restore_canonical(package, lookup)?;
-        Ok((canonical, Arc::clone(&self.receipts)))
+        Ok((canonical, self.receipts.clone()))
     }
 }
 

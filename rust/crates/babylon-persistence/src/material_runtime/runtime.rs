@@ -41,7 +41,7 @@ use babylon_tick::replay_session::{ReplayCommitDisposition, ReplayTickSession};
 use postgres::fallible_iterator::FallibleIterator as _;
 use postgres::{Config, GenericClient, NoTls};
 
-use crate::economic_content::EconomicContentAdmission;
+use crate::economic_content::{EconomicContentAdmission, EconomicContentHandle};
 #[cfg(test)]
 use crate::michigan_content::MichiganContentPreset;
 use crate::michigan_economy::MichiganEconomyError;
@@ -70,7 +70,6 @@ use runtime_checkpoint::CapturedRuntimeCheckpoint;
 use std::borrow::Cow;
 use std::fmt::Formatter;
 use std::fmt::Result as FmtResult;
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 use stored_tick::CapturedArchiveReceiptRows;
 use stored_tick::CapturedCheckpointRows;
@@ -1551,7 +1550,7 @@ pub(crate) fn read_stored_material_tick(
 /// Authenticate one requested Archive period against the existing committed
 /// envelope and captured foundation, without replaying or restoring history.
 pub(crate) enum ArchiveFoundationCandidate {
-    Admitted(Arc<EconomicContentAdmission>),
+    Admitted(EconomicContentHandle),
     Graph(Box<CampaignFoundation>),
 }
 
@@ -1593,7 +1592,7 @@ impl CapturedArchiveOrganizerRegister {
     pub(crate) fn admit(
         self,
         cached: Option<ArchiveFoundationCandidate>,
-    ) -> Result<(MaterialWorldRegister, Arc<EconomicContentAdmission>), MaterialRuntimeError> {
+    ) -> Result<(MaterialWorldRegister, EconomicContentHandle), MaterialRuntimeError> {
         let foundation_timing = crate::production_projection::diagnostics::Timing::start(
             crate::production_projection::diagnostics::Stage::ArchiveFoundationAdmission,
             self.checkpoint.tick(),
@@ -1622,7 +1621,7 @@ impl CapturedArchiveOrganizerRegister {
 pub(crate) fn admit_archive_foundation(
     foundation: CapturedMaterialFoundation,
     cached: Option<ArchiveFoundationCandidate>,
-) -> Result<Arc<EconomicContentAdmission>, MaterialRuntimeError> {
+) -> Result<EconomicContentHandle, MaterialRuntimeError> {
     match cached {
         Some(ArchiveFoundationCandidate::Admitted(admitted)) => {
             foundation.validate_against(&admitted)?;
@@ -1630,13 +1629,13 @@ pub(crate) fn admit_archive_foundation(
             Ok(admitted)
         }
         Some(ArchiveFoundationCandidate::Graph(graph)) => {
-            let admitted = Arc::new(
+            let admitted = EconomicContentHandle::new(
                 EconomicContentAdmission::from_foundation(foundation.admit_with_graph(*graph)?)
                     .map_err(|_| MaterialRuntimeError::FoundationMismatch)?,
             );
             Ok(admitted)
         }
-        None => Ok(Arc::new(
+        None => Ok(EconomicContentHandle::new(
             EconomicContentAdmission::from_foundation(foundation.admit()?)
                 .map_err(|_| MaterialRuntimeError::FoundationMismatch)?,
         )),
@@ -2261,7 +2260,10 @@ pub(crate) fn foundation_session_shares_the_exact_opening_canonical_allocation()
     let opening = foundation.initial_register().shared_canonical_bytes();
     let session = foundation.into_session().unwrap();
     let shared = session.material().shared_canonical_bytes();
-    assert!(Arc::ptr_eq(&opening, &shared));
+    assert!(
+        opening.shares_allocation(&shared),
+        "the session must clone the opening canonical allocation, not copy it"
+    );
     assert_eq!(opening.as_slice(), session.material().canonical_bytes());
     assert_eq!(
         content_digest::sha256_of(opening.as_slice()),

@@ -32,7 +32,7 @@ dynamic_linking = ["bevy/dynamic_linking"]
 # Preserve Bevy 0.18's 2d/3d/ui defaults, expanding 3d because its 3d_api
 # aggregate forces ruzstd (RUSTSEC-2026-0344). The native zstd backend keeps
 # KTX2 textures and Bevy's bundled tonemapping LUTs available.
-bevy = { version = "0.18", default-features = false, features = [
+bevy = { version = "0.20", default-features = false, features = [
     "2d",
     "bevy_anti_alias",
     "bevy_gltf",

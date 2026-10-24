@@ -1814,8 +1814,8 @@ mod tests {
     fn comparison_layout_app(viewport: UVec2) -> App {
         use bevy::app::{HierarchyPropagatePlugin, PropagateSet};
         use bevy::camera::{ComputedCameraValues, RenderTargetInfo, Viewport};
-        use bevy::ui::ui_layout_system;
-        use bevy::ui::update::propagate_ui_target_cameras;
+        use bevy::ui;
+        use bevy::ui::update;
 
         let mut app = App::new();
         app.add_plugins((
@@ -1828,7 +1828,7 @@ mod tests {
         .add_systems(Startup, setup)
         .add_systems(
             PostUpdate,
-            (propagate_ui_target_cameras, ui_layout_system).chain(),
+            (update::propagate_ui_target_cameras, ui::ui_layout_system).chain(),
         )
         .configure_sets(
             PostUpdate,
@@ -1836,8 +1836,8 @@ mod tests {
                 PropagateSet::<ComputedUiTargetCamera>::default(),
                 PropagateSet::<ComputedUiRenderTargetInfo>::default(),
             )
-                .after(propagate_ui_target_cameras)
-                .before(ui_layout_system),
+                .after(update::propagate_ui_target_cameras)
+                .before(ui::ui_layout_system),
         );
         app.world_mut().spawn((
             Camera2d,

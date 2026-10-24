@@ -1,7 +1,6 @@
 //! Financial flows bridge exact cash, equity carrying amounts and retained income.
 use super::CostClose;
 use super::Result;
-use crate::valuation::zero;
 use crate::{AccountId, MaterialCircuitError, SiteId, TaxBasis};
 use babylon_kernel::currency::Currency;
 impl CostClose {
@@ -51,7 +50,7 @@ impl CostClose {
         let total = a
             .contributions
             .entry(AccountId::Site(issuer))
-            .or_insert_with(zero);
+            .or_insert_with(super::zero);
         *total = super::add(*total, amount)?;
         Ok(())
     }
@@ -67,7 +66,7 @@ impl CostClose {
         let total = a
             .distributions
             .entry(AccountId::Site(issuer))
-            .or_insert_with(zero);
+            .or_insert_with(super::zero);
         *total = super::add(*total, amount)?;
         let statement = a.statement(beneficiary)?;
         statement.distribution_income = super::add(statement.distribution_income, amount)?;

@@ -3,7 +3,6 @@ use super::CostClose;
 use super::HistoricalCostBook;
 use super::Result;
 use crate::payments::LaborUse;
-use crate::valuation::zero;
 use crate::{
     AccountId, EquipmentAssetId, EquipmentCohortId, EquipmentWearReceipt, InstallationId,
     MaterialCircuitError, MaterialCircuitState, ProcessId, SiteId, UnitId,
@@ -179,7 +178,10 @@ impl CostClose {
         let owner = AccountId::Site(site);
         Ok(super::sub(
             self.eligible_earnings(owner)?,
-            a.distributions.get(&owner).copied().unwrap_or_else(zero),
+            a.distributions
+                .get(&owner)
+                .copied()
+                .unwrap_or_else(super::zero),
         )?
         .max(super::zero()))
     }

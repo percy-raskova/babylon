@@ -10,7 +10,6 @@ use crate::map::SelectedCounty;
 use crate::observer::ObserverSession;
 use crate::observer_focus::ObserverFocusWorld;
 use crate::observer_ui::{ObserverFrame, ObserverUiState};
-use crate::production_brief::opening_site;
 
 use super::{
     PrimaryView, ProductionCommand, ProductionNavigation, ProductionObservation, ProductionPage,
@@ -444,7 +443,7 @@ pub(super) fn focus_opening(
     let Some(site) = frame
         .for_session(&state)
         .and_then(|frame| frame.production.as_ref())
-        .and_then(opening_site)
+        .and_then(production_brief::opening_site)
     else {
         return;
     };

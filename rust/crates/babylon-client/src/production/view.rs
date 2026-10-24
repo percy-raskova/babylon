@@ -1842,10 +1842,10 @@ impl Plugin for ProductionPlugin {
             .add_systems(
                 Update,
                 (
-                    invalidate_navigation,
-                    navigate,
-                    sync_world_county,
-                    focus_opening,
+                    navigation::invalidate_navigation,
+                    navigation::navigate,
+                    navigation::sync_world_county,
+                    navigation::focus_opening,
                 )
                     .chain()
                     .after(ObserverSet::Install)
@@ -1870,10 +1870,7 @@ impl Plugin for ProductionPlugin {
     }
 }
 
-use navigation::{
-    focus_opening, invalidate_navigation, navigate, sync_world_county,
-    ProductionControlAvailability,
-};
+use navigation::ProductionControlAvailability;
 
 use super::readings;
 use crate::observer::Perspective;

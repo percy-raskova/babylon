@@ -29,7 +29,6 @@ use crate::map_economy_lens;
 use crate::observer::ObservationContext;
 use crate::tessellate::Tessellation;
 use relationships::CountyAnchors;
-use scene::setup_map;
 
 const MAP_LAYER: usize = 2;
 const METRES_TO_SCENE: f32 = 0.001;
@@ -577,7 +576,7 @@ impl Plugin for ObserverMap3dPlugin {
             .init_resource::<CountyAnchors>()
             .add_systems(
                 Update,
-                setup_map
+                scene::setup_map
                     .after(crate::map::MapScopeSet)
                     .before(ObserverSet::Paint),
             )

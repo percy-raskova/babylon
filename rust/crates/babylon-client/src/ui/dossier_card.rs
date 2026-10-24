@@ -17,7 +17,7 @@ use bevy::tasks::{AsyncComputeTaskPool, Task};
 use crate::atlas::CountyAtlas;
 use crate::decision_surface::{DeclaredSurface, SurfaceId};
 use crate::dossier;
-use crate::dossier::{availability_label, retained_page};
+use crate::dossier::availability_label;
 use crate::map::SelectedCounty;
 use crate::observer::{ObservationContext, ObserverSession};
 use crate::observer_focus::{ObserverFocusSystems, ObserverFocusTarget, ObserverKeyboardActivate};
@@ -31,8 +31,8 @@ use crate::organizer::OrganizerClient;
 use crate::palette;
 use crate::ui::dossier_compose;
 use crate::ui::dossier_compose::{
-    chronicle_header, chronicle_row_segments, DossierSegment, DossierTone, SignalDetailLevel,
-    DOSSIER_DECISION_QUESTION, INVESTIGATE_SEALED_CHIP,
+    chronicle_header, DossierSegment, DossierTone, SignalDetailLevel, DOSSIER_DECISION_QUESTION,
+    INVESTIGATE_SEALED_CHIP,
 };
 use babylon_persistence::archive_revision::{
     ArchiveChangeCursor, ArchiveDossierBounds, ArchiveDossierLink, ArchiveDossierRead,
@@ -1346,7 +1346,7 @@ fn repaint_dossier_card(
     for (section, mut node) in &mut sections {
         let populated = match section.0 {
             DossierZone::Places => read
-                .and_then(retained_page)
+                .and_then(dossier::retained_page)
                 .is_some_and(|page| !page.links.is_empty()),
             DossierZone::Chronicle => presentation.details_open && read.is_some(),
             _ => false,
@@ -1373,7 +1373,7 @@ fn paint_zones(
         .as_ref()
         .filter(|installed| identity.admits(installed, view));
     let read = installed.map(|installed| &installed.read);
-    let page = read.and_then(retained_page);
+    let page = read.and_then(dossier::retained_page);
     for (entity, zone) in zones {
         match zone {
             DossierZone::Title => {
@@ -1468,7 +1468,12 @@ fn evidence_rows(read: &ArchiveDossierRead) -> Vec<Vec<DossierSegment>> {
     let Some(page) = dossier::retained_page(read) else {
         return rows;
     };
-    rows.extend(page.changes.changes.iter().map(chronicle_row_segments));
+    rows.extend(
+        page.changes
+            .changes
+            .iter()
+            .map(dossier_compose::chronicle_row_segments),
+    );
     rows.push(vec![DossierSegment {
         text: format!(
             "Content observed at period {}; published at period {}.\nRevision {}\nContent SHA256 {}",

@@ -1,10 +1,6 @@
 //! Rust-owned `PostgreSQL` persistence contracts and adapters.
 
-// National reconstruction retires large graphs, registers and receipt owners.
-// Use the same allocator in the runtime, client and persistence qualification
-// consumers so freed owners do not leave gigabytes of glibc arenas resident.
-#[global_allocator]
-static ALLOCATOR: MiMalloc = MiMalloc;
+mod allocator;
 
 // Share the integration fixture with private reconstruction tests in this crate.
 #[cfg(test)]
@@ -211,7 +207,6 @@ pub use production_projection::households::{
     ProductionHouseholdKind, ProductionHouseholdServiceAccount,
 };
 
-use mimalloc::MiMalloc;
 pub use production_projection::prices::{
     CompletedGoodsPrice, GoodsPriceBasis, GoodsPriceReason, ProductionGoodsPriceAccount,
 };

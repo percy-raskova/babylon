@@ -1,13 +1,10 @@
 use super::view;
 use super::view::{
-    focus_eligibility, inputs, keyboard_activate, orbit_input, paint_disclosure, paint_labels,
-    paint_readings, paint_scene, rebuild_county_cohorts, rebuild_dependencies,
-    reset_inspector_scroll, setup, PrimaryView, ProductionBrief, ProductionButton,
-    ProductionCamera, ProductionCommand, ProductionCountyCohorts, ProductionDependencies,
-    ProductionDetailGroup, ProductionDetails, ProductionDisclosureLabel, ProductionFreightReading,
-    ProductionLabel, ProductionLeader, ProductionNavigation, ProductionOrbit, ProductionPage,
-    ProductionPanel, ProductionReadingBody, ProductionReadingHeadline, ProductionReadingSection,
-    ProductionReadingSubject,
+    PrimaryView, ProductionBrief, ProductionButton, ProductionCamera, ProductionCommand,
+    ProductionCountyCohorts, ProductionDependencies, ProductionDetailGroup, ProductionDetails,
+    ProductionDisclosureLabel, ProductionFreightReading, ProductionLabel, ProductionLeader,
+    ProductionNavigation, ProductionOrbit, ProductionPage, ProductionPanel, ProductionReadingBody,
+    ProductionReadingHeadline, ProductionReadingSection, ProductionReadingSubject,
 };
 use super::{navigation, readings};
 use crate::atlas::CountyAtlas;
@@ -29,7 +26,7 @@ use babylon_persistence::production_observation::{ProductionSite, ProductionSnap
 use bevy::input_focus::tab_navigation::TabGroup;
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
-use navigation::{focus_opening, invalidate_navigation, navigate, sync_world_county};
+
 use uuid::Uuid;
 
 fn site(id: &str, suppliers: &[&str]) -> ProductionSite {
@@ -729,7 +726,7 @@ fn flat_camera_projects_the_scene_and_plinths_inside_its_clip_volume() {
         .init_resource::<UiScale>()
         .init_resource::<ObserverFrame>()
         .insert_resource(ObserverSession::new(CampaignId::from_uuid(Uuid::nil())))
-        .add_systems(Update, paint_scene);
+        .add_systems(Update, view::paint_scene);
     let camera = app
         .world_mut()
         .spawn((
@@ -820,7 +817,7 @@ fn open_drawers_block_scene_gestures_without_replaying_them_on_close() {
         .init_resource::<ButtonInput<MouseButton>>()
         .add_message::<MouseMotion>()
         .add_message::<MouseWheel>()
-        .add_systems(Update, orbit_input);
+        .add_systems(Update, view::orbit_input);
     app.world_mut()
         .resource_mut::<ButtonInput<MouseButton>>()
         .press(MouseButton::Right);
@@ -876,7 +873,7 @@ fn inspector_scroll_resets_for_subject_or_capability_but_survives_tick_refresh()
             selected_site: Some("a".into()),
             ..default()
         })
-        .add_systems(Update, reset_inspector_scroll);
+        .add_systems(Update, view::reset_inspector_scroll);
     let panel = app
         .world_mut()
         .spawn((ProductionPanel, ScrollPosition::default()))
@@ -1016,7 +1013,7 @@ fn map_and_flat_controls_preserve_the_county_selected_on_geography() {
             ..default()
         })
         .add_message::<ProductionCommand>()
-        .add_systems(Update, navigate);
+        .add_systems(Update, navigation::navigate);
     for command in [ProductionCommand::Map, ProductionCommand::Flat] {
         app.world_mut()
             .resource_mut::<Messages<ProductionCommand>>()
@@ -1087,7 +1084,10 @@ fn opening_focus_uses_current_capability_and_preserves_selection() {
         )
         .init_resource::<SelectedCounty>()
         .init_resource::<ProductionNavigation>()
-        .add_systems(Update, (invalidate_navigation, focus_opening).chain());
+        .add_systems(
+            Update,
+            (navigation::invalidate_navigation, navigation::focus_opening).chain(),
+        );
     app.update();
     assert!(app
         .world()
@@ -1157,7 +1157,10 @@ fn unchanged_scene_does_not_dirty_camera_or_label_components() {
         .init_resource::<ObserverViewport>()
         .init_resource::<UiScale>()
         .init_resource::<ChangedCounts>()
-        .add_systems(Update, (paint_scene, paint_labels, count_changes).chain());
+        .add_systems(
+            Update,
+            (view::paint_scene, view::paint_labels, count_changes).chain(),
+        );
     app.world_mut().spawn((
         Camera::default(),
         Transform::default(),
@@ -1247,12 +1250,12 @@ fn unstarted_dependency_navigation_app() -> App {
         .add_systems(
             Update,
             (
-                inputs,
-                invalidate_navigation,
-                navigate,
-                sync_world_county,
-                rebuild_dependencies,
-                rebuild_county_cohorts,
+                view::inputs,
+                navigation::invalidate_navigation,
+                navigation::navigate,
+                navigation::sync_world_county,
+                view::rebuild_dependencies,
+                view::rebuild_county_cohorts,
             )
                 .chain(),
         );
@@ -1281,9 +1284,9 @@ fn production_panel_app() -> App {
     let mut app = dependency_navigation_app();
     app.insert_resource(PrimaryView::Production);
     app.world_mut()
-        .run_system_once(setup)
+        .run_system_once(view::setup)
         .expect("production panel");
-    app.add_systems(Update, paint_disclosure.after(navigate));
+    app.add_systems(Update, view::paint_disclosure.after(navigation::navigate));
     app.update();
     app
 }
@@ -1366,7 +1369,7 @@ fn production_context_yields_its_rail_to_readings_and_returns_after_close() {
     let mut app = production_panel_app();
     app.init_resource::<ProductionOrbit>()
         .init_resource::<ObserverViewport>()
-        .add_systems(Update, paint_scene.after(navigate));
+        .add_systems(Update, view::paint_scene.after(navigation::navigate));
     send_command(&mut app, ProductionCommand::Open);
     let world = app.world_mut();
     let subject = world
@@ -1738,11 +1741,13 @@ fn exact_readings_are_collapsed_until_requested_and_clear_with_capability() {
     let mut app = dependency_navigation_app();
     *app.world_mut().resource_mut::<PrimaryView>() = PrimaryView::Production;
     app.world_mut()
-        .run_system_once(setup)
+        .run_system_once(view::setup)
         .expect("production panel");
     app.add_systems(
         Update,
-        (paint_readings, paint_disclosure).chain().after(navigate),
+        (view::paint_readings, view::paint_disclosure)
+            .chain()
+            .after(navigation::navigate),
     );
     app.world_mut()
         .resource_mut::<ProductionNavigation>()
@@ -1810,7 +1815,7 @@ fn shared_freight_participant_buttons_navigate_and_expire_with_observation_scope
     app.world_mut()
         .run_system_once(|mut commands: Commands| view::setup_readings_panel(&mut commands))
         .expect("the Bevy system completes one run");
-    app.add_systems(Update, paint_readings.after(navigate));
+    app.add_systems(Update, view::paint_readings.after(navigation::navigate));
     app.world_mut()
         .resource_mut::<ObserverFrame>()
         .0
@@ -1877,7 +1882,7 @@ fn shared_freight_participant_buttons_navigate_and_expire_with_observation_scope
 #[test]
 fn keyboard_dependency_activation_uses_the_pointer_queue_and_rejects_changed_scope() {
     let mut app = dependency_navigation_app();
-    app.add_observer(keyboard_activate);
+    app.add_observer(view::keyboard_activate);
     app.world_mut()
         .resource_mut::<ProductionNavigation>()
         .selected_site = Some("b".into());
@@ -1986,7 +1991,7 @@ fn world_focus_keeps_the_overview_and_reuses_authenticated_circuit_navigation() 
 #[test]
 fn world_county_list_enters_the_selected_circuit_and_rejects_old_observations() {
     let mut app = dependency_navigation_app();
-    app.add_observer(keyboard_activate);
+    app.add_observer(view::keyboard_activate);
     let county_index = |app: &App, fips: &str| {
         let atlas = app.world().resource::<CountyAtlas>();
         (0..atlas.len())
@@ -2086,7 +2091,7 @@ fn world_county_list_enters_the_selected_circuit_and_rejects_old_observations() 
 #[test]
 fn keyboard_pages_the_disclosed_county_then_enters_a_circuit_and_back() {
     let mut app = dependency_navigation_app();
-    app.add_observer(keyboard_activate);
+    app.add_observer(view::keyboard_activate);
     {
         let mut frame = app.world_mut().resource_mut::<ObserverFrame>();
         let snapshot = frame
@@ -2179,10 +2184,10 @@ fn accepted_world_buttons_release_focus_and_focused_keys_do_not_run_world_shortc
     use bevy::input_focus::InputFocus;
     let mut app = dependency_navigation_app();
     app.add_plugins((InputPlugin, ObserverFocusPlugin))
-        .add_observer(keyboard_activate)
+        .add_observer(view::keyboard_activate)
         .add_systems(
             PreUpdate,
-            focus_eligibility.in_set(ObserverFocusSystems::Eligibility),
+            view::focus_eligibility.in_set(ObserverFocusSystems::Eligibility),
         );
     let window = app
         .world_mut()
@@ -2256,14 +2261,16 @@ fn readings_focus_app() -> ReadingsFocusFixture {
     use bevy::input::InputPlugin;
     let mut app = unstarted_dependency_navigation_app();
     app.add_plugins((InputPlugin, ObserverFocusPlugin))
-        .add_observer(keyboard_activate)
+        .add_observer(view::keyboard_activate)
         .add_systems(
             PreUpdate,
-            focus_eligibility.in_set(ObserverFocusSystems::Eligibility),
+            view::focus_eligibility.in_set(ObserverFocusSystems::Eligibility),
         )
         .add_systems(
             Update,
-            (paint_readings, paint_disclosure).chain().after(navigate),
+            (view::paint_readings, view::paint_disclosure)
+                .chain()
+                .after(navigation::navigate),
         );
     let window = app
         .world_mut()

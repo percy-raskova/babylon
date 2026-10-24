@@ -254,7 +254,7 @@ mod tests {
     use super::super::recovery::tests as recovery_tests;
     use super::super::NativeAudit;
     use crate::observer::{ObserverSession, SessionPhase};
-    use crate::observer_io::playback;
+    use crate::observer_io::runtime;
     use crate::observer_io::tests as io_tests;
 
     use crate::observer_io::RuntimePipe;
@@ -280,7 +280,7 @@ mod tests {
                 .insert_resource(session)
                 .init_resource::<OrganizerClient>();
             if automated {
-                app.add_systems(Update, playback.after(crate::observer_io::handle_commands));
+                app.add_systems(Update, runtime::playback.after(runtime::handle_commands));
                 app.world_mut()
                     .resource_mut::<Time>()
                     .advance_by(Duration::from_secs(1));

@@ -9,7 +9,7 @@ use bevy::prelude::*;
 use bevy::window::{PrimaryWindow, WindowCloseRequested};
 
 use crate::cli::CliCommand;
-use crate::dossier::{run_headless_command, HeadlessInvocation};
+use crate::dossier::HeadlessInvocation;
 use crate::observer::ObserverSession;
 use crate::observer_focus::ObserverFocusPlugin;
 use crate::observer_io::qualification::NativeAudit;
@@ -135,7 +135,7 @@ pub fn build_app(mode: AppMode) -> Result<App, String> {
                     ..default()
                 })
                 .insert_resource(HeadlessInvocation::new(command, campaign_id))
-                .add_systems(Startup, run_headless_command);
+                .add_systems(Startup, crate::dossier::run_headless_command);
         }
     }
     Ok(app)

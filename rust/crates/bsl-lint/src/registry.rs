@@ -1,8 +1,10 @@
 //! The single check registry.
 //!
 //! `in_default_all` keeps a check runnable by name without joining the `all`
-//! set. `google-rust-style` stays out of `all` until Tasks 5-10 finish the
-//! workspace refactors; Task 11 flips the flag.
+//! set. `google-rust-style` joins `all` now that the Tasks 5-10 refactors and
+//! the Task 11 sentinel hardening have landed; its bool-parameter class and
+//! the macro-import grandfather register are documented in
+//! `docs/agents/rust-style.md`.
 
 use crate::finding::Finding;
 use crate::google_rust_style;
@@ -30,7 +32,7 @@ pub const CHECKS: &[Check] = &[
     Check {
         name: google_rust_style::CHECK,
         run: google_rust_style::run,
-        in_default_all: false,
+        in_default_all: true,
     },
     Check {
         name: namespace_unique::CHECK,

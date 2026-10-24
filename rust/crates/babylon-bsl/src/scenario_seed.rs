@@ -1,7 +1,7 @@
 //! Checked native instances for captured catalogs. Declarations and instance
 //! hydration use the authored loader's existing semantics, one row at a time.
 
-use super::{map_practice_load_error, LoadedScenario, ScenarioError};
+use super::{LoadedScenario, ScenarioError};
 use crate::reader::{Atom, SExpr, ScaledKind, ScaledLit};
 use babylon_graph::substrate::{GraphSubstrate, HyperedgeId, NodeId};
 use babylon_kernel::currency::Currency;
@@ -359,7 +359,7 @@ fn check_practice(seed: &GraphSeed, loaded: &LoadedScenario) -> Result<(), Scena
             let (active, budget) = super::effective_practice_attributes(&attrs);
             counter
                 .observe_organization(ordinal, active, budget)
-                .map_err(map_practice_load_error)?;
+                .map_err(super::map_practice_load_error)?;
         }
     }
     for edge in &seed.edges {
@@ -371,10 +371,10 @@ fn check_practice(seed: &GraphSeed, loaded: &LoadedScenario) -> Result<(), Scena
         {
             counter
                 .observe_solidarity_edge(from, PracticeTargetDomain::SocialClass, to)
-                .map_err(map_practice_load_error)?;
+                .map_err(super::map_practice_load_error)?;
         }
     }
-    counter.finish().map_err(map_practice_load_error)
+    counter.finish().map_err(super::map_practice_load_error)
 }
 
 #[derive(Default)]

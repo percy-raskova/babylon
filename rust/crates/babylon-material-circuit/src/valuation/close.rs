@@ -7,7 +7,6 @@ use super::IncomeStatement;
 use super::Result;
 use crate::payments::AttendanceLedger;
 use crate::payments::LaborUse;
-use crate::valuation::zero;
 use crate::AidFreightLot;
 use crate::AidMandate;
 use crate::EquipmentWearReceipt;
@@ -139,7 +138,7 @@ impl CostClose {
         self.active
             .as_ref()
             .and_then(|a| a.book.stocks.get(&key).copied())
-            .unwrap_or_else(zero)
+            .unwrap_or_else(super::zero)
     }
     pub(crate) fn service_handoff(
         &mut self,
@@ -593,7 +592,7 @@ impl CostClose {
             if row.period != state.period {
                 return Err(MaterialCircuitError::ValuationInvariant);
             }
-            let total = wages.entry(row.employer).or_insert_with(zero);
+            let total = wages.entry(row.employer).or_insert_with(super::zero);
             *total = super::add(*total, row.amount)?;
             let statement = active.statement(row.payee)?;
             statement.wage_income = super::add(statement.wage_income, row.amount)?;
@@ -616,7 +615,7 @@ impl CostClose {
                 )?,
             )?;
             if super::add(classified, statement.installation_labor_capitalized)?
-                != wages.get(account).copied().unwrap_or_else(zero)
+                != wages.get(account).copied().unwrap_or_else(super::zero)
             {
                 return Err(MaterialCircuitError::ValuationInvariant);
             }
@@ -640,12 +639,12 @@ impl CostClose {
                 .contributions
                 .get(&account)
                 .copied()
-                .unwrap_or_else(zero);
+                .unwrap_or_else(super::zero);
             let distributions_paid = active
                 .distributions
                 .get(&account)
                 .copied()
-                .unwrap_or_else(zero);
+                .unwrap_or_else(super::zero);
             let closing_contributed_capital =
                 super::add(row.contributed_capital, contributions_received)?;
             let closing = super::sub(

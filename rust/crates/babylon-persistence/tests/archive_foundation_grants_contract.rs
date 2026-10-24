@@ -4,13 +4,13 @@ use babylon_persistence::identity::CampaignId;
 use babylon_persistence::FoundationGrantReport;
 use babylon_persistence::GlossaryConcept;
 use babylon_persistence::{
-    seed_foundation_grants, ArchiveAtomSubjectKind, FoundationGrantsError,
-    FOUNDATION_CONCEPT_GRANT_KEYS, FOUNDATION_COUNTY_GRANT_KEYS, FOUNDATION_COUNTY_LOCATOR_PREFIX,
-    FOUNDATION_COUNTY_SOURCE_ID, FOUNDATION_GRANT_TICK,
-    FOUNDATION_PLACE_CONTAINMENT_LOCATOR_PREFIX, FOUNDATION_PLACE_CONTAINMENT_SOURCE_ID,
-    FOUNDATION_PLACE_GRANT_KEYS, FOUNDATION_PLACE_IDENTITY_LOCATOR_PREFIX,
-    FOUNDATION_PLACE_IDENTITY_SOURCE_ID, GLOSSARY_CONCEPTS_FIXTURE_PATH,
-    PINNED_FOUNDATION_GRANTS_SEMANTIC_SHA256, PINNED_GLOSSARY_CONCEPTS_SHA256,
+    ArchiveAtomSubjectKind, FoundationGrantsError, FOUNDATION_CONCEPT_GRANT_KEYS,
+    FOUNDATION_COUNTY_GRANT_KEYS, FOUNDATION_COUNTY_LOCATOR_PREFIX, FOUNDATION_COUNTY_SOURCE_ID,
+    FOUNDATION_GRANT_TICK, FOUNDATION_PLACE_CONTAINMENT_LOCATOR_PREFIX,
+    FOUNDATION_PLACE_CONTAINMENT_SOURCE_ID, FOUNDATION_PLACE_GRANT_KEYS,
+    FOUNDATION_PLACE_IDENTITY_LOCATOR_PREFIX, FOUNDATION_PLACE_IDENTITY_SOURCE_ID,
+    GLOSSARY_CONCEPTS_FIXTURE_PATH, PINNED_FOUNDATION_GRANTS_SEMANTIC_SHA256,
+    PINNED_GLOSSARY_CONCEPTS_SHA256,
 };
 use postgres::Transaction;
 
@@ -240,7 +240,8 @@ fn seeding_needs_no_foundation_argument() {
     let bound: fn(
         &mut Transaction<'_>,
         CampaignId,
-    ) -> Result<FoundationGrantReport, FoundationGrantsError> = seed_foundation_grants;
+    ) -> Result<FoundationGrantReport, FoundationGrantsError> =
+        babylon_persistence::seed_foundation_grants;
     let _ = bound;
 }
 

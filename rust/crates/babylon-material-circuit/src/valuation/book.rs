@@ -6,7 +6,6 @@ use super::HistoricalCostSnapshot;
 use super::Result;
 use super::StockCarryingValue;
 use super::MAX_CARRYING_STOCKS;
-use crate::valuation::zero;
 use crate::EquipmentAssetId;
 use crate::EquipmentCarryingValue;
 use crate::{
@@ -230,7 +229,7 @@ impl HistoricalCostBook {
         if !self.stocks.contains_key(&key) && self.stocks.len() >= MAX_WORKING_CARRYING_STOCKS {
             return Err(MaterialCircuitError::RowLimit);
         }
-        let cost = self.stocks.entry(key).or_insert_with(zero);
+        let cost = self.stocks.entry(key).or_insert_with(super::zero);
         *cost = super::add(*cost, value)?;
         Ok(())
     }
@@ -306,7 +305,7 @@ mod tests {
     fn empty_book() -> HistoricalCostBook {
         let money = MonetaryBook::open(vec![crate::CashAccount {
             id: key(0).0,
-            cash: super::zero(),
+            cash: crate::valuation::zero(),
         }])
         .expect("the fixture opens the authored source");
         HistoricalCostBook::open(&money, vec![], vec![], vec![], vec![])
@@ -317,7 +316,7 @@ mod tests {
     fn transient_carrying_keys_have_an_exact_separate_insertion_bound() {
         let mut book = empty_book();
         book.stocks = (0..MAX_WORKING_CARRYING_STOCKS - 1)
-            .map(|i| (key(i), super::zero()))
+            .map(|i| (key(i), crate::valuation::zero()))
             .collect();
         book.credit_stock(
             key(MAX_WORKING_CARRYING_STOCKS - 1),
@@ -335,7 +334,7 @@ mod tests {
             Currency::from_micro_units(10)
         );
         assert_eq!(
-            book.credit_stock(key(MAX_WORKING_CARRYING_STOCKS), super::zero()),
+            book.credit_stock(key(MAX_WORKING_CARRYING_STOCKS), crate::valuation::zero()),
             Err(MaterialCircuitError::RowLimit)
         );
         assert_eq!(book.stocks.len(), MAX_WORKING_CARRYING_STOCKS);
@@ -350,14 +349,14 @@ mod tests {
     fn durable_carrying_snapshot_still_refuses_the_first_excess_key() {
         let mut book = empty_book();
         book.stocks = (0..MAX_CARRYING_STOCKS)
-            .map(|i| (key(i), super::zero()))
+            .map(|i| (key(i), crate::valuation::zero()))
             .collect();
         assert_eq!(
             HistoricalCostBook::from_snapshot(book.snapshot())
                 .expect("the snapshot admits the derived value"),
             book
         );
-        book.credit_stock(key(MAX_CARRYING_STOCKS), super::zero())
+        book.credit_stock(key(MAX_CARRYING_STOCKS), crate::valuation::zero())
             .expect("the fixture stock account admits the credit");
         assert_eq!(
             HistoricalCostBook::from_snapshot(book.snapshot()),

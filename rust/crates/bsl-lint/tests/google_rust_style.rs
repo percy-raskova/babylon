@@ -2,7 +2,9 @@
 //!
 //! Each test pins one rule from `docs/agents/rust-style.md` or one documented
 //! false-positive guard (local functions, tuple-variant constructors, closures,
-//! and module imports used as namespaces).
+//! module imports used as namespaces, and macro-body bindings). The
+//! report-only classes (bool parameters, macro-only direct imports) assert
+//! `Warn`; every gating class asserts `Fail`.
 
 use bsl_lint::finding::{Finding, Severity};
 use bsl_lint::google_rust_style;
@@ -13,6 +15,9 @@ const LEAF: &str = "rust/crates/demo/src/leaf.rs";
 const LIB: &str = "rust/crates/demo/src/lib.rs";
 const CLIENT: &str = "rust/crates/babylon-client/src/app.rs";
 const KERNEL: &str = "rust/crates/babylon-kernel/src/lib.rs";
+const ROSTER: &str = "rust/crates/babylon-kernel/src/geography/roster.rs";
+const MATERIAL_REGISTER: &str = "rust/crates/babylon-tick/src/material_world/register.rs";
+const WORLD_HASH: &str = "rust/crates/babylon-tick/src/world_hash.rs";
 
 fn check(path: &str, source: &str) -> Vec<Finding> {
     check_at(Path::new(path), source)
@@ -60,6 +65,24 @@ fn assert_clean(path: &str, source: &str) {
     assert!(
         findings.is_empty(),
         "expected no findings, got:\n{}",
+        render(&findings)
+    );
+}
+
+fn assert_warns(path: &str, source: &str, needle: &str) {
+    let findings = check(path, source);
+    assert!(
+        findings
+            .iter()
+            .all(|finding| finding.severity == Severity::Warn),
+        "report-only rules must not gate:\n{}",
+        render(&findings)
+    );
+    assert!(
+        findings
+            .iter()
+            .any(|finding| finding.what.contains(needle) || finding.evidence.contains(needle)),
+        "expected `{needle}` in the warnings:\n{}",
         render(&findings)
     );
 }
@@ -128,6 +151,21 @@ fn a_public_glob_reexport_in_a_non_leaf_module_is_allowed() {
 }
 
 #[test]
+fn a_public_glob_reexport_of_a_crate_qualified_path_is_flagged() {
+    assert_flags(LIB, "pub use crate::alpha::*;\n", "glob");
+    assert_flags(LIB, "pub use self::alpha::*;\n", "glob");
+}
+
+#[test]
+fn a_public_glob_reexport_of_a_nested_module_is_flagged() {
+    assert_flags(
+        LIB,
+        "pub use alpha::beta::*;\n",
+        "single-segment child module",
+    );
+}
+
+#[test]
 fn a_local_enum_glob_inside_a_function_is_allowed() {
     let source = "fn run(direction: Direction) {\n    use Direction::*;\n    let _ = direction;\n    let _ = North;\n}\n";
     assert_clean(LEAF, source);
@@ -149,11 +187,11 @@ fn function_and_type_definitions_in_lib_are_flagged() {
     let findings = check(LIB, source);
     assert_eq!(
         findings.len(),
-        4,
-        "exactly the fn, struct, enum, and trait must be flagged:\n{}",
+        6,
+        "exactly the fn, struct, enum, trait, const, and type alias must be flagged:\n{}",
         render(&findings)
     );
-    for name in ["build", "Widget", "Mode", "Render"] {
+    for name in ["build", "Widget", "Mode", "Render", "LIMIT", "Alias"] {
         assert!(
             findings
                 .iter()
@@ -162,6 +200,32 @@ fn function_and_type_definitions_in_lib_are_flagged() {
             render(&findings)
         );
     }
+}
+
+#[test]
+fn non_leaf_statics_and_impl_blocks_are_flagged() {
+    let source = "static CACHE: u8 = 0;\nimpl Widget {\n    fn build() {}\n}\n";
+    let findings = check(LIB, source);
+    assert_eq!(
+        findings.len(),
+        2,
+        "exactly the static and the impl block must be flagged:\n{}",
+        render(&findings)
+    );
+    assert!(
+        findings
+            .iter()
+            .any(|finding| finding.evidence.contains("CACHE")),
+        "the static must name itself:\n{}",
+        render(&findings)
+    );
+    assert!(
+        findings
+            .iter()
+            .any(|finding| finding.what.contains("impl block")),
+        "the impl block must be named:\n{}",
+        render(&findings)
+    );
 }
 
 #[test]
@@ -196,6 +260,44 @@ fn the_process_entry_point_is_not_a_non_leaf_api_definition() {
 fn a_direct_lowercase_free_function_import_is_flagged() {
     let source = "use crate::alpha::beta::my_fn;\n\npub fn run() {\n    my_fn();\n}\n";
     assert_flags(LEAF, source, "my_fn");
+}
+
+#[test]
+fn a_direct_free_function_import_used_as_a_value_is_flagged() {
+    let source = "use crate::alpha::beta::my_fn;\n\npub fn run(values: Vec<u8>) -> Vec<u8> {\n    values.into_iter().map(my_fn).collect()\n}\n";
+    assert_flags(LEAF, source, "my_fn");
+}
+
+#[test]
+fn a_direct_free_function_import_called_inside_a_macro_body_is_flagged() {
+    let source =
+        "use crate::alpha::beta::my_fn;\n\npub fn run() {\n    assert_eq!(my_fn(1_u8), 2_u8);\n}\n";
+    assert_flags(LEAF, source, "used inside macro bodies");
+}
+
+#[test]
+fn a_macro_body_use_adds_nothing_when_the_ast_already_sees_the_call() {
+    let source = "use crate::alpha::beta::my_fn;\n\npub fn run() {\n    let _ = my_fn(1_u8);\n    assert_eq!(my_fn(1_u8), 2_u8);\n}\n";
+    let findings = check(LEAF, source);
+    assert_eq!(
+        findings.len(),
+        1,
+        "the direct-call finding already gates the import:\n{}",
+        render(&findings)
+    );
+    assert_eq!(findings[0].severity, Severity::Fail);
+}
+
+#[test]
+fn a_module_import_used_as_a_macro_body_namespace_is_clean() {
+    let source = "use std::sync::mpsc;\n\npub fn run() {\n    assert!(mpsc::channel::<u8>().0.send(1_u8).is_ok());\n}\n";
+    assert_clean(LEAF, source);
+}
+
+#[test]
+fn a_macro_body_local_binding_with_an_imported_name_is_clean() {
+    let source = "use crate::alpha::state;\n\npub fn run() {\n    let state = 1_u8;\n    assert_eq!(state, 1_u8);\n}\n";
+    assert_clean(LEAF, source);
 }
 
 #[test]
@@ -255,9 +357,15 @@ fn rustfmt_skip_without_a_marker_is_flagged() {
 }
 
 #[test]
-fn rustfmt_skip_with_an_exc_05_marker_is_allowed() {
+fn rustfmt_skip_with_an_exc_05_marker_in_a_registered_byte_table_is_allowed() {
     let source = "// STYLE-EXCEPTION(EXC-05): manual byte-table alignment\n#[rustfmt::skip]\nconst TABLE: [u8; 2] = [0, 1];\n";
-    assert_clean(LEAF, source);
+    assert_clean(WORLD_HASH, source);
+}
+
+#[test]
+fn rustfmt_skip_with_an_exc_05_marker_outside_the_byte_tables_is_flagged() {
+    let source = "// STYLE-EXCEPTION(EXC-05): manual byte-table alignment\n#[rustfmt::skip]\nconst TABLE: [u8; 2] = [0, 1];\n";
+    assert_flags(LEAF, source, "EXC-05");
 }
 
 #[test]
@@ -270,9 +378,15 @@ fn an_arc_without_a_marker_is_flagged() {
 }
 
 #[test]
-fn an_arc_with_an_exc_04_marker_is_allowed() {
+fn an_arc_with_an_exc_04_marker_in_a_registered_file_is_allowed() {
     let source = "pub struct Holder {\n    // STYLE-EXCEPTION(EXC-04): shared immutable snapshot.\n    value: Arc<u8>,\n}\n";
-    assert_clean(LEAF, source);
+    assert_clean(ROSTER, source);
+}
+
+#[test]
+fn an_arc_with_an_exc_04_marker_outside_the_register_is_flagged() {
+    let source = "pub struct Holder {\n    // STYLE-EXCEPTION(EXC-04): shared immutable snapshot.\n    value: Arc<u8>,\n}\n";
+    assert_flags(LEAF, source, "EXC-04 register");
 }
 
 #[test]
@@ -293,7 +407,13 @@ fn an_arc_vec_without_a_marker_is_flagged() {
 #[test]
 fn an_arc_vec_with_a_registered_marker_is_allowed() {
     let source = "pub struct Holder {\n    // STYLE-EXCEPTION(EXC-04): adopts the caller's allocation.\n    value: Arc<Vec<u8>>,\n}\n";
-    assert_clean(LEAF, source);
+    assert_clean(MATERIAL_REGISTER, source);
+}
+
+#[test]
+fn an_arc_vec_marker_outside_the_adopted_allocation_site_is_flagged() {
+    let source = "pub struct Holder {\n    // STYLE-EXCEPTION(EXC-04): adopts the caller's allocation.\n    value: Arc<Vec<u8>>,\n}\n";
+    assert_flags(LEAF, source, "Arc<Vec");
 }
 
 #[test]
@@ -306,9 +426,9 @@ fn catch_unwind_without_a_marker_is_flagged() {
 }
 
 #[test]
-fn catch_unwind_with_an_exception_marker_is_allowed() {
+fn catch_unwind_is_flagged_even_with_an_exception_marker() {
     let source = "pub fn guard() {\n    // STYLE-EXCEPTION(EXC-01): the runtime boundary owns this unwind.\n    let _ = std::panic::catch_unwind(|| 1_u8);\n}\n";
-    assert_clean(LEAF, source);
+    assert_flags(LEAF, source, "catch_unwind");
 }
 
 #[test]
@@ -325,6 +445,41 @@ fn a_lowercase_hex_literal_is_clean() {
 fn a_clean_leaf_module_passes() {
     let source = "use std::collections::BTreeMap;\nuse std::sync::mpsc;\n\npub fn run(values: BTreeMap<u8, u8>) -> usize {\n    let (_sender, _receiver) = mpsc::channel::<u8>();\n    helper(values)\n}\n\nfn helper(values: BTreeMap<u8, u8>) -> usize {\n    values.len()\n}\n";
     assert_clean(LEAF, source);
+}
+
+#[test]
+fn a_bare_bool_parameter_is_reported_as_a_warning() {
+    assert_warns(LEAF, "pub fn render(visible: bool) {}\n", "bool parameter");
+}
+
+#[test]
+fn a_registered_deferred_bool_parameter_is_not_reported() {
+    let source = "impl State {\n    fn step_selection(&mut self, backwards: bool) {\n        let _ = backwards;\n    }\n}\n";
+    assert_clean(LEAF, source);
+}
+
+#[test]
+fn a_bool_enum_payload_is_reported_as_a_warning() {
+    let source = "pub enum Command {\n    CycleGood(bool),\n    CycleBad(bool),\n}\n";
+    let findings = check(LEAF, source);
+    assert_eq!(
+        findings.len(),
+        1,
+        "only the unregistered variant may report:\n{}",
+        render(&findings)
+    );
+    assert!(
+        findings
+            .iter()
+            .all(|finding| finding.severity == Severity::Warn),
+        "the bool-payload class is report-only:\n{}",
+        render(&findings)
+    );
+    assert!(
+        findings[0].evidence.contains("CycleBad"),
+        "the warning names the unregistered variant:\n{}",
+        render(&findings)
+    );
 }
 
 #[test]

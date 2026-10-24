@@ -1,5 +1,5 @@
 //! Scope is exercised through the scene system with real committed atlas geometry.
-use super::scene::setup_map;
+use super::scene;
 use super::CountySlab;
 use crate::atlas::CountyAtlas;
 use crate::map::{HoveredCounty, SelectedCounty};
@@ -84,7 +84,7 @@ fn scene(counties: Vec<String>) -> App {
     .insert_resource(observation(campaign, counties))
     .add_systems(
         Update,
-        setup_map
+        scene::setup_map
             .after(crate::map::MapScopeSet)
             .before(ObserverSet::Paint),
     );

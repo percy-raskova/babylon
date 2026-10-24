@@ -1,9 +1,7 @@
 //! DB-free executable laws for the current persistence semantic corpus.
 
-use babylon_persistence::verify_persistence_semantic_vector_row;
 use babylon_persistence::{
-    verify_persistence_semantic_vectors, RustPersistenceVectorError, RustPersistenceVectorOutcome,
-    RustPersistenceVectorReport,
+    RustPersistenceVectorError, RustPersistenceVectorOutcome, RustPersistenceVectorReport,
 };
 
 const VECTORS: &[u8] = include_bytes!("../../../../contracts/persistence_semantic_vectors.jsonl");
@@ -16,9 +14,9 @@ fn semantic_vector_types_are_send_and_executors_are_typed() {
     assert_send::<RustPersistenceVectorReport>();
 
     let _: fn(&[u8]) -> Result<RustPersistenceVectorOutcome, RustPersistenceVectorError> =
-        verify_persistence_semantic_vector_row;
+        babylon_persistence::verify_persistence_semantic_vector_row;
     let _: fn(&[u8]) -> Result<RustPersistenceVectorReport, RustPersistenceVectorError> =
-        verify_persistence_semantic_vectors;
+        babylon_persistence::verify_persistence_semantic_vectors;
 }
 
 #[test]

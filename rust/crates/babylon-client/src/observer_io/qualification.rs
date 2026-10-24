@@ -393,9 +393,7 @@ mod tests {
 
     #[test]
     fn stale_qualified_read_drains_before_another_reconstruction_can_start() {
-        use super::super::{
-            start_observation, ObservationCache, ObservationRead, PendingObservation,
-        };
+        use super::super::{ObservationCache, ObservationRead, PendingObservation};
         use crate::observer_ui::ObserverFrame;
         use bevy::prelude::{App, MinimalPlugins};
         use bevy::tasks::AsyncComputeTaskPool;
@@ -411,7 +409,10 @@ mod tests {
             .insert_resource(audit)
             .init_resource::<ObservationCache>()
             .init_resource::<ObserverFrame>()
-            .add_systems(bevy::prelude::Update, start_observation);
+            .add_systems(
+                bevy::prelude::Update,
+                super::super::runtime::start_observation,
+            );
         let task = AsyncComputeTaskPool::get()
             .spawn(async { bevy::tasks::futures_lite::future::pending::<ObservationRead>().await });
         app.insert_resource(PendingObservation(Some((stale.clone(), task))));

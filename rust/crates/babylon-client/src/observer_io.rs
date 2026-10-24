@@ -17,9 +17,8 @@ use runtime::PreparedObservation;
 pub(crate) use runtime::{campaign_preset, RuntimePipe, RuntimeSendError, LAUNCHER_REQUIRED};
 #[cfg(test)]
 use runtime::{
-    collect_observation, finish_shutdown, handle_commands, playback, receive, send_campaign_switch,
-    start_observation, ObservationCache, ObservationCacheKey, ObservationRead, PendingObservation,
-    PlaybackClock, ShutdownProgress,
+    ObservationCache, ObservationCacheKey, ObservationRead, PendingObservation, PlaybackClock,
+    ShutdownProgress,
 };
 pub use runtime::{ObserverIoPlugin, ObserverSet};
 
@@ -77,8 +76,8 @@ pub(crate) mod tests {
         .init_resource::<DossierRefresh>()
         .init_resource::<ObserverAudioSettings>()
         .init_resource::<ObserverFeedback>()
-        .add_systems(Update, handle_commands.in_set(ObserverSet::Input))
-        .add_systems(Update, receive.in_set(ObserverSet::Receive));
+        .add_systems(Update, runtime::handle_commands.in_set(ObserverSet::Input))
+        .add_systems(Update, runtime::receive.in_set(ObserverSet::Receive));
         (receiver, replies)
     }
 
@@ -86,7 +85,7 @@ pub(crate) mod tests {
     fn matching_advance_progress_changes_only_presentation_not_session_authority() {
         let (mut app, requests, replies) = quit_app();
         app.init_resource::<SessionChanges>()
-            .add_systems(Update, record_session_changes.after(receive));
+            .add_systems(Update, record_session_changes.after(runtime::receive));
         dispatch(&mut app, &[ObserverCommand::Step]);
         let RuntimeSessionRequest::Advance {
             scope, request_id, ..
@@ -123,7 +122,10 @@ pub(crate) mod tests {
     fn advance_progress_clears_after_matching_refusal_or_transport_loss() {
         for transport_loss in [false, true] {
             let (mut app, requests, replies) = quit_app();
-            app.add_systems(Update, crate::observer_progress::track.after(receive));
+            app.add_systems(
+                Update,
+                crate::observer_progress::track.after(runtime::receive),
+            );
             dispatch(&mut app, &[ObserverCommand::Step]);
             let RuntimeSessionRequest::Advance {
                 scope, request_id, ..
@@ -381,7 +383,11 @@ pub(crate) mod tests {
             .add_message::<AppExit>()
             .add_systems(
                 Update,
-                (handle_commands, send_campaign_switch, finish_shutdown)
+                (
+                    runtime::handle_commands,
+                    runtime::send_campaign_switch,
+                    runtime::finish_shutdown,
+                )
                     .chain()
                     .in_set(ObserverSet::Receive),
             );
@@ -412,7 +418,7 @@ pub(crate) mod tests {
         app.world_mut().resource_mut::<RuntimePipe>().responses = Mutex::new(receiver);
         app.init_resource::<PlaybackClock>()
             .init_resource::<OperationProgress>()
-            .add_systems(Update, receive.before(handle_commands));
+            .add_systems(Update, runtime::receive.before(runtime::handle_commands));
         (app, requests, responses)
     }
 
@@ -767,7 +773,7 @@ pub(crate) mod tests {
             .resource_mut::<ObserverSession>()
             .start_playback());
         app.insert_resource(PlaybackClock { elapsed: 10.0 })
-            .add_systems(Update, playback.after(handle_commands));
+            .add_systems(Update, runtime::playback.after(runtime::handle_commands));
         app.world_mut()
             .resource_mut::<Time>()
             .advance_by(Duration::from_secs(2));
@@ -830,13 +836,13 @@ pub(crate) mod tests {
             .add_systems(
                 Update,
                 (
-                    start_observation,
-                    collect_observation,
-                    playback,
+                    runtime::start_observation,
+                    runtime::collect_observation,
+                    runtime::playback,
                     record_session_changes,
                 )
                     .chain()
-                    .after(finish_shutdown),
+                    .after(runtime::finish_shutdown),
             );
         app.update();
         app.update();
@@ -893,7 +899,7 @@ pub(crate) mod tests {
                     state.complete();
                 }
             }
-            app.add_systems(Update, playback.after(finish_shutdown));
+            app.add_systems(Update, runtime::playback.after(runtime::finish_shutdown));
             app.world_mut()
                 .resource_mut::<Time>()
                 .advance_by(Duration::from_secs(2));
@@ -1127,7 +1133,7 @@ pub(crate) mod tests {
     fn playback_waits_for_each_period_ack_and_observation_then_stops_at_the_horizon() {
         let (mut app, requests) = command_app();
         app.init_resource::<PlaybackClock>()
-            .add_systems(Update, playback.after(handle_commands));
+            .add_systems(Update, runtime::playback.after(runtime::handle_commands));
         app.world_mut()
             .resource_mut::<Time>()
             .advance_by(Duration::from_secs(1));
@@ -1515,7 +1521,7 @@ pub(crate) mod tests {
     fn manual_period_advance_sends_once_commits_once_and_remains_paused() {
         let (mut app, receiver) = command_app();
         app.init_resource::<PlaybackClock>()
-            .add_systems(Update, playback.after(handle_commands));
+            .add_systems(Update, runtime::playback.after(runtime::handle_commands));
         assert!(app
             .world_mut()
             .resource_mut::<ObserverSession>()

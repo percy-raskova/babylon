@@ -5,7 +5,7 @@ use super::{ReceiptCoverage, RuleExecution, WiringManifest};
 use super::wiring;
 
 use super::super::{
-    sum, ExperimentError, ExperimentProfile, Result, SimulationExperimentV1, StartingSnapshot,
+    ExperimentError, ExperimentProfile, Result, SimulationExperimentV1, StartingSnapshot,
 };
 
 use babylon_bsl::identity_codec::StableBslValue;
@@ -176,7 +176,7 @@ pub fn date_after(epoch: &str, days: u64) -> Result<String> {
 pub(in crate::simulation_experiment) fn total(
     mut values: impl Iterator<Item = u64>,
 ) -> Result<u64> {
-    values.try_fold(0, sum)
+    values.try_fold(0, super::super::sum)
 }
 
 pub(in crate::simulation_experiment) fn mass(state: &MaterialCircuitState) -> Result<u64> {

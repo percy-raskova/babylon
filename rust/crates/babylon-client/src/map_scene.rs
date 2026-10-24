@@ -1,7 +1,7 @@
 //! Rebuild geographic geometry only when the admitted campaign scope changes.
 use super::{
-    hover_county, leave_county, relationships, select_county, CountySlab, MapGeometry, MapLegend,
-    MapOrbit, ObserverMapCamera, BASE_HEIGHT, DATA_HEIGHT, MAP_LAYER, METRES_TO_SCENE,
+    relationships, CountySlab, MapGeometry, MapLegend, MapOrbit, ObserverMapCamera, BASE_HEIGHT,
+    DATA_HEIGHT, MAP_LAYER, METRES_TO_SCENE,
 };
 use crate::atlas::CountyAtlas;
 use crate::decision_surface::{DeclaredSurface, SurfaceId};
@@ -119,9 +119,9 @@ fn spawn_county(
             Pickable::IGNORE,
             DeclaredSurface::new(SurfaceId::ObserverShell),
         ))
-        .observe(hover_county)
-        .observe(leave_county)
-        .observe(select_county);
+        .observe(super::hover_county)
+        .observe(super::leave_county)
+        .observe(super::select_county);
 }
 
 fn spawn_map_scene(

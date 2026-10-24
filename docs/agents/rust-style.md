@@ -33,12 +33,29 @@ Three layers enforce the guide. PER-350 delivers all three in one change set.
 
 One lint needs a stated scope. `non_exhaustive_omitted_patterns` is unstable on
 the pinned 1.91.1 toolchain (rust-lang/rust#89554), so the workspace table drops
-it rather than emitting `unknown_lints` on every crate. EXC-02's exhaustive-match
-obligation and the `bsl-lint google-rust-style` wildcard-arm check carry that
-coverage. Conformance tests keep exactly two file-scope allows,
-`clippy::float_cmp` and `clippy::unreadable_literal`, because their fixtures
-assert exact authored values; every other pedantic finding in test code is fixed
-or annotated at the item that earns it.
+it rather than emitting `unknown_lints` on every crate. EXC-02 bans
+`#[non_exhaustive]` on internal enums and structs. The Rust compiler E004
+non-exhaustive-match error and review carry the exhaustive-match obligation.
+No wildcard-arm check exists.
+
+Conformance tests keep exactly two file-scope allows, `clippy::float_cmp` and
+`clippy::unreadable_literal`, because their fixtures assert exact authored
+values. The change fixes or annotates every other pedantic finding in test code
+at the item that earns it.
+
+Two parts of the AST check are report-only or residual by design. A bare `bool`
+parameter is a `Warn` finding. A bool enum payload that does not name its own
+type is also a `Warn` finding. Both print without gating. The Task 9 deferred
+sites (`CycleGood`, `step_selection`, `adjacent`, `evidence_neighbor`,
+`move_evidence`, `paint_layout`) stay registered until their enum conversions
+land.
+
+The AST visitor cannot see a direct free-function import whose every use sits
+inside a macro token stream. The
+`rust/crates/bsl-lint/data/google_rust_style_macro_residual.txt` register
+records the 136 import lines (254 names) that predate the check. That register
+can only shrink. Qualifying a site removes its line in the same commit, and a
+new macro-only direct import is a gating finding.
 
 A change that fails one layer does not merge. A style refactoring must keep
 canonical bytes equal. `GraphStateHash`, `NominalWorldHash`, `TickContentHash`,

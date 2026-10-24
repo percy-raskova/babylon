@@ -8,7 +8,8 @@ use babylon_material_circuit::{
     OutboundOrderId, PublicAccountId, ShiftId, SiteId, UnitId, WageAccrualReceipt,
 };
 
-use super::{MaterialWorldError, ReceiptCursor};
+use super::MaterialWorldError;
+use super::ReceiptCursor;
 
 pub(super) const TRANSFER_BYTES: usize = 134;
 pub(super) const ACCRUAL_BYTES: usize = 130;

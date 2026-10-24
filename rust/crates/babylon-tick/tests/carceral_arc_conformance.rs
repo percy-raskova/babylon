@@ -1,4 +1,4 @@
-//! The JOINT ARC — Task 8 of the Decomposition (@11.0) + ControlRatio
+//! The JOINT ARC — Task 8 of the Decomposition (@11.0) + `ControlRatio`
 //! (@12.0) port train (`docs/superpowers/plans/2026-08-17-decomposition-
 //! controlratio-port.md`). This is the train's ACCEPTANCE TEST: the ported
 //! analogue of `tests/scenarios/test_carceral_equilibrium.py`'s
@@ -77,17 +77,26 @@
 //!
 //! # Executable phase ordering
 //!
-//! The governed registry places Decomposition @11 before ControlRatio @12.
+//! The governed registry places Decomposition @11 before `ControlRatio` @12.
 //! The ordinary 52-tick delay keeps the full arc's milestone schedule at
 //! 1/53/105/106. The zero-delay fixture below makes the ordering observable:
-//! ControlRatio must see Decomposition's same-tick carrier write and emit its
+//! `ControlRatio` must see Decomposition's same-tick carrier write and emit its
 //! crisis on tick 1. A global rule-id sort would invert the packs because
 //! `'c' < 'd'` and delay that crisis to tick 2.
+
+// Conformance fixtures exercise exact engine values, transcribe spec literals,
+// and build whole scenarios in one test. These pedantic lints would force
+// ceremony that hides those contracts, so they stay off in test code only.
+#![allow(
+    clippy::float_cmp,
+    reason = "these comparisons pin exact authored f64 values"
+)]
 
 use babylon_bsl::evaluator::Value;
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
+use babylon_kernel::replay::ReplaySeed;
 use babylon_kernel::replay::ReplaySessionId;
 use babylon_tick::diagnostic::RuleDiagnosticSession;
 
@@ -125,7 +134,7 @@ fn attribute(graph: &HypergraphStore, id: NodeId, field: &str) -> f64 {
 }
 
 /// The last tick this suite ever advances to — comfortably past the
-/// derived TERMINAL_DECISION tick (106), with margin to prove nothing
+/// derived `TERMINAL_DECISION` tick (106), with margin to prove nothing
 /// fires a fifth time afterward.
 const LAST_TICK: i64 = 110;
 
@@ -151,7 +160,7 @@ fn run_arc() -> ArcRun {
         &rule_src,
         HypergraphStore::new(),
         run_once_session(),
-        babylon_kernel::replay::ReplaySeed::new(0),
+        ReplaySeed::new(0),
     )
     .expect("both packs must load together against the arc scenario");
     let mut all_events = Vec::new();
@@ -508,7 +517,7 @@ fn governed_phase_order_exposes_decomposition_to_control_ratio_in_the_same_tick(
         &rule_src,
         HypergraphStore::new(),
         run_once_session(),
-        babylon_kernel::replay::ReplaySeed::new(0),
+        ReplaySeed::new(0),
     )
     .expect("the byte-order fixture must load against both packs");
 
@@ -528,7 +537,7 @@ fn governed_phase_order_exposes_decomposition_to_control_ratio_in_the_same_tick(
         session
             .graph()
             .node_attribute(BOR_CARCERAL_REGISTER, "institution/decomposition-fire-tick")
-            .unwrap(),
+            .expect("the fixture node carries the authored attribute"),
         1.0,
         "tick 1: decomposition-fire-tick IS written this tick, by p03"
     );

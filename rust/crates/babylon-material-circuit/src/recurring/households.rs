@@ -7,7 +7,7 @@ use crate::{
     MoneyTransferReceipt, OrderId, OutboundOrderId, PurchaseEscrow, UnitId,
     MAX_MATERIAL_CIRCUIT_ROWS,
 };
-use babylon_kernel::content_digest::sha256_of;
+use babylon_kernel::content_digest;
 use std::collections::{BTreeMap, BTreeSet};
 
 type HouseholdKey = (FinalDemandPrincipalId, GoodId, UnitId);
@@ -23,7 +23,7 @@ pub fn recurring_household_order_id(
     bytes.extend_from_slice(&key.0.as_bytes());
     bytes.extend_from_slice(&key.1.as_bytes());
     bytes.extend_from_slice(&key.2.as_bytes());
-    OrderId::from_bytes(sha256_of(&bytes))
+    OrderId::from_bytes(content_digest::sha256_of(&bytes))
 }
 
 fn requirements(rows: &RecurringEconomy) -> Result<BTreeMap<HouseholdKey, u64>> {

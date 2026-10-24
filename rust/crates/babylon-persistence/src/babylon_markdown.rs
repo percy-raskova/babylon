@@ -11,6 +11,8 @@
 //! The Git export rewrite (ADR249 R5) rewrites `subject:` targets to relative
 //! `.md` paths and renders bare links as fog chips synthesized from the subject
 //! kind and id alone, carrying zero label bytes.
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 
 /// Stable profile identity pinned in `contracts/babylon_markdown_v1.yaml`.
 pub const BABYLON_MARKDOWN_PROFILE_ID: &str = "babylon-markdown.v1";
@@ -60,7 +62,7 @@ impl BabylonMarkdownError {
 }
 
 impl std::fmt::Display for BabylonMarkdownError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> FmtResult {
         write!(formatter, "babylon markdown refusal: {self:?}")
     }
 }

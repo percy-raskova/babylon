@@ -76,7 +76,11 @@ mod tests {
 
     fn key(index: usize) -> InventoryKey {
         let mut bytes = [0; 32];
-        bytes[..8].copy_from_slice(&u64::try_from(index).unwrap().to_be_bytes());
+        bytes[..8].copy_from_slice(
+            &u64::try_from(index)
+                .expect("the fixture value fits the target range")
+                .to_be_bytes(),
+        );
         (
             SiteId::from_bytes(bytes),
             GoodId::from_bytes([1; 32]),
@@ -88,9 +92,11 @@ mod tests {
     fn transient_inventory_has_its_own_exact_finite_insertion_bound() {
         let limit = 393_216;
         let mut inventory: InventoryLedger = (0..limit - 1).map(|i| (key(i), 1)).collect();
-        credit_inventory(&mut inventory, key(limit - 1), 7).unwrap();
+        credit_inventory(&mut inventory, key(limit - 1), 7)
+            .expect("the fixture inventory admits the credit");
         assert_eq!(inventory.len(), limit);
-        credit_inventory(&mut inventory, key(limit - 1), 3).unwrap();
+        credit_inventory(&mut inventory, key(limit - 1), 3)
+            .expect("the fixture inventory admits the credit");
         assert_eq!(inventory[&key(limit - 1)], 10);
         assert_eq!(
             credit_inventory(&mut inventory, key(limit), 1),

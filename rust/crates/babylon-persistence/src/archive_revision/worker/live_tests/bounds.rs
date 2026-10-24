@@ -3,16 +3,26 @@
 //! boundaries use four of six genuinely committed ticks, within the current
 //! campaign horizon; `archive_worker_contract` retains the literal 256 proof.
 
-use super::*;
+use super::support::{
+    archive_page_count, receipt_consumption_count, ChangedExceptProducer, LiveWorkerTarget,
+    QuietExceptProducer, StubPageProducer,
+};
+use crate::identity::CampaignId;
+use crate::ArchiveWorkerCancellation;
+use crate::ArchiveWorkerSweepReport;
+use crate::{
+    ArchiveDossierProducer, ArchiveReceiptDisposition, SemanticArchiveError, SemanticArchiveStore,
+};
+use postgres::Config;
 
 fn bounded_sweep(
     config: &Config,
     campaign: CampaignId,
     producer: &dyn ArchiveDossierProducer,
-) -> Result<crate::ArchiveWorkerSweepReport, SemanticArchiveError> {
+) -> Result<ArchiveWorkerSweepReport, SemanticArchiveError> {
     let store = SemanticArchiveStore::new(config);
     let mut client = store.connect("connect bounded live Archive worker")?;
-    let cancellation = crate::ArchiveWorkerCancellation::default();
+    let cancellation = ArchiveWorkerCancellation::default();
     cancellation.check()?;
     super::super::publication::with_campaign_lock(&mut client, campaign, |client| {
         super::super::sweep_locked(client, campaign, producer, &cancellation, 4)

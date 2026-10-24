@@ -2,13 +2,15 @@
 use std::collections::BTreeMap;
 
 use crate::valuation::CostClose;
+use crate::SellerOffer;
 use crate::{
     CircuitAccounting, GoodId, HouseholdDemandReceipt, MaterialCircuitError, MaterialCircuitState,
     PricePolicy, SiteId, UnitId,
 };
 use babylon_kernel::currency::Currency;
+use std::result::Result as StdResult;
 
-type Result<T> = std::result::Result<T, MaterialCircuitError>;
+type Result<T> = StdResult<T, MaterialCircuitError>;
 type StockKey = (SiteId, GoodId, UnitId);
 
 /// Mutually exclusive actual native-quantity basis for one quote decision.
@@ -180,7 +182,7 @@ pub(crate) fn update_prices(
 }
 
 fn quote(
-    offer: &mut crate::SellerOffer,
+    offer: &mut SellerOffer,
     waiting: u64,
     stock: u64,
     cost_pressure: bool,

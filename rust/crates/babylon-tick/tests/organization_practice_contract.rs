@@ -1,15 +1,21 @@
 use std::collections::HashMap;
 use std::fmt::Write;
 
-use babylon_bsl::scenario::{compose_declaration_preludes, load_scenario_with_prelude};
-use babylon_bsl::{
-    exemptions::EXTENSIVE_INTENSIVE_EXEMPTIONS, reader::read, typecheck::typecheck_aggregation,
-    typecheck::TypeCode, typecheck::TypeEnv, types::FieldKind,
-};
+use babylon_bsl::exemptions::EXTENSIVE_INTENSIVE_EXEMPTIONS;
+use babylon_bsl::scenario::compose_declaration_preludes;
+use babylon_bsl::typecheck::{TypeCode, TypeEnv};
+use babylon_bsl::types::FieldKind;
+
+use babylon_bsl::reader;
+use babylon_bsl::scenario;
+use babylon_bsl::scenario::LoadedScenario;
+use babylon_bsl::typecheck;
 use babylon_graph::memory::MemoryGraph;
 use babylon_graph::substrate::GraphSubstrate;
-use babylon_kernel::content_digest::sha256_of;
-use babylon_practice_contract::{practice_machine_verb, PracticeId, VerbMode, VerbStem};
+use babylon_kernel::content_digest;
+use babylon_practice_contract::{PracticeId, VerbMode, VerbStem};
+use serde_json::Value;
+use std::path::Path;
 
 const PRACTICE_PRELUDE: &str = include_str!("../content/declarations/organization-practice.bscn");
 const PRACTICE_SCENARIO: &str =
@@ -59,12 +65,13 @@ const PROMOTED_SCENARIOS: [(&str, &str); 11] = [
     ),
 ];
 
-fn load_contract(prelude: &str, scenario: &str) -> babylon_bsl::scenario::LoadedScenario {
+fn load_contract(prelude: &str, scenario: &str) -> LoadedScenario {
     let mut graph = MemoryGraph::new();
-    load_scenario_with_prelude(prelude, scenario, &mut graph).expect("practice contract loads")
+    scenario::load_scenario_with_prelude(prelude, scenario, &mut graph)
+        .expect("practice contract loads")
 }
 
-fn ordinal(loaded: &babylon_bsl::scenario::LoadedScenario, enum_name: &str, member: &str) -> u32 {
+fn ordinal(loaded: &LoadedScenario, enum_name: &str, member: &str) -> u32 {
     let enum_id = loaded.enums.resolve(enum_name).expect("declared enum");
     loaded
         .enums
@@ -96,10 +103,12 @@ fn declaration_ordinals_match_contract() {
 #[test]
 fn practice_machine_verbs_match_declared_modes() {
     let loaded = load_contract(PRACTICE_PRELUDE, PRACTICE_SCENARIO);
-    let organize = practice_machine_verb(PracticeId::Organize).expect("declared practice mapping");
-    let agitate = practice_machine_verb(PracticeId::Agitate).expect("declared practice mapping");
-    let mutual_aid =
-        practice_machine_verb(PracticeId::MutualAid).expect("declared practice mapping");
+    let organize = babylon_practice_contract::practice_machine_verb(PracticeId::Organize)
+        .expect("declared practice mapping");
+    let agitate = babylon_practice_contract::practice_machine_verb(PracticeId::Agitate)
+        .expect("declared practice mapping");
+    let mutual_aid = babylon_practice_contract::practice_machine_verb(PracticeId::MutualAid)
+        .expect("declared practice mapping");
     assert_eq!(
         (organize.stem, organize.mode),
         (VerbStem::Mobilize, Some(VerbMode::Canvass))
@@ -114,7 +123,7 @@ fn practice_machine_verbs_match_declared_modes() {
         (PracticeId::Agitate, Some("AGITATE")),
         (PracticeId::MutualAid, None),
     ] {
-        let machine_member = practice_machine_verb(practice)
+        let machine_member = babylon_practice_contract::practice_machine_verb(practice)
             .expect("declared practice mapping")
             .mode
             .map(|mode| match mode {
@@ -123,7 +132,10 @@ fn practice_machine_verbs_match_declared_modes() {
             });
         assert_eq!(machine_member, expected_member);
         if let Some(member) = machine_member {
-            let verb_mode = loaded.enums.resolve("VerbMode").unwrap();
+            let verb_mode = loaded
+                .enums
+                .resolve("VerbMode")
+                .expect("the fixture call `resolve` succeeds for the authored inputs");
             assert!(loaded.enums.ordinal(verb_mode, member).is_some());
         }
     }
@@ -150,7 +162,7 @@ fn prelude_identity_vector_matches_bytes_and_digest() {
     let mut identity = None;
     let mut identity_count = 0_usize;
     for line in VECTOR_CORPUS.lines().take(513) {
-        let value: serde_json::Value = serde_json::from_str(line).expect("valid vector JSON");
+        let value: Value = serde_json::from_str(line).expect("valid vector JSON");
         if value["kind"] == "organization-practice-prelude" {
             identity_count += 1;
             identity = Some(value);
@@ -159,15 +171,22 @@ fn prelude_identity_vector_matches_bytes_and_digest() {
     assert_eq!(identity_count, 1);
     let identity = identity.expect("one prelude identity vector");
     assert_eq!(
-        identity["data"]["raw_hex"].as_str().unwrap(),
+        identity["data"]["raw_hex"]
+            .as_str()
+            .expect("the JSON fixture field is a string"),
         raw_hex(PRACTICE_PRELUDE.as_bytes())
     );
-    let digest = babylon_tick::hex(&sha256_of(PRACTICE_PRELUDE.as_bytes()));
+    let digest = babylon_tick::hex(&content_digest::sha256_of(PRACTICE_PRELUDE.as_bytes()));
     assert_eq!(
         digest,
         "3fe86a1f60114b56a6141ec31a61f824119cadf74be7dd1788e5a166492fdcc4"
     );
-    assert_eq!(identity["data"]["digest_hex"].as_str().unwrap(), digest);
+    assert_eq!(
+        identity["data"]["digest_hex"]
+            .as_str()
+            .expect("the JSON fixture field is a string"),
+        digest
+    );
 }
 
 #[test]
@@ -181,8 +200,9 @@ SOLIDARITY\n     TENANCY ADJACENCY))"
     ));
 
     let mut graph = MemoryGraph::new();
-    let loaded = load_scenario_with_prelude(PRACTICE_PRELUDE, PRACTICE_SCENARIO, &mut graph)
-        .expect("topology witness loads");
+    let loaded =
+        scenario::load_scenario_with_prelude(PRACTICE_PRELUDE, PRACTICE_SCENARIO, &mut graph)
+            .expect("topology witness loads");
     let ids: HashMap<&str, _> = loaded
         .node_content_ids
         .iter()
@@ -214,9 +234,12 @@ fn action_budget_is_intensive_and_aggregation_law_is_pinned() {
         exemptions: EXTENSIVE_INTENSIVE_EXEMPTIONS,
     };
     let code = |form: &str| {
-        typecheck_aggregation(&read(form).expect("valid aggregation form").0, &env)
-            .err()
-            .and_then(|error| error.code)
+        typecheck::typecheck_aggregation(
+            &reader::read(form).expect("valid aggregation form").0,
+            &env,
+        )
+        .err()
+        .and_then(|error| error.code)
     };
     assert_eq!(
         code("(sum organization/action-budget)"),
@@ -231,7 +254,10 @@ fn action_budget_is_intensive_and_aggregation_law_is_pinned() {
         "(max organization/action-budget)",
         "(count organization/action-budget)",
     ] {
-        let result = typecheck_aggregation(&read(form).expect("valid aggregation form").0, &env);
+        let result = typecheck::typecheck_aggregation(
+            &reader::read(form).expect("valid aggregation form").0,
+            &env,
+        );
         assert!(result.is_ok(), "{form}: {result:?}");
     }
 }
@@ -241,17 +267,20 @@ fn prelude_composition_is_ordered_and_bounded() {
     let first = "(defenum A (ONE))\n";
     let second = "(defenum B (TWO))\n";
     assert_eq!(
-        compose_declaration_preludes(&[first, second]).unwrap(),
+        compose_declaration_preludes(&[first, second]).expect("the authored sections compose"),
         format!("{first}{second}")
     );
-    assert_eq!(compose_declaration_preludes(&["\n"]).unwrap(), "\n");
+    assert_eq!(
+        compose_declaration_preludes(&["\n"]).expect("the authored sections compose"),
+        "\n"
+    );
     assert!(compose_declaration_preludes(&["\n"; 17]).is_err());
     assert!(compose_declaration_preludes(&[&"x".repeat(262_145)]).is_err());
     let max_source = format!("{}\n", "x".repeat(262_143));
     assert_eq!(max_source.len(), 262_144);
     assert_eq!(
         compose_declaration_preludes(&[&max_source, &max_source, &max_source, &max_source])
-            .unwrap()
+            .expect("the authored sections compose")
             .len(),
         1_048_576
     );
@@ -278,7 +307,7 @@ fn prelude_composition_is_ordered_and_bounded() {
 
 #[test]
 fn all_promoted_scenarios_use_the_shared_prelude() {
-    let content_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("content");
+    let content_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("content");
     let manifest =
         std::fs::read_to_string(content_root.join("content-sets.toml")).expect("content manifest");
     for (set_id, scenario_path) in PROMOTED_SCENARIOS {
@@ -325,25 +354,32 @@ fn mismatch_mutations_do_not_satisfy_the_registry_contract() {
         "(defenum VerbMode (CANVASS AGITATE MUTUAL_AID))",
     );
     let loaded = load_contract(&pseudo_mode, PRACTICE_SCENARIO);
-    let verb_mode = loaded.enums.resolve("VerbMode").unwrap();
+    let verb_mode = loaded
+        .enums
+        .resolve("VerbMode")
+        .expect("the fixture call `resolve` succeeds for the authored inputs");
     assert_ne!(loaded.enums.member_count(verb_mode), 2);
 
     let duplicate = format!(
         "{PRACTICE_PRELUDE}(deffield organization/consciousness-tendency enum ConsciousnessTendency)\n"
     );
     let mut graph = MemoryGraph::new();
-    assert!(load_scenario_with_prelude(&duplicate, PRACTICE_SCENARIO, &mut graph).is_err());
+    assert!(
+        scenario::load_scenario_with_prelude(&duplicate, PRACTICE_SCENARIO, &mut graph).is_err()
+    );
 
     let extensive = PRACTICE_PRELUDE.replace(
         "(deffield organization/action-budget int intensive)",
         "(deffield organization/action-budget int extensive)",
     );
     let mut graph = MemoryGraph::new();
-    assert!(load_scenario_with_prelude(&extensive, PRACTICE_SCENARIO, &mut graph).is_err());
+    assert!(
+        scenario::load_scenario_with_prelude(&extensive, PRACTICE_SCENARIO, &mut graph).is_err()
+    );
 
     assert_ne!(
-        sha256_of(reordered.as_bytes()),
-        sha256_of(PRACTICE_PRELUDE.as_bytes())
+        content_digest::sha256_of(reordered.as_bytes()),
+        content_digest::sha256_of(PRACTICE_PRELUDE.as_bytes())
     );
     assert!(!PRACTICE_SCHEMA
         .replace("display_label: MUTUAL-AID", "display_label: MUTUAL_AID")

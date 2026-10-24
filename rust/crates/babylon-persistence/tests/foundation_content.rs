@@ -1,9 +1,9 @@
 //! Current content encoding and exact source admission.
 
 use babylon_kernel::content_digest::sha256_of;
+use babylon_persistence::michigan_cohorts;
+use babylon_persistence::michigan_economy;
 use babylon_persistence::{
-    michigan_cohorts::{michigan_cohort_foundation, michigan_cohorts},
-    michigan_economy::michigan_observer_foundation,
     CampaignFoundation, FoundationContentBundle, RustPersistenceRuntimeError,
 };
 
@@ -16,15 +16,16 @@ fn hex(bytes: &[u8]) -> String {
     use std::fmt::Write as _;
     let mut result = String::with_capacity(bytes.len() * 2);
     for byte in bytes {
-        write!(&mut result, "{byte:02x}").unwrap();
+        write!(&mut result, "{byte:02x}")
+            .expect("the in-memory formatter accepts the written text");
     }
     result
 }
 
 #[test]
 fn exact_current_wire_binds_explicit_version_and_all_five_fields() {
-    let current =
-        FoundationContentBundle::try_new(SMALL_SOURCE, None, "", b"{}", b"reference").unwrap();
+    let current = FoundationContentBundle::try_new(SMALL_SOURCE, None, "", b"{}", b"reference")
+        .expect("the authored fixture satisfies the constructor invariants");
     assert_eq!(hex(current.canonical_bytes()), SMALL_HEX);
     assert_eq!(hex(&sha256_of(current.canonical_bytes())), SMALL_SHA256);
     assert_eq!(current.scenario_source_bytes(), SMALL_SOURCE.as_bytes());
@@ -64,10 +65,13 @@ fn all_source_fields_accept_the_exact_bound_and_refuse_the_next_byte() {
         SourceField::Prelude,
         SourceField::Rules,
     ] {
-        let bundle = with_source(field, &exact).unwrap();
+        let bundle =
+            with_source(field, &exact).expect("the fixture builder accepts the authored options");
         let stored = match field {
             SourceField::Scenario => bundle.scenario_source_bytes(),
-            SourceField::Prelude => bundle.prelude_source_bytes().unwrap(),
+            SourceField::Prelude => bundle
+                .prelude_source_bytes()
+                .expect("the fixture call `prelude_source_bytes` succeeds for the authored inputs"),
             SourceField::Rules => bundle.rule_source_bytes(),
         };
         assert_eq!(stored, exact.as_bytes(), "{field:?}");
@@ -103,7 +107,7 @@ fn absent_empty_and_exact_prelude_bytes_have_distinct_content_identities() {
         .into_iter()
         .map(|prelude| {
             FoundationContentBundle::try_new(SMALL_SOURCE, prelude, "", b"{}", b"reference")
-                .unwrap()
+                .expect("the authored fixture satisfies the constructor invariants")
         })
         .collect();
     for (input, bundle) in inputs.into_iter().zip(&bundles) {
@@ -121,15 +125,17 @@ fn absent_empty_and_exact_prelude_bytes_have_distinct_content_identities() {
 
 #[test]
 fn full_cohort_source_is_retained_in_the_foundation() {
-    let cohorts = michigan_cohorts().unwrap();
+    let cohorts = michigan_cohorts::michigan_cohorts().expect("the Michigan cohort fixture builds");
     assert_eq!(cohorts.scenario_source().len(), 493_177);
-    let (session, bundle) = michigan_cohort_foundation().unwrap();
+    let (session, bundle) = michigan_cohorts::michigan_cohort_foundation()
+        .expect("the Michigan cohort foundation builds");
     assert_eq!(
         bundle.scenario_source_bytes(),
         cohorts.scenario_source().as_bytes()
     );
     assert!(bundle.scenario_source_bytes().len() > 65_535);
-    let captured = CampaignFoundation::capture(&session, bundle).unwrap();
+    let captured = CampaignFoundation::capture(&session, bundle)
+        .expect("the fixture captures the authored state");
     assert_eq!(
         captured.content_bundle().scenario_source_bytes(),
         cohorts.scenario_source().as_bytes()
@@ -138,8 +144,10 @@ fn full_cohort_source_is_retained_in_the_foundation() {
 
 #[test]
 fn capture_refuses_a_source_that_does_not_reproduce_the_live_graph() {
-    let (session, original) = michigan_observer_foundation().unwrap();
-    let source = std::str::from_utf8(original.scenario_source_bytes()).unwrap();
+    let (session, original) = michigan_economy::michigan_observer_foundation()
+        .expect("the Michigan observer foundation builds");
+    let source = std::str::from_utf8(original.scenario_source_bytes())
+        .expect("the fixture bytes came from a UTF-8 string");
     let changed = source.replacen("county-26001", "county-26000", 1);
     assert_ne!(changed, source);
     let wrong = FoundationContentBundle::try_new(
@@ -149,7 +157,7 @@ fn capture_refuses_a_source_that_does_not_reproduce_the_live_graph() {
         original.defines_bytes(),
         original.reference_bundle_manifest_bytes(),
     )
-    .unwrap();
+    .expect("the authored fixture satisfies the constructor invariants");
     assert_eq!(
         CampaignFoundation::capture(&session, wrong),
         Err(RustPersistenceRuntimeError::FoundationScenarioMismatch)

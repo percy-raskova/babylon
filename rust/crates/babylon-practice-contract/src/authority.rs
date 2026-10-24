@@ -1,6 +1,6 @@
 //! Pure current campaign habitation and practice-input authority contracts.
 
-use babylon_kernel::content_digest::sha256_of;
+use babylon_kernel::content_digest;
 
 use crate::actor::ActorOrganizationId;
 
@@ -429,7 +429,7 @@ pub fn encode_input_authority_ledger(
 pub fn input_authority_digest(
     value: &PracticeInputAuthority,
 ) -> Result<[u8; 32], PracticeAuthorityError> {
-    Ok(sha256_of(&encode_input_authority(value)?))
+    Ok(content_digest::sha256_of(&encode_input_authority(value)?))
 }
 
 /// Hash one successfully encoded current authority ledger.
@@ -439,7 +439,9 @@ pub fn input_authority_digest(
 pub fn input_authority_ledger_digest(
     ledger: &PracticeInputAuthorityLedger,
 ) -> Result<[u8; 32], PracticeAuthorityError> {
-    Ok(sha256_of(&encode_input_authority_ledger(ledger)?))
+    Ok(content_digest::sha256_of(&encode_input_authority_ledger(
+        ledger,
+    )?))
 }
 
 /// Decode one complete current authority ledger.

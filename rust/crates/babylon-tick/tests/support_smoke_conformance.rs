@@ -12,13 +12,18 @@
 //! not exist (this file failed to compile); GREEN since the harness landed
 //! — this is now the smoke/regression guard for the shared API, kept alive.
 
+// Conformance fixtures exercise exact engine values, transcribe spec literals,
+// and build whole scenarios in one test. These pedantic lints would force
+// ceremony that hides those contracts, so they stay off in test code only.
+#![allow(
+    clippy::float_cmp,
+    reason = "these comparisons pin exact authored f64 values"
+)]
+
 mod support;
 
 use babylon_graph::memory::MemoryGraph;
-use support::{
-    assert_deterministic, assert_expected, attribute, run_conformance, run_conformance_with_report,
-    run_conformance_with_sink, ExpectedField,
-};
+use support::{attribute, ExpectedField};
 
 const SCENARIO: &str =
     include_str!("../content/scenarios/metabolism-entropy-high-conformance.bscn");
@@ -44,15 +49,15 @@ const EXPECTED: [ExpectedField; 2] = [
 /// `attribute` directly as a sanity cross-check against the same read.
 #[test]
 fn the_shared_harness_reproduces_the_high_entropy_fixture_exactly() {
-    let graph: MemoryGraph = run_conformance(SCENARIO, RULE);
-    assert_expected(&graph, &EXPECTED);
+    let graph: MemoryGraph = support::run_conformance(SCENARIO, RULE);
+    support::assert_expected(&graph, &EXPECTED);
     assert_eq!(attribute(&graph, 0u64, "territory/biocapacity"), 0.0);
 }
 
 /// Exercises `assert_deterministic` — the double-run-compare-hash idiom.
 #[test]
 fn the_shared_harness_double_run_hash_matches() {
-    let report = assert_deterministic(SCENARIO, RULE);
+    let report = support::assert_deterministic(SCENARIO, RULE);
     assert_eq!(report.fired, 1);
 }
 
@@ -61,7 +66,7 @@ fn the_shared_harness_double_run_hash_matches() {
 /// `vitality_conformance.rs` share) — against the same fixture.
 #[test]
 fn the_shared_harness_with_sink_variant_reproduces_the_same_fixture() {
-    let (graph, _sink): (MemoryGraph, _) = run_conformance_with_sink(SCENARIO, RULE);
+    let (graph, _sink): (MemoryGraph, _) = support::run_conformance_with_sink(SCENARIO, RULE);
     assert_eq!(attribute(&graph, 0u64, "territory/biocapacity"), 0.0);
 }
 
@@ -70,7 +75,7 @@ fn the_shared_harness_with_sink_variant_reproduces_the_same_fixture() {
 /// against the same fixture.
 #[test]
 fn the_shared_harness_with_report_variant_reproduces_the_same_fixture() {
-    let (graph, report): (MemoryGraph, _) = run_conformance_with_report(SCENARIO, RULE);
+    let (graph, report): (MemoryGraph, _) = support::run_conformance_with_report(SCENARIO, RULE);
     assert_eq!(attribute(&graph, 0u64, "territory/biocapacity"), 0.0);
     assert_eq!(report.fired, 1);
 }

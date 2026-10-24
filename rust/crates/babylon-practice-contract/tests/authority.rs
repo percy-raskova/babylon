@@ -1,10 +1,10 @@
 use babylon_practice_contract::ActorOrganizationId;
 use babylon_practice_contract::{
     active_player_authority, decode_input_authority, decode_input_authority_ledger,
-    encode_input_authority, encode_input_authority_ledger, input_authority_digest,
-    input_authority_ledger_digest, resolve_input_authority, validate_input_authority_ledger,
-    CampaignId, InputAuthorityId, PracticeAuthorityError, PracticeAuthorityKind,
-    PracticeInputAuthority, PracticeInputAuthorityLedger,
+    encode_input_authority_ledger, input_authority_digest, input_authority_ledger_digest,
+    resolve_input_authority, validate_input_authority_ledger, CampaignId, InputAuthorityId,
+    PracticeAuthorityError, PracticeAuthorityKind, PracticeInputAuthority,
+    PracticeInputAuthorityLedger,
 };
 
 fn actor_id(value: u64) -> ActorOrganizationId {
@@ -76,23 +76,32 @@ fn authority_row_round_trips_the_literal_language_neutral_bytes() {
     ));
     let value = player_authority();
 
-    assert_eq!(encode_input_authority(&value).unwrap(), expected);
-    assert_eq!(decode_input_authority(&expected).unwrap(), value);
+    assert_eq!(
+        babylon_practice_contract::encode_input_authority(&value)
+            .expect("the fixture value encodes to its canonical bytes"),
+        expected
+    );
+    assert_eq!(
+        decode_input_authority(&expected)
+            .expect("the canonical bytes decode into the declared type"),
+        value
+    );
 }
 
 #[test]
 fn authority_row_refuses_each_malformed_boundary() {
-    let canonical = encode_input_authority(&player_authority()).unwrap();
+    let canonical = babylon_practice_contract::encode_input_authority(&player_authority())
+        .expect("the fixture value encodes to its canonical bytes");
     let mut wrong_schema = player_authority();
     wrong_schema.schema_version = 1;
     assert_eq!(
-        encode_input_authority(&wrong_schema),
+        babylon_practice_contract::encode_input_authority(&wrong_schema),
         Err(PracticeAuthorityError::AuthoritySchemaVersion)
     );
     let mut empty_interval = player_authority();
     empty_interval.effective_through_tick_exclusive = empty_interval.effective_from_tick;
     assert_eq!(
-        encode_input_authority(&empty_interval),
+        babylon_practice_contract::encode_input_authority(&empty_interval),
         Err(PracticeAuthorityError::AuthorityEmptyInterval)
     );
 
@@ -141,8 +150,16 @@ fn authority_ledger_round_trips_one_literal_row() {
         rows: vec![player_authority()],
     };
 
-    assert_eq!(encode_input_authority_ledger(&ledger).unwrap(), expected);
-    assert_eq!(decode_input_authority_ledger(&expected).unwrap(), ledger);
+    assert_eq!(
+        encode_input_authority_ledger(&ledger)
+            .expect("the fixture value encodes to its canonical bytes"),
+        expected
+    );
+    assert_eq!(
+        decode_input_authority_ledger(&expected)
+            .expect("the canonical bytes decode into the declared type"),
+        ledger
+    );
 }
 
 #[test]
@@ -277,11 +294,14 @@ fn authority_digests_are_pinned_to_independent_literals() {
         rows: vec![row.clone()],
     };
     assert_eq!(
-        input_authority_digest(&row).unwrap(),
+        input_authority_digest(&row)
+            .expect("the fixture call `input_authority_digest` succeeds for the authored inputs"),
         hex_digest("e7ef0883ac5adbf5f6a7424e820676327c34c280341bb8ab4b4ae015308e7d85")
     );
     assert_eq!(
-        input_authority_ledger_digest(&ledger).unwrap(),
+        input_authority_ledger_digest(&ledger).expect(
+            "the fixture call `input_authority_ledger_digest` succeeds for the authored inputs"
+        ),
         hex_digest("3415c8298f3a78e53fe3660ac453544b43f8be32dc12071928bb2b8c3782908a")
     );
 }

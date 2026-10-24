@@ -86,7 +86,10 @@ fn micro_units_as_f64(amount: Currency) -> Result<f64, GraphError> {
             ),
         });
     }
-    #[allow(clippy::cast_precision_loss)]
+    #[allow(
+        clippy::cast_precision_loss,
+        reason = "the bounded micro-unit amount stays exact in f64"
+    )]
     Ok(micro as f64)
 }
 
@@ -425,8 +428,12 @@ mod tests {
             vec![positive.clone(), negative.clone()],
         ] {
             let mut capacity = Capacity::new(ACTOR);
-            capacity.replenish("political-police", money(4)).unwrap(); // room for exactly one
-            let outcome = capacity.allocate(&order).unwrap();
+            capacity
+                .replenish("political-police", money(4))
+                .expect("the fixture replenishes the authored stock"); // room for exactly one
+            let outcome = capacity
+                .allocate(&order)
+                .expect("the fixture allocation fits the authored table");
             let funded = &outcome.funded;
             assert_eq!(funded.len(), 1);
             assert!(
@@ -455,10 +462,14 @@ mod tests {
         // candidate would make the budget a shared pool — which is the
         // unowned "state capacity" this module was rebuilt to remove.
         let mut capacity = Capacity::new(ACTOR);
-        capacity.replenish("political-police", money(100)).unwrap();
+        capacity
+            .replenish("political-police", money(100))
+            .expect("the fixture replenishes the authored stock");
         let mut someone_else = candidate("RAID", 1, 0.9, 5);
         someone_else.actor = NodeId(999);
-        let err = capacity.allocate(&[someone_else]).unwrap_err();
+        let err = capacity
+            .allocate(&[someone_else])
+            .expect_err("the allocation request is refused");
         assert!(
             err.message.contains("spends its own means"),
             "{}",
@@ -485,23 +496,27 @@ mod tests {
         };
 
         let mut state_side = Capacity::new(police);
-        state_side.replenish("cadre", money(4)).unwrap();
+        state_side
+            .replenish("cadre", money(4))
+            .expect("the fixture replenishes the authored stock");
         let state_funded = state_side
             .allocate(&[
                 priced(police, "INFILTRATE", 1, 0.9, 3),
                 priced(police, "RAID", 2, 0.8, 8),
             ])
-            .unwrap()
+            .expect("the fixture allocation fits the authored table")
             .funded;
 
         let mut movement_side = Capacity::new(local);
-        movement_side.replenish("cadre", money(4)).unwrap();
+        movement_side
+            .replenish("cadre", money(4))
+            .expect("the fixture replenishes the authored stock");
         let movement_funded = movement_side
             .allocate(&[
                 priced(local, "INFILTRATE", 1, 0.9, 3),
                 priced(local, "RAID", 2, 0.8, 8),
             ])
-            .unwrap()
+            .expect("the fixture allocation fits the authored table")
             .funded;
 
         assert_eq!(
@@ -524,7 +539,7 @@ mod tests {
         let mut capacity = Capacity::new(ACTOR);
         let funded = capacity
             .allocate(&[candidate("RAID", 1, 0.9, 5)])
-            .unwrap()
+            .expect("the fixture allocation fits the authored table")
             .funded;
         assert!(funded.is_empty(), "no budget, no action — and no error");
     }
@@ -541,8 +556,12 @@ mod tests {
         ];
 
         let mut lean = Capacity::new(ACTOR);
-        lean.replenish("political-police", money(3)).unwrap();
-        let lean_funded = lean.allocate(&candidates).unwrap().funded;
+        lean.replenish("political-police", money(3))
+            .expect("the fixture replenishes the authored stock");
+        let lean_funded = lean
+            .allocate(&candidates)
+            .expect("the fixture allocation fits the authored table")
+            .funded;
         assert_eq!(
             lean_funded
                 .iter()
@@ -553,8 +572,13 @@ mod tests {
         );
 
         let mut flush = Capacity::new(ACTOR);
-        flush.replenish("political-police", money(12)).unwrap();
-        let flush_funded = flush.allocate(&candidates).unwrap().funded;
+        flush
+            .replenish("political-police", money(12))
+            .expect("the fixture replenishes the authored stock");
+        let flush_funded = flush
+            .allocate(&candidates)
+            .expect("the fixture allocation fits the authored table")
+            .funded;
         assert_eq!(
             flush_funded
                 .iter()
@@ -571,13 +595,15 @@ mod tests {
         // yield down; the ranking then declines it. There is no
         // "if distributed, skip" branch anywhere.
         let mut capacity = Capacity::new(ACTOR);
-        capacity.replenish("political-police", money(4)).unwrap();
+        capacity
+            .replenish("political-police", money(4))
+            .expect("the fixture replenishes the authored stock");
         let funded = capacity
             .allocate(&[
                 candidate("RAID", 1, 0.08, 4), // the distributed org
                 candidate("RAID", 2, 0.60, 4), // the centralized one
             ])
-            .unwrap()
+            .expect("the fixture allocation fits the authored table")
             .funded;
         assert_eq!(funded.len(), 1);
         assert_eq!(
@@ -592,13 +618,15 @@ mod tests {
         // Why disinformation dominates the historical record: cheapest by
         // state capacity, dear by movement cost. Arithmetic, not a thumb.
         let mut capacity = Capacity::new(ACTOR);
-        capacity.replenish("political-police", money(2)).unwrap();
+        capacity
+            .replenish("political-police", money(2))
+            .expect("the fixture replenishes the authored stock");
         let funded = capacity
             .allocate(&[
                 candidate("LIQUIDATE", 1, 0.95, 20), // ratio 0.0475
                 candidate("BAD_JACKET", 2, 0.40, 1), // ratio 0.40
             ])
-            .unwrap()
+            .expect("the fixture allocation fits the authored table")
             .funded;
         assert_eq!(funded[0].candidate.mode, "BAD_JACKET");
     }
@@ -607,13 +635,15 @@ mod tests {
     fn an_unaffordable_candidate_does_not_block_a_cheaper_one_behind_it() {
         // A state that cannot afford the raid still runs the surveillance.
         let mut capacity = Capacity::new(ACTOR);
-        capacity.replenish("political-police", money(2)).unwrap();
+        capacity
+            .replenish("political-police", money(2))
+            .expect("the fixture replenishes the authored stock");
         let funded = capacity
             .allocate(&[
                 candidate("RAID", 1, 9.0, 10), // best ratio, unaffordable
                 candidate("SURVEIL", 2, 0.5, 2),
             ])
-            .unwrap()
+            .expect("the fixture allocation fits the authored table")
             .funded;
         assert_eq!(funded.len(), 1);
         assert_eq!(funded[0].candidate.mode, "SURVEIL");
@@ -635,8 +665,13 @@ mod tests {
         let mut results = Vec::new();
         for order in &orders {
             let mut capacity = Capacity::new(ACTOR);
-            capacity.replenish("political-police", money(100)).unwrap();
-            let funded = capacity.allocate(order).unwrap().funded;
+            capacity
+                .replenish("political-police", money(100))
+                .expect("the fixture replenishes the authored stock");
+            let funded = capacity
+                .allocate(order)
+                .expect("the fixture allocation fits the authored table")
+                .funded;
             results.push(
                 funded
                     .iter()
@@ -666,8 +701,13 @@ mod tests {
         let mut results = Vec::new();
         for order in &orders {
             let mut capacity = Capacity::new(ACTOR);
-            capacity.replenish("political-police", money(7)).unwrap(); // room for exactly one
-            let funded = capacity.allocate(order).unwrap().funded;
+            capacity
+                .replenish("political-police", money(7))
+                .expect("the fixture replenishes the authored stock"); // room for exactly one
+            let funded = capacity
+                .allocate(order)
+                .expect("the fixture allocation fits the authored table")
+                .funded;
             results.push(funded.iter().map(|a| a.candidate.cost).collect::<Vec<_>>());
         }
         assert_eq!(
@@ -680,25 +720,36 @@ mod tests {
     #[test]
     fn spending_draws_down_the_budget_and_never_overspends() {
         let mut capacity = Capacity::new(ACTOR);
-        capacity.replenish("political-police", money(10)).unwrap();
+        capacity
+            .replenish("political-police", money(10))
+            .expect("the fixture replenishes the authored stock");
         let funded = capacity
             .allocate(&[
                 candidate("A", 1, 1.0, 6),
                 candidate("B", 2, 1.0, 6),
                 candidate("C", 3, 1.0, 4),
             ])
-            .unwrap()
+            .expect("the fixture allocation fits the authored table")
             .funded;
         assert_eq!(funded.len(), 2, "6 + 4 fits in 10; the second 6 does not");
         assert_eq!(capacity.available("political-police"), money(0));
-        assert_eq!(capacity.total_available().unwrap(), money(0));
+        assert_eq!(
+            capacity
+                .total_available()
+                .expect("the fixture call `total_available` succeeds for the authored inputs"),
+            money(0)
+        );
     }
 
     #[test]
     fn instruments_hold_separate_budgets() {
         let mut capacity = Capacity::new(ACTOR);
-        capacity.replenish("political-police", money(5)).unwrap();
-        capacity.replenish("courts", money(5)).unwrap();
+        capacity
+            .replenish("political-police", money(5))
+            .expect("the fixture replenishes the authored stock");
+        capacity
+            .replenish("courts", money(5))
+            .expect("the fixture replenishes the authored stock");
         let funded = capacity
             .allocate(&[
                 Candidate {
@@ -711,7 +762,7 @@ mod tests {
                 },
                 candidate("RAID", 2, 0.5, 5),
             ])
-            .unwrap()
+            .expect("the fixture allocation fits the authored table")
             .funded;
         assert_eq!(funded.len(), 2, "each drew on its own pool");
         assert_eq!(capacity.available("courts"), money(0));
@@ -721,10 +772,12 @@ mod tests {
     #[test]
     fn a_free_action_is_loud_never_infinitely_attractive() {
         let mut capacity = Capacity::new(ACTOR);
-        capacity.replenish("political-police", money(10)).unwrap();
+        capacity
+            .replenish("political-police", money(10))
+            .expect("the fixture replenishes the authored stock");
         let err = capacity
             .allocate(&[candidate("FREE", 1, 0.5, 0)])
-            .unwrap_err();
+            .expect_err("the allocation request is refused");
         assert!(err.message.contains("costs nothing"), "{}", err.message);
     }
 
@@ -735,10 +788,12 @@ mod tests {
         // give a negative ratio and sort last — quietly, when it is really a
         // content bug: an action nobody pays for.
         let mut capacity = Capacity::new(ACTOR);
-        capacity.replenish("political-police", money(10)).unwrap();
+        capacity
+            .replenish("political-police", money(10))
+            .expect("the fixture replenishes the authored stock");
         let err = capacity
             .allocate(&[candidate("PAID_TO_ACT", 1, 0.5, -5)])
-            .unwrap_err();
+            .expect_err("the allocation request is refused");
         assert!(
             err.message.contains("pays its taker"),
             "a negative price fails for its OWN reason, not the free-action one: {}",
@@ -756,7 +811,7 @@ mod tests {
         let mut capacity = Capacity::new(ACTOR);
         capacity
             .replenish("political-police", money(EXACT))
-            .unwrap();
+            .expect("the fixture replenishes the authored stock");
 
         let at_bound = capacity.allocate(&[candidate("RAID", 1, 0.5, EXACT)]);
         assert!(
@@ -764,13 +819,21 @@ mod tests {
             "2^53 is exact and must rank: {:?}",
             at_bound.err()
         );
-        assert_eq!(at_bound.unwrap().funded.len(), 1, "and it is affordable");
+        assert_eq!(
+            at_bound
+                .expect("the fixture capacity probe returns its bound")
+                .funded
+                .len(),
+            1,
+            "and it is affordable"
+        );
 
         let mut over = Capacity::new(ACTOR);
-        over.replenish("political-police", money(EXACT)).unwrap();
+        over.replenish("political-police", money(EXACT))
+            .expect("the fixture replenishes the authored stock");
         let err = over
             .allocate(&[candidate("RAID", 1, 0.5, EXACT + 1)])
-            .unwrap_err();
+            .expect_err("the allocation request is refused");
         assert!(err.message.contains("lossy denominator"), "{}", err.message);
     }
 
@@ -779,13 +842,15 @@ mod tests {
         // ADR184 R9. "Wanted the raid, had enough for the wiretap" is the
         // narratable fact, and it is the mechanic showing its work.
         let mut capacity = Capacity::new(ACTOR);
-        capacity.replenish("political-police", money(5)).unwrap();
+        capacity
+            .replenish("political-police", money(5))
+            .expect("the fixture replenishes the authored stock");
         let outcome = capacity
             .allocate(&[
                 candidate("SURVEIL", 1, 0.20, 4), // ratio 0.05, affordable
                 candidate("RAID", 2, 0.90, 12),   // ratio 0.075, ranks FIRST
             ])
-            .unwrap();
+            .expect("the fixture allocation fits the authored table");
 
         assert_eq!(outcome.funded.len(), 1);
         assert_eq!(outcome.funded[0].candidate.mode, "SURVEIL");
@@ -806,10 +871,12 @@ mod tests {
         // III.11: "no declines" must be observably different from "declines
         // not computed". An empty Vec says the pass ran and refused nobody.
         let mut capacity = Capacity::new(ACTOR);
-        capacity.replenish("political-police", money(100)).unwrap();
+        capacity
+            .replenish("political-police", money(100))
+            .expect("the fixture replenishes the authored stock");
         let outcome = capacity
             .allocate(&[candidate("SURVEIL", 1, 0.2, 1)])
-            .unwrap();
+            .expect("the fixture allocation fits the authored table");
         assert_eq!(outcome.funded.len(), 1);
         assert!(outcome.declined.is_empty());
     }
@@ -824,7 +891,7 @@ mod tests {
         let mut political_police = Capacity::new(ACTOR);
         political_police
             .replenish("political-police", tribute)
-            .unwrap();
+            .expect("the fixture replenishes the authored stock");
         assert_eq!(
             political_police.available("political-police"),
             tribute,
@@ -835,11 +902,13 @@ mod tests {
     #[test]
     fn a_non_finite_yield_is_refused_not_ranked() {
         let mut capacity = Capacity::new(ACTOR);
-        capacity.replenish("political-police", money(10)).unwrap();
+        capacity
+            .replenish("political-police", money(10))
+            .expect("the fixture replenishes the authored stock");
         for bad in [f64::NAN, f64::INFINITY] {
             let err = capacity
                 .allocate(&[candidate("RAID", 1, bad, 2)])
-                .unwrap_err();
+                .expect_err("the allocation request is refused");
             assert!(err.message.contains("non-finite"), "{}", err.message);
         }
     }

@@ -15,12 +15,19 @@
 //! `population = 11`, `rate = 0.5c` (exact in binary64 — no rounding
 //! ambiguity), `deaths = floor(population * rate) = floor(5.5) = 5`.
 
+// Conformance fixtures exercise exact engine values, transcribe spec literals,
+// and build whole scenarios in one test. These pedantic lints would force
+// ceremony that hides those contracts, so they stay off in test code only.
+#![allow(
+    clippy::float_cmp,
+    reason = "these comparisons pin exact authored f64 values"
+)]
+
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::memory::MemoryGraph;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
-use babylon_tick::{run_once, run_once_into};
 
-const SCENARIO: &str = r#"
+const SCENARIO: &str = r"
 (scenario floor-e2e/one-class
   (deffield social-class/population int extensive)
   (deffield social-class/deaths int extensive)
@@ -28,7 +35,7 @@ const SCENARIO: &str = r#"
 
   (node core NodeType/SOCIAL_CLASS
     (social-class/population 11)))
-"#;
+";
 
 const RULE: &str = r#"
 (intrinsic floor :params (real) :returns int :cost 5)
@@ -65,7 +72,7 @@ const RULE_INTRINSIC_LAST: &str = r#"
 fn a_rule_that_declares_and_calls_floor_runs_through_run_once() {
     let mut graph = MemoryGraph::new();
     let mut sink = CollectingSink::default();
-    let report = run_once_into(SCENARIO, RULE, &mut graph, &mut sink)
+    let report = babylon_tick::run_once_into(SCENARIO, RULE, &mut graph, &mut sink)
         .expect("a declared, called floor intrinsic must clear the whole seam");
 
     assert_eq!(report.fired, 1);
@@ -86,16 +93,17 @@ fn a_rule_that_declares_and_calls_floor_runs_through_run_once() {
 /// must produce byte-identical hashes to the declaration BEFORE it.
 #[test]
 fn declaration_order_relative_to_the_rule_does_not_matter() {
-    let first = run_once(SCENARIO, RULE).expect("intrinsic-first source");
-    let last = run_once(SCENARIO, RULE_INTRINSIC_LAST).expect("intrinsic-last source");
+    let first = babylon_tick::run_once(SCENARIO, RULE).expect("intrinsic-first source");
+    let last =
+        babylon_tick::run_once(SCENARIO, RULE_INTRINSIC_LAST).expect("intrinsic-last source");
     assert_eq!(first.after, last.after);
     assert_eq!(first.fired, last.fired);
 }
 
 #[test]
 fn the_declared_call_is_deterministic_across_two_full_runs() {
-    let a = run_once(SCENARIO, RULE).expect("first run");
-    let b = run_once(SCENARIO, RULE).expect("second run");
+    let a = babylon_tick::run_once(SCENARIO, RULE).expect("first run");
+    let b = babylon_tick::run_once(SCENARIO, RULE).expect("second run");
     assert_eq!(a.after, b.after);
 }
 
@@ -108,7 +116,8 @@ fn declaring_an_uncapped_intrinsic_refuses_the_whole_load() {
 (rule vitality/floor-e2e-count-deaths
   :role mechanic :evidence derived :material-basis "x" :fuel 8 (when #t))
 "#;
-    let err = run_once(SCENARIO, TANH_RULE).unwrap_err();
+    let err =
+        babylon_tick::run_once(SCENARIO, TANH_RULE).expect_err("the malformed tick is refused");
     assert!(
         err.contains("declarable intrinsic set"),
         "unexpected message: {err}"
@@ -125,7 +134,8 @@ fn a_mismatched_declared_signature_refuses_the_whole_load() {
 (rule vitality/floor-e2e-count-deaths
   :role mechanic :evidence derived :material-basis "x" :fuel 8 (when #t))
 "#;
-    let err = run_once(SCENARIO, WRONG_SIGNATURE_RULE).unwrap_err();
+    let err = babylon_tick::run_once(SCENARIO, WRONG_SIGNATURE_RULE)
+        .expect_err("the malformed tick is refused");
     assert!(err.contains("E-LOAD-020"), "unexpected message: {err}");
 }
 
@@ -139,7 +149,8 @@ fn a_duplicate_intrinsic_declaration_refuses_the_whole_load() {
 (rule vitality/floor-e2e-count-deaths
   :role mechanic :evidence derived :material-basis "x" :fuel 8 (when #t))
 "#;
-    let err = run_once(SCENARIO, DUPLICATE_RULE).unwrap_err();
+    let err = babylon_tick::run_once(SCENARIO, DUPLICATE_RULE)
+        .expect_err("the malformed tick is refused");
     assert!(err.contains("E-LOAD-001"), "unexpected message: {err}");
 }
 
@@ -179,7 +190,7 @@ fn round_half_even_now_loads_and_dispatches_through_run_once() {
   (effects
     (update-node self social-class/deaths (set population))))
 "#;
-    let report = run_once(SCENARIO, ROUND_HALF_EVEN_RULE)
+    let report = babylon_tick::run_once(SCENARIO, ROUND_HALF_EVEN_RULE)
         .expect("round-half-even clears cap, signature, and dispatch under ADR219");
     assert_eq!(report.fired, 1);
 }

@@ -1,8 +1,7 @@
 //! Observer navigation, scoped command admission, and production selection.
 
-use babylon_persistence::{
-    production_observation::ProductionSite, production_observation::ProductionSnapshot,
-};
+use babylon_persistence::production_observation::{ProductionSite, ProductionSnapshot};
+
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 
@@ -11,13 +10,17 @@ use crate::map::SelectedCounty;
 use crate::observer::ObserverSession;
 use crate::observer_focus::ObserverFocusWorld;
 use crate::observer_ui::{ObserverFrame, ObserverUiState};
-use crate::production_brief::{dependency_sites, opening_site};
-use crate::production_freight::competitor_sites;
 
 use super::{
     PrimaryView, ProductionCommand, ProductionNavigation, ProductionObservation, ProductionPage,
     ProductionUi,
 };
+use crate::observer::Perspective;
+use crate::production_brief;
+use crate::production_freight;
+use babylon_persistence::identity::CampaignId;
+use babylon_persistence::production_observation::ProductionProcess;
+use std::collections::BTreeSet;
 
 impl ProductionNavigation {
     pub(super) fn open_county(
@@ -65,10 +68,7 @@ impl ProductionNavigation {
         self.selected_process = None;
     }
 
-    pub(crate) fn process<'a>(
-        &self,
-        site: &'a ProductionSite,
-    ) -> Option<&'a babylon_persistence::production_observation::ProductionProcess> {
+    pub(crate) fn process<'a>(&self, site: &'a ProductionSite) -> Option<&'a ProductionProcess> {
         site.processes
             .iter()
             .find(|process| self.selected_process.as_ref() == Some(&process.id))
@@ -180,16 +180,16 @@ impl ProductionControlAvailability {
                             .as_ref()
                             .and_then(|id| snapshot.sites.iter().find(|site| site.id == *id))
                             .map_or(0, |site| {
-                                dependency_sites(site, snapshot)
+                                production_brief::dependency_sites(site, snapshot)
                                     .iter()
                                     .map(|(_, site)| &site.id)
-                                    .collect::<std::collections::BTreeSet<_>>()
+                                    .collect::<BTreeSet<_>>()
                                     .len()
                             }),
                         ProductionPage::Competitors => match navigation
                             .selected_site
                             .as_deref()
-                            .map(|id| competitor_sites(id, snapshot))
+                            .map(|id| production_freight::competitor_sites(id, snapshot))
                         {
                             Some(Ok(sites)) => sites.len(),
                             None => 0,
@@ -390,13 +390,7 @@ pub(super) fn invalidate_navigation(
     state: Res<ObserverSession>,
     frame: Res<ObserverFrame>,
     mut navigation: ResMut<ProductionNavigation>,
-    mut scope: Local<
-        Option<(
-            babylon_persistence::identity::CampaignId,
-            crate::observer::Perspective,
-            Option<u64>,
-        )>,
-    >,
+    mut scope: Local<Option<(CampaignId, Perspective, Option<u64>)>>,
 ) {
     let current = (state.campaign, state.perspective, state.lifecycle_epoch());
     if scope.as_ref() != Some(&current) {
@@ -449,7 +443,7 @@ pub(super) fn focus_opening(
     let Some(site) = frame
         .for_session(&state)
         .and_then(|frame| frame.production.as_ref())
-        .and_then(opening_site)
+        .and_then(production_brief::opening_site)
     else {
         return;
     };

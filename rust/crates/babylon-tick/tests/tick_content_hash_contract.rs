@@ -1,23 +1,24 @@
 use std::collections::{BTreeSet, HashMap};
 
 use babylon_bsl::evaluator::Value as BslValue;
-use babylon_bsl::identity_codec::{
-    encode_runtime_value, encode_stable_bsl_value, project_stable_value, StableBslValue,
-};
+use babylon_bsl::identity_codec::StableBslValue;
 use babylon_bsl::query::EdgeKey;
 use babylon_graph::memory::MemoryGraph;
 use babylon_graph::stable_element::{StableElementKey, StableElementResolver};
-use babylon_graph::stable_state::encode_stable_graph_state;
 use babylon_graph::substrate::{GraphSubstrate, HyperedgeId, NodeId};
+use babylon_kernel::content_digest::{sha256_of, ContentDigest};
+use babylon_kernel::currency::Currency;
 use babylon_kernel::replay::{ReplaySeed, ReplaySessionId, RngDomain};
+use babylon_kernel::rng::{seed_for, KernelRng};
+use babylon_kernel::scalars::Ratio;
 use babylon_kernel::tick_content_hash::{
     OrderedPracticeActionBatchDigest, PreparedEnvironmentDigest, RefDigest, StableWorldDigest,
     TickContentParts, TickContentPreimage, TickPayloadDigest,
 };
-use babylon_kernel::{
-    content_digest::sha256_of, content_digest::ContentDigest, currency::Currency, rng::seed_for,
-    rng::KernelRng, scalars::Ratio, H3CellId, H3CellIdError,
-};
+use babylon_kernel::{H3CellId, H3CellIdError};
+
+use babylon_bsl::identity_codec;
+use babylon_graph::stable_state;
 use babylon_practice_contract::OrderedPracticeActionBatch;
 use serde::Deserialize;
 use serde_json::Value;
@@ -318,34 +319,44 @@ fn corpus_graph(
 ) {
     let mut graph = MemoryGraph::new();
     if shift_handles {
-        let discarded = graph.add_node("DISCARDED").unwrap();
-        graph.remove_node(discarded).unwrap();
+        let discarded = graph
+            .add_node("DISCARDED")
+            .expect("the fixture adds a node with a registered kind");
+        graph
+            .remove_node(discarded)
+            .expect("the fixture node exists before removal");
     }
-    let workers = graph.add_node("SOCIAL_CLASS").unwrap();
-    let capital = graph.add_node("SOCIAL_CLASS").unwrap();
-    graph.add_edge("OWNS", capital, workers, 0.75).unwrap();
+    let workers = graph
+        .add_node("SOCIAL_CLASS")
+        .expect("the fixture adds a node with a registered kind");
+    let capital = graph
+        .add_node("SOCIAL_CLASS")
+        .expect("the fixture adds a node with a registered kind");
+    graph
+        .add_edge("OWNS", capital, workers, 0.75)
+        .expect("the fixture graph admits the authored edge");
     let coalition = graph
         .add_hyperedge("COMMUNITY", &[workers, capital])
-        .unwrap();
+        .expect("the fixture graph admits the authored hyperedge");
     graph
         .update_node(workers, "social-class/active", -0.0)
-        .unwrap();
+        .expect("the fixture node carries the authored attribute");
     graph
         .update_node(capital, "social-class/active", 1.5)
-        .unwrap();
+        .expect("the fixture node carries the authored attribute");
     graph
         .update_node_currency(
             workers,
             "economy/wealth",
             Currency::from_micro_units(-1_234_567_890_123),
         )
-        .unwrap();
+        .expect("the fixture node carries the authored currency");
     graph
         .update_edge("OWNS", capital, workers, "relation/tension", -2.25)
-        .unwrap();
+        .expect("the fixture edge carries the authored attribute");
     graph
         .update_hyperedge_attribute(coalition, "organization/cohesion", 0.125)
-        .unwrap();
+        .expect("the fixture hyperedge carries the authored attribute");
     (
         graph,
         HashMap::from([
@@ -367,8 +378,9 @@ fn production_stable_graph_matches_cross_allocation_vectors() {
             &node_names,
             &hyperedge_names,
         )
-        .unwrap();
-        let prior = encode_stable_graph_state(&graph, &resolver).unwrap();
+        .expect("the fixture seals the prepared period");
+        let prior = stable_state::encode_stable_graph_state(&graph, &resolver)
+            .expect("the fixture graph encodes its stable state");
         assert_eq!(
             prior.canonical_bytes(),
             hex_bytes(text(
@@ -383,8 +395,9 @@ fn production_stable_graph_matches_cross_allocation_vectors() {
             .0;
         graph
             .update_node(workers, "social-class/active", 2.5)
-            .unwrap();
-        let result = encode_stable_graph_state(&graph, &resolver).unwrap();
+            .expect("the fixture node carries the authored attribute");
+        let result = stable_state::encode_stable_graph_state(&graph, &resolver)
+            .expect("the fixture graph encodes its stable state");
         assert_eq!(
             result.canonical_bytes(),
             hex_bytes(text(
@@ -457,12 +470,13 @@ fn stable_bsl_projection_reuses_the_governed_stable_element_bytes() {
     ];
 
     for (tick_id, runtime_value) in cases {
-        let projected = project_stable_value(&runtime_value, &resolver)
+        let projected = identity_codec::project_stable_value(&runtime_value, &resolver)
             .expect("runtime reference projects through the sealed resolver");
         let mut projected_bytes = Vec::new();
-        encode_stable_bsl_value(&projected, &mut projected_bytes).expect("stable value encodes");
+        identity_codec::encode_stable_bsl_value(&projected, &mut projected_bytes)
+            .expect("stable value encodes");
         let mut runtime_bytes = Vec::new();
-        encode_runtime_value(&runtime_value, &resolver, &mut runtime_bytes)
+        identity_codec::encode_runtime_value(&runtime_value, &resolver, &mut runtime_bytes)
             .expect("runtime value encodes");
         let tick_bytes = hex_bytes(text(&row_by_id(&vectors, tick_id).data, "canonical_hex"));
 
@@ -471,7 +485,7 @@ fn stable_bsl_projection_reuses_the_governed_stable_element_bytes() {
     }
 
     let mut other_scenario_bytes = Vec::new();
-    encode_stable_bsl_value(
+    identity_codec::encode_stable_bsl_value(
         &StableBslValue::Node(StableElementKey::Node {
             scenario: "demo/other-scenario".to_owned(),
             local_name: "workers".to_owned(),

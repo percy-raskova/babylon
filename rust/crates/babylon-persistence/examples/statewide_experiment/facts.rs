@@ -1,19 +1,19 @@
 //! Copy committed register/receipt facts into bounded operator rows; no allocation or planning.
-use super::{
-    checked_sum, hex, quantity, refused,
-    report::{CompletedPeriod, FinalDemand, NativeQuantity, Owner, Production, Route},
-    Result,
-};
+use super::report::{CompletedPeriod, FinalDemand, NativeQuantity, Owner, Production, Route};
+use super::Result;
+
 use babylon_bsl::identity_codec::StableBslValue;
-use babylon_graph::{hypergraph_store::HypergraphStore, stable_element::StableElementKey};
+use babylon_graph::hypergraph_store::HypergraphStore;
+use babylon_graph::stable_element::StableElementKey;
+
 use babylon_material_circuit::{MaterialCircuitState, OrderId};
 use babylon_persistence::michigan_material::MichiganMaterialCatalog;
-use babylon_tick::{
-    material_replay::PreparedMaterialTick,
-    material_staffing::STAFFING_COMPOSITION_ID,
-    material_world::{decode_material_receipts, MaterialTickReceipts},
-    replay_session::SuccessfulEvent,
-};
+use babylon_tick::material_replay::PreparedMaterialTick;
+use babylon_tick::material_staffing::STAFFING_COMPOSITION_ID;
+use babylon_tick::material_world::MaterialTickReceipts;
+use babylon_tick::replay_session::SuccessfulEvent;
+
+use babylon_tick::material_world;
 use std::collections::BTreeMap;
 
 pub fn period(
@@ -24,23 +24,23 @@ pub fn period(
 ) -> Result<CompletedPeriod> {
     let register = candidate.material().register();
     let closing = register.state();
-    let receipts = decode_material_receipts(candidate.material().receipt_bytes())?;
+    let receipts = material_world::decode_material_receipts(candidate.material().receipt_bytes())?;
     if receipts.resolve_tick != opening.period
         || Some(closing.period) != opening.period.checked_add(1)
     {
-        return Err(refused("operator receipt/state period mismatch"));
+        return Err(super::refused("operator receipt/state period mismatch"));
     }
     let routes = routes(catalog, closing, &receipts)?;
     let capacity = catalog
         .corridors()
         .iter()
         .find(|row| row.key == capacity_key)
-        .ok_or_else(|| refused("selected capacity disappeared"))?;
+        .ok_or_else(|| super::refused("selected capacity disappeared"))?;
     let opening_grams = opening
         .corridor_capacities
         .iter()
         .find(|row| row.period == opening.period && row.corridor_id == capacity.id())
-        .ok_or_else(|| refused("missing selected period capacity"))?
+        .ok_or_else(|| super::refused("missing selected period capacity"))?
         .available_grams;
     let mut reserved = 0_u64;
     for route in catalog.routes().iter().filter(|route| {
@@ -50,27 +50,31 @@ pub fn period(
     }) {
         let good = catalog
             .good(&route.good_key)
-            .ok_or_else(|| refused("route good missing"))?;
-        let grams = quantity(routes[&route.key].dispatched, good.grams_per_unit)?;
+            .ok_or_else(|| super::refused("route good missing"))?;
+        let grams = super::quantity(routes[&route.key].dispatched, good.grams_per_unit)?;
         reserved = reserved
             .checked_add(grams)
-            .ok_or_else(|| refused("selected reservation overflow"))?;
+            .ok_or_else(|| super::refused("selected reservation overflow"))?;
     }
     if reserved > opening_grams {
-        return Err(refused("committed dispatch exceeds selected capacity"));
+        return Err(super::refused(
+            "committed dispatch exceeds selected capacity",
+        ));
     }
     let identity = candidate.identity();
     Ok(CompletedPeriod {
         period: receipts.resolve_tick,
-        tick_content_sha256: hex(identity.tick_content_hash().as_bytes()),
-        prior_world_sha256: hex(&identity.prior_world_hash()),
-        world_sha256: hex(&identity.result_world_hash()),
-        material_state_sha256: hex(&register.digest()),
-        material_receipts_sha256: hex(&identity.receipt_digest()),
-        staffing_events_sha256: hex(&candidate
-            .graph_report()
-            .successful_event_batch()
-            .source_digest()),
+        tick_content_sha256: super::hex(identity.tick_content_hash().as_bytes()),
+        prior_world_sha256: super::hex(&identity.prior_world_hash()),
+        world_sha256: super::hex(&identity.result_world_hash()),
+        material_state_sha256: super::hex(&register.digest()),
+        material_receipts_sha256: super::hex(&identity.receipt_digest()),
+        staffing_events_sha256: super::hex(
+            &candidate
+                .graph_report()
+                .successful_event_batch()
+                .source_digest(),
+        ),
         register_bytes: register.canonical_bytes().len(),
         receipt_bytes: candidate.material().receipt_bytes().len(),
         maximum_family_rows: maximum_rows(closing),
@@ -106,7 +110,7 @@ fn processes(
                 }
                 None if planned == 0 => 0,
                 _ => {
-                    return Err(refused(
+                    return Err(super::refused(
                         "production receipt does not match opening commitment",
                     ))
                 }
@@ -117,12 +121,12 @@ fn processes(
                 .map(|input| {
                     let good = catalog
                         .good(&input.good_key)
-                        .ok_or_else(|| refused("input good missing"))?;
+                        .ok_or_else(|| super::refused("input good missing"))?;
                     Ok((
                         input.good_key.clone(),
                         NativeQuantity {
                             unit: good.unit_key.clone(),
-                            quantity: quantity(produced, input.quantity_per_batch)?,
+                            quantity: super::quantity(produced, input.quantity_per_batch)?,
                         },
                     ))
                 })
@@ -132,9 +136,9 @@ fn processes(
                 Production {
                     planned_batches: planned,
                     produced_batches: produced,
-                    output_units: quantity(produced, process.output_quantity_per_batch)?,
+                    output_units: super::quantity(produced, process.output_quantity_per_batch)?,
                     consumed_inputs: consumed,
-                    used_labor_hours: quantity(produced, process.labor_hours_per_batch)?,
+                    used_labor_hours: super::quantity(produced, process.labor_hours_per_batch)?,
                 },
             ))
         })
@@ -146,33 +150,33 @@ fn staffing_event(event: &SuccessfulEvent, period: u64) -> Result<(String, BTree
         || event.choice_receipt().is_some()
         || event.fields().len() != 13
     {
-        return Err(refused("unexpected staffing event family"));
+        return Err(super::refused("unexpected staffing event family"));
     }
     let mut subject = None;
     let mut numbers = BTreeMap::new();
     for (name, value) in event.fields() {
         if name == "subject" {
             let StableBslValue::Node(StableElementKey::Node { local_name, .. }) = value else {
-                return Err(refused("staffing subject is not a stable node"));
+                return Err(super::refused("staffing subject is not a stable node"));
             };
             subject = Some(local_name.clone());
         } else {
             let StableBslValue::Int(value) = value else {
-                return Err(refused("staffing quantity is not an integer"));
+                return Err(super::refused("staffing quantity is not an integer"));
             };
             if numbers
                 .insert(name.clone(), u64::try_from(*value)?)
                 .is_some()
             {
-                return Err(refused("duplicate staffing field"));
+                return Err(super::refused("duplicate staffing field"));
             }
         }
     }
     if numbers.get("period") != Some(&period) || numbers.len() != 12 {
-        return Err(refused("staffing period or field coverage mismatch"));
+        return Err(super::refused("staffing period or field coverage mismatch"));
     }
     Ok((
-        subject.ok_or_else(|| refused("staffing subject missing"))?,
+        subject.ok_or_else(|| super::refused("staffing subject missing"))?,
         numbers,
     ))
 }
@@ -189,7 +193,7 @@ fn owners(
         {
             let (key, fields) = staffing_event(event, receipts.resolve_tick)?;
             if workforce.insert(key, fields).is_some() {
-                return Err(refused("duplicate workforce owner"));
+                return Err(super::refused("duplicate workforce owner"));
             }
         }
     }
@@ -200,10 +204,10 @@ fn owners(
             .pools
             .iter()
             .find(|pool| pool.site_key == site.key)
-            .ok_or_else(|| refused("owner has no workforce pool"))?;
+            .ok_or_else(|| super::refused("owner has no workforce pool"))?;
         let staffing = workforce
             .remove(&seed.local_name())
-            .ok_or_else(|| refused("owner staffing event missing"))?;
+            .ok_or_else(|| super::refused("owner staffing event missing"))?;
         let mut inventory = BTreeMap::new();
         for row in closing
             .inventory
@@ -214,7 +218,7 @@ fn owners(
                 .goods()
                 .iter()
                 .find(|good| good.id() == row.good_id && good.unit_id() == row.unit_id)
-                .ok_or_else(|| refused("inventory identity missing"))?;
+                .ok_or_else(|| super::refused("inventory identity missing"))?;
             if inventory
                 .insert(
                     good.key.clone(),
@@ -225,7 +229,7 @@ fn owners(
                 )
                 .is_some()
             {
-                return Err(refused("duplicate owner inventory principal"));
+                return Err(super::refused("duplicate owner inventory principal"));
             }
         }
         result.insert(
@@ -233,14 +237,14 @@ fn owners(
             Owner {
                 staffing,
                 closing_inventory: inventory,
-                handling_needed_hours: checked_sum(
+                handling_needed_hours: super::checked_sum(
                     receipts
                         .handling
                         .iter()
                         .filter(|row| row.site_id == site.id())
                         .map(|row| row.needed_hours),
                 )?,
-                handling_used_hours: checked_sum(
+                handling_used_hours: super::checked_sum(
                     receipts
                         .handling
                         .iter()
@@ -251,12 +255,12 @@ fn owners(
         );
     }
     if !workforce.is_empty() {
-        return Err(refused("unknown workforce event owner"));
+        return Err(super::refused("unknown workforce event owner"));
     }
     Ok(result)
 }
 fn movement(receipts: impl Iterator<Item = (OrderId, u64)>, order: OrderId) -> Result<u64> {
-    checked_sum(receipts.filter_map(|(id, quantity)| (id == order).then_some(quantity)))
+    super::checked_sum(receipts.filter_map(|(id, quantity)| (id == order).then_some(quantity)))
 }
 fn routes(
     catalog: &MichiganMaterialCatalog,
@@ -272,7 +276,7 @@ fn routes(
                 .orders
                 .iter()
                 .find(|row| row.order_id == id)
-                .ok_or_else(|| refused("closing delivery order missing"))?;
+                .ok_or_else(|| super::refused("closing delivery order missing"))?;
             Ok((
                 route.key.clone(),
                 Route {
@@ -302,8 +306,8 @@ fn routes(
                     outstanding: order
                         .ordered
                         .checked_sub(order.shipped)
-                        .ok_or_else(|| refused("delivery order overshipped"))?,
-                    in_transit: checked_sum(
+                        .ok_or_else(|| super::refused("delivery order overshipped"))?,
+                    in_transit: super::checked_sum(
                         closing
                             .freight
                             .iter()
@@ -328,10 +332,10 @@ fn final_demand(
                 .final_demand_orders
                 .iter()
                 .find(|row| row.order_id == demand.order_id())
-                .ok_or_else(|| refused("final demand order missing"))?;
+                .ok_or_else(|| super::refused("final demand order missing"))?;
             let good = catalog
                 .good(&demand.good_key)
-                .ok_or_else(|| refused("final demand good missing"))?;
+                .ok_or_else(|| super::refused("final demand good missing"))?;
             Ok((
                 demand.key.clone(),
                 FinalDemand {
@@ -351,7 +355,7 @@ fn final_demand(
                     outstanding: order
                         .ordered
                         .checked_sub(order.fulfilled)
-                        .ok_or_else(|| refused("final demand overfulfilled"))?,
+                        .ok_or_else(|| super::refused("final demand overfulfilled"))?,
                 },
             ))
         })

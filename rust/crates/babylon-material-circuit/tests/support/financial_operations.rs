@@ -1,6 +1,51 @@
-use super::*;
+use crate::economy;
+use babylon_material_circuit::AccountId;
+use babylon_material_circuit::AttendancePlan;
+use babylon_material_circuit::CapacityRow;
+use babylon_material_circuit::CapitalContributionOrder;
+use babylon_material_circuit::CashTransferPurpose;
+use babylon_material_circuit::CommodityDefinition;
+use babylon_material_circuit::CommodityKind;
+use babylon_material_circuit::ContributionId;
+use babylon_material_circuit::DistributionPolicy;
+use babylon_material_circuit::EmploymentTerms;
+use babylon_material_circuit::GoodId;
+use babylon_material_circuit::HistoricalCostBook;
+use babylon_material_circuit::HouseholdCohort;
+use babylon_material_circuit::HouseholdNeed;
+use babylon_material_circuit::HouseholdNeedBasis;
+use babylon_material_circuit::HouseholdPurchasePolicy;
+use babylon_material_circuit::IncomeReceipt;
+use babylon_material_circuit::InputOutputCoefficient;
+use babylon_material_circuit::InventoryRow;
+use babylon_material_circuit::LaborCapacityRow;
+use babylon_material_circuit::LaborCoefficient;
+use babylon_material_circuit::LaborCompensation;
+use babylon_material_circuit::MaterialCircuitError;
+use babylon_material_circuit::MaterialCircuitState;
+use babylon_material_circuit::MaterialCircuitTransition;
+use babylon_material_circuit::MemberLaborCapacityRow;
+use babylon_material_circuit::MonetaryCircuit;
+use babylon_material_circuit::MoneyTransferPurpose;
+use babylon_material_circuit::PricePolicy;
+use babylon_material_circuit::ProcessId;
+use babylon_material_circuit::ProcessOutput;
+use babylon_material_circuit::ProductionCommitment;
+use babylon_material_circuit::ProductionDemandPolicy;
+use babylon_material_circuit::PublicAllocation;
+use babylon_material_circuit::PublicBudget;
+use babylon_material_circuit::PublicTransferTreatment;
+use babylon_material_circuit::RecurringEconomy;
+use babylon_material_circuit::SellerOffer;
+use babylon_material_circuit::ServiceConnection;
+use babylon_material_circuit::ServiceStage;
+use babylon_material_circuit::StaffingMemberId;
+use babylon_material_circuit::StockCarryingValue;
+use babylon_material_circuit::TaxBasis;
+use babylon_material_circuit::TaxPolicy;
+use babylon_material_circuit::UnitId;
 fn service_opening(cash: [i128; 5]) -> MaterialCircuitState {
-    let mut state = opening(cash);
+    let mut state = crate::opening(cash);
     let process = ProcessId::from_bytes([1; 32]);
     let service = GoodId::from_bytes([1; 32]);
     let input = GoodId::from_bytes([2; 32]);
@@ -21,14 +66,14 @@ fn service_opening(cash: [i128; 5]) -> MaterialCircuitState {
         },
     ];
     state.inventory = vec![InventoryRow {
-        site_id: site(),
+        site_id: crate::site(),
         good_id: input,
         unit_id: native,
         quantity: 1,
     }];
     state.process_outputs = vec![ProcessOutput {
         process_id: process,
-        site_id: site(),
+        site_id: crate::site(),
         good_id: service,
         unit_id: native,
         quantity_per_batch: 1,
@@ -47,29 +92,29 @@ fn service_opening(cash: [i128; 5]) -> MaterialCircuitState {
     state.capacities = vec![CapacityRow {
         period: 1,
         process_id: process,
-        site_id: site(),
+        site_id: crate::site(),
         available_batches: 1,
     }];
     state.labor = vec![LaborCapacityRow {
-        site_id: site(),
+        site_id: crate::site(),
         unit_id: hours,
         period: 1,
         available: 1,
     }];
     state.production_commitments = vec![ProductionCommitment {
         process_id: process,
-        site_id: site(),
+        site_id: crate::site(),
         period: 1,
         planned_batches: 1,
     }];
     state.service_connections = vec![ServiceConnection {
-        provider_site_id: site(),
-        buyer: AccountId::Household(household()),
+        provider_site_id: crate::site(),
+        buyer: AccountId::Household(crate::household()),
         good_id: service,
         unit_id: native,
     }];
     configure_service_money(
-        economy_mut(&mut state),
+        crate::economy_mut(&mut state),
         process,
         service,
         input,
@@ -86,7 +131,7 @@ fn configure_service_money(
     native: UnitId,
     hours: UnitId,
 ) {
-    let member_id = StaffingMemberId::from_bytes(site().as_bytes());
+    let member_id = StaffingMemberId::from_bytes(crate::site().as_bytes());
     e.member_labor = vec![MemberLaborCapacityRow {
         member_id,
         period: 1,
@@ -94,43 +139,43 @@ fn configure_service_money(
     }];
     e.employment = vec![EmploymentTerms {
         member_id,
-        site_id: site(),
+        site_id: crate::site(),
         unit_id: hours,
-        payee: household(),
-        compensation: LaborCompensation::Wage(money(2)),
+        payee: crate::household(),
+        compensation: LaborCompensation::Wage(crate::money(2)),
     }];
     e.costs = HistoricalCostBook::open(
         &e.book,
         vec![StockCarryingValue {
-            owner: AccountId::Site(site()),
+            owner: AccountId::Site(crate::site()),
             good_id: input,
             unit_id: native,
-            amount: money(4),
+            amount: crate::money(4),
         }],
         vec![],
         e.costs.snapshot().equity,
         vec![],
     )
-    .unwrap();
+    .expect("the fixture opens the authored source");
     e.recurring = Some(Box::new(RecurringEconomy {
         service_inputs: vec![],
         households: vec![HouseholdCohort {
             kind: babylon_material_circuit::HouseholdKind::Ordinary,
-            principal_id: household(),
+            principal_id: crate::household(),
             households: 1,
             persons: 1,
         }],
         household_stocks: vec![],
         household_needs: vec![HouseholdNeed {
-            principal_id: household(),
+            principal_id: crate::household(),
             good_id: service,
             unit_id: native,
             basis: HouseholdNeedBasis::Persons,
             units_per_basis: 1,
         }],
         household_purchases: vec![HouseholdPurchasePolicy {
-            principal_id: household(),
-            retailer_site_id: site(),
+            principal_id: crate::household(),
+            retailer_site_id: crate::site(),
             good_id: service,
             unit_id: native,
             target_closing_stock: 0,
@@ -138,21 +183,21 @@ fn configure_service_money(
             enabled: true,
         }],
         offers: vec![SellerOffer {
-            site_id: site(),
+            site_id: crate::site(),
             good_id: service,
             unit_id: native,
-            unit_price: money(15),
+            unit_price: crate::money(15),
             pricing: PricePolicy::Fixed,
         }],
         replenishment: vec![],
         production: vec![ProductionDemandPolicy {
             process_id: process,
-            site_id: site(),
+            site_id: crate::site(),
             output_buffer: 0,
             planned_batches: 1,
         }],
         attendance: vec![AttendancePlan {
-            site_id: site(),
+            site_id: crate::site(),
             unit_id: hours,
             period: 1,
             planned_hours: 1,
@@ -162,56 +207,78 @@ fn configure_service_money(
     }));
 }
 fn income(t: &MaterialCircuitTransition, account: AccountId) -> &IncomeReceipt {
-    t.income.iter().find(|r| r.account == account).unwrap()
+    t.income
+        .iter()
+        .find(|r| r.account == account)
+        .expect("the fixture holds the searched element")
 }
 #[test]
 fn operating_income_tax_and_foreign_owner_payout_match_independent_journal() {
     let mut state = service_opening([2, 13, 0, 0, 0]);
-    let f = &mut economy_mut(&mut state).financial;
+    let f = &mut crate::economy_mut(&mut state).financial;
     f.taxes.push(TaxPolicy {
-        payer: AccountId::Site(site()),
-        public_recipient: treasury(),
+        payer: AccountId::Site(crate::site()),
+        public_recipient: crate::treasury(),
         basis: TaxBasis::PositiveOperatingIncome,
         rate_bps: 2500,
-        cash_floor: money(0),
+        cash_floor: crate::money(0),
     });
     f.distributions.push(DistributionPolicy {
-        issuer_site_id: site(),
+        issuer_site_id: crate::site(),
         earnings_fraction_bps: 10000,
-        period_cap: money(100),
-        cash_floor: money(0),
+        period_cap: crate::money(100),
+        cash_floor: crate::money(0),
     });
-    let t = advance_material_circuit(&state).unwrap();
-    let issuer = income(&t, AccountId::Site(site()));
-    assert_eq!(issuer.statement.sales, money(15));
-    assert_eq!(issuer.statement.cost_of_goods_sold, money(6));
-    assert_eq!(issuer.statement.operating_income().unwrap(), money(9));
-    assert_eq!(issuer.statement.tax_expense, money(2));
-    assert_eq!(issuer.net_income, money(7));
-    assert_eq!(issuer.distributions_paid, money(7));
-    assert_eq!(issuer.closing_retained_earnings, money(0));
-    assert_eq!(income(&t, owner(2)).statement.distribution_income, money(3));
-    assert_eq!(income(&t, owner(3)).statement.distribution_income, money(4));
+    let t = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
+    let issuer = income(&t, AccountId::Site(crate::site()));
+    assert_eq!(issuer.statement.sales, crate::money(15));
+    assert_eq!(issuer.statement.cost_of_goods_sold, crate::money(6));
     assert_eq!(
-        income(&t, AccountId::Household(household()))
+        issuer
+            .statement
+            .operating_income()
+            .expect("the fixture book balances"),
+        crate::money(9)
+    );
+    assert_eq!(issuer.statement.tax_expense, crate::money(2));
+    assert_eq!(issuer.net_income, crate::money(7));
+    assert_eq!(issuer.distributions_paid, crate::money(7));
+    assert_eq!(issuer.closing_retained_earnings, crate::money(0));
+    assert_eq!(
+        income(&t, crate::owner(2)).statement.distribution_income,
+        crate::money(3)
+    );
+    assert_eq!(
+        income(&t, crate::owner(3)).statement.distribution_income,
+        crate::money(4)
+    );
+    assert_eq!(
+        income(&t, AccountId::Household(crate::household()))
             .statement
             .wage_income,
-        money(2)
+        crate::money(2)
     );
     assert_eq!(
-        income(&t, AccountId::Household(household()))
+        income(&t, AccountId::Household(crate::household()))
             .statement
             .consumption_expense,
-        money(15)
+        crate::money(15)
     );
     for (id, expected) in [
-        (AccountId::Site(site()), 6),
-        (AccountId::Household(household()), 0),
-        (owner(2), 3),
-        (owner(3), 4),
-        (AccountId::Public(treasury()), 2),
+        (AccountId::Site(crate::site()), 6),
+        (AccountId::Household(crate::household()), 0),
+        (crate::owner(2), 3),
+        (crate::owner(3), 4),
+        (AccountId::Public(crate::treasury()), 2),
     ] {
-        assert_eq!(economy(&t.state).book.cash(id).unwrap(), money(expected));
+        assert_eq!(
+            economy(&t.state)
+                .book
+                .cash(id)
+                .expect("the fixture book holds the payer account"),
+            crate::money(expected)
+        );
     }
     assert_eq!(
         t.money_transfers
@@ -222,114 +289,134 @@ fn operating_income_tax_and_foreign_owner_payout_match_independent_journal() {
         2
     );
     assert_eq!(
-        economy(&t.state).book.total_cash_and_reserves().unwrap(),
-        money(15)
+        economy(&t.state)
+            .book
+            .total_cash_and_reserves()
+            .expect("the fixture book totals without overflow"),
+        crate::money(15)
     );
 }
 #[test]
 fn public_provider_funding_reaches_actual_work_and_service_and_withdrawal_severs_it() {
     let mut state = service_opening([0, 13, 0, 0, 2]);
-    let f = &mut economy_mut(&mut state).financial;
+    let f = &mut crate::economy_mut(&mut state).financial;
     f.public_budgets.push(PublicBudget {
-        public_account: treasury(),
-        period_cap: money(2),
-        cash_floor: money(0),
+        public_account: crate::treasury(),
+        period_cap: crate::money(2),
+        cash_floor: crate::money(0),
     });
     f.public_allocations.push(PublicAllocation {
-        public_account: treasury(),
-        recipient: AccountId::Site(site()),
+        public_account: crate::treasury(),
+        recipient: AccountId::Site(crate::site()),
         treatment: PublicTransferTreatment::ProviderOperatingGrant,
         priority: 0,
-        amount_per_period: money(2),
+        amount_per_period: crate::money(2),
     });
-    let funded = advance_material_circuit(&state).unwrap();
+    let funded = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
     assert_eq!(funded.production[0].produced_batches, 1);
     assert_eq!(funded.household_services[0].satisfied_quantity, 1);
     assert_eq!(
-        income(&funded, AccountId::Site(site()))
+        income(&funded, AccountId::Site(crate::site()))
             .statement
             .public_transfer_income,
-        money(2)
+        crate::money(2)
     );
-    economy_mut(&mut state).financial.public_budgets[0].period_cap = money(0);
-    let withdrawn = advance_material_circuit(&state).unwrap();
+    crate::economy_mut(&mut state).financial.public_budgets[0].period_cap = crate::money(0);
+    let withdrawn = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
     assert_eq!(withdrawn.production[0].produced_batches, 0);
     assert_eq!(withdrawn.household_services[0].unmet_quantity, 1);
-    assert_eq!(withdrawn.public_budgets[0].unfunded, money(2));
+    assert_eq!(withdrawn.public_budgets[0].unfunded, crate::money(2));
     assert_eq!(
         economy(&withdrawn.state)
             .book
             .total_cash_and_reserves()
-            .unwrap(),
-        money(15)
+            .expect("the fixture book totals without overflow"),
+        crate::money(15)
     );
 }
 #[test]
 fn tax_shortfall_records_current_uncollected_amount_without_minting_debt() {
     let mut state = service_opening([2, 13, 0, 0, 0]);
-    economy_mut(&mut state).financial.taxes.push(TaxPolicy {
-        payer: AccountId::Site(site()),
-        public_recipient: treasury(),
-        basis: TaxBasis::PositiveOperatingIncome,
-        rate_bps: 10000,
-        cash_floor: money(14),
-    });
-    let t = advance_material_circuit(&state).unwrap();
-    assert_eq!(t.taxes[0].assessed, money(9));
-    assert_eq!(t.taxes[0].collected, money(1));
-    assert_eq!(t.taxes[0].uncollected, money(8));
+    crate::economy_mut(&mut state)
+        .financial
+        .taxes
+        .push(TaxPolicy {
+            payer: AccountId::Site(crate::site()),
+            public_recipient: crate::treasury(),
+            basis: TaxBasis::PositiveOperatingIncome,
+            rate_bps: 10000,
+            cash_floor: crate::money(14),
+        });
+    let t = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
+    assert_eq!(t.taxes[0].assessed, crate::money(9));
+    assert_eq!(t.taxes[0].collected, crate::money(1));
+    assert_eq!(t.taxes[0].uncollected, crate::money(8));
     assert_eq!(
-        income(&t, AccountId::Public(treasury()))
+        income(&t, AccountId::Public(crate::treasury()))
             .statement
             .tax_income,
-        money(1)
+        crate::money(1)
     );
     assert_eq!(
-        income(&t, AccountId::Site(site())).statement.tax_expense,
-        money(1)
+        income(&t, AccountId::Site(crate::site()))
+            .statement
+            .tax_expense,
+        crate::money(1)
     );
     assert!(economy(&t.state).book.snapshot().shifts.is_empty());
     assert_eq!(
-        economy(&t.state).book.total_cash_and_reserves().unwrap(),
-        money(15)
+        economy(&t.state)
+            .book
+            .total_cash_and_reserves()
+            .expect("the fixture book totals without overflow"),
+        crate::money(15)
     );
 }
 #[test]
 fn late_financial_overflow_leaves_all_opening_cash_and_equity_unchanged() {
-    let mut state = opening([0, 0, 1, 0, 0]);
-    let e = economy_mut(&mut state);
+    let mut state = crate::opening([0, 0, 1, 0, 0]);
+    let e = crate::economy_mut(&mut state);
     let mut values = e.costs.snapshot();
-    values.equity[0].amount = money(i128::MAX - 1);
+    values.equity[0].amount = crate::money(i128::MAX - 1);
     values
         .accounts
         .iter_mut()
-        .find(|r| r.account == owner(2))
-        .unwrap()
-        .opening_capital = money(i128::MAX);
+        .find(|r| r.account == crate::owner(2))
+        .expect("the fixture holds the searched element")
+        .opening_capital = crate::money(i128::MAX);
     values
         .accounts
         .iter_mut()
-        .find(|r| r.account == AccountId::Site(site()))
-        .unwrap()
-        .contributed_capital = money(i128::MAX);
+        .find(|r| r.account == AccountId::Site(crate::site()))
+        .expect("the fixture holds the searched element")
+        .contributed_capital = crate::money(i128::MAX);
     values
         .accounts
         .iter_mut()
-        .find(|r| r.account == AccountId::Site(site()))
-        .unwrap()
-        .retained_earnings = money(-i128::MAX);
-    e.costs = HistoricalCostBook::from_snapshot(values).unwrap();
+        .find(|r| r.account == AccountId::Site(crate::site()))
+        .expect("the fixture holds the searched element")
+        .retained_earnings = crate::money(-i128::MAX);
+    e.costs =
+        HistoricalCostBook::from_snapshot(values).expect("the snapshot admits the derived value");
     e.financial.contributions.push(CapitalContributionOrder {
         id: ContributionId::from_bytes([2; 32]),
         due_period: 1,
-        contributor: owner(2),
-        issuer_site_id: site(),
-        amount: money(1),
+        contributor: crate::owner(2),
+        issuer_site_id: crate::site(),
+        amount: crate::money(1),
     });
-    let before = encode_material_circuit_state(&state).unwrap();
+    let before = babylon_material_circuit::encode_material_circuit_state(&state)
+        .expect("the canonical material state encodes");
     assert_eq!(
-        advance_material_circuit(&state),
+        babylon_material_circuit::advance_material_circuit(&state),
         Err(MaterialCircuitError::Arithmetic)
     );
-    assert_eq!(encode_material_circuit_state(&state).unwrap(), before);
+    assert_eq!(
+        babylon_material_circuit::encode_material_circuit_state(&state)
+            .expect("the canonical material state encodes"),
+        before
+    );
 }

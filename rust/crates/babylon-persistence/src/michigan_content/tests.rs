@@ -1,5 +1,7 @@
-use super::*;
-use crate::economic_content::{admit_economic_content, EconomicContentError};
+use super::preset::{MichiganContentPreset, MICHIGAN_CONTENT_PRESETS};
+use crate::economic_content::EconomicContentAdmission;
+use crate::economic_content::EconomicContentError;
+use crate::michigan_material::MichiganMaterialCatalog;
 fn control(admission: &EconomicContentAdmission) -> &MichiganMaterialCatalog {
     match admission.view().sources {
         crate::economic_catalog::EconomicSourceView::MichiganControl { catalog, .. } => catalog,
@@ -8,6 +10,7 @@ fn control(admission: &EconomicContentAdmission) -> &MichiganMaterialCatalog {
         }
     }
 }
+use crate::economic_content;
 use babylon_kernel::clock::CampaignDuration;
 fn finite(final_period: u64) -> CampaignDuration {
     CampaignDuration::Finite { final_period }
@@ -25,11 +28,17 @@ fn current_staffed_foundation_keeps_observed_cohorts_separate_from_five_designed
     for preset in REGIONAL_PRESETS {
         let foundation = preset
             .create_foundation(&crate::test_support::catalog())
-            .unwrap();
-        let expected = preset.admitted(&crate::test_support::catalog()).unwrap();
+            .expect("the authored catalog builds the foundation");
+        let expected = preset
+            .admitted(&crate::test_support::catalog())
+            .expect("the fixture admits the authored value");
         assert_eq!(
-            foundation.export_canonical_bytes().unwrap(),
-            expected.export_canonical_bytes().unwrap()
+            foundation
+                .export_canonical_bytes()
+                .expect("the content exports its canonical bytes"),
+            expected
+                .export_canonical_bytes()
+                .expect("the content exports its canonical bytes")
         );
         assert_eq!(foundation.initial_register(), expected.initial_register());
         assert_eq!(expected.duration(), finite(16));
@@ -39,7 +48,7 @@ fn current_staffed_foundation_keeps_observed_cohorts_separate_from_five_designed
                 .content_bundle()
                 .scenario_source_bytes(),
         )
-        .unwrap();
+        .expect("the fixture bytes came from a UTF-8 string");
         assert_eq!(source.matches("(node business-").count(), 1_603);
         assert_eq!(source.matches("(hyperedge sector-").count(), 19);
         assert_eq!(source.matches("(node workforce-").count(), 5);
@@ -47,7 +56,7 @@ fn current_staffed_foundation_keeps_observed_cohorts_separate_from_five_designed
         assert_eq!(source.matches("(node workplace-").count(), 5);
         assert_eq!(source.matches("(deffield business/").count(), 1);
         assert!(!crate::michigan_cohorts::michigan_cohorts()
-            .unwrap()
+            .expect("the Michigan cohort fixture builds")
             .scenario_source()
             .contains("SOCIAL_CLASS"));
         let composition = foundation.labor();
@@ -87,7 +96,14 @@ fn unsupported_michigan_saves_are_refused_without_a_predecessor_factory() {
             let id = format!("michigan-material-{delivery}-v{version}");
             assert_eq!(MichiganContentPreset::from_id(&id), None);
             assert!(matches!(
-                admit_economic_content(&id, finite(16), &[0; 32], &[0; 32], 0, &[]),
+                economic_content::admit_economic_content(
+                    &id,
+                    finite(16),
+                    &[0; 32],
+                    &[0; 32],
+                    0,
+                    &[]
+                ),
                 Err(EconomicContentError::UnknownPreset)
             ));
         }
@@ -95,21 +111,33 @@ fn unsupported_michigan_saves_are_refused_without_a_predecessor_factory() {
 }
 
 #[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "`admission_refuses_mixed_headers_graphs_and_unadmitted_versions` keeps one authored boundary's fixture and assertions together"
+)]
 fn admission_refuses_mixed_headers_graphs_and_unadmitted_versions() {
     for preset in REGIONAL_PRESETS {
-        let expected = preset.admitted(&crate::test_support::catalog()).unwrap();
-        let reopened = admit_economic_content(
+        let expected = preset
+            .admitted(&crate::test_support::catalog())
+            .expect("the fixture admits the authored value");
+        let reopened = economic_content::admit_economic_content(
             preset.id(),
             finite(16),
             &expected.content_digest(),
             &expected.digest(),
             16,
-            &expected.export_canonical_bytes().unwrap(),
+            &expected
+                .export_canonical_bytes()
+                .expect("the content exports its canonical bytes"),
         )
-        .unwrap();
+        .expect("the fixture admits the economic content");
         assert_eq!(
-            reopened.export_canonical_bytes().unwrap(),
-            expected.export_canonical_bytes().unwrap()
+            reopened
+                .export_canonical_bytes()
+                .expect("the content exports its canonical bytes"),
+            expected
+                .export_canonical_bytes()
+                .expect("the content exports its canonical bytes")
         );
         for tick in [0, 16] {
             assert!(expected
@@ -145,14 +173,18 @@ fn admission_refuses_mixed_headers_graphs_and_unadmitted_versions() {
             if other == preset {
                 continue;
             }
-            let mixed = other.admitted(&crate::test_support::catalog()).unwrap();
-            assert!(admit_economic_content(
+            let mixed = other
+                .admitted(&crate::test_support::catalog())
+                .expect("the fixture admits the authored value");
+            assert!(economic_content::admit_economic_content(
                 preset.id(),
                 finite(16),
                 &mixed.content_digest(),
                 &mixed.digest(),
                 0,
-                &expected.export_canonical_bytes().unwrap()
+                &expected
+                    .export_canonical_bytes()
+                    .expect("the content exports its canonical bytes")
             )
             .is_err());
             if expected.graph_digest != mixed.graph_digest {
@@ -166,41 +198,53 @@ fn admission_refuses_mixed_headers_graphs_and_unadmitted_versions() {
                     .is_err());
             }
         }
-        assert!(admit_economic_content(
+        assert!(economic_content::admit_economic_content(
             "michigan-material-standard-v8",
             finite(16),
             &expected.content_digest(),
             &expected.digest(),
             0,
-            &expected.export_canonical_bytes().unwrap()
+            &expected
+                .export_canonical_bytes()
+                .expect("the content exports its canonical bytes")
         )
         .is_err());
-        assert!(admit_economic_content(
+        assert!(economic_content::admit_economic_content(
             preset.id(),
             finite(16),
             &expected.content_digest()[..31],
             &expected.digest(),
             0,
-            &expected.export_canonical_bytes().unwrap()
+            &expected
+                .export_canonical_bytes()
+                .expect("the content exports its canonical bytes")
         )
         .is_err());
-        assert!(admit_economic_content(
+        assert!(economic_content::admit_economic_content(
             preset.id(),
             finite(16),
             &expected.content_digest(),
             &expected.digest()[..31],
             0,
-            &expected.export_canonical_bytes().unwrap()
+            &expected
+                .export_canonical_bytes()
+                .expect("the content exports its canonical bytes")
         )
         .is_err());
     }
 }
 
 #[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "`edited_parameters_change_new_foundations_but_stored_campaign_keeps_its_own_values` keeps one authored boundary's fixture and assertions together"
+)]
 fn edited_parameters_change_new_foundations_but_stored_campaign_keeps_its_own_values() {
     let catalog = crate::test_support::catalog();
     let preset = MichiganContentPreset::FourWeekStandard;
-    let original = preset.admitted(&catalog).unwrap();
+    let original = preset
+        .admitted(&catalog)
+        .expect("the fixture admits the authored value");
     let source = include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../../../content/scenarios/michigan/defines.toml"
@@ -217,8 +261,10 @@ fn edited_parameters_change_new_foundations_but_stored_campaign_keeps_its_own_va
                 "DURATION = { kind = \"finite\", final_period = 8 }",
             ),
     )
-    .unwrap();
-    let next = preset.admitted(&edited).unwrap();
+    .expect("the authored input admits the derived value");
+    let next = preset
+        .admitted(&edited)
+        .expect("the fixture admits the authored value");
     assert_ne!(original.digest(), next.digest());
     assert_eq!(next.duration(), finite(8));
     assert!(next
@@ -239,38 +285,44 @@ fn edited_parameters_change_new_foundations_but_stored_campaign_keeps_its_own_va
                         .processes()
                         .iter()
                         .find(|process| process.key == "sheet-rolling")
-                        .unwrap()
+                        .expect("the fixture holds the searched element")
                         .site_id()
             })
-            .unwrap()
+            .expect("the fixture holds the searched element")
             .available,
         3600
     );
-    let reopened = admit_economic_content(
+    let reopened = economic_content::admit_economic_content(
         preset.id(),
         finite(16),
         &original.content_digest(),
         &original.digest(),
         0,
-        &original.export_canonical_bytes().unwrap(),
+        &original
+            .export_canonical_bytes()
+            .expect("the content exports its canonical bytes"),
     )
-    .unwrap();
+    .expect("the fixture admits the economic content");
     assert_eq!(control(&reopened).staffing().hours_per_worker_period, 160);
     assert_eq!(reopened.view().opening, original.view().opening);
     assert_eq!(reopened.initial_register(), original.initial_register());
-    assert!(admit_economic_content(
+    assert!(economic_content::admit_economic_content(
         preset.id(),
         finite(16),
         &next.content_digest(),
         &next.digest(),
         0,
-        &original.export_canonical_bytes().unwrap()
+        &original
+            .export_canonical_bytes()
+            .expect("the content exports its canonical bytes")
     )
     .is_err());
-    let mut corrupted = original.export_canonical_bytes().unwrap();
+    let mut corrupted = original
+        .export_canonical_bytes()
+        .expect("the content exports its canonical bytes");
     let end = corrupted.len() - 1;
     corrupted[end] ^= 1;
-    assert!(admit_economic_content(
+    assert!(economic_content::admit_economic_content(
         preset.id(),
         finite(16),
         &original.content_digest(),
@@ -279,14 +331,23 @@ fn edited_parameters_change_new_foundations_but_stored_campaign_keeps_its_own_va
         &corrupted
     )
     .is_err());
-    for length in [0, 32, original.canonical_len().unwrap() - 1] {
-        assert!(admit_economic_content(
+    for length in [
+        0,
+        32,
+        original
+            .canonical_len()
+            .expect("the fixture call `canonical_len` succeeds for the authored inputs")
+            - 1,
+    ] {
+        assert!(economic_content::admit_economic_content(
             preset.id(),
             finite(16),
             &original.content_digest(),
             &original.digest(),
             0,
-            &original.export_canonical_bytes().unwrap()[..length]
+            &original
+                .export_canonical_bytes()
+                .expect("the content exports its canonical bytes")[..length]
         )
         .is_err());
     }
@@ -311,23 +372,29 @@ fn stored_shared_freight_capacities_reconstruct_without_current_default_substitu
                 "CONSTRAINED_UNITS_PER_WEEK = 41",
             ),
     )
-    .unwrap();
+    .expect("the authored input admits the derived value");
     for (preset, capacity) in [
         (MichiganContentPreset::SharedFreightAmple, 804),
         (MichiganContentPreset::SharedFreightConstrained, 164),
     ] {
-        let original = preset.admitted(&authored).unwrap();
-        let default_campaign = preset.admitted(&defaults).unwrap();
+        let original = preset
+            .admitted(&authored)
+            .expect("the fixture admits the authored value");
+        let default_campaign = preset
+            .admitted(&defaults)
+            .expect("the fixture admits the authored value");
         assert_ne!(original.digest(), default_campaign.digest());
-        let reopened = admit_economic_content(
+        let reopened = economic_content::admit_economic_content(
             preset.id(),
             finite(16),
             &original.content_digest(),
             &original.digest(),
             0,
-            &original.export_canonical_bytes().unwrap(),
+            &original
+                .export_canonical_bytes()
+                .expect("the content exports its canonical bytes"),
         )
-        .unwrap();
+        .expect("the fixture admits the economic content");
         assert_eq!(reopened.view().opening, original.view().opening);
         assert_ne!(
             reopened.view().source_digest,
@@ -335,14 +402,18 @@ fn stored_shared_freight_capacities_reconstruct_without_current_default_substitu
         );
         assert_eq!(reopened.initial_register(), original.initial_register());
         assert_eq!(
-            reopened.export_canonical_bytes().unwrap(),
-            original.export_canonical_bytes().unwrap()
+            reopened
+                .export_canonical_bytes()
+                .expect("the content exports its canonical bytes"),
+            original
+                .export_canonical_bytes()
+                .expect("the content exports its canonical bytes")
         );
         let sheet = control(&reopened)
             .routes()
             .iter()
             .find(|route| route.key == "sheet-transfer")
-            .unwrap();
+            .expect("the fixture holds the searched element");
         let crate::michigan_material::MichiganMaterialPath::Routed { capacity_keys, .. } =
             &sheet.path
         else {
@@ -353,7 +424,7 @@ fn stored_shared_freight_capacities_reconstruct_without_current_default_substitu
             .corridors()
             .iter()
             .find(|row| row.key == capacity_keys[0])
-            .unwrap();
+            .expect("the fixture holds the searched element");
         assert_eq!(shared.capacity_grams_per_period, capacity * 1000);
         let capacities: Vec<_> = reopened
             .initial_register()
@@ -366,13 +437,15 @@ fn stored_shared_freight_capacities_reconstruct_without_current_default_substitu
         assert!(capacities
             .iter()
             .all(|row| row.available_grams == capacity * 1000));
-        assert!(admit_economic_content(
+        assert!(economic_content::admit_economic_content(
             preset.id(),
             finite(16),
             &default_campaign.content_digest(),
             &default_campaign.digest(),
             0,
-            &original.export_canonical_bytes().unwrap(),
+            &original
+                .export_canonical_bytes()
+                .expect("the content exports its canonical bytes"),
         )
         .is_err());
     }
@@ -398,7 +471,7 @@ fn continuous_campaign_admits_explicit_duration_without_a_numeric_stop() {
     assert_eq!(catalog.duration(), CampaignDuration::Continuous);
     let foundation = MichiganContentPreset::FourWeekStandard
         .create_foundation(&catalog)
-        .unwrap();
+        .expect("the authored catalog builds the foundation");
     assert!(matches!(
         foundation.initial_register().state().capacity_supply,
         babylon_material_circuit::CapacitySupply::Rolling(_)
@@ -411,7 +484,7 @@ fn continuous_campaign_admits_explicit_duration_without_a_numeric_stop() {
         .all(|row| row.period == 1));
     let expected = MichiganContentPreset::FourWeekStandard
         .admitted(&catalog)
-        .unwrap();
+        .expect("the fixture admits the authored value");
     assert!(expected
         .validate_header(
             CampaignDuration::Continuous,

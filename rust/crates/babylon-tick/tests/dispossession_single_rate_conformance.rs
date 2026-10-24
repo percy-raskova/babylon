@@ -30,11 +30,18 @@
 //! rounding to chase), so this suite's numbers are exact literals rather
 //! than `repr()`-pinned decimals.
 
+// Conformance fixtures exercise exact engine values, transcribe spec literals,
+// and build whole scenarios in one test. These pedantic lints would force
+// ceremony that hides those contracts, so they stay off in test code only.
+#![allow(
+    clippy::float_cmp,
+    reason = "these comparisons pin exact authored f64 values"
+)]
+
 use babylon_bsl::evaluator::Value;
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::memory::MemoryGraph;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
-use babylon_tick::{run_once, run_once_into};
 
 const SCENARIO: &str =
     include_str!("../content/scenarios/dispossession-single-rate-conformance.bscn");
@@ -43,7 +50,7 @@ const RULE: &str = include_str!("../content/rules/dispossession.bsl");
 fn run() -> (MemoryGraph, CollectingSink) {
     let mut graph = MemoryGraph::new();
     let mut sink = CollectingSink::default();
-    run_once_into(SCENARIO, RULE, &mut graph, &mut sink)
+    babylon_tick::run_once_into(SCENARIO, RULE, &mut graph, &mut sink)
         .expect("one nonzero primary rate must pass the (when …) gate");
     (graph, sink)
 }
@@ -119,7 +126,7 @@ fn both_events_fire_in_source_order_with_full_payloads() {
 /// The gate is a genuine OR: exactly one subject, and it fires.
 #[test]
 fn the_single_subject_passes_the_when_guard() {
-    let report = run_once(SCENARIO, RULE).expect("the pack must run");
+    let report = babylon_tick::run_once(SCENARIO, RULE).expect("the pack must run");
     assert_eq!(
         report.fired, 1,
         "one nonzero disjunct must be enough — an (and …) mistake would leave this 0"

@@ -34,16 +34,15 @@
 use babylon_bsl::evaluator::Value;
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::memory::MemoryGraph;
-use babylon_tick::run_once_into;
 
-const SCENARIO: &str = r#"
+const SCENARIO: &str = r"
 (scenario scale-op-e2e/one-territory
   (deffield territory/population int extensive)
   (defconst territory/rent-spike-multiplier 2.0r :cap 10r)
 
   (node core NodeType/TERRITORY
     (territory/population 1)))
-"#;
+";
 
 const RULE: &str = r#"
 (rule vitality/scale-op-e2e-rent-spike
@@ -62,7 +61,7 @@ const RULE: &str = r#"
 fn a_rule_scaling_currency_by_a_declared_domain_ratio_runs_through_run_once() {
     let mut graph = MemoryGraph::new();
     let mut sink = CollectingSink::default();
-    let report = run_once_into(SCENARIO, RULE, &mut graph, &mut sink)
+    let report = babylon_tick::run_once_into(SCENARIO, RULE, &mut graph, &mut sink)
         .expect("Currency x declared-domain Ratio must clear the whole seam");
 
     assert_eq!(report.fired, 1);
@@ -88,11 +87,13 @@ fn a_rule_scaling_currency_by_a_declared_domain_ratio_runs_through_run_once() {
 fn the_declared_call_is_deterministic_across_two_full_runs() {
     let mut graph_a = MemoryGraph::new();
     let mut sink_a = CollectingSink::default();
-    let a = run_once_into(SCENARIO, RULE, &mut graph_a, &mut sink_a).expect("first run");
+    let a =
+        babylon_tick::run_once_into(SCENARIO, RULE, &mut graph_a, &mut sink_a).expect("first run");
 
     let mut graph_b = MemoryGraph::new();
     let mut sink_b = CollectingSink::default();
-    let b = run_once_into(SCENARIO, RULE, &mut graph_b, &mut sink_b).expect("second run");
+    let b =
+        babylon_tick::run_once_into(SCENARIO, RULE, &mut graph_b, &mut sink_b).expect("second run");
 
     assert_eq!(a.after, b.after);
     assert_eq!(sink_a.events, sink_b.events);
@@ -115,17 +116,18 @@ fn the_declared_call_is_deterministic_across_two_full_runs() {
 /// directly in `evaluator.rs`, where it CAN be constructed.
 #[test]
 fn a_ratio_over_its_declared_cap_fails_the_whole_tick_loudly() {
-    const OVER_CAP_SCENARIO: &str = r#"
+    const OVER_CAP_SCENARIO: &str = r"
 (scenario scale-op-e2e/over-cap
   (deffield territory/population int extensive)
   (defconst territory/rent-spike-multiplier 12r :cap 10r)
 
   (node core NodeType/TERRITORY
     (territory/population 1)))
-"#;
+";
     let mut graph = MemoryGraph::new();
     let mut sink = CollectingSink::default();
-    let err = run_once_into(OVER_CAP_SCENARIO, RULE, &mut graph, &mut sink).unwrap_err();
+    let err = babylon_tick::run_once_into(OVER_CAP_SCENARIO, RULE, &mut graph, &mut sink)
+        .expect_err("the malformed tick is refused");
     assert!(
         err.contains("exceeds its own :cap"),
         "unexpected message: {err}"
@@ -138,17 +140,17 @@ fn a_ratio_over_its_declared_cap_fails_the_whole_tick_loudly() {
 /// `Coefficient` could never have carried (well above `1.0`).
 #[test]
 fn an_uncapped_declared_domain_ratio_also_clears_the_whole_seam() {
-    const UNCAPPED_SCENARIO: &str = r#"
+    const UNCAPPED_SCENARIO: &str = r"
 (scenario scale-op-e2e/uncapped
   (deffield territory/population int extensive)
   (defconst territory/rent-spike-multiplier 5r)
 
   (node core NodeType/TERRITORY
     (territory/population 1)))
-"#;
+";
     let mut graph = MemoryGraph::new();
     let mut sink = CollectingSink::default();
-    let report = run_once_into(UNCAPPED_SCENARIO, RULE, &mut graph, &mut sink)
+    let report = babylon_tick::run_once_into(UNCAPPED_SCENARIO, RULE, &mut graph, &mut sink)
         .expect("an uncapped declared-domain Ratio must still clear the seam");
     assert_eq!(report.fired, 1);
     let (_, payload) = &sink.events[0];
@@ -170,14 +172,14 @@ fn an_uncapped_declared_domain_ratio_also_clears_the_whole_seam() {
 // not decoration. The worked example, byte for byte:
 // `(defconst metabolism/entropy-factor 1.5r :floor 1r :cap 3r)`.
 
-const FLOOR_SCENARIO: &str = r#"
+const FLOOR_SCENARIO: &str = r"
 (scenario scale-op-e2e/entropy-factor
   (deffield territory/population int extensive)
   (defconst metabolism/entropy-factor 1.5r :floor 1r :cap 3r)
 
   (node core NodeType/TERRITORY
     (territory/population 1)))
-"#;
+";
 
 const FLOOR_RULE: &str = r#"
 (rule vitality/scale-op-e2e-entropy-factor
@@ -198,7 +200,7 @@ const FLOOR_RULE: &str = r#"
 fn a_rule_scaling_currency_by_a_floored_and_capped_ratio_runs_through_run_once() {
     let mut graph = MemoryGraph::new();
     let mut sink = CollectingSink::default();
-    let report = run_once_into(FLOOR_SCENARIO, FLOOR_RULE, &mut graph, &mut sink)
+    let report = babylon_tick::run_once_into(FLOOR_SCENARIO, FLOOR_RULE, &mut graph, &mut sink)
         .expect("Currency x a floored-and-capped Ratio must clear the whole seam");
     assert_eq!(report.fired, 1);
     let (_, payload) = &sink.events[0];
@@ -218,17 +220,18 @@ fn a_rule_scaling_currency_by_a_floored_and_capped_ratio_runs_through_run_once()
 /// fails the whole tick loudly at load, never evaluating silently.
 #[test]
 fn a_modded_entropy_factor_below_its_floor_fails_the_whole_tick_loudly() {
-    const BELOW_FLOOR_SCENARIO: &str = r#"
+    const BELOW_FLOOR_SCENARIO: &str = r"
 (scenario scale-op-e2e/entropy-factor-modded-low
   (deffield territory/population int extensive)
   (defconst metabolism/entropy-factor 0.5r :floor 1r :cap 3r)
 
   (node core NodeType/TERRITORY
     (territory/population 1)))
-"#;
+";
     let mut graph = MemoryGraph::new();
     let mut sink = CollectingSink::default();
-    let err = run_once_into(BELOW_FLOOR_SCENARIO, FLOOR_RULE, &mut graph, &mut sink).unwrap_err();
+    let err = babylon_tick::run_once_into(BELOW_FLOOR_SCENARIO, FLOOR_RULE, &mut graph, &mut sink)
+        .expect_err("the malformed tick is refused");
     assert!(
         err.contains("does not exceed its own :floor"),
         "unexpected message: {err}"
@@ -240,17 +243,18 @@ fn a_modded_entropy_factor_below_its_floor_fails_the_whole_tick_loudly() {
 /// BELOW it — the exclusive endpoint, proved through the full seam.
 #[test]
 fn a_modded_entropy_factor_exactly_at_its_floor_fails_the_whole_tick_loudly() {
-    const AT_FLOOR_SCENARIO: &str = r#"
+    const AT_FLOOR_SCENARIO: &str = r"
 (scenario scale-op-e2e/entropy-factor-at-floor
   (deffield territory/population int extensive)
   (defconst metabolism/entropy-factor 1r :floor 1r :cap 3r)
 
   (node core NodeType/TERRITORY
     (territory/population 1)))
-"#;
+";
     let mut graph = MemoryGraph::new();
     let mut sink = CollectingSink::default();
-    let err = run_once_into(AT_FLOOR_SCENARIO, FLOOR_RULE, &mut graph, &mut sink).unwrap_err();
+    let err = babylon_tick::run_once_into(AT_FLOOR_SCENARIO, FLOOR_RULE, &mut graph, &mut sink)
+        .expect_err("the malformed tick is refused");
     assert!(
         err.contains("does not exceed its own :floor"),
         "unexpected message: {err}"
@@ -292,14 +296,14 @@ fn a_modded_entropy_factor_exactly_at_its_floor_fails_the_whole_tick_loudly() {
 // only that the MECHANISM is available and typechecks/evaluates cleanly
 // through the real entry point; it does not pre-choose Lifecycle's answer.
 
-const GATED_SCENARIO: &str = r#"
+const GATED_SCENARIO: &str = r"
 (scenario scale-op-e2e/gated-modifier
   (deffield territory/population int extensive)
   (defconst lifecycle/early-mortality-modifier 1.24r)
 
   (node core NodeType/TERRITORY
     (territory/population 1)))
-"#;
+";
 
 const GATED_RULE_TEMPLATE: &str = r#"
 (rule vitality/scale-op-e2e-gated-modifier
@@ -326,7 +330,7 @@ fn a_guard_gated_ratio_multiply_fires_when_the_channel_is_active() {
     );
     let mut graph = MemoryGraph::new();
     let mut sink = CollectingSink::default();
-    let report = run_once_into(&scenario, GATED_RULE_TEMPLATE, &mut graph, &mut sink)
+    let report = babylon_tick::run_once_into(&scenario, GATED_RULE_TEMPLATE, &mut graph, &mut sink)
         .expect("a guard-gated Currency x Ratio effect must clear the whole seam");
     assert_eq!(report.fired, 1);
     assert_eq!(
@@ -363,7 +367,7 @@ fn a_guard_gated_ratio_multiply_never_evaluates_when_the_channel_is_off() {
     );
     let mut graph = MemoryGraph::new();
     let mut sink = CollectingSink::default();
-    let report = run_once_into(&scenario, GATED_RULE_TEMPLATE, &mut graph, &mut sink)
+    let report = babylon_tick::run_once_into(&scenario, GATED_RULE_TEMPLATE, &mut graph, &mut sink)
         .expect("a false guard must skip its effect, not fail the tick");
     assert_eq!(
         report.fired, 1,

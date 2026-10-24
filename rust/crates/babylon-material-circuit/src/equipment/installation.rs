@@ -1,13 +1,24 @@
 //! Arrived materials enter bounded WIP and share the existing attendance residual.
-use super::{
-    canonicalize, get, get_mut, EquipmentCohortId, EquipmentDefinition, InstallationId,
-    InstallationReceipt, InstalledEquipmentCohort, MaterialCircuitError, MaterialCircuitState,
-    PendingInstallation, ProcessId, ProductiveEquipment, Result,
-};
-use crate::inventory::{debit_inventory, publish_inventory, take_inventory, InventoryLedger};
+use super::EquipmentCohortId;
+use super::EquipmentDefinition;
+use super::InstallationId;
+use super::InstallationReceipt;
+use super::InstalledEquipmentCohort;
+use super::MaterialCircuitError;
+use super::MaterialCircuitState;
+use super::PendingInstallation;
+use super::ProcessId;
+use super::ProductiveEquipment;
+use super::Result;
+use crate::inventory::InventoryLedger;
 use crate::valuation::CostClose;
 use crate::{AccountId, SiteId, StaffingWorkSource, UnitId};
-use babylon_kernel::{content_digest::sha256_of, currency::Currency};
+use babylon_kernel::currency::Currency;
+
+use super::InstallationDecisionReceipt;
+use crate::inventory;
+use crate::GoodId;
+use babylon_kernel::content_digest;
 use std::collections::BTreeMap;
 /// Stable installation principal for one process and start period.
 #[must_use]
@@ -15,12 +26,12 @@ pub fn equipment_installation_id(period: u64, process: ProcessId) -> Installatio
     let mut b = b"babylon.equipment-installation.v1\0".to_vec();
     b.extend_from_slice(&period.to_be_bytes());
     b.extend_from_slice(&process.as_bytes());
-    InstallationId::from_bytes(sha256_of(&b))
+    InstallationId::from_bytes(content_digest::sha256_of(&b))
 }
 fn material_requirements(
     e: &ProductiveEquipment,
     d: &EquipmentDefinition,
-) -> Vec<(crate::GoodId, UnitId, u64)> {
+) -> Vec<(GoodId, UnitId, u64)> {
     let mut rows = vec![(d.equipment_good_id, d.equipment_unit_id, 1)];
     let lo = e
         .installation_inputs
@@ -90,13 +101,13 @@ fn start_projects(
                 available,
                 quantity,
             )?;
-            debit_inventory(
+            inventory::debit_inventory(
                 eligible,
                 key,
                 quantity,
                 MaterialCircuitError::EquipmentInvariant,
             )?;
-            debit_inventory(
+            inventory::debit_inventory(
                 inventory,
                 key,
                 quantity,
@@ -123,17 +134,17 @@ fn start_projects(
 }
 struct InstallationStarts {
     costs: BTreeMap<InstallationId, Currency>,
-    decisions: Vec<super::InstallationDecisionReceipt>,
+    decisions: Vec<InstallationDecisionReceipt>,
 }
 pub(crate) struct InstallationClose {
     pub work: Vec<InstallationReceipt>,
-    pub decisions: Vec<super::InstallationDecisionReceipt>,
+    pub decisions: Vec<InstallationDecisionReceipt>,
 }
 pub(crate) fn install(
     state: &mut MaterialCircuitState,
     costs: &mut CostClose,
 ) -> Result<InstallationClose> {
-    let Some(mut e) = get(state).cloned() else {
+    let Some(mut e) = super::get(state).cloned() else {
         return Ok(InstallationClose {
             work: vec![],
             decisions: vec![],
@@ -145,7 +156,7 @@ pub(crate) fn install(
         .checked_add(1)
         .ok_or(MaterialCircuitError::Arithmetic)?;
     let mut eligible = super::choice::eligible_inventory(state)?;
-    let mut inventory = take_inventory(state);
+    let mut inventory = inventory::take_inventory(state);
     let admission = start_projects(state, &mut e, &mut inventory, &mut eligible, costs)?;
     let starts = admission.costs;
     e.pending.sort_by_key(|r| (r.process_id, r.id));
@@ -223,9 +234,9 @@ pub(crate) fn install(
             e.pending.push(p);
         }
     }
-    canonicalize(&mut e);
-    *get_mut(state).ok_or(MaterialCircuitError::EquipmentInvariant)? = e;
-    publish_inventory(state, inventory);
+    super::canonicalize(&mut e);
+    *super::get_mut(state).ok_or(MaterialCircuitError::EquipmentInvariant)? = e;
+    inventory::publish_inventory(state, inventory);
     receipts.sort_by_key(|r| (r.process_id, r.id));
     Ok(InstallationClose {
         work: receipts,
@@ -236,7 +247,7 @@ pub(crate) fn install(
 pub(crate) fn work_requests(
     state: &MaterialCircuitState,
 ) -> Result<Vec<(StaffingWorkSource, SiteId, UnitId, u64)>> {
-    let Some(e) = get(state) else {
+    let Some(e) = super::get(state) else {
         return Ok(vec![]);
     };
     let mut inventory = super::choice::eligible_inventory(state)?;
@@ -260,7 +271,7 @@ pub(crate) fn work_requests(
             let quantity = possible
                 .checked_mul(coefficient)
                 .ok_or(MaterialCircuitError::Arithmetic)?;
-            debit_inventory(
+            inventory::debit_inventory(
                 &mut inventory,
                 (b.site_id, good, unit),
                 quantity,

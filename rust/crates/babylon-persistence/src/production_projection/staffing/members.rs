@@ -1,30 +1,29 @@
 //! Indexed graph stocks and receipt joins; no staffing policy is recomputed here.
 use std::collections::BTreeMap;
 
-use babylon_bsl::{
-    identity_codec::project_stored_field_value,
-    types::{BslType, EnumRegistry, FieldDecl, FieldKind},
-};
-use babylon_graph::{stable_element::StableElementKey, stable_state::StableGraphState};
+use babylon_bsl::types::{BslType, EnumRegistry, FieldDecl, FieldKind};
+
+use babylon_graph::stable_element::StableElementKey;
+use babylon_graph::stable_state::StableGraphState;
+
 use babylon_material_circuit::{
     CircuitAccounting, EmploymentTerms, LaborCompensation, StaffingMemberId, StaffingMemberReceipt,
 };
-use babylon_tick::{
-    material_staffing::{
-        StaffingMemberNodeBinding, StaffingNodeBinding, EMPLOYED_POPULATION,
-        PREVIOUS_UNRETAINED_HOURS, RESERVE_POPULATION,
-    },
-    material_world::{MaterialTickReceipts, MaterialWorldRegister},
+use babylon_tick::material_staffing::{
+    StaffingMemberNodeBinding, StaffingNodeBinding, EMPLOYED_POPULATION, PREVIOUS_UNRETAINED_HOURS,
+    RESERVE_POPULATION,
 };
+use babylon_tick::material_world::{MaterialTickReceipts, MaterialWorldRegister};
 
-use super::{integer, ProductionProjectionError, Result, Stocks};
-use crate::{
-    michigan_economy::digest_hex,
-    production_observation::{
-        CompletedProductionStaffingMember, ProductionLaborCompensation,
-        ProductionStaffingMemberAccount, ProductionStaffingSubject,
-    },
+use super::{ProductionProjectionError, Result, Stocks};
+use crate::michigan_economy;
+use crate::production_observation::{
+    CompletedProductionStaffingMember, ProductionLaborCompensation,
+    ProductionStaffingMemberAccount, ProductionStaffingSubject,
 };
+use babylon_bsl::identity_codec;
+use babylon_kernel::economic_location::EconomicLocation;
+use babylon_material_circuit::FinalDemandPrincipalId;
 
 pub(super) struct StaffingGraph<'a> {
     scope: &'a str,
@@ -65,7 +64,7 @@ impl<'a> StaffingGraph<'a> {
             .iter()
             .filter(|(_, field, _)| owned(field))
         {
-            let value = project_stored_field_value(
+            let value = identity_codec::project_stored_field_value(
                 &FieldDecl {
                     ty: BslType::Int,
                     kind: FieldKind::Extensive,
@@ -76,7 +75,7 @@ impl<'a> StaffingGraph<'a> {
             )
             .map_err(|_| ProductionProjectionError::State)?;
             if values
-                .insert((name.as_str(), field.as_str()), integer(&value)?)
+                .insert((name.as_str(), field.as_str()), super::integer(&value)?)
                 .is_some()
             {
                 return Err(ProductionProjectionError::State);
@@ -146,10 +145,7 @@ pub(super) struct StaffingWitnesses<'a> {
     receipts: BTreeMap<StaffingMemberId, &'a StaffingMemberReceipt>,
     terms: Option<BTreeMap<StaffingMemberId, &'a EmploymentTerms>>,
     hours: BTreeMap<StaffingMemberId, u64>,
-    residences: BTreeMap<
-        babylon_material_circuit::FinalDemandPrincipalId,
-        babylon_kernel::economic_location::EconomicLocation,
-    >,
+    residences: BTreeMap<FinalDemandPrincipalId, EconomicLocation>,
 }
 impl<'a> StaffingWitnesses<'a> {
     pub(super) fn new(
@@ -270,8 +266,8 @@ impl<'a> StaffingWitnesses<'a> {
             return Err(ProductionProjectionError::Content);
         };
         Ok(ProductionStaffingMemberAccount {
-            member_id: digest_hex(&id.as_bytes()),
-            household_id: digest_hex(&member.household_id().as_bytes()),
+            member_id: michigan_economy::digest_hex(&id.as_bytes()),
+            household_id: michigan_economy::digest_hex(&member.household_id().as_bytes()),
             residence: member.residence(),
             subject: ProductionStaffingSubject {
                 scenario: scenario.clone(),

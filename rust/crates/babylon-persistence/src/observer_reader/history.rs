@@ -2,10 +2,7 @@
 
 use postgres::{IsolationLevel, NoTls};
 
-use super::{
-    confine_authority, read_commit_identity, read_foundation, CampaignId, ObserverEconomyError,
-    ObserverEconomyReader, ObserverVisibility,
-};
+use super::{CampaignId, ObserverEconomyError, ObserverEconomyReader, ObserverVisibility};
 use crate::production_observation::ProductionProcess;
 
 /// Exact identities copied from the disclosed process, never display labels.
@@ -75,7 +72,7 @@ impl ObserverEconomyReader {
         let mut client = config
             .connect(NoTls)
             .map_err(|_| ObserverEconomyError::Database)?;
-        confine_authority(&mut client, self.visibility)?;
+        super::confine_authority(&mut client, self.visibility)?;
         let mut transaction = client
             .build_transaction()
             .isolation_level(IsolationLevel::RepeatableRead)
@@ -85,7 +82,7 @@ impl ObserverEconomyReader {
         transaction
             .batch_execute(super::MATERIAL_READ_TRANSACTION_OPTIONS)
             .map_err(|_| ObserverEconomyError::Database)?;
-        let (_, _, header) = read_foundation(
+        let (_, _, header) = super::read_foundation(
             &mut transaction,
             campaign,
             through_period,
@@ -96,7 +93,7 @@ impl ObserverEconomyReader {
             .as_ref()
             .and_then(|header| header.admission.as_ref())
             .ok_or(ObserverEconomyError::ProductionHistoryUnavailable)?;
-        read_commit_identity(&mut transaction, campaign, tick, true)?;
+        super::read_commit_identity(&mut transaction, campaign, tick, true)?;
         let points = crate::observer_material::production_history(
             &mut transaction,
             campaign,
@@ -132,7 +129,8 @@ mod tests {
             labor: vec![],
         };
         assert_eq!(
-            ProductionOutputPoint::from_process(0, &process).unwrap(),
+            ProductionOutputPoint::from_process(0, &process)
+                .expect("the authored input admits the derived value"),
             ProductionOutputPoint {
                 period: 0,
                 planned: None,
@@ -142,7 +140,8 @@ mod tests {
         process.planned_batches = Some(8);
         process.produced_batches = Some(0);
         assert_eq!(
-            ProductionOutputPoint::from_process(1, &process).unwrap(),
+            ProductionOutputPoint::from_process(1, &process)
+                .expect("the authored input admits the derived value"),
             ProductionOutputPoint {
                 period: 1,
                 planned: Some(80),
@@ -160,9 +159,9 @@ mod tests {
     fn preview_history_refuses_before_connecting_or_examining_identities() {
         let config = "host=127.0.0.1 port=1 user=unavailable dbname=unavailable"
             .parse()
-            .unwrap();
-        let reader =
-            ObserverEconomyReader::connect(&config, ObserverVisibility::KnownPreview).unwrap();
+            .expect("the authored literal parses as the declared type");
+        let reader = ObserverEconomyReader::connect(&config, ObserverVisibility::KnownPreview)
+            .expect("the test database accepts the connection");
         let target = ProductionHistoryTarget {
             site_id: "unknown".into(),
             process_id: "unknown".into(),

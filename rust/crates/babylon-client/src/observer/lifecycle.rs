@@ -1,13 +1,13 @@
 //! Client scheduling for the one persistent runtime control connection.
 
-use babylon_persistence::{
-    identity::CampaignId, runtime_session::RuntimeSessionErrorCode,
-    runtime_session::RuntimeSessionRequest, runtime_session::RuntimeSessionScope,
-    runtime_session::RuntimeSessionTail, runtime_session::RuntimeSessionTarget,
-    runtime_session::RUNTIME_SESSION_PROTOCOL_VERSION,
+use babylon_persistence::identity::CampaignId;
+use babylon_persistence::runtime_session::{
+    RuntimeSessionErrorCode, RuntimeSessionRequest, RuntimeSessionScope, RuntimeSessionTail,
+    RuntimeSessionTarget, RUNTIME_SESSION_PROTOCOL_VERSION,
 };
 
 use super::{ObserverSession, SessionPhase};
+use uuid::Uuid;
 
 #[derive(Debug)]
 struct PendingSwitch {
@@ -46,7 +46,7 @@ impl LifecycleState {
 fn target_campaign(target: &RuntimeSessionTarget) -> Result<CampaignId, String> {
     let (RuntimeSessionTarget::New { campaign_id, .. }
     | RuntimeSessionTarget::Open { campaign_id }) = target;
-    let uuid = uuid::Uuid::parse_str(campaign_id).map_err(|_| "Invalid campaign identity")?;
+    let uuid = Uuid::parse_str(campaign_id).map_err(|_| "Invalid campaign identity")?;
     if uuid.is_nil() || uuid.to_string() != *campaign_id {
         return Err("Invalid campaign identity".into());
     }
@@ -373,15 +373,21 @@ impl ObserverSession {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use uuid::Uuid;
 
     #[test]
     fn exhausted_scope_or_observation_generation_never_reuses_an_old_context() {
         for exhausted_epoch in [false, true] {
-            let campaign = CampaignId::from_uuid(uuid::Uuid::from_u128(1));
+            let campaign = CampaignId::from_uuid(Uuid::from_u128(1));
             let mut state = ObserverSession::new(campaign);
             state.connected_fixture();
             if exhausted_epoch {
-                state.lifecycle.scope.as_mut().unwrap().epoch = u64::MAX;
+                state
+                    .lifecycle
+                    .scope
+                    .as_mut()
+                    .expect("the fixture set the optional field before this borrow")
+                    .epoch = u64::MAX;
             } else {
                 state.generation = u64::MAX;
             }
@@ -390,10 +396,12 @@ mod tests {
                 .queue_campaign(RuntimeSessionTarget::Open {
                     campaign_id: campaign.as_uuid().to_string(),
                 })
-                .unwrap();
+                .expect("the fixture call `queue_campaign` succeeds for the authored inputs");
             let RuntimeSessionRequest::Switch {
                 request_id, scope, ..
-            } = state.pending_switch_request().unwrap()
+            } = state.pending_switch_request().expect(
+                "the fixture call `pending_switch_request` succeeds for the authored inputs",
+            )
             else {
                 panic!("switch request");
             };
@@ -410,14 +418,14 @@ mod tests {
 
     #[test]
     fn request_counter_exhaustion_refuses_without_resending_or_wrapping() {
-        let mut state = ObserverSession::new(CampaignId::from_uuid(uuid::Uuid::from_u128(1)));
+        let mut state = ObserverSession::new(CampaignId::from_uuid(Uuid::from_u128(1)));
         state.connected_fixture();
         state.next_request = u64::MAX;
         state
             .queue_campaign(RuntimeSessionTarget::Open {
                 campaign_id: state.campaign.as_uuid().to_string(),
             })
-            .unwrap();
+            .expect("the fixture call `queue_campaign` succeeds for the authored inputs");
         assert!(state.pending_switch_request().is_none());
         assert!(state.runtime_disconnected());
         assert!(!state.switch_send_due());

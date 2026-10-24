@@ -3,24 +3,30 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use babylon_persistence::{
-    production_observation::ProductionPhysicalEdge, production_observation::ProductionSnapshot,
-};
+use babylon_persistence::production_observation::{ProductionPhysicalEdge, ProductionSnapshot};
+
 use bevy::asset::RenderAssetUsages;
 use bevy::ecs::system::SystemParam;
 use bevy::mesh::PrimitiveTopology;
 use bevy::prelude::*;
 
-use super::{scene_point, ObserverMapCamera, BASE_HEIGHT, DATA_HEIGHT, MAP_LAYER};
+use super::{ObserverMapCamera, BASE_HEIGHT, DATA_HEIGHT, MAP_LAYER};
 use crate::atlas::CountyAtlas;
 use crate::decision_surface::{DeclaredSurface, SurfaceId};
 use crate::map::SelectedCounty;
+use crate::map_economy_lens::MaterialGoodKey;
 use crate::observer::{ObservationContext, ObserverSession};
+use crate::observer_controls::ControlAvailability;
 use crate::observer_io::ObserverSet;
 use crate::observer_theme as theme;
+use crate::observer_ui::ObserverFontRole;
 use crate::observer_ui::{ObserverFrame, ObserverUiState, ObserverViewport, RoadLayer};
 use crate::production::PrimaryView;
-use crate::production_layout::place_label;
+use crate::production::ProductionNavigation;
+use crate::production_layout;
+use babylon_persistence::production_observation::PhysicalRouteIndex;
+use bevy::camera::visibility::RenderLayers;
+use bevy::window::PrimaryWindow;
 
 #[path = "map_network.rs"]
 mod network;
@@ -33,7 +39,11 @@ const CONNECTION_HEIGHT: f32 = BASE_HEIGHT + DATA_HEIGHT + 22.0;
 /// Parameters match its pinned PROJ definition (GRS80, parallels 29.5/45.5,
 /// origin 23/-96). No routing distance or material quantity is derived here.
 /// Formula: <https://pubs.usgs.gov/pp/1395/report.pdf>, section 14.
-#[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation)]
+#[allow(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    reason = "the cast feeds display geometry, where f64 approximation is invisible; the display value is range-checked before the f32 narrowing"
+)]
 fn geographic_map_point([longitude, latitude]: [i64; 2]) -> Option<Vec2> {
     if !(-1_800_000_000..=1_800_000_000).contains(&longitude)
         || !(-900_000_000..=900_000_000).contains(&latitude)
@@ -98,8 +108,8 @@ fn projected_segments<'a>(
             Some((
                 segment,
                 [
-                    scene_point(from, origin, CONNECTION_HEIGHT),
-                    scene_point(to, origin, CONNECTION_HEIGHT),
+                    super::scene_point(from, origin, CONNECTION_HEIGHT),
+                    super::scene_point(to, origin, CONNECTION_HEIGHT),
                 ],
             ))
         })
@@ -110,9 +120,7 @@ fn disclosed_snapshot<'a>(
     frame: &'a ObserverFrame,
     session: &ObserverSession,
 ) -> Option<&'a ProductionSnapshot> {
-    if crate::observer_controls::inspection_availability(session)
-        != crate::observer_controls::ControlAvailability::Enabled
-    {
+    if crate::observer_controls::inspection_availability(session) != ControlAvailability::Enabled {
         return None;
     }
     frame
@@ -159,7 +167,11 @@ impl CountyAnchors {
                         CountyAnchor {
                             index,
                             name: county.name.to_owned(),
-                            position: scene_point(county.centroid, origin, CONNECTION_HEIGHT),
+                            position: super::scene_point(
+                                county.centroid,
+                                origin,
+                                CONNECTION_HEIGHT,
+                            ),
                         },
                     ))
                 })
@@ -204,7 +216,7 @@ struct RelationshipProjection {
 fn declared_relations(
     snapshot: &ProductionSnapshot,
     selected_site: &str,
-    material: Option<&crate::map_economy_lens::MaterialGoodKey>,
+    material: Option<&MaterialGoodKey>,
 ) -> BTreeMap<RelationKey, (String, String)> {
     crate::material_relations::declared_material_relations(snapshot)
         .filter(|relation| {
@@ -234,7 +246,7 @@ fn county_label(name: &str) -> &str {
 
 fn relation_roads(
     snapshot: &ProductionSnapshot,
-    definitions: &babylon_persistence::production_observation::PhysicalRouteIndex<'_>,
+    definitions: &PhysicalRouteIndex<'_>,
     key: &RelationKey,
     edges: Option<&BTreeMap<&str, &ProductionPhysicalEdge>>,
     origin: Vec2,
@@ -265,7 +277,7 @@ fn project(
     selected: Option<usize>,
     anchors: &CountyAnchors,
     selected_site: Option<&str>,
-    material: Option<&crate::map_economy_lens::MaterialGoodKey>,
+    material: Option<&MaterialGoodKey>,
 ) -> RelationshipProjection {
     let snapshot = disclosed_snapshot(frame, session);
     let mut result = RelationshipProjection {
@@ -278,9 +290,7 @@ fn project(
     else {
         return result;
     };
-    let Ok(definitions) =
-        babylon_persistence::production_observation::PhysicalRouteIndex::try_new(snapshot)
-    else {
+    let Ok(definitions) = PhysicalRouteIndex::try_new(snapshot) else {
         result.available = false;
         return result;
     };
@@ -464,7 +474,7 @@ fn spawn_road_batch(
         } else {
             Vec3::ZERO
         }),
-        bevy::camera::visibility::RenderLayers::layer(MAP_LAYER),
+        RenderLayers::layer(MAP_LAYER),
         Pickable::IGNORE,
         RelationshipEntity,
         batch,
@@ -530,7 +540,7 @@ fn segment(
         Transform::from_translation((from + to) * 0.5)
             .looking_to(delta, Vec3::Y)
             .with_scale(Vec3::new(1.8, 1.8, delta.length())),
-        bevy::camera::visibility::RenderLayers::layer(MAP_LAYER),
+        RenderLayers::layer(MAP_LAYER),
         Pickable::IGNORE,
         RelationshipEntity,
         DeclaredSurface::new(SurfaceId::ObserverProduction),
@@ -605,7 +615,7 @@ fn label_bundle(caption: String, anchor: Option<Vec3>, order: usize, color: Colo
             ..default()
         },
         TextColor(theme::PAPER),
-        crate::observer_ui::ObserverFontRole::Body,
+        ObserverFontRole::Body,
     )
 }
 
@@ -615,7 +625,7 @@ struct RelationshipObservation<'w> {
     session: Res<'w, ObserverSession>,
     selected: Res<'w, SelectedCounty>,
     anchors: Res<'w, CountyAnchors>,
-    navigation: Res<'w, crate::production::ProductionNavigation>,
+    navigation: Res<'w, ProductionNavigation>,
     ui: Res<'w, ObserverUiState>,
     view: Res<'w, PrimaryView>,
 }
@@ -906,7 +916,7 @@ struct LabelPlacement<'w, 's> {
     ui: Res<'w, ObserverUiState>,
     viewport: Res<'w, ObserverViewport>,
     scale: Res<'w, UiScale>,
-    windows: Query<'w, 's, &'static Window, With<bevy::window::PrimaryWindow>>,
+    windows: Query<'w, 's, &'static Window, With<PrimaryWindow>>,
     camera: Query<'w, 's, (&'static Camera, &'static Transform), With<ObserverMapCamera>>,
     labels: RelationshipLabels<'w, 's>,
 }
@@ -947,7 +957,9 @@ fn place_labels(mut placement: LabelPlacement) {
                         camera
                             .world_to_viewport(&GlobalTransform::from(*transform), anchor)
                             .ok()
-                            .and_then(|anchor| place_label(anchor, bounds, size, &occupied))
+                            .and_then(|anchor| {
+                                production_layout::place_label(anchor, bounds, size, &occupied)
+                            })
                     } else {
                         Some(Rect::from_corners(
                             Vec2::new(bounds.max.x - size.x - 8.0, bounds.min.y + 8.0),
@@ -991,12 +1003,17 @@ pub(super) fn install(app: &mut App) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::map_economy_lens::MaterialGoodKey;
+    use crate::map_economy_lens::MaterialLensKind;
     use crate::observer::Perspective;
-    use babylon_persistence::{
-        identity::CampaignId, observer_reader::ObserverEconomySnapshot,
-        observer_reader::ObserverVisibility, production_observation::ProductionInput,
-        production_observation::ProductionSite,
-    };
+    use crate::observer::SessionPhase;
+    use crate::observer_ui::ObserverDisclosure;
+    use crate::production::ProductionNavigation;
+    use babylon_persistence::identity::CampaignId;
+    use babylon_persistence::observer_reader::{ObserverEconomySnapshot, ObserverVisibility};
+    use babylon_persistence::production_observation::{ProductionInput, ProductionSite};
+    use serde_json::Value;
+    use uuid::Uuid;
 
     #[test]
     #[allow(
@@ -1004,18 +1021,29 @@ mod tests {
         reason = "Probe degrees are range-checked before E7 rounding; expected projected coordinates use the renderer's f32 display precision."
     )]
     fn captured_geographic_shapes_use_the_atlas_projection_and_reject_invalid_coordinates() {
-        let fixture: serde_json::Value = serde_json::from_str(include_str!(
+        let fixture: Value = serde_json::from_str(include_str!(
             "../tests/fixtures/michigan_atlas_land_probes.json"
         ))
-        .unwrap();
-        for probe in fixture["probes"].as_array().unwrap() {
-            let longitude_degrees = probe["epsg4269"][0].as_f64().unwrap();
-            let latitude_degrees = probe["epsg4269"][1].as_f64().unwrap();
+        .expect("the authored JSON matches the declared schema");
+        for probe in fixture["probes"]
+            .as_array()
+            .expect("the JSON fixture field is an array")
+        {
+            let longitude_degrees = probe["epsg4269"][0]
+                .as_f64()
+                .expect("the JSON fixture field is a number");
+            let latitude_degrees = probe["epsg4269"][1]
+                .as_f64()
+                .expect("the JSON fixture field is a number");
             assert!((-180.0..=180.0).contains(&longitude_degrees));
             assert!((-90.0..=90.0).contains(&latitude_degrees));
             let projected = [
-                probe["epsg5070"][0].as_f64().unwrap(),
-                probe["epsg5070"][1].as_f64().unwrap(),
+                probe["epsg5070"][0]
+                    .as_f64()
+                    .expect("the JSON fixture field is a number"),
+                probe["epsg5070"][1]
+                    .as_f64()
+                    .expect("the JSON fixture field is a number"),
             ];
             assert!(projected
                 .iter()
@@ -1025,7 +1053,9 @@ mod tests {
             let expected = Vec2::new(projected[0] as f32, projected[1] as f32);
             assert!(
                 geographic_map_point([longitude, latitude])
-                    .unwrap()
+                    .expect(
+                        "the fixture call `geographic_map_point` succeeds for the authored inputs"
+                    )
                     .distance(expected)
                     < 1.0,
                 "atlas probe {}",
@@ -1052,7 +1082,9 @@ mod tests {
         ProductionSite {
             function: "manufacturing".into(),
             id: id.into(),
-            location: format!("county:{county}").parse().unwrap(),
+            location: format!("county:{county}")
+                .parse()
+                .expect("the authored literal parses as the declared type"),
             name: format!("{id} county cohort"),
             industry_code: Some("331".into()),
             observed_employment: None,
@@ -1081,7 +1113,7 @@ mod tests {
     }
 
     pub(super) fn fixture() -> (ObserverSession, ObserverFrame, CountyAnchors) {
-        let mut session = ObserverSession::new(CampaignId::from_uuid(uuid::Uuid::from_u128(1)));
+        let mut session = ObserverSession::new(CampaignId::from_uuid(Uuid::from_u128(1)));
         session.ready(3, Some("committed".into()));
         assert!(session.installed(&session.context()));
         let supplier = site("a", "26163");
@@ -1201,10 +1233,10 @@ mod tests {
         frame
             .0
             .as_mut()
-            .unwrap()
+            .expect("the fixture set the optional field before this borrow")
             .production
             .as_mut()
-            .unwrap()
+            .expect("the fixture set the optional field before this borrow")
             .sites
             .reverse();
         assert_eq!(
@@ -1224,11 +1256,10 @@ mod tests {
     }
 
     fn set_captured_shared_path(snapshot: &mut ProductionSnapshot) {
-        use babylon_persistence::{
-            production_observation::ProductionPhysicalEdge,
-            production_observation::ProductionRoute,
-            production_observation::ProductionRouteTransport,
+        use babylon_persistence::production_observation::{
+            ProductionPhysicalEdge, ProductionRoute, ProductionRouteTransport,
         };
+
         snapshot.physical_edges = vec![ProductionPhysicalEdge {
             id: "road".into(),
             shape_e7: vec![[-830_000_000, 423_000_000], [-829_900_000, 423_100_000]],
@@ -1279,9 +1310,15 @@ mod tests {
     #[test]
     fn selected_physical_path_uses_captured_edges_and_exact_material_identity() {
         let (session, mut frame, anchors) = fixture();
-        let snapshot = frame.0.as_mut().unwrap().production.as_mut().unwrap();
+        let snapshot = frame
+            .0
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow")
+            .production
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow");
         set_captured_shared_path(snapshot);
-        let filter = crate::map_economy_lens::MaterialGoodKey {
+        let filter = MaterialGoodKey {
             good_id: "steel".into(),
             unit_id: "kg".into(),
         };
@@ -1304,7 +1341,7 @@ mod tests {
             projected.rows[0].physical[0].0,
             RoadSegment([[-830_000_000, 423_000_000], [-829_900_000, 423_100_000]])
         );
-        let other_unit = crate::map_economy_lens::MaterialGoodKey {
+        let other_unit = MaterialGoodKey {
             unit_id: "tonne".into(),
             ..filter.clone()
         };
@@ -1321,10 +1358,10 @@ mod tests {
         frame
             .0
             .as_mut()
-            .unwrap()
+            .expect("the fixture set the optional field before this borrow")
             .production
             .as_mut()
-            .unwrap()
+            .expect("the fixture set the optional field before this borrow")
             .physical_edges
             .clear();
         let missing = project(
@@ -1344,7 +1381,13 @@ mod tests {
 
     fn road_layer_app() -> App {
         let (session, mut frame, anchors) = fixture();
-        let snapshot = frame.0.as_mut().unwrap().production.as_mut().unwrap();
+        let snapshot = frame
+            .0
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow")
+            .production
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow");
         let points = [
             [-830_000_000, 423_000_000],
             [-829_900_000, 423_100_000],
@@ -1394,22 +1437,22 @@ mod tests {
                 splash_visible: false,
                 road_layer: RoadLayer::SelectedPaths,
                 lens: crate::map_economy_lens::MapLens::Material {
-                    kind: crate::map_economy_lens::MaterialLensKind::OnHand,
-                    good: Some(crate::map_economy_lens::MaterialGoodKey {
+                    kind: MaterialLensKind::OnHand,
+                    good: Some(MaterialGoodKey {
                         good_id: "steel".into(),
                         unit_id: "kg".into(),
                     }),
                 },
                 ..default()
             })
-            .init_resource::<crate::production::ProductionNavigation>()
+            .init_resource::<ProductionNavigation>()
             .init_resource::<RelationshipScope>()
             .init_resource::<Assets<Mesh>>()
             .init_resource::<Assets<StandardMaterial>>()
             .add_systems(Startup, setup)
             .add_systems(Update, rebuild);
         app.world_mut()
-            .resource_mut::<crate::production::ProductionNavigation>()
+            .resource_mut::<ProductionNavigation>()
             .selected_site = Some("a".into());
         network::install(&mut app);
         app.init_resource::<ObserverViewport>()
@@ -1427,7 +1470,15 @@ mod tests {
         let meshes = app.world().resource::<Assets<Mesh>>();
         handles
             .into_iter()
-            .map(|(batch, handle)| (batch, meshes.get(&handle).unwrap().count_vertices()))
+            .map(|(batch, handle)| {
+                (
+                    batch,
+                    meshes
+                        .get(&handle)
+                        .expect("the fixture holds the addressed entry")
+                        .count_vertices(),
+                )
+            })
             .collect()
     }
 
@@ -1441,7 +1492,7 @@ mod tests {
         };
         app.world_mut().resource_mut::<SelectedCounty>().0 = None;
         app.world_mut()
-            .resource_mut::<crate::production::ProductionNavigation>()
+            .resource_mut::<ProductionNavigation>()
             .selected_site = None;
         app.update();
         assert!(
@@ -1465,7 +1516,7 @@ mod tests {
             }));
         assert!(app
             .world()
-            .resource::<crate::production::ProductionNavigation>()
+            .resource::<ProductionNavigation>()
             .selected_site
             .is_none());
     }
@@ -1474,7 +1525,7 @@ mod tests {
     fn road_layer_batches_deduplicated_network_and_keeps_selected_paths_highlighted() {
         let mut app = road_layer_app();
         app.world_mut()
-            .resource_mut::<crate::production::ProductionNavigation>()
+            .resource_mut::<ProductionNavigation>()
             .selected_site = None;
         app.update();
         assert!(road_batch_vertices(&mut app).is_empty());
@@ -1483,7 +1534,7 @@ mod tests {
         assert_eq!(road_batch_vertices(&mut app), [(RoadBatch::Captured, 24)]);
         app.world_mut().resource_mut::<ObserverUiState>().road_layer = RoadLayer::SelectedPaths;
         app.world_mut()
-            .resource_mut::<crate::production::ProductionNavigation>()
+            .resource_mut::<ProductionNavigation>()
             .selected_site = Some("a".into());
         app.update();
         assert_eq!(road_batch_vertices(&mut app), [(RoadBatch::Selected, 18)]);
@@ -1512,10 +1563,10 @@ mod tests {
             .resource_mut::<ObserverFrame>()
             .0
             .as_mut()
-            .unwrap()
+            .expect("the fixture set the optional field before this borrow")
             .production
             .as_mut()
-            .unwrap()
+            .expect("the fixture set the optional field before this borrow")
             .physical_edges
             .reverse();
         app.update();
@@ -1551,24 +1602,21 @@ mod tests {
             );
             match invalid {
                 "loading" => {
-                    app.world_mut().resource_mut::<ObserverSession>().phase =
-                        crate::observer::SessionPhase::Loading;
+                    app.world_mut().resource_mut::<ObserverSession>().phase = SessionPhase::Loading;
                 }
                 "failed" => {
-                    app.world_mut().resource_mut::<ObserverSession>().phase =
-                        crate::observer::SessionPhase::Failed;
+                    app.world_mut().resource_mut::<ObserverSession>().phase = SessionPhase::Failed;
                 }
                 "preview" => {
                     app.world_mut()
                         .resource_mut::<ObserverSession>()
                         .set_perspective(Perspective::PlayerKnowledge);
-                    app.world_mut().resource_mut::<ObserverSession>().phase =
-                        crate::observer::SessionPhase::Ready;
+                    app.world_mut().resource_mut::<ObserverSession>().phase = SessionPhase::Ready;
                     app.world_mut()
                         .resource_mut::<ObserverFrame>()
                         .0
                         .as_mut()
-                        .unwrap()
+                        .expect("the fixture set the optional field before this borrow")
                         .visibility = ObserverVisibility::KnownPreview;
                 }
                 "period" => {
@@ -1576,7 +1624,7 @@ mod tests {
                         .resource_mut::<ObserverFrame>()
                         .0
                         .as_mut()
-                        .unwrap()
+                        .expect("the fixture set the optional field before this borrow")
                         .resolve_tick = 2;
                 }
                 "campaign" => {
@@ -1584,8 +1632,8 @@ mod tests {
                         .resource_mut::<ObserverFrame>()
                         .0
                         .as_mut()
-                        .unwrap()
-                        .campaign_id = uuid::Uuid::from_u128(99).to_string();
+                        .expect("the fixture set the optional field before this borrow")
+                        .campaign_id = Uuid::from_u128(99).to_string();
                 }
                 "missing" => app.world_mut().resource_mut::<ObserverFrame>().0 = None,
                 "empty geometry" => app
@@ -1593,10 +1641,10 @@ mod tests {
                     .resource_mut::<ObserverFrame>()
                     .0
                     .as_mut()
-                    .unwrap()
+                    .expect("the fixture set the optional field before this borrow")
                     .production
                     .as_mut()
-                    .unwrap()
+                    .expect("the fixture set the optional field before this borrow")
                     .physical_edges
                     .clear(),
                 _ => unreachable!(),
@@ -1624,12 +1672,15 @@ mod tests {
             .viewed_tick = 2;
         {
             let mut frame = app.world_mut().resource_mut::<ObserverFrame>();
-            let snapshot = frame.0.as_mut().unwrap();
+            let snapshot = frame
+                .0
+                .as_mut()
+                .expect("the fixture set the optional field before this borrow");
             snapshot.resolve_tick = 2;
             snapshot
                 .production
                 .as_mut()
-                .unwrap()
+                .expect("the fixture set the optional field before this borrow")
                 .physical_edges
                 .retain(|edge| edge.id != "branch");
         }
@@ -1647,13 +1698,13 @@ mod tests {
             .resource_mut::<ObserverFrame>()
             .0
             .as_mut()
-            .unwrap()
+            .expect("the fixture set the optional field before this borrow")
             .production
             .as_mut()
-            .unwrap()
+            .expect("the fixture set the optional field before this borrow")
             .physical_edges
             .last_mut()
-            .unwrap()
+            .expect("the fixture sequence is non-empty")
             .shape_e7[0] = [i64::MAX, 0];
         app.update();
         assert_eq!(road_batch_vertices(&mut app), [(RoadBatch::Selected, 18)]);
@@ -1669,7 +1720,11 @@ mod tests {
     #[test]
     fn compact_labels_preserve_unrecognized_public_names_without_inference() {
         let (session, frame, mut anchors) = fixture();
-        anchors.0.get_mut("26163").unwrap().name = "Disclosed district".into();
+        anchors
+            .0
+            .get_mut("26163")
+            .expect("the fixture holds the addressed entry")
+            .name = "Disclosed district".into();
         assert_eq!(
             project(&frame, &session, Some(1), &anchors, Some("a"), None).rows[0].caption,
             "Disclosed district -> Macomb\nore | tonne"
@@ -1689,10 +1744,10 @@ mod tests {
         frame
             .0
             .as_mut()
-            .unwrap()
+            .expect("the fixture set the optional field before this borrow")
             .production
             .as_mut()
-            .unwrap()
+            .expect("the fixture set the optional field before this borrow")
             .sites
             .retain(|site| site.id != "a");
         assert_eq!(
@@ -1720,7 +1775,11 @@ mod tests {
             jump_target(&jump, &frame, &session, Some(2), &anchors),
             None
         );
-        frame.0.as_mut().unwrap().resolve_tick = 2;
+        frame
+            .0
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow")
+            .resolve_tick = 2;
         assert!(
             project(&frame, &session, Some(1), &anchors, Some("a"), None)
                 .rows
@@ -1730,11 +1789,23 @@ mod tests {
             jump_target(&jump, &frame, &session, Some(1), &anchors),
             None
         );
-        frame.0.as_mut().unwrap().resolve_tick = 3;
+        frame
+            .0
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow")
+            .resolve_tick = 3;
         session.set_perspective(Perspective::PlayerKnowledge);
         assert!(!project(&frame, &session, Some(1), &anchors, Some("a"), None).available);
-        frame.0.as_mut().unwrap().visibility = ObserverVisibility::KnownPreview;
-        frame.0.as_mut().unwrap().production = None;
+        frame
+            .0
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow")
+            .visibility = ObserverVisibility::KnownPreview;
+        frame
+            .0
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow")
+            .production = None;
         assert!(!project(&frame, &session, Some(1), &anchors, Some("a"), None).available);
         assert_eq!(
             jump_target(&jump, &frame, &session, Some(1), &anchors),
@@ -1743,7 +1814,11 @@ mod tests {
         session.set_perspective(Perspective::FullObserver);
         let (_, valid, _) = fixture();
         frame = valid;
-        frame.0.as_mut().unwrap().campaign_id = uuid::Uuid::from_u128(9).to_string();
+        frame
+            .0
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow")
+            .campaign_id = Uuid::from_u128(9).to_string();
         assert!(
             project(&frame, &session, Some(1), &anchors, Some("a"), None)
                 .rows
@@ -1772,13 +1847,29 @@ mod tests {
     #[test]
     fn display_bound_counts_only_valid_disclosed_relationships() {
         let (session, mut frame, anchors) = fixture();
-        let input = frame.0.as_mut().unwrap().production.as_mut().unwrap().sites[1].processes[0]
+        let input = frame
+            .0
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow")
+            .production
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow")
+            .sites[1]
+            .processes[0]
             .inputs[0]
             .clone();
         for index in 0..10 {
             let mut next = input.clone();
             next.good_id = format!("good-{index:02}");
-            frame.0.as_mut().unwrap().production.as_mut().unwrap().sites[1].processes[0]
+            frame
+                .0
+                .as_mut()
+                .expect("the fixture set the optional field before this borrow")
+                .production
+                .as_mut()
+                .expect("the fixture set the optional field before this borrow")
+                .sites[1]
+                .processes[0]
                 .inputs
                 .push(next);
         }
@@ -1822,17 +1913,17 @@ mod tests {
         assert_eq!(app.world().resource::<SelectedCounty>().0, Some(1));
         *app.world_mut().resource_mut::<PrimaryView>() = PrimaryView::Map;
         app.world_mut().resource_mut::<ObserverUiState>().disclosure =
-            Some(crate::observer_ui::ObserverDisclosure::Time);
+            Some(ObserverDisclosure::Time);
         app.world_mut()
             .get_mut::<Interaction>(button)
-            .unwrap()
+            .expect("the fixture world holds the addressed component")
             .set_changed();
         app.update();
         assert_eq!(app.world().resource::<SelectedCounty>().0, Some(1));
         app.world_mut().resource_mut::<ObserverUiState>().disclosure = None;
         app.world_mut()
             .get_mut::<Interaction>(button)
-            .unwrap()
+            .expect("the fixture world holds the addressed component")
             .set_changed();
         app.update();
         assert_eq!(app.world().resource::<SelectedCounty>().0, Some(2));

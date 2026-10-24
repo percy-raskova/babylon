@@ -1,12 +1,28 @@
 //! Shared frozen bases must preserve exact history and reject admission corruption.
-use super::*;
+use super::archive_reader;
+use super::support;
+use super::support::{receipt_consumption_count, stub_page_input, LiveWorkerTarget};
 use crate::archive_revision::{publication, tick_knowledge};
+use crate::identity::CampaignId;
+use crate::ArchiveKnowledge;
+use crate::{
+    ArchiveCitation, ArchiveDirtyBatch, ArchiveKnowledgeGrant, PendingArchiveReceipt,
+    SemanticArchiveError, SemanticArchiveStore,
+};
 use crate::{ArchiveMaterializeMode, SemanticArchiveReaderError};
 use postgres::IsolationLevel;
+use postgres::NoTls;
 
 fn empty_batch(target: &LiveWorkerTarget, tick: u64) -> ArchiveDirtyBatch {
-    let scope = scope_at(&target.config, target.campaign_id, tick);
-    ArchiveDirtyBatch::try_new(tick, scope.tick_content_hash().unwrap(), Vec::new()).unwrap()
+    let scope = archive_reader::scope_at(&target.config, target.campaign_id, tick);
+    ArchiveDirtyBatch::try_new(
+        tick,
+        scope
+            .tick_content_hash()
+            .expect("the committed tick has a content hash"),
+        Vec::new(),
+    )
+    .expect("the authored fixture satisfies the constructor invariants")
 }
 
 fn grant_at(target: &LiveWorkerTarget, key: &str, tick: u64) {
@@ -14,15 +30,15 @@ fn grant_at(target: &LiveWorkerTarget, key: &str, tick: u64) {
         .grant_knowledge(
             target.campaign_id,
             &ArchiveKnowledgeGrant::try_new(
-                stub_subject_spec(1).page_ref,
+                support::stub_subject_spec(1).page_ref,
                 key.to_owned(),
                 tick,
                 ArchiveCitation::try_new("checkpoint-proof".to_owned(), format!("{key}@{tick}"))
-                    .unwrap(),
+                    .expect("the authored fixture satisfies the constructor invariants"),
             )
-            .unwrap(),
+            .expect("the authored fixture satisfies the constructor invariants"),
         )
-        .unwrap();
+        .expect("the test database accepts the authored grant");
 }
 
 fn consume_through(target: &LiveWorkerTarget, last: u64) {
@@ -34,16 +50,19 @@ fn consume_through(target: &LiveWorkerTarget, last: u64) {
                 &empty_batch(target, tick),
                 ArchiveMaterializeMode::Consume,
             )
-            .unwrap();
+            .expect("the fixture materializes the receipt");
     }
 }
 
-fn frozen(target: &LiveWorkerTarget, tick: u64) -> crate::ArchiveKnowledge {
+fn frozen(target: &LiveWorkerTarget, tick: u64) -> ArchiveKnowledge {
     tick_knowledge::load(
-        &mut target.config.connect(NoTls).unwrap(),
-        &scope_at(&target.config, target.campaign_id, tick),
+        &mut target
+            .config
+            .connect(NoTls)
+            .expect("the test database accepts the connection"),
+        &archive_reader::scope_at(&target.config, target.campaign_id, tick),
     )
-    .unwrap()
+    .expect("the fixture artifact loads")
 }
 
 fn full_cohort(
@@ -57,7 +76,7 @@ fn full_cohort(
          WHERE campaign_id=$1 AND resolve_tick=$2 AND NOT admitted_only",
             &[campaign.as_uuid(), &tick],
         )
-        .unwrap();
+        .expect("the seeded row is present exactly once");
     (row.get(0), row.get(1))
 }
 
@@ -74,13 +93,16 @@ fn live_shared_membership_preserves_checkpoint_boundary_and_historical_reads() {
     assert_eq!(frozen(&target, 13), second);
     assert_eq!(frozen(&target, 14), second);
     assert!(first
-        .grant(&stub_subject_spec(1).page_ref, "checkpoint-proof")
+        .grant(&support::stub_subject_spec(1).page_ref, "checkpoint-proof")
         .is_none());
-    let mut client = target.config.connect(NoTls).unwrap();
+    let mut client = target
+        .config
+        .connect(NoTls)
+        .expect("the test database accepts the connection");
     let rows = client.query(
         "SELECT resolve_tick,checkpoint_tick,admitted_count FROM babylon_meta.archive_tick_knowledge_v3 \
          WHERE campaign_id=$1 ORDER BY resolve_tick", &[target.campaign_id.as_uuid()],
-    ).unwrap();
+    ).expect("the seeded rows are readable");
     assert_eq!(rows.len(), 14);
     for row in rows {
         let tick: i64 = row.get(0);
@@ -91,50 +113,57 @@ fn live_shared_membership_preserves_checkpoint_boundary_and_historical_reads() {
             14 => second.rows().count(),
             _ => 0,
         };
-        assert_eq!(usize::try_from(row.get::<_, i32>(2)).unwrap(), count);
+        assert_eq!(
+            usize::try_from(row.get::<_, i32>(2)).expect("the fixture value fits the target range"),
+            count
+        );
     }
     let count: i64 = client.query_one(
         "SELECT count(*) FROM babylon_meta.archive_knowledge_membership_v3 WHERE campaign_id=$1",
         &[target.campaign_id.as_uuid()],
-    ).unwrap().get(0);
+    ).expect("the seeded row is present exactly once").get(0);
     assert_eq!(
-        usize::try_from(count).unwrap(),
+        usize::try_from(count).expect("the fixture value fits the target range"),
         first.rows().count() + 1 + second.rows().count()
     );
-    with_reader(&target.config, |reader| {
+    archive_reader::with_reader(&target.config, |reader| {
         for tick in [1, 2, 13, 14] {
             assert!(reader
                 .search_as_of(
-                    &scope_at(&target.config, target.campaign_id, tick),
+                    &archive_reader::scope_at(&target.config, target.campaign_id, tick),
                     "checkpoint",
                     10
                 )
-                .unwrap()
+                .expect("the fixture call `search_as_of` succeeds for the authored inputs")
                 .hits
                 .is_empty());
         }
     });
-    let mut transaction = client.transaction().unwrap();
+    let mut transaction = client
+        .transaction()
+        .expect("the test database opens a transaction");
     transaction.execute(
         "UPDATE babylon_meta.archive_tick_knowledge_v3 SET admitted_sha256=decode(repeat('ab',32),'hex') \
          WHERE campaign_id=$1 AND resolve_tick=2", &[target.campaign_id.as_uuid()],
-    ).unwrap();
+    ).expect("the test database applies the setup statement");
     assert_eq!(
         tick_knowledge::load(
             &mut transaction,
-            &scope_at(&target.config, target.campaign_id, 13)
+            &archive_reader::scope_at(&target.config, target.campaign_id, 13)
         ),
         Err(SemanticArchiveError::StoredPageMismatch)
     );
     assert_eq!(
         tick_knowledge::load(
             &mut transaction,
-            &scope_at(&target.config, target.campaign_id, 14)
+            &archive_reader::scope_at(&target.config, target.campaign_id, 14)
         )
-        .unwrap(),
+        .expect("the fixture artifact loads"),
         second
     );
-    transaction.rollback().unwrap();
+    transaction
+        .rollback()
+        .expect("the open transaction rolls back");
     drop(client);
     target.finish();
 }
@@ -145,9 +174,12 @@ fn live_changed_admission_refuses_even_when_later_full_set_is_unchanged() {
     let target = LiveWorkerTarget::create("admissionmove", 0x34302, 3);
     grant_at(&target, "checkpoint-proof", 2);
     consume_through(&target, 3);
-    let scope = scope_at(&target.config, target.campaign_id, 3);
+    let scope = archive_reader::scope_at(&target.config, target.campaign_id, 3);
     let expected = frozen(&target, 3);
-    let mut client = target.config.connect(NoTls).unwrap();
+    let mut client = target
+        .config
+        .connect(NoTls)
+        .expect("the test database accepts the connection");
     let before = full_cohort(&mut client, target.campaign_id, 3);
     assert_eq!(
         client
@@ -156,7 +188,7 @@ fn live_changed_admission_refuses_even_when_later_full_set_is_unchanged() {
          WHERE campaign_id=$1 AND checkpoint_tick=1 AND grant_key='checkpoint-proof'",
                 &[target.campaign_id.as_uuid()],
             )
-            .unwrap(),
+            .expect("the test database applies the setup statement"),
         1
     );
     assert_eq!(full_cohort(&mut client, target.campaign_id, 3), before);
@@ -164,7 +196,7 @@ fn live_changed_admission_refuses_even_when_later_full_set_is_unchanged() {
         tick_knowledge::load(&mut client, &scope),
         Err(SemanticArchiveError::StoredPageMismatch)
     );
-    with_reader(&target.config, |reader| {
+    archive_reader::with_reader(&target.config, |reader| {
         assert_eq!(
             reader.search_as_of(&scope, "checkpoint", 10),
             Err(SemanticArchiveReaderError::Archive(
@@ -179,30 +211,41 @@ fn live_changed_admission_refuses_even_when_later_full_set_is_unchanged() {
          WHERE campaign_id=$1 AND checkpoint_tick=1 AND grant_key='checkpoint-proof'",
                 &[target.campaign_id.as_uuid()],
             )
-            .unwrap(),
+            .expect("the test database applies the setup statement"),
         1
     );
-    assert_eq!(tick_knowledge::load(&mut client, &scope).unwrap(), expected);
+    assert_eq!(
+        tick_knowledge::load(&mut client, &scope).expect("the fixture artifact loads"),
+        expected
+    );
     drop(client);
     target.finish();
 }
 
 fn assert_corruption_refused(target: &LiveWorkerTarget, statement: &str) {
-    let scope = scope_at(&target.config, target.campaign_id, 3);
-    let mut client = target.config.connect(NoTls).unwrap();
-    let expected = tick_knowledge::load(&mut client, &scope).unwrap();
-    let mut tx = client.transaction().unwrap();
+    let scope = archive_reader::scope_at(&target.config, target.campaign_id, 3);
+    let mut client = target
+        .config
+        .connect(NoTls)
+        .expect("the test database accepts the connection");
+    let expected = tick_knowledge::load(&mut client, &scope).expect("the fixture artifact loads");
+    let mut tx = client
+        .transaction()
+        .expect("the test database opens a transaction");
     assert_eq!(
         tx.execute(statement, &[target.campaign_id.as_uuid()])
-            .unwrap(),
+            .expect("the test database applies the setup statement"),
         1
     );
     assert_eq!(
         tick_knowledge::load(&mut tx, &scope),
         Err(SemanticArchiveError::StoredPageMismatch)
     );
-    tx.rollback().unwrap();
-    assert_eq!(tick_knowledge::load(&mut client, &scope).unwrap(), expected);
+    tx.rollback().expect("the open transaction rolls back");
+    assert_eq!(
+        tick_knowledge::load(&mut client, &scope).expect("the fixture artifact loads"),
+        expected
+    );
 }
 
 #[test]
@@ -237,29 +280,37 @@ fn live_checkpoint_page_failure_rolls_back_new_base_without_disturbing_history()
     let target = LiveWorkerTarget::create("checkpointrollback", 0x34304, 14);
     consume_through(&target, 13);
     let original = frozen(&target, 13);
-    let scope = scope_at(&target.config, target.campaign_id, 14);
-    let receipt = PendingArchiveReceipt::try_new(14, scope.tick_content_hash().unwrap()).unwrap();
+    let scope = archive_reader::scope_at(&target.config, target.campaign_id, 14);
+    let receipt = PendingArchiveReceipt::try_new(
+        14,
+        scope
+            .tick_content_hash()
+            .expect("the committed tick has a content hash"),
+    )
+    .expect("the authored fixture satisfies the constructor invariants");
     let batch = ArchiveDirtyBatch::try_new(
         14,
         *receipt.tick_content_hash(),
         vec![stub_page_input(&receipt)],
     )
-    .unwrap();
+    .expect("the authored fixture satisfies the constructor invariants");
     let store = SemanticArchiveStore::new(&target.config);
-    let mut client = store.connect("checkpoint rollback control").unwrap();
+    let mut client = store
+        .connect("checkpoint rollback control")
+        .expect("the test database accepts the connection");
     publication::with_campaign_lock(&mut client, target.campaign_id, |client| {
         let known = tick_knowledge::capture(client, &scope)?;
         let mut prepared = publication::prepare(target.campaign_id, &receipt, &batch, &known)?;
         publication::authenticate_existing(client, &mut prepared)?;
-        let mut tx = client.build_transaction().isolation_level(IsolationLevel::Serializable).read_only(false).start().unwrap();
-        crate::current_schema::require_current_schema(&mut tx).unwrap();
+        let mut tx = client.build_transaction().isolation_level(IsolationLevel::Serializable).read_only(false).start().expect("the fixture starts the authored period");
+        crate::current_schema::require_current_schema(&mut tx).expect("the fixture call `require_current_schema` succeeds for the authored inputs");
         tick_knowledge::pin_prepared(&mut tx, &scope, &known)?;
         let count: i64 = tx.query_one(
             "SELECT count(*) FROM babylon_meta.archive_knowledge_membership_v3 WHERE campaign_id=$1 AND checkpoint_tick=14",
             &[target.campaign_id.as_uuid()],
-        ).unwrap().get(0);
-        assert_eq!(usize::try_from(count).unwrap(), known.rows().count());
-        tx.batch_execute("ALTER TABLE babylon_meta.archive_page_revision_v2 ADD CONSTRAINT refuse_checkpoint_page CHECK (subject_id <> '9990001')").unwrap();
+        ).expect("the seeded row is present exactly once").get(0);
+        assert_eq!(usize::try_from(count).expect("the fixture value fits the target range"), known.rows().count());
+        tx.batch_execute("ALTER TABLE babylon_meta.archive_page_revision_v2 ADD CONSTRAINT refuse_checkpoint_page CHECK (subject_id <> '9990001')").expect("the test database applies the schema statements");
         let Err(SemanticArchiveError::Database { diagnostic, .. }) =
             publication::publish(&mut tx, prepared, ArchiveMaterializeMode::Consume)
         else {
@@ -268,7 +319,7 @@ fn live_checkpoint_page_failure_rolls_back_new_base_without_disturbing_history()
         assert_eq!(diagnostic.sqlstate(), Some("23514"));
         drop(tx); // An actual failed insert rolls back header, base, atoms, DDL and claim.
         Ok(())
-    }).unwrap();
+    }).expect("the fixture builder accepts the authored options");
     assert_eq!(frozen(&target, 13), original);
     for query in [
         "SELECT count(*) FROM babylon_meta.archive_tick_knowledge_v3 WHERE campaign_id=$1 AND resolve_tick=14",
@@ -276,7 +327,7 @@ fn live_checkpoint_page_failure_rolls_back_new_base_without_disturbing_history()
         "SELECT count(*) FROM babylon_meta.archive_page_revision_v2 WHERE campaign_id=$1 AND effective_tick=14",
         "SELECT count(*) FROM babylon_meta.archive_receipt_consumption_v1 WHERE campaign_id=$1 AND resolve_tick=14",
     ] {
-        assert_eq!(client.query_one(query, &[target.campaign_id.as_uuid()]).unwrap().get::<_, i64>(0), 0);
+        assert_eq!(client.query_one(query, &[target.campaign_id.as_uuid()]).expect("the seeded row is present exactly once").get::<_, i64>(0), 0);
     }
     assert_eq!(
         receipt_consumption_count(&target.config, target.campaign_id),

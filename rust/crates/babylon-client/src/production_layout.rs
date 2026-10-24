@@ -7,7 +7,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use babylon_persistence::production_observation::ProductionSnapshot;
 use bevy::prelude::{Rect, Vec2, Vec3};
 
-use crate::production_brief::{dependency_sites, DependencyDirection};
+use crate::production_brief;
+use crate::production_brief::DependencyDirection;
 
 pub(crate) const RAIL_HEIGHT: f32 = 42.0;
 
@@ -26,7 +27,7 @@ impl ProductionLayout {
     ) -> Self {
         let selected = selected.and_then(|id| snapshot.sites.iter().find(|site| site.id == id));
         let neighbors = selected
-            .map(|site| dependency_sites(site, snapshot))
+            .map(|site| production_brief::dependency_sites(site, snapshot))
             .unwrap_or_default();
         let mut groups: Vec<_> = neighbors
             .iter()
@@ -66,7 +67,7 @@ impl ProductionLayout {
             if !indices.contains_key(site.id.as_str()) {
                 continue;
             }
-            for (direction, buyer) in dependency_sites(site, snapshot) {
+            for (direction, buyer) in production_brief::dependency_sites(site, snapshot) {
                 if matches!(
                     direction,
                     DependencyDirection::Downstream | DependencyDirection::ServiceConsumer
@@ -179,7 +180,10 @@ fn stages(count: usize, edges: &BTreeSet<(usize, usize)>) -> Vec<usize> {
 type PlacedGroups = (BTreeMap<String, Vec3>, Vec<(Vec3, Vec2)>);
 
 // Counts only determine schematic spacing; no quantity is converted here.
-#[allow(clippy::cast_precision_loss)]
+#[allow(
+    clippy::cast_precision_loss,
+    reason = "the cast feeds display geometry, where f64 approximation is invisible"
+)]
 fn place_groups(ids: &[String], ranks: &[usize], groups: &[BTreeSet<usize>]) -> PlacedGroups {
     let mut positions = BTreeMap::new();
     let mut platforms = Vec::new();

@@ -1,7 +1,7 @@
 use babylon_kernel::geography::CountyGeoid;
+use babylon_persistence::national_counties;
 use babylon_persistence::national_counties::{
-    national_county_reference, NationalCountyReference, NationalCountyReferenceError,
-    ObservationStatus,
+    NationalCountyReference, NationalCountyReferenceError, ObservationStatus,
 };
 
 const ARTIFACT: &[u8] = include_bytes!(concat!(
@@ -9,12 +9,13 @@ const ARTIFACT: &[u8] = include_bytes!(concat!(
     "/../../../src/babylon/data/reference/economy/national_county_reference_2024.csv.gz"
 ));
 fn id(value: &str) -> CountyGeoid {
-    CountyGeoid::try_from(value).unwrap()
+    CountyGeoid::try_from(value).expect("the fixture value fits the target range")
 }
 
 #[test]
 fn captures_complete_domestic_roster_and_preserves_source_meaning() {
-    let captured = national_county_reference().unwrap();
+    let captured =
+        national_counties::national_county_reference().expect("the county reference fixture loads");
     assert_eq!(captured.counties().len(), 3144);
     for (state, expected) in [
         (*b"09", 9),
@@ -32,7 +33,9 @@ fn captures_complete_domestic_roster_and_preserves_source_meaning() {
             expected
         );
     }
-    let autauga = captured.county(id("01001")).unwrap();
+    let autauga = captured
+        .county(id("01001"))
+        .expect("the fixture catalog holds the addressed county");
     assert_eq!(
         autauga.residents().population_persons.estimate.value(),
         Some(59947)
@@ -77,8 +80,11 @@ fn captures_complete_domestic_roster_and_preserves_source_meaning() {
 
 #[test]
 fn missing_workplace_row_does_not_erase_kalawao_residents_or_become_zero() {
-    let captured = national_county_reference().unwrap();
-    let kalawao = captured.county(id("15005")).unwrap();
+    let captured =
+        national_counties::national_county_reference().expect("the county reference fixture loads");
+    let kalawao = captured
+        .county(id("15005"))
+        .expect("the fixture catalog holds the addressed county");
     assert!(kalawao
         .residents()
         .population_persons
@@ -97,7 +103,9 @@ fn missing_workplace_row_does_not_erase_kalawao_residents_or_become_zero() {
     );
     for unknown in ["72001", "01000", "99999"] {
         assert_eq!(
-            captured.county(id(unknown)).unwrap_err(),
+            captured
+                .county(id(unknown))
+                .expect_err("the fixture call `county` fails for the authored inputs"),
             NationalCountyReferenceError::UnknownCounty(id(unknown))
         );
     }
@@ -108,7 +116,8 @@ fn refuses_corrupted_truncated_and_extra_artifact_bytes() {
     let mut corrupted = ARTIFACT.to_vec();
     corrupted[100] ^= 1;
     assert_eq!(
-        NationalCountyReference::decode_pinned(&corrupted).unwrap_err(),
+        NationalCountyReference::decode_pinned(&corrupted)
+            .expect_err("`decode_pinned` rejects the malformed bytes"),
         NationalCountyReferenceError::ArtifactDigest
     );
     assert!(NationalCountyReference::decode_pinned(&ARTIFACT[..100]).is_err());

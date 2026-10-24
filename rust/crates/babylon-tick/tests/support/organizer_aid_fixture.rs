@@ -1,16 +1,96 @@
 //! Shared real material/organizer replay fixture; no duplicate transition controls.
 
-use babylon_bsl::canonical_ast::rules_hash_of;
-use babylon_bsl::rule_pipeline::split_content;
+use babylon_bsl::canonical_ast;
+use babylon_bsl::rule_pipeline;
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_graph::stable_element::StableElementKey;
-use babylon_kernel::content_digest::{sha256_of, ContentDigest};
+use babylon_kernel::content_digest;
+use babylon_kernel::content_digest::ContentDigest;
 use babylon_kernel::currency::Currency;
 use babylon_kernel::replay::{ReplaySeed, ReplaySessionId};
 use babylon_kernel::tick_content_hash::RefDigest;
-use babylon_material_circuit::*;
-use babylon_practice_contract::*;
+use babylon_material_circuit::AccountId;
+use babylon_material_circuit::AidBook;
+use babylon_material_circuit::AidMandate;
+use babylon_material_circuit::AidTransport;
+use babylon_material_circuit::AttendancePlan;
+use babylon_material_circuit::CapacityRow;
+use babylon_material_circuit::CapacitySupply;
+use babylon_material_circuit::CashAccount;
+use babylon_material_circuit::CashTransferPurpose;
+use babylon_material_circuit::CircuitAccounting;
+use babylon_material_circuit::CommodityDefinition;
+use babylon_material_circuit::CorridorCapacity;
+use babylon_material_circuit::CorridorId;
+use babylon_material_circuit::EmploymentTerms;
+use babylon_material_circuit::FinalDemandPrincipal;
+use babylon_material_circuit::FinalDemandPrincipalId;
+use babylon_material_circuit::FinancialInstitutions;
+use babylon_material_circuit::GoodId;
+use babylon_material_circuit::HistoricalCostBook;
+use babylon_material_circuit::HouseholdCohort;
+use babylon_material_circuit::HouseholdKind;
+use babylon_material_circuit::HouseholdNeed;
+use babylon_material_circuit::HouseholdNeedBasis;
+use babylon_material_circuit::HouseholdPurchasePolicy;
+use babylon_material_circuit::HouseholdStock;
+use babylon_material_circuit::HouseholdTimeAccounting;
+use babylon_material_circuit::HouseholdTimeBook;
+use babylon_material_circuit::HouseholdTimeCommitment;
+use babylon_material_circuit::HouseholdTimePolicy;
+use babylon_material_circuit::HouseholdUnmetTimeBurden;
+use babylon_material_circuit::InputOutputCoefficient;
+use babylon_material_circuit::InstitutionLocation;
+use babylon_material_circuit::InventoryRow;
+use babylon_material_circuit::LaborCapacityRow;
+use babylon_material_circuit::LaborCoefficient;
+use babylon_material_circuit::LaborCompensation;
+use babylon_material_circuit::LogisticsNodeId;
+use babylon_material_circuit::MaterialCircuitState;
+use babylon_material_circuit::MerchantHandling;
+use babylon_material_circuit::MerchantHandlingCoefficient;
+use babylon_material_circuit::MerchantRole;
+use babylon_material_circuit::MonetaryBook;
+use babylon_material_circuit::MonetaryCircuit;
+use babylon_material_circuit::OrganizationAccountId;
+use babylon_material_circuit::PricePolicy;
+use babylon_material_circuit::ProcessId;
+use babylon_material_circuit::ProcessOutput;
+use babylon_material_circuit::ProductionCommitment;
+use babylon_material_circuit::ProductionDemandPolicy;
+use babylon_material_circuit::RecurringEconomy;
+use babylon_material_circuit::ReplenishmentPolicy;
+use babylon_material_circuit::RouteId;
+use babylon_material_circuit::RouteStage;
+use babylon_material_circuit::RouteStageCapacity;
+use babylon_material_circuit::SellerOffer;
+use babylon_material_circuit::SiteId;
+use babylon_material_circuit::SiteLogisticsNode;
+use babylon_material_circuit::StaffingMemberBinding;
+use babylon_material_circuit::StaffingMemberId;
+use babylon_material_circuit::StaffingPolicy;
+use babylon_material_circuit::StaffingPoolBinding;
+use babylon_material_circuit::StaffingPoolId;
+use babylon_material_circuit::StaffingWorkSource;
+use babylon_material_circuit::StockCarryingValue;
+use babylon_material_circuit::SupplierRoute;
+use babylon_material_circuit::SupplierTransport;
+use babylon_material_circuit::UnitId;
+use babylon_practice_contract::OrganizerAidBinding;
+use babylon_practice_contract::OrganizerAidKind;
+use babylon_practice_contract::OrganizerChoice;
+use babylon_practice_contract::OrganizerCommand;
+use babylon_practice_contract::OrganizerCommitment;
+use babylon_practice_contract::OrganizerConfig;
+use babylon_practice_contract::OrganizerContribution;
+use babylon_practice_contract::OrganizerGiftConsent;
+use babylon_practice_contract::OrganizerHouseholdBinding;
+use babylon_practice_contract::OrganizerParticipant;
+use babylon_practice_contract::OrganizerPartner;
+use babylon_practice_contract::OrganizerPartnerPolicy;
+use babylon_practice_contract::OrganizerTimeBindingMode;
+use babylon_practice_contract::ORGANIZER_SCHEMA_VERSION;
 use babylon_tick::h3_runtime::MichiganDynamicHexFoundation;
 use babylon_tick::material_replay::{
     MaterialReplayError, MaterialReplaySession, PreparedMaterialTick,
@@ -205,12 +285,12 @@ fn accounting(recurring: RecurringEconomy) -> CircuitAccounting {
                 cash: money(0),
             },
         ])
-        .unwrap();
+        .expect("the fixture opens the authored source");
         MonetaryCircuit {
             aid: AidBook::default(),
 
             household_time: babylon_material_circuit::HouseholdTimeAccounting::NotModeled,
-            financial: babylon_material_circuit::FinancialInstitutions::empty(),
+            financial: FinancialInstitutions::empty(),
             member_labor: (1..=9)
                 .flat_map(|period| {
                     [(1, 4), (2, 8), (3, 4)]
@@ -246,7 +326,7 @@ fn accounting(recurring: RecurringEconomy) -> CircuitAccounting {
                 vec![],
                 vec![],
             )
-            .unwrap(),
+            .expect("the fixture opens the authored source"),
             book,
             recurring: Some(Box::new(recurring)),
             employment: [1, 2, 3]
@@ -258,7 +338,7 @@ fn accounting(recurring: RecurringEconomy) -> CircuitAccounting {
                     site_id: site(owner),
                     unit_id: hours(),
                     payee: household(),
-                    compensation: babylon_material_circuit::LaborCompensation::Wage(money(1)),
+                    compensation: LaborCompensation::Wage(money(1)),
                 })
                 .collect(),
         }
@@ -343,7 +423,7 @@ fn route_stage_capacities() -> Vec<RouteStageCapacity> {
 pub(crate) fn opening() -> MaterialCircuitState {
     let recurring = recurring();
     MaterialCircuitState {
-        capacity_supply: babylon_material_circuit::CapacitySupply::FiniteSchedule,
+        capacity_supply: CapacitySupply::FiniteSchedule,
         period: 1,
         accounting: accounting(recurring),
         site_logistics_nodes: [1, 2, 3]
@@ -417,7 +497,9 @@ pub(crate) fn opening() -> MaterialCircuitState {
             .collect(),
         merchants: vec![MerchantHandling {
             site_id: site(3),
-            location: "county:26163".parse().unwrap(),
+            location: "county:26163"
+                .parse()
+                .expect("the authored literal parses as the declared type"),
             role: MerchantRole::Retail,
             capacity_id: corridor(3),
             labor_unit_id: hours(),
@@ -430,7 +512,9 @@ pub(crate) fn opening() -> MaterialCircuitState {
         }],
         final_demand_principals: vec![FinalDemandPrincipal {
             id: household(),
-            location: "county:26163".parse().unwrap(),
+            location: "county:26163"
+                .parse()
+                .expect("the authored literal parses as the declared type"),
         }],
         final_demand_orders: vec![],
         maintenance_binding: None,
@@ -450,7 +534,10 @@ pub(crate) fn aid_opening(routed: bool) -> MaterialCircuitState {
     let CircuitAccounting::Monetary(economy) = &mut state.accounting else {
         panic!("monetary control");
     };
-    let rows = economy.recurring.as_mut().unwrap();
+    let rows = economy
+        .recurring
+        .as_mut()
+        .expect("the fixture set the optional field before this borrow");
     rows.household_purchases[0].enabled = false;
     rows.households.push(HouseholdCohort {
         principal_id: recipient(),
@@ -480,7 +567,8 @@ pub(crate) fn aid_opening(routed: bool) -> MaterialCircuitState {
         id: AccountId::Household(recipient()),
         cash: money(0),
     });
-    economy.book = MonetaryBook::from_snapshot(cash).unwrap();
+    economy.book =
+        MonetaryBook::from_snapshot(cash).expect("the snapshot admits the derived value");
     let mut stocks = economy.costs.snapshot().stocks;
     stocks.push(StockCarryingValue {
         owner: AccountId::Household(recipient()),
@@ -488,8 +576,8 @@ pub(crate) fn aid_opening(routed: bool) -> MaterialCircuitState {
         unit_id: units(),
         amount: money(0),
     });
-    economy.costs =
-        HistoricalCostBook::open(&economy.book, stocks, vec![], vec![], vec![]).unwrap();
+    economy.costs = HistoricalCostBook::open(&economy.book, stocks, vec![], vec![], vec![])
+        .expect("the fixture opens the authored source");
     economy.household_time = HouseholdTimeAccounting::Modeled(
         HouseholdTimeBook::new(
             [household(), recipient()]
@@ -515,7 +603,7 @@ pub(crate) fn aid_opening(routed: bool) -> MaterialCircuitState {
                 })
                 .collect(),
         )
-        .unwrap(),
+        .expect("the constructor accepts the authored fixture arguments"),
     );
     economy.aid = AidBook {
         mandates: vec![mandate(routed)],
@@ -668,10 +756,10 @@ fn staffing() -> StaffingComposition {
                     site(id),
                     hours(),
                     persons,
-                    StaffingPolicy::one_period(4).unwrap(),
+                    StaffingPolicy::one_period(4).expect("the one-period fixture advances"),
                     vec![source],
                 )
-                .unwrap(),
+                .expect("the authored fixture satisfies the constructor invariants"),
                 vec![
                     babylon_tick::material_staffing::StaffingMemberNodeBinding::try_new(
                         StableElementKey::Node {
@@ -681,19 +769,21 @@ fn staffing() -> StaffingComposition {
                         StaffingMemberBinding::try_new(
                             StaffingMemberId::from_bytes([id; 32]),
                             household(),
-                            "county:26163".parse().unwrap(),
+                            "county:26163"
+                                .parse()
+                                .expect("the authored literal parses as the declared type"),
                             persons,
                         )
-                        .unwrap(),
+                        .expect("the authored fixture satisfies the constructor invariants"),
                     )
-                    .unwrap(),
+                    .expect("the authored fixture satisfies the constructor invariants"),
                 ],
             )
-            .unwrap()
+            .expect("the authored fixture satisfies the constructor invariants")
         })
         .collect(),
     )
-    .unwrap()
+    .expect("the authored fixture satisfies the constructor invariants")
 }
 pub(crate) fn try_session(
     foundation: &MichiganDynamicHexFoundation,
@@ -701,42 +791,53 @@ pub(crate) fn try_session(
     material: MaterialCircuitState,
     organizer: OrganizerConfig,
 ) -> Result<Session, MaterialReplayError> {
-    let (_, parsed) = split_content(rules).unwrap();
+    let (_, parsed) =
+        rule_pipeline::split_content(rules).expect("the authored content splits into its sections");
     let forms = parsed.into_iter().map(|rule| rule.form).collect::<Vec<_>>();
     let graph = ReplayTickSession::new(
         SCENARIO,
         None,
         rules,
         HypergraphStore::new(),
-        ReplaySessionId::try_from("organizer/replay-session").unwrap(),
+        ReplaySessionId::try_from("organizer/replay-session")
+            .expect("the fixture value fits the target range"),
         ReplaySeed::new(40),
         ContentDigest {
             defines_hash: [40; 32],
-            rules_hash: rules_hash_of(&forms).unwrap(),
+            rules_hash: canonical_ast::rules_hash_of(&forms)
+                .expect("the rule set has a canonical hash"),
         },
         RefDigest::from_bytes(foundation.reference_bundle_digest()),
-        MaterialState::try_new(foundation).unwrap(),
+        MaterialState::try_new(foundation)
+            .expect("the authored fixture satisfies the constructor invariants"),
     )
     .map_err(MaterialReplayError::Graph)?;
     let config = organizer;
-    let state = initial_organizer_state(&config).unwrap();
+    let state = babylon_practice_contract::initial_organizer_state(&config)
+        .expect("the authored config admits an opening organizer state");
     let material = MaterialWorldRegister::try_new(0, material)
-        .unwrap()
+        .expect("the authored fixture satisfies the constructor invariants")
         .with_organizer(config, state)
-        .unwrap();
+        .expect("the fixture builder accepts the authored options");
     MaterialReplaySession::new(
         graph,
         material,
-        sha256_of(b"organizer-replay-fixture-foundation"),
+        content_digest::sha256_of(b"organizer-replay-fixture-foundation"),
         babylon_kernel::clock::CampaignDuration::Finite { final_period: 8 },
         staffing(),
     )
 }
 
 pub(crate) fn commitment(session: &Session, choice: OrganizerChoice) -> OrganizerCommitment {
-    let config = session.material().organizer_config().unwrap();
-    let state = session.material().organizer_state().unwrap();
-    admit_organizer(
+    let config = session
+        .material()
+        .organizer_config()
+        .expect("the fixture register carries organizer config");
+    let state = session
+        .material()
+        .organizer_state()
+        .expect("the fixture register carries organizer state");
+    babylon_practice_contract::admit_organizer(
         config,
         state,
         &OrganizerCommand {
@@ -745,25 +846,32 @@ pub(crate) fn commitment(session: &Session, choice: OrganizerChoice) -> Organize
             authority_id: config.input_authority_id,
             expected_period: state.period,
             content_digest: config.content_digest,
-            resource_digest: organizer_resource_digest().unwrap(),
+            resource_digest: babylon_practice_contract::organizer_resource_digest()
+                .expect("the organizer resource set has a digest"),
             nonce: [7; 16],
             choice,
         },
     )
-    .unwrap()
+    .expect("the fixture admits the organizer actor")
 }
 
 pub(crate) fn prepare(session: &Session, accepted: Option<&OrganizerCommitment>) -> Candidate {
-    let actions = organizer_action_batch(
-        session.material().organizer_config().unwrap(),
-        session.material().organizer_state().unwrap(),
+    let actions = babylon_practice_contract::organizer_action_batch(
+        session
+            .material()
+            .organizer_config()
+            .expect("the fixture register carries organizer config"),
+        session
+            .material()
+            .organizer_state()
+            .expect("the fixture register carries organizer state"),
         accepted,
         session.graph_session().session_identity().clone(),
     )
-    .unwrap();
+    .expect("the authored action batch builds");
     session
         .prepare_advance_with_organizer(&actions, accepted)
-        .unwrap()
+        .expect("the session prepares the authored organizer advance")
 }
 
 pub(crate) fn commit(session: &mut Session, sink: &mut CollectingSink, candidate: Candidate) {
@@ -771,7 +879,7 @@ pub(crate) fn commit(session: &mut Session, sink: &mut CollectingSink, candidate
         .commit_prepared_and_publish(sink, candidate, |_| {
             Ok::<_, &'static str>(ReplayCommitDisposition::Committed)
         })
-        .unwrap();
+        .expect("the prepared period commits");
 }
 
 pub(crate) fn authored_session(
@@ -796,7 +904,7 @@ pub(crate) fn authored_session_with_loss(
             .route_stages
             .iter_mut()
             .find(|stage| stage.route_id == route(2))
-            .unwrap()
+            .expect("the fixture holds the searched element")
             .loss_ppm = loss_ppm;
     } else {
         assert_eq!(loss_ppm, 0);
@@ -806,32 +914,36 @@ pub(crate) fn authored_session_with_loss(
     let CircuitAccounting::Monetary(economy) = &mut state.accounting else {
         unreachable!()
     };
-    let total = economy.book.total_cash_and_reserves().unwrap();
+    let total = economy
+        .book
+        .total_cash_and_reserves()
+        .expect("the fixture book totals without overflow");
     let payer = AccountId::Organization(OrganizationAccountId::from_bytes([96; 32]));
     let mut snapshot = economy.book.snapshot();
     snapshot
         .accounts
         .iter_mut()
         .find(|a| a.id == AccountId::Site(site(2)))
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .cash = money(8);
     snapshot
         .accounts
         .iter_mut()
         .find(|a| a.id == AccountId::Site(site(3)))
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .cash = money(6);
     snapshot
         .accounts
         .iter_mut()
         .find(|a| a.id == AccountId::Household(household()))
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .cash = money(6);
     snapshot.accounts.push(CashAccount {
         id: payer,
         cash: money(0),
     });
-    economy.book = MonetaryBook::from_snapshot(snapshot).unwrap();
+    economy.book =
+        MonetaryBook::from_snapshot(snapshot).expect("the snapshot admits the derived value");
     economy
         .book
         .transfer_cash(
@@ -840,7 +952,7 @@ pub(crate) fn authored_session_with_loss(
             money(6),
             CashTransferPurpose::MutualAid,
         )
-        .unwrap();
+        .expect("the fixture transfer stays funded");
     economy.aid.mandates[0].payer = payer;
     economy.financial.locations.push(InstitutionLocation {
         account: payer,
@@ -853,8 +965,14 @@ pub(crate) fn authored_session_with_loss(
         vec![],
         vec![],
     )
-    .unwrap();
-    assert_eq!(economy.book.total_cash_and_reserves().unwrap(), total);
+    .expect("the fixture opens the authored source");
+    assert_eq!(
+        economy
+            .book
+            .total_cash_and_reserves()
+            .expect("the fixture book totals without overflow"),
+        total
+    );
     if routed {
         let HouseholdTimeAccounting::Modeled(book) = &mut economy.household_time else {
             unreachable!()
@@ -878,5 +996,5 @@ pub(crate) fn authored_session_with_loss(
         state,
         organizer,
     )
-    .unwrap()
+    .expect("the fixture opens a session")
 }

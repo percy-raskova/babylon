@@ -4,12 +4,30 @@ use babylon_material_circuit::{
     OrderAccessMode, ProcessOutput, ProductionCommitment, RouteId, RouteStage, RouteStageCapacity,
     SiteLogisticsNode, SupplierRoute, SupplierTransport,
 };
-use babylon_tick::material_world::{decode_material_receipts, MaterialWorldRegister};
+use babylon_tick::material_world::MaterialWorldRegister;
 
-use super::*;
-use crate::{michigan_content::MichiganContentPreset, michigan_material::MichiganDeliveryPreset};
+use super::super::ProductionProjectionError;
+use super::balance;
+use super::balance::{CompletedMaterialBalance, ProductionMaterialBalanceRow};
+use crate::michigan_content::MichiganContentPreset;
+use crate::michigan_material::MichiganDeliveryPreset;
+use babylon_material_circuit::{
+    GoodId, MaterialCircuitState, OrderId, OrderRow, ProcessId, SiteId, UnitId,
+};
+use babylon_tick::material_world::MaterialTickReceipts;
+use std::collections::BTreeSet;
+
+use super::super::history::OrderHistory;
+use crate::michigan_economy;
 use babylon_bsl::structural_verbs::CollectingSink;
+use babylon_material_circuit::AidBook;
+use babylon_material_circuit::FinancialInstitutions;
+use babylon_material_circuit::HouseholdTimeAccounting;
+use babylon_material_circuit::InstallationDecisionReceipt;
+use babylon_material_circuit::LaborCompensation;
+use babylon_material_circuit::StaffingMemberId;
 use babylon_practice_contract::OrderedPracticeActionBatch;
+use babylon_tick::material_world;
 use babylon_tick::replay_session::ReplayCommitDisposition;
 
 type Pair = (
@@ -51,23 +69,32 @@ fn empty_state() -> MaterialCircuitState {
 }
 
 fn pair(state: MaterialCircuitState) -> Pair {
-    let opening = MaterialWorldRegister::try_new(state.period - 1, state).unwrap();
-    let next = opening.prepare_next().unwrap();
+    let opening = MaterialWorldRegister::try_new(state.period - 1, state)
+        .expect("the authored fixture satisfies the constructor invariants");
+    let next = opening
+        .prepare_next()
+        .expect("the fixture prepares the authored state");
     (
         opening.state().clone(),
         next.register().state().clone(),
-        decode_material_receipts(next.receipt_bytes()).unwrap(),
+        material_world::decode_material_receipts(next.receipt_bytes())
+            .expect("the canonical bytes decode into the declared type"),
     )
 }
 
 fn project(pair: &Pair) -> Result<Option<CompletedMaterialBalance>, ProductionProjectionError> {
-    project_with_labels(&pair.1, Some(&pair.0), Some(&pair.2), |good, unit| {
-        Some((digest_hex(&good.as_bytes()), digest_hex(&unit.as_bytes())))
+    balance::project_with_labels(&pair.1, Some(&pair.0), Some(&pair.2), |good, unit| {
+        Some((
+            michigan_economy::digest_hex(&good.as_bytes()),
+            michigan_economy::digest_hex(&unit.as_bytes()),
+        ))
     })
 }
 
 fn complete(pair: &Pair) -> CompletedMaterialBalance {
-    project(pair).unwrap().unwrap()
+    project(pair)
+        .expect("the fixture projection accepts the authored state")
+        .expect("the nested fixture result is present")
 }
 
 fn conserved(balance: &CompletedMaterialBalance) {
@@ -139,7 +166,9 @@ fn production_state(specs: &[(u8, u64, u64, u64)], opening: u64) -> MaterialCirc
             period: 1,
             planned_batches: batches,
         });
-        labor = labor.checked_add(batches).unwrap();
+        labor = labor
+            .checked_add(batches)
+            .expect("the fixture arithmetic stays in range");
     }
     state.labor.push(LaborCapacityRow {
         site_id: inventory.site_id,
@@ -185,7 +214,7 @@ fn foundation_is_absent_but_committed_quiet_and_empty_accounts_are_present() {
         kind: CommodityKind::Storable { grams_per_unit: 1 },
     });
     assert_eq!(
-        project_with_labels(&state, None, None, |_, _| None),
+        balance::project_with_labels(&state, None, None, |_, _| None),
         Ok(None)
     );
     let balance = complete(&pair(state));
@@ -211,11 +240,11 @@ fn exact_units_and_sites_never_merge_even_when_labels_match() {
         })
         .collect();
     let (prior, current, receipt) = pair(state);
-    let balance = project_with_labels(&current, Some(&prior), Some(&receipt), |_, _| {
+    let balance = balance::project_with_labels(&current, Some(&prior), Some(&receipt), |_, _| {
         Some(("material".to_owned(), "unit".to_owned()))
     })
-    .unwrap()
-    .unwrap();
+    .expect("the fixture projection accepts the authored input")
+    .expect("the nested fixture result is present");
     assert_eq!(balance.rows.len(), 3);
     let keys: BTreeSet<_> = balance
         .rows
@@ -299,8 +328,12 @@ fn freight_state(loss_ppm: u32) -> MaterialCircuitState {
 }
 
 fn site_row(balance: &CompletedMaterialBalance, site: u8) -> &ProductionMaterialBalanceRow {
-    let id = digest_hex(&[site; 32]);
-    balance.rows.iter().find(|row| row.site_id == id).unwrap()
+    let id = michigan_economy::digest_hex(&[site; 32]);
+    balance
+        .rows
+        .iter()
+        .find(|row| row.site_id == id)
+        .expect("the fixture holds the searched element")
 }
 
 #[test]
@@ -497,7 +530,7 @@ fn intermediate_loss_then_final_arrival_preserves_same_principal_work_and_dispat
     );
     assert_eq!(
         receiver.unit_id,
-        digest_hex(&UnitId::from_bytes([3; 32]).as_bytes())
+        michigan_economy::digest_hex(&UnitId::from_bytes([3; 32]).as_bytes())
     );
     assert_eq!(arrival.1.freight.len(), 1);
     assert_eq!(
@@ -526,28 +559,31 @@ fn arrival_family_retains_multiplicity_without_counting_delivery_or_realization_
 fn michigan_period(preset: MichiganDeliveryPreset, period: u64) -> Pair {
     let mut session = MichiganContentPreset::new_campaign(preset)
         .create_foundation(&crate::test_support::catalog())
-        .unwrap()
+        .expect("the authored catalog builds the foundation")
         .into_session()
-        .unwrap();
+        .expect("the fixture opens a session");
     for tick in 1..=period {
         let actions = OrderedPracticeActionBatch::empty(
             session.graph_session().session_identity().clone(),
             tick,
         )
-        .unwrap();
-        let next = session.prepare_advance(&actions).unwrap();
+        .expect("the empty authored batch constructs");
+        let next = session
+            .prepare_advance(&actions)
+            .expect("the session prepares the authored advance");
         if tick == period {
             return (
                 session.material().state().clone(),
                 next.material().register().state().clone(),
-                decode_material_receipts(next.material().receipt_bytes()).unwrap(),
+                material_world::decode_material_receipts(next.material().receipt_bytes())
+                    .expect("the canonical bytes decode into the declared type"),
             );
         }
         session
             .commit_prepared_and_publish(&mut CollectingSink::default(), next, |_| {
                 Ok::<_, ()>(ReplayCommitDisposition::Committed)
             })
-            .unwrap();
+            .expect("the prepared period commits");
     }
     panic!("fixture requires a completed period");
 }
@@ -556,27 +592,27 @@ fn michigan_period(preset: MichiganDeliveryPreset, period: u64) -> Pair {
 fn delivery_twins_explain_downstream_input_use_and_preserve_unrelated_food() {
     let standard = michigan_period(MichiganDeliveryPreset::Standard, 3);
     let delayed = michigan_period(MichiganDeliveryPreset::Delayed, 3);
-    let a = project_material_balance(
+    let a = balance::project_material_balance(
         &crate::test_support::catalog(),
         &standard.1,
         Some(&standard.0),
         Some(&standard.2),
     )
-    .unwrap()
-    .unwrap();
-    let b = project_material_balance(
+    .expect("the fixture projection accepts the authored input")
+    .expect("the nested fixture result is present");
+    let b = balance::project_material_balance(
         &crate::test_support::catalog(),
         &delayed.1,
         Some(&delayed.0),
         Some(&delayed.2),
     )
-    .unwrap()
-    .unwrap();
+    .expect("the fixture projection accepts the authored input")
+    .expect("the nested fixture result is present");
     let catalog = crate::test_support::catalog();
-    let macomb = digest_hex(
+    let macomb = michigan_economy::digest_hex(
         &catalog
             .site("macomb-fabricated-metal")
-            .unwrap()
+            .expect("the fixture catalog holds the addressed site")
             .id()
             .as_bytes(),
     );
@@ -590,7 +626,7 @@ fn delivery_twins_explain_downstream_input_use_and_preserve_unrelated_food() {
         .filter(|row| row.site_id == macomb)
         .all(|row| row.consumed == 0));
     for site in catalog.sites().iter().filter(|site| site.naics == "311") {
-        let id = digest_hex(&site.id().as_bytes());
+        let id = michigan_economy::digest_hex(&site.id().as_bytes());
         assert_eq!(
             a.rows
                 .iter()
@@ -610,13 +646,13 @@ fn delivery_twins_explain_downstream_input_use_and_preserve_unrelated_food() {
     conserved(&complete(&later));
     assert_eq!(standard, original);
     assert_eq!(
-        project_material_balance(
+        balance::project_material_balance(
             &crate::test_support::catalog(),
             &standard.1,
             Some(&standard.0),
             Some(&standard.2)
         )
-        .unwrap(),
+        .expect("the fixture projection accepts the authored input"),
         Some(a)
     );
 }
@@ -672,7 +708,7 @@ fn incomplete_or_nonadjacent_history_is_never_a_zero_account() {
         (None, Some(&actual.2)),
     ] {
         assert_eq!(
-            project_with_labels(&actual.1, prior, receipt, |_, _| None),
+            balance::project_with_labels(&actual.1, prior, receipt, |_, _| None),
             Err(ProductionProjectionError::History)
         );
     }
@@ -750,11 +786,11 @@ fn unknown_unit_metadata_refuses_instead_of_inventing_a_label() {
     });
     let (prior, current, receipt) = pair(state);
     assert_eq!(
-        project_with_labels(&current, Some(&prior), Some(&receipt), |_, _| None),
+        balance::project_with_labels(&current, Some(&prior), Some(&receipt), |_, _| None),
         Err(ProductionProjectionError::Content)
     );
     assert_eq!(
-        project_material_balance(
+        balance::project_material_balance(
             &crate::test_support::catalog(),
             &current,
             Some(&prior),
@@ -771,7 +807,9 @@ fn retail_state() -> MaterialCircuitState {
     };
     let mut state = empty_state();
     let catalog = crate::test_support::catalog();
-    let good = catalog.good("meal").unwrap();
+    let good = catalog
+        .good("meal")
+        .expect("the fixture catalog holds the addressed good");
     let inventory = InventoryRow {
         good_id: good.id(),
         unit_id: good.unit_id(),
@@ -791,7 +829,9 @@ fn retail_state() -> MaterialCircuitState {
     });
     state.merchants.push(MerchantHandling {
         site_id: inventory.site_id,
-        location: "county:26163".parse().unwrap(),
+        location: "county:26163"
+            .parse()
+            .expect("the authored literal parses as the declared type"),
         role: MerchantRole::Retail,
         capacity_id,
         labor_unit_id,
@@ -806,7 +846,9 @@ fn retail_state() -> MaterialCircuitState {
         });
     state.final_demand_principals.push(FinalDemandPrincipal {
         id: demand_principal_id,
-        location: "county:26163".parse().unwrap(),
+        location: "county:26163"
+            .parse()
+            .expect("the authored literal parses as the declared type"),
     });
     state.final_demand_orders.push(FinalDemandOrder {
         order_id: OrderId::from_bytes([8; 32]),
@@ -913,6 +955,10 @@ fn local_internal_transfer_moves_same_native_stock_without_physical_arrival() {
 }
 
 #[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "`finite_fulfillment_and_quiet_successor_reconcile_handling_work_stock_and_mass` keeps one authored boundary's fixture and assertions together"
+)]
 fn finite_fulfillment_and_quiet_successor_reconcile_handling_work_stock_and_mass() {
     let catalog = crate::test_support::catalog();
     let mut state = retail_state();
@@ -922,9 +968,9 @@ fn finite_fulfillment_and_quiet_successor_reconcile_handling_work_stock_and_mass
         &state,
         None,
         None,
-        &super::super::history::OrderHistory::final_from_state(&state),
+        &OrderHistory::final_from_state(&state),
     )
-    .unwrap();
+    .expect("the fixture projection accepts the authored input");
     assert!(foundation.0[0].completed.is_none());
     assert!(foundation.1[0].completed.is_none());
     let completed = pair(state);
@@ -935,10 +981,13 @@ fn finite_fulfillment_and_quiet_successor_reconcile_handling_work_stock_and_mass
         &completed.1,
         Some(&completed.0),
         Some(&completed.2),
-        &super::super::history::OrderHistory::final_from_state(&completed.1),
+        &OrderHistory::final_from_state(&completed.1),
     )
-    .unwrap();
-    let work = handling[0].completed.as_ref().unwrap();
+    .expect("the fixture projection accepts the authored input");
+    let work = handling[0]
+        .completed
+        .as_ref()
+        .expect("the fixture set the optional field before this read");
     assert_eq!(
         (work.needed_hours, work.used_hours, work.handled_grams),
         (6, 6, 30)
@@ -957,8 +1006,11 @@ fn finite_fulfillment_and_quiet_successor_reconcile_handling_work_stock_and_mass
         Some(&completed.0),
         Some(&completed.2),
     )
-    .unwrap();
-    let time = labor[0].completed.as_ref().unwrap();
+    .expect("the fixture projection accepts the authored input");
+    let time = labor[0]
+        .completed
+        .as_ref()
+        .expect("the fixture set the optional field before this read");
     assert_eq!(
         (
             time.planned,
@@ -975,8 +1027,12 @@ fn finite_fulfillment_and_quiet_successor_reconcile_handling_work_stock_and_mass
         Some(&completed.0),
         Some(&completed.2),
     )
-    .unwrap();
-    let reservation = &capacity[0].completed.as_ref().unwrap().reservations[0];
+    .expect("the fixture projection accepts the authored input");
+    let reservation = &capacity[0]
+        .completed
+        .as_ref()
+        .expect("the fixture set the optional field before this read")
+        .reservations[0];
     assert_eq!(
         (
             reservation.opening_available_grams,
@@ -988,7 +1044,7 @@ fn finite_fulfillment_and_quiet_successor_reconcile_handling_work_stock_and_mass
     assert!(definitions
         .iter()
         .find(|d| d.id == reservation.orders[0])
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .order
         .route_id
         .is_none());
@@ -998,11 +1054,25 @@ fn finite_fulfillment_and_quiet_successor_reconcile_handling_work_stock_and_mass
         &quiet.1,
         Some(&quiet.0),
         Some(&quiet.2),
-        &super::super::history::OrderHistory::final_from_state(&quiet.1),
+        &OrderHistory::final_from_state(&quiet.1),
     )
-    .unwrap();
-    assert_eq!(handling[0].completed.as_ref().unwrap().used_hours, 0);
-    assert_eq!(demand[0].completed.as_ref().unwrap().newly_fulfilled, 0);
+    .expect("the fixture projection accepts the authored input");
+    assert_eq!(
+        handling[0]
+            .completed
+            .as_ref()
+            .expect("the fixture set the optional field before this read")
+            .used_hours,
+        0
+    );
+    assert_eq!(
+        demand[0]
+            .completed
+            .as_ref()
+            .expect("the fixture set the optional field before this read")
+            .newly_fulfilled,
+        0
+    );
     assert_eq!(demand[0].retail_stock_on_hand, 7);
     assert_eq!(site_row(&complete(&quiet), 1).final_demand_fulfilled, 0);
     conserved(&complete(&quiet));
@@ -1063,7 +1133,7 @@ fn completed_local_fulfillment_and_handling_require_exact_receipt_identity() {
                 &changed.1,
                 Some(&changed.0),
                 Some(&changed.2),
-                &super::super::history::OrderHistory::final_from_state(&changed.1),
+                &OrderHistory::final_from_state(&changed.1),
             ),
             Err(ProductionProjectionError::State)
         ));
@@ -1124,13 +1194,18 @@ fn maintenance_spare_parts_close_as_their_own_exact_stock_debit() {
     let row = balance
         .rows
         .iter()
-        .find(|row| row.site_id == digest_hex(&provider.as_bytes()))
-        .unwrap();
-    let encoded = serde_json::to_value(row).unwrap();
+        .find(|row| row.site_id == michigan_economy::digest_hex(&provider.as_bytes()))
+        .expect("the fixture holds the searched element");
+    let encoded = serde_json::to_value(row).expect("the value serializes to JSON");
     assert_eq!(encoded["maintenance_consumed"], 2);
     assert_eq!((row.opening, row.consumed, row.closing), (3, 0, 1));
     let mut damaged = pair.clone();
-    damaged.2.maintenance.as_mut().unwrap().consumed_spare_parts += 1;
+    damaged
+        .2
+        .maintenance
+        .as_mut()
+        .expect("the fixture set the optional field before this borrow")
+        .consumed_spare_parts += 1;
     assert!(project(&damaged).is_err());
 }
 
@@ -1142,8 +1217,12 @@ fn recurring_eight_period_control_preserves_balances_after_order_retirement() {
         let CircuitAccounting::Monetary(economy) = &mut state.accounting else {
             panic!("monetary")
         };
-        economy.recurring.as_mut().unwrap().household_purchases[0].enabled =
-            ![3, 4].contains(&period);
+        economy
+            .recurring
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow")
+            .household_purchases[0]
+            .enabled = ![3, 4].contains(&period);
         let pair = pair(state);
         let balance = complete(&pair);
         conserved(&balance);
@@ -1217,7 +1296,8 @@ fn retired_monetary_arrivals_require_delivery_and_realization_receipts() {
     snapshot.accounts[0].cash = babylon_kernel::currency::Currency::from_micro_units(
         snapshot.accounts[0].cash.micro_units() + 1,
     );
-    economy.book = babylon_material_circuit::MonetaryBook::from_snapshot(snapshot).unwrap();
+    economy.book = babylon_material_circuit::MonetaryBook::from_snapshot(snapshot)
+        .expect("the snapshot admits the derived value");
     assert!(
         super::super::lifecycle::validate_period(&fake_cash.0, &fake_cash.1, &fake_cash.2).is_err()
     );
@@ -1231,12 +1311,21 @@ fn household_stock_conservation_distinguishes_delivery_consumption_and_expiry() 
             &pair.1,
             Some(&pair.0),
             Some(&pair.2),
-            |good, unit| Some((digest_hex(&good.as_bytes()), digest_hex(&unit.as_bytes()))),
+            |good, unit| {
+                Some((
+                    michigan_economy::digest_hex(&good.as_bytes()),
+                    michigan_economy::digest_hex(&unit.as_bytes()),
+                ))
+            },
         )
     };
-    let rows = project_household(&valid).unwrap();
+    let rows =
+        project_household(&valid).expect("the fixture projection accepts the authored input");
     assert_eq!((rows[0].household_count, rows[0].person_count), (2, 4));
-    let done = rows[0].completed.as_ref().unwrap();
+    let done = rows[0]
+        .completed
+        .as_ref()
+        .expect("the fixture set the optional field before this read");
     assert_eq!(
         (
             done.opening_stock,
@@ -1253,12 +1342,16 @@ fn household_stock_conservation_distinguishes_delivery_consumption_and_expiry() 
         .find(|row| {
             row.site_id == SiteId::from_bytes([3; 32]) && row.good_id == GoodId::from_bytes([2; 32])
         })
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .quantity = 2;
     let scarce = pair(scarce);
     complete(&scarce);
-    let rows = project_household(&scarce).unwrap();
-    let partial = rows[0].completed.as_ref().unwrap();
+    let rows =
+        project_household(&scarce).expect("the fixture projection accepts the authored input");
+    let partial = rows[0]
+        .completed
+        .as_ref()
+        .expect("the fixture set the optional field before this read");
     assert_eq!(
         (
             partial.admitted,
@@ -1302,7 +1395,9 @@ fn underfunded_maintenance_uses_paid_hours_instead_of_all_available_people_time(
     let payee = FinalDemandPrincipalId::from_bytes([50; 32]);
     state.final_demand_principals.push(FinalDemandPrincipal {
         id: payee,
-        location: "county:26163".parse().unwrap(),
+        location: "county:26163"
+            .parse()
+            .expect("the authored literal parses as the declared type"),
     });
     let mut accounts: Vec<_> = state
         .site_logistics_nodes
@@ -1324,28 +1419,24 @@ fn underfunded_maintenance_uses_paid_hours_instead_of_all_available_people_time(
     let employment = keys
         .into_iter()
         .map(|(site_id, unit_id)| EmploymentTerms {
-            member_id: babylon_material_circuit::StaffingMemberId::from_bytes((site_id).as_bytes()),
+            member_id: StaffingMemberId::from_bytes((site_id).as_bytes()),
             site_id,
             unit_id,
             payee,
-            compensation: babylon_material_circuit::LaborCompensation::Wage(
-                Currency::from_micro_units(1),
-            ),
+            compensation: LaborCompensation::Wage(Currency::from_micro_units(1)),
         })
         .collect();
     state.accounting = CircuitAccounting::Monetary(Box::new({
-        let book = MonetaryBook::open(accounts).unwrap();
+        let book = MonetaryBook::open(accounts).expect("the fixture opens the authored source");
         MonetaryCircuit {
-            aid: babylon_material_circuit::AidBook::default(),
-            household_time: babylon_material_circuit::HouseholdTimeAccounting::NotModeled,
-            financial: babylon_material_circuit::FinancialInstitutions::empty(),
+            aid: AidBook::default(),
+            household_time: HouseholdTimeAccounting::NotModeled,
+            financial: FinancialInstitutions::empty(),
             member_labor: state
                 .labor
                 .iter()
                 .map(|row| babylon_material_circuit::MemberLaborCapacityRow {
-                    member_id: babylon_material_circuit::StaffingMemberId::from_bytes(
-                        row.site_id.as_bytes(),
-                    ),
+                    member_id: StaffingMemberId::from_bytes(row.site_id.as_bytes()),
                     period: row.period,
                     available_hours: row.available,
                 })
@@ -1366,7 +1457,7 @@ fn underfunded_maintenance_uses_paid_hours_instead_of_all_available_people_time(
                 vec![],
                 vec![],
             )
-            .unwrap(),
+            .expect("the fixture opens the authored source"),
             book,
             recurring: None,
             employment,
@@ -1374,7 +1465,12 @@ fn underfunded_maintenance_uses_paid_hours_instead_of_all_available_people_time(
     }));
     let valid = pair(state);
     assert_eq!(
-        valid.2.maintenance.as_ref().unwrap().available_labor_hours,
+        valid
+            .2
+            .maintenance
+            .as_ref()
+            .expect("the fixture set the optional field before this read")
+            .available_labor_hours,
         0
     );
     complete(&valid);
@@ -1387,26 +1483,38 @@ fn underfunded_maintenance_uses_paid_hours_instead_of_all_available_people_time(
 fn recurring_cumulative_totals_do_not_require_lifetime_order_rows() {
     use babylon_material_circuit::CircuitAccounting;
     let mut state = super::super::recurring_fixture::opening();
-    let mut history = super::super::history::OrderHistory::default();
+    let mut history = OrderHistory::default();
     let mut last = Vec::new();
     for period in 1..=8 {
         let CircuitAccounting::Monetary(economy) = &mut state.accounting else {
             panic!("monetary")
         };
-        economy.recurring.as_mut().unwrap().household_purchases[0].enabled =
-            ![3, 4].contains(&period);
+        economy
+            .recurring
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow")
+            .household_purchases[0]
+            .enabled = ![3, 4].contains(&period);
         let valid = pair(state);
-        let orders =
-            super::super::lifecycle::validate_period(&valid.0, &valid.1, &valid.2).unwrap();
-        history.record(&valid.0, &orders).unwrap();
-        let facts = super::super::outbound::completed_facts(&valid.0, &valid.1, &valid.2).unwrap();
+        let orders = super::super::lifecycle::validate_period(&valid.0, &valid.1, &valid.2)
+            .expect("the authored fixture satisfies the rule");
+        history
+            .record(&valid.0, &orders)
+            .expect("the fixture call `record` succeeds for the authored inputs");
+        let facts = super::super::outbound::completed_facts(&valid.0, &valid.1, &valid.2)
+            .expect("the fixture call `completed_facts` succeeds for the authored inputs");
         last = super::super::merchants::project_final_with_labels(
             &valid.1,
             Some((&valid.0, &facts)),
             &history,
-            |good, unit| Some((digest_hex(&good.as_bytes()), digest_hex(&unit.as_bytes()))),
+            |good, unit| {
+                Some((
+                    michigan_economy::digest_hex(&good.as_bytes()),
+                    michigan_economy::digest_hex(&unit.as_bytes()),
+                ))
+            },
         )
-        .unwrap();
+        .expect("the fixture projection accepts the authored input");
         assert_eq!(last.len(), 1);
         assert!(history.final_orders.len() <= 1);
         assert!(history.retired_final.len() <= 1);
@@ -1438,8 +1546,8 @@ fn actual_service_stages_project_only_durable_inventory_and_refuse_missing_perfo
     assert_eq!(balance.rows.iter().map(|r| r.consumed).sum::<u64>(), 2);
     assert_eq!(balance.rows.iter().map(|r| r.produced).sum::<u64>(), 1);
     assert!(balance.rows.iter().all(|r| r.good_id
-        != digest_hex(&GoodId::from_bytes([1; 32]).as_bytes())
-        && r.good_id != digest_hex(&GoodId::from_bytes([2; 32]).as_bytes())));
+        != michigan_economy::digest_hex(&GoodId::from_bytes([1; 32]).as_bytes())
+        && r.good_id != michigan_economy::digest_hex(&GoodId::from_bytes([2; 32]).as_bytes())));
     evidence.2.service_performance.pop();
     assert!(project(&evidence).is_err());
 }
@@ -1457,11 +1565,19 @@ fn actual_recurring_services_authenticate_paid_household_satisfaction_without_pa
         Some(&evidence.2),
         |_, _| Some(("Care".into(), "service-period".into())),
     )
-    .unwrap();
+    .expect("the fixture projection accepts the authored input");
     assert_eq!(services.len(), 1);
-    assert_eq!(services[0].completed.as_ref().unwrap().satisfied, 1);
+    assert_eq!(
+        services[0]
+            .completed
+            .as_ref()
+            .expect("the fixture set the optional field before this read")
+            .satisfied,
+        1
+    );
     assert_eq!(services[0].required_per_period, 1);
-    super::super::lifecycle::validate_period(&evidence.0, &evidence.1, &evidence.2).unwrap();
+    super::super::lifecycle::validate_period(&evidence.0, &evidence.1, &evidence.2)
+        .expect("the authored fixture satisfies the rule");
     conserved(&complete(&evidence));
 }
 
@@ -1473,7 +1589,8 @@ fn actual_installation_and_wear_project_materials_work_and_next_period_capacity(
         let evidence = pair(state);
         assert_eq!(evidence.0.period, period);
         conserved(&complete(&evidence));
-        labor::project_labor_accounts(&evidence.1, Some(&evidence.0), Some(&evidence.2)).unwrap();
+        labor::project_labor_accounts(&evidence.1, Some(&evidence.0), Some(&evidence.2))
+            .expect("the fixture projection accepts the authored input");
         if period == 2 {
             assert_eq!(f::equipment_cost(&evidence.1).micro_units(), 30);
             let mut missing = evidence.clone();
@@ -1508,12 +1625,14 @@ fn actual_investment_order_admission_joins_captured_policy_and_real_cash_reserva
     super::super::equipment_fixture::configure_investment(&mut state, 100, 0);
     let mut evidence = pair(state);
     assert_eq!(evidence.2.investment[0].admitted_units, 1);
-    let orders =
-        super::super::lifecycle::validate_period(&evidence.0, &evidence.1, &evidence.2).unwrap();
-    let mut history = super::super::history::OrderHistory::default();
-    history.record(&evidence.0, &orders).unwrap();
+    let orders = super::super::lifecycle::validate_period(&evidence.0, &evidence.1, &evidence.2)
+        .expect("the authored fixture satisfies the rule");
+    let mut history = OrderHistory::default();
+    history
+        .record(&evidence.0, &orders)
+        .expect("the fixture call `record` succeeds for the authored inputs");
     assert_eq!(history.deliveries.len(), 1);
-    assert!(super::super::outbound::completed_facts(&evidence.0, &evidence.1, &evidence.2).unwrap().is_empty(),
+    assert!(super::super::outbound::completed_facts(&evidence.0, &evidence.1, &evidence.2).expect("the fixture call `completed_facts` succeeds for the authored inputs").is_empty(),
         "investment admission occurs after the final outbound pass; it is not this close's freight pressure");
     conserved(&complete(&evidence));
     evidence.2.investment[0].order_id = OrderId::from_bytes([255; 32]);
@@ -1524,18 +1643,15 @@ fn actual_investment_order_admission_joins_captured_policy_and_real_cash_reserva
 
 #[test]
 fn actual_prebooked_service_preserves_accepted_quote_and_authenticates_separate_topup() {
-    use babylon_material_circuit::{
-        admit_material_purchase, recurring_service_order_id, AccountId, MaterialPurchase,
-        ServiceOrder,
-    };
+    use babylon_material_circuit::{AccountId, MaterialPurchase, ServiceOrder};
     let state =
         super::super::services_fixture::recurring(super::super::services_fixture::opening());
     let buyer = AccountId::Site(SiteId::from_bytes([2; 32]));
     let provider = SiteId::from_bytes([1; 32]);
     let good = GoodId::from_bytes([1; 32]);
     let unit = UnitId::from_bytes([1; 32]);
-    let id = recurring_service_order_id(1, buyer, provider, good, unit);
-    let (state, _) = admit_material_purchase(
+    let id = babylon_material_circuit::recurring_service_order_id(1, buyer, provider, good, unit);
+    let (state, _) = babylon_material_circuit::admit_material_purchase(
         &state,
         MaterialPurchase::Service(ServiceOrder {
             order_id: id,
@@ -1548,7 +1664,7 @@ fn actual_prebooked_service_preserves_accepted_quote_and_authenticates_separate_
         }),
         babylon_kernel::currency::Currency::from_micro_units(1),
     )
-    .unwrap();
+    .expect("the fixture admits the authored purchase");
     let mut evidence = pair(state);
     let rows: Vec<_> = evidence
         .2
@@ -1561,19 +1677,20 @@ fn actual_prebooked_service_preserves_accepted_quote_and_authenticates_separate_
     assert_eq!(
         rows.iter()
             .find(|r| r.order_id == id)
-            .unwrap()
+            .expect("the fixture holds the searched element")
             .unit_price
             .micro_units(),
         1
     );
-    super::super::lifecycle::validate_period(&evidence.0, &evidence.1, &evidence.2).unwrap();
+    super::super::lifecycle::validate_period(&evidence.0, &evidence.1, &evidence.2)
+        .expect("the authored fixture satisfies the rule");
     conserved(&complete(&evidence));
     evidence
         .2
         .service_performance
         .iter_mut()
         .find(|r| r.order_id == id)
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .unit_price = babylon_kernel::currency::Currency::from_micro_units(2);
     assert!(
         super::super::lifecycle::validate_period(&evidence.0, &evidence.1, &evidence.2).is_err()
@@ -1604,9 +1721,10 @@ fn actual_captured_pending_installation_keeps_its_admitted_identity() {
         .equipment
         .iter_mut()
         .find(|r| r.asset == EquipmentAssetId::Installation(original))
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .asset = EquipmentAssetId::Installation(captured);
-    economy.costs = HistoricalCostBook::from_snapshot(costs).unwrap();
+    economy.costs =
+        HistoricalCostBook::from_snapshot(costs).expect("the snapshot admits the derived value");
     let evidence = pair(state);
     assert_eq!(evidence.2.installation[0].id, captured);
     assert!(!evidence.2.installation[0].started);
@@ -1627,7 +1745,12 @@ fn actual_unfunded_household_service_need_remains_visible_without_work_or_purcha
     for row in &mut economy.member_labor {
         row.available_hours = 0;
     }
-    for row in &mut economy.recurring.as_mut().unwrap().attendance {
+    for row in &mut economy
+        .recurring
+        .as_mut()
+        .expect("the fixture set the optional field before this borrow")
+        .attendance
+    {
         row.planned_hours = 0;
     }
     let evidence = pair(state);
@@ -1637,9 +1760,12 @@ fn actual_unfunded_household_service_need_remains_visible_without_work_or_purcha
         Some(&evidence.2),
         |_, _| Some(("Care".into(), "service-period".into())),
     )
-    .unwrap();
+    .expect("the fixture projection accepts the authored input");
     assert_eq!(rows.len(), 1);
-    let done = rows[0].completed.as_ref().unwrap();
+    let done = rows[0]
+        .completed
+        .as_ref()
+        .expect("the fixture set the optional field before this read");
     assert_eq!(
         (done.required, done.admitted, done.satisfied, done.unmet),
         (1, 0, 0, 1)
@@ -1662,10 +1788,10 @@ fn installation_decision_must_join_current_plan_and_post_wear_position() {
         .push(duplicate.2.installation_decisions[0].clone());
     assert!(project(&duplicate).is_err());
     for mutate in [
-        |r: &mut babylon_material_circuit::InstallationDecisionReceipt| {
+        |r: &mut InstallationDecisionReceipt| {
             r.captured_plan_batches += 1;
         },
-        |r: &mut babylon_material_circuit::InstallationDecisionReceipt| {
+        |r: &mut InstallationDecisionReceipt| {
             r.target_units += 1;
             r.requested_units += 1;
         },
@@ -1683,10 +1809,10 @@ fn installation_decision_joins_captured_pending_before_completion() {
     assert_eq!(evidence.2.installation_decisions[0].pending_units, 1);
     assert!(project(&evidence).is_ok());
     for mutate in [
-        |r: &mut babylon_material_circuit::InstallationDecisionReceipt| {
+        |r: &mut InstallationDecisionReceipt| {
             r.pending_units += 1;
         },
-        |r: &mut babylon_material_circuit::InstallationDecisionReceipt| {
+        |r: &mut InstallationDecisionReceipt| {
             r.installed_units += 1;
         },
     ] {

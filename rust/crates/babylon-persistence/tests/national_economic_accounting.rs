@@ -1,6 +1,19 @@
 //! Focused joins reject promises, crossed units and unmatched cash.
 use babylon_kernel::currency::Currency;
-use babylon_material_circuit::*;
+use babylon_material_circuit::FinalDemandPrincipalId;
+use babylon_material_circuit::GoodId;
+use babylon_material_circuit::OrderId;
+use babylon_material_circuit::ProcessId;
+use babylon_material_circuit::SiteId;
+use babylon_material_circuit::UnitId;
+use babylon_material_circuit::{
+    AccountId, ArrivalReceipt, CapitalContributionReceipt, CashTransferPurpose, ContributionId,
+    DeliveryReceipt, DistributionReceipt, EquipmentCohortId, EquipmentWearReceipt,
+    HouseholdConsumptionReceipt, HouseholdDemandReceipt, InstallationId, InstallationReceipt,
+    InvestmentReceipt, LocalRetailFulfillmentReceipt, LocalTransferReceipt, MoneyLocation,
+    MoneyPosting, MoneyTransferPurpose, MoneyTransferReceipt, OutboundOrderId, ProcurementReceipt,
+    ProductionReceipt, RealizationReceipt, ShiftId, WageAccrualReceipt,
+};
 use babylon_persistence::qualification_audit::economic;
 use babylon_tick::material_world::MaterialTickReceipts;
 use economic::{Audit, Refusal};
@@ -52,7 +65,7 @@ fn procurement(period: u64, supplier: u8, buyer: u8) -> ProcurementReceipt {
     let unit_id = UnitId::from_bytes([4; 32]);
     ProcurementReceipt {
         period,
-        order_id: recurring_procurement_order_id(
+        order_id: babylon_material_circuit::recurring_procurement_order_id(
             period,
             buyer_site_id,
             supplier_site_id,
@@ -203,7 +216,9 @@ fn wages() -> MaterialTickReceipts {
 fn exact_wage_join_retires_and_missing_or_wrong_payment_is_not_evidence() {
     let r = wages();
     let mut audit = Audit::default();
-    let f = audit.read(&r).unwrap();
+    let f = audit
+        .read(&r)
+        .expect("the fixture reader returns its authored facts");
     assert_eq!(f.funded_wages_paid_micros, "10");
     assert_eq!(f.pending_wages, 0);
     let mut changed = r.clone();
@@ -217,7 +232,9 @@ fn exact_wage_join_retires_and_missing_or_wrong_payment_is_not_evidence() {
     assert_eq!(Audit::default().read(&no_reserve), Err(Refusal::Wage));
     let mut missing = r;
     missing.money_transfers.pop();
-    let f = Audit::default().read(&missing).unwrap();
+    let f = Audit::default()
+        .read(&missing)
+        .expect("the fixture reader returns its authored facts");
     assert_eq!(f.funded_wages_paid_micros, "0");
     assert_eq!(f.pending_wages, 1);
 }
@@ -235,7 +252,12 @@ fn procurement_requires_reserved_price_and_arrival_realization_settlement() {
         35,
     ));
     let mut a = Audit::default();
-    assert_eq!(a.read(&r).unwrap().pending_procurement, 1);
+    assert_eq!(
+        a.read(&r)
+            .expect("the fixture reader returns its authored facts")
+            .pending_procurement,
+        1
+    );
     let mut next = receipts(2);
     next.arrivals.push(ArrivalReceipt {
         order_id: p.order_id,
@@ -257,7 +279,9 @@ fn procurement_requires_reserved_price_and_arrival_realization_settlement() {
         MoneyLocation::Cash(AccountId::Site(p.supplier_site_id)),
         35,
     ));
-    let f = a.read(&next).unwrap();
+    let f = a
+        .read(&next)
+        .expect("the fixture reader returns its authored facts");
     assert_eq!(f.settled_procurement_orders, 1);
     assert_eq!(f.pending_procurement, 0);
 }
@@ -275,7 +299,9 @@ fn local_procurement_uses_its_exact_handoff_without_freight_receipts() {
         35,
     ));
     let mut pending = Audit::default();
-    pending.read(&opening).unwrap();
+    pending
+        .read(&opening)
+        .expect("the fixture reader returns its authored facts");
     let mut delivered = receipts(2);
     delivered.local_transfers.push(LocalTransferReceipt {
         order_id: p.order_id,
@@ -297,7 +323,9 @@ fn local_procurement_uses_its_exact_handoff_without_freight_receipts() {
     let mut crossed = delivered.clone();
     crossed.local_transfers[0].unit_id = UnitId::from_bytes([9; 32]);
     assert_eq!(pending.clone().read(&crossed), Err(Refusal::Unit));
-    let fact = pending.read(&delivered).unwrap();
+    let fact = pending
+        .read(&delivered)
+        .expect("the fixture reader returns its authored facts");
     assert_eq!(fact.settled_procurement_orders, 1);
     assert_eq!(fact.pending_procurement, 0);
 }
@@ -324,7 +352,10 @@ fn ownership_requires_exact_beneficiary_and_amount() {
         4,
     ));
     assert_eq!(
-        Audit::default().read(&r).unwrap().ownership_paid_micros,
+        Audit::default()
+            .read(&r)
+            .expect("the fixture reader returns its authored facts")
+            .ownership_paid_micros,
         "4"
     );
     r.money_transfers[0].credit.location =
@@ -353,7 +384,9 @@ fn capital_funding_does_not_count_as_profit_distribution() {
         7,
     ));
     let mut audit = Audit::default();
-    let fact = audit.read(&r).unwrap();
+    let fact = audit
+        .read(&r)
+        .expect("the fixture reader returns its authored facts");
     assert_eq!(fact.ownership_paid_micros, "0");
     assert_eq!(audit.summary().ownership_payment_periods, 0);
     r.money_transfers[0].credit.delta = money(8);
@@ -383,7 +416,12 @@ fn equipment_future_usability_and_real_work_are_required_without_forcing_investm
     assert_eq!(Audit::default().read(&r), Err(Refusal::Equipment));
     r.installation[0].usable_from_period = 2;
     let mut a = Audit::default();
-    assert_eq!(a.read(&r).unwrap().completed_equipment_paths, 0);
+    assert_eq!(
+        a.read(&r)
+            .expect("the fixture reader returns its authored facts")
+            .completed_equipment_paths,
+        0
+    );
     assert_eq!(a.summary().equipment_status, "not_observed");
 }
 #[test]
@@ -393,7 +431,7 @@ fn crossed_retail_units_cannot_count_as_purchase_consumption() {
     let retailer = SiteId::from_bytes([2; 32]);
     let good = GoodId::from_bytes([3; 32]);
     let unit = UnitId::from_bytes([4; 32]);
-    let order = recurring_household_order_id(1, (principal, good, unit));
+    let order = babylon_material_circuit::recurring_household_order_id(1, (principal, good, unit));
     r.household_demand.push(HouseholdDemandReceipt {
         period: 1,
         principal_id: principal,
@@ -445,7 +483,9 @@ fn crossed_retail_units_cannot_count_as_purchase_consumption() {
     });
     assert_eq!(Audit::default().read(&r), Err(Refusal::Unit));
     r.local_fulfillments[0].unit_id = unit;
-    let f = Audit::default().read(&r).unwrap();
+    let f = Audit::default()
+        .read(&r)
+        .expect("the fixture reader returns its authored facts");
     assert_eq!(f.households[0].purchased_consumption_lower_bound, 2);
 }
 #[test]
@@ -468,7 +508,12 @@ fn funded_equipment_arrives_installs_then_its_exact_cohort_performs_later_work()
         7,
     ));
     let mut a = Audit::default();
-    assert_eq!(a.read(&first).unwrap().completed_equipment_paths, 0);
+    assert_eq!(
+        a.read(&first)
+            .expect("the fixture reader returns its authored facts")
+            .completed_equipment_paths,
+        0
+    );
     let mut second = receipts(2);
     second.arrivals.push(ArrivalReceipt {
         order_id,
@@ -489,7 +534,12 @@ fn funded_equipment_arrives_installs_then_its_exact_cohort_performs_later_work()
         7,
     ));
     second.installation.push(installed(2, id, site, process));
-    assert_eq!(a.read(&second).unwrap().completed_equipment_paths, 0);
+    assert_eq!(
+        a.read(&second)
+            .expect("the fixture reader returns its authored facts")
+            .completed_equipment_paths,
+        0
+    );
     let mut third = worked(3, id, site, process);
     third.production.clear();
     assert_eq!(a.read(&third), Err(Refusal::Equipment));
@@ -500,7 +550,9 @@ fn funded_equipment_arrives_installs_then_its_exact_cohort_performs_later_work()
         planned_batches: 1,
         produced_batches: 1,
     });
-    let f = a.read(&third).unwrap();
+    let f = a
+        .read(&third)
+        .expect("the fixture reader returns its authored facts");
     assert_eq!(f.completed_equipment_paths, 1);
     assert_eq!(f.pending_equipment, 0);
 }
@@ -526,7 +578,9 @@ fn local_equipment_received_after_installation_cannot_fund_that_installation() {
         7,
     ));
     let mut audit = Audit::default();
-    audit.read(&first).unwrap();
+    audit
+        .read(&first)
+        .expect("the fixture reader returns its authored facts");
     let mut second = receipts(2);
     second
         .installation
@@ -545,16 +599,22 @@ fn local_equipment_received_after_installation_cannot_fund_that_installation() {
         MoneyLocation::Cash(AccountId::Site(supplier)),
         7,
     ));
-    audit.read(&second).unwrap();
+    audit
+        .read(&second)
+        .expect("the fixture reader returns its authored facts");
     let mut third = worked(3, opening_id, site, process);
     third
         .installation
         .push(installed(3, purchased_id, site, process));
-    let fact = audit.read(&third).unwrap();
+    let fact = audit
+        .read(&third)
+        .expect("the fixture reader returns its authored facts");
     assert_eq!(fact.completed_equipment_paths, 0);
     assert_eq!(fact.pending_equipment, 1);
     let fourth = worked(4, purchased_id, site, process);
-    let fact = audit.read(&fourth).unwrap();
+    let fact = audit
+        .read(&fourth)
+        .expect("the fixture reader returns its authored facts");
     assert_eq!(fact.completed_equipment_paths, 1);
     assert_eq!(fact.pending_equipment, 0);
 }

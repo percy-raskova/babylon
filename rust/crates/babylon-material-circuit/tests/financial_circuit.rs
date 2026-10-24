@@ -1,8 +1,32 @@
-use babylon_kernel::{
-    currency::Currency,
-    economic_location::{EconomicLocation, ForeignCounterpart},
-};
-use babylon_material_circuit::*;
+use babylon_kernel::currency::Currency;
+use babylon_kernel::economic_location::{EconomicLocation, ForeignCounterpart};
+use babylon_material_circuit::AccountId;
+use babylon_material_circuit::AidBook;
+use babylon_material_circuit::CapacitySupply;
+use babylon_material_circuit::CapitalContributionOrder;
+use babylon_material_circuit::CashAccount;
+use babylon_material_circuit::CircuitAccounting;
+use babylon_material_circuit::ContributionId;
+use babylon_material_circuit::DistributionPolicy;
+use babylon_material_circuit::EquityCarryingValue;
+use babylon_material_circuit::FinalDemandPrincipal;
+use babylon_material_circuit::FinalDemandPrincipalId;
+use babylon_material_circuit::FinancialInstitutions;
+use babylon_material_circuit::HistoricalCostBook;
+use babylon_material_circuit::HouseholdTimeAccounting;
+use babylon_material_circuit::InstitutionLocation;
+use babylon_material_circuit::LogisticsNodeId;
+use babylon_material_circuit::MaterialCircuitState;
+use babylon_material_circuit::MonetaryBook;
+use babylon_material_circuit::MonetaryCircuit;
+use babylon_material_circuit::OrganizationAccountId;
+use babylon_material_circuit::OwnershipClaim;
+use babylon_material_circuit::PublicAccountId;
+use babylon_material_circuit::PublicAllocation;
+use babylon_material_circuit::PublicBudget;
+use babylon_material_circuit::PublicTransferTreatment;
+use babylon_material_circuit::SiteId;
+use babylon_material_circuit::SiteLogisticsNode;
 
 fn money(n: i128) -> Currency {
     Currency::from_micro_units(n)
@@ -68,7 +92,7 @@ fn opening(cash: [i128; 5]) -> MaterialCircuitState {
         .map(|(id, n)| CashAccount { id, cash: money(n) })
         .collect(),
     )
-    .unwrap();
+    .expect("the fixture opens the authored source");
     let costs = HistoricalCostBook::open(
         &book,
         vec![],
@@ -87,14 +111,14 @@ fn opening(cash: [i128; 5]) -> MaterialCircuitState {
         ],
         vec![],
     )
-    .unwrap();
+    .expect("the fixture opens the authored source");
     MaterialCircuitState {
         capacity_supply: CapacitySupply::FiniteSchedule,
         period: 1,
         accounting: CircuitAccounting::Monetary(Box::new(MonetaryCircuit {
             aid: AidBook::default(),
 
-            household_time: babylon_material_circuit::HouseholdTimeAccounting::NotModeled,
+            household_time: HouseholdTimeAccounting::NotModeled,
             member_labor: vec![],
             book,
             costs,
@@ -155,19 +179,33 @@ fn ownership_distributes_retained_cash_once_with_exact_remainder_and_restart() {
         .accounts
         .iter_mut()
         .find(|r| r.account == AccountId::Site(site()))
-        .unwrap();
+        .expect("the fixture holds the searched element");
     capital.opening_capital = money(0);
     capital.retained_earnings = money(7);
-    e.costs = HistoricalCostBook::from_snapshot(costs).unwrap();
+    e.costs =
+        HistoricalCostBook::from_snapshot(costs).expect("the snapshot admits the derived value");
     e.financial.distributions.push(DistributionPolicy {
         issuer_site_id: site(),
         earnings_fraction_bps: 10_000,
         period_cap: money(7),
         cash_floor: money(0),
     });
-    let t = advance_material_circuit(&state).unwrap();
-    assert_eq!(economy(&t.state).book.cash(owner(2)).unwrap(), money(3));
-    assert_eq!(economy(&t.state).book.cash(owner(3)).unwrap(), money(4));
+    let t = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
+    assert_eq!(
+        economy(&t.state)
+            .book
+            .cash(owner(2))
+            .expect("the fixture book holds the payer account"),
+        money(3)
+    );
+    assert_eq!(
+        economy(&t.state)
+            .book
+            .cash(owner(3))
+            .expect("the fixture book holds the payer account"),
+        money(4)
+    );
     assert_eq!(
         t.distributions
             .iter()
@@ -179,18 +217,29 @@ fn ownership_distributes_retained_cash_once_with_exact_remainder_and_restart() {
         .income
         .iter()
         .find(|r| r.account == AccountId::Site(site()))
-        .unwrap();
+        .expect("the fixture holds the searched element");
     assert_eq!(issuer.net_income, money(0));
     assert_eq!(issuer.distributions_paid, money(7));
     assert_eq!(issuer.closing_retained_earnings, money(0));
     assert_eq!(
-        economy(&t.state).book.total_cash_and_reserves().unwrap(),
+        economy(&t.state)
+            .book
+            .total_cash_and_reserves()
+            .expect("the fixture book totals without overflow"),
         money(7)
     );
-    let next = advance_material_circuit(&t.state).unwrap();
-    let restored =
-        decode_material_circuit_state(&encode_material_circuit_state(&t.state).unwrap()).unwrap();
-    assert_eq!(next, advance_material_circuit(&restored).unwrap());
+    let next = babylon_material_circuit::advance_material_circuit(&t.state)
+        .expect("the authored material state advances one period");
+    let restored = babylon_material_circuit::decode_material_circuit_state(
+        &babylon_material_circuit::encode_material_circuit_state(&t.state)
+            .expect("the canonical material state encodes"),
+    )
+    .expect("the canonical material bytes decode");
+    assert_eq!(
+        next,
+        babylon_material_circuit::advance_material_circuit(&restored)
+            .expect("the authored material state advances one period")
+    );
     assert!(next.distributions.iter().all(|r| r.paid == money(0)));
 }
 #[test]
@@ -206,12 +255,13 @@ fn capital_contribution_swaps_cash_for_equity_without_income_or_equipment() {
             issuer_site_id: site(),
             amount: money(5),
         });
-    let t = advance_material_circuit(&state).unwrap();
+    let t = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
     assert_eq!(
         economy(&t.state)
             .book
             .cash(AccountId::Site(site()))
-            .unwrap(),
+            .expect("the fixture book holds the payer account"),
         money(5)
     );
     assert_eq!(
@@ -221,7 +271,7 @@ fn capital_contribution_swaps_cash_for_equity_without_income_or_equipment() {
             .equity
             .iter()
             .find(|r| r.owner == owner(2))
-            .unwrap()
+            .expect("the fixture holds the searched element")
             .amount,
         money(5)
     );
@@ -232,7 +282,7 @@ fn capital_contribution_swaps_cash_for_equity_without_income_or_equipment() {
             .accounts
             .iter()
             .find(|r| r.account == AccountId::Site(site()))
-            .unwrap()
+            .expect("the fixture holds the searched element")
             .contributed_capital,
         money(5)
     );
@@ -240,7 +290,10 @@ fn capital_contribution_swaps_cash_for_equity_without_income_or_equipment() {
     assert!(economy(&t.state).financial.contributions.is_empty());
     assert_eq!(t.state.capacity_supply, state.capacity_supply);
     assert_eq!(
-        economy(&t.state).book.total_cash_and_reserves().unwrap(),
+        economy(&t.state)
+            .book
+            .total_cash_and_reserves()
+            .expect("the fixture book totals without overflow"),
         money(5)
     );
 }
@@ -260,7 +313,8 @@ fn public_support_records_unfunded_budget_without_creating_cash_or_consumption()
         priority: 0,
         amount_per_period: money(5),
     });
-    let t = advance_material_circuit(&state).unwrap();
+    let t = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
     assert_eq!(t.public_budgets[0].requested, money(5));
     assert_eq!(t.public_budgets[0].paid, money(3));
     assert_eq!(t.public_budgets[0].unfunded, money(2));
@@ -268,12 +322,15 @@ fn public_support_records_unfunded_budget_without_creating_cash_or_consumption()
         economy(&t.state)
             .book
             .cash(AccountId::Household(household()))
-            .unwrap(),
+            .expect("the fixture book holds the payer account"),
         money(3)
     );
     assert!(t.household_consumption.is_empty());
     assert_eq!(
-        economy(&t.state).book.total_cash_and_reserves().unwrap(),
+        economy(&t.state)
+            .book
+            .total_cash_and_reserves()
+            .expect("the fixture book totals without overflow"),
         money(3)
     );
 }

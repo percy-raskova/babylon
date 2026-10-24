@@ -1340,3 +1340,8 @@ decisions:
     status: accepted
     date: '2026-10-06'
     file: ADR285_work_conserving_outbound_residuals.yaml
+  ADR286_google_rust_style_conformance:
+    title: Babylon Rust code follows the Google Rust Style Guide under a bounded exception register
+    status: accepted
+    date: '2026-10-23'
+    file: ADR286_google_rust_style_conformance.yaml

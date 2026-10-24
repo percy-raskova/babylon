@@ -13,22 +13,39 @@ use std::io::Write;
 use std::process::Command;
 
 use babylon_bsl::structural_verbs::CollectingSink;
-use babylon_client::dossier::{retained_page, verified_tick};
+use babylon_client::dossier::verified_tick;
 use babylon_client::ui::dossier_card::{
     ActiveCountyDossier, DossierCampaignId, DossierCardPlugin, DossierFetchState, DossierRefresh,
     InstalledDossier,
 };
+use babylon_persistence::identity::CampaignId;
 use babylon_persistence::material_runtime::DurableMaterialRuntime;
 use babylon_persistence::{
-    identity::CampaignId, install_reader_role, postgres_catalog::validate_connection_target,
-    ArchiveCitation, ArchiveDirtyBatch, ArchiveKnowledgeGrant, ArchiveMaterializeMode,
-    ArchivePageInput, ArchivePageRef, ArchiveSignal, ArchiveSubject, ArchiveSubjectKind,
-    ArchiveWorker, NullArchiveDossierProducer, ReaderRoleDisposition, SemanticArchiveStore,
+    install_reader_role, ArchiveCitation, ArchiveDirtyBatch, ArchiveKnowledgeGrant,
+    ArchiveMaterializeMode, ArchivePageInput, ArchivePageRef, ArchiveSignal, ArchiveSubject,
+    ArchiveSubjectKind, ArchiveWorker, NullArchiveDossierProducer, ReaderRoleDisposition,
+    SemanticArchiveStore,
 };
+
+use babylon_client::atlas::CountyAtlas;
+use babylon_client::dossier;
+use babylon_client::map::SelectedCounty;
+use babylon_persistence::material_runtime::MaterialRuntimeFoundation;
+use babylon_persistence::michigan_content::MichiganContentPreset;
+use babylon_persistence::michigan_material::MichiganDeliveryPreset;
+use babylon_persistence::michigan_material::MichiganMaterialCatalog;
+use babylon_persistence::postgres_catalog;
 use babylon_practice_contract::OrderedPracticeActionBatch;
+use bevy::asset::AssetPlugin;
 use bevy::prelude::*;
+use bevy::time::TimeUpdateStrategy;
+use postgres::Error;
 use postgres::{Config, NoTls};
 use serde_json::Value;
+use std::ffi::OsString;
+use std::time::Duration;
+use std::time::Instant;
+use std::time::SystemTime;
 use uuid::Uuid;
 
 const DSN_ENV: &str = "BABYLON_POSTGRES_TEST_DSN";
@@ -48,7 +65,8 @@ fn validated_base_config() -> Config {
     );
     assert!(std::env::var(CANARY_ENV).is_ok());
     let config: Config = dsn.parse().expect("runner DSN parses");
-    validate_connection_target(&config).expect("runner DSN validates as a loopback target");
+    postgres_catalog::validate_connection_target(&config)
+        .expect("runner DSN validates as a loopback target");
     config
 }
 
@@ -170,7 +188,7 @@ impl ConfinedLogin {
     const PASSWORD: &'static str = "readerconfined";
 
     fn create(base: &Config) -> Self {
-        let unique = std::time::SystemTime::now()
+        let unique = SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .expect("clock is after the epoch")
             .as_nanos();
@@ -203,7 +221,7 @@ impl ConfinedLogin {
         )
     }
 
-    fn try_cleanup(&self) -> Result<(), postgres::Error> {
+    fn try_cleanup(&self) -> Result<(), Error> {
         self.admin.connect(NoTls)?.batch_execute(&format!(
             "REVOKE SET ON PARAMETER event_triggers FROM {role}; DROP ROLE IF EXISTS {role}",
             role = self.name
@@ -276,17 +294,14 @@ impl ReaderTarget {
     }
 }
 
-fn current_foundation() -> babylon_persistence::material_runtime::MaterialRuntimeFoundation {
-    let catalog =
-        babylon_persistence::michigan_material::MichiganMaterialCatalog::from_defines_toml(
-            include_str!("../../../../content/scenarios/michigan/defines.toml"),
-        )
-        .unwrap();
-    babylon_persistence::michigan_content::MichiganContentPreset::new_campaign(
-        babylon_persistence::michigan_material::MichiganDeliveryPreset::Standard,
-    )
-    .create_foundation(&catalog)
-    .unwrap()
+fn current_foundation() -> MaterialRuntimeFoundation {
+    let catalog = MichiganMaterialCatalog::from_defines_toml(include_str!(
+        "../../../../content/scenarios/michigan/defines.toml"
+    ))
+    .expect("the authored input admits the derived value");
+    MichiganContentPreset::new_campaign(MichiganDeliveryPreset::Standard)
+        .create_foundation(&catalog)
+        .expect("the authored catalog builds the foundation")
 }
 
 fn county_subject() -> ArchiveSubject {
@@ -434,10 +449,19 @@ fn assert_archive_current_card(reader_dsn: &str, campaign: &str) -> Value {
     assert_eq!(card["scope"]["tick"], 2);
     assert_eq!(card["scope"]["campaign_id"], campaign);
     assert_eq!(
-        card["scope"]["tick_content_hash"].as_str().unwrap().len(),
+        card["scope"]["tick_content_hash"]
+            .as_str()
+            .expect("the JSON fixture field is a string")
+            .len(),
         64
     );
-    assert_eq!(card["page"]["content_sha256"].as_str().unwrap().len(), 64);
+    assert_eq!(
+        card["page"]["content_sha256"]
+            .as_str()
+            .expect("the JSON fixture field is a string")
+            .len(),
+        64
+    );
     assert_eq!(card["geoid"], "26163");
     assert_eq!(card["page"]["title"], "Wayne County");
     assert_eq!(card["durable_tick"], 2);
@@ -526,7 +550,7 @@ fn assert_pending_card_after_tick_three(reader_dsn: &str, campaign: &str) {
     );
 }
 
-struct ReaderEnvGuard(Option<std::ffi::OsString>);
+struct ReaderEnvGuard(Option<OsString>);
 impl ReaderEnvGuard {
     fn set(dsn: &str) -> Self {
         let prior = std::env::var_os(READER_DSN_ENV);
@@ -546,33 +570,27 @@ impl Drop for ReaderEnvGuard {
 fn held_county_app(target: &ReaderTarget) -> App {
     let campaign = target.campaign_id;
     let mut app = App::new();
-    app.add_plugins((MinimalPlugins, bevy::asset::AssetPlugin::default()));
+    app.add_plugins((MinimalPlugins, AssetPlugin::default()));
     app.add_plugins(babylon_client::map::MapPlugin);
     app.add_plugins(DossierCardPlugin);
     app.insert_resource(DossierCampaignId(campaign));
     app.insert_resource(babylon_client::observer::ObserverSession::new(campaign));
     install_held_observation(&mut app, target, 2);
-    app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
-        std::time::Duration::ZERO,
-    ));
+    app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::ZERO));
     app.update();
     let index = app
         .world()
-        .resource::<babylon_client::atlas::CountyAtlas>()
+        .resource::<CountyAtlas>()
         .index_of_fips("26163")
         .expect("Wayne County is in the atlas");
-    app.world_mut()
-        .resource_mut::<babylon_client::map::SelectedCounty>()
-        .0 = Some(index);
+    app.world_mut().resource_mut::<SelectedCounty>().0 = Some(index);
     app
 }
 
 fn install_held_observation(app: &mut App, target: &ReaderTarget, tick: u64) {
     use babylon_client::observer::ObserverSession;
     use babylon_client::observer_ui::ObserverFrame;
-    use babylon_persistence::{
-        observer_reader::ObserverEconomySnapshot, observer_reader::ObserverVisibility,
-    };
+    use babylon_persistence::observer_reader::{ObserverEconomySnapshot, ObserverVisibility};
 
     let hash = tick_content_hash(&target.config, target.campaign_id, tick);
     let content_hash = babylon_tick::hex(&hash);
@@ -598,7 +616,7 @@ fn install_held_observation(app: &mut App, target: &ReaderTarget, tick: u64) {
 }
 
 fn collect_held_card(app: &mut App) -> InstalledDossier {
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    let deadline = Instant::now() + Duration::from_secs(10);
     loop {
         app.update();
         if let Some(card) = &app.world().resource::<ActiveCountyDossier>().0 {
@@ -607,11 +625,8 @@ fn collect_held_card(app: &mut App) -> InstalledDossier {
         if let DossierFetchState::Failed(error) = app.world().resource::<DossierFetchState>() {
             panic!("held county read failed: {error}");
         }
-        assert!(
-            std::time::Instant::now() < deadline,
-            "held county read timed out"
-        );
-        std::thread::sleep(std::time::Duration::from_millis(5));
+        assert!(Instant::now() < deadline, "held county read timed out");
+        std::thread::sleep(Duration::from_millis(5));
     }
 }
 
@@ -664,8 +679,10 @@ fn assert_quiet_sweep_refreshes_held_card(
     assert_eq!(held_settled.read.durable_tick, 3);
     assert_eq!(held_settled.read.scope.tick(), 3);
     assert_eq!(verified_tick(&held_settled.read), Some(3));
-    let before_page = retained_page(&held_before.read).unwrap();
-    let settled_page = retained_page(&held_settled.read).unwrap();
+    let before_page = dossier::retained_page(&held_before.read)
+        .expect("the fixture call `retained_page` succeeds for the authored inputs");
+    let settled_page = dossier::retained_page(&held_settled.read)
+        .expect("the fixture call `retained_page` succeeds for the authored inputs");
     assert_eq!(settled_page.content_source.tick(), 2);
     assert_eq!(settled_page.atoms, before_page.atoms);
     assert_eq!(settled_page.changes.changes, before_page.changes.changes);
@@ -702,8 +719,8 @@ fn assert_pending_held_card(held_app: &mut App) {
     assert_eq!(held_pending.read.durable_tick, 3);
     assert_eq!(held_pending.read.scope.tick(), 3);
     assert_eq!(
-        retained_page(&held_pending.read)
-            .unwrap()
+        dossier::retained_page(&held_pending.read)
+            .expect("the fixture call `retained_page` succeeds for the authored inputs")
             .content_source
             .tick(),
         2
@@ -769,8 +786,8 @@ fn live_dossier_cli_reads_through_the_confined_reader_and_survives_restart() {
     let mut held_app = held_county_app(&target);
     let held_before = collect_held_card(&mut held_app);
     assert_eq!(
-        retained_page(&held_before.read)
-            .unwrap()
+        dossier::retained_page(&held_before.read)
+            .expect("the fixture call `retained_page` succeeds for the authored inputs")
             .content_source
             .tick(),
         2

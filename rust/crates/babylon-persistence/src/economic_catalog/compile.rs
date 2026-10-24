@@ -1,21 +1,22 @@
 //! One initialization compiler. It creates current engine rows; it does not
 //! adjudicate a period or retain another mutable state owner.
 use super::{CatalogAccounting, CatalogCapacity, EconomicCatalogError, EconomicOpening};
+use babylon_material_circuit::HouseholdTimeAccounting;
 use babylon_material_circuit::{
-    decode_material_circuit_state, encode_material_circuit_state, AccountId, AttendancePlan,
-    BacklogRow, CapacityRow, CapacitySupply, CashAccount, CircuitAccounting, CorridorCapacity,
-    FinalDemandPrincipal, FinancialInstitutions, HistoricalCostBook, HouseholdCohort,
-    HouseholdNeed, HouseholdStock, InputOutputCoefficient, InventoryRow, LaborCapacityRow,
-    LaborCoefficient, MaintenanceService, MaterialCircuitState, MemberLaborCapacityRow,
-    MerchantHandling, MerchantHandlingCoefficient, MonetaryBook, MonetaryCircuit, ProcessOutput,
-    ProductionCommitment, ProductionDemandPolicy, RecurringEconomy, RollingCapacitySupply,
-    SiteLogisticsNode, StockCarryingValue,
+    AccountId, AttendancePlan, BacklogRow, CapacityRow, CapacitySupply, CashAccount,
+    CircuitAccounting, CorridorCapacity, FinalDemandPrincipal, FinancialInstitutions,
+    HistoricalCostBook, HouseholdCohort, HouseholdNeed, HouseholdStock, InputOutputCoefficient,
+    InventoryRow, LaborCapacityRow, LaborCoefficient, MaintenanceService, MaterialCircuitState,
+    MemberLaborCapacityRow, MerchantHandling, MerchantHandlingCoefficient, MonetaryBook,
+    MonetaryCircuit, ProcessOutput, ProductionCommitment, ProductionDemandPolicy, RecurringEconomy,
+    RollingCapacitySupply, SiteLogisticsNode, StockCarryingValue,
 };
 use babylon_tick::material_staffing::{
     StaffingComposition, StaffingMemberNodeBinding, StaffingNodeBinding,
 };
 use std::collections::{BTreeMap, BTreeSet};
-type Result<T> = std::result::Result<T, EconomicCatalogError>;
+use std::result::Result as StdResult;
+type Result<T> = StdResult<T, EconomicCatalogError>;
 
 /// Ephemeral checked output. The foundation keeps one canonical material register.
 pub struct CompiledEconomicOpening {
@@ -35,9 +36,9 @@ impl EconomicOpening {
         append_logistics(self, &mut state)?;
         let (staffing, member_labor) = append_staffing(self, &mut state)?;
         state.accounting = compile_accounting(self, &state, member_labor)?;
-        let bytes = encode_material_circuit_state(&state)?;
+        let bytes = babylon_material_circuit::encode_material_circuit_state(&state)?;
         drop(state);
-        let state = decode_material_circuit_state(&bytes)?;
+        let state = babylon_material_circuit::decode_material_circuit_state(&bytes)?;
         drop(bytes);
         Ok(CompiledEconomicOpening { state, staffing })
     }
@@ -331,8 +332,7 @@ fn compile_accounting(
                 || !opening.policies.replenishment.is_empty()
                 || !opening.policies.household_purchases.is_empty()
                 || !opening.policies.service_inputs.is_empty()
-                || opening.policies.household_time
-                    != babylon_material_circuit::HouseholdTimeAccounting::NotModeled
+                || opening.policies.household_time != HouseholdTimeAccounting::NotModeled
                 || opening.sites.iter().any(|s| {
                     s.opening_cash.micro_units() != 0
                         || s.opening_stock
@@ -377,7 +377,7 @@ fn opening_books(opening: &EconomicOpening) -> Result<(MonetaryBook, HistoricalC
     }
     let mut cash = opening.institutional_cash.clone();
     let mut stocks = Vec::new();
-    for (owner, balance, inventory) in opening
+    let owners = opening
         .sites
         .iter()
         .map(|s| (AccountId::Site(s.site_id), s.opening_cash, &s.opening_stock))
@@ -387,8 +387,8 @@ fn opening_books(opening: &EconomicOpening) -> Result<(MonetaryBook, HistoricalC
                 h.opening_cash,
                 &h.opening_stock,
             )
-        }))
-    {
+        }));
+    for (owner, balance, inventory) in owners {
         cash.push(CashAccount {
             id: owner,
             cash: balance,

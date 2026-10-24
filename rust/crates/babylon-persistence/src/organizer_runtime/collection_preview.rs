@@ -1,5 +1,7 @@
 //! Captured rule and owned account facts. Protected eligibility is judged only at close.
-use super::{material_preview::decimal_i128, RuntimeSessionErrorCode};
+use super::material_preview::decimal_i128;
+use super::RuntimeSessionErrorCode;
+
 use babylon_material_circuit::{
     AccountId, CircuitAccounting, MaterialCircuitState, OrganizationAccountId,
 };
@@ -97,12 +99,13 @@ mod nonnegative_decimal_i128 {
 mod tests {
     use super::*;
     use crate::organizer_aid_fixture as fixture;
-    use babylon_practice_contract::{validate_organizer_config, OrganizerCollectionMandate};
+    use babylon_practice_contract;
+    use babylon_practice_contract::OrganizerCollectionMandate;
 
     #[test]
     fn collection_terms_project_captured_contributor_and_source_at_committed_period() {
         let session = fixture::authored_session(
-            crate::michigan_dynamic_hex_foundation().unwrap(),
+            crate::michigan_dynamic_hex_foundation().expect("the Michigan hex foundation builds"),
             fixture::config(),
             false,
             false,
@@ -111,7 +114,11 @@ mod tests {
             panic!("monetary captured fixture");
         };
         let labor_unit_id = economy.aid.mandates[0].labor_unit_id.as_bytes();
-        let mut config = session.material().organizer_config().unwrap().clone();
+        let mut config = session
+            .material()
+            .organizer_config()
+            .expect("the fixture register carries organizer config")
+            .clone();
         let binding = &config.aid_bindings[0];
         config.collection = Some(OrganizerCollectionMandate {
             mandate_id: [8; 32],
@@ -127,9 +134,12 @@ mod tests {
             protected_cash_floor_micros: 0,
             collection_hours: 2,
         });
-        validate_organizer_config(&config).unwrap();
+        babylon_practice_contract::validate_organizer_config(&config)
+            .expect("the authored organizer config passes validation");
         let state = session.material().state();
-        let terms = projection(state, &config, 0).unwrap().unwrap();
+        let terms = projection(state, &config, 0)
+            .expect("the fixture call `projection` succeeds for the authored inputs")
+            .expect("the nested fixture result is present");
         assert_eq!(terms.actor_id, config.controlled_actor_id);
         assert_eq!(terms.contributor_id, 201);
         assert_eq!(terms.contributor_label, "Fixture participant 201");
@@ -139,12 +149,20 @@ mod tests {
             projection(state, &config, 1),
             Err(RuntimeSessionErrorCode::OrganizerRefused)
         );
-        config.collection.as_mut().unwrap().actor_id += 1;
+        config
+            .collection
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow")
+            .actor_id += 1;
         assert_eq!(
             projection(state, &config, 0),
             Err(RuntimeSessionErrorCode::OrganizerRefused)
         );
-        config.collection.as_mut().unwrap().actor_id -= 1;
+        config
+            .collection
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow")
+            .actor_id -= 1;
         config
             .participants
             .retain(|participant| participant.contributor_id != 201);

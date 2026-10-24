@@ -1,20 +1,22 @@
 //! Rebuild geographic geometry only when the admitted campaign scope changes.
 use super::{
-    county_prism, hover_county, leave_county, relationships, scene_point, select_county,
-    CountySlab, MapGeometry, MapLegend, MapOrbit, ObserverMapCamera, BASE_HEIGHT, DATA_HEIGHT,
-    MAP_LAYER, METRES_TO_SCENE,
+    relationships, CountySlab, MapGeometry, MapLegend, MapOrbit, ObserverMapCamera, BASE_HEIGHT,
+    DATA_HEIGHT, MAP_LAYER, METRES_TO_SCENE,
 };
 use crate::atlas::CountyAtlas;
 use crate::decision_surface::{DeclaredSurface, SurfaceId};
 use crate::map::CountyMapScope;
 use crate::observer_theme as theme;
+use crate::observer_ui::ObserverFontRole;
 use crate::observer_ui::{ObserverUiState, ObserverViewport};
 use crate::production::PrimaryView;
+use crate::tessellate::Tessellation;
 use bevy::camera::visibility::RenderLayers;
 use bevy::ecs::system::SystemParam;
 use bevy::light::CascadeShadowConfigBuilder;
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
+use relationships::CountyAnchors;
 
 #[derive(Component)]
 pub(super) struct MapScene;
@@ -35,7 +37,7 @@ pub(super) fn setup_map(
     mut assets: SceneAssets,
     old: Query<Entity, With<MapScene>>,
     mut rendered: Local<Option<CountyMapScope>>,
-    mut triangles: Local<Option<crate::tessellate::Tessellation>>,
+    mut triangles: Local<Option<Tessellation>>,
 ) {
     if rendered.as_ref() == Some(&scope) {
         return;
@@ -44,7 +46,7 @@ pub(super) fn setup_map(
     for entity in &old {
         commands.entity(entity).despawn();
     }
-    commands.insert_resource(relationships::CountyAnchors::default());
+    commands.insert_resource(CountyAnchors::default());
     commands.insert_resource(MapGeometry::default());
     let counties = scope.counties();
     let Some(bounds) = scope_bounds(&atlas, counties) else {
@@ -53,9 +55,7 @@ pub(super) fn setup_map(
     let origin = bounds.center();
     let extent = bounds.size() * METRES_TO_SCENE;
     let triangles = triangles.get_or_insert_with(|| crate::tessellate::tessellate(&atlas));
-    commands.insert_resource(relationships::CountyAnchors::from_atlas(
-        &atlas, counties, origin,
-    ));
+    commands.insert_resource(CountyAnchors::from_atlas(&atlas, counties, origin));
     for &index in counties {
         spawn_county(&mut commands, &mut assets, &atlas, triangles, index, origin);
     }
@@ -80,14 +80,14 @@ fn spawn_county(
     commands: &mut Commands,
     assets: &mut SceneAssets,
     atlas: &CountyAtlas,
-    triangles: &crate::tessellate::Tessellation,
+    triangles: &Tessellation,
     index: usize,
     origin: Vec2,
 ) {
     let county = atlas
         .county(index)
         .expect("scope admits each atlas identity");
-    let (body, edge) = county_prism(atlas, triangles, index, origin);
+    let (body, edge) = super::county_prism(atlas, triangles, index, origin);
     let outline = assets.materials.add(StandardMaterial {
         base_color: theme::INK,
         unlit: true,
@@ -119,9 +119,9 @@ fn spawn_county(
             Pickable::IGNORE,
             DeclaredSurface::new(SurfaceId::ObserverShell),
         ))
-        .observe(hover_county)
-        .observe(leave_county)
-        .observe(select_county);
+        .observe(super::hover_county)
+        .observe(super::leave_county)
+        .observe(super::select_county);
 }
 
 fn spawn_map_scene(
@@ -199,7 +199,7 @@ fn spawn_map_scene(
             ..default()
         },
         TextColor(theme::PAPER),
-        crate::observer_ui::ObserverFontRole::Body,
+        ObserverFontRole::Body,
         Node {
             position_type: PositionType::Absolute,
             max_width: px(700),
@@ -234,7 +234,7 @@ fn spawn_insets(commands: &mut Commands, atlas: &CountyAtlas, counties: &[usize]
         let Some(bounds) = scope_bounds(atlas, &indices) else {
             continue;
         };
-        let anchor = scene_point(
+        let anchor = super::scene_point(
             Vec2::new(bounds.center().x, bounds.max.y),
             origin,
             BASE_HEIGHT,
@@ -246,7 +246,7 @@ fn spawn_insets(commands: &mut Commands, atlas: &CountyAtlas, counties: &[usize]
                 ..default()
             },
             TextColor(theme::PAPER),
-            crate::observer_ui::ObserverFontRole::Body,
+            ObserverFontRole::Body,
             Node {
                 position_type: PositionType::Absolute,
                 padding: UiRect::axes(px(6), px(4)),

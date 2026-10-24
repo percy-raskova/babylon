@@ -1,22 +1,35 @@
-use babylon_persistence::{
-    national_counties::national_county_reference,
-    national_household_allocation::{
-        allocate_households, HouseholdBudgetAllocation, HouseholdBudgetKey,
-    },
-    national_household_time_allocation::{allocate_household_time, HouseholdTimeAllocation},
-    national_households::national_household_reference,
-    national_resident_workforce::national_resident_workforce_reference,
+use babylon_persistence::national_counties;
+use babylon_persistence::national_household_allocation;
+use babylon_persistence::national_household_allocation::{
+    HouseholdBudgetAllocation, HouseholdBudgetKey,
 };
+use babylon_persistence::national_household_time_allocation;
+use babylon_persistence::national_household_time_allocation::HouseholdTimeAllocation;
+use babylon_persistence::national_households;
+use babylon_persistence::national_resident_workforce;
 
 #[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "`all_counties_account_for_eligible_nonworkers_without_creating_workers` keeps one authored boundary's fixture and assertions together"
+)]
 fn all_counties_account_for_eligible_nonworkers_without_creating_workers() {
-    let counties = national_county_reference().unwrap();
-    let household_source = national_household_reference().unwrap();
-    let workforce_source = national_resident_workforce_reference().unwrap();
-    let households =
-        allocate_households(counties, household_source, workforce_source, 1_000).unwrap();
+    let counties =
+        national_counties::national_county_reference().expect("the county reference fixture loads");
+    let household_source = national_households::national_household_reference()
+        .expect("the household reference fixture loads");
+    let workforce_source = national_resident_workforce::national_resident_workforce_reference()
+        .expect("the workforce reference fixture loads");
+    let households = national_household_allocation::allocate_households(
+        counties,
+        household_source,
+        workforce_source,
+        1_000,
+    )
+    .expect("the fixture households fit the authored cohorts");
     let before = households.clone();
-    let time = allocate_household_time(counties, &households).unwrap();
+    let time = national_household_time_allocation::allocate_household_time(counties, &households)
+        .expect("the fixture household time fits the authored budget");
     assert_eq!(time.counties().len(), 3_144);
     assert_eq!(time.county_source_sha256(), counties.artifact_sha256());
     assert_eq!(
@@ -31,9 +44,18 @@ fn all_counties_account_for_eligible_nonworkers_without_creating_workers() {
     let mut collective_count = 0;
     let mut eligible_without_workers = 0;
     for county in time.counties() {
-        let controls = households.county(county.county()).unwrap();
-        let source = counties.county(county.county()).unwrap().residents();
-        assert_eq!(time.county(county.county()).unwrap(), county);
+        let controls = households
+            .county(county.county())
+            .expect("the fixture catalog holds the addressed county");
+        let source = counties
+            .county(county.county())
+            .expect("the fixture catalog holds the addressed county")
+            .residents();
+        assert_eq!(
+            time.county(county.county())
+                .expect("the fixture catalog holds the addressed county"),
+            county
+        );
         assert_eq!(county.budgets().len(), controls.budgets().len());
         let mut county_totals = [0_u64; 4];
         for (row, budget) in county.budgets().iter().zip(controls.budgets()) {
@@ -59,19 +81,35 @@ fn all_counties_account_for_eligible_nonworkers_without_creating_workers() {
         }
         assert_eq!(
             county_totals[0],
-            source.age_16_plus_persons.estimate.value().unwrap()
+            source
+                .age_16_plus_persons
+                .estimate
+                .value()
+                .expect("the fixture value is present")
         );
         assert_eq!(
             county_totals[1],
-            source.armed_forces_persons.estimate.value().unwrap()
+            source
+                .armed_forces_persons
+                .estimate
+                .value()
+                .expect("the fixture value is present")
         );
         assert_eq!(
             county_totals[2],
-            source.not_in_labor_force_persons.estimate.value().unwrap()
+            source
+                .not_in_labor_force_persons
+                .estimate
+                .value()
+                .expect("the fixture value is present")
         );
         assert_eq!(
             county_totals[0] + county_totals[3],
-            source.population_persons.estimate.value().unwrap()
+            source
+                .population_persons
+                .estimate
+                .value()
+                .expect("the fixture value is present")
         );
         for (total, value) in totals.iter_mut().zip(county_totals) {
             *total += value;
@@ -84,7 +122,8 @@ fn all_counties_account_for_eligible_nonworkers_without_creating_workers() {
     assert_eq!(households, before);
     assert_eq!(
         time,
-        allocate_household_time(counties, &households).unwrap()
+        national_household_time_allocation::allocate_household_time(counties, &households)
+            .expect("the fixture household time fits the authored budget")
     );
 }
 

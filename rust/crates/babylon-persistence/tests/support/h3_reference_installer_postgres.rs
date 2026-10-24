@@ -1,15 +1,17 @@
 //! Live `PostgreSQL` contracts for the Michigan H3 reference-bundle installer.
 
-use super::{assert_lock_released, database_user, ScratchDatabase};
+use super::ScratchDatabase;
 use babylon_kernel::tick_content_hash::RefDigest;
+use babylon_persistence::h3_reference_cohort::H3ReferenceCohort;
+use babylon_persistence::postgres_catalog::CatalogError;
 use babylon_persistence::{
-    h3_reference_cohort::representative_h3_reference_cohort,
-    h3_reference_cohort::H3ReferenceCohort, install_current_schema,
-    install_michigan_h3_reference_bundle, michigan_dynamic_hex_foundation,
-    postgres_catalog::CatalogError, CurrentSchemaDisposition, CurrentSchemaError,
-    H3ReferenceInstallConflict, H3ReferenceInstallDisposition, H3ReferenceInstallError,
-    H3ReferenceInstallOperation, H3ReferenceInstallReport, SCHEMA_ADVISORY_LOCK_KEY,
+    CurrentSchemaDisposition, CurrentSchemaError, H3ReferenceInstallConflict,
+    H3ReferenceInstallDisposition, H3ReferenceInstallError, H3ReferenceInstallOperation,
+    H3ReferenceInstallReport, SCHEMA_ADVISORY_LOCK_KEY,
 };
+
+use babylon_persistence::h3_reference_cohort;
+use postgres::Row;
 use postgres::{Config, NoTls};
 
 const CLOSURE_COUNT: usize = 59_849;
@@ -90,7 +92,7 @@ fn verify_exact_epoch_install_and_retry(base: &Config, cohort: &H3ReferenceCohor
         .expect("an exact installed reference bundle must be idempotent");
     assert_exact_report(&retry, H3ReferenceInstallDisposition::AlreadyPresent, 0);
     assert_eq!(reference_snapshot(&config), before_retry);
-    assert_lock_released(&config);
+    super::assert_lock_released(&config);
     database.cleanup();
 }
 
@@ -117,7 +119,7 @@ fn verify_connection_failure_redacts_credentials(cohort: &H3ReferenceCohort) {
 }
 
 fn verify_fresh_refusal(base: &Config, cohort: &H3ReferenceCohort) {
-    let database = ScratchDatabase::empty(base, "h3_installer_fresh", database_user(base));
+    let database = ScratchDatabase::empty(base, "h3_installer_fresh", super::database_user(base));
     let config = database.config(base);
     let before = babylon_catalog_snapshot(&config);
     assert!(matches!(
@@ -125,19 +127,21 @@ fn verify_fresh_refusal(base: &Config, cohort: &H3ReferenceCohort) {
         Err(H3ReferenceInstallError::CurrentSchema(_))
     ));
     assert_eq!(babylon_catalog_snapshot(&config), before);
-    assert_lock_released(&config);
+    super::assert_lock_released(&config);
     database.cleanup();
 }
 
 fn verify_lock_refusal(base: &Config, cohort: &H3ReferenceCohort) {
     let (database, config) = exact_epoch_database(base, "h3_installer_lock");
-    let mut blocker = config.connect(NoTls).unwrap();
+    let mut blocker = config
+        .connect(NoTls)
+        .expect("the test database accepts the connection");
     let locked: bool = blocker
         .query_one(
             "SELECT pg_catalog.pg_try_advisory_lock($1)",
             &[&SCHEMA_ADVISORY_LOCK_KEY],
         )
-        .unwrap()
+        .expect("the seeded row is present exactly once")
         .get(0);
     assert!(locked);
     let before = reference_snapshot(&config);
@@ -151,11 +155,11 @@ fn verify_lock_refusal(base: &Config, cohort: &H3ReferenceCohort) {
             "SELECT pg_catalog.pg_advisory_unlock($1)",
             &[&SCHEMA_ADVISORY_LOCK_KEY],
         )
-        .unwrap()
+        .expect("the seeded row is present exactly once")
         .get(0);
     assert!(unlocked);
     drop(blocker);
-    assert_lock_released(&config);
+    super::assert_lock_released(&config);
     database.cleanup();
 }
 
@@ -167,8 +171,8 @@ fn verify_non_owner_refusal(
 ) {
     let database = ScratchDatabase::empty(base, "h3_installer_non_owner", owner);
     let owner_config = database.config_as(base, owner, owner_password);
-    let report =
-        install_current_schema(&owner_config).expect("database owner must establish current epoch");
+    let report = babylon_persistence::install_current_schema(&owner_config)
+        .expect("database owner must establish current epoch");
     assert_eq!(report.disposition, CurrentSchemaDisposition::Installed);
 
     let admin_config = database.config(base);
@@ -181,7 +185,7 @@ fn verify_non_owner_refusal(
         "non-owner installer call must refuse through the exact owner check"
     );
     assert_eq!(reference_snapshot(&admin_config), before);
-    assert_lock_released(&admin_config);
+    super::assert_lock_released(&admin_config);
     database.cleanup();
 }
 
@@ -197,7 +201,7 @@ fn verify_preflight_artifact_identity_conflict(base: &Config, cohort: &H3Referen
         })
     );
     assert_eq!(reference_snapshot(&config), before);
-    assert_lock_released(&config);
+    super::assert_lock_released(&config);
     database.cleanup();
 }
 
@@ -272,7 +276,7 @@ fn verify_installed_state_conflicts(base: &Config, cohort: &H3ReferenceCohort) {
         mutate_orphan_membership,
         H3ReferenceInstallConflict::Membership,
     );
-    assert_lock_released(&config);
+    super::assert_lock_released(&config);
     template.cleanup();
 }
 
@@ -303,26 +307,30 @@ fn verify_installed_mutation_refusal(
         conflicted,
         "conflict refusal must not write: {label}"
     );
-    assert_lock_released(&config);
+    super::assert_lock_released(&config);
     database.cleanup();
 }
 
 fn mutate_header_metadata(config: &Config) {
     let ref_digest = digest(REF_DIGEST_HEX);
-    let mut client = config.connect(NoTls).unwrap();
+    let mut client = config
+        .connect(NoTls)
+        .expect("the test database accepts the connection");
     let changed = client
         .execute(
             "UPDATE babylon_ref.h3_reference_cohort \
              SET artifact_name = 'changed_h3.parquet' WHERE ref_digest = $1",
             &[&ref_digest.as_bytes().as_slice()],
         )
-        .unwrap();
+        .expect("the test database applies the setup statement");
     assert_eq!(changed, 1);
 }
 
 fn mutate_header_count(config: &Config) {
     let ref_digest = digest(REF_DIGEST_HEX);
-    let mut client = config.connect(NoTls).unwrap();
+    let mut client = config
+        .connect(NoTls)
+        .expect("the test database accepts the connection");
     let changed = client
         .execute(
             "UPDATE babylon_ref.h3_reference_cohort \
@@ -331,13 +339,15 @@ fn mutate_header_count(config: &Config) {
              WHERE ref_digest = $1",
             &[&ref_digest.as_bytes().as_slice()],
         )
-        .unwrap();
+        .expect("the test database applies the setup statement");
     assert_eq!(changed, 1);
 }
 
 fn mutate_missing_membership(config: &Config) {
     let ref_digest = digest(REF_DIGEST_HEX);
-    let mut client = config.connect(NoTls).unwrap();
+    let mut client = config
+        .connect(NoTls)
+        .expect("the test database accepts the connection");
     let changed = client
         .execute(
             "DELETE FROM babylon_ref.h3_reference_membership \
@@ -347,13 +357,15 @@ fn mutate_missing_membership(config: &Config) {
              )",
             &[&ref_digest.as_bytes().as_slice()],
         )
-        .unwrap();
+        .expect("the test database applies the setup statement");
     assert_eq!(changed, 1);
 }
 
 fn mutate_membership_origin(config: &Config) {
     let ref_digest = digest(REF_DIGEST_HEX);
-    let mut client = config.connect(NoTls).unwrap();
+    let mut client = config
+        .connect(NoTls)
+        .expect("the test database accepts the connection");
     let changed = client
         .execute(
             "UPDATE babylon_ref.h3_reference_membership SET origin = 2 \
@@ -363,26 +375,30 @@ fn mutate_membership_origin(config: &Config) {
              )",
             &[&ref_digest.as_bytes().as_slice()],
         )
-        .unwrap();
+        .expect("the test database applies the setup statement");
     assert_eq!(changed, 1);
 }
 
 fn mutate_orphan_membership(config: &Config) {
     let ref_digest = digest(REF_DIGEST_HEX);
     let orphan_cell_id = 1_i64;
-    let mut client = config.connect(NoTls).unwrap();
-    let mut transaction = client.transaction().unwrap();
+    let mut client = config
+        .connect(NoTls)
+        .expect("the test database accepts the connection");
+    let mut transaction = client
+        .transaction()
+        .expect("the test database opens a transaction");
     let exists: bool = transaction
         .query_one(
             "SELECT EXISTS (SELECT 1 FROM babylon_ref.h3_cell WHERE cell_id = $1)",
             &[&orphan_cell_id],
         )
-        .unwrap()
+        .expect("the seeded row is present exactly once")
         .get(0);
     assert!(!exists);
     transaction
         .batch_execute("SET LOCAL session_replication_role = replica")
-        .unwrap();
+        .expect("the test database applies the schema statements");
     let deleted = transaction
         .execute(
             "DELETE FROM babylon_ref.h3_reference_membership \
@@ -392,7 +408,7 @@ fn mutate_orphan_membership(config: &Config) {
              )",
             &[&ref_digest.as_bytes().as_slice()],
         )
-        .unwrap();
+        .expect("the test database applies the setup statement");
     assert_eq!(deleted, 1);
     let inserted = transaction
         .execute(
@@ -400,13 +416,17 @@ fn mutate_orphan_membership(config: &Config) {
              VALUES ($1, $2, 2)",
             &[&ref_digest.as_bytes().as_slice(), &orphan_cell_id],
         )
-        .unwrap();
+        .expect("the test database applies the setup statement");
     assert_eq!(inserted, 1);
-    transaction.commit().unwrap();
+    transaction
+        .commit()
+        .expect("the fixture transaction commits");
 }
 
 fn mutate_r8_cell(config: &Config) {
-    let mut client = config.connect(NoTls).unwrap();
+    let mut client = config
+        .connect(NoTls)
+        .expect("the test database accepts the connection");
     let changed = client
         .execute(
             "DELETE FROM babylon_ref.h3_cell \
@@ -414,12 +434,14 @@ fn mutate_r8_cell(config: &Config) {
              WHERE resolution = 8 ORDER BY cell_id LIMIT 1)",
             &[],
         )
-        .unwrap();
+        .expect("the test database applies the setup statement");
     assert_eq!(changed, 1);
 }
 
 fn mutate_r8_product(config: &Config) {
-    let mut client = config.connect(NoTls).unwrap();
+    let mut client = config
+        .connect(NoTls)
+        .expect("the test database accepts the connection");
     let changed = client
         .execute(
             "UPDATE babylon_ref.reference_product \
@@ -427,19 +449,21 @@ fn mutate_r8_product(config: &Config) {
              WHERE product_code = 'h3_res8_identity'",
             &[],
         )
-        .unwrap();
+        .expect("the test database applies the setup statement");
     assert_eq!(changed, 1);
 }
 
 fn mutate_missing_r8_product(config: &Config) {
-    let mut client = config.connect(NoTls).unwrap();
+    let mut client = config
+        .connect(NoTls)
+        .expect("the test database accepts the connection");
     let changed = client
         .execute(
             "DELETE FROM babylon_ref.reference_product \
              WHERE product_code = 'h3_res8_identity'",
             &[],
         )
-        .unwrap();
+        .expect("the test database applies the setup statement");
     assert_eq!(changed, 1);
 }
 
@@ -470,16 +494,18 @@ fn assert_exact_report(
 }
 
 fn exact_epoch_database(base: &Config, label: &str) -> (ScratchDatabase, Config) {
-    let database = ScratchDatabase::empty(base, label, database_user(base));
+    let database = ScratchDatabase::empty(base, label, super::database_user(base));
     let config = database.config(base);
-    let report =
-        install_current_schema(&config).expect("fresh database must reach the exact current epoch");
+    let report = babylon_persistence::install_current_schema(&config)
+        .expect("fresh database must reach the exact current epoch");
     assert_eq!(report.disposition, CurrentSchemaDisposition::Installed);
     (database, config)
 }
 
 fn seed_conflicting_artifact_identity(config: &Config) {
-    let mut client = config.connect(NoTls).unwrap();
+    let mut client = config
+        .connect(NoTls)
+        .expect("the test database accepts the connection");
     client
         .batch_execute(
             "INSERT INTO babylon_ref.h3_reference_cohort ( \
@@ -495,11 +521,13 @@ fn seed_conflicting_artifact_identity(config: &Config) {
                  decode(repeat('66', 32), 'hex'), 1, 0, 1 \
              )",
         )
-        .unwrap();
+        .expect("the test database applies the schema statements");
 }
 
 fn reference_snapshot(config: &Config) -> ReferenceSnapshot {
-    let mut client = config.connect(NoTls).unwrap();
+    let mut client = config
+        .connect(NoTls)
+        .expect("the test database accepts the connection");
     let counts = client
         .query_one(
             "SELECT (SELECT pg_catalog.count(*) FROM babylon_ref.h3_cell), \
@@ -512,9 +540,13 @@ fn reference_snapshot(config: &Config) -> ReferenceSnapshot {
                     (SELECT pg_catalog.count(*) FROM babylon_ref.reference_product)",
             &[],
         )
-        .unwrap();
+        .expect("the seeded row is present exactly once");
     let cohort_count = counts.get(1);
-    assert!(cohort_count <= i64::try_from(MAX_COHORT_SNAPSHOT_ROWS).unwrap());
+    assert!(
+        cohort_count
+            <= i64::try_from(MAX_COHORT_SNAPSHOT_ROWS)
+                .expect("the fixture value fits the target range")
+    );
     let rows = client
         .query(
             "SELECT pg_catalog.encode(ref_digest, 'hex'), format_version, artifact_name, \
@@ -528,8 +560,11 @@ fn reference_snapshot(config: &Config) -> ReferenceSnapshot {
              FROM babylon_ref.h3_reference_cohort ORDER BY ref_digest LIMIT 2",
             &[],
         )
-        .unwrap();
-    assert_eq!(i64::try_from(rows.len()).unwrap(), cohort_count);
+        .expect("the seeded rows are readable");
+    assert_eq!(
+        i64::try_from(rows.len()).expect("the fixture value fits the target range"),
+        cohort_count
+    );
     let product_count: i64 = counts.get(5);
     assert!(product_count <= 1);
     let products = client
@@ -541,8 +576,11 @@ fn reference_snapshot(config: &Config) -> ReferenceSnapshot {
              FROM babylon_ref.reference_product ORDER BY product_code LIMIT 2",
             &[],
         )
-        .unwrap();
-    assert_eq!(i64::try_from(products.len()).unwrap(), product_count);
+        .expect("the seeded rows are readable");
+    assert_eq!(
+        i64::try_from(products.len()).expect("the fixture value fits the target range"),
+        product_count
+    );
     ReferenceSnapshot {
         h3_cell_count: counts.get(0),
         cohort_count,
@@ -559,7 +597,7 @@ fn reference_snapshot(config: &Config) -> ReferenceSnapshot {
     }
 }
 
-fn cohort_snapshot(row: &postgres::Row) -> CohortSnapshot {
+fn cohort_snapshot(row: &Row) -> CohortSnapshot {
     CohortSnapshot {
         ref_digest: row.get(0),
         format_version: row.get(1),
@@ -577,7 +615,7 @@ fn cohort_snapshot(row: &postgres::Row) -> CohortSnapshot {
     }
 }
 
-fn product_snapshot(row: &postgres::Row) -> ProductSnapshot {
+fn product_snapshot(row: &Row) -> ProductSnapshot {
     ProductSnapshot {
         ref_digest: row.get(0),
         product_code: row.get(1),
@@ -632,8 +670,11 @@ fn expected_installed_snapshot() -> ReferenceSnapshot {
 }
 
 fn babylon_catalog_snapshot(config: &Config) -> Vec<(String, String)> {
-    let mut client = config.connect(NoTls).unwrap();
-    let limit = i64::try_from(MAX_EPOCH_CATALOG_ROWS + 1).unwrap();
+    let mut client = config
+        .connect(NoTls)
+        .expect("the test database accepts the connection");
+    let limit =
+        i64::try_from(MAX_EPOCH_CATALOG_ROWS + 1).expect("the fixture value fits the target range");
     let rows = client
         .query(
             "SELECT object_kind, object_name FROM ( \
@@ -651,7 +692,7 @@ fn babylon_catalog_snapshot(config: &Config) -> Vec<(String, String)> {
              ) AS objects ORDER BY object_kind, object_name LIMIT $1",
             &[&limit],
         )
-        .unwrap();
+        .expect("the seeded rows are readable");
     assert!(rows.len() <= MAX_EPOCH_CATALOG_ROWS);
     rows.iter()
         .take(MAX_EPOCH_CATALOG_ROWS)
@@ -660,7 +701,7 @@ fn babylon_catalog_snapshot(config: &Config) -> Vec<(String, String)> {
 }
 
 pub(super) fn representative_cohort() -> H3ReferenceCohort {
-    representative_h3_reference_cohort()
+    h3_reference_cohort::representative_h3_reference_cohort()
         .expect("the sole checked-in source fixture must validate")
         .clone()
 }
@@ -669,9 +710,9 @@ pub(super) fn install_reference_bundle(
     config: &Config,
     cohort: &H3ReferenceCohort,
 ) -> Result<H3ReferenceInstallReport, H3ReferenceInstallError> {
-    let foundation = michigan_dynamic_hex_foundation()
+    let foundation = babylon_persistence::michigan_dynamic_hex_foundation()
         .expect("the sole checked Michigan foundation fixture must validate");
-    install_michigan_h3_reference_bundle(config, cohort, foundation)
+    babylon_persistence::install_michigan_h3_reference_bundle(config, cohort, foundation)
 }
 
 fn digest(text: &str) -> RefDigest {
@@ -679,7 +720,8 @@ fn digest(text: &str) -> RefDigest {
     let mut bytes = [0_u8; 32];
     for (index, byte) in bytes.iter_mut().enumerate().take(32) {
         let offset = index * 2;
-        *byte = u8::from_str_radix(&text[offset..offset + 2], 16).unwrap();
+        *byte = u8::from_str_radix(&text[offset..offset + 2], 16)
+            .expect("the authored digits parse as the declared type");
     }
     RefDigest::from_bytes(bytes)
 }

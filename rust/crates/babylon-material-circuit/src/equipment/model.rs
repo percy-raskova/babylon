@@ -1,4 +1,5 @@
 //! Captured productive instruments, finite installation work and purchase intent.
+use crate::InstalledProcessCapacity;
 use crate::{GoodId, ProcessId, SiteId, UnitId};
 use babylon_kernel::currency::Currency;
 
@@ -9,7 +10,7 @@ crate::model::identity_type!(InstallationId);
 /// A deliberately fixed control or the actual equipment owner, never both.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RollingProcessSupply {
-    CapturedNameplate(Vec<crate::InstalledProcessCapacity>),
+    CapturedNameplate(Vec<InstalledProcessCapacity>),
     Equipment(Box<ProductiveEquipment>),
 }
 

@@ -1,10 +1,10 @@
 //! Reopening admits supplied artifacts and dependencies, without reacquiring files.
-use babylon_persistence::{
-    national_cohorts::NationalCohortReference, national_counties::NationalCountyReference,
-    national_households::NationalHouseholdReference,
-    national_resident_workforce::NationalResidentWorkforceReference,
-    national_transport::NationalTransportReference, world_reference::WorldReference,
-};
+use babylon_persistence::national_cohorts::NationalCohortReference;
+use babylon_persistence::national_counties::NationalCountyReference;
+use babylon_persistence::national_households::NationalHouseholdReference;
+use babylon_persistence::national_resident_workforce::NationalResidentWorkforceReference;
+use babylon_persistence::national_transport::NationalTransportReference;
+use babylon_persistence::world_reference::WorldReference;
 
 const COUNTIES: &[u8] = include_bytes!(
     "../../../../src/babylon/data/reference/economy/national_county_reference_2024.csv.gz"
@@ -38,20 +38,23 @@ const TRANSPORT_SOURCES: &[u8] =
 
 #[test]
 fn explicit_captured_dependencies_reproduce_all_current_source_dimensions() {
-    let counties = NationalCountyReference::decode_pinned(COUNTIES).unwrap();
-    let cohorts = NationalCohortReference::decode_captured(COHORTS, MAPPING, &counties).unwrap();
-    let residents =
-        NationalResidentWorkforceReference::decode_captured(RESIDENTS, &counties).unwrap();
-    let households = NationalHouseholdReference::decode_captured(HOUSEHOLDS, &counties).unwrap();
-    let world =
-        WorldReference::decode_captured(POPULATION, TRADE, MEMBERSHIP, POPULATION_SCOPE).unwrap();
+    let counties =
+        NationalCountyReference::decode_pinned(COUNTIES).expect("the pinned vector bytes decode");
+    let cohorts = NationalCohortReference::decode_captured(COHORTS, MAPPING, &counties)
+        .expect("the captured bytes decode");
+    let residents = NationalResidentWorkforceReference::decode_captured(RESIDENTS, &counties)
+        .expect("the captured bytes decode");
+    let households = NationalHouseholdReference::decode_captured(HOUSEHOLDS, &counties)
+        .expect("the captured bytes decode");
+    let world = WorldReference::decode_captured(POPULATION, TRADE, MEMBERSHIP, POPULATION_SCOPE)
+        .expect("the captured bytes decode");
     let transport = NationalTransportReference::decode_captured(
         TRANSPORT,
         TRANSPORT_POLICY,
         TRANSPORT_SOURCES,
         &counties,
     )
-    .unwrap();
+    .expect("the captured bytes decode");
     assert_eq!(counties.counties().len(), 3144);
     assert_eq!(cohorts.groups().len(), 59058);
     assert_eq!(cohorts.admitted_cohorts().count(), 57238);
@@ -61,7 +64,11 @@ fn explicit_captured_dependencies_reproduce_all_current_source_dimensions() {
         households
             .counties()
             .iter()
-            .map(|c| c.total_households().estimate.value().unwrap())
+            .map(|c| c
+                .total_households()
+                .estimate
+                .value()
+                .expect("the fixture value is present"))
             .sum::<u64>(),
         129_227_496
     );
@@ -72,7 +79,8 @@ fn explicit_captured_dependencies_reproduce_all_current_source_dimensions() {
 
 #[test]
 fn changed_or_absent_captured_policy_never_uses_compiled_defaults() {
-    let counties = NationalCountyReference::decode_pinned(COUNTIES).unwrap();
+    let counties =
+        NationalCountyReference::decode_pinned(COUNTIES).expect("the pinned vector bytes decode");
     assert!(NationalCohortReference::decode_captured(COHORTS, b"{}", &counties).is_err());
     assert!(WorldReference::decode_captured(POPULATION, TRADE, b"{}", POPULATION_SCOPE).is_err());
     assert!(WorldReference::decode_captured(POPULATION, TRADE, MEMBERSHIP, b"{}").is_err());

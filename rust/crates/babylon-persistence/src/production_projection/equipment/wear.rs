@@ -1,6 +1,6 @@
 use super::{
-    add, add_cost, AssetBook, Definitions, MaterialCircuitState, MaterialTickReceipts,
-    ProductionProjectionError, ProductiveEquipment, Result,
+    AssetBook, Definitions, MaterialCircuitState, MaterialTickReceipts, ProductionProjectionError,
+    ProductiveEquipment, Result,
 };
 use babylon_material_circuit::{
     AccountId, EquipmentAssetId, EquipmentCohortId, InstalledEquipmentCohort,
@@ -47,8 +47,8 @@ pub(super) fn reconcile(
         } else {
             assets.insert(key, (r.site_id, r.closing_carrying));
         }
-        add(&mut used, r.process_id, r.used_batches)?;
-        add_cost(&mut costs, AccountId::Site(r.site_id), r.carried_to_output)?;
+        super::add(&mut used, r.process_id, r.used_batches)?;
+        super::add_cost(&mut costs, AccountId::Site(r.site_id), r.carried_to_output)?;
     }
     cohorts.retain(|_, r| r.remaining_service_batches > 0);
     let expected: BTreeMap<_, _> = receipt

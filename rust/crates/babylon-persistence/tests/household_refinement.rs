@@ -1,33 +1,39 @@
-use babylon_persistence::{
-    national_cohorts::national_cohort_reference,
-    national_economy::NationalGamePolicy,
-    national_household_allocation::HouseholdBudgetKey,
-    national_household_refinement::{
-        HouseholdLeafMargins, HouseholdRefinementError, HouseholdRefinementSpec,
-    },
-    national_resident_allocation::allocate_home_county,
+use babylon_persistence::national_economy::NationalGamePolicy;
+use babylon_persistence::national_household_allocation::HouseholdBudgetKey;
+use babylon_persistence::national_household_refinement::{
+    HouseholdLeafMargins, HouseholdRefinementError, HouseholdRefinementSpec,
 };
-use babylon_persistence::{
-    national_counties::national_county_reference,
-    national_household_allocation::allocate_households,
-    national_household_refinement::refine_households,
-    national_household_time_allocation::allocate_household_time,
-    national_households::national_household_reference,
-    national_resident_workforce::national_resident_workforce_reference,
-};
+
+use babylon_material_circuit::FinalDemandPrincipalId;
+use babylon_persistence::national_cohorts;
+use babylon_persistence::national_counties;
+use babylon_persistence::national_household_allocation;
+use babylon_persistence::national_household_refinement;
+use babylon_persistence::national_household_time_allocation;
+use babylon_persistence::national_households;
+use babylon_persistence::national_resident_allocation;
+use babylon_persistence::national_resident_allocation::AssignedResidentMember;
+use babylon_persistence::national_resident_allocation::ResidentAttendanceMode;
+use babylon_persistence::national_resident_allocation::ResidentWorkplaceAllocation;
+use babylon_persistence::national_resident_workforce;
 
 #[test]
 fn empty_refinements_preserve_every_source_budget_and_identity() {
-    let counties = national_county_reference().unwrap();
-    let households = allocate_households(
+    let counties =
+        national_counties::national_county_reference().expect("the county reference fixture loads");
+    let households = national_household_allocation::allocate_households(
         counties,
-        national_household_reference().unwrap(),
-        national_resident_workforce_reference().unwrap(),
+        national_households::national_household_reference()
+            .expect("the household reference fixture loads"),
+        national_resident_workforce::national_resident_workforce_reference()
+            .expect("the workforce reference fixture loads"),
         1000,
     )
-    .unwrap();
-    let time = allocate_household_time(counties, &households).unwrap();
-    let leaves = refine_households(&households, &time, &[]).unwrap();
+    .expect("the fixture households fit the authored cohorts");
+    let time = national_household_time_allocation::allocate_household_time(counties, &households)
+        .expect("the fixture household time fits the authored budget");
+    let leaves = national_household_refinement::refine_households(&households, &time, &[])
+        .expect("the fixture household refinement succeeds");
     assert_eq!(
         leaves.leaves().len(),
         households
@@ -50,18 +56,28 @@ fn empty_refinements_preserve_every_source_budget_and_identity() {
 }
 
 #[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "one scenario asserts the complete source-margin trajectory"
+)]
 fn designed_wayne_child_preserves_source_margins_and_sparse_workplace_mode_totals() {
-    let counties = national_county_reference().unwrap();
-    let workforce = national_resident_workforce_reference().unwrap();
-    let budgets = allocate_households(
+    let counties =
+        national_counties::national_county_reference().expect("the county reference fixture loads");
+    let workforce = national_resident_workforce::national_resident_workforce_reference()
+        .expect("the workforce reference fixture loads");
+    let budgets = national_household_allocation::allocate_households(
         counties,
-        national_household_reference().unwrap(),
+        national_households::national_household_reference()
+            .expect("the household reference fixture loads"),
         workforce,
         1000,
     )
-    .unwrap();
-    let time = allocate_household_time(counties, &budgets).unwrap();
-    let county = "26163".parse().unwrap();
+    .expect("the fixture households fit the authored cohorts");
+    let time = national_household_time_allocation::allocate_household_time(counties, &budgets)
+        .expect("the fixture household time fits the authored budget");
+    let county = "26163"
+        .parse()
+        .expect("the authored literal parses as the declared type");
     let spec = HouseholdRefinementSpec {
         county,
         parent_key: HouseholdBudgetKey::EarningNonowner,
@@ -77,67 +93,81 @@ fn designed_wayne_child_preserves_source_margins_and_sparse_workplace_mode_total
             under_16: 1,
         },
     };
-    let leaves = refine_households(&budgets, &time, std::slice::from_ref(&spec)).unwrap();
-    let empty = refine_households(&budgets, &time, &[]).unwrap();
+    let leaves = national_household_refinement::refine_households(
+        &budgets,
+        &time,
+        std::slice::from_ref(&spec),
+    )
+    .expect("the fixture household refinement succeeds");
+    let empty = national_household_refinement::refine_households(&budgets, &time, &[])
+        .expect("the fixture household refinement succeeds");
     assert_eq!(leaves.leaves().len(), empty.leaves().len() + 1);
     assert_eq!(
-        refine_households(&budgets, &time, &[spec.clone(), spec.clone()]),
+        national_household_refinement::refine_households(
+            &budgets,
+            &time,
+            &[spec.clone(), spec.clone()]
+        ),
         Err(HouseholdRefinementError::Duplicate)
     );
     let mut zero = spec.clone();
     zero.child_tag = [0; 32];
     assert_eq!(
-        refine_households(&budgets, &time, &[zero]),
+        national_household_refinement::refine_households(&budgets, &time, &[zero]),
         Err(HouseholdRefinementError::Identity)
     );
     let mut owner = spec.clone();
     owner.parent_key = HouseholdBudgetKey::EarningOwner;
     assert_eq!(
-        refine_households(&budgets, &time, &[owner]),
+        national_household_refinement::refine_households(&budgets, &time, &[owner]),
         Err(HouseholdRefinementError::ParentScope)
     );
     let mut unknown = spec.clone();
-    unknown.county = "72001".parse().unwrap();
+    unknown.county = "72001"
+        .parse()
+        .expect("the authored literal parses as the declared type");
     assert_eq!(
-        refine_households(&budgets, &time, &[unknown]),
+        national_household_refinement::refine_households(&budgets, &time, &[unknown]),
         Err(HouseholdRefinementError::SourceRoster)
     );
     let policy = NationalGamePolicy::parse(include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../../../content/scenarios/national/defines.toml"
     )))
-    .unwrap();
-    let base = allocate_home_county(
+    .expect("the authored literal parses as the declared type");
+    let base = national_resident_allocation::allocate_home_county(
         counties,
-        national_cohort_reference().unwrap(),
+        national_cohorts::national_cohort_reference().expect("the cohort reference fixture loads"),
         workforce,
         &budgets,
         &empty,
         &policy,
     )
-    .unwrap();
-    let refined = allocate_home_county(
+    .expect("the fixture home county allocation fits");
+    let refined = national_resident_allocation::allocate_home_county(
         counties,
-        national_cohort_reference().unwrap(),
+        national_cohorts::national_cohort_reference().expect("the cohort reference fixture loads"),
         workforce,
         &budgets,
         &leaves,
         &policy,
     )
-    .unwrap();
-    let other_budgets = allocate_households(
+    .expect("the fixture home county allocation fits");
+    let other_budgets = national_household_allocation::allocate_households(
         counties,
-        national_household_reference().unwrap(),
+        national_households::national_household_reference()
+            .expect("the household reference fixture loads"),
         workforce,
         2000,
     )
-    .unwrap();
+    .expect("the fixture households fit the authored cohorts");
     let mut other_policy = policy.clone();
     other_policy.households.private_owner_households_bps = 2000;
     assert_eq!(
-        allocate_home_county(
+        national_resident_allocation::allocate_home_county(
             counties,
-            national_cohort_reference().unwrap(),
+            national_cohorts::national_cohort_reference()
+                .expect("the cohort reference fixture loads"),
             workforce,
             &other_budgets,
             &leaves,
@@ -150,20 +180,25 @@ fn designed_wayne_child_preserves_source_margins_and_sparse_workplace_mode_total
 }
 
 fn assert_sparse_workplace_intersections(
-    base: &babylon_persistence::national_resident_allocation::ResidentWorkplaceAllocation,
-    refined: &babylon_persistence::national_resident_allocation::ResidentWorkplaceAllocation,
-    child: babylon_material_circuit::FinalDemandPrincipalId,
+    base: &ResidentWorkplaceAllocation,
+    refined: &ResidentWorkplaceAllocation,
+    child: FinalDemandPrincipalId,
 ) {
     let mut child_totals = (0, 0);
     for (before, after) in base.workplaces.iter().zip(&refined.workplaces) {
         assert_eq!(before.target, after.target);
         for mode in [
-            babylon_persistence::national_resident_allocation::ResidentAttendanceMode::Employee,
-            babylon_persistence::national_resident_allocation::ResidentAttendanceMode::WorkingOwner,
-            babylon_persistence::national_resident_allocation::ResidentAttendanceMode::UnpaidFamily,
+            ResidentAttendanceMode::Employee,
+            ResidentAttendanceMode::WorkingOwner,
+            ResidentAttendanceMode::UnpaidFamily,
         ] {
-            let totals=|rows:&[babylon_persistence::national_resident_allocation::AssignedResidentMember]| rows.iter()
-                .filter(|row|row.mode==mode).fold((0,0),|(e,r),row|(e+row.seed.employed,r+row.seed.reserve));
+            let totals = |rows: &[AssignedResidentMember]| {
+                rows.iter()
+                    .filter(|row| row.mode == mode)
+                    .fold((0, 0), |(e, r), row| {
+                        (e + row.seed.employed, r + row.seed.reserve)
+                    })
+            };
             assert_eq!(totals(&before.members), totals(&after.members));
         }
         for row in &after.members {

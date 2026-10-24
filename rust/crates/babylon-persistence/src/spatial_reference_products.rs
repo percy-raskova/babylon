@@ -4,9 +4,15 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
 use babylon_kernel::tick_content_hash::RefDigest;
-use babylon_kernel::{content_digest::sha256_of, H3CellId};
+use babylon_kernel::H3CellId;
 
-use crate::{h3_reference_cohort::H3ReferenceCohort, h3_reference_cohort::H3ReferenceOrigin};
+use crate::h3_reference_cohort::H3ReferenceCellRow;
+use crate::h3_reference_cohort::{H3ReferenceCohort, H3ReferenceOrigin};
+use babylon_kernel::content_digest;
+use babylon_tick::h3_runtime::MichiganDynamicHexFoundation;
+use babylon_tick::h3_runtime::MichiganDynamicHexFoundationRow;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 
 const FIXTURE_PARTS: [&[u8]; 3] = [
     include_bytes!("fixtures/spatial_reference_products_v1.part-00.bin"),
@@ -394,7 +400,7 @@ pub enum SpatialReferenceProductsError {
 }
 
 impl std::fmt::Display for SpatialReferenceProductsError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> FmtResult {
         write!(formatter, "invalid spatial reference products: {self:?}")
     }
 }
@@ -422,13 +428,13 @@ impl SpatialReferenceProducts {
     /// Refuses changed bytes, source-cohort disagreement or invalid spatial rows.
     pub fn decode_captured(
         bytes: &[u8],
-        detail: &babylon_tick::h3_runtime::MichiganDynamicHexFoundation,
+        detail: &MichiganDynamicHexFoundation,
     ) -> Result<Self, SpatialReferenceProductsError> {
         let cells = detail
             .rows()
             .iter()
             .filter(|row| row.cell_id().resolution() == 7)
-            .map(babylon_tick::h3_runtime::MichiganDynamicHexFoundationRow::cell_id)
+            .map(MichiganDynamicHexFoundationRow::cell_id)
             .collect();
         decode_products(
             bytes,
@@ -443,7 +449,7 @@ fn decode_products(
     expected_reference: RefDigest,
     direct_cells: &BTreeSet<H3CellId>,
 ) -> Result<SpatialReferenceProducts, SpatialReferenceProductsError> {
-    if sha256_of(fixture) != EXPECTED_FIXTURE_DIGEST {
+    if content_digest::sha256_of(fixture) != EXPECTED_FIXTURE_DIGEST {
         return Err(SpatialReferenceProductsError::FixtureDigest);
     }
     let mut reader = FixtureReader::new(fixture);
@@ -558,7 +564,7 @@ fn direct_resolution_seven_cells(cohort: &H3ReferenceCohort) -> BTreeSet<H3CellI
         .rows()
         .iter()
         .filter(|row| row.resolution() == 7 && row.origin() == H3ReferenceOrigin::Direct)
-        .map(crate::h3_reference_cohort::H3ReferenceCellRow::cell_id)
+        .map(H3ReferenceCellRow::cell_id)
         .collect()
 }
 

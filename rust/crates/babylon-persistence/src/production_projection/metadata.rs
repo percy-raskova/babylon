@@ -4,10 +4,13 @@ use crate::economic_catalog::{
     CommodityLabel, EconomicOpening, EconomicProjectionView, EconomicSiteSeed, EconomicSourceView,
     ProcessInstallation, RecipeTemplate, RecipeTemplateId,
 };
+use crate::michigan_material::MichiganMaterialCatalog;
+use babylon_material_circuit::CorridorId;
 use babylon_material_circuit::{GoodId, ProcessId, SiteId, SupplierRoute, UnitId};
 use std::collections::BTreeMap;
+use std::result::Result as StdResult;
 
-type Result<T> = std::result::Result<T, ProductionProjectionError>;
+type Result<T> = StdResult<T, ProductionProjectionError>;
 pub(super) type RelationKey = (SiteId, SiteId, GoodId, UnitId);
 
 /// One borrowed index per projection, avoiding a source-table scan per actor.
@@ -24,7 +27,7 @@ pub(crate) struct Metadata<'a> {
         ),
     >,
     pub routes: BTreeMap<RelationKey, &'a SupplierRoute>,
-    capacities: BTreeMap<babylon_material_circuit::CorridorId, String>,
+    capacities: BTreeMap<CorridorId, String>,
 }
 impl<'a> Metadata<'a> {
     pub fn new(view: EconomicProjectionView<'a>) -> Result<Self> {
@@ -114,10 +117,10 @@ impl<'a> Metadata<'a> {
             .copied()
             .ok_or(ProductionProjectionError::Content)
     }
-    pub fn capacity_label(&self, id: babylon_material_circuit::CorridorId) -> Option<String> {
+    pub fn capacity_label(&self, id: CorridorId) -> Option<String> {
         self.capacities.get(&id).cloned()
     }
-    pub fn michigan(&self) -> Option<&'a crate::michigan_material::MichiganMaterialCatalog> {
+    pub fn michigan(&self) -> Option<&'a MichiganMaterialCatalog> {
         match self.view.sources {
             EconomicSourceView::MichiganControl { catalog, .. } => Some(catalog),
             EconomicSourceView::National { .. } => None,

@@ -7,7 +7,9 @@
 use std::collections::BTreeMap;
 
 use babylon_bsl::probability::FiniteKernel;
-use babylon_bsl::{reader::read, reader::Atom, reader::SExpr};
+use babylon_bsl::reader::{read, Atom, SExpr};
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 
 /// One borrowed permanent kernel-slot reservation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -118,7 +120,7 @@ pub enum KernelSlotLedgerError {
 }
 
 impl std::fmt::Display for KernelSlotLedgerError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> FmtResult {
         match self {
             Self::OrdinalCapacity { position } => write!(
                 formatter,
@@ -240,6 +242,11 @@ pub enum KernelSlotReservationMatch<'a> {
 }
 
 /// Validate one complete append-only reservation ledger.
+///
+/// # Errors
+///
+/// Returns [`KernelSlotLedgerError`] when a row ordinal, a sample binding, or a
+/// repeated reservation breaks the append-only ledger contract.
 pub fn validate_kernel_slot_ledger(
     reservations: &[KernelSlotReservationRef<'_>],
 ) -> Result<(), KernelSlotLedgerError> {
@@ -363,6 +370,12 @@ pub fn match_kernel_slot_reservation<'a>(
 
 /// Validate every live typed kernel against the permanent ledger. Historical
 /// reservations without a live kernel remain legal tombstones.
+///
+/// # Errors
+///
+/// Returns every [`validate_kernel_slot_ledger`] fault plus
+/// [`KernelSlotLedgerError`] when a live kernel's sample or slot has no
+/// matching reservation.
 pub fn validate_live_kernel_slots(
     reservations: &[KernelSlotReservationRef<'_>],
     kernels: &[(&str, &FiniteKernel)],
@@ -421,10 +434,7 @@ fn is_canonical_qname(value: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        match_kernel_slot_reservation, validate_kernel_slot_ledger, KernelSlotLedgerError,
-        KernelSlotReservationMatch, KernelSlotReservationRef,
-    };
+    use super::{KernelSlotLedgerError, KernelSlotReservationMatch, KernelSlotReservationRef};
 
     const FIRST: KernelSlotReservationRef<'static> = KernelSlotReservationRef {
         ordinal: 0,
@@ -436,9 +446,14 @@ mod tests {
     #[test]
     fn retained_historical_rows_and_exact_live_matches_are_legal() {
         let rows = [FIRST];
-        validate_kernel_slot_ledger(&rows).unwrap();
+        super::validate_kernel_slot_ledger(&rows).expect("the authored fixture satisfies the rule");
         assert_eq!(
-            match_kernel_slot_reservation(&rows, "struggle/spark-mechanic", "struggle/spark", 0),
+            super::match_kernel_slot_reservation(
+                &rows,
+                "struggle/spark-mechanic",
+                "struggle/spark",
+                0
+            ),
             KernelSlotReservationMatch::Exact
         );
     }
@@ -450,13 +465,13 @@ mod tests {
             ..FIRST
         }];
         assert!(matches!(
-            validate_kernel_slot_ledger(&ordinal_gap),
+            super::validate_kernel_slot_ledger(&ordinal_gap),
             Err(KernelSlotLedgerError::Ordinal { .. })
         ));
 
         let slot_gap = [KernelSlotReservationRef { slot: 1, ..FIRST }];
         assert!(matches!(
-            validate_kernel_slot_ledger(&slot_gap),
+            super::validate_kernel_slot_ledger(&slot_gap),
             Err(KernelSlotLedgerError::RuleSlotSequence { .. })
         ));
 
@@ -469,7 +484,7 @@ mod tests {
             },
         ];
         assert!(matches!(
-            validate_kernel_slot_ledger(&rebind),
+            super::validate_kernel_slot_ledger(&rebind),
             Err(KernelSlotLedgerError::Rebind { .. })
         ));
 
@@ -483,7 +498,7 @@ mod tests {
             },
         ];
         assert!(matches!(
-            validate_kernel_slot_ledger(&moved),
+            super::validate_kernel_slot_ledger(&moved),
             Err(KernelSlotLedgerError::SampleCollision { .. })
         ));
     }

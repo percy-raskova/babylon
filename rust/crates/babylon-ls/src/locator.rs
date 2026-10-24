@@ -31,9 +31,8 @@
 
 use std::collections::HashSet;
 
-use babylon_bsl::{
-    error_identity::ErrorIdentity, reader::Atom, reader::SExpr, reader::Span, reader::SpanTable,
-};
+use babylon_bsl::error_identity::ErrorIdentity;
+use babylon_bsl::reader::{Atom, SExpr, Span, SpanTable};
 
 /// What a locator strategy found (§6.2's three outcomes).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -370,11 +369,8 @@ pub fn by_operand_index(
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        by_atom, by_enum_ref, by_head_and_operand, by_keyword_operand, by_operand_index, by_qname,
-        locate, LocateOutcome,
-    };
-    use babylon_bsl::{error_identity::ErrorIdentity, reader::read_all_spanned};
+    use super::LocateOutcome;
+    use babylon_bsl::error_identity::ErrorIdentity;
 
     fn parse(
         source: &str,
@@ -382,14 +378,14 @@ mod tests {
         Vec<babylon_bsl::reader::SExpr>,
         babylon_bsl::reader::SpanTable,
     ) {
-        read_all_spanned(source.as_bytes()).expect("fixture source must parse")
+        babylon_bsl::reader::read_all_spanned(source.as_bytes()).expect("fixture source must parse")
     }
 
     #[test]
     fn by_atom_unique_finds_the_one_matching_symbol() {
         let source = "(rule foo (bindings) (effects))";
         let (forest, spans) = parse(source);
-        match by_atom("foo", &forest, &spans) {
+        match super::by_atom("foo", &forest, &spans) {
             LocateOutcome::Unique(span) => {
                 assert_eq!(&source[span.start..span.end], "foo");
             }
@@ -400,7 +396,7 @@ mod tests {
     #[test]
     fn by_atom_ambiguous_when_the_token_occurs_twice_sorted_by_position() {
         let (forest, spans) = parse("(intrinsic floor :cost 5) (intrinsic floor :cost 6)");
-        match by_atom("floor", &forest, &spans) {
+        match super::by_atom("floor", &forest, &spans) {
             LocateOutcome::Ambiguous(candidates) => {
                 assert_eq!(candidates.len(), 2);
                 assert!(candidates[0].start < candidates[1].start);
@@ -412,30 +408,36 @@ mod tests {
     #[test]
     fn by_atom_absent_when_the_token_never_occurs() {
         let (forest, spans) = parse("(rule foo (bindings) (effects))");
-        assert_eq!(by_atom("nowhere", &forest, &spans), LocateOutcome::Absent);
+        assert_eq!(
+            super::by_atom("nowhere", &forest, &spans),
+            LocateOutcome::Absent
+        );
     }
 
     #[test]
     fn by_qname_finds_only_qname_atoms_not_bare_symbols() {
         let (forest, spans) = parse("(deffield social-class/wages :type int) (rule wages)");
-        match by_qname("social-class/wages", &forest, &spans) {
+        match super::by_qname("social-class/wages", &forest, &spans) {
             LocateOutcome::Unique(_) => {}
             other => panic!("expected Unique, got {other:?}"),
         }
         // "wages" (a bare symbol, not a qname) never matches a by_qname
         // search for the qname text.
-        assert_eq!(by_qname("wages", &forest, &spans), LocateOutcome::Absent);
+        assert_eq!(
+            super::by_qname("wages", &forest, &spans),
+            LocateOutcome::Absent
+        );
     }
 
     #[test]
     fn by_enum_ref_matches_type_and_member() {
         let (forest, spans) = parse("(the NodeType/SOCIAL_CLASS)");
-        match by_enum_ref("NodeType", Some("SOCIAL_CLASS"), &forest, &spans) {
+        match super::by_enum_ref("NodeType", Some("SOCIAL_CLASS"), &forest, &spans) {
             LocateOutcome::Unique(_) => {}
             other => panic!("expected Unique, got {other:?}"),
         }
         assert_eq!(
-            by_enum_ref("NodeType", Some("TERRITORY"), &forest, &spans),
+            super::by_enum_ref("NodeType", Some("TERRITORY"), &forest, &spans),
             LocateOutcome::Absent
         );
     }
@@ -445,7 +447,7 @@ mod tests {
         let (forest, spans) = parse(
             "(add-hyperedge HyperedgeType/A (members)) (add-hyperedge HyperedgeType/A (members))",
         );
-        match by_enum_ref("HyperedgeType", None, &forest, &spans) {
+        match super::by_enum_ref("HyperedgeType", None, &forest, &spans) {
             LocateOutcome::Ambiguous(candidates) => assert_eq!(candidates.len(), 2),
             other => panic!("expected Ambiguous, got {other:?}"),
         }
@@ -454,12 +456,13 @@ mod tests {
     #[test]
     fn by_head_and_operand_finds_the_matching_list_by_head_and_contained_operand() {
         let (forest, spans) = parse("(edge EdgeType/SOLIDARITY alice bob)");
-        match by_head_and_operand("edge", &["EdgeType/SOLIDARITY", "alice"], &forest, &spans) {
+        match super::by_head_and_operand("edge", &["EdgeType/SOLIDARITY", "alice"], &forest, &spans)
+        {
             LocateOutcome::Unique(_) => {}
             other => panic!("expected Unique, got {other:?}"),
         }
         assert_eq!(
-            by_head_and_operand("edge", &["EdgeType/TRIBUTE"], &forest, &spans),
+            super::by_head_and_operand("edge", &["EdgeType/TRIBUTE"], &forest, &spans),
             LocateOutcome::Absent
         );
     }
@@ -467,12 +470,12 @@ mod tests {
     #[test]
     fn by_keyword_operand_finds_the_operand_after_the_keyword() {
         let (forest, spans) = parse("(defconst economy/x 5$ :floor 0$)");
-        match by_keyword_operand(":floor", &forest, &spans) {
+        match super::by_keyword_operand(":floor", &forest, &spans) {
             LocateOutcome::Unique(_) => {}
             other => panic!("expected Unique, got {other:?}"),
         }
         // Colon-less form of the same keyword text resolves identically.
-        match by_keyword_operand("floor", &forest, &spans) {
+        match super::by_keyword_operand("floor", &forest, &spans) {
             LocateOutcome::Unique(_) => {}
             other => panic!("expected Unique, got {other:?}"),
         }
@@ -482,7 +485,7 @@ mod tests {
     fn by_keyword_operand_absent_when_the_keyword_never_occurs() {
         let (forest, spans) = parse("(defconst economy/x 5$)");
         assert_eq!(
-            by_keyword_operand(":cap", &forest, &spans),
+            super::by_keyword_operand(":cap", &forest, &spans),
             LocateOutcome::Absent
         );
     }
@@ -490,7 +493,7 @@ mod tests {
     #[test]
     fn by_operand_index_finds_the_operand_at_that_position() {
         let (forest, spans) = parse("(neighbors self EdgeType/SOLIDARITY)");
-        match by_operand_index("neighbors", 1, &forest, &spans) {
+        match super::by_operand_index("neighbors", 1, &forest, &spans) {
             LocateOutcome::Unique(_) => {}
             other => panic!("expected Unique, got {other:?}"),
         }
@@ -500,7 +503,7 @@ mod tests {
     fn by_operand_index_absent_when_the_position_does_not_exist() {
         let (forest, spans) = parse("(neighbors self)");
         assert_eq!(
-            by_operand_index("neighbors", 5, &forest, &spans),
+            super::by_operand_index("neighbors", 5, &forest, &spans),
             LocateOutcome::Absent
         );
     }
@@ -509,7 +512,7 @@ mod tests {
     fn locate_dispatches_name_identity_through_by_atom() {
         let (forest, spans) = parse("(rule foo (bindings) (effects))");
         let identity = ErrorIdentity::Name("foo".to_owned());
-        match locate(&identity, &forest, &spans) {
+        match super::locate(&identity, &forest, &spans) {
             LocateOutcome::Unique(_) => {}
             other => panic!("expected Unique, got {other:?}"),
         }
@@ -522,7 +525,7 @@ mod tests {
             ErrorIdentity::Name("a".to_owned()),
             ErrorIdentity::Name("b".to_owned()),
         ]);
-        match locate(&identity, &forest, &spans) {
+        match super::locate(&identity, &forest, &spans) {
             LocateOutcome::Ambiguous(candidates) => assert_eq!(candidates.len(), 2),
             other => panic!("expected Ambiguous, got {other:?}"),
         }
@@ -532,6 +535,9 @@ mod tests {
     fn locate_dispatches_ambiguous_identity_absent_when_no_candidate_resolves() {
         let (forest, spans) = parse("(rule foo (bindings) (effects))");
         let identity = ErrorIdentity::Ambiguous(vec![ErrorIdentity::Name("nowhere".to_owned())]);
-        assert_eq!(locate(&identity, &forest, &spans), LocateOutcome::Absent);
+        assert_eq!(
+            super::locate(&identity, &forest, &spans),
+            LocateOutcome::Absent
+        );
     }
 }

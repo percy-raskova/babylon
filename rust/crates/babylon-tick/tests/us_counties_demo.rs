@@ -5,6 +5,7 @@
 
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;
+use babylon_kernel::replay::ReplaySeed;
 use babylon_kernel::replay::ReplaySessionId;
 use babylon_tick::diagnostic::RuleDiagnosticSession;
 
@@ -23,7 +24,7 @@ fn the_demo_scenario_loads_and_ticks_both_packs() {
         &rule_src,
         HypergraphStore::new(),
         session_id,
-        babylon_kernel::replay::ReplaySeed::new(0),
+        ReplaySeed::new(0),
     )
     .expect("load");
     let mut sink = CollectingSink::default();

@@ -30,6 +30,7 @@ use crate::repo::Repo;
 use regex::Regex;
 use std::collections::BTreeMap;
 use std::path::Path;
+use std::path::PathBuf;
 use std::sync::OnceLock;
 
 pub const CHECK: &str = "namespace-unique";
@@ -59,12 +60,13 @@ const ALLOWLIST: &[(&str, &[&str], &str)] = &[
             "babylon-bsl/src/metrics.rs",
             "babylon-bsl/src/rule_pipeline.rs",
             "babylon-bsl/src/scenario.rs",
-            "babylon-tick/src/lib.rs",
+            "babylon-tick/src/tick_runner.rs",
         ],
         "bsl-language.rst:659 — \"[duplicates within a] content set are E-LOAD-001\", the \
          generic code for ANY duplicate declaration; reused by design across ~17 documented \
          sites in the spec (deffield, defvocabulary, defrule ids, rung names, …). \
-         babylon-tick/src/lib.rs joined the set in the 2026-08-21 worktree sweep: the D32 \
+         babylon-tick/src/tick_runner.rs joined the set in the 2026-08-21 worktree sweep (the \
+         file was babylon-tick/src/lib.rs before the PER-350 module extraction): the D32 \
          implicit-<edge-type>/strength collision check (#652 T2) refuses a deffield \
          re-declaring an implicit field — the same generic duplicate-declaration class, \
          returned as PrepareError::Composition with the code carried as data. \
@@ -360,7 +362,7 @@ fn crate_relative(repo: &Repo, file: &Path) -> String {
         .map_or(display.clone(), str::to_owned)
 }
 
-fn list_src_rs_files(root: &Path) -> Result<Vec<std::path::PathBuf>, String> {
+fn list_src_rs_files(root: &Path) -> Result<Vec<PathBuf>, String> {
     let mut files = Vec::new();
     // One-level-then-recurse-into-src walk: `root` is `rust/crates`, and
     // only each crate's `src/` (never its `tests/`) is in scope — see the
@@ -388,7 +390,7 @@ fn list_src_rs_files(root: &Path) -> Result<Vec<std::path::PathBuf>, String> {
     Ok(files)
 }
 
-fn walk_rs_files(dir: &Path, out: &mut Vec<std::path::PathBuf>) -> Result<(), String> {
+fn walk_rs_files(dir: &Path, out: &mut Vec<PathBuf>) -> Result<(), String> {
     let entries = std::fs::read_dir(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     for entry in entries.filter_map(Result::ok) {
         let path = entry.path();

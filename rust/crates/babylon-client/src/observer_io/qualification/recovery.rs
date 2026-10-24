@@ -1,15 +1,16 @@
 //! Exact ordinary Open custody; a changed epoch alone never proves recovery.
-use super::{hex, Configuration, NativeAudit, Record, Scope};
+use super::{Configuration, NativeAudit, Record, Scope};
 use crate::observer::{ObserverSession, SessionPhase};
-use babylon_kernel::{clock::CampaignDuration, content_digest::sha256_of};
-use babylon_persistence::{
-    observer_reader::{ObserverEconomySnapshot, ObserverVisibility},
-    runtime_session::{
-        OrganizerSnapshot, RuntimeSessionRequest, RuntimeSessionScope, RuntimeSessionTarget,
-        RUNTIME_SESSION_PROTOCOL_VERSION,
-    },
-    ProductionEvidenceDigest,
+use babylon_kernel::clock::CampaignDuration;
+
+use babylon_persistence::observer_reader::{ObserverEconomySnapshot, ObserverVisibility};
+use babylon_persistence::runtime_session::{
+    OrganizerSnapshot, RuntimeSessionRequest, RuntimeSessionScope, RuntimeSessionTarget,
+    RUNTIME_SESSION_PROTOCOL_VERSION,
 };
+use babylon_persistence::ProductionEvidenceDigest;
+
+use babylon_kernel::content_digest;
 use serde::Serialize;
 use std::time::Instant;
 
@@ -49,7 +50,7 @@ impl Identity {
             tick_content_hash: snapshot.tick_content_hash.clone(),
             nominal_world_hash: snapshot.nominal_world_hash.clone(),
             envelope_digest: snapshot.envelope_digest.clone(),
-            material_register_sha256: hex(&register),
+            material_register_sha256: super::hex(&register),
             material_register_bytes: register_bytes,
             production_evidence_sha256: evidence.to_hex(),
             production_evidence_body_bytes: evidence.body_bytes(),
@@ -147,10 +148,12 @@ impl Pending {
             request_id: self.request_id,
             previous_scope: &self.previous,
             restored_scope: &self.next,
-            policy_sha256: hex(&configuration
-                .policy
-                .scope(configuration.campaign, self.foundation)
-                .policy),
+            policy_sha256: super::hex(
+                &configuration
+                    .policy
+                    .scope(configuration.campaign, self.foundation)
+                    .policy,
+            ),
             source: &self.source,
             original_organizer_sha256: self.original_organizer_sha256.clone(),
             cold_reopen_measurement: "client_enqueue_to_installed_authenticated_read",
@@ -226,7 +229,7 @@ impl NativeAudit {
             return Err("native recovery already owns another request".into());
         }
         let original_status = self.custody.recovery_status(session)?;
-        let original_organizer_sha256 = hex(&sha256_of(
+        let original_organizer_sha256 = super::hex(&content_digest::sha256_of(
             &serde_json::to_vec(&original_status)
                 .map_err(|_| "native recovery original organizer encoding failed")?,
         ));
@@ -318,26 +321,29 @@ impl NativeAudit {
 
 #[cfg(test)]
 pub(super) mod tests {
-    use super::super::{
-        aid,
-        tests::{fixture, Directory},
-        Candidate,
-    };
+    use super::super::tests::Directory;
+    use super::super::{aid, Candidate};
+
+    use super::super::tests;
     use super::*;
     use babylon_persistence::runtime_session::RuntimeSessionTail;
+    use serde_json::Value;
 
     pub(in crate::observer_io::qualification) fn source(
     ) -> (Directory, NativeAudit, ObserverSession, OrganizerSnapshot) {
         let directory = Directory::new();
-        let (mut audit, mut session) = fixture(&directory);
+        let (mut audit, mut session) = tests::fixture(&directory);
         let status: OrganizerSnapshot = serde_json::from_str(include_str!(
             "../../../../babylon-persistence/tests/fixtures/national_organizer_opening_v11.json"
         ))
-        .unwrap();
+        .expect("the authored JSON matches the declared schema");
         session.ready(0, None);
         session.duration = Some(status.duration);
         session.organizer_enabled = true;
-        let work = audit.begin(&session).unwrap().unwrap();
+        let work = audit
+            .begin(&session)
+            .expect("the fixture begins the authored transaction")
+            .expect("the nested fixture result is present");
         assert!(session.installed(&session.context()));
         audit.audit = Some(work.audit);
         audit.custody = aid::disclosed_control(&session, status.clone());
@@ -345,7 +351,10 @@ pub(super) mod tests {
         // Only the full production reader can construct it in live operation.
         audit.boundary = Some(Identity {
             campaign: session.campaign.as_uuid().to_string(),
-            foundation_sha256: session.foundation_digest.clone().unwrap(),
+            foundation_sha256: session
+                .foundation_digest
+                .clone()
+                .expect("the fixture value clones"),
             tick: 0,
             tick_content_hash: None,
             nominal_world_hash: Some("0c".repeat(32)),
@@ -367,11 +376,17 @@ pub(super) mod tests {
             .queue_campaign(RuntimeSessionTarget::Open {
                 campaign_id: session.campaign.as_uuid().to_string(),
             })
-            .unwrap();
-        let request = session.pending_switch_request().unwrap();
-        audit.stage_reopen(session, &request).unwrap();
+            .expect("the fixture call `queue_campaign` succeeds for the authored inputs");
+        let request = session
+            .pending_switch_request()
+            .expect("the fixture call `pending_switch_request` succeeds for the authored inputs");
+        audit
+            .stage_reopen(session, &request)
+            .expect("the fixture call `stage_reopen` succeeds for the authored inputs");
         let before = audit.recovery.clone();
-        audit.stage_reopen(session, &request).unwrap();
+        audit
+            .stage_reopen(session, &request)
+            .expect("the fixture call `stage_reopen` succeeds for the authored inputs");
         assert!(
             audit.recovery == before,
             "backpressure cannot change the original source or clock"
@@ -398,11 +413,16 @@ pub(super) mod tests {
         next: RuntimeSessionScope,
         status: &OrganizerSnapshot,
     ) {
-        let foundation = session.foundation_digest.clone().unwrap();
+        let foundation = session
+            .foundation_digest
+            .clone()
+            .expect("the fixture value clones");
         session
             .switching(request_id, previous, next.clone())
-            .unwrap();
-        audit.switching(request_id, previous, &next).unwrap();
+            .expect("the fixture call `switching` succeeds for the authored inputs");
+        audit
+            .switching(request_id, previous, &next)
+            .expect("the fixture call `switching` succeeds for the authored inputs");
         session
             .admitted(
                 request_id,
@@ -412,14 +432,19 @@ pub(super) mod tests {
                     tick_content_hash: None,
                 },
             )
-            .unwrap();
+            .expect("the fixture admits the authored value");
         session.duration = Some(status.duration);
         session.organizer_enabled = true;
-        audit.reopened_ready(session, request_id).unwrap();
+        audit
+            .reopened_ready(session, request_id)
+            .expect("the fixture call `reopened_ready` succeeds for the authored inputs");
     }
 
     fn candidate(audit: &mut NativeAudit, session: &mut ObserverSession) -> Candidate {
-        let work = audit.begin(session).unwrap().unwrap();
+        let work = audit
+            .begin(session)
+            .expect("the fixture begins the authored transaction")
+            .expect("the nested fixture result is present");
         assert!(work.recovery.is_some());
         assert!(session.installed(&session.context()));
         Candidate {
@@ -427,12 +452,15 @@ pub(super) mod tests {
             context: session.context(),
             audit: work.audit,
             custody: work.custody,
-            identity: audit.boundary.clone().unwrap(),
+            identity: audit.boundary.clone().expect("the fixture value clones"),
             recovery: work.recovery,
             record: Record {
                 version: 4,
                 scope: "authenticated_native_material_and_aid_facts_only",
-                runtime_epoch: session.runtime_scope().unwrap().epoch,
+                runtime_epoch: session
+                    .runtime_scope()
+                    .expect("the fixture runtime scope exists")
+                    .epoch,
                 observation_generation: session.generation,
                 production_read_elapsed_ns: 1,
                 presentation_read_elapsed_ns: 1,
@@ -443,9 +471,17 @@ pub(super) mod tests {
                 facts: None,
                 aid: None,
                 aid_practices: audit.custody.practices(),
-                economic_summary: audit.audit.as_ref().unwrap().economic_summary(),
+                economic_summary: audit
+                    .audit
+                    .as_ref()
+                    .expect("the fixture set the optional field before this read")
+                    .economic_summary(),
                 aid_summary: audit.custody.summary(),
-                trade_summary: audit.audit.as_ref().unwrap().trade_summary(),
+                trade_summary: audit
+                    .audit
+                    .as_ref()
+                    .expect("the fixture set the optional field before this read")
+                    .trade_summary(),
             },
         }
     }
@@ -459,49 +495,75 @@ pub(super) mod tests {
         ready(&mut audit, &mut session, id, &previous, next, &status);
         assert!(audit.awaiting_recovery_status());
         assert!(audit.begin(&session).is_err());
-        assert_eq!(std::fs::read_dir(&directory.0).unwrap().count(), 1);
+        assert_eq!(
+            std::fs::read_dir(&directory.0)
+                .expect("the fixture directory is readable")
+                .count(),
+            1
+        );
         let mut wrong = status.clone();
         wrong.aid[0].payer_cash += 1;
         assert!(audit.status(&session, wrong).is_err());
         assert!(audit.awaiting_recovery_status());
-        audit.status(&session, status).unwrap();
+        audit
+            .status(&session, status)
+            .expect("the fixture command reports its status");
         let result = candidate(&mut audit, &mut session);
-        audit.commit(&session, result).unwrap();
+        audit
+            .commit(&session, result)
+            .expect("the fixture transaction commits");
         assert!(audit.recovery.is_none());
-        assert_eq!(audit.audit.as_ref().unwrap().completed_tick(), 0);
+        assert_eq!(
+            audit
+                .audit
+                .as_ref()
+                .expect("the fixture set the optional field before this read")
+                .completed_tick(),
+            0
+        );
         assert!(audit.custody.practices() == original_practices);
-        let receipt: serde_json::Value = serde_json::from_slice(
+        let receipt: Value = serde_json::from_slice(
             &std::fs::read(directory.0.join(format!(
-                "recovery-0-{}.json",
-                session.runtime_scope().unwrap().epoch
-            )))
-            .unwrap(),
+                    "recovery-0-{}.json",
+                    session
+                        .runtime_scope()
+                        .expect("the fixture runtime scope exists")
+                        .epoch
+                )))
+            .expect("the fixture reader returns its authored facts"),
         )
-        .unwrap();
+        .expect("the authored bytes match the declared schema");
         assert_eq!(receipt["version"], 2);
         assert_eq!(
             receipt["cold_reopen_measurement"],
             "client_enqueue_to_installed_authenticated_read"
         );
         assert!(
-            receipt["cold_reopen_elapsed_ns"].as_u64().unwrap()
+            receipt["cold_reopen_elapsed_ns"]
+                .as_u64()
+                .expect("the JSON fixture field is an unsigned integer")
                 >= receipt["runtime_ready_elapsed_ns"]
                     .as_u64()
-                    .unwrap()
+                    .expect("the JSON fixture field is an unsigned integer")
                     .checked_add(
                         receipt["authenticated_read"]["production_read_elapsed_ns"]
                             .as_u64()
-                            .unwrap()
+                            .expect("the JSON fixture field is an unsigned integer")
                     )
-                    .unwrap()
+                    .expect("the fixture arithmetic stays in range")
         );
         assert!(
-            audit.begin(&session).unwrap().is_none(),
+            audit
+                .begin(&session)
+                .expect("the fixture begins the authored transaction")
+                .is_none(),
             "refresh must not replay opening or refold receipts"
         );
-        let saved: serde_json::Value =
-            serde_json::from_slice(&std::fs::read(directory.0.join("recovery-0-2.json")).unwrap())
-                .unwrap();
+        let saved: Value = serde_json::from_slice(
+            &std::fs::read(directory.0.join("recovery-0-2.json"))
+                .expect("the fixture reader returns its authored facts"),
+        )
+        .expect("the authored bytes match the declared schema");
         assert_eq!(saved["scope"], "authenticated_native_checkpoint_reopen_v2");
         assert_eq!(saved["restored_scope"]["epoch"], 2);
         assert!(saved["authenticated_read"]["facts"].is_null());
@@ -513,12 +575,19 @@ pub(super) mod tests {
         let (directory, mut audit, mut session, status) = source();
         let (id, previous, next) = send(&mut audit, &mut session);
         ready(&mut audit, &mut session, id, &previous, next, &status);
-        audit.status(&session, status).unwrap();
+        audit
+            .status(&session, status)
+            .expect("the fixture command reports its status");
         let mut result = candidate(&mut audit, &mut session);
         result.record.production_read_elapsed_ns = u64::MAX;
         assert!(audit.commit(&session, result).is_err());
         assert!(audit.recovery.is_some());
-        assert_eq!(std::fs::read_dir(&directory.0).unwrap().count(), 1);
+        assert_eq!(
+            std::fs::read_dir(&directory.0)
+                .expect("the fixture directory is readable")
+                .count(),
+            1
+        );
     }
 
     #[test]
@@ -526,28 +595,55 @@ pub(super) mod tests {
         let (directory, mut audit, mut session, status) = source();
         let (id, previous, next) = send(&mut audit, &mut session);
         ready(&mut audit, &mut session, id, &previous, next, &status);
-        audit.status(&session, status).unwrap();
+        audit
+            .status(&session, status)
+            .expect("the fixture command reports its status");
         let mut result = candidate(&mut audit, &mut session);
         result.identity.material_register_sha256 = "0f".repeat(32);
         assert!(audit.commit(&session, result).is_err());
         assert!(audit.recovery.is_some());
-        assert_eq!(std::fs::read_dir(&directory.0).unwrap().count(), 1);
+        assert_eq!(
+            std::fs::read_dir(&directory.0)
+                .expect("the fixture directory is readable")
+                .count(),
+            1
+        );
         session.phase = SessionPhase::Loading;
         let result = candidate(&mut audit, &mut session);
-        std::fs::create_dir(directory.0.join("recovery-0-2.json")).unwrap();
+        std::fs::create_dir(directory.0.join("recovery-0-2.json"))
+            .expect("the fixture directory is creatable");
         assert!(audit.commit(&session, result).is_err());
         assert!(audit.recovery.is_some());
-        assert_eq!(audit.audit.as_ref().unwrap().completed_tick(), 0);
-        assert_eq!(std::fs::read_dir(&directory.0).unwrap().count(), 2);
+        assert_eq!(
+            audit
+                .audit
+                .as_ref()
+                .expect("the fixture set the optional field before this read")
+                .completed_tick(),
+            0
+        );
+        assert_eq!(
+            std::fs::read_dir(&directory.0)
+                .expect("the fixture directory is readable")
+                .count(),
+            2
+        );
     }
 
     #[test]
     fn ready_with_a_changed_tail_cannot_admit_another_epoch() {
         let (_directory, mut audit, mut session, status) = source();
         let (id, previous, next) = send(&mut audit, &mut session);
-        let foundation = session.foundation_digest.clone().unwrap();
-        session.switching(id, &previous, next.clone()).unwrap();
-        audit.switching(id, &previous, &next).unwrap();
+        let foundation = session
+            .foundation_digest
+            .clone()
+            .expect("the fixture value clones");
+        session
+            .switching(id, &previous, next.clone())
+            .expect("the fixture call `switching` succeeds for the authored inputs");
+        audit
+            .switching(id, &previous, &next)
+            .expect("the fixture call `switching` succeeds for the authored inputs");
         session
             .admitted(
                 id,
@@ -557,11 +653,18 @@ pub(super) mod tests {
                     tick_content_hash: Some("a".repeat(64)),
                 },
             )
-            .unwrap();
+            .expect("the fixture admits the authored value");
         session.duration = Some(status.duration);
         session.organizer_enabled = true;
         assert!(audit.reopened_ready(&session, id).is_err());
-        assert_eq!(audit.scope.as_ref().unwrap().epoch, previous.epoch);
+        assert_eq!(
+            audit
+                .scope
+                .as_ref()
+                .expect("the fixture set the optional field before this read")
+                .epoch,
+            previous.epoch
+        );
         assert!(audit.awaiting_recovery_status());
     }
 
@@ -585,33 +688,48 @@ pub(super) mod tests {
             resolves_period: 1,
             commitment_id: [18; 32],
         };
-        audit.accepted(&session, 9, &commitment).unwrap();
+        audit
+            .accepted(&session, 9, &commitment)
+            .expect("the fixture call `accepted` succeeds for the authored inputs");
         assert!(audit.custody.recovery_status(&session).is_err());
         assert!(
             audit.status(&session, status.clone()).is_err(),
             "fresh response cannot lose accepted command"
         );
         status.pending = Some(commitment.clone());
-        audit.status(&session, status.clone()).unwrap();
+        audit
+            .status(&session, status.clone())
+            .expect("the fixture command reports its status");
         let (id, previous, next) = send(&mut audit, &mut session);
         ready(&mut audit, &mut session, id, &previous, next, &status);
         let mut missing = status.clone();
         missing.pending = None;
         assert!(audit.status(&session, missing).is_err());
-        audit.status(&session, status).unwrap();
+        audit
+            .status(&session, status)
+            .expect("the fixture command reports its status");
         let result = candidate(&mut audit, &mut session);
         assert!(
             result
                 .recovery
                 .as_ref()
-                .unwrap()
+                .expect("the fixture set the optional field before this read")
                 .original_status
                 .pending
                 .as_ref()
                 == Some(&commitment)
         );
-        audit.commit(&session, result).unwrap();
+        audit
+            .commit(&session, result)
+            .expect("the fixture transaction commits");
         assert_eq!(session.durable_tick, 0);
-        assert_eq!(audit.audit.as_ref().unwrap().completed_tick(), 0);
+        assert_eq!(
+            audit
+                .audit
+                .as_ref()
+                .expect("the fixture set the optional field before this read")
+                .completed_tick(),
+            0
+        );
     }
 }

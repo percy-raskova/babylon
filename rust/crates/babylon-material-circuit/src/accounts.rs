@@ -10,7 +10,10 @@ use std::collections::BTreeMap;
 
 use babylon_kernel::currency::Currency;
 
+use crate::OrderId;
 use crate::{FinalDemandPrincipalId, OutboundOrderId, SiteId, MAX_MATERIAL_CIRCUIT_ROWS};
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 
 crate::model::identity_type!(OrganizationAccountId);
 crate::model::identity_type!(PublicAccountId);
@@ -35,7 +38,7 @@ pub struct CashAccount {
 /// Funded household gift; cash follows accepted physical units, never a sale.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AidCashReserve {
-    pub id: crate::OrderId,
+    pub id: OrderId,
     pub payer: AccountId,
     pub donor: crate::FinalDemandPrincipalId,
     pub recipient: crate::FinalDemandPrincipalId,
@@ -241,7 +244,7 @@ pub enum MoneyLocation {
     Cash(AccountId),
     PurchaseReserve(OutboundOrderId),
     PayrollReserve(ShiftId),
-    AidReserve(crate::OrderId),
+    AidReserve(OrderId),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -253,9 +256,9 @@ pub enum MoneyTransferPurpose {
     WagePayment(ShiftId),
     ShiftCancellation(ShiftId),
     Cash(CashTransferPurpose),
-    AidReservation(crate::OrderId),
-    AidGrant(crate::OrderId),
-    AidRefund(crate::OrderId),
+    AidReservation(OrderId),
+    AidGrant(OrderId),
+    AidRefund(OrderId),
 }
 
 /// Signed cash or reserve delta. One transfer always has two opposite postings.
@@ -306,7 +309,7 @@ pub struct MonetaryBook {
     accounts: BTreeMap<AccountId, Currency>,
     purchases: BTreeMap<OutboundOrderId, PurchaseEscrow>,
     shifts: BTreeMap<ShiftId, FundedShift>,
-    aid: BTreeMap<crate::OrderId, AidCashReserve>,
+    aid: BTreeMap<OrderId, AidCashReserve>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -336,7 +339,7 @@ pub enum MonetaryError {
 }
 
 impl std::fmt::Display for MonetaryError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         write!(f, "monetary book refused: {self:?}")
     }
 }
@@ -798,7 +801,7 @@ impl MonetaryBook {
     /// Refuses unknown, nonincreasing or excessive units; no balance changes on refusal.
     pub fn resolve_aid(
         &mut self,
-        id: crate::OrderId,
+        id: OrderId,
         cumulative: u64,
         refund: bool,
     ) -> Result<MoneyTransferReceipt, MonetaryError> {
@@ -844,14 +847,14 @@ impl MonetaryBook {
     /// Read the canonical physical-gift reserve for exact transport joins.
     /// # Errors
     /// Refuses a missing gift principal.
-    pub fn aid_reserve(&self, id: crate::OrderId) -> Result<&AidCashReserve, MonetaryError> {
+    pub fn aid_reserve(&self, id: OrderId) -> Result<&AidCashReserve, MonetaryError> {
         self.aid.get(&id).ok_or(MonetaryError::UnknownAid)
     }
 
     /// Remove a fully granted/refunded gift after its final material receipt.
     /// # Errors
     /// Refuses outstanding cash or an unknown gift.
-    pub fn retire_aid(&mut self, id: crate::OrderId) -> Result<AidCashReserve, MonetaryError> {
+    pub fn retire_aid(&mut self, id: OrderId) -> Result<AidCashReserve, MonetaryError> {
         if self.aid_reserve(id)?.reserved_amount()?.micro_units() != 0 {
             return Err(MonetaryError::OpenPrincipal);
         }

@@ -1,6 +1,7 @@
 //! Dispatch the durable campaign observer and headless Archive commands.
 
-use babylon_client::app::{build_app, AppMode};
+use babylon_client::app;
+use babylon_client::app::AppMode;
 use babylon_client::cli::{self, CliRequest};
 use bevy::app::AppExit;
 
@@ -29,7 +30,7 @@ fn main() {
             campaign_id,
         },
     };
-    let exit = build_app(mode)
+    let exit = app::build_app(mode)
         .unwrap_or_else(|error| {
             eprintln!("babylon-client startup refused: {error}");
             std::process::exit(2);

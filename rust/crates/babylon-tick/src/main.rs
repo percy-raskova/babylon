@@ -36,7 +36,7 @@
 //! now only argument parsing, calling that seam, and printing. The same
 //! `run_once` is what `babylon-client`'s engine link calls in-process.
 
-use babylon_tick::{hex, run_once, TickReport};
+use babylon_tick::{hex, TickReport};
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
@@ -61,7 +61,7 @@ fn run(scenario_path: &str, rule_path: &str) -> Result<(), String> {
     let rule_src = std::fs::read_to_string(rule_path)
         .map_err(|e| format!("cannot read rule {rule_path}: {e}"))?;
 
-    let report = run_once(&scenario_src, &rule_src)?;
+    let report = babylon_tick::run_once(&scenario_src, &rule_src)?;
 
     print!("{}", format_report(&report));
     Ok(())
@@ -92,7 +92,6 @@ fn format_report(report: &TickReport) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::format_report;
     use babylon_tick::TickReport;
 
     #[test]
@@ -111,7 +110,7 @@ mod tests {
             committed_events: Vec::new(),
         };
 
-        let output = format_report(&report);
+        let output = super::format_report(&report);
 
         assert!(output.contains(
             "graph-before     1111111111111111111111111111111111111111111111111111111111111111"
@@ -147,6 +146,6 @@ mod tests {
             committed_events: Vec::new(),
         };
 
-        assert!(!format_report(&report).contains("graph state unchanged"));
+        assert!(!super::format_report(&report).contains("graph state unchanged"));
     }
 }

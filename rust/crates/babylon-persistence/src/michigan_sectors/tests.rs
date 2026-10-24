@@ -1,17 +1,34 @@
+use crate::michigan_sectors::QCEW_SECTORS_ARTIFACT_SHA256;
 use std::collections::BTreeSet;
 use std::io::Write as _;
 
-use super::*;
+use super::sources;
+use super::sources::{
+    admit, checked_csv, integer, semantic_digest, MichiganCountySector, MichiganSectorCode,
+    MichiganSectorDisclosure, MichiganSectorDisposition, MichiganSectorsError, ARTIFACT, MAX_BYTES,
+    MAX_ROWS, QCEW_SECTORS_SEMANTIC_SHA256, SECTOR_CODES, SOURCE_MANIFEST,
+};
+use flate2::Compression;
+use flate2::GzBuilder;
 
 fn first_fields() -> Vec<String> {
-    let decoded = decode_gzip(ARTIFACT).unwrap();
-    csv_record(decoded.lines().nth(1).unwrap()).unwrap()
+    let decoded = sources::decode_gzip(ARTIFACT).expect("the gzipped body decodes");
+    sources::csv_record(
+        decoded
+            .lines()
+            .nth(1)
+            .expect("the fixture sequence holds the addressed row"),
+    )
+    .expect("the fixture call `csv_record` succeeds for the authored inputs")
 }
 
 #[test]
 fn pinned_cells_preserve_exact_coverage_disclosure_composites_and_provenance() {
-    let sectors = michigan_county_sectors().unwrap();
-    assert!(std::ptr::eq(sectors, michigan_county_sectors().unwrap()));
+    let sectors = sources::michigan_county_sectors().expect("the Michigan county sectors build");
+    assert!(std::ptr::eq(
+        sectors,
+        sources::michigan_county_sectors().expect("the Michigan county sectors build")
+    ));
     let rows = sectors.rows();
     assert_eq!(rows.len(), 1603);
     assert_eq!(
@@ -53,9 +70,11 @@ fn pinned_cells_preserve_exact_coverage_disclosure_composites_and_provenance() {
         .map(|row| row.sector_code().as_str())
         .collect::<BTreeSet<_>>();
     assert_eq!(codes, SECTOR_CODES.into_iter().collect());
-    let sources = source_pins(SOURCE_MANIFEST).unwrap();
+    let sources = sources::source_pins(SOURCE_MANIFEST)
+        .expect("the fixture call `source_pins` succeeds for the authored inputs");
     for row in rows {
-        let source = &sources[county_index(row.county_geoid()).unwrap()];
+        let source = &sources[sources::county_index(row.county_geoid())
+            .expect("the fixture call `county_index` succeeds for the authored inputs")];
         assert_eq!(row.source_file(), source.file);
         assert_eq!(row.source_sha256(), source.sha256);
         assert!(row.annual_avg_estabs_count() > 0);
@@ -70,7 +89,10 @@ fn pinned_cells_preserve_exact_coverage_disclosure_composites_and_provenance() {
             assert!(measures.iter().all(Option::is_some));
         }
     }
-    assert_eq!(semantic_digest(rows).unwrap(), QCEW_SECTORS_SEMANTIC_SHA256);
+    assert_eq!(
+        semantic_digest(rows).expect("the fixture value has a semantic digest"),
+        QCEW_SECTORS_SEMANTIC_SHA256
+    );
     let contract = include_str!("../../../../../contracts/qcew_county_sectors_v1.yaml");
     assert!(contract.contains(&format!("sha256: {QCEW_SECTORS_ARTIFACT_SHA256}")));
     assert!(contract.contains(&format!("semantic_sha256: {QCEW_SECTORS_SEMANTIC_SHA256}")));
@@ -79,7 +101,8 @@ fn pinned_cells_preserve_exact_coverage_disclosure_composites_and_provenance() {
 #[test]
 fn quoted_commas_and_doubled_quotes_preserve_exact_field_content() {
     let line = "26001,31-33,\"Manufacturing, \"\"quoted\"\"\",classified,N,7,,,,\"2024.annual 26001 Alcona County, Michigan.csv\",digest";
-    let fields = csv_record(line).unwrap();
+    let fields = sources::csv_record(line)
+        .expect("the fixture call `csv_record` succeeds for the authored inputs");
     assert_eq!(fields.len(), 11);
     assert_eq!(fields[2], "Manufacturing, \"quoted\"");
     assert_eq!(&fields[6..9], ["", "", ""]);
@@ -92,31 +115,35 @@ fn quoted_commas_and_doubled_quotes_preserve_exact_field_content() {
         "a,b,c,d,e,f,g,h,i,j,k,extra",
         "a,b,c,d,e,f,g,h,i,j",
     ] {
-        assert_eq!(csv_record(malformed), Err(MichiganSectorsError::CsvShape));
+        assert_eq!(
+            sources::csv_record(malformed),
+            Err(MichiganSectorsError::CsvShape)
+        );
     }
 }
 
 #[test]
 fn suppressed_metrics_are_absent_while_disclosed_zero_stays_exact() {
-    let sources = source_pins(SOURCE_MANIFEST).unwrap();
+    let sources = sources::source_pins(SOURCE_MANIFEST)
+        .expect("the fixture call `source_pins` succeeds for the authored inputs");
     let mut fields = first_fields();
     assert_eq!(fields[4], "N");
-    let suppressed = parse_row(&fields, &sources).unwrap();
+    let suppressed = sources::parse_row(&fields, &sources).expect("the authored row parses");
     assert_eq!(suppressed.annual_avg_estabs_count(), 9);
     assert_eq!(suppressed.annual_avg_emplvl(), None);
     fields[6] = "0".into();
     assert_eq!(
-        parse_row(&fields, &sources),
+        sources::parse_row(&fields, &sources),
         Err(MichiganSectorsError::Disclosure)
     );
     fields[4].clear();
     assert_eq!(
-        parse_row(&fields, &sources),
+        sources::parse_row(&fields, &sources),
         Err(MichiganSectorsError::Value)
     );
     fields[7] = "0".into();
     fields[8] = "0".into();
-    let observed_zero = parse_row(&fields, &sources).unwrap();
+    let observed_zero = sources::parse_row(&fields, &sources).expect("the authored row parses");
     assert_eq!(
         observed_zero.disclosure(),
         MichiganSectorDisclosure::Disclosed
@@ -126,14 +153,15 @@ fn suppressed_metrics_are_absent_while_disclosed_zero_stays_exact() {
     assert_eq!(observed_zero.annual_avg_wkly_wage(), Some(0));
     fields[5] = "0".into();
     assert_eq!(
-        parse_row(&fields, &sources),
+        sources::parse_row(&fields, &sources),
         Err(MichiganSectorsError::Value)
     );
 }
 
 #[test]
 fn identities_provenance_and_exact_integer_domain_refuse_lossy_admission() {
-    let sources = source_pins(SOURCE_MANIFEST).unwrap();
+    let sources = sources::source_pins(SOURCE_MANIFEST)
+        .expect("the fixture call `source_pins` succeeds for the authored inputs");
     for (column, replacement, error) in [
         (0, "26002", MichiganSectorsError::RowIdentity),
         (0, "26167", MichiganSectorsError::RowIdentity),
@@ -148,7 +176,7 @@ fn identities_provenance_and_exact_integer_domain_refuse_lossy_admission() {
     ] {
         let mut fields = first_fields();
         fields[column] = replacement.into();
-        assert_eq!(parse_row(&fields, &sources), Err(error));
+        assert_eq!(sources::parse_row(&fields, &sources), Err(error));
     }
     for invalid in [
         "",
@@ -167,19 +195,23 @@ fn identities_provenance_and_exact_integer_domain_refuse_lossy_admission() {
         Ok(9_223_372_036_854_775_807)
     );
     for code in ["31-33", "44-45", "48-49"] {
-        let code = MichiganSectorCode::parse(code).unwrap();
+        let code = MichiganSectorCode::parse(code)
+            .expect("the authored literal parses as the declared type");
         assert_eq!(code.disposition(), MichiganSectorDisposition::Classified);
     }
     assert_eq!(
-        MichiganSectorCode::parse("99").unwrap().disposition(),
+        MichiganSectorCode::parse("99")
+            .expect("the authored literal parses as the declared type")
+            .disposition(),
         MichiganSectorDisposition::Unclassified
     );
 }
 
 #[test]
 fn duplicate_reordered_missing_and_changed_cells_do_not_pass_semantic_admission() {
-    let source = decode_gzip(ARTIFACT).unwrap();
-    let pins = source_pins(SOURCE_MANIFEST).unwrap();
+    let source = sources::decode_gzip(ARTIFACT).expect("the gzipped body decodes");
+    let pins = sources::source_pins(SOURCE_MANIFEST)
+        .expect("the fixture call `source_pins` succeeds for the authored inputs");
     let lines = source.lines().collect::<Vec<_>>();
     let mut duplicate = lines.clone();
     duplicate.insert(2, lines[1]);
@@ -217,44 +249,54 @@ fn duplicate_reordered_missing_and_changed_cells_do_not_pass_semantic_admission(
 }
 
 fn gzip(source: &[u8]) -> Vec<u8> {
-    let mut encoder = flate2::GzBuilder::new()
+    let mut encoder = GzBuilder::new()
         .mtime(0)
-        .write(Vec::new(), flate2::Compression::fast());
-    encoder.write_all(source).unwrap();
-    encoder.finish().unwrap()
+        .write(Vec::new(), Compression::fast());
+    encoder
+        .write_all(source)
+        .expect("the fixture sink accepts the authored bytes");
+    encoder
+        .finish()
+        .expect("the fixture finishes the authored period")
 }
 
 #[test]
 fn gzip_limits_headers_crc_and_trailing_members_are_checked() {
-    assert_eq!(decode_gzip(&gzip(b"bounded\n")), Ok("bounded\n".into()));
     assert_eq!(
-        decode_gzip(&vec![0; MAX_BYTES + 1]),
+        sources::decode_gzip(&gzip(b"bounded\n")),
+        Ok("bounded\n".into())
+    );
+    assert_eq!(
+        sources::decode_gzip(&vec![0; MAX_BYTES + 1]),
         Err(MichiganSectorsError::ArtifactSize)
     );
     assert_eq!(
-        decode_gzip(&gzip(&vec![b'a'; MAX_BYTES + 1])),
+        sources::decode_gzip(&gzip(&vec![b'a'; MAX_BYTES + 1])),
         Err(MichiganSectorsError::ArtifactSize)
     );
     let mut timestamp = gzip(b"bounded\n");
     timestamp[4] = 1;
     assert_eq!(
-        decode_gzip(&timestamp),
+        sources::decode_gzip(&timestamp),
         Err(MichiganSectorsError::ArtifactDecode)
     );
     let mut crc = gzip(b"bounded\n");
     let checksum = crc.len() - 8;
     crc[checksum] ^= 1;
-    assert_eq!(decode_gzip(&crc), Err(MichiganSectorsError::ArtifactDecode));
+    assert_eq!(
+        sources::decode_gzip(&crc),
+        Err(MichiganSectorsError::ArtifactDecode)
+    );
     let mut trailing = gzip(b"bounded\n");
     trailing.extend(gzip(b"extra\n"));
     assert_eq!(
-        decode_gzip(&trailing),
+        sources::decode_gzip(&trailing),
         Err(MichiganSectorsError::ArtifactDecode)
     );
     let mut truncated = gzip(b"bounded\n");
     truncated.pop();
     assert_eq!(
-        decode_gzip(&truncated),
+        sources::decode_gzip(&truncated),
         Err(MichiganSectorsError::ArtifactDecode)
     );
 }
@@ -282,11 +324,11 @@ fn public_admission_pins_source_manifest_before_parsing_and_exact_compressed_byt
 #[test]
 fn semantic_encoding_matches_python_ascii_json_exact_integers_and_nulls() {
     let mut encoded = String::new();
-    ascii_json_line(
+    sources::ascii_json_line(
         &mut encoded,
         &("Café, \"𝄞\"", None::<u64>, 0, 10_954_108_416_u64),
     )
-    .unwrap();
+    .expect("the fixture call `ascii_json_line` succeeds for the authored inputs");
     assert_eq!(
         encoded,
         "[\"Caf\\u00e9, \\\"\\ud834\\udd1e\\\"\",null,0,10954108416]\n"

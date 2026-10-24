@@ -1,14 +1,14 @@
 //! Captured content cannot bypass the domestic jurisdiction check through Serde.
 
-use babylon_kernel::{
-    economic_location::{EconomicLocation, ForeignCounterpart, UsDependency},
-    geography::CountyGeoid,
-};
+use babylon_kernel::economic_location::{EconomicLocation, ForeignCounterpart, UsDependency};
+use babylon_kernel::geography::CountyGeoid;
 
 #[test]
 fn captured_locations_keep_readable_disjoint_namespaces_and_exact_wire_identity() {
-    let county =
-        EconomicLocation::domestic_county(CountyGeoid::try_from("01001").unwrap()).unwrap();
+    let county = EconomicLocation::domestic_county(
+        CountyGeoid::try_from("01001").expect("the fixture value fits the target range"),
+    )
+    .expect("the fixture geoid names a domestic county");
     let mut cases = vec![(county, "county:01001".to_owned())];
     cases.extend(ForeignCounterpart::ALL.into_iter().map(|id| {
         (
@@ -23,9 +23,13 @@ fn captured_locations_keep_readable_disjoint_namespaces_and_exact_wire_identity(
         )
     }));
     for (location, key) in cases {
-        let encoded = serde_json::to_string(&location).unwrap();
-        assert_eq!(encoded, serde_json::to_string(&key).unwrap());
-        let restored: EconomicLocation = serde_json::from_str(&encoded).unwrap();
+        let encoded = serde_json::to_string(&location).expect("the fixture value formats as text");
+        assert_eq!(
+            encoded,
+            serde_json::to_string(&key).expect("the fixture value formats as text")
+        );
+        let restored: EconomicLocation =
+            serde_json::from_str(&encoded).expect("the authored JSON matches the declared schema");
         assert_eq!(restored.canonical_bytes(), location.canonical_bytes());
     }
 }

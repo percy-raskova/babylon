@@ -1,5 +1,5 @@
 //! Exact checkpoint references; canonical envelope bytes never become storage refs.
-use babylon_kernel::content_digest::sha256_of;
+use babylon_kernel::content_digest;
 const MAX_BYTES: usize = crate::committed_tick_envelope::MAX_COMMITTED_TICK_ROW_BATCH_BYTES;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Error {
@@ -47,7 +47,7 @@ impl Reference {
             tag,
             source,
             decoded_length: exact.len(),
-            digest: sha256_of(exact),
+            digest: content_digest::sha256_of(exact),
             inline,
         })
     }
@@ -71,7 +71,7 @@ impl Reference {
             if bytes.len() != length {
                 return Err(Error::Length);
             }
-            if sha256_of(bytes) != digest {
+            if content_digest::sha256_of(bytes) != digest {
                 return Err(Error::Digest);
             }
         }
@@ -105,7 +105,7 @@ impl Reference {
         if bytes.len() != self.decoded_length {
             return Err(Error::Length);
         }
-        if sha256_of(bytes) != self.digest {
+        if content_digest::sha256_of(bytes) != self.digest {
             return Err(Error::Digest);
         }
         Ok(bytes)
@@ -118,7 +118,9 @@ mod tests {
     fn nine_sections_reconstruct_original_exact_bytes_without_duplicate_payloads() {
         let graph = b"graph";
         let semantic = b"semantic";
-        let foundation = std::array::from_fn(|i| vec![u8::try_from(i).unwrap(); i + 1]);
+        let foundation = std::array::from_fn(|i| {
+            vec![u8::try_from(i).expect("the fixture value fits the target range"); i + 1]
+        });
         for tag in 1..=9 {
             let original = match tag {
                 1 => graph.as_slice(),
@@ -126,38 +128,44 @@ mod tests {
                 3..=8 => foundation[usize::from(tag) - 3].as_slice(),
                 _ => semantic.as_slice(),
             };
-            let reference = Reference::capture(tag, original).unwrap();
+            let reference =
+                Reference::capture(tag, original).expect("the fixture captures the authored state");
             assert_eq!(reference.inline.is_some(), tag == 2);
-            let restored = reference.resolve(graph, &foundation, semantic).unwrap();
+            let restored = reference
+                .resolve(graph, &foundation, semantic)
+                .expect("the fixture call `resolve` succeeds for the authored inputs");
             assert_eq!(restored, original);
             assert_eq!(
-                crate::semantic_codec::encode_checkpoint_row(tag, 0, 1, restored).unwrap(),
-                crate::semantic_codec::encode_checkpoint_row(tag, 0, 1, original).unwrap()
+                crate::semantic_codec::encode_checkpoint_row(tag, 0, 1, restored)
+                    .expect("the fixture value encodes to its canonical bytes"),
+                crate::semantic_codec::encode_checkpoint_row(tag, 0, 1, original)
+                    .expect("the fixture value encodes to its canonical bytes")
             );
         }
     }
     #[test]
     fn changed_canonical_sources_and_invalid_inline_shape_refuse() {
         let foundation = std::array::from_fn(|_| Vec::new());
-        let reference = Reference::capture(1, b"original").unwrap();
+        let reference =
+            Reference::capture(1, b"original").expect("the fixture captures the authored state");
         assert_eq!(
             reference.resolve(b"modified", &foundation, b""),
             Err(Error::Digest)
         );
         assert_eq!(
-            Reference::from_storage(2, 1, 0, sha256_of(b""), None),
+            Reference::from_storage(2, 1, 0, content_digest::sha256_of(b""), None),
             Err(Error::Source)
         );
         assert_eq!(
-            Reference::from_storage(1, 1, 0, sha256_of(b""), Some(Vec::new())),
+            Reference::from_storage(1, 1, 0, content_digest::sha256_of(b""), Some(Vec::new())),
             Err(Error::Inline)
         );
         assert_eq!(
-            Reference::from_storage(2, 2, 1, sha256_of(b"x"), Some(Vec::new())),
+            Reference::from_storage(2, 2, 1, content_digest::sha256_of(b"x"), Some(Vec::new())),
             Err(Error::Length)
         );
         assert_eq!(
-            Reference::from_storage(2, 2, 1, sha256_of(b"y"), Some(vec![b'x'])),
+            Reference::from_storage(2, 2, 1, content_digest::sha256_of(b"y"), Some(vec![b'x'])),
             Err(Error::Digest)
         );
         assert_eq!(

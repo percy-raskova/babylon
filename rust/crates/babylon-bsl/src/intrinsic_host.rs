@@ -296,7 +296,10 @@ fn eval_floor(args: &[Value]) -> Result<Value, EvalError> {
             format!("floor({x}) = {floored} exceeds Int's i64 domain (§3.1): E-EVAL-039"),
         ));
     }
-    #[allow(clippy::cast_possible_truncation)]
+    #[allow(
+        clippy::cast_possible_truncation,
+        reason = "the bounded fixture index is range-checked before narrowing"
+    )]
     // In range by the check above; never a silent wraparound.
     Ok(Value::Int(floored as i64))
 }
@@ -665,8 +668,8 @@ fn eval_clamp(args: &[Value]) -> Result<Value, EvalError> {
 #[cfg(test)]
 mod tests {
     use super::{
-        draw_finite_kernel_ticket, DrawContext, DrawIdentityContext, EvalCode, IntrinsicCallCtx,
-        IntrinsicHost, KernelIntrinsicHost, Value,
+        DrawContext, DrawIdentityContext, EvalCode, IntrinsicCallCtx, IntrinsicHost,
+        KernelIntrinsicHost, Value,
     };
 
     fn floor(x: f64) -> Result<Value, crate::evaluator::EvalError> {
@@ -711,9 +714,14 @@ mod tests {
 
     #[test]
     fn floor_of_a_negative_value_is_e_eval_039_not_a_silent_pick() {
-        let err = floor(-0.1).unwrap_err();
+        let err = floor(-0.1).expect_err("the intrinsic refuses the out-of-domain argument");
         assert_eq!(err.code, Some(EvalCode::DemotionOutOfDomain));
-        assert_eq!(err.code.unwrap().spec_code(), "E-EVAL-039");
+        assert_eq!(
+            err.code
+                .expect("the asserted error carries a specification code")
+                .spec_code(),
+            "E-EVAL-039"
+        );
     }
 
     #[test]
@@ -726,25 +734,29 @@ mod tests {
 
     #[test]
     fn floor_of_nan_is_e_eval_039() {
-        let err = floor(f64::NAN).unwrap_err();
+        let err = floor(f64::NAN).expect_err("the intrinsic refuses the out-of-domain argument");
         assert_eq!(err.code, Some(EvalCode::DemotionOutOfDomain));
     }
 
     #[test]
     fn floor_of_infinity_is_e_eval_039() {
         assert_eq!(
-            floor(f64::INFINITY).unwrap_err().code,
+            floor(f64::INFINITY)
+                .expect_err("the intrinsic refuses the out-of-domain argument")
+                .code,
             Some(EvalCode::DemotionOutOfDomain)
         );
         assert_eq!(
-            floor(f64::NEG_INFINITY).unwrap_err().code,
+            floor(f64::NEG_INFINITY)
+                .expect_err("the intrinsic refuses the out-of-domain argument")
+                .code,
             Some(EvalCode::DemotionOutOfDomain)
         );
     }
 
     #[test]
     fn floor_of_a_value_exceeding_i64_range_is_e_eval_039_never_a_wraparound() {
-        let err = floor(1e30).unwrap_err();
+        let err = floor(1e30).expect_err("the intrinsic refuses the out-of-domain argument");
         assert_eq!(err.code, Some(EvalCode::DemotionOutOfDomain));
     }
 
@@ -754,7 +766,8 @@ mod tests {
         // representable value is 2^63, which is already one past the true
         // maximum — so a floor result AT that boundary must reject, not
         // silently saturate to i64::MAX.
-        let err = floor(super::I64_DOMAIN_CEILING).unwrap_err();
+        let err = floor(super::I64_DOMAIN_CEILING)
+            .expect_err("the intrinsic refuses the out-of-domain argument");
         assert_eq!(err.code, Some(EvalCode::DemotionOutOfDomain));
     }
 
@@ -820,14 +833,19 @@ mod tests {
 
     #[test]
     fn log_of_zero_is_transcendental_out_of_domain() {
-        let err = log(0.0).unwrap_err();
+        let err = log(0.0).expect_err("the fixture call `log` fails for the authored inputs");
         assert_eq!(err.code, Some(EvalCode::TranscendentalOutOfDomain));
-        assert_eq!(err.code.unwrap().spec_code(), "E-EVAL-043");
+        assert_eq!(
+            err.code
+                .expect("the asserted error carries a specification code")
+                .spec_code(),
+            "E-EVAL-043"
+        );
     }
 
     #[test]
     fn log_of_a_negative_value_is_transcendental_out_of_domain() {
-        let err = log(-1.0).unwrap_err();
+        let err = log(-1.0).expect_err("the fixture call `log` fails for the authored inputs");
         assert_eq!(err.code, Some(EvalCode::TranscendentalOutOfDomain));
     }
 
@@ -841,15 +859,20 @@ mod tests {
     /// result guard.
     #[test]
     fn log_of_negative_zero_is_rejected_not_accepted() {
-        let err = log(-0.0).unwrap_err();
+        let err = log(-0.0).expect_err("the fixture call `log` fails for the authored inputs");
         assert_eq!(err.code, Some(EvalCode::TranscendentalOutOfDomain));
     }
 
     #[test]
     fn exp_of_a_large_value_overflows_to_a_non_finite_result() {
-        let err = exp(1e10).unwrap_err();
+        let err = exp(1e10).expect_err("the fixture call `exp` fails for the authored inputs");
         assert_eq!(err.code, Some(EvalCode::NonFinite));
-        assert_eq!(err.code.unwrap().spec_code(), "E-EVAL-014");
+        assert_eq!(
+            err.code
+                .expect("the asserted error carries a specification code")
+                .spec_code(),
+            "E-EVAL-014"
+        );
     }
 
     #[test]
@@ -870,19 +893,21 @@ mod tests {
     /// duplicating the result guard's coverage.
     #[test]
     fn exp_of_negative_infinity_is_rejected_at_the_input_guard_not_silently_zero() {
-        let err = exp(f64::NEG_INFINITY).unwrap_err();
+        let err = exp(f64::NEG_INFINITY)
+            .expect_err("the fixture call `exp` fails for the authored inputs");
         assert_eq!(err.code, Some(EvalCode::TranscendentalOutOfDomain));
     }
 
     #[test]
     fn exp_of_positive_infinity_is_rejected_at_the_input_guard() {
-        let err = exp(f64::INFINITY).unwrap_err();
+        let err =
+            exp(f64::INFINITY).expect_err("the fixture call `exp` fails for the authored inputs");
         assert_eq!(err.code, Some(EvalCode::TranscendentalOutOfDomain));
     }
 
     #[test]
     fn exp_of_nan_is_rejected_at_the_input_guard() {
-        let err = exp(f64::NAN).unwrap_err();
+        let err = exp(f64::NAN).expect_err("the fixture call `exp` fails for the authored inputs");
         assert_eq!(err.code, Some(EvalCode::TranscendentalOutOfDomain));
     }
 
@@ -896,13 +921,14 @@ mod tests {
     /// test's code assertion even though it stays `Err` either way.
     #[test]
     fn log_of_positive_infinity_is_rejected_at_the_input_guard_not_the_result_guard() {
-        let err = log(f64::INFINITY).unwrap_err();
+        let err =
+            log(f64::INFINITY).expect_err("the fixture call `log` fails for the authored inputs");
         assert_eq!(err.code, Some(EvalCode::TranscendentalOutOfDomain));
     }
 
     #[test]
     fn log_of_nan_is_rejected_at_the_input_guard() {
-        let err = log(f64::NAN).unwrap_err();
+        let err = log(f64::NAN).expect_err("the fixture call `log` fails for the authored inputs");
         assert_eq!(err.code, Some(EvalCode::TranscendentalOutOfDomain));
     }
 
@@ -1010,9 +1036,14 @@ mod tests {
 
     #[test]
     fn sqrt_of_a_negative_is_e_eval_044_not_a_silent_nan() {
-        let err = sqrt(-1.0).unwrap_err();
+        let err = sqrt(-1.0).expect_err("the fixture call `sqrt` fails for the authored inputs");
         assert_eq!(err.code, Some(EvalCode::IntrinsicOutOfDomain));
-        assert_eq!(err.code.unwrap().spec_code(), "E-EVAL-044");
+        assert_eq!(
+            err.code
+                .expect("the asserted error carries a specification code")
+                .spec_code(),
+            "E-EVAL-044"
+        );
     }
 
     /// The input guard is load-bearing the same way `log`'s is: `sqrt` of
@@ -1022,7 +1053,7 @@ mod tests {
     #[test]
     fn sqrt_of_a_non_finite_argument_is_e_eval_044_at_the_input_guard() {
         for x in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
-            let err = sqrt(x).unwrap_err();
+            let err = sqrt(x).expect_err("the fixture call `sqrt` fails for the authored inputs");
             assert_eq!(err.code, Some(EvalCode::IntrinsicOutOfDomain), "{x}");
         }
     }
@@ -1085,7 +1116,8 @@ mod tests {
     #[test]
     fn round_half_even_of_a_non_finite_argument_is_e_eval_044() {
         for x in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
-            let err = round_half_even(x).unwrap_err();
+            let err = round_half_even(x)
+                .expect_err("the fixture call `round_half_even` fails for the authored inputs");
             assert_eq!(err.code, Some(EvalCode::IntrinsicOutOfDomain), "{x}");
         }
     }
@@ -1129,12 +1161,16 @@ mod tests {
     fn min_and_max_refuse_a_non_finite_argument_on_either_side() {
         for bad in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
             assert_eq!(
-                min2(bad, 1.0).unwrap_err().code,
+                min2(bad, 1.0)
+                    .expect_err("the fixture call `min2` fails for the authored inputs")
+                    .code,
                 Some(EvalCode::IntrinsicOutOfDomain),
                 "min lhs {bad}"
             );
             assert_eq!(
-                max2(1.0, bad).unwrap_err().code,
+                max2(1.0, bad)
+                    .expect_err("the fixture call `max2` fails for the authored inputs")
+                    .code,
                 Some(EvalCode::IntrinsicOutOfDomain),
                 "max rhs {bad}"
             );
@@ -1168,7 +1204,9 @@ mod tests {
     fn abs_of_a_non_finite_argument_is_e_eval_044() {
         for x in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
             assert_eq!(
-                abs1(x).unwrap_err().code,
+                abs1(x)
+                    .expect_err("the fixture call `abs1` fails for the authored inputs")
+                    .code,
                 Some(EvalCode::IntrinsicOutOfDomain),
                 "{x}"
             );
@@ -1201,7 +1239,8 @@ mod tests {
     /// error: the result is that bound.
     #[test]
     fn clamp_with_lo_above_hi_is_e_eval_044_never_a_silent_swap() {
-        let err = clamp3(0.5, 1.0, 0.0).unwrap_err();
+        let err = clamp3(0.5, 1.0, 0.0)
+            .expect_err("the fixture call `clamp3` fails for the authored inputs");
         assert_eq!(err.code, Some(EvalCode::IntrinsicOutOfDomain));
         assert_eq!(clamp3(0.5, 1.0, 1.0), Ok(Value::Real(1.0)));
     }
@@ -1210,17 +1249,23 @@ mod tests {
     fn clamp_refuses_a_non_finite_argument_in_any_position() {
         for bad in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
             assert_eq!(
-                clamp3(bad, 0.0, 1.0).unwrap_err().code,
+                clamp3(bad, 0.0, 1.0)
+                    .expect_err("the fixture call `clamp3` fails for the authored inputs")
+                    .code,
                 Some(EvalCode::IntrinsicOutOfDomain),
                 "x {bad}"
             );
             assert_eq!(
-                clamp3(0.5, bad, 1.0).unwrap_err().code,
+                clamp3(0.5, bad, 1.0)
+                    .expect_err("the fixture call `clamp3` fails for the authored inputs")
+                    .code,
                 Some(EvalCode::IntrinsicOutOfDomain),
                 "lo {bad}"
             );
             assert_eq!(
-                clamp3(0.5, 0.0, bad).unwrap_err().code,
+                clamp3(0.5, 0.0, bad)
+                    .expect_err("the fixture call `clamp3` fails for the authored inputs")
+                    .code,
                 Some(EvalCode::IntrinsicOutOfDomain),
                 "hi {bad}"
             );
@@ -1257,9 +1302,9 @@ mod tests {
     /// as it is NOT the fallthrough's "no intrinsic registered".
     #[test]
     fn every_declarable_intrinsic_has_a_signature_row_and_a_dispatch_arm() {
-        use crate::declarations::{kernel_signature, IntrinsicTypeName, DECLARABLE_INTRINSICS};
+        use crate::declarations::{IntrinsicTypeName, DECLARABLE_INTRINSICS};
         for name in DECLARABLE_INTRINSICS {
-            let (params, _) = kernel_signature(name)
+            let (params, _) = crate::declarations::kernel_signature(name)
                 .unwrap_or_else(|| panic!("{name}: in the cap but no signature row"));
             let args: Vec<Value> = params
                 .iter()
@@ -1307,13 +1352,17 @@ mod tests {
         let ctx = IntrinsicCallCtx::context_free();
         let err = DrawContextProbeHost
             .call("context-probe", &[], ctx)
-            .unwrap_err();
+            .expect_err("the fixture call `call` fails for the authored inputs");
         assert!(err.message.contains("session"), "{}", err.message);
         assert!(err.message.contains("tick"), "{}", err.message);
     }
 
     #[test]
-    #[allow(clippy::items_after_statements, clippy::too_many_lines)]
+    #[allow(
+        clippy::items_after_statements,
+        clippy::too_many_lines,
+        reason = "the helper stays beside its only caller, in the one authored sequence that exercises it"
+    )]
     fn private_finite_draw_is_keyed_by_every_aj_identity_component_and_has_no_call_order_state() {
         use babylon_graph::memory::MemoryGraph;
         use babylon_graph::stable_element::{StableElementKey, StableElementResolver};
@@ -1322,10 +1371,18 @@ mod tests {
         use std::collections::HashMap;
 
         let mut graph = MemoryGraph::new();
-        let subject_a = graph.add_node("class").unwrap();
-        let subject_b = graph.add_node("class").unwrap();
-        let active_a = graph.add_node("organization").unwrap();
-        let active_b = graph.add_node("organization").unwrap();
+        let subject_a = graph
+            .add_node("class")
+            .expect("the fixture adds a node with a registered kind");
+        let subject_b = graph
+            .add_node("class")
+            .expect("the fixture adds a node with a registered kind");
+        let active_a = graph
+            .add_node("organization")
+            .expect("the fixture adds a node with a registered kind");
+        let active_b = graph
+            .add_node("organization")
+            .expect("the fixture adds a node with a registered kind");
         let resolver = StableElementResolver::seal(
             &graph,
             "demo/world",
@@ -1337,15 +1394,29 @@ mod tests {
             ]),
             &HashMap::new(),
         )
-        .unwrap();
-        let subject_a = resolver.node_key(subject_a).unwrap().clone();
-        let subject_b = resolver.node_key(subject_b).unwrap().clone();
-        let active_a = resolver.node_key(active_a).unwrap().clone();
-        let active_b = resolver.node_key(active_b).unwrap().clone();
+        .expect("the fixture seals the prepared period");
+        let subject_a = resolver
+            .node_key(subject_a)
+            .expect("the fixture node has a key")
+            .clone();
+        let subject_b = resolver
+            .node_key(subject_b)
+            .expect("the fixture node has a key")
+            .clone();
+        let active_a = resolver
+            .node_key(active_a)
+            .expect("the fixture node has a key")
+            .clone();
+        let active_b = resolver
+            .node_key(active_b)
+            .expect("the fixture node has a key")
+            .clone();
         let ordered_active = vec![active_a.clone(), active_b.clone()];
         let reversed_active = vec![active_b, active_a];
-        let session_a = ReplaySessionId::try_from("demo/session-a").unwrap();
-        let session_b = ReplaySessionId::try_from("demo/session-b").unwrap();
+        let session_a = ReplaySessionId::try_from("demo/session-a")
+            .expect("the fixture value fits the target range");
+        let session_b = ReplaySessionId::try_from("demo/session-b")
+            .expect("the fixture value fits the target range");
 
         #[derive(Clone, Copy)]
         struct Key<'a> {
@@ -1363,13 +1434,14 @@ mod tests {
                 identity: DrawIdentityContext {
                     session: key.session,
                     seed: key.seed,
-                    domain: RngDomain::try_from(key.domain).unwrap(),
+                    domain: RngDomain::try_from(key.domain)
+                        .expect("the fixture value fits the target range"),
                     resolver: &resolver,
                     subject: key.subject.clone(),
                 },
                 tick: key.tick,
             };
-            draw_finite_kernel_ticket(
+            super::draw_finite_kernel_ticket(
                 key.sample,
                 key.slot,
                 &IntrinsicCallCtx {
@@ -1377,7 +1449,7 @@ mod tests {
                     active_elements: key.active.to_vec(),
                 },
             )
-            .unwrap()
+            .expect("the fixture call `draw_finite_kernel_ticket` succeeds for the authored inputs")
         };
 
         let base_key = Key {

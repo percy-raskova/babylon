@@ -4,21 +4,22 @@ use babylon_kernel::tick_content_hash::RefDigest;
 use babylon_kernel::H3CellId;
 use postgres::{Client, Config, GenericClient, IsolationLevel, NoTls, Row, Transaction};
 
-use crate::current_schema::{bounded_config, require_current_schema, CurrentSchemaError};
-use crate::postgres_catalog::{
-    acquire_lock, release_lock, validate_connection_target, CatalogError,
-};
+use crate::current_schema;
+use crate::current_schema::CurrentSchemaError;
+use crate::h3_reference_cohort::H3ReferenceCohort;
+use crate::postgres_catalog;
+use crate::postgres_catalog::CatalogError;
 use crate::postgres_diagnostic::PostgresDiagnostic;
-use crate::{
-    h3_reference_cohort::H3ReferenceCohort,
-    spatial_reference_products::michigan_spatial_reference_products,
-    spatial_reference_products::CountyH3LandAreaRow, spatial_reference_products::CountyIdentityRow,
-    spatial_reference_products::CountyPlaceH3LandAreaRow, spatial_reference_products::H3CountRow,
-    spatial_reference_products::H3LandFractionRow, spatial_reference_products::PlaceIdentityRow,
-    spatial_reference_products::ReferenceProduct,
-    spatial_reference_products::SpatialReferenceProducts,
-    spatial_reference_products::SpatialReferenceProductsError,
+use crate::spatial_reference_products;
+use crate::spatial_reference_products::{
+    CountyH3LandAreaRow, CountyIdentityRow, CountyPlaceH3LandAreaRow, H3CountRow,
+    H3LandFractionRow, PlaceIdentityRow, ReferenceProduct, SpatialReferenceProducts,
+    SpatialReferenceProductsError,
 };
+use postgres::Error as PostgresError;
+use std::cmp::Ordering;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 
 const INSTALL_BATCH_ROWS: usize = 1_024;
 const MAX_COMMIT_ATTEMPTS: usize = 2;
@@ -219,7 +220,7 @@ pub enum SpatialReferenceInstallError {
 }
 
 impl std::fmt::Display for SpatialReferenceInstallError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> FmtResult {
         write!(
             formatter,
             "spatial reference installation refused: {self:?}"
@@ -305,10 +306,11 @@ where
         &SpatialReferenceProducts,
     ) -> Result<CommitAttempt, SpatialReferenceInstallError>,
 {
-    let bundle = michigan_spatial_reference_products(cohort)
+    let bundle = spatial_reference_products::michigan_spatial_reference_products(cohort)
         .map_err(SpatialReferenceInstallError::Bundle)?;
-    validate_connection_target(config).map_err(SpatialReferenceInstallError::ConnectionTarget)?;
-    let bounded = bounded_config(config);
+    postgres_catalog::validate_connection_target(config)
+        .map_err(SpatialReferenceInstallError::ConnectionTarget)?;
+    let bounded = current_schema::bounded_config(config);
     let mut session = LockedInstallSession::connect(&bounded)?;
     let primary = install_under_lock(&bounded, &mut session, &bundle, attempt);
     session.finish(primary)
@@ -400,7 +402,7 @@ impl LockedInstallSession {
         let mut client = config.connect(NoTls).map_err(|error| {
             postgres_database_error(SpatialReferenceInstallOperation::Connect, &error)
         })?;
-        acquire_lock(&mut client).map_err(SpatialReferenceInstallError::Lock)?;
+        postgres_catalog::acquire_lock(&mut client).map_err(SpatialReferenceInstallError::Lock)?;
         Ok(Self {
             client: Some(client),
         })
@@ -423,7 +425,7 @@ impl LockedInstallSession {
         primary: Result<T, SpatialReferenceInstallError>,
     ) -> Result<T, SpatialReferenceInstallError> {
         let cleanup = self.client.as_mut().map_or(Ok(()), |client| {
-            release_lock(client)
+            postgres_catalog::release_lock(client)
                 .map_err(SpatialReferenceInstallError::Unlock)
                 .map_err(Box::new)
         });
@@ -440,7 +442,7 @@ impl LockedInstallSession {
 }
 
 fn require_schema(client: &mut Client) -> Result<(), SpatialReferenceInstallError> {
-    require_current_schema(client)
+    current_schema::require_current_schema(client)
         .map(|_| ())
         .map_err(SpatialReferenceInstallError::CurrentSchema)
 }
@@ -1140,13 +1142,13 @@ fn require_row_count(
     relation: SpatialReferenceRelation,
 ) -> Result<(), SpatialReferenceInstallError> {
     match actual.cmp(&expected) {
-        std::cmp::Ordering::Equal => Ok(()),
-        std::cmp::Ordering::Greater => Err(SpatialReferenceInstallError::Bounds {
+        Ordering::Equal => Ok(()),
+        Ordering::Greater => Err(SpatialReferenceInstallError::Bounds {
             relation,
             actual,
             max: expected,
         }),
-        std::cmp::Ordering::Less => Err(conflict(relation)),
+        Ordering::Less => Err(conflict(relation)),
     }
 }
 
@@ -1180,7 +1182,7 @@ fn database_error(operation: SpatialReferenceInstallOperation) -> SpatialReferen
 
 fn postgres_database_error(
     operation: SpatialReferenceInstallOperation,
-    error: &postgres::Error,
+    error: &PostgresError,
 ) -> SpatialReferenceInstallError {
     SpatialReferenceInstallError::Database {
         operation,

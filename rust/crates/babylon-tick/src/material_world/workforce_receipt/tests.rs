@@ -1,7 +1,20 @@
-use super::*;
-use babylon_material_circuit::{
-    member_shift_id, AccountId, EmploymentTerms, LaborUseReceipt, WageAccrualReceipt,
-};
+use crate::material_world::workforce_receipt;
+use crate::material_world::workforce_receipt::decode_attendance;
+use crate::material_world::workforce_receipt::decode_staffing;
+use crate::material_world::workforce_receipt::Currency;
+use crate::material_world::workforce_receipt::FinalDemandPrincipalId;
+use crate::material_world::workforce_receipt::LaborCompensation;
+use crate::material_world::workforce_receipt::MemberLaborUseReceipt;
+use crate::material_world::workforce_receipt::SiteId;
+use crate::material_world::workforce_receipt::StaffingMemberBinding;
+use crate::material_world::workforce_receipt::StaffingMemberId;
+use crate::material_world::workforce_receipt::StaffingMemberReceipt;
+use crate::material_world::workforce_receipt::StaffingPoolId;
+use crate::material_world::workforce_receipt::UnitId;
+use crate::material_world::workforce_receipt::ATTENDANCE_BYTES;
+use crate::material_world::workforce_receipt::STAFFING_BYTES;
+use crate::material_world::ReceiptCursor;
+use babylon_material_circuit::{AccountId, EmploymentTerms, LaborUseReceipt, WageAccrualReceipt};
 fn staffing() -> StaffingMemberReceipt {
     StaffingMemberReceipt {
         period: 1,
@@ -11,10 +24,12 @@ fn staffing() -> StaffingMemberReceipt {
         member: StaffingMemberBinding::try_new(
             StaffingMemberId::from_bytes([4; 32]),
             FinalDemandPrincipalId::from_bytes([5; 32]),
-            "county:26163".parse().unwrap(),
+            "county:26163"
+                .parse()
+                .expect("the authored literal parses as the declared type"),
             2,
         )
-        .unwrap(),
+        .expect("the authored fixture satisfies the constructor invariants"),
         hours_per_person: 4,
         opening_employed: 1,
         opening_reserve: 1,
@@ -58,7 +73,8 @@ fn member_wire_roundtrips_and_refuses_false_population_or_wage_partitions() {
     let staff = staffing();
     let work = attendance();
     let mut bytes = vec![];
-    encode_staffing(&staff, 1, &mut bytes).unwrap();
+    workforce_receipt::encode_staffing(&staff, 1, &mut bytes)
+        .expect("the fixture value encodes to its canonical bytes");
     assert_eq!(bytes.len(), STAFFING_BYTES);
     assert_eq!(
         decode_staffing(
@@ -68,11 +84,12 @@ fn member_wire_roundtrips_and_refuses_false_population_or_wage_partitions() {
             },
             1
         )
-        .unwrap(),
+        .expect("the canonical bytes decode into the declared type"),
         staff
     );
     bytes.clear();
-    encode_attendance(&work, 1, &mut bytes).unwrap();
+    workforce_receipt::encode_attendance(&work, 1, &mut bytes)
+        .expect("the fixture value encodes to its canonical bytes");
     assert_eq!(bytes.len(), ATTENDANCE_BYTES);
     assert_eq!(
         decode_attendance(
@@ -82,7 +99,7 @@ fn member_wire_roundtrips_and_refuses_false_population_or_wage_partitions() {
             },
             1
         )
-        .unwrap(),
+        .expect("the canonical bytes decode into the declared type"),
         work
     );
     let mut corrupt = bytes.clone();
@@ -98,11 +115,11 @@ fn member_wire_roundtrips_and_refuses_false_population_or_wage_partitions() {
     let mut false_work = work;
     false_work.idle_wages = Currency::from_micro_units(-1);
     let mut unchanged = vec![7];
-    assert!(encode_attendance(&false_work, 1, &mut unchanged).is_err());
+    assert!(workforce_receipt::encode_attendance(&false_work, 1, &mut unchanged).is_err());
     assert_eq!(unchanged, [7]);
     let mut false_staff = staff;
     false_staff.closing_reserve = 1;
-    assert!(encode_staffing(&false_staff, 1, &mut unchanged).is_err());
+    assert!(workforce_receipt::encode_staffing(&false_staff, 1, &mut unchanged).is_err());
     assert_eq!(unchanged, [7]);
 }
 #[test]
@@ -131,7 +148,7 @@ fn member_receipts_authenticate_payee_and_earned_wages_against_the_aggregate() {
         compensation: work.compensation,
     };
     let wage = WageAccrualReceipt {
-        shift: member_shift_id(1, &terms),
+        shift: babylon_material_circuit::member_shift_id(1, &terms),
         employer: AccountId::Site(work.site_id),
         payee: AccountId::Household(work.payee),
         period: 1,
@@ -141,14 +158,14 @@ fn member_receipts_authenticate_payee_and_earned_wages_against_the_aggregate() {
     let validate = |staff: &[StaffingMemberReceipt],
                     members: &[MemberLaborUseReceipt],
                     wages: &[WageAccrualReceipt]| {
-        validate_join(staff, members, std::slice::from_ref(&aggregate), wages)
+        workforce_receipt::validate_join(staff, members, std::slice::from_ref(&aggregate), wages)
     };
     validate(
         std::slice::from_ref(&staff),
         std::slice::from_ref(&work),
         std::slice::from_ref(&wage),
     )
-    .unwrap();
+    .expect("the authored fixture passes validation");
     assert!(validate(
         std::slice::from_ref(&staff),
         std::slice::from_ref(&work),

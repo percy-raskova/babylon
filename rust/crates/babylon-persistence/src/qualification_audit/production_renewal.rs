@@ -1,16 +1,17 @@
 //! Terminal-window production evidence over authenticated state and receipts.
 //! Bounds describe fungible custody in aggregate, never FIFO or individual lots.
 use babylon_material_circuit::{
-    recurring_household_order_id, recurring_procurement_order_id, AccountId, AidOutcome,
-    CapacitySupply, CircuitAccounting, CommodityKind, FinalDemandPrincipalId, GoodId,
-    HouseholdConsumptionReceipt, HouseholdDemandReceipt, MaterialCircuitState, MoneyLocation,
-    MoneyTransferPurpose, MoneyTransferReceipt, OrderId, OutboundOrderId, ProcessId,
-    ProcurementReceipt, ProductionReceipt, RollingProcessSupply, SiteId, UnitId,
+    AccountId, AidOutcome, CapacitySupply, CircuitAccounting, CommodityKind,
+    FinalDemandPrincipalId, GoodId, HouseholdConsumptionReceipt, HouseholdDemandReceipt,
+    MaterialCircuitState, MoneyLocation, MoneyTransferPurpose, MoneyTransferReceipt, OrderId,
+    OutboundOrderId, ProcessId, ProcurementReceipt, ProductionReceipt, RollingProcessSupply,
+    SiteId, UnitId,
 };
 use babylon_tick::material_world::MaterialTickReceipts;
 use serde::Serialize;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write;
+use std::result::Result as StdResult;
 
 const MAX_PRODUCERS: usize = 8;
 const MAX_OUTPUT_RECIPES: usize = 8;
@@ -18,8 +19,8 @@ const MAX_HOUSEHOLDS: usize = 64;
 const MAX_PENDING: usize = 4096;
 type Native = (GoodId, UnitId);
 type Group = (SiteId, GoodId, UnitId);
-type Result<T> = std::result::Result<T, Refusal>;
-#[derive(Debug, PartialEq, Eq)]
+type Result<T> = StdResult<T, Refusal>;
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Refusal {
     SeedPeriod,
     Period,
@@ -350,7 +351,7 @@ impl Audit {
             }
             if p.period != period
                 || p.order_id
-                    != recurring_procurement_order_id(
+                    != babylon_material_circuit::recurring_procurement_order_id(
                         period,
                         p.buyer_site_id,
                         p.supplier_site_id,
@@ -477,7 +478,7 @@ impl Audit {
             }
             if d.period != r.resolve_tick
                 || d.order_id
-                    != recurring_household_order_id(
+                    != babylon_material_circuit::recurring_household_order_id(
                         d.period,
                         (d.principal_id, d.good_id, d.unit_id),
                     )

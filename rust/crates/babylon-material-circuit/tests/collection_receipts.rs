@@ -1,8 +1,8 @@
 //! Independent actual/refusal row and outcome-tag contracts.
 use babylon_kernel::currency::Currency;
 use babylon_material_circuit::{
-    collection_contribution_id, CollectionOutcome, CollectionReceipt, FinalDemandPrincipalId,
-    MaterialCircuitError, OrganizationAccountId, UnitId,
+    CollectionOutcome, CollectionReceipt, FinalDemandPrincipalId, MaterialCircuitError,
+    OrganizationAccountId, UnitId,
 };
 
 fn partial() -> CollectionReceipt {
@@ -25,7 +25,7 @@ fn partial() -> CollectionReceipt {
         transfer_ordinal: Some(3),
         contribution_use_id: [0; 32],
     };
-    row.contribution_use_id = collection_contribution_id(
+    row.contribution_use_id = babylon_material_circuit::collection_contribution_id(
         row.original_commitment_id,
         row.mandate_id,
         row.period,
@@ -40,9 +40,18 @@ fn partial() -> CollectionReceipt {
 #[test]
 fn actual_partial_row_requires_positive_subcap_amount_and_one_identified_time_use() {
     let row = partial();
-    row.validate().unwrap();
-    assert_eq!(row.contribution_use().unwrap().hours, 2);
-    assert_eq!(CollectionOutcome::try_from(9).unwrap(), row.outcome);
+    row.validate()
+        .expect("the authored fixture passes validation");
+    assert_eq!(
+        row.contribution_use()
+            .expect("the fixture call `contribution_use` succeeds for the authored inputs")
+            .hours,
+        2
+    );
+    assert_eq!(
+        CollectionOutcome::try_from(9).expect("the fixture value fits the target range"),
+        row.outcome
+    );
     for kind in 0..8 {
         let mut changed = row.clone();
         match kind {
@@ -73,7 +82,8 @@ fn full_and_refused_rows_retain_their_existing_tags_and_quantity_contracts() {
     let mut full = partial();
     full.outcome = CollectionOutcome::Collected;
     full.collected = full.requested;
-    full.validate().unwrap();
+    full.validate()
+        .expect("the authored fixture passes validation");
     assert_eq!(full.outcome as u8, 1);
     full.collected = Currency::from_micro_units(4);
     assert!(full.validate().is_err());
@@ -83,7 +93,9 @@ fn full_and_refused_rows_retain_their_existing_tags_and_quantity_contracts() {
     refusal.performed_hours = 0;
     refusal.transfer_ordinal = None;
     refusal.contribution_use_id = [0; 32];
-    refusal.validate().unwrap();
+    refusal
+        .validate()
+        .expect("the authored fixture passes validation");
     assert_eq!(refusal.outcome as u8, 7);
     assert!(refusal.contribution_use().is_none());
     refusal.collected = Currency::from_micro_units(1);

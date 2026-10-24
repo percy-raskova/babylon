@@ -2,7 +2,7 @@
 
 use postgres::GenericClient;
 
-use crate::archive::{database, decode};
+use crate::archive;
 use crate::SemanticArchiveError;
 
 /// The sole Archive transport channel. Its payload is always empty.
@@ -24,21 +24,21 @@ pub(crate) fn validate(client: &mut impl GenericClient) -> Result<(), SemanticAr
         FROM pg_catalog.pg_trigger t JOIN pg_catalog.pg_class c ON c.oid=t.tgrelid \
         JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace \
         WHERE t.tgfoid='babylon_meta.archive_wakeup_v1()'::regprocedure ORDER BY t.tgname", &[])
-        .map_err(|e| database("read Archive wakeup triggers", &e))?;
+        .map_err(|e| archive::database("read Archive wakeup triggers", &e))?;
     if rows.len() != TRIGGERS.len() {
         return Err(SemanticArchiveError::SchemaMismatch);
     }
     for (row, (name, schema, table, kind)) in rows.iter().zip(TRIGGERS) {
-        if decode::<String>(row, 0)? != name
-            || decode::<String>(row, 1)? != schema
-            || decode::<String>(row, 2)? != table
-            || decode::<i16>(row, 3)? != kind
-            || decode::<String>(row, 4)? != "O"
-            || decode::<i16>(row, 5)? != 0
-            || !decode::<bool>(row, 6)?
-            || !decode::<bool>(row, 7)?
-            || !decode::<bool>(row, 8)?
-            || !decode::<bool>(row, 9)?
+        if archive::decode::<String>(row, 0)? != name
+            || archive::decode::<String>(row, 1)? != schema
+            || archive::decode::<String>(row, 2)? != table
+            || archive::decode::<i16>(row, 3)? != kind
+            || archive::decode::<String>(row, 4)? != "O"
+            || archive::decode::<i16>(row, 5)? != 0
+            || !archive::decode::<bool>(row, 6)?
+            || !archive::decode::<bool>(row, 7)?
+            || !archive::decode::<bool>(row, 8)?
+            || !archive::decode::<bool>(row, 9)?
         {
             return Err(SemanticArchiveError::SchemaMismatch);
         }
@@ -52,18 +52,19 @@ fn validate_function(client: &mut impl GenericClient) -> Result<(), SemanticArch
         WHERE privilege.grantee<>p.proowner) \
         FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_language l ON l.oid=p.prolang \
         WHERE p.oid=pg_catalog.to_regprocedure('babylon_meta.archive_wakeup_v1()')", &[])
-        .map_err(|e| database("read Archive wakeup function", &e))?;
+        .map_err(|e| archive::database("read Archive wakeup function", &e))?;
     if rows.len() != 1 {
         return Err(SemanticArchiveError::SchemaMismatch);
     }
     let row = &rows[0];
-    if decode::<String>(row, 0)? != FUNCTION_BODY
-        || decode::<bool>(row, 1)?
-        || decode::<Option<Vec<String>>>(row, 2)? != Some(vec!["search_path=pg_catalog".into()])
-        || !decode::<bool>(row, 3)?
-        || decode::<String>(row, 4)? != "plpgsql"
-        || decode::<String>(row, 5)? != "v"
-        || !decode::<bool>(row, 6)?
+    if archive::decode::<String>(row, 0)? != FUNCTION_BODY
+        || archive::decode::<bool>(row, 1)?
+        || archive::decode::<Option<Vec<String>>>(row, 2)?
+            != Some(vec!["search_path=pg_catalog".into()])
+        || !archive::decode::<bool>(row, 3)?
+        || archive::decode::<String>(row, 4)? != "plpgsql"
+        || archive::decode::<String>(row, 5)? != "v"
+        || !archive::decode::<bool>(row, 6)?
     {
         return Err(SemanticArchiveError::SchemaMismatch);
     }

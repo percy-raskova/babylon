@@ -1,23 +1,34 @@
 //! Period-specific organizer knowledge, inserted before the material tick marker.
 
+use crate::economic_content::{EconomicAdmissionOwner, EconomicContentHandle};
+use crate::identity::CampaignId;
+use crate::material_runtime::MaterialRuntimeError;
 use crate::{
-    archive::{database, insert_grant_row},
-    economic_content::{EconomicAdmissionOwner, EconomicContentAdmission},
-    identity::CampaignId,
-    material_runtime::MaterialRuntimeError,
     ArchiveCitation, ArchiveDirtyBatch, ArchiveDossierProducer, ArchiveKnowledge, ArchivePageInput,
     ArchiveProducerOutcome, ArchiveSignal, ArchiveSubject, ArchiveSubjectKind,
     PendingArchiveReceipt, SemanticArchiveError,
 };
+
+use crate::archive;
+use crate::material_runtime::ArchiveFoundationCandidate;
+use crate::material_runtime::CapturedArchiveOrganizerRegister;
+use crate::production_projection::diagnostics::Stage;
+use crate::production_projection::diagnostics::Timing;
+use crate::CampaignFoundation;
+use babylon_practice_contract::OrganizerCollectionResolution;
 use babylon_practice_contract::{
     OrganizerAidMaterialPostings, OrganizerAidResolutionReceipt, OrganizerAidSupportStatus,
     OrganizerChoice, OrganizerConfig, OrganizerInquiry, OrganizerObservation, OrganizerOutcome,
     OrganizerPartnerResponse, OrganizerReceipt, OrganizerReport,
 };
 use babylon_tick::material_world::MaterialWorldRegister;
+use postgres::Config;
+use postgres::IsolationLevel;
+use postgres::Row;
 use postgres::{GenericClient, NoTls};
 use std::collections::BTreeMap;
 use std::sync::Mutex;
+use uuid::Uuid;
 
 fn hex(bytes: &[u8; 32]) -> String {
     crate::michigan_economy::digest_hex(bytes)
@@ -81,7 +92,7 @@ fn validate_observation_columns(
 }
 
 fn validate_observation_row(
-    row: &postgres::Row,
+    row: &Row,
     expected: &OrganizerObservation,
 ) -> Result<(), MaterialRuntimeError> {
     validate_observation_columns(
@@ -113,7 +124,7 @@ fn validate_receipt_columns(
 }
 
 fn validate_receipt_row(
-    row: &postgres::Row,
+    row: &Row,
     expected: &OrganizerReceipt,
 ) -> Result<(), MaterialRuntimeError> {
     validate_receipt_columns(
@@ -157,7 +168,7 @@ pub(crate) fn insert_projection(
             validate_observation_row(&stored, observation)?;
         }
         let citation = observation_citation(observation).map_err(archive_error)?;
-        insert_grant_row(
+        archive::insert_grant_row(
             client,
             campaign,
             "workplace",
@@ -168,11 +179,11 @@ pub(crate) fn insert_projection(
         )
         .map_err(archive_error)?;
     }
-    for receipt in state
+    let organizer_receipts = state
         .receipts
         .iter()
-        .chain(state.aid_receipts.iter().map(|row| &row.practice))
-    {
+        .chain(state.aid_receipts.iter().map(|row| &row.practice));
+    for receipt in organizer_receipts {
         if receipt.actor_id != config.controlled_actor_id {
             continue;
         }
@@ -191,7 +202,7 @@ pub(crate) fn insert_projection(
             &receipt.receipt_id,
         )
         .map_err(archive_error)?;
-        insert_grant_row(
+        archive::insert_grant_row(
             client,
             campaign,
             "organization",
@@ -242,12 +253,12 @@ fn validate_subjects(
 fn capture_subjects(
     client: &mut impl GenericClient,
     campaign: CampaignId,
-) -> Result<Vec<postgres::Row>, MaterialRuntimeError> {
+) -> Result<Vec<Row>, MaterialRuntimeError> {
     Ok(client.query("SELECT actor_id,subject_kind,subject_id,title FROM babylon_state.organizer_subject_v1 WHERE campaign_id=$1", &[campaign.as_uuid()])?)
 }
 
 fn validate_captured_subjects(
-    rows: &[postgres::Row],
+    rows: &[Row],
     config: &OrganizerConfig,
 ) -> Result<(), MaterialRuntimeError> {
     let expected = subject_definitions(config);
@@ -284,7 +295,7 @@ fn insert_subjects(
     .map_err(archive_error)?;
     for (kind, id, label) in subject_definitions(config) {
         client.execute("INSERT INTO babylon_state.organizer_subject_v1 (campaign_id,actor_id,subject_kind,subject_id,title) VALUES ($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING", &[campaign.as_uuid(),&actor,&kind.as_str(),&id.to_string(),&label])?;
-        insert_grant_row(
+        archive::insert_grant_row(
             client,
             campaign,
             kind.as_str(),
@@ -384,14 +395,14 @@ fn receipt_text(receipt: &OrganizerReceipt) -> String {
 
 /// Existing Archive-worker producer for committed, period-specific organizer evidence.
 pub struct OrganizerDossierProducer {
-    config: postgres::Config,
+    config: Config,
     foundation: EconomicAdmissionOwner,
-    cold_foundation: Mutex<Option<(CampaignId, crate::CampaignFoundation)>>,
+    cold_foundation: Mutex<Option<(CampaignId, CampaignFoundation)>>,
 }
 impl OrganizerDossierProducer {
     /// Bind the writer connection used by the existing Archive worker.
     #[must_use]
-    pub fn new(config: &postgres::Config) -> Self {
+    pub fn new(config: &Config) -> Self {
         Self {
             config: config.clone(),
             foundation: EconomicAdmissionOwner::default(),
@@ -400,9 +411,9 @@ impl OrganizerDossierProducer {
     }
 
     pub(crate) fn from_captured(
-        config: &postgres::Config,
+        config: &Config,
         campaign: CampaignId,
-        foundation: crate::CampaignFoundation,
+        foundation: CampaignFoundation,
     ) -> Self {
         Self {
             config: config.clone(),
@@ -417,7 +428,7 @@ pub(crate) fn archive_register_error(error: MaterialRuntimeError) -> SemanticArc
         MaterialRuntimeError::Database(error)
         | MaterialRuntimeError::DatabaseLockRefused(error)
         | MaterialRuntimeError::DatabaseStatementCanceled(error) => {
-            database("read organizer Archive register", &error)
+            archive::database("read organizer Archive register", &error)
         }
         MaterialRuntimeError::Graph(
             crate::RustPersistenceRuntimeError::Database {
@@ -441,7 +452,7 @@ pub(crate) fn archive_register_error(error: MaterialRuntimeError) -> SemanticArc
 impl ArchiveDossierProducer for OrganizerDossierProducer {
     fn produce(
         &self,
-        campaign: uuid::Uuid,
+        campaign: Uuid,
         receipt: &PendingArchiveReceipt,
         _knowledge: &ArchiveKnowledge,
         page_budget: usize,
@@ -454,24 +465,24 @@ impl ArchiveDossierProducer for OrganizerDossierProducer {
         config.options(&options);
         let mut client = config
             .connect(NoTls)
-            .map_err(|e| database("connect organizer Archive producer", &e))?;
+            .map_err(|e| archive::database("connect organizer Archive producer", &e))?;
         let mut transaction = client
             .build_transaction()
-            .isolation_level(postgres::IsolationLevel::RepeatableRead)
+            .isolation_level(IsolationLevel::RepeatableRead)
             .read_only(true)
             .start()
-            .map_err(|e| database("begin organizer Archive read", &e))?;
+            .map_err(|e| archive::database("begin organizer Archive read", &e))?;
         let captured = capture_organizer_pages(&mut transaction, campaign, receipt, page_budget)?;
         transaction
             .commit()
-            .map_err(|e| database("finish organizer Archive capture", &e))?;
+            .map_err(|e| archive::database("finish organizer Archive capture", &e))?;
         drop(client);
         let campaign = CampaignId::from_uuid(campaign);
         let candidate = self
             .foundation
             .candidate(campaign)
             .map_err(|_| SemanticArchiveError::StoredPageMismatch)?
-            .map(crate::material_runtime::ArchiveFoundationCandidate::Admitted);
+            .map(ArchiveFoundationCandidate::Admitted);
         let candidate = if candidate.is_some() || captured.register.is_none() {
             candidate
         } else {
@@ -482,9 +493,8 @@ impl ArchiveDossierProducer for OrganizerDossierProducer {
             if cold.as_ref().is_some_and(|(bound, _)| *bound != campaign) {
                 return Err(SemanticArchiveError::StoredPageMismatch);
             }
-            cold.take().map(|(_, graph)| {
-                crate::material_runtime::ArchiveFoundationCandidate::Graph(Box::new(graph))
-            })
+            cold.take()
+                .map(|(_, graph)| ArchiveFoundationCandidate::Graph(Box::new(graph)))
         };
         let (outcome, admitted) = captured.admit_and_render(candidate)?;
         if let Some(admitted) = admitted {
@@ -501,19 +511,19 @@ pub(crate) struct CapturedOrganizerPages {
     tick: u64,
     content_hash: [u8; 32],
     page_budget: usize,
-    subjects: Vec<postgres::Row>,
-    register: Option<crate::material_runtime::CapturedArchiveOrganizerRegister>,
+    subjects: Vec<Row>,
+    register: Option<CapturedArchiveOrganizerRegister>,
 }
 
 pub(crate) fn capture_organizer_pages(
     client: &mut impl GenericClient,
-    campaign: uuid::Uuid,
+    campaign: Uuid,
     receipt: &PendingArchiveReceipt,
     page_budget: usize,
 ) -> Result<CapturedOrganizerPages, SemanticArchiveError> {
     let tick = i64::try_from(receipt.resolve_tick())
         .map_err(|_| SemanticArchiveError::InvalidVerifiedTick)?;
-    let subjects = client.query("SELECT s.actor_id,s.subject_kind,s.subject_id,s.title FROM babylon_state.organizer_subject_v1 s WHERE campaign_id=$1 AND NOT EXISTS(SELECT 1 FROM babylon_meta.archive_page_revision_v2 p WHERE p.campaign_id=s.campaign_id AND p.subject_kind=s.subject_kind AND p.subject_id=s.subject_id AND p.effective_tick=$2) ORDER BY subject_kind,subject_id", &[&campaign,&tick]).map_err(|e|database("read organizer report subjects",&e))?;
+    let subjects = client.query("SELECT s.actor_id,s.subject_kind,s.subject_id,s.title FROM babylon_state.organizer_subject_v1 s WHERE campaign_id=$1 AND NOT EXISTS(SELECT 1 FROM babylon_meta.archive_page_revision_v2 p WHERE p.campaign_id=s.campaign_id AND p.subject_kind=s.subject_kind AND p.subject_id=s.subject_id AND p.effective_tick=$2) ORDER BY subject_kind,subject_id", &[&campaign,&tick]).map_err(|e|archive::database("read organizer report subjects",&e))?;
     let register = if subjects.is_empty() || page_budget == 0 {
         None
     } else {
@@ -539,14 +549,8 @@ pub(crate) fn capture_organizer_pages(
 impl CapturedOrganizerPages {
     pub(crate) fn admit_and_render(
         self,
-        cached: Option<crate::material_runtime::ArchiveFoundationCandidate>,
-    ) -> Result<
-        (
-            ArchiveProducerOutcome,
-            Option<std::sync::Arc<EconomicContentAdmission>>,
-        ),
-        SemanticArchiveError,
-    > {
+        cached: Option<ArchiveFoundationCandidate>,
+    ) -> Result<(ArchiveProducerOutcome, Option<EconomicContentHandle>), SemanticArchiveError> {
         let receipt = PendingArchiveReceipt::try_new(self.tick, self.content_hash)?;
         let page_budget = self.page_budget;
         let Some(captured) = self.register else {
@@ -563,10 +567,7 @@ impl CapturedOrganizerPages {
             ));
         };
         let (register, admitted) = captured.admit(cached).map_err(archive_register_error)?;
-        let _render_timing = crate::production_projection::diagnostics::Timing::start(
-            crate::production_projection::diagnostics::Stage::ArchiveOrganizerRendering,
-            self.tick,
-        );
+        let _render_timing = Timing::start(Stage::ArchiveOrganizerRendering, self.tick);
         let subjects = self.subjects;
         let Some(state) = register.organizer_state() else {
             return Ok((
@@ -615,11 +616,11 @@ impl CapturedOrganizerPages {
                     signals.push(observation_signal(observation)?);
                 }
             } else {
-                for value in receipts
+                let matching_receipts = receipts
                     .iter()
                     .copied()
-                    .filter(|value| value.actor_id.to_string() == actor && actor == id)
-                {
+                    .filter(|value| value.actor_id.to_string() == actor && actor == id);
+                for value in matching_receipts {
                     if let Some(collection) = collection_by_receipt.get(&value.receipt_id) {
                         signals.push(collection_signal(collection)?);
                         continue;
@@ -771,9 +772,9 @@ pub(crate) fn validate_projection(
 
 /// Exact mutable organizer projection rows, owned by the short capture snapshot.
 pub(crate) struct CapturedOrganizerProjection {
-    subjects: Vec<postgres::Row>,
-    observations: Vec<postgres::Row>,
-    receipts: Vec<postgres::Row>,
+    subjects: Vec<Row>,
+    observations: Vec<Row>,
+    receipts: Vec<Row>,
 }
 
 pub(crate) fn capture_projection(
@@ -836,7 +837,7 @@ impl CapturedOrganizerProjection {
 }
 
 fn collection_signal(
-    row: &babylon_practice_contract::OrganizerCollectionResolution,
+    row: &OrganizerCollectionResolution,
 ) -> Result<ArchiveSignal, SemanticArchiveError> {
     let receipt = &row.practice;
     let text = format!(
@@ -961,7 +962,8 @@ mod projection_tests {
             contact_product_id: None,
             time_use: vec![],
         };
-        let signal = practice_signal(&receipt).unwrap();
+        let signal = practice_signal(&receipt)
+            .expect("the fixture call `practice_signal` succeeds for the authored inputs");
         let text = signal.value();
         assert!(text.contains("Period 1: Ask about work and output"));
         assert!(text.contains("Result: No report obtained"));
@@ -974,7 +976,8 @@ mod projection_tests {
         receipt.choice = OrganizerChoice::Hold;
         receipt.outcome = OrganizerOutcome::ContactCompleted;
         receipt.hours_spent = 8;
-        let signal = practice_signal(&receipt).unwrap();
+        let signal = practice_signal(&receipt)
+            .expect("the fixture call `practice_signal` succeeds for the authored inputs");
         let text = signal.value();
         assert!(text.contains("Period 1: Keep current routine"));
         assert!(text.contains("Result: Mutual contact completed"));
@@ -986,7 +989,8 @@ mod projection_tests {
         receipt.outcome = OrganizerOutcome::StandingPaused;
         receipt.hours_spent = 0;
         receipt.partner_response = OrganizerPartnerResponse::NotRequested;
-        let signal = practice_signal(&receipt).unwrap();
+        let signal = practice_signal(&receipt)
+            .expect("the fixture call `practice_signal` succeeds for the authored inputs");
         let text = signal.value();
         assert!(text.contains("Period 1: Pause neighborhood work"));
         assert!(text.contains("Result: Standing work paused"));
@@ -997,7 +1001,8 @@ mod projection_tests {
         receipt.outcome = OrganizerOutcome::ContactUncompleted;
         receipt.hours_spent = 8;
         receipt.partner_response = OrganizerPartnerResponse::Refused;
-        let signal = practice_signal(&receipt).unwrap();
+        let signal = practice_signal(&receipt)
+            .expect("the fixture call `practice_signal` succeeds for the authored inputs");
         let text = signal.value();
         assert!(text.contains("Period 1: Resume neighborhood work"));
         assert!(text.contains("Source: specific ruling · saved routine"));
@@ -1009,7 +1014,8 @@ mod projection_tests {
     #[test]
     fn observation_projection_refuses_changed_keys_subject_or_periods_with_unchanged_bytes() {
         let expected = observation();
-        let bytes = serde_json::to_vec(&expected).unwrap();
+        let bytes =
+            serde_json::to_vec(&expected).expect("the value serializes to canonical JSON bytes");
         assert!(
             validate_observation_columns(&expected, &[1; 32], "101", "104", (2, 3), &bytes).is_ok()
         );
@@ -1050,7 +1056,8 @@ mod projection_tests {
             contact_product_id: None,
             time_use: vec![],
         };
-        let bytes = serde_json::to_vec(&expected).unwrap();
+        let bytes =
+            serde_json::to_vec(&expected).expect("the value serializes to canonical JSON bytes");
         assert!(validate_receipt_columns(&expected, &[2; 32], "101", 3, &bytes).is_ok());
         for (key, actor, period) in [
             ([9; 32], "101", 3),

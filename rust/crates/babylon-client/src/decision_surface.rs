@@ -6,6 +6,8 @@
 //! entities to this manifest so the production composition is checked directly.
 
 use bevy::prelude::Component;
+use fmt::Formatter;
+use fmt::Result as FmtResult;
 use std::fmt;
 
 /// Stable identifiers for the visible surfaces in the production client.
@@ -30,7 +32,7 @@ impl SurfaceId {
 }
 
 impl fmt::Display for SurfaceId {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> FmtResult {
         formatter.write_str(match self {
             Self::TitleLockup => "title-lockup",
             Self::CountyDossier => "county-dossier",
@@ -142,7 +144,7 @@ pub enum DecisionSurfaceContractError {
 }
 
 impl fmt::Display for DecisionSurfaceContractError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> FmtResult {
         formatter.write_str(match self {
             Self::AdminExemptionMismatch => {
                 "admin_debug_exempt must be true exactly for AdminDebug surfaces"
@@ -280,7 +282,10 @@ const INVESTIGATE_SEALED: &[SurfaceAction] = &[SurfaceAction::unavailable(
     "Investigation opens this page — unavailable until Gate 5.",
 )];
 
-#[allow(clippy::too_many_arguments)]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "`gameplay_surface` takes every authored field explicitly"
+)]
 const fn gameplay_surface(
     id: SurfaceId,
     decision_question: &'static str,

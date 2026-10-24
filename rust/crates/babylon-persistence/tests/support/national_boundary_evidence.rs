@@ -1,16 +1,19 @@
 //! Complete real reader proofs at the same committed national boundary.
 use babylon_kernel::economic_location::EconomicLocation;
-use babylon_persistence::{
-    archive_revision::{ArchiveDossierBounds, ArchiveDossierState, ArchiveReadScope},
-    identity::CampaignId,
-    observer_reader::CommittedMaterialObservation,
-    ArchivePageRef, ArchiveSubjectKind, SemanticArchiveReader,
+use babylon_persistence::archive_revision::{
+    ArchiveDossierBounds, ArchiveDossierState, ArchiveReadScope,
 };
+use babylon_persistence::identity::CampaignId;
+use babylon_persistence::observer_reader::CommittedMaterialObservation;
+use babylon_persistence::{ArchivePageRef, ArchiveSubjectKind, SemanticArchiveReader};
+
 use babylon_tick::material_replay::IdentifiedMaterialTick;
 use postgres::{Config, NoTls};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
-use std::{collections::BTreeSet, path::PathBuf, time::Duration};
+use std::collections::BTreeSet;
+use std::path::PathBuf;
+use std::time::Duration;
 
 pub(super) struct Limits {
     pub archive: Duration,
@@ -22,8 +25,11 @@ pub(super) struct Limits {
 }
 
 pub(super) fn limits() -> Limits {
-    let directory = PathBuf::from(std::env::var("BABYLON_STORAGE_REPORT_DIRECTORY").unwrap());
-    let bytes = std::fs::read(directory.join("policy.json")).unwrap();
+    let directory = PathBuf::from(
+        std::env::var("BABYLON_STORAGE_REPORT_DIRECTORY").expect("the fixture variable is bound"),
+    );
+    let bytes = std::fs::read(directory.join("policy.json"))
+        .expect("the fixture reader returns its authored facts");
     limits_from_bytes(&bytes)
 }
 
@@ -44,9 +50,21 @@ fn limits_from_bytes(bytes: &[u8]) -> Limits {
         Some("positive_growth_by_component_and_boundary_v1"),
         "unsupported captured qualification storage charge method"
     );
-    assert_eq!(policy["county_count"].as_u64(), Some(3_144));
-    assert_eq!(policy["qualification_ticks"].as_u64(), Some(52));
-    assert_eq!(policy["model_year_ticks"].as_u64(), Some(13));
+    assert_eq!(
+        policy["county_count"].as_u64(),
+        Some(3_144),
+        "unsupported captured county count"
+    );
+    assert_eq!(
+        policy["qualification_ticks"].as_u64(),
+        Some(52),
+        "unsupported captured qualification tick budget"
+    );
+    assert_eq!(
+        policy["model_year_ticks"].as_u64(),
+        Some(13),
+        "unsupported captured model year budget"
+    );
     let economic_renewal_window_ticks = policy["economic_renewal_window_ticks"]
         .as_u64()
         .expect("captured exact economic renewal window");
@@ -82,9 +100,15 @@ fn limits_from_bytes(bytes: &[u8]) -> Limits {
 
 pub(super) fn hex(bytes: &[u8]) -> String {
     use std::fmt::Write;
-    let mut result = String::with_capacity(bytes.len().checked_mul(2).unwrap());
+    let mut result = String::with_capacity(
+        bytes
+            .len()
+            .checked_mul(2)
+            .expect("the fixture arithmetic stays in range"),
+    );
     for byte in bytes {
-        write!(&mut result, "{byte:02x}").unwrap();
+        write!(&mut result, "{byte:02x}")
+            .expect("the in-memory formatter accepts the written text");
     }
     result
 }
@@ -99,25 +123,31 @@ pub(super) fn archive_boundary(
         &std::env::var("BABYLON_NATIONAL_STORAGE_READER_DSN")
             .expect("separate confined Archive reader required"),
     )
-    .unwrap();
-    let marker = reader.committed_tick_status(campaign).unwrap().unwrap();
+    .expect("the fixture connection string parses");
+    let marker = reader
+        .committed_tick_status(campaign)
+        .expect("the fixture call `committed_tick_status` succeeds for the authored inputs")
+        .expect("the nested fixture result is present");
     assert_eq!(marker.resolve_tick(), tick);
     assert_eq!(hex(marker.tick_content_hash()), expected_hash);
     let progress = reader
         .archive_verification_status(campaign)
-        .unwrap()
-        .unwrap();
+        .expect("the fixture call `archive_verification_status` succeeds for the authored inputs")
+        .expect("the nested fixture result is present");
     assert_eq!(progress.durable_tick(), tick);
     assert_eq!(progress.processed_tick(), tick);
-    let scope = ArchiveReadScope::committed(campaign, tick, *marker.tick_content_hash()).unwrap();
+    let scope = ArchiveReadScope::committed(campaign, tick, *marker.tick_content_hash())
+        .expect("the fixture observation carries the committed value");
     let mut dossier_bytes = Vec::new();
     for subject in [
-        ArchivePageRef::try_new(ArchiveSubjectKind::County, "26163".into()).unwrap(),
-        ArchivePageRef::try_new(ArchiveSubjectKind::Organization, "2616301".into()).unwrap(),
+        ArchivePageRef::try_new(ArchiveSubjectKind::County, "26163".into())
+            .expect("the authored fixture satisfies the constructor invariants"),
+        ArchivePageRef::try_new(ArchiveSubjectKind::Organization, "2616301".into())
+            .expect("the authored fixture satisfies the constructor invariants"),
     ] {
         let read = reader
             .dossier_as_of(&scope, &subject, &ArchiveDossierBounds::default())
-            .unwrap();
+            .expect("the fixture dossier exists at the authored period");
         assert_eq!(read.scope, scope);
         assert_eq!(read.subject, subject);
         assert_eq!(read.durable_tick, tick);
@@ -137,10 +167,10 @@ pub(super) fn archive_boundary(
         dossier_bytes.extend_from_slice(&page.content_sha256);
         dossier_bytes.extend_from_slice(&Sha256::digest(page.markdown.as_bytes()));
     }
-    let tick_sql = i64::try_from(tick).unwrap();
+    let tick_sql = i64::try_from(tick).expect("the fixture value fits the target range");
     let pending: i64 = writer
         .connect(NoTls)
-        .unwrap()
+        .expect("the test database accepts the connection")
         .query_one(
             "SELECT count(*) FROM babylon_state.archive_dirty_receipt_v1 r \
          WHERE r.campaign_id=$1 AND r.resolve_tick<=$2 AND NOT EXISTS \
@@ -148,7 +178,7 @@ pub(super) fn archive_boundary(
           WHERE c.campaign_id=r.campaign_id AND c.resolve_tick=r.resolve_tick)",
             &[campaign.as_uuid(), &tick_sql],
         )
-        .unwrap()
+        .expect("the seeded row is present exactly once")
         .get(0);
     assert_eq!(pending, 0);
     json!({"processed_tick":progress.processed_tick(),"durable_tick":progress.durable_tick(),
@@ -179,7 +209,8 @@ pub(super) fn production_boundary(
         .iter()
         .map(|c| c.county_geoid.clone())
         .collect();
-    let reference = babylon_persistence::national_counties::national_county_reference().unwrap();
+    let reference = babylon_persistence::national_counties::national_county_reference()
+        .expect("the county reference fixture loads");
     let expected: BTreeSet<_> = reference
         .counties()
         .iter()
@@ -216,7 +247,9 @@ pub(super) fn production_boundary(
     assert_eq!(dependencies.len(), 6);
     let digest = &observation.production_evidence;
     let geoids: Vec<_> = counties.into_iter().collect();
-    let roster_digest = hex(&Sha256::digest(serde_json::to_vec(&geoids).unwrap()));
+    let roster_digest = hex(&Sha256::digest(
+        serde_json::to_vec(&geoids).expect("the value serializes to canonical JSON bytes"),
+    ));
     (
         json!({"tick":tick,"nominal_world_hash":world,"snapshot_sha256":digest.to_hex(),
         "county_roster_sha256":roster_digest,"material_register_bytes":observation.accounting.material_register_bytes,
@@ -234,15 +267,15 @@ pub(super) fn boundary(
     archive: &Value,
     production: &Value,
 ) -> Value {
-    let tick_sql = i64::try_from(tick).unwrap();
-    let row = writer.connect(NoTls).unwrap().query_one(
+    let tick_sql = i64::try_from(tick).expect("the fixture value fits the target range");
+    let row = writer.connect(NoTls).expect("the test database accepts the connection").query_one(
         "SELECT encode(t.tick_content_hash,'hex'),encode(t.envelope_digest,'hex'), \
          encode(sha256(m.register_storage_bytes),'hex'),encode(sha256(m.receipt_storage_bytes),'hex'), \
          encode(sha256(m.lookup_delta_bytes),'hex') FROM babylon_state.tick_commit t \
          JOIN babylon_state.material_tick_v3 m USING(campaign_id,resolve_tick) \
          WHERE t.campaign_id=$1 AND t.resolve_tick=$2",
         &[campaign.as_uuid(), &tick_sql],
-    ).unwrap();
+    ).expect("the seeded row is present exactly once");
     let tick_hash: String = row.get(0);
     assert_eq!(tick_hash, hex(admitted.tick_content_hash().as_bytes()));
     json!({"tick":tick,"campaign":campaign.as_uuid().to_string(),"foundation_sha256":foundation,
@@ -254,7 +287,6 @@ pub(super) fn boundary(
 
 #[cfg(test)]
 mod policy_tests {
-    use super::{hex, limits_from_bytes};
     use serde_json::{json, Value};
     use sha2::{Digest, Sha256};
     use std::time::Duration;
@@ -264,80 +296,199 @@ mod policy_tests {
 
     #[test]
     fn captured_qualification_policy_reads_current_contract() {
-        let limits = limits_from_bytes(CURRENT_POLICY);
+        let limits = super::limits_from_bytes(CURRENT_POLICY);
         assert_eq!(limits.archive, Duration::from_secs(180));
         assert_eq!(limits.production, Duration::from_secs(180));
         assert_eq!(limits.material_register_bytes, 1_000_000_000);
         assert_eq!(limits.production_evidence_body_bytes, 1_000_000_000);
         assert_eq!(limits.economic_renewal_window_ticks, 13);
-        assert_eq!(limits.policy_sha256, hex(&Sha256::digest(CURRENT_POLICY)));
+        assert_eq!(
+            limits.policy_sha256,
+            super::hex(&Sha256::digest(CURRENT_POLICY))
+        );
     }
 
     #[test]
     fn captured_qualification_policy_uses_captured_overrides_and_byte_hash() {
-        let mut policy: Value = serde_json::from_slice(CURRENT_POLICY).unwrap();
+        let mut policy: Value = serde_json::from_slice(CURRENT_POLICY)
+            .expect("the authored bytes match the declared schema");
         policy["maximum_archive_catchup_seconds"] = json!(75);
         policy["maximum_production_read_seconds"] = json!(120);
         policy["maximum_material_register_bytes"] = json!(750_000_000);
         policy["maximum_production_evidence_body_bytes"] = json!(850_000_000);
         policy["economic_renewal_window_ticks"] = json!(7);
-        let bytes = serde_json::to_vec(&policy).unwrap();
-        let limits = limits_from_bytes(&bytes);
+        let bytes =
+            serde_json::to_vec(&policy).expect("the value serializes to canonical JSON bytes");
+        let limits = super::limits_from_bytes(&bytes);
         assert_eq!(limits.archive, Duration::from_secs(75));
         assert_eq!(limits.production, Duration::from_secs(120));
         assert_eq!(limits.material_register_bytes, 750_000_000);
         assert_eq!(limits.production_evidence_body_bytes, 850_000_000);
         assert_eq!(limits.economic_renewal_window_ticks, 7);
-        assert_eq!(limits.policy_sha256, hex(&Sha256::digest(&bytes)));
+        assert_eq!(limits.policy_sha256, super::hex(&Sha256::digest(&bytes)));
         let mut differently_spaced = bytes.clone();
         differently_spaced.push(b'\n');
         assert_eq!(
-            limits_from_bytes(&differently_spaced).archive,
+            super::limits_from_bytes(&differently_spaced).archive,
             limits.archive
         );
         assert_ne!(
-            limits_from_bytes(&differently_spaced).policy_sha256,
+            super::limits_from_bytes(&differently_spaced).policy_sha256,
             limits.policy_sha256
         );
     }
 
+    fn policy_with(key: &str, invalid: Value) -> Vec<u8> {
+        let mut policy: Value =
+            serde_json::from_slice(CURRENT_POLICY).expect("the captured policy is valid JSON");
+        policy[key] = invalid;
+        serde_json::to_vec(&policy).expect("the mutated policy serializes to JSON")
+    }
+
     #[test]
-    fn captured_qualification_policy_refuses_unsupported_identity_and_budgets() {
-        for (key, invalid) in [
-            ("version", json!(1)),
-            ("version", json!(2)),
-            ("version", json!(3)),
-            ("version", json!(4)),
-            ("version", json!(5)),
-            ("version", json!(7)),
-            ("version", Value::Null),
-            ("name", json!("national_storage_qualification_v2")),
-            ("storage_charge_method", json!("net_growth")),
-            ("county_count", json!(3_143)),
-            ("qualification_ticks", json!(51)),
-            ("model_year_ticks", json!(12)),
-            ("economic_renewal_window_ticks", Value::Null),
-            ("economic_renewal_window_ticks", json!(true)),
-            ("economic_renewal_window_ticks", json!(13.0)),
-            ("economic_renewal_window_ticks", json!(1)),
-            ("economic_renewal_window_ticks", json!(53)),
-            ("maximum_archive_catchup_seconds", json!(0)),
-            ("maximum_archive_catchup_seconds", json!(-1)),
-            ("maximum_production_read_seconds", json!(1.5)),
-            ("maximum_production_read_seconds", json!(u64::MAX)),
-            ("maximum_material_register_bytes", json!(0)),
-            (
-                "maximum_production_evidence_body_bytes",
-                json!(1_000_000_001_u64),
-            ),
-        ] {
-            let mut policy: Value = serde_json::from_slice(CURRENT_POLICY).unwrap();
-            policy[key] = invalid.clone();
-            let bytes = serde_json::to_vec(&policy).unwrap();
-            assert!(
-                std::panic::catch_unwind(|| limits_from_bytes(&bytes)).is_err(),
-                "unsupported captured policy admitted: {key}={invalid}"
-            );
-        }
+    #[should_panic(expected = "unsupported captured qualification policy version")]
+    fn captured_policy_refuses_version_one() {
+        super::limits_from_bytes(&policy_with("version", json!(1)));
+    }
+
+    #[test]
+    #[should_panic(expected = "unsupported captured qualification policy version")]
+    fn captured_policy_refuses_version_two() {
+        super::limits_from_bytes(&policy_with("version", json!(2)));
+    }
+
+    #[test]
+    #[should_panic(expected = "unsupported captured qualification policy version")]
+    fn captured_policy_refuses_version_three() {
+        super::limits_from_bytes(&policy_with("version", json!(3)));
+    }
+
+    #[test]
+    #[should_panic(expected = "unsupported captured qualification policy version")]
+    fn captured_policy_refuses_version_four() {
+        super::limits_from_bytes(&policy_with("version", json!(4)));
+    }
+
+    #[test]
+    #[should_panic(expected = "unsupported captured qualification policy version")]
+    fn captured_policy_refuses_version_five() {
+        super::limits_from_bytes(&policy_with("version", json!(5)));
+    }
+
+    #[test]
+    #[should_panic(expected = "unsupported captured qualification policy version")]
+    fn captured_policy_refuses_version_seven() {
+        super::limits_from_bytes(&policy_with("version", json!(7)));
+    }
+
+    #[test]
+    #[should_panic(expected = "unsupported captured qualification policy version")]
+    fn captured_policy_refuses_missing_version() {
+        super::limits_from_bytes(&policy_with("version", Value::Null));
+    }
+
+    #[test]
+    #[should_panic(expected = "unsupported captured qualification policy identity")]
+    fn captured_policy_refuses_another_identity() {
+        super::limits_from_bytes(&policy_with(
+            "name",
+            json!("national_storage_qualification_v2"),
+        ));
+    }
+
+    #[test]
+    #[should_panic(expected = "unsupported captured qualification storage charge method")]
+    fn captured_policy_refuses_net_growth_charging() {
+        super::limits_from_bytes(&policy_with("storage_charge_method", json!("net_growth")));
+    }
+
+    #[test]
+    #[should_panic(expected = "unsupported captured county count")]
+    fn captured_policy_refuses_another_county_count() {
+        super::limits_from_bytes(&policy_with("county_count", json!(3_143)));
+    }
+
+    #[test]
+    #[should_panic(expected = "unsupported captured qualification tick budget")]
+    fn captured_policy_refuses_another_qualification_window() {
+        super::limits_from_bytes(&policy_with("qualification_ticks", json!(51)));
+    }
+
+    #[test]
+    #[should_panic(expected = "unsupported captured model year budget")]
+    fn captured_policy_refuses_another_model_year() {
+        super::limits_from_bytes(&policy_with("model_year_ticks", json!(12)));
+    }
+
+    #[test]
+    #[should_panic(expected = "captured exact economic renewal window")]
+    fn captured_policy_refuses_missing_renewal_window() {
+        super::limits_from_bytes(&policy_with("economic_renewal_window_ticks", Value::Null));
+    }
+
+    #[test]
+    #[should_panic(expected = "captured exact economic renewal window")]
+    fn captured_policy_refuses_boolean_renewal_window() {
+        super::limits_from_bytes(&policy_with("economic_renewal_window_ticks", json!(true)));
+    }
+
+    #[test]
+    #[should_panic(expected = "captured exact economic renewal window")]
+    fn captured_policy_refuses_fractional_renewal_window() {
+        super::limits_from_bytes(&policy_with("economic_renewal_window_ticks", json!(13.0)));
+    }
+
+    #[test]
+    #[should_panic(expected = "economic renewal window must fit qualification ticks")]
+    fn captured_policy_refuses_one_tick_renewal_window() {
+        super::limits_from_bytes(&policy_with("economic_renewal_window_ticks", json!(1)));
+    }
+
+    #[test]
+    #[should_panic(expected = "economic renewal window must fit qualification ticks")]
+    fn captured_policy_refuses_renewal_window_beyond_the_qualification_window() {
+        super::limits_from_bytes(&policy_with("economic_renewal_window_ticks", json!(53)));
+    }
+
+    #[test]
+    #[should_panic(expected = "captured phase budget must be a positive signed-range integer")]
+    fn captured_policy_refuses_zero_archive_budget() {
+        super::limits_from_bytes(&policy_with("maximum_archive_catchup_seconds", json!(0)));
+    }
+
+    #[test]
+    #[should_panic(expected = "captured exact phase budget")]
+    fn captured_policy_refuses_negative_archive_budget() {
+        super::limits_from_bytes(&policy_with("maximum_archive_catchup_seconds", json!(-1)));
+    }
+
+    #[test]
+    #[should_panic(expected = "captured exact phase budget")]
+    fn captured_policy_refuses_fractional_production_budget() {
+        super::limits_from_bytes(&policy_with("maximum_production_read_seconds", json!(1.5)));
+    }
+
+    #[test]
+    #[should_panic(expected = "captured phase budget must be a positive signed-range integer")]
+    fn captured_policy_refuses_unbounded_production_budget() {
+        super::limits_from_bytes(&policy_with(
+            "maximum_production_read_seconds",
+            json!(u64::MAX),
+        ));
+    }
+
+    #[test]
+    #[should_panic(expected = "captured byte budget exceeds runtime hard limit")]
+    fn captured_policy_refuses_zero_material_register_budget() {
+        super::limits_from_bytes(&policy_with("maximum_material_register_bytes", json!(0)));
+    }
+
+    #[test]
+    #[should_panic(expected = "captured byte budget exceeds runtime hard limit")]
+    fn captured_policy_refuses_oversized_evidence_budget() {
+        super::limits_from_bytes(&policy_with(
+            "maximum_production_evidence_body_bytes",
+            json!(1_000_000_001_u64),
+        ));
     }
 }

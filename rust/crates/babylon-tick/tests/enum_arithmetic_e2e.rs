@@ -35,14 +35,12 @@
 //! any more — `add`/`sub`/`scale` on a declared-enum field is unconditionally
 //! decidable from content alone.
 
-use babylon_tick::run_once;
-
-const ORG_SCENARIO: &str = r#"
+const ORG_SCENARIO: &str = r"
 (scenario enum-arithmetic-e2e/one-org
   (defenum OrgKind (STATE_APPARATUS BUSINESS POLITICAL_FACTION CIVIL_SOCIETY))
   (deffield organization/kind enum OrgKind)
   (node acme NodeType/ORGANIZATION (organization/kind OrgKind/STATE_APPARATUS)))
-"#;
+";
 
 fn enum_op_rule(op: &str) -> String {
     format!(
@@ -60,7 +58,8 @@ fn enum_op_rule(op: &str) -> String {
 
 #[test]
 fn add_on_a_seeded_enum_field_is_a_loud_load_time_refusal() {
-    let err = run_once(ORG_SCENARIO, &enum_op_rule("add")).unwrap_err();
+    let err = babylon_tick::run_once(ORG_SCENARIO, &enum_op_rule("add"))
+        .expect_err("the malformed tick is refused");
     assert!(
         err.contains("D118"),
         "add on an enum field must refuse at load (D118), not silently \
@@ -80,7 +79,8 @@ fn sub_on_a_seeded_enum_field_is_a_loud_load_time_refusal() {
     // member, and no range check on an enum field catches it at the store
     // boundary (§3.3's unit-interval check does not cover BslType::Enum).
     // D118 refuses this BEFORE the rule ever loads, let alone runs.
-    let err = run_once(ORG_SCENARIO, &enum_op_rule("sub")).unwrap_err();
+    let err = babylon_tick::run_once(ORG_SCENARIO, &enum_op_rule("sub"))
+        .expect_err("the malformed tick is refused");
     assert!(
         err.contains("D118"),
         "sub on an enum field must refuse at load (D118), before it could \
@@ -91,7 +91,8 @@ fn sub_on_a_seeded_enum_field_is_a_loud_load_time_refusal() {
 
 #[test]
 fn scale_on_a_seeded_enum_field_is_a_loud_load_time_refusal() {
-    let err = run_once(ORG_SCENARIO, &enum_op_rule("scale")).unwrap_err();
+    let err = babylon_tick::run_once(ORG_SCENARIO, &enum_op_rule("scale"))
+        .expect_err("the malformed tick is refused");
     assert!(err.contains("D118"), "{err}");
     assert!(err.contains("rejected"), "{err}");
 }
@@ -109,7 +110,7 @@ fn set_on_a_seeded_enum_field_still_succeeds_through_run_once() {
   (effects
     (update-node self organization/kind (set OrgKind/BUSINESS))))
 "#;
-    let report = run_once(ORG_SCENARIO, SET_RULE)
+    let report = babylon_tick::run_once(ORG_SCENARIO, SET_RULE)
         .expect("set on an enum field must still succeed through the full seam");
     assert_eq!(report.fired, 1);
 }

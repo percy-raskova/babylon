@@ -30,9 +30,17 @@
 //!   at-ceiling-county    biocapacity=0.0 max_biocapacity=9.9
 //! ```
 
+// Conformance fixtures exercise exact engine values, transcribe spec literals,
+// and build whole scenarios in one test. These pedantic lints would force
+// ceremony that hides those contracts, so they stay off in test code only.
+#![allow(
+    clippy::float_cmp,
+    reason = "these comparisons pin exact authored f64 values"
+)]
+
+use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::memory::MemoryGraph;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
-use babylon_tick::{run_once, run_once_into};
 
 const SCENARIO: &str =
     include_str!("../content/scenarios/metabolism-ceiling-suppression-conformance.bscn");
@@ -40,8 +48,9 @@ const RULE: &str = include_str!("../content/rules/metabolism.bsl");
 
 fn run() -> MemoryGraph {
     let mut graph = MemoryGraph::new();
-    let mut sink = babylon_bsl::structural_verbs::CollectingSink::default();
-    run_once_into(SCENARIO, RULE, &mut graph, &mut sink).expect("the Metabolism pack must run");
+    let mut sink = CollectingSink::default();
+    babylon_tick::run_once_into(SCENARIO, RULE, &mut graph, &mut sink)
+        .expect("the Metabolism pack must run");
     graph
 }
 
@@ -78,8 +87,8 @@ fn the_ceiling_still_ratchets_regardless_of_the_regeneration_guard() {
 /// Byte-determinism.
 #[test]
 fn the_ceiling_suppression_scenario_tick_is_deterministic() {
-    let a = run_once(SCENARIO, RULE).expect("first run");
-    let b = run_once(SCENARIO, RULE).expect("second run");
+    let a = babylon_tick::run_once(SCENARIO, RULE).expect("first run");
+    let b = babylon_tick::run_once(SCENARIO, RULE).expect("second run");
     assert_eq!(a.after, b.after);
     assert_eq!(a.fired, 1);
 }

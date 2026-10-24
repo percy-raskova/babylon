@@ -6,14 +6,13 @@ use babylon_bsl::causal_contract::{
 use babylon_bsl::evaluator::Value;
 use babylon_bsl::exemptions::IntensiveAggregationExemption;
 use babylon_bsl::fuel::IntrinsicCosts;
+use babylon_bsl::identity_codec;
 use babylon_bsl::identity_codec::{
-    decode_option_presence, encode_bsl_type, encode_const_value, encode_effect_signature,
-    encode_enum_kind, encode_evidence_class, encode_field_kind, encode_rule_role,
-    encode_runtime_value, encode_shape_verb, IdentityCodecError,
+    decode_option_presence, encode_enum_kind, encode_evidence_class, encode_field_kind,
+    encode_rule_role, encode_shape_verb, IdentityCodecError,
 };
-use babylon_bsl::identity_sections::{
-    encode_prepared_bsl_sections, encode_tick_payload_sections, PreparedBslSections,
-};
+use babylon_bsl::identity_sections;
+use babylon_bsl::identity_sections::PreparedBslSections;
 use babylon_bsl::query::EdgeKey;
 use babylon_bsl::typecheck::TypeEnv;
 use babylon_bsl::types::{BslType, EnumRegistry, EnumTypeId, FieldDecl, FieldKind};
@@ -21,7 +20,8 @@ use babylon_bsl::vocabulary::{ClosedVocabulary, EnumKind};
 use babylon_graph::memory::MemoryGraph;
 use babylon_graph::stable_element::StableElementResolver;
 use babylon_graph::substrate::{GraphSubstrate, HyperedgeId, NodeId};
-use babylon_kernel::{currency::Currency, scalars::Ratio};
+use babylon_kernel::currency::Currency;
+use babylon_kernel::scalars::Ratio;
 
 struct GraphFixture {
     owners: NodeId,
@@ -32,12 +32,18 @@ struct GraphFixture {
 
 fn graph_fixture() -> GraphFixture {
     let mut graph = MemoryGraph::new();
-    let owners = graph.add_node("class").unwrap();
-    let workers = graph.add_node("class").unwrap();
-    graph.add_edge("solidarity", workers, owners, 0.5).unwrap();
+    let owners = graph
+        .add_node("class")
+        .expect("the fixture adds a node with a registered kind");
+    let workers = graph
+        .add_node("class")
+        .expect("the fixture adds a node with a registered kind");
+    graph
+        .add_edge("solidarity", workers, owners, 0.5)
+        .expect("the fixture graph admits the authored edge");
     let coalition = graph
         .add_hyperedge("coalition", &[workers, owners])
-        .unwrap();
+        .expect("the fixture graph admits the authored hyperedge");
     let resolver = StableElementResolver::seal(
         &graph,
         "demo/world",
@@ -47,7 +53,7 @@ fn graph_fixture() -> GraphFixture {
         ]),
         &HashMap::from([(coalition, "coalition-a".to_owned())]),
     )
-    .unwrap();
+    .expect("the fixture seals the prepared period");
     GraphFixture {
         owners,
         workers,
@@ -58,13 +64,17 @@ fn graph_fixture() -> GraphFixture {
 
 fn encoded_value(value: &Value, resolver: &StableElementResolver) -> Vec<u8> {
     let mut output = Vec::new();
-    encode_runtime_value(value, resolver, &mut output).unwrap();
+    identity_codec::encode_runtime_value(value, resolver, &mut output)
+        .expect("the fixture value encodes to its canonical bytes");
     output
 }
 
 fn str32(value: &str) -> Vec<u8> {
     [
-        u32::try_from(value.len()).unwrap().to_be_bytes().as_slice(),
+        u32::try_from(value.len())
+            .expect("the fixture value fits the target range")
+            .to_be_bytes()
+            .as_slice(),
         value.as_bytes(),
     ]
     .concat()
@@ -73,9 +83,9 @@ fn str32(value: &str) -> Vec<u8> {
 #[test]
 fn scalar_value_discriminants_and_encoding_are_exact() {
     let fixture = graph_fixture();
-    let ratio = Ratio::new(2.0).unwrap();
-    let floor = Ratio::new(1.0).unwrap();
-    let cap = Ratio::new(3.0).unwrap();
+    let ratio = Ratio::new(2.0).expect("the constructor accepts the authored fixture arguments");
+    let floor = Ratio::new(1.0).expect("the constructor accepts the authored fixture arguments");
+    let cap = Ratio::new(3.0).expect("the constructor accepts the authored fixture arguments");
     assert_eq!(
         encoded_value(&Value::Int(-7), &fixture.resolver),
         [vec![0x01], (-7_i64).to_be_bytes().to_vec()].concat()
@@ -156,9 +166,9 @@ fn reference_value_discriminants_and_stable_encoding_are_exact() {
             fixture
                 .resolver
                 .node_key(fixture.workers)
-                .unwrap()
+                .expect("the fixture node has a key")
                 .canonical_bytes()
-                .unwrap()
+                .expect("the graph value exposes canonical bytes")
         ]
         .concat()
     );
@@ -169,9 +179,9 @@ fn reference_value_discriminants_and_stable_encoding_are_exact() {
             fixture
                 .resolver
                 .hyperedge_key(fixture.coalition)
-                .unwrap()
+                .expect("the fixture hyperedge has a key")
                 .canonical_bytes()
-                .unwrap()
+                .expect("the graph value exposes canonical bytes")
         ]
         .concat()
     );
@@ -189,18 +199,26 @@ fn reference_value_discriminants_and_stable_encoding_are_exact() {
             fixture
                 .resolver
                 .edge_key("solidarity", fixture.workers, fixture.owners)
-                .unwrap()
+                .expect("the fixture edge has a key")
                 .canonical_bytes()
-                .unwrap()
+                .expect("the graph value exposes canonical bytes")
         ]
         .concat()
     );
 }
 
 #[test]
+// The Google-style module-qualified calls wrap this exact-value table past the
+// Clippy line budget without changing what it pins.
+#[allow(
+    clippy::too_many_lines,
+    reason = "`governed_type_and_contract_discriminants_are_exact` keeps one authored sequence in a single place"
+)]
 fn governed_type_and_contract_discriminants_are_exact() {
     let mut enums = EnumRegistry::default();
-    let org_kind = enums.declare("OrgKind", &["BUSINESS".to_owned()]).unwrap();
+    let org_kind = enums
+        .declare("OrgKind", &["BUSINESS".to_owned()])
+        .expect("the scenario declares the authored entity");
     let type_cases = [
         (BslType::Probability, vec![0x01]),
         (BslType::Intensity, vec![0x02]),
@@ -224,7 +242,8 @@ fn governed_type_and_contract_discriminants_are_exact() {
     ];
     for (value, expected) in type_cases {
         let mut output = Vec::new();
-        encode_bsl_type(&value, &enums, &mut output).unwrap();
+        identity_codec::encode_bsl_type(&value, &enums, &mut output)
+            .expect("the fixture value encodes to its canonical bytes");
         assert_eq!(output, expected);
     }
     assert_eq!(encode_field_kind(FieldKind::Intensive), 0x01);
@@ -257,23 +276,30 @@ fn governed_type_and_contract_discriminants_are_exact() {
         assert_eq!(encode_enum_kind(kind), tag);
     }
     let mut effect = Vec::new();
-    encode_effect_signature(&EffectSignature::Event("RUPTURE".to_owned()), &mut effect).unwrap();
+    identity_codec::encode_effect_signature(
+        &EffectSignature::Event("RUPTURE".to_owned()),
+        &mut effect,
+    )
+    .expect("the fixture value encodes to its canonical bytes");
     assert_eq!(effect, [vec![0x04], str32("EventType/RUPTURE")].concat());
     effect.clear();
-    encode_effect_signature(
+    identity_codec::encode_effect_signature(
         &EffectSignature::Shape(ShapeVerb::RemoveHyperedge),
         &mut effect,
     )
-    .unwrap();
+    .expect("the fixture value encodes to its canonical bytes");
     assert_eq!(effect, vec![0x05, 0x06]);
     effect.clear();
-    encode_effect_signature(&EffectSignature::MaterialCycle, &mut effect).unwrap();
+    identity_codec::encode_effect_signature(&EffectSignature::MaterialCycle, &mut effect)
+        .expect("the fixture value encodes to its canonical bytes");
     assert_eq!(effect, vec![0x06]);
     effect.clear();
-    encode_effect_signature(&EffectSignature::OrganizerProducts, &mut effect).unwrap();
+    identity_codec::encode_effect_signature(&EffectSignature::OrganizerProducts, &mut effect)
+        .expect("the fixture value encodes to its canonical bytes");
     assert_eq!(effect, vec![0x07]);
     effect.clear();
-    encode_effect_signature(&EffectSignature::OrganizerPractice, &mut effect).unwrap();
+    identity_codec::encode_effect_signature(&EffectSignature::OrganizerPractice, &mut effect)
+        .expect("the fixture value encodes to its canonical bytes");
     assert_eq!(effect, vec![0x08]);
     for (signature, tag, name) in [
         (
@@ -293,7 +319,8 @@ fn governed_type_and_contract_discriminants_are_exact() {
         ),
     ] {
         effect.clear();
-        encode_effect_signature(&signature, &mut effect).unwrap();
+        identity_codec::encode_effect_signature(&signature, &mut effect)
+            .expect("the fixture value encodes to its canonical bytes");
         assert_eq!(effect, [vec![tag], str32(name)].concat());
     }
 }
@@ -308,10 +335,11 @@ fn options_constants_and_invalid_identity_values_refuse_loudly() {
         Err(IdentityCodecError::InvalidOptionByte { value: 2 })
     );
     let mut output = Vec::new();
-    encode_const_value(&Value::Bool(true), &mut output).unwrap();
+    identity_codec::encode_const_value(&Value::Bool(true), &mut output)
+        .expect("the fixture value encodes to its canonical bytes");
     assert_eq!(output, vec![0x05, 1]);
     assert!(matches!(
-        encode_const_value(
+        identity_codec::encode_const_value(
             &Value::Enum {
                 enum_type: "OrgKind".to_owned(),
                 member: "BUSINESS".to_owned()
@@ -321,11 +349,11 @@ fn options_constants_and_invalid_identity_values_refuse_loudly() {
         Err(IdentityCodecError::InvalidConstantKind)
     ));
     assert!(matches!(
-        encode_const_value(&Value::NodeRef(fixture.owners), &mut Vec::new()),
+        identity_codec::encode_const_value(&Value::NodeRef(fixture.owners), &mut Vec::new()),
         Err(IdentityCodecError::InvalidConstantKind)
     ));
     assert!(matches!(
-        encode_bsl_type(
+        identity_codec::encode_bsl_type(
             &BslType::Enum(EnumTypeId(99)),
             &EnumRegistry::default(),
             &mut Vec::new()
@@ -333,7 +361,7 @@ fn options_constants_and_invalid_identity_values_refuse_loudly() {
         Err(IdentityCodecError::UnknownEnumType { .. })
     ));
     assert!(matches!(
-        encode_runtime_value(
+        identity_codec::encode_runtime_value(
             &Value::NodeRef(NodeId(999)),
             &fixture.resolver,
             &mut Vec::new()
@@ -341,7 +369,11 @@ fn options_constants_and_invalid_identity_values_refuse_loudly() {
         Err(IdentityCodecError::StableIdentity(_))
     ));
     assert!(matches!(
-        encode_runtime_value(&Value::Real(f64::NAN), &fixture.resolver, &mut Vec::new()),
+        identity_codec::encode_runtime_value(
+            &Value::Real(f64::NAN),
+            &fixture.resolver,
+            &mut Vec::new()
+        ),
         Err(IdentityCodecError::NonFiniteValue)
     ));
 }
@@ -357,10 +389,10 @@ fn prepared_sections() -> (PreparedBslSections, PreparedBslSections) {
     let mut enums = EnumRegistry::default();
     enums
         .declare("Zed", &["SECOND".to_owned(), "FIRST".to_owned()])
-        .unwrap();
+        .expect("the scenario declares the authored entity");
     enums
         .declare("Alpha", &["BETA".to_owned(), "ALPHA".to_owned()])
-        .unwrap();
+        .expect("the scenario declares the authored entity");
     let types = TypeEnv {
         fields: HashMap::from([
             (
@@ -392,11 +424,18 @@ fn prepared_sections() -> (PreparedBslSections, PreparedBslSections) {
         (EnumKind::NodeType, Vec::new()),
         (EnumKind::EdgeType, vec!["SOLIDARITY".to_owned()]),
     ])
-    .unwrap();
-    let present =
-        encode_prepared_bsl_sections(&types, &intrinsics, &consts, &enums, Some(&vocabulary))
-            .unwrap();
-    let absent = encode_prepared_bsl_sections(&types, &intrinsics, &consts, &enums, None).unwrap();
+    .expect("the constructor accepts the authored fixture arguments");
+    let present = identity_sections::encode_prepared_bsl_sections(
+        &types,
+        &intrinsics,
+        &consts,
+        &enums,
+        Some(&vocabulary),
+    )
+    .expect("the fixture value encodes to its canonical bytes");
+    let absent =
+        identity_sections::encode_prepared_bsl_sections(&types, &intrinsics, &consts, &enums, None)
+            .expect("the fixture value encodes to its canonical bytes");
     (present, absent)
 }
 
@@ -431,9 +470,14 @@ fn prepared_intrinsic_identity_accepts_96_bytes_and_refuses_97() {
     let constants = HashMap::new();
     let enums = EnumRegistry::default();
 
-    assert!(encode_prepared_bsl_sections(&types, &maximum, &constants, &enums, None,).is_ok());
+    assert!(identity_sections::encode_prepared_bsl_sections(
+        &types, &maximum, &constants, &enums, None,
+    )
+    .is_ok());
     assert_eq!(
-        encode_prepared_bsl_sections(&types, &oversized, &constants, &enums, None,),
+        identity_sections::encode_prepared_bsl_sections(
+            &types, &oversized, &constants, &enums, None,
+        ),
         Err(IdentityCodecError::InvalidString {
             field: "intrinsic name",
             index: 97,
@@ -449,36 +493,36 @@ fn prepared_sections_sort_registries_and_preserve_enum_member_order() {
             .fields_and_exemptions()
             .windows(str32("class/power").len())
             .position(|w| w == str32("class/power"))
-            .unwrap()
+            .expect("the fixture sequence holds the addressed position")
             < present
                 .fields_and_exemptions()
                 .windows(str32("class/wage").len())
                 .position(|w| w == str32("class/wage"))
-                .unwrap()
+                .expect("the fixture sequence holds the addressed position")
     );
     assert!(
         present
             .intrinsic_costs()
             .windows(str32("floor").len())
             .position(|w| w == str32("floor"))
-            .unwrap()
+            .expect("the fixture sequence holds the addressed position")
             < present
                 .intrinsic_costs()
                 .windows(str32("rng-draw").len())
                 .position(|w| w == str32("rng-draw"))
-                .unwrap()
+                .expect("the fixture sequence holds the addressed position")
     );
     assert!(
         present
             .constants()
             .windows(str32("a/value").len())
             .position(|w| w == str32("a/value"))
-            .unwrap()
+            .expect("the fixture sequence holds the addressed position")
             < present
                 .constants()
                 .windows(str32("z/value").len())
                 .position(|w| w == str32("z/value"))
-                .unwrap()
+                .expect("the fixture sequence holds the addressed position")
     );
     let alpha_members = [str32("BETA"), str32("ALPHA")].concat();
     assert!(present
@@ -490,12 +534,12 @@ fn prepared_sections_sort_registries_and_preserve_enum_member_order() {
             .enum_types()
             .windows(str32("Alpha").len())
             .position(|window| window == str32("Alpha"))
-            .unwrap()
+            .expect("the fixture sequence holds the addressed position")
             < present
                 .enum_types()
                 .windows(str32("Zed").len())
                 .position(|window| window == str32("Zed"))
-                .unwrap()
+                .expect("the fixture sequence holds the addressed position")
     );
 }
 
@@ -529,22 +573,27 @@ fn payload_sections_preserve_governed_and_live_vector_order() {
             effect: EffectSignature::Event("SECOND".to_owned()),
         },
     ];
-    let sections =
-        encode_tick_payload_sections(&outcomes, &events, &receipts, &fixture.resolver).unwrap();
-    let reversed_events = encode_tick_payload_sections(
+    let sections = identity_sections::encode_tick_payload_sections(
+        &outcomes,
+        &events,
+        &receipts,
+        &fixture.resolver,
+    )
+    .expect("the fixture value encodes to its canonical bytes");
+    let reversed_events = identity_sections::encode_tick_payload_sections(
         &outcomes,
         &events.iter().cloned().rev().collect::<Vec<_>>(),
         &receipts,
         &fixture.resolver,
     )
-    .unwrap();
-    let reversed_receipts = encode_tick_payload_sections(
+    .expect("the fixture value encodes to its canonical bytes");
+    let reversed_receipts = identity_sections::encode_tick_payload_sections(
         &outcomes,
         &events,
         &receipts.iter().cloned().rev().collect::<Vec<_>>(),
         &fixture.resolver,
     )
-    .unwrap();
+    .expect("the fixture value encodes to its canonical bytes");
     assert_ne!(sections.events(), reversed_events.events());
     assert_ne!(sections.receipts(), reversed_receipts.receipts());
     let duplicate_pair = [
@@ -566,12 +615,12 @@ fn payload_sections_preserve_governed_and_live_vector_order() {
             .rule_outcomes()
             .windows(str32("z/rule").len())
             .position(|window| window == str32("z/rule"))
-            .unwrap()
+            .expect("the fixture sequence holds the addressed position")
             < sections
                 .rule_outcomes()
                 .windows(str32("a/rule").len())
                 .position(|window| window == str32("a/rule"))
-                .unwrap()
+                .expect("the fixture sequence holds the addressed position")
     );
     assert_eq!(sections.accepted_action_outcomes(), &0_u16.to_be_bytes());
 }

@@ -261,7 +261,7 @@
 //!   at APPLY, so the two scales compose as a product — §9 item 2's
 //!   pre-state law governs operand evaluation, never the combine).
 //! - **(e)** a 14-arm `if`-chain over the enum-field equality (`community/
-//!   kind` against each CommunityType member) — **LOADS and EVALUATES**:
+//!   kind` against each `CommunityType` member) — **LOADS and EVALUATES**:
 //!   each hyperedge's dispatch returned its own floor constant
 //!   (0.136/0.0/0.04), the shape §6.2's c06 dispatch needs. The only
 //!   landed precedent was 3-arm (`territory.bsl:130-137`); the 14-arm is
@@ -283,13 +283,11 @@
 //! mirror transcript above; Task 7 lands the world, the load-smoke, the
 //! ordinal parity, and §8c's four guards only.
 
-use babylon_bsl::scenario::{
-    compose_declaration_preludes, load_scenario_with_prelude, LoadedScenario,
-};
+use babylon_bsl::scenario;
+use babylon_bsl::scenario::LoadedScenario;
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_graph::substrate::{GraphSubstrate, HyperedgeId, NodeId};
-use babylon_tick::run_once_into_with_prelude;
 
 /// The world-1 scenario source, single-homed here — Tasks 8-11's rule
 /// packs load against exactly this text.
@@ -298,12 +296,12 @@ const ORGANIZATION_PRACTICE_PRELUDE: &str =
     include_str!("../content/declarations/organization-practice.bscn");
 
 fn practice_prelude() -> String {
-    compose_declaration_preludes(&[ORGANIZATION_PRACTICE_PRELUDE])
+    scenario::compose_declaration_preludes(&[ORGANIZATION_PRACTICE_PRELUDE])
         .expect("the organization practice prelude composes")
 }
 
 fn load_practice_scenario(scenario: &str, graph: &mut HypergraphStore) -> LoadedScenario {
-    load_scenario_with_prelude(&practice_prelude(), scenario, graph)
+    scenario::load_scenario_with_prelude(&practice_prelude(), scenario, graph)
         .expect("the promoted scenario loads")
 }
 
@@ -331,9 +329,14 @@ fn scenario_and_empty_pack_load() {
 "#;
     let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
-    let report =
-        run_once_into_with_prelude(SCENARIO, &practice_prelude(), probe, &mut graph, &mut sink)
-            .expect("world 1 loads and ticks clean");
+    let report = babylon_tick::run_once_into_with_prelude(
+        SCENARIO,
+        &practice_prelude(),
+        probe,
+        &mut graph,
+        &mut sink,
+    )
+    .expect("world 1 loads and ticks clean");
     assert_eq!(report.fired, 0, "the probe never fires");
     assert_eq!(
         report.before, report.after,
@@ -342,8 +345,8 @@ fn scenario_and_empty_pack_load() {
 }
 
 /// ADR195 ordinal parity: both enum registries in FROZEN DECLARATION
-/// ORDER — CommunityType from `models/enums/community.py:38-55`,
-/// ConsciousnessTendency from `models/enums/consciousness.py:82-85`. A
+/// ORDER — `CommunityType` from `models/enums/community.py:38-55`,
+/// `ConsciousnessTendency` from `models/enums/consciousness.py:82-85`. A
 /// transposition here silently re-reads every seeded `community/kind`.
 #[test]
 fn defenum_ordinal_parity_with_the_frozen_order() {
@@ -372,7 +375,7 @@ fn defenum_ordinal_parity_with_the_frozen_order() {
     for (expected, member) in frozen_order.iter().enumerate() {
         assert_eq!(
             loaded.enums.ordinal(community, member),
-            Some(expected as u32),
+            Some(u32::try_from(expected).expect("enum ordinal fits u32")),
             "CommunityType/{member} must be ordinal {expected} (frozen declaration order)"
         );
     }
@@ -383,7 +386,7 @@ fn defenum_ordinal_parity_with_the_frozen_order() {
     for (expected, member) in ["LIBERAL", "FASCIST", "REVOLUTIONARY"].iter().enumerate() {
         assert_eq!(
             loaded.enums.ordinal(tendency, member),
-            Some(expected as u32),
+            Some(u32::try_from(expected).expect("enum ordinal fits u32")),
             "ConsciousnessTendency/{member} must be ordinal {expected} (frozen declaration order)"
         );
     }
@@ -518,9 +521,14 @@ fn exactly_one_institution_carrier() {
 fn tick_world_1() -> HypergraphStore {
     let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
-    let report =
-        run_once_into_with_prelude(SCENARIO, &practice_prelude(), PACK, &mut graph, &mut sink)
-            .expect("world 1 + the c00-c04 pack ticks clean");
+    let report = babylon_tick::run_once_into_with_prelude(
+        SCENARIO,
+        &practice_prelude(),
+        PACK,
+        &mut graph,
+        &mut sink,
+    )
+    .expect("world 1 + the c00-c04 pack ticks clean");
     assert_eq!(
         report.fired, 32,
         "c00:1 + c01:4 (active classes) + c02:5 (all classes) + c03f:1 + \
@@ -671,8 +679,14 @@ const SCENARIO_W3: &str =
 fn tick(scenario: &str, pack: &str) -> HypergraphStore {
     let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
-    run_once_into_with_prelude(scenario, &practice_prelude(), pack, &mut graph, &mut sink)
-        .expect("the world + pack ticks clean");
+    babylon_tick::run_once_into_with_prelude(
+        scenario,
+        &practice_prelude(),
+        pack,
+        &mut graph,
+        &mut sink,
+    )
+    .expect("the world + pack ticks clean");
     graph
 }
 
@@ -684,11 +698,11 @@ fn world_1_normalizes_to_the_mirror() {
     // h0: (0.4, 0.0625, 0.0) / 0.4625 — no bind (0.8648… > 0.136).
     assert_eq!(
         he(&graph, 0, "community/revolutionary").to_bits(),
-        (0.8648648648648649_f64).to_bits()
+        (0.864_864_864_864_864_9_f64).to_bits()
     );
     assert_eq!(
         he(&graph, 0, "community/liberal").to_bits(),
-        (0.13513513513513511_f64).to_bits()
+        (0.135_135_135_135_135_11_f64).to_bits()
     );
     assert_eq!(
         he(&graph, 0, "community/fascist").to_bits(),
@@ -706,7 +720,7 @@ fn world_1_normalizes_to_the_mirror() {
     // h2: (0.4, 0.125, 0.0) / 0.525 — no bind (0.7619… > 0.04).
     assert_eq!(
         he(&graph, 2, "community/revolutionary").to_bits(),
-        (0.7619047619047619_f64).to_bits()
+        (0.761_904_761_904_761_9_f64).to_bits()
     );
 }
 
@@ -723,12 +737,12 @@ fn unorganized_fraction_defaults_to_liberal() {
     );
     assert_eq!(
         he(&graph, 3, "community/liberal").to_bits(),
-        (0.9696969696969697_f64).to_bits(),
+        (0.969_696_969_696_969_7_f64).to_bits(),
         "(0.0 + 0.5) / 0.515625 — the unorganized 0.5 IS the numerator"
     );
     assert_eq!(
         he(&graph, 3, "community/revolutionary").to_bits(),
-        (0.030303030303030304_f64).to_bits(),
+        (0.030_303_030_303_030_304_f64).to_bits(),
         "0.015625 / 0.515625"
     );
 }
@@ -755,7 +769,7 @@ fn degenerate_total_yields_floor_and_remainder() {
     );
 }
 
-/// Step 1: world 2's h0 — the NEW_AFRIKAN floor binds (normalized r ≈
+/// Step 1: world 2's h0 — the `NEW_AFRIKAN` floor binds (normalized r ≈
 /// 0.037 < 0.136) and the remaining 0.864 redistributes to l and f
 /// PROPORTIONALLY (h0's weak-fash edge gives a nonzero f arm).
 #[test]
@@ -767,11 +781,11 @@ fn floor_binds_and_redistributes_proportionally() {
     );
     assert_eq!(
         he(&graph, 0, "community/liberal").to_bits(),
-        (0.8131764705882352_f64).to_bits()
+        (0.813_176_470_588_235_2_f64).to_bits()
     );
     assert_eq!(
         he(&graph, 0, "community/fascist").to_bits(),
-        (0.0508235294117647_f64).to_bits()
+        (0.050_823_529_411_764_7_f64).to_bits()
     );
 }
 
@@ -839,8 +853,8 @@ fn settler_floor_is_identically_zero() {
     );
 }
 
-/// Step 1: ADR214 Ruling 3 EXECUTED — world 2's FIRST_NATIONS community
-/// lands r = 0.155 ABOVE its NEW_AFRIKAN community's 0.136, the first time
+/// Step 1: ADR214 Ruling 3 EXECUTED — world 2's `FIRST_NATIONS` community
+/// lands r = 0.155 ABOVE its `NEW_AFRIKAN` community's 0.136, the first time
 /// the frozen table's exact tie breaks (an emergent output of the chosen
 /// measure, not a fresh stipulation).
 #[test]
@@ -953,7 +967,7 @@ const SCENARIO_W4: &str =
     include_str!("../content/scenarios/community-cost-modifier-conformance.bscn");
 
 /// Step 1: the modifier is the PRODUCT over the class's communities —
-/// w4-both reads 0.75 x 1.25 = 0.9375, in ascending HyperedgeId order
+/// w4-both reads 0.75 x 1.25 = 0.9375, in ascending `HyperedgeId` order
 /// (D25; D-NF+13's product-order note).
 #[test]
 fn cost_modifier_is_the_product_over_communities() {
@@ -984,7 +998,7 @@ fn cost_modifier_without_membership_is_exactly_one() {
 
 /// Step 1 (C4's detector, the SECOND world): an inactive class is written
 /// NOTHING — the field reads the substrate's honest-null ERROR, never 1.0
-/// (the landed `.is_err()` shape of consciousness_ternary_conformance.rs:
+/// (the landed `.is_err()` shape of `consciousness_ternary_conformance.rs`:
 /// 244-245). Mutation vector: deleting c09's active guard reds this.
 #[test]
 fn inactive_class_receives_no_cost_modifier_write() {
@@ -1011,20 +1025,20 @@ fn inactive_class_receives_no_cost_modifier_write() {
 /// The tie world (the §8a row-1 copies-agree home), single-homed here.
 const SCENARIO_TIE: &str = include_str!("../content/scenarios/community-tie-conformance.bscn");
 const CONSCIOUSNESS_PACK: &str = include_str!("../content/rules/consciousness.bsl");
-/// The tie world consumes the shared WorldView registry through the
+/// The tie world consumes the shared `WorldView` registry through the
 /// declarations prelude (the consciousness suite's own Train-B seam,
 /// #591/D157).
 const WORLDVIEW_PRELUDE: &str = include_str!("../content/declarations/worldview.bscn");
 
 fn practice_worldview_prelude() -> String {
-    compose_declaration_preludes(&[ORGANIZATION_PRACTICE_PRELUDE, WORLDVIEW_PRELUDE])
+    scenario::compose_declaration_preludes(&[ORGANIZATION_PRACTICE_PRELUDE, WORLDVIEW_PRELUDE])
         .expect("the ordered organization and worldview preludes compose")
 }
 
 /// Step 4 (DG-2 landed): c07's contestation is the normalized Shannon
 /// entropy, bit-exact against the mirror — the divisor is the ENGINE's
 /// pinned soft-float `log(3)` (libm, 1.0986122886681096), one ulp below
-/// CPython's glibc value; the mirror carries the engine's value, so these
+/// `CPython`'s glibc value; the mirror carries the engine's value, so these
 /// pins are bit-exact against the PORT's arithmetic (the 1-ulp note is
 /// D225's; a future world whose vector does NOT cancel the ulps re-opens
 /// with a written tolerance policy, per the transcendental contract).
@@ -1034,24 +1048,24 @@ fn contestation_is_normalized_shannon_entropy() {
     // World 1: h0 (0.8648…, 0.1351…, 0), h1 the (0, 0.5, 0.5) split, h2.
     assert_eq!(
         he(&graph, 0, "community/contestation").to_bits(),
-        (0.3604848532176559_f64).to_bits(),
+        (0.360_484_853_217_655_9_f64).to_bits(),
         "h0: -(0.8648…ln + 0.1351…ln) / log(3), the libm divisor"
     );
     assert_eq!(
         he(&graph, 1, "community/contestation").to_bits(),
-        (0.6309297535714575_f64).to_bits(),
+        (0.630_929_753_571_457_5_f64).to_bits(),
         "h1: the two-component split"
     );
     assert_eq!(
         he(&graph, 2, "community/contestation").to_bits(),
-        (0.49960699524890273_f64).to_bits(),
+        (0.499_606_995_248_902_73_f64).to_bits(),
         "h2: (0.7619…, 0.238…, 0)"
     );
     // World 2's fn-comm: the (0.155, 0.845, 0) post-floor shape.
     let graph = tick(SCENARIO_W2, PACK);
     assert_eq!(
         he(&graph, 1, "community/contestation").to_bits(),
-        (0.3925724663663698_f64).to_bits(),
+        (0.392_572_466_366_369_8_f64).to_bits(),
         "fn-comm: the post-floor two-component split"
     );
     // The skip gate: world 3's no-org community is written NOTHING.

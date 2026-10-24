@@ -2,14 +2,17 @@
 use std::collections::BTreeMap;
 use std::ops::Range;
 
+use crate::MonetaryBook;
 use crate::{
     AccountId, CircuitAccounting, FinalDemandPrincipalId, FundedShift, MaterialCircuitError,
     MaterialCircuitState, MoneyTransferReceipt, ShiftId, SiteId, StaffingMemberId, UnitId,
     WageAccrualReceipt,
 };
-use babylon_kernel::{content_digest::sha256_of, currency::Currency};
+use babylon_kernel::content_digest;
+use babylon_kernel::currency::Currency;
+use std::result::Result as StdResult;
 
-type Result<T> = std::result::Result<T, MaterialCircuitError>;
+type Result<T> = StdResult<T, MaterialCircuitError>;
 
 /// Compensation does not assign political class or establish ownership shares.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -262,7 +265,7 @@ pub fn member_shift_id(period: u64, terms: &EmploymentTerms) -> ShiftId {
     bytes.extend_from_slice(&terms.site_id.as_bytes());
     bytes.extend_from_slice(&terms.unit_id.as_bytes());
     bytes.extend_from_slice(&terms.payee.as_bytes());
-    ShiftId::from_bytes(sha256_of(&bytes))
+    ShiftId::from_bytes(content_digest::sha256_of(&bytes))
 }
 
 pub(crate) fn fund_attendance(
@@ -351,7 +354,7 @@ pub(crate) fn fund_attendance(
 }
 
 fn fund_member_attendance(
-    book: &mut crate::MonetaryBook,
+    book: &mut MonetaryBook,
     terms: &EmploymentTerms,
     period: u64,
     available: u64,

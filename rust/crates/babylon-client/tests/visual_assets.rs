@@ -1,5 +1,8 @@
 //! Behavioral contracts for the embedded Bevy visual-asset surface.
 
+use babylon_client::visual_assets::GalleryAssetLabel;
+use babylon_client::visual_assets::GalleryScrollRoot;
+use babylon_client::visual_assets::VisualAssetDescriptor;
 use bevy::asset::AssetPlugin;
 use bevy::image::ImagePlugin;
 use bevy::input::mouse::{AccumulatedMouseScroll, MouseScrollUnit};
@@ -171,7 +174,7 @@ fn expected_illustration_assets() -> [ExpectedVisualAsset; 11] {
 }
 
 fn assert_visual_asset(
-    actual: &babylon_client::visual_assets::VisualAssetDescriptor,
+    actual: &VisualAssetDescriptor,
     expected: ExpectedVisualAsset,
     index: usize,
 ) {
@@ -276,8 +279,7 @@ fn gallery_labels_match_the_fixed_visual_asset_catalog() {
     let _guard = bevy_app_test_guard();
     let mut app = visual_asset_gallery_app();
     let world = app.world_mut();
-    let mut labels =
-        world.query_filtered::<&Text, With<babylon_client::visual_assets::GalleryAssetLabel>>();
+    let mut labels = world.query_filtered::<&Text, With<GalleryAssetLabel>>();
     let actual: Vec<_> = labels
         .iter(world)
         .take(18)
@@ -298,8 +300,7 @@ fn gallery_scroll_position_changes_from_input_and_clamps_at_the_layout_maximum()
     let mut app = visual_asset_gallery_app();
     let root = {
         let world = app.world_mut();
-        let mut roots = world
-            .query_filtered::<Entity, With<babylon_client::visual_assets::GalleryScrollRoot>>();
+        let mut roots = world.query_filtered::<Entity, With<GalleryScrollRoot>>();
         roots
             .single(world)
             .expect("exactly one gallery scroll root")
@@ -348,15 +349,13 @@ fn gallery_cards_are_non_shrinking_and_require_scroll_at_1080p() {
     let _guard = bevy_app_test_guard();
     let mut app = visual_asset_gallery_app();
     let world = app.world_mut();
-    let mut roots =
-        world.query_filtered::<&Node, With<babylon_client::visual_assets::GalleryScrollRoot>>();
+    let mut roots = world.query_filtered::<&Node, With<GalleryScrollRoot>>();
     let root_node = roots
         .single(world)
         .expect("exactly one gallery scroll root");
     assert_eq!(root_node.overflow.y, OverflowAxis::Scroll);
 
-    let mut labels =
-        world.query_filtered::<Entity, With<babylon_client::visual_assets::GalleryAssetLabel>>();
+    let mut labels = world.query_filtered::<Entity, With<GalleryAssetLabel>>();
     let label_entities: [Entity; 17] = labels
         .iter(world)
         .take(18)
@@ -421,8 +420,7 @@ fn gallery_scroll_rejects_a_missing_scroll_root() {
     let mut app = visual_asset_gallery_app();
     let root = {
         let world = app.world_mut();
-        let mut query = world
-            .query_filtered::<Entity, With<babylon_client::visual_assets::GalleryScrollRoot>>();
+        let mut query = world.query_filtered::<Entity, With<GalleryScrollRoot>>();
         query
             .single(world)
             .expect("exactly one gallery scroll root")
@@ -449,7 +447,7 @@ fn gallery_scroll_rejects_multiple_scroll_roots() {
     app.world_mut().spawn((
         ScrollPosition::default(),
         ComputedNode::DEFAULT,
-        babylon_client::visual_assets::GalleryScrollRoot,
+        GalleryScrollRoot,
     ));
     app.insert_resource(AccumulatedMouseScroll {
         unit: MouseScrollUnit::Line,

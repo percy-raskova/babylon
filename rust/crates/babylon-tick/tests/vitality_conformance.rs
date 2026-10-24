@@ -66,12 +66,19 @@
 //! rounded — so `999.95_f64` IS the double Python printed. A tolerance here
 //! would hide exactly the transcription error it would appear to absorb.
 
+// Conformance fixtures exercise exact engine values, transcribe spec literals,
+// and build whole scenarios in one test. These pedantic lints would force
+// ceremony that hides those contracts, so they stay off in test code only.
+#![allow(
+    clippy::float_cmp,
+    reason = "these comparisons pin exact authored f64 values"
+)]
+
 use babylon_bsl::evaluator::Value;
-use babylon_bsl::scenario::load_scenario;
+use babylon_bsl::scenario;
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::memory::MemoryGraph;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
-use babylon_tick::{run_once, run_once_into};
 
 const SCENARIO: &str = include_str!("../content/scenarios/vitality-conformance.bscn");
 const RULE: &str = include_str!("../content/rules/vitality.bsl");
@@ -94,7 +101,8 @@ const EXPECTED: [(&str, u64, f64, f64, f64); 6] = [
 fn run() -> (MemoryGraph, CollectingSink) {
     let mut graph = MemoryGraph::new();
     let mut sink = CollectingSink::default();
-    run_once_into(SCENARIO, RULE, &mut graph, &mut sink).expect("the Vitality pack must run");
+    babylon_tick::run_once_into(SCENARIO, RULE, &mut graph, &mut sink)
+        .expect("the Vitality pack must run");
     (graph, sink)
 }
 
@@ -222,8 +230,8 @@ fn the_reaper_emits_one_entity_death_per_dissolution() {
 /// the tick moved state at all.
 #[test]
 fn the_vitality_tick_is_deterministic() {
-    let a = run_once(SCENARIO, RULE).expect("first run");
-    let b = run_once(SCENARIO, RULE).expect("second run");
+    let a = babylon_tick::run_once(SCENARIO, RULE).expect("first run");
+    let b = babylon_tick::run_once(SCENARIO, RULE).expect("second run");
     assert_eq!(a.after, b.after, "two runs, one post-state");
     assert_ne!(a.before, a.after, "the pack must move state");
     assert_eq!(a.fired, 5, "five of six subjects pass the guard");
@@ -247,7 +255,7 @@ fn a_rule_reading_an_undeclared_coefficient_is_refused_at_load() {
                   (binding base :const economy/base-subsistance)) \
                 (when (> wealth base)) \
                 (effects (update-node self social-class/wealth (set base))))";
-    let Err(err) = run_once(SCENARIO, rule) else {
+    let Err(err) = babylon_tick::run_once(SCENARIO, rule) else {
         panic!("a mistyped coefficient must not load");
     };
     assert!(
@@ -296,7 +304,7 @@ fn the_fixture_keeps_the_un_ported_phase_inert() {
     const ATTRITION_BASE_FACTOR: f64 = 0.5;
 
     let mut seeds = MemoryGraph::new();
-    let scenario = load_scenario(SCENARIO, &mut seeds).expect("the scenario must load");
+    let scenario = scenario::load_scenario(SCENARIO, &mut seeds).expect("the scenario must load");
     let Some(Value::Real(base_subsistence)) = scenario.consts.get("economy/base-subsistence")
     else {
         panic!("the scenario must declare economy/base-subsistence as a scaled literal");

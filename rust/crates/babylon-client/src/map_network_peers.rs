@@ -1,10 +1,12 @@
 //! Unanchored counterparts stay a readable list; they are never fake counties.
-use super::{usable, EconomyEntity, NetworkProjection};
+use super::{EconomyEntity, NetworkProjection};
 use crate::decision_surface::{DeclaredSurface, SurfaceId};
 use crate::observer::ObservationContext;
 use crate::observer_theme as theme;
+use crate::observer_ui::ObserverFontRole;
 use crate::observer_ui::{ObserverUiState, ObserverViewport};
 use crate::production::{PrimaryView, ProductionCommand};
+use bevy::input_focus::tab_navigation::TabGroup;
 use bevy::prelude::*;
 
 #[derive(Component)]
@@ -33,7 +35,7 @@ pub(super) fn spawn_peers(
             Visibility::Hidden,
             EconomyEntity,
             ExternalPeers,
-            bevy::input_focus::tab_navigation::TabGroup::new(25),
+            TabGroup::new(25),
             DeclaredSurface::new(SurfaceId::ObserverProduction),
         ))
         .with_children(|panel| {
@@ -47,7 +49,7 @@ pub(super) fn spawn_peers(
                     ..default()
                 },
                 TextColor(theme::YELLOW),
-                crate::observer_ui::ObserverFontRole::Body,
+                ObserverFontRole::Body,
             ));
             for peer in projection.external.values() {
                 crate::production::button(
@@ -70,7 +72,7 @@ pub(super) fn place_peers(
     mut panels: Query<(&mut Node, &mut Visibility), With<ExternalPeers>>,
 ) {
     for (mut node, mut visibility) in &mut panels {
-        let bounds = viewport.0.filter(|_| usable(&ui, *view));
+        let bounds = viewport.0.filter(|_| super::usable(&ui, *view));
         visibility.set_if_neq(if bounds.is_some() {
             Visibility::Visible
         } else {

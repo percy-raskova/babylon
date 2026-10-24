@@ -1,5 +1,7 @@
 //! Standalone evidence for actual installation, wear and contingent purchase decisions.
-use super::{EquipmentCohortId, InstallationId, Result};
+use super::EquipmentCohortId;
+use super::InstallationId;
+use super::Result;
 use crate::{MaterialCircuitError, OrderId, ProcessId, SiteId};
 use babylon_kernel::currency::Currency;
 #[derive(Debug, Clone, PartialEq, Eq)]

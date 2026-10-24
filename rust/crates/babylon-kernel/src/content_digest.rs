@@ -47,7 +47,7 @@ pub fn sha256_of(bytes: &[u8]) -> [u8; 32] {
 
 #[cfg(test)]
 mod tests {
-    use super::{defines_hash_of, ContentDigest};
+    use super::ContentDigest;
 
     fn hex(bytes: [u8; 32]) -> String {
         use std::fmt::Write;
@@ -76,7 +76,7 @@ mod tests {
             .expect("fixture is committed with exactly one hook-appended trailing newline");
         assert_eq!(canonical_json.len(), 25_184, "fixture length pin");
         assert_eq!(
-            hex(defines_hash_of(canonical_json)),
+            hex(super::defines_hash_of(canonical_json)),
             "4af1178032a2b420376e35c7a98ac2b151ea8fb9ee68636d1560528d5fd927d4"
         );
     }
@@ -86,7 +86,7 @@ mod tests {
     #[test]
     fn hashes_a_minimal_canonical_string() {
         assert_eq!(
-            hex(defines_hash_of(r#"{"a":1}"#)),
+            hex(super::defines_hash_of(r#"{"a":1}"#)),
             "015abd7f5cc57a2dd94b7590f04ad8084273905ee33ec5cebeae62276a97f862"
         );
     }
@@ -100,7 +100,7 @@ mod tests {
         use sha2::{Digest, Sha256};
         let empty_rules: [u8; 32] = Sha256::digest([0x03, 0x00, 0x00, 0x00, 0x00]).into();
         let digest = ContentDigest {
-            defines_hash: defines_hash_of("{}"),
+            defines_hash: super::defines_hash_of("{}"),
             rules_hash: empty_rules,
         };
         assert_eq!(

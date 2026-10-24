@@ -1,5 +1,6 @@
 //! Independent vectors for exact monetary postings and finite attendance evidence.
-use babylon_tick::material_world::{decode_material_receipts, MaterialWorldError};
+use babylon_tick::material_world;
+use babylon_tick::material_world::MaterialWorldError;
 
 const DOMAIN: &[u8] = b"babylon.material-tick-receipts.v18\0";
 
@@ -55,7 +56,12 @@ fn labor(values: [u64; 8]) -> Vec<u8> {
 fn member(labor: &[u8]) -> Vec<u8> {
     let hours: Vec<_> = labor[64..]
         .chunks_exact(8)
-        .map(|n| u64::from_be_bytes(n.try_into().unwrap()))
+        .map(|n| {
+            u64::from_be_bytes(
+                n.try_into()
+                    .expect("the fixture slice has the target length"),
+            )
+        })
         .collect();
     let mut bytes = Vec::new();
     for id in [4, 1, 5, 2] {
@@ -88,7 +94,11 @@ fn envelope(transfers: &[Vec<u8>], wages: &[Vec<u8>], labor: &[Vec<u8>]) -> Vec<
             _ => &[],
         };
         bytes.push(tag);
-        bytes.extend_from_slice(&u64::try_from(rows.len()).unwrap().to_be_bytes());
+        bytes.extend_from_slice(
+            &u64::try_from(rows.len())
+                .expect("the fixture value fits the target range")
+                .to_be_bytes(),
+        );
         for row in rows {
             bytes.extend_from_slice(row);
         }
@@ -103,7 +113,8 @@ fn current_receipts_admit_exact_postings_accrual_and_paid_idle_hours() {
         &[accrual()],
         &[labor([7, 8, 6, 2, 4, 2, 1, 3])],
     );
-    let decoded = decode_material_receipts(&bytes).unwrap();
+    let decoded = material_world::decode_material_receipts(&bytes)
+        .expect("the canonical bytes decode into the declared type");
     assert_eq!(decoded.resolve_tick, 7);
     assert_eq!(decoded.money_transfers.len(), 1);
     assert_eq!(decoded.money_transfers[0].debit.delta.micro_units(), -30);
@@ -129,7 +140,10 @@ fn current_receipts_admit_unfunded_and_fully_idle_attendance() {
         } else {
             vec![accrual_hours(hours[4])]
         };
-        assert!(decode_material_receipts(&envelope(&[], &wages, &[labor(hours)])).is_ok());
+        assert!(
+            material_world::decode_material_receipts(&envelope(&[], &wages, &[labor(hours)]))
+                .is_ok()
+        );
     }
 }
 
@@ -137,7 +151,11 @@ fn current_receipts_admit_unfunded_and_fully_idle_attendance() {
 fn money_postings_refuse_unbalanced_zero_reversed_and_overflowing_signs() {
     for (debit, credit) in [(-30, 29), (30, -30), (0, 0), (i128::MIN, i128::MAX)] {
         assert_eq!(
-            decode_material_receipts(&envelope(&[transfer(debit, credit)], &[], &[])),
+            material_world::decode_material_receipts(&envelope(
+                &[transfer(debit, credit)],
+                &[],
+                &[]
+            )),
             Err(MaterialWorldError::Wire)
         );
     }
@@ -149,7 +167,7 @@ fn money_postings_refuse_wrong_reserve_and_unknown_tags() {
         let mut row = transfer(-30, 30);
         row[offset] = value;
         assert_eq!(
-            decode_material_receipts(&envelope(&[row], &[], &[])),
+            material_world::decode_material_receipts(&envelope(&[row], &[], &[])),
             Err(MaterialWorldError::Wire),
             "offset {offset}"
         );
@@ -167,7 +185,7 @@ fn wage_and_labor_receipts_refuse_false_periods_amounts_and_partitions() {
         let mut row = accrual();
         row[offset..offset + bytes.len()].copy_from_slice(&bytes);
         assert_eq!(
-            decode_material_receipts(&envelope(&[], &[row], &[])),
+            material_world::decode_material_receipts(&envelope(&[], &[row], &[])),
             Err(MaterialWorldError::Wire)
         );
     }
@@ -181,7 +199,7 @@ fn wage_and_labor_receipts_refuse_false_periods_amounts_and_partitions() {
         [7, u64::MAX, u64::MAX, 0, u64::MAX, 0, u64::MAX, 1],
     ] {
         assert_eq!(
-            decode_material_receipts(&envelope(&[], &[], &[labor(hours)])),
+            material_world::decode_material_receipts(&envelope(&[], &[], &[labor(hours)])),
             Err(MaterialWorldError::Wire)
         );
     }
@@ -190,14 +208,20 @@ fn wage_and_labor_receipts_refuse_false_periods_amounts_and_partitions() {
 #[test]
 fn monetary_receipts_refuse_duplicate_attendance_truncation_and_old_schema() {
     let wages = accrual();
-    assert!(decode_material_receipts(&envelope(&[], &[wages.clone(), wages], &[])).is_err());
+    assert!(
+        material_world::decode_material_receipts(&envelope(&[], &[wages.clone(), wages], &[]))
+            .is_err()
+    );
     let hours = labor([7, 8, 6, 2, 4, 2, 1, 3]);
-    assert!(decode_material_receipts(&envelope(&[], &[], &[hours.clone(), hours])).is_err());
+    assert!(
+        material_world::decode_material_receipts(&envelope(&[], &[], &[hours.clone(), hours]))
+            .is_err()
+    );
     let bytes = envelope(&[transfer(-30, 30)], &[accrual()], &[]);
-    assert!(decode_material_receipts(&bytes[..bytes.len() - 1]).is_err());
+    assert!(material_world::decode_material_receipts(&bytes[..bytes.len() - 1]).is_err());
     let mut trailing = bytes;
     trailing.push(0);
-    assert!(decode_material_receipts(&trailing).is_err());
+    assert!(material_world::decode_material_receipts(&trailing).is_err());
     let mut previous = b"babylon.material-tick-receipts.v5\0".to_vec();
     previous.extend_from_slice(&5_u32.to_be_bytes());
     previous.extend_from_slice(&7_u64.to_be_bytes());
@@ -205,7 +229,7 @@ fn monetary_receipts_refuse_duplicate_attendance_truncation_and_old_schema() {
         previous.push(tag);
         previous.extend_from_slice(&0_u64.to_be_bytes());
     }
-    assert!(decode_material_receipts(&previous).is_err());
+    assert!(material_world::decode_material_receipts(&previous).is_err());
 }
 
 fn movement(purpose: Vec<u8>, debit: Vec<u8>, credit: Vec<u8>) -> Vec<u8> {
@@ -230,16 +254,16 @@ fn all_money_purposes_keep_account_and_reserve_namespaces_distinct() {
         movement(tagged(9, 0, 5), tagged(4, 0, 5), tagged(1, 2, 3)),
         movement(tagged(10, 0, 5), tagged(4, 0, 5), tagged(1, 2, 2)),
     ];
-    assert!(decode_material_receipts(&envelope(&rows, &[], &[])).is_ok());
+    assert!(material_world::decode_material_receipts(&envelope(&rows, &[], &[])).is_ok());
     for purpose in [3, 6, 7] {
         let row = movement(tagged(7, purpose, 0), tagged(1, 3, 1), tagged(1, 4, 1));
-        assert!(decode_material_receipts(&envelope(&[row], &[], &[])).is_ok());
+        assert!(material_world::decode_material_receipts(&envelope(&[row], &[], &[])).is_ok());
     }
     // Current fiscal/ownership purposes additionally require matched policy receipts.
     // Their complete valid vectors live in financial_receipt_wire.rs.
     for purpose in [1, 2, 4, 5] {
         let orphan = movement(tagged(7, purpose, 0), tagged(1, 3, 1), tagged(1, 4, 1));
-        assert!(decode_material_receipts(&envelope(&[orphan], &[], &[])).is_err());
+        assert!(material_world::decode_material_receipts(&envelope(&[orphan], &[], &[])).is_err());
     }
 }
 
@@ -255,7 +279,7 @@ fn cash_and_shift_postings_refuse_noncanonical_padding_and_self_transfers() {
     ];
     for row in rows {
         assert_eq!(
-            decode_material_receipts(&envelope(&[row], &[], &[])),
+            material_world::decode_material_receipts(&envelope(&[row], &[], &[])),
             Err(MaterialWorldError::Wire)
         );
     }
@@ -267,8 +291,8 @@ fn transfer_family_uses_derived_movement_bound_instead_of_state_row_bound() {
     let rows = vec![transfer(-1, 1); MAX_MATERIAL_CIRCUIT_ROWS + 1];
     let bytes = envelope(&rows, &[], &[]);
     assert_eq!(
-        decode_material_receipts(&bytes)
-            .unwrap()
+        material_world::decode_material_receipts(&bytes)
+            .expect("the canonical bytes decode into the declared type")
             .money_transfers
             .len(),
         rows.len()
@@ -277,11 +301,11 @@ fn transfer_family_uses_derived_movement_bound_instead_of_state_row_bound() {
     let count_offset = DOMAIN.len() + 12 + 10 * 9 + 1;
     excessive[count_offset..count_offset + 8].copy_from_slice(
         &u64::try_from(MAX_MONEY_TRANSFERS_PER_PERIOD + 1)
-            .unwrap()
+            .expect("the fixture value fits the target range")
             .to_be_bytes(),
     );
     assert_eq!(
-        decode_material_receipts(&excessive),
+        material_world::decode_material_receipts(&excessive),
         Err(MaterialWorldError::ByteLimit)
     );
 }
@@ -297,13 +321,18 @@ fn aid_postings_refuse_wrong_subtypes_reserves_ids_and_direction() {
             (reserve, cash)
         };
         let row = movement(tagged(tag, 0, 5), debit, credit);
-        assert!(decode_material_receipts(&envelope(std::slice::from_ref(&row), &[], &[])).is_ok());
+        assert!(material_world::decode_material_receipts(&envelope(
+            std::slice::from_ref(&row),
+            &[],
+            &[]
+        ))
+        .is_ok());
         let reserve = if tag == 8 { 84 } else { 34 };
         for (offset, value) in [(1, 1), (reserve, 2), (reserve + 1, 1), (reserve + 2, 6)] {
             let mut changed = row.clone();
             changed[offset] = value;
             assert_eq!(
-                decode_material_receipts(&envelope(&[changed], &[], &[])),
+                material_world::decode_material_receipts(&envelope(&[changed], &[], &[])),
                 Err(MaterialWorldError::Wire)
             );
         }
@@ -311,7 +340,7 @@ fn aid_postings_refuse_wrong_subtypes_reserves_ids_and_direction() {
         reversed[34..68].copy_from_slice(&row[84..118]);
         reversed[84..118].copy_from_slice(&row[34..68]);
         assert_eq!(
-            decode_material_receipts(&envelope(&[reversed], &[], &[])),
+            material_world::decode_material_receipts(&envelope(&[reversed], &[], &[])),
             Err(MaterialWorldError::Wire)
         );
     }

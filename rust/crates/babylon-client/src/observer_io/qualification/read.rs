@@ -1,10 +1,11 @@
 //! One full authenticated read per source boundary, shared by all audit folds.
 use super::recovery::Identity;
 use super::{
-    elapsed, hex, Candidate, Instant, KnownBinding, ObservationContext, ObserverEconomyReader,
+    Candidate, Instant, KnownBinding, ObservationContext, ObserverEconomyReader,
     ObserverMaterialCursor, ObserverVisibility, Opening, Perspective, PreparedObservation, Record,
     Work,
 };
+use babylon_persistence::qualification_audit::aid::MaterialWorldRegister;
 
 impl Work {
     pub(in crate::observer_io) fn read(
@@ -37,7 +38,7 @@ impl Work {
         let snapshot = reader
             .snapshot_with_cursor(context.campaign, 0, &mut candidate_cursor)
             .map_err(|e| e.to_string())?;
-        let production_read_elapsed_ns = elapsed(started)?;
+        let production_read_elapsed_ns = super::elapsed(started)?;
         let started = Instant::now();
         let policy = self
             .configuration
@@ -46,7 +47,7 @@ impl Work {
         if snapshot.campaign_id != context.campaign.as_uuid().to_string()
             || snapshot.resolve_tick != 0
             || snapshot.visibility != ObserverVisibility::FullObserver
-            || snapshot.foundation_digest != hex(&self.scope.foundation)
+            || snapshot.foundation_digest != super::hex(&self.scope.foundation)
             || snapshot.tick_content_hash.is_some()
         {
             return Err("native aid opening identity or byte limit differs".into());
@@ -71,9 +72,9 @@ impl Work {
                 Ok(Opening {
                     campaign: snapshot.campaign_id.clone(),
                     foundation_sha256: snapshot.foundation_digest.clone(),
-                    graph_foundation_sha256: hex(&foundations.graph_foundation_sha256),
-                    policy_sha256: hex(&policy.policy),
-                    material_register_sha256: hex(&register.digest()),
+                    graph_foundation_sha256: super::hex(&foundations.graph_foundation_sha256),
+                    policy_sha256: super::hex(&policy.policy),
+                    material_register_sha256: super::hex(&register.digest()),
                     material_register_bytes: register.canonical_bytes().len(),
                     geography,
                 })
@@ -90,7 +91,7 @@ impl Work {
             observation_generation: context.generation,
             production_read_elapsed_ns,
             presentation_read_elapsed_ns: production_read_elapsed_ns,
-            audit_elapsed_ns: elapsed(started)?,
+            audit_elapsed_ns: super::elapsed(started)?,
             tick: 0,
             tick_content_hash: None,
             opening: Some(opening),
@@ -149,7 +150,7 @@ impl Work {
             )
             .map_err(|e| e.to_string())?;
         drop(reader);
-        let production_read_elapsed_ns = elapsed(started)?;
+        let production_read_elapsed_ns = super::elapsed(started)?;
         let started = Instant::now();
         let register = candidate_cursor
             .as_ref()
@@ -177,7 +178,7 @@ impl Work {
             observation_generation: context.generation,
             production_read_elapsed_ns,
             presentation_read_elapsed_ns: production_read_elapsed_ns,
-            audit_elapsed_ns: elapsed(started)?,
+            audit_elapsed_ns: super::elapsed(started)?,
             tick: facts.tick,
             tick_content_hash: Some(facts.tick_content_hash.clone()),
             opening: None,
@@ -217,7 +218,7 @@ impl Work {
         let snapshot = reader
             .snapshot_with_cursor(context.campaign, context.tick, &mut candidate_cursor)
             .map_err(|e| e.to_string())?;
-        let production_read_elapsed_ns = elapsed(started)?;
+        let production_read_elapsed_ns = super::elapsed(started)?;
         let started = Instant::now();
         let policy = self
             .configuration
@@ -233,20 +234,19 @@ impl Work {
         if evidence.body_bytes() > policy.production_evidence_bytes {
             return Err("native restored production evidence exceeds its byte limit".into());
         }
-        let observe =
-            |register: &babylon_persistence::qualification_audit::aid::MaterialWorldRegister| {
-                if register.canonical_bytes().len() > policy.material_register_bytes {
-                    return Err("native restored register exceeds its byte limit".to_string());
-                }
-                self.custody.recovered_register(register, self.duration)?;
-                Identity::capture(
-                    &full.snapshot,
-                    register.digest(),
-                    register.canonical_bytes().len(),
-                    evidence,
-                    self.duration,
-                )
-            };
+        let observe = |register: &MaterialWorldRegister| {
+            if register.canonical_bytes().len() > policy.material_register_bytes {
+                return Err("native restored register exceeds its byte limit".to_string());
+            }
+            self.custody.recovered_register(register, self.duration)?;
+            Identity::capture(
+                &full.snapshot,
+                register.digest(),
+                register.canonical_bytes().len(),
+                evidence,
+                self.duration,
+            )
+        };
         let cursor_owner = candidate_cursor
             .as_ref()
             .ok_or("native restored material cursor absent")?;
@@ -273,7 +273,7 @@ impl Work {
             observation_generation: context.generation,
             production_read_elapsed_ns,
             presentation_read_elapsed_ns: production_read_elapsed_ns,
-            audit_elapsed_ns: elapsed(started)?,
+            audit_elapsed_ns: super::elapsed(started)?,
             tick: context.tick,
             tick_content_hash: full.snapshot.tick_content_hash.clone(),
             opening: None,
@@ -295,7 +295,10 @@ impl Work {
         )
     }
 
-    #[allow(clippy::too_many_arguments)] // One candidate binds presentation and exact private identity.
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "`finish` takes every authored field explicitly"
+    )] // One candidate binds presentation and exact private identity.
     fn finish(
         self,
         context: &ObservationContext,
@@ -342,6 +345,6 @@ fn present(
     if !binding.agrees(&snapshot) {
         return Err("native player disclosure differs from private audit identity".into());
     }
-    record.presentation_read_elapsed_ns = elapsed(started)?;
+    record.presentation_read_elapsed_ns = super::elapsed(started)?;
     Ok(PreparedObservation::new(snapshot))
 }

@@ -112,9 +112,11 @@ fn topology_edge_bound_order_and_duplicate_codes_are_exact() {
 #[test]
 fn load_counter_is_detached_and_uses_only_validation_local_keys() {
     let mut counter = PracticeTopologyLoadCounter::new();
-    counter.observe_organization(10, true, Some(1.0)).unwrap();
+    counter
+        .observe_organization(10, true, Some(1.0))
+        .expect("the fixture call `observe_organization` succeeds for the authored inputs");
     counter
         .observe_solidarity_edge(10, PracticeTargetDomain::SocialClass, 20)
-        .unwrap();
+        .expect("the fixture call `observe_solidarity_edge` succeeds for the authored inputs");
     assert_eq!(counter.finish(), Ok(()));
 }

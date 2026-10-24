@@ -1,9 +1,9 @@
 //! Captured resident eligibility reaches the sole material-time account.
-use super::{quantity, Builder, NationalOpeningError, Result};
-use crate::{
-    economic_catalog::EconomicHouseholdSeed, national_household_allocation::HouseholdBudgetKey,
-    national_household_time_allocation::NationalHouseholdTimeAllocation,
-};
+use super::{Builder, NationalOpeningError, Result};
+use crate::economic_catalog::EconomicHouseholdSeed;
+use crate::national_household_allocation::HouseholdBudgetKey;
+use crate::national_household_time_allocation::NationalHouseholdTimeAllocation;
+
 use babylon_kernel::economic_location::EconomicLocation;
 use babylon_material_circuit::{
     FinalDemandPrincipalId, HouseholdKind, HouseholdNeedBasis, HouseholdTimeAccounting,
@@ -135,7 +135,7 @@ fn eligibility(
     if workforce > eligible || eligible > household.persons {
         return Err(NationalOpeningError::SourceScope);
     }
-    quantity(
+    super::quantity(
         eligible,
         builder.policy.household_time.hours_per_eligible_person,
     )?;

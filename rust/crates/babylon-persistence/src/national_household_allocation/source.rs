@@ -1,13 +1,14 @@
 use super::{
-    allocate_county, CountyHouseholdAllocation, HouseholdAllocationError as Error,
-    HouseholdCountyControls, NationalHouseholdAllocation,
+    CountyHouseholdAllocation, HouseholdAllocationError as Error, HouseholdCountyControls,
+    NationalHouseholdAllocation,
 };
-use crate::{
-    national_counties::{CountyReference, NationalCountyReference},
-    national_households::{HistoricalEarnings, NationalHouseholdReference},
-    national_resident_workforce::{NationalResidentWorkforceReference, WorkerClass},
-};
-type Result<T> = std::result::Result<T, Error>;
+use crate::national_counties::AcsEstimate;
+use crate::national_counties::{CountyReference, NationalCountyReference};
+use crate::national_households::{HistoricalEarnings, NationalHouseholdReference};
+use crate::national_resident_workforce::{NationalResidentWorkforceReference, WorkerClass};
+use std::result::Result as StdResult;
+
+type Result<T> = StdResult<T, Error>;
 
 /// Combine independent source margins only through the explicit Designed policy.
 /// # Errors
@@ -27,7 +28,7 @@ pub fn allocate_households(
     for county in counties.counties() {
         rows.push(CountyHouseholdAllocation {
             county: county.geoid(),
-            budgets: allocate_county(controls(county, households, workforce)?, owner_bps)?,
+            budgets: super::allocate_county(controls(county, households, workforce)?, owner_bps)?,
         });
     }
     Ok(NationalHouseholdAllocation {
@@ -49,9 +50,7 @@ fn controls(
     let classes = workforce
         .county(county.geoid())
         .map_err(|_| Error::SourceScope)?;
-    let value = |cell: &crate::national_counties::AcsEstimate| {
-        cell.estimate.value().ok_or(Error::MissingObservation)
-    };
+    let value = |cell: &AcsEstimate| cell.estimate.value().ok_or(Error::MissingObservation);
     let resident = county.residents();
     let population = value(&resident.population_persons)?;
     let employed = value(&resident.civilian_employed_persons)?;

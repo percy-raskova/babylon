@@ -1,8 +1,6 @@
 //! Michigan control source admission uses its captured inputs on reopening.
-use babylon_persistence::{
-    michigan_economy::{michigan_economy, MichiganEconomy},
-    michigan_sectors::{michigan_county_sectors, MichiganCountySectors},
-};
+use babylon_persistence::michigan_economy::{michigan_economy, MichiganEconomy};
+use babylon_persistence::michigan_sectors::{michigan_county_sectors, MichiganCountySectors};
 
 const COUNTIES: &[u8] = include_bytes!(
     "../../../../src/babylon/data/reference/economy/qcew_county_economics_mi_2024.csv.gz"
@@ -15,12 +13,23 @@ const MANIFEST: &[u8] =
 
 #[test]
 fn captured_michigan_source_bytes_reproduce_explicit_control_evidence() {
-    let economy = MichiganEconomy::decode_captured(COUNTIES).unwrap();
-    let sectors = MichiganCountySectors::decode_captured(SECTORS, MANIFEST).unwrap();
+    let economy = MichiganEconomy::decode_captured(COUNTIES).expect("the captured bytes decode");
+    let sectors = MichiganCountySectors::decode_captured(SECTORS, MANIFEST)
+        .expect("the captured bytes decode");
     assert_eq!(economy.counties().len(), 83);
-    assert_eq!(economy.counties(), michigan_economy().unwrap().counties());
+    assert_eq!(
+        economy.counties(),
+        michigan_economy()
+            .expect("the Michigan economy fixture builds")
+            .counties()
+    );
     assert_eq!(sectors.rows().len(), 1603);
-    assert_eq!(sectors.rows(), michigan_county_sectors().unwrap().rows());
+    assert_eq!(
+        sectors.rows(),
+        michigan_county_sectors()
+            .expect("the Michigan county sectors build")
+            .rows()
+    );
 }
 
 #[test]

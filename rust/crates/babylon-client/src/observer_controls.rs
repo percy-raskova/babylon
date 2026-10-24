@@ -307,10 +307,13 @@ pub(crate) fn turn_presentation(state: &ObserverSession) -> TurnPresentation {
 mod tests {
     use super::*;
     use crate::observer::Perspective;
+    use crate::observer_ui::NetworkSector;
+    use crate::observer_ui::RoadLayer;
     use babylon_persistence::identity::CampaignId;
+    use uuid::Uuid;
 
     fn ready(tick: u64) -> ObserverSession {
-        let mut state = ObserverSession::new(CampaignId::from_uuid(uuid::Uuid::from_u128(1)));
+        let mut state = ObserverSession::new(CampaignId::from_uuid(Uuid::from_u128(1)));
         state.ready(tick, None);
         assert!(state.installed(&state.context()));
         state
@@ -325,7 +328,9 @@ mod tests {
         );
         assert_eq!(turn_presentation(&state).play_label, "Play");
         assert_eq!(turn_presentation(&state).step_label, "Advance to period 1");
-        let request = state.begin_advance().unwrap();
+        let request = state
+            .begin_advance()
+            .expect("the session begins the authored advance");
         assert!(state.acknowledge(request, 1, None));
         assert!(state.installed(&state.context()));
         assert_eq!(
@@ -353,7 +358,9 @@ mod tests {
     #[test]
     fn quit_remains_available_while_pending_or_failed_and_has_persistent_status() {
         let mut state = ready(3);
-        let request = state.begin_advance().unwrap();
+        let request = state
+            .begin_advance()
+            .expect("the session begins the authored advance");
         assert_eq!(
             availability(ObserverCommand::Quit, &state),
             ControlAvailability::Enabled
@@ -383,7 +390,9 @@ mod tests {
     #[test]
     fn pending_request_overrides_ready_after_a_perspective_refresh() {
         let mut state = ready(3);
-        state.begin_advance().unwrap();
+        state
+            .begin_advance()
+            .expect("the session begins the authored advance");
         state.set_perspective(Perspective::PlayerKnowledge);
         assert!(state.installed(&state.context()));
         assert_eq!(state.phase, SessionPhase::Ready);
@@ -398,7 +407,9 @@ mod tests {
     #[test]
     fn pause_and_resume_remain_available_until_inflight_acknowledgement() {
         let mut state = ready(3);
-        let request = state.begin_advance().unwrap();
+        let request = state
+            .begin_advance()
+            .expect("the session begins the authored advance");
         state.playing = true;
         assert_eq!(
             availability(ObserverCommand::TogglePlay, &state),
@@ -490,7 +501,9 @@ mod tests {
     #[test]
     fn pending_blocks_context_changes_but_failure_reopen_can_reconcile() {
         let mut state = ready(3);
-        state.begin_advance().unwrap();
+        state
+            .begin_advance()
+            .expect("the session begins the authored advance");
         for command in [
             ObserverCommand::Perspective,
             ObserverCommand::PreviousPeriod,
@@ -533,10 +546,12 @@ mod tests {
     #[test]
     fn pending_local_network_reads_preserve_transport_and_context_guards() {
         let mut state = ready(3);
-        state.begin_advance().unwrap();
+        state
+            .begin_advance()
+            .expect("the session begins the authored advance");
         for command in [
-            ObserverCommand::RoadLayer(crate::observer_ui::RoadLayer::EconomyNetwork),
-            ObserverCommand::NetworkSector(crate::observer_ui::NetworkSector::Manufacturing),
+            ObserverCommand::RoadLayer(RoadLayer::EconomyNetwork),
+            ObserverCommand::NetworkSector(NetworkSector::Manufacturing),
         ] {
             assert_eq!(availability(command, &state), ControlAvailability::Enabled);
             state.perspective = crate::observer::Perspective::PlayerKnowledge;
@@ -556,7 +571,7 @@ mod tests {
         state.phase = SessionPhase::Loading;
         assert_eq!(
             availability(
-                ObserverCommand::RoadLayer(crate::observer_ui::RoadLayer::EconomyNetwork),
+                ObserverCommand::RoadLayer(RoadLayer::EconomyNetwork),
                 &state
             ),
             PENDING
@@ -587,7 +602,9 @@ mod tests {
     #[test]
     fn history_disclosure_remains_usable_during_pending_and_unavailable_views() {
         let mut state = ready(3);
-        state.begin_advance().unwrap();
+        state
+            .begin_advance()
+            .expect("the session begins the authored advance");
         for phase in [
             SessionPhase::Advancing,
             SessionPhase::Loading,
@@ -608,7 +625,9 @@ mod tests {
     fn final_pending_period_can_pause_but_cannot_promise_further_play() {
         let mut state = ready(15);
         state.duration = Some(babylon_kernel::clock::CampaignDuration::Finite { final_period: 16 });
-        state.begin_advance().unwrap();
+        state
+            .begin_advance()
+            .expect("the session begins the authored advance");
         assert_eq!(
             turn_presentation(&state).period,
             "PERIOD 15\n4 weeks / 28 days"

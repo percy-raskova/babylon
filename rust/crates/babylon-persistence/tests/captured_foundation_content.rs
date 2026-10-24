@@ -6,7 +6,11 @@ const SCENARIO: &str = "(scenario paper (defvocabulary NodeType (HOUSEHOLD)))";
 
 fn blob(bytes: &mut Vec<u8>, tag: u8, value: &[u8]) {
     bytes.push(tag);
-    bytes.extend_from_slice(&u32::try_from(value.len()).unwrap().to_be_bytes());
+    bytes.extend_from_slice(
+        &u32::try_from(value.len())
+            .expect("the fixture value fits the target range")
+            .to_be_bytes(),
+    );
     bytes.extend_from_slice(value);
 }
 fn authored(prelude: Option<&[u8]>) -> Vec<u8> {
@@ -19,7 +23,11 @@ fn authored(prelude: Option<&[u8]>) -> Vec<u8> {
         None => bytes.push(0),
         Some(value) => {
             bytes.push(1);
-            bytes.extend_from_slice(&u32::try_from(value.len()).unwrap().to_be_bytes());
+            bytes.extend_from_slice(
+                &u32::try_from(value.len())
+                    .expect("the fixture value fits the target range")
+                    .to_be_bytes(),
+            );
             bytes.extend_from_slice(value);
         }
     }
@@ -32,7 +40,8 @@ fn authored(prelude: Option<&[u8]>) -> Vec<u8> {
 #[test]
 fn independent_authored_vector_round_trips_as_one_tagged_content_blob() {
     let raw = authored(None);
-    let bundle = FoundationContentBundle::decode(&raw).unwrap();
+    let bundle =
+        FoundationContentBundle::decode(&raw).expect("the committed canonical bytes decode");
     assert_eq!(bundle.kind(), FoundationContentKind::AuthoredBscn);
     assert_eq!(bundle.canonical_bytes(), raw);
     assert_eq!(bundle.scenario_source_bytes(), SCENARIO.as_bytes());
@@ -48,9 +57,10 @@ fn independent_authored_vector_round_trips_as_one_tagged_content_blob() {
         b"defined policy",
         b"captured reference",
     )
-    .unwrap();
+    .expect("the authored fixture satisfies the constructor invariants");
     assert_eq!(created, bundle);
-    let empty_prelude = FoundationContentBundle::decode(&authored(Some(b""))).unwrap();
+    let empty_prelude = FoundationContentBundle::decode(&authored(Some(b"")))
+        .expect("the committed canonical bytes decode");
     assert_ne!(empty_prelude.canonical_bytes(), bundle.canonical_bytes());
     assert_eq!(empty_prelude.prelude_source_bytes(), Some(b"".as_slice()));
 }

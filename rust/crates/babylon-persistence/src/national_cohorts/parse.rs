@@ -1,13 +1,12 @@
+use super::mapping::FunctionMapping;
 use super::{
-    mapping::FunctionMapping, CohortKey, CohortReference, KnownSubtotal,
-    NationalCohortReferenceError as Error, QcewDisclosure, SourceMember, ADMITTED_COUNT,
-    GROUP_COUNT, MEMBER_COUNT,
+    CohortKey, CohortReference, KnownSubtotal, NationalCohortReferenceError as Error,
+    QcewDisclosure, SourceMember, ADMITTED_COUNT, GROUP_COUNT, MEMBER_COUNT,
 };
+
 use crate::national_counties::NationalCountyReference;
-use babylon_kernel::{
-    economic_identity::{EconomicFunction, QcewOwnership},
-    geography::CountyGeoid,
-};
+use babylon_kernel::economic_identity::{EconomicFunction, QcewOwnership};
+use babylon_kernel::geography::CountyGeoid;
 
 const HEADER: &str = "county_geoid,function_id,ownership_code,admitted,member_count,establishments_known,establishments_published_members,jobs_known,jobs_published_members,payroll_known,payroll_published_members,members";
 const MAX_GROUP_MEMBERS: usize = 15;

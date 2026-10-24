@@ -1,21 +1,22 @@
 //! Confined read-only facts for the actual native game's committed boundaries.
 //! This operator never creates a campaign, advances a tick or drives Archive.
-use babylon_persistence::{
-    identity::CampaignId,
-    qualification_audit::{
-        policy::{canonical_digest, FrozenPolicy},
-        reader::{read_archive_boundary, ReadSession, Request},
-        Scope,
-    },
-    SemanticArchiveReader,
-};
+use babylon_persistence::identity::CampaignId;
+use babylon_persistence::qualification_audit::policy::FrozenPolicy;
+use babylon_persistence::qualification_audit::reader::{ReadSession, Request};
+use babylon_persistence::qualification_audit::Scope;
+use babylon_persistence::SemanticArchiveReader;
+
+use babylon_persistence::qualification_audit::policy;
+use babylon_persistence::qualification_audit::reader;
+use babylon_persistence::qualification_audit::reader::Refusal;
 use serde_json::json;
-use std::{
-    collections::BTreeMap,
-    io::{self, BufRead, BufReader, Read, Write},
-    path::PathBuf,
-    process::ExitCode,
-};
+use std::collections::BTreeMap;
+use std::fmt::Formatter;
+use std::io;
+use std::io::{BufRead, BufReader, Read, Write};
+use std::path::PathBuf;
+use std::process::ExitCode;
+use uuid::Uuid;
 
 const REQUEST_BYTES: u64 = 4096;
 const RESPONSE_BYTES: usize = 4_194_304;
@@ -59,7 +60,7 @@ fn view(value: &str, graph: Option<&str>) -> Result<View> {
 
 enum OperatorRefusal {
     Operator(&'static str),
-    Boundary(babylon_persistence::qualification_audit::reader::Refusal),
+    Boundary(Refusal),
 }
 impl From<&'static str> for OperatorRefusal {
     fn from(code: &'static str) -> Self {
@@ -67,7 +68,7 @@ impl From<&'static str> for OperatorRefusal {
     }
 }
 impl std::fmt::Display for OperatorRefusal {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Operator(code) => f.write_str(code),
             Self::Boundary(reason) => write!(f, "{reason}"),
@@ -76,7 +77,7 @@ impl std::fmt::Display for OperatorRefusal {
 }
 
 fn digest(value: &str) -> Result<[u8; 32]> {
-    canonical_digest(value).map_err(|_| "digest_refused")
+    policy::canonical_digest(value).map_err(|_| "digest_refused")
 }
 
 fn configuration(arguments: impl Iterator<Item = String>) -> Result<Configuration> {
@@ -102,7 +103,7 @@ fn configuration(arguments: impl Iterator<Item = String>) -> Result<Configuratio
         }
     }
     let get = |key: &str| flags.get(key).ok_or("arguments_refused");
-    let campaign = uuid::Uuid::parse_str(get("--campaign")?).map_err(|_| "campaign_refused")?;
+    let campaign = Uuid::parse_str(get("--campaign")?).map_err(|_| "campaign_refused")?;
     if campaign.is_nil() || campaign.to_string() != *get("--campaign")? {
         return Err("campaign_refused");
     }
@@ -183,8 +184,9 @@ fn run(
                 serde_json::to_vec(&result)
             }
             Reader::Archive { reader, graph } => {
-                let result = read_archive_boundary(configuration.scope, *graph, reader, &request)
-                    .map_err(OperatorRefusal::Boundary)?;
+                let result =
+                    reader::read_archive_boundary(configuration.scope, *graph, reader, &request)
+                        .map_err(OperatorRefusal::Boundary)?;
                 serde_json::to_vec(&result)
             }
         }
@@ -223,7 +225,7 @@ fn main() -> ExitCode {
 
 #[cfg(test)]
 mod tests {
-    use super::{configuration, digest, view, View};
+    use super::View;
     #[test]
     fn operator_has_no_command_port_or_implicit_campaign() {
         for arguments in [
@@ -231,26 +233,26 @@ mod tests {
             vec!["--advance", "1"],
             vec!["--campaign", "x", "--campaign", "y"],
         ] {
-            assert!(configuration(arguments.into_iter().map(str::to_owned)).is_err());
+            assert!(super::configuration(arguments.into_iter().map(str::to_owned)).is_err());
         }
-        assert_eq!(digest(&"A".repeat(64)), Err("digest_refused"));
-        assert_eq!(digest(&"a".repeat(64)), Ok([0xaa; 32]));
-        assert_eq!(view("material", None), Ok(View::Material));
+        assert_eq!(super::digest(&"A".repeat(64)), Err("digest_refused"));
+        assert_eq!(super::digest(&"a".repeat(64)), Ok([0xaa; 32]));
+        assert_eq!(super::view("material", None), Ok(View::Material));
         assert_eq!(
-            view("archive", Some(&"a".repeat(64))),
+            super::view("archive", Some(&"a".repeat(64))),
             Ok(View::Archive([0xaa; 32]))
         );
         assert_eq!(
-            view("material", Some(&"a".repeat(64))),
+            super::view("material", Some(&"a".repeat(64))),
             Err("arguments_refused")
         );
-        assert_eq!(view("archive", None), Err("graph_foundation_absent"));
+        assert_eq!(super::view("archive", None), Err("graph_foundation_absent"));
         assert_eq!(
-            view("archive", Some(&"0".repeat(64))),
+            super::view("archive", Some(&"0".repeat(64))),
             Err("graph_foundation_refused")
         );
         for forbidden in ["", "all", "advance", "new", "sql", "Archive"] {
-            assert_eq!(view(forbidden, None), Err("view_refused"));
+            assert_eq!(super::view(forbidden, None), Err("view_refused"));
         }
     }
 }

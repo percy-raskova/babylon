@@ -65,17 +65,26 @@
 //! of these SPECIFIC inputs, not a general guarantee this pack's D-1
 //! workaround provides.
 
+// Conformance fixtures exercise exact engine values, transcribe spec literals,
+// and build whole scenarios in one test. These pedantic lints would force
+// ceremony that hides those contracts, so they stay off in test code only.
+#![allow(
+    clippy::float_cmp,
+    reason = "these comparisons pin exact authored f64 values"
+)]
+
+use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::memory::MemoryGraph;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
-use babylon_tick::{run_once, run_once_into};
 
 const SCENARIO: &str = include_str!("../content/scenarios/metabolism-conformance.bscn");
 const RULE: &str = include_str!("../content/rules/metabolism.bsl");
 
 fn run() -> MemoryGraph {
     let mut graph = MemoryGraph::new();
-    let mut sink = babylon_bsl::structural_verbs::CollectingSink::default();
-    run_once_into(SCENARIO, RULE, &mut graph, &mut sink).expect("the Metabolism pack must run");
+    let mut sink = CollectingSink::default();
+    babylon_tick::run_once_into(SCENARIO, RULE, &mut graph, &mut sink)
+        .expect("the Metabolism pack must run");
     graph
 }
 
@@ -168,8 +177,8 @@ fn heavy_extraction_permanently_damages_the_ceiling() {
 /// and the tick moved state at all.
 #[test]
 fn the_metabolism_tick_is_deterministic() {
-    let a = run_once(SCENARIO, RULE).expect("first run");
-    let b = run_once(SCENARIO, RULE).expect("second run");
+    let a = babylon_tick::run_once(SCENARIO, RULE).expect("first run");
+    let b = babylon_tick::run_once(SCENARIO, RULE).expect("second run");
     assert_eq!(a.after, b.after, "two runs, one post-state");
     assert_ne!(a.before, a.after, "the pack must move state");
     assert_eq!(
@@ -184,8 +193,8 @@ fn the_metabolism_tick_is_deterministic() {
 #[test]
 fn no_event_fires() {
     let mut graph = MemoryGraph::new();
-    let mut sink = babylon_bsl::structural_verbs::CollectingSink::default();
-    run_once_into(SCENARIO, RULE, &mut graph, &mut sink).expect("the pack must run");
+    let mut sink = CollectingSink::default();
+    babylon_tick::run_once_into(SCENARIO, RULE, &mut graph, &mut sink).expect("the pack must run");
     assert!(sink.events.is_empty(), "Phase 1 publishes no event");
 }
 
@@ -200,7 +209,7 @@ fn a_rule_reading_an_undeclared_coefficient_is_refused_at_load() {
                   (binding current :field territory/biocapacity) \
                   (binding rate :const metabolism/regeneration-rat)) \
                 (effects (update-node self territory/biocapacity (set (* rate current)))))";
-    let Err(err) = run_once(SCENARIO, rule) else {
+    let Err(err) = babylon_tick::run_once(SCENARIO, rule) else {
         panic!("a mistyped coefficient must not load");
     };
     assert!(

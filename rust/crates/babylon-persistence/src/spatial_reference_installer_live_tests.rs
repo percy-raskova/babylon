@@ -1,16 +1,14 @@
-use postgres::{error::SqlState, Config, NoTls};
+use postgres::error::SqlState;
+use postgres::{Config, NoTls};
 
 use super::{
-    attempt_install_transaction, conflict, install_michigan_spatial_reference_products,
-    install_michigan_spatial_reference_products_using, prepare_install_transaction,
-    rollback_preserving, CommitAttempt, SpatialReferenceInstallDisposition,
-    SpatialReferenceInstallError, SpatialReferenceRelation,
+    CommitAttempt, SpatialReferenceInstallDisposition, SpatialReferenceInstallError,
+    SpatialReferenceRelation,
 };
-use crate::{
-    h3_reference_cohort::representative_h3_reference_cohort,
-    h3_reference_cohort::H3ReferenceCohort, install_michigan_h3_reference_bundle,
-    michigan_dynamic_hex_foundation, H3ReferenceInstallDisposition,
-};
+use crate::h3_reference_cohort;
+use crate::h3_reference_cohort::H3ReferenceCohort;
+use crate::H3ReferenceInstallDisposition;
+use postgres::Client;
 
 const BACKEND_TERMINATION_TIMEOUT_MILLIS: i64 = 5_000;
 const FOUNDATION_RECEIPT_COUNTS: [i64; 8] = [1, 0, 0, 0, 0, 0, 0, 0];
@@ -18,9 +16,9 @@ const EXPECTED_COUNTS: [i64; 8] = [8, 3_285, 745, 45_572, 22_509, 11_833, 31_881
 
 pub(crate) fn verify_commit_protocol(config: &Config, admin: &Config) {
     let cohort = representative_cohort();
-    let foundation = michigan_dynamic_hex_foundation()
+    let foundation = crate::michigan_dynamic_hex_foundation()
         .expect("the sole checked Michigan foundation fixture must validate");
-    let h3_report = install_michigan_h3_reference_bundle(config, &cohort, foundation)
+    let h3_report = crate::install_michigan_h3_reference_bundle(config, &cohort, foundation)
         .expect("the exact H3 cohort must install before its reference products");
     assert_eq!(
         h3_report.disposition(),
@@ -28,12 +26,19 @@ pub(crate) fn verify_commit_protocol(config: &Config, admin: &Config) {
     );
     assert_eq!(reference_counts(config), FOUNDATION_RECEIPT_COUNTS);
 
-    let mut forced_failure = |client: &mut postgres::Client, bundle: &_| {
-        let transaction = prepare_install_transaction(client, bundle)?;
-        rollback_preserving(transaction, conflict(SpatialReferenceRelation::Products))
+    let mut forced_failure = |client: &mut Client, bundle: &_| {
+        let transaction = super::prepare_install_transaction(client, bundle)?;
+        super::rollback_preserving(
+            transaction,
+            super::conflict(SpatialReferenceRelation::Products),
+        )
     };
     assert_eq!(
-        install_michigan_spatial_reference_products_using(config, &cohort, &mut forced_failure,),
+        super::install_michigan_spatial_reference_products_using(
+            config,
+            &cohort,
+            &mut forced_failure,
+        ),
         Err(SpatialReferenceInstallError::Conflict {
             relation: SpatialReferenceRelation::Products,
         })
@@ -41,9 +46,9 @@ pub(crate) fn verify_commit_protocol(config: &Config, admin: &Config) {
     assert_eq!(reference_counts(config), FOUNDATION_RECEIPT_COUNTS);
 
     let mut first_attempt = true;
-    let mut committed_ambiguity = |client: &mut postgres::Client, bundle: &_| {
+    let mut committed_ambiguity = |client: &mut Client, bundle: &_| {
         let backend_pid = backend_pid(client);
-        let outcome = attempt_install_transaction(client, bundle)?;
+        let outcome = super::attempt_install_transaction(client, bundle)?;
         if first_attempt {
             first_attempt = false;
             assert_eq!(outcome, CommitAttempt::Committed);
@@ -53,7 +58,7 @@ pub(crate) fn verify_commit_protocol(config: &Config, admin: &Config) {
             Ok(outcome)
         }
     };
-    let report = install_michigan_spatial_reference_products_using(
+    let report = super::install_michigan_spatial_reference_products_using(
         config,
         &cohort,
         &mut committed_ambiguity,
@@ -68,7 +73,7 @@ pub(crate) fn verify_commit_protocol(config: &Config, admin: &Config) {
     assert_eq!(report.commit_attempts(), 1);
     assert_eq!(reference_counts(config), EXPECTED_COUNTS);
 
-    let retry = install_michigan_spatial_reference_products(config, &cohort)
+    let retry = super::install_michigan_spatial_reference_products(config, &cohort)
         .expect("an exact bundle retry must be idempotent");
     assert_eq!(
         retry.disposition(),
@@ -81,7 +86,7 @@ pub(crate) fn verify_commit_protocol(config: &Config, admin: &Config) {
     mutate_product_digest(config);
     let mutated_counts = reference_counts(config);
     assert_eq!(
-        install_michigan_spatial_reference_products(config, &cohort),
+        super::install_michigan_spatial_reference_products(config, &cohort),
         Err(SpatialReferenceInstallError::Conflict {
             relation: SpatialReferenceRelation::Products,
         })
@@ -90,7 +95,9 @@ pub(crate) fn verify_commit_protocol(config: &Config, admin: &Config) {
 }
 
 fn refuse_derived_ancestor_as_product_cell(config: &Config) {
-    let mut client = config.connect(NoTls).unwrap();
+    let mut client = config
+        .connect(NoTls)
+        .expect("the test database accepts the connection");
     let membership = client
         .query_one(
             "SELECT ref_digest, cell_id \
@@ -98,10 +105,16 @@ fn refuse_derived_ancestor_as_product_cell(config: &Config) {
              WHERE origin = 2 ORDER BY ref_digest, cell_id LIMIT 1",
             &[],
         )
-        .unwrap();
-    let ref_digest: Vec<u8> = membership.try_get(0).unwrap();
-    let cell_id: i64 = membership.try_get(1).unwrap();
-    let mut transaction = client.transaction().unwrap();
+        .expect("the seeded row is present exactly once");
+    let ref_digest: Vec<u8> = membership
+        .try_get(0)
+        .expect("the fixture row holds the addressed column");
+    let cell_id: i64 = membership
+        .try_get(1)
+        .expect("the fixture row holds the addressed column");
+    let mut transaction = client
+        .transaction()
+        .expect("the test database opens a transaction");
     transaction
         .execute(
             "INSERT INTO babylon_ref.h3_population_count \
@@ -109,8 +122,10 @@ fn refuse_derived_ancestor_as_product_cell(config: &Config) {
              VALUES ($1, 'h3_res7_population', $2, 1, 1)",
             &[&ref_digest, &cell_id],
         )
-        .unwrap();
-    let refusal = transaction.commit().unwrap_err();
+        .expect("the test database applies the setup statement");
+    let refusal = transaction
+        .commit()
+        .expect_err("the fixture call `commit` fails for the authored inputs");
     assert_eq!(refusal.code(), Some(&SqlState::FOREIGN_KEY_VIOLATION));
     let visible: i64 = client
         .query_one(
@@ -118,52 +133,52 @@ fn refuse_derived_ancestor_as_product_cell(config: &Config) {
              WHERE ref_digest = $1 AND cell_id = $2",
             &[&ref_digest, &cell_id],
         )
-        .unwrap()
+        .expect("the seeded row is present exactly once")
         .try_get(0)
-        .unwrap();
+        .expect("the fixture row holds the addressed column");
     assert_eq!(visible, 0);
 }
 
-fn backend_pid(client: &mut postgres::Client) -> i32 {
+fn backend_pid(client: &mut Client) -> i32 {
     client
         .query_one("SELECT pg_catalog.pg_backend_pid()", &[])
-        .unwrap()
+        .expect("the seeded row is present exactly once")
         .try_get(0)
-        .unwrap()
+        .expect("the fixture row holds the addressed column")
 }
 
 fn terminate_backend(admin: &Config, backend_pid: i32) {
     let terminated: bool = admin
         .connect(NoTls)
-        .unwrap()
+        .expect("the test database accepts the connection")
         .query_one(
             "SELECT pg_catalog.pg_terminate_backend($1, $2)",
             &[&backend_pid, &BACKEND_TERMINATION_TIMEOUT_MILLIS],
         )
-        .unwrap()
+        .expect("the seeded row is present exactly once")
         .try_get(0)
-        .unwrap();
+        .expect("the fixture row holds the addressed column");
     assert!(terminated);
 }
 
 fn mutate_product_digest(config: &Config) {
     let changed = config
         .connect(NoTls)
-        .unwrap()
+        .expect("the test database accepts the connection")
         .execute(
             "UPDATE babylon_ref.reference_product \
              SET artifact_sha256 = pg_catalog.decode(pg_catalog.repeat('00', 32), 'hex') \
              WHERE product_code = 'dim_county'",
             &[],
         )
-        .unwrap();
+        .expect("the test database applies the setup statement");
     assert_eq!(changed, 1);
 }
 
 fn reference_counts(config: &Config) -> [i64; 8] {
     let row = config
         .connect(NoTls)
-        .unwrap()
+        .expect("the test database accepts the connection")
         .query_one(
             "SELECT \
                 (SELECT pg_catalog.count(*) FROM babylon_ref.reference_product), \
@@ -176,12 +191,12 @@ fn reference_counts(config: &Config) -> [i64; 8] {
                 (SELECT pg_catalog.count(*) FROM babylon_ref.county_place_h3_land_area)",
             &[],
         )
-        .unwrap();
+        .expect("the seeded row is present exactly once");
     std::array::from_fn(|index| row.get(index))
 }
 
 fn representative_cohort() -> H3ReferenceCohort {
-    representative_h3_reference_cohort()
+    h3_reference_cohort::representative_h3_reference_cohort()
         .expect("the sole checked-in source fixture must validate")
         .clone()
 }

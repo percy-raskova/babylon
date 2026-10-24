@@ -1,26 +1,43 @@
 //! Scope is exercised through the scene system with real committed atlas geometry.
-use super::*;
+use super::scene;
+use super::CountySlab;
+use crate::atlas::CountyAtlas;
+use crate::map::{HoveredCounty, SelectedCounty};
+use crate::observer::ObserverSession;
+use crate::observer::Perspective;
+use crate::observer_io::ObserverSet;
+use crate::observer_ui::ObserverFrame;
 use babylon_kernel::geography::{CountyGeoid, NationalCountyRoster};
 use babylon_persistence::identity::CampaignId;
 use babylon_persistence::observer_reader::{
     ObserverCountyEconomy, ObserverEconomySnapshot, ObserverVisibility,
 };
+use bevy::asset::AssetPlugin;
+use bevy::prelude::*;
+use std::collections::BTreeMap;
+use uuid::Uuid;
 
 fn atlas() -> CountyAtlas {
     CountyAtlas::parse(include_bytes!(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../../../assets/map/county_atlas.bin"
     )))
-    .unwrap()
+    .expect("the authored literal parses as the declared type")
 }
 fn domestic_counties() -> Vec<String> {
     let atlas = atlas();
     let counties: Vec<_> = (0..atlas.len())
-        .map(|i| atlas.county(i).unwrap().fips)
+        .map(|i| {
+            atlas
+                .county(i)
+                .expect("the fixture catalog holds the addressed county")
+                .fips
+        })
         .filter(|fips| !fips.starts_with("72"))
-        .map(|fips| CountyGeoid::try_from(fips).unwrap())
+        .map(|fips| CountyGeoid::try_from(fips).expect("the fixture value fits the target range"))
         .collect();
-    NationalCountyRoster::try_new(counties.clone()).unwrap();
+    NationalCountyRoster::try_new(counties.clone())
+        .expect("the authored fixture satisfies the constructor invariants");
     counties
         .into_iter()
         .map(|county| county.to_string())
@@ -52,14 +69,14 @@ fn observation(campaign: CampaignId, counties: Vec<String>) -> ObserverFrame {
     )
 }
 fn scene(counties: Vec<String>) -> App {
-    let campaign = CampaignId::from_uuid(uuid::Uuid::nil());
+    let campaign = CampaignId::from_uuid(Uuid::nil());
     let mut session = ObserverSession::new(campaign);
     session.foundation_digest = Some("f".repeat(64));
     session.ready(0, None);
     let mut app = App::new();
     app.add_plugins((
         MinimalPlugins,
-        bevy::asset::AssetPlugin::default(),
+        AssetPlugin::default(),
         crate::map::MapPlugin,
     ))
     .init_asset::<StandardMaterial>()
@@ -67,14 +84,14 @@ fn scene(counties: Vec<String>) -> App {
     .insert_resource(observation(campaign, counties))
     .add_systems(
         Update,
-        setup_map
+        scene::setup_map
             .after(crate::map::MapScopeSet)
             .before(ObserverSet::Paint),
     );
     app.update();
     app
 }
-fn slabs(app: &mut App) -> std::collections::BTreeMap<String, Entity> {
+fn slabs(app: &mut App) -> BTreeMap<String, Entity> {
     let world = app.world_mut();
     world
         .query::<(Entity, &CountySlab)>()
@@ -106,7 +123,7 @@ fn loading_same_campaign_preserves_meshes_but_switch_clears_stale_counties() {
     app.update();
     assert_eq!(slabs(&mut app), original);
     app.world_mut().resource_mut::<ObserverSession>().campaign =
-        CampaignId::from_uuid(uuid::Uuid::from_u128(1));
+        CampaignId::from_uuid(Uuid::from_u128(1));
     app.update();
     assert!(slabs(&mut app).is_empty());
 }
@@ -118,20 +135,24 @@ fn campaign_switch_installs_known_geography_and_preserves_admitted_wayne_selecti
         .world()
         .resource::<CountyAtlas>()
         .index_of_fips("26163")
-        .unwrap();
+        .expect("the fixture call `index_of_fips` succeeds for the authored inputs");
     assert_eq!(app.world().resource::<SelectedCounty>().0, Some(wayne));
     app.world_mut().resource_mut::<HoveredCounty>().0 = Some(wayne);
-    let campaign = CampaignId::from_uuid(uuid::Uuid::from_u128(2));
+    let campaign = CampaignId::from_uuid(Uuid::from_u128(2));
     {
         let mut session = app.world_mut().resource_mut::<ObserverSession>();
         session.campaign = campaign;
-        session.perspective = crate::observer::Perspective::PlayerKnowledge;
+        session.perspective = Perspective::PlayerKnowledge;
     }
     let mut frame = observation(
         campaign,
         vec!["02013".into(), "15005".into(), "26163".into()],
     );
-    frame.0.as_mut().unwrap().visibility = ObserverVisibility::KnownPreview;
+    frame
+        .0
+        .as_mut()
+        .expect("the fixture set the optional field before this borrow")
+        .visibility = ObserverVisibility::KnownPreview;
     *app.world_mut().resource_mut::<ObserverFrame>() = frame;
     app.update();
     assert_eq!(
@@ -156,7 +177,11 @@ fn changed_geography_in_one_foundation_refuses_and_removes_the_old_scene() {
     let mut app = scene(vec!["26163".into()]);
     {
         let mut frame = app.world_mut().resource_mut::<ObserverFrame>();
-        let counties = &mut frame.0.as_mut().unwrap().counties;
+        let counties = &mut frame
+            .0
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow")
+            .counties;
         let mut addition = counties[0].clone();
         addition.county_geoid = "26165".into();
         counties.push(addition);
@@ -173,7 +198,7 @@ fn changed_geography_in_one_foundation_refuses_and_removes_the_old_scene() {
         .resource::<ObserverSession>()
         .error
         .as_deref()
-        .unwrap()
+        .expect("the fixture set the optional value before this read")
         .contains("ChangedGeography"));
     app.update();
     assert!(slabs(&mut app).is_empty());

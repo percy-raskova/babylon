@@ -1,4 +1,6 @@
-use babylon_kernel::{economic_location::EconomicLocation, geography::CountyGeoid};
+use babylon_kernel::economic_location::EconomicLocation;
+use babylon_kernel::geography::CountyGeoid;
+
 use serde::Deserialize;
 use std::collections::BTreeMap;
 

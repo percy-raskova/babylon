@@ -1,9 +1,14 @@
 //! Transient installation eligibility; physical stock and sale principals stay authoritative.
-use super::{
-    InstallationDecisionReceipt, InstallationPolicy, InstallationTarget, ProductiveEquipment,
-    Result,
-};
+use super::InstallationDecisionReceipt;
+use super::InstallationPolicy;
+use super::InstallationTarget;
+use super::ProductiveEquipment;
+use super::Result;
 use crate::inventory::InventoryLedger;
+use crate::GoodId;
+use crate::ProcessId;
+use crate::SiteId;
+use crate::UnitId;
 use crate::{CircuitAccounting, MaterialCircuitError, MaterialCircuitState};
 
 pub(super) fn sale_commitments(state: &MaterialCircuitState) -> Result<InventoryLedger> {
@@ -33,11 +38,7 @@ pub(super) fn sale_commitments(state: &MaterialCircuitState) -> Result<Inventory
     Ok(rows)
 }
 
-fn add(
-    rows: &mut InventoryLedger,
-    key: (crate::SiteId, crate::GoodId, crate::UnitId),
-    quantity: u64,
-) -> Result<()> {
+fn add(rows: &mut InventoryLedger, key: (SiteId, GoodId, UnitId), quantity: u64) -> Result<()> {
     let value = rows.entry(key).or_default();
     *value = value
         .checked_add(quantity)
@@ -67,10 +68,7 @@ pub(super) fn eligible_inventory(state: &MaterialCircuitState) -> Result<Invento
     Ok(available)
 }
 
-pub(super) fn planned_batches(
-    state: &MaterialCircuitState,
-    process: crate::ProcessId,
-) -> Option<u64> {
+pub(super) fn planned_batches(state: &MaterialCircuitState, process: ProcessId) -> Option<u64> {
     let CircuitAccounting::Monetary(m) = &state.accounting else {
         return None;
     };

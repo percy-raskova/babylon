@@ -1,6 +1,8 @@
 //! Secret-safe diagnostics captured at `PostgreSQL` failure boundaries.
 
 use postgres::error::SqlState;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 
 /// Maximum UTF-8 byte length retained from one sanitized server message.
 pub const MAX_POSTGRES_DIAGNOSTIC_MESSAGE_BYTES: usize = 256;
@@ -111,7 +113,7 @@ impl PostgresDiagnostic {
 }
 
 impl std::fmt::Debug for PostgresDiagnostic {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> FmtResult {
         formatter
             .debug_struct("PostgresDiagnosticV1")
             .field("classification", &self.classification)
@@ -307,22 +309,19 @@ fn truncate_utf8(value: &mut String, max_bytes: usize) {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        classify_server, sanitize_server_message, PostgresFailureClass, SqlState,
-        MAX_POSTGRES_DIAGNOSTIC_MESSAGE_BYTES,
-    };
+    use super::{PostgresFailureClass, SqlState, MAX_POSTGRES_DIAGNOSTIC_MESSAGE_BYTES};
 
     #[test]
     fn idle_timeout_is_a_timeout_but_other_transaction_refusals_are_not() {
         assert_eq!(
-            classify_server(
+            super::classify_server(
                 &SqlState::from_code("25P03"),
                 "terminating connection due to idle-in-transaction timeout",
             ),
             PostgresFailureClass::Timeout
         );
         assert_eq!(
-            classify_server(
+            super::classify_server(
                 &SqlState::from_code("25P02"),
                 "current transaction is aborted",
             ),
@@ -334,7 +333,7 @@ mod tests {
     fn server_message_redacts_quoted_values_sensitive_assignments_and_uri_userinfo() {
         let message = "role \"PER288_ROLE_CANARY\" password=PER288_PASSWORD_CANARY \
                        postgres://PER288_USER:PER288_URI_PASSWORD@localhost/db";
-        let sanitized = sanitize_server_message(message);
+        let sanitized = super::sanitize_server_message(message);
 
         assert_eq!(sanitized, "role \"<redacted>\" <redacted> <redacted-uri>");
     }
@@ -343,7 +342,7 @@ mod tests {
     fn server_message_redacts_spaced_assignments_and_uris_without_userinfo() {
         let message = "password = PER288_SPACED_CANARY dsn= PER288_DSN_CANARY \
                        postgres://localhost/db?password=PER288_URI_CANARY";
-        let sanitized = sanitize_server_message(message);
+        let sanitized = super::sanitize_server_message(message);
 
         assert_eq!(sanitized, "password = <redacted> <redacted> <redacted-uri>");
         assert!(!sanitized.contains("PER288_SPACED_CANARY"));
@@ -353,7 +352,8 @@ mod tests {
 
     #[test]
     fn server_message_is_bounded_on_a_utf8_boundary() {
-        let sanitized = sanitize_server_message(&"λ".repeat(MAX_POSTGRES_DIAGNOSTIC_MESSAGE_BYTES));
+        let sanitized =
+            super::sanitize_server_message(&"λ".repeat(MAX_POSTGRES_DIAGNOSTIC_MESSAGE_BYTES));
 
         assert!(sanitized.len() <= MAX_POSTGRES_DIAGNOSTIC_MESSAGE_BYTES);
         assert!(sanitized.is_char_boundary(sanitized.len()));
@@ -365,7 +365,7 @@ mod tests {
             "{} password=PER288_BEYOND_SCAN_CANARY",
             "x".repeat(MAX_POSTGRES_DIAGNOSTIC_MESSAGE_BYTES * 64)
         );
-        let sanitized = sanitize_server_message(&message);
+        let sanitized = super::sanitize_server_message(&message);
 
         assert_eq!(sanitized.len(), MAX_POSTGRES_DIAGNOSTIC_MESSAGE_BYTES);
         assert!(!sanitized.contains("PER288_BEYOND_SCAN_CANARY"));
@@ -374,7 +374,7 @@ mod tests {
     #[test]
     fn unterminated_quoted_value_keeps_its_original_delimiter_without_the_value() {
         assert_eq!(
-            sanitize_server_message("role 'PER288_UNTERMINATED_CANARY"),
+            super::sanitize_server_message("role 'PER288_UNTERMINATED_CANARY"),
             "role '<redacted>'"
         );
     }

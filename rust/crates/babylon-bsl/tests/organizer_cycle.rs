@@ -3,9 +3,11 @@
 use babylon_bsl::bindings::BindingVocabulary;
 use babylon_bsl::fuel::{CardinalityCeilings, IntrinsicCosts};
 use babylon_bsl::intrinsic_host::EmptyIntrinsicHost;
-use babylon_bsl::rule_pipeline::{load_rule, LoadContext, LoadError, LoadedRule, RuleExecution};
+use babylon_bsl::rule_pipeline;
+use babylon_bsl::rule_pipeline::{LoadContext, LoadError, LoadedRule, RuleExecution};
 use babylon_bsl::structural_verbs::CollectingSink;
-use babylon_bsl::tick::{run_tick, DefinesEnv};
+use babylon_bsl::tick;
+use babylon_bsl::tick::DefinesEnv;
 use babylon_bsl::typecheck::TypeEnv;
 use babylon_bsl::types::EnumRegistry;
 use babylon_bsl::vocabulary::ClosedVocabulary;
@@ -23,7 +25,7 @@ fn source(operation: &str, role: &str, position: &str) -> String {
 }
 
 fn load(source: &str) -> Result<LoadedRule, LoadError> {
-    load_rule(
+    rule_pipeline::load_rule(
         source,
         &LoadContext {
             vocabulary: &BindingVocabulary::default(),
@@ -62,7 +64,7 @@ fn organizer_graph_refusal_identifies_the_operation_even_without_subjects() {
         ("organizer-products", "mechanic", "before"),
         ("organizer-practice", "intent", "after"),
     ] {
-        let loaded = load(&source(operation, role, position)).unwrap();
+        let loaded = load(&source(operation, role, position)).expect("the fixture artifact loads");
         let mut graph = MemoryGraph::new();
         let resolver = StableElementResolver::seal(
             &graph,
@@ -70,9 +72,9 @@ fn organizer_graph_refusal_identifies_the_operation_even_without_subjects() {
             &HashMap::new(),
             &HashMap::new(),
         )
-        .unwrap();
+        .expect("the fixture seals the prepared period");
         let mut sink = CollectingSink::default();
-        let error = run_tick(
+        let error = tick::run_tick(
             &loaded,
             &TypeEnv {
                 fields: HashMap::new(),
@@ -86,13 +88,14 @@ fn organizer_graph_refusal_identifies_the_operation_even_without_subjects() {
             &DefinesEnv::new(),
             1,
             RngSeedContext {
-                session: &ReplaySessionId::try_from("organizer-host-refusal").unwrap(),
+                session: &ReplaySessionId::try_from("organizer-host-refusal")
+                    .expect("the fixture value fits the target range"),
                 seed: ReplaySeed::new(0),
             },
             &resolver,
             Some(&ClosedVocabulary::default()),
         )
-        .unwrap_err();
+        .expect_err("the fixture run completes");
         assert!(
             error
                 .message
@@ -110,7 +113,7 @@ fn organizer_native_bodies_are_not_certified_by_a_graph_only_synthetic_audit() {
         ("organizer-products", "mechanic", "before"),
         ("organizer-practice", "intent", "after"),
     ] {
-        let loaded = load(&source(operation, role, position)).unwrap();
+        let loaded = load(&source(operation, role, position)).expect("the fixture artifact loads");
         assert_eq!(
             babylon_bsl::sfs_profile::audit_rule_footprint(
                 &loaded.rule,
@@ -119,7 +122,7 @@ fn organizer_native_bodies_are_not_certified_by_a_graph_only_synthetic_audit() {
                 &IntrinsicCosts::default(),
                 &[],
             )
-            .unwrap_err(),
+            .expect_err("the fixture call `audit_rule_footprint` fails for the authored inputs"),
             babylon_bsl::sfs_profile::SfsProfileError::NativeMaterialCycleUnsupported
         );
     }

@@ -1,7 +1,7 @@
 //! Graph-only diagnostics use the same seeded, sealed rule transaction as campaign replay.
 //! They report graph/events without inventing geographic material inputs or durable commit identity.
 
-use crate::{prepare_rules, run_prepared_tick_with, PreparedRules, TickReport};
+use crate::{PreparedRules, TickReport};
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::allocator_state::AllocatorState;
 use babylon_graph::stable_element::StableElementResolver;
@@ -33,8 +33,8 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> RuleDia
         session: ReplaySessionId,
         seed: ReplaySeed,
     ) -> Result<Self, String> {
-        let prepared =
-            prepare_rules(scenario, prelude, rules, &mut graph).map_err(|e| e.to_string())?;
+        let prepared = crate::prepare_rules(scenario, prelude, rules, &mut graph)
+            .map_err(|e| e.to_string())?;
         let resolver = StableElementResolver::seal(
             &graph,
             &prepared.scenario_scope,
@@ -61,7 +61,7 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> RuleDia
             .tick
             .checked_add(1)
             .ok_or("tick counter overflow before adjudication")?;
-        let report = run_prepared_tick_with(
+        let report = crate::run_prepared_tick_with(
             &self.prepared,
             &mut self.graph,
             sink,
@@ -92,10 +92,12 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> RuleDia
 
 #[cfg(test)]
 mod tests {
+    #![allow(
+        clippy::float_cmp,
+        reason = "these comparisons pin exact authored f64 values"
+    )]
     use crate::diagnostic::RuleDiagnosticSession;
-    use crate::{
-        run_prepared_tick_with, EventRecord, HashBoundary, PreparedEventBatchSink, TickReport,
-    };
+    use crate::{EventRecord, HashBoundary, PreparedEventBatchSink, TickReport};
     use babylon_bsl::evaluator::Value;
     use babylon_bsl::structural_verbs::CollectingSink;
     use babylon_graph::allocator_state::AllocatorState;
@@ -107,6 +109,7 @@ mod tests {
     use babylon_graph::working_copy::DetachedCopy;
     use babylon_kernel::currency::Currency;
     use babylon_kernel::replay::{ReplaySeed, ReplaySessionId, RngSeedContext};
+    use babylon_kernel::scalars::Ratio;
     use std::fmt::Write as _;
     use std::process::Command;
 
@@ -320,7 +323,7 @@ mod tests {
         .expect("the pilot topology has stable replay identities");
         let replay_session =
             ReplaySessionId::try_from("per281/runtime-live").expect("fixed replay identity");
-        let report = run_prepared_tick_with(
+        let report = crate::run_prepared_tick_with(
             &session.prepared,
             &mut session.graph,
             publisher,
@@ -384,7 +387,7 @@ mod tests {
             excessive_session
                 .graph
                 .node_attribute(worker, "social-class/agitation-backfire")
-                .unwrap()
+                .expect("the fixture node carries the authored attribute")
                 .to_bits(),
             (0.1_f64 + 0.2_f64).to_bits()
         );
@@ -392,14 +395,14 @@ mod tests {
             excessive_session
                 .graph
                 .node_attribute(worker, "social-class/last-incident-known")
-                .unwrap(),
+                .expect("the fixture node carries the authored attribute"),
             1.0
         );
         assert_eq!(
             excessive_session
                 .graph
                 .node_attribute(worker, "social-class/last-incident-tick")
-                .unwrap(),
+                .expect("the fixture node carries the authored attribute"),
             1.0
         );
     }
@@ -435,8 +438,16 @@ mod tests {
         assert_eq!(retained_report.after, discarded_report.after);
         assert_eq!(retained_report.world_after, discarded_report.world_after);
         assert_eq!(
-            retained_session.graph.encode_state().unwrap().as_bytes(),
-            discarded_session.graph.encode_state().unwrap().as_bytes()
+            retained_session
+                .graph
+                .encode_state()
+                .expect("the graph encodes its canonical state")
+                .as_bytes(),
+            discarded_session
+                .graph
+                .encode_state()
+                .expect("the graph encodes its canonical state")
+                .as_bytes()
         );
         assert_eq!(
             retained_report.choice_receipts,
@@ -462,7 +473,12 @@ mod tests {
             babylon_kernel::replay::ReplaySeed::new(0),
         )
         .expect("the governed Struggle spark pilot loads");
-        let before = session.graph.encode_state().unwrap().as_bytes().to_vec();
+        let before = session
+            .graph
+            .encode_state()
+            .expect("the graph encodes its canonical state")
+            .as_bytes()
+            .to_vec();
         let cursors = session.graph.allocator_cursors();
         let resolver = StableElementResolver::seal(
             &session.graph,
@@ -475,7 +491,7 @@ mod tests {
             ReplaySessionId::try_from("per281/runtime-live").expect("fixed replay identity");
         let mut publisher = RejectingBatchSink::default();
 
-        let error = run_prepared_tick_with(
+        let error = crate::run_prepared_tick_with(
             &session.prepared,
             &mut session.graph,
             &mut publisher,
@@ -493,7 +509,14 @@ mod tests {
         assert_eq!(publisher.prepare_attempts, 1);
         assert_eq!(publisher.commit_attempts, 0);
         assert_eq!(session.tick, 0);
-        assert_eq!(session.graph.encode_state().unwrap().as_bytes(), before);
+        assert_eq!(
+            session
+                .graph
+                .encode_state()
+                .expect("the graph encodes its canonical state")
+                .as_bytes(),
+            before
+        );
         assert_eq!(session.graph.allocator_cursors(), cursors);
     }
 
@@ -508,11 +531,16 @@ mod tests {
             babylon_kernel::replay::ReplaySeed::new(0),
         )
         .expect("the event publication probe loads");
-        let before = session.graph.encode_state().unwrap().as_bytes().to_vec();
+        let before = session
+            .graph
+            .encode_state()
+            .expect("the graph encodes its canonical state")
+            .as_bytes()
+            .to_vec();
         let cursors = session.graph.allocator_cursors();
         let mut publisher = RejectingBatchSink::default();
 
-        let error = run_prepared_tick_with(
+        let error = crate::run_prepared_tick_with(
             &session.prepared,
             &mut session.graph,
             &mut publisher,
@@ -530,7 +558,14 @@ mod tests {
         assert_eq!(publisher.prepare_attempts, 1);
         assert_eq!(publisher.commit_attempts, 0);
         assert_eq!(session.tick, 0);
-        assert_eq!(session.graph.encode_state().unwrap().as_bytes(), before);
+        assert_eq!(
+            session
+                .graph
+                .encode_state()
+                .expect("the graph encodes its canonical state")
+                .as_bytes(),
+            before
+        );
         assert_eq!(session.graph.allocator_cursors(), cursors);
     }
 
@@ -544,8 +579,9 @@ mod tests {
             test_session(),
             babylon_kernel::replay::ReplaySeed::new(0),
         )
-        .unwrap();
-        let replay_session = ReplaySessionId::try_from("replay/session").unwrap();
+        .expect("the constructor accepts the authored fixture arguments");
+        let replay_session = ReplaySessionId::try_from("replay/session")
+            .expect("the fixture value fits the target range");
         let seed_context = RngSeedContext {
             session: &replay_session,
             seed: ReplaySeed::new(7),
@@ -557,9 +593,12 @@ mod tests {
             &session.prepared.node_content_ids,
             &session.prepared.hyperedge_content_ids,
         )
-        .unwrap();
-        session.graph.add_node("DYNAMIC").unwrap();
-        let changed = run_prepared_tick_with(
+        .expect("the fixture seals the prepared period");
+        session
+            .graph
+            .add_node("DYNAMIC")
+            .expect("the fixture adds a node with a registered kind");
+        let changed = crate::run_prepared_tick_with(
             &session.prepared,
             &mut session.graph,
             &mut sink,
@@ -568,7 +607,7 @@ mod tests {
             1,
             |_boundary, graph: &HypergraphStore| graph.state_hash(),
         )
-        .unwrap_err();
+        .expect_err("the fixture run completes");
         assert!(changed.contains("TopologyChanged"), "{changed}");
     }
 
@@ -585,7 +624,12 @@ mod tests {
             babylon_kernel::replay::ReplaySeed::new(0),
         )
         .expect("the phase fault fixture loads");
-        let before = session.graph().encode_state().unwrap().as_bytes().to_vec();
+        let before = session
+            .graph()
+            .encode_state()
+            .expect("the graph encodes its canonical state")
+            .as_bytes()
+            .to_vec();
         let cursors = session.graph().allocator_cursors();
         let completed_tick = session.tick();
         let mut sink = CollectingSink {
@@ -598,7 +642,14 @@ mod tests {
             .expect_err("the second probability write exceeds one");
 
         assert!(error.contains("E-EVAL-020"), "{error}");
-        assert_eq!(session.graph().encode_state().unwrap().as_bytes(), before);
+        assert_eq!(
+            session
+                .graph()
+                .encode_state()
+                .expect("the graph encodes its canonical state")
+                .as_bytes(),
+            before
+        );
         assert_eq!(session.graph().allocator_cursors(), cursors);
         assert_eq!(session.tick(), completed_tick);
         assert_eq!(sink.events, prior_events);
@@ -632,14 +683,19 @@ mod tests {
             babylon_kernel::replay::ReplaySeed::new(0),
         )
         .expect("the hash fault fixture loads");
-        let before = session.graph.encode_state().unwrap().as_bytes().to_vec();
+        let before = session
+            .graph
+            .encode_state()
+            .expect("the graph encodes its canonical state")
+            .as_bytes()
+            .to_vec();
         let cursors = session.graph.allocator_cursors();
         let mut sink = CollectingSink {
             events: vec![("EventType/PRIOR".to_owned(), Vec::new())],
         };
         let events = sink.events.clone();
 
-        let error = run_prepared_tick_with(
+        let error = crate::run_prepared_tick_with(
             &session.prepared,
             &mut session.graph,
             &mut sink,
@@ -654,7 +710,14 @@ mod tests {
         .expect_err("the selected hash boundary refuses");
 
         assert!(error.contains(expected), "{error}");
-        assert_eq!(session.graph.encode_state().unwrap().as_bytes(), before);
+        assert_eq!(
+            session
+                .graph
+                .encode_state()
+                .expect("the graph encodes its canonical state")
+                .as_bytes(),
+            before
+        );
         assert_eq!(session.graph.allocator_cursors(), cursors);
         assert_eq!(session.tick, 0);
         assert_eq!(sink.events, events);
@@ -758,7 +821,7 @@ mod tests {
         bytes.extend_from_slice(&canonical.to_bits().to_be_bytes());
     }
 
-    fn push_optional_ratio(bytes: &mut Vec<u8>, value: Option<babylon_kernel::scalars::Ratio>) {
+    fn push_optional_ratio(bytes: &mut Vec<u8>, value: Option<Ratio>) {
         match value {
             Some(ratio) => {
                 bytes.push(1);
@@ -833,34 +896,38 @@ mod tests {
         G: GraphSubstrate + Default,
     {
         let mut graph = G::default();
-        let territory = graph.add_node("TERRITORY").unwrap();
-        let organization = graph.add_node("ORGANIZATION").unwrap();
+        let territory = graph
+            .add_node("TERRITORY")
+            .expect("the fixture adds a node with a registered kind");
+        let organization = graph
+            .add_node("ORGANIZATION")
+            .expect("the fixture adds a node with a registered kind");
         if reverse_writes {
             graph
                 .update_node(organization, "organization/power", 0.625)
-                .unwrap();
+                .expect("the fixture node carries the authored attribute");
             graph
                 .update_node(territory, "territory/pressure", 0.125)
-                .unwrap();
+                .expect("the fixture node carries the authored attribute");
             graph
                 .add_hyperedge("PRESENCE_GROUP", &[organization, territory])
-                .unwrap();
+                .expect("the fixture graph admits the authored hyperedge");
             graph
                 .add_edge("PRESENCE", organization, territory, 0.75)
-                .unwrap();
+                .expect("the fixture graph admits the authored edge");
         } else {
             graph
                 .add_edge("PRESENCE", organization, territory, 0.75)
-                .unwrap();
+                .expect("the fixture graph admits the authored edge");
             graph
                 .add_hyperedge("PRESENCE_GROUP", &[territory, organization])
-                .unwrap();
+                .expect("the fixture graph admits the authored hyperedge");
             graph
                 .update_node(territory, "territory/pressure", 0.125)
-                .unwrap();
+                .expect("the fixture node carries the authored attribute");
             graph
                 .update_node(organization, "organization/power", 0.625)
-                .unwrap();
+                .expect("the fixture node carries the authored attribute");
         }
         graph
     }
@@ -871,7 +938,8 @@ mod tests {
     {
         let mut graph = envelope_prestate::<G>(reverse_writes);
         let mut prepared =
-            crate::prepare_rules(ENVELOPE_SCENARIO, None, ENVELOPE_RULES, &mut graph).unwrap();
+            crate::prepare_rules(ENVELOPE_SCENARIO, None, ENVELOPE_RULES, &mut graph)
+                .expect("the fixture prepares the authored state");
         // This fixture constructs its graph directly; each input identity is named explicitly.
         prepared.node_content_ids.extend([
             (NodeId(0), "territory".to_owned()),
@@ -887,12 +955,13 @@ mod tests {
             &prepared.node_content_ids,
             &prepared.hyperedge_content_ids,
         )
-        .unwrap();
+        .expect("the fixture seals the prepared period");
         let mut session = RuleDiagnosticSession {
             graph,
             prepared,
             tick: 0,
-            session: ReplaySessionId::try_from("per18-envelope").unwrap(),
+            session: ReplaySessionId::try_from("per18-envelope")
+                .expect("the fixture value fits the target range"),
             seed: ReplaySeed::new(0),
             resolver,
         };
@@ -1038,7 +1107,12 @@ mod tests {
         }
 
         let mut future = session.graph().clone();
-        assert_eq!(future.add_node("SOCIAL_CLASS").unwrap(), NodeId(2));
+        assert_eq!(
+            future
+                .add_node("SOCIAL_CLASS")
+                .expect("the fixture adds a node with a registered kind"),
+            NodeId(2)
+        );
     }
 
     #[test]
@@ -1079,17 +1153,28 @@ mod tests {
         )
         .expect("the world-clock probe loads");
         session.tick = i64::MAX;
-        let before_hash = session.graph().state_hash().unwrap();
+        let before_hash = session
+            .graph()
+            .state_hash()
+            .expect("the fixture graph hashes its state");
         let before_cursors = session.graph().allocator_cursors();
         let mut sink = CollectingSink {
             events: vec![("EventType/PRIOR".to_owned(), Vec::new())],
         };
 
-        let error = session.advance(&mut sink).unwrap_err();
+        let error = session
+            .advance(&mut sink)
+            .expect_err("the fixture call `advance` fails for the authored inputs");
 
         assert_eq!(error, "tick counter overflow before adjudication");
         assert_eq!(session.tick(), i64::MAX);
-        assert_eq!(session.graph().state_hash().unwrap(), before_hash);
+        assert_eq!(
+            session
+                .graph()
+                .state_hash()
+                .expect("the fixture graph hashes its state"),
+            before_hash
+        );
         assert_eq!(session.graph().allocator_cursors(), before_cursors);
         assert_eq!(sink.events.len(), 1);
         assert_eq!(sink.events[0].0, "EventType/PRIOR");
@@ -1163,17 +1248,20 @@ mod tests {
             None,
             &rule_src(),
             HypergraphStore::new(),
-            ReplaySessionId::try_from("diagnostic/other-identity").unwrap(),
+            ReplaySessionId::try_from("diagnostic/other-identity")
+                .expect("the fixture value fits the target range"),
             ReplaySeed::new(-57),
         )
-        .unwrap();
+        .expect("the constructor accepts the authored fixture arguments");
         let mut other_sink = CollectingSink::default();
         let mut sink_a = CollectingSink::default();
         let mut sink_b = CollectingSink::default();
         for _ in 0..5 {
             let ra = a.advance(&mut sink_a).expect("a advances");
             let rb = b.advance(&mut sink_b).expect("b advances");
-            let other = other_identity.advance(&mut other_sink).unwrap();
+            let other = other_identity
+                .advance(&mut other_sink)
+                .expect("the fixture advances the authored period");
             assert_eq!(
                 ra.after, other.after,
                 "draw-free graph writes do not consume identity"

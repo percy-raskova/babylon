@@ -2,21 +2,24 @@
 use super::{lifecycle, recurring_fixture, ProductionProjectionError};
 use babylon_kernel::currency::Currency;
 use babylon_material_circuit::MaterialCircuitState;
-use babylon_tick::material_world::{
-    decode_material_receipts, MaterialTickReceipts, MaterialWorldRegister,
-};
+use babylon_tick::material_world;
+use babylon_tick::material_world::{MaterialTickReceipts, MaterialWorldRegister};
 
 fn actual_close() -> (
     MaterialCircuitState,
     MaterialCircuitState,
     MaterialTickReceipts,
 ) {
-    let prior = MaterialWorldRegister::try_new(0, recurring_fixture::opening()).unwrap();
-    let next = prior.prepare_next().unwrap();
+    let prior = MaterialWorldRegister::try_new(0, recurring_fixture::opening())
+        .expect("the authored fixture satisfies the constructor invariants");
+    let next = prior
+        .prepare_next()
+        .expect("the fixture prepares the authored state");
     (
         prior.state().clone(),
         next.register().state().clone(),
-        decode_material_receipts(next.receipt_bytes()).unwrap(),
+        material_world::decode_material_receipts(next.receipt_bytes())
+            .expect("the canonical bytes decode into the declared type"),
     )
 }
 
@@ -24,7 +27,8 @@ fn actual_close() -> (
 fn committed_goods_quotes_require_each_captured_offer_and_actual_prior_price() {
     let (prior, current, receipt) = actual_close();
     assert_eq!(receipt.prices.len(), 3);
-    lifecycle::validate_period(&prior, &current, &receipt).unwrap();
+    lifecycle::validate_period(&prior, &current, &receipt)
+        .expect("the authored fixture satisfies the rule");
     let mut missing = receipt.clone();
     missing.prices.pop();
     assert!(matches!(
@@ -57,11 +61,11 @@ fn actual_direct_cost_quote_joins_produced_and_released_quantities() {
     let offer = economy
         .recurring
         .as_mut()
-        .unwrap()
+        .expect("the fixture set the optional field before this borrow")
         .offers
         .iter_mut()
         .find(|r| r.site_id == SiteId::from_bytes([2; 32]))
-        .unwrap();
+        .expect("the fixture holds the searched element");
     offer.unit_price = Currency::from_micro_units(2);
     offer.pricing = PricePolicy::Responsive {
         minimum: Currency::from_micro_units(1),
@@ -69,15 +73,20 @@ fn actual_direct_cost_quote_joins_produced_and_released_quantities() {
         step: Currency::from_micro_units(1),
         target_stock: 100,
     };
-    let prior = MaterialWorldRegister::try_new(0, state).unwrap();
-    let next = prior.prepare_next().unwrap();
-    let receipt = decode_material_receipts(next.receipt_bytes()).unwrap();
-    lifecycle::validate_period(prior.state(), next.register().state(), &receipt).unwrap();
+    let prior = MaterialWorldRegister::try_new(0, state)
+        .expect("the authored fixture satisfies the constructor invariants");
+    let next = prior
+        .prepare_next()
+        .expect("the fixture prepares the authored state");
+    let receipt = material_world::decode_material_receipts(next.receipt_bytes())
+        .expect("the canonical bytes decode into the declared type");
+    lifecycle::validate_period(prior.state(), next.register().state(), &receipt)
+        .expect("the authored fixture satisfies the rule");
     let producer = receipt
         .prices
         .iter()
         .find(|r| r.site_id == SiteId::from_bytes([2; 32]))
-        .unwrap();
+        .expect("the fixture holds the searched element");
     assert_eq!(producer.reason, PriceDecision::CostPressure);
     assert_eq!(
         (
@@ -98,7 +107,7 @@ fn actual_direct_cost_quote_joins_produced_and_released_quantities() {
         .prices
         .iter()
         .find(|r| r.site_id == SiteId::from_bytes([3; 32]))
-        .unwrap();
+        .expect("the fixture holds the searched element");
     assert_eq!(retailer.cost.basis, GoodsPriceCostBasis::Released);
     assert_eq!(
         (
@@ -113,10 +122,14 @@ fn actual_direct_cost_quote_joins_produced_and_released_quantities() {
         Some(&receipt),
         |_, _| Some(("good".to_owned(), "units".to_owned())),
     )
-    .unwrap();
+    .expect("the fixture projection accepts the authored input");
     assert_eq!(accounts.len(), 3);
     assert_eq!(
-        accounts[1].completed.as_ref().unwrap().unit_cost_micro,
+        accounts[1]
+            .completed
+            .as_ref()
+            .expect("the fixture set the optional field before this read")
+            .unit_cost_micro,
         Some(3)
     );
     for mutation in 0..3 {

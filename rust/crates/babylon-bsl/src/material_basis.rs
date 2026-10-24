@@ -12,6 +12,8 @@
 //! `:fuel` must be present, `> 0` and `≤ 1_000_000` (`E-PARSE-012`).
 
 use crate::reader::{Atom, SExpr};
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 
 /// §2.2's upper budget bound: `:fuel ≤ 1_000_000` (`E-PARSE-012`).
 pub const MAX_FUEL: i64 = 1_000_000;
@@ -50,7 +52,7 @@ impl SurfaceError {
 }
 
 impl std::fmt::Display for SurfaceError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         match self {
             Self::EmptyMaterialBasis => write!(
                 f,
@@ -143,14 +145,14 @@ pub fn check_rule_surface(rule: &SExpr) -> Result<(), SurfaceError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::reader::read;
-
     fn rule_with(material_basis: &str, fuel: &str) -> SExpr {
         let source = format!(
             "(rule demo/surface :role mechanic :evidence derived :material-basis {material_basis} :fuel {fuel} \
              (bindings) (effects (update-node self social-class/agitation (add 0.05i))))"
         );
-        read(&source).expect("test rule must parse").0
+        crate::reader::read(&source)
+            .expect("test rule must parse")
+            .0
     }
 
     #[test]
@@ -162,7 +164,8 @@ mod tests {
     #[test]
     fn an_empty_or_whitespace_material_basis_is_e_parse_011() {
         for text in ["\"\"", "\"   \""] {
-            let err = check_rule_surface(&rule_with(text, "64")).unwrap_err();
+            let err = check_rule_surface(&rule_with(text, "64"))
+                .expect_err("the malformed input is rejected by `check_rule_surface`");
             assert_eq!(err, SurfaceError::EmptyMaterialBasis, "{text}");
             assert_eq!(err.spec_code(), Some("E-PARSE-011"));
         }
@@ -170,12 +173,13 @@ mod tests {
 
     #[test]
     fn a_missing_material_basis_violates_the_rule_production() {
-        let (rule, _) = read(
+        let (rule, _) = crate::reader::read(
             "(rule demo/ungrounded :fuel 64 (bindings) \
              (effects (update-node self social-class/agitation (add 0.05i))))",
         )
-        .unwrap();
-        let err = check_rule_surface(&rule).unwrap_err();
+        .expect("the fixture reader returns its authored facts");
+        let err = check_rule_surface(&rule)
+            .expect_err("the malformed input is rejected by `check_rule_surface`");
         assert!(matches!(err, SurfaceError::Malformed { .. }));
         assert_eq!(err.spec_code(), None);
     }
@@ -183,7 +187,8 @@ mod tests {
     #[test]
     fn fuel_must_be_positive_and_bounded_e_parse_012() {
         for fuel in ["0", "-5", "1000001"] {
-            let err = check_rule_surface(&rule_with("\"wage relation\"", fuel)).unwrap_err();
+            let err = check_rule_surface(&rule_with("\"wage relation\"", fuel))
+                .expect_err("the malformed input is rejected by `check_rule_surface`");
             assert!(
                 matches!(err, SurfaceError::FuelOutOfRange { .. }),
                 "{fuel}: {err}"

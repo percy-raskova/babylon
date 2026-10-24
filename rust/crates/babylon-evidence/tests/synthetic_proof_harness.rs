@@ -1,26 +1,27 @@
 use std::collections::{BTreeSet, HashMap};
-use std::fmt::Write as _;
 
-use babylon_bsl::{
-    canonical_ast::canonical_bytes, fuel::CardinalityCeilings, fuel::IntrinsicCosts, reader::read,
-    reader::SExpr, sfs_profile::validate_sfs_rule_profile, sfs_profile::GovernedComparisonSite,
-    sfs_profile::SfsAuditPolicy, sfs_profile::SfsComparisonContext,
-    sfs_profile::SfsRuleAuditResult, vocabulary::ClosedVocabulary, vocabulary::EnumKind,
+use babylon_bsl::canonical_ast;
+use babylon_bsl::fuel::{CardinalityCeilings, IntrinsicCosts};
+use babylon_bsl::reader;
+use babylon_bsl::reader::SExpr;
+use babylon_bsl::sfs_profile;
+use babylon_bsl::sfs_profile::{
+    GovernedComparisonSite, SfsAuditPolicy, SfsComparisonContext, SfsRuleAuditResult,
 };
+use babylon_bsl::vocabulary::{ClosedVocabulary, EnumKind};
+use babylon_evidence::SyntheticDriverContract;
 use babylon_evidence::{
-    bind_synthetic_driver, canonical_envelope, component_profile_from_bsl, decode_envelope,
-    parse_synthetic_driver_contract, parse_synthetic_governed_manifest, record_digest,
-    validate_synthetic_cone, validate_synthetic_mutation_manifest,
-    validate_synthetic_profile_identity, CanonicalProfileSet, CausalCone, ComponentKind,
-    DifferingLedgerKind, Digest32, InterventionDelta, InterventionDeltaRow, InterventionOperation,
-    PersistenceComparison, PracticeAttemptLedger, PracticeAttemptRow, PracticeCandidateRow,
-    PracticeCandidateSchedule, PracticeDisposition, RunIdentity, RunIdentityField,
-    SfsComponentProofProfile, SfsPreregistration, SfsProofProfile, SfsSample, SfsTrace,
-    SfsValidationError, SyntheticDriverError, T3Record,
+    component_profile_from_bsl, validate_synthetic_cone, validate_synthetic_mutation_manifest,
+    CanonicalProfileSet, CausalCone, ComponentKind, DifferingLedgerKind, Digest32,
+    InterventionDelta, InterventionDeltaRow, InterventionOperation, PersistenceComparison,
+    PracticeAttemptLedger, PracticeAttemptRow, PracticeCandidateRow, PracticeCandidateSchedule,
+    PracticeDisposition, RunIdentity, RunIdentityField, SfsComponentProofProfile,
+    SfsPreregistration, SfsProofProfile, SfsSample, SfsTrace, SfsValidationError,
+    SyntheticDriverError, T3Record,
 };
-use babylon_kernel::{clock::SessionId, content_digest::sha256_of};
+use babylon_kernel::clock::SessionId;
+use babylon_kernel::content_digest;
 use babylon_practice_contract::{
-    fixed_practice_target_digest, practice_intent_digest, practice_parameter_bytes_digest,
     ActorOrganizationId, InputAuthorityId, PracticeId, PracticeIntent, PracticeParameter,
     PracticeTargetIdentity, PracticeTargetTag, ProposalNonce, TaggedPracticeTarget,
 };
@@ -35,7 +36,7 @@ const AUDIT_SOURCES: &[u8] =
     include_bytes!("../../babylon-bsl/tests/fixtures/sfs_profile/sfs_audit_source_manifest_v1.txt");
 const WIRE_VECTORS: &str = include_str!("fixtures/sfs_wire_vectors.txt");
 const IDENTITY_MUTATIONS: &str = include_str!("fixtures/sfs_identity_mutations.txt");
-const SYNTHETIC_EMPTY_EXOGENOUS_DIGEST: Digest32 = Digest32::from_bytes([0xE0; 32]);
+const SYNTHETIC_EMPTY_EXOGENOUS_DIGEST: Digest32 = Digest32::from_bytes([0xe0; 32]);
 const MEMBERSHIP_DESCRIPTOR: &[u8] =
     b"membership-reducer maps one synthetic field value to one reducer output";
 const PRODUCER_DESCRIPTOR: &[u8] =
@@ -53,14 +54,20 @@ fn hex_bytes(value: &str) -> Vec<u8> {
     assert_eq!(value.len() % 2, 0);
     (0..value.len())
         .step_by(2)
-        .map(|index| u8::from_str_radix(&value[index..index + 2], 16).unwrap())
+        .map(|index| {
+            u8::from_str_radix(&value[index..index + 2], 16)
+                .expect("the authored digits parse as the declared type")
+        })
         .collect()
 }
 
 fn lower_hex(value: &[u8]) -> String {
+    use std::fmt::Write as _;
+
     let mut output = String::with_capacity(value.len() * 2);
     for byte in value {
-        write!(&mut output, "{byte:02x}").unwrap();
+        write!(&mut output, "{byte:02x}")
+            .expect("the in-memory formatter accepts the written text");
     }
     output
 }
@@ -78,13 +85,15 @@ fn base36_4(mut value: usize) -> String {
         output[index] = ALPHABET[value % 36];
         value /= 36;
     }
-    String::from_utf8(output.to_vec()).unwrap()
+    String::from_utf8(output.to_vec()).expect("the fixture bytes came from a UTF-8 string")
 }
 
 fn rule() -> SExpr {
     let source =
         include_str!("../../babylon-bsl/tests/fixtures/sfs_profile/allowed/scoped_mechanic.bsl");
-    read(source).unwrap().0
+    reader::read(source)
+        .expect("the fixture reader returns its authored facts")
+        .0
 }
 
 fn audit() -> SfsRuleAuditResult {
@@ -96,7 +105,7 @@ fn audit() -> SfsRuleAuditResult {
         ),
         (EnumKind::EdgeType, vec!["SYNTHETIC_LINK".to_owned()]),
     ])
-    .unwrap();
+    .expect("the constructor accepts the authored fixture arguments");
     let ceilings = CardinalityCeilings::new(
         HashMap::from([("EdgeType/SYNTHETIC_LINK".to_owned(), 8)]),
         HashMap::new(),
@@ -107,17 +116,20 @@ fn audit() -> SfsRuleAuditResult {
             &[0, 11, 1, 1],
             SfsComparisonContext::ConservationRefusal,
         )
-        .unwrap(),
+        .expect("the authored input admits the derived value"),
         GovernedComparisonSite::from_rule_path(
             &rule,
             &[0, 11, 1, 2],
             SfsComparisonContext::EligibilityNoEffect,
         )
-        .unwrap(),
+        .expect("the authored input admits the derived value"),
     ];
     let policy = SfsAuditPolicy::new(
         "synthetic-source/scoped-mechanic",
-        sha256_of(&canonical_bytes(&rule).unwrap()),
+        content_digest::sha256_of(
+            &canonical_ast::canonical_bytes(&rule)
+                .expect("the graph value exposes canonical bytes"),
+        ),
         31,
         ["synthetic-source/quanta"],
         ["synthetic-link/strength"],
@@ -131,24 +143,27 @@ fn audit() -> SfsRuleAuditResult {
         sites,
         ["node:synthetic-source/quanta"],
     )
-    .unwrap();
-    validate_sfs_rule_profile(
+    .expect("the constructor accepts the authored fixture arguments");
+    sfs_profile::validate_sfs_rule_profile(
         &rule,
         &vocabulary,
         &ceilings,
         &IntrinsicCosts::default(),
         &policy,
     )
-    .unwrap()
+    .expect("the authored fixture satisfies the rule")
 }
 
 fn proof_profile() -> SfsProofProfile {
-    let governed = parse_synthetic_governed_manifest(GOVERNED, &rule(), &audit()).unwrap();
+    let governed = babylon_evidence::parse_synthetic_governed_manifest(GOVERNED, &rule(), &audit())
+        .expect("the synthetic manifest parses");
     proof_with(governed.manifest_digest(), &cone(), source_profiles())
 }
 
 fn domain_digest(domain: &[u8], payload: &[u8]) -> Digest32 {
-    Digest32::from_bytes(sha256_of(&[domain, b"\0", payload].concat()))
+    Digest32::from_bytes(content_digest::sha256_of(
+        &[domain, b"\0", payload].concat(),
+    ))
 }
 
 fn proof_with(
@@ -161,10 +176,14 @@ fn proof_with(
         domain_digest(b"babylon.sfs-forbidden-corpus-manifest.v1", FORBIDDEN),
         AUDIT_SEMANTICS_ID,
         domain_digest(b"babylon.sfs-audit-source-manifest.v1", AUDIT_SOURCES),
-        Digest32::from_bytes(*record_digest(selected_cone).unwrap().as_bytes()),
+        Digest32::from_bytes(
+            *babylon_evidence::record_digest(selected_cone)
+                .expect("the record has a canonical digest")
+                .as_bytes(),
+        ),
         components,
     )
-    .unwrap()
+    .expect("the constructor accepts the authored fixture arguments")
 }
 
 fn profile_set(values: &[&str]) -> CanonicalProfileSet {
@@ -175,7 +194,8 @@ fn profile_set(values: &[&str]) -> CanonicalProfileSet {
         }
         entries.push(values[index].to_owned());
     }
-    CanonicalProfileSet::new("synthetic-test", entries).unwrap()
+    CanonicalProfileSet::new("synthetic-test", entries)
+        .expect("the constructor accepts the authored fixture arguments")
 }
 
 fn host_profile(
@@ -198,7 +218,7 @@ fn host_profile(
         profile_set(&[]),
         profile_set(effects),
     )
-    .unwrap()
+    .expect("the constructor accepts the authored fixture arguments")
 }
 
 fn membership_profile(field_read: &str) -> SfsComponentProofProfile {
@@ -232,12 +252,15 @@ fn source_profiles() -> Vec<SfsComponentProofProfile> {
     vec![
         membership_profile("synthetic-source/quanta"),
         producer_profile(),
-        component_profile_from_bsl("scoped-bsl-rule", &audit()).unwrap(),
+        component_profile_from_bsl("scoped-bsl-rule", &audit()).expect(
+            "the fixture call `component_profile_from_bsl` succeeds for the authored inputs",
+        ),
     ]
 }
 
 fn profile_set_from_audit(values: &BTreeSet<String>) -> CanonicalProfileSet {
-    CanonicalProfileSet::new("synthetic-test", values.iter().cloned().collect()).unwrap()
+    CanonicalProfileSet::new("synthetic-test", values.iter().cloned().collect())
+        .expect("the constructor accepts the authored fixture arguments")
 }
 
 fn changed_scoped_profile(operator: &str) -> SfsComponentProofProfile {
@@ -256,7 +279,7 @@ fn changed_scoped_profile(operator: &str) -> SfsComponentProofProfile {
         profile_set_from_audit(footprint.comparison_clamp_contexts()),
         profile_set_from_audit(footprint.effects()),
     )
-    .unwrap()
+    .expect("the constructor accepts the authored fixture arguments")
 }
 
 fn cone() -> CausalCone {
@@ -269,7 +292,7 @@ fn cone() -> CausalCone {
             "post-commit-producer".to_owned(),
         ],
     )
-    .unwrap()
+    .expect("the constructor accepts the authored fixture arguments")
 }
 
 fn assert_profile_fixture<T: T3Record>(label: &str, name: &str, actual: &T) {
@@ -277,17 +300,27 @@ fn assert_profile_fixture<T: T3Record>(label: &str, name: &str, actual: &T) {
     let row = PROFILE
         .lines()
         .find(|candidate| candidate.starts_with(&prefix))
-        .unwrap();
+        .expect("the fixture holds the searched element");
     let fields = row.split('|').collect::<Vec<_>>();
     assert_eq!(fields.len(), 5);
     assert_eq!(fields[2].as_bytes(), T::DOMAIN);
-    assert_eq!(hex_bytes(fields[3]), canonical_envelope(actual).unwrap());
-    assert_eq!(fields[4], record_digest(actual).unwrap().to_hex());
+    assert_eq!(
+        hex_bytes(fields[3]),
+        babylon_evidence::canonical_envelope(actual)
+            .expect("the record exposes its canonical envelope")
+    );
+    assert_eq!(
+        fields[4],
+        babylon_evidence::record_digest(actual)
+            .expect("the record has a canonical digest")
+            .to_hex()
+    );
 }
 
 #[test]
 fn five_profile_fixtures_derive_from_independent_source_contracts() {
-    let governed = parse_synthetic_governed_manifest(GOVERNED, &rule(), &audit()).unwrap();
+    let governed = babylon_evidence::parse_synthetic_governed_manifest(GOVERNED, &rule(), &audit())
+        .expect("the synthetic manifest parses");
     let selected_cone = cone();
     let components = source_profiles();
     let proof = proof_with(
@@ -312,14 +345,15 @@ fn proof_header_pins_forbidden_audit_source_and_semantics_independently() {
     );
     assert_eq!(
         audit_source.to_hex(),
-        "981ed1a68e58275790376c5be2ca9218099ebd385452166420a94948e20a8a56"
+        "92b602aa99bf0bbd0bb4c1b337b491a1671c6a5fdbb18faac8290905f9099bfa"
     );
-    let envelope = canonical_envelope(&proof_profile()).unwrap();
+    let envelope = babylon_evidence::canonical_envelope(&proof_profile())
+        .expect("the record exposes its canonical envelope");
     let payload = SfsProofProfile::DOMAIN.len() + 7;
     assert_eq!(&envelope[payload + 32..payload + 64], forbidden.as_bytes());
     assert_eq!(
         u16::from_be_bytes([envelope[payload + 64], envelope[payload + 65]]),
-        u16::try_from(AUDIT_SEMANTICS_ID.len()).unwrap()
+        u16::try_from(AUDIT_SEMANTICS_ID.len()).expect("the fixture value fits the target range")
     );
     assert_eq!(
         &envelope[payload + 66..payload + 66 + AUDIT_SEMANTICS_ID.len()],
@@ -334,7 +368,8 @@ fn proof_header_pins_forbidden_audit_source_and_semantics_independently() {
 
 #[test]
 fn exact_three_component_cone_is_required() {
-    let governed = parse_synthetic_governed_manifest(GOVERNED, &rule(), &audit()).unwrap();
+    let governed = babylon_evidence::parse_synthetic_governed_manifest(GOVERNED, &rule(), &audit())
+        .expect("the synthetic manifest parses");
     let profile = proof_profile();
     assert_eq!(
         validate_synthetic_cone(&cone(), &profile, &governed),
@@ -348,7 +383,7 @@ fn exact_three_component_cone_is_required() {
             "post-commit-producer".to_owned(),
         ],
     )
-    .unwrap();
+    .expect("the constructor accepts the authored fixture arguments");
     let missing_profile = proof_with(
         governed.manifest_digest(),
         &missing_middle,
@@ -368,7 +403,7 @@ fn exact_three_component_cone_is_required() {
         ]
         .concat(),
     )
-    .unwrap();
+    .expect("the constructor accepts the authored fixture arguments");
     let extra_profile = proof_with(
         governed.manifest_digest(),
         &extra,
@@ -382,14 +417,15 @@ fn exact_three_component_cone_is_required() {
 
 #[test]
 fn reachability_profile_and_path_boundaries_are_distinct() {
-    let governed = parse_synthetic_governed_manifest(GOVERNED, &rule(), &audit()).unwrap();
+    let governed = babylon_evidence::parse_synthetic_governed_manifest(GOVERNED, &rule(), &audit())
+        .expect("the synthetic manifest parses");
     let original = proof_profile();
     let unreachable = CausalCone::new(
         vec!["scoped-bsl-rule".to_owned()],
         vec!["membership-reducer".to_owned()],
         cone().components().to_vec(),
     )
-    .unwrap();
+    .expect("the constructor accepts the authored fixture arguments");
     let unreachable_profile = proof_with(
         governed.manifest_digest(),
         &unreachable,
@@ -401,7 +437,9 @@ fn reachability_profile_and_path_boundaries_are_distinct() {
     );
 
     let without_middle = vec![
-        component_profile_from_bsl("scoped-bsl-rule", &audit()).unwrap(),
+        component_profile_from_bsl("scoped-bsl-rule", &audit()).expect(
+            "the fixture call `component_profile_from_bsl` succeeds for the authored inputs",
+        ),
         producer_profile(),
     ];
     let unprofiled = proof_with(governed.manifest_digest(), &cone(), without_middle);
@@ -415,7 +453,7 @@ fn reachability_profile_and_path_boundaries_are_distinct() {
         vec!["scoped-bsl-rule".to_owned()],
         cone().components().to_vec(),
     )
-    .unwrap();
+    .expect("the constructor accepts the authored fixture arguments");
     let reversed_profile = proof_with(
         governed.manifest_digest(),
         &reversed,
@@ -429,19 +467,23 @@ fn reachability_profile_and_path_boundaries_are_distinct() {
 
 #[test]
 fn recomputed_host_profile_identity_cannot_hide_changed_profile_bytes() {
-    let governed = parse_synthetic_governed_manifest(GOVERNED, &rule(), &audit()).unwrap();
+    let governed = babylon_evidence::parse_synthetic_governed_manifest(GOVERNED, &rule(), &audit())
+        .expect("the synthetic manifest parses");
     let changed = proof_with(
         governed.manifest_digest(),
         &cone(),
         vec![
             membership_profile("synthetic-source/quantb"),
             producer_profile(),
-            component_profile_from_bsl("scoped-bsl-rule", &audit()).unwrap(),
+            component_profile_from_bsl("scoped-bsl-rule", &audit()).expect(
+                "the fixture call `component_profile_from_bsl` succeeds for the authored inputs",
+            ),
         ],
     );
     assert_ne!(
-        record_digest(&changed).unwrap(),
-        record_digest(&proof_profile()).unwrap()
+        babylon_evidence::record_digest(&changed).expect("the record has a canonical digest"),
+        babylon_evidence::record_digest(&proof_profile())
+            .expect("the record has a canonical digest")
     );
     assert_eq!(
         validate_synthetic_cone(&cone(), &changed, &governed),
@@ -453,8 +495,12 @@ fn assert_changed_host_manifest_profile_refuses(
     changed_manifest_bytes: &[u8],
     changed_components: Vec<SfsComponentProofProfile>,
 ) {
-    let governed =
-        parse_synthetic_governed_manifest(changed_manifest_bytes, &rule(), &audit()).unwrap();
+    let governed = babylon_evidence::parse_synthetic_governed_manifest(
+        changed_manifest_bytes,
+        &rule(),
+        &audit(),
+    )
+    .expect("the synthetic manifest parses");
     let changed = proof_with(governed.manifest_digest(), &cone(), changed_components);
     assert_eq!(
         validate_synthetic_cone(&cone(), &changed, &governed),
@@ -465,7 +511,7 @@ fn assert_changed_host_manifest_profile_refuses(
 #[test]
 fn both_host_manifest_profiles_are_source_bound_to_exact_descriptor_contracts() {
     let membership = String::from_utf8(GOVERNED.to_vec())
-        .unwrap()
+        .expect("the fixture bytes came from a UTF-8 string")
         .replace(
             "profile|6d656d626572736869702d72656475636572|field_reads|73796e7468657469632d736f757263652f7175616e7461",
             "profile|6d656d626572736869702d72656475636572|field_reads|73796e7468657469632d736f757263652f7175616e7462",
@@ -475,11 +521,13 @@ fn both_host_manifest_profiles_are_source_bound_to_exact_descriptor_contracts() 
         vec![
             membership_profile("synthetic-source/quantb"),
             producer_profile(),
-            component_profile_from_bsl("scoped-bsl-rule", &audit()).unwrap(),
+            component_profile_from_bsl("scoped-bsl-rule", &audit()).expect(
+                "the fixture call `component_profile_from_bsl` succeeds for the authored inputs",
+            ),
         ],
     );
     let producer = String::from_utf8(GOVERNED.to_vec())
-        .unwrap()
+        .expect("the fixture bytes came from a UTF-8 string")
         .replace(
             "profile|706f73742d636f6d6d69742d70726f6475636572|effects|726563656970743a73796e7468657469632f7366732d73616d706c65",
             "profile|706f73742d636f6d6d69742d70726f6475636572|effects|726563656970743a73796e7468657469632f7366732d73616d706c66",
@@ -492,22 +540,32 @@ fn both_host_manifest_profiles_are_source_bound_to_exact_descriptor_contracts() 
                 "reducer-output:synthetic/membership-reducer-output",
                 "receipt:synthetic/sfs-samplf",
             ),
-            component_profile_from_bsl("scoped-bsl-rule", &audit()).unwrap(),
+            component_profile_from_bsl("scoped-bsl-rule", &audit()).expect(
+                "the fixture call `component_profile_from_bsl` succeeds for the authored inputs",
+            ),
         ],
     );
 }
 
 #[test]
 fn typed_edges_are_identity_bound_beyond_reachability() {
-    let original_manifest = parse_synthetic_governed_manifest(GOVERNED, &rule(), &audit()).unwrap();
+    let original_manifest =
+        babylon_evidence::parse_synthetic_governed_manifest(GOVERNED, &rule(), &audit())
+            .expect("the synthetic manifest parses");
     let original_profile = proof_profile();
-    let original_cone_bytes = canonical_envelope(&cone()).unwrap();
+    let original_cone_bytes = babylon_evidence::canonical_envelope(&cone())
+        .expect("the record exposes its canonical envelope");
     let changed = String::from_utf8(GOVERNED.to_vec())
-        .unwrap()
+        .expect("the fixture bytes came from a UTF-8 string")
         .replace("|5|73796e7468657469632f", "|4|73796e7468657469632f");
     let changed_manifest =
-        parse_synthetic_governed_manifest(changed.as_bytes(), &rule(), &audit()).unwrap();
-    assert_eq!(canonical_envelope(&cone()).unwrap(), original_cone_bytes);
+        babylon_evidence::parse_synthetic_governed_manifest(changed.as_bytes(), &rule(), &audit())
+            .expect("the synthetic manifest parses");
+    assert_eq!(
+        babylon_evidence::canonical_envelope(&cone())
+            .expect("the record exposes its canonical envelope"),
+        original_cone_bytes
+    );
     assert_ne!(
         changed_manifest.manifest_digest(),
         original_manifest.manifest_digest()
@@ -523,8 +581,10 @@ fn typed_edges_are_identity_bound_beyond_reachability() {
         original_profile.components().to_vec(),
     );
     assert_ne!(
-        record_digest(&rebound_profile).unwrap(),
-        record_digest(&original_profile).unwrap()
+        babylon_evidence::record_digest(&rebound_profile)
+            .expect("the record has a canonical digest"),
+        babylon_evidence::record_digest(&original_profile)
+            .expect("the record has a canonical digest")
     );
     assert!(matches!(
         validate_synthetic_cone(&cone(), &rebound_profile, &changed_manifest),
@@ -536,19 +596,21 @@ fn typed_edges_are_identity_bound_beyond_reachability() {
 fn recomputed_bsl_source_cannot_replace_the_sealed_audit_source() {
     let source =
         include_str!("../../babylon-bsl/tests/fixtures/sfs_profile/allowed/scoped_mechanic.bsl");
-    let changed_rule = read(&source.replace("synthetic-source/quanta", "synthetic-source/quantb"))
-        .unwrap()
-        .0;
-    let changed_payload = canonical_bytes(&changed_rule).unwrap();
+    let changed_rule =
+        reader::read(&source.replace("synthetic-source/quanta", "synthetic-source/quantb"))
+            .expect("the fixture reader returns its authored facts")
+            .0;
+    let changed_payload = canonical_ast::canonical_bytes(&changed_rule)
+        .expect("the graph value exposes canonical bytes");
     let mut rows = String::from_utf8(GOVERNED.to_vec())
-        .unwrap()
+        .expect("the fixture bytes came from a UTF-8 string")
         .lines()
         .map(str::to_owned)
         .collect::<Vec<_>>();
     let bsl_index = rows
         .iter()
         .position(|row| row.starts_with("component|73636f7065642d62736c2d72756c65|"))
-        .unwrap();
+        .expect("the fixture sequence holds the addressed position");
     let fields = rows[bsl_index].split('|').collect::<Vec<_>>();
     rows[bsl_index] = format!(
         "{}|{}|{}|{}|{}|{}",
@@ -557,10 +619,14 @@ fn recomputed_bsl_source_cannot_replace_the_sealed_audit_source() {
         fields[2],
         fields[3],
         lower_hex(&changed_payload),
-        lower_hex(&sha256_of(&changed_payload)),
+        lower_hex(&content_digest::sha256_of(&changed_payload)),
     );
     assert_eq!(
-        parse_synthetic_governed_manifest(&sorted_manifest(rows), &changed_rule, &audit(),),
+        babylon_evidence::parse_synthetic_governed_manifest(
+            &sorted_manifest(rows),
+            &changed_rule,
+            &audit(),
+        ),
         Err(SfsValidationError::ComponentSourceDigestMismatch {
             component_id: "scoped-bsl-rule".to_owned(),
         })
@@ -569,14 +635,22 @@ fn recomputed_bsl_source_cannot_replace_the_sealed_audit_source() {
 
 #[test]
 fn recomputed_outer_identities_cannot_hide_changed_bsl_profile_rows() {
-    let original_manifest = parse_synthetic_governed_manifest(GOVERNED, &rule(), &audit()).unwrap();
+    let original_manifest =
+        babylon_evidence::parse_synthetic_governed_manifest(GOVERNED, &rule(), &audit())
+            .expect("the synthetic manifest parses");
     let original_profile = proof_profile();
-    let changed_bytes = String::from_utf8(GOVERNED.to_vec()).unwrap().replace(
-        "profile|73636f7065642d62736c2d72756c65|operators|3e",
-        "profile|73636f7065642d62736c2d72756c65|operators|3d",
-    );
-    let changed_manifest =
-        parse_synthetic_governed_manifest(changed_bytes.as_bytes(), &rule(), &audit()).unwrap();
+    let changed_bytes = String::from_utf8(GOVERNED.to_vec())
+        .expect("the fixture bytes came from a UTF-8 string")
+        .replace(
+            "profile|73636f7065642d62736c2d72756c65|operators|3e",
+            "profile|73636f7065642d62736c2d72756c65|operators|3d",
+        );
+    let changed_manifest = babylon_evidence::parse_synthetic_governed_manifest(
+        changed_bytes.as_bytes(),
+        &rule(),
+        &audit(),
+    )
+    .expect("the synthetic manifest parses");
     let changed_profile = proof_with(
         changed_manifest.manifest_digest(),
         &cone(),
@@ -591,9 +665,21 @@ fn recomputed_outer_identities_cannot_hide_changed_bsl_profile_rows() {
     let changed_run = run_identity(
         changed_manifest.host_component_manifest_digest(),
         changed_manifest.manifest_digest(),
-        Digest32::from_bytes(*record_digest(&changed_profile).unwrap().as_bytes()),
-        Digest32::from_bytes(*record_digest(&changed_prereg).unwrap().as_bytes()),
-        Digest32::from_bytes(*record_digest(&attempts).unwrap().as_bytes()),
+        Digest32::from_bytes(
+            *babylon_evidence::record_digest(&changed_profile)
+                .expect("the record has a canonical digest")
+                .as_bytes(),
+        ),
+        Digest32::from_bytes(
+            *babylon_evidence::record_digest(&changed_prereg)
+                .expect("the record has a canonical digest")
+                .as_bytes(),
+        ),
+        Digest32::from_bytes(
+            *babylon_evidence::record_digest(&attempts)
+                .expect("the record has a canonical digest")
+                .as_bytes(),
+        ),
         SYNTHETIC_EMPTY_EXOGENOUS_DIGEST,
     );
     assert_ne!(
@@ -601,11 +687,13 @@ fn recomputed_outer_identities_cannot_hide_changed_bsl_profile_rows() {
         changed_manifest.manifest_digest()
     );
     assert_ne!(
-        record_digest(&original_profile).unwrap(),
-        record_digest(&changed_profile).unwrap()
+        babylon_evidence::record_digest(&original_profile)
+            .expect("the record has a canonical digest"),
+        babylon_evidence::record_digest(&changed_profile)
+            .expect("the record has a canonical digest")
     );
     assert_eq!(
-        validate_synthetic_profile_identity(
+        babylon_evidence::validate_synthetic_profile_identity(
             &changed_run,
             &changed_profile,
             &changed_prereg,
@@ -623,19 +711,23 @@ fn recomputed_outer_identities_cannot_hide_changed_bsl_profile_rows() {
 #[test]
 fn duplicate_component_and_typed_edge_identities_refuse_specifically() {
     let rows = String::from_utf8(GOVERNED.to_vec())
-        .unwrap()
+        .expect("the fixture bytes came from a UTF-8 string")
         .lines()
         .map(str::to_owned)
         .collect::<Vec<_>>();
     let membership = rows
         .iter()
         .find(|row| row.starts_with("component|6d656d626572736869702d72656475636572|"))
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .replacen("|2|synthetic-descriptor|", "|1|synthetic-descriptor|", 1);
     let mut duplicate_component = rows.clone();
     duplicate_component.push(membership);
     assert_eq!(
-        parse_synthetic_governed_manifest(&sorted_manifest(duplicate_component), &rule(), &audit(),),
+        babylon_evidence::parse_synthetic_governed_manifest(
+            &sorted_manifest(duplicate_component),
+            &rule(),
+            &audit(),
+        ),
         Err(SfsValidationError::DuplicateComponentId {
             component_id: "membership-reducer".to_owned(),
         })
@@ -644,12 +736,16 @@ fn duplicate_component_and_typed_edge_identities_refuse_specifically() {
     let reducer_edge = rows
         .iter()
         .find(|row| row.starts_with("edge|6d656d626572736869702d72656475636572|"))
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .replacen("|5|", "|4|", 1);
     let mut duplicate_edge = rows;
     duplicate_edge.push(reducer_edge);
     assert_eq!(
-        parse_synthetic_governed_manifest(&sorted_manifest(duplicate_edge), &rule(), &audit()),
+        babylon_evidence::parse_synthetic_governed_manifest(
+            &sorted_manifest(duplicate_edge),
+            &rule(),
+            &audit()
+        ),
         Err(SfsValidationError::DuplicateTypedEdge {
             producer_id: "membership-reducer".to_owned(),
             consumer_id: "post-commit-producer".to_owned(),
@@ -696,12 +792,16 @@ fn candidate_bundle() -> (
         .map(|(index, value)| {
             PracticeCandidateRow::new(
                 value.resolve_tick,
-                digest(20 + u8::try_from(index).unwrap()),
-                Digest32::from_bytes(practice_intent_digest(value).unwrap()),
+                digest(20 + u8::try_from(index).expect("the fixture value fits the target range")),
+                Digest32::from_bytes(
+                    babylon_practice_contract::practice_intent_digest(value)
+                        .expect("the practice intent has a digest"),
+                ),
             )
         })
         .collect::<Vec<_>>();
-    let schedule = PracticeCandidateSchedule::new(rows.clone()).unwrap();
+    let schedule = PracticeCandidateSchedule::new(rows.clone())
+        .expect("the constructor accepts the authored fixture arguments");
     let attempts = rows
         .into_iter()
         .enumerate()
@@ -709,12 +809,13 @@ fn candidate_bundle() -> (
             PracticeAttemptRow::new(
                 row,
                 PracticeDisposition::Rejected,
-                digest(40 + u8::try_from(index).unwrap()),
+                digest(40 + u8::try_from(index).expect("the fixture value fits the target range")),
             )
-            .unwrap()
+            .expect("the constructor accepts the authored fixture arguments")
         })
         .collect();
-    let ledger = PracticeAttemptLedger::new(digest(50), attempts).unwrap();
+    let ledger = PracticeAttemptLedger::new(digest(50), attempts)
+        .expect("the constructor accepts the authored fixture arguments");
     (intents, schedule, ledger)
 }
 
@@ -731,12 +832,16 @@ fn bundle_from_intents(
         .map(|(index, value)| {
             PracticeCandidateRow::new(
                 value.resolve_tick,
-                digest(150 + u8::try_from(index).unwrap()),
-                Digest32::from_bytes(practice_intent_digest(value).unwrap()),
+                digest(150 + u8::try_from(index).expect("the fixture value fits the target range")),
+                Digest32::from_bytes(
+                    babylon_practice_contract::practice_intent_digest(value)
+                        .expect("the practice intent has a digest"),
+                ),
             )
         })
         .collect::<Vec<_>>();
-    let schedule = PracticeCandidateSchedule::new(rows.clone()).unwrap();
+    let schedule = PracticeCandidateSchedule::new(rows.clone())
+        .expect("the constructor accepts the authored fixture arguments");
     let ledger = ledger_from_rows(rows);
     (intents, schedule, ledger)
 }
@@ -749,15 +854,19 @@ fn ledger_from_rows(rows: Vec<PracticeCandidateRow>) -> PracticeAttemptLedger {
             PracticeAttemptRow::new(
                 row,
                 PracticeDisposition::Rejected,
-                digest(160 + u8::try_from(index).unwrap()),
+                digest(160 + u8::try_from(index).expect("the fixture value fits the target range")),
             )
-            .unwrap()
+            .expect("the constructor accepts the authored fixture arguments")
         })
         .collect();
-    PracticeAttemptLedger::new(digest(170), attempts).unwrap()
+    PracticeAttemptLedger::new(digest(170), attempts)
+        .expect("the constructor accepts the authored fixture arguments")
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "`preregistration_custom` takes every authored field explicitly"
+)]
 fn preregistration_custom(
     schedule: &PracticeCandidateSchedule,
     driver_digest: Digest32,
@@ -772,8 +881,16 @@ fn preregistration_custom(
     SfsPreregistration::new(
         90,
         digest(2),
-        Digest32::from_bytes(*record_digest(schedule).unwrap().as_bytes()),
-        Digest32::from_bytes(*record_digest(&proof_profile()).unwrap().as_bytes()),
+        Digest32::from_bytes(
+            *babylon_evidence::record_digest(schedule)
+                .expect("the record has a canonical digest")
+                .as_bytes(),
+        ),
+        Digest32::from_bytes(
+            *babylon_evidence::record_digest(&proof_profile())
+                .expect("the record has a canonical digest")
+                .as_bytes(),
+        ),
         driver_digest,
         digest(3),
         SYNTHETIC_EMPTY_EXOGENOUS_DIGEST,
@@ -781,14 +898,14 @@ fn preregistration_custom(
         stride,
         count,
         practice,
-        Digest32::from_bytes(fixed_practice_target_digest(
+        Digest32::from_bytes(babylon_practice_contract::fixed_practice_target_digest(
             PracticeTargetTag::SocialClass,
             target_identity(target),
         )),
         digest(resource_tag),
         parameter_digest,
     )
-    .unwrap()
+    .expect("the constructor accepts the authored fixture arguments")
 }
 
 fn run_for_candidate(
@@ -800,8 +917,16 @@ fn run_for_candidate(
         digest(1),
         digest(2),
         digest(3),
-        Digest32::from_bytes(*record_digest(preregistration).unwrap().as_bytes()),
-        Digest32::from_bytes(*record_digest(attempts).unwrap().as_bytes()),
+        Digest32::from_bytes(
+            *babylon_evidence::record_digest(preregistration)
+                .expect("the record has a canonical digest")
+                .as_bytes(),
+        ),
+        Digest32::from_bytes(
+            *babylon_evidence::record_digest(attempts)
+                .expect("the record has a canonical digest")
+                .as_bytes(),
+        ),
         exogenous,
     )
 }
@@ -814,10 +939,18 @@ fn preregistration(
     SfsPreregistration::new(
         90,
         digest(2),
-        Digest32::from_bytes(*record_digest(schedule).unwrap().as_bytes()),
-        Digest32::from_bytes(*record_digest(proof).unwrap().as_bytes()),
+        Digest32::from_bytes(
+            *babylon_evidence::record_digest(schedule)
+                .expect("the record has a canonical digest")
+                .as_bytes(),
+        ),
+        Digest32::from_bytes(
+            *babylon_evidence::record_digest(proof)
+                .expect("the record has a canonical digest")
+                .as_bytes(),
+        ),
         driver_digest,
-        Digest32::from_bytes(sha256_of(
+        Digest32::from_bytes(content_digest::sha256_of(
             &[b"babylon.sfs-mutation-manifest.v1\0".as_slice(), MUTATIONS].concat(),
         )),
         SYNTHETIC_EMPTY_EXOGENOUS_DIGEST,
@@ -825,14 +958,17 @@ fn preregistration(
         2,
         3,
         PracticeId::Organize,
-        Digest32::from_bytes(fixed_practice_target_digest(
+        Digest32::from_bytes(babylon_practice_contract::fixed_practice_target_digest(
             PracticeTargetTag::SocialClass,
             target_identity(99),
         )),
         digest(3),
-        Digest32::from_bytes(practice_parameter_bytes_digest(&intent(100)).unwrap()),
+        Digest32::from_bytes(
+            babylon_practice_contract::practice_parameter_bytes_digest(&intent(100))
+                .expect("the parameter bytes have a digest"),
+        ),
     )
-    .unwrap()
+    .expect("the constructor accepts the authored fixture arguments")
 }
 
 fn identity_preregistration(
@@ -844,7 +980,11 @@ fn identity_preregistration(
     SfsPreregistration::new(
         90,
         digest(2),
-        Digest32::from_bytes(*record_digest(schedule).unwrap().as_bytes()),
+        Digest32::from_bytes(
+            *babylon_evidence::record_digest(schedule)
+                .expect("the record has a canonical digest")
+                .as_bytes(),
+        ),
         proof_digest,
         driver_digest,
         mutation_digest,
@@ -853,14 +993,17 @@ fn identity_preregistration(
         2,
         3,
         PracticeId::Organize,
-        Digest32::from_bytes(fixed_practice_target_digest(
+        Digest32::from_bytes(babylon_practice_contract::fixed_practice_target_digest(
             PracticeTargetTag::SocialClass,
             target_identity(99),
         )),
         digest(3),
-        Digest32::from_bytes(practice_parameter_bytes_digest(&intent(100)).unwrap()),
+        Digest32::from_bytes(
+            babylon_practice_contract::practice_parameter_bytes_digest(&intent(100))
+                .expect("the parameter bytes have a digest"),
+        ),
     )
-    .unwrap()
+    .expect("the constructor accepts the authored fixture arguments")
 }
 
 fn run_identity(
@@ -872,7 +1015,8 @@ fn run_identity(
     exogenous: Digest32,
 ) -> RunIdentity {
     RunIdentity::new(
-        SessionId::new("synthetic-run").unwrap(),
+        SessionId::new("synthetic-run")
+            .expect("the constructor accepts the authored fixture arguments"),
         digest(60),
         digest(61),
         digest(62),
@@ -891,37 +1035,58 @@ fn run_identity(
         "rng-v1",
         "graph-v1",
     )
-    .unwrap()
+    .expect("the constructor accepts the authored fixture arguments")
 }
 
 #[test]
 fn candidate_projection_cadence_and_intent_realization_are_exact() {
     let (intents, schedule, attempts) = candidate_bundle();
     assert_eq!(
-        canonical_envelope(&attempts.project_candidates().unwrap()).unwrap(),
-        canonical_envelope(&schedule).unwrap()
+        babylon_evidence::canonical_envelope(
+            &attempts
+                .project_candidates()
+                .expect("the fixture projection accepts the authored input")
+        )
+        .expect("the record exposes its canonical envelope"),
+        babylon_evidence::canonical_envelope(&schedule)
+            .expect("the record exposes its canonical envelope")
     );
-    let contract = parse_synthetic_driver_contract(DRIVER_CONTRACT).unwrap();
+    let contract = babylon_evidence::parse_synthetic_driver_contract(DRIVER_CONTRACT)
+        .expect("the synthetic contract parses");
     let proof = proof_profile();
-    let governed = parse_synthetic_governed_manifest(GOVERNED, &rule(), &audit()).unwrap();
+    let governed = babylon_evidence::parse_synthetic_governed_manifest(GOVERNED, &rule(), &audit())
+        .expect("the synthetic manifest parses");
     let prereg = preregistration(&schedule, &proof, contract.manifest_digest());
     let run = run_identity(
         governed.host_component_manifest_digest(),
         governed.manifest_digest(),
-        Digest32::from_bytes(*record_digest(&proof).unwrap().as_bytes()),
-        Digest32::from_bytes(*record_digest(&prereg).unwrap().as_bytes()),
-        Digest32::from_bytes(*record_digest(&attempts).unwrap().as_bytes()),
+        Digest32::from_bytes(
+            *babylon_evidence::record_digest(&proof)
+                .expect("the record has a canonical digest")
+                .as_bytes(),
+        ),
+        Digest32::from_bytes(
+            *babylon_evidence::record_digest(&prereg)
+                .expect("the record has a canonical digest")
+                .as_bytes(),
+        ),
+        Digest32::from_bytes(
+            *babylon_evidence::record_digest(&attempts)
+                .expect("the record has a canonical digest")
+                .as_bytes(),
+        ),
         SYNTHETIC_EMPTY_EXOGENOUS_DIGEST,
     );
-    validate_synthetic_profile_identity(
+    babylon_evidence::validate_synthetic_profile_identity(
         &run,
         &proof,
         &prereg,
         &governed,
         prereg.mutation_manifest_digest(),
     )
-    .unwrap();
-    let driver = bind_synthetic_driver(&prereg, &contract).unwrap();
+    .expect("the authored fixture satisfies the rule");
+    let driver = babylon_evidence::bind_synthetic_driver(&prereg, &contract)
+        .expect("the synthetic driver binds");
     assert_eq!(
         driver.validate_candidate_projection(
             &run,
@@ -936,16 +1101,26 @@ fn candidate_projection_cadence_and_intent_realization_are_exact() {
 }
 
 #[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "`synthetic_profile_identity_fields_refuse_independently` keeps one authored boundary's fixture and assertions together"
+)]
 fn synthetic_profile_identity_fields_refuse_independently() {
-    let governed = parse_synthetic_governed_manifest(GOVERNED, &rule(), &audit()).unwrap();
+    let governed = babylon_evidence::parse_synthetic_governed_manifest(GOVERNED, &rule(), &audit())
+        .expect("the synthetic manifest parses");
     assert_ne!(
         governed.host_component_manifest_digest(),
         governed.manifest_digest()
     );
     let proof = proof_profile();
-    let proof_digest = Digest32::from_bytes(*record_digest(&proof).unwrap().as_bytes());
+    let proof_digest = Digest32::from_bytes(
+        *babylon_evidence::record_digest(&proof)
+            .expect("the record has a canonical digest")
+            .as_bytes(),
+    );
     let mutation_digest = domain_digest(b"babylon.sfs-mutation-manifest.v1", MUTATIONS);
-    let contract = parse_synthetic_driver_contract(DRIVER_CONTRACT).unwrap();
+    let contract = babylon_evidence::parse_synthetic_driver_contract(DRIVER_CONTRACT)
+        .expect("the synthetic contract parses");
     let (_, schedule, attempts) = candidate_bundle();
     let prereg = identity_preregistration(
         &schedule,
@@ -953,17 +1128,31 @@ fn synthetic_profile_identity_fields_refuse_independently() {
         contract.manifest_digest(),
         mutation_digest,
     );
-    let prereg_digest = Digest32::from_bytes(*record_digest(&prereg).unwrap().as_bytes());
+    let prereg_digest = Digest32::from_bytes(
+        *babylon_evidence::record_digest(&prereg)
+            .expect("the record has a canonical digest")
+            .as_bytes(),
+    );
     let valid = run_identity(
         governed.host_component_manifest_digest(),
         governed.manifest_digest(),
         proof_digest,
         prereg_digest,
-        Digest32::from_bytes(*record_digest(&attempts).unwrap().as_bytes()),
+        Digest32::from_bytes(
+            *babylon_evidence::record_digest(&attempts)
+                .expect("the record has a canonical digest")
+                .as_bytes(),
+        ),
         SYNTHETIC_EMPTY_EXOGENOUS_DIGEST,
     );
     assert_eq!(
-        validate_synthetic_profile_identity(&valid, &proof, &prereg, &governed, mutation_digest,),
+        babylon_evidence::validate_synthetic_profile_identity(
+            &valid,
+            &proof,
+            &prereg,
+            &governed,
+            mutation_digest,
+        ),
         Ok(())
     );
 
@@ -1015,7 +1204,7 @@ fn synthetic_profile_identity_fields_refuse_independently() {
     ];
     for (changed_run, expected) in cases {
         assert_eq!(
-            validate_synthetic_profile_identity(
+            babylon_evidence::validate_synthetic_profile_identity(
                 &changed_run,
                 &proof,
                 &prereg,
@@ -1028,16 +1217,31 @@ fn synthetic_profile_identity_fields_refuse_independently() {
 }
 
 #[test]
+// The proof header, preregistration and mutation identities form one ordered
+// scenario; splitting the assertions would hide the sequence each digest binds.
+#[allow(
+    clippy::too_many_lines,
+    reason = "`proof_header_preregistration_and_mutation_identities_are_closed` keeps one authored sequence in a single place"
+)]
 fn proof_header_preregistration_and_mutation_identities_are_closed() {
-    let governed = parse_synthetic_governed_manifest(GOVERNED, &rule(), &audit()).unwrap();
+    let governed = babylon_evidence::parse_synthetic_governed_manifest(GOVERNED, &rule(), &audit())
+        .expect("the synthetic manifest parses");
     let proof = proof_profile();
-    let proof_digest = Digest32::from_bytes(*record_digest(&proof).unwrap().as_bytes());
+    let proof_digest = Digest32::from_bytes(
+        *babylon_evidence::record_digest(&proof)
+            .expect("the record has a canonical digest")
+            .as_bytes(),
+    );
     let mutation_digest = domain_digest(b"babylon.sfs-mutation-manifest.v1", MUTATIONS);
-    let contract = parse_synthetic_driver_contract(DRIVER_CONTRACT).unwrap();
+    let contract = babylon_evidence::parse_synthetic_driver_contract(DRIVER_CONTRACT)
+        .expect("the synthetic contract parses");
     let (_, schedule, attempts) = candidate_bundle();
     let changed_proof = proof_with(digest(214), &cone(), proof.components().to_vec());
-    let changed_proof_digest =
-        Digest32::from_bytes(*record_digest(&changed_proof).unwrap().as_bytes());
+    let changed_proof_digest = Digest32::from_bytes(
+        *babylon_evidence::record_digest(&changed_proof)
+            .expect("the record has a canonical digest")
+            .as_bytes(),
+    );
     let changed_prereg = identity_preregistration(
         &schedule,
         changed_proof_digest,
@@ -1048,12 +1252,20 @@ fn proof_header_preregistration_and_mutation_identities_are_closed() {
         governed.host_component_manifest_digest(),
         governed.manifest_digest(),
         changed_proof_digest,
-        Digest32::from_bytes(*record_digest(&changed_prereg).unwrap().as_bytes()),
-        Digest32::from_bytes(*record_digest(&attempts).unwrap().as_bytes()),
+        Digest32::from_bytes(
+            *babylon_evidence::record_digest(&changed_prereg)
+                .expect("the record has a canonical digest")
+                .as_bytes(),
+        ),
+        Digest32::from_bytes(
+            *babylon_evidence::record_digest(&attempts)
+                .expect("the record has a canonical digest")
+                .as_bytes(),
+        ),
         SYNTHETIC_EMPTY_EXOGENOUS_DIGEST,
     );
     assert_eq!(
-        validate_synthetic_profile_identity(
+        babylon_evidence::validate_synthetic_profile_identity(
             &changed_run,
             &changed_proof,
             &changed_prereg,
@@ -1073,12 +1285,20 @@ fn proof_header_preregistration_and_mutation_identities_are_closed() {
         governed.host_component_manifest_digest(),
         governed.manifest_digest(),
         proof_digest,
-        Digest32::from_bytes(*record_digest(&bad_prereg).unwrap().as_bytes()),
-        Digest32::from_bytes(*record_digest(&attempts).unwrap().as_bytes()),
+        Digest32::from_bytes(
+            *babylon_evidence::record_digest(&bad_prereg)
+                .expect("the record has a canonical digest")
+                .as_bytes(),
+        ),
+        Digest32::from_bytes(
+            *babylon_evidence::record_digest(&attempts)
+                .expect("the record has a canonical digest")
+                .as_bytes(),
+        ),
         SYNTHETIC_EMPTY_EXOGENOUS_DIGEST,
     );
     assert_eq!(
-        validate_synthetic_profile_identity(
+        babylon_evidence::validate_synthetic_profile_identity(
             &bad_prereg_run,
             &proof,
             &bad_prereg,
@@ -1098,21 +1318,45 @@ fn proof_header_preregistration_and_mutation_identities_are_closed() {
         governed.host_component_manifest_digest(),
         governed.manifest_digest(),
         proof_digest,
-        Digest32::from_bytes(*record_digest(&prereg).unwrap().as_bytes()),
-        Digest32::from_bytes(*record_digest(&attempts).unwrap().as_bytes()),
+        Digest32::from_bytes(
+            *babylon_evidence::record_digest(&prereg)
+                .expect("the record has a canonical digest")
+                .as_bytes(),
+        ),
+        Digest32::from_bytes(
+            *babylon_evidence::record_digest(&attempts)
+                .expect("the record has a canonical digest")
+                .as_bytes(),
+        ),
         SYNTHETIC_EMPTY_EXOGENOUS_DIGEST,
     );
     assert_eq!(
-        validate_synthetic_profile_identity(&valid_run, &proof, &prereg, &governed, digest(216),),
+        babylon_evidence::validate_synthetic_profile_identity(
+            &valid_run,
+            &proof,
+            &prereg,
+            &governed,
+            digest(216),
+        ),
         Err(SfsValidationError::MutationManifestDigestMismatch)
     );
 }
 
+// The ledger, schedule, exogenous and cadence precedence checks share one
+// candidate bundle; helpers would duplicate it and obscure the precedence order.
+#[allow(
+    clippy::too_many_lines,
+    reason = "`candidate_ledger_schedule_exogenous_and_cadence_precedence_is_exact` keeps one authored sequence in a single place"
+)]
 #[test]
 fn candidate_ledger_schedule_exogenous_and_cadence_precedence_is_exact() {
     let (intents, schedule, attempts) = candidate_bundle();
-    let contract = parse_synthetic_driver_contract(DRIVER_CONTRACT).unwrap();
-    let parameter = Digest32::from_bytes(practice_parameter_bytes_digest(&intents[0]).unwrap());
+    let contract = babylon_evidence::parse_synthetic_driver_contract(DRIVER_CONTRACT)
+        .expect("the synthetic contract parses");
+    let parameter = Digest32::from_bytes(
+        babylon_practice_contract::practice_parameter_bytes_digest(&intents[0])
+            .expect("the parameter bytes have a digest"),
+    );
     let prereg = preregistration_custom(
         &schedule,
         contract.manifest_digest(),
@@ -1124,7 +1368,8 @@ fn candidate_ledger_schedule_exogenous_and_cadence_precedence_is_exact() {
         3,
         parameter,
     );
-    let driver = bind_synthetic_driver(&prereg, &contract).unwrap();
+    let driver = babylon_evidence::bind_synthetic_driver(&prereg, &contract)
+        .expect("the synthetic driver binds");
     let valid_run = run_for_candidate(&prereg, &attempts, SYNTHETIC_EMPTY_EXOGENOUS_DIGEST);
     let wrong_attempt = run_identity(
         digest(1),
@@ -1173,7 +1418,11 @@ fn candidate_ledger_schedule_exogenous_and_cadence_precedence_is_exact() {
         90,
         digest(2),
         digest(95),
-        Digest32::from_bytes(*record_digest(&proof_profile()).unwrap().as_bytes()),
+        Digest32::from_bytes(
+            *babylon_evidence::record_digest(&proof_profile())
+                .expect("the record has a canonical digest")
+                .as_bytes(),
+        ),
         contract.manifest_digest(),
         digest(3),
         SYNTHETIC_EMPTY_EXOGENOUS_DIGEST,
@@ -1181,20 +1430,22 @@ fn candidate_ledger_schedule_exogenous_and_cadence_precedence_is_exact() {
         2,
         3,
         PracticeId::Organize,
-        Digest32::from_bytes(fixed_practice_target_digest(
+        Digest32::from_bytes(babylon_practice_contract::fixed_practice_target_digest(
             PracticeTargetTag::SocialClass,
             target_identity(99),
         )),
         digest(3),
         parameter,
     )
-    .unwrap();
+    .expect("the constructor accepts the authored fixture arguments");
     let wrong_schedule_run = run_for_candidate(
         &wrong_schedule_prereg,
         &attempts,
         SYNTHETIC_EMPTY_EXOGENOUS_DIGEST,
     );
-    let wrong_schedule_driver = bind_synthetic_driver(&wrong_schedule_prereg, &contract).unwrap();
+    let wrong_schedule_driver =
+        babylon_evidence::bind_synthetic_driver(&wrong_schedule_prereg, &contract)
+            .expect("the synthetic driver binds");
     assert_eq!(
         wrong_schedule_driver.validate_candidate_projection(
             &wrong_schedule_run,
@@ -1211,8 +1462,12 @@ fn candidate_ledger_schedule_exogenous_and_cadence_precedence_is_exact() {
 #[test]
 fn candidate_count_tick_and_intent_count_refusals_are_specific() {
     let (intents, schedule, attempts) = candidate_bundle();
-    let contract = parse_synthetic_driver_contract(DRIVER_CONTRACT).unwrap();
-    let parameter = Digest32::from_bytes(practice_parameter_bytes_digest(&intents[0]).unwrap());
+    let contract = babylon_evidence::parse_synthetic_driver_contract(DRIVER_CONTRACT)
+        .expect("the synthetic contract parses");
+    let parameter = Digest32::from_bytes(
+        babylon_practice_contract::practice_parameter_bytes_digest(&intents[0])
+            .expect("the parameter bytes have a digest"),
+    );
     let count_prereg = preregistration_custom(
         &schedule,
         contract.manifest_digest(),
@@ -1225,7 +1480,8 @@ fn candidate_count_tick_and_intent_count_refusals_are_specific() {
         parameter,
     );
     let count_run = run_for_candidate(&count_prereg, &attempts, SYNTHETIC_EMPTY_EXOGENOUS_DIGEST);
-    let count_driver = bind_synthetic_driver(&count_prereg, &contract).unwrap();
+    let count_driver = babylon_evidence::bind_synthetic_driver(&count_prereg, &contract)
+        .expect("the synthetic driver binds");
     assert!(matches!(
         count_driver.validate_candidate_projection(
             &count_run,
@@ -1252,7 +1508,8 @@ fn candidate_count_tick_and_intent_count_refusals_are_specific() {
         parameter,
     );
     let tick_run = run_for_candidate(&tick_prereg, &attempts, SYNTHETIC_EMPTY_EXOGENOUS_DIGEST);
-    let tick_driver = bind_synthetic_driver(&tick_prereg, &contract).unwrap();
+    let tick_driver = babylon_evidence::bind_synthetic_driver(&tick_prereg, &contract)
+        .expect("the synthetic driver binds");
     assert!(matches!(
         tick_driver.validate_candidate_projection(
             &tick_run,
@@ -1298,9 +1555,12 @@ fn candidate_count_tick_and_intent_count_refusals_are_specific() {
 
 #[test]
 fn candidate_intent_field_and_parameter_identities_refuse_specifically() {
-    let contract = parse_synthetic_driver_contract(DRIVER_CONTRACT).unwrap();
-    let base_parameter =
-        Digest32::from_bytes(practice_parameter_bytes_digest(&intent(100)).unwrap());
+    let contract = babylon_evidence::parse_synthetic_driver_contract(DRIVER_CONTRACT)
+        .expect("the synthetic contract parses");
+    let base_parameter = Digest32::from_bytes(
+        babylon_practice_contract::practice_parameter_bytes_digest(&intent(100))
+            .expect("the parameter bytes have a digest"),
+    );
     let cases = [
         (PracticeId::Agitate, 99_u64, 3_u8),
         (PracticeId::Organize, 100_u64, 3_u8),
@@ -1324,7 +1584,8 @@ fn candidate_intent_field_and_parameter_identities_refuse_specifically() {
             base_parameter,
         );
         let run = run_for_candidate(&prereg, &attempts, SYNTHETIC_EMPTY_EXOGENOUS_DIGEST);
-        let driver = bind_synthetic_driver(&prereg, &contract).unwrap();
+        let driver = babylon_evidence::bind_synthetic_driver(&prereg, &contract)
+            .expect("the synthetic driver binds");
         let error = driver
             .validate_candidate_projection(
                 &run,
@@ -1334,7 +1595,7 @@ fn candidate_intent_field_and_parameter_identities_refuse_specifically() {
                 &intents,
                 SYNTHETIC_EMPTY_EXOGENOUS_DIGEST,
             )
-            .unwrap_err();
+            .expect_err("the malformed input is rejected by `validate_candidate_projection`");
         assert_eq!(
             error,
             [
@@ -1357,7 +1618,8 @@ fn candidate_intent_field_and_parameter_identities_refuse_specifically() {
         digest(96),
     );
     let run = run_for_candidate(&prereg, &attempts, SYNTHETIC_EMPTY_EXOGENOUS_DIGEST);
-    let driver = bind_synthetic_driver(&prereg, &contract).unwrap();
+    let driver = babylon_evidence::bind_synthetic_driver(&prereg, &contract)
+        .expect("the synthetic driver binds");
     assert_eq!(
         driver.validate_candidate_projection(
             &run,
@@ -1374,9 +1636,11 @@ fn candidate_intent_field_and_parameter_identities_refuse_specifically() {
 #[test]
 fn candidate_projection_and_complete_intent_order_are_closed() {
     let (intents, schedule, attempts) = candidate_bundle();
-    let contract = parse_synthetic_driver_contract(DRIVER_CONTRACT).unwrap();
+    let contract = babylon_evidence::parse_synthetic_driver_contract(DRIVER_CONTRACT)
+        .expect("the synthetic contract parses");
     let prereg = preregistration(&schedule, &proof_profile(), contract.manifest_digest());
-    let driver = bind_synthetic_driver(&prereg, &contract).unwrap();
+    let driver = babylon_evidence::bind_synthetic_driver(&prereg, &contract)
+        .expect("the synthetic driver binds");
     let mut reordered = intents.clone();
     reordered.swap(0, 1);
     let run = run_for_candidate(&prereg, &attempts, SYNTHETIC_EMPTY_EXOGENOUS_DIGEST);
@@ -1430,14 +1694,18 @@ fn candidate_projection_and_complete_intent_order_are_closed() {
         PracticeId::Organize,
         99,
         3,
-        Digest32::from_bytes(practice_parameter_bytes_digest(&moved_intents[0]).unwrap()),
+        Digest32::from_bytes(
+            babylon_practice_contract::practice_parameter_bytes_digest(&moved_intents[0])
+                .expect("the parameter bytes have a digest"),
+        ),
     );
     let moved_run = run_for_candidate(
         &moved_prereg,
         &moved_attempts,
         SYNTHETIC_EMPTY_EXOGENOUS_DIGEST,
     );
-    let moved_driver = bind_synthetic_driver(&moved_prereg, &contract).unwrap();
+    let moved_driver = babylon_evidence::bind_synthetic_driver(&moved_prereg, &contract)
+        .expect("the synthetic driver binds");
     assert_eq!(
         moved_driver.validate_candidate_projection(
             &moved_run,
@@ -1458,10 +1726,12 @@ fn candidate_projection_and_complete_intent_order_are_closed() {
 #[test]
 fn malformed_adapter_intents_map_before_any_synthetic_run_membership() {
     let (intents, schedule, attempts) = candidate_bundle();
-    let contract = parse_synthetic_driver_contract(DRIVER_CONTRACT).unwrap();
+    let contract = babylon_evidence::parse_synthetic_driver_contract(DRIVER_CONTRACT)
+        .expect("the synthetic contract parses");
     let prereg = preregistration(&schedule, &proof_profile(), contract.manifest_digest());
     let run = run_for_candidate(&prereg, &attempts, SYNTHETIC_EMPTY_EXOGENOUS_DIGEST);
-    let driver = bind_synthetic_driver(&prereg, &contract).unwrap();
+    let driver = babylon_evidence::bind_synthetic_driver(&prereg, &contract)
+        .expect("the synthetic driver binds");
 
     let mut invalid_parameter = intents.clone();
     invalid_parameter[0].parameters.push(PracticeParameter {
@@ -1498,24 +1768,39 @@ fn malformed_adapter_intents_map_before_any_synthetic_run_membership() {
 }
 
 #[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "`every_run_field_moves_identity` keeps one authored boundary's fixture and assertions together"
+)]
 fn every_run_field_moves_identity() {
     let base_row = WIRE_VECTORS
         .lines()
         .find(|row| row.starts_with("wire|run-identity|"))
-        .unwrap();
-    let base: RunIdentity =
-        decode_envelope(&hex_bytes(base_row.split('|').nth(3).unwrap())).unwrap();
-    let base_envelope = canonical_envelope(&base).unwrap();
+        .expect("the fixture holds the searched element");
+    let base: RunIdentity = babylon_evidence::decode_envelope(&hex_bytes(
+        base_row
+            .split('|')
+            .nth(3)
+            .expect("the fixture sequence holds the addressed row"),
+    ))
+    .expect("the canonical bytes decode into the declared type");
+    let base_envelope = babylon_evidence::canonical_envelope(&base)
+        .expect("the record exposes its canonical envelope");
     let mut fields = Vec::new();
     for row in IDENTITY_MUTATIONS.lines() {
         let parts = row.split('|').collect::<Vec<_>>();
-        let changed: RunIdentity = decode_envelope(&hex_bytes(parts[3])).unwrap();
+        let changed: RunIdentity = babylon_evidence::decode_envelope(&hex_bytes(parts[3]))
+            .expect("the canonical bytes decode into the declared type");
         let differences = base.differing_fields(&changed);
         assert_eq!(differences.len(), 1, "{}", parts[2]);
-        assert_ne!(canonical_envelope(&changed).unwrap(), base_envelope);
         assert_ne!(
-            record_digest(&changed).unwrap(),
-            record_digest(&base).unwrap()
+            babylon_evidence::canonical_envelope(&changed)
+                .expect("the record exposes its canonical envelope"),
+            base_envelope
+        );
+        assert_ne!(
+            babylon_evidence::record_digest(&changed).expect("the record has a canonical digest"),
+            babylon_evidence::record_digest(&base).expect("the record has a canonical digest")
         );
         fields.push(differences[0]);
     }
@@ -1548,13 +1833,16 @@ fn every_run_field_moves_identity() {
         digest(8),
     );
     assert_ne!(
-        record_digest(&base).unwrap(),
-        record_digest(&changed_attempt).unwrap()
+        babylon_evidence::record_digest(&base).expect("the record has a canonical digest"),
+        babylon_evidence::record_digest(&changed_attempt)
+            .expect("the record has a canonical digest")
     );
-    let contract = parse_synthetic_driver_contract(DRIVER_CONTRACT).unwrap();
+    let contract = babylon_evidence::parse_synthetic_driver_contract(DRIVER_CONTRACT)
+        .expect("the synthetic contract parses");
     let (_, schedule, _) = candidate_bundle();
     let prereg = preregistration(&schedule, &proof_profile(), contract.manifest_digest());
-    let driver = bind_synthetic_driver(&prereg, &contract).unwrap();
+    let driver = babylon_evidence::bind_synthetic_driver(&prereg, &contract)
+        .expect("the synthetic driver binds");
     assert_eq!(
         driver.validate_twin_identity_difference(
             &base,
@@ -1599,23 +1887,28 @@ fn every_run_field_moves_identity() {
 }
 
 fn trace(run: &RunIdentity, tag: u8) -> SfsTrace {
-    let run_digest = Digest32::from_bytes(*record_digest(run).unwrap().as_bytes());
+    let run_digest = Digest32::from_bytes(
+        *babylon_evidence::record_digest(run)
+            .expect("the record has a canonical digest")
+            .as_bytes(),
+    );
     let masses = [0.0, 1.0, 2.0, 5.0, 8.0, 10.0, 11.0];
     let samples = masses
         .iter()
         .enumerate()
         .map(|(index, mass)| {
             SfsSample::new(
-                200 + u64::try_from(index).unwrap(),
+                200 + u64::try_from(index).expect("the fixture value fits the target range"),
                 digest(tag),
                 digest(tag + 1),
                 digest(tag + 2),
                 *mass,
             )
-            .unwrap()
+            .expect("the constructor accepts the authored fixture arguments")
         })
         .collect();
-    SfsTrace::new(run_digest, digest(90), 7, 200, 2, samples).unwrap()
+    SfsTrace::new(run_digest, digest(90), 7, 200, 2, samples)
+        .expect("the constructor accepts the authored fixture arguments")
 }
 
 fn make_comparison(
@@ -1637,7 +1930,7 @@ fn make_comparison(
         2,
         vec![2.0, 1.0, 0.5],
     )
-    .unwrap()
+    .expect("the constructor accepts the authored fixture arguments")
 }
 
 struct PersistenceFixture {
@@ -1679,14 +1972,24 @@ fn persistence_fixture() -> PersistenceFixture {
             digest(121),
             digest(122),
         )
-        .unwrap()],
+        .expect("the constructor accepts the authored fixture arguments")],
     )
-    .unwrap();
-    let control_trace_digest =
-        Digest32::from_bytes(*record_digest(&control_trace).unwrap().as_bytes());
-    let intervention_trace_digest =
-        Digest32::from_bytes(*record_digest(&intervention_trace).unwrap().as_bytes());
-    let delta_digest = Digest32::from_bytes(*record_digest(&delta).unwrap().as_bytes());
+    .expect("the constructor accepts the authored fixture arguments");
+    let control_trace_digest = Digest32::from_bytes(
+        *babylon_evidence::record_digest(&control_trace)
+            .expect("the record has a canonical digest")
+            .as_bytes(),
+    );
+    let intervention_trace_digest = Digest32::from_bytes(
+        *babylon_evidence::record_digest(&intervention_trace)
+            .expect("the record has a canonical digest")
+            .as_bytes(),
+    );
+    let delta_digest = Digest32::from_bytes(
+        *babylon_evidence::record_digest(&delta)
+            .expect("the record has a canonical digest")
+            .as_bytes(),
+    );
     let comparison = make_comparison(
         control_trace_digest,
         intervention_trace_digest,
@@ -1708,11 +2011,9 @@ fn persistence_fixture() -> PersistenceFixture {
     }
 }
 
-fn bound_driver_contract() -> (
-    babylon_evidence::SyntheticDriverContract,
-    SfsPreregistration,
-) {
-    let contract = parse_synthetic_driver_contract(DRIVER_CONTRACT).unwrap();
+fn bound_driver_contract() -> (SyntheticDriverContract, SfsPreregistration) {
+    let contract = babylon_evidence::parse_synthetic_driver_contract(DRIVER_CONTRACT)
+        .expect("the synthetic contract parses");
     let (_, schedule, _) = candidate_bundle();
     let prereg = preregistration(&schedule, &proof_profile(), contract.manifest_digest());
     (contract, prereg)
@@ -1722,7 +2023,8 @@ fn bound_driver_contract() -> (
 fn persistence_trace_run_identity_bindings_are_exact() {
     let fixture = persistence_fixture();
     let (contract, prereg) = bound_driver_contract();
-    let driver = bind_synthetic_driver(&prereg, &contract).unwrap();
+    let driver = babylon_evidence::bind_synthetic_driver(&prereg, &contract)
+        .expect("the synthetic driver binds");
     assert_eq!(
         driver.validate_persistence_comparison_identity(
             &fixture.control,
@@ -1764,7 +2066,8 @@ fn persistence_trace_run_identity_bindings_are_exact() {
 fn persistence_comparison_stored_digests_are_exact() {
     let fixture = persistence_fixture();
     let (contract, prereg) = bound_driver_contract();
-    let driver = bind_synthetic_driver(&prereg, &contract).unwrap();
+    let driver = babylon_evidence::bind_synthetic_driver(&prereg, &contract)
+        .expect("the synthetic driver binds");
     let cases = [
         (
             make_comparison(
@@ -1841,7 +2144,8 @@ fn persistence_comparison_stored_digests_are_exact() {
 fn persistence_selected_kind_and_delta_kind_are_exact() {
     let fixture = persistence_fixture();
     let (contract, prereg) = bound_driver_contract();
-    let driver = bind_synthetic_driver(&prereg, &contract).unwrap();
+    let driver = babylon_evidence::bind_synthetic_driver(&prereg, &contract)
+        .expect("the synthetic driver binds");
     let wrong_kind = make_comparison(
         fixture.control_trace_digest,
         fixture.intervention_trace_digest,
@@ -1870,9 +2174,9 @@ fn persistence_selected_kind_and_delta_kind_are_exact() {
             digest(121),
             digest(122),
         )
-        .unwrap()],
+        .expect("the constructor accepts the authored fixture arguments")],
     )
-    .unwrap();
+    .expect("the constructor accepts the authored fixture arguments");
     assert_eq!(
         driver.validate_persistence_comparison_identity(
             &fixture.control,
@@ -1896,25 +2200,40 @@ fn cadence_overflow_precedes_tick_comparison() {
         .map(|(index, value)| {
             PracticeCandidateRow::new(
                 value.resolve_tick,
-                digest(130 + u8::try_from(index).unwrap()),
-                Digest32::from_bytes(practice_intent_digest(value).unwrap()),
+                digest(130 + u8::try_from(index).expect("the fixture value fits the target range")),
+                Digest32::from_bytes(
+                    babylon_practice_contract::practice_intent_digest(value)
+                        .expect("the practice intent has a digest"),
+                ),
             )
         })
         .collect::<Vec<_>>();
-    let schedule = PracticeCandidateSchedule::new(rows.clone()).unwrap();
+    let schedule = PracticeCandidateSchedule::new(rows.clone())
+        .expect("the constructor accepts the authored fixture arguments");
     let attempts = rows
         .into_iter()
         .map(|row| {
-            PracticeAttemptRow::new(row, PracticeDisposition::Rejected, digest(140)).unwrap()
+            PracticeAttemptRow::new(row, PracticeDisposition::Rejected, digest(140))
+                .expect("the constructor accepts the authored fixture arguments")
         })
         .collect();
-    let attempts = PracticeAttemptLedger::new(digest(141), attempts).unwrap();
-    let contract = parse_synthetic_driver_contract(DRIVER_CONTRACT).unwrap();
+    let attempts = PracticeAttemptLedger::new(digest(141), attempts)
+        .expect("the constructor accepts the authored fixture arguments");
+    let contract = babylon_evidence::parse_synthetic_driver_contract(DRIVER_CONTRACT)
+        .expect("the synthetic contract parses");
     let prereg = SfsPreregistration::new(
         80,
         digest(2),
-        Digest32::from_bytes(*record_digest(&schedule).unwrap().as_bytes()),
-        Digest32::from_bytes(*record_digest(&proof_profile()).unwrap().as_bytes()),
+        Digest32::from_bytes(
+            *babylon_evidence::record_digest(&schedule)
+                .expect("the record has a canonical digest")
+                .as_bytes(),
+        ),
+        Digest32::from_bytes(
+            *babylon_evidence::record_digest(&proof_profile())
+                .expect("the record has a canonical digest")
+                .as_bytes(),
+        ),
         contract.manifest_digest(),
         digest(3),
         SYNTHETIC_EMPTY_EXOGENOUS_DIGEST,
@@ -1922,23 +2241,35 @@ fn cadence_overflow_precedes_tick_comparison() {
         2,
         2,
         PracticeId::Organize,
-        Digest32::from_bytes(fixed_practice_target_digest(
+        Digest32::from_bytes(babylon_practice_contract::fixed_practice_target_digest(
             PracticeTargetTag::SocialClass,
             target_identity(99),
         )),
         digest(3),
-        Digest32::from_bytes(practice_parameter_bytes_digest(&first).unwrap()),
+        Digest32::from_bytes(
+            babylon_practice_contract::practice_parameter_bytes_digest(&first)
+                .expect("the parameter bytes have a digest"),
+        ),
     )
-    .unwrap();
+    .expect("the constructor accepts the authored fixture arguments");
     let run = run_identity(
         digest(4),
         digest(5),
         digest(6),
-        Digest32::from_bytes(*record_digest(&prereg).unwrap().as_bytes()),
-        Digest32::from_bytes(*record_digest(&attempts).unwrap().as_bytes()),
+        Digest32::from_bytes(
+            *babylon_evidence::record_digest(&prereg)
+                .expect("the record has a canonical digest")
+                .as_bytes(),
+        ),
+        Digest32::from_bytes(
+            *babylon_evidence::record_digest(&attempts)
+                .expect("the record has a canonical digest")
+                .as_bytes(),
+        ),
         SYNTHETIC_EMPTY_EXOGENOUS_DIGEST,
     );
-    let driver = bind_synthetic_driver(&prereg, &contract).unwrap();
+    let driver = babylon_evidence::bind_synthetic_driver(&prereg, &contract)
+        .expect("the synthetic driver binds");
     assert_eq!(
         driver.validate_candidate_projection(
             &run,
@@ -1954,7 +2285,8 @@ fn cadence_overflow_precedes_tick_comparison() {
 
 #[test]
 fn mutation_manifest_is_exact_dependency_labelled_specification() {
-    let contract = parse_synthetic_driver_contract(DRIVER_CONTRACT).unwrap();
+    let contract = babylon_evidence::parse_synthetic_driver_contract(DRIVER_CONTRACT)
+        .expect("the synthetic contract parses");
     let (_, schedule, _) = candidate_bundle();
     let prereg = preregistration(&schedule, &proof_profile(), contract.manifest_digest());
     assert_eq!(
@@ -1962,7 +2294,7 @@ fn mutation_manifest_is_exact_dependency_labelled_specification() {
         Ok(prereg.mutation_manifest_digest())
     );
     let changed_activation = String::from_utf8(MUTATIONS.to_vec())
-        .unwrap()
+        .expect("the fixture bytes came from a UTF-8 string")
         .replace("|GATE5|-", "|SYNTHETIC|-");
     assert_eq!(
         validate_synthetic_mutation_manifest(changed_activation.as_bytes(), &prereg),
@@ -1971,7 +2303,7 @@ fn mutation_manifest_is_exact_dependency_labelled_specification() {
         })
     );
     let crlf = String::from_utf8(MUTATIONS.to_vec())
-        .unwrap()
+        .expect("the fixture bytes came from a UTF-8 string")
         .replacen('\n', "\r\n", 1);
     assert_eq!(
         validate_synthetic_mutation_manifest(crlf.as_bytes(), &prereg),
@@ -1979,7 +2311,7 @@ fn mutation_manifest_is_exact_dependency_labelled_specification() {
     );
 
     let rows = String::from_utf8(MUTATIONS.to_vec())
-        .unwrap()
+        .expect("the fixture bytes came from a UTF-8 string")
         .lines()
         .map(str::to_owned)
         .collect::<Vec<_>>();
@@ -2006,24 +2338,22 @@ fn mutation_manifest_is_exact_dependency_labelled_specification() {
         Err(SfsValidationError::MutationManifestMalformed { .. })
     ));
     let unknown_phase = String::from_utf8(MUTATIONS.to_vec())
-        .unwrap()
+        .expect("the fixture bytes came from a UTF-8 string")
         .replacen("|DRIVER|", "|BROKEN|", 1);
     assert!(matches!(
         validate_synthetic_mutation_manifest(unknown_phase.as_bytes(), &prereg),
         Err(SfsValidationError::MutationManifestMalformed { .. })
     ));
     let unknown_activation = String::from_utf8(MUTATIONS.to_vec())
-        .unwrap()
+        .expect("the fixture bytes came from a UTF-8 string")
         .replacen("|GATE5|-", "|WRONG|-", 1);
     assert!(matches!(
         validate_synthetic_mutation_manifest(unknown_activation.as_bytes(), &prereg),
         Err(SfsValidationError::MutationManifestMalformed { .. })
     ));
-    let changed_test = String::from_utf8(MUTATIONS.to_vec()).unwrap().replacen(
-        "|aligned_material_bits_match",
-        "|wrong_executable_test",
-        1,
-    );
+    let changed_test = String::from_utf8(MUTATIONS.to_vec())
+        .expect("the fixture bytes came from a UTF-8 string")
+        .replacen("|aligned_material_bits_match", "|wrong_executable_test", 1);
     assert_eq!(
         validate_synthetic_mutation_manifest(changed_test.as_bytes(), &prereg),
         Err(SfsValidationError::MutationManifestDigestMismatch)
@@ -2043,7 +2373,10 @@ fn synthetic_manifest_test_names_resolve_to_genuine_exact_tests() {
         include_str!("../../babylon-bsl/tests/sfs_profile_contract.rs"),
         include_str!("../../bsl-lint/tests/sfs_non_authorability.rs"),
     ];
-    for row in String::from_utf8(MUTATIONS.to_vec()).unwrap().lines() {
+    for row in String::from_utf8(MUTATIONS.to_vec())
+        .expect("the fixture bytes came from a UTF-8 string")
+        .lines()
+    {
         let fields = row.split('|').collect::<Vec<_>>();
         if fields[4] != "SYNTHETIC" {
             continue;
@@ -2061,7 +2394,8 @@ fn synthetic_manifest_test_names_resolve_to_genuine_exact_tests() {
 #[test]
 fn mutation_manifest_byte_preflight_precedes_framing_and_allocation() {
     assert_eq!(MUTATIONS.len(), 4_399);
-    let contract = parse_synthetic_driver_contract(DRIVER_CONTRACT).unwrap();
+    let contract = babylon_evidence::parse_synthetic_driver_contract(DRIVER_CONTRACT)
+        .expect("the synthetic contract parses");
     let (_, schedule, _) = candidate_bundle();
     let prereg = preregistration(&schedule, &proof_profile(), contract.manifest_digest());
     assert_eq!(
@@ -2124,17 +2458,17 @@ fn validation_source_uses_only_literal_indexed_bounded_traversals() {
 fn governed_manifest_global_byte_row_and_line_bounds_precede_parsing() {
     let exact_bytes = [vec![b'a'; 1_048_575], vec![b'\n']].concat();
     assert_ne!(
-        parse_synthetic_governed_manifest(&exact_bytes, &rule(), &audit()),
+        babylon_evidence::parse_synthetic_governed_manifest(&exact_bytes, &rule(), &audit()),
         Err(SfsValidationError::GovernedManifestByteLimit { actual: 1_048_576 })
     );
     let oversized = vec![b'a'; 1_048_577];
     assert_eq!(
-        parse_synthetic_governed_manifest(&oversized, &rule(), &audit()),
+        babylon_evidence::parse_synthetic_governed_manifest(&oversized, &rule(), &audit()),
         Err(SfsValidationError::GovernedManifestByteLimit { actual: 1_048_577 })
     );
     let exact_line = [vec![b'a'; 131_681], vec![b'\n']].concat();
     assert_ne!(
-        parse_synthetic_governed_manifest(&exact_line, &rule(), &audit()),
+        babylon_evidence::parse_synthetic_governed_manifest(&exact_line, &rule(), &audit()),
         Err(SfsValidationError::GovernedManifestLineLimit {
             row: 1,
             actual: 131_682,
@@ -2142,7 +2476,7 @@ fn governed_manifest_global_byte_row_and_line_bounds_precede_parsing() {
     );
     let long_line = [vec![b'a'; 131_682], vec![b'\n']].concat();
     assert_eq!(
-        parse_synthetic_governed_manifest(&long_line, &rule(), &audit()),
+        babylon_evidence::parse_synthetic_governed_manifest(&long_line, &rule(), &audit()),
         Err(SfsValidationError::GovernedManifestLineLimit {
             row: 1,
             actual: 131_683
@@ -2153,13 +2487,13 @@ fn governed_manifest_global_byte_row_and_line_bounds_precede_parsing() {
         exact_rows.extend_from_slice(format!("{index:05}\n").as_bytes());
     }
     assert_ne!(
-        parse_synthetic_governed_manifest(&exact_rows, &rule(), &audit()),
+        babylon_evidence::parse_synthetic_governed_manifest(&exact_rows, &rule(), &audit()),
         Err(SfsValidationError::GovernedManifestTotalRowLimit { actual: 36_992 })
     );
     let mut rows = exact_rows;
     rows.extend_from_slice(b"36992\n");
     assert_eq!(
-        parse_synthetic_governed_manifest(&rows, &rule(), &audit()),
+        babylon_evidence::parse_synthetic_governed_manifest(&rows, &rule(), &audit()),
         Err(SfsValidationError::GovernedManifestTotalRowLimit { actual: 36_993 })
     );
 }
@@ -2195,17 +2529,23 @@ fn governed_manifest_family_limits_accept_maximum_then_refuse_plus_one() {
 fn assert_family_limit(kind: &str, maximum: usize, plus_one: usize, expected: SfsValidationError) {
     let maximum_bytes = family_rows(kind, maximum);
     assert_ne!(
-        parse_synthetic_governed_manifest(&maximum_bytes, &rule(), &audit()),
+        babylon_evidence::parse_synthetic_governed_manifest(&maximum_bytes, &rule(), &audit()),
         Err(expected.clone())
     );
     assert_eq!(
-        parse_synthetic_governed_manifest(&family_rows(kind, plus_one), &rule(), &audit()),
+        babylon_evidence::parse_synthetic_governed_manifest(
+            &family_rows(kind, plus_one),
+            &rule(),
+            &audit()
+        ),
         Err(expected)
     );
 }
 
 fn family_rows(kind: &str, count: usize) -> Vec<u8> {
-    let digest_hex = lower_hex(&sha256_of(b"babylon.sfs-synthetic-component-source.v1\0x"));
+    let digest_hex = lower_hex(&content_digest::sha256_of(
+        b"babylon.sfs-synthetic-component-source.v1\0x",
+    ));
     let mut rows = Vec::new();
     for index in 0..32_769 {
         if index >= count {
@@ -2244,14 +2584,22 @@ fn source_payload_and_complete_row_order_boundaries_are_exact() {
         .to_hex(),
     );
     assert_ne!(
-        parse_synthetic_governed_manifest(maximum_row.as_bytes(), &rule(), &audit()),
+        babylon_evidence::parse_synthetic_governed_manifest(
+            maximum_row.as_bytes(),
+            &rule(),
+            &audit()
+        ),
         Err(SfsValidationError::SourcePayloadLimit {
             component_id: "a".repeat(256),
             actual: 65_535,
         })
     );
     assert_ne!(
-        parse_synthetic_governed_manifest(maximum_row.as_bytes(), &rule(), &audit()),
+        babylon_evidence::parse_synthetic_governed_manifest(
+            maximum_row.as_bytes(),
+            &rule(),
+            &audit()
+        ),
         Err(SfsValidationError::GovernedManifestLineLimit {
             row: 1,
             actual: maximum_row.len(),
@@ -2263,15 +2611,20 @@ fn source_payload_and_complete_row_order_boundaries_are_exact() {
         "00".repeat(32)
     );
     assert!(matches!(
-        parse_synthetic_governed_manifest(row.as_bytes(), &rule(), &audit()),
+        babylon_evidence::parse_synthetic_governed_manifest(row.as_bytes(), &rule(), &audit()),
         Err(SfsValidationError::SourcePayloadLimit { actual: 65_536, .. })
     ));
-    let text = String::from_utf8(GOVERNED.to_vec()).unwrap();
+    let text =
+        String::from_utf8(GOVERNED.to_vec()).expect("the fixture bytes came from a UTF-8 string");
     let mut lines = text.lines().collect::<Vec<_>>();
     lines.swap(5, 6);
     let reordered = format!("{}\n", lines.join("\n"));
     assert!(matches!(
-        parse_synthetic_governed_manifest(reordered.as_bytes(), &rule(), &audit()),
+        babylon_evidence::parse_synthetic_governed_manifest(
+            reordered.as_bytes(),
+            &rule(),
+            &audit()
+        ),
         Err(SfsValidationError::GovernedManifestMalformed { .. })
     ));
 }

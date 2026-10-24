@@ -1,7 +1,10 @@
 //! Projection controls use the same real captured circuit/organizer fixture.
-use super::*;
+use super::{remaining_time, OrganizerAidTime};
 use crate::organizer_aid_fixture as fixture;
+use crate::runtime_session::RuntimeSessionErrorCode;
 use babylon_bsl::structural_verbs::CollectingSink;
+use babylon_material_circuit::{CircuitAccounting, HouseholdTimeAccounting};
+use babylon_practice_contract::OrganizerAidKind;
 use babylon_practice_contract::{OrganizerChoice, OrganizerOutcome};
 
 #[test]
@@ -10,7 +13,7 @@ fn remote_projection_preserves_admission_dispatch_and_resolution_dates() {
     config.aid_bindings[0].kind = OrganizerAidKind::Remote;
     config.aid_bindings[0].coordination_hours = 1;
     let mut session = fixture::authored_session(
-        crate::michigan_dynamic_hex_foundation().unwrap(),
+        crate::michigan_dynamic_hex_foundation().expect("the Michigan hex foundation builds"),
         config,
         false,
         true,
@@ -21,8 +24,11 @@ fn remote_projection_preserves_admission_dispatch_and_resolution_dates() {
     let first = fixture::prepare(&session, Some(&accepted));
     let mut sink = CollectingSink::default();
     fixture::commit(&mut session, &mut sink, first);
-    let state = session.material().organizer_state().unwrap();
-    let projected = pending(&state.pending_aid[0]);
+    let state = session
+        .material()
+        .organizer_state()
+        .expect("the fixture register carries organizer state");
+    let projected = super::pending(&state.pending_aid[0]);
     assert_eq!(projected.admitted_period, 0);
     assert_eq!(projected.dispatch_period, 1);
     assert_eq!(projected.original_commitment_id, accepted.commitment_id);
@@ -31,7 +37,7 @@ fn remote_projection_preserves_admission_dispatch_and_resolution_dates() {
         state.pending_aid[0].material_commitment_id
     );
     assert_eq!(projected.mandate_id, state.pending_aid[0].gift.mandate_id);
-    let waiting = resolutions(state);
+    let waiting = super::resolutions(state);
     assert_eq!(waiting.len(), 1);
     assert_eq!(waiting[0].pending, projected);
     assert_eq!(waiting[0].practice.period, 1);
@@ -39,14 +45,17 @@ fn remote_projection_preserves_admission_dispatch_and_resolution_dates() {
         waiting[0].practice.outcome,
         OrganizerOutcome::AidAwaitingSupport
     );
-    let json = serde_json::to_value(&projected).unwrap();
+    let json = serde_json::to_value(&projected).expect("the value serializes to JSON");
     assert!(json.get("partner_authorization").is_none());
     assert!(json.get("authority_digest").is_none());
     let second = fixture::prepare(&session, None);
     fixture::commit(&mut session, &mut sink, second);
-    let state = session.material().organizer_state().unwrap();
+    let state = session
+        .material()
+        .organizer_state()
+        .expect("the fixture register carries organizer state");
     assert!(state.pending_aid.is_empty());
-    let returned = resolutions(state);
+    let returned = super::resolutions(state);
     assert_eq!(returned.len(), 1);
     assert_eq!(returned[0].pending, projected);
     assert_eq!(returned[0].support.period, 2);
@@ -64,23 +73,29 @@ fn opening_time_is_unknown_then_projection_uses_actual_unspent_closed_time() {
     config.aid_bindings[0].kind = OrganizerAidKind::Remote;
     config.aid_bindings[0].coordination_hours = 1;
     let mut session = fixture::authored_session(
-        crate::michigan_dynamic_hex_foundation().unwrap(),
+        crate::michigan_dynamic_hex_foundation().expect("the Michigan hex foundation builds"),
         config,
         false,
         true,
     );
-    let opening = projections(
+    let opening = super::projections(
         session.material().state(),
-        session.material().organizer_config().unwrap(),
+        session
+            .material()
+            .organizer_config()
+            .expect("the fixture register carries organizer config"),
         0,
     )
-    .unwrap();
+    .expect("the fixture call `projections` succeeds for the authored inputs");
     assert_eq!(opening.len(), 1);
     assert_eq!(opening[0].period, 0);
     assert_eq!(opening[0].time, None);
-    assert!(projections(
+    assert!(super::projections(
         session.material().state(),
-        session.material().organizer_config().unwrap(),
+        session
+            .material()
+            .organizer_config()
+            .expect("the fixture register carries organizer config"),
         1
     )
     .is_err());
@@ -91,7 +106,14 @@ fn opening_time_is_unknown_then_projection_uses_actual_unspent_closed_time() {
     let second = fixture::prepare(&session, None);
     fixture::commit(&mut session, &mut sink, second);
     let register = session.material();
-    let preview = projections(register.state(), register.organizer_config().unwrap(), 2).unwrap();
+    let preview = super::projections(
+        register.state(),
+        register
+            .organizer_config()
+            .expect("the fixture register carries organizer config"),
+        2,
+    )
+    .expect("the fixture call `projections` succeeds for the authored inputs");
     let CircuitAccounting::Monetary(economy) = &register.state().accounting else {
         panic!("monetary fixture");
     };
@@ -103,7 +125,7 @@ fn opening_time_is_unknown_then_projection_uses_actual_unspent_closed_time() {
         .receipts
         .iter()
         .find(|r| r.principal_id == principal)
-        .unwrap();
+        .expect("the fixture holds the searched element");
     let spent = book
         .contributions
         .iter()
@@ -116,7 +138,10 @@ fn opening_time_is_unknown_then_projection_uses_actual_unspent_closed_time() {
         Some(OrganizerAidTime {
             period: 2,
             labor_unit_id: row.labor_unit_id.as_bytes(),
-            remaining_hours: row.contribution_available_hours.checked_sub(spent).unwrap()
+            remaining_hours: row
+                .contribution_available_hours
+                .checked_sub(spent)
+                .expect("the fixture arithmetic stays in range")
         })
     );
     assert_eq!(preview[0].period, 2);

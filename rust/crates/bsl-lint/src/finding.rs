@@ -2,6 +2,8 @@
 //! (task brief W1.2): one line per finding, gate on `Fail` only.
 
 use std::fmt;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 
 /// Whether a finding gates the check (`Fail`, exit 1) or is informational
 /// (`Warn`, printed but never flips the exit code) — the brief's tier
@@ -26,7 +28,7 @@ pub struct Finding {
 }
 
 impl fmt::Display for Finding {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         let tag = match self.severity {
             Severity::Fail => "E-SENTINEL",
             Severity::Warn => "W-SENTINEL",

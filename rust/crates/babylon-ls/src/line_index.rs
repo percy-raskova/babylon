@@ -177,7 +177,8 @@ mod tests {
         // units) — the case the BMP fixture above cannot exercise.
         let text = "a\u{1F600}b";
         let index = LineIndex::new(text);
-        let emoji_end = u32::try_from(1 + '\u{1F600}'.len_utf8()).unwrap();
+        let emoji_end = u32::try_from(1 + '\u{1F600}'.len_utf8())
+            .expect("the fixture value fits the target range");
         // 1 (a) + 2 (surrogate pair) == 3 UTF-16 units before 'b'.
         assert_eq!(
             index.offset_to_position(text, emoji_end),
@@ -195,7 +196,7 @@ mod tests {
     fn bom_prefixed_file() {
         let text = "\u{FEFF}hello";
         let index = LineIndex::new(text);
-        let end = u32::try_from(text.len()).unwrap();
+        let end = u32::try_from(text.len()).expect("the fixture value fits the target range");
         // The BOM counts as one ordinary UTF-16 code unit at position 0 —
         // never stripped or special-cased.
         assert_eq!(index.offset_to_position(text, end), Position::new(0, 6));

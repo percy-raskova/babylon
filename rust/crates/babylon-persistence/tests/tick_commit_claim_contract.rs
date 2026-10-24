@@ -104,11 +104,11 @@ fn production_claim_reconstructs_every_shared_vector() {
 fn every_semantic_field_mutation_moves_the_production_claim() {
     let rows = rows();
     let claims = claims(&rows);
-    for row in rows
+    let mutation_rows = rows
         .iter()
         .take(MAX_ROWS)
-        .filter(|row| row.kind == "mutation")
-    {
+        .filter(|row| row.kind == "mutation");
+    for row in mutation_rows {
         let base = claims[text(&row.data, "base_id")];
         let mutated = claims[text(&row.data, "mutated_id")];
         assert_ne!(

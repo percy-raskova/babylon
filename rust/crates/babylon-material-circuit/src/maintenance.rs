@@ -1,6 +1,6 @@
 //! One bounded repair dependency; whole jobs enable only the following period.
 
-use crate::inventory::{debit_inventory, publish_inventory, take_inventory};
+use crate::inventory;
 use crate::{
     MaintenanceBinding, MaintenanceReceipt, MaintenanceService, MaterialCircuitError,
     MaterialCircuitState, ProcessId, ProductionReceipt,
@@ -165,8 +165,8 @@ pub(crate) fn execute(
             .checked_mul(binding.enabled_batches_per_job)
             .ok_or(MaterialCircuitError::Arithmetic)?,
     };
-    let mut inventory = take_inventory(state);
-    debit_inventory(
+    let mut inventory = inventory::take_inventory(state);
+    inventory::debit_inventory(
         &mut inventory,
         (
             binding.provider_site_id,
@@ -176,7 +176,7 @@ pub(crate) fn execute(
         consumed_spare_parts,
         MaterialCircuitError::MaintenanceInvariant,
     )?;
-    publish_inventory(state, inventory);
+    inventory::publish_inventory(state, inventory);
     if let Some(index) = labor_index {
         state.labor[index].available = available_labor_hours
             .checked_sub(consumed_labor_hours)

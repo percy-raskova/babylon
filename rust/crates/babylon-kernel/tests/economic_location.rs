@@ -1,15 +1,14 @@
 //! Trade markets, domestic counties and dependencies cannot alias one another.
 
-use babylon_kernel::{
-    economic_location::{EconomicLocation, ForeignCounterpart, UsDependency},
-    geography::CountyGeoid,
-};
+use babylon_kernel::economic_location::{EconomicLocation, ForeignCounterpart, UsDependency};
+use babylon_kernel::geography::CountyGeoid;
 use std::collections::BTreeSet;
 
 #[test]
 fn approved_world_scopes_have_disjoint_stable_identities() {
-    let county = CountyGeoid::try_from("26163").unwrap();
-    let mut locations = vec![EconomicLocation::domestic_county(county).unwrap()];
+    let county = CountyGeoid::try_from("26163").expect("the fixture value fits the target range");
+    let mut locations = vec![EconomicLocation::domestic_county(county)
+        .expect("the fixture geoid names a domestic county")];
     locations.extend(ForeignCounterpart::ALL.map(EconomicLocation::Foreign));
     locations.extend(UsDependency::ALL.map(EconomicLocation::Dependency));
     assert_eq!(locations.len(), 19);
@@ -35,7 +34,8 @@ fn approved_world_scopes_have_disjoint_stable_identities() {
     );
     for location in locations {
         assert_eq!(
-            EconomicLocation::from_canonical_bytes(location.canonical_bytes()).unwrap(),
+            EconomicLocation::from_canonical_bytes(location.canonical_bytes())
+                .expect("the canonical bytes admit the value"),
             location
         );
     }
@@ -63,11 +63,14 @@ fn county_syntax_cannot_reclassify_a_dependency_or_unknown_jurisdiction() {
     for text in [
         "60010", "66010", "69085", "72001", "74050", "78010", "99001",
     ] {
-        let county = CountyGeoid::try_from(text).unwrap();
+        let county = CountyGeoid::try_from(text).expect("the fixture value fits the target range");
         assert!(EconomicLocation::domestic_county(county).is_err(), "{text}");
     }
     for text in ["02013", "15005", "11001", "09110"] {
-        assert!(EconomicLocation::domestic_county(CountyGeoid::try_from(text).unwrap()).is_ok());
+        assert!(EconomicLocation::domestic_county(
+            CountyGeoid::try_from(text).expect("the fixture value fits the target range")
+        )
+        .is_ok());
     }
 }
 

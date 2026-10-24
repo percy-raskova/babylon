@@ -1,5 +1,18 @@
 //! Explicit captured voluntary cash terms and original material acknowledgments.
-use super::*;
+use super::aid::OrganizerGiftConsent;
+use super::nonnegative_decimal_i128;
+use super::OrganizerChoice;
+use super::OrganizerCommitment;
+use super::OrganizerConfig;
+use super::OrganizerError;
+use super::OrganizerOutcome;
+use super::OrganizerPartnerResponse;
+use super::OrganizerReceipt;
+use super::OrganizerRefusal;
+use super::OrganizerState;
+use super::OrganizerTimeBindingMode;
+use super::OrganizerTimeUse;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -141,8 +154,8 @@ pub fn validate_organizer_collection_fact(
     commitment: &OrganizerCommitment,
     fact: &OrganizerCollectionFact,
 ) -> Result<(), OrganizerError> {
-    validate_organizer_config(config)?;
-    validate_organizer_commitment(commitment)?;
+    super::contract::validate_organizer_config(config)?;
+    super::contract::validate_organizer_commitment(commitment)?;
     if collection_refusal(config)?.is_some() {
         return Err(OrganizerError::CollectionSupportMismatch);
     }
@@ -160,7 +173,7 @@ pub fn validate_organizer_collection_fact(
         || command.actor_id != row.actor_id
         || command.authority_id != config.input_authority_id
         || command.content_digest != config.content_digest
-        || command.resource_digest != organizer_resource_digest()?
+        || command.resource_digest != super::contract::organizer_resource_digest()?
         || fact.period != commitment.resolves_period
         || fact.admitted_period != command.expected_period
         || fact.original_commitment_id != commitment.commitment_id
@@ -359,8 +372,8 @@ pub(super) fn validate_collection_state_shape(
         return Err(OrganizerError::SizeLimit);
     }
     for row in &state.collection_receipts {
-        validate_organizer_commitment(&row.commitment)?;
-        validate_organizer_receipt(&row.practice)?;
+        super::contract::validate_organizer_commitment(&row.commitment)?;
+        super::contract::validate_organizer_receipt(&row.practice)?;
         let fact = &row.fact;
         let paid = matches!(
             fact.outcome,

@@ -6,12 +6,14 @@ use babylon_material_circuit::{
     FinalDemandPrincipalId, HouseholdTimeReceipt, MemberLaborUseReceipt, UnitId,
 };
 
-use super::{MaterialWorldError, ReceiptCursor};
+use super::MaterialWorldError;
+use super::ReceiptCursor;
+use babylon_material_circuit::MaterialCircuitState;
 
 pub(super) const ROW_BYTES: usize = 136;
 
 pub(super) fn validate_state(
-    state: &babylon_material_circuit::MaterialCircuitState,
+    state: &MaterialCircuitState,
     rows: &[HouseholdTimeReceipt],
 ) -> Result<(), MaterialWorldError> {
     use babylon_material_circuit::{CircuitAccounting, HouseholdTimeAccounting};

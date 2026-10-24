@@ -1,7 +1,9 @@
 //! Source-compatible directed paths, finite shared pools and coarse game journeys.
 use super::{Builder, NationalOpeningError, Result};
 use crate::national_transport::{CargoClass, NationalTransportReference};
-use babylon_kernel::{content_digest::sha256_of, economic_location::EconomicLocation};
+use babylon_kernel::economic_location::EconomicLocation;
+
+use babylon_kernel::content_digest;
 use babylon_material_circuit::{
     CorridorId, RouteId, RouteStage, RouteStageCapacity, SharedCapacitySupply, SupplierRoute,
     SupplierTransport,
@@ -162,12 +164,12 @@ pub(super) fn route_id(from: EconomicLocation, to: EconomicLocation, cargo: Carg
         CargoClass::CrudeOil => 3,
         CargoClass::RefinedLiquid => 4,
     });
-    RouteId::from_bytes(sha256_of(&bytes))
+    RouteId::from_bytes(content_digest::sha256_of(&bytes))
 }
 fn corridor(key: &str) -> CorridorId {
     let mut bytes = b"NationalFreightPoolV1\0".to_vec();
     bytes.extend_from_slice(key.as_bytes());
-    CorridorId::from_bytes(sha256_of(&bytes))
+    CorridorId::from_bytes(content_digest::sha256_of(&bytes))
 }
 
 pub(super) fn finish(builder: &mut Builder<'_>) -> Result<()> {

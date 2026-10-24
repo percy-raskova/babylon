@@ -4,12 +4,12 @@
 
 use std::collections::BTreeMap;
 
-use babylon_persistence::{
-    production_observation::ProductionDeliveryEvidence,
-    production_observation::ProductionDeliveryStage, production_observation::ProductionEvent,
-    production_observation::ProductionRoute, production_observation::ProductionSite,
-    production_observation::ProductionSnapshot,
+use babylon_persistence::production_observation::{
+    ProductionDeliveryEvidence, ProductionDeliveryStage, ProductionEvent, ProductionRoute,
+    ProductionSite, ProductionSnapshot,
 };
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 
 /// Wrap this key in the current `ObservationContext` before storing expansion.
 /// A key identifies evidence inside an observation, not a read capability.
@@ -171,7 +171,7 @@ pub(super) enum DeliveryGroupingError {
 }
 
 impl std::fmt::Display for DeliveryGroupingError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> FmtResult {
         formatter.write_str(match self {
             Self::RouteUnavailable => "Delivery route evidence is unavailable or ambiguous.",
             Self::SiteUnavailable => "Delivery endpoint evidence is unavailable or ambiguous.",
@@ -353,7 +353,9 @@ mod tests {
         ProductionSite {
             function: "manufacturing".into(),
             id: id.into(),
-            location: "county:26163".parse().unwrap(),
+            location: "county:26163"
+                .parse()
+                .expect("the authored literal parses as the declared type"),
             name: name.into(),
             industry_code: Some("331".into()),
             observed_employment: None,
@@ -488,7 +490,8 @@ freight_order_definitions: Vec::new(),
     fn one_delivery_keeps_three_original_entries_without_tripling_quantity() {
         let mut snapshot = snapshot();
         snapshot.events = triplet("order", 3, 10);
-        let log = delivery_log_entries(&snapshot, 160).unwrap();
+        let log =
+            delivery_log_entries(&snapshot, 160).expect("the fixture delivery log is present");
         assert_eq!((log.total_entries, log.evidence_entries), (1, 3));
         let group = group(&log, 0);
         assert_eq!(group.events.len(), 3);
@@ -520,7 +523,8 @@ freight_order_definitions: Vec::new(),
             event.id.push_str("-second");
         }
         snapshot.events.extend(second);
-        let log = delivery_log_entries(&snapshot, 160).unwrap();
+        let log =
+            delivery_log_entries(&snapshot, 160).expect("the fixture delivery log is present");
         let group = group(&log, 0);
         assert_eq!(group.events.len(), 6);
         for stage in [group.arrivals, group.deliveries, group.realizations] {
@@ -553,7 +557,8 @@ freight_order_definitions: Vec::new(),
         for (stage, headline) in cases {
             let mut snapshot = snapshot();
             snapshot.events = vec![event("only", stage, 4, "order", 2)];
-            let log = delivery_log_entries(&snapshot, 160).unwrap();
+            let log =
+                delivery_log_entries(&snapshot, 160).expect("the fixture delivery log is present");
             let group = group(&log, 0);
             assert_eq!(group.deliveries, None);
             assert_eq!(group.headline(), headline);
@@ -565,13 +570,15 @@ freight_order_definitions: Vec::new(),
     #[test]
     fn foundation_is_empty_and_unannotated_events_stay_individual() {
         let mut snapshot = snapshot();
-        let log = delivery_log_entries(&snapshot, 160).unwrap();
+        let log =
+            delivery_log_entries(&snapshot, 160).expect("the fixture delivery log is present");
         assert!(log.entries.is_empty());
         assert_eq!((log.total_entries, log.evidence_entries), (0, 0));
         let mut standalone = event("dispatch", ProductionDeliveryStage::Delivery, 4, "order", 1);
         standalone.delivery_evidence = None;
         snapshot.events.push(standalone);
-        let log = delivery_log_entries(&snapshot, 160).unwrap();
+        let log =
+            delivery_log_entries(&snapshot, 160).expect("the fixture delivery log is present");
         let DeliveryLogEntry::Event(actual) = &log.entries[0] else {
             panic!("display text must not turn an unannotated event into a group")
         };
@@ -601,7 +608,7 @@ freight_order_definitions: Vec::new(),
         );
         last.delivery_evidence = None;
         snapshot.events.push(last);
-        let log = delivery_log_entries(&snapshot, 2).unwrap();
+        let log = delivery_log_entries(&snapshot, 2).expect("the fixture delivery log is present");
         assert_eq!(
             (log.total_entries, log.evidence_entries, log.entries.len()),
             (3, 7, 2)
@@ -617,9 +624,10 @@ freight_order_definitions: Vec::new(),
                 .collect::<Vec<_>>(),
             ["a-3-0", "a-3-1", "a-3-2"]
         );
-        let all = delivery_log_entries(&snapshot, 160).unwrap();
+        let all =
+            delivery_log_entries(&snapshot, 160).expect("the fixture delivery log is present");
         assert_eq!(group(&all, 2).key.order_id, "b");
-        let none = delivery_log_entries(&snapshot, 0).unwrap();
+        let none = delivery_log_entries(&snapshot, 0).expect("the fixture delivery log is present");
         assert!(none.entries.is_empty());
         assert_eq!(none.total_entries, 3);
     }
@@ -635,7 +643,8 @@ freight_order_definitions: Vec::new(),
             event.receipt_digest = "another-receipt-family".into();
         }
         snapshot.events.extend(other_receipt);
-        let log = delivery_log_entries(&snapshot, 160).unwrap();
+        let log =
+            delivery_log_entries(&snapshot, 160).expect("the fixture delivery log is present");
         assert_eq!((log.total_entries, log.evidence_entries), (4, 12));
         assert_eq!(group(&log, 0).key.receipt_digest, "another-receipt-family");
         assert_eq!(group(&log, 1).key.period, 3);
@@ -660,14 +669,18 @@ freight_order_definitions: Vec::new(),
             snapshot.routes.push(route);
             let mut other_events = triplet("other-order", 2, 3);
             for event in &mut other_events {
-                let evidence = event.delivery_evidence.as_mut().unwrap();
+                let evidence = event
+                    .delivery_evidence
+                    .as_mut()
+                    .expect("the fixture set the optional field before this borrow");
                 evidence.route_id = "other-route".into();
                 evidence.supplier_relation_id = "other-relation".into();
                 evidence.good_id = good_id.into();
                 evidence.unit_id = unit_id.into();
             }
             snapshot.events.extend(other_events);
-            let log = delivery_log_entries(&snapshot, 160).unwrap();
+            let log =
+                delivery_log_entries(&snapshot, 160).expect("the fixture delivery log is present");
             assert_eq!(log.total_entries, 2);
             assert_ne!(group(&log, 0).key, group(&log, 1).key);
             assert_eq!(group(&log, 0).headline(), group(&log, 1).headline());
@@ -704,7 +717,10 @@ freight_order_definitions: Vec::new(),
                 event.id.push_str("-contradictory");
                 event.subject_site_ids =
                     vec![route.supplier_site_id.clone(), route.buyer_site_id.clone()];
-                let evidence = event.delivery_evidence.as_mut().unwrap();
+                let evidence = event
+                    .delivery_evidence
+                    .as_mut()
+                    .expect("the fixture set the optional field before this borrow");
                 evidence.route_id.clone_from(&route.physical_route_id);
                 evidence.supplier_relation_id.clone_from(&route.id);
                 evidence.good_id.clone_from(&route.good_id);
@@ -714,7 +730,8 @@ freight_order_definitions: Vec::new(),
             snapshot.events.extend(contradictory);
             for limit in [0, 160] {
                 assert_eq!(
-                    delivery_log_entries(&snapshot, limit).unwrap_err(),
+                    delivery_log_entries(&snapshot, limit)
+                        .expect_err("the malformed delivery scope is refused"),
                     DeliveryGroupingError::IdentityMismatch,
                     "contradictory {changed} must not become a separate group"
                 );
@@ -729,13 +746,15 @@ freight_order_definitions: Vec::new(),
         let mut missing_route = original.clone();
         missing_route.routes.clear();
         assert_eq!(
-            delivery_log_entries(&missing_route, 160).unwrap_err(),
+            delivery_log_entries(&missing_route, 160)
+                .expect_err("the malformed delivery scope is refused"),
             DeliveryGroupingError::RouteUnavailable
         );
         let mut missing_site = original.clone();
         missing_site.sites.pop();
         assert_eq!(
-            delivery_log_entries(&missing_site, 160).unwrap_err(),
+            delivery_log_entries(&missing_site, 160)
+                .expect_err("the malformed delivery scope is refused"),
             DeliveryGroupingError::SiteUnavailable
         );
         let mut duplicate_route = original.clone();
@@ -743,13 +762,15 @@ freight_order_definitions: Vec::new(),
             .routes
             .push(duplicate_route.routes[0].clone());
         assert_eq!(
-            delivery_log_entries(&duplicate_route, 160).unwrap_err(),
+            delivery_log_entries(&duplicate_route, 160)
+                .expect_err("the malformed delivery scope is refused"),
             DeliveryGroupingError::RouteUnavailable
         );
         let mut duplicate_site = original.clone();
         duplicate_site.sites.push(duplicate_site.sites[0].clone());
         assert_eq!(
-            delivery_log_entries(&duplicate_site, 160).unwrap_err(),
+            delivery_log_entries(&duplicate_site, 160)
+                .expect_err("the malformed delivery scope is refused"),
             DeliveryGroupingError::SiteUnavailable
         );
         for field in ["good", "unit", "subject", "period"] {
@@ -757,10 +778,18 @@ freight_order_definitions: Vec::new(),
             let event = &mut mismatch.events[0];
             match field {
                 "good" => {
-                    event.delivery_evidence.as_mut().unwrap().good_id = "other".into();
+                    event
+                        .delivery_evidence
+                        .as_mut()
+                        .expect("the fixture set the optional field before this borrow")
+                        .good_id = "other".into();
                 }
                 "unit" => {
-                    event.delivery_evidence.as_mut().unwrap().unit_id = "other".into();
+                    event
+                        .delivery_evidence
+                        .as_mut()
+                        .expect("the fixture set the optional field before this borrow")
+                        .unit_id = "other".into();
                 }
                 "subject" => {
                     event.subject_site_ids.pop();
@@ -770,7 +799,8 @@ freight_order_definitions: Vec::new(),
                 }
             }
             assert_eq!(
-                delivery_log_entries(&mismatch, 160).unwrap_err(),
+                delivery_log_entries(&mismatch, 160)
+                    .expect_err("the malformed delivery scope is refused"),
                 DeliveryGroupingError::IdentityMismatch
             );
         }
@@ -783,8 +813,15 @@ freight_order_definitions: Vec::new(),
         for event in &mut snapshot.events {
             event.subject_site_ids.reverse();
         }
-        let log = delivery_log_entries(&snapshot, 160).unwrap();
-        assert_eq!(group(&log, 0).deliveries.unwrap().quantity, u64::MAX);
+        let log =
+            delivery_log_entries(&snapshot, 160).expect("the fixture delivery log is present");
+        assert_eq!(
+            group(&log, 0)
+                .deliveries
+                .expect("the fixture log carries its deliveries")
+                .quantity,
+            u64::MAX
+        );
         snapshot.events.push(event(
             "overflow",
             ProductionDeliveryStage::Delivery,
@@ -793,19 +830,21 @@ freight_order_definitions: Vec::new(),
             2,
         ));
         assert_eq!(
-            delivery_log_entries(&snapshot, 0).unwrap_err(),
+            delivery_log_entries(&snapshot, 0)
+                .expect_err("the malformed delivery scope is refused"),
             DeliveryGroupingError::QuantityRange
         );
         snapshot
             .events
             .last_mut()
-            .unwrap()
+            .expect("the fixture sequence is non-empty")
             .delivery_evidence
             .as_mut()
-            .unwrap()
+            .expect("the fixture set the optional field before this borrow")
             .quantity = 0;
         assert_eq!(
-            delivery_log_entries(&snapshot, 160).unwrap_err(),
+            delivery_log_entries(&snapshot, 160)
+                .expect_err("the malformed delivery scope is refused"),
             DeliveryGroupingError::QuantityRange
         );
     }

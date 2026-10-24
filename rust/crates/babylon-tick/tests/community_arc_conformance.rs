@@ -19,12 +19,22 @@
 //! tick 3: heat = 0.42868749999999994 cohesion = 0.68450475 edu = 0.18225000000000002 | r = 1.0 l = 0.0 f = 0.0 | cost-modifier = 0.875 | member-count = 1.0 density-sum = 1.0
 //! ```
 
-use babylon_bsl::scenario::{compose_declaration_preludes, load_scenario_with_prelude};
+// Conformance fixtures exercise exact engine values, transcribe spec literals,
+// and build whole scenarios in one test. These pedantic lints would force
+// ceremony that hides those contracts, so they stay off in test code only.
+#![allow(
+    clippy::unreadable_literal,
+    reason = "the literal is an authored byte pattern"
+)]
+
+use babylon_bsl::scenario;
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_graph::substrate::{GraphSubstrate, HyperedgeId, NodeId};
+use babylon_kernel::replay::ReplaySeed;
 use babylon_kernel::replay::ReplaySessionId;
 use babylon_tick::diagnostic::RuleDiagnosticSession;
+use std::collections::HashMap;
 
 const SCENARIO: &str = include_str!("../content/scenarios/community-decay-arc-conformance.bscn");
 const PACK: &str = include_str!("../content/rules/community.bsl");
@@ -32,7 +42,7 @@ const ORGANIZATION_PRACTICE_PRELUDE: &str =
     include_str!("../content/declarations/organization-practice.bscn");
 
 fn practice_prelude() -> String {
-    compose_declaration_preludes(&[ORGANIZATION_PRACTICE_PRELUDE])
+    scenario::compose_declaration_preludes(&[ORGANIZATION_PRACTICE_PRELUDE])
         .expect("the organization practice prelude composes")
 }
 
@@ -49,7 +59,7 @@ fn run_arc() -> RuleDiagnosticSession<HypergraphStore> {
         PACK,
         HypergraphStore::new(),
         arc_session(),
-        babylon_kernel::replay::ReplaySeed::new(0),
+        ReplaySeed::new(0),
     )
     .expect("world 5 + the pack loads into a session");
     let mut sink = CollectingSink::default();
@@ -104,7 +114,7 @@ fn decay_is_monotone_non_increasing() {
         PACK,
         HypergraphStore::new(),
         arc_session(),
-        babylon_kernel::replay::ReplaySeed::new(0),
+        ReplaySeed::new(0),
     )
     .expect("session loads");
     let mut sink = CollectingSink::default();
@@ -253,7 +263,7 @@ const COLLISION_SCENARIO: &str =
 const CONTROL_RATIO_PACK: &str = include_str!("../content/rules/control-ratio.bsl");
 
 /// Step 1 (§3.7a): the two packs co-loaded over ONE carrier fire once
-/// each — the per-rule-id fired arithmetic (the carceral_arc_conformance
+/// each — the per-rule-id fired arithmetic (the `carceral_arc_conformance`
 /// style) and the decay-applied-ONCE read (0.475, never the
 /// double-application 0.45125). The mutation vector (a SECOND institution
 /// node in this world) reds §8c guard 4 first, then this arithmetic.
@@ -321,7 +331,7 @@ fn all_inactive_members_skip_every_membership_lane() {
     )
     .expect("every rule loads and the world ticks");
     // The carrier rules fire; the class rules fire on nobody active.
-    let per_rule: std::collections::HashMap<&str, usize> = report
+    let per_rule: HashMap<&str, usize> = report
         .per_rule_fired
         .iter()
         .map(|(id, n)| (id.as_str(), *n))
@@ -380,7 +390,7 @@ fn all_inactive_members_skip_every_membership_lane() {
 }
 
 /// Step 1 (§1.2's L1 analogue): a world with NO COMMUNITY hyperedge
-/// REFUSES the pack at load — MissingCeiling (E-LOAD-045), the driver's
+/// REFUSES the pack at load — `MissingCeiling` (E-LOAD-045), the driver's
 /// documented "fail loudly at load rather than quietly iterate nothing"
 /// (lib.rs:250-252) — where frozen silently no-ops. A refusal test, never
 /// a golden-pinned world.
@@ -431,8 +441,9 @@ fn a_world_with_no_community_hyperedge_refuses_at_load() {
 fn no_community_typed_node_exists_in_the_arc_worlds() {
     for scenario in [SCENARIO, SEAM_SCENARIO, COLLISION_SCENARIO, EMPTY_SCENARIO] {
         let mut graph = HypergraphStore::new();
-        let loaded = load_scenario_with_prelude(&practice_prelude(), scenario, &mut graph)
-            .expect("world loads");
+        let loaded =
+            scenario::load_scenario_with_prelude(&practice_prelude(), scenario, &mut graph)
+                .expect("world loads");
         for (member, count) in &loaded.node_types {
             assert!(
                 !member.contains("COMMUNITY"),
@@ -449,8 +460,9 @@ fn no_community_typed_node_exists_in_the_arc_worlds() {
 fn exactly_one_institution_carrier_in_the_arc_worlds() {
     for scenario in [SCENARIO, SEAM_SCENARIO, COLLISION_SCENARIO, EMPTY_SCENARIO] {
         let mut graph = HypergraphStore::new();
-        let loaded = load_scenario_with_prelude(&practice_prelude(), scenario, &mut graph)
-            .expect("world loads");
+        let loaded =
+            scenario::load_scenario_with_prelude(&practice_prelude(), scenario, &mut graph)
+                .expect("world loads");
         assert_eq!(
             loaded.node_types.get("INSTITUTION"),
             Some(&1),

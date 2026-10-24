@@ -271,7 +271,6 @@ impl Dossier {
 #[cfg(test)]
 mod tests {
     use super::Dossier;
-    use crate::exposure::decapitation_value;
     use crate::memory::MemoryGraph;
     use crate::substrate::{GraphSubstrate, NodeId};
 
@@ -284,11 +283,17 @@ mod tests {
     /// worth striking.
     fn star(spokes: usize) -> (MemoryGraph, NodeId, Vec<NodeId>) {
         let mut graph = MemoryGraph::new();
-        let hub = graph.add_node("cadre").unwrap();
+        let hub = graph
+            .add_node("cadre")
+            .expect("the fixture adds a node with a registered kind");
         let mut all = vec![hub];
         for _ in 0..spokes {
-            let leaf = graph.add_node("cadre").unwrap();
-            graph.add_edge("coordination", hub, leaf, 1.0).unwrap();
+            let leaf = graph
+                .add_node("cadre")
+                .expect("the fixture adds a node with a registered kind");
+            graph
+                .add_edge("coordination", hub, leaf, 1.0)
+                .expect("the fixture graph admits the authored edge");
             all.push(leaf);
         }
         (graph, hub, all)
@@ -357,7 +362,7 @@ mod tests {
         let mut dossier = Dossier::new(OBSERVER);
         let added = dossier
             .resolve_neighborhood(&graph, hub, "coordination")
-            .unwrap();
+            .expect("the fixture resolves the authored reference");
         assert_eq!(dossier.resolved_node_count(), all.len(), "the whole star");
         assert_eq!(dossier.resolved_edge_count(), 4);
         assert_eq!(
@@ -367,7 +372,7 @@ mod tests {
         );
         let again = dossier
             .resolve_neighborhood(&graph, hub, "coordination")
-            .unwrap();
+            .expect("the fixture resolves the authored reference");
         assert_eq!(again, 0, "re-running the same collection adds nothing");
     }
 
@@ -377,7 +382,7 @@ mod tests {
         let mut dossier = Dossier::new(OBSERVER);
         let err = dossier
             .resolve_neighborhood(&graph, NodeId(999), "coordination")
-            .unwrap_err();
+            .expect_err("`resolve_neighborhood` rejects the unresolvable reference");
         assert!(err.message.contains("never reads empty"), "{}", err.message);
     }
 
@@ -389,9 +394,11 @@ mod tests {
         let mut dossier = Dossier::new(OBSERVER);
         dossier
             .resolve_neighborhood(&graph, hub, "coordination")
-            .unwrap();
+            .expect("the fixture resolves the authored reference");
         let gone = all[1];
-        graph.remove_node(gone).unwrap();
+        graph
+            .remove_node(gone)
+            .expect("the fixture node exists before removal");
 
         assert!(
             dossier.knows_node(gone),
@@ -414,7 +421,8 @@ mod tests {
         // omniscience and this whole split is decoration.
         let (graph, hub, all) = star(6);
 
-        let truth = decapitation_value(&graph, &all, "coordination", hub, 1).unwrap();
+        let truth = crate::exposure::decapitation_value(&graph, &all, "coordination", hub, 1)
+            .expect("the fixture call `decapitation_value` succeeds for the authored inputs");
 
         let mut dossier = Dossier::new(OBSERVER);
         dossier.resolve_node(hub);
@@ -422,7 +430,8 @@ mod tests {
             dossier.resolve_edge("coordination", hub, *leaf);
         }
         let believed =
-            decapitation_value(&graph, &dossier.scope(), "coordination", hub, 1).unwrap();
+            crate::exposure::decapitation_value(&graph, &dossier.scope(), "coordination", hub, 1)
+                .expect("the fixture call `decapitation_value` succeeds for the authored inputs");
 
         assert!(
             believed < truth,
@@ -437,14 +446,16 @@ mod tests {
         // consequence of PARTIAL knowledge, not an artefact of scoping. When
         // the state has resolved everything, its belief must converge.
         let (graph, hub, all) = star(6);
-        let truth = decapitation_value(&graph, &all, "coordination", hub, 1).unwrap();
+        let truth = crate::exposure::decapitation_value(&graph, &all, "coordination", hub, 1)
+            .expect("the fixture call `decapitation_value` succeeds for the authored inputs");
 
         let mut dossier = Dossier::new(OBSERVER);
         dossier
             .resolve_neighborhood(&graph, hub, "coordination")
-            .unwrap();
+            .expect("the fixture resolves the authored reference");
         let believed =
-            decapitation_value(&graph, &dossier.scope(), "coordination", hub, 1).unwrap();
+            crate::exposure::decapitation_value(&graph, &dossier.scope(), "coordination", hub, 1)
+                .expect("the fixture call `decapitation_value` succeeds for the authored inputs");
 
         assert!(
             (believed - truth).abs() < 1e-12,
@@ -474,7 +485,7 @@ mod tests {
         let mut narrow_and_deep = Dossier::new(local);
         narrow_and_deep
             .resolve_neighborhood(&graph, hub, "coordination")
-            .unwrap();
+            .expect("the fixture resolves the authored reference");
 
         assert_ne!(
             wide_and_shallow, narrow_and_deep,
@@ -493,12 +504,27 @@ mod tests {
 
         // And the disagreement is not cosmetic: it changes what each one
         // believes a strike on the hub would be worth.
-        let police_view =
-            decapitation_value(&graph, &wide_and_shallow.scope(), "coordination", hub, 1);
-        let local_view =
-            decapitation_value(&graph, &narrow_and_deep.scope(), "coordination", hub, 1).unwrap();
+        let police_view = crate::exposure::decapitation_value(
+            &graph,
+            &wide_and_shallow.scope(),
+            "coordination",
+            hub,
+            1,
+        );
+        let local_view = crate::exposure::decapitation_value(
+            &graph,
+            &narrow_and_deep.scope(),
+            "coordination",
+            hub,
+            1,
+        )
+        .expect("the narrow dossier values a strike on the hub it knows");
+        let police_below_local = match police_view {
+            Err(_) => true,
+            Ok(view) => view < local_view,
+        };
         assert!(
-            police_view.is_err() || police_view.unwrap() < local_view,
+            police_below_local,
             "a dossier that never resolved the hub cannot value striking it \
              the way one that did does"
         );

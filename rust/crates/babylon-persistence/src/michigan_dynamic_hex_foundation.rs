@@ -2,7 +2,9 @@
 
 use std::sync::OnceLock;
 
-use babylon_kernel::{content_digest::sha256_of, H3CellId, H3CellIdError};
+use babylon_kernel::{H3CellId, H3CellIdError};
+
+use babylon_kernel::content_digest;
 use babylon_tick::h3_runtime::{
     MichiganDynamicHexFoundation, MichiganDynamicHexFoundationError,
     MichiganDynamicHexFoundationRow, MichiganDynamicHexValueBits, MichiganDynamicHexValues,
@@ -11,6 +13,8 @@ use babylon_tick::h3_runtime::{
     MICHIGAN_DYNAMIC_HEX_FOUNDATION_LAYOUT, MICHIGAN_DYNAMIC_HEX_FOUNDATION_ROWS,
     MICHIGAN_DYNAMIC_HEX_R8_CHILD_PARENT_DOMAIN, MICHIGAN_DYNAMIC_HEX_R8_CHILD_ROWS,
 };
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 
 const FIXTURE_PARTS: [&[u8]; 9] = [
     include_bytes!("fixtures/michigan_dynamic_hex_foundation_v1.part-00.bin"),
@@ -28,7 +32,7 @@ static FOUNDATION: OnceLock<
 > = OnceLock::new();
 
 /// Closed decoding failures for the immutable Michigan foundation artifact.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MichiganDynamicHexFoundationDecodeError {
     /// The supplied byte sequence is shorter than the one governed artifact.
     Truncated,
@@ -51,7 +55,7 @@ pub enum MichiganDynamicHexFoundationDecodeError {
 }
 
 impl std::fmt::Display for MichiganDynamicHexFoundationDecodeError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> FmtResult {
         write!(formatter, "invalid Michigan dynamic-H3 fixture: {self:?}")
     }
 }
@@ -78,7 +82,7 @@ pub fn decode_michigan_dynamic_hex_foundation(
     if bytes.len() > MICHIGAN_DYNAMIC_HEX_FOUNDATION_BYTES {
         return Err(MichiganDynamicHexFoundationDecodeError::TrailingBytes);
     }
-    if sha256_of(bytes) != MICHIGAN_DYNAMIC_HEX_FOUNDATION_ARTIFACT_SHA256 {
+    if content_digest::sha256_of(bytes) != MICHIGAN_DYNAMIC_HEX_FOUNDATION_ARTIFACT_SHA256 {
         return Err(MichiganDynamicHexFoundationDecodeError::ArtifactDigest);
     }
 
@@ -192,7 +196,7 @@ pub fn michigan_dynamic_hex_foundation(
         decode_michigan_dynamic_hex_foundation(&joined)
     }) {
         Ok(foundation) => Ok(foundation),
-        Err(error) => Err(error.clone()),
+        Err(error) => Err(*error),
     }
 }
 

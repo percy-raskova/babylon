@@ -1,5 +1,5 @@
 //! Independent wire vectors for exact funded fiscal and ownership postings.
-use babylon_tick::material_world::decode_material_receipts;
+use babylon_tick::material_world;
 const DOMAIN: &[u8] = b"babylon.material-tick-receipts.v18\0";
 fn id(out: &mut Vec<u8>, n: u8) {
     out.extend_from_slice(&[n; 32]);
@@ -77,7 +77,11 @@ fn envelope(rows: &[(u8, Vec<Vec<u8>>)]) -> Vec<u8> {
             .find(|(t, _)| *t == tag)
             .map_or(&[][..], |(_, r)| r.as_slice());
         b.push(tag);
-        b.extend_from_slice(&u64::try_from(rows.len()).unwrap().to_be_bytes());
+        b.extend_from_slice(
+            &u64::try_from(rows.len())
+                .expect("the fixture value fits the target range")
+                .to_be_bytes(),
+        );
         for row in rows {
             b.extend_from_slice(row);
         }
@@ -104,7 +108,8 @@ fn rows() -> Vec<(u8, Vec<Vec<u8>>)> {
 }
 #[test]
 fn financial_rows_preserve_shortfalls_exact_shares_and_matched_cash() {
-    let decoded = decode_material_receipts(&envelope(&rows())).unwrap();
+    let decoded = material_world::decode_material_receipts(&envelope(&rows()))
+        .expect("the canonical bytes decode into the declared type");
     assert_eq!(decoded.public_budgets[0].unfunded.micro_units(), 2);
     assert_eq!(decoded.taxes[0].uncollected.micro_units(), 1);
     assert_eq!(
@@ -128,10 +133,14 @@ fn financial_wire_refuses_false_partitions_rates_and_remainder_payees() {
         (27, 105, 6_i128.to_be_bytes().to_vec()),
     ] {
         let mut rows = rows();
-        let r = &mut rows.iter_mut().find(|(t, _)| *t == family).unwrap().1[0];
+        let r = &mut rows
+            .iter_mut()
+            .find(|(t, _)| *t == family)
+            .expect("the fixture holds the searched element")
+            .1[0];
         r[offset..offset + replacement.len()].copy_from_slice(&replacement);
         assert!(
-            decode_material_receipts(&envelope(&rows)).is_err(),
+            material_world::decode_material_receipts(&envelope(&rows)).is_err(),
             "family {family} offset {offset}"
         );
     }
@@ -141,22 +150,22 @@ fn financial_wire_requires_cash_match_unique_order_and_current_version() {
     let original = rows();
     let mut missing = original.clone();
     missing[0].1.pop();
-    assert!(decode_material_receipts(&envelope(&missing)).is_err());
+    assert!(material_world::decode_material_receipts(&envelope(&missing)).is_err());
     let mut wrong = original.clone();
     wrong[0].1[0] = cash(2, (4, 8), (2, 9), 2);
-    assert!(decode_material_receipts(&envelope(&wrong)).is_err());
+    assert!(material_world::decode_material_receipts(&envelope(&wrong)).is_err());
     let mut reversed = original.clone();
     reversed[3].1.reverse();
-    assert!(decode_material_receipts(&envelope(&reversed)).is_err());
+    assert!(material_world::decode_material_receipts(&envelope(&reversed)).is_err());
     let mut duplicate = original.clone();
     duplicate[4].1.push(contribution());
-    assert!(decode_material_receipts(&envelope(&duplicate)).is_err());
+    assert!(material_world::decode_material_receipts(&envelope(&duplicate)).is_err());
     let b = envelope(&original);
     let mut old = b.clone();
     old[DOMAIN.len()..DOMAIN.len() + 4].copy_from_slice(&9_u32.to_be_bytes());
-    assert!(decode_material_receipts(&old).is_err());
+    assert!(material_world::decode_material_receipts(&old).is_err());
     for end in 0..b.len() {
-        assert!(decode_material_receipts(&b[..end]).is_err());
+        assert!(material_world::decode_material_receipts(&b[..end]).is_err());
     }
 }
 

@@ -16,18 +16,27 @@ use babylon_persistence::archive_revision::{
     ArchiveDossierPending, ArchiveDossierRead, ArchiveDossierState, ArchiveDossierUnavailable,
     ArchiveLinkedPageState, ArchiveReadScope,
 };
+use babylon_persistence::identity::CampaignId;
 use babylon_persistence::{
-    identity::CampaignId, ArchiveAtom, ArchiveAtomSubject, ArchiveAtomSubjectKind,
-    ArchiveAtomValue, ArchiveCitation, ArchiveEvidenceClass, ArchivePageRef, ArchiveSignal,
-    ArchiveSubjectKind,
+    ArchiveAtom, ArchiveAtomSubject, ArchiveAtomSubjectKind, ArchiveAtomValue, ArchiveCitation,
+    ArchiveEvidenceClass, ArchivePageRef, ArchiveSignal, ArchiveSubjectKind,
 };
+
+use babylon_client::observer_audio::ObserverAudioSettings;
+use babylon_client::production::PrimaryView;
+use babylon_client::production::ProductionCommand;
+use babylon_client::production::ProductionNavigation;
 use bevy::asset::AssetPlugin;
 use bevy::picking::backend::HitData;
 use bevy::picking::events::{Click, Pointer};
+use bevy::picking::hover::HoverMap;
 use bevy::picking::pointer::{Location, PointerButton, PointerId};
 use bevy::prelude::*;
 use bevy::time::TimeUpdateStrategy;
+use bevy::window::PrimaryWindow;
+use bevy::window::WindowResolution;
 use std::ffi::OsString;
+use std::sync::PoisonError;
 use std::sync::{Mutex, MutexGuard};
 use std::time::Duration;
 use uuid::Uuid;
@@ -52,7 +61,7 @@ impl ReaderDsnGuard {
     fn lock_and_remove() -> Self {
         let lock = READER_DSN_LOCK
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+            .unwrap_or_else(PoisonError::into_inner);
         let prior = std::env::var_os("BABYLON_READER_DSN");
         std::env::remove_var("BABYLON_READER_DSN");
         Self { _lock: lock, prior }
@@ -119,11 +128,11 @@ fn new_observer_app(window_size: (u32, u32)) -> (ReaderDsnGuard, App) {
         ..default()
     })
     .init_resource::<UiScale>()
-    .init_resource::<bevy::picking::hover::HoverMap>()
-    .init_resource::<babylon_client::observer_audio::ObserverAudioSettings>()
-    .init_resource::<babylon_client::production::PrimaryView>()
-    .init_resource::<babylon_client::production::ProductionNavigation>()
-    .add_message::<babylon_client::production::ProductionCommand>()
+    .init_resource::<HoverMap>()
+    .init_resource::<ObserverAudioSettings>()
+    .init_resource::<PrimaryView>()
+    .init_resource::<ProductionNavigation>()
+    .add_message::<ProductionCommand>()
     .add_plugins((
         babylon_client::map::MapPlugin,
         ObserverShellPlugin,
@@ -143,11 +152,10 @@ fn new_observer_app(window_size: (u32, u32)) -> (ReaderDsnGuard, App) {
     );
     app.world_mut().spawn((
         Window {
-            resolution: bevy::window::WindowResolution::from(window_size)
-                .with_scale_factor_override(1.0),
+            resolution: WindowResolution::from(window_size).with_scale_factor_override(1.0),
             ..default()
         },
-        bevy::window::PrimaryWindow,
+        PrimaryWindow,
     ));
     install_observer_frame(&mut app);
     app.finish();
@@ -179,14 +187,16 @@ fn atom(signal_key: &str, value: &str, valid_tick: u64) -> ArchiveAtom {
 /// processing. Links preserve three disclosure states and one exact change.
 fn fixture_projection() -> ArchiveDossierRead {
     let campaign = CampaignId::from_uuid(Uuid::nil());
-    let source = ArchiveReadScope::committed(campaign, 11, [11; 32]).unwrap();
+    let source = ArchiveReadScope::committed(campaign, 11, [11; 32])
+        .expect("the fixture observation carries the committed value");
     let signal = ArchiveSignal::try_new(
         "employment".into(),
         "Employment".into(),
         "728576 jobs".into(),
-        ArchiveCitation::try_new("src".into(), "loc".into()).unwrap(),
+        ArchiveCitation::try_new("src".into(), "loc".into())
+            .expect("the authored fixture satisfies the constructor invariants"),
     )
-    .unwrap();
+    .expect("the authored fixture satisfies the constructor invariants");
     let page = ArchiveDossierPage {
         revision_id: [7; 32],
         effective_tick: 11,
@@ -196,7 +206,8 @@ fn fixture_projection() -> ArchiveDossierRead {
         signals: vec![signal],
         markdown: "Retained fixture narrative".into(),
         content_sha256: [8; 32],
-        citations: vec![ArchiveCitation::try_new("src".into(), "loc".into()).unwrap()],
+        citations: vec![ArchiveCitation::try_new("src".into(), "loc".into())
+            .expect("the authored fixture satisfies the constructor invariants")],
         atoms: vec![
             atom("subject", "Autauga County", 1),
             atom("employment", "728576 jobs", 11),
@@ -216,7 +227,8 @@ fn fixture_projection() -> ArchiveDossierRead {
         ]
         .into_iter()
         .map(|(id, label, target_state)| ArchiveDossierLink {
-            target: ArchivePageRef::try_new(ArchiveSubjectKind::Place, id.into()).unwrap(),
+            target: ArchivePageRef::try_new(ArchiveSubjectKind::Place, id.into())
+                .expect("the authored fixture satisfies the constructor invariants"),
             retained_label: label.map(str::to_owned),
             target_state,
         })
@@ -233,8 +245,10 @@ fn fixture_projection() -> ArchiveDossierRead {
         },
     };
     ArchiveDossierRead {
-        scope: ArchiveReadScope::committed(campaign, 12, [12; 32]).unwrap(),
-        subject: ArchivePageRef::try_new(ArchiveSubjectKind::County, "01001".into()).unwrap(),
+        scope: ArchiveReadScope::committed(campaign, 12, [12; 32])
+            .expect("the fixture observation carries the committed value"),
+        subject: ArchivePageRef::try_new(ArchiveSubjectKind::County, "01001".into())
+            .expect("the authored fixture satisfies the constructor invariants"),
         durable_tick: 12,
         processed_tick: 11,
         state: ArchiveDossierState::Pending {
@@ -247,9 +261,8 @@ fn fixture_projection() -> ArchiveDossierRead {
 fn install_observer_frame(app: &mut App) {
     use babylon_client::observer::ObserverSession;
     use babylon_client::observer_ui::ObserverFrame;
-    use babylon_persistence::{
-        observer_reader::ObserverEconomySnapshot, observer_reader::ObserverVisibility,
-    };
+    use babylon_persistence::observer_reader::{ObserverEconomySnapshot, ObserverVisibility};
+
     let session = app.world().resource::<ObserverSession>();
     let hash = format!("{:02x}", session.viewed_tick).repeat(32);
     let frame = ObserverEconomySnapshot {
@@ -272,12 +285,16 @@ fn install_observer_frame(app: &mut App) {
 }
 
 fn installed_fixture(app: &App, read: ArchiveDossierRead) -> InstalledDossier {
-    let selected = app.world().resource::<SelectedCounty>().0.unwrap();
+    let selected = app
+        .world()
+        .resource::<SelectedCounty>()
+        .0
+        .expect("the fixture value `0` is present before this read");
     let county = app
         .world()
         .resource::<CountyAtlas>()
         .county(selected)
-        .unwrap()
+        .expect("the fixture catalog holds the addressed county")
         .fips;
     InstalledDossier {
         scope: DossierRequestScope {
@@ -696,7 +713,13 @@ fn place_chips_render_granted_pending_and_fog_states() {
         text.contains("unknown place · 0199999"),
         "only the public kind and ID identify the unknown endpoint"
     );
-    assert_eq!(app.world().get::<Children>(places).unwrap().len(), 3);
+    assert_eq!(
+        app.world()
+            .get::<Children>(places)
+            .expect("the fixture world holds the addressed component")
+            .len(),
+        3
+    );
 }
 
 /// A granted link requests its exact scoped subject. Only that response supplies place prose; Back restores county navigation.
@@ -709,7 +732,7 @@ fn granted_chip_reads_the_exact_linked_subject_and_can_return_to_the_county() {
         .resource::<ActiveCountyDossier>()
         .0
         .as_ref()
-        .unwrap()
+        .expect("the fixture set the optional field before this read")
         .scope
         .clone();
     click_chip(&mut app, "Prattville");
@@ -723,7 +746,8 @@ fn granted_chip_reads_the_exact_linked_subject_and_can_return_to_the_county() {
     assert!(!zone_text(&mut app, DossierZone::Signals).contains("728576 jobs"));
     app.update(); // Starts the real target read; no county result may answer it.
     let mut read = fixture_projection();
-    read.subject = ArchivePageRef::try_new(ArchiveSubjectKind::Place, "0101076".into()).unwrap();
+    read.subject = ArchivePageRef::try_new(ArchiveSubjectKind::Place, "0101076".into())
+        .expect("the authored fixture satisfies the constructor invariants");
     let ArchiveDossierState::Pending {
         page: Some(page), ..
     } = &mut read.state
@@ -866,8 +890,10 @@ fn obsolete_campaign_generation_and_county_results_cannot_install_or_report_erro
                         .resource::<babylon_client::observer::ObserverSession>()
                         .context(),
                 ),
-                read_scope: ArchiveReadScope::committed(requested_campaign, 12, [12; 32]).unwrap(),
-                subject: ArchivePageRef::try_new(ArchiveSubjectKind::County, fips.into()).unwrap(),
+                read_scope: ArchiveReadScope::committed(requested_campaign, 12, [12; 32])
+                    .expect("the fixture observation carries the committed value"),
+                subject: ArchivePageRef::try_new(ArchiveSubjectKind::County, fips.into())
+                    .expect("the authored fixture satisfies the constructor invariants"),
             },
             task,
         };
@@ -918,8 +944,10 @@ fn unchanged_card_and_unfinished_task_preserve_the_rendered_subtree() {
                     .resource::<babylon_client::observer::ObserverSession>()
                     .context(),
             ),
-            read_scope: ArchiveReadScope::committed(campaign, 12, [12; 32]).unwrap(),
-            subject: ArchivePageRef::try_new(ArchiveSubjectKind::County, "01001".into()).unwrap(),
+            read_scope: ArchiveReadScope::committed(campaign, 12, [12; 32])
+                .expect("the fixture observation carries the committed value"),
+            subject: ArchivePageRef::try_new(ArchiveSubjectKind::County, "01001".into())
+                .expect("the authored fixture satisfies the constructor invariants"),
         },
         task,
     };
@@ -972,7 +1000,7 @@ fn assert_observer_archive_geometry(app: &mut App, root: Entity) {
 
     let mut windows = app
         .world_mut()
-        .query_filtered::<&Window, With<bevy::window::PrimaryWindow>>();
+        .query_filtered::<&Window, With<PrimaryWindow>>();
     let window = windows.single(app.world()).expect("primary window");
     let size = Vec2::new(window.width(), window.height());
     let scale = app.world().resource::<UiScale>().0;
@@ -1049,7 +1077,8 @@ fn assert_historical_observer_archive(app: &mut App, root: Entity) {
         DossierFetchState::InFlight { .. } | DossierFetchState::Failed(_)
     ));
     let mut read = fixture_projection();
-    read.scope = ArchiveReadScope::committed(read.scope.campaign_id(), 10, [10; 32]).unwrap();
+    read.scope = ArchiveReadScope::committed(read.scope.campaign_id(), 10, [10; 32])
+        .expect("the fixture observation carries the committed value");
     read.state = ArchiveDossierState::Unavailable(ArchiveDossierUnavailable::PageNotMaterialized);
     let installed = installed_fixture(app, read);
     app.world_mut().resource_mut::<ActiveCountyDossier>().0 = Some(installed);
@@ -1069,7 +1098,8 @@ fn assert_historical_observer_archive(app: &mut App, root: Entity) {
         "Which cited observations are available at this period?"
     );
     let mut read = fixture_projection();
-    read.scope = ArchiveReadScope::committed(read.scope.campaign_id(), 10, [10; 32]).unwrap();
+    read.scope = ArchiveReadScope::committed(read.scope.campaign_id(), 10, [10; 32])
+        .expect("the fixture observation carries the committed value");
     let ArchiveDossierState::Pending {
         page: Some(mut page),
         ..
@@ -1084,9 +1114,10 @@ fn assert_historical_observer_archive(app: &mut App, root: Entity) {
         "employment".into(),
         "Employment".into(),
         "710000 jobs".into(),
-        ArchiveCitation::try_new("src".into(), "loc".into()).unwrap(),
+        ArchiveCitation::try_new("src".into(), "loc".into())
+            .expect("the authored fixture satisfies the constructor invariants"),
     )
-    .unwrap()];
+    .expect("the authored fixture satisfies the constructor invariants")];
     page.changes.changes.clear();
     read.state = ArchiveDossierState::Ready {
         page,
@@ -1111,7 +1142,9 @@ fn assert_historical_observer_archive(app: &mut App, root: Entity) {
         ui.comparison_open = modal == 2;
         app.update();
         assert_eq!(
-            *app.world().get::<Visibility>(root).unwrap(),
+            *app.world()
+                .get::<Visibility>(root)
+                .expect("the fixture world holds the addressed component"),
             Visibility::Hidden
         );
     }
@@ -1146,7 +1179,9 @@ fn observer_archive_layout_and_exact_historical_unavailability_are_explicit() {
         let log = root_containing_text(&mut app, "COMMITTED DEVELOPMENTS");
         assert_eq!(laid_out_rect(&app, log), laid_out_rect(&app, root));
         assert_eq!(
-            *app.world().get::<Visibility>(log).unwrap(),
+            *app.world()
+                .get::<Visibility>(log)
+                .expect("the fixture world holds the addressed component"),
             Visibility::Visible
         );
         assert_observer_archive_geometry(&mut app, root);
@@ -1155,7 +1190,9 @@ fn observer_archive_layout_and_exact_historical_unavailability_are_explicit() {
             .history_open = false;
         app.update();
         assert_eq!(
-            *app.world().get::<Visibility>(log).unwrap(),
+            *app.world()
+                .get::<Visibility>(log)
+                .expect("the fixture world holds the addressed component"),
             Visibility::Hidden
         );
         app.world_mut()

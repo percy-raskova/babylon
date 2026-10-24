@@ -1,15 +1,16 @@
 //! Exact maintenance identities and completed accounts from authenticated registers.
 use super::ProductionProjectionError;
-use crate::{
-    michigan_economy::digest_hex,
-    production_observation::{CompletedProductionMaintenance, ProductionMaintenanceAccount},
-};
+use crate::production_observation::{CompletedProductionMaintenance, ProductionMaintenanceAccount};
+
+use super::metadata::Metadata;
+use crate::michigan_economy;
 use babylon_material_circuit::{MaintenanceBinding, MaintenanceReceipt, MaterialCircuitState};
 use babylon_tick::material_world::MaterialTickReceipts;
-type Result<T> = std::result::Result<T, ProductionProjectionError>;
+use std::result::Result as StdResult;
+type Result<T> = StdResult<T, ProductionProjectionError>;
 
 pub(super) fn project_maintenance(
-    metadata: &super::metadata::Metadata<'_>,
+    metadata: &Metadata<'_>,
     state: &MaterialCircuitState,
     opening: Option<&MaterialCircuitState>,
     receipt: Option<&MaterialTickReceipts>,
@@ -55,17 +56,17 @@ pub(super) fn project_maintenance(
         .checked_mul(output.quantity_per_batch)
         .ok_or(ProductionProjectionError::Arithmetic)?;
     Ok(Some(ProductionMaintenanceAccount {
-        provider_site_id: digest_hex(&provider.site_id.as_bytes()),
-        consumer_site_id: digest_hex(&consumer.site_id.as_bytes()),
-        consumer_process_id: digest_hex(&binding.consumer_process_id.as_bytes()),
-        spare_good_id: digest_hex(&spare.good_id.as_bytes()),
-        spare_unit_id: digest_hex(&spare.unit_id.as_bytes()),
+        provider_site_id: michigan_economy::digest_hex(&provider.site_id.as_bytes()),
+        consumer_site_id: michigan_economy::digest_hex(&consumer.site_id.as_bytes()),
+        consumer_process_id: michigan_economy::digest_hex(&binding.consumer_process_id.as_bytes()),
+        spare_good_id: michigan_economy::digest_hex(&spare.good_id.as_bytes()),
+        spare_unit_id: michigan_economy::digest_hex(&spare.unit_id.as_bytes()),
         spare_good: spare.label.clone(),
         spare_unit: spare.unit_label.clone(),
-        labor_unit_id: digest_hex(&binding.labor_unit_id.as_bytes()),
+        labor_unit_id: michigan_economy::digest_hex(&binding.labor_unit_id.as_bytes()),
         labor_unit: "labor-hours".into(),
-        output_good_id: digest_hex(&good.good_id.as_bytes()),
-        output_unit_id: digest_hex(&good.unit_id.as_bytes()),
+        output_good_id: michigan_economy::digest_hex(&good.good_id.as_bytes()),
+        output_unit_id: michigan_economy::digest_hex(&good.unit_id.as_bytes()),
         output_good: good.label.clone(),
         output_unit: good.unit_label.clone(),
         output_per_batch: output.quantity_per_batch,

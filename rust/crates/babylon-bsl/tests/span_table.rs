@@ -4,14 +4,15 @@
 //! parser, plus a `SpanTable` of pre-order `(FormPath, Span)` entries.
 //! These tests exercise only the PUBLIC contract — no access to
 //! `reader.rs`'s internal stack shape.
-use babylon_bsl::reader::{read_all_spanned, SpanTable};
+use babylon_bsl::reader;
+use babylon_bsl::reader::SpanTable;
 
 /// The plan's own fixture (§2, Task 1.1(b)): two top-level `rule` forms,
 /// each `(rule <qname>)`.
 const TWO_RULES: &str = "(rule demo/x)\n(rule demo/y)";
 
 fn table_for(src: &str) -> SpanTable {
-    read_all_spanned(src.as_bytes())
+    reader::read_all_spanned(src.as_bytes())
         .expect("fixture source must parse")
         .1
 }
@@ -53,7 +54,7 @@ fn a_leading_bom_shifts_every_span_by_exactly_its_byte_width() {
 
     let plain = table_for(TWO_RULES);
     let (_, bom_table) =
-        read_all_spanned(bommed.as_bytes()).expect("BOM-prefixed source must parse");
+        reader::read_all_spanned(bommed.as_bytes()).expect("BOM-prefixed source must parse");
 
     let plain_span = plain.span_of(&[1, 1]).expect("plain path [1, 1]");
     let bom_span = bom_table.span_of(&[1, 1]).expect("bommed path [1, 1]");

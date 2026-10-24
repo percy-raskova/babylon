@@ -3,13 +3,21 @@
 //! Intent admission belongs to the authenticated organizer adapter. The circuit
 //! independently joins every immutable mandate term and shares physical scarcity.
 
+use crate::valuation::CostClose;
+use crate::AccountId;
+use crate::HouseholdContributionUse;
+use crate::HouseholdServiceReceipt;
+use crate::MaterialCircuitState;
+use crate::MoneyTransferReceipt;
 use crate::{
     FinalDemandPrincipalId, FreightLotId, GoodId, LogisticsNodeId, MaterialCircuitError, OrderId,
     RouteId, UnitId,
 };
-use babylon_kernel::{content_digest::sha256_of, currency::Currency};
+use babylon_kernel::content_digest;
+use babylon_kernel::currency::Currency;
+use std::result::Result as StdResult;
 
-type Result<T> = std::result::Result<T, MaterialCircuitError>;
+type Result<T> = StdResult<T, MaterialCircuitError>;
 
 /// At most three request/dispatch/refund rows per mandate and two due-lot
 /// arrival/loss rows per pending lot, under their existing collection ceilings.
@@ -23,7 +31,7 @@ pub struct AidMandate {
     pub donor_actor: u64,
     pub donor_contributor_id: u64,
     pub recipient_actor: u64,
-    pub payer: crate::AccountId,
+    pub payer: AccountId,
     pub donor: FinalDemandPrincipalId,
     pub recipient: FinalDemandPrincipalId,
     pub good_id: GoodId,
@@ -90,7 +98,7 @@ pub struct AidReceipt {
     pub period: u64,
     pub dispatch_period: u64,
     pub transport: AidTransport,
-    pub payer: crate::AccountId,
+    pub payer: AccountId,
     pub donor: FinalDemandPrincipalId,
     pub recipient: FinalDemandPrincipalId,
     pub good_id: GoodId,
@@ -119,7 +127,7 @@ pub fn aid_commitment_id(mandate_id: [u8; 32], period: u64) -> OrderId {
     let mut bytes = b"babylon.household-aid-commitment.v1\0".to_vec();
     bytes.extend_from_slice(&mandate_id);
     bytes.extend_from_slice(&period.to_be_bytes());
-    OrderId::from_bytes(sha256_of(&bytes))
+    OrderId::from_bytes(content_digest::sha256_of(&bytes))
 }
 
 impl AidMandate {
@@ -180,7 +188,7 @@ impl PreparedAid {
     }
 }
 
-pub(crate) fn validate(state: &crate::MaterialCircuitState) -> Result<()> {
+pub(crate) fn validate(state: &MaterialCircuitState) -> Result<()> {
     use std::collections::BTreeSet;
     let crate::CircuitAccounting::Monetary(economy) = &state.accounting else {
         return Ok(());
@@ -281,7 +289,7 @@ pub(crate) fn validate(state: &crate::MaterialCircuitState) -> Result<()> {
     Ok(())
 }
 
-fn validate_mandate(state: &crate::MaterialCircuitState, mandate: &AidMandate) -> Result<()> {
+fn validate_mandate(state: &MaterialCircuitState, mandate: &AidMandate) -> Result<()> {
     mandate.validate()?;
     let crate::CircuitAccounting::Monetary(economy) = &state.accounting else {
         return Err(MaterialCircuitError::AidInvariant);
@@ -294,7 +302,7 @@ fn validate_mandate(state: &crate::MaterialCircuitState, mandate: &AidMandate) -
         return Err(MaterialCircuitError::AidInvariant);
     };
     economy.book.cash(mandate.payer)?;
-    if mandate.payer == crate::AccountId::Household(mandate.recipient) {
+    if mandate.payer == AccountId::Household(mandate.recipient) {
         return Err(MaterialCircuitError::AidAuthority);
     }
     for principal in [mandate.donor, mandate.recipient] {
@@ -309,7 +317,7 @@ fn validate_mandate(state: &crate::MaterialCircuitState, mandate: &AidMandate) -
         {
             return Err(MaterialCircuitError::AidAuthority);
         }
-        economy.book.cash(crate::AccountId::Household(principal))?;
+        economy.book.cash(AccountId::Household(principal))?;
     }
     let donor = state
         .final_demand_principals
@@ -348,11 +356,11 @@ fn validate_mandate(state: &crate::MaterialCircuitState, mandate: &AidMandate) -
 }
 
 pub(crate) fn prepare(
-    state: &mut crate::MaterialCircuitState,
+    state: &mut MaterialCircuitState,
     inputs: &[AidResolveInput],
-    costs: &crate::valuation::CostClose,
-    services: &[crate::HouseholdServiceReceipt],
-    transfers: &mut Vec<crate::MoneyTransferReceipt>,
+    costs: &CostClose,
+    services: &[HouseholdServiceReceipt],
+    transfers: &mut Vec<MoneyTransferReceipt>,
     receipts: &mut Vec<AidReceipt>,
 ) -> Result<PreparedAid> {
     use std::collections::{BTreeMap, BTreeSet};
@@ -492,7 +500,7 @@ pub(crate) fn cash_amount(quantity: u64, mandate: &AidMandate) -> Result<Currenc
 }
 
 pub(crate) fn take_household_stock(
-    state: &mut crate::MaterialCircuitState,
+    state: &mut MaterialCircuitState,
     mandate: &AidMandate,
     quantity: u64,
 ) -> Result<u64> {
@@ -519,7 +527,7 @@ pub(crate) fn take_household_stock(
 }
 
 pub(crate) fn grant_household_stock(
-    state: &mut crate::MaterialCircuitState,
+    state: &mut MaterialCircuitState,
     mandate: &AidMandate,
     quantity: u64,
 ) -> Result<()> {
@@ -546,9 +554,9 @@ pub(crate) fn grant_household_stock(
 }
 
 pub(crate) fn contribution_uses(
-    state: &crate::MaterialCircuitState,
+    state: &MaterialCircuitState,
     receipts: &[AidReceipt],
-) -> Result<Vec<crate::HouseholdContributionUse>> {
+) -> Result<Vec<HouseholdContributionUse>> {
     let crate::CircuitAccounting::Monetary(economy) = &state.accounting else {
         return Ok(Vec::new());
     };
@@ -563,7 +571,7 @@ pub(crate) fn contribution_uses(
                 .ok()
                 .map(|i| &economy.aid.mandates[i])
                 .ok_or(MaterialCircuitError::AidAuthority)?;
-            Ok(crate::HouseholdContributionUse {
+            Ok(HouseholdContributionUse {
                 use_id: r.commitment_id.as_bytes(),
                 principal_id: r.donor,
                 actor_id: mandate.donor_actor,
@@ -577,7 +585,7 @@ pub(crate) fn contribution_uses(
 pub(crate) fn aid_lot_id(id: OrderId) -> FreightLotId {
     let mut bytes = b"babylon.household-aid-lot.v1\0".to_vec();
     bytes.extend_from_slice(&id.as_bytes());
-    FreightLotId::from_bytes(sha256_of(&bytes))
+    FreightLotId::from_bytes(content_digest::sha256_of(&bytes))
 }
 
 impl AidReceipt {
@@ -644,7 +652,7 @@ impl AidReceipt {
 }
 
 pub(crate) fn validate_receipts(
-    state: &crate::MaterialCircuitState,
+    state: &MaterialCircuitState,
     receipts: &[AidReceipt],
 ) -> Result<()> {
     use std::collections::BTreeSet;

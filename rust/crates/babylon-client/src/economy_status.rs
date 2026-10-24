@@ -1,13 +1,15 @@
 //! Bounded qualification output from the same authenticated native economic reader.
 use babylon_kernel::economic_location::EconomicLocation;
-use babylon_persistence::{
-    identity::CampaignId,
-    national_counties::national_county_reference,
-    observer_reader::{ObserverEconomyReader, ObserverEconomySnapshot, ObserverVisibility},
-    CommittedTickStatus, SemanticArchiveReader,
+use babylon_persistence::identity::CampaignId;
+use babylon_persistence::observer_reader::{
+    ObserverEconomyReader, ObserverEconomySnapshot, ObserverVisibility,
 };
+use babylon_persistence::{CommittedTickStatus, SemanticArchiveReader};
+
+use babylon_persistence::national_counties;
 use serde_json::{json, Value};
-use std::{collections::BTreeSet, time::Instant};
+use std::collections::BTreeSet;
+use std::time::Instant;
 
 pub(crate) fn read(reader: &SemanticArchiveReader, campaign: CampaignId) -> Result<Value, String> {
     let start = Instant::now();
@@ -70,7 +72,7 @@ fn summarize(snapshot: &ObserverEconomySnapshot) -> Result<Value, String> {
     if counties.len() != snapshot.counties.len() {
         return Err("Economic snapshot contains duplicate county identities".into());
     }
-    let pinned: BTreeSet<_> = national_county_reference()
+    let pinned: BTreeSet<_> = national_counties::national_county_reference()
         .map_err(|e| e.to_string())?
         .counties()
         .iter()
@@ -136,14 +138,15 @@ fn summarize(snapshot: &ObserverEconomySnapshot) -> Result<Value, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::observer::ObserverSession;
     use babylon_persistence::observer_reader::ObserverCountyEconomy;
+    use uuid::Uuid;
     #[test]
     fn county_scope_is_checked_by_identity_not_only_the_3144_count() {
-        let state =
-            crate::observer::ObserverSession::new(CampaignId::from_uuid(uuid::Uuid::from_u128(7)));
+        let state = ObserverSession::new(CampaignId::from_uuid(Uuid::from_u128(7)));
         let mut snapshot = crate::observer_io::tests::snapshot_with_event(&state, "delivery", 1);
-        snapshot.counties = national_county_reference()
-            .unwrap()
+        snapshot.counties = national_counties::national_county_reference()
+            .expect("the county reference fixture loads")
             .counties()
             .iter()
             .map(|county| ObserverCountyEconomy {
@@ -154,13 +157,16 @@ mod tests {
                 annual_avg_wkly_wage: None,
             })
             .collect();
-        let report = summarize(&snapshot).unwrap();
+        let report = summarize(&snapshot)
+            .expect("the fixture call `summarize` succeeds for the authored inputs");
         assert_eq!(report["county_count"], 3144);
         assert_eq!(report["exact_national_roster"], true);
         let first_county = snapshot.counties[0].county_geoid.clone();
         snapshot.counties[0].county_geoid = "72001".into();
         assert_eq!(
-            summarize(&snapshot).unwrap()["exact_national_roster"],
+            summarize(&snapshot)
+                .expect("the fixture call `summarize` succeeds for the authored inputs")
+                ["exact_national_roster"],
             false
         );
         snapshot.counties[0].county_geoid = snapshot.counties[1].county_geoid.clone();

@@ -9,26 +9,26 @@ fn maximum(table: &str, column: &str) -> usize {
     let table_start = format!("CREATE TABLE babylon_state.{table} (");
     let body = SCHEMA
         .split_once(&table_start)
-        .unwrap()
+        .expect("the fixture call `split_once` succeeds for the authored inputs")
         .1
         .split_once("\n);")
-        .unwrap()
+        .expect("the fixture call `split_once` succeeds for the authored inputs")
         .0;
     let prefix = format!("{column} bytea ");
     let declaration = body
         .lines()
         .map(str::trim)
         .find(|line| line.starts_with(&prefix))
-        .unwrap();
+        .expect("the fixture holds the searched element");
     declaration
         .split_once(" <= ")
-        .unwrap()
+        .expect("the fixture call `split_once` succeeds for the authored inputs")
         .1
         .split(')')
         .next()
-        .unwrap()
+        .expect("the fixture iterator yields its authored rows")
         .parse()
-        .unwrap()
+        .expect("the authored literal parses as the declared type")
 }
 
 #[test]

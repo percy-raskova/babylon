@@ -2,12 +2,14 @@
 //! immutable revision composition is the sole live dossier and search path.
 use babylon_kernel::content_digest::sha256_of;
 use babylon_persistence::archive_revision::{ArchiveDossierBounds, ArchiveReadScope};
+use babylon_persistence::identity::CampaignId;
 use babylon_persistence::{
-    identity::CampaignId, ArchiveCitation, ArchiveKnowledge, ArchiveKnowledgeGrant,
-    ArchivePageInput, ArchivePageRef, ArchiveSignal, ArchiveSubject, ArchiveSubjectKind,
-    FogSafeArchiveRenderer, SemanticArchiveError, SemanticArchiveReader,
-    SemanticArchiveReaderError,
+    ArchiveCitation, ArchiveKnowledge, ArchiveKnowledgeGrant, ArchivePageInput, ArchivePageRef,
+    ArchiveSignal, ArchiveSubject, ArchiveSubjectKind, FogSafeArchiveRenderer,
+    SemanticArchiveError, SemanticArchiveReader, SemanticArchiveReaderError,
 };
+
+use postgres::Config;
 use uuid::Uuid;
 const READ: &str = include_str!("../src/archive_revision/read.rs");
 const HISTORY: &str = include_str!("../src/archive_revision/read_history.rs");
@@ -95,7 +97,7 @@ fn exact_scope_refuses_invalid_tick_and_bounds_before_database_access() {
     assert!(ArchiveReadScope::committed(campaign, (i64::MAX as u64) + 1, [2; 32]).is_err());
     assert!(ArchiveDossierBounds::try_new(0, None).is_err());
     assert!(ArchiveDossierBounds::try_new(101, None).is_err());
-    let mut config = postgres::Config::new();
+    let mut config = Config::new();
     config
         .host("127.0.0.1")
         .port(9)

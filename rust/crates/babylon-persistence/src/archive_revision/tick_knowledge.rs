@@ -1,8 +1,8 @@
 //! Frozen disclosure sets reconstructed from authenticated bases and actual admissions.
 
-use super::storage::{signed, unsigned};
+use super::storage;
 use super::ArchiveReadScope;
-use crate::archive::{database, decode, decode_digest, decode_subject_kind, read_knowledge};
+use crate::archive;
 use crate::{
     ArchiveCitation, ArchiveKnowledge, ArchiveKnowledgeGrant, ArchivePageRef, SemanticArchiveError,
 };
@@ -17,15 +17,15 @@ pub(super) fn capture(
     scope: &ArchiveReadScope,
 ) -> Result<ArchiveKnowledge, SemanticArchiveError> {
     let campaign = scope.campaign_id();
-    let tick = signed(scope.tick())?;
+    let tick = storage::signed(scope.tick())?;
     let pinned = client.query_opt(
         "SELECT 1 FROM babylon_meta.archive_tick_knowledge_v3 WHERE campaign_id=$1 AND resolve_tick=$2",
         &[campaign.as_uuid(), &tick],
-    ).map_err(|error| database("inspect Archive production knowledge", &error))?;
+    ).map_err(|error| archive::database("inspect Archive production knowledge", &error))?;
     if pinned.is_some() {
         load(client, scope)
     } else {
-        read_knowledge(client, campaign, tick)
+        archive::read_knowledge(client, campaign, tick)
     }
 }
 
@@ -67,16 +67,22 @@ fn previous_pin(
          FROM babylon_meta.archive_tick_knowledge_v3 pin JOIN babylon_state.tick_commit marker \
          USING(campaign_id,resolve_tick) WHERE pin.campaign_id=$1 AND pin.resolve_tick<$2 \
          ORDER BY pin.resolve_tick DESC LIMIT 1",
-            &[scope.campaign_id().as_uuid(), &signed(scope.tick())?],
+            &[
+                scope.campaign_id().as_uuid(),
+                &storage::signed(scope.tick())?,
+            ],
         )
-        .map_err(|error| database("read preceding frozen Archive membership", &error))?;
+        .map_err(|error| archive::database("read preceding frozen Archive membership", &error))?;
     row.map(|row| {
         let preceding = ArchiveReadScope::committed(
             scope.campaign_id(),
-            unsigned(decode(&row, 0)?)?,
-            decode_digest(&row, 2)?,
+            storage::unsigned(archive::decode(&row, 0)?)?,
+            archive::decode_digest(&row, 2)?,
         )?;
-        Ok((unsigned(decode(&row, 1)?)?, load(client, &preceding)?))
+        Ok((
+            storage::unsigned(archive::decode(&row, 1)?)?,
+            load(client, &preceding)?,
+        ))
     })
     .transpose()
 }
@@ -112,13 +118,13 @@ pub(super) fn pin(
     scope: &ArchiveReadScope,
 ) -> Result<ArchiveKnowledge, SemanticArchiveError> {
     let campaign = scope.campaign_id();
-    let tick = signed(scope.tick())?;
+    let tick = storage::signed(scope.tick())?;
     let exists = client.query_opt(
         "SELECT 1 FROM babylon_meta.archive_tick_knowledge_v3 WHERE campaign_id=$1 AND resolve_tick=$2",
         &[campaign.as_uuid(), &tick],
-    ).map_err(|error| database("inspect pinned Archive knowledge", &error))?.is_some();
+    ).map_err(|error| archive::database("inspect pinned Archive knowledge", &error))?.is_some();
     if !exists {
-        let knowledge = read_knowledge(client, campaign, tick)?;
+        let knowledge = archive::read_knowledge(client, campaign, tick)?;
         let previous = previous_pin(client, scope)?;
         let checkpoint =
             checkpoint_for_tick(scope.tick(), previous.as_ref().map(|(tick, _)| *tick))?;
@@ -140,8 +146,8 @@ fn insert_pin(
     admitted: &ArchiveKnowledge,
 ) -> Result<(), SemanticArchiveError> {
     let campaign = scope.campaign_id();
-    let tick = signed(scope.tick())?;
-    let checkpoint = signed(checkpoint)?;
+    let tick = storage::signed(scope.tick())?;
+    let checkpoint = storage::signed(checkpoint)?;
     let count = i32::try_from(knowledge.rows().count())
         .map_err(|_| SemanticArchiveError::CollectionBound)?;
     let admitted_count = i32::try_from(admitted.rows().count())
@@ -154,7 +160,7 @@ fn insert_pin(
         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)",
         &[campaign.as_uuid(),&tick,&checkpoint,&&hash[..],&&crate::archive_worker_contract_sha256()[..],
           &&knowledge.sha256()[..],&count,&&admitted.sha256()[..],&admitted_count])
-        .map_err(|error|database("pin exact Archive knowledge and admission identity",&error))?;
+        .map_err(|error|archive::database("pin exact Archive knowledge and admission identity",&error))?;
     let mut subject_kinds = Vec::new();
     let mut subject_ids = Vec::new();
     let mut grant_keys = Vec::new();
@@ -168,7 +174,7 @@ fn insert_pin(
         SELECT $1,$2,$3,membership.subject_kind,membership.subject_id,membership.grant_key \
         FROM UNNEST($4::text[],$5::text[],$6::text[]) AS membership(subject_kind,subject_id,grant_key)",
         &[campaign.as_uuid(),&checkpoint,&tick,&subject_kinds,&subject_ids,&grant_keys])
-        .map_err(|error|database("pin exact Archive membership admissions",&error))?;
+        .map_err(|error|archive::database("pin exact Archive membership admissions",&error))?;
     if inserted
         != u64::try_from(admitted_count).map_err(|_| SemanticArchiveError::CollectionBound)?
     {
@@ -182,7 +188,9 @@ fn insert_pin(
         ANALYZE babylon_meta.archive_tick_knowledge_v3; \
         ANALYZE babylon_meta.archive_knowledge_membership_v3",
         )
-        .map_err(|error| database("refresh frozen Archive membership statistics", &error))?;
+        .map_err(|error| {
+            archive::database("refresh frozen Archive membership statistics", &error)
+        })?;
     Ok(())
 }
 
@@ -191,20 +199,20 @@ pub(super) fn load(
     scope: &ArchiveReadScope,
 ) -> Result<ArchiveKnowledge, SemanticArchiveError> {
     let campaign = scope.campaign_id();
-    let tick = signed(scope.tick())?;
+    let tick = storage::signed(scope.tick())?;
     let header = client.query_opt(
         "SELECT pin.tick_content_hash,pin.worker_contract_sha256,pin.knowledge_sha256,pin.grant_count,verified.valid IS TRUE \
          FROM babylon_meta.archive_tick_knowledge_v3 pin JOIN public.v_archive_tick_knowledge_v2 verified \
          USING(campaign_id,resolve_tick) WHERE pin.campaign_id=$1 AND pin.resolve_tick=$2",
         &[campaign.as_uuid(), &tick],
-    ).map_err(|error| database("read authenticated frozen Archive knowledge identity", &error))?
+    ).map_err(|error| archive::database("read authenticated frozen Archive knowledge identity", &error))?
         .ok_or(SemanticArchiveError::StoredPageMismatch)?;
-    if Some(decode_digest(&header, 0)?) != scope.tick_content_hash()
-        || decode_digest(&header, 1)? != crate::archive_worker_contract_sha256()
+    if Some(archive::decode_digest(&header, 0)?) != scope.tick_content_hash()
+        || archive::decode_digest(&header, 1)? != crate::archive_worker_contract_sha256()
     {
         return Err(SemanticArchiveError::ReceiptConflict);
     }
-    if !decode::<bool>(&header, 4)? {
+    if !archive::decode::<bool>(&header, 4)? {
         return Err(SemanticArchiveError::StoredPageMismatch);
     }
     let rows = client.query("SELECT member.subject_kind,member.subject_id,member.grant_key, \
@@ -212,8 +220,8 @@ pub(super) fn load(
         FROM babylon_meta.archive_knowledge_membership_scope_v3 member JOIN babylon_meta.archive_knowledge_grant_witness_v1 grant_row \
         USING(campaign_id,subject_kind,subject_id,grant_key) WHERE member.campaign_id=$1 AND member.resolve_tick=$2 \
         ORDER BY member.subject_kind,member.subject_id,member.grant_key LIMIT 65536", &[campaign.as_uuid(),&tick])
-        .map_err(|error|database("read frozen Archive membership projection",&error))?;
-    let count = usize::try_from(decode::<i32>(&header, 3)?)
+        .map_err(|error|archive::database("read frozen Archive membership projection",&error))?;
+    let count = usize::try_from(archive::decode::<i32>(&header, 3)?)
         .map_err(|_| SemanticArchiveError::StoredPageMismatch)?;
     if count > 65535 || count != rows.len() {
         return Err(SemanticArchiveError::StoredPageMismatch);
@@ -221,23 +229,23 @@ pub(super) fn load(
     let grants = rows
         .iter()
         .map(|row| {
-            let granted_tick = unsigned(decode(row, 3)?)?;
+            let granted_tick = storage::unsigned(archive::decode(row, 3)?)?;
             if granted_tick > scope.tick() {
                 return Err(SemanticArchiveError::StoredPageMismatch);
             }
             ArchiveKnowledgeGrant::try_new(
                 ArchivePageRef::try_new(
-                    decode_subject_kind(&decode::<String>(row, 0)?)?,
-                    decode(row, 1)?,
+                    archive::decode_subject_kind(&archive::decode::<String>(row, 0)?)?,
+                    archive::decode(row, 1)?,
                 )?,
-                decode(row, 2)?,
+                archive::decode(row, 2)?,
                 granted_tick,
-                ArchiveCitation::try_new(decode(row, 4)?, decode(row, 5)?)?,
+                ArchiveCitation::try_new(archive::decode(row, 4)?, archive::decode(row, 5)?)?,
             )
         })
         .collect::<Result<Vec<_>, _>>()?;
     let knowledge = ArchiveKnowledge::try_new(grants)?;
-    if knowledge.sha256() != decode_digest(&header, 2)? {
+    if knowledge.sha256() != archive::decode_digest(&header, 2)? {
         return Err(SemanticArchiveError::StoredPageMismatch);
     }
     Ok(knowledge)

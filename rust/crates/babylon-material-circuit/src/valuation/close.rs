@@ -1,8 +1,21 @@
 //! Carrying amounts move at the corresponding physical phase, inside its atomic close.
 use super::book::StockKey;
-use super::{
-    add, amount, portion, sub, zero, HistoricalCostBook, IncomeReceipt, IncomeStatement, Result,
-};
+use super::prices::GoodsCostLedger;
+use super::HistoricalCostBook;
+use super::IncomeReceipt;
+use super::IncomeStatement;
+use super::Result;
+use crate::payments::AttendanceLedger;
+use crate::payments::LaborUse;
+use crate::AidFreightLot;
+use crate::AidMandate;
+use crate::EquipmentWearReceipt;
+use crate::GoodId;
+use crate::HouseholdConsumptionReceipt;
+use crate::LaborUseReceipt;
+use crate::LocalTransferReceipt;
+use crate::MaintenanceReceipt;
+use crate::ServicePerformanceReceipt;
 use crate::{
     AccountId, CircuitAccounting, FinalDemandOrder, FreightLotId, MaterialCircuitError,
     MaterialCircuitState, MemberLaborUseReceipt, OrderRow, OutboundOrderId, ProcessOutput,
@@ -10,12 +23,13 @@ use crate::{
 };
 use babylon_kernel::currency::Currency;
 use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 
 pub(crate) struct CostClose {
     pub(super) active: Option<ActiveCosts>,
-    pub(super) attendance: crate::payments::AttendanceLedger,
-    pub(crate) wear_receipts: Vec<crate::EquipmentWearReceipt>,
-    pub(super) goods: super::prices::GoodsCostLedger,
+    pub(super) attendance: AttendanceLedger,
+    pub(crate) wear_receipts: Vec<EquipmentWearReceipt>,
+    pub(super) goods: GoodsCostLedger,
 }
 pub(super) struct ActiveCosts {
     pub(super) book: HistoricalCostBook,
@@ -46,19 +60,19 @@ impl CostClose {
         Self {
             active,
             wear_receipts: Vec::new(),
-            goods: super::prices::GoodsCostLedger::default(),
-            attendance: crate::payments::AttendanceLedger::default(),
+            goods: GoodsCostLedger::default(),
+            attendance: AttendanceLedger::default(),
         }
     }
 
-    pub(crate) fn admit_attendance(&mut self, attendance: crate::payments::AttendanceLedger) {
+    pub(crate) fn admit_attendance(&mut self, attendance: AttendanceLedger) {
         self.attendance = attendance;
     }
 
     pub(crate) fn finish_attendance(
         &mut self,
         state: &MaterialCircuitState,
-    ) -> Result<(Vec<crate::LaborUseReceipt>, Vec<MemberLaborUseReceipt>)> {
+    ) -> Result<(Vec<LaborUseReceipt>, Vec<MemberLaborUseReceipt>)> {
         std::mem::take(&mut self.attendance).finish(state)
     }
 
@@ -68,9 +82,9 @@ impl CostClose {
         available: u64,
         quantity: u64,
     ) -> Result<Currency> {
-        self.active
-            .as_mut()
-            .map_or(Ok(zero()), |a| a.book.take_stock(key, available, quantity))
+        self.active.as_mut().map_or(Ok(super::zero()), |a| {
+            a.book.take_stock(key, available, quantity)
+        })
     }
 
     pub(crate) fn output(
@@ -95,18 +109,15 @@ impl CostClose {
             .quantity_per_batch
             .checked_mul(batches)
             .ok_or(MaterialCircuitError::Arithmetic)?;
-        let wages = self.attendance.consume(
-            output.site_id,
-            labor.unit_id,
-            hours,
-            crate::payments::LaborUse::Production,
-        )?;
+        let wages =
+            self.attendance
+                .consume(output.site_id, labor.unit_id, hours, LaborUse::Production)?;
         let key = (
             AccountId::Site(output.site_id),
             output.good_id,
             output.unit_id,
         );
-        let carrying = add(inputs, wages)?;
+        let carrying = super::add(inputs, wages)?;
         active.book.credit_stock(key, carrying)?;
         let quantity = output
             .quantity_per_batch
@@ -119,7 +130,7 @@ impl CostClose {
         )?;
         let statement = active.statement(key.0)?;
         statement.productive_labor_capitalized =
-            add(statement.productive_labor_capitalized, wages)?;
+            super::add(statement.productive_labor_capitalized, wages)?;
         Ok(())
     }
 
@@ -127,11 +138,11 @@ impl CostClose {
         self.active
             .as_ref()
             .and_then(|a| a.book.stocks.get(&key).copied())
-            .unwrap_or_else(zero)
+            .unwrap_or_else(super::zero)
     }
     pub(crate) fn service_handoff(
         &mut self,
-        row: &crate::ServicePerformanceReceipt,
+        row: &ServicePerformanceReceipt,
         available: u64,
     ) -> Result<()> {
         if row.performed_quantity == 0 {
@@ -146,10 +157,10 @@ impl CostClose {
             available,
             row.performed_quantity,
         )?;
-        let payment = amount(row.performed_quantity, row.unit_price)?;
+        let payment = super::amount(row.performed_quantity, row.unit_price)?;
         active.sale(owner, payment, cost)
     }
-    pub(crate) fn receive_service(&mut self, row: &crate::ServicePerformanceReceipt) -> Result<()> {
+    pub(crate) fn receive_service(&mut self, row: &ServicePerformanceReceipt) -> Result<()> {
         if row.performed_quantity == 0 {
             return Ok(());
         }
@@ -159,7 +170,7 @@ impl CostClose {
             .ok_or(MaterialCircuitError::MonetaryInvariant)?;
         active.book.credit_stock(
             (row.buyer, row.good_id, row.unit_id),
-            amount(row.performed_quantity, row.unit_price)?,
+            super::amount(row.performed_quantity, row.unit_price)?,
         )
     }
     pub(crate) fn consume_service(
@@ -175,9 +186,9 @@ impl CostClose {
         let cost = active.book.take_stock(key, available, quantity)?;
         let statement = active.statement(key.0)?;
         if finite_sink {
-            statement.final_demand_outlay = add(statement.final_demand_outlay, cost)?;
+            statement.final_demand_outlay = super::add(statement.final_demand_outlay, cost)?;
         } else {
-            statement.consumption_expense = add(statement.consumption_expense, cost)?;
+            statement.consumption_expense = super::add(statement.consumption_expense, cost)?;
         }
         Ok(())
     }
@@ -187,18 +198,18 @@ impl CostClose {
         };
         let cost = active.book.take_stock(key, quantity, quantity)?;
         let statement = active.statement(key.0)?;
-        statement.unused_service_expense = add(statement.unused_service_expense, cost)?;
+        statement.unused_service_expense = super::add(statement.unused_service_expense, cost)?;
         Ok(())
     }
     pub(crate) fn clear_service_rows(
         &mut self,
-        services: &std::collections::BTreeSet<(crate::GoodId, UnitId)>,
+        services: &BTreeSet<(GoodId, UnitId)>,
     ) -> Result<()> {
         let Some(active) = &mut self.active else {
             return Ok(());
         };
         for (key, cost) in &active.book.stocks {
-            if services.contains(&(key.1, key.2)) && *cost != zero() {
+            if services.contains(&(key.1, key.2)) && *cost != super::zero() {
                 return Err(MaterialCircuitError::ValuationInvariant);
             }
         }
@@ -252,14 +263,14 @@ impl CostClose {
             .freight
             .get(&lot.lot_id)
             .ok_or(MaterialCircuitError::ValuationInvariant)?;
-        let lost_cost = portion(opening, lot.quantity, lost_quantity)?;
+        let lost_cost = super::portion(opening, lot.quantity, lost_quantity)?;
         let remaining = lot
             .quantity
             .checked_sub(lost_quantity)
             .ok_or(MaterialCircuitError::Arithmetic)?;
-        let retained = sub(opening, lost_cost)?;
+        let retained = super::sub(opening, lost_cost)?;
         let statement = active.statement(owner)?;
-        statement.freight_loss_expense = add(statement.freight_loss_expense, lost_cost)?;
+        statement.freight_loss_expense = super::add(statement.freight_loss_expense, lost_cost)?;
         if remaining == 0 || final_arrival {
             active.book.freight.remove(&lot.lot_id);
         } else {
@@ -286,7 +297,7 @@ impl CostClose {
 
     pub(crate) fn dispatch_aid(
         &mut self,
-        mandate: &crate::AidMandate,
+        mandate: &AidMandate,
         available: u64,
         quantity: u64,
         lot: FreightLotId,
@@ -313,7 +324,7 @@ impl CostClose {
 
     pub(crate) fn local_aid(
         &mut self,
-        mandate: &crate::AidMandate,
+        mandate: &AidMandate,
         available: u64,
         quantity: u64,
         cash: Currency,
@@ -349,15 +360,15 @@ impl CostClose {
             .as_mut()
             .ok_or(MaterialCircuitError::ValuationInvariant)?;
         let statement = active.statement(sender)?;
-        statement.gift_expense = add(statement.gift_expense, cash)?;
+        statement.gift_expense = super::add(statement.gift_expense, cash)?;
         let statement = active.statement(recipient)?;
-        statement.gift_income = add(statement.gift_income, cash)?;
+        statement.gift_income = super::add(statement.gift_income, cash)?;
         Ok(())
     }
 
     pub(crate) fn grant_aid(
         &mut self,
-        mandate: &crate::AidMandate,
+        mandate: &AidMandate,
         carrying: Currency,
         cash: Currency,
     ) -> Result<()> {
@@ -373,19 +384,19 @@ impl CostClose {
             ),
             carrying,
         )?;
-        let total = add(carrying, cash)?;
+        let total = super::add(carrying, cash)?;
         let donor = active.statement(AccountId::Household(mandate.donor))?;
-        donor.gift_expense = add(donor.gift_expense, carrying)?;
+        donor.gift_expense = super::add(donor.gift_expense, carrying)?;
         let payer = active.statement(mandate.payer)?;
-        payer.gift_expense = add(payer.gift_expense, cash)?;
+        payer.gift_expense = super::add(payer.gift_expense, cash)?;
         let recipient = active.statement(AccountId::Household(mandate.recipient))?;
-        recipient.gift_income = add(recipient.gift_income, total)?;
+        recipient.gift_income = super::add(recipient.gift_income, total)?;
         Ok(())
     }
 
     pub(crate) fn aid_freight(
         &mut self,
-        lot: &crate::AidFreightLot,
+        lot: &AidFreightLot,
         lost_quantity: u64,
         final_arrival: bool,
     ) -> Result<(Currency, Currency)> {
@@ -401,14 +412,14 @@ impl CostClose {
         if owner != AccountId::Household(lot.donor) {
             return Err(MaterialCircuitError::ValuationInvariant);
         }
-        let lost_cost = portion(opening, lot.quantity, lost_quantity)?;
-        let retained = sub(opening, lost_cost)?;
+        let lost_cost = super::portion(opening, lot.quantity, lost_quantity)?;
+        let retained = super::sub(opening, lost_cost)?;
         let remaining = lot
             .quantity
             .checked_sub(lost_quantity)
             .ok_or(MaterialCircuitError::Arithmetic)?;
         let statement = active.statement(owner)?;
-        statement.freight_loss_expense = add(statement.freight_loss_expense, lost_cost)?;
+        statement.freight_loss_expense = super::add(statement.freight_loss_expense, lost_cost)?;
         if final_arrival || remaining == 0 {
             active.book.freight.remove(&lot.lot_id);
         } else {
@@ -447,7 +458,7 @@ impl CostClose {
     pub(crate) fn receive_local(
         &mut self,
         state: &MaterialCircuitState,
-        receipt: &crate::LocalTransferReceipt,
+        receipt: &LocalTransferReceipt,
     ) -> Result<()> {
         let Some(active) = &mut self.active else {
             return Ok(());
@@ -499,12 +510,12 @@ impl CostClose {
             active.book.credit_stock(key, payment)?;
         } else {
             let statement = active.statement(buyer)?;
-            statement.final_demand_outlay = add(statement.final_demand_outlay, payment)?;
+            statement.final_demand_outlay = super::add(statement.final_demand_outlay, payment)?;
         }
         Ok(())
     }
 
-    pub(crate) fn consume(&mut self, receipt: &crate::HouseholdConsumptionReceipt) -> Result<()> {
+    pub(crate) fn consume(&mut self, receipt: &HouseholdConsumptionReceipt) -> Result<()> {
         let Some(active) = &mut self.active else {
             return Ok(());
         };
@@ -515,13 +526,13 @@ impl CostClose {
             receipt.consumed_quantity,
         )?;
         let statement = active.statement(owner)?;
-        statement.consumption_expense = add(statement.consumption_expense, cost)?;
+        statement.consumption_expense = super::add(statement.consumption_expense, cost)?;
         Ok(())
     }
 
     pub(crate) fn handling(
         &mut self,
-        key: (SiteId, crate::GoodId, UnitId),
+        key: (SiteId, GoodId, UnitId),
         unit: UnitId,
         quantity: u64,
         hours: u64,
@@ -530,18 +541,18 @@ impl CostClose {
         let Some(active) = &mut self.active else {
             return Ok(());
         };
-        let wages =
-            self.attendance
-                .consume(site, unit, hours, crate::payments::LaborUse::Handling)?;
+        let wages = self
+            .attendance
+            .consume(site, unit, hours, LaborUse::Handling)?;
         let statement = active.statement(AccountId::Site(site))?;
-        statement.handling_expense = add(statement.handling_expense, wages)?;
+        statement.handling_expense = super::add(statement.handling_expense, wages)?;
         self.goods.handled(key, quantity, wages)
     }
 
     pub(crate) fn maintenance(
         &mut self,
         _state: &MaterialCircuitState,
-        receipt: &crate::MaintenanceReceipt,
+        receipt: &MaintenanceReceipt,
     ) -> Result<()> {
         let Some(active) = &mut self.active else {
             return Ok(());
@@ -557,12 +568,13 @@ impl CostClose {
             binding.provider_site_id,
             binding.labor_unit_id,
             receipt.consumed_labor_hours,
-            crate::payments::LaborUse::Maintenance,
+            LaborUse::Maintenance,
         )?;
         let statement = active.statement(owner)?;
         statement.maintenance_material_expense =
-            add(statement.maintenance_material_expense, materials)?;
-        statement.maintenance_labor_expense = add(statement.maintenance_labor_expense, wages)?;
+            super::add(statement.maintenance_material_expense, materials)?;
+        statement.maintenance_labor_expense =
+            super::add(statement.maintenance_labor_expense, wages)?;
         Ok(())
     }
 
@@ -580,30 +592,30 @@ impl CostClose {
             if row.period != state.period {
                 return Err(MaterialCircuitError::ValuationInvariant);
             }
-            let total = wages.entry(row.employer).or_insert_with(zero);
-            *total = add(*total, row.amount)?;
+            let total = wages.entry(row.employer).or_insert_with(super::zero);
+            *total = super::add(*total, row.amount)?;
             let statement = active.statement(row.payee)?;
-            statement.wage_income = add(statement.wage_income, row.amount)?;
+            statement.wage_income = super::add(statement.wage_income, row.amount)?;
         }
         for row in labor {
             row.validate()?;
             let idle = row.idle_wages;
             let statement = active.statement(AccountId::Site(row.site_id))?;
-            statement.idle_labor_expense = add(statement.idle_labor_expense, idle)?;
+            statement.idle_labor_expense = super::add(statement.idle_labor_expense, idle)?;
         }
         for (account, statement) in &active.income {
-            let classified = add(
-                add(
+            let classified = super::add(
+                super::add(
                     statement.productive_labor_capitalized,
                     statement.idle_labor_expense,
                 )?,
-                add(
+                super::add(
                     statement.handling_expense,
                     statement.maintenance_labor_expense,
                 )?,
             )?;
-            if add(classified, statement.installation_labor_capitalized)?
-                != wages.get(account).copied().unwrap_or_else(zero)
+            if super::add(classified, statement.installation_labor_capitalized)?
+                != wages.get(account).copied().unwrap_or_else(super::zero)
             {
                 return Err(MaterialCircuitError::ValuationInvariant);
             }
@@ -627,14 +639,18 @@ impl CostClose {
                 .contributions
                 .get(&account)
                 .copied()
-                .unwrap_or_else(zero);
+                .unwrap_or_else(super::zero);
             let distributions_paid = active
                 .distributions
                 .get(&account)
                 .copied()
-                .unwrap_or_else(zero);
-            let closing_contributed_capital = add(row.contributed_capital, contributions_received)?;
-            let closing = sub(add(row.retained_earnings, net_income)?, distributions_paid)?;
+                .unwrap_or_else(super::zero);
+            let closing_contributed_capital =
+                super::add(row.contributed_capital, contributions_received)?;
+            let closing = super::sub(
+                super::add(row.retained_earnings, net_income)?,
+                distributions_paid,
+            )?;
             receipts.push(IncomeReceipt {
                 account,
                 period: state.period,
@@ -668,8 +684,8 @@ impl ActiveCosts {
     }
     fn sale(&mut self, account: AccountId, revenue: Currency, cost: Currency) -> Result<()> {
         let statement = self.statement(account)?;
-        statement.sales = add(statement.sales, revenue)?;
-        statement.cost_of_goods_sold = add(statement.cost_of_goods_sold, cost)?;
+        statement.sales = super::add(statement.sales, revenue)?;
+        statement.cost_of_goods_sold = super::add(statement.cost_of_goods_sold, cost)?;
         Ok(())
     }
 }
@@ -680,7 +696,7 @@ fn purchase_amount(
     quantity: u64,
 ) -> Result<Currency> {
     let CircuitAccounting::Monetary(economy) = &state.accounting else {
-        return Ok(zero());
+        return Ok(super::zero());
     };
-    amount(quantity, economy.book.purchase(order)?.unit_price)
+    super::amount(quantity, economy.book.purchase(order)?.unit_price)
 }

@@ -49,19 +49,15 @@ use lsp_types::{
     WorkspaceFullDocumentDiagnosticReport, WorkspaceUnchangedDocumentDiagnosticReport,
 };
 
-use crate::authoring::{
-    completion_items, hover, semantic_tokens, signature_help, AuthoringSnapshot,
-};
+use crate::authoring::AuthoringSnapshot;
 use crate::capabilities::server_capabilities;
 use crate::content_manifest::ContentSetManifest;
-use crate::diagnostics::{compute_result_id, missing_manifest_row_diagnostic};
+use crate::diagnostics::missing_manifest_row_diagnostic;
 use crate::document_store::DocumentStore;
-use crate::pass::{
-    analyze_probability_authoring, content_relative_path, diagnose_bsl, LiveSourceReader,
-    SourceReader,
-};
-use crate::uri::{file_path_from_uri, uri_from_file_path};
-
+use crate::line_index::LineIndex;
+use crate::pass::{LiveSourceReader, SourceReader};
+use lsp_types::Diagnostic;
+use std::collections::BTreeSet;
 /// Exit code for a clean `shutdown` -> `exit` sequence (the LSP spec:
 /// "exit should exit... with success code 0 if... shutdown request was
 /// received before").
@@ -118,10 +114,16 @@ fn discover_state(params: &InitializeParams) -> (Option<ContentSetManifest>, Opt
         .workspace_folders
         .as_ref()
         .and_then(|folders| folders.first())
-        .and_then(|folder| file_path_from_uri(&folder.uri))
+        .and_then(|folder| crate::uri::file_path_from_uri(&folder.uri))
         .or_else(|| {
-            #[allow(deprecated)]
-            params.root_uri.as_ref().and_then(file_path_from_uri)
+            #[allow(
+                deprecated,
+                reason = "the fixture exercises the retained deprecated entry point"
+            )]
+            params
+                .root_uri
+                .as_ref()
+                .and_then(crate::uri::file_path_from_uri)
         });
     let Some(workspace_root) = workspace_root else {
         return (None, None);
@@ -342,16 +344,13 @@ fn handle_request(
     None
 }
 
-fn source_for_authoring(
-    state: &ServerState,
-    uri: &Uri,
-) -> Option<(String, crate::line_index::LineIndex)> {
+fn source_for_authoring(state: &ServerState, uri: &Uri) -> Option<(String, LineIndex)> {
     if let Some(document) = state.store.get(uri) {
         return Some((document.text.clone(), document.line_index.clone()));
     }
-    let path = file_path_from_uri(uri)?;
+    let path = crate::uri::file_path_from_uri(uri)?;
     let text = std::fs::read_to_string(path).ok()?;
-    let line_index = crate::line_index::LineIndex::new(&text);
+    let line_index = LineIndex::new(&text);
     Some((text, line_index))
 }
 
@@ -361,14 +360,14 @@ fn probability_snapshot(state: &ServerState, uri: &Uri) -> AuthoringSnapshot {
     else {
         return AuthoringSnapshot::default();
     };
-    let Some(path) = content_relative_path(content_root, uri) else {
+    let Some(path) = crate::pass::content_relative_path(content_root, uri) else {
         return AuthoringSnapshot::default();
     };
     let reader = LiveSourceReader {
         content_root,
         store: &state.store,
     };
-    analyze_probability_authoring(&path, manifest, &reader)
+    crate::pass::analyze_probability_authoring(&path, manifest, &reader)
 }
 
 fn handle_completion(connection: &Connection, state: &ServerState, req: &RawRequest) {
@@ -384,11 +383,13 @@ fn handle_completion(connection: &Connection, state: &ServerState, req: &RawRequ
         let offset =
             line_index.position_to_offset(&text, params.text_document_position.position)?;
         let snapshot = probability_snapshot(state, &uri);
-        Some(CompletionResponse::Array(completion_items(
-            &text,
-            &snapshot,
-            usize::try_from(offset).unwrap_or(usize::MAX),
-        )))
+        Some(CompletionResponse::Array(
+            crate::authoring::completion_items(
+                &text,
+                &snapshot,
+                usize::try_from(offset).unwrap_or(usize::MAX),
+            ),
+        ))
     });
     let response = Response::new_ok(req.id.clone(), result);
     let _ = connection.sender.send(response.into());
@@ -407,7 +408,7 @@ fn handle_hover(connection: &Connection, state: &ServerState, req: &RawRequest) 
         let offset =
             line_index.position_to_offset(&text, params.text_document_position_params.position)?;
         let snapshot = probability_snapshot(state, &uri);
-        hover(
+        crate::authoring::hover(
             &text,
             &line_index,
             &snapshot,
@@ -431,7 +432,7 @@ fn handle_signature_help(connection: &Connection, state: &ServerState, req: &Raw
         let offset =
             line_index.position_to_offset(&text, params.text_document_position_params.position)?;
         let snapshot = probability_snapshot(state, &uri);
-        signature_help(
+        crate::authoring::signature_help(
             &text,
             &snapshot,
             usize::try_from(offset).unwrap_or(usize::MAX),
@@ -452,7 +453,11 @@ fn handle_semantic_tokens(connection: &Connection, state: &ServerState, req: &Ra
     let uri = params.text_document.uri;
     let result = source_for_authoring(state, &uri).map(|(text, line_index)| {
         let snapshot = probability_snapshot(state, &uri);
-        SemanticTokensResult::Tokens(semantic_tokens(&text, &line_index, &snapshot))
+        SemanticTokensResult::Tokens(crate::authoring::semantic_tokens(
+            &text,
+            &line_index,
+            &snapshot,
+        ))
     });
     let response = Response::new_ok(req.id.clone(), result);
     let _ = connection.sender.send(response.into());
@@ -522,21 +527,21 @@ fn apply_did_close(state: &mut ServerState, note: &RawNotification) {
 /// `resultId`, cache the id, and return `(diagnostics, resultId)` — the
 /// one computation push (`push_diagnostics_for`) and pull (`handle_
 /// document_diagnostic`/`handle_workspace_diagnostic`) both call through.
-fn compute_diagnostics(state: &mut ServerState, uri: &Uri) -> (Vec<lsp_types::Diagnostic>, String) {
+fn compute_diagnostics(state: &mut ServerState, uri: &Uri) -> (Vec<Diagnostic>, String) {
     let Some(content_root) = state.content_root.clone() else {
         return unavailable_context_diagnostics(state, uri);
     };
     let Some(manifest) = state.manifest.as_ref() else {
         return unavailable_context_diagnostics(state, uri);
     };
-    let Some(path) = content_relative_path(&content_root, uri) else {
+    let Some(path) = crate::pass::content_relative_path(&content_root, uri) else {
         return unavailable_context_diagnostics(state, uri);
     };
     let reader = LiveSourceReader {
         content_root: &content_root,
         store: &state.store,
     };
-    let diagnostics = diagnose_bsl(uri, &path, manifest, &reader);
+    let diagnostics = crate::pass::diagnose_bsl(uri, &path, manifest, &reader);
     // §6.1's own `resultId` definition: sha256 over the ordered (uri,
     // bytes) tuples of the SET plus the manifest bytes. Wave 1's
     // approximation covers the ONE file being diagnosed (not every
@@ -546,27 +551,25 @@ fn compute_diagnostics(state: &mut ServerState, uri: &Uri) -> (Vec<lsp_types::Di
     // disclosed simplification, not the plan's literal per-set hash.
     let bytes = reader.read(&path).unwrap_or_default();
     let manifest_bytes = std::fs::read(content_root.join("content-sets.toml")).unwrap_or_default();
-    let result_id = compute_result_id(&[(uri, bytes.as_bytes())], &manifest_bytes);
+    let result_id =
+        crate::diagnostics::compute_result_id(&[(uri, bytes.as_bytes())], &manifest_bytes);
     (diagnostics, result_id)
 }
 
-fn unavailable_context_diagnostics(
-    state: &ServerState,
-    uri: &Uri,
-) -> (Vec<lsp_types::Diagnostic>, String) {
-    let path = file_path_from_uri(uri);
+fn unavailable_context_diagnostics(state: &ServerState, uri: &Uri) -> (Vec<Diagnostic>, String) {
+    let path = crate::uri::file_path_from_uri(uri);
     if !path.as_ref().is_some_and(|path| {
         matches!(
             path.extension().and_then(|extension| extension.to_str()),
             Some("bsl" | "bscn")
         )
     }) {
-        return (Vec::new(), compute_result_id(&[], &[]));
+        return (Vec::new(), crate::diagnostics::compute_result_id(&[], &[]));
     }
     let Some((text, line_index)) = source_for_authoring(state, uri) else {
-        return (Vec::new(), compute_result_id(&[], &[]));
+        return (Vec::new(), crate::diagnostics::compute_result_id(&[], &[]));
     };
-    let result_id = compute_result_id(&[(uri, text.as_bytes())], &[]);
+    let result_id = crate::diagnostics::compute_result_id(&[(uri, text.as_bytes())], &[]);
     (
         vec![missing_manifest_row_diagnostic(
             &text,
@@ -630,11 +633,8 @@ fn handle_document_diagnostic(connection: &Connection, state: &mut ServerState, 
 /// already covered by it (§6.5) — a `BTreeSet` (not a `HashMap`/`HashSet`
 /// iteration order feeding output, global constraint 2) so the report's
 /// own item order is deterministic.
-fn workspace_diagnostic_paths(
-    state: &ServerState,
-    content_root: &Path,
-) -> std::collections::BTreeSet<String> {
-    let mut paths = std::collections::BTreeSet::new();
+fn workspace_diagnostic_paths(state: &ServerState, content_root: &Path) -> BTreeSet<String> {
+    let mut paths = BTreeSet::new();
     if let Some(manifest) = state.manifest.as_ref() {
         for set in &manifest.sets {
             paths.insert(set.scenario.clone());
@@ -643,9 +643,9 @@ fn workspace_diagnostic_paths(
         }
     }
     for uri in state.store.open_uris() {
-        if let Some(path) = content_relative_path(content_root, &uri) {
+        if let Some(path) = crate::pass::content_relative_path(content_root, &uri) {
             paths.insert(path);
-        } else if let Some(path) = file_path_from_uri(&uri) {
+        } else if let Some(path) = crate::uri::file_path_from_uri(&uri) {
             // Path::join retains this absolute path in the workspace response.
             // Its diagnostic still explicitly refuses to claim campaign context.
             paths.insert(path.to_string_lossy().into_owned());
@@ -675,7 +675,10 @@ fn handle_workspace_diagnostic(connection: &Connection, state: &mut ServerState,
     // `Uri`'s interior `Cell` is parse-laziness bookkeeping, not key
     // semantics: lsp-types defines `Eq`/`Hash` over `as_str()`, so it is a
     // sound, stable map key despite the lint's interior-mutability heuristics.
-    #[allow(clippy::mutable_key_type)]
+    #[allow(
+        clippy::mutable_key_type,
+        reason = "the key is an authored identity wrapper with stable ordering"
+    )]
     let previous: HashMap<Uri, String> = params
         .previous_result_ids
         .into_iter()
@@ -686,7 +689,7 @@ fn handle_workspace_diagnostic(connection: &Connection, state: &mut ServerState,
     let paths = workspace_diagnostic_paths(state, &content_root);
     let mut items = Vec::with_capacity(paths.len());
     for path in paths {
-        let Some(uri) = uri_from_file_path(&content_root.join(&path)) else {
+        let Some(uri) = crate::uri::uri_from_file_path(&content_root.join(&path)) else {
             continue;
         };
         let (diagnostics, result_id) = compute_diagnostics(state, &uri);
@@ -733,6 +736,7 @@ fn respond_invalid_params(connection: &Connection, req: &RawRequest, detail: &st
 
 #[cfg(test)]
 mod tests {
+
     use super::{ServerState, EXIT_CLEAN, EXIT_UNCLEAN};
     use crate::content_manifest::ContentSetManifest;
     use crate::document_store::DocumentStore;
@@ -749,6 +753,7 @@ mod tests {
         ClientCapabilities, DidChangeWatchedFilesClientCapabilities, InitializeParams,
         InitializedParams, Uri, WorkspaceClientCapabilities,
     };
+    use serde_json::Value;
     use std::collections::HashMap;
     use std::path::{Path, PathBuf};
     use std::thread;
@@ -894,7 +899,7 @@ note = "LSP request fixture"
         ] {
             let uri = format!("file:///campaign/content/{name}")
                 .parse::<Uri>()
-                .unwrap();
+                .expect("the fixture world holds the addressed component");
             state.store.open(uri.clone(), 1, source.to_owned());
             assert!(
                 super::workspace_diagnostic_paths(&state, Path::new("/virtual"))
@@ -918,7 +923,7 @@ note = "LSP request fixture"
         }
     }
 
-    fn response_value(client: &Connection) -> serde_json::Value {
+    fn response_value(client: &Connection) -> Value {
         let message = client
             .receiver
             .recv_timeout(TIMEOUT)

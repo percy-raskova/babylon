@@ -4,9 +4,8 @@ use std::collections::HashMap;
 
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_graph::stable_element::{StableElementKey, StableElementResolver, StableIdentityError};
-use babylon_graph::stable_state::{
-    compose_stable_graph_state_from_rows, StableGraphStateRowsInput,
-};
+use babylon_graph::stable_state;
+use babylon_graph::stable_state::StableGraphStateRowsInput;
 use babylon_graph::substrate::GraphSubstrate;
 
 const MEASURED_NODES: usize = 179_772;
@@ -33,7 +32,9 @@ fn rows(count: usize) -> StableGraphStateRowsInput {
 #[test]
 fn canonical_node_admission_covers_the_measured_aggregate_opening() {
     for count in [MEASURED_NODES, NODE_CEILING] {
-        let admitted = compose_stable_graph_state_from_rows("national-world", rows(count)).unwrap();
+        let admitted =
+            stable_state::compose_stable_graph_state_from_rows("national-world", rows(count))
+                .expect("the authored rows compose a stable graph state");
         assert_eq!(admitted.rows().nodes().len(), count);
         assert_eq!(
             admitted.rows().nodes().last(),
@@ -42,12 +43,15 @@ fn canonical_node_admission_covers_the_measured_aggregate_opening() {
         let mut duplicate = rows(count);
         duplicate.nodes[count - 1].0 = local_name(0);
         assert!(matches!(
-            compose_stable_graph_state_from_rows("national-world", duplicate),
+            stable_state::compose_stable_graph_state_from_rows("national-world", duplicate),
             Err(StableIdentityError::DuplicateFact { section: "nodes" })
         ));
     }
     assert!(matches!(
-        compose_stable_graph_state_from_rows("national-world", rows(NODE_CEILING + 1)),
+        stable_state::compose_stable_graph_state_from_rows(
+            "national-world",
+            rows(NODE_CEILING + 1)
+        ),
         Err(StableIdentityError::StateSectionLimit {
             section: "nodes",
             actual: 262_145,
@@ -61,15 +65,17 @@ fn resolver_admission_covers_the_same_nodes_and_retains_a_finite_ceiling() {
     let mut graph = HypergraphStore::new();
     let mut names = HashMap::new();
     for index in 0..=NODE_CEILING {
-        let node = graph.add_node("BUSINESS").unwrap();
+        let node = graph
+            .add_node("BUSINESS")
+            .expect("the fixture adds a node with a registered kind");
         names.insert(node, local_name(index));
         let count = index + 1;
         if [MEASURED_NODES, NODE_CEILING].contains(&count) {
             let admitted =
                 StableElementResolver::seal(&graph, "national-world", &names, &HashMap::new())
-                    .unwrap();
+                    .expect("the fixture seals the prepared period");
             assert_eq!(
-                admitted.node_key(node).unwrap(),
+                admitted.node_key(node).expect("the fixture node has a key"),
                 &StableElementKey::Node {
                     scenario: "national-world".to_owned(),
                     local_name: local_name(index),
@@ -99,10 +105,14 @@ fn resolver_manifest_admits_exact_sixteen_mib_and_rejects_plus_one() {
         let mut graph = HypergraphStore::new();
         let mut names = HashMap::new();
         for index in 0..83_885 {
-            let node = graph.add_node(&"T".repeat(128)).unwrap();
+            let node = graph
+                .add_node(&"T".repeat(128))
+                .expect("the fixture adds a node with a registered kind");
             names.insert(node, format!("n{index:063}"));
         }
-        let final_node = graph.add_node(&"T".repeat(final_type_bytes)).unwrap();
+        let final_node = graph
+            .add_node(&"T".repeat(final_type_bytes))
+            .expect("the fixture adds a node with a registered kind");
         let final_name = format!("z{:063}", 83_885);
         names.insert(final_node, final_name.clone());
         let result = StableElementResolver::seal(&graph, "s", &names, &HashMap::new());
@@ -117,9 +127,11 @@ fn resolver_manifest_admits_exact_sixteen_mib_and_rejects_plus_one() {
             ));
             continue;
         }
-        let admitted = result.unwrap();
+        let admitted = result.expect("the resolver admits a manifest exactly at the 16 MiB limit");
         assert_eq!(
-            admitted.node_key(final_node).unwrap(),
+            admitted
+                .node_key(final_node)
+                .expect("the fixture node has a key"),
             &StableElementKey::Node {
                 scenario: "s".to_owned(),
                 local_name: final_name,

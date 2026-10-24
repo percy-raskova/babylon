@@ -1,28 +1,30 @@
 //! PER-24: the shipped Bevy viewer must enumerate every visible surface and
 //! keep administrative exemptions outside every gameplay gate.
 
+use babylon_client::decision_surface;
 use babylon_client::decision_surface::{
-    contract_for, DecisionSurfaceContract, DecisionSurfaceRole, DeclaredSurface, SurfaceAction,
-    SurfaceId, SHIPPED_SURFACE_MANIFEST,
+    DecisionSurfaceContract, DecisionSurfaceRole, DeclaredSurface, SurfaceAction, SurfaceId,
+    SHIPPED_SURFACE_MANIFEST,
 };
+use babylon_client::observer_audio::ObserverAudioSettings;
 use bevy::asset::AssetPlugin;
 use bevy::image::ImagePlugin;
 use bevy::prelude::*;
 use bevy::render::texture::TexturePlugin;
 use bevy::time::TimeUpdateStrategy;
+use bevy::window::ExitCondition;
 use std::collections::HashSet;
 use std::time::Duration;
+use uuid::Uuid;
 
 fn observer_app() -> App {
     use babylon_client::observer::{ObserverSession, SessionPhase};
     use babylon_client::observer_io::ObserverSet;
     use babylon_client::observer_ui::{ObserverFrame, ObserverUiState};
-    use babylon_persistence::{
-        identity::CampaignId, observer_reader::ObserverEconomySnapshot,
-        observer_reader::ObserverVisibility,
-    };
+    use babylon_persistence::identity::CampaignId;
+    use babylon_persistence::observer_reader::{ObserverEconomySnapshot, ObserverVisibility};
 
-    let campaign = CampaignId::from_uuid(uuid::Uuid::nil());
+    let campaign = CampaignId::from_uuid(Uuid::nil());
     let mut session = ObserverSession::new(campaign);
     session.foundation_digest = Some("f".repeat(64));
     session.ready(2, Some("b".repeat(64)));
@@ -41,7 +43,7 @@ fn observer_app() -> App {
         TexturePlugin,
         WindowPlugin {
             primary_window: None,
-            exit_condition: bevy::window::ExitCondition::DontExit,
+            exit_condition: ExitCondition::DontExit,
             ..default()
         },
         bevy::picking::DefaultPickingPlugins,
@@ -80,7 +82,7 @@ fn observer_app() -> App {
         .add_plugins(babylon_client::organizer::OrganizerPlugin)
         .add_plugins(babylon_client::ui::dossier_card::DossierCardPlugin)
         .add_plugins(babylon_client::session_log::SessionLogPlugin)
-        .init_resource::<babylon_client::observer_audio::ObserverAudioSettings>()
+        .init_resource::<ObserverAudioSettings>()
         .init_resource::<UiScale>()
         .insert_resource(session)
         .insert_resource(babylon_client::ui::dossier_card::DossierCampaignId(
@@ -122,7 +124,9 @@ fn surface_site(id: &str) -> babylon_persistence::production_observation::Produc
     use babylon_persistence::production_observation::ProductionSite;
     ProductionSite {
         id: id.into(),
-        location: "county:26163".parse().unwrap(),
+        location: "county:26163"
+            .parse()
+            .expect("the authored literal parses as the declared type"),
         function: "manufacturing".into(),
         name: format!("Surface fixture {id}"),
         industry_code: Some("331".into()),
@@ -150,10 +154,10 @@ fn surface_site(id: &str) -> babylon_persistence::production_observation::Produc
 }
 
 fn production_observation() -> babylon_persistence::production_observation::ProductionSnapshot {
-    use babylon_persistence::{
-        production_observation::ProductionEvent, production_observation::ProductionFreight,
-        production_observation::ProductionRoute, production_observation::ProductionSnapshot,
+    use babylon_persistence::production_observation::{
+        ProductionEvent, ProductionFreight, ProductionRoute, ProductionSnapshot,
     };
+
     ProductionSnapshot {
         physical_routes: vec![
             babylon_persistence::production_observation::PhysicalRouteDefinition {
@@ -262,7 +266,7 @@ fn manifest_is_unique_exhaustive_and_valid() {
             .validate()
             .unwrap_or_else(|error| panic!("{} has an invalid contract: {error}", contract.id));
         assert_eq!(
-            contract_for(contract.id),
+            decision_surface::contract_for(contract.id),
             contract,
             "manifest lookup must resolve the authoritative row"
         );
@@ -466,7 +470,9 @@ fn visual_surface_ids(world: &mut World) -> HashSet<SurfaceId> {
         let declared = declared.unwrap_or_else(|| {
             panic!("shipped Text entity {entity:?} has no DecisionSurfaceContract declaration")
         });
-        assert!(contract_for(declared.id).validate().is_ok());
+        assert!(decision_surface::contract_for(declared.id)
+            .validate()
+            .is_ok());
     }
 
     let mut image_query = world.query::<(Entity, &ImageNode, Option<&DeclaredSurface>)>();
@@ -474,7 +480,9 @@ fn visual_surface_ids(world: &mut World) -> HashSet<SurfaceId> {
         let declared = declared.unwrap_or_else(|| {
             panic!("shipped ImageNode entity {entity:?} has no DecisionSurfaceContract declaration")
         });
-        assert!(contract_for(declared.id).validate().is_ok());
+        assert!(decision_surface::contract_for(declared.id)
+            .validate()
+            .is_ok());
     }
 
     let mut map_query = world.query::<(Entity, &Mesh2d, Option<&DeclaredSurface>)>();
@@ -492,7 +500,9 @@ fn visual_surface_ids(world: &mut World) -> HashSet<SurfaceId> {
         let declared = declared.unwrap_or_else(|| {
             panic!("shipped Mesh3d entity {entity:?} has no DecisionSurfaceContract declaration")
         });
-        assert!(contract_for(declared.id).validate().is_ok());
+        assert!(decision_surface::contract_for(declared.id)
+            .validate()
+            .is_ok());
     }
     declared_ids
 }
@@ -520,7 +530,7 @@ fn county_dossier_is_gameplay_role_but_gate_ineligible_until_an_action_opens() {
 
     const OPEN: &[SurfaceAction] = &[SurfaceAction::available("investigate")];
 
-    let contract = contract_for(SurfaceId::CountyDossier);
+    let contract = decision_surface::contract_for(SurfaceId::CountyDossier);
     assert_eq!(contract.role, DecisionSurfaceRole::Gameplay);
     assert!(!contract.admin_debug_exempt);
     assert!(contract.validate().is_ok());
@@ -571,9 +581,18 @@ fn aid_cards_without_authenticated_material_terms_are_not_visible_choices() {
         .collect::<Vec<_>>();
     assert_eq!(parents.len(), 2);
     for parent in parents {
-        assert_eq!(world.get::<Node>(parent).unwrap().display, Display::None);
         assert_eq!(
-            world.get::<DeclaredSurface>(parent).unwrap().id,
+            world
+                .get::<Node>(parent)
+                .expect("the fixture world holds the addressed component")
+                .display,
+            Display::None
+        );
+        assert_eq!(
+            world
+                .get::<DeclaredSurface>(parent)
+                .expect("the fixture world holds the addressed component")
+                .id,
             SurfaceId::OrganizerWorkspace
         );
     }

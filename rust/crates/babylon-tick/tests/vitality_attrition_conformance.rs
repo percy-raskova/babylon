@@ -66,13 +66,22 @@
 //!    (`E-EVAL-020`) already covers every `wealth-mass-*` field by virtue
 //!    of its declared type — no new mechanism, cited not re-tested here.
 
+// Conformance fixtures exercise exact engine values, transcribe spec literals,
+// and build whole scenarios in one test. These pedantic lints would force
+// ceremony that hides those contracts, so they stay off in test code only.
+#![allow(
+    clippy::float_cmp,
+    reason = "these comparisons pin exact authored f64 values"
+)]
+
 use babylon_bsl::evaluator::Value;
-use babylon_bsl::scenario::load_scenario;
+use babylon_bsl::scenario;
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
 use babylon_kernel::currency::Currency;
-use babylon_tick::{hex, run_once, run_once_into};
+use babylon_tick::hex;
+use std::fmt::Write as _;
 
 const SCENARIO: &str = include_str!("../content/scenarios/vitality-attrition-conformance.bscn");
 const RULE: &str = include_str!("../content/rules/vitality-attrition.bsl");
@@ -141,7 +150,7 @@ const SEEDED_CLASSES: [(&str, u64); 6] = [
 
 fn load() -> HypergraphStore {
     let mut graph = HypergraphStore::new();
-    load_scenario(SCENARIO, &mut graph).expect("the carrier scenario must load clean");
+    scenario::load_scenario(SCENARIO, &mut graph).expect("the carrier scenario must load clean");
     graph
 }
 
@@ -195,7 +204,8 @@ fn the_unseeded_class_reads_absent_and_its_optional_bind_sum_is_zero() {
 #[test]
 fn the_fifteen_cuts_are_strictly_positive_and_monotone_non_decreasing() {
     let mut graph = HypergraphStore::new();
-    let loaded = load_scenario(SCENARIO, &mut graph).expect("the carrier scenario must load clean");
+    let loaded = scenario::load_scenario(SCENARIO, &mut graph)
+        .expect("the carrier scenario must load clean");
     let mut previous: Option<f64> = None;
     for qname in CUT_CONSTS {
         let Some(Value::Ratio { value, .. }) = loaded.consts.get(qname) else {
@@ -238,7 +248,7 @@ fn the_fifteen_cuts_are_strictly_positive_and_monotone_non_decreasing() {
 fn a_zero_ratio_cut_literal_is_refused_at_read_time_e_lex_027() {
     let mut graph = HypergraphStore::new();
     let bad = "(scenario t/zero-cut-probe (defconst wealth-sketch/cut-01 0.0r))";
-    let Err(err) = load_scenario(bad, &mut graph) else {
+    let Err(err) = scenario::load_scenario(bad, &mut graph) else {
         panic!("a 0.0r Ratio literal must not load");
     };
     let message = err.to_string();
@@ -255,7 +265,7 @@ fn a_zero_ratio_cut_literal_is_refused_at_read_time_e_lex_027() {
 fn a_negative_ratio_cut_literal_is_refused_at_read_time_e_lex_027() {
     let mut graph = HypergraphStore::new();
     let bad = "(scenario t/negative-cut-probe (defconst wealth-sketch/cut-01 -1r))";
-    let Err(err) = load_scenario(bad, &mut graph) else {
+    let Err(err) = scenario::load_scenario(bad, &mut graph) else {
         panic!("a -1r Ratio literal must not load");
     };
     let message = err.to_string();
@@ -272,7 +282,8 @@ fn a_negative_ratio_cut_literal_is_refused_at_read_time_e_lex_027() {
 #[test]
 fn household_person_equivalence_and_subsistence_horizon_are_declared_at_their_ruled_values() {
     let mut graph = HypergraphStore::new();
-    let loaded = load_scenario(SCENARIO, &mut graph).expect("the carrier scenario must load clean");
+    let loaded = scenario::load_scenario(SCENARIO, &mut graph)
+        .expect("the carrier scenario must load clean");
     let Some(Value::Ratio { value: eta, .. }) = loaded
         .consts
         .get("wealth-sketch/household-person-equivalence")
@@ -336,8 +347,8 @@ fn currency_lane_fields_round_trip_exactly() {
 /// below for the absence-fence leg the measure count stands on.
 #[test]
 fn the_carrier_tick_is_deterministic_and_the_measure_rule_fires_for_five_of_seven_classes() {
-    let a = run_once(SCENARIO, RULE).expect("first run");
-    let b = run_once(SCENARIO, RULE).expect("second run");
+    let a = babylon_tick::run_once(SCENARIO, RULE).expect("first run");
+    let b = babylon_tick::run_once(SCENARIO, RULE).expect("second run");
     assert_eq!(a.after, b.after, "two runs, one post-state");
     // T6: the pack now WRITES state (the mortality rule's population
     // decrement) — the emit-only `before == after` premise of this test's
@@ -450,7 +461,8 @@ fn clearing_failing_straddle(
 fn measure_arithmetic_matches_the_independent_oracle_exactly() {
     let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
-    run_once_into(SCENARIO, RULE, &mut graph, &mut sink).expect("the measure rule must run");
+    babylon_tick::run_once_into(SCENARIO, RULE, &mut graph, &mut sink)
+        .expect("the measure rule must run");
 
     // T6: the sink now also carries the mortality rule's two
     // POPULATION_ATTRITION events (last-worker, calibration) — filter by
@@ -648,6 +660,10 @@ fn clearing_is_monotone_in_s_and_in_w_bar() {
 /// dispersed distribution (mass spread across every rung) sheds a little
 /// mass at every boundary — no single step is large.
 #[test]
+#[allow(
+    clippy::manual_midpoint,
+    reason = "the sweep pins exact midpoint values; f64::midpoint is not guaranteed bit-identical to (a + b) / 2.0"
+)]
 fn adr202_r2_more_dispersion_means_a_less_switch_like_transition() {
     let mut concentrated = [0.0_f64; 16];
     concentrated[7] = 1.0; // all mass in rung 8
@@ -701,7 +717,8 @@ fn adr202_r2_more_dispersion_means_a_less_switch_like_transition() {
 fn the_unseeded_class_produces_no_reading_and_the_rule_does_not_fire() {
     let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
-    run_once_into(SCENARIO, RULE, &mut graph, &mut sink).expect("the measure rule must run");
+    babylon_tick::run_once_into(SCENARIO, RULE, &mut graph, &mut sink)
+        .expect("the measure rule must run");
 
     // T6: filter to the measure's own events — the mortality rule's two
     // POPULATION_ATTRITION events (last-worker, calibration) share the sink
@@ -760,27 +777,29 @@ fn scratch_scenario(nodes: &[ScratchNode<'_>]) -> String {
     s.push_str("  (deffield social-class/s-bio currency intensive)\n");
     s.push_str("  (deffield social-class/s-class currency intensive)\n");
     for field in MASS_FIELDS {
-        s.push_str(&format!("  (deffield {field} coefficient intensive)\n"));
+        writeln!(s, "  (deffield {field} coefficient intensive)").expect("String write");
     }
     for (i, qname) in CUT_CONSTS.iter().enumerate() {
-        s.push_str(&format!("  (defconst {qname} {:?}r)\n", SYNTHETIC_CUTS[i]));
+        writeln!(s, "  (defconst {qname} {:?}r)", SYNTHETIC_CUTS[i]).expect("String write");
     }
     s.push_str("  (defconst vitality/subsistence-horizon 1.0r)\n");
     // T6: the mortality rule's own derived defconst — same value the shipped
     // scenario declares (the calibration derivation lives there, D198).
     s.push_str("  (defconst vitality/kappa 1.0c)\n");
     for (name, active, population, wealth, s_bio, s_class, masses) in nodes {
-        s.push_str(&format!(
+        write!(
+            s,
             "  (node {name} NodeType/SOCIAL_CLASS\n    \
              (social-class/active {active})\n    \
              (social-class/population {population})\n    \
              (social-class/wealth {wealth}$)\n    \
              (social-class/s-bio {s_bio}$)\n    \
              (social-class/s-class {s_class}$)\n"
-        ));
+        )
+        .expect("String write");
         for (i, field) in MASS_FIELDS.iter().enumerate() {
             if masses[i] != 0.0 {
-                s.push_str(&format!("    ({field} {:?}c)\n", masses[i]));
+                writeln!(s, "    ({field} {:?}c)", masses[i]).expect("String write");
             }
         }
         s.push_str("  )\n");
@@ -805,7 +824,7 @@ fn a_zero_or_negative_population_class_does_not_abort_the_tick() {
         ("zero-pop", 1, 0, 100, 1, 1, [0.0_f64; 16]),
         ("negative-pop", 1, -1, 100, 1, 1, [0.0_f64; 16]),
     ]);
-    let report = run_once(&scenario, RULE).expect(
+    let report = babylon_tick::run_once(&scenario, RULE).expect(
         "population <= 0 must not abort the tick — population-int/w-bar are now total functions",
     );
     assert_eq!(
@@ -929,7 +948,7 @@ fn evaluator_reaches_an_exact_cut_boundary_and_a_genuine_straddle() {
 
     let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
-    run_once_into(&scenario, RULE, &mut graph, &mut sink)
+    babylon_tick::run_once_into(&scenario, RULE, &mut graph, &mut sink)
         .expect("the engineered scratch scenario must tick clean");
     assert_eq!(
         sink.events.len(),
@@ -1017,7 +1036,7 @@ fn evaluator_reaches_an_exact_cut_boundary_and_a_genuine_straddle() {
 fn the_calibration_point_is_exact_and_last_worker_extincts() {
     let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
-    run_once_into(SCENARIO, RULE, &mut graph, &mut sink)
+    babylon_tick::run_once_into(SCENARIO, RULE, &mut graph, &mut sink)
         .expect("the carrier world must tick clean");
 
     let attrition: Vec<&(String, Vec<(String, Value)>)> = sink
@@ -1042,8 +1061,7 @@ fn the_calibration_point_is_exact_and_last_worker_extincts() {
             payload
                 .iter()
                 .find(|(k, _)| k == key)
-                .map(|(_, v)| v)
-                .unwrap_or_else(|| panic!("payload missing {key}"))
+                .map_or_else(|| panic!("payload missing {key}"), |(_, v)| v)
         };
         assert_eq!(get("entity-id"), &Value::NodeRef(NodeId(id)));
         assert_eq!(get("deaths"), &Value::Int(deaths));
@@ -1091,7 +1109,7 @@ fn the_deaths_floor_zero_and_boundary_legs() {
 
     let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
-    run_once_into(&fractional, RULE, &mut graph, &mut sink)
+    babylon_tick::run_once_into(&fractional, RULE, &mut graph, &mut sink)
         .expect("the fractional scratch world must tick clean");
     assert!(
         sink.events
@@ -1107,7 +1125,7 @@ fn the_deaths_floor_zero_and_boundary_legs() {
 
     let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
-    run_once_into(&boundary, RULE, &mut graph, &mut sink)
+    babylon_tick::run_once_into(&boundary, RULE, &mut graph, &mut sink)
         .expect("the boundary scratch world must tick clean");
     let events: Vec<_> = sink
         .events
@@ -1128,7 +1146,7 @@ fn the_deaths_floor_zero_and_boundary_legs() {
 fn the_two_continue_guards_and_the_absence_fence_hold_under_the_mortality_rule() {
     let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
-    run_once_into(SCENARIO, RULE, &mut graph, &mut sink).expect("clean tick");
+    babylon_tick::run_once_into(SCENARIO, RULE, &mut graph, &mut sink).expect("clean tick");
     let emitters: Vec<u64> = sink
         .events
         .iter()

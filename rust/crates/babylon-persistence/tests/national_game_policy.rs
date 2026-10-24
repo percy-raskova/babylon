@@ -1,9 +1,8 @@
 use babylon_kernel::economic_identity::{EconomicFunction, QcewOwnership};
 use babylon_kernel::economic_location::{EconomicLocation, ForeignCounterpart};
 use babylon_material_circuit::{CommodityKind, HouseholdNeedBasis, ServiceStage};
-use babylon_persistence::national_economy::{
-    source_workplace_target, NationalGamePolicy, NationalGamePolicyError,
-};
+use babylon_persistence::national_economy;
+use babylon_persistence::national_economy::{NationalGamePolicy, NationalGamePolicyError};
 
 const SOURCE: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -12,7 +11,8 @@ const SOURCE: &str = include_str!(concat!(
 
 #[test]
 fn captured_aid_requires_positive_cash_terms_before_opening_accounts() {
-    let policy = NationalGamePolicy::parse(SOURCE).unwrap();
+    let policy = NationalGamePolicy::parse(SOURCE)
+        .expect("the authored literal parses as the declared type");
     assert!(policy.aid.gift_cash_micros_per_unit > 0);
     for amount in [0_i128, -1] {
         let changed = SOURCE.replace(
@@ -29,7 +29,8 @@ fn captured_aid_requires_positive_cash_terms_before_opening_accounts() {
 
 #[test]
 fn household_time_policy_is_captured_separately_from_wages_and_population() {
-    let policy = NationalGamePolicy::parse(SOURCE).unwrap();
+    let policy = NationalGamePolicy::parse(SOURCE)
+        .expect("the authored literal parses as the declared type");
     let time = &policy.household_time;
     assert_eq!(time.hours_per_eligible_person, 224);
     assert!(time.hours_per_eligible_person >= policy.work_hours_per_person);
@@ -40,7 +41,8 @@ fn household_time_policy_is_captured_separately_from_wages_and_population() {
     assert_eq!(time.external_eligible_persons_bps, 8_000);
     assert_eq!(time.unmet_hours_per_unit["food"], 20);
     assert_eq!(time.unmet_hours_per_unit.len(), 1);
-    let captured = NationalGamePolicy::from_captured_bytes(SOURCE.as_bytes()).unwrap();
+    let captured = NationalGamePolicy::from_captured_bytes(SOURCE.as_bytes())
+        .expect("the captured bytes admit the value");
     assert_eq!(captured.household_time, policy.household_time);
 }
 
@@ -91,7 +93,8 @@ fn household_time_policy_refuses_missing_unbounded_or_unrelated_commitments() {
 
 #[test]
 fn national_policy_covers_physical_functions_and_distinct_household_needs() {
-    let policy = NationalGamePolicy::parse(SOURCE).unwrap();
+    let policy = NationalGamePolicy::parse(SOURCE)
+        .expect("the authored literal parses as the declared type");
     assert_eq!(policy.commodities.len(), 10);
     assert_eq!(policy.recipes.len(), 9);
     assert_eq!(policy.household_needs.len(), 6);
@@ -114,7 +117,7 @@ fn national_policy_covers_physical_functions_and_distinct_household_needs() {
             .household_needs
             .iter()
             .find(|n| n.key == "food")
-            .unwrap()
+            .expect("the fixture holds the searched element")
             .basis,
         HouseholdNeedBasis::Persons
     );
@@ -123,7 +126,7 @@ fn national_policy_covers_physical_functions_and_distinct_household_needs() {
             .household_needs
             .iter()
             .find(|n| n.key == "housing")
-            .unwrap()
+            .expect("the fixture holds the searched element")
             .basis,
         HouseholdNeedBasis::Households
     );
@@ -140,11 +143,14 @@ fn national_policy_covers_physical_functions_and_distinct_household_needs() {
 
 #[test]
 fn counterparts_have_finite_separate_resident_and_workforce_counts() {
-    let policy = NationalGamePolicy::parse(SOURCE).unwrap();
+    let policy = NationalGamePolicy::parse(SOURCE)
+        .expect("the authored literal parses as the declared type");
     assert_eq!(policy.counterparts.len(), 12);
     for counterpart in ForeignCounterpart::ALL {
         let profile = &policy.counterparts[&counterpart];
-        let counts = profile.opening_counts(1_000).unwrap();
+        let counts = profile
+            .opening_counts(1_000)
+            .expect("the fixture call `opening_counts` succeeds for the authored inputs");
         assert_eq!((counts.persons, counts.households), (1_000, 334));
         assert_eq!(
             (counts.employed, counts.reserve, counts.inactive),
@@ -174,8 +180,13 @@ fn counterparts_have_finite_separate_resident_and_workforce_counts() {
     invalid.participation_bps = 10_001;
     assert!(invalid.opening_counts(1_000).is_err());
 
-    let price = policy.commodities["food"].price.as_ref().unwrap();
-    let scaled = price.scaled(4_000).unwrap();
+    let price = policy.commodities["food"]
+        .price
+        .as_ref()
+        .expect("the fixture set the optional field before this read");
+    let scaled = price
+        .scaled(4_000)
+        .expect("the fixture call `scaled` succeeds for the authored inputs");
     assert_eq!(scaled.opening.micro_units(), 112_000_000);
     assert_eq!(scaled.minimum.micro_units(), 28_000_000);
     assert!(price.scaled(0).is_err());
@@ -200,24 +211,30 @@ fn policy_refuses_unknown_sources_invalid_prices_and_same_stage_inputs() {
 
 #[test]
 fn source_workplace_identity_keeps_ownership_and_function_independent() {
-    let location: EconomicLocation = "county:26163".parse().unwrap();
-    let private =
-        source_workplace_target(location, EconomicFunction::Food, QcewOwnership::Private, 7)
-            .unwrap();
-    let public = source_workplace_target(
+    let location: EconomicLocation = "county:26163"
+        .parse()
+        .expect("the authored literal parses as the declared type");
+    let private = national_economy::source_workplace_target(
+        location,
+        EconomicFunction::Food,
+        QcewOwnership::Private,
+        7,
+    )
+    .expect("the fixture call `source_workplace_target` succeeds for the authored inputs");
+    let public = national_economy::source_workplace_target(
         location,
         EconomicFunction::Food,
         QcewOwnership::LocalGovernment,
         7,
     )
-    .unwrap();
-    let other = source_workplace_target(
+    .expect("the fixture call `source_workplace_target` succeeds for the authored inputs");
+    let other = national_economy::source_workplace_target(
         location,
         EconomicFunction::Manufacturing,
         QcewOwnership::Private,
         7,
     )
-    .unwrap();
+    .expect("the fixture call `source_workplace_target` succeeds for the authored inputs");
     assert_ne!(private.site_id, public.site_id);
     assert_ne!(private.site_id, other.site_id);
     assert!(private.workplace.canonical_bytes().is_ok());
@@ -227,8 +244,13 @@ fn source_workplace_identity_keeps_ownership_and_function_independent() {
     assert_eq!(private.location, location);
     assert_eq!(
         private,
-        source_workplace_target(location, EconomicFunction::Food, QcewOwnership::Private, 7)
-            .unwrap()
+        national_economy::source_workplace_target(
+            location,
+            EconomicFunction::Food,
+            QcewOwnership::Private,
+            7
+        )
+        .expect("the fixture call `source_workplace_target` succeeds for the authored inputs")
     );
     assert_eq!(
         private.workplace,
@@ -247,7 +269,8 @@ fn authored_funding_and_equipment_controls_refuse_unaccounted_requirements() {
             "private_distribution_bps = 5000",
             "private_distribution_bps = 0",
         );
-    let parsed = NationalGamePolicy::parse(&disabled).unwrap();
+    let parsed = NationalGamePolicy::parse(&disabled)
+        .expect("the authored literal parses as the declared type");
     assert_eq!(parsed.financial.wage_tax_bps, 0);
     assert_eq!(parsed.financial.private_distribution_bps, 0);
     assert!(NationalGamePolicy::parse(&SOURCE.replace(
@@ -270,7 +293,8 @@ fn authored_funding_and_equipment_controls_refuse_unaccounted_requirements() {
 #[test]
 fn cargo_eligibility_is_captured_and_cannot_be_inferred_from_mass() {
     use babylon_persistence::national_transport::CargoClass;
-    let policy = NationalGamePolicy::parse(SOURCE).unwrap();
+    let policy = NationalGamePolicy::parse(SOURCE)
+        .expect("the authored literal parses as the declared type");
     assert_eq!(policy.commodities["food"].cargo, Some(CargoClass::General));
     assert_eq!(
         policy.commodities["resources"].cargo,
@@ -302,7 +326,7 @@ fn cargo_eligibility_is_captured_and_cannot_be_inferred_from_mass() {
 fn owner_exposure_fraction_is_required_bounded_and_separate_from_income() {
     assert_eq!(
         NationalGamePolicy::parse(SOURCE)
-            .unwrap()
+            .expect("the authored literal parses as the declared type")
             .households
             .private_owner_households_bps,
         1_000

@@ -22,6 +22,7 @@
 //! answers exactly the two questions the chapters ask and no more.
 
 use crate::bindings::{BindSource, BindingDecl};
+use crate::grammar::FoldOp;
 use crate::reader::{Atom, SExpr};
 use crate::types::{BslType, FieldDecl};
 use std::collections::HashMap;
@@ -208,15 +209,12 @@ fn classify_fold(items: &[SExpr], env: &ClassEnv<'_>) -> ScoreClass {
     // CT4P A3 (issue #525): `op` converts to `FoldOp` ONCE, here; the match
     // below is EXHAUSTIVE over it, no wildcard. `None` (op outside the
     // closed set) keeps the original `_ => ScoreClass::Unknown` behaviour.
-    let Some(fold_op) = crate::grammar::FoldOp::parse(op.as_str()) else {
+    let Some(fold_op) = FoldOp::parse(op.as_str()) else {
         return ScoreClass::Unknown;
     };
     match fold_op {
-        crate::grammar::FoldOp::Count => ScoreClass::Scalar, // Int
-        crate::grammar::FoldOp::Sum
-        | crate::grammar::FoldOp::Mean
-        | crate::grammar::FoldOp::Min
-        | crate::grammar::FoldOp::Max => {
+        FoldOp::Count => ScoreClass::Scalar, // Int
+        FoldOp::Sum | FoldOp::Mean | FoldOp::Min | FoldOp::Max => {
             // The body follows the query, optionally after `:as <symbol>`.
             let body = match items.get(3) {
                 Some(SExpr::Atom(Atom::Keyword(kw))) if kw == "as" => items.get(5),
@@ -248,9 +246,7 @@ pub fn selection_result_class(query: &SExpr) -> ScoreClass {
 
 #[cfg(test)]
 mod tests {
-    use super::{classify, ClassEnv, ScoreClass};
-    use crate::bindings::parse_bindings;
-    use crate::reader::read;
+    use super::{ClassEnv, ScoreClass};
     use crate::types::{BslType, FieldDecl, FieldKind};
     use std::collections::HashMap;
 
@@ -274,11 +270,11 @@ mod tests {
     }
 
     fn class(source: &str) -> ScoreClass {
-        let (expr, _) = read(source).expect("test source must parse");
+        let (expr, _) = crate::reader::read(source).expect("test source must parse");
         let decls = Vec::new();
         let names = HashMap::from([("it".to_owned(), ScoreClass::NodeReference)]);
         let fields = fields();
-        classify(
+        super::classify(
             &expr,
             &ClassEnv {
                 bindings: &decls,
@@ -380,15 +376,15 @@ mod tests {
 
     #[test]
     fn a_binding_classifies_through_its_declared_source() {
-        let (rule, _) = read(
+        let (rule, _) = crate::reader::read(
             "(rule demo/c :role mechanic :evidence derived :material-basis \"the wage relation\" :fuel 8 \
              (bindings (binding wealth :field social-class/wealth) \
                        (binding flag :field social-class/organised) \
                        (binding now :tick)) \
              (effects (update-node self social-class/wealth (add 1$))))",
         )
-        .unwrap();
-        let decls = parse_bindings(&rule).unwrap();
+        .expect("the fixture reader returns its authored facts");
+        let decls = crate::bindings::parse_bindings(&rule).expect("the authored bindings parse");
         let fields = fields();
         let names = HashMap::new();
         let env = ClassEnv {
@@ -396,7 +392,14 @@ mod tests {
             fields: &fields,
             element_names: &names,
         };
-        let of = |src: &str| classify(&read(src).unwrap().0, &env);
+        let of = |src: &str| {
+            super::classify(
+                &crate::reader::read(src)
+                    .expect("the fixture reader returns its authored facts")
+                    .0,
+                &env,
+            )
+        };
         assert_eq!(of("wealth"), ScoreClass::Scalar);
         assert_eq!(of("flag"), ScoreClass::Bool);
         assert_eq!(of("now"), ScoreClass::Scalar);

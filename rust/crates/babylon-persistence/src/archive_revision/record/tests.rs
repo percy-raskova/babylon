@@ -1,10 +1,19 @@
-use super::*;
-use crate::{identity::CampaignId, ArchiveAtomValue, ArchiveEvidenceClass, ArchiveSubjectKind};
+use super::super::emission::ArchiveEmissionManifest;
+use super::super::ArchiveReadScope;
+use super::revision::{GrantDependency, RevisionRecord};
+use crate::identity::CampaignId;
+use crate::{
+    ArchiveAtom, ArchiveAtomSubject, ArchiveCitation, ArchivePageRef, SemanticArchiveError,
+};
+use crate::{ArchiveAtomValue, ArchiveEvidenceClass, ArchiveSubjectKind};
+use sha2::{Digest, Sha256};
+use uuid::Uuid;
 
 fn atom(record: &RevisionRecord, key: &str, value: &str) -> ArchiveAtom {
     ArchiveAtom::try_new(
         record.source.campaign_id(),
-        ArchiveAtomSubject::from_page_ref(&record.subject).unwrap(),
+        ArchiveAtomSubject::from_page_ref(&record.subject)
+            .expect("the authored input admits the derived value"),
         key.to_owned(),
         key.to_owned(),
         record
@@ -13,16 +22,19 @@ fn atom(record: &RevisionRecord, key: &str, value: &str) -> ArchiveAtom {
             .find(|atom| atom.signal_key() == key)
             .map_or(ArchiveEvidenceClass::Observed, ArchiveAtom::evidence_class),
         &ArchiveAtomValue::Text(value.to_owned()),
-        ArchiveCitation::try_new("fixture".to_owned(), "county/26163".to_owned()).unwrap(),
+        ArchiveCitation::try_new("fixture".to_owned(), "county/26163".to_owned())
+            .expect("the authored fixture satisfies the constructor invariants"),
         record.source.tick(),
     )
-    .unwrap()
+    .expect("the authored fixture satisfies the constructor invariants")
 }
 
 #[test]
 fn required_emission_binds_provenance_search_template_source_and_atom_order() {
     let original = witnessed();
-    let expected = original.digest().unwrap();
+    let expected = original
+        .digest()
+        .expect("the fixture value has a canonical digest");
     let mut variants = Vec::new();
     let mut changed = original.clone();
     changed.search_text.push('!');
@@ -34,7 +46,8 @@ fn required_emission_binds_provenance_search_template_source_and_atom_order() {
     changed.provenance_json.push(' ');
     variants.push(changed);
     let mut changed = original.clone();
-    changed.source = ArchiveReadScope::committed(changed.source.campaign_id(), 2, [4; 32]).unwrap();
+    changed.source = ArchiveReadScope::committed(changed.source.campaign_id(), 2, [4; 32])
+        .expect("the fixture observation carries the committed value");
     variants.push(changed);
     let mut changed = original.clone();
     changed.atoms.swap(1, 2);
@@ -48,7 +61,12 @@ fn required_emission_binds_provenance_search_template_source_and_atom_order() {
     }
     let mut changed = original;
     changed.grants[0].granted_tick = 1;
-    assert_ne!(changed.digest().unwrap(), expected);
+    assert_ne!(
+        changed
+            .digest()
+            .expect("the fixture value has a canonical digest"),
+        expected
+    );
 }
 
 #[test]
@@ -64,15 +82,16 @@ fn missing_duplicate_foreign_and_future_membership_refuses() {
         Err(SemanticArchiveError::StoredPageMismatch)
     );
     let mut changed = original.clone();
-    changed.source = ArchiveReadScope::committed(changed.source.campaign_id(), 3, [2; 32]).unwrap();
+    changed.source = ArchiveReadScope::committed(changed.source.campaign_id(), 3, [2; 32])
+        .expect("the fixture observation carries the committed value");
     changed.effective_tick = 3;
     assert_eq!(
         changed.digest(),
         Err(SemanticArchiveError::StoredPageMismatch)
     );
     let mut changed = original.clone();
-    changed.subject =
-        ArchivePageRef::try_new(ArchiveSubjectKind::County, "26125".to_owned()).unwrap();
+    changed.subject = ArchivePageRef::try_new(ArchiveSubjectKind::County, "26125".to_owned())
+        .expect("the authored fixture satisfies the constructor invariants");
     assert_eq!(
         changed.digest(),
         Err(SemanticArchiveError::StoredPageMismatch)
@@ -113,20 +132,17 @@ fn witnessed() -> RevisionRecord {
         ArchiveKnowledge, ArchiveKnowledgeGrant, ArchivePageInput, ArchiveSignal, ArchiveSubject,
         FogSafeArchiveRenderer,
     };
-    let source = ArchiveReadScope::committed(
-        CampaignId::from_uuid(uuid::Uuid::from_bytes([1; 16])),
-        2,
-        [2; 32],
-    )
-    .unwrap();
+    let source =
+        ArchiveReadScope::committed(CampaignId::from_uuid(Uuid::from_bytes([1; 16])), 2, [2; 32])
+            .expect("the fixture observation carries the committed value");
     let subject = ArchiveSubject::try_new(
         ArchiveSubjectKind::County,
         "26163".to_owned(),
         "Wayne County".to_owned(),
     )
-    .unwrap();
-    let citation =
-        ArchiveCitation::try_new("fixture".to_owned(), "county/26163".to_owned()).unwrap();
+    .expect("the authored fixture satisfies the constructor invariants");
+    let citation = ArchiveCitation::try_new("fixture".to_owned(), "county/26163".to_owned())
+        .expect("the authored fixture satisfies the constructor invariants");
     let grants: Vec<_> = ["employment", "subject", "wages"]
         .into_iter()
         .map(|key| GrantDependency {
@@ -139,7 +155,9 @@ fn witnessed() -> RevisionRecord {
     let input = ArchivePageInput::try_new(
         subject.clone(),
         source.tick(),
-        source.tick_content_hash().unwrap(),
+        source
+            .tick_content_hash()
+            .expect("the committed tick has a content hash"),
         "A retained question.".to_owned(),
         vec![
             ArchiveSignal::try_new(
@@ -148,18 +166,18 @@ fn witnessed() -> RevisionRecord {
                 "3".to_owned(),
                 citation.clone(),
             )
-            .unwrap(),
+            .expect("the authored fixture satisfies the constructor invariants"),
             ArchiveSignal::try_new(
                 "wages".to_owned(),
                 "Wages".to_owned(),
                 "7".to_owned(),
                 citation,
             )
-            .unwrap(),
+            .expect("the authored fixture satisfies the constructor invariants"),
         ],
         vec![],
     )
-    .unwrap();
+    .expect("the authored fixture satisfies the constructor invariants");
     let knowledge = ArchiveKnowledge::try_new(
         grants
             .iter()
@@ -170,13 +188,16 @@ fn witnessed() -> RevisionRecord {
                     grant.granted_tick,
                     grant.citation.clone(),
                 )
-                .unwrap()
+                .expect("the authored fixture satisfies the constructor invariants")
             })
             .collect(),
     )
-    .unwrap();
-    let renderer = FogSafeArchiveRenderer::new().unwrap();
-    let (page, emission) = renderer.render_with_emission(&input, &knowledge).unwrap();
+    .expect("the authored fixture satisfies the constructor invariants");
+    let renderer = FogSafeArchiveRenderer::new()
+        .expect("the constructor accepts the authored fixture arguments");
+    let (page, emission) = renderer
+        .render_with_emission(&input, &knowledge)
+        .expect("the fixture call `render_with_emission` succeeds for the authored inputs");
     RevisionRecord {
         effective_tick: source.tick(),
         atoms: crate::archive::mint_page_atoms(
@@ -185,7 +206,7 @@ fn witnessed() -> RevisionRecord {
             &input,
             &knowledge,
         )
-        .unwrap(),
+        .expect("the fixture call `mint_page_atoms` succeeds for the authored inputs"),
         source,
         subject: subject.page_ref().clone(),
         title: subject.title().to_owned(),
@@ -193,7 +214,8 @@ fn witnessed() -> RevisionRecord {
         content_sha256: page.sha256(),
         markdown: page.markdown().to_owned(),
         search_text: page.search_text().to_owned(),
-        provenance_json: serde_json::to_string(page.citations()).unwrap(),
+        provenance_json: serde_json::to_string(page.citations())
+            .expect("the fixture value formats as text"),
         grants,
         emission,
     }
@@ -202,7 +224,9 @@ fn witnessed() -> RevisionRecord {
 #[test]
 fn complete_emission_witness_validates_the_actual_renderer_without_rewriting_retained_bytes() {
     let record = witnessed();
-    record.validate().unwrap();
+    record
+        .validate()
+        .expect("the authored fixture passes validation");
     let mut mismatch = record;
     mismatch.search_text.push('!');
     assert_eq!(
@@ -224,7 +248,8 @@ fn emitted_field_without_matching_atom_and_grant_cannot_be_a_witness() {
 
 fn later(original: &RevisionRecord) -> RevisionRecord {
     let mut record = original.clone();
-    record.source = ArchiveReadScope::committed(record.source.campaign_id(), 6, [2; 32]).unwrap();
+    record.source = ArchiveReadScope::committed(record.source.campaign_id(), 6, [2; 32])
+        .expect("the fixture observation carries the committed value");
     record.effective_tick = 6;
     record.markdown = record
         .markdown
@@ -244,7 +269,7 @@ fn later(original: &RevisionRecord) -> RevisionRecord {
                 old.citation().clone(),
                 6,
             )
-            .unwrap()
+            .expect("the authored fixture satisfies the constructor invariants")
         })
         .collect();
     record
@@ -256,7 +281,7 @@ fn later_publication_does_not_claim_unchanged_atoms_changed_with_their_source_ti
     let next = later(&previous);
     assert_ne!(previous.atoms[1].atom_id(), next.atoms[1].atom_id());
     assert!(super::super::changes::between(Some(&previous), &next)
-        .unwrap()
+        .expect("the fixture call `between` succeeds for the authored inputs")
         .is_empty());
 }
 
@@ -273,33 +298,38 @@ fn changed_value_and_removed_assertion_keep_exact_original_atoms_without_zero_fi
             "5".to_owned(),
             next.grants[0].citation.clone(),
         )
-        .unwrap()],
+        .expect("the authored fixture satisfies the constructor invariants")],
         vec![],
     )
-    .unwrap();
+    .expect("the authored fixture satisfies the constructor invariants");
     let page = crate::FogSafeArchiveRenderer::new()
-        .unwrap()
+        .expect("the constructor accepts the authored fixture arguments")
         .render_emission(
             &crate::ArchiveSubject::try_new(
                 next.subject.kind(),
                 next.subject.id().to_owned(),
                 next.title.clone(),
             )
-            .unwrap(),
+            .expect("the authored fixture satisfies the constructor invariants"),
             next.source.tick(),
-            &next.source.tick_content_hash().unwrap(),
+            &next
+                .source
+                .tick_content_hash()
+                .expect("the committed tick has a content hash"),
             &emission,
         )
-        .unwrap();
+        .expect("the fixture call `render_emission` succeeds for the authored inputs");
     next.markdown = page.markdown().to_owned();
     next.content_sha256 = page.sha256();
     next.search_text = page.search_text().to_owned();
-    next.provenance_json = serde_json::to_string(page.citations()).unwrap();
+    next.provenance_json =
+        serde_json::to_string(page.citations()).expect("the fixture value formats as text");
     next.emission = emission;
     next.atoms[1] = atom(&next, "employment", "5");
     next.atoms.pop();
     next.grants.pop();
-    let changes = super::super::changes::between(Some(&previous), &next).unwrap();
+    let changes = super::super::changes::between(Some(&previous), &next)
+        .expect("the fixture call `between` succeeds for the authored inputs");
     assert_eq!(changes.len(), 2);
     assert_eq!(changes[0].signal_key, "employment");
     assert_eq!(changes[0].before.as_ref(), Some(&previous.atoms[1]));
@@ -321,12 +351,9 @@ fn changelog_refuses_reverse_duplicate_and_cross_scope_publications() {
         );
     }
     let mut foreign = next;
-    foreign.source = ArchiveReadScope::committed(
-        CampaignId::from_uuid(uuid::Uuid::from_bytes([9; 16])),
-        6,
-        [2; 32],
-    )
-    .unwrap();
+    foreign.source =
+        ArchiveReadScope::committed(CampaignId::from_uuid(Uuid::from_bytes([9; 16])), 6, [2; 32])
+            .expect("the fixture observation carries the committed value");
     assert_eq!(
         super::super::changes::between(Some(&previous), &foreign),
         Err(SemanticArchiveError::StoredPageMismatch)

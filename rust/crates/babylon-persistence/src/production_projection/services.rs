@@ -1,12 +1,14 @@
 //! Reconcile ephemeral service production, acquisition, use and expiry.
 //! Services never enter a completed durable-stock account.
 use super::{lifecycle, ProductionProjectionError};
+use babylon_material_circuit::ProductionReceipt;
 use babylon_material_circuit::{
     AccountId, CommodityKind, GoodId, MaterialCircuitState, ProcessId, SiteId, UnitId,
 };
 use babylon_tick::material_world::MaterialTickReceipts;
 use std::collections::{BTreeMap, BTreeSet};
-type Result<T> = std::result::Result<T, ProductionProjectionError>;
+use std::result::Result as StdResult;
+type Result<T> = StdResult<T, ProductionProjectionError>;
 type GrantKey = (AccountId, GoodId, UnitId);
 type OutputKey = (SiteId, GoodId, UnitId);
 
@@ -96,7 +98,7 @@ pub(super) fn validate(
 fn validate_outputs(
     prior: &MaterialCircuitState,
     receipt: &MaterialTickReceipts,
-    production: &BTreeMap<ProcessId, &babylon_material_circuit::ProductionReceipt>,
+    production: &BTreeMap<ProcessId, &ProductionReceipt>,
     kinds: &BTreeSet<(GoodId, UnitId)>,
     performed: BTreeMap<OutputKey, u64>,
 ) -> Result<()> {
@@ -136,7 +138,7 @@ fn validate_outputs(
 }
 fn recipe_use(
     prior: &MaterialCircuitState,
-    production: &BTreeMap<ProcessId, &babylon_material_circuit::ProductionReceipt>,
+    production: &BTreeMap<ProcessId, &ProductionReceipt>,
     kinds: &BTreeSet<(GoodId, UnitId)>,
 ) -> Result<BTreeMap<GrantKey, u64>> {
     let sites: BTreeMap<_, _> = prior

@@ -3,7 +3,8 @@ use crate::{
     OrganizationBudgetDelta, PracticeContractError, ORGANIZATION_BUDGET_DELTA_DOMAIN_BYTES,
     PRACTICE_WIRE_DOMAIN_TERMINATOR_BYTES,
 };
-use babylon_kernel::content_digest::sha256_of;
+use babylon_kernel::content_digest;
+
 const SCHEMA_VERSION: u16 = 1;
 fn append_domain(output: &mut Vec<u8>, domain: &[u8]) {
     output.extend_from_slice(domain);
@@ -126,6 +127,12 @@ fn framed_domain(domain: &[u8]) -> Vec<u8> {
     output
 }
 
+/// Decode a framed organization budget delta.
+///
+/// # Errors
+///
+/// Returns [`PracticeContractError`] when the domain frame, schema version,
+/// field length, or trailing-byte check fails.
 pub fn decode_budget_delta(
     payload: &[u8],
 ) -> Result<OrganizationBudgetDelta, PracticeContractError> {
@@ -170,5 +177,5 @@ pub fn decode_budget_delta(
 pub fn budget_delta_digest(
     value: &OrganizationBudgetDelta,
 ) -> Result<[u8; 32], PracticeContractError> {
-    Ok(sha256_of(&encode_budget_delta(value)?))
+    Ok(content_digest::sha256_of(&encode_budget_delta(value)?))
 }

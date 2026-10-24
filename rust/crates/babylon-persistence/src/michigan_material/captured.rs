@@ -1,10 +1,17 @@
 //! Explicit dependencies for source-only control reconstruction.
+use super::MichiganDefines;
+use super::MichiganDeliveryPreset;
+use super::MichiganMaterialCatalog;
 use super::{MichiganDefinesError, MichiganMaterialError, MichiganWorkforceSeed};
-use crate::{
-    michigan_cohorts::{build_cohorts_from_sources, MichiganCohorts},
-    michigan_economy::MichiganEconomy,
-    michigan_sectors::MichiganCountySectors,
-};
+use crate::economic_catalog::EconomicCatalogInput;
+use crate::economic_catalog::SourceArtifactKind;
+use crate::identity::CampaignId;
+use crate::michigan_cohorts;
+use crate::michigan_cohorts::MichiganCohorts;
+use crate::michigan_economy::MichiganEconomy;
+use crate::michigan_sectors::MichiganCountySectors;
+use crate::simulation_experiment::SimulationExperimentV1;
+use uuid::Uuid;
 
 pub(crate) struct MichiganObservedSources<'a> {
     pub(super) counties: &'a MichiganEconomy,
@@ -18,8 +25,13 @@ impl MichiganObservedSources<'_> {
         &self,
         workforce: &[MichiganWorkforceSeed],
     ) -> Result<MichiganCohorts, MichiganDefinesError> {
-        build_cohorts_from_sources(self.counties, self.sectors, self.declarations, workforce)
-            .map_err(|_| MichiganDefinesError::Material(MichiganMaterialError::ContentValue))
+        michigan_cohorts::build_cohorts_from_sources(
+            self.counties,
+            self.sectors,
+            self.declarations,
+            workforce,
+        )
+        .map_err(|_| MichiganDefinesError::Material(MichiganMaterialError::ContentValue))
     }
 }
 
@@ -49,15 +61,11 @@ fn common_sources() -> Vec<crate::economic_catalog::SourceArtifact> {
         (K::MichiganSectorSources, include_bytes!("../../../../../tools/qcew_county_economics_v1_source_manifest.json").as_slice()),
     ].into_iter().map(|(kind, bytes)| SourceArtifact::capture(kind, bytes.to_vec())).collect()
 }
-impl super::MichiganMaterialCatalog {
+impl MichiganMaterialCatalog {
     pub(crate) fn captured_sources(&self) -> &[crate::economic_catalog::SourceArtifact] {
         &self.source_inputs
     }
-    pub(super) fn replace_source(
-        &mut self,
-        kind: crate::economic_catalog::SourceArtifactKind,
-        bytes: Vec<u8>,
-    ) {
+    pub(super) fn replace_source(&mut self, kind: SourceArtifactKind, bytes: Vec<u8>) {
         self.source_inputs.retain(|source| source.kind() != kind);
         self.source_inputs
             .push(crate::economic_catalog::SourceArtifact::capture(
@@ -72,10 +80,10 @@ impl super::MichiganMaterialCatalog {
     }
 }
 
-impl super::MichiganMaterialCatalog {
+impl MichiganMaterialCatalog {
     /// Regenerate a control from the admitted source table, without filesystem or singleton access.
     pub(crate) fn from_captured_sources(
-        input: &crate::economic_catalog::EconomicCatalogInput,
+        input: &EconomicCatalogInput,
         counties: &MichiganEconomy,
         sectors: &MichiganCountySectors,
     ) -> Result<Self, MichiganDefinesError> {
@@ -102,20 +110,20 @@ impl super::MichiganMaterialCatalog {
             .iter()
             .find(|row| row.kind() == K::MichiganExperiment);
         let preset = if experiment.is_some() {
-            super::MichiganDeliveryPreset::Standard
+            MichiganDeliveryPreset::Standard
         } else {
-            super::MichiganDeliveryPreset::from_id(&input.preset_id)
+            MichiganDeliveryPreset::from_id(&input.preset_id)
                 .ok_or(MichiganDefinesError::Canonical)?
         };
         let mut catalog = if preset.is_statewide() {
             captured_statewide(input, &context)?
         } else {
             let defines = if let Ok(raw) = bytes(K::MichiganDefines) {
-                super::MichiganDefines::parse(
+                MichiganDefines::parse(
                     std::str::from_utf8(raw).map_err(|_| MichiganDefinesError::Canonical)?,
                 )?
             } else {
-                super::MichiganDefines::decode(bytes(K::DesignedPolicy)?)?
+                MichiganDefines::decode(bytes(K::DesignedPolicy)?)?
             };
             super::regional::compile_with_sources(
                 defines,
@@ -131,21 +139,19 @@ impl super::MichiganMaterialCatalog {
                 &context,
             )?;
         }
-        if preset == super::MichiganDeliveryPreset::OrganizeInWayne {
+        if preset == MichiganDeliveryPreset::OrganizeInWayne {
             catalog = catalog.with_wayne_organizer_rules(context.rules)?;
             let id: [u8; 16] = bytes(K::OrganizerContext)?
                 .try_into()
                 .map_err(|_| MichiganDefinesError::Canonical)?;
-            catalog = catalog.with_organizer_campaign(crate::identity::CampaignId::from_uuid(
-                uuid::Uuid::from_bytes(id),
-            ))?;
+            catalog =
+                catalog.with_organizer_campaign(CampaignId::from_uuid(Uuid::from_bytes(id)))?;
         } else {
             catalog = catalog.with_preset(preset)?;
         }
         if let Some(source) = experiment {
-            let spec: crate::simulation_experiment::SimulationExperimentV1 =
-                serde_json::from_slice(source.bytes())
-                    .map_err(|_| MichiganDefinesError::Canonical)?;
+            let spec: SimulationExperimentV1 = serde_json::from_slice(source.bytes())
+                .map_err(|_| MichiganDefinesError::Canonical)?;
             if spec
                 .canonical_bytes()
                 .map_err(|_| MichiganDefinesError::Canonical)?
@@ -164,9 +170,9 @@ impl super::MichiganMaterialCatalog {
 }
 
 fn captured_statewide(
-    input: &crate::economic_catalog::EconomicCatalogInput,
+    input: &EconomicCatalogInput,
     context: &MichiganObservedSources<'_>,
-) -> Result<super::MichiganMaterialCatalog, MichiganDefinesError> {
+) -> Result<MichiganMaterialCatalog, MichiganDefinesError> {
     use crate::economic_catalog::SourceArtifactKind as K;
     let bytes = |kind| {
         input

@@ -1,5 +1,6 @@
 //! Installation choice and actual starts share one committed period.
-use super::{MaterialWorldError, ReceiptCursor};
+use super::MaterialWorldError;
+use super::ReceiptCursor;
 use babylon_material_circuit::{
     InstallationDecisionReceipt, InstallationReceipt, ProcessId, SiteId,
 };

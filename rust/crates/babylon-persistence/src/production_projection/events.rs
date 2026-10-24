@@ -1,14 +1,17 @@
 //! Dated receipt events joined through authenticated orders and shared opening identities.
-use super::{history::OrderHistory, metadata::Metadata, ProductionProjectionError};
-use crate::{
-    michigan_economy::digest_hex,
-    production_observation::{
-        ProductionDeliveryEvidence, ProductionDeliveryStage, ProductionEvent,
-    },
+use super::history::OrderHistory;
+use super::metadata::Metadata;
+use super::ProductionProjectionError;
+
+use crate::production_observation::{
+    ProductionDeliveryEvidence, ProductionDeliveryStage, ProductionEvent,
 };
+
+use crate::michigan_economy;
 use babylon_material_circuit::{OrderId, SupplierRoute, SupplierTransport};
 use babylon_tick::material_world::MaterialTickReceipts;
-type Result<T> = std::result::Result<T, ProductionProjectionError>;
+use std::result::Result as StdResult;
+type Result<T> = StdResult<T, ProductionProjectionError>;
 type Emit<'a> = dyn FnMut(&str, Vec<String>, String, Option<ProductionDeliveryEvidence>) + 'a;
 
 fn order_route<'a>(
@@ -37,7 +40,7 @@ pub(super) fn project_events(
     digest: [u8; 32],
     events: &mut Vec<ProductionEvent>,
 ) -> Result<()> {
-    let receipt_digest = digest_hex(&digest);
+    let receipt_digest = michigan_economy::digest_hex(&digest);
     let mut emit = |kind: &str, subjects: Vec<String>, description: String, delivery_evidence| {
         events.push(ProductionEvent {
             id: format!("{receipt_digest}:{}", events.len()),
@@ -145,7 +148,7 @@ fn emit_production_events(
             .ok_or(ProductionProjectionError::Arithmetic)?;
         emit(
             "production",
-            vec![digest_hex(&site.site_id.as_bytes())],
+            vec![michigan_economy::digest_hex(&site.site_id.as_bytes())],
             format!(
                 "{}: {} of {} planned batches; {quantity} {} {} produced.",
                 site.label,
@@ -214,7 +217,7 @@ fn emit_local_trade_events(
         ) {
             return Err(ProductionProjectionError::State);
         }
-        emit("end-buyer fulfillment", vec![digest_hex(&retailer.site_id.as_bytes())], format!(
+        emit("end-buyer fulfillment", vec![michigan_economy::digest_hex(&retailer.site_id.as_bytes())], format!(
             "{}: {} {} {} delivered to local end buyers; consumption and payment have separate receipts.",
             retailer.label, fulfillment.quantity, good.unit_label, good.label,
         ), None);
@@ -238,8 +241,8 @@ fn emit_route_event(
     emit(
         kind,
         vec![
-            digest_hex(&supplier.site_id.as_bytes()),
-            digest_hex(&buyer.site_id.as_bytes()),
+            michigan_economy::digest_hex(&supplier.site_id.as_bytes()),
+            michigan_economy::digest_hex(&buyer.site_id.as_bytes()),
         ],
         format!(
             "{} -> {}: {quantity} {} {} {kind}.{suffix}",
@@ -253,10 +256,10 @@ fn emit_route_event(
                 route.unit_id,
             )),
             stage,
-            order_id: digest_hex(&order_id.as_bytes()),
-            route_id: digest_hex(&route.route_id.as_bytes()),
-            good_id: digest_hex(&good.good_id.as_bytes()),
-            unit_id: digest_hex(&good.unit_id.as_bytes()),
+            order_id: michigan_economy::digest_hex(&order_id.as_bytes()),
+            route_id: michigan_economy::digest_hex(&route.route_id.as_bytes()),
+            good_id: michigan_economy::digest_hex(&good.good_id.as_bytes()),
+            unit_id: michigan_economy::digest_hex(&good.unit_id.as_bytes()),
             quantity,
         }),
     );

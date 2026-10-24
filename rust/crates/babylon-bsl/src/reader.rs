@@ -22,7 +22,10 @@
 //! literal (minus sign present, any value — including `-0$`) is `E-LEX-022`
 //! because §1.5 names the *literal*, not the value, negative.
 
+use crate::probability::Mass;
 use babylon_kernel::currency::Currency;
+use std::iter::Peekable;
+use std::str::CharIndices;
 
 /// Maximum simultaneously open lists accepted by the reader.
 ///
@@ -115,7 +118,7 @@ pub enum Atom {
     Currency(Currency),
     /// An exact unsigned `m` literal, canonicalized to nanounits.
     /// `Mass` is transient finite-kernel allocation input, never a field.
-    Mass(crate::probability::Mass),
+    Mass(Mass),
     /// A `p`/`i`/`c`-suffixed scaled literal in canonical minimal-scale form.
     Scaled(ScaledLit),
     /// `string` — after escape processing; NFC-checked (`E-LEX-002`).
@@ -427,7 +430,7 @@ fn lex_error(code: LexCode, message: impl Into<String>, position: usize) -> Read
 
 struct Scanner<'a> {
     src: &'a str,
-    iter: std::iter::Peekable<std::str::CharIndices<'a>>,
+    iter: Peekable<CharIndices<'a>>,
 }
 
 impl<'a> Scanner<'a> {
@@ -1022,9 +1025,7 @@ fn classify_mass(
     let padding = 9_usize - frac_digits.len();
     let factor = u64::try_from(POW10[padding]).expect("10^0..10^9 fits u64");
     let nanounits = unscaled.checked_mul(factor).ok_or_else(out_of_range)?;
-    Ok(Atom::Mass(crate::probability::Mass::from_nanounits(
-        nanounits,
-    )))
+    Ok(Atom::Mass(Mass::from_nanounits(nanounits)))
 }
 
 fn suffix_kind(suffix: &str) -> ScaledKind {
@@ -1192,7 +1193,11 @@ fn classify_ratio(
     // it here rather than letting the loader's "the reader should have
     // refused this" path claim otherwise. Exactly 0.0000005 rounds UP to
     // the first grid point and stays legal.
-    if scale >= 7 && 2 * unscaled < 10_i128.pow(u32::try_from(scale).unwrap() - 6) {
+    if scale >= 7
+        && 2 * unscaled
+            < 10_i128
+                .pow(u32::try_from(scale).expect("the decimal loop leaves scale non-negative") - 6)
+    {
         return Err(lex_error(
             LexCode::NonPositiveRatio,
             "r literal quantizes to zero on the kernel's 1e-6 grid — \
@@ -1211,18 +1216,20 @@ fn classify_ratio(
 
 #[cfg(test)]
 mod tests {
+
+    use super::SpanTable;
     use super::{
-        read, read_all, read_all_spanned, Atom, FormPath, LexCode, ReadErrorKind, SExpr,
-        ScaledKind, ScaledLit, MAX_READER_NESTING_DEPTH,
+        Atom, FormPath, LexCode, ReadErrorKind, SExpr, ScaledKind, ScaledLit,
+        MAX_READER_NESTING_DEPTH,
     };
     use babylon_kernel::currency::Currency;
 
     fn one(source: &str) -> SExpr {
-        read(source).expect("should parse").0
+        super::read(source).expect("should parse").0
     }
 
     fn err_kind(source: &str) -> ReadErrorKind {
-        read(source).expect_err("should fail").kind
+        super::read(source).expect_err("should fail").kind
     }
 
     fn lex_err(source: &str) -> LexCode {
@@ -1268,14 +1275,15 @@ mod tests {
             "(".repeat(MAX_READER_NESTING_DEPTH),
             ")".repeat(MAX_READER_NESTING_DEPTH)
         );
-        read(&accepted).expect("the exact reader safety boundary must parse");
+        super::read(&accepted).expect("the exact reader safety boundary must parse");
 
         let rejected = format!(
             "{}{}",
             "(".repeat(MAX_READER_NESTING_DEPTH + 1),
             ")".repeat(MAX_READER_NESTING_DEPTH + 1)
         );
-        let error = read(&rejected).expect_err("the next open list must refuse before tree build");
+        let error =
+            super::read(&rejected).expect_err("the next open list must refuse before tree build");
         assert_eq!(error.kind, ReadErrorKind::NestingLimitExceeded);
         assert_eq!(error.position, MAX_READER_NESTING_DEPTH);
         assert!(error.message.contains("reader safety limit"));
@@ -1336,12 +1344,14 @@ mod tests {
     #[test]
     fn read_returns_the_resume_position() {
         let source = "(a) (b)";
-        let (first, resume) = read(source).unwrap();
+        let (first, resume) =
+            super::read(source).expect("the fixture reader returns its authored facts");
         assert_eq!(
             first,
             SExpr::List(vec![SExpr::Atom(Atom::Symbol("a".into()))])
         );
-        let (second, _) = read(&source[resume..]).unwrap();
+        let (second, _) =
+            super::read(&source[resume..]).expect("the fixture reader returns its authored facts");
         assert_eq!(
             second,
             SExpr::List(vec![SExpr::Atom(Atom::Symbol("b".into()))])
@@ -1350,7 +1360,8 @@ mod tests {
 
     #[test]
     fn read_all_reads_every_top_level_form() {
-        let forms = read_all(b"(a) ; comment\n(b 1)").unwrap();
+        let forms =
+            super::read_all(b"(a) ; comment\n(b 1)").expect("the fixture source is readable");
         assert_eq!(forms.len(), 2);
     }
 
@@ -1358,13 +1369,15 @@ mod tests {
 
     #[test]
     fn invalid_utf8_is_e_lex_001() {
-        let err = read_all(&[0xff, 0xfe, b'(', b')']).unwrap_err();
+        let err = super::read_all(&[0xff, 0xfe, b'(', b')'])
+            .expect_err("the reader rejects the malformed source");
         assert_eq!(err.kind, ReadErrorKind::Lex(LexCode::InvalidUtf8OrBom));
     }
 
     #[test]
     fn a_bom_at_offset_zero_is_discarded() {
-        let forms = read_all("\u{feff}(a)".as_bytes()).unwrap();
+        let forms =
+            super::read_all("\u{feff}(a)".as_bytes()).expect("the fixture source is readable");
         assert_eq!(forms.len(), 1);
     }
 
@@ -1373,8 +1386,10 @@ mod tests {
     /// diagnostic by its 3 bytes.
     #[test]
     fn error_positions_count_a_stripped_bom() {
-        let plain = read_all(b"(a) \x01").unwrap_err();
-        let bommed = read_all("\u{feff}(a) \u{01}".as_bytes()).unwrap_err();
+        let plain =
+            super::read_all(b"(a) \x01").expect_err("the reader rejects the malformed source");
+        let bommed = super::read_all("\u{feff}(a) \u{01}".as_bytes())
+            .expect_err("the reader rejects the malformed source");
         assert_eq!(bommed.kind, plain.kind);
         assert_eq!(
             bommed.position,
@@ -1616,7 +1631,7 @@ mod tests {
     #[test]
     fn strings_cap_at_1024_bytes_after_escape_processing() {
         let ok = format!("\"{}\"", "x".repeat(1024));
-        assert!(read(&ok).is_ok());
+        assert!(super::read(&ok).is_ok());
         let long = format!("\"{}\"", "x".repeat(1025));
         assert_eq!(lex_err(&long), LexCode::StringTooLong);
     }
@@ -1830,8 +1845,8 @@ mod tests {
     // field directly (this module is a descendant of `reader`, so it can
     // see it) rather than inferring order from public-API round-trips.
 
-    fn spanned(source: &str) -> (Vec<SExpr>, super::SpanTable) {
-        read_all_spanned(source.as_bytes()).expect("fixture should parse")
+    fn spanned(source: &str) -> (Vec<SExpr>, SpanTable) {
+        super::read_all_spanned(source.as_bytes()).expect("fixture should parse")
     }
 
     /// Every `(FormPath, &SExpr)` pair in the parsed forest, in pre-order —
@@ -1922,7 +1937,7 @@ mod tests {
                 .span_of(&path)
                 .expect("hand-walked path is in the table");
             let slice = &NESTED_FIXTURE[span.start..span.end];
-            let (reparsed, resume) = read(slice)
+            let (reparsed, resume) = super::read(slice)
                 .unwrap_or_else(|e| panic!("{slice:?} (path {path:?}) must re-read: {e:?}"));
             assert_eq!(
                 &reparsed, expr,
@@ -1957,8 +1972,9 @@ mod tests {
             "\u{feff}(rule demo/x)\n(rule demo/y)",
             NESTED_FIXTURE,
         ] {
-            let direct = read_all(source.as_bytes()).expect("read_all must parse the fixture");
-            let (via_spanned, _table) = read_all_spanned(source.as_bytes())
+            let direct =
+                super::read_all(source.as_bytes()).expect("read_all must parse the fixture");
+            let (via_spanned, _table) = super::read_all_spanned(source.as_bytes())
                 .expect("read_all_spanned must parse the fixture");
             assert_eq!(
                 direct, via_spanned,

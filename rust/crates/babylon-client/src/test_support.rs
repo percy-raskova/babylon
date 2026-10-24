@@ -1,6 +1,7 @@
 //! Test-only helpers shared across the crate's unit tests.
 
 use std::ffi::OsString;
+use std::sync::PoisonError;
 use std::sync::{Mutex, MutexGuard};
 
 /// Serializes tests that mutate process-global environment state.
@@ -20,9 +21,7 @@ pub(crate) struct EnvVarGuard {
 impl EnvVarGuard {
     /// Locks the environment and remembers `key`'s prior value.
     pub(crate) fn lock(key: &'static str) -> Self {
-        let lock = ENV_LOCK
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let lock = ENV_LOCK.lock().unwrap_or_else(PoisonError::into_inner);
         let prior = std::env::var_os(key);
         Self {
             _lock: lock,

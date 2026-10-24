@@ -3,8 +3,8 @@
 
 use super::super::{ObserverMapCamera, BASE_HEIGHT, MAP_LAYER};
 use super::{
-    disclosed_snapshot, label_bundle, road_mesh, CountyAnchors, RelationshipEntity,
-    RelationshipLabel, RelationshipObservation, RoadSegment, RoadSegments,
+    disclosed_snapshot, CountyAnchors, RelationshipEntity, RelationshipLabel,
+    RelationshipObservation, RoadSegment, RoadSegments,
 };
 use crate::decision_surface::{DeclaredSurface, SurfaceId};
 use crate::observer::{ObservationContext, ObserverSession};
@@ -14,10 +14,8 @@ use crate::observer_ui::NetworkSector;
 use crate::observer_ui::{ObserverUiState, ObserverViewport, RoadLayer};
 use crate::production::PrimaryView;
 use crate::production::ProductionCommand;
-use crate::production_layout::place_label;
-use babylon_persistence::{
-    production_observation::ProductionSite, production_observation::ProductionSiteRole,
-};
+use babylon_persistence::production_observation::{ProductionSite, ProductionSiteRole};
+
 use bevy::ecs::system::SystemParam;
 use bevy::picking::pointer::PointerButton;
 use bevy::prelude::*;
@@ -26,7 +24,10 @@ use std::fmt::Write as _;
 
 #[path = "map_network_projection.rs"]
 mod projection;
-use projection::project_network;
+use crate::observer_ui::ObserverFontRole;
+use crate::production_layout;
+use bevy::camera::visibility::RenderLayers;
+use bevy::window::PrimaryWindow;
 #[path = "map_network_peers.rs"]
 mod peers;
 
@@ -247,7 +248,7 @@ fn spawn_legend(commands: &mut Commands) {
                         ..default()
                     },
                     TextColor(sector_color(sector)),
-                    crate::observer_ui::ObserverFontRole::Body,
+                    ObserverFontRole::Body,
                     Pickable::IGNORE,
                 ));
             }
@@ -286,7 +287,7 @@ fn rebuild_network(
         crate::map_economy_lens::MapLens::Material { good, .. } => good.as_ref(),
         _ => None,
     };
-    let mut projection = project_network(
+    let mut projection = projection::project_network(
         &observation.frame,
         &observation.session,
         &observation.anchors,
@@ -303,7 +304,7 @@ fn rebuild_network(
         }
     }
     commands
-        .spawn(label_bundle(
+        .spawn(super::label_bundle(
             heading(&projection, observation.ui.network_sector),
             None,
             0,
@@ -370,7 +371,10 @@ fn spawn_network_connections(
             // These integer keys only identify display segments, never infrastructure.
             let id = i64::try_from(index).expect("bounded disclosed network");
             batch.insert(
-                RoadSegment([[id, i64::try_from(part).unwrap()], [id, 3]]),
+                RoadSegment([
+                    [id, i64::try_from(part).expect("a segment index fits i64")],
+                    [id, 3],
+                ]),
                 [pair[0], pair[1]],
             );
         }
@@ -380,13 +384,19 @@ fn spawn_network_connections(
         for (part, wing) in [side, -side].into_iter().enumerate() {
             let id = i64::try_from(index).expect("bounded disclosed network");
             batch.insert(
-                RoadSegment([[id, 4 + i64::try_from(part).unwrap()], [id, 7]]),
+                RoadSegment([
+                    [
+                        id,
+                        4 + i64::try_from(part).expect("a segment index fits i64"),
+                    ],
+                    [id, 7],
+                ]),
                 [tip - direction * 4.0 + wing, tip],
             );
         }
     }
     for ((sector, focused), segments) in batches {
-        if let Some(mesh) = road_mesh(&segments, if focused { 1.6 } else { 0.7 }) {
+        if let Some(mesh) = super::road_mesh(&segments, if focused { 1.6 } else { 0.7 }) {
             commands.spawn((
                 Mesh3d(meshes.add(mesh)),
                 MeshMaterial3d(if focused {
@@ -395,7 +405,7 @@ fn spawn_network_connections(
                     assets.links[&sector].clone()
                 }),
                 Transform::default(),
-                bevy::camera::visibility::RenderLayers::layer(MAP_LAYER),
+                RenderLayers::layer(MAP_LAYER),
                 Pickable::IGNORE,
                 EconomyEntity,
                 DeclaredSurface::new(SurfaceId::ObserverProduction),
@@ -422,7 +432,7 @@ fn spawn_network_nodes(
                     assets.materials[&node.sector].clone()
                 }),
                 Transform::from_translation(node.position).with_scale(Vec3::splat(scale)),
-                bevy::camera::visibility::RenderLayers::layer(MAP_LAYER),
+                RenderLayers::layer(MAP_LAYER),
                 EconomyEntity,
                 EconomyNode {
                     context: context.clone(),
@@ -434,7 +444,7 @@ fn spawn_network_nodes(
             .observe(leave_node)
             .observe(select_node);
         commands
-            .spawn(label_bundle(
+            .spawn(super::label_bundle(
                 node.caption,
                 Some(node.position),
                 1,
@@ -517,7 +527,7 @@ struct NetworkLabelPlacement<'w, 's> {
     hovered: Res<'w, HoveredNode>,
     viewport: Res<'w, ObserverViewport>,
     scale: Res<'w, UiScale>,
-    windows: Query<'w, 's, &'static Window, With<bevy::window::PrimaryWindow>>,
+    windows: Query<'w, 's, &'static Window, With<PrimaryWindow>>,
     camera: Query<'w, 's, (&'static Camera, &'static Transform), With<ObserverMapCamera>>,
     labels: Query<
         'w,
@@ -553,7 +563,12 @@ fn place_network_labels(mut placement: NetworkLabelPlacement) {
                     .world_to_viewport(&GlobalTransform::from(*transform), label.position)
                     .ok()
                     .and_then(|point| {
-                        place_label(point, bounds, computed.size() / window.scale_factor(), &[])
+                        production_layout::place_label(
+                            point,
+                            bounds,
+                            computed.size() / window.scale_factor(),
+                            &[],
+                        )
                     }),
                 _ => None,
             }
@@ -608,14 +623,23 @@ fn place_legend(
 
 #[cfg(test)]
 mod tests {
-    use super::super::tests::fixture;
+    use super::super::tests;
     use super::*;
     use crate::map_economy_lens::MaterialGoodKey;
+    use crate::observer::Perspective;
+    use crate::observer::SessionPhase;
     use crate::observer_ui::ObserverFrame;
+    use babylon_persistence::observer_reader::ObserverVisibility;
 
     fn retail_fixture() -> (ObserverSession, ObserverFrame, CountyAnchors) {
-        let (session, mut frame, anchors) = fixture();
-        let snapshot = frame.0.as_mut().unwrap().production.as_mut().unwrap();
+        let (session, mut frame, anchors) = tests::fixture();
+        let snapshot = frame
+            .0
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow")
+            .production
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow");
         snapshot.sites[1].roles = vec![ProductionSiteRole::Retail];
         snapshot.sites[1].sector_code = Some("44-45".into());
         let mut isolated = snapshot.sites[1].clone();
@@ -629,7 +653,9 @@ mod tests {
                 total_order_count: 1,
                 expired: 0,
                 demand_principal_id: "demand".into(),
-                location: "county:26099".parse().unwrap(),
+                location: "county:26099"
+                    .parse()
+                    .expect("the authored literal parses as the declared type"),
                 good_id: "steel".into(),
                 unit_id: "kg".into(),
                 good: "Steel".into(),
@@ -659,7 +685,7 @@ mod tests {
     fn network_keeps_local_isolated_cohorts_and_direct_retail_relationships_without_inventing_routes(
     ) {
         let (session, mut frame, anchors) = retail_fixture();
-        let full = project_network(
+        let full = projection::project_network(
             &frame,
             &session,
             &anchors,
@@ -684,7 +710,7 @@ mod tests {
             .links
             .iter()
             .any(|link| link.to == NodeKey::EndBuyers("26099".into())));
-        let only = project_network(
+        let only = projection::project_network(
             &frame,
             &session,
             &anchors,
@@ -705,10 +731,16 @@ mod tests {
             .links
             .iter()
             .all(|link| matches!(&link.kind, NetworkLinkKind::Commodity { good, unit } if good == "steel" && unit == "kg")));
-        let snapshot = frame.0.as_mut().unwrap().production.as_mut().unwrap();
+        let snapshot = frame
+            .0
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow")
+            .production
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow");
         snapshot.sites.reverse();
         snapshot.final_demand_accounts.reverse();
-        let permuted = project_network(
+        let permuted = projection::project_network(
             &frame,
             &session,
             &anchors,
@@ -728,10 +760,10 @@ mod tests {
         frame
             .0
             .as_ref()
-            .unwrap()
+            .expect("the fixture set the optional field before this read")
             .production
             .as_ref()
-            .unwrap()
+            .expect("the fixture set the optional field before this read")
             .routes
             .is_empty()
     }
@@ -739,9 +771,9 @@ mod tests {
     #[test]
     fn network_refuses_stale_loading_and_restricted_observations() {
         for invalid in ["stale", "loading", "preview"] {
-            let (mut session, mut frame, anchors) = fixture();
+            let (mut session, mut frame, anchors) = tests::fixture();
             assert!(
-                project_network(
+                projection::project_network(
                     &frame,
                     &session,
                     &anchors,
@@ -752,16 +784,25 @@ mod tests {
                 .available
             );
             match invalid {
-                "stale" => frame.0.as_mut().unwrap().resolve_tick = 2,
-                "loading" => session.phase = crate::observer::SessionPhase::Loading,
+                "stale" => {
+                    frame
+                        .0
+                        .as_mut()
+                        .expect("the fixture set the optional field before this borrow")
+                        .resolve_tick = 2;
+                }
+                "loading" => session.phase = SessionPhase::Loading,
                 "preview" => {
-                    session.set_perspective(crate::observer::Perspective::PlayerKnowledge);
-                    frame.0.as_mut().unwrap().visibility =
-                        babylon_persistence::observer_reader::ObserverVisibility::KnownPreview;
+                    session.set_perspective(Perspective::PlayerKnowledge);
+                    frame
+                        .0
+                        .as_mut()
+                        .expect("the fixture set the optional field before this borrow")
+                        .visibility = ObserverVisibility::KnownPreview;
                 }
                 _ => unreachable!(),
             }
-            let hidden = project_network(
+            let hidden = projection::project_network(
                 &frame,
                 &session,
                 &anchors,
@@ -777,13 +818,28 @@ mod tests {
     }
     #[test]
     fn maintenance_network_discloses_service_endpoints_only_to_the_current_full_observer() {
-        let (session, mut frame, anchors) = fixture();
-        let source = frame.0.as_ref().unwrap().production.as_ref().unwrap();
+        let (session, mut frame, anchors) = tests::fixture();
+        let source = frame
+            .0
+            .as_ref()
+            .expect("the fixture set the optional field before this read")
+            .production
+            .as_ref()
+            .expect("the fixture set the optional field before this read");
         let snapshot = crate::maintenance_fixture::snapshot(source, 3, Some(1));
-        let provider = snapshot.sites.last().unwrap().id.clone();
+        let provider = snapshot
+            .sites
+            .last()
+            .expect("the fixture sequence is non-empty")
+            .id
+            .clone();
         let consumer = snapshot.sites[0].id.clone();
-        frame.0.as_mut().unwrap().production = Some(snapshot);
-        let full = project_network(
+        frame
+            .0
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow")
+            .production = Some(snapshot);
+        let full = projection::project_network(
             &frame,
             &session,
             &anchors,
@@ -800,7 +856,7 @@ mod tests {
             .iter()
             .any(|link| link.from == NodeKey::Site(provider.clone())
                 && link.to == NodeKey::Site(consumer.clone())));
-        let goods_only = project_network(
+        let goods_only = projection::project_network(
             &frame,
             &session,
             &anchors,
@@ -812,9 +868,12 @@ mod tests {
             }),
         );
         assert!(!goods_only.nodes.contains_key(&NodeKey::Site(provider)));
-        frame.0.as_mut().unwrap().visibility =
-            babylon_persistence::observer_reader::ObserverVisibility::KnownPreview;
-        let hidden = project_network(
+        frame
+            .0
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow")
+            .visibility = ObserverVisibility::KnownPreview;
+        let hidden = projection::project_network(
             &frame,
             &session,
             &anchors,

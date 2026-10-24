@@ -4,11 +4,11 @@ use super::Scope;
 use crate::identity::CampaignId;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
-use std::{
-    fs::File,
-    io::Read,
-    path::{Path, PathBuf},
-};
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
+use std::fs::File;
+use std::io::Read;
+use std::path::{Path, PathBuf};
 
 const POLICY_BYTES: u64 = 65_536;
 
@@ -22,7 +22,7 @@ pub enum Refusal {
     Periods,
 }
 impl std::fmt::Display for Refusal {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         write!(f, "frozen qualification policy refused: {self:?}")
     }
 }
@@ -155,7 +155,9 @@ pub fn canonical_digest(value: &str) -> Result<[u8; 32], Refusal> {
 mod tests {
     use super::*;
     use sha2::{Digest, Sha256};
-    use std::{fs, path::PathBuf};
+    use std::fs;
+    use std::path::PathBuf;
+    use uuid::Uuid;
 
     struct Fixture(PathBuf);
     impl Fixture {
@@ -174,25 +176,29 @@ mod tests {
                 &path,
                 include_bytes!("../../../../../contracts/national_storage_qualification_v6.json"),
             )
-            .unwrap();
+            .expect("the fixture sink accepts the authored bytes");
             Self(path)
         }
         fn digest(&self) -> [u8; 32] {
-            Sha256::digest(fs::read(&self.0).unwrap()).into()
+            Sha256::digest(
+                fs::read(&self.0).expect("the fixture reader returns its authored facts"),
+            )
+            .into()
         }
     }
     impl Drop for Fixture {
         fn drop(&mut self) {
-            fs::remove_file(&self.0).unwrap();
+            fs::remove_file(&self.0).expect("the fixture file exists before removal");
         }
     }
 
     #[test]
     fn frozen_fields_and_renewal_seed_are_shared_without_defaults() {
         let file = Fixture::new();
-        let policy = FrozenPolicy::open(&file.0, file.digest(), 52).unwrap();
+        let policy = FrozenPolicy::open(&file.0, file.digest(), 52)
+            .expect("the fixture opens the authored source");
         let scope = policy.scope(
-            crate::identity::CampaignId::from_uuid(uuid::Uuid::from_u128(1)),
+            crate::identity::CampaignId::from_uuid(Uuid::from_u128(1)),
             [7; 32],
         );
         assert_eq!(scope.renewal_seed_tick, 39);
@@ -200,7 +206,7 @@ mod tests {
         assert_eq!(scope.production_evidence_bytes, 1_000_000_000);
         assert_eq!(scope.policy, file.digest());
         assert!(policy.verify().is_ok());
-        fs::write(&file.0, b"{}").unwrap();
+        fs::write(&file.0, b"{}").expect("the fixture sink accepts the authored bytes");
         assert_eq!(policy.verify(), Err(Refusal::Changed));
     }
 
@@ -212,11 +218,15 @@ mod tests {
             b"{\"version\":5}",
             b"{\"version\":6,\"version\":6}",
         ] {
-            fs::write(&file.0, replacement).unwrap();
+            fs::write(&file.0, replacement).expect("the fixture sink accepts the authored bytes");
             assert!(FrozenPolicy::open(&file.0, file.digest(), 2).is_err());
         }
         assert!(canonical_digest(&"A".repeat(64)).is_err());
         assert!(canonical_digest(&"a".repeat(63)).is_err());
-        assert_eq!(canonical_digest(&"ab".repeat(32)).unwrap(), [0xab; 32]);
+        assert_eq!(
+            canonical_digest(&"ab".repeat(32))
+                .expect("the fixture call `canonical_digest` succeeds for the authored inputs"),
+            [0xab; 32]
+        );
     }
 }

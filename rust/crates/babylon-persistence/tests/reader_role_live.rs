@@ -18,26 +18,41 @@ use babylon_persistence::archive_revision::{
     ArchiveDossierBounds, ArchiveDossierPage, ArchiveDossierPending, ArchiveDossierRead,
     ArchiveDossierState, ArchiveDossierUnavailable, ArchiveReadScope, ArchiveSearchState,
 };
+use babylon_persistence::identity::CampaignId;
 use babylon_persistence::material_runtime::{DurableMaterialRuntime, MaterialRuntimeError};
 use babylon_persistence::michigan_content::MichiganContentPreset;
 use babylon_persistence::michigan_material::MichiganDeliveryPreset;
 use babylon_persistence::runtime_session::{
-    run_runtime_session, RuntimeSessionRequest, RuntimeSessionResponse, RuntimeSessionScope,
-    RuntimeSessionTail, RuntimeSessionTarget, RUNTIME_SESSION_PROTOCOL_VERSION,
+    RuntimeSessionRequest, RuntimeSessionResponse, RuntimeSessionScope, RuntimeSessionTail,
+    RuntimeSessionTarget, RUNTIME_SESSION_PROTOCOL_VERSION,
 };
 use babylon_persistence::{
-    identity::CampaignId, install_reader_role, postgres_catalog::validate_connection_target,
     ArchiveCitation, ArchiveDirtyBatch, ArchiveKnowledgeGrant, ArchiveMaterializeMode,
     ArchivePageInput, ArchivePageRef, ArchiveSignal, ArchiveSubject, ArchiveSubjectKind,
     ReaderRoleDisposition, SemanticArchiveReader, SemanticArchiveStore,
 };
-use babylon_persistence::{
-    observer_reader::provision_observer_role, observer_reader::ObserverEconomyError,
-    observer_reader::ObserverEconomyReader, observer_reader::ObserverVisibility,
+
+use babylon_persistence::observer_reader::{
+    ObserverEconomyError, ObserverEconomyReader, ObserverVisibility,
 };
+
+use babylon_persistence::observer_reader;
+use babylon_persistence::postgres_catalog;
+use babylon_persistence::runtime_session;
+use babylon_persistence::ArchiveKnowledge;
+use babylon_persistence::ArchiveProducerOutcome;
+use babylon_persistence::ArchiveWorker;
+use babylon_persistence::NullArchiveDossierProducer;
+use babylon_persistence::PendingArchiveReceipt;
 use babylon_practice_contract::OrderedPracticeActionBatch;
 use babylon_tick::material_replay::IdentifiedMaterialTick;
+use postgres::Client;
+use postgres::Error;
 use postgres::{Config, NoTls};
+use std::io::Cursor;
+use std::path::Path;
+use std::time::Duration;
+use std::time::SystemTime;
 use uuid::Uuid;
 
 const DSN_ENV: &str = "BABYLON_POSTGRES_TEST_DSN";
@@ -53,7 +68,7 @@ fn validated_base_config() -> Config {
     assert_eq!(canary.len(), 32);
     let dsn = std::env::var(DSN_ENV).expect("runner supplies the disposable DSN");
     let config = Config::from_str(&dsn).expect("runner DSN parses");
-    validate_connection_target(&config).expect("loopback target");
+    postgres_catalog::validate_connection_target(&config).expect("loopback target");
     assert_eq!(config.get_user(), Some("test"));
     assert_eq!(config.get_dbname(), Some("postgres"));
     let actual: Option<String> = config
@@ -199,7 +214,7 @@ impl ConfinedLogin {
 
     fn create_for_role(base: &Config, group: &str) -> Self {
         assert!(matches!(group, "babylon_reader" | "babylon_observer"));
-        let unique = std::time::SystemTime::now()
+        let unique = SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .expect("clock is after the epoch")
             .as_nanos();
@@ -234,7 +249,7 @@ impl ConfinedLogin {
         )
     }
 
-    fn try_cleanup(&self) -> Result<(), postgres::Error> {
+    fn try_cleanup(&self) -> Result<(), Error> {
         self.admin.connect(NoTls)?.batch_execute(&format!(
             "REVOKE SET ON PARAMETER event_triggers FROM {role}; DROP ROLE IF EXISTS {role}",
             role = self.name
@@ -293,11 +308,12 @@ impl ReaderTarget {
         drop(runtime);
 
         assert_eq!(
-            install_reader_role(&config).expect("reader role installs"),
+            babylon_persistence::install_reader_role(&config).expect("reader role installs"),
             ReaderRoleDisposition::Installed
         );
         assert_eq!(
-            install_reader_role(&config).expect("reader role reinstall reconciles"),
+            babylon_persistence::install_reader_role(&config)
+                .expect("reader role reinstall reconciles"),
             ReaderRoleDisposition::AlreadyCurrent,
             "the exact role, view, and grants reinstall idempotently"
         );
@@ -396,7 +412,7 @@ fn tick_one_content_hash(config: &Config, campaign_id: CampaignId) -> [u8; 32] {
 
 /// Run as the database owner: the role holds SELECT only on the fog-safe
 /// views and no table privilege anywhere else.
-fn assert_owner_side_privilege_matrix(client: &mut postgres::Client) {
+fn assert_owner_side_privilege_matrix(client: &mut Client) {
     let held = client
         .query(
             "SELECT relation::pg_catalog.text || ':' || privilege::pg_catalog.text \
@@ -467,7 +483,7 @@ fn assert_owner_side_privilege_matrix(client: &mut postgres::Client) {
 
 /// Every read a fog-safe reader must never reach, run under
 /// `SET ROLE babylon_reader` on a superuser connection.
-fn assert_reader_query_refusals(client: &mut postgres::Client) {
+fn assert_reader_query_refusals(client: &mut Client) {
     for relation in [
         "archive_revision_grant_members_v3",
         "archive_revision_atom_members_v3",
@@ -647,7 +663,7 @@ fn assert_confined_reader_search_and_card(
     );
     assert!(reader
         .search_as_of(scope, "99901", 10)
-        .unwrap()
+        .expect("the fixture call `search_as_of` succeeds for the authored inputs")
         .hits
         .is_empty());
 }
@@ -693,7 +709,8 @@ fn read_county(
     reader
         .dossier_as_of(
             scope,
-            &ArchivePageRef::try_new(ArchiveSubjectKind::County, geoid.into()).unwrap(),
+            &ArchivePageRef::try_new(ArchiveSubjectKind::County, geoid.into())
+                .expect("the authored fixture satisfies the constructor invariants"),
             &ArchiveDossierBounds::default(),
         )
         .expect("confined scoped dossier")
@@ -714,14 +731,11 @@ impl babylon_persistence::ArchiveDossierProducer for Undrained {
     fn produce(
         &self,
         _campaign: Uuid,
-        receipt: &babylon_persistence::PendingArchiveReceipt,
-        _knowledge: &babylon_persistence::ArchiveKnowledge,
+        receipt: &PendingArchiveReceipt,
+        _knowledge: &ArchiveKnowledge,
         _budget: usize,
-    ) -> Result<
-        babylon_persistence::ArchiveProducerOutcome,
-        babylon_persistence::SemanticArchiveError,
-    > {
-        Ok(babylon_persistence::ArchiveProducerOutcome::new(
+    ) -> Result<ArchiveProducerOutcome, babylon_persistence::SemanticArchiveError> {
+        Ok(ArchiveProducerOutcome::new(
             ArchiveDirtyBatch::try_new(
                 receipt.resolve_tick(),
                 *receipt.tick_content_hash(),
@@ -742,39 +756,46 @@ fn assert_quiet_receipt_verification(
         1,
         tick_one_content_hash(&target.config, target.campaign_id),
     )
-    .unwrap();
-    let scope =
-        ArchiveReadScope::committed(target.campaign_id, 2, owner_tail.try_into().unwrap()).unwrap();
+    .expect("the fixture observation carries the committed value");
+    let scope = ArchiveReadScope::committed(
+        target.campaign_id,
+        2,
+        owner_tail
+            .try_into()
+            .expect("the fixture slice has the target length"),
+    )
+    .expect("the fixture observation carries the committed value");
     let before = read_county(reader, &first, "26163");
     let source = retained_page(&before).clone();
     assert_pending_retained_page(reader, &scope, &source);
     let pending = reader
         .archive_verification_status(target.campaign_id)
-        .unwrap()
-        .unwrap();
+        .expect("the fixture call `archive_verification_status` succeeds for the authored inputs")
+        .expect("the nested fixture result is present");
     assert_eq!((pending.durable_tick(), pending.processed_tick()), (2, 1));
-    let mut worker = babylon_persistence::ArchiveWorker::new(&target.config);
-    let staged = worker.sweep_once(target.campaign_id, &Undrained).unwrap();
+    let mut worker = ArchiveWorker::new(&target.config);
+    let staged = worker
+        .sweep_once(target.campaign_id, &Undrained)
+        .expect("the fixture sweep completes");
     assert_eq!(staged.paged_count(), 1);
     assert_eq!(staged.verified_tick(), 1);
     assert_eq!(
         reader
             .archive_verification_status(target.campaign_id)
-            .unwrap(),
+            .expect(
+                "the fixture call `archive_verification_status` succeeds for the authored inputs"
+            ),
         Some(pending)
     );
     assert_pending_retained_page(reader, &scope, &source);
     let settled = worker
-        .sweep_once(
-            target.campaign_id,
-            &babylon_persistence::NullArchiveDossierProducer::new(),
-        )
-        .unwrap();
+        .sweep_once(target.campaign_id, &NullArchiveDossierProducer::new())
+        .expect("the fixture sweep completes");
     assert_eq!(settled.applied_count(), 1);
     let verified = reader
         .archive_verification_status(target.campaign_id)
-        .unwrap()
-        .unwrap();
+        .expect("the fixture call `archive_verification_status` succeeds for the authored inputs")
+        .expect("the nested fixture result is present");
     assert_eq!((verified.durable_tick(), verified.processed_tick()), (2, 2));
     assert_quiet_retry(target, &scope);
     let current = read_county(reader, &scope, "26163");
@@ -796,22 +817,23 @@ fn assert_quiet_receipt_verification(
     assert_eq!(historical.state, before.state);
     assert_eq!((historical.durable_tick, historical.processed_tick), (2, 2));
     assert_eq!(source.content_source.tick(), 1);
-    let search = reader.search_as_of(&scope, "728576", 10).unwrap();
+    let search = reader
+        .search_as_of(&scope, "728576", 10)
+        .expect("the fixture call `search_as_of` succeeds for the authored inputs");
     assert_eq!(search.state, ArchiveSearchState::Ready);
     assert_eq!(search.hits[0].content_source, first);
-    let mut restarted = babylon_persistence::ArchiveWorker::new(&target.config);
+    let mut restarted = ArchiveWorker::new(&target.config);
     let idle = restarted
-        .sweep_once(
-            target.campaign_id,
-            &babylon_persistence::NullArchiveDossierProducer::new(),
-        )
-        .unwrap();
+        .sweep_once(target.campaign_id, &NullArchiveDossierProducer::new())
+        .expect("the fixture sweep completes");
     assert!(idle.dispositions().is_empty());
     assert_eq!(idle.verified_tick(), 2);
     assert_eq!(
         reader
             .archive_verification_status(target.campaign_id)
-            .unwrap(),
+            .expect(
+                "the fixture call `archive_verification_status` succeeds for the authored inputs"
+            ),
         Some(verified)
     );
     assert_eq!(read_county(reader, &scope, "26163"), current);
@@ -819,8 +841,14 @@ fn assert_quiet_receipt_verification(
 }
 
 fn assert_quiet_retry(target: &ReaderTarget, scope: &ArchiveReadScope) {
-    let empty =
-        ArchiveDirtyBatch::try_new(2, scope.tick_content_hash().unwrap(), Vec::new()).unwrap();
+    let empty = ArchiveDirtyBatch::try_new(
+        2,
+        scope
+            .tick_content_hash()
+            .expect("the committed tick has a content hash"),
+        Vec::new(),
+    )
+    .expect("the authored fixture satisfies the constructor invariants");
     let retry = SemanticArchiveStore::new(&target.config)
         .materialize_receipt(target.campaign_id, &empty, ArchiveMaterializeMode::Consume)
         .expect("exact quiet receipt retry");
@@ -857,7 +885,9 @@ fn assert_pending_retained_page(
         "pending reads do not fabricate a closed historical change set"
     );
     assert!(page.changes.next_cursor.is_none());
-    let search = reader.search_as_of(scope, "728576", 10).unwrap();
+    let search = reader
+        .search_as_of(scope, "728576", 10)
+        .expect("the fixture call `search_as_of` succeeds for the authored inputs");
     assert_eq!(
         search.state,
         ArchiveSearchState::Pending(ArchiveDossierPending::ReceiptProcessing)
@@ -874,15 +904,18 @@ fn assert_pin_worker_identity_refused(
     unchanged: &ArchiveDossierRead,
 ) {
     use babylon_persistence::{SemanticArchiveError, SemanticArchiveReaderError};
-    let mut client = target.config.connect(NoTls).unwrap();
-    let tick = i64::try_from(scope.tick()).unwrap();
+    let mut client = target
+        .config
+        .connect(NoTls)
+        .expect("the test database accepts the connection");
+    let tick = i64::try_from(scope.tick()).expect("the fixture value fits the target range");
     let original: Vec<u8> = client
         .query_one(
             "SELECT worker_contract_sha256 FROM babylon_meta.archive_tick_knowledge_v3 \
              WHERE campaign_id=$1 AND resolve_tick=$2",
             &[target.campaign_id.as_uuid(), &tick],
         )
-        .unwrap()
+        .expect("the seeded row is present exactly once")
         .get(0);
     let mut corrupt = original.clone();
     corrupt[0] ^= 1;
@@ -891,10 +924,11 @@ fn assert_pin_worker_identity_refused(
     assert_eq!(
         client
             .execute(update, &[target.campaign_id.as_uuid(), &tick, &corrupt])
-            .unwrap(),
+            .expect("the test database applies the setup statement"),
         1
     );
-    let subject = ArchivePageRef::try_new(ArchiveSubjectKind::County, "26163".into()).unwrap();
+    let subject = ArchivePageRef::try_new(ArchiveSubjectKind::County, "26163".into())
+        .expect("the authored fixture satisfies the constructor invariants");
     let failures = [
         reader
             .dossier_as_of(scope, &subject, &ArchiveDossierBounds::default())
@@ -916,12 +950,15 @@ fn assert_pin_worker_identity_refused(
     assert_eq!(
         client
             .execute(update, &[target.campaign_id.as_uuid(), &tick, &original])
-            .unwrap(),
+            .expect("the test database applies the setup statement"),
         1
     );
     assert_eq!(&read_county(reader, scope, "26163"), unchanged);
     assert_eq!(
-        reader.search_as_of(scope, "728576", 10).unwrap().state,
+        reader
+            .search_as_of(scope, "728576", 10)
+            .expect("the fixture call `search_as_of` succeeds for the authored inputs")
+            .state,
         ArchiveSearchState::Ready
     );
 }
@@ -979,7 +1016,8 @@ fn live_reader_handle_reads_through_confined_login_and_refuses_writer_authority(
         "the reader status preserves the acknowledged commit tail hash exactly"
     );
 
-    let first = ArchiveReadScope::committed(target.campaign_id, 1, tick_one_hash).unwrap();
+    let first = ArchiveReadScope::committed(target.campaign_id, 1, tick_one_hash)
+        .expect("the fixture observation carries the committed value");
     assert_confined_reader_search_and_card(&reader, &first);
 
     assert_quiet_receipt_verification(&reader, &target, owner_tail);
@@ -1008,7 +1046,7 @@ fn live_reader_handle_reads_through_confined_login_and_refuses_writer_authority(
     target.finish();
 }
 
-fn reader_installation_catalog(client: &mut postgres::Client) -> Vec<(String, String)> {
+fn reader_installation_catalog(client: &mut Client) -> Vec<(String, String)> {
     client
         .query(
             "SELECT namespace.nspname || '.' || relation.relname, \
@@ -1054,7 +1092,10 @@ fn live_reader_installer_refuses_privilege_drift_and_view_identity_mismatch() {
             ))
             .expect("extra base-table grant applies");
         let before = reader_installation_catalog(&mut client);
-        assert_eq!(install_reader_role(&target.config).map(|_| ()), refusal);
+        assert_eq!(
+            babylon_persistence::install_reader_role(&target.config).map(|_| ()),
+            refusal
+        );
         assert_eq!(
             reader_installation_catalog(&mut client),
             before,
@@ -1066,7 +1107,7 @@ fn live_reader_installer_refuses_privilege_drift_and_view_identity_mismatch() {
             ))
             .expect("test restores the exact grant footprint");
         assert_eq!(
-            install_reader_role(&target.config),
+            babylon_persistence::install_reader_role(&target.config),
             Ok(ReaderRoleDisposition::AlreadyCurrent),
             "restoring the exact footprint permits idempotent provisioning"
         );
@@ -1079,7 +1120,10 @@ fn live_reader_installer_refuses_privilege_drift_and_view_identity_mismatch() {
         )
         .expect("impostor table replaces the view");
     let impostor = reader_installation_catalog(&mut client);
-    assert_eq!(install_reader_role(&target.config).map(|_| ()), refusal);
+    assert_eq!(
+        babylon_persistence::install_reader_role(&target.config).map(|_| ()),
+        refusal
+    );
     assert_eq!(
         reader_installation_catalog(&mut client),
         impostor,
@@ -1089,7 +1133,10 @@ fn live_reader_installer_refuses_privilege_drift_and_view_identity_mismatch() {
         .batch_execute("DROP TABLE public.v_committed_tick_status_v1")
         .expect("test removes the impostor table");
     let absent = reader_installation_catalog(&mut client);
-    assert_eq!(install_reader_role(&target.config).map(|_| ()), refusal);
+    assert_eq!(
+        babylon_persistence::install_reader_role(&target.config).map(|_| ()),
+        refusal
+    );
     assert_eq!(
         reader_installation_catalog(&mut client),
         absent,
@@ -1105,13 +1152,13 @@ fn assert_economic_grant_boundary(
     preview: &ObserverEconomyReader,
     campaign: CampaignId,
 ) {
-    let owner_reader =
-        ObserverEconomyReader::connect(config, ObserverVisibility::FullObserver).unwrap();
+    let owner_reader = ObserverEconomyReader::connect(config, ObserverVisibility::FullObserver)
+        .expect("the test database accepts the connection");
     assert_eq!(
         owner_reader.snapshot(campaign, 1),
         Err(ObserverEconomyError::Authority)
     );
-    config.connect(NoTls).unwrap().execute("DELETE FROM babylon_meta.archive_knowledge_grant_v1 WHERE campaign_id = $1 AND subject_kind = 'county' AND subject_id = '26163' AND grant_key = 'qcew-employment'", &[campaign.as_uuid()]).unwrap();
+    config.connect(NoTls).expect("the test database accepts the connection").execute("DELETE FROM babylon_meta.archive_knowledge_grant_v1 WHERE campaign_id = $1 AND subject_kind = 'county' AND subject_id = '26163' AND grant_key = 'qcew-employment'", &[campaign.as_uuid()]).expect("the test database applies the setup statement");
     let known = preview
         .snapshot(campaign, 1)
         .expect("individually grant-filtered snapshot");
@@ -1119,23 +1166,23 @@ fn assert_economic_grant_boundary(
         .counties
         .iter()
         .find(|row| row.county_geoid == "26163")
-        .unwrap();
+        .expect("the fixture holds the searched element");
     assert_eq!(hidden.annual_avg_emplvl, None);
     assert_eq!(hidden.annual_avg_wkly_wage, Some(1469));
     assert_eq!(
         observer
             .snapshot(campaign, 1)
-            .unwrap()
+            .expect("the fixture captures a consistent snapshot")
             .counties
             .iter()
             .find(|row| row.county_geoid == "26163")
-            .unwrap()
+            .expect("the fixture holds the searched element")
             .annual_avg_emplvl,
         Some(725_504)
     );
     let ungranted = observer_config
         .connect(NoTls)
-        .unwrap()
+        .expect("the test database accepts the connection")
         .query("SELECT * FROM public.v_known_county_economy_v1", &[]);
     assert!(
         ungranted.is_err(),
@@ -1154,10 +1201,14 @@ fn live_known_county_grants_read_at_national_scale_within_reader_deadline() {
         CampaignId::from_uuid(Uuid::from_u128(0x3190_0000_0000_0000_0000_0000_0000_0024));
     let runtime = DurableMaterialRuntime::create(&config, campaign, current_material::foundation())
         .expect("real captured campaign foundation");
-    install_reader_role(&config).expect("exact restricted reader views");
+    babylon_persistence::install_reader_role(&config).expect("exact restricted reader views");
     let login = ConfinedLogin::create(&base);
-    let mut owner = config.connect(NoTls).unwrap();
-    let mut tx = owner.transaction().unwrap();
+    let mut owner = config
+        .connect(NoTls)
+        .expect("the test database accepts the connection");
+    let mut tx = owner
+        .transaction()
+        .expect("the test database opens a transaction");
     // Synthetic identities exercise the national row count, not a national
     // source capture. The real view retains its indexed/default grant collation
     // and its C-collated county mapping, including the permission masks.
@@ -1165,20 +1216,20 @@ fn live_known_county_grants_read_at_national_scale_within_reader_deadline() {
         "DELETE FROM babylon_meta.territory_county_map_v1 WHERE campaign_id = $1",
         &[campaign.as_uuid()],
     )
-    .unwrap();
+    .expect("the test database applies the setup statement");
     tx.execute(
         "INSERT INTO babylon_meta.territory_county_map_v1 \
          SELECT $1, 'county-' || n::text, pg_catalog.lpad(n::text, 5, '0') \
          FROM pg_catalog.generate_series(1, 3144) AS n",
         &[campaign.as_uuid()],
     )
-    .unwrap();
+    .expect("the test database applies the setup statement");
     tx.execute(
         "DELETE FROM babylon_meta.archive_knowledge_grant_v1 \
          WHERE campaign_id = $1 AND subject_kind = 'county'",
         &[campaign.as_uuid()],
     )
-    .unwrap();
+    .expect("the test database applies the setup statement");
     tx.execute(
         "INSERT INTO babylon_meta.archive_knowledge_grant_v1 \
          SELECT $1, 'county', mapping.county_geoid, grant_key, \
@@ -1193,14 +1244,14 @@ fn live_known_county_grants_read_at_national_scale_within_reader_deadline() {
          WHERE mapping.campaign_id = $1",
         &[campaign.as_uuid()],
     )
-    .unwrap();
-    tx.commit().unwrap();
+    .expect("the test database applies the setup statement");
+    tx.commit().expect("the fixture transaction commits");
     let mut known = config.clone();
     known.user(&login.name).password(ConfinedLogin::PASSWORD);
     known.options("-c default_transaction_read_only=on -c statement_timeout=5000ms -c lock_timeout=5000ms -c search_path=pg_catalog -c jit=off -c event_triggers=off");
     let rows = known
         .connect(NoTls)
-        .unwrap()
+        .expect("the test database accepts the connection")
         .query(
             "SELECT county_geoid, annual_avg_estabs_count, annual_avg_emplvl, \
              total_annual_wages, annual_avg_wkly_wage, establishments_granted, \
@@ -1242,9 +1293,9 @@ fn live_observer_economics_reads_exact_foundation_commit_and_granted_preview() {
     SemanticArchiveStore::new(&config)
         .verify_schema()
         .expect("Archive schema");
-    install_reader_role(&config).expect("reader role");
-    provision_observer_role(&config).expect("economic views and groups");
-    provision_observer_role(&config).expect("idempotent exact observer schema");
+    babylon_persistence::install_reader_role(&config).expect("reader role");
+    observer_reader::provision_observer_role(&config).expect("economic views and groups");
+    observer_reader::provision_observer_role(&config).expect("idempotent exact observer schema");
     let observer_login = ConfinedLogin::create_for_role(&base, "babylon_observer");
     let known_login = ConfinedLogin::create(&base);
     let mut observer_config = config.clone();
@@ -1256,9 +1307,10 @@ fn live_observer_economics_reads_exact_foundation_commit_and_granted_preview() {
         .user(&known_login.name)
         .password(ConfinedLogin::PASSWORD);
     let observer =
-        ObserverEconomyReader::connect(&observer_config, ObserverVisibility::FullObserver).unwrap();
-    let preview =
-        ObserverEconomyReader::connect(&known_config, ObserverVisibility::KnownPreview).unwrap();
+        ObserverEconomyReader::connect(&observer_config, ObserverVisibility::FullObserver)
+            .expect("the test database accepts the connection");
+    let preview = ObserverEconomyReader::connect(&known_config, ObserverVisibility::KnownPreview)
+        .expect("the test database accepts the connection");
     let foundation = observer
         .snapshot(campaign, 0)
         .expect("true foundation, without hidden tick");
@@ -1266,14 +1318,17 @@ fn live_observer_economics_reads_exact_foundation_commit_and_granted_preview() {
     assert_eq!(foundation.tick_content_hash, None);
     assert_eq!(runtime.tail(), None);
     assert_eq!(
-        preview.snapshot(campaign, 0).unwrap().counties,
+        preview
+            .snapshot(campaign, 0)
+            .expect("the fixture captures a consistent snapshot")
+            .counties,
         foundation.counties
     );
     let actions = OrderedPracticeActionBatch::empty(
         runtime.session().graph_session().session_identity().clone(),
         1,
     )
-    .unwrap();
+    .expect("the empty authored batch constructs");
     let receipt = runtime
         .advance_and_commit(&mut CollectingSink::default(), &actions)
         .expect("actual quiet commit");
@@ -1301,7 +1356,10 @@ fn live_observer_economics_reads_exact_foundation_commit_and_granted_preview() {
     assert_eq!(other_runtime.tail(), None);
     assert_eq!(other_snapshot.counties, committed.counties);
     assert_eq!(
-        preview.snapshot(other, 0).unwrap().counties,
+        preview
+            .snapshot(other, 0)
+            .expect("the fixture captures a consistent snapshot")
+            .counties,
         other_snapshot.counties,
         "the first campaign's withheld grant cannot hide the second campaign's foundation field"
     );
@@ -1311,7 +1369,9 @@ fn live_observer_economics_reads_exact_foundation_commit_and_granted_preview() {
         "the first campaign's committed tick cannot satisfy the second campaign's scope"
     );
     assert_eq!(
-        observer.snapshot(campaign, 1).unwrap(),
+        observer
+            .snapshot(campaign, 1)
+            .expect("the fixture captures a consistent snapshot"),
         committed,
         "creating another campaign preserves the first campaign's exact committed observation"
     );
@@ -1324,13 +1384,16 @@ fn live_observer_economics_reads_exact_foundation_commit_and_granted_preview() {
 
 fn assert_material_lock_refusal(
     config: &Config,
-    owner: &mut postgres::Client,
+    owner: &mut Client,
     campaign: CampaignId,
     runtime: &mut DurableMaterialRuntime,
     actions: &OrderedPracticeActionBatch,
     sink: &mut CollectingSink,
 ) {
-    let before = runtime.session().current_world_hash().unwrap();
+    let before = runtime
+        .session()
+        .current_world_hash()
+        .expect("the committed session publishes a world hash");
     let opening = runtime.session().material().canonical_bytes().to_vec();
     // Negative control self-releases after ten seconds: an unbounded writer
     // would eventually commit and fail the assertion instead of hanging CI.
@@ -1338,32 +1401,48 @@ fn assert_material_lock_refusal(
     let (locked_tx, locked_rx) = std::sync::mpsc::sync_channel(1);
     let (release_tx, release_rx) = std::sync::mpsc::sync_channel(1);
     let lock_holder = std::thread::spawn(move || {
-        let mut connection = lock_config.connect(NoTls).unwrap();
-        let mut transaction = connection.transaction().unwrap();
+        let mut connection = lock_config
+            .connect(NoTls)
+            .expect("the test database accepts the connection");
+        let mut transaction = connection
+            .transaction()
+            .expect("the test database opens a transaction");
         transaction
             .query_one(
                 "SELECT campaign_id FROM babylon_state.material_campaign_foundation_v3 \
              WHERE campaign_id=$1::uuid FOR UPDATE",
                 &[campaign.as_uuid()],
             )
-            .unwrap();
-        locked_tx.send(()).unwrap();
-        let _ = release_rx.recv_timeout(std::time::Duration::from_secs(10));
-        transaction.rollback().unwrap();
+            .expect("the seeded row is present exactly once");
+        locked_tx
+            .send(())
+            .expect("the receiver stays alive for the send");
+        let _ = release_rx.recv_timeout(Duration::from_secs(10));
+        transaction
+            .rollback()
+            .expect("the open transaction rolls back");
     });
     locked_rx
-        .recv_timeout(std::time::Duration::from_secs(10))
-        .unwrap();
+        .recv_timeout(Duration::from_secs(10))
+        .expect("the producer sends before the fixture timeout");
     let locked_result = runtime.advance_and_commit(sink, actions);
     let _ = release_tx.send(());
-    lock_holder.join().unwrap();
+    lock_holder
+        .join()
+        .expect("the fixture worker finishes without panic");
     assert!(matches!(
         locked_result,
         Err(MaterialRuntimeError::DatabaseLockRefused(_))
     ));
     assert_eq!(runtime.session().completed_tick(), 0);
     assert_eq!(runtime.session().graph_session().completed_tick(), 0);
-    assert_eq!(runtime.session().current_world_hash().unwrap(), before);
+    assert_eq!(
+        runtime
+            .session()
+            .current_world_hash()
+            .expect("the committed session publishes a world hash"),
+        before
+    );
     assert_eq!(runtime.session().material().canonical_bytes(), opening);
     assert!(runtime.tail().is_none());
     assert!(sink.events.is_empty());
@@ -1372,25 +1451,34 @@ fn assert_material_lock_refusal(
             "SELECT count(*) FROM babylon_state.tick_commit WHERE campaign_id=$1::uuid",
             &[campaign.as_uuid()],
         )
-        .unwrap()
+        .expect("the seeded row is present exactly once")
         .get(0);
     assert_eq!(durable, 0);
 }
 
 fn assert_material_marker_rollback(
-    owner: &mut postgres::Client,
+    owner: &mut Client,
     campaign: CampaignId,
     runtime: &mut DurableMaterialRuntime,
     actions: &OrderedPracticeActionBatch,
     sink: &mut CollectingSink,
 ) {
-    let before = runtime.session().current_world_hash().unwrap();
+    let before = runtime
+        .session()
+        .current_world_hash()
+        .expect("the committed session publishes a world hash");
     let opening = runtime.session().material().canonical_bytes().to_vec();
-    owner.batch_execute("CREATE FUNCTION public.refuse_material_marker_v3() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'injected pre-marker refusal'; END $$; CREATE TRIGGER refuse_material_marker_v3 BEFORE INSERT ON babylon_state.tick_commit FOR EACH ROW EXECUTE FUNCTION public.refuse_material_marker_v3()").unwrap();
+    owner.batch_execute("CREATE FUNCTION public.refuse_material_marker_v3() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'injected pre-marker refusal'; END $$; CREATE TRIGGER refuse_material_marker_v3 BEFORE INSERT ON babylon_state.tick_commit FOR EACH ROW EXECUTE FUNCTION public.refuse_material_marker_v3()").expect("the test database applies the schema statements");
     assert!(runtime.advance_and_commit(sink, actions).is_err());
     assert_eq!(runtime.session().completed_tick(), 0);
     assert_eq!(runtime.session().graph_session().completed_tick(), 0);
-    assert_eq!(runtime.session().current_world_hash().unwrap(), before);
+    assert_eq!(
+        runtime
+            .session()
+            .current_world_hash()
+            .expect("the committed session publishes a world hash"),
+        before
+    );
     assert_eq!(runtime.session().material().canonical_bytes(), opening);
     assert!(sink.events.is_empty());
     for table in [
@@ -1404,11 +1492,11 @@ fn assert_material_marker_rollback(
                 &format!("SELECT count(*) FROM babylon_state.{table} WHERE campaign_id=$1::uuid"),
                 &[campaign.as_uuid()],
             )
-            .unwrap()
+            .expect("the seeded row is present exactly once")
             .get(0);
         assert_eq!(count, 0, "rollback {table}");
     }
-    owner.batch_execute("DROP TRIGGER refuse_material_marker_v3 ON babylon_state.tick_commit; DROP FUNCTION public.refuse_material_marker_v3()").unwrap();
+    owner.batch_execute("DROP TRIGGER refuse_material_marker_v3 ON babylon_state.tick_commit; DROP FUNCTION public.refuse_material_marker_v3()").expect("the test database applies the schema statements");
 }
 
 fn assert_committed_material_visibility(
@@ -1417,7 +1505,9 @@ fn assert_committed_material_visibility(
     campaign: CampaignId,
     first: &IdentifiedMaterialTick,
 ) {
-    let snapshot = observer.snapshot(campaign, 1).unwrap();
+    let snapshot = observer
+        .snapshot(campaign, 1)
+        .expect("the fixture captures a consistent snapshot");
     assert_eq!(
         snapshot.nominal_world_hash,
         Some(babylon_tick::hex(&first.result_world_hash()))
@@ -1425,11 +1515,15 @@ fn assert_committed_material_visibility(
     assert_ne!(snapshot.nominal_world_hash, snapshot.tick_content_hash);
     assert!(known
         .snapshot(campaign, 1)
-        .unwrap()
+        .expect("the fixture captures a consistent snapshot")
         .nominal_world_hash
         .is_none());
     assert!(snapshot.production.is_some());
-    assert!(known.snapshot(campaign, 1).unwrap().production.is_none());
+    assert!(known
+        .snapshot(campaign, 1)
+        .expect("the fixture captures a consistent snapshot")
+        .production
+        .is_none());
 }
 
 fn assert_material_restart_reconciliation(
@@ -1443,27 +1537,35 @@ fn assert_material_restart_reconciliation(
         campaign,
         MichiganContentPreset::new_campaign(MichiganDeliveryPreset::Standard)
             .create_foundation(&crate::test_support::catalog())
-            .unwrap()
+            .expect("the authored catalog builds the foundation")
             .digest(),
     )
-    .unwrap();
+    .expect("the fixture opens the authored source");
     assert_eq!(
         reopened.session().material().canonical_bytes(),
         runtime.session().material().canonical_bytes()
     );
     assert_eq!(
-        reopened.session().current_world_hash().unwrap(),
-        runtime.session().current_world_hash().unwrap()
+        reopened
+            .session()
+            .current_world_hash()
+            .expect("the committed session publishes a world hash"),
+        runtime
+            .session()
+            .current_world_hash()
+            .expect("the committed session publishes a world hash")
     );
     let second_actions = OrderedPracticeActionBatch::empty(
         runtime.session().graph_session().session_identity().clone(),
         2,
     )
-    .unwrap();
-    let uninterrupted = runtime.advance_and_commit(sink, &second_actions).unwrap();
+    .expect("the empty authored batch constructs");
+    let uninterrupted = runtime
+        .advance_and_commit(sink, &second_actions)
+        .expect("the prepared tick advances and commits");
     let reconciled = reopened
         .advance_and_commit(&mut CollectingSink::default(), &second_actions)
-        .unwrap();
+        .expect("the prepared tick advances and commits");
     assert_eq!(uninterrupted, reconciled);
     assert!(matches!(
         DurableMaterialRuntime::open(
@@ -1471,7 +1573,7 @@ fn assert_material_restart_reconciliation(
             campaign,
             MichiganContentPreset::new_campaign(MichiganDeliveryPreset::Delayed)
                 .create_foundation(&crate::test_support::catalog())
-                .unwrap()
+                .expect("the authored catalog builds the foundation")
                 .digest()
         ),
         Err(MaterialRuntimeError::FoundationMismatch)
@@ -1480,29 +1582,33 @@ fn assert_material_restart_reconciliation(
 }
 
 fn assert_material_corruption_refused(
-    owner: &mut postgres::Client,
+    owner: &mut Client,
     config: &Config,
     campaign: CampaignId,
     observer: &ObserverEconomyReader,
 ) {
-    let exact:Vec<u8>=owner.query_one("SELECT register_storage_bytes FROM babylon_state.material_tick_v3 WHERE campaign_id=$1::uuid AND resolve_tick=2",&[campaign.as_uuid()]).unwrap().get(0);
+    let exact:Vec<u8>=owner.query_one("SELECT register_storage_bytes FROM babylon_state.material_tick_v3 WHERE campaign_id=$1::uuid AND resolve_tick=2",&[campaign.as_uuid()]).expect("the seeded row is present exactly once").get(0);
     let mut corrupted = exact.clone();
     let last = corrupted.len() - 1;
     corrupted[last] ^= 1;
-    owner.execute("UPDATE babylon_state.material_tick_v3 SET register_storage_bytes=$2 WHERE campaign_id=$1::uuid AND resolve_tick=2",&[campaign.as_uuid(),&corrupted]).unwrap();
+    owner.execute("UPDATE babylon_state.material_tick_v3 SET register_storage_bytes=$2 WHERE campaign_id=$1::uuid AND resolve_tick=2",&[campaign.as_uuid(),&corrupted]).expect("the test database applies the setup statement");
     assert!(observer.snapshot(campaign, 2).is_err());
     assert!(DurableMaterialRuntime::open(
         config,
         campaign,
         MichiganContentPreset::new_campaign(MichiganDeliveryPreset::Standard)
             .create_foundation(&crate::test_support::catalog())
-            .unwrap()
+            .expect("the authored catalog builds the foundation")
             .digest()
     )
     .is_err());
-    owner.execute("UPDATE babylon_state.material_tick_v3 SET register_storage_bytes=$2 WHERE campaign_id=$1::uuid AND resolve_tick=2",&[campaign.as_uuid(),&exact]).unwrap();
+    owner.execute("UPDATE babylon_state.material_tick_v3 SET register_storage_bytes=$2 WHERE campaign_id=$1::uuid AND resolve_tick=2",&[campaign.as_uuid(),&exact]).expect("the test database applies the setup statement");
 }
 
+#[allow(
+    clippy::too_many_lines,
+    reason = "`assert_material_stdio_advance` keeps one authored boundary's fixture and assertions together"
+)]
 fn assert_material_stdio_advance(
     config: &Config,
     campaign: CampaignId,
@@ -1540,27 +1646,32 @@ fn assert_material_stdio_advance(
         scope,
         request_id: 8,
     };
-    let mut input = serde_json::to_vec(&open).unwrap();
+    let mut input =
+        serde_json::to_vec(&open).expect("the value serializes to canonical JSON bytes");
     input.push(b'\n');
-    input.extend(serde_json::to_vec(&request).unwrap());
+    input.extend(
+        serde_json::to_vec(&request).expect("the value serializes to canonical JSON bytes"),
+    );
     input.push(b'\n');
-    input.extend(serde_json::to_vec(&stop).unwrap());
+    input.extend(serde_json::to_vec(&stop).expect("the value serializes to canonical JSON bytes"));
     input.push(b'\n');
     let mut output = Vec::new();
-    run_runtime_session(
+    runtime_session::run_runtime_session(
         config,
-        std::path::Path::new(concat!(
+        Path::new(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../../../content/scenarios/michigan/defines.toml"
         )),
-        std::io::Cursor::new(input),
+        Cursor::new(input),
         &mut output,
     )
-    .unwrap();
+    .expect("the fixture run completes");
     let responses: Vec<RuntimeSessionResponse> = output
         .split(|byte| *byte == b'\n')
         .filter(|line| !line.is_empty())
-        .map(|line| serde_json::from_slice(line).unwrap())
+        .map(|line| {
+            serde_json::from_slice(line).expect("the authored bytes match the declared schema")
+        })
         .collect();
     assert!(
         matches!(&responses[0],RuntimeSessionResponse::Hello{protocol_version: RUNTIME_SESSION_PROTOCOL_VERSION,scope,..} if scope.epoch==0 && scope.campaign_id.is_none())
@@ -1606,7 +1717,13 @@ fn assert_material_stdio_advance(
             | RuntimeSessionResponse::Stopped { .. } => {}
         }
     }
-    assert_eq!(observer.snapshot(campaign, 3).unwrap().resolve_tick, 3);
+    assert_eq!(
+        observer
+            .snapshot(campaign, 3)
+            .expect("the fixture captures a consistent snapshot")
+            .resolve_tick,
+        3
+    );
 }
 
 #[test]
@@ -1621,11 +1738,14 @@ fn live_material_runtime_atomic_restart_identity_and_observer_projection() {
     let preset = MichiganDeliveryPreset::Standard;
     let foundation = MichiganContentPreset::new_campaign(preset)
         .create_foundation(&crate::test_support::catalog())
-        .unwrap();
+        .expect("the authored catalog builds the foundation");
     let digest = foundation.digest();
-    let mut runtime = DurableMaterialRuntime::create(&config, campaign, foundation).unwrap();
-    install_reader_role(&config).unwrap();
-    provision_observer_role(&config).unwrap();
+    let mut runtime = DurableMaterialRuntime::create(&config, campaign, foundation)
+        .expect("the test database creates the fixture campaign");
+    babylon_persistence::install_reader_role(&config)
+        .expect("the test database installs the reader role");
+    observer_reader::provision_observer_role(&config)
+        .expect("the test database provisions the observer role");
     let observer_login = ConfinedLogin::create_for_role(&base, "babylon_observer");
     let known_login = ConfinedLogin::create(&base);
     let mut observer_config = config.clone();
@@ -1637,19 +1757,28 @@ fn live_material_runtime_atomic_restart_identity_and_observer_projection() {
         .user(&known_login.name)
         .password(ConfinedLogin::PASSWORD);
     let observer =
-        ObserverEconomyReader::connect(&observer_config, ObserverVisibility::FullObserver).unwrap();
-    let known =
-        ObserverEconomyReader::connect(&known_config, ObserverVisibility::KnownPreview).unwrap();
-    let zero = observer.snapshot(campaign, 0).unwrap();
+        ObserverEconomyReader::connect(&observer_config, ObserverVisibility::FullObserver)
+            .expect("the test database accepts the connection");
+    let known = ObserverEconomyReader::connect(&known_config, ObserverVisibility::KnownPreview)
+        .expect("the test database accepts the connection");
+    let zero = observer
+        .snapshot(campaign, 0)
+        .expect("the fixture captures a consistent snapshot");
     assert!(zero.production.is_some());
-    assert!(known.snapshot(campaign, 0).unwrap().production.is_none());
+    assert!(known
+        .snapshot(campaign, 0)
+        .expect("the fixture captures a consistent snapshot")
+        .production
+        .is_none());
     assert_eq!(zero.foundation_digest, babylon_tick::hex(&digest));
-    let mut owner = config.connect(NoTls).unwrap();
+    let mut owner = config
+        .connect(NoTls)
+        .expect("the test database accepts the connection");
     let actions = OrderedPracticeActionBatch::empty(
         runtime.session().graph_session().session_identity().clone(),
         1,
     )
-    .unwrap();
+    .expect("the empty authored batch constructs");
     let mut sink = CollectingSink::default();
     assert_material_lock_refusal(
         &config,
@@ -1660,7 +1789,9 @@ fn live_material_runtime_atomic_restart_identity_and_observer_projection() {
         &mut sink,
     );
     assert_material_marker_rollback(&mut owner, campaign, &mut runtime, &actions, &mut sink);
-    let first = runtime.advance_and_commit(&mut sink, &actions).unwrap();
+    let first = runtime
+        .advance_and_commit(&mut sink, &actions)
+        .expect("the prepared tick advances and commits");
     assert_eq!(first.resolve_tick(), 1);
     assert_committed_material_visibility(&observer, &known, campaign, &first);
     let (reopened, uninterrupted) =

@@ -2,9 +2,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::{
-    county_committed_signals, verify_pinned_artifact_digests, ArchiveCitation,
-    CommittedTerritoryFields, CountyPagePlan, CountyPlaceLink, CountySignal, SemanticArchiveError,
-    SpatialReferenceProducts, COMMITTED_TICK_SOURCE_ID,
+    ArchiveCitation, CommittedTerritoryFields, CountyPagePlan, CountyPlaceLink, CountySignal,
+    SemanticArchiveError, SpatialReferenceProducts, COMMITTED_TICK_SOURCE_ID,
 };
 use crate::national_counties::NationalCountyReference;
 
@@ -26,7 +25,7 @@ impl CountySource {
         detail: Option<&SpatialReferenceProducts>,
     ) -> Result<Self, SemanticArchiveError> {
         if let Some(detail) = detail {
-            verify_pinned_artifact_digests(detail)?;
+            super::verify_pinned_artifact_digests(detail)?;
         }
         Ok(Self::National {
             names: counties
@@ -72,7 +71,7 @@ impl CountySource {
                 {
                     return Err(SemanticArchiveError::StoredPageMismatch);
                 }
-                let mut signals = county_committed_signals(&fields)?;
+                let mut signals = super::county_committed_signals(&fields)?;
                 if let Self::National { digest, .. } = self {
                     signals.push(identity_signal(&geoid, digest)?);
                 }

@@ -2,7 +2,9 @@ use super::{
     HouseholdAllocationError as Error, HouseholdBudgetAllocation, HouseholdBudgetKey,
     HouseholdCountyControls,
 };
-type Result<T> = std::result::Result<T, Error>;
+use crate::national_resident_allocation::AllocationError;
+use std::result::Result as StdResult;
+type Result<T> = StdResult<T, Error>;
 const KEYS: [HouseholdBudgetKey; 5] = [
     HouseholdBudgetKey::EarningNonowner,
     HouseholdBudgetKey::EarningOwner,
@@ -136,9 +138,7 @@ fn owners(households: u64, bps: u16) -> Result<u64> {
 }
 fn apportion(total: u64, weights: &[u64]) -> Result<Vec<u64>> {
     crate::national_resident_allocation::apportion(total, weights).map_err(|error| match error {
-        crate::national_resident_allocation::AllocationError::PopulationControl => {
-            Error::DesignedAllocationInfeasible
-        }
+        AllocationError::PopulationControl => Error::DesignedAllocationInfeasible,
         _ => Error::Arithmetic,
     })
 }

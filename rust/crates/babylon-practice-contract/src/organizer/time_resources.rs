@@ -1,16 +1,15 @@
 //! Period-specific finite time; aliases bind one shared supply exactly once.
-use super::transition::response_intent;
 use super::{
-    validate_organizer_config, OrganizerConfig, OrganizerError, OrganizerPartner,
-    OrganizerTimeBindingMode, OrganizerTimeUse,
+    OrganizerConfig, OrganizerError, OrganizerPartner, OrganizerTimeBindingMode, OrganizerTimeUse,
 };
 use crate::{
-    allocate_practice_resources, derive_practice_resource_request, PracticeIntent,
-    PracticeResourceAllocationContract, PracticeResourceAllocationMode, PracticeResourceCapacity,
-    PracticeResourceId, PracticeResourceLocator, PracticeResourceOwner,
+    PracticeIntent, PracticeResourceAllocationContract, PracticeResourceAllocationMode,
+    PracticeResourceCapacity, PracticeResourceId, PracticeResourceLocator, PracticeResourceOwner,
     PracticeResourceRequirement, PracticeUnitId,
 };
-use babylon_kernel::content_digest::sha256_of;
+use babylon_kernel::content_digest;
+
+use super::OrganizerAidBinding;
 use std::collections::{BTreeMap, BTreeSet};
 
 /// An organizational alias draws only from this explicitly bound time budget.
@@ -34,7 +33,9 @@ pub struct OrganizerPeriodTimeResources {
 /// their supplied physical unit without conversion to this control identity.
 #[must_use]
 pub fn organizer_time_unit_id() -> PracticeUnitId {
-    PracticeUnitId::from_bytes(sha256_of(b"babylon.organizer-whole-hour.v1"))
+    PracticeUnitId::from_bytes(content_digest::sha256_of(
+        b"babylon.organizer-whole-hour.v1",
+    ))
 }
 
 /// Explicit fixed-time control inputs, separate from the real resource path.
@@ -44,7 +45,7 @@ pub fn organizer_fixed_time_resources(
     config: &OrganizerConfig,
     period: u64,
 ) -> Result<OrganizerPeriodTimeResources, OrganizerError> {
-    validate_organizer_config(config)?;
+    super::validate_organizer_config(config)?;
     if config.time_binding != OrganizerTimeBindingMode::FixedTimeControl {
         return Err(OrganizerError::TimeBindingMismatch);
     }
@@ -57,7 +58,7 @@ pub fn organizer_fixed_time_resources(
     for participant in &config.participants {
         let mut bytes = b"babylon.organizer-contributor.v1".to_vec();
         bytes.extend_from_slice(&participant.contributor_id.to_be_bytes());
-        let budget_id = PracticeResourceId::from_bytes(sha256_of(&bytes));
+        let budget_id = PracticeResourceId::from_bytes(content_digest::sha256_of(&bytes));
         bindings.push(OrganizerTimeBinding {
             contributor_id: participant.contributor_id,
             budget_id,
@@ -224,13 +225,13 @@ pub(super) fn allocate_hours(
     partner: Option<&OrganizerPartner>,
     own_hours: u64,
     resources: &OrganizerPeriodTimeResources,
-    aid: Option<&super::OrganizerAidBinding>,
+    aid: Option<&OrganizerAidBinding>,
 ) -> Result<Option<Vec<OrganizerTimeUse>>, OrganizerError> {
     let contract = PracticeResourceAllocationContract::conservation_first();
     let mut actors = vec![(intent.clone(), own_hours)];
     if let Some(partner) = partner {
         actors.push((
-            response_intent(intent, config, partner)?,
+            super::transition::response_intent(intent, config, partner)?,
             config.partner_response_hours,
         ));
     }
@@ -272,7 +273,7 @@ pub(super) fn allocate_hours(
                 n.checked_add(row.hours).ok_or(OrganizerError::Arithmetic)
             })?;
             requests.push(
-                derive_practice_resource_request(
+                crate::derive_practice_resource_request(
                     &contract,
                     &actor_intent,
                     &PracticeResourceRequirement {
@@ -287,8 +288,9 @@ pub(super) fn allocate_hours(
             );
         }
     }
-    let allocation = allocate_practice_resources(&contract, &requests, &resources.capacities)
-        .map_err(|_| OrganizerError::ResourceAllocation)?;
+    let allocation =
+        crate::allocate_practice_resources(&contract, &requests, &resources.capacities)
+            .map_err(|_| OrganizerError::ResourceAllocation)?;
     if allocation
         .allocations()
         .iter()
@@ -344,6 +346,6 @@ pub(super) fn remaining_after_uses(
     for row in &mut remaining.participants {
         row.commitments.retain(|p| p.hours > 0);
     }
-    validate_organizer_config(&remaining)?;
+    super::validate_organizer_config(&remaining)?;
     Ok((remaining, supply))
 }

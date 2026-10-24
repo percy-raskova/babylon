@@ -2,7 +2,7 @@
 
 use std::cmp::Ordering;
 
-use crate::classifier::{classify_persistence, PersistenceClass, PersistenceClassError};
+use crate::classifier::{PersistenceClass, PersistenceClassError};
 use crate::digest::Digest32;
 use crate::wire::{PayloadCursor, PayloadEncoder, SfsWireError, T3Record};
 
@@ -131,7 +131,10 @@ impl SfsComponentProofProfile {
     ///
     /// # Errors
     /// Returns the exact component-ID NFC or byte-length refusal.
-    #[allow(clippy::too_many_arguments)]
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "`new` takes every authored field explicitly"
+    )]
     pub fn new(
         component_id: &str,
         component_kind: ComponentKind,
@@ -285,7 +288,10 @@ impl T3Record for SfsProofProfile {
     const MAX_PAYLOAD_BYTES: usize = 3_233_944;
     type Error = SfsProfileRecordError;
 
-    #[allow(clippy::needless_range_loop)] // Literal ceiling is part of the profile contract.
+    #[allow(
+        clippy::needless_range_loop,
+        reason = "the loop index is the authored row ordinal"
+    )] // Literal ceiling is part of the profile contract.
     fn encode_payload(&self, out: &mut PayloadEncoder) -> Result<(), SfsWireError> {
         out.push_digest(self.governed_manifest_digest)?;
         out.push_digest(self.forbidden_corpus_digest)?;
@@ -517,7 +523,10 @@ impl T3Record for InterventionDelta {
     const MAX_PAYLOAD_BYTES: usize = 6_356_900;
     type Error = SfsProfileRecordError;
 
-    #[allow(clippy::needless_range_loop)] // Literal ceiling is part of the delta contract.
+    #[allow(
+        clippy::needless_range_loop,
+        reason = "the loop index is the authored row ordinal"
+    )] // Literal ceiling is part of the delta contract.
     fn encode_payload(&self, out: &mut PayloadEncoder) -> Result<(), SfsWireError> {
         out.push_u8(self.ledger_kind as u8)?;
         out.push_u32(u32::try_from(self.rows.len()).map_err(|_| {
@@ -578,7 +587,10 @@ impl PersistenceComparison {
     ///
     /// # Errors
     /// Returns the exact persistence width, length, or non-finite refusal.
-    #[allow(clippy::too_many_arguments)]
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "`new` takes every authored field explicitly"
+    )]
     pub fn new(
         control_trace_digest: Digest32,
         intervention_trace_digest: Digest32,
@@ -590,7 +602,7 @@ impl PersistenceComparison {
         post_width: u16,
         mut separations: Vec<f64>,
     ) -> Result<Self, SfsProfileRecordError> {
-        let persistence_class = classify_persistence(post_width, &separations)?;
+        let persistence_class = crate::classifier::classify_persistence(post_width, &separations)?;
         normalize_separation_zeros(&mut separations);
         Ok(Self {
             control_trace_digest,
@@ -648,7 +660,10 @@ impl T3Record for PersistenceComparison {
     const MAX_PAYLOAD_BYTES: usize = 598;
     type Error = SfsProfileRecordError;
 
-    #[allow(clippy::needless_range_loop)] // Literal ceiling is part of the comparison contract.
+    #[allow(
+        clippy::needless_range_loop,
+        reason = "the loop index is the authored row ordinal"
+    )] // Literal ceiling is part of the comparison contract.
     fn encode_payload(&self, out: &mut PayloadEncoder) -> Result<(), SfsWireError> {
         out.push_digest(self.control_trace_digest)?;
         out.push_digest(self.intervention_trace_digest)?;
@@ -769,7 +784,10 @@ fn reject_profile_duplicates(
     Ok(())
 }
 
-#[allow(clippy::needless_range_loop)] // Literal ceiling is part of the set contract.
+#[allow(
+    clippy::needless_range_loop,
+    reason = "the loop index is the authored row ordinal"
+)] // Literal ceiling is part of the set contract.
 fn encode_string_set(out: &mut PayloadEncoder, entries: &[String]) -> Result<(), SfsWireError> {
     out.push_u16(
         u16::try_from(entries.len()).map_err(|_| SfsWireError::ArithmeticOverflow {
@@ -785,7 +803,10 @@ fn encode_string_set(out: &mut PayloadEncoder, entries: &[String]) -> Result<(),
     Ok(())
 }
 
-#[allow(clippy::needless_range_loop)] // Literal ceiling is part of the set contract.
+#[allow(
+    clippy::needless_range_loop,
+    reason = "the loop index is the authored row ordinal"
+)] // Literal ceiling is part of the set contract.
 fn encode_profile_set(
     out: &mut PayloadEncoder,
     set: &CanonicalProfileSet,

@@ -137,12 +137,24 @@
 //!   9. CONSCIOUSNESS_TRANSMISSION source-id=20 target-id=21 delta=0.25 solidarity-strength=2.0 source-consciousness=1.0 old-target-consciousness=0.875 new-target-consciousness=1.0
 //! ```
 
+// Conformance fixtures exercise exact engine values, transcribe spec literals,
+// and build whole scenarios in one test. These pedantic lints would force
+// ceremony that hides those contracts, so they stay off in test code only.
+#![allow(
+    clippy::float_cmp,
+    reason = "these comparisons pin exact authored f64 values"
+)]
+#![allow(
+    clippy::unreadable_literal,
+    reason = "the literal is an authored byte pattern"
+)]
+
 use babylon_bsl::evaluator::Value;
-use babylon_bsl::scenario::load_scenario;
+use babylon_bsl::scenario;
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::memory::MemoryGraph;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
-use babylon_tick::{run_once, run_once_into, TickReport};
+use babylon_tick::TickReport;
 
 const SCENARIO: &str = include_str!("../content/scenarios/solidarity-conformance.bscn");
 const RULE: &str = include_str!("../content/rules/solidarity.bsl");
@@ -174,7 +186,7 @@ const CLAMP_SOURCE: u64 = 20;
 const CLAMP_TARGET: u64 = 21;
 
 /// Runs the real pack once and hands back the graph, the sink (the event
-/// tests read it — CONSCIOUSNESS_TRANSMISSION and MASS_AWAKENING land
+/// tests read it — `CONSCIOUSNESS_TRANSMISSION` and `MASS_AWAKENING` land
 /// there), and the `TickReport` (`fired`, the pre/post hashes). Each test calls this
 /// independently — one `run_once_into` call PER TEST (deliberate isolation;
 /// cost is negligible at this world size), so within a test no assertion
@@ -182,7 +194,7 @@ const CLAMP_TARGET: u64 = 21;
 fn run() -> (MemoryGraph, CollectingSink, TickReport) {
     let mut graph = MemoryGraph::new();
     let mut sink = CollectingSink::default();
-    let report = run_once_into(SCENARIO, RULE, &mut graph, &mut sink)
+    let report = babylon_tick::run_once_into(SCENARIO, RULE, &mut graph, &mut sink)
         .expect("the Solidarity conformance world must load and run against solidarity.bsl");
     (graph, sink, report)
 }
@@ -200,7 +212,8 @@ fn revolutionary(graph: &MemoryGraph, id: u64) -> f64 {
 #[test]
 fn the_conformance_world_loads_with_the_declared_census() {
     let mut probe_graph = MemoryGraph::new();
-    let loaded = load_scenario(SCENARIO, &mut probe_graph).expect("the scenario must load clean");
+    let loaded =
+        scenario::load_scenario(SCENARIO, &mut probe_graph).expect("the scenario must load clean");
     assert_eq!(loaded.node_count, 22, "22 SOCIAL_CLASS witness nodes");
     assert_eq!(loaded.edge_count, 12, "12 SOLIDARITY witness edges");
     assert_eq!(
@@ -236,7 +249,7 @@ fn plain_transmission_moves_the_target_by_the_computed_delta() {
     assert_eq!(revolutionary(&graph, PLAIN_TARGET), 0.375);
 }
 
-/// Witness 2a — the MASS_AWAKENING crossing case (the event itself is
+/// Witness 2a — the `MASS_AWAKENING` crossing case (the event itself is
 /// Task 3's; this pins only the value the crossing rests on). delta =
 /// 0.5*(0.875-0.5625) = 0.15625; new = 0.5625+0.15625 = 0.71875.
 #[test]
@@ -273,7 +286,7 @@ fn mass_awakening_negative_case_stays_below_the_threshold() {
 fn mass_awakening_exact_case_lands_bit_identical_to_the_threshold_const() {
     let (graph, _sink, _report) = run();
     let mut seeds = MemoryGraph::new();
-    let scenario = load_scenario(SCENARIO, &mut seeds).expect("the scenario must load");
+    let scenario = scenario::load_scenario(SCENARIO, &mut seeds).expect("the scenario must load");
     let Some(Value::Real(threshold)) = scenario.consts.get("solidarity/mass-awakening-threshold")
     else {
         panic!("the scenario must declare solidarity/mass-awakening-threshold as a scaled literal");
@@ -428,6 +441,10 @@ fn sources_are_never_written_by_their_own_rule_firing() {
 /// `Value::NodeRef`/`Value::Real` equality — RED until both emits land in
 /// `solidarity.bsl`.
 #[test]
+#[allow(
+    clippy::items_after_statements,
+    reason = "scenario constants and local helpers sit beside their first use in one long assertion"
+)]
 fn events_land_in_declared_order_with_full_pinned_payloads() {
     let (_graph, sink, _report) = run();
 
@@ -556,7 +573,7 @@ fn events_land_in_declared_order_with_full_pinned_payloads() {
 /// The negative case, isolated (brief step 1's explicit callout): a
 /// transmission that raises `revolutionary` but does not cross 0.6 (target
 /// 4, `mass-awaken-stays-target`) emits exactly one event —
-/// CONSCIOUSNESS_TRANSMISSION only, never MASS_AWAKENING.
+/// `CONSCIOUSNESS_TRANSMISSION` only, never `MASS_AWAKENING`.
 #[test]
 fn mass_awakening_negative_case_emits_exactly_one_event() {
     let (_graph, sink, _report) = run();
@@ -577,7 +594,7 @@ fn mass_awakening_negative_case_emits_exactly_one_event() {
     assert_eq!(for_target[0].0, "CONSCIOUSNESS_TRANSMISSION");
 }
 
-/// The exact-0.6 boundary target (witness 2c) DOES fire MASS_AWAKENING —
+/// The exact-0.6 boundary target (witness 2c) DOES fire `MASS_AWAKENING` —
 /// the frozen chained comparison's `<=` arm (`solidarity.py:190`), not `<`.
 /// Isolated from the full-payload test above so a future edit narrowing
 /// `<=` to `<` fails loudly here even if the ordered-list test's shape
@@ -600,8 +617,8 @@ fn mass_awakening_fires_on_the_exact_threshold_boundary() {
 /// Byte-determinism: the same content twice is the same post-state hash.
 #[test]
 fn the_solidarity_tick_is_deterministic() {
-    let a = run_once(SCENARIO, RULE).expect("first run");
-    let b = run_once(SCENARIO, RULE).expect("second run");
+    let a = babylon_tick::run_once(SCENARIO, RULE).expect("first run");
+    let b = babylon_tick::run_once(SCENARIO, RULE).expect("second run");
     assert_eq!(a.after, b.after, "two runs, one post-state");
     assert_ne!(a.before, a.after, "the pack must move state");
 }

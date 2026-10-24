@@ -2,7 +2,7 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, TryReserveError};
 
-use babylon_kernel::content_digest::sha256_of;
+use babylon_kernel::content_digest;
 
 use crate::state_hash::CanonicalState;
 use crate::substrate::{GraphSubstrate, HyperedgeId, NodeId};
@@ -1102,7 +1102,7 @@ fn encode_manifest(
     canonical_bytes.extend_from_slice(&hyperedge_count.to_be_bytes());
     append_manifest_hyperedges(&mut canonical_bytes, topology, hyperedge_by_name)?;
     debug_assert_eq!(canonical_bytes.len(), capacity);
-    let digest = sha256_of(&canonical_bytes);
+    let digest = content_digest::sha256_of(&canonical_bytes);
     Ok(StableElementResolverManifest {
         canonical_bytes,
         digest,
@@ -1221,11 +1221,11 @@ fn frame_segments(
         });
     }
     let mut output = reserve_string(field, capacity)?;
-    for (index, segment) in segments
+    let bounded_segments = segments
         .iter()
         .take(MAX_STABLE_CARRIER_ACTIVE_ELEMENTS + 2)
-        .enumerate()
-    {
+        .enumerate();
+    for (index, segment) in bounded_segments {
         if index > 0 {
             output.push('|');
         }
@@ -1433,9 +1433,8 @@ mod tests {
     use babylon_kernel::currency::Currency;
 
     use super::{
-        frame_segments, snapshot_topology, validate_resolver_edge_count,
-        validate_resolver_fact_unit_count, validate_resolver_member_count, StableIdentityError,
-        MAX_STABLE_EDGES, MAX_STABLE_RESOLVER_FACT_UNITS, MAX_STABLE_RESOLVER_HYPEREDGE_MEMBERS,
+        StableIdentityError, MAX_STABLE_EDGES, MAX_STABLE_RESOLVER_FACT_UNITS,
+        MAX_STABLE_RESOLVER_HYPEREDGE_MEMBERS,
     };
     use crate::state_hash::CanonicalState;
     use crate::substrate::{HyperedgeId, NodeId};
@@ -1484,7 +1483,7 @@ mod tests {
             hyperedges: Vec::new(),
         };
         assert_eq!(
-            snapshot_topology(&facts),
+            super::snapshot_topology(&facts),
             Err(StableIdentityError::UnknownEdge {
                 edge_type: "solidarity".to_owned(),
                 source: NodeId(0),
@@ -1505,7 +1504,7 @@ mod tests {
             )],
         };
         assert_eq!(
-            snapshot_topology(&facts),
+            super::snapshot_topology(&facts),
             Err(StableIdentityError::InvalidHyperedge {
                 hyperedge: HyperedgeId(0),
             })
@@ -1524,7 +1523,7 @@ mod tests {
             )],
         };
         assert_eq!(
-            snapshot_topology(&facts),
+            super::snapshot_topology(&facts),
             Err(StableIdentityError::StateSectionLimit {
                 section: "resolver hyperedge members",
                 actual: MAX_STABLE_RESOLVER_HYPEREDGE_MEMBERS + 1,
@@ -1536,11 +1535,11 @@ mod tests {
     #[test]
     fn resolver_member_ceiling_accepts_maximum_and_refuses_plus_one() {
         assert_eq!(
-            validate_resolver_member_count(MAX_STABLE_RESOLVER_HYPEREDGE_MEMBERS),
+            super::validate_resolver_member_count(MAX_STABLE_RESOLVER_HYPEREDGE_MEMBERS),
             Ok(())
         );
         assert_eq!(
-            validate_resolver_member_count(MAX_STABLE_RESOLVER_HYPEREDGE_MEMBERS + 1),
+            super::validate_resolver_member_count(MAX_STABLE_RESOLVER_HYPEREDGE_MEMBERS + 1),
             Err(StableIdentityError::StateSectionLimit {
                 section: "resolver hyperedge members",
                 actual: MAX_STABLE_RESOLVER_HYPEREDGE_MEMBERS + 1,
@@ -1548,11 +1547,11 @@ mod tests {
             })
         );
         assert_eq!(
-            validate_resolver_fact_unit_count(MAX_STABLE_RESOLVER_FACT_UNITS),
+            super::validate_resolver_fact_unit_count(MAX_STABLE_RESOLVER_FACT_UNITS),
             Ok(())
         );
         assert_eq!(
-            validate_resolver_fact_unit_count(MAX_STABLE_RESOLVER_FACT_UNITS + 1),
+            super::validate_resolver_fact_unit_count(MAX_STABLE_RESOLVER_FACT_UNITS + 1),
             Err(StableIdentityError::FactUnitLimit {
                 actual: MAX_STABLE_RESOLVER_FACT_UNITS + 1,
                 maximum: MAX_STABLE_RESOLVER_FACT_UNITS,
@@ -1562,9 +1561,12 @@ mod tests {
 
     #[test]
     fn resolver_edge_ceiling_accepts_maximum_and_refuses_plus_one() {
-        assert_eq!(validate_resolver_edge_count(MAX_STABLE_EDGES), Ok(()));
         assert_eq!(
-            validate_resolver_edge_count(MAX_STABLE_EDGES + 1),
+            super::validate_resolver_edge_count(MAX_STABLE_EDGES),
+            Ok(())
+        );
+        assert_eq!(
+            super::validate_resolver_edge_count(MAX_STABLE_EDGES + 1),
             Err(StableIdentityError::EdgeLimit {
                 actual: MAX_STABLE_EDGES + 1,
                 maximum: MAX_STABLE_EDGES,
@@ -1574,10 +1576,11 @@ mod tests {
 
     #[test]
     fn frame_segments_enforces_its_supplied_byte_ceiling() {
-        let exact = frame_segments("test frame", &["xxxxxxxxxxxx"], 15).unwrap();
+        let exact = super::frame_segments("test frame", &["xxxxxxxxxxxx"], 15)
+            .expect("the fixture call `frame_segments` succeeds for the authored inputs");
         assert_eq!(exact.len(), 15);
         assert_eq!(
-            frame_segments("test frame", &["xxxxxxxxxxxxx"], 15),
+            super::frame_segments("test frame", &["xxxxxxxxxxxxx"], 15),
             Err(StableIdentityError::ByteLimit {
                 field: "test frame",
                 actual: 16,

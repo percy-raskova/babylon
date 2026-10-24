@@ -1,8 +1,6 @@
 //! Designed finite opening for competing and separated aid practices.
-use super::organizer_aid_fixture::{
-    aid_opening, config, good, household, mandate, money, recipient, site, try_session, units,
-    Session, MATERIAL, PRACTICE, PRODUCTS,
-};
+use super::organizer_aid_fixture;
+use super::organizer_aid_fixture::{Session, MATERIAL, PRACTICE, PRODUCTS};
 use babylon_material_circuit::{
     AccountId, CashAccount, CircuitAccounting, FinalDemandPrincipal, FinalDemandPrincipalId,
     HistoricalCostBook, HouseholdTimeAccounting, MaterialCircuitState, MonetaryBook,
@@ -17,8 +15,12 @@ fn remote_principal() -> FinalDemandPrincipalId {
     FinalDemandPrincipalId::from_bytes([77; 32])
 }
 
+#[allow(
+    clippy::too_many_lines,
+    reason = "`opening` keeps one authored boundary's fixture and assertions together"
+)]
 fn opening() -> MaterialCircuitState {
-    let mut state = aid_opening(false);
+    let mut state = organizer_aid_fixture::aid_opening(false);
     let remote = remote_principal();
     state.final_demand_principals.push(FinalDemandPrincipal {
         id: remote,
@@ -27,43 +29,46 @@ fn opening() -> MaterialCircuitState {
     let CircuitAccounting::Monetary(e) = &mut state.accounting else {
         unreachable!()
     };
-    let rows = e.recurring.as_mut().unwrap();
+    let rows = e
+        .recurring
+        .as_mut()
+        .expect("the fixture set the optional field before this borrow");
     let mut cohort = rows
         .households
         .iter()
-        .find(|r| r.principal_id == recipient())
-        .unwrap()
+        .find(|r| r.principal_id == organizer_aid_fixture::recipient())
+        .expect("the fixture holds the searched element")
         .clone();
     cohort.principal_id = remote;
     rows.households.push(cohort);
     let mut stock = rows
         .household_stocks
         .iter()
-        .find(|r| r.principal_id == recipient())
-        .unwrap()
+        .find(|r| r.principal_id == organizer_aid_fixture::recipient())
+        .expect("the fixture holds the searched element")
         .clone();
     stock.principal_id = remote;
     rows.household_stocks.push(stock);
     let mut need = rows
         .household_needs
         .iter()
-        .find(|r| r.principal_id == recipient())
-        .unwrap()
+        .find(|r| r.principal_id == organizer_aid_fixture::recipient())
+        .expect("the fixture holds the searched element")
         .clone();
     need.principal_id = remote;
     rows.household_needs.push(need);
     let mut purchase = rows
         .household_purchases
         .iter()
-        .find(|r| r.principal_id == recipient())
-        .unwrap()
+        .find(|r| r.principal_id == organizer_aid_fixture::recipient())
+        .expect("the fixture holds the searched element")
         .clone();
     purchase.principal_id = remote;
     rows.household_purchases.push(purchase);
     rows.household_stocks
         .iter_mut()
-        .find(|r| r.principal_id == household())
-        .unwrap()
+        .find(|r| r.principal_id == organizer_aid_fixture::household())
+        .expect("the fixture holds the searched element")
         .quantity = 32;
     let HouseholdTimeAccounting::Modeled(time) = &mut e.household_time else {
         unreachable!()
@@ -71,13 +76,13 @@ fn opening() -> MaterialCircuitState {
     let mut policy = time
         .policies
         .iter()
-        .find(|r| r.principal_id == recipient())
-        .unwrap()
+        .find(|r| r.principal_id == organizer_aid_fixture::recipient())
+        .expect("the fixture holds the searched element")
         .clone();
     policy.principal_id = remote;
     time.policies.push(policy);
     e.aid.mandates[0].maximum_quantity = 1;
-    let mut remote_mandate = mandate(true);
+    let mut remote_mandate = organizer_aid_fixture::mandate(true);
     remote_mandate.id = [93; 32];
     remote_mandate.source_hash = [94; 32];
     remote_mandate.recipient = remote;
@@ -87,44 +92,48 @@ fn opening() -> MaterialCircuitState {
     let mut stocks = e.costs.snapshot().stocks;
     stocks
         .iter_mut()
-        .find(|r| r.owner == AccountId::Household(household()) && r.good_id == good(2))
-        .unwrap()
-        .amount = money(128);
+        .find(|r| {
+            r.owner == AccountId::Household(organizer_aid_fixture::household())
+                && r.good_id == organizer_aid_fixture::good(2)
+        })
+        .expect("the fixture holds the searched element")
+        .amount = organizer_aid_fixture::money(128);
     stocks.push(StockCarryingValue {
         owner: AccountId::Household(remote),
-        good_id: good(2),
-        unit_id: units(),
-        amount: money(0),
+        good_id: organizer_aid_fixture::good(2),
+        unit_id: organizer_aid_fixture::units(),
+        amount: organizer_aid_fixture::money(0),
     });
     // Finite100 micros and32 donor units; no later injection or protected-floor exemption.
     e.book = MonetaryBook::open(
         [
-            (AccountId::Site(site(1)), 4),
-            (AccountId::Site(site(2)), 32),
-            (AccountId::Site(site(3)), 32),
-            (AccountId::Household(household()), 32),
-            (AccountId::Household(recipient()), 0),
+            (AccountId::Site(organizer_aid_fixture::site(1)), 4),
+            (AccountId::Site(organizer_aid_fixture::site(2)), 32),
+            (AccountId::Site(organizer_aid_fixture::site(3)), 32),
+            (AccountId::Household(organizer_aid_fixture::household()), 32),
+            (AccountId::Household(organizer_aid_fixture::recipient()), 0),
             (AccountId::Household(remote), 0),
         ]
         .into_iter()
         .map(|(id, cash)| CashAccount {
             id,
-            cash: money(cash),
+            cash: organizer_aid_fixture::money(cash),
         })
         .collect(),
     )
-    .unwrap();
-    e.costs = HistoricalCostBook::open(&e.book, stocks, vec![], vec![], vec![]).unwrap();
+    .expect("the fixture opens the authored source");
+    e.costs = HistoricalCostBook::open(&e.book, stocks, vec![], vec![], vec![])
+        .expect("the fixture opens the authored source");
     state
 }
 
 fn organizer(refuses_remote: bool) -> OrganizerConfig {
-    let mut cfg = config();
+    let mut cfg = organizer_aid_fixture::config();
     let controlled = cfg
         .participants
         .iter_mut()
         .find(|r| r.contributor_id == 201)
-        .unwrap();
+        .expect("the fixture holds the searched element");
     controlled.available_hours = 8;
     controlled.commitments[0].hours = 2;
     cfg.contact_hours = 2;
@@ -133,7 +142,7 @@ fn organizer(refuses_remote: bool) -> OrganizerConfig {
         .participants
         .iter()
         .find(|r| r.contributor_id == 204)
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .clone();
     participant.contributor_id = 205;
     participant.commitments[0].actor_id = 121;
@@ -162,11 +171,12 @@ fn organizer(refuses_remote: bool) -> OrganizerConfig {
 }
 
 pub(super) fn session(refuses_remote: bool) -> Session {
-    try_session(
-        crate::michigan_dynamic_hex_foundation::michigan_dynamic_hex_foundation().unwrap(),
+    organizer_aid_fixture::try_session(
+        crate::michigan_dynamic_hex_foundation::michigan_dynamic_hex_foundation()
+            .expect("the Michigan hex foundation builds"),
         &format!("{MATERIAL}\n{PRODUCTS}\n{PRACTICE}"),
         opening(),
         organizer(refuses_remote),
     )
-    .unwrap()
+    .expect("the fixture opens a session")
 }

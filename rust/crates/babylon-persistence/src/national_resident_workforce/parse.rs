@@ -2,7 +2,8 @@ use super::{
     NationalResidentWorkforceReference, ResidentWorkerClasses,
     ResidentWorkforceReferenceError as Error, COUNTY_COUNT, MAX_DECODED_BYTES,
 };
-use crate::national_counties::{acs_cell, AcsEstimate, NationalCountyReference, ObservationStatus};
+use crate::national_counties;
+use crate::national_counties::{AcsEstimate, NationalCountyReference, ObservationStatus};
 use babylon_kernel::geography::CountyGeoid;
 
 fn header() -> String {
@@ -59,8 +60,8 @@ pub(super) fn capture(
 }
 
 fn observation(fields: &[&str]) -> Result<AcsEstimate, Error> {
-    let estimate = acs_cell(&fields[..3]).map_err(Error::CountySource)?;
-    let margin_of_error = acs_cell(&fields[3..]).map_err(Error::CountySource)?;
+    let estimate = national_counties::acs_cell(&fields[..3]).map_err(Error::CountySource)?;
+    let margin_of_error = national_counties::acs_cell(&fields[3..]).map_err(Error::CountySource)?;
     if matches!(
         estimate.status(),
         ObservationStatus::MoeNotComputable

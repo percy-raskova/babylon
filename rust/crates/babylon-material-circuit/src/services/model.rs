@@ -1,4 +1,6 @@
 //! Current service claims and native-unit performance; no durable service stock.
+use crate::FinalDemandPrincipalId;
+use crate::MaterialCircuitError;
 use crate::{AccountId, GoodId, OrderId, ProcessId, SiteId, UnitId};
 use babylon_kernel::currency::Currency;
 
@@ -72,7 +74,7 @@ pub struct ServicePerformanceReceipt {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HouseholdServiceReceipt {
     pub period: u64,
-    pub principal_id: crate::FinalDemandPrincipalId,
+    pub principal_id: FinalDemandPrincipalId,
     pub good_id: GoodId,
     pub unit_id: UnitId,
     pub required_quantity: u64,
@@ -126,7 +128,7 @@ impl ServiceOutputReceipt {
     /// Validate the native output and historical-cost partitions.
     /// # Errors
     /// Refuses nonpositive periods, negative costs or inconsistent expiry.
-    pub fn validate(&self) -> Result<(), crate::MaterialCircuitError> {
+    pub fn validate(&self) -> Result<(), MaterialCircuitError> {
         if self.period == 0
             || self.allocated_quantity.checked_add(self.expired_quantity)
                 != Some(self.produced_quantity)
@@ -137,7 +139,7 @@ impl ServiceOutputReceipt {
             || (self.expired_quantity == 0 && self.expired_cost.micro_units() != 0)
             || (self.allocated_quantity == 0 && self.expired_cost != self.direct_cost)
         {
-            return Err(crate::MaterialCircuitError::ServiceInvariant);
+            return Err(MaterialCircuitError::ServiceInvariant);
         }
         Ok(())
     }
@@ -149,7 +151,7 @@ impl ServicePerformanceReceipt {
     /// Check quantity partitions without claiming knowledge of absent production state.
     /// # Errors
     /// Refuses nonpositive periods/prices, identical parties and inconsistent partitions.
-    pub fn validate(&self) -> Result<(), crate::MaterialCircuitError> {
+    pub fn validate(&self) -> Result<(), MaterialCircuitError> {
         if self.period == 0
             || self.unit_price.micro_units() <= 0
             || self.buyer == AccountId::Site(self.provider_site_id)
@@ -164,7 +166,7 @@ impl ServicePerformanceReceipt {
                 != Some(self.admitted_quantity)
             || self.used_quantity.checked_add(self.unused_quantity) != Some(self.performed_quantity)
         {
-            return Err(crate::MaterialCircuitError::ServiceInvariant);
+            return Err(MaterialCircuitError::ServiceInvariant);
         }
         Ok(())
     }
@@ -173,7 +175,7 @@ impl HouseholdServiceReceipt {
     /// Check current satisfaction and unmet need independently of stored consumption.
     /// # Errors
     /// Refuses impossible or unpartitioned current-period quantities.
-    pub fn validate(&self) -> Result<(), crate::MaterialCircuitError> {
+    pub fn validate(&self) -> Result<(), MaterialCircuitError> {
         if self.period == 0
             || self.required_quantity == 0
             || self.satisfied_quantity != self.required_quantity.min(self.performed_quantity)
@@ -182,7 +184,7 @@ impl HouseholdServiceReceipt {
             || self.satisfied_quantity.checked_add(self.unused_quantity)
                 != Some(self.performed_quantity)
         {
-            return Err(crate::MaterialCircuitError::ServiceInvariant);
+            return Err(MaterialCircuitError::ServiceInvariant);
         }
         Ok(())
     }
@@ -191,7 +193,7 @@ impl ServiceMarketReceipt {
     /// Validate standalone market direction and finite production evidence.
     /// # Errors
     /// Refuses invalid bounds, periods, money or unexplained direction.
-    pub fn validate(&self) -> Result<(), crate::MaterialCircuitError> {
+    pub fn validate(&self) -> Result<(), MaterialCircuitError> {
         use crate::MaterialCircuitError::ServiceInvariant;
         if self.period == 0
             || self.period.checked_add(1) != Some(self.next_period)
@@ -209,7 +211,7 @@ impl ServiceMarketReceipt {
             .old_price
             .micro_units()
             .checked_mul(i128::from(self.performed_quantity))
-            .ok_or(crate::MaterialCircuitError::Arithmetic)?;
+            .ok_or(MaterialCircuitError::Arithmetic)?;
         let valid = match self.reason {
             ServicePriceDecision::Fixed | ServicePriceDecision::Hold => {
                 self.next_price == self.old_price

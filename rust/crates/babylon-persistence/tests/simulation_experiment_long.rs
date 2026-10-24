@@ -3,6 +3,7 @@ use babylon_kernel::content_digest::sha256_of;
 use babylon_persistence::simulation_experiment::{
     report, EmploymentStartingRow, ExperimentProfile, SimulationExperimentV1, StartingSnapshot,
 };
+use std::collections::BTreeMap;
 
 fn spec(profile: ExperimentProfile) -> SimulationExperimentV1 {
     let (epoch, starting_snapshot) = match profile {
@@ -78,7 +79,7 @@ fn sustained_depletion_and_historical_profiles_close_replay_and_conservation() {
                     assert_eq!(row.world_hash, result.periods[0].world_hash);
                     (row.series_id.as_str(), row.jobs)
                 })
-                .collect::<std::collections::BTreeMap<_, _>>();
+                .collect::<BTreeMap<_, _>>();
             assert_eq!(
                 first_period,
                 [
@@ -102,7 +103,8 @@ fn sustained_depletion_and_historical_profiles_close_replay_and_conservation() {
 fn hex_decode(s: &str) -> [u8; 32] {
     let mut a = [0; 32];
     for (i, b) in a.iter_mut().enumerate() {
-        *b = u8::from_str_radix(&s[i * 2..i * 2 + 2], 16).unwrap();
+        *b = u8::from_str_radix(&s[i * 2..i * 2 + 2], 16)
+            .expect("the authored digits parse as the declared type");
     }
     a
 }

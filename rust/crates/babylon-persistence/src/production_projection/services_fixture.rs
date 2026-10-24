@@ -1,5 +1,25 @@
 use babylon_kernel::currency::Currency;
-use babylon_material_circuit::*;
+use babylon_material_circuit::AidBook;
+use babylon_material_circuit::FinalDemandPrincipalId;
+use babylon_material_circuit::FinancialInstitutions;
+use babylon_material_circuit::GoodId;
+use babylon_material_circuit::HouseholdTimeAccounting;
+use babylon_material_circuit::LaborCompensation;
+use babylon_material_circuit::LogisticsNodeId;
+use babylon_material_circuit::OrderId;
+use babylon_material_circuit::ProcessId;
+use babylon_material_circuit::SiteId;
+use babylon_material_circuit::StaffingMemberId;
+use babylon_material_circuit::UnitId;
+use babylon_material_circuit::{
+    AccountId, AttendancePlan, CapacityRow, CapacitySupply, CashAccount, CircuitAccounting,
+    CommodityDefinition, CommodityKind, EmploymentTerms, FinalDemandPrincipal, HistoricalCostBook,
+    HouseholdCohort, HouseholdNeed, HouseholdPurchasePolicy, InputOutputCoefficient, InventoryRow,
+    LaborCapacityRow, LaborCoefficient, MaterialCircuitState, MaterialPurchase, MonetaryBook,
+    MonetaryCircuit, PricePolicy, ProcessOutput, ProductionCommitment, ProductionDemandPolicy,
+    RecurringEconomy, SellerOffer, ServiceConnection, ServiceInputPolicy, ServiceOrder,
+    ServiceStage, SiteLogisticsNode, StockCarryingValue,
+};
 
 fn site(n: u8) -> SiteId {
     SiteId::from_bytes([n; 32])
@@ -33,7 +53,7 @@ fn accounting(inventory: &[InventoryRow]) -> CircuitAccounting {
             }])
             .collect(),
     )
-    .unwrap();
+    .expect("the fixture opens the authored source");
     let costs = HistoricalCostBook::open(
         &book,
         inventory
@@ -49,16 +69,14 @@ fn accounting(inventory: &[InventoryRow]) -> CircuitAccounting {
         vec![],
         vec![],
     )
-    .unwrap();
+    .expect("the fixture opens the authored source");
     CircuitAccounting::Monetary(Box::new(MonetaryCircuit {
-        aid: babylon_material_circuit::AidBook::default(),
-        household_time: babylon_material_circuit::HouseholdTimeAccounting::NotModeled,
-        financial: babylon_material_circuit::FinancialInstitutions::empty(),
+        aid: AidBook::default(),
+        household_time: HouseholdTimeAccounting::NotModeled,
+        financial: FinancialInstitutions::empty(),
         member_labor: (1..=3)
             .map(|n| babylon_material_circuit::MemberLaborCapacityRow {
-                member_id: babylon_material_circuit::StaffingMemberId::from_bytes(
-                    site(n).as_bytes(),
-                ),
+                member_id: StaffingMemberId::from_bytes(site(n).as_bytes()),
                 period: 1,
                 available_hours: if n == 1 { 2 } else { 1 },
             })
@@ -68,13 +86,11 @@ fn accounting(inventory: &[InventoryRow]) -> CircuitAccounting {
         recurring: None,
         employment: (1..=3)
             .map(|n| EmploymentTerms {
-                member_id: babylon_material_circuit::StaffingMemberId::from_bytes(
-                    (site(n)).as_bytes(),
-                ),
+                member_id: StaffingMemberId::from_bytes((site(n)).as_bytes()),
                 site_id: site(n),
                 unit_id: unit(9),
                 payee: household(),
-                compensation: babylon_material_circuit::LaborCompensation::Wage(money(1)),
+                compensation: LaborCompensation::Wage(money(1)),
             })
             .collect(),
     }))
@@ -243,7 +259,9 @@ pub(super) fn opening() -> MaterialCircuitState {
         handling_coefficients: vec![],
         final_demand_principals: vec![FinalDemandPrincipal {
             id: household(),
-            location: "county:26163".parse().unwrap(),
+            location: "county:26163"
+                .parse()
+                .expect("the authored literal parses as the declared type"),
         }],
         final_demand_orders: vec![],
         maintenance_binding: None,
@@ -254,7 +272,7 @@ pub(super) fn funded(mut state: MaterialCircuitState) -> MaterialCircuitState {
     for (id, provider, buyer, commodity, price) in
         [(1, 1, 2, 1, 2), (2, 1, 3, 1, 2), (3, 2, 3, 2, 3)]
     {
-        state = admit_material_purchase(
+        state = babylon_material_circuit::admit_material_purchase(
             &state,
             MaterialPurchase::Service(ServiceOrder {
                 order_id: OrderId::from_bytes([id; 32]),
@@ -267,7 +285,7 @@ pub(super) fn funded(mut state: MaterialCircuitState) -> MaterialCircuitState {
             }),
             money(price),
         )
-        .unwrap()
+        .expect("the fixture admits the authored purchase")
         .0;
     }
     state
@@ -358,7 +376,7 @@ pub(super) fn recurring(mut state: MaterialCircuitState) -> MaterialCircuitState
             .labor
             .iter()
             .find(|r| r.site_id.as_bytes() == member.member_id.as_bytes())
-            .unwrap()
+            .expect("the fixture holds the searched element")
             .available;
     }
     state

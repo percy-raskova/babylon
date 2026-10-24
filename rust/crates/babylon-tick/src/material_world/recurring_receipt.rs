@@ -9,7 +9,8 @@ use babylon_material_circuit::{
     ProcessId, ProcurementReceipt, ProductionPlanReceipt, SiteId, UnitId,
 };
 
-use super::{MaterialWorldError, ReceiptCursor};
+use super::MaterialWorldError;
+use super::ReceiptCursor;
 
 pub(super) const DEMAND_BYTES: usize = 240;
 pub(super) const CONSUMPTION_BYTES: usize = 144;
@@ -432,13 +433,16 @@ mod tests {
         width: usize,
     ) {
         let mut bytes = vec![123];
-        encode(row, 7, &mut bytes).unwrap();
+        encode(row, 7, &mut bytes).expect("the fixture value encodes canonically");
         assert_eq!(bytes.len(), width + 1);
         let mut cursor = ReceiptCursor {
             bytes: &bytes,
             position: 1,
         };
-        assert_eq!(&decode(&mut cursor, 7).unwrap(), row);
+        assert_eq!(
+            &decode(&mut cursor, 7).expect("the committed canonical bytes decode"),
+            row
+        );
         assert_eq!(cursor.position, bytes.len());
         let mut rejected = vec![123];
         assert_eq!(encode(row, 8, &mut rejected), Err(MaterialWorldError::Wire));

@@ -1,21 +1,26 @@
-use super::*;
+use super::artifact::{NationalTransportError, ARTIFACT};
+use super::validate;
+
+use super::artifact;
 use serde_json::{json, Value};
 
 fn document() -> Value {
-    serde_json::from_str(&decode_gzip(ARTIFACT).unwrap()).unwrap()
+    serde_json::from_str(&artifact::decode_gzip(ARTIFACT).expect("the gzipped body decodes"))
+        .expect("the authored JSON matches the declared schema")
 }
 fn refused(value: &Value) -> NationalTransportError {
-    parse(&serde_json::to_string(value).unwrap()).unwrap_err()
+    super::parse(&serde_json::to_string(value).expect("the fixture value formats as text"))
+        .expect_err("the malformed input is refused")
 }
 #[test]
 fn malformed_mode_and_bulk_air_are_refused() {
     let mut value = document();
     let row = value["links"]
         .as_array_mut()
-        .unwrap()
+        .expect("the JSON fixture field is an array")
         .iter_mut()
         .find(|row| row["mode"] == "air")
-        .unwrap();
+        .expect("the fixture holds the searched element");
     row["cargo"] = json!(["dry_bulk", "general"]);
     assert_eq!(refused(&value), NationalTransportError::ModeCargo);
     value["links"][0]["mode"] = json!("teleport");
@@ -25,7 +30,10 @@ fn malformed_mode_and_bulk_air_are_refused() {
 fn duplicate_nonroster_and_missing_pool_are_refused() {
     let mut value = document();
     let repeated = value["nodes"][0].clone();
-    value["nodes"].as_array_mut().unwrap().push(repeated);
+    value["nodes"]
+        .as_array_mut()
+        .expect("the JSON fixture field is an array")
+        .push(repeated);
     assert_eq!(refused(&value), NationalTransportError::Node);
     let mut value = document();
     value["nodes"][0]["location"] = json!("county:99999");
@@ -48,7 +56,7 @@ fn island_lost_path_cannot_pass_reachability() {
     let mut value = document();
     value["links"]
         .as_array_mut()
-        .unwrap()
+        .expect("the JSON fixture field is an array")
         .retain(|row| row["from"] != "airport:LUP" || row["mode"] != "air");
     assert_eq!(refused(&value), NationalTransportError::Reachability);
 }
@@ -61,12 +69,13 @@ fn decimal_and_compression_refuse_nonfinite_overflow_and_trailing_members() {
         );
     }
     for token in ["0", "0.000000", "100.000001", "1E-12"] {
-        validate::decimal(token).unwrap();
+        validate::decimal(token)
+            .expect("the fixture call `decimal` succeeds for the authored inputs");
     }
     let mut bytes = ARTIFACT.to_vec();
     bytes.extend_from_slice(ARTIFACT);
     assert_eq!(
-        decode_gzip(&bytes),
+        artifact::decode_gzip(&bytes),
         Err(NationalTransportError::Compression)
     );
 }
@@ -76,10 +85,10 @@ fn island_ground_shortcut_and_foreign_flow_relabel_are_refused() {
     let mut value = document();
     let row = value["links"]
         .as_array_mut()
-        .unwrap()
+        .expect("the JSON fixture field is an array")
         .iter_mut()
         .find(|row| row["from"] == "airport:LUP" && row["mode"] == "air")
-        .unwrap();
+        .expect("the fixture holds the searched element");
     row["mode"] = json!("truck");
     row["profile"] = json!("local_road");
     assert_eq!(refused(&value), NationalTransportError::Access);

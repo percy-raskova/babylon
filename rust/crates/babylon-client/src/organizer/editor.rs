@@ -2,6 +2,15 @@
 
 pub(super) const MAX_NOTE_BYTES: usize = 4096;
 
+/// Whether the note editor currently owns keyboard focus.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum FocusState {
+    /// Caret and selection are visible and keys edit the note.
+    Focused,
+    /// The note renders without caret or selection markers.
+    Unfocused,
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(super) struct NoteEditor {
     pub text: String,
@@ -93,8 +102,8 @@ impl NoteEditor {
         self.cursor = begin;
     }
 
-    pub fn display(&self, focused: bool) -> String {
-        if !focused {
+    pub fn display(&self, focus: FocusState) -> String {
+        if focus == FocusState::Unfocused {
             return self.text.clone();
         }
         if self.selected_all {
@@ -109,6 +118,17 @@ impl NoteEditor {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn display_marks_focused_caret_and_selection_and_hides_them_unfocused() {
+        let mut editor = NoteEditor::from_text("note".to_owned()).expect("short plain text admits");
+        assert_eq!(editor.display(FocusState::Unfocused), "note");
+        editor.left();
+        assert_eq!(editor.display(FocusState::Focused), "not|e");
+        editor.selected_all = true;
+        assert_eq!(editor.display(FocusState::Focused), "[note]");
+        assert_eq!(editor.display(FocusState::Unfocused), "note");
+    }
 
     #[test]
     fn editing_keeps_unicode_boundaries_and_replaces_selection() {

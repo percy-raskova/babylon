@@ -6,6 +6,7 @@ use crate::economic_catalog::{
 };
 use crate::national_economy::NationalGamePolicy;
 use babylon_kernel::economic_identity::EconomicFunction;
+use babylon_material_circuit::HouseholdNeedBasis;
 use babylon_material_circuit::{CommodityDefinition, UnitId};
 
 type Templates = (
@@ -83,7 +84,7 @@ pub(super) fn compile(policy: &NationalGamePolicy, unit: UnitId) -> Result<Templ
         .collect::<Result<Vec<_>>>()?;
     let person_needs = needs
         .iter()
-        .filter(|n| n.basis == babylon_material_circuit::HouseholdNeedBasis::Persons)
+        .filter(|n| n.basis == HouseholdNeedBasis::Persons)
         .cloned()
         .collect();
     Ok((

@@ -1,17 +1,24 @@
 //! Fog-safe semantic Archive page and knowledge contracts.
 
+use crate::michigan_economy;
 use std::collections::{BTreeMap, BTreeSet};
 
-use babylon_kernel::content_digest::sha256_of;
 use minijinja::{context, Environment, UndefinedBehavior};
 use postgres::types::FromSqlOwned;
 use postgres::{Config, GenericClient, IsolationLevel, NoTls, Row};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
 
+use crate::archive_foundation_grants;
 use crate::archive_revision::emission::{ArchiveEmissionLink, ArchiveEmissionManifest};
 use crate::identity::CampaignId;
 use crate::postgres_diagnostic::PostgresDiagnostic;
+use crate::CurrentSchemaError;
+use babylon_kernel::content_digest;
+use postgres::Client;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
+use uuid::Uuid;
 
 /// Current Archive schema installed atomically with the material runtime schema.
 pub const CURRENT_ARCHIVE_SCHEMA_SQL: &str = include_str!("../migrations/current_archive.sql");
@@ -594,7 +601,7 @@ impl FogSafeArchiveRenderer {
         if markdown.len() > MAX_PAGE_BYTES || search_text.len() > MAX_PAGE_BYTES {
             return Err(SemanticArchiveError::CollectionBound);
         }
-        let sha256 = sha256_of(markdown.as_bytes());
+        let sha256 = content_digest::sha256_of(markdown.as_bytes());
         Ok(RenderedArchivePage {
             markdown,
             search_text,
@@ -999,7 +1006,10 @@ impl ArchiveAtom {
     /// Refuses a malformed subject, key, citation, or tick; refuses a
     /// non-finite `f64` value with [`SemanticArchiveError::NonFiniteValue`]
     /// so refusal vectors can name it (R1).
-    #[allow(clippy::too_many_arguments)]
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "`try_new` takes every authored field explicitly"
+    )]
     pub fn try_new(
         campaign_id: CampaignId,
         subject: ArchiveAtomSubject,
@@ -1158,9 +1168,12 @@ impl ArchiveAtomMint {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "`canonical_atom_id` takes every authored field explicitly"
+)]
 fn canonical_atom_id(
-    campaign_id: &uuid::Uuid,
+    campaign_id: &Uuid,
     subject: &ArchiveAtomSubject,
     signal_key: &str,
     grant_key: &str,
@@ -1282,10 +1295,7 @@ impl SemanticArchiveStore {
         crate::archive_revision::publication::materialize(self, campaign_id, batch, mode)
     }
 
-    pub(crate) fn connect(
-        &self,
-        operation: &'static str,
-    ) -> Result<postgres::Client, SemanticArchiveError> {
+    pub(crate) fn connect(&self, operation: &'static str) -> Result<Client, SemanticArchiveError> {
         self.config
             .connect(NoTls)
             .map_err(|error| database(operation, &error))
@@ -1503,8 +1513,7 @@ fn signal_evidence_class(
     signal: &ArchiveSignal,
     knowledge: &ArchiveKnowledge,
 ) -> Result<ArchiveEvidenceClass, SemanticArchiveError> {
-    use crate::archive_foundation_grants::county_qcew_citation;
-    use crate::michigan_economy::{michigan_economy, QCEW_ECONOMICS_FIELD_KEYS};
+    use crate::michigan_economy::QCEW_ECONOMICS_FIELD_KEYS;
 
     if signal.grant_key() == "identity" {
         return Ok(ArchiveEvidenceClass::Observed);
@@ -1516,7 +1525,7 @@ fn signal_evidence_class(
     else {
         return Ok(ArchiveEvidenceClass::Derived);
     };
-    let citation = county_qcew_citation(page_ref.id());
+    let citation = archive_foundation_grants::county_qcew_citation(page_ref.id());
     if signal.citation() != &citation
         || knowledge
             .grant(page_ref, signal.grant_key())
@@ -1524,7 +1533,8 @@ fn signal_evidence_class(
     {
         return Ok(ArchiveEvidenceClass::Derived);
     }
-    let economy = michigan_economy().map_err(|_| SemanticArchiveError::ArtifactDigest)?;
+    let economy =
+        michigan_economy::michigan_economy().map_err(|_| SemanticArchiveError::ArtifactDigest)?;
     let Some(county) = economy
         .counties()
         .iter()
@@ -1760,7 +1770,7 @@ pub enum SemanticArchiveError {
     /// The Archive wakeup shape or advisory unlock result was not exact.
     SchemaMismatch,
     /// The runtime schema is absent, unsupported, or altered.
-    CurrentSchema(crate::CurrentSchemaError),
+    CurrentSchema(CurrentSchemaError),
     /// A stored page, digest, kind, tick, or provenance row was malformed.
     StoredPageMismatch,
     /// A pinned reference-artifact digest diverged from its contract-pinned value.
@@ -1806,7 +1816,7 @@ pub enum SemanticArchiveError {
 }
 
 impl std::fmt::Display for SemanticArchiveError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> FmtResult {
         write!(formatter, "semantic Archive refusal: {self:?}")
     }
 }
@@ -1890,33 +1900,51 @@ pub(crate) fn hex_digest(digest: &[u8; 32]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::CommittedTerritoryFields;
+    use crate::CountyPagePlan;
+    use uuid::Uuid;
 
     fn public_qcew_page() -> (CampaignId, ArchivePageInput, ArchiveKnowledge) {
-        let campaign = CampaignId::from_uuid(uuid::Uuid::from_u128(319));
+        let campaign = CampaignId::from_uuid(Uuid::from_u128(319));
         let county = crate::michigan_economy::michigan_economy()
-            .unwrap()
+            .expect("the Michigan economy fixture builds")
             .counties()
             .iter()
             .find(|county| county.county_geoid == "26163")
-            .unwrap();
-        let fields = crate::CommittedTerritoryFields::try_from_qcew([
-            Some(i64::try_from(county.annual_avg_estabs_count).unwrap()),
-            Some(i64::try_from(county.annual_avg_emplvl).unwrap()),
-            Some(i64::try_from(county.total_annual_wages).unwrap()),
-            Some(i64::try_from(county.annual_avg_wkly_wage).unwrap()),
+            .expect("the fixture holds the searched element");
+        let fields = CommittedTerritoryFields::try_from_qcew([
+            Some(
+                i64::try_from(county.annual_avg_estabs_count)
+                    .expect("the fixture value fits the target range"),
+            ),
+            Some(
+                i64::try_from(county.annual_avg_emplvl)
+                    .expect("the fixture value fits the target range"),
+            ),
+            Some(
+                i64::try_from(county.total_annual_wages)
+                    .expect("the fixture value fits the target range"),
+            ),
+            Some(
+                i64::try_from(county.annual_avg_wkly_wage)
+                    .expect("the fixture value fits the target range"),
+            ),
         ])
-        .unwrap();
-        let plan = crate::CountyPagePlan::try_new(
+        .expect("the fixture input satisfies the fallible conversion");
+        let plan = CountyPagePlan::try_new(
             county.county_geoid.clone(),
             "county-26163".to_owned(),
             "Wayne County".to_owned(),
-            crate::county_committed_signals(&fields).unwrap(),
+            crate::county_committed_signals(&fields).expect(
+                "the fixture call `county_committed_signals` succeeds for the authored inputs",
+            ),
             Vec::new(),
         )
-        .unwrap();
-        let page = crate::county_page_input(&plan, 1, [1; 32]).unwrap();
+        .expect("the authored fixture satisfies the constructor invariants");
+        let page = crate::county_page_input(&plan, 1, [1; 32])
+            .expect("the fixture call `county_page_input` succeeds for the authored inputs");
         let grants = crate::foundation_grant_rows()
-            .unwrap()
+            .expect("the fixture call `foundation_grant_rows` succeeds for the authored inputs")
             .into_iter()
             .filter(|row| {
                 row.subject().kind() == ArchiveAtomSubjectKind::County
@@ -1929,16 +1957,22 @@ mod tests {
                     0,
                     row.citation().clone(),
                 )
-                .unwrap()
+                .expect("the authored fixture satisfies the constructor invariants")
             })
             .collect();
-        (campaign, page, ArchiveKnowledge::try_new(grants).unwrap())
+        (
+            campaign,
+            page,
+            ArchiveKnowledge::try_new(grants)
+                .expect("the authored fixture satisfies the constructor invariants"),
+        )
     }
 
     #[test]
     fn pinned_public_qcew_atoms_retain_observed_classification() {
         let (campaign, page, grants) = public_qcew_page();
-        let atoms = mint_page_atoms(campaign, 1, &page, &grants).unwrap();
+        let atoms = mint_page_atoms(campaign, 1, &page, &grants)
+            .expect("the fixture call `mint_page_atoms` succeeds for the authored inputs");
         let qcew: Vec<_> = atoms
             .iter()
             .filter(|atom| atom.signal_key() != "subject")
@@ -1970,15 +2004,19 @@ mod tests {
                             changed.subject.page_ref().clone(),
                             signal.grant_key().to_owned(),
                         ))
-                        .unwrap()
+                        .expect("the fixture holds the addressed entry")
                         .citation
                         .source_id = "uncited-local-claim".to_owned();
                 }
                 _ => unreachable!(),
             }
             let key = signal.grant_key().to_owned();
-            let atoms = mint_page_atoms(campaign, 1, &changed, &changed_grants).unwrap();
-            let atom = atoms.iter().find(|atom| atom.signal_key() == key).unwrap();
+            let atoms = mint_page_atoms(campaign, 1, &changed, &changed_grants)
+                .expect("the fixture call `mint_page_atoms` succeeds for the authored inputs");
+            let atom = atoms
+                .iter()
+                .find(|atom| atom.signal_key() == key)
+                .expect("the fixture holds the searched element");
             assert_eq!(
                 atom.evidence_class(),
                 ArchiveEvidenceClass::Derived,

@@ -1,15 +1,17 @@
 //! Restart-safe installation of the native schema and immutable H3 reference bundle.
 
+use crate::michigan_dynamic_hex_foundation;
 use postgres::Config;
 
-use crate::current_schema::{install_current_schema, CurrentSchemaError, CurrentSchemaReport};
-use crate::h3_reference_cohort::{representative_h3_reference_cohort, H3ReferenceCohortError};
-use crate::h3_reference_installer::{
-    install_michigan_h3_reference_bundle, H3ReferenceInstallError, H3ReferenceInstallReport,
-};
-use crate::michigan_dynamic_hex_foundation::{
-    michigan_dynamic_hex_foundation, MichiganDynamicHexFoundationDecodeError,
-};
+use crate::current_schema;
+use crate::current_schema::{CurrentSchemaError, CurrentSchemaReport};
+use crate::h3_reference_cohort;
+use crate::h3_reference_cohort::H3ReferenceCohortError;
+use crate::h3_reference_installer;
+use crate::h3_reference_installer::{H3ReferenceInstallError, H3ReferenceInstallReport};
+use crate::michigan_dynamic_hex_foundation::MichiganDynamicHexFoundationDecodeError;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 
 /// Receipts from the native schema and immutable reference installation.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -34,7 +36,7 @@ pub enum CurrentRuntimeBootstrapError {
 }
 
 impl std::fmt::Display for CurrentRuntimeBootstrapError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> FmtResult {
         write!(formatter, "H3 reader bootstrap failed: {self:?}")
     }
 }
@@ -52,14 +54,14 @@ impl std::error::Error for CurrentRuntimeBootstrapError {}
 pub fn bootstrap_current_runtime(
     config: &Config,
 ) -> Result<CurrentRuntimeBootstrapReport, CurrentRuntimeBootstrapError> {
-    let cohort = representative_h3_reference_cohort()
+    let cohort = h3_reference_cohort::representative_h3_reference_cohort()
         .map_err(CurrentRuntimeBootstrapError::ReferenceCohort)?;
-    let foundation = michigan_dynamic_hex_foundation()
+    let foundation = michigan_dynamic_hex_foundation::michigan_dynamic_hex_foundation()
         .map_err(CurrentRuntimeBootstrapError::ReferenceFoundation)?;
-    let schema =
-        install_current_schema(config).map_err(CurrentRuntimeBootstrapError::CurrentSchema)?;
+    let schema = current_schema::install_current_schema(config)
+        .map_err(CurrentRuntimeBootstrapError::CurrentSchema)?;
     let reference_bundle_installation =
-        install_michigan_h3_reference_bundle(config, cohort, foundation)
+        h3_reference_installer::install_michigan_h3_reference_bundle(config, cohort, foundation)
             .map_err(CurrentRuntimeBootstrapError::ReferenceInstall)?;
     Ok(CurrentRuntimeBootstrapReport {
         reference_bundle_installation,

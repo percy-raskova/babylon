@@ -22,7 +22,7 @@
 //!    silently returning `None` from `spec_code()`, because its
 //!    `Composition` variant carried no `code`/`identity` fields at all.
 
-use babylon_tick::{diagnose_content_set_sources, ContentRuleSource};
+use babylon_tick::ContentRuleSource;
 
 const SCENARIO: &str = include_str!("../content/scenarios/two-classes.bscn");
 const RULE: &str = include_str!("../content/rules/fundamental-theorem.bsl");
@@ -113,7 +113,7 @@ const DUPLICATE_ID_WITH_ILLEGAL_PHASE: &str = r#"(rule economics/fundamental-the
 
 #[test]
 fn a_clean_content_set_diagnoses_empty() {
-    let errors = diagnose_content_set_sources(
+    let errors = babylon_tick::diagnose_content_set_sources(
         SCENARIO,
         None,
         &[ContentRuleSource {
@@ -126,7 +126,7 @@ fn a_clean_content_set_diagnoses_empty() {
 
 #[test]
 fn a_scenario_with_a_duplicate_deffield_yields_one_e_load_001_entry() {
-    let errors = diagnose_content_set_sources(
+    let errors = babylon_tick::diagnose_content_set_sources(
         D32_SINGLE_COLLISION_SCENARIO,
         None,
         &[ContentRuleSource {
@@ -140,7 +140,7 @@ fn a_scenario_with_a_duplicate_deffield_yields_one_e_load_001_entry() {
 
 #[test]
 fn two_independently_broken_rule_forms_yield_two_entries() {
-    let errors = diagnose_content_set_sources(
+    let errors = babylon_tick::diagnose_content_set_sources(
         SCENARIO,
         None,
         &[
@@ -159,7 +159,7 @@ fn two_independently_broken_rule_forms_yield_two_entries() {
 
 #[test]
 fn a_scenario_that_redeclares_an_implicit_strength_field_yields_a_structured_code_not_none() {
-    let errors = diagnose_content_set_sources(
+    let errors = babylon_tick::diagnose_content_set_sources(
         D32_TWO_COLLISION_SCENARIO,
         None,
         &[ContentRuleSource {
@@ -174,7 +174,7 @@ fn a_scenario_that_redeclares_an_implicit_strength_field_yields_a_structured_cod
 
 #[test]
 fn a_bad_rule_does_not_hide_an_independent_phase_composition_failure() {
-    let errors = diagnose_content_set_sources(
+    let errors = babylon_tick::diagnose_content_set_sources(
         SCENARIO,
         None,
         &[
@@ -196,7 +196,7 @@ fn a_bad_rule_does_not_hide_an_independent_phase_composition_failure() {
 
 #[test]
 fn duplicate_rule_ids_across_sources_are_one_structured_e_load_001() {
-    let errors = diagnose_content_set_sources(
+    let errors = babylon_tick::diagnose_content_set_sources(
         SCENARIO,
         None,
         &[
@@ -227,7 +227,7 @@ fn duplicate_rule_ids_suppress_phase_diagnostics_in_both_source_orders() {
         source: DUPLICATE_ID_WITH_ILLEGAL_PHASE,
     };
     for sources in [[regular, duplicate], [duplicate, regular]] {
-        let errors = diagnose_content_set_sources(SCENARIO, None, &sources);
+        let errors = babylon_tick::diagnose_content_set_sources(SCENARIO, None, &sources);
 
         assert_eq!(errors.len(), 1, "{errors:?}");
         assert_eq!(errors[0].error.spec_code(), Some("E-LOAD-001"));

@@ -6,6 +6,7 @@ use std::thread::{self, JoinHandle};
 
 use super::coordinator::SessionEvent;
 use super::{RuntimeSessionErrorCode, RUNTIME_SESSION_MAX_LINE_BYTES};
+use thread::Builder;
 
 #[derive(Debug)]
 pub(super) enum InputEvent {
@@ -25,7 +26,7 @@ impl SessionInput {
         events: SyncSender<SessionEvent>,
     ) -> Result<Self, RuntimeSessionErrorCode> {
         let (permit, next) = mpsc::sync_channel(1);
-        let handle = thread::Builder::new()
+        let handle = Builder::new()
             .name("runtime-control-input".into())
             .spawn(move || pump(input, &events, &next))
             .map_err(|_| RuntimeSessionErrorCode::PipeFailure)?;
@@ -103,10 +104,12 @@ mod tests {
     #[test]
     fn record_permit_prevents_reading_past_accepted_stop() {
         let (events, received) = mpsc::sync_channel(2);
-        let mut input =
-            SessionInput::start(Cursor::new(b"stop\nadvance\n".to_vec()), events).unwrap();
+        let mut input = SessionInput::start(Cursor::new(b"stop\nadvance\n".to_vec()), events)
+            .expect("the fixture starts the authored period");
         assert!(matches!(
-            received.recv().unwrap(),
+            received
+                .recv()
+                .expect("the producer sends exactly one message"),
             SessionEvent::Input(InputEvent::Frame(_))
         ));
         assert!(matches!(
@@ -130,8 +133,14 @@ mod tests {
             ),
         ] {
             let (events, received) = mpsc::sync_channel(2);
-            let _input = SessionInput::start(Cursor::new(bytes), events).unwrap();
-            match (received.recv().unwrap(), expected) {
+            let _input = SessionInput::start(Cursor::new(bytes), events)
+                .expect("the fixture starts the authored period");
+            match (
+                received
+                    .recv()
+                    .expect("the producer sends exactly one message"),
+                expected,
+            ) {
                 (SessionEvent::Input(InputEvent::Eof), None) => {}
                 (SessionEvent::Input(InputEvent::Refused(actual)), Some(expected)) => {
                     assert_eq!(actual, expected);

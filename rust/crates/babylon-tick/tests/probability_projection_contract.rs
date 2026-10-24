@@ -1,13 +1,9 @@
 use babylon_bsl::probability::{ProbabilityError, TICKET_DENOMINATOR};
 use babylon_graph::stable_element::StableElementKey;
-use babylon_tick::{
-    analyze_content_set_sources, forecast_event_likelihoods,
-    forecast_scenario_determined_event_likelihoods,
-    forecast_scenario_determined_event_likelihoods_with_kernel_slots,
-    kernel_slot::KernelSlotReservationRef, ContentRuleSource, ForecastError, PrepareError,
-};
+use babylon_tick::kernel_slot::KernelSlotReservationRef;
+use babylon_tick::{ContentRuleSource, ForecastError, PrepareError};
 
-const SCENARIO: &str = r#"
+const SCENARIO: &str = r"
 (scenario struggle/spark-projection-contract
   (defvocabulary NodeType (SOCIAL_CLASS))
   (defenum StruggleSparkOutcome (EXCESSIVE_FORCE NO_INCIDENT))
@@ -16,9 +12,9 @@ const SCENARIO: &str = r#"
   (node worker NodeType/SOCIAL_CLASS
     (social-class/last-incident 0)
     (social-class/earlier-choice 0)))
-"#;
+";
 
-const MULTI_CARRIER_SCENARIO: &str = r#"
+const MULTI_CARRIER_SCENARIO: &str = r"
 (scenario struggle/spark-projection-contract
   (defvocabulary NodeType (SOCIAL_CLASS))
   (defenum StruggleSparkOutcome (EXCESSIVE_FORCE NO_INCIDENT))
@@ -27,9 +23,9 @@ const MULTI_CARRIER_SCENARIO: &str = r#"
     (social-class/last-incident 0))
   (node second NodeType/SOCIAL_CLASS
     (social-class/last-incident 0)))
-"#;
+";
 
-const WRONG_SUBJECT_TYPE_SCENARIO: &str = r#"
+const WRONG_SUBJECT_TYPE_SCENARIO: &str = r"
 (scenario struggle/spark-projection-contract
   (defvocabulary NodeType (SOCIAL_CLASS INSTITUTION))
   (defenum StruggleSparkOutcome (EXCESSIVE_FORCE NO_INCIDENT))
@@ -37,16 +33,16 @@ const WRONG_SUBJECT_TYPE_SCENARIO: &str = r#"
   (node worker NodeType/SOCIAL_CLASS
     (social-class/last-incident 0))
   (node outsider NodeType/INSTITUTION))
-"#;
+";
 
-const PREFIX_DEPENDENT_SCENARIO: &str = r#"
+const PREFIX_DEPENDENT_SCENARIO: &str = r"
 (scenario struggle/spark-projection-contract
   (defvocabulary NodeType (SOCIAL_CLASS))
   (defenum StruggleSparkOutcome (EXCESSIVE_FORCE NO_INCIDENT))
   (deffield social-class/last-incident int extensive)
   (node worker NodeType/SOCIAL_CLASS
     (social-class/last-incident 9)))
-"#;
+";
 
 const DETERMINISTIC_PREFIX: &str = r#"
 (rule struggle/a-prefix
@@ -168,7 +164,8 @@ fn source<'a>(source_id: &'a str, source: &'a str) -> ContentRuleSource<'a> {
 
 #[test]
 fn named_source_analysis_retains_paths_and_resolved_kernel_projection_linkage() {
-    let analysis = analyze_content_set_sources(scenario(SCENARIO), &[], &sources()).unwrap();
+    let analysis = babylon_tick::analyze_content_set_sources(scenario(SCENARIO), &[], &sources())
+        .expect("the fixture call `analyze_content_set_sources` succeeds for the authored inputs");
     assert_eq!(analysis.rules.len(), 2);
     assert_eq!(
         analysis.rules[0].source_id,
@@ -194,7 +191,7 @@ fn named_source_analysis_enforces_the_permanent_kernel_slot_ledger() {
         source("rules/struggle-spark-mechanic.bsl", &moved_mechanic),
         source("rules/struggle-spark-recognizer.bsl", PROJECTION),
     ];
-    let error = analyze_content_set_sources(scenario(SCENARIO), &[], &moved_sources)
+    let error = babylon_tick::analyze_content_set_sources(scenario(SCENARIO), &[], &moved_sources)
         .expect_err("read-only analysis must enforce the executable slot ledger");
 
     assert!(matches!(error, PrepareError::KernelSlot(_)), "{error:?}");
@@ -203,13 +200,13 @@ fn named_source_analysis_enforces_the_permanent_kernel_slot_ledger() {
 
 #[test]
 fn paired_single_carrier_scenario_has_an_exact_recognizer_preimage_measure() {
-    let likelihoods = forecast_scenario_determined_event_likelihoods(
+    let likelihoods = babylon_tick::forecast_scenario_determined_event_likelihoods(
         SCENARIO,
         None,
         &sources(),
         "struggle/spark",
     )
-    .unwrap();
+    .expect("the fixture call `forecast_scenario_determined_event_likelihoods` succeeds for the authored inputs");
     assert_eq!(likelihoods.len(), 1);
     assert_eq!(likelihoods[0].event_type, "EXCESSIVE_FORCE");
     assert_eq!(likelihoods[0].favorable_outcomes, ["EXCESSIVE_FORCE"]);
@@ -219,13 +216,13 @@ fn paired_single_carrier_scenario_has_an_exact_recognizer_preimage_measure() {
 
 #[test]
 fn paired_scenario_forecast_refuses_to_guess_between_multiple_carriers() {
-    let error = forecast_scenario_determined_event_likelihoods(
+    let error = babylon_tick::forecast_scenario_determined_event_likelihoods(
         MULTI_CARRIER_SCENARIO,
         None,
         &sources(),
         "struggle/spark",
     )
-    .unwrap_err();
+    .expect_err("the fixture call `forecast_scenario_determined_event_likelihoods` fails for the authored inputs");
     assert!(
         matches!(error, ForecastError::NotExactlyEnumerable { .. }),
         "{error:?}"
@@ -235,7 +232,7 @@ fn paired_scenario_forecast_refuses_to_guess_between_multiple_carriers() {
 
 #[test]
 fn named_forecast_refuses_a_stable_node_outside_the_mechanic_subject_population() {
-    let error = forecast_event_likelihoods(
+    let error = babylon_tick::forecast_event_likelihoods(
         WRONG_SUBJECT_TYPE_SCENARIO,
         None,
         &sources(),
@@ -261,13 +258,13 @@ fn named_forecast_refuses_a_stable_node_outside_the_mechanic_subject_population(
 fn forecast_executes_the_resolved_deterministic_prefix_before_enumerating_the_kernel() {
     let mut prefixed = vec![source("rules/struggle-a-prefix.bsl", DETERMINISTIC_PREFIX)];
     prefixed.extend(sources());
-    let likelihoods = forecast_scenario_determined_event_likelihoods(
+    let likelihoods = babylon_tick::forecast_scenario_determined_event_likelihoods(
         PREFIX_DEPENDENT_SCENARIO,
         None,
         &prefixed,
         "struggle/spark",
     )
-    .unwrap();
+    .expect("the fixture call `forecast_scenario_determined_event_likelihoods` succeeds for the authored inputs");
     assert_eq!(likelihoods.len(), 1);
     assert_eq!(likelihoods[0].event_type, "EXCESSIVE_FORCE");
     assert_eq!(likelihoods[0].numerator, TICKET_DENOMINATOR / 4);
@@ -281,9 +278,13 @@ fn scenario_determined_forecast_refuses_a_calendar_dependent_prefix() {
         CALENDAR_DEPENDENT_PREFIX,
     )];
     prefixed.extend(sources());
-    let error =
-        forecast_scenario_determined_event_likelihoods(SCENARIO, None, &prefixed, "struggle/spark")
-            .unwrap_err();
+    let error = babylon_tick::forecast_scenario_determined_event_likelihoods(
+        SCENARIO,
+        None,
+        &prefixed,
+        "struggle/spark",
+    )
+    .expect_err("the fixture call `forecast_scenario_determined_event_likelihoods` fails for the authored inputs");
     assert!(matches!(error, ForecastError::NotExactlyEnumerable { .. }));
     assert!(error.to_string().contains("forecast prefix"), "{error}");
     assert!(error.to_string().contains("forecast tick"), "{error}");
@@ -296,14 +297,14 @@ fn forecast_refuses_cross_sample_enumeration_after_an_earlier_finite_kernel() {
         EARLIER_KERNEL,
     )];
     multi_sample.extend(sources());
-    let error = forecast_scenario_determined_event_likelihoods_with_kernel_slots(
+    let error = babylon_tick::forecast_scenario_determined_event_likelihoods_with_kernel_slots(
         SCENARIO,
         None,
         &multi_sample,
         &CROSS_SAMPLE_SLOTS,
         "struggle/spark",
     )
-    .unwrap_err();
+    .expect_err("the fixture call `forecast_scenario_determined_event_likelihoods_with_kernel_slots` fails for the authored inputs");
     assert!(
         matches!(error, ForecastError::NotExactlyEnumerable { .. }),
         "{error:?}"
@@ -330,7 +331,8 @@ fn resolved_nonadjacency_is_a_typed_rule_owned_probability_refusal() {
     };
     let mut separated = sources().to_vec();
     separated.push(obstruction);
-    let error = analyze_content_set_sources(scenario(SCENARIO), &[], &separated).unwrap_err();
+    let error = babylon_tick::analyze_content_set_sources(scenario(SCENARIO), &[], &separated)
+        .expect_err("the fixture call `analyze_content_set_sources` fails for the authored inputs");
     let PrepareError::Probability {
         rule_id: Some(rule_id),
         error: ProbabilityError::ProjectionNotAdjacent {

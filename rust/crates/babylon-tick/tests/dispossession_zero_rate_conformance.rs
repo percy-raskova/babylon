@@ -32,10 +32,17 @@
 //! the frozen engine still skips both subjects whole. That is the exact
 //! fidelity claim this suite exists to prove, not an incidental detail.
 
+// Conformance fixtures exercise exact engine values, transcribe spec literals,
+// and build whole scenarios in one test. These pedantic lints would force
+// ceremony that hides those contracts, so they stay off in test code only.
+#![allow(
+    clippy::float_cmp,
+    reason = "these comparisons pin exact authored f64 values"
+)]
+
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::memory::MemoryGraph;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
-use babylon_tick::{run_once, run_once_into};
 
 const SCENARIO: &str =
     include_str!("../content/scenarios/dispossession-zero-rate-conformance.bscn");
@@ -44,7 +51,7 @@ const RULE: &str = include_str!("../content/rules/dispossession.bsl");
 fn run() -> (MemoryGraph, CollectingSink) {
     let mut graph = MemoryGraph::new();
     let mut sink = CollectingSink::default();
-    run_once_into(SCENARIO, RULE, &mut graph, &mut sink)
+    babylon_tick::run_once_into(SCENARIO, RULE, &mut graph, &mut sink)
         .expect("the Dispossession pack must run, even when the guard excludes everyone");
     (graph, sink)
 }
@@ -98,7 +105,7 @@ fn no_event_fires() {
 /// are `considered`.
 #[test]
 fn zero_subjects_pass_the_guard() {
-    let report = run_once(SCENARIO, RULE).expect("the pack must run");
+    let report = babylon_tick::run_once(SCENARIO, RULE).expect("the pack must run");
     assert_eq!(report.fired, 0, "both subjects fail the primary-rate guard");
 }
 
@@ -106,8 +113,8 @@ fn zero_subjects_pass_the_guard() {
 /// pre-tick and post-tick hashes are IDENTICAL, not merely reproducible.
 #[test]
 fn the_tick_leaves_state_completely_unchanged() {
-    let a = run_once(SCENARIO, RULE).expect("first run");
-    let b = run_once(SCENARIO, RULE).expect("second run");
+    let a = babylon_tick::run_once(SCENARIO, RULE).expect("first run");
+    let b = babylon_tick::run_once(SCENARIO, RULE).expect("second run");
     assert_eq!(a.after, b.after, "two runs, one post-state");
     assert_eq!(
         a.before, a.after,

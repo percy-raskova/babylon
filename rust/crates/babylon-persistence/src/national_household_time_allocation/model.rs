@@ -1,7 +1,10 @@
 use super::CountyGeoid;
-use crate::{
-    national_counties::ObservationStatus, national_household_allocation::HouseholdBudgetKey,
-};
+use crate::national_counties::ObservationStatus;
+use crate::national_household_allocation::HouseholdBudgetKey;
+use crate::national_households::HouseholdReferenceError;
+use crate::national_resident_workforce::ResidentWorkforceReferenceError;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 
 /// Age controls joined to an existing counted household budget identity.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -76,8 +79,8 @@ pub enum HouseholdTimeMeasure {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum HouseholdTimeAllocationError {
     CountyRoster,
-    HouseholdReference(crate::national_households::HouseholdReferenceError),
-    WorkforceReference(crate::national_resident_workforce::ResidentWorkforceReferenceError),
+    HouseholdReference(HouseholdReferenceError),
+    WorkforceReference(ResidentWorkforceReferenceError),
     SourceDigest,
     UnavailableObservation {
         county: CountyGeoid,
@@ -99,7 +102,7 @@ pub enum HouseholdTimeAllocationError {
     },
 }
 impl std::fmt::Display for HouseholdTimeAllocationError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         write!(f, "household time allocation refused: {self:?}")
     }
 }

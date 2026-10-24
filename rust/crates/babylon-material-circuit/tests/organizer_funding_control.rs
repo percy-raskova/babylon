@@ -6,12 +6,33 @@
 //! Retained control.json SHA-256:
 //! 5eb13e470f1b7ba3aa90a03b97608267fb9021c47c98fb0b446fffc956a4dcca.
 //! Organizer command admission and atomic campaign publication have separate
-//! MaterialReplaySession controls. It is not national play qualification.
+//! `MaterialReplaySession` controls. It is not national play qualification.
+use crate::control::cash;
+use crate::control::money;
+use crate::control::public;
+use crate::control::remaining;
+use crate::control::stock;
+use crate::control::COLLECTION;
+use crate::control::EMPLOYER;
+use crate::control::FOOD;
+use crate::control::MATERIALS;
+use crate::control::PAPER_CASH;
+use babylon_material_circuit::AccountId;
+use babylon_material_circuit::AidOutcome;
+use babylon_material_circuit::AidResolveInput;
+use babylon_material_circuit::CashTransferPurpose;
+use babylon_material_circuit::CollectionOutcome;
+use babylon_material_circuit::CollectionReceipt;
+use babylon_material_circuit::CollectionResolveInput;
+use babylon_material_circuit::HouseholdCohort;
+use babylon_material_circuit::IncomeReceipt;
+use babylon_material_circuit::MaterialCircuitError;
+use babylon_material_circuit::MaterialCircuitState;
+use babylon_material_circuit::MaterialCircuitTransition;
+use babylon_material_circuit::MoneyLocation;
+use babylon_material_circuit::MoneyTransferPurpose;
 #[path = "support/organizer_funding_control.rs"]
 mod control;
-
-use babylon_material_circuit::*;
-use control::*;
 
 #[derive(Clone, Copy)]
 struct PeriodExpectation {
@@ -37,7 +58,7 @@ struct ControlTotals {
 
 #[test]
 fn four_period_collection_aid_savings_and_protected_service_control() {
-    let mut state = opening();
+    let mut state = control::opening();
     let original_cohorts = assert_opening_accounting(&state);
     let mut totals = ControlTotals::default();
     for (
@@ -54,17 +75,17 @@ fn four_period_collection_aid_savings_and_protected_service_control() {
         (3, 11_063_200_000, 400_000, 8, 1406, 432, 15_048_000_000),
         (4, 135_200_000, 400_000, 8, 1408, 432, 10_928_000_000),
     ] {
-        state = controlled_opening(state);
+        state = control::controlled_opening(state);
         assert_eq!(state.period, period);
         let gifts = if period == 2 {
-            vec![aid(period)]
+            vec![control::aid(period)]
         } else {
             vec![]
         };
         let collections = if period == 2 {
             vec![]
         } else {
-            vec![collection(period)]
+            vec![control::collection(period)]
         };
         let completed = close_and_reexecute(&state, &gifts, &collections);
         let expected = PeriodExpectation {
@@ -96,22 +117,29 @@ fn four_period_collection_aid_savings_and_protected_service_control() {
 
 fn assert_opening_accounting(state: &MaterialCircuitState) -> Vec<HouseholdCohort> {
     assert_eq!(
-        economy(state).book.total_cash_and_reserves().unwrap(),
+        control::economy(state)
+            .book
+            .total_cash_and_reserves()
+            .expect("the fixture book totals without overflow"),
         money(PAPER_CASH)
     );
-    let cohorts = &economy(state).recurring.as_ref().unwrap().households;
+    let cohorts = &control::economy(state)
+        .recurring
+        .as_ref()
+        .expect("the fixture set the optional field before this read")
+        .households;
     assert_eq!(
         cohorts
             .iter()
-            .filter(|r| r.principal_id != suppliers())
+            .filter(|r| r.principal_id != control::suppliers())
             .map(|r| r.persons)
             .sum::<u64>(),
         12
     );
     assert_eq!(cohorts.iter().map(|r| r.persons).sum::<u64>(), 17);
-    assert_eq!(stock(state, donor(), FOOD) + 36, 44);
-    assert_eq!(stock(state, donor(), MATERIALS) + 16, 20);
-    assert_eq!(stock(state, suppliers(), FOOD), 20);
+    assert_eq!(stock(state, control::donor(), FOOD) + 36, 44);
+    assert_eq!(stock(state, control::donor(), MATERIALS) + 16, 20);
+    assert_eq!(stock(state, control::suppliers(), FOOD), 20);
     cohorts.clone()
 }
 
@@ -121,15 +149,23 @@ fn close_and_reexecute(
     collections: &[CollectionResolveInput],
 ) -> MaterialCircuitTransition {
     let period = state.period;
-    let before = encode_material_circuit_state(state).unwrap();
-    let mut completed = close(state, gifts, collections).unwrap();
+    let before = babylon_material_circuit::encode_material_circuit_state(state)
+        .expect("the canonical material state encodes");
+    let mut completed = control::close(state, gifts, collections)
+        .expect("the fixture call `close` succeeds for the authored inputs");
 
-    assert_eq!(encode_material_circuit_state(state).unwrap(), before);
-    let decoded = decode_material_circuit_state(&before).unwrap();
-    let mut repeated = close(&decoded, gifts, collections).unwrap();
+    assert_eq!(
+        babylon_material_circuit::encode_material_circuit_state(state)
+            .expect("the canonical material state encodes"),
+        before
+    );
+    let decoded = babylon_material_circuit::decode_material_circuit_state(&before)
+        .expect("the canonical material bytes decode");
+    let mut repeated = control::close(&decoded, gifts, collections)
+        .expect("the fixture call `close` succeeds for the authored inputs");
     if period == 2 {
-        coordinate(&mut completed);
-        coordinate(&mut repeated);
+        control::coordinate(&mut completed);
+        control::coordinate(&mut repeated);
     }
     assert_eq!(repeated, completed);
 
@@ -151,32 +187,35 @@ fn assert_selected_balances_and_hours(
         ..
     } = *expected;
     assert_eq!(
-        cash(&completed.state, AccountId::Household(donor())),
+        cash(&completed.state, AccountId::Household(control::donor())),
         expected_cash,
         "donor P{period}"
     );
     assert_eq!(
-        cash(&completed.state, organization()),
+        cash(&completed.state, control::organization()),
         expected_organization,
         "organization P{period}"
     );
-    assert_eq!(stock(&completed.state, donor(), FOOD), expected_food);
-    assert_eq!(stock(&completed.state, donor(), MATERIALS), 4);
     assert_eq!(
-        remaining(&completed.state, donor()),
+        stock(&completed.state, control::donor(), FOOD),
+        expected_food
+    );
+    assert_eq!(stock(&completed.state, control::donor(), MATERIALS), 4);
+    assert_eq!(
+        remaining(&completed.state, control::donor()),
         donor_hours,
         "donor hours P{period}"
     );
     assert_eq!(
-        remaining(&completed.state, recipient()),
+        remaining(&completed.state, control::recipient()),
         recipient_hours,
         "recipient hours P{period}"
     );
     assert_eq!(
-        economy(&completed.state)
+        control::economy(&completed.state)
             .recurring
             .as_ref()
-            .unwrap()
+            .expect("the fixture set the optional field before this read")
             .households
             .as_slice(),
         original_cohorts
@@ -188,10 +227,10 @@ fn assert_conserved_transfers_and_purchases(
     purchase_payment: i128,
 ) {
     assert_eq!(
-        economy(&completed.state)
+        control::economy(&completed.state)
             .book
             .total_cash_and_reserves()
-            .unwrap(),
+            .expect("the fixture book totals without overflow"),
         money(PAPER_CASH)
     );
     for transfer in &completed.money_transfers {
@@ -200,7 +239,7 @@ fn assert_conserved_transfers_and_purchases(
                 .debit
                 .delta
                 .checked_add(transfer.credit.delta)
-                .unwrap(),
+                .expect("the fixture arithmetic stays in range"),
             money(0)
         );
         assert!(transfer.debit.delta.micro_units() < 0);
@@ -222,21 +261,21 @@ fn assert_funded_attendance(completed: &MaterialCircuitTransition, period: u64) 
     let labor = completed
         .member_labor_use
         .iter()
-        .find(|r| r.site_id == site(EMPLOYER))
-        .unwrap();
+        .find(|r| r.site_id == control::site(EMPLOYER))
+        .expect("the fixture holds the searched element");
     let expected_wages = if period <= 2 { 15_360_000_000 } else { 0 };
     let expected_attendance = if period <= 2 { 640 } else { 0 };
     assert_eq!(labor.attended_hours, expected_attendance);
     assert_eq!(labor.accrued_wages.micro_units(), expected_wages);
     assert_eq!(labor.idle_wages.micro_units(), expected_wages);
     assert_eq!(
-        cash(&completed.state, AccountId::Site(site(EMPLOYER))),
+        cash(&completed.state, AccountId::Site(control::site(EMPLOYER))),
         if period == 1 { 15_360_000_000 } else { 0 }
     );
     assert!(!completed
         .production
         .iter()
-        .any(|r| r.site_id == site(EMPLOYER) && r.produced_batches > 0));
+        .any(|r| r.site_id == control::site(EMPLOYER) && r.produced_batches > 0));
     assert_eq!(
         labor.production_hours
             + labor.handling_hours
@@ -257,7 +296,7 @@ fn assert_settled_wage_claims(
     let wages = completed
         .wage_accruals
         .iter()
-        .filter(|r| r.payee == AccountId::Household(donor()))
+        .filter(|r| r.payee == AccountId::Household(control::donor()))
         .collect::<Vec<_>>();
     assert_eq!(
         wages.iter().map(|r| r.obligated_hours).sum::<u64>(),
@@ -286,8 +325,8 @@ fn assert_taxes_and_closed_reserves(
     let tax = completed
         .taxes
         .iter()
-        .find(|r| r.payer == AccountId::Household(donor()))
-        .unwrap();
+        .find(|r| r.payer == AccountId::Household(control::donor()))
+        .expect("the fixture holds the searched element");
     assert_eq!(tax.taxable_amount.micro_units(), expected_wages);
     assert_eq!(
         tax.assessed.micro_units(),
@@ -295,20 +334,22 @@ fn assert_taxes_and_closed_reserves(
     );
     assert_eq!(tax.collected, tax.assessed);
     assert_eq!(tax.uncollected, money(0));
-    let books = economy(&completed.state).book.snapshot();
+    let books = control::economy(&completed.state).book.snapshot();
     assert!(books
         .purchases
         .iter()
-        .all(|r| r.reserved_amount().unwrap() == money(0)));
-    assert!(books
-        .shifts
-        .iter()
-        .all(|r| r.reserved_amount().unwrap() == money(0)
-            && r.outstanding_wages().unwrap() == money(0)));
+        .all(|r| r.reserved_amount().expect("the fixture reservation exists") == money(0)));
+    assert!(books.shifts.iter().all(|r| r
+        .reserved_amount()
+        .expect("the fixture reservation exists")
+        == money(0)
+        && r.outstanding_wages()
+            .expect("the fixture payroll carries its authored wages")
+            == money(0)));
     assert!(books
         .aid
         .iter()
-        .all(|r| r.reserved_amount().unwrap() == money(0)));
+        .all(|r| r.reserved_amount().expect("the fixture reservation exists") == money(0)));
 
     tax.collected.micro_units()
 }
@@ -317,18 +358,18 @@ fn reconcile_income(completed: &MaterialCircuitTransition, totals: &mut ControlT
     let donor_income = completed
         .income
         .iter()
-        .find(|r| r.account == AccountId::Household(donor()))
-        .unwrap();
+        .find(|r| r.account == AccountId::Household(control::donor()))
+        .expect("the fixture holds the searched element");
     let organization_income = completed
         .income
         .iter()
-        .find(|r| r.account == organization())
-        .unwrap();
+        .find(|r| r.account == control::organization())
+        .expect("the fixture holds the searched element");
     let recipient_income = completed
         .income
         .iter()
-        .find(|r| r.account == AccountId::Household(recipient()))
-        .unwrap();
+        .find(|r| r.account == AccountId::Household(control::recipient()))
+        .expect("the fixture holds the searched element");
     totals.donor_net += donor_income.net_income.micro_units();
     totals.organization_gifts += organization_income.statement.gift_income.micro_units();
     totals.recipient_gifts += recipient_income.statement.gift_income.micro_units();
@@ -344,8 +385,8 @@ fn assert_household_reproduction_and_finite_support(
     let recipient_consumption = completed
         .household_consumption
         .iter()
-        .find(|r| r.principal_id == recipient())
-        .unwrap();
+        .find(|r| r.principal_id == control::recipient())
+        .expect("the fixture holds the searched element");
     assert_eq!(
         recipient_consumption.consumed_quantity,
         if period == 2 { 4 } else { 0 }
@@ -353,20 +394,20 @@ fn assert_household_reproduction_and_finite_support(
     totals.selected_food_consumed += completed
         .household_consumption
         .iter()
-        .filter(|r| r.principal_id != suppliers() && r.good_id == good(FOOD))
+        .filter(|r| r.principal_id != control::suppliers() && r.good_id == control::good(FOOD))
         .map(|r| r.consumed_quantity)
         .sum::<u64>();
     totals.selected_materials_consumed += completed
         .household_consumption
         .iter()
-        .filter(|r| r.good_id == good(MATERIALS))
+        .filter(|r| r.good_id == control::good(MATERIALS))
         .map(|r| r.consumed_quantity)
         .sum::<u64>();
     let supplementary = completed
         .household_consumption
         .iter()
-        .find(|r| r.principal_id == suppliers())
-        .unwrap();
+        .find(|r| r.principal_id == control::suppliers())
+        .expect("the fixture holds the searched element");
     assert_eq!(
         (
             supplementary.consumed_quantity,
@@ -376,7 +417,14 @@ fn assert_household_reproduction_and_finite_support(
     );
     totals.supplier_food_consumed += supplementary.consumed_quantity;
     for receipt in &completed.service_outputs {
-        assert!(receipt.produced_quantity <= if receipt.good_id == good(5) { 4 } else { 8 });
+        assert!(
+            receipt.produced_quantity
+                <= if receipt.good_id == control::good(5) {
+                    4
+                } else {
+                    8
+                }
+        );
         assert_eq!(receipt.direct_cost, money(0)); // Explicit WorkingOwner support.
     }
 }
@@ -386,19 +434,19 @@ fn income(completed: &MaterialCircuitTransition, account: AccountId) -> &IncomeR
         .income
         .iter()
         .find(|r| r.account == account)
-        .unwrap()
+        .expect("the fixture holds the searched element")
 }
 
 fn assert_aid_grant_and_gift_accounts(completed: &MaterialCircuitTransition) {
-    let donor_income = income(completed, AccountId::Household(donor()));
-    let organization_income = income(completed, organization());
-    let recipient_income = income(completed, AccountId::Household(recipient()));
+    let donor_income = income(completed, AccountId::Household(control::donor()));
+    let organization_income = income(completed, control::organization());
+    let recipient_income = income(completed, AccountId::Household(control::recipient()));
     assert!(completed.collections.is_empty());
     let grant = completed
         .aid
         .iter()
         .find(|r| r.outcome == AidOutcome::Granted)
-        .unwrap();
+        .expect("the fixture holds the searched element");
     assert_eq!(
         (
             grant.quantity,
@@ -437,7 +485,9 @@ fn assert_collection_identity_and_outcome(
     } else {
         assert_full_collection(completed, result);
     }
-    result.validate().unwrap();
+    result
+        .validate()
+        .expect("the authored fixture passes validation");
 }
 
 fn assert_protected_service_refusal(
@@ -453,8 +503,8 @@ fn assert_protected_service_refusal(
     let services = completed
         .household_services
         .iter()
-        .find(|r| r.principal_id == donor() && r.good_id == good(6))
-        .unwrap();
+        .find(|r| r.principal_id == control::donor() && r.good_id == control::good(6))
+        .expect("the fixture holds the searched element");
     assert_eq!(
         (
             services.required_quantity,
@@ -463,28 +513,31 @@ fn assert_protected_service_refusal(
         ),
         (8, 3, 5)
     );
-    assert!(cash(&completed.state, AccountId::Household(donor())) > COLLECTION);
-    assert!(remaining(&completed.state, donor()) > collections[0].collection_hours);
+    assert!(cash(&completed.state, AccountId::Household(control::donor())) > COLLECTION);
+    assert!(remaining(&completed.state, control::donor()) > collections[0].collection_hours);
 }
 
 fn assert_full_collection(completed: &MaterialCircuitTransition, result: &CollectionReceipt) {
-    let donor_income = income(completed, AccountId::Household(donor()));
-    let organization_income = income(completed, organization());
+    let donor_income = income(completed, AccountId::Household(control::donor()));
+    let organization_income = income(completed, control::organization());
     assert_eq!(result.outcome, CollectionOutcome::Collected);
     assert_eq!(result.collected, money(COLLECTION));
     assert_eq!(result.performed_hours, 2);
-    let transfer = &completed.money_transfers[result.transfer_ordinal.unwrap() as usize];
+    let transfer = &completed.money_transfers[result
+        .transfer_ordinal
+        .expect("the fixture value `transfer_ordinal` is present before this read")
+        as usize];
     assert_eq!(
         transfer.purpose,
         MoneyTransferPurpose::Cash(CashTransferPurpose::MutualAid)
     );
     assert_eq!(
         transfer.debit.location,
-        MoneyLocation::Cash(AccountId::Household(donor()))
+        MoneyLocation::Cash(AccountId::Household(control::donor()))
     );
     assert_eq!(
         transfer.credit.location,
-        MoneyLocation::Cash(organization())
+        MoneyLocation::Cash(control::organization())
     );
     assert_eq!(transfer.credit.delta, result.collected);
     assert_eq!(donor_income.statement.gift_expense, result.collected);
@@ -492,9 +545,11 @@ fn assert_full_collection(completed: &MaterialCircuitTransition, result: &Collec
 }
 
 fn assert_canonical_closed_state(completed: &MaterialCircuitTransition) {
-    let saved = encode_material_circuit_state(&completed.state).unwrap();
+    let saved = babylon_material_circuit::encode_material_circuit_state(&completed.state)
+        .expect("the canonical material state encodes");
     assert_eq!(
-        decode_material_circuit_state(&saved).unwrap(),
+        babylon_material_circuit::decode_material_circuit_state(&saved)
+            .expect("the canonical material bytes decode"),
         completed.state
     );
 }
@@ -514,7 +569,10 @@ fn assert_four_period_reconciliation(state: &MaterialCircuitState, totals: &Cont
     assert_eq!(recipient_gifts, 1_120_400_000);
     assert_eq!(total_tax, 4_608_000_000);
     assert_eq!(cash(state, public()), total_tax);
-    assert_eq!(cash(state, AccountId::Household(recipient())), COLLECTION);
+    assert_eq!(
+        cash(state, AccountId::Household(control::recipient())),
+        COLLECTION
+    );
     assert_eq!(
         (
             selected_food_consumed,
@@ -523,30 +581,36 @@ fn assert_four_period_reconciliation(state: &MaterialCircuitState, totals: &Cont
         ),
         (36, 16, 20)
     );
-    assert_eq!(stock(state, suppliers(), FOOD), 0);
-    assert_eq!(stock(state, recipient(), FOOD), 0);
+    assert_eq!(stock(state, control::suppliers(), FOOD), 0);
+    assert_eq!(stock(state, control::recipient(), FOOD), 0);
     assert!(state.inventory.iter().all(|r| r.quantity == 0));
-    let accounts = economy(state).costs.snapshot().accounts;
+    let accounts = control::economy(state).costs.snapshot().accounts;
     let account = accounts
         .iter()
-        .find(|r| r.account == AccountId::Household(donor()))
-        .unwrap();
+        .find(|r| r.account == AccountId::Household(control::donor()))
+        .expect("the fixture holds the searched element");
     assert_eq!(account.opening_capital, money(30_576_000_000));
     assert_eq!(account.retained_earnings, money(donor_net));
     assert_eq!(
         account
             .opening_capital
             .checked_add(account.retained_earnings)
-            .unwrap(),
+            .expect("the fixture arithmetic stays in range"),
         money(2_855_200_000)
     );
 }
 
 #[test]
 fn removing_first_collection_severs_later_aid_from_empty_organization() {
-    let first = close(&opening(), &[], &[]).unwrap();
-    assert_eq!(cash(&first.state, organization()), 0);
-    let second = close(&controlled_opening(first.state), &[aid(2)], &[]).unwrap();
+    let first = control::close(&control::opening(), &[], &[])
+        .expect("the fixture call `close` succeeds for the authored inputs");
+    assert_eq!(cash(&first.state, control::organization()), 0);
+    let second = control::close(
+        &control::controlled_opening(first.state),
+        &[control::aid(2)],
+        &[],
+    )
+    .expect("the fixture call `close` succeeds for the authored inputs");
     assert!(!second
         .aid
         .iter()
@@ -555,15 +619,18 @@ fn removing_first_collection_severs_later_aid_from_empty_organization() {
         .aid
         .iter()
         .any(|r| r.outcome == AidOutcome::Requested && r.quantity == 4));
-    assert_eq!(stock(&second.state, donor(), FOOD), 8);
-    assert_eq!(remaining(&second.state, recipient()), 432);
-    assert_eq!(cash(&second.state, AccountId::Household(recipient())), 0);
+    assert_eq!(stock(&second.state, control::donor(), FOOD), 8);
+    assert_eq!(remaining(&second.state, control::recipient()), 432);
+    assert_eq!(
+        cash(&second.state, AccountId::Household(control::recipient())),
+        0
+    );
     assert_eq!(
         second
             .household_consumption
             .iter()
-            .find(|r| r.principal_id == recipient())
-            .unwrap()
+            .find(|r| r.principal_id == control::recipient())
+            .expect("the fixture holds the searched element")
             .consumed_quantity,
         0
     );
@@ -571,25 +638,36 @@ fn removing_first_collection_severs_later_aid_from_empty_organization() {
 
 #[test]
 fn invalid_late_collection_keeps_opening_and_exact_retry_unchanged() {
-    let state = opening();
-    let before = encode_material_circuit_state(&state).unwrap();
-    let mut invalid = collection(1);
+    let state = control::opening();
+    let before = babylon_material_circuit::encode_material_circuit_state(&state)
+        .expect("the canonical material state encodes");
+    let mut invalid = control::collection(1);
     invalid.source_hash = [0; 32];
     assert_eq!(
-        close(&state, &[], &[invalid]),
+        control::close(&state, &[], &[invalid]),
         Err(MaterialCircuitError::CollectionInvariant)
     );
-    assert_eq!(encode_material_circuit_state(&state).unwrap(), before);
-    let accepted = collection(1);
-    let expected = close(&state, &[], std::slice::from_ref(&accepted)).unwrap();
     assert_eq!(
-        close(
-            &decode_material_circuit_state(&before).unwrap(),
+        babylon_material_circuit::encode_material_circuit_state(&state)
+            .expect("the canonical material state encodes"),
+        before
+    );
+    let accepted = control::collection(1);
+    let expected = control::close(&state, &[], std::slice::from_ref(&accepted))
+        .expect("the fixture call `close` succeeds for the authored inputs");
+    assert_eq!(
+        control::close(
+            &babylon_material_circuit::decode_material_circuit_state(&before)
+                .expect("the canonical material bytes decode"),
             &[],
             &[accepted]
         )
-        .unwrap(),
+        .expect("the fixture call `close` succeeds for the authored inputs"),
         expected
     );
-    assert_eq!(encode_material_circuit_state(&state).unwrap(), before);
+    assert_eq!(
+        babylon_material_circuit::encode_material_circuit_state(&state)
+            .expect("the canonical material state encodes"),
+        before
+    );
 }

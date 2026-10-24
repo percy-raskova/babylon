@@ -1,17 +1,18 @@
 //! Exact original command → material collection → retained acknowledgment joins.
 use super::{collection_receipt, MaterialWorldError};
 use babylon_kernel::currency::Currency;
+use babylon_material_circuit::AccountId;
 use babylon_material_circuit::{
     CircuitAccounting, CollectionOutcome, CollectionReceipt, CollectionResolveInput,
     FinalDemandPrincipalId, MaterialCircuitState, OrganizationAccountId, UnitId,
 };
 use babylon_practice_contract::{
-    admit_organizer, validate_organizer_collection_fact, OrganizerChoice, OrganizerCollectionFact,
-    OrganizerCollectionOutcome, OrganizerCommitment, OrganizerConfig, OrganizerGiftConsent,
-    OrganizerState,
+    OrganizerChoice, OrganizerCollectionFact, OrganizerCollectionOutcome, OrganizerCommitment,
+    OrganizerConfig, OrganizerGiftConsent, OrganizerState,
 };
+use std::result::Result as StdResult;
 
-type Result<T> = std::result::Result<T, MaterialWorldError>;
+type Result<T> = StdResult<T, MaterialWorldError>;
 pub(crate) fn input(
     config: &OrganizerConfig,
     organizer: &OrganizerState,
@@ -22,7 +23,8 @@ pub(crate) fn input(
     else {
         return Ok(vec![]);
     };
-    if admit_organizer(config, organizer, &accepted.command)? != *accepted
+    if babylon_practice_contract::admit_organizer(config, organizer, &accepted.command)?
+        != *accepted
         || accepted.resolves_period != state.period
     {
         return Err(MaterialWorldError::Wire);
@@ -119,7 +121,7 @@ pub(super) fn support(
     }
     collection_receipt::validate_state(rows, state)?;
     let actual = fact(&rows[0]);
-    validate_organizer_collection_fact(config, accepted, &actual)?;
+    babylon_practice_contract::validate_organizer_collection_fact(config, accepted, &actual)?;
     Ok(Some(actual))
 }
 /// Join authenticated stored canonical receipt and original retained resolution.
@@ -186,9 +188,9 @@ pub(super) fn validate_binding(
             && row.donor_actor == terms.actor_id
             && row.donor_contributor_id == terms.contributor_id
             && row.payer
-                == babylon_material_circuit::AccountId::Organization(
-                    OrganizationAccountId::from_bytes(terms.organization_account_id),
-                )
+                == AccountId::Organization(OrganizationAccountId::from_bytes(
+                    terms.organization_account_id,
+                ))
             && row.labor_unit_id.as_bytes() == terms.labor_unit_id
             && config.aid_bindings.iter().any(|binding| {
                 binding.mandate_id == row.id
@@ -215,14 +217,14 @@ pub(super) fn validate_binding(
         return Err(MaterialWorldError::Wire);
     }
     e.book
-        .cash(babylon_material_circuit::AccountId::Household(
-            FinalDemandPrincipalId::from_bytes(terms.household_principal_id),
-        ))
+        .cash(AccountId::Household(FinalDemandPrincipalId::from_bytes(
+            terms.household_principal_id,
+        )))
         .map_err(|_| MaterialWorldError::Wire)?;
     e.book
-        .cash(babylon_material_circuit::AccountId::Organization(
-            OrganizationAccountId::from_bytes(terms.organization_account_id),
-        ))
+        .cash(AccountId::Organization(OrganizationAccountId::from_bytes(
+            terms.organization_account_id,
+        )))
         .map_err(|_| MaterialWorldError::Wire)?;
     Ok(())
 }

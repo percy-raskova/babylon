@@ -1,68 +1,100 @@
+use std::io::Write;
 use std::sync::OnceLock;
 
 use babylon_bsl::structural_verbs::CollectingSink;
-use babylon_graph::{hypergraph_store::HypergraphStore, stable_state::StableGraphState};
+use babylon_graph::hypergraph_store::HypergraphStore;
+use babylon_graph::stable_state::StableGraphState;
+
 use babylon_practice_contract::OrderedPracticeActionBatch;
-use babylon_tick::{
-    material_replay::PreparedMaterialTick, material_staffing::StaffingComposition,
-    material_world::decode_material_receipts, replay_session::ReplayCommitDisposition,
-};
+use babylon_tick::material_replay::PreparedMaterialTick;
+use babylon_tick::material_staffing::StaffingComposition;
+use babylon_tick::replay_session::ReplayCommitDisposition;
+
 use serde_json::Value;
 
-use super::*;
-use crate::{
-    identity::CampaignId,
-    material_envelope::CommittedMaterialTickEnvelope,
-    michigan_content::MichiganContentPreset,
-    michigan_economy::digest_hex,
-    michigan_material::MichiganDeliveryPreset,
-    production_observation::ProductionSnapshot,
-    production_projection::{project_material_observation, staffing::project_staffing_accounts},
-    runtime::prepare_committed_tick,
+use super::evidence;
+use super::evidence::{
+    diagnostic_production_fields, EvidenceScope, EvidenceWriter, ProductionEvidenceDigest,
+    ProductionEvidenceError, DOMAIN, MAX_EVIDENCE_BYTES, MAX_ROWS, VERSION,
 };
+use crate::identity::CampaignId;
+use crate::material_envelope::CommittedMaterialTickEnvelope;
+use crate::michigan_content::MichiganContentPreset;
+use crate::michigan_economy;
+use crate::michigan_material::MichiganDeliveryPreset;
+use crate::observer_reader::{ObserverEconomySnapshot, ObserverVisibility};
+use crate::production_observation::PhysicalRouteIndex;
+use crate::production_observation::ProductionFreightCapacityOrder;
+use crate::production_observation::ProductionSnapshot;
+use crate::production_observation::ProductionStaffingAccount;
+use crate::production_projection;
+use crate::production_projection::staffing;
+use crate::runtime;
+use crate::GoodsPriceBasis;
+use crate::GoodsPriceReason;
+use crate::ProductionHouseholdKind;
+use babylon_tick::choice_receipt::ChoiceReceiptRef;
+use babylon_tick::material_world;
+use sha2::{Digest, Sha256};
+use std::collections::BTreeSet;
+use std::io;
+use uuid::Uuid;
 
 /// Exercises the existing engine, canonical envelope, publication and projector.
 /// The commit callback is an in-memory sink; this is not live-Postgres evidence.
+#[allow(
+    clippy::too_many_lines,
+    reason = "`published_observations` keeps one authored boundary's fixture and assertions together"
+)]
 fn published_observations() -> &'static [ObserverEconomySnapshot] {
     static OBSERVATIONS: OnceLock<Vec<ObserverEconomySnapshot>> = OnceLock::new();
     OBSERVATIONS.get_or_init(|| {
         let preset = MichiganDeliveryPreset::Standard;
         let foundation = MichiganContentPreset::new_campaign(preset)
             .create_foundation(&crate::test_support::catalog())
-            .unwrap();
+            .expect("the authored catalog builds the foundation");
         let foundation_digest = foundation.digest();
         let composition = foundation.labor().clone();
-        let mut session = foundation.into_session().unwrap();
-        let campaign = CampaignId::from_uuid(uuid::Uuid::from_u128(293));
+        let mut session = foundation
+            .into_session()
+            .expect("the fixture opens a session");
+        let campaign = CampaignId::from_uuid(Uuid::from_u128(293));
         let mut observation = ObserverEconomySnapshot {
             campaign_id: campaign.as_uuid().to_string(),
             resolve_tick: 0,
-            foundation_digest: digest_hex(&foundation_digest),
+            foundation_digest: michigan_economy::digest_hex(&foundation_digest),
             nominal_world_hash: None,
             tick_content_hash: None,
             envelope_digest: None,
             visibility: ObserverVisibility::FullObserver,
             counties: vec![],
             production: Some(
-                project_material_observation(
+                production_projection::project_material_observation(
                     &crate::test_support::catalog(),
                     preset,
                     session.material(),
                     None,
                     &[],
                 )
-                .unwrap(),
+                .expect("the fixture projection accepts the authored input"),
             ),
         };
-        observation.production.as_mut().unwrap().staffing_accounts = project_staffing_accounts(
+        observation
+            .production
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow")
+            .staffing_accounts = staffing::project_staffing_accounts(
             &composition,
-            &session.graph_session().stable_graph_state().unwrap(),
+            &session
+                .graph_session()
+                .stable_graph_state()
+                .expect("the fixture graph has a stable state"),
             session.material(),
             None,
             &[],
             None,
         )
-        .unwrap();
+        .expect("the fixture projection accepts the authored input");
         let mut result = vec![observation.clone()];
         let mut history = Vec::new();
         let mut sink = CollectingSink::default();
@@ -71,17 +103,26 @@ fn published_observations() -> &'static [ObserverEconomySnapshot] {
                 session.graph_session().session_identity().clone(),
                 tick,
             )
-            .unwrap();
+            .expect("the empty authored batch constructs");
             let opening = session.material().clone();
-            let opening_graph = session.graph_session().stable_graph_state().unwrap();
-            let prepared = session.prepare_advance(&actions).unwrap();
+            let opening_graph = session
+                .graph_session()
+                .stable_graph_state()
+                .expect("the fixture graph has a stable state");
+            let prepared = session
+                .prepare_advance(&actions)
+                .expect("the session prepares the authored advance");
             let staffing = prepared_staffing(&composition, &opening_graph, &prepared);
             let identity = *prepared.identity();
-            let receipt = decode_material_receipts(prepared.material().receipt_bytes()).unwrap();
-            let families = prepare_committed_tick(prepared.graph_report())
-                .unwrap()
+            let receipt =
+                material_world::decode_material_receipts(prepared.material().receipt_bytes())
+                    .expect("the canonical bytes decode into the declared type");
+            let families = runtime::prepare_committed_tick(prepared.graph_report())
+                .expect("the fixture prepares the authored state")
                 .into_material_families(identity.tick_content_hash())
-                .unwrap();
+                .expect(
+                    "the fixture call `into_material_families` succeeds for the authored inputs",
+                );
             let envelope = CommittedMaterialTickEnvelope::compose(
                 campaign,
                 &identity,
@@ -89,28 +130,35 @@ fn published_observations() -> &'static [ObserverEconomySnapshot] {
                 prepared.material().register().canonical_bytes(),
                 prepared.material().receipt_bytes(),
             )
-            .unwrap();
+            .expect("the fixture call `compose` succeeds for the authored inputs");
             let (ack, _) = session
                 .commit_prepared_and_publish(&mut sink, prepared, |_| {
                     Ok::<_, ()>(ReplayCommitDisposition::Committed)
                 })
-                .unwrap();
+                .expect("the prepared period commits");
             history.push((opening.clone(), receipt, ack.receipt_digest()));
             observation.resolve_tick = ack.resolve_tick();
-            observation.tick_content_hash = Some(digest_hex(ack.tick_content_hash().as_bytes()));
-            observation.envelope_digest = Some(digest_hex(&envelope.digest()));
-            observation.nominal_world_hash = Some(digest_hex(&ack.result_world_hash()));
+            observation.tick_content_hash = Some(michigan_economy::digest_hex(
+                ack.tick_content_hash().as_bytes(),
+            ));
+            observation.envelope_digest = Some(michigan_economy::digest_hex(&envelope.digest()));
+            observation.nominal_world_hash =
+                Some(michigan_economy::digest_hex(&ack.result_world_hash()));
             observation.production = Some(
-                project_material_observation(
+                production_projection::project_material_observation(
                     &crate::test_support::catalog(),
                     preset,
                     session.material(),
                     Some(&opening),
                     &history,
                 )
-                .unwrap(),
+                .expect("the fixture projection accepts the authored input"),
             );
-            observation.production.as_mut().unwrap().staffing_accounts = staffing;
+            observation
+                .production
+                .as_mut()
+                .expect("the fixture set the optional field before this borrow")
+                .staffing_accounts = staffing;
             result.push(observation.clone());
         }
         result
@@ -121,7 +169,7 @@ fn prepared_staffing(
     composition: &StaffingComposition,
     opening: &StableGraphState,
     prepared: &PreparedMaterialTick<HypergraphStore>,
-) -> Vec<crate::production_observation::ProductionStaffingAccount> {
+) -> Vec<ProductionStaffingAccount> {
     let report = prepared.graph_report();
     let events = report
         .successful_event_batch()
@@ -131,12 +179,12 @@ fn prepared_staffing(
             emitting_rule: event.emitting_rule().to_owned(),
             choice_receipt_ordinal: event
                 .choice_receipt()
-                .map(babylon_tick::choice_receipt::ChoiceReceiptRef::encounter_ordinal),
+                .map(ChoiceReceiptRef::encounter_ordinal),
             event_type: event.event_type().to_owned(),
             fields: event.fields().to_vec(),
         })
         .collect::<Vec<_>>();
-    project_staffing_accounts(
+    staffing::project_staffing_accounts(
         composition,
         report.result_stable_graph(),
         prepared.material().register(),
@@ -146,10 +194,10 @@ fn prepared_staffing(
             &babylon_tick::material_world::decode_material_receipts(
                 prepared.material().receipt_bytes(),
             )
-            .unwrap(),
+            .expect("the canonical bytes decode into the declared type"),
         ),
     )
-    .unwrap()
+    .expect("the fixture projection accepts the authored input")
 }
 
 fn committed() -> ObserverEconomySnapshot {
@@ -157,7 +205,10 @@ fn committed() -> ObserverEconomySnapshot {
 }
 
 fn digest(snapshot: &mut ObserverEconomySnapshot) -> ProductionEvidenceDigest {
-    snapshot.production_evidence_digest().unwrap().unwrap()
+    snapshot
+        .production_evidence_digest()
+        .expect("the evidence body has a digest")
+        .expect("the nested fixture result is present")
 }
 
 /// Add the disclosure families absent from the small regional engine fixture.
@@ -170,7 +221,10 @@ fn full_disclosure() -> ObserverEconomySnapshot {
         ProductionMerchantHandlingAccount, ProductionMerchantHandlingOrder, ProductionOutboundKind,
     };
     let mut observation = committed();
-    let production = observation.production.as_mut().unwrap();
+    let production = observation
+        .production
+        .as_mut()
+        .expect("the fixture set the optional field before this borrow");
     let site = production.sites[0].id.clone();
     let stock = production.sites[0].inventory[0].clone();
     road_disclosure(production);
@@ -211,7 +265,9 @@ fn full_disclosure() -> ObserverEconomySnapshot {
             total_order_count: 1,
             expired: 0,
             demand_principal_id: "county-demand".to_owned(),
-            location: "county:26163".parse().unwrap(),
+            location: "county:26163"
+                .parse()
+                .expect("the authored literal parses as the declared type"),
             good_id: stock.good_id.clone(),
             unit_id: stock.unit_id.clone(),
             good: stock.good,
@@ -286,7 +342,7 @@ fn household_disclosure(production: &mut ProductionSnapshot) {
     production
         .household_accounts
         .push(crate::ProductionHouseholdAccount {
-            kind: crate::ProductionHouseholdKind::Ordinary,
+            kind: ProductionHouseholdKind::Ordinary,
             demand_principal_id: final_account.demand_principal_id.clone(),
             location: final_account.location,
             good_id: final_account.good_id.clone(),
@@ -325,7 +381,7 @@ fn support_disclosure(production: &mut ProductionSnapshot) {
     let reservation = &mut production.freight_capacity_accounts[0]
         .completed
         .as_mut()
-        .unwrap()
+        .expect("the fixture set the optional field before this borrow")
         .reservations[0];
     reservation.opening_available_grams += 42_000;
     reservation.newly_reserved_grams += 42_000;
@@ -356,21 +412,35 @@ fn diagnostic_field_census_reconciles_the_complete_serialized_scope() {
         envelope_digest: observation.envelope_digest.as_deref(),
         nominal_world_hash: observation.nominal_world_hash.as_deref(),
         visibility: "full_observer",
-        production: observation.production.as_ref().unwrap(),
+        production: observation
+            .production
+            .as_ref()
+            .expect("the fixture set the optional field before this read"),
     };
-    let encoded = serde_json::to_vec(&scope).unwrap();
-    assert_eq!(diagnostic_value_bytes(&scope).unwrap(), encoded.len());
-    assert!(diagnostic_field_sizes(&scope, encoded.len()).is_ok());
-    assert!(diagnostic_field_sizes(&scope, encoded.len() + 1).is_err());
-    let admitted = observation.production_evidence_digest().unwrap().unwrap();
+    let encoded = serde_json::to_vec(&scope).expect("the value serializes to canonical JSON bytes");
+    assert_eq!(
+        evidence::diagnostic_value_bytes(&scope)
+            .expect("the fixture call `diagnostic_value_bytes` succeeds for the authored inputs"),
+        encoded.len()
+    );
+    assert!(evidence::diagnostic_field_sizes(&scope, encoded.len()).is_ok());
+    assert!(evidence::diagnostic_field_sizes(&scope, encoded.len() + 1).is_err());
+    let admitted = observation
+        .production_evidence_digest()
+        .expect("the evidence body has a digest")
+        .expect("the nested fixture result is present");
     assert_eq!(admitted.body_bytes(), encoded.len());
 }
 
 #[test]
 fn collective_resident_goods_preserve_person_needs_without_inventing_households() {
     let mut observation = full_disclosure();
-    let household = &mut observation.production.as_mut().unwrap().household_accounts[0];
-    household.kind = crate::ProductionHouseholdKind::CollectiveResidence;
+    let household = &mut observation
+        .production
+        .as_mut()
+        .expect("the fixture set the optional field before this borrow")
+        .household_accounts[0];
+    household.kind = ProductionHouseholdKind::CollectiveResidence;
     household.household_count = 0;
     assert!(observation.production_evidence_digest().is_ok());
 }
@@ -382,7 +452,10 @@ fn residence_kinds_bind_goods_and_services_and_refuse_lost_or_invalid_counts() {
         ProductionHouseholdServiceAccount,
     };
     let mut observation = full_disclosure();
-    let production = observation.production.as_mut().unwrap();
+    let production = observation
+        .production
+        .as_mut()
+        .expect("the fixture set the optional field before this borrow");
     let household = &mut production.household_accounts[0];
     household.kind = Kind::CollectiveResidence;
     household.household_count = 0;
@@ -413,7 +486,7 @@ fn residence_kinds_bind_goods_and_services_and_refuse_lost_or_invalid_counts() {
             }),
         });
     let collective = digest(&mut observation);
-    let encoded = serde_json::to_value(&observation).unwrap();
+    let encoded = serde_json::to_value(&observation).expect("the value serializes to JSON");
     for family in ["household_accounts", "household_service_accounts"] {
         for (kind, persons, households) in [
             ("ordinary", 4, 0),
@@ -426,7 +499,8 @@ fn residence_kinds_bind_goods_and_services_and_refuse_lost_or_invalid_counts() {
             row["kind"] = serde_json::json!(kind);
             row["person_count"] = serde_json::json!(persons);
             row["household_count"] = serde_json::json!(households);
-            let mut invalid: ObserverEconomySnapshot = serde_json::from_value(invalid).unwrap();
+            let mut invalid: ObserverEconomySnapshot =
+                serde_json::from_value(invalid).expect("the JSON value matches the declared type");
             assert_eq!(
                 invalid.production_evidence_digest(),
                 Err(ProductionEvidenceError::InvalidIdentity)
@@ -435,14 +509,17 @@ fn residence_kinds_bind_goods_and_services_and_refuse_lost_or_invalid_counts() {
         let mut missing = encoded.clone();
         missing["production"][family][0]
             .as_object_mut()
-            .unwrap()
+            .expect("the JSON fixture field is an object")
             .remove("kind");
         assert!(serde_json::from_value::<ObserverEconomySnapshot>(missing).is_err());
         let mut unknown = encoded.clone();
         unknown["production"][family][0]["kind"] = serde_json::json!("invented");
         assert!(serde_json::from_value::<ObserverEconomySnapshot>(unknown).is_err());
     }
-    let production = observation.production.as_mut().unwrap();
+    let production = observation
+        .production
+        .as_mut()
+        .expect("the fixture set the optional field before this borrow");
     production.household_accounts[0].kind = Kind::Ordinary;
     production.household_accounts[0].household_count = 2;
     production.household_service_accounts[0].kind = Kind::Ordinary;
@@ -454,18 +531,29 @@ fn residence_kinds_bind_goods_and_services_and_refuse_lost_or_invalid_counts() {
 fn household_support_flows_conserve_stock_and_change_disclosed_evidence() {
     let mut before = full_disclosure();
     let mut supported = before.clone();
-    let household = &mut supported.production.as_mut().unwrap().household_accounts[0];
-    let done = household.completed.as_mut().unwrap();
+    let household = &mut supported
+        .production
+        .as_mut()
+        .expect("the fixture set the optional field before this borrow")
+        .household_accounts[0];
+    let done = household
+        .completed
+        .as_mut()
+        .expect("the fixture set the optional field before this borrow");
     done.support_granted = 5;
     done.support_dispatched = 3;
     done.closing_stock = 9;
     household.stock_on_hand = 9;
     assert_ne!(digest(&mut before), digest(&mut supported));
     let mut unaccounted = supported;
-    unaccounted.production.as_mut().unwrap().household_accounts[0]
+    unaccounted
+        .production
+        .as_mut()
+        .expect("the fixture set the optional field before this borrow")
+        .household_accounts[0]
         .completed
         .as_mut()
-        .unwrap()
+        .expect("the fixture set the optional field before this borrow")
         .support_dispatched = 2;
     assert_eq!(
         unaccounted.production_evidence_digest(),
@@ -477,7 +565,10 @@ fn household_support_flows_conserve_stock_and_change_disclosed_evidence() {
 fn presentation_multisets_permute_without_changing_evidence_identity() {
     let mut before = full_disclosure();
     let mut permuted = before.clone();
-    let rows = permuted.production.as_mut().unwrap();
+    let rows = permuted
+        .production
+        .as_mut()
+        .expect("the fixture set the optional field before this borrow");
     rows.sites.reverse();
     for site in &mut rows.sites {
         site.inventory.reverse();
@@ -517,7 +608,11 @@ fn presentation_multisets_permute_without_changing_evidence_identity() {
             }
         }
     }
-    rows.material_balance.as_mut().unwrap().rows.reverse();
+    rows.material_balance
+        .as_mut()
+        .expect("the fixture set the optional field before this borrow")
+        .rows
+        .reverse();
     rows.provenance.reverse();
     rows.freight_order_definitions.reverse();
     assert_eq!(digest(&mut before), digest(&mut permuted));
@@ -541,7 +636,12 @@ fn physical_path_repetition_vertex_order_and_event_sequence_remain_semantic() {
         },
     ] {
         let mut changed = before.clone();
-        mutation(changed.production.as_mut().unwrap());
+        mutation(
+            changed
+                .production
+                .as_mut()
+                .expect("the fixture set the optional field before this borrow"),
+        );
         assert_ne!(digest(&mut before), digest(&mut changed));
     }
 }
@@ -579,8 +679,20 @@ fn scalar_changes(value: &Value, pointer: &str, changes: &mut Vec<(String, Value
         }
         Value::Number(number) => {
             let replacement = number.as_i64().map_or_else(
-                || Value::from(number.as_u64().unwrap() - 1),
-                |n| Value::from(n.checked_add(1).unwrap()),
+                || {
+                    Value::from(
+                        number
+                            .as_u64()
+                            .expect("the JSON fixture field is an unsigned integer")
+                            - 1,
+                    )
+                },
+                |n| {
+                    Value::from(
+                        n.checked_add(1)
+                            .expect("the fixture arithmetic stays in range"),
+                    )
+                },
             );
             changes.push((pointer.to_owned(), replacement));
         }
@@ -593,13 +705,16 @@ fn scalar_changes(value: &Value, pointer: &str, changes: &mut Vec<(String, Value
 fn every_disclosed_scalar_is_bound_or_refused_including_new_accounting_families() {
     let mut before = full_disclosure();
     let expected = digest(&mut before);
-    let json = serde_json::to_value(&before).unwrap();
+    let json = serde_json::to_value(&before).expect("the value serializes to JSON");
     let mut mutations = Vec::new();
     scalar_changes(&json["production"], "/production", &mut mutations);
     let mut checked = 0;
     for (pointer, replacement) in mutations {
         let mut changed = json.clone();
-        *changed.pointer_mut(&pointer).unwrap() = replacement;
+        *changed
+            .pointer_mut(&pointer)
+            .expect("the fixture call `pointer_mut` succeeds for the authored inputs") =
+            replacement;
         // An unknown enum is rejected at the disclosure boundary before hashing.
         let Ok(mut changed) = serde_json::from_value::<ObserverEconomySnapshot>(changed) else {
             continue;
@@ -640,7 +755,11 @@ fn scope_completed_zero_and_absent_preview_are_distinct() {
             row.nominal_world_hash = None;
         },
         |row: &mut ObserverEconomySnapshot| {
-            row.production.as_mut().unwrap().labor_accounts[0].completed = None;
+            row.production
+                .as_mut()
+                .expect("the fixture set the optional field before this borrow")
+                .labor_accounts[0]
+                .completed = None;
         },
     ] {
         let mut changed = before.clone();
@@ -681,7 +800,7 @@ fn duplicate_principals_and_row_bounds_refuse_instead_of_acquiring_a_digest() {
             let support = &mut rows.freight_capacity_accounts[0]
                 .completed
                 .as_mut()
-                .unwrap()
+                .expect("the fixture set the optional field before this borrow")
                 .reservations[0]
                 .support_orders;
             support.push(support[0].clone());
@@ -696,18 +815,31 @@ fn duplicate_principals_and_row_bounds_refuse_instead_of_acquiring_a_digest() {
         },
     ] {
         let mut changed = before.clone();
-        mutate(changed.production.as_mut().unwrap());
+        mutate(
+            changed
+                .production
+                .as_mut()
+                .expect("the fixture set the optional field before this borrow"),
+        );
         assert_eq!(
             changed.production_evidence_digest(),
             Err(ProductionEvidenceError::InvalidIdentity)
         );
     }
     let mut bounded = before;
-    bounded.production.as_mut().unwrap().routes =
-        vec![
-            bounded.production.as_ref().unwrap().routes[0].clone();
-            babylon_material_circuit::MAX_SUPPLIER_ROUTES + 1
-        ];
+    bounded
+        .production
+        .as_mut()
+        .expect("the fixture set the optional field before this borrow")
+        .routes = vec![
+        bounded
+            .production
+            .as_ref()
+            .expect("the fixture set the optional field before this read")
+            .routes[0]
+            .clone();
+        babylon_material_circuit::MAX_SUPPLIER_ROUTES + 1
+    ];
     assert_eq!(
         bounded.production_evidence_digest(),
         Err(ProductionEvidenceError::Bound)
@@ -718,7 +850,10 @@ fn duplicate_principals_and_row_bounds_refuse_instead_of_acquiring_a_digest() {
 fn native_requests_larger_than_u64_grams_are_hashed_without_narrowing() {
     let mut observation = committed();
     let expected = digest(&mut observation);
-    let production = observation.production.as_mut().unwrap();
+    let production = observation
+        .production
+        .as_mut()
+        .expect("the fixture set the optional field before this borrow");
     let definition = &mut production.freight_order_definitions[0];
     let prior = definition.id.clone();
     definition.order.requested = u64::MAX;
@@ -727,8 +862,8 @@ fn native_requests_larger_than_u64_grams_are_hashed_without_narrowing() {
     definition.order.remaining_unshipped = u64::MAX;
     definition.order.reserved_grams = 0;
     definition.order.requested_grams = u128::from(u64::MAX) * u128::from(u64::MAX);
-    definition.id =
-        crate::production_observation::freight_order_identity(&definition.order).unwrap();
+    definition.id = crate::production_observation::freight_order_identity(&definition.order)
+        .expect("the fixture freight order has an identity");
     for account in &mut production.freight_capacity_accounts {
         if let Some(completed) = &mut account.completed {
             for reservation in &mut completed.reservations {
@@ -746,7 +881,7 @@ fn native_requests_larger_than_u64_grams_are_hashed_without_narrowing() {
 #[test]
 fn buffered_evidence_preserves_every_byte_across_chunks_and_exact_u128() {
     let value = ("\"\nλ".repeat(24_000), u128::MAX, Some("tail"));
-    let body = serde_json::to_vec(&value).unwrap();
+    let body = serde_json::to_vec(&value).expect("the value serializes to canonical JSON bytes");
     let mut framed = DOMAIN.to_vec();
     framed.extend_from_slice(&VERSION.to_be_bytes());
     framed.extend_from_slice(&body);
@@ -757,7 +892,8 @@ fn buffered_evidence_preserves_every_byte_across_chunks_and_exact_u128() {
     };
     output.hash.update(DOMAIN);
     output.hash.update(VERSION.to_be_bytes());
-    encode_evidence(&mut output, &value).unwrap();
+    evidence::encode_evidence(&mut output, &value)
+        .expect("the fixture value encodes to its canonical bytes");
     assert_eq!(output.remaining, 0);
     assert!(!output.bound);
     let actual: [u8; 32] = output.hash.finalize().into();
@@ -771,7 +907,7 @@ fn buffered_evidence_refuses_a_byte_limit_crossed_only_by_the_final_flush() {
         remaining: 2,
         bound: false,
     };
-    assert!(encode_evidence(&mut output, &"x").is_err());
+    assert!(evidence::encode_evidence(&mut output, &"x").is_err());
     assert!(output.bound);
     assert_eq!(output.remaining, 2);
 }
@@ -794,13 +930,19 @@ fn production_evidence_stream_enforces_national_ceiling_without_partial_writes()
         remaining: 2,
         bound: false,
     };
-    writer.write_all(b"ab").unwrap();
-    writer.write_all(b"").unwrap();
+    writer
+        .write_all(b"ab")
+        .expect("the fixture sink accepts the authored bytes");
+    writer
+        .write_all(b"")
+        .expect("the fixture sink accepts the authored bytes");
     assert_eq!(writer.remaining, 0);
     assert!(!writer.bound);
     let accepted = writer.hash.clone().finalize();
     assert_eq!(accepted, Sha256::digest(b"ab"));
-    let error = writer.write_all(b"c").unwrap_err();
+    let error = writer
+        .write_all(b"c")
+        .expect_err("the sink rejects the invalid write");
     assert_eq!(error.kind(), io::ErrorKind::InvalidData);
     assert_eq!(writer.remaining, 0);
     assert!(writer.bound);
@@ -813,7 +955,7 @@ fn maintenance_value(mut value: Value, period: u64, jobs: Option<u64>) -> Value 
     let provider = "9".repeat(64);
     value["sites"]
         .as_array_mut()
-        .unwrap()
+        .expect("the JSON fixture field is an array")
         .push(serde_json::json!({
             "id": provider, "location": "county:26163", "name": "Wayne maintenance",
             "industry_code": "811310", "observed_employment": null, "roles": ["Maintenance"], "function": "household_services",
@@ -821,7 +963,7 @@ fn maintenance_value(mut value: Value, period: u64, jobs: Option<u64>) -> Value 
         }));
     value["labor_accounts"]
         .as_array_mut()
-        .unwrap()
+        .expect("the JSON fixture field is an array")
         .push(serde_json::json!({
             "site_id": provider, "unit_id": "8".repeat(64), "unit": "labor-hours",
             "next_opening_period": period + 1, "next_opening_available": 40,
@@ -858,14 +1000,22 @@ fn maintenance_evidence_covers_every_account_field_and_refuses_fog_or_wrong_endp
     let mut observation = committed();
     observation.production = Some(
         serde_json::from_value(maintenance_value(
-            serde_json::to_value(observation.production.as_ref().unwrap()).unwrap(),
+            serde_json::to_value(
+                observation
+                    .production
+                    .as_ref()
+                    .expect("the fixture set the optional field before this read"),
+            )
+            .expect("the value serializes to JSON"),
             1,
             Some(2),
         ))
-        .unwrap(),
+        .expect("the JSON value matches the declared type"),
     );
-    let original = observation.production_evidence_digest().unwrap();
-    let encoded = serde_json::to_value(&observation).unwrap();
+    let original = observation
+        .production_evidence_digest()
+        .expect("the evidence body has a digest");
+    let encoded = serde_json::to_value(&observation).expect("the value serializes to JSON");
     for path in [
         "provider_site_id",
         "consumer_site_id",
@@ -890,7 +1040,8 @@ fn maintenance_evidence_covers_every_account_field_and_refuses_fog_or_wrong_endp
         } else {
             serde_json::json!("mismatched")
         };
-        let mut changed: ObserverEconomySnapshot = serde_json::from_value(changed).unwrap();
+        let mut changed: ObserverEconomySnapshot =
+            serde_json::from_value(changed).expect("the JSON value matches the declared type");
         assert_ne!(
             changed.production_evidence_digest(),
             Ok(original),
@@ -899,16 +1050,17 @@ fn maintenance_evidence_covers_every_account_field_and_refuses_fog_or_wrong_endp
     }
     for field in encoded["production"]["maintenance_account"]["completed"]
         .as_object()
-        .unwrap()
+        .expect("the JSON fixture field is an object")
         .keys()
     {
         let mut changed = encoded.clone();
         let number = changed["production"]["maintenance_account"]["completed"][field]
             .as_u64()
-            .unwrap();
+            .expect("the JSON fixture field is an unsigned integer");
         changed["production"]["maintenance_account"]["completed"][field] =
             serde_json::json!(number + 1);
-        let mut changed: ObserverEconomySnapshot = serde_json::from_value(changed).unwrap();
+        let mut changed: ObserverEconomySnapshot =
+            serde_json::from_value(changed).expect("the JSON value matches the declared type");
         assert_ne!(
             changed.production_evidence_digest(),
             Ok(original),
@@ -924,7 +1076,8 @@ fn maintenance_evidence_covers_every_account_field_and_refuses_fog_or_wrong_endp
     ] {
         let mut invalid = encoded.clone();
         invalid["production"]["maintenance_account"][field] = serde_json::json!("unbound-identity");
-        let mut invalid: ObserverEconomySnapshot = serde_json::from_value(invalid).unwrap();
+        let mut invalid: ObserverEconomySnapshot =
+            serde_json::from_value(invalid).expect("the JSON value matches the declared type");
         assert_eq!(
             invalid.production_evidence_digest(),
             Err(ProductionEvidenceError::InvalidIdentity),
@@ -958,8 +1111,8 @@ fn price_disclosure(production: &mut ProductionSnapshot) {
                 next_price_micro: 4,
                 unserved_quantity: 0,
                 closing_stock: 0,
-                reason: crate::GoodsPriceReason::CostPressure,
-                cost_basis: crate::GoodsPriceBasis::Released,
+                reason: GoodsPriceReason::CostPressure,
+                cost_basis: GoodsPriceBasis::Released,
                 basis_quantity: 2,
                 carrying_cost_micro: 7,
                 handling_wages_micro: 1,
@@ -971,7 +1124,10 @@ fn price_disclosure(production: &mut ProductionSnapshot) {
 #[test]
 fn supplier_route_disclosure_exceeds_generic_rows_without_truncation() {
     let mut observation = committed();
-    let rows = observation.production.as_mut().unwrap();
+    let rows = observation
+        .production
+        .as_mut()
+        .expect("the fixture set the optional field before this borrow");
     let template = rows.routes[0].clone();
     rows.routes = (0..=MAX_ROWS)
         .map(|index| {
@@ -981,27 +1137,45 @@ fn supplier_route_disclosure_exceeds_generic_rows_without_truncation() {
         })
         .collect();
     let expected = digest(&mut observation);
-    observation.production.as_mut().unwrap().routes.reverse();
+    observation
+        .production
+        .as_mut()
+        .expect("the fixture set the optional field before this borrow")
+        .routes
+        .reverse();
     assert_eq!(digest(&mut observation), expected);
     assert_eq!(
-        observation.production.as_ref().unwrap().routes.len(),
+        observation
+            .production
+            .as_ref()
+            .expect("the fixture set the optional field before this read")
+            .routes
+            .len(),
         MAX_ROWS + 1
     );
     let tail = observation
         .production
         .as_mut()
-        .unwrap()
+        .expect("the fixture set the optional field before this borrow")
         .routes
         .last_mut()
-        .unwrap();
+        .expect("the fixture sequence is non-empty");
     assert_eq!(tail.id, "supplier-route-065536");
-    tail.backlog = tail.backlog.checked_add(1).unwrap();
+    tail.backlog = tail
+        .backlog
+        .checked_add(1)
+        .expect("the fixture arithmetic stays in range");
     assert_ne!(digest(&mut observation), expected);
-    let duplicate = observation.production.as_ref().unwrap().routes[0].clone();
+    let duplicate = observation
+        .production
+        .as_ref()
+        .expect("the fixture set the optional field before this read")
+        .routes[0]
+        .clone();
     observation
         .production
         .as_mut()
-        .unwrap()
+        .expect("the fixture set the optional field before this borrow")
         .routes
         .push(duplicate);
     assert_eq!(
@@ -1013,7 +1187,10 @@ fn supplier_route_disclosure_exceeds_generic_rows_without_truncation() {
 #[test]
 fn supplier_route_disclosure_refuses_above_admitted_source_capacity() {
     let mut observation = committed();
-    let rows = observation.production.as_mut().unwrap();
+    let rows = observation
+        .production
+        .as_mut()
+        .expect("the fixture set the optional field before this borrow");
     let template = rows.routes[0].clone();
     rows.routes = (0..=babylon_material_circuit::MAX_SUPPLIER_ROUTES)
         .map(|index| {
@@ -1031,46 +1208,95 @@ fn supplier_route_disclosure_refuses_above_admitted_source_capacity() {
 #[test]
 fn evidence_validation_refusal_preserves_disclosure_and_sorting_is_idempotent() {
     let mut snapshot = full_disclosure();
-    snapshot.production.as_mut().unwrap().sites.reverse();
-    let duplicate = snapshot.production.as_ref().unwrap().sites[0].clone();
-    snapshot.production.as_mut().unwrap().sites.push(duplicate);
+    snapshot
+        .production
+        .as_mut()
+        .expect("the fixture set the optional field before this borrow")
+        .sites
+        .reverse();
+    let duplicate = snapshot
+        .production
+        .as_ref()
+        .expect("the fixture set the optional field before this read")
+        .sites[0]
+        .clone();
+    snapshot
+        .production
+        .as_mut()
+        .expect("the fixture set the optional field before this borrow")
+        .sites
+        .push(duplicate);
     let unchanged = snapshot.clone();
     assert_eq!(
         snapshot.production_evidence_digest(),
         Err(ProductionEvidenceError::InvalidIdentity)
     );
     assert_eq!(snapshot, unchanged);
-    snapshot.production.as_mut().unwrap().sites.pop();
-    let first = snapshot.production_evidence_digest().unwrap();
+    snapshot
+        .production
+        .as_mut()
+        .expect("the fixture set the optional field before this borrow")
+        .sites
+        .pop();
+    let first = snapshot
+        .production_evidence_digest()
+        .expect("the evidence body has a digest");
     let canonical = snapshot.clone();
-    assert_eq!(snapshot.production_evidence_digest().unwrap(), first);
+    assert_eq!(
+        snapshot
+            .production_evidence_digest()
+            .expect("the evidence body has a digest"),
+        first
+    );
     assert_eq!(snapshot, canonical);
 }
 
 #[test]
 fn physical_definitions_share_paths_without_merging_supplier_quantities() {
     let mut observation = committed();
-    let original = observation.production.as_ref().unwrap().routes[0].clone();
+    let original = observation
+        .production
+        .as_ref()
+        .expect("the fixture set the optional field before this read")
+        .routes[0]
+        .clone();
     let mut second = original.clone();
     second.id = "separate-supplier-relation".into();
-    second.ordered = second.ordered.checked_add(1).unwrap();
-    second.backlog = second.backlog.checked_add(1).unwrap();
-    let rows = observation.production.as_mut().unwrap();
+    second.ordered = second
+        .ordered
+        .checked_add(1)
+        .expect("the fixture arithmetic stays in range");
+    second.backlog = second
+        .backlog
+        .checked_add(1)
+        .expect("the fixture arithmetic stays in range");
+    let rows = observation
+        .production
+        .as_mut()
+        .expect("the fixture set the optional field before this borrow");
     let definitions = rows.physical_routes.len();
     rows.routes.push(second.clone());
-    let index = crate::production_observation::PhysicalRouteIndex::try_new(rows).unwrap();
+    let index = PhysicalRouteIndex::try_new(rows)
+        .expect("the authored fixture satisfies the constructor invariants");
     assert!(std::ptr::eq(
-        index.get(&original).unwrap(),
-        index.get(&second).unwrap()
+        index
+            .get(&original)
+            .expect("the fixture holds the addressed entry"),
+        index
+            .get(&second)
+            .expect("the fixture holds the addressed entry")
     ));
     assert_eq!(rows.physical_routes.len(), definitions);
     let expected = digest(&mut observation);
-    let rows = observation.production.as_mut().unwrap();
+    let rows = observation
+        .production
+        .as_mut()
+        .expect("the fixture set the optional field before this borrow");
     let tail = rows
         .routes
         .iter_mut()
         .find(|row| row.id == second.id)
-        .unwrap();
+        .expect("the fixture holds the searched element");
     assert_eq!(tail.ordered, second.ordered);
     tail.backlog += 1;
     assert_ne!(digest(&mut observation), expected);
@@ -1097,7 +1323,12 @@ fn physical_definition_corruption_and_missing_references_refuse_full_evidence() 
         },
     ] {
         let mut changed = before.clone();
-        mutation(changed.production.as_mut().unwrap());
+        mutation(
+            changed
+                .production
+                .as_mut()
+                .expect("the fixture set the optional field before this borrow"),
+        );
         assert_eq!(
             changed.production_evidence_digest(),
             Err(ProductionEvidenceError::InvalidIdentity)
@@ -1110,7 +1341,12 @@ fn evidence_v17_census_covers_every_normalized_production_field() {
     assert_eq!(VERSION, 17);
     assert_eq!(DOMAIN, b"babylon.production-observation-evidence.v17\0");
     let mut observation = committed();
-    canonicalize_production(observation.production.as_mut().unwrap());
+    evidence::canonicalize_production(
+        observation
+            .production
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow"),
+    );
     let scope = EvidenceScope {
         campaign_id: &observation.campaign_id,
         resolve_tick: observation.resolve_tick,
@@ -1119,22 +1355,34 @@ fn evidence_v17_census_covers_every_normalized_production_field() {
         envelope_digest: observation.envelope_digest.as_deref(),
         nominal_world_hash: observation.nominal_world_hash.as_deref(),
         visibility: "full_observer",
-        production: observation.production.as_ref().unwrap(),
+        production: observation
+            .production
+            .as_ref()
+            .expect("the fixture set the optional field before this read"),
     };
     assert_eq!(
         diagnostic_production_fields(scope.production)
-            .unwrap()
+            .expect(
+                "the fixture call `diagnostic_production_fields` succeeds for the authored inputs"
+            )
             .len(),
         25
     );
-    diagnostic_field_sizes(&scope, diagnostic_value_bytes(&scope).unwrap()).unwrap();
+    evidence::diagnostic_field_sizes(
+        &scope,
+        evidence::diagnostic_value_bytes(&scope)
+            .expect("the fixture call `diagnostic_value_bytes` succeeds for the authored inputs"),
+    )
+    .expect("the fixture call `diagnostic_field_sizes` succeeds for the authored inputs");
 }
 
 #[test]
 fn shared_freight_definitions_refuse_forged_missing_unused_and_duplicate_facts() {
     use crate::production_observation::{FreightOrderError, FreightOrderIndex};
     let observation = committed();
-    let original = observation.production.unwrap();
+    let original = observation
+        .production
+        .expect("the fixture observation carries its production section");
     assert!(!original.freight_order_definitions.is_empty());
     assert!(FreightOrderIndex::try_new(&original).is_ok());
     let mut changed = original.clone();
@@ -1160,7 +1408,8 @@ fn shared_freight_definitions_refuse_forged_missing_unused_and_duplicate_facts()
     let mut changed = original.clone();
     let mut unused = changed.freight_order_definitions[0].clone();
     unused.order.order_id.push_str("-unused");
-    unused.id = crate::production_observation::freight_order_identity(&unused.order).unwrap();
+    unused.id = crate::production_observation::freight_order_identity(&unused.order)
+        .expect("the fixture freight order has an identity");
     changed.freight_order_definitions.push(unused);
     assert!(matches!(
         FreightOrderIndex::try_new(&changed),
@@ -1175,10 +1424,10 @@ fn shared_freight_definitions_refuse_forged_missing_unused_and_duplicate_facts()
                 .as_ref()
                 .is_some_and(|c| c.reservations.iter().any(|r| !r.orders.is_empty()))
         })
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .completed
         .as_mut()
-        .unwrap()
+        .expect("the fixture set the optional field before this borrow")
         .reservations[0];
     reservation.orders.push(reservation.orders[0].clone());
     assert!(matches!(
@@ -1189,10 +1438,14 @@ fn shared_freight_definitions_refuse_forged_missing_unused_and_duplicate_facts()
 
 #[test]
 fn shared_freight_tuple_identity_covers_all_exact_fields() {
-    let original = committed().production.unwrap().freight_order_definitions[0]
+    let original = committed()
+        .production
+        .expect("the fixture observation carries its production section")
+        .freight_order_definitions[0]
         .order
         .clone();
-    let identity = crate::production_observation::freight_order_identity(&original).unwrap();
+    let identity = crate::production_observation::freight_order_identity(&original)
+        .expect("the fixture freight order has an identity");
     for field in 0..13 {
         let mut changed = original.clone();
         match field {
@@ -1220,7 +1473,9 @@ fn shared_freight_tuple_identity_covers_all_exact_fields() {
             _ => changed.reserved_grams ^= 1,
         }
         assert_ne!(
-            crate::production_observation::freight_order_identity(&changed).unwrap(),
+            crate::production_observation::freight_order_identity(&changed).expect(
+                "the fixture call `freight_order_identity` succeeds for the authored inputs"
+            ),
             identity
         );
     }
@@ -1230,21 +1485,34 @@ fn shared_freight_tuple_identity_covers_all_exact_fields() {
 fn freight_factoring_preserves_every_occurrence_without_expanded_owned_vectors() {
     use crate::production_observation::{FreightOrderIndex, FreightOrderRegistry};
     let mut observation = committed();
-    let production = observation.production.as_mut().unwrap();
-    let index = FreightOrderIndex::try_new(production).unwrap();
+    let production = observation
+        .production
+        .as_mut()
+        .expect("the fixture set the optional field before this borrow");
+    let index = FreightOrderIndex::try_new(production)
+        .expect("the authored fixture satisfies the constructor invariants");
     let expected: Vec<_> = production
         .freight_capacity_accounts
         .iter()
         .flat_map(|a| &a.completed)
         .flat_map(|c| &c.reservations)
         .flat_map(|r| &r.orders)
-        .map(|reference| index.get(reference).unwrap().clone())
+        .map(|reference| {
+            index
+                .get(reference)
+                .expect("the fixture holds the addressed entry")
+                .clone()
+        })
         .collect();
     let mut registry = FreightOrderRegistry::default();
     let references: Vec<_> = expected
         .iter()
         .cloned()
-        .map(|order| registry.intern(order).unwrap())
+        .map(|order| {
+            registry
+                .intern(order)
+                .expect("the fixture interner admits the symbol")
+        })
         .collect();
     let definitions = registry.finish();
     let expanded: Vec<_> = references
@@ -1253,21 +1521,24 @@ fn freight_factoring_preserves_every_occurrence_without_expanded_owned_vectors()
             definitions
                 .iter()
                 .find(|d| &d.id == reference)
-                .unwrap()
+                .expect("the fixture holds the searched element")
                 .order
                 .clone()
         })
         .collect();
     assert_eq!(expanded, expected);
-    let unique: std::collections::BTreeSet<_> = expected.iter().collect();
+    let unique: BTreeSet<_> = expected.iter().collect();
     assert_eq!(definitions.len(), unique.len());
     let before = digest(&mut observation);
-    let production = observation.production.as_mut().unwrap();
+    let production = observation
+        .production
+        .as_mut()
+        .expect("the fixture set the optional field before this borrow");
     let completed = production
         .freight_capacity_accounts
         .iter_mut()
         .find_map(|a| a.completed.as_mut().filter(|c| !c.reservations.is_empty()))
-        .unwrap();
+        .expect("the fixture yields the searched value");
     let mut occurrence = completed.reservations[0].clone();
     occurrence.reservation_period += 100;
     completed.reservations.push(occurrence);
@@ -1284,7 +1555,10 @@ fn rekeyed_freight_tuple_with_invalid_arithmetic_refuses_admission() {
     let original = committed();
     for fault in 0..6 {
         let mut changed = original.clone();
-        let production = changed.production.as_mut().unwrap();
+        let production = changed
+            .production
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow");
         let definition = &mut production.freight_order_definitions[0];
         let prior = definition.id.clone();
         match fault {
@@ -1306,8 +1580,8 @@ fn rekeyed_freight_tuple_with_invalid_arithmetic_refuses_admission() {
                 definition.order.reserved_grams = 0;
             }
         }
-        definition.id =
-            crate::production_observation::freight_order_identity(&definition.order).unwrap();
+        definition.id = crate::production_observation::freight_order_identity(&definition.order)
+            .expect("the fixture freight order has an identity");
         for account in &mut production.freight_capacity_accounts {
             if let Some(completed) = &mut account.completed {
                 for reservation in &mut completed.reservations {
@@ -1332,17 +1606,21 @@ fn rekeyed_freight_tuple_with_invalid_arithmetic_refuses_admission() {
 
 #[test]
 fn raw_freight_identity_retains_full_u128_even_when_arithmetic_admission_refuses() {
-    let production = committed().production.unwrap();
+    let production = committed()
+        .production
+        .expect("the fixture observation carries its production section");
     let mut tuple = production.freight_order_definitions[0].order.clone();
-    let original = crate::production_observation::freight_order_identity(&tuple).unwrap();
+    let original = crate::production_observation::freight_order_identity(&tuple)
+        .expect("the fixture freight order has an identity");
     tuple.requested_grams = u128::MAX;
-    let encoded = serde_json::to_vec(&tuple).unwrap();
-    let restored: crate::production_observation::ProductionFreightCapacityOrder =
-        serde_json::from_slice(&encoded).unwrap();
+    let encoded = serde_json::to_vec(&tuple).expect("the value serializes to canonical JSON bytes");
+    let restored: ProductionFreightCapacityOrder =
+        serde_json::from_slice(&encoded).expect("the authored bytes match the declared schema");
     assert_eq!(restored.requested_grams, u128::MAX);
     assert_eq!(restored, tuple);
     assert_ne!(
-        crate::production_observation::freight_order_identity(&tuple).unwrap(),
+        crate::production_observation::freight_order_identity(&tuple)
+            .expect("the fixture freight order has an identity"),
         original
     );
 }

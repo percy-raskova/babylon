@@ -16,7 +16,9 @@
 
 use crate::bindings::{BindSource, BindingDecl};
 use crate::reader::{Atom, SExpr};
-use crate::vocabulary::{render_member, ClosedVocabulary, EnumKind};
+use crate::vocabulary::{ClosedVocabulary, EnumKind};
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 
 /// A scoping rejection.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -53,7 +55,7 @@ impl ScopeError {
 }
 
 impl std::fmt::Display for ScopeError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         match self {
             Self::ForeignFieldOutsideBody { binding, owner } => write!(
                 f,
@@ -94,7 +96,7 @@ pub fn query_node_type_segment(query_items: &[SExpr]) -> Option<String> {
     };
     match query_items.get(index) {
         Some(SExpr::Atom(Atom::EnumRef { enum_type, member })) if enum_type == "NodeType" => {
-            Some(render_member(member))
+            Some(crate::vocabulary::render_member(member))
         }
         _ => None,
     }
@@ -460,7 +462,7 @@ impl ElementNameError {
 }
 
 impl std::fmt::Display for ElementNameError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         match self {
             Self::ReservedElementName { name } => write!(
                 f,
@@ -647,9 +649,8 @@ fn walk_names(expr: &SExpr, scope: &mut ElementScope) -> Result<(), ElementNameE
 
 #[cfg(test)]
 mod tests {
-    use super::check_foreign_field_scoping;
-    use crate::bindings::parse_bindings;
-    use crate::reader::read;
+
+    use super::ScopeError;
     use crate::vocabulary::{ClosedVocabulary, EnumKind};
 
     fn vocabulary() -> ClosedVocabulary {
@@ -664,13 +665,13 @@ mod tests {
             ),
             (EnumKind::EdgeType, vec!["SOLIDARITY".to_owned()]),
         ])
-        .unwrap()
+        .expect("the constructor accepts the authored fixture arguments")
     }
 
-    fn check(source: &str, subject: Option<&str>) -> Result<(), super::ScopeError> {
-        let (rule, _) = read(source).expect("test source must parse");
-        let decls = parse_bindings(&rule).expect("bindings must parse");
-        check_foreign_field_scoping(&rule, &decls, subject, &vocabulary())
+    fn check(source: &str, subject: Option<&str>) -> Result<(), ScopeError> {
+        let (rule, _) = crate::reader::read(source).expect("test source must parse");
+        let decls = crate::bindings::parse_bindings(&rule).expect("bindings must parse");
+        super::check_foreign_field_scoping(&rule, &decls, subject, &vocabulary())
     }
 
     const PREAMBLE: &str =
@@ -695,7 +696,8 @@ mod tests {
              (when (< claim 5)) \
              (effects (update-node self social-class/agitation (add 0.05i))))"
         );
-        let err = check(&source, Some("social-class")).unwrap_err();
+        let err =
+            check(&source, Some("social-class")).expect_err("the malformed source is refused");
         assert_eq!(err.spec_code(), "E-TYPE-010");
     }
 
@@ -719,7 +721,8 @@ mod tests {
                         (fold max (nodes NodeType/ORGANIZATION) claim)) 5)) \
              (effects (update-node self social-class/agitation (add 0.05i))))"
         );
-        let err = check(&source, Some("social-class")).unwrap_err();
+        let err =
+            check(&source, Some("social-class")).expect_err("the malformed source is refused");
         assert_eq!(err.spec_code(), "E-TYPE-013");
     }
 
@@ -733,7 +736,7 @@ mod tests {
         );
         assert_eq!(
             check(&source, Some("social-class"))
-                .unwrap_err()
+                .expect_err("the malformed source is refused")
                 .spec_code(),
             "E-TYPE-010"
         );
@@ -771,7 +774,7 @@ mod tests {
         );
         assert_eq!(
             check(&source, Some("social-class"))
-                .unwrap_err()
+                .expect_err("the malformed source is refused")
                 .spec_code(),
             "E-TYPE-010"
         );

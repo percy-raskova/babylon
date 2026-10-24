@@ -3,10 +3,11 @@
 use std::collections::BTreeSet;
 use std::collections::TryReserveError;
 
-use babylon_kernel::{content_digest::sha256_of, currency::Currency};
+use babylon_kernel::content_digest;
+use babylon_kernel::currency::Currency;
 
 use crate::stable_element::StableIdentityError;
-use crate::stable_element::{validate_qname, StableElementKey, StableElementResolver};
+use crate::stable_element::{StableElementKey, StableElementResolver};
 use crate::state_hash::CanonicalState;
 use crate::substrate::{HyperedgeId, NodeId};
 
@@ -200,7 +201,7 @@ pub fn encode_stable_graph_state<G: CanonicalState>(
     let capacity = stable_state_capacity(&scenario_scope, &rows)?;
     validate_state_byte_size(capacity)?;
     let canonical_bytes = encode_rows(&scenario_scope, &rows, capacity)?;
-    let digest = StableGraphStateHash(sha256_of(&canonical_bytes));
+    let digest = StableGraphStateHash(content_digest::sha256_of(&canonical_bytes));
     Ok(StableGraphState {
         scenario_scope,
         canonical_bytes,
@@ -224,7 +225,7 @@ pub fn compose_stable_graph_state_from_rows(
     scenario: &str,
     input: StableGraphStateRowsInput,
 ) -> Result<StableGraphState, StableIdentityError> {
-    validate_qname("stable graph scenario", scenario)?;
+    crate::stable_element::validate_qname("stable graph scenario", scenario)?;
     let mut rows = StableGraphStateRows {
         nodes: input.nodes,
         node_f64: input.node_f64,
@@ -238,7 +239,7 @@ pub fn compose_stable_graph_state_from_rows(
     let capacity = stable_state_capacity(scenario, &rows)?;
     validate_state_byte_size(capacity)?;
     let canonical_bytes = encode_rows(scenario, &rows, capacity)?;
-    let digest = StableGraphStateHash(sha256_of(&canonical_bytes));
+    let digest = StableGraphStateHash(content_digest::sha256_of(&canonical_bytes));
     Ok(StableGraphState {
         scenario_scope: copy_stable_string("stable graph scenario", scenario)?,
         canonical_bytes,
@@ -310,24 +311,24 @@ fn validate_loaded_rows(rows: &mut StableGraphStateRows) -> Result<(), StableIde
     }
     validate_fact_units(fact_units)?;
     for (_, qname, bits) in &mut rows.node_f64 {
-        validate_qname("node attribute qname", qname)?;
+        crate::stable_element::validate_qname("node attribute qname", qname)?;
         *bits = finite_bits(f64::from_bits(*bits), "node f64 attributes")?;
     }
     for (_, _, _, bits) in &mut rows.edges {
         *bits = finite_bits(f64::from_bits(*bits), "edges")?;
     }
     for (_, _, _, qname, bits) in &mut rows.edge_f64 {
-        validate_qname("edge attribute qname", qname)?;
+        crate::stable_element::validate_qname("edge attribute qname", qname)?;
         if qname.ends_with("/strength") {
             return Err(StableIdentityError::StrengthAttribute);
         }
         *bits = finite_bits(f64::from_bits(*bits), "edge f64 attributes")?;
     }
     for (_, qname, _) in &rows.node_currency {
-        validate_qname("Currency attribute qname", qname)?;
+        crate::stable_element::validate_qname("Currency attribute qname", qname)?;
     }
     for (_, qname, bits) in &mut rows.hyperedge_f64 {
-        validate_qname("hyperedge attribute qname", qname)?;
+        crate::stable_element::validate_qname("hyperedge attribute qname", qname)?;
         *bits = finite_bits(f64::from_bits(*bits), "hyperedge f64 attributes")?;
     }
     for (_, _, members) in &mut rows.hyperedges {
@@ -481,7 +482,7 @@ fn resolve_node_f64(
 ) -> Result<Vec<StableGraphNodeF64Row>, StableIdentityError> {
     let mut rows = reserve_rows("stable graph node attributes", source.len())?;
     for (node, qname, value) in source.iter().take(MAX_STABLE_GRAPH_ATTRIBUTES + 1) {
-        validate_qname("node attribute qname", qname)?;
+        crate::stable_element::validate_qname("node attribute qname", qname)?;
         rows.push((
             resolver.node_local_name(*node)?.to_owned(),
             qname.clone(),
@@ -546,7 +547,7 @@ fn resolve_edge_f64(
 ) -> Result<Vec<StableGraphEdgeF64Row>, StableIdentityError> {
     let mut rows = reserve_rows("stable graph edge attributes", source.len())?;
     for (edge_type, from, to, qname, value) in source.iter().take(MAX_STABLE_GRAPH_ATTRIBUTES + 1) {
-        validate_qname("edge attribute qname", qname)?;
+        crate::stable_element::validate_qname("edge attribute qname", qname)?;
         if qname.ends_with("/strength") {
             return Err(StableIdentityError::StrengthAttribute);
         }
@@ -577,7 +578,7 @@ fn resolve_node_currency(
 ) -> Result<Vec<StableGraphNodeCurrencyRow>, StableIdentityError> {
     let mut rows = reserve_rows("stable graph Currency attributes", source.len())?;
     for (node, qname, value) in source.iter().take(MAX_STABLE_GRAPH_ATTRIBUTES + 1) {
-        validate_qname("Currency attribute qname", qname)?;
+        crate::stable_element::validate_qname("Currency attribute qname", qname)?;
         rows.push((
             resolver.node_local_name(*node)?.to_owned(),
             qname.clone(),
@@ -593,7 +594,7 @@ fn resolve_hyperedge_f64(
 ) -> Result<Vec<StableGraphHyperedgeF64Row>, StableIdentityError> {
     let mut rows = reserve_rows("stable graph hyperedge attributes", source.len())?;
     for (hyperedge, qname, value) in source.iter().take(MAX_STABLE_GRAPH_ATTRIBUTES + 1) {
-        validate_qname("hyperedge attribute qname", qname)?;
+        crate::stable_element::validate_qname("hyperedge attribute qname", qname)?;
         let StableElementKey::Hyperedge { local_name, .. } = resolver.hyperedge_key(*hyperedge)?
         else {
             return Err(StableIdentityError::ElementNotSealed);
@@ -924,7 +925,6 @@ fn reserve_bytes(field: &'static str, capacity: usize) -> Result<Vec<u8>, Stable
 #[cfg(test)]
 mod tests {
     use super::{
-        finite_bits, validate_fact_units, validate_section, validate_state_byte_size,
         MAX_STABLE_GRAPH_ATTRIBUTES, MAX_STABLE_GRAPH_ELEMENTS, MAX_STABLE_GRAPH_FACT_UNITS,
         MAX_STABLE_GRAPH_HYPEREDGE_MEMBERS, MAX_STABLE_GRAPH_NODES, MAX_STABLE_GRAPH_STATE_BYTES,
     };
@@ -943,9 +943,9 @@ mod tests {
             ("hyperedge members", MAX_STABLE_GRAPH_HYPEREDGE_MEMBERS),
         ];
         for (section, maximum) in section_limits {
-            assert_eq!(validate_section(section, maximum, maximum), Ok(()));
+            assert_eq!(super::validate_section(section, maximum, maximum), Ok(()));
             assert_eq!(
-                validate_section(section, maximum + 1, maximum),
+                super::validate_section(section, maximum + 1, maximum),
                 Err(StableIdentityError::StateSectionLimit {
                     section,
                     actual: maximum + 1,
@@ -953,20 +953,23 @@ mod tests {
                 })
             );
         }
-        assert_eq!(validate_fact_units(MAX_STABLE_GRAPH_FACT_UNITS), Ok(()));
         assert_eq!(
-            validate_fact_units(MAX_STABLE_GRAPH_FACT_UNITS + 1),
+            super::validate_fact_units(MAX_STABLE_GRAPH_FACT_UNITS),
+            Ok(())
+        );
+        assert_eq!(
+            super::validate_fact_units(MAX_STABLE_GRAPH_FACT_UNITS + 1),
             Err(StableIdentityError::FactUnitLimit {
                 actual: MAX_STABLE_GRAPH_FACT_UNITS + 1,
                 maximum: MAX_STABLE_GRAPH_FACT_UNITS,
             })
         );
         assert_eq!(
-            validate_state_byte_size(MAX_STABLE_GRAPH_STATE_BYTES),
+            super::validate_state_byte_size(MAX_STABLE_GRAPH_STATE_BYTES),
             Ok(())
         );
         assert_eq!(
-            validate_state_byte_size(MAX_STABLE_GRAPH_STATE_BYTES + 1),
+            super::validate_state_byte_size(MAX_STABLE_GRAPH_STATE_BYTES + 1),
             Err(StableIdentityError::ByteLimit {
                 field: "stable graph state",
                 actual: MAX_STABLE_GRAPH_STATE_BYTES + 1,
@@ -977,14 +980,14 @@ mod tests {
 
     #[test]
     fn finite_bits_normalize_both_zeros_and_refuse_nan_and_infinity() {
-        assert_eq!(finite_bits(0.0, "test"), Ok(0));
-        assert_eq!(finite_bits(-0.0, "test"), Ok(0));
+        assert_eq!(super::finite_bits(0.0, "test"), Ok(0));
+        assert_eq!(super::finite_bits(-0.0, "test"), Ok(0));
         assert_eq!(
-            finite_bits(f64::NAN, "test"),
+            super::finite_bits(f64::NAN, "test"),
             Err(StableIdentityError::NonFiniteValue { section: "test" })
         );
         assert_eq!(
-            finite_bits(f64::INFINITY, "test"),
+            super::finite_bits(f64::INFINITY, "test"),
             Err(StableIdentityError::NonFiniteValue { section: "test" })
         );
     }

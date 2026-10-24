@@ -1,11 +1,12 @@
+use babylon_material_circuit::CapacitySupply;
+use babylon_material_circuit::CircuitAccounting;
+use babylon_material_circuit::FreightLotId;
 use babylon_material_circuit::{
-    advance_material_circuit, decode_material_circuit_state, encode_material_circuit_state,
-    material_circuit_state_digest, BacklogRow, CapacityRow, CommodityDefinition, CorridorCapacity,
-    CorridorId, GoodId, InputOutputCoefficient, InventoryRow, LaborCapacityRow, LaborCoefficient,
-    LogisticsNodeId, MaterialCircuitState, OrderAccessMode, OrderId, OrderRow, ProcessId,
-    ProcessOutput, RouteId, RouteStage, RouteStageCapacity, SiteId, SiteLogisticsNode,
-    SupplierRoute, SupplierTransport, UnitId, MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES,
-    MAX_ROUTE_STAGES_PER_ROUTE,
+    BacklogRow, CapacityRow, CommodityDefinition, CorridorCapacity, CorridorId, GoodId,
+    InputOutputCoefficient, InventoryRow, LaborCapacityRow, LaborCoefficient, LogisticsNodeId,
+    MaterialCircuitState, OrderAccessMode, OrderId, OrderRow, ProcessId, ProcessOutput, RouteId,
+    RouteStage, RouteStageCapacity, SiteId, SiteLogisticsNode, SupplierRoute, SupplierTransport,
+    UnitId, MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES, MAX_ROUTE_STAGES_PER_ROUTE,
 };
 
 fn site(byte: u8) -> SiteId {
@@ -52,13 +53,13 @@ const ROUTE: u8 = 9;
 
 fn base_state() -> MaterialCircuitState {
     MaterialCircuitState {
-        capacity_supply: babylon_material_circuit::CapacitySupply::FiniteSchedule,
+        capacity_supply: CapacitySupply::FiniteSchedule,
         period: 1,
         merchants: vec![],
         handling_coefficients: vec![],
         final_demand_principals: vec![],
         final_demand_orders: vec![],
-        accounting: babylon_material_circuit::CircuitAccounting::PhysicalControl,
+        accounting: CircuitAccounting::PhysicalControl,
         maintenance_binding: None,
         maintenance_service: None,
         service_connections: vec![],
@@ -162,10 +163,12 @@ fn shared_access_point_preserves_distinct_buyers_and_one_freight_budget() {
     state.route_stage_capacities.truncate(1);
     state.corridor_capacities.truncate(1);
     state.corridor_capacities[0].available_grams = 10;
-    let bytes = encode_material_circuit_state(&state)
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&state)
         .expect("distinct buyers may share their captured logistics access point");
-    let opening = decode_material_circuit_state(&bytes).unwrap();
-    let dispatched = advance_material_circuit(&opening).unwrap();
+    let opening = babylon_material_circuit::decode_material_circuit_state(&bytes)
+        .expect("the canonical material bytes decode");
+    let dispatched = babylon_material_circuit::advance_material_circuit(&opening)
+        .expect("the authored material state advances one period");
     assert_eq!(dispatched.state.freight.len(), 2);
     assert_eq!(
         dispatched
@@ -178,7 +181,8 @@ fn shared_access_point_preserves_distinct_buyers_and_one_freight_budget() {
     assert_eq!(inventory_quantity(&dispatched.state, site(SUPPLIER)), 2);
     assert_eq!(inventory_quantity(&dispatched.state, site(BUYER)), 0);
     assert_eq!(inventory_quantity(&dispatched.state, site(12)), 0);
-    let arrived = advance_material_circuit(&dispatched.state).unwrap();
+    let arrived = babylon_material_circuit::advance_material_circuit(&dispatched.state)
+        .expect("the authored material state advances one period");
     assert!(arrived.state.freight.is_empty());
     assert_eq!(inventory_quantity(&arrived.state, site(SUPPLIER)), 2);
     assert_eq!(inventory_quantity(&arrived.state, site(BUYER)), 6);
@@ -190,13 +194,13 @@ fn shared_access_point_preserves_distinct_buyers_and_one_freight_budget() {
         .site_logistics_nodes
         .push(duplicate_site.site_logistics_nodes[0].clone());
     assert_eq!(
-        encode_material_circuit_state(&duplicate_site),
+        babylon_material_circuit::encode_material_circuit_state(&duplicate_site),
         Err(babylon_material_circuit::MaterialCircuitError::DuplicateRow)
     );
     let mut wrong_endpoint = opening;
     wrong_endpoint.site_logistics_nodes[2].node_id = node(99);
     assert_eq!(
-        encode_material_circuit_state(&wrong_endpoint),
+        babylon_material_circuit::encode_material_circuit_state(&wrong_endpoint),
         Err(babylon_material_circuit::MaterialCircuitError::RouteInvariant)
     );
 }
@@ -324,8 +328,10 @@ fn route_depth_state(leg_count: usize) -> MaterialCircuitState {
     state.route_stage_capacities = (0..leg_count)
         .map(|index| RouteStageCapacity {
             route_id: route(ROUTE),
-            stage_index: u16::try_from(index).unwrap(),
-            corridor_id: corridor(60 + u8::try_from(index).unwrap()),
+            stage_index: u16::try_from(index).expect("the fixture value fits the target range"),
+            corridor_id: corridor(
+                60 + u8::try_from(index).expect("the fixture value fits the target range"),
+            ),
         })
         .collect();
     state.corridor_capacities = state
@@ -350,7 +356,8 @@ fn shipped_for(state: &MaterialCircuitState, order_id: OrderId) -> u64 {
 
 #[test]
 fn corridor_capacity_bounds_routed_dispatch() {
-    let outcome = advance_material_circuit(&base_state()).expect("period one must close");
+    let outcome = babylon_material_circuit::advance_material_circuit(&base_state())
+        .expect("period one must close");
 
     assert_eq!(outcome.state.period, 2);
     assert_eq!(outcome.state.orders[0].shipped, 4);
@@ -369,8 +376,10 @@ fn corridor_capacity_bounds_routed_dispatch() {
 
 #[test]
 fn final_route_arrival_credits_inventory_before_realization() {
-    let first = advance_material_circuit(&base_state()).expect("period one must close");
-    let second = advance_material_circuit(&first.state).expect("period two must close");
+    let first = babylon_material_circuit::advance_material_circuit(&base_state())
+        .expect("period one must close");
+    let second = babylon_material_circuit::advance_material_circuit(&first.state)
+        .expect("period two must close");
 
     assert!(second.state.freight.is_empty());
     assert_eq!(inventory_quantity(&second.state, site(BUYER)), 4);
@@ -386,7 +395,7 @@ fn missing_supplier_route_remains_backlog() {
     let mut state = base_state();
     state.supplier_routes.clear();
 
-    let outcome = advance_material_circuit(&state)
+    let outcome = babylon_material_circuit::advance_material_circuit(&state)
         .expect("a missing routed supplier relation is a material shortage");
 
     assert!(outcome.dispatches.is_empty());
@@ -406,38 +415,41 @@ fn capacity_for_an_unknown_corridor_refuses() {
     });
 
     assert_eq!(
-        advance_material_circuit(&state),
+        babylon_material_circuit::advance_material_circuit(&state),
         Err(babylon_material_circuit::MaterialCircuitError::CapacityInvariant)
     );
 }
 
 #[test]
 fn freight_lot_identity_must_bind_order_and_dispatch_period() {
-    let first = advance_material_circuit(&base_state()).expect("period one must close");
+    let first = babylon_material_circuit::advance_material_circuit(&base_state())
+        .expect("period one must close");
     let mut state = first.state;
-    state.freight[0].lot_id = babylon_material_circuit::FreightLotId::from_bytes([77; 32]);
+    state.freight[0].lot_id = FreightLotId::from_bytes([77; 32]);
 
     assert_eq!(
-        advance_material_circuit(&state),
+        babylon_material_circuit::advance_material_circuit(&state),
         Err(babylon_material_circuit::MaterialCircuitError::FreightInvariant)
     );
 }
 
 #[test]
 fn freight_leg_arrival_must_match_the_reserved_route_schedule() {
-    let first = advance_material_circuit(&base_state()).expect("period one must close");
+    let first = babylon_material_circuit::advance_material_circuit(&base_state())
+        .expect("period one must close");
     let mut state = first.state;
     state.freight[0].stage_arrival_period = 3;
 
     assert_eq!(
-        advance_material_circuit(&state),
+        babylon_material_circuit::advance_material_circuit(&state),
         Err(babylon_material_circuit::MaterialCircuitError::FreightInvariant)
     );
 }
 
 #[test]
 fn future_leg_capacity_limits_origin_dispatch() {
-    let outcome = advance_material_circuit(&two_leg_state(2)).expect("two-leg route must close");
+    let outcome = babylon_material_circuit::advance_material_circuit(&two_leg_state(2))
+        .expect("two-leg route must close");
 
     assert_eq!(outcome.state.orders[0].shipped, 2);
     assert_eq!(outcome.state.backlog[0].quantity, 4);
@@ -450,8 +462,10 @@ fn future_leg_capacity_limits_origin_dispatch() {
 
 #[test]
 fn completed_leg_loss_remains_attributed_before_final_delivery() {
-    let first = advance_material_circuit(&two_leg_state(4)).expect("period one must close");
-    let second = advance_material_circuit(&first.state).expect("period two must close");
+    let first = babylon_material_circuit::advance_material_circuit(&two_leg_state(4))
+        .expect("period one must close");
+    let second = babylon_material_circuit::advance_material_circuit(&first.state)
+        .expect("period two must close");
 
     assert_eq!(second.losses.len(), 1);
     assert_eq!(second.losses[0].quantity, 1);
@@ -461,7 +475,8 @@ fn completed_leg_loss_remains_attributed_before_final_delivery() {
     assert_eq!(second.state.freight[0].current_stage_index, 1);
     assert_eq!(second.state.freight[0].stage_arrival_period, 3);
 
-    let third = advance_material_circuit(&second.state).expect("period three must close");
+    let third = babylon_material_circuit::advance_material_circuit(&second.state)
+        .expect("period three must close");
     assert!(third.state.freight.is_empty());
     assert_eq!(third.state.orders[0].shipped, 4);
     assert_eq!(third.state.orders[0].lost, 1);
@@ -509,13 +524,15 @@ fn final_arrival_can_form_and_execute_following_period_production() {
         available: 2,
     });
 
-    let dispatch = advance_material_circuit(&state).expect("dispatch period must close");
+    let dispatch = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("dispatch period must close");
     assert!(dispatch.state.production_commitments.is_empty());
-    let arrival = advance_material_circuit(&dispatch.state).expect("arrival period must close");
+    let arrival = babylon_material_circuit::advance_material_circuit(&dispatch.state)
+        .expect("arrival period must close");
     assert_eq!(arrival.state.production_commitments.len(), 1);
     assert_eq!(arrival.state.production_commitments[0].planned_batches, 2);
-    let production =
-        advance_material_circuit(&arrival.state).expect("production period must close");
+    let production = babylon_material_circuit::advance_material_circuit(&arrival.state)
+        .expect("production period must close");
 
     assert_eq!(production.production.len(), 1);
     assert_eq!(production.production[0].produced_batches, 2);
@@ -534,16 +551,24 @@ fn final_arrival_can_form_and_execute_following_period_production() {
 
 #[test]
 fn route_depth_accepts_the_designed_maximum_and_refuses_plus_one() {
-    assert!(advance_material_circuit(&route_depth_state(MAX_ROUTE_STAGES_PER_ROUTE)).is_ok());
+    assert!(
+        babylon_material_circuit::advance_material_circuit(&route_depth_state(
+            MAX_ROUTE_STAGES_PER_ROUTE
+        ))
+        .is_ok()
+    );
     assert_eq!(
-        advance_material_circuit(&route_depth_state(MAX_ROUTE_STAGES_PER_ROUTE + 1)),
+        babylon_material_circuit::advance_material_circuit(&route_depth_state(
+            MAX_ROUTE_STAGES_PER_ROUTE + 1
+        )),
         Err(babylon_material_circuit::MaterialCircuitError::RouteInvariant)
     );
 }
 
 #[test]
 fn arrival_overflow_refuses_atomically_without_mutating_the_opening_state() {
-    let dispatch = advance_material_circuit(&base_state()).expect("dispatch period must close");
+    let dispatch = babylon_material_circuit::advance_material_circuit(&base_state())
+        .expect("dispatch period must close");
     let mut opening = dispatch.state;
     let buyer_inventory = opening
         .inventory
@@ -551,25 +576,28 @@ fn arrival_overflow_refuses_atomically_without_mutating_the_opening_state() {
         .find(|row| row.site_id == site(BUYER))
         .expect("buyer inventory must exist");
     buyer_inventory.quantity = u64::MAX;
-    let opening_digest = material_circuit_state_digest(&opening).expect("opening must hash");
+    let opening_digest = babylon_material_circuit::material_circuit_state_digest(&opening)
+        .expect("opening must hash");
 
     assert_eq!(
-        advance_material_circuit(&opening),
+        babylon_material_circuit::advance_material_circuit(&opening),
         Err(babylon_material_circuit::MaterialCircuitError::Arithmetic)
     );
     assert_eq!(
-        material_circuit_state_digest(&opening).expect("opening must remain valid"),
+        babylon_material_circuit::material_circuit_state_digest(&opening)
+            .expect("opening must remain valid"),
         opening_digest
     );
 }
 
 #[test]
 fn current_decoder_refuses_domain_version_truncation_and_trailing_bytes() {
-    let bytes = encode_material_circuit_state(&base_state()).expect("base state must encode");
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&base_state())
+        .expect("base state must encode");
     let mut wrong_domain = bytes.clone();
     wrong_domain[0] ^= 1;
     assert_eq!(
-        decode_material_circuit_state(&wrong_domain),
+        babylon_material_circuit::decode_material_circuit_state(&wrong_domain),
         Err(babylon_material_circuit::MaterialCircuitError::WireDomain)
     );
 
@@ -577,38 +605,41 @@ fn current_decoder_refuses_domain_version_truncation_and_trailing_bytes() {
     let mut wrong_version = bytes.clone();
     wrong_version[version_index + 1] = 3;
     assert_eq!(
-        decode_material_circuit_state(&wrong_version),
+        babylon_material_circuit::decode_material_circuit_state(&wrong_version),
         Err(babylon_material_circuit::MaterialCircuitError::WireVersion)
     );
     assert_eq!(
-        decode_material_circuit_state(&bytes[..bytes.len() - 1]),
+        babylon_material_circuit::decode_material_circuit_state(&bytes[..bytes.len() - 1]),
         Err(babylon_material_circuit::MaterialCircuitError::WireTruncated)
     );
     let mut trailing = bytes;
     trailing.push(0);
     assert_eq!(
-        decode_material_circuit_state(&trailing),
+        babylon_material_circuit::decode_material_circuit_state(&trailing),
         Err(babylon_material_circuit::MaterialCircuitError::WireTrailing)
     );
 }
 
 #[test]
 fn severed_corridor_changes_only_its_routed_inventory_and_realization() {
-    let full = advance_material_circuit(&two_route_state()).expect("both routes must close");
+    let full = babylon_material_circuit::advance_material_circuit(&two_route_state())
+        .expect("both routes must close");
     let mut severed_state = two_route_state();
     severed_state
         .corridor_capacities
         .retain(|row| row.corridor_id != corridor(CORRIDOR));
-    let severed = advance_material_circuit(&severed_state).expect("severed route must close");
+    let severed = babylon_material_circuit::advance_material_circuit(&severed_state)
+        .expect("severed route must close");
 
     assert_eq!(shipped_for(&full.state, order(ORDER)), 4);
     assert_eq!(shipped_for(&severed.state, order(ORDER)), 0);
     assert_eq!(shipped_for(&full.state, order(14)), 4);
     assert_eq!(shipped_for(&severed.state, order(14)), 4);
 
-    let full_arrival = advance_material_circuit(&full.state).expect("full arrival must close");
-    let severed_arrival =
-        advance_material_circuit(&severed.state).expect("severed arrival must close");
+    let full_arrival = babylon_material_circuit::advance_material_circuit(&full.state)
+        .expect("full arrival must close");
+    let severed_arrival = babylon_material_circuit::advance_material_circuit(&severed.state)
+        .expect("severed arrival must close");
     assert_eq!(shipped_for(&full_arrival.state, order(ORDER)), 4);
     assert_eq!(
         full_arrival
@@ -616,7 +647,7 @@ fn severed_corridor_changes_only_its_routed_inventory_and_realization() {
             .orders
             .iter()
             .find(|row| row.order_id == order(ORDER))
-            .unwrap()
+            .expect("the fixture holds the searched element")
             .realized,
         4
     );
@@ -626,7 +657,7 @@ fn severed_corridor_changes_only_its_routed_inventory_and_realization() {
             .orders
             .iter()
             .find(|row| row.order_id == order(ORDER))
-            .unwrap()
+            .expect("the fixture holds the searched element")
             .realized,
         0
     );
@@ -636,7 +667,7 @@ fn severed_corridor_changes_only_its_routed_inventory_and_realization() {
             .orders
             .iter()
             .find(|row| row.order_id == order(14))
-            .unwrap()
+            .expect("the fixture holds the searched element")
             .realized,
         4
     );
@@ -646,7 +677,7 @@ fn severed_corridor_changes_only_its_routed_inventory_and_realization() {
             .orders
             .iter()
             .find(|row| row.order_id == order(14))
-            .unwrap()
+            .expect("the fixture holds the searched element")
             .realized,
         4
     );
@@ -676,8 +707,9 @@ fn proportional_base_and_shared_corridor_residual_conserve_permutations() {
                     reversed.orders.reverse();
                     reversed.backlog.reverse();
 
-                    let outcome = advance_material_circuit(&state).expect("allocation must close");
-                    let twin = advance_material_circuit(&reversed)
+                    let outcome = babylon_material_circuit::advance_material_circuit(&state)
+                        .expect("allocation must close");
+                    let twin = babylon_material_circuit::advance_material_circuit(&reversed)
                         .expect("permuted allocation must close");
                     let effective = available.min(corridor_available);
                     let total_requested = first_requested + second_requested;
@@ -704,8 +736,8 @@ fn proportional_base_and_shared_corridor_residual_conserve_permutations() {
                         available
                     );
                     assert_eq!(
-                        material_circuit_state_digest(&outcome.state),
-                        material_circuit_state_digest(&twin.state)
+                        babylon_material_circuit::material_circuit_state_digest(&outcome.state),
+                        babylon_material_circuit::material_circuit_state_digest(&twin.state)
                     );
                 }
             }

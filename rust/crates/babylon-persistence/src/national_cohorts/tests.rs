@@ -1,18 +1,23 @@
 //! Semantic refusals remain visible beneath the outer exact-artifact digest.
-use super::{mapping::FunctionMapping, parse::parse_group, NationalCohortReferenceError as Error};
-use crate::national_counties::national_county_reference;
+use super::mapping::FunctionMapping;
+use super::NationalCohortReferenceError as Error;
 
-fn row(text: &str) -> Result<super::CohortReference, Error> {
-    parse_group(
+use super::parse;
+use super::CohortReference;
+use crate::national_counties;
+
+fn row(text: &str) -> Result<CohortReference, Error> {
+    parse::parse_group(
         text,
         &FunctionMapping::load()?,
-        national_county_reference().map_err(Error::CountyReference)?,
+        national_counties::national_county_reference().map_err(Error::CountyReference)?,
     )
 }
 
 #[test]
 fn known_zero_with_unknown_jobs_does_not_admit_a_group() {
-    let group = row("01017,food,5,0,1,0,1,0,0,0,0,311~N~0~~~").unwrap();
+    let group = row("01017,food,5,0,1,0,1,0,0,0,0,311~N~0~~~")
+        .expect("the fixture call `row` succeeds for the authored inputs");
     assert_eq!(group.establishments().complete_total(), Some(0));
     assert_eq!(group.jobs().complete_total(), None);
     assert!(!group.is_admitted());
@@ -24,7 +29,8 @@ fn known_zero_with_unknown_jobs_does_not_admit_a_group() {
 
 #[test]
 fn published_jobs_with_rounded_zero_establishments_are_sufficient() {
-    let group = row("01017,food,5,1,1,0,1,1,1,7,1,311~P~0~1~7~2").unwrap();
+    let group = row("01017,food,5,1,1,0,1,1,1,7,1,311~P~0~1~7~2")
+        .expect("the fixture call `row` succeeds for the authored inputs");
     assert!(group.is_admitted());
     assert_eq!(group.jobs().complete_total(), Some(1));
     assert_eq!(group.members()[0].mean_weekly_wage_usd, Some(2));
@@ -80,7 +86,8 @@ fn source_integer_bounds_and_member_count_are_checked() {
 
 #[test]
 fn unknown_function_and_positive_context_never_get_an_executable_fallback() {
-    let group = row("01017,,5,0,1,1,1,2,1,7,1,99~P~1~2~7~2").unwrap();
+    let group = row("01017,,5,0,1,1,1,2,1,7,1,99~P~1~2~7~2")
+        .expect("the fixture call `row` succeeds for the authored inputs");
     assert_eq!(group.key().function, None);
     assert!(!group.is_admitted());
     assert_eq!(
@@ -107,16 +114,21 @@ fn aggregate_overflow_and_noncanonical_numbers_are_refused() {
 
 #[test]
 fn duplicate_groups_are_refused_before_coverage_checks() {
-    let original = super::decode_gzip(super::ARTIFACT).unwrap();
+    let original = super::decode_gzip(super::ARTIFACT).expect("the gzipped body decodes");
     let mut lines = original.lines();
-    let header = lines.next().unwrap();
-    let first = lines.next().unwrap();
+    let header = lines
+        .next()
+        .expect("the fixture iterator yields its authored rows");
+    let first = lines
+        .next()
+        .expect("the fixture iterator yields its authored rows");
     let duplicate = format!("{header}\n{first}\n{first}\n");
     assert_eq!(
         super::parse::parse_csv(
             &duplicate,
-            &FunctionMapping::load().unwrap(),
-            national_county_reference().unwrap()
+            &FunctionMapping::load().expect("the fixture artifact loads"),
+            national_counties::national_county_reference()
+                .expect("the county reference fixture loads")
         ),
         Err(Error::GroupOrder)
     );

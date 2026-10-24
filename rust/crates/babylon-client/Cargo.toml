@@ -5,9 +5,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish = false
-# Bevy 0.18's MSRV may exceed the 1.87 workspace floor — the toolchain pin
-# is 1.91.1, so 1.87 is what we support elsewhere, not what this crate needs.
-rust-version = "1.87"
+rust-version.workspace = true
 
 [lints]
 workspace = true

@@ -3,6 +3,8 @@
 use std::collections::BTreeSet;
 
 use crate::{LaborCapacityRow, ProcessId, SiteId, UnitId, MAX_MATERIAL_CIRCUIT_ROWS};
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 
 crate::model::identity_type!(StaffingPoolId);
 
@@ -37,7 +39,7 @@ pub enum StaffingError {
 }
 
 impl std::fmt::Display for StaffingError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         write!(f, "staffing refused: {self:?}")
     }
 }

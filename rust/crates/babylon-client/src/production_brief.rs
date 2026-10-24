@@ -4,9 +4,9 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use babylon_persistence::{
-    production_observation::ProductionSite, production_observation::ProductionSnapshot,
-};
+use babylon_persistence::production_observation::ProductionProcess;
+use babylon_persistence::production_observation::ProductionSiteRole;
+use babylon_persistence::production_observation::{ProductionSite, ProductionSnapshot};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum DependencyDirection {
@@ -108,15 +108,10 @@ pub(crate) fn opening_site(snapshot: &ProductionSnapshot) -> Option<&ProductionS
 pub(crate) fn committed_plan_status(site: &ProductionSite) -> &'static str {
     if site.processes.is_empty() {
         return match site.roles.first() {
-            Some(babylon_persistence::production_observation::ProductionSiteRole::Wholesale) => {
-                "Wholesale / handling and onward distribution"
-            }
-            Some(babylon_persistence::production_observation::ProductionSiteRole::Retail) => {
-                "Retail / delivery to final demand"
-            }
-            Some(babylon_persistence::production_observation::ProductionSiteRole::Production)
-            | None => "No productive process disclosed",
-            Some(babylon_persistence::production_observation::ProductionSiteRole::Maintenance) => {
+            Some(ProductionSiteRole::Wholesale) => "Wholesale / handling and onward distribution",
+            Some(ProductionSiteRole::Retail) => "Retail / delivery to final demand",
+            Some(ProductionSiteRole::Production) | None => "No productive process disclosed",
+            Some(ProductionSiteRole::Maintenance) => {
                 "Maintenance / service jobs for a bound process"
             }
         };
@@ -137,9 +132,7 @@ pub(crate) fn committed_plan_status(site: &ProductionSite) -> &'static str {
     process_plan_status(&site.processes[0])
 }
 
-pub(crate) fn process_plan_status(
-    process: &babylon_persistence::production_observation::ProductionProcess,
-) -> &'static str {
+pub(crate) fn process_plan_status(process: &ProductionProcess) -> &'static str {
     match (process.produced_batches, process.planned_batches) {
         (None, None) => "Opening state; no committed production yet",
         (Some(0), Some(0)) => "No production planned this period",
@@ -367,55 +360,56 @@ pub(crate) fn describe_overview(snapshot: &ProductionSnapshot) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use babylon_persistence::{
-        production_observation::ProductionFreight, production_observation::ProductionInput,
-        production_observation::ProductionLabor, production_observation::ProductionRoute,
+    use babylon_persistence::production_observation::PhysicalRouteDefinition;
+    use babylon_persistence::production_observation::ProductionProcess;
+    use babylon_persistence::production_observation::ProductionRouteTransport;
+    use babylon_persistence::production_observation::ProductionSiteRole;
+    use babylon_persistence::production_observation::{
+        ProductionFreight, ProductionInput, ProductionLabor, ProductionRoute,
     };
 
     fn site(id: &str, suppliers: &[&str]) -> ProductionSite {
         ProductionSite {
             function: "manufacturing".into(),
             id: id.into(),
-            location: "county:26163".parse().unwrap(),
+            location: "county:26163"
+                .parse()
+                .expect("the authored literal parses as the declared type"),
             name: format!("Cohort {id}"),
             industry_code: Some("331".into()),
             observed_employment: Some(999_999),
             inventory: Vec::new(),
-            roles: vec![
-                babylon_persistence::production_observation::ProductionSiteRole::Production,
-            ],
+            roles: vec![ProductionSiteRole::Production],
             sector_code: Some("31-33".into()),
-            processes: vec![
-                babylon_persistence::production_observation::ProductionProcess {
-                    id: "fixture-process".into(),
-                    name: "Fixture process".into(),
-                    output_good_id: "output".into(),
-                    output_unit_id: "kg".into(),
-                    output_good: "steel".into(),
-                    output_unit: "kg".into(),
-                    output_per_batch: 10,
-                    available_batches: 8,
-                    planned_batches: Some(8),
-                    produced_batches: Some(8),
-                    inputs: suppliers
-                        .iter()
-                        .map(|supplier| ProductionInput {
-                            good_id: (*supplier).into(),
-                            unit_id: "kg".into(),
-                            good: format!("Input {supplier}"),
-                            unit: "kg".into(),
-                            quantity_per_batch: 3,
-                            on_hand: Some(5),
-                            supplier_site_ids: vec![(*supplier).into()],
-                        })
-                        .collect(),
-                    labor: vec![ProductionLabor {
-                        unit: "labor-hours".into(),
-                        available: 7,
-                        quantity_per_batch: 2,
-                    }],
-                },
-            ],
+            processes: vec![ProductionProcess {
+                id: "fixture-process".into(),
+                name: "Fixture process".into(),
+                output_good_id: "output".into(),
+                output_unit_id: "kg".into(),
+                output_good: "steel".into(),
+                output_unit: "kg".into(),
+                output_per_batch: 10,
+                available_batches: 8,
+                planned_batches: Some(8),
+                produced_batches: Some(8),
+                inputs: suppliers
+                    .iter()
+                    .map(|supplier| ProductionInput {
+                        good_id: (*supplier).into(),
+                        unit_id: "kg".into(),
+                        good: format!("Input {supplier}"),
+                        unit: "kg".into(),
+                        quantity_per_batch: 3,
+                        on_hand: Some(5),
+                        supplier_site_ids: vec![(*supplier).into()],
+                    })
+                    .collect(),
+                labor: vec![ProductionLabor {
+                    unit: "labor-hours".into(),
+                    available: 7,
+                    quantity_per_batch: 2,
+                }],
+            }],
         }
     }
     fn chain() -> ProductionSnapshot {
@@ -585,8 +579,8 @@ mod tests {
         );
     }
 
-    fn physical_route() -> babylon_persistence::production_observation::PhysicalRouteDefinition {
-        babylon_persistence::production_observation::PhysicalRouteDefinition {
+    fn physical_route() -> PhysicalRouteDefinition {
+        PhysicalRouteDefinition {
             id: "route-a-b".into(),
             travel_periods: 2,
             stages: vec![
@@ -596,8 +590,7 @@ mod tests {
                     capacity_ids: vec!["fixture-capacity".into()],
                 },
             ],
-            transport_kind:
-                babylon_persistence::production_observation::ProductionRouteTransport::Staged,
+            transport_kind: ProductionRouteTransport::Staged,
             physical_edge_ids: Vec::new(),
             distance_mm: None,
         }

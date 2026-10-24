@@ -1,11 +1,12 @@
 //! Receipt reconciliation only; attendance and work allocation remain engine decisions.
 use super::{
-    add_time, Budgets, MaterialCircuitState, MaterialTickReceipts, Principal,
-    ProductionProjectionError, Totals,
+    Budgets, MaterialCircuitState, MaterialTickReceipts, Principal, ProductionProjectionError,
+    Totals,
 };
 use babylon_material_circuit::{CircuitAccounting, MemberLaborUseReceipt};
 use std::collections::{BTreeMap, BTreeSet};
-type Result<T> = std::result::Result<T, ProductionProjectionError>;
+use std::result::Result as StdResult;
+type Result<T> = StdResult<T, ProductionProjectionError>;
 
 #[derive(Default)]
 struct MemberUses {
@@ -17,11 +18,11 @@ struct MemberUses {
 }
 impl MemberUses {
     fn add(&mut self, row: &MemberLaborUseReceipt) -> Result<()> {
-        self.available = add_time(self.available, row.available_hours, 1)?;
-        self.production = add_time(self.production, row.production_hours, 1)?;
-        self.handling = add_time(self.handling, row.handling_hours, 1)?;
-        self.maintenance = add_time(self.maintenance, row.maintenance_hours, 1)?;
-        self.installation = add_time(self.installation, row.installation_hours, 1)?;
+        self.available = super::add_time(self.available, row.available_hours, 1)?;
+        self.production = super::add_time(self.production, row.production_hours, 1)?;
+        self.handling = super::add_time(self.handling, row.handling_hours, 1)?;
+        self.maintenance = super::add_time(self.maintenance, row.maintenance_hours, 1)?;
+        self.installation = super::add_time(self.installation, row.installation_hours, 1)?;
         Ok(())
     }
 }

@@ -1,13 +1,11 @@
 //! Compare committed counterfactuals; static reachability selects evidence, never shipments.
-use super::{
-    refused,
-    report::{
-        CompletedPeriod, FreightWitness, OutputDifference, Report, RouteDifference, Witnesses,
-        WorkforceDifference,
-    },
-    run::{BASELINE, FREIGHT, PACKAGING},
-    Result,
+use super::report::{
+    CompletedPeriod, FreightWitness, OutputDifference, Report, RouteDifference, Witnesses,
+    WorkforceDifference,
 };
+use super::run::{BASELINE, FREIGHT, PACKAGING};
+use super::Result;
+
 use babylon_persistence::michigan_material::MichiganMaterialPath;
 use std::collections::{BTreeMap, VecDeque};
 
@@ -69,18 +67,18 @@ fn workforce(
         let base = &baseline
             .owners
             .get(owner)
-            .ok_or_else(|| refused("witness owner absent in baseline"))?
+            .ok_or_else(|| super::refused("witness owner absent in baseline"))?
             .staffing;
         let changed = &constrained
             .owners
             .get(owner)
-            .ok_or_else(|| refused("witness owner absent in counterfactual"))?
+            .ok_or_else(|| super::refused("witness owner absent in counterfactual"))?
             .staffing;
         let value = |fields: &BTreeMap<String, u64>, key: &str| {
             fields
                 .get(key)
                 .copied()
-                .ok_or_else(|| refused(format!("staffing witness field absent: {key}")))
+                .ok_or_else(|| super::refused(format!("staffing witness field absent: {key}")))
         };
         let (be, br) = (
             value(base, "closing-employed")?,
@@ -162,7 +160,7 @@ pub fn find(report: &Report) -> Result<Witnesses> {
     let identity = report
         .processes
         .get(&report.candidate.food_process)
-        .ok_or_else(|| refused("selected food process missing from report"))?;
+        .ok_or_else(|| super::refused("selected food process missing from report"))?;
     let packaging = report.cases[BASELINE]
         .periods
         .iter()

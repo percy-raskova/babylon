@@ -1,6 +1,7 @@
 //! Historical-cost income equations; state-backed asset reconciliation stays in the engine.
-use super::monetary_receipt::{account, account_parts};
-use super::{MaterialWorldError, ReceiptCursor};
+use super::monetary_receipt;
+use super::MaterialWorldError;
+use super::ReceiptCursor;
 use babylon_kernel::currency::Currency;
 use babylon_material_circuit::{IncomeReceipt, IncomeStatement};
 
@@ -36,7 +37,7 @@ fn encode_row(
     if row.period != tick {
         return Err(MaterialWorldError::Wire);
     }
-    let (tag, id) = account_parts(row.account);
+    let (tag, id) = monetary_receipt::account_parts(row.account);
     bytes.push(tag);
     bytes.extend_from_slice(&id);
     bytes.extend_from_slice(&row.period.to_be_bytes());
@@ -88,7 +89,7 @@ pub(super) fn decode(
     tick: u64,
 ) -> Result<IncomeReceipt, MaterialWorldError> {
     let [tag] = cursor.take()?;
-    let id = account(tag, cursor.take()?)?;
+    let id = monetary_receipt::account(tag, cursor.take()?)?;
     let row = IncomeReceipt {
         account: id,
         period: cursor.u64()?,

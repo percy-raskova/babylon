@@ -1,6 +1,8 @@
 //! Source-model framing for every current state19 branch. Every variable row is
 //! parsed and bounded before its raw or closed variant storage encoding is chosen.
-use super::{layout::layout, StorageError, MAX_BYTES};
+use super::{StorageError, MAX_BYTES};
+use crate::state_storage::layout;
+
 pub(super) const REGISTER_DOMAIN: &[u8] = b"babylon.material-world-register.v4\0";
 const STATE_DOMAIN: &[u8] = b"babylon.material-circuit-state.v3\0";
 #[derive(Clone, Debug)]
@@ -82,7 +84,7 @@ impl StateParser<'_> {
         });
     }
     fn rows(&mut self, id: u16) -> Result<(), StorageError> {
-        let shape = layout(id).ok_or(StorageError::Layout)?;
+        let shape = layout::layout(id).ok_or(StorageError::Layout)?;
         let start = self.cursor.pos;
         let count = self.cursor.number(4)?;
         if count > shape.maximum {

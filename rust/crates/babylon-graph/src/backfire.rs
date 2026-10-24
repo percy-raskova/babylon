@@ -142,7 +142,7 @@ fn count_as_f64(count: usize) -> Result<f64, GraphError> {
 
 #[cfg(test)]
 mod tests {
-    use super::{measure, Backfire};
+    use super::Backfire;
     use crate::memory::MemoryGraph;
     use crate::substrate::{GraphSubstrate, NodeId};
 
@@ -151,10 +151,18 @@ mod tests {
     fn population(size: usize) -> (MemoryGraph, Vec<NodeId>, NodeId, NodeId) {
         let mut graph = MemoryGraph::new();
         let people: Vec<NodeId> = (0..size)
-            .map(|_| graph.add_node("social_class").unwrap())
+            .map(|_| {
+                graph
+                    .add_node("social_class")
+                    .expect("the fixture adds a node with a registered kind")
+            })
             .collect();
-        let rival = graph.add_node("organization").unwrap();
-        let commune = graph.add_node("community").unwrap();
+        let rival = graph
+            .add_node("organization")
+            .expect("the fixture adds a node with a registered kind");
+        let commune = graph
+            .add_node("community")
+            .expect("the fixture adds a node with a registered kind");
         (graph, people, rival, commune)
     }
 
@@ -163,7 +171,8 @@ mod tests {
         // Santiago de María: nobody stands inside anything, and the
         // repression suppresses. Not a coded exception — an empty count.
         let (graph, people, ..) = population(10);
-        let measured = measure(&graph, &people, "protection", "membership").unwrap();
+        let measured = super::measure(&graph, &people, "protection", "membership")
+            .expect("the fixture call `measure` succeeds for the authored inputs");
         assert!(measured.protected_fraction.abs() < 1e-12);
         assert!(measured.interpreted_fraction.abs() < 1e-12);
         assert!(measured.total().abs() < 1e-12);
@@ -175,9 +184,12 @@ mod tests {
         // framed for those inside a community structure.
         let (mut graph, people, _rival, commune) = population(10);
         for person in people.iter().take(6) {
-            graph.add_edge("membership", commune, *person, 1.0).unwrap();
+            graph
+                .add_edge("membership", commune, *person, 1.0)
+                .expect("the fixture graph admits the authored edge");
         }
-        let measured = measure(&graph, &people, "protection", "membership").unwrap();
+        let measured = super::measure(&graph, &people, "protection", "membership")
+            .expect("the fixture call `measure` succeeds for the authored inputs");
         assert!(measured.protected_fraction.abs() < 1e-12);
         assert!((measured.interpreted_fraction - 0.6).abs() < 1e-12);
         assert!((measured.total() - 0.6).abs() < 1e-12);
@@ -187,9 +199,12 @@ mod tests {
     fn protection_alone_backfires() {
         let (mut graph, people, rival, _commune) = population(10);
         for person in people.iter().take(3) {
-            graph.add_edge("protection", rival, *person, 1.0).unwrap();
+            graph
+                .add_edge("protection", rival, *person, 1.0)
+                .expect("the fixture graph admits the authored edge");
         }
-        let measured = measure(&graph, &people, "protection", "membership").unwrap();
+        let measured = super::measure(&graph, &people, "protection", "membership")
+            .expect("the fixture call `measure` succeeds for the authored inputs");
         assert!((measured.protected_fraction - 0.3).abs() < 1e-12);
         assert!(measured.interpreted_fraction.abs() < 1e-12);
     }
@@ -202,10 +217,15 @@ mod tests {
         // population it is a fraction of.
         let (mut graph, people, rival, commune) = population(4);
         for person in &people {
-            graph.add_edge("protection", rival, *person, 1.0).unwrap();
-            graph.add_edge("membership", commune, *person, 1.0).unwrap();
+            graph
+                .add_edge("protection", rival, *person, 1.0)
+                .expect("the fixture graph admits the authored edge");
+            graph
+                .add_edge("membership", commune, *person, 1.0)
+                .expect("the fixture graph admits the authored edge");
         }
-        let measured = measure(&graph, &people, "protection", "membership").unwrap();
+        let measured = super::measure(&graph, &people, "protection", "membership")
+            .expect("the fixture call `measure` succeeds for the authored inputs");
         assert!(
             (measured.protected_fraction - 1.0).abs() < 1e-12,
             "all four are protected"
@@ -225,12 +245,17 @@ mod tests {
         // Disjoint halves: 2 protected, 2 interpreted, 1 neither.
         let (mut graph, people, rival, commune) = population(5);
         for person in people.iter().take(2) {
-            graph.add_edge("protection", rival, *person, 1.0).unwrap();
+            graph
+                .add_edge("protection", rival, *person, 1.0)
+                .expect("the fixture graph admits the authored edge");
         }
         for person in people.iter().skip(2).take(2) {
-            graph.add_edge("membership", commune, *person, 1.0).unwrap();
+            graph
+                .add_edge("membership", commune, *person, 1.0)
+                .expect("the fixture graph admits the authored edge");
         }
-        let measured = measure(&graph, &people, "protection", "membership").unwrap();
+        let measured = super::measure(&graph, &people, "protection", "membership")
+            .expect("the fixture call `measure` succeeds for the authored inputs");
         assert!((measured.protected_fraction - 0.4).abs() < 1e-12);
         assert!((measured.interpreted_fraction - 0.4).abs() < 1e-12);
         assert!((measured.total() - 0.8).abs() < 1e-12);
@@ -241,7 +266,8 @@ mod tests {
         // Returning 0.0 here would read as "this repression was safe", which
         // is the opposite of what an empty population means.
         let (graph, ..) = population(3);
-        let err = measure(&graph, &[], "protection", "membership").unwrap_err();
+        let err = super::measure(&graph, &[], "protection", "membership")
+            .expect_err("the fixture call `measure` fails for the authored inputs");
         assert!(err.message.contains("undefined"), "{}", err.message);
     }
 
@@ -252,7 +278,8 @@ mod tests {
         let (graph, people, ..) = population(3);
         let mut affected = people;
         affected.push(NodeId(999));
-        let err = measure(&graph, &affected, "protection", "membership").unwrap_err();
+        let err = super::measure(&graph, &affected, "protection", "membership")
+            .expect_err("the fixture call `measure` fails for the authored inputs");
         assert!(
             err.message.contains("never reads as unaffiliated"),
             "{}",

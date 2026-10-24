@@ -1,8 +1,20 @@
 //! Current native service receipt partitions; state-dependent causality stays in the engine.
-use super::monetary_receipt::{account, account_parts};
-use super::{MaterialWorldError, ReceiptCursor};
+use super::monetary_receipt;
+use super::MaterialWorldError;
+use super::ReceiptCursor;
 use babylon_kernel::currency::Currency;
-use babylon_material_circuit::*;
+use babylon_material_circuit::FinalDemandPrincipalId;
+use babylon_material_circuit::GoodId;
+use babylon_material_circuit::HouseholdServiceReceipt;
+use babylon_material_circuit::MaterialCircuitError;
+use babylon_material_circuit::OrderId;
+use babylon_material_circuit::ProcessId;
+use babylon_material_circuit::ServiceMarketReceipt;
+use babylon_material_circuit::ServiceOutputReceipt;
+use babylon_material_circuit::ServicePerformanceReceipt;
+use babylon_material_circuit::ServicePriceDecision;
+use babylon_material_circuit::SiteId;
+use babylon_material_circuit::UnitId;
 pub(super) const PERFORMANCE_BYTES: usize = 233;
 pub(super) const HOUSEHOLD_BYTES: usize = 144;
 pub(super) const MARKET_BYTES: usize = 233;
@@ -55,7 +67,7 @@ pub(super) fn encode_performance(
         b.extend_from_slice(&r.period.to_be_bytes());
         b.extend_from_slice(&r.order_id.as_bytes());
         b.extend_from_slice(&r.provider_site_id.as_bytes());
-        let (tag, id) = account_parts(r.buyer);
+        let (tag, id) = monetary_receipt::account_parts(r.buyer);
         b.push(tag);
         b.extend_from_slice(&id);
         b.extend_from_slice(&r.good_id.as_bytes());
@@ -82,7 +94,7 @@ pub(super) fn decode_performance(
     let order_id = OrderId::from_bytes(c.take()?);
     let provider_site_id = SiteId::from_bytes(c.take()?);
     let [tag] = c.take()?;
-    let buyer = account(tag, c.take()?)?;
+    let buyer = monetary_receipt::account(tag, c.take()?)?;
     let r = ServicePerformanceReceipt {
         period: period_value,
         order_id,
@@ -270,6 +282,7 @@ pub(super) fn decode_output(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use babylon_material_circuit::AccountId;
     #[test]
     fn all_service_encoders_roundtrip_their_current_typed_receipts() {
         let money = Currency::from_micro_units;
@@ -329,10 +342,14 @@ mod tests {
             expired_cost: money(6),
         };
         let mut bytes = vec![];
-        encode_performance(std::slice::from_ref(&performance), 1, &mut bytes).unwrap();
-        encode_households(std::slice::from_ref(&household), 1, &mut bytes).unwrap();
-        encode_markets(std::slice::from_ref(&market), 1, &mut bytes).unwrap();
-        encode_outputs(std::slice::from_ref(&output), 1, &mut bytes).unwrap();
+        encode_performance(std::slice::from_ref(&performance), 1, &mut bytes)
+            .expect("the fixture value encodes to its canonical bytes");
+        encode_households(std::slice::from_ref(&household), 1, &mut bytes)
+            .expect("the fixture value encodes to its canonical bytes");
+        encode_markets(std::slice::from_ref(&market), 1, &mut bytes)
+            .expect("the fixture value encodes to its canonical bytes");
+        encode_outputs(std::slice::from_ref(&output), 1, &mut bytes)
+            .expect("the fixture value encodes to its canonical bytes");
         assert_eq!(
             bytes.len(),
             PERFORMANCE_BYTES + HOUSEHOLD_BYTES + MARKET_BYTES + OUTPUT_BYTES
@@ -341,10 +358,26 @@ mod tests {
             bytes: &bytes,
             position: 0,
         };
-        assert_eq!(decode_performance(&mut cursor, 1).unwrap(), performance);
-        assert_eq!(decode_household(&mut cursor, 1).unwrap(), household);
-        assert_eq!(decode_market(&mut cursor, 1).unwrap(), market);
-        assert_eq!(decode_output(&mut cursor, 1).unwrap(), output);
+        assert_eq!(
+            decode_performance(&mut cursor, 1)
+                .expect("the canonical bytes decode into the declared type"),
+            performance
+        );
+        assert_eq!(
+            decode_household(&mut cursor, 1)
+                .expect("the canonical bytes decode into the declared type"),
+            household
+        );
+        assert_eq!(
+            decode_market(&mut cursor, 1)
+                .expect("the canonical bytes decode into the declared type"),
+            market
+        );
+        assert_eq!(
+            decode_output(&mut cursor, 1)
+                .expect("the canonical bytes decode into the declared type"),
+            output
+        );
         assert_eq!(cursor.position, bytes.len());
     }
 }
@@ -352,6 +385,37 @@ mod tests {
 #[cfg(test)]
 mod engine_test {
     use super::*;
+    use babylon_material_circuit;
+    use babylon_material_circuit::AccountId;
+    use babylon_material_circuit::AidBook;
+    use babylon_material_circuit::CapacityRow;
+    use babylon_material_circuit::CapacitySupply;
+    use babylon_material_circuit::CashAccount;
+    use babylon_material_circuit::CircuitAccounting;
+    use babylon_material_circuit::CommodityDefinition;
+    use babylon_material_circuit::CommodityKind;
+    use babylon_material_circuit::EmploymentTerms;
+    use babylon_material_circuit::FinalDemandPrincipal;
+    use babylon_material_circuit::FinancialInstitutions;
+    use babylon_material_circuit::HistoricalCostBook;
+    use babylon_material_circuit::HouseholdTimeAccounting;
+    use babylon_material_circuit::LaborCapacityRow;
+    use babylon_material_circuit::LaborCoefficient;
+    use babylon_material_circuit::LogisticsNodeId;
+    use babylon_material_circuit::MaterialCircuitState;
+    use babylon_material_circuit::MaterialPurchase;
+    use babylon_material_circuit::MonetaryBook;
+    use babylon_material_circuit::MonetaryCircuit;
+    use babylon_material_circuit::ProcessOutput;
+    use babylon_material_circuit::ProductionCommitment;
+    use babylon_material_circuit::ServiceConnection;
+    use babylon_material_circuit::ServiceOrder;
+    use babylon_material_circuit::ServiceStage;
+    use babylon_material_circuit::SiteLogisticsNode;
+    #[allow(
+        clippy::too_many_lines,
+        reason = "one fixture assembles the whole conserved circuit so the decoder test starts from a real state"
+    )]
     fn opening() -> MaterialCircuitState {
         let site = SiteId::from_bytes([1; 32]);
         let person = FinalDemandPrincipalId::from_bytes([2; 32]);
@@ -370,15 +434,16 @@ mod engine_test {
                 cash: money(3),
             },
         ])
-        .unwrap();
-        let costs = HistoricalCostBook::open(&book, vec![], vec![], vec![], vec![]).unwrap();
+        .expect("the fixture opens the authored source");
+        let costs = HistoricalCostBook::open(&book, vec![], vec![], vec![], vec![])
+            .expect("the fixture opens the authored source");
         MaterialCircuitState {
             period: 1,
             capacity_supply: CapacitySupply::FiniteSchedule,
             accounting: CircuitAccounting::Monetary(Box::new(MonetaryCircuit {
-                aid: babylon_material_circuit::AidBook::default(),
-                household_time: babylon_material_circuit::HouseholdTimeAccounting::NotModeled,
-                financial: babylon_material_circuit::FinancialInstitutions::empty(),
+                aid: AidBook::default(),
+                household_time: HouseholdTimeAccounting::NotModeled,
+                financial: FinancialInstitutions::empty(),
                 member_labor: vec![babylon_material_circuit::MemberLaborCapacityRow {
                     member_id: babylon_material_circuit::StaffingMemberId::from_bytes(
                         site.as_bytes(),
@@ -460,7 +525,9 @@ mod engine_test {
             handling_coefficients: vec![],
             final_demand_principals: vec![FinalDemandPrincipal {
                 id: person,
-                location: "county:26163".parse().unwrap(),
+                location: "county:26163"
+                    .parse()
+                    .expect("the authored literal parses as the declared type"),
             }],
             final_demand_orders: vec![],
             maintenance_binding: None,
@@ -471,7 +538,7 @@ mod engine_test {
     fn actual_service_close_roundtrips_the_complete_receipt_envelope() {
         let state = opening();
         let connection = &state.service_connections[0];
-        let (state, _) = admit_material_purchase(
+        let (state, _) = babylon_material_circuit::admit_material_purchase(
             &state,
             MaterialPurchase::Service(ServiceOrder {
                 order_id: OrderId::from_bytes([9; 32]),
@@ -484,10 +551,13 @@ mod engine_test {
             }),
             Currency::from_micro_units(2),
         )
-        .unwrap();
-        let result = advance_material_circuit(&state).unwrap();
-        let bytes = super::super::encode_material_receipts(1, &result).unwrap();
-        let decoded = super::super::decode_material_receipts(&bytes).unwrap();
+        .expect("the fixture admits the authored purchase");
+        let result = babylon_material_circuit::advance_material_circuit(&state)
+            .expect("the authored material state advances one period");
+        let bytes = super::super::encode_material_receipts(1, &result)
+            .expect("the fixture value encodes to its canonical bytes");
+        let decoded = super::super::decode_material_receipts(&bytes)
+            .expect("the canonical bytes decode into the declared type");
         assert_eq!(decoded.service_performance, result.service_performance);
         assert_eq!(decoded.service_outputs, result.service_outputs);
         assert_eq!(decoded.income, result.income);

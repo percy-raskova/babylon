@@ -1,9 +1,14 @@
 //! Source age controls reach the admitted material account, not only authoring text.
-use super::*;
+use babylon_kernel::economic_location::EconomicLocation;
+use babylon_material_circuit::HouseholdTimePolicy;
 use babylon_material_circuit::{CircuitAccounting, HouseholdNeedBasis, HouseholdTimeAccounting};
+use babylon_persistence::economic_catalog::EconomicHouseholdSeed;
+use babylon_persistence::economic_catalog::EconomicOpening;
+use babylon_persistence::national_economy::NationalGamePolicy;
+use std::collections::{BTreeMap, BTreeSet};
 
 pub(super) fn assert_time(opening: &EconomicOpening, policy: &NationalGamePolicy) {
-    let compiled = opening.compile().unwrap();
+    let compiled = opening.compile().expect("the authored scenario compiles");
     let CircuitAccounting::Monetary(economy) = &compiled.state.accounting else {
         panic!("national play needs funded household accounts");
     };
@@ -25,7 +30,9 @@ pub(super) fn assert_time(opening: &EconomicOpening, policy: &NationalGamePolicy
     for workplace in &opening.staffing {
         for member in &workplace.members {
             let count = workforce.entry(member.member.household_id()).or_default();
-            *count = count.checked_add(member.member.labor_force()).unwrap();
+            *count = count
+                .checked_add(member.member.labor_force())
+                .expect("the fixture arithmetic stays in range");
         }
     }
     let mut domestic_eligible = 0_u64;
@@ -41,7 +48,7 @@ pub(super) fn assert_time(opening: &EconomicOpening, policy: &NationalGamePolicy
         if matches!(household.location, EconomicLocation::County(_)) {
             domestic_eligible = domestic_eligible
                 .checked_add(time.eligible_persons)
-                .unwrap();
+                .expect("the fixture arithmetic stays in range");
             domestic_locations.insert(household.location);
         } else {
             external += 1;
@@ -50,7 +57,7 @@ pub(super) fn assert_time(opening: &EconomicOpening, policy: &NationalGamePolicy
                     * u128::from(policy.household_time.external_eligible_persons_bps)
                     / 10_000,
             )
-            .unwrap();
+            .expect("the fixture value fits the target range");
             assert_eq!(time.eligible_persons, designed.max(counted_force));
         }
     }
@@ -60,8 +67,8 @@ pub(super) fn assert_time(opening: &EconomicOpening, policy: &NationalGamePolicy
 }
 
 fn assert_household_time(
-    time: &babylon_material_circuit::HouseholdTimePolicy,
-    household: &babylon_persistence::economic_catalog::EconomicHouseholdSeed,
+    time: &HouseholdTimePolicy,
+    household: &EconomicHouseholdSeed,
     counted_force: u64,
     policy: &NationalGamePolicy,
 ) {
@@ -74,11 +81,11 @@ fn assert_household_time(
     assert!(
         counted_force
             .checked_mul(policy.work_hours_per_person)
-            .unwrap()
+            .expect("the fixture arithmetic stays in range")
             <= time
                 .eligible_persons
                 .checked_mul(time.hours_per_eligible_person)
-                .unwrap()
+                .expect("the fixture arithmetic stays in range")
     );
     let collective = household.households == 0;
     assert_eq!(

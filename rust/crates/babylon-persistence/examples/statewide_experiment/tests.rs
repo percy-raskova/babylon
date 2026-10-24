@@ -1,37 +1,51 @@
-use super::{
-    arguments::{self, Inputs},
-    hex,
-    report::{Candidate, Report},
-    run, synthetic, witness,
-};
-use babylon_kernel::content_digest::sha256_of;
+use super::arguments::Inputs;
+use super::report::{Candidate, Report};
+use super::{arguments, run, synthetic, witness};
+
+use babylon_kernel::content_digest;
 use std::collections::BTreeMap;
+use synthetic::SyntheticSources;
 
 fn input() -> (Inputs, Candidate) {
     let fixture = synthetic::load();
     let food = fixture.qualification["processes"]
         .as_array()
-        .unwrap()
+        .expect("the JSON fixture field is an array")
         .iter()
         .find(|row| row["family"] == "prepared_food")
-        .unwrap();
+        .expect("the fixture holds the searched element");
     let candidate = Candidate {
         capacity_key: "synthetic-shared-road".to_owned(),
         food_process: format!(
             "{}-{}-prepared_food",
-            food["county_geoid"].as_str().unwrap(),
-            food["sector_code"].as_str().unwrap()
+            food["county_geoid"]
+                .as_str()
+                .expect("the JSON fixture field is a string"),
+            food["sector_code"]
+                .as_str()
+                .expect("the JSON fixture field is a string")
         ),
         constrained_grams: 1_000,
         shortage_opening: 0,
     };
     let defines = include_str!("../../../../../content/scenarios/michigan/defines.toml").to_owned();
-    let qualification = serde_json::to_vec(&fixture.qualification).unwrap();
-    let physical = serde_json::to_vec(&fixture.physical).unwrap();
+    let qualification = serde_json::to_vec(&fixture.qualification)
+        .expect("the value serializes to canonical JSON bytes");
+    let physical = serde_json::to_vec(&fixture.physical)
+        .expect("the value serializes to canonical JSON bytes");
     let hashes = BTreeMap::from([
-        ("defines", hex(&sha256_of(defines.as_bytes()))),
-        ("qualification", hex(&sha256_of(&qualification))),
-        ("physical", hex(&sha256_of(&physical))),
+        (
+            "defines",
+            super::hex(&content_digest::sha256_of(defines.as_bytes())),
+        ),
+        (
+            "qualification",
+            super::hex(&content_digest::sha256_of(&qualification)),
+        ),
+        (
+            "physical",
+            super::hex(&content_digest::sha256_of(&physical)),
+        ),
     ]);
     (
         Inputs {
@@ -47,7 +61,8 @@ fn input() -> (Inputs, Candidate) {
 #[test]
 fn synthetic_candidates_require_independent_committed_economic_consequences() {
     let (inputs, candidate) = input();
-    let mut report = run::experiment(&inputs, &candidate).unwrap();
+    let mut report = run::experiment(&inputs, &candidate)
+        .expect("the fixture call `experiment` succeeds for the authored inputs");
     assert!(report.qualified, "{:?}", report.witnesses.missing);
     assert_eq!(report.evidence_scope, "synthetic focused test only");
     assert!(!report.persisted);
@@ -70,26 +85,39 @@ fn synthetic_candidates_require_independent_committed_economic_consequences() {
             assert!(period.receipt_bytes > 0);
         }
     }
-    let freight = report.witnesses.freight.as_ref().unwrap();
+    let freight = report
+        .witnesses
+        .freight
+        .as_ref()
+        .expect("the fixture set the optional field before this read");
     assert!(freight.downstream_output.period > freight.dispatch_period);
     assert!(freight.downstream_workforce.period > freight.dispatch_period);
     assert!(!freight.downstream_output.supply_chain_routes.is_empty());
     assert!(!freight.downstream_workforce.supply_chain_routes.is_empty());
     assert_eq!(
-        report.witnesses.packaging.as_ref().unwrap().process,
+        report
+            .witnesses
+            .packaging
+            .as_ref()
+            .expect("the fixture set the optional field before this read")
+            .process,
         candidate.food_process
     );
-    let sources = synthetic::SyntheticSources::create();
+    let sources = SyntheticSources::create();
     let destination = sources.path("candidate-report.json");
-    arguments::write_report(&destination, &report).unwrap();
-    let bytes = std::fs::read(&destination).unwrap();
+    arguments::write_report(&destination, &report)
+        .expect("the fixture sink accepts the authored bytes");
+    let bytes = std::fs::read(&destination).expect("the fixture reader returns its authored facts");
     assert!(bytes.len() <= arguments::MAX_REPORT_BYTES);
     assert!(arguments::write_report(&destination, &report).is_err());
-    assert_eq!(std::fs::read(&destination).unwrap(), bytes);
+    assert_eq!(
+        std::fs::read(&destination).expect("the fixture reader returns its authored facts"),
+        bytes
+    );
     eprintln!(
         "Synthetic 4×16 committed candidate report: {} bytes; {}",
         bytes.len(),
-        serde_json::to_string(&report.witnesses).unwrap()
+        serde_json::to_string(&report.witnesses).expect("the fixture value formats as text")
     );
 
     refuse_partial_witnesses(&mut report);
@@ -109,7 +137,11 @@ fn refuse_partial_witnesses(report: &mut Report) {
                 .collect::<BTreeMap<_, _>>()
         })
         .collect();
-    let freight_periods = &mut report.cases.get_mut(run::FREIGHT).unwrap().periods;
+    let freight_periods = &mut report
+        .cases
+        .get_mut(run::FREIGHT)
+        .expect("the fixture holds the addressed entry")
+        .periods;
     let actual_staffing: Vec<_> = freight_periods
         .iter_mut()
         .zip(&baseline_staffing)
@@ -126,11 +158,14 @@ fn refuse_partial_witnesses(report: &mut Report) {
                 .collect::<BTreeMap<_, _>>()
         })
         .collect();
-    assert!(witness::find(report).unwrap().freight.is_none());
+    assert!(witness::find(report)
+        .expect("the fixture holds the searched element")
+        .freight
+        .is_none());
     for (period, actual) in report
         .cases
         .get_mut(run::FREIGHT)
-        .unwrap()
+        .expect("the fixture holds the addressed entry")
         .periods
         .iter_mut()
         .zip(actual_staffing)
@@ -153,7 +188,7 @@ fn refuse_partial_witnesses(report: &mut Report) {
     for (period, baseline) in report
         .cases
         .get_mut(run::FREIGHT)
-        .unwrap()
+        .expect("the fixture holds the addressed entry")
         .periods
         .iter_mut()
         .zip(&baseline_output)
@@ -162,13 +197,13 @@ fn refuse_partial_witnesses(report: &mut Report) {
             process.output_units = baseline[key];
         }
     }
-    let missing_output = witness::find(report).unwrap();
+    let missing_output = witness::find(report).expect("the fixture holds the searched element");
     assert!(missing_output.freight.is_none());
     assert!(missing_output.packaging.is_some());
     for (period, baseline) in report
         .cases
         .get_mut(run::PACKAGING)
-        .unwrap()
+        .expect("the fixture holds the addressed entry")
         .periods
         .iter_mut()
         .zip(&baseline_output)
@@ -176,10 +211,13 @@ fn refuse_partial_witnesses(report: &mut Report) {
         period
             .processes
             .get_mut(&report.candidate.food_process)
-            .unwrap()
+            .expect("the fixture holds the addressed entry")
             .output_units = baseline[&report.candidate.food_process];
     }
-    assert!(witness::find(report).unwrap().packaging.is_none());
+    assert!(witness::find(report)
+        .expect("the fixture holds the searched element")
+        .packaging
+        .is_none());
 }
 
 #[test]
@@ -189,10 +227,10 @@ fn candidate_refuses_mixed_source_pins_and_nondecreasing_interventions() {
         .physical
         .terminal_source_pins
         .insert("defines_sha256".to_owned(), "00".repeat(32))
-        .unwrap();
+        .expect("the fixture call `insert` succeeds for the authored inputs");
     let error = run::experiment(&inputs, &candidate)
         .err()
-        .unwrap()
+        .expect("the fixture call `err` succeeds for the authored inputs")
         .to_string();
     assert!(error.contains("different defines bytes"), "{error}");
     inputs
@@ -202,7 +240,7 @@ fn candidate_refuses_mixed_source_pins_and_nondecreasing_interventions() {
     candidate.constrained_grams = 0;
     let error = run::experiment(&inputs, &candidate)
         .err()
-        .unwrap()
+        .expect("the fixture call `err` succeeds for the authored inputs")
         .to_string();
     assert!(
         error.contains("capacity must be positive and strictly below"),
@@ -212,7 +250,7 @@ fn candidate_refuses_mixed_source_pins_and_nondecreasing_interventions() {
     candidate.shortage_opening = u64::MAX;
     let error = run::experiment(&inputs, &candidate)
         .err()
-        .unwrap()
+        .expect("the fixture call `err` succeeds for the authored inputs")
         .to_string();
     assert!(error.contains("stock must be strictly below"), "{error}");
 }

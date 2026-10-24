@@ -1,12 +1,22 @@
-use super::*;
+use super::artifact;
+use super::artifact::{
+    NationalResidentWorkforceReference, ResidentWorkforceReferenceError, ARTIFACT,
+};
+use crate::national_counties;
 use crate::national_counties::ObservationStatus;
+use crate::national_resident_workforce::parse;
+use crate::national_resident_workforce::SourceSex;
+use crate::national_resident_workforce::WorkerClass;
 
 type Error = ResidentWorkforceReferenceError;
 fn source() -> String {
-    decode(ARTIFACT).unwrap()
+    artifact::decode(ARTIFACT).expect("the committed canonical bytes decode")
 }
 fn parse(text: &str) -> Result<NationalResidentWorkforceReference, Error> {
-    parse::capture(text, national_county_reference().unwrap())
+    parse::capture(
+        text,
+        national_counties::national_county_reference().expect("the county reference fixture loads"),
+    )
 }
 fn edit_first(text: &str, edit: impl FnOnce(&mut Vec<String>)) -> String {
     let mut lines: Vec<_> = text.lines().map(str::to_owned).collect();
@@ -32,7 +42,11 @@ fn nested_controls_and_existing_resident_control_are_independent_checks() {
     let wrong_total = edit_first(&original, |fields| {
         for line in [1, 2, 3, 4] {
             let index = 1 + (line - 1) * 6;
-            let increment = (fields[index].parse::<u64>().unwrap() + 1).to_string();
+            let increment = (fields[index]
+                .parse::<u64>()
+                .expect("the fixture world holds the addressed component")
+                + 1)
+            .to_string();
             replace_cell(fields, line, false, [&increment, &increment, "published"]);
         }
     });
@@ -50,7 +64,7 @@ fn unavailable_leaf_keeps_raw_status_and_cannot_be_replaced_with_zero() {
         );
         replace_cell(fields, 10, true, ["", "-555555555", "controlled_estimate"]);
     });
-    let reference = parse(&changed).unwrap();
+    let reference = parse(&changed).expect("the authored literal parses as the declared type");
     let row = &reference.counties()[0];
     assert_eq!(row.persons(WorkerClass::UnincorporatedSelfEmployed), None);
     let observation = row.observation(WorkerClass::UnincorporatedSelfEmployed, SourceSex::Male);

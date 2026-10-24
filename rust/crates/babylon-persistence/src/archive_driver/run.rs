@@ -3,15 +3,21 @@ use std::collections::VecDeque;
 use std::sync::mpsc::{Receiver, TryRecvError};
 use std::time::{Duration, Instant};
 
-use postgres::{fallible_iterator::FallibleIterator as _, Client, Config, NoTls};
+use postgres::fallible_iterator::FallibleIterator as _;
+use postgres::{Client, Config, NoTls};
 
 use super::{ArchiveDriverEvent, ArchiveDriverFailure};
-use crate::archive::database;
+use crate::archive;
+use crate::identity::CampaignId;
+use crate::ArchiveKnowledge;
+use crate::ArchiveProducerOutcome;
+use crate::PendingArchiveReceipt;
 use crate::{
-    identity::CampaignId, ArchiveWorker, ArchiveWorkerCancellation,
-    CompositeArchiveDossierProducer, PostgresFailureClass, SemanticArchiveError,
-    ARCHIVE_WAKEUP_CHANNEL,
+    ArchiveWorker, ArchiveWorkerCancellation, CompositeArchiveDossierProducer,
+    PostgresFailureClass, SemanticArchiveError, ARCHIVE_WAKEUP_CHANNEL,
 };
+use postgres::Notification;
+use uuid::Uuid;
 
 const WAIT: Duration = Duration::from_millis(125);
 const MAX_RETRY: Duration = Duration::from_secs(2);
@@ -53,12 +59,12 @@ fn listener(config: &Config) -> Result<Client, ArchiveDriverFailure> {
     listener_config.application_name("babylon-archive-listener-v1");
     let mut client = listener_config
         .connect(NoTls)
-        .map_err(|error| classify(database("connect Archive listener", &error)))?;
+        .map_err(|error| classify(archive::database("connect Archive listener", &error)))?;
     crate::archive_wakeup::validate(&mut client).map_err(classify)?;
     // Autocommit completes registration before the worker's fresh catch-up reads.
     client
         .batch_execute("LISTEN babylon_archive_wakeup_v1")
-        .map_err(|error| classify(database("register Archive listener", &error)))?;
+        .map_err(|error| classify(archive::database("register Archive listener", &error)))?;
     Ok(client)
 }
 
@@ -68,7 +74,7 @@ fn notification(client: &mut Client) -> Result<bool, ArchiveDriverFailure> {
         .notifications()
         .timeout_iter(WAIT)
         .next()
-        .map_err(|error| classify(database("wait for Archive wakeup", &error)))?;
+        .map_err(|error| classify(archive::database("wait for Archive wakeup", &error)))?;
     let mut wake = first.as_ref().is_some_and(is_hint);
     if first.is_none() && client.is_closed() {
         return Err(ArchiveDriverFailure::Disconnected);
@@ -79,7 +85,7 @@ fn notification(client: &mut Client) -> Result<bool, ArchiveDriverFailure> {
         for _ in 1..MAX_HINTS {
             match buffered
                 .next()
-                .map_err(|error| classify(database("coalesce Archive wakeups", &error)))?
+                .map_err(|error| classify(archive::database("coalesce Archive wakeups", &error)))?
             {
                 Some(value) => wake |= is_hint(&value),
                 None => break,
@@ -89,7 +95,7 @@ fn notification(client: &mut Client) -> Result<bool, ArchiveDriverFailure> {
     Ok(wake)
 }
 
-fn is_hint(value: &postgres::Notification) -> bool {
+fn is_hint(value: &Notification) -> bool {
     value.channel() == ARCHIVE_WAKEUP_CHANNEL && value.payload().is_empty()
 }
 
@@ -262,11 +268,11 @@ pub(super) fn sweep_with_factory<P: crate::ArchiveDossierProducer, T>(
     {
         fn produce(
             &self,
-            campaign: uuid::Uuid,
-            receipt: &crate::PendingArchiveReceipt,
-            knowledge: &crate::ArchiveKnowledge,
+            campaign: Uuid,
+            receipt: &PendingArchiveReceipt,
+            knowledge: &ArchiveKnowledge,
             page_budget: usize,
-        ) -> Result<crate::ArchiveProducerOutcome, SemanticArchiveError> {
+        ) -> Result<ArchiveProducerOutcome, SemanticArchiveError> {
             self.cancellation.check()?;
             let mut owner = self.owner.borrow_mut();
             if owner.is_none() {

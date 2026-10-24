@@ -1,6 +1,29 @@
 //! Opening data copied from the engine's eight-period control; transitions use the real engine.
 use babylon_kernel::currency::Currency;
-use babylon_material_circuit::*;
+use babylon_material_circuit::AidBook;
+use babylon_material_circuit::CorridorId;
+use babylon_material_circuit::FinalDemandPrincipalId;
+use babylon_material_circuit::FinancialInstitutions;
+use babylon_material_circuit::GoodId;
+use babylon_material_circuit::HistoricalCostBook;
+use babylon_material_circuit::HouseholdTimeAccounting;
+use babylon_material_circuit::LaborCompensation;
+use babylon_material_circuit::LogisticsNodeId;
+use babylon_material_circuit::ProcessId;
+use babylon_material_circuit::RouteId;
+use babylon_material_circuit::SiteId;
+use babylon_material_circuit::StaffingMemberId;
+use babylon_material_circuit::UnitId;
+use babylon_material_circuit::{
+    AccountId, AttendancePlan, CapacityRow, CapacitySupply, CashAccount, CircuitAccounting,
+    CommodityDefinition, CorridorCapacity, EmploymentTerms, FinalDemandPrincipal, HouseholdCohort,
+    HouseholdNeed, HouseholdPurchasePolicy, HouseholdStock, InputOutputCoefficient, InventoryRow,
+    LaborCapacityRow, LaborCoefficient, MaterialCircuitState, MerchantHandling,
+    MerchantHandlingCoefficient, MerchantRole, MonetaryBook, MonetaryCircuit, PricePolicy,
+    ProcessOutput, ProductionCommitment, ProductionDemandPolicy, RecurringEconomy,
+    ReplenishmentPolicy, RouteStage, RouteStageCapacity, SellerOffer, SiteLogisticsNode,
+    StockCarryingValue, SupplierRoute, SupplierTransport,
+};
 
 fn site(id: u8) -> SiteId {
     SiteId::from_bytes([id; 32])
@@ -138,27 +161,25 @@ fn accounting() -> CircuitAccounting {
                 cash: money(0),
             },
         ])
-        .unwrap();
+        .expect("the fixture opens the authored source");
         MonetaryCircuit {
-            aid: babylon_material_circuit::AidBook::default(),
-            household_time: babylon_material_circuit::HouseholdTimeAccounting::NotModeled,
-            financial: babylon_material_circuit::FinancialInstitutions::empty(),
+            aid: AidBook::default(),
+            household_time: HouseholdTimeAccounting::NotModeled,
+            financial: FinancialInstitutions::empty(),
             member_labor: (1..=9)
                 .flat_map(|period| {
                     [(1, 4), (2, 8), (3, 4)]
                         .into_iter()
                         .map(move |(owner, available_hours)| {
                             babylon_material_circuit::MemberLaborCapacityRow {
-                                member_id: babylon_material_circuit::StaffingMemberId::from_bytes(
-                                    site(owner).as_bytes(),
-                                ),
+                                member_id: StaffingMemberId::from_bytes(site(owner).as_bytes()),
                                 period,
                                 available_hours,
                             }
                         })
                 })
                 .collect(),
-            costs: babylon_material_circuit::HistoricalCostBook::open(
+            costs: HistoricalCostBook::open(
                 &book,
                 [
                     (AccountId::Site(site(1)), good(0), 0),
@@ -178,19 +199,17 @@ fn accounting() -> CircuitAccounting {
                 vec![],
                 vec![],
             )
-            .unwrap(),
+            .expect("the fixture opens the authored source"),
             book,
             recurring: Some(Box::new(recurring_policies())),
             employment: [1, 2, 3]
                 .into_iter()
                 .map(|owner| EmploymentTerms {
-                    member_id: babylon_material_circuit::StaffingMemberId::from_bytes(
-                        (site(owner)).as_bytes(),
-                    ),
+                    member_id: StaffingMemberId::from_bytes((site(owner)).as_bytes()),
                     site_id: site(owner),
                     unit_id: hours(),
                     payee: household(),
-                    compensation: babylon_material_circuit::LaborCompensation::Wage(money(1)),
+                    compensation: LaborCompensation::Wage(money(1)),
                 })
                 .collect(),
         }
@@ -261,6 +280,10 @@ fn labor_coefficients() -> Vec<LaborCoefficient> {
         .collect()
 }
 
+#[allow(
+    clippy::too_many_lines,
+    reason = "`opening` keeps one authored boundary's fixture and assertions together"
+)]
 pub(crate) fn opening() -> MaterialCircuitState {
     MaterialCircuitState {
         period: 1,
@@ -342,7 +365,9 @@ pub(crate) fn opening() -> MaterialCircuitState {
             .collect(),
         merchants: vec![MerchantHandling {
             site_id: site(3),
-            location: "county:26163".parse().unwrap(),
+            location: "county:26163"
+                .parse()
+                .expect("the authored literal parses as the declared type"),
             role: MerchantRole::Retail,
             capacity_id: corridor(3),
             labor_unit_id: hours(),
@@ -355,7 +380,9 @@ pub(crate) fn opening() -> MaterialCircuitState {
         }],
         final_demand_principals: vec![FinalDemandPrincipal {
             id: household(),
-            location: "county:26163".parse().unwrap(),
+            location: "county:26163"
+                .parse()
+                .expect("the authored literal parses as the declared type"),
         }],
         final_demand_orders: vec![],
         maintenance_binding: None,

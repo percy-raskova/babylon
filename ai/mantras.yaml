@@ -2,10 +2,10 @@
 # Guiding principles for development decisions
 
 meta:
-  version: "2.0.2"
-  updated: "2026-09-13"
+  version: "2.0.3"
+  updated: "2026-10-24"
   purpose: "Capture recurring insights as memorable principles"
-  authority: "CONSTITUTION.md v4.2.0"
+  authority: "CONSTITUTION.md v4.3.0"
   product: "entertainment-first emergent political-economy game"
   forecast: false
   scientific_reproduction: false
@@ -18,7 +18,7 @@ meta:
     Durable Michigan observer with scoped Archive dossiers and historical
     inspection; no player action
   next_gates:
-    - "PostgreSQL/H3/Archive decision-loop slice"
+    - "Durable campaign/H3/Archive decision-loop slice"
     - "Productive & distributive circuit"
     - "Player agency"
     - "COVID emergence benchmark"

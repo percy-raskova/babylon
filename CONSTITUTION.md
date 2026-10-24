@@ -4,7 +4,7 @@
 <!-- vale ste.NounClusters = NO -->
 <!-- vale Vale.Spelling = NO -->
 
-**Version 4.2.0**
+**Version 4.3.0**
 
 **Ratified:** 2026-08-22
 
@@ -134,6 +134,8 @@ Required inputs that are absent or invalid must fail loudly. A subsystem must
 not silently skip its work, substitute a plausible default, or leave a
 declared guardrail inactive.
 
+<!-- Vale: the ratified four-week Article V wording is kept verbatim. -->
+<!-- vale off -->
 The Rust engine adjudicates one four-week tick, exactly 28 days, as a pure
 transformation over a working copy. Each period has one causal traversal and
 one atomic commit, with no internal weekly substeps. Thirteen periods span
@@ -142,12 +144,23 @@ BSL supplies governed rules, shocks, policies, and action
 semantics as content. Database access, wall-clock time, narration, rendering,
 and network services must not take part in adjudication. A failed rule aborts
 the whole working copy. No partial tick becomes visible.
+<!-- vale on -->
 
-Postgres durability occurs only after adjudication. A committed tick records
-the graph, auxiliary registers, action receipts, events, digests, and combined
-world hash as one atomic envelope. The durable tick advances only after the
-transaction acknowledges it. SQLite and pinned columnar artifacts remain
-reference-build inputs, never mutable campaign state.
+<!-- Vale: Article V wording is ratified by Amendment AL and stays verbatim. -->
+<!-- vale off -->
+Publication of a completed economic period occurs only after detached
+adjudication. One Rust campaign owner commits the current world, required
+causal registers, accepted-input consumption, choice and player receipts,
+knowledge changes, and durable projection work as one atomic SQLite
+transaction. The durable tick advances only after the transaction acknowledges
+it. Command acceptance and bounded nonmechanical service operations may commit
+independently under their declared contracts; they cannot advance the tick,
+adjudicate effects or grant unearned knowledge. Pinned reference artifacts
+remain immutable inputs. Historical engineering detail may be bounded under
+the declared retention contract; current causal state, permanent player
+history, required choice evidence and deterministic replay inputs must remain
+sufficient for their declared consumers.
+<!-- vale on -->
 
 State is data, the engine is transformation, and clients are projections. AI
 can observe, retrieve knowledge allowed by fog, and narrate with citations. AI
@@ -367,6 +380,8 @@ simulation interval changes. Conservation, deferred material effects,
 determinism, and atomic publication remain binding. This amendment adds no
 mathematical primitive and changes no reserved theoretical commitment.
 
+<!-- Vale: the ratified Amendment AK wording is kept verbatim. -->
+<!-- vale off -->
 New campaign content binds the duration into its admitted identity.
 Incompatible weekly campaigns remain preserved but cannot resume under the
 new interval. Historical ADRs, contracts, and codec vectors retain their
@@ -379,11 +394,46 @@ executable and native acceptance require separate evidence.
 AK advances the Constitution from v4.1.0 to v4.2.0. Its behavioral contract is
 `contracts/simulation_interval_v1.yaml`; its transition record is
 `ai/decisions/ADR257_four_week_simulation_interval.yaml`.
+<!-- vale on -->
+
+### Amendment AL — Embedded SQLite Campaign Owner and Bounded Technical Retention
+
+Amendment AL ratifies one embedded SQLite campaign owner as Article V's durable
+publication boundary. One Rust process commits the current world and its
+required causal registers. It also commits accepted-input consumption, choice
+and player receipts, knowledge changes, and durable projection work in one
+atomic transaction. Command acceptance and bounded nonmechanical service
+operations can commit under their declared contracts. They cannot advance the
+tick, adjudicate effects, or grant unearned knowledge. Pinned reference
+artifacts remain immutable inputs.
+
+AL renames the governed Gate 3 identity to "Durable campaign/H3/Archive
+decision-loop slice". Its decision-loop and Archive requirements remain
+unchanged. The rename records the backend decision. It does not close the gate.
+
+The declared retention contract can bound historical engineering detail.
+Recent technical detail keeps the latest thirteen periods. Historical
+checkpoints keep the permanent opening and the latest two completed
+thirteen-period checkpoints. Current causal state, permanent player history,
+required choice evidence, and deterministic replay inputs must remain enough
+for their declared consumers. Retention cannot erase a living commitment.
+It cannot substitute a projection for required evidence.
+
+AL adds no mathematical primitive, weakens no prohibition, and changes no
+reserved theoretical commitment. Geography stays fixed. Native hyperedges,
+exact choice receipts, deterministic identity, detached adjudication, and
+explicit errors remain binding. The store refuses incompatible persisted
+formats with a specific error. It authorizes no dual-write or compatibility
+runtime.
+
+AL advances the Constitution from v4.2.0 to v4.3.0. Its transition record is
+`ai/decisions/ADR287_embedded_sqlite_campaign_owner_and_compact_state.yaml`.
+Executable and native acceptance remain open until separate evidence exists.
 
 ---
 
-**Version:** 4.2.0
+**Version:** 4.3.0
 
 **Originally ratified:** 2026-01-30
 
-**Last amended:** 2026-09-06
+**Last amended:** 2026-10-24

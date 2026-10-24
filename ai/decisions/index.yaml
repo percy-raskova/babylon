@@ -1,6 +1,6 @@
 meta:
-  version: 1.87.0
-  updated: '2026-08-26'
+  version: 1.88.0
+  updated: '2026-10-24'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
   # ADR NUMBER ALLOCATION (controller ruling 2026-07-21, v1.0.0 parallel lanes —
@@ -25,6 +25,11 @@ meta:
   # ADR160-169 = P26 international-trade lane block (101-trade-activation),
   # allocated by Director ruling 2026-07-27; ADR160 minted at its charter.
 decisions:
+  ADR287_embedded_sqlite_campaign_owner_and_compact_state:
+    title: One embedded SQLite 3.53.1 campaign owner replaces PostgreSQL persistence
+    status: accepted
+    date: '2026-10-24'
+    file: ADR287_embedded_sqlite_campaign_owner_and_compact_state.yaml
   ADR278_measured_save_footprint:
     title: Save footprint determines history storage
     status: accepted

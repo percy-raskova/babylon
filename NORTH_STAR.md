@@ -1,7 +1,7 @@
 # North Star
 
 This page explains the live game direction. It does not make law.
-[`CONSTITUTION.md`](CONSTITUTION.md) v4.2.0 governs Babylon. ADR221 records how
+[`CONSTITUTION.md`](CONSTITUTION.md) v4.3.0 governs Babylon. ADR221 records how
 the prior constitution moved into v4 without a rewrite of history.
 [`ai/mantras.yaml`](ai/mantras.yaml) carries the same orientation as structured
 data for repository tools.
@@ -38,8 +38,10 @@ Statistical totals and citations belong in context views and the Archive.
 The player advances in four-week periods. Each advance resolves one 28-day
 simulation tick and then pauses. Continuous play waits for each committed
 observation before requesting the next period. Important developments also
-pause play for a closer look. Thirteen periods form a 52-week model year;
-periods do not claim to be calendar months.
+pause play for a closer look.
+
+Thirteen periods form a 52-week model year. These periods do not claim to be
+calendar months.
 A briefing explains what changed, why it matters to the organization,
 and links to records that the player can examine. The player makes the
 strategic judgment.
@@ -87,17 +89,33 @@ aid with slower cross-region solidarity, using actual goods, money and time.
 The [design and worked accounts](reports/national-economy-design-2026-09-20.md)
 record that direction and its evidence.
 
-National qualification also measures save growth in Postgres, separating
+National qualification measures the embedded SQLite campaign store, separating
 one-time captures from each period's state and history. Address avoidable
 serialization duplication before the playable build. Storage improvements must
 preserve county coverage, exact accounts, replay and recovery. Larger persistence
 changes must show measured benefits and explicit recovery evidence.
 
-The Designed ceiling is 10 decimal MB (10,000,000 bytes) per committed tick,
-including retained state, receipts, graph history, indexes and checkpoint growth.
-Thirteen ticks have a 130 MB incremental storage ceiling per model year.
-The 52-tick ceiling is 520 MB. Report opening storage separately.
+The target computer is a 16 GB desktop. Combined running-game memory must stay
+at or below 4,000,000,000 bytes. An ordinary advance, durable save and required
+briefing must finish within 30 seconds. A cold open must reach an actionable
+player view within 30 seconds.
+
+A normal subject selection or history page must
+finish within one second warm and two seconds cold. These limits carry the
+Designed evidence class. Measure them before claiming success.
+
+The Designed retained-growth ceiling is 10,000,000 decimal bytes per committed
+period, including retained state, receipts, graph history, indexes and
+checkpoint growth. Thirteen periods have a 130 MB incremental ceiling per model
+year. The 52-period ceiling is 520 MB. The provisional 325-period ceiling is
+3,250,000,000 bytes plus the opening, with 10,000,000,000 bytes retained as a
+secondary total ceiling. Report opening storage separately.
 The current representation has not passed this budget.
+
+Recent technical detail retains the latest 13 periods. The permanent opening and
+the latest two completed 13-period checkpoints remain as historical checkpoints.
+Current causal state, permanent player history, required choice evidence and
+deterministic replay inputs never expire under that retention policy.
 
 Development can replace the persistence design without compatibility layers for
 older formats. Preserve old saves as data and refuse unsupported formats.
@@ -118,7 +136,7 @@ in-memory audit receipts. The next four executable gates are:
 <!-- vale Vale.Terms = NO -->
 <!-- vale ste.UnapprovedWords = NO -->
 <!-- vale ste.NounClusters = NO -->
-1. **PostgreSQL/H3/Archive decision-loop slice**
+1. **Durable campaign/H3/Archive decision-loop slice**
 1. **Productive & distributive circuit**
 1. **Player agency**
 1. **COVID emergence benchmark**
@@ -198,7 +216,11 @@ runs current repository and operator tools.
 <!-- Vale: this paragraph preserves literal persistence and schema identifiers. -->
 <!-- vale ste.UnapprovedWords = NO -->
 <!-- vale ste.NounClusters = NO -->
-Reference SQLite and Parquet are data-build artifacts. Rust owns authoritative replay, checkpoint
+Reference SQLite and Parquet are data-build artifacts. The ratified campaign
+store is a separate embedded SQLite 3.53.1 database owned by Rust (ADR287). It
+is not the reference-build SQLite product.
+
+Rust owns authoritative replay, checkpoint
 restart, and Archive dirty receipts. The Rust Archive worker and restricted
 reader supply cited county, place, workplace and organization dossiers to Bevy. The card reads retained
 pages for the selected committed period and shows verification lag or unavailable

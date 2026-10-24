@@ -1,14 +1,17 @@
 //! Atomic installation and exact admission of the one supported database schema.
 
-use babylon_kernel::content_digest::sha256_of;
 use postgres::{Client, Config, GenericClient, IsolationLevel, NoTls, Transaction};
 
+use crate::postgres_catalog;
 use crate::postgres_catalog::{
-    acquire_lock, compare_catalog_census, parse_catalog_census, read_census_rows, release_lock,
-    validate_connection_target, CatalogCensusEntry, CatalogCensusParseError, CatalogError,
-    CATALOG_CONNECT_TIMEOUT, CATALOG_STARTUP_OPTIONS, CATALOG_TCP_USER_TIMEOUT,
+    CatalogCensusEntry, CatalogCensusParseError, CatalogError, CATALOG_CONNECT_TIMEOUT,
+    CATALOG_STARTUP_OPTIONS, CATALOG_TCP_USER_TIMEOUT,
 };
 use crate::PostgresDiagnostic;
+use babylon_kernel::content_digest;
+use postgres::Error as PostgresError;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 
 /// One lock shared by schema construction, reference installation and role provisioning.
 pub const SCHEMA_ADVISORY_LOCK_KEY: i64 = 0xBAB1_0537;
@@ -127,13 +130,13 @@ pub enum CurrentSchemaError {
 }
 
 impl std::fmt::Display for CurrentSchemaError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> FmtResult {
         write!(formatter, "current schema refused: {self:?}")
     }
 }
 impl std::error::Error for CurrentSchemaError {}
 
-fn database(operation: CurrentSchemaOperation, error: &postgres::Error) -> CurrentSchemaError {
+fn database(operation: CurrentSchemaOperation, error: &PostgresError) -> CurrentSchemaError {
     CurrentSchemaError::Database {
         operation,
         diagnostic: Some(PostgresDiagnostic::capture(error)),
@@ -161,7 +164,7 @@ pub fn current_schema_sha256() -> [u8; 32] {
         );
         bytes.extend_from_slice(sql.as_bytes());
     }
-    sha256_of(&bytes)
+    content_digest::sha256_of(&bytes)
 }
 
 /// Read-only preflight accepts only the exact fresh template or this current schema.
@@ -169,7 +172,8 @@ pub fn current_schema_sha256() -> [u8; 32] {
 /// # Errors
 /// Refuses a nonlocal, nonowned, incompatible or altered database before any writes.
 pub fn preflight_current_schema(config: &Config) -> Result<(), CurrentSchemaError> {
-    validate_connection_target(config).map_err(CurrentSchemaError::ConnectionTarget)?;
+    postgres_catalog::validate_connection_target(config)
+        .map_err(CurrentSchemaError::ConnectionTarget)?;
     let mut session = LockedSession::connect(&bounded_config(config))?;
     let result = inspect(session.client()).map(|_| ());
     session.finish(result)
@@ -183,7 +187,8 @@ pub fn preflight_current_schema(config: &Config) -> Result<(), CurrentSchemaErro
 /// # Errors
 /// Refuses every unsupported database without mutating it and preserves cleanup failures.
 pub fn install_current_schema(config: &Config) -> Result<CurrentSchemaReport, CurrentSchemaError> {
-    validate_connection_target(config).map_err(CurrentSchemaError::ConnectionTarget)?;
+    postgres_catalog::validate_connection_target(config)
+        .map_err(CurrentSchemaError::ConnectionTarget)?;
     let bounded = bounded_config(config);
     let mut session = LockedSession::connect(&bounded)?;
     let result = install_locked(&bounded, &mut session);
@@ -207,7 +212,7 @@ impl LockedSession {
         let mut client = config
             .connect(NoTls)
             .map_err(|error| database(CurrentSchemaOperation::Connect, &error))?;
-        acquire_lock(&mut client).map_err(CurrentSchemaError::Lock)?;
+        postgres_catalog::acquire_lock(&mut client).map_err(CurrentSchemaError::Lock)?;
         Ok(Self {
             client: Some(client),
         })
@@ -227,7 +232,7 @@ impl LockedSession {
         primary: Result<T, CurrentSchemaError>,
     ) -> Result<T, CurrentSchemaError> {
         let cleanup = self.client.as_mut().map_or(Ok(()), |client| {
-            release_lock(client).map_err(CurrentSchemaError::Unlock)
+            postgres_catalog::release_lock(client).map_err(CurrentSchemaError::Unlock)
         });
         match (primary, cleanup) {
             (Ok(value), Ok(())) => Ok(value),
@@ -369,7 +374,8 @@ fn inspect(client: &mut impl GenericClient) -> Result<Presence, CurrentSchemaErr
             .map_err(|error| database(CurrentSchemaOperation::Classify, &error))?;
     }
     if markers == [false; 3] {
-        let actual = read_census_rows(client).map_err(CurrentSchemaError::Census)?;
+        let actual =
+            postgres_catalog::read_census_rows(client).map_err(CurrentSchemaError::Census)?;
         compare_fresh_census(&actual)?;
         Ok(Presence::Fresh)
     } else if markers == [true; 3] {
@@ -466,13 +472,14 @@ fn verify_sentinels(client: &mut impl GenericClient) -> Result<(), CurrentSchema
     Ok(())
 }
 fn compare_fresh_census(actual: &[CatalogCensusEntry]) -> Result<(), CurrentSchemaError> {
-    let without = parse_catalog_census(FRESH_CENSUS).map_err(CurrentSchemaError::CensusFixture)?;
-    let Err(without_intel) = compare_catalog_census(&without, actual) else {
+    let without = postgres_catalog::parse_catalog_census(FRESH_CENSUS)
+        .map_err(CurrentSchemaError::CensusFixture)?;
+    let Err(without_intel) = postgres_catalog::compare_catalog_census(&without, actual) else {
         return Ok(());
     };
-    let with =
-        parse_catalog_census(FRESH_CENSUS_WITH_INTEL).map_err(CurrentSchemaError::CensusFixture)?;
-    compare_catalog_census(&with, actual).map_err(|with_intel| {
+    let with = postgres_catalog::parse_catalog_census(FRESH_CENSUS_WITH_INTEL)
+        .map_err(CurrentSchemaError::CensusFixture)?;
+    postgres_catalog::compare_catalog_census(&with, actual).map_err(|with_intel| {
         CurrentSchemaError::FreshCensusMismatch {
             without_intel: Box::new(without_intel),
             with_intel: Box::new(with_intel),
@@ -480,11 +487,12 @@ fn compare_fresh_census(actual: &[CatalogCensusEntry]) -> Result<(), CurrentSche
     })
 }
 fn verify_current_census(client: &mut impl GenericClient) -> Result<(), CurrentSchemaError> {
-    let mut actual = read_census_rows(client).map_err(CurrentSchemaError::Census)?;
+    let mut actual =
+        postgres_catalog::read_census_rows(client).map_err(CurrentSchemaError::Census)?;
     // The sole admitted optional cluster object has an independently pinned complete signature.
     // Reader and observer role provisioning is pinned by the four complete ACL configurations.
-    let with_intel =
-        parse_catalog_census(FRESH_CENSUS_WITH_INTEL).map_err(CurrentSchemaError::CensusFixture)?;
+    let with_intel = postgres_catalog::parse_catalog_census(FRESH_CENSUS_WITH_INTEL)
+        .map_err(CurrentSchemaError::CensusFixture)?;
     let intel = with_intel
         .entries()
         .iter()
@@ -492,8 +500,9 @@ fn verify_current_census(client: &mut impl GenericClient) -> Result<(), CurrentS
         .ok_or(CurrentSchemaError::CurrentCensusMismatch)?;
     actual.retain(|entry| entry != intel);
     for fixture in CURRENT_CENSUSES {
-        let expected = parse_catalog_census(fixture).map_err(CurrentSchemaError::CensusFixture)?;
-        if compare_catalog_census(&expected, &actual).is_ok() {
+        let expected = postgres_catalog::parse_catalog_census(fixture)
+            .map_err(CurrentSchemaError::CensusFixture)?;
+        if postgres_catalog::compare_catalog_census(&expected, &actual).is_ok() {
             return Ok(());
         }
     }
@@ -513,7 +522,7 @@ mod tests {
     fn current_census_configurations_pin_every_object_and_only_role_grants_differ() {
         let censuses = CURRENT_CENSUSES
             .iter()
-            .map(|source| parse_catalog_census(source).unwrap())
+            .map(|source| postgres_catalog::parse_catalog_census(source).unwrap())
             .collect::<Vec<_>>();
         let keys = censuses[0]
             .entries()
@@ -561,7 +570,7 @@ mod tests {
             ("postgres_catalog.sql", include_str!("postgres_catalog.sql")),
         ] {
             let mut digest = String::with_capacity(64);
-            for byte in sha256_of(source.as_bytes()) {
+            for byte in content_digest::sha256_of(source.as_bytes()) {
                 write!(&mut digest, "{byte:02x}").unwrap();
             }
             let expected = format!("# source|{name}|{digest}");
@@ -588,7 +597,7 @@ mod tests {
                 bytes.extend_from_slice(&u64::try_from(part.len()).unwrap().to_le_bytes());
                 bytes.extend_from_slice(&part);
             }
-            assert_ne!(sha256_of(&bytes), digest);
+            assert_ne!(content_digest::sha256_of(&bytes), digest);
         }
     }
 }
@@ -597,6 +606,7 @@ mod tests {
 mod live_tests {
     use super::*;
     use std::str::FromStr;
+    use std::time::Instant;
 
     const ACK: &str = "I_UNDERSTAND_THIS_DISPOSABLE_RUNTIME_DROPS_ITS_SCRATCH_DATABASES_AND_ROLES";
 
@@ -645,12 +655,15 @@ mod live_tests {
         let mut client = config.connect(NoTls).unwrap();
         client.batch_execute("SET search_path TO pg_catalog; SET quote_all_identifiers TO off; SET jit TO off; SET event_triggers TO off").unwrap();
         client.batch_execute("CREATE SCHEMA babylon_state; CREATE TABLE babylon_state.schema_migration (version bigint PRIMARY KEY, checksum bytea NOT NULL); INSERT INTO babylon_state.schema_migration VALUES (1, decode(repeat('01',32),'hex'))").unwrap();
-        let before = read_census_rows(&mut client).unwrap();
+        let before = postgres_catalog::read_census_rows(&mut client).unwrap();
         assert!(matches!(
             install_current_schema(&config),
             Err(CurrentSchemaError::UnsupportedSchema)
         ));
-        assert_eq!(read_census_rows(&mut client).unwrap(), before);
+        assert_eq!(
+            postgres_catalog::read_census_rows(&mut client).unwrap(),
+            before
+        );
         assert_eq!(
             client
                 .query_one("SELECT version FROM babylon_state.schema_migration", &[])
@@ -666,12 +679,15 @@ mod live_tests {
         let mut client = config.connect(NoTls).unwrap();
         client.batch_execute("SET search_path TO pg_catalog; SET quote_all_identifiers TO off; SET jit TO off; SET event_triggers TO off").unwrap();
         client.batch_execute("CREATE TABLE public.unique_user_data (value text); INSERT INTO public.unique_user_data VALUES ('preserve me')").unwrap();
-        let before = read_census_rows(&mut client).unwrap();
+        let before = postgres_catalog::read_census_rows(&mut client).unwrap();
         assert!(matches!(
             install_current_schema(&config),
             Err(CurrentSchemaError::FreshCensusMismatch { .. })
         ));
-        assert_eq!(read_census_rows(&mut client).unwrap(), before);
+        assert_eq!(
+            postgres_catalog::read_census_rows(&mut client).unwrap(),
+            before
+        );
         assert_eq!(
             client
                 .query_one("SELECT value FROM public.unique_user_data", &[])
@@ -802,7 +818,7 @@ mod live_tests {
         crate::h3_reference_installer::live_postgres_tests::verify_rollback_and_killed_retry(
             &config,
             &base,
-            std::time::Instant::now(),
+            Instant::now(),
         );
         db.cleanup();
     }
@@ -817,7 +833,7 @@ mod live_tests {
         crate::h3_reference_installer::live_postgres_tests::verify_committed_reconciliation(
             &config,
             &base,
-            std::time::Instant::now(),
+            Instant::now(),
         );
         db.cleanup();
     }
@@ -859,7 +875,7 @@ mod live_tests {
         let dsn =
             std::env::var("BABYLON_POSTGRES_TEST_DSN").expect("runner supplies the disposable DSN");
         let config = Config::from_str(&dsn).expect("runner DSN parses");
-        validate_connection_target(&config).unwrap();
+        postgres_catalog::validate_connection_target(&config).unwrap();
         assert_eq!(config.get_user(), Some("test"));
         assert_eq!(config.get_dbname(), Some("postgres"));
         let actual: Option<String> = config
@@ -909,7 +925,7 @@ mod live_tests {
                 .expect("current schema scratch cleanup");
             self.active = false;
         }
-        fn try_drop_database(&self) -> Result<(), postgres::Error> {
+        fn try_drop_database(&self) -> Result<(), PostgresError> {
             self.admin.connect(NoTls)?.batch_execute(&format!(
                 "DROP DATABASE IF EXISTS \"{}\" WITH (FORCE)",
                 self.name

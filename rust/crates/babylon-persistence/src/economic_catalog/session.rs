@@ -1,20 +1,20 @@
 //! Reuse one admitted immutable catalog for graph and material initialization.
-use super::{
-    capture::CapturedSources, CapturedEconomicCatalog, EconomicCatalogError,
-    SourceArtifactKind as K,
-};
-use babylon_bsl::scenario::{load_scenario, LoadedScenario};
+use super::capture::CapturedSources;
+use super::{CapturedEconomicCatalog, EconomicCatalogError, SourceArtifactKind as K};
+
+use babylon_bsl::scenario::LoadedScenario;
 use babylon_graph::hypergraph_store::HypergraphStore;
-use babylon_kernel::{
-    content_digest::ContentDigest,
-    replay::{ReplaySeed, ReplaySessionId},
-    tick_content_hash::RefDigest,
-};
-use babylon_tick::{
-    material_state::{MaterialGeography, MaterialState},
-    replay_session::ReplayTickSession,
-};
-type Result<T> = std::result::Result<T, EconomicCatalogError>;
+use babylon_kernel::content_digest::ContentDigest;
+use babylon_kernel::replay::{ReplaySeed, ReplaySessionId};
+use babylon_kernel::tick_content_hash::RefDigest;
+
+use babylon_bsl::scenario;
+use babylon_tick::h3_runtime::MichiganDynamicHexFoundation;
+use babylon_tick::material_state::{MaterialGeography, MaterialState};
+use babylon_tick::replay_session::ReplayTickSession;
+use std::result::Result as StdResult;
+
+type Result<T> = StdResult<T, EconomicCatalogError>;
 
 impl CapturedEconomicCatalog {
     pub(crate) fn scenario_source(&self) -> Result<&str> {
@@ -38,7 +38,7 @@ impl CapturedEconomicCatalog {
     }
     pub(crate) fn load_graph(&self, graph: &mut HypergraphStore) -> Result<LoadedScenario> {
         let result = match &self.sources {
-            CapturedSources::Michigan(_) => load_scenario(self.scenario_source()?, graph),
+            CapturedSources::Michigan(_) => scenario::load_scenario(self.scenario_source()?, graph),
             CapturedSources::National(sources) => {
                 let seed = super::graph::national_seed(
                     &self.input.scenario_id,
@@ -124,7 +124,12 @@ impl CapturedEconomicCatalog {
             CapturedSources::Michigan(_) => "michigan-control",
             CapturedSources::National(_) => "national-counties",
         };
-        (scope, self.local_detail.as_ref().map(babylon_tick::h3_runtime::MichiganDynamicHexFoundation::base_reference_cohort_digest))
+        (
+            scope,
+            self.local_detail
+                .as_ref()
+                .map(MichiganDynamicHexFoundation::base_reference_cohort_digest),
+        )
     }
     pub(crate) fn county_map(
         &self,

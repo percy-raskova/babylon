@@ -4,7 +4,10 @@ use super::lifecycle;
 
 use babylon_persistence::identity::CampaignId;
 
+use babylon_kernel::clock::CampaignDuration;
+use babylon_persistence::runtime_session::RuntimeAdvanceStage;
 use bevy::prelude::*;
+use lifecycle::LifecycleState;
 
 /// The two explicitly distinct read capabilities in the observer product.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -53,7 +56,7 @@ pub struct ObserverSession {
     pub durable_tick: u64,
     pub viewed_tick: u64,
     pub archive_verified_tick: u64,
-    pub duration: Option<babylon_kernel::clock::CampaignDuration>,
+    pub duration: Option<CampaignDuration>,
     pub content_hash: Option<String>,
     pub foundation_digest: Option<String>,
     pub phase: SessionPhase,
@@ -65,7 +68,7 @@ pub struct ObserverSession {
     pub generation: u64,
     pub(super) pending_request: Option<u64>,
     pub(super) next_request: u64,
-    pub(crate) lifecycle: lifecycle::LifecycleState,
+    pub(crate) lifecycle: LifecycleState,
 }
 
 impl ObserverSession {
@@ -89,7 +92,7 @@ impl ObserverSession {
             generation: 0,
             pending_request: None,
             next_request: 1,
-            lifecycle: lifecycle::LifecycleState::new(),
+            lifecycle: LifecycleState::new(),
         }
     }
 
@@ -220,8 +223,8 @@ impl ObserverSession {
         &self,
         request: u64,
         tick: u64,
-        stage: babylon_persistence::runtime_session::RuntimeAdvanceStage,
-        prior: Option<babylon_persistence::runtime_session::RuntimeAdvanceStage>,
+        stage: RuntimeAdvanceStage,
+        prior: Option<RuntimeAdvanceStage>,
     ) -> Result<(), String> {
         use babylon_persistence::runtime_session::RuntimeAdvanceStage as Stage;
         if self.pending_request != Some(request)
@@ -299,9 +302,11 @@ impl ObserverSession {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use babylon_kernel::clock::CampaignDuration;
+    use uuid::Uuid;
 
     fn ready(period: u64) -> ObserverSession {
-        let mut state = ObserverSession::new(CampaignId::from_uuid(uuid::Uuid::from_u128(71)));
+        let mut state = ObserverSession::new(CampaignId::from_uuid(Uuid::from_u128(71)));
         state.ready(period, None);
         assert!(state.installed(&state.context()));
         state
@@ -380,7 +385,7 @@ mod tests {
     #[test]
     fn scenario_horizon_and_quit_stop_playback_without_an_extra_commit() {
         let mut state = ready(3);
-        state.duration = Some(babylon_kernel::clock::CampaignDuration::Finite { final_period: 4 });
+        state.duration = Some(CampaignDuration::Finite { final_period: 4 });
         assert!(state.start_playback());
         commit(&mut state);
         assert_eq!(state.phase, SessionPhase::Complete);

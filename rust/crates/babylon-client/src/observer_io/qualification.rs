@@ -35,20 +35,23 @@ use babylon_persistence::qualification_audit::MaterialAudit;
 use std::time::Instant;
 
 #[cfg(test)]
-use state::write_record;
-
-#[cfg(test)]
 mod tests {
     use super::*;
-    use std::{fs, os::unix::fs::PermissionsExt, path::PathBuf};
+    use aid::Custody;
+    use babylon_kernel::clock::CampaignDuration;
+    use fs::Permissions;
+    use std::fs;
+    use std::os::unix::fs::PermissionsExt;
+    use std::path::PathBuf;
+    use uuid::Uuid;
 
     pub(in crate::observer_io) struct Directory(pub(in crate::observer_io) PathBuf);
     impl Directory {
         pub(in crate::observer_io) fn new() -> Self {
             let path =
-                std::env::temp_dir().join(format!("babylon-native-audit-{}", uuid::Uuid::new_v4()));
+                std::env::temp_dir().join(format!("babylon-native-audit-{}", Uuid::new_v4()));
             fs::create_dir(&path).unwrap();
-            fs::set_permissions(&path, fs::Permissions::from_mode(0o700)).unwrap();
+            fs::set_permissions(&path, Permissions::from_mode(0o700)).unwrap();
             Self(path)
         }
     }
@@ -61,15 +64,15 @@ mod tests {
     #[test]
     fn boundary_records_are_exact_atomic_and_conflicting_records_are_preserved() {
         let directory = Directory::new();
-        write_record(&directory.0, 1, b"original\n").unwrap();
-        write_record(&directory.0, 1, b"original\n").unwrap();
-        assert!(write_record(&directory.0, 1, b"changed\n").is_err());
+        state::write_record(&directory.0, 1, b"original\n").unwrap();
+        state::write_record(&directory.0, 1, b"original\n").unwrap();
+        assert!(state::write_record(&directory.0, 1, b"changed\n").is_err());
         assert_eq!(
             fs::read(directory.0.join("material-1.json")).unwrap(),
             b"original\n"
         );
         assert_eq!(fs::read_dir(&directory.0).unwrap().count(), 1);
-        assert!(write_record(&directory.0, 2, &vec![0; RECORD_BYTES + 1]).is_err());
+        assert!(state::write_record(&directory.0, 2, &vec![0; RECORD_BYTES + 1]).is_err());
         assert!(!directory.0.join("material-2.json").exists());
     }
 
@@ -77,10 +80,10 @@ mod tests {
     fn failed_publication_and_changed_directory_publish_nothing() {
         let directory = Directory::new();
         fs::create_dir(directory.0.join("material-1.json")).unwrap();
-        assert!(write_record(&directory.0, 1, b"facts\n").is_err());
+        assert!(state::write_record(&directory.0, 1, b"facts\n").is_err());
         assert_eq!(fs::read_dir(&directory.0).unwrap().count(), 1);
-        fs::set_permissions(&directory.0, fs::Permissions::from_mode(0o755)).unwrap();
-        assert!(write_record(&directory.0, 2, b"facts\n").is_err());
+        fs::set_permissions(&directory.0, Permissions::from_mode(0o755)).unwrap();
+        assert!(state::write_record(&directory.0, 2, b"facts\n").is_err());
         assert!(!directory.0.join("material-2.json").exists());
     }
 
@@ -98,7 +101,7 @@ mod tests {
             include_bytes!("../../../../../contracts/national_storage_qualification_v6.json");
         let path = directory.0.join("policy.json");
         fs::write(&path, bytes).unwrap();
-        let campaign = CampaignId::from_uuid(uuid::Uuid::from_u128(1));
+        let campaign = CampaignId::from_uuid(Uuid::from_u128(1));
         let policy =
             FrozenPolicy::open(&path, babylon_kernel::content_digest::sha256_of(bytes), 52)
                 .unwrap();
@@ -110,7 +113,7 @@ mod tests {
             },
             scope: None,
             audit: None,
-            custody: aid::Custody::default(),
+            custody: Custody::default(),
             boundary: None,
             recovery: None,
             advance: None,
@@ -119,7 +122,7 @@ mod tests {
         session.connected_fixture();
         session.ready(1, Some("b".repeat(64)));
         session.foundation_digest = Some("0a".repeat(32));
-        session.duration = Some(babylon_kernel::clock::CampaignDuration::Continuous);
+        session.duration = Some(CampaignDuration::Continuous);
         (audit, session)
     }
 
@@ -235,7 +238,7 @@ mod tests {
             Some(&hash)
         ));
         wrong_scope = scope.clone();
-        wrong_scope.campaign = CampaignId::from_uuid(uuid::Uuid::from_u128(2));
+        wrong_scope.campaign = CampaignId::from_uuid(Uuid::from_u128(2));
         assert!(!publication_matches(
             &session,
             &wrong_scope,
@@ -289,7 +292,7 @@ mod tests {
     #[test]
     fn player_disclosure_binds_private_identity_without_exposing_material_facts() {
         let binding = KnownBinding {
-            campaign: uuid::Uuid::from_u128(1).to_string(),
+            campaign: Uuid::from_u128(1).to_string(),
             tick: 1,
             foundation: "a".repeat(64),
             hash: Some("b".repeat(64)),
@@ -323,10 +326,8 @@ mod tests {
             start_observation, ObservationCache, ObservationRead, PendingObservation,
         };
         use crate::observer_ui::ObserverFrame;
-        use bevy::{
-            prelude::{App, MinimalPlugins},
-            tasks::AsyncComputeTaskPool,
-        };
+        use bevy::prelude::{App, MinimalPlugins};
+        use bevy::tasks::AsyncComputeTaskPool;
 
         let directory = Directory::new();
         let (audit, mut session) = fixture(&directory);

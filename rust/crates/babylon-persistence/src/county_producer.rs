@@ -62,8 +62,6 @@ mod captured_tests;
 #[path = "county_producer/dossier.rs"]
 mod dossier;
 
-#[cfg(test)]
-use dossier::parse_signal_bullet;
 use dossier::verify_pinned_artifact_digests;
 pub use dossier::{
     county_committed_signals, county_page_input, county_page_semantic_sha256,
@@ -78,9 +76,3 @@ pub use dossier::{
 
 use crate::spatial_reference_products::SpatialReferenceProducts;
 use crate::{ArchiveCitation, SemanticArchiveError};
-#[cfg(test)]
-use crate::{ArchivePageRef, ArchiveSubjectKind};
-#[cfg(test)]
-use source::signal_citation;
-#[cfg(test)]
-use std::collections::BTreeMap;

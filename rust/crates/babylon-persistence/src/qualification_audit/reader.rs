@@ -1,14 +1,16 @@
 //! One read-only cursor over an explicitly selected national campaign.
-use super::{hex, BoundaryFacts, MaterialAudit, Refusal as MaterialRefusal, Scope};
-use crate::{
-    archive_revision::{ArchiveDossierBounds, ArchiveDossierState, ArchiveReadScope},
-    observer_reader::{ObserverEconomyReader, ObserverMaterialCursor, ObserverVisibility},
-    ArchivePageRef, ArchiveSubjectKind, SemanticArchiveReader,
-};
+use super::{BoundaryFacts, MaterialAudit, Refusal as MaterialRefusal, Scope};
+use crate::archive_revision::{ArchiveDossierBounds, ArchiveDossierState, ArchiveReadScope};
+use crate::observer_reader::{ObserverEconomyReader, ObserverMaterialCursor, ObserverVisibility};
+use crate::{ArchivePageRef, ArchiveSubjectKind, SemanticArchiveReader};
+
 use postgres::Config;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 use std::time::Instant;
+use uuid::Uuid;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Refusal {
@@ -22,7 +24,7 @@ pub enum Refusal {
     Material(MaterialRefusal),
 }
 impl std::fmt::Display for Refusal {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         write!(f, "material audit read refused: {self:?}")
     }
 }
@@ -157,7 +159,7 @@ fn capture_foundation_headers(
         )
         .map_err(|_| Refusal::Reader)?
         .ok_or(Refusal::ChangedBoundary)?;
-    let campaign: uuid::Uuid = row.try_get("campaign_id").map_err(|_| Refusal::Reader)?;
+    let campaign: Uuid = row.try_get("campaign_id").map_err(|_| Refusal::Reader)?;
     if &campaign != scope.campaign.as_uuid() {
         return Err(Refusal::ChangedBoundary);
     }
@@ -209,9 +211,9 @@ pub fn read_archive_boundary(
         version: 1,
         scope: "authenticated_archive_dossiers_and_retained_foundation_headers_only",
         campaign: scope.campaign.as_uuid().to_string(),
-        foundation_sha256: hex(&scope.foundation),
-        graph_foundation_sha256: hex(&expected_graph),
-        policy_sha256: hex(&scope.policy),
+        foundation_sha256: super::hex(&scope.foundation),
+        graph_foundation_sha256: super::hex(&expected_graph),
+        policy_sha256: super::hex(&scope.policy),
         tick: request.tick,
         tick_content_hash: request.tick_content_hash.clone(),
         archive,
@@ -273,12 +275,13 @@ impl ReadSession {
                 .map_err(|_| Refusal::Reader)?
         };
         let production_read_elapsed_ns = nanos(started.elapsed().as_nanos())?;
-        if hex(observation
-            .accounting
-            .identity
-            .tick_content_hash()
-            .as_bytes())
-            != request.tick_content_hash
+        if super::hex(
+            observation
+                .accounting
+                .identity
+                .tick_content_hash()
+                .as_bytes(),
+        ) != request.tick_content_hash
         {
             return Err(Refusal::ChangedBoundary);
         }
@@ -333,7 +336,7 @@ fn capture_tail(reader: &SemanticArchiveReader, scope: Scope) -> Result<Captured
         .ok_or(Refusal::Archive)?;
     Ok(CapturedTail {
         tick: marker.resolve_tick(),
-        hash: hex(marker.tick_content_hash()),
+        hash: super::hex(marker.tick_content_hash()),
     })
 }
 
@@ -420,7 +423,7 @@ fn archive_facts(
         observation_mode,
         captured_tail_tick: tail.tick,
         captured_tail_tick_content_hash: tail.hash.clone(),
-        dossier_sha256: hex(&dossier.finalize()),
+        dossier_sha256: super::hex(&dossier.finalize()),
     })
 }
 
@@ -447,7 +450,7 @@ fn nanos(value: u128) -> Result<u64, Refusal> {
 
 #[cfg(test)]
 mod tests {
-    use super::{horizons, CapturedTail, Refusal, Request};
+    use super::{CapturedTail, Refusal, Request};
 
     #[test]
     fn archive_header_binding_requires_both_foundations_and_the_national_source() {
@@ -502,23 +505,32 @@ mod tests {
             tick: 3,
             tick_content_hash: "a".repeat(64),
         };
-        assert_eq!(horizons(&tail, &request, 7, 5), Ok("historical"));
-        assert_eq!(horizons(&tail, &request, 7, 2), Err(Refusal::Archive));
-        assert_eq!(horizons(&tail, &request, 8, 5), Err(Refusal::Archive));
-        assert_eq!(horizons(&tail, &request, 7, 8), Err(Refusal::Archive));
+        assert_eq!(super::horizons(&tail, &request, 7, 5), Ok("historical"));
+        assert_eq!(
+            super::horizons(&tail, &request, 7, 2),
+            Err(Refusal::Archive)
+        );
+        assert_eq!(
+            super::horizons(&tail, &request, 8, 5),
+            Err(Refusal::Archive)
+        );
+        assert_eq!(
+            super::horizons(&tail, &request, 7, 8),
+            Err(Refusal::Archive)
+        );
         let latest = Request {
             version: 1,
             tick: 7,
             tick_content_hash: tail.hash.clone(),
         };
-        assert_eq!(horizons(&tail, &latest, 7, 6), Err(Refusal::Archive));
-        assert_eq!(horizons(&tail, &latest, 7, 7), Ok("live_latest"));
+        assert_eq!(super::horizons(&tail, &latest, 7, 6), Err(Refusal::Archive));
+        assert_eq!(super::horizons(&tail, &latest, 7, 7), Ok("live_latest"));
         let wrong_latest = Request {
             tick_content_hash: "a".repeat(64),
             ..latest
         };
         assert_eq!(
-            horizons(&tail, &wrong_latest, 7, 7),
+            super::horizons(&tail, &wrong_latest, 7, 7),
             Err(Refusal::ChangedBoundary)
         );
     }

@@ -16,6 +16,4 @@ pub use model::*;
 mod artifact;
 
 use artifact::MEMBER_COUNT;
-#[cfg(test)]
-use artifact::{decode, POPULATION, TRADE};
 pub use artifact::{world_reference, WorldReference, WorldReferenceError, WorldSourceDigests};

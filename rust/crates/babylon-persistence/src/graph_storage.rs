@@ -3,7 +3,11 @@
 use crate::identity::CampaignId;
 use crate::runtime::RustPersistenceRuntimeError;
 use babylon_graph::stable_state::{MAX_STABLE_GRAPH_ATTRIBUTES, MAX_STABLE_GRAPH_NODES};
-use postgres::{binary_copy::BinaryCopyInWriter, types::Type, GenericClient};
+use postgres::binary_copy::BinaryCopyInWriter;
+use postgres::types::Type;
+use postgres::GenericClient;
+
+use postgres::Error as PostgresError;
 use std::collections::{BTreeMap, BTreeSet};
 const CHUNK: usize = 4096;
 /// Exact graph storage admission failures.
@@ -126,7 +130,7 @@ fn pack(
     Ok(packed)
 }
 
-fn db(operation: &'static str, error: &postgres::Error) -> RustPersistenceRuntimeError {
+fn db(operation: &'static str, error: &PostgresError) -> RustPersistenceRuntimeError {
     RustPersistenceRuntimeError::postgres(operation, error)
 }
 

@@ -335,11 +335,10 @@
 #![allow(clippy::float_cmp)]
 
 use babylon_bsl::evaluator::Value;
-use babylon_bsl::scenario::load_scenario;
+use babylon_bsl::scenario;
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
-use babylon_tick::run_once_into;
 
 const SCENARIO: &str = include_str!("../content/scenarios/imperial-rent-conformance.bscn");
 const RULE: &str = include_str!("../content/rules/imperial-rent.bsl");
@@ -401,7 +400,7 @@ fn hand_derived_cut_and_tribute(wealth: f64, comprador_cut: f64) -> (f64, f64) {
 fn run() -> (HypergraphStore, CollectingSink) {
     let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
-    run_once_into(SCENARIO, RULE, &mut graph, &mut sink)
+    babylon_tick::run_once_into(SCENARIO, RULE, &mut graph, &mut sink)
         .expect("the Task 2 + Task 3 rules must run");
     (graph, sink)
 }
@@ -415,7 +414,7 @@ fn run() -> (HypergraphStore, CollectingSink) {
 fn run_world_10() -> (HypergraphStore, CollectingSink) {
     let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
-    run_once_into(SCENARIO_10, RULE, &mut graph, &mut sink)
+    babylon_tick::run_once_into(SCENARIO_10, RULE, &mut graph, &mut sink)
         .expect("world 10 must run against the shared RULE pack");
     (graph, sink)
 }
@@ -495,7 +494,7 @@ fn scenario_and_empty_pack_load() {
 "#;
     let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
-    run_once_into(SCENARIO, PROBE_RULE, &mut graph, &mut sink)
+    babylon_tick::run_once_into(SCENARIO, PROBE_RULE, &mut graph, &mut sink)
         .expect("the scenario must load and run against the registered-system probe rule");
 }
 
@@ -505,7 +504,8 @@ fn scenario_and_empty_pack_load() {
 #[test]
 fn the_scenario_loads_clean_with_the_declared_census() {
     let mut graph = HypergraphStore::new();
-    let loaded = load_scenario(SCENARIO, &mut graph).expect("the scenario must load clean");
+    let loaded =
+        scenario::load_scenario(SCENARIO, &mut graph).expect("the scenario must load clean");
     assert_eq!(loaded.node_count, 6, "5 social classes + 1 carrier");
     assert_eq!(
         loaded.edge_count, 3,
@@ -571,7 +571,8 @@ fn the_scenario_loads_clean_with_the_declared_census() {
 #[test]
 fn social_role_order_is_the_ruled_ordinal() {
     let mut graph = HypergraphStore::new();
-    let loaded = load_scenario(SCENARIO, &mut graph).expect("the scenario must load clean");
+    let loaded =
+        scenario::load_scenario(SCENARIO, &mut graph).expect("the scenario must load clean");
     let ty = loaded
         .enums
         .resolve("SocialRole")
@@ -640,7 +641,7 @@ fn carrier_discriminator_resolves_over_a_lower_id_decoy() {
 
     let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
-    run_once_into(
+    babylon_tick::run_once_into(
         TWO_INSTITUTION_SCENARIO,
         DISCRIMINATOR_RULE,
         &mut graph,
@@ -907,7 +908,7 @@ fn r01_skips_an_inactive_counterparty() {
 
     let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
-    run_once_into(INACTIVE_TARGET_SCENARIO, RULE, &mut graph, &mut sink)
+    babylon_tick::run_once_into(INACTIVE_TARGET_SCENARIO, RULE, &mut graph, &mut sink)
         .expect("the inactive-counterparty fixture must load and run clean");
 
     // worker's revolutionary (0.2p) and wealth (500) match world 1's
@@ -1236,7 +1237,7 @@ fn r01_does_not_emit_exactly_at_the_negligible_rent_boundary() {
 
     let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
-    run_once_into(BOUNDARY_SCENARIO, RULE, &mut graph, &mut sink)
+    babylon_tick::run_once_into(BOUNDARY_SCENARIO, RULE, &mut graph, &mut sink)
         .expect("the negligible-rent boundary fixture must load and run clean");
 
     let rent = graph
@@ -1460,7 +1461,7 @@ fn r03_skips_a_non_positive_comprador() {
 
     let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
-    run_once_into(NON_POSITIVE_COMPRADOR_SCENARIO, RULE, &mut graph, &mut sink)
+    babylon_tick::run_once_into(NON_POSITIVE_COMPRADOR_SCENARIO, RULE, &mut graph, &mut sink)
         .expect("the non-positive-comprador fixture must load and run clean");
 
     let (expected_cut, expected_tribute) = hand_derived_cut_and_tribute(400.0, 0.9);
@@ -1626,7 +1627,7 @@ fn r03_and_r04_skip_an_inactive_recipient() {
 
     let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
-    run_once_into(INACTIVE_RECIPIENT_SCENARIO, RULE, &mut graph, &mut sink)
+    babylon_tick::run_once_into(INACTIVE_RECIPIENT_SCENARIO, RULE, &mut graph, &mut sink)
         .expect("the inactive-recipient fixture must load and run clean");
 
     let (expected_cut, expected_tribute) = hand_derived_cut_and_tribute(500.0, 0.9);
@@ -1804,7 +1805,7 @@ fn r04_credits_the_full_transfer_when_comprador_cut_is_zero() {
 
     let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
-    run_once_into(ZERO_CUT_SCENARIO, RULE, &mut graph, &mut sink)
+    babylon_tick::run_once_into(ZERO_CUT_SCENARIO, RULE, &mut graph, &mut sink)
         .expect("the zero-comprador-cut fixture must load and run clean");
 
     assert_eq!(
@@ -1946,7 +1947,7 @@ fn r04_reads_the_edge_self_to_it_not_reversed() {
 
     let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
-    run_once_into(REVERSED_EDGE_DECOY_SCENARIO, RULE, &mut graph, &mut sink)
+    babylon_tick::run_once_into(REVERSED_EDGE_DECOY_SCENARIO, RULE, &mut graph, &mut sink)
         .expect("the reversed-edge-decoy fixture must load and run clean");
 
     let (_expected_cut, expected_tribute) = hand_derived_cut_and_tribute(300.0, 0.9);

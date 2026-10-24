@@ -1,8 +1,26 @@
 //! Independent finite-hour witnesses through the real recurring material close.
-use super::*;
+use crate::good;
+use babylon_material_circuit::decode_material_circuit_state;
+use babylon_material_circuit::AccountId;
+use babylon_material_circuit::CircuitAccounting;
+use babylon_material_circuit::FundedShift;
+use babylon_material_circuit::HistoricalCostBook;
+use babylon_material_circuit::HouseholdContributionUse;
+use babylon_material_circuit::HouseholdNeedBasis;
+use babylon_material_circuit::HouseholdTimeAccounting;
+use babylon_material_circuit::HouseholdTimeBook;
+use babylon_material_circuit::HouseholdTimeCommitment;
+use babylon_material_circuit::HouseholdTimePolicy;
+use babylon_material_circuit::HouseholdUnmetTimeBurden;
+use babylon_material_circuit::LaborCompensation;
+use babylon_material_circuit::MaterialCircuitError;
+use babylon_material_circuit::MaterialCircuitState;
+use babylon_material_circuit::MonetaryBook;
+use babylon_material_circuit::MoneyTransferPurpose;
+use babylon_material_circuit::ShiftId;
 
 fn time_opening(food: u64) -> MaterialCircuitState {
-    let mut state = opening();
+    let mut state = crate::opening();
     let CircuitAccounting::Monetary(economy) = &mut state.accounting else {
         panic!("the worked control must have monetary accounts");
     };
@@ -11,8 +29,8 @@ fn time_opening(food: u64) -> MaterialCircuitState {
     recurring.household_purchases[0].enabled = false;
     economy.household_time = HouseholdTimeAccounting::Modeled(
         HouseholdTimeBook::new(vec![HouseholdTimePolicy {
-            principal_id: household(),
-            labor_unit_id: hours(),
+            principal_id: crate::household(),
+            labor_unit_id: crate::hours(),
             eligible_persons: 4,
             hours_per_eligible_person: 8,
             protected: HouseholdTimeCommitment {
@@ -25,7 +43,7 @@ fn time_opening(food: u64) -> MaterialCircuitState {
             },
             unmet_burdens: vec![HouseholdUnmetTimeBurden {
                 good_id: good(2),
-                unit_id: units(),
+                unit_id: crate::units(),
                 hours_per_unmet_unit: 5,
             }],
         }])
@@ -36,11 +54,11 @@ fn time_opening(food: u64) -> MaterialCircuitState {
 
 #[test]
 fn actual_attendance_and_consumption_close_one_finite_household_time_account() {
-    let transition = advance_material_circuit(&time_opening(4)).unwrap();
+    let transition = babylon_material_circuit::advance_material_circuit(&time_opening(4)).unwrap();
     assert_eq!(transition.household_time.len(), 1);
     let row = &transition.household_time[0];
-    assert_eq!(row.principal_id, household());
-    assert_eq!(row.labor_unit_id, hours());
+    assert_eq!(row.principal_id, crate::household());
+    assert_eq!(row.labor_unit_id, crate::hours());
     assert_eq!(row.period, 1);
     assert_eq!(row.endowment_hours, 32);
     assert_eq!(row.attended_hours, 16);
@@ -60,7 +78,7 @@ fn actual_attendance_and_consumption_close_one_finite_household_time_account() {
 
 #[test]
 fn paid_idle_and_unmet_food_do_not_become_voluntary_time() {
-    let transition = advance_material_circuit(&time_opening(2)).unwrap();
+    let transition = babylon_material_circuit::advance_material_circuit(&time_opening(2)).unwrap();
     assert_eq!(transition.household_consumption[0].unmet_quantity, 2);
     assert!(transition.member_labor_use.iter().any(|r| r.idle_hours > 0));
     let row = &transition.household_time[0];
@@ -73,45 +91,48 @@ fn paid_idle_and_unmet_food_do_not_become_voluntary_time() {
 
 #[test]
 fn shared_household_aliases_cannot_duplicate_contribution_time() {
-    let mut state = advance_material_circuit(&time_opening(4)).unwrap().state;
+    let mut state = babylon_material_circuit::advance_material_circuit(&time_opening(4))
+        .unwrap()
+        .state;
     let before = state.clone();
     let uses = [
         HouseholdContributionUse {
             use_id: [1; 32],
-            principal_id: household(),
+            principal_id: crate::household(),
             actor_id: 11,
             contributor_id: 21,
             hours: 4,
         },
         HouseholdContributionUse {
             use_id: [2; 32],
-            principal_id: household(),
+            principal_id: crate::household(),
             actor_id: 12,
             contributor_id: 22,
             hours: 3,
         },
     ];
     assert_eq!(
-        consume_household_contributions(&mut state, 1, &uses),
+        babylon_material_circuit::consume_household_contributions(&mut state, 1, &uses),
         Err(MaterialCircuitError::HouseholdTimeInvariant)
     );
     assert_eq!(state, before);
     let one = &uses[..1];
-    let receipt = consume_household_contributions(&mut state, 1, one).unwrap();
+    let receipt =
+        babylon_material_circuit::consume_household_contributions(&mut state, 1, one).unwrap();
     let unchanged = state.clone();
     assert_eq!(
-        consume_household_contributions(&mut state, 1, one).unwrap(),
+        babylon_material_circuit::consume_household_contributions(&mut state, 1, one).unwrap(),
         receipt
     );
     assert_eq!(state, unchanged);
     let mut conflicting = uses[0].clone();
     conflicting.hours = 3;
     assert_eq!(
-        consume_household_contributions(&mut state, 1, &[conflicting]),
+        babylon_material_circuit::consume_household_contributions(&mut state, 1, &[conflicting]),
         Err(MaterialCircuitError::HouseholdTimeInvariant)
     );
     assert_eq!(state, unchanged);
-    let bytes = encode_material_circuit_state(&state).unwrap();
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&state).unwrap();
     assert_eq!(decode_material_circuit_state(&bytes).unwrap(), state);
 }
 
@@ -127,7 +148,7 @@ fn time_endowments_refuse_population_overrun_unaccounted_attendance_and_wrong_un
         };
         book.policies[0].eligible_persons = invalid;
         assert_eq!(
-            advance_material_circuit(&state),
+            babylon_material_circuit::advance_material_circuit(&state),
             Err(MaterialCircuitError::HouseholdTimeInvariant)
         );
     }
@@ -138,9 +159,9 @@ fn time_endowments_refuse_population_overrun_unaccounted_attendance_and_wrong_un
     let HouseholdTimeAccounting::Modeled(book) = &mut economy.household_time else {
         unreachable!()
     };
-    book.policies[0].labor_unit_id = units();
+    book.policies[0].labor_unit_id = crate::units();
     assert_eq!(
-        advance_material_circuit(&state),
+        babylon_material_circuit::advance_material_circuit(&state),
         Err(MaterialCircuitError::HouseholdTimeInvariant)
     );
 }
@@ -158,7 +179,7 @@ fn missing_wage_funding_preserves_needs_and_finite_household_obligations() {
             .accounts
             .into_iter()
             .map(|mut r| {
-                r.cash = money(0);
+                r.cash = crate::money(0);
                 r
             })
             .collect(),
@@ -168,7 +189,7 @@ fn missing_wage_funding_preserves_needs_and_finite_household_obligations() {
     economy.costs =
         HistoricalCostBook::open(&economy.book, costs.stocks, costs.freight, vec![], vec![])
             .unwrap();
-    let transition = advance_material_circuit(&state).unwrap();
+    let transition = babylon_material_circuit::advance_material_circuit(&state).unwrap();
     assert_eq!(transition.household_consumption[0].required_quantity, 4);
     assert_eq!(transition.household_consumption[0].unmet_quantity, 2);
     let row = &transition.household_time[0];
@@ -182,7 +203,9 @@ fn missing_wage_funding_preserves_needs_and_finite_household_obligations() {
 
 #[test]
 fn payment_of_an_earlier_wage_claim_does_not_charge_attendance_twice() {
-    let mut state = advance_material_circuit(&time_opening(4)).unwrap().state;
+    let mut state = babylon_material_circuit::advance_material_circuit(&time_opening(4))
+        .unwrap()
+        .state;
     let CircuitAccounting::Monetary(economy) = &mut state.accounting else {
         unreachable!()
     };
@@ -192,11 +215,11 @@ fn payment_of_an_earlier_wage_claim_does_not_charge_attendance_twice() {
         .reserve_shift(
             FundedShift::new(
                 shift,
-                AccountId::Site(site(3)),
-                AccountId::Household(household()),
+                AccountId::Site(crate::site(3)),
+                AccountId::Household(crate::household()),
                 1,
                 2,
-                money(1),
+                crate::money(1),
             )
             .unwrap(),
         )
@@ -207,7 +230,7 @@ fn payment_of_an_earlier_wage_claim_does_not_charge_attendance_twice() {
     economy.costs =
         HistoricalCostBook::open(&economy.book, costs.stocks, costs.freight, vec![], vec![])
             .unwrap();
-    let transition = advance_material_circuit(&state).unwrap();
+    let transition = babylon_material_circuit::advance_material_circuit(&state).unwrap();
     assert_eq!(
         transition
             .money_transfers
@@ -240,13 +263,13 @@ fn nonwage_attendance_and_idle_use_the_same_finite_household_time() {
         for term in &mut economy.employment {
             term.compensation = compensation;
         }
-        let transition = advance_material_circuit(&state).unwrap();
+        let transition = babylon_material_circuit::advance_material_circuit(&state).unwrap();
         assert!(transition.wage_accruals.is_empty());
         assert!(transition.member_labor_use.iter().any(|r| r.idle_hours > 0));
         assert!(transition
             .member_labor_use
             .iter()
-            .all(|r| r.accrued_wages == money(0)));
+            .all(|r| r.accrued_wages == crate::money(0)));
         assert_eq!(transition.household_time.len(), 1);
         assert_eq!(transition.household_time[0].attended_hours, 16);
         assert_eq!(transition.household_time[0].contribution_available_hours, 6);
@@ -274,7 +297,7 @@ fn zero_eligible_persons_can_retain_needs_without_invented_time() {
             .accounts
             .into_iter()
             .map(|mut r| {
-                r.cash = money(0);
+                r.cash = crate::money(0);
                 r
             })
             .collect(),
@@ -288,7 +311,7 @@ fn zero_eligible_persons_can_retain_needs_without_invented_time() {
         unreachable!()
     };
     book.policies[0].eligible_persons = 0;
-    let transition = advance_material_circuit(&state).unwrap();
+    let transition = babylon_material_circuit::advance_material_circuit(&state).unwrap();
     assert_eq!(transition.household_consumption[0].required_quantity, 4);
     assert_eq!(transition.household_consumption[0].unmet_quantity, 2);
     let row = &transition.household_time[0];
@@ -303,7 +326,9 @@ fn zero_eligible_persons_can_retain_needs_without_invented_time() {
 
 #[test]
 fn persisted_unpaid_claim_cannot_exceed_all_captured_material_needs() {
-    let mut state = advance_material_circuit(&time_opening(2)).unwrap().state;
+    let mut state = babylon_material_circuit::advance_material_circuit(&time_opening(2))
+        .unwrap()
+        .state;
     let CircuitAccounting::Monetary(economy) = &mut state.accounting else {
         unreachable!()
     };
@@ -315,7 +340,7 @@ fn persisted_unpaid_claim_cannot_exceed_all_captured_material_needs() {
     row.unpaid_requested_hours = 27;
     row.unpaid_unresolved_hours = 15;
     assert_eq!(
-        encode_material_circuit_state(&state),
+        babylon_material_circuit::encode_material_circuit_state(&state),
         Err(MaterialCircuitError::HouseholdTimeInvariant)
     );
 }
@@ -337,9 +362,9 @@ fn nonworker_household_requires_an_admitted_hour_unit() {
     let HouseholdTimeAccounting::Modeled(book) = &mut economy.household_time else {
         unreachable!()
     };
-    book.policies[0].labor_unit_id = units();
+    book.policies[0].labor_unit_id = crate::units();
     assert_eq!(
-        advance_material_circuit(&state),
+        babylon_material_circuit::advance_material_circuit(&state),
         Err(MaterialCircuitError::HouseholdTimeInvariant)
     );
     let CircuitAccounting::Monetary(economy) = &mut state.accounting else {
@@ -348,27 +373,36 @@ fn nonworker_household_requires_an_admitted_hour_unit() {
     let HouseholdTimeAccounting::Modeled(book) = &mut economy.household_time else {
         unreachable!()
     };
-    book.policies[0].labor_unit_id = hours();
-    let closed = advance_material_circuit(&state).unwrap();
+    book.policies[0].labor_unit_id = crate::hours();
+    let closed = babylon_material_circuit::advance_material_circuit(&state).unwrap();
     assert_eq!(closed.household_time[0].attended_hours, 0);
     assert_eq!(closed.household_time[0].contribution_available_hours, 12);
 }
 
 #[test]
 fn a_prior_period_contribution_cannot_be_replayed_after_rollover() {
-    let mut state = advance_material_circuit(&time_opening(4)).unwrap().state;
+    let mut state = babylon_material_circuit::advance_material_circuit(&time_opening(4))
+        .unwrap()
+        .state;
     let usage = HouseholdContributionUse {
         use_id: [9; 32],
-        principal_id: household(),
+        principal_id: crate::household(),
         actor_id: 11,
         contributor_id: 21,
         hours: 4,
     };
-    consume_household_contributions(&mut state, 1, std::slice::from_ref(&usage)).unwrap();
-    state = advance_material_circuit(&state).unwrap().state;
+    babylon_material_circuit::consume_household_contributions(
+        &mut state,
+        1,
+        std::slice::from_ref(&usage),
+    )
+    .unwrap();
+    state = babylon_material_circuit::advance_material_circuit(&state)
+        .unwrap()
+        .state;
     let before = state.clone();
     assert_eq!(
-        consume_household_contributions(&mut state, 1, &[usage]),
+        babylon_material_circuit::consume_household_contributions(&mut state, 1, &[usage]),
         Err(MaterialCircuitError::HouseholdTimeInvariant)
     );
     assert_eq!(state, before);

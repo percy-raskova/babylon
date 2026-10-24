@@ -1,11 +1,20 @@
 //! Shared frozen bases must preserve exact history and reject admission corruption.
-use super::*;
+use super::archive_reader;
+use super::support;
+use super::support::{receipt_consumption_count, stub_page_input, LiveWorkerTarget};
 use crate::archive_revision::{publication, tick_knowledge};
+use crate::identity::CampaignId;
+use crate::ArchiveKnowledge;
+use crate::{
+    ArchiveCitation, ArchiveDirtyBatch, ArchiveKnowledgeGrant, PendingArchiveReceipt,
+    SemanticArchiveError, SemanticArchiveStore,
+};
 use crate::{ArchiveMaterializeMode, SemanticArchiveReaderError};
 use postgres::IsolationLevel;
+use postgres::NoTls;
 
 fn empty_batch(target: &LiveWorkerTarget, tick: u64) -> ArchiveDirtyBatch {
-    let scope = scope_at(&target.config, target.campaign_id, tick);
+    let scope = archive_reader::scope_at(&target.config, target.campaign_id, tick);
     ArchiveDirtyBatch::try_new(tick, scope.tick_content_hash().unwrap(), Vec::new()).unwrap()
 }
 
@@ -14,7 +23,7 @@ fn grant_at(target: &LiveWorkerTarget, key: &str, tick: u64) {
         .grant_knowledge(
             target.campaign_id,
             &ArchiveKnowledgeGrant::try_new(
-                stub_subject_spec(1).page_ref,
+                support::stub_subject_spec(1).page_ref,
                 key.to_owned(),
                 tick,
                 ArchiveCitation::try_new("checkpoint-proof".to_owned(), format!("{key}@{tick}"))
@@ -38,10 +47,10 @@ fn consume_through(target: &LiveWorkerTarget, last: u64) {
     }
 }
 
-fn frozen(target: &LiveWorkerTarget, tick: u64) -> crate::ArchiveKnowledge {
+fn frozen(target: &LiveWorkerTarget, tick: u64) -> ArchiveKnowledge {
     tick_knowledge::load(
         &mut target.config.connect(NoTls).unwrap(),
-        &scope_at(&target.config, target.campaign_id, tick),
+        &archive_reader::scope_at(&target.config, target.campaign_id, tick),
     )
     .unwrap()
 }
@@ -74,7 +83,7 @@ fn live_shared_membership_preserves_checkpoint_boundary_and_historical_reads() {
     assert_eq!(frozen(&target, 13), second);
     assert_eq!(frozen(&target, 14), second);
     assert!(first
-        .grant(&stub_subject_spec(1).page_ref, "checkpoint-proof")
+        .grant(&support::stub_subject_spec(1).page_ref, "checkpoint-proof")
         .is_none());
     let mut client = target.config.connect(NoTls).unwrap();
     let rows = client.query(
@@ -101,11 +110,11 @@ fn live_shared_membership_preserves_checkpoint_boundary_and_historical_reads() {
         usize::try_from(count).unwrap(),
         first.rows().count() + 1 + second.rows().count()
     );
-    with_reader(&target.config, |reader| {
+    archive_reader::with_reader(&target.config, |reader| {
         for tick in [1, 2, 13, 14] {
             assert!(reader
                 .search_as_of(
-                    &scope_at(&target.config, target.campaign_id, tick),
+                    &archive_reader::scope_at(&target.config, target.campaign_id, tick),
                     "checkpoint",
                     10
                 )
@@ -122,14 +131,14 @@ fn live_shared_membership_preserves_checkpoint_boundary_and_historical_reads() {
     assert_eq!(
         tick_knowledge::load(
             &mut transaction,
-            &scope_at(&target.config, target.campaign_id, 13)
+            &archive_reader::scope_at(&target.config, target.campaign_id, 13)
         ),
         Err(SemanticArchiveError::StoredPageMismatch)
     );
     assert_eq!(
         tick_knowledge::load(
             &mut transaction,
-            &scope_at(&target.config, target.campaign_id, 14)
+            &archive_reader::scope_at(&target.config, target.campaign_id, 14)
         )
         .unwrap(),
         second
@@ -145,7 +154,7 @@ fn live_changed_admission_refuses_even_when_later_full_set_is_unchanged() {
     let target = LiveWorkerTarget::create("admissionmove", 0x34302, 3);
     grant_at(&target, "checkpoint-proof", 2);
     consume_through(&target, 3);
-    let scope = scope_at(&target.config, target.campaign_id, 3);
+    let scope = archive_reader::scope_at(&target.config, target.campaign_id, 3);
     let expected = frozen(&target, 3);
     let mut client = target.config.connect(NoTls).unwrap();
     let before = full_cohort(&mut client, target.campaign_id, 3);
@@ -164,7 +173,7 @@ fn live_changed_admission_refuses_even_when_later_full_set_is_unchanged() {
         tick_knowledge::load(&mut client, &scope),
         Err(SemanticArchiveError::StoredPageMismatch)
     );
-    with_reader(&target.config, |reader| {
+    archive_reader::with_reader(&target.config, |reader| {
         assert_eq!(
             reader.search_as_of(&scope, "checkpoint", 10),
             Err(SemanticArchiveReaderError::Archive(
@@ -188,7 +197,7 @@ fn live_changed_admission_refuses_even_when_later_full_set_is_unchanged() {
 }
 
 fn assert_corruption_refused(target: &LiveWorkerTarget, statement: &str) {
-    let scope = scope_at(&target.config, target.campaign_id, 3);
+    let scope = archive_reader::scope_at(&target.config, target.campaign_id, 3);
     let mut client = target.config.connect(NoTls).unwrap();
     let expected = tick_knowledge::load(&mut client, &scope).unwrap();
     let mut tx = client.transaction().unwrap();
@@ -237,7 +246,7 @@ fn live_checkpoint_page_failure_rolls_back_new_base_without_disturbing_history()
     let target = LiveWorkerTarget::create("checkpointrollback", 0x34304, 14);
     consume_through(&target, 13);
     let original = frozen(&target, 13);
-    let scope = scope_at(&target.config, target.campaign_id, 14);
+    let scope = archive_reader::scope_at(&target.config, target.campaign_id, 14);
     let receipt = PendingArchiveReceipt::try_new(14, scope.tick_content_hash().unwrap()).unwrap();
     let batch = ArchiveDirtyBatch::try_new(
         14,

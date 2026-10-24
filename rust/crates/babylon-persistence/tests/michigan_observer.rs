@@ -1,10 +1,8 @@
-use babylon_persistence::{
-    michigan_economy::michigan_economy, michigan_economy::michigan_observer_foundation,
-};
+use babylon_persistence::michigan_economy;
 
 #[test]
 fn michigan_observer_foundation_seeds_all_83_exact_county_baselines() {
-    let economy = michigan_economy().expect("pinned QCEW baseline");
+    let economy = michigan_economy::michigan_economy().expect("pinned QCEW baseline");
     assert_eq!(economy.counties().len(), 83);
     let wayne = economy
         .counties()
@@ -14,7 +12,8 @@ fn michigan_observer_foundation_seeds_all_83_exact_county_baselines() {
     assert_eq!(wayne.annual_avg_emplvl, 725_504);
     assert_eq!(wayne.total_annual_wages, 55_436_615_328);
     assert_eq!(wayne.annual_avg_wkly_wage, 1469);
-    let (session, bundle) = michigan_observer_foundation().expect("observer foundation");
+    let (session, bundle) =
+        michigan_economy::michigan_observer_foundation().expect("observer foundation");
     assert_eq!(session.completed_tick(), 0);
     let source = std::str::from_utf8(bundle.scenario_source_bytes()).unwrap();
     assert_eq!(source.matches("(node county-").count(), 83);
@@ -30,7 +29,7 @@ fn empty_economy_program_commits_a_quiet_period_without_material_changes() {
     use babylon_bsl::structural_verbs::CollectingSink;
     use babylon_graph::stable_element::StableElementKey;
     use babylon_practice_contract::OrderedPracticeActionBatch;
-    let (mut session, _) = michigan_observer_foundation().unwrap();
+    let (mut session, _) = michigan_economy::michigan_observer_foundation().unwrap();
     let before = session.stable_graph_state().unwrap();
     let actions = OrderedPracticeActionBatch::empty(session.session_identity().clone(), 1).unwrap();
     let mut sink = CollectingSink::default();
@@ -47,7 +46,7 @@ fn empty_economy_program_commits_a_quiet_period_without_material_changes() {
         session.stable_graph_state().unwrap().digest()
     );
 
-    let counties = michigan_economy().unwrap().counties();
+    let counties = michigan_economy::michigan_economy().unwrap().counties();
     let territory_rows = report.material_state_rows().territories().rows();
     assert_eq!(territory_rows.len(), 83);
     for (territory, county) in territory_rows.iter().zip(counties) {

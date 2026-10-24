@@ -1,5 +1,6 @@
 //! Current fixed-width actual collection evidence; no reconstructed account delta.
-use super::{MaterialWorldError, ReceiptCursor};
+use super::MaterialWorldError;
+use super::ReceiptCursor;
 use babylon_kernel::currency::Currency;
 use babylon_material_circuit::{
     AccountId, AidOutcome, AidReceipt, CashTransferPurpose, CircuitAccounting, CollectionOutcome,
@@ -8,8 +9,9 @@ use babylon_material_circuit::{
     OrganizationAccountId, UnitId,
 };
 use std::collections::BTreeMap;
+use std::result::Result as StdResult;
 pub(super) const ROW_BYTES: usize = 317;
-type Result<T> = std::result::Result<T, MaterialWorldError>;
+type Result<T> = StdResult<T, MaterialWorldError>;
 pub(super) fn encode(rows: &[CollectionReceipt], period: u64, bytes: &mut Vec<u8>) -> Result<()> {
     for row in rows {
         row.validate()?;

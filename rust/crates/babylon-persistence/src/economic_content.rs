@@ -1,15 +1,22 @@
 //! Immutable current campaign admission shared by material readers and projections.
-use crate::{
-    economic_catalog::EconomicProjectionView,
-    identity::CampaignId,
-    material_runtime::{
-        MaterialComponentIdentity, MaterialRuntimeError, MaterialRuntimeFoundation,
-    },
-    material_storage::OpeningRegister,
+use crate::economic_catalog::EconomicProjectionView;
+use crate::identity::CampaignId;
+use crate::material_runtime::{
+    MaterialComponentIdentity, MaterialRuntimeError, MaterialRuntimeFoundation,
 };
+use crate::material_storage::OpeningRegister;
+
 use babylon_graph::stable_state::StableGraphState;
-use babylon_kernel::{clock::CampaignDuration, content_digest::sha256_of};
-use babylon_tick::{material_staffing::StaffingComposition, material_world::MaterialWorldRegister};
+use babylon_kernel::clock::CampaignDuration;
+
+use babylon_tick::material_staffing::StaffingComposition;
+use babylon_tick::material_world::MaterialWorldRegister;
+
+use crate::michigan_material::MichiganDeliveryPreset;
+use crate::simulation_experiment::ExperimentProfile;
+use babylon_kernel::content_digest;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 use std::sync::{Arc, Mutex, OnceLock};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -21,7 +28,7 @@ pub enum EconomicContentError {
     OwnerPoisoned,
 }
 impl std::fmt::Display for EconomicContentError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         write!(f, "economic content admission refused: {self:?}")
     }
 }
@@ -48,8 +55,8 @@ impl EconomicContentAdmission {
         if graph.content_bundle().economic_catalog().is_none() {
             return Err(EconomicContentError::Foundation);
         }
-        let graph_digest = sha256_of(graph.canonical_bytes());
-        let source_digest = sha256_of(graph.content_bundle().canonical_bytes());
+        let graph_digest = content_digest::sha256_of(graph.canonical_bytes());
+        let source_digest = content_digest::sha256_of(graph.content_bundle().canonical_bytes());
         let component_identity = MaterialComponentIdentity::from_foundation(graph);
         let foundation_graph = foundation
             .opening_graph_state()
@@ -219,8 +226,8 @@ pub fn validate_economic_header(
     tick: u64,
 ) -> Result<(), EconomicContentError> {
     if preset != "national-world"
-        && crate::michigan_material::MichiganDeliveryPreset::from_id(preset).is_none()
-        && crate::simulation_experiment::ExperimentProfile::from_foundation_id(preset).is_none()
+        && MichiganDeliveryPreset::from_id(preset).is_none()
+        && ExperimentProfile::from_foundation_id(preset).is_none()
     {
         return Err(EconomicContentError::UnknownPreset);
     }

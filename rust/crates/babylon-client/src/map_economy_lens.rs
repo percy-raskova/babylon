@@ -5,10 +5,10 @@ use std::collections::BTreeMap;
 
 use babylon_kernel::economic_location::EconomicLocation;
 
-use babylon_persistence::{
-    observer_reader::ObserverCountyEconomy, observer_reader::ObserverEconomySnapshot,
-    production_observation::ProductionSnapshot,
-};
+use crate::workforce::StaffingIdentity;
+use babylon_persistence::observer_reader::{ObserverCountyEconomy, ObserverEconomySnapshot};
+use babylon_persistence::production_observation::ProductionSnapshot;
+use std::collections::BTreeSet;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum EconomyMetric {
@@ -474,14 +474,14 @@ fn project_workforce(
         result.unavailable = LensUnavailable::InvalidObservation;
         return result;
     }
-    let mut identities = std::collections::BTreeSet::new();
+    let mut identities = BTreeSet::new();
     for account in &production.staffing_accounts {
         let Some(site) = sites.get(account.site_id.as_str()) else {
             result.counties.clear();
             result.unavailable = LensUnavailable::InvalidObservation;
             return result;
         };
-        if !identities.insert(crate::workforce::StaffingIdentity::from(account))
+        if !identities.insert(StaffingIdentity::from(account))
             || crate::workforce::validate_staffing_balance(account).is_err()
             || crate::workforce::validate_staffing_period(account, snapshot.resolve_tick).is_err()
         {
@@ -668,7 +668,7 @@ fn add_inbound(
 mod tests {
     #[test]
     fn relationships_do_not_fabricate_numeric_county_readings() {
-        let lens = super::MapLens::Relationships;
+        let lens = MapLens::Relationships;
         let observation = snapshot();
         for observation in [None, Some(&observation)] {
             let projection = super::project_map_lens(observation, &lens);
@@ -680,10 +680,9 @@ mod tests {
     }
 
     use super::*;
-    use babylon_persistence::{
-        observer_reader::ObserverVisibility, production_observation::ProductionFreight,
-        production_observation::ProductionRoute, production_observation::ProductionSite,
-        production_observation::ProductionStock,
+    use babylon_persistence::observer_reader::ObserverVisibility;
+    use babylon_persistence::production_observation::{
+        ProductionFreight, ProductionRoute, ProductionSite, ProductionStock,
     };
 
     fn key(letter: char) -> MaterialGoodKey {
@@ -835,10 +834,10 @@ freight_order_definitions: Vec::new(),
 
     #[test]
     fn modeled_workforce_counts_the_owner_once_across_processes_and_refuses_preview() {
-        use babylon_persistence::{
-            production_observation::ProductionStaffingAccount,
-            production_observation::ProductionStaffingSubject,
+        use babylon_persistence::production_observation::{
+            ProductionStaffingAccount, ProductionStaffingSubject,
         };
+
         let mut snapshot = snapshot();
         snapshot.resolve_tick = 0;
         let production = snapshot.production.as_mut().unwrap();

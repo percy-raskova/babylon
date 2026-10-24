@@ -9,28 +9,52 @@ use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 
 use crate::atlas::CountyAtlas;
+use crate::campaign_browser::ComparisonPanel;
 use crate::decision_surface::{DeclaredSurface, SurfaceId};
+use crate::map::CountyMapScope;
 use crate::map::{HoveredCounty, SelectedCounty};
-use crate::map_economy_lens::{
-    project_map_lens, CountyLensReading, EconomyMetric, MapLens, MaterialLensKind,
-};
+use crate::map_economy_lens;
+use crate::map_economy_lens::WorkforceMetric;
+use crate::map_economy_lens::{CountyLensReading, EconomyMetric, MapLens, MaterialLensKind};
 use crate::observer::ObserverSession;
-use crate::observer_controls::{availability, turn_presentation, ControlAvailability};
+use crate::observer::Perspective;
+use crate::observer_audio::ObserverAudioSettings;
+use crate::observer_controls;
+use crate::observer_controls::ControlAvailability;
 use crate::observer_focus::{
     ObserverFocusPolicy, ObserverFocusSystems, ObserverFocusTarget, ObserverKeyboardActivate,
     ObserverKeyboardClaim,
 };
 use crate::observer_layout::{ObserverLayout, ObserverRegion};
+use crate::observer_opening::ProductionRoot;
 use crate::observer_opening::{MenuPage, OpeningPresentation, OpeningStage};
+use crate::observer_progress::OperationProgress;
 use crate::observer_theme as theme;
+use crate::observer_title::TitleMenuRoot;
+use crate::observer_warning::ObserverWarningRoot;
+use crate::organizer::ui::OrganizerAction;
+use crate::organizer::ui::OrganizerInspectorRoot;
+use crate::organizer::OrganizerClient;
+use crate::organizer::OrganizerInspector;
+use crate::production::PrimaryView;
+use crate::production::ProductionCommand;
 use crate::ui::dossier_card::{ActiveCountyDossier, DossierFetchState, DossierRefresh};
+use crate::visual_assets::ObserverFonts;
+use babylon_persistence::observer_reader::ObserverVisibility;
+use babylon_persistence::production_observation::ProductionSnapshot;
+use babylon_persistence::ProductionEvidenceDigest;
+use babylon_persistence::ProductionEvidenceError;
+use bevy::camera::visibility::RenderLayers;
+use bevy::input::mouse::MouseScrollUnit;
+use bevy::input::mouse::MouseWheel;
+use bevy::picking::hover::HoverMap;
+use bevy::text::LineBreak;
+use bevy::ui::UiSystems;
 
 pub(crate) const OBSERVER_PANEL_BOTTOM: f32 = 56.0;
 
-pub(crate) type ProductionEvidenceOutcome = Result<
-    Option<babylon_persistence::ProductionEvidenceDigest>,
-    babylon_persistence::ProductionEvidenceError,
->;
+pub(crate) type ProductionEvidenceOutcome =
+    Result<Option<ProductionEvidenceDigest>, ProductionEvidenceError>;
 
 #[derive(Resource, Default)]
 pub struct ObserverFrame(
@@ -48,13 +72,11 @@ impl ObserverFrame {
                 && frame.resolve_tick == session.viewed_tick
                 && matches!(
                     (session.perspective, frame.visibility),
-                    (
-                        crate::observer::Perspective::FullObserver,
-                        babylon_persistence::observer_reader::ObserverVisibility::FullObserver
-                    ) | (
-                        crate::observer::Perspective::PlayerKnowledge,
-                        babylon_persistence::observer_reader::ObserverVisibility::KnownPreview
-                    )
+                    (Perspective::FullObserver, ObserverVisibility::FullObserver)
+                        | (
+                            Perspective::PlayerKnowledge,
+                            ObserverVisibility::KnownPreview
+                        )
                 )
                 && session
                     .foundation_digest
@@ -189,7 +211,7 @@ pub enum ObserverCommand {
     NextPeriod,
     Live,
     Lens(EconomyMetric),
-    Workforce(crate::map_economy_lens::WorkforceMetric),
+    Workforce(WorkforceMetric),
     MaterialLens(MaterialLensKind),
     CycleGood(bool),
     Archive,
@@ -296,7 +318,7 @@ pub(crate) enum ObserverFontRole {
 }
 
 fn apply_fonts(
-    fonts: Res<crate::visual_assets::ObserverFonts>,
+    fonts: Res<ObserverFonts>,
     mut labels: Query<(&ObserverFontRole, &mut TextFont), Added<ObserverFontRole>>,
 ) {
     for (role, mut font) in &mut labels {
@@ -330,7 +352,7 @@ fn role_label(
             ..default()
         },
         TextColor(color),
-        TextLayout::new_with_linebreak(bevy::text::LineBreak::WordOrCharacter),
+        TextLayout::new_with_linebreak(LineBreak::WordOrCharacter),
         role,
         DeclaredSurface::new(SurfaceId::ObserverShell),
     )
@@ -467,22 +489,11 @@ fn spawn_hud(commands: &mut Commands) {
                     width: px(12),
                     ..default()
                 });
-                let circuit = crate::production::button(
-                    bar,
-                    "Circuit [P]",
-                    crate::production::ProductionCommand::Open,
-                );
+                let circuit =
+                    crate::production::button(bar, "Circuit [P]", ProductionCommand::Open);
                 bar.commands().entity(circuit).insert(CircuitNavigation);
-                crate::production::button(
-                    bar,
-                    "World [M]",
-                    crate::production::ProductionCommand::Map,
-                );
-                crate::organizer::ui::button(
-                    bar,
-                    "Organize",
-                    crate::organizer::ui::OrganizerAction::Open,
-                );
+                crate::production::button(bar, "World [M]", ProductionCommand::Map);
+                crate::organizer::ui::button(bar, "Organize", OrganizerAction::Open);
                 button(bar, "Menu [Esc]", ObserverCommand::Menu);
             });
             hud.spawn(row()).with_children(|bar| {
@@ -721,12 +732,12 @@ fn spawn_lens_controls(panel: &mut ChildSpawnerCommands) {
         button(
             bar,
             "Employed",
-            ObserverCommand::Workforce(crate::map_economy_lens::WorkforceMetric::Employed),
+            ObserverCommand::Workforce(WorkforceMetric::Employed),
         );
         button(
             bar,
             "Reserve",
-            ObserverCommand::Workforce(crate::map_economy_lens::WorkforceMetric::Reserve),
+            ObserverCommand::Workforce(WorkforceMetric::Reserve),
         );
     });
     panel.spawn(row()).with_children(|bar| {
@@ -1030,7 +1041,7 @@ fn spawn_shell(
             clear_color: ClearColorConfig::None,
             ..default()
         },
-        bevy::camera::visibility::RenderLayers::layer(31),
+        RenderLayers::layer(31),
         IsDefaultUiCamera,
         ObserverUiCamera,
     ));
@@ -1073,13 +1084,13 @@ struct ScrollPanel {
 }
 
 fn scroll_input(
-    mut wheel: MessageReader<bevy::input::mouse::MouseWheel>,
-    hover: Res<bevy::picking::hover::HoverMap>,
+    mut wheel: MessageReader<MouseWheel>,
+    hover: Res<HoverMap>,
     mut commands: Commands,
 ) {
     for event in wheel.read() {
         let delta = -event.y
-            * if event.unit == bevy::input::mouse::MouseScrollUnit::Line {
+            * if event.unit == MouseScrollUnit::Line {
                 28.0
             } else {
                 1.0
@@ -1119,7 +1130,7 @@ fn pointer_buttons(
     buttons: Query<(&Interaction, &ObserverButton), Changed<Interaction>>,
     ui: Res<ObserverUiState>,
     session: Res<ObserverSession>,
-    view: Res<crate::production::PrimaryView>,
+    view: Res<PrimaryView>,
     opening: Option<Res<OpeningPresentation>>,
     mut commands: MessageWriter<ObserverCommand>,
 ) {
@@ -1141,7 +1152,7 @@ fn button_visible(
     button: ObserverButton,
     ui: &ObserverUiState,
     session: &ObserverSession,
-    view: crate::production::PrimaryView,
+    view: PrimaryView,
 ) -> bool {
     if ui.splash_visible || ui.comparison_open || button.in_menu != ui.menu_open {
         return false;
@@ -1149,7 +1160,7 @@ fn button_visible(
     if button.in_menu {
         return true;
     }
-    let map = view == crate::production::PrimaryView::Map;
+    let map = view == PrimaryView::Map;
     match button.command {
         ObserverCommand::TogglePlay | ObserverCommand::Speed | ObserverCommand::StopOnDelivery => {
             ui.disclosure == Some(ObserverDisclosure::Time)
@@ -1205,7 +1216,7 @@ fn dispatch_button(
     button: ObserverButton,
     ui: &ObserverUiState,
     session: &ObserverSession,
-    view: crate::production::PrimaryView,
+    view: PrimaryView,
     opening: Option<&OpeningPresentation>,
     commands: &mut MessageWriter<ObserverCommand>,
 ) {
@@ -1220,7 +1231,7 @@ fn keyboard_button(
     buttons: Query<(&ObserverButton, &ObserverFocusTarget)>,
     ui: Res<ObserverUiState>,
     session: Res<ObserverSession>,
-    view: Res<crate::production::PrimaryView>,
+    view: Res<PrimaryView>,
     opening: Option<Res<OpeningPresentation>>,
     mut commands: MessageWriter<ObserverCommand>,
 ) {
@@ -1243,20 +1254,20 @@ fn keyboard_button(
 struct ShellFocusState<'w, 's> {
     ui: Res<'w, ObserverUiState>,
     session: Res<'w, ObserverSession>,
-    view: Res<'w, crate::production::PrimaryView>,
+    view: Res<'w, PrimaryView>,
     frame: Res<'w, ObserverFrame>,
     opening: Option<Res<'w, OpeningPresentation>>,
-    productions: Query<'w, 's, Entity, With<crate::observer_opening::ProductionRoot>>,
-    titles: Query<'w, 's, Entity, With<crate::observer_title::TitleMenuRoot>>,
+    productions: Query<'w, 's, Entity, With<ProductionRoot>>,
+    titles: Query<'w, 's, Entity, With<TitleMenuRoot>>,
 }
 
 fn sync_focus_policy(
     state: ShellFocusState,
     menus: Query<Entity, With<ObserverMenu>>,
-    warnings: Query<Entity, With<crate::observer_warning::ObserverWarningRoot>>,
-    comparisons: Query<Entity, With<crate::campaign_browser::ComparisonPanel>>,
-    organizer: Option<Res<crate::organizer::OrganizerClient>>,
-    organizer_inspectors: Query<Entity, With<crate::organizer::ui::OrganizerInspectorRoot>>,
+    warnings: Query<Entity, With<ObserverWarningRoot>>,
+    comparisons: Query<Entity, With<ComparisonPanel>>,
+    organizer: Option<Res<OrganizerClient>>,
+    organizer_inspectors: Query<Entity, With<OrganizerInspectorRoot>>,
     mut policy: ResMut<ObserverFocusPolicy>,
 ) {
     policy.set_if_neq(ObserverFocusPolicy {
@@ -1279,10 +1290,10 @@ fn sync_focus_policy(
             } else {
                 menus.single().ok()
             }
-        } else if *state.view == crate::production::PrimaryView::Organizer
-            && organizer.as_ref().is_some_and(|client| {
-                client.inspector != crate::organizer::OrganizerInspector::Closed
-            })
+        } else if *state.view == PrimaryView::Organizer
+            && organizer
+                .as_ref()
+                .is_some_and(|client| client.inspector != OrganizerInspector::Closed)
         {
             organizer_inspectors.single().ok()
         } else {
@@ -1312,7 +1323,8 @@ fn sync_focus_targets(
         if let Some(button) = button {
             next.available = button_visible(*button, &state.ui, &state.session, *state.view)
                 && menu_scope_visible(*button, state.opening.as_deref())
-                && availability(button.command, &state.session) == ControlAvailability::Enabled;
+                && observer_controls::availability(button.command, &state.session)
+                    == ControlAvailability::Enabled;
         } else if let Some(reading) = reading {
             let scope_visible = !state.ui.splash_visible && !state.ui.comparison_open;
             next.available = scope_visible
@@ -1387,8 +1399,11 @@ fn caption(
     ui: &ObserverUiState,
 ) -> Option<String> {
     Some(match command {
-        ObserverCommand::TogglePlay => format!("{} [Space]", turn_presentation(state).play_label),
-        ObserverCommand::Step => turn_presentation(state).step_label,
+        ObserverCommand::TogglePlay => format!(
+            "{} [Space]",
+            observer_controls::turn_presentation(state).play_label
+        ),
+        ObserverCommand::Step => observer_controls::turn_presentation(state).step_label,
         ObserverCommand::Quit => if state.quit_requested {
             "Closing game..."
         } else {
@@ -1427,25 +1442,24 @@ fn caption(
 fn paint_buttons(
     ui: Res<ObserverUiState>,
     state: Res<ObserverSession>,
-    view: Res<crate::production::PrimaryView>,
+    view: Res<PrimaryView>,
     feedback: Res<ObserverFeedback>,
     mut paint: ButtonPaint,
 ) {
     let mut hint = feedback.message;
     for (interaction, button, mut background, mut border, mut node) in &mut paint.buttons {
         if matches!(button.command, ObserverCommand::CycleGood(_)) {
-            let display = if *view == crate::production::PrimaryView::Map
-                && matches!(&ui.lens, MapLens::Material { .. })
-            {
-                Display::Flex
-            } else {
-                Display::None
-            };
+            let display =
+                if *view == PrimaryView::Map && matches!(&ui.lens, MapLens::Material { .. }) {
+                    Display::Flex
+                } else {
+                    Display::None
+                };
             if node.display != display {
                 node.display = display;
             }
         }
-        let available = availability(button.command, &state);
+        let available = observer_controls::availability(button.command, &state);
         let active_scope =
             !ui.splash_visible && !ui.comparison_open && button.in_menu == ui.menu_open;
         if active_scope && *interaction != Interaction::None {
@@ -1493,7 +1507,7 @@ fn paint_buttons(
             }
         }
         color.set_if_neq(TextColor(
-            if availability(marker.0, &state) == ControlAvailability::Enabled {
+            if observer_controls::availability(marker.0, &state) == ControlAvailability::Enabled {
                 theme::PAPER
             } else {
                 theme::GRAY.with_alpha(0.65)
@@ -1534,7 +1548,7 @@ type DisclosureRows<'w, 's> = Query<
 >;
 
 fn paint_view_controls(
-    view: Res<crate::production::PrimaryView>,
+    view: Res<PrimaryView>,
     ui: Res<ObserverUiState>,
     state: Res<ObserverSession>,
     mut rows: DisclosureRows,
@@ -1548,14 +1562,11 @@ fn paint_view_controls(
                 && !ui.menu_open
                 && !ui.splash_visible
                 && !ui.comparison_open
-                && (drawer.0 != ObserverDisclosure::Lens
-                    || *view == crate::production::PrimaryView::Map)
+                && (drawer.0 != ObserverDisclosure::Lens || *view == PrimaryView::Map)
         } else if map.is_some() {
-            *view == crate::production::PrimaryView::Map
-                && !ui.history_open
-                && state.viewed_tick == state.durable_tick
+            *view == PrimaryView::Map && !ui.history_open && state.viewed_tick == state.durable_tick
         } else if circuit.is_some() {
-            *view == crate::production::PrimaryView::Production
+            *view == PrimaryView::Production
                 && !ui.history_open
                 && state.viewed_tick == state.durable_tick
         } else if history.is_some() {
@@ -1664,12 +1675,12 @@ fn world_shortcuts(keys: &ButtonInput<KeyCode>, commands: &mut MessageWriter<Obs
 #[derive(SystemParam)]
 pub(crate) struct KeyboardContext<'w> {
     opening: Option<Res<'w, OpeningPresentation>>,
-    organizer: Option<Res<'w, crate::organizer::OrganizerClient>>,
+    organizer: Option<Res<'w, OrganizerClient>>,
     keys: Res<'w, ButtonInput<KeyCode>>,
     claimed: Res<'w, ObserverKeyboardClaim>,
     ui: Res<'w, ObserverUiState>,
-    view: Res<'w, crate::production::PrimaryView>,
-    scope: Option<Res<'w, crate::map::CountyMapScope>>,
+    view: Res<'w, PrimaryView>,
+    scope: Option<Res<'w, CountyMapScope>>,
     selected: ResMut<'w, SelectedCounty>,
 }
 
@@ -1692,10 +1703,10 @@ pub(crate) fn keyboard(
         return;
     }
     if !ui.menu_open
-        && *view == crate::production::PrimaryView::Organizer
+        && *view == PrimaryView::Organizer
         && organizer
             .as_ref()
-            .is_some_and(|client| client.inspector != crate::organizer::OrganizerInspector::Closed)
+            .is_some_and(|client| client.inspector != OrganizerInspector::Closed)
     {
         return;
     }
@@ -1710,18 +1721,13 @@ pub(crate) fn keyboard(
         menu_shortcuts(&keys, &claimed, opening.as_deref(), &mut commands);
         return;
     }
-    if *view == crate::production::PrimaryView::Organizer {
+    if *view == PrimaryView::Organizer {
         for (key, action) in [
             (
                 KeyCode::KeyP,
-                crate::organizer::ui::OrganizerAction::Inspect(
-                    crate::organizer::OrganizerInspector::Evidence,
-                ),
+                OrganizerAction::Inspect(OrganizerInspector::Evidence),
             ),
-            (
-                KeyCode::KeyI,
-                crate::organizer::ui::OrganizerAction::ArchiveWorkplace,
-            ),
+            (KeyCode::KeyI, OrganizerAction::ArchiveWorkplace),
         ] {
             // Reading and action focus retain navigation; editable notes claim their letters.
             if keys.just_pressed(key) && !claimed.claimed(key) {
@@ -1734,7 +1740,7 @@ pub(crate) fn keyboard(
         return;
     }
     world_shortcuts(&keys, &mut commands);
-    if *view == crate::production::PrimaryView::Map
+    if *view == PrimaryView::Map
         && (keys.just_pressed(KeyCode::ArrowLeft) || keys.just_pressed(KeyCode::ArrowRight))
     {
         if let Some(next) = scope
@@ -1767,10 +1773,7 @@ pub fn format_lens_reading(reading: CountyLensReading, unit: &str) -> String {
     }
 }
 
-fn county_circuit_intro(
-    snapshot: &babylon_persistence::production_observation::ProductionSnapshot,
-    county: Option<&str>,
-) -> String {
+fn county_circuit_intro(snapshot: &ProductionSnapshot, county: Option<&str>) -> String {
     let Some(county) = county else {
         return "Select a county to follow its work and dependencies.".into();
     };
@@ -1815,8 +1818,8 @@ struct ShellState<'w> {
     state: Res<'w, ObserverSession>,
     frame: Res<'w, ObserverFrame>,
     ui: Res<'w, ObserverUiState>,
-    view: Res<'w, crate::production::PrimaryView>,
-    audio: Res<'w, crate::observer_audio::ObserverAudioSettings>,
+    view: Res<'w, PrimaryView>,
+    audio: Res<'w, ObserverAudioSettings>,
     atlas: Res<'w, CountyAtlas>,
     selected: Res<'w, SelectedCounty>,
     hovered: Res<'w, HoveredCounty>,
@@ -1866,13 +1869,10 @@ fn archive_page_status(
 }
 
 fn paint_pending_status(
-    progress: Option<Res<crate::observer_progress::OperationProgress>>,
+    progress: Option<Res<OperationProgress>>,
     mut texts: Query<(&ObserverText, &mut Text)>,
 ) {
-    let Some(caption) = progress
-        .as_deref()
-        .and_then(crate::observer_progress::OperationProgress::caption)
-    else {
+    let Some(caption) = progress.as_deref().and_then(OperationProgress::caption) else {
         return;
     };
     for (kind, mut text) in &mut texts {
@@ -1924,8 +1924,8 @@ fn repaint(
         Some(read) => crate::dossier::availability_label(read),
         None => &archive_status,
     };
-    let lens = project_map_lens(installed, &ui.lens);
-    let turn = turn_presentation(&state);
+    let lens = map_economy_lens::project_map_lens(installed, &ui.lens);
+    let turn = observer_controls::turn_presentation(&state);
     for (kind, mut text) in &mut texts {
         if matches!(kind, ObserverText::EvidenceDetails) {
             if !ui.evidence_open {
@@ -1948,10 +1948,10 @@ fn repaint(
             ObserverText::County => county.as_ref().map_or_else(|| "Select a county".into(), |county| county.name.to_owned()),
             ObserverText::Measures if matches!(ui.lens, MapLens::Relationships) => "Choose an economic lens to inspect exact county readings.".into(),
             ObserverText::Measures => county.as_ref().map_or_else(|| "Select a county to inspect this lens.".into(), |county| format!("{}\n{}", lens.label, format_lens_reading(lens.county(county.fips), &lens.unit))),
-            ObserverText::Hover if *view != crate::production::PrimaryView::Map => String::new(),
+            ObserverText::Hover if *view != PrimaryView::Map => String::new(),
             ObserverText::Hover if matches!(ui.lens, MapLens::Relationships) => hovered.0.and_then(|index| atlas.county(index)).map_or_else(String::new, |county| county.name.to_owned()),
             ObserverText::Hover => hovered.0.and_then(|index| atlas.county(index)).map_or_else(String::new, |county| format!("{}\n{}\n{}", county.name, lens.label, format_lens_reading(lens.county(county.fips), &lens.unit))),
-            ObserverText::Audio => format!("Title theme: The Purge\nIn-game soundtrack: {} ({}/{})\nMusic {:.0}% | effects {:.0}%\nReduced motion: {} | Stop on delivery: {}", audio.track_title(),audio.track+1,crate::observer_audio::ObserverAudioSettings::track_count(),audio.music_volume*100.0,audio.effects_volume*100.0,if ui.reduced_motion {"ON"}else{"OFF"},if ui.stop_on_delivery {"ON"}else{"OFF"}),
+            ObserverText::Audio => format!("Title theme: The Purge\nIn-game soundtrack: {} ({}/{})\nMusic {:.0}% | effects {:.0}%\nReduced motion: {} | Stop on delivery: {}", audio.track_title(),audio.track+1,ObserverAudioSettings::track_count(),audio.music_volume*100.0,audio.effects_volume*100.0,if ui.reduced_motion {"ON"}else{"OFF"},if ui.stop_on_delivery {"ON"}else{"OFF"}),
             ObserverText::Evidence => format!("Viewing period {} / Archive processed through {}\n{}", state.viewed_tick, state.archive_verified_tick, archive_detail),
             ObserverText::EvidenceDetails => installed.map_or_else(String::new, |snapshot| {
                 let mut evidence = format!("CAMPAIGN\n{}\n\nCOMMITTED EVIDENCE / PERIOD {}\n{}\n\nWORLD IDENTITY\n{}", wrapped_identity(&snapshot.campaign_id), snapshot.resolve_tick, wrapped_identity(snapshot.tick_content_hash.as_deref().unwrap_or(&snapshot.foundation_digest)), snapshot.nominal_world_hash.as_deref().map_or_else(|| "Unavailable in this observation".to_owned(), wrapped_identity));
@@ -2041,13 +2041,13 @@ fn paint_circuit_navigation(
     }
 }
 
-fn inspector_visibility(ui: &ObserverUiState, view: crate::production::PrimaryView) -> Visibility {
+fn inspector_visibility(ui: &ObserverUiState, view: PrimaryView) -> Visibility {
     if ui.archive_open
         || ui.history_open
         || ui.menu_open
         || ui.splash_visible
         || ui.comparison_open
-        || view != crate::production::PrimaryView::Map
+        || view != PrimaryView::Map
     {
         Visibility::Hidden
     } else {
@@ -2104,12 +2104,7 @@ fn reconcile_lens(
     frame: Res<ObserverFrame>,
     session: Res<ObserverSession>,
     mut ui: ResMut<ObserverUiState>,
-    mut previous_scope: Local<
-        Option<(
-            babylon_persistence::identity::CampaignId,
-            crate::observer::Perspective,
-        )>,
-    >,
+    mut previous_scope: Local<Option<(babylon_persistence::identity::CampaignId, Perspective)>>,
 ) {
     let scope = (session.campaign, session.perspective);
     let changed = previous_scope.as_ref() != Some(&scope);
@@ -2138,7 +2133,7 @@ impl Plugin for ObserverShellPlugin {
             .init_resource::<ObserverKeyboardClaim>()
             .add_message::<ObserverCommand>()
             .add_systems(Startup, spawn_shell.after(crate::map::load_county_atlas))
-            .add_systems(PostUpdate, apply_fonts.before(bevy::ui::UiSystems::Content))
+            .add_systems(PostUpdate, apply_fonts.before(UiSystems::Content))
             .add_systems(
                 Update,
                 paint_economic_readings.in_set(crate::observer_io::ObserverSet::Paint),
@@ -2194,7 +2189,7 @@ pub(crate) mod tests {
             .id();
         app.init_resource::<HoveredCounty>()
             .init_resource::<ObserverFrame>()
-            .init_resource::<crate::observer_progress::OperationProgress>()
+            .init_resource::<OperationProgress>()
             .add_systems(
                 Update,
                 (
@@ -2213,7 +2208,7 @@ pub(crate) mod tests {
 
     #[test]
     fn circuit_navigation_names_the_actual_organizer_destination() {
-        let campaign = babylon_persistence::identity::CampaignId::from_uuid(uuid::Uuid::nil());
+        let campaign = babylon_persistence::identity::CampaignId::from_uuid(Uuid::nil());
         let mut app = App::new();
         app.add_plugins(MinimalPlugins)
             .insert_resource(ObserverSession::new(campaign))
@@ -2238,9 +2233,17 @@ pub(crate) mod tests {
             .collect();
         assert_eq!(labels, ["Evidence [P]"]);
     }
+    use crate::observer::SessionPhase;
+    use crate::observer_progress::OperationProgress;
+    use crate::production::PrimaryView;
+    use crate::visual_assets::ObserverFonts;
+    use babylon_persistence::observer_reader::ObserverVisibility;
+    use bevy::asset::AssetPlugin;
     use bevy::input::keyboard::{Key, KeyboardInput, NativeKey};
     use bevy::input::{ButtonState, InputPlugin};
     use bevy::input_focus::InputFocus;
+    use bevy::ui::UiSystems;
+    use uuid::Uuid;
 
     #[test]
     fn interface_scale_follows_window_resize_for_readable_full_hd() {
@@ -2309,14 +2312,14 @@ pub(crate) mod tests {
     #[test]
     fn explicit_font_roles_use_distinct_native_faces_and_preserve_exact_mono() {
         let handles = Assets::<Font>::default();
-        let fonts = crate::visual_assets::ObserverFonts {
+        let fonts = ObserverFonts {
             body: handles.reserve_handle(),
             display: handles.reserve_handle(),
             script: handles.reserve_handle(),
         };
         let mut app = App::new();
         app.insert_resource(fonts.clone())
-            .add_systems(PostUpdate, apply_fonts.before(bevy::ui::UiSystems::Content));
+            .add_systems(PostUpdate, apply_fonts.before(UiSystems::Content));
         let body = app
             .world_mut()
             .spawn((TextFont::default(), ObserverFontRole::Body))
@@ -2405,7 +2408,7 @@ pub(crate) mod tests {
     #[test]
     fn selected_context_controls_yield_to_history_archive_and_warning() {
         let session = ObserverSession::new(babylon_persistence::identity::CampaignId::from_uuid(
-            uuid::Uuid::from_u128(1),
+            Uuid::from_u128(1),
         ));
         for hidden in 0..3 {
             let ui = ObserverUiState {
@@ -2416,7 +2419,7 @@ pub(crate) mod tests {
                 ..default()
             };
             assert_eq!(
-                inspector_visibility(&ui, crate::production::PrimaryView::Map),
+                inspector_visibility(&ui, PrimaryView::Map),
                 Visibility::Hidden
             );
             assert!(!button_visible(
@@ -2426,7 +2429,7 @@ pub(crate) mod tests {
                 },
                 &ui,
                 &session,
-                crate::production::PrimaryView::Map
+                PrimaryView::Map
             ));
             assert!(!button_visible(
                 ObserverButton {
@@ -2435,7 +2438,7 @@ pub(crate) mod tests {
                 },
                 &ui,
                 &session,
-                crate::production::PrimaryView::Map
+                PrimaryView::Map
             ));
         }
     }
@@ -2446,8 +2449,10 @@ pub(crate) mod tests {
             ArchiveChangePage, ArchiveDossierPage, ArchiveDossierPending, ArchiveDossierRead,
             ArchiveDossierState, ArchiveDossierUnavailable, ArchiveReadScope,
         };
-        use babylon_persistence::{identity::CampaignId, ArchivePageRef, ArchiveSubjectKind};
-        let campaign = CampaignId::from_uuid(uuid::Uuid::from_u128(1));
+        use babylon_persistence::identity::CampaignId;
+        use babylon_persistence::{ArchivePageRef, ArchiveSubjectKind};
+
+        let campaign = CampaignId::from_uuid(Uuid::from_u128(1));
         let scope = ArchiveReadScope::committed(campaign, 3, [3; 32]).unwrap();
         let mut read = ArchiveDossierRead {
             scope,
@@ -2504,9 +2509,9 @@ pub(crate) mod tests {
     fn focused_shell(menu_open: bool, command: ObserverCommand) -> (App, Entity, Entity) {
         use crate::observer_io::ObserverSet;
         let mut session = ObserverSession::new(
-            babylon_persistence::identity::CampaignId::from_uuid(uuid::Uuid::from_u128(1)),
+            babylon_persistence::identity::CampaignId::from_uuid(Uuid::from_u128(1)),
         );
-        session.phase = crate::observer::SessionPhase::Ready;
+        session.phase = SessionPhase::Ready;
         let mut app = App::new();
         app.add_plugins((
             MinimalPlugins,
@@ -2529,7 +2534,7 @@ pub(crate) mod tests {
             ..default()
         })
         .init_resource::<ObserverFrame>()
-        .init_resource::<crate::production::PrimaryView>()
+        .init_resource::<PrimaryView>()
         .init_resource::<SelectedCounty>()
         .add_message::<ObserverCommand>()
         .configure_sets(Update, ObserverSet::Install.run_if(|| false))
@@ -2745,14 +2750,14 @@ pub(crate) mod tests {
         let mut app = App::new();
         app.add_plugins((
             MinimalPlugins,
-            bevy::asset::AssetPlugin::default(),
+            AssetPlugin::default(),
             ImagePlugin::default(),
             bevy::text::TextPlugin,
             bevy::render::texture::TexturePlugin,
             crate::visual_assets::VisualAssetsPlugin,
         ))
         .insert_resource(ObserverSession::new(
-            babylon_persistence::identity::CampaignId::from_uuid(uuid::Uuid::nil()),
+            babylon_persistence::identity::CampaignId::from_uuid(Uuid::nil()),
         ))
         .add_plugins((crate::map::MapPlugin, ObserverShellPlugin));
         app.finish();
@@ -2780,9 +2785,9 @@ pub(crate) mod tests {
                 ..default()
             })
             .insert_resource(ObserverSession::new(
-                babylon_persistence::identity::CampaignId::from_uuid(uuid::Uuid::from_u128(1)),
+                babylon_persistence::identity::CampaignId::from_uuid(Uuid::from_u128(1)),
             ))
-            .insert_resource(crate::production::PrimaryView::Map)
+            .insert_resource(PrimaryView::Map)
             .init_resource::<ObserverFeedback>()
             .init_resource::<ChangedButtonNodes>()
             .add_systems(
@@ -2867,9 +2872,9 @@ pub(crate) mod tests {
         let mut app = App::new();
         app.add_plugins(MinimalPlugins)
             .insert_resource(ObserverSession::new(
-                babylon_persistence::identity::CampaignId::from_uuid(uuid::Uuid::nil()),
+                babylon_persistence::identity::CampaignId::from_uuid(Uuid::nil()),
             ))
-            .init_resource::<crate::production::PrimaryView>()
+            .init_resource::<PrimaryView>()
             .insert_resource(ObserverUiState {
                 splash_visible: false,
                 ..default()
@@ -2928,9 +2933,9 @@ pub(crate) mod tests {
                 splash_visible: false,
                 ..default()
             })
-            .insert_resource(crate::production::PrimaryView::Map)
+            .insert_resource(PrimaryView::Map)
             .insert_resource(ObserverSession::new(
-                babylon_persistence::identity::CampaignId::from_uuid(uuid::Uuid::from_u128(1)),
+                babylon_persistence::identity::CampaignId::from_uuid(Uuid::from_u128(1)),
             ))
             .add_systems(Startup, |mut commands: Commands| {
                 spawn_drawers(&mut commands);
@@ -2981,7 +2986,7 @@ pub(crate) mod tests {
         app.add_plugins((MinimalPlugins, InputPlugin, CampaignBrowserPlugin))
             .insert_resource(atlas)
             .init_resource::<SelectedCounty>()
-            .init_resource::<crate::production::PrimaryView>()
+            .init_resource::<PrimaryView>()
             .init_resource::<ObserverUiState>()
             .init_resource::<ObserverKeyboardClaim>()
             .add_message::<ObserverCommand>()
@@ -3072,7 +3077,7 @@ pub(crate) mod tests {
         app.add_plugins(MinimalPlugins)
             .insert_resource(atlas)
             .init_resource::<SelectedCounty>()
-            .init_resource::<crate::production::PrimaryView>()
+            .init_resource::<PrimaryView>()
             .init_resource::<ButtonInput<KeyCode>>()
             .insert_resource(ObserverUiState {
                 splash_visible: false,
@@ -3119,12 +3124,12 @@ pub(crate) mod tests {
         let mut app = App::new();
         app.add_plugins((
             MinimalPlugins,
-            bevy::asset::AssetPlugin::default(),
+            AssetPlugin::default(),
             crate::map::MapPlugin,
         ))
         .insert_resource(atlas)
         .insert_resource(SelectedCounty(Some(county)))
-        .insert_resource(crate::production::PrimaryView::Production)
+        .insert_resource(PrimaryView::Production)
         .insert_resource(ObserverUiState {
             menu_open: false,
             splash_visible: false,
@@ -3133,7 +3138,7 @@ pub(crate) mod tests {
         .init_resource::<ObserverKeyboardClaim>()
         .add_message::<ObserverCommand>()
         .add_systems(Update, keyboard);
-        let campaign = babylon_persistence::identity::CampaignId::from_uuid(uuid::Uuid::nil());
+        let campaign = babylon_persistence::identity::CampaignId::from_uuid(Uuid::nil());
         let mut session = ObserverSession::new(campaign);
         session.foundation_digest = Some("fixture".into());
         session.ready(0, None);
@@ -3145,7 +3150,7 @@ pub(crate) mod tests {
                 tick_content_hash: None,
                 nominal_world_hash: None,
                 envelope_digest: None,
-                visibility: babylon_persistence::observer_reader::ObserverVisibility::FullObserver,
+                visibility: ObserverVisibility::FullObserver,
                 production: None,
                 counties: ["26099", "26163"]
                     .into_iter()
@@ -3169,12 +3174,8 @@ pub(crate) mod tests {
     #[test]
     fn county_arrow_shortcuts_only_change_selection_on_geography() {
         let (mut app, county) = county_arrow_app();
-        for view in [
-            crate::production::PrimaryView::Production,
-            crate::production::PrimaryView::Map,
-        ] {
-            *app.world_mut()
-                .resource_mut::<crate::production::PrimaryView>() = view;
+        for view in [PrimaryView::Production, PrimaryView::Map] {
+            *app.world_mut().resource_mut::<PrimaryView>() = view;
             for key in [KeyCode::ArrowLeft, KeyCode::ArrowRight] {
                 app.world_mut().resource_mut::<SelectedCounty>().0 = Some(county);
                 app.world_mut()
@@ -3189,7 +3190,7 @@ pub(crate) mod tests {
                     });
                 app.update();
                 let after = app.world().resource::<SelectedCounty>().0;
-                if view == crate::production::PrimaryView::Production {
+                if view == PrimaryView::Production {
                     assert_eq!(after, Some(county));
                 } else {
                     assert_ne!(after, Some(county));

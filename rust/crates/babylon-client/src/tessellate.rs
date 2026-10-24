@@ -26,6 +26,7 @@
 #![allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
 
 use crate::atlas::{CountyAtlas, Ring};
+use earcut::Earcut;
 
 /// One county's worth of triangles is a contiguous slice of `positions`
 /// (recorded in `county_vertex_range`), so a per-tick recolor is an
@@ -52,7 +53,7 @@ pub fn tessellate(atlas: &CountyAtlas) -> Tessellation {
     let mut indices = Vec::new();
     let mut vertex_county = Vec::new();
     let mut county_vertex_range = Vec::with_capacity(atlas.len());
-    let mut triangulator = earcut::Earcut::new();
+    let mut triangulator = Earcut::new();
 
     for county_index in 0..atlas.len() {
         let county = atlas
@@ -104,7 +105,7 @@ pub fn tessellate(atlas: &CountyAtlas) -> Tessellation {
 /// grouped by the caller) and append its vertices and triangle indices to
 /// the shared buffers.
 fn tessellate_polygon(
-    triangulator: &mut earcut::Earcut<f64>,
+    triangulator: &mut Earcut<f64>,
     atlas: &CountyAtlas,
     county_index: u32,
     rings: &[Ring],
@@ -155,7 +156,10 @@ fn tessellate_polygon(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use babylon_kernel::content_digest::sha256_of;
+    use crate::atlas::County;
+    use babylon_kernel::content_digest;
+    use bevy::math::Vec2;
+    use std::time::Instant;
 
     /// Assembles a minimal, valid `county_atlas.bin` buffer in memory, byte
     /// for byte per `atlas.rs`'s documented format, so this module's tests
@@ -270,7 +274,7 @@ mod tests {
 
         let mut tail_and_body = tail.clone();
         tail_and_body.extend_from_slice(&body);
-        let content_hash = sha256_of(&tail_and_body);
+        let content_hash = content_digest::sha256_of(&tail_and_body);
 
         let mut out = Vec::new();
         out.extend_from_slice(b"BABCTY\0\x01");
@@ -313,7 +317,7 @@ mod tests {
     /// The unsigned shoelace area of a ring given as world-metre `Vec2`
     /// points (as opposed to `shoelace_area`'s `u16` grid-unit points,
     /// used by the synthetic fixture tests above).
-    fn shoelace_area_vec2(points: &[bevy::math::Vec2]) -> f64 {
+    fn shoelace_area_vec2(points: &[Vec2]) -> f64 {
         let mut acc = 0.0;
         for i in 0..points.len() {
             let p0 = points[i];
@@ -328,7 +332,7 @@ mod tests {
     /// data — independent of tessellation, so comparing it against the
     /// triangulated area sum is a real correctness check, not a
     /// tautology.
-    fn county_polygon_area(atlas: &CountyAtlas, county: &crate::atlas::County<'_>) -> f64 {
+    fn county_polygon_area(atlas: &CountyAtlas, county: &County<'_>) -> f64 {
         let vertices = atlas.vertices();
         let mut area = 0.0;
         for ring in county.rings {
@@ -429,7 +433,7 @@ mod tests {
             "/../../../assets/map/county_atlas.bin"
         ));
         let atlas = CountyAtlas::parse(atlas_bytes).expect("committed atlas parses");
-        let started = std::time::Instant::now();
+        let started = Instant::now();
         let tess = tessellate(&atlas);
         // This cost lands once at Startup, so slow-but-correct is fine —
         // Task 5 Step 4 asks to say the number out loud rather than assert

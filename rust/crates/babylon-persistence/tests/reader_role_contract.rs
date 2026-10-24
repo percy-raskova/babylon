@@ -1,11 +1,11 @@
 //! Byte-exact contracts for the PER-23 Slice 1 read-only reader role and
 //! fog-safe committed-tick status view (ADR249 R8).
 
+use babylon_persistence::postgres_catalog::ConnectionTargetRejection;
 use babylon_persistence::{
-    postgres_catalog::ConnectionTargetRejection, CommittedTickStatus, ReaderRoleDisposition,
-    SemanticArchiveError, SemanticArchiveReader, SemanticArchiveReaderError,
-    COMMITTED_TICK_STATUS_SQL, READER_DSN_ENV, READER_ROLE_CREATE_SQL, READER_ROLE_NAME,
-    READER_VIEW_CANONICAL_DEF,
+    CommittedTickStatus, ReaderRoleDisposition, SemanticArchiveError, SemanticArchiveReader,
+    SemanticArchiveReaderError, COMMITTED_TICK_STATUS_SQL, READER_DSN_ENV, READER_ROLE_CREATE_SQL,
+    READER_ROLE_NAME, READER_VIEW_CANONICAL_DEF,
 };
 
 #[test]

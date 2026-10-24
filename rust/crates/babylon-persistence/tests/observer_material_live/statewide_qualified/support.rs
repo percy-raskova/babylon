@@ -1,7 +1,6 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
 use super::super::{
-    advance_material_period, identity_hex, install_reader_role, provision_observer_role,
     CampaignId, CollectingSink, DisposableTarget, DurableMaterialRuntime, MichiganContentPreset,
     MichiganDeliveryPreset, NoTls, ObserverEconomyReader, ObserverVisibility,
     OrderedPracticeActionBatch, Uuid,
@@ -11,30 +10,32 @@ use babylon_graph::hypergraph_store::HypergraphStore;
 
 use babylon_material_circuit::{GoodId, MaterialCircuitState, UnitId};
 
-use babylon_persistence::{
-    material_runtime::{MaterialRuntimeFoundation, MAX_MATERIAL_FOUNDATION_BYTES},
-    michigan_material::{MichiganMaterialCatalog, MAX_MICHIGAN_SOURCE_BYTES},
-    production_observation::ProductionCapacityKind,
-    production_observation::ProductionOutboundKind,
-    production_observation::ProductionSnapshot,
-    ProductionEvidenceDigest,
+use babylon_persistence::material_runtime::{
+    MaterialRuntimeFoundation, MAX_MATERIAL_FOUNDATION_BYTES,
 };
+use babylon_persistence::michigan_material::{MichiganMaterialCatalog, MAX_MICHIGAN_SOURCE_BYTES};
+use babylon_persistence::production_observation::{
+    ProductionCapacityKind, ProductionOutboundKind, ProductionSnapshot,
+};
+use babylon_persistence::ProductionEvidenceDigest;
 
-use babylon_tick::{
-    material_replay::MaterialReplaySession,
-    material_world::{
-        decode_material_receipts, MaterialTickReceipts, MAX_MATERIAL_TICK_RECEIPT_BYTES,
-        MAX_MATERIAL_WORLD_REGISTER_BYTES,
-    },
-    replay_session::ReplayCommitDisposition,
+use babylon_tick::material_replay::MaterialReplaySession;
+use babylon_tick::material_world::{
+    MaterialTickReceipts, MAX_MATERIAL_TICK_RECEIPT_BYTES, MAX_MATERIAL_WORLD_REGISTER_BYTES,
 };
+use babylon_tick::replay_session::ReplayCommitDisposition;
 
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    io::Write,
-    path::{Path, PathBuf},
-    time::{Duration, Instant},
-};
+use babylon_persistence::production_observation::FreightOrderIndex;
+use babylon_persistence::production_observation::PhysicalRouteIndex;
+use babylon_tick::material_world;
+use postgres::Client;
+use std::collections::{BTreeMap, BTreeSet};
+use std::fs::OpenOptions;
+use std::io::ErrorKind;
+use std::io::Write;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::Ordering;
+use std::time::{Duration, Instant};
 
 pub(crate) fn assert_same_foundation_bytes(
     left: &MaterialRuntimeFoundation,
@@ -64,15 +65,14 @@ impl SourceCopies {
         let root =
             Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../content/scenarios/michigan");
         let directory = loop {
-            let id = super::super::NEXT_DISPOSABLE_TARGET
-                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let id = super::super::NEXT_DISPOSABLE_TARGET.fetch_add(1, Ordering::Relaxed);
             let directory = std::env::temp_dir().join(format!(
                 "babylon-qualified-sources-{}-{id}",
                 std::process::id()
             ));
             match std::fs::create_dir(&directory) {
                 Ok(()) => break directory,
-                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+                Err(error) if error.kind() == ErrorKind::AlreadyExists => {}
                 Err(error) => panic!("create owned source copy: {error}"),
             }
         };
@@ -96,7 +96,7 @@ impl SourceCopies {
         self.0.join("defines.toml")
     }
     pub(super) fn change(&self) {
-        std::fs::OpenOptions::new()
+        OpenOptions::new()
             .append(true)
             .open(self.defines())
             .unwrap()
@@ -187,8 +187,8 @@ pub(crate) fn qualify_preset(delivery: MichiganDeliveryPreset, index: u128) {
     let mut target = DisposableTarget::create();
     let campaign = CampaignId::from_uuid(Uuid::from_u128(29_800 + index));
     let mut runtime = DurableMaterialRuntime::create(&target.writer, campaign, foundation).unwrap();
-    install_reader_role(&target.writer).unwrap();
-    provision_observer_role(&target.writer).unwrap();
+    super::super::install_reader_role(&target.writer).unwrap();
+    super::super::provision_observer_role(&target.writer).unwrap();
     let config = target.login("babylon_observer", "actualstatewide");
     let observer =
         ObserverEconomyReader::connect(&config, ObserverVisibility::FullObserver).unwrap();
@@ -213,7 +213,7 @@ pub(crate) fn qualify_preset(delivery: MichiganDeliveryPreset, index: u128) {
             .filter(|row| row.period == period)
             .map(|row| {
                 (
-                    identity_hex(row.corridor_id.as_bytes()),
+                    super::super::identity_hex(row.corridor_id.as_bytes()),
                     row.available_grams,
                 )
             })
@@ -257,7 +257,7 @@ pub(crate) fn qualify_preset(delivery: MichiganDeliveryPreset, index: u128) {
 }
 
 pub(crate) fn assert_qualified_totals(
-    sql: &mut postgres::Client,
+    sql: &mut Client,
     campaign: CampaignId,
     preset: &str,
     measured: &Measurements,
@@ -304,7 +304,7 @@ pub(crate) fn reopen_runtime(
 pub(crate) fn advance_pair(
     runtime: &mut DurableMaterialRuntime,
     reference: &mut Session,
-    sql: &mut postgres::Client,
+    sql: &mut Client,
     campaign: CampaignId,
     measured: &mut Measurements,
 ) -> MaterialTickReceipts {
@@ -316,7 +316,7 @@ pub(crate) fn advance_pair(
     .unwrap();
     let prepared = reference.prepare_advance(&actions).unwrap();
     let bytes = prepared.material().receipt_bytes();
-    let receipts = decode_material_receipts(bytes).unwrap();
+    let receipts = material_world::decode_material_receipts(bytes).unwrap();
     assert_goods_conserved(
         reference.material().state(),
         prepared.material().register().state(),
@@ -329,7 +329,7 @@ pub(crate) fn advance_pair(
     measured.final_handoff_receipts += receipts.local_fulfillments.len();
     measured.reference += began.elapsed();
     let began = Instant::now();
-    advance_material_period(runtime);
+    super::super::advance_material_period(runtime);
     measured.advance += began.elapsed();
     let (stored_register, stored_receipts) =
         super::super::persisted_twins::stored_canonical_material(
@@ -378,7 +378,10 @@ pub(crate) fn observe(
     } else {
         assert_eq!(
             snapshot.nominal_world_hash.as_deref(),
-            Some(identity_hex(runtime.session().current_world_hash().unwrap()).as_str())
+            Some(
+                super::super::identity_hex(runtime.session().current_world_hash().unwrap())
+                    .as_str()
+            )
         );
     }
     let evidence = snapshot.production_evidence_digest().unwrap().unwrap();
@@ -388,7 +391,7 @@ pub(crate) fn observe(
     let rows = snapshot.production.as_ref().unwrap();
     assert_eq!(
         rows.content_authority_sha256,
-        identity_hex(
+        super::super::identity_hex(
             runtime
                 .session()
                 .graph_session()
@@ -437,7 +440,7 @@ pub(crate) fn witnessed_output(
     unit: &str,
 ) -> u64 {
     let process = catalog.processes().iter().find(|p| p.key == key).unwrap();
-    let id = identity_hex(process.id().as_bytes());
+    let id = super::super::identity_hex(process.id().as_bytes());
     let observed = rows
         .sites
         .iter()
@@ -471,7 +474,7 @@ pub(crate) fn assert_qualified_witness(
             .iter()
             .find(|c| c.key == "mackinac-bridge-freight")
             .unwrap();
-        let bridge_id = identity_hex(bridge.id().as_bytes());
+        let bridge_id = super::super::identity_hex(bridge.id().as_bytes());
         let account = rows
             .freight_capacity_accounts
             .iter()
@@ -637,7 +640,7 @@ pub(crate) fn assert_final_demand(
             let actual = state
                 .final_demand_orders
                 .iter()
-                .find(|row| identity_hex(row.order_id.as_bytes()) == order.order_id)
+                .find(|row| super::super::identity_hex(row.order_id.as_bytes()) == order.order_id)
                 .unwrap();
             assert_eq!(
                 (order.ordered, order.fulfilled),
@@ -691,13 +694,13 @@ pub(crate) fn outbound_quantity(
                     .iter()
                     .map(|r| (r.order_id, r.quantity)),
             )
-            .filter(|(order, _)| identity_hex(order.as_bytes()) == id)
+            .filter(|(order, _)| super::super::identity_hex(order.as_bytes()) == id)
             .map(|(_, quantity)| u128::from(quantity))
             .sum(),
         ProductionOutboundKind::LocalFinalDemand => receipts
             .local_fulfillments
             .iter()
-            .filter(|r| identity_hex(r.order_id.as_bytes()) == id)
+            .filter(|r| super::super::identity_hex(r.order_id.as_bytes()) == id)
             .map(|r| u128::from(r.quantity))
             .sum(),
     }
@@ -708,11 +711,9 @@ pub(crate) fn assert_capacity(
     period: u64,
     completed: Option<(&MaterialTickReceipts, &BTreeMap<String, u64>)>,
 ) {
-    let definitions =
-        babylon_persistence::production_observation::PhysicalRouteIndex::try_new(rows).unwrap();
+    let definitions = PhysicalRouteIndex::try_new(rows).unwrap();
     let mut principals = BTreeSet::new();
-    let order_definitions =
-        babylon_persistence::production_observation::FreightOrderIndex::try_new(rows).unwrap();
+    let order_definitions = FreightOrderIndex::try_new(rows).unwrap();
     for account in &rows.freight_capacity_accounts {
         assert!(principals.insert(&account.corridor_id));
         let Some(done) = &account.completed else {
@@ -784,7 +785,7 @@ pub(crate) fn assert_merchant(rows: &ProductionSnapshot, receipts: Option<&Mater
         let matching: Vec<_> = receipts
             .handling
             .iter()
-            .filter(|row| identity_hex(row.site_id.as_bytes()) == account.site_id)
+            .filter(|row| super::super::identity_hex(row.site_id.as_bytes()) == account.site_id)
             .collect();
         assert_eq!(
             u128::from(done.needed_hours),

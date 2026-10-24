@@ -2,26 +2,27 @@
 
 use super::{postings, practice, MaterialWorldRegister};
 
-use crate::{
-    observer_reader::CommittedMaterialReceipts,
-    runtime_session::{OrganizerMaterialAidPreview, OrganizerSnapshot},
-};
+use crate::observer_reader::CommittedMaterialReceipts;
+use crate::runtime_session::{OrganizerMaterialAidPreview, OrganizerSnapshot};
 
 use babylon_material_circuit::{AidMandate, AidOutcome, AidReceipt, CircuitAccounting};
 
 use babylon_practice_contract::{
-    organizer_resource_digest, validate_organizer_commitment, OrganizerAidBinding,
-    OrganizerAidKind, OrganizerChoice, OrganizerCommitment, OrganizerConfig, OrganizerGiftConsent,
-    OrganizerPreview,
+    OrganizerAidBinding, OrganizerAidKind, OrganizerChoice, OrganizerCommitment, OrganizerConfig,
+    OrganizerGiftConsent, OrganizerPreview,
 };
-
-use babylon_tick::material_world::nominal_material_world_hash;
 
 use serde::Serialize;
 
 use serde_json::{json, Value};
 
+use crate::runtime_session::OrganizerAidTransportPreview;
+use babylon_kernel::clock::CampaignDuration;
+use babylon_material_circuit::AidTransport;
+use babylon_practice_contract::OrganizerOutcome;
+use babylon_tick::material_world;
 use std::collections::{BTreeMap, BTreeSet};
+use std::fmt::Formatter;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Refusal {
@@ -42,7 +43,7 @@ pub enum Refusal {
 }
 
 impl std::fmt::Display for Refusal {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "independent aid audit refused: {self:?}")
     }
 }
@@ -68,7 +69,8 @@ impl Accepted {
         admission: &OrganizerPreview,
         before: &OrganizerSnapshot,
     ) -> Result<Self> {
-        validate_organizer_commitment(commitment).map_err(|_| Refusal::Admission)?;
+        babylon_practice_contract::validate_organizer_commitment(commitment)
+            .map_err(|_| Refusal::Admission)?;
         let command = &commitment.command;
         let kind = kind(command.choice)?;
         if command.actor_id != before.view.actor_id
@@ -167,7 +169,9 @@ pub(in crate::qualification_audit) fn terms<'a>(
         || command.actor_id != config.controlled_actor_id
         || command.authority_id != config.input_authority_id
         || command.content_digest != config.content_digest
-        || command.resource_digest != organizer_resource_digest().map_err(|_| Refusal::Capture)?
+        || command.resource_digest
+            != babylon_practice_contract::organizer_resource_digest()
+                .map_err(|_| Refusal::Capture)?
         || binding.mandate_id != mandate.id
         || binding.source_hash != mandate.source_hash
         || binding.donor_contributor_id != mandate.donor_contributor_id
@@ -189,18 +193,15 @@ pub(in crate::qualification_audit) fn terms<'a>(
         return Err(Refusal::Capture);
     }
     let route_matches = match (&p.transport, mandate.transport) {
+        (OrganizerAidTransportPreview::Local, AidTransport::Local) => true,
         (
-            crate::runtime_session::OrganizerAidTransportPreview::Local,
-            babylon_material_circuit::AidTransport::Local,
-        ) => true,
-        (
-            crate::runtime_session::OrganizerAidTransportPreview::Routed {
+            OrganizerAidTransportPreview::Routed {
                 route_id,
                 from_node_id,
                 to_node_id,
                 ..
             },
-            babylon_material_circuit::AidTransport::Routed {
+            AidTransport::Routed {
                 route_id: route,
                 from_node_id: from,
                 to_node_id: to,
@@ -255,7 +256,7 @@ pub struct Boundary {
 /// Refuses unavailable organizer state or an invalid captured campaign duration.
 pub fn material_disclosure(
     register: &MaterialWorldRegister,
-    duration: babylon_kernel::clock::CampaignDuration,
+    duration: CampaignDuration,
 ) -> Result<OrganizerSnapshot> {
     if !duration.contains(register.completed_tick()) {
         return Err(Refusal::Period);
@@ -345,8 +346,10 @@ impl Audit {
         }
         if admitted.identity.resolve_tick() != tick
             || register.completed_tick() != tick
-            || nominal_material_world_hash(admitted.identity.graph_world_after(), register)
-                != admitted.identity.result_world_hash()
+            || material_world::nominal_material_world_hash(
+                admitted.identity.graph_world_after(),
+                register,
+            ) != admitted.identity.result_world_hash()
         {
             return Err(Refusal::Identity);
         }
@@ -388,15 +391,12 @@ impl Audit {
             let accepted = self.commands.get(&original).ok_or(Refusal::OriginalOffer)?;
             let terms = terms(accepted, config, &economy.aid.mandates)?;
             let fact = practice::read(admitted, resolution, &terms)?;
-            if resolution.practice.outcome
-                != babylon_practice_contract::OrganizerOutcome::AidAwaitingSupport
+            if resolution.practice.outcome != OrganizerOutcome::AidAwaitingSupport
                 && !candidate.terminal_practices.insert(original)
             {
                 return Err(Refusal::Duplicate);
             }
-            if resolution.practice.outcome
-                == babylon_practice_contract::OrganizerOutcome::AidPracticeCompleted
-            {
+            if resolution.practice.outcome == OrganizerOutcome::AidPracticeCompleted {
                 candidate.completed_practices.insert(original);
                 candidate.completed_kinds.insert(accepted.material.kind);
             }

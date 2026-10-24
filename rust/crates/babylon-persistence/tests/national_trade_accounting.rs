@@ -3,10 +3,9 @@ use babylon_persistence::qualification_audit::trade as national_trade_accounting
 
 use babylon_kernel::currency::Currency;
 use babylon_material_circuit::{
-    recurring_procurement_order_id, AccountId, DeliveryReceipt, FreightLossReceipt, FreightLotId,
-    GoodId, MoneyLocation, MoneyPosting, MoneyTransferPurpose, MoneyTransferReceipt,
-    OutboundOrderId, ProcessId, ProcurementReceipt, ProductionReceipt, RealizationReceipt, RouteId,
-    SiteId, UnitId,
+    AccountId, DeliveryReceipt, FreightLossReceipt, FreightLotId, GoodId, MoneyLocation,
+    MoneyPosting, MoneyTransferPurpose, MoneyTransferReceipt, OutboundOrderId, ProcessId,
+    ProcurementReceipt, ProductionReceipt, RealizationReceipt, RouteId, SiteId, UnitId,
 };
 use babylon_persistence::production_observation::ProductionSite;
 use babylon_tick::material_world::MaterialTickReceipts;
@@ -77,7 +76,7 @@ fn procurement(period: u64, supplier: u8, buyer: u8) -> ProcurementReceipt {
     let unit_id = UnitId::from_bytes([4; 32]);
     ProcurementReceipt {
         period,
-        order_id: recurring_procurement_order_id(
+        order_id: babylon_material_circuit::recurring_procurement_order_id(
             period,
             buyer_site_id,
             supplier_site_id,

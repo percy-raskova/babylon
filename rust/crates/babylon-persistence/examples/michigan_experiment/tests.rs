@@ -1,4 +1,10 @@
-use super::{observe::ProcessRow, run};
+use super::observe::ProcessRow;
+use super::run;
+
+use babylon_persistence::economic_catalog::CapturedEconomicCatalog;
+use babylon_persistence::michigan_material::MichiganMaterialCatalog;
+use run::CaseResult;
+use serde_json::Value;
 use std::collections::BTreeSet;
 
 #[test]
@@ -12,11 +18,9 @@ fn matrix_changes_only_stock_and_selected_delivery() {
     let hashes: BTreeSet<_> = cases
         .iter()
         .map(|case| {
-            babylon_persistence::economic_catalog::CapturedEconomicCatalog::from_michigan(
-                &case.catalog,
-            )
-            .unwrap()
-            .digest()
+            CapturedEconomicCatalog::from_michigan(&case.catalog)
+                .unwrap()
+                .digest()
         })
         .collect();
     assert_eq!(
@@ -24,11 +28,10 @@ fn matrix_changes_only_stock_and_selected_delivery() {
         4,
         "captured identity binds both admitted interventions"
     );
-    let normalized: Vec<serde_json::Value> = cases
+    let normalized: Vec<Value> = cases
         .iter()
         .map(|case| {
-            let captured: serde_json::Value =
-                serde_json::to_value(case.catalog.resolved_report()).unwrap();
+            let captured: Value = serde_json::to_value(case.catalog.resolved_report()).unwrap();
             let mut content = captured["normalized"].clone();
             let panel = content["processes"]
                 .as_array_mut()
@@ -62,16 +65,8 @@ fn matrix_changes_only_stock_and_selected_delivery() {
         .collect();
     assert!(normalized.windows(2).all(|pair| pair[0] == pair[1]));
     let reformatted = format!("# irrelevant comment\n{}\n", run::BASELINE);
-    let catalog =
-        babylon_persistence::michigan_material::MichiganMaterialCatalog::from_defines_toml(
-            &reformatted,
-        )
-        .unwrap();
-    let original =
-        babylon_persistence::michigan_material::MichiganMaterialCatalog::from_defines_toml(
-            run::BASELINE,
-        )
-        .unwrap();
+    let catalog = MichiganMaterialCatalog::from_defines_toml(&reformatted).unwrap();
+    let original = MichiganMaterialCatalog::from_defines_toml(run::BASELINE).unwrap();
     assert_eq!(
         serde_json::to_value(catalog.resolved_report()).unwrap(),
         serde_json::to_value(original.resolved_report()).unwrap()
@@ -83,7 +78,7 @@ fn matrix_changes_only_stock_and_selected_delivery() {
     );
 }
 
-fn process<'a>(result: &'a run::CaseResult, period: usize, key: &str) -> &'a ProcessRow {
+fn process<'a>(result: &'a CaseResult, period: usize, key: &str) -> &'a ProcessRow {
     result.rows[period - 1]
         .processes
         .iter()

@@ -1,8 +1,10 @@
 //! Pure contract checks for PER-23 foundation knowledge-grant seeding.
 
+use babylon_persistence::identity::CampaignId;
+use babylon_persistence::FoundationGrantReport;
+use babylon_persistence::GlossaryConcept;
 use babylon_persistence::{
-    foundation_grant_rows, foundation_grants_semantic_sha256, glossary_concepts,
-    identity::CampaignId, seed_foundation_grants, ArchiveAtomSubjectKind, FoundationGrantsError,
+    seed_foundation_grants, ArchiveAtomSubjectKind, FoundationGrantsError,
     FOUNDATION_CONCEPT_GRANT_KEYS, FOUNDATION_COUNTY_GRANT_KEYS, FOUNDATION_COUNTY_LOCATOR_PREFIX,
     FOUNDATION_COUNTY_SOURCE_ID, FOUNDATION_GRANT_TICK,
     FOUNDATION_PLACE_CONTAINMENT_LOCATOR_PREFIX, FOUNDATION_PLACE_CONTAINMENT_SOURCE_ID,
@@ -10,6 +12,7 @@ use babylon_persistence::{
     FOUNDATION_PLACE_IDENTITY_SOURCE_ID, GLOSSARY_CONCEPTS_FIXTURE_PATH,
     PINNED_FOUNDATION_GRANTS_SEMANTIC_SHA256, PINNED_GLOSSARY_CONCEPTS_SHA256,
 };
+use postgres::Transaction;
 
 const EXPECTED_COUNTIES: usize = 83;
 const EXPECTED_PLACES: usize = 745;
@@ -19,7 +22,7 @@ const EXPECTED_GRANT_ROWS: usize =
 
 #[test]
 fn glossary_concepts_parse_to_the_pinned_corpus() {
-    let concepts = glossary_concepts().expect("pinned glossary corpus parses");
+    let concepts = babylon_persistence::glossary_concepts().expect("pinned glossary corpus parses");
 
     assert_eq!(concepts.concepts().len(), EXPECTED_CONCEPTS);
     let semantic = hex_lower(&concepts.semantic_sha256());
@@ -30,7 +33,7 @@ fn glossary_concepts_parse_to_the_pinned_corpus() {
     let ids = concepts
         .concepts()
         .iter()
-        .map(babylon_persistence::GlossaryConcept::concept_id)
+        .map(GlossaryConcept::concept_id)
         .collect::<Vec<_>>();
     assert_eq!(
         ids,
@@ -142,7 +145,7 @@ fn magnitude_grant_keys_stay_ungranted_at_foundation() {
 
 #[test]
 fn canonical_grant_rows_cover_exactly_the_public_reference_subjects() {
-    let rows = foundation_grant_rows().expect("canonical grant rows build");
+    let rows = babylon_persistence::foundation_grant_rows().expect("canonical grant rows build");
     assert_eq!(rows.len(), EXPECTED_GRANT_ROWS);
     let counties = rows
         .iter()
@@ -217,8 +220,8 @@ fn canonical_grant_rows_cover_exactly_the_public_reference_subjects() {
 
 #[test]
 fn canonical_grant_rows_recompute_the_pinned_semantic_digest() {
-    let rows = foundation_grant_rows().expect("canonical grant rows build");
-    let digest = foundation_grants_semantic_sha256(&rows);
+    let rows = babylon_persistence::foundation_grant_rows().expect("canonical grant rows build");
+    let digest = babylon_persistence::foundation_grants_semantic_sha256(&rows);
     assert_eq!(
         digest, PINNED_FOUNDATION_GRANTS_SEMANTIC_SHA256,
         "the recomputed canonical grant-row digest must equal the contract pin"
@@ -235,11 +238,9 @@ fn seeding_needs_no_foundation_argument() {
     // from scenario-authored grant lists (ADR249 R3), so the seeder takes no
     // foundation input: the signature binds one client and one campaign.
     let bound: fn(
-        &mut postgres::Transaction<'_>,
+        &mut Transaction<'_>,
         CampaignId,
-    )
-        -> Result<babylon_persistence::FoundationGrantReport, FoundationGrantsError> =
-        seed_foundation_grants;
+    ) -> Result<FoundationGrantReport, FoundationGrantsError> = seed_foundation_grants;
     let _ = bound;
 }
 

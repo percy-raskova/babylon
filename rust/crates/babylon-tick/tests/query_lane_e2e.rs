@@ -89,7 +89,6 @@
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
-use babylon_tick::run_once_into;
 
 const SCENARIO: &str = include_str!("../content/scenarios/query-lane-e2e.bscn");
 
@@ -177,7 +176,7 @@ const RULE_SPILLOVER: &str = r#"
 fn shape_a_heat_spillover_reads_pre_tick_neighbour_state() {
     let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
-    let report = run_once_into(SCENARIO, RULE_SPILLOVER, &mut graph, &mut sink)
+    let report = babylon_tick::run_once_into(SCENARIO, RULE_SPILLOVER, &mut graph, &mut sink)
         .expect("the spillover rule must load and run through run_once_into");
     assert_eq!(
         report.fired, 4,
@@ -265,7 +264,7 @@ const RULE_SINK_SELECTION: &str = r#"
 fn shape_b_priority_sink_selection_with_a_tie() {
     let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
-    let report = run_once_into(SCENARIO, RULE_SINK_SELECTION, &mut graph, &mut sink)
+    let report = babylon_tick::run_once_into(SCENARIO, RULE_SINK_SELECTION, &mut graph, &mut sink)
         .expect("the sink-selection rule must load and run through run_once_into");
     assert_eq!(report.fired, 1, "only source-b (shape=1) fires");
 
@@ -326,11 +325,12 @@ const RULE_FALLBACK: &str = r#"
 fn shape_c_empty_neighbourhood_takes_the_fallback_branch_never_e_eval_021() {
     let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
-    let report = run_once_into(SCENARIO, RULE_FALLBACK, &mut graph, &mut sink).expect(
-        "an empty ADJACENCY neighbourhood must take the fallback branch, \
+    let report = babylon_tick::run_once_into(SCENARIO, RULE_FALLBACK, &mut graph, &mut sink)
+        .expect(
+            "an empty ADJACENCY neighbourhood must take the fallback branch, \
          never raise E-EVAL-021 — a returned Err here would be exactly \
          that failure",
-    );
+        );
     assert_eq!(report.fired, 1, "only isolated-c (shape=3) fires");
 
     let priority = graph
@@ -373,7 +373,7 @@ const RULE_PENAL_COLONY: &str = r#"
 fn shape_d_penal_colony_suppression_writes_only_tenant_classes() {
     let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
-    let report = run_once_into(SCENARIO, RULE_PENAL_COLONY, &mut graph, &mut sink)
+    let report = babylon_tick::run_once_into(SCENARIO, RULE_PENAL_COLONY, &mut graph, &mut sink)
         .expect("the penal-colony rule must load and run through run_once_into");
     assert_eq!(report.fired, 1, "only penal-colony-d (shape=4) fires");
 
@@ -413,12 +413,12 @@ fn every_shape_is_deterministic_across_two_independent_runs() {
     ] {
         let mut graph_a = HypergraphStore::new();
         let mut sink_a = CollectingSink::default();
-        let report_a = run_once_into(SCENARIO, rule, &mut graph_a, &mut sink_a)
+        let report_a = babylon_tick::run_once_into(SCENARIO, rule, &mut graph_a, &mut sink_a)
             .unwrap_or_else(|e| panic!("{label}: first run: {e}"));
 
         let mut graph_b = HypergraphStore::new();
         let mut sink_b = CollectingSink::default();
-        let report_b = run_once_into(SCENARIO, rule, &mut graph_b, &mut sink_b)
+        let report_b = babylon_tick::run_once_into(SCENARIO, rule, &mut graph_b, &mut sink_b)
             .unwrap_or_else(|e| panic!("{label}: second run: {e}"));
 
         assert_eq!(report_a.before, report_b.before, "{label}: before hash");

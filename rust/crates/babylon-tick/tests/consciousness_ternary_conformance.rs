@@ -167,11 +167,13 @@
 #![allow(clippy::float_cmp)]
 #![allow(clippy::unreadable_literal)]
 
-use babylon_bsl::scenario::compose_declaration_preludes;
+use babylon_bsl::scenario;
+use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
+use babylon_kernel::replay::ReplaySeed;
 use babylon_kernel::replay::ReplaySessionId;
-use babylon_tick::run_once_into_with_prelude;
+use babylon_tick::diagnostic::RuleDiagnosticSession;
 
 const SCENARIO: &str = include_str!("../content/scenarios/consciousness-ternary-conformance.bscn");
 // Train B item 4 (#591, D157): the scenario stopped re-declaring
@@ -183,7 +185,7 @@ const ORGANIZATION_PRACTICE_PRELUDE: &str =
 const CONSCIOUSNESS_RULES: &str = include_str!("../content/rules/consciousness.bsl");
 
 fn practice_worldview_prelude() -> String {
-    compose_declaration_preludes(&[ORGANIZATION_PRACTICE_PRELUDE, WORLDVIEW_PRELUDE])
+    scenario::compose_declaration_preludes(&[ORGANIZATION_PRACTICE_PRELUDE, WORLDVIEW_PRELUDE])
         .expect("the ordered organization and worldview preludes compose")
 }
 
@@ -223,8 +225,8 @@ const TV_TIE_ALL_TRUE: NodeId = NodeId(13);
 )]
 fn unpositioned_class_gets_no_reading() {
     let mut graph = HypergraphStore::new();
-    let mut sink = babylon_bsl::structural_verbs::CollectingSink::default();
-    let report = run_once_into_with_prelude(
+    let mut sink = CollectingSink::default();
+    let report = babylon_tick::run_once_into_with_prelude(
         SCENARIO,
         &practice_worldview_prelude(),
         CONSCIOUSNESS_RULES,
@@ -437,8 +439,8 @@ fn unpositioned_class_gets_no_reading() {
 )]
 fn dominant_worldview_readout_vectors() {
     let mut graph = HypergraphStore::new();
-    let mut sink = babylon_bsl::structural_verbs::CollectingSink::default();
-    let report = run_once_into_with_prelude(
+    let mut sink = CollectingSink::default();
+    let report = babylon_tick::run_once_into_with_prelude(
         SCENARIO,
         &practice_worldview_prelude(),
         CONSCIOUSNESS_RULES,
@@ -546,8 +548,8 @@ fn dominant_worldview_readout_vectors() {
 )]
 fn measured_update_law_matches_the_dual_implementation_exactly() {
     let mut graph = HypergraphStore::new();
-    let mut sink = babylon_bsl::structural_verbs::CollectingSink::default();
-    let report = run_once_into_with_prelude(
+    let mut sink = CollectingSink::default();
+    let report = babylon_tick::run_once_into_with_prelude(
         SCENARIO,
         &practice_worldview_prelude(),
         CONSCIOUSNESS_RULES,
@@ -777,17 +779,17 @@ fn measured_update_law_matches_the_dual_implementation_exactly() {
     reason = "scenario constants and local helpers sit beside their first use in one long assertion"
 )]
 fn tick_two_accumulation_witness() {
-    let mut session = babylon_tick::diagnostic::RuleDiagnosticSession::new(
+    let mut session = RuleDiagnosticSession::new(
         SCENARIO,
         Some(&practice_worldview_prelude()),
         CONSCIOUSNESS_RULES,
         HypergraphStore::new(),
         ReplaySessionId::try_from("consciousness-ternary-conformance-test")
             .expect("literal is non-empty"),
-        babylon_kernel::replay::ReplaySeed::new(0),
+        ReplaySeed::new(0),
     )
     .expect("the consciousness ternary scenario plus the ten-rule pack must load into a session");
-    let mut sink = babylon_bsl::structural_verbs::CollectingSink::default();
+    let mut sink = CollectingSink::default();
     session.advance(&mut sink).expect("tick 1");
     let report2 = session.advance(&mut sink).expect("tick 2");
     let graph = session.graph();

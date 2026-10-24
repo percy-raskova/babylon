@@ -2,15 +2,11 @@
 
 use super::michigan_dynamic_hex_foundation;
 
-use babylon_bsl::canonical_ast::rules_hash_of;
-
 use babylon_bsl::causal_contract::{EffectSignature, EvidenceClass, RuleRole};
 
 use babylon_bsl::evaluator::Value;
 
 use babylon_bsl::identity_codec::StableBslValue;
-
-use babylon_bsl::rule_pipeline::split_content;
 
 use babylon_bsl::structural_verbs::CollectingSink;
 
@@ -26,7 +22,7 @@ use babylon_kernel::replay::{ReplaySeed, ReplaySessionId};
 
 use babylon_kernel::tick_content_hash::RefDigest;
 
-use babylon_kernel::{content_digest::sha256_of, content_digest::ContentDigest};
+use babylon_kernel::content_digest::ContentDigest;
 
 use babylon_material_circuit::{
     BacklogRow, CapacityRow, CommodityDefinition, CorridorCapacity, CorridorId, GoodId,
@@ -55,10 +51,17 @@ use babylon_tick::material_state::{
     OrganizationStateRow, TerritoryStateRow, WorldRegisterRow,
 };
 
-use babylon_tick::material_world::{
-    decode_material_receipts, MaterialTickReceipts, MaterialWorldRegister,
-};
+use babylon_tick::material_world::{MaterialTickReceipts, MaterialWorldRegister};
 
+use babylon_bsl::canonical_ast;
+use babylon_bsl::rule_pipeline;
+use babylon_kernel::content_digest;
+use babylon_material_circuit::AidBook;
+use babylon_material_circuit::CapacitySupply;
+use babylon_material_circuit::FinancialInstitutions;
+use babylon_material_circuit::HistoricalCostBook;
+use babylon_material_circuit::HouseholdTimeAccounting;
+use babylon_tick::material_world;
 use babylon_tick::replay_session::{ReplayCommitDisposition, ReplayTickError, ReplayTickSession};
 
 pub(crate) type Session = MaterialReplaySession<HypergraphStore>;
@@ -156,7 +159,7 @@ pub(crate) fn labor(period: u64, available: u64) -> LaborCapacityRow {
 
 pub(crate) fn opening() -> MaterialCircuitState {
     let mut state = MaterialCircuitState {
-        capacity_supply: babylon_material_circuit::CapacitySupply::FiniteSchedule,
+        capacity_supply: CapacitySupply::FiniteSchedule,
         period: 1,
         site_logistics_nodes: [1, 2]
             .map(|id| SiteLogisticsNode {
@@ -329,7 +332,7 @@ pub(crate) fn try_session_with_material(
     material: MaterialCircuitState,
 ) -> Result<Session, MaterialReplayError> {
     let foundation = michigan_dynamic_hex_foundation::michigan_dynamic_hex_foundation().unwrap();
-    let (_, parsed) = split_content(rules).unwrap();
+    let (_, parsed) = rule_pipeline::split_content(rules).unwrap();
     let forms = parsed.into_iter().map(|rule| rule.form).collect::<Vec<_>>();
     let graph = ReplayTickSession::new(
         SCENARIO,
@@ -340,7 +343,7 @@ pub(crate) fn try_session_with_material(
         ReplaySeed::new(40),
         ContentDigest {
             defines_hash: [40; 32],
-            rules_hash: rules_hash_of(&forms).unwrap(),
+            rules_hash: canonical_ast::rules_hash_of(&forms).unwrap(),
         },
         RefDigest::from_bytes(foundation.reference_bundle_digest()),
         MaterialState::try_new(foundation).unwrap(),
@@ -349,7 +352,7 @@ pub(crate) fn try_session_with_material(
     MaterialReplaySession::new(
         graph,
         MaterialWorldRegister::try_new(0, material).unwrap(),
-        sha256_of(b"staffed-replay-fixture-foundation"),
+        content_digest::sha256_of(b"staffed-replay-fixture-foundation"),
         babylon_kernel::clock::CampaignDuration::Finite { final_period: 7 },
         labor,
     )
@@ -402,9 +405,9 @@ pub(crate) fn paid_material() -> MaterialCircuitState {
     material.accounting = CircuitAccounting::Monetary(Box::new({
         let book = book;
         MonetaryCircuit {
-            aid: babylon_material_circuit::AidBook::default(),
-            household_time: babylon_material_circuit::HouseholdTimeAccounting::NotModeled,
-            financial: babylon_material_circuit::FinancialInstitutions::empty(),
+            aid: AidBook::default(),
+            household_time: HouseholdTimeAccounting::NotModeled,
+            financial: FinancialInstitutions::empty(),
             member_labor: material
                 .labor
                 .iter()
@@ -416,7 +419,7 @@ pub(crate) fn paid_material() -> MaterialCircuitState {
                     available_hours: row.available,
                 })
                 .collect(),
-            costs: babylon_material_circuit::HistoricalCostBook::open(
+            costs: HistoricalCostBook::open(
                 &book,
                 material
                     .inventory
@@ -569,7 +572,8 @@ pub(crate) fn commit(
 
 pub(crate) fn advance(session: &mut Session, sink: &mut CollectingSink) -> MaterialTickReceipts {
     let candidate = prepare(session);
-    let receipts = decode_material_receipts(candidate.material().receipt_bytes()).unwrap();
+    let receipts =
+        material_world::decode_material_receipts(candidate.material().receipt_bytes()).unwrap();
     commit(session, sink, candidate);
     receipts
 }
@@ -678,7 +682,8 @@ pub(crate) fn one_empty_period_holds_then_releases_and_real_arrival_rehires_for_
     assert_eq!(staffing_field(&first, "current-unretained-hours"), 0);
     assert_eq!(staffing_field(&first, "retained-hours"), 160);
     assert_eq!(staffing_field(&first, "separations"), 0);
-    let receipts = decode_material_receipts(first.material().receipt_bytes()).unwrap();
+    let receipts =
+        material_world::decode_material_receipts(first.material().receipt_bytes()).unwrap();
     assert_eq!(
         (
             receipts.dispatches[0].quantity,
@@ -701,7 +706,8 @@ pub(crate) fn one_empty_period_holds_then_releases_and_real_arrival_rehires_for_
     let arrival = prepare(&session);
     assert_eq!(staffing_field(&arrival, "current-unretained-hours"), 40);
     assert_eq!(staffing_field(&arrival, "hires"), 1);
-    let receipts = decode_material_receipts(arrival.material().receipt_bytes()).unwrap();
+    let receipts =
+        material_world::decode_material_receipts(arrival.material().receipt_bytes()).unwrap();
     assert_eq!(receipts.arrivals.len(), 1);
     assert_eq!(receipts.arrivals[0].quantity, 4);
     assert!(receipts.production.is_empty());
@@ -807,7 +813,8 @@ pub(crate) fn wage_and_dispatch_candidate_is_atomic_and_restarts_through_paid_ar
     let mut sink = CollectingSink::default();
     let before = live(&session, &sink);
     let candidate = prepare(&session);
-    let receipts = decode_material_receipts(candidate.material().receipt_bytes()).unwrap();
+    let receipts =
+        material_world::decode_material_receipts(candidate.material().receipt_bytes()).unwrap();
     assert_eq!(receipts.wage_accruals.len(), 1);
     assert_eq!(
         receipts.wage_accruals[0].amount,
@@ -951,7 +958,7 @@ pub(crate) fn successful_acknowledgement_publishes_stable_staffing_and_identity_
     );
     assert_eq!(
         candidate.identity().receipt_digest(),
-        sha256_of(candidate.material().receipt_bytes())
+        content_digest::sha256_of(candidate.material().receipt_bytes())
     );
     let expected_event = report.report().committed_events[0].clone();
     commit(&mut session, &mut sink, candidate);

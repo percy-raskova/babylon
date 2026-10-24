@@ -1,47 +1,51 @@
 //! Actual current `NationalWorld` protocol consumer in the one owned measurement game.
-use super::{
-    elapsed_ns, snapshot, write_native_timings, NativeRunTiming, NativeTimingEvidence,
-    NativeTimingSample,
+use super::{NativeRunTiming, NativeTimingEvidence, NativeTimingSample};
+use crate::elapsed_ns;
+use babylon_persistence::identity::CampaignId;
+use babylon_persistence::runtime_session::{
+    OrganizerAidKind, OrganizerAidSupportStatus, OrganizerAidTransportPreview, OrganizerChoice,
+    OrganizerCommand, OrganizerCommitment, OrganizerGiftConsent, OrganizerPreview,
+    OrganizerSnapshot, RuntimeAdvanceStage, RuntimeSessionErrorCode, RuntimeSessionPreset,
+    RuntimeSessionRequest, RuntimeSessionResponse, RuntimeSessionScope, RuntimeSessionTail,
+    RuntimeSessionTarget, RUNTIME_SESSION_MAX_LINE_BYTES, RUNTIME_SESSION_PROTOCOL_VERSION,
 };
-use babylon_persistence::{
-    identity::CampaignId,
-    runtime_session::{
-        run_runtime_session, OrganizerAidKind, OrganizerAidSupportStatus,
-        OrganizerAidTransportPreview, OrganizerChoice, OrganizerCommand, OrganizerCommitment,
-        OrganizerGiftConsent, OrganizerPreview, OrganizerSnapshot, RuntimeAdvanceStage,
-        RuntimeSessionErrorCode, RuntimeSessionPreset, RuntimeSessionRequest,
-        RuntimeSessionResponse, RuntimeSessionScope, RuntimeSessionTail, RuntimeSessionTarget,
-        RUNTIME_SESSION_MAX_LINE_BYTES, RUNTIME_SESSION_PROTOCOL_VERSION,
-    },
-};
+
 use postgres::{Config, NoTls};
-use std::{
-    fs::OpenOptions,
-    io::{BufRead, BufReader, Read, Write},
-    os::unix::net::UnixStream,
-    path::PathBuf,
-    thread::{self, JoinHandle},
-    time::{Duration, Instant},
-};
+use std::fs::OpenOptions;
+use std::io::{BufRead, BufReader, Read, Write};
+use std::os::unix::net::UnixStream;
+use std::path::PathBuf;
+use std::thread;
+use std::thread::JoinHandle;
+use std::time::{Duration, Instant};
 
 #[path = "national_boundary_evidence.rs"]
 mod national_boundary_evidence;
 
+use babylon_persistence::observer_reader::CommittedMaterialObservation;
+use babylon_persistence::observer_reader::ObserverEconomyReader;
+use babylon_persistence::observer_reader::ObserverMaterialCursor;
+use babylon_persistence::observer_reader::ObserverVisibility;
 use babylon_persistence::qualification_audit::{
     aid as national_aid_accounting, economic as national_economic_accounting,
     production_renewal as national_production_renewal, trade as national_trade_accounting,
 };
+use babylon_persistence::runtime_session;
+use babylon_persistence::runtime_session::OrganizerAidPending;
+use babylon_persistence::runtime_session::OrganizerAidResolution;
+use babylon_persistence::runtime_session::OrganizerMaterialAidPreview;
+use national_aid_accounting::Accepted;
+use national_boundary_evidence::Limits;
+use serde_json::Value;
+use std::fs::File;
+use uuid::Uuid;
 
-fn accounting_reader() -> babylon_persistence::observer_reader::ObserverEconomyReader {
+fn accounting_reader() -> ObserverEconomyReader {
     let config: Config = std::env::var("BABYLON_NATIONAL_STORAGE_OBSERVER_DSN")
         .unwrap()
         .parse()
         .unwrap();
-    babylon_persistence::observer_reader::ObserverEconomyReader::connect(
-        &config,
-        babylon_persistence::observer_reader::ObserverVisibility::FullObserver,
-    )
-    .unwrap()
+    ObserverEconomyReader::connect(&config, ObserverVisibility::FullObserver).unwrap()
 }
 
 #[path = "national_offer_controls.rs"]
@@ -66,7 +70,12 @@ impl Session {
         let defines = PathBuf::from("/dev/null");
         let worker = thread::spawn(move || {
             let mut output = remote;
-            run_runtime_session(&config, &defines, BufReader::new(source), &mut output)
+            runtime_session::run_runtime_session(
+                &config,
+                &defines,
+                BufReader::new(source),
+                &mut output,
+            )
         });
         let mut session = Self {
             input,
@@ -458,7 +467,7 @@ fn standing_control_submission_retains_exact_command_envelope() {
     };
     let scope = RuntimeSessionScope {
         epoch: 1,
-        campaign_id: Some(uuid::Uuid::from_bytes(command.campaign_id).to_string()),
+        campaign_id: Some(Uuid::from_bytes(command.campaign_id).to_string()),
     };
     let request = organizer_submission(17, scope.clone(), command.clone());
     let decoded =
@@ -484,9 +493,9 @@ struct PeriodEvidence {
     period: u64,
     commitment: Option<OrganizerCommitment>,
     preview: OrganizerPreview,
-    offered_material: Vec<babylon_persistence::runtime_session::OrganizerMaterialAidPreview>,
-    pending_aid: Vec<babylon_persistence::runtime_session::OrganizerAidPending>,
-    resolutions: Vec<babylon_persistence::runtime_session::OrganizerAidResolution>,
+    offered_material: Vec<OrganizerMaterialAidPreview>,
+    pending_aid: Vec<OrganizerAidPending>,
+    resolutions: Vec<OrganizerAidResolution>,
     positive_consequence: bool,
 }
 fn identity_rows(config: &Config, campaign: CampaignId) -> Vec<(i64, String, String)> {
@@ -639,13 +648,13 @@ fn recover(
     let mut reopened = Session::start(config, campaign, false);
     let timing = NativeTimingSample {
         tick: tail.resolve_tick,
-        elapsed_ns: elapsed_ns(started.elapsed()),
+        elapsed_ns: super::elapsed_ns(started.elapsed()),
     };
     assert_eq!(reopened.tail, tail);
     assert_eq!(reopened.foundation, foundation);
     assert_eq!(&reopened.status(), after);
     assert_eq!(identity_rows(config, campaign), hashes);
-    snapshot(&format!("tick-{:02}-reopened", tail.resolve_tick), campaign);
+    super::snapshot(&format!("tick-{:02}-reopened", tail.resolve_tick), campaign);
     (reopened, timing)
 }
 
@@ -653,12 +662,12 @@ struct QualificationRun<'a> {
     config: &'a Config,
     campaign: CampaignId,
     started: Instant,
-    limits: national_boundary_evidence::Limits,
+    limits: Limits,
     renewal_seed_tick: u64,
 }
 
 struct AccountedBoundary {
-    proof: serde_json::Value,
+    proof: Value,
     roster: Vec<String>,
     world: String,
     production_timing: NativeTimingSample,
@@ -670,8 +679,8 @@ struct QualificationAccounting {
     trade: national_trade_accounting::Audit,
     economic: national_economic_accounting::Audit,
     production_renewal: Option<national_production_renewal::Audit>,
-    production_renewal_evidence: Option<serde_json::Value>,
-    production_cursor: Option<babylon_persistence::observer_reader::ObserverMaterialCursor>,
+    production_renewal_evidence: Option<Value>,
+    production_cursor: Option<ObserverMaterialCursor>,
 }
 
 impl QualificationAccounting {
@@ -690,18 +699,16 @@ impl QualificationAccounting {
             return false;
         }
         self.aid
-            .accept(
-                national_aid_accounting::Accepted::capture(commitment, preview, before).unwrap(),
-            )
+            .accept(Accepted::capture(commitment, preview, before).unwrap())
             .unwrap();
         true
     }
 
     fn renewal_fact(
         &mut self,
-        observation: &babylon_persistence::observer_reader::CommittedMaterialObservation,
+        observation: &CommittedMaterialObservation,
         seed_tick: u64,
-    ) -> Option<serde_json::Value> {
+    ) -> Option<Value> {
         let identity = &observation.accounting.identity;
         let tick = identity.resolve_tick();
         if tick < seed_tick {
@@ -746,10 +753,7 @@ impl QualificationAccounting {
         Some(fact)
     }
 
-    fn economic_fact(
-        &mut self,
-        observation: &babylon_persistence::observer_reader::CommittedMaterialObservation,
-    ) -> serde_json::Value {
+    fn economic_fact(&mut self, observation: &CommittedMaterialObservation) -> Value {
         let mut fact = serde_json::to_value(
             self.economic
                 .read(&observation.accounting.receipts)
@@ -834,7 +838,7 @@ impl<'a> QualificationRun<'a> {
         let tick = session.tail.resolve_tick;
         let timing = NativeTimingSample {
             tick,
-            elapsed_ns: elapsed_ns(started.elapsed()),
+            elapsed_ns: super::elapsed_ns(started.elapsed()),
         };
         write_progress(
             self.campaign,
@@ -854,7 +858,7 @@ impl<'a> QualificationRun<'a> {
         archive_catchups: Vec<NativeTimingSample>,
         production_reads: Vec<NativeTimingSample>,
     ) {
-        write_native_timings(&NativeTimingEvidence {
+        super::write_native_timings(&NativeTimingEvidence {
             version: 2,
             source: "authoritative_native_instants_v2",
             clock: "monotonic",
@@ -865,7 +869,7 @@ impl<'a> QualificationRun<'a> {
             production_reads,
             run: NativeRunTiming {
                 periods,
-                elapsed_ns: elapsed_ns(self.started.elapsed()),
+                elapsed_ns: super::elapsed_ns(self.started.elapsed()),
                 compilation_included: false,
             },
         });
@@ -875,7 +879,7 @@ impl<'a> QualificationRun<'a> {
         &self,
         session: &mut Session,
         acknowledged: Instant,
-    ) -> (serde_json::Value, NativeTimingSample) {
+    ) -> (Value, NativeTimingSample) {
         let tick = session.tail.resolve_tick;
         session.await_archive(acknowledged, self.limits.archive);
         let archive = national_boundary_evidence::archive_boundary(
@@ -894,7 +898,7 @@ impl<'a> QualificationRun<'a> {
             archive,
             NativeTimingSample {
                 tick,
-                elapsed_ns: elapsed_ns(elapsed),
+                elapsed_ns: super::elapsed_ns(elapsed),
             },
         )
     }
@@ -904,7 +908,7 @@ impl<'a> QualificationRun<'a> {
         session: &Session,
         accounting: &mut QualificationAccounting,
         after: &OrganizerSnapshot,
-        archive: &serde_json::Value,
+        archive: &Value,
     ) -> AccountedBoundary {
         let tick = session.tail.resolve_tick;
         let started = Instant::now();
@@ -1005,7 +1009,7 @@ impl<'a> QualificationRun<'a> {
             world: national_boundary_evidence::hex(&admitted.result_world_hash()),
             production_timing: NativeTimingSample {
                 tick,
-                elapsed_ns: elapsed_ns(elapsed),
+                elapsed_ns: super::elapsed_ns(elapsed),
             },
         }
     }
@@ -1035,7 +1039,7 @@ pub(super) fn qualify(config: &Config, campaign: CampaignId, periods: u64, run_s
     let run = QualificationRun::start(config, campaign, periods, run_started);
     let mut session = Session::start(config, campaign, true);
     assert_eq!(session.tail.resolve_tick, 0);
-    snapshot("opening-created", campaign);
+    super::snapshot("opening-created", campaign);
     let mut accounting = QualificationAccounting::default();
     let foundation = session.foundation.clone();
     let mut advances = Vec::new();
@@ -1077,7 +1081,7 @@ pub(super) fn qualify(config: &Config, campaign: CampaignId, periods: u64, run_s
         }
         let world = boundary.world;
         boundaries.push(boundary.proof);
-        snapshot(&format!("tick-{tick:02}"), campaign);
+        super::snapshot(&format!("tick-{tick:02}"), campaign);
         let hashes = identity_rows(config, campaign);
         assert_eq!(hashes.len(), usize::try_from(tick).unwrap());
         let (reopened, timing) = recover(config, campaign, session, &after, &hashes);
@@ -1129,7 +1133,7 @@ fn write_progress(
     tick: u64,
     stage: &str,
     started: Instant,
-    evidence: &serde_json::Value,
+    evidence: &Value,
 ) {
     write_report(
         &format!("progress-{tick:03}-{stage}.json"),
@@ -1140,7 +1144,7 @@ fn write_progress(
     );
 }
 
-fn write_report(name: &str, report: &serde_json::Value) {
+fn write_report(name: &str, report: &Value) {
     let directory = PathBuf::from(std::env::var("BABYLON_STORAGE_REPORT_DIRECTORY").unwrap());
     assert!(directory.is_absolute() && directory.is_dir());
     let target = directory.join(name);
@@ -1161,5 +1165,5 @@ fn write_report(name: &str, report: &serde_json::Value) {
     file.sync_all().unwrap();
     drop(file);
     std::fs::rename(temporary, target).unwrap();
-    std::fs::File::open(directory).unwrap().sync_all().unwrap();
+    File::open(directory).unwrap().sync_all().unwrap();
 }

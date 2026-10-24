@@ -1,8 +1,8 @@
 //! A warm read cannot hide corrupt material outside its two current endpoints.
 use super::{
-    advance_material_period, provision_observer_role, CampaignId, DisposableTarget,
-    DurableMaterialRuntime, MichiganContentPreset, MichiganDeliveryPreset, NoTls,
-    ObserverEconomyError, ObserverEconomyReader, ObserverVisibility, Uuid,
+    CampaignId, DisposableTarget, DurableMaterialRuntime, MichiganContentPreset,
+    MichiganDeliveryPreset, NoTls, ObserverEconomyError, ObserverEconomyReader, ObserverVisibility,
+    Uuid,
 };
 use babylon_persistence::michigan_material::MichiganMaterialCatalog;
 use babylon_persistence::observer_reader::{
@@ -23,12 +23,12 @@ fn cached_history_refuses_earlier_receipt_corruption_and_preserves_the_cursor() 
         .create_foundation(&catalog)
         .unwrap();
     let mut runtime = DurableMaterialRuntime::create(&target.writer, campaign, foundation).unwrap();
-    provision_observer_role(&target.writer).unwrap();
+    super::provision_observer_role(&target.writer).unwrap();
     let observer_config = target.login("babylon_observer", "prefix");
     let observer =
         ObserverEconomyReader::connect(&observer_config, ObserverVisibility::FullObserver).unwrap();
     for _ in 0..4 {
-        advance_material_period(&mut runtime);
+        super::advance_material_period(&mut runtime);
     }
     let mut cursor = None;
     let healthy = observer
@@ -93,7 +93,7 @@ fn cached_history_refuses_earlier_receipt_corruption_and_preserves_the_cursor() 
         .snapshot_with_cursor(campaign, 4, &mut cursor)
         .unwrap();
     assert_eq!(restored, healthy);
-    advance_material_period(&mut runtime);
+    super::advance_material_period(&mut runtime);
     let next = observer
         .snapshot_with_cursor(campaign, 5, &mut cursor)
         .unwrap();

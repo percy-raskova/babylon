@@ -39,12 +39,16 @@ use bevy::prelude::*;
 mod tests {
     use super::*;
     use babylon_persistence::identity::CampaignId;
+    use babylon_persistence::runtime_session::OrganizerAidKind;
+    use babylon_persistence::runtime_session::OrganizerAidTransportPreview;
+    use babylon_persistence::runtime_session::OrganizerGiftConsent;
     use babylon_persistence::runtime_session::{
         OrganizerAgreement, OrganizerObservation, OrganizerReport, OrganizerStandingWork,
     };
+    use uuid::Uuid;
 
     pub(crate) fn ready() -> (OrganizerClient, ObserverSession) {
-        let campaign = uuid::Uuid::from_u128(927);
+        let campaign = Uuid::from_u128(927);
         let mut session = ObserverSession::new(CampaignId::from_uuid(campaign));
         session.connected_fixture();
         session.ready(3, None);
@@ -92,7 +96,7 @@ mod tests {
 
     fn aid_fixture() -> OrganizerMaterialAidPreview {
         OrganizerMaterialAidPreview {
-            kind: babylon_persistence::runtime_session::OrganizerAidKind::Local,
+            kind: OrganizerAidKind::Local,
             mandate_id: [4; 32],
             period: 3,
             donor_id: [5; 32],
@@ -109,9 +113,9 @@ mod tests {
             labor_unit_id: [9; 32],
             fulfillment_hours_per_unit: 2,
             coordination_hours: 3,
-            receiving_consent: babylon_persistence::runtime_session::OrganizerGiftConsent::Accept,
+            receiving_consent: OrganizerGiftConsent::Accept,
             time: None,
-            transport: babylon_persistence::runtime_session::OrganizerAidTransportPreview::Local,
+            transport: OrganizerAidTransportPreview::Local,
         }
     }
 
@@ -120,12 +124,11 @@ mod tests {
         let (mut client, _) = ready();
         client.view.as_mut().unwrap().aid_options.push(
             babylon_persistence::runtime_session::OrganizerAidOption {
-                kind: babylon_persistence::runtime_session::OrganizerAidKind::Local,
+                kind: OrganizerAidKind::Local,
                 partner_actor_id: 95,
                 partner_label: "Recipient collective".into(),
                 coordination_hours: 3,
-                receiving_consent:
-                    babylon_persistence::runtime_session::OrganizerGiftConsent::Accept,
+                receiving_consent: OrganizerGiftConsent::Accept,
             },
         );
         assert!(!client.choice_available(OrganizerChoice::LocalAid));
@@ -135,11 +138,9 @@ mod tests {
         client.aid[0].period = 2;
         assert!(!client.choice_available(OrganizerChoice::LocalAid));
         client.aid[0].period = 3;
-        client.aid[0].receiving_consent =
-            babylon_persistence::runtime_session::OrganizerGiftConsent::Refuse;
+        client.aid[0].receiving_consent = OrganizerGiftConsent::Refuse;
         assert!(!client.choice_available(OrganizerChoice::LocalAid));
-        client.aid[0].receiving_consent =
-            babylon_persistence::runtime_session::OrganizerGiftConsent::Accept;
+        client.aid[0].receiving_consent = OrganizerGiftConsent::Accept;
         client.pending_aid.push(OrganizerAidPending {
             kind: client.aid[0].kind,
             original_commitment_id: [10; 32],
@@ -361,7 +362,7 @@ mod tests {
             contributor_id: 1,
             contributor_label: "Fixture contributor".into(),
             source_hash: [16; 32],
-            cash_consent: babylon_persistence::runtime_session::OrganizerGiftConsent::Accept,
+            cash_consent: OrganizerGiftConsent::Accept,
             maximum_cash_micros: 400_000,
             protected_cash_floor_micros: 0,
             collection_hours: 2,
@@ -404,8 +405,7 @@ mod tests {
         assert!(!historical.available(&session));
         assert!(!historical.choice_available(OrganizerChoice::Collect));
         historical.collection = client.collection;
-        historical.collection.as_mut().unwrap().cash_consent =
-            babylon_persistence::runtime_session::OrganizerGiftConsent::Refuse;
+        historical.collection.as_mut().unwrap().cash_consent = OrganizerGiftConsent::Refuse;
         assert!(!historical.choice_available(OrganizerChoice::Collect));
     }
 }

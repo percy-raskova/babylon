@@ -4,7 +4,7 @@
 // Use the same allocator in the runtime, client and persistence qualification
 // consumers so freed owners do not leave gigabytes of glibc arenas resident.
 #[global_allocator]
-static ALLOCATOR: mimalloc::MiMalloc = mimalloc::MiMalloc;
+static ALLOCATOR: MiMalloc = MiMalloc;
 
 // Share the integration fixture with private reconstruction tests in this crate.
 #[cfg(test)]
@@ -211,6 +211,7 @@ pub use production_projection::households::{
     ProductionHouseholdKind, ProductionHouseholdServiceAccount,
 };
 
+use mimalloc::MiMalloc;
 pub use production_projection::prices::{
     CompletedGoodsPrice, GoodsPriceBasis, GoodsPriceReason, ProductionGoodsPriceAccount,
 };

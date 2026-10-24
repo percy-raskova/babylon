@@ -1,11 +1,10 @@
 //! Original native witnesses, configured identities and refused evidence.
-use babylon_persistence::{
-    qualification_audit::aid::{Accepted, Audit, Refusal},
-    runtime_session::{
-        OrganizerAidKind, OrganizerChoice, OrganizerCommitment, OrganizerPreview, OrganizerSnapshot,
-    },
+use babylon_persistence::qualification_audit::aid::{Accepted, Audit, Refusal};
+use babylon_persistence::runtime_session::{
+    OrganizerAidKind, OrganizerChoice, OrganizerCommitment, OrganizerPreview, OrganizerSnapshot,
 };
-use babylon_practice_contract::{organizer_resource_digest, validate_organizer_commitment};
+
+use babylon_practice_contract::OrganizerRefusal;
 use sha2::{Digest, Sha256};
 
 fn witness() -> (OrganizerSnapshot, OrganizerPreview, OrganizerCommitment) {
@@ -14,7 +13,7 @@ fn witness() -> (OrganizerSnapshot, OrganizerPreview, OrganizerCommitment) {
     before.view.actor_id = 42;
     before.view.authority_id = [17; 16];
     before.view.available_hours = 7;
-    before.view.resource_digest = organizer_resource_digest().unwrap();
+    before.view.resource_digest = babylon_practice_contract::organizer_resource_digest().unwrap();
     let local = before
         .aid
         .iter_mut()
@@ -45,7 +44,7 @@ fn witness() -> (OrganizerSnapshot, OrganizerPreview, OrganizerCommitment) {
         resolves_period: 1,
         commitment_id: Sha256::digest(bytes).into(),
     };
-    validate_organizer_commitment(&commitment).unwrap();
+    babylon_practice_contract::validate_organizer_commitment(&commitment).unwrap();
     let preview = OrganizerPreview {
         choice: OrganizerChoice::LocalAid,
         current_period: 0,
@@ -94,7 +93,7 @@ fn missing_or_changed_original_offer_cannot_be_replaced_by_later_facts() {
 #[test]
 fn aid_witness_refuses_crossed_authority_refusal_and_conflicting_retry() {
     let (before, mut preview, commitment) = witness();
-    preview.refusal = Some(babylon_practice_contract::OrganizerRefusal::AidReceivingRefused);
+    preview.refusal = Some(OrganizerRefusal::AidReceivingRefused);
     assert_eq!(
         Accepted::capture(&commitment, &preview, &before),
         Err(Refusal::Admission)

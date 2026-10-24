@@ -1,6 +1,7 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
-use super::super::{MaterialWorldError, ReceiptCursor};
+use super::super::MaterialWorldError;
+use super::super::ReceiptCursor;
 
 use babylon_kernel::currency::Currency;
 

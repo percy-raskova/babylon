@@ -1,4 +1,10 @@
-use super::*;
+use super::experiment::{
+    EmploymentStartingRow, ExperimentError, ExperimentIntervention, ExperimentProfile,
+    SimulationExperimentV1, StartingSnapshot,
+};
+use super::report;
+use crate::economic_catalog::CapturedEconomicCatalog;
+use crate::michigan_material::MichiganMaterialCatalog;
 
 pub(super) fn spec(profile: ExperimentProfile) -> SimulationExperimentV1 {
     let (epoch, starting_snapshot) = match profile {
@@ -81,8 +87,7 @@ fn closed_inputs_refuse_unknown_fields_dates_horizons_and_cross_profile_interven
 #[test]
 fn continuous_player_duration_is_distinct_from_finite_diagnostic_bundles() {
     let source = include_str!("../../../../../content/scenarios/michigan/defines.toml");
-    let live =
-        crate::michigan_material::MichiganMaterialCatalog::from_defines_toml(source).unwrap();
+    let live = MichiganMaterialCatalog::from_defines_toml(source).unwrap();
     assert_eq!(
         live.duration(),
         babylon_kernel::clock::CampaignDuration::Continuous
@@ -96,13 +101,9 @@ fn continuous_player_duration_is_distinct_from_finite_diagnostic_bundles() {
             .create_foundation(&catalog)
             .is_err()
     );
-    let captured =
-        crate::economic_catalog::CapturedEconomicCatalog::from_michigan(&catalog).unwrap();
-    let restored = crate::economic_catalog::CapturedEconomicCatalog::decode(
-        captured.canonical_bytes(),
-        captured.digest(),
-    )
-    .unwrap();
+    let captured = CapturedEconomicCatalog::from_michigan(&catalog).unwrap();
+    let restored =
+        CapturedEconomicCatalog::decode(captured.canonical_bytes(), captured.digest()).unwrap();
     assert_eq!(restored.view().duration.final_period(), Some(130));
     let material = restored.opening().compile().unwrap().state;
     assert!(material.capacities.iter().any(|row| row.period == 130));

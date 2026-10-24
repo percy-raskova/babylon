@@ -5,8 +5,9 @@ use crate::{
     CapacityRow, CapacitySupply, CorridorCapacity, CorridorId, FutureCapacityReservation,
     MaterialCircuitError, MaterialCircuitState, ProcessId, SiteId, MAX_MATERIAL_CIRCUIT_ROWS,
 };
+use std::result::Result as StdResult;
 
-type Result<T> = std::result::Result<T, MaterialCircuitError>;
+type Result<T> = StdResult<T, MaterialCircuitError>;
 
 pub(crate) fn row_limits(state: &MaterialCircuitState) -> Result<()> {
     if let CapacitySupply::Rolling(rows) = &state.capacity_supply {

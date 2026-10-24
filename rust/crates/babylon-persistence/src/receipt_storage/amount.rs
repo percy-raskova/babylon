@@ -1,5 +1,5 @@
 //! Exact positive cash amounts shared only within one receipt family.
-use super::{buffer, Error, Result};
+use super::{Error, Result};
 
 pub(super) const ROW_WIDTH: usize = 18;
 const CONTEXT_WIDTH: usize = 14;
@@ -92,7 +92,7 @@ pub(super) fn pack(rows: &[u8], count: usize) -> Result<Option<PackedAmounts>> {
         Err(Error::Count) => return Ok(None),
         Err(error) => return Err(error),
     };
-    let mut columns = buffer(length)?;
+    let mut columns = super::buffer(length)?;
     columns.resize(length, 0);
     let dictionary_start = count * CONTEXT_WIDTH;
     let reference_start = dictionary_start + values.len() * 16;
@@ -142,9 +142,9 @@ pub(super) fn unpack(columns: &[u8], count: usize, unique: u32) -> Result<Vec<u8
         }
         values.push(value);
     }
-    let mut used = buffer(unique)?;
+    let mut used = super::buffer(unique)?;
     used.resize(unique, 0);
-    let mut rows = buffer(
+    let mut rows = super::buffer(
         count
             .checked_mul(NORMALIZED_WIDTH)
             .ok_or(Error::Arithmetic)?,

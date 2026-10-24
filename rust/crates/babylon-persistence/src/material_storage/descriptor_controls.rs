@@ -1,9 +1,12 @@
 //! Independent product framing/identity controls, written before the V3 encoder.
-use super::*;
+use super::register;
+use super::register::{period_lookup_chain, Error, LookupAnchor, MAX_LOOKUP_BYTES};
+use crate::state_storage;
 use crate::state_storage::IdentityKind as K;
-use babylon_material_circuit::{
-    aid_commitment_id, recurring_household_order_id, CircuitAccounting,
-};
+use crate::state_storage::{IdentityEntry, OpeningRegister, StorageError};
+use crate::storage_compression;
+use babylon_kernel::content_digest;
+use babylon_material_circuit::CircuitAccounting;
 fn fixture() -> (OpeningRegister, IdentityEntry, IdentityEntry) {
     let session = crate::organizer_aid_fixture::authored_session(
         crate::michigan_dynamic_hex_foundation().unwrap(),
@@ -18,7 +21,7 @@ fn fixture() -> (OpeningRegister, IdentityEntry, IdentityEntry) {
     let need = &economy.recurring.as_ref().unwrap().household_needs[0];
     let make = |period| IdentityEntry {
         kind: K::Order,
-        bytes: recurring_household_order_id(
+        bytes: babylon_material_circuit::recurring_household_order_id(
             period,
             (need.principal_id, need.good_id, need.unit_id),
         )
@@ -42,7 +45,8 @@ fn descriptor_body(package: &[u8]) -> Vec<u8> {
     ))
     .unwrap();
     assert_eq!(start + 48 + encoded_length, package.len());
-    decompress_exact(&package[start + 48..], length, digest, MAX_LOOKUP_BYTES).unwrap()
+    storage_compression::decompress_exact(&package[start + 48..], length, digest, MAX_LOOKUP_BYTES)
+        .unwrap()
 }
 #[test]
 fn current_generated_table_is_compact_and_exact_without_prior_period_dependency() {
@@ -57,7 +61,7 @@ fn current_generated_table_is_compact_and_exact_without_prior_period_dependency(
     };
     let aid = IdentityEntry {
         kind: K::Order,
-        bytes: aid_commitment_id([246; 32], 2).as_bytes(),
+        bytes: babylon_material_circuit::aid_commitment_id([246; 32], 2).as_bytes(),
     };
     let mandate = IdentityEntry {
         kind: K::AidMandate,
@@ -65,7 +69,7 @@ fn current_generated_table_is_compact_and_exact_without_prior_period_dependency(
     };
     let entries = [generated, same_bytes, authored, survivor, aid, mandate];
     let previous = [221; 32];
-    let (package, chain) = encode_period_lookup(&opening, 2, previous, &entries).unwrap();
+    let (package, chain) = register::encode_period_lookup(&opening, 2, previous, &entries).unwrap();
     let body = descriptor_body(&package);
     let logical = state_storage::encode_lookup(&entries).unwrap();
     assert_eq!(body.len(), 4 + 13 + 5 * 33);
@@ -79,17 +83,18 @@ fn current_generated_table_is_compact_and_exact_without_prior_period_dependency(
     assert_eq!(body[4], 128);
     assert_eq!(u64::from_be_bytes(body[9..17].try_into().unwrap()), 2);
     let reconstructed =
-        read_period_lookup(&opening, 2, &package, LookupAnchor::Previous(previous)).unwrap();
+        register::read_period_lookup(&opening, 2, &package, LookupAnchor::Previous(previous))
+            .unwrap();
     assert_eq!(
         &reconstructed.lookup.entries()[opening.lookup().entries().len()..],
         &entries
     );
     assert_eq!(
         chain,
-        period_lookup_chain(&opening, 2, previous, sha256_of(&logical))
+        period_lookup_chain(&opening, 2, previous, content_digest::sha256_of(&logical))
     );
     assert_eq!(
-        read_period_lookup(&opening, 2, &package, LookupAnchor::Current(chain))
+        register::read_period_lookup(&opening, 2, &package, LookupAnchor::Current(chain))
             .unwrap()
             .chain,
         chain
@@ -98,16 +103,17 @@ fn current_generated_table_is_compact_and_exact_without_prior_period_dependency(
     let mut old = package.clone();
     old[b"BabylonPeriodLookupV3\0".len() + 1] = 2;
     assert_eq!(
-        read_period_lookup(&opening, 2, &old, LookupAnchor::Previous(previous)).unwrap_err(),
+        register::read_period_lookup(&opening, 2, &old, LookupAnchor::Previous(previous))
+            .unwrap_err(),
         Error::Version
     );
 }
 fn replace_descriptor_body(package: &[u8], body: &[u8]) -> Vec<u8> {
     let start = b"BabylonPeriodLookupV3\0".len() + 2 + 32 + 8 + 32 + 8 + 32;
-    let compressed = compress_exact(body, MAX_LOOKUP_BYTES).unwrap();
+    let compressed = storage_compression::compress_exact(body, MAX_LOOKUP_BYTES).unwrap();
     let mut changed = package[..start].to_vec();
     changed.extend_from_slice(&(body.len() as u64).to_be_bytes());
-    changed.extend_from_slice(&sha256_of(body));
+    changed.extend_from_slice(&content_digest::sha256_of(body));
     changed.extend_from_slice(&(compressed.len() as u64).to_be_bytes());
     changed.extend_from_slice(&compressed);
     changed
@@ -116,12 +122,13 @@ fn replace_descriptor_body(package: &[u8], body: &[u8]) -> Vec<u8> {
 fn checked_recipe_substitution_cannot_change_unchanged_logical_anchor() {
     let (opening, generated, _) = fixture();
     let previous = [222; 32];
-    let (package, _) = encode_period_lookup(&opening, 2, previous, &[generated]).unwrap();
+    let (package, _) = register::encode_period_lookup(&opening, 2, previous, &[generated]).unwrap();
     let mut body = descriptor_body(&package);
     body[9..17].copy_from_slice(&1u64.to_be_bytes());
     let changed = replace_descriptor_body(&package, &body);
     assert_eq!(
-        read_period_lookup(&opening, 2, &changed, LookupAnchor::Previous(previous)).unwrap_err(),
+        register::read_period_lookup(&opening, 2, &changed, LookupAnchor::Previous(previous))
+            .unwrap_err(),
         Error::State(StorageError::DigestMismatch)
     );
 }

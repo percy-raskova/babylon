@@ -2,10 +2,11 @@
 use crate::production_observation::ProductionSite;
 use babylon_kernel::economic_location::EconomicLocation;
 use babylon_material_circuit::{
-    recurring_procurement_order_id, AccountId, MoneyLocation, MoneyTransferPurpose,
-    MoneyTransferReceipt, OrderId, OutboundOrderId, SiteId, MAX_DELIVERY_ORDERS,
+    AccountId, MoneyLocation, MoneyTransferPurpose, MoneyTransferReceipt, OrderId, OutboundOrderId,
+    SiteId, MAX_DELIVERY_ORDERS,
 };
 use babylon_tick::material_world::MaterialTickReceipts;
+use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Debug, PartialEq, Eq)]
@@ -49,7 +50,7 @@ impl Totals {
         self.cash = self.cash.checked_add(cash).ok_or(Refusal::Overflow)?;
         Ok(())
     }
-    fn value(&self) -> serde_json::Value {
+    fn value(&self) -> Value {
         serde_json::json!({"settled_deliveries":self.deliveries,"settled_cash_micros":self.cash.to_string()})
     }
 }
@@ -95,7 +96,7 @@ impl Audit {
         &mut self,
         receipts: &MaterialTickReceipts,
         sites: &[ProductionSite],
-    ) -> Result<serde_json::Value, Refusal> {
+    ) -> Result<Value, Refusal> {
         if self.period.checked_add(1) != Some(receipts.resolve_tick) {
             return Err(Refusal::Period);
         }
@@ -144,7 +145,7 @@ impl Audit {
     }
 
     #[must_use]
-    pub fn report(&self) -> serde_json::Value {
+    pub fn report(&self) -> Value {
         let passed = self.imports.deliveries > 0
             && self.exports.deliveries > 0
             && self.foreign_production > 0;
@@ -210,7 +211,7 @@ fn new_orders(
     for row in &receipts.procurement {
         if row.period != receipts.resolve_tick
             || row.order_id
-                != recurring_procurement_order_id(
+                != babylon_material_circuit::recurring_procurement_order_id(
                     row.period,
                     row.buyer_site_id,
                     row.supplier_site_id,

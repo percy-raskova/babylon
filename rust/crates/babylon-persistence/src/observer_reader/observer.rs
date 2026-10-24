@@ -4,21 +4,34 @@ use super::ObserverMaterialCursor;
 
 use super::counties;
 
-use babylon_kernel::content_digest::sha256_of;
-
 use postgres::{Config, IsolationLevel, NoTls};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    economic_content::{
-        validate_economic_header, EconomicAdmissionOwner, EconomicContentAdmission,
-    },
-    identity::CampaignId,
-    michigan_content::{MichiganContentPreset, MICHIGAN_CONTENT_PRESETS},
-    michigan_economy::{digest_hex, MichiganCountyEconomy},
-    postgres_catalog::validate_connection_target,
-};
+use crate::economic_content;
+use crate::economic_content::{EconomicAdmissionOwner, EconomicContentAdmission};
+use crate::identity::CampaignId;
+use crate::michigan_content::{MichiganContentPreset, MICHIGAN_CONTENT_PRESETS};
+use crate::michigan_economy;
+use crate::michigan_economy::MichiganCountyEconomy;
+use crate::observer_material::MaterialHeader;
+use crate::postgres_catalog;
+use crate::production_observation::ProductionSnapshot;
+use crate::CampaignFoundation;
+use crate::ProductionEvidenceDigest;
+use babylon_kernel::content_digest;
+use babylon_material_circuit::HouseholdContributionReceipt;
+use babylon_tick::material_replay::IdentifiedMaterialTick;
+use babylon_tick::material_world::MaterialTickReceipts;
+use postgres::Client;
+use postgres::Row;
+use postgres::Transaction;
+use std::collections::BTreeSet;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
+use std::sync::Arc;
+use std::sync::OnceLock;
+use uuid::Uuid;
 
 pub const OBSERVER_DSN_ENV: &str = "BABYLON_OBSERVER_DSN";
 
@@ -66,7 +79,7 @@ pub struct ObserverEconomySnapshot {
     pub envelope_digest: Option<String>,
     pub visibility: ObserverVisibility,
     pub counties: Vec<ObserverCountyEconomy>,
-    pub production: Option<crate::production_observation::ProductionSnapshot>,
+    pub production: Option<ProductionSnapshot>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -86,7 +99,7 @@ pub enum ObserverEconomyError {
 }
 
 impl std::fmt::Display for ObserverEconomyError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         write!(f, "observer economics refused: {self:?}")
     }
 }
@@ -97,13 +110,13 @@ impl std::error::Error for ObserverEconomyError {}
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CommittedMaterialReceipts {
     pub campaign_id: CampaignId,
-    pub identity: babylon_tick::material_replay::IdentifiedMaterialTick,
+    pub identity: IdentifiedMaterialTick,
     /// Length of the canonical register authenticated with this receipt identity.
     pub material_register_bytes: usize,
-    pub receipts: std::sync::Arc<babylon_tick::material_world::MaterialTickReceipts>,
+    pub receipts: Arc<MaterialTickReceipts>,
     /// Once-only contribution debits from this period's authenticated closing time ledger.
     /// Gross `household_time` receipts precede these authorized debits.
-    pub household_contributions: Vec<babylon_material_circuit::HouseholdContributionReceipt>,
+    pub household_contributions: Vec<HouseholdContributionReceipt>,
 }
 
 /// Independent presentation and complete accounting outputs of one authenticated read.
@@ -111,7 +124,7 @@ pub struct CommittedMaterialReceipts {
 pub struct CommittedMaterialObservation {
     pub snapshot: ObserverEconomySnapshot,
     pub accounting: CommittedMaterialReceipts,
-    pub production_evidence: crate::ProductionEvidenceDigest,
+    pub production_evidence: ProductionEvidenceDigest,
 }
 
 /// A capability whose visibility is fixed when its separate credential is admitted.
@@ -145,7 +158,8 @@ impl ObserverEconomyReader {
         config: &Config,
         visibility: ObserverVisibility,
     ) -> Result<Self, ObserverEconomyError> {
-        validate_connection_target(config).map_err(|_| ObserverEconomyError::ConnectionTarget)?;
+        postgres_catalog::validate_connection_target(config)
+            .map_err(|_| ObserverEconomyError::ConnectionTarget)?;
         Ok(Self {
             config: config.clone(),
             visibility,
@@ -213,7 +227,10 @@ impl ObserverEconomyReader {
             expected,
         )?;
         if content.as_deref()
-            != Some(digest_hex(result.identity.tick_content_hash().as_bytes()).as_str())
+            != Some(
+                michigan_economy::digest_hex(result.identity.tick_content_hash().as_bytes())
+                    .as_str(),
+            )
         {
             return Err(ObserverEconomyError::InvalidProjection);
         }
@@ -221,7 +238,7 @@ impl ObserverEconomyReader {
             .commit()
             .map_err(|_| ObserverEconomyError::Database)?;
         self.foundation
-            .publish(campaign, std::sync::Arc::clone(expected))
+            .publish(campaign, Arc::clone(expected))
             .map_err(|_| ObserverEconomyError::ScenarioMismatch)?;
         Ok(result)
     }
@@ -307,7 +324,10 @@ impl ObserverEconomyReader {
             &mut cursor_candidate,
         )?;
         if tick_content_hash.as_deref()
-            != Some(digest_hex(accounting.identity.tick_content_hash().as_bytes()).as_str())
+            != Some(
+                michigan_economy::digest_hex(accounting.identity.tick_content_hash().as_bytes())
+                    .as_str(),
+            )
         {
             return Err(ObserverEconomyError::InvalidProjection);
         }
@@ -332,7 +352,7 @@ impl ObserverEconomyReader {
             .map_err(|_| ObserverEconomyError::InvalidProjection)?
             .ok_or(ObserverEconomyError::InvalidProjection)?;
         self.foundation
-            .publish(campaign, std::sync::Arc::clone(expected))
+            .publish(campaign, Arc::clone(expected))
             .map_err(|_| ObserverEconomyError::ScenarioMismatch)?;
         *cursor = cursor_candidate;
         Ok(CommittedMaterialObservation {
@@ -473,7 +493,7 @@ impl ObserverEconomyReader {
             // Baseline conformance has no material family. Restricted preview
             // keeps material content opaque and publishes no material facts.
             crate::observer_material::MaterialObservation {
-                foundation_digest: digest_hex(
+                foundation_digest: michigan_economy::digest_hex(
                     material_header
                         .as_ref()
                         .map_or(foundation_hash.as_slice(), |header| {
@@ -489,7 +509,7 @@ impl ObserverEconomyReader {
             .map_err(|_| ObserverEconomyError::Database)?;
         if let Some(admitted) = admission {
             self.foundation
-                .publish(campaign, std::sync::Arc::clone(admitted))
+                .publish(campaign, Arc::clone(admitted))
                 .map_err(|_| ObserverEconomyError::ScenarioMismatch)?;
         }
         *cursor = candidate;
@@ -512,17 +532,10 @@ pub(crate) fn read_foundation(
     campaign: CampaignId,
     tick: u64,
     visibility: ObserverVisibility,
-    cached: Option<&std::sync::Arc<EconomicContentAdmission>>,
-) -> Result<
-    (
-        Vec<u8>,
-        String,
-        Option<crate::observer_material::MaterialHeader>,
-    ),
-    ObserverEconomyError,
-> {
+    cached: Option<&Arc<EconomicContentAdmission>>,
+) -> Result<(Vec<u8>, String, Option<MaterialHeader>), ObserverEconomyError> {
     let foundation = transaction.query_opt("SELECT campaign_id, foundation_sha256, source_sha256, geography_scope FROM public.v_observer_economy_foundation_v1 WHERE campaign_id = $1", &[campaign.as_uuid()]).map_err(|_| ObserverEconomyError::Database)?.ok_or(ObserverEconomyError::CampaignAbsent)?;
-    let found_campaign: uuid::Uuid = foundation
+    let found_campaign: Uuid = foundation
         .try_get(0)
         .map_err(|_| ObserverEconomyError::InvalidProjection)?;
     if &found_campaign != campaign.as_uuid() {
@@ -593,7 +606,10 @@ pub(crate) fn read_commit_identity(
     if (material && layout != 3) || content.len() != 32 || envelope.len() != 32 {
         return Err(ObserverEconomyError::InvalidProjection);
     }
-    Ok((Some(digest_hex(&content)), Some(digest_hex(&envelope))))
+    Ok((
+        Some(michigan_economy::digest_hex(&content)),
+        Some(michigan_economy::digest_hex(&envelope)),
+    ))
 }
 
 // Catalog rows expose only safe identities. Dynamic material configuration is
@@ -615,10 +631,8 @@ HAVING COALESCE(max(marker.resolve_tick),0)>=0 AND (header.duration_kind='contin
  AND bool_and(marker.envelope_layout_version IS NULL OR marker.envelope_layout_version=3)
 ORDER BY header.campaign_id LIMIT 64";
 
-pub(crate) fn campaign_summary(
-    row: &postgres::Row,
-) -> Result<CampaignSummary, ObserverEconomyError> {
-    let campaign: uuid::Uuid = row
+pub(crate) fn campaign_summary(row: &Row) -> Result<CampaignSummary, ObserverEconomyError> {
+    let campaign: Uuid = row
         .try_get(0)
         .map_err(|_| ObserverEconomyError::InvalidProjection)?;
     let preset_id: String = row
@@ -637,7 +651,7 @@ pub(crate) fn campaign_summary(
             .map_err(|_| ObserverEconomyError::InvalidProjection)?,
     )
     .map_err(|_| ObserverEconomyError::InvalidProjection)?;
-    validate_economic_header(&preset_id, duration, &content, &foundation, tick)
+    economic_content::validate_economic_header(&preset_id, duration, &content, &foundation, tick)
         .map_err(|_| ObserverEconomyError::ScenarioMismatch)?;
     if campaign.is_nil() {
         return Err(ObserverEconomyError::InvalidProjection);
@@ -679,15 +693,15 @@ pub(crate) fn validate_observer_graph(
 
 pub(crate) fn graph_only_observer_identity() -> Result<([u8; 32], [u8; 32]), ObserverEconomyError> {
     type Identity = Result<([u8; 32], [u8; 32]), ObserverEconomyError>;
-    static IDENTITY: std::sync::OnceLock<Identity> = std::sync::OnceLock::new();
+    static IDENTITY: OnceLock<Identity> = OnceLock::new();
     *IDENTITY.get_or_init(|| {
         let (session, bundle) = crate::michigan_economy::michigan_observer_foundation()
             .map_err(|_| ObserverEconomyError::Reference)?;
-        let foundation = crate::CampaignFoundation::capture(&session, bundle)
+        let foundation = CampaignFoundation::capture(&session, bundle)
             .map_err(|_| ObserverEconomyError::Reference)?;
         Ok((
-            sha256_of(foundation.canonical_bytes()),
-            sha256_of(foundation.content_bundle().canonical_bytes()),
+            content_digest::sha256_of(foundation.canonical_bytes()),
+            content_digest::sha256_of(foundation.content_bundle().canonical_bytes()),
         ))
     })
 }
@@ -695,7 +709,7 @@ pub(crate) fn graph_only_observer_identity() -> Result<([u8; 32], [u8; 32]), Obs
 /// Read the complete county family through the admitted role's fixed view.
 /// All rows remain in the caller's one read-only repeatable-read transaction.
 pub(crate) fn read_committed_counties(
-    transaction: &mut postgres::Transaction<'_>,
+    transaction: &mut Transaction<'_>,
     campaign: CampaignId,
     expected_tick: u64,
     visibility: ObserverVisibility,
@@ -715,7 +729,7 @@ pub(crate) fn read_committed_counties(
     }
     let mut counties = Vec::with_capacity(83);
     for (row, baseline) in rows.iter().zip(baselines) {
-        let row_campaign: uuid::Uuid = row
+        let row_campaign: Uuid = row
             .try_get(0)
             .map_err(|_| ObserverEconomyError::InvalidProjection)?;
         let row_tick: i64 = row
@@ -797,7 +811,7 @@ pub(crate) const AUTHORITY_SQL: &str = "SELECT role.rolsuper, role.rolcreatedb, 
 pub(crate) const HELD_SQL: &str = "WITH RECURSIVE role_closure(oid) AS (SELECT 0::oid UNION SELECT oid FROM pg_catalog.pg_roles WHERE rolname = current_user UNION SELECT membership.roleid FROM pg_catalog.pg_auth_members membership JOIN role_closure ON role_closure.oid = membership.member), restricted AS (SELECT relation.*, namespace.nspname FROM pg_catalog.pg_class relation JOIN pg_catalog.pg_namespace namespace ON namespace.oid = relation.relnamespace WHERE relation.relkind IN ('r','p','v','m','f') AND (namespace.nspname IN ('babylon_state','babylon_meta') OR (namespace.nspname = 'public' AND relation.relname IN ('v_committed_tick_status_v1','v_archive_page_known_v1','v_archive_atom_visible','v_county_card_atoms','v_archive_subject_atoms','v_archive_verification_v1','v_observer_economy_foundation_v1','v_observer_county_economy_v1','v_known_county_economy_v1','v_material_campaign_identity_v2','v_observer_material_state_v1','v_observer_material_foundation_v1','v_archive_revision_known_v2','v_archive_revision_atom_v2','v_archive_revision_grant_v2','v_archive_retention_v2','v_archive_subject_grant_v2','v_archive_revision_index_v2','v_archive_tick_knowledge_v2','v_archive_revision_scope_v2','v_observer_graph_node_v1','v_observer_graph_node_f64_v1','v_observer_graph_edge_v1','v_observer_graph_hyperedge_v1','v_observer_graph_hyperedge_member_v1','v_observer_graph_edge_f64_v1','v_observer_graph_node_currency_v1','v_observer_graph_hyperedge_f64_v1','v_observer_world_register_v1','v_observer_hex_state_delta_v1','v_observer_territory_state_v1','v_observer_territory_state_field_v1','v_observer_organization_state_v1','v_observer_organization_state_field_v1','v_observer_organization_territory_v1','v_observer_tick_event_v2','v_observer_tick_event_field_v2','v_observer_tick_choice_receipt_v1','v_observer_tick_choice_receipt_branch_v1','v_observer_tick_choice_receipt_carrier_element_v1','v_observer_checkpoint_manifest','v_observer_checkpoint_section_v1','v_observer_archive_dirty_receipt_v1','v_observer_tick_action_batch_v1')))) SELECT DISTINCT restricted.nspname || '.' || restricted.relname AS relation_name, acl.privilege_type, acl.is_grantable FROM restricted CROSS JOIN LATERAL pg_catalog.aclexplode(restricted.relacl) acl JOIN role_closure ON role_closure.oid = acl.grantee UNION SELECT restricted.nspname || '.' || restricted.relname, 'OWNERSHIP', false FROM restricted JOIN role_closure ON role_closure.oid = restricted.relowner UNION SELECT restricted.nspname || '.' || restricted.relname, acl.privilege_type, acl.is_grantable FROM restricted JOIN pg_catalog.pg_attribute attribute ON attribute.attrelid = restricted.oid AND attribute.attnum > 0 AND NOT attribute.attisdropped CROSS JOIN LATERAL pg_catalog.aclexplode(attribute.attacl) acl JOIN role_closure ON role_closure.oid = acl.grantee";
 
 pub(crate) fn confine_authority(
-    client: &mut postgres::Client,
+    client: &mut Client,
     visibility: ObserverVisibility,
 ) -> Result<(), ObserverEconomyError> {
     let role = match visibility {
@@ -828,7 +842,7 @@ pub(crate) fn confine_authority(
     let rows = client
         .query(HELD_SQL, &[])
         .map_err(|_| ObserverEconomyError::Database)?;
-    let mut held = std::collections::BTreeSet::new();
+    let mut held = BTreeSet::new();
     for row in rows {
         let relation: String = row
             .try_get(0)
@@ -905,7 +919,8 @@ pub(crate) fn confine_authority(
 /// # Errors
 /// Refuses schema or privilege drift and roles with administrative attributes.
 pub fn provision_observer_role(config: &Config) -> Result<(), ObserverEconomyError> {
-    validate_connection_target(config).map_err(|_| ObserverEconomyError::ConnectionTarget)?;
+    postgres_catalog::validate_connection_target(config)
+        .map_err(|_| ObserverEconomyError::ConnectionTarget)?;
     let mut client = crate::current_schema::bounded_config(config)
         .connect(NoTls)
         .map_err(|_| ObserverEconomyError::Database)?;
@@ -980,7 +995,6 @@ pub(crate) fn observer_role_views() -> Vec<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::michigan_economy::michigan_economy;
     #[test]
     fn material_headers_bind_the_matching_graph_and_graph_only_is_separate() {
         let (graph, scenario) = graph_only_observer_identity().unwrap();
@@ -1018,7 +1032,7 @@ mod tests {
     }
     #[test]
     fn foundation_grants_mask_individual_fields_before_values_exist() {
-        let baseline = &michigan_economy().unwrap().counties()[0];
+        let baseline = &michigan_economy::michigan_economy().unwrap().counties()[0];
         let row = project_county(
             baseline,
             0,
@@ -1034,7 +1048,7 @@ mod tests {
     }
     #[test]
     fn committed_values_never_fallback_to_baseline_or_turn_missing_into_zero() {
-        let baseline = &michigan_economy().unwrap().counties()[0];
+        let baseline = &michigan_economy::michigan_economy().unwrap().counties()[0];
         assert_eq!(
             project_county(
                 baseline,
@@ -1068,7 +1082,7 @@ mod tests {
     }
     #[test]
     fn leaked_ungiven_value_is_refused_even_if_ui_would_hide_it() {
-        let baseline = &michigan_economy().unwrap().counties()[0];
+        let baseline = &michigan_economy::michigan_economy().unwrap().counties()[0];
         assert_eq!(
             project_county(
                 baseline,

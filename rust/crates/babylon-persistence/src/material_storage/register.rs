@@ -8,11 +8,16 @@ use crate::receipt_storage;
 
 use crate::state_storage::{self, IdentityEntry, StorageError};
 
-use crate::storage_compression::{compress_exact, decompress_exact, StorageCompressionError};
+use crate::storage_compression::StorageCompressionError;
 
-use babylon_kernel::content_digest::sha256_of;
-
+use crate::storage_compression;
+use babylon_kernel::content_digest;
 use babylon_tick::material_world::{MaterialTickReceipts, MaterialWorldRegister};
+use receipt_storage::AdmittedReceipts;
+use receipt_storage::Error as ReceiptStorageError;
+use std::borrow::Cow;
+use std::fmt::Formatter;
+use std::sync::Arc;
 
 pub(crate) const LOOKUP_DOMAIN: &[u8] = b"BabylonPeriodLookupV3\0";
 
@@ -27,7 +32,7 @@ pub(crate) const MAX_LOOKUP_PACKAGE_BYTES: usize = MAX_LOOKUP_BYTES + MAX_LOOKUP
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Error {
     State(StorageError),
-    Receipt(receipt_storage::Error),
+    Receipt(ReceiptStorageError),
     Compression(StorageCompressionError),
     Domain,
     Version,
@@ -45,7 +50,7 @@ pub enum Error {
 }
 
 impl std::fmt::Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "material storage refused: {self:?}")
     }
 }
@@ -58,11 +63,11 @@ impl From<StorageError> for Error {
     }
 }
 
-impl From<receipt_storage::Error> for Error {
-    fn from(error: receipt_storage::Error) -> Self {
+impl From<ReceiptStorageError> for Error {
+    fn from(error: ReceiptStorageError) -> Self {
         match error {
-            receipt_storage::Error::Tick => Self::Tick,
-            receipt_storage::Error::CollectionJoin => Self::CollectionJoin,
+            ReceiptStorageError::Tick => Self::Tick,
+            ReceiptStorageError::CollectionJoin => Self::CollectionJoin,
             error => Self::Receipt(error),
         }
     }
@@ -128,7 +133,7 @@ pub fn initial_lookup_chain(opening: &OpeningRegister) -> Result<[u8; 32]> {
     bytes.extend_from_slice(&opening.digest());
     bytes.extend_from_slice(&count.to_be_bytes());
     bytes.extend_from_slice(&opening.lookup().prefix_digest(count as usize)?);
-    Ok(sha256_of(&bytes))
+    Ok(content_digest::sha256_of(&bytes))
 }
 
 pub(crate) fn period_lookup_chain(
@@ -142,7 +147,7 @@ pub(crate) fn period_lookup_chain(
     bytes.extend_from_slice(&tick.to_be_bytes());
     bytes.extend_from_slice(&previous);
     bytes.extend_from_slice(&packed_digest);
-    sha256_of(&bytes)
+    content_digest::sha256_of(&bytes)
 }
 
 pub(crate) fn admitted_count(opening_count: usize, addition_count: usize) -> Result<usize> {
@@ -186,22 +191,27 @@ pub(crate) fn encode_period_lookup(
     admitted_count(opening.lookup().entries().len(), additions.len())?;
     let packed = state_storage::encode_lookup(additions)?;
     let descriptors = descriptors::encode(opening, tick, additions)?;
-    let compressed = compress_exact(&descriptors, MAX_LOOKUP_BYTES)?;
+    let compressed = storage_compression::compress_exact(&descriptors, MAX_LOOKUP_BYTES)?;
     let mut bytes = LOOKUP_DOMAIN.to_vec();
     bytes.extend_from_slice(&LOOKUP_VERSION.to_be_bytes());
     bytes.extend_from_slice(&opening.digest());
     bytes.extend_from_slice(&tick.to_be_bytes());
     bytes.extend_from_slice(&previous_chain);
     bytes.extend_from_slice(&(packed.len() as u64).to_be_bytes());
-    bytes.extend_from_slice(&sha256_of(&packed));
+    bytes.extend_from_slice(&content_digest::sha256_of(&packed));
     bytes.extend_from_slice(&(descriptors.len() as u64).to_be_bytes());
-    bytes.extend_from_slice(&sha256_of(&descriptors));
+    bytes.extend_from_slice(&content_digest::sha256_of(&descriptors));
     bytes.extend_from_slice(&(compressed.len() as u64).to_be_bytes());
     bytes.extend_from_slice(&compressed);
     if bytes.len() > MAX_LOOKUP_PACKAGE_BYTES {
         return Err(Error::Bounds);
     }
-    let chain = period_lookup_chain(opening, tick, previous_chain, sha256_of(&packed));
+    let chain = period_lookup_chain(
+        opening,
+        tick,
+        previous_chain,
+        content_digest::sha256_of(&packed),
+    );
     Ok((bytes, chain))
 }
 
@@ -217,7 +227,7 @@ pub fn encode(
     if current.completed_tick() == 0 {
         return Err(Error::Tick);
     }
-    let admitted_receipts = receipt_storage::AdmittedReceipts::new(receipts, Some(current))?;
+    let admitted_receipts = AdmittedReceipts::new(receipts, Some(current))?;
     if admitted_receipts.resolve_tick() != current.completed_tick() {
         return Err(Error::Tick);
     }
@@ -337,7 +347,7 @@ pub fn read_period_lookup(
     }
     let encoded = cursor.take(encoded_length)?;
     cursor.done()?;
-    let descriptor_bytes = decompress_exact(
+    let descriptor_bytes = storage_compression::decompress_exact(
         encoded,
         descriptor_length,
         descriptor_digest,
@@ -345,11 +355,16 @@ pub fn read_period_lookup(
     )?;
     let additions = descriptors::decode(opening, tick, &descriptor_bytes, expected_count)?;
     let packed = state_storage::encode_lookup(&additions)?;
-    if packed.len() != length || sha256_of(&packed) != digest {
+    if packed.len() != length || content_digest::sha256_of(&packed) != digest {
         return Err(Error::State(StorageError::DigestMismatch));
     }
     let lookup = appended(opening.lookup(), &additions)?;
-    let chain = period_lookup_chain(opening, tick, previous_chain, sha256_of(&packed));
+    let chain = period_lookup_chain(
+        opening,
+        tick,
+        previous_chain,
+        content_digest::sha256_of(&packed),
+    );
     if let LookupAnchor::Current(expected) = anchor {
         if chain != expected {
             return Err(Error::LookupChain);
@@ -391,7 +406,7 @@ pub fn decode(
 pub(crate) struct DecodedMaterial<R = MaterialWorldRegister> {
     pub(crate) receipt_bytes: Vec<u8>,
     pub(crate) register: R,
-    pub(crate) receipts: std::sync::Arc<MaterialTickReceipts>,
+    pub(crate) receipts: Arc<MaterialTickReceipts>,
     pub(crate) receipt_witness: AdmittedReceiptWitness,
 }
 
@@ -413,13 +428,9 @@ pub(crate) fn decode_typed(
     }
     babylon_tick::material_world::validate_retained_collection(&register, &receipts)
         .map_err(|_| Error::CollectionJoin)?;
-    let receipts = std::sync::Arc::new(receipts);
-    let receipt_witness = AdmittedReceiptWitness::new(
-        std::sync::Arc::clone(&receipts),
-        receipt_package,
-        lookup,
-        lookup_chain,
-    )?;
+    let receipts = Arc::new(receipts);
+    let receipt_witness =
+        AdmittedReceiptWitness::new(Arc::clone(&receipts), receipt_package, lookup, lookup_chain)?;
     Ok(DecodedMaterial {
         receipt_bytes,
         register,
@@ -437,7 +448,7 @@ pub(crate) fn decode_typed_with_witness<'w>(
     lookup: &TypedLookup,
     lookup_chain: [u8; 32],
     witnesses: MaterialStorageWitnesses<'w>,
-) -> Result<DecodedMaterial<std::borrow::Cow<'w, MaterialWorldRegister>>> {
+) -> Result<DecodedMaterial<Cow<'w, MaterialWorldRegister>>> {
     if tick == 0 {
         return Err(Error::Tick);
     }
@@ -449,9 +460,9 @@ pub(crate) fn decode_typed_with_witness<'w>(
             lookup_chain,
             witness,
         )?;
-        std::borrow::Cow::Borrowed(witness)
+        Cow::Borrowed(witness)
     } else {
-        std::borrow::Cow::Owned(state_storage::decode_admitted(
+        Cow::Owned(state_storage::decode_admitted(
             opening,
             state_package,
             lookup,
@@ -462,19 +473,15 @@ pub(crate) fn decode_typed_with_witness<'w>(
         witness.restore(tick, receipt_package, lookup, lookup_chain)?
     } else {
         let (bytes, receipts) = receipt_storage::decode_admitted(receipt_package, lookup)?;
-        (bytes, std::sync::Arc::new(receipts))
+        (bytes, Arc::new(receipts))
     };
     if register.completed_tick() != tick || receipts.resolve_tick != tick {
         return Err(Error::Tick);
     }
     babylon_tick::material_world::validate_retained_collection(&register, &receipts)
         .map_err(|_| Error::CollectionJoin)?;
-    let receipt_witness = AdmittedReceiptWitness::new(
-        std::sync::Arc::clone(&receipts),
-        receipt_package,
-        lookup,
-        lookup_chain,
-    )?;
+    let receipt_witness =
+        AdmittedReceiptWitness::new(Arc::clone(&receipts), receipt_package, lookup, lookup_chain)?;
     Ok(DecodedMaterial {
         receipt_bytes,
         register,
@@ -496,6 +503,7 @@ mod typed_decode_controls {
     use crate::organizer_aid_fixture as fixture;
     use babylon_practice_contract::OrganizerChoice;
     use babylon_tick::material_world::decode_material_receipts;
+    use std::borrow::Cow;
 
     #[test]
     fn actual_collection_restarts_through_owned_and_borrowed_storage_with_exact_original_join() {
@@ -616,7 +624,7 @@ mod typed_decode_controls {
             )
         };
         let borrowed = decode(&encoded.register_storage_bytes, Some(current)).unwrap();
-        assert!(matches!(borrowed.register, std::borrow::Cow::Borrowed(_)));
+        assert!(matches!(borrowed.register, Cow::Borrowed(_)));
         assert!(std::ptr::eq(borrowed.register.as_ref(), current));
         assert_eq!(
             borrowed.register.canonical_bytes(),
@@ -631,7 +639,7 @@ mod typed_decode_controls {
         );
         assert!(!borrowed.receipts.aid.is_empty());
         let owned = decode(&encoded.register_storage_bytes, None).unwrap();
-        assert!(matches!(owned.register, std::borrow::Cow::Owned(_)));
+        assert!(matches!(owned.register, Cow::Owned(_)));
         assert_eq!(owned.register.as_ref(), current);
         assert_eq!(owned.receipt_bytes, borrowed.receipt_bytes);
         assert_eq!(owned.receipts, borrowed.receipts);

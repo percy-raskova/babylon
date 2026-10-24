@@ -3,8 +3,10 @@
 use super::Error;
 
 use super::{arguments, run};
+use arguments::Arguments;
+use std::result::Result as StdResult;
 
-pub(crate) type Result<T> = std::result::Result<T, Box<dyn Error>>;
+pub(crate) type Result<T> = StdResult<T, Box<dyn Error>>;
 
 pub(crate) fn refused(message: impl Into<String>) -> Box<dyn Error> {
     std::io::Error::other(message.into()).into()
@@ -32,7 +34,7 @@ pub(crate) fn hex(bytes: &[u8]) -> String {
 }
 
 pub(crate) fn execute() -> Result<()> {
-    let Some(args) = arguments::Arguments::parse(std::env::args().skip(1))? else {
+    let Some(args) = Arguments::parse(std::env::args().skip(1))? else {
         return Ok(());
     };
     let inputs = arguments::read_inputs(&args)?;

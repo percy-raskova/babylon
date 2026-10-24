@@ -12,6 +12,7 @@ use babylon_kernel::tick_content_hash::RefDigest;
 
 use babylon_practice_contract::OrderedPracticeActionBatch;
 
+use crate::stored_tick::CheckpointSections;
 use babylon_tick::replay_session::ReplayTickSession;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -71,7 +72,7 @@ impl MaterialComponentIdentity {
 
     pub(in crate::material_runtime) fn validate_sections(
         &self,
-        sections: &crate::stored_tick::CheckpointSections,
+        sections: &CheckpointSections,
     ) -> Result<(), MaterialRuntimeError> {
         if sections.components != self.sections {
             return Err(MaterialRuntimeError::InvalidCheckpoint);

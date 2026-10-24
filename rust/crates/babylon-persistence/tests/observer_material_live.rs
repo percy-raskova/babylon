@@ -37,14 +37,12 @@ mod organizer;
 mod support;
 
 use support::{
-    advance_material_period, assert_known_material_absence, assert_material_accounts,
-    current_archive_scope, identity_hex, DisposableTarget, NEXT_DISPOSABLE_TARGET,
+    advance_material_period, assert_known_material_absence, assert_material_accounts, identity_hex,
+    DisposableTarget, NEXT_DISPOSABLE_TARGET,
 };
 
 use babylon_bsl::structural_verbs::CollectingSink;
-use babylon_persistence::archive_revision::{
-    ArchiveDossierBounds, ArchiveDossierState, ArchiveReadScope,
-};
+use babylon_persistence::archive_revision::{ArchiveDossierBounds, ArchiveDossierState};
 use babylon_persistence::identity::CampaignId;
 use babylon_persistence::material_runtime::DurableMaterialRuntime;
 use babylon_persistence::michigan_content::MichiganContentPreset;

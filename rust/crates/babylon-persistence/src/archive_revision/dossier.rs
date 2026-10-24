@@ -1,9 +1,7 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
-use crate::{
-    identity::CampaignId, ArchiveAtom, ArchiveCitation, ArchivePageRef, ArchiveSignal,
-    SemanticArchiveError,
-};
+use crate::identity::CampaignId;
+use crate::{ArchiveAtom, ArchiveCitation, ArchivePageRef, ArchiveSignal, SemanticArchiveError};
 
 /// One exact acknowledged Archive observation. Fields cannot bypass validation.
 #[derive(Clone, Debug, PartialEq, Eq)]

@@ -1,4 +1,13 @@
-use super::*;
+use super::super::MaterialRuntimeError;
+use super::identity::MaterialComponentIdentity;
+use crate::identity::CampaignId;
+use crate::michigan_content::MichiganContentPreset;
+use crate::michigan_defines::MichiganDefines;
+use babylon_kernel::content_digest::ContentDigest;
+use babylon_kernel::replay::{ReplaySeed, ReplaySessionId};
+use babylon_kernel::tick_content_hash::RefDigest;
+use babylon_practice_contract::OrderedPracticeActionBatch;
+use uuid::Uuid;
 
 fn identity() -> MaterialComponentIdentity {
     MaterialComponentIdentity::from_parts(
@@ -99,7 +108,7 @@ fn empty_actions_bind_exact_session_tick_layout_digest_and_bytes() {
 
 #[test]
 fn captured_foundation_and_live_session_have_identical_component_admission() {
-    let foundation = crate::michigan_content::MichiganContentPreset::FourWeekStandard
+    let foundation = MichiganContentPreset::FourWeekStandard
         .create_foundation(&crate::test_support::catalog())
         .unwrap();
     let retained = MaterialComponentIdentity::from_foundation(foundation.graph_foundation());
@@ -113,12 +122,12 @@ fn captured_foundation_and_live_session_have_identical_component_admission() {
 #[test]
 fn organizer_actions_require_the_exact_authorized_batch_on_restart() {
     let expected = identity();
-    let defines = crate::michigan_defines::MichiganDefines::parse(include_str!(
+    let defines = MichiganDefines::parse(include_str!(
         "../../../../../../content/scenarios/michigan/defines.toml"
     ))
     .unwrap();
     let config = crate::organizer_content::config(
-        crate::identity::CampaignId::from_uuid(uuid::Uuid::from_u128(26163)),
+        CampaignId::from_uuid(Uuid::from_u128(26163)),
         &defines.organizer,
         [7; 32],
     )

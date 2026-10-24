@@ -1,16 +1,25 @@
-use super::{
-    is_service, kind, CommodityKind, GoodId, HouseholdServiceReceipt, MaterialCircuitError,
-    MaterialCircuitState, Result, ServiceMarketReceipt, ServiceOrder, ServiceOutputReceipt,
-    ServicePerformanceReceipt, ServiceStage, UnitId,
-};
-use crate::inventory::{
-    credit_inventory, debit_inventory, publish_inventory, take_inventory, InventoryLedger,
-};
+use super::kind;
+use super::CommodityKind;
+use super::GoodId;
+use super::HouseholdServiceReceipt;
+use super::MaterialCircuitError;
+use super::MaterialCircuitState;
+use super::Result;
+use super::ServiceMarketReceipt;
+use super::ServiceOrder;
+use super::ServiceOutputReceipt;
+use super::ServicePerformanceReceipt;
+use super::ServiceStage;
+use super::UnitId;
+use crate::inventory;
+use crate::inventory::InventoryLedger;
 use crate::valuation::CostClose;
 use crate::{
     AccountId, CircuitAccounting, MoneyTransferReceipt, OutboundOrderId, ProductionCommitment,
 };
+use babylon_kernel::currency::Currency;
 use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 type GrantKey = (AccountId, GoodId, UnitId);
 
 /// Transient current-period grants. No field can be captured as durable service stock.
@@ -88,13 +97,13 @@ impl ServiceClose {
     ) -> Result<()> {
         let first = self.outputs.len();
         self.capture_outputs(state, phase, costs)?;
-        let mut quantities = take_inventory(state);
+        let mut quantities = inventory::take_inventory(state);
         self.sell_grants(state, phase, costs, movements, &mut quantities)?;
         self.expire_outputs(first, costs, &mut quantities)?;
         self.credit_grants(state, phase, costs, &mut quantities)?;
         self.outputs
             .sort_by_key(|r| (r.site_id, r.good_id, r.unit_id));
-        publish_inventory(state, quantities);
+        inventory::publish_inventory(state, quantities);
         Ok(())
     }
     fn capture_outputs(
@@ -135,7 +144,7 @@ impl ServiceClose {
                 allocated_quantity: 0,
                 expired_quantity: 0,
                 direct_cost,
-                expired_cost: babylon_kernel::currency::Currency::from_micro_units(0),
+                expired_cost: Currency::from_micro_units(0),
             });
             if let Some(market) = self
                 .markets
@@ -166,7 +175,7 @@ impl ServiceClose {
             let key = (row.provider_site_id, row.good_id, row.unit_id);
             let available = quantities.get(&key).copied().unwrap_or(0);
             costs.service_handoff(row, available)?;
-            debit_inventory(
+            inventory::debit_inventory(
                 quantities,
                 key,
                 row.performed_quantity,
@@ -231,7 +240,7 @@ impl ServiceClose {
             }
             costs.receive_service(row)?;
             match row.buyer {
-                AccountId::Site(site) => credit_inventory(
+                AccountId::Site(site) => inventory::credit_inventory(
                     quantities,
                     (site, row.good_id, row.unit_id),
                     row.performed_quantity,
@@ -258,7 +267,7 @@ impl ServiceClose {
         let mut remaining: BTreeMap<GrantKey, u64> = state
             .inventory
             .iter()
-            .filter(|r| is_service(state, r.good_id, r.unit_id))
+            .filter(|r| super::is_service(state, r.good_id, r.unit_id))
             .map(|r| {
                 (
                     (AccountId::Site(r.site_id), r.good_id, r.unit_id),
@@ -301,7 +310,7 @@ impl ServiceClose {
             *q -= r.used_quantity;
             r.unused_quantity = r.performed_quantity - r.used_quantity;
         }
-        let services: std::collections::BTreeSet<_> = state
+        let services: BTreeSet<_> = state
             .commodities
             .iter()
             .filter(|r| matches!(r.kind, CommodityKind::PeriodService { .. }))
@@ -325,10 +334,10 @@ impl ServiceClose {
         let CircuitAccounting::Monetary(e) = &state.accounting else {
             return Ok(());
         };
-        let mut controlled = std::collections::BTreeSet::new();
+        let mut controlled = BTreeSet::new();
         if let Some(r) = &e.recurring {
             for need in &r.household_needs {
-                if !is_service(state, need.good_id, need.unit_id) {
+                if !super::is_service(state, need.good_id, need.unit_id) {
                     continue;
                 }
                 let cohort = r

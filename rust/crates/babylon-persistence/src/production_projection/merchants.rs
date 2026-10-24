@@ -1,34 +1,37 @@
 //! Committed merchant handling and finite county demand, without allocation.
 
-use super::{
-    outbound::{completed_facts, identity, mass, OutboundFact},
-    ProductionProjectionError,
+use super::outbound::OutboundFact;
+use super::ProductionProjectionError;
+
+use crate::production_observation::{
+    CompletedProductionFinalDemand, CompletedProductionMerchantHandling,
+    ProductionFinalDemandAccount, ProductionFinalDemandOrder, ProductionHandlingCoefficient,
+    ProductionMerchantHandlingAccount, ProductionMerchantHandlingOrder,
 };
-use crate::{
-    michigan_economy::digest_hex, production_observation::CompletedProductionFinalDemand,
-    production_observation::CompletedProductionMerchantHandling,
-    production_observation::ProductionFinalDemandAccount,
-    production_observation::ProductionFinalDemandOrder,
-    production_observation::ProductionHandlingCoefficient,
-    production_observation::ProductionMerchantHandlingAccount,
-    production_observation::ProductionMerchantHandlingOrder,
-};
+
+use super::history::FinalOrder;
+use super::history::OrderHistory;
+use super::outbound;
+use crate::michigan_economy;
+#[cfg(test)]
+use crate::michigan_material::MichiganMaterialCatalog;
 use babylon_material_circuit::{
     FinalDemandPrincipalId, GoodId, MaterialCircuitState, OrderId, OutboundOrderId, SiteId, UnitId,
 };
 use babylon_tick::material_world::MaterialTickReceipts;
 use std::collections::{BTreeMap, BTreeSet};
+use std::result::Result as StdResult;
 
-type Result<T> = std::result::Result<T, ProductionProjectionError>;
+type Result<T> = StdResult<T, ProductionProjectionError>;
 type DemandKey = (FinalDemandPrincipalId, GoodId, UnitId);
 
 #[cfg(test)]
 pub(super) fn project_merchants(
-    catalog: &crate::michigan_material::MichiganMaterialCatalog,
+    catalog: &MichiganMaterialCatalog,
     current: &MaterialCircuitState,
     prior: Option<&MaterialCircuitState>,
     receipt: Option<&MaterialTickReceipts>,
-    history: &super::history::OrderHistory,
+    history: &OrderHistory,
 ) -> Result<(
     Vec<ProductionMerchantHandlingAccount>,
     Vec<ProductionFinalDemandAccount>,
@@ -46,7 +49,7 @@ pub(super) fn project_with_labels(
     current: &MaterialCircuitState,
     prior: Option<&MaterialCircuitState>,
     receipt: Option<&MaterialTickReceipts>,
-    history: &super::history::OrderHistory,
+    history: &OrderHistory,
     labels: impl Fn(GoodId, UnitId) -> Option<(String, String)>,
 ) -> Result<(
     Vec<ProductionMerchantHandlingAccount>,
@@ -54,9 +57,11 @@ pub(super) fn project_with_labels(
 )> {
     let completed = match (prior, receipt) {
         (None, None) if current.period == 1 => None,
-        (Some(prior), Some(receipt)) => {
-            Some((prior, receipt, completed_facts(prior, current, receipt)?))
-        }
+        (Some(prior), Some(receipt)) => Some((
+            prior,
+            receipt,
+            outbound::completed_facts(prior, current, receipt)?,
+        )),
         _ => return Err(ProductionProjectionError::History),
     };
     let handling = handling_accounts(
@@ -107,9 +112,9 @@ fn handling_accounts(
                         return Err(ProductionProjectionError::State);
                     }
                     Ok(ProductionHandlingCoefficient {
-                        good_id: digest_hex(&row.good_id.as_bytes()),
-                        unit_id: digest_hex(&row.unit_id.as_bytes()),
-                        grams_per_unit: mass(current, row.good_id, row.unit_id)?,
+                        good_id: michigan_economy::digest_hex(&row.good_id.as_bytes()),
+                        unit_id: michigan_economy::digest_hex(&row.unit_id.as_bytes()),
+                        grams_per_unit: outbound::mass(current, row.good_id, row.unit_id)?,
                         hours_per_unit: row.hours_per_unit,
                     })
                 })
@@ -145,9 +150,9 @@ fn handling_accounts(
                 })
                 .transpose()?;
             Ok(ProductionMerchantHandlingAccount {
-                site_id: digest_hex(&merchant.site_id.as_bytes()),
-                capacity_id: digest_hex(&merchant.capacity_id.as_bytes()),
-                labor_unit_id: digest_hex(&merchant.labor_unit_id.as_bytes()),
+                site_id: michigan_economy::digest_hex(&merchant.site_id.as_bytes()),
+                capacity_id: michigan_economy::digest_hex(&merchant.capacity_id.as_bytes()),
+                labor_unit_id: michigan_economy::digest_hex(&merchant.labor_unit_id.as_bytes()),
                 coefficients,
                 completed,
             })
@@ -196,15 +201,15 @@ fn handling_rows(
         {
             return Err(ProductionProjectionError::State);
         }
-        let (id, kind) = identity(row.order)?;
+        let (id, kind) = outbound::identity(row.order)?;
         result
             .entry(row.site_id)
             .or_default()
             .push(ProductionMerchantHandlingOrder {
-                order_id: digest_hex(&id.as_bytes()),
+                order_id: michigan_economy::digest_hex(&id.as_bytes()),
                 kind,
-                good_id: digest_hex(&fact.good.as_bytes()),
-                unit_id: digest_hex(&fact.unit.as_bytes()),
+                good_id: michigan_economy::digest_hex(&fact.good.as_bytes()),
+                unit_id: michigan_economy::digest_hex(&fact.unit.as_bytes()),
                 requested: fact.requested,
                 feasible_quantity: row.feasible_quantity,
                 handled_quantity: row.handled_quantity,
@@ -225,7 +230,7 @@ fn handling_rows(
 pub(super) fn project_final_with_labels(
     current: &MaterialCircuitState,
     completed: Option<(&MaterialCircuitState, &[OutboundFact])>,
-    history: &super::history::OrderHistory,
+    history: &OrderHistory,
     labels: impl Fn(GoodId, UnitId) -> Option<(String, String)>,
 ) -> Result<Vec<ProductionFinalDemandAccount>> {
     let mut groups = BTreeMap::<DemandKey, Vec<_>>::new();
@@ -304,10 +309,10 @@ pub(super) fn project_final_with_labels(
                 .map(|(prior, _)| completed_final(prior.period, fulfilled, &orders, &quantities))
                 .transpose()?;
             Ok(ProductionFinalDemandAccount {
-                demand_principal_id: digest_hex(&principal.as_bytes()),
+                demand_principal_id: michigan_economy::digest_hex(&principal.as_bytes()),
                 location: county.location,
-                good_id: digest_hex(&good.as_bytes()),
-                unit_id: digest_hex(&unit.as_bytes()),
+                good_id: michigan_economy::digest_hex(&good.as_bytes()),
+                unit_id: michigan_economy::digest_hex(&unit.as_bytes()),
                 good: good_label,
                 unit: unit_label,
                 ordered,
@@ -317,7 +322,7 @@ pub(super) fn project_final_with_labels(
                 retail_stock_on_hand,
                 retailer_site_ids: retailers
                     .iter()
-                    .map(|id| digest_hex(&id.as_bytes()))
+                    .map(|id| michigan_economy::digest_hex(&id.as_bytes()))
                     .collect(),
                 total_order_count: u64::try_from(orders.len())
                     .ok()
@@ -332,7 +337,7 @@ pub(super) fn project_final_with_labels(
 
 fn active_final_orders(
     current: &MaterialCircuitState,
-    history: &super::history::OrderHistory,
+    history: &OrderHistory,
 ) -> Result<BTreeSet<OrderId>> {
     let actual: BTreeMap<_, _> = current
         .final_demand_orders
@@ -364,7 +369,7 @@ fn active_final_orders(
 fn completed_final(
     period: u64,
     fulfilled: u64,
-    orders: &[&super::history::FinalOrder],
+    orders: &[&FinalOrder],
     quantities: &BTreeMap<OrderId, u64>,
 ) -> Result<CompletedProductionFinalDemand> {
     let newly_fulfilled = sum(orders
@@ -382,7 +387,7 @@ fn completed_final(
 }
 
 fn listed_orders(
-    orders: &[&super::history::FinalOrder],
+    orders: &[&FinalOrder],
     actual: &BTreeSet<OrderId>,
     latest: &BTreeSet<OrderId>,
 ) -> Result<Vec<ProductionFinalDemandOrder>> {
@@ -394,8 +399,8 @@ fn listed_orders(
         .map(|known| {
             let row = &known.order;
             Ok(ProductionFinalDemandOrder {
-                order_id: digest_hex(&row.order_id.as_bytes()),
-                retailer_site_id: digest_hex(&row.retailer_site_id.as_bytes()),
+                order_id: michigan_economy::digest_hex(&row.order_id.as_bytes()),
+                retailer_site_id: michigan_economy::digest_hex(&row.retailer_site_id.as_bytes()),
                 ordered: row.ordered,
                 fulfilled: row.fulfilled,
                 expired: known.expired,

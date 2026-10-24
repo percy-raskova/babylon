@@ -1,8 +1,32 @@
-use babylon_kernel::{
-    currency::Currency,
-    economic_location::{EconomicLocation, ForeignCounterpart},
-};
-use babylon_material_circuit::*;
+use babylon_kernel::currency::Currency;
+use babylon_kernel::economic_location::{EconomicLocation, ForeignCounterpart};
+use babylon_material_circuit::AccountId;
+use babylon_material_circuit::AidBook;
+use babylon_material_circuit::CapacitySupply;
+use babylon_material_circuit::CapitalContributionOrder;
+use babylon_material_circuit::CashAccount;
+use babylon_material_circuit::CircuitAccounting;
+use babylon_material_circuit::ContributionId;
+use babylon_material_circuit::DistributionPolicy;
+use babylon_material_circuit::EquityCarryingValue;
+use babylon_material_circuit::FinalDemandPrincipal;
+use babylon_material_circuit::FinalDemandPrincipalId;
+use babylon_material_circuit::FinancialInstitutions;
+use babylon_material_circuit::HistoricalCostBook;
+use babylon_material_circuit::HouseholdTimeAccounting;
+use babylon_material_circuit::InstitutionLocation;
+use babylon_material_circuit::LogisticsNodeId;
+use babylon_material_circuit::MaterialCircuitState;
+use babylon_material_circuit::MonetaryBook;
+use babylon_material_circuit::MonetaryCircuit;
+use babylon_material_circuit::OrganizationAccountId;
+use babylon_material_circuit::OwnershipClaim;
+use babylon_material_circuit::PublicAccountId;
+use babylon_material_circuit::PublicAllocation;
+use babylon_material_circuit::PublicBudget;
+use babylon_material_circuit::PublicTransferTreatment;
+use babylon_material_circuit::SiteId;
+use babylon_material_circuit::SiteLogisticsNode;
 
 fn money(n: i128) -> Currency {
     Currency::from_micro_units(n)
@@ -94,7 +118,7 @@ fn opening(cash: [i128; 5]) -> MaterialCircuitState {
         accounting: CircuitAccounting::Monetary(Box::new(MonetaryCircuit {
             aid: AidBook::default(),
 
-            household_time: babylon_material_circuit::HouseholdTimeAccounting::NotModeled,
+            household_time: HouseholdTimeAccounting::NotModeled,
             member_labor: vec![],
             book,
             costs,
@@ -165,7 +189,7 @@ fn ownership_distributes_retained_cash_once_with_exact_remainder_and_restart() {
         period_cap: money(7),
         cash_floor: money(0),
     });
-    let t = advance_material_circuit(&state).unwrap();
+    let t = babylon_material_circuit::advance_material_circuit(&state).unwrap();
     assert_eq!(economy(&t.state).book.cash(owner(2)).unwrap(), money(3));
     assert_eq!(economy(&t.state).book.cash(owner(3)).unwrap(), money(4));
     assert_eq!(
@@ -187,10 +211,15 @@ fn ownership_distributes_retained_cash_once_with_exact_remainder_and_restart() {
         economy(&t.state).book.total_cash_and_reserves().unwrap(),
         money(7)
     );
-    let next = advance_material_circuit(&t.state).unwrap();
-    let restored =
-        decode_material_circuit_state(&encode_material_circuit_state(&t.state).unwrap()).unwrap();
-    assert_eq!(next, advance_material_circuit(&restored).unwrap());
+    let next = babylon_material_circuit::advance_material_circuit(&t.state).unwrap();
+    let restored = babylon_material_circuit::decode_material_circuit_state(
+        &babylon_material_circuit::encode_material_circuit_state(&t.state).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        next,
+        babylon_material_circuit::advance_material_circuit(&restored).unwrap()
+    );
     assert!(next.distributions.iter().all(|r| r.paid == money(0)));
 }
 #[test]
@@ -206,7 +235,7 @@ fn capital_contribution_swaps_cash_for_equity_without_income_or_equipment() {
             issuer_site_id: site(),
             amount: money(5),
         });
-    let t = advance_material_circuit(&state).unwrap();
+    let t = babylon_material_circuit::advance_material_circuit(&state).unwrap();
     assert_eq!(
         economy(&t.state)
             .book
@@ -260,7 +289,7 @@ fn public_support_records_unfunded_budget_without_creating_cash_or_consumption()
         priority: 0,
         amount_per_period: money(5),
     });
-    let t = advance_material_circuit(&state).unwrap();
+    let t = babylon_material_circuit::advance_material_circuit(&state).unwrap();
     assert_eq!(t.public_budgets[0].requested, money(5));
     assert_eq!(t.public_budgets[0].paid, money(3));
     assert_eq!(t.public_budgets[0].unfunded, money(2));

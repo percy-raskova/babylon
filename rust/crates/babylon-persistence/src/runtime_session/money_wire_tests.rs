@@ -1,11 +1,21 @@
-use super::*;
+use super::{RuntimeSessionResponse, RuntimeSessionScope};
+use crate::organizer_runtime::{
+    OrganizerAidOrdinaryOffer, OrganizerAidTransportPreview, OrganizerCollectionPreview,
+    OrganizerMaterialAidPreview, OrganizerSnapshot,
+};
+use babylon_kernel::clock::CampaignDuration;
+use babylon_practice_contract::{
+    OrganizerAidKind, OrganizerGiftConsent, OrganizerStandingWork, OrganizerView,
+};
+use serde_json::Value;
+use uuid::Uuid;
 
 fn reply(payer: i128, gift: i128, price: i128) -> RuntimeSessionResponse {
     RuntimeSessionResponse::OrganizerStatus {
         request_id: 2,
         scope: RuntimeSessionScope {
             epoch: 1,
-            campaign_id: Some(uuid::Uuid::from_u128(1).to_string()),
+            campaign_id: Some(Uuid::from_u128(1).to_string()),
         },
         snapshot: Box::new(OrganizerSnapshot {
             view: OrganizerView {
@@ -38,7 +48,7 @@ fn reply(payer: i128, gift: i128, price: i128) -> RuntimeSessionResponse {
                 aid_options: vec![],
             },
             pending: None,
-            duration: babylon_kernel::clock::CampaignDuration::Continuous,
+            duration: CampaignDuration::Continuous,
             aid: vec![OrganizerMaterialAidPreview {
                 kind: OrganizerAidKind::Local,
                 mandate_id: [1; 32],
@@ -85,7 +95,7 @@ fn tagged_organizer_money_roundtrips_exact_full_i128() {
         let decoded: RuntimeSessionResponse = serde_json::from_slice(&encoded)
             .expect("actual internally tagged reply preserves typed money");
         assert_eq!(decoded, expected);
-        let wire: serde_json::Value = serde_json::from_slice(&encoded).unwrap();
+        let wire: Value = serde_json::from_slice(&encoded).unwrap();
         let aid = &wire["snapshot"]["aid"][0];
         assert_eq!(aid["payer_cash"], payer.to_string());
         assert_eq!(aid["gift_cash_per_unit"], gift.to_string());
@@ -100,7 +110,7 @@ fn tagged_organizer_money_refuses_noncanonical_numeric_and_overflow_values() {
         serde_json::json!(42),
         serde_json::json!(1.5),
         serde_json::json!(true),
-        serde_json::Value::Null,
+        Value::Null,
         serde_json::json!(""),
         serde_json::json!("+1"),
         serde_json::json!("01"),
@@ -196,6 +206,6 @@ fn collection_snapshot_requires_evidence_and_exact_cash_strings() {
         );
     }
     let mut absent = wire;
-    absent["snapshot"]["collection"] = serde_json::Value::Null;
+    absent["snapshot"]["collection"] = Value::Null;
     assert!(serde_json::from_value::<RuntimeSessionResponse>(absent).is_ok());
 }

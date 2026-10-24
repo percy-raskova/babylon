@@ -10,17 +10,17 @@
 //! `%.6f` statblock formatting with -0.0 -> 0.0.
 
 use babylon_persistence::{
-    county_committed_signals, desired_county_projection, filter_granted_county_plans,
     format_county_statblock_value, ArchiveSubjectKind, CommittedTerritoryFields, CountyGrantIndex,
     CountyPagePlan, CountyPlaceLink, CountySignal, COMMITTED_TICK_SOURCE_ID,
     COUNTY_DECISION_QUESTION, COUNTY_MEDIAN_WAGE_GRANT_KEY, COUNTY_MEDIAN_WAGE_LABEL,
     COUNTY_PHI_HOUR_LABEL,
 };
-use babylon_persistence::{
-    h3_reference_cohort::representative_h3_reference_cohort,
-    spatial_reference_products::michigan_spatial_reference_products,
-};
+
+use babylon_persistence::h3_reference_cohort;
+use babylon_persistence::spatial_reference_products;
+use babylon_persistence::ArchivePageRef;
 use serde_json::Value;
+use std::collections::BTreeMap;
 
 const VECTORS: &str = include_str!("../../../../contracts/county_dossier_parity_v1_vectors.jsonl");
 const MAX_ROWS: usize = 16;
@@ -132,9 +132,11 @@ fn parse_grants(data: &Value) -> CountyGrantIndex {
 }
 
 fn products_links_for(county_geoid: &str) -> Vec<(String, String)> {
-    let cohort = representative_h3_reference_cohort().expect("reference cohort");
-    let products = michigan_spatial_reference_products(cohort).expect("reference products");
-    let names: std::collections::BTreeMap<&str, &str> = products
+    let cohort =
+        h3_reference_cohort::representative_h3_reference_cohort().expect("reference cohort");
+    let products = spatial_reference_products::michigan_spatial_reference_products(cohort)
+        .expect("reference products");
+    let names: BTreeMap<&str, &str> = products
         .places()
         .iter()
         .map(|place| (place.place_geoid(), place.name_lsad()))
@@ -159,7 +161,8 @@ fn assert_plan_signals(row: &Value, fields: &CommittedTerritoryFields) -> County
     let data = &row["data"];
     // The plan carries every committed field; each formatted value must
     // equal the oracle-generated statblock text byte for byte.
-    let plan_signals = county_committed_signals(fields).expect("committed signals");
+    let plan_signals =
+        babylon_persistence::county_committed_signals(fields).expect("committed signals");
     let expected_plan: Vec<Value> = data["expected"]["plan_signals"]
         .as_array()
         .expect("plan signals array")
@@ -185,7 +188,7 @@ fn assert_plan_signals(row: &Value, fields: &CommittedTerritoryFields) -> County
 fn assert_visible_signals(row: &Value, plan: &CountyPagePlan, grants: &CountyGrantIndex) {
     let data = &row["data"];
     // Grant filtering decides which plan signals are visible.
-    let county_ref = babylon_persistence::ArchivePageRef::try_new(
+    let county_ref = ArchivePageRef::try_new(
         ArchiveSubjectKind::County,
         data["county_geoid"]
             .as_str()
@@ -210,7 +213,8 @@ fn assert_projection(row: &Value, plan: &CountyPagePlan, grants: &CountyGrantInd
     let data = &row["data"];
     // The semantic projection pins labels, values, and the committed
     // provenance identity the renderer cites.
-    let projection = desired_county_projection(plan, grants).expect("desired projection");
+    let projection =
+        babylon_persistence::desired_county_projection(plan, grants).expect("desired projection");
     assert_eq!(
         projection.title(),
         data["title"].as_str().expect("title"),
@@ -313,7 +317,8 @@ fn shared_vectors_reproduce_the_oracle_pinned_display_values() {
         assert_projection(row, &plan, &grants);
         // The county subject grant is present in every parity vector, so the
         // fog-safe page filter must keep the plan.
-        let granted = filter_granted_county_plans(std::slice::from_ref(&plan), &grants);
+        let granted =
+            babylon_persistence::filter_granted_county_plans(std::slice::from_ref(&plan), &grants);
         assert_eq!(
             granted.len(),
             1,
@@ -362,8 +367,10 @@ fn vector_links_and_titles_match_the_pinned_reference_products() {
     for row in &rows {
         let data = &row["data"];
         let geoid = data["county_geoid"].as_str().expect("county geoid");
-        let cohort = representative_h3_reference_cohort().expect("reference cohort");
-        let products = michigan_spatial_reference_products(cohort).expect("reference products");
+        let cohort =
+            h3_reference_cohort::representative_h3_reference_cohort().expect("reference cohort");
+        let products = spatial_reference_products::michigan_spatial_reference_products(cohort)
+            .expect("reference products");
         let county = products
             .counties()
             .iter()

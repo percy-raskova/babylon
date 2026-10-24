@@ -1,27 +1,28 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
-use super::super::{metadata::Metadata, ProductionProjectionError};
+use super::super::metadata::Metadata;
+use super::super::ProductionProjectionError;
 
-use crate::{
-    economic_catalog::{EconomicProjectionView, EconomicSiteSource, EconomicSourceView},
-    economic_content::EconomicContentAdmission,
-    michigan_cohorts::michigan_business_subject_for_owner,
-    michigan_economy::digest_hex,
-    michigan_material::MichiganOwnerSource,
-    observer_reader::ObserverVisibility,
-    production_observation::{
-        DesignedProcessAttribution, ObservedKnownSubtotal, ObservedNationalCohortContext,
-        ObservedSectorContext, ProductionBusinessSubject, ProductionSnapshot,
-    },
-    ArchiveEvidenceClass,
+use crate::economic_catalog::{EconomicProjectionView, EconomicSiteSource, EconomicSourceView};
+use crate::economic_content::EconomicContentAdmission;
+use crate::michigan_material::MichiganOwnerSource;
+use crate::observer_reader::ObserverVisibility;
+use crate::production_observation::{
+    DesignedProcessAttribution, ObservedKnownSubtotal, ObservedNationalCohortContext,
+    ObservedSectorContext, ProductionBusinessSubject, ProductionSnapshot,
 };
+use crate::ArchiveEvidenceClass;
 
 use babylon_graph::stable_element::StableElementKey;
 
+use crate::michigan_cohorts;
+use crate::michigan_economy;
+use crate::national_cohorts::KnownSubtotal;
+use crate::production_observation::ProductionSite;
 use std::collections::{BTreeMap, BTreeSet};
+use std::result::Result as StdResult;
 
-pub(in crate::production_projection) type Result<T> =
-    std::result::Result<T, ProductionProjectionError>;
+pub(in crate::production_projection) type Result<T> = StdResult<T, ProductionProjectionError>;
 
 pub(in crate::production_projection) type ContextRows =
     (Vec<ObservedSectorContext>, Vec<DesignedProcessAttribution>);
@@ -54,7 +55,7 @@ pub(crate) fn attach_observed_context(
 pub(in crate::production_projection) fn visible_sites<'a>(
     metadata: &Metadata<'_>,
     snapshot: &'a ProductionSnapshot,
-) -> Result<BTreeMap<String, &'a crate::production_observation::ProductionSite>> {
+) -> Result<BTreeMap<String, &'a ProductionSite>> {
     let mut rows = BTreeMap::new();
     for row in &snapshot.sites {
         if rows.insert(row.id.clone(), row).is_some() {
@@ -66,7 +67,7 @@ pub(in crate::production_projection) fn visible_sites<'a>(
     }
     for (&id, site) in &metadata.sites {
         let visible = rows
-            .get(&digest_hex(&id.as_bytes()))
+            .get(&michigan_economy::digest_hex(&id.as_bytes()))
             .ok_or(ProductionProjectionError::Content)?;
         if visible.location != site.location
             || visible.function != site.function.source_key()
@@ -78,7 +79,7 @@ pub(in crate::production_projection) fn visible_sites<'a>(
                 != site
                     .processes
                     .iter()
-                    .map(|r| digest_hex(&r.process_id.as_bytes()))
+                    .map(|r| michigan_economy::digest_hex(&r.process_id.as_bytes()))
                     .collect()
         {
             return Err(ProductionProjectionError::Content);
@@ -106,7 +107,7 @@ pub(in crate::production_projection) fn context_rows(
             .push(process);
     }
     for site in catalog.sites() {
-        let site_id = digest_hex(&site.id().as_bytes());
+        let site_id = michigan_economy::digest_hex(&site.id().as_bytes());
         let shown = visible
             .get(&site_id)
             .ok_or(ProductionProjectionError::State)?;
@@ -133,11 +134,11 @@ pub(in crate::production_projection) fn context_rows(
             .flatten()
         {
             links.push(DesignedProcessAttribution {
-                process_id: digest_hex(&process.id().as_bytes()),
+                process_id: michigan_economy::digest_hex(&process.id().as_bytes()),
                 site_id: site_id.clone(),
                 industry_code: process.industry_code.clone(),
                 cohort_subject: subject.clone(),
-                scenario_artifact_sha256: digest_hex(&view.source_digest),
+                scenario_artifact_sha256: michigan_economy::digest_hex(&view.source_digest),
                 industry_artifact_sha256: source.industry_artifact_sha256.clone(),
                 evidence_class: ArchiveEvidenceClass::Designed,
             });
@@ -147,9 +148,7 @@ pub(in crate::production_projection) fn context_rows(
     Ok((contexts.into_values().collect(), links))
 }
 
-pub(in crate::production_projection) fn subtotal(
-    row: crate::national_cohorts::KnownSubtotal,
-) -> ObservedKnownSubtotal {
+pub(in crate::production_projection) fn subtotal(row: KnownSubtotal) -> ObservedKnownSubtotal {
     ObservedKnownSubtotal {
         known_subtotal: row.known_subtotal(),
         published_members: row.published_members(),
@@ -175,7 +174,7 @@ pub(in crate::production_projection) fn national_rows(
             .group(key)
             .filter(|r| r.is_admitted())
             .ok_or(ProductionProjectionError::Content)?;
-        let site_id = digest_hex(&site.site_id.as_bytes());
+        let site_id = michigan_economy::digest_hex(&site.site_id.as_bytes());
         let shown = visible
             .get(&site_id)
             .ok_or(ProductionProjectionError::State)?;
@@ -205,8 +204,10 @@ pub(in crate::production_projection) fn national_rows(
             establishments: subtotal(source.establishments()),
             annual_average_jobs: subtotal(source.jobs()),
             annual_payroll_usd: subtotal(source.annual_payroll_usd()),
-            artifact_sha256: digest_hex(&cohorts.artifact_sha256()),
-            function_mapping_sha256: digest_hex(&cohorts.function_mapping_sha256()),
+            artifact_sha256: michigan_economy::digest_hex(&cohorts.artifact_sha256()),
+            function_mapping_sha256: michigan_economy::digest_hex(
+                &cohorts.function_mapping_sha256(),
+            ),
             evidence_class: ArchiveEvidenceClass::Observed,
         });
     }
@@ -221,7 +222,10 @@ pub(in crate::production_projection) fn checked_context(
     let StableElementKey::Node {
         scenario,
         local_name,
-    } = michigan_business_subject_for_owner(&source.county_geoid, &source.sector_code)
+    } = michigan_cohorts::michigan_business_subject_for_owner(
+        &source.county_geoid,
+        &source.sector_code,
+    )
     else {
         return Err(ProductionProjectionError::Content);
     };

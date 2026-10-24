@@ -56,14 +56,19 @@ use postgres::Config;
 use sha2::{Digest as _, Sha256};
 use uuid::Uuid;
 
-use crate::archive::{validate_text, ARCHIVE_PAGE_TEMPLATE_SHA256};
+use crate::archive;
+use crate::archive::ARCHIVE_PAGE_TEMPLATE_SHA256;
+use crate::h3_reference_cohort;
+use crate::identity::CampaignId;
+use crate::production_projection::diagnostics::Stage;
+use crate::production_projection::diagnostics::Timing;
+use crate::spatial_reference_products;
+use crate::spatial_reference_products::{PlaceIdentityRow, SpatialReferenceProducts};
+use crate::ArchiveKnowledge;
 use crate::{
-    h3_reference_cohort::representative_h3_reference_cohort, identity::CampaignId,
-    spatial_reference_products::michigan_spatial_reference_products,
-    spatial_reference_products::PlaceIdentityRow,
-    spatial_reference_products::SpatialReferenceProducts, ArchiveCitation, ArchiveDirtySelection,
-    ArchiveDossierProducer, ArchiveLink, ArchivePageInput, ArchivePageRef, ArchiveProducerOutcome,
-    ArchiveSignal, ArchiveSubject, ArchiveSubjectKind, PendingArchiveReceipt, SemanticArchiveError,
+    ArchiveCitation, ArchiveDirtySelection, ArchiveDossierProducer, ArchiveLink, ArchivePageInput,
+    ArchivePageRef, ArchiveProducerOutcome, ArchiveSignal, ArchiveSubject, ArchiveSubjectKind,
+    PendingArchiveReceipt, SemanticArchiveError,
 };
 
 /// Stable decision question every place dossier page answers.
@@ -253,10 +258,10 @@ impl PlaceSignalProjection {
         source_id: String,
         locator: String,
     ) -> Result<Self, SemanticArchiveError> {
-        validate_text(&label)?;
-        validate_text(&value)?;
-        validate_text(&source_id)?;
-        validate_text(&locator)?;
+        archive::validate_text(&label)?;
+        archive::validate_text(&value)?;
+        archive::validate_text(&source_id)?;
+        archive::validate_text(&locator)?;
         if label.contains(":** ") || value.contains(" — ") || source_id.contains("; ") {
             return Err(SemanticArchiveError::InvalidText);
         }
@@ -318,13 +323,13 @@ impl PlacePageProjection {
         signals: Vec<PlaceSignalProjection>,
         counties: Vec<(String, Option<String>)>,
     ) -> Result<Self, SemanticArchiveError> {
-        validate_text(&title)?;
-        validate_text(&question)?;
+        archive::validate_text(&title)?;
+        archive::validate_text(&question)?;
         let mut unique = BTreeSet::new();
         for (geoid, name) in &counties {
             ArchivePageRef::try_new(ArchiveSubjectKind::County, geoid.clone())?;
             if let Some(name) = name {
-                validate_text(name)?;
+                archive::validate_text(name)?;
             }
             if !unique.insert(geoid.clone()) {
                 return Err(SemanticArchiveError::DuplicateKey);
@@ -385,7 +390,7 @@ impl PlaceGrantIndex {
         let mut grants: BTreeMap<ArchivePageRef, BTreeSet<String>> = BTreeMap::new();
         for (kind, id, grant_key) in rows {
             let page_ref = ArchivePageRef::try_new(kind, id)?;
-            validate_text(&grant_key)?;
+            archive::validate_text(&grant_key)?;
             grants.entry(page_ref).or_default().insert(grant_key);
         }
         Ok(Self { grants })
@@ -700,9 +705,9 @@ impl PlaceDossierProducer {
     /// Refuses loudly when the embedded reference products, their governing
     /// H3 cohort, or either contract-pinned artifact digest diverges.
     pub fn try_new(config: &Config) -> Result<Self, SemanticArchiveError> {
-        let cohort = representative_h3_reference_cohort()
+        let cohort = h3_reference_cohort::representative_h3_reference_cohort()
             .map_err(|_| SemanticArchiveError::ArtifactDigest)?;
-        let products = michigan_spatial_reference_products(cohort)
+        let products = spatial_reference_products::michigan_spatial_reference_products(cohort)
             .map_err(|_| SemanticArchiveError::ArtifactDigest)?;
         verify_pinned_artifact_digests(&products)?;
         Ok(Self {
@@ -832,7 +837,7 @@ impl ArchiveDossierProducer for PlaceDossierProducer {
         &self,
         campaign_id: Uuid,
         receipt: &PendingArchiveReceipt,
-        knowledge: &crate::ArchiveKnowledge,
+        knowledge: &ArchiveKnowledge,
         page_budget: usize,
     ) -> Result<ArchiveProducerOutcome, SemanticArchiveError> {
         let campaign = CampaignId::from_uuid(campaign_id);
@@ -840,10 +845,7 @@ impl ArchiveDossierProducer for PlaceDossierProducer {
             return Err(SemanticArchiveError::StoredPageMismatch);
         }
         let desired = {
-            let _timing = crate::production_projection::diagnostics::Timing::start(
-                crate::production_projection::diagnostics::Stage::ArchivePlacePlans,
-                receipt.resolve_tick(),
-            );
+            let _timing = Timing::start(Stage::ArchivePlacePlans, receipt.resolve_tick());
             self.desired_pages()?
         };
         crate::archive_revision::publication::select_dirty_pages(

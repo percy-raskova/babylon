@@ -1,6 +1,14 @@
-use super::*;
-use crate::simulation_experiment::{tests::spec, ExperimentProfile};
-use babylon_tick::material_world::decode_material_receipts;
+use super::super::{ExperimentError, StaffingEvidence};
+use super::manifest::{count, WiringManifest};
+use super::{manifest, tests};
+use crate::simulation_experiment::tests::spec;
+use crate::simulation_experiment::ExperimentProfile;
+use babylon_bsl::causal_contract::{EffectSignature, EvidenceClass};
+use babylon_tick::material_staffing::STAFFING_FIELDS;
+use babylon_tick::material_world::MaterialTickReceipts;
+use babylon_tick::TickReport;
+
+use babylon_tick::material_world;
 
 fn first_period(
     profile: ExperimentProfile,
@@ -10,8 +18,8 @@ fn first_period(
     MaterialTickReceipts,
     Vec<StaffingEvidence>,
 ) {
-    let foundation = spec(profile).create_foundation().unwrap();
-    let manifest = capture(&foundation).unwrap();
+    let foundation = tests::spec(profile).create_foundation().unwrap();
+    let manifest = manifest::capture(&foundation).unwrap();
     let session = foundation
         .reconstruct_captured()
         .unwrap()
@@ -35,7 +43,7 @@ fn first_period(
     (
         manifest,
         copied_report,
-        decode_material_receipts(candidate.material().receipt_bytes()).unwrap(),
+        material_world::decode_material_receipts(candidate.material().receipt_bytes()).unwrap(),
         super::super::staffing(&candidate).unwrap(),
     )
 }
@@ -43,12 +51,12 @@ fn first_period(
 #[test]
 fn counted_firing_without_material_effect_is_not_successful_execution() {
     let (manifest, mut report, receipts, staffing) = first_period(ExperimentProfile::DeliveryStock);
-    assert!(verify(&manifest, &report, &receipts, &staffing).is_ok());
+    assert!(manifest::verify(&manifest, &report, &receipts, &staffing).is_ok());
     report
         .audit_receipts
         .retain(|receipt| receipt.effect != EffectSignature::MaterialCycle);
     assert_eq!(
-        verify(&manifest, &report, &receipts, &staffing),
+        manifest::verify(&manifest, &report, &receipts, &staffing),
         Err(ExperimentError::Incomplete)
     );
 }
@@ -62,24 +70,24 @@ fn coverage_refuses_misattributed_duplicate_and_unselected_effects() {
         .position(|r| r.effect == EffectSignature::MaterialCycle)
         .unwrap();
     report.audit_receipts[material].evidence = EvidenceClass::Observed;
-    assert!(verify(&manifest, &report, &receipts, &staffing).is_err());
+    assert!(manifest::verify(&manifest, &report, &receipts, &staffing).is_err());
     report.audit_receipts = original.clone();
     report.audit_receipts.push(original[material].clone());
-    assert!(verify(&manifest, &report, &receipts, &staffing).is_err());
+    assert!(manifest::verify(&manifest, &report, &receipts, &staffing).is_err());
     report.audit_receipts = original.clone();
     report.audit_receipts[material].rule_id = "unselected/effect".to_owned();
-    assert!(verify(&manifest, &report, &receipts, &staffing).is_err());
+    assert!(manifest::verify(&manifest, &report, &receipts, &staffing).is_err());
     report.audit_receipts = original;
     report
         .audit_receipts
         .retain(|r| r.effect != EffectSignature::NodeField(STAFFING_FIELDS[0].to_owned()));
-    assert!(verify(&manifest, &report, &receipts, &staffing).is_err());
+    assert!(manifest::verify(&manifest, &report, &receipts, &staffing).is_err());
 }
 
 #[test]
 fn coverage_matches_captured_subjects_and_native_family_selection() {
     let (manifest, report, receipts, mut staffing) = first_period(ExperimentProfile::DeliveryStock);
-    let (coverage, execution) = verify(&manifest, &report, &receipts, &staffing).unwrap();
+    let (coverage, execution) = manifest::verify(&manifest, &report, &receipts, &staffing).unwrap();
     assert_eq!(execution.len(), manifest.rules.len());
     assert_eq!(
         coverage.staffing_events,
@@ -90,7 +98,7 @@ fn coverage_matches_captured_subjects_and_native_family_selection() {
         coverage.staffing_events * count(STAFFING_FIELDS.len()).unwrap()
     );
     staffing[0].subject = "unselected-workforce".to_owned();
-    assert!(verify(&manifest, &report, &receipts, &staffing).is_err());
+    assert!(manifest::verify(&manifest, &report, &receipts, &staffing).is_err());
     let (mut manifest, report, receipts, staffing) = first_period(ExperimentProfile::DeliveryStock);
     let family = manifest
         .material_families
@@ -100,7 +108,7 @@ fn coverage_matches_captured_subjects_and_native_family_selection() {
     family.selected = false;
     family.captured_rows = 0;
     assert!(!receipts.production.is_empty());
-    assert!(verify(&manifest, &report, &receipts, &staffing).is_err());
+    assert!(manifest::verify(&manifest, &report, &receipts, &staffing).is_err());
 }
 
 #[test]
@@ -112,7 +120,7 @@ fn captured_selection_and_real_first_period_cover_each_admitted_profile() {
         ExperimentProfile::HistoricalEmployment,
         ExperimentProfile::HistoricalFreight,
     ] {
-        let foundation = spec(profile).create_foundation().unwrap();
+        let foundation = tests::spec(profile).create_foundation().unwrap();
         let (manifest, report, receipts, staffing) = first_period(profile);
         assert_eq!(
             manifest.staffing_subjects.len(),
@@ -146,6 +154,6 @@ fn captured_selection_and_real_first_period_cover_each_admitted_profile() {
             manifest.native_compositions.is_empty(),
             foundation.labor().bindings().is_empty()
         );
-        assert!(verify(&manifest, &report, &receipts, &staffing).is_ok());
+        assert!(manifest::verify(&manifest, &report, &receipts, &staffing).is_ok());
     }
 }

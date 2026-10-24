@@ -1,10 +1,9 @@
 //! Shared language-neutral vectors for the Babylon Markdown profile (ADR249 R4/R5).
 
 use babylon_persistence::{
-    fog_chip, git_export_markdown, is_citation_line, validate_babylon_markdown, ArchiveCitation,
-    ArchiveKnowledge, ArchiveKnowledgeGrant, ArchiveLink, ArchivePageInput, ArchivePageRef,
-    ArchiveSignal, ArchiveSubject, ArchiveSubjectKind, FogSafeArchiveRenderer,
-    BABYLON_MARKDOWN_PROFILE_ID, CITATION_LINE_REGEX, FOG_CHIP_SEPARATOR,
+    is_citation_line, ArchiveCitation, ArchiveKnowledge, ArchiveKnowledgeGrant, ArchiveLink,
+    ArchivePageInput, ArchivePageRef, ArchiveSignal, ArchiveSubject, ArchiveSubjectKind,
+    FogSafeArchiveRenderer, BABYLON_MARKDOWN_PROFILE_ID, CITATION_LINE_REGEX, FOG_CHIP_SEPARATOR,
 };
 use serde_json::{json, Value};
 
@@ -237,7 +236,8 @@ fn render_archive_page(knowledge_json: &Value) -> String {
 }
 
 fn valid_row(id: &str, markdown: &str) -> Value {
-    let export = git_export_markdown(markdown).expect("valid markdown exports");
+    let export =
+        babylon_persistence::git_export_markdown(markdown).expect("valid markdown exports");
     json!({
         "id": id,
         "kind": "valid",
@@ -249,7 +249,7 @@ fn valid_row(id: &str, markdown: &str) -> Value {
 }
 
 fn refusal_row(id: &str, markdown: &str, expected_code: &str) -> Value {
-    let error = validate_babylon_markdown(markdown.as_bytes())
+    let error = babylon_persistence::validate_babylon_markdown(markdown.as_bytes())
         .expect_err("refusal fixture must violate the profile");
     assert_eq!(
         error.code(),
@@ -419,10 +419,10 @@ fn shared_valid_vectors_validate_and_export_exact_bytes() {
     for row in &valid_rows {
         let data = &row["data"];
         let markdown_bytes = hex_decode(data["markdown_hex"].as_str().expect("markdown hex"));
-        validate_babylon_markdown(&markdown_bytes)
+        babylon_persistence::validate_babylon_markdown(&markdown_bytes)
             .unwrap_or_else(|error| panic!("{} validates: {error}", row["id"]));
         let markdown = std::str::from_utf8(&markdown_bytes).expect("profile markdown is UTF-8");
-        let export = git_export_markdown(markdown)
+        let export = babylon_persistence::git_export_markdown(markdown)
             .unwrap_or_else(|error| panic!("{} exports: {error}", row["id"]));
         assert_eq!(
             export.as_bytes(),
@@ -481,7 +481,8 @@ fn shared_refusal_vectors_match_the_closed_validator() {
     for row in refusal_rows {
         let data = &row["data"];
         let markdown = hex_decode(data["markdown_hex"].as_str().expect("markdown hex"));
-        let error = validate_babylon_markdown(&markdown).expect_err("refusal row refuses");
+        let error = babylon_persistence::validate_babylon_markdown(&markdown)
+            .expect_err("refusal row refuses");
         assert_eq!(
             error.code(),
             data["expected_code"].as_str().expect("expected code"),
@@ -532,14 +533,15 @@ fn shared_citation_vectors_match_the_pinned_regex_language() {
 
 #[test]
 fn bare_link_chip_synthesizes_from_kind_and_id_with_zero_label_bytes() {
-    let chip = fog_chip("place", "2674900");
+    let chip = babylon_persistence::fog_chip("place", "2674900");
     assert_eq!(chip, SOUTHFIELD_CHIP);
-    assert_eq!(chip, fog_chip("place", "2674900"));
+    assert_eq!(chip, babylon_persistence::fog_chip("place", "2674900"));
     assert!(
         !chip.contains("Southfield"),
         "the chip is synthesized from kind and id alone; no label bytes exist"
     );
-    let exported = git_export_markdown("[](subject:place/2674900)").expect("bare link exports");
+    let exported = babylon_persistence::git_export_markdown("[](subject:place/2674900)")
+        .expect("bare link exports");
     assert_eq!(exported, SOUTHFIELD_CHIP);
 }
 

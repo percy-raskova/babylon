@@ -12,9 +12,15 @@ use crate::cli::CliCommand;
 use crate::dossier::{run_headless_command, HeadlessInvocation};
 use crate::observer::ObserverSession;
 use crate::observer_focus::ObserverFocusPlugin;
+use crate::observer_io::qualification::NativeAudit;
 use crate::observer_io::ObserverIoPlugin;
 use crate::observer_ui::ObserverShellPlugin;
+use crate::organizer::qualification_input::Transport;
+use crate::production::PrimaryView;
 use crate::{logging, map, session_log, ui, visual_assets};
+use babylon_persistence::identity::CampaignId;
+use babylon_persistence::runtime_session::RuntimeSessionTarget;
+use std::path::PathBuf;
 
 /// Which executable shape [`build_app`] assembles.
 #[derive(Clone, Debug)]
@@ -22,9 +28,9 @@ pub enum AppMode {
     /// The persistent observer with one initial lifecycle destination.
     Windowed {
         /// Explicit New or existing-only Open, submitted after runtime Hello.
-        initial_target: babylon_persistence::runtime_session::RuntimeSessionTarget,
+        initial_target: RuntimeSessionTarget,
         /// An explicitly requested private harness channel; ordinary play uses None.
-        qualification_control: Option<std::path::PathBuf>,
+        qualification_control: Option<PathBuf>,
     },
     /// One headless dossier command: JSONL on stdout, logs on stderr,
     /// process exit after the first update.
@@ -32,7 +38,7 @@ pub enum AppMode {
         /// The parsed dossier command.
         command: CliCommand,
         /// The canonical campaign identity.
-        campaign_id: babylon_persistence::identity::CampaignId,
+        campaign_id: CampaignId,
     },
 }
 
@@ -53,15 +59,10 @@ pub fn build_app(mode: AppMode) -> Result<App, String> {
             let session = ObserverSession::with_initial_target(initial_target)?;
             let qualification = qualification_control
                 .as_deref()
-                .map(|path| {
-                    crate::organizer::qualification_input::Transport::connect(
-                        path,
-                        &session.campaign.as_uuid().to_string(),
-                    )
-                })
+                .map(|path| Transport::connect(path, &session.campaign.as_uuid().to_string()))
                 .transpose()?;
             let audit = if qualification.is_some() {
-                crate::observer_io::qualification::NativeAudit::from_env(session.campaign)?
+                NativeAudit::from_env(session.campaign)?
             } else {
                 None
             };
@@ -107,7 +108,7 @@ pub fn build_app(mode: AppMode) -> Result<App, String> {
                 // The card and telemetry consume the same scoped Archive resources.
                 .add_plugins(ui::dossier_card::DossierCardPlugin)
                 .add_plugins(session_log::SessionLogPlugin)
-                .insert_resource(crate::production::PrimaryView::Map)
+                .insert_resource(PrimaryView::Map)
                 .insert_resource(session)
                 .insert_resource(ui::dossier_card::DossierCampaignId(campaign_id))
                 .insert_resource(ClearColor(crate::observer_theme::INK))
@@ -160,6 +161,9 @@ fn forward_native_close(
 mod tests {
     use super::*;
     use crate::cli::CliCommand;
+    use crate::test_support::EnvVarGuard;
+    use babylon_persistence::identity::CampaignId;
+    use babylon_persistence::runtime_session::RuntimeSessionTarget;
     use uuid::Uuid;
 
     #[test]
@@ -191,7 +195,7 @@ mod tests {
     fn invalid_initial_target_refuses_before_window_construction() {
         let result = build_app(AppMode::Windowed {
             qualification_control: None,
-            initial_target: babylon_persistence::runtime_session::RuntimeSessionTarget::Open {
+            initial_target: RuntimeSessionTarget::Open {
                 campaign_id: "not-a-campaign".into(),
             },
         });
@@ -204,11 +208,11 @@ mod tests {
         // make the command succeed and defeat the exit-code assertion. The
         // guard serializes against other env-mutating tests and restores
         // the ambient value on drop.
-        let env = crate::test_support::EnvVarGuard::lock(babylon_persistence::READER_DSN_ENV);
+        let env = EnvVarGuard::lock(babylon_persistence::READER_DSN_ENV);
         env.remove();
         let mut app = build_app(AppMode::Headless {
             command: CliCommand::TickStatus,
-            campaign_id: babylon_persistence::identity::CampaignId::from_uuid(Uuid::nil()),
+            campaign_id: CampaignId::from_uuid(Uuid::nil()),
         })
         .expect("headless mode needs no initial lifecycle target");
         assert!(!app.is_plugin_added::<ObserverFocusPlugin>());

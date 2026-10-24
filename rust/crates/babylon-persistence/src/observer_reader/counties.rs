@@ -1,14 +1,20 @@
 //! County identity is common; national observations are captured source metadata.
 use super::{
-    read_committed_counties, CampaignId, EconomicContentAdmission, ObserverCountyEconomy,
-    ObserverEconomyError, ObserverVisibility, SNAPSHOT_COLUMNS,
+    CampaignId, EconomicContentAdmission, ObserverCountyEconomy, ObserverEconomyError,
+    ObserverVisibility, SNAPSHOT_COLUMNS,
 };
-use crate::{economic_catalog::EconomicSourceView, national_counties::NationalCountyReference};
+use crate::economic_catalog::EconomicSourceView;
+use crate::national_counties::NationalCountyReference;
+
 use babylon_kernel::geography::{CountyGeoid, NationalCountyRoster, NATIONAL_COUNTY_COUNT};
-type Result<T> = std::result::Result<T, ObserverEconomyError>;
+use postgres::Error;
+use postgres::Transaction;
+use std::result::Result as StdResult;
+use uuid::Uuid;
+type Result<T> = StdResult<T, ObserverEconomyError>;
 
 pub(super) fn read(
-    transaction: &mut postgres::Transaction<'_>,
+    transaction: &mut Transaction<'_>,
     campaign: CampaignId,
     tick: u64,
     visibility: ObserverVisibility,
@@ -17,12 +23,18 @@ pub(super) fn read(
 ) -> Result<Vec<ObserverCountyEconomy>> {
     match (scope, admission.map(|a| a.view().sources)) {
         ("michigan-control", Some(EconomicSourceView::MichiganControl { counties, .. })) => {
-            read_committed_counties(transaction, campaign, tick, visibility, counties.counties())
+            super::read_committed_counties(
+                transaction,
+                campaign,
+                tick,
+                visibility,
+                counties.counties(),
+            )
         }
         ("michigan-control", None) => {
             let reference = crate::michigan_economy::michigan_economy()
                 .map_err(|_| ObserverEconomyError::Reference)?;
-            read_committed_counties(
+            super::read_committed_counties(
                 transaction,
                 campaign,
                 tick,
@@ -40,7 +52,7 @@ pub(super) fn read(
     }
 }
 fn national(
-    transaction: &mut postgres::Transaction<'_>,
+    transaction: &mut Transaction<'_>,
     campaign: CampaignId,
     expected_tick: u64,
     visibility: ObserverVisibility,
@@ -61,7 +73,7 @@ fn national(
     let mut counties = Vec::with_capacity(rows.len());
     let mut identities = Vec::with_capacity(rows.len());
     for (index, row) in rows.iter().enumerate() {
-        let row_campaign: uuid::Uuid = row.try_get(0).map_err(invalid)?;
+        let row_campaign: Uuid = row.try_get(0).map_err(invalid)?;
         let row_tick: i64 = row.try_get(1).map_err(invalid)?;
         let geoid: String = row.try_get(2).map_err(invalid)?;
         if &row_campaign != campaign.as_uuid() || row_tick != tick {
@@ -106,7 +118,7 @@ fn national(
         .map_err(|_| ObserverEconomyError::InvalidProjection)?;
     Ok(counties)
 }
-fn invalid(_: postgres::Error) -> ObserverEconomyError {
+fn invalid(_: Error) -> ObserverEconomyError {
     ObserverEconomyError::InvalidProjection
 }
 fn project(

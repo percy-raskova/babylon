@@ -16,6 +16,12 @@ use crate::observer::{ObservationContext, ObserverSession, SessionPhase};
 use crate::observer_io::{ObserverSet, RuntimePipe, RuntimeSendError};
 
 use super::draft::OrganizerDraft;
+use crate::observer_io::qualification::NativeAudit;
+use babylon_persistence::runtime_session::OrganizerAidKind;
+use babylon_persistence::runtime_session::OrganizerGiftConsent;
+use babylon_persistence::runtime_session::OrganizerObservation;
+use evidence::EvidenceInspection;
+use uuid::Uuid;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) enum OrganizerInspector {
@@ -55,7 +61,7 @@ pub(crate) struct OrganizerClient {
     pub inspector: OrganizerInspector,
     pub message: String,
     pub(super) draft: Option<OrganizerDraft>,
-    pub(super) campaign: Option<uuid::Uuid>,
+    pub(super) campaign: Option<Uuid>,
     pub(super) reviewed_command: Option<OrganizerCommand>,
     pub(super) review_context: Option<ObservationContext>,
     pub(super) pending: Option<PendingRequest>,
@@ -66,7 +72,7 @@ pub(crate) struct OrganizerClient {
     pub(super) draft_writable: bool,
     pub(super) draft_save_error: Option<String>,
     pub(super) return_focus: Option<Entity>,
-    pub(super) evidence: evidence::EvidenceInspection,
+    pub(super) evidence: EvidenceInspection,
 }
 
 impl OrganizerClient {
@@ -75,7 +81,7 @@ impl OrganizerClient {
         *self = Self::default();
     }
 
-    pub(crate) fn admitted(&mut self, campaign: uuid::Uuid) {
+    pub(crate) fn admitted(&mut self, campaign: Uuid) {
         self.reset();
         self.campaign = Some(campaign);
         self.status_due = true;
@@ -169,12 +175,8 @@ impl OrganizerClient {
         choice: OrganizerChoice,
     ) -> Option<&OrganizerMaterialAidPreview> {
         let kind = match choice {
-            OrganizerChoice::LocalAid => {
-                babylon_persistence::runtime_session::OrganizerAidKind::Local
-            }
-            OrganizerChoice::RemoteAid => {
-                babylon_persistence::runtime_session::OrganizerAidKind::Remote
-            }
+            OrganizerChoice::LocalAid => OrganizerAidKind::Local,
+            OrganizerChoice::RemoteAid => OrganizerAidKind::Remote,
             _ => return None,
         };
         let view = self.view.as_ref()?;
@@ -196,10 +198,9 @@ impl OrganizerClient {
 
     pub(super) fn choice_available(&self, choice: OrganizerChoice) -> bool {
         if choice == OrganizerChoice::Collect {
-            return self.collection_preview().is_some_and(|terms| {
-                terms.cash_consent
-                    == babylon_persistence::runtime_session::OrganizerGiftConsent::Accept
-            });
+            return self
+                .collection_preview()
+                .is_some_and(|terms| terms.cash_consent == OrganizerGiftConsent::Accept);
         }
         if !matches!(
             choice,
@@ -213,11 +214,9 @@ impl OrganizerClient {
         self.view.as_ref().is_some_and(|view| {
             view.aid_options.iter().any(|option| {
                 option.kind == preview.kind
-                    && option.receiving_consent
-                        == babylon_persistence::runtime_session::OrganizerGiftConsent::Accept
+                    && option.receiving_consent == OrganizerGiftConsent::Accept
             })
-        }) && preview.receiving_consent
-            == babylon_persistence::runtime_session::OrganizerGiftConsent::Accept
+        }) && preview.receiving_consent == OrganizerGiftConsent::Accept
             && !self.pending_aid.iter().any(|row| row.kind == preview.kind)
     }
 
@@ -234,7 +233,7 @@ impl OrganizerClient {
             expected_period: view.period,
             content_digest: view.content_digest,
             resource_digest: view.resource_digest,
-            nonce: *uuid::Uuid::new_v4().as_bytes(),
+            nonce: *Uuid::new_v4().as_bytes(),
             choice,
         })
     }
@@ -464,7 +463,7 @@ pub(crate) fn transport(
     mut session: ResMut<ObserverSession>,
     pipe: Option<Res<RuntimePipe>>,
     time: Res<Time>,
-    mut qualification: Option<ResMut<crate::observer_io::qualification::NativeAudit>>,
+    mut qualification: Option<ResMut<NativeAudit>>,
 ) {
     if organizer
         .review_context
@@ -525,7 +524,7 @@ impl Plugin for OrganizerPlugin {
 /// Shared history uses the same earned report wording and provenance as Circuit.
 pub(crate) fn report_reading(
     view: &OrganizerView,
-    observation: &babylon_persistence::runtime_session::OrganizerObservation,
+    observation: &OrganizerObservation,
     period: u64,
 ) -> String {
     presentation::observation(view, observation, period)

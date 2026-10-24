@@ -2,19 +2,25 @@
 
 use crate::production_projection::diagnostics::{Stage, Timing};
 
-use crate::{
-    observer_reader::ObserverEconomySnapshot, observer_reader::ObserverVisibility,
-    production_observation::ProductionSnapshot,
-};
+use crate::observer_reader::{ObserverEconomySnapshot, ObserverVisibility};
+use crate::production_observation::ProductionSnapshot;
 
 use serde::Serialize;
 
 use sha2::{Digest as _, Sha256};
 
-use std::{
-    collections::BTreeSet,
-    io::{self, BufWriter, Write},
-};
+use crate::production_observation::FreightOrderError;
+use crate::production_observation::FreightOrderIndex;
+use crate::production_observation::PhysicalRouteError;
+use crate::production_observation::PhysicalRouteIndex;
+use crate::ArchiveEvidenceClass;
+use io::ErrorKind;
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
+use std::fmt::Formatter;
+use std::io;
+use std::io::{BufWriter, Write};
+use std::time::Instant;
 
 pub(crate) const DOMAIN: &[u8] = b"babylon.production-observation-evidence.v17\0";
 
@@ -58,7 +64,7 @@ pub enum ProductionEvidenceError {
 }
 
 impl std::fmt::Display for ProductionEvidenceError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "production evidence refused: {self:?}")
     }
 }
@@ -259,7 +265,7 @@ pub(crate) fn diagnostic_encoded_size(scope: &EvidenceScope<'_>) {
     if std::env::var("BABYLON_TIMINGS").as_deref() != Ok("1") {
         return;
     }
-    let started = std::time::Instant::now();
+    let started = Instant::now();
     let mut output = CountingEvidenceWriter {
         hash: Sha256::new(),
         body_bytes: 0,
@@ -487,7 +493,7 @@ impl Write for CountingEvidenceWriter {
     fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
         self.body_bytes = self.body_bytes.checked_add(bytes.len()).ok_or_else(|| {
             io::Error::new(
-                io::ErrorKind::InvalidData,
+                ErrorKind::InvalidData,
                 "evidence diagnostic length overflow",
             )
         })?;
@@ -515,7 +521,7 @@ impl Write for EvidenceWriter {
                 MAX_EVIDENCE_BYTES,
             );
             return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
+                ErrorKind::InvalidData,
                 "production evidence byte bound",
             ));
         }
@@ -597,8 +603,7 @@ pub(crate) fn unique<T: Ord>(label: &'static str, rows: impl IntoIterator<Item =
 }
 
 pub(crate) fn validate_source_contexts(rows: &ProductionSnapshot) -> Result<()> {
-    let sites: std::collections::BTreeMap<_, _> =
-        rows.sites.iter().map(|r| (r.id.as_str(), r)).collect();
+    let sites: BTreeMap<_, _> = rows.sites.iter().map(|r| (r.id.as_str(), r)).collect();
     for site in &rows.sites {
         if site.roles.is_empty() {
             return Err(ProductionEvidenceError::InvalidIdentity);
@@ -611,7 +616,7 @@ pub(crate) fn validate_source_contexts(rows: &ProductionSnapshot) -> Result<()> 
             .ok_or(ProductionEvidenceError::InvalidIdentity)?;
         if !site.is_in_county(&row.county_geoid)
             || site.function != row.function
-            || row.evidence_class != crate::ArchiveEvidenceClass::Observed
+            || row.evidence_class != ArchiveEvidenceClass::Observed
         {
             return Err(ProductionEvidenceError::InvalidIdentity);
         }
@@ -835,20 +840,16 @@ pub(crate) fn validate_route_identities(rows: &ProductionSnapshot) -> Result<()>
         "physical_route_ids",
         rows.physical_routes.iter().map(|row| &row.id),
     )?;
-    crate::production_observation::PhysicalRouteIndex::try_new(rows).map_err(
-        |error| match error {
-            crate::production_observation::PhysicalRouteError::Bound => {
-                ProductionEvidenceError::Bound
-            }
-            _ => ProductionEvidenceError::InvalidIdentity,
-        },
-    )?;
+    PhysicalRouteIndex::try_new(rows).map_err(|error| match error {
+        PhysicalRouteError::Bound => ProductionEvidenceError::Bound,
+        _ => ProductionEvidenceError::InvalidIdentity,
+    })?;
     Ok(())
 }
 
 pub(crate) fn validate_account_rows(rows: &ProductionSnapshot) -> Result<()> {
-    crate::production_observation::FreightOrderIndex::try_new(rows).map_err(|error| {
-        if error == crate::production_observation::FreightOrderError::Bound {
+    FreightOrderIndex::try_new(rows).map_err(|error| {
+        if error == FreightOrderError::Bound {
             ProductionEvidenceError::Bound
         } else {
             ProductionEvidenceError::InvalidIdentity

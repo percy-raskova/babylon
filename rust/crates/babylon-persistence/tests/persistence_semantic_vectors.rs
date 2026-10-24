@@ -1,8 +1,9 @@
 //! DB-free executable laws for the current persistence semantic corpus.
 
+use babylon_persistence::verify_persistence_semantic_vector_row;
 use babylon_persistence::{
-    verify_persistence_semantic_vector_row, verify_persistence_semantic_vectors,
-    RustPersistenceVectorError, RustPersistenceVectorOutcome, RustPersistenceVectorReport,
+    verify_persistence_semantic_vectors, RustPersistenceVectorError, RustPersistenceVectorOutcome,
+    RustPersistenceVectorReport,
 };
 
 const VECTORS: &[u8] = include_bytes!("../../../../contracts/persistence_semantic_vectors.jsonl");
@@ -26,7 +27,8 @@ fn shared_language_neutral_vectors_execute_every_codec_and_refusal() {
     const AD_HOC_REFUSAL: &[u8] = br#"{"id":"ad-hoc-f64-nan","kind":"refusal","operation":"encode_scalar","codec":"f64_be_canonical","input":"nan","expected_code":"nonfinite_f64"}"#;
     const LYING_REFUSAL: &[u8] = br#"{"id":"changed-id-input-and-code","kind":"refusal","operation":"encode_scalar","codec":"f64_be_canonical","input":"2.5","expected_code":"field_byte_bound"}"#;
 
-    let report = verify_persistence_semantic_vectors(VECTORS).expect("governed vector corpus");
+    let report = babylon_persistence::verify_persistence_semantic_vectors(VECTORS)
+        .expect("governed vector corpus");
 
     assert_eq!(report.row_count(), 54);
     for kind in [
@@ -67,21 +69,21 @@ fn shared_language_neutral_vectors_execute_every_codec_and_refusal() {
         .collect::<Vec<_>>();
     assert_eq!(rows.len(), 54);
     for row in rows {
-        let outcome = verify_persistence_semantic_vector_row(row)
+        let outcome = babylon_persistence::verify_persistence_semantic_vector_row(row)
             .expect("every row executes independently of corpus identity");
         assert!(!outcome.id().is_empty());
         assert!(!outcome.kind().is_empty());
     }
 
-    let ad_hoc = verify_persistence_semantic_vector_row(AD_HOC_VALID)
+    let ad_hoc = babylon_persistence::verify_persistence_semantic_vector_row(AD_HOC_VALID)
         .expect("non-corpus input executes the actual scalar codec");
     assert_eq!(ad_hoc.id(), "ad-hoc-f64-two-point-five");
 
-    verify_persistence_semantic_vector_row(AD_HOC_REFUSAL)
+    babylon_persistence::verify_persistence_semantic_vector_row(AD_HOC_REFUSAL)
         .expect("non-corpus refusal executes the actual scalar rule");
 
     assert!(
-        verify_persistence_semantic_vector_row(LYING_REFUSAL).is_err(),
+        babylon_persistence::verify_persistence_semantic_vector_row(LYING_REFUSAL).is_err(),
         "an expected code cannot manufacture a refusal after semantic input succeeds"
     );
 
@@ -92,7 +94,7 @@ fn shared_language_neutral_vectors_execute_every_codec_and_refusal() {
         .position(|window| window == witness)
         .expect("governed byte witness");
     mutated_corpus[offset] = b'2';
-    assert!(verify_persistence_semantic_vectors(&mutated_corpus).is_err());
+    assert!(babylon_persistence::verify_persistence_semantic_vectors(&mutated_corpus).is_err());
 
     let mut mutated_input = AD_HOC_VALID.to_vec();
     let witness = b"\"input\":\"2.5\"";
@@ -102,7 +104,7 @@ fn shared_language_neutral_vectors_execute_every_codec_and_refusal() {
         .expect("ad-hoc input witness");
     mutated_input[offset + witness.len() - 4] = b'3';
     assert!(
-        verify_persistence_semantic_vector_row(&mutated_input).is_err(),
+        babylon_persistence::verify_persistence_semantic_vector_row(&mutated_input).is_err(),
         "semantic input cannot change while exact expected bytes stay fixed"
     );
 }
@@ -111,7 +113,7 @@ fn shared_language_neutral_vectors_execute_every_codec_and_refusal() {
 fn individual_rows_require_a_nonempty_diagnostic_id() {
     const EMPTY_ID: &[u8] =
         br#"{"id":"","kind":"valid_scalar","codec":"bool_u8","input":true,"expected_hex":"01"}"#;
-    assert!(verify_persistence_semantic_vector_row(EMPTY_ID).is_err());
+    assert!(babylon_persistence::verify_persistence_semantic_vector_row(EMPTY_ID).is_err());
 }
 
 #[test]
@@ -155,7 +157,7 @@ fn vector_executor_consumes_foundation_checkpoint_and_empty_proof_semantics() {
             .expect("semantic witness");
         mutated[offset..offset + witness.len()].copy_from_slice(replacement);
         assert!(
-            verify_persistence_semantic_vector_row(&mutated).is_err(),
+            babylon_persistence::verify_persistence_semantic_vector_row(&mutated).is_err(),
             "unused semantic field: {id}"
         );
     }

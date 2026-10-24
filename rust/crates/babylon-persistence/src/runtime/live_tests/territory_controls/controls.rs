@@ -1,15 +1,19 @@
 //! Child of `runtime::live_tests`; never commit synthetic projection markers.
-use super::{validated_base_config, validated_template_name, TestDatabase};
+use super::TestDatabase;
 use crate::identity::CampaignId;
+use crate::material_runtime::DurableMaterialRuntime;
+use crate::michigan_content::MichiganContentPreset;
+use crate::michigan_material::MichiganDeliveryPreset;
 use crate::stored_tick::{CapturedMaterialRows, StoredTickReadSource};
-use crate::territory_storage::{insert, seed};
+use crate::territory_storage;
 use postgres::{Config, GenericClient, NoTls, Transaction};
 use uuid::Uuid;
 include!("values.rs");
 
 fn disposable_config(label: &str) -> (TestDatabase, Config) {
-    let base = validated_base_config();
-    let database = TestDatabase::create_from_template(&base, &validated_template_name(), label);
+    let base = super::validated_base_config();
+    let database =
+        TestDatabase::create_from_template(&base, &super::validated_template_name(), label);
     let config = database.config(&base);
     (database, config)
 }
@@ -18,14 +22,10 @@ fn foundation(config: &Config, suffix: u128) -> CampaignId {
     let campaign = CampaignId::from_uuid(Uuid::from_u128(
         (u128::from(std::process::id()) << 64) | suffix,
     ));
-    let foundation = crate::michigan_content::MichiganContentPreset::new_campaign(
-        crate::michigan_material::MichiganDeliveryPreset::Standard,
-    )
-    .create_foundation(&crate::test_support::catalog())
-    .unwrap();
-    let runtime =
-        crate::material_runtime::DurableMaterialRuntime::create(config, campaign, foundation)
-            .unwrap();
+    let foundation = MichiganContentPreset::new_campaign(MichiganDeliveryPreset::Standard)
+        .create_foundation(&crate::test_support::catalog())
+        .unwrap();
+    let runtime = DurableMaterialRuntime::create(config, campaign, foundation).unwrap();
     assert_eq!(runtime.session().completed_tick(), 0);
     campaign
 }
@@ -106,7 +106,7 @@ fn live_territory_definitions_reuse_exact_fields_and_preserve_history() {
     );
     let before = definition_count(&mut client, campaign);
     let mut tx = client.transaction().unwrap();
-    seed(&mut tx, campaign, &original).unwrap();
+    territory_storage::seed(&mut tx, campaign, &original).unwrap();
     assert_eq!(definition_count(&mut tx, campaign), before + 2);
     // The existing BSL canonical encoder identifies both signs of real zero.
     // Verify that equivalence without changing its governed numeric semantics.
@@ -140,7 +140,7 @@ fn live_territory_definitions_reuse_exact_fields_and_preserve_history() {
         i64::from_be_bytes((-0.0_f64).to_bits().to_be_bytes())
     );
     for (tick, fields) in [(1_i64, &original), (2, &equivalent)] {
-        insert(&mut tx, campaign, tick, fields).unwrap();
+        territory_storage::insert(&mut tx, campaign, tick, fields).unwrap();
         marker(&mut tx, campaign, tick);
         assert_eq!(
             definition_count(&mut tx, campaign),
@@ -148,7 +148,7 @@ fn live_territory_definitions_reuse_exact_fields_and_preserve_history() {
             "unchanged definition reused at tick {tick}"
         );
     }
-    insert(&mut tx, campaign, 3, &changed).unwrap();
+    territory_storage::insert(&mut tx, campaign, 3, &changed).unwrap();
     marker(&mut tx, campaign, 3);
     assert_eq!(
         definition_count(&mut tx, campaign),
@@ -165,7 +165,7 @@ fn live_territory_definitions_reuse_exact_fields_and_preserve_history() {
             expected
         );
     }
-    insert(&mut tx, campaign, 4, &[]).unwrap();
+    territory_storage::insert(&mut tx, campaign, 4, &[]).unwrap();
     marker(&mut tx, campaign, 4);
     assert!(canonical_rows(&mut tx, StoredTickReadSource::Runtime, campaign, 4).is_empty());
     assert!(canonical_rows(&mut tx, StoredTickReadSource::FullObserver, campaign, 4).is_empty());

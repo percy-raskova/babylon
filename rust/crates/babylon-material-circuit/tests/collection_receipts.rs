@@ -1,8 +1,8 @@
 //! Independent actual/refusal row and outcome-tag contracts.
 use babylon_kernel::currency::Currency;
 use babylon_material_circuit::{
-    collection_contribution_id, CollectionOutcome, CollectionReceipt, FinalDemandPrincipalId,
-    MaterialCircuitError, OrganizationAccountId, UnitId,
+    CollectionOutcome, CollectionReceipt, FinalDemandPrincipalId, MaterialCircuitError,
+    OrganizationAccountId, UnitId,
 };
 
 fn partial() -> CollectionReceipt {
@@ -25,7 +25,7 @@ fn partial() -> CollectionReceipt {
         transfer_ordinal: Some(3),
         contribution_use_id: [0; 32],
     };
-    row.contribution_use_id = collection_contribution_id(
+    row.contribution_use_id = babylon_material_circuit::collection_contribution_id(
         row.original_commitment_id,
         row.mandate_id,
         row.period,

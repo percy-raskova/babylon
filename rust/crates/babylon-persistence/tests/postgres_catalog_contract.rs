@@ -1,20 +1,20 @@
 //! Current catalog parser, exact-census and local-target contracts.
-use babylon_persistence::{
-    postgres_catalog::compare_catalog_census, postgres_catalog::parse_catalog_census,
-    postgres_catalog::validate_connection_target, postgres_catalog::CatalogCensus,
-    postgres_catalog::CatalogCensusEntry, postgres_catalog::CatalogCensusParseError,
-    postgres_catalog::CatalogError, postgres_catalog::CatalogObjectKey,
-    postgres_catalog::CatalogObjectKind, postgres_catalog::ConnectionTargetRejection,
-    postgres_catalog::MAX_CATALOG_CENSUS_FIXTURE_BYTES, postgres_catalog::MAX_CATALOG_CENSUS_ROWS,
-    postgres_catalog::POSTGRES_IDENTIFIER_MAX_BYTES,
+use babylon_persistence::postgres_catalog::{
+    compare_catalog_census, validate_connection_target, CatalogCensus, CatalogCensusEntry,
+    CatalogCensusParseError, CatalogError, CatalogObjectKey, CatalogObjectKind,
+    ConnectionTargetRejection, MAX_CATALOG_CENSUS_FIXTURE_BYTES, MAX_CATALOG_CENSUS_ROWS,
+    POSTGRES_IDENTIFIER_MAX_BYTES,
 };
+
+use babylon_persistence::postgres_catalog;
 use postgres::Config;
 use std::fmt::Write as _;
 use std::net::{IpAddr, Ipv4Addr};
 const ZERO_DIGEST: &str = "0000000000000000000000000000000000000000000000000000000000000000";
 
 fn expected_census() -> CatalogCensus {
-    parse_catalog_census(include_str!("../src/fixtures/fresh_schema_census.txt")).unwrap()
+    postgres_catalog::parse_catalog_census(include_str!("../src/fixtures/fresh_schema_census.txt"))
+        .unwrap()
 }
 
 #[test]
@@ -22,25 +22,27 @@ fn census_fixture_parser_rejects_duplicate_unsorted_and_malformed_records() {
     let duplicate =
         format!("relation|public|alpha|{ZERO_DIGEST}\nrelation|public|alpha|{ZERO_DIGEST}\n");
     assert!(matches!(
-        parse_catalog_census(&duplicate),
+        postgres_catalog::parse_catalog_census(&duplicate),
         Err(CatalogCensusParseError::DuplicateObject { .. })
     ));
     let unsorted =
         format!("relation|public|zeta|{ZERO_DIGEST}\nrelation|public|alpha|{ZERO_DIGEST}\n");
     assert!(matches!(
-        parse_catalog_census(&unsorted),
+        postgres_catalog::parse_catalog_census(&unsorted),
         Err(CatalogCensusParseError::OutOfOrder { .. })
     ));
     assert_eq!(
-        parse_catalog_census("relation|public|only_three_fields\n"),
+        postgres_catalog::parse_catalog_census("relation|public|only_three_fields\n"),
         Err(CatalogCensusParseError::MalformedRecord { line: 1, fields: 3 })
     );
     assert_eq!(
-        parse_catalog_census(&format!("relation|public|name|{ZERO_DIGEST}|extra\n")),
+        postgres_catalog::parse_catalog_census(&format!(
+            "relation|public|name|{ZERO_DIGEST}|extra\n"
+        )),
         Err(CatalogCensusParseError::MalformedRecord { line: 1, fields: 5 })
     );
     assert_eq!(
-        parse_catalog_census(&format!(
+        postgres_catalog::parse_catalog_census(&format!(
             "relation|public|name|{ZERO_DIGEST}|extra|second_extra\n"
         )),
         Err(CatalogCensusParseError::MalformedRecord { line: 1, fields: 6 })
@@ -51,7 +53,10 @@ fn census_fixture_parser_rejects_duplicate_unsorted_and_malformed_records() {
 fn census_fixture_parser_rejects_invalid_kind_identifier_digest_and_bounds() {
     let maximum = "a".repeat(POSTGRES_IDENTIFIER_MAX_BYTES);
     let too_long = "a".repeat(POSTGRES_IDENTIFIER_MAX_BYTES + 1);
-    assert!(parse_catalog_census(&format!("relation|public|{maximum}|{ZERO_DIGEST}\n")).is_ok());
+    assert!(postgres_catalog::parse_catalog_census(&format!(
+        "relation|public|{maximum}|{ZERO_DIGEST}\n"
+    ))
+    .is_ok());
     let cases = [
         (
             format!("bogus|public|name|{ZERO_DIGEST}\n"),
@@ -71,12 +76,15 @@ fn census_fixture_parser_rejects_invalid_kind_identifier_digest_and_bounds() {
         ),
     ];
     for (fixture, expected) in cases {
-        assert_eq!(parse_catalog_census(&fixture), Err(expected));
+        assert_eq!(
+            postgres_catalog::parse_catalog_census(&fixture),
+            Err(expected)
+        );
     }
 
     let fixture = "#".repeat(MAX_CATALOG_CENSUS_FIXTURE_BYTES + 1);
     assert_eq!(
-        parse_catalog_census(&fixture),
+        postgres_catalog::parse_catalog_census(&fixture),
         Err(CatalogCensusParseError::TooManyBytes {
             actual: MAX_CATALOG_CENSUS_FIXTURE_BYTES + 1,
             max: MAX_CATALOG_CENSUS_FIXTURE_BYTES,
@@ -91,7 +99,7 @@ fn census_parser_and_comparison_enforce_row_bounds_without_unbounded_collect() {
         writeln!(oversized, "relation|public|name_{index:04}|{ZERO_DIGEST}").unwrap();
     }
     assert!(matches!(
-        parse_catalog_census(&oversized),
+        postgres_catalog::parse_catalog_census(&oversized),
         Err(CatalogCensusParseError::TooManyRows { .. })
     ));
 

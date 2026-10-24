@@ -9,7 +9,6 @@
 
 use std::collections::BTreeMap;
 
-use babylon_bsl::scenario::{load_scenario, load_scenario_with_prelude};
 use babylon_bsl::types::{BslType, FieldKind};
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_graph::substrate::GraphSubstrate;
@@ -17,6 +16,11 @@ use postgres::GenericClient;
 
 use crate::identity::CampaignId;
 use crate::postgres_diagnostic::PostgresDiagnostic;
+use babylon_bsl::scenario;
+use postgres::Error as PostgresError;
+use postgres::Row;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 
 /// Scenario field that declares a territory node's county FIPS mapping.
 pub const TERRITORY_COUNTY_MAP_FIELD: &str = "territory/county-fips";
@@ -121,20 +125,20 @@ pub enum TerritoryCountyMapError {
 }
 
 impl std::fmt::Display for TerritoryCountyMapError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> FmtResult {
         write!(formatter, "territory county map refused: {self:?}")
     }
 }
 
 impl std::error::Error for TerritoryCountyMapError {}
 
-impl From<postgres::Error> for TerritoryCountyMapError {
-    fn from(error: postgres::Error) -> Self {
+impl From<PostgresError> for TerritoryCountyMapError {
+    fn from(error: PostgresError) -> Self {
         database("territory county map operation", &error)
     }
 }
 
-fn database(operation: &'static str, error: &postgres::Error) -> TerritoryCountyMapError {
+fn database(operation: &'static str, error: &PostgresError) -> TerritoryCountyMapError {
     TerritoryCountyMapError::Database {
         operation,
         diagnostic: Some(PostgresDiagnostic::capture(error)),
@@ -166,8 +170,8 @@ pub fn extract_declared_territory_county_map(
 ) -> Result<Vec<TerritoryCountyMapRow>, TerritoryCountyMapError> {
     let mut graph = HypergraphStore::new();
     let loaded = match prelude_source {
-        Some(prelude) => load_scenario_with_prelude(prelude, scenario_source, &mut graph),
-        None => load_scenario(scenario_source, &mut graph),
+        Some(prelude) => scenario::load_scenario_with_prelude(prelude, scenario_source, &mut graph),
+        None => scenario::load_scenario(scenario_source, &mut graph),
     }
     .map_err(|_| TerritoryCountyMapError::ScenarioLoad)?;
     let Some(declaration) = loaded.fields.get(TERRITORY_COUNTY_MAP_FIELD) else {
@@ -257,7 +261,7 @@ pub(crate) fn insert_territory_county_map_rows(
 pub(crate) fn capture_territory_county_map_rows(
     client: &mut impl GenericClient,
     campaign_id: CampaignId,
-) -> Result<Vec<postgres::Row>, TerritoryCountyMapError> {
+) -> Result<Vec<Row>, TerritoryCountyMapError> {
     client
         .query(
             "SELECT territory_local_name, county_geoid \
@@ -269,7 +273,7 @@ pub(crate) fn capture_territory_county_map_rows(
 }
 
 fn admit_territory_county_map_rows(
-    rows: &[postgres::Row],
+    rows: &[Row],
 ) -> Result<Vec<TerritoryCountyMapRow>, TerritoryCountyMapError> {
     rows.iter()
         .map(|row| {
@@ -293,7 +297,7 @@ fn admit_territory_county_map_rows(
 /// Returns [`TerritoryCountyMapError`] for extraction, missing schema, divergent
 /// stored rows, or a database failure.
 pub(crate) fn verify_captured_territory_county_map(
-    rows: &[postgres::Row],
+    rows: &[Row],
     mut declared: Vec<TerritoryCountyMapRow>,
 ) -> Result<(), TerritoryCountyMapError> {
     let stored = admit_territory_county_map_rows(rows)?;

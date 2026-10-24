@@ -2,20 +2,13 @@
 
 use super::{aid, rolling};
 
-use super::super::{
-    outbound::{completed_facts, identity, same_rows, OutboundFact},
-    ProductionProjectionError,
-};
+use super::super::outbound::OutboundFact;
+use super::super::ProductionProjectionError;
 
-use crate::{
-    michigan_economy::digest_hex,
-    production_observation::CompletedProductionFreightCapacity,
-    production_observation::ProductionCapacityKind,
-    production_observation::ProductionFreightCapacityAccount,
-    production_observation::ProductionFreightCapacityOrder,
-    production_observation::{
-        FreightOrderRegistry, ProductionFreightOrderDefinition, ProductionFreightReservation,
-    },
+use crate::production_observation::{
+    CompletedProductionFreightCapacity, FreightOrderRegistry, ProductionCapacityKind,
+    ProductionFreightCapacityAccount, ProductionFreightCapacityOrder,
+    ProductionFreightOrderDefinition, ProductionFreightReservation,
 };
 
 use babylon_material_circuit::{
@@ -24,10 +17,16 @@ use babylon_material_circuit::{
 
 use babylon_tick::material_world::MaterialTickReceipts;
 
+use super::super::outbound;
+use crate::michigan_economy;
+#[cfg(test)]
+use crate::michigan_material::MichiganMaterialCatalog;
+use crate::production_observation::ProductionAidCapacityOrder;
+use babylon_material_circuit::CapacitySupply;
 use std::collections::{BTreeMap, BTreeSet};
+use std::result::Result as StdResult;
 
-pub(in crate::production_projection) type Result<T> =
-    std::result::Result<T, ProductionProjectionError>;
+pub(in crate::production_projection) type Result<T> = StdResult<T, ProductionProjectionError>;
 
 pub(in crate::production_projection) type CapacityKey = (CorridorId, u64);
 
@@ -88,7 +87,7 @@ pub(in crate::production_projection) struct RawReservation {
     newly_reserved_grams: u64,
     remaining_available_grams: u64,
     orders: Vec<usize>,
-    support_orders: Vec<crate::production_observation::ProductionAidCapacityOrder>,
+    support_orders: Vec<ProductionAidCapacityOrder>,
 }
 
 impl RawReservation {
@@ -116,8 +115,7 @@ impl RawReservation {
 #[derive(Default)]
 pub(in crate::production_projection) struct ReservationOrders {
     commercial: Vec<usize>,
-    pub(in crate::production_projection) support:
-        Vec<crate::production_observation::ProductionAidCapacityOrder>,
+    pub(in crate::production_projection) support: Vec<ProductionAidCapacityOrder>,
 }
 
 #[derive(Default)]
@@ -217,7 +215,7 @@ pub(in crate::production_projection) fn participants(
 
 #[cfg(test)]
 pub(in crate::production_projection) fn project_freight_capacity_accounts(
-    catalog: &crate::michigan_material::MichiganMaterialCatalog,
+    catalog: &MichiganMaterialCatalog,
     state: &MaterialCircuitState,
     opening: Option<&MaterialCircuitState>,
     receipt: Option<&MaterialTickReceipts>,
@@ -285,7 +283,7 @@ pub(in crate::production_projection) fn project_with_labels(
                 return Err(ProductionProjectionError::State);
             }
             Ok(ProductionFreightCapacityAccount {
-                corridor_id: digest_hex(&id.as_bytes()),
+                corridor_id: michigan_economy::digest_hex(&id.as_bytes()),
                 corridor_label: label(id).ok_or(ProductionProjectionError::Content)?,
                 kind: if participating.merchants.is_empty() {
                     ProductionCapacityKind::Transport
@@ -295,12 +293,12 @@ pub(in crate::production_projection) fn project_with_labels(
                 merchant_site_ids: participating
                     .merchants
                     .iter()
-                    .map(|id| digest_hex(&id.as_bytes()))
+                    .map(|id| michigan_economy::digest_hex(&id.as_bytes()))
                     .collect(),
                 route_ids: participating
                     .routes
                     .iter()
-                    .map(|id| digest_hex(&id.as_bytes()))
+                    .map(|id| michigan_economy::digest_hex(&id.as_bytes()))
                     .collect(),
                 next_opening_period: state.period,
                 next_opening_available_grams: current
@@ -317,17 +315,19 @@ pub(in crate::production_projection) fn project_with_labels(
 pub(in crate::production_projection) fn capacity_order(
     fact: &OutboundFact,
 ) -> Result<ProductionFreightCapacityOrder> {
-    let (id, kind) = identity(fact.id)?;
+    let (id, kind) = outbound::identity(fact.id)?;
     Ok(ProductionFreightCapacityOrder {
         supplier_relation_id: fact.route.and(fact.buyer).map(|buyer| {
             super::super::routes::relation_id((buyer, fact.site, fact.good, fact.unit))
         }),
-        order_id: digest_hex(&id.as_bytes()),
+        order_id: michigan_economy::digest_hex(&id.as_bytes()),
         kind,
-        supplier_site_id: digest_hex(&fact.site.as_bytes()),
-        route_id: fact.route.map(|id| digest_hex(&id.as_bytes())),
-        good_id: digest_hex(&fact.good.as_bytes()),
-        unit_id: digest_hex(&fact.unit.as_bytes()),
+        supplier_site_id: michigan_economy::digest_hex(&fact.site.as_bytes()),
+        route_id: fact
+            .route
+            .map(|id| michigan_economy::digest_hex(&id.as_bytes())),
+        good_id: michigan_economy::digest_hex(&fact.good.as_bytes()),
+        unit_id: michigan_economy::digest_hex(&fact.unit.as_bytes()),
         requested: fact.requested,
         dispatched: fact.quantity,
         remaining_unshipped: fact.remaining,
@@ -347,15 +347,15 @@ pub(in crate::production_projection) fn completed_reservations(
     current_budgets: &Budgets,
     principals: &BTreeMap<CorridorId, Participants>,
 ) -> Result<CompletedReservations> {
-    if !same_rows(&prior.route_stages, &current.route_stages)
-        || !same_rows(
+    if !outbound::same_rows(&prior.route_stages, &current.route_stages)
+        || !outbound::same_rows(
             &prior.route_stage_capacities,
             &current.route_stage_capacities,
         )
     {
         return Err(ProductionProjectionError::State);
     }
-    let facts = completed_facts(prior, current, receipt)?;
+    let facts = outbound::completed_facts(prior, current, receipt)?;
     let mut reservations = Reservations::new();
     let mut orders = Vec::new();
     // A completed zero principal remains visible even after all finite orders finish.
@@ -399,7 +399,7 @@ pub(in crate::production_projection) fn completed_reservations(
                     .checked_add(u64::from(stage.travel_periods))
                     .ok_or(ProductionProjectionError::Arithmetic)?;
             }
-            let (id, _) = identity(fact.id)?;
+            let (id, _) = outbound::identity(fact.id)?;
             if dispatches
                 .get(&id)
                 .is_some_and(|row| row.final_arrival_period != departure)
@@ -417,19 +417,15 @@ pub(in crate::production_projection) fn completed_reservations(
     }
     aid::append(prior, current, receipt, &route_index, &mut reservations)?;
     match (&prior.capacity_supply, &current.capacity_supply) {
-        (
-            babylon_material_circuit::CapacitySupply::FiniteSchedule,
-            babylon_material_circuit::CapacitySupply::FiniteSchedule,
-        ) => reconcile_reservation_budgets(
-            &budgets(prior)?,
-            current_budgets,
-            current.period,
-            (reservations, orders),
-        ),
-        (
-            babylon_material_circuit::CapacitySupply::Rolling(before),
-            babylon_material_circuit::CapacitySupply::Rolling(after),
-        ) => rolling::reconcile(
+        (CapacitySupply::FiniteSchedule, CapacitySupply::FiniteSchedule) => {
+            reconcile_reservation_budgets(
+                &budgets(prior)?,
+                current_budgets,
+                current.period,
+                (reservations, orders),
+            )
+        }
+        (CapacitySupply::Rolling(before), CapacitySupply::Rolling(after)) => rolling::reconcile(
             prior,
             current,
             before,

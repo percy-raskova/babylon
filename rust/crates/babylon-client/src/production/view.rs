@@ -2,11 +2,10 @@
 
 use super::navigation;
 
-use babylon_persistence::{
-    production_observation::ProductionSite, production_observation::ProductionSnapshot,
-};
+use babylon_persistence::production_observation::{ProductionSite, ProductionSnapshot};
 
-use bevy::camera::{visibility::RenderLayers, ScalingMode, Viewport};
+use bevy::camera::visibility::RenderLayers;
+use bevy::camera::{ScalingMode, Viewport};
 
 use bevy::ecs::system::SystemParam;
 
@@ -35,13 +34,10 @@ use crate::observer_ui::{
 };
 
 use crate::production_brief::{
-    committed_plan_status, dependency_flow_summary, dependency_sites, describe_brief,
-    describe_overview, DependencyDirection,
+    committed_plan_status, dependency_flow_summary, DependencyDirection,
 };
 
-use crate::production_freight::{account_brief, competitor_sites, shared_accounts};
-
-use crate::production_layout::{path_point, place_label, relation_path, ProductionLayout};
+use crate::production_layout::ProductionLayout;
 
 #[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum PrimaryView {
@@ -207,8 +203,8 @@ pub(crate) struct ProductionUi<'w> {
 pub(crate) struct ProductionPointer<'w, 's> {
     windows: Query<'w, 's, &'static Window, With<PrimaryWindow>>,
     buttons: Res<'w, ButtonInput<MouseButton>>,
-    motion: MessageReader<'w, 's, bevy::input::mouse::MouseMotion>,
-    wheel: MessageReader<'w, 's, bevy::input::mouse::MouseWheel>,
+    motion: MessageReader<'w, 's, MouseMotion>,
+    wheel: MessageReader<'w, 's, MouseWheel>,
     interactions: Query<'w, 's, &'static Interaction, With<Button>>,
 }
 
@@ -293,7 +289,7 @@ pub(crate) fn text(value: impl Into<String>, size: f32, color: Color) -> impl Bu
             ..default()
         },
         TextColor(color),
-        crate::observer_ui::ObserverFontRole::Body,
+        ObserverFontRole::Body,
         DeclaredSurface::new(SurfaceId::ObserverProduction),
     )
 }
@@ -385,7 +381,7 @@ pub(crate) fn setup_panel(commands: &mut Commands) {
             Visibility::Hidden,
             ProductionPanel,
             TabGroup::new(10),
-            crate::observer_layout::ObserverRegion::Context,
+            ObserverRegion::Context,
             DeclaredSurface::new(SurfaceId::ObserverProduction),
         ))
         .with_children(panel_contents);
@@ -408,7 +404,7 @@ pub(crate) fn panel_contents(panel: &mut ChildSpawnerCommands) {
                 .with_children(|header| {
                     header
                         .spawn(text("WORK & DEPENDENCE", 23.0, theme::PAPER))
-                        .insert(crate::observer_ui::ObserverFontRole::Display);
+                        .insert(ObserverFontRole::Display);
                     header
                         .spawn(button_node(ProductionCommand::Details))
                         .with_child((
@@ -462,7 +458,7 @@ pub(crate) fn setup_readings_panel(commands: &mut Commands) {
         .spawn((
             ProductionDetailGroup,
             TabGroup::new(20),
-            crate::observer_layout::ObserverRegion::Log,
+            ObserverRegion::Log,
             DeclaredSurface::new(SurfaceId::ObserverProduction),
             Node {
                 position_type: PositionType::Absolute,
@@ -503,7 +499,7 @@ pub(crate) fn readings_contents(panel: &mut ChildSpawnerCommands) {
                 ..default()
             },
         ))
-        .insert(crate::observer_ui::ObserverFontRole::Display);
+        .insert(ObserverFontRole::Display);
     panel.spawn((
         text("", 15.0, theme::PAPER),
         ProductionReadingHeadline,
@@ -783,8 +779,8 @@ pub(crate) type InspectorScrolls<'w, 's> = Query<
 
 #[derive(PartialEq, Eq)]
 pub(crate) struct InspectorScrollScope {
-    campaign: babylon_persistence::identity::CampaignId,
-    perspective: crate::observer::Perspective,
+    campaign: CampaignId,
+    perspective: Perspective,
     site: Option<String>,
     section: ProductionReadingSection,
 }
@@ -1073,7 +1069,7 @@ pub(crate) fn spawn_routes(
         };
         let width = if incident { 7.0 } else { 4.0 };
         let lift = if service { Vec3::Y * 30.0 } else { Vec3::ZERO };
-        let path = relation_path(*from + lift, *to + lift);
+        let path = production_layout::relation_path(*from + lift, *to + lift);
         for segment in path.windows(2) {
             rail(
                 commands, meshes, materials, segment[0], segment[1], width, color,
@@ -1127,7 +1123,7 @@ pub(crate) fn freight_markers(
     layout: &ProductionLayout,
     viewed_tick: u64,
 ) -> Vec<Vec3> {
-    let mut groups = std::collections::BTreeMap::<(&str, &str), Vec<_>>::new();
+    let mut groups = BTreeMap::<(&str, &str), Vec<_>>::new();
     for lot in &snapshot.freight {
         if lot.quantity == 0
             || lot.dispatch_period > viewed_tick
@@ -1157,9 +1153,10 @@ pub(crate) fn freight_markers(
             continue;
         };
         lots.sort_by(|left, right| left.id.cmp(&right.id));
-        let path = relation_path(from, to);
+        let path = production_layout::relation_path(from, to);
         for index in 0..lots.len() {
-            if let Some(position) = path_point(&path, (index + 1) as f32 / (lots.len() + 1) as f32)
+            if let Some(position) =
+                production_layout::path_point(&path, (index + 1) as f32 / (lots.len() + 1) as f32)
             {
                 markers.push(position + Vec3::Y * 14.0);
             }
@@ -1305,8 +1302,8 @@ pub(crate) fn spawn_freight_participants(
     context: &ObservationContext,
 ) {
     let (Ok(accounts), Ok(competitors)) = (
-        shared_accounts(snapshot, Some(&site.id)),
-        competitor_sites(&site.id, snapshot),
+        production_freight::shared_accounts(snapshot, Some(&site.id)),
+        production_freight::competitor_sites(&site.id, snapshot),
     ) else {
         panel.spawn(text(
             "Shared freight details unavailable in this observation.",
@@ -1317,7 +1314,11 @@ pub(crate) fn spawn_freight_participants(
     };
     for account in accounts.into_iter().take(1) {
         panel.spawn((
-            text(account_brief(account), 15.0, theme::PAPER),
+            text(
+                production_freight::account_brief(account),
+                15.0,
+                theme::PAPER,
+            ),
             ProductionFreightReading,
             Node {
                 flex_shrink: 0.0,
@@ -1415,11 +1416,11 @@ pub(crate) fn rebuild_dependencies(
         };
         let layout =
             ProductionLayout::focused(snapshot, Some(&site.id), navigation.relationship_page);
-        let links = dependency_sites(site, snapshot);
+        let links = production_brief::dependency_sites(site, snapshot);
         let group_count = links
             .iter()
             .map(|(_, site)| &site.id)
-            .collect::<std::collections::BTreeSet<_>>()
+            .collect::<BTreeSet<_>>()
             .len();
         commands.entity(root).with_children(|panel| {
             for process in &site.processes {
@@ -1529,7 +1530,7 @@ pub(crate) fn paint_disclosure(
         }
     }
     for mut node in &mut groups {
-        let next = if readings_panel_visible(*view, &navigation, &ui, snapshot) {
+        let next = if navigation::readings_panel_visible(*view, &navigation, &ui, snapshot) {
             Display::Flex
         } else {
             Display::None
@@ -1617,7 +1618,7 @@ pub(crate) fn paint_scene(
         .frame
         .for_session(&observation.state)
         .and_then(|frame| frame.production.as_ref());
-    let readings = readings_panel_visible(*view, &navigation, &ui, snapshot);
+    let readings = navigation::readings_panel_visible(*view, &navigation, &ui, snapshot);
     let blocked = ui.menu_open || ui.splash_visible || ui.comparison_open;
     for (mut panel, _) in &mut panels {
         panel.set_if_neq(
@@ -1711,7 +1712,8 @@ pub(crate) fn paint_labels(
                         .ok()
                         .filter(|_| size.x > 0.0 && size.y > 0.0)
                         .and_then(|anchor| {
-                            place_label(anchor, bounds, size, &occupied).map(|rect| (anchor, rect))
+                            production_layout::place_label(anchor, bounds, size, &occupied)
+                                .map(|rect| (anchor, rect))
                         })
                 }
                 _ => None,
@@ -1799,7 +1801,7 @@ pub(crate) fn paint_readings(
                         if subject.is_some() {
                             site.name.trim_end_matches(" cohort").into()
                         } else {
-                            reading_headline(site, snapshot, state.viewed_tick)
+                            readings::reading_headline(site, snapshot, state.viewed_tick)
                         }
                     }
                     _ => String::new(),
@@ -1807,10 +1809,10 @@ pub(crate) fn paint_readings(
                 continue;
             }
             text.0 = match (snapshot, site, brief.is_some()) {
-                (Some(snapshot), Some(site), true) => describe_brief(site, snapshot),
-                (Some(snapshot), Some(site), false) if navigation.details_open => describe(site, snapshot, navigation.reading_section),
+                (Some(snapshot), Some(site), true) => production_brief::describe_brief(site, snapshot),
+                (Some(snapshot), Some(site), false) if navigation.details_open => readings::describe(site, snapshot, navigation.reading_section),
                 (Some(snapshot), None, true) if navigation.county_open => format!("COUNTY {}\nChoose a commodity cohort to follow its circuit.\n{}", navigation.county_geoid.as_deref().unwrap_or("unavailable"), snapshot.scenario_label),
-                (Some(snapshot), None, true) => describe_overview(snapshot),
+                (Some(snapshot), None, true) => production_brief::describe_overview(snapshot),
                 (None, _, true) => "No production relationships are disclosed at this period and perspective. Open World to explore the information available to you.".into(),
                 _ => String::new(),
             };
@@ -1846,10 +1848,7 @@ impl Plugin for ProductionPlugin {
                     .after(ObserverSet::Install)
                     .before(ObserverSet::Paint),
             )
-            .add_systems(
-                PostUpdate,
-                reset_inspector_scroll.before(bevy::ui::UiSystems::Layout),
-            )
+            .add_systems(PostUpdate, reset_inspector_scroll.before(UiSystems::Layout))
             .add_systems(
                 Update,
                 (
@@ -1869,8 +1868,20 @@ impl Plugin for ProductionPlugin {
 }
 
 use navigation::{
-    focus_opening, invalidate_navigation, navigate, readings_panel_visible, sync_world_county,
+    focus_opening, invalidate_navigation, navigate, sync_world_county,
     ProductionControlAvailability,
 };
 
-use super::readings::{describe, reading_headline};
+use super::readings;
+use crate::observer::Perspective;
+use crate::observer_layout::ObserverRegion;
+use crate::observer_ui::ObserverFontRole;
+use crate::production_brief;
+use crate::production_freight;
+use crate::production_layout;
+use babylon_persistence::identity::CampaignId;
+use bevy::input::mouse::MouseMotion;
+use bevy::input::mouse::MouseWheel;
+use bevy::ui::UiSystems;
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;

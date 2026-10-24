@@ -22,7 +22,6 @@
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_graph::substrate::{GraphSubstrate, HyperedgeId, NodeId};
-use babylon_tick::run_once_into;
 
 /// Two classes, one COMMUNITY hyperedge over both, `community/heat`
 /// declared. Every proof below seeds from some extension of this shape.
@@ -57,7 +56,7 @@ fn update_hyperedge_writes_through_the_tick() {
 "#;
     let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
-    let report = run_once_into(SCENARIO, rule, &mut graph, &mut sink)
+    let report = babylon_tick::run_once_into(SCENARIO, rule, &mut graph, &mut sink)
         .expect("update-hyperedge is served on the tick path");
     assert_eq!(report.fired, 2, "both active subjects fire the for-each");
     let stored = graph
@@ -90,7 +89,7 @@ fn field_of_reads_a_seeded_hyperedge_field_into_a_node_write() {
 "#;
     let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
-    run_once_into(&scenario, rule, &mut graph, &mut sink)
+    babylon_tick::run_once_into(&scenario, rule, &mut graph, &mut sink)
         .expect("field-of over a HyperedgeRef is served");
     for id in [NodeId(0), NodeId(1)] {
         let observed = graph
@@ -124,7 +123,7 @@ fn update_hyperedge_refuses_a_qname_owned_by_another_type() {
 "#;
     let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
-    let err = run_once_into(SCENARIO, rule, &mut graph, &mut sink).unwrap_err();
+    let err = babylon_tick::run_once_into(SCENARIO, rule, &mut graph, &mut sink).unwrap_err();
     assert!(
         err.contains("the referent is a COMMUNITY hyperedge, not ECONOMIC_SECTOR"),
         "the referent check names both types: {err}"
@@ -151,7 +150,7 @@ fn a_hyperedge_owned_field_binding_names_no_subject_type() {
 "#;
     let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
-    let err = run_once_into(SCENARIO, rule, &mut graph, &mut sink).unwrap_err();
+    let err = babylon_tick::run_once_into(SCENARIO, rule, &mut graph, &mut sink).unwrap_err();
     assert!(
         err.contains("names no subject type"),
         "the subject-type error, not silent inertness: {err}"
@@ -176,7 +175,7 @@ fn update_hyperedge_refuses_a_wrong_typed_write_value() {
 "#;
     let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
-    let err = run_once_into(SCENARIO, rule, &mut graph, &mut sink).unwrap_err();
+    let err = babylon_tick::run_once_into(SCENARIO, rule, &mut graph, &mut sink).unwrap_err();
     assert!(
         err.contains("cannot store") && err.contains("community/heat"),
         "the write-value type refusal names the field: {err}"
@@ -215,7 +214,7 @@ fn field_of_an_enum_typed_hyperedge_field_refuses_arithmetic() {
 "#;
     let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
-    let err = run_once_into(scenario, rule, &mut graph, &mut sink).unwrap_err();
+    let err = babylon_tick::run_once_into(scenario, rule, &mut graph, &mut sink).unwrap_err();
     assert!(
         err.contains("no arithmetic is defined on"),
         "Enum<T> in arithmetic position refuses: {err}"

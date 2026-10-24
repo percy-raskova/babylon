@@ -4,14 +4,18 @@ use super::{amount, layout, numeric};
 
 use crate::state_storage::{StorageError, TypedLookup};
 
-use crate::storage_compression::{compress_exact, decompress_exact, StorageCompressionError};
+use crate::storage_compression::StorageCompressionError;
 
-use babylon_kernel::content_digest::sha256_of;
-
+use crate::storage_compression;
+use babylon_kernel::content_digest;
+use babylon_tick::material_world;
+use babylon_tick::material_world::MaterialWorldRegister;
 use babylon_tick::material_world::{
-    decode_material_receipts, receipt_row_limit, MaterialTickReceipts,
-    MAX_MATERIAL_TICK_RECEIPT_BYTES, RECEIPT_FAMILY_COUNT, RECEIPT_ROW_BYTES,
+    MaterialTickReceipts, MAX_MATERIAL_TICK_RECEIPT_BYTES, RECEIPT_FAMILY_COUNT, RECEIPT_ROW_BYTES,
 };
+#[cfg(test)]
+use std::cell::Cell;
+use std::result::Result as StdResult;
 
 pub(crate) const DOMAIN: &[u8] = b"BabylonReceiptStorageV3\0";
 
@@ -45,7 +49,7 @@ pub enum Error {
     UnusedAmount,
 }
 
-pub(crate) type Result<T> = std::result::Result<T, Error>;
+pub(crate) type Result<T> = StdResult<T, Error>;
 
 pub(crate) fn buffer(n: usize) -> Result<Vec<u8>> {
     let mut v = Vec::new();
@@ -196,9 +200,9 @@ pub(crate) fn stored_family(
     amount_count: u32,
     columns: Vec<u8>,
 ) -> Result<FamilyPayload> {
-    let digest = sha256_of(&columns);
-    let compressed =
-        compress_exact(&columns, MAX_MATERIAL_TICK_RECEIPT_BYTES).map_err(Error::Compression)?;
+    let digest = content_digest::sha256_of(&columns);
+    let compressed = storage_compression::compress_exact(&columns, MAX_MATERIAL_TICK_RECEIPT_BYTES)
+        .map_err(Error::Compression)?;
     let (compression, payload) = if compressed.len() < columns.len() {
         (1, compressed)
     } else {
@@ -282,9 +286,10 @@ pub(crate) struct AdmittedReceipts<'a> {
 impl<'a> AdmittedReceipts<'a> {
     pub(crate) fn new(
         canonical: &'a [u8],
-        register: Option<&babylon_tick::material_world::MaterialWorldRegister>,
+        register: Option<&MaterialWorldRegister>,
     ) -> Result<Self> {
-        let decoded = decode_material_receipts(canonical).map_err(|_| Error::Canonical)?;
+        let decoded =
+            material_world::decode_material_receipts(canonical).map_err(|_| Error::Canonical)?;
         if let Some(register) = register {
             if decoded.resolve_tick != register.completed_tick() {
                 return Err(Error::Tick);
@@ -330,7 +335,7 @@ pub(crate) fn encode(admitted: &AdmittedReceipts<'_>, lookup: &mut TypedLookup) 
     let mut out = buffer(canonical.len().min(1_048_576))?;
     out.extend_from_slice(DOMAIN);
     out.extend_from_slice(&(canonical.len() as u64).to_be_bytes());
-    out.extend_from_slice(&sha256_of(canonical));
+    out.extend_from_slice(&content_digest::sha256_of(canonical));
     out.extend_from_slice(&tick.to_be_bytes());
     let prefix_offset = out.len();
     out.extend_from_slice(&[0; 40]);
@@ -340,7 +345,7 @@ pub(crate) fn encode(admitted: &AdmittedReceipts<'_>, lookup: &mut TypedLookup) 
             return Err(Error::Family);
         }
         let count = usize::try_from(cursor.u64()?).map_err(|_| Error::Count)?;
-        if count > receipt_row_limit(index) {
+        if count > material_world::receipt_row_limit(index) {
             return Err(Error::Count);
         }
         let width = canonical_width;
@@ -433,12 +438,12 @@ pub(crate) fn decode_header(cursor: &mut Cursor<'_>, lookup: &TypedLookup) -> Re
 
 #[cfg(test)]
 thread_local! {
-    static TYPED_ADMISSIONS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    static TYPED_ADMISSIONS: Cell<usize> = const { Cell::new(0) };
 }
 
 #[cfg(test)]
 pub(crate) fn typed_admission_count() -> usize {
-    TYPED_ADMISSIONS.with(std::cell::Cell::get)
+    TYPED_ADMISSIONS.with(Cell::get)
 }
 
 /// Authenticate and reconstruct all canonical bytes before typed receipt validation.
@@ -449,7 +454,7 @@ pub(crate) fn decode_admitted(
     let out = restore_canonical(encoded, lookup)?;
     #[cfg(test)]
     TYPED_ADMISSIONS.with(|count| count.set(count.get() + 1));
-    let admitted = decode_material_receipts(&out).map_err(|_| Error::Canonical)?;
+    let admitted = material_world::decode_material_receipts(&out).map_err(|_| Error::Canonical)?;
     Ok((out, admitted))
 }
 
@@ -474,7 +479,7 @@ pub(crate) fn restore_canonical(encoded: &[u8], lookup: &TypedLookup) -> Result<
             return Err(Error::Family);
         }
         let count = usize::try_from(cursor.u64()?).map_err(|_| Error::Count)?;
-        if count > receipt_row_limit(index) {
+        if count > material_world::receipt_row_limit(index) {
             return Err(Error::Count);
         }
         let canonical_body = count
@@ -504,13 +509,18 @@ pub(crate) fn restore_canonical(encoded: &[u8], lookup: &TypedLookup) -> Result<
         let payload = cursor.take(payload_len)?;
         let columns = match compression {
             0 => {
-                if payload.len() != n || sha256_of(payload) != digest {
+                if payload.len() != n || content_digest::sha256_of(payload) != digest {
                     return Err(Error::Hash);
                 }
                 payload.to_vec()
             }
-            1 => decompress_exact(payload, n, digest, MAX_MATERIAL_TICK_RECEIPT_BYTES)
-                .map_err(Error::Compression)?,
+            1 => storage_compression::decompress_exact(
+                payload,
+                n,
+                digest,
+                MAX_MATERIAL_TICK_RECEIPT_BYTES,
+            )
+            .map_err(Error::Compression)?,
             _ => return Err(Error::Mode),
         };
         let (row_mode, row_width, rows) = if mode == 2 {
@@ -530,7 +540,7 @@ pub(crate) fn restore_canonical(encoded: &[u8], lookup: &TypedLookup) -> Result<
         }
     }
     cursor.done()?;
-    if out.len() != length || sha256_of(&out) != expected {
+    if out.len() != length || content_digest::sha256_of(&out) != expected {
         return Err(Error::Hash);
     }
     Ok(out)
@@ -770,9 +780,15 @@ mod tests {
         .unwrap();
         let payload = &encoded[start + 59..start + 59 + payload_length];
         let columns = if encoded[start + 10] == 1 {
-            decompress_exact(payload, length, digest, MAX_MATERIAL_TICK_RECEIPT_BYTES).unwrap()
+            storage_compression::decompress_exact(
+                payload,
+                length,
+                digest,
+                MAX_MATERIAL_TICK_RECEIPT_BYTES,
+            )
+            .unwrap()
         } else {
-            assert_eq!(sha256_of(payload), digest);
+            assert_eq!(content_digest::sha256_of(payload), digest);
             payload.to_vec()
         };
         (count, unique, columns)
@@ -786,7 +802,7 @@ mod tests {
         .unwrap();
         let mut out = encoded[..start + 59].to_vec();
         out[start + 10] = 0;
-        out[start + 19..start + 51].copy_from_slice(&sha256_of(columns));
+        out[start + 19..start + 51].copy_from_slice(&content_digest::sha256_of(columns));
         out[start + 51..start + 59].copy_from_slice(&(columns.len() as u64).to_be_bytes());
         out.extend_from_slice(columns);
         out.extend_from_slice(&encoded[start + 59 + old_length..]);
@@ -812,7 +828,10 @@ mod tests {
         }
         let (restored, typed) = decode_admitted(&encoded, &lookup).unwrap();
         assert_eq!(restored, original);
-        assert_eq!(sha256_of(&restored), sha256_of(&original));
+        assert_eq!(
+            content_digest::sha256_of(&restored),
+            content_digest::sha256_of(&original)
+        );
         assert_eq!(
             typed
                 .money_transfers
@@ -964,15 +983,18 @@ mod tests {
         let (_, width, retained) = numeric::pack_family(11, &rows, count, 50, 7).unwrap();
         let columns = transpose(&retained, count, width, false).unwrap();
         let numeric = columns.len().min(
-            compress_exact(&columns, MAX_MATERIAL_TICK_RECEIPT_BYTES)
+            storage_compression::compress_exact(&columns, MAX_MATERIAL_TICK_RECEIPT_BYTES)
                 .unwrap()
                 .len(),
         );
         let dictionary = amount::pack(&retained, count).unwrap().unwrap();
         let candidate = dictionary.columns.len().min(
-            compress_exact(&dictionary.columns, MAX_MATERIAL_TICK_RECEIPT_BYTES)
-                .unwrap()
-                .len(),
+            storage_compression::compress_exact(
+                &dictionary.columns,
+                MAX_MATERIAL_TICK_RECEIPT_BYTES,
+            )
+            .unwrap()
+            .len(),
         );
         (numeric, candidate, dictionary.dictionary_count)
     }
@@ -1076,7 +1098,7 @@ mod tests {
         old_canonical[old_domain.len()..old_domain.len() + 4]
             .copy_from_slice(&17_u32.to_be_bytes());
         let digest = package_domain.len() + 8;
-        previous[digest..digest + 32].copy_from_slice(&sha256_of(&old_canonical));
+        previous[digest..digest + 32].copy_from_slice(&content_digest::sha256_of(&old_canonical));
         assert_eq!(restore_canonical(&previous, &lookup), Err(Error::Domain));
         let before = lookup.entries().to_vec();
         assert!(matches!(

@@ -1,12 +1,22 @@
-use super::*;
+use super::artifact;
+use super::artifact::{
+    NationalResidentWorkforceReference, ResidentWorkforceReferenceError, ARTIFACT,
+};
+use crate::national_counties;
 use crate::national_counties::ObservationStatus;
+use crate::national_resident_workforce::parse;
+use crate::national_resident_workforce::SourceSex;
+use crate::national_resident_workforce::WorkerClass;
 
 type Error = ResidentWorkforceReferenceError;
 fn source() -> String {
-    decode(ARTIFACT).unwrap()
+    artifact::decode(ARTIFACT).unwrap()
 }
 fn parse(text: &str) -> Result<NationalResidentWorkforceReference, Error> {
-    parse::capture(text, national_county_reference().unwrap())
+    parse::capture(
+        text,
+        national_counties::national_county_reference().unwrap(),
+    )
 }
 fn edit_first(text: &str, edit: impl FnOnce(&mut Vec<String>)) -> String {
     let mut lines: Vec<_> = text.lines().map(str::to_owned).collect();

@@ -2,16 +2,17 @@
 
 use super::super::{publication, tick_knowledge, ArchiveReadScope};
 
-use crate::archive::{database, decode};
-
 use crate::production_projection::diagnostics::{Stage, Timing};
 
+use crate::identity::CampaignId;
 use crate::{
-    identity::CampaignId, ArchiveDossierProducer, ArchiveKnowledge, ArchiveMaterializeDisposition,
+    ArchiveDossierProducer, ArchiveKnowledge, ArchiveMaterializeDisposition,
     ArchiveMaterializeMode, ArchiveReceiptDisposition, ArchiveWorkerCancellation,
     ArchiveWorkerSweepReport, PendingArchiveReceipt, SemanticArchiveError, SemanticArchiveStore,
 };
 
+use crate::archive;
+use crate::ArchiveDirtyBatch;
 use postgres::{Client, IsolationLevel};
 
 pub(crate) fn sweep(
@@ -55,7 +56,7 @@ pub(in crate::archive_revision) fn sweep_locked(
                 *campaign.as_uuid(),
                 &receipt,
                 &known,
-                crate::ArchiveDirtyBatch::MAX_PAGES,
+                ArchiveDirtyBatch::MAX_PAGES,
             )?
         };
         let mode = if outcome.remaining() == 0 {
@@ -73,7 +74,9 @@ pub(in crate::archive_revision) fn sweep_locked(
             .isolation_level(IsolationLevel::Serializable)
             .read_only(false)
             .start()
-            .map_err(|error| database("begin ordered Archive publication transaction", &error))?;
+            .map_err(|error| {
+                archive::database("begin ordered Archive publication transaction", &error)
+            })?;
         {
             let _timing = Timing::start(Stage::ArchivePublicationSchema, receipt.resolve_tick());
             crate::current_schema::require_current_schema(&mut tx)
@@ -98,7 +101,7 @@ pub(in crate::archive_revision) fn sweep_locked(
         {
             let _timing = Timing::start(Stage::ArchivePublicationCommit, receipt.resolve_tick());
             tx.commit().map_err(|error| {
-                database("commit ordered Archive publication transaction", &error)
+                archive::database("commit ordered Archive publication transaction", &error)
             })?;
         }
         drop(publication_timing);
@@ -128,7 +131,7 @@ pub(in crate::archive_revision) fn capture_receipt(
         .isolation_level(IsolationLevel::Serializable)
         .read_only(true)
         .start()
-        .map_err(|error| database("begin ordered Archive input capture", &error))?;
+        .map_err(|error| archive::database("begin ordered Archive input capture", &error))?;
     crate::current_schema::require_current_schema(&mut tx)
         .map_err(SemanticArchiveError::CurrentSchema)?;
     let captured = publication::next_receipt(&mut tx, campaign)?
@@ -143,7 +146,7 @@ pub(in crate::archive_revision) fn capture_receipt(
         })
         .transpose()?;
     tx.commit()
-        .map_err(|error| database("finish ordered Archive input capture", &error))?;
+        .map_err(|error| archive::database("finish ordered Archive input capture", &error))?;
     Ok(captured)
 }
 
@@ -156,7 +159,7 @@ pub(in crate::archive_revision) fn read_progress(
         .build_transaction()
         .isolation_level(IsolationLevel::RepeatableRead)
         .start()
-        .map_err(|error| database("begin coherent Archive progress", &error))?;
+        .map_err(|error| archive::database("begin coherent Archive progress", &error))?;
     // Admit pending receipt identities in this same committed snapshot.
     let pending = publication::next_receipt(&mut tx, campaign)?.is_some();
     let row = tx
@@ -165,14 +168,14 @@ pub(in crate::archive_revision) fn read_progress(
         FROM public.v_archive_verification_v1 WHERE campaign_id=$1",
             &[campaign.as_uuid()],
         )
-        .map_err(|error| database("read ordered Archive maintenance progress", &error))?;
-    let durable = super::super::storage::unsigned(decode(&row, 0)?)?;
-    let processed = super::super::storage::unsigned(decode(&row, 1)?)?;
+        .map_err(|error| archive::database("read ordered Archive maintenance progress", &error))?;
+    let durable = super::super::storage::unsigned(archive::decode(&row, 0)?)?;
+    let processed = super::super::storage::unsigned(archive::decode(&row, 1)?)?;
     if processed > durable {
         return Err(SemanticArchiveError::StoredPageMismatch);
     }
     let report = ArchiveWorkerSweepReport::new(dispositions, durable, processed, pending);
     tx.commit()
-        .map_err(|error| database("finish coherent Archive progress", &error))?;
+        .map_err(|error| archive::database("finish coherent Archive progress", &error))?;
     Ok(report)
 }

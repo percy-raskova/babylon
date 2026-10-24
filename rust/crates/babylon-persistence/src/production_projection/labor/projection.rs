@@ -10,10 +10,10 @@ use babylon_tick::material_world::MaterialTickReceipts;
 
 use super::super::ProductionProjectionError;
 
-use crate::{
-    michigan_economy::digest_hex, production_observation::CompletedProductionLabor,
-    production_observation::ProductionLaborAccount,
-};
+use super::super::equipment::EquipmentFacts;
+use crate::michigan_economy;
+use crate::production_observation::{CompletedProductionLabor, ProductionLaborAccount};
+use babylon_material_circuit::MaintenanceReceipt;
 
 pub(in crate::production_projection) type Principal = (SiteId, UnitId);
 
@@ -99,8 +99,8 @@ pub(in crate::production_projection) fn project_labor_accounts(
                 })
                 .transpose()?;
             Ok(ProductionLaborAccount {
-                site_id: digest_hex(&key.0.as_bytes()),
-                unit_id: digest_hex(&key.1.as_bytes()),
+                site_id: michigan_economy::digest_hex(&key.0.as_bytes()),
+                unit_id: michigan_economy::digest_hex(&key.1.as_bytes()),
                 unit: "labor-hours".to_owned(),
                 next_opening_period: state.period,
                 next_opening_available: next.get(&key).copied().unwrap_or(0),
@@ -142,9 +142,9 @@ pub(in crate::production_projection) fn budgets(
 pub(in crate::production_projection) fn completed_totals(
     opening: &MaterialCircuitState,
     receipt: &MaterialTickReceipts,
-    maintenance: Option<&babylon_material_circuit::MaintenanceReceipt>,
+    maintenance: Option<&MaintenanceReceipt>,
     available: &Budgets,
-    equipment: &super::super::equipment::EquipmentFacts,
+    equipment: &EquipmentFacts,
 ) -> Result<Totals, ProductionProjectionError> {
     let sources = process_labor(opening)?;
     let mut processes = BTreeMap::<ProcessId, (Principal, u64, u64)>::new();

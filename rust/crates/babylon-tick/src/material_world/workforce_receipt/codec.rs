@@ -1,9 +1,13 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
-use super::super::{MaterialWorldError, ReceiptCursor};
+use super::super::MaterialWorldError;
+use super::super::ReceiptCursor;
 
-use babylon_kernel::{currency::Currency, economic_location::EconomicLocation};
+use babylon_kernel::currency::Currency;
+use babylon_kernel::economic_location::EconomicLocation;
 
+use babylon_material_circuit::LaborUseReceipt;
+use babylon_material_circuit::WageAccrualReceipt;
 use babylon_material_circuit::{
     FinalDemandPrincipalId, LaborCompensation, MemberLaborUseReceipt, SiteId,
     StaffingMemberBinding, StaffingMemberId, StaffingMemberReceipt, StaffingPoolId, UnitId,
@@ -194,8 +198,8 @@ pub(in crate::material_world) fn currency(
 pub(in crate::material_world) fn validate_join(
     staffing: &[StaffingMemberReceipt],
     members: &[MemberLaborUseReceipt],
-    labor: &[babylon_material_circuit::LaborUseReceipt],
-    wages: &[babylon_material_circuit::WageAccrualReceipt],
+    labor: &[LaborUseReceipt],
+    wages: &[WageAccrualReceipt],
 ) -> Result<(), MaterialWorldError> {
     use std::collections::{BTreeMap, BTreeSet};
     if staffing
@@ -263,7 +267,7 @@ pub(in crate::material_world) fn validate_join(
 
 pub(in crate::material_world) fn validate_wage(
     row: &MemberLaborUseReceipt,
-    wage: &babylon_material_circuit::WageAccrualReceipt,
+    wage: &WageAccrualReceipt,
 ) -> Result<(), MaterialWorldError> {
     use babylon_material_circuit::AccountId;
     if (
@@ -284,10 +288,8 @@ pub(in crate::material_world) fn validate_wage(
     Ok(())
 }
 
-pub(in crate::material_world) fn empty_aggregate(
-    row: &MemberLaborUseReceipt,
-) -> babylon_material_circuit::LaborUseReceipt {
-    babylon_material_circuit::LaborUseReceipt {
+pub(in crate::material_world) fn empty_aggregate(row: &MemberLaborUseReceipt) -> LaborUseReceipt {
+    LaborUseReceipt {
         site_id: row.site_id,
         unit_id: row.unit_id,
         period: row.period,
@@ -304,7 +306,7 @@ pub(in crate::material_world) fn empty_aggregate(
 }
 
 pub(in crate::material_world) fn add_member(
-    aggregate: &mut babylon_material_circuit::LaborUseReceipt,
+    aggregate: &mut LaborUseReceipt,
     row: &MemberLaborUseReceipt,
 ) -> Result<(), MaterialWorldError> {
     if aggregate.period != row.period {

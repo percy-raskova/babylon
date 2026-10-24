@@ -4,17 +4,51 @@
 #[path = "../../babylon-persistence/src/michigan_dynamic_hex_foundation.rs"]
 mod michigan_dynamic_hex_foundation;
 
-use babylon_bsl::canonical_ast::rules_hash_of;
-use babylon_bsl::rule_pipeline::split_content;
+use babylon_bsl::canonical_ast;
+use babylon_bsl::rule_pipeline;
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_graph::stable_element::StableElementKey;
 use babylon_graph::state_hash::CanonicalState;
-use babylon_kernel::content_digest::{sha256_of, ContentDigest};
+use babylon_kernel::content_digest;
+use babylon_kernel::content_digest::ContentDigest;
 use babylon_kernel::replay::{ReplaySeed, ReplaySessionId};
 use babylon_kernel::tick_content_hash::RefDigest;
-use babylon_material_circuit::*;
-use babylon_practice_contract::*;
+use babylon_material_circuit::CapacityRow;
+use babylon_material_circuit::CapacitySupply;
+use babylon_material_circuit::CircuitAccounting;
+use babylon_material_circuit::CommodityDefinition;
+use babylon_material_circuit::GoodId;
+use babylon_material_circuit::InputOutputCoefficient;
+use babylon_material_circuit::InventoryRow;
+use babylon_material_circuit::LaborCapacityRow;
+use babylon_material_circuit::LaborCoefficient;
+use babylon_material_circuit::LogisticsNodeId;
+use babylon_material_circuit::MaintenanceBinding;
+use babylon_material_circuit::MaintenanceService;
+use babylon_material_circuit::MaterialCircuitState;
+use babylon_material_circuit::ProcessId;
+use babylon_material_circuit::ProcessOutput;
+use babylon_material_circuit::ProductionCommitment;
+use babylon_material_circuit::SiteId;
+use babylon_material_circuit::SiteLogisticsNode;
+use babylon_material_circuit::StaffingPolicy;
+use babylon_material_circuit::StaffingPoolBinding;
+use babylon_material_circuit::StaffingPoolId;
+use babylon_material_circuit::StaffingWorkSource;
+use babylon_material_circuit::UnitId;
+use babylon_practice_contract::OrganizerChoice;
+use babylon_practice_contract::OrganizerCommand;
+use babylon_practice_contract::OrganizerCommitment;
+use babylon_practice_contract::OrganizerConfig;
+use babylon_practice_contract::OrganizerContribution;
+use babylon_practice_contract::OrganizerInquiry;
+use babylon_practice_contract::OrganizerParticipant;
+use babylon_practice_contract::OrganizerPartner;
+use babylon_practice_contract::OrganizerPartnerPolicy;
+use babylon_practice_contract::OrganizerReport;
+use babylon_practice_contract::OrganizerTimeBindingMode;
+use babylon_practice_contract::ORGANIZER_SCHEMA_VERSION;
 use babylon_tick::material_replay::{
     MaterialCommitError, MaterialReplayError, MaterialReplaySession, PreparedMaterialTick,
 };
@@ -89,7 +123,7 @@ fn process() -> ProcessId {
 )]
 fn opening() -> MaterialCircuitState {
     MaterialCircuitState {
-        capacity_supply: babylon_material_circuit::CapacitySupply::FiniteSchedule,
+        capacity_supply: CapacitySupply::FiniteSchedule,
         period: 1,
         site_logistics_nodes: (1..=2)
             .map(|id| SiteLogisticsNode {
@@ -180,7 +214,7 @@ fn opening() -> MaterialCircuitState {
         handling_coefficients: vec![],
         final_demand_principals: vec![],
         final_demand_orders: vec![],
-        accounting: babylon_material_circuit::CircuitAccounting::PhysicalControl,
+        accounting: CircuitAccounting::PhysicalControl,
         maintenance_binding: Some(MaintenanceBinding {
             provider_site_id: site(2),
             consumer_process_id: process(),
@@ -239,7 +273,7 @@ fn config() -> OrganizerConfig {
                 review_condition: "Review next period".into(),
             })
             .collect(),
-        time_binding: babylon_practice_contract::OrganizerTimeBindingMode::FixedTimeControl,
+        time_binding: OrganizerTimeBindingMode::FixedTimeControl,
         inquiry_hours: 12,
         contact_hours: 8,
         partner_response_hours: 2,
@@ -306,7 +340,7 @@ fn try_session(
     material: MaterialCircuitState,
 ) -> Result<Session, MaterialReplayError> {
     let foundation = michigan_dynamic_hex_foundation::michigan_dynamic_hex_foundation().unwrap();
-    let (_, parsed) = split_content(rules).unwrap();
+    let (_, parsed) = rule_pipeline::split_content(rules).unwrap();
     let forms = parsed.into_iter().map(|rule| rule.form).collect::<Vec<_>>();
     let graph = ReplayTickSession::new(
         SCENARIO,
@@ -317,14 +351,14 @@ fn try_session(
         ReplaySeed::new(40),
         ContentDigest {
             defines_hash: [40; 32],
-            rules_hash: rules_hash_of(&forms).unwrap(),
+            rules_hash: canonical_ast::rules_hash_of(&forms).unwrap(),
         },
         RefDigest::from_bytes(foundation.reference_bundle_digest()),
         MaterialState::try_new(foundation).unwrap(),
     )
     .map_err(MaterialReplayError::Graph)?;
     let config = config();
-    let state = initial_organizer_state(&config).unwrap();
+    let state = babylon_practice_contract::initial_organizer_state(&config).unwrap();
     let material = MaterialWorldRegister::try_new(0, material)
         .unwrap()
         .with_organizer(config, state)
@@ -332,7 +366,7 @@ fn try_session(
     MaterialReplaySession::new(
         graph,
         material,
-        sha256_of(b"organizer-replay-fixture-foundation"),
+        content_digest::sha256_of(b"organizer-replay-fixture-foundation"),
         babylon_kernel::clock::CampaignDuration::Finite { final_period: 8 },
         staffing(),
     )
@@ -345,7 +379,7 @@ fn session() -> Session {
 fn commitment(session: &Session, choice: OrganizerChoice) -> OrganizerCommitment {
     let config = session.material().organizer_config().unwrap();
     let state = session.material().organizer_state().unwrap();
-    admit_organizer(
+    babylon_practice_contract::admit_organizer(
         config,
         state,
         &OrganizerCommand {
@@ -354,7 +388,7 @@ fn commitment(session: &Session, choice: OrganizerChoice) -> OrganizerCommitment
             authority_id: config.input_authority_id,
             expected_period: state.period,
             content_digest: config.content_digest,
-            resource_digest: organizer_resource_digest().unwrap(),
+            resource_digest: babylon_practice_contract::organizer_resource_digest().unwrap(),
             nonce: [7; 16],
             choice,
         },
@@ -363,7 +397,7 @@ fn commitment(session: &Session, choice: OrganizerChoice) -> OrganizerCommitment
 }
 
 fn prepare(session: &Session, accepted: Option<&OrganizerCommitment>) -> Candidate {
-    let actions = organizer_action_batch(
+    let actions = babylon_practice_contract::organizer_action_batch(
         session.material().organizer_config().unwrap(),
         session.material().organizer_state().unwrap(),
         accepted,
@@ -478,7 +512,7 @@ fn distinct_rulings_change_organizer_receipts_and_preserve_identical_material_re
         advance(&mut session, &mut sink);
         advance(&mut session, &mut sink);
         let accepted = commitment(&session, choice);
-        let actions = organizer_action_batch(
+        let actions = babylon_practice_contract::organizer_action_batch(
             session.material().organizer_config().unwrap(),
             session.material().organizer_state().unwrap(),
             Some(&accepted),

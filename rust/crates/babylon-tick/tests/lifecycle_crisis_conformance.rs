@@ -81,7 +81,6 @@ use babylon_bsl::evaluator::Value;
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::memory::MemoryGraph;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
-use babylon_tick::{run_once, run_once_into};
 
 const SCENARIO: &str = include_str!("../content/scenarios/lifecycle-crisis-conformance.bscn");
 const RULE: &str = include_str!("../content/rules/lifecycle.bsl");
@@ -129,7 +128,8 @@ const EXPECTED: [Expected; 2] = [
 fn run() -> (MemoryGraph, CollectingSink) {
     let mut graph = MemoryGraph::new();
     let mut sink = CollectingSink::default();
-    run_once_into(SCENARIO, RULE, &mut graph, &mut sink).expect("the lifecycle pack must run");
+    babylon_tick::run_once_into(SCENARIO, RULE, &mut graph, &mut sink)
+        .expect("the lifecycle pack must run");
     (graph, sink)
 }
 
@@ -273,8 +273,8 @@ fn ideology_transmission_discriminates_the_two_weights() {
 /// Byte-determinism, same shape as the shipped-defaults suite.
 #[test]
 fn the_crisis_environment_tick_is_deterministic() {
-    let a = run_once(SCENARIO, RULE).expect("first run");
-    let b = run_once(SCENARIO, RULE).expect("second run");
+    let a = babylon_tick::run_once(SCENARIO, RULE).expect("first run");
+    let b = babylon_tick::run_once(SCENARIO, RULE).expect("second run");
     assert_eq!(a.after, b.after, "two runs, one post-state");
     assert_ne!(a.before, a.after, "the pack must move state");
     assert_eq!(a.fired, 2, "both territories pass the (unconditional) rule");

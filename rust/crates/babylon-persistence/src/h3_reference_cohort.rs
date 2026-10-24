@@ -3,8 +3,11 @@
 use std::collections::BTreeSet;
 use std::sync::OnceLock;
 
+use babylon_kernel::content_digest;
 use babylon_kernel::tick_content_hash::RefDigest;
-use babylon_kernel::{content_digest::sha256_of, H3CellId, H3CellIdError};
+use babylon_kernel::{H3CellId, H3CellIdError};
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 
 const SOURCE_DOMAIN: &[u8] = b"babylon.h3.reference-source.v1\0";
 const ROW_DOMAIN: &[u8] = b"babylon.h3.reference-rows.v1\0";
@@ -287,7 +290,7 @@ pub enum H3ReferenceCohortError {
 }
 
 impl std::fmt::Display for H3ReferenceCohortError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> FmtResult {
         write!(formatter, "invalid H3 reference cohort: {self:?}")
     }
 }
@@ -378,7 +381,7 @@ fn parse_representative_h3_reference_cohort(
     }
 
     let expected_digest = RefDigest::from_bytes(EXPECTED_SOURCE_DIGEST);
-    let actual_digest = RefDigest::from_bytes(sha256_of(fixture));
+    let actual_digest = RefDigest::from_bytes(content_digest::sha256_of(fixture));
     if actual_digest != expected_digest {
         return Err(H3ReferenceCohortError::FixtureDigestMismatch {
             expected: expected_digest,
@@ -646,7 +649,7 @@ fn digest_source_cells(
     {
         bytes.extend_from_slice(&cell.to_be_bytes());
     }
-    Ok(RefDigest::from_bytes(sha256_of(&bytes)))
+    Ok(RefDigest::from_bytes(content_digest::sha256_of(&bytes)))
 }
 
 fn digest_closure_rows(rows: &[H3ReferenceCellRow]) -> Result<RefDigest, H3ReferenceCohortError> {
@@ -663,7 +666,7 @@ fn digest_closure_rows(rows: &[H3ReferenceCellRow]) -> Result<RefDigest, H3Refer
         push_optional_cell(&mut bytes, row.ancestor_r6);
         push_optional_cell(&mut bytes, row.ancestor_r7);
     }
-    Ok(RefDigest::from_bytes(sha256_of(&bytes)))
+    Ok(RefDigest::from_bytes(content_digest::sha256_of(&bytes)))
 }
 
 fn digest_membership_rows(
@@ -677,7 +680,7 @@ fn digest_membership_rows(
         bytes.extend_from_slice(&row.cell_id.to_be_bytes());
         bytes.push(row.origin.code());
     }
-    Ok(RefDigest::from_bytes(sha256_of(&bytes)))
+    Ok(RefDigest::from_bytes(content_digest::sha256_of(&bytes)))
 }
 
 fn digest_cohort(
@@ -696,7 +699,7 @@ fn digest_cohort(
     bytes.extend_from_slice(source_digest.as_bytes());
     bytes.extend_from_slice(closure_digest.as_bytes());
     bytes.extend_from_slice(membership_digest.as_bytes());
-    Ok(RefDigest::from_bytes(sha256_of(&bytes)))
+    Ok(RefDigest::from_bytes(content_digest::sha256_of(&bytes)))
 }
 
 fn framed_capacity(

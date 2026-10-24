@@ -1,17 +1,15 @@
 //! Captured, explicitly Designed Wayne political content and graph incidence.
 
 use babylon_graph::stable_element::StableElementKey;
-use babylon_kernel::content_digest::sha256_of;
 use babylon_practice_contract::{
-    initial_organizer_state, OrganizerConfig, OrganizerContribution, OrganizerParticipant,
-    OrganizerPartner, OrganizerPartnerPolicy, OrganizerTimeBindingMode, ORGANIZER_SCHEMA_VERSION,
+    OrganizerConfig, OrganizerContribution, OrganizerParticipant, OrganizerPartner,
+    OrganizerPartnerPolicy, OrganizerTimeBindingMode, ORGANIZER_SCHEMA_VERSION,
 };
 
-use crate::{
-    identity::CampaignId,
-    michigan_cohorts::MICHIGAN_COHORT_SCENARIO,
-    michigan_defines::{MichiganDefinesError, OrganizerDefines},
-};
+use crate::identity::CampaignId;
+use crate::michigan_cohorts::MICHIGAN_COHORT_SCENARIO;
+use crate::michigan_defines::{MichiganDefinesError, OrganizerDefines};
+use babylon_kernel::content_digest;
 
 const DECLARATIONS: &str =
     include_str!("../../../../content/scenarios/michigan/organizer-declarations.bscn");
@@ -33,7 +31,7 @@ pub(crate) fn actor_id(name: &str) -> Result<u64, MichiganDefinesError> {
     let bytes = key
         .canonical_bytes()
         .map_err(|_| MichiganDefinesError::Canonical)?;
-    let digest = sha256_of(&bytes);
+    let digest = content_digest::sha256_of(&bytes);
     let id = u64::from_be_bytes(
         digest[..8]
             .try_into()
@@ -48,7 +46,7 @@ fn authority(campaign: CampaignId, actor: u64) -> [u8; 16] {
     let mut bytes = b"babylon.organizer-input-authority.v1\0".to_vec();
     bytes.extend_from_slice(campaign.canonical_bytes());
     bytes.extend_from_slice(&actor.to_be_bytes());
-    let digest = sha256_of(&bytes);
+    let digest = content_digest::sha256_of(&bytes);
     let mut result = [0; 16];
     result.copy_from_slice(&digest[..16]);
     result
@@ -135,27 +133,35 @@ pub(crate) fn config(
         partner_response_hours: d.partner_response_hours,
         initial_agreement_through_period: d.initial_agreement_through_period,
         contact_renewal_periods: d.contact_renewal_periods,
-        content_digest: sha256_of(&identity),
+        content_digest: content_digest::sha256_of(&identity),
         initial_observations: Vec::new(),
     };
-    initial_organizer_state(&config).map_err(|_| MichiganDefinesError::Canonical)?;
+    babylon_practice_contract::initial_organizer_state(&config)
+        .map_err(|_| MichiganDefinesError::Canonical)?;
     Ok(config)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use babylon_practice_contract::organizer_view;
+    use crate::michigan_content::MichiganContentPreset;
+    use crate::michigan_defines::MichiganDefines;
+    use crate::michigan_material::MichiganDeliveryPreset;
+    use crate::michigan_material::MichiganMaterialCatalog;
+    use std::path::Path;
+    use uuid::Uuid;
     #[test]
     fn authored_organizer_identity_captures_explicit_participant_incidence_and_costs() {
-        let d = crate::michigan_defines::MichiganDefines::parse(include_str!(
+        let d = MichiganDefines::parse(include_str!(
             "../../../../content/scenarios/michigan/defines.toml"
         ))
         .unwrap();
-        let campaign = CampaignId::from_uuid(uuid::Uuid::from_u128(26163));
+        let campaign = CampaignId::from_uuid(Uuid::from_u128(26163));
         let config = config(campaign, &d.organizer, [7; 32]).unwrap();
-        let state = initial_organizer_state(&config).unwrap();
-        let view = organizer_view(&config, &state, config.controlled_actor_id).unwrap();
+        let state = babylon_practice_contract::initial_organizer_state(&config).unwrap();
+        let view =
+            babylon_practice_contract::organizer_view(&config, &state, config.controlled_actor_id)
+                .unwrap();
         assert_eq!(
             (view.available_hours, view.inquiry_hours, view.contact_hours),
             (16, 12, 8)
@@ -186,14 +192,14 @@ mod tests {
             actor_id(COLLECTIVE).unwrap(),
             actor_id(WORKPLACE_COMMITTEE).unwrap()
         );
-        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../../content/scenarios/michigan/defines.toml");
-        let authored = crate::michigan_material::MichiganMaterialCatalog::load_for_preset(
+        let authored = MichiganMaterialCatalog::load_for_preset(
             &path,
-            crate::michigan_material::MichiganDeliveryPreset::OrganizeInWayne,
+            MichiganDeliveryPreset::OrganizeInWayne,
         )
         .unwrap();
-        let foundation = crate::michigan_content::MichiganContentPreset::OrganizeInWayne
+        let foundation = MichiganContentPreset::OrganizeInWayne
             .create_foundation_for_campaign(&authored, campaign)
             .unwrap();
         let register = foundation.initial_register();

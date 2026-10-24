@@ -1,4 +1,5 @@
 use postgres::error::SqlState;
+use postgres::Error;
 
 const CASES: &[(&str, &str)] = &[
     ("missing_manifest", "territory_manifest_missing"),
@@ -73,7 +74,7 @@ fn field(
     id: i64,
     position: i32,
     name: &str,
-) -> Result<u64, postgres::Error> {
+) -> Result<u64, Error> {
     tx.execute("INSERT INTO babylon_state.territory_definition_field_v1(campaign_id,definition_id,position,field_name,value_tag,int_value) VALUES($1,$2,$3,$4,1,1)", &[campaign.as_uuid(),&id,&position,&name])
 }
 
@@ -81,7 +82,7 @@ fn marker_result(
     tx: &mut Transaction<'_>,
     campaign: CampaignId,
     tick: i64,
-) -> Result<u64, postgres::Error> {
+) -> Result<u64, Error> {
     // Marker guard is BEFORE INSERT, unlike deferred field completeness.
     marker_components(tx, campaign, tick);
     tx.execute(
@@ -95,7 +96,7 @@ fn definition_case(
     campaign: CampaignId,
     id: i64,
     case: &str,
-) -> Result<u64, postgres::Error> {
+) -> Result<u64, Error> {
     match case {
         "same_transaction_overfill" => {
             header(tx, campaign, id, 0, 0);
@@ -124,7 +125,7 @@ fn marker_case(
     campaign: CampaignId,
     id: i64,
     case: &str,
-) -> Result<u64, postgres::Error> {
+) -> Result<u64, Error> {
     match case {
         "missing_manifest" => {}
         "missing_reference" => {
@@ -159,7 +160,7 @@ fn sealed_case(
     campaign: CampaignId,
     id: i64,
     case: &str,
-) -> Result<u64, postgres::Error> {
+) -> Result<u64, Error> {
     if case.starts_with("mutate_") {
         let sql = match case {
             "mutate_definition" => "UPDATE babylon_state.territory_definition_v1 SET field_count=field_count WHERE campaign_id=$1",
@@ -196,7 +197,7 @@ fn fault_result(
     campaign: CampaignId,
     id: i64,
     case: &str,
-) -> Result<u64, postgres::Error> {
+) -> Result<u64, Error> {
     if matches!(
         case,
         "missing_field" | "field_position_gap" | "field_name_order" | "sealed_fields" | "same_transaction_overfill"

@@ -1,17 +1,13 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
-use crate::{
-    committed_tick_envelope::{
-        compose_row_families, validate_committed_tick_envelope_bounds, CommittedTickRowBatch,
-        CommittedTickRowFamilies,
-    },
-    identity::CampaignId,
-    runtime::RustPersistenceRuntimeError,
-};
+use crate::committed_tick_envelope::{CommittedTickRowBatch, CommittedTickRowFamilies};
+use crate::identity::CampaignId;
+use crate::runtime::RustPersistenceRuntimeError;
 
-use babylon_kernel::content_digest::sha256_of;
-
+use crate::committed_tick_envelope;
+use babylon_kernel::content_digest;
 use babylon_tick::material_replay::IdentifiedMaterialTick;
+use sha2::Sha256;
 
 pub(crate) const DOMAIN: &[u8] = b"babylon.committed-material-tick.v3\0";
 
@@ -70,7 +66,7 @@ impl CommittedMaterialTickEnvelope {
             register,
             receipts,
         )?;
-        let digest = sha256_of(&bytes);
+        let digest = content_digest::sha256_of(&bytes);
         Ok(Self { bytes, digest })
     }
 
@@ -133,12 +129,12 @@ pub(crate) fn prepare_components(
     receipts: &[u8],
 ) -> Result<([CommittedTickRowBatch; 6], usize), RustPersistenceRuntimeError> {
     material_component_lengths(register.len(), receipts.len())?;
-    if sha256_of(receipts) != identity.receipt_digest() {
+    if content_digest::sha256_of(receipts) != identity.receipt_digest() {
         return Err(RustPersistenceRuntimeError::CampaignConflict);
     }
-    let components =
-        compose_row_families(families).map_err(RustPersistenceRuntimeError::SemanticEnvelope)?;
-    let body_bytes = validate_committed_tick_envelope_bounds(
+    let components = committed_tick_envelope::compose_row_families(families)
+        .map_err(RustPersistenceRuntimeError::SemanticEnvelope)?;
+    let body_bytes = committed_tick_envelope::validate_committed_tick_envelope_bounds(
         components.each_ref().map(|batch| batch.rows().len()),
         components.each_ref().map(CommittedTickRowBatch::body_bytes),
     )
@@ -274,7 +270,7 @@ impl<S: ByteSink> BoundedSink<S> {
 pub(crate) const HASH_BUFFER_BYTES: usize = 65_536;
 
 pub(crate) struct BufferedDigest {
-    hash: sha2::Sha256,
+    hash: Sha256,
     pub(super) buffer: Vec<u8>,
 }
 
@@ -289,7 +285,7 @@ impl BufferedDigest {
             }
         })?;
         Ok(Self {
-            hash: sha2::Sha256::new(),
+            hash: Sha256::new(),
             buffer,
         })
     }
@@ -351,7 +347,10 @@ mod tests {
             bodies[index] = crate::committed_tick_envelope::ALL_COMMITTED_TICK_ROW_FAMILIES[index]
                 .maximum_body_bytes()
                 + 1;
-            assert!(validate_committed_tick_envelope_bounds(counts, bodies).is_err());
+            assert!(
+                committed_tick_envelope::validate_committed_tick_envelope_bounds(counts, bodies)
+                    .is_err()
+            );
         }
     }
 }

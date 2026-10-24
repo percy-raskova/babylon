@@ -45,8 +45,10 @@
 //! accepts a corrupted atlas commits the silent-corruption sin
 //! Constitution III.11 forbids.
 
-use babylon_kernel::content_digest::sha256_of;
+use babylon_kernel::content_digest;
 use bevy::math::{Rect, Vec2};
+use core::fmt::Formatter;
+use core::fmt::Result as FmtResult;
 
 const MAGIC: [u8; 8] = *b"BABCTY\0\x01";
 const FORMAT_VERSION: u32 = 1;
@@ -58,6 +60,7 @@ const CSR_ENTRY_BYTES: usize = 4;
 
 #[cfg(test)]
 pub(crate) mod land_probes {
+    use serde_json::Value;
     /// Source-verified points shared by the CPU picker and rendered-mesh tests.
     pub(crate) struct Probe {
         pub label: String,
@@ -66,7 +69,7 @@ pub(crate) mod land_probes {
     }
 
     pub(crate) fn load() -> Vec<Probe> {
-        let fixture: serde_json::Value = serde_json::from_str(include_str!(
+        let fixture: Value = serde_json::from_str(include_str!(
             "../tests/fixtures/michigan_atlas_land_probes.json"
         ))
         .expect("source-verified land probes");
@@ -129,7 +132,7 @@ pub enum AtlasError {
 }
 
 impl core::fmt::Display for AtlasError {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         let msg = match self {
             AtlasError::Truncated => "atlas buffer is shorter than its own header claims",
             AtlasError::BadMagic => "atlas magic bytes do not match BABCTY",
@@ -278,7 +281,7 @@ impl CountyAtlas {
         }
         let content_hash = slice(bytes, 16, 32)?;
         let tail_and_body = slice(bytes, 48, bytes.len() - 48)?;
-        let computed = sha256_of(tail_and_body);
+        let computed = content_digest::sha256_of(tail_and_body);
         if computed.as_slice() != content_hash {
             return Err(AtlasError::HashMismatch);
         }
@@ -579,7 +582,7 @@ mod tests {
     /// strategy `tests/unit/data/test_county_atlas_artifact.py` uses on the
     /// Python side.
     fn recompute_hash(bytes: &mut [u8]) {
-        let digest = sha256_of(&bytes[48..]);
+        let digest = content_digest::sha256_of(&bytes[48..]);
         bytes[16..48].copy_from_slice(&digest);
     }
 

@@ -1,5 +1,7 @@
-use super::*;
+use super::publish;
+use crate::archive_revision::publication::publish::ArchivePagePlan;
 use crate::{ArchiveCitation, ArchiveKnowledgeGrant, CountyPagePlan};
+use crate::{ArchiveKnowledge, PendingArchiveReceipt, SemanticArchiveError};
 use std::cell::RefCell;
 
 fn plan(geoid: &str) -> CountyPagePlan {
@@ -38,7 +40,7 @@ fn hidden_plans_are_not_composed_and_known_plans_keep_source_order() {
     let known = knowledge(&[plans[0].clone(), plans[2].clone()]);
     let receipt = PendingArchiveReceipt::try_new(7, [7; 32]).unwrap();
     let calls = RefCell::new(Vec::new());
-    let inputs = known_page_inputs(&receipt, &known, &plans, &|plan, tick, hash| {
+    let inputs = publish::known_page_inputs(&receipt, &known, &plans, &|plan, tick, hash| {
         calls.borrow_mut().push(plan.county_geoid().to_owned());
         crate::county_page_input(plan, tick, hash)
     })
@@ -58,11 +60,13 @@ fn no_subject_grants_require_no_page_construction() {
     let plans = [plan("26163")];
     let known = ArchiveKnowledge::try_new(Vec::new()).unwrap();
     let receipt = PendingArchiveReceipt::try_new(7, [7; 32]).unwrap();
-    assert!(known_page_inputs(&receipt, &known, &plans, &|_, _, _| {
-        panic!("a hidden page must not be constructed")
-    })
-    .unwrap()
-    .is_empty());
+    assert!(
+        publish::known_page_inputs(&receipt, &known, &plans, &|_, _, _| {
+            panic!("a hidden page must not be constructed")
+        })
+        .unwrap()
+        .is_empty()
+    );
 }
 
 #[test]
@@ -71,7 +75,7 @@ fn eligible_page_errors_are_not_suppressed() {
     let known = knowledge(&plans);
     let receipt = PendingArchiveReceipt::try_new(7, [7; 32]).unwrap();
     assert!(matches!(
-        known_page_inputs(&receipt, &known, &plans, &|_, _, _| {
+        publish::known_page_inputs(&receipt, &known, &plans, &|_, _, _| {
             Err(SemanticArchiveError::InvalidText)
         }),
         Err(SemanticArchiveError::InvalidText)
@@ -85,7 +89,7 @@ fn eligible_plan_cannot_emit_another_known_or_hidden_subject() {
     let receipt = PendingArchiveReceipt::try_new(7, [7; 32]).unwrap();
     for other in ["26161", "26099"] {
         assert!(matches!(
-            known_page_inputs(&receipt, &known, &plans, &|_, tick, hash| {
+            publish::known_page_inputs(&receipt, &known, &plans, &|_, tick, hash| {
                 crate::county_page_input(&plan(other), tick, hash)
             }),
             Err(SemanticArchiveError::StoredPageMismatch)

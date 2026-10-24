@@ -1,7 +1,7 @@
 //! Immutable typed receipts bound only after complete storage admission.
-use super::{lookup_identity, Error, Result, TypedLookup};
+use super::{Error, Result, TypedLookup};
 use crate::receipt_storage;
-use babylon_kernel::content_digest::sha256_of;
+use babylon_kernel::content_digest;
 use babylon_tick::material_world::{MaterialTickReceipts, MaterialWorldRegister};
 use std::sync::Arc;
 
@@ -22,8 +22,8 @@ impl AdmittedReceiptWitness {
     ) -> Result<Self> {
         Ok(Self {
             receipts,
-            storage_digest: sha256_of(package),
-            lookup_identity: lookup_identity(lookup)?,
+            storage_digest: content_digest::sha256_of(package),
+            lookup_identity: super::lookup_identity(lookup)?,
             lookup_chain,
         })
     }
@@ -38,10 +38,10 @@ impl AdmittedReceiptWitness {
         if self.receipts.resolve_tick != tick {
             return Err(Error::Tick);
         }
-        if self.lookup_chain != chain || self.lookup_identity != lookup_identity(lookup)? {
+        if self.lookup_chain != chain || self.lookup_identity != super::lookup_identity(lookup)? {
             return Err(Error::LookupChain);
         }
-        if self.storage_digest != sha256_of(package) {
+        if self.storage_digest != content_digest::sha256_of(package) {
             return Err(Error::ReceiptWitness);
         }
         // Every frame, bound, compressed family and canonical digest is checked

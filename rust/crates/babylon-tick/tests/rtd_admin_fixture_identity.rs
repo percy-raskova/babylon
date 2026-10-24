@@ -1,4 +1,4 @@
-use babylon_tick::{hex, run_once};
+use babylon_tick::hex;
 use serde::Deserialize;
 
 const SCENARIO: &str =
@@ -23,7 +23,7 @@ struct WorldIdentity {
 #[test]
 fn administrative_fixture_recomputes_real_tick_identity() {
     let identity: WorldIdentity = serde_json::from_str(IDENTITY_JSON).expect("closed identity");
-    let report = run_once(SCENARIO, RULE).expect("administrative control tick");
+    let report = babylon_tick::run_once(SCENARIO, RULE).expect("administrative control tick");
     assert_eq!(identity.verified_tick, 1);
     assert_eq!(report.fired, 0);
     assert_eq!(hex(&report.after), identity.graph_state_hash);
@@ -46,7 +46,8 @@ fn administrative_fixture_recomputes_real_tick_identity() {
 fn scenario_state_mutation_moves_raw_and_tick_identities() {
     let identity: WorldIdentity = serde_json::from_str(IDENTITY_JSON).expect("closed identity");
     let mutated = SCENARIO.replacen("26099", "26098", 1);
-    let report = run_once(&mutated, RULE).expect("mutated administrative control tick");
+    let report =
+        babylon_tick::run_once(&mutated, RULE).expect("mutated administrative control tick");
     assert_ne!(
         hex(&babylon_kernel::content_digest::sha256_of(
             mutated.as_bytes()
@@ -61,7 +62,7 @@ fn scenario_state_mutation_moves_raw_and_tick_identities() {
 fn raw_rule_mutation_invalidates_rule_digest_without_overclaiming_world_binding() {
     let identity: WorldIdentity = serde_json::from_str(IDENTITY_JSON).expect("closed identity");
     let mutated = RULE.replacen("99999", "99998", 1);
-    let report = run_once(SCENARIO, &mutated).expect("still-false mutated rule");
+    let report = babylon_tick::run_once(SCENARIO, &mutated).expect("still-false mutated rule");
     assert_eq!(report.fired, 0);
     assert_ne!(
         hex(&babylon_kernel::content_digest::sha256_of(

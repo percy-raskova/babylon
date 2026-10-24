@@ -1,4 +1,9 @@
-use super::*;
+use super::refine;
+use super::refine::{HouseholdLeafMargins, HouseholdRefinementError, HouseholdRefinementSpec};
+use crate::national_economy::household_principal;
+use crate::national_household_allocation::HouseholdBudgetKey;
+use babylon_kernel::economic_location::EconomicLocation;
+use babylon_kernel::geography::CountyGeoid;
 fn county() -> CountyGeoid {
     CountyGeoid::try_from("26163").unwrap()
 }
@@ -36,9 +41,11 @@ fn exact_eight_margins_and_identity_survive_reordered_children_and_count_changes
     let first = child(1);
     let second = child(2);
     let forward =
-        refine_parent(county(), first.parent_key, margins(), vec![&first, &second]).unwrap();
+        refine::refine_parent(county(), first.parent_key, margins(), vec![&first, &second])
+            .unwrap();
     let backward =
-        refine_parent(county(), first.parent_key, margins(), vec![&second, &first]).unwrap();
+        refine::refine_parent(county(), first.parent_key, margins(), vec![&second, &first])
+            .unwrap();
     assert_eq!(forward, backward);
     for index in 0..8 {
         assert_eq!(
@@ -52,7 +59,7 @@ fn exact_eight_margins_and_identity_survive_reordered_children_and_count_changes
     let mut changed = first.clone();
     changed.margins.persons += 1;
     changed.margins.under_16 += 1;
-    let altered = refine_parent(
+    let altered = refine::refine_parent(
         county(),
         first.parent_key,
         margins(),
@@ -96,12 +103,12 @@ fn inconsistent_child_excess_and_empty_ordinary_residual_are_refused() {
     excessive.margins.persons += 1;
     excessive.margins.under_16 += 1;
     assert_eq!(
-        refine_parent(county(), excessive.parent_key, margins(), vec![&excessive]),
+        refine::refine_parent(county(), excessive.parent_key, margins(), vec![&excessive]),
         Err(HouseholdRefinementError::Excess)
     );
     excessive.margins = margins();
     assert_eq!(
-        refine_parent(county(), excessive.parent_key, margins(), vec![&excessive]),
+        refine::refine_parent(county(), excessive.parent_key, margins(), vec![&excessive]),
         Err(HouseholdRefinementError::Margin)
     );
 }
@@ -109,7 +116,7 @@ fn inconsistent_child_excess_and_empty_ordinary_residual_are_refused() {
 fn collective_residence_keeps_positive_people_without_fabricating_households() {
     let mut collective = margins();
     collective.households = 0;
-    let rows = refine_parent(
+    let rows = refine::refine_parent(
         county(),
         HouseholdBudgetKey::CollectiveResidence,
         collective,

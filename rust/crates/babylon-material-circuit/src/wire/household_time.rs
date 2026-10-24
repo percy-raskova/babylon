@@ -1,15 +1,16 @@
 //! Exact captured time policy, last-close partitions and idempotent debit ledger.
 
-use super::accounting::ordered_rows;
-use super::{append_rows, decode_rows, Cursor};
+use super::accounting;
+use super::Cursor;
 use crate::{
     FinalDemandPrincipalId, GoodId, HouseholdContributionReceipt, HouseholdContributionUse,
     HouseholdNeedBasis, HouseholdTimeAccounting, HouseholdTimeBook, HouseholdTimeCommitment,
     HouseholdTimePolicy, HouseholdTimeReceipt, HouseholdUnmetTimeBurden, MaterialCircuitError,
     UnitId, MAX_MATERIAL_CIRCUIT_ROWS,
 };
+use std::result::Result as StdResult;
 
-type Result<T> = std::result::Result<T, MaterialCircuitError>;
+type Result<T> = StdResult<T, MaterialCircuitError>;
 
 fn append_commitment(out: &mut Vec<u8>, row: &HouseholdTimeCommitment) {
     out.push(row.basis as u8);
@@ -50,14 +51,14 @@ pub(super) fn append(out: &mut Vec<u8>, accounting: &HouseholdTimeAccounting) ->
         out.extend_from_slice(&row.hours_per_eligible_person.to_be_bytes());
         append_commitment(out, &row.protected);
         append_commitment(out, &row.routine_provisioning);
-        append_rows(out, &row.unmet_burdens, |bytes, r| {
+        super::append_rows(out, &row.unmet_burdens, |bytes, r| {
             bytes.extend_from_slice(&r.good_id.as_bytes());
             bytes.extend_from_slice(&r.unit_id.as_bytes());
             bytes.extend_from_slice(&r.hours_per_unmet_unit.to_be_bytes());
         })?;
     }
-    append_rows(out, &book.receipts, append_receipt)?;
-    append_rows(out, &book.contributions, |bytes, row| {
+    super::append_rows(out, &book.receipts, append_receipt)?;
+    super::append_rows(out, &book.contributions, |bytes, row| {
         bytes.extend_from_slice(&row.period.to_be_bytes());
         bytes.extend_from_slice(&row.contribution.use_id);
         bytes.extend_from_slice(&row.contribution.principal_id.as_bytes());
@@ -108,21 +109,21 @@ pub(super) fn decode(cursor: &mut Cursor<'_>) -> Result<HouseholdTimeAccounting>
         1 => {}
         _ => return Err(MaterialCircuitError::WireEnum),
     }
-    let policies = decode_rows(cursor, |c| {
+    let policies = super::decode_rows(cursor, |c| {
         let principal_id = FinalDemandPrincipalId::from_bytes(c.array()?);
         let labor_unit_id = UnitId::from_bytes(c.array()?);
         let eligible_persons = c.u64()?;
         let hours_per_eligible_person = c.u64()?;
         let protected = decode_commitment(c)?;
         let routine_provisioning = decode_commitment(c)?;
-        let unmet_burdens = decode_rows(c, |b| {
+        let unmet_burdens = super::decode_rows(c, |b| {
             Ok(HouseholdUnmetTimeBurden {
                 good_id: GoodId::from_bytes(b.array()?),
                 unit_id: UnitId::from_bytes(b.array()?),
                 hours_per_unmet_unit: b.u64()?,
             })
         })?;
-        ordered_rows(&unmet_burdens, |r| (r.good_id, r.unit_id))?;
+        accounting::ordered_rows(&unmet_burdens, |r| (r.good_id, r.unit_id))?;
         Ok(HouseholdTimePolicy {
             principal_id,
             labor_unit_id,
@@ -133,8 +134,8 @@ pub(super) fn decode(cursor: &mut Cursor<'_>) -> Result<HouseholdTimeAccounting>
             unmet_burdens,
         })
     })?;
-    let receipts = decode_rows(cursor, decode_receipt)?;
-    let contributions = decode_rows(cursor, |c| {
+    let receipts = super::decode_rows(cursor, decode_receipt)?;
+    let contributions = super::decode_rows(cursor, |c| {
         Ok(HouseholdContributionReceipt {
             period: c.u64()?,
             contribution: HouseholdContributionUse {
@@ -146,9 +147,9 @@ pub(super) fn decode(cursor: &mut Cursor<'_>) -> Result<HouseholdTimeAccounting>
             },
         })
     })?;
-    ordered_rows(&policies, |r| r.principal_id)?;
-    ordered_rows(&receipts, |r| r.principal_id)?;
-    ordered_rows(&contributions, |r| r.contribution.use_id)?;
+    accounting::ordered_rows(&policies, |r| r.principal_id)?;
+    accounting::ordered_rows(&receipts, |r| r.principal_id)?;
+    accounting::ordered_rows(&contributions, |r| r.contribution.use_id)?;
     let book = HouseholdTimeBook {
         policies,
         receipts,

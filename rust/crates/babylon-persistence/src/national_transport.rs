@@ -19,8 +19,6 @@ pub use model::*;
 #[path = "national_transport/artifact.rs"]
 mod artifact;
 
-#[cfg(test)]
-use artifact::{decode_gzip, ARTIFACT};
 pub use artifact::{
     national_transport_reference, NationalTransportError, NationalTransportReference,
 };

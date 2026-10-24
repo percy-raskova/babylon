@@ -1,6 +1,7 @@
 //! Human-readable initialization evidence projected from captured authority.
 use super::{ExperimentError, ExperimentProfile, Result, SimulationExperimentV1};
 use crate::michigan_material::{MichiganMaterialCatalog, MichiganMaterialPath};
+use crate::CampaignFoundation;
 use serde::Serialize;
 
 #[derive(Debug, Serialize)]
@@ -183,7 +184,7 @@ fn regional(
 }
 pub(super) fn capture(
     spec: &SimulationExperimentV1,
-    graph: &crate::CampaignFoundation,
+    graph: &CampaignFoundation,
 ) -> Result<ResolvedInputs> {
     if spec.profile == ExperimentProfile::HistoricalFreight {
         return Ok(ResolvedInputs::Freight(Box::new(

@@ -3,12 +3,11 @@ use super::{
     CatalogGeography, EconomicCatalogError, EconomicCatalogInput, SourceArtifact,
     SourceArtifactKind,
 };
-use babylon_kernel::{
-    clock::{CampaignDuration, DAYS_PER_TICK},
-    content_digest::sha256_of,
-};
+use babylon_kernel::clock::{CampaignDuration, DAYS_PER_TICK};
+use babylon_kernel::content_digest;
+use std::result::Result as StdResult;
 
-type Result<T> = std::result::Result<T, EconomicCatalogError>;
+type Result<T> = StdResult<T, EconomicCatalogError>;
 pub(super) const DOMAIN: &[u8] = b"babylon.economic-catalog.v1\0";
 pub(super) const MAX_CATALOG_BYTES: usize = 64 * 1024 * 1024;
 const MAX_SOURCE_BYTES: usize = 32 * 1024 * 1024;
@@ -173,7 +172,7 @@ pub(super) fn decode(bytes: &[u8]) -> Result<(EconomicCatalogInput, String)> {
             return Err(EconomicCatalogError::Bound);
         }
         let bytes = c.take(size)?;
-        if sha256_of(bytes) != digest {
+        if content_digest::sha256_of(bytes) != digest {
             return Err(EconomicCatalogError::Digest);
         }
         sources.push(SourceArtifact::capture(kind, bytes.to_vec()));
@@ -249,6 +248,9 @@ impl<'a> Cursor<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::identity::CampaignId;
+    use crate::michigan_defines::MichiganDefines;
+    use uuid::Uuid;
 
     // Independent wire fixture: three one-byte identities, continuous clock,
     // national geography, and one GraphDeclarations source containing "abc".
@@ -350,12 +352,12 @@ mod tests {
             )],
             organizer: None,
         };
-        let d = crate::michigan_defines::MichiganDefines::parse(include_str!(concat!(
+        let d = MichiganDefines::parse(include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../../../content/scenarios/michigan/defines.toml"
         )))
         .unwrap();
-        let campaign = crate::identity::CampaignId::from_uuid(uuid::Uuid::from_u128(26163));
+        let campaign = CampaignId::from_uuid(Uuid::from_u128(26163));
         let config = crate::organizer_content::config(campaign, &d.organizer, [7; 32]).unwrap();
         input.organizer = Some(config.clone());
         let bytes = encode(&input, "michigan-control-v1").unwrap();

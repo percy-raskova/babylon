@@ -1,14 +1,27 @@
-use super::*;
-use crate::national_counties::{national_county_reference, ObservationStatus};
+use super::artifact;
+use super::artifact::{
+    HouseholdReferenceError, NationalHouseholdReference, ARTIFACT, MAX_COMPRESSED_BYTES,
+    MAX_DECODED_BYTES,
+};
+use crate::national_counties;
+use crate::national_counties::ObservationStatus;
+use crate::national_households::parse;
+use crate::national_households::CountyHouseholdMargins;
+use crate::national_households::HistoricalEarnings;
+use crate::national_households::HouseholdType;
+use crate::national_households::IncomeBand;
 use babylon_kernel::geography::CountyGeoid;
 
 type Error = HouseholdReferenceError;
 
 fn source() -> String {
-    decode(ARTIFACT).unwrap()
+    artifact::decode(ARTIFACT).unwrap()
 }
 fn parse(text: &str) -> Result<NationalHouseholdReference, Error> {
-    parse::capture(text, national_county_reference().unwrap())
+    parse::capture(
+        text,
+        national_counties::national_county_reference().unwrap(),
+    )
 }
 fn edit_first(text: &str, edit: impl FnOnce(&mut Vec<String>)) -> String {
     let mut lines: Vec<_> = text.lines().map(str::to_owned).collect();
@@ -30,7 +43,7 @@ fn increment(fields: &mut [String], offset: usize, extra: u64) {
 
 #[test]
 fn national_households_preserve_four_separate_margins_and_population_residual() {
-    let reference = national_household_reference().unwrap();
+    let reference = artifact::national_household_reference().unwrap();
     assert_eq!(reference.counties().len(), 3144);
     let mut totals = [0; 4];
     for row in reference.counties() {
@@ -61,15 +74,17 @@ fn national_households_preserve_four_separate_margins_and_population_residual() 
         totals[3] += row.population_persons().estimate.value().unwrap();
     }
     assert_eq!(totals, [129_227_496, 326_722_431, 8_200_068, 334_922_499]);
-    let reopened =
-        NationalHouseholdReference::decode_captured(ARTIFACT, national_county_reference().unwrap())
-            .unwrap();
+    let reopened = NationalHouseholdReference::decode_captured(
+        ARTIFACT,
+        national_counties::national_county_reference().unwrap(),
+    )
+    .unwrap();
     assert_eq!(&reopened, reference);
 }
 
 #[test]
 fn separate_margins_do_not_impose_a_fabricated_integer_family_joint() {
-    let row = national_household_reference()
+    let row = artifact::national_household_reference()
         .unwrap()
         .county(CountyGeoid::try_from("15005").unwrap())
         .unwrap();
@@ -117,7 +132,7 @@ fn separate_margins_do_not_impose_a_fabricated_integer_family_joint() {
 
 #[test]
 fn controlled_margin_retains_literal_without_claiming_zero_uncertainty() {
-    let reference = national_household_reference().unwrap();
+    let reference = artifact::national_household_reference().unwrap();
     let controlled: Vec<_> = reference
         .counties()
         .iter()
@@ -143,12 +158,12 @@ fn source_digest_and_compression_are_exact_and_bounded() {
         Err(Error::Bound)
     );
     assert_eq!(
-        decode(&ARTIFACT[..ARTIFACT.len() - 8]),
+        artifact::decode(&ARTIFACT[..ARTIFACT.len() - 8]),
         Err(Error::Compression)
     );
     let mut trailing = ARTIFACT.to_vec();
     trailing.push(0);
-    assert_eq!(decode(&trailing), Err(Error::Compression));
+    assert_eq!(artifact::decode(&trailing), Err(Error::Compression));
     assert_eq!(parse(&"x".repeat(MAX_DECODED_BYTES + 1)), Err(Error::Bound));
 }
 
@@ -303,7 +318,7 @@ fn an_unavailable_parent_cannot_hide_overflowing_available_children() {
 
 #[test]
 fn historical_earnings_are_a_separate_household_margin_not_current_workers() {
-    let reference = national_household_reference().unwrap();
+    let reference = artifact::national_household_reference().unwrap();
     let mut with_earnings = 0;
     let mut no_earnings = 0;
     for row in reference.counties() {

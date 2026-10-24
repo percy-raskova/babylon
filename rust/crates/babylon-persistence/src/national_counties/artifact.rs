@@ -1,13 +1,17 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
-use babylon_kernel::{
-    content_digest::sha256_of,
-    geography::{CountyGeoid, CountyGeoidError, NationalCountyRoster, NATIONAL_COUNTY_COUNT},
+use babylon_kernel::geography::{
+    CountyGeoid, CountyGeoidError, NationalCountyRoster, NATIONAL_COUNTY_COUNT,
 };
 
-use std::{io::Read, sync::OnceLock};
+use std::io::Read;
+use std::sync::OnceLock;
 
-use super::parse::parse_csv;
+use super::parse;
+use babylon_kernel::content_digest;
+use flate2::bufread::GzDecoder;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 
 pub(crate) const ARTIFACT: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -228,10 +232,10 @@ impl NationalCountyReference {
         if bytes.len() > MAX_COMPRESSED_BYTES {
             return Err(NationalCountyReferenceError::Bound);
         }
-        if sha256_of(bytes) != ARTIFACT_SHA256 {
+        if content_digest::sha256_of(bytes) != ARTIFACT_SHA256 {
             return Err(NationalCountyReferenceError::ArtifactDigest);
         }
-        parse_csv(&decode_gzip(bytes)?)
+        parse::parse_csv(&decode_gzip(bytes)?)
     }
     /// Exact checked domestic membership, shareable without copying observations.
     #[must_use]
@@ -299,7 +303,7 @@ pub enum NationalCountyReferenceError {
 }
 
 impl std::fmt::Display for NationalCountyReferenceError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         write!(f, "national county reference refused: {self:?}")
     }
 }
@@ -321,7 +325,7 @@ pub fn national_county_reference(
 // Same bounded single-member gzip pattern used by michigan_sectors; it accepts
 // neither appended gzip members nor unconsumed bytes after the stream.
 pub(crate) fn decode_gzip(bytes: &[u8]) -> Result<String, NationalCountyReferenceError> {
-    let mut decoder = flate2::bufread::GzDecoder::new(bytes);
+    let mut decoder = GzDecoder::new(bytes);
     let mut text = String::new();
     decoder
         .by_ref()

@@ -1,9 +1,21 @@
 use babylon_material_circuit::{LogisticsNodeId, RouteStage, RouteStageCapacity};
-use babylon_tick::material_world::{decode_material_receipts, MaterialWorldRegister};
+use babylon_tick::material_world::MaterialWorldRegister;
 
-use super::*;
+use super::super::ProductionProjectionError;
+use super::projection;
 use crate::michigan_content::MichiganContentPreset;
+use crate::michigan_economy;
 use crate::michigan_material::MichiganDeliveryPreset;
+use crate::production_observation::{
+    ProductionFreightOrderDefinition, ProductionFreightReservation,
+};
+use babylon_material_circuit::MaterialCircuitState;
+use babylon_material_circuit::RollingProcessSupply;
+use babylon_tick::material_world;
+use babylon_tick::material_world::MaterialTickReceipts;
+use serde_json::Value;
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 
 fn shared_opening(meal_order: u64, capacity: u64) -> MaterialCircuitState {
     let catalog = crate::test_support::catalog();
@@ -73,7 +85,7 @@ fn committed_pair(
     (
         opening.state().clone(),
         next.register().state().clone(),
-        decode_material_receipts(next.receipt_bytes()).unwrap(),
+        material_world::decode_material_receipts(next.receipt_bytes()).unwrap(),
     )
 }
 
@@ -88,7 +100,12 @@ fn assert_shared_reservation(
     let dispatches: BTreeMap<_, _> = receipt
         .dispatches
         .iter()
-        .map(|row| (digest_hex(&row.order_id.as_bytes()), row.quantity))
+        .map(|row| {
+            (
+                michigan_economy::digest_hex(&row.order_id.as_bytes()),
+                row.quantity,
+            )
+        })
         .collect();
     let projected_orders: Vec<_> = reservation
         .orders
@@ -108,7 +125,7 @@ fn assert_shared_reservation(
             .iter()
             .find(|row| row.good_key == good)
             .unwrap();
-        let order_id = digest_hex(&route.order_id().as_bytes());
+        let order_id = michigan_economy::digest_hex(&route.order_id().as_bytes());
         let order = projected_orders
             .iter()
             .find(|row| row.order_id == order_id)
@@ -153,7 +170,7 @@ fn shared_capacity_is_counted_once_with_exact_competing_dispatches_and_residual(
         (80, 160, (141, 19, 0)),
     ] {
         let (opening, next, receipt) = committed_pair(shared_opening(meal_order, capacity));
-        let (accounts, definitions) = project_freight_capacity_accounts(
+        let (accounts, definitions) = projection::project_freight_capacity_accounts(
             &crate::test_support::catalog(),
             &next,
             Some(&opening),
@@ -177,7 +194,7 @@ fn shared_capacity_is_counted_once_with_exact_competing_dispatches_and_residual(
         assert!(reservation.reservation_period < next.period);
         assert!(
             !next.corridor_capacities.iter().any(|row| {
-                digest_hex(&row.corridor_id.as_bytes()) == account.corridor_id
+                michigan_economy::digest_hex(&row.corridor_id.as_bytes()) == account.corridor_id
                     && row.period == reservation.reservation_period
             }),
             "expired capacity is historical evidence, not next-period supply"
@@ -191,7 +208,7 @@ fn shared_capacity_is_counted_once_with_exact_competing_dispatches_and_residual(
         permuted_receipt.dispatches.reverse();
         assert_eq!(
             (accounts, definitions),
-            project_freight_capacity_accounts(
+            projection::project_freight_capacity_accounts(
                 &crate::test_support::catalog(),
                 &next,
                 Some(&permuted_opening),
@@ -205,9 +222,13 @@ fn shared_capacity_is_counted_once_with_exact_competing_dispatches_and_residual(
 #[test]
 fn foundation_sharing_is_known_but_completed_zero_is_not_invented() {
     let state = shared_opening(200, 160);
-    let (accounts, _definitions) =
-        project_freight_capacity_accounts(&crate::test_support::catalog(), &state, None, None)
-            .unwrap();
+    let (accounts, _definitions) = projection::project_freight_capacity_accounts(
+        &crate::test_support::catalog(),
+        &state,
+        None,
+        None,
+    )
+    .unwrap();
     assert!(accounts.iter().all(|row| row.completed.is_none()));
     assert_eq!(
         accounts
@@ -218,7 +239,7 @@ fn foundation_sharing_is_known_but_completed_zero_is_not_invented() {
         160_000
     );
     let (opening, next, receipt) = committed_pair(shared_opening(200, 0));
-    let (accounts, definitions) = project_freight_capacity_accounts(
+    let (accounts, definitions) = projection::project_freight_capacity_accounts(
         &crate::test_support::catalog(),
         &next,
         Some(&opening),
@@ -252,13 +273,23 @@ fn missing_duplicate_and_excess_receipts_or_capacity_refuse() {
     let mut missing = receipt.clone();
     missing.dispatches.pop();
     assert_eq!(
-        project_freight_capacity_accounts(&catalog, &next, Some(&opening), Some(&missing)),
+        projection::project_freight_capacity_accounts(
+            &catalog,
+            &next,
+            Some(&opening),
+            Some(&missing)
+        ),
         Err(ProductionProjectionError::State)
     );
     let mut duplicate = receipt.clone();
     duplicate.dispatches.push(receipt.dispatches[0].clone());
     assert_eq!(
-        project_freight_capacity_accounts(&catalog, &next, Some(&opening), Some(&duplicate)),
+        projection::project_freight_capacity_accounts(
+            &catalog,
+            &next,
+            Some(&opening),
+            Some(&duplicate)
+        ),
         Err(ProductionProjectionError::State)
     );
     let mut duplicated_capacity = opening.clone();
@@ -266,7 +297,7 @@ fn missing_duplicate_and_excess_receipts_or_capacity_refuse() {
         .corridor_capacities
         .push(opening.corridor_capacities[0].clone());
     assert_eq!(
-        project_freight_capacity_accounts(
+        projection::project_freight_capacity_accounts(
             &catalog,
             &next,
             Some(&duplicated_capacity),
@@ -277,7 +308,12 @@ fn missing_duplicate_and_excess_receipts_or_capacity_refuse() {
     let mut wrong_next = next.clone();
     wrong_next.corridor_capacities[0].available_grams += 1;
     assert_eq!(
-        project_freight_capacity_accounts(&catalog, &wrong_next, Some(&opening), Some(&receipt)),
+        projection::project_freight_capacity_accounts(
+            &catalog,
+            &wrong_next,
+            Some(&opening),
+            Some(&receipt)
+        ),
         Err(ProductionProjectionError::State)
     );
 }
@@ -320,8 +356,13 @@ fn reservations_for_later_legs_debit_the_future_period_without_claiming_arrival(
     });
     state.route_stages.push(second);
     let (opening, next, receipt) = committed_pair(state);
-    let (accounts, _definitions) =
-        project_freight_capacity_accounts(&catalog, &next, Some(&opening), Some(&receipt)).unwrap();
+    let (accounts, _definitions) = projection::project_freight_capacity_accounts(
+        &catalog,
+        &next,
+        Some(&opening),
+        Some(&receipt),
+    )
+    .unwrap();
     let shared = accounts
         .iter()
         .find(|row| row.route_ids.len() == 2)
@@ -360,12 +401,18 @@ fn reservations_for_later_legs_debit_the_future_period_without_claiming_arrival(
         .corridor_capacities
         .iter_mut()
         .find(|row| {
-            row.period == 2 && digest_hex(&row.corridor_id.as_bytes()) == shared.corridor_id
+            row.period == 2
+                && michigan_economy::digest_hex(&row.corridor_id.as_bytes()) == shared.corridor_id
         })
         .unwrap();
     capacity.available_grams += 1;
     assert_eq!(
-        project_freight_capacity_accounts(&catalog, &mismatched, Some(&opening), Some(&receipt)),
+        projection::project_freight_capacity_accounts(
+            &catalog,
+            &mismatched,
+            Some(&opening),
+            Some(&receipt)
+        ),
         Err(ProductionProjectionError::State)
     );
 }
@@ -375,7 +422,12 @@ fn rolling_capacity_reconciles_future_bookings_and_refuses_unexplained_budget_ch
     let catalog = crate::test_support::catalog();
     let (opening, next, receipt) = committed_pair(rolling_two_stage_opening());
     let project = |current: &MaterialCircuitState| {
-        project_freight_capacity_accounts(&catalog, current, Some(&opening), Some(&receipt))
+        projection::project_freight_capacity_accounts(
+            &catalog,
+            current,
+            Some(&opening),
+            Some(&receipt),
+        )
     };
     let (accounts, _definitions) = project(&next).unwrap();
     let shared = accounts
@@ -462,7 +514,7 @@ fn rolling_two_stage_opening() -> MaterialCircuitState {
     state.capacities.retain(|row| row.period == 1);
     state.corridor_capacities.retain(|row| row.period == 1);
     state.capacity_supply = CapacitySupply::Rolling(Box::new(RollingCapacitySupply {
-        processes: babylon_material_circuit::RollingProcessSupply::CapturedNameplate(
+        processes: RollingProcessSupply::CapturedNameplate(
             state
                 .capacities
                 .iter()
@@ -488,9 +540,9 @@ fn rolling_two_stage_opening() -> MaterialCircuitState {
 
 #[test]
 fn multileg_projection_encodes_each_exact_order_fact_once() {
-    fn collect(value: &serde_json::Value, facts: &mut Vec<String>) {
+    fn collect(value: &Value, facts: &mut Vec<String>) {
         match value {
-            serde_json::Value::Object(row) => {
+            Value::Object(row) => {
                 if row.contains_key("order_id") {
                     facts.push(serde_json::to_string(value).unwrap());
                 }
@@ -498,7 +550,7 @@ fn multileg_projection_encodes_each_exact_order_fact_once() {
                     collect(child, facts);
                 }
             }
-            serde_json::Value::Array(rows) => {
+            Value::Array(rows) => {
                 for child in rows {
                     collect(child, facts);
                 }
@@ -542,12 +594,17 @@ fn multileg_projection_encodes_each_exact_order_fact_once() {
     });
     state.route_stages.push(second);
     let (opening, next, receipt) = committed_pair(state);
-    let projection =
-        project_freight_capacity_accounts(&catalog, &next, Some(&opening), Some(&receipt)).unwrap();
+    let projection = projection::project_freight_capacity_accounts(
+        &catalog,
+        &next,
+        Some(&opening),
+        Some(&receipt),
+    )
+    .unwrap();
     let disclosure = serde_json::to_value(&projection).unwrap();
     let mut facts = Vec::new();
     collect(&disclosure, &mut facts);
-    let unique: std::collections::BTreeSet<_> = facts.iter().collect();
+    let unique: BTreeSet<_> = facts.iter().collect();
     assert!(
         !unique.is_empty(),
         "actual commercial order facts must remain disclosed"

@@ -1,5 +1,5 @@
 //! Independent native service wire witnesses; no Rust layout or encoder-derived fixture.
-use babylon_tick::material_world::decode_material_receipts;
+use babylon_tick::material_world;
 const DOMAIN: &[u8] = b"babylon.material-tick-receipts.v18\0";
 fn quantities(bytes: &mut Vec<u8>, values: &[u64]) {
     for value in values {
@@ -76,13 +76,14 @@ fn envelope(tag: u8, rows: &[Vec<u8>]) -> Vec<u8> {
 }
 #[test]
 fn service_receipts_keep_performance_satisfaction_market_and_output_distinct() {
-    let performance = decode_material_receipts(&envelope(20, &[row(20, 1)])).unwrap();
+    let performance =
+        material_world::decode_material_receipts(&envelope(20, &[row(20, 1)])).unwrap();
     assert_eq!(performance.service_performance[0].used_quantity, 1);
-    let household = decode_material_receipts(&envelope(21, &[row(21, 1)])).unwrap();
+    let household = material_world::decode_material_receipts(&envelope(21, &[row(21, 1)])).unwrap();
     assert_eq!(household.household_services[0].satisfied_quantity, 2);
-    let market = decode_material_receipts(&envelope(22, &[row(22, 1)])).unwrap();
+    let market = material_world::decode_material_receipts(&envelope(22, &[row(22, 1)])).unwrap();
     assert_eq!(market.service_markets[0].direct_cost.micro_units(), 10);
-    let output = decode_material_receipts(&envelope(23, &[row(23, 1)])).unwrap();
+    let output = material_world::decode_material_receipts(&envelope(23, &[row(23, 1)])).unwrap();
     assert_eq!(
         (
             output.service_outputs[0].expired_quantity,
@@ -97,7 +98,7 @@ fn service_rows_refuse_false_partitions_costs_periods_and_noncanonical_keys() {
         let mut damaged = row(tag, 1);
         damaged[offset..offset + 8].copy_from_slice(&value.to_be_bytes());
         assert!(
-            decode_material_receipts(&envelope(tag, &[damaged])).is_err(),
+            material_world::decode_material_receipts(&envelope(tag, &[damaged])).is_err(),
             "family {tag}"
         );
     }
@@ -110,31 +111,39 @@ fn service_rows_refuse_false_partitions_costs_periods_and_noncanonical_keys() {
         let mut damaged = row(tag, 1);
         damaged[offset..offset + 16].copy_from_slice(&value.to_be_bytes());
         assert!(
-            decode_material_receipts(&envelope(tag, &[damaged])).is_err(),
+            material_world::decode_material_receipts(&envelope(tag, &[damaged])).is_err(),
             "family {tag}"
         );
     }
     for tag in 20..=23 {
         let mut damaged = row(tag, 1);
         damaged[..8].copy_from_slice(&2_u64.to_be_bytes());
-        assert!(decode_material_receipts(&envelope(tag, &[damaged])).is_err());
-        assert!(decode_material_receipts(&envelope(tag, &[row(tag, 1), row(tag, 1)])).is_err());
-        assert!(decode_material_receipts(&envelope(tag, &[row(tag, 2), row(tag, 1)])).is_err());
+        assert!(material_world::decode_material_receipts(&envelope(tag, &[damaged])).is_err());
+        assert!(material_world::decode_material_receipts(&envelope(
+            tag,
+            &[row(tag, 1), row(tag, 1)]
+        ))
+        .is_err());
+        assert!(material_world::decode_material_receipts(&envelope(
+            tag,
+            &[row(tag, 2), row(tag, 1)]
+        ))
+        .is_err());
     }
 }
 #[test]
 fn service_wire_refuses_previous_schema_and_every_truncation() {
     let bytes = envelope(23, &[row(23, 1)]);
     for length in 0..bytes.len() {
-        assert!(decode_material_receipts(&bytes[..length]).is_err());
+        assert!(material_world::decode_material_receipts(&bytes[..length]).is_err());
     }
     let mut previous = bytes.clone();
     previous[DOMAIN.len()..DOMAIN.len() + 4].copy_from_slice(&17_u32.to_be_bytes());
-    assert!(decode_material_receipts(&previous).is_err());
+    assert!(material_world::decode_material_receipts(&previous).is_err());
     let mut previous = bytes.clone();
     previous[DOMAIN.len() - 2] = b'7';
-    assert!(decode_material_receipts(&previous).is_err());
+    assert!(material_world::decode_material_receipts(&previous).is_err());
     let mut trailing = bytes;
     trailing.push(0);
-    assert!(decode_material_receipts(&trailing).is_err());
+    assert!(material_world::decode_material_receipts(&trailing).is_err());
 }

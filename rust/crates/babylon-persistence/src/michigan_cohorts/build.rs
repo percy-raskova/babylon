@@ -1,23 +1,26 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
-use std::{collections::BTreeMap, fmt::Write as _, sync::OnceLock};
+use crate::michigan_economy;
+use std::collections::BTreeMap;
+use std::fmt::Write as _;
+use std::sync::OnceLock;
 
-use babylon_graph::{hypergraph_store::HypergraphStore, stable_element::StableElementKey};
+use babylon_graph::hypergraph_store::HypergraphStore;
+use babylon_graph::stable_element::StableElementKey;
 
 use babylon_tick::replay_session::ReplayTickSession;
 
-use crate::{
-    michigan_economy::{
-        append_county_observations, foundation_from_sources, michigan_economy,
-        MichiganEconomyError, QCEW_ECONOMICS_ARTIFACT_SHA256,
-    },
-    michigan_sectors::{
-        michigan_county_sectors, MichiganCountySector, MichiganCountySectors, MichiganSectorCode,
-        MichiganSectorDisposition, MichiganSectorsError, QCEW_SECTORS_ARTIFACT_SHA256,
-        QCEW_SECTORS_SEMANTIC_SHA256,
-    },
-    FoundationContentBundle,
+use crate::michigan_economy::MichiganEconomy;
+use crate::michigan_economy::{MichiganEconomyError, QCEW_ECONOMICS_ARTIFACT_SHA256};
+use crate::michigan_material::MichiganWorkforceSeed;
+use crate::michigan_sectors;
+use crate::michigan_sectors::{
+    MichiganCountySector, MichiganCountySectors, MichiganSectorCode, MichiganSectorDisposition,
+    MichiganSectorsError, QCEW_SECTORS_ARTIFACT_SHA256, QCEW_SECTORS_SEMANTIC_SHA256,
 };
+use crate::FoundationContentBundle;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 
 pub const MICHIGAN_COHORT_SCENARIO: &str = "production/michigan-observer-v2";
 
@@ -57,7 +60,7 @@ pub enum MichiganCohortsError {
 }
 
 impl std::fmt::Display for MichiganCohortsError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         write!(f, "Michigan cohort foundation refused: {self:?}")
     }
 }
@@ -163,10 +166,11 @@ pub(crate) fn build_cohorts() -> Result<MichiganCohorts, MichiganCohortsError> {
 }
 
 pub(crate) fn build_cohorts_with_workforce(
-    workforce: &[crate::michigan_material::MichiganWorkforceSeed],
+    workforce: &[MichiganWorkforceSeed],
 ) -> Result<MichiganCohorts, MichiganCohortsError> {
-    let economy = michigan_economy().map_err(MichiganCohortsError::Economy)?;
-    let sectors = michigan_county_sectors().map_err(MichiganCohortsError::Sectors)?;
+    let economy = michigan_economy::michigan_economy().map_err(MichiganCohortsError::Economy)?;
+    let sectors =
+        michigan_sectors::michigan_county_sectors().map_err(MichiganCohortsError::Sectors)?;
     build_cohorts_from_sources(
         economy,
         sectors,
@@ -176,10 +180,10 @@ pub(crate) fn build_cohorts_with_workforce(
 }
 
 pub(crate) fn build_cohorts_from_sources(
-    economy: &crate::michigan_economy::MichiganEconomy,
+    economy: &MichiganEconomy,
     sectors: &MichiganCountySectors,
     declarations: &str,
-    workforce: &[crate::michigan_material::MichiganWorkforceSeed],
+    workforce: &[MichiganWorkforceSeed],
 ) -> Result<MichiganCohorts, MichiganCohortsError> {
     if sectors.rows().len() != 1_603 {
         return Err(MichiganCohortsError::Coverage);
@@ -190,7 +194,7 @@ pub(crate) fn build_cohorts_from_sources(
         " BUSINESS SOCIAL_CLASS"
     };
     let mut source = format!("(scenario {MICHIGAN_COHORT_SCENARIO}\n  (defvocabulary NodeType (TERRITORY ORGANIZATION{workforce_type}))\n  (defvocabulary HyperedgeType (ECONOMIC_SECTOR))\n  (deffield territory/county-fips int extensive)\n");
-    append_county_observations(&mut source, economy.counties());
+    michigan_economy::append_county_observations(&mut source, economy.counties());
     source.push_str(declarations);
     for row in sectors.rows() {
         append_business(&mut source, row)?;
@@ -215,7 +219,7 @@ pub(crate) fn build_cohorts_from_sources(
 /// Material-only graph composition. The observed foundation has no workforce seeds.
 #[cfg(test)]
 pub(crate) fn michigan_staffed_scenario(
-    workforce: &[crate::michigan_material::MichiganWorkforceSeed],
+    workforce: &[MichiganWorkforceSeed],
 ) -> Result<String, MichiganCohortsError> {
     Ok(build_cohorts_with_workforce(workforce)?.scenario_source)
 }
@@ -237,7 +241,7 @@ pub fn michigan_cohorts() -> Result<&'static MichiganCohorts, MichiganCohortsErr
 pub fn michigan_cohort_foundation(
 ) -> Result<(ReplayTickSession<HypergraphStore>, FoundationContentBundle), MichiganCohortsError> {
     let cohorts = michigan_cohorts()?;
-    foundation_from_sources(
+    michigan_economy::foundation_from_sources(
         cohorts.scenario_source(),
         "",
         MICHIGAN_COHORT_SESSION,
@@ -247,10 +251,7 @@ pub fn michigan_cohort_foundation(
 }
 
 /// The workplace owns request memory; its resident member alone owns E/R stocks.
-pub(crate) fn append_workforce_seed(
-    source: &mut String,
-    seed: &crate::michigan_material::MichiganWorkforceSeed,
-) {
+pub(crate) fn append_workforce_seed(source: &mut String, seed: &MichiganWorkforceSeed) {
     writeln!(
         source,
         "  (node {} NodeType/BUSINESS (business/previous-unretained-labor-hours {}))",

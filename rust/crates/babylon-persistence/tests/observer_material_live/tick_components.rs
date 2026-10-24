@@ -1,9 +1,25 @@
 //! Exact committed component access belongs exclusively to the full observer.
 
-use super::*;
+use super::support;
+use super::support::DisposableTarget;
+use babylon_persistence::identity::CampaignId;
+use babylon_persistence::material_runtime::DurableMaterialRuntime;
+use babylon_persistence::michigan_content::MichiganContentPreset;
+use babylon_persistence::michigan_material::MichiganDeliveryPreset;
+use babylon_persistence::observer_reader;
+use babylon_persistence::observer_reader::{
+    ObserverEconomyError, ObserverEconomyReader, ObserverVisibility,
+};
+use babylon_persistence::SemanticArchiveReader;
 use babylon_persistence::SemanticArchiveReaderError;
+use postgres::Client;
 use postgres::GenericClient;
+use postgres::Statement;
+use postgres::Transaction;
+use postgres::{Config, NoTls};
 use std::fmt::Write as _;
+use std::time::Instant;
+use uuid::Uuid;
 
 const RELATIONS: [(&str, &str); 24] = [
     ("graph_node_v1", "public.v_observer_graph_node_v1"),
@@ -96,8 +112,8 @@ fn prepared_target() -> DisposableTarget {
 }
 
 fn install(target: &DisposableTarget) {
-    install_reader_role(&target.writer).unwrap();
-    provision_observer_role(&target.writer).unwrap();
+    babylon_persistence::install_reader_role(&target.writer).unwrap();
+    observer_reader::provision_observer_role(&target.writer).unwrap();
 }
 
 fn rows(client: &mut impl GenericClient, relation: &str, campaign: CampaignId) -> Vec<String> {
@@ -129,7 +145,7 @@ fn exact_rows_require_the_matching_commit_marker() {
     )
     .unwrap();
     install(&target);
-    advance_material_period(&mut runtime);
+    support::advance_material_period(&mut runtime);
     let observer_config = target.login("babylon_observer", "components");
     let mut observer = observer_config.connect(NoTls).unwrap();
     let mut writer = target.writer.connect(NoTls).unwrap();
@@ -141,7 +157,7 @@ fn exact_rows_require_the_matching_commit_marker() {
         assert_eq!(rows(&mut observer, view, campaign), expected, "{relation}");
         let raw_columns = writer.prepare(&format!("SELECT * FROM {raw}")).unwrap();
         let view_columns = observer.prepare(&format!("SELECT * FROM {view}")).unwrap();
-        let describe = |statement: &postgres::Statement| {
+        let describe = |statement: &Statement| {
             statement
                 .columns()
                 .iter()
@@ -339,7 +355,7 @@ fn observer_provisioning_refuses_changed_or_missing_component_views_without_repa
     let target = DisposableTarget::create();
     install(&target);
     let mut writer = target.writer.connect(NoTls).unwrap();
-    let current_state = |writer: &mut postgres::Client| {
+    let current_state = |writer: &mut Client| {
         let row = writer
             .query_one(
                 "SELECT schema_sha256, CASE \
@@ -365,7 +381,7 @@ fn observer_provisioning_refuses_changed_or_missing_component_views_without_repa
     assert_eq!(altered.0, admitted.0);
     assert_ne!(altered.1, admitted.1);
     assert_eq!(
-        provision_observer_role(&target.writer),
+        observer_reader::provision_observer_role(&target.writer),
         Err(ObserverEconomyError::SchemaDrift)
     );
     assert_eq!(current_state(&mut writer), altered);
@@ -375,7 +391,7 @@ fn observer_provisioning_refuses_changed_or_missing_component_views_without_repa
     let absent = current_state(&mut writer);
     assert_eq!(absent, (admitted.0, None));
     assert_eq!(
-        provision_observer_role(&target.writer),
+        observer_reader::provision_observer_role(&target.writer),
         Err(ObserverEconomyError::SchemaDrift)
     );
     assert_eq!(current_state(&mut writer), absent);
@@ -392,15 +408,11 @@ fn committed_graph_target() -> (DisposableTarget, CampaignId) {
             .unwrap(),
     )
     .unwrap();
-    advance_material_period(&mut runtime);
+    support::advance_material_period(&mut runtime);
     (target, campaign)
 }
 
-fn graph_fault_vector(
-    tx: &mut postgres::Transaction<'_>,
-    campaign: CampaignId,
-    ids: &[i64],
-) -> i64 {
+fn graph_fault_vector(tx: &mut Transaction<'_>, campaign: CampaignId, ids: &[i64]) -> i64 {
     // A nonexistent vector is the independently authored missing-reference case.
     if ids.iter().any(|id| *id < 0) {
         return i64::MAX;
@@ -413,11 +425,11 @@ fn graph_fault_vector(
     id
 }
 
-fn clone_graph_marker(tx: &mut postgres::Transaction<'_>, campaign: CampaignId) {
+fn clone_graph_marker(tx: &mut Transaction<'_>, campaign: CampaignId) {
     clone_graph_marker_at(tx, campaign, 2);
 }
 
-fn clone_graph_marker_at(tx: &mut postgres::Transaction<'_>, campaign: CampaignId, tick: i64) {
+fn clone_graph_marker_at(tx: &mut Transaction<'_>, campaign: CampaignId, tick: i64) {
     // Rollback-only SQL fault controls need the existing material-row presence
     // prerequisite. These copied packages are never read as a canonical tick or
     // committed; only the selected graph constraint is forced immediately.
@@ -651,13 +663,13 @@ fn graph_vectors_reuse_exact_memberships_and_preserve_history() {
             .unwrap(),
     )
     .unwrap();
-    advance_material_period(&mut runtime);
+    support::advance_material_period(&mut runtime);
     let mut writer = target.writer.connect(NoTls).unwrap();
     let before: Vec<(String, String, i64)> = writer.query(
         "SELECT local_name,qname,value_bits FROM babylon_state.graph_node_f64_v1 WHERE campaign_id=$1 AND resolve_tick=1 ORDER BY local_name,qname",
         &[campaign.as_uuid()],
     ).unwrap().into_iter().map(|r| (r.get(0), r.get(1), r.get(2))).collect();
-    advance_material_period(&mut runtime);
+    support::advance_material_period(&mut runtime);
     assert_eq!(writer.query_one(
         "SELECT count(*) FROM babylon_state.graph_node_vector_v1 a JOIN babylon_state.graph_node_vector_v1 b ON a.campaign_id=b.campaign_id AND a.node_ids=b.node_ids AND a.vector_id<>b.vector_id WHERE a.campaign_id=$1",
         &[campaign.as_uuid()],
@@ -688,7 +700,7 @@ fn graph_reads_resolve_exact_ids_with_prior_campaign_statistics() {
         .unwrap()
     };
     let mut original = create(343_101, MichiganDeliveryPreset::Standard);
-    advance_material_period(&mut original);
+    support::advance_material_period(&mut original);
     let mut writer = target.writer.connect(NoTls).unwrap();
     writer
         .batch_execute(
@@ -701,7 +713,7 @@ fn graph_reads_resolve_exact_ids_with_prior_campaign_statistics() {
     let mut statistics_guard = writer.transaction().unwrap();
     statistics_guard.batch_execute("SET LOCAL lock_timeout='5s'; LOCK TABLE babylon_state.graph_node_lookup_v1, babylon_state.graph_string_lookup_v1, babylon_state.graph_node_vector_v1, babylon_state.graph_node_chunk_v1, babylon_state.tick_commit IN SHARE UPDATE EXCLUSIVE MODE").unwrap();
     let mut fresh = create(343_102, MichiganDeliveryPreset::Delayed);
-    advance_material_period(&mut fresh);
+    support::advance_material_period(&mut fresh);
     let expected = fresh
         .session()
         .graph_session()
@@ -719,11 +731,11 @@ fn graph_reads_resolve_exact_ids_with_prior_campaign_statistics() {
     // the committed rows must still equal the independent live graph exactly.
     read.batch_execute("SET LOCAL statement_timeout='5s'; SET LOCAL idle_in_transaction_session_timeout='5s'; SET LOCAL jit=off; SET LOCAL search_path=pg_catalog").unwrap();
     let campaign = fresh.campaign_id();
-    let began = std::time::Instant::now();
+    let began = Instant::now();
     let nodes: Vec<(String, String)> = read.query("SELECT local_name,node_type FROM public.v_observer_graph_node_v1 WHERE campaign_id=$1::uuid AND resolve_tick=1 ORDER BY local_name", &[campaign.as_uuid()]).unwrap().into_iter().map(|row| (row.get(0), row.get(1))).collect();
     assert_eq!(nodes, expected.rows().nodes());
     let nodes_elapsed = began.elapsed();
-    let began = std::time::Instant::now();
+    let began = Instant::now();
     let attributes: Vec<(String, String, u64)> = read.query("SELECT local_name,qname,value_bits FROM public.v_observer_graph_node_f64_v1 WHERE campaign_id=$1::uuid AND resolve_tick=1 ORDER BY local_name,qname", &[campaign.as_uuid()]).unwrap().into_iter().map(|row| (row.get(0), row.get(1), u64::from_ne_bytes(row.get::<_, i64>(2).to_ne_bytes()))).collect();
     assert_eq!(attributes, expected.rows().node_f64());
     eprintln!("exact graph lookup stale-statistics control: nodes={} node_read_ms={} attributes={} attribute_read_ms={}", nodes.len(), nodes_elapsed.as_millis(), attributes.len(), began.elapsed().as_millis());

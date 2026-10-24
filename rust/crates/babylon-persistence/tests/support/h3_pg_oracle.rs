@@ -1,13 +1,14 @@
 //! Test-only h3-pg semantic oracle for the canonical H3 identity relation.
 
 // The native reference test binds the kernel-owned parser and fixture.
+use super::h3_cell_vectors;
 use super::h3_cell_vectors::{
-    load_fixture, ValidVector, VectorFixture, INVALID_RAW_VECTOR_COUNT, PENTAGON_VECTOR_COUNT,
-    VALID_VECTOR_COUNT,
+    ValidVector, VectorFixture, INVALID_RAW_VECTOR_COUNT, PENTAGON_VECTOR_COUNT, VALID_VECTOR_COUNT,
 };
-use babylon_persistence::{install_current_schema, CurrentSchemaDisposition};
+use babylon_persistence::CurrentSchemaDisposition;
 use postgres::error::SqlState;
 use postgres::types::ToSql;
+use postgres::Row;
 use postgres::{Client, Config, NoTls, Transaction};
 
 const H3_PG_VERSION: &str = "4.5.0";
@@ -15,10 +16,11 @@ const H3_RESOLUTION_COUNT: usize = 16;
 const PENTAGONS_PER_RESOLUTION: usize = 12;
 
 pub(super) fn verify_h3_pg_oracle(owner: &Config, admin: &Config) {
-    let first = install_current_schema(owner).expect("H3 oracle current schema installs");
+    let first = babylon_persistence::install_current_schema(owner)
+        .expect("H3 oracle current schema installs");
     assert_eq!(first.disposition, CurrentSchemaDisposition::Installed);
 
-    let fixture = load_fixture();
+    let fixture = h3_cell_vectors::load_fixture();
     assert_shared_fixture_transport(&fixture);
     let mut client = admin.connect(NoTls).expect("H3 oracle admin must connect");
     assert_pre_activation_state(&mut client);
@@ -46,7 +48,8 @@ pub(super) fn verify_h3_pg_oracle(owner: &Config, admin: &Config) {
     assert_post_drop_independence(&mut client);
     drop(client);
 
-    let second = install_current_schema(owner).expect("post-oracle current schema remains valid");
+    let second = babylon_persistence::install_current_schema(owner)
+        .expect("post-oracle current schema remains valid");
     assert_eq!(second.disposition, CurrentSchemaDisposition::AlreadyCurrent);
     assert_eq!(first.identity, second.identity);
 }
@@ -192,7 +195,7 @@ fn compare_valid_vectors(transaction: &mut Transaction<'_>, fixture: &VectorFixt
     }
 }
 
-fn assert_vector_projection(row: &postgres::Row, vector: &ValidVector) {
+fn assert_vector_projection(row: &Row, vector: &ValidVector) {
     assert_eq!(
         row.get::<_, String>(0),
         vector.text,

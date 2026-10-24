@@ -1,16 +1,20 @@
 //! The paid opening uses the same four-person recurring control as goods projections.
-use super::*;
-use babylon_graph::stable_state::{
-    compose_stable_graph_state_from_rows, StableGraphStateRowsInput,
-};
+use super::super::ProductionProjectionError;
+use super::projection;
+use babylon_graph::stable_element::StableElementKey;
+use babylon_graph::stable_state;
+use babylon_graph::stable_state::StableGraphState;
+use babylon_graph::stable_state::StableGraphStateRowsInput;
 use babylon_material_circuit::{
     CircuitAccounting, StaffingMemberBinding, StaffingPolicy, StaffingPoolBinding, StaffingPoolId,
     StaffingWorkSource,
 };
+use babylon_tick::material_staffing::StaffingComposition;
 use babylon_tick::material_staffing::{
     StaffingMemberNodeBinding, StaffingNodeBinding, EMPLOYED_POPULATION, PREVIOUS_UNRETAINED_HOURS,
     RESERVE_POPULATION,
 };
+use babylon_tick::material_world::MaterialWorldRegister;
 
 fn paid_opening() -> (StaffingComposition, StableGraphState, MaterialWorldRegister) {
     let state = crate::production_projection::recurring_fixture::opening();
@@ -80,7 +84,7 @@ fn paid_opening() -> (StaffingComposition, StableGraphState, MaterialWorldRegist
             .unwrap(),
         );
     }
-    let graph = compose_stable_graph_state_from_rows(
+    let graph = stable_state::compose_stable_graph_state_from_rows(
         "paid-opening",
         StableGraphStateRowsInput {
             nodes,
@@ -104,7 +108,8 @@ fn paid_opening() -> (StaffingComposition, StableGraphState, MaterialWorldRegist
 fn paid_projection_joins_resident_accounts_hours_and_compensation() {
     let (composition, graph, register) = paid_opening();
     let accounts =
-        project_staffing_accounts(&composition, &graph, &register, None, &[], None).unwrap();
+        projection::project_staffing_accounts(&composition, &graph, &register, None, &[], None)
+            .unwrap();
     assert_eq!(accounts.iter().map(|r| r.employed).sum::<u64>(), 4);
     assert_eq!(
         accounts
@@ -146,7 +151,7 @@ fn paid_projection_joins_resident_accounts_hours_and_compensation() {
     .unwrap();
     let forged = StaffingComposition::try_new(bindings).unwrap();
     assert_eq!(
-        project_staffing_accounts(&forged, &graph, &register, None, &[], None),
+        projection::project_staffing_accounts(&forged, &graph, &register, None, &[], None),
         Err(ProductionProjectionError::State)
     );
 }

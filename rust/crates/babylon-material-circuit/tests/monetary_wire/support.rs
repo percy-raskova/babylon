@@ -1,7 +1,6 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
-use super::{
-    advance_material_circuit, decode_material_circuit_state, encode_material_circuit_state,
+use babylon_material_circuit::{
     material_circuit_state_digest, AccountId, AidBook, BacklogRow, CashAccount, CircuitAccounting,
     CommodityDefinition, EmploymentTerms, FinalDemandPrincipal, FinalDemandPrincipalId,
     FinancialInstitutions, FundedShift, GoodId, HistoricalCostBook, InstitutionLocation,
@@ -12,7 +11,12 @@ use super::{
     MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES,
 };
 
-use babylon_kernel::{content_digest::sha256_of, currency::Currency};
+use babylon_kernel::content_digest::sha256_of;
+use babylon_kernel::currency::Currency;
+use babylon_material_circuit::CapacitySupply;
+use babylon_material_circuit::HouseholdTimeAccounting;
+use babylon_material_circuit::LaborCompensation;
+use babylon_material_circuit::StaffingMemberId;
 
 pub(crate) fn money(value: i128) -> Currency {
     Currency::from_micro_units(value)
@@ -98,14 +102,14 @@ pub(crate) fn paid_state() -> MaterialCircuitState {
         book.accrue_shift(shift).unwrap();
     }
     MaterialCircuitState {
-        capacity_supply: babylon_material_circuit::CapacitySupply::FiniteSchedule,
+        capacity_supply: CapacitySupply::FiniteSchedule,
         period: 3,
         accounting: CircuitAccounting::Monetary(Box::new({
             let book = book;
             MonetaryCircuit {
                 aid: AidBook::default(),
 
-                household_time: babylon_material_circuit::HouseholdTimeAccounting::NotModeled,
+                household_time: HouseholdTimeAccounting::NotModeled,
                 financial: {
                     let mut financial = FinancialInstitutions::empty();
                     financial.locations = vec![
@@ -131,9 +135,7 @@ pub(crate) fn paid_state() -> MaterialCircuitState {
                     })
                     .map(|(site, period, available_hours)| {
                         babylon_material_circuit::MemberLaborCapacityRow {
-                            member_id: babylon_material_circuit::StaffingMemberId::from_bytes(
-                                site.as_bytes(),
-                            ),
+                            member_id: StaffingMemberId::from_bytes(site.as_bytes()),
                             period,
                             available_hours,
                         }
@@ -157,15 +159,11 @@ pub(crate) fn paid_state() -> MaterialCircuitState {
                 employment: [seller, buyer]
                     .into_iter()
                     .map(|site_id| EmploymentTerms {
-                        member_id: babylon_material_circuit::StaffingMemberId::from_bytes(
-                            (site_id).as_bytes(),
-                        ),
+                        member_id: StaffingMemberId::from_bytes((site_id).as_bytes()),
                         site_id,
                         unit_id: hours,
                         payee: household,
-                        compensation: babylon_material_circuit::LaborCompensation::Wage(money(
-                            (1_i128 << 65) + 7,
-                        )),
+                        compensation: LaborCompensation::Wage(money((1_i128 << 65) + 7)),
                     })
                     .collect(),
             }
@@ -245,7 +243,10 @@ pub(crate) fn accounting_offset(state: &MaterialCircuitState) -> usize {
     let mut control = state.clone();
     control.accounting = CircuitAccounting::PhysicalControl;
     // One accounting tag, one finite-capacity tag, and two empty service row counts.
-    encode_material_circuit_state(&control).unwrap().len() - 10
+    babylon_material_circuit::encode_material_circuit_state(&control)
+        .unwrap()
+        .len()
+        - 10
 }
 
 // Language-neutral current monetary row widths, independent of Rust struct layout.
@@ -262,17 +263,20 @@ pub(crate) const MEMBER_LABOR_BYTES: usize = 32 + 8 + 8;
 #[test]
 pub(crate) fn exact_i128_accounts_escrow_and_unpaid_wages_survive_restart() {
     let state = paid_state();
-    let bytes = encode_material_circuit_state(&state).unwrap();
-    let restored = decode_material_circuit_state(&bytes).unwrap();
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&state).unwrap();
+    let restored = babylon_material_circuit::decode_material_circuit_state(&bytes).unwrap();
     assert_eq!(restored, state);
-    assert_eq!(encode_material_circuit_state(&restored).unwrap(), bytes);
+    assert_eq!(
+        babylon_material_circuit::encode_material_circuit_state(&restored).unwrap(),
+        bytes
+    );
     assert_eq!(
         material_circuit_state_digest(&restored).unwrap(),
         sha256_of(&bytes)
     );
     assert_eq!(
-        advance_material_circuit(&restored).unwrap(),
-        advance_material_circuit(&state).unwrap()
+        babylon_material_circuit::advance_material_circuit(&restored).unwrap(),
+        babylon_material_circuit::advance_material_circuit(&state).unwrap()
     );
     let CircuitAccounting::Monetary(economy) = &restored.accounting else {
         panic!("lost monetary mode");
@@ -300,7 +304,7 @@ pub(crate) fn exact_i128_accounts_escrow_and_unpaid_wages_survive_restart() {
 #[test]
 pub(crate) fn all_monetary_row_families_reject_noncanonical_wire_order() {
     let state = paid_state();
-    let bytes = encode_material_circuit_state(&state).unwrap();
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&state).unwrap();
     let accounts = accounting_offset(&state) + 1 + 4;
     let purchases = accounts + 5 * ACCOUNT_BYTES + 4;
     let shifts = purchases + 2 * PURCHASE_BYTES + 4;
@@ -315,7 +319,7 @@ pub(crate) fn all_monetary_row_families_reject_noncanonical_wire_order() {
         let mut reversed = bytes.clone();
         reversed[start..start + 2 * width].rotate_left(width);
         assert_eq!(
-            decode_material_circuit_state(&reversed),
+            babylon_material_circuit::decode_material_circuit_state(&reversed),
             Err(MaterialCircuitError::WireNoncanonical)
         );
     }
@@ -324,7 +328,7 @@ pub(crate) fn all_monetary_row_families_reject_noncanonical_wire_order() {
 #[test]
 pub(crate) fn monetary_tags_counts_and_invalid_currency_are_refused() {
     let state = paid_state();
-    let bytes = encode_material_circuit_state(&state).unwrap();
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&state).unwrap();
     let accounting = accounting_offset(&state);
     let accounts = accounting + 1 + 4;
     let purchases = accounts + 5 * ACCOUNT_BYTES + 4;
@@ -333,7 +337,7 @@ pub(crate) fn monetary_tags_counts_and_invalid_currency_are_refused() {
         let mut invalid = bytes.clone();
         invalid[offset] = 255;
         assert_eq!(
-            decode_material_circuit_state(&invalid),
+            babylon_material_circuit::decode_material_circuit_state(&invalid),
             Err(MaterialCircuitError::WireEnum)
         );
     }
@@ -347,21 +351,21 @@ pub(crate) fn monetary_tags_counts_and_invalid_currency_are_refused() {
         let mut excessive = bytes.clone();
         excessive[count_offset..count_offset + 4].copy_from_slice(&excess.to_be_bytes());
         assert_eq!(
-            decode_material_circuit_state(&excessive),
+            babylon_material_circuit::decode_material_circuit_state(&excessive),
             Err(MaterialCircuitError::WireLimit)
         );
     }
     let mut negative = bytes.clone();
     negative[accounts + 33..accounts + ACCOUNT_BYTES].copy_from_slice(&(-1_i128).to_be_bytes());
     assert_eq!(
-        decode_material_circuit_state(&negative),
+        babylon_material_circuit::decode_material_circuit_state(&negative),
         Err(MaterialCircuitError::MonetaryInvariant)
     );
     let mut free = bytes.clone();
     let purchase_price = purchases + 33 + 66 + 8;
     free[purchase_price..purchase_price + 16].copy_from_slice(&0_i128.to_be_bytes());
     assert_eq!(
-        decode_material_circuit_state(&free),
+        babylon_material_circuit::decode_material_circuit_state(&free),
         Err(MaterialCircuitError::MonetaryInvariant)
     );
 }
@@ -369,12 +373,12 @@ pub(crate) fn monetary_tags_counts_and_invalid_currency_are_refused() {
 #[test]
 pub(crate) fn old_schema_missing_accounting_truncation_and_trailing_bytes_are_refused() {
     let state = paid_state();
-    let bytes = encode_material_circuit_state(&state).unwrap();
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&state).unwrap();
     let mut old_schema = bytes.clone();
     let version = MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES.len() + 1;
     old_schema[version..version + 2].copy_from_slice(&4_u16.to_be_bytes());
     assert_eq!(
-        decode_material_circuit_state(&old_schema),
+        babylon_material_circuit::decode_material_circuit_state(&old_schema),
         Err(MaterialCircuitError::WireVersion)
     );
     for end in [
@@ -383,40 +387,43 @@ pub(crate) fn old_schema_missing_accounting_truncation_and_trailing_bytes_are_re
         bytes.len() - 1,
     ] {
         assert_eq!(
-            decode_material_circuit_state(&bytes[..end]),
+            babylon_material_circuit::decode_material_circuit_state(&bytes[..end]),
             Err(MaterialCircuitError::WireTruncated)
         );
     }
     let mut trailing = bytes;
     trailing.push(0);
     assert_eq!(
-        decode_material_circuit_state(&trailing),
+        babylon_material_circuit::decode_material_circuit_state(&trailing),
         Err(MaterialCircuitError::WireTrailing)
     );
     let mut control = state;
     control.accounting = CircuitAccounting::PhysicalControl;
-    let bytes = encode_material_circuit_state(&control).unwrap();
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&control).unwrap();
     assert_eq!(bytes.last(), Some(&0));
-    assert_eq!(decode_material_circuit_state(&bytes).unwrap(), control);
+    assert_eq!(
+        babylon_material_circuit::decode_material_circuit_state(&bytes).unwrap(),
+        control
+    );
 }
 
 #[test]
 pub(crate) fn physical_binding_and_employment_remain_required_after_decoding() {
     let state = paid_state();
-    let bytes = encode_material_circuit_state(&state).unwrap();
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&state).unwrap();
     let purchases = accounting_offset(&state) + 1 + 4 + 5 * ACCOUNT_BYTES + 4;
     let shifts = purchases + 2 * PURCHASE_BYTES + 4;
     let mut quantity = bytes.clone();
     let principal_quantity = purchases + 33 + 66;
     quantity[principal_quantity..principal_quantity + 8].copy_from_slice(&5_u64.to_be_bytes());
     assert_eq!(
-        decode_material_circuit_state(&quantity),
+        babylon_material_circuit::decode_material_circuit_state(&quantity),
         Err(MaterialCircuitError::PurchaseInvariant)
     );
     let mut unearned = bytes.clone();
     unearned[shifts + SHIFT_BYTES - 1] = 1;
     assert_eq!(
-        decode_material_circuit_state(&unearned),
+        babylon_material_circuit::decode_material_circuit_state(&unearned),
         Err(MaterialCircuitError::PayrollInvariant)
     );
     let employment = shifts + 2 * SHIFT_BYTES + 4;
@@ -424,7 +431,7 @@ pub(crate) fn physical_binding_and_employment_remain_required_after_decoding() {
     zero_wage[employment + 129..employment + EMPLOYMENT_BYTES]
         .copy_from_slice(&0_i128.to_be_bytes());
     assert_eq!(
-        decode_material_circuit_state(&zero_wage),
+        babylon_material_circuit::decode_material_circuit_state(&zero_wage),
         Err(MaterialCircuitError::WireEnum)
     );
 }
@@ -433,9 +440,9 @@ pub(crate) fn physical_binding_and_employment_remain_required_after_decoding() {
 pub(crate) fn historical_cost_opening_accrued_wages_are_assets_and_liabilities_without_repeat_income(
 ) {
     let state = paid_state();
-    let bytes = encode_material_circuit_state(&state).unwrap();
-    let restored = decode_material_circuit_state(&bytes).unwrap();
-    let result = advance_material_circuit(&restored).unwrap();
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&state).unwrap();
+    let restored = babylon_material_circuit::decode_material_circuit_state(&bytes).unwrap();
+    let result = babylon_material_circuit::advance_material_circuit(&restored).unwrap();
     let household = AccountId::Household(FinalDemandPrincipalId::from_bytes([3; 32]));
     let row = result
         .income
@@ -455,11 +462,12 @@ pub(crate) fn historical_cost_opening_accrued_wages_are_assets_and_liabilities_w
 
 #[test]
 pub(crate) fn previous_schema18_is_refused_before_replaying_the_new_allocation_policy() {
-    let mut previous = encode_material_circuit_state(&paid_state()).unwrap();
+    let mut previous =
+        babylon_material_circuit::encode_material_circuit_state(&paid_state()).unwrap();
     let version = MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES.len() + 1;
     previous[version..version + 2].copy_from_slice(&18_u16.to_be_bytes());
     assert_eq!(
-        decode_material_circuit_state(&previous),
+        babylon_material_circuit::decode_material_circuit_state(&previous),
         Err(MaterialCircuitError::WireVersion)
     );
 }

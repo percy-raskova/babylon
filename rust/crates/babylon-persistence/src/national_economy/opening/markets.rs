@@ -1,16 +1,17 @@
 //! Finite supplier preferences, recurring household purchases and funded offers.
-use super::{
-    actors, amount, quantity, routes::Network, sum_amount, ActorContext, Builder,
-    NationalOpeningError, Result,
-};
-use crate::{
-    economic_catalog::{MerchantSeed, ResidentStaffingPoolSeed},
-    national_transport::CargoClass,
-};
-use babylon_kernel::{
-    content_digest::sha256_of, currency::Currency, economic_identity::EconomicFunction,
-    economic_location::EconomicLocation,
-};
+use super::routes::Network;
+use super::{actors, ActorContext, Builder, NationalOpeningError, Result};
+
+use crate::economic_catalog::{MerchantSeed, ResidentStaffingPoolSeed};
+use crate::national_transport::CargoClass;
+
+use babylon_kernel::currency::Currency;
+use babylon_kernel::economic_identity::EconomicFunction;
+use babylon_kernel::economic_location::EconomicLocation;
+
+use crate::national_economy::GameCommodity;
+use babylon_kernel::content_digest;
+use babylon_material_circuit::HouseholdKind;
 use babylon_material_circuit::{
     AccountId, CommodityKind, CorridorId, GoodId, HouseholdNeedBasis, HouseholdPurchasePolicy,
     MerchantRole, PricePolicy, ReplenishmentPolicy, SellerOffer, ServiceConnection,
@@ -56,7 +57,10 @@ pub(super) fn wire(builder: &mut Builder<'_>) -> Result<()> {
                     minimum: price.minimum,
                     maximum: price.maximum,
                     step: price.step,
-                    target_stock: quantity(actor.planned_batches, recipe.output_units_per_batch)?,
+                    target_stock: super::quantity(
+                        actor.planned_batches,
+                        recipe.output_units_per_batch,
+                    )?,
                 },
                 CommodityKind::PeriodService { .. } => PricePolicy::ServiceResponsive {
                     minimum: price.minimum,
@@ -180,7 +184,7 @@ fn local_retailers(builder: &mut Builder<'_>) -> Result<BTreeMap<EconomicLocatio
         identity.extend_from_slice(&site.as_bytes());
         let merchant = MerchantSeed {
             role: MerchantRole::Retail,
-            capacity_id: CorridorId::from_bytes(sha256_of(&identity)),
+            capacity_id: CorridorId::from_bytes(content_digest::sha256_of(&identity)),
             labor_unit_id: builder.labor_unit,
             handling: actors::handling_requirements(builder)?,
         };
@@ -224,7 +228,7 @@ fn reserve_retail_labor(builder: &mut Builder<'_>, site: SiteId, retail_hours: u
             .recipes
             .get(&actor.function)
             .ok_or(NationalOpeningError::Policy)?;
-        let available = quantity(actor.employed, builder.policy.work_hours_per_person)?;
+        let available = super::quantity(actor.employed, builder.policy.work_hours_per_person)?;
         actor.planned_batches =
             available.saturating_sub(retail_hours) / recipe.labor_hours_per_batch;
         let output_buffer = if matches!(
@@ -236,7 +240,7 @@ fn reserve_retail_labor(builder: &mut Builder<'_>, site: SiteId, retail_hours: u
                 .kind,
             CommodityKind::Storable { .. }
         ) {
-            quantity(actor.planned_batches, recipe.output_units_per_batch)?
+            super::quantity(actor.planned_batches, recipe.output_units_per_batch)?
         } else {
             0
         };
@@ -264,7 +268,7 @@ fn retail_hours(builder: &Builder<'_>, persons: u64, households: u64) -> Result<
             if !matches!(good.kind, CommodityKind::Storable { .. }) {
                 return Ok(hours);
             }
-            let units = quantity(
+            let units = super::quantity(
                 match need.basis {
                     HouseholdNeedBasis::Persons => persons,
                     HouseholdNeedBasis::Households => households,
@@ -272,7 +276,10 @@ fn retail_hours(builder: &Builder<'_>, persons: u64, households: u64) -> Result<
                 need.units_per_basis,
             )?;
             hours
-                .checked_add(quantity(units, builder.policy.handling_hours_per_unit)?)
+                .checked_add(super::quantity(
+                    units,
+                    builder.policy.handling_hours_per_unit,
+                )?)
                 .ok_or(NationalOpeningError::Arithmetic)
         })?;
 
@@ -293,13 +300,13 @@ fn households(
             .get(&household.location)
             .ok_or(NationalOpeningError::Identity)?;
         for need in builder.policy.household_needs.clone() {
-            if household.kind == babylon_material_circuit::HouseholdKind::CollectiveResidence
+            if household.kind == HouseholdKind::CollectiveResidence
                 && need.basis == HouseholdNeedBasis::Households
             {
                 continue;
             }
             let good = builder.commodity(&need.key)?.clone();
-            let required = quantity(
+            let required = super::quantity(
                 match need.basis {
                     HouseholdNeedBasis::Persons => household.persons,
                     HouseholdNeedBasis::Households => household.households,
@@ -328,7 +335,10 @@ fn households(
                     good_id: good.good_id,
                     unit_id: good.unit_id,
                     target_closing_stock: if good.cargo.is_some() { required } else { 0 },
-                    maximum_purchase: quantity(required, builder.policy.retailer_buffer_periods)?,
+                    maximum_purchase: super::quantity(
+                        required,
+                        builder.policy.retailer_buffer_periods,
+                    )?,
                     enabled: true,
                 });
             if let CommodityKind::PeriodService { .. } = good.kind {
@@ -383,11 +393,11 @@ fn retail_stock(
         .ok_or(NationalOpeningError::Policy)?
         .scaled(actor.price_scale_bps)
         .map_err(|_| NationalOpeningError::Arithmetic)?;
-    let handling_charge = amount(builder.policy.handling_hours_per_unit, actor.wage)?;
-    let unit_price = sum_amount(price.opening, handling_charge)?;
-    let minimum = sum_amount(price.minimum, handling_charge)?;
-    let maximum = sum_amount(price.maximum, handling_charge)?;
-    let stock = quantity(required, builder.policy.retailer_buffer_periods)?;
+    let handling_charge = super::amount(builder.policy.handling_hours_per_unit, actor.wage)?;
+    let unit_price = super::sum_amount(price.opening, handling_charge)?;
+    let minimum = super::sum_amount(price.minimum, handling_charge)?;
+    let maximum = super::sum_amount(price.maximum, handling_charge)?;
+    let stock = super::quantity(required, builder.policy.retailer_buffer_periods)?;
     let offer = SellerOffer {
         site_id: retailer,
         good_id: good.good_id,
@@ -402,9 +412,9 @@ fn retail_stock(
     };
     builder.set_offer(offer);
     let opening_stock = actors::stock(builder, key, stock, actor.price_scale_bps)?;
-    let working_cash = amount(
+    let working_cash = super::amount(
         builder.policy.working_capital_periods,
-        amount(required, price.opening)?,
+        super::amount(required, price.opening)?,
     )?;
     let site = builder.site_mut(retailer)?;
     if let Some(existing) = site
@@ -417,11 +427,11 @@ fn retail_stock(
             .quantity
             .checked_add(opening_stock.amount.quantity)
             .ok_or(NationalOpeningError::Arithmetic)?;
-        existing.total_cost = sum_amount(existing.total_cost, opening_stock.total_cost)?;
+        existing.total_cost = super::sum_amount(existing.total_cost, opening_stock.total_cost)?;
     } else {
         site.opening_stock.push(opening_stock);
     }
-    site.opening_cash = sum_amount(site.opening_cash, working_cash)?;
+    site.opening_cash = super::sum_amount(site.opening_cash, working_cash)?;
 
     Ok(())
 }
@@ -443,14 +453,14 @@ fn producers(
             .get(&actor.function)
             .ok_or(NationalOpeningError::Policy)?
             .clone();
-        let maximum_batches = quantity(actor.force, builder.policy.work_hours_per_person)?
+        let maximum_batches = super::quantity(actor.force, builder.policy.work_hours_per_person)?
             / recipe.labor_hours_per_batch;
         for (key, coefficient) in recipe.inputs {
             let good = builder.commodity(&key)?.clone();
             if good.price.is_none() {
                 continue;
             } // finite deposit is not bought or reproduced
-            let required = quantity(maximum_batches, coefficient)?;
+            let required = super::quantity(maximum_batches, coefficient)?;
             if required == 0 {
                 continue;
             }
@@ -562,7 +572,7 @@ pub(super) fn primary_supplier(
     preferences: &mut Preferences,
     location: EconomicLocation,
     buyer: SiteId,
-    good: &crate::national_economy::GameCommodity,
+    good: &GameCommodity,
 ) -> Result<Option<SiteId>> {
     let cargo = good.cargo.ok_or(NationalOpeningError::Policy)?;
     let excluded = locations
@@ -691,7 +701,7 @@ pub(super) fn procure(
     let domestic_cap = required
         .checked_sub(foreign_cap)
         .ok_or(NationalOpeningError::Arithmetic)?;
-    let target = quantity(required, buffer_periods)?;
+    let target = super::quantity(required, buffer_periods)?;
     let floor = payroll(builder, buyer)?;
     for (supplier, cap) in [(primary, domestic_cap), (secondary, foreign_cap)] {
         if let Some(supplier) = supplier.filter(|_| cap > 0) {
@@ -713,8 +723,8 @@ pub(super) fn payroll(builder: &Builder<'_>, site: SiteId) -> Result<Currency> {
         .actors
         .get(&site)
         .ok_or(NationalOpeningError::Identity)?;
-    amount(
-        quantity(actor.employee_persons, builder.policy.work_hours_per_person)?,
+    super::amount(
+        super::quantity(actor.employee_persons, builder.policy.work_hours_per_person)?,
         actor.wage,
     )
 }

@@ -5,10 +5,11 @@ use sha2::{Digest as _, Sha256};
 
 use super::read::{Candidate, ReadStatus};
 use super::record::RevisionRecord;
-use super::storage::{signed, unsigned};
+use super::storage;
 use super::{ArchiveChangeCursor, ArchiveChangePage, ArchiveDossierBounds, ArchiveReadScope};
-use crate::archive::{database, decode, decode_digest};
+use crate::archive;
 use crate::SemanticArchiveError;
+use postgres::Row;
 
 const SCAN_LIMIT: i64 = 16;
 
@@ -52,20 +53,20 @@ pub(super) fn read(
         campaign.as_uuid(),
         &head.subject.kind().as_str(),
         &head.subject.id(),
-        &signed(start_tick)?,
-        &signed(scope.tick())?,
+        &storage::signed(start_tick)?,
+        &storage::signed(scope.tick())?,
     ];
     let rows=client.query("SELECT effective_tick,revision_sha256 \
         FROM public.v_archive_revision_index_v2 WHERE campaign_id=$1 AND subject_kind=$2 AND subject_id=$3 \
         AND effective_tick>=$4 AND effective_tick<=$5 \
         ORDER BY effective_tick LIMIT 17",params)
-        .map_err(|error| database("read bounded retained Archive history",&error))?;
+        .map_err(|error| archive::database("read bounded retained Archive history",&error))?;
     let previous=client.query_opt("SELECT effective_tick,revision_sha256 \
         FROM public.v_archive_revision_index_v2 WHERE campaign_id=$1 AND subject_kind=$2 AND subject_id=$3 \
         AND effective_tick<$4 \
         ORDER BY effective_tick DESC LIMIT 1",
-        &[campaign.as_uuid(),&head.subject.kind().as_str(),&head.subject.id(),&signed(start_tick)?])
-        .map_err(|error| database("read retained Archive history predecessor",&error))?;
+        &[campaign.as_uuid(),&head.subject.kind().as_str(),&head.subject.id(),&storage::signed(start_tick)?])
+        .map_err(|error| archive::database("read retained Archive history predecessor",&error))?;
     let mut previous = previous
         .map(|row| decode_candidate(&row))
         .transpose()?
@@ -102,10 +103,10 @@ pub(super) fn read(
     Ok(result)
 }
 
-fn decode_candidate(row: &postgres::Row) -> Result<Candidate, SemanticArchiveError> {
+fn decode_candidate(row: &Row) -> Result<Candidate, SemanticArchiveError> {
     Ok(Candidate {
-        tick: unsigned(decode(row, 0)?)?,
-        digest: decode_digest(row, 1)?,
+        tick: storage::unsigned(archive::decode(row, 0)?)?,
+        digest: archive::decode_digest(row, 1)?,
     })
 }
 

@@ -1,11 +1,26 @@
 //! Current county selection must use the captured campaign roster.
-use super::*;
+use super::dossier;
+use super::dossier::{
+    desired_county_projection, parse_signal_bullet, parse_stored_county_page,
+    CommittedTerritoryFields, CountyGrantIndex, COUNTY_DECISION_QUESTION,
+};
+use super::source;
+use super::source::CountySource;
+use crate::national_counties::NationalCountyReference;
+use crate::spatial_reference_products::SpatialReferenceProducts;
+use crate::ArchiveKnowledge;
+use crate::ArchiveKnowledgeGrant;
+use crate::FogSafeArchiveRenderer;
+use crate::{ArchivePageRef, ArchiveSubjectKind};
+use babylon_kernel::geography::CountyGeoid;
+use std::collections::BTreeMap;
 
 #[test]
 fn captured_national_counties_select_current_ct_and_island_identities_without_fake_detail() {
-    let counties = crate::national_counties::NationalCountyReference::decode_pinned(
-        include_bytes!("../../../../../src/babylon/data/reference/economy/national_county_reference_2024.csv.gz"),
-    ).unwrap();
+    let counties = NationalCountyReference::decode_pinned(include_bytes!(
+        "../../../../../src/babylon/data/reference/economy/national_county_reference_2024.csv.gz"
+    ))
+    .unwrap();
     let source = CountySource::national(&counties, None).unwrap();
     let mapping = counties
         .counties()
@@ -21,7 +36,7 @@ fn captured_national_counties_select_current_ct_and_island_identities_without_fa
         assert!(pages.iter().any(|page| page.county_geoid() == selected));
     }
     for page in &pages {
-        let geoid = babylon_kernel::geography::CountyGeoid::try_from(page.county_geoid()).unwrap();
+        let geoid = CountyGeoid::try_from(page.county_geoid()).unwrap();
         assert_eq!(page.title(), counties.county(geoid).unwrap().name());
         assert!(page.place_links().is_empty());
         assert!(page
@@ -49,9 +64,10 @@ fn captured_national_counties_select_current_ct_and_island_identities_without_fa
 
 #[test]
 fn captured_county_identity_citation_round_trips_and_remains_grant_bound() {
-    let counties = crate::national_counties::NationalCountyReference::decode_pinned(
-        include_bytes!("../../../../../src/babylon/data/reference/economy/national_county_reference_2024.csv.gz"),
-    ).unwrap();
+    let counties = NationalCountyReference::decode_pinned(include_bytes!(
+        "../../../../../src/babylon/data/reference/economy/national_county_reference_2024.csv.gz"
+    ))
+    .unwrap();
     let source = CountySource::national(&counties, None).unwrap();
     let page = source
         .plans(
@@ -60,7 +76,7 @@ fn captured_county_identity_citation_round_trips_and_remains_grant_bound() {
         )
         .unwrap()
         .remove(0);
-    let citation = signal_citation(&page, &page.signals()[0], 3).unwrap();
+    let citation = source::signal_citation(&page, &page.signals()[0], 3).unwrap();
     assert_eq!(citation.source_id(), "national-county-reference-2024-v1");
     assert!(citation
         .locator()
@@ -83,9 +99,9 @@ fn captured_county_identity_citation_round_trips_and_remains_grant_bound() {
         )
     }))
     .unwrap();
-    let knowledge = crate::ArchiveKnowledge::try_new(
+    let knowledge = ArchiveKnowledge::try_new(
         keys.map(|key| {
-            crate::ArchiveKnowledgeGrant::try_new(
+            ArchiveKnowledgeGrant::try_new(
                 ArchivePageRef::try_new(ArchiveSubjectKind::County, "15005".to_owned()).unwrap(),
                 key.to_owned(),
                 1,
@@ -96,9 +112,12 @@ fn captured_county_identity_citation_round_trips_and_remains_grant_bound() {
         .into(),
     )
     .unwrap();
-    let rendered = crate::FogSafeArchiveRenderer::new()
+    let rendered = FogSafeArchiveRenderer::new()
         .unwrap()
-        .render(&county_page_input(&page, 3, [7; 32]).unwrap(), &knowledge)
+        .render(
+            &dossier::county_page_input(&page, 3, [7; 32]).unwrap(),
+            &knowledge,
+        )
         .unwrap();
     assert_eq!(
         parse_stored_county_page("15005", page.title(), rendered.markdown()),

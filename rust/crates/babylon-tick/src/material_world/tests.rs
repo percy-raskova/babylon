@@ -1,4 +1,16 @@
-use super::*;
+use crate::material_world;
+use crate::material_world::monetary_receipt;
+use crate::material_world::workforce_receipt;
+use crate::material_world::MaterialWorldError;
+use crate::material_world::MAX_MATERIAL_TICK_RECEIPT_BYTES;
+use crate::material_world::MAX_MATERIAL_WORLD_REGISTER_BYTES;
+use crate::material_world::RECEIPT_DOMAIN;
+use babylon_material_circuit::FinalDemandPrincipalId;
+use babylon_material_circuit::LaborCompensation;
+use babylon_material_circuit::MemberLaborUseReceipt;
+use babylon_material_circuit::SiteId;
+use babylon_material_circuit::StaffingMemberId;
+use babylon_material_circuit::UnitId;
 
 // A merchant's two physical handoffs share the same explicit handling account.
 // These bytes exercise the committed receipt boundary independently of its encoder.
@@ -29,7 +41,7 @@ fn local_handoff_receipts() -> Vec<u8> {
 #[test]
 fn committed_receipts_admit_explicit_merchant_handling_and_local_fulfillment() {
     use babylon_material_circuit::{OrderId, OutboundOrderId};
-    let receipt = decode_material_receipts(&local_handoff_receipts()).unwrap();
+    let receipt = material_world::decode_material_receipts(&local_handoff_receipts()).unwrap();
     assert_eq!(receipt.resolve_tick, 1);
     assert!(receipt.dispatches.is_empty());
     assert!(receipt.arrivals.is_empty());
@@ -59,7 +71,7 @@ fn handling_wire_refuses_unknown_kinds_overdraws_and_false_hours() {
         let mut changed = canonical.clone();
         changed[offset..offset + replacement.len()].copy_from_slice(&replacement);
         assert_eq!(
-            decode_material_receipts(&changed),
+            material_world::decode_material_receipts(&changed),
             Err(MaterialWorldError::Wire)
         );
     }
@@ -72,7 +84,7 @@ fn receipt_version_and_local_delivery_quantity_are_strict() {
     let version = RECEIPT_DOMAIN.len();
     previous_version[version..version + 4].copy_from_slice(&3_u32.to_be_bytes());
     assert_eq!(
-        decode_material_receipts(&previous_version),
+        material_world::decode_material_receipts(&previous_version),
         Err(MaterialWorldError::Wire)
     );
     let mut zero_delivery = canonical;
@@ -80,7 +92,7 @@ fn receipt_version_and_local_delivery_quantity_are_strict() {
     let quantity = RECEIPT_DOMAIN.len() + 12 + 8 * 9 + 97 + 160;
     zero_delivery[quantity..quantity + 8].copy_from_slice(&0_u64.to_be_bytes());
     assert_eq!(
-        decode_material_receipts(&zero_delivery),
+        material_world::decode_material_receipts(&zero_delivery),
         Err(MaterialWorldError::Wire)
     );
 }
@@ -98,7 +110,7 @@ fn local_transfer_receipts_preserve_both_owners_without_freight() {
     }
     bytes.extend_from_slice(&3_u64.to_be_bytes());
     bytes.extend_from_slice(&tail);
-    let receipts = decode_material_receipts(&bytes).unwrap();
+    let receipts = material_world::decode_material_receipts(&bytes).unwrap();
     assert_eq!(receipts.local_transfers.len(), 1);
     let transfer = &receipts.local_transfers[0];
     assert_eq!(transfer.supplier_site_id, SiteId::from_bytes([7; 32]));
@@ -110,13 +122,13 @@ fn local_transfer_receipts_preserve_both_owners_without_freight() {
     let mut self_transfer = bytes.clone();
     self_transfer[row_start + 64..row_start + 96].copy_from_slice(&[7; 32]);
     assert_eq!(
-        decode_material_receipts(&self_transfer),
+        material_world::decode_material_receipts(&self_transfer),
         Err(MaterialWorldError::Wire)
     );
     let end = bytes.len() - (36 - 9) * 9;
     bytes[end - 8..end].fill(0);
     assert_eq!(
-        decode_material_receipts(&bytes),
+        material_world::decode_material_receipts(&bytes),
         Err(MaterialWorldError::Wire)
     );
 }
@@ -155,7 +167,7 @@ fn monetary_receipt_encoding_preserves_exact_cash_and_execution_order() {
             }
         }
     }
-    let decoded = decode_material_receipts(&bytes).unwrap();
+    let decoded = material_world::decode_material_receipts(&bytes).unwrap();
     assert_eq!(decoded.money_transfers, rows);
     let mut invalid = rows[0].clone();
     invalid.credit.delta = Currency::from_micro_units(1);
@@ -168,7 +180,6 @@ fn monetary_receipt_encoding_preserves_exact_cash_and_execution_order() {
 }
 
 fn member_attendance(member: u8, site: u8) -> babylon_material_circuit::MemberLaborUseReceipt {
-    use babylon_material_circuit::*;
     let money = babylon_kernel::currency::Currency::from_micro_units;
     MemberLaborUseReceipt {
         member_id: StaffingMemberId::from_bytes([member; 32]),
@@ -199,7 +210,7 @@ fn member_attendance(member: u8, site: u8) -> babylon_material_circuit::MemberLa
 #[test]
 fn attendance_receipt_encoding_roundtrips_without_sorting_hashed_shift_ids() {
     use babylon_material_circuit::{
-        member_shift_id, AccountId, EmploymentTerms, LaborUseReceipt, WageAccrualReceipt,
+        AccountId, EmploymentTerms, LaborUseReceipt, WageAccrualReceipt,
     };
     let members = [member_attendance(4, 1), member_attendance(1, 2)];
     let wages: Vec<_> = members
@@ -213,7 +224,7 @@ fn attendance_receipt_encoding_roundtrips_without_sorting_hashed_shift_ids() {
                 compensation: row.compensation,
             };
             WageAccrualReceipt {
-                shift: member_shift_id(7, &terms),
+                shift: babylon_material_circuit::member_shift_id(7, &terms),
                 employer: AccountId::Site(row.site_id),
                 payee: AccountId::Household(row.payee),
                 period: 7,
@@ -271,7 +282,7 @@ fn attendance_receipt_encoding_roundtrips_without_sorting_hashed_shift_ids() {
             }
         }
     }
-    let decoded = decode_material_receipts(&bytes).unwrap();
+    let decoded = material_world::decode_material_receipts(&bytes).unwrap();
     assert_eq!(decoded.wage_accruals, wages);
     assert_eq!(decoded.labor_use, labor);
     assert_eq!(decoded.member_labor_use, members);
@@ -287,16 +298,17 @@ fn attendance_receipt_encoding_roundtrips_without_sorting_hashed_shift_ids() {
 #[test]
 fn register_byte_budget_is_one_gb_and_receipts_keep_their_independent_cap() {
     const ONE_GB: usize = 1_000_000_000;
-    let admitted = bounded_bytes(ONE_GB, MAX_MATERIAL_WORLD_REGISTER_BYTES).unwrap();
+    let admitted =
+        material_world::bounded_bytes(ONE_GB, MAX_MATERIAL_WORLD_REGISTER_BYTES).unwrap();
     assert!(admitted.is_empty());
     assert!(admitted.capacity() >= ONE_GB);
     assert_eq!(
-        bounded_bytes(ONE_GB + 1, MAX_MATERIAL_WORLD_REGISTER_BYTES),
+        material_world::bounded_bytes(ONE_GB + 1, MAX_MATERIAL_WORLD_REGISTER_BYTES),
         Err(MaterialWorldError::ByteLimit)
     );
     assert_eq!(MAX_MATERIAL_TICK_RECEIPT_BYTES, 872_612_528);
     assert_eq!(
-        bounded_bytes(
+        material_world::bounded_bytes(
             MAX_MATERIAL_TICK_RECEIPT_BYTES + 1,
             MAX_MATERIAL_TICK_RECEIPT_BYTES
         ),
@@ -311,7 +323,7 @@ fn previous_receipt17_handling_semantics_are_not_admitted_as_current() {
     previous[..domain.len()].copy_from_slice(domain);
     previous[domain.len()..domain.len() + 4].copy_from_slice(&17_u32.to_be_bytes());
     assert_eq!(
-        decode_material_receipts(&previous),
+        material_world::decode_material_receipts(&previous),
         Err(MaterialWorldError::Wire)
     );
 }

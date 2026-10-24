@@ -1,5 +1,13 @@
 //! Exact physical citations preserve logical disclosure and typed decoding.
-use super::*;
+use super::archive_reader;
+use super::support;
+use super::support::{receipt_consumption_count, LiveWorkerTarget, StubPageProducer};
+use crate::archive_revision::{ArchiveDossierBounds, ArchiveDossierState};
+use crate::identity::CampaignId;
+use crate::{ArchiveCitation, ArchiveWorker, SemanticArchiveError};
+use postgres::Client;
+use postgres::NoTls;
+use uuid::Uuid;
 
 #[test]
 #[ignore = "requires the task-owned disposable PostgreSQL runtime and committed ticks"]
@@ -83,7 +91,7 @@ fn live_existing_page_provenance_resolves_without_writes_or_locks() {
 }
 
 fn assert_duplicate_cannot_mask_missing_citation(
-    client: &mut postgres::Client,
+    client: &mut Client,
     campaign: CampaignId,
     existing: &ArchiveCitation,
     missing: &ArchiveCitation,
@@ -114,7 +122,7 @@ fn assert_duplicate_cannot_mask_missing_citation(
 }
 
 fn seed_page_citation(
-    client: &mut postgres::Client,
+    client: &mut Client,
     campaign: CampaignId,
     citation: &ArchiveCitation,
 ) -> i32 {
@@ -140,7 +148,7 @@ fn live_provenance_lookup_preserves_exact_frozen_witnesses_and_atomic_retry() {
     let distinct = assert_exact_interning_and_retry(&mut client, campaign);
     let other = CampaignId::from_uuid(Uuid::from_u128(0x34332));
     assert_missing_and_foreign_references(&mut client, campaign, other);
-    install_reader_role(&target.config).unwrap();
+    crate::install_reader_role(&target.config).unwrap();
     assert_private_definitions(&mut client);
     ArchiveWorker::new(&target.config)
         .sweep_once(campaign, &StubPageProducer)
@@ -177,12 +185,12 @@ fn live_provenance_lookup_preserves_exact_frozen_witnesses_and_atomic_retry() {
         .unwrap();
     assert_eq!(retry.verified_tick(), 1);
     assert_eq!(receipt_consumption_count(&target.config, campaign), 1);
-    with_reader(&target.config, |reader| {
-        let scope = scope_at(&target.config, campaign, 1);
+    archive_reader::with_reader(&target.config, |reader| {
+        let scope = archive_reader::scope_at(&target.config, campaign, 1);
         let dossier = reader
             .dossier_as_of(
                 &scope,
-                &stub_subject_spec(1).page_ref,
+                &support::stub_subject_spec(1).page_ref,
                 &ArchiveDossierBounds::default(),
             )
             .unwrap();
@@ -195,7 +203,7 @@ fn live_provenance_lookup_preserves_exact_frozen_witnesses_and_atomic_retry() {
     target.finish();
 }
 
-fn assert_exact_interning_and_retry(client: &mut postgres::Client, campaign: CampaignId) -> i32 {
+fn assert_exact_interning_and_retry(client: &mut Client, campaign: CampaignId) -> i32 {
     let intern_sql = "SELECT babylon_meta.archive_provenance_intern_v1($1::uuid,$2::text,$3::text)";
     let exact: i32 = client
         .query_one(
@@ -263,7 +271,7 @@ fn assert_exact_interning_and_retry(client: &mut postgres::Client, campaign: Cam
 }
 
 fn assert_missing_and_foreign_references(
-    client: &mut postgres::Client,
+    client: &mut Client,
     campaign: CampaignId,
     other: CampaignId,
 ) {
@@ -311,7 +319,7 @@ fn assert_missing_and_foreign_references(
     }
 }
 
-fn assert_private_definitions(client: &mut postgres::Client) {
+fn assert_private_definitions(client: &mut Client) {
     client.batch_execute("SET ROLE babylon_reader").unwrap();
     for relation in [
         "archive_provenance_v1",

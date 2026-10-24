@@ -58,7 +58,7 @@
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
-use babylon_tick::run_once_into; // `hex` is not needed here — neither test formats a hash
+// `hex` is not needed here — neither test formats a hash
 
 const SCENARIO: &str =
     include_str!("../content/scenarios/vitality-lifecycle-combined-conformance.bscn");
@@ -225,7 +225,8 @@ fn governed_phase_order_reproduces_the_frozen_engine() {
     let rule_src = format!("{VITALITY}\n{LIFECYCLE}");
     let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
-    let report = run_once_into(SCENARIO, &rule_src, &mut graph, &mut sink).expect("tick");
+    let report =
+        babylon_tick::run_once_into(SCENARIO, &rule_src, &mut graph, &mut sink).expect("tick");
 
     // THE ORDER PROOF — the phase registry puts Vitality @1 before
     // Lifecycle @7 even though the rule ids sort in the opposite order.
@@ -262,11 +263,13 @@ fn file_order_is_never_observable_per_section_4_2() {
 
     let mut graph_a = HypergraphStore::new();
     let mut sink_a = CollectingSink::default();
-    let report_a = run_once_into(SCENARIO, &forward, &mut graph_a, &mut sink_a).expect("tick a");
+    let report_a =
+        babylon_tick::run_once_into(SCENARIO, &forward, &mut graph_a, &mut sink_a).expect("tick a");
 
     let mut graph_b = HypergraphStore::new();
     let mut sink_b = CollectingSink::default();
-    let report_b = run_once_into(SCENARIO, &reversed, &mut graph_b, &mut sink_b).expect("tick b");
+    let report_b = babylon_tick::run_once_into(SCENARIO, &reversed, &mut graph_b, &mut sink_b)
+        .expect("tick b");
 
     assert_eq!(report_a.before, report_b.before);
     assert_eq!(report_a.after, report_b.after);

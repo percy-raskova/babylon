@@ -1,8 +1,6 @@
 //! Designed finite opening for competing and separated aid practices.
-use super::organizer_aid_fixture::{
-    aid_opening, config, good, household, mandate, money, recipient, site, try_session, units,
-    Session, MATERIAL, PRACTICE, PRODUCTS,
-};
+use super::organizer_aid_fixture;
+use super::organizer_aid_fixture::{Session, MATERIAL, PRACTICE, PRODUCTS};
 use babylon_material_circuit::{
     AccountId, CashAccount, CircuitAccounting, FinalDemandPrincipal, FinalDemandPrincipalId,
     HistoricalCostBook, HouseholdTimeAccounting, MaterialCircuitState, MonetaryBook,
@@ -18,7 +16,7 @@ fn remote_principal() -> FinalDemandPrincipalId {
 }
 
 fn opening() -> MaterialCircuitState {
-    let mut state = aid_opening(false);
+    let mut state = organizer_aid_fixture::aid_opening(false);
     let remote = remote_principal();
     state.final_demand_principals.push(FinalDemandPrincipal {
         id: remote,
@@ -31,7 +29,7 @@ fn opening() -> MaterialCircuitState {
     let mut cohort = rows
         .households
         .iter()
-        .find(|r| r.principal_id == recipient())
+        .find(|r| r.principal_id == organizer_aid_fixture::recipient())
         .unwrap()
         .clone();
     cohort.principal_id = remote;
@@ -39,7 +37,7 @@ fn opening() -> MaterialCircuitState {
     let mut stock = rows
         .household_stocks
         .iter()
-        .find(|r| r.principal_id == recipient())
+        .find(|r| r.principal_id == organizer_aid_fixture::recipient())
         .unwrap()
         .clone();
     stock.principal_id = remote;
@@ -47,7 +45,7 @@ fn opening() -> MaterialCircuitState {
     let mut need = rows
         .household_needs
         .iter()
-        .find(|r| r.principal_id == recipient())
+        .find(|r| r.principal_id == organizer_aid_fixture::recipient())
         .unwrap()
         .clone();
     need.principal_id = remote;
@@ -55,14 +53,14 @@ fn opening() -> MaterialCircuitState {
     let mut purchase = rows
         .household_purchases
         .iter()
-        .find(|r| r.principal_id == recipient())
+        .find(|r| r.principal_id == organizer_aid_fixture::recipient())
         .unwrap()
         .clone();
     purchase.principal_id = remote;
     rows.household_purchases.push(purchase);
     rows.household_stocks
         .iter_mut()
-        .find(|r| r.principal_id == household())
+        .find(|r| r.principal_id == organizer_aid_fixture::household())
         .unwrap()
         .quantity = 32;
     let HouseholdTimeAccounting::Modeled(time) = &mut e.household_time else {
@@ -71,13 +69,13 @@ fn opening() -> MaterialCircuitState {
     let mut policy = time
         .policies
         .iter()
-        .find(|r| r.principal_id == recipient())
+        .find(|r| r.principal_id == organizer_aid_fixture::recipient())
         .unwrap()
         .clone();
     policy.principal_id = remote;
     time.policies.push(policy);
     e.aid.mandates[0].maximum_quantity = 1;
-    let mut remote_mandate = mandate(true);
+    let mut remote_mandate = organizer_aid_fixture::mandate(true);
     remote_mandate.id = [93; 32];
     remote_mandate.source_hash = [94; 32];
     remote_mandate.recipient = remote;
@@ -87,29 +85,32 @@ fn opening() -> MaterialCircuitState {
     let mut stocks = e.costs.snapshot().stocks;
     stocks
         .iter_mut()
-        .find(|r| r.owner == AccountId::Household(household()) && r.good_id == good(2))
+        .find(|r| {
+            r.owner == AccountId::Household(organizer_aid_fixture::household())
+                && r.good_id == organizer_aid_fixture::good(2)
+        })
         .unwrap()
-        .amount = money(128);
+        .amount = organizer_aid_fixture::money(128);
     stocks.push(StockCarryingValue {
         owner: AccountId::Household(remote),
-        good_id: good(2),
-        unit_id: units(),
-        amount: money(0),
+        good_id: organizer_aid_fixture::good(2),
+        unit_id: organizer_aid_fixture::units(),
+        amount: organizer_aid_fixture::money(0),
     });
     // Finite100 micros and32 donor units; no later injection or protected-floor exemption.
     e.book = MonetaryBook::open(
         [
-            (AccountId::Site(site(1)), 4),
-            (AccountId::Site(site(2)), 32),
-            (AccountId::Site(site(3)), 32),
-            (AccountId::Household(household()), 32),
-            (AccountId::Household(recipient()), 0),
+            (AccountId::Site(organizer_aid_fixture::site(1)), 4),
+            (AccountId::Site(organizer_aid_fixture::site(2)), 32),
+            (AccountId::Site(organizer_aid_fixture::site(3)), 32),
+            (AccountId::Household(organizer_aid_fixture::household()), 32),
+            (AccountId::Household(organizer_aid_fixture::recipient()), 0),
             (AccountId::Household(remote), 0),
         ]
         .into_iter()
         .map(|(id, cash)| CashAccount {
             id,
-            cash: money(cash),
+            cash: organizer_aid_fixture::money(cash),
         })
         .collect(),
     )
@@ -119,7 +120,7 @@ fn opening() -> MaterialCircuitState {
 }
 
 fn organizer(refuses_remote: bool) -> OrganizerConfig {
-    let mut cfg = config();
+    let mut cfg = organizer_aid_fixture::config();
     let controlled = cfg
         .participants
         .iter_mut()
@@ -162,7 +163,7 @@ fn organizer(refuses_remote: bool) -> OrganizerConfig {
 }
 
 pub(super) fn session(refuses_remote: bool) -> Session {
-    try_session(
+    organizer_aid_fixture::try_session(
         crate::michigan_dynamic_hex_foundation::michigan_dynamic_hex_foundation().unwrap(),
         &format!("{MATERIAL}\n{PRODUCTS}\n{PRACTICE}"),
         opening(),

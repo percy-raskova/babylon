@@ -16,18 +16,27 @@ use babylon_persistence::archive_revision::{
     ArchiveDossierPending, ArchiveDossierRead, ArchiveDossierState, ArchiveDossierUnavailable,
     ArchiveLinkedPageState, ArchiveReadScope,
 };
+use babylon_persistence::identity::CampaignId;
 use babylon_persistence::{
-    identity::CampaignId, ArchiveAtom, ArchiveAtomSubject, ArchiveAtomSubjectKind,
-    ArchiveAtomValue, ArchiveCitation, ArchiveEvidenceClass, ArchivePageRef, ArchiveSignal,
-    ArchiveSubjectKind,
+    ArchiveAtom, ArchiveAtomSubject, ArchiveAtomSubjectKind, ArchiveAtomValue, ArchiveCitation,
+    ArchiveEvidenceClass, ArchivePageRef, ArchiveSignal, ArchiveSubjectKind,
 };
+
+use babylon_client::observer_audio::ObserverAudioSettings;
+use babylon_client::production::PrimaryView;
+use babylon_client::production::ProductionCommand;
+use babylon_client::production::ProductionNavigation;
 use bevy::asset::AssetPlugin;
 use bevy::picking::backend::HitData;
 use bevy::picking::events::{Click, Pointer};
+use bevy::picking::hover::HoverMap;
 use bevy::picking::pointer::{Location, PointerButton, PointerId};
 use bevy::prelude::*;
 use bevy::time::TimeUpdateStrategy;
+use bevy::window::PrimaryWindow;
+use bevy::window::WindowResolution;
 use std::ffi::OsString;
+use std::sync::PoisonError;
 use std::sync::{Mutex, MutexGuard};
 use std::time::Duration;
 use uuid::Uuid;
@@ -52,7 +61,7 @@ impl ReaderDsnGuard {
     fn lock_and_remove() -> Self {
         let lock = READER_DSN_LOCK
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+            .unwrap_or_else(PoisonError::into_inner);
         let prior = std::env::var_os("BABYLON_READER_DSN");
         std::env::remove_var("BABYLON_READER_DSN");
         Self { _lock: lock, prior }
@@ -119,11 +128,11 @@ fn new_observer_app(window_size: (u32, u32)) -> (ReaderDsnGuard, App) {
         ..default()
     })
     .init_resource::<UiScale>()
-    .init_resource::<bevy::picking::hover::HoverMap>()
-    .init_resource::<babylon_client::observer_audio::ObserverAudioSettings>()
-    .init_resource::<babylon_client::production::PrimaryView>()
-    .init_resource::<babylon_client::production::ProductionNavigation>()
-    .add_message::<babylon_client::production::ProductionCommand>()
+    .init_resource::<HoverMap>()
+    .init_resource::<ObserverAudioSettings>()
+    .init_resource::<PrimaryView>()
+    .init_resource::<ProductionNavigation>()
+    .add_message::<ProductionCommand>()
     .add_plugins((
         babylon_client::map::MapPlugin,
         ObserverShellPlugin,
@@ -143,11 +152,10 @@ fn new_observer_app(window_size: (u32, u32)) -> (ReaderDsnGuard, App) {
     );
     app.world_mut().spawn((
         Window {
-            resolution: bevy::window::WindowResolution::from(window_size)
-                .with_scale_factor_override(1.0),
+            resolution: WindowResolution::from(window_size).with_scale_factor_override(1.0),
             ..default()
         },
-        bevy::window::PrimaryWindow,
+        PrimaryWindow,
     ));
     install_observer_frame(&mut app);
     app.finish();
@@ -247,9 +255,8 @@ fn fixture_projection() -> ArchiveDossierRead {
 fn install_observer_frame(app: &mut App) {
     use babylon_client::observer::ObserverSession;
     use babylon_client::observer_ui::ObserverFrame;
-    use babylon_persistence::{
-        observer_reader::ObserverEconomySnapshot, observer_reader::ObserverVisibility,
-    };
+    use babylon_persistence::observer_reader::{ObserverEconomySnapshot, ObserverVisibility};
+
     let session = app.world().resource::<ObserverSession>();
     let hash = format!("{:02x}", session.viewed_tick).repeat(32);
     let frame = ObserverEconomySnapshot {
@@ -972,7 +979,7 @@ fn assert_observer_archive_geometry(app: &mut App, root: Entity) {
 
     let mut windows = app
         .world_mut()
-        .query_filtered::<&Window, With<bevy::window::PrimaryWindow>>();
+        .query_filtered::<&Window, With<PrimaryWindow>>();
     let window = windows.single(app.world()).expect("primary window");
     let size = Vec2::new(window.width(), window.height());
     let scale = app.world().resource::<UiScale>().0;

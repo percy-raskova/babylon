@@ -1,8 +1,13 @@
-use super::*;
-use crate::{
-    national_counties::{acs_cell, national_county_reference, ObservationStatus},
-    national_household_allocation::{HouseholdBudgetAllocation, HouseholdBudgetKey},
+use super::allocation;
+use super::model::{
+    CountyTimeControls, HouseholdTimeAllocation, HouseholdTimeAllocationError, HouseholdTimeMeasure,
 };
+use super::source::{allocate_household_time, observation, validate_roster};
+use crate::national_counties;
+use crate::national_counties::CountyReference;
+use crate::national_counties::ObservationStatus;
+use crate::national_household_allocation::{HouseholdBudgetAllocation, HouseholdBudgetKey};
+use babylon_kernel::geography::CountyGeoid;
 
 fn county() -> CountyGeoid {
     CountyGeoid::try_from("26001").unwrap()
@@ -48,7 +53,7 @@ fn inactive_residents_remain_eligible_without_any_workforce_member() {
         budget(HouseholdBudgetKey::NoEarnerNonowner, 6, 2, 0, 0),
         budget(HouseholdBudgetKey::NoEarnerOwner, 2, 1, 0, 0),
     ];
-    let result = allocate_county(county(), controls, &budgets).unwrap();
+    let result = allocation::allocate_county(county(), controls, &budgets).unwrap();
     assert_eq!(
         result.budgets().iter().map(values).collect::<Vec<_>>(),
         [[4, 1, 3, 2], [1, 0, 1, 1]]
@@ -69,7 +74,7 @@ fn zero_eligible_people_keep_all_persons_without_inventing_time_or_workers() {
         armed_forces: 0,
         inactive: 0,
     };
-    let result = allocate_county(
+    let result = allocation::allocate_county(
         county(),
         controls,
         &[budget(HouseholdBudgetKey::NoEarnerNonowner, 4, 2, 0, 0)],
@@ -102,7 +107,7 @@ fn mixed_budgets() -> Vec<HouseholdBudgetAllocation> {
 #[test]
 fn remaining_person_capacities_bound_each_allocation_including_sparse_collective_residence() {
     let budgets = mixed_budgets();
-    let result = allocate_county(county(), mixed_controls(), &budgets).unwrap();
+    let result = allocation::allocate_county(county(), mixed_controls(), &budgets).unwrap();
     assert_eq!(
         result.budgets().iter().map(values).collect::<Vec<_>>(),
         [[5, 0, 1, 0], [3, 1, 1, 2], [1, 0, 1, 1],]
@@ -130,7 +135,7 @@ fn equal_remainders_follow_budget_identity_not_caller_order() {
         budget(HouseholdBudgetKey::NoEarnerNonowner, 1, 1, 0, 0),
         budget(HouseholdBudgetKey::NoEarnerOwner, 1, 1, 0, 0),
     ];
-    let result = allocate_county(county(), controls, &budgets).unwrap();
+    let result = allocation::allocate_county(county(), controls, &budgets).unwrap();
     assert_eq!(
         result.budgets().iter().map(values).collect::<Vec<_>>(),
         [[1, 1, 0, 0], [1, 0, 1, 0], [0, 0, 0, 1],]
@@ -139,7 +144,7 @@ fn equal_remainders_follow_budget_identity_not_caller_order() {
     reversed.reverse();
     assert_eq!(
         result,
-        allocate_county(county(), controls, &reversed).unwrap()
+        allocation::allocate_county(county(), controls, &reversed).unwrap()
     );
 }
 
@@ -149,31 +154,31 @@ fn impossible_county_and_budget_margins_refuse_instead_of_moving_workers() {
     let mut invalid = controls;
     invalid.eligible_16_plus = 13;
     assert!(matches!(
-        allocate_county(county(), invalid, &mixed_budgets()),
+        allocation::allocate_county(county(), invalid, &mixed_budgets()),
         Err(HouseholdTimeAllocationError::CountyMargin { .. })
     ));
     invalid = controls;
     invalid.inactive += 1;
     assert!(matches!(
-        allocate_county(county(), invalid, &mixed_budgets()),
+        allocation::allocate_county(county(), invalid, &mixed_budgets()),
         Err(HouseholdTimeAllocationError::CountyMargin { .. })
     ));
     let mut rows = mixed_budgets();
     rows[0].employed = 6;
     assert!(matches!(
-        allocate_county(county(), controls, &rows),
+        allocation::allocate_county(county(), controls, &rows),
         Err(HouseholdTimeAllocationError::BudgetMargin { .. })
     ));
     rows = mixed_budgets();
     rows[0].employed -= 1;
     assert!(matches!(
-        allocate_county(county(), controls, &rows),
+        allocation::allocate_county(county(), controls, &rows),
         Err(HouseholdTimeAllocationError::BudgetMargin { .. })
     ));
     rows = mixed_budgets();
     rows[0].households -= 1;
     assert!(matches!(
-        allocate_county(county(), controls, &rows),
+        allocation::allocate_county(county(), controls, &rows),
         Err(HouseholdTimeAllocationError::BudgetMargin { .. })
     ));
 }
@@ -183,13 +188,13 @@ fn duplicate_or_external_budget_identity_cannot_absorb_domestic_people() {
     let mut rows = mixed_budgets();
     rows[1].key = rows[0].key;
     assert!(matches!(
-        allocate_county(county(), mixed_controls(), &rows),
+        allocation::allocate_county(county(), mixed_controls(), &rows),
         Err(HouseholdTimeAllocationError::BudgetIdentity { .. })
     ));
     rows = mixed_budgets();
     rows[2].key = HouseholdBudgetKey::PooledExternal;
     assert!(matches!(
-        allocate_county(county(), mixed_controls(), &rows),
+        allocation::allocate_county(county(), mixed_controls(), &rows),
         Err(HouseholdTimeAllocationError::BudgetIdentity { .. })
     ));
 }
@@ -215,7 +220,7 @@ fn unavailable_estimate_retains_exact_sentinel_and_status_in_the_refusal() {
             ObservationStatus::NotApplicableOrAvailable,
         ),
     ] {
-        let cell = acs_cell(&["", raw, label]).unwrap();
+        let cell = national_counties::acs_cell(&["", raw, label]).unwrap();
         assert_eq!(
             observation(county(), HouseholdTimeMeasure::Eligible16Plus, &cell),
             Err(HouseholdTimeAllocationError::UnavailableObservation {
@@ -226,7 +231,7 @@ fn unavailable_estimate_retains_exact_sentinel_and_status_in_the_refusal() {
             })
         );
     }
-    let zero = acs_cell(&["0", "0", "published"]).unwrap();
+    let zero = national_counties::acs_cell(&["0", "0", "published"]).unwrap();
     assert_eq!(
         observation(county(), HouseholdTimeMeasure::Eligible16Plus, &zero),
         Ok(0)
@@ -235,11 +240,11 @@ fn unavailable_estimate_retains_exact_sentinel_and_status_in_the_refusal() {
 
 #[test]
 fn omitted_duplicated_or_dependency_county_refuses_the_exact_roster_join() {
-    let source = national_county_reference().unwrap();
+    let source = national_counties::national_county_reference().unwrap();
     let keys: Vec<_> = source
         .counties()
         .iter()
-        .map(crate::national_counties::CountyReference::geoid)
+        .map(CountyReference::geoid)
         .collect();
     assert_eq!(validate_roster(source, keys.iter().copied()), Ok(()));
     assert_eq!(
@@ -279,14 +284,14 @@ fn source_and_budget_arithmetic_cannot_wrap_into_a_feasible_margin() {
         1,
     )];
     assert_eq!(
-        allocate_county(county(), controls, &rows),
+        allocation::allocate_county(county(), controls, &rows),
         Err(HouseholdTimeAllocationError::Arithmetic { county: county() })
     );
 }
 
 #[test]
 fn allocation_provenance_refuses_different_county_or_workforce_capture() {
-    let counties = national_county_reference().unwrap();
+    let counties = national_counties::national_county_reference().unwrap();
     let households = crate::national_household_allocation::allocate_households(
         counties,
         crate::national_households::national_household_reference().unwrap(),

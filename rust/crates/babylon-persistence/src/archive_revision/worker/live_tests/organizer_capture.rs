@@ -1,14 +1,35 @@
 //! The real organizer SQL capture ends before slow admission and rendering.
-use super::*;
-use crate::organizer_archive::capture_organizer_pages;
+use super::support;
+use super::support::TestDatabase;
+use crate::archive_worker::ArchiveDossierProducer;
+use crate::identity::CampaignId;
+use crate::material_runtime::ArchiveFoundationCandidate;
+use crate::material_runtime::DurableMaterialRuntime;
+use crate::organizer_archive;
+use crate::ArchiveProducerOutcome;
+use crate::ArchiveWorkerCancellation;
+use crate::{
+    michigan_content, michigan_material, PendingArchiveReceipt, SemanticArchiveError,
+    SemanticArchiveStore,
+};
 use crate::{ArchiveKnowledge, OrganizerDossierProducer};
+use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_practice_contract::{OrganizerChoice, OrganizerCommand};
+use michigan_content::MichiganContentPreset;
+use michigan_material::MichiganDeliveryPreset;
+use michigan_material::MichiganMaterialCatalog;
+use postgres::Client;
+use postgres::IsolationLevel;
+use postgres::{Config, NoTls};
+use std::path::Path;
+use std::time::Duration;
+use uuid::Uuid;
 
 #[test]
 #[ignore = "requires task-owned disposable PostgreSQL runtime and Wayne source artifacts"]
 fn organizer_owned_capture_survives_short_idle_and_preserves_historical_proofs() {
-    let base = validated_base_config();
-    let template = validated_template_name();
+    let base = support::validated_base_config();
+    let template = support::validated_template_name();
     let database = TestDatabase::create_from_template(&base, &template, "organizercapture");
     let config = database.config(&base);
     let campaign = CampaignId::from_uuid(Uuid::from_u128(0x341_26163));
@@ -25,11 +46,13 @@ fn organizer_owned_capture_survives_short_idle_and_preserves_historical_proofs()
     let mut inspector = config.connect(NoTls).unwrap();
     let mut tx = client
         .build_transaction()
-        .isolation_level(postgres::IsolationLevel::RepeatableRead)
+        .isolation_level(IsolationLevel::RepeatableRead)
         .read_only(true)
         .start()
         .unwrap();
-    let captured = capture_organizer_pages(&mut tx, *campaign.as_uuid(), &receipt, 4).unwrap();
+    let captured =
+        organizer_archive::capture_organizer_pages(&mut tx, *campaign.as_uuid(), &receipt, 4)
+            .unwrap();
     tx.commit().unwrap();
     let idle: bool = inspector
         .query_one(
@@ -42,12 +65,10 @@ fn organizer_owned_capture_survives_short_idle_and_preserves_historical_proofs()
         idle,
         "slow detached admission must start with no SQL transaction"
     );
-    std::thread::sleep(std::time::Duration::from_millis(5100));
+    std::thread::sleep(Duration::from_millis(5100));
     client.simple_query("SELECT 1").unwrap();
     let (outcome, admitted) = captured
-        .admit_and_render(Some(
-            crate::material_runtime::ArchiveFoundationCandidate::Graph(Box::new(graph)),
-        ))
+        .admit_and_render(Some(ArchiveFoundationCandidate::Graph(Box::new(graph))))
         .unwrap();
     assert_eq!(
         admitted
@@ -89,7 +110,7 @@ fn assert_published_work_reauthenticates_fresh_source(
     campaign: CampaignId,
     receipt: &PendingArchiveReceipt,
     later: &PendingArchiveReceipt,
-    inspector: &mut postgres::Client,
+    inspector: &mut Client,
 ) {
     let mut publisher = SemanticArchiveStore::new(config)
         .connect("connect canonical capture control publication")
@@ -100,7 +121,7 @@ fn assert_published_work_reauthenticates_fresh_source(
             client,
             campaign,
             &producer,
-            &crate::ArchiveWorkerCancellation::default(),
+            &ArchiveWorkerCancellation::default(),
             1,
         )
     })
@@ -131,8 +152,8 @@ fn assert_published_work_reauthenticates_fresh_source(
 }
 
 fn assert_detached_capture_refuses_unconsumed_command(
-    client: &mut postgres::Client,
-    inspector: &mut postgres::Client,
+    client: &mut Client,
+    inspector: &mut Client,
     campaign: CampaignId,
     receipt: &PendingArchiveReceipt,
 ) {
@@ -179,15 +200,16 @@ fn cold_graph_candidate_checks_fresh_components_and_geography(
         }
         let mut tx = client
             .build_transaction()
-            .isolation_level(postgres::IsolationLevel::RepeatableRead)
+            .isolation_level(IsolationLevel::RepeatableRead)
             .read_only(true)
             .start()
             .unwrap();
-        let captured = capture_organizer_pages(&mut tx, *campaign.as_uuid(), receipt, 4).unwrap();
+        let captured =
+            organizer_archive::capture_organizer_pages(&mut tx, *campaign.as_uuid(), receipt, 4)
+                .unwrap();
         tx.commit().unwrap();
-        let result = captured.admit_and_render(Some(
-            crate::material_runtime::ArchiveFoundationCandidate::Graph(Box::new(graph)),
-        ));
+        let result =
+            captured.admit_and_render(Some(ArchiveFoundationCandidate::Graph(Box::new(graph))));
         if changed_geography {
             client.execute("UPDATE babylon_state.campaign SET geography_scope='michigan-control' WHERE campaign_id=$1", &[campaign.as_uuid()]).unwrap();
         } else {
@@ -201,12 +223,12 @@ fn cold_graph_candidate_checks_fresh_components_and_geography(
 }
 
 fn assert_fresh_geography_and_subject_data(
-    inspector: &mut postgres::Client,
+    inspector: &mut Client,
     producer: &OrganizerDossierProducer,
     campaign: CampaignId,
     later: &PendingArchiveReceipt,
     knowledge: &ArchiveKnowledge,
-    recovered: &crate::ArchiveProducerOutcome,
+    recovered: &ArchiveProducerOutcome,
 ) {
     // An admitted source never stands in for fresh campaign geography witnesses.
     inspector.execute("UPDATE babylon_state.campaign SET geography_scope='national-counties' WHERE campaign_id=$1", &[campaign.as_uuid()]).unwrap();
@@ -243,14 +265,12 @@ fn committed_organizer_periods(
     PendingArchiveReceipt,
     PendingArchiveReceipt,
 ) {
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../../content/scenarios/michigan/defines.toml");
-    let catalog = michigan_material::MichiganMaterialCatalog::load_for_preset(
-        &path,
-        michigan_material::MichiganDeliveryPreset::OrganizeInWayne,
-    )
-    .unwrap();
-    let foundation = michigan_content::MichiganContentPreset::OrganizeInWayne
+    let catalog =
+        MichiganMaterialCatalog::load_for_preset(&path, MichiganDeliveryPreset::OrganizeInWayne)
+            .unwrap();
+    let foundation = MichiganContentPreset::OrganizeInWayne
         .create_foundation_for_campaign(&catalog, campaign)
         .unwrap();
     let mut runtime = DurableMaterialRuntime::create(config, campaign, foundation).unwrap();

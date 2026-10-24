@@ -405,12 +405,13 @@
 //! `terminal-decision-emitted` staying at its seeded 0.
 
 use babylon_bsl::evaluator::Value;
-use babylon_bsl::scenario::load_scenario;
+use babylon_bsl::scenario;
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
+use babylon_kernel::replay::ReplaySeed;
 use babylon_kernel::replay::ReplaySessionId;
-use babylon_tick::{diagnostic::RuleDiagnosticSession, run_once_into};
+use babylon_tick::diagnostic::RuleDiagnosticSession;
 
 /// The one-shot driver identity (D179): deterministic, never a UUID or clock.
 fn run_once_session() -> ReplaySessionId {
@@ -458,7 +459,8 @@ const ZE_CARCERAL_REGISTER: NodeId = NodeId(3);
 fn run(scenario: &str) -> (HypergraphStore, CollectingSink) {
     let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
-    run_once_into(scenario, RULE, &mut graph, &mut sink).expect("the Pack B rules must run");
+    babylon_tick::run_once_into(scenario, RULE, &mut graph, &mut sink)
+        .expect("the Pack B rules must run");
     (graph, sink)
 }
 
@@ -757,7 +759,7 @@ fn all_four_scenarios_load_clean_with_c01_c02() {
     ] {
         let mut graph = HypergraphStore::new();
         let mut sink = CollectingSink::default();
-        run_once_into(scenario, RULE, &mut graph, &mut sink)
+        babylon_tick::run_once_into(scenario, RULE, &mut graph, &mut sink)
             .unwrap_or_else(|e| panic!("{label} scenario must load and run clean: {e:?}"));
     }
 }
@@ -921,7 +923,8 @@ fn c01_c02_on_the_zero_enforcer_companion() {
 #[test]
 fn the_primary_scenario_loads_clean_with_the_declared_census() {
     let mut graph = HypergraphStore::new();
-    let loaded = load_scenario(PRIMARY_SCENARIO, &mut graph).expect("the scenario must load clean");
+    let loaded = scenario::load_scenario(PRIMARY_SCENARIO, &mut graph)
+        .expect("the scenario must load clean");
     assert_eq!(loaded.node_count, 7, "6 social classes + 1 carrier");
     assert_eq!(
         loaded.edge_count, 0,
@@ -940,7 +943,8 @@ fn the_primary_scenario_loads_clean_with_the_declared_census() {
 #[test]
 fn social_role_order_is_the_ruled_ordinal() {
     let mut graph = HypergraphStore::new();
-    let loaded = load_scenario(PRIMARY_SCENARIO, &mut graph).expect("the scenario must load clean");
+    let loaded = scenario::load_scenario(PRIMARY_SCENARIO, &mut graph)
+        .expect("the scenario must load clean");
     let ty = loaded
         .enums
         .resolve("SocialRole")
@@ -983,7 +987,7 @@ fn c01_c02_emit_nothing() {
         .expect("c03-crisis must exist in RULE to split on");
     let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
-    run_once_into(PRIMARY_SCENARIO, c01_c02_only, &mut graph, &mut sink)
+    babylon_tick::run_once_into(PRIMARY_SCENARIO, c01_c02_only, &mut graph, &mut sink)
         .expect("c01/c02 alone must run");
     assert_eq!(
         sink.events.len(),
@@ -1188,7 +1192,7 @@ fn c03_latches_once() {
         RULE,
         HypergraphStore::new(),
         run_once_session(),
-        babylon_kernel::replay::ReplaySeed::new(0),
+        ReplaySeed::new(0),
     )
     .expect("the pack must load into a session");
     let mut sink = CollectingSink::default();
@@ -1655,7 +1659,7 @@ fn c04_respects_the_terminal_delay() {
         RULE,
         HypergraphStore::new(),
         run_once_session(),
-        babylon_kernel::replay::ReplaySeed::new(0),
+        ReplaySeed::new(0),
     )
     .expect("the pack must load into a session");
 
@@ -1737,7 +1741,7 @@ fn c04_emits_once() {
         RULE,
         HypergraphStore::new(),
         run_once_session(),
-        babylon_kernel::replay::ReplaySeed::new(0),
+        ReplaySeed::new(0),
     )
     .expect("the pack must load into a session");
     let mut sink = CollectingSink::default();

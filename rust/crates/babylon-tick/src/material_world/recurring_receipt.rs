@@ -9,7 +9,8 @@ use babylon_material_circuit::{
     ProcessId, ProcurementReceipt, ProductionPlanReceipt, SiteId, UnitId,
 };
 
-use super::{MaterialWorldError, ReceiptCursor};
+use super::MaterialWorldError;
+use super::ReceiptCursor;
 
 pub(super) const DEMAND_BYTES: usize = 240;
 pub(super) const CONSUMPTION_BYTES: usize = 144;

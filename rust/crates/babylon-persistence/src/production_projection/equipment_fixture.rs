@@ -1,6 +1,27 @@
 //! Actual kernel equipment control data; transitions execute through `MaterialWorldRegister`.
 use babylon_kernel::currency::Currency;
-use babylon_material_circuit::*;
+use babylon_material_circuit::AidBook;
+use babylon_material_circuit::CorridorId;
+use babylon_material_circuit::FinalDemandPrincipalId;
+use babylon_material_circuit::GoodId;
+use babylon_material_circuit::HouseholdTimeAccounting;
+use babylon_material_circuit::LogisticsNodeId;
+use babylon_material_circuit::ProcessId;
+use babylon_material_circuit::RouteId;
+use babylon_material_circuit::SiteId;
+use babylon_material_circuit::UnitId;
+use babylon_material_circuit::{
+    AccountId, AttendancePlan, CapacityRow, CapacitySupply, CashAccount, CircuitAccounting,
+    CommodityDefinition, CommodityKind, CorridorCapacity, EmploymentTerms, EquipmentBinding,
+    EquipmentDefinition, EquipmentDefinitionId, FinalDemandPrincipal, FinancialInstitutions,
+    HistoricalCostBook, InputOutputCoefficient, InstallationInput, InstallationPolicy,
+    InventoryRow, InvestmentPolicy, LaborCapacityRow, LaborCoefficient, LaborCompensation,
+    MaterialCircuitState, MemberLaborCapacityRow, MonetaryBook, MonetaryCircuit, PricePolicy,
+    ProcessOutput, ProductionDemandPolicy, ProductiveEquipment, RecurringEconomy,
+    RollingCapacitySupply, RollingProcessSupply, RouteStage, RouteStageCapacity, SellerOffer,
+    SharedCapacitySupply, SiteLogisticsNode, StaffingMemberId, StockCarryingValue, SupplierRoute,
+    SupplierTransport,
+};
 
 fn money(n: i128) -> Currency {
     Currency::from_micro_units(n)
@@ -94,8 +115,8 @@ fn opening_accounting(
     schedules: &[LaborCapacityRow],
 ) -> CircuitAccounting {
     CircuitAccounting::Monetary(Box::new(MonetaryCircuit {
-        aid: babylon_material_circuit::AidBook::default(),
-        household_time: babylon_material_circuit::HouseholdTimeAccounting::NotModeled,
+        aid: AidBook::default(),
+        household_time: HouseholdTimeAccounting::NotModeled,
         book,
         costs,
         financial: FinancialInstitutions::empty(),

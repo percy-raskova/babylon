@@ -1,20 +1,21 @@
 //! Database-free foundation and full-checkpoint composition contract.
 
-use babylon_bsl::canonical_ast::rules_hash_of;
-use babylon_bsl::rule_pipeline::split_content;
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;
-use babylon_kernel::content_digest::sha256_of;
 use babylon_kernel::content_digest::ContentDigest;
 use babylon_kernel::replay::{ReplaySeed, ReplaySessionId};
 use babylon_kernel::tick_content_hash::RefDigest;
+use babylon_persistence::identity::CampaignId;
 use babylon_persistence::{
-    identity::CampaignId, michigan_dynamic_hex_foundation, prepare_committed_tick,
     ArchiveDirtyReceipt, CampaignFoundation, CheckpointCompleteness, CheckpointRows,
     CommittedCheckpointSection, CommittedFullCheckpoint, CommittedResolveTick,
     CommittedResolveTickError, FoundationContentBundle, FullCheckpointSectionTag,
     RustPersistenceRuntimeError,
 };
+
+use babylon_bsl::canonical_ast;
+use babylon_bsl::rule_pipeline;
+use babylon_kernel::content_digest;
 use babylon_practice_contract::OrderedPracticeActionBatch;
 use babylon_tick::material_state::MaterialState;
 use babylon_tick::replay_session::{IdentifiedTickReport, ReplayTickSession};
@@ -50,21 +51,22 @@ fn fixture() -> (
     RefDigest,
     Vec<u8>,
 ) {
-    let (_, rules) = split_content(RULE).expect("rule parses");
+    let (_, rules) = rule_pipeline::split_content(RULE).expect("rule parses");
     let forms = rules.into_iter().map(|rule| rule.form).collect::<Vec<_>>();
     let content = ContentDigest {
-        defines_hash: sha256_of(DEFINES),
-        rules_hash: rules_hash_of(&forms).expect("rules hash"),
+        defines_hash: content_digest::sha256_of(DEFINES),
+        rules_hash: canonical_ast::rules_hash_of(&forms).expect("rules hash"),
     };
     let session_id =
         ReplaySessionId::try_from("per281/foundation-checkpoint").expect("session identity");
     let seed = ReplaySeed::new(281);
-    let foundation = michigan_dynamic_hex_foundation().expect("foundation decodes");
+    let foundation =
+        babylon_persistence::michigan_dynamic_hex_foundation().expect("foundation decodes");
     let mut reference_manifest = REFERENCE_BUNDLE_DOMAIN.to_vec();
     reference_manifest.extend_from_slice(&foundation.base_reference_cohort_digest());
     reference_manifest.extend_from_slice(&foundation.r8_section_digest());
     assert_eq!(
-        sha256_of(&reference_manifest),
+        content_digest::sha256_of(&reference_manifest),
         foundation.reference_bundle_digest()
     );
     let reference = RefDigest::from_bytes(foundation.reference_bundle_digest());
@@ -275,7 +277,8 @@ fn foundation_refuses_capture_after_the_first_tick() {
 fn prepared_tick_owns_full_checkpoint_rows_and_exact_archive_receipt() {
     let (mut session, session_id, seed, content, reference, _) = fixture();
     let report = first_report(&mut session, &session_id);
-    let prepared = prepare_committed_tick(&report).expect("single report composes");
+    let prepared =
+        babylon_persistence::prepare_committed_tick(&report).expect("single report composes");
 
     let checkpoint: &CheckpointRows = prepared.checkpoint_rows();
     assert_eq!(checkpoint.row_count(), 9);
@@ -369,7 +372,7 @@ fn restart_root_is_one_exact_nine_section_full_checkpoint() {
         .zip(checkpoint.rows())
         .zip(exact_section_bytes)
     {
-        assert_eq!(section.sha256(), sha256_of(exact_bytes));
+        assert_eq!(section.sha256(), content_digest::sha256_of(exact_bytes));
         let exact_start = row.payload().len() - exact_bytes.len();
         assert_eq!(row.payload()[exact_start - 5], 1);
         let encoded_len = u32::from_be_bytes(
@@ -379,11 +382,14 @@ fn restart_root_is_one_exact_nine_section_full_checkpoint() {
         );
         assert_eq!(usize::try_from(encoded_len).unwrap(), exact_bytes.len());
         assert_eq!(&row.payload()[exact_start..], exact_bytes);
-        assert_eq!(section.sha256(), sha256_of(&row.payload()[exact_start..]));
+        assert_eq!(
+            section.sha256(),
+            content_digest::sha256_of(&row.payload()[exact_start..])
+        );
     }
     assert_eq!(
         checkpoint.manifest_sha256(),
-        sha256_of(checkpoint.manifest_bytes())
+        content_digest::sha256_of(checkpoint.manifest_bytes())
     );
 
     assert_eq!(
@@ -417,7 +423,7 @@ fn checkpoint_rows_are_always_the_exact_nine_required_sections() {
 
     let (mut session, session_id, _, _, _, _) = fixture();
     let report = first_report(&mut session, &session_id);
-    let prepared = prepare_committed_tick(&report).expect("report composes");
+    let prepared = babylon_persistence::prepare_committed_tick(&report).expect("report composes");
     assert_eq!(prepared.checkpoint_rows().row_count(), 9);
 
     let source = include_str!("../src/checkpoint.rs");

@@ -3,16 +3,19 @@ use babylon_kernel::economic_location::EconomicLocation;
 use babylon_material_circuit::{
     CommodityKind, EquipmentAssetId, RollingProcessSupply, StaffingWorkSource, SupplierTransport,
 };
-use babylon_persistence::{
-    economic_catalog::{CatalogCapacity, EconomicOpening},
-    national_cohorts::national_cohort_reference,
-    national_counties::national_county_reference,
-    national_economy::{build_national_opening, NationalGamePolicy},
-    national_resident_workforce::national_resident_workforce_reference,
-    national_transport::national_transport_reference,
-    world_reference::world_reference,
-};
+use babylon_persistence::economic_catalog::{CatalogCapacity, EconomicOpening};
+use babylon_persistence::national_economy::NationalGamePolicy;
+use babylon_persistence::world_reference;
+
+use babylon_material_circuit::HouseholdKind;
+use babylon_material_circuit::HouseholdNeedBasis;
+use babylon_persistence::national_cohorts;
+use babylon_persistence::national_counties;
+use babylon_persistence::national_economy;
+use babylon_persistence::national_resident_workforce;
+use babylon_persistence::national_transport;
 use std::collections::{BTreeMap, BTreeSet};
+use std::time::Instant;
 
 #[path = "support/national_household_controls.rs"]
 mod household_controls;
@@ -27,13 +30,13 @@ fn full_opening_conserves_counted_households_and_uses_finite_connected_accounts(
         "/../../../content/scenarios/national/defines.toml"
     )))
     .unwrap();
-    let counties = national_county_reference().unwrap();
-    let cohorts = national_cohort_reference().unwrap();
-    let residents = national_resident_workforce_reference().unwrap();
-    let world = world_reference().unwrap();
-    let transport = national_transport_reference().unwrap();
-    let start = std::time::Instant::now();
-    let opening = build_national_opening(
+    let counties = national_counties::national_county_reference().unwrap();
+    let cohorts = national_cohorts::national_cohort_reference().unwrap();
+    let residents = national_resident_workforce::national_resident_workforce_reference().unwrap();
+    let world = world_reference::world_reference().unwrap();
+    let transport = national_transport::national_transport_reference().unwrap();
+    let start = Instant::now();
+    let opening = national_economy::build_national_opening(
         counties,
         cohorts,
         residents,
@@ -144,8 +147,8 @@ fn assert_markets(opening: &EconomicOpening, policy: &NationalGamePolicy) {
     for household in &opening.households {
         assert!(household.subject.canonical_bytes().is_ok());
         for need in &policy.household_needs {
-            if household.kind == babylon_material_circuit::HouseholdKind::CollectiveResidence
-                && need.basis == babylon_material_circuit::HouseholdNeedBasis::Households
+            if household.kind == HouseholdKind::CollectiveResidence
+                && need.basis == HouseholdNeedBasis::Households
             {
                 continue;
             }

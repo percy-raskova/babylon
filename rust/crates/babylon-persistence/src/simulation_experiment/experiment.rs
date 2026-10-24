@@ -4,9 +4,17 @@ use super::{freight, regional};
 
 use crate::material_runtime::MaterialRuntimeFoundation;
 
-use babylon_kernel::content_digest::sha256_of;
-
+use crate::economic_catalog::CapturedEconomicCatalog;
+use crate::material_runtime::MaterialFoundationSpec;
+use crate::michigan_material::MichiganMaterialCatalog;
+use crate::CampaignFoundation;
+use babylon_kernel::content_digest;
+use babylon_kernel::replay::ReplaySeed;
+use babylon_kernel::replay::ReplaySessionId;
+use babylon_tick::material_staffing::StaffingComposition;
+use babylon_tick::material_world::MaterialWorldRegister;
 use serde::{Deserialize, Serialize};
+use std::fmt::Formatter;
 
 pub const MAX_EXPERIMENT_INPUT_BYTES: usize = 65_536;
 
@@ -133,7 +141,7 @@ pub enum ExperimentError {
 }
 
 impl std::fmt::Display for ExperimentError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "simulation experiment refused: {self:?}")
     }
 }
@@ -308,7 +316,7 @@ impl SimulationExperimentV1 {
     /// # Errors
     /// Refuses invalid experiment values.
     pub fn sha256(&self) -> Result<[u8; 32]> {
-        Ok(sha256_of(&self.canonical_bytes()?))
+        Ok(content_digest::sha256_of(&self.canonical_bytes()?))
     }
     /// Construct the ordinary authoritative material foundation from captured inputs.
     /// # Errors
@@ -319,21 +327,19 @@ impl SimulationExperimentV1 {
             return freight::foundation(self);
         }
         let catalog = regional::catalog(self)?;
-        crate::economic_catalog::CapturedEconomicCatalog::from_michigan(&catalog)
+        CapturedEconomicCatalog::from_michigan(&catalog)
             .map_err(|_| ExperimentError::Content)?
             .create_foundation(
-                babylon_kernel::replay::ReplaySessionId::try_from(
-                    crate::michigan_cohorts::MICHIGAN_COHORT_SESSION,
-                )
-                .map_err(|_| ExperimentError::Foundation)?,
-                babylon_kernel::replay::ReplaySeed::new(self.seed),
+                ReplaySessionId::try_from(crate::michigan_cohorts::MICHIGAN_COHORT_SESSION)
+                    .map_err(|_| ExperimentError::Foundation)?,
+                ReplaySeed::new(self.seed),
             )
             .map_err(|_| ExperimentError::Foundation)
     }
     /// Resolved regional rows for evidence readers. No second transition authority.
     /// # Errors
     /// Refuses the foreign freight profile and invalid captured inputs.
-    pub fn regional_catalog(&self) -> Result<crate::michigan_material::MichiganMaterialCatalog> {
+    pub fn regional_catalog(&self) -> Result<MichiganMaterialCatalog> {
         regional::catalog(self)
     }
     pub(crate) fn transport_permille(&self) -> u64 {
@@ -350,9 +356,9 @@ impl SimulationExperimentV1 {
 }
 
 pub(crate) fn validate_freight_authority(
-    graph: &crate::CampaignFoundation,
-    register: &babylon_tick::material_world::MaterialWorldRegister,
-    spec: &crate::material_runtime::MaterialFoundationSpec,
-) -> Result<babylon_tick::material_staffing::StaffingComposition> {
+    graph: &CampaignFoundation,
+    register: &MaterialWorldRegister,
+    spec: &MaterialFoundationSpec,
+) -> Result<StaffingComposition> {
     freight::validate_authority(graph, register, spec)
 }

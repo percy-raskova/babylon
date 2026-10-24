@@ -1,10 +1,11 @@
 //! Household service needs remain visible without inventing a pantry stock.
 use super::ProductionHouseholdKind;
 use super::{
-    digest_hex, lifecycle, EconomicLocation, GoodId, MaterialCircuitState, MaterialTickReceipts,
+    lifecycle, EconomicLocation, GoodId, MaterialCircuitState, MaterialTickReceipts,
     ProductionProjectionError, Result, UnitId,
 };
 use babylon_material_circuit::AccountId;
+use babylon_material_circuit::FinalDemandPrincipalId;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -93,7 +94,7 @@ pub(crate) fn project_with_labels(
         let mut purchases = purchases.remove(&key).unwrap_or_default();
         purchases
             .3
-            .insert(digest_hex(&policy.retailer_site_id.as_bytes()));
+            .insert(super::digest_hex(&policy.retailer_site_id.as_bytes()));
         let done = completed.get(&key).map(|r| CompletedHouseholdService {
             period: r.period,
             required: r.required_quantity,
@@ -107,10 +108,10 @@ pub(crate) fn project_with_labels(
         });
         result.push(ProductionHouseholdServiceAccount {
             kind: cohort.kind.into(),
-            demand_principal_id: digest_hex(&key.0.as_bytes()),
+            demand_principal_id: super::digest_hex(&key.0.as_bytes()),
             location,
-            good_id: digest_hex(&key.1.as_bytes()),
-            unit_id: digest_hex(&key.2.as_bytes()),
+            good_id: super::digest_hex(&key.1.as_bytes()),
+            unit_id: super::digest_hex(&key.2.as_bytes()),
             good,
             unit,
             household_count: cohort.households,
@@ -126,11 +127,7 @@ pub(crate) fn project_with_labels(
 }
 
 type PurchaseTotals = (u64, u64, u64, BTreeSet<String>);
-type PurchaseKey = (
-    babylon_material_circuit::FinalDemandPrincipalId,
-    GoodId,
-    UnitId,
-);
+type PurchaseKey = (FinalDemandPrincipalId, GoodId, UnitId);
 fn purchase_totals(
     receipt: Option<&MaterialTickReceipts>,
 ) -> Result<BTreeMap<PurchaseKey, PurchaseTotals>> {
@@ -153,7 +150,7 @@ fn purchase_totals(
         }
         values
             .3
-            .insert(digest_hex(&row.provider_site_id.as_bytes()));
+            .insert(super::digest_hex(&row.provider_site_id.as_bytes()));
     }
     Ok(purchases)
 }
@@ -162,7 +159,8 @@ fn purchase_totals(
 mod tests {
     use super::*;
     use babylon_material_circuit::{CircuitAccounting, HouseholdKind};
-    use babylon_tick::material_world::{decode_material_receipts, MaterialWorldRegister};
+    use babylon_tick::material_world;
+    use babylon_tick::material_world::MaterialWorldRegister;
 
     #[test]
     fn collective_resident_services_preserve_actual_receipts_and_zero_households() {
@@ -177,7 +175,7 @@ mod tests {
         cohort.households = 0;
         let opening = MaterialWorldRegister::try_new(0, opening).unwrap();
         let next = opening.prepare_next().unwrap();
-        let mut receipts = decode_material_receipts(next.receipt_bytes()).unwrap();
+        let mut receipts = material_world::decode_material_receipts(next.receipt_bytes()).unwrap();
         let project = |receipts: &MaterialTickReceipts| {
             project_with_labels(
                 next.register().state(),

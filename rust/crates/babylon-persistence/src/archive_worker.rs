@@ -1,16 +1,15 @@
 //! Production dirty-receipt Archive worker composition.
 
 use postgres::Config;
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc,
-};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+
 use uuid::Uuid;
 
-use crate::{
-    identity::CampaignId, ArchiveDirtyBatch, ArchivePageInput, SemanticArchiveError,
-    SemanticArchiveStore,
-};
+use crate::identity::CampaignId;
+use crate::ArchiveKnowledge;
+use crate::{ArchiveDirtyBatch, ArchivePageInput, SemanticArchiveError, SemanticArchiveStore};
+use std::collections::BTreeMap;
 
 /// Exact pending-receipt page query used by the production Archive worker.
 ///
@@ -215,7 +214,7 @@ pub trait ArchiveDossierProducer {
         &self,
         campaign_id: Uuid,
         receipt: &PendingArchiveReceipt,
-        knowledge: &crate::ArchiveKnowledge,
+        knowledge: &ArchiveKnowledge,
         page_budget: usize,
     ) -> Result<ArchiveProducerOutcome, SemanticArchiveError>;
 }
@@ -242,7 +241,7 @@ impl ArchiveDossierProducer for NullArchiveDossierProducer {
         &self,
         _campaign_id: Uuid,
         receipt: &PendingArchiveReceipt,
-        _knowledge: &crate::ArchiveKnowledge,
+        _knowledge: &ArchiveKnowledge,
         _page_budget: usize,
     ) -> Result<ArchiveProducerOutcome, SemanticArchiveError> {
         let batch = ArchiveDirtyBatch::try_new(
@@ -294,13 +293,12 @@ impl ArchiveDossierProducer for CompositeArchiveDossierProducer {
         &self,
         campaign_id: Uuid,
         receipt: &PendingArchiveReceipt,
-        knowledge: &crate::ArchiveKnowledge,
+        knowledge: &ArchiveKnowledge,
         page_budget: usize,
     ) -> Result<ArchiveProducerOutcome, SemanticArchiveError> {
         let mut budget = page_budget;
         let mut remaining = 0usize;
-        let mut merged: std::collections::BTreeMap<_, ArchivePageInput> =
-            std::collections::BTreeMap::new();
+        let mut merged: BTreeMap<_, ArchivePageInput> = BTreeMap::new();
         for producer in &self.producers {
             let produced = producer.produce(campaign_id, receipt, knowledge, budget)?;
             archive_batch_matches_receipt(produced.batch(), receipt)?;

@@ -1,5 +1,4 @@
 //! Captured selected-path continuity and mass-membership checks, not a router.
-use super::{county, digest};
 use crate::michigan_material::{
     MichiganCountyTerminal, MichiganMaterialError, MichiganMaterialPath, MichiganNormalizedContent,
     MichiganPhysicalEdge, MichiganPhysicalNetwork,
@@ -28,9 +27,9 @@ pub(super) fn validate(c: &MichiganNormalizedContent) -> Result<(), MichiganMate
 
 fn network_authority(network: &MichiganPhysicalNetwork) -> Result<(), MichiganMaterialError> {
     use MichiganMaterialError::PhysicalPath;
-    if !digest(&network.source.pbf_sha256)
-        || !digest(&network.source.footprint_sha256)
-        || !digest(&network.source.graph_sha256)
+    if !super::digest(&network.source.pbf_sha256)
+        || !super::digest(&network.source.footprint_sha256)
+        || !super::digest(&network.source.graph_sha256)
         || network.source.pbf_bytes == 0
         || network.source.pbf_url.is_empty()
         || network.source.routing_profile_version != "michigan-freight-routing-v1"
@@ -41,7 +40,10 @@ fn network_authority(network: &MichiganPhysicalNetwork) -> Result<(), MichiganMa
         || network.profile.length_mm == 0
         || network.profile.default_maxheight_mm == 0
         || network.profile.axle_load_kg == Some(0)
-        || network.terminal_source_pins.values().any(|v| !digest(v))
+        || network
+            .terminal_source_pins
+            .values()
+            .any(|v| !super::digest(v))
         || network.terminal_attachment_limit_meters == 0
     {
         return Err(PhysicalPath);
@@ -78,7 +80,7 @@ fn selected_geometry(
 ) -> Result<(), MichiganMaterialError> {
     use MichiganMaterialError::PhysicalPath;
     for t in &network.terminals {
-        if !county(&t.county_geoid)
+        if !super::county(&t.county_geoid)
             || t.evidence_class != "Designed"
             || t.attachment_distance_mm
                 > network

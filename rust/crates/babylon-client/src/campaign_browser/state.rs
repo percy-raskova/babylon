@@ -2,7 +2,7 @@
 
 use super::aggregate;
 
-use crate::workforce::{validate_staffing_period, StaffingIdentity};
+use crate::workforce::StaffingIdentity;
 
 use std::collections::BTreeSet;
 
@@ -16,28 +16,28 @@ use std::path::{Path, PathBuf};
 
 use crate::observer_opening::OpeningPresentation;
 
-use babylon_persistence::{
-    identity::CampaignId,
-    observer_reader::CampaignSummary,
-    observer_reader::ObserverEconomyReader,
-    observer_reader::ObserverEconomySnapshot,
-    observer_reader::ObserverVisibility,
-    production_observation::{ProductionSite, ProductionSnapshot, ProductionStaffingAccount},
+use babylon_persistence::identity::CampaignId;
+use babylon_persistence::observer_reader::{
+    CampaignSummary, ObserverEconomyReader, ObserverEconomySnapshot, ObserverVisibility,
+};
+use babylon_persistence::production_observation::{
+    ProductionSite, ProductionSnapshot, ProductionStaffingAccount,
 };
 
-use bevy::ecs::{query::QueryData, system::SystemParam};
+use bevy::ecs::query::QueryData;
+use bevy::ecs::system::SystemParam;
 
 use bevy::input_focus::tab_navigation::TabGroup;
 
 use bevy::prelude::*;
 
-use bevy::tasks::{block_on, AsyncComputeTaskPool, Task};
+use bevy::tasks::{AsyncComputeTaskPool, Task};
 
 use crate::decision_surface::{DeclaredSurface, SurfaceId};
 
 use crate::observer::{ObservationContext, ObserverSession, Perspective};
 
-use crate::observer_controls::{availability, inspection_availability, ControlAvailability};
+use crate::observer_controls::ControlAvailability;
 
 use crate::observer_focus::{
     ObserverFocusPolicy, ObserverFocusSystems, ObserverFocusTarget, ObserverKeyboardActivate,
@@ -48,9 +48,19 @@ use crate::observer_io::{ObserverSet, RuntimePipe, LAUNCHER_REQUIRED};
 
 use crate::observer_theme as theme;
 
+use crate::map_economy_lens::MapLens;
+use crate::observer_controls;
+use crate::observer_opening::OpeningStage;
 use crate::observer_ui::{
     ObserverCampaignCatalog, ObserverCommand, ObserverFontRole, ObserverFrame, ObserverUiState,
 };
+use crate::production::ProductionNavigation;
+use crate::workforce;
+use babylon_persistence::production_observation::ProductionProcess;
+use bevy::tasks;
+use bevy::text::LineBreak;
+use std::io::ErrorKind;
+use uuid::Uuid;
 
 #[derive(Message, Clone, Copy, Debug)]
 pub enum CampaignBrowserCommand {
@@ -394,7 +404,7 @@ pub(crate) fn setup(mut commands: Commands, menu: Query<Entity, With<ObserverCam
                             max_width: percent(100),
                             ..default()
                         },
-                        TextLayout::new_with_linebreak(bevy::text::LineBreak::AnyCharacter),
+                        TextLayout::new_with_linebreak(LineBreak::AnyCharacter),
                     ))
                     .insert(ObserverFontRole::Exact);
                 });
@@ -519,8 +529,10 @@ pub(crate) fn sync_focus_targets(
                     CampaignBrowserCommand::Open => {
                         browser.context.as_ref() == Some(&context)
                             && browser.selected_campaign().is_some()
-                            && availability(ObserverCommand::NewCampaign, &session)
-                                == ControlAvailability::Enabled
+                            && observer_controls::availability(
+                                ObserverCommand::NewCampaign,
+                                &session,
+                            ) == ControlAvailability::Enabled
                     }
                     CampaignBrowserCommand::Compare => {
                         comparison_availability(&session) == ControlAvailability::Enabled
@@ -580,7 +592,7 @@ pub(crate) fn comparison_availability(session: &ObserverSession) -> ControlAvail
     if session.lifecycle_pending() || session.organizer_control_pending() {
         ControlAvailability::Disabled("Wait for the current campaign operation to finish")
     } else {
-        inspection_availability(session)
+        observer_controls::inspection_availability(session)
     }
 }
 
@@ -665,9 +677,10 @@ pub(crate) fn commands(
             }
             CampaignBrowserCommand::CloseComparison => {
                 ui.comparison_open = false;
-                if opening.as_ref().is_some_and(|opening| {
-                    opening.stage == crate::observer_opening::OpeningStage::Title
-                }) {
+                if opening
+                    .as_ref()
+                    .is_some_and(|opening| opening.stage == OpeningStage::Title)
+                {
                     ui.menu_open = true;
                 }
                 browser.comparison_task = None;
@@ -688,7 +701,7 @@ pub(crate) fn open_selected_campaign(
     pipe: Option<&RuntimePipe>,
 ) -> bool {
     if let ControlAvailability::Disabled(reason) =
-        availability(ObserverCommand::NewCampaign, session)
+        observer_controls::availability(ObserverCommand::NewCampaign, session)
     {
         reason.clone_into(&mut browser.status);
         return false;
@@ -754,7 +767,7 @@ pub(crate) fn collect(session: Res<ObserverSession>, mut browser: ResMut<Campaig
     // Polling an unfinished task has no presentation meaning. Only installed
     // results and explicit state changes invalidate the rendered text.
     if let Some((scope, task)) = &mut browser.bypass_change_detection().catalog_task {
-        if let Some(result) = block_on(bevy::tasks::futures_lite::future::poll_once(task)) {
+        if let Some(result) = tasks::block_on(bevy::tasks::futures_lite::future::poll_once(task)) {
             let scope = scope.clone();
             browser.catalog_task = None;
             if browser.accepts(&scope, &session) {
@@ -766,7 +779,7 @@ pub(crate) fn collect(session: Res<ObserverSession>, mut browser: ResMut<Campaig
         }
     }
     if let Some((scope, task)) = &mut browser.bypass_change_detection().comparison_task {
-        if let Some(result) = block_on(bevy::tasks::futures_lite::future::poll_once(task)) {
+        if let Some(result) = tasks::block_on(bevy::tasks::futures_lite::future::poll_once(task)) {
             let scope = scope.clone();
             browser.comparison_task = None;
             if !browser.accepts(&scope, &session) {
@@ -800,10 +813,7 @@ pub(crate) fn matches_comparison(snapshot: &ObserverEconomySnapshot, scope: &Bro
         && (snapshot.resolve_tick == 0 || snapshot.tick_content_hash.is_some())
 }
 
-pub(crate) fn receipt_text(
-    site: &babylon_persistence::production_observation::ProductionProcess,
-    tick: u64,
-) -> String {
+pub(crate) fn receipt_text(site: &ProductionProcess, tick: u64) -> String {
     match (site.produced_batches, site.planned_batches) {
         (Some(produced), Some(planned)) => {
             let quantity = produced.checked_mul(site.output_per_batch).map_or_else(
@@ -865,12 +875,12 @@ pub(crate) fn compare_staffing(
         }
         writeln!(output, "Modeled workforce: {}", current.subject.local_name)
             .expect("writing to a String cannot fail");
-        if let Err(error) = validate_staffing_period(current, tick) {
+        if let Err(error) = workforce::validate_staffing_period(current, tick) {
             writeln!(output, "CURRENT workforce unavailable: {error}.")
                 .expect("writing to a String cannot fail");
             continue;
         }
-        if let Err(error) = validate_staffing_period(compared, tick) {
+        if let Err(error) = workforce::validate_staffing_period(compared, tick) {
             writeln!(output, "COMPARED workforce unavailable: {error}.")
                 .expect("writing to a String cannot fail");
             continue;
@@ -1006,7 +1016,7 @@ pub(crate) fn comparison_text(
     active: &ObserverEconomySnapshot,
     other: &ObserverEconomySnapshot,
     selected_site: Option<&str>,
-    lens: &crate::map_economy_lens::MapLens,
+    lens: &MapLens,
     section: ComparisonSection,
 ) -> String {
     let mut output = format!(
@@ -1088,7 +1098,7 @@ pub(crate) struct BrowserPaintInput<'w> {
     ui: Res<'w, ObserverUiState>,
     browser: Res<'w, CampaignBrowserState>,
     frame: Res<'w, ObserverFrame>,
-    navigation: Option<Res<'w, crate::production::ProductionNavigation>>,
+    navigation: Option<Res<'w, ProductionNavigation>>,
 }
 
 pub(crate) fn scoped_comparison_text(
@@ -1096,7 +1106,7 @@ pub(crate) fn scoped_comparison_text(
     browser: &CampaignBrowserState,
     frame: &ObserverFrame,
     selected_site: Option<&str>,
-    lens: &crate::map_economy_lens::MapLens,
+    lens: &MapLens,
 ) -> String {
     let (Some(active), Some(compared)) = (&frame.0, &browser.comparison) else {
         return browser.status.clone();
@@ -1248,7 +1258,7 @@ pub(crate) fn paint_buttons(
         let disabled = match button.command.0 {
             CampaignBrowserCommand::Open => {
                 browser.selected_campaign().is_none()
-                    || availability(ObserverCommand::NewCampaign, &session)
+                    || observer_controls::availability(ObserverCommand::NewCampaign, &session)
                         != ControlAvailability::Enabled
             }
             CampaignBrowserCommand::Compare => {
@@ -1276,8 +1286,8 @@ pub(crate) fn paint_buttons(
 }
 
 pub(crate) fn parse_campaign(value: &str) -> Result<CampaignId, String> {
-    let id = uuid::Uuid::parse_str(value)
-        .map_err(|_| "Selected campaign identity is invalid.".to_owned())?;
+    let id =
+        Uuid::parse_str(value).map_err(|_| "Selected campaign identity is invalid.".to_owned())?;
     if id.is_nil() || id.to_string() != value {
         return Err("Selected campaign identity is invalid.".into());
     }
@@ -1328,7 +1338,7 @@ pub(crate) fn write_preference(
                 temporary = Some((candidate, file));
                 break;
             }
-            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+            Err(error) if error.kind() == ErrorKind::AlreadyExists => {}
             Err(_) => return Err("Cannot save the selected campaign preference.".into()),
         }
     }
@@ -1372,7 +1382,21 @@ impl Plugin for CampaignBrowserPlugin {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::map_economy_lens::MapLens;
+    use crate::map_economy_lens::MaterialLensKind;
+    use crate::observer_opening::MenuPage;
+    use crate::observer_opening::OpeningStage;
+    use crate::production::ProductionNavigation;
+    use crate::test_support::EnvVarGuard;
+    use babylon_persistence::production_observation::ProductionProcess;
     use babylon_persistence::production_observation::ProductionSite;
+    use bevy::tasks::TaskPoolBuilder;
+    use bevy::text::CosmicFontSystem;
+    use bevy::ui::ui_surface::UiSurface;
+    use bevy::ui::ContentSize;
+    use std::time::Duration;
+    use std::time::Instant;
+    use uuid::Uuid;
 
     fn staffing_snapshot(
         campaign: CampaignId,
@@ -1381,10 +1405,8 @@ mod tests {
         hires: u64,
         separations: u64,
     ) -> ObserverEconomySnapshot {
-        use babylon_persistence::{
-            production_observation::CompletedProductionStaffing,
-            production_observation::ProductionSnapshot,
-            production_observation::ProductionStaffingSubject,
+        use babylon_persistence::production_observation::{
+            CompletedProductionStaffing, ProductionSnapshot, ProductionStaffingSubject,
         };
 
         let site_id = "1".repeat(64);
@@ -1426,22 +1448,20 @@ mod tests {
                         babylon_persistence::production_observation::ProductionSiteRole::Production,
                     ],
                     sector_code: Some("31-33".into()),
-                    processes: vec![
-                        babylon_persistence::production_observation::ProductionProcess {
-                            id: "fixture-process".into(),
-                            name: "Fixture process".into(),
-                            output_good_id: "4".repeat(64),
-                            output_unit_id: "5".repeat(64),
-                            output_good: "steel".into(),
-                            output_unit: "kg".into(),
-                            output_per_batch: 10,
-                            available_batches: 8,
-                            planned_batches: (tick > 0).then_some(8),
-                            produced_batches: (tick > 0).then_some(7),
-                            inputs: Vec::new(),
-                            labor: Vec::new(),
-                        },
-                    ],
+                    processes: vec![ProductionProcess {
+                        id: "fixture-process".into(),
+                        name: "Fixture process".into(),
+                        output_good_id: "4".repeat(64),
+                        output_unit_id: "5".repeat(64),
+                        output_good: "steel".into(),
+                        output_unit: "kg".into(),
+                        output_per_batch: 10,
+                        available_batches: 8,
+                        planned_batches: (tick > 0).then_some(8),
+                        produced_batches: (tick > 0).then_some(7),
+                        inputs: Vec::new(),
+                        labor: Vec::new(),
+                    }],
                 }],
                 staffing_accounts: vec![ProductionStaffingAccount {
                     members: vec![],
@@ -1485,8 +1505,8 @@ mod tests {
     }
 
     fn staffing_comparison_app(tick: u64) -> (App, Entity) {
-        let campaign = CampaignId::from_uuid(uuid::Uuid::from_u128(1));
-        let other = CampaignId::from_uuid(uuid::Uuid::from_u128(2));
+        let campaign = CampaignId::from_uuid(Uuid::from_u128(1));
+        let other = CampaignId::from_uuid(Uuid::from_u128(2));
         let mut session = ObserverSession::new(campaign);
         session.ready(tick, None);
         let context = session.context();
@@ -1557,7 +1577,7 @@ mod tests {
     #[test]
     fn comparison_starts_with_selected_cohort_before_its_neighborhood() {
         let (mut app, text) = freight_comparison_app();
-        let mut navigation = crate::production::ProductionNavigation::default();
+        let mut navigation = ProductionNavigation::default();
         navigation.selected_site = Some("panels".into());
         app.insert_resource(navigation);
         let reading = painted_comparison(&mut app, text);
@@ -1754,7 +1774,8 @@ mod tests {
     fn comparison_layout_app(viewport: UVec2) -> App {
         use bevy::app::{HierarchyPropagatePlugin, PropagateSet};
         use bevy::camera::{ComputedCameraValues, RenderTargetInfo, Viewport};
-        use bevy::ui::{ui_layout_system, update::propagate_ui_target_cameras};
+        use bevy::ui::ui_layout_system;
+        use bevy::ui::update::propagate_ui_target_cameras;
 
         let mut app = App::new();
         app.add_plugins((
@@ -1762,8 +1783,8 @@ mod tests {
             HierarchyPropagatePlugin::<ComputedUiRenderTargetInfo>::new(PostUpdate),
         ))
         .init_resource::<UiScale>()
-        .init_resource::<bevy::ui::ui_surface::UiSurface>()
-        .init_resource::<bevy::text::CosmicFontSystem>()
+        .init_resource::<UiSurface>()
+        .init_resource::<CosmicFontSystem>()
         .add_systems(Startup, setup)
         .add_systems(
             PostUpdate,
@@ -1810,7 +1831,7 @@ mod tests {
             // Supply intrinsic text measurements while exercising Bevy's real layout.
             app.world_mut()
                 .entity_mut(entity)
-                .insert(bevy::ui::ContentSize::fixed_size(size));
+                .insert(ContentSize::fixed_size(size));
         }
         app.update();
         app
@@ -1892,12 +1913,11 @@ mod tests {
     }
 
     fn retail_comparison_app(tick: u64) -> (App, Entity) {
-        use babylon_persistence::{
-            production_observation::CompletedProductionFinalDemand,
-            production_observation::ProductionFinalDemandAccount,
-            production_observation::ProductionFinalDemandOrder,
-            production_observation::ProductionSiteRole, production_observation::ProductionStock,
+        use babylon_persistence::production_observation::{
+            CompletedProductionFinalDemand, ProductionFinalDemandAccount,
+            ProductionFinalDemandOrder, ProductionSiteRole, ProductionStock,
         };
+
         let (mut app, text) = staffing_comparison_app(tick);
         edit_comparison_production(&mut app, |snapshot| {
             let mut retailer = snapshot.sites[0].clone();
@@ -1951,14 +1971,13 @@ mod tests {
             }
             snapshot.sites.push(retailer);
         });
-        app.world_mut().resource_mut::<ObserverUiState>().lens =
-            crate::map_economy_lens::MapLens::Material {
-                kind: crate::map_economy_lens::MaterialLensKind::OnHand,
-                good: Some(crate::map_economy_lens::MaterialGoodKey {
-                    good_id: "4".repeat(64),
-                    unit_id: "5".repeat(64),
-                }),
-            };
+        app.world_mut().resource_mut::<ObserverUiState>().lens = MapLens::Material {
+            kind: MaterialLensKind::OnHand,
+            good: Some(crate::map_economy_lens::MaterialGoodKey {
+                good_id: "4".repeat(64),
+                unit_id: "5".repeat(64),
+            }),
+        };
         select_comparison_section(&mut app, "Campaign totals");
         (app, text)
     }
@@ -2060,7 +2079,7 @@ mod tests {
         assert!(reading.contains("Inventory on hand: 10 / 10 kg"));
         assert!(reading.contains("Delivered to end buyers to date: 3 / 3 kg"));
         assert!(reading.contains("Unsold retail stock: 10 / 10 kg"));
-        if let crate::map_economy_lens::MapLens::Material {
+        if let MapLens::Material {
             good: Some(good), ..
         } = &mut app.world_mut().resource_mut::<ObserverUiState>().lens
         {
@@ -2071,8 +2090,7 @@ mod tests {
         assert!(reading.contains("Delivered to end buyers to date: 11 / 11 tonne"));
         assert!(reading.contains("Unsold retail stock: 900 / 900 tonne"));
         assert!(!reading.contains("Inventory on hand: 910"));
-        app.world_mut().resource_mut::<ObserverUiState>().lens =
-            crate::map_economy_lens::MapLens::default();
+        app.world_mut().resource_mut::<ObserverUiState>().lens = MapLens::default();
         let reading = painted_comparison(&mut app, text);
         assert!(reading.contains("Select an exact good and unit in World's material lens"));
         assert!(!reading.contains("Delivered to end buyers to date:"));
@@ -2118,10 +2136,10 @@ mod tests {
         ] {
             let (mut app, text) = retail_comparison_app(2);
             if mismatch == "duplicate process" {
-                if let crate::map_economy_lens::MapLens::Material { kind, .. } =
+                if let MapLens::Material { kind, .. } =
                     &mut app.world_mut().resource_mut::<ObserverUiState>().lens
                 {
-                    *kind = crate::map_economy_lens::MaterialLensKind::ProducedThisPeriod;
+                    *kind = MaterialLensKind::ProducedThisPeriod;
                 }
             }
             {
@@ -2169,10 +2187,10 @@ mod tests {
     fn comparison_aggregate_distinguishes_zero_production_from_foundation() {
         for tick in [0, 2] {
             let (mut app, text) = retail_comparison_app(tick);
-            if let crate::map_economy_lens::MapLens::Material { kind, .. } =
+            if let MapLens::Material { kind, .. } =
                 &mut app.world_mut().resource_mut::<ObserverUiState>().lens
             {
-                *kind = crate::map_economy_lens::MaterialLensKind::ProducedThisPeriod;
+                *kind = MaterialLensKind::ProducedThisPeriod;
             }
             edit_comparison_production(&mut app, |snapshot| {
                 snapshot.sites[0].processes[0].produced_batches = (tick > 0).then_some(0);
@@ -2500,14 +2518,13 @@ mod tests {
                 _ => {
                     let mut browser = app.world_mut().resource_mut::<CampaignBrowserState>();
                     if mismatch == "same campaign" {
-                        browser.comparison_target =
-                            Some(CampaignId::from_uuid(uuid::Uuid::from_u128(1)));
+                        browser.comparison_target = Some(CampaignId::from_uuid(Uuid::from_u128(1)));
                     }
                     let compared = browser.comparison.as_mut().unwrap();
                     match mismatch {
-                        "campaign" => compared.campaign_id = uuid::Uuid::from_u128(3).to_string(),
+                        "campaign" => compared.campaign_id = Uuid::from_u128(3).to_string(),
                         "same campaign" => {
-                            compared.campaign_id = uuid::Uuid::from_u128(1).to_string();
+                            compared.campaign_id = Uuid::from_u128(1).to_string();
                         }
                         "period" => compared.resolve_tick = 1,
                         "perspective" => compared.visibility = ObserverVisibility::KnownPreview,
@@ -2551,8 +2568,8 @@ mod tests {
     }
 
     fn catalog_handoff_app(with_pipe: bool) -> (App, CampaignId) {
-        let campaign = CampaignId::from_uuid(uuid::Uuid::from_u128(1));
-        let selected = CampaignId::from_uuid(uuid::Uuid::from_u128(2));
+        let campaign = CampaignId::from_uuid(Uuid::from_u128(1));
+        let selected = CampaignId::from_uuid(Uuid::from_u128(2));
         let mut session = ObserverSession::new(campaign);
         session.fail("Campaign admission refused".into());
         session.connected_fixture();
@@ -2586,8 +2603,8 @@ mod tests {
     fn comparison_returns_to_load_game_when_opened_from_the_title() {
         let (mut app, _) = catalog_handoff_app(false);
         app.insert_resource(crate::observer_opening::OpeningPresentation {
-            stage: crate::observer_opening::OpeningStage::Title,
-            menu_page: crate::observer_opening::MenuPage::SavedGames,
+            stage: OpeningStage::Title,
+            menu_page: MenuPage::SavedGames,
             ..default()
         });
         {
@@ -2609,12 +2626,12 @@ mod tests {
 
     #[test]
     fn launcher_handoff_catalog_without_pipe_preserves_preferences_and_window() {
-        let environment = crate::test_support::EnvVarGuard::lock("XDG_STATE_HOME");
+        let environment = EnvVarGuard::lock("XDG_STATE_HOME");
         let directory =
-            std::env::temp_dir().join(format!("babylon-detached-handoff-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("babylon-detached-handoff-{}", Uuid::new_v4()));
         environment.set(directory.to_str().unwrap());
         let path = preference_path().unwrap();
-        let original = CampaignId::from_uuid(uuid::Uuid::from_u128(1));
+        let original = CampaignId::from_uuid(Uuid::from_u128(1));
         write_preference(&path, original, 0).unwrap();
         let (mut app, _) = catalog_handoff_app(false);
         app.world_mut()
@@ -2639,11 +2656,9 @@ mod tests {
 
     #[test]
     fn catalog_after_failed_admission_queues_open_without_saving_or_exiting() {
-        let environment = crate::test_support::EnvVarGuard::lock("XDG_STATE_HOME");
-        let directory = std::env::temp_dir().join(format!(
-            "babylon-connected-handoff-{}",
-            uuid::Uuid::new_v4()
-        ));
+        let environment = EnvVarGuard::lock("XDG_STATE_HOME");
+        let directory =
+            std::env::temp_dir().join(format!("babylon-connected-handoff-{}", Uuid::new_v4()));
         environment.set(directory.to_str().unwrap());
         let (mut app, selected) = catalog_handoff_app(true);
         app.world_mut()
@@ -2669,11 +2684,9 @@ mod tests {
 
     #[test]
     fn open_before_ready_keeps_transport_and_failed_ui_recoverable() {
-        let environment = crate::test_support::EnvVarGuard::lock("XDG_STATE_HOME");
-        let directory = std::env::temp_dir().join(format!(
-            "babylon-connecting-handoff-{}",
-            uuid::Uuid::new_v4()
-        ));
+        let environment = EnvVarGuard::lock("XDG_STATE_HOME");
+        let directory =
+            std::env::temp_dir().join(format!("babylon-connecting-handoff-{}", Uuid::new_v4()));
         environment.set(directory.to_str().unwrap());
         let (mut catalog, _) = catalog_handoff_app(false);
         let browser = catalog
@@ -2722,7 +2735,7 @@ mod tests {
             )
         );
         assert_eq!(
-            availability(ObserverCommand::ReopenCampaign, state),
+            observer_controls::availability(ObserverCommand::ReopenCampaign, state),
             ControlAvailability::Enabled
         );
     }
@@ -2744,13 +2757,11 @@ mod tests {
 
     #[test]
     fn compare_after_open_keeps_the_title_visible_until_campaign_admission() {
-        AsyncComputeTaskPool::get_or_init(|| {
-            bevy::tasks::TaskPoolBuilder::new().num_threads(1).build()
-        });
+        AsyncComputeTaskPool::get_or_init(|| TaskPoolBuilder::new().num_threads(1).build());
         let (mut app, _) = ready_catalog_handoff_app();
         app.insert_resource(OpeningPresentation {
-            stage: crate::observer_opening::OpeningStage::Title,
-            menu_page: crate::observer_opening::MenuPage::SavedGames,
+            stage: OpeningStage::Title,
+            menu_page: MenuPage::SavedGames,
             ..default()
         })
         .add_systems(PreUpdate, sync_focus_targets)
@@ -2805,9 +2816,9 @@ mod tests {
 
     #[test]
     fn catalog_handoff_pending_commit_queues_without_abandoning_ack_or_saving_target() {
-        let environment = crate::test_support::EnvVarGuard::lock("XDG_STATE_HOME");
+        let environment = EnvVarGuard::lock("XDG_STATE_HOME");
         let directory =
-            std::env::temp_dir().join(format!("babylon-pending-handoff-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("babylon-pending-handoff-{}", Uuid::new_v4()));
         environment.set(directory.to_str().unwrap());
         for (keyboard, failed) in [(false, false), (true, false), (true, true)] {
             let (mut app, selected) = ready_catalog_handoff_app();
@@ -2941,7 +2952,7 @@ mod tests {
 
     #[test]
     fn browser_keyboard_request_revalidates_perspective_and_visible_menu() {
-        let session = ObserverSession::new(CampaignId::from_uuid(uuid::Uuid::from_u128(1)));
+        let session = ObserverSession::new(CampaignId::from_uuid(Uuid::from_u128(1)));
         let original = session.context();
         let mut app = App::new();
         app.insert_resource(session)
@@ -2999,7 +3010,7 @@ mod tests {
 
     #[test]
     fn shutdown_consumes_queued_browser_commands_without_changing_selection_or_exiting_again() {
-        let mut session = ObserverSession::new(CampaignId::from_uuid(uuid::Uuid::from_u128(1)));
+        let mut session = ObserverSession::new(CampaignId::from_uuid(Uuid::from_u128(1)));
         session.quit_requested = true;
         let browser = CampaignBrowserState {
             // Invalid fixture identities make a regression incapable of writing user preferences.
@@ -3061,7 +3072,7 @@ mod tests {
         entries
             .iter()
             .map(|(id, label)| CampaignSummary {
-                id: uuid::Uuid::from_u128(*id).to_string(),
+                id: Uuid::from_u128(*id).to_string(),
                 preset: "standard".into(),
                 label: (*label).into(),
                 durable_tick: 5,
@@ -3070,17 +3081,13 @@ mod tests {
     }
 
     fn deliver_selection_catalog(app: &mut App, entries: &[(u128, &str)]) {
-        let pool = AsyncComputeTaskPool::get_or_init(|| {
-            bevy::tasks::TaskPoolBuilder::new().num_threads(1).build()
-        });
+        let pool =
+            AsyncComputeTaskPool::get_or_init(|| TaskPoolBuilder::new().num_threads(1).build());
         let catalog = selection_catalog(entries);
         let task = pool.spawn(async move { Ok(catalog) });
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        let deadline = Instant::now() + Duration::from_secs(5);
         while !task.is_finished() {
-            assert!(
-                std::time::Instant::now() < deadline,
-                "catalog fixture task stalled"
-            );
+            assert!(Instant::now() < deadline, "catalog fixture task stalled");
             std::thread::yield_now();
         }
         let context = app.world().resource::<ObserverSession>().context();
@@ -3097,7 +3104,7 @@ mod tests {
     }
 
     fn selected_freight_catalog_app() -> (App, Entity) {
-        let mut session = ObserverSession::new(CampaignId::from_uuid(uuid::Uuid::from_u128(10)));
+        let mut session = ObserverSession::new(CampaignId::from_uuid(Uuid::from_u128(10)));
         session.ready(5, None);
         session.viewed_tick = 1;
         let mut app = App::new();
@@ -3154,7 +3161,7 @@ mod tests {
             reading.contains("Freight"),
             "refresh substituted a different campaign: {reading}"
         );
-        assert!(reading.contains(&uuid::Uuid::from_u128(50).to_string()));
+        assert!(reading.contains(&Uuid::from_u128(50).to_string()));
     }
 
     #[test]
@@ -3228,9 +3235,8 @@ mod tests {
             generation: 0,
             target: Some(other),
         };
-        let pool = AsyncComputeTaskPool::get_or_init(|| {
-            bevy::tasks::TaskPoolBuilder::new().num_threads(1).build()
-        });
+        let pool =
+            AsyncComputeTaskPool::get_or_init(|| TaskPoolBuilder::new().num_threads(1).build());
         let browser = CampaignBrowserState {
             context: Some(session.context()),
             comparison_target: Some(other),
@@ -3291,10 +3297,8 @@ mod tests {
     }
     #[test]
     fn maintenance_comparison_keeps_jobs_constraints_expiry_and_identity() {
-        let mut active =
-            staffing_snapshot(CampaignId::from_uuid(uuid::Uuid::from_u128(1)), 1, 5, 0, 0);
-        let mut other =
-            staffing_snapshot(CampaignId::from_uuid(uuid::Uuid::from_u128(2)), 1, 5, 0, 0);
+        let mut active = staffing_snapshot(CampaignId::from_uuid(Uuid::from_u128(1)), 1, 5, 0, 0);
+        let mut other = staffing_snapshot(CampaignId::from_uuid(Uuid::from_u128(2)), 1, 5, 0, 0);
         active.production = Some(crate::maintenance_fixture::snapshot(
             active.production.as_ref().unwrap(),
             1,
@@ -3311,7 +3315,7 @@ mod tests {
                 &active,
                 other,
                 Some(&selected),
-                &crate::map_economy_lens::MapLens::default(),
+                &MapLens::default(),
                 ComparisonSection::Cohorts,
             )
         };

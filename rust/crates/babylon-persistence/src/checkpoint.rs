@@ -2,7 +2,6 @@
 
 use std::collections::TryReserveError;
 
-use babylon_kernel::content_digest::sha256_of;
 use babylon_kernel::tick_content_hash::TickContentHash;
 use babylon_tick::replay_session::IdentifiedTickReport;
 
@@ -10,6 +9,7 @@ use crate::committed_tick_envelope::CommittedTickRow;
 use crate::identity::CampaignId;
 use crate::runtime::RustPersistenceRuntimeError;
 use crate::semantic_codec;
+use babylon_kernel::content_digest;
 
 const FULL_CHECKPOINT_SECTION_COUNT: usize = 9;
 const ROW_LENGTH_BYTES: usize = 8;
@@ -175,7 +175,7 @@ impl CommittedFullCheckpoint {
             resolve_tick.get(),
             &encoded_sections,
         )?;
-        let manifest_sha256 = sha256_of(&manifest_bytes);
+        let manifest_sha256 = content_digest::sha256_of(&manifest_bytes);
         Ok(Self {
             completeness: CheckpointCompleteness::Full,
             sections,
@@ -419,7 +419,7 @@ fn summarize_sections(
         sections.push(CommittedCheckpointSection {
             tag: source.tag,
             row_count: source.row_count,
-            sha256: sha256_of(&source.bytes),
+            sha256: content_digest::sha256_of(&source.bytes),
         });
     }
     Ok(sections)

@@ -1,4 +1,5 @@
 //! Bounded voluntary household cash after reproduction/taxes, before distributions.
+use crate::valuation::CostClose;
 use crate::{
     AccountId, AidReceipt, CapitalContributionReceipt, CashTransferPurpose, CircuitAccounting,
     CommodityKind, FinalDemandPrincipalId, FinancialInstitutions, HouseholdConsumptionReceipt,
@@ -6,8 +7,11 @@ use crate::{
     MaterialCircuitState, MoneyLocation, MoneyTransferPurpose, MoneyTransferReceipt,
     OrganizationAccountId, TaxReceipt, UnitId,
 };
-use babylon_kernel::{content_digest::sha256_of, currency::Currency};
-type Result<T> = std::result::Result<T, MaterialCircuitError>;
+use babylon_kernel::content_digest;
+use babylon_kernel::currency::Currency;
+use std::result::Result as StdResult;
+
+type Result<T> = StdResult<T, MaterialCircuitError>;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CollectionResolveInput {
     pub original_commitment_id: [u8; 32],
@@ -96,7 +100,7 @@ pub fn collection_contribution_id(
     }
     bytes.extend_from_slice(&donor.as_bytes());
     bytes.extend_from_slice(&unit.as_bytes());
-    sha256_of(&bytes)
+    content_digest::sha256_of(&bytes)
 }
 impl CollectionReceipt {
     /// Check complete actual/refusal identity; authority joins belong to the host.
@@ -449,7 +453,7 @@ fn frozen_outcomes(
 pub(crate) fn close(
     inputs: &[CollectionResolveInput],
     state: &mut MaterialCircuitState,
-    costs: &mut crate::valuation::CostClose,
+    costs: &mut CostClose,
     money: &mut Vec<MoneyTransferReceipt>,
     facts: CollectionEvidence<'_>,
 ) -> Result<Vec<CollectionReceipt>> {

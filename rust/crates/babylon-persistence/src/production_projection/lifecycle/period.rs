@@ -7,22 +7,27 @@ use super::super::ProductionProjectionError;
 use babylon_kernel::currency::Currency;
 
 use babylon_material_circuit::{
-    recurring_household_order_id, recurring_procurement_order_id, AccountId, CircuitAccounting,
-    FinalDemandOrder, MaterialCircuitState, MonetaryCircuit, MoneyLocation, MoneyTransferPurpose,
-    OrderAccessMode, OrderId, OrderRow, OutboundOrderId, PurchaseEscrow, RecurringEconomy,
+    AccountId, CircuitAccounting, FinalDemandOrder, MaterialCircuitState, MonetaryCircuit,
+    MoneyLocation, MoneyTransferPurpose, OrderAccessMode, OrderId, OrderRow, OutboundOrderId,
+    PurchaseEscrow, RecurringEconomy,
 };
 
 use babylon_tick::material_world::MaterialTickReceipts;
 
+use super::super::diagnostics;
+use babylon_material_circuit::GoodId;
+use babylon_material_circuit::SiteId;
+use babylon_material_circuit::UnitId;
+use services::ServiceWitness;
 use std::collections::{BTreeMap, BTreeSet};
+use std::result::Result as StdResult;
 
-pub(in crate::production_projection) type Result<T> =
-    std::result::Result<T, ProductionProjectionError>;
+pub(in crate::production_projection) type Result<T> = StdResult<T, ProductionProjectionError>;
 
 pub(crate) struct PeriodOrders {
     pub deliveries: BTreeMap<OrderId, (OrderRow, OrderRow)>,
     pub final_orders: BTreeMap<OrderId, (FinalDemandOrder, FinalDemandOrder)>,
-    pub(in crate::production_projection) services: BTreeMap<OrderId, services::ServiceWitness>,
+    pub(in crate::production_projection) services: BTreeMap<OrderId, ServiceWitness>,
     pub early_retired: BTreeSet<OutboundOrderId>,
     /// Positive investment admissions occur after both outbound passes.
     pub after_outbound: BTreeSet<OrderId>,
@@ -155,7 +160,8 @@ pub(in crate::production_projection) fn admit_households(
             .get(&(policy.retailer_site_id, row.good_id, row.unit_id))
             .ok_or(ProductionProjectionError::State)?;
         if row.period != prior.period
-            || row.order_id != recurring_household_order_id(prior.period, key)
+            || row.order_id
+                != babylon_material_circuit::recurring_household_order_id(prior.period, key)
             || row.retailer_site_id != policy.retailer_site_id
             || row.unit_price != price
             || row.admitted_quantity > row.requested_quantity
@@ -203,11 +209,7 @@ pub(in crate::production_projection) fn admit_households(
     Ok(())
 }
 
-pub(in crate::production_projection) type OfferKey = (
-    babylon_material_circuit::SiteId,
-    babylon_material_circuit::GoodId,
-    babylon_material_circuit::UnitId,
-);
+pub(in crate::production_projection) type OfferKey = (SiteId, GoodId, UnitId);
 
 pub(in crate::production_projection) fn offer_index(
     prior: &MaterialCircuitState,
@@ -267,7 +269,13 @@ pub(in crate::production_projection) fn admit_firms(
             .ok_or(ProductionProjectionError::State)?;
         if row.period != prior.period
             || row.order_id
-                != recurring_procurement_order_id(prior.period, key.0, key.1, key.2, key.3)
+                != babylon_material_circuit::recurring_procurement_order_id(
+                    prior.period,
+                    key.0,
+                    key.1,
+                    key.2,
+                    key.3,
+                )
             || Some(&row.unit_price) != offers.get(&(key.1, key.2, key.3))
             || row.target_stock != policy.target_stock
             || row.desired_quantity > policy.maximum_purchase
@@ -802,26 +810,27 @@ pub(crate) fn validate_period(
     current: &MaterialCircuitState,
     receipt: &MaterialTickReceipts,
 ) -> Result<PeriodOrders> {
-    use super::super::diagnostics::{projection, Stage};
+    use super::super::diagnostics::Stage;
     let tick = receipt.resolve_tick;
-    let orders = projection(Stage::LifecycleOrders, tick, join(prior, current, receipt))?;
-    projection(
+    let orders =
+        diagnostics::projection(Stage::LifecycleOrders, tick, join(prior, current, receipt))?;
+    diagnostics::projection(
         Stage::LifecycleServices,
         tick,
         super::super::services::validate(prior, current, receipt),
     )?;
-    projection(
+    diagnostics::projection(
         Stage::LifecycleEquipment,
         tick,
         super::super::equipment::validate(prior, current, receipt),
     )?;
-    projection(
+    diagnostics::projection(
         Stage::LifecyclePrices,
         tick,
         super::super::prices::validate(prior, current, receipt, &orders),
     )?;
     if recurring(prior).is_some() {
-        projection(
+        diagnostics::projection(
             Stage::LifecycleHouseholds,
             tick,
             super::super::households::completed_balances(prior, current, receipt),

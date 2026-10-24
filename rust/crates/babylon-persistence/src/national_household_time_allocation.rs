@@ -14,6 +14,4 @@ pub use model::{
 };
 pub use source::allocate_household_time;
 #[cfg(test)]
-use source::{observation, validate_roster};
-#[cfg(test)]
 mod tests;

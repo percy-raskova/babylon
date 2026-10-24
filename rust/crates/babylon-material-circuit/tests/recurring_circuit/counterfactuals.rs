@@ -1,5 +1,27 @@
 //! Designed paired interventions; no national outcome or recovery date is implied.
-use super::*;
+use crate::economy;
+use crate::integrated_controls;
+use crate::integrated_controls::EconomicLocation;
+use crate::integrated_controls::ForeignCounterpart;
+use babylon_material_circuit::AccountId;
+use babylon_material_circuit::CashAccount;
+use babylon_material_circuit::CircuitAccounting;
+use babylon_material_circuit::FinalDemandPrincipal;
+use babylon_material_circuit::FinalDemandPrincipalId;
+use babylon_material_circuit::HistoricalCostBook;
+use babylon_material_circuit::HouseholdCohort;
+use babylon_material_circuit::HouseholdKind;
+use babylon_material_circuit::HouseholdNeed;
+use babylon_material_circuit::HouseholdNeedBasis;
+use babylon_material_circuit::HouseholdPurchasePolicy;
+use babylon_material_circuit::HouseholdStock;
+use babylon_material_circuit::MaterialCircuitState;
+use babylon_material_circuit::MaterialCircuitTransition;
+use babylon_material_circuit::MerchantRole;
+use babylon_material_circuit::MonetaryBook;
+use babylon_material_circuit::MoneyTransferPurpose;
+use babylon_material_circuit::OutboundOrderId;
+use babylon_material_circuit::StockCarryingValue;
 
 #[derive(Clone, Copy, Debug)]
 enum Constraint {
@@ -22,7 +44,7 @@ fn zero_food(state: &mut MaterialCircuitState) {
     state
         .inventory
         .iter_mut()
-        .filter(|r| r.good_id == good(2))
+        .filter(|r| r.good_id == crate::good(2))
         .for_each(|r| r.quantity = 0);
     let CircuitAccounting::Monetary(e) = &mut state.accounting else {
         unreachable!()
@@ -32,8 +54,8 @@ fn zero_food(state: &mut MaterialCircuitState) {
     costs
         .stocks
         .iter_mut()
-        .filter(|r| r.good_id == good(2))
-        .for_each(|r| r.amount = money(0));
+        .filter(|r| r.good_id == crate::good(2))
+        .for_each(|r| r.amount = crate::money(0));
     e.costs = HistoricalCostBook::from_snapshot(costs).unwrap();
 }
 fn input_cut(state: &mut MaterialCircuitState) {
@@ -42,25 +64,28 @@ fn input_cut(state: &mut MaterialCircuitState) {
         unreachable!()
     };
     let mut costs = e.costs.snapshot();
-    costs.stocks.iter_mut().for_each(|r| r.amount = money(0));
+    costs
+        .stocks
+        .iter_mut()
+        .for_each(|r| r.amount = crate::money(0));
     e.costs = HistoricalCostBook::from_snapshot(costs).unwrap();
 }
 fn labor_cut(state: &mut MaterialCircuitState) {
     state
         .labor
         .iter_mut()
-        .filter(|r| r.site_id == site(2))
+        .filter(|r| r.site_id == crate::site(2))
         .for_each(|r| r.available = 0);
     let CircuitAccounting::Monetary(e) = &mut state.accounting else {
         unreachable!()
     };
     e.member_labor
         .iter_mut()
-        .filter(|r| r.member_id.as_bytes() == site(2).as_bytes())
+        .filter(|r| r.member_id.as_bytes() == crate::site(2).as_bytes())
         .for_each(|r| r.available_hours = 0);
 }
 fn food_opening(cut: Constraint, grams: u64) -> MaterialCircuitState {
-    let mut state = opening();
+    let mut state = crate::opening();
     zero_food(&mut state);
     if matches!(cut, Constraint::Inputs) {
         input_cut(&mut state);
@@ -72,25 +97,28 @@ fn food_opening(cut: Constraint, grams: u64) -> MaterialCircuitState {
     recapture_cash(
         &mut state,
         [
-            (AccountId::Site(site(1)), 4),
-            (AccountId::Site(site(2)), if finance { 0 } else { 32 }),
-            (AccountId::Site(site(3)), 32),
+            (AccountId::Site(crate::site(1)), 4),
             (
-                AccountId::Household(household()),
+                AccountId::Site(crate::site(2)),
+                if finance { 0 } else { 32 },
+            ),
+            (AccountId::Site(crate::site(3)), 32),
+            (
+                AccountId::Household(crate::household()),
                 if finance { 64 } else { 32 },
             ),
         ]
         .into_iter()
         .map(|(id, cash)| CashAccount {
             id,
-            cash: money(cash),
+            cash: crate::money(cash),
         })
         .collect(),
     );
     state
         .corridor_capacities
         .iter_mut()
-        .filter(|r| r.corridor_id == corridor(2))
+        .filter(|r| r.corridor_id == crate::corridor(2))
         .for_each(|r| r.available_grams = grams);
     state
 }
@@ -107,7 +135,7 @@ fn observe_food(closed: &MaterialCircuitTransition, period: u64, facts: &mut Foo
     let amount = closed
         .production
         .iter()
-        .filter(|r| r.process_id == process(2))
+        .filter(|r| r.process_id == crate::process(2))
         .map(|r| r.produced_batches)
         .sum::<u64>();
     facts.produced = facts.produced.checked_add(amount).unwrap();
@@ -115,7 +143,11 @@ fn observe_food(closed: &MaterialCircuitTransition, period: u64, facts: &mut Foo
         let admitted = closed
             .procurement
             .iter()
-            .find(|r| r.buyer_site_id == site(3) && r.good_id == good(2) && r.unit_id == units())
+            .find(|r| {
+                r.buyer_site_id == crate::site(3)
+                    && r.good_id == crate::good(2)
+                    && r.unit_id == crate::units()
+            })
             .unwrap();
         assert_eq!(
             admitted.admitted_quantity, 4,
@@ -124,13 +156,13 @@ fn observe_food(closed: &MaterialCircuitTransition, period: u64, facts: &mut Foo
         facts.first_dispatch = closed
             .dispatches
             .iter()
-            .filter(|r| r.route_id == route(2))
+            .filter(|r| r.route_id == crate::route(2))
             .map(|r| r.quantity)
             .sum();
         facts.first_unfunded = closed
             .labor_use
             .iter()
-            .filter(|r| r.site_id == site(2))
+            .filter(|r| r.site_id == crate::site(2))
             .map(|r| r.unfunded_hours)
             .sum();
     }
@@ -139,7 +171,9 @@ fn observe_food(closed: &MaterialCircuitTransition, period: u64, facts: &mut Foo
             .household_demand
             .iter()
             .filter(|r| {
-                r.principal_id == household() && r.good_id == good(2) && r.unit_id == units()
+                r.principal_id == crate::household()
+                    && r.good_id == crate::good(2)
+                    && r.unit_id == crate::units()
             })
             .map(|r| r.fulfilled_quantity)
             .sum();
@@ -156,7 +190,7 @@ fn food_trajectory(mut state: MaterialCircuitState) -> FoodTrajectory {
         produced: 0,
     };
     for period in 1..=3 {
-        let closed = advance_material_circuit(&state).unwrap();
+        let closed = babylon_material_circuit::advance_material_circuit(&state).unwrap();
         observe_food(&closed, period, &mut facts);
         consumed = consumed
             .checked_add(
@@ -167,10 +201,15 @@ fn food_trajectory(mut state: MaterialCircuitState) -> FoodTrajectory {
                     .sum::<u64>(),
             )
             .unwrap();
-        assert_conservation(&closed.state, consumed, physical, 100);
-        let restored =
-            decode_material_circuit_state(&encode_material_circuit_state(&state).unwrap()).unwrap();
-        assert_eq!(closed, advance_material_circuit(&restored).unwrap());
+        integrated_controls::assert_conservation(&closed.state, consumed, physical, 100);
+        let restored = babylon_material_circuit::decode_material_circuit_state(
+            &babylon_material_circuit::encode_material_circuit_state(&state).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            closed,
+            babylon_material_circuit::advance_material_circuit(&restored).unwrap()
+        );
         if period == 1 {
             assert_eq!(state, original);
         }
@@ -224,22 +263,22 @@ fn foreign_need(state: &mut MaterialCircuitState, enabled: bool) {
     });
     recurring.household_stocks.push(HouseholdStock {
         principal_id: foreign_household(),
-        good_id: good(2),
-        unit_id: units(),
+        good_id: crate::good(2),
+        unit_id: crate::units(),
         quantity: 0,
     });
     recurring.household_needs.push(HouseholdNeed {
         principal_id: foreign_household(),
-        good_id: good(2),
-        unit_id: units(),
+        good_id: crate::good(2),
+        unit_id: crate::units(),
         basis: HouseholdNeedBasis::Persons,
         units_per_basis: 2,
     });
     recurring.household_purchases.push(HouseholdPurchasePolicy {
         principal_id: foreign_household(),
-        retailer_site_id: site(2),
-        good_id: good(2),
-        unit_id: units(),
+        retailer_site_id: crate::site(2),
+        good_id: crate::good(2),
+        unit_id: crate::units(),
         target_closing_stock: 0,
         maximum_purchase: 2,
         enabled,
@@ -247,7 +286,7 @@ fn foreign_need(state: &mut MaterialCircuitState, enabled: bool) {
 }
 
 fn domestic_competition(enabled: bool) -> MaterialCircuitState {
-    let mut state = foreign_trade_opening();
+    let mut state = integrated_controls::foreign_trade_opening();
     let foreign = EconomicLocation::Foreign(ForeignCounterpart::Canada);
     state.final_demand_principals.push(FinalDemandPrincipal {
         id: foreign_household(),
@@ -256,13 +295,13 @@ fn domestic_competition(enabled: bool) -> MaterialCircuitState {
     state
         .merchants
         .iter_mut()
-        .find(|r| r.site_id == site(2))
+        .find(|r| r.site_id == crate::site(2))
         .unwrap()
         .role = MerchantRole::Retail;
     state
         .inventory
         .iter_mut()
-        .find(|r| r.site_id == site(2) && r.good_id == good(2))
+        .find(|r| r.site_id == crate::site(2) && r.good_id == crate::good(2))
         .unwrap()
         .quantity = 2;
     foreign_need(&mut state, enabled);
@@ -272,14 +311,14 @@ fn domestic_competition(enabled: bool) -> MaterialCircuitState {
     let mut accounts = e.book.snapshot().accounts;
     accounts.push(CashAccount {
         id: AccountId::Household(foreign_household()),
-        cash: money(2),
+        cash: crate::money(2),
     });
     let mut stocks = e.costs.snapshot().stocks;
     stocks.push(StockCarryingValue {
         owner: AccountId::Household(foreign_household()),
-        good_id: good(2),
-        unit_id: units(),
-        amount: money(0),
+        good_id: crate::good(2),
+        unit_id: crate::units(),
+        amount: crate::money(0),
     });
     e.book = MonetaryBook::open(accounts).unwrap();
     e.costs = HistoricalCostBook::open(&e.book, stocks, vec![], vec![], vec![]).unwrap();
@@ -290,7 +329,7 @@ fn direction_dispatch(closed: &MaterialCircuitTransition, identity: u8) -> u64 {
     closed
         .dispatches
         .iter()
-        .filter(|r| r.route_id == route(identity))
+        .filter(|r| r.route_id == crate::route(identity))
         .map(|r| r.quantity)
         .sum()
 }
@@ -299,8 +338,8 @@ fn direction_dispatch(closed: &MaterialCircuitTransition, identity: u8) -> u64 {
 fn counterpart_domestic_paid_need_competes_with_finite_import_supply() {
     let absent = domestic_competition(false);
     let present = domestic_competition(true);
-    let low = advance_material_circuit(&absent).unwrap();
-    let high = advance_material_circuit(&present).unwrap();
+    let low = babylon_material_circuit::advance_material_circuit(&absent).unwrap();
+    let high = babylon_material_circuit::advance_material_circuit(&present).unwrap();
     let local = high
         .household_demand
         .iter()
@@ -308,7 +347,7 @@ fn counterpart_domestic_paid_need_competes_with_finite_import_supply() {
         .unwrap();
     assert_eq!(
         (local.good_id, local.unit_id, local.admitted_quantity),
-        (good(2), units(), 2)
+        (crate::good(2), crate::units(), 2)
     );
     assert_eq!(
         (direction_dispatch(&low, 2), direction_dispatch(&high, 2)),
@@ -327,10 +366,15 @@ fn counterpart_domestic_paid_need_competes_with_finite_import_supply() {
     // Existing household orders close before newly admitted replenishment dispatch.
     // The counterpart consumes both finite units; no partial shared-pass grant is implied.
     for (first, expected_import) in [(low, 2_u64), (high, 0_u64)] {
-        let second = advance_material_circuit(&first.state).unwrap();
+        let second = babylon_material_circuit::advance_material_circuit(&first.state).unwrap();
         let mut delivered = [0; 2];
         let mut paid = [0; 2];
-        record_trade_settlement(&first.state, &second, &mut delivered, &mut paid);
+        integrated_controls::record_trade_settlement(
+            &first.state,
+            &second,
+            &mut delivered,
+            &mut paid,
+        );
         assert_eq!(paid[1], i128::from(delivered[1]));
         assert_eq!(delivered[1], expected_import);
         let first_consumed = first
@@ -345,31 +389,35 @@ fn counterpart_domestic_paid_need_competes_with_finite_import_supply() {
             .map(|r| r.consumed_quantity)
             .try_fold(first_consumed, u64::checked_add)
             .unwrap();
-        assert_conservation(&first.state, first_consumed, 14, 202);
-        assert_conservation(&second.state, all_consumed, 14, 202);
-        let reopened =
-            decode_material_circuit_state(&encode_material_circuit_state(&first.state).unwrap())
-                .unwrap();
-        assert_eq!(second, advance_material_circuit(&reopened).unwrap());
+        integrated_controls::assert_conservation(&first.state, first_consumed, 14, 202);
+        integrated_controls::assert_conservation(&second.state, all_consumed, 14, 202);
+        let reopened = babylon_material_circuit::decode_material_circuit_state(
+            &babylon_material_circuit::encode_material_circuit_state(&first.state).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            second,
+            babylon_material_circuit::advance_material_circuit(&reopened).unwrap()
+        );
     }
 }
 
 #[test]
 fn counterpart_procurement_budget_cut_keeps_import_handling_funded() {
-    let funded = foreign_trade_opening();
+    let funded = integrated_controls::foreign_trade_opening();
     let mut protected = funded.clone();
-    recurring_mut(&mut protected)
+    crate::recurring_mut(&mut protected)
         .replenishment
         .iter_mut()
-        .find(|r| r.buyer_site_id == site(2) && r.good_id == good(1))
+        .find(|r| r.buyer_site_id == crate::site(2) && r.good_id == crate::good(1))
         .unwrap()
-        .cash_floor = money(100);
-    let baseline = advance_material_circuit(&funded).unwrap();
-    let cut = advance_material_circuit(&protected).unwrap();
+        .cash_floor = crate::money(100);
+    let baseline = babylon_material_circuit::advance_material_circuit(&funded).unwrap();
+    let cut = babylon_material_circuit::advance_material_circuit(&protected).unwrap();
     let admission = cut
         .procurement
         .iter()
-        .find(|r| r.buyer_site_id == site(2) && r.good_id == good(1))
+        .find(|r| r.buyer_site_id == crate::site(2) && r.good_id == crate::good(1))
         .unwrap();
     assert_eq!(
         (admission.desired_quantity, admission.admitted_quantity),
@@ -388,39 +436,39 @@ fn counterpart_procurement_budget_cut_keeps_import_handling_funded() {
         .any(|r| r.order_id == admission.order_id));
     assert!(!cut.money_transfers.iter().any(|r| matches!(r.purpose,
         MoneyTransferPurpose::PurchaseReservation(OutboundOrderId::Delivery(id)) if id == admission.order_id)));
-    let second = advance_material_circuit(&cut.state).unwrap();
+    let second = babylon_material_circuit::advance_material_circuit(&cut.state).unwrap();
     let mut delivered = [0; 2];
     let mut paid = [0; 2];
-    record_trade_settlement(&cut.state, &second, &mut delivered, &mut paid);
+    integrated_controls::record_trade_settlement(&cut.state, &second, &mut delivered, &mut paid);
     assert_eq!(delivered, [0, 2]);
     assert_eq!(paid, [0, 2]);
     assert_eq!(
         economy(&cut.state).book.total_cash_and_reserves().unwrap(),
-        money(200)
+        crate::money(200)
     );
 }
 
 fn gateway(available: u64) -> MaterialCircuitState {
-    let mut state = foreign_trade_opening();
+    let mut state = integrated_controls::foreign_trade_opening();
     state
         .route_stage_capacities
         .iter_mut()
-        .for_each(|r| r.corridor_id = corridor(1));
+        .for_each(|r| r.corridor_id = crate::corridor(1));
     state
         .corridor_capacities
-        .retain(|r| r.corridor_id != corridor(2));
+        .retain(|r| r.corridor_id != crate::corridor(2));
     state
         .corridor_capacities
         .iter_mut()
-        .filter(|r| r.corridor_id == corridor(1))
+        .filter(|r| r.corridor_id == crate::corridor(1))
         .for_each(|r| r.available_grams = available);
     state
 }
 
 #[test]
 fn severed_shared_gateway_blocks_both_funded_trade_directions() {
-    let baseline = advance_material_circuit(&gateway(4)).unwrap();
-    let cut = advance_material_circuit(&gateway(0)).unwrap();
+    let baseline = babylon_material_circuit::advance_material_circuit(&gateway(4)).unwrap();
+    let cut = babylon_material_circuit::advance_material_circuit(&gateway(0)).unwrap();
     assert_eq!(
         (
             direction_dispatch(&baseline, 1),
@@ -431,7 +479,7 @@ fn severed_shared_gateway_blocks_both_funded_trade_directions() {
     assert!(cut.dispatches.is_empty() && cut.state.freight.is_empty());
     assert_eq!(cut.state.orders.len(), 2);
     assert!(cut.state.orders.iter().all(|r| r.shipped == 0));
-    let second = advance_material_circuit(&cut.state).unwrap();
+    let second = babylon_material_circuit::advance_material_circuit(&cut.state).unwrap();
     assert!(
         second.arrivals.is_empty()
             && second.deliveries.is_empty()
@@ -446,9 +494,14 @@ fn severed_shared_gateway_blocks_both_funded_trade_directions() {
             .book
             .total_cash_and_reserves()
             .unwrap(),
-        money(200)
+        crate::money(200)
     );
-    let reopened =
-        decode_material_circuit_state(&encode_material_circuit_state(&cut.state).unwrap()).unwrap();
-    assert_eq!(second, advance_material_circuit(&reopened).unwrap());
+    let reopened = babylon_material_circuit::decode_material_circuit_state(
+        &babylon_material_circuit::encode_material_circuit_state(&cut.state).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        second,
+        babylon_material_circuit::advance_material_circuit(&reopened).unwrap()
+    );
 }

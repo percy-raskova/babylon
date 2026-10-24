@@ -5,33 +5,34 @@ use super::{OrganizerAidPending, OrganizerAidResolution, OrganizerMaterialAidPre
 use super::{collection_preview, material_preview, OrganizerCollectionPreview};
 
 use babylon_practice_contract::{
-    admit_organizer, organizer_action_batch, organizer_view, preview_organizer,
-    validate_organizer_commitment, OrganizerCommand, OrganizerCommitment, OrganizerPreview,
-    OrganizerView,
+    OrganizerCommand, OrganizerCommitment, OrganizerPreview, OrganizerView,
 };
 
 use postgres::GenericClient;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    identity::CampaignId,
-    material_runtime::{DurableMaterialRuntime, MaterialRuntimeError},
-    runtime_session::RuntimeSessionErrorCode,
-};
+use crate::identity::CampaignId;
+use crate::material_runtime::{DurableMaterialRuntime, MaterialRuntimeError};
+use crate::runtime_session::RuntimeSessionErrorCode;
+use babylon_kernel::clock::CampaignDuration;
+use babylon_practice_contract::OrderedPracticeActionBatch;
+use babylon_practice_contract::OrganizerCollectionResolution;
+use babylon_practice_contract::OrganizerState;
+use postgres::Row;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct OrganizerSnapshot {
     pub view: OrganizerView,
     pub pending: Option<OrganizerCommitment>,
-    pub duration: babylon_kernel::clock::CampaignDuration,
+    pub duration: CampaignDuration,
     pub aid: Vec<OrganizerMaterialAidPreview>,
     pub pending_aid: Vec<OrganizerAidPending>,
     pub aid_resolutions: Vec<OrganizerAidResolution>,
     #[serde(deserialize_with = "collection_preview::required_nullable")]
     pub collection: Option<OrganizerCollectionPreview>,
-    pub collection_resolutions: Vec<babylon_practice_contract::OrganizerCollectionResolution>,
+    pub collection_resolutions: Vec<OrganizerCollectionResolution>,
 }
 
 /// Bind received aid disclosures to the exact authenticated material register.
@@ -45,23 +46,26 @@ pub(crate) fn aid_snapshot_matches(
     let state = register
         .organizer_state()
         .ok_or(RuntimeSessionErrorCode::OrganizerUnavailable)?;
-    Ok(organizer_view(config, state, config.controlled_actor_id)
-        .map_err(|_| RuntimeSessionErrorCode::OrganizerRefused)?
-        == snapshot.view
-        && material_preview::projections(register.state(), config, state.period)? == snapshot.aid
-        && state
-            .pending_aid
-            .iter()
-            .map(material_preview::pending)
-            .collect::<Vec<_>>()
-            == snapshot.pending_aid
-        && material_preview::resolutions(state) == snapshot.aid_resolutions)
+    Ok(
+        babylon_practice_contract::organizer_view(config, state, config.controlled_actor_id)
+            .map_err(|_| RuntimeSessionErrorCode::OrganizerRefused)?
+            == snapshot.view
+            && material_preview::projections(register.state(), config, state.period)?
+                == snapshot.aid
+            && state
+                .pending_aid
+                .iter()
+                .map(material_preview::pending)
+                .collect::<Vec<_>>()
+                == snapshot.pending_aid
+            && material_preview::resolutions(state) == snapshot.aid_resolutions,
+    )
 }
 
 pub(crate) fn captured_organizer_snapshot(
     register: &babylon_tick::material_world::MaterialWorldRegister,
     pending: Option<OrganizerCommitment>,
-    duration: babylon_kernel::clock::CampaignDuration,
+    duration: CampaignDuration,
 ) -> Result<OrganizerSnapshot, RuntimeSessionErrorCode> {
     let config = register
         .organizer_config()
@@ -69,7 +73,7 @@ pub(crate) fn captured_organizer_snapshot(
     let state = register
         .organizer_state()
         .ok_or(RuntimeSessionErrorCode::OrganizerUnavailable)?;
-    let view = organizer_view(config, state, config.controlled_actor_id)
+    let view = babylon_practice_contract::organizer_view(config, state, config.controlled_actor_id)
         .map_err(|_| RuntimeSessionErrorCode::OrganizerRefused)?;
     Ok(OrganizerSnapshot {
         aid: material_preview::projections(register.state(), config, state.period)?,
@@ -90,9 +94,9 @@ pub(crate) fn captured_organizer_snapshot(
 // Collection amounts and outcomes follow the actor's retained practice
 // receipts, joined to their original command and period.
 pub(crate) fn collection_history(
-    state: &babylon_practice_contract::OrganizerState,
+    state: &OrganizerState,
     view: &OrganizerView,
-) -> Vec<babylon_practice_contract::OrganizerCollectionResolution> {
+) -> Vec<OrganizerCollectionResolution> {
     state
         .collection_receipts
         .iter()
@@ -120,12 +124,13 @@ pub(crate) fn decode_commitment(bytes: &[u8]) -> Result<OrganizerCommitment, Mat
     if serde_json::to_vec(&value).map_err(|_| MaterialRuntimeError::OrganizerStorage)? != bytes {
         return Err(MaterialRuntimeError::OrganizerStorage);
     }
-    validate_organizer_commitment(&value).map_err(|_| MaterialRuntimeError::OrganizerStorage)?;
+    babylon_practice_contract::validate_organizer_commitment(&value)
+        .map_err(|_| MaterialRuntimeError::OrganizerStorage)?;
     Ok(value)
 }
 
 pub(crate) fn stored_commitment(
-    row: &postgres::Row,
+    row: &Row,
     campaign: CampaignId,
 ) -> Result<OrganizerCommitment, MaterialRuntimeError> {
     let value = decode_commitment(&row.get::<_, Vec<u8>>("commitment_bytes"))?;
@@ -155,7 +160,7 @@ pub(crate) fn pending(
 /// Commitment and consumption are read together from the exact mutable command row.
 pub(crate) struct CapturedOrganizerCommand {
     campaign: CampaignId,
-    row: Option<postgres::Row>,
+    row: Option<Row>,
 }
 
 pub(crate) fn capture_pending(
@@ -197,9 +202,7 @@ impl DurableMaterialRuntime {
     /// Reconstruct the sole current next-period batch from durable accepted inputs.
     /// # Errors
     /// Refuses stale storage or a malformed captured practice contract.
-    pub fn next_action_batch(
-        &self,
-    ) -> Result<babylon_practice_contract::OrderedPracticeActionBatch, MaterialRuntimeError> {
+    pub fn next_action_batch(&self) -> Result<OrderedPracticeActionBatch, MaterialRuntimeError> {
         let session = self.session().graph_session().session_identity().clone();
         let register = self.session().material();
         let next = self
@@ -213,11 +216,15 @@ impl DurableMaterialRuntime {
             let mut client = self.organizer_connection()?;
             self.require_organizer_tail(&mut client)?;
             let commitment = pending(&mut client, self.campaign_id(), next)?;
-            return organizer_action_batch(config, state, commitment.as_ref(), session)
-                .map_err(|_| MaterialRuntimeError::OrganizerStorage);
+            return babylon_practice_contract::organizer_action_batch(
+                config,
+                state,
+                commitment.as_ref(),
+                session,
+            )
+            .map_err(|_| MaterialRuntimeError::OrganizerStorage);
         }
-        babylon_practice_contract::OrderedPracticeActionBatch::empty(session, next)
-            .map_err(|_| MaterialRuntimeError::Bounds)
+        OrderedPracticeActionBatch::empty(session, next).map_err(|_| MaterialRuntimeError::Bounds)
     }
 
     /// Whether captured campaign content enables the bounded organizer loop.
@@ -274,7 +281,7 @@ impl DurableMaterialRuntime {
         if !self.session().duration().can_advance(state.period) {
             return Err(RuntimeSessionErrorCode::HorizonComplete);
         }
-        preview_organizer(config, state, command)
+        babylon_practice_contract::preview_organizer(config, state, command)
             .map_err(|_| RuntimeSessionErrorCode::OrganizerRefused)
     }
     /// Durably admit one immutable ruling without advancing the campaign.
@@ -319,7 +326,7 @@ impl DurableMaterialRuntime {
         if !self.session().duration().can_advance(state.period) {
             return Err(RuntimeSessionErrorCode::HorizonComplete);
         }
-        let accepted = admit_organizer(config, state, command)
+        let accepted = babylon_practice_contract::admit_organizer(config, state, command)
             .map_err(|_| RuntimeSessionErrorCode::OrganizerRefused)?;
         if pending(&mut tx, self.campaign_id(), accepted.resolves_period)
             .map_err(|error| classify(&error))?
@@ -362,8 +369,9 @@ mod collection_history_tests {
         OrganizerGiftConsent,
     };
     use babylon_tick::material_world::MaterialWorldRegister;
+    use fixture::Session;
 
-    fn partial_collection_session() -> fixture::Session {
+    fn partial_collection_session() -> Session {
         let foundation = crate::michigan_dynamic_hex_foundation().unwrap();
         let base = fixture::authored_session(foundation, fixture::config(), false, false);
         let mut material = base.material().state().clone();
@@ -434,7 +442,7 @@ mod collection_history_tests {
 
     fn current_view(register: &MaterialWorldRegister) -> OrganizerView {
         let config = register.organizer_config().unwrap();
-        organizer_view(
+        babylon_practice_contract::organizer_view(
             config,
             register.organizer_state().unwrap(),
             config.controlled_actor_id,

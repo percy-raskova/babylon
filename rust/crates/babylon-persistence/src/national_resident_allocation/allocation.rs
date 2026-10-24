@@ -4,32 +4,35 @@ use super::WorkforceAllocationWeight;
 
 use super::{households, weights};
 
-use crate::{
-    economic_catalog::{ResidentStaffingMemberSeed, ResidentStaffingPoolSeed},
-    national_cohorts::NationalCohortReference,
-    national_counties::NationalCountyReference,
-    national_economy::{
-        household_enterprise_target, resident_employer_target, source_workplace_target,
-        NationalGamePolicy, ResidentWorkplaceTarget,
-    },
-    national_household_allocation::{CountyHouseholdAllocation, NationalHouseholdAllocation},
-    national_household_refinement::NationalHouseholdLeafRoster,
-    national_resident_workforce::{NationalResidentWorkforceReference, WorkerClass},
+use crate::economic_catalog::{ResidentStaffingMemberSeed, ResidentStaffingPoolSeed};
+use crate::national_cohorts::NationalCohortReference;
+use crate::national_counties::NationalCountyReference;
+use crate::national_economy::{NationalGamePolicy, ResidentWorkplaceTarget};
+use crate::national_household_allocation::{
+    CountyHouseholdAllocation, NationalHouseholdAllocation,
 };
+use crate::national_household_refinement::NationalHouseholdLeafRoster;
+use crate::national_resident_workforce::{NationalResidentWorkforceReference, WorkerClass};
 
 use babylon_graph::stable_element::StableElementKey;
 
-use babylon_kernel::{
-    content_digest::sha256_of, economic_identity::QcewOwnership,
-    economic_location::EconomicLocation, geography::CountyGeoid,
-};
+use babylon_kernel::economic_identity::QcewOwnership;
+use babylon_kernel::economic_location::EconomicLocation;
+use babylon_kernel::geography::CountyGeoid;
 
 use babylon_material_circuit::{
     StaffingMemberBinding, StaffingMemberId, StaffingPolicy, StaffingPoolBinding,
     StaffingWorkSource, UnitId, MAX_MATERIAL_CIRCUIT_ROWS, MAX_STAFFING_MEMBERS,
 };
 
+use crate::national_counties::AcsEstimate;
+use crate::national_counties::CountyReference;
+use crate::national_economy;
+use babylon_kernel::content_digest;
+use babylon_material_circuit::FinalDemandPrincipalId;
 use std::collections::BTreeMap;
+use std::fmt::Formatter;
+use weights::Peers;
 
 pub(crate) type Result<T> = std::result::Result<T, AllocationError>;
 
@@ -46,7 +49,7 @@ pub enum AllocationError {
 }
 
 impl std::fmt::Display for AllocationError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "resident workplace allocation refused: {self:?}")
     }
 }
@@ -174,7 +177,7 @@ pub fn allocate_home_county(
     if policy.missing_peer_weight_per_establishment == 0 {
         return Err(AllocationError::Policy);
     }
-    let peers = weights::Peers::new(cohorts)?;
+    let peers = Peers::new(cohorts)?;
     let mut by_county = BTreeMap::<CountyGeoid, Vec<PendingWorkplace>>::new();
     for cohort in cohorts.admitted_cohorts() {
         let key = cohort.key();
@@ -184,7 +187,7 @@ pub fn allocate_home_county(
             .county(key.county)
             .map_err(|_| AllocationError::SourceScope)?;
         let weight = peers.weight(cohort, policy.missing_peer_weight_per_establishment)?;
-        let target = source_workplace_target(
+        let target = national_economy::source_workplace_target(
             location,
             key.function.ok_or(AllocationError::SourceScope)?,
             key.ownership,
@@ -285,8 +288,8 @@ pub(crate) fn assign_county(
         .ok_or(AllocationError::Arithmetic)?;
     let family = controls.source_classes[7];
     if owners > 0 || family > 0 {
-        let target =
-            household_enterprise_target(location).map_err(|_| AllocationError::SourceScope)?;
+        let target = national_economy::household_enterprise_target(location)
+            .map_err(|_| AllocationError::SourceScope)?;
         let mut members = vec![];
         if owners > 0 {
             members.push(PendingResidentMember {
@@ -380,8 +383,8 @@ pub(crate) fn add_fallback(
     location: EconomicLocation,
     ownership: QcewOwnership,
 ) -> Result<usize> {
-    let target =
-        resident_employer_target(location, ownership).map_err(|_| AllocationError::SourceScope)?;
+    let target = national_economy::resident_employer_target(location, ownership)
+        .map_err(|_| AllocationError::SourceScope)?;
     if sites.iter().any(|r| r.target.site_id == target.site_id) {
         return Err(AllocationError::Identity);
     }
@@ -398,7 +401,7 @@ pub(crate) fn add_fallback(
 pub(crate) fn member(
     target: &ResidentWorkplaceTarget,
     mode: ResidentAttendanceMode,
-    principal: babylon_material_circuit::FinalDemandPrincipalId,
+    principal: FinalDemandPrincipalId,
     employed: u64,
     reserve: u64,
 ) -> Result<AssignedResidentMember> {
@@ -407,7 +410,7 @@ pub(crate) fn member(
     bytes.extend_from_slice(&target.location.canonical_bytes());
     bytes.push(mode.tag());
     bytes.extend_from_slice(&principal.as_bytes());
-    let identity = sha256_of(&bytes);
+    let identity = content_digest::sha256_of(&bytes);
     let member = StaffingMemberBinding::try_new(
         StaffingMemberId::from_bytes(identity),
         principal,
@@ -490,7 +493,7 @@ pub(crate) fn apportion(total: u64, weights: &[u64]) -> Result<Vec<u64>> {
 }
 
 pub(crate) fn county_controls(
-    county: &crate::national_counties::CountyReference,
+    county: &CountyReference,
     source: &NationalResidentWorkforceReference,
 ) -> Result<ResidentCountyAllocation> {
     let classes = source
@@ -503,7 +506,7 @@ pub(crate) fn county_controls(
             .ok_or(AllocationError::MissingObservation)?;
     }
     let resident = county.residents();
-    let value = |cell: &crate::national_counties::AcsEstimate| {
+    let value = |cell: &AcsEstimate| {
         cell.estimate
             .value()
             .ok_or(AllocationError::MissingObservation)

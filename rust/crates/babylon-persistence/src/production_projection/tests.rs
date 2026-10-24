@@ -1,11 +1,19 @@
-use super::*;
+use super::history;
+use super::projection;
+use super::projection::ProductionProjectionError;
+use crate::economic_catalog::CapturedEconomicCatalog;
 use crate::michigan_content::MichiganContentPreset;
+use crate::michigan_economy::digest_hex;
 use crate::michigan_material::{MichiganDeliveryPreset, MichiganMaterialCatalog};
+use crate::production_observation::PhysicalRouteIndex;
+use crate::production_observation::ProductionSnapshot;
 use babylon_bsl::structural_verbs::CollectingSink;
-use babylon_kernel::content_digest::sha256_of;
+use babylon_kernel::content_digest;
 use babylon_practice_contract::OrderedPracticeActionBatch;
-use babylon_tick::material_world::decode_material_receipts;
+use babylon_tick::material_world;
 use babylon_tick::replay_session::ReplayCommitDisposition;
+use history::OrderHistory;
+use std::collections::BTreeSet;
 
 #[test]
 fn projection_uses_exact_committed_state_and_refuses_future_history() {
@@ -16,9 +24,14 @@ fn projection_uses_exact_committed_state_and_refuses_future_history() {
         .into_session()
         .unwrap();
     let opening = session.material().clone();
-    let initial =
-        project_material_observation(&crate::test_support::catalog(), preset, &opening, None, &[])
-            .unwrap();
+    let initial = projection::project_material_observation(
+        &crate::test_support::catalog(),
+        preset,
+        &opening,
+        None,
+        &[],
+    )
+    .unwrap();
     assert!(initial.provenance[0].starts_with("Designed finite 16-period economic circuit"));
     assert!(initial.freight.is_empty());
     assert!(initial.events.is_empty());
@@ -38,9 +51,13 @@ fn projection_uses_exact_committed_state_and_refuses_future_history() {
             .unwrap();
     let prepared = session.prepare_advance(&actions).unwrap();
     let next = prepared.material();
-    let receipt = decode_material_receipts(next.receipt_bytes()).unwrap();
-    let history = vec![(opening.clone(), receipt, sha256_of(next.receipt_bytes()))];
-    let snapshot = project_material_observation(
+    let receipt = material_world::decode_material_receipts(next.receipt_bytes()).unwrap();
+    let history = vec![(
+        opening.clone(),
+        receipt,
+        content_digest::sha256_of(next.receipt_bytes()),
+    )];
+    let snapshot = projection::project_material_observation(
         &crate::test_support::catalog(),
         preset,
         next.register(),
@@ -79,7 +96,7 @@ fn projection_uses_exact_committed_state_and_refuses_future_history() {
     );
     assert!(snapshot.events.iter().all(|event| event.period == 1));
     assert_eq!(
-        project_material_observation(
+        projection::project_material_observation(
             &crate::test_support::catalog(),
             preset,
             &opening,
@@ -89,7 +106,7 @@ fn projection_uses_exact_committed_state_and_refuses_future_history() {
         Err(ProductionProjectionError::History)
     );
     assert_eq!(
-        project_material_observation(
+        projection::project_material_observation(
             &crate::test_support::catalog(),
             preset,
             next.register(),
@@ -114,19 +131,15 @@ fn projection_provenance_uses_the_saved_campaign_horizon() {
     let foundation = MichiganContentPreset::FourWeekStandard
         .create_foundation(&catalog)
         .unwrap();
-    let capture =
-        crate::economic_catalog::CapturedEconomicCatalog::from_michigan(&catalog).unwrap();
-    let decoded = crate::economic_catalog::CapturedEconomicCatalog::decode(
-        capture.canonical_bytes(),
-        capture.digest(),
-    )
-    .unwrap();
-    let snapshot = project_economic_current(
+    let capture = CapturedEconomicCatalog::from_michigan(&catalog).unwrap();
+    let decoded =
+        CapturedEconomicCatalog::decode(capture.canonical_bytes(), capture.digest()).unwrap();
+    let snapshot = projection::project_economic_current(
         decoded.view(),
         foundation.initial_register(),
         None,
         None,
-        &history::OrderHistory::from_opening(foundation.initial_register().state()).unwrap(),
+        &OrderHistory::from_opening(foundation.initial_register().state()).unwrap(),
     )
     .unwrap();
     assert_eq!(
@@ -153,8 +166,8 @@ fn period_three(preset: MichiganDeliveryPreset) -> ProductionSnapshot {
         let next = session.prepare_advance(&actions).unwrap();
         history.push((
             session.material().clone(),
-            decode_material_receipts(next.material().receipt_bytes()).unwrap(),
-            sha256_of(next.material().receipt_bytes()),
+            material_world::decode_material_receipts(next.material().receipt_bytes()).unwrap(),
+            content_digest::sha256_of(next.material().receipt_bytes()),
         ));
         opening = Some(session.material().clone());
         session
@@ -163,7 +176,7 @@ fn period_three(preset: MichiganDeliveryPreset) -> ProductionSnapshot {
             })
             .unwrap();
     }
-    project_material_observation(
+    projection::project_material_observation(
         &crate::test_support::catalog().with_preset(preset).unwrap(),
         preset,
         session.material(),
@@ -272,8 +285,8 @@ fn delivery_delay_changes_staffed_time_budgets_and_preserves_unaffected_food() {
 #[test]
 fn native_route_projection_keeps_every_relation_and_shares_exact_stage_definitions() {
     let snapshot = period_three(MichiganDeliveryPreset::Standard);
-    let index = crate::production_observation::PhysicalRouteIndex::try_new(&snapshot).unwrap();
-    let unique: std::collections::BTreeSet<_> = snapshot
+    let index = PhysicalRouteIndex::try_new(&snapshot).unwrap();
+    let unique: BTreeSet<_> = snapshot
         .routes
         .iter()
         .map(|row| &row.physical_route_id)
@@ -318,13 +331,14 @@ fn shared_physical_definitions_equal_actual_closed_material_route_rows() {
             .unwrap();
     let opening = session.material().clone();
     let next = session.prepare_advance(&actions).unwrap();
-    let receipts = decode_material_receipts(next.material().receipt_bytes()).unwrap();
+    let receipts =
+        material_world::decode_material_receipts(next.material().receipt_bytes()).unwrap();
     let history = vec![(
         opening.clone(),
         receipts,
-        sha256_of(next.material().receipt_bytes()),
+        content_digest::sha256_of(next.material().receipt_bytes()),
     )];
-    let snapshot = project_material_observation(
+    let snapshot = projection::project_material_observation(
         &crate::test_support::catalog(),
         preset,
         next.material().register(),
@@ -332,7 +346,7 @@ fn shared_physical_definitions_equal_actual_closed_material_route_rows() {
         &history,
     )
     .unwrap();
-    let index = crate::production_observation::PhysicalRouteIndex::try_new(&snapshot).unwrap();
+    let index = PhysicalRouteIndex::try_new(&snapshot).unwrap();
     let actual = next.material().register().state();
     assert_eq!(snapshot.routes.len(), actual.supplier_routes.len());
     for supplier in &actual.supplier_routes {

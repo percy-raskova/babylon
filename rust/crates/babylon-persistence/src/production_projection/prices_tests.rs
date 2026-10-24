@@ -2,9 +2,8 @@
 use super::{lifecycle, recurring_fixture, ProductionProjectionError};
 use babylon_kernel::currency::Currency;
 use babylon_material_circuit::MaterialCircuitState;
-use babylon_tick::material_world::{
-    decode_material_receipts, MaterialTickReceipts, MaterialWorldRegister,
-};
+use babylon_tick::material_world;
+use babylon_tick::material_world::{MaterialTickReceipts, MaterialWorldRegister};
 
 fn actual_close() -> (
     MaterialCircuitState,
@@ -16,7 +15,7 @@ fn actual_close() -> (
     (
         prior.state().clone(),
         next.register().state().clone(),
-        decode_material_receipts(next.receipt_bytes()).unwrap(),
+        material_world::decode_material_receipts(next.receipt_bytes()).unwrap(),
     )
 }
 
@@ -71,7 +70,7 @@ fn actual_direct_cost_quote_joins_produced_and_released_quantities() {
     };
     let prior = MaterialWorldRegister::try_new(0, state).unwrap();
     let next = prior.prepare_next().unwrap();
-    let receipt = decode_material_receipts(next.receipt_bytes()).unwrap();
+    let receipt = material_world::decode_material_receipts(next.receipt_bytes()).unwrap();
     lifecycle::validate_period(prior.state(), next.register().state(), &receipt).unwrap();
     let producer = receipt
         .prices

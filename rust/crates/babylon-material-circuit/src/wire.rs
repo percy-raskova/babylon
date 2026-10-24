@@ -35,8 +35,3 @@ pub use state::{
     decode_material_circuit_state, encode_material_circuit_state, material_circuit_state_digest,
     MATERIAL_CIRCUIT_SOURCE_SHA256, MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES,
 };
-
-#[cfg(test)]
-use crate::{
-    GoodId, InventoryRow, MaterialCircuitError, SiteId, UnitId, MAX_MATERIAL_CIRCUIT_ROWS,
-};

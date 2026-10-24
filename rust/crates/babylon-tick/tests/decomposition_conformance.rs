@@ -234,12 +234,13 @@
 #![allow(clippy::float_cmp)]
 
 use babylon_bsl::evaluator::Value;
-use babylon_bsl::scenario::load_scenario;
+use babylon_bsl::scenario;
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
+use babylon_kernel::replay::ReplaySeed;
 use babylon_kernel::replay::ReplaySessionId;
-use babylon_tick::{diagnostic::RuleDiagnosticSession, run_once_into};
+use babylon_tick::diagnostic::RuleDiagnosticSession;
 
 /// Fixed deterministic V1 namespace for this file's non-kernel
 /// `RuleDiagnosticSession` fixtures.
@@ -274,7 +275,8 @@ const DELAY_CARCERAL_REGISTER: NodeId = NodeId(6);
 fn run() -> (HypergraphStore, CollectingSink) {
     let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
-    run_once_into(SCENARIO, RULE, &mut graph, &mut sink).expect("the Pack A rules must run");
+    babylon_tick::run_once_into(SCENARIO, RULE, &mut graph, &mut sink)
+        .expect("the Pack A rules must run");
     (graph, sink)
 }
 
@@ -410,7 +412,7 @@ fn scenario_and_empty_pack_load() {
 "#;
     let mut graph = HypergraphStore::new();
     let mut sink = babylon_bsl::structural_verbs::CollectingSink::default();
-    run_once_into(SCENARIO, PROBE_RULE, &mut graph, &mut sink)
+    babylon_tick::run_once_into(SCENARIO, PROBE_RULE, &mut graph, &mut sink)
         .expect("the scenario must load and run against BOTH registered-system probe rules");
 }
 
@@ -421,7 +423,8 @@ fn scenario_and_empty_pack_load() {
 #[test]
 fn the_scenario_loads_clean_with_the_declared_census() {
     let mut graph = HypergraphStore::new();
-    let loaded = load_scenario(SCENARIO, &mut graph).expect("the scenario must load clean");
+    let loaded =
+        scenario::load_scenario(SCENARIO, &mut graph).expect("the scenario must load clean");
     assert_eq!(loaded.node_count, 6, "5 social classes + 1 carrier");
     assert_eq!(
         loaded.edge_count, 0,
@@ -448,7 +451,8 @@ fn the_scenario_loads_clean_with_the_declared_census() {
 #[test]
 fn social_role_order_is_the_ruled_ordinal() {
     let mut graph = HypergraphStore::new();
-    let loaded = load_scenario(SCENARIO, &mut graph).expect("the scenario must load clean");
+    let loaded =
+        scenario::load_scenario(SCENARIO, &mut graph).expect("the scenario must load clean");
     let ty = loaded
         .enums
         .resolve("SocialRole")
@@ -612,7 +616,7 @@ fn p03_is_idempotent_across_two_ticks() {
         RULE,
         HypergraphStore::new(),
         test_session(),
-        babylon_kernel::replay::ReplaySeed::new(0),
+        ReplaySeed::new(0),
     )
     .expect("the pack must load into a session");
     let mut sink = CollectingSink::default();
@@ -817,7 +821,7 @@ fn the_delay_path_emits_the_warning_at_tick_1_and_decomposes_at_tick_53() {
         RULE,
         HypergraphStore::new(),
         test_session(),
-        babylon_kernel::replay::ReplaySeed::new(0),
+        ReplaySeed::new(0),
     )
     .expect("the delay scenario must load into a session");
 
@@ -908,7 +912,7 @@ fn the_delay_path_does_not_decompose_at_tick_52() {
         RULE,
         HypergraphStore::new(),
         test_session(),
-        babylon_kernel::replay::ReplaySeed::new(0),
+        ReplaySeed::new(0),
     )
     .expect("the delay scenario must load into a session");
     let mut sink = CollectingSink::default();
@@ -960,7 +964,7 @@ fn p01_la_inactive_contributes_nothing_to_the_census() {
         RULE,
         HypergraphStore::new(),
         test_session(),
-        babylon_kernel::replay::ReplaySeed::new(0),
+        ReplaySeed::new(0),
     )
     .expect("the delay scenario must load into a session");
     let mut sink = CollectingSink::default();
@@ -1089,7 +1093,7 @@ fn p03_gate_blocks_zero_population_la_even_when_the_delay_has_elapsed() {
     const ZERO_POP_CARCERAL_REGISTER: NodeId = NodeId(1);
     let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
-    run_once_into(ZERO_POP_SCENARIO, RULE, &mut graph, &mut sink)
+    babylon_tick::run_once_into(ZERO_POP_SCENARIO, RULE, &mut graph, &mut sink)
         .expect("the zero-population world must run");
     assert_eq!(
         attribute(

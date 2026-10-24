@@ -1,10 +1,21 @@
 //! Scope is exercised through the scene system with real committed atlas geometry.
-use super::*;
+use super::scene::setup_map;
+use super::CountySlab;
+use crate::atlas::CountyAtlas;
+use crate::map::{HoveredCounty, SelectedCounty};
+use crate::observer::ObserverSession;
+use crate::observer::Perspective;
+use crate::observer_io::ObserverSet;
+use crate::observer_ui::ObserverFrame;
 use babylon_kernel::geography::{CountyGeoid, NationalCountyRoster};
 use babylon_persistence::identity::CampaignId;
 use babylon_persistence::observer_reader::{
     ObserverCountyEconomy, ObserverEconomySnapshot, ObserverVisibility,
 };
+use bevy::asset::AssetPlugin;
+use bevy::prelude::*;
+use std::collections::BTreeMap;
+use uuid::Uuid;
 
 fn atlas() -> CountyAtlas {
     CountyAtlas::parse(include_bytes!(concat!(
@@ -52,14 +63,14 @@ fn observation(campaign: CampaignId, counties: Vec<String>) -> ObserverFrame {
     )
 }
 fn scene(counties: Vec<String>) -> App {
-    let campaign = CampaignId::from_uuid(uuid::Uuid::nil());
+    let campaign = CampaignId::from_uuid(Uuid::nil());
     let mut session = ObserverSession::new(campaign);
     session.foundation_digest = Some("f".repeat(64));
     session.ready(0, None);
     let mut app = App::new();
     app.add_plugins((
         MinimalPlugins,
-        bevy::asset::AssetPlugin::default(),
+        AssetPlugin::default(),
         crate::map::MapPlugin,
     ))
     .init_asset::<StandardMaterial>()
@@ -74,7 +85,7 @@ fn scene(counties: Vec<String>) -> App {
     app.update();
     app
 }
-fn slabs(app: &mut App) -> std::collections::BTreeMap<String, Entity> {
+fn slabs(app: &mut App) -> BTreeMap<String, Entity> {
     let world = app.world_mut();
     world
         .query::<(Entity, &CountySlab)>()
@@ -106,7 +117,7 @@ fn loading_same_campaign_preserves_meshes_but_switch_clears_stale_counties() {
     app.update();
     assert_eq!(slabs(&mut app), original);
     app.world_mut().resource_mut::<ObserverSession>().campaign =
-        CampaignId::from_uuid(uuid::Uuid::from_u128(1));
+        CampaignId::from_uuid(Uuid::from_u128(1));
     app.update();
     assert!(slabs(&mut app).is_empty());
 }
@@ -121,11 +132,11 @@ fn campaign_switch_installs_known_geography_and_preserves_admitted_wayne_selecti
         .unwrap();
     assert_eq!(app.world().resource::<SelectedCounty>().0, Some(wayne));
     app.world_mut().resource_mut::<HoveredCounty>().0 = Some(wayne);
-    let campaign = CampaignId::from_uuid(uuid::Uuid::from_u128(2));
+    let campaign = CampaignId::from_uuid(Uuid::from_u128(2));
     {
         let mut session = app.world_mut().resource_mut::<ObserverSession>();
         session.campaign = campaign;
-        session.perspective = crate::observer::Perspective::PlayerKnowledge;
+        session.perspective = Perspective::PlayerKnowledge;
     }
     let mut frame = observation(
         campaign,

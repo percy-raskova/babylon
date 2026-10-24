@@ -4,36 +4,43 @@ use super::storage_witness;
 
 use crate::production_projection::diagnostics::{self, Stage};
 
-use babylon_kernel::content_digest::sha256_of;
-
-use babylon_tick::{
-    material_replay::IdentifiedMaterialTick,
-    material_world::{nominal_material_world_hash, MaterialTickReceipts, MaterialWorldRegister},
-};
+use babylon_tick::material_replay::IdentifiedMaterialTick;
+use babylon_tick::material_world::{MaterialTickReceipts, MaterialWorldRegister};
 
 use postgres::GenericClient;
 
 use std::sync::{Arc, Weak};
 
-use crate::{
-    economic_content::{validate_economic_header, EconomicContentAdmission},
-    identity::CampaignId,
-    material_runtime::{
-        capture_material_foundation_components, read_observer_material_endpoints,
-        read_observer_material_tick, FoundationReadSource, ObserverEndpointLookup,
-    },
-    michigan_economy::digest_hex,
-    observer_reader::{
-        ObserverEconomyError, ObserverVisibility, ProductionHistoryTarget, ProductionOutputPoint,
-    },
-    production_observation::ProductionSnapshot,
-    production_projection::{
-        history::OrderHistory,
-        metadata::Metadata,
-        project_economic_current,
-        sites::{project_process, Quantities},
-    },
+use crate::economic_content;
+use crate::economic_content::EconomicContentAdmission;
+use crate::identity::CampaignId;
+use crate::material_runtime;
+use crate::material_runtime::StoredMaterialTick;
+use crate::material_runtime::{FoundationReadSource, ObserverEndpointLookup};
+use crate::material_storage::AdmittedReceiptWitness;
+use crate::material_storage::LookupAnchor;
+use crate::material_storage::OpeningRegister;
+use crate::michigan_economy;
+use crate::observer_reader::CommittedMaterialReceipts;
+use crate::observer_reader::{
+    ObserverEconomyError, ObserverVisibility, ProductionHistoryTarget, ProductionOutputPoint,
 };
+use crate::production_observation::ProductionSnapshot;
+use crate::production_observation::ProductionStaffingAccount;
+use crate::production_projection;
+use crate::production_projection::history::OrderHistory;
+use crate::production_projection::metadata::Metadata;
+use crate::production_projection::sites;
+use crate::production_projection::sites::Quantities;
+use crate::production_projection::staffing;
+use babylon_kernel::content_digest;
+use babylon_material_circuit::CircuitAccounting;
+use babylon_material_circuit::HouseholdTimeAccounting;
+use babylon_tick::material_world;
+use diagnostics::Timing;
+use postgres::Error;
+use postgres::Row;
+use uuid::Uuid;
 
 pub(crate) struct MaterialObservation {
     pub(crate) foundation_digest: String,
@@ -43,7 +50,7 @@ pub(crate) struct MaterialObservation {
 
 #[derive(Clone)]
 pub(crate) struct MaterialObservationRow {
-    pub(crate) row_campaign: uuid::Uuid,
+    pub(crate) row_campaign: Uuid,
     pub(crate) row_tick: i64,
     pub(crate) register_storage_bytes: Vec<u8>,
     pub(crate) lookup_delta: Option<Vec<u8>>,
@@ -52,9 +59,7 @@ pub(crate) struct MaterialObservationRow {
     pub(crate) content_hash: Option<Vec<u8>>,
 }
 
-pub(crate) fn decode_material_row(
-    row: &postgres::Row,
-) -> Result<MaterialObservationRow, postgres::Error> {
+pub(crate) fn decode_material_row(row: &Row) -> Result<MaterialObservationRow, Error> {
     Ok(MaterialObservationRow {
         row_campaign: row.try_get(0)?,
         row_tick: row.try_get(1)?,
@@ -82,7 +87,7 @@ pub(crate) fn read_material_header(
     let Some(header) = header else {
         return Ok(None);
     };
-    let row_campaign: uuid::Uuid = header
+    let row_campaign: Uuid = header
         .try_get(0)
         .map_err(|_| ObserverEconomyError::InvalidProjection)?;
     let preset_id: String = header
@@ -96,18 +101,24 @@ pub(crate) fn read_material_header(
     let foundation_digest: Vec<u8> = header
         .try_get("foundation_sha256")
         .map_err(|_| ObserverEconomyError::InvalidProjection)?;
-    validate_economic_header(&preset_id, duration, &content, &foundation_digest, tick)
-        .map_err(|_| ObserverEconomyError::ScenarioMismatch)?;
+    economic_content::validate_economic_header(
+        &preset_id,
+        duration,
+        &content,
+        &foundation_digest,
+        tick,
+    )
+    .map_err(|_| ObserverEconomyError::ScenarioMismatch)?;
     if &row_campaign != campaign.as_uuid() {
         return Err(ObserverEconomyError::ScenarioMismatch);
     }
     let admission = if visibility == ObserverVisibility::FullObserver {
-        let _foundation_timing = diagnostics::Timing::start(Stage::FoundationLoad, 0);
+        let _foundation_timing = Timing::start(Stage::FoundationLoad, 0);
         let expected = foundation_digest
             .as_slice()
             .try_into()
             .map_err(|_| ObserverEconomyError::InvalidProjection)?;
-        let captured = capture_material_foundation_components(
+        let captured = material_runtime::capture_material_foundation_components(
             transaction,
             campaign,
             expected,
@@ -129,7 +140,7 @@ pub(crate) fn read_material_header(
             let rebuilt = captured
                 .admit()
                 .map_err(|_| ObserverEconomyError::ScenarioMismatch)?;
-            let economic_timing = diagnostics::Timing::start(Stage::FoundationEconomicAdmission, 0);
+            let economic_timing = Timing::start(Stage::FoundationEconomicAdmission, 0);
             let admitted = EconomicContentAdmission::from_foundation(rebuilt)
                 .map_err(|_| ObserverEconomyError::ScenarioMismatch)?;
             drop(economic_timing);
@@ -245,13 +256,13 @@ impl ObserverMaterialCursor {
 
 #[derive(Clone)]
 pub(crate) struct MaterialHistory {
-    pub(super) lookup: crate::material_storage::OpeningRegister,
+    pub(super) lookup: OpeningRegister,
     pub(super) lookup_chain: [u8; 32],
     pub(super) previous_lookup_chain: Option<[u8; 32]>,
     pub(super) register: MaterialRegisterBoundary,
     pub(super) opening: Option<MaterialRegisterBoundary>,
     pub(super) receipt: Option<(Arc<MaterialTickReceipts>, [u8; 32])>,
-    receipt_witness: Option<crate::material_storage::AdmittedReceiptWitness>,
+    receipt_witness: Option<AdmittedReceiptWitness>,
     pub(super) orders: OrderHistory,
     pub(super) prior_world: Option<[u8; 32]>,
     storage_prefix: [u8; 32],
@@ -335,7 +346,7 @@ impl MaterialHistory {
         campaign: CampaignId,
         expected: &EconomicContentAdmission,
         index: u64,
-        row: postgres::Row,
+        row: Row,
     ) -> Result<(), ObserverEconomyError> {
         let decoded = diagnostics::observer(
             Stage::MaterialRow,
@@ -408,7 +419,7 @@ impl MaterialHistory {
             &self.lookup,
             index,
             delta,
-            crate::material_storage::LookupAnchor::Previous(self.lookup_chain),
+            LookupAnchor::Previous(self.lookup_chain),
         )
         .map_err(|_| diagnostics::invalid(Stage::LookupDecode, index))?;
         let admitted = crate::material_storage::decode_typed(
@@ -429,7 +440,7 @@ impl MaterialHistory {
         // Complete codec admission already owns the typed register and receipts.
         // Bind the original canonical receipt bytes, then release serialization
         // and SQL package buffers before lifecycle/order validation allocates.
-        let receipt_digest = sha256_of(&admitted.receipt_bytes);
+        let receipt_digest = content_digest::sha256_of(&admitted.receipt_bytes);
         drop(admitted.receipt_bytes);
         drop(register_storage_bytes);
         drop(lookup_delta);
@@ -473,10 +484,12 @@ impl MaterialHistory {
             || identity.foundation_digest() != expected.digest()
             || content_hash != Some(identity.tick_content_hash().as_bytes().as_slice())
             || receipt_digest != identity.receipt_digest()
-            || nominal_material_world_hash(identity.graph_world_after(), next)
+            || material_world::nominal_material_world_hash(identity.graph_world_after(), next)
                 != identity.result_world_hash()
-            || nominal_material_world_hash(identity.graph_world_before(), prior_register)
-                != identity.prior_world_hash()
+            || material_world::nominal_material_world_hash(
+                identity.graph_world_before(),
+                prior_register,
+            ) != identity.prior_world_hash()
             || self
                 .prior_world
                 .is_some_and(|prior| prior != identity.prior_world_hash())
@@ -506,7 +519,7 @@ impl MaterialHistory {
         // This history belongs to the detached read candidate. The outer
         // reader publishes it only after every admission and commit succeeds.
         // A refusal discards the candidate, so a second index copy is redundant.
-        let order_timing = diagnostics::Timing::start(Stage::OrderHistory, index);
+        let order_timing = Timing::start(Stage::OrderHistory, index);
         self.orders
             .record(prior_register.state(), &period_orders)
             .map_err(|error| {
@@ -527,7 +540,7 @@ pub(crate) fn material_rows(
     campaign: CampaignId,
     start: u64,
     through: u64,
-) -> Result<Vec<postgres::Row>, ObserverEconomyError> {
+) -> Result<Vec<Row>, ObserverEconomyError> {
     let start_sql = i64::try_from(start).map_err(|_| ObserverEconomyError::TickAbsent)?;
     let through_sql = i64::try_from(through).map_err(|_| ObserverEconomyError::TickAbsent)?;
     let rows = transaction.query("SELECT campaign_id, resolve_tick, register_storage_bytes, receipt_storage_bytes, identity_bytes, tick_content_hash, lookup_delta_bytes FROM public.v_observer_material_state_v1 WHERE campaign_id=$1 AND resolve_tick >= $2 AND resolve_tick <= $3 ORDER BY resolve_tick LIMIT 4", &[campaign.as_uuid(), &start_sql, &through_sql]).map_err(|_| ObserverEconomyError::Database)?;
@@ -617,25 +630,25 @@ pub(crate) fn material_observation(
 ) -> Result<MaterialObservation, ObserverEconomyError> {
     if visibility == ObserverVisibility::KnownPreview {
         return Ok(MaterialObservation {
-            foundation_digest: digest_hex(&expected.digest()),
+            foundation_digest: michigan_economy::digest_hex(&expected.digest()),
             production: None,
             nominal_world_hash: None,
         });
     }
-    let history_timing = diagnostics::Timing::start(Stage::HistoryLoad, tick);
+    let history_timing = Timing::start(Stage::HistoryLoad, tick);
     let history = history_for_read(transaction, campaign, tick, expected, cursor)?;
     drop(history_timing);
     // Authenticate endpoint graph/events before allocating the full current projection.
     // Only the projected staffing accounts survive the endpoint ownership scope.
-    let staffing_timing = diagnostics::Timing::start(Stage::Staffing, tick);
+    let staffing_timing = Timing::start(Stage::Staffing, tick);
     let staffing_accounts = diagnostics::observer(
         Stage::Staffing,
         tick,
         authenticated_staffing(transaction, campaign, expected, &history),
     )?;
     drop(staffing_timing);
-    let projection_timing = diagnostics::Timing::start(Stage::CurrentProjection, tick);
-    let mut production = project_economic_current(
+    let projection_timing = Timing::start(Stage::CurrentProjection, tick);
+    let mut production = production_projection::project_economic_current(
         expected.view(),
         history.register(expected),
         history.opening(expected),
@@ -662,13 +675,13 @@ pub(crate) fn material_observation(
         });
     }
     Ok(MaterialObservation {
-        foundation_digest: digest_hex(&expected.digest()),
+        foundation_digest: michigan_economy::digest_hex(&expected.digest()),
         production: Some(diagnostics::observer(
             Stage::Attribution,
             tick,
             attribute_production(production, expected, visibility, tick),
         )?),
-        nominal_world_hash: prior_world.map(|hash| digest_hex(&hash)),
+        nominal_world_hash: prior_world.map(|hash| michigan_economy::digest_hex(&hash)),
     })
 }
 
@@ -685,8 +698,8 @@ pub(crate) fn production_history(
         .processes
         .iter()
         .find(|(id, (site, _, _))| {
-            digest_hex(&id.as_bytes()) == target.process_id
-                && digest_hex(&site.site_id.as_bytes()) == target.site_id
+            michigan_economy::digest_hex(&id.as_bytes()) == target.process_id
+                && michigan_economy::digest_hex(&site.site_id.as_bytes()) == target.site_id
         })
         .map(|(id, _)| id)
         .ok_or(ObserverEconomyError::ProductionHistoryUnavailable)?;
@@ -705,7 +718,7 @@ pub(crate) fn production_history(
                 // Authenticate the whole prefix once, even outside the display window.
                 // The shared history append also proves nominal before/after identity
                 // and continuity, which the envelope reader alone does not establish.
-                let stored = read_observer_material_tick(
+                let stored = material_runtime::read_observer_material_tick(
                     transaction,
                     campaign,
                     period,
@@ -726,7 +739,7 @@ pub(crate) fn production_history(
                 }
             }
             if period >= start {
-                let projected = project_process(
+                let projected = sites::project_process(
                     &metadata,
                     &Quantities::new(
                         history.register(expected).state(),
@@ -752,18 +765,12 @@ pub(crate) fn authenticated_history_endpoints<'w>(
     campaign: CampaignId,
     expected: &'w EconomicContentAdmission,
     history: &'w MaterialHistory,
-) -> Result<
-    (
-        crate::material_runtime::StoredMaterialTick<'w>,
-        Option<crate::material_runtime::StoredMaterialTick<'w>>,
-    ),
-    ObserverEconomyError,
-> {
+) -> Result<(StoredMaterialTick<'w>, Option<StoredMaterialTick<'w>>), ObserverEconomyError> {
     let tick = history.register.completed_tick();
     let register = history.register(expected);
     let result_world = history.prior_world;
     let period_receipt = history.receipt.as_ref();
-    let (current, previous) = read_observer_material_endpoints(
+    let (current, previous) = material_runtime::read_observer_material_endpoints(
         transaction,
         campaign,
         tick,
@@ -804,7 +811,7 @@ pub(crate) fn committed_receipts(
     campaign: CampaignId,
     tick: u64,
     expected: &EconomicContentAdmission,
-) -> Result<crate::observer_reader::CommittedMaterialReceipts, ObserverEconomyError> {
+) -> Result<CommittedMaterialReceipts, ObserverEconomyError> {
     let mut history = MaterialHistory::new(expected)?;
     extend_history(transaction, campaign, expected, &mut history, 0, tick)?;
     let (current, _) = authenticated_history_endpoints(transaction, campaign, expected, &history)?;
@@ -819,7 +826,7 @@ pub(crate) fn read_committed_receipts(
     expected: &EconomicContentAdmission,
     history: &MaterialHistory,
     identity: &babylon_tick::material_replay::IdentifiedMaterialTick,
-) -> Result<crate::observer_reader::CommittedMaterialReceipts, ObserverEconomyError> {
+) -> Result<CommittedMaterialReceipts, ObserverEconomyError> {
     let (receipts, digest) = history
         .receipt
         .as_ref()
@@ -828,20 +835,18 @@ pub(crate) fn read_committed_receipts(
         return Err(ObserverEconomyError::InvalidProjection);
     }
     let household_contributions = match &history.register(expected).state().accounting {
-        babylon_material_circuit::CircuitAccounting::PhysicalControl => Vec::new(),
-        babylon_material_circuit::CircuitAccounting::Monetary(economy) => {
-            match &economy.household_time {
-                babylon_material_circuit::HouseholdTimeAccounting::NotModeled => Vec::new(),
-                babylon_material_circuit::HouseholdTimeAccounting::Modeled(book) => {
-                    if book.contributions.iter().any(|row| row.period != tick) {
-                        return Err(ObserverEconomyError::InvalidProjection);
-                    }
-                    book.contributions.clone()
+        CircuitAccounting::PhysicalControl => Vec::new(),
+        CircuitAccounting::Monetary(economy) => match &economy.household_time {
+            HouseholdTimeAccounting::NotModeled => Vec::new(),
+            HouseholdTimeAccounting::Modeled(book) => {
+                if book.contributions.iter().any(|row| row.period != tick) {
+                    return Err(ObserverEconomyError::InvalidProjection);
                 }
+                book.contributions.clone()
             }
-        }
+        },
     };
-    Ok(crate::observer_reader::CommittedMaterialReceipts {
+    Ok(CommittedMaterialReceipts {
         campaign_id: campaign,
         identity: *identity,
         material_register_bytes: history.register(expected).canonical_bytes().len(),
@@ -856,20 +861,14 @@ pub(crate) fn committed_observation(
     tick: u64,
     expected: &Arc<EconomicContentAdmission>,
     cursor: &mut Option<ObserverMaterialCursor>,
-) -> Result<
-    (
-        MaterialObservation,
-        crate::observer_reader::CommittedMaterialReceipts,
-    ),
-    ObserverEconomyError,
-> {
+) -> Result<(MaterialObservation, CommittedMaterialReceipts), ObserverEconomyError> {
     if tick == 0 {
         return Err(ObserverEconomyError::TickAbsent);
     }
-    let history_timing = diagnostics::Timing::start(Stage::HistoryLoad, tick);
+    let history_timing = Timing::start(Stage::HistoryLoad, tick);
     let history = history_for_read(transaction, campaign, tick, expected, cursor)?;
     drop(history_timing);
-    let staffing_timing = diagnostics::Timing::start(Stage::Staffing, tick);
+    let staffing_timing = Timing::start(Stage::Staffing, tick);
     let (current, previous) =
         authenticated_history_endpoints(transaction, campaign, expected, &history)?;
     let identity = current.identity;
@@ -877,8 +876,8 @@ pub(crate) fn committed_observation(
     drop(previous);
     drop(current);
     drop(staffing_timing);
-    let projection_timing = diagnostics::Timing::start(Stage::CurrentProjection, tick);
-    let mut production = project_economic_current(
+    let projection_timing = Timing::start(Stage::CurrentProjection, tick);
+    let mut production = production_projection::project_economic_current(
         expected.view(),
         history.register(expected),
         history.opening(expected),
@@ -891,9 +890,11 @@ pub(crate) fn committed_observation(
     let production =
         attribute_production(production, expected, ObserverVisibility::FullObserver, tick)?;
     let observation = MaterialObservation {
-        foundation_digest: digest_hex(&expected.digest()),
+        foundation_digest: michigan_economy::digest_hex(&expected.digest()),
         production: Some(production),
-        nominal_world_hash: history.prior_world.map(|hash| digest_hex(&hash)),
+        nominal_world_hash: history
+            .prior_world
+            .map(|hash| michigan_economy::digest_hex(&hash)),
     };
     let accounting = read_committed_receipts(campaign, tick, expected, &history, &identity)?;
     *cursor = Some(ObserverMaterialCursor {
@@ -910,12 +911,11 @@ pub(crate) fn authenticated_staffing(
     campaign: CampaignId,
     expected: &EconomicContentAdmission,
     history: &MaterialHistory,
-) -> Result<Vec<crate::production_observation::ProductionStaffingAccount>, ObserverEconomyError> {
-    use crate::production_projection::staffing::project_staffing_accounts;
+) -> Result<Vec<ProductionStaffingAccount>, ObserverEconomyError> {
     let register = history.register(expected);
     let tick = register.completed_tick();
     if tick == 0 {
-        return project_staffing_accounts(
+        return staffing::project_staffing_accounts(
             expected.staffing(),
             expected.foundation_graph(),
             register,
@@ -936,15 +936,14 @@ pub(crate) fn authenticated_staffing(
 pub(crate) fn project_authenticated_staffing(
     expected: &EconomicContentAdmission,
     history: &MaterialHistory,
-    current: &crate::material_runtime::StoredMaterialTick<'_>,
-    previous: Option<&crate::material_runtime::StoredMaterialTick<'_>>,
-) -> Result<Vec<crate::production_observation::ProductionStaffingAccount>, ObserverEconomyError> {
-    use crate::production_projection::staffing::project_staffing_accounts;
+    current: &StoredMaterialTick<'_>,
+    previous: Option<&StoredMaterialTick<'_>>,
+) -> Result<Vec<ProductionStaffingAccount>, ObserverEconomyError> {
     let register = history.register(expected);
     let period_receipt = history.receipt.as_ref();
     let tick = register.completed_tick();
     let prior_graph = previous.map_or(expected.foundation_graph(), |row| &row.graph);
-    project_staffing_accounts(
+    staffing::project_staffing_accounts(
         expected.staffing(),
         &current.graph,
         register,
@@ -979,17 +978,19 @@ pub(crate) fn attribute_production(
 #[cfg(test)]
 mod opening_controls {
     use super::*;
+    use crate::michigan_content::MichiganContentPreset;
+    use uuid::Uuid;
 
     fn fixture() -> (
         CampaignId,
         Arc<EconomicContentAdmission>,
         ObserverMaterialCursor,
     ) {
-        let foundation = crate::michigan_content::MichiganContentPreset::FourWeekStandard
+        let foundation = MichiganContentPreset::FourWeekStandard
             .create_foundation(&crate::test_support::catalog())
             .unwrap();
         let owner = Arc::new(EconomicContentAdmission::from_foundation(foundation).unwrap());
-        let campaign = CampaignId::from_uuid(uuid::Uuid::from_u128(0x342_000));
+        let campaign = CampaignId::from_uuid(Uuid::from_u128(0x342_000));
         let cursor = ObserverMaterialCursor {
             campaign,
             admission: Arc::downgrade(&owner),
@@ -1017,7 +1018,7 @@ mod opening_controls {
     #[test]
     fn opening_borrow_refuses_another_campaign_digest_or_expired_owner() {
         let (campaign, owner, mut cursor) = fixture();
-        let other = CampaignId::from_uuid(uuid::Uuid::from_u128(0x342_999));
+        let other = CampaignId::from_uuid(Uuid::from_u128(0x342_999));
         assert!(cursor.with_opening_register(other, |_| ()).is_err());
         cursor.admission_digest[0] ^= 1;
         assert!(cursor.with_opening_register(campaign, |_| ()).is_err());
@@ -1042,7 +1043,7 @@ mod opening_controls {
     #[test]
     fn opening_foundations_refuse_changed_or_released_admission_and_period_cursors() {
         let (campaign, owner, mut cursor) = fixture();
-        let other = CampaignId::from_uuid(uuid::Uuid::from_u128(0x342_999));
+        let other = CampaignId::from_uuid(Uuid::from_u128(0x342_999));
         assert!(cursor.opening_foundations(other).is_err());
         cursor.admission_digest[0] ^= 1;
         assert!(cursor.opening_foundations(campaign).is_err());

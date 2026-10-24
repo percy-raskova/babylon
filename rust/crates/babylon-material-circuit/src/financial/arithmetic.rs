@@ -3,8 +3,9 @@
 use crate::MaterialCircuitError;
 
 use babylon_kernel::currency::Currency;
+use std::result::Result as StdResult;
 
-pub(crate) type Result<T> = std::result::Result<T, MaterialCircuitError>;
+pub(crate) type Result<T> = StdResult<T, MaterialCircuitError>;
 
 pub(crate) fn zero() -> Currency {
     Currency::from_micro_units(0)

@@ -8,8 +8,12 @@ use super::super::emission::ArchiveEmissionManifest;
 
 use super::super::ArchiveReadScope;
 
-use crate::archive::{validate_text, MAX_LINKS, MAX_PAGE_BYTES, MAX_SIGNALS};
+use crate::archive::{MAX_LINKS, MAX_PAGE_BYTES, MAX_SIGNALS};
 
+use super::super::body_encoding::EncodedBody;
+use super::super::body_encoding::Error;
+use crate::archive;
+use crate::ArchiveAtomValue;
 use crate::{
     ArchiveAtom, ArchiveAtomSubject, ArchiveCitation, ArchivePageRef, SemanticArchiveError,
 };
@@ -47,8 +51,8 @@ pub(in crate::archive_revision) struct RevisionRecord {
 pub(in crate::archive_revision) struct CheckedRevision {
     record: RevisionRecord,
     digest: [u8; 32],
-    body: super::super::body_encoding::EncodedBody,
-    replay_body: Option<super::super::body_encoding::EncodedBody>,
+    body: EncodedBody,
+    replay_body: Option<EncodedBody>,
 }
 
 impl CheckedRevision {
@@ -57,8 +61,7 @@ impl CheckedRevision {
     ) -> Result<Self, SemanticArchiveError> {
         let digest = record.digest()?;
         // digest() has already performed complete semantic/emission admission.
-        let body = super::super::body_encoding::encode(&record)
-            .map_err(super::super::body_encoding::Error::into_semantic)?;
+        let body = super::super::body_encoding::encode(&record).map_err(Error::into_semantic)?;
         Ok(Self {
             record,
             digest,
@@ -67,18 +70,13 @@ impl CheckedRevision {
         })
     }
 
-    pub(in crate::archive_revision) fn body(&self) -> &super::super::body_encoding::EncodedBody {
+    pub(in crate::archive_revision) fn body(&self) -> &EncodedBody {
         &self.body
     }
-    pub(in crate::archive_revision) fn accepted_body(
-        &self,
-    ) -> &super::super::body_encoding::EncodedBody {
+    pub(in crate::archive_revision) fn accepted_body(&self) -> &EncodedBody {
         self.replay_body.as_ref().unwrap_or(&self.body)
     }
-    pub(in crate::archive_revision) fn bind_replay_body(
-        &mut self,
-        body: super::super::body_encoding::EncodedBody,
-    ) {
+    pub(in crate::archive_revision) fn bind_replay_body(&mut self, body: EncodedBody) {
         self.replay_body = Some(body);
     }
     pub(in crate::archive_revision) fn record(&self) -> &RevisionRecord {
@@ -91,7 +89,7 @@ impl CheckedRevision {
 
 impl RevisionRecord {
     pub fn validate(&self) -> Result<(), SemanticArchiveError> {
-        validate_text(&self.title)?;
+        archive::validate_text(&self.title)?;
         if self.source.tick() == 0
             || self.effective_tick != self.source.tick()
             || self.effective_tick > i64::MAX as u64
@@ -146,7 +144,7 @@ impl RevisionRecord {
         }
         for (position, atom) in self.atoms.iter().enumerate() {
             let subject = if is_link(atom) {
-                let crate::ArchiveAtomValue::Text(target) = atom.value() else {
+                let ArchiveAtomValue::Text(target) = atom.value() else {
                     return Err(SemanticArchiveError::StoredPageMismatch);
                 };
                 parse_page_key(target)?
@@ -187,7 +185,7 @@ impl RevisionRecord {
         let first = &self.atoms[0];
         if first.signal_key() != "subject"
             || first.grant_key() != "subject"
-            || first.value() != &crate::ArchiveAtomValue::Text(self.title.clone())
+            || first.value() != &ArchiveAtomValue::Text(self.title.clone())
         {
             return Err(SemanticArchiveError::StoredPageMismatch);
         }

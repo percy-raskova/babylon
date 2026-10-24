@@ -2,12 +2,15 @@
 
 use super::{ObservationCache, ObservationCacheKey, ObserverEconomyReader, ObserverVisibility};
 use crate::observer::Perspective;
-use babylon_persistence::{identity::CampaignId, observer_reader::ObserverEconomyError};
+use babylon_persistence::identity::CampaignId;
+use babylon_persistence::observer_reader::ObserverEconomyError;
+
 use std::cell::Cell;
+use uuid::Uuid;
 
 fn key() -> ObservationCacheKey {
     ObservationCacheKey {
-        campaign: CampaignId::from_uuid(uuid::Uuid::from_u128(342)),
+        campaign: CampaignId::from_uuid(Uuid::from_u128(342)),
         epoch: Some(1),
         perspective: Perspective::PlayerKnowledge,
         foundation: Some("a".repeat(64)),
@@ -76,7 +79,7 @@ fn known_refresh_never_receives_or_replaces_the_full_reader() {
 fn changed_campaign_epoch_foundation_or_perspective_replaces_the_owner() {
     for changed in [
         ObservationCacheKey {
-            campaign: CampaignId::from_uuid(uuid::Uuid::from_u128(343)),
+            campaign: CampaignId::from_uuid(Uuid::from_u128(343)),
             ..key()
         },
         ObservationCacheKey {

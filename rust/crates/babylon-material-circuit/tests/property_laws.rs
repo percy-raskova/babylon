@@ -1,9 +1,11 @@
+use babylon_material_circuit::CapacitySupply;
+use babylon_material_circuit::CircuitAccounting;
 use babylon_material_circuit::{
-    advance_material_circuit, material_circuit_state_digest, BacklogRow, CapacityRow,
-    CommodityDefinition, GoodId, InputOutputCoefficient, InventoryRow, LaborCapacityRow,
-    LaborCoefficient, LogisticsNodeId, MaterialCircuitState, OrderAccessMode, OrderId, OrderRow,
-    ProcessId, ProcessOutput, ProductionCommitment, RouteId, SiteId, SiteLogisticsNode,
-    SupplierRoute, SupplierTransport, UnitId,
+    material_circuit_state_digest, BacklogRow, CapacityRow, CommodityDefinition, GoodId,
+    InputOutputCoefficient, InventoryRow, LaborCapacityRow, LaborCoefficient, LogisticsNodeId,
+    MaterialCircuitState, OrderAccessMode, OrderId, OrderRow, ProcessId, ProcessOutput,
+    ProductionCommitment, RouteId, SiteId, SiteLogisticsNode, SupplierRoute, SupplierTransport,
+    UnitId,
 };
 
 fn id<const BYTE: u8>() -> [u8; 32] {
@@ -32,13 +34,13 @@ fn allocation_state(available: u64, first: u64, second: u64) -> MaterialCircuitS
         })
         .collect::<Vec<_>>();
     MaterialCircuitState {
-        capacity_supply: babylon_material_circuit::CapacitySupply::FiniteSchedule,
+        capacity_supply: CapacitySupply::FiniteSchedule,
         period: 1,
         merchants: vec![],
         handling_coefficients: vec![],
         final_demand_principals: vec![],
         final_demand_orders: vec![],
-        accounting: babylon_material_circuit::CircuitAccounting::PhysicalControl,
+        accounting: CircuitAccounting::PhysicalControl,
         maintenance_binding: None,
         maintenance_service: None,
         site_logistics_nodes: vec![
@@ -99,7 +101,8 @@ fn proportional_base_with_residual_exhaustively_conserves_small_stocks() {
         for first in 1_u64..=10 {
             for second in 1_u64..=10 {
                 let state = allocation_state(available, first, second);
-                let outcome = advance_material_circuit(&state).expect("allocation must close");
+                let outcome = babylon_material_circuit::advance_material_circuit(&state)
+                    .expect("allocation must close");
                 let total_requested = first + second;
                 let shipped: u64 = outcome
                     .state
@@ -129,7 +132,8 @@ fn proportional_base_with_residual_exhaustively_conserves_small_stocks() {
                 let mut reversed = state;
                 reversed.orders.reverse();
                 reversed.backlog.reverse();
-                let twin = advance_material_circuit(&reversed).expect("twin must close");
+                let twin = babylon_material_circuit::advance_material_circuit(&reversed)
+                    .expect("twin must close");
                 assert_eq!(
                     material_circuit_state_digest(&outcome.state),
                     material_circuit_state_digest(&twin.state)
@@ -147,13 +151,13 @@ fn production_state(input: u64, labor: u64, capacity: u64) -> MaterialCircuitSta
     let labor_unit = UnitId::from_bytes(id::<5>());
     let process = ProcessId::from_bytes(id::<6>());
     MaterialCircuitState {
-        capacity_supply: babylon_material_circuit::CapacitySupply::FiniteSchedule,
+        capacity_supply: CapacitySupply::FiniteSchedule,
         period: 1,
         merchants: vec![],
         handling_coefficients: vec![],
         final_demand_principals: vec![],
         final_demand_orders: vec![],
-        accounting: babylon_material_circuit::CircuitAccounting::PhysicalControl,
+        accounting: CircuitAccounting::PhysicalControl,
         maintenance_binding: None,
         maintenance_service: None,
         site_logistics_nodes: vec![],
@@ -236,8 +240,10 @@ fn leontief_minimum_exhaustively_bounds_small_production() {
     for input in 0_u64..=12 {
         for labor in 0_u64..=12 {
             for capacity in 0_u64..=6 {
-                let outcome = advance_material_circuit(&production_state(input, labor, capacity))
-                    .expect("bounded production must close");
+                let outcome = babylon_material_circuit::advance_material_circuit(
+                    &production_state(input, labor, capacity),
+                )
+                .expect("bounded production must close");
                 let expected = 10_u64.min(input / 2).min(labor / 3).min(capacity);
                 assert_eq!(outcome.production[0].produced_batches, expected);
                 assert_eq!(outcome.state.inventory[0].quantity, input - expected * 2);
@@ -290,8 +296,10 @@ fn shared_inputs_and_labor_allocate_without_process_order_priority() {
     let mut reversed = state.clone();
     reversed.production_commitments.reverse();
 
-    let outcome = advance_material_circuit(&state).expect("shared allocation must close");
-    let twin = advance_material_circuit(&reversed).expect("permuted allocation must close");
+    let outcome = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("shared allocation must close");
+    let twin = babylon_material_circuit::advance_material_circuit(&reversed)
+        .expect("permuted allocation must close");
     assert_eq!(outcome.production[0].produced_batches, 3);
     assert_eq!(outcome.production[1].produced_batches, 3);
     assert_eq!(outcome.state.inventory[0].quantity, 0);

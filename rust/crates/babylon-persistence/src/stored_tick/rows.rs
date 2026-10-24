@@ -8,11 +8,9 @@ use babylon_bsl::identity_codec::StableBslValue;
 
 use babylon_graph::stable_element::StableElementKey;
 
-use babylon_graph::stable_state::{
-    compose_stable_graph_state_from_rows, StableGraphState, StableGraphStateRowsInput,
-};
+use babylon_graph::stable_state::{StableGraphState, StableGraphStateRowsInput};
 
-use babylon_kernel::{content_digest::sha256_of, H3CellId};
+use babylon_kernel::H3CellId;
 
 use babylon_tick::h3_runtime::MichiganDynamicHexValueBits;
 
@@ -29,7 +27,14 @@ use crate::identity::CampaignId;
 
 use crate::runtime::RustPersistenceRuntimeError;
 
+use crate::checkpoint_reference::Reference;
+use crate::production_projection::diagnostics::Stage;
+use crate::production_projection::diagnostics::Timing;
 use crate::semantic_codec;
+use babylon_graph::stable_state;
+use babylon_kernel::content_digest;
+use postgres::Error;
+use semantic_codec::ChoiceReceiptSemanticBranch;
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct StoredEvent {
@@ -158,7 +163,7 @@ impl CapturedGraphState {
         self,
         scenario_scope: &str,
     ) -> Result<StableGraphState, RustPersistenceRuntimeError> {
-        compose_stable_graph_state_from_rows(
+        stable_state::compose_stable_graph_state_from_rows(
             scenario_scope,
             StableGraphStateRowsInput {
                 nodes: decode_graph_nodes(self.nodes)?,
@@ -466,14 +471,13 @@ impl CapturedChoiceReceiptRows {
         })
     }
     pub(crate) fn admit(self) -> Result<Vec<CommittedTickRow>, RustPersistenceRuntimeError> {
-        let mut branches: BTreeMap<i64, Vec<semantic_codec::ChoiceReceiptSemanticBranch>> =
-            BTreeMap::new();
+        let mut branches: BTreeMap<i64, Vec<ChoiceReceiptSemanticBranch>> = BTreeMap::new();
         for row in self.branches {
             let ordinal: i64 = decode_column(&row, 0)?;
             let position: i64 = decode_column(&row, 1)?;
             let target = branches.entry(ordinal).or_default();
             require_i64_position(position, target.len())?;
-            target.push(semantic_codec::ChoiceReceiptSemanticBranch {
+            target.push(ChoiceReceiptSemanticBranch {
                 outcome_member: decode_column(&row, 2)?,
                 mass_nanounits: decode_decimal(&row, 3)?,
                 ticket_start: decode_decimal(&row, 4)?,
@@ -610,10 +614,7 @@ impl CapturedCheckpointRows {
         resolve_tick: u64,
         sources: CheckpointSectionSources<'_>,
     ) -> Result<(Vec<CommittedTickRow>, CheckpointSections), RustPersistenceRuntimeError> {
-        let _sections_timing = crate::production_projection::diagnostics::Timing::start(
-            crate::production_projection::diagnostics::Stage::CheckpointSections,
-            resolve_tick,
-        );
+        let _sections_timing = Timing::start(Stage::CheckpointSections, resolve_tick);
         let campaign_id = self.campaign_id;
         let CheckpointSectionSources {
             graph,
@@ -626,7 +627,7 @@ impl CapturedCheckpointRows {
         let completeness: i16 = decode_column(&manifest, 0)?;
         let manifest_bytes: Vec<u8> = decode_column(&manifest, 1)?;
         let manifest_digest = decode_digest(&manifest, 2)?;
-        if completeness != 1 || sha256_of(&manifest_bytes) != manifest_digest {
+        if completeness != 1 || content_digest::sha256_of(&manifest_bytes) != manifest_digest {
             return Err(RustPersistenceRuntimeError::CampaignConflict);
         }
         let stored = self.sections;
@@ -650,7 +651,7 @@ impl CapturedCheckpointRows {
             }
             let tag_u8 =
                 u8::try_from(tag).map_err(|_| RustPersistenceRuntimeError::CampaignConflict)?;
-            let reference = crate::checkpoint_reference::Reference::from_storage(
+            let reference = Reference::from_storage(
                 tag_u8,
                 u8::try_from(decode_column::<i16>(row, 2)?)
                     .map_err(|_| RustPersistenceRuntimeError::CampaignConflict)?,
@@ -672,7 +673,7 @@ impl CapturedCheckpointRows {
                 9 => material_count,
                 _ => 1,
             };
-            summaries.push((tag_u8, row_count, sha256_of(bytes)));
+            summaries.push((tag_u8, row_count, content_digest::sha256_of(bytes)));
             rows.push(semantic_codec::encode_checkpoint_row(tag_u8, 0, 1, bytes)?);
             match tag_u8 {
                 2 => world_register = reference.inline,
@@ -846,7 +847,7 @@ pub(crate) fn decode_territories(
         let field_count: i32 = decode_column(&row, 1)?;
         let digest: Vec<u8> = decode_column(&row, 2)?;
         if usize::try_from(field_count).ok() != Some(territory.ordered_fields().len())
-            || digest.as_slice() != sha256_of(territory.canonical_bytes())
+            || digest.as_slice() != content_digest::sha256_of(territory.canonical_bytes())
         {
             return Err(RustPersistenceRuntimeError::CampaignConflict);
         }
@@ -1060,9 +1061,6 @@ pub(crate) fn decode_digest(
         .map_err(|_| RustPersistenceRuntimeError::CampaignConflict)
 }
 
-pub(crate) fn database(
-    operation: &'static str,
-    error: &postgres::Error,
-) -> RustPersistenceRuntimeError {
+pub(crate) fn database(operation: &'static str, error: &Error) -> RustPersistenceRuntimeError {
     RustPersistenceRuntimeError::postgres(operation, error)
 }

@@ -4,12 +4,12 @@
 
 use std::collections::BTreeMap;
 
-use babylon_persistence::{
-    production_observation::ProductionDeliveryEvidence,
-    production_observation::ProductionDeliveryStage, production_observation::ProductionEvent,
-    production_observation::ProductionRoute, production_observation::ProductionSite,
-    production_observation::ProductionSnapshot,
+use babylon_persistence::production_observation::{
+    ProductionDeliveryEvidence, ProductionDeliveryStage, ProductionEvent, ProductionRoute,
+    ProductionSite, ProductionSnapshot,
 };
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 
 /// Wrap this key in the current `ObservationContext` before storing expansion.
 /// A key identifies evidence inside an observation, not a read capability.
@@ -171,7 +171,7 @@ pub(super) enum DeliveryGroupingError {
 }
 
 impl std::fmt::Display for DeliveryGroupingError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> FmtResult {
         formatter.write_str(match self {
             Self::RouteUnavailable => "Delivery route evidence is unavailable or ambiguous.",
             Self::SiteUnavailable => "Delivery endpoint evidence is unavailable or ambiguous.",

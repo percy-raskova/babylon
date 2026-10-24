@@ -1,6 +1,7 @@
+use babylon_material_circuit::CapacitySupply;
+use babylon_material_circuit::CircuitAccounting;
 use babylon_material_circuit::SupplierTransport;
 use babylon_material_circuit::{
-    advance_material_circuit, decode_material_circuit_state, encode_material_circuit_state,
     material_circuit_state_digest, BacklogRow, CommodityDefinition, CommodityKind,
     CorridorCapacity, CorridorId, GoodId, InventoryRow, LogisticsNodeId, MaterialCircuitError,
     MaterialCircuitState, OrderAccessMode, OrderId, OrderRow, RouteId, RouteStage,
@@ -13,12 +14,12 @@ use babylon_material_circuit::{
 )]
 fn competition() -> MaterialCircuitState {
     let mut state = MaterialCircuitState {
-        capacity_supply: babylon_material_circuit::CapacitySupply::FiniteSchedule,
+        capacity_supply: CapacitySupply::FiniteSchedule,
         merchants: vec![],
         handling_coefficients: vec![],
         final_demand_principals: vec![],
         final_demand_orders: vec![],
-        accounting: babylon_material_circuit::CircuitAccounting::PhysicalControl,
+        accounting: CircuitAccounting::PhysicalControl,
         maintenance_binding: None,
         maintenance_service: None,
         period: 1,
@@ -124,13 +125,13 @@ fn competition() -> MaterialCircuitState {
 fn native_panel_and_mass_orders_compete_for_one_sixty_gram_budget() {
     // Ten 10-gram panels and one hundred 1-gram units each request 100 grams.
     let opening = competition();
-    let result = advance_material_circuit(&opening).unwrap();
+    let result = babylon_material_circuit::advance_material_circuit(&opening).unwrap();
     let quantities: Vec<_> = result.dispatches.iter().map(|row| row.quantity).collect();
     assert_eq!(quantities, [3, 30]);
 }
 
 fn dispatched(state: &MaterialCircuitState) -> Vec<u64> {
-    advance_material_circuit(state)
+    babylon_material_circuit::advance_material_circuit(state)
         .unwrap()
         .dispatches
         .iter()
@@ -151,7 +152,7 @@ fn simultaneous_bottleneck_residual_serves_other_feasible_requests() {
         period: 1,
         available_grams: 25,
     });
-    let result = advance_material_circuit(&state).unwrap();
+    let result = babylon_material_circuit::advance_material_circuit(&state).unwrap();
     let quantities: Vec<_> = result.dispatches.iter().map(|row| row.quantity).collect();
     assert_eq!(quantities, [2, 40]);
     assert_eq!(60 - quantities[0] * 10 - quantities[1], 0);
@@ -214,14 +215,14 @@ fn many_capacity_memberships_share_one_stage_and_one_arrival() {
             });
         }
     }
-    let first = advance_material_circuit(&state).unwrap();
+    let first = babylon_material_circuit::advance_material_circuit(&state).unwrap();
     assert_eq!(first.state.route_stages.len(), 2);
     assert_eq!(first.dispatches.len(), 2);
     assert!(first
         .dispatches
         .iter()
         .all(|row| row.final_arrival_period == 2));
-    let second = advance_material_circuit(&first.state).unwrap();
+    let second = babylon_material_circuit::advance_material_circuit(&first.state).unwrap();
     assert_eq!(
         second
             .arrivals
@@ -260,15 +261,15 @@ fn future_stage_capacity_is_reserved_once_and_current_stage_loss_is_attributed()
         period: 2,
         available_grams: 60,
     });
-    let first = advance_material_circuit(&state).unwrap();
+    let first = babylon_material_circuit::advance_material_circuit(&state).unwrap();
     assert_eq!(first.state.corridor_capacities[0].available_grams, 30);
-    let second = advance_material_circuit(&first.state).unwrap();
+    let second = babylon_material_circuit::advance_material_circuit(&first.state).unwrap();
     assert_eq!(second.losses.len(), 1);
     assert_eq!(second.losses[0].route_id, RouteId::from_bytes([1; 32]));
     assert_eq!(second.losses[0].stage_index, 0);
     assert_eq!(second.losses[0].quantity, 1);
     assert_eq!(second.arrivals.len(), 1);
-    let third = advance_material_circuit(&second.state).unwrap();
+    let third = babylon_material_circuit::advance_material_circuit(&second.state).unwrap();
     assert!(third
         .arrivals
         .iter()
@@ -283,7 +284,7 @@ fn duplicate_or_missing_mass_and_stage_capacity_identity_is_refused() {
         .route_stage_capacities
         .push(changed.route_stage_capacities[0].clone());
     assert_eq!(
-        advance_material_circuit(&changed),
+        babylon_material_circuit::advance_material_circuit(&changed),
         Err(MaterialCircuitError::DuplicateRow)
     );
     changed = original.clone();
@@ -291,30 +292,30 @@ fn duplicate_or_missing_mass_and_stage_capacity_identity_is_refused() {
         .corridor_capacities
         .push(changed.corridor_capacities[0].clone());
     assert_eq!(
-        advance_material_circuit(&changed),
+        babylon_material_circuit::advance_material_circuit(&changed),
         Err(MaterialCircuitError::DuplicateRow)
     );
     changed = original.clone();
     changed.commodities[0].kind = CommodityKind::Storable { grams_per_unit: 0 };
     assert_eq!(
-        advance_material_circuit(&changed),
+        babylon_material_circuit::advance_material_circuit(&changed),
         Err(MaterialCircuitError::MassInvariant)
     );
     changed = original.clone();
     changed.commodities.remove(0);
     assert_eq!(
-        advance_material_circuit(&changed),
+        babylon_material_circuit::advance_material_circuit(&changed),
         Err(MaterialCircuitError::MassInvariant)
     );
     changed = original.clone();
     changed.route_stage_capacities.remove(0);
     assert_eq!(
-        advance_material_circuit(&changed),
+        babylon_material_circuit::advance_material_circuit(&changed),
         Err(MaterialCircuitError::RouteInvariant)
     );
     changed = original;
     changed.corridor_capacities.clear();
-    assert!(advance_material_circuit(&changed)
+    assert!(babylon_material_circuit::advance_material_circuit(&changed)
         .unwrap()
         .dispatches
         .is_empty());
@@ -323,8 +324,8 @@ fn duplicate_or_missing_mass_and_stage_capacity_identity_is_refused() {
 #[test]
 fn row_permutations_and_wire_roundtrip_preserve_complete_continuation() {
     let state = competition();
-    let bytes = encode_material_circuit_state(&state).unwrap();
-    let restored = decode_material_circuit_state(&bytes).unwrap();
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&state).unwrap();
+    let restored = babylon_material_circuit::decode_material_circuit_state(&bytes).unwrap();
     let mut reversed = state.clone();
     reversed.site_logistics_nodes.reverse();
     reversed.supplier_routes.reverse();
@@ -335,14 +336,17 @@ fn row_permutations_and_wire_roundtrip_preserve_complete_continuation() {
     reversed.orders.reverse();
     reversed.backlog.reverse();
     reversed.corridor_capacities.reverse();
-    assert_eq!(encode_material_circuit_state(&reversed).unwrap(), bytes);
     assert_eq!(
-        advance_material_circuit(&state),
-        advance_material_circuit(&reversed)
+        babylon_material_circuit::encode_material_circuit_state(&reversed).unwrap(),
+        bytes
     );
     assert_eq!(
-        advance_material_circuit(&state),
-        advance_material_circuit(&restored)
+        babylon_material_circuit::advance_material_circuit(&state),
+        babylon_material_circuit::advance_material_circuit(&reversed)
+    );
+    assert_eq!(
+        babylon_material_circuit::advance_material_circuit(&state),
+        babylon_material_circuit::advance_material_circuit(&restored)
     );
     let contract = include_bytes!("../../../../contracts/material_circuit_v3.yaml");
     assert_eq!(
@@ -356,11 +360,11 @@ fn row_permutations_and_wire_roundtrip_preserve_complete_continuation() {
     let mut trailing = bytes.clone();
     trailing.push(0);
     assert_eq!(
-        decode_material_circuit_state(&trailing),
+        babylon_material_circuit::decode_material_circuit_state(&trailing),
         Err(MaterialCircuitError::WireTrailing)
     );
     assert_eq!(
-        decode_material_circuit_state(&bytes[..bytes.len() - 1]),
+        babylon_material_circuit::decode_material_circuit_state(&bytes[..bytes.len() - 1]),
         Err(MaterialCircuitError::WireTruncated)
     );
 }
@@ -384,7 +388,7 @@ fn overflowing_mass_request_sum_and_period_refuse_without_mutating_opening() {
     }
     let before = state.clone();
     assert_eq!(
-        advance_material_circuit(&state),
+        babylon_material_circuit::advance_material_circuit(&state),
         Err(MaterialCircuitError::Arithmetic)
     );
     assert_eq!(state, before);
@@ -393,7 +397,7 @@ fn overflowing_mass_request_sum_and_period_refuse_without_mutating_opening() {
     state.corridor_capacities[0].period = u64::MAX;
     let before = state.clone();
     assert_eq!(
-        advance_material_circuit(&state),
+        babylon_material_circuit::advance_material_circuit(&state),
         Err(MaterialCircuitError::Arithmetic)
     );
     assert_eq!(state, before);

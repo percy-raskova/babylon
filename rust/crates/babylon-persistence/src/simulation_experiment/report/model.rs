@@ -5,27 +5,31 @@ use super::{ReceiptCoverage, RuleExecution, WiringManifest};
 use super::wiring;
 
 use super::super::{
-    hex, product, sum, ExperimentError, ExperimentProfile, Result, SimulationExperimentV1,
-    StartingSnapshot,
+    sum, ExperimentError, ExperimentProfile, Result, SimulationExperimentV1, StartingSnapshot,
 };
 
-use babylon_bsl::{identity_codec::StableBslValue, structural_verbs::CollectingSink};
+use babylon_bsl::identity_codec::StableBslValue;
+use babylon_bsl::structural_verbs::CollectingSink;
 
-use babylon_graph::{hypergraph_store::HypergraphStore, stable_element::StableElementKey};
+use babylon_graph::hypergraph_store::HypergraphStore;
+use babylon_graph::stable_element::StableElementKey;
 
 use babylon_material_circuit::{GoodId, MaterialCircuitState, ProcessId};
 
 use babylon_practice_contract::OrderedPracticeActionBatch;
 
-use babylon_tick::{
-    material_replay::{MaterialReplaySession, PreparedMaterialTick},
-    material_world::{decode_material_receipts, MaterialWorldRegister},
-    replay_session::ReplayCommitDisposition,
-};
+use babylon_tick::material_replay::{MaterialReplaySession, PreparedMaterialTick};
+use babylon_tick::material_world::MaterialWorldRegister;
+use babylon_tick::replay_session::ReplayCommitDisposition;
 
 use serde::Serialize;
 
+use super::super::setup::ResolvedInputs;
+use crate::material_runtime::MaterialRuntimeFoundation;
+use crate::CampaignFoundation;
+use babylon_tick::material_world;
 use std::collections::BTreeMap;
+use std::convert::Infallible;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct ExperimentMetadata {
@@ -100,7 +104,7 @@ pub struct StaffingEvidence {
 #[derive(Debug, Serialize)]
 pub struct CapturedSetup {
     pub wiring: WiringManifest,
-    pub resolved_inputs: super::super::setup::ResolvedInputs,
+    pub resolved_inputs: ResolvedInputs,
     pub canonical_spec: SimulationExperimentV1,
     pub experiment_input_sha256: String,
     pub defines_sha256: String,
@@ -196,9 +200,9 @@ pub(in crate::simulation_experiment) fn mass(state: &MaterialCircuitState) -> Re
                 .map(|r| (r.good_id, r.unit_id, r.quantity)),
         )
         .try_fold(0, |n, (good, unit, quantity)| {
-            sum(
+            super::super::sum(
                 n,
-                product(
+                super::super::product(
                     quantity,
                     *coefficients
                         .get(&(good, unit))
@@ -258,7 +262,7 @@ pub(in crate::simulation_experiment) fn observations(
     if spec.profile == ExperimentProfile::HistoricalEmployment {
         let date = date_after(
             spec.epoch.as_deref().ok_or(ExperimentError::Epoch)?,
-            product(period, 28)?,
+            super::super::product(period, 28)?,
         )?;
         for series in [
             "26163/331",
@@ -284,16 +288,17 @@ pub(in crate::simulation_experiment) fn observations(
             });
         }
     } else if spec.profile == ExperimentProfile::HistoricalFreight {
-        let receipts = decode_material_receipts(candidate.material().receipt_bytes())
-            .map_err(|_| ExperimentError::Observation)?;
+        let receipts =
+            material_world::decode_material_receipts(candidate.material().receipt_bytes())
+                .map_err(|_| ExperimentError::Observation)?;
         // The admitted profile contains exactly one HS72 inbound order. No
         // domestic route, destination county or substitute commodity is scored.
         let arrived_kg = total(receipts.arrivals.iter().map(|r| r.quantity))?;
         let epoch = spec.epoch.as_deref().ok_or(ExperimentError::Epoch)?;
         trajectory.freight.push(FreightObservation {
             series_id: "detroit_canada_truck_import_hs72".to_owned(),
-            period_start: date_after(epoch, product(period - 1, 28)?)?,
-            period_end_exclusive: date_after(epoch, product(period, 28)?)?,
+            period_start: date_after(epoch, super::super::product(period - 1, 28)?)?,
+            period_end_exclusive: date_after(epoch, super::super::product(period, 28)?)?,
             arrived_kg,
             period,
             world_hash: evidence.world_hash.clone(),
@@ -321,7 +326,7 @@ pub(in crate::simulation_experiment) fn publish(
 ) -> Result<()> {
     session
         .commit_prepared_and_publish(&mut CollectingSink::default(), candidate, |_| {
-            Ok::<_, std::convert::Infallible>(ReplayCommitDisposition::Committed)
+            Ok::<_, Infallible>(ReplayCommitDisposition::Committed)
         })
         .map(|_| ())
         .map_err(|_| ExperimentError::Foundation)
@@ -329,7 +334,7 @@ pub(in crate::simulation_experiment) fn publish(
 
 pub(in crate::simulation_experiment) fn initial_report(
     spec: &SimulationExperimentV1,
-    foundation: &crate::material_runtime::MaterialRuntimeFoundation,
+    foundation: &MaterialRuntimeFoundation,
     session: &MaterialReplaySession<HypergraphStore>,
     initial_mass: u64,
 ) -> Result<(CapturedSetup, ExperimentTrajectory)> {
@@ -338,12 +343,12 @@ pub(in crate::simulation_experiment) fn initial_report(
         wiring: wiring::capture(foundation)?,
         resolved_inputs: super::super::setup::capture(spec, graph)?,
         canonical_spec: spec.clone(),
-        experiment_input_sha256: hex(&spec.sha256()?),
-        defines_sha256: hex(&graph.content_digest().defines_hash),
-        foundation_sha256: hex(&foundation.digest()),
-        content_sha256: hex(&foundation.spec().content_digest),
-        rules_sha256: hex(&graph.content_digest().rules_hash),
-        reference_sha256: hex(graph.reference_digest().as_bytes()),
+        experiment_input_sha256: super::super::hex(&spec.sha256()?),
+        defines_sha256: super::super::hex(&graph.content_digest().defines_hash),
+        foundation_sha256: super::super::hex(&foundation.digest()),
+        content_sha256: super::super::hex(&foundation.spec().content_digest),
+        rules_sha256: super::super::hex(&graph.content_digest().rules_hash),
+        reference_sha256: super::super::hex(graph.reference_digest().as_bytes()),
         initialization_evidence: if spec.starting_snapshot.is_some() {
             "Observed starting snapshot; Derived capacities; Designed hours, recipes, reserves, inventories, orders and travel"
         } else {
@@ -375,9 +380,11 @@ pub(in crate::simulation_experiment) fn initial_report(
                 date: date.clone(),
                 jobs: row.jobs,
                 period: 0,
-                world_hash: hex(&session
-                    .current_world_hash()
-                    .map_err(|_| ExperimentError::Foundation)?),
+                world_hash: super::super::hex(
+                    &session
+                        .current_world_hash()
+                        .map_err(|_| ExperimentError::Foundation)?,
+                ),
             });
         }
     }
@@ -390,7 +397,7 @@ pub(in crate::simulation_experiment) fn period_evidence(
     process_keys: &BTreeMap<ProcessId, String>,
     wiring: &WiringManifest,
 ) -> Result<PeriodEvidence> {
-    let receipts = decode_material_receipts(candidate.material().receipt_bytes())
+    let receipts = material_world::decode_material_receipts(candidate.material().receipt_bytes())
         .map_err(|_| ExperimentError::Observation)?;
     if receipts.resolve_tick != candidate.identity().resolve_tick() {
         return Err(ExperimentError::Observation);
@@ -404,8 +411,8 @@ pub(in crate::simulation_experiment) fn period_evidence(
     let (receipt_coverage, rule_execution) = wiring::verify(wiring, report, &receipts, &staffing)?;
     let evidence = PeriodEvidence {
         period: candidate.identity().resolve_tick(),
-        world_hash: hex(&candidate.identity().result_world_hash()),
-        tick_content_sha256: hex(candidate.identity().tick_content_hash().as_bytes()),
+        world_hash: super::super::hex(&candidate.identity().result_world_hash()),
+        tick_content_sha256: super::super::hex(candidate.identity().tick_content_hash().as_bytes()),
         produced_batches: total(receipts.production.iter().map(|r| r.produced_batches))?,
         dispatched_units: total(receipts.dispatches.iter().map(|r| r.quantity))?,
         arrived_units: total(receipts.arrivals.iter().map(|r| r.quantity))?,
@@ -420,7 +427,7 @@ pub(in crate::simulation_experiment) fn period_evidence(
             .iter()
             .map(|r| {
                 Ok(ProductionEvidence {
-                    process_id: hex(&r.process_id.as_bytes()),
+                    process_id: super::super::hex(&r.process_id.as_bytes()),
                     process_key: process_keys
                         .get(&r.process_id)
                         .ok_or(ExperimentError::Observation)?
@@ -487,7 +494,7 @@ pub fn run(spec: &SimulationExperimentV1) -> Result<ExperimentRun> {
         }
         let evidence = period_evidence(&candidate, initial_mass, &process_keys, &setup.wiring)?;
         let report = candidate.graph_report().report();
-        trajectory.observed_choice_count = sum(
+        trajectory.observed_choice_count = super::super::sum(
             trajectory.observed_choice_count,
             u64::try_from(report.choice_receipts.len()).map_err(|_| ExperimentError::Arithmetic)?,
         )?;
@@ -558,7 +565,7 @@ pub fn run(spec: &SimulationExperimentV1) -> Result<ExperimentRun> {
 
 pub(in crate::simulation_experiment) fn captured_employment_subjects(
     spec: &SimulationExperimentV1,
-    foundation: &crate::material_runtime::MaterialRuntimeFoundation,
+    foundation: &MaterialRuntimeFoundation,
 ) -> Result<BTreeMap<String, String>> {
     if spec.profile != ExperimentProfile::HistoricalEmployment {
         return Ok(BTreeMap::new());
@@ -608,7 +615,7 @@ pub(in crate::simulation_experiment) fn captured_employment_subjects(
 
 pub(in crate::simulation_experiment) fn captured_process_keys(
     profile: ExperimentProfile,
-    graph: &crate::CampaignFoundation,
+    graph: &CampaignFoundation,
 ) -> Result<BTreeMap<ProcessId, String>> {
     Ok(if profile == ExperimentProfile::HistoricalFreight {
         BTreeMap::new()

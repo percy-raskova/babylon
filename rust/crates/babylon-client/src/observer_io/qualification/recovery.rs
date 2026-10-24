@@ -1,15 +1,16 @@
 //! Exact ordinary Open custody; a changed epoch alone never proves recovery.
-use super::{hex, Configuration, NativeAudit, Record, Scope};
+use super::{Configuration, NativeAudit, Record, Scope};
 use crate::observer::{ObserverSession, SessionPhase};
-use babylon_kernel::{clock::CampaignDuration, content_digest::sha256_of};
-use babylon_persistence::{
-    observer_reader::{ObserverEconomySnapshot, ObserverVisibility},
-    runtime_session::{
-        OrganizerSnapshot, RuntimeSessionRequest, RuntimeSessionScope, RuntimeSessionTarget,
-        RUNTIME_SESSION_PROTOCOL_VERSION,
-    },
-    ProductionEvidenceDigest,
+use babylon_kernel::clock::CampaignDuration;
+
+use babylon_persistence::observer_reader::{ObserverEconomySnapshot, ObserverVisibility};
+use babylon_persistence::runtime_session::{
+    OrganizerSnapshot, RuntimeSessionRequest, RuntimeSessionScope, RuntimeSessionTarget,
+    RUNTIME_SESSION_PROTOCOL_VERSION,
 };
+use babylon_persistence::ProductionEvidenceDigest;
+
+use babylon_kernel::content_digest;
 use serde::Serialize;
 use std::time::Instant;
 
@@ -49,7 +50,7 @@ impl Identity {
             tick_content_hash: snapshot.tick_content_hash.clone(),
             nominal_world_hash: snapshot.nominal_world_hash.clone(),
             envelope_digest: snapshot.envelope_digest.clone(),
-            material_register_sha256: hex(&register),
+            material_register_sha256: super::hex(&register),
             material_register_bytes: register_bytes,
             production_evidence_sha256: evidence.to_hex(),
             production_evidence_body_bytes: evidence.body_bytes(),
@@ -147,10 +148,12 @@ impl Pending {
             request_id: self.request_id,
             previous_scope: &self.previous,
             restored_scope: &self.next,
-            policy_sha256: hex(&configuration
-                .policy
-                .scope(configuration.campaign, self.foundation)
-                .policy),
+            policy_sha256: super::hex(
+                &configuration
+                    .policy
+                    .scope(configuration.campaign, self.foundation)
+                    .policy,
+            ),
             source: &self.source,
             original_organizer_sha256: self.original_organizer_sha256.clone(),
             cold_reopen_measurement: "client_enqueue_to_installed_authenticated_read",
@@ -226,7 +229,7 @@ impl NativeAudit {
             return Err("native recovery already owns another request".into());
         }
         let original_status = self.custody.recovery_status(session)?;
-        let original_organizer_sha256 = hex(&sha256_of(
+        let original_organizer_sha256 = super::hex(&content_digest::sha256_of(
             &serde_json::to_vec(&original_status)
                 .map_err(|_| "native recovery original organizer encoding failed")?,
         ));
@@ -318,18 +321,18 @@ impl NativeAudit {
 
 #[cfg(test)]
 pub(super) mod tests {
-    use super::super::{
-        aid,
-        tests::{fixture, Directory},
-        Candidate,
-    };
+    use super::super::tests::Directory;
+    use super::super::{aid, Candidate};
+
+    use super::super::tests;
     use super::*;
     use babylon_persistence::runtime_session::RuntimeSessionTail;
+    use serde_json::Value;
 
     pub(in crate::observer_io::qualification) fn source(
     ) -> (Directory, NativeAudit, ObserverSession, OrganizerSnapshot) {
         let directory = Directory::new();
-        let (mut audit, mut session) = fixture(&directory);
+        let (mut audit, mut session) = tests::fixture(&directory);
         let status: OrganizerSnapshot = serde_json::from_str(include_str!(
             "../../../../babylon-persistence/tests/fixtures/national_organizer_opening_v11.json"
         ))
@@ -470,7 +473,7 @@ pub(super) mod tests {
         assert!(audit.recovery.is_none());
         assert_eq!(audit.audit.as_ref().unwrap().completed_tick(), 0);
         assert!(audit.custody.practices() == original_practices);
-        let receipt: serde_json::Value = serde_json::from_slice(
+        let receipt: Value = serde_json::from_slice(
             &std::fs::read(directory.0.join(format!(
                 "recovery-0-{}.json",
                 session.runtime_scope().unwrap().epoch
@@ -499,7 +502,7 @@ pub(super) mod tests {
             audit.begin(&session).unwrap().is_none(),
             "refresh must not replay opening or refold receipts"
         );
-        let saved: serde_json::Value =
+        let saved: Value =
             serde_json::from_slice(&std::fs::read(directory.0.join("recovery-0-2.json")).unwrap())
                 .unwrap();
         assert_eq!(saved["scope"], "authenticated_native_checkpoint_reopen_v2");

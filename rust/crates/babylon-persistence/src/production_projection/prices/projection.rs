@@ -13,10 +13,12 @@ use babylon_material_circuit::{
 
 use babylon_tick::material_world::MaterialTickReceipts;
 
+use flows::Flows;
+use lifecycle::PeriodOrders;
 use std::collections::BTreeMap;
+use std::result::Result as StdResult;
 
-pub(in crate::production_projection) type Result<T> =
-    std::result::Result<T, ProductionProjectionError>;
+pub(in crate::production_projection) type Result<T> = StdResult<T, ProductionProjectionError>;
 
 pub(in crate::production_projection) type Key = (SiteId, GoodId, UnitId);
 
@@ -54,14 +56,14 @@ pub(in crate::production_projection) fn validate(
     prior: &MaterialCircuitState,
     current: &MaterialCircuitState,
     receipt: &MaterialTickReceipts,
-    orders: &lifecycle::PeriodOrders,
+    orders: &PeriodOrders,
 ) -> Result<()> {
     let before = offers(prior)?;
     let after = offers(current)?;
     if before.keys().ne(after.keys()) || before.len() != receipt.prices.len() {
         return Err(ProductionProjectionError::State);
     }
-    let flows = flows::Flows::new(prior, current, receipt, orders)?;
+    let flows = Flows::new(prior, current, receipt, orders)?;
     let inventory: BTreeMap<_, _> = current
         .inventory
         .iter()

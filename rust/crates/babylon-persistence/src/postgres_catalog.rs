@@ -8,6 +8,11 @@ use postgres::config::Host;
 use postgres::{Config, Row};
 
 use crate::{PostgresDiagnostic, SCHEMA_ADVISORY_LOCK_KEY};
+use postgres::error::SqlState;
+use postgres::Client;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
+use std::io::ErrorKind;
 
 /// Version of the canonical catalog census contract.
 pub const CATALOG_CENSUS_VERSION: u16 = 2;
@@ -540,7 +545,7 @@ fn decode_catalog_overflow(row: &Row) -> Result<(), CatalogError> {
     })
 }
 
-pub(crate) fn acquire_lock(client: &mut postgres::Client) -> Result<(), CatalogError> {
+pub(crate) fn acquire_lock(client: &mut Client) -> Result<(), CatalogError> {
     let operation = CatalogOperation::Lock;
     let locked: bool = client
         .query_one(LOCK_SQL, &[&SCHEMA_ADVISORY_LOCK_KEY])
@@ -554,7 +559,7 @@ pub(crate) fn acquire_lock(client: &mut postgres::Client) -> Result<(), CatalogE
     }
 }
 
-pub(crate) fn release_lock(client: &mut postgres::Client) -> Result<(), CatalogError> {
+pub(crate) fn release_lock(client: &mut Client) -> Result<(), CatalogError> {
     let operation = CatalogOperation::Unlock;
     let row = client
         .query_one(UNLOCK_SQL, &[&SCHEMA_ADVISORY_LOCK_KEY])
@@ -755,8 +760,7 @@ fn query_error(error: &postgres::Error, operation: CatalogOperation) -> CatalogE
 
 fn is_timeout(error: &postgres::Error) -> bool {
     error.code().is_some_and(|code| {
-        code == &postgres::error::SqlState::QUERY_CANCELED
-            || code == &postgres::error::SqlState::LOCK_NOT_AVAILABLE
+        code == &SqlState::QUERY_CANCELED || code == &SqlState::LOCK_NOT_AVAILABLE
     }) || error_chain_has_timeout(error)
 }
 
@@ -768,7 +772,7 @@ fn error_chain_has_timeout(error: &(dyn std::error::Error + 'static)) -> bool {
         };
         if source
             .downcast_ref::<std::io::Error>()
-            .is_some_and(|io_error| io_error.kind() == std::io::ErrorKind::TimedOut)
+            .is_some_and(|io_error| io_error.kind() == ErrorKind::TimedOut)
         {
             return true;
         }
@@ -834,7 +838,7 @@ fn valid_identifier_bytes(text: &str, allow_hyphen: bool) -> bool {
 }
 
 impl std::fmt::Display for CatalogCensusParseError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> FmtResult {
         write!(formatter, "invalid catalog census fixture: {self:?}")
     }
 }
@@ -842,7 +846,7 @@ impl std::fmt::Display for CatalogCensusParseError {
 impl std::error::Error for CatalogCensusParseError {}
 
 impl std::fmt::Display for CatalogError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> FmtResult {
         write!(formatter, "catalog verification failure: {self:?}")
     }
 }
@@ -851,17 +855,15 @@ impl std::error::Error for CatalogError {}
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        check_row_bound, error_chain_has_timeout, CatalogBoundedResource, CatalogError,
-        MAX_CATALOG_EXTENSION_DEPENDENCY_ADDRESSES,
-    };
+    use super::{CatalogBoundedResource, CatalogError, MAX_CATALOG_EXTENSION_DEPENDENCY_ADDRESSES};
+    use std::io::ErrorKind;
 
     #[test]
     fn extension_dependency_address_bound_refuses_first_excess() {
         let actual = 16_385_usize;
         assert_eq!(actual, MAX_CATALOG_EXTENSION_DEPENDENCY_ADDRESSES + 1);
         assert_eq!(
-            check_row_bound(
+            super::check_row_bound(
                 CatalogBoundedResource::ExtensionDependencyAddresses,
                 actual,
                 MAX_CATALOG_EXTENSION_DEPENDENCY_ADDRESSES,
@@ -876,9 +878,9 @@ mod tests {
 
     #[test]
     fn io_timeout_is_classified_without_exposing_error_text() {
-        let timeout = std::io::Error::new(std::io::ErrorKind::TimedOut, "secret-bearing context");
-        let refused = std::io::Error::new(std::io::ErrorKind::ConnectionRefused, "ordinary error");
-        assert!(error_chain_has_timeout(&timeout));
-        assert!(!error_chain_has_timeout(&refused));
+        let timeout = std::io::Error::new(ErrorKind::TimedOut, "secret-bearing context");
+        let refused = std::io::Error::new(ErrorKind::ConnectionRefused, "ordinary error");
+        assert!(super::error_chain_has_timeout(&timeout));
+        assert!(!super::error_chain_has_timeout(&refused));
     }
 }

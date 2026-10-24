@@ -1,5 +1,12 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
+use crate::ArchiveEvidenceClass;
+use crate::CompletedMaterialBalance;
+use crate::ProductionGoodsPriceAccount;
+use crate::ProductionHouseholdAccount;
+use crate::ProductionHouseholdServiceAccount;
+use babylon_kernel::clock::CampaignDuration;
+use babylon_kernel::economic_location::EconomicLocation;
 use serde::{Deserialize, Serialize};
 
 /// One complete role-scoped view of the committed circuit.
@@ -11,7 +18,7 @@ use serde::{Deserialize, Serialize};
 #[serde(deny_unknown_fields)]
 pub struct ProductionSnapshot {
     pub scenario_label: String,
-    pub duration: babylon_kernel::clock::CampaignDuration,
+    pub duration: CampaignDuration,
     pub content_authority_sha256: String,
     pub physical_edges: Vec<ProductionPhysicalEdge>,
     pub road_source: Option<ProductionRoadSource>,
@@ -29,11 +36,11 @@ pub struct ProductionSnapshot {
     pub merchant_handling_accounts: Vec<ProductionMerchantHandlingAccount>,
     pub final_demand_accounts: Vec<ProductionFinalDemandAccount>,
     /// Actual resident inventories and consumption; merchant fulfillment is separate.
-    pub household_accounts: Vec<crate::ProductionHouseholdAccount>,
+    pub household_accounts: Vec<ProductionHouseholdAccount>,
     /// Current-period services satisfy needs directly and never become pantry inventory.
-    pub household_service_accounts: Vec<crate::ProductionHouseholdServiceAccount>,
+    pub household_service_accounts: Vec<ProductionHouseholdServiceAccount>,
     /// Per-good current quotes and their latest committed demand, stock and cost evidence.
-    pub goods_price_accounts: Vec<crate::ProductionGoodsPriceAccount>,
+    pub goods_price_accounts: Vec<ProductionGoodsPriceAccount>,
     /// One exact service dependency; absent in campaigns without maintenance.
     pub maintenance_account: Option<ProductionMaintenanceAccount>,
     /// Each exact site/unit labor principal occurs once, across all its processes.
@@ -42,7 +49,7 @@ pub struct ProductionSnapshot {
     /// A missing account is not an observed zero; foundation has no completed event.
     pub staffing_accounts: Vec<ProductionStaffingAccount>,
     /// Exact completed-period stock accounting; absent at foundation.
-    pub material_balance: Option<crate::CompletedMaterialBalance>,
+    pub material_balance: Option<CompletedMaterialBalance>,
     /// Deduplicated public 2024 source cells, never current modeled employment.
     pub observed_contexts: Vec<ObservedSectorContext>,
     /// Source-cohort subtotals preserve missing cells and never allocate persons.
@@ -80,7 +87,7 @@ pub struct ObservedSectorContext {
     pub source_file: String,
     pub source_sha256: String,
     pub artifact_sha256: String,
-    pub evidence_class: crate::ArchiveEvidenceClass,
+    pub evidence_class: ArchiveEvidenceClass,
 }
 
 /// A Designed process is set in this observed sector context. The link assigns
@@ -94,7 +101,7 @@ pub struct DesignedProcessAttribution {
     pub cohort_subject: ProductionBusinessSubject,
     pub scenario_artifact_sha256: String,
     pub industry_artifact_sha256: String,
-    pub evidence_class: crate::ArchiveEvidenceClass,
+    pub evidence_class: ArchiveEvidenceClass,
 }
 
 /// One aggregate workplace with a typed geographic scope, never a factory coordinate.
@@ -102,7 +109,7 @@ pub struct DesignedProcessAttribution {
 #[serde(deny_unknown_fields)]
 pub struct ProductionSite {
     pub id: String,
-    pub location: babylon_kernel::economic_location::EconomicLocation,
+    pub location: EconomicLocation,
     pub name: String,
     pub industry_code: Option<String>,
     pub observed_employment: Option<u64>,
@@ -118,15 +125,13 @@ impl ProductionSite {
     #[must_use]
     pub fn county_geoid(&self) -> Option<String> {
         match self.location {
-            babylon_kernel::economic_location::EconomicLocation::County(county) => {
-                Some(county.geoid().to_string())
-            }
+            EconomicLocation::County(county) => Some(county.geoid().to_string()),
             _ => None,
         }
     }
     #[must_use]
     pub fn is_in_county(&self, geoid: &str) -> bool {
-        matches!(self.location,babylon_kernel::economic_location::EconomicLocation::County(county) if county.geoid().as_str()==geoid)
+        matches!(self.location,EconomicLocation::County(county) if county.geoid().as_str()==geoid)
     }
 }
 
@@ -153,7 +158,7 @@ pub struct ObservedNationalCohortContext {
     pub annual_payroll_usd: ObservedKnownSubtotal,
     pub artifact_sha256: String,
     pub function_mapping_sha256: String,
-    pub evidence_class: crate::ArchiveEvidenceClass,
+    pub evidence_class: ArchiveEvidenceClass,
 }
 
 /// An owner role does not imply a fabricated productive process.
@@ -284,7 +289,7 @@ pub struct ProductionStaffingAccount {
 pub struct ProductionStaffingMemberAccount {
     pub member_id: String,
     pub household_id: String,
-    pub residence: babylon_kernel::economic_location::EconomicLocation,
+    pub residence: EconomicLocation,
     pub subject: ProductionStaffingSubject,
     pub labor_force: u64,
     pub employed: u64,
@@ -558,7 +563,7 @@ pub struct ProductionMerchantHandlingOrder {
 #[serde(deny_unknown_fields)]
 pub struct ProductionFinalDemandAccount {
     pub demand_principal_id: String,
-    pub location: babylon_kernel::economic_location::EconomicLocation,
+    pub location: EconomicLocation,
     pub good_id: String,
     pub unit_id: String,
     pub good: String,

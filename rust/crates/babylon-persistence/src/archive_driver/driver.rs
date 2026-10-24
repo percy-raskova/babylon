@@ -8,7 +8,10 @@ use std::thread::{self, JoinHandle};
 
 use postgres::Config;
 
-use crate::{identity::CampaignId, ArchiveWorkerCancellation, SemanticArchiveError};
+use crate::identity::CampaignId;
+use crate::{ArchiveWorkerCancellation, SemanticArchiveError};
+use thread::Builder;
+use thread::Result as ThreadResult;
 
 pub(super) const COMMAND_CAPACITY: usize = 8;
 
@@ -93,7 +96,7 @@ impl ArchiveDriver {
         let cancellation = ArchiveWorkerCancellation::default();
         let worker_stop = cancellation.clone();
         let (requests, receiver) = mpsc::sync_channel(COMMAND_CAPACITY);
-        let thread = thread::Builder::new()
+        let thread = Builder::new()
             .name("babylon-archive".into())
             .spawn(move || run::run(&config, campaign, &receiver, &worker_stop, &sink))
             .map_err(|_| ArchiveDriverStartError::Spawn)?;
@@ -134,7 +137,7 @@ impl ArchiveDriver {
     /// Reap only an already-finished thread; this never waits for active SQL.
     /// The inner result preserves any unrecovered fatal Archive refusal even
     /// when the event sink could not deliver it before stop.
-    pub fn join_if_finished(&mut self) -> Option<thread::Result<Result<(), ArchiveDriverFailure>>> {
+    pub fn join_if_finished(&mut self) -> Option<ThreadResult<Result<(), ArchiveDriverFailure>>> {
         if !self.is_finished() {
             return None;
         }

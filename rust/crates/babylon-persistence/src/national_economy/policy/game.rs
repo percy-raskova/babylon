@@ -2,13 +2,18 @@
 
 use super::admission;
 
-use babylon_kernel::{
-    currency::Currency, economic_identity::EconomicFunction, economic_location::ForeignCounterpart,
-};
+use babylon_kernel::currency::Currency;
+use babylon_kernel::economic_identity::EconomicFunction;
+use babylon_kernel::economic_location::ForeignCounterpart;
 
 use babylon_material_circuit::{CommodityKind, GoodId, HouseholdNeedBasis, UnitId};
 
+use crate::national_transport::CargoClass;
+use babylon_practice_contract::OrganizerGiftConsent;
+use babylon_practice_contract::OrganizerPartnerPolicy;
 use std::collections::BTreeMap;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 
 /// One current policy decoded from captured bytes, independent of source paths.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -45,7 +50,7 @@ pub struct GameCommodity {
     pub label: String,
     pub unit_label: String,
     pub kind: CommodityKind,
-    pub cargo: Option<crate::national_transport::CargoClass>,
+    pub cargo: Option<CargoClass>,
     pub price: Option<GamePrice>,
 }
 
@@ -155,7 +160,7 @@ pub enum NationalGamePolicyError {
 }
 
 impl std::fmt::Display for NationalGamePolicyError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         write!(f, "national game policy refused: {self:?}")
     }
 }
@@ -313,14 +318,14 @@ pub struct GameOrganizerPolicy {
     pub aid_coordination_hours: u64,
     pub initial_agreement_through_period: u64,
     pub contact_renewal_periods: u64,
-    pub local_receiving_consent: babylon_practice_contract::OrganizerGiftConsent,
-    pub remote_receiving_consent: babylon_practice_contract::OrganizerGiftConsent,
-    pub collection_cash_consent: babylon_practice_contract::OrganizerGiftConsent,
+    pub local_receiving_consent: OrganizerGiftConsent,
+    pub remote_receiving_consent: OrganizerGiftConsent,
+    pub collection_cash_consent: OrganizerGiftConsent,
     pub collection_maximum_cash_micros: i128,
     pub collection_protected_cash_floor_micros: i128,
     pub collection_hours: u64,
-    pub workplace_policy: babylon_practice_contract::OrganizerPartnerPolicy,
-    pub neighborhood_policy: babylon_practice_contract::OrganizerPartnerPolicy,
-    pub local_policy: babylon_practice_contract::OrganizerPartnerPolicy,
-    pub remote_policy: babylon_practice_contract::OrganizerPartnerPolicy,
+    pub workplace_policy: OrganizerPartnerPolicy,
+    pub neighborhood_policy: OrganizerPartnerPolicy,
+    pub local_policy: OrganizerPartnerPolicy,
+    pub remote_policy: OrganizerPartnerPolicy,
 }

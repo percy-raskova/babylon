@@ -1,15 +1,17 @@
-use super::{
-    model::{
-        AllocationDirection, AllocationMode, CargoClass, CountyAllocationFactor,
-        CountyTransportAccess, TransportFlows, TransportLink, TransportMode, TransportNode,
-        TransportNodeKind, TransportPool, TransportService, UnavailableBulkAccess,
-    },
-    raw, NationalTransportError as Error,
+use super::model::{
+    AllocationDirection, AllocationMode, CargoClass, CountyAllocationFactor, CountyTransportAccess,
+    TransportFlows, TransportLink, TransportMode, TransportNode, TransportNodeKind, TransportPool,
+    TransportService, UnavailableBulkAccess,
 };
-use babylon_kernel::{
-    economic_location::{EconomicLocation, ForeignCounterpart, UsDependency},
-    geography::{CountyGeoid, NationalCountyRoster},
-};
+use super::{raw, NationalTransportError as Error};
+
+use babylon_kernel::economic_location::{EconomicLocation, ForeignCounterpart, UsDependency};
+use babylon_kernel::geography::{CountyGeoid, NationalCountyRoster};
+
+use super::model::FlowEvidence;
+use raw::Audit;
+use raw::CountyAccess;
+use raw::Node;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 fn county(raw: &str, roster: &NationalCountyRoster) -> Result<CountyGeoid, Error> {
@@ -50,7 +52,7 @@ fn point(latitude: Option<&str>, longitude: Option<&str>) -> Result<(), Error> {
     }
 }
 pub(super) fn nodes(
-    rows: Vec<raw::Node>,
+    rows: Vec<Node>,
     roster: &NationalCountyRoster,
 ) -> Result<Vec<TransportNode>, Error> {
     let mut output = Vec::with_capacity(rows.len());
@@ -188,7 +190,7 @@ fn truck_access(
     Ok(())
 }
 pub(super) fn access(
-    rows: Vec<raw::CountyAccess>,
+    rows: Vec<CountyAccess>,
     nodes: &[TransportNode],
     roster: &NationalCountyRoster,
 ) -> Result<Vec<CountyTransportAccess>, Error> {
@@ -277,7 +279,7 @@ pub(super) fn flows(value: &TransportFlows, access: &[CountyTransportAccess]) ->
     if total > 40_000 || value.source_rows == 0 {
         return Err(Error::Bound);
     }
-    let count = |rows: &[super::model::FlowEvidence]| {
+    let count = |rows: &[FlowEvidence]| {
         rows.iter().try_fold(0_u64, |sum, row| {
             sum.checked_add(row.rows).ok_or(Error::Flow)
         })
@@ -417,7 +419,7 @@ fn distances(edges: &[Vec<usize>], origin: usize) -> Vec<usize> {
     lengths
 }
 pub(super) fn audit(
-    value: &raw::Audit,
+    value: &Audit,
     nodes: &[TransportNode],
     links: &[TransportLink],
     access: &[CountyTransportAccess],

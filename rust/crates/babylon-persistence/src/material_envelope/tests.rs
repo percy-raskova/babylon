@@ -1,7 +1,15 @@
-use super::*;
+use super::envelope::{
+    BoundedSink, BufferedDigest, CommittedMaterialTickEnvelope, HASH_BUFFER_BYTES,
+};
+use crate::committed_tick_envelope::CommittedTickRowFamilies;
 use crate::committed_tick_envelope::{
     CommittedTickEnvelopeError, CommittedTickRow, CommittedTickRowFamily,
 };
+use crate::identity::CampaignId;
+use crate::runtime::RustPersistenceRuntimeError;
+use babylon_kernel::content_digest;
+use babylon_tick::material_replay::IdentifiedMaterialTick;
+use uuid::Uuid;
 
 fn row(key: u8, payload: Vec<u8>) -> CommittedTickRow {
     CommittedTickRow::compose(vec![key], payload).unwrap()
@@ -25,11 +33,11 @@ fn identity(receipts: &[u8]) -> IdentifiedMaterialTick {
     for value in 1..=6 {
         bytes.extend_from_slice(&[value; 32]);
     }
-    bytes.extend_from_slice(&sha256_of(receipts));
+    bytes.extend_from_slice(&content_digest::sha256_of(receipts));
     IdentifiedMaterialTick::decode(&bytes).unwrap()
 }
 fn campaign() -> CampaignId {
-    CampaignId::from_uuid(uuid::Uuid::from_u128(0x1234))
+    CampaignId::from_uuid(Uuid::from_u128(0x1234))
 }
 
 #[test]
@@ -133,7 +141,7 @@ fn streamed_envelope_covers_buffer_boundaries_and_every_family() {
     }
     assert_ne!(
         CommittedMaterialTickEnvelope::attest(
-            CampaignId::from_uuid(uuid::Uuid::from_u128(0x1235)),
+            CampaignId::from_uuid(Uuid::from_u128(0x1235)),
             &identity,
             families(),
             &register,
@@ -334,7 +342,10 @@ fn streamed_envelope_refuses_incomplete_or_excess_framing() {
     let mut exact = BoundedSink::new(BufferedDigest::new().unwrap(), 3);
     exact.append(&[1]).unwrap();
     exact.append(&[2, 3]).unwrap();
-    assert_eq!(exact.finish().unwrap(), sha256_of(&[1, 2, 3]));
+    assert_eq!(
+        exact.finish().unwrap(),
+        content_digest::sha256_of(&[1, 2, 3])
+    );
 }
 
 #[test]
@@ -348,7 +359,7 @@ fn streamed_envelope_chunk_partitions_preserve_concat_and_bound_scratch() {
         }
         assert_eq!(
             sink.finish().unwrap(),
-            sha256_of(&bytes),
+            content_digest::sha256_of(&bytes),
             "chunk_bytes={chunk_bytes}"
         );
     }

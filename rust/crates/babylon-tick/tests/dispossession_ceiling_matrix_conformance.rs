@@ -49,7 +49,6 @@ use babylon_bsl::evaluator::Value;
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::memory::MemoryGraph;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
-use babylon_tick::{run_once, run_once_into};
 
 const SCENARIO: &str =
     include_str!("../content/scenarios/dispossession-ceiling-matrix-conformance.bscn");
@@ -58,7 +57,7 @@ const RULE: &str = include_str!("../content/rules/dispossession.bsl");
 fn run() -> (MemoryGraph, CollectingSink) {
     let mut graph = MemoryGraph::new();
     let mut sink = CollectingSink::default();
-    run_once_into(SCENARIO, RULE, &mut graph, &mut sink)
+    babylon_tick::run_once_into(SCENARIO, RULE, &mut graph, &mut sink)
         .expect("the Dispossession pack must run under the ceiling-matrix const environment");
     (graph, sink)
 }
@@ -149,8 +148,8 @@ fn both_event_payloads_are_asserted_in_full() {
 /// Byte-determinism under the ceiling-matrix environment.
 #[test]
 fn the_ceiling_matrix_tick_is_deterministic() {
-    let a = run_once(SCENARIO, RULE).expect("first run");
-    let b = run_once(SCENARIO, RULE).expect("second run");
+    let a = babylon_tick::run_once(SCENARIO, RULE).expect("first run");
+    let b = babylon_tick::run_once(SCENARIO, RULE).expect("second run");
     assert_eq!(a.after, b.after);
     assert_ne!(a.before, a.after);
     assert_eq!(a.fired, 1);

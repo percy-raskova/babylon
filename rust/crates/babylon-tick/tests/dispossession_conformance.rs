@@ -64,7 +64,6 @@ use babylon_bsl::evaluator::Value;
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::memory::MemoryGraph;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
-use babylon_tick::{run_once, run_once_into};
 
 const SCENARIO: &str = include_str!("../content/scenarios/dispossession-conformance.bscn");
 const RULE: &str = include_str!("../content/rules/dispossession.bsl");
@@ -72,7 +71,8 @@ const RULE: &str = include_str!("../content/rules/dispossession.bsl");
 fn run() -> (MemoryGraph, CollectingSink) {
     let mut graph = MemoryGraph::new();
     let mut sink = CollectingSink::default();
-    run_once_into(SCENARIO, RULE, &mut graph, &mut sink).expect("the Dispossession pack must run");
+    babylon_tick::run_once_into(SCENARIO, RULE, &mut graph, &mut sink)
+        .expect("the Dispossession pack must run");
     (graph, sink)
 }
 
@@ -266,8 +266,8 @@ fn value_transfer_fires_before_dispossession_event_for_the_same_subject() {
 /// and the tick moved state at all.
 #[test]
 fn the_dispossession_tick_is_deterministic() {
-    let a = run_once(SCENARIO, RULE).expect("first run");
-    let b = run_once(SCENARIO, RULE).expect("second run");
+    let a = babylon_tick::run_once(SCENARIO, RULE).expect("first run");
+    let b = babylon_tick::run_once(SCENARIO, RULE).expect("second run");
     assert_eq!(a.after, b.after, "two runs, one post-state");
     assert_ne!(a.before, a.after, "the pack must move state");
     assert_eq!(a.fired, 2, "both subjects pass the (when …) guard");
@@ -284,7 +284,7 @@ fn a_rule_reading_an_undeclared_coefficient_is_refused_at_load() {
                   (binding wealth :field territory/wealth) \
                   (binding rate :const dispossession/foreclosure-rat)) \
                 (effects (update-node self territory/wealth (set (* rate wealth)))))";
-    let Err(err) = run_once(SCENARIO, rule) else {
+    let Err(err) = babylon_tick::run_once(SCENARIO, rule) else {
         panic!("a mistyped coefficient must not load");
     };
     assert!(

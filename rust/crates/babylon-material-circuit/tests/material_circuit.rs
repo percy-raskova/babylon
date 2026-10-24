@@ -1,10 +1,11 @@
+use babylon_material_circuit::CapacitySupply;
+use babylon_material_circuit::CircuitAccounting;
 use babylon_material_circuit::{
-    advance_material_circuit, material_circuit_state_digest, BacklogRow, CapacityRow,
-    CommodityDefinition, CorridorCapacity, CorridorId, GoodId, InputOutputCoefficient,
-    InventoryRow, LaborCapacityRow, LaborCoefficient, LogisticsNodeId, MaterialCircuitError,
-    MaterialCircuitState, OrderAccessMode, OrderId, OrderRow, ProcessId, ProcessOutput,
-    ProductionCommitment, RouteId, RouteStage, RouteStageCapacity, SiteId, SiteLogisticsNode,
-    SupplierRoute, SupplierTransport, UnitId, MAX_MATERIAL_CIRCUIT_ROWS,
+    BacklogRow, CapacityRow, CommodityDefinition, CorridorCapacity, CorridorId, GoodId,
+    InputOutputCoefficient, InventoryRow, LaborCapacityRow, LaborCoefficient, LogisticsNodeId,
+    MaterialCircuitError, MaterialCircuitState, OrderAccessMode, OrderId, OrderRow, ProcessId,
+    ProcessOutput, ProductionCommitment, RouteId, RouteStage, RouteStageCapacity, SiteId,
+    SiteLogisticsNode, SupplierRoute, SupplierTransport, UnitId, MAX_MATERIAL_CIRCUIT_ROWS,
 };
 
 fn site(byte: u8) -> SiteId {
@@ -72,13 +73,13 @@ fn labor_rows() -> Vec<LaborCapacityRow> {
 )]
 fn base_state() -> MaterialCircuitState {
     MaterialCircuitState {
-        capacity_supply: babylon_material_circuit::CapacitySupply::FiniteSchedule,
+        capacity_supply: CapacitySupply::FiniteSchedule,
         period: 1,
         merchants: vec![],
         handling_coefficients: vec![],
         final_demand_principals: vec![],
         final_demand_orders: vec![],
-        accounting: babylon_material_circuit::CircuitAccounting::PhysicalControl,
+        accounting: CircuitAccounting::PhysicalControl,
         maintenance_binding: None,
         maintenance_service: None,
         site_logistics_nodes: vec![
@@ -206,7 +207,8 @@ fn inventory_quantity(state: &MaterialCircuitState, site_byte: u8, good_byte: u8
 
 #[test]
 fn shipment_precedes_arrival_and_realization() {
-    let first = advance_material_circuit(&base_state()).expect("period one must close");
+    let first = babylon_material_circuit::advance_material_circuit(&base_state())
+        .expect("period one must close");
     assert_eq!(first.state.period, 2);
     assert_eq!(first.dispatches.len(), 1);
     assert!(first.arrivals.is_empty());
@@ -218,7 +220,8 @@ fn shipment_precedes_arrival_and_realization() {
     assert_eq!(inventory_quantity(&first.state, SUPPLIER, GRAIN), 4);
     assert_eq!(inventory_quantity(&first.state, FACTORY, GRAIN), 0);
 
-    let second = advance_material_circuit(&first.state).expect("period two must close");
+    let second = babylon_material_circuit::advance_material_circuit(&first.state)
+        .expect("period two must close");
     assert_eq!(second.state.period, 3);
     assert_eq!(second.arrivals.len(), 1);
     assert_eq!(second.deliveries.len(), 1);
@@ -232,14 +235,17 @@ fn shipment_precedes_arrival_and_realization() {
 
 #[test]
 fn delivered_inputs_feed_the_following_period_not_the_arrival_period() {
-    let first = advance_material_circuit(&base_state()).expect("period one must close");
+    let first = babylon_material_circuit::advance_material_circuit(&base_state())
+        .expect("period one must close");
     assert!(first.state.production_commitments.is_empty());
 
-    let second = advance_material_circuit(&first.state).expect("period two must close");
+    let second = babylon_material_circuit::advance_material_circuit(&first.state)
+        .expect("period two must close");
     assert_eq!(second.state.production_commitments[0].planned_batches, 2);
     assert!(second.production.is_empty());
 
-    let third = advance_material_circuit(&second.state).expect("period three must close");
+    let third = babylon_material_circuit::advance_material_circuit(&second.state)
+        .expect("period three must close");
     assert_eq!(third.production[0].planned_batches, 2);
     assert_eq!(third.production[0].produced_batches, 2);
     assert_eq!(inventory_quantity(&third.state, FACTORY, GRAIN), 0);
@@ -251,13 +257,15 @@ fn severed_supplier_relation_causes_backlog_without_creating_goods() {
     let mut state = base_state();
     state.supplier_routes.clear();
 
-    let first = advance_material_circuit(&state).expect("missing supply is a material outcome");
+    let first = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("missing supply is a material outcome");
     assert!(first.dispatches.is_empty());
     assert_eq!(first.state.orders[0].shipped, 0);
     assert_eq!(first.state.backlog[0].quantity, 6);
     assert_eq!(inventory_quantity(&first.state, SUPPLIER, GRAIN), 10);
 
-    let second = advance_material_circuit(&first.state).expect("period two must close");
+    let second = babylon_material_circuit::advance_material_circuit(&first.state)
+        .expect("period two must close");
     assert!(second.arrivals.is_empty());
     assert!(second.state.production_commitments.is_empty());
 }
@@ -279,7 +287,8 @@ fn missing_stock_and_labor_are_material_shortages_not_engine_errors() {
         planned_batches: 3,
     }];
 
-    let outcome = advance_material_circuit(&state).expect("zero supply must still close");
+    let outcome = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("zero supply must still close");
     assert_eq!(outcome.production[0].produced_batches, 0);
     assert!(outcome.dispatches.is_empty());
     assert_eq!(outcome.state.backlog[0].quantity, 6);
@@ -301,7 +310,8 @@ fn leontief_output_is_bounded_by_labor_capacity_and_inputs() {
         planned_batches: 10,
     }];
 
-    let outcome = advance_material_circuit(&state).expect("bounded production must close");
+    let outcome = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("bounded production must close");
     assert_eq!(outcome.production[0].planned_batches, 10);
     assert_eq!(outcome.production[0].produced_batches, 2);
     assert_eq!(inventory_quantity(&outcome.state, FACTORY, GRAIN), 24);
@@ -322,13 +332,13 @@ fn production_debits_all_inputs_before_crediting_any_output() {
     let goods_unit = unit(6);
     let labor_unit = unit(7);
     let state = MaterialCircuitState {
-        capacity_supply: babylon_material_circuit::CapacitySupply::FiniteSchedule,
+        capacity_supply: CapacitySupply::FiniteSchedule,
         period: 1,
         merchants: vec![],
         handling_coefficients: vec![],
         final_demand_principals: vec![],
         final_demand_orders: vec![],
-        accounting: babylon_material_circuit::CircuitAccounting::PhysicalControl,
+        accounting: CircuitAccounting::PhysicalControl,
         maintenance_binding: None,
         maintenance_service: None,
         site_logistics_nodes: vec![],
@@ -429,7 +439,8 @@ fn production_debits_all_inputs_before_crediting_any_output() {
         ],
     };
 
-    let outcome = advance_material_circuit(&state).expect("net-conserved production must close");
+    let outcome = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("net-conserved production must close");
     assert_eq!(
         inventory_quantity(&outcome.state, 5, 3),
         u64::MAX,
@@ -445,7 +456,7 @@ fn proportional_production_uses_u128_for_unbounded_requested_units() {
     state.capacities[0].available_batches = u64::MAX;
     state.labor[0].available = u64::MAX;
 
-    let outcome = advance_material_circuit(&state)
+    let outcome = babylon_material_circuit::advance_material_circuit(&state)
         .expect("scarcity must bound an intermediate request larger than u64");
     assert_eq!(outcome.production[0].produced_batches, 1);
     assert_eq!(inventory_quantity(&outcome.state, 1, 2), 0);
@@ -460,13 +471,13 @@ fn production_state_for_numeric_boundary() -> MaterialCircuitState {
     let labor_unit = unit(5);
     let process_id = process(6);
     MaterialCircuitState {
-        capacity_supply: babylon_material_circuit::CapacitySupply::FiniteSchedule,
+        capacity_supply: CapacitySupply::FiniteSchedule,
         period: 1,
         merchants: vec![],
         handling_coefficients: vec![],
         final_demand_principals: vec![],
         final_demand_orders: vec![],
-        accounting: babylon_material_circuit::CircuitAccounting::PhysicalControl,
+        accounting: CircuitAccounting::PhysicalControl,
         maintenance_binding: None,
         maintenance_service: None,
         site_logistics_nodes: vec![],
@@ -560,13 +571,13 @@ fn zero_production_does_not_create_an_empty_inventory_row() {
         })
         .collect();
     let state = MaterialCircuitState {
-        capacity_supply: babylon_material_circuit::CapacitySupply::FiniteSchedule,
+        capacity_supply: CapacitySupply::FiniteSchedule,
         period: 1,
         merchants: vec![],
         handling_coefficients: vec![],
         final_demand_principals: vec![],
         final_demand_orders: vec![],
-        accounting: babylon_material_circuit::CircuitAccounting::PhysicalControl,
+        accounting: CircuitAccounting::PhysicalControl,
         maintenance_binding: None,
         maintenance_service: None,
         site_logistics_nodes: vec![],
@@ -615,7 +626,8 @@ fn zero_production_does_not_create_an_empty_inventory_row() {
         }],
     };
 
-    let outcome = advance_material_circuit(&state).expect("zero production is a valid outcome");
+    let outcome = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("zero production is a valid outcome");
     assert_eq!(outcome.production[0].produced_batches, 0);
     assert_eq!(outcome.state.inventory.len(), MAX_MATERIAL_CIRCUIT_ROWS);
     assert!(outcome
@@ -660,20 +672,22 @@ fn proportional_base_and_canonical_residual_are_row_order_independent() {
     reversed.orders.reverse();
     reversed.backlog.reverse();
 
-    let a = advance_material_circuit(&state).expect("allocation must close");
-    let b = advance_material_circuit(&reversed).expect("permuted allocation must close");
+    let a =
+        babylon_material_circuit::advance_material_circuit(&state).expect("allocation must close");
+    let b = babylon_material_circuit::advance_material_circuit(&reversed)
+        .expect("permuted allocation must close");
     assert_eq!(a.state.orders[0].shipped, 2);
     assert_eq!(a.state.orders[1].shipped, 2);
     assert_eq!(inventory_quantity(&a.state, SUPPLIER, GRAIN), 0);
     assert_eq!(
-        material_circuit_state_digest(&a.state),
-        material_circuit_state_digest(&b.state)
+        babylon_material_circuit::material_circuit_state_digest(&a.state),
+        babylon_material_circuit::material_circuit_state_digest(&b.state)
     );
 }
 
 #[test]
 fn arithmetic_refusal_does_not_publish_a_partial_state() {
-    let first = advance_material_circuit(&base_state()).unwrap();
+    let first = babylon_material_circuit::advance_material_circuit(&base_state()).unwrap();
     let mut state = first.state;
     state
         .inventory
@@ -681,23 +695,26 @@ fn arithmetic_refusal_does_not_publish_a_partial_state() {
         .find(|row| row.site_id == site(FACTORY) && row.good_id == good(GRAIN))
         .unwrap()
         .quantity = u64::MAX;
-    let before = material_circuit_state_digest(&state).unwrap();
+    let before = babylon_material_circuit::material_circuit_state_digest(&state).unwrap();
     assert_eq!(
-        advance_material_circuit(&state),
+        babylon_material_circuit::advance_material_circuit(&state),
         Err(MaterialCircuitError::Arithmetic)
     );
-    assert_eq!(material_circuit_state_digest(&state).unwrap(), before);
+    assert_eq!(
+        babylon_material_circuit::material_circuit_state_digest(&state).unwrap(),
+        before
+    );
 }
 
 #[test]
 fn duplicate_dispatch_identity_is_rejected_even_when_arrival_periods_differ() {
-    let first = advance_material_circuit(&base_state()).unwrap();
+    let first = babylon_material_circuit::advance_material_circuit(&base_state()).unwrap();
     let mut state = first.state;
     let mut duplicate = state.freight[0].clone();
     duplicate.stage_arrival_period += 1;
     state.freight.push(duplicate);
     assert_eq!(
-        advance_material_circuit(&state),
+        babylon_material_circuit::advance_material_circuit(&state),
         Err(MaterialCircuitError::DuplicateRow)
     );
 }

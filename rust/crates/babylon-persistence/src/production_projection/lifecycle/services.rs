@@ -1,10 +1,9 @@
 //! Authenticate transient service principals against captured reach and policies.
-use super::{monetary, offer_index, recurring, PeriodOrders, ProductionProjectionError, Result};
+use super::{PeriodOrders, ProductionProjectionError, Result};
 use babylon_kernel::currency::Currency;
 use babylon_material_circuit::{
-    recurring_service_order_id, recurring_service_topup_order_id, AccountId, CommodityKind, GoodId,
-    MaterialCircuitState, OrderId, OutboundOrderId, PurchaseEscrow, ServiceOrder,
-    ServicePerformanceReceipt, SiteId, UnitId,
+    AccountId, CommodityKind, GoodId, MaterialCircuitState, OrderId, OutboundOrderId,
+    PurchaseEscrow, ServiceOrder, ServicePerformanceReceipt, SiteId, UnitId,
 };
 use babylon_tick::material_world::MaterialTickReceipts;
 use std::collections::{BTreeMap, BTreeSet};
@@ -28,7 +27,7 @@ pub(super) fn admit(
     orders: &mut PeriodOrders,
     admissions: &mut BTreeMap<OutboundOrderId, PurchaseEscrow>,
 ) -> Result<()> {
-    let purchases: BTreeMap<_, _> = monetary(prior)
+    let purchases: BTreeMap<_, _> = super::monetary(prior)
         .into_iter()
         .flat_map(|economy| economy.book.purchases())
         .map(|p| (p.order, p))
@@ -168,10 +167,10 @@ fn requests(
     prior: &MaterialCircuitState,
     purchases: &BTreeMap<OutboundOrderId, &PurchaseEscrow>,
 ) -> Result<BTreeMap<OrderId, Request>> {
-    let Some(recurring) = recurring(prior) else {
+    let Some(recurring) = super::recurring(prior) else {
         return Ok(BTreeMap::new());
     };
-    let offers = offer_index(prior)?;
+    let offers = super::offer_index(prior)?;
     let services: BTreeSet<_> = prior
         .commodities
         .iter()
@@ -228,10 +227,16 @@ fn requests(
     }
     let mut result = BTreeMap::new();
     for (key, maximum) in limits {
-        let mut id = recurring_service_order_id(prior.period, key.0, key.1, key.2, key.3);
+        let mut id = babylon_material_circuit::recurring_service_order_id(
+            prior.period,
+            key.0,
+            key.1,
+            key.2,
+            key.3,
+        );
         if let Some(rows) = due.get_mut(&key) {
             rows.sort_unstable_by_key(|r| r.0);
-            id = recurring_service_topup_order_id(id, rows);
+            id = babylon_material_circuit::recurring_service_topup_order_id(id, rows);
         }
         let price = *offers
             .get(&(key.1, key.2, key.3))

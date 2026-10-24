@@ -1,15 +1,15 @@
-use babylon_kernel::{
-    economic_location::{EconomicLocation, ForeignCounterpart, UsDependency},
-    geography::CountyGeoid,
-};
+use babylon_kernel::economic_location::{EconomicLocation, ForeignCounterpart, UsDependency};
+use babylon_kernel::geography::CountyGeoid;
+
+use babylon_persistence::national_transport;
 use babylon_persistence::national_transport::{
-    national_transport_reference, AllocationMode, CargoClass, NationalTransportReference,
-    TransportMode,
+    AllocationMode, CargoClass, NationalTransportReference, TransportMode,
 };
+use std::collections::BTreeMap;
 
 #[test]
 fn national_source_keeps_every_county_and_explicit_island_access() {
-    let source = national_transport_reference().unwrap();
+    let source = national_transport::national_transport_reference().unwrap();
     assert_eq!(source.county_access().len(), 3144);
     assert_eq!(source.period_days(), 28);
     let kalawao =
@@ -49,8 +49,8 @@ fn native_capture_refuses_changed_and_oversized_bytes() {
 
 #[test]
 fn source_modes_keep_distinct_county_zone_allocations() {
-    let source = national_transport_reference().unwrap();
-    let access: std::collections::BTreeMap<_, _> = source
+    let source = national_transport::national_transport_reference().unwrap();
+    let access: BTreeMap<_, _> = source
         .county_access()
         .iter()
         .map(|row| (row.county, row.zone.as_str()))

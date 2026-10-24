@@ -1,5 +1,5 @@
 //! Checked relations already required by current typed receipt validators.
-use super::{buffer, Error, Result};
+use super::{Error, Result};
 fn u(row: &[u8], offset: usize) -> Result<u64> {
     Ok(u64::from_be_bytes(
         row.get(offset..offset + 8)
@@ -49,7 +49,7 @@ fn keep(tag: u8, row: &[u8]) -> Result<Vec<u8>> {
         if amount <= 0 || c(row, 12)?.checked_neg() != Some(amount) {
             return Err(Error::Canonical);
         }
-        let mut out = buffer(30)?;
+        let mut out = super::buffer(30)?;
         if tag == 7 {
             if row[2..6] != [0; 4] || row[6] != 1 || row[28] != 1 {
                 return Err(Error::Canonical);
@@ -92,7 +92,7 @@ fn keep(tag: u8, row: &[u8]) -> Result<Vec<u8>> {
         ),
         _ => return Err(Error::Mode),
     };
-    let mut out = buffer(prefix + unit * indices.len())?;
+    let mut out = super::buffer(prefix + unit * indices.len())?;
     out.extend_from_slice(row.get(..prefix).ok_or(Error::Width)?);
     for i in indices {
         out.extend_from_slice(
@@ -113,7 +113,7 @@ pub(super) fn pack_family(
         return Ok((0, width, rows.to_vec()));
     }
     let retained = retained_width(tag, 1, width)?;
-    let mut packed = buffer(count.checked_mul(retained).ok_or(Error::Arithmetic)?)?;
+    let mut packed = super::buffer(count.checked_mul(retained).ok_or(Error::Arithmetic)?)?;
     for row in rows.chunks_exact(width) {
         let kept = keep(tag, row)?;
         if unpack_row(tag, 1, &kept, tick, width)? != row {
@@ -139,7 +139,7 @@ pub(super) fn unpack_row(
     if row.len() != retained_width(tag, mode, width)? || tick == 0 {
         return Err(Error::Width);
     }
-    let mut out = buffer(width)?;
+    let mut out = super::buffer(width)?;
     match tag {
         11 => unpack_cash(row, &mut out)?,
         28 => unpack_staffing(row, tick, &mut out)?,

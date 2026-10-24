@@ -1,17 +1,30 @@
 use std::sync::OnceLock;
 
 use babylon_bsl::structural_verbs::CollectingSink;
-use babylon_graph::stable_state::{
-    compose_stable_graph_state_from_rows, StableGraphStateRowsInput,
-};
+use babylon_graph::stable_state::StableGraphStateRowsInput;
 use babylon_practice_contract::OrderedPracticeActionBatch;
 use babylon_tick::replay_session::ReplayCommitDisposition;
 
-use super::*;
+use super::super::ProductionProjectionError;
+use super::members::StaffingGraph;
+use super::projection;
+use super::projection::{Result, Stocks, INTEGER_FIELDS};
 use crate::michigan_content::MichiganContentPreset;
+use crate::michigan_economy;
+use crate::production_observation::ProductionStaffingAccount;
+use crate::stored_tick::StoredEvent;
+use babylon_bsl::identity_codec::StableBslValue;
+use babylon_graph::stable_element::StableElementKey;
+use babylon_graph::stable_state;
+use babylon_graph::stable_state::StableGraphState;
+use babylon_material_circuit::StaffingMemberBinding;
+use babylon_tick::choice_receipt::ChoiceReceiptRef;
+use babylon_tick::material_staffing::StaffingComposition;
 use babylon_tick::material_staffing::{
     EMPLOYED_POPULATION, PREVIOUS_UNRETAINED_HOURS, RESERVE_POPULATION,
 };
+use babylon_tick::material_world::{MaterialTickReceipts, MaterialWorldRegister};
+use std::collections::BTreeSet;
 
 #[derive(Clone)]
 struct Window {
@@ -24,7 +37,7 @@ struct Window {
 
 impl Window {
     fn project(&self) -> Result<Vec<ProductionStaffingAccount>> {
-        project_staffing_accounts(
+        projection::project_staffing_accounts(
             &fixture().composition,
             &self.graph,
             &self.register,
@@ -85,7 +98,7 @@ fn fixture() -> &'static PublishedFixture {
                         emitting_rule: event.emitting_rule().to_owned(),
                         choice_receipt_ordinal: event
                             .choice_receipt()
-                            .map(babylon_tick::choice_receipt::ChoiceReceiptRef::encounter_ordinal),
+                            .map(ChoiceReceiptRef::encounter_ordinal),
                         event_type: event.event_type().to_owned(),
                         fields: event.fields().to_vec(),
                     })
@@ -170,7 +183,7 @@ fn change_graph(
 ) -> StableGraphState {
     let mut rows = graph_rows(graph);
     edit(&mut rows);
-    compose_stable_graph_state_from_rows(graph.scenario_scope(), rows).unwrap()
+    stable_state::compose_stable_graph_state_from_rows(graph.scenario_scope(), rows).unwrap()
 }
 
 fn set_graph_number(graph: &StableGraphState, field: &str, value: f64) -> StableGraphState {
@@ -192,16 +205,22 @@ fn foundation_reports_modeled_people_without_a_completed_staffing_event() {
     assert!(accounts
         .iter()
         .all(|row| row.reserve == 0 && row.completed.is_none()));
-    let pools: std::collections::BTreeSet<_> = accounts.iter().map(|row| &row.pool_id).collect();
+    let pools: BTreeSet<_> = accounts.iter().map(|row| &row.pool_id).collect();
     assert_eq!(pools.len(), 5);
     for binding in fixture().composition.bindings() {
         let pool = binding.pool();
         let account = accounts
             .iter()
-            .find(|row| row.pool_id == digest_hex(&pool.pool_id().as_bytes()))
+            .find(|row| row.pool_id == michigan_economy::digest_hex(&pool.pool_id().as_bytes()))
             .unwrap();
-        assert_eq!(account.site_id, digest_hex(&pool.site_id().as_bytes()));
-        assert_eq!(account.unit_id, digest_hex(&pool.unit_id().as_bytes()));
+        assert_eq!(
+            account.site_id,
+            michigan_economy::digest_hex(&pool.site_id().as_bytes())
+        );
+        assert_eq!(
+            account.unit_id,
+            michigan_economy::digest_hex(&pool.unit_id().as_bytes())
+        );
         assert_eq!(account.labor_force, pool.labor_force());
     }
     for account in accounts {
@@ -460,7 +479,8 @@ fn opening_and_closing_stocks_memory_owner_and_scope_are_bound() {
             &window.graph
         };
         let changed =
-            compose_stable_graph_state_from_rows("foreign-scope", graph_rows(graph)).unwrap();
+            stable_state::compose_stable_graph_state_from_rows("foreign-scope", graph_rows(graph))
+                .unwrap();
         if opening {
             window.opening = Some(changed);
         } else {
@@ -553,14 +573,14 @@ fn full_typed_integer_hours_above_graph_precision_survive_the_complete_account_p
     for (field, value) in INTEGER_FIELDS.iter().zip(values) {
         *field_mut(&mut event, field) = StableBslValue::Int(i64::try_from(value).unwrap());
     }
-    let (_, values) = event_fields(&event).unwrap();
+    let (_, values) = projection::event_fields(&event).unwrap();
     assert_eq!(values[11], (1_u64 << 53) + 8);
     let opening = Stocks {
         employed: people,
         reserve: 0,
         previous: request,
     };
-    let result = completed_account(1, opening, opening, next_hours, values).unwrap();
+    let result = projection::completed_account(1, opening, opening, next_hours, values).unwrap();
     assert_eq!(result.current_unretained_hours, request);
     assert_eq!(result.retained_hours, request);
     assert_eq!(result.target_employed, people);
@@ -586,7 +606,7 @@ fn member_receipt_omission_duplication_and_residence_forgery_refuse_even_with_va
     assert_eq!(duplicate.project(), Err(ProductionProjectionError::History));
     let mut changed = original;
     let row = &mut changed.receipts.as_mut().unwrap().staffing_members[0];
-    row.member = babylon_material_circuit::StaffingMemberBinding::try_new(
+    row.member = StaffingMemberBinding::try_new(
         row.member.member_id(),
         row.member.household_id(),
         "county:26099".parse().unwrap(),

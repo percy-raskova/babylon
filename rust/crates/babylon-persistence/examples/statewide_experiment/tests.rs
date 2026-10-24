@@ -1,11 +1,10 @@
-use super::{
-    arguments::{self, Inputs},
-    hex,
-    report::{Candidate, Report},
-    run, synthetic, witness,
-};
-use babylon_kernel::content_digest::sha256_of;
+use super::arguments::Inputs;
+use super::report::{Candidate, Report};
+use super::{arguments, run, synthetic, witness};
+
+use babylon_kernel::content_digest;
 use std::collections::BTreeMap;
+use synthetic::SyntheticSources;
 
 fn input() -> (Inputs, Candidate) {
     let fixture = synthetic::load();
@@ -29,9 +28,18 @@ fn input() -> (Inputs, Candidate) {
     let qualification = serde_json::to_vec(&fixture.qualification).unwrap();
     let physical = serde_json::to_vec(&fixture.physical).unwrap();
     let hashes = BTreeMap::from([
-        ("defines", hex(&sha256_of(defines.as_bytes()))),
-        ("qualification", hex(&sha256_of(&qualification))),
-        ("physical", hex(&sha256_of(&physical))),
+        (
+            "defines",
+            super::hex(&content_digest::sha256_of(defines.as_bytes())),
+        ),
+        (
+            "qualification",
+            super::hex(&content_digest::sha256_of(&qualification)),
+        ),
+        (
+            "physical",
+            super::hex(&content_digest::sha256_of(&physical)),
+        ),
     ]);
     (
         Inputs {
@@ -79,7 +87,7 @@ fn synthetic_candidates_require_independent_committed_economic_consequences() {
         report.witnesses.packaging.as_ref().unwrap().process,
         candidate.food_process
     );
-    let sources = synthetic::SyntheticSources::create();
+    let sources = SyntheticSources::create();
     let destination = sources.path("candidate-report.json");
     arguments::write_report(&destination, &report).unwrap();
     let bytes = std::fs::read(&destination).unwrap();

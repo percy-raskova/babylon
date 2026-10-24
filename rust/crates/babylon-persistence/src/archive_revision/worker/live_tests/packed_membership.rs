@@ -1,10 +1,18 @@
 //! Packed membership must preserve exact restricted SQL disclosure and replay.
-use super::*;
+use super::archive_reader;
+use super::support;
+use super::support::{receipt_consumption_count, LiveWorkerTarget, StubPageProducer};
+use crate::archive_revision::{ArchiveDossierBounds, ArchiveDossierState};
+use crate::identity::CampaignId;
+use crate::ArchiveWorker;
+use postgres::Client;
+use postgres::NoTls;
+use std::time::Instant;
 
 #[test]
 #[ignore = "requires the task-owned disposable PostgreSQL runtime and committed ticks"]
 fn live_packed_membership_rejects_invalid_arrays_and_unresolved_references() {
-    let mut phase = std::time::Instant::now();
+    let mut phase = Instant::now();
     let target = LiveWorkerTarget::create("packedmembers", 0x34321, 1);
     record_phase("fixture", &mut phase);
     let report = ArchiveWorker::new(&target.config)
@@ -12,7 +20,7 @@ fn live_packed_membership_rejects_invalid_arrays_and_unresolved_references() {
         .expect("one complete authenticated publication");
     assert_eq!(report.verified_tick(), 1);
     record_phase("publication", &mut phase);
-    with_reader(&target.config, |reader| {
+    archive_reader::with_reader(&target.config, |reader| {
         record_phase("confined_reader", &mut phase);
         let mut client = target.config.connect(NoTls).unwrap();
         let retired: bool = client
@@ -69,11 +77,11 @@ fn live_packed_membership_rejects_invalid_arrays_and_unresolved_references() {
         assert_eq!(disclosed_count(&mut client, &target), healthy);
         record_phase("array_and_reference_faults", &mut phase);
         drop(client);
-        let scope = scope_at(&target.config, target.campaign_id, 1);
+        let scope = archive_reader::scope_at(&target.config, target.campaign_id, 1);
         let dossier = reader
             .dossier_as_of(
                 &scope,
-                &stub_subject_spec(1).page_ref,
+                &support::stub_subject_spec(1).page_ref,
                 &ArchiveDossierBounds::default(),
             )
             .expect("restored complete publication remains readable");
@@ -88,7 +96,7 @@ fn live_packed_membership_rejects_invalid_arrays_and_unresolved_references() {
     record_phase("cleanup", &mut phase);
 }
 
-fn assert_invalid_arrays_rejected(client: &mut postgres::Client, campaign: CampaignId) {
+fn assert_invalid_arrays_rejected(client: &mut Client, campaign: CampaignId) {
     for assignment in [
         "atom_ids=array_fill(NULL::bytea,ARRAY[atom_count])",
         "atom_ids=array_fill(atom_ids[1],ARRAY[atom_count],ARRAY[0])",
@@ -124,12 +132,12 @@ fn assert_invalid_arrays_rejected(client: &mut postgres::Client, campaign: Campa
     }
 }
 
-fn record_phase(label: &str, started: &mut std::time::Instant) {
+fn record_phase(label: &str, started: &mut Instant) {
     eprintln!(
         "packed_membership_stage phase={label} elapsed_ns={}",
         started.elapsed().as_nanos()
     );
-    *started = std::time::Instant::now();
+    *started = Instant::now();
 }
 
 fn disclosed_count(

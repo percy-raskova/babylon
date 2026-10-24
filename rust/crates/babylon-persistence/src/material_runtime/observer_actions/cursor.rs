@@ -2,17 +2,17 @@
 
 use super::super::MaterialRuntimeError;
 
-use babylon_kernel::{content_digest::sha256_of, replay::ReplaySessionId};
+use babylon_kernel::replay::ReplaySessionId;
 
+use babylon_kernel::content_digest;
 use babylon_practice_contract::{
-    admit_organizer, decode_practice_intent, encode_practice_action_id_preimage,
-    encode_practice_intent, organizer_action_batch, validate_organizer_pair,
     OrderedPracticeActionBatch, OrganizerChoice, OrganizerCommand, OrganizerConfig, OrganizerState,
     PracticeIntent, MAX_PRACTICE_INTENT_CANONICAL_BYTES, MAX_RESOLVED_PRACTICE_BATCH_ITEMS,
     ORDERED_PRACTICE_ACTION_BATCH_DOMAIN_BYTES,
 };
+use std::result::Result as StdResult;
 
-pub(in crate::material_runtime) type Result<T> = std::result::Result<T, MaterialRuntimeError>;
+pub(in crate::material_runtime) type Result<T> = StdResult<T, MaterialRuntimeError>;
 
 pub(in crate::material_runtime) fn reconstruct(
     config: &OrganizerConfig,
@@ -22,8 +22,9 @@ pub(in crate::material_runtime) fn reconstruct(
     tick: u64,
     bytes: &[u8],
 ) -> Result<OrderedPracticeActionBatch> {
-    validate_organizer_pair(config, prior).map_err(|_| MaterialRuntimeError::InvalidCheckpoint)?;
-    validate_organizer_pair(config, current)
+    babylon_practice_contract::validate_organizer_pair(config, prior)
+        .map_err(|_| MaterialRuntimeError::InvalidCheckpoint)?;
+    babylon_practice_contract::validate_organizer_pair(config, current)
         .map_err(|_| MaterialRuntimeError::InvalidCheckpoint)?;
     if current.period != tick {
         return Err(MaterialRuntimeError::InvalidCheckpoint);
@@ -57,7 +58,8 @@ pub(in crate::material_runtime) fn reconstruct(
             choice: receipt.choice,
         };
         // Delayed aid has a retimed nonce: date equality alone is never a match.
-        if let Ok(commitment) = admit_organizer(config, prior, &command) {
+        if let Ok(commitment) = babylon_practice_contract::admit_organizer(config, prior, &command)
+        {
             if Some(commitment.commitment_id) == receipt.commitment_id
                 && accepted.replace(commitment).is_some()
             {
@@ -68,8 +70,13 @@ pub(in crate::material_runtime) fn reconstruct(
     if accepted.as_ref().map(|row| row.commitment_id) != receipt.commitment_id {
         return Err(MaterialRuntimeError::InvalidCheckpoint);
     }
-    let expected = organizer_action_batch(config, prior, accepted.as_ref(), session.clone())
-        .map_err(|_| MaterialRuntimeError::InvalidCheckpoint)?;
+    let expected = babylon_practice_contract::organizer_action_batch(
+        config,
+        prior,
+        accepted.as_ref(),
+        session.clone(),
+    )
+    .map_err(|_| MaterialRuntimeError::InvalidCheckpoint)?;
     if expected.canonical_bytes() != bytes {
         return Err(MaterialRuntimeError::InvalidCheckpoint);
     }
@@ -118,18 +125,19 @@ pub(in crate::material_runtime) fn parse(
             return Err(MaterialRuntimeError::Bounds);
         }
         let encoded = input.take(length)?;
-        let intent =
-            decode_practice_intent(encoded).map_err(|_| MaterialRuntimeError::InvalidCheckpoint)?;
+        let intent = babylon_practice_contract::decode_practice_intent(encoded)
+            .map_err(|_| MaterialRuntimeError::InvalidCheckpoint)?;
         if intent.resolve_tick != tick
-            || encode_practice_intent(&intent)
+            || babylon_practice_contract::encode_practice_intent(&intent)
                 .map_err(|_| MaterialRuntimeError::InvalidCheckpoint)?
                 != encoded
         {
             return Err(MaterialRuntimeError::InvalidCheckpoint);
         }
-        let preimage = encode_practice_action_id_preimage(session, &intent)
-            .map_err(|_| MaterialRuntimeError::InvalidCheckpoint)?;
-        if action_id != sha256_of(&preimage) {
+        let preimage =
+            babylon_practice_contract::encode_practice_action_id_preimage(session, &intent)
+                .map_err(|_| MaterialRuntimeError::InvalidCheckpoint)?;
+        if action_id != content_digest::sha256_of(&preimage) {
             return Err(MaterialRuntimeError::InvalidCheckpoint);
         }
         intents.push(intent);

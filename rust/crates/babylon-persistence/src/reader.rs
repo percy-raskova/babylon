@@ -23,14 +23,24 @@ use std::str::FromStr;
 
 use postgres::{Config, NoTls};
 
-use crate::archive::{database, decode, decode_digest, SemanticArchiveError};
+use crate::archive;
+use crate::archive::SemanticArchiveError;
 use crate::identity::CampaignId;
+use crate::postgres_catalog;
 use crate::postgres_catalog::{
-    validate_connection_target, CatalogError, ConnectionTargetRejection, CATALOG_CONNECT_TIMEOUT,
-    CATALOG_STARTUP_OPTIONS, CATALOG_TCP_USER_TIMEOUT,
+    CatalogError, ConnectionTargetRejection, CATALOG_CONNECT_TIMEOUT, CATALOG_STARTUP_OPTIONS,
+    CATALOG_TCP_USER_TIMEOUT,
 };
 use crate::postgres_diagnostic::PostgresDiagnostic;
+use crate::CurrentSchemaError;
 use crate::SCHEMA_ADVISORY_LOCK_KEY;
+use postgres::Client;
+use postgres::Error as PostgresError;
+use postgres::IsolationLevel;
+use postgres::Row;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
+use uuid::Uuid;
 
 /// Environment variable admitting the read-only reader DSN.
 pub const READER_DSN_ENV: &str = "BABYLON_READER_DSN";
@@ -227,7 +237,7 @@ pub enum ReaderRoleDisposition {
 /// Stable closed refusal taxonomy for reader construction and installation.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SemanticArchiveReaderError {
-    CurrentSchema(crate::CurrentSchemaError),
+    CurrentSchema(CurrentSchemaError),
     /// The reader DSN environment variable is unset.
     MissingEnv(&'static str),
     /// The reader DSN environment variable is not valid UTF-8.
@@ -262,14 +272,14 @@ pub enum SemanticArchiveReaderError {
 }
 
 impl std::fmt::Display for SemanticArchiveReaderError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> FmtResult {
         write!(formatter, "semantic Archive reader refusal: {self:?}")
     }
 }
 
 impl std::error::Error for SemanticArchiveReaderError {}
 
-fn database_error(operation: &'static str, error: &postgres::Error) -> SemanticArchiveReaderError {
+fn database_error(operation: &'static str, error: &PostgresError) -> SemanticArchiveReaderError {
     SemanticArchiveReaderError::Database {
         operation,
         diagnostic: PostgresDiagnostic::capture(error),
@@ -373,7 +383,8 @@ impl SemanticArchiveReader {
     /// caller-supplied startup options, host-address overrides, multi-host or
     /// multi-port targets, a missing host, or a non-loopback TCP target.
     pub fn new(config: &Config) -> Result<Self, SemanticArchiveReaderError> {
-        validate_connection_target(config).map_err(|error| connection_target_error(&error))?;
+        postgres_catalog::validate_connection_target(config)
+            .map_err(|error| connection_target_error(&error))?;
         Ok(Self {
             config: config.clone(),
         })
@@ -394,7 +405,9 @@ impl SemanticArchiveReader {
         let mut client = self.connect("connect committed tick status reader")?;
         client
             .query_opt(COMMITTED_TICK_STATUS_SQL, &[campaign_id.as_uuid()])
-            .map_err(|error| archive_boundary(database("read committed tick status view", &error)))?
+            .map_err(|error| {
+                archive_boundary(archive::database("read committed tick status view", &error))
+            })?
             .map(|row| decode_committed_tick_status(campaign_id, &row))
             .transpose()
             .map_err(archive_boundary)
@@ -415,9 +428,9 @@ impl SemanticArchiveReader {
             .query_opt(ARCHIVE_VERIFICATION_STATUS_SQL, &[campaign_id.as_uuid()])
             .map_err(|error| database_error("read Archive verification status", &error))?;
         row.map(|row| {
-            let durable_tick = u64::try_from(decode::<i64>(&row, 0)?)
+            let durable_tick = u64::try_from(archive::decode::<i64>(&row, 0)?)
                 .map_err(|_| SemanticArchiveError::StoredPageMismatch)?;
-            let processed_tick = u64::try_from(decode::<i64>(&row, 1)?)
+            let processed_tick = u64::try_from(archive::decode::<i64>(&row, 1)?)
                 .map_err(|_| SemanticArchiveError::StoredPageMismatch)?;
             if processed_tick > durable_tick {
                 return Err(SemanticArchiveError::StoredPageMismatch);
@@ -434,7 +447,7 @@ impl SemanticArchiveReader {
     pub(crate) fn connect(
         &self,
         operation: &'static str,
-    ) -> Result<postgres::Client, SemanticArchiveReaderError> {
+    ) -> Result<Client, SemanticArchiveReaderError> {
         // The stored config stays raw: validation must observe the caller's
         // exact target, not the bounded startup options added here.
         let mut bounded = self.config.clone();
@@ -454,9 +467,7 @@ impl SemanticArchiveReader {
 /// footprint. `default_transaction_read_only` is user-changeable, so privilege
 /// confinement is re-censused here on every connect: a superuser session, an
 /// owner credential, or any inherited extra privilege is a loud refusal.
-fn confine_reader_authority(
-    client: &mut postgres::Client,
-) -> Result<(), SemanticArchiveReaderError> {
+fn confine_reader_authority(client: &mut Client) -> Result<(), SemanticArchiveReaderError> {
     let row = client
         .query_one(READER_SESSION_AUTHORITY_SQL, &[])
         .map_err(|error| database_error("census reader session authority", &error))?;
@@ -489,7 +500,8 @@ fn confine_reader_authority(
 pub fn install_reader_role(
     config: &Config,
 ) -> Result<ReaderRoleDisposition, SemanticArchiveReaderError> {
-    validate_connection_target(config).map_err(|error| connection_target_error(&error))?;
+    postgres_catalog::validate_connection_target(config)
+        .map_err(|error| connection_target_error(&error))?;
     let mut client = crate::current_schema::bounded_config(config)
         .connect(NoTls)
         .map_err(|error| database_error("connect reader role installer", &error))?;
@@ -515,11 +527,11 @@ pub fn install_reader_role(
 }
 
 fn install_reader_role_locked(
-    client: &mut postgres::Client,
+    client: &mut Client,
 ) -> Result<ReaderRoleDisposition, SemanticArchiveReaderError> {
     let mut tx = client
         .build_transaction()
-        .isolation_level(postgres::IsolationLevel::Serializable)
+        .isolation_level(IsolationLevel::Serializable)
         .read_only(false)
         .start()
         .map_err(|error| database_error("begin reader role provisioning", &error))?;
@@ -609,22 +621,22 @@ fn verify_reader_view_identity(
 
 fn decode_committed_tick_status(
     campaign_id: CampaignId,
-    row: &postgres::Row,
+    row: &Row,
 ) -> Result<CommittedTickStatus, SemanticArchiveError> {
-    let stored_campaign: uuid::Uuid = decode(row, 0)?;
+    let stored_campaign: Uuid = archive::decode(row, 0)?;
     if stored_campaign != *campaign_id.as_uuid() {
         return Err(SemanticArchiveError::StoredPageMismatch);
     }
-    let resolve_tick = u64::try_from(decode::<i64>(row, 1)?)
+    let resolve_tick = u64::try_from(archive::decode::<i64>(row, 1)?)
         .ok()
         .filter(|tick| *tick > 0)
         .ok_or(SemanticArchiveError::StoredPageMismatch)?;
-    let envelope_layout_version: i16 = decode(row, 2)?;
+    let envelope_layout_version: i16 = archive::decode(row, 2)?;
     Ok(CommittedTickStatus {
         campaign_id,
         resolve_tick,
         envelope_layout_version,
-        tick_content_hash: decode_digest(row, 3)?,
-        envelope_digest: decode_digest(row, 4)?,
+        tick_content_hash: archive::decode_digest(row, 3)?,
+        envelope_digest: archive::decode_digest(row, 4)?,
     })
 }

@@ -1,18 +1,18 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
-use crate::{
-    national_economy::household_principal,
-    national_household_allocation::{HouseholdBudgetKey, NationalHouseholdAllocation},
-    national_household_time_allocation::NationalHouseholdTimeAllocation,
-};
+use crate::national_household_allocation::{HouseholdBudgetKey, NationalHouseholdAllocation};
+use crate::national_household_time_allocation::NationalHouseholdTimeAllocation;
 
-use babylon_kernel::{
-    content_digest::sha256_of, economic_location::EconomicLocation, geography::CountyGeoid,
-};
+use babylon_kernel::economic_location::EconomicLocation;
+use babylon_kernel::geography::CountyGeoid;
 
 use babylon_material_circuit::{FinalDemandPrincipalId, MAX_MATERIAL_CIRCUIT_ROWS};
 
+use crate::national_economy;
+use babylon_kernel::content_digest;
 use std::collections::{BTreeMap, BTreeSet};
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 
 /// Joint counted quantities; these rows never create individual agents.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -156,7 +156,7 @@ pub enum HouseholdRefinementError {
 }
 
 impl std::fmt::Display for HouseholdRefinementError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         write!(f, "household refinement refused: {self:?}")
     }
 }
@@ -265,7 +265,7 @@ pub(crate) fn refine_parent(
     margins.validate(key == HouseholdBudgetKey::CollectiveResidence)?;
     let location = EconomicLocation::domestic_county(county)
         .map_err(|_| HouseholdRefinementError::SourceRoster)?;
-    let principal = household_principal(location, key);
+    let principal = national_economy::household_principal(location, key);
     children.sort_by_key(|spec| spec.child_tag);
     let mut remaining = margins;
     let mut leaves = Vec::with_capacity(children.len() + 1);
@@ -278,7 +278,7 @@ pub(crate) fn refine_parent(
             county,
             parent_key: key,
             child_tag: Some(child.child_tag),
-            principal_id: FinalDemandPrincipalId::from_bytes(sha256_of(&identity)),
+            principal_id: FinalDemandPrincipalId::from_bytes(content_digest::sha256_of(&identity)),
             margins: child.margins,
         });
     }

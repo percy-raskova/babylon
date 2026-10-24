@@ -3,24 +3,30 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use babylon_persistence::{
-    production_observation::ProductionPhysicalEdge, production_observation::ProductionSnapshot,
-};
+use babylon_persistence::production_observation::{ProductionPhysicalEdge, ProductionSnapshot};
+
 use bevy::asset::RenderAssetUsages;
 use bevy::ecs::system::SystemParam;
 use bevy::mesh::PrimitiveTopology;
 use bevy::prelude::*;
 
-use super::{scene_point, ObserverMapCamera, BASE_HEIGHT, DATA_HEIGHT, MAP_LAYER};
+use super::{ObserverMapCamera, BASE_HEIGHT, DATA_HEIGHT, MAP_LAYER};
 use crate::atlas::CountyAtlas;
 use crate::decision_surface::{DeclaredSurface, SurfaceId};
 use crate::map::SelectedCounty;
+use crate::map_economy_lens::MaterialGoodKey;
 use crate::observer::{ObservationContext, ObserverSession};
+use crate::observer_controls::ControlAvailability;
 use crate::observer_io::ObserverSet;
 use crate::observer_theme as theme;
+use crate::observer_ui::ObserverFontRole;
 use crate::observer_ui::{ObserverFrame, ObserverUiState, ObserverViewport, RoadLayer};
 use crate::production::PrimaryView;
-use crate::production_layout::place_label;
+use crate::production::ProductionNavigation;
+use crate::production_layout;
+use babylon_persistence::production_observation::PhysicalRouteIndex;
+use bevy::camera::visibility::RenderLayers;
+use bevy::window::PrimaryWindow;
 
 #[path = "map_network.rs"]
 mod network;
@@ -98,8 +104,8 @@ fn projected_segments<'a>(
             Some((
                 segment,
                 [
-                    scene_point(from, origin, CONNECTION_HEIGHT),
-                    scene_point(to, origin, CONNECTION_HEIGHT),
+                    super::scene_point(from, origin, CONNECTION_HEIGHT),
+                    super::scene_point(to, origin, CONNECTION_HEIGHT),
                 ],
             ))
         })
@@ -110,9 +116,7 @@ fn disclosed_snapshot<'a>(
     frame: &'a ObserverFrame,
     session: &ObserverSession,
 ) -> Option<&'a ProductionSnapshot> {
-    if crate::observer_controls::inspection_availability(session)
-        != crate::observer_controls::ControlAvailability::Enabled
-    {
+    if crate::observer_controls::inspection_availability(session) != ControlAvailability::Enabled {
         return None;
     }
     frame
@@ -159,7 +163,11 @@ impl CountyAnchors {
                         CountyAnchor {
                             index,
                             name: county.name.to_owned(),
-                            position: scene_point(county.centroid, origin, CONNECTION_HEIGHT),
+                            position: super::scene_point(
+                                county.centroid,
+                                origin,
+                                CONNECTION_HEIGHT,
+                            ),
                         },
                     ))
                 })
@@ -204,7 +212,7 @@ struct RelationshipProjection {
 fn declared_relations(
     snapshot: &ProductionSnapshot,
     selected_site: &str,
-    material: Option<&crate::map_economy_lens::MaterialGoodKey>,
+    material: Option<&MaterialGoodKey>,
 ) -> BTreeMap<RelationKey, (String, String)> {
     crate::material_relations::declared_material_relations(snapshot)
         .filter(|relation| {
@@ -234,7 +242,7 @@ fn county_label(name: &str) -> &str {
 
 fn relation_roads(
     snapshot: &ProductionSnapshot,
-    definitions: &babylon_persistence::production_observation::PhysicalRouteIndex<'_>,
+    definitions: &PhysicalRouteIndex<'_>,
     key: &RelationKey,
     edges: Option<&BTreeMap<&str, &ProductionPhysicalEdge>>,
     origin: Vec2,
@@ -265,7 +273,7 @@ fn project(
     selected: Option<usize>,
     anchors: &CountyAnchors,
     selected_site: Option<&str>,
-    material: Option<&crate::map_economy_lens::MaterialGoodKey>,
+    material: Option<&MaterialGoodKey>,
 ) -> RelationshipProjection {
     let snapshot = disclosed_snapshot(frame, session);
     let mut result = RelationshipProjection {
@@ -278,9 +286,7 @@ fn project(
     else {
         return result;
     };
-    let Ok(definitions) =
-        babylon_persistence::production_observation::PhysicalRouteIndex::try_new(snapshot)
-    else {
+    let Ok(definitions) = PhysicalRouteIndex::try_new(snapshot) else {
         result.available = false;
         return result;
     };
@@ -464,7 +470,7 @@ fn spawn_road_batch(
         } else {
             Vec3::ZERO
         }),
-        bevy::camera::visibility::RenderLayers::layer(MAP_LAYER),
+        RenderLayers::layer(MAP_LAYER),
         Pickable::IGNORE,
         RelationshipEntity,
         batch,
@@ -530,7 +536,7 @@ fn segment(
         Transform::from_translation((from + to) * 0.5)
             .looking_to(delta, Vec3::Y)
             .with_scale(Vec3::new(1.8, 1.8, delta.length())),
-        bevy::camera::visibility::RenderLayers::layer(MAP_LAYER),
+        RenderLayers::layer(MAP_LAYER),
         Pickable::IGNORE,
         RelationshipEntity,
         DeclaredSurface::new(SurfaceId::ObserverProduction),
@@ -605,7 +611,7 @@ fn label_bundle(caption: String, anchor: Option<Vec3>, order: usize, color: Colo
             ..default()
         },
         TextColor(theme::PAPER),
-        crate::observer_ui::ObserverFontRole::Body,
+        ObserverFontRole::Body,
     )
 }
 
@@ -615,7 +621,7 @@ struct RelationshipObservation<'w> {
     session: Res<'w, ObserverSession>,
     selected: Res<'w, SelectedCounty>,
     anchors: Res<'w, CountyAnchors>,
-    navigation: Res<'w, crate::production::ProductionNavigation>,
+    navigation: Res<'w, ProductionNavigation>,
     ui: Res<'w, ObserverUiState>,
     view: Res<'w, PrimaryView>,
 }
@@ -906,7 +912,7 @@ struct LabelPlacement<'w, 's> {
     ui: Res<'w, ObserverUiState>,
     viewport: Res<'w, ObserverViewport>,
     scale: Res<'w, UiScale>,
-    windows: Query<'w, 's, &'static Window, With<bevy::window::PrimaryWindow>>,
+    windows: Query<'w, 's, &'static Window, With<PrimaryWindow>>,
     camera: Query<'w, 's, (&'static Camera, &'static Transform), With<ObserverMapCamera>>,
     labels: RelationshipLabels<'w, 's>,
 }
@@ -947,7 +953,9 @@ fn place_labels(mut placement: LabelPlacement) {
                         camera
                             .world_to_viewport(&GlobalTransform::from(*transform), anchor)
                             .ok()
-                            .and_then(|anchor| place_label(anchor, bounds, size, &occupied))
+                            .and_then(|anchor| {
+                                production_layout::place_label(anchor, bounds, size, &occupied)
+                            })
                     } else {
                         Some(Rect::from_corners(
                             Vec2::new(bounds.max.x - size.x - 8.0, bounds.min.y + 8.0),
@@ -991,12 +999,17 @@ pub(super) fn install(app: &mut App) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::map_economy_lens::MaterialGoodKey;
+    use crate::map_economy_lens::MaterialLensKind;
     use crate::observer::Perspective;
-    use babylon_persistence::{
-        identity::CampaignId, observer_reader::ObserverEconomySnapshot,
-        observer_reader::ObserverVisibility, production_observation::ProductionInput,
-        production_observation::ProductionSite,
-    };
+    use crate::observer::SessionPhase;
+    use crate::observer_ui::ObserverDisclosure;
+    use crate::production::ProductionNavigation;
+    use babylon_persistence::identity::CampaignId;
+    use babylon_persistence::observer_reader::{ObserverEconomySnapshot, ObserverVisibility};
+    use babylon_persistence::production_observation::{ProductionInput, ProductionSite};
+    use serde_json::Value;
+    use uuid::Uuid;
 
     #[test]
     #[allow(
@@ -1004,7 +1017,7 @@ mod tests {
         reason = "Probe degrees are range-checked before E7 rounding; expected projected coordinates use the renderer's f32 display precision."
     )]
     fn captured_geographic_shapes_use_the_atlas_projection_and_reject_invalid_coordinates() {
-        let fixture: serde_json::Value = serde_json::from_str(include_str!(
+        let fixture: Value = serde_json::from_str(include_str!(
             "../tests/fixtures/michigan_atlas_land_probes.json"
         ))
         .unwrap();
@@ -1081,7 +1094,7 @@ mod tests {
     }
 
     pub(super) fn fixture() -> (ObserverSession, ObserverFrame, CountyAnchors) {
-        let mut session = ObserverSession::new(CampaignId::from_uuid(uuid::Uuid::from_u128(1)));
+        let mut session = ObserverSession::new(CampaignId::from_uuid(Uuid::from_u128(1)));
         session.ready(3, Some("committed".into()));
         assert!(session.installed(&session.context()));
         let supplier = site("a", "26163");
@@ -1224,11 +1237,10 @@ mod tests {
     }
 
     fn set_captured_shared_path(snapshot: &mut ProductionSnapshot) {
-        use babylon_persistence::{
-            production_observation::ProductionPhysicalEdge,
-            production_observation::ProductionRoute,
-            production_observation::ProductionRouteTransport,
+        use babylon_persistence::production_observation::{
+            ProductionPhysicalEdge, ProductionRoute, ProductionRouteTransport,
         };
+
         snapshot.physical_edges = vec![ProductionPhysicalEdge {
             id: "road".into(),
             shape_e7: vec![[-830_000_000, 423_000_000], [-829_900_000, 423_100_000]],
@@ -1281,7 +1293,7 @@ mod tests {
         let (session, mut frame, anchors) = fixture();
         let snapshot = frame.0.as_mut().unwrap().production.as_mut().unwrap();
         set_captured_shared_path(snapshot);
-        let filter = crate::map_economy_lens::MaterialGoodKey {
+        let filter = MaterialGoodKey {
             good_id: "steel".into(),
             unit_id: "kg".into(),
         };
@@ -1304,7 +1316,7 @@ mod tests {
             projected.rows[0].physical[0].0,
             RoadSegment([[-830_000_000, 423_000_000], [-829_900_000, 423_100_000]])
         );
-        let other_unit = crate::map_economy_lens::MaterialGoodKey {
+        let other_unit = MaterialGoodKey {
             unit_id: "tonne".into(),
             ..filter.clone()
         };
@@ -1394,22 +1406,22 @@ mod tests {
                 splash_visible: false,
                 road_layer: RoadLayer::SelectedPaths,
                 lens: crate::map_economy_lens::MapLens::Material {
-                    kind: crate::map_economy_lens::MaterialLensKind::OnHand,
-                    good: Some(crate::map_economy_lens::MaterialGoodKey {
+                    kind: MaterialLensKind::OnHand,
+                    good: Some(MaterialGoodKey {
                         good_id: "steel".into(),
                         unit_id: "kg".into(),
                     }),
                 },
                 ..default()
             })
-            .init_resource::<crate::production::ProductionNavigation>()
+            .init_resource::<ProductionNavigation>()
             .init_resource::<RelationshipScope>()
             .init_resource::<Assets<Mesh>>()
             .init_resource::<Assets<StandardMaterial>>()
             .add_systems(Startup, setup)
             .add_systems(Update, rebuild);
         app.world_mut()
-            .resource_mut::<crate::production::ProductionNavigation>()
+            .resource_mut::<ProductionNavigation>()
             .selected_site = Some("a".into());
         network::install(&mut app);
         app.init_resource::<ObserverViewport>()
@@ -1441,7 +1453,7 @@ mod tests {
         };
         app.world_mut().resource_mut::<SelectedCounty>().0 = None;
         app.world_mut()
-            .resource_mut::<crate::production::ProductionNavigation>()
+            .resource_mut::<ProductionNavigation>()
             .selected_site = None;
         app.update();
         assert!(
@@ -1465,7 +1477,7 @@ mod tests {
             }));
         assert!(app
             .world()
-            .resource::<crate::production::ProductionNavigation>()
+            .resource::<ProductionNavigation>()
             .selected_site
             .is_none());
     }
@@ -1474,7 +1486,7 @@ mod tests {
     fn road_layer_batches_deduplicated_network_and_keeps_selected_paths_highlighted() {
         let mut app = road_layer_app();
         app.world_mut()
-            .resource_mut::<crate::production::ProductionNavigation>()
+            .resource_mut::<ProductionNavigation>()
             .selected_site = None;
         app.update();
         assert!(road_batch_vertices(&mut app).is_empty());
@@ -1483,7 +1495,7 @@ mod tests {
         assert_eq!(road_batch_vertices(&mut app), [(RoadBatch::Captured, 24)]);
         app.world_mut().resource_mut::<ObserverUiState>().road_layer = RoadLayer::SelectedPaths;
         app.world_mut()
-            .resource_mut::<crate::production::ProductionNavigation>()
+            .resource_mut::<ProductionNavigation>()
             .selected_site = Some("a".into());
         app.update();
         assert_eq!(road_batch_vertices(&mut app), [(RoadBatch::Selected, 18)]);
@@ -1551,19 +1563,16 @@ mod tests {
             );
             match invalid {
                 "loading" => {
-                    app.world_mut().resource_mut::<ObserverSession>().phase =
-                        crate::observer::SessionPhase::Loading;
+                    app.world_mut().resource_mut::<ObserverSession>().phase = SessionPhase::Loading;
                 }
                 "failed" => {
-                    app.world_mut().resource_mut::<ObserverSession>().phase =
-                        crate::observer::SessionPhase::Failed;
+                    app.world_mut().resource_mut::<ObserverSession>().phase = SessionPhase::Failed;
                 }
                 "preview" => {
                     app.world_mut()
                         .resource_mut::<ObserverSession>()
                         .set_perspective(Perspective::PlayerKnowledge);
-                    app.world_mut().resource_mut::<ObserverSession>().phase =
-                        crate::observer::SessionPhase::Ready;
+                    app.world_mut().resource_mut::<ObserverSession>().phase = SessionPhase::Ready;
                     app.world_mut()
                         .resource_mut::<ObserverFrame>()
                         .0
@@ -1585,7 +1594,7 @@ mod tests {
                         .0
                         .as_mut()
                         .unwrap()
-                        .campaign_id = uuid::Uuid::from_u128(99).to_string();
+                        .campaign_id = Uuid::from_u128(99).to_string();
                 }
                 "missing" => app.world_mut().resource_mut::<ObserverFrame>().0 = None,
                 "empty geometry" => app
@@ -1743,7 +1752,7 @@ mod tests {
         session.set_perspective(Perspective::FullObserver);
         let (_, valid, _) = fixture();
         frame = valid;
-        frame.0.as_mut().unwrap().campaign_id = uuid::Uuid::from_u128(9).to_string();
+        frame.0.as_mut().unwrap().campaign_id = Uuid::from_u128(9).to_string();
         assert!(
             project(&frame, &session, Some(1), &anchors, Some("a"), None)
                 .rows
@@ -1822,7 +1831,7 @@ mod tests {
         assert_eq!(app.world().resource::<SelectedCounty>().0, Some(1));
         *app.world_mut().resource_mut::<PrimaryView>() = PrimaryView::Map;
         app.world_mut().resource_mut::<ObserverUiState>().disclosure =
-            Some(crate::observer_ui::ObserverDisclosure::Time);
+            Some(ObserverDisclosure::Time);
         app.world_mut()
             .get_mut::<Interaction>(button)
             .unwrap()

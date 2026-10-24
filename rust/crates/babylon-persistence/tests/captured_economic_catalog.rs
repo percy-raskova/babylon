@@ -1,25 +1,35 @@
 //! Source-only economic authority, independently of the initial mutable checkpoint.
 use std::collections::BTreeSet;
 
-use babylon_graph::{stable_element::StableElementKey, stable_state::StableGraphStateRows};
-use babylon_kernel::content_digest::sha256_of;
+use babylon_graph::stable_element::StableElementKey;
+use babylon_graph::stable_state::StableGraphStateRows;
+
 use babylon_persistence::economic_catalog::{
     CapturedEconomicCatalog, CatalogCapacity, SourceArtifact, SourceArtifactKind as Kind,
 };
 
 #[path = "fixtures/national_capture.rs"]
 mod national_capture;
-use national_capture::input;
+use babylon_kernel::content_digest;
+use babylon_kernel::replay::ReplaySeed;
+use babylon_kernel::replay::ReplaySessionId;
+use babylon_persistence::economic_content::EconomicContentAdmission;
+use babylon_persistence::material_runtime::MaterialRuntimeFoundation;
+use babylon_persistence::national_economy::AidChildCapture;
+use babylon_persistence::national_economy::NationalAidCapture;
 
 #[test]
 fn capture_retains_sources_once_and_regenerates_the_exact_native_opening() {
-    let supplied = input();
+    let supplied = national_capture::input();
     let source_bytes: usize = supplied.sources.iter().map(|row| row.bytes().len()).sum();
     let catalog = CapturedEconomicCatalog::capture(supplied, None).unwrap();
     // Framing holds only source identities, compiler selection and exact source blobs.
     // There is no per-firm or generated global-state serialization inside this envelope.
     assert!(catalog.canonical_bytes().len() < source_bytes + 4096);
-    assert_eq!(catalog.digest(), sha256_of(catalog.canonical_bytes()));
+    assert_eq!(
+        catalog.digest(),
+        content_digest::sha256_of(catalog.canonical_bytes())
+    );
     assert_eq!(catalog.compiler_version(), "national-world-v5");
     let mut obsolete = catalog.canonical_bytes().to_vec();
     let compiler = b"national-world-v5";
@@ -29,7 +39,7 @@ fn capture_retains_sources_once_and_regenerates_the_exact_native_opening() {
         .unwrap();
     obsolete[offset + compiler.len() - 1] = b'1';
     assert_eq!(
-        CapturedEconomicCatalog::decode(&obsolete, sha256_of(&obsolete)),
+        CapturedEconomicCatalog::decode(&obsolete, content_digest::sha256_of(&obsolete)),
         Err(babylon_persistence::economic_catalog::EconomicCatalogError::CompilerVersion)
     );
     assert_eq!(catalog.opening().sites.len(), 60_634);
@@ -56,16 +66,13 @@ fn capture_retains_sources_once_and_regenerates_the_exact_native_opening() {
     let expected_opening = catalog.opening().clone();
     let original = catalog
         .create_foundation(
-            babylon_kernel::replay::ReplaySessionId::try_from("national-captured-contract")
-                .unwrap(),
-            babylon_kernel::replay::ReplaySeed::new(319),
+            ReplaySessionId::try_from("national-captured-contract").unwrap(),
+            ReplaySeed::new(319),
         )
         .unwrap();
     let graph_bytes = original.graph_foundation().canonical_bytes().len();
-    let graph_digest = sha256_of(original.graph_foundation().canonical_bytes());
-    let original =
-        babylon_persistence::economic_content::EconomicContentAdmission::from_foundation(original)
-            .unwrap();
+    let graph_digest = content_digest::sha256_of(original.graph_foundation().canonical_bytes());
+    let original = EconomicContentAdmission::from_foundation(original).unwrap();
     let expected_nodes = 3_144
         + expected_opening.sites.len()
         + expected_opening.households.len()
@@ -92,7 +99,7 @@ fn capture_retains_sources_once_and_regenerates_the_exact_native_opening() {
         original.initial_register().digest(),
         original.digest(),
     );
-    let restored = babylon_persistence::material_runtime::MaterialRuntimeFoundation::decode(
+    let restored = MaterialRuntimeFoundation::decode(
         &original.export_canonical_bytes().unwrap(),
         original.digest(),
     )
@@ -113,8 +120,8 @@ fn capture_retains_sources_once_and_regenerates_the_exact_native_opening() {
 // These Designed children refine captured household budgets. Recipient classes
 // have no fabricated workplace; the employed donor reuses its staffing node.
 fn admitted_aid_class_count(
-    admitted: &babylon_persistence::economic_content::EconomicContentAdmission,
-    aid: &babylon_persistence::national_economy::NationalAidCapture,
+    admitted: &EconomicContentAdmission,
+    aid: &NationalAidCapture,
 ) -> usize {
     let opening = admitted.view().opening;
     let rows = admitted.foundation_graph().rows();
@@ -186,10 +193,7 @@ fn admitted_aid_class_count(
     extra_classes.len()
 }
 
-fn assert_inactive_recipient(
-    child: &babylon_persistence::national_economy::AidChildCapture,
-    rows: &StableGraphStateRows,
-) {
+fn assert_inactive_recipient(child: &AidChildCapture, rows: &StableGraphStateRows) {
     let class = node_name(&child.class_subject);
     assert_eq!((child.employed, child.reserve), (0, 0));
     assert_eq!((child.persons, child.households, child.inactive), (4, 4, 4));
@@ -238,20 +242,20 @@ fn node_name(key: &StableElementKey) -> &str {
 
 #[test]
 fn absent_duplicate_or_forged_sources_never_fall_back_to_current_files() {
-    let mut missing = input();
+    let mut missing = national_capture::input();
     missing
         .sources
         .retain(|source| source.kind() != Kind::NationalCohorts);
     assert!(CapturedEconomicCatalog::capture(missing, None).is_err());
-    let mut absent_households = input();
+    let mut absent_households = national_capture::input();
     absent_households
         .sources
         .retain(|source| source.kind() != Kind::NationalHouseholds);
     assert!(CapturedEconomicCatalog::capture(absent_households, None).is_err());
-    let mut duplicate = input();
+    let mut duplicate = national_capture::input();
     duplicate.sources.push(duplicate.sources[0].clone());
     assert!(CapturedEconomicCatalog::capture(duplicate, None).is_err());
-    let mut changed = input();
+    let mut changed = national_capture::input();
     let index = changed
         .sources
         .iter()

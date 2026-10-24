@@ -1,5 +1,45 @@
-use super::*;
-use crate::*;
+use crate::AccountId;
+use crate::AidBook;
+use crate::AttendancePlan;
+use crate::CapacitySupply;
+use crate::CashAccount;
+use crate::CircuitAccounting;
+use crate::CommodityDefinition;
+use crate::CorridorId;
+use crate::EmploymentTerms;
+use crate::FinalDemandOrder;
+use crate::FinalDemandPrincipal;
+use crate::FinalDemandPrincipalId;
+use crate::FinancialInstitutions;
+use crate::GoodId;
+use crate::HistoricalCostBook;
+use crate::HouseholdCohort;
+use crate::HouseholdNeed;
+use crate::HouseholdNeedBasis;
+use crate::HouseholdPurchasePolicy;
+use crate::HouseholdStock;
+use crate::HouseholdTimeAccounting;
+use crate::InventoryRow;
+use crate::LaborCapacityRow;
+use crate::LocalRetailFulfillmentReceipt;
+use crate::LogisticsNodeId;
+use crate::MaterialCircuitError;
+use crate::MaterialCircuitState;
+use crate::MerchantHandling;
+use crate::MerchantHandlingCoefficient;
+use crate::MerchantRole;
+use crate::MonetaryBook;
+use crate::MonetaryCircuit;
+use crate::OrderId;
+use crate::OutboundOrderId;
+use crate::PricePolicy;
+use crate::PurchaseEscrow;
+use crate::RecurringEconomy;
+use crate::SellerOffer;
+use crate::SiteId;
+use crate::SiteLogisticsNode;
+use crate::StockCarryingValue;
+use crate::UnitId;
 use babylon_kernel::currency::Currency;
 
 fn cash(n: i128) -> Currency {
@@ -40,7 +80,7 @@ fn recurring(stock: u64) -> RecurringEconomy {
             principal_id: h(),
             good_id: g(),
             unit_id: u(),
-            basis: crate::HouseholdNeedBasis::Persons,
+            basis: HouseholdNeedBasis::Persons,
             units_per_basis: 1,
         }],
         household_purchases: vec![HouseholdPurchasePolicy {
@@ -85,10 +125,10 @@ fn opening_economy(household_cash: i128, stock: u64) -> MonetaryCircuit {
     ])
     .unwrap();
     MonetaryCircuit {
-        aid: crate::AidBook::default(),
+        aid: AidBook::default(),
 
-        household_time: crate::HouseholdTimeAccounting::NotModeled,
-        financial: crate::FinancialInstitutions::empty(),
+        household_time: HouseholdTimeAccounting::NotModeled,
+        financial: FinancialInstitutions::empty(),
         member_labor: vec![crate::MemberLaborCapacityRow {
             member_id: crate::StaffingMemberId::from_bytes(s().as_bytes()),
             period: 1,
@@ -124,7 +164,7 @@ fn opening_economy(household_cash: i128, stock: u64) -> MonetaryCircuit {
 
 fn opening(household_cash: i128, stock: u64) -> MaterialCircuitState {
     MaterialCircuitState {
-        capacity_supply: crate::CapacitySupply::FiniteSchedule,
+        capacity_supply: CapacitySupply::FiniteSchedule,
         period: 1,
         accounting: CircuitAccounting::Monetary(Box::new(opening_economy(household_cash, stock))),
         site_logistics_nodes: vec![SiteLogisticsNode {
@@ -220,7 +260,7 @@ fn handoff(
 fn only_paid_current_cash_admits_household_orders() {
     let mut unpaid = opening(0, 0);
     let mut transfers = vec![];
-    let requests = admit_household_orders(&mut unpaid, &mut transfers).unwrap();
+    let requests = crate::admit_household_orders(&mut unpaid, &mut transfers).unwrap();
     assert_eq!(
         (
             requests[0].required_quantity,
@@ -232,7 +272,7 @@ fn only_paid_current_cash_admits_household_orders() {
     assert!(unpaid.final_demand_orders.is_empty() && transfers.is_empty());
     let mut paid = opening(0, 0);
     crate::payments::fund_attendance(&mut paid, &mut transfers, &mut vec![]).unwrap();
-    let requests = admit_household_orders(&mut paid, &mut transfers).unwrap();
+    let requests = crate::admit_household_orders(&mut paid, &mut transfers).unwrap();
     assert_eq!(requests[0].admitted_quantity, 4);
     assert_eq!(
         economy(&mut paid)
@@ -260,9 +300,9 @@ fn only_paid_current_cash_admits_household_orders() {
 fn fulfillment_credits_stock_expiry_refunds_and_consumption_preserves_need() {
     let mut state = opening(16, 0);
     let mut transfers = vec![];
-    let mut demands = admit_household_orders(&mut state, &mut transfers).unwrap();
+    let mut demands = crate::admit_household_orders(&mut state, &mut transfers).unwrap();
     let receipt = handoff(&mut state, demands[0].order_id, 2);
-    complete_household_orders(&mut state, &mut demands, &[receipt], &mut transfers).unwrap();
+    crate::complete_household_orders(&mut state, &mut demands, &[receipt], &mut transfers).unwrap();
     assert_eq!(
         (demands[0].fulfilled_quantity, demands[0].expired_quantity),
         (2, 2)
@@ -281,7 +321,7 @@ fn fulfillment_credits_stock_expiry_refunds_and_consumption_preserves_need() {
         economy(&mut state).book.total_cash_and_reserves().unwrap(),
         cash(32)
     );
-    let consumed = consume_household_needs(&mut state).unwrap();
+    let consumed = crate::consume_household_needs(&mut state).unwrap();
     assert_eq!(
         (
             consumed[0].required_quantity,
@@ -298,7 +338,7 @@ fn fulfillment_credits_stock_expiry_refunds_and_consumption_preserves_need() {
     );
     let closed = state.clone();
     assert_eq!(
-        consume_household_needs(&mut state),
+        crate::consume_household_needs(&mut state),
         Err(MaterialCircuitError::PeriodInvariant)
     );
     assert_eq!(state, closed);
@@ -310,7 +350,7 @@ fn withdrawn_orders_do_not_erase_unemployed_residents_needs() {
     state.labor[0].available = 0;
     economy(&mut state).member_labor[0].available_hours = 0;
     household_rows(&mut state).household_purchases[0].enabled = false;
-    let demands = admit_household_orders(&mut state, &mut vec![]).unwrap();
+    let demands = crate::admit_household_orders(&mut state, &mut vec![]).unwrap();
     assert_eq!(
         (
             demands[0].required_quantity,
@@ -320,7 +360,7 @@ fn withdrawn_orders_do_not_erase_unemployed_residents_needs() {
         ),
         (4, 2, 0, 0)
     );
-    let consumed = consume_household_needs(&mut state).unwrap();
+    let consumed = crate::consume_household_needs(&mut state).unwrap();
     assert_eq!(
         (consumed[0].consumed_quantity, consumed[0].unmet_quantity),
         (2, 2)
@@ -332,18 +372,18 @@ fn withdrawn_orders_do_not_erase_unemployed_residents_needs() {
 fn regenerated_orders_have_new_ids_and_same_period_retry_is_refused() {
     let mut state = opening(16, 0);
     let mut transfers = vec![];
-    let mut first = admit_household_orders(&mut state, &mut transfers).unwrap();
+    let mut first = crate::admit_household_orders(&mut state, &mut transfers).unwrap();
     let admitted = state.clone();
     assert_eq!(
-        admit_household_orders(&mut state, &mut transfers),
+        crate::admit_household_orders(&mut state, &mut transfers),
         Err(MaterialCircuitError::PeriodInvariant)
     );
     assert_eq!(state, admitted);
-    complete_household_orders(&mut state, &mut first, &[], &mut transfers).unwrap();
-    consume_household_needs(&mut state).unwrap();
+    crate::complete_household_orders(&mut state, &mut first, &[], &mut transfers).unwrap();
+    crate::consume_household_needs(&mut state).unwrap();
     state.period = 2;
     household_rows(&mut state).attendance[0].period = 2;
-    let second = admit_household_orders(&mut state, &mut transfers).unwrap();
+    let second = crate::admit_household_orders(&mut state, &mut transfers).unwrap();
     assert_ne!(first[0].order_id, second[0].order_id);
     assert_eq!(second[0].admitted_quantity, 4);
 }
@@ -352,14 +392,17 @@ fn regenerated_orders_have_new_ids_and_same_period_retry_is_refused() {
 fn malformed_or_repeated_handoffs_cannot_credit_stock_or_move_money() {
     let mut state = opening(16, 0);
     let mut transfers = vec![];
-    let mut demands = admit_household_orders(&mut state, &mut transfers).unwrap();
+    let mut demands = crate::admit_household_orders(&mut state, &mut transfers).unwrap();
     let receipt = handoff(&mut state, demands[0].order_id, 2);
     let before = (state.clone(), demands.clone(), transfers.clone());
     let mut wrong = receipt.clone();
     wrong.quantity = 3;
-    assert!(complete_household_orders(&mut state, &mut demands, &[wrong], &mut transfers).is_err());
+    assert!(
+        crate::complete_household_orders(&mut state, &mut demands, &[wrong], &mut transfers)
+            .is_err()
+    );
     assert_eq!((state.clone(), demands.clone(), transfers.clone()), before);
-    assert!(complete_household_orders(
+    assert!(crate::complete_household_orders(
         &mut state,
         &mut demands,
         &[receipt.clone(), receipt.clone()],
@@ -367,7 +410,7 @@ fn malformed_or_repeated_handoffs_cannot_credit_stock_or_move_money() {
     )
     .is_err());
     assert_eq!((state.clone(), demands.clone(), transfers.clone()), before);
-    complete_household_orders(
+    crate::complete_household_orders(
         &mut state,
         &mut demands,
         std::slice::from_ref(&receipt),
@@ -376,7 +419,8 @@ fn malformed_or_repeated_handoffs_cannot_credit_stock_or_move_money() {
     .unwrap();
     let after = (state.clone(), demands.clone(), transfers.clone());
     assert!(
-        complete_household_orders(&mut state, &mut demands, &[receipt], &mut transfers).is_err()
+        crate::complete_household_orders(&mut state, &mut demands, &[receipt], &mut transfers)
+            .is_err()
     );
     assert_eq!((state, demands, transfers), after);
 }
@@ -408,11 +452,12 @@ fn finite_preexisting_household_order_is_credited_but_not_expired() {
         fulfilled: 0,
     });
     let mut transfers = vec![];
-    let mut demands = admit_household_orders(&mut state, &mut transfers).unwrap();
+    let mut demands = crate::admit_household_orders(&mut state, &mut transfers).unwrap();
     assert_eq!(demands[0].admitted_quantity, 2);
     let old = handoff(&mut state, id, 1);
     let new = handoff(&mut state, demands[0].order_id, 1);
-    complete_household_orders(&mut state, &mut demands, &[old, new], &mut transfers).unwrap();
+    crate::complete_household_orders(&mut state, &mut demands, &[old, new], &mut transfers)
+        .unwrap();
     assert_eq!(household_rows(&mut state).household_stocks[0].quantity, 2);
     assert_eq!(state.final_demand_orders.len(), 1);
     assert_eq!(state.final_demand_orders[0].order_id, id);
@@ -438,7 +483,7 @@ fn missing_or_overflowing_needs_and_invalid_prices_are_refused() {
     );
     let before = state.clone();
     assert_eq!(
-        admit_household_orders(&mut state, &mut vec![]),
+        crate::admit_household_orders(&mut state, &mut vec![]),
         Err(MaterialCircuitError::Arithmetic)
     );
     assert_eq!(state, before);
@@ -484,7 +529,7 @@ fn one_household_budget_is_shared_in_canonical_need_order() {
         principal_id: h(),
         good_id: other,
         unit_id: u(),
-        basis: crate::HouseholdNeedBasis::Persons,
+        basis: HouseholdNeedBasis::Persons,
         units_per_basis: 1,
     });
     rows.household_purchases.insert(
@@ -507,9 +552,9 @@ fn one_household_budget_is_shared_in_canonical_need_order() {
         pricing: PricePolicy::Fixed,
     });
     let mut reordered = state.clone();
-    canonicalize(household_rows(&mut reordered));
-    let first = admit_household_orders(&mut state, &mut vec![]).unwrap();
-    let second = admit_household_orders(&mut reordered, &mut vec![]).unwrap();
+    crate::canonicalize(household_rows(&mut reordered));
+    let first = crate::admit_household_orders(&mut state, &mut vec![]).unwrap();
+    let second = crate::admit_household_orders(&mut reordered, &mut vec![]).unwrap();
     assert_eq!(first, second);
     assert_eq!(
         first
@@ -530,10 +575,10 @@ fn one_household_budget_is_shared_in_canonical_need_order() {
 #[test]
 fn consumption_cannot_skip_an_unresolved_generated_order() {
     let mut state = opening(16, 0);
-    admit_household_orders(&mut state, &mut vec![]).unwrap();
+    crate::admit_household_orders(&mut state, &mut vec![]).unwrap();
     let before = state.clone();
     assert_eq!(
-        consume_household_needs(&mut state),
+        crate::consume_household_needs(&mut state),
         Err(MaterialCircuitError::PurchaseInvariant)
     );
     assert_eq!(state, before);

@@ -1,13 +1,23 @@
 //! Actual replay receipts exercise the observer fold, including non-Wayne terms.
-use super::*;
+use super::audit;
+use super::audit::{Accepted, Audit, Refusal};
+use crate::identity::CampaignId;
+use crate::observer_reader::CommittedMaterialReceipts;
 use crate::organizer_aid_fixture as fixture;
+use crate::runtime_session::OrganizerSnapshot;
 use babylon_bsl::structural_verbs::CollectingSink;
+use babylon_material_circuit::CircuitAccounting;
 use babylon_material_circuit::HouseholdTimeAccounting;
-use babylon_practice_contract::{preview_organizer, OrganizerOutcome, OrganizerPartnerPolicy};
+use babylon_practice_contract::{
+    OrganizerAidKind, OrganizerChoice, OrganizerCommitment, OrganizerPreview,
+};
+use babylon_practice_contract::{OrganizerOutcome, OrganizerPartnerPolicy};
+use fixture::Session;
 use std::sync::Arc;
+use uuid::Uuid;
 
-fn snapshot(session: &fixture::Session) -> OrganizerSnapshot {
-    material_disclosure(session.material(), session.duration()).unwrap()
+fn snapshot(session: &Session) -> OrganizerSnapshot {
+    audit::material_disclosure(session.material(), session.duration()).unwrap()
 }
 fn start(
     routed: bool,
@@ -15,7 +25,7 @@ fn start(
     policy: OrganizerPartnerPolicy,
     hours: u64,
 ) -> (
-    fixture::Session,
+    Session,
     Audit,
     OrganizerSnapshot,
     OrganizerPreview,
@@ -42,7 +52,7 @@ fn start(
         OrganizerChoice::LocalAid
     };
     let commitment = fixture::commitment(&session, choice);
-    let preview = preview_organizer(
+    let preview = babylon_practice_contract::preview_organizer(
         session.material().organizer_config().unwrap(),
         session.material().organizer_state().unwrap(),
         &commitment.command,
@@ -53,7 +63,7 @@ fn start(
     (session, audit, before, preview, commitment)
 }
 fn advance(
-    session: &mut fixture::Session,
+    session: &mut Session,
     accepted: Option<&OrganizerCommitment>,
 ) -> (CommittedMaterialReceipts, OrganizerSnapshot) {
     let candidate = fixture::prepare(session, accepted);
@@ -73,7 +83,7 @@ fn advance(
     };
     (
         CommittedMaterialReceipts {
-            campaign_id: crate::identity::CampaignId::from_uuid(uuid::Uuid::from_bytes(
+            campaign_id: CampaignId::from_uuid(Uuid::from_bytes(
                 session.material().organizer_config().unwrap().campaign_id,
             )),
             identity,

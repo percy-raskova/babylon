@@ -1,6 +1,7 @@
 //! Michigan controls enter the same initialization shape as national campaigns.
 use babylon_kernel::currency::Currency;
-use babylon_persistence::economic_catalog::{import_michigan_opening, CatalogAccounting};
+use babylon_persistence::economic_catalog;
+use babylon_persistence::economic_catalog::CatalogAccounting;
 use babylon_persistence::michigan_material::{MichiganDeliveryPreset, MichiganMaterialCatalog};
 
 #[test]
@@ -16,7 +17,7 @@ fn control_import_preserves_exact_goods_orders_and_staffing() {
             .unwrap()
             .with_preset(preset)
             .unwrap();
-        let opening = import_michigan_opening(&catalog).unwrap();
+        let opening = economic_catalog::import_michigan_opening(&catalog).unwrap();
         assert_eq!(opening.accounting, CatalogAccounting::PhysicalControl);
         assert!(opening.households.is_empty());
         assert!(opening.employment.is_empty());
@@ -95,9 +96,9 @@ fn source_only_control_capture_round_trips_without_a_derived_material_blob() {
 fn captured_control_restarts_and_advances_through_the_same_three_period_circuit() {
     use babylon_bsl::structural_verbs::CollectingSink;
     use babylon_kernel::replay::{ReplaySeed, ReplaySessionId};
-    use babylon_persistence::{
-        economic_catalog::CapturedEconomicCatalog, material_runtime::MaterialRuntimeFoundation,
-    };
+    use babylon_persistence::economic_catalog::CapturedEconomicCatalog;
+    use babylon_persistence::material_runtime::MaterialRuntimeFoundation;
+
     use babylon_practice_contract::OrderedPracticeActionBatch;
     use babylon_tick::replay_session::ReplayCommitDisposition;
     let control = MichiganMaterialCatalog::from_defines_toml(include_str!(

@@ -4,12 +4,30 @@ use babylon_material_circuit::{
     OrderAccessMode, ProcessOutput, ProductionCommitment, RouteId, RouteStage, RouteStageCapacity,
     SiteLogisticsNode, SupplierRoute, SupplierTransport,
 };
-use babylon_tick::material_world::{decode_material_receipts, MaterialWorldRegister};
+use babylon_tick::material_world::MaterialWorldRegister;
 
-use super::*;
-use crate::{michigan_content::MichiganContentPreset, michigan_material::MichiganDeliveryPreset};
+use super::super::ProductionProjectionError;
+use super::balance;
+use super::balance::{CompletedMaterialBalance, ProductionMaterialBalanceRow};
+use crate::michigan_content::MichiganContentPreset;
+use crate::michigan_material::MichiganDeliveryPreset;
+use babylon_material_circuit::{
+    GoodId, MaterialCircuitState, OrderId, OrderRow, ProcessId, SiteId, UnitId,
+};
+use babylon_tick::material_world::MaterialTickReceipts;
+use std::collections::BTreeSet;
+
+use super::super::history::OrderHistory;
+use crate::michigan_economy;
 use babylon_bsl::structural_verbs::CollectingSink;
+use babylon_material_circuit::AidBook;
+use babylon_material_circuit::FinancialInstitutions;
+use babylon_material_circuit::HouseholdTimeAccounting;
+use babylon_material_circuit::InstallationDecisionReceipt;
+use babylon_material_circuit::LaborCompensation;
+use babylon_material_circuit::StaffingMemberId;
 use babylon_practice_contract::OrderedPracticeActionBatch;
+use babylon_tick::material_world;
 use babylon_tick::replay_session::ReplayCommitDisposition;
 
 type Pair = (
@@ -56,13 +74,16 @@ fn pair(state: MaterialCircuitState) -> Pair {
     (
         opening.state().clone(),
         next.register().state().clone(),
-        decode_material_receipts(next.receipt_bytes()).unwrap(),
+        material_world::decode_material_receipts(next.receipt_bytes()).unwrap(),
     )
 }
 
 fn project(pair: &Pair) -> Result<Option<CompletedMaterialBalance>, ProductionProjectionError> {
-    project_with_labels(&pair.1, Some(&pair.0), Some(&pair.2), |good, unit| {
-        Some((digest_hex(&good.as_bytes()), digest_hex(&unit.as_bytes())))
+    balance::project_with_labels(&pair.1, Some(&pair.0), Some(&pair.2), |good, unit| {
+        Some((
+            michigan_economy::digest_hex(&good.as_bytes()),
+            michigan_economy::digest_hex(&unit.as_bytes()),
+        ))
     })
 }
 
@@ -185,7 +206,7 @@ fn foundation_is_absent_but_committed_quiet_and_empty_accounts_are_present() {
         kind: CommodityKind::Storable { grams_per_unit: 1 },
     });
     assert_eq!(
-        project_with_labels(&state, None, None, |_, _| None),
+        balance::project_with_labels(&state, None, None, |_, _| None),
         Ok(None)
     );
     let balance = complete(&pair(state));
@@ -211,7 +232,7 @@ fn exact_units_and_sites_never_merge_even_when_labels_match() {
         })
         .collect();
     let (prior, current, receipt) = pair(state);
-    let balance = project_with_labels(&current, Some(&prior), Some(&receipt), |_, _| {
+    let balance = balance::project_with_labels(&current, Some(&prior), Some(&receipt), |_, _| {
         Some(("material".to_owned(), "unit".to_owned()))
     })
     .unwrap()
@@ -299,7 +320,7 @@ fn freight_state(loss_ppm: u32) -> MaterialCircuitState {
 }
 
 fn site_row(balance: &CompletedMaterialBalance, site: u8) -> &ProductionMaterialBalanceRow {
-    let id = digest_hex(&[site; 32]);
+    let id = michigan_economy::digest_hex(&[site; 32]);
     balance.rows.iter().find(|row| row.site_id == id).unwrap()
 }
 
@@ -497,7 +518,7 @@ fn intermediate_loss_then_final_arrival_preserves_same_principal_work_and_dispat
     );
     assert_eq!(
         receiver.unit_id,
-        digest_hex(&UnitId::from_bytes([3; 32]).as_bytes())
+        michigan_economy::digest_hex(&UnitId::from_bytes([3; 32]).as_bytes())
     );
     assert_eq!(arrival.1.freight.len(), 1);
     assert_eq!(
@@ -540,7 +561,7 @@ fn michigan_period(preset: MichiganDeliveryPreset, period: u64) -> Pair {
             return (
                 session.material().state().clone(),
                 next.material().register().state().clone(),
-                decode_material_receipts(next.material().receipt_bytes()).unwrap(),
+                material_world::decode_material_receipts(next.material().receipt_bytes()).unwrap(),
             );
         }
         session
@@ -556,7 +577,7 @@ fn michigan_period(preset: MichiganDeliveryPreset, period: u64) -> Pair {
 fn delivery_twins_explain_downstream_input_use_and_preserve_unrelated_food() {
     let standard = michigan_period(MichiganDeliveryPreset::Standard, 3);
     let delayed = michigan_period(MichiganDeliveryPreset::Delayed, 3);
-    let a = project_material_balance(
+    let a = balance::project_material_balance(
         &crate::test_support::catalog(),
         &standard.1,
         Some(&standard.0),
@@ -564,7 +585,7 @@ fn delivery_twins_explain_downstream_input_use_and_preserve_unrelated_food() {
     )
     .unwrap()
     .unwrap();
-    let b = project_material_balance(
+    let b = balance::project_material_balance(
         &crate::test_support::catalog(),
         &delayed.1,
         Some(&delayed.0),
@@ -573,7 +594,7 @@ fn delivery_twins_explain_downstream_input_use_and_preserve_unrelated_food() {
     .unwrap()
     .unwrap();
     let catalog = crate::test_support::catalog();
-    let macomb = digest_hex(
+    let macomb = michigan_economy::digest_hex(
         &catalog
             .site("macomb-fabricated-metal")
             .unwrap()
@@ -590,7 +611,7 @@ fn delivery_twins_explain_downstream_input_use_and_preserve_unrelated_food() {
         .filter(|row| row.site_id == macomb)
         .all(|row| row.consumed == 0));
     for site in catalog.sites().iter().filter(|site| site.naics == "311") {
-        let id = digest_hex(&site.id().as_bytes());
+        let id = michigan_economy::digest_hex(&site.id().as_bytes());
         assert_eq!(
             a.rows
                 .iter()
@@ -610,7 +631,7 @@ fn delivery_twins_explain_downstream_input_use_and_preserve_unrelated_food() {
     conserved(&complete(&later));
     assert_eq!(standard, original);
     assert_eq!(
-        project_material_balance(
+        balance::project_material_balance(
             &crate::test_support::catalog(),
             &standard.1,
             Some(&standard.0),
@@ -672,7 +693,7 @@ fn incomplete_or_nonadjacent_history_is_never_a_zero_account() {
         (None, Some(&actual.2)),
     ] {
         assert_eq!(
-            project_with_labels(&actual.1, prior, receipt, |_, _| None),
+            balance::project_with_labels(&actual.1, prior, receipt, |_, _| None),
             Err(ProductionProjectionError::History)
         );
     }
@@ -750,11 +771,11 @@ fn unknown_unit_metadata_refuses_instead_of_inventing_a_label() {
     });
     let (prior, current, receipt) = pair(state);
     assert_eq!(
-        project_with_labels(&current, Some(&prior), Some(&receipt), |_, _| None),
+        balance::project_with_labels(&current, Some(&prior), Some(&receipt), |_, _| None),
         Err(ProductionProjectionError::Content)
     );
     assert_eq!(
-        project_material_balance(
+        balance::project_material_balance(
             &crate::test_support::catalog(),
             &current,
             Some(&prior),
@@ -922,7 +943,7 @@ fn finite_fulfillment_and_quiet_successor_reconcile_handling_work_stock_and_mass
         &state,
         None,
         None,
-        &super::super::history::OrderHistory::final_from_state(&state),
+        &OrderHistory::final_from_state(&state),
     )
     .unwrap();
     assert!(foundation.0[0].completed.is_none());
@@ -935,7 +956,7 @@ fn finite_fulfillment_and_quiet_successor_reconcile_handling_work_stock_and_mass
         &completed.1,
         Some(&completed.0),
         Some(&completed.2),
-        &super::super::history::OrderHistory::final_from_state(&completed.1),
+        &OrderHistory::final_from_state(&completed.1),
     )
     .unwrap();
     let work = handling[0].completed.as_ref().unwrap();
@@ -998,7 +1019,7 @@ fn finite_fulfillment_and_quiet_successor_reconcile_handling_work_stock_and_mass
         &quiet.1,
         Some(&quiet.0),
         Some(&quiet.2),
-        &super::super::history::OrderHistory::final_from_state(&quiet.1),
+        &OrderHistory::final_from_state(&quiet.1),
     )
     .unwrap();
     assert_eq!(handling[0].completed.as_ref().unwrap().used_hours, 0);
@@ -1063,7 +1084,7 @@ fn completed_local_fulfillment_and_handling_require_exact_receipt_identity() {
                 &changed.1,
                 Some(&changed.0),
                 Some(&changed.2),
-                &super::super::history::OrderHistory::final_from_state(&changed.1),
+                &OrderHistory::final_from_state(&changed.1),
             ),
             Err(ProductionProjectionError::State)
         ));
@@ -1124,7 +1145,7 @@ fn maintenance_spare_parts_close_as_their_own_exact_stock_debit() {
     let row = balance
         .rows
         .iter()
-        .find(|row| row.site_id == digest_hex(&provider.as_bytes()))
+        .find(|row| row.site_id == michigan_economy::digest_hex(&provider.as_bytes()))
         .unwrap();
     let encoded = serde_json::to_value(row).unwrap();
     assert_eq!(encoded["maintenance_consumed"], 2);
@@ -1231,7 +1252,12 @@ fn household_stock_conservation_distinguishes_delivery_consumption_and_expiry() 
             &pair.1,
             Some(&pair.0),
             Some(&pair.2),
-            |good, unit| Some((digest_hex(&good.as_bytes()), digest_hex(&unit.as_bytes()))),
+            |good, unit| {
+                Some((
+                    michigan_economy::digest_hex(&good.as_bytes()),
+                    michigan_economy::digest_hex(&unit.as_bytes()),
+                ))
+            },
         )
     };
     let rows = project_household(&valid).unwrap();
@@ -1324,28 +1350,24 @@ fn underfunded_maintenance_uses_paid_hours_instead_of_all_available_people_time(
     let employment = keys
         .into_iter()
         .map(|(site_id, unit_id)| EmploymentTerms {
-            member_id: babylon_material_circuit::StaffingMemberId::from_bytes((site_id).as_bytes()),
+            member_id: StaffingMemberId::from_bytes((site_id).as_bytes()),
             site_id,
             unit_id,
             payee,
-            compensation: babylon_material_circuit::LaborCompensation::Wage(
-                Currency::from_micro_units(1),
-            ),
+            compensation: LaborCompensation::Wage(Currency::from_micro_units(1)),
         })
         .collect();
     state.accounting = CircuitAccounting::Monetary(Box::new({
         let book = MonetaryBook::open(accounts).unwrap();
         MonetaryCircuit {
-            aid: babylon_material_circuit::AidBook::default(),
-            household_time: babylon_material_circuit::HouseholdTimeAccounting::NotModeled,
-            financial: babylon_material_circuit::FinancialInstitutions::empty(),
+            aid: AidBook::default(),
+            household_time: HouseholdTimeAccounting::NotModeled,
+            financial: FinancialInstitutions::empty(),
             member_labor: state
                 .labor
                 .iter()
                 .map(|row| babylon_material_circuit::MemberLaborCapacityRow {
-                    member_id: babylon_material_circuit::StaffingMemberId::from_bytes(
-                        row.site_id.as_bytes(),
-                    ),
+                    member_id: StaffingMemberId::from_bytes(row.site_id.as_bytes()),
                     period: row.period,
                     available_hours: row.available,
                 })
@@ -1387,7 +1409,7 @@ fn underfunded_maintenance_uses_paid_hours_instead_of_all_available_people_time(
 fn recurring_cumulative_totals_do_not_require_lifetime_order_rows() {
     use babylon_material_circuit::CircuitAccounting;
     let mut state = super::super::recurring_fixture::opening();
-    let mut history = super::super::history::OrderHistory::default();
+    let mut history = OrderHistory::default();
     let mut last = Vec::new();
     for period in 1..=8 {
         let CircuitAccounting::Monetary(economy) = &mut state.accounting else {
@@ -1404,7 +1426,12 @@ fn recurring_cumulative_totals_do_not_require_lifetime_order_rows() {
             &valid.1,
             Some((&valid.0, &facts)),
             &history,
-            |good, unit| Some((digest_hex(&good.as_bytes()), digest_hex(&unit.as_bytes()))),
+            |good, unit| {
+                Some((
+                    michigan_economy::digest_hex(&good.as_bytes()),
+                    michigan_economy::digest_hex(&unit.as_bytes()),
+                ))
+            },
         )
         .unwrap();
         assert_eq!(last.len(), 1);
@@ -1438,8 +1465,8 @@ fn actual_service_stages_project_only_durable_inventory_and_refuse_missing_perfo
     assert_eq!(balance.rows.iter().map(|r| r.consumed).sum::<u64>(), 2);
     assert_eq!(balance.rows.iter().map(|r| r.produced).sum::<u64>(), 1);
     assert!(balance.rows.iter().all(|r| r.good_id
-        != digest_hex(&GoodId::from_bytes([1; 32]).as_bytes())
-        && r.good_id != digest_hex(&GoodId::from_bytes([2; 32]).as_bytes())));
+        != michigan_economy::digest_hex(&GoodId::from_bytes([1; 32]).as_bytes())
+        && r.good_id != michigan_economy::digest_hex(&GoodId::from_bytes([2; 32]).as_bytes())));
     evidence.2.service_performance.pop();
     assert!(project(&evidence).is_err());
 }
@@ -1510,7 +1537,7 @@ fn actual_investment_order_admission_joins_captured_policy_and_real_cash_reserva
     assert_eq!(evidence.2.investment[0].admitted_units, 1);
     let orders =
         super::super::lifecycle::validate_period(&evidence.0, &evidence.1, &evidence.2).unwrap();
-    let mut history = super::super::history::OrderHistory::default();
+    let mut history = OrderHistory::default();
     history.record(&evidence.0, &orders).unwrap();
     assert_eq!(history.deliveries.len(), 1);
     assert!(super::super::outbound::completed_facts(&evidence.0, &evidence.1, &evidence.2).unwrap().is_empty(),
@@ -1524,18 +1551,15 @@ fn actual_investment_order_admission_joins_captured_policy_and_real_cash_reserva
 
 #[test]
 fn actual_prebooked_service_preserves_accepted_quote_and_authenticates_separate_topup() {
-    use babylon_material_circuit::{
-        admit_material_purchase, recurring_service_order_id, AccountId, MaterialPurchase,
-        ServiceOrder,
-    };
+    use babylon_material_circuit::{AccountId, MaterialPurchase, ServiceOrder};
     let state =
         super::super::services_fixture::recurring(super::super::services_fixture::opening());
     let buyer = AccountId::Site(SiteId::from_bytes([2; 32]));
     let provider = SiteId::from_bytes([1; 32]);
     let good = GoodId::from_bytes([1; 32]);
     let unit = UnitId::from_bytes([1; 32]);
-    let id = recurring_service_order_id(1, buyer, provider, good, unit);
-    let (state, _) = admit_material_purchase(
+    let id = babylon_material_circuit::recurring_service_order_id(1, buyer, provider, good, unit);
+    let (state, _) = babylon_material_circuit::admit_material_purchase(
         &state,
         MaterialPurchase::Service(ServiceOrder {
             order_id: id,
@@ -1662,10 +1686,10 @@ fn installation_decision_must_join_current_plan_and_post_wear_position() {
         .push(duplicate.2.installation_decisions[0].clone());
     assert!(project(&duplicate).is_err());
     for mutate in [
-        |r: &mut babylon_material_circuit::InstallationDecisionReceipt| {
+        |r: &mut InstallationDecisionReceipt| {
             r.captured_plan_batches += 1;
         },
-        |r: &mut babylon_material_circuit::InstallationDecisionReceipt| {
+        |r: &mut InstallationDecisionReceipt| {
             r.target_units += 1;
             r.requested_units += 1;
         },
@@ -1683,10 +1707,10 @@ fn installation_decision_joins_captured_pending_before_completion() {
     assert_eq!(evidence.2.installation_decisions[0].pending_units, 1);
     assert!(project(&evidence).is_ok());
     for mutate in [
-        |r: &mut babylon_material_circuit::InstallationDecisionReceipt| {
+        |r: &mut InstallationDecisionReceipt| {
             r.pending_units += 1;
         },
-        |r: &mut babylon_material_circuit::InstallationDecisionReceipt| {
+        |r: &mut InstallationDecisionReceipt| {
             r.installed_units += 1;
         },
     ] {

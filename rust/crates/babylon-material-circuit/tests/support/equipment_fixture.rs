@@ -1,3 +1,4 @@
+use babylon_material_circuit::HouseholdTimeAccounting;
 fn money(n: i128) -> Currency {
     Currency::from_micro_units(n)
 }
@@ -92,7 +93,7 @@ fn opening_accounting(
     CircuitAccounting::Monetary(Box::new(MonetaryCircuit {
         aid: AidBook::default(),
 
-        household_time: babylon_material_circuit::HouseholdTimeAccounting::NotModeled,
+        household_time: HouseholdTimeAccounting::NotModeled,
         book,
         costs,
         financial: FinancialInstitutions::empty(),

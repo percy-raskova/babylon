@@ -1,16 +1,22 @@
 //! Source-conserving, Designed opening refinements for real household gifts.
 use super::{actors, routes, Builder, NationalOpeningError as Error, Result};
-use crate::{
-    national_economy::{household_principal, NATIONAL_SCENARIO_ID},
-    national_household_allocation::{HouseholdBudgetKey as Key, NationalHouseholdAllocation},
-    national_household_time_allocation::NationalHouseholdTimeAllocation,
-    national_resident_allocation::{ResidentAttendanceMode, ResidentWorkplaceAllocation},
+use crate::national_economy::NATIONAL_SCENARIO_ID;
+use crate::national_household_allocation::{
+    HouseholdBudgetKey as Key, NationalHouseholdAllocation,
 };
+use crate::national_household_time_allocation::NationalHouseholdTimeAllocation;
+use crate::national_resident_allocation::{ResidentAttendanceMode, ResidentWorkplaceAllocation};
+
 use babylon_graph::stable_element::StableElementKey;
-use babylon_kernel::{
-    content_digest::sha256_of, currency::Currency, economic_location::EconomicLocation,
-    geography::CountyGeoid,
-};
+use babylon_kernel::currency::Currency;
+use babylon_kernel::economic_location::EconomicLocation;
+use babylon_kernel::geography::CountyGeoid;
+
+use crate::national_economy;
+use crate::national_economy::NationalGamePolicy;
+use crate::national_resident_allocation::AllocationError;
+use crate::national_transport::CargoClass;
+use babylon_kernel::content_digest;
 use babylon_material_circuit::{
     AccountId, AidMandate, AidTransport, CashAccount, FinalDemandPrincipalId, InstitutionLocation,
     OrganizationAccountId, StaffingMemberBinding, StaffingMemberId,
@@ -56,7 +62,7 @@ fn subject(label: &str) -> StableElementKey {
 fn principal(label: &str) -> FinalDemandPrincipalId {
     let mut bytes = b"NationalAidHouseholdV1\0".to_vec();
     bytes.extend_from_slice(label.as_bytes());
-    FinalDemandPrincipalId::from_bytes(sha256_of(&bytes))
+    FinalDemandPrincipalId::from_bytes(content_digest::sha256_of(&bytes))
 }
 fn child(builder: &Builder<'_>, label: &str, county: &str, donor: bool) -> Result<AidChildCapture> {
     let location = location(county)?;
@@ -80,7 +86,7 @@ fn child(builder: &Builder<'_>, label: &str, county: &str, donor: bool) -> Resul
     };
     Ok(AidChildCapture {
         principal: principal(label),
-        parent: household_principal(location, budget),
+        parent: national_economy::household_principal(location, budget),
         location,
         budget,
         subject: subject(label),
@@ -114,15 +120,15 @@ pub(super) fn prepare(
     ];
     validate_child_margins(builder, budgets, time, &children)?;
     retarget(allocation, &mut children[0], builder.policy)?;
-    let payer = AccountId::Organization(OrganizationAccountId::from_bytes(sha256_of(
-        b"NationalWayneAidOrganizationV1\0",
-    )));
+    let payer = AccountId::Organization(OrganizationAccountId::from_bytes(
+        content_digest::sha256_of(b"NationalWayneAidOrganizationV1\0"),
+    ));
     let food = builder.commodity("food")?;
     let policy = &builder.policy.aid;
     let remote_route = routes::route_id(
         children[0].location,
         children[2].location,
-        crate::national_transport::CargoClass::General,
+        CargoClass::General,
     );
     let mut mandates = Vec::new();
     for recipient in &children[1..] {
@@ -145,7 +151,7 @@ pub(super) fn prepare(
         bytes.extend_from_slice(&source_hash);
         bytes.extend_from_slice(&recipient.principal.as_bytes());
         mandates.push(AidMandate {
-            id: sha256_of(&bytes),
+            id: content_digest::sha256_of(&bytes),
             source_hash,
             donor_actor: children[0].actor,
             donor_contributor_id: children[0].contributor,
@@ -231,7 +237,7 @@ fn validate_child_margins(
 fn retarget(
     allocation: &mut ResidentWorkplaceAllocation,
     child: &mut AidChildCapture,
-    policy: &crate::national_economy::NationalGamePolicy,
+    policy: &NationalGamePolicy,
 ) -> Result<()> {
     // Select one already admitted Employee group, never a workplace Cartesian product.
     let mut candidates: Vec<_> = allocation
@@ -279,24 +285,20 @@ fn retarget(
             .checked_add(member.seed.reserve)
             .ok_or(Error::Arithmetic)?,
     )
-    .map_err(|_| {
-        Error::Workforce(crate::national_resident_allocation::AllocationError::PopulationControl)
-    })?;
+    .map_err(|_| Error::Workforce(AllocationError::PopulationControl))?;
     let mut bytes = b"NationalResidentMemberV2\0".to_vec();
     bytes.extend_from_slice(&workplace.target.site_id.as_bytes());
     bytes.extend_from_slice(&child.location.canonical_bytes());
     bytes.push(1);
     bytes.extend_from_slice(&child.principal.as_bytes());
-    let id = sha256_of(&bytes);
+    let id = content_digest::sha256_of(&bytes);
     moved.seed.member = StaffingMemberBinding::try_new(
         StaffingMemberId::from_bytes(id),
         child.principal,
         child.location,
         child.employed,
     )
-    .map_err(|_| {
-        Error::Workforce(crate::national_resident_allocation::AllocationError::PopulationControl)
-    })?;
+    .map_err(|_| Error::Workforce(AllocationError::PopulationControl))?;
     moved.seed.employed = child.employed;
     moved.seed.reserve = 0;
     moved.seed.subject = subject(&format!("member-{}", base32(&id)));
@@ -455,14 +457,18 @@ pub(super) fn fund(builder: &mut Builder<'_>) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::economic_catalog::EconomicHouseholdSeed;
+    use crate::economic_catalog::ResidentStaffingMemberSeed;
+    use crate::national_economy::NationalGamePolicy;
+    use crate::national_economy::NationalOpening;
+    use babylon_material_circuit::HouseholdNeedBasis;
     #[test]
     fn captured_refinements_conserve_county_margins_and_real_opening_money() {
         let bytes = include_bytes!(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../../../content/scenarios/national/defines.toml"
         ));
-        let policy =
-            crate::national_economy::NationalGamePolicy::from_captured_bytes(bytes).unwrap();
+        let policy = NationalGamePolicy::from_captured_bytes(bytes).unwrap();
         let counties = crate::national_counties::national_county_reference().unwrap();
         let cohorts = crate::national_cohorts::national_cohort_reference().unwrap();
         let residents =
@@ -487,7 +493,7 @@ mod tests {
             crate::national_transport::national_transport_reference().unwrap(),
             crate::national_economy::NationalOpeningPolicy {
                 policy: &policy,
-                source_hash: sha256_of(bytes),
+                source_hash: content_digest::sha256_of(bytes),
             },
         )
         .unwrap();
@@ -497,8 +503,8 @@ mod tests {
     }
 
     fn assert_refined_children(
-        captured: &crate::national_economy::NationalOpening,
-        policy: &crate::national_economy::NationalGamePolicy,
+        captured: &NationalOpening,
+        policy: &NationalGamePolicy,
         budgets: &NationalHouseholdAllocation,
         time: &NationalHouseholdTimeAllocation,
     ) {
@@ -561,11 +567,11 @@ mod tests {
     }
 
     fn assert_child_endowments(
-        captured: &crate::national_economy::NationalOpening,
-        policy: &crate::national_economy::NationalGamePolicy,
+        captured: &NationalOpening,
+        policy: &NationalGamePolicy,
         child: &AidChildCapture,
-        refined: &crate::economic_catalog::EconomicHouseholdSeed,
-        grouped: &[&crate::economic_catalog::ResidentStaffingMemberSeed],
+        refined: &EconomicHouseholdSeed,
+        grouped: &[&ResidentStaffingMemberSeed],
     ) {
         if child.employed == 0 {
             assert_eq!(refined.opening_cash.micro_units(), 0);
@@ -585,10 +591,8 @@ mod tests {
                 .iter()
                 .try_fold(0_i128, |total, need| {
                     let n = match need.basis {
-                        babylon_material_circuit::HouseholdNeedBasis::Persons => refined.persons,
-                        babylon_material_circuit::HouseholdNeedBasis::Households => {
-                            refined.households
-                        }
+                        HouseholdNeedBasis::Persons => refined.persons,
+                        HouseholdNeedBasis::Households => refined.households,
                     };
                     let price = policy.commodities[&need.key]
                         .price
@@ -614,10 +618,7 @@ mod tests {
         }
     }
 
-    fn assert_organization_and_route(
-        captured: &crate::national_economy::NationalOpening,
-        policy: &crate::national_economy::NationalGamePolicy,
-    ) {
+    fn assert_organization_and_route(captured: &NationalOpening, policy: &NationalGamePolicy) {
         let payer = captured.aid.mandates[0].payer;
         assert!(matches!(payer, AccountId::Organization(_)));
         assert_eq!(

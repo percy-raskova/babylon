@@ -1,16 +1,25 @@
-use super::*;
+use super::snapshot::{MaterialHistory, MaterialObservationRow};
+use crate::economic_content::EconomicContentAdmission;
+use crate::identity::CampaignId;
+use crate::material_storage::OpeningRegister;
+use crate::michigan_content::MichiganContentPreset;
+use crate::michigan_material::MichiganMaterialCatalog;
+use crate::production_projection;
 use babylon_bsl::structural_verbs::CollectingSink;
+use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_practice_contract::OrderedPracticeActionBatch;
+use babylon_tick::material_replay::PreparedMaterialTick;
 use babylon_tick::material_world::MaterialWorldRegister;
 use babylon_tick::replay_session::ReplayCommitDisposition;
+use uuid::Uuid;
 
 #[test]
 fn admitted_opening_row_reuses_its_canonical_owner_and_refuses_altered_evidence() {
     let catalog = crate::test_support::catalog();
-    let expected = crate::michigan_content::MichiganContentPreset::FourWeekStandard
+    let expected = MichiganContentPreset::FourWeekStandard
         .admitted(&catalog)
         .unwrap();
-    let campaign = CampaignId::from_uuid(uuid::Uuid::from_u128(339));
+    let campaign = CampaignId::from_uuid(Uuid::from_u128(339));
     let opening = MaterialObservationRow {
         row_campaign: *campaign.as_uuid(),
         row_tick: 0,
@@ -44,7 +53,7 @@ fn admitted_opening_row_reuses_its_canonical_owner_and_refuses_altered_evidence(
     assert!(history.prior_world.is_none());
 
     let mut wrong_campaign = opening.clone();
-    wrong_campaign.row_campaign = uuid::Uuid::from_u128(340);
+    wrong_campaign.row_campaign = Uuid::from_u128(340);
     let mut wrong_period = opening.clone();
     wrong_period.row_tick = 1;
     let mut trailing_register = opening.clone();
@@ -52,13 +61,12 @@ fn admitted_opening_row_reuses_its_canonical_owner_and_refuses_altered_evidence(
     let mut changed_register = opening.clone();
     changed_register.register_storage_bytes[0] ^= 1;
     let mut different_opening = opening.clone();
-    different_opening.register_storage_bytes =
-        crate::michigan_content::MichiganContentPreset::FourWeekDelayed
-            .admitted(&catalog)
-            .unwrap()
-            .initial_register()
-            .canonical_bytes()
-            .to_vec();
+    different_opening.register_storage_bytes = MichiganContentPreset::FourWeekDelayed
+        .admitted(&catalog)
+        .unwrap()
+        .initial_register()
+        .canonical_bytes()
+        .to_vec();
     let mut lookup = opening.clone();
     lookup.lookup_delta = Some(Vec::new());
     let mut receipt = opening.clone();
@@ -101,22 +109,20 @@ fn admitted_opening_row_reuses_its_canonical_owner_and_refuses_altered_evidence(
 
 #[test]
 fn continuous_cursor_replays_beyond_sixteen_and_refuses_a_broken_tail() {
-    let catalog = crate::michigan_material::MichiganMaterialCatalog::from_defines_toml(
-        include_str!("../../../../../content/scenarios/michigan/defines.toml"),
-    )
+    let catalog = MichiganMaterialCatalog::from_defines_toml(include_str!(
+        "../../../../../content/scenarios/michigan/defines.toml"
+    ))
     .unwrap();
-    let preset = crate::michigan_content::MichiganContentPreset::FourWeekStandard;
+    let preset = MichiganContentPreset::FourWeekStandard;
     let expected = preset.admitted(&catalog).unwrap();
     let mut session = preset
         .create_foundation(&catalog)
         .unwrap()
         .into_session()
         .unwrap();
-    let campaign = CampaignId::from_uuid(uuid::Uuid::from_u128(338));
+    let campaign = CampaignId::from_uuid(Uuid::from_u128(338));
     let mut history = MaterialHistory::new(&expected).unwrap();
-    let expected_lookup =
-        crate::material_storage::OpeningRegister::from_opening(expected.initial_register())
-            .unwrap();
+    let expected_lookup = OpeningRegister::from_opening(expected.initial_register()).unwrap();
     let foundation = MaterialObservationRow {
         row_campaign: *campaign.as_uuid(),
         row_tick: 0,
@@ -183,7 +189,7 @@ fn continuous_cursor_replays_beyond_sixteen_and_refuses_a_broken_tail() {
     assert_eq!(cold.register, history.register);
     assert_eq!(cold.receipt, history.receipt);
     let project = |value: &MaterialHistory| {
-        project_economic_current(
+        production_projection::project_economic_current(
             expected.view(),
             value.register(&expected),
             value.opening(&expected),
@@ -202,7 +208,7 @@ fn continuous_cursor_replays_beyond_sixteen_and_refuses_a_broken_tail() {
 fn verify_published_period(
     history: &MaterialHistory,
     expected: &EconomicContentAdmission,
-    expected_lookup: &crate::material_storage::OpeningRegister,
+    expected_lookup: &OpeningRegister,
     period: u64,
 ) {
     assert_eq!(
@@ -266,11 +272,9 @@ fn verify_refusals(
 }
 
 fn verify_restart(
-    catalog: &crate::michigan_material::MichiganMaterialCatalog,
-    preset: crate::michigan_content::MichiganContentPreset,
-    next: &babylon_tick::material_replay::PreparedMaterialTick<
-        babylon_graph::hypergraph_store::HypergraphStore,
-    >,
+    catalog: &MichiganMaterialCatalog,
+    preset: MichiganContentPreset,
+    next: &PreparedMaterialTick<HypergraphStore>,
 ) {
     let mut resumed = preset
         .create_foundation(catalog)

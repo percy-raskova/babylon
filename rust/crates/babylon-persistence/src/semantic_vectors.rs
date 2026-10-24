@@ -7,6 +7,8 @@ use babylon_graph::stable_element::StableElementKey;
 use serde_json::{Map, Value};
 use uuid::Uuid;
 
+use crate::committed_tick_envelope::CommittedTickRow;
+use crate::identity::CampaignId;
 use crate::semantic_codec::{self, SemanticCodecError, SemanticRefusalCode};
 
 const MAX_VECTOR_BYTES: usize = 262_144;
@@ -455,7 +457,7 @@ fn execute_valid_row<'a>(
 fn execute_dynamic_hex(
     id: &str,
     data: &Map<String, Value>,
-) -> Result<crate::committed_tick_envelope::CommittedTickRow, RustPersistenceVectorError> {
+) -> Result<CommittedTickRow, RustPersistenceVectorError> {
     exact_keys(
         data,
         &[
@@ -502,7 +504,7 @@ fn execute_dynamic_hex(
 fn execute_organization(
     id: &str,
     data: &Map<String, Value>,
-) -> Result<crate::committed_tick_envelope::CommittedTickRow, RustPersistenceVectorError> {
+) -> Result<CommittedTickRow, RustPersistenceVectorError> {
     exact_keys(
         data,
         &[
@@ -666,7 +668,7 @@ fn execute_checkpoint(
             ))
         })
         .collect::<Result<Vec<_>, RustPersistenceVectorError>>()?;
-    let campaign = crate::identity::CampaignId::from_uuid(uuid);
+    let campaign = CampaignId::from_uuid(uuid);
     let encoded = semantic_result(
         id,
         semantic_codec::encode_full_checkpoint(

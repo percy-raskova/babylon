@@ -24,13 +24,20 @@ use babylon_persistence::{material_runtime, michigan_content, michigan_material}
 use std::str::FromStr;
 
 use babylon_bsl::structural_verbs::CollectingSink;
+use babylon_persistence::identity::CampaignId;
 use babylon_persistence::material_runtime::DurableMaterialRuntime;
 use babylon_persistence::{
-    identity::CampaignId, postgres_catalog::validate_connection_target, ArchiveDossierProducer,
-    ArchiveMaterializeDisposition, ArchiveMaterializeMode, ArchiveReceiptDisposition,
-    ArchiveSubjectKind, ArchiveWorker, CompositeArchiveDossierProducer, CountyDossierProducer,
-    PendingArchiveReceipt, PlaceDossierProducer, SemanticArchiveError, SemanticArchiveStore,
+    ArchiveDossierProducer, ArchiveMaterializeDisposition, ArchiveMaterializeMode,
+    ArchiveReceiptDisposition, ArchiveSubjectKind, ArchiveWorker, CompositeArchiveDossierProducer,
+    CountyDossierProducer, PendingArchiveReceipt, PlaceDossierProducer, SemanticArchiveError,
+    SemanticArchiveStore,
 };
+
+use babylon_persistence::postgres_catalog;
+use babylon_persistence::ArchiveCitation;
+use babylon_persistence::ArchiveKnowledge;
+use babylon_persistence::ArchiveKnowledgeGrant;
+use babylon_persistence::ArchiveWorkerSweepReport;
 use babylon_practice_contract::OrderedPracticeActionBatch;
 use postgres::{Config, NoTls};
 use uuid::Uuid;
@@ -140,7 +147,7 @@ fn validated_base_config() -> Config {
     assert_eq!(canary.len(), 32);
     let dsn = std::env::var(DSN_ENV).expect("runner supplies the disposable DSN");
     let config = Config::from_str(&dsn).expect("runner DSN parses");
-    validate_connection_target(&config).expect("loopback target");
+    postgres_catalog::validate_connection_target(&config).expect("loopback target");
     assert_eq!(config.get_user(), Some("test"));
     assert_eq!(config.get_dbname(), Some("postgres"));
     let actual: Option<String> = config
@@ -375,9 +382,7 @@ fn detroit_row(rows: &[(String, i64, String)]) -> &(String, i64, String) {
         .expect("Detroit page published")
 }
 
-fn dispositions(
-    report: &babylon_persistence::ArchiveWorkerSweepReport,
-) -> Vec<(u64, ArchiveReceiptDisposition)> {
+fn dispositions(report: &ArchiveWorkerSweepReport) -> Vec<(u64, ArchiveReceiptDisposition)> {
     report
         .dispositions()
         .iter()
@@ -963,11 +968,7 @@ fn live_place_producer_foundation_grants_publish_revealed_page_and_rerun_is_idle
     target.finish();
 }
 
-fn knowledge_at(
-    config: &Config,
-    campaign: CampaignId,
-    tick: u64,
-) -> babylon_persistence::ArchiveKnowledge {
+fn knowledge_at(config: &Config, campaign: CampaignId, tick: u64) -> ArchiveKnowledge {
     let rows=config.connect(NoTls).expect("knowledge fixture connection").query(
         "SELECT subject_kind,subject_id,grant_key,granted_tick,provenance_source_id,provenance_locator FROM babylon_meta.archive_knowledge_grant_witness_v1 WHERE campaign_id=$1 AND granted_tick<=$2 AND subject_kind IN ('county','place') ORDER BY subject_kind,subject_id,grant_key", &[campaign.as_uuid(), &i64::try_from(tick).expect("fixture tick")]).expect("fixture exact knowledge");
     let grants = rows
@@ -978,16 +979,15 @@ fn knowledge_at(
                 "place" => ArchiveSubjectKind::Place,
                 _ => panic!("closed fixture page kind"),
             };
-            babylon_persistence::ArchiveKnowledgeGrant::try_new(
+            ArchiveKnowledgeGrant::try_new(
                 babylon_persistence::ArchivePageRef::try_new(kind, row.get(1))
                     .expect("fixture page"),
                 row.get(2),
                 u64::try_from(row.get::<_, i64>(3)).expect("fixture grant tick"),
-                babylon_persistence::ArchiveCitation::try_new(row.get(4), row.get(5))
-                    .expect("fixture citation"),
+                ArchiveCitation::try_new(row.get(4), row.get(5)).expect("fixture citation"),
             )
             .expect("fixture grant")
         })
         .collect();
-    babylon_persistence::ArchiveKnowledge::try_new(grants).expect("fixture knowledge")
+    ArchiveKnowledge::try_new(grants).expect("fixture knowledge")
 }

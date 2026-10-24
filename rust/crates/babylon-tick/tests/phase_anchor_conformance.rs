@@ -3,7 +3,8 @@
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_graph::state_hash::CanonicalState;
-use babylon_tick::{diagnose_content_set_sources, run_once_into, ContentRuleSource};
+use babylon_tick::ContentRuleSource;
+use babylon_tick::TickReport;
 
 const SCENARIO: &str = include_str!("../content/scenarios/two-classes.bscn");
 
@@ -24,10 +25,11 @@ const BEFORE_SURVIVAL_RULE: &str = r#"
   (effects (emit EventType/RUPTURE (probe 2))))
 "#;
 
-fn run(rule_src: &str) -> babylon_tick::TickReport {
+fn run(rule_src: &str) -> TickReport {
     let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
-    run_once_into(SCENARIO, rule_src, &mut graph, &mut sink).expect("phase-ordered tick")
+    babylon_tick::run_once_into(SCENARIO, rule_src, &mut graph, &mut sink)
+        .expect("phase-ordered tick")
 }
 
 #[test]
@@ -74,7 +76,7 @@ fn rejection_before_hydration(rule_src: &str) -> String {
     let mut graph = HypergraphStore::new();
     let before = graph.state_hash().expect("empty hash");
     let mut sink = CollectingSink::default();
-    let error = run_once_into(SCENARIO, rule_src, &mut graph, &mut sink)
+    let error = babylon_tick::run_once_into(SCENARIO, rule_src, &mut graph, &mut sink)
         .expect_err("invalid phase composition must fail");
     let after = graph.state_hash().expect("post-refusal hash");
 
@@ -108,7 +110,7 @@ fn diagnostic_loading_reports_the_same_phase_composition_refusal() {
   (bindings)
   (effects (emit EventType/RUPTURE)))
 "#;
-    let errors = diagnose_content_set_sources(
+    let errors = babylon_tick::diagnose_content_set_sources(
         SCENARIO,
         None,
         &[ContentRuleSource {
@@ -150,7 +152,7 @@ fn scenario_failure_precedes_phase_composition_without_hydration() {
     let mut graph = HypergraphStore::new();
     let before = graph.state_hash().expect("empty hash");
     let mut sink = CollectingSink::default();
-    let error = run_once_into("(", rule, &mut graph, &mut sink)
+    let error = babylon_tick::run_once_into("(", rule, &mut graph, &mut sink)
         .expect_err("the malformed scenario must fail first");
 
     assert!(!error.contains("E-LOAD-003"), "{error}");

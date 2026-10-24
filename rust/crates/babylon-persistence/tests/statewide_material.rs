@@ -7,24 +7,27 @@ use babylon_kernel::content_digest::sha256_of;
 use babylon_material_circuit::{
     GoodId, MaterialCircuitState, MerchantRole, OrderId, SiteId, UnitId, MAX_MATERIAL_CIRCUIT_ROWS,
 };
-use babylon_persistence::{
-    economic_content::admit_economic_content,
-    material_runtime::MAX_MATERIAL_FOUNDATION_BYTES,
-    michigan_content::MichiganContentPreset,
-    michigan_material::{
-        MichiganDeliveryPreset, MichiganMaterialCatalog, MAX_MICHIGAN_SOURCE_BYTES,
-    },
+use babylon_persistence::material_runtime::MAX_MATERIAL_FOUNDATION_BYTES;
+use babylon_persistence::michigan_content::MichiganContentPreset;
+use babylon_persistence::michigan_material::{
+    MichiganDeliveryPreset, MichiganMaterialCatalog, MAX_MICHIGAN_SOURCE_BYTES,
 };
+
 use babylon_practice_contract::OrderedPracticeActionBatch;
-use babylon_tick::{
-    material_replay::{MaterialReplaySession, PreparedMaterialTick},
-    material_world::{
-        decode_material_receipts, MaterialTickReceipts, MaterialWorldRegister,
-        MAX_MATERIAL_TICK_RECEIPT_BYTES, MAX_MATERIAL_WORLD_REGISTER_BYTES,
-    },
-    replay_session::ReplayCommitDisposition,
+use babylon_tick::material_replay::{MaterialReplaySession, PreparedMaterialTick};
+use babylon_tick::material_world::{
+    MaterialTickReceipts, MaterialWorldRegister, MAX_MATERIAL_TICK_RECEIPT_BYTES,
+    MAX_MATERIAL_WORLD_REGISTER_BYTES,
 };
-use std::{collections::BTreeMap, time::Instant};
+use babylon_tick::replay_session::ReplayCommitDisposition;
+
+use babylon_persistence::economic_catalog::CapturedEconomicCatalog;
+use babylon_persistence::economic_catalog::SourceArtifactKind;
+use babylon_persistence::economic_content;
+use babylon_tick::material_world;
+use std::collections::BTreeMap;
+use std::time::Instant;
+use synthetic::SyntheticSources;
 
 type Session = MaterialReplaySession<HypergraphStore>;
 type Goods = BTreeMap<(GoodId, UnitId), u128>;
@@ -91,14 +94,9 @@ fn physical_paths_require_all_overlapping_capacity_memberships_and_preserve_iden
         original_opening.compile().unwrap().state,
         reordered_opening.compile().unwrap().state
     );
-    let original_capture =
-        babylon_persistence::economic_catalog::CapturedEconomicCatalog::from_michigan(&catalog)
-            .unwrap();
-    let reordered_capture =
-        babylon_persistence::economic_catalog::CapturedEconomicCatalog::from_michigan(&reordered)
-            .unwrap();
-    let source_kind =
-        babylon_persistence::economic_catalog::SourceArtifactKind::MichiganPhysicalNetworkJson;
+    let original_capture = CapturedEconomicCatalog::from_michigan(&catalog).unwrap();
+    let reordered_capture = CapturedEconomicCatalog::from_michigan(&reordered).unwrap();
+    let source_kind = SourceArtifactKind::MichiganPhysicalNetworkJson;
     assert_eq!(
         original_capture.source(source_kind),
         Some(physical_bytes.as_slice())
@@ -319,7 +317,7 @@ fn synthetic_statewide_roster_completes_sixteen_authenticated_periods_with_nativ
     assert_eq!(catalog.staffing().pools.len(), 397);
     assert!(catalog.routes().len() > 500);
     assert!(
-        babylon_persistence::economic_catalog::CapturedEconomicCatalog::from_michigan(&catalog)
+        CapturedEconomicCatalog::from_michigan(&catalog)
             .unwrap()
             .canonical_bytes()
             .len()
@@ -338,7 +336,7 @@ fn synthetic_statewide_roster_completes_sixteen_authenticated_periods_with_nativ
         let prepared = prepare(&session);
         let bytes = prepared.material().receipt_bytes();
         assert_eq!(sha256_of(bytes), prepared.identity().receipt_digest());
-        let receipts = decode_material_receipts(bytes).unwrap();
+        let receipts = material_world::decode_material_receipts(bytes).unwrap();
         assert_eq!(receipts.resolve_tick, period);
         let register = prepared.material().register();
         assert_eq!(
@@ -386,7 +384,7 @@ fn synthetic_statewide_roster_completes_sixteen_authenticated_periods_with_nativ
     assert_eq!(session.completed_tick(), 16);
     eprintln!(
         "SYNTHETIC SCALE ONLY: owners=397 counties=83 processes=233 routes={} captured_bytes={} foundation_bytes={foundation_bytes} max_register_bytes={maximum_register_bytes} max_receipt_bytes={maximum_receipt_bytes} max_rows={maximum_rows} dispatches={dispatch_count} local_transfers={local_count} fulfilled_orders={} unfilled_orders={unfilled} compile_and_admit_ms={} advance_16_ms={} unsold_native_by_good={named_unsold:?}",
-        catalog.routes().len(), babylon_persistence::economic_catalog::CapturedEconomicCatalog::from_michigan(&catalog).unwrap().canonical_bytes().len(), fulfilled.len(),
+        catalog.routes().len(), CapturedEconomicCatalog::from_michigan(&catalog).unwrap().canonical_bytes().len(), fulfilled.len(),
         compile_time.as_millis(), advancing.elapsed().as_millis(),
     );
 }
@@ -429,7 +427,7 @@ fn captured_session(catalog: &MichiganMaterialCatalog) -> (Session, usize) {
     assert_eq!(state.supplier_routes.len(), catalog.routes().len());
     assert_eq!(state.final_demand_orders.len(), 233);
     assert_eq!(state.labor.len(), 397);
-    let admitted = admit_economic_content(
+    let admitted = economic_content::admit_economic_content(
         preset.id(),
         foundation.spec().duration,
         &foundation.spec().content_digest,
@@ -441,7 +439,7 @@ fn captured_session(catalog: &MichiganMaterialCatalog) -> (Session, usize) {
     assert_eq!(admitted.digest(), foundation.digest());
     let mut corrupted = foundation.export_canonical_bytes().unwrap();
     *corrupted.last_mut().unwrap() ^= 1;
-    assert!(admit_economic_content(
+    assert!(economic_content::admit_economic_content(
         preset.id(),
         foundation.spec().duration,
         &foundation.spec().content_digest,
@@ -474,7 +472,7 @@ fn named_goods(
 fn new_reads_pinned_siblings_and_saved_open_survives_changed_or_missing_source_files() {
     use babylon_persistence::michigan_material::MichiganMaterialError;
     use babylon_persistence::MichiganDefinesError;
-    let sources = synthetic::SyntheticSources::create();
+    let sources = SyntheticSources::create();
     let defines_path = sources.path("defines.toml");
     let delivery = MichiganDeliveryPreset::StatewideBoth;
     let preset = MichiganContentPreset::new_campaign(delivery);
@@ -526,7 +524,7 @@ fn new_reads_pinned_siblings_and_saved_open_survives_changed_or_missing_source_f
         std::fs::remove_file(sources.path(name)).unwrap();
     }
     assert!(MichiganMaterialCatalog::load_for_preset(&defines_path, delivery).is_err());
-    let opened = admit_economic_content(
+    let opened = economic_content::admit_economic_content(
         preset.id(),
         foundation.spec().duration,
         &foundation.spec().content_digest,

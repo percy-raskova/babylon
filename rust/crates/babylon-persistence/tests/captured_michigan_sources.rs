@@ -1,8 +1,6 @@
 //! Michigan control source admission uses its captured inputs on reopening.
-use babylon_persistence::{
-    michigan_economy::{michigan_economy, MichiganEconomy},
-    michigan_sectors::{michigan_county_sectors, MichiganCountySectors},
-};
+use babylon_persistence::michigan_economy::{michigan_economy, MichiganEconomy};
+use babylon_persistence::michigan_sectors::{michigan_county_sectors, MichiganCountySectors};
 
 const COUNTIES: &[u8] = include_bytes!(
     "../../../../src/babylon/data/reference/economy/qcew_county_economics_mi_2024.csv.gz"

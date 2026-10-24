@@ -7,14 +7,13 @@
 
 use std::collections::TryReserveError;
 
-use babylon_bsl::identity_codec::{
-    encode_stable_bsl_value, project_stored_field_value, IdentityCodecError, StableBslValue,
-};
+use babylon_bsl::identity_codec::{IdentityCodecError, StableBslValue};
 use babylon_bsl::typecheck::TypeEnv;
 use babylon_bsl::types::EnumRegistry;
 use babylon_graph::stable_element::{StableElementKey, StableElementResolver, StableIdentityError};
 use babylon_graph::stable_state::{StableGraphEdgeRow, StableGraphState};
-use babylon_kernel::{content_digest::sha256_of, geography::NationalCountyRoster, H3CellId};
+use babylon_kernel::geography::NationalCountyRoster;
+use babylon_kernel::H3CellId;
 
 use crate::h3_runtime::{
     MichiganDynamicHexFoundation, MichiganDynamicHexFoundationError, MichiganDynamicHexValueBits,
@@ -25,6 +24,11 @@ use crate::h3_runtime::{
     MICHIGAN_DYNAMIC_HEX_FOUNDATION_ARTIFACT_SHA256, MICHIGAN_DYNAMIC_HEX_REFERENCE_BUNDLE_DIGEST,
     MICHIGAN_DYNAMIC_HEX_SOURCE_R7_DIGEST,
 };
+use babylon_bsl::identity_codec;
+use babylon_kernel::content_digest;
+use std::cmp::Ordering;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 
 const MATERIAL_ROW_DOMAIN: &[u8] = b"babylon.material-state-row\0";
 const MATERIAL_SOURCE_DOMAIN: &[u8] = b"babylon.material-state-source\0";
@@ -90,7 +94,7 @@ pub enum MaterialStateError {
 }
 
 impl std::fmt::Display for MaterialStateError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> FmtResult {
         write!(formatter, "material state refused: {self:?}")
     }
 }
@@ -892,7 +896,7 @@ macro_rules! material_batch {
                     rows.len(),
                     gate,
                 )?;
-                let source_digest = sha256_of(&canonical_bytes);
+                let source_digest = content_digest::sha256_of(&canonical_bytes);
                 Ok(Self {
                     rows,
                     canonical_bytes,
@@ -998,7 +1002,7 @@ impl MaterialStateRows {
             &organizations,
             gate,
         )?;
-        let source_digest = sha256_of(&canonical_bytes);
+        let source_digest = content_digest::sha256_of(&canonical_bytes);
         Ok(Self {
             world_registers,
             territories,
@@ -1065,7 +1069,7 @@ impl MaterialStateRows {
             &organizations,
             gate,
         )?;
-        let source_digest = sha256_of(&canonical_bytes);
+        let source_digest = content_digest::sha256_of(&canonical_bytes);
 
         Ok(Self {
             world_registers,
@@ -1232,15 +1236,15 @@ fn derive_territory_rows(
             let (qname, binary64_bits, currency_micro_units) = match (binary, money) {
                 (Some((_, binary_qname, bits)), Some((_, money_qname, micro_units))) => {
                     match binary_qname.as_bytes().cmp(money_qname.as_bytes()) {
-                        std::cmp::Ordering::Less => {
+                        Ordering::Less => {
                             binary_index += 1;
                             (binary_qname.as_str(), Some(*bits), None)
                         }
-                        std::cmp::Ordering::Greater => {
+                        Ordering::Greater => {
                             money_index += 1;
                             (money_qname.as_str(), None, Some(*micro_units))
                         }
-                        std::cmp::Ordering::Equal => {
+                        Ordering::Equal => {
                             binary_index += 1;
                             money_index += 1;
                             (binary_qname.as_str(), Some(*bits), Some(*micro_units))
@@ -1267,9 +1271,13 @@ fn derive_territory_rows(
                 .ok_or(MaterialStateError::TerritoryFieldUndeclared)?;
             let name = copy_string("material territory field name", suffix, gate)?;
             gate.before_reserve("material territory field value", 1)?;
-            let value =
-                project_stored_field_value(declaration, binary64_bits, currency_micro_units, enums)
-                    .map_err(map_stable_value)?;
+            let value = identity_codec::project_stored_field_value(
+                declaration,
+                binary64_bits,
+                currency_micro_units,
+                enums,
+            )
+            .map_err(map_stable_value)?;
             fields.push((name, value));
         }
         output.push(TerritoryStateRow::try_from_projection(key, fields, gate)?);
@@ -1332,15 +1340,15 @@ fn derive_organization_rows(
             let (qname, binary64_bits, currency_micro_units) = match (binary, money) {
                 (Some((_, binary_qname, bits)), Some((_, money_qname, micro_units))) => {
                     match binary_qname.as_bytes().cmp(money_qname.as_bytes()) {
-                        std::cmp::Ordering::Less => {
+                        Ordering::Less => {
                             binary_index += 1;
                             (binary_qname.as_str(), Some(*bits), None)
                         }
-                        std::cmp::Ordering::Greater => {
+                        Ordering::Greater => {
                             money_index += 1;
                             (money_qname.as_str(), None, Some(*micro_units))
                         }
-                        std::cmp::Ordering::Equal => {
+                        Ordering::Equal => {
                             binary_index += 1;
                             money_index += 1;
                             (binary_qname.as_str(), Some(*bits), Some(*micro_units))
@@ -1366,9 +1374,13 @@ fn derive_organization_rows(
                 .get(qname)
                 .ok_or(MaterialStateError::OrganizationFieldUndeclared)?;
             gate.before_reserve("material organization field value", 1)?;
-            let value =
-                project_stored_field_value(declaration, binary64_bits, currency_micro_units, enums)
-                    .map_err(map_stable_value)?;
+            let value = identity_codec::project_stored_field_value(
+                declaration,
+                binary64_bits,
+                currency_micro_units,
+                enums,
+            )
+            .map_err(map_stable_value)?;
             if suffix == "kind" {
                 if organization_kind.replace(value).is_some() {
                     return Err(MaterialStateError::OrganizationKind);
@@ -1559,7 +1571,7 @@ fn append_stable_value(
     value: &StableBslValue,
 ) -> Result<(), MaterialStateError> {
     let mut bytes = Vec::new();
-    encode_stable_bsl_value(value, &mut bytes).map_err(map_stable_value)?;
+    identity_codec::encode_stable_bsl_value(value, &mut bytes).map_err(map_stable_value)?;
     append_bytes32(writer, &bytes)
 }
 

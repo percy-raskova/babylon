@@ -1,25 +1,24 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
-use babylon_persistence::{
-    observer_reader::{
-        ObserverEconomyReader, ProductionHistoryTarget, ProductionOutputPoint as PeriodOutput,
-    },
-    production_observation::ProductionEvent,
+use babylon_persistence::observer_reader::{
+    ObserverEconomyReader, ProductionHistoryTarget, ProductionOutputPoint as PeriodOutput,
 };
+use babylon_persistence::production_observation::ProductionEvent;
 
-use bevy::ecs::{query::QueryData, system::SystemParam};
+use bevy::ecs::query::QueryData;
+use bevy::ecs::system::SystemParam;
 
 use bevy::input_focus::tab_navigation::TabGroup;
 
 use bevy::prelude::*;
 
-use bevy::tasks::{block_on, AsyncComputeTaskPool, Task};
+use bevy::tasks::{AsyncComputeTaskPool, Task};
 
 use crate::decision_surface::{DeclaredSurface, SurfaceId};
 
 use crate::observer::{ObservationContext, ObserverSession, Perspective};
 
-use crate::observer_controls::{inspection_availability, ControlAvailability};
+use crate::observer_controls::ControlAvailability;
 
 use crate::observer_focus::{ObserverFocusSystems, ObserverFocusTarget, ObserverKeyboardActivate};
 
@@ -31,15 +30,18 @@ use crate::observer_theme as theme;
 
 use crate::observer_ui::{grouped, ObserverFeedback, ObserverFrame, ObserverUiState};
 
-use crate::production::navigation::readings_panel_visible;
-
 use crate::production::{PrimaryView, ProductionCommand, ProductionNavigation};
 
 use crate::ui::dossier_card::DossierRefresh;
 
-use super::delivery_groups::{
-    delivery_log_entries, DeliveryGroup, DeliveryGroupKey, DeliveryLog, DeliveryLogEntry,
-};
+use super::delivery_groups;
+use super::delivery_groups::{DeliveryGroup, DeliveryGroupKey, DeliveryLog, DeliveryLogEntry};
+use crate::observer_controls;
+use crate::observer_ui::ObserverFontRole;
+use crate::organizer::OrganizerClient;
+use crate::production::navigation;
+use bevy::tasks;
+use std::time::Instant;
 
 pub(crate) const LOG_ENTRIES: usize = 160;
 
@@ -99,7 +101,7 @@ pub(crate) fn label(value: impl Into<String>, size: f32, color: Color) -> impl B
             ..default()
         },
         TextColor(color),
-        crate::observer_ui::ObserverFontRole::Body,
+        ObserverFontRole::Body,
         Node {
             flex_shrink: 0.0,
             min_width: px(0),
@@ -166,7 +168,7 @@ pub(crate) fn button_availability(
     if !session.accepts(context) {
         return Disabled("History changed; wait for its current observation");
     }
-    let available = inspection_availability(session);
+    let available = observer_controls::inspection_availability(session);
     if available != Enabled {
         return available;
     }
@@ -239,7 +241,8 @@ pub(crate) fn history_control_visibility(
         }
     } else if !ui.history_open {
         Disabled("Open History to inspect committed developments")
-    } else if ui.archive_open || readings_panel_visible(view, navigation, ui, snapshot) {
+    } else if ui.archive_open || navigation::readings_panel_visible(view, navigation, ui, snapshot)
+    {
         Disabled("Close the current readings to inspect the delivery log")
     } else {
         Enabled
@@ -293,7 +296,11 @@ pub(crate) fn apply_history_action(button: &HistoryButton, context: &mut History
         .and_then(|frame| frame.production.as_ref());
     let visible = history_control_visibility(button, ui, navigation, **view, snapshot);
     let log = matches!(button, HistoryButton::DeliveryEvidence { .. })
-        .then(|| snapshot.and_then(|snapshot| delivery_log_entries(snapshot, LOG_ENTRIES).ok()))
+        .then(|| {
+            snapshot.and_then(|snapshot| {
+                delivery_groups::delivery_log_entries(snapshot, LOG_ENTRIES).ok()
+            })
+        })
         .flatten();
     let available = if visible == ControlAvailability::Enabled {
         button_availability(button, session, frame, log.as_ref())
@@ -358,7 +365,8 @@ pub(crate) fn focus_eligibility(
     let snapshot = frame
         .for_session(&session)
         .and_then(|frame| frame.production.as_ref());
-    let log = snapshot.and_then(|snapshot| delivery_log_entries(snapshot, LOG_ENTRIES).ok());
+    let log = snapshot
+        .and_then(|snapshot| delivery_groups::delivery_log_entries(snapshot, LOG_ENTRIES).ok());
     for (mut target, button) in &mut targets {
         let (context, available) = button.map_or_else(
             || {
@@ -392,7 +400,7 @@ pub(crate) fn focus_eligibility(
 }
 
 pub(crate) fn fetch(scope: &HistoryScope) -> Result<Vec<PeriodOutput>, String> {
-    let started = std::time::Instant::now();
+    let started = Instant::now();
     let result = fetch_history(scope);
     bevy::log::info!(target: "babylon_client::timing",
         stage = "authenticated_production_history_read",
@@ -521,7 +529,7 @@ pub(crate) fn update(
             .bypass_change_detection()
             .pending
             .as_mut()
-            .and_then(|task| block_on(bevy::tasks::futures_lite::future::poll_once(task)));
+            .and_then(|task| tasks::block_on(bevy::tasks::futures_lite::future::poll_once(task)));
         if let Some(result) = result {
             history.pending = None;
             match result {
@@ -544,7 +552,7 @@ pub(crate) fn reconcile_delivery_expansion(
         && frame
             .for_session(session)
             .and_then(|frame| frame.production.as_ref())
-            .and_then(|snapshot| delivery_log_entries(snapshot, LOG_ENTRIES).ok())
+            .and_then(|snapshot| delivery_groups::delivery_log_entries(snapshot, LOG_ENTRIES).ok())
             .is_some_and(|log| log.contains_group(group));
     if !valid {
         history.expanded_delivery = None;
@@ -605,10 +613,12 @@ pub(crate) fn paint_buttons(
             frame
                 .for_session(&session)
                 .and_then(|frame| frame.production.as_ref())
-                .and_then(|snapshot| delivery_log_entries(snapshot, LOG_ENTRIES).ok())
+                .and_then(|snapshot| {
+                    delivery_groups::delivery_log_entries(snapshot, LOG_ENTRIES).ok()
+                })
         })
         .flatten();
-    let mut hint = match inspection_availability(&session) {
+    let mut hint = match observer_controls::inspection_availability(&session) {
         ControlAvailability::Enabled => "Select a committed period or event to inspect.",
         ControlAvailability::Disabled(reason) => reason,
     };
@@ -646,7 +656,7 @@ pub(crate) fn paint_buttons(
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn paint(
     mut commands: Commands,
-    organizer: Option<Res<crate::organizer::OrganizerClient>>,
+    organizer: Option<Res<OrganizerClient>>,
     session: Res<ObserverSession>,
     frame: Res<ObserverFrame>,
     history: Res<HistoryState>,
@@ -774,7 +784,7 @@ pub(crate) fn paint_log(
             || ui.comparison_open
             || ui.archive_open
             || *view == PrimaryView::Organizer
-            || readings_panel_visible(*view, &navigation, &ui, snapshot)
+            || navigation::readings_panel_visible(*view, &navigation, &ui, snapshot)
         {
             Visibility::Hidden
         } else {
@@ -793,7 +803,7 @@ pub(crate) fn paint_log(
     commands.entity(entity).despawn_children();
     let context = session.context();
     commands.entity(entity).with_children(|panel| {
-        panel.spawn(label("COMMITTED DEVELOPMENTS", 24.0, theme::PAPER)).insert(crate::observer_ui::ObserverFontRole::Display);
+        panel.spawn(label("COMMITTED DEVELOPMENTS", 24.0, theme::PAPER)).insert(ObserverFontRole::Display);
         panel.spawn((label("", 11.0, theme::GRAY), HistoryHint, ObserverFocusTarget::reading(Some(context.clone()))));
         let Some(snapshot) = snapshot else {
             panel.spawn(label("No production developments are available in this observation.", 13.0, theme::GRAY));
@@ -819,7 +829,7 @@ pub(crate) fn spawn_log_entries(
     context: &ObservationContext,
     history: &HistoryState,
 ) {
-    let log = match delivery_log_entries(snapshot, LOG_ENTRIES) {
+    let log = match delivery_groups::delivery_log_entries(snapshot, LOG_ENTRIES) {
         Ok(log) => log,
         Err(error) => {
             panel.spawn(label(error.to_string(), 13.0, theme::RED));
@@ -999,11 +1009,11 @@ impl Plugin for ObserverHistoryPlugin {
 mod tests {
     use super::*;
     use crate::observer::SessionPhase;
+    use babylon_persistence::identity::CampaignId;
+    use babylon_persistence::observer_reader::{ObserverEconomySnapshot, ObserverVisibility};
     use babylon_persistence::production_observation::ProductionSite;
-    use babylon_persistence::{
-        identity::CampaignId, observer_reader::ObserverEconomySnapshot,
-        observer_reader::ObserverVisibility, production_observation::ProductionSnapshot,
-    };
+    use babylon_persistence::production_observation::ProductionSnapshot;
+    use uuid::Uuid;
 
     fn event(period: u64) -> ProductionEvent {
         ProductionEvent {
@@ -1018,7 +1028,7 @@ mod tests {
     }
 
     fn history_app(event: ProductionEvent) -> (App, Entity) {
-        let mut session = ObserverSession::new(CampaignId::from_uuid(uuid::Uuid::from_u128(1)));
+        let mut session = ObserverSession::new(CampaignId::from_uuid(Uuid::from_u128(1)));
         session.ready(3, None);
         session.foundation_digest = Some("foundation".into());
         assert!(session.installed(&session.context()));
@@ -1233,11 +1243,10 @@ mod tests {
     }
 
     fn delivery_app(parts: usize, period: u64) -> App {
-        use babylon_persistence::{
-            production_observation::ProductionDeliveryEvidence,
-            production_observation::ProductionDeliveryStage,
-            production_observation::ProductionRoute,
+        use babylon_persistence::production_observation::{
+            ProductionDeliveryEvidence, ProductionDeliveryStage, ProductionRoute,
         };
+
         let (mut app, _) = history_app(event(period));
         app.world_mut()
             .resource_mut::<ObserverUiState>()
@@ -1497,7 +1506,7 @@ mod tests {
             match change {
                 "campaign" => {
                     app.world_mut().resource_mut::<ObserverSession>().campaign =
-                        CampaignId::from_uuid(uuid::Uuid::from_u128(2));
+                        CampaignId::from_uuid(Uuid::from_u128(2));
                 }
                 "perspective" => app
                     .world_mut()
@@ -1588,7 +1597,7 @@ mod tests {
             let world = app.world();
             let frame = world.resource::<ObserverFrame>();
             let session = world.resource::<ObserverSession>();
-            assert!(readings_panel_visible(
+            assert!(navigation::readings_panel_visible(
                 PrimaryView::Production,
                 world.resource::<ProductionNavigation>(),
                 world.resource::<ObserverUiState>(),

@@ -5,12 +5,12 @@ use super::StaffingComposition;
 use std::collections::BTreeMap;
 
 use babylon_bsl::causal_contract::{
-    reduce_audit_receipts, AuditReceipt, ContractError, EvidenceClass, RuleContract, RuleRole,
+    AuditReceipt, ContractError, EvidenceClass, RuleContract, RuleRole,
 };
 
 use babylon_bsl::evaluator::{EvalCode, EvalError, Value};
 
-use babylon_bsl::identity_codec::{project_stored_field_value, IdentityCodecError, StableBslValue};
+use babylon_bsl::identity_codec::{IdentityCodecError, StableBslValue};
 
 use babylon_bsl::structural_verbs::{
     EffectExecutor, PendingWrite, UpdateOp, WriteOperand, WriteTarget,
@@ -27,12 +27,16 @@ use babylon_graph::stable_element::{StableElementKey, StableElementResolver, Sta
 use babylon_graph::substrate::{GraphError, GraphSubstrate, NodeId};
 
 use babylon_material_circuit::{
-    advance_staffing, distribute_staffing_members, LaborCapacityRow, MemberLaborCapacityRow,
-    StaffingError, StaffingMemberReceipt, StaffingMemberState, StaffingPoolState, StaffingReceipt,
-    StaffingState, StaffingWorkRequest,
+    LaborCapacityRow, MemberLaborCapacityRow, StaffingError, StaffingMemberReceipt,
+    StaffingMemberState, StaffingPoolState, StaffingReceipt, StaffingState, StaffingWorkRequest,
 };
 
 use crate::committed_event::CommittedEvent;
+use babylon_bsl::causal_contract;
+use babylon_bsl::identity_codec;
+use babylon_material_circuit::MaterialCircuitState;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 
 /// This identity's placement and content must be independently admitted by the caller.
 pub const STAFFING_COMPOSITION_ID: &str = "g4-workforce-staffing";
@@ -85,7 +89,7 @@ pub enum MaterialStaffingError {
 }
 
 impl std::fmt::Display for MaterialStaffingError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         write!(f, "material staffing refused: {self:?}")
     }
 }
@@ -226,9 +230,13 @@ pub(crate) fn read_stock(
     let value = graph
         .node_attribute(node, field)
         .map_err(|source| MaterialStaffingError::FieldRead { field, source })?;
-    let stable =
-        project_stored_field_value(declaration, Some(value.to_bits()), None, context.enums)
-            .map_err(MaterialStaffingError::StoredValue)?;
+    let stable = identity_codec::project_stored_field_value(
+        declaration,
+        Some(value.to_bits()),
+        None,
+        context.enums,
+    )
+    .map_err(MaterialStaffingError::StoredValue)?;
     let StableBslValue::Int(value) = stable else {
         return Err(MaterialStaffingError::FieldDeclaration(field));
     };
@@ -312,7 +320,7 @@ pub fn validate_opening_labor(
     graph: &impl GraphSubstrate,
     context: StaffingEffectContext<'_>,
     composition: &StaffingComposition,
-    material: &babylon_material_circuit::MaterialCircuitState,
+    material: &MaterialCircuitState,
 ) -> Result<(), MaterialStaffingError> {
     use babylon_material_circuit::CircuitAccounting;
     let opening = read_opening(graph, context, composition, material.period)?;
@@ -447,7 +455,10 @@ pub(crate) fn prepare_effects(
         result
             .events
             .push(staffing_event(opening.workplaces[index], receipt)?);
-        let members = distribute_staffing_members(receipt, &opening.members[index])?;
+        let members = babylon_material_circuit::distribute_staffing_members(
+            receipt,
+            &opening.members[index],
+        )?;
         for (node, member) in opening.member_nodes[index].iter().zip(&members) {
             result.writes.push(typed_write(
                 *node,
@@ -504,7 +515,7 @@ pub fn apply_material_staffing(
     requests: &[StaffingWorkRequest],
 ) -> Result<StaffingEffects, MaterialStaffingError> {
     let opening = read_opening(graph, context, composition, period)?;
-    let transition = advance_staffing(&opening.state, requests)?;
+    let transition = babylon_material_circuit::advance_staffing(&opening.state, requests)?;
     let prepared = prepare_effects(&opening, transition.receipts())?;
     let pending = prepared.writes;
     let committed_events = prepared.events;
@@ -538,8 +549,9 @@ pub fn apply_material_staffing(
         role: RuleRole::Mechanic,
         evidence: EvidenceClass::Designed,
     };
-    let audit_receipts = reduce_audit_receipts(&contract, &event_types, &log.records)
-        .map_err(MaterialStaffingError::Audit)?;
+    let audit_receipts =
+        causal_contract::reduce_audit_receipts(&contract, &event_types, &log.records)
+            .map_err(MaterialStaffingError::Audit)?;
     Ok(StaffingEffects {
         staffing_receipts,
         member_receipts: prepared.members,

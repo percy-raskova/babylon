@@ -4,6 +4,7 @@ use super::{
     ProductionProjectionError, Result,
 };
 use babylon_material_circuit::{CommodityKind, GoodsPriceCostBasis, OutboundOrderId, SiteId};
+use lifecycle::PeriodOrders;
 use std::collections::{BTreeMap, BTreeSet};
 #[derive(Default)]
 pub(super) struct Flows {
@@ -34,7 +35,7 @@ impl Flows {
         prior: &MaterialCircuitState,
         current: &MaterialCircuitState,
         receipt: &MaterialTickReceipts,
-        orders: &lifecycle::PeriodOrders,
+        orders: &PeriodOrders,
     ) -> Result<Self> {
         let mut result = Self::default();
         result.production(prior, receipt)?;

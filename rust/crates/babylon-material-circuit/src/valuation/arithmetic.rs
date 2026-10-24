@@ -1,12 +1,14 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
-use super::{IncomeReceipt, IncomeStatement};
+use super::IncomeReceipt;
+use super::IncomeStatement;
 
 use crate::MaterialCircuitError;
 
 use babylon_kernel::currency::Currency;
+use std::result::Result as StdResult;
 
-pub(crate) type Result<T> = std::result::Result<T, MaterialCircuitError>;
+pub(crate) type Result<T> = StdResult<T, MaterialCircuitError>;
 
 pub const MAX_CARRYING_STOCKS: usize = crate::MAX_INVENTORY_ROWS + crate::MAX_MATERIAL_CIRCUIT_ROWS;
 

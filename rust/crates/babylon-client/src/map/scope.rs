@@ -2,13 +2,18 @@
 use std::collections::BTreeMap;
 
 use babylon_kernel::geography::{CountyGeoid, CountyJurisdiction};
-use babylon_persistence::{identity::CampaignId, observer_reader::ObserverCountyEconomy};
+use babylon_persistence::identity::CampaignId;
+use babylon_persistence::observer_reader::ObserverCountyEconomy;
+
 use bevy::prelude::*;
 
 use super::{HoveredCounty, SelectedCounty};
 use crate::atlas::CountyAtlas;
 use crate::observer::ObserverSession;
+use crate::observer::SessionPhase;
 use crate::observer_ui::ObserverFrame;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 
 /// Fixed geography remains visible while another period of the same campaign loads.
 #[derive(Resource, Clone, Debug, Default, PartialEq, Eq)]
@@ -28,7 +33,7 @@ pub(crate) enum MapScopeError {
     ChangedGeography,
 }
 impl std::fmt::Display for MapScopeError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> FmtResult {
         write!(formatter, "Campaign map scope refused: {self:?}")
     }
 }
@@ -155,7 +160,7 @@ pub(super) fn sync_county_scope(
     if !session.is_changed() && frame.as_ref().is_none_or(|frame| !frame.is_changed()) {
         return;
     }
-    if session.phase == crate::observer::SessionPhase::Failed
+    if session.phase == SessionPhase::Failed
         && frame.as_ref().is_none_or(|frame| !frame.is_changed())
     {
         return;

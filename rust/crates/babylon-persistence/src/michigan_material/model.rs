@@ -1,6 +1,7 @@
 //! One normalized physical-content model for regional and statewide campaigns.
 
-use super::{identity, MichiganDeliveryPreset};
+use super::MichiganDeliveryPreset;
+use babylon_kernel::clock::CampaignDuration;
 use babylon_material_circuit::{
     CorridorId, FinalDemandPrincipalId, GoodId, LogisticsNodeId, OrderId, ProcessId, RouteId,
     SiteId, UnitId,
@@ -30,11 +31,11 @@ pub struct MichiganMaterialSite {
 impl MichiganMaterialSite {
     #[must_use]
     pub fn id(&self) -> SiteId {
-        SiteId::from_bytes(identity("site", &self.key))
+        SiteId::from_bytes(super::identity("site", &self.key))
     }
     #[must_use]
     pub fn node_id(&self) -> LogisticsNodeId {
-        LogisticsNodeId::from_bytes(identity("node", &self.key))
+        LogisticsNodeId::from_bytes(super::identity("node", &self.key))
     }
 }
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
@@ -48,11 +49,11 @@ pub struct MichiganMaterialGood {
 impl MichiganMaterialGood {
     #[must_use]
     pub fn id(&self) -> GoodId {
-        GoodId::from_bytes(identity("good", &self.key))
+        GoodId::from_bytes(super::identity("good", &self.key))
     }
     #[must_use]
     pub fn unit_id(&self) -> UnitId {
-        UnitId::from_bytes(identity("unit", &self.unit_key))
+        UnitId::from_bytes(super::identity("unit", &self.unit_key))
     }
 }
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
@@ -78,11 +79,11 @@ pub struct MichiganMaterialProcess {
 impl MichiganMaterialProcess {
     #[must_use]
     pub fn id(&self) -> ProcessId {
-        ProcessId::from_bytes(identity("process", &self.key))
+        ProcessId::from_bytes(super::identity("process", &self.key))
     }
     #[must_use]
     pub fn site_id(&self) -> SiteId {
-        SiteId::from_bytes(identity("site", &self.site_key))
+        SiteId::from_bytes(super::identity("site", &self.site_key))
     }
 }
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
@@ -143,11 +144,11 @@ pub struct MichiganMaterialRoute {
 impl MichiganMaterialRoute {
     #[must_use]
     pub fn id(&self) -> RouteId {
-        RouteId::from_bytes(identity("route", &self.key))
+        RouteId::from_bytes(super::identity("route", &self.key))
     }
     #[must_use]
     pub fn order_id(&self) -> OrderId {
-        OrderId::from_bytes(identity("order", &self.key))
+        OrderId::from_bytes(super::identity("order", &self.key))
     }
 }
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
@@ -160,7 +161,7 @@ pub struct MichiganMaterialCorridor {
 impl MichiganMaterialCorridor {
     #[must_use]
     pub fn id(&self) -> CorridorId {
-        CorridorId::from_bytes(identity("corridor", &self.key))
+        CorridorId::from_bytes(super::identity("corridor", &self.key))
     }
 }
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
@@ -182,11 +183,14 @@ pub struct MichiganFinalDemand {
 impl MichiganFinalDemand {
     #[must_use]
     pub fn order_id(&self) -> OrderId {
-        OrderId::from_bytes(identity("final-demand-order", &self.key))
+        OrderId::from_bytes(super::identity("final-demand-order", &self.key))
     }
     #[must_use]
     pub fn principal_id(&self) -> FinalDemandPrincipalId {
-        FinalDemandPrincipalId::from_bytes(identity("final-demand-principal", &self.county_geoid))
+        FinalDemandPrincipalId::from_bytes(super::identity(
+            "final-demand-principal",
+            &self.county_geoid,
+        ))
     }
 }
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
@@ -355,7 +359,7 @@ pub struct MichiganMaintenance {
 pub struct MichiganNormalizedContent {
     pub schema: String,
     pub evidence_class: String,
-    pub duration: babylon_kernel::clock::CampaignDuration,
+    pub duration: CampaignDuration,
     pub tick_duration_days: u64,
     pub geographic_scale: String,
     pub terminal_output_disposition: String,

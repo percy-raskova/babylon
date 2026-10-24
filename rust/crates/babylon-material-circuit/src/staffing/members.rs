@@ -1,5 +1,7 @@
 //! Resident partitions of the one aggregate staffing decision.
-use super::{StaffingError, StaffingPoolId, StaffingReceipt};
+use super::StaffingError;
+use super::StaffingPoolId;
+use super::StaffingReceipt;
 use crate::{FinalDemandPrincipalId, SiteId, UnitId};
 use babylon_kernel::economic_location::EconomicLocation;
 

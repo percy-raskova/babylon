@@ -15,9 +15,9 @@ use babylon_material_circuit::{
 use babylon_tick::material_world::MaterialTickReceipts;
 
 use std::collections::BTreeMap;
+use std::result::Result as StdResult;
 
-pub(in crate::production_projection) type Result<T> =
-    std::result::Result<T, ProductionProjectionError>;
+pub(in crate::production_projection) type Result<T> = StdResult<T, ProductionProjectionError>;
 
 pub(in crate::production_projection) type AssetBook =
     BTreeMap<EquipmentAssetId, (SiteId, Currency)>;

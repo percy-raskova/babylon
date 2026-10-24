@@ -1,15 +1,24 @@
-use super::*;
+use super::runtime::{DurableMaterialRuntime, MaterialRuntimeFoundation};
+use crate::identity::CampaignId;
+use crate::michigan_content::MichiganContentPreset;
+use crate::michigan_material::MichiganDeliveryPreset;
+use crate::michigan_material::MichiganMaterialCatalog;
+use crate::{material_storage, CommittedTickReceipt};
+use babylon_bsl::structural_verbs::CollectingSink;
+use babylon_practice_contract::OrderedPracticeActionBatch;
+use babylon_tick::replay_session::ReplayCommitDisposition;
+use postgres::Config;
+use std::convert::Infallible;
+use uuid::Uuid;
 
 fn foundation() -> MaterialRuntimeFoundation {
-    let catalog = crate::michigan_material::MichiganMaterialCatalog::from_defines_toml(
-        include_str!("../../../../../content/scenarios/michigan/defines.toml"),
-    )
+    let catalog = MichiganMaterialCatalog::from_defines_toml(include_str!(
+        "../../../../../content/scenarios/michigan/defines.toml"
+    ))
     .unwrap();
-    crate::michigan_content::MichiganContentPreset::new_campaign(
-        crate::michigan_material::MichiganDeliveryPreset::Standard,
-    )
-    .create_foundation(&catalog)
-    .unwrap()
+    MichiganContentPreset::new_campaign(MichiganDeliveryPreset::Standard)
+        .create_foundation(&catalog)
+        .unwrap()
 }
 
 fn runtime() -> DurableMaterialRuntime {
@@ -19,7 +28,7 @@ fn runtime() -> DurableMaterialRuntime {
     let lookup_chain = material_storage::initial_lookup_chain(&lookup).unwrap();
     DurableMaterialRuntime {
         config: Config::new(),
-        campaign: CampaignId::from_uuid(uuid::Uuid::nil()),
+        campaign: CampaignId::from_uuid(Uuid::nil()),
         session: foundation.into_session().unwrap(),
         lookup,
         lookup_chain,
@@ -58,7 +67,7 @@ fn publish(runtime: &mut DurableMaterialRuntime) -> CommittedTickReceipt {
     let (ack, _) = runtime
         .session
         .commit_prepared_and_publish(&mut CollectingSink::default(), candidate, |_| {
-            Ok::<_, std::convert::Infallible>(ReplayCommitDisposition::Committed)
+            Ok::<_, Infallible>(ReplayCommitDisposition::Committed)
         })
         .unwrap();
     runtime.tail = Some(ack);

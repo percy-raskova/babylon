@@ -1,18 +1,23 @@
 //! Bounded, task-owned experiment artifacts and limited execution provenance.
 
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    fs::{self, File, OpenOptions},
-    io::{Read, Write},
-    path::{Path, PathBuf},
-    process::Command,
-    sync::{mpsc, Arc, Mutex},
-    thread,
-    time::Duration,
-};
+use std::collections::{BTreeMap, BTreeSet};
+use std::fs::{File, OpenOptions};
+use std::io::{Read, Write};
+use std::path::{Path, PathBuf};
+use std::process::Command;
+use std::sync::{mpsc, Arc, Mutex};
+use std::time::Duration;
+use std::{fs, thread};
 
+use mpsc::Receiver;
+use mpsc::Sender;
 use serde::Serialize;
+use serde_json::Value;
 use sha2::{Digest, Sha256};
+use std::ffi::OsStr;
+use std::fmt::Formatter;
+use std::sync::TryLockError;
+use thread::JoinHandle;
 
 const MAX_BYTES: usize = 4 * 1024 * 1024;
 const FAILURE_RESERVE: usize = 4096;
@@ -25,7 +30,7 @@ pub enum Error {
     Contract(String),
 }
 impl std::fmt::Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Io(error) => write!(f, "artifact I/O refused: {error}"),
             Self::Json(error) => write!(f, "artifact JSON refused: {error}"),
@@ -110,7 +115,7 @@ impl Output {
         MAX_BYTES - FAILURE_RESERVE - self.written
     }
     pub fn write_json(&mut self, name: &str, value: &impl Serialize) -> Result<()> {
-        if Path::new(name).extension() != Some(std::ffi::OsStr::new("json"))
+        if Path::new(name).extension() != Some(OsStr::new("json"))
             || name == "failure.json"
             || !name
                 .bytes()
@@ -186,15 +191,15 @@ pub fn write_failure(path: &Path, progress: &Progress, message: &str) -> Result<
     Ok(())
 }
 
-fn timed_out(receiver: &mpsc::Receiver<()>, duration: Duration) -> bool {
+fn timed_out(receiver: &Receiver<()>, duration: Duration) -> bool {
     matches!(
         receiver.recv_timeout(duration),
         Err(mpsc::RecvTimeoutError::Timeout)
     )
 }
 pub struct Watchdog {
-    cancel: mpsc::Sender<()>,
-    worker: thread::JoinHandle<()>,
+    cancel: Sender<()>,
+    worker: JoinHandle<()>,
 }
 impl Watchdog {
     pub fn start(path: &Path, progress: Arc<Mutex<Progress>>) -> Self {
@@ -204,8 +209,8 @@ impl Watchdog {
             if timed_out(&receiver, Duration::from_secs(60)) {
                 let progress = match progress.try_lock() {
                     Ok(progress) => progress.clone(),
-                    Err(std::sync::TryLockError::Poisoned(error)) => error.into_inner().clone(),
-                    Err(std::sync::TryLockError::WouldBlock) => Progress::default(),
+                    Err(TryLockError::Poisoned(error)) => error.into_inner().clone(),
+                    Err(TryLockError::WouldBlock) => Progress::default(),
                 };
                 if let Err(error) = write_failure(
                     &path,
@@ -234,7 +239,7 @@ fn git(repo: &Path, args: &[&str]) -> Result<String> {
     }
     String::from_utf8(output.stdout).map_err(|_| contract("Git provenance was not UTF-8"))
 }
-pub fn provenance() -> Result<serde_json::Value> {
+pub fn provenance() -> Result<Value> {
     let repo = Path::new(env!("CARGO_MANIFEST_DIR"))
         .ancestors()
         .nth(3)
@@ -296,6 +301,7 @@ pub fn provenance() -> Result<serde_json::Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::Value;
     #[test]
     fn byte_bound_includes_final_newline_and_refuses_overflow() {
         assert_eq!(encode(&"abc", 6).unwrap(), b"\"abc\"\n");
@@ -351,7 +357,7 @@ mod tests {
         write_failure(&path, &failure, "bounded refusal").unwrap();
         let bytes = fs::read(path.join("failure.json")).unwrap();
         assert!(bytes.len() <= FAILURE_RESERVE);
-        let value: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let value: Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(value["progress"]["case"], "delayed-320");
         assert_eq!(value["progress"]["last_completed_period"], 16);
         fs::remove_file(path.join("periods.jsonl")).unwrap();

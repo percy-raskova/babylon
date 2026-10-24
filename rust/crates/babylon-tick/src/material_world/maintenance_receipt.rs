@@ -1,6 +1,7 @@
 //! Exact optional maintenance evidence in the current material receipt codec.
 
-use super::{MaterialWorldError, ReceiptCursor};
+use super::MaterialWorldError;
+use super::ReceiptCursor;
 use babylon_material_circuit::{
     GoodId, MaintenanceBinding, MaintenanceReceipt, MaintenanceService, ProcessId, SiteId, UnitId,
 };

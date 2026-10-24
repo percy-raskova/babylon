@@ -3,12 +3,14 @@
 use serde::{Deserialize, Serialize};
 
 use super::RuntimeSessionErrorCode;
+use crate::identity::CampaignId;
+use crate::michigan_material::MichiganDeliveryPreset;
 pub use crate::organizer_runtime::{
     OrganizerAidCapacity, OrganizerAidOrdinaryOffer, OrganizerAidPending, OrganizerAidResolution,
     OrganizerAidRouteStage, OrganizerAidTime, OrganizerAidTransportPreview,
     OrganizerCollectionPreview, OrganizerMaterialAidPreview, OrganizerSnapshot,
 };
-use crate::{identity::CampaignId, michigan_material::MichiganDeliveryPreset};
+
 pub use babylon_practice_contract::{
     OrganizerAgreement, OrganizerAidKind, OrganizerAidMaterialPostings, OrganizerAidOption,
     OrganizerAidSupportStatus, OrganizerChoice, OrganizerCollectionOutcome,
@@ -19,6 +21,8 @@ pub use babylon_practice_contract::{
 };
 
 pub use crate::material_runtime::MaterialAdvanceStage as RuntimeAdvanceStage;
+use babylon_kernel::clock::CampaignDuration;
+use uuid::Uuid;
 
 pub const RUNTIME_SESSION_PROTOCOL_VERSION: u16 = 11;
 pub const RUNTIME_SESSION_MAX_LINE_BYTES: usize = 131_072;
@@ -111,8 +115,8 @@ pub enum RuntimeSessionTarget {
 impl RuntimeSessionTarget {
     pub(super) fn campaign(&self) -> Result<CampaignId, RuntimeSessionErrorCode> {
         let (Self::New { campaign_id, .. } | Self::Open { campaign_id }) = self;
-        let id = uuid::Uuid::parse_str(campaign_id)
-            .map_err(|_| RuntimeSessionErrorCode::InvalidRequest)?;
+        let id =
+            Uuid::parse_str(campaign_id).map_err(|_| RuntimeSessionErrorCode::InvalidRequest)?;
         if id.is_nil() || id.to_string() != *campaign_id {
             return Err(RuntimeSessionErrorCode::InvalidRequest);
         }
@@ -237,7 +241,7 @@ pub enum RuntimeSessionResponse {
         request_id: u64,
         scope: RuntimeSessionScope,
         foundation_digest: String,
-        duration: babylon_kernel::clock::CampaignDuration,
+        duration: CampaignDuration,
         organizer: bool,
         tail: RuntimeSessionTail,
     },
@@ -288,6 +292,7 @@ pub enum RuntimeSessionResponse {
 #[cfg(test)]
 mod selection_tests {
     use super::*;
+    use uuid::Uuid;
 
     #[test]
     fn national_selection_has_no_michigan_fallback_or_open_override() {
@@ -310,7 +315,7 @@ mod selection_tests {
             );
         }
         assert!(serde_json::from_value::<RuntimeSessionTarget>(serde_json::json!({
-            "type": "open", "campaign_id": uuid::Uuid::from_u128(7).to_string(), "preset": "national-world"
+            "type": "open", "campaign_id": Uuid::from_u128(7).to_string(), "preset": "national-world"
         })).is_err());
     }
 }

@@ -1,11 +1,31 @@
-use super::*;
+use crate::ACCOUNT_BYTES;
+use crate::PURCHASE_BYTES;
+use babylon_material_circuit::AccountId;
+use babylon_material_circuit::BacklogRow;
+use babylon_material_circuit::CircuitAccounting;
+use babylon_material_circuit::CorridorId;
+use babylon_material_circuit::FinalDemandOrder;
+use babylon_material_circuit::HistoricalCostBook;
+use babylon_material_circuit::MaterialCircuitError;
+use babylon_material_circuit::MaterialCircuitState;
+use babylon_material_circuit::MaterialPurchase;
+use babylon_material_circuit::MerchantHandling;
+use babylon_material_circuit::MerchantHandlingCoefficient;
+use babylon_material_circuit::MerchantRole;
+use babylon_material_circuit::MonetaryBook;
+use babylon_material_circuit::OrderId;
+use babylon_material_circuit::OrderRow;
+use babylon_material_circuit::OutboundOrderId;
+use babylon_material_circuit::PurchaseEscrow;
+use babylon_material_circuit::StockCarryingValue;
+use babylon_material_circuit::MAX_MATERIAL_CIRCUIT_ROWS;
 fn order_id(index: usize) -> OrderId {
     let mut bytes = [0; 32];
     bytes[..8].copy_from_slice(&u64::try_from(index).unwrap().to_be_bytes());
     OrderId::from_bytes(bytes)
 }
 fn mixed_order_state_counts(delivery: usize, retail: usize) -> MaterialCircuitState {
-    let mut state = paid_state();
+    let mut state = crate::paid_state();
     let template = state.orders[0].clone();
     state.orders = (0..delivery)
         .map(|index| OrderRow {
@@ -62,7 +82,7 @@ fn mixed_order_state_counts(delivery: usize, retail: usize) -> MaterialCircuitSt
                 AccountId::Site(row.buyer_site_id),
                 AccountId::Site(row.supplier_site_id),
                 1,
-                money(1),
+                crate::money(1),
             )
             .unwrap()
         })
@@ -72,7 +92,7 @@ fn mixed_order_state_counts(delivery: usize, retail: usize) -> MaterialCircuitSt
                 AccountId::Household(household),
                 AccountId::Site(row.retailer_site_id),
                 1,
-                money(1),
+                crate::money(1),
             )
             .unwrap()
         }))
@@ -84,7 +104,7 @@ fn mixed_order_state_counts(delivery: usize, retail: usize) -> MaterialCircuitSt
             owner: AccountId::Site(template.supplier_site_id),
             good_id: template.good_id,
             unit_id: template.unit_id,
-            amount: money(0),
+            amount: crate::money(0),
         }],
         vec![],
         vec![],
@@ -100,10 +120,13 @@ fn mixed_order_state() -> MaterialCircuitState {
 #[test]
 fn mixed_physical_orders_and_escrow_roundtrip_beyond_the_old_combined_limit() {
     let state = mixed_order_state();
-    let bytes = encode_material_circuit_state(&state).unwrap();
-    let restored = decode_material_circuit_state(&bytes).unwrap();
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&state).unwrap();
+    let restored = babylon_material_circuit::decode_material_circuit_state(&bytes).unwrap();
     assert_eq!(restored, state);
-    assert_eq!(encode_material_circuit_state(&restored).unwrap(), bytes);
+    assert_eq!(
+        babylon_material_circuit::encode_material_circuit_state(&restored).unwrap(),
+        bytes
+    );
     let CircuitAccounting::Monetary(economy) = &restored.accounting else {
         unreachable!()
     };
@@ -121,12 +144,12 @@ fn mixed_physical_orders_and_escrow_roundtrip_beyond_the_old_combined_limit() {
             .quantity,
         1
     );
-    let start = accounting_offset(&state) + 1 + 4 + 5 * ACCOUNT_BYTES + 4;
+    let start = crate::accounting_offset(&state) + 1 + 4 + 5 * ACCOUNT_BYTES + 4;
     let last = start + (MAX_MATERIAL_CIRCUIT_ROWS + 1) * PURCHASE_BYTES;
     let mut duplicate = bytes.clone();
     duplicate.copy_within(last - PURCHASE_BYTES..last, last);
     assert_eq!(
-        decode_material_circuit_state(&duplicate),
+        babylon_material_circuit::decode_material_circuit_state(&duplicate),
         Err(MaterialCircuitError::WireNoncanonical)
     );
 }
@@ -135,8 +158,12 @@ fn public_purchase_admission_preserves_each_physical_family_ceiling() {
     let state = mixed_order_state();
     let mut order = state.orders[0].clone();
     order.order_id = order_id(MAX_MATERIAL_CIRCUIT_ROWS);
-    let (admitted, _) =
-        admit_material_purchase(&state, MaterialPurchase::Delivery(order), money(1)).unwrap();
+    let (admitted, _) = babylon_material_circuit::admit_material_purchase(
+        &state,
+        MaterialPurchase::Delivery(order),
+        crate::money(1),
+    )
+    .unwrap();
     assert_eq!(admitted.orders.len(), state.orders.len() + 1);
     let mut overbound = state;
     overbound.orders.resize(
@@ -144,7 +171,7 @@ fn public_purchase_admission_preserves_each_physical_family_ceiling() {
         overbound.orders[0].clone(),
     );
     assert_eq!(
-        encode_material_circuit_state(&overbound),
+        babylon_material_circuit::encode_material_circuit_state(&overbound),
         Err(MaterialCircuitError::RowLimit)
     );
 }
@@ -154,19 +181,29 @@ fn retail_admission_and_wire_keep_the_independent_unchanged_ceiling() {
     let state = mixed_order_state_counts(1, MAX_MATERIAL_CIRCUIT_ROWS - 1);
     let mut order = state.final_demand_orders[0].clone();
     order.order_id = order_id(MAX_MATERIAL_CIRCUIT_ROWS - 1);
-    let (full, _) = admit_material_purchase(
+    let (full, _) = babylon_material_circuit::admit_material_purchase(
         &state,
         MaterialPurchase::LocalFinalDemand(order.clone()),
-        money(1),
+        crate::money(1),
     )
     .unwrap();
     assert_eq!(full.final_demand_orders.len(), MAX_MATERIAL_CIRCUIT_ROWS);
-    let bytes = encode_material_circuit_state(&full).unwrap();
-    assert_eq!(decode_material_circuit_state(&bytes).unwrap(), full);
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&full).unwrap();
+    assert_eq!(
+        babylon_material_circuit::decode_material_circuit_state(&bytes).unwrap(),
+        full
+    );
     order.order_id = order_id(MAX_MATERIAL_CIRCUIT_ROWS);
     assert_eq!(
-        admit_material_purchase(&full, MaterialPurchase::LocalFinalDemand(order), money(1)),
+        babylon_material_circuit::admit_material_purchase(
+            &full,
+            MaterialPurchase::LocalFinalDemand(order),
+            crate::money(1)
+        ),
         Err(MaterialCircuitError::RowLimit)
     );
-    assert_eq!(encode_material_circuit_state(&full).unwrap(), bytes);
+    assert_eq!(
+        babylon_material_circuit::encode_material_circuit_state(&full).unwrap(),
+        bytes
+    );
 }

@@ -3,15 +3,14 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 
-use babylon_persistence::{
-    production_observation::ProductionFreightCapacityAccount,
-    production_observation::ProductionFreightReservation,
-    production_observation::ProductionRoute,
-    production_observation::ProductionSite,
-    production_observation::ProductionSnapshot,
-    production_observation::{PhysicalRouteError, ProductionAidCapacityOrder},
-    ProductionHouseholdAccount,
+use babylon_persistence::production_observation::FreightOrderIndex;
+use babylon_persistence::production_observation::PhysicalRouteIndex;
+use babylon_persistence::production_observation::ProductionCapacityKind;
+use babylon_persistence::production_observation::{
+    PhysicalRouteError, ProductionAidCapacityOrder, ProductionFreightCapacityAccount,
+    ProductionFreightReservation, ProductionRoute, ProductionSite, ProductionSnapshot,
 };
+use babylon_persistence::ProductionHouseholdAccount;
 
 /// Capacity mass is displayed in kilograms without rounding away gram residuals.
 pub(crate) fn format_freight_mass(grams: u64) -> String {
@@ -28,7 +27,7 @@ pub(crate) fn format_freight_mass(grams: u64) -> String {
 fn participating_routes<'a>(
     account: &ProductionFreightCapacityAccount,
     snapshot: &'a ProductionSnapshot,
-    definitions: &babylon_persistence::production_observation::PhysicalRouteIndex<'a>,
+    definitions: &PhysicalRouteIndex<'a>,
 ) -> Vec<&'a ProductionRoute> {
     let disclosed: BTreeSet<_> = snapshot.sites.iter().map(|site| site.id.as_str()).collect();
     let physical: BTreeSet<_> = account.route_ids.iter().map(String::as_str).collect();
@@ -53,7 +52,7 @@ fn participating_routes<'a>(
 
 fn capacity_routes<'a>(
     snapshot: &'a ProductionSnapshot,
-    definitions: &babylon_persistence::production_observation::PhysicalRouteIndex<'a>,
+    definitions: &PhysicalRouteIndex<'a>,
 ) -> BTreeMap<&'a str, Vec<&'a ProductionRoute>> {
     let disclosed: BTreeSet<_> = snapshot.sites.iter().map(|site| site.id.as_str()).collect();
     let mut result = BTreeMap::<_, Vec<_>>::new();
@@ -84,8 +83,7 @@ pub(crate) fn shared_accounts<'a>(
     snapshot: &'a ProductionSnapshot,
     selected_site: Option<&str>,
 ) -> Result<Vec<&'a ProductionFreightCapacityAccount>, PhysicalRouteError> {
-    let definitions =
-        babylon_persistence::production_observation::PhysicalRouteIndex::try_new(snapshot)?;
+    let definitions = PhysicalRouteIndex::try_new(snapshot)?;
     Ok(shared_accounts_with_index(
         snapshot,
         selected_site,
@@ -96,16 +94,14 @@ pub(crate) fn shared_accounts<'a>(
 pub(crate) fn shared_accounts_with_index<'a>(
     snapshot: &'a ProductionSnapshot,
     selected_site: Option<&str>,
-    definitions: &babylon_persistence::production_observation::PhysicalRouteIndex<'a>,
+    definitions: &PhysicalRouteIndex<'a>,
 ) -> Vec<&'a ProductionFreightCapacityAccount> {
     let routes = capacity_routes(snapshot, definitions);
     let mut accounts: Vec<_> = snapshot
         .freight_capacity_accounts
         .iter()
         .filter(|account| {
-            if account.kind
-                != babylon_persistence::production_observation::ProductionCapacityKind::Transport
-            {
+            if account.kind != ProductionCapacityKind::Transport {
                 return false;
             }
             let participants = routes
@@ -315,14 +311,10 @@ fn account_reading(
     account: &ProductionFreightCapacityAccount,
     snapshot: &ProductionSnapshot,
 ) -> String {
-    let Ok(definitions) =
-        babylon_persistence::production_observation::PhysicalRouteIndex::try_new(snapshot)
-    else {
+    let Ok(definitions) = PhysicalRouteIndex::try_new(snapshot) else {
         return "Physical route details unavailable in this observation.\n".into();
     };
-    let Ok(orders) =
-        babylon_persistence::production_observation::FreightOrderIndex::try_new(snapshot)
-    else {
+    let Ok(orders) = FreightOrderIndex::try_new(snapshot) else {
         return "Freight order details unavailable in this observation.\n".into();
     };
     account_reading_with_index(account, snapshot, &definitions, &orders)
@@ -331,8 +323,8 @@ fn account_reading(
 pub(crate) fn account_reading_with_index<'a>(
     account: &ProductionFreightCapacityAccount,
     snapshot: &'a ProductionSnapshot,
-    definitions: &babylon_persistence::production_observation::PhysicalRouteIndex<'a>,
-    orders: &babylon_persistence::production_observation::FreightOrderIndex<'a>,
+    definitions: &PhysicalRouteIndex<'a>,
+    orders: &FreightOrderIndex<'a>,
 ) -> String {
     let mut output = format!("{}\n", account.corridor_label);
     let routes = participating_routes(account, snapshot, definitions);
@@ -443,7 +435,7 @@ pub(crate) fn competitor_sites<'a>(
 fn grouped_orders<'a>(
     reservation: &ProductionFreightReservation,
     routes: &[&'a ProductionRoute],
-    orders: &babylon_persistence::production_observation::FreightOrderIndex<'_>,
+    orders: &FreightOrderIndex<'_>,
 ) -> (BTreeMap<&'a str, [u64; 3]>, bool) {
     let routes: BTreeMap<_, _> = routes.iter().map(|r| (r.id.as_str(), *r)).collect();
     let mut result = BTreeMap::<_, [u64; 3]>::new();
@@ -501,14 +493,8 @@ fn compare_orders(
     r_a: &ProductionFreightReservation,
     r_b: &ProductionFreightReservation,
     current: &ProductionSnapshot,
-    (current_routes, current_orders): (
-        &[&ProductionRoute],
-        &babylon_persistence::production_observation::FreightOrderIndex<'_>,
-    ),
-    (compared_routes, compared_orders): (
-        &[&ProductionRoute],
-        &babylon_persistence::production_observation::FreightOrderIndex<'_>,
-    ),
+    (current_routes, current_orders): (&[&ProductionRoute], &FreightOrderIndex<'_>),
+    (compared_routes, compared_orders): (&[&ProductionRoute], &FreightOrderIndex<'_>),
 ) {
     let (left, bad_left) = grouped_orders(r_a, current_routes, current_orders);
     let (right, bad_right) = grouped_orders(r_b, compared_routes, compared_orders);
@@ -661,14 +647,14 @@ pub(crate) fn comparison_reading(
     selected_site: Option<&str>,
 ) -> String {
     let (Ok(current_definitions), Ok(compared_definitions)) = (
-        babylon_persistence::production_observation::PhysicalRouteIndex::try_new(current),
-        babylon_persistence::production_observation::PhysicalRouteIndex::try_new(compared),
+        PhysicalRouteIndex::try_new(current),
+        PhysicalRouteIndex::try_new(compared),
     ) else {
         return "Physical route comparison unavailable in this observation.\n".into();
     };
     let (Ok(current_orders), Ok(compared_orders)) = (
-        babylon_persistence::production_observation::FreightOrderIndex::try_new(current),
-        babylon_persistence::production_observation::FreightOrderIndex::try_new(compared),
+        FreightOrderIndex::try_new(current),
+        FreightOrderIndex::try_new(compared),
     ) else {
         return "Freight order comparison unavailable in this observation.\n".into();
     };
@@ -755,14 +741,15 @@ pub(crate) fn comparison_reading(
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
-    use babylon_persistence::{
-        production_observation::CompletedProductionFreightCapacity,
-        production_observation::ProductionFreightCapacityAccount,
-        production_observation::ProductionFreightCapacityOrder,
-        production_observation::ProductionFreightReservation,
-        production_observation::ProductionRoute, production_observation::ProductionRouteStage,
-        production_observation::ProductionSite, production_observation::ProductionSnapshot,
+    use babylon_persistence::production_observation::ProductionCapacityKind;
+    use babylon_persistence::production_observation::ProductionFreightOrderDefinition;
+    use babylon_persistence::production_observation::ProductionRouteTransport;
+    use babylon_persistence::production_observation::{
+        CompletedProductionFreightCapacity, ProductionFreightCapacityAccount,
+        ProductionFreightCapacityOrder, ProductionFreightReservation, ProductionRoute,
+        ProductionRouteStage, ProductionSite, ProductionSnapshot,
     };
+    use babylon_persistence::ProductionHouseholdKind;
 
     fn rekey(snapshot: &mut ProductionSnapshot) {
         for definition in &mut snapshot.freight_order_definitions {
@@ -844,13 +831,23 @@ pub(crate) mod tests {
         })
         .collect();
         ProductionSnapshot {
-            physical_routes: ["sheets", "meal"].into_iter().map(|id| babylon_persistence::production_observation::PhysicalRouteDefinition {
-                id: id.into(), physical_edge_ids: Vec::new(), distance_mm: None,
-                transport_kind: babylon_persistence::production_observation::ProductionRouteTransport::Staged,
-                travel_periods: 1, stages: vec![ProductionRouteStage {
-                    stage_index: 0, capacity_ids: vec!["pool".into()], travel_periods: 1,
-                }],
-            }).collect(),
+            physical_routes: ["sheets", "meal"]
+                .into_iter()
+                .map(
+                    |id| babylon_persistence::production_observation::PhysicalRouteDefinition {
+                        id: id.into(),
+                        physical_edge_ids: Vec::new(),
+                        distance_mm: None,
+                        transport_kind: ProductionRouteTransport::Staged,
+                        travel_periods: 1,
+                        stages: vec![ProductionRouteStage {
+                            stage_index: 0,
+                            capacity_ids: vec!["pool".into()],
+                            travel_periods: 1,
+                        }],
+                    },
+                )
+                .collect(),
 
             household_accounts: Vec::new(),
             household_service_accounts: Vec::new(),
@@ -880,14 +877,12 @@ pub(crate) mod tests {
     }
 
     fn capacity_fixture(
-        definitions: &mut Vec<
-            babylon_persistence::production_observation::ProductionFreightOrderDefinition,
-        >,
+        definitions: &mut Vec<ProductionFreightOrderDefinition>,
     ) -> ProductionFreightCapacityAccount {
         ProductionFreightCapacityAccount {
             corridor_id: "pool".into(),
             corridor_label: "Designed regional freight pool".into(),
-            kind: babylon_persistence::production_observation::ProductionCapacityKind::Transport,
+            kind: ProductionCapacityKind::Transport,
             merchant_site_ids: Vec::new(),
             route_ids: vec!["sheets".into(), "meal".into()],
             next_opening_period: 2,
@@ -923,7 +918,7 @@ pub(crate) mod tests {
                                 remaining_unshipped: requested - dispatched,
                             };
                             let id = babylon_persistence::production_observation::freight_order_identity(&order).unwrap();
-                            definitions.push(babylon_persistence::production_observation::ProductionFreightOrderDefinition { id: id.clone(), order }); id },
+                            definitions.push(ProductionFreightOrderDefinition { id: id.clone(), order }); id },
                         )
                         .collect(),
                 }],
@@ -939,7 +934,7 @@ pub(crate) mod tests {
         ]
         .into_iter()
         .map(|(id, location, retailer)| ProductionHouseholdAccount {
-            kind: babylon_persistence::ProductionHouseholdKind::Ordinary,
+            kind: ProductionHouseholdKind::Ordinary,
             demand_principal_id: id.into(),
             location: location.parse().unwrap(),
             good_id: "food".into(),
@@ -1094,12 +1089,12 @@ pub(crate) mod tests {
             u128::from(unavailable.requested) * u128::from(unavailable.grams_per_unit);
         let id = babylon_persistence::production_observation::freight_order_identity(&unavailable)
             .unwrap();
-        snapshot.freight_order_definitions.push(
-            babylon_persistence::production_observation::ProductionFreightOrderDefinition {
+        snapshot
+            .freight_order_definitions
+            .push(ProductionFreightOrderDefinition {
                 id: id.clone(),
                 order: unavailable,
-            },
-        );
+            });
         snapshot.freight_capacity_accounts[0]
             .completed
             .as_mut()

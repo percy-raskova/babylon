@@ -69,15 +69,4 @@ mod projection;
 
 #[cfg(test)]
 pub(crate) use projection::project_material_observation;
-#[cfg(test)]
-use projection::Result;
 pub(crate) use projection::{project_economic_current, ProductionProjectionError};
-
-#[cfg(test)]
-use crate::michigan_economy::digest_hex;
-#[cfg(test)]
-use crate::production_observation::ProductionSnapshot;
-#[cfg(test)]
-use babylon_tick::material_world::MaterialTickReceipts;
-#[cfg(test)]
-use metadata::Metadata;

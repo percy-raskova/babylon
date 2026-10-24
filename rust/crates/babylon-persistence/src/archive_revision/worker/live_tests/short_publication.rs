@@ -1,6 +1,34 @@
 //! Prepared inputs must survive only as owned Rust values during production.
-use super::*;
+use super::archive_reader;
+use super::support;
+use super::support::{
+    archive_page_count, receipt_consumption_count, LiveWorkerTarget, StubPageProducer,
+};
+use crate::archive_revision::body_encoding::DecodeObservation;
+use crate::archive_revision::publication::PreparedPublication;
+use crate::archive_revision::record::RevisionRecord;
+use crate::archive_revision::ArchiveReadScope;
+use crate::archive_revision::{ArchiveDossierBounds, ArchiveDossierState};
+use crate::identity::CampaignId;
+use crate::ArchiveKnowledge;
+use crate::ArchiveMaterializeMode;
+use crate::ArchiveMaterializeReport;
+use crate::ArchivePageRef;
 use crate::ArchiveWorkerCancellation;
+use crate::{
+    ArchiveDirtyBatch, ArchiveDossierProducer, ArchivePageInput, ArchiveProducerOutcome,
+    ArchiveSubject, ArchiveSubjectKind, ArchiveWorker, PendingArchiveReceipt, SemanticArchiveError,
+    SemanticArchiveStore,
+};
+use postgres::Client;
+use postgres::IsolationLevel;
+use postgres::{Config, NoTls};
+use std::cell::Cell;
+use std::rc::Rc;
+use std::time::Duration;
+use uuid::Uuid;
+use zstd::bulk::Compressor;
+use zstd::zstd_safe::CParameter;
 
 struct DuringProduce<F>(F);
 impl<F: Fn() -> Result<(), SemanticArchiveError>> ArchiveDossierProducer for DuringProduce<F> {
@@ -8,7 +36,7 @@ impl<F: Fn() -> Result<(), SemanticArchiveError>> ArchiveDossierProducer for Dur
         &self,
         campaign: Uuid,
         receipt: &PendingArchiveReceipt,
-        knowledge: &crate::ArchiveKnowledge,
+        knowledge: &ArchiveKnowledge,
         budget: usize,
     ) -> Result<ArchiveProducerOutcome, SemanticArchiveError> {
         (self.0)()?;
@@ -65,7 +93,7 @@ fn live_slow_producer_has_no_outer_transaction_at_short_idle_timeout() {
             "producer must own no outer SQL snapshot"
         );
         assert_no_publication(&target);
-        std::thread::sleep(std::time::Duration::from_millis(250));
+        std::thread::sleep(Duration::from_millis(250));
         Ok(())
     });
     let report = crate::archive_revision::publication::with_campaign_lock(
@@ -213,7 +241,7 @@ fn live_backdated_grant_after_prepare_refuses_new_knowledge_substitution() {
 #[ignore = "requires the task-owned disposable PostgreSQL runtime and committed ticks"]
 fn live_prepared_publication_preserves_historical_receipt_identity() {
     let target = LiveWorkerTarget::create("preparehistorical", 0x34108, 2);
-    let original = scope_at(&target.config, target.campaign_id, 1);
+    let original = archive_reader::scope_at(&target.config, target.campaign_id, 1);
     let store = SemanticArchiveStore::new(&target.config);
     let mut client = store.connect("historical preparation proof").unwrap();
     let report = crate::archive_revision::publication::with_campaign_lock(
@@ -241,7 +269,10 @@ fn live_prepared_publication_preserves_historical_receipt_identity() {
         row.get::<_, Vec<u8>>(1),
         original.tick_content_hash().unwrap()
     );
-    assert_eq!(scope_at(&target.config, target.campaign_id, 1), original);
+    assert_eq!(
+        archive_reader::scope_at(&target.config, target.campaign_id, 1),
+        original
+    );
     drop(client);
     target.finish();
 }
@@ -250,13 +281,13 @@ fn live_prepared_publication_preserves_historical_receipt_identity() {
 struct ComparisonPlan(u64);
 
 impl crate::archive_revision::publication::ArchivePagePlan for ComparisonPlan {
-    fn page_ref(&self) -> Result<crate::ArchivePageRef, SemanticArchiveError> {
-        Ok(stub_subject_spec(self.0).page_ref)
+    fn page_ref(&self) -> Result<ArchivePageRef, SemanticArchiveError> {
+        Ok(support::stub_subject_spec(self.0).page_ref)
     }
 }
 
 fn fixed_comparison_input(tick: u64, hash: [u8; 32]) -> ArchivePageInput {
-    let base = stub_page_input(&PendingArchiveReceipt::try_new(1, hash).unwrap());
+    let base = support::stub_page_input(&PendingArchiveReceipt::try_new(1, hash).unwrap());
     ArchivePageInput::try_new(
         base.subject().clone(),
         tick,
@@ -273,25 +304,21 @@ fn fixed_comparison_input(tick: u64, hash: [u8; 32]) -> ArchivePageInput {
 fn live_dirty_comparison_renders_after_capture_commit() {
     let target = LiveWorkerTarget::create("detachedcomparison", 0x34109, 2);
     let store = SemanticArchiveStore::new(&target.config);
-    let first_scope = scope_at(&target.config, target.campaign_id, 1);
+    let first_scope = archive_reader::scope_at(&target.config, target.campaign_id, 1);
     let first_hash = first_scope.tick_content_hash().unwrap();
     let first =
         ArchiveDirtyBatch::try_new(1, first_hash, vec![fixed_comparison_input(1, first_hash)])
             .unwrap();
     store
-        .materialize_receipt(
-            target.campaign_id,
-            &first,
-            crate::ArchiveMaterializeMode::Consume,
-        )
+        .materialize_receipt(target.campaign_id, &first, ArchiveMaterializeMode::Consume)
         .unwrap();
-    let scope = scope_at(&target.config, target.campaign_id, 2);
+    let scope = archive_reader::scope_at(&target.config, target.campaign_id, 2);
     let receipt = PendingArchiveReceipt::try_new(2, scope.tick_content_hash().unwrap()).unwrap();
     let mut reader = target.config.connect(NoTls).unwrap();
     let known = crate::archive_revision::tick_knowledge::capture(&mut reader, &scope).unwrap();
     let mut config = target.config.clone();
     config.application_name("per341-detached-comparison");
-    let historical_calls = std::cell::Cell::new(0);
+    let historical_calls = Cell::new(0);
     let outcome = crate::archive_revision::publication::select_dirty_pages(
         &config,
         target.campaign_id,
@@ -316,7 +343,7 @@ fn live_dirty_comparison_renders_after_capture_commit() {
                     Some(true),
                     "historical composition/rendering must be detached"
                 );
-                std::thread::sleep(std::time::Duration::from_millis(250));
+                std::thread::sleep(Duration::from_millis(250));
             }
             Ok(fixed_comparison_input(tick, hash))
         },
@@ -337,23 +364,15 @@ fn live_dirty_comparison_renders_after_capture_commit() {
 fn live_detached_direct_materialization_restages_exact_bytes_and_refuses_corruption() {
     let target = LiveWorkerTarget::create("detachedrestage", 0x34110, 1);
     let store = SemanticArchiveStore::new(&target.config);
-    let scope = scope_at(&target.config, target.campaign_id, 1);
+    let scope = archive_reader::scope_at(&target.config, target.campaign_id, 1);
     let hash = scope.tick_content_hash().unwrap();
     let batch = ArchiveDirtyBatch::try_new(1, hash, vec![fixed_comparison_input(1, hash)]).unwrap();
     assert_direct_render_failure_leaves_no_publication(&target, &store, hash);
     let first = store
-        .materialize_receipt(
-            target.campaign_id,
-            &batch,
-            crate::ArchiveMaterializeMode::Stage,
-        )
+        .materialize_receipt(target.campaign_id, &batch, ArchiveMaterializeMode::Stage)
         .unwrap();
     let second = store
-        .materialize_receipt(
-            target.campaign_id,
-            &batch,
-            crate::ArchiveMaterializeMode::Stage,
-        )
+        .materialize_receipt(target.campaign_id, &batch, ArchiveMaterializeMode::Stage)
         .unwrap();
     assert!(first.pages()[0].persisted());
     assert!(!second.pages()[0].persisted());
@@ -391,7 +410,7 @@ fn assert_direct_render_failure_leaves_no_publication(
         store.materialize_receipt(
             target.campaign_id,
             &refused,
-            crate::ArchiveMaterializeMode::Consume
+            ArchiveMaterializeMode::Consume
         ),
         Err(SemanticArchiveError::UnknownSubject)
     );
@@ -411,11 +430,7 @@ fn assert_stored_revision_corruption_refused(
     ).unwrap();
     assert!(
         matches!(
-            store.materialize_receipt(
-                target.campaign_id,
-                batch,
-                crate::ArchiveMaterializeMode::Consume
-            ),
+            store.materialize_receipt(target.campaign_id, batch, ArchiveMaterializeMode::Consume),
             Err(SemanticArchiveError::ReceiptConflict | SemanticArchiveError::StoredPageMismatch)
         ),
         "matching stored revision digest must not conceal different stored fields"
@@ -434,11 +449,7 @@ fn assert_stored_revision_corruption_refused(
     assert!(reverse_grant_membership(&mut client, target.campaign_id, None) > 0);
     assert!(
         store
-            .materialize_receipt(
-                target.campaign_id,
-                batch,
-                crate::ArchiveMaterializeMode::Consume
-            )
+            .materialize_receipt(target.campaign_id, batch, ArchiveMaterializeMode::Consume)
             .is_err(),
         "same count and digest cannot conceal reordered grant membership"
     );
@@ -453,11 +464,7 @@ fn assert_stored_revision_corruption_refused(
     ).unwrap();
     assert!(
         store
-            .materialize_receipt(
-                target.campaign_id,
-                batch,
-                crate::ArchiveMaterializeMode::Consume
-            )
+            .materialize_receipt(target.campaign_id, batch, ArchiveMaterializeMode::Consume)
             .is_err(),
         "noncanonical emission bytes refuse reuse even with the original digest"
     );
@@ -495,7 +502,7 @@ fn retained_comparison_input(
     hash: [u8; 32],
     changed: bool,
 ) -> ArchivePageInput {
-    let base = stub_page_input(&PendingArchiveReceipt::try_new(plan, hash).unwrap());
+    let base = support::stub_page_input(&PendingArchiveReceipt::try_new(plan, hash).unwrap());
     ArchivePageInput::try_new(
         base.subject().clone(),
         tick,
@@ -517,7 +524,7 @@ fn retained_comparison_input(
 fn live_publication_reconciles_batch_and_exact_conflicts_with_constant_queries() {
     let target = LiveWorkerTarget::create("batchpublication", 0x34112, 1);
     let store = SemanticArchiveStore::new(&target.config);
-    let scope = scope_at(&target.config, target.campaign_id, 1);
+    let scope = archive_reader::scope_at(&target.config, target.campaign_id, 1);
     let hash = scope.tick_content_hash().unwrap();
     let batch = ArchiveDirtyBatch::try_new(
         1,
@@ -529,22 +536,22 @@ fn live_publication_reconciles_batch_and_exact_conflicts_with_constant_queries()
     .unwrap();
     let head = ArchiveDirtyBatch::try_new(1, hash, vec![batch.pages()[0].clone()]).unwrap();
     let mut query_counts = Vec::new();
-    let mut previous: Option<crate::ArchiveMaterializeReport> = None;
+    let mut previous: Option<ArchiveMaterializeReport> = None;
     for (input, mode, expected_insertions) in [
-        (&head, crate::ArchiveMaterializeMode::Stage, vec![true]),
+        (&head, ArchiveMaterializeMode::Stage, vec![true]),
         (
             &batch,
-            crate::ArchiveMaterializeMode::Stage,
+            ArchiveMaterializeMode::Stage,
             vec![false, true, true],
         ),
         (
             &batch,
-            crate::ArchiveMaterializeMode::Stage,
+            ArchiveMaterializeMode::Stage,
             vec![false, false, false],
         ),
         (
             &batch,
-            crate::ArchiveMaterializeMode::Consume,
+            ArchiveMaterializeMode::Consume,
             vec![false, false, false],
         ),
     ] {
@@ -572,7 +579,7 @@ fn live_publication_reconciles_batch_and_exact_conflicts_with_constant_queries()
         }
         assert_eq!(
             receipt_consumption_count(&target.config, target.campaign_id),
-            i64::from(mode == crate::ArchiveMaterializeMode::Consume)
+            i64::from(mode == ArchiveMaterializeMode::Consume)
         );
         previous = Some(report);
     }
@@ -588,7 +595,7 @@ fn live_publication_reconciles_batch_and_exact_conflicts_with_constant_queries()
 fn live_batch_tail_corruption_after_prepare_rolls_back_earlier_inserts_and_consumption() {
     let target = LiveWorkerTarget::create("batchtailrefusal", 0x34113, 1);
     let store = SemanticArchiveStore::new(&target.config);
-    let scope = scope_at(&target.config, target.campaign_id, 1);
+    let scope = archive_reader::scope_at(&target.config, target.campaign_id, 1);
     let hash = scope.tick_content_hash().unwrap();
     let batch = ArchiveDirtyBatch::try_new(
         1,
@@ -600,11 +607,7 @@ fn live_batch_tail_corruption_after_prepare_rolls_back_earlier_inserts_and_consu
     .unwrap();
     let tail = ArchiveDirtyBatch::try_new(1, hash, vec![batch.pages()[2].clone()]).unwrap();
     store
-        .materialize_receipt(
-            target.campaign_id,
-            &tail,
-            crate::ArchiveMaterializeMode::Stage,
-        )
+        .materialize_receipt(target.campaign_id, &tail, ArchiveMaterializeMode::Stage)
         .unwrap();
     let mut client = target.config.connect(NoTls).unwrap();
     let original = publication_row_counts(&mut client, target.campaign_id);
@@ -625,7 +628,7 @@ fn live_batch_tail_corruption_after_prepare_rolls_back_earlier_inserts_and_consu
                 let (prepared, known) = prepare_checked_batch(client, &scope, &batch)?;
                 let mut tx = client
                     .build_transaction()
-                    .isolation_level(postgres::IsolationLevel::Serializable)
+                    .isolation_level(IsolationLevel::Serializable)
                     .start()
                     .unwrap();
                 crate::archive_revision::tick_knowledge::pin_prepared(&mut tx, &scope, &known)?;
@@ -645,7 +648,7 @@ fn live_batch_tail_corruption_after_prepare_rolls_back_earlier_inserts_and_consu
                 let refused = crate::archive_revision::publication::publish(
                     &mut tx,
                     prepared,
-                    crate::ArchiveMaterializeMode::Consume,
+                    ArchiveMaterializeMode::Consume,
                 );
                 assert_eq!(
                     refused,
@@ -685,19 +688,13 @@ fn live_batch_tail_corruption_after_prepare_rolls_back_earlier_inserts_and_consu
 }
 
 fn prepare_checked_batch(
-    client: &mut postgres::Client,
-    scope: &crate::archive_revision::ArchiveReadScope,
+    client: &mut Client,
+    scope: &ArchiveReadScope,
     batch: &ArchiveDirtyBatch,
-) -> Result<
-    (
-        crate::archive_revision::publication::PreparedPublication,
-        crate::ArchiveKnowledge,
-    ),
-    SemanticArchiveError,
-> {
+) -> Result<(PreparedPublication, ArchiveKnowledge), SemanticArchiveError> {
     let mut capture = client
         .build_transaction()
-        .isolation_level(postgres::IsolationLevel::Serializable)
+        .isolation_level(IsolationLevel::Serializable)
         .read_only(true)
         .start()
         .unwrap();
@@ -751,7 +748,7 @@ fn publication_row_counts(
 fn live_retained_comparison_has_constant_capture_queries_and_audits_beyond_head() {
     let target = LiveWorkerTarget::create("batchcomparison", 0x34111, 2);
     let store = SemanticArchiveStore::new(&target.config);
-    let first = scope_at(&target.config, target.campaign_id, 1);
+    let first = archive_reader::scope_at(&target.config, target.campaign_id, 1);
     let hash = first.tick_content_hash().unwrap();
     let plans = [ComparisonPlan(1), ComparisonPlan(2), ComparisonPlan(3)]; // Two county subjects and one place, all genuinely granted.
     let batch = ArchiveDirtyBatch::try_new(
@@ -764,13 +761,9 @@ fn live_retained_comparison_has_constant_capture_queries_and_audits_beyond_head(
     )
     .unwrap();
     store
-        .materialize_receipt(
-            target.campaign_id,
-            &batch,
-            crate::ArchiveMaterializeMode::Consume,
-        )
+        .materialize_receipt(target.campaign_id, &batch, ArchiveMaterializeMode::Consume)
         .unwrap();
-    let scope = scope_at(&target.config, target.campaign_id, 2);
+    let scope = archive_reader::scope_at(&target.config, target.campaign_id, 2);
     let receipt = PendingArchiveReceipt::try_new(2, scope.tick_content_hash().unwrap()).unwrap();
     let mut reader = target.config.connect(NoTls).unwrap();
     let known = crate::archive_revision::tick_knowledge::capture(&mut reader, &scope).unwrap();
@@ -801,7 +794,7 @@ fn live_retained_comparison_has_constant_capture_queries_and_audits_beyond_head(
     assert_eq!(dirty.batch().pages().len(), 1);
     assert_eq!(
         dirty.batch().pages()[0].subject().page_ref(),
-        &stub_subject_spec(1).page_ref
+        &support::stub_subject_spec(1).page_ref
     );
     assert_eq!(dirty.remaining(), 2);
     assert_eq!(archive_page_count(&target.config, target.campaign_id), 3);
@@ -841,10 +834,10 @@ fn live_retained_comparison_has_constant_capture_queries_and_audits_beyond_head(
 }
 
 fn assert_changed_frozen_value_refused(
-    reader: &mut postgres::Client,
+    reader: &mut Client,
     target: &LiveWorkerTarget,
     receipt: &PendingArchiveReceipt,
-    known: &crate::ArchiveKnowledge,
+    known: &ArchiveKnowledge,
     plans: &[ComparisonPlan],
 ) {
     // Preserve order, cardinality, and all valid references while changing one
@@ -890,9 +883,9 @@ fn live_packed_archive_body_reconstructs_confined_identity_and_refuses_projectio
     ArchiveWorker::new(&target.config)
         .sweep_once(target.campaign_id, &StubPageProducer)
         .unwrap();
-    with_reader(&target.config, |reader| {
-        let scope = scope_at(&target.config, target.campaign_id, 1);
-        let subject = stub_subject_spec(1).page_ref;
+    archive_reader::with_reader(&target.config, |reader| {
+        let scope = archive_reader::scope_at(&target.config, target.campaign_id, 1);
+        let subject = support::stub_subject_spec(1).page_ref;
         let ready = reader
             .dossier_as_of(&scope, &subject, &ArchiveDossierBounds::default())
             .unwrap();
@@ -990,7 +983,7 @@ fn live_packed_archive_body_reconstructs_confined_identity_and_refuses_projectio
 fn live_alternate_valid_body_retry_preserves_canonical_frame_outside_publication() {
     use crate::archive_revision::body_encoding;
     let target = LiveWorkerTarget::create("bodyretry", 0x34342, 1);
-    let scope = scope_at(&target.config, target.campaign_id, 1);
+    let scope = archive_reader::scope_at(&target.config, target.campaign_id, 1);
     let hash = scope.tick_content_hash().unwrap();
     let batch = ArchiveDirtyBatch::try_new(1, hash, vec![fixed_comparison_input(1, hash)]).unwrap();
     let mut config = target.config.clone();
@@ -999,11 +992,7 @@ fn live_alternate_valid_body_retry_preserves_canonical_frame_outside_publication
     let store = SemanticArchiveStore::new(&config);
     body_encoding::reset_decode_counts();
     let staged = store
-        .materialize_receipt(
-            target.campaign_id,
-            &batch,
-            crate::ArchiveMaterializeMode::Stage,
-        )
+        .materialize_receipt(target.campaign_id, &batch, ArchiveMaterializeMode::Stage)
         .unwrap();
     assert_eq!(staged.pages().len(), 1);
     assert!(staged.pages()[0].persisted());
@@ -1020,14 +1009,10 @@ fn live_alternate_valid_body_retry_preserves_canonical_frame_outside_publication
     assert_eq!(restored, original);
     assert_eq!(restored.digest().unwrap(), digest);
     body_encoding::reset_decode_counts();
-    let observations = std::rc::Rc::new(std::cell::Cell::new(0_usize));
+    let observations = Rc::new(Cell::new(0_usize));
     let guard = observe_detached_body_replay(&target.config, &application, observations.clone());
     let consumed = store
-        .materialize_receipt(
-            target.campaign_id,
-            &batch,
-            crate::ArchiveMaterializeMode::Consume,
-        )
+        .materialize_receipt(target.campaign_id, &batch, ArchiveMaterializeMode::Consume)
         .unwrap();
     drop(guard);
     assert_eq!(
@@ -1057,7 +1042,7 @@ fn live_alternate_valid_body_retry_preserves_canonical_frame_outside_publication
         receipt_consumption_count(&target.config, target.campaign_id),
         1
     );
-    with_reader(&target.config, |reader| {
+    archive_reader::with_reader(&target.config, |reader| {
         let read = reader
             .dossier_as_of(&scope, &original.subject, &ArchiveDossierBounds::default())
             .unwrap();
@@ -1072,10 +1057,7 @@ fn live_alternate_valid_body_retry_preserves_canonical_frame_outside_publication
     target.finish();
 }
 
-fn packed_body_record(
-    inspector: &mut postgres::Client,
-    campaign: CampaignId,
-) -> crate::archive_revision::record::RevisionRecord {
+fn packed_body_record(inspector: &mut Client, campaign: CampaignId) -> RevisionRecord {
     use crate::archive_revision::storage;
     let row = inspector
         .query_one(
@@ -1093,9 +1075,9 @@ fn packed_body_record(
 }
 
 fn install_equivalent_body_frame(
-    inspector: &mut postgres::Client,
+    inspector: &mut Client,
     campaign: CampaignId,
-    record: &crate::archive_revision::record::RevisionRecord,
+    record: &RevisionRecord,
 ) -> Vec<u8> {
     use crate::archive_revision::body_encoding;
     let emission = record.emission.encode().unwrap();
@@ -1117,9 +1099,9 @@ fn install_equivalent_body_frame(
         )
         .unwrap()
         .get(0);
-    let mut compressor = zstd::bulk::Compressor::new(3).unwrap();
+    let mut compressor = Compressor::new(3).unwrap();
     compressor
-        .set_parameter(zstd::zstd_safe::CParameter::ChecksumFlag(true))
+        .set_parameter(CParameter::ChecksumFlag(true))
         .unwrap();
     let alternate = compressor.compress(&tuple).unwrap();
     assert_ne!(
@@ -1149,8 +1131,8 @@ fn install_equivalent_body_frame(
 fn observe_detached_body_replay(
     config: &Config,
     application: &str,
-    counter: std::rc::Rc<std::cell::Cell<usize>>,
-) -> crate::archive_revision::body_encoding::DecodeObservation {
+    counter: Rc<Cell<usize>>,
+) -> DecodeObservation {
     use crate::archive_revision::body_encoding;
     let observer_config = config.clone();
     let observer_application = application.to_owned();

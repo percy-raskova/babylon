@@ -1,7 +1,8 @@
 //! Resolve frozen citations through exact campaign-owned physical definitions.
 use postgres::GenericClient;
 
-use crate::{identity::CampaignId, ArchiveCitation, SemanticArchiveError};
+use crate::identity::CampaignId;
+use crate::{ArchiveCitation, SemanticArchiveError};
 
 pub(crate) fn resolve_ordered(
     client: &mut impl GenericClient,

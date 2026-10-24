@@ -7,15 +7,18 @@ use bevy::window::PrimaryWindow;
 
 use crate::decision_surface::{DeclaredSurface, SurfaceId};
 use crate::observer::{ObserverSession, SessionPhase};
-use crate::observer_controls::{availability, ControlAvailability};
+use crate::observer_controls;
+use crate::observer_controls::ControlAvailability;
 use crate::observer_focus::{
     ObserverFocusSystems, ObserverFocusTarget, ObserverKeyboardActivate, ObserverKeyboardClaim,
 };
 use crate::observer_io::ObserverSet;
 use crate::observer_opening::{MenuPage, OpeningPresentation, OpeningStage};
+use crate::observer_progress::OperationProgress;
 use crate::observer_theme as theme;
 use crate::observer_ui::{ObserverCommand, ObserverFontRole, ObserverUiState};
 use crate::visual_assets::VisualAssets;
+use bevy::picking::pointer::PointerButton;
 
 #[derive(Component)]
 pub(crate) struct TitleMenuRoot;
@@ -277,7 +280,7 @@ fn action_enabled(
             };
             !opening.launch_pending
                 && !session.lifecycle_pending()
-                && availability(command, session) == ControlAvailability::Enabled
+                && observer_controls::availability(command, session) == ControlAvailability::Enabled
         }
         _ => true,
     }
@@ -354,7 +357,7 @@ impl TitleInput<'_> {
     }
 }
 fn pointer_action(event: On<Pointer<Click>>, actions: Query<&TitleAction>, mut input: TitleInput) {
-    if event.button == bevy::picking::pointer::PointerButton::Primary {
+    if event.button == PointerButton::Primary {
         if let Ok(action) = actions.get(event.entity) {
             input.activate(*action);
         }
@@ -429,7 +432,7 @@ type TitleRootFilter = Or<(With<TitleMenuRoot>, With<TitleBackdrop>)>;
 #[derive(SystemParam)]
 struct TitlePaint<'w> {
     opening: Res<'w, OpeningPresentation>,
-    progress: Option<Res<'w, crate::observer_progress::OperationProgress>>,
+    progress: Option<Res<'w, OperationProgress>>,
     session: Res<'w, ObserverSession>,
     ui: Res<'w, ObserverUiState>,
 }
@@ -515,9 +518,7 @@ fn paint(
     } else {
         ""
     };
-    let pending = progress
-        .as_deref()
-        .and_then(crate::observer_progress::OperationProgress::caption);
+    let pending = progress.as_deref().and_then(OperationProgress::caption);
     for mut text in &mut status {
         text.set_if_neq(Text::new(pending.as_deref().unwrap_or(caption)));
     }
@@ -571,11 +572,12 @@ impl Plugin for ObserverTitlePlugin {
 mod tests {
     use super::*;
     use babylon_persistence::identity::CampaignId;
+    use uuid::Uuid;
 
     #[test]
     fn native_title_buttons_route_national_new_game_and_explicit_michigan_control() {
         let mut app = App::new();
-        let mut session = ObserverSession::new(CampaignId::from_uuid(uuid::Uuid::from_u128(1)));
+        let mut session = ObserverSession::new(CampaignId::from_uuid(Uuid::from_u128(1)));
         session.connected_fixture();
         session.ready(0, None);
         session.foundation_digest = Some("admitted".into());
@@ -639,7 +641,7 @@ mod tests {
     }
 
     fn game_menu_app() -> App {
-        let mut session = ObserverSession::new(CampaignId::from_uuid(uuid::Uuid::from_u128(1)));
+        let mut session = ObserverSession::new(CampaignId::from_uuid(Uuid::from_u128(1)));
         session.connected_fixture();
         session.ready(2, None);
         session.foundation_digest = Some("admitted".into());
@@ -800,7 +802,7 @@ mod tests {
             .resource::<OpeningPresentation>()
             .saved_games_visible());
         assert_eq!(
-            availability(
+            observer_controls::availability(
                 ObserverCommand::ReopenCampaign,
                 app.world().resource::<ObserverSession>()
             ),
@@ -816,7 +818,7 @@ mod tests {
 
     #[test]
     fn continue_requires_an_admitted_observation_and_no_pending_authority() {
-        let mut session = ObserverSession::new(CampaignId::from_uuid(uuid::Uuid::new_v4()));
+        let mut session = ObserverSession::new(CampaignId::from_uuid(Uuid::new_v4()));
         assert!(!can_continue(&session));
         session.ready(0, None);
         assert!(session.installed(&session.context()));

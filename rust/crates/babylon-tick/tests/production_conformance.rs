@@ -52,11 +52,14 @@
 #![allow(clippy::unreadable_literal)]
 #![allow(clippy::float_cmp)]
 
-use babylon_bsl::scenario::load_scenario;
+use babylon_bsl::scenario;
+use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
+use babylon_kernel::replay::ReplaySeed;
 use babylon_kernel::replay::ReplaySessionId;
-use babylon_tick::run_once_into;
+use babylon_tick::diagnostic::RuleDiagnosticSession;
+use babylon_tick::TickReport;
 
 const SCENARIO: &str = include_str!("../content/scenarios/production-conformance.bscn");
 
@@ -111,8 +114,8 @@ fn scenario_loads_with_a_probe_pack() {
     (update-node self social-class/wealth (set wealth))))
 "#;
     let mut graph = HypergraphStore::new();
-    let mut sink = babylon_bsl::structural_verbs::CollectingSink::default();
-    run_once_into(SCENARIO, PROBE_RULE, &mut graph, &mut sink)
+    let mut sink = CollectingSink::default();
+    babylon_tick::run_once_into(SCENARIO, PROBE_RULE, &mut graph, &mut sink)
         .expect("the scenario must load and run against a registered-system probe rule");
 }
 
@@ -120,7 +123,8 @@ fn scenario_loads_with_a_probe_pack() {
 #[test]
 fn the_scenario_loads_clean_with_the_declared_census() {
     let mut graph = HypergraphStore::new();
-    let loaded = load_scenario(SCENARIO, &mut graph).expect("the scenario must load clean");
+    let loaded =
+        scenario::load_scenario(SCENARIO, &mut graph).expect("the scenario must load clean");
     assert_eq!(loaded.node_count, 14, "9 social classes + 5 territories");
     assert_eq!(loaded.edge_count, 12, "9 TENANCY + 3 WAGES");
     assert_eq!(
@@ -145,7 +149,7 @@ fn the_scenario_loads_clean_with_the_declared_census() {
 #[test]
 fn every_node_seeds_all_its_declared_fields() {
     let mut graph = HypergraphStore::new();
-    load_scenario(SCENARIO, &mut graph).expect("the scenario must load clean");
+    scenario::load_scenario(SCENARIO, &mut graph).expect("the scenario must load clean");
     // NOT a contiguous NodeId range for either type: `worker-tight`
     // (MINOR-2, fix round) is declared AFTER the four original territories,
     // so SOCIAL_CLASS is {0..=7, 12} and TERRITORY is {8..=11, 13} — an
@@ -185,10 +189,10 @@ fn every_node_seeds_all_its_declared_fields() {
 
 const PRODUCTION_RULE: &str = include_str!("../content/rules/production.bsl");
 
-fn run_production() -> (HypergraphStore, babylon_tick::TickReport) {
+fn run_production() -> (HypergraphStore, TickReport) {
     let mut graph = HypergraphStore::new();
-    let mut sink = babylon_bsl::structural_verbs::CollectingSink::default();
-    let report = run_once_into(SCENARIO, PRODUCTION_RULE, &mut graph, &mut sink)
+    let mut sink = CollectingSink::default();
+    let report = babylon_tick::run_once_into(SCENARIO, PRODUCTION_RULE, &mut graph, &mut sink)
         .expect("the production pack must load and run");
     (graph, report)
 }
@@ -521,14 +525,14 @@ fn p0_and_p4_fire_on_every_territory() {
 /// `0.05538461538461539`, EXACTLY DOUBLE tick 1's `0.027692307692307697`.
 #[test]
 fn p0_reset_keeps_extraction_intensity_stable_across_two_ticks() {
-    let mut sink = babylon_bsl::structural_verbs::CollectingSink::default();
-    let mut session = babylon_tick::diagnostic::RuleDiagnosticSession::new(
+    let mut sink = CollectingSink::default();
+    let mut session = RuleDiagnosticSession::new(
         SCENARIO,
         None,
         PRODUCTION_RULE,
         HypergraphStore::new(),
         ReplaySessionId::try_from("production-conformance-test").expect("literal is non-empty"),
-        babylon_kernel::replay::ReplaySeed::new(0),
+        ReplaySeed::new(0),
     )
     .expect("the pack must load into a session");
     session.advance(&mut sink).expect("tick 1");

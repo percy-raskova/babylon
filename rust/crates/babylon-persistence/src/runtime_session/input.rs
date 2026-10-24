@@ -6,6 +6,7 @@ use std::thread::{self, JoinHandle};
 
 use super::coordinator::SessionEvent;
 use super::{RuntimeSessionErrorCode, RUNTIME_SESSION_MAX_LINE_BYTES};
+use thread::Builder;
 
 #[derive(Debug)]
 pub(super) enum InputEvent {
@@ -25,7 +26,7 @@ impl SessionInput {
         events: SyncSender<SessionEvent>,
     ) -> Result<Self, RuntimeSessionErrorCode> {
         let (permit, next) = mpsc::sync_channel(1);
-        let handle = thread::Builder::new()
+        let handle = Builder::new()
             .name("runtime-control-input".into())
             .spawn(move || pump(input, &events, &next))
             .map_err(|_| RuntimeSessionErrorCode::PipeFailure)?;

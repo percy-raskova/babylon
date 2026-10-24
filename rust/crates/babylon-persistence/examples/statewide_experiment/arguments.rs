@@ -1,13 +1,15 @@
-use super::{hex, refused, report::Candidate, Result};
-use babylon_kernel::content_digest::sha256_of;
+use super::report::Candidate;
+use super::Result;
+
+use babylon_kernel::content_digest;
 use babylon_persistence::michigan_material::{MichiganPhysicalNetwork, MAX_MICHIGAN_SOURCE_BYTES};
 use serde::Serialize;
-use std::{
-    collections::BTreeMap,
-    fs::{File, OpenOptions},
-    io::{Read, Write},
-    path::{Path, PathBuf},
-};
+use std::collections::BTreeMap;
+use std::fs::{File, OpenOptions};
+use std::io::Error;
+use std::io::ErrorKind;
+use std::io::{Read, Write};
+use std::path::{Path, PathBuf};
 
 pub const MAX_REPORT_BYTES: usize = 64 * 1024 * 1024;
 const USAGE: &str = "statewide_experiment --defines PATH --qualification DECODED_JSON --physical JSON --capacity-key KEY --food-process KEY --constrained-grams POSITIVE --shortage-opening NONNEGATIVE --output NEW_ABSOLUTE_JSON";
@@ -46,16 +48,16 @@ impl Arguments {
                         | "--output"
                 )
             {
-                return Err(refused(USAGE));
+                return Err(super::refused(USAGE));
             }
             if fields.insert(pair[0].clone(), pair[1].clone()).is_some() {
-                return Err(refused(format!("duplicate argument {}", pair[0])));
+                return Err(super::refused(format!("duplicate argument {}", pair[0])));
             }
         }
         let mut take = |key: &str| {
             fields
                 .remove(key)
-                .ok_or_else(|| refused(format!("missing {key}; {USAGE}")))
+                .ok_or_else(|| super::refused(format!("missing {key}; {USAGE}")))
         };
         let result = Self {
             defines: take("--defines")?.into(),
@@ -70,11 +72,11 @@ impl Arguments {
             output: take("--output")?.into(),
         };
         if !result.output.is_absolute() {
-            return Err(refused("output must be an absolute new file path"));
+            return Err(super::refused("output must be an absolute new file path"));
         }
         match std::fs::symlink_metadata(&result.output) {
-            Ok(_) => return Err(refused("refusing to overwrite existing output")),
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Ok(_) => return Err(super::refused("refusing to overwrite existing output")),
+            Err(error) if error.kind() == ErrorKind::NotFound => {}
             Err(error) => return Err(error.into()),
         }
         Ok(Some(result))
@@ -86,7 +88,7 @@ fn bounded_read(path: &Path) -> Result<Vec<u8>> {
         .take((MAX_MICHIGAN_SOURCE_BYTES + 1) as u64)
         .read_to_end(&mut data)?;
     if data.len() > MAX_MICHIGAN_SOURCE_BYTES {
-        return Err(refused(format!(
+        return Err(super::refused(format!(
             "input exceeds captured-content bound: {}",
             path.display()
         )));
@@ -99,15 +101,21 @@ pub fn read_inputs(args: &Arguments) -> Result<Inputs> {
     let physical_bytes = bounded_read(&args.physical)?;
     let physical: MichiganPhysicalNetwork = serde_json::from_slice(&physical_bytes)?;
     if physical.source.pbf_url.starts_with("synthetic://") {
-        return Err(refused(
+        return Err(super::refused(
             "synthetic networks are restricted to the focused example tests",
         ));
     }
     Ok(Inputs {
         hashes: BTreeMap::from([
-            ("defines", hex(&sha256_of(&defines))),
-            ("qualification", hex(&sha256_of(&qualification))),
-            ("physical", hex(&sha256_of(&physical_bytes))),
+            ("defines", super::hex(&content_digest::sha256_of(&defines))),
+            (
+                "qualification",
+                super::hex(&content_digest::sha256_of(&qualification)),
+            ),
+            (
+                "physical",
+                super::hex(&content_digest::sha256_of(&physical_bytes)),
+            ),
         ]),
         defines: String::from_utf8(defines)?,
         qualification,
@@ -123,7 +131,7 @@ impl Write for BoundedOutput {
             .checked_add(bytes.len())
             .is_none_or(|n| n > MAX_REPORT_BYTES)
         {
-            return Err(std::io::Error::other("operator report exceeds 64 MiB"));
+            return Err(Error::other("operator report exceeds 64 MiB"));
         }
         self.0.extend_from_slice(bytes);
         Ok(bytes.len())

@@ -1,8 +1,7 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
-use super::{
-    admit_material_purchase, advance_material_circuit, decode_material_circuit_state,
-    encode_material_circuit_state, AccountId, AidBook, CapacityRow, CapacitySupply, CashAccount,
+use babylon_material_circuit::{
+    decode_material_circuit_state, AccountId, AidBook, CapacityRow, CapacitySupply, CashAccount,
     CircuitAccounting, CommodityDefinition, CommodityKind, EmploymentTerms, FinalDemandPrincipal,
     FinalDemandPrincipalId, GoodId, HistoricalCostBook, InputOutputCoefficient, InventoryRow,
     LaborCapacityRow, LaborCoefficient, LogisticsNodeId, MaterialCircuitError,
@@ -12,6 +11,10 @@ use super::{
 };
 
 use babylon_kernel::currency::Currency;
+use babylon_material_circuit::FinancialInstitutions;
+use babylon_material_circuit::HouseholdTimeAccounting;
+use babylon_material_circuit::LaborCompensation;
+use babylon_material_circuit::StaffingMemberId;
 
 pub(crate) fn site(n: u8) -> SiteId {
     SiteId::from_bytes([n; 32])
@@ -91,13 +94,11 @@ pub(crate) fn opening() -> MaterialCircuitState {
         accounting: CircuitAccounting::Monetary(Box::new(MonetaryCircuit {
             aid: AidBook::default(),
 
-            household_time: babylon_material_circuit::HouseholdTimeAccounting::NotModeled,
-            financial: babylon_material_circuit::FinancialInstitutions::empty(),
+            household_time: HouseholdTimeAccounting::NotModeled,
+            financial: FinancialInstitutions::empty(),
             member_labor: (1..=3)
                 .map(|n| babylon_material_circuit::MemberLaborCapacityRow {
-                    member_id: babylon_material_circuit::StaffingMemberId::from_bytes(
-                        site(n).as_bytes(),
-                    ),
+                    member_id: StaffingMemberId::from_bytes(site(n).as_bytes()),
                     period: 1,
                     available_hours: if n == 1 { 2 } else { 1 },
                 })
@@ -107,13 +108,11 @@ pub(crate) fn opening() -> MaterialCircuitState {
             recurring: None,
             employment: (1..=3)
                 .map(|n| EmploymentTerms {
-                    member_id: babylon_material_circuit::StaffingMemberId::from_bytes(
-                        (site(n)).as_bytes(),
-                    ),
+                    member_id: StaffingMemberId::from_bytes((site(n)).as_bytes()),
                     site_id: site(n),
                     unit_id: unit(9),
                     payee: household(),
-                    compensation: babylon_material_circuit::LaborCompensation::Wage(money(1)),
+                    compensation: LaborCompensation::Wage(money(1)),
                 })
                 .collect(),
         })),
@@ -264,7 +263,7 @@ pub(crate) fn funded(mut state: MaterialCircuitState) -> MaterialCircuitState {
     for (id, provider, buyer, commodity, price) in
         [(1, 1, 2, 1, 2), (2, 1, 3, 1, 2), (3, 2, 3, 2, 3)]
     {
-        state = admit_material_purchase(
+        state = babylon_material_circuit::admit_material_purchase(
             &state,
             MaterialPurchase::Service(ServiceOrder {
                 order_id: OrderId::from_bytes([id; 32]),
@@ -288,7 +287,7 @@ pub(crate) fn native_services_feed_later_stages_without_freight_or_stored_servic
     let mut state = opening();
     state.inventory[0].quantity = 2;
     let state = funded(state);
-    let closed = advance_material_circuit(&state).unwrap();
+    let closed = babylon_material_circuit::advance_material_circuit(&state).unwrap();
     assert_eq!(
         closed
             .production
@@ -335,7 +334,7 @@ pub(crate) fn native_services_feed_later_stages_without_freight_or_stored_servic
         money(6)
     );
     assert!(closed.state.service_orders.is_empty());
-    let bytes = encode_material_circuit_state(&closed.state).unwrap();
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&closed.state).unwrap();
     assert_eq!(decode_material_circuit_state(&bytes).unwrap(), closed.state);
 }
 
@@ -343,7 +342,7 @@ pub(crate) fn native_services_feed_later_stages_without_freight_or_stored_servic
 pub(crate) fn absent_utility_constrains_services_and_goods_without_spending_work_twice() {
     let mut state = opening();
     state.inventory[0].quantity = 0;
-    let closed = advance_material_circuit(&funded(state)).unwrap();
+    let closed = babylon_material_circuit::advance_material_circuit(&funded(state)).unwrap();
     assert!(closed.production.iter().all(|r| r.produced_batches == 0));
     assert!(closed
         .service_performance
@@ -362,7 +361,7 @@ pub(crate) fn a_service_dependency_cycle_and_durable_service_stock_are_refused_a
         quantity_per_batch: 1,
     });
     assert_eq!(
-        advance_material_circuit(&state),
+        babylon_material_circuit::advance_material_circuit(&state),
         Err(MaterialCircuitError::ServiceInvariant)
     );
     let mut state = opening();
@@ -373,7 +372,7 @@ pub(crate) fn a_service_dependency_cycle_and_durable_service_stock_are_refused_a
         quantity: 0,
     });
     assert_eq!(
-        advance_material_circuit(&state),
+        babylon_material_circuit::advance_material_circuit(&state),
         Err(MaterialCircuitError::ServiceInvariant)
     );
 }

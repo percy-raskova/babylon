@@ -1,10 +1,10 @@
 //! Reopening admits supplied artifacts and dependencies, without reacquiring files.
-use babylon_persistence::{
-    national_cohorts::NationalCohortReference, national_counties::NationalCountyReference,
-    national_households::NationalHouseholdReference,
-    national_resident_workforce::NationalResidentWorkforceReference,
-    national_transport::NationalTransportReference, world_reference::WorldReference,
-};
+use babylon_persistence::national_cohorts::NationalCohortReference;
+use babylon_persistence::national_counties::NationalCountyReference;
+use babylon_persistence::national_households::NationalHouseholdReference;
+use babylon_persistence::national_resident_workforce::NationalResidentWorkforceReference;
+use babylon_persistence::national_transport::NationalTransportReference;
+use babylon_persistence::world_reference::WorldReference;
 
 const COUNTIES: &[u8] = include_bytes!(
     "../../../../src/babylon/data/reference/economy/national_county_reference_2024.csv.gz"

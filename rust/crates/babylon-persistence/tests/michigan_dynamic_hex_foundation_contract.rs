@@ -1,15 +1,15 @@
 //! Executable contract for the pinned Michigan Dynamic-Hex Foundation V1.
 
-use babylon_bsl::canonical_ast::rules_hash_of;
-use babylon_bsl::rule_pipeline::split_content;
 use babylon_graph::hypergraph_store::HypergraphStore;
+use babylon_kernel::content_digest::{sha256_of, ContentDigest};
 use babylon_kernel::replay::{ReplaySeed, ReplaySessionId};
 use babylon_kernel::tick_content_hash::RefDigest;
-use babylon_kernel::{content_digest::sha256_of, content_digest::ContentDigest, H3CellId};
-use babylon_persistence::{
-    decode_michigan_dynamic_hex_foundation, michigan_dynamic_hex_foundation,
-    michigan_dynamic_hex_foundation_fixture_parts, MichiganDynamicHexFoundationDecodeError,
-};
+use babylon_kernel::H3CellId;
+
+use babylon_bsl::canonical_ast;
+use babylon_bsl::rule_pipeline;
+use babylon_bsl::structural_verbs::CollectingSink;
+use babylon_persistence::MichiganDynamicHexFoundationDecodeError;
 use babylon_practice_contract::OrderedPracticeActionBatch;
 use babylon_tick::h3_runtime::{
     MichiganDynamicHexFoundation, MichiganDynamicHexFoundationError,
@@ -75,11 +75,11 @@ fn value_input(bits: [u64; 9]) -> MichiganDynamicHexValueBits {
 }
 
 fn replay_content() -> ContentDigest {
-    let (_, rules) = split_content(REPLAY_RULE).unwrap();
+    let (_, rules) = rule_pipeline::split_content(REPLAY_RULE).unwrap();
     let forms = rules.into_iter().map(|rule| rule.form).collect::<Vec<_>>();
     ContentDigest {
         defines_hash: [0x71; 32],
-        rules_hash: rules_hash_of(&forms).unwrap(),
+        rules_hash: canonical_ast::rules_hash_of(&forms).unwrap(),
     }
 }
 
@@ -124,8 +124,8 @@ fn tick_owned_rows_refuse_values_outside_the_existing_dynamic_hex_domains() {
 
 #[test]
 fn tick_owned_foundation_cannot_be_minted_from_alternate_membership_or_values() {
-    let foundation =
-        michigan_dynamic_hex_foundation().expect("governed fixture must construct once");
+    let foundation = babylon_persistence::michigan_dynamic_hex_foundation()
+        .expect("governed fixture must construct once");
 
     let mut alternate_membership = foundation.rows().to_vec();
     let foreign_cell = H3CellId::try_from(0x0872_8308_28ff_ffff_u64).unwrap();
@@ -246,7 +246,7 @@ fn assert_row(row: &MichiganDynamicHexFoundationRow, expected_cell: u64, expecte
     reason = "one consensus test binds all three checked archive representations"
 )]
 fn static_fixture_decodes_the_exact_three_archive_consensus() {
-    let parts = michigan_dynamic_hex_foundation_fixture_parts();
+    let parts = babylon_persistence::michigan_dynamic_hex_foundation_fixture_parts();
     assert_eq!(
         parts.map(<[u8]>::len),
         [
@@ -257,7 +257,8 @@ fn static_fixture_decodes_the_exact_three_archive_consensus() {
     assert!(parts.iter().all(|part| part.len() <= 1_000_000));
 
     let foundation: &MichiganDynamicHexFoundation =
-        michigan_dynamic_hex_foundation().expect("checked-in fixture must decode once");
+        babylon_persistence::michigan_dynamic_hex_foundation()
+            .expect("checked-in fixture must decode once");
     assert_eq!(foundation.domain(), DOMAIN);
     assert_eq!(foundation.layout(), LAYOUT);
     assert_eq!(foundation.source_r7_digest(), digest(SOURCE_R7_DIGEST));
@@ -359,10 +360,10 @@ fn static_fixture_decodes_the_exact_three_archive_consensus() {
 #[test]
 fn exact_foundation_projects_through_a_real_replay_session() {
     let mut artifact = Vec::new();
-    for part in michigan_dynamic_hex_foundation_fixture_parts() {
+    for part in babylon_persistence::michigan_dynamic_hex_foundation_fixture_parts() {
         artifact.extend_from_slice(part);
     }
-    let foundation = decode_michigan_dynamic_hex_foundation(&artifact)
+    let foundation = babylon_persistence::decode_michigan_dynamic_hex_foundation(&artifact)
         .expect("a fresh owned foundation must decode");
     let reference_digest = foundation.reference_bundle_digest();
     let expected_rows = foundation.rows().len();
@@ -389,7 +390,7 @@ fn exact_foundation_projects_through_a_real_replay_session() {
     )
     .unwrap();
     let actions = OrderedPracticeActionBatch::empty(replay_id, 1).unwrap();
-    let mut sink = babylon_bsl::structural_verbs::CollectingSink::default();
+    let mut sink = CollectingSink::default();
     let report = session.advance(&mut sink, &actions).unwrap();
     let dynamic = report.material_state_rows().dynamic_hexes();
 
@@ -414,7 +415,7 @@ fn exact_foundation_projects_through_a_real_replay_session() {
 
 #[test]
 fn decoder_refuses_mutation_truncation_and_trailing_bytes() {
-    let parts = michigan_dynamic_hex_foundation_fixture_parts();
+    let parts = babylon_persistence::michigan_dynamic_hex_foundation_fixture_parts();
     let mut joined = Vec::new();
     for part in parts {
         joined.extend_from_slice(part);
@@ -424,19 +425,19 @@ fn decoder_refuses_mutation_truncation_and_trailing_bytes() {
     let last = mutated.len() - 1;
     mutated[last] ^= 1;
     assert_eq!(
-        decode_michigan_dynamic_hex_foundation(&mutated),
+        babylon_persistence::decode_michigan_dynamic_hex_foundation(&mutated),
         Err(MichiganDynamicHexFoundationDecodeError::ArtifactDigest)
     );
 
     let truncated = &joined[..joined.len() - 1];
     assert_eq!(
-        decode_michigan_dynamic_hex_foundation(truncated),
+        babylon_persistence::decode_michigan_dynamic_hex_foundation(truncated),
         Err(MichiganDynamicHexFoundationDecodeError::Truncated)
     );
 
     joined.push(0);
     assert_eq!(
-        decode_michigan_dynamic_hex_foundation(&joined),
+        babylon_persistence::decode_michigan_dynamic_hex_foundation(&joined),
         Err(MichiganDynamicHexFoundationDecodeError::TrailingBytes)
     );
 }

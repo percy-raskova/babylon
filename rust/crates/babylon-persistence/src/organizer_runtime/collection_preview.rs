@@ -1,5 +1,7 @@
 //! Captured rule and owned account facts. Protected eligibility is judged only at close.
-use super::{material_preview::decimal_i128, RuntimeSessionErrorCode};
+use super::material_preview::decimal_i128;
+use super::RuntimeSessionErrorCode;
+
 use babylon_material_circuit::{
     AccountId, CircuitAccounting, MaterialCircuitState, OrganizationAccountId,
 };
@@ -97,7 +99,8 @@ mod nonnegative_decimal_i128 {
 mod tests {
     use super::*;
     use crate::organizer_aid_fixture as fixture;
-    use babylon_practice_contract::{validate_organizer_config, OrganizerCollectionMandate};
+    use babylon_practice_contract;
+    use babylon_practice_contract::OrganizerCollectionMandate;
 
     #[test]
     fn collection_terms_project_captured_contributor_and_source_at_committed_period() {
@@ -127,7 +130,7 @@ mod tests {
             protected_cash_floor_micros: 0,
             collection_hours: 2,
         });
-        validate_organizer_config(&config).unwrap();
+        babylon_practice_contract::validate_organizer_config(&config).unwrap();
         let state = session.material().state();
         let terms = projection(state, &config, 0).unwrap().unwrap();
         assert_eq!(terms.actor_id, config.controlled_actor_id);

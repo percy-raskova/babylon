@@ -1,21 +1,22 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
-use super::{contract, Mutex, Output, Progress, Result};
+use super::{Mutex, Output, Progress, Result};
 
 use super::{artifacts, json, run, PathBuf};
+use std::ffi::OsString;
 
-pub(crate) fn output_argument(
-    args: impl IntoIterator<Item = std::ffi::OsString>,
-) -> Result<PathBuf> {
+pub(crate) fn output_argument(args: impl IntoIterator<Item = OsString>) -> Result<PathBuf> {
     let args: Vec<_> = args.into_iter().collect();
     if args.len() != 2 || args[0] != "--output" {
-        return Err(contract(
+        return Err(crate::artifacts::contract(
             "usage: michigan_experiment --output /absolute/new-directory",
         ));
     }
     let path = PathBuf::from(&args[1]);
     if !path.is_absolute() {
-        return Err(contract("output directory must be absolute"));
+        return Err(crate::artifacts::contract(
+            "output directory must be absolute",
+        ));
     }
     Ok(path)
 }
@@ -31,7 +32,7 @@ pub(crate) fn execute(output: &mut Output, progress: &Mutex<Progress>) -> Result
     for case in cases {
         *progress
             .lock()
-            .map_err(|_| contract("progress mutex poisoned"))? = Progress {
+            .map_err(|_| crate::artifacts::contract("progress mutex poisoned"))? = Progress {
             case: Some(case.spec.id.to_owned()),
             last_completed_period: 0,
         };
@@ -39,7 +40,7 @@ pub(crate) fn execute(output: &mut Output, progress: &Mutex<Progress>) -> Result
             output.append_period(row)?;
             progress
                 .lock()
-                .map_err(|_| contract("progress mutex poisoned"))?
+                .map_err(|_| crate::artifacts::contract("progress mutex poisoned"))?
                 .last_completed_period = row.period;
             Ok(())
         })?;

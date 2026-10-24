@@ -1,10 +1,9 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
+use crate::michigan_dynamic_hex_foundation;
 use babylon_bsl::identity_codec::StableBslValue;
 
 use babylon_graph::hypergraph_store::HypergraphStore;
-
-use babylon_kernel::content_digest::sha256_of;
 
 use babylon_kernel::tick_content_hash::TickContentHash;
 
@@ -21,8 +20,8 @@ use postgres::types::{ToSql, Type};
 use postgres::{Config, GenericClient, NoTls};
 
 use crate::checkpoint::{
-    compose_archive_dirty_receipt, compose_checkpoint_rows, ArchiveDirtyReceipt, CheckpointRows,
-    CommittedFullCheckpoint, CommittedResolveTick, CommittedResolveTickError,
+    ArchiveDirtyReceipt, CheckpointRows, CommittedFullCheckpoint, CommittedResolveTick,
+    CommittedResolveTickError,
 };
 
 use crate::committed_tick_envelope::{
@@ -33,25 +32,35 @@ use crate::foundation::{CampaignFoundation, FoundationContentBundle};
 
 use crate::identity::CampaignId;
 
-use crate::metadata::ensure_campaign_catalog_row;
-
-use crate::michigan_dynamic_hex_foundation::michigan_dynamic_hex_foundation;
-
-use crate::postgres_catalog::validate_connection_target;
-
 use crate::postgres_diagnostic::PostgresDiagnostic;
 
-use crate::semantic_batches::{
-    compose_graph_event_choice_semantic_batches, compose_material_state_rows,
-    GraphEventChoiceSemanticBatches, SemanticBatchError,
-};
+use crate::semantic_batches::{GraphEventChoiceSemanticBatches, SemanticBatchError};
 
+use crate::archive_foundation_grants::FoundationGrantsError;
+use crate::checkpoint;
+use crate::checkpoint_reference::Reference;
+use crate::economic_catalog::EconomicCatalogError;
+use crate::metadata;
+use crate::postgres_catalog;
+use crate::semantic_batches;
 use crate::semantic_codec::SemanticCodecError;
+use crate::territory_county_map::TerritoryCountyMapError;
+use crate::CurrentSchemaError;
+use crate::CurrentSchemaIdentity;
+use crate::FoundationContentError;
+use crate::SemanticArchiveError;
+use babylon_graph::stable_element::StableElementKey;
+use babylon_kernel::content_digest;
+use babylon_tick::material_replay::PreparedMaterialTick;
+use postgres::CopyInWriter;
+use postgres::Row;
+use postgres::Transaction;
+use std::fmt::Formatter;
 
 /// A checked refusal while deriving durable inputs from one identified tick.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RustPersistenceRuntimeError {
-    CurrentSchema(crate::CurrentSchemaError),
+    CurrentSchema(CurrentSchemaError),
     /// Exact typed event storage admission refused.
     EventStorage(crate::event_storage::Error),
     /// Exact graph lookup or input row admission refused.
@@ -97,8 +106,8 @@ pub enum RustPersistenceRuntimeError {
     /// A tick-owned exact source could not be recomposed or copied.
     ReplaySource,
     /// The singular current source envelope refused exact framing or source semantics.
-    FoundationContent(crate::FoundationContentError),
-    EconomicCatalog(crate::economic_catalog::EconomicCatalogError),
+    FoundationContent(FoundationContentError),
+    EconomicCatalog(EconomicCatalogError),
     /// A delta checkpoint cannot be selected as a restart root.
     DeltaCheckpointNotRestartRoot,
     /// A governed semantic row codec refused its report-owned input.
@@ -125,11 +134,11 @@ pub enum RustPersistenceRuntimeError {
         requested: usize,
     },
     /// The declared territory-county mapping refused extraction or persistence.
-    TerritoryCountyMap(crate::territory_county_map::TerritoryCountyMapError),
+    TerritoryCountyMap(TerritoryCountyMapError),
     /// The additive semantic Archive schema refused installation.
-    SemanticArchive(crate::SemanticArchiveError),
+    SemanticArchive(SemanticArchiveError),
     /// Foundation knowledge-grant seeding refused fixture drift or a grant conflict.
-    FoundationGrants(crate::archive_foundation_grants::FoundationGrantsError),
+    FoundationGrants(FoundationGrantsError),
 }
 
 impl From<SemanticBatchError> for RustPersistenceRuntimeError {
@@ -166,7 +175,7 @@ impl From<SemanticCodecError> for RustPersistenceRuntimeError {
 }
 
 impl std::fmt::Display for RustPersistenceRuntimeError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
         write!(formatter, "Rust persistence runtime refused: {self:?}")
     }
 }
@@ -219,7 +228,7 @@ pub struct CommittedTickReceipt {
 
 impl CommittedTickReceipt {
     pub(crate) fn from_material_candidate(
-        candidate: &babylon_tick::material_replay::PreparedMaterialTick<HypergraphStore>,
+        candidate: &PreparedMaterialTick<HypergraphStore>,
     ) -> Result<Self, RustPersistenceRuntimeError> {
         let acknowledged = candidate.graph_report();
         let report = acknowledged.report();
@@ -383,7 +392,7 @@ pub fn hydrate_campaign_foundation(
     campaign_id: CampaignId,
 ) -> Result<CampaignFoundation, RustPersistenceRuntimeError> {
     let _active = verify_runtime_schema(config)?;
-    validate_connection_target(config)
+    postgres_catalog::validate_connection_target(config)
         .map_err(|_| RustPersistenceRuntimeError::database("validate foundation target"))?;
     let mut client = crate::current_schema::bounded_config(config)
         .connect(NoTls)
@@ -424,7 +433,8 @@ pub(crate) fn reconstruct_graph_foundation_session(
     let rules = std::str::from_utf8(bundle.rule_source_bytes())
         .map_err(|_| RustPersistenceRuntimeError::ReplaySource)?;
     let material = MaterialState::try_new(
-        michigan_dynamic_hex_foundation().map_err(|_| RustPersistenceRuntimeError::ReplaySource)?,
+        michigan_dynamic_hex_foundation::michigan_dynamic_hex_foundation()
+            .map_err(|_| RustPersistenceRuntimeError::ReplaySource)?,
     )
     .map_err(|_| RustPersistenceRuntimeError::ReplaySource)?;
     let session = ReplayTickSession::new(
@@ -445,9 +455,9 @@ pub(crate) fn reconstruct_graph_foundation_session(
 
 /// Owned SQL witnesses. Capturing performs no graph/content admission.
 pub(crate) struct CapturedCampaignFoundation {
-    foundation: postgres::Row,
-    county_mapping: Vec<postgres::Row>,
-    geography: postgres::Row,
+    foundation: Row,
+    county_mapping: Vec<Row>,
+    geography: Row,
 }
 
 pub(crate) fn hydrate_campaign_foundation_client(
@@ -492,7 +502,7 @@ pub(crate) fn capture_campaign_foundation(
 
 impl CapturedCampaignFoundation {
     pub(crate) fn capture_fingerprint(&self) -> Result<[u8; 32], RustPersistenceRuntimeError> {
-        let digest = |rows: &[postgres::Row]| {
+        let digest = |rows: &[Row]| {
             crate::material_runtime::capture_rows_digest(rows.iter()).map_err(|error| {
                 RustPersistenceRuntimeError::postgres("fingerprint captured foundation", &error)
             })
@@ -500,7 +510,7 @@ impl CapturedCampaignFoundation {
         let foundation = digest(std::slice::from_ref(&self.foundation))?;
         let geography = digest(std::slice::from_ref(&self.geography))?;
         let mapping = digest(&self.county_mapping)?;
-        Ok(sha256_of(
+        Ok(content_digest::sha256_of(
             &[
                 foundation.as_slice(),
                 geography.as_slice(),
@@ -577,7 +587,7 @@ impl CapturedCampaignFoundation {
 /// Compare actual SQL components, including their scalar identities, rather than
 /// trusting stored digest claims. Borrow bytea fields while the capture is alive.
 pub(crate) fn verify_captured_foundation_components(
-    row: &postgres::Row,
+    row: &Row,
     admitted: &CampaignFoundation,
     digest: &[u8; 32],
     digest_column: &str,
@@ -610,7 +620,7 @@ pub(crate) fn verify_captured_foundation_components(
 }
 
 pub(crate) fn verify_captured_campaign_geography(
-    row: &postgres::Row,
+    row: &Row,
     bundle: &FoundationContentBundle,
 ) -> Result<(), RustPersistenceRuntimeError> {
     let reference = decode_digest_column(row, 0)?;
@@ -628,11 +638,9 @@ pub(crate) fn verify_captured_campaign_geography(
 
 pub(crate) fn verify_runtime_schema(
     config: &Config,
-) -> Result<crate::CurrentSchemaIdentity, RustPersistenceRuntimeError> {
-    validate_connection_target(config).map_err(|error| {
-        RustPersistenceRuntimeError::CurrentSchema(crate::CurrentSchemaError::ConnectionTarget(
-            error,
-        ))
+) -> Result<CurrentSchemaIdentity, RustPersistenceRuntimeError> {
+    postgres_catalog::validate_connection_target(config).map_err(|error| {
+        RustPersistenceRuntimeError::CurrentSchema(CurrentSchemaError::ConnectionTarget(error))
     })?;
     let mut client = crate::current_schema::bounded_config(config)
         .connect(NoTls)
@@ -644,13 +652,13 @@ pub(crate) fn verify_runtime_schema(
 
 pub(crate) fn verify_runtime_schema_client(
     client: &mut impl GenericClient,
-) -> Result<crate::CurrentSchemaIdentity, RustPersistenceRuntimeError> {
+) -> Result<CurrentSchemaIdentity, RustPersistenceRuntimeError> {
     crate::current_schema::require_current_schema(client)
         .map_err(RustPersistenceRuntimeError::CurrentSchema)
 }
 
 pub(crate) fn insert_campaign_foundation_rows(
-    client: &mut postgres::Transaction<'_>,
+    client: &mut Transaction<'_>,
     campaign_id: CampaignId,
     foundation: &CampaignFoundation,
 ) -> Result<(), RustPersistenceRuntimeError> {
@@ -680,7 +688,7 @@ pub(crate) fn insert_campaign_foundation_rows(
             RustPersistenceRuntimeError::postgres("insert campaign identity", &error)
         })?;
     let territory_county_map = bundle.territory_county_map()?;
-    let foundation_sha256 = sha256_of(foundation.canonical_bytes());
+    let foundation_sha256 = content_digest::sha256_of(foundation.canonical_bytes());
     client
         .execute(
             "INSERT INTO babylon_state.campaign_foundation \
@@ -720,7 +728,7 @@ pub(crate) fn insert_campaign_foundation_rows(
     if stored_sha.as_slice() != foundation_sha256 {
         return Err(RustPersistenceRuntimeError::CampaignConflict);
     }
-    ensure_campaign_catalog_row(client, campaign_id, foundation)?;
+    metadata::ensure_campaign_catalog_row(client, campaign_id, foundation)?;
     crate::territory_county_map::insert_territory_county_map_rows(
         client,
         campaign_id,
@@ -1115,7 +1123,7 @@ pub(crate) fn finish_binary_copy(
 }
 
 pub(crate) fn finish_csv_copy(
-    writer: postgres::CopyInWriter<'_>,
+    writer: CopyInWriter<'_>,
     expected: usize,
     operation: &'static str,
 ) -> Result<(), RustPersistenceRuntimeError> {
@@ -1339,12 +1347,11 @@ pub(crate) fn insert_full_checkpoint(
         .iter()
         .zip(checkpoint.exact_section_bytes())
     {
-        if sha256_of(exact_bytes) != section.sha256() {
+        if content_digest::sha256_of(exact_bytes) != section.sha256() {
             return Err(RustPersistenceRuntimeError::CampaignConflict);
         }
-        let reference =
-            crate::checkpoint_reference::Reference::capture(section.tag().tag(), exact_bytes)
-                .map_err(|_| RustPersistenceRuntimeError::CampaignConflict)?;
+        let reference = Reference::capture(section.tag().tag(), exact_bytes)
+            .map_err(|_| RustPersistenceRuntimeError::CampaignConflict)?;
         let section_tag = i16::from(reference.tag);
         let source_tag = i16::from(reference.source);
         let decoded_length = i64::try_from(reference.decoded_length)
@@ -1479,7 +1486,7 @@ pub(crate) fn insert_bsl_value_row(
 }
 
 pub(crate) fn stable_key_bytes(
-    key: &babylon_graph::stable_element::StableElementKey,
+    key: &StableElementKey,
 ) -> Result<Vec<u8>, RustPersistenceRuntimeError> {
     key.canonical_bytes()
         .map_err(|_| RustPersistenceRuntimeError::SemanticCodec)
@@ -1517,7 +1524,7 @@ pub(crate) fn require_single_insert(
 }
 
 pub(crate) fn decode_runtime_column<T: postgres::types::FromSqlOwned>(
-    row: &postgres::Row,
+    row: &Row,
     index: usize,
 ) -> Result<T, RustPersistenceRuntimeError> {
     row.try_get(index)
@@ -1525,7 +1532,7 @@ pub(crate) fn decode_runtime_column<T: postgres::types::FromSqlOwned>(
 }
 
 pub(crate) fn decode_digest_column(
-    row: &postgres::Row,
+    row: &Row,
     index: usize,
 ) -> Result<[u8; 32], RustPersistenceRuntimeError> {
     let bytes: Vec<u8> = decode_runtime_column(row, index)?;
@@ -1612,10 +1619,12 @@ pub fn prepare_committed_tick(
             actual: completed_tick,
         },
     )?;
-    let graph_event_batches = compose_graph_event_choice_semantic_batches(report)?;
-    let material_state_rows = compose_material_state_rows(report.material_state_rows())?;
-    let checkpoint_rows = compose_checkpoint_rows(report, resolve_tick)?;
-    let archive_dirty_receipt = compose_archive_dirty_receipt(report)?;
+    let graph_event_batches =
+        semantic_batches::compose_graph_event_choice_semantic_batches(report)?;
+    let material_state_rows =
+        semantic_batches::compose_material_state_rows(report.material_state_rows())?;
+    let checkpoint_rows = checkpoint::compose_checkpoint_rows(report, resolve_tick)?;
+    let archive_dirty_receipt = checkpoint::compose_archive_dirty_receipt(report)?;
     Ok(PreparedCommittedTick {
         resolve_tick,
         tick_content_hash: report.tick_content_hash(),
@@ -1637,6 +1646,6 @@ mod tests {
         )
         .unwrap();
         assert_eq!(actual, b",\"\",\"a,\"\"b\"\"\n\\N\",\"\\x0001ff\"\n");
-        assert_eq!(super::super::bytea_copy_text(&[0, 1, 255]), "\\x0001ff");
+        assert_eq!(super::bytea_copy_text(&[0, 1, 255]), "\\x0001ff");
     }
 }

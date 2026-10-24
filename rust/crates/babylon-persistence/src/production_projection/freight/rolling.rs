@@ -1,10 +1,11 @@
 //! Reconcile installed supply and dated booking changes against actual receipts.
 //! This reads committed accounts; it neither allocates nor creates capacity.
 use super::{
-    budgets, reservation_receipts, Budgets, CompletedReservations, MaterialCircuitState,
-    ProductionProjectionError, ReservationInput, Result,
+    Budgets, CompletedReservations, MaterialCircuitState, ProductionProjectionError,
+    ReservationInput, Result,
 };
 use babylon_material_circuit::{CorridorId, FutureCapacityReservation, RollingCapacitySupply};
+use babylon_tick::material_world::MaterialTickReceipts;
 use std::collections::{BTreeMap, BTreeSet};
 
 pub(super) fn reconcile(
@@ -13,7 +14,7 @@ pub(super) fn reconcile(
     before: &RollingCapacitySupply,
     after: &RollingCapacitySupply,
     reservations: ReservationInput,
-    receipt: &babylon_tick::material_world::MaterialTickReceipts,
+    receipt: &MaterialTickReceipts,
 ) -> Result<CompletedReservations> {
     // Mutable assets may differ only after the actual installation/wear book join succeeds.
     super::super::equipment::validate(prior, current, receipt)?;
@@ -39,7 +40,7 @@ pub(super) fn reconcile(
     let mut dates: BTreeSet<_> = previous_book.keys().copied().collect();
     dates.extend(reservations.0.keys().copied());
     dates.extend(supply.keys().map(|id| (*id, current.period)));
-    let mut opening = budgets(prior)?;
+    let mut opening = super::budgets(prior)?;
     for key in dates {
         if key.1 > prior.period {
             let amount = gross(&supply, key.0)?
@@ -50,13 +51,13 @@ pub(super) fn reconcile(
             }
         }
     }
-    let (remaining, result) = reservation_receipts(&opening, reservations)?;
+    let (remaining, result) = super::reservation_receipts(&opening, reservations)?;
     let next: Budgets = remaining
         .iter()
         .filter(|(key, _)| key.1 == current.period)
         .map(|(key, value)| (*key, *value))
         .collect();
-    if next != budgets(current)? {
+    if next != super::budgets(current)? {
         return Err(ProductionProjectionError::State);
     }
     let mut expected_book = BTreeMap::new();

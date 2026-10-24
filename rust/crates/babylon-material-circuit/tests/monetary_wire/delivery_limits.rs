@@ -1,4 +1,10 @@
-use super::*;
+use babylon_material_circuit::decode_material_circuit_state;
+use babylon_material_circuit::BacklogRow;
+use babylon_material_circuit::CircuitAccounting;
+use babylon_material_circuit::MaterialCircuitError;
+use babylon_material_circuit::MaterialCircuitState;
+use babylon_material_circuit::OrderId;
+use babylon_material_circuit::OrderRow;
 
 const DELIVERY_LIMIT: usize = 131_072;
 const ORDER_BYTES: usize = 32 + 1 + 4 * 32 + 5 * 8;
@@ -10,7 +16,7 @@ fn order_id(index: usize) -> OrderId {
     OrderId::from_bytes(bytes)
 }
 fn local_orders(count: usize) -> MaterialCircuitState {
-    let mut state = paid_state();
+    let mut state = crate::paid_state();
     state.accounting = CircuitAccounting::PhysicalControl;
     let template = state.orders[0].clone();
     state.orders = (0..count)
@@ -34,7 +40,7 @@ fn local_orders(count: usize) -> MaterialCircuitState {
 #[test]
 fn delivery_and_backlog_wire_reaches_its_bound_and_checks_the_entire_tail() {
     let state = local_orders(DELIVERY_LIMIT);
-    let bytes = encode_material_circuit_state(&state).unwrap();
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&state).unwrap();
     assert_eq!(decode_material_circuit_state(&bytes).unwrap(), state);
     let start = bytes
         .windows(32)
@@ -63,14 +69,14 @@ fn delivery_and_backlog_wire_reaches_its_bound_and_checks_the_entire_tail() {
         Err(MaterialCircuitError::BacklogInvariant)
     );
     assert_eq!(
-        encode_material_circuit_state(&local_orders(DELIVERY_LIMIT + 1)),
+        babylon_material_circuit::encode_material_circuit_state(&local_orders(DELIVERY_LIMIT + 1)),
         Err(MaterialCircuitError::RowLimit)
     );
 }
 #[test]
 fn local_dispatch_and_rebuilt_backlog_include_the_last_delivery_above_the_old_cap() {
     let state = local_orders(DELIVERY_LIMIT);
-    let closed = advance_material_circuit(&state).unwrap();
+    let closed = babylon_material_circuit::advance_material_circuit(&state).unwrap();
     assert_eq!(closed.local_transfers.len(), DELIVERY_LIMIT);
     assert_eq!(closed.state.orders.len(), DELIVERY_LIMIT);
     assert_eq!(

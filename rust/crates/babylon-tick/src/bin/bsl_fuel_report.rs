@@ -58,8 +58,7 @@
 //! directory. It catches a missing pack, but does not prove coverage of
 //! every scenario or combination in `content-sets.toml`.
 
-use babylon_bsl::scenario::compose_declaration_preludes;
-use babylon_tick::{any_over_budget, fuel_bound_report};
+use babylon_bsl::scenario;
 use std::process::ExitCode;
 
 const ORGANIZATION_PRACTICE_PRELUDE: &str =
@@ -240,7 +239,7 @@ fn main() -> ExitCode {
         let composed = if preludes.is_empty() {
             None
         } else {
-            match compose_declaration_preludes(preludes) {
+            match scenario::compose_declaration_preludes(preludes) {
                 Ok(source) => Some(source),
                 Err(error) => {
                     eprintln!("bsl-fuel-report: {pack}: {error}");
@@ -248,7 +247,7 @@ fn main() -> ExitCode {
                 }
             }
         };
-        match fuel_bound_report(scenario, composed.as_deref(), rule) {
+        match babylon_tick::fuel_bound_report(scenario, composed.as_deref(), rule) {
             Ok(pack_rows) => rows.extend(pack_rows),
             Err(e) => {
                 eprintln!("bsl-fuel-report: {pack}: {e}");
@@ -271,7 +270,7 @@ fn main() -> ExitCode {
         println!("{row}");
     }
 
-    if any_over_budget(&rows) {
+    if babylon_tick::any_over_budget(&rows) {
         ExitCode::from(1)
     } else {
         ExitCode::SUCCESS
@@ -281,6 +280,7 @@ fn main() -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::SOLO_PACKS;
+    use std::path::Path;
 
     /// Fix round 1 (`task-w3-review.md`, Medium finding #2): `SOLO_PACKS`
     /// is hand-maintained with no prior link to the real filesystem, so a
@@ -304,7 +304,7 @@ mod tests {
                     .into_owned()
             })
             .filter(|name| {
-                std::path::Path::new(name)
+                Path::new(name)
                     .extension()
                     .is_some_and(|extension| extension.eq_ignore_ascii_case("bsl"))
             })

@@ -1,14 +1,16 @@
 use babylon_bsl::structural_verbs::CollectingSink;
-use babylon_graph::{hypergraph_store::HypergraphStore, state_hash::CanonicalState};
-use babylon_persistence::{
-    michigan_content::MichiganContentPreset, michigan_material::MichiganDeliveryPreset,
-};
+use babylon_graph::hypergraph_store::HypergraphStore;
+use babylon_graph::state_hash::CanonicalState;
+
+use babylon_persistence::michigan_content::MichiganContentPreset;
+use babylon_persistence::michigan_material::MichiganDeliveryPreset;
+
 use babylon_practice_contract::OrderedPracticeActionBatch;
-use babylon_tick::{
-    material_replay::{MaterialCommitError, MaterialReplaySession},
-    material_world::{decode_material_receipts, MaterialWorldRegister},
-    replay_session::ReplayCommitDisposition,
-};
+use babylon_tick::material_replay::IdentifiedMaterialTick;
+use babylon_tick::material_replay::{MaterialCommitError, MaterialReplaySession};
+use babylon_tick::material_world;
+use babylon_tick::material_world::MaterialWorldRegister;
+use babylon_tick::replay_session::ReplayCommitDisposition;
 
 fn session(preset: MichiganDeliveryPreset) -> MaterialReplaySession<HypergraphStore> {
     MichiganContentPreset::new_campaign(preset)
@@ -37,7 +39,7 @@ fn material_commit_failure_leaves_graph_circuit_world_time_and_sink_unchanged() 
         let world = session.current_world_hash().unwrap();
         let candidate = session.prepare_advance(&actions(&session)).unwrap();
         let prepared_receipt_bytes = candidate.material().receipt_bytes().to_vec();
-        let receipts = decode_material_receipts(&prepared_receipt_bytes).unwrap();
+        let receipts = material_world::decode_material_receipts(&prepared_receipt_bytes).unwrap();
         let catalog = crate::test_support::catalog();
         let (sheet, meal) = if preset == MichiganDeliveryPreset::SharedFreightConstrained {
             (120, 40)
@@ -109,7 +111,9 @@ fn staffed_arrival_feeds_following_commitments_past_the_former_campaign_expiry()
             (&mut slow, &mut first_slow_delivery),
         ] {
             let candidate = session.prepare_advance(&actions(session)).unwrap();
-            let receipts = decode_material_receipts(candidate.material().receipt_bytes()).unwrap();
+            let receipts =
+                material_world::decode_material_receipts(candidate.material().receipt_bytes())
+                    .unwrap();
             assert_eq!(receipts.resolve_tick, tick);
             let decoded =
                 MaterialWorldRegister::decode(candidate.material().register().canonical_bytes())
@@ -151,13 +155,12 @@ fn staffed_arrival_feeds_following_commitments_past_the_former_campaign_expiry()
 #[test]
 fn committed_identity_can_publish_without_heap_allocation() {
     fn requires_copy<T: Copy>() {}
-    requires_copy::<babylon_tick::material_replay::IdentifiedMaterialTick>();
+    requires_copy::<IdentifiedMaterialTick>();
     let session = session(MichiganDeliveryPreset::Standard);
     let candidate = session.prepare_advance(&actions(&session)).unwrap();
     let identity = *candidate.identity();
     assert_eq!(
-        babylon_tick::material_replay::IdentifiedMaterialTick::decode(identity.canonical_bytes())
-            .unwrap(),
+        IdentifiedMaterialTick::decode(identity.canonical_bytes()).unwrap(),
         identity
     );
 }

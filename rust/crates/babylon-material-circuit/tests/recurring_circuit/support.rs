@@ -1,6 +1,6 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
-use super::{
+use babylon_material_circuit::{
     AttendancePlan, CapacityRow, CashAccount, CommodityDefinition, CorridorCapacity,
     EmploymentTerms, FinalDemandOrder, FinalDemandPrincipal, HouseholdCohort, HouseholdNeed,
     HouseholdPurchasePolicy, HouseholdStock, InputOutputCoefficient, LaborCapacityRow,
@@ -9,18 +9,22 @@ use super::{
     RouteStageCapacity, SellerOffer, SiteLogisticsNode, StockCarryingValue, SupplierRoute,
 };
 
-use super::{
-    admit_material_purchase, advance_material_circuit, close_material_period,
-    decode_material_circuit_state, encode_material_circuit_state, AccountId, AidBook,
-    CashTransferPurpose, CircuitAccounting, CorridorId, FinalDemandPrincipalId, GoodId,
-    HistoricalCostBook, InventoryRow, LogisticsNodeId, MaterialCircuitError, MaterialCircuitState,
-    MaterialCircuitTransition, MaterialPurchase, MerchantRole, MonetaryBook, MonetaryCircuit,
-    OrderId, OutboundOrderId, PriceDecision, PricePolicy, ProcessId, RecurringEconomy, RouteId,
-    SiteId, StaffingPolicy, StaffingPoolBinding, StaffingPoolId, StaffingWorkSource,
-    SupplierTransport, UnitId, MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES,
+use babylon_material_circuit::{
+    AccountId, AidBook, CashTransferPurpose, CircuitAccounting, CorridorId, FinalDemandPrincipalId,
+    GoodId, HistoricalCostBook, InventoryRow, LogisticsNodeId, MaterialCircuitError,
+    MaterialCircuitState, MaterialCircuitTransition, MaterialPurchase, MerchantRole, MonetaryBook,
+    MonetaryCircuit, OrderId, OutboundOrderId, PriceDecision, PricePolicy, ProcessId,
+    RecurringEconomy, RouteId, SiteId, StaffingPolicy, StaffingPoolBinding, StaffingPoolId,
+    StaffingWorkSource, SupplierTransport, UnitId, MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES,
 };
 
 use babylon_kernel::currency::Currency;
+use babylon_material_circuit::CapacitySupply;
+use babylon_material_circuit::FinancialInstitutions;
+use babylon_material_circuit::HouseholdNeedBasis;
+use babylon_material_circuit::HouseholdTimeAccounting;
+use babylon_material_circuit::LaborCompensation;
+use babylon_material_circuit::StaffingMemberId;
 
 pub(crate) fn site(id: u8) -> SiteId {
     SiteId::from_bytes([id; 32])
@@ -104,7 +108,7 @@ pub(crate) fn opening() -> MaterialCircuitState {
             principal_id: household(),
             good_id: good(2),
             unit_id: units(),
-            basis: babylon_material_circuit::HouseholdNeedBasis::Persons,
+            basis: HouseholdNeedBasis::Persons,
             units_per_basis: 1,
         }],
         household_purchases: vec![HouseholdPurchasePolicy {
@@ -151,7 +155,7 @@ pub(crate) fn opening() -> MaterialCircuitState {
         last_household_consumption_period: 0,
     };
     MaterialCircuitState {
-        capacity_supply: babylon_material_circuit::CapacitySupply::FiniteSchedule,
+        capacity_supply: CapacitySupply::FiniteSchedule,
         period: 1,
         accounting: CircuitAccounting::Monetary(Box::new({
             let book = MonetaryBook::open(vec![
@@ -176,18 +180,15 @@ pub(crate) fn opening() -> MaterialCircuitState {
             MonetaryCircuit {
                 aid: AidBook::default(),
 
-                household_time: babylon_material_circuit::HouseholdTimeAccounting::NotModeled,
-                financial: babylon_material_circuit::FinancialInstitutions::empty(),
+                household_time: HouseholdTimeAccounting::NotModeled,
+                financial: FinancialInstitutions::empty(),
                 member_labor: (1..=9)
                     .flat_map(|period| {
                         [(1, 4), (2, 8), (3, 4)]
                             .into_iter()
                             .map(move |(owner, available_hours)| {
                                 babylon_material_circuit::MemberLaborCapacityRow {
-                                    member_id:
-                                        babylon_material_circuit::StaffingMemberId::from_bytes(
-                                            site(owner).as_bytes(),
-                                        ),
+                                    member_id: StaffingMemberId::from_bytes(site(owner).as_bytes()),
                                     period,
                                     available_hours,
                                 }
@@ -220,13 +221,11 @@ pub(crate) fn opening() -> MaterialCircuitState {
                 employment: [1, 2, 3]
                     .into_iter()
                     .map(|owner| EmploymentTerms {
-                        member_id: babylon_material_circuit::StaffingMemberId::from_bytes(
-                            (site(owner)).as_bytes(),
-                        ),
+                        member_id: StaffingMemberId::from_bytes((site(owner)).as_bytes()),
                         site_id: site(owner),
                         unit_id: hours(),
                         payee: household(),
-                        compensation: babylon_material_circuit::LaborCompensation::Wage(money(1)),
+                        compensation: LaborCompensation::Wage(money(1)),
                     })
                     .collect(),
             }
@@ -418,10 +417,13 @@ pub(crate) fn eight_period_control_reproduces_paid_idle_withdrawal_recovery_and_
     ];
     for period in 1..=8 {
         recurring_mut(&mut state).household_purchases[0].enabled = ![3, 4].contains(&period);
-        let captured = encode_material_circuit_state(&state).unwrap();
-        let restarted = decode_material_circuit_state(&captured).unwrap();
-        let closed = advance_material_circuit(&state).unwrap();
-        assert_eq!(closed, advance_material_circuit(&restarted).unwrap());
+        let captured = babylon_material_circuit::encode_material_circuit_state(&state).unwrap();
+        let restarted = babylon_material_circuit::decode_material_circuit_state(&captured).unwrap();
+        let closed = babylon_material_circuit::advance_material_circuit(&state).unwrap();
+        assert_eq!(
+            closed,
+            babylon_material_circuit::advance_material_circuit(&restarted).unwrap()
+        );
         let wages: i128 = closed
             .wage_accruals
             .iter()
@@ -526,8 +528,8 @@ pub(crate) fn prior_funded_transit_suppresses_duplicate_procurement_and_does_not
 ) {
     let mut state = opening();
     state.route_stages[0].travel_periods = 3;
-    let first = advance_material_circuit(&state).unwrap();
-    let second = advance_material_circuit(&first.state).unwrap();
+    let first = babylon_material_circuit::advance_material_circuit(&state).unwrap();
+    let second = babylon_material_circuit::advance_material_circuit(&first.state).unwrap();
     assert_eq!(output(&second, 2), 0);
     let raw = second
         .procurement
@@ -589,7 +591,7 @@ pub(crate) fn responsive_next_quote_does_not_reprice_existing_reserves() {
         step: money(1),
         target_stock: 0,
     };
-    let closed = advance_material_circuit(&state).unwrap();
+    let closed = babylon_material_circuit::advance_material_circuit(&state).unwrap();
     let quote = closed
         .prices
         .iter()
@@ -614,7 +616,7 @@ pub(crate) fn consumption_or_procurement_failure_leaves_all_opening_accounts_unc
     policy.output_buffer = u64::MAX;
     let unchanged = state.clone();
     assert_eq!(
-        advance_material_circuit(&state),
+        babylon_material_circuit::advance_material_circuit(&state),
         Err(MaterialCircuitError::Arithmetic)
     );
     assert_eq!(state, unchanged);
@@ -623,7 +625,7 @@ pub(crate) fn consumption_or_procurement_failure_leaves_all_opening_accounts_unc
 #[test]
 pub(crate) fn captured_household_policies_refuse_old_bytes_bad_cursors_and_noncanonical_rows() {
     let state = opening();
-    let bytes = encode_material_circuit_state(&state).unwrap();
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&state).unwrap();
     let mut finite = state.clone();
     let CircuitAccounting::Monetary(economy) = &mut finite.accounting else {
         unreachable!()
@@ -650,31 +652,37 @@ pub(crate) fn captured_household_policies_refuse_old_bytes_bad_cursors_and_nonca
         + 81 * captured.equipment.len();
     // Seven empty financial table counts and the explicit fixed-time control tag.
     // Three empty gift counts precede the existing finite-capacity trailer.
-    let offset = encode_material_circuit_state(&finite).unwrap().len() - cost_bytes - 11 - 28 - 12;
+    let offset = babylon_material_circuit::encode_material_circuit_state(&finite)
+        .unwrap()
+        .len()
+        - cost_bytes
+        - 11
+        - 28
+        - 12;
     assert_eq!(bytes[offset], 1);
     let mut old = bytes.clone();
     let version = MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES.len() + 1;
     old[version..version + 2].copy_from_slice(&5_u16.to_be_bytes());
     assert_eq!(
-        decode_material_circuit_state(&old),
+        babylon_material_circuit::decode_material_circuit_state(&old),
         Err(MaterialCircuitError::WireVersion)
     );
     let mut replayed = bytes.clone();
     replayed[offset + 1..offset + 9].copy_from_slice(&1_u64.to_be_bytes());
     assert_eq!(
-        decode_material_circuit_state(&replayed),
+        babylon_material_circuit::decode_material_circuit_state(&replayed),
         Err(MaterialCircuitError::PeriodInvariant)
     );
     let mut excessive = bytes.clone();
     excessive[offset + 17..offset + 21].copy_from_slice(&65_537_u32.to_be_bytes());
     assert_eq!(
-        decode_material_circuit_state(&excessive),
+        babylon_material_circuit::decode_material_circuit_state(&excessive),
         Err(MaterialCircuitError::WireLimit)
     );
     let mut unknown_kind = bytes.clone();
     unknown_kind[offset + 21] = 3;
     assert_eq!(
-        decode_material_circuit_state(&unknown_kind),
+        babylon_material_circuit::decode_material_circuit_state(&unknown_kind),
         Err(MaterialCircuitError::WireEnum)
     );
     // The captured control has one 49-byte cohort, one 104-byte stock,
@@ -683,21 +691,21 @@ pub(crate) fn captured_household_policies_refuse_old_bytes_bad_cursors_and_nonca
     let mut unknown_basis = bytes.clone();
     unknown_basis[need + 96] = 3;
     assert_eq!(
-        decode_material_circuit_state(&unknown_basis),
+        babylon_material_circuit::decode_material_circuit_state(&unknown_basis),
         Err(MaterialCircuitError::WireEnum)
     );
     let purchase = need + 105 + 4;
     let mut invalid = bytes.clone();
     invalid[purchase + 144] = 2;
     assert_eq!(
-        decode_material_circuit_state(&invalid),
+        babylon_material_circuit::decode_material_circuit_state(&invalid),
         Err(MaterialCircuitError::WireEnum)
     );
     let offer = purchase + 145 + 4;
     let mut unordered = bytes.clone();
     unordered[offer..offer + 226].rotate_left(113);
     assert_eq!(
-        decode_material_circuit_state(&unordered),
+        babylon_material_circuit::decode_material_circuit_state(&unordered),
         Err(MaterialCircuitError::WireNoncanonical)
     );
 }
@@ -735,7 +743,7 @@ pub(crate) fn retained_finite_purchase_restores_attendance_when_recurring_purcha
     )
     .unwrap();
     let id = OrderId::from_bytes([90; 32]);
-    let (state, _) = admit_material_purchase(
+    let (state, _) = babylon_material_circuit::admit_material_purchase(
         &state,
         MaterialPurchase::LocalFinalDemand(FinalDemandOrder {
             order_id: id,
@@ -749,7 +757,7 @@ pub(crate) fn retained_finite_purchase_restores_attendance_when_recurring_purcha
         money(4),
     )
     .unwrap();
-    let first = advance_material_circuit(&state).unwrap();
+    let first = babylon_material_circuit::advance_material_circuit(&state).unwrap();
     assert_eq!(first.state.final_demand_orders[0].fulfilled, 0);
     assert_eq!(
         economy(&first.state)
@@ -763,7 +771,7 @@ pub(crate) fn retained_finite_purchase_restores_attendance_when_recurring_purcha
             .planned_hours,
         1
     );
-    let second = advance_material_circuit(&first.state).unwrap();
+    let second = babylon_material_circuit::advance_material_circuit(&first.state).unwrap();
     assert_eq!(second.local_fulfillments[0].quantity, 1);
     assert_eq!(second.household_consumption[0].available_quantity, 5);
     assert!(second.state.final_demand_orders.is_empty());
@@ -808,7 +816,7 @@ pub(crate) fn producer_retail_opening() -> MaterialCircuitState {
         principal_id: household(),
         good_id: good(1),
         unit_id: units(),
-        basis: babylon_material_circuit::HouseholdNeedBasis::Persons,
+        basis: HouseholdNeedBasis::Persons,
         units_per_basis: 1,
     });
     rows.household_purchases[0].enabled = false;
@@ -864,7 +872,7 @@ pub(crate) fn a_shared_production_and_retail_pool_requests_each_kind_of_work_onc
         .unwrap()
     })
     .collect::<Vec<_>>();
-    let closed = close_material_period(&state).unwrap();
+    let closed = babylon_material_circuit::close_material_period(&state).unwrap();
     let requests = closed.staffing_requests(&bindings).unwrap();
     let source = requests
         .iter()
@@ -903,7 +911,7 @@ pub(crate) fn cash_backed_unfilled_retail_demand_can_restart_a_producer_with_no_
         .unwrap()
         .planned_hours = 0;
     rows.replenishment.clear();
-    let closed = advance_material_circuit(&state).unwrap();
+    let closed = babylon_material_circuit::advance_material_circuit(&state).unwrap();
     let demand = closed
         .household_demand
         .iter()
@@ -965,7 +973,7 @@ pub(crate) fn a_household_purchase_without_a_recipient_stock_is_refused_before_r
     .unwrap();
     let original = state.clone();
     assert_eq!(
-        admit_material_purchase(
+        babylon_material_circuit::admit_material_purchase(
             &state,
             MaterialPurchase::LocalFinalDemand(FinalDemandOrder {
                 order_id: OrderId::from_bytes([91; 32]),

@@ -1,11 +1,15 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
-use crate::{
-    economic_content::EconomicContentAdmission,
-    material_runtime::MaterialRuntimeFoundation,
-    michigan_cohorts::MICHIGAN_COHORT_SCENARIO,
-    michigan_material::{MichiganDeliveryPreset, MichiganMaterialCatalog},
-};
+use crate::economic_catalog::CapturedEconomicCatalog;
+use crate::economic_content::EconomicContentAdmission;
+use crate::identity::CampaignId;
+use crate::material_runtime::MaterialRuntimeFoundation;
+use crate::michigan_cohorts::MICHIGAN_COHORT_SCENARIO;
+use crate::michigan_material::{MichiganDeliveryPreset, MichiganMaterialCatalog};
+use babylon_kernel::replay::ReplaySeed;
+use babylon_kernel::replay::ReplaySessionId;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 
 /// Graph content revisions are separate from the logical delivery choice.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -32,7 +36,7 @@ pub enum MichiganContentError {
 }
 
 impl std::fmt::Display for MichiganContentError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         write!(f, "Michigan content admission refused: {self:?}")
     }
 }
@@ -160,7 +164,7 @@ impl MichiganContentPreset {
     pub fn create_foundation_for_campaign(
         &self,
         catalog: &MichiganMaterialCatalog,
-        campaign: crate::identity::CampaignId,
+        campaign: CampaignId,
     ) -> Result<MaterialRuntimeFoundation, MichiganContentError> {
         let catalog = catalog
             .with_organizer_campaign(campaign)
@@ -177,15 +181,13 @@ impl MichiganContentPreset {
         let selected = catalog
             .with_preset(self.delivery())
             .map_err(|_| MichiganContentError::MaterialSource)?;
-        let captured = crate::economic_catalog::CapturedEconomicCatalog::from_michigan(&selected)
+        let captured = CapturedEconomicCatalog::from_michigan(&selected)
             .map_err(|_| MichiganContentError::MaterialSource)?;
         captured
             .create_foundation(
-                babylon_kernel::replay::ReplaySessionId::try_from(
-                    crate::michigan_cohorts::MICHIGAN_COHORT_SESSION,
-                )
-                .map_err(|_| MichiganContentError::Foundation)?,
-                babylon_kernel::replay::ReplaySeed::new(319),
+                ReplaySessionId::try_from(crate::michigan_cohorts::MICHIGAN_COHORT_SESSION)
+                    .map_err(|_| MichiganContentError::Foundation)?,
+                ReplaySeed::new(319),
             )
             .map_err(|_| MichiganContentError::Foundation)
     }

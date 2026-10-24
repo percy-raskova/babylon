@@ -24,12 +24,14 @@
 // ceremony that hides those contracts, so they stay off in test code only.
 #![allow(clippy::unreadable_literal)]
 
-use babylon_bsl::scenario::{compose_declaration_preludes, load_scenario_with_prelude};
+use babylon_bsl::scenario;
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_graph::substrate::{GraphSubstrate, HyperedgeId, NodeId};
+use babylon_kernel::replay::ReplaySeed;
 use babylon_kernel::replay::ReplaySessionId;
 use babylon_tick::diagnostic::RuleDiagnosticSession;
+use std::collections::HashMap;
 
 const SCENARIO: &str = include_str!("../content/scenarios/community-decay-arc-conformance.bscn");
 const PACK: &str = include_str!("../content/rules/community.bsl");
@@ -37,7 +39,7 @@ const ORGANIZATION_PRACTICE_PRELUDE: &str =
     include_str!("../content/declarations/organization-practice.bscn");
 
 fn practice_prelude() -> String {
-    compose_declaration_preludes(&[ORGANIZATION_PRACTICE_PRELUDE])
+    scenario::compose_declaration_preludes(&[ORGANIZATION_PRACTICE_PRELUDE])
         .expect("the organization practice prelude composes")
 }
 
@@ -54,7 +56,7 @@ fn run_arc() -> RuleDiagnosticSession<HypergraphStore> {
         PACK,
         HypergraphStore::new(),
         arc_session(),
-        babylon_kernel::replay::ReplaySeed::new(0),
+        ReplaySeed::new(0),
     )
     .expect("world 5 + the pack loads into a session");
     let mut sink = CollectingSink::default();
@@ -109,7 +111,7 @@ fn decay_is_monotone_non_increasing() {
         PACK,
         HypergraphStore::new(),
         arc_session(),
-        babylon_kernel::replay::ReplaySeed::new(0),
+        ReplaySeed::new(0),
     )
     .expect("session loads");
     let mut sink = CollectingSink::default();
@@ -326,7 +328,7 @@ fn all_inactive_members_skip_every_membership_lane() {
     )
     .expect("every rule loads and the world ticks");
     // The carrier rules fire; the class rules fire on nobody active.
-    let per_rule: std::collections::HashMap<&str, usize> = report
+    let per_rule: HashMap<&str, usize> = report
         .per_rule_fired
         .iter()
         .map(|(id, n)| (id.as_str(), *n))
@@ -436,8 +438,9 @@ fn a_world_with_no_community_hyperedge_refuses_at_load() {
 fn no_community_typed_node_exists_in_the_arc_worlds() {
     for scenario in [SCENARIO, SEAM_SCENARIO, COLLISION_SCENARIO, EMPTY_SCENARIO] {
         let mut graph = HypergraphStore::new();
-        let loaded = load_scenario_with_prelude(&practice_prelude(), scenario, &mut graph)
-            .expect("world loads");
+        let loaded =
+            scenario::load_scenario_with_prelude(&practice_prelude(), scenario, &mut graph)
+                .expect("world loads");
         for (member, count) in &loaded.node_types {
             assert!(
                 !member.contains("COMMUNITY"),
@@ -454,8 +457,9 @@ fn no_community_typed_node_exists_in_the_arc_worlds() {
 fn exactly_one_institution_carrier_in_the_arc_worlds() {
     for scenario in [SCENARIO, SEAM_SCENARIO, COLLISION_SCENARIO, EMPTY_SCENARIO] {
         let mut graph = HypergraphStore::new();
-        let loaded = load_scenario_with_prelude(&practice_prelude(), scenario, &mut graph)
-            .expect("world loads");
+        let loaded =
+            scenario::load_scenario_with_prelude(&practice_prelude(), scenario, &mut graph)
+                .expect("world loads");
         assert_eq!(
             loaded.node_types.get("INSTITUTION"),
             Some(&1),

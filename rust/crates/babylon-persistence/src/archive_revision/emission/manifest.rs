@@ -4,8 +4,11 @@ use std::collections::BTreeSet;
 
 use serde::{Deserialize, Serialize};
 
-use crate::archive::{decode_subject_kind, validate_text, MAX_LINKS, MAX_PAGE_BYTES, MAX_SIGNALS};
+use crate::archive::{MAX_LINKS, MAX_PAGE_BYTES, MAX_SIGNALS};
 
+use super::super::record::RevisionRecord;
+use crate::archive;
+use crate::ArchiveAtom;
 use crate::{
     ArchiveCitation, ArchiveLink, ArchivePageInput, ArchivePageRef, ArchiveSignal, ArchiveSubject,
     SemanticArchiveError,
@@ -28,7 +31,7 @@ impl ArchiveEmissionLink {
         known_label: Option<String>,
     ) -> Result<Self, SemanticArchiveError> {
         if let Some(label) = &known_label {
-            validate_text(label)?;
+            archive::validate_text(label)?;
         }
         Ok(Self {
             target,
@@ -61,7 +64,7 @@ impl ArchiveEmissionManifest {
         signals: Vec<ArchiveSignal>,
         links: Vec<ArchiveEmissionLink>,
     ) -> Result<Self, SemanticArchiveError> {
-        validate_text(&question)?;
+        archive::validate_text(&question)?;
         if signals.len() > MAX_SIGNALS || links.len() > MAX_LINKS {
             return Err(SemanticArchiveError::CollectionBound);
         }
@@ -184,7 +187,7 @@ impl ArchiveEmissionManifest {
 
     pub(in crate::archive_revision) fn verify(
         &self,
-        record: &super::super::record::RevisionRecord,
+        record: &RevisionRecord,
     ) -> Result<(), SemanticArchiveError> {
         use crate::{ArchiveKnowledge, ArchiveKnowledgeGrant, FogSafeArchiveRenderer};
 
@@ -223,7 +226,7 @@ impl ArchiveEmissionManifest {
                 })
                 .collect::<Result<Vec<_>, _>>()?,
         )?;
-        if record.atoms.first().map(crate::ArchiveAtom::citation) != Some(self.subject_citation()) {
+        if record.atoms.first().map(ArchiveAtom::citation) != Some(self.subject_citation()) {
             return Err(SemanticArchiveError::StoredPageMismatch);
         }
         let input = self.atom_input(subject, record.source.tick(), source_hash)?;
@@ -311,7 +314,7 @@ impl ManifestWire {
             .map(|link| {
                 ArchiveEmissionLink::try_new(
                     ArchivePageRef::try_new(
-                        decode_subject_kind(&link.target_kind)?,
+                        archive::decode_subject_kind(&link.target_kind)?,
                         link.target_id,
                     )?,
                     link.known_label,

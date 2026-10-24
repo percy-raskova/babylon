@@ -17,7 +17,7 @@
 
 use babylon_persistence::archive_revision::{ArchiveAtomChange, ArchiveDossierState};
 use babylon_persistence::ArchiveSignal;
-use babylon_persistence::{fog_chip, ArchiveAtom, ArchiveAtomValue};
+use babylon_persistence::{ArchiveAtom, ArchiveAtomValue};
 
 /// The one decision question the dossier card answers (ADR249 R9), pinned in
 /// exactly one place so the manifest row and the rendered card cannot drift.
@@ -135,7 +135,7 @@ pub fn chip_text(chip: &PlaceChip) -> String {
     match &chip.label {
         Some(label) if chip.pending => format!("{label} · pending"),
         Some(label) => label.clone(),
-        None => fog_chip("place", &chip.geoid),
+        None => babylon_persistence::fog_chip("place", &chip.geoid),
     }
 }
 
@@ -344,10 +344,12 @@ pub fn dual_tick_segments(durable: Option<u64>, verified: Option<u64>) -> Vec<Do
 #[cfg(test)]
 mod tests {
     use super::*;
+    use babylon_persistence::identity::CampaignId;
     use babylon_persistence::{
-        identity::CampaignId, ArchiveAtomSubject, ArchiveAtomSubjectKind, ArchiveAtomValue,
-        ArchiveCitation, ArchiveEvidenceClass,
+        ArchiveAtomSubject, ArchiveAtomSubjectKind, ArchiveAtomValue, ArchiveCitation,
+        ArchiveEvidenceClass,
     };
+
     use uuid::Uuid;
 
     fn atom(signal_key: &str, value: &str, valid_tick: u64) -> ArchiveAtom {

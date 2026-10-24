@@ -1,4 +1,7 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
+use std::cmp::Ordering;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 
 /// Number of typed component families, before material register and receipts.
 pub const COMMITTED_TICK_ROW_FAMILY_COUNT: usize = 6;
@@ -330,11 +333,9 @@ pub(crate) fn validate_row_order(
         return Ok(());
     }
     match rows[index - 1].key.cmp(&rows[index].key) {
-        std::cmp::Ordering::Less => Ok(()),
-        std::cmp::Ordering::Equal => {
-            Err(CommittedTickEnvelopeError::DuplicateRowKey { family, index })
-        }
-        std::cmp::Ordering::Greater => Err(CommittedTickEnvelopeError::RowOrder { family, index }),
+        Ordering::Less => Ok(()),
+        Ordering::Equal => Err(CommittedTickEnvelopeError::DuplicateRowKey { family, index }),
+        Ordering::Greater => Err(CommittedTickEnvelopeError::RowOrder { family, index }),
     }
 }
 
@@ -392,7 +393,7 @@ pub(crate) fn checked_sum<const N: usize>(
 }
 
 impl std::fmt::Display for CommittedTickEnvelopeError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> FmtResult {
         write!(formatter, "committed tick envelope refused: {self:?}")
     }
 }

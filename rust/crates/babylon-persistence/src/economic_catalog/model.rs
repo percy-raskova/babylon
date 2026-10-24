@@ -4,18 +4,41 @@
 //! Source observations bind identity and scale; recipe and opening assignments
 //! require their captured Designed policy evidence.
 
-use crate::{michigan_sectors::MichiganSectorCode, national_cohorts::CohortKey};
+use crate::michigan_sectors::MichiganSectorCode;
+use crate::national_cohorts::CohortKey;
+
 use babylon_graph::stable_element::StableElementKey;
-use babylon_kernel::{
-    currency::Currency, economic_identity::EconomicFunction, economic_location::EconomicLocation,
-    geography::CountyGeoid,
-};
+use babylon_kernel::currency::Currency;
+use babylon_kernel::economic_identity::EconomicFunction;
+use babylon_kernel::economic_location::EconomicLocation;
+use babylon_kernel::geography::CountyGeoid;
+
+use super::sources::SourceArtifact;
+use babylon_kernel::clock::CampaignDuration;
+use babylon_material_circuit::AidBook;
+use babylon_material_circuit::CapacityRow;
+use babylon_material_circuit::CashAccount;
+use babylon_material_circuit::CommodityDefinition;
+use babylon_material_circuit::CorridorCapacity;
+use babylon_material_circuit::EmploymentTerms;
+use babylon_material_circuit::EquipmentCarryingValue;
+use babylon_material_circuit::EquityCarryingValue;
+use babylon_material_circuit::FinalDemandOrder;
+use babylon_material_circuit::FinalDemandPrincipal;
+use babylon_material_circuit::FinancialInstitutions;
+use babylon_material_circuit::HouseholdKind;
+use babylon_material_circuit::MaintenanceBinding;
+use babylon_material_circuit::OrderRow;
+use babylon_material_circuit::RollingProcessSupply;
+use babylon_material_circuit::StaffingMemberBinding;
+use babylon_material_circuit::StaffingPoolBinding;
 use babylon_material_circuit::{
     CorridorId, FinalDemandPrincipalId, GoodId, HouseholdNeedBasis, HouseholdPurchasePolicy,
     HouseholdTimeAccounting, LogisticsNodeId, MerchantRole, ProcessId, ReplenishmentPolicy,
     RouteStage, RouteStageCapacity, SellerOffer, ServiceConnection, ServiceInputPolicy,
     SharedCapacitySupply, SiteId, SupplierRoute, UnitId,
 };
+use babylon_practice_contract::OrganizerConfig;
 
 /// A catalog-local recipe identity, unique inside the captured template table.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -136,7 +159,7 @@ pub struct HouseholdTemplate {
 /// A resident principal, with persons and households independent of workplace jobs.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct EconomicHouseholdSeed {
-    pub kind: babylon_material_circuit::HouseholdKind,
+    pub kind: HouseholdKind,
     pub principal_id: FinalDemandPrincipalId,
     pub subject: StableElementKey,
     pub location: EconomicLocation,
@@ -157,7 +180,7 @@ pub enum CatalogAccounting {
 /// Opening policies reuse the engine's exact types without retaining dynamic cursors.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CatalogPolicies {
-    pub aid: babylon_material_circuit::AidBook,
+    pub aid: AidBook,
     pub household_time: HouseholdTimeAccounting,
     pub offers: Vec<SellerOffer>,
     pub replenishment: Vec<ReplenishmentPolicy>,
@@ -180,7 +203,7 @@ pub struct CatalogLogistics {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ResidentStaffingMemberSeed {
     pub subject: StableElementKey,
-    pub member: babylon_material_circuit::StaffingMemberBinding,
+    pub member: StaffingMemberBinding,
     pub employed: u64,
     pub reserve: u64,
 }
@@ -190,7 +213,7 @@ pub struct ResidentStaffingMemberSeed {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ResidentStaffingPoolSeed {
     pub workplace: StableElementKey,
-    pub pool: babylon_material_circuit::StaffingPoolBinding,
+    pub pool: StaffingPoolBinding,
     pub previous_unretained_hours: u64,
     pub members: Vec<ResidentStaffingMemberSeed>,
 }
@@ -199,10 +222,10 @@ pub struct ResidentStaffingPoolSeed {
 /// supply. Missing finite dates supply nothing; they never become rolling supply.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum CatalogCapacity {
-    Rolling(babylon_material_circuit::RollingProcessSupply),
+    Rolling(RollingProcessSupply),
     Finite {
-        process: Vec<babylon_material_circuit::CapacityRow>,
-        freight: Vec<babylon_material_circuit::CorridorCapacity>,
+        process: Vec<CapacityRow>,
+        freight: Vec<CorridorCapacity>,
     },
 }
 
@@ -212,15 +235,15 @@ pub enum CatalogCapacity {
 pub struct CatalogOpeningOrders {
     /// Explicit finite-control buyers without an invented recurring household count.
     /// Counted household principals are instead derived from the household seed table.
-    pub principals: Vec<babylon_material_circuit::FinalDemandPrincipal>,
-    pub goods: Vec<babylon_material_circuit::OrderRow>,
-    pub final_demand: Vec<babylon_material_circuit::FinalDemandOrder>,
+    pub principals: Vec<FinalDemandPrincipal>,
+    pub goods: Vec<OrderRow>,
+    pub final_demand: Vec<FinalDemandOrder>,
 }
 
 /// The currently executable explicitly bound maintenance relation, if authored.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CatalogMaintenance {
-    pub binding: babylon_material_circuit::MaintenanceBinding,
+    pub binding: MaintenanceBinding,
     pub opening_enabled_batches: u64,
 }
 
@@ -229,20 +252,20 @@ pub struct CatalogMaintenance {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct EconomicOpening {
     pub commodity_labels: Vec<CommodityLabel>,
-    pub commodities: Vec<babylon_material_circuit::CommodityDefinition>,
+    pub commodities: Vec<CommodityDefinition>,
     pub recipes: Vec<RecipeTemplate>,
     pub household_templates: Vec<HouseholdTemplate>,
     pub sites: Vec<EconomicSiteSeed>,
     pub households: Vec<EconomicHouseholdSeed>,
     pub staffing: Vec<ResidentStaffingPoolSeed>,
-    pub employment: Vec<babylon_material_circuit::EmploymentTerms>,
+    pub employment: Vec<EmploymentTerms>,
     pub accounting: CatalogAccounting,
     /// Organization/public opening cash only; site and household seeds own theirs.
-    pub institutional_cash: Vec<babylon_material_circuit::CashAccount>,
-    pub institutions: babylon_material_circuit::FinancialInstitutions,
-    pub equity: Vec<babylon_material_circuit::EquityCarryingValue>,
+    pub institutional_cash: Vec<CashAccount>,
+    pub institutions: FinancialInstitutions,
+    pub equity: Vec<EquityCarryingValue>,
     /// Exact carrying amounts for installed equipment and pending installation.
-    pub equipment: Vec<babylon_material_circuit::EquipmentCarryingValue>,
+    pub equipment: Vec<EquipmentCarryingValue>,
     pub capacity: CatalogCapacity,
     pub policies: CatalogPolicies,
     pub logistics: CatalogLogistics,
@@ -267,10 +290,10 @@ pub enum CatalogGeography {
 pub struct EconomicCatalogInput {
     pub scenario_id: String,
     pub preset_id: String,
-    pub duration: babylon_kernel::clock::CampaignDuration,
-    pub sources: Vec<super::sources::SourceArtifact>,
+    pub duration: CampaignDuration,
+    pub sources: Vec<SourceArtifact>,
     pub geography: CatalogGeography,
-    pub organizer: Option<babylon_practice_contract::OrganizerConfig>,
+    pub organizer: Option<OrganizerConfig>,
 }
 
 /// Captured user-facing commodity identity; labels never come from guessing a hash.

@@ -2,21 +2,21 @@
 
 use super::node_keys;
 
-use crate::{identity::CampaignId, runtime::RustPersistenceRuntimeError};
+use crate::identity::CampaignId;
+use crate::runtime::RustPersistenceRuntimeError;
 
 use babylon_bsl::identity_codec::StableBslValue;
 
 use babylon_tick::replay_session::SuccessfulEvent;
 
-use postgres::{
-    binary_copy::BinaryCopyInWriter,
-    fallible_iterator::FallibleIterator as _,
-    types::{FromSqlOwned, ToSql, Type},
-    GenericClient,
-};
+use postgres::binary_copy::BinaryCopyInWriter;
+use postgres::fallible_iterator::FallibleIterator as _;
+use postgres::types::{FromSqlOwned, ToSql, Type};
+use postgres::GenericClient;
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use postgres::Error as PostgresError;
 use std::io::Write;
 
 pub(crate) const CHUNK: usize = 4096;
@@ -48,7 +48,7 @@ pub(crate) fn id(n: usize) -> Result<i64, RustPersistenceRuntimeError> {
     i64::try_from(n).map_err(|_| refuse(Error::IdentityOverflow))
 }
 
-pub(crate) fn db(op: &'static str, e: &postgres::Error) -> RustPersistenceRuntimeError {
+pub(crate) fn db(op: &'static str, e: &PostgresError) -> RustPersistenceRuntimeError {
     RustPersistenceRuntimeError::postgres(op, e)
 }
 
@@ -764,7 +764,11 @@ mod missing_controls {
 #[cfg(test)]
 mod live_payload_controls {
     use super::*;
+    use crate::material_runtime::DurableMaterialRuntime;
+    use crate::michigan_content::MichiganContentPreset;
+    use crate::michigan_material::MichiganDeliveryPreset;
     use babylon_graph::stable_element::StableElementKey;
+    use postgres::Transaction;
     use postgres::{Config, NoTls};
     use std::str::FromStr;
     use uuid::Uuid;
@@ -930,7 +934,7 @@ mod live_payload_controls {
     }
 
     fn reference_rows(
-        tx: &mut postgres::Transaction<'_>,
+        tx: &mut Transaction<'_>,
         campaign: CampaignId,
         values: &[(String, StableBslValue)],
     ) {
@@ -948,7 +952,7 @@ mod live_payload_controls {
     }
 
     fn admitted_lookups(
-        tx: &mut postgres::Transaction<'_>,
+        tx: &mut Transaction<'_>,
         campaign: CampaignId,
         values: &[(String, StableBslValue)],
     ) -> PayloadLookups {
@@ -985,7 +989,7 @@ mod live_payload_controls {
     }
 
     fn write_projected_csv(
-        tx: &mut postgres::Transaction<'_>,
+        tx: &mut Transaction<'_>,
         campaign: CampaignId,
         values: &[(String, StableBslValue)],
         texts: &BTreeMap<String, i64>,
@@ -1056,14 +1060,10 @@ mod live_payload_controls {
         let campaign = CampaignId::from_uuid(Uuid::from_u128(
             (u128::from(std::process::id()) << 64) | 0x337_9a11,
         ));
-        let foundation = crate::michigan_content::MichiganContentPreset::new_campaign(
-            crate::michigan_material::MichiganDeliveryPreset::Standard,
-        )
-        .create_foundation(&crate::test_support::catalog())
-        .unwrap();
-        let _runtime =
-            crate::material_runtime::DurableMaterialRuntime::create(&config, campaign, foundation)
-                .unwrap();
+        let foundation = MichiganContentPreset::new_campaign(MichiganDeliveryPreset::Standard)
+            .create_foundation(&crate::test_support::catalog())
+            .unwrap();
+        let _runtime = DurableMaterialRuntime::create(&config, campaign, foundation).unwrap();
         let mut client = config.connect(NoTls).unwrap();
         let before = raw_counts(&mut client, campaign);
         let values = payloads();
@@ -1091,7 +1091,7 @@ mod live_payload_controls {
             *before.last().unwrap(),
             "native key identity does not acquire graph tuple membership"
         );
-        let snapshot = |tx: &mut postgres::Transaction<'_>, relation: &str| -> String {
+        let snapshot = |tx: &mut Transaction<'_>, relation: &str| -> String {
             tx.query_one(&format!("SELECT jsonb_agg(to_jsonb(row) ORDER BY position)::text FROM {relation} row WHERE campaign_id=$1"),&[campaign.as_uuid()]).unwrap().get(0)
         };
         assert_eq!(
@@ -1126,14 +1126,10 @@ mod live_payload_controls {
         let campaign = CampaignId::from_uuid(Uuid::from_u128(
             (u128::from(std::process::id()) << 64) | 0x337_9a12,
         ));
-        let foundation = crate::michigan_content::MichiganContentPreset::new_campaign(
-            crate::michigan_material::MichiganDeliveryPreset::Standard,
-        )
-        .create_foundation(&crate::test_support::catalog())
-        .unwrap();
-        let _runtime =
-            crate::material_runtime::DurableMaterialRuntime::create(&config, campaign, foundation)
-                .unwrap();
+        let foundation = MichiganContentPreset::new_campaign(MichiganDeliveryPreset::Standard)
+            .create_foundation(&crate::test_support::catalog())
+            .unwrap();
+        let _runtime = DurableMaterialRuntime::create(&config, campaign, foundation).unwrap();
         let mut client = config.connect(NoTls).unwrap();
         let before = raw_counts(&mut client, campaign);
         let row=client.query_one("SELECT s.string_id,s.value FROM babylon_state.graph_node_lookup_v1 n JOIN babylon_state.graph_string_lookup_v1 s ON s.campaign_id=n.campaign_id AND s.string_id=n.name_id WHERE n.campaign_id=$1 ORDER BY n.node_id LIMIT 1",&[campaign.as_uuid()]).unwrap();
@@ -1215,6 +1211,10 @@ mod live_payload_controls {
 #[cfg(test)]
 mod marker_integrity_controls {
     use crate::identity::CampaignId;
+    use crate::material_runtime::DurableMaterialRuntime;
+    use crate::michigan_content::MichiganContentPreset;
+    use crate::michigan_material::MichiganDeliveryPreset;
+    use postgres::Client;
     use postgres::{Config, GenericClient, NoTls};
     use std::str::FromStr;
     use uuid::Uuid;
@@ -1458,17 +1458,13 @@ mod marker_integrity_controls {
         let database = std::env::var("BABYLON_EVENT_COPY_DATABASE").unwrap();
         assert!(database.starts_with("per337_event_continuity_"));
         config.dbname(&database);
-        let foundation = crate::michigan_content::MichiganContentPreset::new_campaign(
-            crate::michigan_material::MichiganDeliveryPreset::Standard,
-        )
-        .create_foundation(&crate::test_support::catalog())
-        .unwrap();
+        let foundation = MichiganContentPreset::new_campaign(MichiganDeliveryPreset::Standard)
+            .create_foundation(&crate::test_support::catalog())
+            .unwrap();
         let campaign = CampaignId::from_uuid(Uuid::from_u128(
             (u128::from(std::process::id()) << 64) | 0x337_e1ad,
         ));
-        let runtime =
-            crate::material_runtime::DurableMaterialRuntime::create(&config, campaign, foundation)
-                .unwrap();
+        let runtime = DurableMaterialRuntime::create(&config, campaign, foundation).unwrap();
         let mut client = config.connect(NoTls).unwrap();
         let relations = [
             "event_text_lookup_v1",
@@ -1483,7 +1479,7 @@ mod marker_integrity_controls {
             "territory_tick_manifest_v1",
             "territory_tick_membership_v1",
         ];
-        let counts = |c: &mut postgres::Client| -> Vec<i64> {
+        let counts = |c: &mut Client| -> Vec<i64> {
             relations
                 .iter()
                 .map(|r| {

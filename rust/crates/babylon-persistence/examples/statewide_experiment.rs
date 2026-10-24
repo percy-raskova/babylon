@@ -24,15 +24,16 @@ mod tests;
 #[path = "statewide_experiment/witness.rs"]
 mod witness;
 
-use std::{error::Error, process::ExitCode};
+use std::error::Error;
+use std::process::ExitCode;
 
 #[path = "statewide_experiment/support.rs"]
 mod support;
 
-use support::{checked_sum, execute, hex, quantity, refused, Result};
+use support::{checked_sum, hex, quantity, refused, Result};
 
 fn main() -> ExitCode {
-    match execute() {
+    match support::execute() {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             eprintln!("Statewide experiment refused: {error}");

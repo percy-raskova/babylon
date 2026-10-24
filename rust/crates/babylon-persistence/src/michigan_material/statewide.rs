@@ -1,13 +1,16 @@
 //! Source qualification is reference authoring; no allocation or tick runs here.
+use super::captured::MichiganObservedSources;
 use super::{
-    regional, sha256_of, MichiganDefines, MichiganDefinesError, MichiganDeliveryPreset,
-    MichiganFinalDemand, MichiganIndustryBaselineRow, MichiganIntervention,
-    MichiganMaterialCatalog, MichiganMaterialCorridor, MichiganMaterialError, MichiganMaterialGood,
-    MichiganMaterialInput, MichiganMaterialPath, MichiganMaterialProcess, MichiganMaterialRoute,
-    MichiganMaterialSite, MichiganMerchant, MichiganNormalizedContent, MichiganPhysicalNetwork,
-    MichiganSiteRole, MichiganWorkforceSeed, MAX_MICHIGAN_SOURCE_BYTES,
+    regional, MichiganDefines, MichiganDefinesError, MichiganDeliveryPreset, MichiganFinalDemand,
+    MichiganIndustryBaselineRow, MichiganIntervention, MichiganMaterialCatalog,
+    MichiganMaterialCorridor, MichiganMaterialError, MichiganMaterialGood, MichiganMaterialInput,
+    MichiganMaterialPath, MichiganMaterialProcess, MichiganMaterialRoute, MichiganMaterialSite,
+    MichiganMerchant, MichiganNormalizedContent, MichiganPhysicalNetwork, MichiganSiteRole,
+    MichiganWorkforceSeed, MAX_MICHIGAN_SOURCE_BYTES,
 };
 use crate::michigan_defines::{CommodityDisposition, CommodityUnit};
+use crate::michigan_sectors::MichiganCountySectors;
+use flate2::read::GzDecoder;
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::Read;
@@ -151,11 +154,11 @@ fn role(value: &str) -> Result<MichiganSiteRole, MichiganDefinesError> {
     }
 }
 fn load_roster(bytes: &[u8]) -> Result<Roster, MichiganDefinesError> {
-    if crate::michigan_economy::digest_hex(&sha256_of(bytes)) != ROSTER_SHA256 {
+    if crate::michigan_economy::digest_hex(&super::sha256_of(bytes)) != ROSTER_SHA256 {
         return Err(error());
     }
     let mut decoded = Vec::new();
-    flate2::read::GzDecoder::new(bytes)
+    GzDecoder::new(bytes)
         .take(4_194_305)
         .read_to_end(&mut decoded)
         .map_err(|_| error())?;
@@ -192,7 +195,7 @@ pub(super) fn compile(
     interventions: Vec<MichiganIntervention>,
 ) -> Result<MichiganMaterialCatalog, MichiganDefinesError> {
     use crate::economic_catalog::{SourceArtifact, SourceArtifactKind as K};
-    let mut context = super::captured::MichiganObservedSources::fresh()?;
+    let mut context = MichiganObservedSources::fresh()?;
     context.artifacts.extend([
         SourceArtifact::capture(K::MichiganDefines, text.as_bytes().to_vec()),
         SourceArtifact::capture(K::MichiganCommodityRoster, ROSTER.to_vec()),
@@ -214,7 +217,7 @@ pub(super) fn compile_with_sources(
     physical: MichiganPhysicalNetwork,
     interventions: Vec<MichiganIntervention>,
     roster_bytes: &[u8],
-    observed: &super::captured::MichiganObservedSources<'_>,
+    observed: &MichiganObservedSources<'_>,
 ) -> Result<MichiganMaterialCatalog, MichiganDefinesError> {
     if bytes.len() > MAX_MICHIGAN_SOURCE_BYTES {
         return Err(error());
@@ -226,7 +229,7 @@ pub(super) fn compile_with_sources(
         || !qualification.qualified
         || !qualification.diagnostics.is_empty()
         || qualification.defines_sha256
-            != crate::michigan_economy::digest_hex(&sha256_of(text.as_bytes()))
+            != crate::michigan_economy::digest_hex(&super::sha256_of(text.as_bytes()))
         || qualification.roster_sha256 != ROSTER_SHA256
         || qualification.paths_sha256.len() != 64
     {
@@ -274,7 +277,7 @@ fn append_owners(
     defines: &MichiganDefines,
     qualification: &Qualification,
     roster: &Roster,
-    sectors: &crate::michigan_sectors::MichiganCountySectors,
+    sectors: &MichiganCountySectors,
 ) -> Result<(), MichiganDefinesError> {
     if qualification.owners.len() != roster.actors.len() {
         return Err(error());

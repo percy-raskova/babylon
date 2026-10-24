@@ -1,24 +1,25 @@
 //! Actual national source, optional organizer authority and cold foundation admission.
-use babylon_kernel::{
-    content_digest::sha256_of,
-    replay::{ReplaySeed, ReplaySessionId},
-};
-use babylon_persistence::{
-    economic_catalog::{CapturedEconomicCatalog, SourceArtifactKind as Kind},
-    economic_content::EconomicContentAdmission,
-    identity::CampaignId,
-    material_runtime::MaterialRuntimeFoundation,
-};
+use babylon_kernel::content_digest::sha256_of;
+use babylon_kernel::replay::{ReplaySeed, ReplaySessionId};
+
+use babylon_persistence::economic_catalog::{CapturedEconomicCatalog, SourceArtifactKind as Kind};
+use babylon_persistence::economic_content::EconomicContentAdmission;
+use babylon_persistence::identity::CampaignId;
+use babylon_persistence::material_runtime::MaterialRuntimeFoundation;
+
+use babylon_practice_contract::OrganizerConfig;
 use babylon_practice_contract::{
-    admit_organizer, organizer_action_batch, organizer_aid_commitment, OrganizerChoice,
-    OrganizerCommand, OrganizerError, OrganizerRefusal, OrganizerTimeBindingMode, PracticeId,
+    OrganizerChoice, OrganizerCommand, OrganizerError, OrganizerRefusal, OrganizerTimeBindingMode,
+    PracticeId,
 };
+use babylon_tick::material_world::MaterialWorldRegister;
+use uuid::Uuid;
 #[path = "fixtures/national_capture.rs"]
 mod national_capture;
 
 #[test]
 fn actual_national_playable_source_and_cold_foundation_preserve_one_opening() {
-    let campaign = CampaignId::from_uuid(uuid::Uuid::from_u128(0x0026_1631_7031));
+    let campaign = CampaignId::from_uuid(Uuid::from_u128(0x0026_1631_7031));
     let raw = CapturedEconomicCatalog::capture(national_capture::input(), None).unwrap();
     assert_eq!(raw.compiler_version(), "national-world-v5");
     assert_eq!(
@@ -115,11 +116,11 @@ fn actual_national_playable_source_and_cold_foundation_preserve_one_opening() {
 }
 
 fn assert_admitted_inputs(
-    initial: &babylon_tick::material_world::MaterialWorldRegister,
+    initial: &MaterialWorldRegister,
     campaign: CampaignId,
     session_id: ReplaySessionId,
     policy: &[u8],
-) -> babylon_practice_contract::OrganizerConfig {
+) -> OrganizerConfig {
     assert_eq!(initial.completed_tick(), 0);
     let config = initial.organizer_config().unwrap();
     let state = initial.organizer_state().unwrap();
@@ -142,13 +143,31 @@ fn assert_admitted_inputs(
         nonce: [nonce; 16],
         choice,
     };
-    let ordinary = admit_organizer(config, state, &command(OrganizerChoice::Hold, 1)).unwrap();
-    let ordinary_batch =
-        organizer_action_batch(config, state, Some(&ordinary), session_id.clone()).unwrap();
+    let ordinary = babylon_practice_contract::admit_organizer(
+        config,
+        state,
+        &command(OrganizerChoice::Hold, 1),
+    )
+    .unwrap();
+    let ordinary_batch = babylon_practice_contract::organizer_action_batch(
+        config,
+        state,
+        Some(&ordinary),
+        session_id.clone(),
+    )
+    .unwrap();
     assert!(!ordinary_batch.items().is_empty());
-    let gift = admit_organizer(config, state, &command(OrganizerChoice::RemoteAid, 2)).unwrap();
-    let gift_capture = organizer_aid_commitment(config, state, &gift).unwrap();
-    let aid_batch = organizer_action_batch(config, state, Some(&gift), session_id).unwrap();
+    let gift = babylon_practice_contract::admit_organizer(
+        config,
+        state,
+        &command(OrganizerChoice::RemoteAid, 2),
+    )
+    .unwrap();
+    let gift_capture =
+        babylon_practice_contract::organizer_aid_commitment(config, state, &gift).unwrap();
+    let aid_batch =
+        babylon_practice_contract::organizer_action_batch(config, state, Some(&gift), session_id)
+            .unwrap();
     assert!(aid_batch
         .items()
         .iter()
@@ -160,13 +179,13 @@ fn assert_admitted_inputs(
     let mut stale_command = command(OrganizerChoice::RemoteAid, 3);
     stale_command.expected_period = 1;
     assert_eq!(
-        admit_organizer(config, state, &stale_command),
+        babylon_practice_contract::admit_organizer(config, state, &stale_command),
         Err(OrganizerError::Refused(OrganizerRefusal::StalePeriod))
     );
     let mut forged = command(OrganizerChoice::RemoteAid, 4);
     forged.content_digest[0] ^= 1;
     assert_eq!(
-        admit_organizer(config, state, &forged),
+        babylon_practice_contract::admit_organizer(config, state, &forged),
         Err(OrganizerError::Refused(OrganizerRefusal::ContentChanged))
     );
     config.clone()
@@ -174,7 +193,7 @@ fn assert_admitted_inputs(
 
 fn assert_native_bindings(
     admitted: &EconomicContentAdmission,
-    expected_config: &babylon_practice_contract::OrganizerConfig,
+    expected_config: &OrganizerConfig,
     targets: &[String],
 ) {
     let nodes = admitted.foundation_graph().rows().nodes();
@@ -221,7 +240,7 @@ fn assert_native_bindings(
 
 fn assert_source_bindings(
     catalog: &CapturedEconomicCatalog,
-    config: &babylon_practice_contract::OrganizerConfig,
+    config: &OrganizerConfig,
     raw_frame_size: usize,
     organizer_rule_size: usize,
 ) -> Vec<String> {

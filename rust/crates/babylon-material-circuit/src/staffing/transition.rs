@@ -2,10 +2,12 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use super::{
-    StaffingError, StaffingPoolState, StaffingReceipt, StaffingState, StaffingTransition,
-    StaffingWorkRequest,
-};
+use super::StaffingError;
+use super::StaffingPoolState;
+use super::StaffingReceipt;
+use super::StaffingState;
+use super::StaffingTransition;
+use super::StaffingWorkRequest;
 use crate::{LaborCapacityRow, MAX_STAFFING_WORK_SOURCES};
 
 fn reserved_vec<T>(count: usize) -> Result<Vec<T>, StaffingError> {

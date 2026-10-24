@@ -18,7 +18,7 @@
 
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;
-use babylon_tick::{diagnose_content_set_sources, run_once_into, ContentRuleSource};
+use babylon_tick::ContentRuleSource;
 
 /// Two COMMUNITY hyperedges over three classes — the minimal world whose
 /// census should feed the ceiling maps (Task 1's own population maps,
@@ -71,7 +71,7 @@ const RULE_MEMBERS_OF_FOLD: &str = r#"
 /// default); that lane is this train's own next task.
 #[test]
 fn the_hyperedges_folding_rule_now_loads_through_the_driver() {
-    let errors = diagnose_content_set_sources(
+    let errors = babylon_tick::diagnose_content_set_sources(
         SCENARIO,
         None,
         &[ContentRuleSource {
@@ -87,7 +87,7 @@ fn the_hyperedges_folding_rule_now_loads_through_the_driver() {
 
 #[test]
 fn the_members_of_folding_rule_now_loads_through_the_driver() {
-    let errors = diagnose_content_set_sources(
+    let errors = babylon_tick::diagnose_content_set_sources(
         SCENARIO,
         None,
         &[ContentRuleSource {
@@ -113,7 +113,8 @@ fn the_measured_e_load_040_bound_matches_the_fold_shape() {
     assert!(underfunded.contains(":fuel 1"));
     let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
-    let err = run_once_into(SCENARIO, &underfunded, &mut graph, &mut sink).unwrap_err();
+    let err =
+        babylon_tick::run_once_into(SCENARIO, &underfunded, &mut graph, &mut sink).unwrap_err();
     let bound = err
         .split("static bound ")
         .nth(1)

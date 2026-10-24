@@ -1,5 +1,13 @@
-use super::*;
-use crate::{identity::CampaignId, ArchiveAtomValue, ArchiveEvidenceClass, ArchiveSubjectKind};
+use super::super::emission::ArchiveEmissionManifest;
+use super::super::ArchiveReadScope;
+use super::revision::{GrantDependency, RevisionRecord};
+use crate::identity::CampaignId;
+use crate::{
+    ArchiveAtom, ArchiveAtomSubject, ArchiveCitation, ArchivePageRef, SemanticArchiveError,
+};
+use crate::{ArchiveAtomValue, ArchiveEvidenceClass, ArchiveSubjectKind};
+use sha2::{Digest, Sha256};
+use uuid::Uuid;
 
 fn atom(record: &RevisionRecord, key: &str, value: &str) -> ArchiveAtom {
     ArchiveAtom::try_new(
@@ -113,12 +121,9 @@ fn witnessed() -> RevisionRecord {
         ArchiveKnowledge, ArchiveKnowledgeGrant, ArchivePageInput, ArchiveSignal, ArchiveSubject,
         FogSafeArchiveRenderer,
     };
-    let source = ArchiveReadScope::committed(
-        CampaignId::from_uuid(uuid::Uuid::from_bytes([1; 16])),
-        2,
-        [2; 32],
-    )
-    .unwrap();
+    let source =
+        ArchiveReadScope::committed(CampaignId::from_uuid(Uuid::from_bytes([1; 16])), 2, [2; 32])
+            .unwrap();
     let subject = ArchiveSubject::try_new(
         ArchiveSubjectKind::County,
         "26163".to_owned(),
@@ -321,12 +326,9 @@ fn changelog_refuses_reverse_duplicate_and_cross_scope_publications() {
         );
     }
     let mut foreign = next;
-    foreign.source = ArchiveReadScope::committed(
-        CampaignId::from_uuid(uuid::Uuid::from_bytes([9; 16])),
-        6,
-        [2; 32],
-    )
-    .unwrap();
+    foreign.source =
+        ArchiveReadScope::committed(CampaignId::from_uuid(Uuid::from_bytes([9; 16])), 6, [2; 32])
+            .unwrap();
     assert_eq!(
         super::super::changes::between(Some(&previous), &foreign),
         Err(SemanticArchiveError::StoredPageMismatch)

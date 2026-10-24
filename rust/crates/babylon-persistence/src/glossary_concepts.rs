@@ -9,11 +9,13 @@
 
 use std::sync::OnceLock;
 
-use babylon_kernel::content_digest::sha256_of;
 use serde::Deserialize;
 use sha2::{Digest as _, Sha256};
 
 use crate::archive::ArchiveCitation;
+use babylon_kernel::content_digest;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 
 /// Repository-relative fixture path pinned by the contract.
 pub const GLOSSARY_CONCEPTS_FIXTURE_PATH: &str = "contracts/fixtures/glossary_concepts_v1.jsonl";
@@ -122,7 +124,7 @@ pub enum GlossaryConceptsError {
 }
 
 impl std::fmt::Display for GlossaryConceptsError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+    fn fmt(&self, formatter: &mut Formatter) -> FmtResult {
         write!(formatter, "glossary concepts refusal: {self:?}")
     }
 }
@@ -190,7 +192,7 @@ fn valid_concept_id(value: &str) -> bool {
 }
 
 fn parse_fixture() -> Result<GlossaryConcepts, GlossaryConceptsError> {
-    if sha256_of(FIXTURE.as_bytes()) != PINNED_GLOSSARY_CONCEPTS_SHA256 {
+    if content_digest::sha256_of(FIXTURE.as_bytes()) != PINNED_GLOSSARY_CONCEPTS_SHA256 {
         return Err(GlossaryConceptsError::FixtureDigest);
     }
     let mut concepts = Vec::new();

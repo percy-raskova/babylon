@@ -19,7 +19,7 @@
 //! ```
 
 use babylon_graph::allocator_state::AllocatorCursors;
-use babylon_kernel::content_digest::sha256_of;
+use babylon_kernel::content_digest;
 
 const WORLD_HASH_LAYOUT_VERSION: u32 = 1;
 const WORLD_HASH_DOMAIN: &[u8] = b"babylon.world-state\0";
@@ -31,7 +31,7 @@ pub(crate) fn nominal_world_hash(
     cursors: AllocatorCursors,
     schedule_digest: [u8; 32],
 ) -> Result<[u8; 32], String> {
-    Ok(sha256_of(&encode_nominal_world_state(
+    Ok(content_digest::sha256_of(&encode_nominal_world_state(
         graph_hash,
         completed_tick,
         cursors,
@@ -68,14 +68,13 @@ fn encode_nominal_world_state(
 
 #[cfg(test)]
 mod tests {
-    use super::{encode_nominal_world_state, nominal_world_hash};
-    use crate::phase_order::schedule_digest;
+    use crate::phase_order;
     use babylon_graph::allocator_state::{AllocatorCursors, AllocatorState};
     use babylon_graph::hypergraph_store::HypergraphStore;
     use babylon_graph::memory::MemoryGraph;
     use babylon_graph::state_hash::CanonicalState;
     use babylon_graph::substrate::GraphSubstrate;
-    use babylon_kernel::content_digest::sha256_of;
+    use babylon_kernel::content_digest;
 
     fn seeded_world<G: GraphSubstrate + Default>(reverse_writes: bool) -> G {
         let mut graph = G::default();
@@ -108,11 +107,11 @@ mod tests {
     }
 
     fn seeded_world_hash<G: CanonicalState + AllocatorState>(graph: &G) -> [u8; 32] {
-        nominal_world_hash(
+        super::nominal_world_hash(
             graph.state_hash().unwrap(),
             17,
             graph.allocator_cursors(),
-            schedule_digest().unwrap(),
+            phase_order::schedule_digest().unwrap(),
         )
         .unwrap()
     }
@@ -120,11 +119,11 @@ mod tests {
     #[test]
     fn empty_tick_zero_world_hash_pins_the_version_one_layout() {
         let graph = HypergraphStore::new();
-        let hash = nominal_world_hash(
+        let hash = super::nominal_world_hash(
             graph.state_hash().unwrap(),
             0,
             graph.allocator_cursors(),
-            schedule_digest().unwrap(),
+            phase_order::schedule_digest().unwrap(),
         )
         .unwrap();
         assert_eq!(
@@ -141,9 +140,13 @@ mod tests {
             next_node: 0x1112_1314_1516_1718,
             next_hyperedge: 0x2122_2324_2526_2728,
         };
-        let bytes =
-            encode_nominal_world_state(graph_hash, 0x0102_0304_0506_0708, cursors, schedule_digest)
-                .unwrap();
+        let bytes = super::encode_nominal_world_state(
+            graph_hash,
+            0x0102_0304_0506_0708,
+            cursors,
+            schedule_digest,
+        )
+        .unwrap();
 
         #[rustfmt::skip]
         let expected: &[u8] = &[
@@ -173,7 +176,7 @@ mod tests {
 
         assert_eq!(bytes, expected);
         assert_eq!(
-            crate::hex(&sha256_of(&bytes)),
+            crate::hex(&content_digest::sha256_of(&bytes)),
             "8ce3e668779b762d26bf3543820775d52d711ffae6076006297c85968fb12751"
         );
     }
@@ -189,15 +192,15 @@ mod tests {
             allocated.state_hash().unwrap()
         );
 
-        let schedule = schedule_digest().unwrap();
-        let a = nominal_world_hash(
+        let schedule = phase_order::schedule_digest().unwrap();
+        let a = super::nominal_world_hash(
             untouched.state_hash().unwrap(),
             0,
             untouched.allocator_cursors(),
             schedule,
         )
         .unwrap();
-        let b = nominal_world_hash(
+        let b = super::nominal_world_hash(
             allocated.state_hash().unwrap(),
             0,
             allocated.allocator_cursors(),
@@ -222,7 +225,7 @@ mod tests {
 
     #[test]
     fn negative_completed_time_refuses_loudly() {
-        let error = nominal_world_hash(
+        let error = super::nominal_world_hash(
             [0; 32],
             -1,
             AllocatorCursors {

@@ -118,11 +118,11 @@
 //! carries no anchor and its first id segment names no registered system —
 //! a rule cannot land nowhere (§2.3)`.
 
-use babylon_bsl::scenario::load_scenario;
+use babylon_bsl::scenario;
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
-use babylon_tick::run_once_into;
+use std::collections::HashSet;
 
 const SCENARIO: &str = include_str!("../content/scenarios/class-dynamics-conformance.bscn");
 const PACK: &str = include_str!("../content/rules/class-dynamics.bsl");
@@ -152,7 +152,7 @@ fn scenario_loads_with_a_class_dynamics_probe() {
 "#;
     let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
-    let report = run_once_into(SCENARIO, PROBE_RULE, &mut graph, &mut sink)
+    let report = babylon_tick::run_once_into(SCENARIO, PROBE_RULE, &mut graph, &mut sink)
         .expect("the scenario must load and run against a registered class-dynamics probe");
     assert_eq!(report.fired, 0, "the probe never fires");
     assert_eq!(
@@ -165,7 +165,8 @@ fn scenario_loads_with_a_class_dynamics_probe() {
 #[test]
 fn the_scenario_loads_clean_with_the_declared_census() {
     let mut graph = HypergraphStore::new();
-    let loaded = load_scenario(SCENARIO, &mut graph).expect("the scenario must load clean");
+    let loaded =
+        scenario::load_scenario(SCENARIO, &mut graph).expect("the scenario must load clean");
     assert_eq!(loaded.node_count, 6, "2 territories + 4 social classes");
     assert_eq!(loaded.edge_count, 4, "four TENANCY edges");
     assert_eq!(loaded.node_types.get("TERRITORY").copied(), Some(2));
@@ -178,7 +179,7 @@ fn the_scenario_loads_clean_with_the_declared_census() {
 #[test]
 fn every_node_seeds_all_its_declared_fields() {
     let mut graph = HypergraphStore::new();
-    load_scenario(SCENARIO, &mut graph).expect("the scenario must load clean");
+    scenario::load_scenario(SCENARIO, &mut graph).expect("the scenario must load clean");
     for id in [WAYNE, OAKLAND] {
         for field in [
             "territory/share-bourgeoisie",
@@ -231,7 +232,7 @@ fn every_node_seeds_all_its_declared_fields() {
 #[test]
 fn defenum_ordinal_parity_with_the_frozen_order() {
     let mut graph = HypergraphStore::new();
-    let loaded = load_scenario(SCENARIO, &mut graph).expect("world 1 loads");
+    let loaded = scenario::load_scenario(SCENARIO, &mut graph).expect("world 1 loads");
     let phase = loaded
         .enums
         .resolve("CrisisPhase")
@@ -320,7 +321,7 @@ fn world1_constants_match_the_canonical_table_bit_exactly() {
     ];
 
     let mut graph = HypergraphStore::new();
-    let loaded = load_scenario(SCENARIO, &mut graph).expect("world 1 loads");
+    let loaded = scenario::load_scenario(SCENARIO, &mut graph).expect("world 1 loads");
     for (name, value) in &expected {
         let actual = loaded
             .consts
@@ -377,7 +378,7 @@ fn the_pack_declares_no_intrinsic() {
 /// disjointness argument mechanically.
 #[test]
 fn the_pack_writes_only_territory_fields_and_one_class_field() {
-    let allowed: std::collections::HashSet<&str> = [
+    let allowed: HashSet<&str> = [
         "territory/rate-accumulation",
         "territory/rate-dispossession",
         "territory/rate-precaritization",

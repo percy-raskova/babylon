@@ -1,15 +1,18 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
-use super::{PricePolicy, RecurringEconomy};
+use super::PricePolicy;
+use super::RecurringEconomy;
 
 use crate::{
     AccountId, CircuitAccounting, MaterialCircuitError, MaterialCircuitState, MerchantRole,
     MAX_MATERIAL_CIRCUIT_ROWS,
 };
 
+use crate::MonetaryCircuit;
 use std::collections::{BTreeMap, BTreeSet};
+use std::result::Result as StdResult;
 
-pub(crate) type Result<T> = std::result::Result<T, MaterialCircuitError>;
+pub(crate) type Result<T> = StdResult<T, MaterialCircuitError>;
 
 pub(crate) fn canonicalize(rows: &mut RecurringEconomy) {
     rows.households.sort_by_key(|r| r.principal_id);
@@ -286,7 +289,7 @@ pub(crate) fn validate(state: &MaterialCircuitState) -> Result<()> {
 
 pub(crate) fn validate_attendance(
     state: &MaterialCircuitState,
-    economy: &crate::MonetaryCircuit,
+    economy: &MonetaryCircuit,
     rows: &RecurringEconomy,
 ) -> Result<()> {
     let employment: BTreeSet<_> = economy

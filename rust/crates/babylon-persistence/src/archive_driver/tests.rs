@@ -1,9 +1,21 @@
-use super::*;
+use super::driver::{
+    ArchiveDriver, ArchiveDriverEvent, ArchiveDriverFailure, ArchiveDriverRequestError,
+};
+use super::run;
+use crate::identity::CampaignId;
+use crate::ArchiveKnowledge;
+use crate::PendingArchiveReceipt;
 use crate::{ArchiveWorker, NullArchiveDossierProducer};
+use crate::{ArchiveWorkerCancellation, SemanticArchiveError};
+use run::Outbox;
+use std::cell::Cell;
 use std::cell::RefCell;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc;
 use std::sync::Arc;
+use std::thread;
 use std::time::{Duration, Instant};
+use uuid::Uuid;
 
 fn progress(request_id: Option<u64>, durable_tick: u64) -> ArchiveDriverEvent {
     ArchiveDriverEvent::Progress {
@@ -15,7 +27,7 @@ fn progress(request_id: Option<u64>, durable_tick: u64) -> ArchiveDriverEvent {
 
 #[test]
 fn backpressure_preserves_manual_correlation_and_latest_automatic_scope() {
-    let mut outbox = run::Outbox::default();
+    let mut outbox = Outbox::default();
     outbox.push(progress(Some(41), 2));
     outbox.push(progress(None, 2));
     outbox.flush(&|_| false);
@@ -35,7 +47,7 @@ fn backpressure_preserves_manual_correlation_and_latest_automatic_scope() {
 
 #[test]
 fn recovered_automatic_progress_replaces_unsent_transient_error_not_manual_reply() {
-    let mut outbox = run::Outbox::default();
+    let mut outbox = Outbox::default();
     let failure = ArchiveDriverEvent::Failure {
         request_id: Some(u64::MAX),
         failure: ArchiveDriverFailure::Disconnected,
@@ -64,7 +76,7 @@ fn stop_refuses_before_connecting_or_minting_a_receipt() {
         .parse()
         .expect("config syntax");
     let result = ArchiveWorker::new(&config).sweep_cancellable(
-        CampaignId::from_uuid(uuid::Uuid::nil()),
+        CampaignId::from_uuid(Uuid::nil()),
         &NullArchiveDossierProducer,
         &cancellation,
     );
@@ -129,7 +141,7 @@ fn integrity_refusals_are_not_automatic_transport_retries() {
 
 #[test]
 fn fatal_refusal_survives_later_progress_until_delivery() {
-    let mut outbox = run::Outbox::default();
+    let mut outbox = Outbox::default();
     let refusal = ArchiveDriverEvent::Failure {
         request_id: None,
         failure: ArchiveDriverFailure::Refused(SemanticArchiveError::StoredPageMismatch),
@@ -158,7 +170,7 @@ fn fatal_refusal_survives_later_progress_until_delivery() {
 #[test]
 fn settled_sweep_does_not_admit_a_producer() {
     let owner = RefCell::new(None::<NullArchiveDossierProducer>);
-    let calls = std::cell::Cell::new(0);
+    let calls = Cell::new(0);
     let cancellation = ArchiveWorkerCancellation::default();
     let result = run::sweep_with_factory(
         &owner,
@@ -177,10 +189,10 @@ fn settled_sweep_does_not_admit_a_producer() {
 #[test]
 fn pending_sweeps_admit_once_and_reuse_after_production_refusal() {
     let owner = RefCell::new(None::<NullArchiveDossierProducer>);
-    let calls = std::cell::Cell::new(0);
+    let calls = Cell::new(0);
     let cancellation = ArchiveWorkerCancellation::default();
-    let receipt = crate::PendingArchiveReceipt::try_new(1, [7; 32]).unwrap();
-    let knowledge = crate::ArchiveKnowledge::try_new(Vec::new()).unwrap();
+    let receipt = PendingArchiveReceipt::try_new(1, [7; 32]).unwrap();
+    let knowledge = ArchiveKnowledge::try_new(Vec::new()).unwrap();
     for _ in 0..2 {
         let result = run::sweep_with_factory(
             &owner,
@@ -190,7 +202,7 @@ fn pending_sweeps_admit_once_and_reuse_after_production_refusal() {
                 Ok(NullArchiveDossierProducer)
             },
             |producer| {
-                producer.produce(uuid::Uuid::nil(), &receipt, &knowledge, 1)?;
+                producer.produce(Uuid::nil(), &receipt, &knowledge, 1)?;
                 Err::<(), _>(SemanticArchiveError::ReceiptConflict)
             },
         );
@@ -214,8 +226,8 @@ fn cancellation_never_starts_factory_and_stop_during_admission_refuses_productio
         Err(SemanticArchiveError::WorkerCanceled)
     );
     let cancellation = ArchiveWorkerCancellation::default();
-    let receipt = crate::PendingArchiveReceipt::try_new(1, [7; 32]).unwrap();
-    let knowledge = crate::ArchiveKnowledge::try_new(Vec::new()).unwrap();
+    let receipt = PendingArchiveReceipt::try_new(1, [7; 32]).unwrap();
+    let knowledge = ArchiveKnowledge::try_new(Vec::new()).unwrap();
     let result = run::sweep_with_factory(
         &owner,
         &cancellation,
@@ -223,7 +235,7 @@ fn cancellation_never_starts_factory_and_stop_during_admission_refuses_productio
             cancellation.request_stop();
             Ok(NullArchiveDossierProducer)
         },
-        |producer| producer.produce(uuid::Uuid::nil(), &receipt, &knowledge, 1),
+        |producer| producer.produce(Uuid::nil(), &receipt, &knowledge, 1),
     );
     assert_eq!(result, Err(SemanticArchiveError::WorkerCanceled));
 }

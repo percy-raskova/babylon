@@ -1,6 +1,24 @@
 //! Conservative terminal-window witness controls; these do not change mechanics.
 use babylon_kernel::currency::Currency;
-use babylon_material_circuit::*;
+use babylon_material_circuit::FinalDemandPrincipalId;
+use babylon_material_circuit::FreightLotId;
+use babylon_material_circuit::GoodId;
+use babylon_material_circuit::OrderId;
+use babylon_material_circuit::ProcessId;
+use babylon_material_circuit::RouteId;
+use babylon_material_circuit::SiteId;
+use babylon_material_circuit::UnitId;
+use babylon_material_circuit::{
+    AccountId, AidBook, AidOutcome, AidReceipt, AidTransport, ArrivalReceipt, CapacitySupply,
+    CashAccount, CircuitAccounting, CommodityDefinition, CommodityKind, DeliveryReceipt,
+    FinancialInstitutions, HistoricalCostBook, HouseholdConsumptionReceipt, HouseholdDemandReceipt,
+    HouseholdPurchasePolicy, HouseholdStock, HouseholdTimeAccounting, InventoryRow,
+    LocalRetailFulfillmentReceipt, LocalTransferReceipt, MaterialCircuitState, MonetaryBook,
+    MonetaryCircuit, MoneyLocation, MoneyPosting, MoneyTransferPurpose, MoneyTransferReceipt,
+    OrderAccessMode, OrderRow, OutboundOrderId, ProcessOutput, ProcurementReceipt,
+    ProductionReceipt, PurchaseEscrow, RealizationReceipt, RecurringEconomy, ReplenishmentPolicy,
+    RoutedFreightLot,
+};
 use babylon_persistence::qualification_audit::production_renewal as national_production_renewal;
 use babylon_tick::material_world::MaterialTickReceipts;
 use national_production_renewal::{Audit, Refusal};
@@ -214,7 +232,10 @@ fn purchase(
     );
 }
 fn retail(r: &mut MaterialTickReceipts, retailer: u8, q: u64) {
-    let order_id = recurring_household_order_id(r.resolve_tick, (household(), good(), unit()));
+    let order_id = babylon_material_circuit::recurring_household_order_id(
+        r.resolve_tick,
+        (household(), good(), unit()),
+    );
     r.household_demand.push(HouseholdDemandReceipt {
         period: r.resolve_tick,
         principal_id: household(),
@@ -267,8 +288,13 @@ fn output(r: &mut MaterialTickReceipts, q: u64) {
     });
 }
 fn supply(r: &mut MaterialTickReceipts, supplier: u8, q: u64, local: bool) {
-    let order_id =
-        recurring_procurement_order_id(r.resolve_tick, site(2), site(supplier), good(), unit());
+    let order_id = babylon_material_circuit::recurring_procurement_order_id(
+        r.resolve_tick,
+        site(2),
+        site(supplier),
+        good(),
+        unit(),
+    );
     r.procurement.push(ProcurementReceipt {
         period: r.resolve_tick,
         order_id,
@@ -452,7 +478,13 @@ fn direct_producer_retailer_needs_paid_handoff_and_actual_consumption() {
 #[test]
 fn seed_transit_is_an_allowance_once() {
     let mut state = seed(2, 0);
-    let id = recurring_procurement_order_id(39, site(2), site(3), good(), unit());
+    let id = babylon_material_circuit::recurring_procurement_order_id(
+        39,
+        site(2),
+        site(3),
+        good(),
+        unit(),
+    );
     let CircuitAccounting::Monetary(book) = &mut state.accounting else {
         panic!("monetary fixture");
     };

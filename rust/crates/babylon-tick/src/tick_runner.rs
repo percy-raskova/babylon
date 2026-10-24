@@ -1,15 +1,21 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
-use super::{
-    choice_receipt, committed_event, kernel_slot, material_replay, material_staffing,
-    material_world, phase_order, replay_session, world_hash,
-};
+use super::choice_receipt;
+use super::committed_event;
+use super::kernel_slot;
+use super::kernel_slot::KernelSlotReservationRef;
+use super::material_replay;
+use super::material_staffing;
+use super::material_world;
+use super::phase_order;
+use super::replay_session;
+use super::world_hash;
 
 use babylon_bsl::bindings::BindingVocabulary;
 
-use babylon_bsl::causal_contract::{reduce_audit_receipts, AuditReceipt};
+use babylon_bsl::causal_contract::AuditReceipt;
 
-use babylon_bsl::declarations::{parse_intrinsic_decls, DeclError, FieldRegistry};
+use babylon_bsl::declarations::{DeclError, FieldRegistry};
 
 use babylon_bsl::error_identity::ErrorIdentity;
 
@@ -23,19 +29,13 @@ use babylon_bsl::probability::{KernelInstanceIdentity, ProbabilityError};
 
 use babylon_bsl::reader::{FormPath, SExpr};
 
-use babylon_bsl::rule_pipeline::{
-    check_unique_rule_ids, load_rule_form, split_content, LoadContext, LoadError, LoadedRule,
-};
+use babylon_bsl::rule_pipeline::{LoadContext, LoadError, LoadedRule};
 
-use babylon_bsl::same_tick_order::{diagnose_ranked, ENFORCE_RANK_AWARE_AGGREGATE_ORDERING};
+use babylon_bsl::same_tick_order::ENFORCE_RANK_AWARE_AGGREGATE_ORDERING;
 
-use babylon_bsl::scenario::{
-    load_scenario, load_scenario_with_prelude, LoadedScenario, ScenarioError,
-};
+use babylon_bsl::scenario::{LoadedScenario, ScenarioError};
 
 use babylon_bsl::structural_verbs::CollectingSink;
-
-use babylon_bsl::tick::run_tick_observed;
 
 use babylon_bsl::typecheck::TypeEnv;
 
@@ -59,7 +59,32 @@ use babylon_kernel::replay::{ReplaySeed, ReplaySessionId, RngSeedContext};
 
 use std::collections::{HashMap, HashSet};
 
+use babylon_bsl::causal_contract;
+use babylon_bsl::declarations;
+use babylon_bsl::probability::ContentSetAnalysis;
+use babylon_bsl::probability::EventLikelihood;
+use babylon_bsl::rule_pipeline;
+use babylon_bsl::rule_pipeline::RuleExecution;
+use babylon_bsl::same_tick_order;
+use babylon_bsl::scenario;
+use babylon_bsl::scenario_seed::GraphSeed;
+use babylon_bsl::tick;
+use babylon_bsl::tick::TickError;
+use babylon_bsl::vocabulary::ClosedVocabulary;
+use choice_receipt::ChoiceReceipt;
+use committed_event::CommittedEvent;
+use kernel_slot::KernelSlotLedgerError;
+use material_replay::MaterialBaseInputs;
+use material_world::PreparedMaterialWorld;
+use phase_order::RuleOrderPlan;
+use phase_order::ScheduleError;
+use replay_session::ProductionReplayIdentityComposer;
+use replay_session::ReplayExecutionInputs;
+use replay_session::ReplayIdentityArtifacts;
+use replay_session::ReplayPriorIdentity;
 use replay_session::{IdentifiedTickReport, ReplayTickError};
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 
 /// The result of running one or more rules over one scenario for one tick:
 /// graph and nominal-world hashes around the commit, plus guard and firing counts.
@@ -89,10 +114,10 @@ pub struct TickReport {
     pub audit_receipts: Vec<AuditReceipt>,
     /// Exact finite-choice evidence in tick-wide encounter order. A branch
     /// that makes no material change still contributes one receipt.
-    pub choice_receipts: Vec<choice_receipt::ChoiceReceipt>,
+    pub choice_receipts: Vec<ChoiceReceipt>,
     /// Successful event observations with engine-owned emitting-rule and
     /// optional adjacent finite-projection provenance.
-    pub committed_events: Vec<committed_event::CommittedEvent>,
+    pub committed_events: Vec<CommittedEvent>,
 }
 
 pub(crate) type EventRecord = (String, Vec<(String, Value)>);
@@ -243,7 +268,7 @@ pub(crate) struct PreparedRules {
     /// binding can never masquerade as a subject type. `None` for a
     /// scenario declaring no `defvocabulary` at all, exactly the
     /// load-side `LoadContext::vocabulary_registry` convention.
-    pub vocabulary: Option<babylon_bsl::vocabulary::ClosedVocabulary>,
+    pub vocabulary: Option<ClosedVocabulary>,
 }
 
 /// Why `prepare_rules` (or [`diagnose_content_set_sources`]) refused a content set —
@@ -288,7 +313,7 @@ pub enum PrepareError {
     },
     /// A scheduled finite kernel did not exactly match the permanent
     /// append-only sample/slot ledger.
-    KernelSlot(kernel_slot::KernelSlotLedgerError),
+    KernelSlot(KernelSlotLedgerError),
     /// A composition-level refusal raised by `prepare_rules` itself — no
     /// earlier crate's error type to wrap. `code`/`identity` are `Option`
     /// because some composition rules are genuinely uncoded (the
@@ -325,7 +350,7 @@ impl PrepareError {
 }
 
 impl std::fmt::Display for PrepareError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         match self {
             Self::Scenario(e) => write!(f, "{e}"),
             // Byte-identical to `prepare_rules`'s own pre-Task-3 wrapping
@@ -368,28 +393,26 @@ pub(crate) fn registered_systems() -> HashSet<String> {
     phase_order::registered_systems()
 }
 
-pub(crate) fn prepare_error_from_schedule(error: phase_order::ScheduleError) -> PrepareError {
+pub(crate) fn prepare_error_from_schedule(error: ScheduleError) -> PrepareError {
     let message = error.to_string();
     match error {
-        phase_order::ScheduleError::Anchor { rule_id, source } => PrepareError::Rule {
+        ScheduleError::Anchor { rule_id, source } => PrepareError::Rule {
             rule_id: Some(rule_id),
             error: LoadError::Anchor(source),
         },
-        phase_order::ScheduleError::MaterialBaseInterleave { rule_id, .. } => {
-            PrepareError::Composition {
-                code: Some("E-LOAD-003"),
-                identity: Some(ErrorIdentity::RuleId(rule_id)),
-                message,
-            }
-        }
-        phase_order::ScheduleError::Registry { .. }
-        | phase_order::ScheduleError::Allocation { .. }
-        | phase_order::ScheduleError::CapacityOverflow { .. } => PrepareError::Composition {
+        ScheduleError::MaterialBaseInterleave { rule_id, .. } => PrepareError::Composition {
+            code: Some("E-LOAD-003"),
+            identity: Some(ErrorIdentity::RuleId(rule_id)),
+            message,
+        },
+        ScheduleError::Registry { .. }
+        | ScheduleError::Allocation { .. }
+        | ScheduleError::CapacityOverflow { .. } => PrepareError::Composition {
             code: None,
             identity: None,
             message,
         },
-        phase_order::ScheduleError::Plan { rule_id, .. } => PrepareError::Composition {
+        ScheduleError::Plan { rule_id, .. } => PrepareError::Composition {
             code: None,
             identity: rule_id.map(ErrorIdentity::RuleId),
             message,
@@ -398,14 +421,14 @@ pub(crate) fn prepare_error_from_schedule(error: phase_order::ScheduleError) -> 
 }
 
 pub(crate) fn enforce_ranked_composition(
-    plan: &phase_order::RuleOrderPlan,
+    plan: &RuleOrderPlan,
     rule_forms: &[(String, SExpr)],
 ) -> Result<(), PrepareError> {
     let ranked = plan
         .ranked_rules(rule_forms)
         .map_err(prepare_error_from_schedule)?;
     if ENFORCE_RANK_AWARE_AGGREGATE_ORDERING {
-        diagnose_ranked(&ranked)
+        same_tick_order::diagnose_ranked(&ranked)
             .into_enforced_result()
             .map_err(|error| PrepareError::Rule {
                 rule_id: None,
@@ -418,9 +441,9 @@ pub(crate) fn enforce_ranked_composition(
 pub(crate) fn validate_material_cycle_cardinality(
     rules: &[(String, LoadedRule)],
 ) -> Result<(), PrepareError> {
-    let mut invocations = rules.iter().filter(|(_, rule)| {
-        rule.execution == babylon_bsl::rule_pipeline::RuleExecution::MaterialCycle
-    });
+    let mut invocations = rules
+        .iter()
+        .filter(|(_, rule)| rule.execution == RuleExecution::MaterialCycle);
     if invocations.next().is_some() {
         if let Some((id, _)) = invocations.next() {
             return Err(PrepareError::Composition {
@@ -439,17 +462,16 @@ pub(crate) fn hydrate_scenario<G: GraphSubstrate>(
     graph: &mut G,
 ) -> Result<LoadedScenario, PrepareError> {
     match prelude_src {
-        Some(prelude) => {
-            load_scenario_with_prelude(prelude, scenario_src, graph).map_err(PrepareError::Scenario)
-        }
-        None => load_scenario(scenario_src, graph).map_err(PrepareError::Scenario),
+        Some(prelude) => scenario::load_scenario_with_prelude(prelude, scenario_src, graph)
+            .map_err(PrepareError::Scenario),
+        None => scenario::load_scenario(scenario_src, graph).map_err(PrepareError::Scenario),
     }
 }
 
 pub(crate) fn hydrate_scenario_instances<G: GraphSubstrate>(
     scenario_src: &str,
     prelude_src: Option<&str>,
-    seed: Option<&babylon_bsl::scenario_seed::GraphSeed>,
+    seed: Option<&GraphSeed>,
     graph: &mut G,
 ) -> Result<LoadedScenario, PrepareError> {
     match seed {
@@ -782,7 +804,7 @@ pub fn diagnose_content_set_sources(
     let mut intrinsic_forms: Vec<SExpr> = Vec::new();
     let mut sourced_rule_forms: Vec<(String, SExpr, FormPath, String)> = Vec::new();
     for rule_source in rule_sources {
-        match split_content(rule_source.source) {
+        match rule_pipeline::split_content(rule_source.source) {
             Ok((mut intr, mut rules)) => {
                 intrinsic_forms.append(&mut intr);
                 sourced_rule_forms.extend(rules.drain(..).map(|rule| {
@@ -811,7 +833,7 @@ pub fn diagnose_content_set_sources(
         .iter()
         .map(|(rule_id, _, _, source_id)| (rule_id.clone(), source_id.clone()))
         .collect::<HashMap<_, _>>();
-    let unique_rule_ids = match check_unique_rule_ids(&rule_forms) {
+    let unique_rule_ids = match rule_pipeline::check_unique_rule_ids(&rule_forms) {
         Ok(()) => true,
         Err(error) => {
             errors.push(SourcedPrepareError {
@@ -825,7 +847,7 @@ pub fn diagnose_content_set_sources(
         }
     };
 
-    let declared = match parse_intrinsic_decls(&intrinsic_forms) {
+    let declared = match declarations::parse_intrinsic_decls(&intrinsic_forms) {
         Ok(declared) => declared,
         Err(e) => {
             errors.push(SourcedPrepareError {
@@ -879,7 +901,7 @@ pub fn diagnose_content_set_sources(
             vocabulary_registry: scenario.vocabulary.as_ref(),
             rule_file: source_id,
         };
-        match load_rule_form(form.clone(), root_path.clone(), &context) {
+        match rule_pipeline::load_rule_form(form.clone(), root_path.clone(), &context) {
             Ok(loaded) => {
                 admitted_rule_forms.push((id.clone(), form.clone()));
                 admitted_rules.push((id.clone(), loaded));
@@ -976,11 +998,11 @@ pub struct ContentSetSourceAnalysisError {
     pub error: PrepareError,
     /// Typed, non-executable facts available for locating a kernel-slot
     /// refusal. `None` for every earlier preparation failure.
-    pub partial_analysis: Option<babylon_bsl::probability::ContentSetAnalysis>,
+    pub partial_analysis: Option<ContentSetAnalysis>,
 }
 
 impl std::fmt::Display for ContentSetSourceAnalysisError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         write!(f, "{}", self.error)
     }
 }
@@ -1004,7 +1026,7 @@ pub fn analyze_content_set_sources(
     scenario_source: ContentRuleSource<'_>,
     prelude_sources: &[ContentRuleSource<'_>],
     rule_sources: &[ContentRuleSource<'_>],
-) -> Result<babylon_bsl::probability::ContentSetAnalysis, PrepareError> {
+) -> Result<ContentSetAnalysis, PrepareError> {
     analyze_content_set_sources_with_kernel_slots(
         scenario_source,
         prelude_sources,
@@ -1031,8 +1053,8 @@ pub fn analyze_content_set_sources_with_kernel_slots(
     scenario_source: ContentRuleSource<'_>,
     prelude_sources: &[ContentRuleSource<'_>],
     rule_sources: &[ContentRuleSource<'_>],
-    kernel_slots: &[kernel_slot::KernelSlotReservationRef<'_>],
-) -> Result<babylon_bsl::probability::ContentSetAnalysis, ContentSetSourceAnalysisError> {
+    kernel_slots: &[KernelSlotReservationRef<'_>],
+) -> Result<ContentSetAnalysis, ContentSetSourceAnalysisError> {
     let analysis = analyze_content_set_sources_before_kernel_slots(
         scenario_source,
         prelude_sources,
@@ -1064,14 +1086,16 @@ pub(crate) fn analyze_content_set_sources_before_kernel_slots(
     scenario_source: ContentRuleSource<'_>,
     prelude_sources: &[ContentRuleSource<'_>],
     rule_sources: &[ContentRuleSource<'_>],
-) -> Result<babylon_bsl::probability::ContentSetAnalysis, PrepareError> {
+) -> Result<ContentSetAnalysis, PrepareError> {
     let mut intrinsic_forms = Vec::new();
     let mut sourced_rule_forms = Vec::new();
     for rule_source in rule_sources {
         let (mut source_intrinsics, source_rules) =
-            split_content(rule_source.source).map_err(|error| PrepareError::Rule {
-                rule_id: None,
-                error,
+            rule_pipeline::split_content(rule_source.source).map_err(|error| {
+                PrepareError::Rule {
+                    rule_id: None,
+                    error,
+                }
             })?;
         intrinsic_forms.append(&mut source_intrinsics);
         sourced_rule_forms.extend(source_rules.into_iter().map(|rule| {
@@ -1087,11 +1111,12 @@ pub(crate) fn analyze_content_set_sources_before_kernel_slots(
         .iter()
         .map(|(rule_id, form, _, _)| (rule_id.clone(), form.clone()))
         .collect::<Vec<_>>();
-    check_unique_rule_ids(&phase_forms).map_err(|error| PrepareError::Rule {
+    rule_pipeline::check_unique_rule_ids(&phase_forms).map_err(|error| PrepareError::Rule {
         rule_id: None,
         error,
     })?;
-    let declared = parse_intrinsic_decls(&intrinsic_forms).map_err(PrepareError::Intrinsic)?;
+    let declared =
+        declarations::parse_intrinsic_decls(&intrinsic_forms).map_err(PrepareError::Intrinsic)?;
     let intrinsics = IntrinsicCosts::new(
         declared
             .into_iter()
@@ -1129,11 +1154,12 @@ pub(crate) fn analyze_content_set_sources_before_kernel_slots(
             vocabulary_registry: scenario.vocabulary.as_ref(),
             rule_file: &source_id,
         };
-        let rule =
-            load_rule_form(form, root_path, &context).map_err(|error| PrepareError::Rule {
+        let rule = rule_pipeline::load_rule_form(form, root_path, &context).map_err(|error| {
+            PrepareError::Rule {
                 rule_id: Some(rule_id.clone()),
                 error,
-            })?;
+            }
+        })?;
         loaded.push((rule_id, rule));
     }
     let schedule = phase_order::compile(&phase_forms).map_err(prepare_error_from_schedule)?;
@@ -1163,11 +1189,11 @@ pub enum ForecastError {
         reason: String,
     },
     /// The real detached mechanic/recognizer execution failed.
-    Execution(babylon_bsl::tick::TickError),
+    Execution(TickError),
 }
 
 impl std::fmt::Display for ForecastError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         match self {
             Self::Preparation(error) => write!(f, "{error}"),
             Self::NotExactlyEnumerable { reason } => {
@@ -1204,7 +1230,7 @@ pub fn forecast_event_likelihoods(
     sample: &str,
     subject: &StableElementKey,
     tick: i64,
-) -> Result<Vec<babylon_bsl::probability::EventLikelihood>, ForecastError> {
+) -> Result<Vec<EventLikelihood>, ForecastError> {
     forecast_event_likelihoods_with_kernel_slots(
         scenario_src,
         prelude_src,
@@ -1233,11 +1259,11 @@ pub fn forecast_event_likelihoods_with_kernel_slots(
     scenario_src: &str,
     prelude_src: Option<&str>,
     rule_sources: &[ContentRuleSource<'_>],
-    kernel_slots: &[kernel_slot::KernelSlotReservationRef<'_>],
+    kernel_slots: &[KernelSlotReservationRef<'_>],
     sample: &str,
     subject: &StableElementKey,
     tick: i64,
-) -> Result<Vec<babylon_bsl::probability::EventLikelihood>, ForecastError> {
+) -> Result<Vec<EventLikelihood>, ForecastError> {
     if tick <= 0 {
         return Err(ForecastError::NotExactlyEnumerable {
             reason: format!("forecast tick must be positive, got {tick}"),
@@ -1355,7 +1381,7 @@ pub fn forecast_event_likelihoods_with_kernel_slots(
         }
         let mut ignored_events = CollectingSink::default();
         let mut ignored_writes = CollectingWriteLog::new();
-        let outcome = run_tick_observed(
+        let outcome = tick::run_tick_observed(
             prior,
             &prepared.types,
             &prepared.enums,
@@ -1417,7 +1443,7 @@ pub fn forecast_scenario_determined_event_likelihoods(
     prelude_src: Option<&str>,
     rule_sources: &[ContentRuleSource<'_>],
     sample: &str,
-) -> Result<Vec<babylon_bsl::probability::EventLikelihood>, ForecastError> {
+) -> Result<Vec<EventLikelihood>, ForecastError> {
     forecast_scenario_determined_event_likelihoods_with_kernel_slots(
         scenario_src,
         prelude_src,
@@ -1439,9 +1465,9 @@ pub fn forecast_scenario_determined_event_likelihoods_with_kernel_slots(
     scenario_src: &str,
     prelude_src: Option<&str>,
     rule_sources: &[ContentRuleSource<'_>],
-    kernel_slots: &[kernel_slot::KernelSlotReservationRef<'_>],
+    kernel_slots: &[KernelSlotReservationRef<'_>],
     sample: &str,
-) -> Result<Vec<babylon_bsl::probability::EventLikelihood>, ForecastError> {
+) -> Result<Vec<EventLikelihood>, ForecastError> {
     let combined_rules = rule_sources
         .iter()
         .map(|source| source.source)
@@ -1558,7 +1584,7 @@ pub(crate) fn prepare_rules_with_graph_seed<G: GraphSubstrate + CanonicalState>(
     prelude_src: Option<&str>,
     rule_src: &str,
     graph: &mut G,
-    seed: &babylon_bsl::scenario_seed::GraphSeed,
+    seed: &GraphSeed,
 ) -> Result<PreparedRules, PrepareError> {
     prepare_rules_with_instances(
         scenario_src,
@@ -1575,7 +1601,7 @@ pub(crate) fn prepare_rules_with_kernel_slots<G: GraphSubstrate + CanonicalState
     prelude_src: Option<&str>,
     rule_src: &str,
     graph: &mut G,
-    kernel_slots: &[kernel_slot::KernelSlotReservationRef<'_>],
+    kernel_slots: &[KernelSlotReservationRef<'_>],
 ) -> Result<PreparedRules, PrepareError> {
     prepare_rules_with_instances(
         scenario_src,
@@ -1592,8 +1618,8 @@ pub(crate) fn prepare_rules_with_instances<G: GraphSubstrate + CanonicalState>(
     prelude_src: Option<&str>,
     rule_src: &str,
     graph: &mut G,
-    kernel_slots: &[kernel_slot::KernelSlotReservationRef<'_>],
-    seed: Option<&babylon_bsl::scenario_seed::GraphSeed>,
+    kernel_slots: &[KernelSlotReservationRef<'_>],
+    seed: Option<&GraphSeed>,
 ) -> Result<PreparedRules, PrepareError> {
     // §2.2's `<intrinsic-decl>` top-forms, split from the `(rule …)` forms
     // they may share a source with (`split_content`), then parsed into the
@@ -1603,11 +1629,12 @@ pub(crate) fn prepare_rules_with_instances<G: GraphSubstrate + CanonicalState>(
     // signature disagreeing with the kernel's registration (`E-LOAD-020`),
     // never a partial admission of the ones that do qualify.
     let (intrinsic_forms, rule_forms) =
-        split_content(rule_src).map_err(|error| PrepareError::Rule {
+        rule_pipeline::split_content(rule_src).map_err(|error| PrepareError::Rule {
             rule_id: None,
             error,
         })?;
-    let declared = parse_intrinsic_decls(&intrinsic_forms).map_err(PrepareError::Intrinsic)?;
+    let declared =
+        declarations::parse_intrinsic_decls(&intrinsic_forms).map_err(PrepareError::Intrinsic)?;
     let intrinsics = IntrinsicCosts::new(
         declared
             .into_iter()
@@ -1671,12 +1698,10 @@ pub(crate) fn prepare_rules_with_instances<G: GraphSubstrate + CanonicalState>(
         .sort_unstable_by(|left, right| left.rule_id.as_bytes().cmp(right.rule_id.as_bytes()));
     let mut rules = Vec::with_capacity(rule_forms.len());
     for rule in validation_order {
-        let loaded =
-            load_rule_form(rule.form.clone(), rule.root_path.clone(), &ctx).map_err(|error| {
-                PrepareError::Rule {
-                    rule_id: Some(rule.rule_id.clone()),
-                    error,
-                }
+        let loaded = rule_pipeline::load_rule_form(rule.form.clone(), rule.root_path.clone(), &ctx)
+            .map_err(|error| PrepareError::Rule {
+                rule_id: Some(rule.rule_id.clone()),
+                error,
             })?;
         rules.push((rule.rule_id.clone(), loaded));
     }
@@ -1851,7 +1876,7 @@ pub(crate) enum ExecutionIdentity<'a, C> {
         rng_seed: RngSeedContext<'a>,
         stable_resolver: &'a StableElementResolver,
     },
-    Replay(replay_session::ReplayExecutionInputs<'a, C>),
+    Replay(ReplayExecutionInputs<'a, C>),
 }
 
 impl<C> ExecutionIdentity<'_, C> {
@@ -1881,15 +1906,15 @@ impl<C> ExecutionIdentity<'_, C> {
 
 pub(crate) struct TickTransactionResult {
     report: TickReport,
-    replay: Option<replay_session::ReplayIdentityArtifacts>,
-    material: Option<material_world::PreparedMaterialWorld>,
+    replay: Option<ReplayIdentityArtifacts>,
+    material: Option<PreparedMaterialWorld>,
 }
 
 pub(crate) struct TransactionPrelude {
     schedule_digest: [u8; 32],
     before: [u8; 32],
     world_before: [u8; 32],
-    replay_prior: Option<replay_session::ReplayPriorIdentity>,
+    replay_prior: Option<ReplayPriorIdentity>,
 }
 
 pub(crate) struct ExecutedRules<G> {
@@ -1900,9 +1925,9 @@ pub(crate) struct ExecutedRules<G> {
     per_rule_considered: Vec<(String, usize)>,
     per_rule_fired: Vec<(String, usize)>,
     audit_receipts: Vec<AuditReceipt>,
-    choice_receipts: Vec<choice_receipt::ChoiceReceipt>,
-    committed_events: Vec<committed_event::CommittedEvent>,
-    material: Option<material_world::PreparedMaterialWorld>,
+    choice_receipts: Vec<ChoiceReceipt>,
+    committed_events: Vec<CommittedEvent>,
+    material: Option<PreparedMaterialWorld>,
 }
 
 pub(crate) enum TickTransactionError {
@@ -1935,7 +1960,7 @@ where
     B: PreparedEventBatchSink,
     H: FnMut(HashBoundary, &G) -> Result<[u8; 32], GraphError>,
 {
-    let identity: ExecutionIdentity<'_, replay_session::ProductionReplayIdentityComposer> =
+    let identity: ExecutionIdentity<'_, ProductionReplayIdentityComposer> =
         ExecutionIdentity::Diagnostic {
             rng_seed,
             stable_resolver,
@@ -1953,15 +1978,9 @@ pub(crate) fn run_prepared_replay_tick<G, C>(
     graph: &mut G,
     sink: &mut CollectingSink,
     tick: i64,
-    execution: replay_session::ReplayExecutionInputs<'_, C>,
-    material_base: Option<material_replay::MaterialBaseInputs<'_>>,
-) -> Result<
-    (
-        IdentifiedTickReport,
-        Option<material_world::PreparedMaterialWorld>,
-    ),
-    ReplayTickError,
->
+    execution: ReplayExecutionInputs<'_, C>,
+    material_base: Option<MaterialBaseInputs<'_>>,
+) -> Result<(IdentifiedTickReport, Option<PreparedMaterialWorld>), ReplayTickError>
 where
     G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy,
     C: replay_session::ReplayIdentityComposer,
@@ -1996,7 +2015,7 @@ pub(crate) fn run_prepared_tick_transaction<G, B, H, C>(
     identity: &ExecutionIdentity<'_, C>,
     tick: i64,
     mut state_hash: H,
-    material_base: Option<material_replay::MaterialBaseInputs<'_>>,
+    material_base: Option<MaterialBaseInputs<'_>>,
 ) -> Result<TickTransactionResult, TickTransactionError>
 where
     G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy,
@@ -2077,7 +2096,7 @@ pub(crate) fn execute_prepared_rules<G, C>(
     graph: &G,
     identity: &ExecutionIdentity<'_, C>,
     tick: i64,
-    mut material_base: Option<material_replay::MaterialBaseInputs<'_>>,
+    mut material_base: Option<MaterialBaseInputs<'_>>,
 ) -> Result<ExecutedRules<G>, TickTransactionError>
 where
     G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy,
@@ -2101,7 +2120,7 @@ where
     let mut organizer_reduced = None;
     let mut organizer_completed = false;
     for (id, loaded) in &prepared.rules {
-        if loaded.execution == babylon_bsl::rule_pipeline::RuleExecution::MaterialCycle {
+        if loaded.execution == RuleExecution::MaterialCycle {
             // The closed body spends its entire fixed invocation budget.
             // Native material row limits remain independently enforced.
             loaded
@@ -2143,7 +2162,7 @@ where
                     effects
                         .committed_events()
                         .iter()
-                        .map(committed_event::CommittedEvent::sink_record),
+                        .map(CommittedEvent::sink_record),
                 );
                 audit_receipts.extend_from_slice(effects.audit_receipts());
                 committed_events.extend_from_slice(effects.committed_events());
@@ -2155,8 +2174,7 @@ where
         }
         if matches!(
             loaded.execution,
-            babylon_bsl::rule_pipeline::RuleExecution::OrganizerProducts
-                | babylon_bsl::rule_pipeline::RuleExecution::OrganizerPractice
+            RuleExecution::OrganizerProducts | RuleExecution::OrganizerPractice
         ) {
             loaded
                 .declared_fuel
@@ -2186,7 +2204,7 @@ where
                 )
             })?;
             let effect = match loaded.execution {
-                babylon_bsl::rule_pipeline::RuleExecution::OrganizerProducts => {
+                RuleExecution::OrganizerProducts => {
                     if organizer_reduced.is_some() || organizer_completed {
                         return Err(transaction_error(
                             identity,
@@ -2206,7 +2224,7 @@ where
                     );
                     babylon_bsl::causal_contract::EffectSignature::OrganizerProducts
                 }
-                babylon_bsl::rule_pipeline::RuleExecution::OrganizerPractice => {
+                RuleExecution::OrganizerPractice => {
                     let reduced = organizer_reduced.take().ok_or_else(|| {
                         transaction_error(
                             identity,
@@ -2273,7 +2291,7 @@ where
         }
         let event_start = working_sink.events.len();
         let mut write_log = CollectingWriteLog::new();
-        let outcome = run_tick_observed(
+        let outcome = tick::run_tick_observed(
             loaded,
             &prepared.types,
             &prepared.enums,
@@ -2312,9 +2330,8 @@ where
                 subject: realization.subject.clone(),
                 active_elements: realization.active_elements.clone(),
             };
-            let receipt =
-                choice_receipt::ChoiceReceipt::try_new(encounter_ordinal, &instance, realization)
-                    .map_err(|error| {
+            let receipt = ChoiceReceipt::try_new(encounter_ordinal, &instance, realization)
+                .map_err(|error| {
                     transaction_error(
                         identity,
                         format!("choice receipt refused in rule {id}: {error}"),
@@ -2375,7 +2392,7 @@ where
             } else {
                 None
             };
-            committed_events.push(committed_event::CommittedEvent::new(
+            committed_events.push(CommittedEvent::new(
                 id.clone(),
                 choice_receipt,
                 event_type.clone(),
@@ -2386,14 +2403,17 @@ where
             .iter()
             .map(|(event_type, _)| event_type.clone())
             .collect::<Vec<_>>();
-        let mut rule_receipts =
-            reduce_audit_receipts(&loaded.contract, &emitted_event_types, &write_log.records)
-                .map_err(|error| {
-                    transaction_error(
-                        identity,
-                        format!("causal receipt refused in rule {id}: {error}"),
-                    )
-                })?;
+        let mut rule_receipts = causal_contract::reduce_audit_receipts(
+            &loaded.contract,
+            &emitted_event_types,
+            &write_log.records,
+        )
+        .map_err(|error| {
+            transaction_error(
+                identity,
+                format!("causal receipt refused in rule {id}: {error}"),
+            )
+        })?;
         audit_receipts.append(&mut rule_receipts);
         per_rule_considered.push((id.clone(), outcome.considered));
         per_rule_fired.push((id.clone(), outcome.fired));
@@ -2547,7 +2567,7 @@ impl FuelBoundRow {
 impl std::fmt::Display for FuelBoundRow {
     /// The report line format the brief specifies verbatim: `rule-id
     /// declared=<n> computed=<m> headroom=<n-m>`.
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         write!(
             f,
             "{} declared={} computed={} headroom={}",
@@ -2618,11 +2638,9 @@ pub fn any_over_budget(rows: &[FuelBoundRow]) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::super::{
-        any_over_budget, checked_fired_total, fuel_bound_report, prepare_rules,
-        prepare_rules_with_kernel_slots, run_once, run_once_into, run_once_into_with_prelude,
-        FuelBoundRow, PrepareError,
-    };
+    use super::super::any_over_budget;
+    use super::super::FuelBoundRow;
+    use super::super::PrepareError;
     use babylon_bsl::causal_contract::{AuditReceipt, EffectSignature, EvidenceClass, RuleRole};
     use babylon_bsl::structural_verbs::CollectingSink;
     use babylon_graph::allocator_state::{AllocatorCursors, AllocatorState};
@@ -2640,7 +2658,7 @@ mod tests {
     #[test]
     fn runtime_preparation_consumes_the_permanent_kernel_slot_ledger() {
         let mut exact_graph = HypergraphStore::new();
-        prepare_rules(STRUGGLE_SCENARIO, None, STRUGGLE_RULES, &mut exact_graph)
+        super::super::prepare_rules(STRUGGLE_SCENARIO, None, STRUGGLE_RULES, &mut exact_graph)
             .expect("the bundled Struggle reservation is exact");
 
         for (changed_rules, expected) in [
@@ -2661,8 +2679,9 @@ mod tests {
         ] {
             let mut graph = HypergraphStore::new();
             let before = graph.encode_state().unwrap().as_bytes().to_vec();
-            let error = prepare_rules(STRUGGLE_SCENARIO, None, &changed_rules, &mut graph)
-                .expect_err("a permanent reservation cannot drift");
+            let error =
+                super::super::prepare_rules(STRUGGLE_SCENARIO, None, &changed_rules, &mut graph)
+                    .expect_err("a permanent reservation cannot drift");
             assert!(matches!(error, PrepareError::KernelSlot(_)), "{error:?}");
             assert!(error.to_string().contains(expected), "{error}");
             assert_eq!(graph.encode_state().unwrap().as_bytes(), before);
@@ -2670,7 +2689,7 @@ mod tests {
 
         let mut graph = HypergraphStore::new();
         let before = graph.encode_state().unwrap().as_bytes().to_vec();
-        let error = prepare_rules_with_kernel_slots(
+        let error = super::super::prepare_rules_with_kernel_slots(
             STRUGGLE_SCENARIO,
             None,
             STRUGGLE_RULES,
@@ -2692,7 +2711,7 @@ mod tests {
             },
         ];
         let mut retained_graph = HypergraphStore::new();
-        prepare_rules_with_kernel_slots(
+        super::super::prepare_rules_with_kernel_slots(
             STRUGGLE_SCENARIO,
             None,
             STRUGGLE_RULES,
@@ -2707,7 +2726,7 @@ mod tests {
         let per_rule_fired = vec![("first".to_owned(), usize::MAX), ("second".to_owned(), 1)];
 
         assert_eq!(
-            checked_fired_total(&per_rule_fired),
+            super::super::checked_fired_total(&per_rule_fired),
             Err("tick fired-subject total overflowed usize".to_owned())
         );
     }
@@ -2779,7 +2798,7 @@ mod tests {
         let events = sink.events.clone();
 
         let result = if with_prelude {
-            run_once_into_with_prelude(
+            super::super::run_once_into_with_prelude(
                 ONE_SHOT_FAILURE_SCENARIO_WITH_PRELUDE,
                 ONE_SHOT_PRELUDE,
                 ONE_SHOT_FAILURE_RULE,
@@ -2787,7 +2806,7 @@ mod tests {
                 &mut sink,
             )
         } else {
-            run_once_into(
+            super::super::run_once_into(
                 ONE_SHOT_FAILURE_SCENARIO,
                 ONE_SHOT_FAILURE_RULE,
                 &mut graph,
@@ -2809,7 +2828,7 @@ mod tests {
         let mut graph = G::default();
         let mut sink = CollectingSink::default();
         let report = if with_prelude {
-            run_once_into_with_prelude(
+            super::super::run_once_into_with_prelude(
                 ONE_SHOT_SUCCESS_SCENARIO_WITH_PRELUDE,
                 ONE_SHOT_PRELUDE,
                 ONE_SHOT_SUCCESS_RULE,
@@ -2817,7 +2836,7 @@ mod tests {
                 &mut sink,
             )
         } else {
-            run_once_into(
+            super::super::run_once_into(
                 ONE_SHOT_SUCCESS_SCENARIO,
                 ONE_SHOT_SUCCESS_RULE,
                 &mut graph,
@@ -2870,7 +2889,7 @@ mod tests {
         let mut graph = prepopulated_graph::<HypergraphStore>();
         let before = graph.encode_state().unwrap().as_bytes().to_vec();
         let mut sink = CollectingSink::default();
-        let error = run_once_into(
+        let error = super::super::run_once_into(
             ONE_SHOT_SUCCESS_SCENARIO,
             ONE_SHOT_SUCCESS_RULE,
             &mut graph,
@@ -2931,8 +2950,12 @@ mod tests {
 
     #[test]
     fn fuel_bound_report_measures_declared_computed_and_headroom() {
-        let rows = fuel_bound_report(FUEL_REPORT_FIXTURE_SCENARIO, None, FUEL_REPORT_FIXTURE_RULE)
-            .expect("the fixture must load clean");
+        let rows = super::super::fuel_bound_report(
+            FUEL_REPORT_FIXTURE_SCENARIO,
+            None,
+            FUEL_REPORT_FIXTURE_RULE,
+        )
+        .expect("the fixture must load clean");
         assert_eq!(
             rows,
             vec![FuelBoundRow {
@@ -2994,15 +3017,15 @@ mod tests {
 
     #[test]
     fn run_once_is_deterministic() {
-        let a = run_once(SCENARIO, RULE).expect("first run");
-        let b = run_once(SCENARIO, RULE).expect("second run");
+        let a = super::super::run_once(SCENARIO, RULE).expect("first run");
+        let b = super::super::run_once(SCENARIO, RULE).expect("second run");
         assert_eq!(a.after, b.after);
         assert_ne!(a.before, a.after, "the rule must move state");
     }
 
     #[test]
     fn single_rule_content_preserves_considered_and_fired_counts() {
-        let report = run_once(SCENARIO, RULE).expect("single-rule run");
+        let report = super::super::run_once(SCENARIO, RULE).expect("single-rule run");
         assert_eq!(report.considered, 2);
         assert_eq!(report.per_rule_considered.len(), 1);
         assert_eq!(
@@ -3023,8 +3046,8 @@ mod tests {
     #[test]
     fn node_content_ids_reach_prepared_rules_through_the_real_wiring_seam() {
         let mut graph = babylon_graph::hypergraph_store::HypergraphStore::new();
-        let prepared =
-            prepare_rules(SCENARIO, None, RULE, &mut graph).expect("two-classes.bscn loads");
+        let prepared = super::super::prepare_rules(SCENARIO, None, RULE, &mut graph)
+            .expect("two-classes.bscn loads");
         assert_eq!(
             prepared
                 .node_content_ids
@@ -3066,7 +3089,7 @@ mod tests {
 
     #[test]
     fn a_declared_vocabulary_typo_refuses_through_the_production_seam() {
-        let err = run_once(VOCAB_WIRING_SCENARIO, VOCAB_WIRING_RULE).unwrap_err();
+        let err = super::super::run_once(VOCAB_WIRING_SCENARIO, VOCAB_WIRING_RULE).unwrap_err();
         assert!(err.contains("E-LOAD-031"), "{err}");
     }
 
@@ -3097,7 +3120,7 @@ mod tests {
     #[test]
     fn the_d32_implicit_strength_field_resolves_through_the_real_wiring_seam() {
         let mut graph = babylon_graph::hypergraph_store::HypergraphStore::new();
-        let result = prepare_rules(
+        let result = super::super::prepare_rules(
             D32_WIRING_PROBE_SCENARIO,
             None,
             D32_WIRING_PROBE_RULE,
@@ -3130,7 +3153,7 @@ mod tests {
     #[test]
     fn an_explicit_deffield_redeclaring_the_implicit_strength_field_is_e_load_001() {
         let mut graph = babylon_graph::hypergraph_store::HypergraphStore::new();
-        let err = prepare_rules(
+        let err = super::super::prepare_rules(
             D32_WIRING_PROBE_SCENARIO_WITH_EXPLICIT_REDECLARATION,
             None,
             D32_WIRING_PROBE_RULE,
@@ -3172,7 +3195,7 @@ mod tests {
     fn a_two_collision_e_load_001_refusal_always_names_the_byte_least_field() {
         for _ in 0..20 {
             let mut graph = babylon_graph::hypergraph_store::HypergraphStore::new();
-            let err = prepare_rules(
+            let err = super::super::prepare_rules(
                 D32_TWO_COLLISION_SCENARIO,
                 None,
                 D32_WIRING_PROBE_RULE,
@@ -3221,7 +3244,7 @@ mod tests {
 
     #[test]
     fn the_task_10_scenario_shape_loads_clean_and_fires_through_run_once() {
-        let report = run_once(TASK_10_SCENARIO, TASK_10_RULE).expect(
+        let report = super::super::run_once(TASK_10_SCENARIO, TASK_10_RULE).expect(
             "EventType was never declared — its checking must stay inert, at both \
              hydration and the emit payload G1 now recurses into",
         );

@@ -1,20 +1,24 @@
 //! Owned checkpoint and organizer witnesses shared by Open and Archive admission.
 use super::{
-    admit_archive_lookup, capture_material_lookup, CampaignId, CapturedMaterialTick, GenericClient,
-    MaterialComponentIdentity, MaterialEnvelopeRead, MaterialReadAuthority, MaterialRuntimeError,
-    MaterialWorldRegister, OrderedPracticeActionBatch, StoredMaterialTick, StoredTickReadSource,
+    CampaignId, CapturedMaterialTick, GenericClient, MaterialComponentIdentity,
+    MaterialEnvelopeRead, MaterialReadAuthority, MaterialRuntimeError, MaterialWorldRegister,
+    OrderedPracticeActionBatch, StoredMaterialTick, StoredTickReadSource,
 };
+use crate::organizer_archive::CapturedOrganizerProjection;
+use crate::organizer_runtime::CapturedOrganizerCommand;
 use babylon_practice_contract::{OrganizerConfig, OrganizerState};
+use postgres::Row;
+use std::borrow::Cow;
 
 pub(super) struct CapturedRuntimeCheckpoint {
     campaign: CampaignId,
     tick: u64,
     current: CapturedMaterialTick,
     prior: Option<CapturedMaterialTick>,
-    lookup: Vec<postgres::Row>,
-    actions: postgres::Row,
-    command: crate::organizer_runtime::CapturedOrganizerCommand,
-    projection: crate::organizer_archive::CapturedOrganizerProjection,
+    lookup: Vec<Row>,
+    actions: Row,
+    command: CapturedOrganizerCommand,
+    projection: CapturedOrganizerProjection,
 }
 
 impl CapturedRuntimeCheckpoint {
@@ -41,7 +45,7 @@ impl CapturedRuntimeCheckpoint {
             None
         };
         let lookup =
-            capture_material_lookup(client, StoredTickReadSource::Runtime, campaign, tick)?;
+            super::capture_material_lookup(client, StoredTickReadSource::Runtime, campaign, tick)?;
         let actions = client.query_opt("SELECT layout_version,action_batch_digest,exact_action_batch_bytes FROM babylon_state.tick_action_batch_v1 WHERE campaign_id=$1::uuid AND resolve_tick=$2", &[campaign.as_uuid(), &tick_sql])?.ok_or(MaterialRuntimeError::InvalidCheckpoint)?;
         let command = crate::organizer_runtime::capture_pending(client, campaign, tick)?;
         let projection = crate::organizer_archive::capture_projection(client, campaign, tick)?;
@@ -64,7 +68,7 @@ impl CapturedRuntimeCheckpoint {
     ) -> Result<StoredMaterialTick<'static>, MaterialRuntimeError> {
         use crate::production_projection::diagnostics::{Stage, Timing};
         let (lookup, prior_lookup) =
-            admit_archive_lookup(self.lookup, self.tick, authority.opening)?;
+            super::admit_archive_lookup(self.lookup, self.tick, authority.opening)?;
         // Retain only the small organizer input from the fully authenticated
         // previous period. Release its decoded graph/register before the current.
         let prior_organizer = if let Some(prior) = self.prior {
@@ -121,7 +125,7 @@ impl CapturedRuntimeCheckpoint {
             graph: stored.graph,
             material: stored.material,
             sections: stored.sections,
-            register: std::borrow::Cow::Owned(stored.register.into_owned()),
+            register: Cow::Owned(stored.register.into_owned()),
             events: stored.events,
             lookup_identity: stored.lookup_identity,
             lookup_chain: stored.lookup_chain,
@@ -134,7 +138,7 @@ fn admit_actions(
     tick: u64,
     register: &MaterialWorldRegister,
     prior: Option<(Option<OrganizerConfig>, Option<OrganizerState>)>,
-    command: crate::organizer_runtime::CapturedOrganizerCommand,
+    command: CapturedOrganizerCommand,
 ) -> Result<Option<OrderedPracticeActionBatch>, MaterialRuntimeError> {
     let Some(config) = register.organizer_config() else {
         return Ok(None);

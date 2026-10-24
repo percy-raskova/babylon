@@ -1,5 +1,13 @@
 //! Refusals at the captured source and deterministic initialization boundary.
 use super::SourceArtifactKind;
+use crate::national_economy::NationalOpeningError;
+use babylon_bsl::scenario::ScenarioError;
+use babylon_material_circuit::MaterialCircuitError;
+use babylon_tick::material_staffing::MaterialStaffingError;
+use babylon_tick::material_state::MaterialStateError;
+use babylon_tick::replay_session::ReplayTickError;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EconomicCatalogError {
@@ -18,40 +26,40 @@ pub enum EconomicCatalogError {
     WireNoncanonical,
     WireTrailing,
     Graph,
-    Scenario(Box<babylon_bsl::scenario::ScenarioError>),
-    Replay(Box<babylon_tick::replay_session::ReplayTickError>),
-    Geography(Box<babylon_tick::material_state::MaterialStateError>),
-    NationalOpening(crate::national_economy::NationalOpeningError),
+    Scenario(Box<ScenarioError>),
+    Replay(Box<ReplayTickError>),
+    Geography(Box<MaterialStateError>),
+    NationalOpening(NationalOpeningError),
     Foundation,
     Arithmetic,
-    Circuit(babylon_material_circuit::MaterialCircuitError),
-    Staffing(babylon_tick::material_staffing::MaterialStaffingError),
+    Circuit(MaterialCircuitError),
+    Staffing(MaterialStaffingError),
 }
 impl std::fmt::Display for EconomicCatalogError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         write!(f, "economic catalog refused: {self:?}")
     }
 }
 impl std::error::Error for EconomicCatalogError {}
-impl From<babylon_material_circuit::MaterialCircuitError> for EconomicCatalogError {
-    fn from(error: babylon_material_circuit::MaterialCircuitError) -> Self {
+impl From<MaterialCircuitError> for EconomicCatalogError {
+    fn from(error: MaterialCircuitError) -> Self {
         Self::Circuit(error)
     }
 }
 
-impl From<babylon_bsl::scenario::ScenarioError> for EconomicCatalogError {
-    fn from(error: babylon_bsl::scenario::ScenarioError) -> Self {
+impl From<ScenarioError> for EconomicCatalogError {
+    fn from(error: ScenarioError) -> Self {
         Self::Scenario(Box::new(error))
     }
 }
-impl From<babylon_tick::replay_session::ReplayTickError> for EconomicCatalogError {
-    fn from(error: babylon_tick::replay_session::ReplayTickError) -> Self {
+impl From<ReplayTickError> for EconomicCatalogError {
+    fn from(error: ReplayTickError) -> Self {
         Self::Replay(Box::new(error))
     }
 }
 
-impl From<babylon_tick::material_state::MaterialStateError> for EconomicCatalogError {
-    fn from(error: babylon_tick::material_state::MaterialStateError) -> Self {
+impl From<MaterialStateError> for EconomicCatalogError {
+    fn from(error: MaterialStateError) -> Self {
         Self::Geography(Box::new(error))
     }
 }

@@ -9,15 +9,18 @@ use std::time::Duration;
 use super::super::input::{InputEvent, SessionInput};
 
 use super::super::{
-    emit, RuntimeSessionErrorCode, RuntimeSessionRequest, RuntimeSessionResponse,
-    RuntimeSessionScope, RuntimeSessionTarget, SessionBackend, RUNTIME_SESSION_PROTOCOL_VERSION,
+    RuntimeSessionErrorCode, RuntimeSessionRequest, RuntimeSessionResponse, RuntimeSessionScope,
+    RuntimeSessionTarget, SessionBackend, RUNTIME_SESSION_PROTOCOL_VERSION,
 };
 
 use crate::archive_driver::{ArchiveDriver, ArchiveDriverEvent, ArchiveDriverRequestError};
 
 use crate::identity::CampaignId;
 
+use super::super::OrganizerCommand;
+use super::super::RuntimeSessionTail;
 use super::active::Active;
+use mpsc::RecvTimeoutError;
 
 pub(in crate::runtime_session) const EVENT_CAPACITY: usize = 8;
 
@@ -87,7 +90,7 @@ where
 {
     let (sender, events) = mpsc::sync_channel(EVENT_CAPACITY);
     let mut coordinator = Coordinator::new(output);
-    emit(
+    super::super::emit(
         coordinator.output,
         &RuntimeSessionResponse::Hello {
             protocol_version: RUNTIME_SESSION_PROTOCOL_VERSION,
@@ -117,10 +120,10 @@ where
             Ok(SessionEvent::Input(InputEvent::Refused(code))) => {
                 return coordinator.fail(None, code)
             }
-            Err(mpsc::RecvTimeoutError::Disconnected) => {
+            Err(RecvTimeoutError::Disconnected) => {
                 return coordinator.fail(None, RuntimeSessionErrorCode::PipeFailure)
             }
-            Err(mpsc::RecvTimeoutError::Timeout) => {}
+            Err(RecvTimeoutError::Timeout) => {}
         }
         coordinator.check_active_driver()?;
     }
@@ -153,7 +156,7 @@ impl<'a, W: Write, B: SessionBackend, D: ArchiveControl> Coordinator<'a, W, B, D
         request_id: Option<u64>,
         code: RuntimeSessionErrorCode,
     ) -> Result<(), RuntimeSessionErrorCode> {
-        emit(
+        super::super::emit(
             self.output,
             &RuntimeSessionResponse::Error {
                 request_id,
@@ -230,7 +233,7 @@ impl<'a, W: Write, B: SessionBackend, D: ArchiveControl> Coordinator<'a, W, B, D
                     .ok_or(RuntimeSessionErrorCode::CampaignAbsent)
                     .and_then(|active| active.backend.organizer_preview(&command));
                 match result {
-                    Ok(preview) => emit(
+                    Ok(preview) => super::super::emit(
                         self.output,
                         &RuntimeSessionResponse::OrganizerPreview {
                             request_id,
@@ -254,7 +257,7 @@ impl<'a, W: Write, B: SessionBackend, D: ArchiveControl> Coordinator<'a, W, B, D
                     .ok_or(RuntimeSessionErrorCode::CampaignAbsent)
                     .and_then(|active| active.backend.organizer_status());
                 match result {
-                    Ok(snapshot) => emit(
+                    Ok(snapshot) => super::super::emit(
                         self.output,
                         &RuntimeSessionResponse::OrganizerStatus {
                             request_id,
@@ -282,7 +285,7 @@ impl<'a, W: Write, B: SessionBackend, D: ArchiveControl> Coordinator<'a, W, B, D
     fn advance(
         &mut self,
         request_id: u64,
-        expected_tail: &super::super::RuntimeSessionTail,
+        expected_tail: &RuntimeSessionTail,
     ) -> Result<(), RuntimeSessionErrorCode> {
         let mut progress_failure = None;
         let scope = self.scope.clone();
@@ -294,7 +297,7 @@ impl<'a, W: Write, B: SessionBackend, D: ArchiveControl> Coordinator<'a, W, B, D
                     .checked_add(1)
                     .ok_or(RuntimeSessionErrorCode::InvalidRequest)
                     .and_then(|resolve_tick| {
-                        emit(
+                        super::super::emit(
                             output,
                             &RuntimeSessionResponse::AdvanceProgress {
                                 request_id,
@@ -319,7 +322,7 @@ impl<'a, W: Write, B: SessionBackend, D: ArchiveControl> Coordinator<'a, W, B, D
             return Err(code);
         }
         match result {
-            Ok(tail) => emit(
+            Ok(tail) => super::super::emit(
                 self.output,
                 &RuntimeSessionResponse::Committed {
                     request_id,
@@ -335,7 +338,7 @@ impl<'a, W: Write, B: SessionBackend, D: ArchiveControl> Coordinator<'a, W, B, D
     fn submit_organizer(
         &mut self,
         request_id: u64,
-        command: &super::super::OrganizerCommand,
+        command: &OrganizerCommand,
         configure: bool,
     ) -> Result<(), RuntimeSessionErrorCode> {
         let control = matches!(
@@ -352,7 +355,7 @@ impl<'a, W: Write, B: SessionBackend, D: ArchiveControl> Coordinator<'a, W, B, D
             .ok_or(RuntimeSessionErrorCode::CampaignAbsent)
             .and_then(|active| active.backend.organizer_submit(command));
         match result {
-            Ok(commitment) => emit(
+            Ok(commitment) => super::super::emit(
                 self.output,
                 &RuntimeSessionResponse::OrganizerAccepted {
                     request_id,
@@ -388,7 +391,7 @@ impl<'a, W: Write, B: SessionBackend, D: ArchiveControl> Coordinator<'a, W, B, D
             epoch,
             campaign_id: Some(campaign.as_uuid().to_string()),
         };
-        emit(
+        super::super::emit(
             self.output,
             &RuntimeSessionResponse::Switching {
                 request_id,
@@ -421,7 +424,7 @@ impl<'a, W: Write, B: SessionBackend, D: ArchiveControl> Coordinator<'a, W, B, D
         let organizer = backend.has_organizer();
         self.active = Some(Active::new(backend, archive));
         // Driver reports can be queued, but this ACK is always flushed first.
-        emit(
+        super::super::emit(
             self.output,
             &RuntimeSessionResponse::Ready {
                 request_id,
@@ -459,7 +462,7 @@ impl<'a, W: Write, B: SessionBackend, D: ArchiveControl> Coordinator<'a, W, B, D
     ) -> Result<(), RuntimeSessionErrorCode> {
         self.retire(events, true, request_id, grace)?;
         if let Some(request_id) = request_id {
-            emit(
+            super::super::emit(
                 self.output,
                 &RuntimeSessionResponse::Stopped {
                     request_id,

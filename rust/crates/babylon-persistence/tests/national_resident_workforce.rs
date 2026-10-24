@@ -1,16 +1,15 @@
 use babylon_kernel::geography::CountyGeoid;
-use babylon_persistence::{
-    national_counties::{national_county_reference, ObservationStatus},
-    national_resident_workforce::{
-        national_resident_workforce_reference, NationalResidentWorkforceReference,
-        ResidentWorkforceReferenceError, SourceSex, WorkerClass,
-    },
+use babylon_persistence::national_counties;
+use babylon_persistence::national_counties::ObservationStatus;
+use babylon_persistence::national_resident_workforce;
+use babylon_persistence::national_resident_workforce::{
+    NationalResidentWorkforceReference, ResidentWorkforceReferenceError, SourceSex, WorkerClass,
 };
 
 #[test]
 fn resident_classes_partition_existing_county_people_without_adding_source_subtotals() {
-    let reference = national_resident_workforce_reference().unwrap();
-    let counties = national_county_reference().unwrap();
+    let reference = national_resident_workforce::national_resident_workforce_reference().unwrap();
+    let counties = national_counties::national_county_reference().unwrap();
     assert_eq!(reference.counties().len(), 3144);
     let mut total = 0_u64;
     for row in reference.counties() {
@@ -37,7 +36,7 @@ fn resident_classes_partition_existing_county_people_without_adding_source_subto
 
 #[test]
 fn self_employment_and_unpaid_family_are_distinct_residents_not_suppressed_jobs() {
-    let reference = national_resident_workforce_reference().unwrap();
+    let reference = national_resident_workforce::national_resident_workforce_reference().unwrap();
     for (class, expected) in [
         (WorkerClass::IncorporatedSelfEmployed, 6_410_561),
         (WorkerClass::UnincorporatedSelfEmployed, 9_642_196),
@@ -77,8 +76,10 @@ fn changed_source_bytes_and_foreign_counties_refuse_without_partial_capture() {
         NationalResidentWorkforceReference::decode_pinned(&bytes),
         Err(ResidentWorkforceReferenceError::ArtifactDigest)
     );
-    assert!(national_resident_workforce_reference()
-        .unwrap()
-        .county(CountyGeoid::try_from("72001").unwrap())
-        .is_err());
+    assert!(
+        national_resident_workforce::national_resident_workforce_reference()
+            .unwrap()
+            .county(CountyGeoid::try_from("72001").unwrap())
+            .is_err()
+    );
 }

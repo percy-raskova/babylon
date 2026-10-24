@@ -1,19 +1,21 @@
 //! One complete admission per endpoint in the observer's repeatable-read snapshot.
 
 use super::{
-    material_storage, read_authenticated_material_tick, CampaignId, GenericClient,
-    MaterialComponentIdentity, MaterialReadAuthority, MaterialRuntimeError, MaterialWorldRegister,
-    RegisterWitnesses, StoredMaterialTick, StoredTickReadSource,
+    material_storage, CampaignId, GenericClient, MaterialComponentIdentity, MaterialReadAuthority,
+    MaterialRuntimeError, MaterialWorldRegister, RegisterWitnesses, StoredMaterialTick,
+    StoredTickReadSource,
 };
 use crate::production_projection::diagnostics::{Stage, Timing};
+use material_storage::AdmittedReceiptWitness;
+use material_storage::OpeningRegister;
 
 #[derive(Clone, Copy)]
 pub(crate) struct ObserverEndpointLookup<'a, 'w> {
-    pub(crate) opening: &'a material_storage::OpeningRegister,
+    pub(crate) opening: &'a OpeningRegister,
     pub(crate) current_chain: [u8; 32],
     pub(crate) previous_chain: Option<[u8; 32]>,
     pub(crate) registers: RegisterWitnesses<'w>,
-    pub(crate) receipt: Option<&'w material_storage::AdmittedReceiptWitness>,
+    pub(crate) receipt: Option<&'w AdmittedReceiptWitness>,
 }
 
 // Only the two-endpoint reader constructs this witness, after complete envelope,
@@ -106,7 +108,7 @@ fn read_endpoint<'w>(
     authority: MaterialReadAuthority<'_, 'w>,
 ) -> Result<StoredMaterialTick<'w>, MaterialRuntimeError> {
     let _timing = Timing::start(Stage::AuthenticatedEnvelope, tick);
-    read_authenticated_material_tick(
+    super::read_authenticated_material_tick(
         client,
         StoredTickReadSource::FullObserver,
         campaign,

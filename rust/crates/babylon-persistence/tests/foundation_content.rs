@@ -1,9 +1,9 @@
 //! Current content encoding and exact source admission.
 
 use babylon_kernel::content_digest::sha256_of;
+use babylon_persistence::michigan_cohorts;
+use babylon_persistence::michigan_economy;
 use babylon_persistence::{
-    michigan_cohorts::{michigan_cohort_foundation, michigan_cohorts},
-    michigan_economy::michigan_observer_foundation,
     CampaignFoundation, FoundationContentBundle, RustPersistenceRuntimeError,
 };
 
@@ -121,9 +121,9 @@ fn absent_empty_and_exact_prelude_bytes_have_distinct_content_identities() {
 
 #[test]
 fn full_cohort_source_is_retained_in_the_foundation() {
-    let cohorts = michigan_cohorts().unwrap();
+    let cohorts = michigan_cohorts::michigan_cohorts().unwrap();
     assert_eq!(cohorts.scenario_source().len(), 493_177);
-    let (session, bundle) = michigan_cohort_foundation().unwrap();
+    let (session, bundle) = michigan_cohorts::michigan_cohort_foundation().unwrap();
     assert_eq!(
         bundle.scenario_source_bytes(),
         cohorts.scenario_source().as_bytes()
@@ -138,7 +138,7 @@ fn full_cohort_source_is_retained_in_the_foundation() {
 
 #[test]
 fn capture_refuses_a_source_that_does_not_reproduce_the_live_graph() {
-    let (session, original) = michigan_observer_foundation().unwrap();
+    let (session, original) = michigan_economy::michigan_observer_foundation().unwrap();
     let source = std::str::from_utf8(original.scenario_source_bytes()).unwrap();
     let changed = source.replacen("county-26001", "county-26000", 1);
     assert_ne!(changed, source);

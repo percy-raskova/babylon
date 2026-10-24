@@ -1,26 +1,25 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
 use babylon_bsl::structural_verbs::CollectingSink;
+use babylon_persistence::michigan_economy;
 
 use babylon_persistence::archive_revision::{
     ArchiveDossierBounds, ArchiveDossierPage, ArchiveDossierPending, ArchiveDossierRead,
     ArchiveDossierState, ArchiveDossierUnavailable, ArchiveReadScope, ArchiveSearchState,
 };
 
+use babylon_persistence::identity::CampaignId;
+use babylon_persistence::material_runtime::DurableMaterialRuntime;
+use babylon_persistence::michigan_content::MichiganContentPreset;
+use babylon_persistence::michigan_economy::{
+    MichiganCountyEconomy, QCEW_ECONOMICS_ARTIFACT_SHA256, QCEW_ECONOMICS_FIELD_KEYS,
+    QCEW_ECONOMICS_SOURCE_ID,
+};
+use babylon_persistence::michigan_material::MichiganDeliveryPreset;
+use babylon_persistence::observer_reader::{
+    ObserverEconomyError, ObserverEconomyReader, ObserverVisibility,
+};
 use babylon_persistence::{
-    captured_archive_producer,
-    identity::CampaignId,
-    install_reader_role,
-    material_runtime::DurableMaterialRuntime,
-    michigan_content::MichiganContentPreset,
-    michigan_economy::{
-        michigan_economy, MichiganCountyEconomy, QCEW_ECONOMICS_ARTIFACT_SHA256,
-        QCEW_ECONOMICS_FIELD_KEYS, QCEW_ECONOMICS_SOURCE_ID,
-    },
-    michigan_material::MichiganDeliveryPreset,
-    observer_reader::provision_observer_role,
-    observer_reader::{ObserverEconomyError, ObserverEconomyReader, ObserverVisibility},
-    postgres_catalog::validate_connection_target,
     ArchiveAtomSubjectKind, ArchiveAtomValue, ArchiveEvidenceClass, ArchivePageRef,
     ArchiveReceiptDisposition, ArchiveSubjectKind, ArchiveWorker, SemanticArchiveReader,
     SemanticArchiveStore,
@@ -36,6 +35,21 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use std::sync::{Mutex, Once};
 
+use babylon_material_circuit::CircuitAccounting;
+use babylon_material_circuit::HouseholdTimeAccounting;
+use babylon_persistence::material_storage::LookupAnchor;
+use babylon_persistence::michigan_material::MichiganMaterialCatalog;
+use babylon_persistence::observer_reader;
+use babylon_persistence::observer_reader::CommittedMaterialReceipts;
+use babylon_persistence::observer_reader::ObserverEconomySnapshot;
+use babylon_persistence::observer_reader::ObserverMaterialCursor;
+use babylon_persistence::postgres_catalog;
+use babylon_persistence::runtime_session;
+use babylon_tick::material_replay::IdentifiedMaterialTick;
+use postgres::Client;
+use serde_json::Value;
+use std::io::Cursor;
+use std::path::Path;
 use uuid::Uuid;
 
 pub(crate) const ACK: &str =
@@ -224,7 +238,7 @@ pub(crate) fn assert_all_county_cards(
     search
         .hits
         .iter()
-        .zip(michigan_economy().unwrap().counties())
+        .zip(michigan_economy::michigan_economy().unwrap().counties())
         .map(|(hit, county)| {
             assert_eq!(hit.subject.kind(), ArchiveSubjectKind::County);
             assert_eq!(hit.subject.id(), county.county_geoid);
@@ -293,8 +307,8 @@ pub(crate) fn live_michigan_all_county_cards_keep_public_source_and_quiet_restar
             .unwrap(),
     )
     .unwrap();
-    install_reader_role(&target.writer).unwrap();
-    provision_observer_role(&target.writer).unwrap();
+    babylon_persistence::install_reader_role(&target.writer).unwrap();
+    observer_reader::provision_observer_role(&target.writer).unwrap();
     let config = target.login("babylon_reader", "countycards");
     let reader = SemanticArchiveReader::new(&config).unwrap();
     let foundation = read_county(&reader, &ArchiveReadScope::foundation(campaign), "26163");
@@ -319,7 +333,8 @@ pub(crate) fn live_michigan_all_county_cards_keep_public_source_and_quiet_restar
     advance_material_period(&mut runtime);
     assert_archive_progress(&reader, campaign, 1, 0);
     let mut worker = ArchiveWorker::new(&target.writer);
-    let producer = captured_archive_producer(&target.writer, campaign).unwrap();
+    let producer =
+        babylon_persistence::captured_archive_producer(&target.writer, campaign).unwrap();
     let first = worker.sweep_once(campaign, &producer).unwrap();
     assert_eq!(
         first.dispositions(),
@@ -370,7 +385,8 @@ pub(crate) fn assert_restart_drains_and_verifies_quiet_periods(
     )
     .unwrap();
     let mut worker = ArchiveWorker::new(&target.writer);
-    let producer = captured_archive_producer(&target.writer, campaign).unwrap();
+    let producer =
+        babylon_persistence::captured_archive_producer(&target.writer, campaign).unwrap();
     for _ in 0..4 {
         if worker
             .sweep_once(campaign, &producer)
@@ -463,7 +479,7 @@ impl DisposableTarget {
             .unwrap()
             .parse()
             .unwrap();
-        validate_connection_target(&admin).unwrap();
+        postgres_catalog::validate_connection_target(&admin).unwrap();
         assert_eq!(admin.get_user(), Some("test"));
         assert_eq!(admin.get_dbname(), Some("postgres"));
         let mut connection = admin.connect(NoTls).unwrap();
@@ -503,8 +519,10 @@ impl DisposableTarget {
             roles: Vec::new(),
         };
         OBSERVER_GROUP_ROLES.call_once(|| {
-            install_reader_role(&target.writer).expect("initialize shared reader group");
-            provision_observer_role(&target.writer).expect("initialize shared observer group");
+            babylon_persistence::install_reader_role(&target.writer)
+                .expect("initialize shared reader group");
+            observer_reader::provision_observer_role(&target.writer)
+                .expect("initialize shared observer group");
         });
         target
     }
@@ -557,11 +575,10 @@ impl Drop for DisposableTarget {
 #[ignore = "requires the task-owned disposable PostgreSQL runtime"]
 pub(crate) fn live_material_observer_reuse_authenticates_actual_foundation_bytes() {
     let mut target = DisposableTarget::create();
-    let catalog =
-        babylon_persistence::michigan_material::MichiganMaterialCatalog::from_defines_toml(
-            include_str!("../../../../../content/scenarios/michigan/defines.toml"),
-        )
-        .unwrap();
+    let catalog = MichiganMaterialCatalog::from_defines_toml(include_str!(
+        "../../../../../content/scenarios/michigan/defines.toml"
+    ))
+    .unwrap();
     let campaign =
         CampaignId::from_uuid(Uuid::from_u128(0x0044_0000_0000_0000_0000_0000_0000_0041));
     let mut runtime = DurableMaterialRuntime::create(
@@ -572,7 +589,7 @@ pub(crate) fn live_material_observer_reuse_authenticates_actual_foundation_bytes
             .unwrap(),
     )
     .unwrap();
-    provision_observer_role(&target.writer).unwrap();
+    observer_reader::provision_observer_role(&target.writer).unwrap();
     let observer_config = target.login("babylon_observer", "observer");
     let observer =
         ObserverEconomyReader::connect(&observer_config, ObserverVisibility::FullObserver).unwrap();
@@ -620,11 +637,11 @@ pub(crate) fn live_material_observer_reuse_authenticates_actual_foundation_bytes
 }
 
 pub(crate) fn assert_foundation_byte_changes_refused(
-    writer: &mut postgres::Client,
+    writer: &mut Client,
     observer: &ObserverEconomyReader,
     campaign: CampaignId,
-    cursor: &mut Option<babylon_persistence::observer_reader::ObserverMaterialCursor>,
-    admitted: &babylon_persistence::observer_reader::ObserverEconomySnapshot,
+    cursor: &mut Option<ObserverMaterialCursor>,
+    admitted: &ObserverEconomySnapshot,
 ) {
     // All identifiers here are fixed test-owned SQL names, never player input.
     for (table, column) in [
@@ -691,11 +708,11 @@ pub(crate) fn assert_foundation_byte_changes_refused(
 }
 
 pub(crate) fn assert_foundation_identity_changes_refused(
-    writer: &mut postgres::Client,
+    writer: &mut Client,
     observer: &ObserverEconomyReader,
     campaign: CampaignId,
-    cursor: &mut Option<babylon_persistence::observer_reader::ObserverMaterialCursor>,
-    admitted: &babylon_persistence::observer_reader::ObserverEconomySnapshot,
+    cursor: &mut Option<ObserverMaterialCursor>,
+    admitted: &ObserverEconomySnapshot,
 ) {
     let original = writer.query_one(
         "SELECT replay_session_id,rng_seed FROM babylon_state.campaign_foundation WHERE campaign_id=$1",
@@ -733,11 +750,11 @@ pub(crate) fn assert_foundation_identity_changes_refused(
 }
 
 pub(crate) fn assert_foundation_clock_changes_refused(
-    writer: &mut postgres::Client,
+    writer: &mut Client,
     observer: &ObserverEconomyReader,
     campaign: CampaignId,
-    cursor: &mut Option<babylon_persistence::observer_reader::ObserverMaterialCursor>,
-    admitted: &babylon_persistence::observer_reader::ObserverEconomySnapshot,
+    cursor: &mut Option<ObserverMaterialCursor>,
+    admitted: &ObserverEconomySnapshot,
 ) {
     let original = writer.query_one(
         "SELECT preset_id,duration_kind,final_period FROM babylon_state.material_campaign_foundation_v3 WHERE campaign_id=$1",
@@ -796,11 +813,10 @@ pub(crate) fn assert_foundation_clock_changes_refused(
 pub(crate) fn live_material_observer_preserves_history_and_denies_preview_blob_authority() {
     let mut target = DisposableTarget::create();
     let preset = MichiganDeliveryPreset::Standard;
-    let catalog =
-        babylon_persistence::michigan_material::MichiganMaterialCatalog::from_defines_toml(
-            include_str!("../../../../../content/scenarios/michigan/defines.toml"),
-        )
-        .unwrap();
+    let catalog = MichiganMaterialCatalog::from_defines_toml(include_str!(
+        "../../../../../content/scenarios/michigan/defines.toml"
+    ))
+    .unwrap();
     let campaign =
         CampaignId::from_uuid(Uuid::from_u128(0x0044_0000_0000_0000_0000_0000_0000_0001));
     let mut runtime = DurableMaterialRuntime::create(
@@ -812,9 +828,9 @@ pub(crate) fn live_material_observer_preserves_history_and_denies_preview_blob_a
     )
     .unwrap();
     assert_single_foundation_storage(&target.writer, campaign);
-    install_reader_role(&target.writer).unwrap();
-    provision_observer_role(&target.writer).unwrap();
-    provision_observer_role(&target.writer).unwrap();
+    babylon_persistence::install_reader_role(&target.writer).unwrap();
+    observer_reader::provision_observer_role(&target.writer).unwrap();
+    observer_reader::provision_observer_role(&target.writer).unwrap();
     let observer_config = target.login("babylon_observer", "observer");
     let known_config = target.login("babylon_reader", "known");
     let observer =
@@ -922,8 +938,8 @@ pub(crate) fn opening_roles(
     known: &ObserverEconomyReader,
     known_config: &Config,
     campaign: CampaignId,
-    cursor: &mut Option<babylon_persistence::observer_reader::ObserverMaterialCursor>,
-) -> babylon_persistence::observer_reader::ObserverEconomySnapshot {
+    cursor: &mut Option<ObserverMaterialCursor>,
+) -> ObserverEconomySnapshot {
     let zero = observer.snapshot_with_cursor(campaign, 0, cursor).unwrap();
     assert_eq!(zero.counties.len(), 83);
     assert_eq!(zero.production.as_ref().unwrap().sites.len(), 5);
@@ -961,17 +977,13 @@ pub(crate) fn opening_roles(
     zero
 }
 
-pub(crate) fn assert_known_material_absence(
-    snapshot: &mut babylon_persistence::observer_reader::ObserverEconomySnapshot,
-) {
+pub(crate) fn assert_known_material_absence(snapshot: &mut ObserverEconomySnapshot) {
     assert_eq!(snapshot.visibility, ObserverVisibility::KnownPreview);
     assert!(snapshot.production.is_none());
     assert!(snapshot.production_evidence_digest().unwrap().is_none());
 }
 
-pub(crate) fn assert_material_accounts(
-    snapshot: &babylon_persistence::observer_reader::ObserverEconomySnapshot,
-) {
+pub(crate) fn assert_material_accounts(snapshot: &ObserverEconomySnapshot) {
     use babylon_persistence::production_observation::ProductionDeliveryStage;
     use std::collections::{BTreeMap, BTreeSet};
 
@@ -1061,10 +1073,10 @@ pub(crate) fn assert_material_accounts(
 }
 
 pub(crate) fn assert_corrupted_register_is_rejected(
-    connection: &mut postgres::Client,
+    connection: &mut Client,
     observer: &ObserverEconomyReader,
     campaign: CampaignId,
-    cursor: &mut Option<babylon_persistence::observer_reader::ObserverMaterialCursor>,
+    cursor: &mut Option<ObserverMaterialCursor>,
 ) {
     // A syntactically valid stored register mutation cannot retain its committed identity.
     let base: Vec<u8> = connection.query_one(
@@ -1085,7 +1097,7 @@ pub(crate) fn assert_corrupted_register_is_rejected(
             &opening,
             u64::try_from(index + 1).unwrap(),
             &row.get::<_, Vec<u8>>(3),
-            babylon_persistence::material_storage::LookupAnchor::Previous(chain),
+            LookupAnchor::Previous(chain),
         )
         .unwrap();
         chain = lookup.chain;
@@ -1176,8 +1188,8 @@ pub(crate) fn live_regional_content_revisions_resume_exactly_and_catalog_filters
         advance_material_period(&mut runtime);
         campaigns.push((campaign, preset, runtime));
     }
-    install_reader_role(&target.writer).unwrap();
-    provision_observer_role(&target.writer).unwrap();
+    babylon_persistence::install_reader_role(&target.writer).unwrap();
+    observer_reader::provision_observer_role(&target.writer).unwrap();
     let observer = ObserverEconomyReader::connect(
         &target.login("babylon_observer", "catalogobserver"),
         ObserverVisibility::FullObserver,
@@ -1305,8 +1317,8 @@ pub(crate) fn assert_session_admits_stored_revision(
     observer: &ObserverEconomyReader,
 ) {
     use babylon_persistence::runtime_session::{
-        run_runtime_session, RuntimeSessionRequest, RuntimeSessionResponse, RuntimeSessionScope,
-        RuntimeSessionTail, RuntimeSessionTarget, RUNTIME_SESSION_PROTOCOL_VERSION,
+        RuntimeSessionRequest, RuntimeSessionResponse, RuntimeSessionScope, RuntimeSessionTail,
+        RuntimeSessionTarget, RUNTIME_SESSION_PROTOCOL_VERSION,
     };
     let current = observer.snapshot(campaign, 3).unwrap();
     let scope = RuntimeSessionScope {
@@ -1346,13 +1358,13 @@ pub(crate) fn assert_session_admits_stored_revision(
         lines.push(b'\n');
     }
     let mut output = Vec::new();
-    run_runtime_session(
+    runtime_session::run_runtime_session(
         config,
-        std::path::Path::new(concat!(
+        Path::new(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../../../content/scenarios/michigan/defines.toml"
         )),
-        std::io::Cursor::new(lines),
+        Cursor::new(lines),
         &mut output,
     )
     .unwrap();
@@ -1383,7 +1395,7 @@ pub(crate) fn assert_streamed_native_advance(output: &[u8], campaign: CampaignId
     let streamed: Vec<_> = output
         .split(|byte| *byte == b'\n')
         .filter(|line| !line.is_empty())
-        .map(|line| serde_json::from_slice::<serde_json::Value>(line).unwrap())
+        .map(|line| serde_json::from_slice::<Value>(line).unwrap())
         .collect();
     let progress: Vec<_> = streamed
         .iter()
@@ -1459,9 +1471,22 @@ pub(crate) fn insert_unadmitted_catalog_rows(
 }
 
 mod current_authority {
-    use super::*;
+    use super::{
+        ArchivePageRef, ArchiveSubjectKind, ArchiveWorker, CampaignId, CollectingSink,
+        DisposableTarget, DurableMaterialRuntime, MichiganContentPreset, MichiganDeliveryPreset,
+        OrderedPracticeActionBatch, Uuid,
+    };
+    use babylon_persistence::material_runtime::MaterialRuntimeFoundation;
+    use babylon_persistence::ArchiveCitation;
+    use babylon_persistence::ArchiveKnowledgeGrant;
+    use babylon_persistence::RetainedMetadataStore;
+    use babylon_persistence::SemanticArchiveStore;
+    use postgres::Client;
+    use postgres::NoTls;
+    use std::sync::Arc;
+    use std::sync::Barrier;
 
-    fn foundation() -> babylon_persistence::material_runtime::MaterialRuntimeFoundation {
+    fn foundation() -> MaterialRuntimeFoundation {
         MichiganContentPreset::new_campaign(MichiganDeliveryPreset::Standard)
             .create_foundation(&crate::test_support::catalog())
             .unwrap()
@@ -1490,7 +1515,7 @@ mod current_authority {
                 .unwrap();
             }
             assert!(DurableMaterialRuntime::open(&target.writer, campaign, digest).is_err());
-            let metadata = babylon_persistence::RetainedMetadataStore::new(&target.writer);
+            let metadata = RetainedMetadataStore::new(&target.writer);
             assert!(metadata
                 .set_campaign_status(
                     campaign,
@@ -1500,15 +1525,12 @@ mod current_authority {
             assert!(metadata.replace_watchlist(campaign, &[]).is_err());
             assert!(metadata.delete_campaign(campaign).is_err());
             let store = SemanticArchiveStore::new(&target.writer);
-            let grant = babylon_persistence::ArchiveKnowledgeGrant::try_new(
+            let grant = ArchiveKnowledgeGrant::try_new(
                 ArchivePageRef::try_new(ArchiveSubjectKind::County, "26163".to_owned()).unwrap(),
                 "schema-refusal-probe".to_owned(),
                 0,
-                babylon_persistence::ArchiveCitation::try_new(
-                    "fixture".to_owned(),
-                    "schema-refusal-probe".to_owned(),
-                )
-                .unwrap(),
+                ArchiveCitation::try_new("fixture".to_owned(), "schema-refusal-probe".to_owned())
+                    .unwrap(),
             )
             .unwrap();
             assert!(matches!(
@@ -1564,7 +1586,7 @@ mod current_authority {
     }
 
     fn exact_retained_graph_vectors(
-        sql: &mut postgres::Client,
+        sql: &mut Client,
         campaign: CampaignId,
     ) -> Vec<(i64, Vec<i64>)> {
         let vectors = sql.query("SELECT vector_id,node_ids FROM babylon_state.graph_node_vector_v1 WHERE campaign_id=$1 ORDER BY vector_id", &[campaign.as_uuid()]).unwrap()
@@ -1597,7 +1619,7 @@ mod current_authority {
         let second = DurableMaterialRuntime::open(&target.writer, campaign, digest).unwrap();
         let initial_world = first.session().current_world_hash().unwrap();
         let initial_material = first.session().material().canonical_bytes().to_vec();
-        let barrier = std::sync::Arc::new(std::sync::Barrier::new(2));
+        let barrier = Arc::new(Barrier::new(2));
         let handles = [first, second]
             .into_iter()
             .map(|mut runtime| {
@@ -1723,7 +1745,7 @@ pub(crate) fn self_consistent_changed_period_lookup(base: &[u8], delta: &[u8]) -
         &opening,
         1,
         delta,
-        babylon_persistence::material_storage::LookupAnchor::Previous(c0),
+        LookupAnchor::Previous(c0),
     )
     .unwrap();
     let prefix = b"BabylonPeriodLookupV3\0".len() + 2 + 32 + 8 + 32;
@@ -1765,7 +1787,7 @@ pub(crate) fn self_consistent_changed_period_lookup(base: &[u8], delta: &[u8]) -
         &opening,
         1,
         &self_consistent,
-        babylon_persistence::material_storage::LookupAnchor::Previous(c0),
+        LookupAnchor::Previous(c0),
     )
     .unwrap();
     assert_ne!(changed_table.chain, original_table.chain);
@@ -1787,8 +1809,8 @@ pub(crate) fn cold_restart_and_history_refuse_corrupt_or_missing_earlier_period_
     }
     let tail = *runtime.tail().unwrap();
     let world = runtime.session().current_world_hash().unwrap();
-    install_reader_role(&target.writer).unwrap();
-    provision_observer_role(&target.writer).unwrap();
+    babylon_persistence::install_reader_role(&target.writer).unwrap();
+    observer_reader::provision_observer_role(&target.writer).unwrap();
     let observer_config = target.login("babylon_observer", "localperiodhistory");
     let observer =
         ObserverEconomyReader::connect(&observer_config, ObserverVisibility::FullObserver).unwrap();
@@ -1880,7 +1902,7 @@ pub(crate) fn assert_committed_accounting_observation(
     observer: &ObserverEconomyReader,
     reopened: &ObserverEconomyReader,
     campaign: CampaignId,
-    tail: &babylon_tick::material_replay::IdentifiedMaterialTick,
+    tail: &IdentifiedMaterialTick,
 ) {
     let original = observer.committed_material_receipts(campaign, 3).unwrap();
     let after_restart = reopened.committed_material_receipts(campaign, 3).unwrap();
@@ -1913,7 +1935,7 @@ pub(crate) fn assert_combined_observation(
     observer: &ObserverEconomyReader,
     reopened: &ObserverEconomyReader,
     campaign: CampaignId,
-    accounting: &babylon_persistence::observer_reader::CommittedMaterialReceipts,
+    accounting: &CommittedMaterialReceipts,
 ) {
     let combined = observer
         .committed_material_observation(campaign, 3)
@@ -1952,15 +1974,11 @@ pub(crate) fn assert_authenticated_time_debits(
 ) {
     let observed = reader.committed_material_receipts(campaign, 3).unwrap();
     let expected = match &runtime.session().material().state().accounting {
-        babylon_material_circuit::CircuitAccounting::PhysicalControl => &[][..],
-        babylon_material_circuit::CircuitAccounting::Monetary(economy) => {
-            match &economy.household_time {
-                babylon_material_circuit::HouseholdTimeAccounting::NotModeled => &[][..],
-                babylon_material_circuit::HouseholdTimeAccounting::Modeled(book) => {
-                    book.contributions.as_slice()
-                }
-            }
-        }
+        CircuitAccounting::PhysicalControl => &[][..],
+        CircuitAccounting::Monetary(economy) => match &economy.household_time {
+            HouseholdTimeAccounting::NotModeled => &[][..],
+            HouseholdTimeAccounting::Modeled(book) => book.contributions.as_slice(),
+        },
     };
     assert_eq!(observed.identity, *runtime.tail().unwrap());
     assert_eq!(observed.household_contributions, expected);

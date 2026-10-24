@@ -1,6 +1,7 @@
 //! Current native service receipt partitions; state-dependent causality stays in the engine.
-use super::monetary_receipt::{account, account_parts};
-use super::{MaterialWorldError, ReceiptCursor};
+use super::monetary_receipt;
+use super::MaterialWorldError;
+use super::ReceiptCursor;
 use babylon_kernel::currency::Currency;
 use babylon_material_circuit::FinalDemandPrincipalId;
 use babylon_material_circuit::GoodId;
@@ -66,7 +67,7 @@ pub(super) fn encode_performance(
         b.extend_from_slice(&r.period.to_be_bytes());
         b.extend_from_slice(&r.order_id.as_bytes());
         b.extend_from_slice(&r.provider_site_id.as_bytes());
-        let (tag, id) = account_parts(r.buyer);
+        let (tag, id) = monetary_receipt::account_parts(r.buyer);
         b.push(tag);
         b.extend_from_slice(&id);
         b.extend_from_slice(&r.good_id.as_bytes());
@@ -93,7 +94,7 @@ pub(super) fn decode_performance(
     let order_id = OrderId::from_bytes(c.take()?);
     let provider_site_id = SiteId::from_bytes(c.take()?);
     let [tag] = c.take()?;
-    let buyer = account(tag, c.take()?)?;
+    let buyer = monetary_receipt::account(tag, c.take()?)?;
     let r = ServicePerformanceReceipt {
         period: period_value,
         order_id,
@@ -364,9 +365,9 @@ mod tests {
 #[cfg(test)]
 mod engine_test {
     use super::*;
-    use babylon_material_circuit::admit_material_purchase;
-    use babylon_material_circuit::advance_material_circuit;
+    use babylon_material_circuit;
     use babylon_material_circuit::AccountId;
+    use babylon_material_circuit::AidBook;
     use babylon_material_circuit::CapacityRow;
     use babylon_material_circuit::CapacitySupply;
     use babylon_material_circuit::CashAccount;
@@ -375,7 +376,9 @@ mod engine_test {
     use babylon_material_circuit::CommodityKind;
     use babylon_material_circuit::EmploymentTerms;
     use babylon_material_circuit::FinalDemandPrincipal;
+    use babylon_material_circuit::FinancialInstitutions;
     use babylon_material_circuit::HistoricalCostBook;
+    use babylon_material_circuit::HouseholdTimeAccounting;
     use babylon_material_circuit::LaborCapacityRow;
     use babylon_material_circuit::LaborCoefficient;
     use babylon_material_circuit::LogisticsNodeId;
@@ -417,9 +420,9 @@ mod engine_test {
             period: 1,
             capacity_supply: CapacitySupply::FiniteSchedule,
             accounting: CircuitAccounting::Monetary(Box::new(MonetaryCircuit {
-                aid: babylon_material_circuit::AidBook::default(),
-                household_time: babylon_material_circuit::HouseholdTimeAccounting::NotModeled,
-                financial: babylon_material_circuit::FinancialInstitutions::empty(),
+                aid: AidBook::default(),
+                household_time: HouseholdTimeAccounting::NotModeled,
+                financial: FinancialInstitutions::empty(),
                 member_labor: vec![babylon_material_circuit::MemberLaborCapacityRow {
                     member_id: babylon_material_circuit::StaffingMemberId::from_bytes(
                         site.as_bytes(),
@@ -512,7 +515,7 @@ mod engine_test {
     fn actual_service_close_roundtrips_the_complete_receipt_envelope() {
         let state = opening();
         let connection = &state.service_connections[0];
-        let (state, _) = admit_material_purchase(
+        let (state, _) = babylon_material_circuit::admit_material_purchase(
             &state,
             MaterialPurchase::Service(ServiceOrder {
                 order_id: OrderId::from_bytes([9; 32]),
@@ -526,7 +529,7 @@ mod engine_test {
             Currency::from_micro_units(2),
         )
         .unwrap();
-        let result = advance_material_circuit(&state).unwrap();
+        let result = babylon_material_circuit::advance_material_circuit(&state).unwrap();
         let bytes = super::super::encode_material_receipts(1, &result).unwrap();
         let decoded = super::super::decode_material_receipts(&bytes).unwrap();
         assert_eq!(decoded.service_performance, result.service_performance);

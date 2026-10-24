@@ -2,16 +2,25 @@ use babylon_material_circuit::{
     CapacityRow, CommodityDefinition, CommodityKind, GoodId, LaborCapacityRow, LaborCoefficient,
     LogisticsNodeId, ProcessOutput, ProductionCommitment, SiteLogisticsNode,
 };
-use babylon_tick::material_world::{decode_material_receipts, MaterialWorldRegister};
+use babylon_tick::material_world::MaterialWorldRegister;
 
-use super::*;
+use super::super::ProductionProjectionError;
+use super::projection;
+use super::projection::{budgets, completed_totals};
+use crate::michigan_economy;
+use crate::production_observation::CompletedProductionLabor;
+use babylon_material_circuit::CapacitySupply;
+use babylon_material_circuit::CircuitAccounting;
+use babylon_material_circuit::{MaterialCircuitState, ProcessId, SiteId, UnitId};
+use babylon_tick::material_world;
+use babylon_tick::material_world::MaterialTickReceipts;
 
 fn shared_opening() -> MaterialCircuitState {
     let site = SiteId::from_bytes([1; 32]);
     let labor_unit = UnitId::from_bytes([2; 32]);
     let mut state = MaterialCircuitState {
-        capacity_supply: babylon_material_circuit::CapacitySupply::FiniteSchedule,
-        accounting: babylon_material_circuit::CircuitAccounting::PhysicalControl,
+        capacity_supply: CapacitySupply::FiniteSchedule,
+        accounting: CircuitAccounting::PhysicalControl,
         maintenance_binding: None,
         maintenance_service: None,
         period: 1,
@@ -98,14 +107,14 @@ fn committed_pair(
     (
         opening.state().clone(),
         next.register().state().clone(),
-        decode_material_receipts(next.receipt_bytes()).unwrap(),
+        material_world::decode_material_receipts(next.receipt_bytes()).unwrap(),
     )
 }
 
 #[test]
 fn shared_principal_is_counted_once_and_time_closes_from_actual_receipts() {
     let (opening, next, receipt) = committed_pair(shared_opening());
-    let rows = project_labor_accounts(&next, Some(&opening), Some(&receipt)).unwrap();
+    let rows = projection::project_labor_accounts(&next, Some(&opening), Some(&receipt)).unwrap();
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].next_opening_period, 2);
     assert_eq!(rows[0].next_opening_available, 30);
@@ -129,7 +138,7 @@ fn shared_principal_is_counted_once_and_time_closes_from_actual_receipts() {
     reversed.production.reverse();
     assert_eq!(
         rows,
-        project_labor_accounts(&next, Some(&opening), Some(&reversed)).unwrap()
+        projection::project_labor_accounts(&next, Some(&opening), Some(&reversed)).unwrap()
     );
     assert_eq!(
         opening.labor[0].available, 12,
@@ -147,7 +156,7 @@ fn exact_unit_principals_remain_separate_at_the_same_site() {
     budget.available = 6;
     state.labor.push(budget);
     let (opening, next, receipt) = committed_pair(state);
-    let rows = project_labor_accounts(&next, Some(&opening), Some(&receipt)).unwrap();
+    let rows = projection::project_labor_accounts(&next, Some(&opening), Some(&receipt)).unwrap();
     assert_eq!(rows.len(), 2);
     assert_eq!(rows[0].site_id, rows[1].site_id);
     assert_ne!(rows[0].unit_id, rows[1].unit_id);
@@ -213,23 +222,23 @@ fn inconsistent_accounts_refuse_instead_of_publishing_negative_or_unattributed_t
     let mut insufficient = opening.clone();
     insufficient.labor[0].available = 7;
     assert_eq!(
-        project_labor_accounts(&next, Some(&insufficient), Some(&receipt)),
+        projection::project_labor_accounts(&next, Some(&insufficient), Some(&receipt)),
         Err(ProductionProjectionError::State)
     );
     let mut duplicate = receipt.clone();
     duplicate.production.push(receipt.production[0].clone());
     assert_eq!(
-        project_labor_accounts(&next, Some(&opening), Some(&duplicate)),
+        projection::project_labor_accounts(&next, Some(&opening), Some(&duplicate)),
         Err(ProductionProjectionError::State)
     );
     let mut missing = receipt.clone();
     missing.production.pop();
     assert_eq!(
-        project_labor_accounts(&next, Some(&opening), Some(&missing)),
+        projection::project_labor_accounts(&next, Some(&opening), Some(&missing)),
         Err(ProductionProjectionError::State)
     );
     assert_eq!(
-        project_labor_accounts(&next, None, Some(&receipt)),
+        projection::project_labor_accounts(&next, None, Some(&receipt)),
         Err(ProductionProjectionError::History)
     );
     let mut duplicate_budget = opening.clone();
@@ -316,10 +325,10 @@ fn maintenance_labor_is_debited_once_and_stays_separate_from_production_and_hand
     }
     opening.capacities.extend(future);
     let (opening, next, receipt) = committed_pair(opening);
-    let rows = project_labor_accounts(&next, Some(&opening), Some(&receipt)).unwrap();
+    let rows = projection::project_labor_accounts(&next, Some(&opening), Some(&receipt)).unwrap();
     let provider = rows
         .iter()
-        .find(|row| row.site_id == digest_hex(&provider.as_bytes()))
+        .find(|row| row.site_id == michigan_economy::digest_hex(&provider.as_bytes()))
         .unwrap();
     let completed = serde_json::to_value(provider.completed.as_ref().unwrap()).unwrap();
     assert_eq!(completed["maintenance_needed"], 4);
@@ -330,14 +339,14 @@ fn maintenance_labor_is_debited_once_and_stays_separate_from_production_and_hand
     assert_eq!(completed["handling_used"], 0);
     let mut missing = receipt.clone();
     missing.maintenance = None;
-    assert!(project_labor_accounts(&next, Some(&opening), Some(&missing)).is_err());
+    assert!(projection::project_labor_accounts(&next, Some(&opening), Some(&missing)).is_err());
 }
 
 #[test]
 fn monetary_attendance_cannot_relabel_actual_production_as_idle_or_handling() {
     let (opening, next, receipt) =
         committed_pair(crate::production_projection::recurring_fixture::opening());
-    project_labor_accounts(&next, Some(&opening), Some(&receipt)).unwrap();
+    projection::project_labor_accounts(&next, Some(&opening), Some(&receipt)).unwrap();
     for as_idle in [true, false] {
         let mut changed = receipt.clone();
         let member = changed
@@ -365,7 +374,7 @@ fn monetary_attendance_cannot_relabel_actual_production_as_idle_or_handling() {
         }
         member.validate().unwrap();
         assert_eq!(
-            project_labor_accounts(&next, Some(&opening), Some(&changed)),
+            projection::project_labor_accounts(&next, Some(&opening), Some(&changed)),
             Err(ProductionProjectionError::History)
         );
     }

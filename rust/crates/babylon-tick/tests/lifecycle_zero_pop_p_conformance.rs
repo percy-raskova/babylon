@@ -44,7 +44,6 @@
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::memory::MemoryGraph;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
-use babylon_tick::run_once_into;
 
 const RULE: &str = include_str!("../content/rules/lifecycle.bsl");
 
@@ -60,7 +59,7 @@ const SCENARIO: &str = include_str!("../content/scenarios/lifecycle-zero-pop-p-c
 fn run() -> Result<(MemoryGraph, CollectingSink), String> {
     let mut graph = MemoryGraph::new();
     let mut sink = CollectingSink::default();
-    run_once_into(SCENARIO, RULE, &mut graph, &mut sink)?;
+    babylon_tick::run_once_into(SCENARIO, RULE, &mut graph, &mut sink)?;
     Ok((graph, sink))
 }
 

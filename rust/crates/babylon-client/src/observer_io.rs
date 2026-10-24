@@ -17,9 +17,9 @@ use runtime::PreparedObservation;
 pub(crate) use runtime::{campaign_preset, RuntimePipe, RuntimeSendError, LAUNCHER_REQUIRED};
 #[cfg(test)]
 use runtime::{
-    collect_observation, finish_shutdown, handle_commands, install_observation, playback, receive,
-    send_campaign_switch, start_observation, ContinuationPreference, ObservationCache,
-    ObservationCacheKey, ObservationRead, PendingObservation, PlaybackClock, ShutdownProgress,
+    collect_observation, finish_shutdown, handle_commands, playback, receive, send_campaign_switch,
+    start_observation, ObservationCache, ObservationCacheKey, ObservationRead, PendingObservation,
+    PlaybackClock, ShutdownProgress,
 };
 pub use runtime::{ObserverIoPlugin, ObserverSet};
 
@@ -30,9 +30,7 @@ use crate::observer_controls::{availability, ControlAvailability};
 #[cfg(test)]
 use crate::observer_ui::{ObserverCommand, ObserverFeedback, ObserverFrame, ObserverUiState};
 #[cfg(test)]
-use crate::ui::dossier_card::{
-    ActiveCountyDossier, DossierCampaignId, DossierFetchState, DossierPageView, DossierRefresh,
-};
+use crate::ui::dossier_card::DossierRefresh;
 #[cfg(test)]
 use babylon_persistence::observer_reader::{
     ObserverEconomyReader, ObserverEconomySnapshot, ObserverVisibility,
@@ -51,13 +49,22 @@ use bevy::prelude::*;
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
+    use crate::map_economy_lens::EconomyMetric;
     use crate::observer_audio::ObserverAudioSettings;
+    use crate::observer_progress::OperationProgress;
     use crate::observer_ui::ObserverDisclosure;
     use babylon_persistence::identity::CampaignId;
+    use babylon_persistence::runtime_session::RuntimeSessionErrorCode;
+    use babylon_persistence::ProductionEvidenceError;
+    use mpsc::Receiver;
+    use mpsc::Sender;
+    use std::collections::BTreeSet;
+    use std::time::Duration;
+    use uuid::Uuid;
 
     pub(crate) fn install_pending_command_fixture(
         app: &mut App,
-    ) -> (mpsc::Receiver<RuntimeSessionRequest>, ResponseSender) {
+    ) -> (Receiver<RuntimeSessionRequest>, ResponseSender) {
         let (requests, receiver) = mpsc::sync_channel(8);
         let (replies, responses) = mpsc::channel();
         app.world_mut()
@@ -103,7 +110,7 @@ pub(crate) mod tests {
         assert_eq!(app.world().resource::<ObserverSession>().context(), context);
         assert!(app
             .world()
-            .resource::<crate::observer_progress::OperationProgress>()
+            .resource::<OperationProgress>()
             .caption()
             .unwrap()
             .starts_with("Period 4 · Preparing commitments · "));
@@ -133,7 +140,7 @@ pub(crate) mod tests {
             app.update();
             assert!(app
                 .world()
-                .resource::<crate::observer_progress::OperationProgress>()
+                .resource::<OperationProgress>()
                 .caption()
                 .unwrap()
                 .contains("Preparing commitments"));
@@ -153,7 +160,7 @@ pub(crate) mod tests {
             assert_eq!(state.advance_pending(), transport_loss);
             assert!(app
                 .world()
-                .resource::<crate::observer_progress::OperationProgress>()
+                .resource::<OperationProgress>()
                 .caption()
                 .is_none());
         }
@@ -214,7 +221,7 @@ pub(crate) mod tests {
             }
             let mut wrong_scope = scope;
             if fault == "campaign" {
-                wrong_scope.campaign_id = Some(uuid::Uuid::from_u128(999).to_string());
+                wrong_scope.campaign_id = Some(Uuid::from_u128(999).to_string());
             }
             if fault == "epoch" {
                 wrong_scope.epoch += 1;
@@ -331,8 +338,8 @@ pub(crate) mod tests {
         assert_eq!(app.world().resource::<ObserverSession>().durable_tick, 4);
     }
 
-    fn command_app() -> (App, mpsc::Receiver<RuntimeSessionRequest>) {
-        let mut state = ObserverSession::new(CampaignId::from_uuid(uuid::Uuid::from_u128(1)));
+    fn command_app() -> (App, Receiver<RuntimeSessionRequest>) {
+        let mut state = ObserverSession::new(CampaignId::from_uuid(Uuid::from_u128(1)));
         state.ready(3, None);
         state.connected_fixture();
         state.foundation_digest = Some("foundation".into());
@@ -384,21 +391,21 @@ pub(crate) mod tests {
         }
     }
 
-    type ResponseSender = mpsc::Sender<Result<RuntimeSessionResponse, String>>;
+    type ResponseSender = Sender<Result<RuntimeSessionResponse, String>>;
 
-    pub(crate) fn quit_app() -> (App, mpsc::Receiver<RuntimeSessionRequest>, ResponseSender) {
+    pub(crate) fn quit_app() -> (App, Receiver<RuntimeSessionRequest>, ResponseSender) {
         let (mut app, requests) = command_app();
         let (responses, receiver) = mpsc::channel();
         app.world_mut().resource_mut::<RuntimePipe>().responses = Mutex::new(receiver);
         app.init_resource::<PlaybackClock>()
-            .init_resource::<crate::observer_progress::OperationProgress>()
+            .init_resource::<OperationProgress>()
             .add_systems(Update, receive.before(handle_commands));
         (app, requests, responses)
     }
 
     pub(crate) fn refuse_initial_switch(
         app: &mut App,
-        requests: &mpsc::Receiver<RuntimeSessionRequest>,
+        requests: &Receiver<RuntimeSessionRequest>,
         responses: &ResponseSender,
     ) -> CampaignId {
         let previous_scope = RuntimeSessionScope::default();
@@ -417,7 +424,7 @@ pub(crate) mod tests {
         };
         let (RuntimeSessionTarget::New { campaign_id, .. }
         | RuntimeSessionTarget::Open { campaign_id }) = target;
-        let campaign = CampaignId::from_uuid(uuid::Uuid::parse_str(&campaign_id).unwrap());
+        let campaign = CampaignId::from_uuid(Uuid::parse_str(&campaign_id).unwrap());
         let scope = RuntimeSessionScope {
             epoch: 1,
             campaign_id: Some(campaign_id),
@@ -433,7 +440,7 @@ pub(crate) mod tests {
             .send(Ok(RuntimeSessionResponse::Error {
                 request_id: Some(request_id),
                 scope,
-                code: babylon_persistence::runtime_session::RuntimeSessionErrorCode::StorageRefused,
+                code: RuntimeSessionErrorCode::StorageRefused,
                 tail: None,
             }))
             .unwrap();
@@ -527,9 +534,7 @@ pub(crate) mod tests {
         );
         dispatch(
             &mut app,
-            &[ObserverCommand::Lens(
-                crate::map_economy_lens::EconomyMetric::Employment,
-            )],
+            &[ObserverCommand::Lens(EconomyMetric::Employment)],
         );
         assert!(matches!(
             app.world().resource::<ObserverUiState>().lens,
@@ -605,10 +610,10 @@ pub(crate) mod tests {
             else {
                 panic!("one campaign switch");
             };
-            assert_eq!(scope, test_scope(uuid::Uuid::from_u128(1).to_string()));
+            assert_eq!(scope, test_scope(Uuid::from_u128(1).to_string()));
             match (command, target) {
                 (ObserverCommand::ReopenCampaign, RuntimeSessionTarget::Open { campaign_id }) => {
-                    assert_eq!(campaign_id, uuid::Uuid::from_u128(1).to_string());
+                    assert_eq!(campaign_id, Uuid::from_u128(1).to_string());
                 }
                 (
                     ObserverCommand::NewNationalCampaign,
@@ -680,11 +685,7 @@ pub(crate) mod tests {
         assert_eq!(state.durable_tick, 0);
         assert_eq!(
             state.error.as_deref(),
-            Some(
-                babylon_persistence::runtime_session::RuntimeSessionErrorCode::StorageRefused
-                    .to_string()
-                    .as_str()
-            )
+            Some(RuntimeSessionErrorCode::StorageRefused.to_string().as_str())
         );
         assert_eq!(
             availability(ObserverCommand::ReopenCampaign, state),
@@ -749,7 +750,7 @@ pub(crate) mod tests {
             .add_systems(Update, playback.after(handle_commands));
         app.world_mut()
             .resource_mut::<Time>()
-            .advance_by(std::time::Duration::from_secs(2));
+            .advance_by(Duration::from_secs(2));
         app.update();
         let state = app.world().resource::<ObserverSession>();
         assert!(!state.playing);
@@ -796,7 +797,7 @@ pub(crate) mod tests {
     #[test]
     fn idle_pipe_and_observation_polling_do_not_invalidate_the_session_each_frame() {
         let (mut app, _requests, responses) = quit_app();
-        app.init_resource::<crate::observer_progress::OperationProgress>()
+        app.init_resource::<OperationProgress>()
             .add_systems(
                 Update,
                 crate::observer_progress::track
@@ -875,7 +876,7 @@ pub(crate) mod tests {
             app.add_systems(Update, playback.after(finish_shutdown));
             app.world_mut()
                 .resource_mut::<Time>()
-                .advance_by(std::time::Duration::from_secs(2));
+                .advance_by(Duration::from_secs(2));
             let campaign_id = app
                 .world()
                 .resource::<ObserverSession>()
@@ -941,7 +942,7 @@ pub(crate) mod tests {
                 .archive_verified_tick = 2;
             let state = app.world().resource::<ObserverSession>();
             let campaign_id = if wrong_campaign {
-                uuid::Uuid::from_u128(999).to_string()
+                Uuid::from_u128(999).to_string()
             } else {
                 state.campaign.as_uuid().to_string()
             };
@@ -1097,7 +1098,7 @@ pub(crate) mod tests {
             .add_systems(Update, playback.after(handle_commands));
         app.world_mut()
             .resource_mut::<Time>()
-            .advance_by(std::time::Duration::from_secs(1));
+            .advance_by(Duration::from_secs(1));
         app.world_mut().resource_mut::<ObserverSession>().duration =
             Some(babylon_kernel::clock::CampaignDuration::Finite { final_period: 5 });
         dispatch(&mut app, &[ObserverCommand::TogglePlay]);
@@ -1208,14 +1209,14 @@ pub(crate) mod tests {
             ("freight loss", 4, false, true),
             ("production", 3, true, true),
         ] {
-            let mut state = ObserverSession::new(CampaignId::from_uuid(uuid::Uuid::from_u128(1)));
+            let mut state = ObserverSession::new(CampaignId::from_uuid(Uuid::from_u128(1)));
             state.ready(3, None);
             state.foundation_digest = Some("foundation".into());
             assert!(state.start_playback());
             let context = state.context();
             let snapshot = snapshot_with_event(&state, kind, event_period);
             let mut frame = ObserverFrame::default();
-            install_observation(
+            runtime::install_observation(
                 &mut state,
                 &context,
                 PreparedObservation::new(snapshot.clone()),
@@ -1228,7 +1229,7 @@ pub(crate) mod tests {
             );
             assert!(frame.0.is_some());
             assert!(state.start_playback());
-            install_observation(
+            runtime::install_observation(
                 &mut state,
                 &context,
                 PreparedObservation::new(snapshot),
@@ -1244,7 +1245,7 @@ pub(crate) mod tests {
 
     #[test]
     fn stale_and_known_observations_cannot_interrupt_or_install_hidden_period_events() {
-        let mut state = ObserverSession::new(CampaignId::from_uuid(uuid::Uuid::from_u128(1)));
+        let mut state = ObserverSession::new(CampaignId::from_uuid(Uuid::from_u128(1)));
         state.ready(3, None);
         state.foundation_digest = Some("foundation".into());
         let stale_context = state.context();
@@ -1252,7 +1253,7 @@ pub(crate) mod tests {
         state.set_perspective(Perspective::PlayerKnowledge);
         assert!(state.start_playback());
         let mut frame = ObserverFrame::default();
-        install_observation(
+        runtime::install_observation(
             &mut state,
             &stale_context,
             PreparedObservation::new(stale_snapshot),
@@ -1265,7 +1266,7 @@ pub(crate) mod tests {
         let mut known = snapshot_with_event(&state, "freight loss", 3);
         known.visibility = ObserverVisibility::KnownPreview;
         known.production = None;
-        install_observation(
+        runtime::install_observation(
             &mut state,
             &context,
             PreparedObservation::new(known),
@@ -1278,30 +1279,27 @@ pub(crate) mod tests {
 
     #[test]
     fn installed_evidence_is_atomic_with_snapshot_and_stale_reads_preserve_it() {
-        let mut state = ObserverSession::new(CampaignId::from_uuid(uuid::Uuid::from_u128(1)));
+        let mut state = ObserverSession::new(CampaignId::from_uuid(Uuid::from_u128(1)));
         state.ready(3, None);
         state.foundation_digest = Some("foundation".into());
         let context = state.context();
         let mut frame = ObserverFrame::default();
         let snapshot = snapshot_with_event(&state, "production", 3);
-        install_observation(
+        runtime::install_observation(
             &mut state,
             &context,
             PreparedObservation {
                 snapshot,
-                evidence: Err(babylon_persistence::ProductionEvidenceError::Bound),
+                evidence: Err(ProductionEvidenceError::Bound),
             },
             &mut frame,
             false,
         );
-        assert_eq!(
-            frame.1,
-            Some(Err(babylon_persistence::ProductionEvidenceError::Bound))
-        );
+        assert_eq!(frame.1, Some(Err(ProductionEvidenceError::Bound)));
         assert_eq!(frame.0.as_ref().unwrap().resolve_tick, 3);
         state.set_perspective(Perspective::PlayerKnowledge);
         let stale_snapshot = snapshot_with_event(&state, "production", 3);
-        install_observation(
+        runtime::install_observation(
             &mut state,
             &context,
             PreparedObservation {
@@ -1311,15 +1309,12 @@ pub(crate) mod tests {
             &mut frame,
             false,
         );
-        assert_eq!(
-            frame.1,
-            Some(Err(babylon_persistence::ProductionEvidenceError::Bound))
-        );
+        assert_eq!(frame.1, Some(Err(ProductionEvidenceError::Bound)));
         let context = state.context();
         let mut known = snapshot_with_event(&state, "production", 3);
         known.visibility = ObserverVisibility::KnownPreview;
         known.production = None;
-        install_observation(
+        runtime::install_observation(
             &mut state,
             &context,
             PreparedObservation::new(known),
@@ -1441,12 +1436,12 @@ pub(crate) mod tests {
         requests.try_recv().unwrap();
         app.world_mut()
             .resource_mut::<Time<Real>>()
-            .advance_by(std::time::Duration::from_secs(149));
+            .advance_by(Duration::from_secs(149));
         app.update();
         assert_eq!(exit_count(&app), 0);
         app.world_mut()
             .resource_mut::<Time<Real>>()
-            .advance_by(std::time::Duration::from_secs(1));
+            .advance_by(Duration::from_secs(1));
         app.update();
         assert_eq!(exit_count(&app), 1);
         assert_eq!(app.world().resource::<ObserverSession>().durable_tick, 3);
@@ -1496,7 +1491,7 @@ pub(crate) mod tests {
         }
         app.world_mut()
             .resource_mut::<Time>()
-            .advance_by(std::time::Duration::from_secs(1));
+            .advance_by(Duration::from_secs(1));
         for _ in 0..5 {
             app.update();
         }
@@ -1621,7 +1616,7 @@ pub(crate) mod tests {
     #[test]
     fn next_music_track_reaches_all_authored_recordings_without_transport() {
         let (mut app, receiver) = command_app();
-        let mut visited = std::collections::BTreeSet::new();
+        let mut visited = BTreeSet::new();
         for _ in 0..36 {
             visited.insert(app.world().resource::<ObserverAudioSettings>().track);
             dispatch(&mut app, &[ObserverCommand::MusicTrack]);

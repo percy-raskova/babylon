@@ -34,7 +34,6 @@
 use babylon_bsl::evaluator::Value;
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::memory::MemoryGraph;
-use babylon_tick::run_once_into;
 
 const SCENARIO: &str = r"
 (scenario scale-op-e2e/one-territory
@@ -62,7 +61,7 @@ const RULE: &str = r#"
 fn a_rule_scaling_currency_by_a_declared_domain_ratio_runs_through_run_once() {
     let mut graph = MemoryGraph::new();
     let mut sink = CollectingSink::default();
-    let report = run_once_into(SCENARIO, RULE, &mut graph, &mut sink)
+    let report = babylon_tick::run_once_into(SCENARIO, RULE, &mut graph, &mut sink)
         .expect("Currency x declared-domain Ratio must clear the whole seam");
 
     assert_eq!(report.fired, 1);
@@ -88,11 +87,13 @@ fn a_rule_scaling_currency_by_a_declared_domain_ratio_runs_through_run_once() {
 fn the_declared_call_is_deterministic_across_two_full_runs() {
     let mut graph_a = MemoryGraph::new();
     let mut sink_a = CollectingSink::default();
-    let a = run_once_into(SCENARIO, RULE, &mut graph_a, &mut sink_a).expect("first run");
+    let a =
+        babylon_tick::run_once_into(SCENARIO, RULE, &mut graph_a, &mut sink_a).expect("first run");
 
     let mut graph_b = MemoryGraph::new();
     let mut sink_b = CollectingSink::default();
-    let b = run_once_into(SCENARIO, RULE, &mut graph_b, &mut sink_b).expect("second run");
+    let b =
+        babylon_tick::run_once_into(SCENARIO, RULE, &mut graph_b, &mut sink_b).expect("second run");
 
     assert_eq!(a.after, b.after);
     assert_eq!(sink_a.events, sink_b.events);
@@ -125,7 +126,8 @@ fn a_ratio_over_its_declared_cap_fails_the_whole_tick_loudly() {
 ";
     let mut graph = MemoryGraph::new();
     let mut sink = CollectingSink::default();
-    let err = run_once_into(OVER_CAP_SCENARIO, RULE, &mut graph, &mut sink).unwrap_err();
+    let err =
+        babylon_tick::run_once_into(OVER_CAP_SCENARIO, RULE, &mut graph, &mut sink).unwrap_err();
     assert!(
         err.contains("exceeds its own :cap"),
         "unexpected message: {err}"
@@ -148,7 +150,7 @@ fn an_uncapped_declared_domain_ratio_also_clears_the_whole_seam() {
 ";
     let mut graph = MemoryGraph::new();
     let mut sink = CollectingSink::default();
-    let report = run_once_into(UNCAPPED_SCENARIO, RULE, &mut graph, &mut sink)
+    let report = babylon_tick::run_once_into(UNCAPPED_SCENARIO, RULE, &mut graph, &mut sink)
         .expect("an uncapped declared-domain Ratio must still clear the seam");
     assert_eq!(report.fired, 1);
     let (_, payload) = &sink.events[0];
@@ -198,7 +200,7 @@ const FLOOR_RULE: &str = r#"
 fn a_rule_scaling_currency_by_a_floored_and_capped_ratio_runs_through_run_once() {
     let mut graph = MemoryGraph::new();
     let mut sink = CollectingSink::default();
-    let report = run_once_into(FLOOR_SCENARIO, FLOOR_RULE, &mut graph, &mut sink)
+    let report = babylon_tick::run_once_into(FLOOR_SCENARIO, FLOOR_RULE, &mut graph, &mut sink)
         .expect("Currency x a floored-and-capped Ratio must clear the whole seam");
     assert_eq!(report.fired, 1);
     let (_, payload) = &sink.events[0];
@@ -228,7 +230,8 @@ fn a_modded_entropy_factor_below_its_floor_fails_the_whole_tick_loudly() {
 ";
     let mut graph = MemoryGraph::new();
     let mut sink = CollectingSink::default();
-    let err = run_once_into(BELOW_FLOOR_SCENARIO, FLOOR_RULE, &mut graph, &mut sink).unwrap_err();
+    let err = babylon_tick::run_once_into(BELOW_FLOOR_SCENARIO, FLOOR_RULE, &mut graph, &mut sink)
+        .unwrap_err();
     assert!(
         err.contains("does not exceed its own :floor"),
         "unexpected message: {err}"
@@ -250,7 +253,8 @@ fn a_modded_entropy_factor_exactly_at_its_floor_fails_the_whole_tick_loudly() {
 ";
     let mut graph = MemoryGraph::new();
     let mut sink = CollectingSink::default();
-    let err = run_once_into(AT_FLOOR_SCENARIO, FLOOR_RULE, &mut graph, &mut sink).unwrap_err();
+    let err = babylon_tick::run_once_into(AT_FLOOR_SCENARIO, FLOOR_RULE, &mut graph, &mut sink)
+        .unwrap_err();
     assert!(
         err.contains("does not exceed its own :floor"),
         "unexpected message: {err}"
@@ -326,7 +330,7 @@ fn a_guard_gated_ratio_multiply_fires_when_the_channel_is_active() {
     );
     let mut graph = MemoryGraph::new();
     let mut sink = CollectingSink::default();
-    let report = run_once_into(&scenario, GATED_RULE_TEMPLATE, &mut graph, &mut sink)
+    let report = babylon_tick::run_once_into(&scenario, GATED_RULE_TEMPLATE, &mut graph, &mut sink)
         .expect("a guard-gated Currency x Ratio effect must clear the whole seam");
     assert_eq!(report.fired, 1);
     assert_eq!(
@@ -363,7 +367,7 @@ fn a_guard_gated_ratio_multiply_never_evaluates_when_the_channel_is_off() {
     );
     let mut graph = MemoryGraph::new();
     let mut sink = CollectingSink::default();
-    let report = run_once_into(&scenario, GATED_RULE_TEMPLATE, &mut graph, &mut sink)
+    let report = babylon_tick::run_once_into(&scenario, GATED_RULE_TEMPLATE, &mut graph, &mut sink)
         .expect("a false guard must skip its effect, not fail the tick");
     assert_eq!(
         report.fired, 1,

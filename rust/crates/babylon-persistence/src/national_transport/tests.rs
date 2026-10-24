@@ -1,14 +1,14 @@
-use super::*;
+use super::artifact::{NationalTransportError, ARTIFACT};
+use super::validate;
 
-use super::parse;
-
+use super::artifact;
 use serde_json::{json, Value};
 
 fn document() -> Value {
-    serde_json::from_str(&decode_gzip(ARTIFACT).unwrap()).unwrap()
+    serde_json::from_str(&artifact::decode_gzip(ARTIFACT).unwrap()).unwrap()
 }
 fn refused(value: &Value) -> NationalTransportError {
-    parse(&serde_json::to_string(value).unwrap()).unwrap_err()
+    super::parse(&serde_json::to_string(value).unwrap()).unwrap_err()
 }
 #[test]
 fn malformed_mode_and_bulk_air_are_refused() {
@@ -69,7 +69,7 @@ fn decimal_and_compression_refuse_nonfinite_overflow_and_trailing_members() {
     let mut bytes = ARTIFACT.to_vec();
     bytes.extend_from_slice(ARTIFACT);
     assert_eq!(
-        decode_gzip(&bytes),
+        artifact::decode_gzip(&bytes),
         Err(NationalTransportError::Compression)
     );
 }

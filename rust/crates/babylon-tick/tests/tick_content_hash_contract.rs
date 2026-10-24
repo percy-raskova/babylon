@@ -1,23 +1,24 @@
 use std::collections::{BTreeSet, HashMap};
 
 use babylon_bsl::evaluator::Value as BslValue;
-use babylon_bsl::identity_codec::{
-    encode_runtime_value, encode_stable_bsl_value, project_stable_value, StableBslValue,
-};
+use babylon_bsl::identity_codec::StableBslValue;
 use babylon_bsl::query::EdgeKey;
 use babylon_graph::memory::MemoryGraph;
 use babylon_graph::stable_element::{StableElementKey, StableElementResolver};
-use babylon_graph::stable_state::encode_stable_graph_state;
 use babylon_graph::substrate::{GraphSubstrate, HyperedgeId, NodeId};
+use babylon_kernel::content_digest::{sha256_of, ContentDigest};
+use babylon_kernel::currency::Currency;
 use babylon_kernel::replay::{ReplaySeed, ReplaySessionId, RngDomain};
+use babylon_kernel::rng::{seed_for, KernelRng};
+use babylon_kernel::scalars::Ratio;
 use babylon_kernel::tick_content_hash::{
     OrderedPracticeActionBatchDigest, PreparedEnvironmentDigest, RefDigest, StableWorldDigest,
     TickContentParts, TickContentPreimage, TickPayloadDigest,
 };
-use babylon_kernel::{
-    content_digest::sha256_of, content_digest::ContentDigest, currency::Currency, rng::seed_for,
-    rng::KernelRng, scalars::Ratio, H3CellId, H3CellIdError,
-};
+use babylon_kernel::{H3CellId, H3CellIdError};
+
+use babylon_bsl::identity_codec;
+use babylon_graph::stable_state;
 use babylon_practice_contract::OrderedPracticeActionBatch;
 use serde::Deserialize;
 use serde_json::Value;
@@ -368,7 +369,7 @@ fn production_stable_graph_matches_cross_allocation_vectors() {
             &hyperedge_names,
         )
         .unwrap();
-        let prior = encode_stable_graph_state(&graph, &resolver).unwrap();
+        let prior = stable_state::encode_stable_graph_state(&graph, &resolver).unwrap();
         assert_eq!(
             prior.canonical_bytes(),
             hex_bytes(text(
@@ -384,7 +385,7 @@ fn production_stable_graph_matches_cross_allocation_vectors() {
         graph
             .update_node(workers, "social-class/active", 2.5)
             .unwrap();
-        let result = encode_stable_graph_state(&graph, &resolver).unwrap();
+        let result = stable_state::encode_stable_graph_state(&graph, &resolver).unwrap();
         assert_eq!(
             result.canonical_bytes(),
             hex_bytes(text(
@@ -457,12 +458,13 @@ fn stable_bsl_projection_reuses_the_governed_stable_element_bytes() {
     ];
 
     for (tick_id, runtime_value) in cases {
-        let projected = project_stable_value(&runtime_value, &resolver)
+        let projected = identity_codec::project_stable_value(&runtime_value, &resolver)
             .expect("runtime reference projects through the sealed resolver");
         let mut projected_bytes = Vec::new();
-        encode_stable_bsl_value(&projected, &mut projected_bytes).expect("stable value encodes");
+        identity_codec::encode_stable_bsl_value(&projected, &mut projected_bytes)
+            .expect("stable value encodes");
         let mut runtime_bytes = Vec::new();
-        encode_runtime_value(&runtime_value, &resolver, &mut runtime_bytes)
+        identity_codec::encode_runtime_value(&runtime_value, &resolver, &mut runtime_bytes)
             .expect("runtime value encodes");
         let tick_bytes = hex_bytes(text(&row_by_id(&vectors, tick_id).data, "canonical_hex"));
 
@@ -471,7 +473,7 @@ fn stable_bsl_projection_reuses_the_governed_stable_element_bytes() {
     }
 
     let mut other_scenario_bytes = Vec::new();
-    encode_stable_bsl_value(
+    identity_codec::encode_stable_bsl_value(
         &StableBslValue::Node(StableElementKey::Node {
             scenario: "demo/other-scenario".to_owned(),
             local_name: "workers".to_owned(),

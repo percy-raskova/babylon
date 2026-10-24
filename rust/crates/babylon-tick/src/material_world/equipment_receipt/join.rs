@@ -1,13 +1,16 @@
 //! Evidence joins use present physical and monetary rows, never inferred absent state.
-use super::{
-    Currency, EquipmentWearReceipt, InstallationReceipt, InvestmentReceipt, MaterialWorldError,
-};
+use super::Currency;
+use super::EquipmentWearReceipt;
+use super::InstallationReceipt;
+use super::InvestmentReceipt;
+use super::MaterialWorldError;
 use babylon_material_circuit::{
     AccountId, IncomeReceipt, MemberLaborUseReceipt, MoneyLocation, MoneyTransferPurpose,
     MoneyTransferReceipt, OutboundOrderId, ProductionReceipt, SiteId,
 };
 use std::collections::{BTreeMap, BTreeSet};
-type Result<T> = std::result::Result<T, MaterialWorldError>;
+use std::result::Result as StdResult;
+type Result<T> = StdResult<T, MaterialWorldError>;
 type Work = BTreeMap<SiteId, (u64, Currency)>;
 fn add(rows: &mut Work, site: SiteId, hours: u64, wages: Currency) -> Result<()> {
     let value = rows

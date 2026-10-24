@@ -2,14 +2,19 @@
 //! Real road and intervention qualification remain separate acceptance evidence.
 
 use super::{
-    advance_material_period, identity_hex, install_reader_role, provision_observer_role,
     CampaignId, DisposableTarget, DurableMaterialRuntime, MichiganContentPreset,
     MichiganDeliveryPreset, ObserverEconomyReader, ObserverVisibility, Uuid,
 };
-use babylon_persistence::{
-    observer_reader::ObserverEconomySnapshot, production_observation::ProductionSnapshot,
-};
-use std::{collections::BTreeSet, time::Instant};
+use babylon_persistence::observer_reader::ObserverEconomySnapshot;
+use babylon_persistence::production_observation::ProductionSnapshot;
+
+use babylon_graph::hypergraph_store::HypergraphStore;
+use babylon_persistence::michigan_material::MichiganMaterialCatalog;
+use babylon_tick::material_replay::MaterialReplaySession;
+use std::collections::BTreeSet;
+use std::time::Duration;
+use std::time::Instant;
+use synthetic::SyntheticSources;
 
 #[path = "../fixtures/statewide_synthetic.rs"]
 mod synthetic;
@@ -84,7 +89,7 @@ fn assert_final_orders(rows: &ProductionSnapshot, runtime: &DurableMaterialRunti
             let committed = state
                 .final_demand_orders
                 .iter()
-                .find(|row| identity_hex(row.order_id.as_bytes()) == order.order_id)
+                .find(|row| super::identity_hex(row.order_id.as_bytes()) == order.order_id)
                 .unwrap();
             assert_eq!(order.fulfilled, committed.fulfilled);
             assert_eq!(order.ordered, committed.ordered);
@@ -141,8 +146,8 @@ fn assert_same_world(left: &DurableMaterialRuntime, right: &DurableMaterialRunti
 fn statewide_synthetic_circulation_survives_sixteen_persisted_periods_and_held_history() {
     let mut target = DisposableTarget::create();
     let start = Instant::now();
-    let sources = synthetic::SyntheticSources::create();
-    let catalog = babylon_persistence::michigan_material::MichiganMaterialCatalog::load_for_preset(
+    let sources = SyntheticSources::create();
+    let catalog = MichiganMaterialCatalog::load_for_preset(
         &sources.path("defines.toml"),
         MichiganDeliveryPreset::StatewideBaseline,
     )
@@ -160,20 +165,20 @@ fn statewide_synthetic_circulation_survives_sixteen_persisted_periods_and_held_h
     let mut reference = reference_foundation.into_session().unwrap();
     // Saved PostgreSQL authority must outlive every current input file.
     drop(sources);
-    install_reader_role(&target.writer).unwrap();
-    provision_observer_role(&target.writer).unwrap();
+    super::install_reader_role(&target.writer).unwrap();
+    super::provision_observer_role(&target.writer).unwrap();
     let config = target.login("babylon_observer", "statewidescale");
     let observer =
         ObserverEconomyReader::connect(&config, ObserverVisibility::FullObserver).unwrap();
     let creation = start.elapsed();
     let mut held = Vec::new();
-    let mut advance_time = std::time::Duration::ZERO;
-    let mut projection_time = std::time::Duration::ZERO;
-    let mut resume_time = std::time::Duration::ZERO;
+    let mut advance_time = Duration::ZERO;
+    let mut projection_time = Duration::ZERO;
+    let mut resume_time = Duration::ZERO;
     for period in 0..=16 {
         if period > 0 {
             let began = Instant::now();
-            advance_material_period(&mut runtime);
+            super::advance_material_period(&mut runtime);
             advance_reference(&mut reference);
             advance_time += began.elapsed();
             assert_eq!(
@@ -227,11 +232,7 @@ fn statewide_synthetic_circulation_survives_sixteen_persisted_periods_and_held_h
     eprintln!("synthetic statewide PostgreSQL: creation={creation:?}, advance16_with_reference={advance_time:?}, projection17={projection_time:?}, resume3={resume_time:?}");
 }
 
-fn advance_reference(
-    reference: &mut babylon_tick::material_replay::MaterialReplaySession<
-        babylon_graph::hypergraph_store::HypergraphStore,
-    >,
-) {
+fn advance_reference(reference: &mut MaterialReplaySession<HypergraphStore>) {
     use babylon_bsl::structural_verbs::CollectingSink;
     use babylon_practice_contract::OrderedPracticeActionBatch;
     use babylon_tick::replay_session::ReplayCommitDisposition;

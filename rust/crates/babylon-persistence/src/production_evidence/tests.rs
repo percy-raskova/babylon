@@ -1,25 +1,44 @@
+use std::io::Write;
 use std::sync::OnceLock;
 
 use babylon_bsl::structural_verbs::CollectingSink;
-use babylon_graph::{hypergraph_store::HypergraphStore, stable_state::StableGraphState};
+use babylon_graph::hypergraph_store::HypergraphStore;
+use babylon_graph::stable_state::StableGraphState;
+
 use babylon_practice_contract::OrderedPracticeActionBatch;
-use babylon_tick::{
-    material_replay::PreparedMaterialTick, material_staffing::StaffingComposition,
-    material_world::decode_material_receipts, replay_session::ReplayCommitDisposition,
-};
+use babylon_tick::material_replay::PreparedMaterialTick;
+use babylon_tick::material_staffing::StaffingComposition;
+use babylon_tick::replay_session::ReplayCommitDisposition;
+
 use serde_json::Value;
 
-use super::*;
-use crate::{
-    identity::CampaignId,
-    material_envelope::CommittedMaterialTickEnvelope,
-    michigan_content::MichiganContentPreset,
-    michigan_economy::digest_hex,
-    michigan_material::MichiganDeliveryPreset,
-    production_observation::ProductionSnapshot,
-    production_projection::{project_material_observation, staffing::project_staffing_accounts},
-    runtime::prepare_committed_tick,
+use super::evidence;
+use super::evidence::{
+    diagnostic_production_fields, EvidenceScope, EvidenceWriter, ProductionEvidenceDigest,
+    ProductionEvidenceError, DOMAIN, MAX_EVIDENCE_BYTES, MAX_ROWS, VERSION,
 };
+use crate::identity::CampaignId;
+use crate::material_envelope::CommittedMaterialTickEnvelope;
+use crate::michigan_content::MichiganContentPreset;
+use crate::michigan_economy;
+use crate::michigan_material::MichiganDeliveryPreset;
+use crate::observer_reader::{ObserverEconomySnapshot, ObserverVisibility};
+use crate::production_observation::PhysicalRouteIndex;
+use crate::production_observation::ProductionFreightCapacityOrder;
+use crate::production_observation::ProductionSnapshot;
+use crate::production_observation::ProductionStaffingAccount;
+use crate::production_projection;
+use crate::production_projection::staffing;
+use crate::runtime;
+use crate::GoodsPriceBasis;
+use crate::GoodsPriceReason;
+use crate::ProductionHouseholdKind;
+use babylon_tick::choice_receipt::ChoiceReceiptRef;
+use babylon_tick::material_world;
+use sha2::{Digest, Sha256};
+use std::collections::BTreeSet;
+use std::io;
+use uuid::Uuid;
 
 /// Exercises the existing engine, canonical envelope, publication and projector.
 /// The commit callback is an in-memory sink; this is not live-Postgres evidence.
@@ -33,18 +52,18 @@ fn published_observations() -> &'static [ObserverEconomySnapshot] {
         let foundation_digest = foundation.digest();
         let composition = foundation.labor().clone();
         let mut session = foundation.into_session().unwrap();
-        let campaign = CampaignId::from_uuid(uuid::Uuid::from_u128(293));
+        let campaign = CampaignId::from_uuid(Uuid::from_u128(293));
         let mut observation = ObserverEconomySnapshot {
             campaign_id: campaign.as_uuid().to_string(),
             resolve_tick: 0,
-            foundation_digest: digest_hex(&foundation_digest),
+            foundation_digest: michigan_economy::digest_hex(&foundation_digest),
             nominal_world_hash: None,
             tick_content_hash: None,
             envelope_digest: None,
             visibility: ObserverVisibility::FullObserver,
             counties: vec![],
             production: Some(
-                project_material_observation(
+                production_projection::project_material_observation(
                     &crate::test_support::catalog(),
                     preset,
                     session.material(),
@@ -54,15 +73,16 @@ fn published_observations() -> &'static [ObserverEconomySnapshot] {
                 .unwrap(),
             ),
         };
-        observation.production.as_mut().unwrap().staffing_accounts = project_staffing_accounts(
-            &composition,
-            &session.graph_session().stable_graph_state().unwrap(),
-            session.material(),
-            None,
-            &[],
-            None,
-        )
-        .unwrap();
+        observation.production.as_mut().unwrap().staffing_accounts =
+            staffing::project_staffing_accounts(
+                &composition,
+                &session.graph_session().stable_graph_state().unwrap(),
+                session.material(),
+                None,
+                &[],
+                None,
+            )
+            .unwrap();
         let mut result = vec![observation.clone()];
         let mut history = Vec::new();
         let mut sink = CollectingSink::default();
@@ -77,8 +97,10 @@ fn published_observations() -> &'static [ObserverEconomySnapshot] {
             let prepared = session.prepare_advance(&actions).unwrap();
             let staffing = prepared_staffing(&composition, &opening_graph, &prepared);
             let identity = *prepared.identity();
-            let receipt = decode_material_receipts(prepared.material().receipt_bytes()).unwrap();
-            let families = prepare_committed_tick(prepared.graph_report())
+            let receipt =
+                material_world::decode_material_receipts(prepared.material().receipt_bytes())
+                    .unwrap();
+            let families = runtime::prepare_committed_tick(prepared.graph_report())
                 .unwrap()
                 .into_material_families(identity.tick_content_hash())
                 .unwrap();
@@ -97,11 +119,14 @@ fn published_observations() -> &'static [ObserverEconomySnapshot] {
                 .unwrap();
             history.push((opening.clone(), receipt, ack.receipt_digest()));
             observation.resolve_tick = ack.resolve_tick();
-            observation.tick_content_hash = Some(digest_hex(ack.tick_content_hash().as_bytes()));
-            observation.envelope_digest = Some(digest_hex(&envelope.digest()));
-            observation.nominal_world_hash = Some(digest_hex(&ack.result_world_hash()));
+            observation.tick_content_hash = Some(michigan_economy::digest_hex(
+                ack.tick_content_hash().as_bytes(),
+            ));
+            observation.envelope_digest = Some(michigan_economy::digest_hex(&envelope.digest()));
+            observation.nominal_world_hash =
+                Some(michigan_economy::digest_hex(&ack.result_world_hash()));
             observation.production = Some(
-                project_material_observation(
+                production_projection::project_material_observation(
                     &crate::test_support::catalog(),
                     preset,
                     session.material(),
@@ -121,7 +146,7 @@ fn prepared_staffing(
     composition: &StaffingComposition,
     opening: &StableGraphState,
     prepared: &PreparedMaterialTick<HypergraphStore>,
-) -> Vec<crate::production_observation::ProductionStaffingAccount> {
+) -> Vec<ProductionStaffingAccount> {
     let report = prepared.graph_report();
     let events = report
         .successful_event_batch()
@@ -131,12 +156,12 @@ fn prepared_staffing(
             emitting_rule: event.emitting_rule().to_owned(),
             choice_receipt_ordinal: event
                 .choice_receipt()
-                .map(babylon_tick::choice_receipt::ChoiceReceiptRef::encounter_ordinal),
+                .map(ChoiceReceiptRef::encounter_ordinal),
             event_type: event.event_type().to_owned(),
             fields: event.fields().to_vec(),
         })
         .collect::<Vec<_>>();
-    project_staffing_accounts(
+    staffing::project_staffing_accounts(
         composition,
         report.result_stable_graph(),
         prepared.material().register(),
@@ -286,7 +311,7 @@ fn household_disclosure(production: &mut ProductionSnapshot) {
     production
         .household_accounts
         .push(crate::ProductionHouseholdAccount {
-            kind: crate::ProductionHouseholdKind::Ordinary,
+            kind: ProductionHouseholdKind::Ordinary,
             demand_principal_id: final_account.demand_principal_id.clone(),
             location: final_account.location,
             good_id: final_account.good_id.clone(),
@@ -359,9 +384,12 @@ fn diagnostic_field_census_reconciles_the_complete_serialized_scope() {
         production: observation.production.as_ref().unwrap(),
     };
     let encoded = serde_json::to_vec(&scope).unwrap();
-    assert_eq!(diagnostic_value_bytes(&scope).unwrap(), encoded.len());
-    assert!(diagnostic_field_sizes(&scope, encoded.len()).is_ok());
-    assert!(diagnostic_field_sizes(&scope, encoded.len() + 1).is_err());
+    assert_eq!(
+        evidence::diagnostic_value_bytes(&scope).unwrap(),
+        encoded.len()
+    );
+    assert!(evidence::diagnostic_field_sizes(&scope, encoded.len()).is_ok());
+    assert!(evidence::diagnostic_field_sizes(&scope, encoded.len() + 1).is_err());
     let admitted = observation.production_evidence_digest().unwrap().unwrap();
     assert_eq!(admitted.body_bytes(), encoded.len());
 }
@@ -370,7 +398,7 @@ fn diagnostic_field_census_reconciles_the_complete_serialized_scope() {
 fn collective_resident_goods_preserve_person_needs_without_inventing_households() {
     let mut observation = full_disclosure();
     let household = &mut observation.production.as_mut().unwrap().household_accounts[0];
-    household.kind = crate::ProductionHouseholdKind::CollectiveResidence;
+    household.kind = ProductionHouseholdKind::CollectiveResidence;
     household.household_count = 0;
     assert!(observation.production_evidence_digest().is_ok());
 }
@@ -757,7 +785,7 @@ fn buffered_evidence_preserves_every_byte_across_chunks_and_exact_u128() {
     };
     output.hash.update(DOMAIN);
     output.hash.update(VERSION.to_be_bytes());
-    encode_evidence(&mut output, &value).unwrap();
+    evidence::encode_evidence(&mut output, &value).unwrap();
     assert_eq!(output.remaining, 0);
     assert!(!output.bound);
     let actual: [u8; 32] = output.hash.finalize().into();
@@ -771,7 +799,7 @@ fn buffered_evidence_refuses_a_byte_limit_crossed_only_by_the_final_flush() {
         remaining: 2,
         bound: false,
     };
-    assert!(encode_evidence(&mut output, &"x").is_err());
+    assert!(evidence::encode_evidence(&mut output, &"x").is_err());
     assert!(output.bound);
     assert_eq!(output.remaining, 2);
 }
@@ -958,8 +986,8 @@ fn price_disclosure(production: &mut ProductionSnapshot) {
                 next_price_micro: 4,
                 unserved_quantity: 0,
                 closing_stock: 0,
-                reason: crate::GoodsPriceReason::CostPressure,
-                cost_basis: crate::GoodsPriceBasis::Released,
+                reason: GoodsPriceReason::CostPressure,
+                cost_basis: GoodsPriceBasis::Released,
                 basis_quantity: 2,
                 carrying_cost_micro: 7,
                 handling_wages_micro: 1,
@@ -1058,7 +1086,7 @@ fn physical_definitions_share_paths_without_merging_supplier_quantities() {
     let rows = observation.production.as_mut().unwrap();
     let definitions = rows.physical_routes.len();
     rows.routes.push(second.clone());
-    let index = crate::production_observation::PhysicalRouteIndex::try_new(rows).unwrap();
+    let index = PhysicalRouteIndex::try_new(rows).unwrap();
     assert!(std::ptr::eq(
         index.get(&original).unwrap(),
         index.get(&second).unwrap()
@@ -1110,7 +1138,7 @@ fn evidence_v17_census_covers_every_normalized_production_field() {
     assert_eq!(VERSION, 17);
     assert_eq!(DOMAIN, b"babylon.production-observation-evidence.v17\0");
     let mut observation = committed();
-    canonicalize_production(observation.production.as_mut().unwrap());
+    evidence::canonicalize_production(observation.production.as_mut().unwrap());
     let scope = EvidenceScope {
         campaign_id: &observation.campaign_id,
         resolve_tick: observation.resolve_tick,
@@ -1127,7 +1155,8 @@ fn evidence_v17_census_covers_every_normalized_production_field() {
             .len(),
         25
     );
-    diagnostic_field_sizes(&scope, diagnostic_value_bytes(&scope).unwrap()).unwrap();
+    evidence::diagnostic_field_sizes(&scope, evidence::diagnostic_value_bytes(&scope).unwrap())
+        .unwrap();
 }
 
 #[test]
@@ -1259,7 +1288,7 @@ fn freight_factoring_preserves_every_occurrence_without_expanded_owned_vectors()
         })
         .collect();
     assert_eq!(expanded, expected);
-    let unique: std::collections::BTreeSet<_> = expected.iter().collect();
+    let unique: BTreeSet<_> = expected.iter().collect();
     assert_eq!(definitions.len(), unique.len());
     let before = digest(&mut observation);
     let production = observation.production.as_mut().unwrap();
@@ -1337,8 +1366,7 @@ fn raw_freight_identity_retains_full_u128_even_when_arithmetic_admission_refuses
     let original = crate::production_observation::freight_order_identity(&tuple).unwrap();
     tuple.requested_grams = u128::MAX;
     let encoded = serde_json::to_vec(&tuple).unwrap();
-    let restored: crate::production_observation::ProductionFreightCapacityOrder =
-        serde_json::from_slice(&encoded).unwrap();
+    let restored: ProductionFreightCapacityOrder = serde_json::from_slice(&encoded).unwrap();
     assert_eq!(restored.requested_grams, u128::MAX);
     assert_eq!(restored, tuple);
     assert_ne!(

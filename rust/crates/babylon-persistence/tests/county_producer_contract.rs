@@ -10,10 +10,8 @@
 use std::collections::BTreeMap;
 
 use babylon_persistence::{
-    county_committed_signals, county_page_input, county_page_semantic_sha256,
-    desired_county_projection, filter_granted_county_plans, format_county_statblock_value,
-    parse_stored_county_page, select_dirty_county_pages, ArchiveCitation, ArchiveDirtyBatch,
-    ArchiveKnowledge, ArchiveKnowledgeGrant, ArchivePageInput, ArchivePageRef, ArchiveSubjectKind,
+    format_county_statblock_value, ArchiveCitation, ArchiveDirtyBatch, ArchiveKnowledge,
+    ArchiveKnowledgeGrant, ArchivePageInput, ArchivePageRef, ArchiveSubjectKind,
     CommittedTerritoryFields, CountyGrantIndex, CountyPagePlan, CountyPageProjection,
     CountyPlaceLink, CountySignal, CountySignalProjection, FogSafeArchiveRenderer,
     SemanticArchiveError, ARCHIVE_COUNTY_FIELD_READ_SQL, ARCHIVE_COUNTY_GRANTS_SQL,
@@ -31,7 +29,7 @@ fn qcew_baseline_retains_exact_integers_units_and_public_provenance() {
         Some(1_469),
     ])
     .expect("observed baseline");
-    let signals = county_committed_signals(&fields).expect("signals");
+    let signals = babylon_persistence::county_committed_signals(&fields).expect("signals");
     assert_eq!(signals.len(), 4);
     assert_eq!(signals[2].value(), "55436615328");
     assert_eq!(signals[2].label(), "QCEW 2024 total annual wages (USD)");
@@ -48,22 +46,25 @@ fn qcew_baseline_retains_exact_integers_units_and_public_provenance() {
     let markdown = render_markdown(&plan, 1, &knowledge);
     assert!(markdown.contains("qcew-county-economics-v1; qcew_county_economics_mi_2024.csv.gz#county_geoid=26163&sha256=116affb2998c6c0259d5bf14840f99f835d7e0733aa0b4f4c60a257b2723cd16"));
     assert!(!markdown.contains("Median wage"));
-    let parsed = parse_stored_county_page("26163", "Wayne County", &markdown)
+    let parsed = babylon_persistence::parse_stored_county_page("26163", "Wayne County", &markdown)
         .expect("QCEW source roundtrip");
     let desired =
-        desired_county_projection(&plan, &grant_index_for(&plan, true, false)).expect("desired");
+        babylon_persistence::desired_county_projection(&plan, &grant_index_for(&plan, true, false))
+            .expect("desired");
     assert_eq!(parsed, desired);
     let later = render_markdown(&plan, 2, &knowledge);
     assert_eq!(
-        parse_stored_county_page("26163", "Wayne County", &later).expect("later source"),
+        babylon_persistence::parse_stored_county_page("26163", "Wayne County", &later)
+            .expect("later source"),
         desired
     );
-    assert!(
-        desired_county_projection(&plan, &grant_index_for(&plan, false, false))
-            .expect("redacted")
-            .signals()
-            .is_empty()
-    );
+    assert!(babylon_persistence::desired_county_projection(
+        &plan,
+        &grant_index_for(&plan, false, false)
+    )
+    .expect("redacted")
+    .signals()
+    .is_empty());
 }
 
 #[test]
@@ -71,7 +72,7 @@ fn qcew_fields_refuse_negative_values_and_preserve_large_exact_counts() {
     assert!(CommittedTerritoryFields::try_from_qcew([Some(-1), None, None, None]).is_err());
     let fields = CommittedTerritoryFields::try_from_qcew([None, None, Some(i64::MAX), None])
         .expect("exact integer");
-    let signals = county_committed_signals(&fields).expect("signals");
+    let signals = babylon_persistence::county_committed_signals(&fields).expect("signals");
     assert_eq!(signals.len(), 1);
     assert_eq!(signals[0].value(), "9223372036854775807");
 }
@@ -119,7 +120,8 @@ fn wayne_page_input_at(
     resolve_tick: u64,
     tick_content_hash: [u8; 32],
 ) -> ArchivePageInput {
-    county_page_input(plan, resolve_tick, tick_content_hash).expect("county page input")
+    babylon_persistence::county_page_input(plan, resolve_tick, tick_content_hash)
+        .expect("county page input")
 }
 
 fn knowledge_grant(kind: ArchiveSubjectKind, id: &str, grant_key: &str) -> ArchiveKnowledgeGrant {
@@ -206,7 +208,8 @@ fn render_markdown(
     knowledge: &ArchiveKnowledge,
 ) -> String {
     let renderer = FogSafeArchiveRenderer::new().expect("pinned template compiles");
-    let input = county_page_input(plan, resolve_tick, [0x99; 32]).expect("page input");
+    let input =
+        babylon_persistence::county_page_input(plan, resolve_tick, [0x99; 32]).expect("page input");
     renderer
         .render(&input, knowledge)
         .expect("page renders")
@@ -218,7 +221,8 @@ fn stored_map(geoid: &str, title: &str, markdown: &str) -> BTreeMap<String, Coun
     let mut stored = BTreeMap::new();
     stored.insert(
         geoid.to_owned(),
-        parse_stored_county_page(geoid, title, markdown).expect("stored projection parses"),
+        babylon_persistence::parse_stored_county_page(geoid, title, markdown)
+            .expect("stored projection parses"),
     );
     stored
 }
@@ -270,20 +274,22 @@ fn stored_parser_accepts_the_exact_pinned_template_whitespace() {
     let plan = wayne_plan_full();
     let knowledge = knowledge_for(&plan, true, true);
     let markdown = render_markdown(&plan, 1, &knowledge);
-    let parsed = parse_stored_county_page("26163", "Wayne County", &markdown)
+    let parsed = babylon_persistence::parse_stored_county_page("26163", "Wayne County", &markdown)
         .expect("template output parses");
-    let projection = desired_county_projection(&plan, &grant_index_for(&plan, true, true))
-        .expect("desired projection");
+    let projection =
+        babylon_persistence::desired_county_projection(&plan, &grant_index_for(&plan, true, true))
+            .expect("desired projection");
     assert_eq!(
-        county_page_semantic_sha256("26163", &parsed),
-        county_page_semantic_sha256("26163", &projection),
+        babylon_persistence::county_page_semantic_sha256("26163", &parsed),
+        babylon_persistence::county_page_semantic_sha256("26163", &projection),
         "the parser round-trips the renderer's exact whitespace, including the blank lines \
          the pinned template emits after each section heading"
     );
 
     let redacted = render_markdown(&plan, 1, &knowledge_for(&plan, false, false));
     let parsed_redacted =
-        parse_stored_county_page("26163", "Wayne County", &redacted).expect("redacted parses");
+        babylon_persistence::parse_stored_county_page("26163", "Wayne County", &redacted)
+            .expect("redacted parses");
     assert!(
         parsed_redacted.signals().is_empty(),
         "a subject-only render carries no Signals section and no signals"
@@ -294,7 +300,8 @@ fn stored_parser_accepts_the_exact_pinned_template_whitespace() {
 fn ungranted_county_is_filtered_before_batch_construction() {
     let plan = wayne_plan_full();
     let granted = grant_index_for(&plan, false, false);
-    let granted_only = filter_granted_county_plans(std::slice::from_ref(&plan), &granted);
+    let granted_only =
+        babylon_persistence::filter_granted_county_plans(std::slice::from_ref(&plan), &granted);
     assert_eq!(
         granted_only.len(),
         1,
@@ -302,7 +309,8 @@ fn ungranted_county_is_filtered_before_batch_construction() {
     );
 
     let empty = CountyGrantIndex::try_from_rows(Vec::new()).expect("empty grant index");
-    let filtered = filter_granted_county_plans(std::slice::from_ref(&plan), &empty);
+    let filtered =
+        babylon_persistence::filter_granted_county_plans(std::slice::from_ref(&plan), &empty);
     assert!(
         filtered.is_empty(),
         "a county without the subject grant produces no page this sweep; the renderer would \
@@ -311,8 +319,9 @@ fn ungranted_county_is_filtered_before_batch_construction() {
 
     let stored = BTreeMap::new();
     let filtered_owned: Vec<CountyPagePlan> = filtered.into_iter().cloned().collect();
-    let dirty = select_dirty_county_pages(&filtered_owned, &stored, &empty, 256)
-        .expect("empty filtered selection");
+    let dirty =
+        babylon_persistence::select_dirty_county_pages(&filtered_owned, &stored, &empty, 256)
+            .expect("empty filtered selection");
     assert!(
         dirty.head().is_empty(),
         "an all-ungranted sweep yields an empty batch and the receipt defers, never an error"
@@ -323,7 +332,8 @@ fn ungranted_county_is_filtered_before_batch_construction() {
 fn grant_visible_projection_hides_ungranted_signals_and_link_names() {
     let plan = wayne_plan_full();
     let empty = CountyGrantIndex::try_from_rows(Vec::new()).expect("empty grant index");
-    let hidden = desired_county_projection(&plan, &empty).expect("hidden projection");
+    let hidden =
+        babylon_persistence::desired_county_projection(&plan, &empty).expect("hidden projection");
     assert!(
         hidden.signals().is_empty(),
         "no field grant means no grant-visible signal"
@@ -334,8 +344,9 @@ fn grant_visible_projection_hides_ungranted_signals_and_link_names() {
         "no place subject grant means every link stays a redlink"
     );
 
-    let revealed = desired_county_projection(&plan, &grant_index_for(&plan, true, true))
-        .expect("revealed projection");
+    let revealed =
+        babylon_persistence::desired_county_projection(&plan, &grant_index_for(&plan, true, true))
+            .expect("revealed projection");
     assert_eq!(
         revealed.signals(),
         &[
@@ -380,7 +391,7 @@ fn grant_arrival_redirties_the_redacted_page_and_the_reveal_settles() {
     );
     let stored = stored_map("26163", "Wayne County", &stored_markdown);
     let plans = [plan.clone()];
-    let clean = select_dirty_county_pages(&plans, &stored, &subject_only, 256)
+    let clean = babylon_persistence::select_dirty_county_pages(&plans, &stored, &subject_only, 256)
         .expect("subject-only selection");
     assert!(
         clean.head().is_empty(),
@@ -388,8 +399,8 @@ fn grant_arrival_redirties_the_redacted_page_and_the_reveal_settles() {
     );
 
     let revealed = grant_index_for(&plan, true, true);
-    let dirty =
-        select_dirty_county_pages(&plans, &stored, &revealed, 256).expect("revealed selection");
+    let dirty = babylon_persistence::select_dirty_county_pages(&plans, &stored, &revealed, 256)
+        .expect("revealed selection");
     assert_eq!(
         dirty.head().len(),
         1,
@@ -398,8 +409,8 @@ fn grant_arrival_redirties_the_redacted_page_and_the_reveal_settles() {
 
     let revealed_markdown = render_markdown(&plan, 2, &knowledge_for(&plan, true, true));
     let settled = stored_map("26163", "Wayne County", &revealed_markdown);
-    let clean =
-        select_dirty_county_pages(&plans, &settled, &revealed, 256).expect("settled selection");
+    let clean = babylon_persistence::select_dirty_county_pages(&plans, &settled, &revealed, 256)
+        .expect("settled selection");
     assert!(
         clean.head().is_empty(),
         "the revealed page settles: receipt stamps alone never re-publish it"
@@ -410,13 +421,15 @@ fn grant_arrival_redirties_the_redacted_page_and_the_reveal_settles() {
 fn semantic_hash_covers_every_receipt_independent_rendered_input() {
     let plan = wayne_plan_full();
     let grants = grant_index_for(&plan, true, true);
-    let base = desired_county_projection(&plan, &grants).expect("base projection");
-    let base_hash = county_page_semantic_sha256("26163", &base);
+    let base =
+        babylon_persistence::desired_county_projection(&plan, &grants).expect("base projection");
+    let base_hash = babylon_persistence::county_page_semantic_sha256("26163", &base);
 
-    let same = desired_county_projection(&plan, &grants).expect("same projection");
+    let same =
+        babylon_persistence::desired_county_projection(&plan, &grants).expect("same projection");
     assert_eq!(
         base_hash,
-        county_page_semantic_sha256("26163", &same),
+        babylon_persistence::county_page_semantic_sha256("26163", &same),
         "an unchanged projection hashes identically"
     );
 
@@ -435,7 +448,7 @@ fn semantic_hash_covers_every_receipt_independent_rendered_input() {
     .expect("drifted projection");
     assert_ne!(
         base_hash,
-        county_page_semantic_sha256("26163", &drifted_label),
+        babylon_persistence::county_page_semantic_sha256("26163", &drifted_label),
         "a pinned signal label change republishes"
     );
 
@@ -454,7 +467,7 @@ fn semantic_hash_covers_every_receipt_independent_rendered_input() {
     .expect("drifted projection");
     assert_ne!(
         base_hash,
-        county_page_semantic_sha256("26163", &drifted_citation),
+        babylon_persistence::county_page_semantic_sha256("26163", &drifted_citation),
         "a citation source identity change republishes"
     );
 
@@ -473,7 +486,7 @@ fn semantic_hash_covers_every_receipt_independent_rendered_input() {
     .expect("drifted projection");
     assert_ne!(
         base_hash,
-        county_page_semantic_sha256("26163", &drifted_provenance),
+        babylon_persistence::county_page_semantic_sha256("26163", &drifted_provenance),
         "a provenance name change republishes"
     );
 
@@ -486,7 +499,7 @@ fn semantic_hash_covers_every_receipt_independent_rendered_input() {
     .expect("redlinked projection");
     assert_ne!(
         base_hash,
-        county_page_semantic_sha256("26163", &redlinked),
+        babylon_persistence::county_page_semantic_sha256("26163", &redlinked),
         "link-label visibility is part of the projection"
     );
 
@@ -499,7 +512,7 @@ fn semantic_hash_covers_every_receipt_independent_rendered_input() {
     .expect("requestioned projection");
     assert_ne!(
         base_hash,
-        county_page_semantic_sha256("26163", &requestioned),
+        babylon_persistence::county_page_semantic_sha256("26163", &requestioned),
         "a decision-question change republishes"
     );
 }
@@ -513,11 +526,14 @@ fn stored_page_parser_round_trips_exact_renderer_output() {
             9,
             &knowledge_for(&plan, reveal_fields, reveal_places),
         );
-        let parsed = parse_stored_county_page("26163", "Wayne County", &markdown)
-            .expect("exact renderer output parses");
-        let expected =
-            desired_county_projection(&plan, &grant_index_for(&plan, reveal_fields, reveal_places))
-                .expect("desired projection");
+        let parsed =
+            babylon_persistence::parse_stored_county_page("26163", "Wayne County", &markdown)
+                .expect("exact renderer output parses");
+        let expected = babylon_persistence::desired_county_projection(
+            &plan,
+            &grant_index_for(&plan, reveal_fields, reveal_places),
+        )
+        .expect("desired projection");
         assert_eq!(
             parsed, expected,
             "renderer output round-trips at any grant level"
@@ -528,7 +544,8 @@ fn stored_page_parser_round_trips_exact_renderer_output() {
 #[test]
 fn stored_page_parser_refuses_template_drift() {
     assert!(
-        parse_stored_county_page("26163", "Wayne County", "not a page").is_none(),
+        babylon_persistence::parse_stored_county_page("26163", "Wayne County", "not a page")
+            .is_none(),
         "malformed stored pages are treated as dirty"
     );
     let revealed = render_markdown(
@@ -537,17 +554,29 @@ fn stored_page_parser_refuses_template_drift() {
         &knowledge_for(&wayne_plan_full(), true, true),
     );
     let wrong_subject = revealed.replace("subject: county/26163", "subject: county/26125");
-    assert!(parse_stored_county_page("26163", "Wayne County", &wrong_subject).is_none());
+    assert!(
+        babylon_persistence::parse_stored_county_page("26163", "Wayne County", &wrong_subject)
+            .is_none()
+    );
     let wrong_title = revealed.replace("# Wayne County", "# Wayne");
-    assert!(parse_stored_county_page("26163", "Wayne County", &wrong_title).is_none());
+    assert!(
+        babylon_persistence::parse_stored_county_page("26163", "Wayne County", &wrong_title)
+            .is_none()
+    );
     let drifted_citation_tick = revealed.replace("campaign/9/wayne", "campaign/8/wayne");
     assert!(
-        parse_stored_county_page("26163", "Wayne County", &drifted_citation_tick).is_none(),
+        babylon_persistence::parse_stored_county_page(
+            "26163",
+            "Wayne County",
+            &drifted_citation_tick
+        )
+        .is_none(),
         "a citation locator that disagrees with the receipt stamp is drift"
     );
     let deep_locator = revealed.replace("campaign/9/wayne", "campaign/9/wayne/extra");
     assert!(
-        parse_stored_county_page("26163", "Wayne County", &deep_locator).is_none(),
+        babylon_persistence::parse_stored_county_page("26163", "Wayne County", &deep_locator)
+            .is_none(),
         "a locator outside the pinned campaign/tick/name shape is drift"
     );
 }
@@ -604,8 +633,13 @@ fn absent_committed_fields_emit_no_signal() {
 
     let stored = BTreeMap::new();
     let plans = [plan.clone()];
-    let dirty = select_dirty_county_pages(&plans, &stored, &CountyGrantIndex::default(), 256)
-        .expect("absent-field selection");
+    let dirty = babylon_persistence::select_dirty_county_pages(
+        &plans,
+        &stored,
+        &CountyGrantIndex::default(),
+        256,
+    )
+    .expect("absent-field selection");
     assert_eq!(
         dirty.head().len(),
         1,
@@ -630,8 +664,8 @@ fn dirty_selection_pages_the_head_batch_beyond_one_receipt_bound() {
         .collect::<Vec<_>>();
     let stored = BTreeMap::new();
     let grants = CountyGrantIndex::default();
-    let dirty =
-        select_dirty_county_pages(&plans, &stored, &grants, 3).expect("within-bound selection");
+    let dirty = babylon_persistence::select_dirty_county_pages(&plans, &stored, &grants, 3)
+        .expect("within-bound selection");
     assert_eq!(
         dirty
             .head()
@@ -647,7 +681,7 @@ fn dirty_selection_pages_the_head_batch_beyond_one_receipt_bound() {
         "a within-bound dirty set drains whole"
     );
 
-    let paged = select_dirty_county_pages(&plans, &stored, &grants, 2)
+    let paged = babylon_persistence::select_dirty_county_pages(&plans, &stored, &grants, 2)
         .expect("an over-bound dirty set pages instead of refusing");
     assert_eq!(
         paged

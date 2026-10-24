@@ -1,11 +1,13 @@
 //! Financial flows bridge exact cash, equity carrying amounts and retained income.
-use super::{add, zero, CostClose, Result};
+use super::CostClose;
+use super::Result;
+use crate::valuation::zero;
 use crate::{AccountId, MaterialCircuitError, SiteId, TaxBasis};
 use babylon_kernel::currency::Currency;
 impl CostClose {
     pub(crate) fn tax_base(&self, account: AccountId, basis: TaxBasis) -> Result<Currency> {
         let Some(a) = &self.active else {
-            return Ok(zero());
+            return Ok(super::zero());
         };
         let statement = a
             .income
@@ -13,12 +15,12 @@ impl CostClose {
             .ok_or(MaterialCircuitError::ValuationInvariant)?;
         Ok(match basis {
             TaxBasis::WageIncome => statement.wage_income,
-            TaxBasis::PositiveOperatingIncome => statement.operating_income()?.max(zero()),
+            TaxBasis::PositiveOperatingIncome => statement.operating_income()?.max(super::zero()),
         })
     }
     pub(crate) fn eligible_earnings(&self, account: AccountId) -> Result<Currency> {
         let Some(a) = &self.active else {
-            return Ok(zero());
+            return Ok(super::zero());
         };
         let row = a
             .book
@@ -29,7 +31,7 @@ impl CostClose {
             .income
             .get(&account)
             .ok_or(MaterialCircuitError::ValuationInvariant)?;
-        Ok(add(row.retained_earnings, statement.net_income()?)?.max(zero()))
+        Ok(super::add(row.retained_earnings, statement.net_income()?)?.max(super::zero()))
     }
     pub(crate) fn contribution(
         &mut self,
@@ -45,12 +47,12 @@ impl CostClose {
             .equity
             .get_mut(&(owner, issuer))
             .ok_or(MaterialCircuitError::ValuationInvariant)?;
-        *carrying = add(*carrying, amount)?;
+        *carrying = super::add(*carrying, amount)?;
         let total = a
             .contributions
             .entry(AccountId::Site(issuer))
             .or_insert_with(zero);
-        *total = add(*total, amount)?;
+        *total = super::add(*total, amount)?;
         Ok(())
     }
     pub(crate) fn distribution(
@@ -66,9 +68,9 @@ impl CostClose {
             .distributions
             .entry(AccountId::Site(issuer))
             .or_insert_with(zero);
-        *total = add(*total, amount)?;
+        *total = super::add(*total, amount)?;
         let statement = a.statement(beneficiary)?;
-        statement.distribution_income = add(statement.distribution_income, amount)?;
+        statement.distribution_income = super::add(statement.distribution_income, amount)?;
         Ok(())
     }
     pub(crate) fn tax(
@@ -81,9 +83,9 @@ impl CostClose {
             return Ok(());
         };
         let statement = a.statement(payer)?;
-        statement.tax_expense = add(statement.tax_expense, amount)?;
+        statement.tax_expense = super::add(statement.tax_expense, amount)?;
         let statement = a.statement(recipient)?;
-        statement.tax_income = add(statement.tax_income, amount)?;
+        statement.tax_income = super::add(statement.tax_income, amount)?;
         Ok(())
     }
     pub(crate) fn public_transfer(
@@ -96,9 +98,9 @@ impl CostClose {
             return Ok(());
         };
         let statement = a.statement(payer)?;
-        statement.public_transfer_expense = add(statement.public_transfer_expense, amount)?;
+        statement.public_transfer_expense = super::add(statement.public_transfer_expense, amount)?;
         let statement = a.statement(recipient)?;
-        statement.public_transfer_income = add(statement.public_transfer_income, amount)?;
+        statement.public_transfer_income = super::add(statement.public_transfer_income, amount)?;
         Ok(())
     }
 }

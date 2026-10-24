@@ -1,30 +1,35 @@
 //! Capture one consistent Open snapshot; reconstruct only after its transaction ends.
 use super::{
-    bounded_material_writer_config, capture_identity, capture_marker,
-    capture_material_foundation_components, material_storage, read_tail_tick, runtime_checkpoint,
-    verify_runtime_schema_client, CampaignId, CapturedMaterialFoundation, Config,
-    DurableMaterialRuntime, FoundationReadSource, HypergraphStore, IdentifiedMaterialTick,
+    capture_identity, material_storage, runtime_checkpoint, CampaignId, CapturedMaterialFoundation,
+    Config, DurableMaterialRuntime, FoundationReadSource, HypergraphStore, IdentifiedMaterialTick,
     MaterialComponentIdentity, MaterialEnvelopeRead, MaterialReadAuthority, MaterialReplayError,
     MaterialReplaySession, MaterialRuntimeError, MaterialRuntimeFoundation, NoTls,
     StoredMaterialTick, StoredTickReadSource,
 };
+use material_storage::Error;
+use material_storage::OpeningRegister;
+use postgres::Client;
+use postgres::IsolationLevel;
+use postgres::Row;
+use postgres::Transaction;
+use runtime_checkpoint::CapturedRuntimeCheckpoint;
 
 struct CapturedOpen {
     tick: u64,
-    marker: Option<postgres::Row>,
-    checkpoint: Option<runtime_checkpoint::CapturedRuntimeCheckpoint>,
+    marker: Option<Row>,
+    checkpoint: Option<CapturedRuntimeCheckpoint>,
 }
 
 impl CapturedOpen {
     fn capture(
-        transaction: &mut postgres::Transaction<'_>,
+        transaction: &mut Transaction<'_>,
         campaign: CampaignId,
     ) -> Result<Self, MaterialRuntimeError> {
-        let tick = read_tail_tick(transaction, campaign)?;
+        let tick = super::read_tail_tick(transaction, campaign)?;
         let marker = if tick == 0 {
             None
         } else {
-            capture_marker(
+            super::capture_marker(
                 transaction,
                 StoredTickReadSource::Runtime,
                 campaign,
@@ -34,7 +39,7 @@ impl CapturedOpen {
         let checkpoint = if tick == 0 {
             None
         } else {
-            Some(runtime_checkpoint::CapturedRuntimeCheckpoint::capture(
+            Some(CapturedRuntimeCheckpoint::capture(
                 transaction,
                 campaign,
                 tick,
@@ -52,19 +57,19 @@ pub(super) fn restore<C>(
     config: &Config,
     campaign: CampaignId,
     capture: impl FnOnce(
-        &mut postgres::Transaction<'_>,
+        &mut Transaction<'_>,
     ) -> Result<(CapturedMaterialFoundation, C), MaterialRuntimeError>,
     admit: impl FnOnce(
         CapturedMaterialFoundation,
         C,
     ) -> Result<MaterialRuntimeFoundation, MaterialRuntimeError>,
 ) -> Result<DurableMaterialRuntime, MaterialRuntimeError> {
-    let bounded = bounded_material_writer_config(config)?;
+    let bounded = super::bounded_material_writer_config(config)?;
     let mut client = bounded.connect(NoTls)?;
-    verify_runtime_schema_client(&mut client)?;
+    super::verify_runtime_schema_client(&mut client)?;
     let mut transaction = client
         .build_transaction()
-        .isolation_level(postgres::IsolationLevel::RepeatableRead)
+        .isolation_level(IsolationLevel::RepeatableRead)
         .read_only(true)
         .start()?;
     let (captured_foundation, policy) = capture(&mut transaction)?;
@@ -82,8 +87,7 @@ pub(super) fn restore<C>(
         return Err(MaterialRuntimeError::FoundationMismatch);
     }
     let digest = foundation.digest();
-    let lookup = material_storage::OpeningRegister::from_opening(&foundation.register)
-        .map_err(material_storage::Error::State)?;
+    let lookup = OpeningRegister::from_opening(&foundation.register).map_err(Error::State)?;
     let initial_lookup_chain = material_storage::initial_lookup_chain(&lookup)?;
     let stored = if let Some(checkpoint) = captured.checkpoint {
         let scope = foundation
@@ -143,22 +147,22 @@ fn restore_checkpoint(
 }
 
 fn revalidate_capture(
-    client: &mut postgres::Client,
+    client: &mut Client,
     campaign: CampaignId,
     digest: [u8; 32],
     fingerprint: [u8; 32],
     tick: u64,
-    original_marker: Option<&postgres::Row>,
+    original_marker: Option<&Row>,
 ) -> Result<(), MaterialRuntimeError> {
     let mut transaction = client
         .build_transaction()
-        .isolation_level(postgres::IsolationLevel::RepeatableRead)
+        .isolation_level(IsolationLevel::RepeatableRead)
         .read_only(true)
         .start()?;
-    if read_tail_tick(&mut transaction, campaign)? != tick {
+    if super::read_tail_tick(&mut transaction, campaign)? != tick {
         return Err(MaterialRuntimeError::TailConflict);
     }
-    let foundation = capture_material_foundation_components(
+    let foundation = super::capture_material_foundation_components(
         &mut transaction,
         campaign,
         digest,
@@ -167,7 +171,7 @@ fn revalidate_capture(
     let marker = if tick == 0 {
         None
     } else {
-        capture_marker(
+        super::capture_marker(
             &mut transaction,
             StoredTickReadSource::Runtime,
             campaign,

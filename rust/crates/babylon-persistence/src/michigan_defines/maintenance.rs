@@ -1,6 +1,8 @@
 //! Designed values for the one-provider Wayne maintenance witness.
 
-use super::{statewide::DesignedEvidence, MichiganDefinesError, MAX_EXACT_INTEGER};
+use super::statewide::DesignedEvidence;
+use super::{MichiganDefinesError, MAX_EXACT_INTEGER};
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
@@ -72,11 +74,12 @@ impl MaintenanceDefines {
 #[cfg(test)]
 mod tests {
     use super::super::MichiganDefines;
+    use toml::Value;
 
     #[test]
     fn maintenance_authoring_refuses_untyped_invalid_or_unbounded_quantities() {
         let source = include_str!("../../../../../content/scenarios/michigan/defines.toml");
-        let original: toml::Value = toml::from_str(source).unwrap();
+        let original: Value = toml::from_str(source).unwrap();
         for (field, value) in [
             ("SPARE_UNITS_PER_JOB", 0),
             ("LABOR_UNITS_PER_JOB", 0),
@@ -96,10 +99,7 @@ mod tests {
                 "{field}"
             );
         }
-        for value in [
-            toml::Value::String("Observed".to_owned()),
-            toml::Value::Boolean(true),
-        ] {
+        for value in [Value::String("Observed".to_owned()), Value::Boolean(true)] {
             let mut changed = original.clone();
             changed["maintenance"]["EVIDENCE_CLASS"] = value;
             assert!(MichiganDefines::parse(&toml::to_string(&changed).unwrap()).is_err());

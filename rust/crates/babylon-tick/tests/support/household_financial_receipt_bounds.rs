@@ -1,17 +1,17 @@
 //! Large, independently authored financial evidence remains complete and canonical.
-use super::*;
+use babylon_tick::material_world;
 use babylon_tick::material_world::MaterialWorldError;
 const LIMIT: usize = 131_072;
 fn bounded_rows(family: u8) -> Vec<Vec<u8>> {
     (0..LIMIT)
         .map(|n| {
             let mut row = if family == 25 {
-                let mut row = tax();
+                let mut row = crate::tax();
                 row[74..76].copy_from_slice(&0_u16.to_be_bytes());
                 row[76..].fill(0);
                 row
             } else {
-                let mut row = distribution(0, 1, 0);
+                let mut row = crate::distribution(0, 1, 0);
                 row[81..89].copy_from_slice(&u64::try_from(LIMIT).unwrap().to_be_bytes());
                 row[89..].fill(0);
                 row
@@ -25,7 +25,9 @@ fn bounded_rows(family: u8) -> Vec<Vec<u8>> {
 }
 fn assert_financial_bound(family: u8) {
     let rows = bounded_rows(family);
-    let decoded = decode_material_receipts(&envelope(&[(family, rows.clone())])).unwrap();
+    let decoded =
+        material_world::decode_material_receipts(&crate::envelope(&[(family, rows.clone())]))
+            .unwrap();
     if family == 25 {
         assert_eq!(decoded.taxes.len(), LIMIT);
         assert_eq!(decoded.taxes.last().unwrap().collected.micro_units(), 0);
@@ -37,13 +39,13 @@ fn assert_financial_bound(family: u8) {
     let first_row = duplicate[0].clone();
     duplicate[LIMIT - 1] = first_row;
     assert_eq!(
-        decode_material_receipts(&envelope(&[(family, duplicate)])),
+        material_world::decode_material_receipts(&crate::envelope(&[(family, duplicate)])),
         Err(MaterialWorldError::Wire)
     );
     let mut excess = rows;
     excess.push(excess[0].clone());
     assert_eq!(
-        decode_material_receipts(&envelope(&[(family, excess)])),
+        material_world::decode_material_receipts(&crate::envelope(&[(family, excess)])),
         Err(MaterialWorldError::ByteLimit)
     );
 }

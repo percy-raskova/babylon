@@ -1,4 +1,17 @@
-use super::*;
+use crate::wire;
+use crate::wire::append_rows;
+use crate::wire::decode_input_coefficients;
+use crate::wire::decode_inventory;
+use crate::wire::decode_stage_capacities;
+use crate::wire::decode_supplier_routes;
+use crate::wire::services;
+use crate::wire::Cursor;
+use crate::GoodId;
+use crate::InventoryRow;
+use crate::MaterialCircuitError;
+use crate::SiteId;
+use crate::UnitId;
+use crate::MAX_MATERIAL_CIRCUIT_ROWS;
 
 #[test]
 fn inventory_tail_above_the_old_shared_ceiling_roundtrips_completely() {
@@ -15,7 +28,7 @@ fn inventory_tail_above_the_old_shared_ceiling_roundtrips_completely() {
         })
         .collect();
     let mut bytes = Vec::new();
-    append_inventory(&mut bytes, &rows).unwrap();
+    wire::append_inventory(&mut bytes, &rows).unwrap();
     let mut cursor = Cursor::new(&bytes);
     assert_eq!(decode_inventory(&mut cursor).unwrap(), rows);
     cursor.finish().unwrap();
@@ -64,7 +77,7 @@ fn overbound_encoding_leaves_existing_bytes_untouched() {
     };
     let mut bytes = vec![7, 8, 9];
     assert_eq!(
-        append_inventory(&mut bytes, &vec![row; crate::MAX_INVENTORY_ROWS + 1]),
+        wire::append_inventory(&mut bytes, &vec![row; crate::MAX_INVENTORY_ROWS + 1]),
         Err(MaterialCircuitError::WireLimit)
     );
     assert_eq!(bytes, vec![7, 8, 9]);

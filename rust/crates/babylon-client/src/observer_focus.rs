@@ -40,7 +40,9 @@
 //!   these boundaries. Capture preserves claims already made in that frame.
 
 use bevy::ecs::system::SystemParam;
-use bevy::input::{keyboard::KeyboardInput, ButtonState, InputSystems};
+use bevy::input::keyboard::KeyboardInput;
+use bevy::input::{ButtonState, InputSystems};
+
 use bevy::input_focus::tab_navigation::{
     NavAction, TabGroup, TabIndex, TabNavigation, TabNavigationPlugin,
 };
@@ -808,13 +810,19 @@ mod tests {
     use crate::observer::ObserverSession;
     use bevy::camera::RenderTarget;
     use bevy::ecs::system::RunSystemOnce;
-    use bevy::input::{keyboard::Key, InputPlugin};
+    use bevy::input::keyboard::Key;
+    use bevy::input::InputPlugin;
+
+    use crate::observer::Perspective;
+    use babylon_persistence::identity::CampaignId;
+    use bevy::input::keyboard::NativeKey;
     use bevy::picking::backend::{HitData, PointerHits};
     use bevy::picking::pointer::{
         Location, PointerAction, PointerButton, PointerId, PointerInput, PointerLocation,
     };
     use bevy::picking::{InteractionPlugin, PickingPlugin};
     use bevy::window::WindowRef;
+    use uuid::Uuid;
 
     #[derive(Resource, Default)]
     struct Actions {
@@ -934,7 +942,7 @@ mod tests {
     ) {
         app.world_mut().write_message(KeyboardInput {
             key_code,
-            logical_key: Key::Unidentified(bevy::input::keyboard::NativeKey::Unidentified),
+            logical_key: Key::Unidentified(NativeKey::Unidentified),
             state,
             text: None,
             repeat,
@@ -1371,10 +1379,7 @@ mod tests {
     fn stale_scope_and_destroyed_focus_never_redirect_enter_or_restore_facts() {
         let (mut app, window) = app();
         let root = group(&mut app, false);
-        let context = ObserverSession::new(babylon_persistence::identity::CampaignId::from_uuid(
-            uuid::Uuid::nil(),
-        ))
-        .context();
+        let context = ObserverSession::new(CampaignId::from_uuid(Uuid::nil())).context();
         app.world_mut()
             .resource_mut::<ObserverFocusPolicy>()
             .context = Some(context.clone());
@@ -1383,7 +1388,7 @@ mod tests {
         app.update();
         press(&mut app, window, KeyCode::Tab);
         let mut changed = context;
-        changed.perspective = crate::observer::Perspective::PlayerKnowledge;
+        changed.perspective = Perspective::PlayerKnowledge;
         changed.generation += 1;
         app.world_mut()
             .resource_mut::<ObserverFocusPolicy>()

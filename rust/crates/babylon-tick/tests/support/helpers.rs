@@ -10,7 +10,7 @@ use babylon_graph::substrate::{GraphSubstrate, NodeId};
 
 use babylon_graph::working_copy::DetachedCopy;
 
-use babylon_tick::{run_once, run_once_into, TickReport};
+use babylon_tick::TickReport;
 
 /// Accepts either a raw `u64` (the majority shape across existing
 /// conformance files, which wrap `NodeId(id)` at the call site) or a
@@ -75,7 +75,7 @@ pub fn run_conformance<
 ) -> G {
     let mut graph = G::default();
     let mut sink = CollectingSink::default();
-    run_once_into(scenario, rule, &mut graph, &mut sink).expect("the pack must run");
+    babylon_tick::run_once_into(scenario, rule, &mut graph, &mut sink).expect("the pack must run");
     graph
 }
 
@@ -94,7 +94,7 @@ pub fn run_conformance_with_sink<
 ) -> (G, CollectingSink) {
     let mut graph = G::default();
     let mut sink = CollectingSink::default();
-    run_once_into(scenario, rule, &mut graph, &mut sink).expect("the pack must run");
+    babylon_tick::run_once_into(scenario, rule, &mut graph, &mut sink).expect("the pack must run");
     (graph, sink)
 }
 
@@ -111,7 +111,8 @@ pub fn run_conformance_with_report<
 ) -> (G, TickReport) {
     let mut graph = G::default();
     let mut sink = CollectingSink::default();
-    let report = run_once_into(scenario, rule, &mut graph, &mut sink).expect("the pack must run");
+    let report = babylon_tick::run_once_into(scenario, rule, &mut graph, &mut sink)
+        .expect("the pack must run");
     (graph, report)
 }
 
@@ -193,8 +194,8 @@ pub fn assert_expected<G: GraphSubstrate>(graph: &G, expected: &[ExpectedField])
 /// extracts only the part that is IDENTICAL everywhere — the double run and
 /// the hash comparison — and does not force the rest into one shape.
 pub fn assert_deterministic(scenario: &str, rule: &str) -> TickReport {
-    let a = run_once(scenario, rule).expect("first run");
-    let b = run_once(scenario, rule).expect("second run");
+    let a = babylon_tick::run_once(scenario, rule).expect("first run");
+    let b = babylon_tick::run_once(scenario, rule).expect("second run");
     assert_eq!(
         a.after, b.after,
         "two runs of the same scenario+rule must hash to the same post-tick state"

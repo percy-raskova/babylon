@@ -1,5 +1,7 @@
-use super::*;
-use crate::economic_content::{admit_economic_content, EconomicContentError};
+use super::preset::{MichiganContentPreset, MICHIGAN_CONTENT_PRESETS};
+use crate::economic_content::EconomicContentAdmission;
+use crate::economic_content::EconomicContentError;
+use crate::michigan_material::MichiganMaterialCatalog;
 fn control(admission: &EconomicContentAdmission) -> &MichiganMaterialCatalog {
     match admission.view().sources {
         crate::economic_catalog::EconomicSourceView::MichiganControl { catalog, .. } => catalog,
@@ -8,6 +10,7 @@ fn control(admission: &EconomicContentAdmission) -> &MichiganMaterialCatalog {
         }
     }
 }
+use crate::economic_content;
 use babylon_kernel::clock::CampaignDuration;
 fn finite(final_period: u64) -> CampaignDuration {
     CampaignDuration::Finite { final_period }
@@ -87,7 +90,14 @@ fn unsupported_michigan_saves_are_refused_without_a_predecessor_factory() {
             let id = format!("michigan-material-{delivery}-v{version}");
             assert_eq!(MichiganContentPreset::from_id(&id), None);
             assert!(matches!(
-                admit_economic_content(&id, finite(16), &[0; 32], &[0; 32], 0, &[]),
+                economic_content::admit_economic_content(
+                    &id,
+                    finite(16),
+                    &[0; 32],
+                    &[0; 32],
+                    0,
+                    &[]
+                ),
                 Err(EconomicContentError::UnknownPreset)
             ));
         }
@@ -98,7 +108,7 @@ fn unsupported_michigan_saves_are_refused_without_a_predecessor_factory() {
 fn admission_refuses_mixed_headers_graphs_and_unadmitted_versions() {
     for preset in REGIONAL_PRESETS {
         let expected = preset.admitted(&crate::test_support::catalog()).unwrap();
-        let reopened = admit_economic_content(
+        let reopened = economic_content::admit_economic_content(
             preset.id(),
             finite(16),
             &expected.content_digest(),
@@ -146,7 +156,7 @@ fn admission_refuses_mixed_headers_graphs_and_unadmitted_versions() {
                 continue;
             }
             let mixed = other.admitted(&crate::test_support::catalog()).unwrap();
-            assert!(admit_economic_content(
+            assert!(economic_content::admit_economic_content(
                 preset.id(),
                 finite(16),
                 &mixed.content_digest(),
@@ -166,7 +176,7 @@ fn admission_refuses_mixed_headers_graphs_and_unadmitted_versions() {
                     .is_err());
             }
         }
-        assert!(admit_economic_content(
+        assert!(economic_content::admit_economic_content(
             "michigan-material-standard-v8",
             finite(16),
             &expected.content_digest(),
@@ -175,7 +185,7 @@ fn admission_refuses_mixed_headers_graphs_and_unadmitted_versions() {
             &expected.export_canonical_bytes().unwrap()
         )
         .is_err());
-        assert!(admit_economic_content(
+        assert!(economic_content::admit_economic_content(
             preset.id(),
             finite(16),
             &expected.content_digest()[..31],
@@ -184,7 +194,7 @@ fn admission_refuses_mixed_headers_graphs_and_unadmitted_versions() {
             &expected.export_canonical_bytes().unwrap()
         )
         .is_err());
-        assert!(admit_economic_content(
+        assert!(economic_content::admit_economic_content(
             preset.id(),
             finite(16),
             &expected.content_digest(),
@@ -246,7 +256,7 @@ fn edited_parameters_change_new_foundations_but_stored_campaign_keeps_its_own_va
             .available,
         3600
     );
-    let reopened = admit_economic_content(
+    let reopened = economic_content::admit_economic_content(
         preset.id(),
         finite(16),
         &original.content_digest(),
@@ -258,7 +268,7 @@ fn edited_parameters_change_new_foundations_but_stored_campaign_keeps_its_own_va
     assert_eq!(control(&reopened).staffing().hours_per_worker_period, 160);
     assert_eq!(reopened.view().opening, original.view().opening);
     assert_eq!(reopened.initial_register(), original.initial_register());
-    assert!(admit_economic_content(
+    assert!(economic_content::admit_economic_content(
         preset.id(),
         finite(16),
         &next.content_digest(),
@@ -270,7 +280,7 @@ fn edited_parameters_change_new_foundations_but_stored_campaign_keeps_its_own_va
     let mut corrupted = original.export_canonical_bytes().unwrap();
     let end = corrupted.len() - 1;
     corrupted[end] ^= 1;
-    assert!(admit_economic_content(
+    assert!(economic_content::admit_economic_content(
         preset.id(),
         finite(16),
         &original.content_digest(),
@@ -280,7 +290,7 @@ fn edited_parameters_change_new_foundations_but_stored_campaign_keeps_its_own_va
     )
     .is_err());
     for length in [0, 32, original.canonical_len().unwrap() - 1] {
-        assert!(admit_economic_content(
+        assert!(economic_content::admit_economic_content(
             preset.id(),
             finite(16),
             &original.content_digest(),
@@ -319,7 +329,7 @@ fn stored_shared_freight_capacities_reconstruct_without_current_default_substitu
         let original = preset.admitted(&authored).unwrap();
         let default_campaign = preset.admitted(&defaults).unwrap();
         assert_ne!(original.digest(), default_campaign.digest());
-        let reopened = admit_economic_content(
+        let reopened = economic_content::admit_economic_content(
             preset.id(),
             finite(16),
             &original.content_digest(),
@@ -366,7 +376,7 @@ fn stored_shared_freight_capacities_reconstruct_without_current_default_substitu
         assert!(capacities
             .iter()
             .all(|row| row.available_grams == capacity * 1000));
-        assert!(admit_economic_content(
+        assert!(economic_content::admit_economic_content(
             preset.id(),
             finite(16),
             &default_campaign.content_digest(),

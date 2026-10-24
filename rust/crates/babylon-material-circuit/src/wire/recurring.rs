@@ -1,5 +1,5 @@
 //! Exact captured needs, stocks and decision policies; no default on old bytes.
-use super::{append_bounded_rows, append_rows, decode_bounded_rows, decode_rows, Cursor};
+use super::Cursor;
 use crate::{
     AttendancePlan, FinalDemandPrincipalId, GoodId, HouseholdCohort, HouseholdKind, HouseholdNeed,
     HouseholdNeedBasis, HouseholdPurchasePolicy, HouseholdStock, MaterialCircuitError, PricePolicy,
@@ -19,19 +19,19 @@ pub(super) fn append(
     output.push(1);
     output.extend_from_slice(&rows.last_household_admission_period.to_be_bytes());
     output.extend_from_slice(&rows.last_household_consumption_period.to_be_bytes());
-    append_rows(output, &rows.households, |bytes, row| {
+    super::append_rows(output, &rows.households, |bytes, row| {
         bytes.push(row.kind as u8);
         bytes.extend_from_slice(&row.principal_id.as_bytes());
         bytes.extend_from_slice(&row.households.to_be_bytes());
         bytes.extend_from_slice(&row.persons.to_be_bytes());
     })?;
-    append_rows(output, &rows.household_stocks, |bytes, row| {
+    super::append_rows(output, &rows.household_stocks, |bytes, row| {
         bytes.extend_from_slice(&row.principal_id.as_bytes());
         bytes.extend_from_slice(&row.good_id.as_bytes());
         bytes.extend_from_slice(&row.unit_id.as_bytes());
         bytes.extend_from_slice(&row.quantity.to_be_bytes());
     })?;
-    append_bounded_rows(
+    super::append_bounded_rows(
         output,
         &rows.household_needs,
         crate::MAX_HOUSEHOLD_NEEDS,
@@ -43,7 +43,7 @@ pub(super) fn append(
             bytes.extend_from_slice(&row.units_per_basis.to_be_bytes());
         },
     )?;
-    append_bounded_rows(
+    super::append_bounded_rows(
         output,
         &rows.household_purchases,
         crate::MAX_HOUSEHOLD_NEEDS,
@@ -57,7 +57,7 @@ pub(super) fn append(
             bytes.push(u8::from(row.enabled));
         },
     )?;
-    append_rows(output, &rows.offers, |bytes, row| {
+    super::append_rows(output, &rows.offers, |bytes, row| {
         bytes.extend_from_slice(&row.site_id.as_bytes());
         bytes.extend_from_slice(&row.good_id.as_bytes());
         bytes.extend_from_slice(&row.unit_id.as_bytes());
@@ -89,19 +89,19 @@ pub(super) fn append(
         }
     })?;
     append_replenishment(output, &rows.replenishment)?;
-    append_rows(output, &rows.production, |bytes, row| {
+    super::append_rows(output, &rows.production, |bytes, row| {
         bytes.extend_from_slice(&row.process_id.as_bytes());
         bytes.extend_from_slice(&row.site_id.as_bytes());
         bytes.extend_from_slice(&row.output_buffer.to_be_bytes());
         bytes.extend_from_slice(&row.planned_batches.to_be_bytes());
     })?;
-    append_rows(output, &rows.attendance, |bytes, row| {
+    super::append_rows(output, &rows.attendance, |bytes, row| {
         bytes.extend_from_slice(&row.site_id.as_bytes());
         bytes.extend_from_slice(&row.unit_id.as_bytes());
         bytes.extend_from_slice(&row.period.to_be_bytes());
         bytes.extend_from_slice(&row.planned_hours.to_be_bytes());
     })?;
-    append_rows(output, &rows.service_inputs, |b, r| {
+    super::append_rows(output, &rows.service_inputs, |b, r| {
         b.extend_from_slice(&r.buyer_site_id.as_bytes());
         b.extend_from_slice(&r.provider_site_id.as_bytes());
         b.extend_from_slice(&r.good_id.as_bytes());
@@ -117,7 +117,7 @@ fn append_replenishment(
     output: &mut Vec<u8>,
     rows: &[ReplenishmentPolicy],
 ) -> Result<(), MaterialCircuitError> {
-    append_bounded_rows(
+    super::append_bounded_rows(
         output,
         rows,
         crate::MAX_REPLENISHMENT_POLICIES,
@@ -170,6 +170,10 @@ fn decode_household(bytes: &mut Cursor<'_>) -> Result<HouseholdCohort, MaterialC
     })
 }
 
+#[allow(
+    clippy::too_many_lines,
+    reason = "one decoder per canonical field keeps the wire order auditable line by line"
+)]
 pub(super) fn decode(
     cursor: &mut Cursor<'_>,
 ) -> Result<Option<Box<RecurringEconomy>>, MaterialCircuitError> {
@@ -181,8 +185,8 @@ pub(super) fn decode(
     Ok(Some(Box::new(RecurringEconomy {
         last_household_admission_period: cursor.u64()?,
         last_household_consumption_period: cursor.u64()?,
-        households: decode_rows(cursor, decode_household)?,
-        household_stocks: decode_rows(cursor, |bytes| {
+        households: super::decode_rows(cursor, decode_household)?,
+        household_stocks: super::decode_rows(cursor, |bytes| {
             Ok(HouseholdStock {
                 principal_id: FinalDemandPrincipalId::from_bytes(bytes.array()?),
                 good_id: GoodId::from_bytes(bytes.array()?),
@@ -190,7 +194,7 @@ pub(super) fn decode(
                 quantity: bytes.u64()?,
             })
         })?,
-        household_needs: decode_bounded_rows(cursor, crate::MAX_HOUSEHOLD_NEEDS, |bytes| {
+        household_needs: super::decode_bounded_rows(cursor, crate::MAX_HOUSEHOLD_NEEDS, |bytes| {
             Ok(HouseholdNeed {
                 principal_id: FinalDemandPrincipalId::from_bytes(bytes.array()?),
                 good_id: GoodId::from_bytes(bytes.array()?),
@@ -203,22 +207,26 @@ pub(super) fn decode(
                 units_per_basis: bytes.u64()?,
             })
         })?,
-        household_purchases: decode_bounded_rows(cursor, crate::MAX_HOUSEHOLD_NEEDS, |bytes| {
-            Ok(HouseholdPurchasePolicy {
-                principal_id: FinalDemandPrincipalId::from_bytes(bytes.array()?),
-                retailer_site_id: SiteId::from_bytes(bytes.array()?),
-                good_id: GoodId::from_bytes(bytes.array()?),
-                unit_id: UnitId::from_bytes(bytes.array()?),
-                target_closing_stock: bytes.u64()?,
-                maximum_purchase: bytes.u64()?,
-                enabled: match bytes.u8()? {
-                    0 => false,
-                    1 => true,
-                    _ => return Err(MaterialCircuitError::WireEnum),
-                },
-            })
-        })?,
-        offers: decode_rows(cursor, |bytes| {
+        household_purchases: super::decode_bounded_rows(
+            cursor,
+            crate::MAX_HOUSEHOLD_NEEDS,
+            |bytes| {
+                Ok(HouseholdPurchasePolicy {
+                    principal_id: FinalDemandPrincipalId::from_bytes(bytes.array()?),
+                    retailer_site_id: SiteId::from_bytes(bytes.array()?),
+                    good_id: GoodId::from_bytes(bytes.array()?),
+                    unit_id: UnitId::from_bytes(bytes.array()?),
+                    target_closing_stock: bytes.u64()?,
+                    maximum_purchase: bytes.u64()?,
+                    enabled: match bytes.u8()? {
+                        0 => false,
+                        1 => true,
+                        _ => return Err(MaterialCircuitError::WireEnum),
+                    },
+                })
+            },
+        )?,
+        offers: super::decode_rows(cursor, |bytes| {
             Ok(SellerOffer {
                 site_id: SiteId::from_bytes(bytes.array()?),
                 good_id: GoodId::from_bytes(bytes.array()?),
@@ -227,18 +235,22 @@ pub(super) fn decode(
                 pricing: pricing(bytes)?,
             })
         })?,
-        replenishment: decode_bounded_rows(cursor, crate::MAX_REPLENISHMENT_POLICIES, |bytes| {
-            Ok(ReplenishmentPolicy {
-                buyer_site_id: SiteId::from_bytes(bytes.array()?),
-                supplier_site_id: SiteId::from_bytes(bytes.array()?),
-                good_id: GoodId::from_bytes(bytes.array()?),
-                unit_id: UnitId::from_bytes(bytes.array()?),
-                target_stock: bytes.u64()?,
-                maximum_purchase: bytes.u64()?,
-                cash_floor: currency(bytes)?,
-            })
-        })?,
-        production: decode_rows(cursor, |bytes| {
+        replenishment: super::decode_bounded_rows(
+            cursor,
+            crate::MAX_REPLENISHMENT_POLICIES,
+            |bytes| {
+                Ok(ReplenishmentPolicy {
+                    buyer_site_id: SiteId::from_bytes(bytes.array()?),
+                    supplier_site_id: SiteId::from_bytes(bytes.array()?),
+                    good_id: GoodId::from_bytes(bytes.array()?),
+                    unit_id: UnitId::from_bytes(bytes.array()?),
+                    target_stock: bytes.u64()?,
+                    maximum_purchase: bytes.u64()?,
+                    cash_floor: currency(bytes)?,
+                })
+            },
+        )?,
+        production: super::decode_rows(cursor, |bytes| {
             Ok(ProductionDemandPolicy {
                 process_id: ProcessId::from_bytes(bytes.array()?),
                 site_id: SiteId::from_bytes(bytes.array()?),
@@ -246,7 +258,7 @@ pub(super) fn decode(
                 planned_batches: bytes.u64()?,
             })
         })?,
-        attendance: decode_rows(cursor, |bytes| {
+        attendance: super::decode_rows(cursor, |bytes| {
             Ok(AttendancePlan {
                 site_id: SiteId::from_bytes(bytes.array()?),
                 unit_id: UnitId::from_bytes(bytes.array()?),
@@ -254,7 +266,7 @@ pub(super) fn decode(
                 planned_hours: bytes.u64()?,
             })
         })?,
-        service_inputs: decode_rows(cursor, |b| {
+        service_inputs: super::decode_rows(cursor, |b| {
             Ok(crate::ServiceInputPolicy {
                 buyer_site_id: SiteId::from_bytes(b.array()?),
                 provider_site_id: SiteId::from_bytes(b.array()?),

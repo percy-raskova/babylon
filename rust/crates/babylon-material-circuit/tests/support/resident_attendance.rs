@@ -1,5 +1,20 @@
 //! Actual handling proves resident payroll and mixed compensation cost attribution.
-use super::*;
+use crate::book;
+use crate::hours;
+use crate::household;
+use babylon_material_circuit::AccountId;
+use babylon_material_circuit::CashAccount;
+use babylon_material_circuit::CircuitAccounting;
+use babylon_material_circuit::EmploymentTerms;
+use babylon_material_circuit::FinalDemandPrincipal;
+use babylon_material_circuit::FinalDemandPrincipalId;
+use babylon_material_circuit::HistoricalCostBook;
+use babylon_material_circuit::LaborCompensation;
+use babylon_material_circuit::MaterialCircuitState;
+use babylon_material_circuit::MaterialPurchase;
+use babylon_material_circuit::MemberLaborCapacityRow;
+use babylon_material_circuit::MonetaryBook;
+use babylon_material_circuit::StaffingMemberId;
 
 fn member(key: u8) -> StaffingMemberId {
     StaffingMemberId::from_bytes([key; 32])
@@ -9,7 +24,7 @@ fn other_household() -> FinalDemandPrincipalId {
 }
 
 fn mixed(second: LaborCompensation) -> MaterialCircuitState {
-    let mut state = opening();
+    let mut state = crate::opening();
     state.final_demand_principals.push(FinalDemandPrincipal {
         id: other_household(),
         location: "county:26099".parse().unwrap(),
@@ -20,7 +35,7 @@ fn mixed(second: LaborCompensation) -> MaterialCircuitState {
     let mut snapshot = economy.book.snapshot();
     snapshot.accounts.push(CashAccount {
         id: AccountId::Household(other_household()),
-        cash: money(0),
+        cash: crate::money(0),
     });
     economy.book = MonetaryBook::from_snapshot(snapshot).unwrap();
     economy.costs = HistoricalCostBook::open(
@@ -34,14 +49,14 @@ fn mixed(second: LaborCompensation) -> MaterialCircuitState {
     economy.employment = vec![
         EmploymentTerms {
             member_id: member(1),
-            site_id: store(),
+            site_id: crate::store(),
             unit_id: hours(),
             payee: household(),
-            compensation: LaborCompensation::Wage(money(1)),
+            compensation: LaborCompensation::Wage(crate::money(1)),
         },
         EmploymentTerms {
             member_id: member(2),
-            site_id: store(),
+            site_id: crate::store(),
             unit_id: hours(),
             payee: other_household(),
             compensation: second,
@@ -64,8 +79,8 @@ fn mixed(second: LaborCompensation) -> MaterialCircuitState {
 
 #[test]
 fn two_resident_payees_receive_only_their_own_funded_attendance() {
-    let state = mixed(LaborCompensation::Wage(money(2)));
-    let closed = advance_material_circuit(&state).unwrap();
+    let state = mixed(LaborCompensation::Wage(crate::money(2)));
+    let closed = babylon_material_circuit::advance_material_circuit(&state).unwrap();
     assert_eq!(
         closed
             .wage_accruals
@@ -78,22 +93,24 @@ fn two_resident_payees_receive_only_their_own_funded_attendance() {
         book(&closed.state)
             .cash(AccountId::Household(household()))
             .unwrap(),
-        money(18)
+        crate::money(18)
     );
     assert_eq!(
         book(&closed.state)
             .cash(AccountId::Household(other_household()))
             .unwrap(),
-        money(4)
+        crate::money(4)
     );
     assert_eq!(
-        book(&closed.state).cash(AccountId::Site(store())).unwrap(),
-        money(2)
+        book(&closed.state)
+            .cash(AccountId::Site(crate::store()))
+            .unwrap(),
+        crate::money(2)
     );
     assert_eq!(closed.member_labor_use.len(), 2);
     assert_eq!(
         book(&closed.state).total_cash_and_reserves().unwrap(),
-        money(24)
+        crate::money(24)
     );
 }
 
@@ -103,31 +120,31 @@ fn owner_and_family_hours_do_real_work_without_wages_or_ownership_claims() {
         LaborCompensation::WorkingOwner,
         LaborCompensation::UnpaidFamily,
     ] {
-        let (state, _) = admit_material_purchase(
+        let (state, _) = babylon_material_circuit::admit_material_purchase(
             &mixed(mode),
-            MaterialPurchase::LocalFinalDemand(retail()),
-            money(4),
+            MaterialPurchase::LocalFinalDemand(crate::retail()),
+            crate::money(4),
         )
         .unwrap();
-        let closed = advance_material_circuit(&state).unwrap();
+        let closed = babylon_material_circuit::advance_material_circuit(&state).unwrap();
         assert_eq!(closed.local_fulfillments[0].quantity, 2);
         assert_eq!(closed.wage_accruals.len(), 1);
-        assert_eq!(closed.wage_accruals[0].amount, money(2));
+        assert_eq!(closed.wage_accruals[0].amount, crate::money(2));
         let account = closed
             .income
             .iter()
-            .find(|r| r.account == AccountId::Site(store()))
+            .find(|r| r.account == AccountId::Site(crate::store()))
             .unwrap();
-        assert_eq!(account.statement.handling_expense, money(1));
-        assert_eq!(account.statement.idle_labor_expense, money(1));
+        assert_eq!(account.statement.handling_expense, crate::money(1));
+        assert_eq!(account.statement.idle_labor_expense, crate::money(1));
         assert_eq!(closed.member_labor_use[0].handling_hours, 1);
         assert_eq!(closed.member_labor_use[1].handling_hours, 1);
-        assert_eq!(closed.member_labor_use[1].accrued_wages, money(0));
+        assert_eq!(closed.member_labor_use[1].accrued_wages, crate::money(0));
         assert_eq!(
             book(&closed.state)
                 .cash(AccountId::Household(other_household()))
                 .unwrap(),
-            money(0)
+            crate::money(0)
         );
         assert_eq!(closed.labor_use[0].non_wage_hours, 2);
         assert_eq!(closed.labor_use[0].unpaid_idle_hours, 1);
@@ -142,6 +159,6 @@ fn conflicting_member_hours_refuse_before_payroll_or_goods_change() {
     };
     economy.member_labor[1].available_hours += 1;
     let original = state.clone();
-    assert!(advance_material_circuit(&state).is_err());
+    assert!(babylon_material_circuit::advance_material_circuit(&state).is_err());
     assert_eq!(state, original);
 }

@@ -25,6 +25,3 @@ pub use audit::{
     county_roster, BoundaryFacts, CountyRoster, MaterialAudit, ReceiptFacts, Refusal, RenewalFacts,
     Scope,
 };
-
-#[cfg(test)]
-use sha2::{Digest, Sha256};

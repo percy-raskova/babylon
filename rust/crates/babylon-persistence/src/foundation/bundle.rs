@@ -2,19 +2,9 @@
 
 use std::collections::TryReserveError;
 
-use babylon_bsl::canonical_ast::rules_hash_of;
-
-use babylon_bsl::rule_pipeline::split_content;
-
-use babylon_bsl::scenario::{load_scenario, load_scenario_with_prelude};
-
 use babylon_graph::hypergraph_store::HypergraphStore;
 
 use babylon_graph::stable_element::StableElementResolver;
-
-use babylon_graph::stable_state::encode_stable_graph_state;
-
-use babylon_kernel::content_digest::sha256_of;
 
 use babylon_kernel::content_digest::ContentDigest;
 
@@ -26,7 +16,14 @@ use babylon_tick::replay_session::ReplayTickSession;
 
 use crate::runtime::RustPersistenceRuntimeError;
 
+use crate::economic_catalog::CapturedEconomicCatalog;
+use crate::economic_catalog::SourceArtifactKind;
 use crate::semantic_codec;
+use babylon_bsl::canonical_ast;
+use babylon_bsl::rule_pipeline;
+use babylon_bsl::scenario;
+use babylon_graph::stable_state;
+use babylon_kernel::content_digest;
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct AuthoredFoundationSources {
@@ -40,7 +37,7 @@ pub(crate) struct AuthoredFoundationSources {
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum FoundationSources {
     Authored(AuthoredFoundationSources),
-    Economic(Box<crate::economic_catalog::CapturedEconomicCatalog>),
+    Economic(Box<CapturedEconomicCatalog>),
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -70,15 +67,15 @@ impl FoundationContentBundle {
             defines,
             reference_manifest,
         )?;
-        let (_, rules) =
-            split_content(rule_source).map_err(|_| RustPersistenceRuntimeError::ReplaySource)?;
+        let (_, rules) = rule_pipeline::split_content(rule_source)
+            .map_err(|_| RustPersistenceRuntimeError::ReplaySource)?;
         let rule_forms = rules.into_iter().map(|rule| rule.form).collect::<Vec<_>>();
         let content_digest = ContentDigest {
-            defines_hash: sha256_of(defines),
-            rules_hash: rules_hash_of(&rule_forms)
+            defines_hash: content_digest::sha256_of(defines),
+            rules_hash: canonical_ast::rules_hash_of(&rule_forms)
                 .map_err(|_| RustPersistenceRuntimeError::ReplaySource)?,
         };
-        let reference_digest = RefDigest::from_bytes(sha256_of(reference_manifest));
+        let reference_digest = RefDigest::from_bytes(content_digest::sha256_of(reference_manifest));
         let scenario_source_bytes = copy_bytes(
             "foundation scenario source bytes",
             scenario_source.as_bytes(),
@@ -126,7 +123,7 @@ impl FoundationContentBundle {
         match &self.sources {
             FoundationSources::Authored(sources) => sources.prelude.as_deref(),
             FoundationSources::Economic(catalog) => {
-                catalog.source(crate::economic_catalog::SourceArtifactKind::PreludeDeclarations)
+                catalog.source(SourceArtifactKind::PreludeDeclarations)
             }
         }
     }
@@ -139,7 +136,7 @@ impl FoundationContentBundle {
         match &self.sources {
             FoundationSources::Authored(sources) => &sources.rules,
             FoundationSources::Economic(catalog) => catalog
-                .source(crate::economic_catalog::SourceArtifactKind::Rules)
+                .source(SourceArtifactKind::Rules)
                 .expect("admitted rule source"),
         }
     }
@@ -300,8 +297,10 @@ impl CampaignFoundation {
                 .load_graph(&mut graph)
                 .map_err(|_| RustPersistenceRuntimeError::ReplaySource)?,
             None => match prelude {
-                Some(prelude) => load_scenario_with_prelude(prelude, scenario, &mut graph),
-                None => load_scenario(scenario, &mut graph),
+                Some(prelude) => {
+                    scenario::load_scenario_with_prelude(prelude, scenario, &mut graph)
+                }
+                None => scenario::load_scenario(scenario, &mut graph),
             }
             .map_err(|_| RustPersistenceRuntimeError::ReplaySource)?,
         };
@@ -312,7 +311,7 @@ impl CampaignFoundation {
             &loaded.hyperedge_content_ids,
         )
         .map_err(|_| RustPersistenceRuntimeError::ReplaySource)?;
-        let reloaded = encode_stable_graph_state(&graph, &resolver)
+        let reloaded = stable_state::encode_stable_graph_state(&graph, &resolver)
             .map_err(|_| RustPersistenceRuntimeError::ReplaySource)?;
         let captured = session
             .stable_graph_state()
@@ -395,7 +394,7 @@ impl CampaignFoundation {
             reference_digest.as_bytes(),
             content_bundle.canonical_bytes(),
         )?;
-        if sha256_of(&canonical_bytes) != expected_foundation_sha256 {
+        if content_digest::sha256_of(&canonical_bytes) != expected_foundation_sha256 {
             return Err(RustPersistenceRuntimeError::ReplaySource);
         }
         Ok(Self {

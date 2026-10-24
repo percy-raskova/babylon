@@ -1,12 +1,13 @@
 //! Native capture preserves sparse workplace evidence without allocating persons.
 use babylon_kernel::geography::CountyGeoid;
+use babylon_persistence::national_cohorts;
 use babylon_persistence::national_cohorts::{
-    national_cohort_reference, NationalCohortReference, NationalCohortReferenceError,
+    NationalCohortReference, NationalCohortReferenceError,
 };
 
 #[test]
 fn every_source_member_is_preserved_with_explicit_admission() {
-    let reference = national_cohort_reference().unwrap();
+    let reference = national_cohorts::national_cohort_reference().unwrap();
     assert_eq!(reference.groups().len(), 59_058);
     assert_eq!(reference.admitted_cohorts().count(), 57_238);
     assert_eq!(
@@ -37,7 +38,7 @@ fn every_source_member_is_preserved_with_explicit_admission() {
 
 #[test]
 fn suppression_and_rounded_zero_remain_distinct() {
-    let reference = national_cohort_reference().unwrap();
+    let reference = national_cohorts::national_cohort_reference().unwrap();
     assert!(reference.admitted_cohorts().any(|row| {
         row.establishments().known_subtotal() == 0
             && (row.jobs().known_subtotal() > 0 || row.annual_payroll_usd().known_subtotal() > 0)

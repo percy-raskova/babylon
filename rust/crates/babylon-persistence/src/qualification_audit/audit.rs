@@ -2,17 +2,14 @@
 
 use super::{economic, production_renewal, trade};
 
-use crate::{
-    identity::CampaignId, observer_reader::CommittedMaterialObservation,
-    production_observation::ProductionSnapshot,
-};
+use crate::identity::CampaignId;
+use crate::observer_reader::CommittedMaterialObservation;
+use crate::production_observation::ProductionSnapshot;
 
 use babylon_kernel::economic_location::EconomicLocation;
 
-use babylon_tick::{
-    material_replay::IdentifiedMaterialTick,
-    material_world::{nominal_material_world_hash, MaterialWorldRegister},
-};
+use babylon_tick::material_replay::IdentifiedMaterialTick;
+use babylon_tick::material_world::MaterialWorldRegister;
 
 use serde::Serialize;
 
@@ -20,7 +17,15 @@ use serde_json::Value;
 
 use sha2::{Digest, Sha256};
 
+use crate::observer_reader::ObserverEconomySnapshot;
+use babylon_tick::material_world;
+use economic::Boundary;
+use economic::Summary;
+use production_renewal::Evidence;
+use std::cmp::Ordering;
 use std::collections::BTreeSet;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Refusal {
@@ -37,7 +42,7 @@ pub enum Refusal {
 }
 
 impl std::fmt::Display for Refusal {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         write!(f, "read-only qualification audit refused: {self:?}")
     }
 }
@@ -80,14 +85,11 @@ pub struct RenewalFacts {
     pub through_tick_content_hash: String,
     pub canonical_receipt_sha256: String,
     #[serde(flatten)]
-    pub audit: production_renewal::Evidence,
+    pub audit: Evidence,
 }
 
 impl RenewalFacts {
-    pub(super) fn new(
-        audit: production_renewal::Evidence,
-        identity: &IdentifiedMaterialTick,
-    ) -> Self {
+    pub(super) fn new(audit: Evidence, identity: &IdentifiedMaterialTick) -> Self {
         Self {
             through_tick_content_hash: hex(identity.tick_content_hash().as_bytes()),
             canonical_receipt_sha256: hex(&identity.receipt_digest()),
@@ -114,7 +116,7 @@ pub struct BoundaryFacts {
     pub production_evidence_sha256: String,
     pub production_evidence_body_bytes: u64,
     pub county_roster_sha256: String,
-    pub economic: ReceiptFacts<economic::Boundary>,
+    pub economic: ReceiptFacts<Boundary>,
     pub trade: ReceiptFacts<Value>,
     pub production_renewal: Option<RenewalFacts>,
 }
@@ -182,7 +184,7 @@ impl MaterialAudit {
             || snapshot.nominal_world_hash.as_deref() != Some(world.as_str())
             || observation.accounting.receipts.resolve_tick != tick
             || register.completed_tick() != tick
-            || nominal_material_world_hash(identity.graph_world_after(), register)
+            || material_world::nominal_material_world_hash(identity.graph_world_after(), register)
                 != identity.result_world_hash()
         {
             return Err(Refusal::Identity);
@@ -217,8 +219,8 @@ impl MaterialAudit {
             .read(&observation.accounting.receipts, &production.sites)
             .map_err(Refusal::Trade)?;
         let production_renewal = match tick.cmp(&self.scope.renewal_seed_tick) {
-            std::cmp::Ordering::Less => None,
-            std::cmp::Ordering::Equal => {
+            Ordering::Less => None,
+            Ordering::Equal => {
                 let audit =
                     production_renewal::Audit::seed(register.state(), tick, register.digest())
                         .map_err(Refusal::Renewal)?;
@@ -226,7 +228,7 @@ impl MaterialAudit {
                 candidate.renewal = Some(audit);
                 Some(evidence)
             }
-            std::cmp::Ordering::Greater => Some(
+            Ordering::Greater => Some(
                 candidate
                     .renewal
                     .as_mut()
@@ -261,7 +263,7 @@ impl MaterialAudit {
     }
 
     #[must_use]
-    pub fn economic_summary(&self) -> economic::Summary {
+    pub fn economic_summary(&self) -> Summary {
         self.economic.summary()
     }
 
@@ -281,9 +283,7 @@ pub struct CountyRoster {
 /// # Errors
 /// Refuses missing, duplicated or substituted counties against the exact
 /// national reference. The caller must authenticate the snapshot's source.
-pub fn county_roster(
-    snapshot: &crate::observer_reader::ObserverEconomySnapshot,
-) -> Result<CountyRoster, Refusal> {
+pub fn county_roster(snapshot: &ObserverEconomySnapshot) -> Result<CountyRoster, Refusal> {
     let counties: BTreeSet<_> = snapshot
         .counties
         .iter()

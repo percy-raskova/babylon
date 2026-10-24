@@ -4,13 +4,17 @@ use super::ResidentWorkerClasses;
 
 use super::parse;
 
-use crate::national_counties::{
-    national_county_reference, NationalCountyReference, NationalCountyReferenceError,
-};
+use crate::national_counties::{NationalCountyReference, NationalCountyReferenceError};
 
-use babylon_kernel::{content_digest::sha256_of, geography::CountyGeoid};
+use babylon_kernel::geography::CountyGeoid;
 
-use std::{io::Read, sync::OnceLock};
+use crate::national_counties;
+use babylon_kernel::content_digest;
+use flate2::bufread::GzDecoder;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
+use std::io::Read;
+use std::sync::OnceLock;
 
 pub(crate) const ARTIFACT: &[u8] = include_bytes!(
     "../../../../../src/babylon/data/reference/economy/national_resident_workforce_2024.csv.gz"
@@ -47,8 +51,8 @@ impl NationalResidentWorkforceReference {
     /// # Errors
     /// Refuses changed bytes, malformed cells, missing counties or contradictory counts.
     pub fn decode_pinned(bytes: &[u8]) -> Result<Self, ResidentWorkforceReferenceError> {
-        let counties =
-            national_county_reference().map_err(ResidentWorkforceReferenceError::CountySource)?;
+        let counties = national_counties::national_county_reference()
+            .map_err(ResidentWorkforceReferenceError::CountySource)?;
         Self::decode_captured(bytes, counties)
     }
     /// Reopen from supplied captured evidence and its exact checked county control.
@@ -61,7 +65,7 @@ impl NationalResidentWorkforceReference {
         if bytes.len() > MAX_COMPRESSED_BYTES {
             return Err(ResidentWorkforceReferenceError::Bound);
         }
-        if sha256_of(bytes) != ARTIFACT_SHA256 {
+        if content_digest::sha256_of(bytes) != ARTIFACT_SHA256 {
             return Err(ResidentWorkforceReferenceError::ArtifactDigest);
         }
         if counties.artifact_sha256() != COUNTY_REFERENCE_SHA256 {
@@ -129,7 +133,7 @@ pub enum ResidentWorkforceReferenceError {
 }
 
 impl std::fmt::Display for ResidentWorkforceReferenceError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         write!(f, "resident workforce reference refused: {self:?}")
     }
 }
@@ -148,7 +152,7 @@ pub fn national_resident_workforce_reference(
 }
 
 pub(crate) fn decode(bytes: &[u8]) -> Result<String, ResidentWorkforceReferenceError> {
-    let mut decoder = flate2::bufread::GzDecoder::new(bytes);
+    let mut decoder = GzDecoder::new(bytes);
     let mut text = String::new();
     decoder
         .by_ref()

@@ -1,8 +1,10 @@
 //! Diagnostic authoring over the existing regional recipes, resources and staffing.
+use super::ExperimentDelivery;
 use super::{
-    product, ExperimentError, ExperimentIntervention, ExperimentProfile, Result,
-    SimulationExperimentV1, StartingSnapshot,
+    ExperimentError, ExperimentIntervention, ExperimentProfile, Result, SimulationExperimentV1,
+    StartingSnapshot,
 };
+use crate::michigan_defines::MichiganDefines;
 use crate::michigan_material::{
     MichiganMaterialCatalog, MichiganMaterialPath, MichiganNormalizedContent,
 };
@@ -21,7 +23,7 @@ pub(super) fn catalog(spec: &SimulationExperimentV1) -> Result<MichiganMaterialC
 pub(crate) fn configure(
     c: &mut MichiganNormalizedContent,
     spec: &SimulationExperimentV1,
-    defines: &crate::michigan_defines::MichiganDefines,
+    defines: &MichiganDefines,
 ) -> Result<()> {
     spec.validate()?;
     if spec.profile == ExperimentProfile::HistoricalFreight {
@@ -48,15 +50,16 @@ pub(crate) fn configure(
                 .ok_or(ExperimentError::StartingSnapshot)?;
             pool.employed = count;
             pool.reserve = 0;
-            pool.previous_unretained_hours = product(count, c.staffing.hours_per_worker_period)?;
+            pool.previous_unretained_hours =
+                super::product(count, c.staffing.hours_per_worker_period)?;
             for p in c
                 .processes
                 .iter_mut()
                 .filter(|p| p.site_key == pool.site_key)
             {
-                let weekly = product(count, c.staffing.hours_per_worker_period / 4)?
+                let weekly = super::product(count, c.staffing.hours_per_worker_period / 4)?
                     / p.labor_hours_per_batch;
-                p.capacity_batches_per_period = product(weekly, 4)?;
+                p.capacity_batches_per_period = super::product(weekly, 4)?;
             }
         }
     }
@@ -67,7 +70,7 @@ pub(crate) fn configure(
         initialize_stocks_and_routes(c, spec.horizon)?;
     }
     for corridor in &mut c.corridors {
-        corridor.capacity_grams_per_period = product(
+        corridor.capacity_grams_per_period = super::product(
             corridor.capacity_grams_per_period,
             spec.transport_permille(),
         )? / 1000;
@@ -86,7 +89,7 @@ pub(crate) fn configure(
             let MichiganMaterialPath::Routed { travel_periods, .. } = &mut route.path else {
                 return Err(ExperimentError::Content);
             };
-            *travel_periods = if *delivery == super::ExperimentDelivery::Delayed {
+            *travel_periods = if *delivery == ExperimentDelivery::Delayed {
                 value.delayed_travel_periods
             } else {
                 value.travel_periods
@@ -127,8 +130,8 @@ fn initialize_stocks_and_routes(c: &mut MichiganNormalizedContent, horizon: u64)
                 .iter()
                 .any(|r| r.buyer_site_key == p.site_key && r.good_key == i.good_key);
             let periods = if incoming { 1 } else { horizon };
-            i.opening_quantity = product(
-                product(p.capacity_batches_per_period, i.quantity_per_batch)?,
+            i.opening_quantity = super::product(
+                super::product(p.capacity_batches_per_period, i.quantity_per_batch)?,
                 periods,
             )?;
         }
@@ -139,8 +142,8 @@ fn initialize_stocks_and_routes(c: &mut MichiganNormalizedContent, horizon: u64)
             .iter()
             .find(|p| p.site_key == route.supplier_site_key && p.output_good_key == route.good_key)
             .ok_or(ExperimentError::Content)?;
-        route.ordered_quantity = product(
-            product(
+        route.ordered_quantity = super::product(
+            super::product(
                 supplier.capacity_batches_per_period,
                 supplier.output_quantity_per_batch,
             )?,
@@ -152,8 +155,8 @@ fn initialize_stocks_and_routes(c: &mut MichiganNormalizedContent, horizon: u64)
                 .iter()
                 .find(|g| g.key == route.good_key)
                 .ok_or(ExperimentError::Content)?;
-            let mass = product(
-                product(
+            let mass = super::product(
+                super::product(
                     supplier.capacity_batches_per_period,
                     supplier.output_quantity_per_batch,
                 )?,
@@ -177,7 +180,7 @@ fn initialize_stocks_and_routes(c: &mut MichiganNormalizedContent, horizon: u64)
 /// job count, rounding result, stock ceiling, or undeclared intervention.
 pub(crate) fn validate_captured(
     captured: &MichiganNormalizedContent,
-    defines: &crate::michigan_defines::MichiganDefines,
+    defines: &MichiganDefines,
     spec: &SimulationExperimentV1,
 ) -> Result<()> {
     let mut expected = captured.clone();
@@ -201,7 +204,7 @@ pub(crate) fn validate_captured(
         {
             return Err(ExperimentError::Content);
         }
-        process.capacity_batches_per_period = product(value.batches_per_week, 4)?;
+        process.capacity_batches_per_period = super::product(value.batches_per_week, 4)?;
         process.opening_planned_batches = value.opening_planned_batches;
         process.inputs[0].opening_quantity = value.opening_input_units;
         let pool = expected
@@ -220,7 +223,7 @@ pub(crate) fn validate_captured(
         pool.employed = value.employed_people;
         pool.reserve = value.reserve_people;
         pool.previous_unretained_hours =
-            product(value.employed_people, defines.hours_per_period())?;
+            super::product(value.employed_people, defines.hours_per_period())?;
     }
     restore_designed_transport(&mut expected, defines)?;
     configure(&mut expected, spec, defines)?;
@@ -232,7 +235,7 @@ pub(crate) fn validate_captured(
 
 fn restore_designed_transport(
     expected: &mut MichiganNormalizedContent,
-    defines: &crate::michigan_defines::MichiganDefines,
+    defines: &MichiganDefines,
 ) -> Result<()> {
     for route in &mut expected.routes {
         let value = defines
@@ -283,7 +286,7 @@ fn restore_designed_transport(
                 good.grams_per_unit,
             )
         };
-        corridor.capacity_grams_per_period = product(product(rate, 4)?, mass)?;
+        corridor.capacity_grams_per_period = super::product(super::product(rate, 4)?, mass)?;
     }
     Ok(())
 }

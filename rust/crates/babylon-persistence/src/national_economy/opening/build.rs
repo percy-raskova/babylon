@@ -4,36 +4,40 @@ use super::{actors, aid, external, financial, household_time, markets, routes, t
 
 use super::super::{GameCommodity, NationalGamePolicy};
 
-use crate::{
-    economic_catalog::{
-        CatalogAccounting, CatalogCapacity, CatalogLogistics, CatalogOpeningOrders,
-        CatalogPolicies, EconomicOpening, EconomicSiteSeed,
-    },
-    national_cohorts::NationalCohortReference,
-    national_counties::NationalCountyReference,
-    national_household_allocation::{
-        allocate_households, HouseholdAllocationError, HouseholdBudgetKey,
-    },
-    national_household_time_allocation::allocate_household_time,
-    national_households::NationalHouseholdReference,
-    national_resident_allocation::{allocate_home_county, AllocationError},
-    national_resident_workforce::NationalResidentWorkforceReference,
-    national_transport::NationalTransportReference,
-    world_reference::WorldReference,
+use crate::economic_catalog::{
+    CatalogAccounting, CatalogCapacity, CatalogLogistics, CatalogOpeningOrders, CatalogPolicies,
+    EconomicOpening, EconomicSiteSeed,
 };
+use crate::national_cohorts::NationalCohortReference;
+use crate::national_counties::NationalCountyReference;
+use crate::national_household_allocation::{HouseholdAllocationError, HouseholdBudgetKey};
+use crate::national_households::NationalHouseholdReference;
+use crate::national_resident_allocation::AllocationError;
+use crate::national_resident_workforce::NationalResidentWorkforceReference;
+use crate::national_transport::NationalTransportReference;
+use crate::world_reference::WorldReference;
 
-use babylon_kernel::{
-    currency::Currency,
-    economic_identity::{EconomicFunction, QcewOwnership},
-    economic_location::EconomicLocation,
-};
+use babylon_kernel::currency::Currency;
+use babylon_kernel::economic_identity::{EconomicFunction, QcewOwnership};
+use babylon_kernel::economic_location::EconomicLocation;
 
 use babylon_material_circuit::{
     FinancialInstitutions, GoodId, LogisticsNodeId, ProcessId, ReplenishmentPolicy,
     RollingProcessSupply, SellerOffer, SiteId, UnitId,
 };
 
+use crate::national_household_allocation;
+use crate::national_household_refinement::HouseholdRefinementError;
+use crate::national_household_time_allocation;
+use crate::national_household_time_allocation::HouseholdTimeAllocationError;
+use crate::national_resident_allocation;
+use aid::NationalAidCapture;
+use babylon_material_circuit::AidBook;
+use babylon_material_circuit::FinalDemandPrincipalId;
+use babylon_material_circuit::HouseholdTimeAccounting;
+use babylon_material_circuit::MaterialCircuitError;
 use std::collections::BTreeMap;
+use std::fmt::Formatter;
 
 /// Specific opening refusals; no source absence becomes an invented observation.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -47,13 +51,13 @@ pub enum NationalOpeningError {
     Arithmetic,
     Workforce(AllocationError),
     Households(HouseholdAllocationError),
-    HouseholdTime(crate::national_household_time_allocation::HouseholdTimeAllocationError),
-    HouseholdRefinement(crate::national_household_refinement::HouseholdRefinementError),
-    TimeAccount(babylon_material_circuit::MaterialCircuitError),
+    HouseholdTime(HouseholdTimeAllocationError),
+    HouseholdRefinement(HouseholdRefinementError),
+    TimeAccount(MaterialCircuitError),
 }
 
 impl std::fmt::Display for NationalOpeningError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
         write!(formatter, "national economic opening refused: {self:?}")
     }
 }
@@ -93,11 +97,10 @@ pub(in crate::national_economy) struct ActorContext {
 
 pub(in crate::national_economy) struct Builder<'a> {
     pub(in crate::national_economy) policy: &'a NationalGamePolicy,
-    pub(in crate::national_economy) aid: aid::NationalAidCapture,
-    pub(in crate::national_economy) eligible_overrides:
-        BTreeMap<babylon_material_circuit::FinalDemandPrincipalId, u64>,
+    pub(in crate::national_economy) aid: NationalAidCapture,
+    pub(in crate::national_economy) eligible_overrides: BTreeMap<FinalDemandPrincipalId, u64>,
     pub(in crate::national_economy) household_keys:
-        BTreeMap<babylon_material_circuit::FinalDemandPrincipalId, HouseholdBudgetKey>,
+        BTreeMap<FinalDemandPrincipalId, HouseholdBudgetKey>,
     pub(in crate::national_economy) transport: &'a NationalTransportReference,
     pub(in crate::national_economy) labor_unit: UnitId,
     pub(in crate::national_economy) opening: EconomicOpening,
@@ -136,22 +139,23 @@ pub fn build_national_opening(
     if u64::from(transport.period_days()) != policy.period_days {
         return Err(NationalOpeningError::Policy);
     }
-    let household_budgets = allocate_households(
+    let household_budgets = national_household_allocation::allocate_households(
         counties,
         household_margins,
         residents,
         policy.households.private_owner_households_bps,
     )
     .map_err(NationalOpeningError::Households)?;
-    let time_controls = allocate_household_time(counties, &household_budgets)
-        .map_err(NationalOpeningError::HouseholdTime)?;
+    let time_controls =
+        national_household_time_allocation::allocate_household_time(counties, &household_budgets)
+            .map_err(NationalOpeningError::HouseholdTime)?;
     let leaf_roster = crate::national_household_refinement::refine_households(
         &household_budgets,
         &time_controls,
         &[],
     )
     .map_err(NationalOpeningError::HouseholdRefinement)?;
-    let mut allocation = allocate_home_county(
+    let mut allocation = national_resident_allocation::allocate_home_county(
         counties,
         cohorts,
         residents,
@@ -192,7 +196,7 @@ pub fn build_national_opening(
         .opening
         .employment
         .sort_unstable_by_key(|row| row.member_id);
-    builder.opening.policies.aid = babylon_material_circuit::AidBook {
+    builder.opening.policies.aid = AidBook {
         mandates: builder.aid.mandates.clone(),
         freight: vec![],
     };
@@ -214,7 +218,7 @@ impl<'a> Builder<'a> {
             templates::compile(policy, labor_unit)?;
         Ok(Self {
             policy,
-            aid: aid::NationalAidCapture::default(),
+            aid: NationalAidCapture::default(),
             eligible_overrides: BTreeMap::new(),
             household_keys: BTreeMap::new(),
             transport,
@@ -252,8 +256,8 @@ impl<'a> Builder<'a> {
                 equipment: vec![],
                 capacity: CatalogCapacity::Rolling(RollingProcessSupply::CapturedNameplate(vec![])),
                 policies: CatalogPolicies {
-                    aid: babylon_material_circuit::AidBook::default(),
-                    household_time: babylon_material_circuit::HouseholdTimeAccounting::NotModeled,
+                    aid: AidBook::default(),
+                    household_time: HouseholdTimeAccounting::NotModeled,
                     offers: vec![],
                     replenishment: vec![],
                     household_purchases: vec![],
@@ -368,5 +372,5 @@ pub(in crate::national_economy) fn sum_amount(left: Currency, right: Currency) -
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct NationalOpening {
     pub opening: EconomicOpening,
-    pub aid: aid::NationalAidCapture,
+    pub aid: NationalAidCapture,
 }

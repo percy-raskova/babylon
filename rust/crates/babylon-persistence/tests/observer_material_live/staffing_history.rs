@@ -1,17 +1,15 @@
 //! Exact historical staffing and complete-envelope refusal in an owned clone.
 
 use super::{
-    advance_material_period, assert_known_material_absence, install_reader_role,
-    provision_observer_role, CampaignId, Config, DisposableTarget, DurableMaterialRuntime,
-    MichiganContentPreset, NoTls, ObserverEconomyError, ObserverEconomyReader, ObserverVisibility,
-    Uuid,
+    CampaignId, Config, DisposableTarget, DurableMaterialRuntime, MichiganContentPreset, NoTls,
+    ObserverEconomyError, ObserverEconomyReader, ObserverVisibility, Uuid,
 };
 use babylon_persistence::observer_reader::ObserverEconomySnapshot;
 use babylon_persistence::observer_reader::{ProductionHistoryTarget, ProductionOutputPoint};
-use postgres::{
-    types::{FromSqlOwned, ToSql},
-    Client,
-};
+use postgres::types::{FromSqlOwned, ToSql};
+use postgres::Client;
+use postgres::Row;
+use postgres::Transaction;
 
 struct Fixture {
     target: DisposableTarget,
@@ -32,8 +30,8 @@ impl Fixture {
             .unwrap();
         let foundation_digest = foundation.digest();
         let runtime = DurableMaterialRuntime::create(&target.writer, campaign, foundation).unwrap();
-        install_reader_role(&target.writer).unwrap();
-        provision_observer_role(&target.writer).unwrap();
+        super::install_reader_role(&target.writer).unwrap();
+        super::provision_observer_role(&target.writer).unwrap();
         let observer_config = target.login("babylon_observer", "staffinghistory");
         let observer =
             ObserverEconomyReader::connect(&observer_config, ObserverVisibility::FullObserver)
@@ -60,7 +58,7 @@ impl Fixture {
 
     fn advance_to(&mut self, tick: u64) {
         while self.runtime.session().completed_tick() < tick {
-            advance_material_period(&mut self.runtime);
+            super::advance_material_period(&mut self.runtime);
         }
     }
 }
@@ -213,7 +211,9 @@ fn production_history_preview_refuses_without_target_or_campaign_disclosure() {
             );
         }
     }
-    assert_known_material_absence(&mut fixture.preview.snapshot(fixture.campaign, 2).unwrap());
+    super::assert_known_material_absence(
+        &mut fixture.preview.snapshot(fixture.campaign, 2).unwrap(),
+    );
 }
 
 #[test]
@@ -331,7 +331,9 @@ fn assert_foundation(fixture: &Fixture) {
         .unwrap()
         .get(0);
     assert_eq!(count, 0);
-    assert_known_material_absence(&mut fixture.preview.snapshot(fixture.campaign, 0).unwrap());
+    super::assert_known_material_absence(
+        &mut fixture.preview.snapshot(fixture.campaign, 0).unwrap(),
+    );
 }
 
 #[test]
@@ -363,7 +365,7 @@ fn held_staffing_history_survives_advance_reopen_and_does_not_mutate_authority()
     for tick in [4, 0, 2, 3, 2] {
         let mut snapshot = reader.snapshot(fixture.campaign, tick).unwrap();
         assert_eq!(snapshot.resolve_tick, tick);
-        assert_known_material_absence(
+        super::assert_known_material_absence(
             &mut fixture.preview.snapshot(fixture.campaign, tick).unwrap(),
         );
         if tick == 2 {
@@ -468,7 +470,7 @@ fn update_fault_value<T: ToSql + Sync>(
     value: &T,
     location: &str,
     position: Option<i32>,
-) -> Vec<postgres::Row> {
+) -> Vec<Row> {
     if let Some(position) = position {
         let mut tx = writer.transaction().unwrap();
         tx.batch_execute("ALTER TABLE babylon_state.graph_node_f64_chunk_v1 DISABLE TRIGGER graph_node_f64_chunk_immutable_v1").unwrap();
@@ -589,11 +591,11 @@ struct EventCell {
     column: &'static str,
 }
 
-fn event_fixture_lock(tx: &mut postgres::Transaction<'_>, campaign: CampaignId) {
+fn event_fixture_lock(tx: &mut Transaction<'_>, campaign: CampaignId) {
     tx.query_one("SELECT pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('babylon.graph-lookup.v1:'||$1::uuid::text,0))",&[campaign.as_uuid()]).unwrap();
     tx.query_one("SELECT pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('babylon.event-marker.v1:'||$1::uuid::text||':2',0))",&[campaign.as_uuid()]).unwrap();
 }
-fn fixture_guard(tx: &mut postgres::Transaction<'_>, table: &str, guard: &str, enabled: bool) {
+fn fixture_guard(tx: &mut Transaction<'_>, table: &str, guard: &str, enabled: bool) {
     // Identifiers come only from the closed enums and fixed fixture guards.
     let state:String=tx.query_one("SELECT tgenabled::text FROM pg_catalog.pg_trigger WHERE tgrelid=$1::text::regclass AND tgname=$2",&[&format!("babylon_state.{table}"),&guard]).unwrap().get(0);
     assert_eq!(state, if enabled { "D" } else { "O" });
@@ -609,7 +611,7 @@ fn fixture_guard(tx: &mut postgres::Transaction<'_>, table: &str, guard: &str, e
     .unwrap();
 }
 fn set_event_cell<T: ToSql + Sync>(
-    tx: &mut postgres::Transaction<'_>,
+    tx: &mut Transaction<'_>,
     cell: &EventCell,
     value: &T,
 ) -> String {
@@ -632,7 +634,7 @@ fn read_event_field_cell(
     campaign: CampaignId,
     name: &str,
     column: &'static str,
-) -> (EventCell, postgres::Row) {
+) -> (EventCell, Row) {
     assert!(matches!(column, "int_values" | "key_ids"));
     let sql=format!("SELECT c.ctid::text,p::integer,c.{column}[p],c.value_tag FROM babylon_state.event_field_chunk_v1 c CROSS JOIN LATERAL generate_subscripts(c.event_ordinals,1) AS idx(p) JOIN babylon_state.event_text_lookup_v1 n ON n.campaign_id=c.campaign_id AND n.text_id=c.name_ids[p] WHERE c.campaign_id=$1::uuid AND c.resolve_tick=2 AND n.value=$2 ORDER BY c.chunk,p LIMIT 1");
     let row = writer
@@ -685,7 +687,7 @@ fn lookup_head(
 // Temporary foreign identity is test-owned, appended only while its exact guard
 // is disabled in this transaction. It changes one cell, never a shared lookup.
 fn append_foreign_lookup<T: ToSql + Sync>(
-    tx: &mut postgres::Transaction<'_>,
+    tx: &mut Transaction<'_>,
     campaign: CampaignId,
     lookup: EventLookup,
     value: &T,
@@ -709,7 +711,7 @@ fn append_foreign_lookup<T: ToSql + Sync>(
     fixture_guard(tx, lookup.table(), guard, true);
 }
 fn remove_foreign_lookup<T: ToSql + Sync>(
-    tx: &mut postgres::Transaction<'_>,
+    tx: &mut Transaction<'_>,
     campaign: CampaignId,
     lookup: EventLookup,
     value: &T,
@@ -941,7 +943,9 @@ fn complete_marker_authentication_refuses_independent_staffing_and_auxiliary_row
     assert_event_faults(&fixture, &mut writer, &healthy);
     assert_commit_faults(&fixture, &mut writer, &healthy);
     assert_valid_checkpoint_body_fault(&fixture, &mut writer, &healthy);
-    assert_known_material_absence(&mut fixture.preview.snapshot(fixture.campaign, 2).unwrap());
+    super::assert_known_material_absence(
+        &mut fixture.preview.snapshot(fixture.campaign, 2).unwrap(),
+    );
     assert_eq!(fixture.runtime.tail(), Some(&tail));
     assert_eq!(
         fixture.runtime.session().current_world_hash().unwrap(),

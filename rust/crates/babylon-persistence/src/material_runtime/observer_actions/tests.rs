@@ -1,11 +1,18 @@
-use super::*;
+use super::cursor;
+use super::cursor::reconstruct;
 use crate::organizer_aid_fixture as fixture;
 use babylon_bsl::structural_verbs::CollectingSink;
+use babylon_kernel::content_digest;
+use babylon_kernel::replay::ReplaySessionId;
 use babylon_practice_contract::{
     InputAuthorityId, OrganizerAidKind, OrganizerChoice, OrganizerInquiry, ProposalNonce,
 };
+use babylon_practice_contract::{
+    OrganizerConfig, OrganizerState, PracticeIntent, ORDERED_PRACTICE_ACTION_BATCH_DOMAIN_BYTES,
+};
+use fixture::Session;
 
-fn authored(routed: bool) -> fixture::Session {
+fn authored(routed: bool) -> Session {
     let mut config = fixture::config();
     if routed {
         config.aid_bindings[0].kind = OrganizerAidKind::Remote;
@@ -19,17 +26,22 @@ fn authored(routed: bool) -> fixture::Session {
     )
 }
 
-fn verify_advance(session: &mut fixture::Session, choice: Option<OrganizerChoice>) {
+fn verify_advance(session: &mut Session, choice: Option<OrganizerChoice>) {
     let config = session.material().organizer_config().unwrap().clone();
     let prior = session.material().organizer_state().unwrap().clone();
     let identity = session.graph_session().session_identity().clone();
     let accepted = choice.map(|choice| {
         let mut command = fixture::commitment(session, choice).command;
         command.nonce = [u8::try_from(prior.period + 7).unwrap(); 16];
-        admit_organizer(&config, &prior, &command).unwrap()
+        babylon_practice_contract::admit_organizer(&config, &prior, &command).unwrap()
     });
-    let batch =
-        organizer_action_batch(&config, &prior, accepted.as_ref(), identity.clone()).unwrap();
+    let batch = babylon_practice_contract::organizer_action_batch(
+        &config,
+        &prior,
+        accepted.as_ref(),
+        identity.clone(),
+    )
+    .unwrap();
     let candidate = fixture::prepare(session, accepted.as_ref());
     fixture::commit(session, &mut CollectingSink::default(), candidate);
     let current = session.material().organizer_state().unwrap();
@@ -104,8 +116,14 @@ fn observer_checked_action_identity_nonce_and_authority_refuse() {
     let prior = session.material().organizer_state().unwrap();
     let identity = session.graph_session().session_identity();
     let commitment = fixture::commitment(&session, OrganizerChoice::LocalAid);
-    let batch = organizer_action_batch(config, prior, Some(&commitment), identity.clone()).unwrap();
-    let intents = parse(identity, batch.resolve_tick(), batch.canonical_bytes()).unwrap();
+    let batch = babylon_practice_contract::organizer_action_batch(
+        config,
+        prior,
+        Some(&commitment),
+        identity.clone(),
+    )
+    .unwrap();
+    let intents = cursor::parse(identity, batch.resolve_tick(), batch.canonical_bytes()).unwrap();
     for field in 0..3 {
         let mut changed = intents.clone();
         let intent = changed
@@ -167,10 +185,11 @@ fn encoded(session: &ReplaySessionId, tick: u64, intents: &[PracticeIntent]) -> 
     bytes.extend(u16::try_from(intents.len()).unwrap().to_be_bytes());
     for (ordinal, intent) in intents.iter().enumerate() {
         bytes.extend(u16::try_from(ordinal).unwrap().to_be_bytes());
-        bytes.extend(sha256_of(
-            &encode_practice_action_id_preimage(session, intent).unwrap(),
+        bytes.extend(content_digest::sha256_of(
+            &babylon_practice_contract::encode_practice_action_id_preimage(session, intent)
+                .unwrap(),
         ));
-        let value = encode_practice_intent(intent).unwrap();
+        let value = babylon_practice_contract::encode_practice_intent(intent).unwrap();
         bytes.extend(u16::try_from(value.len()).unwrap().to_be_bytes());
         bytes.extend(value);
     }
@@ -185,7 +204,7 @@ fn assert_mixed_batch(
     tick: u64,
     bytes: &[u8],
 ) {
-    let intents = parse(identity, tick, bytes).unwrap();
+    let intents = cursor::parse(identity, tick, bytes).unwrap();
     let controlled = |intent: &PracticeIntent| {
         intent.actor_org_id.to_bytes() == config.controlled_actor_id.to_be_bytes()
     };

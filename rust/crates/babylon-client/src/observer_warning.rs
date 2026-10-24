@@ -1,6 +1,8 @@
 //! An explicit, untimed opening warning for the native observer.
 
-use bevy::input_focus::{tab_navigation::TabGroup, InputFocus};
+use bevy::input_focus::tab_navigation::TabGroup;
+use bevy::input_focus::InputFocus;
+
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 
@@ -10,6 +12,7 @@ use crate::observer_io::ObserverSet;
 use crate::observer_opening::{OpeningPresentation, OpeningStage};
 use crate::observer_theme as theme;
 use crate::observer_ui::{ObserverCommand, ObserverFontRole, ObserverUiState};
+use bevy::text::LineBreak;
 
 const FICTION: &str = "Babylon is a work of fiction built from real places, records and material relationships. Some of it may feel uncomfortably familiar.";
 const EMERGENCE: &str = "PROCEDURALLY EMERGENT. Most of your experience comes from game mechanics. It may behave in unexpected ways.";
@@ -40,7 +43,7 @@ fn text(value: &str, size: f32, color: Color) -> impl Bundle {
         },
         TextColor(color),
         ObserverFontRole::Body,
-        TextLayout::new_with_linebreak(bevy::text::LineBreak::WordOrCharacter),
+        TextLayout::new_with_linebreak(LineBreak::WordOrCharacter),
         Node {
             max_width: percent(100),
             min_width: px(0),
@@ -362,15 +365,17 @@ impl Plugin for ObserverWarningPlugin {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bevy::input::{
-        keyboard::{Key, KeyboardInput, NativeKey},
-        ButtonState, InputPlugin,
-    };
-    use bevy::picking::{
-        backend::HitData,
-        pointer::{Location, PointerButton, PointerId},
-    };
+    use bevy::input::keyboard::{Key, KeyboardInput, NativeKey};
+    use bevy::input::{ButtonState, InputPlugin};
+
+    use bevy::picking::backend::HitData;
+    use bevy::picking::pointer::{Location, PointerButton, PointerId};
+
+    use crate::observer::ObserverSession;
+    use babylon_persistence::identity::CampaignId;
+    use bevy::time::TimeUpdateStrategy;
     use std::time::Duration;
+    use uuid::Uuid;
 
     #[derive(Resource, Default)]
     struct InstallTrace(Vec<bool>);
@@ -432,9 +437,7 @@ mod tests {
     #[test]
     fn warning_has_no_timer_and_only_explicit_continue_dismisses_it() {
         let (mut app, window) = app(1366, 768);
-        app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
-            Duration::from_secs(60),
-        ));
+        app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_secs(60)));
         app.update();
         assert!(app.world().resource::<ObserverUiState>().splash_visible);
         key(&mut app, window, KeyCode::Space);
@@ -515,9 +518,7 @@ mod tests {
     fn focused_continue_uses_the_same_deferred_action_and_rejects_dynamic_scope() {
         let (mut app, _) = app(1366, 768);
         let entity = button(&mut app, WarningAction::Continue);
-        let session = crate::observer::ObserverSession::new(
-            babylon_persistence::identity::CampaignId::from_uuid(uuid::Uuid::nil()),
-        );
+        let session = ObserverSession::new(CampaignId::from_uuid(Uuid::nil()));
         app.world_mut().trigger(ObserverKeyboardActivate {
             entity,
             context: Some(session.context()),

@@ -18,26 +18,41 @@ use babylon_persistence::archive_revision::{
     ArchiveDossierBounds, ArchiveDossierPage, ArchiveDossierPending, ArchiveDossierRead,
     ArchiveDossierState, ArchiveDossierUnavailable, ArchiveReadScope, ArchiveSearchState,
 };
+use babylon_persistence::identity::CampaignId;
 use babylon_persistence::material_runtime::{DurableMaterialRuntime, MaterialRuntimeError};
 use babylon_persistence::michigan_content::MichiganContentPreset;
 use babylon_persistence::michigan_material::MichiganDeliveryPreset;
 use babylon_persistence::runtime_session::{
-    run_runtime_session, RuntimeSessionRequest, RuntimeSessionResponse, RuntimeSessionScope,
-    RuntimeSessionTail, RuntimeSessionTarget, RUNTIME_SESSION_PROTOCOL_VERSION,
+    RuntimeSessionRequest, RuntimeSessionResponse, RuntimeSessionScope, RuntimeSessionTail,
+    RuntimeSessionTarget, RUNTIME_SESSION_PROTOCOL_VERSION,
 };
 use babylon_persistence::{
-    identity::CampaignId, install_reader_role, postgres_catalog::validate_connection_target,
     ArchiveCitation, ArchiveDirtyBatch, ArchiveKnowledgeGrant, ArchiveMaterializeMode,
     ArchivePageInput, ArchivePageRef, ArchiveSignal, ArchiveSubject, ArchiveSubjectKind,
     ReaderRoleDisposition, SemanticArchiveReader, SemanticArchiveStore,
 };
-use babylon_persistence::{
-    observer_reader::provision_observer_role, observer_reader::ObserverEconomyError,
-    observer_reader::ObserverEconomyReader, observer_reader::ObserverVisibility,
+
+use babylon_persistence::observer_reader::{
+    ObserverEconomyError, ObserverEconomyReader, ObserverVisibility,
 };
+
+use babylon_persistence::observer_reader;
+use babylon_persistence::postgres_catalog;
+use babylon_persistence::runtime_session;
+use babylon_persistence::ArchiveKnowledge;
+use babylon_persistence::ArchiveProducerOutcome;
+use babylon_persistence::ArchiveWorker;
+use babylon_persistence::NullArchiveDossierProducer;
+use babylon_persistence::PendingArchiveReceipt;
 use babylon_practice_contract::OrderedPracticeActionBatch;
 use babylon_tick::material_replay::IdentifiedMaterialTick;
+use postgres::Client;
+use postgres::Error;
 use postgres::{Config, NoTls};
+use std::io::Cursor;
+use std::path::Path;
+use std::time::Duration;
+use std::time::SystemTime;
 use uuid::Uuid;
 
 const DSN_ENV: &str = "BABYLON_POSTGRES_TEST_DSN";
@@ -53,7 +68,7 @@ fn validated_base_config() -> Config {
     assert_eq!(canary.len(), 32);
     let dsn = std::env::var(DSN_ENV).expect("runner supplies the disposable DSN");
     let config = Config::from_str(&dsn).expect("runner DSN parses");
-    validate_connection_target(&config).expect("loopback target");
+    postgres_catalog::validate_connection_target(&config).expect("loopback target");
     assert_eq!(config.get_user(), Some("test"));
     assert_eq!(config.get_dbname(), Some("postgres"));
     let actual: Option<String> = config
@@ -199,7 +214,7 @@ impl ConfinedLogin {
 
     fn create_for_role(base: &Config, group: &str) -> Self {
         assert!(matches!(group, "babylon_reader" | "babylon_observer"));
-        let unique = std::time::SystemTime::now()
+        let unique = SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .expect("clock is after the epoch")
             .as_nanos();
@@ -234,7 +249,7 @@ impl ConfinedLogin {
         )
     }
 
-    fn try_cleanup(&self) -> Result<(), postgres::Error> {
+    fn try_cleanup(&self) -> Result<(), Error> {
         self.admin.connect(NoTls)?.batch_execute(&format!(
             "REVOKE SET ON PARAMETER event_triggers FROM {role}; DROP ROLE IF EXISTS {role}",
             role = self.name
@@ -293,11 +308,12 @@ impl ReaderTarget {
         drop(runtime);
 
         assert_eq!(
-            install_reader_role(&config).expect("reader role installs"),
+            babylon_persistence::install_reader_role(&config).expect("reader role installs"),
             ReaderRoleDisposition::Installed
         );
         assert_eq!(
-            install_reader_role(&config).expect("reader role reinstall reconciles"),
+            babylon_persistence::install_reader_role(&config)
+                .expect("reader role reinstall reconciles"),
             ReaderRoleDisposition::AlreadyCurrent,
             "the exact role, view, and grants reinstall idempotently"
         );
@@ -396,7 +412,7 @@ fn tick_one_content_hash(config: &Config, campaign_id: CampaignId) -> [u8; 32] {
 
 /// Run as the database owner: the role holds SELECT only on the fog-safe
 /// views and no table privilege anywhere else.
-fn assert_owner_side_privilege_matrix(client: &mut postgres::Client) {
+fn assert_owner_side_privilege_matrix(client: &mut Client) {
     let held = client
         .query(
             "SELECT relation::pg_catalog.text || ':' || privilege::pg_catalog.text \
@@ -467,7 +483,7 @@ fn assert_owner_side_privilege_matrix(client: &mut postgres::Client) {
 
 /// Every read a fog-safe reader must never reach, run under
 /// `SET ROLE babylon_reader` on a superuser connection.
-fn assert_reader_query_refusals(client: &mut postgres::Client) {
+fn assert_reader_query_refusals(client: &mut Client) {
     for relation in [
         "archive_revision_grant_members_v3",
         "archive_revision_atom_members_v3",
@@ -714,14 +730,11 @@ impl babylon_persistence::ArchiveDossierProducer for Undrained {
     fn produce(
         &self,
         _campaign: Uuid,
-        receipt: &babylon_persistence::PendingArchiveReceipt,
-        _knowledge: &babylon_persistence::ArchiveKnowledge,
+        receipt: &PendingArchiveReceipt,
+        _knowledge: &ArchiveKnowledge,
         _budget: usize,
-    ) -> Result<
-        babylon_persistence::ArchiveProducerOutcome,
-        babylon_persistence::SemanticArchiveError,
-    > {
-        Ok(babylon_persistence::ArchiveProducerOutcome::new(
+    ) -> Result<ArchiveProducerOutcome, babylon_persistence::SemanticArchiveError> {
+        Ok(ArchiveProducerOutcome::new(
             ArchiveDirtyBatch::try_new(
                 receipt.resolve_tick(),
                 *receipt.tick_content_hash(),
@@ -753,7 +766,7 @@ fn assert_quiet_receipt_verification(
         .unwrap()
         .unwrap();
     assert_eq!((pending.durable_tick(), pending.processed_tick()), (2, 1));
-    let mut worker = babylon_persistence::ArchiveWorker::new(&target.config);
+    let mut worker = ArchiveWorker::new(&target.config);
     let staged = worker.sweep_once(target.campaign_id, &Undrained).unwrap();
     assert_eq!(staged.paged_count(), 1);
     assert_eq!(staged.verified_tick(), 1);
@@ -765,10 +778,7 @@ fn assert_quiet_receipt_verification(
     );
     assert_pending_retained_page(reader, &scope, &source);
     let settled = worker
-        .sweep_once(
-            target.campaign_id,
-            &babylon_persistence::NullArchiveDossierProducer::new(),
-        )
+        .sweep_once(target.campaign_id, &NullArchiveDossierProducer::new())
         .unwrap();
     assert_eq!(settled.applied_count(), 1);
     let verified = reader
@@ -799,12 +809,9 @@ fn assert_quiet_receipt_verification(
     let search = reader.search_as_of(&scope, "728576", 10).unwrap();
     assert_eq!(search.state, ArchiveSearchState::Ready);
     assert_eq!(search.hits[0].content_source, first);
-    let mut restarted = babylon_persistence::ArchiveWorker::new(&target.config);
+    let mut restarted = ArchiveWorker::new(&target.config);
     let idle = restarted
-        .sweep_once(
-            target.campaign_id,
-            &babylon_persistence::NullArchiveDossierProducer::new(),
-        )
+        .sweep_once(target.campaign_id, &NullArchiveDossierProducer::new())
         .unwrap();
     assert!(idle.dispositions().is_empty());
     assert_eq!(idle.verified_tick(), 2);
@@ -1008,7 +1015,7 @@ fn live_reader_handle_reads_through_confined_login_and_refuses_writer_authority(
     target.finish();
 }
 
-fn reader_installation_catalog(client: &mut postgres::Client) -> Vec<(String, String)> {
+fn reader_installation_catalog(client: &mut Client) -> Vec<(String, String)> {
     client
         .query(
             "SELECT namespace.nspname || '.' || relation.relname, \
@@ -1054,7 +1061,10 @@ fn live_reader_installer_refuses_privilege_drift_and_view_identity_mismatch() {
             ))
             .expect("extra base-table grant applies");
         let before = reader_installation_catalog(&mut client);
-        assert_eq!(install_reader_role(&target.config).map(|_| ()), refusal);
+        assert_eq!(
+            babylon_persistence::install_reader_role(&target.config).map(|_| ()),
+            refusal
+        );
         assert_eq!(
             reader_installation_catalog(&mut client),
             before,
@@ -1066,7 +1076,7 @@ fn live_reader_installer_refuses_privilege_drift_and_view_identity_mismatch() {
             ))
             .expect("test restores the exact grant footprint");
         assert_eq!(
-            install_reader_role(&target.config),
+            babylon_persistence::install_reader_role(&target.config),
             Ok(ReaderRoleDisposition::AlreadyCurrent),
             "restoring the exact footprint permits idempotent provisioning"
         );
@@ -1079,7 +1089,10 @@ fn live_reader_installer_refuses_privilege_drift_and_view_identity_mismatch() {
         )
         .expect("impostor table replaces the view");
     let impostor = reader_installation_catalog(&mut client);
-    assert_eq!(install_reader_role(&target.config).map(|_| ()), refusal);
+    assert_eq!(
+        babylon_persistence::install_reader_role(&target.config).map(|_| ()),
+        refusal
+    );
     assert_eq!(
         reader_installation_catalog(&mut client),
         impostor,
@@ -1089,7 +1102,10 @@ fn live_reader_installer_refuses_privilege_drift_and_view_identity_mismatch() {
         .batch_execute("DROP TABLE public.v_committed_tick_status_v1")
         .expect("test removes the impostor table");
     let absent = reader_installation_catalog(&mut client);
-    assert_eq!(install_reader_role(&target.config).map(|_| ()), refusal);
+    assert_eq!(
+        babylon_persistence::install_reader_role(&target.config).map(|_| ()),
+        refusal
+    );
     assert_eq!(
         reader_installation_catalog(&mut client),
         absent,
@@ -1154,7 +1170,7 @@ fn live_known_county_grants_read_at_national_scale_within_reader_deadline() {
         CampaignId::from_uuid(Uuid::from_u128(0x3190_0000_0000_0000_0000_0000_0000_0024));
     let runtime = DurableMaterialRuntime::create(&config, campaign, current_material::foundation())
         .expect("real captured campaign foundation");
-    install_reader_role(&config).expect("exact restricted reader views");
+    babylon_persistence::install_reader_role(&config).expect("exact restricted reader views");
     let login = ConfinedLogin::create(&base);
     let mut owner = config.connect(NoTls).unwrap();
     let mut tx = owner.transaction().unwrap();
@@ -1242,9 +1258,9 @@ fn live_observer_economics_reads_exact_foundation_commit_and_granted_preview() {
     SemanticArchiveStore::new(&config)
         .verify_schema()
         .expect("Archive schema");
-    install_reader_role(&config).expect("reader role");
-    provision_observer_role(&config).expect("economic views and groups");
-    provision_observer_role(&config).expect("idempotent exact observer schema");
+    babylon_persistence::install_reader_role(&config).expect("reader role");
+    observer_reader::provision_observer_role(&config).expect("economic views and groups");
+    observer_reader::provision_observer_role(&config).expect("idempotent exact observer schema");
     let observer_login = ConfinedLogin::create_for_role(&base, "babylon_observer");
     let known_login = ConfinedLogin::create(&base);
     let mut observer_config = config.clone();
@@ -1324,7 +1340,7 @@ fn live_observer_economics_reads_exact_foundation_commit_and_granted_preview() {
 
 fn assert_material_lock_refusal(
     config: &Config,
-    owner: &mut postgres::Client,
+    owner: &mut Client,
     campaign: CampaignId,
     runtime: &mut DurableMaterialRuntime,
     actions: &OrderedPracticeActionBatch,
@@ -1348,12 +1364,10 @@ fn assert_material_lock_refusal(
             )
             .unwrap();
         locked_tx.send(()).unwrap();
-        let _ = release_rx.recv_timeout(std::time::Duration::from_secs(10));
+        let _ = release_rx.recv_timeout(Duration::from_secs(10));
         transaction.rollback().unwrap();
     });
-    locked_rx
-        .recv_timeout(std::time::Duration::from_secs(10))
-        .unwrap();
+    locked_rx.recv_timeout(Duration::from_secs(10)).unwrap();
     let locked_result = runtime.advance_and_commit(sink, actions);
     let _ = release_tx.send(());
     lock_holder.join().unwrap();
@@ -1378,7 +1392,7 @@ fn assert_material_lock_refusal(
 }
 
 fn assert_material_marker_rollback(
-    owner: &mut postgres::Client,
+    owner: &mut Client,
     campaign: CampaignId,
     runtime: &mut DurableMaterialRuntime,
     actions: &OrderedPracticeActionBatch,
@@ -1480,7 +1494,7 @@ fn assert_material_restart_reconciliation(
 }
 
 fn assert_material_corruption_refused(
-    owner: &mut postgres::Client,
+    owner: &mut Client,
     config: &Config,
     campaign: CampaignId,
     observer: &ObserverEconomyReader,
@@ -1547,13 +1561,13 @@ fn assert_material_stdio_advance(
     input.extend(serde_json::to_vec(&stop).unwrap());
     input.push(b'\n');
     let mut output = Vec::new();
-    run_runtime_session(
+    runtime_session::run_runtime_session(
         config,
-        std::path::Path::new(concat!(
+        Path::new(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../../../content/scenarios/michigan/defines.toml"
         )),
-        std::io::Cursor::new(input),
+        Cursor::new(input),
         &mut output,
     )
     .unwrap();
@@ -1624,8 +1638,8 @@ fn live_material_runtime_atomic_restart_identity_and_observer_projection() {
         .unwrap();
     let digest = foundation.digest();
     let mut runtime = DurableMaterialRuntime::create(&config, campaign, foundation).unwrap();
-    install_reader_role(&config).unwrap();
-    provision_observer_role(&config).unwrap();
+    babylon_persistence::install_reader_role(&config).unwrap();
+    observer_reader::provision_observer_role(&config).unwrap();
     let observer_login = ConfinedLogin::create_for_role(&base, "babylon_observer");
     let known_login = ConfinedLogin::create(&base);
     let mut observer_config = config.clone();

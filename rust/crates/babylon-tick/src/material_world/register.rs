@@ -1,13 +1,20 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
-use super::{
-    aid_receipt, collection_receipt, equipment_receipt, financial_receipt, household_time_receipt,
-    income_receipt, installation_decision, maintenance_receipt, monetary_receipt,
-    organizer_collection, organizer_support, organizer_time, recurring_receipt, service_receipt,
-    workforce_receipt,
-};
-
-use babylon_kernel::content_digest::sha256_of;
+use super::aid_receipt;
+use super::collection_receipt;
+use super::equipment_receipt;
+use super::financial_receipt;
+use super::household_time_receipt;
+use super::income_receipt;
+use super::installation_decision;
+use super::maintenance_receipt;
+use super::monetary_receipt;
+use super::organizer_collection;
+use super::organizer_support;
+use super::organizer_time;
+use super::recurring_receipt;
+use super::service_receipt;
+use super::workforce_receipt;
 
 use babylon_material_circuit::ArrivalReceipt;
 
@@ -48,15 +55,48 @@ use babylon_material_circuit::UnitId;
 use babylon_material_circuit::MAX_ROUTE_STAGES_PER_ROUTE;
 
 use babylon_material_circuit::{
-    advance_material_circuit, decode_material_circuit_state, encode_material_circuit_state,
     MaterialCircuitError, MaterialCircuitState, MaterialCircuitTransition,
 };
 
+use babylon_kernel::content_digest;
+use babylon_material_circuit::AidReceipt;
+use babylon_material_circuit::CapitalContributionReceipt;
+use babylon_material_circuit::CollectionReceipt;
+use babylon_material_circuit::DistributionReceipt;
+use babylon_material_circuit::EquipmentWearReceipt;
+use babylon_material_circuit::HouseholdConsumptionReceipt;
+use babylon_material_circuit::HouseholdDemandReceipt;
+use babylon_material_circuit::HouseholdServiceReceipt;
+use babylon_material_circuit::HouseholdTimeReceipt;
+use babylon_material_circuit::IncomeReceipt;
+use babylon_material_circuit::InstallationDecisionReceipt;
+use babylon_material_circuit::InstallationReceipt;
+use babylon_material_circuit::InvestmentReceipt;
+use babylon_material_circuit::LaborUseReceipt;
+use babylon_material_circuit::MaintenanceReceipt;
+use babylon_material_circuit::MemberLaborUseReceipt;
+use babylon_material_circuit::MoneyTransferReceipt;
+use babylon_material_circuit::PriceReceipt;
+use babylon_material_circuit::ProcurementReceipt;
+use babylon_material_circuit::ProductionPlanReceipt;
+use babylon_material_circuit::PublicBudgetReceipt;
+use babylon_material_circuit::ServiceMarketReceipt;
+use babylon_material_circuit::ServiceOutputReceipt;
+use babylon_material_circuit::ServicePerformanceReceipt;
+use babylon_material_circuit::StaffingMemberReceipt;
+use babylon_material_circuit::TaxReceipt;
+use babylon_material_circuit::WageAccrualReceipt;
+use babylon_practice_contract::OrganizerAidSupport;
+use babylon_practice_contract::OrganizerCollectionFact;
+use babylon_practice_contract::OrganizerCommitment;
+use babylon_practice_contract::OrganizerPeriodTimeResources;
 use babylon_practice_contract::{
-    decode_organizer_config, decode_organizer_state, encode_organizer_config,
-    encode_organizer_state, OrganizerConfig, OrganizerError, OrganizerState,
-    OrganizerWorkplaceFacts,
+    OrganizerConfig, OrganizerError, OrganizerState, OrganizerWorkplaceFacts,
 };
+use std::borrow::Cow;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
+use std::sync::Arc;
 
 pub(crate) const REGISTER_DOMAIN: &[u8] = b"babylon.material-world-register.v4\0";
 
@@ -138,7 +178,7 @@ pub struct MaterialWorldRegister {
         clippy::rc_buffer,
         reason = "owned register admission retains the caller's exact canonical byte allocation"
     )]
-    canonical_bytes: std::sync::Arc<Vec<u8>>,
+    canonical_bytes: Arc<Vec<u8>>,
     digest: [u8; 32],
 }
 
@@ -155,7 +195,7 @@ pub enum MaterialWorldError {
 }
 
 impl std::fmt::Display for MaterialWorldError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         write!(f, "material world refused: {self:?}")
     }
 }
@@ -197,9 +237,9 @@ impl MaterialWorldRegister {
         {
             return Err(MaterialWorldError::PeriodMismatch);
         }
-        let state_bytes = encode_material_circuit_state(&state)?;
+        let state_bytes = babylon_material_circuit::encode_material_circuit_state(&state)?;
         drop(state);
-        let state = decode_material_circuit_state(&state_bytes)?;
+        let state = babylon_material_circuit::decode_material_circuit_state(&state_bytes)?;
         Self::assemble(completed_tick, state, organizer, &state_bytes)
     }
 
@@ -227,12 +267,12 @@ impl MaterialWorldRegister {
         );
         bytes.extend_from_slice(state_bytes);
         bytes.extend_from_slice(&organizer_bytes);
-        let digest = sha256_of(&bytes);
+        let digest = content_digest::sha256_of(&bytes);
         Ok(Self {
             completed_tick,
             state,
             organizer,
-            canonical_bytes: std::sync::Arc::new(bytes),
+            canonical_bytes: Arc::new(bytes),
             digest,
         })
     }
@@ -271,8 +311,8 @@ impl MaterialWorldRegister {
     }
     /// Share the immutable canonical allocation without cloning the state or bytes.
     #[must_use]
-    pub fn shared_canonical_bytes(&self) -> std::sync::Arc<Vec<u8>> {
-        std::sync::Arc::clone(&self.canonical_bytes)
+    pub fn shared_canonical_bytes(&self) -> Arc<Vec<u8>> {
+        Arc::clone(&self.canonical_bytes)
     }
     #[must_use]
     pub const fn digest(&self) -> [u8; 32] {
@@ -283,17 +323,17 @@ impl MaterialWorldRegister {
     /// # Errors
     /// Refuses unsupported/truncated/trailing/noncanonical bytes and invalid state.
     pub fn decode(bytes: &[u8]) -> Result<Self, MaterialWorldError> {
-        Self::decode_canonical(std::borrow::Cow::Borrowed(bytes))
+        Self::decode_canonical(Cow::Borrowed(bytes))
     }
 
     /// Decode an owned canonical register without retaining a second byte owner.
     /// # Errors
     /// Refuses unsupported/truncated/trailing/noncanonical bytes and invalid state.
     pub fn decode_owned(bytes: Vec<u8>) -> Result<Self, MaterialWorldError> {
-        Self::decode_canonical(std::borrow::Cow::Owned(bytes))
+        Self::decode_canonical(Cow::Owned(bytes))
     }
 
-    fn decode_canonical(bytes: std::borrow::Cow<'_, [u8]>) -> Result<Self, MaterialWorldError> {
+    fn decode_canonical(bytes: Cow<'_, [u8]>) -> Result<Self, MaterialWorldError> {
         let header = REGISTER_DOMAIN.len() + 20;
         if bytes.len() < header
             || bytes.len() > MAX_MATERIAL_WORLD_REGISTER_BYTES
@@ -328,8 +368,12 @@ impl MaterialWorldRegister {
             Some((0, [])) => None,
             Some((1, tail)) => {
                 remaining = tail;
-                let config = decode_organizer_config(take_organizer_section(&mut remaining)?)?;
-                let state = decode_organizer_state(take_organizer_section(&mut remaining)?)?;
+                let config = babylon_practice_contract::decode_organizer_config(
+                    take_organizer_section(&mut remaining)?,
+                )?;
+                let state = babylon_practice_contract::decode_organizer_state(
+                    take_organizer_section(&mut remaining)?,
+                )?;
                 if !remaining.is_empty() {
                     return Err(MaterialWorldError::Wire);
                 }
@@ -337,13 +381,13 @@ impl MaterialWorldRegister {
             }
             _ => return Err(MaterialWorldError::Wire),
         };
-        let state = decode_material_circuit_state(state_bytes)?;
+        let state = babylon_material_circuit::decode_material_circuit_state(state_bytes)?;
         if tick.checked_add(1).ok_or(MaterialWorldError::Arithmetic)? != state.period {
             return Err(MaterialWorldError::PeriodMismatch);
         }
         // Validate the same canonical circuit and bound organizer as construction,
         // without assembling a second full outer register during admission.
-        let canonical_state = encode_material_circuit_state(&state)?;
+        let canonical_state = babylon_material_circuit::encode_material_circuit_state(&state)?;
         let canonical_organizer = encode_bound_organizer(tick, &state, organizer.as_ref())?;
         let canonical_length = header
             .checked_add(canonical_state.len())
@@ -357,10 +401,10 @@ impl MaterialWorldRegister {
         }
         drop(canonical_state);
         drop(canonical_organizer);
-        let digest = sha256_of(&bytes);
+        let digest = content_digest::sha256_of(&bytes);
         let canonical_bytes = match bytes {
-            std::borrow::Cow::Owned(bytes) => bytes,
-            std::borrow::Cow::Borrowed(bytes) => {
+            Cow::Owned(bytes) => bytes,
+            Cow::Borrowed(bytes) => {
                 let mut owned = bounded_bytes(bytes.len(), MAX_MATERIAL_WORLD_REGISTER_BYTES)?;
                 owned.extend_from_slice(bytes);
                 owned
@@ -370,7 +414,7 @@ impl MaterialWorldRegister {
             completed_tick: tick,
             state,
             organizer,
-            canonical_bytes: std::sync::Arc::new(canonical_bytes),
+            canonical_bytes: Arc::new(canonical_bytes),
             digest,
         })
     }
@@ -381,7 +425,7 @@ impl MaterialWorldRegister {
     /// # Errors
     /// Refuses any circuit or receipt encoding failure without changing this owner.
     pub fn prepare_next(&self) -> Result<PreparedMaterialWorld, MaterialWorldError> {
-        let transition = advance_material_circuit(&self.state)?;
+        let transition = babylon_material_circuit::advance_material_circuit(&self.state)?;
         self.prepare_transition(transition, None)
     }
 
@@ -389,7 +433,7 @@ impl MaterialWorldRegister {
     pub(crate) fn prepare_transition(
         &self,
         transition: MaterialCircuitTransition,
-        commitment: Option<&babylon_practice_contract::OrganizerCommitment>,
+        commitment: Option<&OrganizerCommitment>,
     ) -> Result<PreparedMaterialWorld, MaterialWorldError> {
         if self.state.period.checked_add(1) != Some(transition.state.period) {
             return Err(MaterialWorldError::PeriodMismatch);
@@ -439,25 +483,21 @@ pub struct PreparedMaterialWorld {
     register: MaterialWorldRegister,
     receipt_bytes: Vec<u8>,
     organizer_facts: Option<OrganizerWorkplaceFacts>,
-    organizer_aid_support: Vec<babylon_practice_contract::OrganizerAidSupport>,
-    organizer_collection_fact: Option<babylon_practice_contract::OrganizerCollectionFact>,
+    organizer_aid_support: Vec<OrganizerAidSupport>,
+    organizer_collection_fact: Option<OrganizerCollectionFact>,
 }
 
 impl PreparedMaterialWorld {
-    pub(crate) fn organizer_collection_fact(
-        &self,
-    ) -> Option<&babylon_practice_contract::OrganizerCollectionFact> {
+    pub(crate) fn organizer_collection_fact(&self) -> Option<&OrganizerCollectionFact> {
         self.organizer_collection_fact.as_ref()
     }
-    pub(crate) fn organizer_aid_support(
-        &self,
-    ) -> &[babylon_practice_contract::OrganizerAidSupport] {
+    pub(crate) fn organizer_aid_support(&self) -> &[OrganizerAidSupport] {
         &self.organizer_aid_support
     }
     pub(crate) fn organizer_period_time_resources(
         &self,
         config: &OrganizerConfig,
-    ) -> Result<babylon_practice_contract::OrganizerPeriodTimeResources, MaterialWorldError> {
+    ) -> Result<OrganizerPeriodTimeResources, MaterialWorldError> {
         organizer_time::resources(&self.register.state, config, self.register.completed_tick)
     }
 
@@ -538,8 +578,8 @@ pub(crate) fn encode_bound_organizer(
     }
     let mut result = vec![1];
     for bytes in [
-        encode_organizer_config(config)?,
-        encode_organizer_state(state)?,
+        babylon_practice_contract::encode_organizer_config(config)?,
+        babylon_practice_contract::encode_organizer_state(state)?,
     ] {
         result.extend_from_slice(
             &u64::try_from(bytes.len())
@@ -658,7 +698,7 @@ pub fn nominal_material_world_hash(
     bytes[domain..domain + 4].copy_from_slice(&3_u32.to_be_bytes());
     bytes[domain + 4..domain + 36].copy_from_slice(&graph_world_hash);
     bytes[domain + 36..domain + 68].copy_from_slice(&register.digest);
-    sha256_of(&bytes[..domain + 68])
+    content_digest::sha256_of(&bytes[..domain + 68])
 }
 
 pub(crate) fn bounded_bytes(length: usize, maximum: usize) -> Result<Vec<u8>, MaterialWorldError> {
@@ -1034,34 +1074,34 @@ pub(crate) fn encode_material_receipts(
 /// Typed material evidence decoded only from an exact committed V18 receipt family.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MaterialTickReceipts {
-    pub household_time: Vec<babylon_material_circuit::HouseholdTimeReceipt>,
-    pub aid: Vec<babylon_material_circuit::AidReceipt>,
-    pub collections: Vec<babylon_material_circuit::CollectionReceipt>,
-    pub installation: Vec<babylon_material_circuit::InstallationReceipt>,
-    pub installation_decisions: Vec<babylon_material_circuit::InstallationDecisionReceipt>,
-    pub equipment_wear: Vec<babylon_material_circuit::EquipmentWearReceipt>,
-    pub investment: Vec<babylon_material_circuit::InvestmentReceipt>,
-    pub staffing_members: Vec<babylon_material_circuit::StaffingMemberReceipt>,
-    pub member_labor_use: Vec<babylon_material_circuit::MemberLaborUseReceipt>,
-    pub public_budgets: Vec<babylon_material_circuit::PublicBudgetReceipt>,
-    pub taxes: Vec<babylon_material_circuit::TaxReceipt>,
-    pub distributions: Vec<babylon_material_circuit::DistributionReceipt>,
-    pub contributions: Vec<babylon_material_circuit::CapitalContributionReceipt>,
+    pub household_time: Vec<HouseholdTimeReceipt>,
+    pub aid: Vec<AidReceipt>,
+    pub collections: Vec<CollectionReceipt>,
+    pub installation: Vec<InstallationReceipt>,
+    pub installation_decisions: Vec<InstallationDecisionReceipt>,
+    pub equipment_wear: Vec<EquipmentWearReceipt>,
+    pub investment: Vec<InvestmentReceipt>,
+    pub staffing_members: Vec<StaffingMemberReceipt>,
+    pub member_labor_use: Vec<MemberLaborUseReceipt>,
+    pub public_budgets: Vec<PublicBudgetReceipt>,
+    pub taxes: Vec<TaxReceipt>,
+    pub distributions: Vec<DistributionReceipt>,
+    pub contributions: Vec<CapitalContributionReceipt>,
 
-    pub service_performance: Vec<babylon_material_circuit::ServicePerformanceReceipt>,
-    pub household_services: Vec<babylon_material_circuit::HouseholdServiceReceipt>,
-    pub service_markets: Vec<babylon_material_circuit::ServiceMarketReceipt>,
-    pub service_outputs: Vec<babylon_material_circuit::ServiceOutputReceipt>,
-    pub income: Vec<babylon_material_circuit::IncomeReceipt>,
+    pub service_performance: Vec<ServicePerformanceReceipt>,
+    pub household_services: Vec<HouseholdServiceReceipt>,
+    pub service_markets: Vec<ServiceMarketReceipt>,
+    pub service_outputs: Vec<ServiceOutputReceipt>,
+    pub income: Vec<IncomeReceipt>,
     pub resolve_tick: u64,
-    pub household_demand: Vec<babylon_material_circuit::HouseholdDemandReceipt>,
-    pub household_consumption: Vec<babylon_material_circuit::HouseholdConsumptionReceipt>,
-    pub procurement: Vec<babylon_material_circuit::ProcurementReceipt>,
-    pub production_plans: Vec<babylon_material_circuit::ProductionPlanReceipt>,
-    pub prices: Vec<babylon_material_circuit::PriceReceipt>,
-    pub money_transfers: Vec<babylon_material_circuit::MoneyTransferReceipt>,
-    pub wage_accruals: Vec<babylon_material_circuit::WageAccrualReceipt>,
-    pub labor_use: Vec<babylon_material_circuit::LaborUseReceipt>,
+    pub household_demand: Vec<HouseholdDemandReceipt>,
+    pub household_consumption: Vec<HouseholdConsumptionReceipt>,
+    pub procurement: Vec<ProcurementReceipt>,
+    pub production_plans: Vec<ProductionPlanReceipt>,
+    pub prices: Vec<PriceReceipt>,
+    pub money_transfers: Vec<MoneyTransferReceipt>,
+    pub wage_accruals: Vec<WageAccrualReceipt>,
+    pub labor_use: Vec<LaborUseReceipt>,
     pub production: Vec<babylon_material_circuit::ProductionReceipt>,
     pub dispatches: Vec<babylon_material_circuit::RoutedDispatchReceipt>,
     pub losses: Vec<babylon_material_circuit::FreightLossReceipt>,
@@ -1071,7 +1111,7 @@ pub struct MaterialTickReceipts {
     pub handling: Vec<babylon_material_circuit::MerchantHandlingReceipt>,
     pub local_fulfillments: Vec<babylon_material_circuit::LocalRetailFulfillmentReceipt>,
     pub local_transfers: Vec<babylon_material_circuit::LocalTransferReceipt>,
-    pub maintenance: Option<babylon_material_circuit::MaintenanceReceipt>,
+    pub maintenance: Option<MaintenanceReceipt>,
 }
 
 /// Decode a bounded receipt family. Hash/campaign binding belongs to its V3 envelope.

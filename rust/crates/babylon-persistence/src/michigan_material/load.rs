@@ -13,12 +13,20 @@ use crate::michigan_defines::{MichiganDefines, MichiganDefinesError};
 
 use babylon_bsl::causal_contract::EvidenceClass;
 
-use babylon_kernel::content_digest::sha256_of;
-
 use babylon_material_circuit::{CorridorId, MaterialCircuitError};
 
 use serde::{Deserialize, Serialize};
 
+use crate::economic_catalog::SourceArtifact;
+use crate::economic_catalog::SourceArtifactKind;
+use crate::identity::CampaignId;
+use crate::simulation_experiment::SimulationExperimentV1;
+use babylon_kernel::clock::CampaignDuration;
+use babylon_kernel::content_digest;
+use babylon_practice_contract::OrganizerConfig;
+use captured::MichiganObservedSources;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 use std::path::Path;
 
 pub const MICHIGAN_INDUSTRY_BASELINE_SHA256: &str =
@@ -138,7 +146,7 @@ pub enum MichiganMaterialError {
 }
 
 impl std::fmt::Display for MichiganMaterialError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         write!(f, "Michigan material content refused: {self:?}")
     }
 }
@@ -146,13 +154,13 @@ impl std::fmt::Display for MichiganMaterialError {
 impl std::error::Error for MichiganMaterialError {}
 
 pub(crate) fn identity(kind: &str, key: &str) -> [u8; 32] {
-    sha256_of(format!("{ID_DOMAIN}\0{kind}\0{key}").as_bytes())
+    content_digest::sha256_of(format!("{ID_DOMAIN}\0{kind}\0{key}").as_bytes())
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct MichiganResolvedControl {
-    pub(super) experiment: Option<crate::simulation_experiment::SimulationExperimentV1>,
-    organizer: Option<babylon_practice_contract::OrganizerConfig>,
+    pub(super) experiment: Option<SimulationExperimentV1>,
+    organizer: Option<OrganizerConfig>,
     pub(super) graph_scenario_source: String,
     pub(super) rule_source: String,
     pub(super) defines: MichiganDefines,
@@ -164,7 +172,7 @@ pub(crate) struct MichiganResolvedControl {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MichiganMaterialCatalog {
-    pub(crate) source_inputs: Vec<crate::economic_catalog::SourceArtifact>,
+    pub(crate) source_inputs: Vec<SourceArtifact>,
     pub(crate) capture: MichiganResolvedControl,
     pub(crate) scenario: MichiganNormalizedContent,
 }
@@ -174,7 +182,7 @@ pub struct MichiganMaterialCatalog {
 #[derive(Serialize)]
 pub struct MichiganControlReport<'a> {
     schema: &'static str,
-    experiment: Option<&'a crate::simulation_experiment::SimulationExperimentV1>,
+    experiment: Option<&'a SimulationExperimentV1>,
     defines: &'a MichiganDefines,
     normalized: &'a MichiganNormalizedContent,
 }
@@ -223,9 +231,9 @@ impl MichiganMaterialCatalog {
         let mut result = regional::compile(MichiganDefines::parse(text)?)?;
         result
             .source_inputs
-            .retain(|s| s.kind() != crate::economic_catalog::SourceArtifactKind::DesignedPolicy);
+            .retain(|s| s.kind() != SourceArtifactKind::DesignedPolicy);
         result.replace_source(
-            crate::economic_catalog::SourceArtifactKind::MichiganDefines,
+            SourceArtifactKind::MichiganDefines,
             text.as_bytes().to_vec(),
         );
         Ok(result)
@@ -273,14 +281,14 @@ impl MichiganMaterialCatalog {
         rules.clone_into(&mut capture.rule_source);
         result = result.keep_sources(Self::capture(capture)?);
         result.replace_source(
-            crate::economic_catalog::SourceArtifactKind::Rules,
+            SourceArtifactKind::Rules,
             result.rule_source().as_bytes().to_vec(),
         );
         Ok(result)
     }
     pub(crate) fn with_organizer_campaign(
         &self,
-        campaign: crate::identity::CampaignId,
+        campaign: CampaignId,
     ) -> Result<Self, MichiganDefinesError> {
         if self.preset() != MichiganDeliveryPreset::OrganizeInWayne {
             return Ok(self.clone());
@@ -298,14 +306,14 @@ impl MichiganMaterialCatalog {
         )?);
         let mut result = self.keep_sources(Self::capture(capture)?);
         result.replace_source(
-            crate::economic_catalog::SourceArtifactKind::OrganizerContext,
+            SourceArtifactKind::OrganizerContext,
             campaign.as_uuid().as_bytes().to_vec(),
         );
         Ok(result)
     }
     pub(crate) fn with_experiment(
         &self,
-        spec: &crate::simulation_experiment::SimulationExperimentV1,
+        spec: &SimulationExperimentV1,
     ) -> Result<Self, MichiganDefinesError> {
         let mut capture = self.capture.clone();
         crate::simulation_experiment::regional::configure(
@@ -315,7 +323,7 @@ impl MichiganMaterialCatalog {
         )
         .map_err(|_| MichiganDefinesError::Canonical)?;
         capture.experiment = Some(spec.clone());
-        capture.defines.duration = babylon_kernel::clock::CampaignDuration::Finite {
+        capture.defines.duration = CampaignDuration::Finite {
             final_period: spec.horizon,
         };
         capture.interventions.clear();
@@ -323,18 +331,16 @@ impl MichiganMaterialCatalog {
             crate::simulation_experiment::regional::scenario(&capture.normalized);
         let mut result = self.keep_sources(Self::capture(capture)?);
         result.replace_source(
-            crate::economic_catalog::SourceArtifactKind::MichiganExperiment,
+            SourceArtifactKind::MichiganExperiment,
             spec.canonical_bytes()
                 .map_err(|_| MichiganDefinesError::Canonical)?,
         );
         Ok(result)
     }
-    pub(crate) fn experiment(
-        &self,
-    ) -> Option<&crate::simulation_experiment::SimulationExperimentV1> {
+    pub(crate) fn experiment(&self) -> Option<&SimulationExperimentV1> {
         self.capture.experiment.as_ref()
     }
-    pub(crate) fn organizer_config(&self) -> Option<&babylon_practice_contract::OrganizerConfig> {
+    pub(crate) fn organizer_config(&self) -> Option<&OrganizerConfig> {
         self.capture.organizer.as_ref()
     }
     #[cfg(test)]
@@ -348,7 +354,7 @@ impl MichiganMaterialCatalog {
             .map_err(|_| MichiganDefinesError::Material(MichiganMaterialError::SourceValue))?;
         let sectors = crate::michigan_sectors::michigan_county_sectors()
             .map_err(|_| MichiganDefinesError::Material(MichiganMaterialError::SourceValue))?;
-        let mut context = captured::MichiganObservedSources::fresh()?;
+        let mut context = MichiganObservedSources::fresh()?;
         context.counties = counties;
         context.sectors = sectors;
         Self::from_normalized_with_sources(
@@ -364,7 +370,7 @@ impl MichiganMaterialCatalog {
         mut normalized: MichiganNormalizedContent,
         base_preset: MichiganDeliveryPreset,
         mut interventions: Vec<MichiganIntervention>,
-        sources: &captured::MichiganObservedSources<'_>,
+        sources: &MichiganObservedSources<'_>,
     ) -> Result<Self, MichiganDefinesError> {
         validate::canonicalize(&mut normalized, &mut interventions);
         let graph_scenario_source = sources
@@ -489,7 +495,7 @@ impl MichiganMaterialCatalog {
         &self.capture.rule_source
     }
     #[must_use]
-    pub const fn duration(&self) -> babylon_kernel::clock::CampaignDuration {
+    pub const fn duration(&self) -> CampaignDuration {
         self.scenario.duration
     }
     #[must_use]

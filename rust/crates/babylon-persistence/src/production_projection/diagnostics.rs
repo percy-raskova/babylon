@@ -1,6 +1,10 @@
 //! Opt-in refusal diagnostics. No retained state, authority or validation changes.
 use super::ProductionProjectionError;
 use crate::observer_reader::ObserverEconomyError;
+use std::fmt::Formatter;
+use std::fs::File;
+use std::io::ErrorKind;
+use std::time::Instant;
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum Stage {
@@ -128,7 +132,7 @@ pub(crate) fn invalid(stage: Stage, tick: u64) -> ObserverEconomyError {
 
 /// Opt-in wall time for one real stage, including failures; no retained state.
 pub(crate) struct Timing {
-    started: Option<std::time::Instant>,
+    started: Option<Instant>,
     stage: Stage,
     tick: u64,
 }
@@ -136,8 +140,7 @@ pub(crate) struct Timing {
 impl Timing {
     pub(crate) fn start(stage: Stage, tick: u64) -> Self {
         Self {
-            started: (std::env::var("BABYLON_TIMINGS").as_deref() == Ok("1"))
-                .then(std::time::Instant::now),
+            started: (std::env::var("BABYLON_TIMINGS").as_deref() == Ok("1")).then(Instant::now),
             stage,
             tick,
         }
@@ -164,7 +167,7 @@ struct ProcessMemory {
 }
 struct MemoryValue(Option<u64>);
 impl std::fmt::Display for MemoryValue {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
         match self.0 {
             Some(value) => write!(formatter, "{value}"),
             None => formatter.write_str("unavailable"),
@@ -178,13 +181,13 @@ fn process_memory() -> ProcessMemory {
     // Proc status is small; refuse truncation rather than interpret a partial sample.
     let mut bytes = [0_u8; 8192];
     let mut read = || -> std::io::Result<usize> {
-        let mut file = std::fs::File::open("/proc/self/status")?;
+        let mut file = File::open("/proc/self/status")?;
         let mut count = 0;
         while count < bytes.len() {
             match file.read(&mut bytes[count..]) {
                 Ok(0) => return Ok(count),
                 Ok(length) => count += length,
-                Err(error) if error.kind() == std::io::ErrorKind::Interrupted => {}
+                Err(error) if error.kind() == ErrorKind::Interrupted => {}
                 Err(error) => return Err(error),
             }
         }
@@ -192,7 +195,7 @@ fn process_memory() -> ProcessMemory {
         if file.read(&mut [0_u8; 1])? == 0 {
             Ok(count)
         } else {
-            Err(std::io::ErrorKind::InvalidData.into())
+            Err(ErrorKind::InvalidData.into())
         }
     };
     read()

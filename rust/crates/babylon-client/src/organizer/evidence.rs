@@ -4,7 +4,8 @@ use babylon_persistence::runtime_session::OrganizerObservation;
 
 use crate::observer::{ObserverSession, SessionPhase};
 
-use super::{draft::MAX_EVIDENCE_REFERENCES, OrganizerClient};
+use super::draft::MAX_EVIDENCE_REFERENCES;
+use super::OrganizerClient;
 
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
 pub(super) enum EvidenceMode {

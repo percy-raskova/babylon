@@ -1,16 +1,14 @@
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;
-use babylon_material_circuit::{
-    decode_material_circuit_state, encode_material_circuit_state, MaterialCircuitState,
-};
+use babylon_material_circuit::{decode_material_circuit_state, MaterialCircuitState};
 use babylon_persistence::michigan_content::MichiganContentPreset;
+use babylon_persistence::michigan_material::MichiganMaterialCatalog;
 use babylon_persistence::michigan_material::{MichiganDeliveryPreset, MichiganMaterialSite};
 use babylon_practice_contract::OrderedPracticeActionBatch;
-use babylon_tick::{
-    material_replay::{MaterialReplaySession, PreparedMaterialTick},
-    material_world::{decode_material_receipts, MaterialTickReceipts, MaterialWorldRegister},
-    replay_session::ReplayCommitDisposition,
-};
+use babylon_tick::material_replay::{MaterialReplaySession, PreparedMaterialTick};
+use babylon_tick::material_world;
+use babylon_tick::material_world::{MaterialTickReceipts, MaterialWorldRegister};
+use babylon_tick::replay_session::ReplayCommitDisposition;
 
 type Session = MaterialReplaySession<HypergraphStore>;
 
@@ -41,7 +39,8 @@ fn commit(session: &mut Session, candidate: PreparedMaterialTick<HypergraphStore
 
 fn advance(session: &mut Session) -> MaterialTickReceipts {
     let candidate = prepare(session);
-    let receipts = decode_material_receipts(candidate.material().receipt_bytes()).unwrap();
+    let receipts =
+        material_world::decode_material_receipts(candidate.material().receipt_bytes()).unwrap();
     commit(session, candidate);
     receipts
 }
@@ -153,9 +152,7 @@ fn shared_freight_has_one_capacity_principal_and_competing_order_demand() {
 
     let text = include_str!("../../../../content/scenarios/michigan/defines.toml")
         .replace("ORDERED_UNITS = 200", "ORDERED_UNITS = 80");
-    let changed =
-        babylon_persistence::michigan_material::MichiganMaterialCatalog::from_defines_toml(&text)
-            .unwrap();
+    let changed = MichiganMaterialCatalog::from_defines_toml(&text).unwrap();
     let mut session =
         MichiganContentPreset::new_campaign(MichiganDeliveryPreset::SharedFreightConstrained)
             .create_foundation(&changed)
@@ -302,8 +299,8 @@ fn presets_share_exact_setup_except_the_single_declared_delay() {
     assert_eq!(changed.travel_periods, 3);
     changed.travel_periods = 1;
     assert_eq!(
-        encode_material_circuit_state(&standard).unwrap(),
-        encode_material_circuit_state(&delayed).unwrap()
+        babylon_material_circuit::encode_material_circuit_state(&standard).unwrap(),
+        babylon_material_circuit::encode_material_circuit_state(&delayed).unwrap()
     );
     assert_eq!(standard.period, 1);
     assert_eq!(standard.capacities.len(), 5 * 16);
@@ -504,8 +501,10 @@ fn every_dispatch_transit_arrival_restart_reproduces_exact_continuation() {
                     .unwrap(),
                 )
                 .unwrap();
-            let encoded =
-                encode_material_circuit_state(candidate.material().register().state()).unwrap();
+            let encoded = babylon_material_circuit::encode_material_circuit_state(
+                candidate.material().register().state(),
+            )
+            .unwrap();
             assert_eq!(
                 decode_material_circuit_state(&encoded).unwrap(),
                 *restored.material().state()
@@ -547,8 +546,9 @@ fn every_dispatch_transit_arrival_restart_reproduces_exact_continuation() {
 // These controls qualify exact sixteen-period schedules, not the continuous
 // shipped campaign. Keep the horizon explicit in their captured input.
 mod test_support {
-    pub fn catalog() -> babylon_persistence::michigan_material::MichiganMaterialCatalog {
-        babylon_persistence::michigan_material::MichiganMaterialCatalog::from_defines_toml(
+    use babylon_persistence::michigan_material::MichiganMaterialCatalog;
+    pub fn catalog() -> MichiganMaterialCatalog {
+        MichiganMaterialCatalog::from_defines_toml(
             &include_str!("../../../../content/scenarios/michigan/defines.toml").replace(
                 "DURATION = { kind = \"continuous\" }",
                 "DURATION = { kind = \"finite\", final_period = 16 }",

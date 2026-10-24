@@ -24,9 +24,9 @@
 // ceremony that hides those contracts, so they stay off in test code only.
 #![allow(clippy::float_cmp)]
 
+use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::memory::MemoryGraph;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
-use babylon_tick::{run_once, run_once_into};
 
 const SCENARIO: &str =
     include_str!("../content/scenarios/metabolism-entropy-high-conformance.bscn");
@@ -34,8 +34,9 @@ const RULE: &str = include_str!("../content/rules/metabolism.bsl");
 
 fn run() -> MemoryGraph {
     let mut graph = MemoryGraph::new();
-    let mut sink = babylon_bsl::structural_verbs::CollectingSink::default();
-    run_once_into(SCENARIO, RULE, &mut graph, &mut sink).expect("the Metabolism pack must run");
+    let mut sink = CollectingSink::default();
+    babylon_tick::run_once_into(SCENARIO, RULE, &mut graph, &mut sink)
+        .expect("the Metabolism pack must run");
     graph
 }
 
@@ -76,8 +77,8 @@ fn the_hysteresis_damage_is_unaffected_by_entropy_factor() {
 /// Byte-determinism.
 #[test]
 fn the_high_entropy_scenario_tick_is_deterministic() {
-    let a = run_once(SCENARIO, RULE).expect("first run");
-    let b = run_once(SCENARIO, RULE).expect("second run");
+    let a = babylon_tick::run_once(SCENARIO, RULE).expect("first run");
+    let b = babylon_tick::run_once(SCENARIO, RULE).expect("second run");
     assert_eq!(a.after, b.after);
     assert_eq!(a.fired, 1);
 }

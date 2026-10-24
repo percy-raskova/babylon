@@ -8,7 +8,8 @@ use babylon_persistence::runtime_session::{
 };
 use std::fmt::Write as _;
 
-use super::{evidence::EvidenceMode, OrganizerClient, OrganizerInspector};
+use super::evidence::EvidenceMode;
+use super::{OrganizerClient, OrganizerInspector};
 
 pub(super) fn choice(value: OrganizerChoice) -> &'static str {
     match value {

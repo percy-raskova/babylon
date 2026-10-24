@@ -25,6 +25,10 @@ use std::sync::{Arc, Mutex, OnceLock};
 use bevy::app::App;
 use bevy::log::tracing_subscriber;
 use bevy::log::{BoxedFmtLayer, BoxedLayer};
+use io::Error;
+use io::Result as IoResult;
+use tracing_subscriber::filter::LevelFilter;
+use tracing_subscriber::fmt::Layer;
 
 const LOG_MAX_BYTES: u64 = 10 * 1024 * 1024;
 const LOG_ARCHIVES: u32 = 5;
@@ -119,7 +123,7 @@ fn archive_path(dir: &Path, index: u32) -> PathBuf {
 /// Shift the fixed archive window one slot (oldest dropped, live becomes
 /// archive 0) and reopen a fresh live file — the same window the `log4rs`
 /// `FixedWindowRoller` kept, so pre-switch archives shift coherently.
-fn rotate(state: &mut SinkState) -> io::Result<()> {
+fn rotate(state: &mut SinkState) -> IoResult<()> {
     let oldest = archive_path(&state.dir, state.archives - 1);
     if oldest.exists() {
         std::fs::remove_file(&oldest)?;
@@ -136,34 +140,35 @@ fn rotate(state: &mut SinkState) -> io::Result<()> {
     // Windows binding post-1.0, so the order is load-bearing, not style.
     state.file = None;
     std::fs::rename(&live, archive_path(&state.dir, 0))?;
-    state.file = Some(open_live(&live).map_err(io::Error::other)?);
+    state.file = Some(open_live(&live).map_err(Error::other)?);
     state.written = 0;
     Ok(())
 }
 
 impl io::Write for RotatingSink {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+    fn write(&mut self, buf: &[u8]) -> IoResult<usize> {
         let mut state = self
             .inner
             .lock()
-            .map_err(|e| io::Error::other(format!("log sink mutex poisoned: {e}")))?;
+            .map_err(|e| Error::other(format!("log sink mutex poisoned: {e}")))?;
         let incoming = buf.len() as u64;
         if state.written > 0 && state.written + incoming > state.max_bytes {
             rotate(&mut state)?;
         }
-        let file = state.file.as_mut().ok_or_else(|| {
-            io::Error::other("log sink has no live file (a prior rotation failed)")
-        })?;
+        let file = state
+            .file
+            .as_mut()
+            .ok_or_else(|| Error::other("log sink has no live file (a prior rotation failed)"))?;
         file.write_all(buf)?;
         state.written += incoming;
         Ok(buf.len())
     }
 
-    fn flush(&mut self) -> io::Result<()> {
+    fn flush(&mut self) -> IoResult<()> {
         let mut state = self
             .inner
             .lock()
-            .map_err(|e| io::Error::other(format!("log sink mutex poisoned: {e}")))?;
+            .map_err(|e| Error::other(format!("log sink mutex poisoned: {e}")))?;
         match state.file.as_mut() {
             Some(file) => file.flush(),
             None => Ok(()),
@@ -186,9 +191,7 @@ fn file_layer_in(dir: &Path) -> Option<BoxedLayer> {
     match RotatingSink::open(dir, LOG_MAX_BYTES, LOG_ARCHIVES) {
         Ok(sink) => {
             install_panic_hook();
-            let layer = tracing_subscriber::fmt::Layer::default()
-                .with_ansi(false)
-                .with_writer(sink);
+            let layer = Layer::default().with_ansi(false).with_writer(sink);
             Some(Box::new(layer))
         }
         Err(e) => {
@@ -211,9 +214,9 @@ pub fn file_layer(_app: &mut App) -> Option<BoxedLayer> {
 #[must_use]
 pub fn stderr_fmt_layer(_app: &mut App) -> Option<BoxedFmtLayer> {
     use bevy::log::tracing_subscriber::Layer as _;
-    let layer = tracing_subscriber::fmt::Layer::default()
+    let layer = Layer::default()
         .with_writer(std::io::stderr)
-        .with_filter(tracing_subscriber::filter::LevelFilter::INFO);
+        .with_filter(LevelFilter::INFO);
     Some(Box::new(layer))
 }
 

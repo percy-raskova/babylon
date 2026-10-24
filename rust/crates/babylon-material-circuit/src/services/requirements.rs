@@ -1,10 +1,18 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
-use super::{CommodityDefinition, CommodityKind, ServiceInputPolicy, ServiceStage};
+use super::CommodityDefinition;
+use super::CommodityKind;
+use super::ServiceInputPolicy;
+use super::ServiceStage;
 
+use crate::inventory::InventoryLedger;
+use crate::CircuitAccounting;
+use crate::SiteId;
 use crate::{GoodId, MaterialCircuitError, MaterialCircuitState, ProcessOutput, UnitId};
+use std::collections::BTreeMap;
+use std::result::Result as StdResult;
 
-pub(crate) type Result<T> = std::result::Result<T, MaterialCircuitError>;
+pub(crate) type Result<T> = StdResult<T, MaterialCircuitError>;
 
 impl CommodityDefinition {
     /// Positive shipment mass exists only for stored commodities.
@@ -52,10 +60,10 @@ pub(crate) fn is_service(state: &MaterialCircuitState, good: GoodId, unit: UnitI
 pub(crate) fn planning_grants(
     state: &MaterialCircuitState,
     period: u64,
-    inventory: &mut crate::inventory::InventoryLedger,
+    inventory: &mut InventoryLedger,
 ) -> Result<()> {
     let requirements = input_requirements(state, true)?;
-    let mut future = std::collections::BTreeMap::new();
+    let mut future = BTreeMap::new();
     for order in &state.service_orders {
         if order.performance_period == period {
             if let crate::AccountId::Site(site) = order.buyer {
@@ -67,7 +75,7 @@ pub(crate) fn planning_grants(
             }
         }
     }
-    if let crate::CircuitAccounting::Monetary(e) = &state.accounting {
+    if let CircuitAccounting::Monetary(e) = &state.accounting {
         if let Some(r) = &e.recurring {
             for policy in &r.service_inputs {
                 crate::inventory::credit_inventory(
@@ -84,22 +92,21 @@ pub(crate) fn planning_grants(
     Ok(())
 }
 
-pub(crate) type InputRequirements =
-    std::collections::BTreeMap<(crate::SiteId, GoodId, UnitId), u128>;
+pub(crate) type InputRequirements = BTreeMap<(SiteId, GoodId, UnitId), u128>;
 
 /// Build once per planning boundary; coefficients preserve their declared native units.
 pub(crate) fn input_requirements(
     state: &MaterialCircuitState,
     next_plan: bool,
 ) -> Result<InputRequirements> {
-    let owners: std::collections::BTreeMap<_, _> = state
+    let owners: BTreeMap<_, _> = state
         .process_outputs
         .iter()
         .map(|o| (o.process_id, o.site_id))
         .collect();
-    let plans: std::collections::BTreeMap<_, _> = if next_plan {
+    let plans: BTreeMap<_, _> = if next_plan {
         match &state.accounting {
-            crate::CircuitAccounting::Monetary(e) => e
+            CircuitAccounting::Monetary(e) => e
                 .recurring
                 .as_ref()
                 .map(|r| {
@@ -109,7 +116,7 @@ pub(crate) fn input_requirements(
                         .collect()
                 })
                 .unwrap_or_default(),
-            crate::CircuitAccounting::PhysicalControl => std::collections::BTreeMap::new(),
+            CircuitAccounting::PhysicalControl => BTreeMap::new(),
         }
     } else {
         state

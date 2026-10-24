@@ -1,6 +1,6 @@
 //! Complete merchant and local final-demand admission before any allocation.
 
-use super::{grams_per_unit, has_duplicate, site_node, BTreeSet};
+use super::BTreeSet;
 use crate::{
     GoodId, MaterialCircuitError, MaterialCircuitState, MerchantHandling, MerchantRole, SiteId,
     UnitId,
@@ -32,12 +32,12 @@ pub(super) fn hours_per_unit(
 }
 
 pub(super) fn validate_merchants(state: &MaterialCircuitState) -> Result<(), MaterialCircuitError> {
-    if has_duplicate(&state.merchants, |row| row.site_id)
-        || has_duplicate(&state.handling_coefficients, |row| {
+    if super::has_duplicate(&state.merchants, |row| row.site_id)
+        || super::has_duplicate(&state.handling_coefficients, |row| {
             (row.site_id, row.good_id, row.unit_id)
         })
-        || has_duplicate(&state.final_demand_principals, |row| row.id)
-        || has_duplicate(&state.final_demand_orders, |row| row.order_id)
+        || super::has_duplicate(&state.final_demand_principals, |row| row.id)
+        || super::has_duplicate(&state.final_demand_orders, |row| row.order_id)
     {
         return Err(MaterialCircuitError::DuplicateRow);
     }
@@ -48,7 +48,9 @@ pub(super) fn validate_merchants(state: &MaterialCircuitState) -> Result<(), Mat
         .collect();
     let mut handling_principals = BTreeSet::new();
     for row in &state.merchants {
-        if site_node(state, row.site_id).is_none() || road_principals.contains(&row.capacity_id) {
+        if super::site_node(state, row.site_id).is_none()
+            || road_principals.contains(&row.capacity_id)
+        {
             return Err(MaterialCircuitError::MerchantInvariant);
         }
         if !handling_principals.insert(row.capacity_id) {
@@ -59,7 +61,7 @@ pub(super) fn validate_merchants(state: &MaterialCircuitState) -> Result<(), Mat
         if merchant(state, row.site_id).is_none() || row.hours_per_unit == 0 {
             return Err(MaterialCircuitError::MerchantInvariant);
         }
-        grams_per_unit(state, row.good_id, row.unit_id)?;
+        super::grams_per_unit(state, row.good_id, row.unit_id)?;
     }
     for row in &state.orders {
         if merchant(state, row.supplier_site_id).is_some() {
@@ -83,7 +85,7 @@ pub(super) fn validate_merchants(state: &MaterialCircuitState) -> Result<(), Mat
             return Err(MaterialCircuitError::FinalDemandInvariant);
         }
         hours_per_unit(state, row.retailer_site_id, row.good_id, row.unit_id)?;
-        grams_per_unit(state, row.good_id, row.unit_id)?;
+        super::grams_per_unit(state, row.good_id, row.unit_id)?;
     }
     Ok(())
 }

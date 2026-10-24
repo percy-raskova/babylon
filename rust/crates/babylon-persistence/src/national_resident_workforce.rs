@@ -16,13 +16,8 @@ pub use model::*;
 #[path = "national_resident_workforce/artifact.rs"]
 mod artifact;
 
-#[cfg(test)]
-use artifact::{decode, ARTIFACT};
 pub use artifact::{
     national_resident_workforce_reference, NationalResidentWorkforceReference,
     ResidentWorkforceReferenceError,
 };
 use artifact::{COUNTY_COUNT, MAX_DECODED_BYTES};
-
-#[cfg(test)]
-use crate::national_counties::national_county_reference;

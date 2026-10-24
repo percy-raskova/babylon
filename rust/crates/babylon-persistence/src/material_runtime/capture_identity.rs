@@ -1,8 +1,8 @@
 //! Exact SQL capture freshness, separate from canonical game-state identity.
-use postgres::{
-    types::{FromSql, Type},
-    Row,
-};
+use postgres::types::{FromSql, Type};
+use postgres::Row;
+
+use postgres::Error as PostgresError;
 use sha2::{Digest, Sha256};
 
 #[derive(Debug)]
@@ -24,7 +24,7 @@ impl<'a> FromSql<'a> for RawField<'a> {
 /// row boundaries all participate. Call only after the capture transaction ends.
 pub(crate) fn rows_digest<'a>(
     rows: impl IntoIterator<Item = &'a Row>,
-) -> Result<[u8; 32], postgres::Error> {
+) -> Result<[u8; 32], PostgresError> {
     let mut hash = Sha256::new();
     hash.update(b"babylon.sql-capture-freshness.v1\0");
     for row in rows {

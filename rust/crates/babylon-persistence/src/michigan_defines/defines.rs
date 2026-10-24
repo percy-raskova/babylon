@@ -10,7 +10,13 @@ use std::collections::BTreeMap;
 
 use babylon_kernel::clock::{DAYS_PER_TICK, WEEKS_PER_TICK};
 
+use super::super::michigan_material::MichiganMaterialError;
+use babylon_kernel::clock::CampaignDuration;
 use serde::{Deserialize, Serialize};
+use statewide::DesignedEvidence;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
+use std::string::FromUtf8Error;
 
 pub const MAX_MICHIGAN_DEFINES_BYTES: usize = 32_768;
 
@@ -20,15 +26,15 @@ pub(crate) const MAX_EXACT_INTEGER: u64 = 1 << 53;
 pub enum MichiganDefinesError {
     Read(std::io::Error),
     TooLarge,
-    Utf8(std::string::FromUtf8Error),
+    Utf8(FromUtf8Error),
     Toml(toml::de::Error),
     Canonical,
     Value(&'static str),
-    Material(super::super::michigan_material::MichiganMaterialError),
+    Material(MichiganMaterialError),
 }
 
 impl std::fmt::Display for MichiganDefinesError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         match self {
             Self::Read(error) => write!(f, "defines file read failed: {error}"),
             Self::TooLarge => write!(f, "defines exceeds {MAX_MICHIGAN_DEFINES_BYTES} bytes"),
@@ -86,7 +92,7 @@ pub(crate) struct SharedFreightDefines {
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields, rename_all = "SCREAMING_SNAKE_CASE")]
 pub(crate) struct RegionalMassDefines {
-    pub evidence_class: statewide::DesignedEvidence,
+    pub evidence_class: DesignedEvidence,
     pub kilogram_grams_per_unit: u64,
     pub panel_grams_per_unit: u64,
     pub subassembly_grams_per_unit: u64,
@@ -138,7 +144,7 @@ pub(crate) struct MichiganDefines {
     pub regional_mass: RegionalMassDefines,
     pub schema_version: u16,
     pub tick_duration_days: u64,
-    pub duration: babylon_kernel::clock::CampaignDuration,
+    pub duration: CampaignDuration,
     #[serde(rename = "staffing")]
     pub staffing: StaffingDefines,
     #[serde(rename = "process")]

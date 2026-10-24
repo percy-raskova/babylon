@@ -1,13 +1,30 @@
 //! Wire-level client lifecycle regressions using the real receive/dispatch systems.
 
-use super::tests::{quit_app, snapshot_with_event};
-use super::*;
-use babylon_persistence::{identity::CampaignId, runtime_session::RuntimeSessionErrorCode};
+use super::runtime;
+use super::runtime::{ContinuationPreference, PendingObservation, PreparedObservation};
+use super::tests;
+use crate::observer::{ObserverSession, Perspective, SessionPhase};
+use crate::observer_ui::{ObserverCommand, ObserverFrame, ObserverUiState};
+use crate::production::PrimaryView;
+use crate::ui::dossier_card::{
+    ActiveCountyDossier, DossierCampaignId, DossierFetchState, DossierPageView, DossierRefresh,
+};
+use babylon_persistence::identity::CampaignId;
+use babylon_persistence::runtime_session::RuntimeSessionErrorCode;
+use babylon_persistence::runtime_session::{
+    RuntimeSessionPreset, RuntimeSessionRequest, RuntimeSessionResponse, RuntimeSessionScope,
+    RuntimeSessionTail, RuntimeSessionTarget, RUNTIME_SESSION_PROTOCOL_VERSION,
+};
+use bevy::prelude::*;
+use mpsc::Receiver;
+use mpsc::Sender;
+use std::sync::mpsc;
+use uuid::Uuid;
 
-type Replies = mpsc::Sender<Result<RuntimeSessionResponse, String>>;
+type Replies = Sender<Result<RuntimeSessionResponse, String>>;
 
 fn campaign(number: u128) -> CampaignId {
-    CampaignId::from_uuid(uuid::Uuid::from_u128(number))
+    CampaignId::from_uuid(Uuid::from_u128(number))
 }
 
 fn open(number: u128) -> RuntimeSessionTarget {
@@ -30,7 +47,7 @@ struct Switch {
     scope: RuntimeSessionScope,
 }
 
-fn take_switch(requests: &mpsc::Receiver<RuntimeSessionRequest>) -> Switch {
+fn take_switch(requests: &Receiver<RuntimeSessionRequest>) -> Switch {
     let RuntimeSessionRequest::Switch {
         request_id,
         scope: previous,
@@ -99,8 +116,8 @@ fn command(app: &mut App, command: ObserverCommand) {
     app.update();
 }
 
-fn initial() -> (App, mpsc::Receiver<RuntimeSessionRequest>, Replies) {
-    let (mut app, requests, responses) = quit_app();
+fn initial() -> (App, Receiver<RuntimeSessionRequest>, Replies) {
+    let (mut app, requests, responses) = tests::quit_app();
     app.insert_resource(ObserverSession::with_initial_target(open(1)).unwrap())
         .insert_resource(DossierCampaignId(campaign(1)))
         .init_resource::<ActiveCountyDossier>()
@@ -123,8 +140,7 @@ fn hello(app: &mut App, responses: &Replies) {
 #[test]
 fn lifecycle_delayed_hello_and_ready_keep_window_and_save_only_admitted_target() {
     let (mut app, requests, responses) = initial();
-    let directory =
-        std::env::temp_dir().join(format!("babylon-lifecycle-{}", uuid::Uuid::new_v4()));
+    let directory = std::env::temp_dir().join(format!("babylon-lifecycle-{}", Uuid::new_v4()));
     let path = directory.join("observer-campaign");
     app.insert_resource(ContinuationPreference(path.clone()));
     let window = app.world_mut().spawn(Window::default()).id();
@@ -231,10 +247,10 @@ fn lifecycle_quit_during_admission_retains_latest_scope_and_discards_queued_targ
 
 #[test]
 fn lifecycle_switch_waits_for_commit_ack_then_clears_scoped_observations() {
-    let (mut app, requests, responses) = quit_app();
+    let (mut app, requests, responses) = tests::quit_app();
     let state = app.world().resource::<ObserverSession>();
     let original = state.context();
-    let snapshot = snapshot_with_event(state, "production", 3);
+    let snapshot = tests::snapshot_with_event(state, "production", 3);
     app.insert_resource(ObserverFrame(Some(snapshot), None))
         .insert_resource(DossierCampaignId(original.campaign))
         .init_resource::<ActiveCountyDossier>()
@@ -284,11 +300,11 @@ fn lifecycle_failed_b_then_return_to_a_rejects_old_epoch_and_async_a_results() {
 }
 
 fn return_to_a_rejects_stale_results(failed_b: bool) {
-    let (mut app, requests, responses) = quit_app();
+    let (mut app, requests, responses) = tests::quit_app();
     let state = app.world().resource::<ObserverSession>();
     let old_scope = state.runtime_scope().unwrap().clone();
     let old_context = state.context();
-    let old_snapshot = snapshot_with_event(state, "production", 3);
+    let old_snapshot = tests::snapshot_with_event(state, "production", 3);
     enqueue(&mut app, open(2));
     let b = take_switch(&requests);
     switching(&mut app, &responses, &b);
@@ -354,7 +370,7 @@ fn return_to_a_rejects_stale_results(failed_b: bool) {
     );
     assert_eq!(app.world().resource::<DossierRefresh>().0, refresh);
     let mut frame = ObserverFrame::default();
-    install_observation(
+    runtime::install_observation(
         &mut app.world_mut().resource_mut::<ObserverSession>(),
         &old_context,
         PreparedObservation::new(old_snapshot),
@@ -475,7 +491,7 @@ fn lifecycle_request_ids_remain_unique_across_switch_advance_and_stop() {
 
 #[test]
 fn lifecycle_pipe_death_retains_sent_new_identity_without_resend_or_fact_adoption() {
-    let (mut app, requests, responses) = quit_app();
+    let (mut app, requests, responses) = tests::quit_app();
     let original = app.world().resource::<ObserverSession>().context();
     let target = campaign(99).as_uuid().to_string();
     enqueue(
@@ -549,7 +565,7 @@ fn lifecycle_admission_refusals_explain_the_available_campaign_choice() {
 #[test]
 fn national_admission_leaves_the_old_wayne_workspace_and_waits_for_its_own_observation() {
     let (mut app, requests, responses) = initial();
-    app.insert_resource(crate::production::PrimaryView::Organizer);
+    app.insert_resource(PrimaryView::Organizer);
     {
         let mut state = app.world_mut().resource_mut::<ObserverSession>();
         state.perspective = Perspective::PlayerKnowledge;
@@ -570,10 +586,7 @@ fn national_admission_leaves_the_old_wayne_workspace_and_waits_for_its_own_obser
     assert!(!state.organizer_enabled);
     assert_eq!(state.perspective, Perspective::FullObserver);
     assert_eq!(state.phase, SessionPhase::Loading);
-    assert_eq!(
-        *app.world().resource::<crate::production::PrimaryView>(),
-        crate::production::PrimaryView::Map
-    );
+    assert_eq!(*app.world().resource::<PrimaryView>(), PrimaryView::Map);
     command(&mut app, ObserverCommand::Step);
     assert!(
         requests.try_recv().is_err(),

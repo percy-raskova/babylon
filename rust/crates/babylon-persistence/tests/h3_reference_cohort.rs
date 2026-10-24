@@ -2,12 +2,11 @@
 
 use babylon_kernel::tick_content_hash::RefDigest;
 use babylon_kernel::H3CellId;
-use babylon_persistence::{
-    h3_reference_cohort::build_representative_h3_cohort,
-    h3_reference_cohort::representative_h3_reference_cohort,
-    h3_reference_cohort::H3ReferenceCellRow, h3_reference_cohort::H3ReferenceCohortError,
-    h3_reference_cohort::H3ReferenceOrigin, h3_reference_cohort::MAX_H3_REFERENCE_SOURCE_CELLS,
+use babylon_persistence::h3_reference_cohort::{
+    H3ReferenceCellRow, H3ReferenceCohortError, H3ReferenceOrigin, MAX_H3_REFERENCE_SOURCE_CELLS,
 };
+
+use babylon_persistence::h3_reference_cohort;
 use std::str::FromStr;
 
 const SOURCE_COUNT: usize = 48_764;
@@ -20,11 +19,12 @@ const CLOSURE_COUNTS: [u32; 16] = [
 #[test]
 fn representative_cohort_is_permutation_stable_and_matches_independent_receipts() {
     let source = source_cells();
-    let forward = build_representative_h3_cohort(artifact_digest(), &source)
+    let forward = h3_reference_cohort::build_representative_h3_cohort(artifact_digest(), &source)
         .expect("pinned representative source should build");
     let reversed_source = source.iter().copied().rev().collect::<Vec<_>>();
-    let reversed = build_representative_h3_cohort(artifact_digest(), &reversed_source)
-        .expect("input order must not change the cohort");
+    let reversed =
+        h3_reference_cohort::build_representative_h3_cohort(artifact_digest(), &reversed_source)
+            .expect("input order must not change the cohort");
 
     assert_eq!(forward, reversed);
     assert_eq!(forward.rows().len(), CLOSURE_COUNT);
@@ -69,7 +69,7 @@ fn representative_cohort_is_permutation_stable_and_matches_independent_receipts(
 #[test]
 fn representative_rows_are_parent_first_and_preserve_full_hierarchy_semantics() {
     let source = source_cells();
-    let cohort = build_representative_h3_cohort(artifact_digest(), &source)
+    let cohort = h3_reference_cohort::build_representative_h3_cohort(artifact_digest(), &source)
         .expect("pinned representative source should build");
     let rows = cohort.rows();
 
@@ -165,27 +165,30 @@ fn representative_cohort_refuses_every_untrusted_or_drifted_source_shape() {
     let source = source_cells();
 
     assert_eq!(
-        build_representative_h3_cohort(RefDigest::from_bytes([0; 32]), &source),
+        h3_reference_cohort::build_representative_h3_cohort(
+            RefDigest::from_bytes([0; 32]),
+            &source
+        ),
         Err(H3ReferenceCohortError::ArtifactDigestMismatch {
             expected: artifact_digest(),
             actual: RefDigest::from_bytes([0; 32]),
         })
     );
     assert_eq!(
-        build_representative_h3_cohort(artifact_digest(), &[]),
+        h3_reference_cohort::build_representative_h3_cohort(artifact_digest(), &[]),
         Err(H3ReferenceCohortError::EmptySource)
     );
 
     let mut duplicate = source.clone();
     duplicate.push(source[0]);
     assert_eq!(
-        build_representative_h3_cohort(artifact_digest(), &duplicate),
+        h3_reference_cohort::build_representative_h3_cohort(artifact_digest(), &duplicate),
         Err(H3ReferenceCohortError::DuplicateSourceCell { cell: source[0] })
     );
 
     let missing = &source[..SOURCE_COUNT - 1];
     assert_eq!(
-        build_representative_h3_cohort(artifact_digest(), missing),
+        h3_reference_cohort::build_representative_h3_cohort(artifact_digest(), missing),
         Err(H3ReferenceCohortError::UnexpectedSourceCount {
             expected: SOURCE_COUNT,
             actual: SOURCE_COUNT - 1,
@@ -195,7 +198,7 @@ fn representative_cohort_refuses_every_untrusted_or_drifted_source_shape() {
     let mut wrong_resolution = source.clone();
     wrong_resolution[0] = H3CellId::from_str("842a107ffffffff").unwrap();
     assert_eq!(
-        build_representative_h3_cohort(artifact_digest(), &wrong_resolution),
+        h3_reference_cohort::build_representative_h3_cohort(artifact_digest(), &wrong_resolution),
         Err(H3ReferenceCohortError::UnexpectedSourceResolution {
             cell: H3CellId::from_str("842a107ffffffff").unwrap(),
             actual: 4,
@@ -206,7 +209,7 @@ fn representative_cohort_refuses_every_untrusted_or_drifted_source_shape() {
     assert!(!source.contains(&impostor));
     let mut wrong_set = source.clone();
     wrong_set[0] = impostor;
-    match build_representative_h3_cohort(artifact_digest(), &wrong_set) {
+    match h3_reference_cohort::build_representative_h3_cohort(artifact_digest(), &wrong_set) {
         Err(H3ReferenceCohortError::SourceDigestMismatch { expected, actual }) => {
             assert_eq!(
                 expected,
@@ -219,7 +222,7 @@ fn representative_cohort_refuses_every_untrusted_or_drifted_source_shape() {
 
     let oversized = vec![source[0]; MAX_H3_REFERENCE_SOURCE_CELLS + 1];
     assert_eq!(
-        build_representative_h3_cohort(artifact_digest(), &oversized),
+        h3_reference_cohort::build_representative_h3_cohort(artifact_digest(), &oversized),
         Err(H3ReferenceCohortError::TooManySourceCells {
             actual: MAX_H3_REFERENCE_SOURCE_CELLS + 1,
             max: MAX_H3_REFERENCE_SOURCE_CELLS,
@@ -228,7 +231,7 @@ fn representative_cohort_refuses_every_untrusted_or_drifted_source_shape() {
 }
 
 fn source_cells() -> Vec<H3CellId> {
-    representative_h3_reference_cohort()
+    h3_reference_cohort::representative_h3_reference_cohort()
         .expect("the sole checked-in source fixture must validate")
         .rows()
         .iter()

@@ -1,7 +1,11 @@
-use super::*;
+use super::artifact;
+use super::artifact::{NationalCountyReferenceError, ObservationStatus, ARTIFACT};
+use super::parse;
+use super::parse::{acs_cell, parse_csv};
+use babylon_kernel::geography::CountyGeoid;
 
 fn source() -> String {
-    decode_gzip(ARTIFACT).unwrap()
+    artifact::decode_gzip(ARTIFACT).unwrap()
 }
 
 #[test]
@@ -86,7 +90,7 @@ fn qcew_suppression_retains_establishments_and_never_creates_zero_jobs() {
         "0",
         "suppressed",
     ];
-    let row = qcew(&fields).unwrap();
+    let row = parse::qcew(&fields).unwrap();
     assert_eq!(row.establishments.value(), Some(7));
     assert_eq!(row.jobs.value(), None);
     assert_eq!(row.jobs.raw(), "0");
@@ -94,13 +98,13 @@ fn qcew_suppression_retains_establishments_and_never_creates_zero_jobs() {
     let mut wrong = fields;
     wrong[6] = "1";
     assert_eq!(
-        qcew(&wrong).unwrap_err(),
+        parse::qcew(&wrong).unwrap_err(),
         NationalCountyReferenceError::Observation
     );
     let mut wrong = fields;
     wrong[1] = "";
     assert_eq!(
-        qcew(&wrong).unwrap_err(),
+        parse::qcew(&wrong).unwrap_err(),
         NationalCountyReferenceError::Observation
     );
 }

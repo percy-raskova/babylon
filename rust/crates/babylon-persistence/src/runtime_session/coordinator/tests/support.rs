@@ -5,10 +5,9 @@ use super::mpsc;
 use super::{ArchiveControl, BufRead, SessionBackend, Write};
 
 use super::{
-    serve, Active, ArchiveDriverEvent, ArchiveEventSink, Coordinator, Duration, InputEvent,
-    Receiver, RuntimeSessionErrorCode, RuntimeSessionRequest, RuntimeSessionResponse,
-    RuntimeSessionScope, RuntimeSessionTarget, SessionEvent, SessionInput,
-    RUNTIME_SESSION_PROTOCOL_VERSION,
+    Active, ArchiveDriverEvent, ArchiveEventSink, Coordinator, Duration, InputEvent, Receiver,
+    RuntimeSessionErrorCode, RuntimeSessionRequest, RuntimeSessionResponse, RuntimeSessionScope,
+    RuntimeSessionTarget, SessionEvent, SessionInput, RUNTIME_SESSION_PROTOCOL_VERSION,
 };
 
 use crate::runtime_session::RuntimeSessionTail;
@@ -19,6 +18,14 @@ use std::io::{self, Cursor, Read};
 
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
+use super::super::super::RuntimeAdvanceStage;
+use crate::archive_driver::ArchiveDriverFailure;
+use babylon_kernel::clock::CampaignDuration;
+use io::Error;
+use io::ErrorKind;
+use io::Result as IoResult;
+use mpsc::SyncSender;
+use serde_json::Value;
 use std::sync::{Arc, Mutex};
 
 #[derive(Default)]
@@ -90,8 +97,8 @@ pub(in crate::runtime_session::coordinator) struct Backend {
 }
 
 impl SessionBackend for Backend {
-    fn duration(&self) -> babylon_kernel::clock::CampaignDuration {
-        babylon_kernel::clock::CampaignDuration::Finite { final_period: 16 }
+    fn duration(&self) -> CampaignDuration {
+        CampaignDuration::Finite { final_period: 16 }
     }
     fn tail(&self) -> RuntimeSessionTail {
         RuntimeSessionTail {
@@ -102,16 +109,16 @@ impl SessionBackend for Backend {
     fn advance(
         &mut self,
         expected: &RuntimeSessionTail,
-        report_stage: &mut dyn FnMut(super::super::super::RuntimeAdvanceStage),
+        report_stage: &mut dyn FnMut(RuntimeAdvanceStage),
     ) -> Result<RuntimeSessionTail, RuntimeSessionErrorCode> {
         if expected != &self.tail() {
             return Err(RuntimeSessionErrorCode::StaleExpectedTail);
         }
         for stage in [
-            super::super::super::RuntimeAdvanceStage::PreparingCommitments,
-            super::super::super::RuntimeAdvanceStage::ResolvingEconomy,
-            super::super::super::RuntimeAdvanceStage::PreparingStorage,
-            super::super::super::RuntimeAdvanceStage::SavingPeriod,
+            RuntimeAdvanceStage::PreparingCommitments,
+            RuntimeAdvanceStage::ResolvingEconomy,
+            RuntimeAdvanceStage::PreparingStorage,
+            RuntimeAdvanceStage::SavingPeriod,
         ] {
             report_stage(stage);
         }
@@ -260,8 +267,8 @@ pub(in crate::runtime_session::coordinator) fn responses(
 }
 
 impl SessionBackend for &mut Backend {
-    fn duration(&self) -> babylon_kernel::clock::CampaignDuration {
-        babylon_kernel::clock::CampaignDuration::Finite { final_period: 16 }
+    fn duration(&self) -> CampaignDuration {
+        CampaignDuration::Finite { final_period: 16 }
     }
     fn tail(&self) -> RuntimeSessionTail {
         (**self).tail()
@@ -269,7 +276,7 @@ impl SessionBackend for &mut Backend {
     fn advance(
         &mut self,
         expected: &RuntimeSessionTail,
-        progress: &mut dyn FnMut(super::super::super::RuntimeAdvanceStage),
+        progress: &mut dyn FnMut(RuntimeAdvanceStage),
     ) -> Result<RuntimeSessionTail, RuntimeSessionErrorCode> {
         (**self).advance(expected, progress)
     }
@@ -297,7 +304,7 @@ pub(in crate::runtime_session::coordinator) fn serve_open<I: BufRead + Send + 's
     let input = Cursor::new(wire(&[switching(RuntimeSessionScope::default(), A, 1)])).chain(input);
     let mut backend = Some(backend);
     let mut start = Some(start);
-    serve(
+    super::serve(
         input,
         output,
         |_| {
@@ -646,14 +653,14 @@ pub(in crate::runtime_session::coordinator) struct BrokenOutput {
 }
 
 impl Write for BrokenOutput {
-    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+    fn write(&mut self, bytes: &[u8]) -> IoResult<usize> {
         if self.successful_records < 2 {
             self.successful_records += 1;
             return Ok(bytes.len());
         }
-        Err(io::ErrorKind::BrokenPipe.into())
+        Err(ErrorKind::BrokenPipe.into())
     }
-    fn flush(&mut self) -> io::Result<()> {
+    fn flush(&mut self) -> IoResult<()> {
         Ok(())
     }
 }
@@ -751,7 +758,7 @@ pub(in crate::runtime_session::coordinator) fn retrying_manual_failure_keeps_cor
                     &scope(1, A),
                     &ArchiveDriverEvent::Failure {
                         request_id,
-                        failure: crate::archive_driver::ArchiveDriverFailure::Disconnected,
+                        failure: ArchiveDriverFailure::Disconnected,
                         retrying: true,
                     },
                 )
@@ -779,18 +786,18 @@ pub(in crate::runtime_session::coordinator) fn retrying_manual_failure_keeps_cor
 }
 
 pub(in crate::runtime_session::coordinator) struct OpenInput {
-    started: mpsc::SyncSender<()>,
+    started: SyncSender<()>,
     release: Receiver<()>,
 }
 
 impl Read for OpenInput {
-    fn read(&mut self, _: &mut [u8]) -> io::Result<usize> {
+    fn read(&mut self, _: &mut [u8]) -> IoResult<usize> {
         self.fill_buf().map(|_| 0)
     }
 }
 
 impl BufRead for OpenInput {
-    fn fill_buf(&mut self) -> io::Result<&[u8]> {
+    fn fill_buf(&mut self) -> IoResult<&[u8]> {
         let _ = self.started.try_send(());
         let _ = self.release.recv();
         Ok(&[])
@@ -872,30 +879,27 @@ pub(in crate::runtime_session::coordinator) struct ProgressOutput {
 }
 
 impl Write for ProgressOutput {
-    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+    fn write(&mut self, bytes: &[u8]) -> IoResult<usize> {
         if bytes
             .windows(b"advance_progress".len())
             .any(|part| part == b"advance_progress")
         {
             self.attempts += 1;
             if self.fail_progress {
-                return Err(io::Error::new(
-                    io::ErrorKind::BrokenPipe,
-                    "progress fixture",
-                ));
+                return Err(Error::new(ErrorKind::BrokenPipe, "progress fixture"));
             }
         }
         self.bytes.extend_from_slice(bytes);
         Ok(bytes.len())
     }
-    fn flush(&mut self) -> io::Result<()> {
+    fn flush(&mut self) -> IoResult<()> {
         let last = self
             .bytes
             .split(|byte| *byte == b'\n')
             .filter(|line| !line.is_empty())
             .next_back()
             .unwrap();
-        let row: serde_json::Value = serde_json::from_slice(last).unwrap();
+        let row: Value = serde_json::from_slice(last).unwrap();
         if row["type"] == "advance_progress" {
             assert_eq!(
                 self.state.tick.load(Ordering::SeqCst),
@@ -921,13 +925,11 @@ pub(in crate::runtime_session::coordinator) fn progress_output(
     }
 }
 
-pub(in crate::runtime_session::coordinator) fn raw_progress(
-    bytes: &[u8],
-) -> Vec<serde_json::Value> {
+pub(in crate::runtime_session::coordinator) fn raw_progress(bytes: &[u8]) -> Vec<Value> {
     bytes
         .split(|byte| *byte == b'\n')
         .filter(|line| !line.is_empty())
-        .map(|line| serde_json::from_slice::<serde_json::Value>(line).unwrap())
+        .map(|line| serde_json::from_slice::<Value>(line).unwrap())
         .filter(|row| row["type"] == "advance_progress")
         .collect()
 }

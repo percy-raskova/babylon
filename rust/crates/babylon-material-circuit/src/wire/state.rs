@@ -1,6 +1,8 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
-use super::{accounting, capacity, services};
+use super::accounting;
+use super::capacity;
+use super::services;
 
 use crate::SupplierTransport;
 
@@ -9,12 +11,11 @@ use crate::{
     MerchantHandlingCoefficient, MerchantRole,
 };
 
-use babylon_kernel::content_digest::sha256_of;
-
 use babylon_kernel::economic_location::EconomicLocation;
 
-use crate::transition::canonical_state;
-
+use crate::transition;
+use crate::MaintenanceBinding;
+use crate::MaintenanceService;
 use crate::{
     BacklogRow, CapacityRow, CorridorCapacity, CorridorId, FreightLotId, GoodId,
     InputOutputCoefficient, InventoryRow, LaborCapacityRow, LaborCoefficient, LogisticsNodeId,
@@ -22,6 +23,7 @@ use crate::{
     ProcessOutput, ProductionCommitment, RouteId, RouteStage, RouteStageCapacity, RoutedFreightLot,
     SiteId, SiteLogisticsNode, SupplierRoute, UnitId, MAX_MATERIAL_CIRCUIT_ROWS,
 };
+use babylon_kernel::content_digest;
 
 /// Canonical domain for one complete routed material-circuit opening state.
 pub const MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES: &[u8] = b"babylon.material-circuit-state.v3";
@@ -644,10 +646,10 @@ pub(crate) fn append_maintenance(output: &mut Vec<u8>, state: &MaterialCircuitSt
 
 pub(crate) fn decode_maintenance_binding(
     cursor: &mut Cursor<'_>,
-) -> Result<Option<crate::MaintenanceBinding>, MaterialCircuitError> {
+) -> Result<Option<MaintenanceBinding>, MaterialCircuitError> {
     match cursor.u8()? {
         0 => Ok(None),
-        1 => Ok(Some(crate::MaintenanceBinding {
+        1 => Ok(Some(MaintenanceBinding {
             provider_site_id: SiteId::from_bytes(cursor.array()?),
             consumer_process_id: ProcessId::from_bytes(cursor.array()?),
             spare_good_id: GoodId::from_bytes(cursor.array()?),
@@ -664,10 +666,10 @@ pub(crate) fn decode_maintenance_binding(
 
 pub(crate) fn decode_maintenance_service(
     cursor: &mut Cursor<'_>,
-) -> Result<Option<crate::MaintenanceService>, MaterialCircuitError> {
+) -> Result<Option<MaintenanceService>, MaterialCircuitError> {
     match cursor.u8()? {
         0 => Ok(None),
-        1 => Ok(Some(crate::MaintenanceService {
+        1 => Ok(Some(MaintenanceService {
             period: cursor.u64()?,
             available_batches: cursor.u64()?,
         })),
@@ -682,7 +684,7 @@ pub(crate) fn decode_maintenance_service(
 pub fn encode_material_circuit_state(
     state: &MaterialCircuitState,
 ) -> Result<Vec<u8>, MaterialCircuitError> {
-    let canonical = canonical_state(state)?;
+    let canonical = transition::canonical_state(state)?;
     let mut output = Vec::new();
     output.extend_from_slice(MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES);
     output.push(0);
@@ -764,7 +766,7 @@ pub fn decode_material_circuit_state(
         service_orders: services::decode_orders(&mut cursor)?,
     };
     cursor.finish()?;
-    let canonical = canonical_state(&state)?;
+    let canonical = transition::canonical_state(&state)?;
     if canonical != state {
         return Err(MaterialCircuitError::WireNoncanonical);
     }
@@ -778,7 +780,9 @@ pub fn decode_material_circuit_state(
 pub fn material_circuit_state_digest(
     state: &MaterialCircuitState,
 ) -> Result<[u8; 32], MaterialCircuitError> {
-    Ok(sha256_of(&encode_material_circuit_state(state)?))
+    Ok(content_digest::sha256_of(&encode_material_circuit_state(
+        state,
+    )?))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

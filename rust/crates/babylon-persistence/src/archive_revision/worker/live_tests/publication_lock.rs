@@ -1,10 +1,28 @@
 //! Archive deletion protection must coexist with authoritative tick publication.
 
-use super::*;
+use super::current_material;
+use super::support::{receipt_consumption_count, LiveWorkerTarget};
+use crate::archive_revision::worker::live_tests::StubPageProducer;
+use crate::archive_revision::ArchiveReadScope;
 use crate::archive_revision::{publication, tick_knowledge};
+use crate::archive_revision::{ArchiveDossierBounds, ArchiveDossierState};
+use crate::archive_worker::ArchiveDossierProducer;
+use crate::identity::CampaignId;
+use crate::material_runtime;
+use crate::material_runtime::DurableMaterialRuntime;
 use crate::{ArchiveMaterializeDisposition, ArchiveMaterializeMode};
+use crate::{PendingArchiveReceipt, SemanticArchiveStore};
+use babylon_bsl::structural_verbs::CollectingSink;
+use babylon_practice_contract::OrderedPracticeActionBatch;
 use babylon_tick::material_replay::IdentifiedMaterialTick;
-use postgres::{error::SqlState, IsolationLevel, Transaction};
+use postgres::error::SqlState;
+use postgres::NoTls;
+use postgres::{IsolationLevel, Transaction};
+
+use super::archive_reader;
+use crate::archive_revision::worker::live_tests;
+use material_runtime::MaterialRuntimeError;
+use mpsc::TryRecvError;
 use std::sync::mpsc;
 
 // The real publication has finished its writes but retains every transaction
@@ -26,8 +44,8 @@ fn with_publication_held<T: Send>(
         });
         loop {
             match completion.try_recv() {
-                Ok(()) | Err(mpsc::TryRecvError::Disconnected) => break,
-                Err(mpsc::TryRecvError::Empty) => {
+                Ok(()) | Err(TryRecvError::Disconnected) => break,
+                Err(TryRecvError::Empty) => {
                     let retained: Vec<u8> = tx
                         .query_one(
                             "SELECT revision_sha256 FROM babylon_meta.archive_page_revision_v2 \
@@ -46,8 +64,7 @@ fn with_publication_held<T: Send>(
 
 fn commit_authoritative_tick(
     target: &LiveWorkerTarget,
-) -> Result<(IdentifiedMaterialTick, IdentifiedMaterialTick), material_runtime::MaterialRuntimeError>
-{
+) -> Result<(IdentifiedMaterialTick, IdentifiedMaterialTick), MaterialRuntimeError> {
     let campaign = target.campaign_id;
     let mut runtime = DurableMaterialRuntime::open(
         &target.config,
@@ -110,7 +127,7 @@ fn assert_restart_and_retained_evidence(
         *next_identity
     );
     drop(runtime);
-    assert_eq!(&scope_at(&target.config, campaign, 1), scope);
+    assert_eq!(&live_tests::scope_at(&target.config, campaign, 1), scope);
     assert_eq!(receipt_consumption_count(&target.config, campaign), 1);
     let mut observer = target
         .config
@@ -143,11 +160,11 @@ fn assert_restart_and_retained_evidence(
         .get(0);
     assert_eq!(retained, revision_digest);
     drop(observer);
-    with_reader(&target.config, |reader| {
+    archive_reader::with_reader(&target.config, |reader| {
         let read = reader
             .dossier_as_of(
                 scope,
-                &stub_subject_spec(1).page_ref,
+                &super::support::stub_subject_spec(1).page_ref,
                 &ArchiveDossierBounds::default(),
             )
             .expect("original dated Archive observation");
@@ -168,7 +185,7 @@ fn live_publication_protects_deletion_without_blocking_authoritative_tick() {
         1,
     );
     let campaign = target.campaign_id;
-    let scope = scope_at(&target.config, campaign, 1);
+    let scope = live_tests::scope_at(&target.config, campaign, 1);
     let original_hash = scope.tick_content_hash().expect("first committed hash");
     let receipt = PendingArchiveReceipt::try_new(1, original_hash).expect("first receipt");
     let store = SemanticArchiveStore::new(&target.config);

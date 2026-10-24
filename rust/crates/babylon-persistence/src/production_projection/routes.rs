@@ -1,19 +1,18 @@
 //! Supplier relations are distinct even when they share a physical route.
-use super::{
-    history::{Delivery, OrderHistory},
-    metadata::{Metadata, RelationKey},
-    outbound, ProductionProjectionError,
+use super::history::{Delivery, OrderHistory};
+use super::metadata::{Metadata, RelationKey};
+use super::{outbound, ProductionProjectionError};
+
+use crate::production_observation::{
+    PhysicalRouteDefinition, ProductionRoute, ProductionRouteStage, ProductionRouteTransport,
 };
-use crate::{
-    michigan_economy::digest_hex,
-    production_observation::{
-        PhysicalRouteDefinition, ProductionRoute, ProductionRouteStage, ProductionRouteTransport,
-    },
-};
-use babylon_kernel::content_digest::sha256_of;
+
+use crate::michigan_economy;
+use babylon_kernel::content_digest;
 use babylon_material_circuit::{MaterialCircuitState, RouteId, SupplierRoute, SupplierTransport};
 use std::collections::BTreeMap;
-type Result<T> = std::result::Result<T, ProductionProjectionError>;
+use std::result::Result as StdResult;
+type Result<T> = StdResult<T, ProductionProjectionError>;
 
 pub(super) fn relation_id(key: RelationKey) -> String {
     let mut bytes = b"babylon.production-supplier-relation.v1\0".to_vec();
@@ -25,7 +24,7 @@ pub(super) fn relation_id(key: RelationKey) -> String {
     ] {
         bytes.extend_from_slice(&id);
     }
-    digest_hex(&sha256_of(&bytes))
+    michigan_economy::digest_hex(&content_digest::sha256_of(&bytes))
 }
 fn key(row: &SupplierRoute) -> RelationKey {
     (
@@ -69,7 +68,7 @@ pub(super) fn project(
             };
             let (physical_edge_ids, distance_mm) = geometry(metadata, relation.route_id);
             entry.insert(PhysicalRouteDefinition {
-                id: digest_hex(&relation.route_id.as_bytes()),
+                id: michigan_economy::digest_hex(&relation.route_id.as_bytes()),
                 travel_periods,
                 stages: route_stages,
                 transport_kind,
@@ -93,11 +92,11 @@ pub(super) fn project(
             .unwrap_or([0; 5]);
         result.push(ProductionRoute {
             id: relation_id(key(relation)),
-            physical_route_id: digest_hex(&relation.route_id.as_bytes()),
-            supplier_site_id: digest_hex(&relation.supplier_site_id.as_bytes()),
-            buyer_site_id: digest_hex(&relation.buyer_site_id.as_bytes()),
-            good_id: digest_hex(&relation.good_id.as_bytes()),
-            unit_id: digest_hex(&relation.unit_id.as_bytes()),
+            physical_route_id: michigan_economy::digest_hex(&relation.route_id.as_bytes()),
+            supplier_site_id: michigan_economy::digest_hex(&relation.supplier_site_id.as_bytes()),
+            buyer_site_id: michigan_economy::digest_hex(&relation.buyer_site_id.as_bytes()),
+            good_id: michigan_economy::digest_hex(&relation.good_id.as_bytes()),
+            unit_id: michigan_economy::digest_hex(&relation.unit_id.as_bytes()),
             good: good.label.clone(),
             unit: good.unit_label.clone(),
             grams_per_unit: outbound::mass(state, relation.good_id, relation.unit_id)?,
@@ -175,7 +174,7 @@ pub(super) fn stage_index(
         memberships
             .entry((row.route_id, row.stage_index))
             .or_default()
-            .push(digest_hex(&row.corridor_id.as_bytes()));
+            .push(michigan_economy::digest_hex(&row.corridor_id.as_bytes()));
     }
     let mut result = BTreeMap::<_, Vec<ProductionRouteStage>>::new();
     for row in &state.route_stages {

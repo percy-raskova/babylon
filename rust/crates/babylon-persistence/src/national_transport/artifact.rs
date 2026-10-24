@@ -8,15 +8,23 @@ use super::{
 
 use super::{raw, validate};
 
-use crate::national_counties::{national_county_reference, NationalCountyReference};
+use crate::national_counties::NationalCountyReference;
 
-use babylon_kernel::{
-    content_digest::sha256_of,
-    economic_location::{EconomicLocation, ForeignCounterpart, UsDependency},
-    geography::CountyGeoid,
-};
+use babylon_kernel::economic_location::{EconomicLocation, ForeignCounterpart, UsDependency};
+use babylon_kernel::geography::CountyGeoid;
 
-use std::{collections::BTreeMap, fmt::Write, io::Read, sync::OnceLock};
+use crate::national_counties;
+use babylon_kernel::content_digest;
+use flate2::bufread::GzDecoder;
+use raw::Document;
+use raw::Policy;
+use serde_json::Value;
+use std::collections::BTreeMap;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
+use std::fmt::Write;
+use std::io::Read;
+use std::sync::OnceLock;
 
 pub(crate) const ARTIFACT: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -75,7 +83,8 @@ impl NationalTransportReference {
     /// # Errors
     /// Refuses altered/bounded bytes, malformed data or contradictory graph/source claims.
     pub fn decode_pinned(bytes: &[u8]) -> Result<Self, NationalTransportError> {
-        let counties = national_county_reference().map_err(|_| NationalTransportError::County)?;
+        let counties = national_counties::national_county_reference()
+            .map_err(|_| NationalTransportError::County)?;
         Self::decode_captured(bytes, POLICY, SOURCES, counties)
     }
     /// Reopen the exact graph against supplied captured policies, provenance and county evidence.
@@ -90,7 +99,7 @@ impl NationalTransportReference {
         if bytes.len() > MAX_COMPRESSED_BYTES {
             return Err(NationalTransportError::Bound);
         }
-        if sha256_of(bytes) != ARTIFACT_SHA256 {
+        if content_digest::sha256_of(bytes) != ARTIFACT_SHA256 {
             return Err(NationalTransportError::ArtifactDigest);
         }
         parse_captured(&decode_gzip(bytes)?, policy, sources, counties)
@@ -259,7 +268,7 @@ pub enum NationalTransportError {
 }
 
 impl std::fmt::Display for NationalTransportError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> FmtResult {
         write!(formatter, "national transport capture refused: {self:?}")
     }
 }
@@ -279,7 +288,7 @@ pub fn national_transport_reference(
 }
 
 pub(crate) fn decode_gzip(bytes: &[u8]) -> Result<String, NationalTransportError> {
-    let mut decoder = flate2::bufread::GzDecoder::new(bytes);
+    let mut decoder = GzDecoder::new(bytes);
     let mut text = String::new();
     decoder
         .by_ref()
@@ -297,7 +306,8 @@ pub(crate) fn decode_gzip(bytes: &[u8]) -> Result<String, NationalTransportError
 
 #[cfg(test)]
 pub(crate) fn parse(text: &str) -> Result<NationalTransportReference, NationalTransportError> {
-    let counties = national_county_reference().map_err(|_| NationalTransportError::County)?;
+    let counties = national_counties::national_county_reference()
+        .map_err(|_| NationalTransportError::County)?;
     parse_captured(text, POLICY, SOURCES, counties)
 }
 
@@ -307,7 +317,7 @@ pub(crate) fn parse_captured(
     sources: &[u8],
     counties: &NationalCountyReference,
 ) -> Result<NationalTransportReference, NationalTransportError> {
-    let document: raw::Document =
+    let document: Document =
         serde_json::from_str(text).map_err(|_| NationalTransportError::Json)?;
     qualify(&document, policy, sources)?;
     let nodes = validate::nodes(document.nodes, counties.roster())?;
@@ -347,20 +357,20 @@ pub(crate) fn parse_captured(
 }
 
 pub(crate) fn qualify(
-    document: &raw::Document,
+    document: &Document,
     policy_bytes: &[u8],
     sources: &[u8],
 ) -> Result<(), NationalTransportError> {
     if policy_bytes.len() > 16_384 || sources.len() > 16_384 {
         return Err(NationalTransportError::Bound);
     }
-    if sha256_of(sources) != SOURCES_SHA256 {
+    if content_digest::sha256_of(sources) != SOURCES_SHA256 {
         return Err(NationalTransportError::Source);
     }
-    let policy: raw::Policy =
+    let policy: Policy =
         serde_json::from_slice(policy_bytes).map_err(|_| NationalTransportError::Policy)?;
     let mut digest = String::with_capacity(64);
-    for value in sha256_of(policy_bytes) {
+    for value in content_digest::sha256_of(policy_bytes) {
         write!(digest, "{value:02x}").map_err(|_| NationalTransportError::Policy)?;
     }
     if document.schema != "NationalTransportReferenceV1"
@@ -377,7 +387,7 @@ pub(crate) fn qualify(
     {
         return Err(NationalTransportError::Bound);
     }
-    let manifest: serde_json::Value =
+    let manifest: Value =
         serde_json::from_slice(sources).map_err(|_| NationalTransportError::Source)?;
     let expected: Vec<TransportSource> = serde_json::from_value(manifest["sources"].clone())
         .map_err(|_| NationalTransportError::Source)?;

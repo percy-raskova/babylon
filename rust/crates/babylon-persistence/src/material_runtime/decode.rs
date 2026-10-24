@@ -1,18 +1,20 @@
 //! Exact current aggregate framing before expensive source regeneration.
 use super::{
-    reconstruct_material_foundation, MaterialFoundationSpec, MaterialRuntimeError,
-    MaterialRuntimeFoundation, StoredMaterialFoundation, FOUNDATION_DOMAIN,
-    MAX_MATERIAL_FOUNDATION_BYTES,
+    MaterialFoundationSpec, MaterialRuntimeError, MaterialRuntimeFoundation,
+    StoredMaterialFoundation, FOUNDATION_DOMAIN, MAX_MATERIAL_FOUNDATION_BYTES,
 };
 use crate::CampaignFoundation;
-use babylon_kernel::{clock::CampaignDuration, content_digest::sha256_of};
+use babylon_kernel::clock::CampaignDuration;
+use babylon_kernel::content_digest;
 
 impl MaterialRuntimeFoundation {
     /// Admit one complete current foundation, with no legacy source decoder.
     /// # Errors
     /// Refuses framing, digest, source compilation, replay or material differences.
     pub fn decode(bytes: &[u8], expected: [u8; 32]) -> Result<Self, MaterialRuntimeError> {
-        if bytes.len() > MAX_MATERIAL_FOUNDATION_BYTES || sha256_of(bytes) != expected {
+        if bytes.len() > MAX_MATERIAL_FOUNDATION_BYTES
+            || content_digest::sha256_of(bytes) != expected
+        {
             return Err(MaterialRuntimeError::FoundationMismatch);
         }
         let mut cursor = Cursor { bytes };
@@ -36,9 +38,9 @@ impl MaterialRuntimeFoundation {
         if !cursor.bytes.is_empty() {
             return Err(MaterialRuntimeError::FoundationMismatch);
         }
-        let graph_foundation_digest = sha256_of(graph);
+        let graph_foundation_digest = content_digest::sha256_of(graph);
         let graph = decode_graph(graph)?;
-        let reconstructed = reconstruct_material_foundation(
+        let reconstructed = super::reconstruct_material_foundation(
             StoredMaterialFoundation {
                 spec: MaterialFoundationSpec {
                     preset_id,
@@ -81,7 +83,7 @@ fn decode_graph(bytes: &[u8]) -> Result<CampaignFoundation, MaterialRuntimeError
         rules,
         reference,
         cursor.bytes,
-        sha256_of(bytes),
+        content_digest::sha256_of(bytes),
     )?)
 }
 struct Cursor<'a> {

@@ -1,5 +1,19 @@
 //! One aggregate staffing decision, conserved across resident members.
-use babylon_material_circuit::*;
+use babylon_material_circuit::FinalDemandPrincipalId;
+use babylon_material_circuit::ProcessId;
+use babylon_material_circuit::SiteId;
+use babylon_material_circuit::StaffingMemberBinding;
+use babylon_material_circuit::StaffingMemberId;
+use babylon_material_circuit::StaffingMemberState;
+use babylon_material_circuit::StaffingPolicy;
+use babylon_material_circuit::StaffingPoolBinding;
+use babylon_material_circuit::StaffingPoolId;
+use babylon_material_circuit::StaffingPoolState;
+use babylon_material_circuit::StaffingReceipt;
+use babylon_material_circuit::StaffingState;
+use babylon_material_circuit::StaffingWorkRequest;
+use babylon_material_circuit::StaffingWorkSource;
+use babylon_material_circuit::UnitId;
 
 fn member(key: u8, employed: u64, reserve: u64) -> StaffingMemberState {
     StaffingMemberState::try_new(
@@ -41,17 +55,24 @@ fn decision(employed: u64, reserve: u64, requested_hours: u64) -> StaffingReceip
         vec![StaffingPoolState::try_new(binding, employed, reserve, 0).unwrap()],
     )
     .unwrap();
-    advance_staffing(&state, &[request]).unwrap().receipts()[0].clone()
+    babylon_material_circuit::advance_staffing(&state, &[request])
+        .unwrap()
+        .receipts()[0]
+        .clone()
 }
 
 #[test]
 fn resident_hires_and_separations_share_the_existing_pool_decision_exactly() {
     let members = vec![member(1, 1, 1), member(2, 2, 2)];
-    let hired = distribute_staffing_members(&decision(3, 3, 20), &members).unwrap();
+    let hired =
+        babylon_material_circuit::distribute_staffing_members(&decision(3, 3, 20), &members)
+            .unwrap();
     assert_eq!(hired.iter().map(|r| r.hires).collect::<Vec<_>>(), [1, 1]);
     assert_eq!(hired.iter().map(|r| r.closing_employed).sum::<u64>(), 5);
     assert_eq!(hired.iter().map(|r| r.next_opening_hours).sum::<u64>(), 20);
-    let released = distribute_staffing_members(&decision(3, 3, 4), &members).unwrap();
+    let released =
+        babylon_material_circuit::distribute_staffing_members(&decision(3, 3, 4), &members)
+            .unwrap();
     assert_eq!(
         released.iter().map(|r| r.separations).collect::<Vec<_>>(),
         [1, 1]
@@ -68,9 +89,12 @@ fn resident_hires_and_separations_share_the_existing_pool_decision_exactly() {
 #[test]
 fn tied_member_transfers_are_identity_ordered_not_input_ordered() {
     let mut members = vec![member(1, 0, 1), member(2, 0, 1), member(3, 0, 1)];
-    let first = distribute_staffing_members(&decision(0, 3, 4), &members).unwrap();
+    let first = babylon_material_circuit::distribute_staffing_members(&decision(0, 3, 4), &members)
+        .unwrap();
     members.reverse();
-    let reversed = distribute_staffing_members(&decision(0, 3, 4), &members).unwrap();
+    let reversed =
+        babylon_material_circuit::distribute_staffing_members(&decision(0, 3, 4), &members)
+            .unwrap();
     assert_eq!(first, reversed);
     assert_eq!(first.iter().map(|r| r.hires).collect::<Vec<_>>(), [1, 0, 0]);
 }
@@ -78,8 +102,15 @@ fn tied_member_transfers_are_identity_ordered_not_input_ordered() {
 #[test]
 fn inconsistent_duplicate_and_overflowing_member_claims_are_refused() {
     let receipt = decision(3, 3, 20);
-    assert!(distribute_staffing_members(&receipt, &[member(1, 1, 1)]).is_err());
-    assert!(distribute_staffing_members(&receipt, &[member(1, 1, 1), member(1, 2, 2)]).is_err());
+    assert!(
+        babylon_material_circuit::distribute_staffing_members(&receipt, &[member(1, 1, 1)])
+            .is_err()
+    );
+    assert!(babylon_material_circuit::distribute_staffing_members(
+        &receipt,
+        &[member(1, 1, 1), member(1, 2, 2)]
+    )
+    .is_err());
     let binding = StaffingMemberBinding::try_new(
         StaffingMemberId::from_bytes([1; 32]),
         FinalDemandPrincipalId::from_bytes([2; 32]),
@@ -94,6 +125,12 @@ fn inconsistent_duplicate_and_overflowing_member_claims_are_refused() {
 fn an_explicit_zero_force_workplace_stays_empty_even_when_work_is_requested() {
     let row = decision(0, 0, 20);
     assert_eq!(row.target_employed(), 0);
-    assert!(distribute_staffing_members(&row, &[]).unwrap().is_empty());
-    assert!(distribute_staffing_members(&decision(1, 0, 4), &[]).is_err());
+    assert!(
+        babylon_material_circuit::distribute_staffing_members(&row, &[])
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        babylon_material_circuit::distribute_staffing_members(&decision(1, 0, 4), &[]).is_err()
+    );
 }

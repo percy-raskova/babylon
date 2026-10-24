@@ -1,6 +1,7 @@
 //! Immutable resident-to-workplace joins; mutable people live only in the graph.
-use super::{exact_real, MaterialStaffingError};
+use super::MaterialStaffingError;
 use babylon_graph::stable_element::StableElementKey;
+use babylon_material_circuit::MaterialCircuitState;
 use babylon_material_circuit::{
     StaffingError, StaffingMemberBinding, StaffingPoolBinding, MAX_MATERIAL_CIRCUIT_ROWS,
     MAX_STAFFING_MEMBERS,
@@ -21,7 +22,7 @@ impl StaffingMemberNodeBinding {
         member: StaffingMemberBinding,
     ) -> Result<Self, MaterialStaffingError> {
         admit_key(&subject)?;
-        exact_real(member.labor_force())?;
+        super::exact_real(member.labor_force())?;
         Ok(Self { subject, member })
     }
     #[must_use]
@@ -51,7 +52,7 @@ impl StaffingNodeBinding {
         mut members: Vec<StaffingMemberNodeBinding>,
     ) -> Result<Self, MaterialStaffingError> {
         admit_key(&subject)?;
-        exact_real(pool.labor_force())?;
+        super::exact_real(pool.labor_force())?;
         if (members.is_empty() && pool.labor_force() != 0) || members.len() > MAX_STAFFING_MEMBERS {
             return Err(StaffingError::RowLimit.into());
         }
@@ -152,9 +153,7 @@ impl StaffingComposition {
     /// Admit a deliberately unstaffed inventory boundary.
     /// # Errors
     /// Refuses any labor-consuming material activity or budget.
-    pub fn inventory_only(
-        state: &babylon_material_circuit::MaterialCircuitState,
-    ) -> Result<Self, MaterialStaffingError> {
+    pub fn inventory_only(state: &MaterialCircuitState) -> Result<Self, MaterialStaffingError> {
         if !state.process_outputs.is_empty()
             || !state.input_coefficients.is_empty()
             || !state.labor_coefficients.is_empty()

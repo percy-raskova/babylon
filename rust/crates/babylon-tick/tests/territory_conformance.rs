@@ -37,11 +37,14 @@
 #![allow(clippy::unreadable_literal)]
 #![allow(clippy::float_cmp)]
 
-use babylon_bsl::scenario::load_scenario;
+use babylon_bsl::scenario;
+use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
+use babylon_kernel::replay::ReplaySeed;
 use babylon_kernel::replay::ReplaySessionId;
-use babylon_tick::run_once_into;
+use babylon_tick::diagnostic::RuleDiagnosticSession;
+use babylon_tick::TickReport;
 
 const SCENARIO: &str = include_str!("../content/scenarios/territory-conformance.bscn");
 
@@ -87,7 +90,8 @@ const NON_TENANT: NodeId = NodeId(14);
 #[test]
 fn the_scenario_loads_clean_with_the_declared_census() {
     let mut graph = HypergraphStore::new();
-    let loaded = load_scenario(SCENARIO, &mut graph).expect("the scenario must load clean");
+    let loaded =
+        scenario::load_scenario(SCENARIO, &mut graph).expect("the scenario must load clean");
     assert_eq!(loaded.node_count, 15, "12 territories + 3 social classes");
     assert_eq!(loaded.edge_count, 8, "6 ADJACENCY + 2 TENANCY");
     assert_eq!(
@@ -111,7 +115,7 @@ fn the_scenario_loads_clean_with_the_declared_census() {
 #[test]
 fn every_territory_seeds_all_six_declared_fields() {
     let mut graph = HypergraphStore::new();
-    load_scenario(SCENARIO, &mut graph).expect("the scenario must load clean");
+    scenario::load_scenario(SCENARIO, &mut graph).expect("the scenario must load clean");
     for id in 0..12u64 {
         let node = NodeId(id);
         for field in [
@@ -142,18 +146,18 @@ fn a_no_op_rule_is_deterministic_across_two_independent_loads() {
   (effects
     (update-node self territory/heat (set heat))))
 "#;
-    let a = run_once_into(
+    let a = babylon_tick::run_once_into(
         SCENARIO,
         NO_OP_RULE,
         &mut HypergraphStore::new(),
-        &mut babylon_bsl::structural_verbs::CollectingSink::default(),
+        &mut CollectingSink::default(),
     )
     .expect("the scenario plus a never-firing rule must still run");
-    let b = run_once_into(
+    let b = babylon_tick::run_once_into(
         SCENARIO,
         NO_OP_RULE,
         &mut HypergraphStore::new(),
-        &mut babylon_bsl::structural_verbs::CollectingSink::default(),
+        &mut CollectingSink::default(),
     )
     .expect("second run");
     assert_eq!(a.before, b.before, "pre-tick hash reproducible");
@@ -165,10 +169,10 @@ fn a_no_op_rule_is_deterministic_across_two_independent_loads() {
 
 const TERRITORY_RULES: &str = include_str!("../content/rules/territory.bsl");
 
-fn run_territory() -> (HypergraphStore, babylon_tick::TickReport) {
+fn run_territory() -> (HypergraphStore, TickReport) {
     let mut graph = HypergraphStore::new();
-    let mut sink = babylon_bsl::structural_verbs::CollectingSink::default();
-    let report = run_once_into(SCENARIO, TERRITORY_RULES, &mut graph, &mut sink)
+    let mut sink = CollectingSink::default();
+    let report = babylon_tick::run_once_into(SCENARIO, TERRITORY_RULES, &mut graph, &mut sink)
         .expect("the territory pack must load and run");
     (graph, report)
 }
@@ -396,14 +400,14 @@ fn p2_sub_threshold_territory_is_untouched() {
 /// they just do not change the rent value this test pins.
 #[test]
 fn p2_already_latched_territory_compounds_rent_across_two_ticks() {
-    let mut sink = babylon_bsl::structural_verbs::CollectingSink::default();
-    let mut session = babylon_tick::diagnostic::RuleDiagnosticSession::new(
+    let mut sink = CollectingSink::default();
+    let mut session = RuleDiagnosticSession::new(
         SCENARIO,
         None,
         TERRITORY_RULES,
         HypergraphStore::new(),
         ReplaySessionId::try_from("territory-conformance-test").expect("literal is non-empty"),
-        babylon_kernel::replay::ReplaySeed::new(0),
+        ReplaySeed::new(0),
     )
     .expect("the pack must load into a session");
     session.advance(&mut sink).expect("tick 1");

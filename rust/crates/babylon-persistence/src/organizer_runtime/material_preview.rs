@@ -1,5 +1,11 @@
 //! Actor-safe material facts; no forecast of admission, delivered quantity or practice.
 use crate::runtime_session::RuntimeSessionErrorCode;
+use babylon_material_circuit::AidMandate;
+use babylon_material_circuit::CapacitySupply;
+use babylon_material_circuit::CorridorId;
+use babylon_material_circuit::FinalDemandPrincipalId;
+use babylon_material_circuit::RecurringEconomy;
+use babylon_material_circuit::UnitId;
 use babylon_material_circuit::{
     AidTransport, CircuitAccounting, HouseholdTimeAccounting, MaterialCircuitState,
 };
@@ -198,10 +204,7 @@ pub(super) fn projections(
     }
     Ok(result)
 }
-fn pantry_amounts(
-    recurring: &babylon_material_circuit::RecurringEconomy,
-    mandate: &babylon_material_circuit::AidMandate,
-) -> Result<(u64, u64)> {
+fn pantry_amounts(recurring: &RecurringEconomy, mandate: &AidMandate) -> Result<(u64, u64)> {
     let cohort = recurring
         .households
         .iter()
@@ -235,8 +238,8 @@ fn pantry_amounts(
 
 fn remaining_time(
     state: &MaterialCircuitState,
-    principal: babylon_material_circuit::FinalDemandPrincipalId,
-    unit: babylon_material_circuit::UnitId,
+    principal: FinalDemandPrincipalId,
+    unit: UnitId,
     period: u64,
 ) -> Result<Option<OrganizerAidTime>> {
     if period == 0 {
@@ -339,7 +342,7 @@ pub(super) fn resolutions(state: &OrganizerState) -> Vec<OrganizerAidResolution>
 
 fn remaining_capacity(
     state: &MaterialCircuitState,
-    id: babylon_material_circuit::CorridorId,
+    id: CorridorId,
     period: u64,
 ) -> Result<Option<u64>> {
     if let Some(row) = state
@@ -350,8 +353,8 @@ fn remaining_capacity(
         return Ok(Some(row.available_grams));
     }
     match &state.capacity_supply {
-        babylon_material_circuit::CapacitySupply::FiniteSchedule => Ok(Some(0)),
-        babylon_material_circuit::CapacitySupply::Rolling(supply) => {
+        CapacitySupply::FiniteSchedule => Ok(Some(0)),
+        CapacitySupply::Rolling(supply) => {
             let Some(row) = supply.shared.iter().find(|r| r.corridor_id == id) else {
                 return Ok(None);
             };
@@ -390,6 +393,7 @@ mod projection_tests;
 /// Decimal text avoids Serde's internally tagged Content i128 limitation.
 /// This runtime-only representation never changes canonical engine accounting.
 pub(super) mod decimal_i128 {
+    use fmt::Formatter;
     use serde::{de, Deserializer, Serializer};
     use std::fmt;
 
@@ -401,7 +405,7 @@ pub(super) mod decimal_i128 {
         struct Decimal;
         impl de::Visitor<'_> for Decimal {
             type Value = i128;
-            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+            fn expecting(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
                 formatter.write_str("canonical signed i128 decimal string")
             }
             fn visit_str<E: de::Error>(self, value: &str) -> Result<i128, E> {

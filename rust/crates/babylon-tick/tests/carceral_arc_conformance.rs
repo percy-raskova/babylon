@@ -93,6 +93,7 @@ use babylon_bsl::evaluator::Value;
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
+use babylon_kernel::replay::ReplaySeed;
 use babylon_kernel::replay::ReplaySessionId;
 use babylon_tick::diagnostic::RuleDiagnosticSession;
 
@@ -156,7 +157,7 @@ fn run_arc() -> ArcRun {
         &rule_src,
         HypergraphStore::new(),
         run_once_session(),
-        babylon_kernel::replay::ReplaySeed::new(0),
+        ReplaySeed::new(0),
     )
     .expect("both packs must load together against the arc scenario");
     let mut all_events = Vec::new();
@@ -513,7 +514,7 @@ fn governed_phase_order_exposes_decomposition_to_control_ratio_in_the_same_tick(
         &rule_src,
         HypergraphStore::new(),
         run_once_session(),
-        babylon_kernel::replay::ReplaySeed::new(0),
+        ReplaySeed::new(0),
     )
     .expect("the byte-order fixture must load against both packs");
 

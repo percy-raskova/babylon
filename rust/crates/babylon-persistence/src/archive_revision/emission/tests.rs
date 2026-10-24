@@ -1,4 +1,5 @@
-use super::*;
+use super::manifest::{ArchiveEmissionLink, ArchiveEmissionManifest};
+use crate::{ArchiveCitation, ArchivePageRef, ArchiveSignal, ArchiveSubject, SemanticArchiveError};
 use crate::{ArchiveKnowledge, ArchiveKnowledgeGrant, ArchiveSubjectKind, FogSafeArchiveRenderer};
 
 fn county(id: &str) -> ArchivePageRef {

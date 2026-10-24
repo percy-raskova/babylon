@@ -7,6 +7,3 @@ mod tests;
 mod manifest;
 
 pub(crate) use manifest::{ArchiveEmissionLink, ArchiveEmissionManifest};
-
-#[cfg(test)]
-use crate::{ArchiveCitation, ArchivePageRef, ArchiveSignal, ArchiveSubject, SemanticArchiveError};

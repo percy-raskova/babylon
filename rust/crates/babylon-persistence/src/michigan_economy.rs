@@ -4,19 +4,24 @@ use std::fmt::Write as _;
 use std::io::Read as _;
 use std::sync::OnceLock;
 
-use babylon_bsl::{canonical_ast::rules_hash_of, rule_pipeline::split_content};
 use babylon_graph::hypergraph_store::HypergraphStore;
-use babylon_kernel::{
-    clock::DAYS_PER_TICK,
-    content_digest::sha256_of,
-    content_digest::ContentDigest,
-    replay::{ReplaySeed, ReplaySessionId},
-    tick_content_hash::RefDigest,
-};
-use babylon_tick::{material_state::MaterialState, replay_session::ReplayTickSession};
+use babylon_kernel::clock::DAYS_PER_TICK;
+use babylon_kernel::content_digest::ContentDigest;
+use babylon_kernel::replay::{ReplaySeed, ReplaySessionId};
+use babylon_kernel::tick_content_hash::RefDigest;
+
+use babylon_tick::material_state::MaterialState;
+use babylon_tick::replay_session::ReplayTickSession;
+
 use serde::{Deserialize, Serialize};
 
-use crate::{michigan_dynamic_hex_foundation, FoundationContentBundle};
+use crate::FoundationContentBundle;
+use babylon_bsl::canonical_ast;
+use babylon_bsl::rule_pipeline;
+use babylon_kernel::content_digest;
+use flate2::read::GzDecoder;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 
 /// Immutable scenario identity shared by the runtime and window.
 pub const MICHIGAN_OBSERVER_SCENARIO: &str = "production/michigan-observer-v1";
@@ -62,11 +67,13 @@ impl MichiganEconomy {
     /// # Errors
     /// Refuses changed bytes, excess expansion, malformed rows or invalid values.
     pub fn decode_captured(raw: &[u8]) -> Result<Self, MichiganEconomyError> {
-        if raw.len() > 1_048_576 || digest_hex(&sha256_of(raw)) != QCEW_ECONOMICS_ARTIFACT_SHA256 {
+        if raw.len() > 1_048_576
+            || digest_hex(&content_digest::sha256_of(raw)) != QCEW_ECONOMICS_ARTIFACT_SHA256
+        {
             return Err(MichiganEconomyError::ArtifactDigest);
         }
         let mut decoded = String::new();
-        flate2::read::GzDecoder::new(raw)
+        GzDecoder::new(raw)
             .take(MAX_DECODED_BYTES + 1)
             .read_to_string(&mut decoded)
             .map_err(|_| MichiganEconomyError::ArtifactDecode)?;
@@ -100,7 +107,7 @@ pub enum MichiganEconomyError {
     Reference,
 }
 impl std::fmt::Display for MichiganEconomyError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         write!(f, "Michigan economics refused: {self:?}")
     }
 }
@@ -251,18 +258,20 @@ pub(crate) fn foundation_from_sources_with_seed(
     defines: &[u8],
     seed: i64,
 ) -> Result<(ReplayTickSession<HypergraphStore>, FoundationContentBundle), MichiganEconomyError> {
-    let (_, rules) = split_content(rule_source).map_err(|_| MichiganEconomyError::Scenario)?;
+    let (_, rules) =
+        rule_pipeline::split_content(rule_source).map_err(|_| MichiganEconomyError::Scenario)?;
     let forms = rules.into_iter().map(|rule| rule.form).collect::<Vec<_>>();
     let content = ContentDigest {
-        defines_hash: sha256_of(defines),
-        rules_hash: rules_hash_of(&forms).map_err(|_| MichiganEconomyError::Scenario)?,
+        defines_hash: content_digest::sha256_of(defines),
+        rules_hash: canonical_ast::rules_hash_of(&forms)
+            .map_err(|_| MichiganEconomyError::Scenario)?,
     };
     let foundation =
-        michigan_dynamic_hex_foundation().map_err(|_| MichiganEconomyError::Reference)?;
+        crate::michigan_dynamic_hex_foundation().map_err(|_| MichiganEconomyError::Reference)?;
     let mut manifest = REFERENCE_DOMAIN.to_vec();
     manifest.extend_from_slice(&foundation.base_reference_cohort_digest());
     manifest.extend_from_slice(&foundation.r8_section_digest());
-    if sha256_of(&manifest) != foundation.reference_bundle_digest() {
+    if content_digest::sha256_of(&manifest) != foundation.reference_bundle_digest() {
         return Err(MichiganEconomyError::Reference);
     }
     // Scenario bytes carry every exact economics input, so the foundation digest
@@ -294,7 +303,7 @@ pub fn michigan_observer_foundation_digest() -> Result<[u8; 32], MichiganEconomy
         let (session, bundle) = michigan_observer_foundation()?;
         let captured = crate::CampaignFoundation::capture(&session, bundle)
             .map_err(|_| MichiganEconomyError::Foundation)?;
-        Ok(sha256_of(captured.canonical_bytes()))
+        Ok(content_digest::sha256_of(captured.canonical_bytes()))
     })
 }
 
@@ -303,14 +312,15 @@ mod tests {
     use super::*;
     use std::collections::BTreeMap;
 
-    use babylon_bsl::{identity_codec::StableBslValue, structural_verbs::CollectingSink};
+    use babylon_bsl::identity_codec::StableBslValue;
+    use babylon_bsl::structural_verbs::CollectingSink;
+
     use babylon_graph::stable_element::StableElementKey;
     use babylon_practice_contract::OrderedPracticeActionBatch;
     use babylon_tick::replay_session::IdentifiedTickReport;
 
-    use crate::{
-        county_committed_signals, CampaignFoundation, CommittedTerritoryFields, CountySignal,
-    };
+    use crate::{CampaignFoundation, CommittedTerritoryFields, CountySignal};
+    use serde_json::Value;
 
     // Synthetic test inputs, not new observations: the Python source-builder
     // test regenerates these exact CSV bytes from 83 public-schema source files.
@@ -323,12 +333,12 @@ mod tests {
     fn diagnostic_interval_changes_foundation_identity_without_rescaling_source_facts() {
         let economy = michigan_economy().unwrap();
         let (session, bundle) = build_observer_foundation(economy).unwrap();
-        let defines: serde_json::Value = serde_json::from_slice(bundle.defines_bytes()).unwrap();
+        let defines: Value = serde_json::from_slice(bundle.defines_bytes()).unwrap();
         assert_eq!(defines["qcew_vintage"], 2024);
         assert_eq!(defines["tick_duration_days"], 28);
         let current = CampaignFoundation::capture(&session, bundle).unwrap();
         assert_eq!(
-            sha256_of(current.canonical_bytes()),
+            content_digest::sha256_of(current.canonical_bytes()),
             michigan_observer_foundation_digest().unwrap()
         );
 
@@ -346,8 +356,8 @@ mod tests {
             .unwrap();
             let old = CampaignFoundation::capture(&old_session, old_bundle).unwrap();
             assert_ne!(
-                sha256_of(old.canonical_bytes()),
-                sha256_of(current.canonical_bytes()),
+                content_digest::sha256_of(old.canonical_bytes()),
+                content_digest::sha256_of(current.canonical_bytes()),
                 "missing or incompatible time units must not share admission identity"
             );
             assert_eq!(
@@ -401,7 +411,7 @@ mod tests {
                 Some(*value)
             });
             let input = CommittedTerritoryFields::try_from_qcew(values).unwrap();
-            let signals = county_committed_signals(&input).unwrap();
+            let signals = crate::county_committed_signals(&input).unwrap();
             assert_eq!(signals.len(), 4);
             assert!(result.insert(local_name.clone(), signals).is_none());
         }

@@ -11,9 +11,12 @@ use bevy::window::PrimaryWindow;
 use std::path::{Path, PathBuf};
 
 use crate::decision_surface::{DeclaredSurface, SurfaceId};
+use crate::observer::ObserverSession;
 use crate::observer_focus::{ObserverFocusSystems, ObserverFocusTarget, ObserverKeyboardActivate};
 use crate::observer_io::ObserverSet;
 use crate::observer_ui::{ObserverCommand, ObserverFontRole, ObserverUiState};
+use bevy::picking::pointer::PointerButton;
+use bevy::text::LineHeight;
 
 pub(crate) const PRODUCTION_DURATION: f32 = 9.0;
 const IMPACT: f32 = 6.5;
@@ -184,7 +187,7 @@ fn spawn_production(
                 TextFont::from_font_size(300.0),
                 TextColor(Color::srgb(0.97, 0.80, 0.91)),
                 TextLayout::new_with_justify(Justify::Center),
-                bevy::text::LineHeight::RelativeToFont(0.9),
+                LineHeight::RelativeToFont(0.9),
                 ObserverFontRole::Script,
                 Node {
                     position_type: PositionType::Absolute,
@@ -236,9 +239,7 @@ fn skip_pointer(
     opening: Res<OpeningPresentation>,
     mut skips: MessageWriter<ProductionSkip>,
 ) {
-    if event.button == bevy::picking::pointer::PointerButton::Primary
-        && opening.stage == OpeningStage::Production
-    {
+    if event.button == PointerButton::Primary && opening.stage == OpeningStage::Production {
         skips.write(ProductionSkip);
     }
 }
@@ -286,7 +287,7 @@ pub(crate) fn advance(
     mut opening: ResMut<OpeningPresentation>,
     mut ui: ResMut<ObserverUiState>,
     mut skips: MessageReader<ProductionSkip>,
-    session: Option<Res<crate::observer::ObserverSession>>,
+    session: Option<Res<ObserverSession>>,
 ) {
     if let Some(session) = session {
         if opening.launch_pending {
@@ -499,20 +500,21 @@ impl Plugin for OpeningPlugin {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::observer::ObserverSession;
+    use babylon_persistence::identity::CampaignId;
     use bevy::ecs::system::RunSystemOnce;
+    use uuid::Uuid;
 
     #[test]
     fn recovery_launch_waits_for_the_new_campaign_after_a_previous_failure() {
         let mut world = World::new();
-        let mut session = crate::observer::ObserverSession::new(
-            babylon_persistence::identity::CampaignId::from_uuid(uuid::Uuid::from_u128(1)),
-        );
+        let mut session = ObserverSession::new(CampaignId::from_uuid(Uuid::from_u128(1)));
         session.connected_fixture();
         session.fail("Previous campaign refused".into());
         session
             .queue_campaign(
                 babylon_persistence::runtime_session::RuntimeSessionTarget::Open {
-                    campaign_id: uuid::Uuid::from_u128(2).to_string(),
+                    campaign_id: Uuid::from_u128(2).to_string(),
                 },
             )
             .unwrap();

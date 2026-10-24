@@ -307,10 +307,13 @@ pub(crate) fn turn_presentation(state: &ObserverSession) -> TurnPresentation {
 mod tests {
     use super::*;
     use crate::observer::Perspective;
+    use crate::observer_ui::NetworkSector;
+    use crate::observer_ui::RoadLayer;
     use babylon_persistence::identity::CampaignId;
+    use uuid::Uuid;
 
     fn ready(tick: u64) -> ObserverSession {
-        let mut state = ObserverSession::new(CampaignId::from_uuid(uuid::Uuid::from_u128(1)));
+        let mut state = ObserverSession::new(CampaignId::from_uuid(Uuid::from_u128(1)));
         state.ready(tick, None);
         assert!(state.installed(&state.context()));
         state
@@ -535,8 +538,8 @@ mod tests {
         let mut state = ready(3);
         state.begin_advance().unwrap();
         for command in [
-            ObserverCommand::RoadLayer(crate::observer_ui::RoadLayer::EconomyNetwork),
-            ObserverCommand::NetworkSector(crate::observer_ui::NetworkSector::Manufacturing),
+            ObserverCommand::RoadLayer(RoadLayer::EconomyNetwork),
+            ObserverCommand::NetworkSector(NetworkSector::Manufacturing),
         ] {
             assert_eq!(availability(command, &state), ControlAvailability::Enabled);
             state.perspective = crate::observer::Perspective::PlayerKnowledge;
@@ -556,7 +559,7 @@ mod tests {
         state.phase = SessionPhase::Loading;
         assert_eq!(
             availability(
-                ObserverCommand::RoadLayer(crate::observer_ui::RoadLayer::EconomyNetwork),
+                ObserverCommand::RoadLayer(RoadLayer::EconomyNetwork),
                 &state
             ),
             PENDING

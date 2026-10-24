@@ -1,24 +1,25 @@
 //! Authenticated public/ownership evidence and matched cash postings.
-use super::{
-    monetary_receipt::{account, account_parts},
-    MaterialWorldError, ReceiptCursor,
-};
+use super::MaterialWorldError;
+use super::ReceiptCursor;
+
+use super::monetary_receipt;
 use babylon_kernel::currency::Currency;
 use babylon_material_circuit::{
-    validate_distribution_receipts, AccountId, CapitalContributionReceipt, CashTransferPurpose,
-    ContributionId, DistributionReceipt, MoneyLocation, MoneyTransferPurpose, MoneyTransferReceipt,
+    AccountId, CapitalContributionReceipt, CashTransferPurpose, ContributionId,
+    DistributionReceipt, MoneyLocation, MoneyTransferPurpose, MoneyTransferReceipt,
     PublicAccountId, PublicBudgetReceipt, PublicTransferTreatment, SiteId, TaxBasis, TaxReceipt,
 };
 use std::collections::{BTreeMap, BTreeSet};
-type Result<T> = std::result::Result<T, MaterialWorldError>;
+use std::result::Result as StdResult;
+type Result<T> = StdResult<T, MaterialWorldError>;
 fn write_account(out: &mut Vec<u8>, id: AccountId) {
-    let (tag, bytes) = account_parts(id);
+    let (tag, bytes) = monetary_receipt::account_parts(id);
     out.push(tag);
     out.extend_from_slice(&bytes);
 }
 fn read_account(c: &mut ReceiptCursor<'_>) -> Result<AccountId> {
     let [tag] = c.take()?;
-    account(tag, c.take()?)
+    monetary_receipt::account(tag, c.take()?)
 }
 fn money(c: &mut ReceiptCursor<'_>) -> Result<Currency> {
     Ok(Currency::from_micro_units(i128::from_be_bytes(c.take()?)))
@@ -237,7 +238,8 @@ pub(super) fn validate(
     }
     ordered(taxes, |r| r.payer)?;
     ordered(contributions, |r| r.id)?;
-    validate_distribution_receipts(distributions).map_err(|_| MaterialWorldError::Wire)?;
+    babylon_material_circuit::validate_distribution_receipts(distributions)
+        .map_err(|_| MaterialWorldError::Wire)?;
     let mut expected = PostingTotals::new();
     for r in public {
         accumulate(

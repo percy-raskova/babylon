@@ -1,7 +1,5 @@
 //! Four bounded maintenance experiments against admitted statewide content and owned `PostgreSQL`.
 use super::{
-    advance_pair, assert_history_and_preview, assert_same_foundation_bytes, identity_hex,
-    install_reader_role, observe, provision_observer_role, reopen_runtime, witnessed_output,
     CampaignId, CollectingSink, DisposableTarget, DurableMaterialRuntime, Measurements,
     MichiganContentPreset, MichiganDeliveryPreset, MichiganMaterialCatalog, NoTls,
     ObserverEconomyReader, ObserverVisibility, OrderedPracticeActionBatch, ProductionSnapshot,
@@ -11,12 +9,15 @@ use super::{
 use babylon_bsl::causal_contract::EvidenceClass;
 use babylon_graph::state_hash::CanonicalState;
 use babylon_material_circuit::MaintenanceReceipt;
-use babylon_persistence::{
-    material_runtime::{MaterialRuntimeError, MAX_MATERIAL_FOUNDATION_BYTES},
-    michigan_material::MichiganSiteRole,
-    production_observation::{CompletedProductionMaintenance, ProductionSiteRole},
+use babylon_persistence::material_runtime::{MaterialRuntimeError, MAX_MATERIAL_FOUNDATION_BYTES};
+use babylon_persistence::michigan_material::MichiganSiteRole;
+use babylon_persistence::production_observation::{
+    CompletedProductionMaintenance, ProductionSiteRole,
 };
+
 use babylon_tick::material_replay::MaterialCommitError;
+use postgres::Client;
+use std::collections::BTreeMap;
 use std::time::Instant;
 
 const PROVIDER: &str = "owner-26163-81";
@@ -79,7 +80,7 @@ fn qualify(case: Case, index: u128) {
     let foundation = preset.create_foundation(&catalog).unwrap();
     let foundation_digest = foundation.digest();
     let twin = preset.create_foundation(&catalog).unwrap();
-    assert_same_foundation_bytes(&foundation, &twin);
+    super::assert_same_foundation_bytes(&foundation, &twin);
     let mut reference = twin.into_session().unwrap();
     let mut measured = Measurements {
         captured_bytes: foundation
@@ -95,15 +96,15 @@ fn qualify(case: Case, index: u128) {
     let mut target = DisposableTarget::create();
     let campaign = CampaignId::from_uuid(Uuid::from_u128(30_100 + index));
     let mut runtime = DurableMaterialRuntime::create(&target.writer, campaign, foundation).unwrap();
-    install_reader_role(&target.writer).unwrap();
-    provision_observer_role(&target.writer).unwrap();
+    super::install_reader_role(&target.writer).unwrap();
+    super::provision_observer_role(&target.writer).unwrap();
     let config = target.login("babylon_observer", "actualmaintenance");
     let observer =
         ObserverEconomyReader::connect(&config, ObserverVisibility::FullObserver).unwrap();
     let mut sql = target.writer.connect(NoTls).unwrap();
     measured.create_with_reference = began.elapsed();
     let mut held = Vec::new();
-    let rows = observe(
+    let rows = super::observe(
         &observer,
         campaign,
         &runtime,
@@ -119,14 +120,14 @@ fn qualify(case: Case, index: u128) {
     }
     for period in 1..=3 {
         let opening_capacities = opening_capacities(&reference, period);
-        let receipts = advance_pair(
+        let receipts = super::advance_pair(
             &mut runtime,
             &mut reference,
             &mut sql,
             campaign,
             &mut measured,
         );
-        let rows = observe(
+        let rows = super::observe(
             &observer,
             campaign,
             &runtime,
@@ -147,7 +148,7 @@ fn qualify(case: Case, index: u128) {
             copies.remove();
         }
         assert!(MichiganMaterialCatalog::load_for_preset(&copies.defines(), case.preset).is_err());
-        reopen_runtime(
+        super::reopen_runtime(
             &mut runtime,
             &target,
             campaign,
@@ -156,11 +157,11 @@ fn qualify(case: Case, index: u128) {
         );
         eprintln!("actual maintenance {}: period {period}/3", preset.id());
     }
-    assert_history_and_preview(&observer, &mut target, campaign, &held, 3, &mut measured);
+    super::assert_history_and_preview(&observer, &mut target, campaign, &held, 3, &mut measured);
     assert_persisted_totals(&mut sql, campaign, preset.id(), &measured);
 }
 
-fn opening_capacities(reference: &Session, period: u64) -> std::collections::BTreeMap<String, u64> {
+fn opening_capacities(reference: &Session, period: u64) -> BTreeMap<String, u64> {
     reference
         .material()
         .state()
@@ -169,7 +170,7 @@ fn opening_capacities(reference: &Session, period: u64) -> std::collections::BTr
         .filter(|row| row.period == period)
         .map(|row| {
             (
-                identity_hex(row.corridor_id.as_bytes()),
+                super::identity_hex(row.corridor_id.as_bytes()),
                 row.available_grams,
             )
         })
@@ -177,7 +178,7 @@ fn opening_capacities(reference: &Session, period: u64) -> std::collections::BTr
 }
 
 fn assert_persisted_totals(
-    sql: &mut postgres::Client,
+    sql: &mut Client,
     campaign: CampaignId,
     preset: &str,
     measured: &Measurements,
@@ -323,7 +324,7 @@ fn assert_foundation(rows: &ProductionSnapshot, catalog: &MichiganMaterialCatalo
     assert_eq!(provider.observed_employment, Some(1480));
     assert_eq!(
         provider.id,
-        identity_hex(catalog.site(PROVIDER).unwrap().id().as_bytes())
+        super::identity_hex(catalog.site(PROVIDER).unwrap().id().as_bytes())
     );
     let crew = rows
         .staffing_accounts
@@ -353,23 +354,23 @@ fn assert_completed(
     let account = rows.maintenance_account.as_ref().unwrap();
     assert_eq!(
         account.provider_site_id,
-        identity_hex(receipt.binding.provider_site_id.as_bytes())
+        super::identity_hex(receipt.binding.provider_site_id.as_bytes())
     );
     assert_eq!(
         account.consumer_process_id,
-        identity_hex(receipt.binding.consumer_process_id.as_bytes())
+        super::identity_hex(receipt.binding.consumer_process_id.as_bytes())
     );
     assert_eq!(
         account.spare_good_id,
-        identity_hex(receipt.binding.spare_good_id.as_bytes())
+        super::identity_hex(receipt.binding.spare_good_id.as_bytes())
     );
     assert_eq!(
         account.spare_unit_id,
-        identity_hex(receipt.binding.spare_unit_id.as_bytes())
+        super::identity_hex(receipt.binding.spare_unit_id.as_bytes())
     );
     assert_eq!(
         account.labor_unit_id,
-        identity_hex(receipt.binding.labor_unit_id.as_bytes())
+        super::identity_hex(receipt.binding.labor_unit_id.as_bytes())
     );
     assert_eq!(
         (account.next_service_period, account.next_service_batches),
@@ -393,7 +394,7 @@ fn assert_completed(
             consumed_labor_hours: receipt.consumed_labor_hours,
         })
     );
-    let output = witnessed_output(rows, catalog, CONSUMER, "kg");
+    let output = super::witnessed_output(rows, catalog, CONSUMER, "kg");
     assert_period_witness(output, receipt, case, period);
     assert_eq!(receipt.consumed_spare_parts, receipt.completed_jobs);
     assert_eq!(receipt.consumed_labor_hours, receipt.completed_jobs * 10);
@@ -534,7 +535,7 @@ fn assert_commit_refusal_preserves_candidate(reference: &mut Session) {
 }
 
 fn assert_sql_marker_refusal(
-    owner: &mut postgres::Client,
+    owner: &mut Client,
     campaign: CampaignId,
     runtime: &mut DurableMaterialRuntime,
 ) {
@@ -597,7 +598,7 @@ fn assert_sql_marker_refusal(
     // opening and compares durable register/receipt bytes with the untouched twin.
 }
 
-fn assert_no_maintenance_tick_rows(owner: &mut postgres::Client, campaign: CampaignId) {
+fn assert_no_maintenance_tick_rows(owner: &mut Client, campaign: CampaignId) {
     // Exact per-tick tables written by the shared marker-last persistence path.
     // Foundation rows, if present at tick zero, remain outside the failed close.
     for table in [

@@ -1,13 +1,25 @@
 //! Ordered immutable publication proofs over real committed ticks.
-use super::*;
+use super::archive_reader;
+use super::current_material;
+use super::support;
+use super::support::{archive_page_count, receipt_consumption_count, LiveWorkerTarget};
+use crate::archive_revision::{ArchiveDossierBounds, ArchiveDossierState};
 use crate::archive_revision::{ArchiveDossierPending, ArchiveSearchState};
+use crate::material_runtime::DurableMaterialRuntime;
 use crate::ArchiveMaterializeMode;
+use crate::{
+    ArchiveCitation, ArchiveDirtyBatch, ArchiveKnowledgeGrant, ArchivePageInput,
+    PendingArchiveReceipt, SemanticArchiveError, SemanticArchiveStore,
+};
+use babylon_bsl::structural_verbs::CollectingSink;
+use babylon_practice_contract::OrderedPracticeActionBatch;
+use postgres::NoTls;
 
 #[path = "publication_lock.rs"]
 mod publication_lock;
 
 fn stable_input(receipt: &PendingArchiveReceipt, question: &str) -> ArchivePageInput {
-    let original = stub_page_input(
+    let original = support::stub_page_input(
         &PendingArchiveReceipt::try_new(1, *receipt.tick_content_hash()).expect("stub identity"),
     );
     ArchivePageInput::try_new(
@@ -21,7 +33,7 @@ fn stable_input(receipt: &PendingArchiveReceipt, question: &str) -> ArchivePageI
     .expect("exact stable subject emission")
 }
 fn batch_at(target: &LiveWorkerTarget, tick: u64, question: &str) -> ArchiveDirtyBatch {
-    let scope = scope_at(&target.config, target.campaign_id, tick);
+    let scope = archive_reader::scope_at(&target.config, target.campaign_id, tick);
     let receipt =
         PendingArchiveReceipt::try_new(tick, scope.tick_content_hash().expect("committed hash"))
             .expect("receipt");
@@ -104,7 +116,7 @@ fn grant_subject_only(target: &LiveWorkerTarget) {
         .grant_knowledge(
             target.campaign_id,
             &ArchiveKnowledgeGrant::try_new(
-                stub_subject_spec(1).page_ref,
+                support::stub_subject_spec(1).page_ref,
                 "subject".to_owned(),
                 1,
                 ArchiveCitation::try_new("late-grant-proof".to_owned(), "subject".to_owned())
@@ -115,12 +127,12 @@ fn grant_subject_only(target: &LiveWorkerTarget) {
         .expect("subject only");
 }
 fn assert_late_grant_pending(target: &LiveWorkerTarget) {
-    with_reader(&target.config, |reader| {
-        let scope = scope_at(&target.config, target.campaign_id, 1);
+    archive_reader::with_reader(&target.config, |reader| {
+        let scope = archive_reader::scope_at(&target.config, target.campaign_id, 1);
         let read = reader
             .dossier_as_of(
                 &scope,
-                &stub_subject_spec(1).page_ref,
+                &support::stub_subject_spec(1).page_ref,
                 &ArchiveDossierBounds::default(),
             )
             .expect("late grant scoped read");
@@ -162,7 +174,7 @@ fn live_late_grant_stays_pending_at_tail_and_never_rewrites_old_tick() {
         .grant_knowledge(
             target.campaign_id,
             &ArchiveKnowledgeGrant::try_new(
-                stub_subject_spec(1).page_ref,
+                support::stub_subject_spec(1).page_ref,
                 "employment".to_owned(),
                 1,
                 ArchiveCitation::try_new("late-grant-proof".to_owned(), "field".to_owned())
@@ -197,11 +209,11 @@ fn live_late_grant_stays_pending_at_tail_and_never_rewrites_old_tick() {
             ArchiveMaterializeMode::Consume,
         )
         .expect("next eligible receipt admits field");
-    with_reader(&target.config, |reader| {
-        let subject = stub_subject_spec(1).page_ref;
+    archive_reader::with_reader(&target.config, |reader| {
+        let subject = support::stub_subject_spec(1).page_ref;
         let older = reader
             .dossier_as_of(
-                &scope_at(&target.config, target.campaign_id, 1),
+                &archive_reader::scope_at(&target.config, target.campaign_id, 1),
                 &subject,
                 &ArchiveDossierBounds::default(),
             )
@@ -213,7 +225,7 @@ fn live_late_grant_stays_pending_at_tail_and_never_rewrites_old_tick() {
         assert!(!old.markdown.contains("728576"));
         let current = reader
             .dossier_as_of(
-                &scope_at(&target.config, target.campaign_id, 2),
+                &archive_reader::scope_at(&target.config, target.campaign_id, 2),
                 &subject,
                 &ArchiveDossierBounds::default(),
             )
@@ -237,7 +249,7 @@ fn live_archive_verifier_refuses_missing_current_schema_without_repair() {
         0x2200_0000_0000_0000_0000_0000_0000_00d3,
         1,
     );
-    let scope = scope_at(&target.config, target.campaign_id, 1);
+    let scope = archive_reader::scope_at(&target.config, target.campaign_id, 1);
     let mut admin = target
         .config
         .connect(NoTls)
@@ -249,7 +261,10 @@ fn live_archive_verifier_refuses_missing_current_schema_without_repair() {
         SemanticArchiveStore::new(&target.config).verify_schema(),
         Err(SemanticArchiveError::CurrentSchema(_))
     ));
-    assert_eq!(scope_at(&target.config, target.campaign_id, 1), scope);
+    assert_eq!(
+        archive_reader::scope_at(&target.config, target.campaign_id, 1),
+        scope
+    );
     let absent: bool = admin
         .query_one(
             "SELECT pg_catalog.to_regclass('babylon_meta.current_schema') IS NULL",

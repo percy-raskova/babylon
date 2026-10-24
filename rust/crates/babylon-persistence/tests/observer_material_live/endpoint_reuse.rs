@@ -1,18 +1,19 @@
 //! Prior endpoint reuse retains independent marker, component and action proofs.
 
 use super::{
-    advance_material_period, install_reader_role, provision_observer_role, CampaignId,
-    DisposableTarget, DurableMaterialRuntime, MichiganContentPreset, MichiganDeliveryPreset, NoTls,
-    ObserverEconomyError, ObserverEconomyReader, ObserverVisibility, Uuid,
+    CampaignId, DisposableTarget, DurableMaterialRuntime, MichiganContentPreset,
+    MichiganDeliveryPreset, NoTls, ObserverEconomyError, ObserverEconomyReader, ObserverVisibility,
+    Uuid,
 };
 use babylon_persistence::michigan_material::MichiganMaterialCatalog;
+use std::path::Path;
 
 #[test]
 #[ignore = "requires the task-owned disposable PostgreSQL runtime and qualified statewide sources"]
 fn organizer_combined_observation_refuses_corrupt_prior_endpoint_proofs() {
     let mut target = DisposableTarget::create();
     let campaign = CampaignId::from_uuid(Uuid::from_u128(0x343_26163));
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../../content/scenarios/michigan/defines.toml");
     let catalog =
         MichiganMaterialCatalog::load_for_preset(&path, MichiganDeliveryPreset::OrganizeInWayne)
@@ -21,15 +22,15 @@ fn organizer_combined_observation_refuses_corrupt_prior_endpoint_proofs() {
         .create_foundation_for_campaign(&catalog, campaign)
         .unwrap();
     let mut runtime = DurableMaterialRuntime::create(&target.writer, campaign, foundation).unwrap();
-    install_reader_role(&target.writer).unwrap();
-    provision_observer_role(&target.writer).unwrap();
+    super::install_reader_role(&target.writer).unwrap();
+    super::provision_observer_role(&target.writer).unwrap();
     let observer = ObserverEconomyReader::connect(
         &target.login("babylon_observer", "endpoints"),
         ObserverVisibility::FullObserver,
     )
     .unwrap();
-    advance_material_period(&mut runtime);
-    advance_material_period(&mut runtime);
+    super::advance_material_period(&mut runtime);
+    super::advance_material_period(&mut runtime);
     let healthy = observer
         .committed_material_observation(campaign, 2)
         .unwrap();

@@ -1,9 +1,7 @@
 //! Captured content cannot bypass the domestic jurisdiction check through Serde.
 
-use babylon_kernel::{
-    economic_location::{EconomicLocation, ForeignCounterpart, UsDependency},
-    geography::CountyGeoid,
-};
+use babylon_kernel::economic_location::{EconomicLocation, ForeignCounterpart, UsDependency};
+use babylon_kernel::geography::CountyGeoid;
 
 #[test]
 fn captured_locations_keep_readable_disjoint_namespaces_and_exact_wire_identity() {

@@ -1,7 +1,9 @@
-use super::*;
+use super::artifact;
+use super::artifact::{WorldReferenceError, POPULATION, TRADE};
+use super::parse;
 
 fn population_rows() -> Vec<Vec<String>> {
-    decode(POPULATION)
+    artifact::decode(POPULATION)
         .unwrap()
         .lines()
         .skip(1)
@@ -49,7 +51,7 @@ fn source_projection_cannot_claim_observation_or_hide_its_date_and_row() {
 
 #[test]
 fn dependency_and_foreign_population_parents_cannot_cross_scopes() {
-    let mut members = world_reference().unwrap().members().to_vec();
+    let mut members = artifact::world_reference().unwrap().members().to_vec();
     let child = members
         .iter_mut()
         .find(|row| row.identity() == "m49:162")
@@ -63,7 +65,7 @@ fn dependency_and_foreign_population_parents_cannot_cross_scopes() {
 
 #[test]
 fn annual_trade_availability_cannot_be_replaced_with_a_money_like_default() {
-    let trade = decode(TRADE).unwrap();
+    let trade = artifact::decode(TRADE).unwrap();
     let mut missing = trade
         .lines()
         .skip(1)

@@ -1,4 +1,5 @@
-use super::*;
+use super::load::MichiganMaterialCatalog;
+use crate::economic_catalog::CapturedEconomicCatalog;
 use crate::simulation_experiment::{ExperimentProfile, SimulationExperimentV1};
 
 fn historical_spec() -> SimulationExperimentV1 {
@@ -85,13 +86,9 @@ fn stored_experiments_accept_derived_rows_and_joint_admitted_interventions() {
             ];
         }
         let catalog = spec.regional_catalog().unwrap();
-        let captured =
-            crate::economic_catalog::CapturedEconomicCatalog::from_michigan(&catalog).unwrap();
-        let restored = crate::economic_catalog::CapturedEconomicCatalog::decode(
-            captured.canonical_bytes(),
-            captured.digest(),
-        )
-        .unwrap();
+        let captured = CapturedEconomicCatalog::from_michigan(&catalog).unwrap();
+        let restored =
+            CapturedEconomicCatalog::decode(captured.canonical_bytes(), captured.digest()).unwrap();
         assert_eq!(restored.opening(), captured.opening());
     }
 }

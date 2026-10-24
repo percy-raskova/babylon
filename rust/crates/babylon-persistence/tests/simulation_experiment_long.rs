@@ -3,6 +3,7 @@ use babylon_kernel::content_digest::sha256_of;
 use babylon_persistence::simulation_experiment::{
     report, EmploymentStartingRow, ExperimentProfile, SimulationExperimentV1, StartingSnapshot,
 };
+use std::collections::BTreeMap;
 
 fn spec(profile: ExperimentProfile) -> SimulationExperimentV1 {
     let (epoch, starting_snapshot) = match profile {
@@ -78,7 +79,7 @@ fn sustained_depletion_and_historical_profiles_close_replay_and_conservation() {
                     assert_eq!(row.world_hash, result.periods[0].world_hash);
                     (row.series_id.as_str(), row.jobs)
                 })
-                .collect::<std::collections::BTreeMap<_, _>>();
+                .collect::<BTreeMap<_, _>>();
             assert_eq!(
                 first_period,
                 [

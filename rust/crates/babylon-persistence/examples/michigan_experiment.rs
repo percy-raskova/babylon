@@ -18,38 +18,39 @@ use std::path::PathBuf;
 
 use std::sync::{Arc, Mutex};
 
-use artifacts::{contract, Output, Progress, Result, Watchdog};
+use artifacts::{Output, Progress, Result, Watchdog};
 
 use serde_json::json;
 
 #[path = "michigan_experiment/support.rs"]
 mod support;
 
-use support::{execute, output_argument};
+use artifacts::Error;
+use std::process::ExitCode;
 
-fn main() -> std::process::ExitCode {
+fn main() -> ExitCode {
     let result = (|| {
-        let directory = output_argument(std::env::args_os().skip(1))?;
+        let directory = support::output_argument(std::env::args_os().skip(1))?;
         let mut output = Output::create(&directory)?;
         let progress = Arc::new(Mutex::new(Progress::default()));
         let watchdog = Watchdog::start(&directory, Arc::clone(&progress));
-        let result = execute(&mut output, &progress);
+        let result = support::execute(&mut output, &progress);
         watchdog.finish()?;
         if let Err(error) = &result {
             let state = progress
                 .lock()
-                .map_err(|_| contract("progress mutex poisoned"))?;
+                .map_err(|_| artifacts::contract("progress mutex poisoned"))?;
             artifacts::write_failure(&directory, &state, &error.to_string())?;
         }
         result?;
         println!("Four cases / 64 periods complete: {}", directory.display());
-        Ok::<_, artifacts::Error>(())
+        Ok::<_, Error>(())
     })();
     match result {
-        Ok(()) => std::process::ExitCode::SUCCESS,
+        Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             eprintln!("Michigan experiment refused: {error}");
-            std::process::ExitCode::FAILURE
+            ExitCode::FAILURE
         }
     }
 }

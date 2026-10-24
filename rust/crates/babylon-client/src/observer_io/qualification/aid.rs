@@ -1,16 +1,20 @@
 //! Custody of actual status, review, submission and accepted responses.
-use super::{write_named_record, Configuration, Scope};
+use super::{Configuration, Scope};
 use crate::observer::{ObservationContext, ObserverSession};
 use babylon_kernel::clock::CampaignDuration;
-use babylon_persistence::{
-    observer_reader::CommittedMaterialReceipts,
-    qualification_audit::aid::{self, Accepted, Audit, Boundary, MaterialWorldRegister},
-    runtime_session::{
-        OrganizerChoice, OrganizerCommand, OrganizerCommitment, OrganizerPreview,
-        OrganizerSnapshot, RuntimeSessionRequest, RuntimeSessionScope,
-    },
+use babylon_persistence::observer_reader::CommittedMaterialReceipts;
+use babylon_persistence::qualification_audit::aid;
+use babylon_persistence::qualification_audit::aid::{
+    Accepted, Audit, Boundary, MaterialWorldRegister,
 };
+use babylon_persistence::runtime_session::{
+    OrganizerChoice, OrganizerCommand, OrganizerCommitment, OrganizerPreview, OrganizerSnapshot,
+    RuntimeSessionRequest, RuntimeSessionScope,
+};
+
+use aid::Summary;
 use serde::Serialize;
+use serde_json::Value;
 
 #[derive(Clone, Default)]
 pub(super) struct Custody {
@@ -287,7 +291,7 @@ impl Custody {
         let mut bytes =
             serde_json::to_vec(&original).map_err(|_| "native aid witness encoding failed")?;
         bytes.push(b'\n');
-        write_named_record(
+        super::write_named_record(
             &configuration.directory,
             &format!("aid-{}", super::hex(&commitment.commitment_id)),
             &bytes,
@@ -315,11 +319,11 @@ impl Custody {
         Ok(fact)
     }
 
-    pub(super) fn practices(&self) -> serde_json::Value {
+    pub(super) fn practices(&self) -> Value {
         self.audit.practice_report()
     }
 
-    pub(super) fn summary(&self) -> aid::Summary {
+    pub(super) fn summary(&self) -> Summary {
         self.audit.summary()
     }
 
@@ -347,7 +351,9 @@ fn matches_source(source: &OrganizerSnapshot, snapshot: &OrganizerSnapshot) -> R
 #[cfg(test)]
 mod tests {
     use super::*;
-    use babylon_persistence::{identity::CampaignId, runtime_session::OrganizerAidKind};
+    use babylon_persistence::identity::CampaignId;
+    use babylon_persistence::runtime_session::OrganizerAidKind;
+    use uuid::Uuid;
 
     fn fixture() -> (
         Custody,
@@ -360,7 +366,7 @@ mod tests {
             "../../../../babylon-persistence/tests/fixtures/national_organizer_opening_v11.json"
         ))
         .unwrap();
-        let mut session = ObserverSession::new(CampaignId::from_uuid(uuid::Uuid::from_u128(1)));
+        let mut session = ObserverSession::new(CampaignId::from_uuid(Uuid::from_u128(1)));
         session.connected_fixture();
         session.ready(0, None);
         session.duration = Some(snapshot.duration);

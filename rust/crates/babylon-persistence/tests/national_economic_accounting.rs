@@ -1,6 +1,19 @@
 //! Focused joins reject promises, crossed units and unmatched cash.
 use babylon_kernel::currency::Currency;
-use babylon_material_circuit::*;
+use babylon_material_circuit::FinalDemandPrincipalId;
+use babylon_material_circuit::GoodId;
+use babylon_material_circuit::OrderId;
+use babylon_material_circuit::ProcessId;
+use babylon_material_circuit::SiteId;
+use babylon_material_circuit::UnitId;
+use babylon_material_circuit::{
+    AccountId, ArrivalReceipt, CapitalContributionReceipt, CashTransferPurpose, ContributionId,
+    DeliveryReceipt, DistributionReceipt, EquipmentCohortId, EquipmentWearReceipt,
+    HouseholdConsumptionReceipt, HouseholdDemandReceipt, InstallationId, InstallationReceipt,
+    InvestmentReceipt, LocalRetailFulfillmentReceipt, LocalTransferReceipt, MoneyLocation,
+    MoneyPosting, MoneyTransferPurpose, MoneyTransferReceipt, OutboundOrderId, ProcurementReceipt,
+    ProductionReceipt, RealizationReceipt, ShiftId, WageAccrualReceipt,
+};
 use babylon_persistence::qualification_audit::economic;
 use babylon_tick::material_world::MaterialTickReceipts;
 use economic::{Audit, Refusal};
@@ -52,7 +65,7 @@ fn procurement(period: u64, supplier: u8, buyer: u8) -> ProcurementReceipt {
     let unit_id = UnitId::from_bytes([4; 32]);
     ProcurementReceipt {
         period,
-        order_id: recurring_procurement_order_id(
+        order_id: babylon_material_circuit::recurring_procurement_order_id(
             period,
             buyer_site_id,
             supplier_site_id,
@@ -393,7 +406,7 @@ fn crossed_retail_units_cannot_count_as_purchase_consumption() {
     let retailer = SiteId::from_bytes([2; 32]);
     let good = GoodId::from_bytes([3; 32]);
     let unit = UnitId::from_bytes([4; 32]);
-    let order = recurring_household_order_id(1, (principal, good, unit));
+    let order = babylon_material_circuit::recurring_household_order_id(1, (principal, good, unit));
     r.household_demand.push(HouseholdDemandReceipt {
         period: 1,
         principal_id: principal,

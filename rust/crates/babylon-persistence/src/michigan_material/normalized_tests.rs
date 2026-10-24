@@ -1,6 +1,21 @@
 //! Explicit control import contracts through the common source authority.
-use super::*;
+use super::load::{
+    MichiganDeliveryPreset, MichiganMaterialCatalog, MICHIGAN_INDUSTRY_BASELINE_SHA256,
+};
+use super::regional;
 use crate::economic_catalog::{CapturedEconomicCatalog, SourceArtifactKind};
+use crate::michigan_material::MichiganFinalDemand;
+use crate::michigan_material::MichiganIndustryBaselineRow;
+use crate::michigan_material::MichiganMaterialCorridor;
+use crate::michigan_material::MichiganMaterialInput;
+use crate::michigan_material::MichiganMaterialPath;
+use crate::michigan_material::MichiganMaterialRoute;
+use crate::michigan_material::MichiganMaterialSite;
+use crate::michigan_material::MichiganMerchant;
+use crate::michigan_material::MichiganNormalizedContent;
+use crate::michigan_material::MichiganSiteRole;
+use crate::michigan_material::MichiganWorkforceSeed;
+use babylon_material_circuit::SupplierTransport;
 use std::collections::BTreeMap;
 
 #[test]
@@ -219,7 +234,7 @@ fn normalized_multi_input_owners_share_inventory_and_labor_and_merchants_have_no
     for route in state
         .supplier_routes
         .iter()
-        .filter(|r| r.transport_kind == babylon_material_circuit::SupplierTransport::Local)
+        .filter(|r| r.transport_kind == SupplierTransport::Local)
     {
         assert!(!state
             .route_stages

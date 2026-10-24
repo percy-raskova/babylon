@@ -13,8 +13,76 @@
 //! have a captured 160-hour attendance allowance each. No stock or receipt is
 //! replenished. Every supplementary supplier control here is Designed.
 
-use babylon_kernel::{content_digest::sha256_of, currency::Currency};
-use babylon_material_circuit::*;
+use babylon_kernel::content_digest;
+use babylon_kernel::currency::Currency;
+use babylon_material_circuit::AccountId;
+use babylon_material_circuit::AidBook;
+use babylon_material_circuit::AidMandate;
+use babylon_material_circuit::AidOutcome;
+use babylon_material_circuit::AidResolveInput;
+use babylon_material_circuit::AidTransport;
+use babylon_material_circuit::AttendancePlan;
+use babylon_material_circuit::CapacityRow;
+use babylon_material_circuit::CapacitySupply;
+use babylon_material_circuit::CashAccount;
+use babylon_material_circuit::CircuitAccounting;
+use babylon_material_circuit::CollectionResolveInput;
+use babylon_material_circuit::CommodityDefinition;
+use babylon_material_circuit::CommodityKind;
+use babylon_material_circuit::CorridorCapacity;
+use babylon_material_circuit::CorridorId;
+use babylon_material_circuit::EmploymentTerms;
+use babylon_material_circuit::FinalDemandPrincipal;
+use babylon_material_circuit::FinalDemandPrincipalId;
+use babylon_material_circuit::FinancialInstitutions;
+use babylon_material_circuit::GoodId;
+use babylon_material_circuit::HistoricalCostBook;
+use babylon_material_circuit::HouseholdCohort;
+use babylon_material_circuit::HouseholdContributionUse;
+use babylon_material_circuit::HouseholdKind;
+use babylon_material_circuit::HouseholdNeed;
+use babylon_material_circuit::HouseholdNeedBasis;
+use babylon_material_circuit::HouseholdPurchasePolicy;
+use babylon_material_circuit::HouseholdStock;
+use babylon_material_circuit::HouseholdTimeAccounting;
+use babylon_material_circuit::HouseholdTimeBook;
+use babylon_material_circuit::HouseholdTimeCommitment;
+use babylon_material_circuit::HouseholdTimePolicy;
+use babylon_material_circuit::HouseholdUnmetTimeBurden;
+use babylon_material_circuit::InstitutionLocation;
+use babylon_material_circuit::InventoryRow;
+use babylon_material_circuit::LaborCapacityRow;
+use babylon_material_circuit::LaborCoefficient;
+use babylon_material_circuit::LaborCompensation;
+use babylon_material_circuit::LogisticsNodeId;
+use babylon_material_circuit::MaterialCircuitError;
+use babylon_material_circuit::MaterialCircuitState;
+use babylon_material_circuit::MaterialCircuitTransition;
+use babylon_material_circuit::MemberLaborCapacityRow;
+use babylon_material_circuit::MerchantHandling;
+use babylon_material_circuit::MerchantHandlingCoefficient;
+use babylon_material_circuit::MerchantRole;
+use babylon_material_circuit::MonetaryBook;
+use babylon_material_circuit::MonetaryCircuit;
+use babylon_material_circuit::OrganizationAccountId;
+use babylon_material_circuit::PricePolicy;
+use babylon_material_circuit::ProcessId;
+use babylon_material_circuit::ProcessOutput;
+use babylon_material_circuit::ProductionCommitment;
+use babylon_material_circuit::ProductionDemandPolicy;
+use babylon_material_circuit::PublicAccountId;
+use babylon_material_circuit::RecurringEconomy;
+use babylon_material_circuit::SellerOffer;
+use babylon_material_circuit::ServiceConnection;
+use babylon_material_circuit::ServiceStage;
+use babylon_material_circuit::SiteId;
+use babylon_material_circuit::SiteLogisticsNode;
+use babylon_material_circuit::StaffingMemberId;
+use babylon_material_circuit::StockCarryingValue;
+use babylon_material_circuit::TaxBasis;
+use babylon_material_circuit::TaxPolicy;
+use babylon_material_circuit::UnitId;
+use std::ops::RangeInclusive;
 
 pub const PAPER_CASH: i128 = 58_576_000_000;
 pub const COLLECTION: i128 = 400_000;
@@ -22,7 +90,7 @@ pub const FOOD: u8 = 2;
 pub const MATERIALS: u8 = 1;
 pub const EMPLOYER: u8 = 1;
 pub const RETAILER: u8 = 2;
-const PERIODS: std::ops::RangeInclusive<u64> = 1..=5;
+const PERIODS: RangeInclusive<u64> = 1..=5;
 
 pub fn money(micros: i128) -> Currency {
     Currency::from_micro_units(micros)
@@ -519,7 +587,7 @@ pub fn controlled_opening(mut state: MaterialCircuitState) -> MaterialCircuitSta
 }
 pub fn collection(period: u64) -> CollectionResolveInput {
     CollectionResolveInput {
-        original_commitment_id: sha256_of(&period.to_be_bytes()),
+        original_commitment_id: content_digest::sha256_of(&period.to_be_bytes()),
         command_nonce: [u8::try_from(period).unwrap(); 16],
         admitted_period: period - 1,
         resolve_period: period,
@@ -553,7 +621,7 @@ pub fn close(
     collection: &[CollectionResolveInput],
 ) -> Result<MaterialCircuitTransition, MaterialCircuitError> {
     let period = state.period + 1;
-    close_material_period_with_support(state, aid, collection)?
+    babylon_material_circuit::close_material_period_with_support(state, aid, collection)?
         .finish_with_workforce(labor(period), members(period))
 }
 pub fn coordinate(transition: &mut MaterialCircuitTransition) {
@@ -574,18 +642,20 @@ pub fn coordinate(transition: &mut MaterialCircuitTransition) {
     // admission and consent refusals belong to the MaterialReplaySession controls.
     let uses = [(donor(), 101_u64, 201_u64), (recipient(), 120_u64, 204_u64)].map(
         |(principal_id, actor_id, contributor_id)| HouseholdContributionUse {
-            use_id: sha256_of(&contributor_id.to_be_bytes()),
+            use_id: content_digest::sha256_of(&contributor_id.to_be_bytes()),
             principal_id,
             actor_id,
             contributor_id,
             hours: 2,
         },
     );
-    consume_household_contributions(&mut transition.state, 2, &uses).unwrap();
-    let bytes = encode_material_circuit_state(&transition.state).unwrap();
-    consume_household_contributions(&mut transition.state, 2, &uses).unwrap();
+    babylon_material_circuit::consume_household_contributions(&mut transition.state, 2, &uses)
+        .unwrap();
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&transition.state).unwrap();
+    babylon_material_circuit::consume_household_contributions(&mut transition.state, 2, &uses)
+        .unwrap();
     assert_eq!(
-        encode_material_circuit_state(&transition.state).unwrap(),
+        babylon_material_circuit::encode_material_circuit_state(&transition.state).unwrap(),
         bytes
     );
 }

@@ -3,8 +3,13 @@ use std::collections::BTreeSet;
 
 use postgres::Config;
 
+use crate::county_producer::CountySource;
+use crate::economic_catalog::EconomicSourceView;
+use crate::identity::CampaignId;
+use crate::production_projection::diagnostics::Stage;
+use crate::production_projection::diagnostics::Timing;
+use crate::OrganizerDossierProducer;
 use crate::{
-    county_producer::CountySource, economic_catalog::EconomicSourceView, identity::CampaignId,
     ArchiveDossierProducer, CampaignFoundation, CompositeArchiveDossierProducer,
     CountyDossierProducer, FoundationContentKind, PlaceDossierProducer,
     RustPersistenceRuntimeError, SemanticArchiveError,
@@ -20,10 +25,7 @@ pub fn captured_archive_producer(
     config: &Config,
     campaign: CampaignId,
 ) -> Result<CompositeArchiveDossierProducer, SemanticArchiveError> {
-    let _timing = crate::production_projection::diagnostics::Timing::start(
-        crate::production_projection::diagnostics::Stage::ArchiveProducerFoundation,
-        0,
-    );
+    let _timing = Timing::start(Stage::ArchiveProducerFoundation, 0);
     let foundation =
         crate::hydrate_campaign_foundation(config, campaign).map_err(|error| match error {
             RustPersistenceRuntimeError::CurrentSchema(error) => {
@@ -116,7 +118,7 @@ fn from_foundation(
     if organizer {
         producers.insert(
             0,
-            Box::new(crate::OrganizerDossierProducer::from_captured(
+            Box::new(OrganizerDossierProducer::from_captured(
                 config, campaign, foundation,
             )),
         );
@@ -127,15 +129,18 @@ fn from_foundation(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::economic_catalog::CapturedEconomicCatalog;
+    use crate::michigan_material::MichiganMaterialCatalog;
     use babylon_kernel::replay::{ReplaySeed, ReplaySessionId};
+    use uuid::Uuid;
 
     #[test]
     fn captured_control_factory_selects_county_and_place_without_absent_organizer() {
-        let control = crate::michigan_material::MichiganMaterialCatalog::from_defines_toml(
-            include_str!("../../../../content/scenarios/michigan/defines.toml"),
-        )
+        let control = MichiganMaterialCatalog::from_defines_toml(include_str!(
+            "../../../../content/scenarios/michigan/defines.toml"
+        ))
         .unwrap();
-        let foundation = crate::economic_catalog::CapturedEconomicCatalog::from_michigan(&control)
+        let foundation = CapturedEconomicCatalog::from_michigan(&control)
             .unwrap()
             .create_foundation(
                 ReplaySessionId::try_from("archive-source").unwrap(),
@@ -145,7 +150,7 @@ mod tests {
         let config = Config::new();
         let producer = from_foundation(
             &config,
-            CampaignId::from_uuid(uuid::Uuid::nil()),
+            CampaignId::from_uuid(Uuid::nil()),
             crate::material_runtime::persisted_graph_copy(foundation.graph_foundation()),
         )
         .unwrap();

@@ -1,22 +1,29 @@
-use babylon_persistence::{
-    national_counties::national_county_reference,
-    national_household_allocation::{
-        allocate_households, HouseholdBudgetAllocation, HouseholdBudgetKey,
-    },
-    national_household_time_allocation::{allocate_household_time, HouseholdTimeAllocation},
-    national_households::national_household_reference,
-    national_resident_workforce::national_resident_workforce_reference,
+use babylon_persistence::national_counties;
+use babylon_persistence::national_household_allocation;
+use babylon_persistence::national_household_allocation::{
+    HouseholdBudgetAllocation, HouseholdBudgetKey,
 };
+use babylon_persistence::national_household_time_allocation;
+use babylon_persistence::national_household_time_allocation::HouseholdTimeAllocation;
+use babylon_persistence::national_households;
+use babylon_persistence::national_resident_workforce;
 
 #[test]
 fn all_counties_account_for_eligible_nonworkers_without_creating_workers() {
-    let counties = national_county_reference().unwrap();
-    let household_source = national_household_reference().unwrap();
-    let workforce_source = national_resident_workforce_reference().unwrap();
-    let households =
-        allocate_households(counties, household_source, workforce_source, 1_000).unwrap();
+    let counties = national_counties::national_county_reference().unwrap();
+    let household_source = national_households::national_household_reference().unwrap();
+    let workforce_source =
+        national_resident_workforce::national_resident_workforce_reference().unwrap();
+    let households = national_household_allocation::allocate_households(
+        counties,
+        household_source,
+        workforce_source,
+        1_000,
+    )
+    .unwrap();
     let before = households.clone();
-    let time = allocate_household_time(counties, &households).unwrap();
+    let time =
+        national_household_time_allocation::allocate_household_time(counties, &households).unwrap();
     assert_eq!(time.counties().len(), 3_144);
     assert_eq!(time.county_source_sha256(), counties.artifact_sha256());
     assert_eq!(
@@ -84,7 +91,7 @@ fn all_counties_account_for_eligible_nonworkers_without_creating_workers() {
     assert_eq!(households, before);
     assert_eq!(
         time,
-        allocate_household_time(counties, &households).unwrap()
+        national_household_time_allocation::allocate_household_time(counties, &households).unwrap()
     );
 }
 

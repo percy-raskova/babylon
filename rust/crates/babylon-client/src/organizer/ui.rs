@@ -2,10 +2,9 @@
 
 use babylon_persistence::runtime_session::{OrganizerChoice, OrganizerInquiry};
 use bevy::ecs::system::SystemParam;
-use bevy::input::{
-    keyboard::{Key, KeyboardInput},
-    ButtonState,
-};
+use bevy::input::keyboard::{Key, KeyboardInput};
+use bevy::input::ButtonState;
+
 use bevy::input_focus::tab_navigation::TabGroup;
 use bevy::input_focus::{FocusedInput, InputFocus};
 use bevy::prelude::*;
@@ -20,7 +19,14 @@ use crate::observer_theme as theme;
 use crate::observer_ui::{ObserverCommand, ObserverFontRole, ObserverUiState};
 use crate::production::PrimaryView;
 
+use super::qualification_input::HandlerReceipt;
 use super::{presentation, OrganizerClient, OrganizerInspector, RequestKind};
+use crate::observer::SessionPhase;
+use crate::observer_controls::ControlAvailability;
+use babylon_kernel::clock::CampaignDuration;
+use babylon_persistence::runtime_session::OrganizerGiftConsent;
+use bevy::text::LineBreak;
+use bevy::ui::UiSystems;
 
 #[derive(Message, Clone, Copy, Debug)]
 pub(crate) enum OrganizerAction {
@@ -95,7 +101,7 @@ fn text(value: impl Into<String>, size: f32, color: Color) -> impl Bundle {
             ..default()
         },
         TextColor(color),
-        TextLayout::new_with_linebreak(bevy::text::LineBreak::WordOrCharacter),
+        TextLayout::new_with_linebreak(LineBreak::WordOrCharacter),
         Node {
             min_width: px(0),
             max_width: percent(100),
@@ -628,7 +634,7 @@ pub(super) fn enabled(
         }
         OrganizerAction::Advance => {
             crate::observer_controls::availability(ObserverCommand::Step, session)
-                == crate::observer_controls::ControlAvailability::Enabled
+                == ControlAvailability::Enabled
         }
         OrganizerAction::Confirm => {
             client.available(session)
@@ -653,15 +659,13 @@ pub(super) fn enabled(
         }
         OrganizerAction::ArchiveWorkplace | OrganizerAction::ArchiveOrganization => {
             client.view.is_some()
-                && (matches!(
-                    session.phase,
-                    crate::observer::SessionPhase::Ready | crate::observer::SessionPhase::Complete
-                ) || (session.phase == crate::observer::SessionPhase::Advancing
-                    && session.advance_pending()
-                    && client
-                        .view
-                        .as_ref()
-                        .is_some_and(|view| view.period == session.viewed_tick)))
+                && (matches!(session.phase, SessionPhase::Ready | SessionPhase::Complete)
+                    || (session.phase == SessionPhase::Advancing
+                        && session.advance_pending()
+                        && client
+                            .view
+                            .as_ref()
+                            .is_some_and(|view| view.period == session.viewed_tick)))
         }
         OrganizerAction::Open | OrganizerAction::CloseInspector => true,
     }
@@ -786,7 +790,7 @@ fn actions(
     mut state: ActionState,
     mut commands: Commands,
     mut observer_commands: MessageWriter<ObserverCommand>,
-    mut qualification: Option<ResMut<super::qualification_input::HandlerReceipt>>,
+    mut qualification: Option<ResMut<HandlerReceipt>>,
 ) {
     for (action, message_id) in events.read_with_id() {
         let action = *action;
@@ -953,7 +957,7 @@ fn unavailable_message(
 ) -> &'static str {
     match action {
         OrganizerAction::Advance => {
-            if let crate::observer_controls::ControlAvailability::Disabled(reason) =
+            if let ControlAvailability::Disabled(reason) =
                 crate::observer_controls::availability(ObserverCommand::Step, session)
             {
                 return reason;
@@ -978,7 +982,7 @@ fn unavailable_message(
     }
     if session.viewed_tick != session.durable_tick {
         "Return Live before changing the organization's commitments."
-    } else if session.phase == crate::observer::SessionPhase::Complete {
+    } else if session.phase == SessionPhase::Complete {
         "This campaign is complete. Its reports and practice receipts remain available."
     } else if client
         .pending
@@ -991,9 +995,10 @@ fn unavailable_message(
     } else if matches!(action, OrganizerAction::Choose(OrganizerChoice::Collect))
         || client.choice() == OrganizerChoice::Collect
     {
-        if client.collection_preview().is_some_and(|terms| {
-            terms.cash_consent == babylon_persistence::runtime_session::OrganizerGiftConsent::Refuse
-        }) {
+        if client
+            .collection_preview()
+            .is_some_and(|terms| terms.cash_consent == OrganizerGiftConsent::Refuse)
+        {
             "The household independently refused cash consent. Other work does not grant that permission."
         } else {
             "Refresh the current attributed collection terms before reviewing this ruling."
@@ -1239,7 +1244,7 @@ fn paint_layout(scope: &Scope, primary: bool, paint: &mut Paint) {
 
 fn paint_text(scope: &Scope, focus: &InputFocus, paint: &mut Paint) {
     let historical = scope.session.viewed_tick != scope.session.durable_tick;
-    let complete = scope.session.phase == crate::observer::SessionPhase::Complete;
+    let complete = scope.session.phase == SessionPhase::Complete;
     let (inspector_title, inspector_body) =
         presentation::inspector(&scope.client, scope.session.viewed_tick);
     let note_focused = focus
@@ -1250,7 +1255,7 @@ fn paint_text(scope: &Scope, focus: &InputFocus, paint: &mut Paint) {
             TextPart::Title => scope.client.view.as_ref().map_or_else(|| "Wayne Organizing Collective".into(), |view| view.organization_label.clone()),
             TextPart::Situation => scope.client.view.as_ref().map_or_else(|| "Awaiting the committed organizer situation…".into(), |view| presentation::situation(view, scope.session.viewed_tick)),
             TextPart::Means => scope.client.view.as_ref().map_or_else(String::new, |view| {
-                let endpoint = scope.session.duration.and_then(babylon_kernel::clock::CampaignDuration::final_period).map_or_else(String::new, |value| format!(" / {value}"));
+                let endpoint = scope.session.duration.and_then(CampaignDuration::final_period).map_or_else(String::new, |value| format!(" / {value}"));
                 if historical { format!("HISTORY · period {}{endpoint}\nCurrent period {} · {} organizer-hours", scope.session.viewed_tick, view.period, view.available_hours) }
                 else { format!("PERIOD {}{endpoint} · 4 weeks\n{} organizer-hours available", view.period, view.available_hours) }
             }),
@@ -1264,7 +1269,7 @@ fn paint_text(scope: &Scope, focus: &InputFocus, paint: &mut Paint) {
                 else if scope.client.choice() == *choice { "SELECTED DRAFT".into() }
                 else { "SELECT".into() }
             },
-            TextPart::Review => presentation::review(&scope.client, historical, complete, scope.session.phase == crate::observer::SessionPhase::Advancing),
+            TextPart::Review => presentation::review(&scope.client, historical, complete, scope.session.phase == SessionPhase::Advancing),
             TextPart::ReferenceSummary => format!("{} report reference(s) in this personal draft. References help you review evidence; they never execute a practice.", scope.client.draft.as_ref().map_or(0, |draft| draft.references.len())),
             TextPart::DraftStatus => if !scope.client.draft_writable { "Draft saving unavailable · original file retained".into() } else if scope.client.draft_dirty { "Draft changes awaiting save".into() } else { "Personal draft saved".into() },
             TextPart::Message => scope.client.message.clone(),
@@ -1365,10 +1370,7 @@ pub(super) fn install(app: &mut App) {
                 .in_set(ObserverSet::Input),
         )
         .add_systems(Update, paint.in_set(ObserverSet::Paint))
-        .add_systems(
-            PostUpdate,
-            paint_scroll_hints.after(bevy::ui::UiSystems::Layout),
-        )
+        .add_systems(PostUpdate, paint_scroll_hints.after(UiSystems::Layout))
         .add_observer(requested)
         .add_observer(keyboard_button)
         .add_observer(notes_input)
@@ -1377,14 +1379,28 @@ pub(super) fn install(app: &mut App) {
 
 #[cfg(test)]
 mod tests {
-    use super::super::{draft::OrganizerDraft, editor::NoteEditor};
+    use super::super::draft::OrganizerDraft;
+    use super::super::editor::NoteEditor;
+
+    use super::super::OrganizerCommand;
+    use super::super::OrganizerPreview;
     use super::*;
     use crate::atlas::CountyAtlas;
     use crate::map::SelectedCounty;
+    use crate::observer::ObservationContext;
+    use crate::observer::SessionPhase;
     use crate::observer_focus::ObserverKeyboardClaim;
     use crate::observer_ui::ObserverCommand;
+    use crate::observer_ui::ObserverFrame;
     use babylon_persistence::identity::CampaignId;
+    use babylon_persistence::observer_reader::ObserverEconomySnapshot;
+    use babylon_persistence::runtime_session::OrganizerGiftConsent;
+    use babylon_persistence::runtime_session::OrganizerPauseReason;
+    use babylon_persistence::runtime_session::RuntimeSessionResponse;
     use babylon_persistence::runtime_session::{OrganizerStandingWork, OrganizerView};
+    use bevy::time::TimeUpdateStrategy;
+    use std::sync::mpsc::Sender;
+    use uuid::Uuid;
 
     #[derive(Resource, Default)]
     struct ArchiveRequests(Vec<bool>);
@@ -1447,8 +1463,8 @@ mod tests {
     }
 
     fn organizer_navigation() -> (App, Entity, OrganizerDraft) {
-        let mut session = ObserverSession::new(CampaignId::from_uuid(uuid::Uuid::from_u128(927)));
-        session.phase = crate::observer::SessionPhase::Ready;
+        let mut session = ObserverSession::new(CampaignId::from_uuid(Uuid::from_u128(927)));
+        session.phase = SessionPhase::Ready;
         session.organizer_enabled = true;
         let draft = OrganizerDraft {
             workplace_id: 91,
@@ -1598,8 +1614,8 @@ mod tests {
             });
     }
 
-    fn preview_for(command: &super::super::OrganizerCommand) -> super::super::OrganizerPreview {
-        super::super::OrganizerPreview {
+    fn preview_for(command: &OrganizerCommand) -> OrganizerPreview {
+        OrganizerPreview {
             choice: command.choice,
             current_period: command.expected_period,
             resolves_period: command.expected_period + 1,
@@ -1671,7 +1687,7 @@ mod tests {
         }
         {
             let mut client = app.world_mut().resource_mut::<OrganizerClient>();
-            client.campaign = Some(uuid::Uuid::from_u128(927));
+            client.campaign = Some(Uuid::from_u128(927));
             client.draft_writable = true;
             let view = client.view.as_mut().unwrap();
             view.period = 3;
@@ -2009,8 +2025,7 @@ mod tests {
         }
         app.update();
         assert!(painted_text(&mut app, false).contains("ACCEPTED"));
-        app.world_mut().resource_mut::<ObserverSession>().phase =
-            crate::observer::SessionPhase::Advancing;
+        app.world_mut().resource_mut::<ObserverSession>().phase = SessionPhase::Advancing;
         app.update();
         let text = painted_text(&mut app, false);
         assert!(text.contains("RESOLVING · period 4"));
@@ -2034,11 +2049,9 @@ mod tests {
             client.commitment = None;
             let standing = &mut client.view.as_mut().unwrap().standing;
             standing.authorized = false;
-            standing.paused_reason =
-                Some(babylon_persistence::runtime_session::OrganizerPauseReason::Explicit);
+            standing.paused_reason = Some(OrganizerPauseReason::Explicit);
         }
-        app.world_mut().resource_mut::<ObserverSession>().phase =
-            crate::observer::SessionPhase::Advancing;
+        app.world_mut().resource_mut::<ObserverSession>().phase = SessionPhase::Advancing;
         app.update();
         let text = painted_text(&mut app, false);
         assert!(text.contains("RESOLVING · period 4"));
@@ -2185,9 +2198,7 @@ mod tests {
         use std::time::Duration;
 
         let (mut app, window, notes, draft) = focused_organizer(true);
-        app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
-            Duration::ZERO,
-        ));
+        app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::ZERO));
         let (requests, replies) =
             crate::observer_io::tests::install_pending_command_fixture(&mut app);
         let (status, reading, measures) =
@@ -2219,9 +2230,7 @@ mod tests {
             3,
         );
         committed.production = Some(crate::production_freight::tests::fixture());
-        app.world_mut()
-            .resource_mut::<crate::observer_ui::ObserverFrame>()
-            .0 = Some(committed.clone());
+        app.world_mut().resource_mut::<ObserverFrame>().0 = Some(committed.clone());
         app.update();
         let context = app.world().resource::<ObserverSession>().context();
         app.world_mut().write_message(ObserverCommand::Step);
@@ -2238,17 +2247,13 @@ mod tests {
         assert_eq!(app.world().resource::<ObserverSession>().durable_tick, 3);
         assert_pending_frame(&app, &context, &committed);
 
-        app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
-            Duration::from_secs(7),
-        ));
+        app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_secs(7)));
         app.update();
         assert_eq!(
             app.world().get::<Text>(status).unwrap().0,
             "Period 4 requested; awaiting commit · 7s elapsed"
         );
-        app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
-            Duration::ZERO,
-        ));
+        app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::ZERO));
         exercise_actual_advance_progress(&mut app, &replies, status, &context, &committed);
         typing_key(&mut app, window, KeyCode::KeyX, "x");
         assert_eq!(app.world().resource::<InputFocus>().get(), Some(notes));
@@ -2275,12 +2280,10 @@ mod tests {
 
     fn exercise_actual_advance_progress(
         app: &mut App,
-        replies: &std::sync::mpsc::Sender<
-            Result<babylon_persistence::runtime_session::RuntimeSessionResponse, String>,
-        >,
+        replies: &Sender<Result<RuntimeSessionResponse, String>>,
         status: Entity,
-        context: &crate::observer::ObservationContext,
-        committed: &babylon_persistence::observer_reader::ObserverEconomySnapshot,
+        context: &ObservationContext,
+        committed: &ObserverEconomySnapshot,
     ) {
         let scope = app
             .world()
@@ -2304,7 +2307,7 @@ mod tests {
             }))
             .expect("current protocol must admit real advance phase messages");
             replies.send(Ok(response)).unwrap();
-            app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
+            app.insert_resource(TimeUpdateStrategy::ManualDuration(
                 std::time::Duration::from_secs(1),
             ));
             app.update();
@@ -2314,15 +2317,15 @@ mod tests {
             );
             assert_pending_frame(app, context, committed);
         }
-        app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
+        app.insert_resource(TimeUpdateStrategy::ManualDuration(
             std::time::Duration::ZERO,
         ));
     }
 
     fn assert_pending_frame(
         app: &App,
-        context: &crate::observer::ObservationContext,
-        committed: &babylon_persistence::observer_reader::ObserverEconomySnapshot,
+        context: &ObservationContext,
+        committed: &ObserverEconomySnapshot,
     ) {
         let state = app.world().resource::<ObserverSession>();
         assert_eq!(&state.context(), context);
@@ -2332,9 +2335,7 @@ mod tests {
             Some("3".repeat(64)).as_deref()
         );
         assert_eq!(
-            app.world()
-                .resource::<crate::observer_ui::ObserverFrame>()
-                .for_session(state),
+            app.world().resource::<ObserverFrame>().for_session(state),
             Some(committed)
         );
     }
@@ -2555,8 +2556,7 @@ mod tests {
                     contributor_id: 1,
                     contributor_label: "Fixture contributor".into(),
                     source_hash: [16; 32],
-                    cash_consent:
-                        babylon_persistence::runtime_session::OrganizerGiftConsent::Accept,
+                    cash_consent: OrganizerGiftConsent::Accept,
                     maximum_cash_micros: 400_000,
                     protected_cash_floor_micros: 0,
                     collection_hours: 2,

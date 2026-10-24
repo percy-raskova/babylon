@@ -1,5 +1,5 @@
 //! Reconcile physical identities and per-account net assets without recapture.
-use super::{add, Result};
+use super::Result;
 use crate::{AccountId, CircuitAccounting, MaterialCircuitError, MaterialCircuitState};
 use std::collections::BTreeMap;
 
@@ -65,8 +65,8 @@ pub(crate) fn validate(state: &MaterialCircuitState) -> Result<()> {
     for (account, assets) in costs.net_assets(&economy.book)? {
         let row = &costs.accounts[&account];
         if assets
-            != add(
-                add(row.opening_capital, row.contributed_capital)?,
+            != super::add(
+                super::add(row.opening_capital, row.contributed_capital)?,
                 row.retained_earnings,
             )?
         {

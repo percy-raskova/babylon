@@ -1,15 +1,23 @@
 //! Cash-limited ordinary purchases; replacement and expansion are decision evidence.
-use super::{
-    get, InvestmentPolicy, InvestmentReceipt, MaterialCircuitError, MaterialCircuitState,
-    ProcessId, ProductiveEquipment, Result,
-};
+use super::InvestmentPolicy;
+use super::InvestmentReceipt;
+use super::MaterialCircuitError;
+use super::MaterialCircuitState;
+use super::ProcessId;
+use super::ProductiveEquipment;
+use super::Result;
 use crate::inventory::InventoryLedger;
 use crate::valuation::CostClose;
 use crate::{
     AccountId, CircuitAccounting, MonetaryBook, MoneyTransferReceipt, OrderAccessMode, OrderId,
     OrderRow, OutboundOrderId, ProcessOutput, ProductionDemandPolicy, PurchaseEscrow,
 };
-use babylon_kernel::{content_digest::sha256_of, currency::Currency};
+use babylon_kernel::currency::Currency;
+
+use crate::GoodId;
+use crate::SiteId;
+use crate::UnitId;
+use babylon_kernel::content_digest;
 use std::collections::BTreeMap;
 /// Stable ordinary equipment-purchase principal for one process and period.
 #[must_use]
@@ -17,7 +25,7 @@ pub fn equipment_purchase_order_id(period: u64, process: ProcessId) -> OrderId {
     let mut b = b"babylon.equipment-purchase.v1\0".to_vec();
     b.extend_from_slice(&period.to_be_bytes());
     b.extend_from_slice(&process.as_bytes());
-    OrderId::from_bytes(sha256_of(&b))
+    OrderId::from_bytes(content_digest::sha256_of(&b))
 }
 fn sum(mut rows: impl Iterator<Item = u64>) -> Result<u64> {
     rows.try_fold(0_u64, |n, v| {
@@ -39,8 +47,8 @@ struct Evidence {
     pending: BTreeMap<ProcessId, u64>,
     outputs: BTreeMap<ProcessId, ProcessOutput>,
     plans: BTreeMap<ProcessId, ProductionDemandPolicy>,
-    offers: BTreeMap<(crate::SiteId, crate::GoodId, crate::UnitId), Currency>,
-    earnings: BTreeMap<crate::SiteId, i128>,
+    offers: BTreeMap<(SiteId, GoodId, UnitId), Currency>,
+    earnings: BTreeMap<SiteId, i128>,
 }
 impl Evidence {
     fn new(state: &MaterialCircuitState, e: &ProductiveEquipment) -> Result<Self> {
@@ -234,7 +242,7 @@ pub(crate) fn invest(
     costs: &CostClose,
     transfers: &mut Vec<MoneyTransferReceipt>,
 ) -> Result<Vec<InvestmentReceipt>> {
-    let Some(e) = get(state).cloned() else {
+    let Some(e) = super::get(state).cloned() else {
         return Ok(vec![]);
     };
     if e.investment_policies.is_empty() {

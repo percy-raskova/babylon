@@ -14,7 +14,7 @@ use sha2::{Digest as _, Sha256};
 
 use uuid::Uuid;
 
-use crate::archive::{database, decode, validate_text, ARCHIVE_PAGE_TEMPLATE_SHA256};
+use crate::archive::ARCHIVE_PAGE_TEMPLATE_SHA256;
 
 use crate::michigan_economy::{
     QCEW_ECONOMICS_ARTIFACT_SHA256, QCEW_ECONOMICS_FIELD_KEYS, QCEW_ECONOMICS_SOURCE_ID,
@@ -24,12 +24,12 @@ use crate::place_producer::{
     PINNED_COUNTY_PLACE_OVERLAP_ARTIFACT_SHA256, PINNED_PLACE_IDENTITY_ARTIFACT_SHA256,
 };
 
+use crate::identity::CampaignId;
+use crate::spatial_reference_products::SpatialReferenceProducts;
 use crate::{
-    h3_reference_cohort::representative_h3_reference_cohort, identity::CampaignId,
-    spatial_reference_products::michigan_spatial_reference_products,
-    spatial_reference_products::SpatialReferenceProducts, ArchiveCitation, ArchiveDirtySelection,
-    ArchiveDossierProducer, ArchiveLink, ArchivePageInput, ArchivePageRef, ArchiveProducerOutcome,
-    ArchiveSignal, ArchiveSubject, ArchiveSubjectKind, PendingArchiveReceipt, SemanticArchiveError,
+    ArchiveCitation, ArchiveDirtySelection, ArchiveDossierProducer, ArchiveLink, ArchivePageInput,
+    ArchivePageRef, ArchiveProducerOutcome, ArchiveSignal, ArchiveSubject, ArchiveSubjectKind,
+    PendingArchiveReceipt, SemanticArchiveError,
 };
 
 /// Stable decision question every county dossier page answers.
@@ -167,9 +167,9 @@ impl CountySignal {
         label: String,
         value: String,
     ) -> Result<Self, SemanticArchiveError> {
-        validate_text(&grant_key)?;
-        validate_text(&label)?;
-        validate_text(&value)?;
+        archive::validate_text(&grant_key)?;
+        archive::validate_text(&label)?;
+        archive::validate_text(&value)?;
         Ok(Self {
             grant_key,
             label,
@@ -223,7 +223,7 @@ impl CountyPlaceLink {
     /// Refuses a malformed place GEOID or unsafe place label.
     pub fn try_new(place_geoid: String, place_name: String) -> Result<Self, SemanticArchiveError> {
         ArchivePageRef::try_new(ArchiveSubjectKind::Place, place_geoid.clone())?;
-        validate_text(&place_name)?;
+        archive::validate_text(&place_name)?;
         Ok(Self {
             place_geoid,
             place_name,
@@ -280,7 +280,7 @@ impl CountyPagePlan {
             county_geoid.clone(),
             title.clone(),
         )?;
-        validate_text(&territory_local_name)?;
+        archive::validate_text(&territory_local_name)?;
         let mut signals = signals;
         signals.sort_by(|left, right| left.grant_key.cmp(&right.grant_key));
         if signals
@@ -369,10 +369,10 @@ impl CountySignalProjection {
         source_id: String,
         provenance_name: String,
     ) -> Result<Self, SemanticArchiveError> {
-        validate_text(&label)?;
-        validate_text(&value)?;
-        validate_text(&source_id)?;
-        validate_text(&provenance_name)?;
+        archive::validate_text(&label)?;
+        archive::validate_text(&value)?;
+        archive::validate_text(&source_id)?;
+        archive::validate_text(&provenance_name)?;
         if label.contains(":** ") || value.contains(" — ") || source_id.contains("; ") {
             return Err(SemanticArchiveError::InvalidText);
         }
@@ -435,8 +435,8 @@ impl CountyPageProjection {
         signals: Vec<CountySignalProjection>,
         places: Vec<(String, Option<String>)>,
     ) -> Result<Self, SemanticArchiveError> {
-        validate_text(&title)?;
-        validate_text(&question)?;
+        archive::validate_text(&title)?;
+        archive::validate_text(&question)?;
         let mut signal_labels = BTreeSet::new();
         for signal in &signals {
             if !signal_labels.insert(signal.label.clone()) {
@@ -447,7 +447,7 @@ impl CountyPageProjection {
         for (geoid, name) in &places {
             ArchivePageRef::try_new(ArchiveSubjectKind::Place, geoid.clone())?;
             if let Some(name) = name {
-                validate_text(name)?;
+                archive::validate_text(name)?;
             }
             if !unique.insert(geoid.clone()) {
                 return Err(SemanticArchiveError::DuplicateKey);
@@ -507,7 +507,7 @@ impl CountyGrantIndex {
         let mut grants: BTreeMap<ArchivePageRef, BTreeSet<String>> = BTreeMap::new();
         for (kind, id, grant_key) in rows {
             let page_ref = ArchivePageRef::try_new(kind, id)?;
-            validate_text(&grant_key)?;
+            archive::validate_text(&grant_key)?;
             grants.entry(page_ref).or_default().insert(grant_key);
         }
         Ok(Self { grants })
@@ -550,7 +550,7 @@ pub fn desired_county_projection(
             let (source_id, provenance_name) = if signal.reference.is_some()
                 || QCEW_ECONOMICS_FIELD_KEYS.contains(&signal.grant_key())
             {
-                let citation = signal_citation(plan, signal, 0)?;
+                let citation = source::signal_citation(plan, signal, 0)?;
                 (
                     citation.source_id().to_owned(),
                     citation.locator().to_owned(),
@@ -755,7 +755,7 @@ pub(crate) fn parse_signal_bullet(
         let (geoid, digest) = locator
             .strip_prefix("national_county_reference_2024.csv.gz#county_geoid=")?
             .split_once("&sha256=")?;
-        babylon_kernel::geography::CountyGeoid::try_from(geoid).ok()?;
+        CountyGeoid::try_from(geoid).ok()?;
         if digest != crate::michigan_economy::digest_hex(&crate::national_counties::ARTIFACT_SHA256)
         {
             return None;
@@ -858,7 +858,7 @@ pub fn county_page_input(
         .signals
         .iter()
         .map(|signal| {
-            let citation = signal_citation(plan, signal, resolve_tick)?;
+            let citation = source::signal_citation(plan, signal, resolve_tick)?;
             ArchiveSignal::try_new(
                 signal.grant_key.clone(),
                 signal.label.clone(),
@@ -1030,7 +1030,15 @@ pub fn county_committed_signals(
     Ok(signals)
 }
 
-use super::source::{signal_citation, NATIONAL_COUNTY_SOURCE_ID};
+use super::source;
+use super::source::NATIONAL_COUNTY_SOURCE_ID;
+use crate::archive;
+use crate::h3_reference_cohort;
+use crate::production_projection::diagnostics::Stage;
+use crate::production_projection::diagnostics::Timing;
+use crate::spatial_reference_products;
+use crate::ArchiveKnowledge;
+use babylon_kernel::geography::CountyGeoid;
 
 /// Production county dossier producer over the captured campaign source.
 pub struct CountyDossierProducer {
@@ -1048,9 +1056,9 @@ impl CountyDossierProducer {
     /// Refuses loudly when the embedded reference products, their governing
     /// H3 cohort, or any contract-pinned artifact digest diverges.
     pub fn try_new(config: &Config) -> Result<Self, SemanticArchiveError> {
-        let cohort = representative_h3_reference_cohort()
+        let cohort = h3_reference_cohort::representative_h3_reference_cohort()
             .map_err(|_| SemanticArchiveError::ArtifactDigest)?;
-        let products = michigan_spatial_reference_products(cohort)
+        let products = spatial_reference_products::michigan_spatial_reference_products(cohort)
             .map_err(|_| SemanticArchiveError::ArtifactDigest)?;
         verify_pinned_artifact_digests(&products)?;
         Ok(Self {
@@ -1091,10 +1099,7 @@ impl CountyDossierProducer {
         campaign_id: CampaignId,
         resolve_tick: u64,
     ) -> Result<Vec<CountyPagePlan>, SemanticArchiveError> {
-        let _timing = crate::production_projection::diagnostics::Timing::start(
-            crate::production_projection::diagnostics::Stage::ArchiveCountyPlans,
-            resolve_tick,
-        );
+        let _timing = Timing::start(Stage::ArchiveCountyPlans, resolve_tick);
         if self
             .campaign
             .is_some_and(|expected| expected != campaign_id)
@@ -1124,16 +1129,16 @@ impl CountyDossierProducer {
         let mut client = self
             .config
             .connect(NoTls)
-            .map_err(|error| database("connect county mapping reader", &error))?;
+            .map_err(|error| archive::database("connect county mapping reader", &error))?;
         let rows = client
             .query(ARCHIVE_COUNTY_MAP_READ_SQL, &[campaign_id.as_uuid()])
-            .map_err(|error| database("read county mapping", &error))?;
+            .map_err(|error| archive::database("read county mapping", &error))?;
         rows.iter()
             .map(|row| {
-                let local: String = decode(row, 0)?;
-                let geoid: String = decode(row, 1)?;
+                let local: String = archive::decode(row, 0)?;
+                let geoid: String = archive::decode(row, 1)?;
                 ArchivePageRef::try_new(ArchiveSubjectKind::County, geoid.clone())?;
-                validate_text(&local)?;
+                archive::validate_text(&local)?;
                 Ok((geoid, local))
             })
             .collect()
@@ -1154,28 +1159,27 @@ impl CountyDossierProducer {
     ) -> Result<BTreeMap<String, CommittedTerritoryFields>, SemanticArchiveError> {
         let resolve_tick =
             i64::try_from(resolve_tick).map_err(|_| SemanticArchiveError::InvalidVerifiedTick)?;
-        let mut client = self
-            .config
-            .connect(NoTls)
-            .map_err(|error| database("connect committed territory field reader", &error))?;
+        let mut client = self.config.connect(NoTls).map_err(|error| {
+            archive::database("connect committed territory field reader", &error)
+        })?;
         let rows = client
             .query(
                 ARCHIVE_COUNTY_FIELD_READ_SQL,
                 &[campaign_id.as_uuid(), &resolve_tick],
             )
-            .map_err(|error| database("read committed territory fields", &error))?;
+            .map_err(|error| archive::database("read committed territory fields", &error))?;
         let mut committed: BTreeMap<String, CommittedTerritoryFields> = BTreeMap::new();
         for row in &rows {
-            let key: Vec<u8> = decode(row, 0)?;
+            let key: Vec<u8> = archive::decode(row, 0)?;
             let Ok(StableElementKey::Node { local_name, .. }) =
                 StableElementKey::from_canonical_bytes(&key)
             else {
                 return Err(SemanticArchiveError::StoredPageMismatch);
             };
-            let field_name: String = decode(row, 1)?;
-            let value_tag: i16 = decode(row, 2)?;
-            let real_bits: Option<i64> = decode(row, 3)?;
-            let integer: Option<i64> = decode(row, 4)?;
+            let field_name: String = archive::decode(row, 1)?;
+            let value_tag: i16 = archive::decode(row, 2)?;
+            let real_bits: Option<i64> = archive::decode(row, 3)?;
+            let integer: Option<i64> = archive::decode(row, 4)?;
             let fields = committed.entry(local_name).or_default();
             fields.insert_stored(&field_name, value_tag, real_bits, integer)?;
         }
@@ -1188,7 +1192,7 @@ impl ArchiveDossierProducer for CountyDossierProducer {
         &self,
         campaign_id: Uuid,
         receipt: &PendingArchiveReceipt,
-        knowledge: &crate::ArchiveKnowledge,
+        knowledge: &ArchiveKnowledge,
         page_budget: usize,
     ) -> Result<ArchiveProducerOutcome, SemanticArchiveError> {
         let campaign = CampaignId::from_uuid(campaign_id);

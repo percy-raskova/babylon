@@ -15,7 +15,8 @@ use serde::{Deserialize, Serialize};
 
 use super::super::ProductionProjectionError;
 
-use crate::michigan_economy::digest_hex;
+use super::super::lifecycle::PeriodOrders;
+use crate::michigan_economy;
 
 /// One complete committed period's local inventory accounts. Absent at foundation.
 /// The enclosing authorized observation binds campaign, perspective and evidence.
@@ -341,7 +342,7 @@ pub(in crate::production_projection) fn add_transport(
     current: &MaterialCircuitState,
     receipt: &MaterialTickReceipts,
     orders: &Orders,
-    joined: &super::super::lifecycle::PeriodOrders,
+    joined: &PeriodOrders,
     ledger: &mut Ledger,
 ) -> Result<(), ProductionProjectionError> {
     let mut movements = Movements::new();
@@ -647,9 +648,9 @@ pub(in crate::production_projection) fn finish_row(
     }
     let (good, unit) = labels(key.1, key.2).ok_or(ProductionProjectionError::Content)?;
     Ok(ProductionMaterialBalanceRow {
-        site_id: digest_hex(&key.0.as_bytes()),
-        good_id: digest_hex(&key.1.as_bytes()),
-        unit_id: digest_hex(&key.2.as_bytes()),
+        site_id: michigan_economy::digest_hex(&key.0.as_bytes()),
+        good_id: michigan_economy::digest_hex(&key.1.as_bytes()),
+        unit_id: michigan_economy::digest_hex(&key.2.as_bytes()),
         good,
         unit,
         opening: amounts.opening,

@@ -6,12 +6,10 @@ use std::str::FromStr;
 
 use crate::archive_revision::{ArchiveDossierBounds, ArchiveDossierState};
 
-use super::archive_reader::{scope_at, with_reader};
-
 use crate::material_runtime::DurableMaterialRuntime;
 
+use crate::identity::CampaignId;
 use crate::{
-    identity::CampaignId, postgres_catalog::validate_connection_target, seed_foundation_grants,
     ArchiveCitation, ArchiveDirtyBatch, ArchiveDossierProducer, ArchiveKnowledgeGrant,
     ArchivePageInput, ArchivePageRef, ArchiveProducerOutcome, ArchiveReceiptDisposition,
     ArchiveSignal, ArchiveSubject, ArchiveSubjectKind, ArchiveWorker, FoundationGrantsError,
@@ -24,6 +22,10 @@ use babylon_practice_contract::OrderedPracticeActionBatch;
 
 use postgres::{Config, NoTls};
 
+use super::archive_reader;
+use crate::postgres_catalog;
+use crate::ArchiveKnowledge;
+use postgres::Client;
 use uuid::Uuid;
 
 pub(in crate::archive_revision::worker) const DSN_ENV: &str = "BABYLON_POSTGRES_TEST_DSN";
@@ -107,7 +109,7 @@ impl ArchiveDossierProducer for StubPageProducer {
         &self,
         _campaign_id: Uuid,
         receipt: &PendingArchiveReceipt,
-        _knowledge: &crate::ArchiveKnowledge,
+        _knowledge: &ArchiveKnowledge,
         _page_budget: usize,
     ) -> Result<ArchiveProducerOutcome, SemanticArchiveError> {
         let batch = ArchiveDirtyBatch::try_new(
@@ -129,7 +131,7 @@ impl ArchiveDossierProducer for FailAtTickProducer {
         &self,
         campaign_id: Uuid,
         receipt: &PendingArchiveReceipt,
-        knowledge: &crate::ArchiveKnowledge,
+        knowledge: &ArchiveKnowledge,
         page_budget: usize,
     ) -> Result<ArchiveProducerOutcome, SemanticArchiveError> {
         if receipt.resolve_tick() == self.fail_at_tick {
@@ -153,7 +155,7 @@ impl ArchiveDossierProducer for QuietExceptProducer {
         &self,
         campaign_id: Uuid,
         receipt: &PendingArchiveReceipt,
-        knowledge: &crate::ArchiveKnowledge,
+        knowledge: &ArchiveKnowledge,
         page_budget: usize,
     ) -> Result<ArchiveProducerOutcome, SemanticArchiveError> {
         if receipt.resolve_tick() == self.materialize_tick {
@@ -179,7 +181,7 @@ impl ArchiveDossierProducer for ChangedExceptProducer {
         &self,
         campaign_id: Uuid,
         receipt: &PendingArchiveReceipt,
-        knowledge: &crate::ArchiveKnowledge,
+        knowledge: &ArchiveKnowledge,
         page_budget: usize,
     ) -> Result<ArchiveProducerOutcome, SemanticArchiveError> {
         if receipt.resolve_tick() == self.quiet_tick {
@@ -200,7 +202,7 @@ impl ArchiveDossierProducer for WrongTickProducer {
         &self,
         _campaign_id: Uuid,
         receipt: &PendingArchiveReceipt,
-        _knowledge: &crate::ArchiveKnowledge,
+        _knowledge: &ArchiveKnowledge,
         _page_budget: usize,
     ) -> Result<ArchiveProducerOutcome, SemanticArchiveError> {
         let wrong = PendingArchiveReceipt::try_new(
@@ -224,7 +226,7 @@ impl ArchiveDossierProducer for UndrainedProducer {
         &self,
         _campaign_id: Uuid,
         receipt: &PendingArchiveReceipt,
-        _knowledge: &crate::ArchiveKnowledge,
+        _knowledge: &ArchiveKnowledge,
         _page_budget: usize,
     ) -> Result<ArchiveProducerOutcome, SemanticArchiveError> {
         Ok(ArchiveProducerOutcome::new(
@@ -284,7 +286,7 @@ pub(in crate::archive_revision::worker) fn validated_base_config() -> Config {
     assert_eq!(canary.len(), 32);
     let dsn = std::env::var(DSN_ENV).expect("runner supplies the disposable DSN");
     let config = Config::from_str(&dsn).expect("runner DSN parses");
-    validate_connection_target(&config).expect("loopback target");
+    postgres_catalog::validate_connection_target(&config).expect("loopback target");
     assert_eq!(config.get_user(), Some("test"));
     assert_eq!(config.get_dbname(), Some("postgres"));
     let actual: Option<String> = config
@@ -591,8 +593,8 @@ pub(in crate::archive_revision::worker) fn live_worker_consumes_pending_receipts
     );
     assert_eq!(archive_page_count(&target.config, target.campaign_id), 3);
 
-    with_reader(&target.config, |reader| {
-        let scope = scope_at(&target.config, target.campaign_id, 3);
+    archive_reader::with_reader(&target.config, |reader| {
+        let scope = archive_reader::scope_at(&target.config, target.campaign_id, 3);
         let hits = reader
             .search_as_of(&scope, "investigate at tick 2", 10)
             .expect("known-only scoped search");
@@ -843,8 +845,8 @@ pub(in crate::archive_revision::worker) fn live_search_refuses_tampered_page_con
         .sweep_once(target.campaign_id, &StubPageProducer)
         .expect("sweep materializes the page");
 
-    with_reader(&target.config, |reader| {
-        let scope = scope_at(&target.config, target.campaign_id, 1);
+    archive_reader::with_reader(&target.config, |reader| {
+        let scope = archive_reader::scope_at(&target.config, target.campaign_id, 1);
         let hits = reader
             .search_as_of(&scope, "728576", 10)
             .expect("untampered search returns the known page");
@@ -881,8 +883,8 @@ pub(in crate::archive_revision::worker) fn live_search_bounds_results_to_the_req
         .expect("sweep materializes both pages");
     assert_eq!(archive_page_count(&target.config, target.campaign_id), 2);
 
-    with_reader(&target.config, |reader| {
-        let scope = scope_at(&target.config, target.campaign_id, 2);
+    archive_reader::with_reader(&target.config, |reader| {
+        let scope = archive_reader::scope_at(&target.config, target.campaign_id, 2);
         let bounded = reader
             .search_as_of(&scope, "728576", 1)
             .expect("bounded search");
@@ -905,7 +907,7 @@ pub(in crate::archive_revision::worker) fn live_search_bounds_results_to_the_req
 /// grant-row set: 83 counties + 745 places + 8 concepts at tick 0 only, with
 /// no earned magnitude keys.
 pub(in crate::archive_revision::worker) fn assert_foundation_grant_census(
-    client: &mut postgres::Client,
+    client: &mut Client,
     campaign_id: CampaignId,
 ) {
     let census = client
@@ -1011,7 +1013,7 @@ pub(in crate::archive_revision::worker) fn live_foundation_grants_seed_at_campai
         transaction
             .batch_execute("SET LOCAL search_path=pg_catalog; SET LOCAL quote_all_identifiers=off")
             .unwrap();
-        let report = seed_foundation_grants(&mut transaction, target.campaign_id)
+        let report = crate::seed_foundation_grants(&mut transaction, target.campaign_id)
             .expect("the exact foundation retry reconciles");
         transaction.commit().unwrap();
         report
@@ -1047,7 +1049,7 @@ pub(in crate::archive_revision::worker) fn live_foundation_grants_seed_at_campai
         transaction
             .batch_execute("SET LOCAL search_path=pg_catalog; SET LOCAL quote_all_identifiers=off")
             .unwrap();
-        let refusal = seed_foundation_grants(&mut transaction, target.campaign_id)
+        let refusal = crate::seed_foundation_grants(&mut transaction, target.campaign_id)
             .expect_err("a drifted grant row must refuse the foundation retry");
         transaction.commit().unwrap();
         refusal

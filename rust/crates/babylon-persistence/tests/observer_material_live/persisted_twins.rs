@@ -3,16 +3,18 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::{
-    advance_material_period, assert_material_accounts, identity_hex, install_reader_role,
-    provision_observer_role, CampaignId, DisposableTarget, DurableMaterialRuntime,
-    MichiganContentPreset, MichiganDeliveryPreset, NoTls, ObserverEconomyReader,
-    ObserverVisibility, Uuid,
+    CampaignId, DisposableTarget, DurableMaterialRuntime, MichiganContentPreset,
+    MichiganDeliveryPreset, NoTls, ObserverEconomyReader, ObserverVisibility, Uuid,
 };
 use babylon_kernel::content_digest::sha256_of;
-use babylon_persistence::{
-    observer_reader::ObserverEconomySnapshot, production_observation::ProductionSnapshot,
-};
-use babylon_tick::material_world::{decode_material_receipts, MaterialTickReceipts};
+use babylon_persistence::observer_reader::ObserverEconomySnapshot;
+use babylon_persistence::production_observation::ProductionSnapshot;
+
+use babylon_material_circuit::CapacityRow;
+use babylon_persistence::material_storage::LookupAnchor;
+use babylon_persistence::production_observation::FreightOrderIndex;
+use babylon_tick::material_world;
+use babylon_tick::material_world::MaterialTickReceipts;
 use postgres::Client;
 
 // Both downstream onset periods and their following continuation are inside this
@@ -74,8 +76,8 @@ impl RunPair {
         observer: &ObserverEconomyReader,
         connection: &mut Client,
     ) {
-        advance_material_period(&mut self.uninterrupted);
-        advance_material_period(&mut self.restarted);
+        super::advance_material_period(&mut self.uninterrupted);
+        super::advance_material_period(&mut self.restarted);
         self.assert_exact_continuation();
         let mut current = self.snapshots(observer);
         assert_eq!(current[0].production, current[1].production);
@@ -157,7 +159,7 @@ pub(super) fn stored_canonical_material(
                 &opening,
                 u64::try_from(index + 1).unwrap(),
                 delta,
-                babylon_persistence::material_storage::LookupAnchor::Previous(chain),
+                LookupAnchor::Previous(chain),
             )
             .unwrap(),
         );
@@ -199,19 +201,19 @@ fn authenticated_receipts(
     );
     assert_eq!(
         snapshot.foundation_digest,
-        identity_hex(tail.foundation_digest())
+        super::identity_hex(tail.foundation_digest())
     );
     assert_eq!(
         snapshot.tick_content_hash,
-        Some(identity_hex(*tail.tick_content_hash().as_bytes()))
+        Some(super::identity_hex(*tail.tick_content_hash().as_bytes()))
     );
     assert_eq!(
         snapshot.nominal_world_hash,
-        Some(identity_hex(tail.result_world_hash()))
+        Some(super::identity_hex(tail.result_world_hash()))
     );
     assert!(snapshot.envelope_digest.is_some());
     assert!(snapshot.production_evidence_digest().unwrap().is_some());
-    let receipts = decode_material_receipts(&bytes).unwrap();
+    let receipts = material_world::decode_material_receipts(&bytes).unwrap();
     assert_eq!(receipts.resolve_tick, snapshot.resolve_tick);
     receipts
 }
@@ -236,7 +238,7 @@ fn assert_reconciled(
     current: &ObserverEconomySnapshot,
     receipts: &MaterialTickReceipts,
 ) {
-    assert_material_accounts(current);
+    super::assert_material_accounts(current);
     assert_eq!(prior.resolve_tick + 1, current.resolve_tick);
     let before = production(prior);
     let after = production(current);
@@ -254,9 +256,9 @@ fn assert_inventory(
     let stock_key = |site_key: &str, good_key: &str| {
         let good = catalog.good(good_key).unwrap();
         (
-            identity_hex(catalog.site(site_key).unwrap().id().as_bytes()),
-            identity_hex(good.id().as_bytes()),
-            identity_hex(good.unit_id().as_bytes()),
+            super::identity_hex(catalog.site(site_key).unwrap().id().as_bytes()),
+            super::identity_hex(good.id().as_bytes()),
+            super::identity_hex(good.unit_id().as_bytes()),
         )
     };
     let mut dispatches = BTreeMap::new();
@@ -335,8 +337,8 @@ fn assert_inventory(
     for site in &after.sites {
         for process in &site.processes {
             let receipt = receipts.production.iter().find(|row| {
-                identity_hex(row.site_id.as_bytes()) == site.id
-                    && identity_hex(row.process_id.as_bytes()) == process.id
+                super::identity_hex(row.site_id.as_bytes()) == site.id
+                    && super::identity_hex(row.process_id.as_bytes()) == process.id
             });
             assert_eq!(
                 process.produced_batches,
@@ -404,7 +406,7 @@ fn assert_freight(
         let source = catalog
             .routes()
             .iter()
-            .find(|row| identity_hex(row.id().as_bytes()) == route.physical_route_id)
+            .find(|row| super::identity_hex(row.id().as_bytes()) == route.physical_route_id)
             .unwrap();
         let dispatched: u128 = receipts
             .dispatches
@@ -464,12 +466,10 @@ fn is_restart_boundary(
             .dispatches
             .iter()
             .any(|row| row.route_id == sheet.id() && row.quantity > 0));
-        assert!(production(snapshot)
-            .freight
-            .iter()
-            .any(|lot| lot.route_id == identity_hex(sheet.id().as_bytes())
-                && lot.dispatch_period == tick
-                && lot.arrival_period == arrival));
+        assert!(production(snapshot).freight.iter().any(|lot| lot.route_id
+            == super::identity_hex(sheet.id().as_bytes())
+            && lot.dispatch_period == tick
+            && lot.arrival_period == arrival));
     } else if tick == arrival {
         assert!(receipts
             .arrivals
@@ -477,12 +477,10 @@ fn is_restart_boundary(
             .any(|row| row.order_id == sheet.order_id() && row.quantity > 0));
     } else if tick == 2 {
         assert_eq!(preset, MichiganDeliveryPreset::Delayed);
-        assert!(production(snapshot)
-            .freight
-            .iter()
-            .any(|lot| lot.route_id == identity_hex(sheet.id().as_bytes())
-                && lot.dispatch_period == 1
-                && lot.arrival_period == 4));
+        assert!(production(snapshot).freight.iter().any(|lot| lot.route_id
+            == super::identity_hex(sheet.id().as_bytes())
+            && lot.dispatch_period == 1
+            && lot.arrival_period == 4));
     } else {
         return false;
     }
@@ -563,9 +561,9 @@ fn subassembly_stock(snapshot: &ObserverEconomySnapshot) -> u64 {
     let catalog = crate::test_support::catalog();
     stock(
         production(snapshot),
-        &identity_hex(catalog.site("wayne-vehicle-parts").unwrap().id().as_bytes()),
-        &identity_hex(catalog.good("subassembly").unwrap().id().as_bytes()),
-        &identity_hex(catalog.good("subassembly").unwrap().unit_id().as_bytes()),
+        &super::identity_hex(catalog.site("wayne-vehicle-parts").unwrap().id().as_bytes()),
+        &super::identity_hex(catalog.good("subassembly").unwrap().id().as_bytes()),
+        &super::identity_hex(catalog.good("subassembly").unwrap().unit_id().as_bytes()),
     )
 }
 
@@ -601,8 +599,8 @@ fn persisted_delivery_twins_reconcile_and_restart_at_dispatch_transit_and_arriva
         initial.labor.iter().map(|row| row.available).sum::<u64>(),
         4960
     );
-    install_reader_role(&target.writer).unwrap();
-    provision_observer_role(&target.writer).unwrap();
+    super::install_reader_role(&target.writer).unwrap();
+    super::provision_observer_role(&target.writer).unwrap();
     let observer_config = target.login("babylon_observer", "persistedtwins");
     let observer =
         ObserverEconomyReader::connect(&observer_config, ObserverVisibility::FullObserver).unwrap();
@@ -660,8 +658,8 @@ fn shared_freight_competition_is_committed_restart_safe_and_scope_confined() {
         MichiganDeliveryPreset::SharedFreightConstrained,
         331_003,
     );
-    install_reader_role(&target.writer).unwrap();
-    provision_observer_role(&target.writer).unwrap();
+    super::install_reader_role(&target.writer).unwrap();
+    super::provision_observer_role(&target.writer).unwrap();
     let observer_config = target.login("babylon_observer", "sharedfreight");
     let observer =
         ObserverEconomyReader::connect(&observer_config, ObserverVisibility::FullObserver).unwrap();
@@ -700,15 +698,14 @@ fn shared_freight_competition_is_committed_restart_safe_and_scope_confined() {
         (&constrained, 120, 40, 12, 40, (2, 2), (1, 1)),
     ] {
         let first = production(&pair.history[1][0]);
-        let orders =
-            babylon_persistence::production_observation::FreightOrderIndex::try_new(first).unwrap();
+        let orders = FreightOrderIndex::try_new(first).unwrap();
         let shared = first
             .freight_capacity_accounts
             .iter()
             .find(|a| a.route_ids.len() == 2)
             .unwrap();
         for (key, expected) in [("sheet", first_sheet), ("meal", first_meal)] {
-            let good_id = identity_hex(catalog.good(key).unwrap().id().as_bytes());
+            let good_id = super::identity_hex(catalog.good(key).unwrap().id().as_bytes());
             assert_eq!(
                 shared.completed.as_ref().unwrap().reservations[0]
                     .orders
@@ -725,7 +722,7 @@ fn shared_freight_competition_is_committed_restart_safe_and_scope_confined() {
             ("macomb-fabricated-metal", panels, panel_people),
             ("oakland-food", meals, meal_people),
         ] {
-            let id = identity_hex(catalog.site(key).unwrap().id().as_bytes());
+            let id = super::identity_hex(catalog.site(key).unwrap().id().as_bytes());
             let site = third.sites.iter().find(|site| site.id == id).unwrap();
             assert_eq!(site.processes.len(), 1);
             let process = &site.processes[0];
@@ -753,9 +750,7 @@ fn assert_shared_reservations(
     tick: u64,
 ) {
     let production = production(snapshot);
-    let orders =
-        babylon_persistence::production_observation::FreightOrderIndex::try_new(production)
-            .unwrap();
+    let orders = FreightOrderIndex::try_new(production).unwrap();
     let accounts = &production.freight_capacity_accounts;
     for account in accounts {
         let completed = account.completed.as_ref().unwrap();
@@ -800,11 +795,7 @@ fn assert_shared_reservations(
     }
 }
 
-fn assert_current_capacity_budget(
-    pair: &RunPair,
-    opening: &[babylon_material_circuit::CapacityRow],
-    tick: u64,
-) {
+fn assert_current_capacity_budget(pair: &RunPair, opening: &[CapacityRow], tick: u64) {
     let period = tick.checked_add(1).unwrap();
     let expected = opening
         .iter()

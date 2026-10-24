@@ -1,23 +1,25 @@
 //! Source-controlled persons reach sparse graph seed partitions, never inferred jobs.
-use babylon_persistence::{
-    national_cohorts::national_cohort_reference,
-    national_counties::national_county_reference,
-    national_economy::{NationalGamePolicy, ResidentWorkplaceSource},
-    national_resident_allocation::{allocate_home_county, ResidentAttendanceMode},
-    national_resident_workforce::national_resident_workforce_reference,
-};
+use babylon_persistence::national_cohorts;
+use babylon_persistence::national_counties;
+use babylon_persistence::national_economy::{NationalGamePolicy, ResidentWorkplaceSource};
+use babylon_persistence::national_household_allocation::NationalHouseholdAllocation;
+use babylon_persistence::national_household_refinement::NationalHouseholdLeafRoster;
+use babylon_persistence::national_resident_allocation;
+use babylon_persistence::national_resident_allocation::ResidentAttendanceMode;
+use babylon_persistence::national_resident_workforce;
+use std::collections::BTreeSet;
 
 #[test]
 fn home_county_allocation_conserves_all_resident_controls_and_keeps_source_zero_pools() {
-    let counties = national_county_reference().unwrap();
-    let cohorts = national_cohort_reference().unwrap();
-    let classes = national_resident_workforce_reference().unwrap();
+    let counties = national_counties::national_county_reference().unwrap();
+    let cohorts = national_cohorts::national_cohort_reference().unwrap();
+    let classes = national_resident_workforce::national_resident_workforce_reference().unwrap();
     let policy = NationalGamePolicy::parse(include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../../../content/scenarios/national/defines.toml"
     )))
     .unwrap();
-    let allocation = allocate_home_county(
+    let allocation = national_resident_allocation::allocate_home_county(
         counties,
         cohorts,
         classes,
@@ -28,7 +30,7 @@ fn home_county_allocation_conserves_all_resident_controls_and_keeps_source_zero_
     .unwrap();
     assert_eq!(allocation.counties.len(), 3144);
     assert_eq!(allocation.workplaces.len(), 60454);
-    let member_ids: std::collections::BTreeSet<_> = allocation
+    let member_ids: BTreeSet<_> = allocation
         .workplaces
         .iter()
         .flat_map(|r| &r.members)
@@ -90,10 +92,10 @@ fn home_county_allocation_conserves_all_resident_controls_and_keeps_source_zero_
 
 #[test]
 fn kalawao_employees_have_explicit_fallbacks_and_owner_activity_is_not_a_missing_job_residual() {
-    let allocation = allocate_home_county(
-        national_county_reference().unwrap(),
-        national_cohort_reference().unwrap(),
-        national_resident_workforce_reference().unwrap(),
+    let allocation = national_resident_allocation::allocate_home_county(
+        national_counties::national_county_reference().unwrap(),
+        national_cohorts::national_cohort_reference().unwrap(),
+        national_resident_workforce::national_resident_workforce_reference().unwrap(),
         &household_budgets(),
         &empty_leaves(),
         &NationalGamePolicy::parse(include_str!(concat!(
@@ -147,16 +149,16 @@ fn kalawao_employees_have_explicit_fallbacks_and_owner_activity_is_not_a_missing
 
 #[test]
 fn suppressed_jobs_remain_absent_when_peer_weights_place_resident_people() {
-    let cohorts = national_cohort_reference().unwrap();
+    let cohorts = national_cohorts::national_cohort_reference().unwrap();
     let policy = NationalGamePolicy::parse(include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../../../content/scenarios/national/defines.toml"
     )))
     .unwrap();
-    let allocation = allocate_home_county(
-        national_county_reference().unwrap(),
+    let allocation = national_resident_allocation::allocate_home_county(
+        national_counties::national_county_reference().unwrap(),
         cohorts,
-        national_resident_workforce_reference().unwrap(),
+        national_resident_workforce::national_resident_workforce_reference().unwrap(),
         &household_budgets(),
         &empty_leaves(),
         &policy,
@@ -198,22 +200,20 @@ fn suppressed_jobs_remain_absent_when_peer_weights_place_resident_people() {
     assert!(suppressed_groups > 0);
 }
 
-fn household_budgets(
-) -> babylon_persistence::national_household_allocation::NationalHouseholdAllocation {
+fn household_budgets() -> NationalHouseholdAllocation {
     babylon_persistence::national_household_allocation::allocate_households(
-        national_county_reference().unwrap(),
+        national_counties::national_county_reference().unwrap(),
         babylon_persistence::national_households::national_household_reference().unwrap(),
-        national_resident_workforce_reference().unwrap(),
+        national_resident_workforce::national_resident_workforce_reference().unwrap(),
         1_000,
     )
     .unwrap()
 }
 
-fn empty_leaves() -> babylon_persistence::national_household_refinement::NationalHouseholdLeafRoster
-{
+fn empty_leaves() -> NationalHouseholdLeafRoster {
     let budgets = household_budgets();
     let time = babylon_persistence::national_household_time_allocation::allocate_household_time(
-        national_county_reference().unwrap(),
+        national_counties::national_county_reference().unwrap(),
         &budgets,
     )
     .unwrap();

@@ -1,12 +1,16 @@
 //! Semantic refusals remain visible beneath the outer exact-artifact digest.
-use super::{mapping::FunctionMapping, parse::parse_group, NationalCohortReferenceError as Error};
-use crate::national_counties::national_county_reference;
+use super::mapping::FunctionMapping;
+use super::NationalCohortReferenceError as Error;
 
-fn row(text: &str) -> Result<super::CohortReference, Error> {
-    parse_group(
+use super::parse;
+use super::CohortReference;
+use crate::national_counties;
+
+fn row(text: &str) -> Result<CohortReference, Error> {
+    parse::parse_group(
         text,
         &FunctionMapping::load()?,
-        national_county_reference().map_err(Error::CountyReference)?,
+        national_counties::national_county_reference().map_err(Error::CountyReference)?,
     )
 }
 
@@ -116,7 +120,7 @@ fn duplicate_groups_are_refused_before_coverage_checks() {
         super::parse::parse_csv(
             &duplicate,
             &FunctionMapping::load().unwrap(),
-            national_county_reference().unwrap()
+            national_counties::national_county_reference().unwrap()
         ),
         Err(Error::GroupOrder)
     );

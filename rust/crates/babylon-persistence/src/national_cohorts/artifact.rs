@@ -4,16 +4,18 @@ use super::{CohortKey, CohortReference};
 
 use super::{mapping, parse};
 
-use crate::national_counties::{
-    national_county_reference, NationalCountyReference, NationalCountyReferenceError,
-};
+use crate::national_counties::{NationalCountyReference, NationalCountyReferenceError};
 
-use babylon_kernel::{
-    content_digest::sha256_of,
-    geography::{CountyGeoid, CountyGeoidError, NationalCountyRoster},
-};
+use babylon_kernel::geography::{CountyGeoid, CountyGeoidError, NationalCountyRoster};
 
-use std::{io::Read, sync::OnceLock};
+use crate::national_counties;
+use babylon_kernel::content_digest;
+use flate2::bufread::GzDecoder;
+use mapping::FunctionMapping;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
+use std::io::Read;
+use std::sync::OnceLock;
 
 pub(crate) const ARTIFACT: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -59,8 +61,8 @@ impl NationalCohortReference {
     /// # Errors
     /// Refuses altered bytes, bounds, malformed records or inconsistent source measures.
     pub fn decode_pinned(bytes: &[u8]) -> Result<Self, NationalCohortReferenceError> {
-        let counties =
-            national_county_reference().map_err(NationalCohortReferenceError::CountyReference)?;
+        let counties = national_counties::national_county_reference()
+            .map_err(NationalCohortReferenceError::CountyReference)?;
         Self::decode_captured(bytes, mapping::DOCUMENT, counties)
     }
     /// Admit supplied source and mapping bytes against the supplied checked county capture.
@@ -75,10 +77,10 @@ impl NationalCohortReference {
         if bytes.len() > MAX_COMPRESSED_BYTES {
             return Err(NationalCohortReferenceError::Bound);
         }
-        if sha256_of(bytes) != ARTIFACT_SHA256 {
+        if content_digest::sha256_of(bytes) != ARTIFACT_SHA256 {
             return Err(NationalCohortReferenceError::ArtifactDigest);
         }
-        let mapping = mapping::FunctionMapping::decode_pinned(mapping_bytes)?;
+        let mapping = FunctionMapping::decode_pinned(mapping_bytes)?;
         let groups = parse::parse_csv(&decode_gzip(bytes)?, &mapping, counties)?;
         Ok(Self {
             roster: counties.roster().clone(),
@@ -177,7 +179,7 @@ pub enum NationalCohortReferenceError {
 }
 
 impl std::fmt::Display for NationalCohortReferenceError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         write!(f, "national cohort reference refused: {self:?}")
     }
 }
@@ -197,7 +199,7 @@ pub fn national_cohort_reference(
 }
 
 pub(crate) fn decode_gzip(bytes: &[u8]) -> Result<String, NationalCohortReferenceError> {
-    let mut decoder = flate2::bufread::GzDecoder::new(bytes);
+    let mut decoder = GzDecoder::new(bytes);
     let mut text = String::new();
     decoder
         .by_ref()

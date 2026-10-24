@@ -18,13 +18,22 @@ use serde_json::{json, Value};
 
 use super::{ui, OrganizerClient, OrganizerInspector, RequestKind};
 use crate::observer::{ObservationContext, ObserverSession, SessionPhase};
+use crate::observer_controls::ControlAvailability;
 use crate::observer_io::{ObserverSet, RuntimePipe};
+use crate::observer_opening::MenuPage;
 use crate::observer_opening::{OpeningPresentation, OpeningStage};
 use crate::observer_ui::{ObserverCommand, ObserverUiState};
+use crate::observer_warning::ContinueWarning;
 use crate::production::PrimaryView;
 use babylon_persistence::runtime_session::{
     OrganizerChoice, OrganizerCommand, RuntimeSessionScope,
 };
+use mpsc::Receiver;
+use mpsc::SyncSender;
+use mpsc::TryRecvError;
+use thread::Builder;
+use ui::OrganizerAction;
+use uuid::Uuid;
 
 // Designed bounds for instrumentation, independent of the captured game policy.
 const INPUT_BYTES: u64 = 4096;
@@ -86,7 +95,7 @@ enum Action {
 }
 
 impl Action {
-    fn organizer(self) -> Option<ui::OrganizerAction> {
+    fn organizer(self) -> Option<OrganizerAction> {
         use ui::OrganizerAction as O;
         Some(match self {
             Self::OpenOrganizer => O::Open,
@@ -152,15 +161,14 @@ enum Incoming {
 
 #[derive(Resource)]
 pub(crate) struct Transport {
-    incoming: Mutex<mpsc::Receiver<Incoming>>,
-    outgoing: mpsc::SyncSender<Vec<u8>>,
+    incoming: Mutex<Receiver<Incoming>>,
+    outgoing: SyncSender<Vec<u8>>,
     socket: UnixStream,
 }
 
 impl Transport {
     pub(crate) fn connect(path: &Path, campaign: &str) -> Result<Self, String> {
-        let identity =
-            uuid::Uuid::parse_str(campaign).map_err(|_| "capture_startup_campaign_invalid")?;
+        let identity = Uuid::parse_str(campaign).map_err(|_| "capture_startup_campaign_invalid")?;
         if identity.is_nil() || identity.to_string() != campaign {
             return Err("capture_startup_campaign_invalid".into());
         }
@@ -210,7 +218,7 @@ impl Transport {
             .map_err(|_| "cannot restore qualification input after capture startup")?;
         let (incoming_tx, incoming) = mpsc::sync_channel(1);
         let (outgoing, outgoing_rx) = mpsc::sync_channel::<Vec<u8>>(1);
-        thread::Builder::new()
+        Builder::new()
             .name("qualification-input".into())
             .spawn(move || loop {
                 let (message, terminal) = match read_input(&mut reader) {
@@ -226,7 +234,7 @@ impl Transport {
                 let _ = socket.shutdown(Shutdown::Both);
                 "cannot start qualification input"
             })?;
-        thread::Builder::new()
+        Builder::new()
             .name("qualification-output".into())
             .spawn(move || {
                 while let Ok(bytes) = outgoing_rx.recv() {
@@ -293,7 +301,7 @@ pub(crate) struct HandlerReceipt {
 impl HandlerReceipt {
     pub(crate) fn organizer_finished(
         &mut self,
-        id: MessageId<ui::OrganizerAction>,
+        id: MessageId<OrganizerAction>,
         applied: bool,
         client: &OrganizerClient,
     ) {
@@ -426,7 +434,7 @@ fn available(
         Action::ContinueWarning => ui.splash_visible && opening.stage == OpeningStage::Warning,
         Action::ContinueTitle => {
             opening.stage == OpeningStage::Title
-                && opening.menu_page == crate::observer_opening::MenuPage::Home
+                && opening.menu_page == MenuPage::Home
                 && ui.menu_open
                 && !ui.splash_visible
                 && !ui.comparison_open
@@ -438,7 +446,7 @@ fn available(
                 && !ui.menu_open
                 && !ui.comparison_open
                 && crate::observer_controls::availability(ObserverCommand::Step, session)
-                    == crate::observer_controls::ControlAvailability::Enabled
+                    == ControlAvailability::Enabled
         }
         Action::Reopen => {
             pipe && !ui.splash_visible
@@ -451,7 +459,7 @@ fn available(
                 && session.viewed_tick == session.durable_tick
                 && matches!(session.phase, SessionPhase::Ready | SessionPhase::Complete)
                 && crate::observer_controls::availability(ObserverCommand::ReopenCampaign, session)
-                    == crate::observer_controls::ControlAvailability::Enabled
+                    == ControlAvailability::Enabled
         }
         Action::Quit => !ui.comparison_open && !session.quit_requested,
         _ => false,
@@ -531,9 +539,9 @@ fn dispatch(
     mut controls: ResMut<Controls>,
     mut receipt: ResMut<HandlerReceipt>,
     situation: Situation,
-    mut organizer: MessageWriter<ui::OrganizerAction>,
+    mut organizer: MessageWriter<OrganizerAction>,
     mut observer: MessageWriter<ObserverCommand>,
-    mut warning: MessageWriter<crate::observer_warning::ContinueWarning>,
+    mut warning: MessageWriter<ContinueWarning>,
     mut commands: Commands,
 ) {
     match flush_reply(&transport, &mut controls) {
@@ -554,7 +562,7 @@ fn dispatch(
         Err(_) => Ok(Incoming::Failed("control_input_lock_failed")),
     };
     let input = match received {
-        Err(mpsc::TryRecvError::Empty) => return,
+        Err(TryRecvError::Empty) => return,
         Ok(Incoming::Input(input)) if controls.pending.is_none() => input,
         other => {
             let reason = match other {
@@ -600,7 +608,7 @@ fn dispatch(
     } else {
         match input.action {
             Action::ContinueWarning => {
-                warning.write(crate::observer_warning::ContinueWarning);
+                warning.write(ContinueWarning);
             }
             Action::ContinueTitle => {
                 commands.trigger(crate::observer_title::ContinueTitle);
@@ -706,12 +714,10 @@ fn outcome(pending: &Pending, s: &Situation) -> Option<Result<&'static str, &'st
         return organizer_outcome(pending, s);
     }
     let applied = match action.organizer() {
-        Some(ui::OrganizerAction::Choose(choice)) => s.client.choice() == choice,
-        Some(ui::OrganizerAction::Open) => *s.view == PrimaryView::Organizer,
-        Some(ui::OrganizerAction::Inspect(inspector)) => s.client.inspector == inspector,
-        Some(ui::OrganizerAction::CloseInspector) => {
-            s.client.inspector == OrganizerInspector::Closed
-        }
+        Some(OrganizerAction::Choose(choice)) => s.client.choice() == choice,
+        Some(OrganizerAction::Open) => *s.view == PrimaryView::Organizer,
+        Some(OrganizerAction::Inspect(inspector)) => s.client.inspector == inspector,
+        Some(OrganizerAction::CloseInspector) => s.client.inspector == OrganizerInspector::Closed,
         _ => match action {
             Action::ContinueWarning => s.opening.stage == OpeningStage::Production,
             Action::ContinueTitle => !s.ui.menu_open,
@@ -894,10 +900,20 @@ pub(crate) fn install(app: &mut App, transport: Transport) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::observer_opening::ProductionSkip;
+    use crate::observer_warning::ContinueWarning;
+    use babylon_kernel::clock::CampaignDuration;
+    use babylon_persistence::identity::CampaignId;
+    use bevy::time::TimeUpdateStrategy;
+    use fs::Permissions;
+    use std::io::Cursor;
     use std::os::unix::fs::PermissionsExt;
     use std::os::unix::net::UnixListener;
+    use std::path::PathBuf;
+    use ui::OrganizerAction;
+    use uuid::Uuid;
 
-    struct SocketFixture(std::path::PathBuf);
+    struct SocketFixture(PathBuf);
 
     impl Drop for SocketFixture {
         fn drop(&mut self) {
@@ -909,12 +925,12 @@ mod tests {
     #[test]
     fn qualification_socket_is_private_lossless_and_closes_on_drop() {
         let fixture =
-            SocketFixture(std::env::temp_dir().join(format!("babylon-q-{}", uuid::Uuid::new_v4())));
+            SocketFixture(std::env::temp_dir().join(format!("babylon-q-{}", Uuid::new_v4())));
         fs::create_dir(&fixture.0).unwrap();
-        fs::set_permissions(&fixture.0, fs::Permissions::from_mode(0o700)).unwrap();
+        fs::set_permissions(&fixture.0, Permissions::from_mode(0o700)).unwrap();
         let path = fixture.0.join("control.sock");
         let listener = UnixListener::bind(&path).unwrap();
-        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+        fs::set_permissions(&path, Permissions::from_mode(0o600)).unwrap();
         let (started, ready) = mpsc::sync_channel(1);
         let connect_path = path.clone();
         let worker = thread::spawn(move || {
@@ -956,7 +972,7 @@ mod tests {
             Incoming::Closed
         ));
         drop(receiver);
-        fs::set_permissions(&fixture.0, fs::Permissions::from_mode(0o755)).unwrap();
+        fs::set_permissions(&fixture.0, Permissions::from_mode(0o755)).unwrap();
         assert!(
             Transport::connect(&path, "00000000-0000-0000-0000-000000000001").is_err(),
             "a public directory cannot become a control channel"
@@ -1018,9 +1034,9 @@ mod tests {
                 .insert_resource(ObserverUiState::default())
                 .init_resource::<OpeningPresentation>()
                 .init_resource::<PrimaryView>()
-                .add_message::<ui::OrganizerAction>()
-                .add_message::<crate::observer_warning::ContinueWarning>()
-                .add_message::<crate::observer_opening::ProductionSkip>()
+                .add_message::<OrganizerAction>()
+                .add_message::<ContinueWarning>()
+                .add_message::<ProductionSkip>()
                 .add_observer(crate::observer_title::continue_requested)
                 .configure_sets(
                     Update,
@@ -1035,9 +1051,7 @@ mod tests {
             app.world_mut()
                 .resource_mut::<Time<Virtual>>()
                 .set_max_delta(Duration::from_secs(60));
-            app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
-                Duration::from_secs(60),
-            ));
+            app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_secs(60)));
             let (socket, _peer) = UnixStream::pair().unwrap();
             let (incoming, receiver) = mpsc::channel();
             let (outgoing, output) = mpsc::sync_channel(1);
@@ -1109,8 +1123,8 @@ mod tests {
     fn qualification_fast_preview_retains_its_exact_handler_witness() {
         let (mut client, mut session) = super::super::tests::ready();
         let mut pending = pending(&session, &client, Action::Review);
-        let mut messages = Messages::<ui::OrganizerAction>::default();
-        let id = messages.write(ui::OrganizerAction::Review);
+        let mut messages = Messages::<OrganizerAction>::default();
+        let id = messages.write(OrganizerAction::Review);
         let mut receipt = HandlerReceipt {
             tracked: Some(Tracked::Organizer(id.id, Action::Review)),
             ..default()
@@ -1203,7 +1217,7 @@ mod tests {
             verdict.0 = outcome(&input.0, &situation);
         }
         let (mut client, mut session) = super::super::tests::ready();
-        session.duration = Some(babylon_kernel::clock::CampaignDuration::Continuous);
+        session.duration = Some(CampaignDuration::Continuous);
         let command = client.make_command(&session, client.choice()).unwrap();
         client.reviewed_command = Some(command.clone());
         let mut original = pending(&session, &client, Action::Confirm);
@@ -1327,9 +1341,9 @@ mod tests {
             frame("").into_iter().take_while(|b| *b != b'\n').collect(),
             vec![b'x'; usize::try_from(INPUT_BYTES + 2).unwrap()],
         ] {
-            assert!(read_input(&mut std::io::Cursor::new(bytes)).is_err());
+            assert!(read_input(&mut Cursor::new(bytes)).is_err());
         }
-        let mut input = std::io::Cursor::new(frame(""));
+        let mut input = Cursor::new(frame(""));
         assert_eq!(
             read_input(&mut input).unwrap().unwrap().action,
             Action::Status
@@ -1339,12 +1353,8 @@ mod tests {
 
     #[test]
     fn qualification_preconditions_bind_campaign_scope_age_and_generation() {
-        let session = ObserverSession::new(babylon_persistence::identity::CampaignId::from_uuid(
-            uuid::Uuid::from_u128(0x342),
-        ));
-        let mut input = read_input(&mut std::io::Cursor::new(frame("")))
-            .unwrap()
-            .unwrap();
+        let session = ObserverSession::new(CampaignId::from_uuid(Uuid::from_u128(0x342)));
+        let mut input = read_input(&mut Cursor::new(frame(""))).unwrap().unwrap();
         assert!(precondition(&input, &session));
         input.expected_tick = 1;
         assert!(!precondition(&input, &session));
@@ -1355,7 +1365,7 @@ mod tests {
         input.scope_epoch = Some(1);
         assert!(!precondition(&input, &session));
         input.scope_epoch = None;
-        input.campaign_id = uuid::Uuid::from_u128(0x343).to_string();
+        input.campaign_id = Uuid::from_u128(0x343).to_string();
         assert!(!precondition(&input, &session));
     }
 }

@@ -2,14 +2,12 @@
 
 use std::collections::TryReserveError;
 
-use babylon_bsl::identity_codec::{project_stable_value, IdentityCodecError, StableBslValue};
+use babylon_bsl::identity_codec::{IdentityCodecError, StableBslValue};
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::allocator_state::AllocatorState;
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_graph::stable_element::{StableElementResolver, StableIdentityError};
-use babylon_graph::stable_state::{
-    encode_stable_graph_state, StableGraphState, StableGraphStateHash,
-};
+use babylon_graph::stable_state::{StableGraphState, StableGraphStateHash};
 use babylon_graph::state_hash::CanonicalState;
 use babylon_graph::substrate::GraphSubstrate;
 use babylon_graph::working_copy::DetachedCopy;
@@ -25,16 +23,25 @@ use babylon_practice_contract::{
 
 use crate::choice_receipt::ChoiceReceiptRef;
 use crate::committed_event::CommittedEvent;
+use crate::material_replay::MaterialBaseInputs;
 use crate::material_state::{
     MaterialAllocationGate, MaterialProjectionContext, MaterialState, MaterialStateError,
     MaterialStateRows, ProductionMaterialAllocationGate,
 };
+use crate::material_world::PreparedMaterialWorld;
+use crate::replay_identity;
 use crate::replay_identity::{
-    encode_prepared_environment, encode_stable_world, encode_tick_payload_for_prepared,
-    encode_world_register_set, world_register_manifest, PreparedEnvironment,
-    ReplayTickIdentityError, StableWorld, TickPayload, WorldRegisterManifest, WorldRegisterSet,
+    PreparedEnvironment, ReplayTickIdentityError, StableWorld, TickPayload, WorldRegisterManifest,
+    WorldRegisterSet,
 };
-use crate::{prepare_rules, EventRecord, PreparedRules, TickReport};
+use crate::{EventRecord, PreparedRules, TickReport};
+use babylon_bsl::causal_contract;
+use babylon_bsl::evaluator::Value;
+use babylon_bsl::identity_codec;
+use babylon_graph::stable_state;
+use babylon_practice_contract::OrganizerReceipt;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 
 /// A checked replay-session construction or tick refusal.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -153,7 +160,7 @@ impl From<TickContentHashError> for ReplayTickError {
 }
 
 impl std::fmt::Display for ReplayTickError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> FmtResult {
         match self {
             Self::Preparation { message } => {
                 write!(formatter, "replay preparation failed: {message}")
@@ -329,7 +336,7 @@ trait SuccessfulEventRetention {
 
     fn project_value(
         &self,
-        value: &babylon_bsl::evaluator::Value,
+        value: &Value,
         resolver: &StableElementResolver,
     ) -> Result<StableBslValue, ReplayTickError>;
 }
@@ -351,10 +358,10 @@ impl SuccessfulEventRetention for ProductionSuccessfulEventRetention {
 
     fn project_value(
         &self,
-        value: &babylon_bsl::evaluator::Value,
+        value: &Value,
         resolver: &StableElementResolver,
     ) -> Result<StableBslValue, ReplayTickError> {
-        Ok(project_stable_value(value, resolver)?)
+        Ok(identity_codec::project_stable_value(value, resolver)?)
     }
 }
 
@@ -777,7 +784,7 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> ReplayT
                 &mut graph,
                 instances,
             ),
-            None => prepare_rules(scenario_src, prelude_src, rule_src, &mut graph),
+            None => crate::prepare_rules(scenario_src, prelude_src, rule_src, &mut graph),
         }
         .map_err(|error| ReplayTickError::Preparation {
             message: error.to_string(),
@@ -788,9 +795,13 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> ReplayT
             &prepared.node_content_ids,
             &prepared.hyperedge_content_ids,
         )?;
-        let register_manifest = world_register_manifest()?;
-        let prepared_environment =
-            encode_prepared_environment(&content, &prepared, &resolver, &register_manifest)?;
+        let register_manifest = replay_identity::world_register_manifest()?;
+        let prepared_environment = replay_identity::encode_prepared_environment(
+            &content,
+            &prepared,
+            &resolver,
+            &register_manifest,
+        )?;
         Ok(Self {
             graph,
             prepared,
@@ -853,10 +864,10 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> ReplayT
     pub(crate) fn validate_staffing_ownership(&self) -> Result<(), ReplayTickError> {
         use crate::material_replay::MaterialBaseError;
         use crate::material_staffing::STAFFING_FIELDS;
-        use babylon_bsl::causal_contract::{effect_footprint, EffectSignature};
+        use babylon_bsl::causal_contract::EffectSignature;
 
         for (rule_id, loaded) in &self.prepared.rules {
-            let effects = effect_footprint(&loaded.rule).map_err(|error| {
+            let effects = causal_contract::effect_footprint(&loaded.rule).map_err(|error| {
                 ReplayTickError::MaterialBase(MaterialBaseError::StaffingEffectAnalysis {
                     rule_id: rule_id.clone(),
                     error,
@@ -913,14 +924,8 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> ReplayT
     pub(crate) fn prepare_material_advance(
         &self,
         actions: &OrderedPracticeActionBatch,
-        material: crate::material_replay::MaterialBaseInputs<'_>,
-    ) -> Result<
-        (
-            PreparedReplayTick<G>,
-            crate::material_world::PreparedMaterialWorld,
-        ),
-        ReplayTickError,
-    > {
+        material: MaterialBaseInputs<'_>,
+    ) -> Result<(PreparedReplayTick<G>, PreparedMaterialWorld), ReplayTickError> {
         let (graph, material) = self.prepare_with_material(actions, Some(material))?;
         let material = material.ok_or(ReplayTickError::MaterialBase(
             crate::material_replay::MaterialBaseError::MissingCandidate,
@@ -931,14 +936,8 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> ReplayT
     fn prepare_with_material(
         &self,
         actions: &OrderedPracticeActionBatch,
-        material: Option<crate::material_replay::MaterialBaseInputs<'_>>,
-    ) -> Result<
-        (
-            PreparedReplayTick<G>,
-            Option<crate::material_world::PreparedMaterialWorld>,
-        ),
-        ReplayTickError,
-    > {
+        material: Option<MaterialBaseInputs<'_>>,
+    ) -> Result<(PreparedReplayTick<G>, Option<PreparedMaterialWorld>), ReplayTickError> {
         let next_tick = self
             .completed_tick
             .checked_add(1)
@@ -1196,7 +1195,7 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> ReplayT
     /// Returns the first stable identity, topology, bound, or allocation
     /// refusal without mutating the replay session.
     pub fn stable_graph_state(&self) -> Result<StableGraphState, ReplayTickError> {
-        encode_stable_graph_state(&self.graph, &self.resolver).map_err(Into::into)
+        stable_state::encode_stable_graph_state(&self.graph, &self.resolver).map_err(Into::into)
     }
 
     /// Project the current typed material rows through the captured graph and scope.
@@ -1228,7 +1227,8 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> ReplayT
     /// Returns the first completed-tick, bound, or allocation refusal without
     /// mutating the replay session.
     pub fn world_registers(&self) -> Result<WorldRegisterSet, ReplayTickError> {
-        encode_world_register_set(&self.register_manifest, self.completed_tick).map_err(Into::into)
+        replay_identity::encode_world_register_set(&self.register_manifest, self.completed_tick)
+            .map_err(Into::into)
     }
 
     /// Borrow the exact replay-session namespace.
@@ -1297,13 +1297,14 @@ impl ReplayTickSession<HypergraphStore> {
         }
         let mut graph = self.graph.detached_copy();
         graph.restore_stable_state(&self.resolver, graph_state)?;
-        let restored_graph = encode_stable_graph_state(&graph, &self.resolver)?;
+        let restored_graph = stable_state::encode_stable_graph_state(&graph, &self.resolver)?;
         if restored_graph.canonical_bytes() != graph_state.canonical_bytes() {
             return Err(ReplayTickError::CheckpointMismatch {
                 section: "stable graph",
             });
         }
-        let registers = encode_world_register_set(&self.register_manifest, completed_tick)?;
+        let registers =
+            replay_identity::encode_world_register_set(&self.register_manifest, completed_tick)?;
         if registers.canonical_bytes() != expected_world_registers {
             return Err(ReplayTickError::CheckpointMismatch {
                 section: "world registers",
@@ -1366,7 +1367,7 @@ pub(crate) struct ReplayIdentityInputs<'a, G, C> {
     pub(crate) result_graph: &'a G,
     pub(crate) report: &'a TickReport,
     pub(crate) events: &'a [EventRecord],
-    pub(crate) action_outcomes: &'a [babylon_practice_contract::OrganizerReceipt],
+    pub(crate) action_outcomes: &'a [OrganizerReceipt],
     pub(crate) resolve_tick: i64,
 }
 
@@ -1458,10 +1459,11 @@ pub(crate) fn compose_replay_prior<G: CanonicalState, C>(
     execution: &ReplayExecutionInputs<'_, C>,
     completed_tick: i64,
 ) -> Result<ReplayPriorIdentity, ReplayTickError> {
-    let stable_graph = encode_stable_graph_state(graph, execution.resolver)?;
+    let stable_graph = stable_state::encode_stable_graph_state(graph, execution.resolver)?;
     let stable_graph_digest = stable_graph.digest();
-    let registers = encode_world_register_set(execution.register_manifest, completed_tick)?;
-    let world = encode_stable_world(&stable_graph, &registers)?;
+    let registers =
+        replay_identity::encode_world_register_set(execution.register_manifest, completed_tick)?;
+    let world = replay_identity::encode_stable_world(&stable_graph, &registers)?;
     drop(stable_graph);
     Ok(ReplayPriorIdentity {
         registers,
@@ -1474,13 +1476,16 @@ fn compose_replay_identity_with_retention<G: CanonicalState, C, R: SuccessfulEve
     inputs: ReplayIdentityInputs<'_, G, C>,
     retention: &R,
 ) -> Result<ReplayIdentityArtifacts, ReplayTickError> {
-    let result_graph = encode_stable_graph_state(inputs.result_graph, inputs.execution.resolver)?;
+    let result_graph =
+        stable_state::encode_stable_graph_state(inputs.result_graph, inputs.execution.resolver)?;
     let result_stable_graph_digest = result_graph.digest();
-    let result_registers =
-        encode_world_register_set(inputs.execution.register_manifest, inputs.resolve_tick)?;
-    let result_world = encode_stable_world(&result_graph, &result_registers)?;
+    let result_registers = replay_identity::encode_world_register_set(
+        inputs.execution.register_manifest,
+        inputs.resolve_tick,
+    )?;
+    let result_world = replay_identity::encode_stable_world(&result_graph, &result_registers)?;
     validate_committed_event_sink(inputs.report, inputs.events)?;
-    let payload = encode_tick_payload_for_prepared(
+    let payload = replay_identity::encode_tick_payload_for_prepared(
         inputs.prepared,
         inputs.report,
         inputs.action_outcomes,
@@ -1656,22 +1661,21 @@ fn replay_material_error(error: MaterialStateError) -> ReplayTickError {
 mod tests {
     use std::cell::Cell;
 
-    use babylon_bsl::canonical_ast::rules_hash_of;
-    use babylon_bsl::rule_pipeline::split_content;
     use babylon_graph::allocator_state::AllocatorState;
     use babylon_graph::memory::MemoryGraph;
     use babylon_graph::state_hash::CanonicalState;
     use babylon_graph::substrate::GraphSubstrate;
+    use babylon_kernel::content_digest::ContentDigest;
     use babylon_kernel::replay::{ReplaySeed, ReplaySessionId};
     use babylon_kernel::tick_content_hash::RefDigest;
-    use babylon_kernel::{content_digest::ContentDigest, H3CellId};
+    use babylon_kernel::H3CellId;
+
     use babylon_practice_contract::ActorOrganizationId;
     use babylon_practice_contract::OrderedPracticeActionBatch;
     use babylon_practice_contract::{
-        input_authority_ledger_digest, CampaignId, InputAuthorityId, PracticeAuthorityKind,
-        PracticeId, PracticeInputAuthority, PracticeInputAuthorityLedger, PracticeIntent,
-        PracticeTargetIdentity, PracticeTargetTag, ProposalNonce, ResolvedPracticeBatch,
-        ResolvedPracticeBatchItem, TaggedPracticeTarget,
+        CampaignId, InputAuthorityId, PracticeAuthorityKind, PracticeId, PracticeInputAuthority,
+        PracticeInputAuthorityLedger, PracticeIntent, PracticeTargetIdentity, PracticeTargetTag,
+        ProposalNonce, ResolvedPracticeBatch, ResolvedPracticeBatchItem, TaggedPracticeTarget,
     };
 
     use super::{
@@ -1686,7 +1690,12 @@ mod tests {
     use crate::material_state::{
         MaterialAllocationGate, MaterialState, MaterialStateError, ProductionMaterialAllocationGate,
     };
+    use crate::ExecutionIdentity;
     use crate::{EventRecord, PreparedEventBatchSink};
+    use babylon_bsl::canonical_ast;
+    use babylon_bsl::evaluator::Value;
+    use babylon_bsl::rule_pipeline;
+    use babylon_practice_contract;
 
     const SCENARIO: &str = include_str!("../content/scenarios/two-classes.bscn");
     const RULE: &str = include_str!("../content/rules/fundamental-theorem.bsl");
@@ -1726,7 +1735,7 @@ mod tests {
 
     fn session_for_rule(rule: &str) -> ReplayTickSession<MemoryGraph> {
         let replay = ReplaySessionId::try_from("per60/atomic").unwrap();
-        let (_, rules) = split_content(rule).unwrap();
+        let (_, rules) = rule_pipeline::split_content(rule).unwrap();
         let forms = rules.into_iter().map(|rule| rule.form).collect::<Vec<_>>();
         ReplayTickSession::new(
             SCENARIO,
@@ -1737,7 +1746,7 @@ mod tests {
             ReplaySeed::new(17),
             ContentDigest {
                 defines_hash: [0x31; 32],
-                rules_hash: rules_hash_of(&forms).unwrap(),
+                rules_hash: canonical_ast::rules_hash_of(&forms).unwrap(),
             },
             RefDigest::from_bytes(MICHIGAN_DYNAMIC_HEX_REFERENCE_BUNDLE_DIGEST),
             dynamic_fixture_material_state(),
@@ -1769,7 +1778,7 @@ mod tests {
             ReplaySeed::new(17),
             ContentDigest {
                 defines_hash: [0x73; 32],
-                rules_hash: rules_hash_of(&[]).unwrap(),
+                rules_hash: canonical_ast::rules_hash_of(&[]).unwrap(),
             },
             RefDigest::from_bytes(MICHIGAN_DYNAMIC_HEX_REFERENCE_BUNDLE_DIGEST),
             dynamic_fixture_material_state(),
@@ -1815,11 +1824,11 @@ mod tests {
             + "(node workers-a NodeType/SOCIAL_CLASS (social-class/wages 10))
                (node workers-b NodeType/SOCIAL_CLASS (social-class/wages 10)))";
         let identity = ReplaySessionId::try_from("capture/native-replay").unwrap();
-        let (_, rules) = split_content(EVENT_RULE).unwrap();
+        let (_, rules) = rule_pipeline::split_content(EVENT_RULE).unwrap();
         let forms = rules.into_iter().map(|rule| rule.form).collect::<Vec<_>>();
         let content = ContentDigest {
             defines_hash: [0x73; 32],
-            rules_hash: rules_hash_of(&forms).unwrap(),
+            rules_hash: canonical_ast::rules_hash_of(&forms).unwrap(),
         };
         let reference = RefDigest::from_bytes(MICHIGAN_DYNAMIC_HEX_REFERENCE_BUNDLE_DIGEST);
         let mut native = ReplayTickSession::new_with_graph_seed(
@@ -1897,7 +1906,7 @@ mod tests {
 
     fn dynamic_allocation_session() -> ReplayTickSession<MemoryGraph> {
         let replay = ReplaySessionId::try_from("per281/dynamic-allocation").unwrap();
-        let (_, rules) = split_content(EVENT_RULE).unwrap();
+        let (_, rules) = rule_pipeline::split_content(EVENT_RULE).unwrap();
         let forms = rules.into_iter().map(|rule| rule.form).collect::<Vec<_>>();
         ReplayTickSession::new(
             MATERIAL_ATOMIC_SCENARIO,
@@ -1908,7 +1917,7 @@ mod tests {
             ReplaySeed::new(19),
             ContentDigest {
                 defines_hash: [0x51; 32],
-                rules_hash: rules_hash_of(&forms).unwrap(),
+                rules_hash: canonical_ast::rules_hash_of(&forms).unwrap(),
             },
             RefDigest::from_bytes(MICHIGAN_DYNAMIC_HEX_REFERENCE_BUNDLE_DIGEST),
             dynamic_allocation_material_state(),
@@ -1922,7 +1931,7 @@ mod tests {
 
     fn material_session_for_scenario(scenario: &str) -> ReplayTickSession<MemoryGraph> {
         let replay = ReplaySessionId::try_from("per281/material-allocation").unwrap();
-        let (_, rules) = split_content(EVENT_RULE).unwrap();
+        let (_, rules) = rule_pipeline::split_content(EVENT_RULE).unwrap();
         let forms = rules.into_iter().map(|rule| rule.form).collect::<Vec<_>>();
         ReplayTickSession::new(
             scenario,
@@ -1933,7 +1942,7 @@ mod tests {
             ReplaySeed::new(19),
             ContentDigest {
                 defines_hash: [0x51; 32],
-                rules_hash: rules_hash_of(&forms).unwrap(),
+                rules_hash: canonical_ast::rules_hash_of(&forms).unwrap(),
             },
             RefDigest::from_bytes(MICHIGAN_DYNAMIC_HEX_REFERENCE_BUNDLE_DIGEST),
             material_state(),
@@ -1982,10 +1991,10 @@ mod tests {
 
         fn project_value(
             &self,
-            value: &babylon_bsl::evaluator::Value,
+            value: &Value,
             resolver: &babylon_graph::stable_element::StableElementResolver,
         ) -> Result<babylon_bsl::identity_codec::StableBslValue, ReplayTickError> {
-            if matches!(value, babylon_bsl::evaluator::Value::NodeRef(_)) {
+            if matches!(value, Value::NodeRef(_)) {
                 return Err(ReplayTickError::Allocation {
                     field: "injected stable event value retention",
                     requested: 1,
@@ -2076,7 +2085,10 @@ mod tests {
             schema_version: 2,
             campaign_id: CampaignId::from_bytes([0x10; 16]),
             resolve_tick: 11,
-            authority_ledger_digest: input_authority_ledger_digest(&ledger).unwrap(),
+            authority_ledger_digest: babylon_practice_contract::input_authority_ledger_digest(
+                &ledger,
+            )
+            .unwrap(),
             resource_allocation_contract_digest: [0x40; 32],
             content_digest: [0x30; 32],
             items: vec![ResolvedPracticeBatchItem { authority, intent }],
@@ -2560,7 +2572,7 @@ mod tests {
             &session.prepared,
             &mut session.graph,
             &mut sink,
-            &crate::ExecutionIdentity::Replay(execution),
+            &ExecutionIdentity::Replay(execution),
             1,
             |_boundary, graph: &MemoryGraph| graph.state_hash(),
             None,

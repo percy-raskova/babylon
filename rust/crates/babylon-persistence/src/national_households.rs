@@ -17,8 +17,6 @@ pub use model::*;
 #[path = "national_households/artifact.rs"]
 mod artifact;
 
-#[cfg(test)]
-use artifact::{decode, ARTIFACT, MAX_COMPRESSED_BYTES};
 pub use artifact::{
     national_household_reference, HouseholdReferenceError, NationalHouseholdReference,
 };

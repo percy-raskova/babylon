@@ -1,15 +1,17 @@
 //! Live `PostgreSQL` contracts for the Michigan H3 reference-bundle installer.
 
-use super::{assert_lock_released, database_user, ScratchDatabase};
+use super::ScratchDatabase;
 use babylon_kernel::tick_content_hash::RefDigest;
+use babylon_persistence::h3_reference_cohort::H3ReferenceCohort;
+use babylon_persistence::postgres_catalog::CatalogError;
 use babylon_persistence::{
-    h3_reference_cohort::representative_h3_reference_cohort,
-    h3_reference_cohort::H3ReferenceCohort, install_current_schema,
-    install_michigan_h3_reference_bundle, michigan_dynamic_hex_foundation,
-    postgres_catalog::CatalogError, CurrentSchemaDisposition, CurrentSchemaError,
-    H3ReferenceInstallConflict, H3ReferenceInstallDisposition, H3ReferenceInstallError,
-    H3ReferenceInstallOperation, H3ReferenceInstallReport, SCHEMA_ADVISORY_LOCK_KEY,
+    CurrentSchemaDisposition, CurrentSchemaError, H3ReferenceInstallConflict,
+    H3ReferenceInstallDisposition, H3ReferenceInstallError, H3ReferenceInstallOperation,
+    H3ReferenceInstallReport, SCHEMA_ADVISORY_LOCK_KEY,
 };
+
+use babylon_persistence::h3_reference_cohort;
+use postgres::Row;
 use postgres::{Config, NoTls};
 
 const CLOSURE_COUNT: usize = 59_849;
@@ -90,7 +92,7 @@ fn verify_exact_epoch_install_and_retry(base: &Config, cohort: &H3ReferenceCohor
         .expect("an exact installed reference bundle must be idempotent");
     assert_exact_report(&retry, H3ReferenceInstallDisposition::AlreadyPresent, 0);
     assert_eq!(reference_snapshot(&config), before_retry);
-    assert_lock_released(&config);
+    super::assert_lock_released(&config);
     database.cleanup();
 }
 
@@ -117,7 +119,7 @@ fn verify_connection_failure_redacts_credentials(cohort: &H3ReferenceCohort) {
 }
 
 fn verify_fresh_refusal(base: &Config, cohort: &H3ReferenceCohort) {
-    let database = ScratchDatabase::empty(base, "h3_installer_fresh", database_user(base));
+    let database = ScratchDatabase::empty(base, "h3_installer_fresh", super::database_user(base));
     let config = database.config(base);
     let before = babylon_catalog_snapshot(&config);
     assert!(matches!(
@@ -125,7 +127,7 @@ fn verify_fresh_refusal(base: &Config, cohort: &H3ReferenceCohort) {
         Err(H3ReferenceInstallError::CurrentSchema(_))
     ));
     assert_eq!(babylon_catalog_snapshot(&config), before);
-    assert_lock_released(&config);
+    super::assert_lock_released(&config);
     database.cleanup();
 }
 
@@ -155,7 +157,7 @@ fn verify_lock_refusal(base: &Config, cohort: &H3ReferenceCohort) {
         .get(0);
     assert!(unlocked);
     drop(blocker);
-    assert_lock_released(&config);
+    super::assert_lock_released(&config);
     database.cleanup();
 }
 
@@ -167,8 +169,8 @@ fn verify_non_owner_refusal(
 ) {
     let database = ScratchDatabase::empty(base, "h3_installer_non_owner", owner);
     let owner_config = database.config_as(base, owner, owner_password);
-    let report =
-        install_current_schema(&owner_config).expect("database owner must establish current epoch");
+    let report = babylon_persistence::install_current_schema(&owner_config)
+        .expect("database owner must establish current epoch");
     assert_eq!(report.disposition, CurrentSchemaDisposition::Installed);
 
     let admin_config = database.config(base);
@@ -181,7 +183,7 @@ fn verify_non_owner_refusal(
         "non-owner installer call must refuse through the exact owner check"
     );
     assert_eq!(reference_snapshot(&admin_config), before);
-    assert_lock_released(&admin_config);
+    super::assert_lock_released(&admin_config);
     database.cleanup();
 }
 
@@ -197,7 +199,7 @@ fn verify_preflight_artifact_identity_conflict(base: &Config, cohort: &H3Referen
         })
     );
     assert_eq!(reference_snapshot(&config), before);
-    assert_lock_released(&config);
+    super::assert_lock_released(&config);
     database.cleanup();
 }
 
@@ -272,7 +274,7 @@ fn verify_installed_state_conflicts(base: &Config, cohort: &H3ReferenceCohort) {
         mutate_orphan_membership,
         H3ReferenceInstallConflict::Membership,
     );
-    assert_lock_released(&config);
+    super::assert_lock_released(&config);
     template.cleanup();
 }
 
@@ -303,7 +305,7 @@ fn verify_installed_mutation_refusal(
         conflicted,
         "conflict refusal must not write: {label}"
     );
-    assert_lock_released(&config);
+    super::assert_lock_released(&config);
     database.cleanup();
 }
 
@@ -470,10 +472,10 @@ fn assert_exact_report(
 }
 
 fn exact_epoch_database(base: &Config, label: &str) -> (ScratchDatabase, Config) {
-    let database = ScratchDatabase::empty(base, label, database_user(base));
+    let database = ScratchDatabase::empty(base, label, super::database_user(base));
     let config = database.config(base);
-    let report =
-        install_current_schema(&config).expect("fresh database must reach the exact current epoch");
+    let report = babylon_persistence::install_current_schema(&config)
+        .expect("fresh database must reach the exact current epoch");
     assert_eq!(report.disposition, CurrentSchemaDisposition::Installed);
     (database, config)
 }
@@ -559,7 +561,7 @@ fn reference_snapshot(config: &Config) -> ReferenceSnapshot {
     }
 }
 
-fn cohort_snapshot(row: &postgres::Row) -> CohortSnapshot {
+fn cohort_snapshot(row: &Row) -> CohortSnapshot {
     CohortSnapshot {
         ref_digest: row.get(0),
         format_version: row.get(1),
@@ -577,7 +579,7 @@ fn cohort_snapshot(row: &postgres::Row) -> CohortSnapshot {
     }
 }
 
-fn product_snapshot(row: &postgres::Row) -> ProductSnapshot {
+fn product_snapshot(row: &Row) -> ProductSnapshot {
     ProductSnapshot {
         ref_digest: row.get(0),
         product_code: row.get(1),
@@ -660,7 +662,7 @@ fn babylon_catalog_snapshot(config: &Config) -> Vec<(String, String)> {
 }
 
 pub(super) fn representative_cohort() -> H3ReferenceCohort {
-    representative_h3_reference_cohort()
+    h3_reference_cohort::representative_h3_reference_cohort()
         .expect("the sole checked-in source fixture must validate")
         .clone()
 }
@@ -669,9 +671,9 @@ pub(super) fn install_reference_bundle(
     config: &Config,
     cohort: &H3ReferenceCohort,
 ) -> Result<H3ReferenceInstallReport, H3ReferenceInstallError> {
-    let foundation = michigan_dynamic_hex_foundation()
+    let foundation = babylon_persistence::michigan_dynamic_hex_foundation()
         .expect("the sole checked Michigan foundation fixture must validate");
-    install_michigan_h3_reference_bundle(config, cohort, foundation)
+    babylon_persistence::install_michigan_h3_reference_bundle(config, cohort, foundation)
 }
 
 fn digest(text: &str) -> RefDigest {

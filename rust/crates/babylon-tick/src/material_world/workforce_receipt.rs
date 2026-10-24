@@ -12,8 +12,6 @@ pub(super) use codec::{
 };
 
 #[cfg(test)]
-use super::ReceiptCursor;
-#[cfg(test)]
 use babylon_kernel::currency::Currency;
 #[cfg(test)]
 use babylon_material_circuit::{

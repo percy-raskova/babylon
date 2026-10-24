@@ -35,7 +35,6 @@ use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_graph::state_hash::CanonicalState;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
-use babylon_tick::run_once_into;
 
 const SCENARIO: &str = include_str!("../content/scenarios/edge-write-lane-e2e.bscn");
 
@@ -80,7 +79,7 @@ const RULE_FOR_EACH_WRITES: &str = r#"
 fn shape_1_for_each_over_edges_writes_every_edge_and_the_emit_reads_pre_state() {
     let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
-    let report = run_once_into(SCENARIO, RULE_FOR_EACH_WRITES, &mut graph, &mut sink)
+    let report = babylon_tick::run_once_into(SCENARIO, RULE_FOR_EACH_WRITES, &mut graph, &mut sink)
         .expect("the for-each write rule must load and run through run_once_into");
     assert_eq!(report.fired, 1, "only writer (shape=1) fires");
 
@@ -130,8 +129,9 @@ fn shape_1_for_each_over_edges_writes_every_edge_and_the_emit_reads_pre_state() 
     // hashes.
     let mut graph2 = HypergraphStore::new();
     let mut sink2 = CollectingSink::default();
-    let report2 = run_once_into(SCENARIO, RULE_FOR_EACH_WRITES, &mut graph2, &mut sink2)
-        .expect("the determinism leg's run must succeed");
+    let report2 =
+        babylon_tick::run_once_into(SCENARIO, RULE_FOR_EACH_WRITES, &mut graph2, &mut sink2)
+            .expect("the determinism leg's run must succeed");
     assert_eq!(report.before, report2.before);
     assert_eq!(report.after, report2.after);
 }
@@ -175,7 +175,7 @@ const RULE_TARGETED_WRITE: &str = r#"
 fn shape_2_edge_between_targets_one_edges_write_and_the_other_stays_honest_null() {
     let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
-    let report = run_once_into(SCENARIO, RULE_TARGETED_WRITE, &mut graph, &mut sink)
+    let report = babylon_tick::run_once_into(SCENARIO, RULE_TARGETED_WRITE, &mut graph, &mut sink)
         .expect("the targeted write rule must load and run through run_once_into");
     assert_eq!(report.fired, 1, "only base-a (shape=2) fires");
 

@@ -1,10 +1,10 @@
 use super::{
-    add, add_cost, AssetBook, Definitions, EquipmentFacts, MaterialCircuitState,
-    MaterialTickReceipts, ProductionProjectionError, ProductiveEquipment, Result,
+    AssetBook, Definitions, EquipmentFacts, MaterialCircuitState, MaterialTickReceipts,
+    ProductionProjectionError, ProductiveEquipment, Result,
 };
 use babylon_material_circuit::{
-    equipment_installation_id, AccountId, EquipmentAssetId, EquipmentCohortId, InstallationId,
-    InstallationReceipt, InstalledEquipmentCohort, PendingInstallation,
+    AccountId, EquipmentAssetId, EquipmentCohortId, InstallationId, InstallationReceipt,
+    InstalledEquipmentCohort, PendingInstallation,
 };
 use std::collections::{BTreeMap, BTreeSet};
 type Pending = BTreeMap<InstallationId, PendingInstallation>;
@@ -45,7 +45,7 @@ pub(super) fn reconcile(
         }
         let start = validate_start(prior.period, r, previous.as_ref(), definitions, &mut facts)?;
         transition(r, start, assets, cohorts, &mut pending, definitions)?;
-        add(&mut used, r.process_id, r.used_hours)?;
+        super::add(&mut used, r.process_id, r.used_hours)?;
     }
     if !old.is_empty()
         || used
@@ -70,13 +70,13 @@ fn validate_start(
     }
     let start = if r.started {
         if previous.is_some()
-            || r.id != equipment_installation_id(period, r.process_id)
+            || r.id != babylon_material_circuit::equipment_installation_id(period, r.process_id)
             || r.units.checked_mul(definition.installation_hours_per_unit) != Some(r.opening_hours)
         {
             return Err(ProductionProjectionError::State);
         }
         for &(good, unit, coefficient) in &definitions.materials[&definition.id] {
-            add(
+            super::add(
                 &mut facts.materials,
                 (r.site_id, good, unit),
                 r.units
@@ -172,19 +172,19 @@ fn wages(receipt: &MaterialTickReceipts, definitions: &Definitions<'_>) -> Resul
     let mut accounts = BTreeMap::new();
     for r in &receipt.installation {
         let (_, d) = definitions.get(r.process_id)?;
-        add_cost(
+        super::add_cost(
             &mut actual,
             (r.site_id, d.installation_labor_unit_id),
             r.wages_capitalized,
         )?;
-        add_cost(
+        super::add_cost(
             &mut accounts,
             AccountId::Site(r.site_id),
             r.wages_capitalized,
         )?;
     }
     for r in &receipt.member_labor_use {
-        add_cost(&mut expected, (r.site_id, r.unit_id), r.installation_wages)?;
+        super::add_cost(&mut expected, (r.site_id, r.unit_id), r.installation_wages)?;
     }
     actual.retain(|_, v| v.micro_units() > 0);
     expected.retain(|_, v| v.micro_units() > 0);

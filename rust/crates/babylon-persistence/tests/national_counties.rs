@@ -1,7 +1,7 @@
 use babylon_kernel::geography::CountyGeoid;
+use babylon_persistence::national_counties;
 use babylon_persistence::national_counties::{
-    national_county_reference, NationalCountyReference, NationalCountyReferenceError,
-    ObservationStatus,
+    NationalCountyReference, NationalCountyReferenceError, ObservationStatus,
 };
 
 const ARTIFACT: &[u8] = include_bytes!(concat!(
@@ -14,7 +14,7 @@ fn id(value: &str) -> CountyGeoid {
 
 #[test]
 fn captures_complete_domestic_roster_and_preserves_source_meaning() {
-    let captured = national_county_reference().unwrap();
+    let captured = national_counties::national_county_reference().unwrap();
     assert_eq!(captured.counties().len(), 3144);
     for (state, expected) in [
         (*b"09", 9),
@@ -77,7 +77,7 @@ fn captures_complete_domestic_roster_and_preserves_source_meaning() {
 
 #[test]
 fn missing_workplace_row_does_not_erase_kalawao_residents_or_become_zero() {
-    let captured = national_county_reference().unwrap();
+    let captured = national_counties::national_county_reference().unwrap();
     let kalawao = captured.county(id("15005")).unwrap();
     assert!(kalawao
         .residents()

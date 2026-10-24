@@ -1,14 +1,22 @@
 #![allow(clippy::float_cmp)]
 
-use super::{
-    apply_material_staffing, exact_real, read_stock, MaterialStaffingError, StaffingComposition,
-    StaffingEffectContext, StaffingEffects, StaffingMemberNodeBinding, StaffingNodeBinding,
-    EMPLOYED_POPULATION, MAX_EXACT_STAFFING_INTEGER, PREVIOUS_UNRETAINED_HOURS, RESERVE_POPULATION,
-    STAFFING_COMPOSITION_ID, STAFFING_FIELDS,
-};
+use super::read_stock;
+use super::MaterialStaffingError;
+use super::StaffingComposition;
+use super::StaffingEffectContext;
+use super::StaffingEffects;
+use super::StaffingMemberNodeBinding;
+use super::StaffingNodeBinding;
+use super::EMPLOYED_POPULATION;
+use super::MAX_EXACT_STAFFING_INTEGER;
+use super::PREVIOUS_UNRETAINED_HOURS;
+use super::RESERVE_POPULATION;
+use super::STAFFING_COMPOSITION_ID;
+use super::STAFFING_FIELDS;
 use babylon_bsl::causal_contract::{EvidenceClass, RuleRole};
-use babylon_bsl::identity_codec::{project_stable_value, StableBslValue};
-use babylon_bsl::scenario::load_scenario;
+use babylon_bsl::identity_codec;
+use babylon_bsl::identity_codec::StableBslValue;
+use babylon_bsl::scenario;
 use babylon_bsl::typecheck::TypeEnv;
 use babylon_bsl::types::{BslType, EnumRegistry, FieldKind};
 use babylon_graph::hypergraph_store::HypergraphStore;
@@ -49,7 +57,7 @@ impl Fixture {
             nodes[0], nodes[1]
         );
         let mut graph = HypergraphStore::new();
-        let scenario = load_scenario(&source, &mut graph).unwrap();
+        let scenario = scenario::load_scenario(&source, &mut graph).unwrap();
         let resolver = StableElementResolver::seal(
             &graph,
             &scenario.id,
@@ -78,7 +86,7 @@ impl Fixture {
         period: u64,
         requests: &[StaffingWorkRequest],
     ) -> Result<StaffingEffects, MaterialStaffingError> {
-        apply_material_staffing(
+        super::apply_material_staffing(
             &mut self.graph,
             StaffingEffectContext {
                 types: &self.types,
@@ -257,7 +265,7 @@ fn supplied_schedule_controls_employment_and_next_period_hours() {
                 .node_attribute(a, EMPLOYED_POPULATION)
                 .unwrap()
                 .to_bits(),
-            exact_real(expected_employed).unwrap().to_bits()
+            super::exact_real(expected_employed).unwrap().to_bits()
         );
         assert_eq!(
             fixture
@@ -286,7 +294,12 @@ fn evidence_subject_is_stable_across_different_node_allocation_order() {
         effects.committed_events()[0]
             .payload()
             .iter()
-            .map(|(name, value)| (name.clone(), project_stable_value(value, resolver).unwrap()))
+            .map(|(name, value)| {
+                (
+                    name.clone(),
+                    identity_codec::project_stable_value(value, resolver).unwrap(),
+                )
+            })
             .collect::<Vec<_>>()
     };
     assert_eq!(
@@ -377,10 +390,12 @@ fn malformed_numeric_readings_never_become_workforce_defaults() {
 #[test]
 fn exact_boundary_and_negative_zero_are_canonical() {
     assert_eq!(
-        exact_real(MAX_EXACT_STAFFING_INTEGER).unwrap().to_bits(),
+        super::exact_real(MAX_EXACT_STAFFING_INTEGER)
+            .unwrap()
+            .to_bits(),
         9_007_199_254_740_992.0_f64.to_bits()
     );
-    assert!(exact_real(MAX_EXACT_STAFFING_INTEGER + 1).is_err());
+    assert!(super::exact_real(MAX_EXACT_STAFFING_INTEGER + 1).is_err());
     let mut fixture = Fixture::new(false);
     let a = fixture.node("a");
     fixture
@@ -388,7 +403,7 @@ fn exact_boundary_and_negative_zero_are_canonical() {
         .update_node(
             fixture.node("a-workplace"),
             PREVIOUS_UNRETAINED_HOURS,
-            exact_real(MAX_EXACT_STAFFING_INTEGER).unwrap(),
+            super::exact_real(MAX_EXACT_STAFFING_INTEGER).unwrap(),
         )
         .unwrap();
     let composition = composition();
@@ -667,7 +682,7 @@ fn dropping_a_successful_detached_candidate_does_not_publish_its_writes() {
     let before = fixture.graph.state_hash().unwrap();
     let mut candidate = fixture.graph.detached_copy();
     let composition = composition();
-    let effects = apply_material_staffing(
+    let effects = super::apply_material_staffing(
         &mut candidate,
         StaffingEffectContext {
             types: &fixture.types,

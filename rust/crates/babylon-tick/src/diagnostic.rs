@@ -1,7 +1,7 @@
 //! Graph-only diagnostics use the same seeded, sealed rule transaction as campaign replay.
 //! They report graph/events without inventing geographic material inputs or durable commit identity.
 
-use crate::{prepare_rules, run_prepared_tick_with, PreparedRules, TickReport};
+use crate::{PreparedRules, TickReport};
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::allocator_state::AllocatorState;
 use babylon_graph::stable_element::StableElementResolver;
@@ -33,8 +33,8 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> RuleDia
         session: ReplaySessionId,
         seed: ReplaySeed,
     ) -> Result<Self, String> {
-        let prepared =
-            prepare_rules(scenario, prelude, rules, &mut graph).map_err(|e| e.to_string())?;
+        let prepared = crate::prepare_rules(scenario, prelude, rules, &mut graph)
+            .map_err(|e| e.to_string())?;
         let resolver = StableElementResolver::seal(
             &graph,
             &prepared.scenario_scope,
@@ -61,7 +61,7 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> RuleDia
             .tick
             .checked_add(1)
             .ok_or("tick counter overflow before adjudication")?;
-        let report = run_prepared_tick_with(
+        let report = crate::run_prepared_tick_with(
             &self.prepared,
             &mut self.graph,
             sink,
@@ -94,9 +94,7 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> RuleDia
 mod tests {
     #![allow(clippy::float_cmp)]
     use crate::diagnostic::RuleDiagnosticSession;
-    use crate::{
-        run_prepared_tick_with, EventRecord, HashBoundary, PreparedEventBatchSink, TickReport,
-    };
+    use crate::{EventRecord, HashBoundary, PreparedEventBatchSink, TickReport};
     use babylon_bsl::evaluator::Value;
     use babylon_bsl::structural_verbs::CollectingSink;
     use babylon_graph::allocator_state::AllocatorState;
@@ -108,6 +106,7 @@ mod tests {
     use babylon_graph::working_copy::DetachedCopy;
     use babylon_kernel::currency::Currency;
     use babylon_kernel::replay::{ReplaySeed, ReplaySessionId, RngSeedContext};
+    use babylon_kernel::scalars::Ratio;
     use std::fmt::Write as _;
     use std::process::Command;
 
@@ -321,7 +320,7 @@ mod tests {
         .expect("the pilot topology has stable replay identities");
         let replay_session =
             ReplaySessionId::try_from("per281/runtime-live").expect("fixed replay identity");
-        let report = run_prepared_tick_with(
+        let report = crate::run_prepared_tick_with(
             &session.prepared,
             &mut session.graph,
             publisher,
@@ -476,7 +475,7 @@ mod tests {
             ReplaySessionId::try_from("per281/runtime-live").expect("fixed replay identity");
         let mut publisher = RejectingBatchSink::default();
 
-        let error = run_prepared_tick_with(
+        let error = crate::run_prepared_tick_with(
             &session.prepared,
             &mut session.graph,
             &mut publisher,
@@ -513,7 +512,7 @@ mod tests {
         let cursors = session.graph.allocator_cursors();
         let mut publisher = RejectingBatchSink::default();
 
-        let error = run_prepared_tick_with(
+        let error = crate::run_prepared_tick_with(
             &session.prepared,
             &mut session.graph,
             &mut publisher,
@@ -560,7 +559,7 @@ mod tests {
         )
         .unwrap();
         session.graph.add_node("DYNAMIC").unwrap();
-        let changed = run_prepared_tick_with(
+        let changed = crate::run_prepared_tick_with(
             &session.prepared,
             &mut session.graph,
             &mut sink,
@@ -640,7 +639,7 @@ mod tests {
         };
         let events = sink.events.clone();
 
-        let error = run_prepared_tick_with(
+        let error = crate::run_prepared_tick_with(
             &session.prepared,
             &mut session.graph,
             &mut sink,
@@ -759,7 +758,7 @@ mod tests {
         bytes.extend_from_slice(&canonical.to_bits().to_be_bytes());
     }
 
-    fn push_optional_ratio(bytes: &mut Vec<u8>, value: Option<babylon_kernel::scalars::Ratio>) {
+    fn push_optional_ratio(bytes: &mut Vec<u8>, value: Option<Ratio>) {
         match value {
             Some(ratio) => {
                 bytes.push(1);

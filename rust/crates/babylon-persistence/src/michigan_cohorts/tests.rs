@@ -1,23 +1,37 @@
+use crate::michigan_economy;
 use std::collections::{BTreeMap, BTreeSet};
 
-use babylon_bsl::{scenario::load_scenario, structural_verbs::CollectingSink};
-use babylon_graph::{stable_state::StableGraphState, substrate::GraphSubstrate};
-use babylon_kernel::{
-    content_digest::sha256_of,
-    content_digest::ContentDigest,
-    replay::{ReplaySeed, ReplaySessionId},
-    tick_content_hash::RefDigest,
-};
-use babylon_practice_contract::OrderedPracticeActionBatch;
-use babylon_tick::{material_state::MaterialState, replay_session::IdentifiedTickReport};
+use babylon_bsl::structural_verbs::CollectingSink;
 
-use super::*;
-use crate::michigan_economy::{digest_hex, michigan_observer_foundation};
+use babylon_graph::stable_state::StableGraphState;
+use babylon_graph::substrate::GraphSubstrate;
+
+use babylon_kernel::content_digest::ContentDigest;
+use babylon_kernel::replay::{ReplaySeed, ReplaySessionId};
+use babylon_kernel::tick_content_hash::RefDigest;
+
+use babylon_practice_contract::OrderedPracticeActionBatch;
+use babylon_tick::material_state::MaterialState;
+use babylon_tick::replay_session::IdentifiedTickReport;
+
+use super::build;
+use super::build::{
+    build_cohorts, michigan_business_subject, michigan_sector_subject, BUSINESS_FIELDS,
+    MICHIGAN_COHORT_SCENARIO,
+};
+use crate::michigan_economy::digest_hex;
+use crate::michigan_sectors;
 use crate::michigan_sectors::MichiganSectorDisclosure;
-use crate::{michigan_dynamic_hex_foundation, CampaignFoundation, FoundationContentBundle};
+use crate::michigan_sectors::MichiganSectorDisposition;
+use crate::{CampaignFoundation, FoundationContentBundle};
+use babylon_bsl::scenario;
+use babylon_graph::hypergraph_store::HypergraphStore;
+use babylon_graph::stable_element::StableElementKey;
+use babylon_kernel::content_digest;
+use babylon_tick::replay_session::ReplayTickSession;
 
 fn stable_graph() -> StableGraphState {
-    michigan_cohort_foundation()
+    build::michigan_cohort_foundation()
         .unwrap()
         .0
         .stable_graph_state()
@@ -26,10 +40,10 @@ fn stable_graph() -> StableGraphState {
 
 #[test]
 fn generated_source_loads_only_observed_cohorts_and_native_sector_hyperedges() {
-    let cohorts = michigan_cohorts().unwrap();
+    let cohorts = build::michigan_cohorts().unwrap();
     assert_eq!(&build_cohorts().unwrap(), cohorts);
     let mut graph = HypergraphStore::new();
-    let loaded = load_scenario(cohorts.scenario_source(), &mut graph).unwrap();
+    let loaded = scenario::load_scenario(cohorts.scenario_source(), &mut graph).unwrap();
     assert_eq!(loaded.id, MICHIGAN_COHORT_SCENARIO);
     assert_eq!(loaded.node_count, 83 + 1_603);
     assert_eq!(graph.nodes("TERRITORY").len(), 83);
@@ -69,10 +83,10 @@ fn classified_memberships_preserve_composite_codes_and_exclude_unclassified_cell
             )
         })
         .collect();
-    let sectors = michigan_county_sectors().unwrap();
+    let sectors = michigan_sectors::michigan_county_sectors().unwrap();
     let mut memberships = 0;
     for row in sectors.rows() {
-        let local_name = michigan_business_local_name(row);
+        let local_name = build::michigan_business_local_name(row);
         let count = actual
             .values()
             .filter(|members| members.contains(local_name.as_str()))
@@ -122,11 +136,11 @@ fn exact_source_cells_are_not_duplicated_and_suppression_is_absence() {
         .iter()
         .map(|(name, field, bits)| ((name.as_str(), field.as_str()), *bits))
         .collect();
-    let sectors = michigan_county_sectors().unwrap();
+    let sectors = michigan_sectors::michigan_county_sectors().unwrap();
     let mut expected = BTreeMap::new();
     let mut suppressed = 0;
     for row in sectors.rows() {
-        let name = michigan_business_local_name(row);
+        let name = build::michigan_business_local_name(row);
         assert!(row.annual_avg_estabs_count() > 0);
         assert!(expected
             .insert(name.clone(), integer_bits(row.annual_avg_estabs_count()))
@@ -183,9 +197,9 @@ fn advance(session: &mut ReplayTickSession<HypergraphStore>) -> IdentifiedTickRe
 
 #[test]
 fn full_foundation_and_checkpoint_roundtrip_preserve_memberships_and_identity() {
-    let (mut continued, bundle) = michigan_cohort_foundation().unwrap();
-    let (mut reopened, twin_bundle) = michigan_cohort_foundation().unwrap();
-    let (old, old_bundle) = michigan_observer_foundation().unwrap();
+    let (mut continued, bundle) = build::michigan_cohort_foundation().unwrap();
+    let (mut reopened, twin_bundle) = build::michigan_cohort_foundation().unwrap();
+    let (old, old_bundle) = michigan_economy::michigan_observer_foundation().unwrap();
     assert_eq!(
         bundle.reference_bundle_manifest_bytes(),
         old_bundle.reference_bundle_manifest_bytes()
@@ -233,10 +247,12 @@ fn full_foundation_and_checkpoint_roundtrip_preserve_memberships_and_identity() 
 /// Reproduce the pre-extraction constructor independently to protect V1 saves.
 fn explicit_observer_constructor() -> (ReplayTickSession<HypergraphStore>, FoundationContentBundle)
 {
-    let source = michigan_economy().unwrap().scenario_source();
+    let source = michigan_economy::michigan_economy()
+        .unwrap()
+        .scenario_source();
     assert_eq!(source.len(), 21_279);
     assert_eq!(
-        digest_hex(&sha256_of(source.as_bytes())),
+        digest_hex(&content_digest::sha256_of(source.as_bytes())),
         "84650f5a5ab3a6913eb125def04b606653217a50eaf67f515f148fb37283d1fa"
     );
     let defines = format!(
@@ -245,14 +261,17 @@ fn explicit_observer_constructor() -> (ReplayTickSession<HypergraphStore>, Found
     );
     let defines = defines.as_bytes();
     let content = ContentDigest {
-        defines_hash: sha256_of(defines),
+        defines_hash: content_digest::sha256_of(defines),
         rules_hash: babylon_bsl::canonical_ast::rules_hash_of(&[]).unwrap(),
     };
-    let material = michigan_dynamic_hex_foundation().unwrap();
+    let material = crate::michigan_dynamic_hex_foundation().unwrap();
     let mut manifest = b"babylon.h3.reference-bundle-composite.v1\0".to_vec();
     manifest.extend_from_slice(&material.base_reference_cohort_digest());
     manifest.extend_from_slice(&material.r8_section_digest());
-    assert_eq!(sha256_of(&manifest), material.reference_bundle_digest());
+    assert_eq!(
+        content_digest::sha256_of(&manifest),
+        material.reference_bundle_digest()
+    );
     let session = ReplayTickSession::new(
         source,
         None,
@@ -272,7 +291,7 @@ fn explicit_observer_constructor() -> (ReplayTickSession<HypergraphStore>, Found
 #[test]
 fn shared_constructor_matches_explicit_current_interval_foundation() {
     let (expected, expected_bundle) = explicit_observer_constructor();
-    let (actual, actual_bundle) = michigan_observer_foundation().unwrap();
+    let (actual, actual_bundle) = michigan_economy::michigan_observer_foundation().unwrap();
     assert_eq!(
         CampaignFoundation::capture(&actual, actual_bundle)
             .unwrap()

@@ -1,15 +1,16 @@
 //! Lossless campaign-owned territory definitions. The caller holds the campaign
 //! writer lock; opening seeds precede history and tick markers are inserted last.
 use crate::identity::CampaignId;
-use crate::runtime::{
-    bytea_copy_text, finish_csv_copy, write_bsl_csv_row, write_csv_row, RustPersistenceRuntimeError,
-};
-use crate::stored_tick::{decode_bsl_value, decode_stable_key};
+use crate::runtime::RustPersistenceRuntimeError;
 use babylon_bsl::identity_codec::StableBslValue;
 use babylon_graph::stable_state::MAX_STABLE_GRAPH_NODES;
-use babylon_kernel::content_digest::sha256_of;
 use babylon_tick::material_state::TerritoryStateRow;
-use postgres::{types::FromSqlOwned, GenericClient, Row};
+use postgres::types::FromSqlOwned;
+use postgres::{GenericClient, Row};
+
+use crate::runtime;
+use crate::stored_tick;
+use babylon_kernel::content_digest;
 use std::collections::BTreeMap;
 
 /// Exact territory definition admission failures.
@@ -61,9 +62,12 @@ impl Definition {
         if self.fields.len() != self.count {
             return Err(refused(Error::DefinitionCount));
         }
-        let row = TerritoryStateRow::try_new(decode_stable_key(&self.key)?, self.fields.clone())
-            .map_err(|_| refused(Error::FieldOrder))?;
-        if sha256_of(row.canonical_bytes()) != self.digest {
+        let row = TerritoryStateRow::try_new(
+            stored_tick::decode_stable_key(&self.key)?,
+            self.fields.clone(),
+        )
+        .map_err(|_| refused(Error::FieldOrder))?;
+        if content_digest::sha256_of(row.canonical_bytes()) != self.digest {
             return Err(refused(Error::DefinitionDigest));
         }
         Ok(row.canonical_bytes().to_vec())
@@ -134,7 +138,9 @@ fn load_fields(
         {
             return Err(refused(Error::FieldOrder));
         }
-        target.fields.push((name, decode_bsl_value(&row, 3)?));
+        target
+            .fields
+            .push((name, stored_tick::decode_bsl_value(&row, 3)?));
     }
     Ok(())
 }
@@ -210,7 +216,7 @@ fn prepare<'a>(
         }
         i32::try_from(row.ordered_fields().len()).map_err(|_| refused(Error::Bounds))?;
         keys.push(key);
-        digests.push(sha256_of(row.canonical_bytes()).to_vec());
+        digests.push(content_digest::sha256_of(row.canonical_bytes()).to_vec());
     }
     let known = matching(client, campaign, tick, &digests)?;
     let mut next = next_definition(client, campaign)?;
@@ -220,7 +226,7 @@ fn prepare<'a>(
     };
     let mut added_buckets = BTreeMap::<[u8; 32], &[u8]>::new();
     for (row, key) in rows.iter().zip(keys) {
-        let digest = sha256_of(row.canonical_bytes());
+        let digest = content_digest::sha256_of(row.canonical_bytes());
         let id = if let Some((id, canonical)) = known.get(&digest) {
             if canonical != row.canonical_bytes() {
                 return Err(refused(Error::HashCollision));
@@ -263,10 +269,10 @@ fn write_definitions(
         .map_err(|error| RustPersistenceRuntimeError::postgres("begin territory definition copy", &error))?;
     for definition in added {
         let id = definition.id.to_string();
-        let key = bytea_copy_text(&definition.key);
+        let key = runtime::bytea_copy_text(&definition.key);
         let count = definition.row.ordered_fields().len().to_string();
-        let digest = bytea_copy_text(&definition.digest);
-        write_csv_row(
+        let digest = runtime::bytea_copy_text(&definition.digest);
+        runtime::write_csv_row(
             &mut writer,
             [&campaign_text, &id, &tick_text, &key, &count, &digest]
                 .into_iter()
@@ -274,7 +280,7 @@ fn write_definitions(
         )
         .map_err(|_| RustPersistenceRuntimeError::database("write territory definition copy"))?;
     }
-    finish_csv_copy(writer, added.len(), "finish territory definition copy")?;
+    runtime::finish_csv_copy(writer, added.len(), "finish territory definition copy")?;
     write_fields(client, &campaign_text, added)
 }
 fn write_fields(
@@ -291,7 +297,7 @@ fn write_fields(
             let position = i32::try_from(position)
                 .map_err(|_| refused(Error::Bounds))?
                 .to_string();
-            write_bsl_csv_row(
+            runtime::write_bsl_csv_row(
                 &mut writer,
                 &[campaign, &id, &position, name],
                 value,
@@ -302,7 +308,7 @@ fn write_fields(
                 .ok_or_else(|| refused(Error::Bounds))?;
         }
     }
-    finish_csv_copy(writer, expected, "finish territory definition field copy")
+    runtime::finish_csv_copy(writer, expected, "finish territory definition field copy")
 }
 /// Intern exact admitted opening rows without publishing tick membership.
 pub(crate) fn seed(
@@ -339,7 +345,7 @@ fn write_membership(
         .map_err(|error| RustPersistenceRuntimeError::postgres("begin territory membership copy", &error))?;
     for id in ids {
         let id = id.to_string();
-        write_csv_row(
+        runtime::write_csv_row(
             &mut writer,
             [&campaign_text, &tick_text, &id]
                 .into_iter()
@@ -347,7 +353,7 @@ fn write_membership(
         )
         .map_err(|_| RustPersistenceRuntimeError::database("write territory membership copy"))?;
     }
-    finish_csv_copy(writer, ids.len(), "finish territory membership copy")?;
+    runtime::finish_csv_copy(writer, ids.len(), "finish territory membership copy")?;
     let count = checked_id(ids.len())?;
     let inserted = client.execute("INSERT INTO babylon_state.territory_tick_manifest_v1 (campaign_id,resolve_tick,territory_count) VALUES ($1::uuid,$2,$3)", &[campaign.as_uuid(),&tick,&count])
         .map_err(|error| RustPersistenceRuntimeError::postgres("insert territory membership manifest", &error))?;

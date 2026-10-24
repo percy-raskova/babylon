@@ -1,18 +1,25 @@
-use super::*;
-use crate::{
-    national_counties::national_county_reference,
-    national_households::{national_household_reference, HistoricalEarnings},
-    national_resident_workforce::national_resident_workforce_reference,
+use super::model::{
+    CountyHouseholdAllocation, HouseholdAllocationError, HouseholdBudgetAllocation,
+    HouseholdBudgetKey, HouseholdCountyControls,
 };
+use super::{allocation, source};
+use crate::national_cohorts;
+use crate::national_counties;
+use crate::national_economy;
+use crate::national_households;
+use crate::national_households::CountyHouseholdMargins;
+use crate::national_households::HistoricalEarnings;
+use crate::national_resident_allocation;
+use crate::national_resident_workforce;
 
 #[test]
 fn every_county_preserves_people_households_and_current_workforce_once() {
-    let counties = national_county_reference().unwrap();
-    let margins = national_household_reference().unwrap();
-    let allocation = allocate_households(
+    let counties = national_counties::national_county_reference().unwrap();
+    let margins = national_households::national_household_reference().unwrap();
+    let allocation = source::allocate_households(
         counties,
         margins,
-        national_resident_workforce_reference().unwrap(),
+        national_resident_workforce::national_resident_workforce_reference().unwrap(),
         1_000,
     )
     .unwrap();
@@ -82,10 +89,10 @@ fn every_county_preserves_people_households_and_current_workforce_once() {
     );
     assert_eq!(
         allocation,
-        allocate_households(
+        source::allocate_households(
             counties,
             margins,
-            national_resident_workforce_reference().unwrap(),
+            national_resident_workforce::national_resident_workforce_reference().unwrap(),
             1_000
         )
         .unwrap()
@@ -103,7 +110,7 @@ fn current_workers_fit_without_rewriting_historical_household_margins() {
         reserve: 3,
         working_owners: 1,
     };
-    let rows = allocate_county(controls, 1_000).unwrap();
+    let rows = allocation::allocate_county(controls, 1_000).unwrap();
     let earning = rows
         .iter()
         .find(|r| r.key == HouseholdBudgetKey::EarningNonowner)
@@ -133,7 +140,7 @@ fn current_workers_fit_without_rewriting_historical_household_margins() {
 
 #[test]
 fn empty_source_groups_create_no_zero_person_budget_or_fake_household() {
-    let rows = allocate_county(
+    let rows = allocation::allocate_county(
         HouseholdCountyControls {
             population: 4,
             household_persons: 0,
@@ -157,7 +164,7 @@ fn empty_source_groups_create_no_zero_person_budget_or_fake_household() {
         ),
         (4, 0, 2, 1)
     );
-    let rows = allocate_county(
+    let rows = allocation::allocate_county(
         HouseholdCountyControls {
             population: 8,
             household_persons: 8,
@@ -189,7 +196,7 @@ fn infeasible_designed_joint_refuses_without_reclassifying_source_households() {
         working_owners: 0,
     };
     assert_eq!(
-        allocate_county(controls, 1_000),
+        allocation::allocate_county(controls, 1_000),
         Err(HouseholdAllocationError::DesignedAllocationInfeasible)
     );
     let invalid = HouseholdCountyControls {
@@ -202,26 +209,23 @@ fn infeasible_designed_joint_refuses_without_reclassifying_source_households() {
         working_owners: 0,
     };
     assert_eq!(
-        allocate_county(invalid, 1_000),
+        allocation::allocate_county(invalid, 1_000),
         Err(HouseholdAllocationError::Arithmetic)
     );
 }
 
 #[test]
 fn sparse_workplace_members_pay_the_exact_allocated_resident_budgets() {
-    use crate::{
-        national_cohorts::national_cohort_reference,
-        national_economy::{household_principal, NationalGamePolicy},
-        national_resident_allocation::allocate_home_county,
-    };
+    use crate::national_economy::NationalGamePolicy;
+
     use babylon_kernel::economic_location::EconomicLocation;
     use std::collections::{BTreeMap, BTreeSet};
 
-    let counties = national_county_reference().unwrap();
-    let classes = national_resident_workforce_reference().unwrap();
-    let household_allocation = allocate_households(
+    let counties = national_counties::national_county_reference().unwrap();
+    let classes = national_resident_workforce::national_resident_workforce_reference().unwrap();
+    let household_allocation = source::allocate_households(
         counties,
-        national_household_reference().unwrap(),
+        national_households::national_household_reference().unwrap(),
         classes,
         1_000,
     )
@@ -231,9 +235,9 @@ fn sparse_workplace_members_pay_the_exact_allocated_resident_budgets() {
         "/../../../content/scenarios/national/defines.toml"
     )))
     .unwrap();
-    let workplaces = allocate_home_county(
+    let workplaces = national_resident_allocation::allocate_home_county(
         counties,
-        national_cohort_reference().unwrap(),
+        national_cohorts::national_cohort_reference().unwrap(),
         classes,
         &household_allocation,
         &crate::national_household_refinement::refine_households(
@@ -274,7 +278,7 @@ fn sparse_workplace_members_pay_the_exact_allocated_resident_budgets() {
     for county in household_allocation.counties() {
         let location = EconomicLocation::domestic_county(county.county()).unwrap();
         for budget in county.budgets() {
-            let principal = household_principal(location, budget.key);
+            let principal = national_economy::household_principal(location, budget.key);
             let workforce = actual.remove(&(location, principal)).unwrap_or_default();
             assert_eq!(workforce, (budget.employed, budget.reserve));
             assert!(workforce.0 + workforce.1 <= budget.persons);
@@ -286,10 +290,7 @@ fn sparse_workplace_members_pay_the_exact_allocated_resident_budgets() {
     assert_eq!(aggregate, (161_297_155, 8_902_365));
 }
 
-fn assert_historical_margins(
-    row: &CountyHouseholdAllocation,
-    source: &crate::national_households::CountyHouseholdMargins,
-) {
+fn assert_historical_margins(row: &CountyHouseholdAllocation, source: &CountyHouseholdMargins) {
     for (source_kind, keys) in [
         (
             HistoricalEarnings::WithEarnings,

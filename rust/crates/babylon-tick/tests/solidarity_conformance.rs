@@ -144,11 +144,11 @@
 #![allow(clippy::unreadable_literal)]
 
 use babylon_bsl::evaluator::Value;
-use babylon_bsl::scenario::load_scenario;
+use babylon_bsl::scenario;
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::memory::MemoryGraph;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
-use babylon_tick::{run_once, run_once_into, TickReport};
+use babylon_tick::TickReport;
 
 const SCENARIO: &str = include_str!("../content/scenarios/solidarity-conformance.bscn");
 const RULE: &str = include_str!("../content/rules/solidarity.bsl");
@@ -188,7 +188,7 @@ const CLAMP_TARGET: u64 = 21;
 fn run() -> (MemoryGraph, CollectingSink, TickReport) {
     let mut graph = MemoryGraph::new();
     let mut sink = CollectingSink::default();
-    let report = run_once_into(SCENARIO, RULE, &mut graph, &mut sink)
+    let report = babylon_tick::run_once_into(SCENARIO, RULE, &mut graph, &mut sink)
         .expect("the Solidarity conformance world must load and run against solidarity.bsl");
     (graph, sink, report)
 }
@@ -206,7 +206,8 @@ fn revolutionary(graph: &MemoryGraph, id: u64) -> f64 {
 #[test]
 fn the_conformance_world_loads_with_the_declared_census() {
     let mut probe_graph = MemoryGraph::new();
-    let loaded = load_scenario(SCENARIO, &mut probe_graph).expect("the scenario must load clean");
+    let loaded =
+        scenario::load_scenario(SCENARIO, &mut probe_graph).expect("the scenario must load clean");
     assert_eq!(loaded.node_count, 22, "22 SOCIAL_CLASS witness nodes");
     assert_eq!(loaded.edge_count, 12, "12 SOLIDARITY witness edges");
     assert_eq!(
@@ -279,7 +280,7 @@ fn mass_awakening_negative_case_stays_below_the_threshold() {
 fn mass_awakening_exact_case_lands_bit_identical_to_the_threshold_const() {
     let (graph, _sink, _report) = run();
     let mut seeds = MemoryGraph::new();
-    let scenario = load_scenario(SCENARIO, &mut seeds).expect("the scenario must load");
+    let scenario = scenario::load_scenario(SCENARIO, &mut seeds).expect("the scenario must load");
     let Some(Value::Real(threshold)) = scenario.consts.get("solidarity/mass-awakening-threshold")
     else {
         panic!("the scenario must declare solidarity/mass-awakening-threshold as a scaled literal");
@@ -610,8 +611,8 @@ fn mass_awakening_fires_on_the_exact_threshold_boundary() {
 /// Byte-determinism: the same content twice is the same post-state hash.
 #[test]
 fn the_solidarity_tick_is_deterministic() {
-    let a = run_once(SCENARIO, RULE).expect("first run");
-    let b = run_once(SCENARIO, RULE).expect("second run");
+    let a = babylon_tick::run_once(SCENARIO, RULE).expect("first run");
+    let b = babylon_tick::run_once(SCENARIO, RULE).expect("second run");
     assert_eq!(a.after, b.after, "two runs, one post-state");
     assert_ne!(a.before, a.after, "the pack must move state");
 }

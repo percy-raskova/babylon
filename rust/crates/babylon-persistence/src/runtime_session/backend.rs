@@ -3,17 +3,30 @@
 use babylon_bsl::structural_verbs::CollectingSink;
 use postgres::{Config, NoTls};
 
+use super::OrganizerCommand;
+use super::OrganizerCommitment;
+use super::OrganizerPreview;
+use super::OrganizerSnapshot;
+use super::RuntimeAdvanceStage;
 use super::{RuntimeSessionErrorCode, RuntimeSessionTail, RuntimeSessionTarget, SessionBackend};
-use crate::{
-    economic_content::EconomicContentAdmission,
-    identity::CampaignId,
-    material_runtime::{
-        capture_material_foundation_components, CapturedMaterialFoundation, DurableMaterialRuntime,
-        FoundationReadSource, MaterialRuntimeError,
-    },
-    michigan_content::MichiganContentPreset,
-    michigan_economy::digest_hex,
+use crate::economic_catalog::CapturedEconomicCatalog;
+use crate::economic_content::EconomicContentAdmission;
+use crate::identity::CampaignId;
+use crate::material_runtime;
+use crate::material_runtime::MaterialRuntimeFoundation;
+use crate::material_runtime::{
+    CapturedMaterialFoundation, DurableMaterialRuntime, FoundationReadSource, MaterialRuntimeError,
 };
+use crate::michigan_content::MichiganContentPreset;
+use crate::michigan_economy;
+use crate::michigan_material::MichiganMaterialCatalog;
+use crate::MichiganDefinesError;
+use babylon_kernel::clock::CampaignDuration;
+use babylon_kernel::replay::ReplaySeed;
+use babylon_kernel::replay::ReplaySessionId;
+use babylon_tick::material_replay::MaterialReplayError;
+use postgres::Row;
+use std::path::Path;
 
 pub(super) struct DurableBackend {
     config: Config,
@@ -22,25 +35,25 @@ pub(super) struct DurableBackend {
     tail: RuntimeSessionTail,
 }
 impl SessionBackend for DurableBackend {
-    fn duration(&self) -> babylon_kernel::clock::CampaignDuration {
+    fn duration(&self) -> CampaignDuration {
         self.runtime.session().duration()
     }
     fn has_organizer(&self) -> bool {
         self.runtime.has_organizer()
     }
-    fn organizer_status(&self) -> Result<super::OrganizerSnapshot, RuntimeSessionErrorCode> {
+    fn organizer_status(&self) -> Result<OrganizerSnapshot, RuntimeSessionErrorCode> {
         self.runtime.organizer_snapshot()
     }
     fn organizer_preview(
         &self,
-        command: &super::OrganizerCommand,
-    ) -> Result<super::OrganizerPreview, RuntimeSessionErrorCode> {
+        command: &OrganizerCommand,
+    ) -> Result<OrganizerPreview, RuntimeSessionErrorCode> {
         self.runtime.preview_organizer_command(command)
     }
     fn organizer_submit(
         &self,
-        command: &super::OrganizerCommand,
-    ) -> Result<super::OrganizerCommitment, RuntimeSessionErrorCode> {
+        command: &OrganizerCommand,
+    ) -> Result<OrganizerCommitment, RuntimeSessionErrorCode> {
         self.runtime.submit_organizer_command(command)
     }
     fn tail(&self) -> RuntimeSessionTail {
@@ -49,12 +62,12 @@ impl SessionBackend for DurableBackend {
     fn advance(
         &mut self,
         expected: &RuntimeSessionTail,
-        progress: &mut dyn FnMut(super::RuntimeAdvanceStage),
+        progress: &mut dyn FnMut(RuntimeAdvanceStage),
     ) -> Result<RuntimeSessionTail, RuntimeSessionErrorCode> {
         if expected != &self.tail || durable_tail(&self.config, self.campaign)? != self.tail {
             return Err(RuntimeSessionErrorCode::StaleExpectedTail);
         }
-        progress(super::RuntimeAdvanceStage::PreparingCommitments);
+        progress(RuntimeAdvanceStage::PreparingCommitments);
         let actions = self
             .runtime
             .next_action_batch()
@@ -65,7 +78,9 @@ impl SessionBackend for DurableBackend {
             .map_err(|error| advance_error(&error))?;
         self.tail = RuntimeSessionTail {
             resolve_tick: receipt.resolve_tick(),
-            tick_content_hash: Some(digest_hex(receipt.tick_content_hash().as_bytes())),
+            tick_content_hash: Some(michigan_economy::digest_hex(
+                receipt.tick_content_hash().as_bytes(),
+            )),
         };
         Ok(self.tail.clone())
     }
@@ -93,9 +108,9 @@ fn advance_error(error: &MaterialRuntimeError) -> RuntimeSessionErrorCode {
         }
     }
     match error {
-        MaterialRuntimeError::Replay(
-            babylon_tick::material_replay::MaterialReplayError::Horizon,
-        ) => RuntimeSessionErrorCode::HorizonComplete,
+        MaterialRuntimeError::Replay(MaterialReplayError::Horizon) => {
+            RuntimeSessionErrorCode::HorizonComplete
+        }
         MaterialRuntimeError::DatabaseLockRefused(_) => RuntimeSessionErrorCode::StorageBusy,
         MaterialRuntimeError::DatabaseStatementCanceled(_) => {
             RuntimeSessionErrorCode::StorageCanceled
@@ -133,7 +148,7 @@ fn durable_tail(
             Ok(RuntimeSessionTail {
                 resolve_tick: u64::try_from(tick)
                     .map_err(|_| RuntimeSessionErrorCode::StorageRefused)?,
-                tick_content_hash: Some(digest_hex(&hash)),
+                tick_content_hash: Some(michigan_economy::digest_hex(&hash)),
             })
         }
     }
@@ -142,7 +157,7 @@ fn durable_tail(
 pub(super) fn open(
     config: &Config,
     target: &RuntimeSessionTarget,
-    defines_path: &std::path::Path,
+    defines_path: &Path,
 ) -> Result<(DurableBackend, String), RuntimeSessionErrorCode> {
     let campaign = target.campaign()?;
     crate::postgres_catalog::validate_connection_target(config)
@@ -174,13 +189,13 @@ pub(super) fn open(
         }
         _ => RuntimeSessionErrorCode::StorageRefused,
     })?;
-    let foundation_digest = digest_hex(&runtime.session().foundation_digest());
+    let foundation_digest = michigan_economy::digest_hex(&runtime.session().foundation_digest());
     let tail = durable_tail(config, campaign)?;
     let admitted_tail = RuntimeSessionTail {
         resolve_tick: runtime.session().completed_tick(),
         tick_content_hash: runtime
             .tail()
-            .map(|identity| digest_hex(identity.tick_content_hash().as_bytes())),
+            .map(|identity| michigan_economy::digest_hex(identity.tick_content_hash().as_bytes())),
     };
     if tail != admitted_tail {
         return Err(RuntimeSessionErrorCode::StorageRefused);
@@ -198,11 +213,11 @@ pub(super) fn open(
 
 fn new_foundation(
     preset: super::RuntimeSessionPreset,
-    defines_path: &std::path::Path,
+    defines_path: &Path,
     campaign: CampaignId,
-) -> Result<crate::material_runtime::MaterialRuntimeFoundation, RuntimeSessionErrorCode> {
+) -> Result<MaterialRuntimeFoundation, RuntimeSessionErrorCode> {
     if preset == super::RuntimeSessionPreset::NationalWorld {
-        let captured = crate::economic_catalog::CapturedEconomicCatalog::capture_national_campaign(
+        let captured = CapturedEconomicCatalog::capture_national_campaign(
             crate::economic_catalog::national_catalog_input(),
             campaign,
         )
@@ -212,9 +227,9 @@ fn new_foundation(
         })?;
         return captured
             .create_foundation(
-                babylon_kernel::replay::ReplaySessionId::try_from("national-world")
+                ReplaySessionId::try_from("national-world")
                     .map_err(|_| RuntimeSessionErrorCode::ScenarioMismatch)?,
-                babylon_kernel::replay::ReplaySeed::new(319),
+                ReplaySeed::new(319),
             )
             .map_err(|error| {
                 eprintln!("National foundation refused: {error}");
@@ -227,20 +242,17 @@ fn new_foundation(
     // Only Michigan controls consume this mutable New-only parameter file.
     // Open and national New use their explicit captured-source paths.
     let catalog =
-        crate::michigan_material::MichiganMaterialCatalog::load_for_preset(defines_path, delivery)
-            .map_err(|error| {
-                eprintln!("{error}");
-                match error {
-                    crate::MichiganDefinesError::Read(_) => RuntimeSessionErrorCode::DefinesMissing,
-                    crate::MichiganDefinesError::TooLarge => {
-                        RuntimeSessionErrorCode::DefinesTooLarge
-                    }
-                    crate::MichiganDefinesError::Toml(_) | crate::MichiganDefinesError::Utf8(_) => {
-                        RuntimeSessionErrorCode::DefinesMalformed
-                    }
-                    _ => RuntimeSessionErrorCode::DefinesInvalid,
+        MichiganMaterialCatalog::load_for_preset(defines_path, delivery).map_err(|error| {
+            eprintln!("{error}");
+            match error {
+                MichiganDefinesError::Read(_) => RuntimeSessionErrorCode::DefinesMissing,
+                MichiganDefinesError::TooLarge => RuntimeSessionErrorCode::DefinesTooLarge,
+                MichiganDefinesError::Toml(_) | MichiganDefinesError::Utf8(_) => {
+                    RuntimeSessionErrorCode::DefinesMalformed
                 }
-            })?;
+                _ => RuntimeSessionErrorCode::DefinesInvalid,
+            }
+        })?;
     MichiganContentPreset::new_campaign(delivery)
         .create_foundation_for_campaign(&catalog, campaign)
         .map_err(|_| RuntimeSessionErrorCode::ScenarioMismatch)
@@ -249,13 +261,13 @@ fn new_foundation(
 fn capture_runtime_content(
     client: &mut impl postgres::GenericClient,
     campaign: CampaignId,
-) -> Result<(CapturedMaterialFoundation, postgres::Row), MaterialRuntimeError> {
+) -> Result<(CapturedMaterialFoundation, Row), MaterialRuntimeError> {
     let row = client.query_opt("SELECT f.preset_id,f.duration_kind,f.final_period,f.content_sha256,f.foundation_sha256,g.foundation_sha256 AS graph_sha256,pg_catalog.sha256(g.content_bundle_bytes) AS source_sha256 FROM babylon_state.material_campaign_foundation_v3 f JOIN babylon_state.campaign_foundation g USING(campaign_id) WHERE campaign_id=$1::uuid", &[campaign.as_uuid()])?.ok_or(MaterialRuntimeError::MissingCampaign)?;
     let expected = row
         .try_get::<_, &[u8]>("foundation_sha256")?
         .try_into()
         .map_err(|_| MaterialRuntimeError::FoundationMismatch)?;
-    let captured = capture_material_foundation_components(
+    let captured = material_runtime::capture_material_foundation_components(
         client,
         campaign,
         expected,
@@ -266,8 +278,8 @@ fn capture_runtime_content(
 
 fn admit_runtime_content(
     captured: CapturedMaterialFoundation,
-    row: &postgres::Row,
-) -> Result<crate::material_runtime::MaterialRuntimeFoundation, MaterialRuntimeError> {
+    row: &Row,
+) -> Result<MaterialRuntimeFoundation, MaterialRuntimeError> {
     let id: &str = row.try_get(0)?;
     let duration = crate::material_runtime::read_duration(row)
         .map_err(|_| MaterialRuntimeError::FoundationMismatch)?;
@@ -294,6 +306,7 @@ fn admit_runtime_content(
 #[cfg(test)]
 mod defines_tests {
     use super::*;
+    use uuid::Uuid;
     #[test]
     fn statewide_new_requires_qualified_sources_before_storage_admission() {
         use super::super::RuntimeSessionPreset;
@@ -320,7 +333,7 @@ mod defines_tests {
             RuntimeSessionPreset::StatewideMaintenancePartsShortage,
             RuntimeSessionPreset::StatewideMaintenanceBoth,
         ] {
-            let campaign = CampaignId::from_uuid(uuid::Uuid::from_u128(31));
+            let campaign = CampaignId::from_uuid(Uuid::from_u128(31));
             assert!(matches!(
                 new_foundation(preset, &path, campaign),
                 Err(RuntimeSessionErrorCode::DefinesMissing)
@@ -340,7 +353,7 @@ mod defines_tests {
         let path =
             std::env::temp_dir().join(format!("babylon-defines-{}.toml", std::process::id()));
         let preset = super::super::RuntimeSessionPreset::Standard;
-        let campaign = CampaignId::from_uuid(uuid::Uuid::from_u128(17));
+        let campaign = CampaignId::from_uuid(Uuid::from_u128(17));
         assert!(matches!(
             new_foundation(preset, &path, campaign),
             Err(RuntimeSessionErrorCode::DefinesMissing)

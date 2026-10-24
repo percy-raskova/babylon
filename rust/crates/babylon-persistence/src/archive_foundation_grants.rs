@@ -12,23 +12,32 @@
 //! place, fine-H3 or QCEW-field grant through geographic defaulting. Optional
 //! captured place detail grants only its source-supported public place keys.
 
+use crate::glossary_concepts;
+use crate::michigan_economy;
 use postgres::Transaction;
 
+use crate::archive;
 use crate::archive::{
-    insert_grant_row, validate_key, ArchiveAtomSubject, ArchiveAtomSubjectKind, ArchiveCitation,
-    SemanticArchiveError,
+    ArchiveAtomSubject, ArchiveAtomSubjectKind, ArchiveCitation, SemanticArchiveError,
 };
-use crate::glossary_concepts::{glossary_concepts, GlossaryConceptsError};
-use crate::h3_reference_cohort::{representative_h3_reference_cohort, H3ReferenceCohortError};
+use crate::economic_catalog::CapturedEconomicCatalog;
+use crate::glossary_concepts::GlossaryConceptsError;
+use crate::h3_reference_cohort;
+use crate::h3_reference_cohort::H3ReferenceCohortError;
 use crate::identity::CampaignId;
 use crate::michigan_economy::{
-    michigan_economy, MichiganEconomyError, QCEW_ECONOMICS_ARTIFACT_SHA256,
-    QCEW_ECONOMICS_FIELD_KEYS, QCEW_ECONOMICS_SOURCE_ID,
+    MichiganEconomyError, QCEW_ECONOMICS_ARTIFACT_SHA256, QCEW_ECONOMICS_FIELD_KEYS,
+    QCEW_ECONOMICS_SOURCE_ID,
 };
-use crate::spatial_reference_products::{
-    michigan_spatial_reference_products, SpatialReferenceProductsError,
-};
-use babylon_kernel::content_digest::sha256_of;
+use crate::national_counties::NationalCountyReference;
+use crate::spatial_reference_products;
+use crate::spatial_reference_products::CountyIdentityRow;
+use crate::spatial_reference_products::SpatialReferenceProducts;
+use crate::spatial_reference_products::SpatialReferenceProductsError;
+use babylon_kernel::content_digest;
+use std::collections::BTreeSet;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 
 /// The foundation grant stamp: knowledge granted before any committed tick.
 pub const FOUNDATION_GRANT_TICK: u64 = 0;
@@ -76,7 +85,7 @@ impl FoundationGrantRow {
         grant_key: String,
         citation: ArchiveCitation,
     ) -> Result<Self, SemanticArchiveError> {
-        validate_key(&grant_key)?;
+        archive::validate_key(&grant_key)?;
         Ok(Self {
             subject,
             grant_key,
@@ -111,9 +120,9 @@ impl FoundationGrantRow {
 /// # Errors
 /// Refuses pinned-fixture drift or a malformed derived identity.
 pub fn foundation_grant_rows() -> Result<Vec<FoundationGrantRow>, FoundationGrantsError> {
-    let cohort = representative_h3_reference_cohort()?;
-    let products = michigan_spatial_reference_products(cohort)?;
-    let concepts = glossary_concepts()?;
+    let cohort = h3_reference_cohort::representative_h3_reference_cohort()?;
+    let products = spatial_reference_products::michigan_spatial_reference_products(cohort)?;
+    let concepts = glossary_concepts::glossary_concepts()?;
     let mut rows = Vec::with_capacity(2_832);
     for county in products
         .counties()
@@ -133,7 +142,7 @@ pub fn foundation_grant_rows() -> Result<Vec<FoundationGrantRow>, FoundationGran
             )?);
         }
     }
-    for county in michigan_economy()?.counties() {
+    for county in michigan_economy::michigan_economy()?.counties() {
         let subject = ArchiveAtomSubject::try_new(
             ArchiveAtomSubjectKind::County,
             county.county_geoid.clone(),
@@ -182,9 +191,7 @@ pub fn foundation_grant_rows() -> Result<Vec<FoundationGrantRow>, FoundationGran
     Ok(rows)
 }
 
-fn michigan_public_reference_county(
-    county: &crate::spatial_reference_products::CountyIdentityRow,
-) -> bool {
+fn michigan_public_reference_county(county: &CountyIdentityRow) -> bool {
     county.county_geoid().starts_with(MICHIGAN_GEOID_PREFIX)
         && county.county_fips() != STATEWIDE_RESIDUAL_COUNTY_FIPS
 }
@@ -234,7 +241,7 @@ pub fn foundation_grants_semantic_sha256(rows: &[FoundationGrantRow]) -> [u8; 32
         }
         bytes.extend_from_slice(&FOUNDATION_GRANT_TICK.to_be_bytes());
     }
-    sha256_of(&bytes)
+    content_digest::sha256_of(&bytes)
 }
 
 /// Census GEOID prefix of Michigan; only Michigan counties are
@@ -305,7 +312,7 @@ impl From<SemanticArchiveError> for FoundationGrantsError {
 }
 
 impl std::fmt::Display for FoundationGrantsError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+    fn fmt(&self, formatter: &mut Formatter) -> FmtResult {
         write!(formatter, "foundation grants refusal: {self:?}")
     }
 }
@@ -400,7 +407,7 @@ pub fn seed_foundation_grants(
 pub(crate) fn seed_catalog_grants(
     client: &mut Transaction<'_>,
     campaign_id: CampaignId,
-    catalog: &crate::economic_catalog::CapturedEconomicCatalog,
+    catalog: &CapturedEconomicCatalog,
 ) -> Result<FoundationGrantReport, FoundationGrantsError> {
     match catalog.view().sources {
         crate::economic_catalog::EconomicSourceView::MichiganControl { .. } => {
@@ -415,8 +422,8 @@ pub(crate) fn seed_catalog_grants(
 }
 
 fn national_reference_grants(
-    counties: &crate::national_counties::NationalCountyReference,
-    detail: Option<&crate::spatial_reference_products::SpatialReferenceProducts>,
+    counties: &NationalCountyReference,
+    detail: Option<&SpatialReferenceProducts>,
 ) -> Result<Vec<FoundationGrantRow>, FoundationGrantsError> {
     let mut rows = national_county_grants(counties)?;
     if let Some(detail) = detail {
@@ -446,7 +453,7 @@ fn national_reference_grants(
 }
 
 fn national_county_grants(
-    counties: &crate::national_counties::NationalCountyReference,
+    counties: &NationalCountyReference,
 ) -> Result<Vec<FoundationGrantRow>, FoundationGrantsError> {
     let mut rows =
         Vec::with_capacity(counties.counties().len() * FOUNDATION_COUNTY_GRANT_KEYS.len());
@@ -481,7 +488,7 @@ fn seed_rows(
         .map_err(|error| crate::archive::database("begin foundation grant savepoint", &error))?;
     let mut grant_rows = 0usize;
     for row in rows {
-        insert_grant_row(
+        archive::insert_grant_row(
             &mut transaction,
             campaign_id,
             row.subject().kind().as_str(),
@@ -496,7 +503,7 @@ fn seed_rows(
         rows.iter()
             .filter(|row| row.subject().kind() == kind)
             .map(|row| row.subject().id())
-            .collect::<std::collections::BTreeSet<_>>()
+            .collect::<BTreeSet<_>>()
             .len()
     };
     let counties = subjects(ArchiveAtomSubjectKind::County);
@@ -516,18 +523,18 @@ fn seed_rows(
 #[cfg(test)]
 mod national_scope_tests {
     use super::*;
+    use crate::national_counties::NationalCountyReference;
     #[test]
     fn optional_captured_detail_grants_only_its_source_supported_places() {
-        let source = crate::national_counties::NationalCountyReference::decode_pinned(
-            include_bytes!(
-                "../../../../src/babylon/data/reference/economy/national_county_reference_2024.csv.gz"
-            ),
-        )
+        let source = NationalCountyReference::decode_pinned(include_bytes!(
+            "../../../../src/babylon/data/reference/economy/national_county_reference_2024.csv.gz"
+        ))
         .unwrap();
         let base = national_reference_grants(&source, None).unwrap();
-        let products =
-            michigan_spatial_reference_products(representative_h3_reference_cohort().unwrap())
-                .unwrap();
+        let products = spatial_reference_products::michigan_spatial_reference_products(
+            h3_reference_cohort::representative_h3_reference_cohort().unwrap(),
+        )
+        .unwrap();
         let detailed = national_reference_grants(&source, Some(&products)).unwrap();
         assert_eq!(base.len(), 9_432);
         assert_eq!(detailed.len(), base.len() + 745 * 3);
@@ -545,10 +552,9 @@ mod national_scope_tests {
     }
     #[test]
     fn captured_national_roster_grants_only_county_public_identity() {
-        let source = crate::national_counties::NationalCountyReference::decode_pinned(
-            include_bytes!(
-            "../../../../src/babylon/data/reference/economy/national_county_reference_2024.csv.gz"),
-        )
+        let source = NationalCountyReference::decode_pinned(include_bytes!(
+            "../../../../src/babylon/data/reference/economy/national_county_reference_2024.csv.gz"
+        ))
         .unwrap();
         let rows = national_county_grants(&source).unwrap();
         assert_eq!(rows.len(), 3 * 3_144);

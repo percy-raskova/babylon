@@ -5,24 +5,21 @@ use super::super::{ExperimentError, Result, StaffingEvidence};
 use crate::material_runtime::MaterialRuntimeFoundation;
 
 use babylon_bsl::causal_contract::{
-    check_rule_contract, effect_footprint, EffectSignature, EvidenceClass, RuleRole, ShapeVerb,
-    GOVERNED_RULE_ATTRIBUTIONS,
+    EffectSignature, EvidenceClass, RuleRole, ShapeVerb, GOVERNED_RULE_ATTRIBUTIONS,
 };
-
-use babylon_bsl::rule_pipeline::split_content;
 
 use babylon_graph::stable_element::StableElementKey;
 
 use babylon_material_circuit::SupplierTransport;
 
-use babylon_tick::{
-    material_staffing::{STAFFING_COMPOSITION_ID, STAFFING_FIELDS},
-    material_world::MaterialTickReceipts,
-    TickReport,
-};
+use babylon_tick::material_staffing::{STAFFING_COMPOSITION_ID, STAFFING_FIELDS};
+use babylon_tick::material_world::MaterialTickReceipts;
+use babylon_tick::TickReport;
 
 use serde::Serialize;
 
+use babylon_bsl::causal_contract;
+use babylon_bsl::rule_pipeline;
 use std::collections::BTreeMap;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -157,12 +154,14 @@ pub(in crate::simulation_experiment::report) fn capture(
             .rule_source_bytes(),
     )
     .map_err(|_| ExperimentError::Content)?;
-    let (_, forms) = split_content(source).map_err(|_| ExperimentError::Content)?;
+    let (_, forms) = rule_pipeline::split_content(source).map_err(|_| ExperimentError::Content)?;
     let mut rules = forms
         .iter()
         .map(|form| {
-            let contract = check_rule_contract(&form.form).map_err(|_| ExperimentError::Content)?;
-            let effects = effect_footprint(&form.form).map_err(|_| ExperimentError::Content)?;
+            let contract = causal_contract::check_rule_contract(&form.form)
+                .map_err(|_| ExperimentError::Content)?;
+            let effects = causal_contract::effect_footprint(&form.form)
+                .map_err(|_| ExperimentError::Content)?;
             Ok(attribution(
                 &contract.rule_id,
                 contract.role,

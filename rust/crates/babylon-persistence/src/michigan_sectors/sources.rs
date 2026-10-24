@@ -6,11 +6,13 @@ use std::io::Read as _;
 
 use std::sync::OnceLock;
 
-use babylon_kernel::content_digest::sha256_of;
-
 use serde::{Deserialize, Serialize};
 
-use crate::michigan_economy::digest_hex;
+use crate::michigan_economy;
+use babylon_kernel::content_digest;
+use flate2::bufread::GzDecoder;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 
 /// Exact compressed artifact identity from `QcewCountySectorsV1`.
 pub const QCEW_SECTORS_ARTIFACT_SHA256: &str =
@@ -225,7 +227,7 @@ pub enum MichiganSectorsError {
 }
 
 impl std::fmt::Display for MichiganSectorsError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         write!(f, "Michigan county sectors refused: {self:?}")
     }
 }
@@ -248,7 +250,9 @@ pub(crate) struct SourcePin {
 }
 
 pub(crate) fn source_pins(raw: &[u8]) -> Result<Vec<SourcePin>, MichiganSectorsError> {
-    if raw.len() > MAX_SOURCE_BYTES || digest_hex(&sha256_of(raw)) != SOURCE_MANIFEST_SHA256 {
+    if raw.len() > MAX_SOURCE_BYTES
+        || michigan_economy::digest_hex(&content_digest::sha256_of(raw)) != SOURCE_MANIFEST_SHA256
+    {
         return Err(MichiganSectorsError::SourceDigest);
     }
     let manifest: SourceManifest =
@@ -282,7 +286,7 @@ pub(crate) fn decode_gzip(raw: &[u8]) -> Result<String, MichiganSectorsError> {
     if raw.len() < 10 || raw[..8] != [0x1f, 0x8b, 8, 0, 0, 0, 0, 0] {
         return Err(MichiganSectorsError::ArtifactDecode);
     }
-    let mut decoder = flate2::bufread::GzDecoder::new(raw);
+    let mut decoder = GzDecoder::new(raw);
     let mut source_text = String::new();
     decoder
         .by_ref()
@@ -460,7 +464,9 @@ pub(crate) fn semantic_digest(
             ),
         )?;
     }
-    Ok(digest_hex(&sha256_of(source.as_bytes())))
+    Ok(michigan_economy::digest_hex(&content_digest::sha256_of(
+        source.as_bytes(),
+    )))
 }
 
 pub(crate) fn checked_csv(
@@ -519,7 +525,8 @@ pub(crate) fn admit(
     if raw.len() > MAX_BYTES {
         return Err(MichiganSectorsError::ArtifactSize);
     }
-    if digest_hex(&sha256_of(raw)) != QCEW_SECTORS_ARTIFACT_SHA256 {
+    if michigan_economy::digest_hex(&content_digest::sha256_of(raw)) != QCEW_SECTORS_ARTIFACT_SHA256
+    {
         return Err(MichiganSectorsError::ArtifactDigest);
     }
     checked_csv(&decode_gzip(raw)?, &pins)

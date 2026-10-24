@@ -1,10 +1,18 @@
-use super::*;
+use super::layout::kind;
+use super::lookup::{IdentityEntry, IdentityKind, TypedLookup};
+use super::register::{
+    decode_admitted, expand, restore_section, Block, OpeningRegister, StorageError, StoredSection,
+    DOMAIN, MAX_BYTES,
+};
+use super::schema::{Cursor, Section};
+use super::{offers, register, schema};
 use crate::michigan_content::MichiganContentPreset;
 use babylon_practice_contract::OrderedPracticeActionBatch;
+use babylon_tick::material_world::MaterialWorldRegister;
 
 use crate::production_projection::recurring_fixture as recurring_control;
 
-fn opening(preset: MichiganContentPreset) -> crate::material_runtime::MaterialRuntimeFoundation {
+fn opening(preset: MichiganContentPreset) -> MaterialRuntimeFoundation {
     preset
         .create_foundation(&crate::test_support::catalog())
         .unwrap()
@@ -27,7 +35,8 @@ fn current_tick_reconstructs_exact_canonical_register_without_current_input() {
     let candidate = session.prepare_advance(&actions).unwrap();
     let current = candidate.material().register().canonical_bytes();
     let admitted_current = MaterialWorldRegister::decode(current).unwrap();
-    let encoded = encode_register_with_opening(&authority, &admitted_current, &lookup).unwrap();
+    let encoded =
+        register::encode_register_with_opening(&authority, &admitted_current, &lookup).unwrap();
     let updated = admit_delta(&lookup, &encoded.lookup_delta);
     assert_eq!(
         decode_admitted(&authority, &encoded.package, &updated, [0; 32])
@@ -37,7 +46,7 @@ fn current_tick_reconstructs_exact_canonical_register_without_current_input() {
     );
     assert_eq!(
         encoded.package,
-        encode_register_with_opening(&authority, &admitted_current, &lookup)
+        register::encode_register_with_opening(&authority, &admitted_current, &lookup)
             .unwrap()
             .package
     );
@@ -54,13 +63,13 @@ fn current_tick_reconstructs_exact_canonical_register_without_current_input() {
 #[test]
 fn current_organizer_bytes_are_retained_instead_of_assuming_empty_trailer() {
     let foundation = opening(MichiganContentPreset::FourWeekStandard);
-    let defines = crate::michigan_defines::MichiganDefines::parse(include_str!(
+    let defines = MichiganDefines::parse(include_str!(
         "../../../../../content/scenarios/michigan/defines.toml"
     ))
     .unwrap();
     let register = foundation.initial_register().clone();
     let config = crate::organizer_content::config(
-        crate::identity::CampaignId::from_uuid(uuid::Uuid::from_u128(719)),
+        CampaignId::from_uuid(Uuid::from_u128(719)),
         &defines.organizer,
         register.state().process_outputs[0].process_id.as_bytes(),
     )
@@ -72,14 +81,15 @@ fn current_organizer_bytes_are_retained_instead_of_assuming_empty_trailer() {
     let authority = OpeningRegister::from_canonical(base).unwrap();
     let lookup = authority.lookup().clone();
     let admitted_current = MaterialWorldRegister::decode(base).unwrap();
-    let encoded = encode_register_with_opening(&authority, &admitted_current, &lookup).unwrap();
+    let encoded =
+        register::encode_register_with_opening(&authority, &admitted_current, &lookup).unwrap();
     assert_eq!(
         decode_admitted(&authority, &encoded.package, &lookup, [0; 32])
             .unwrap()
             .canonical_bytes(),
         base
     );
-    let trailer = sections(base).unwrap().pop().unwrap();
+    let trailer = schema::sections(base).unwrap().pop().unwrap();
     assert!(trailer.end - trailer.start > 1);
 }
 #[test]
@@ -89,7 +99,8 @@ fn wrong_base_damaged_package_and_trailing_bytes_refuse() {
     let authority = OpeningRegister::from_canonical(base).unwrap();
     let lookup = authority.lookup().clone();
     let admitted_current = MaterialWorldRegister::decode(base).unwrap();
-    let encoded = encode_register_with_opening(&authority, &admitted_current, &lookup).unwrap();
+    let encoded =
+        register::encode_register_with_opening(&authority, &admitted_current, &lookup).unwrap();
     let mut damaged = encoded.package.clone();
     damaged[DOMAIN.len()] ^= 1;
     assert_eq!(
@@ -125,7 +136,7 @@ fn typed_lookup_does_not_alias_equal_bytes_across_identity_domains() {
         lookup.resolve(u32::MAX, IdentityKind::Site),
         Err(StorageError::LookupIndex)
     );
-    let packed = encode_lookup(lookup.entries()).unwrap();
+    let packed = register::encode_lookup(lookup.entries()).unwrap();
     assert_eq!(packed.len(), 70);
     assert_eq!(&packed[..4], &2_u32.to_be_bytes());
     assert_eq!(packed[4], IdentityKind::Site as u8);
@@ -157,23 +168,23 @@ fn account_and_equipment_variants_use_their_own_typed_domain() {
         raw.push(tag);
         raw.extend_from_slice(&[19; 32]);
         raw.extend_from_slice(&(-43_i128).to_be_bytes());
-        let shape = layout(24).unwrap();
+        let shape = super::layout(24).unwrap();
         let mut lookup = TypedLookup::default();
-        let normalized = normalize(&raw, shape, &mut lookup, true).unwrap();
+        let normalized = register::normalize(&raw, shape, &mut lookup, true).unwrap();
         assert_eq!(lookup.entries()[0].kind, expected);
         assert_eq!(
             expand(&normalized.bytes, 1, shape, &lookup, lookup.entries().len()).unwrap(),
             raw
         );
     }
-    let field = layout(43).unwrap().fields[0];
+    let field = super::layout(43).unwrap().fields[0];
     assert_eq!(kind(field, &[0]).unwrap(), IdentityKind::Installation);
     assert_eq!(kind(field, &[1]).unwrap(), IdentityKind::EquipmentCohort);
     assert_eq!(kind(field, &[2]), Err(StorageError::IdentityKind));
 }
 #[test]
 fn xor_restores_exact_numeric_bytes_but_refuses_changed_identity_rows() {
-    let shape = layout(10).unwrap();
+    let shape = super::layout(10).unwrap();
     let mut old = 1_u32.to_be_bytes().to_vec();
     old.extend_from_slice(&[7; 32]);
     old.extend_from_slice(&[9; 32]);
@@ -182,17 +193,17 @@ fn xor_restores_exact_numeric_bytes_but_refuses_changed_identity_rows() {
     let mut current = old.clone();
     current[107] = 43;
     let mut lookup = TypedLookup::default();
-    let prior = normalize(&old, shape, &mut lookup, true).unwrap();
-    let next = normalize(&current, shape, &mut lookup, true).unwrap();
+    let prior = register::normalize(&old, shape, &mut lookup, true).unwrap();
+    let next = register::normalize(&current, shape, &mut lookup, true).unwrap();
     let xor = next
         .bytes
         .iter()
         .zip(&prior.bytes)
         .map(|(a, b)| a ^ b)
         .collect::<Vec<_>>();
-    let block = compressed(
+    let block = register::compressed(
         3,
-        columns(&xor, 1, normalized_width(shape).unwrap()).unwrap(),
+        register::columns(&xor, 1, register::normalized_width(shape).unwrap()).unwrap(),
     )
     .unwrap();
     let stored = StoredSection {
@@ -200,7 +211,7 @@ fn xor_restores_exact_numeric_bytes_but_refuses_changed_identity_rows() {
         mode: 3,
         count: Some(1),
         raw_length: current.len(),
-        raw_digest: digest(&current),
+        raw_digest: register::digest(&current),
         body_length: block.body_length,
         body_digest: block.body_digest,
         encoded: block.encoded,
@@ -223,16 +234,16 @@ fn xor_restores_exact_numeric_bytes_but_refuses_changed_identity_rows() {
     );
     let mut changed_key = current.clone();
     changed_key[4] = 8;
-    let changed = normalize(&changed_key, shape, &mut lookup, true).unwrap();
+    let changed = register::normalize(&changed_key, shape, &mut lookup, true).unwrap();
     let xor = changed
         .bytes
         .iter()
         .zip(&prior.bytes)
         .map(|(a, b)| a ^ b)
         .collect::<Vec<_>>();
-    let block = compressed(
+    let block = register::compressed(
         3,
-        columns(&xor, 1, normalized_width(shape).unwrap()).unwrap(),
+        register::columns(&xor, 1, register::normalized_width(shape).unwrap()).unwrap(),
     )
     .unwrap();
     let changed_stored = StoredSection {
@@ -240,7 +251,7 @@ fn xor_restores_exact_numeric_bytes_but_refuses_changed_identity_rows() {
         mode: 3,
         count: Some(1),
         raw_length: changed_key.len(),
-        raw_digest: digest(&changed_key),
+        raw_digest: register::digest(&changed_key),
         body_length: block.body_length,
         body_digest: block.body_digest,
         encoded: block.encoded,
@@ -269,7 +280,7 @@ fn xor_restores_exact_numeric_bytes_but_refuses_changed_identity_rows() {
 #[test]
 fn compiled_layouts_include_all_empty_family_identity_fields() {
     for (id, width) in [(41, 81), (71, 282), (72, 169)] {
-        assert_eq!(layout(id).unwrap().width, width);
+        assert_eq!(super::layout(id).unwrap().width, width);
     }
     let mut lookup = TypedLookup::default();
     let mandate = lookup.intern(IdentityKind::AidMandate, [17; 32]).unwrap();
@@ -287,7 +298,7 @@ fn compiled_layouts_include_all_empty_family_identity_fields() {
         lookup.resolve(mandate, IdentityKind::Order),
         Err(StorageError::IdentityKind)
     );
-    let encoded = encode_lookup(lookup.entries()).unwrap();
+    let encoded = register::encode_lookup(lookup.entries()).unwrap();
     assert_eq!(encoded.len(), 70);
     assert_eq!(&encoded[..4], &2_u32.to_be_bytes());
     assert_eq!(encoded[4], 20);
@@ -295,7 +306,7 @@ fn compiled_layouts_include_all_empty_family_identity_fields() {
     assert_eq!(encoded[37], IdentityKind::Order as u8);
     assert_eq!(&encoded[38..70], [17; 32]);
     for id in [21, 26, 41, 50, 54, 61, 65, 67, 68, 71, 72] {
-        let shape = layout(id).unwrap();
+        let shape = super::layout(id).unwrap();
         assert!(!shape.fields.is_empty());
         assert!(shape
             .fields
@@ -318,8 +329,9 @@ fn raw_byte_admission_refuses_malformed_opening_and_current_before_typed_encodin
     );
     let current = MaterialWorldRegister::decode(bytes).unwrap();
     let raw_encoded =
-        encode_register_with_opening(&raw_opening, &current, raw_opening.lookup()).unwrap();
-    let typed_encoded = encode_register_with_opening(
+        register::encode_register_with_opening(&raw_opening, &current, raw_opening.lookup())
+            .unwrap();
+    let typed_encoded = register::encode_register_with_opening(
         &typed_opening,
         foundation.initial_register(),
         typed_opening.lookup(),
@@ -328,11 +340,21 @@ fn raw_byte_admission_refuses_malformed_opening_and_current_before_typed_encodin
     assert_eq!(raw_encoded.package, typed_encoded.package);
 }
 
+use crate::identity::CampaignId;
+use crate::material_runtime::MaterialRuntimeFoundation;
+use crate::michigan_defines::MichiganDefines;
 use crate::organizer_aid_fixture;
+use crate::storage_compression;
+use babylon_bsl::structural_verbs::CollectingSink;
+use babylon_material_circuit::OrderId;
+use babylon_practice_contract::OrganizerAidSupport;
+use babylon_practice_contract::OrganizerCommitment;
+use organizer_aid_fixture::Candidate;
+use uuid::Uuid;
 
 fn assert_aid_period_package(
     opening: &[u8],
-    candidate: &organizer_aid_fixture::Candidate,
+    candidate: &Candidate,
     previous_chain: [u8; 32],
 ) -> [u8; 32] {
     use crate::material_storage::{self, LookupAnchor};
@@ -371,7 +393,7 @@ fn assert_aid_period_package(
         babylon_tick::material_world::decode_material_receipts(&restored.1).unwrap(),
         babylon_tick::material_world::decode_material_receipts(receipts).unwrap()
     );
-    let current_sections = sections(&restored.0).unwrap();
+    let current_sections = schema::sections(&restored.0).unwrap();
     assert_eq!(
         current_sections
             .iter()
@@ -473,7 +495,7 @@ fn local_grant_canonical_state_and_complete_receipt_package_inverse() {
         .unwrap()
         .pending_aid
         .is_empty());
-    let mut sink = babylon_bsl::structural_verbs::CollectingSink::default();
+    let mut sink = CollectingSink::default();
     f::commit(&mut session, &mut sink, candidate);
     assert_eq!(
         session
@@ -490,13 +512,10 @@ fn local_grant_canonical_state_and_complete_receipt_package_inverse() {
     );
 }
 
-fn assert_aid_dispatch(
-    candidate: &organizer_aid_fixture::Candidate,
-    accepted: &babylon_practice_contract::OrganizerCommitment,
-) -> babylon_material_circuit::OrderId {
+fn assert_aid_dispatch(candidate: &Candidate, accepted: &OrganizerCommitment) -> OrderId {
     use babylon_material_circuit::AidOutcome;
     let first_state = candidate.material().register();
-    let first_sections = sections(first_state.canonical_bytes()).unwrap();
+    let first_sections = schema::sections(first_state.canonical_bytes()).unwrap();
     for id in [71, 72] {
         assert_eq!(
             first_sections
@@ -541,9 +560,9 @@ fn assert_aid_dispatch(
 }
 
 fn assert_aid_arrival(
-    candidate: &organizer_aid_fixture::Candidate,
-    accepted: &babylon_practice_contract::OrganizerCommitment,
-    commitment_id: babylon_material_circuit::OrderId,
+    candidate: &Candidate,
+    accepted: &OrganizerCommitment,
+    commitment_id: OrderId,
     arrived: u64,
     refunded: i128,
 ) -> usize {
@@ -591,7 +610,8 @@ fn assert_aid_arrival(
     assert_eq!(economy.book.cash(payer).unwrap().micro_units(), refunded);
     assert!(economy.aid.freight.is_empty());
     assert!(economy.book.snapshot().aid.is_empty());
-    let closed_sections = sections(candidate.material().register().canonical_bytes()).unwrap();
+    let closed_sections =
+        schema::sections(candidate.material().register().canonical_bytes()).unwrap();
     for id in [71, 72] {
         assert_eq!(
             closed_sections
@@ -656,7 +676,7 @@ fn routed_aid_package_sequence(loss_ppm: u32, arrived: u64, refunded: i128) {
     let first = f::prepare(&session, Some(&accepted));
     let chain = assert_aid_period_package(&opening, &first, chain);
     let commitment_id = assert_aid_dispatch(&first, &accepted);
-    let mut sink = babylon_bsl::structural_verbs::CollectingSink::default();
+    let mut sink = CollectingSink::default();
     f::commit(&mut session, &mut sink, first);
     let second = f::prepare(&session, None);
     let chain = assert_aid_period_package(&opening, &second, chain);
@@ -701,7 +721,7 @@ fn total_freight_loss_package_refunds_payer_without_repeating_authorization() {
 }
 
 fn assert_retained_aid_postings(
-    support: &babylon_practice_contract::OrganizerAidSupport,
+    support: &OrganizerAidSupport,
     dispatched: u64,
     hours: u64,
     reserved: i128,
@@ -728,7 +748,7 @@ fn prefix_inventory(count: u32) -> Vec<u8> {
         raw.extend_from_slice(&site);
         raw.extend_from_slice(&[9; 32]);
         raw.extend_from_slice(&[11; 32]);
-        raw.extend_from_slice(&digest(&row.to_le_bytes())[..8]);
+        raw.extend_from_slice(&register::digest(&row.to_le_bytes())[..8]);
     }
     raw
 }
@@ -746,36 +766,38 @@ fn prefix_selected(old: &[u8], current: &[u8]) -> (Block, StoredSection, TypedLo
     let old_section = prefix_section(10, old, old_count);
     let section = prefix_section(10, current, count);
     let mut lookup = TypedLookup::default();
-    normalize(old, layout(10).unwrap(), &mut lookup, true).unwrap();
-    let selected = block(current, &section, Some((&old_section, old)), &mut lookup).unwrap();
+    register::normalize(old, super::layout(10).unwrap(), &mut lookup, true).unwrap();
+    let selected =
+        register::block(current, &section, Some((&old_section, old)), &mut lookup).unwrap();
     let mut wire = Vec::new();
-    append_block(&mut wire, current, &section, &selected).unwrap();
-    let stored = stored_section(&mut Cursor::new(&wire)).unwrap();
+    register::append_block(&mut wire, current, &section, &selected).unwrap();
+    let stored = register::stored_section(&mut Cursor::new(&wire)).unwrap();
     (selected, stored, lookup)
 }
 fn prefix_manual(old: &[u8], current: &[u8]) -> (StoredSection, TypedLookup) {
-    let shape = layout(10).unwrap();
+    let shape = super::layout(10).unwrap();
     let count = u32::from_be_bytes(current[..4].try_into().unwrap()) as usize;
     let mut lookup = TypedLookup::default();
-    let previous = normalize(old, shape, &mut lookup, true).unwrap();
-    let next = normalize(current, shape, &mut lookup, true).unwrap();
+    let previous = register::normalize(old, shape, &mut lookup, true).unwrap();
+    let next = register::normalize(current, shape, &mut lookup, true).unwrap();
     let delta = next
         .bytes
         .iter()
         .enumerate()
         .map(|(index, byte)| byte ^ previous.bytes.get(index).copied().unwrap_or(0))
         .collect::<Vec<_>>();
-    let body = columns(&delta, count, normalized_width(shape).unwrap()).unwrap();
+    let body =
+        register::columns(&delta, count, register::normalized_width(shape).unwrap()).unwrap();
     let body_length = body.len();
-    let body_digest = digest(&body);
-    let encoded = compressed(4, body).unwrap().encoded;
+    let body_digest = register::digest(&body);
+    let encoded = register::compressed(4, body).unwrap().encoded;
     (
         StoredSection {
             id: 10,
             mode: 4,
             count: Some(count),
             raw_length: current.len(),
-            raw_digest: digest(current),
+            raw_digest: register::digest(current),
             body_length,
             body_digest,
             encoded,
@@ -794,8 +816,10 @@ fn opening_prefix_producer_selects_smaller_frame_for_added_removed_and_rekeyed_r
     for current in [added, removed, rekeyed] {
         let (selected, stored, mut lookup) = prefix_selected(&old, &current);
         let count = stored.count.unwrap();
-        let full_rows = normalize(&current, layout(10).unwrap(), &mut lookup, false).unwrap();
-        let full = compressed(2, columns(&full_rows.bytes, count, 20).unwrap()).unwrap();
+        let full_rows =
+            register::normalize(&current, super::layout(10).unwrap(), &mut lookup, false).unwrap();
+        let full = register::compressed(2, register::columns(&full_rows.bytes, count, 20).unwrap())
+            .unwrap();
         assert_eq!(
             selected.mode, 4,
             "current full-row fallback loses the retained opening prefix"
@@ -843,7 +867,9 @@ fn opening_prefix_keeps_full_frame_when_smaller_and_preserves_empty_and_missing_
     let section = prefix_section(10, &current, 32);
     let mut lookup = TypedLookup::default();
     assert_eq!(
-        block(&current, &section, None, &mut lookup).unwrap().mode,
+        register::block(&current, &section, None, &mut lookup)
+            .unwrap()
+            .mode,
         2
     );
     assert_eq!(prefix_selected(&old, &old).0.mode, 0);
@@ -926,7 +952,7 @@ fn opening_prefix_inverse_checks_base_layout_counts_extents_and_typed_prefix() {
         Err(StorageError::Layout)
     );
     stored.body_length -= 1;
-    stored.count = Some(layout(10).unwrap().maximum + 1);
+    stored.count = Some(super::layout(10).unwrap().maximum + 1);
     assert_eq!(
         restore_section(
             &stored,
@@ -967,7 +993,7 @@ fn opening_prefix_single_frame_and_digest_cannot_hide_truncation_or_extra_bytes(
     stored.encoded = encoded.clone();
     stored
         .encoded
-        .extend(compress_exact(&[], MAX_BYTES).unwrap());
+        .extend(storage_compression::compress_exact(&[], MAX_BYTES).unwrap());
     assert_eq!(
         restore_section(
             &stored,
@@ -992,7 +1018,7 @@ fn opening_prefix_single_frame_and_digest_cannot_hide_truncation_or_extra_bytes(
 // Author a complete physical package with one explicit prefix block. This does
 // not call typed encoding on invalid registers: decoder admission is the subject.
 fn prefix_package(opening: &OpeningRegister, current: &[u8], id: u16) -> (Vec<u8>, TypedLookup) {
-    let parsed = sections(current).unwrap();
+    let parsed = schema::sections(current).unwrap();
     let mut lookup = opening.lookup().clone();
     let mut blocks = Vec::new();
     for section in &parsed {
@@ -1003,9 +1029,9 @@ fn prefix_package(opening: &OpeningRegister, current: &[u8], id: u16) -> (Vec<u8
             .unwrap();
         let old_raw = old.raw(opening.canonical_bytes());
         if section.id == id {
-            let shape = layout(id).unwrap();
-            let prior = normalize(old_raw, shape, &mut lookup, false).unwrap();
-            let next = normalize(section.raw(current), shape, &mut lookup, true).unwrap();
+            let shape = super::layout(id).unwrap();
+            let prior = register::normalize(old_raw, shape, &mut lookup, false).unwrap();
+            let next = register::normalize(section.raw(current), shape, &mut lookup, true).unwrap();
             let delta = next
                 .bytes
                 .iter()
@@ -1013,31 +1039,33 @@ fn prefix_package(opening: &OpeningRegister, current: &[u8], id: u16) -> (Vec<u8
                 .map(|(index, byte)| byte ^ prior.bytes.get(index).copied().unwrap_or(0))
                 .collect::<Vec<_>>();
             blocks.push(
-                compressed(
+                register::compressed(
                     4,
-                    columns(
+                    register::columns(
                         &delta,
                         section.count.unwrap(),
-                        normalized_width(shape).unwrap(),
+                        register::normalized_width(shape).unwrap(),
                     )
                     .unwrap(),
                 )
                 .unwrap(),
             );
         } else {
-            blocks.push(block(current, section, Some((old, old_raw)), &mut lookup).unwrap());
+            blocks.push(
+                register::block(current, section, Some((old, old_raw)), &mut lookup).unwrap(),
+            );
         }
     }
     let mut package = DOMAIN.to_vec();
     package.extend_from_slice(&opening.digest());
-    package.extend_from_slice(&digest(current));
+    package.extend_from_slice(&register::digest(current));
     package.extend_from_slice(&[0; 32]);
     package.extend_from_slice(&u64::try_from(current.len()).unwrap().to_be_bytes());
     package.extend_from_slice(&u32::try_from(lookup.entries().len()).unwrap().to_be_bytes());
     package.extend_from_slice(&lookup.prefix_digest(lookup.entries().len()).unwrap());
     package.extend_from_slice(&u16::try_from(parsed.len()).unwrap().to_be_bytes());
     for (section, block) in parsed.iter().zip(blocks) {
-        append_block(&mut package, current, section, &block).unwrap();
+        register::append_block(&mut package, current, section, &block).unwrap();
     }
     (package, lookup)
 }
@@ -1059,7 +1087,7 @@ fn opening_prefix_full_admission_rejects_rehashed_duplicate_and_out_of_order_row
             .canonical_bytes(),
         canonical
     );
-    decode_against_admitted(
+    register::decode_against_admitted(
         &authority,
         &package,
         &lookup,
@@ -1085,7 +1113,7 @@ fn opening_prefix_full_admission_rejects_rehashed_duplicate_and_out_of_order_row
             Err(StorageError::Canonical)
         );
         assert_eq!(
-            decode_against_admitted(
+            register::decode_against_admitted(
                 &authority,
                 &rehashed,
                 &lookup,
@@ -1116,7 +1144,7 @@ fn opening_prefix_full_admission_rejects_rehashed_duplicate_and_out_of_order_row
 fn previous_state_storage_domain_is_explicitly_unsupported() {
     let foundation = opening(MichiganContentPreset::FourWeekStandard);
     let authority = OpeningRegister::from_opening(foundation.initial_register()).unwrap();
-    let encoded = encode_register_with_opening(
+    let encoded = register::encode_register_with_opening(
         &authority,
         foundation.initial_register(),
         authority.lookup(),
@@ -1139,7 +1167,7 @@ fn opening_prefix_rehashed_references_still_refuse_future_and_wrong_identity_kin
         (1, StorageError::IdentityKind),
     ] {
         let (mut stored, lookup) = prefix_manual(&old, &current);
-        let mut body = decompress_exact(
+        let mut body = storage_compression::decompress_exact(
             &stored.encoded,
             stored.body_length,
             stored.body_digest,
@@ -1150,8 +1178,8 @@ fn opening_prefix_rehashed_references_still_refuse_future_and_wrong_identity_kin
         for (column, byte) in index.to_be_bytes().iter().enumerate() {
             body[column * 9 + 8] = *byte;
         }
-        stored.body_digest = digest(&body);
-        stored.encoded = compress_exact(&body, MAX_BYTES).unwrap();
+        stored.body_digest = register::digest(&body);
+        stored.encoded = storage_compression::compress_exact(&body, MAX_BYTES).unwrap();
         assert_eq!(
             restore_section(
                 &stored,
@@ -1173,7 +1201,7 @@ fn opening_prefix_rehashed_references_still_refuse_future_and_wrong_identity_kin
         Err(StorageError::Count)
     );
     assert!(matches!(
-        stored_section(&mut Cursor::new(&[0, 10, 5])),
+        register::stored_section(&mut Cursor::new(&[0, 10, 5])),
         Err(StorageError::Framing)
     ));
 }
@@ -1186,11 +1214,11 @@ fn opening_prefix_equal_frame_keeps_full_columns() {
     current.extend_from_slice(&old[4..]);
     current.extend_from_slice(&[8; 32]);
     current.extend_from_slice(&[0; 16]);
-    let shape = layout(14).unwrap();
+    let shape = super::layout(14).unwrap();
     let mut lookup = TypedLookup::default();
-    let previous = normalize(&old, shape, &mut lookup, true).unwrap();
+    let previous = register::normalize(&old, shape, &mut lookup, true).unwrap();
     assert!(previous.bytes.iter().all(|byte| *byte == 0));
-    let next = normalize(&current, shape, &mut lookup, true).unwrap();
+    let next = register::normalize(&current, shape, &mut lookup, true).unwrap();
     let delta = next
         .bytes
         .iter()
@@ -1198,7 +1226,7 @@ fn opening_prefix_equal_frame_keeps_full_columns() {
         .map(|(index, byte)| byte ^ previous.bytes.get(index).copied().unwrap_or(0))
         .collect::<Vec<_>>();
     assert_eq!(delta, next.bytes);
-    let selected = block(
+    let selected = register::block(
         &current,
         &prefix_section(14, &current, 2),
         Some((&prefix_section(14, &old, 1), &old)),
@@ -1288,7 +1316,7 @@ fn offer_storage_retains_all_variants_and_original_order() {
     assert!(offers::encode(&raw, 5, &lookup).is_err());
     let mut lookup = lookup;
     let section = prefix_section(34, &raw, 6);
-    let selected = block(&raw, &section, Some((&section, &raw)), &mut lookup).unwrap();
+    let selected = register::block(&raw, &section, Some((&section, &raw)), &mut lookup).unwrap();
     assert_eq!(selected.mode, 0);
 }
 #[test]
@@ -1296,13 +1324,13 @@ fn offer_mode_refuses_wrong_section_and_damaged_body_digest() {
     let raw = offer_rows();
     let lookup = offer_lookup();
     let body = offers::encode(&raw, 6, &lookup).unwrap();
-    let encoded = compressed(5, body).unwrap();
+    let encoded = register::compressed(5, body).unwrap();
     let mut stored = StoredSection {
         id: 34,
         mode: 5,
         count: Some(6),
         raw_length: raw.len(),
-        raw_digest: digest(&raw),
+        raw_digest: register::digest(&raw),
         body_length: encoded.body_length,
         body_digest: encoded.body_digest,
         encoded: encoded.encoded,
@@ -1334,16 +1362,21 @@ fn offer_selection_uses_frame_size_without_changing_existing_references() {
         .to_vec();
     let mut lookup = TypedLookup::from_entries(entries.clone()).unwrap();
     let normalized = offers::encode(&raw, 1, &lookup).unwrap();
-    let normalized_size = compress_exact(&normalized, MAX_BYTES).unwrap().len();
-    let literal_size = compress_exact(&raw, MAX_BYTES).unwrap().len();
-    let selected = block(&raw, &prefix_section(34, &raw, 1), None, &mut lookup).unwrap();
+    let normalized_size = storage_compression::compress_exact(&normalized, MAX_BYTES)
+        .unwrap()
+        .len();
+    let literal_size = storage_compression::compress_exact(&raw, MAX_BYTES)
+        .unwrap()
+        .len();
+    let selected = register::block(&raw, &prefix_section(34, &raw, 1), None, &mut lookup).unwrap();
     assert_eq!(
         selected.mode,
         if normalized_size < literal_size { 5 } else { 1 }
     );
     assert_eq!(lookup.entries(), entries);
     let empty = 0_u32.to_be_bytes();
-    let selected = block(&empty, &prefix_section(34, &empty, 0), None, &mut lookup).unwrap();
+    let selected =
+        register::block(&empty, &prefix_section(34, &empty, 0), None, &mut lookup).unwrap();
     assert_eq!(selected.mode, 1); // Equal frames retain the literal representation.
     assert_eq!(lookup.entries(), entries);
 }
@@ -1356,13 +1389,13 @@ fn offer_candidate_cannot_enlarge_lookup_to_shrink_only_its_frame() {
         for kind in 0..3_u8 {
             let mut seed = ordinal.to_be_bytes().to_vec();
             seed.push(kind);
-            raw.extend_from_slice(&digest(&seed));
+            raw.extend_from_slice(&register::digest(&seed));
         }
         raw.extend_from_slice(&1_i128.to_be_bytes());
         raw.push(1);
     }
     let mut lookup = TypedLookup::default();
-    let selected = block(
+    let selected = register::block(
         &raw,
         &prefix_section(34, &raw, count as usize),
         None,
@@ -1381,32 +1414,32 @@ fn offer_mode_preserves_complete_canonical_admission_and_parent_binding() {
     let register = MaterialWorldRegister::try_new(0, recurring_control::opening()).unwrap();
     let authority = OpeningRegister::from_opening(&register).unwrap();
     let canonical = authority.canonical_bytes();
-    let parsed = sections(canonical).unwrap();
+    let parsed = schema::sections(canonical).unwrap();
     let mut lookup = authority.lookup().clone();
     let mut blocks = Vec::new();
     for section in &parsed {
         let raw = section.raw(canonical);
         blocks.push(if section.id == 34 {
-            compressed(
+            register::compressed(
                 5,
                 offers::encode(raw, section.count.unwrap(), &lookup).unwrap(),
             )
             .unwrap()
         } else {
-            block(canonical, section, Some((section, raw)), &mut lookup).unwrap()
+            register::block(canonical, section, Some((section, raw)), &mut lookup).unwrap()
         });
     }
     assert!(parsed.iter().any(|section| section.id == 34));
     let mut package = DOMAIN.to_vec();
     package.extend_from_slice(&authority.digest());
-    package.extend_from_slice(&digest(canonical));
+    package.extend_from_slice(&register::digest(canonical));
     package.extend_from_slice(&[0; 32]);
     package.extend_from_slice(&u64::try_from(canonical.len()).unwrap().to_be_bytes());
     package.extend_from_slice(&u32::try_from(lookup.entries().len()).unwrap().to_be_bytes());
     package.extend_from_slice(&lookup.prefix_digest(lookup.entries().len()).unwrap());
     package.extend_from_slice(&u16::try_from(parsed.len()).unwrap().to_be_bytes());
     for (section, block) in parsed.iter().zip(blocks) {
-        append_block(&mut package, canonical, section, &block).unwrap();
+        register::append_block(&mut package, canonical, section, &block).unwrap();
     }
     assert_eq!(
         decode_admitted(&authority, &package, &lookup, [0; 32])

@@ -1,15 +1,16 @@
 //! Narrow support facts from the authenticated detached material close.
 use super::MaterialWorldError;
+use babylon_material_circuit::AidFreightLot;
 use babylon_material_circuit::{
-    aid_commitment_id, AccountId, AidMandate, AidOutcome, AidReceipt, CircuitAccounting,
-    MaterialCircuitState, MaterialCircuitTransition, MoneyLocation, MoneyTransferPurpose,
-    MoneyTransferReceipt, OrderId,
+    AccountId, AidMandate, AidOutcome, AidReceipt, CircuitAccounting, MaterialCircuitState,
+    MaterialCircuitTransition, MoneyLocation, MoneyTransferPurpose, MoneyTransferReceipt, OrderId,
 };
 use babylon_practice_contract::{
-    organizer_aid_commitment, validate_organizer_aid_commitment, OrganizerAidCommitment,
-    OrganizerAidMaterialPostings, OrganizerAidSupport, OrganizerAidSupportStatus, OrganizerChoice,
-    OrganizerCommitment, OrganizerConfig, OrganizerState,
+    OrganizerAidCommitment, OrganizerAidMaterialPostings, OrganizerAidSupport,
+    OrganizerAidSupportStatus, OrganizerChoice, OrganizerCommitment, OrganizerConfig,
+    OrganizerState,
 };
+use std::collections::BTreeSet;
 
 pub(super) fn facts(
     config: &OrganizerConfig,
@@ -20,7 +21,7 @@ pub(super) fn facts(
 ) -> Result<Vec<OrganizerAidSupport>, MaterialWorldError> {
     let mut result = Vec::with_capacity(2);
     for pending in &organizer.pending_aid {
-        validate_organizer_aid_commitment(config, &pending.gift)?;
+        babylon_practice_contract::validate_organizer_aid_commitment(config, &pending.gift)?;
         let row = support(&pending.gift, pending.dispatch_period, opening, transition)?;
         if row.material_commitment_id != pending.material_commitment_id
             || row.good_id != pending.good_id
@@ -36,7 +37,8 @@ pub(super) fn facts(
             OrganizerChoice::LocalAid | OrganizerChoice::RemoteAid
         )
     }) {
-        let gift = organizer_aid_commitment(config, organizer, accepted)?;
+        let gift =
+            babylon_practice_contract::organizer_aid_commitment(config, organizer, accepted)?;
         result.push(support(
             &gift,
             accepted.resolves_period,
@@ -81,9 +83,8 @@ fn support(
     {
         return Err(MaterialWorldError::Wire);
     }
-    let material_id = aid_commitment_id(mandate.id, dispatch_period);
-    let matches_lot =
-        |row: &&babylon_material_circuit::AidFreightLot| row.commitment_id == material_id;
+    let material_id = babylon_material_circuit::aid_commitment_id(mandate.id, dispatch_period);
+    let matches_lot = |row: &&AidFreightLot| row.commitment_id == material_id;
     let prior_lots = prior
         .aid
         .freight
@@ -214,7 +215,7 @@ fn actual_postings(
     let mut expected_refund = 0_i128;
     let mut expected_reservation = 0_i128;
     let mut requested = None;
-    let mut outcomes = std::collections::BTreeSet::new();
+    let mut outcomes = BTreeSet::new();
     for row in aid.iter().filter(|row| row.commitment_id == id) {
         row.validate_against(mandate)?;
         if row.period != period
@@ -255,7 +256,7 @@ fn actual_postings(
                 .ok_or(MaterialWorldError::Arithmetic)?;
         }
     }
-    let mut movements = std::collections::BTreeSet::new();
+    let mut movements = BTreeSet::new();
     for row in money_transfers {
         let (tag, debit, credit, sum) = match row.purpose {
             MoneyTransferPurpose::AidReservation(command) if command == id => {
@@ -348,7 +349,7 @@ mod posting_tests {
             cash_per_unit: Currency::from_micro_units(3),
             transport: AidTransport::Local,
         };
-        let id = aid_commitment_id(mandate.id, 1);
+        let id = babylon_material_circuit::aid_commitment_id(mandate.id, 1);
         let request = AidReceipt {
             commitment_id: id,
             mandate_id: mandate.id,

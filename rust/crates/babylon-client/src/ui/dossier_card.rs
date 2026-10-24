@@ -6,30 +6,45 @@
 //! current-page search or global progress counter fills missing historical data.
 //! Keyboard and pointer controls share admission and are checked again on apply.
 
-use babylon_persistence::{
-    identity::CampaignId, ArchivePageRef, ArchiveSubjectKind, SemanticArchiveReader,
-};
+use babylon_persistence::identity::CampaignId;
+use babylon_persistence::{ArchivePageRef, ArchiveSubjectKind, SemanticArchiveReader};
+
 use bevy::ecs::system::SystemParam;
 use bevy::input_focus::tab_navigation::TabGroup;
 use bevy::prelude::*;
-use bevy::tasks::{block_on, AsyncComputeTaskPool, Task};
+use bevy::tasks::{AsyncComputeTaskPool, Task};
 
 use crate::atlas::CountyAtlas;
 use crate::decision_surface::{DeclaredSurface, SurfaceId};
-use crate::dossier::{availability_label, observation_scope, retained_page, verified_tick};
+use crate::dossier;
+use crate::dossier::{availability_label, retained_page};
 use crate::map::SelectedCounty;
 use crate::observer::{ObservationContext, ObserverSession};
 use crate::observer_focus::{ObserverFocusSystems, ObserverFocusTarget, ObserverKeyboardActivate};
+use crate::observer_io::ObserverSet;
+use crate::observer_layout::ObserverRegion;
+use crate::observer_ui::ObserverCommand;
 use crate::observer_ui::{ObserverFeedback, ObserverFontRole, ObserverFrame, ObserverUiState};
+use crate::organizer::ui::OrganizerAction;
+use crate::organizer::ui::OrganizerArchiveRequested;
+use crate::organizer::OrganizerClient;
 use crate::palette;
+use crate::ui::dossier_compose;
 use crate::ui::dossier_compose::{
-    chronicle_header, chronicle_row_segments, retained_signal_segments, DossierSegment,
-    DossierTone, DOSSIER_DECISION_QUESTION, INVESTIGATE_SEALED_CHIP,
+    chronicle_header, chronicle_row_segments, DossierSegment, DossierTone,
+    DOSSIER_DECISION_QUESTION, INVESTIGATE_SEALED_CHIP,
 };
 use babylon_persistence::archive_revision::{
     ArchiveChangeCursor, ArchiveDossierBounds, ArchiveDossierLink, ArchiveDossierRead,
     ArchiveLinkedPageState, ArchiveReadScope,
 };
+use babylon_persistence::SemanticArchiveReaderError;
+use bevy::tasks;
+use bevy::text::LineBreak;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
+use std::time::Instant;
+use uuid::Uuid;
 
 /// `babylon-runtime`'s default campaign identity (`babylon-runtime.rs`), the
 /// fallback when `BABYLON_CAMPAIGN_ID` is unset — the client reads the same
@@ -46,16 +61,16 @@ pub struct DossierCampaignId(pub CampaignId);
 impl Default for DossierCampaignId {
     fn default() -> Self {
         let from_env = std::env::var(CAMPAIGN_ENV).ok().and_then(|raw| {
-            if let Ok(uuid) = uuid::Uuid::parse_str(&raw) {
+            if let Ok(uuid) = Uuid::parse_str(&raw) {
                 Some(uuid)
             } else {
                 log::warn!("{CAMPAIGN_ENV} is not a canonical UUID; using the default campaign");
                 None
             }
         });
-        Self(CampaignId::from_uuid(from_env.unwrap_or_else(|| {
-            uuid::Uuid::from_u128(DEFAULT_CAMPAIGN_UUID)
-        })))
+        Self(CampaignId::from_uuid(
+            from_env.unwrap_or_else(|| Uuid::from_u128(DEFAULT_CAMPAIGN_UUID)),
+        ))
     }
 }
 
@@ -124,7 +139,7 @@ impl InstalledDossier {
     ) -> Option<&ArchiveDossierRead> {
         let installed = self;
         let snapshot = frame.for_session(session)?;
-        let read_scope = observation_scope(
+        let read_scope = dossier::observation_scope(
             session.campaign,
             snapshot.resolve_tick,
             snapshot.tick_content_hash.as_deref(),
@@ -168,7 +183,7 @@ pub enum DossierFetchError {
     ReadFailed(String),
 }
 impl std::fmt::Display for DossierFetchError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> FmtResult {
         match self {
             Self::ReaderAbsent(detail) => {
                 write!(formatter, "Archive reader not configured ({detail})")
@@ -211,9 +226,8 @@ fn fetch_dossier(
     scope: DossierRequestScope,
     cursor: Option<ArchiveChangeCursor>,
 ) -> Result<InstalledDossier, DossierFetchError> {
-    let read_error = |error: babylon_persistence::SemanticArchiveReaderError| {
-        DossierFetchError::ReadFailed(error.to_string())
-    };
+    let read_error =
+        |error: SemanticArchiveReaderError| DossierFetchError::ReadFailed(error.to_string());
     let reader = SemanticArchiveReader::from_env()
         .map_err(|error| DossierFetchError::ReaderAbsent(error.to_string()))?;
     let bounds = ArchiveDossierBounds::try_new(32, cursor)
@@ -424,11 +438,7 @@ fn spawn_organizer_return(card: &mut ChildSpawnerCommands) {
         OrganizerArchiveReturn,
     ))
     .with_children(|navigation| {
-        crate::organizer::ui::button(
-            navigation,
-            "Back to this decision",
-            crate::organizer::ui::OrganizerAction::Open,
-        );
+        crate::organizer::ui::button(navigation, "Back to this decision", OrganizerAction::Open);
     });
 }
 
@@ -467,7 +477,7 @@ struct DossierReadIdentity<'w> {
     selected: Res<'w, SelectedCounty>,
     atlas: Option<Res<'w, CountyAtlas>>,
     observer: Option<Res<'w, ObserverSession>>,
-    organizer: Option<Res<'w, crate::organizer::OrganizerClient>>,
+    organizer: Option<Res<'w, OrganizerClient>>,
     frame: Option<Res<'w, ObserverFrame>>,
 }
 
@@ -510,7 +520,7 @@ impl DossierReadIdentity<'_> {
             return None;
         }
         let observer = Some(session.context());
-        let read_scope = observation_scope(
+        let read_scope = dossier::observation_scope(
             session.campaign,
             snapshot.resolve_tick,
             snapshot.tick_content_hash.as_deref(),
@@ -654,7 +664,7 @@ fn drive_dossier_fetch(
     let cursor = presentation.cursor.clone();
     let request = scope.clone();
     let task = AsyncComputeTaskPool::get().spawn(async move {
-        let started = std::time::Instant::now();
+        let started = Instant::now();
         let campaign = request.campaign;
         let tick = request.read_scope.tick();
         let generation = request.refresh_generation;
@@ -692,7 +702,7 @@ fn collect_dossier_fetch(
     let DossierFetchState::InFlight { task, .. } = state.bypass_change_detection() else {
         unreachable!()
     };
-    let Some(result) = block_on(bevy::tasks::futures_lite::future::poll_once(task)) else {
+    let Some(result) = tasks::block_on(bevy::tasks::futures_lite::future::poll_once(task)) else {
         return;
     };
     *state = match result {
@@ -762,7 +772,7 @@ fn set_segment_rows(commands: &mut Commands, zone: Entity, rows: &[Vec<DossierSe
             row_gap: px(12),
             ..default()
         },
-        TextLayout::new_with_linebreak(bevy::text::LineBreak::WordOrCharacter),
+        TextLayout::new_with_linebreak(LineBreak::WordOrCharacter),
     ));
     for row in rows {
         commands.entity(zone).with_children(|parent| {
@@ -773,7 +783,7 @@ fn set_segment_rows(commands: &mut Commands, zone: Entity, rows: &[Vec<DossierSe
                         font_size: 14.0,
                         ..default()
                     },
-                    TextLayout::new_with_linebreak(bevy::text::LineBreak::WordOrCharacter),
+                    TextLayout::new_with_linebreak(LineBreak::WordOrCharacter),
                     Node {
                         width: percent(100),
                         min_width: px(0),
@@ -962,7 +972,7 @@ fn admitted_control(
     if control.scope() != &installed.scope {
         return false;
     }
-    let page = retained_page(&installed.read);
+    let page = dossier::retained_page(&installed.read);
     match control {
         DossierControl::Link(request) => page.is_some_and(|page| {
             page.links.iter().any(|link| {
@@ -1125,8 +1135,8 @@ struct DossierWriteState<'w> {
 
 /// An earned organizer subject enters the same reader, period scope, and card pipeline.
 fn open_organizer_archive(
-    request: On<crate::organizer::ui::OrganizerArchiveRequested>,
-    organizer: Res<crate::organizer::OrganizerClient>,
+    request: On<OrganizerArchiveRequested>,
+    organizer: Res<OrganizerClient>,
     identity: DossierReadIdentity,
     mut outputs: DossierWriteState,
     mut origin: ResMut<OrganizerArchiveOrigin>,
@@ -1181,12 +1191,12 @@ fn sync_organizer_return(
     mut origin: ResMut<OrganizerArchiveOrigin>,
     session: Option<Res<ObserverSession>>,
     ui: Option<Res<ObserverUiState>>,
-    mut requests: MessageReader<crate::observer_ui::ObserverCommand>,
+    mut requests: MessageReader<ObserverCommand>,
     mut navigation: Query<&mut Node, With<OrganizerArchiveReturn>>,
 ) {
     let mut generic_archive = false;
     for request in requests.read() {
-        generic_archive |= matches!(request, crate::observer_ui::ObserverCommand::Archive);
+        generic_archive |= matches!(request, ObserverCommand::Archive);
     }
     let retains_origin = session
         .as_ref()
@@ -1288,9 +1298,7 @@ fn repaint_dossier_card(
         return;
     };
     if context.ui.as_ref().is_some_and(DetectChanges::is_added) {
-        commands
-            .entity(root)
-            .insert(crate::observer_layout::ObserverRegion::Log);
+        commands.entity(root).insert(ObserverRegion::Log);
         node.right = Val::Auto;
         node.bottom = Val::Auto;
         node.min_width = Val::Auto;
@@ -1413,7 +1421,12 @@ fn paint_zones(
                 let rows = page.map_or_else(Vec::new, |page| {
                     page.signals
                         .iter()
-                        .map(|signal| retained_signal_segments(signal, presentation.details_open))
+                        .map(|signal| {
+                            dossier_compose::retained_signal_segments(
+                                signal,
+                                presentation.details_open,
+                            )
+                        })
                         .collect()
                 });
                 set_segment_rows(commands, entity, &rows);
@@ -1448,7 +1461,7 @@ fn paint_zones(
 
 fn evidence_rows(read: &ArchiveDossierRead) -> Vec<Vec<DossierSegment>> {
     let mut rows = vec![vec![chronicle_header(&read.state)]];
-    let Some(page) = retained_page(read) else {
+    let Some(page) = dossier::retained_page(read) else {
         return rows;
     };
     rows.extend(page.changes.changes.iter().map(chronicle_row_segments));
@@ -1499,7 +1512,7 @@ fn status_segments(
         };
         return vec![DossierSegment { text, tone }];
     };
-    let verified = verified_tick(read);
+    let verified = dossier::verified_tick(read);
     let mut segments = vec![DossierSegment {
         text: format!(
             "Viewing period {} · durable period {}\n{}",
@@ -1516,7 +1529,8 @@ fn status_segments(
             DossierTone::Crimson
         },
     }];
-    if let Some(page) = retained_page(read).filter(|page| page.effective_tick != read.scope.tick())
+    if let Some(page) =
+        dossier::retained_page(read).filter(|page| page.effective_tick != read.scope.tick())
     {
         segments.push(DossierSegment {
             text: format!("\nContent last published at period {}", page.effective_tick),
@@ -1545,7 +1559,7 @@ fn paint_actions(
     }
     if let Some(installed) = installed {
         let scope = &installed.scope;
-        if let Some(page) = retained_page(&installed.read) {
+        if let Some(page) = dossier::retained_page(&installed.read) {
             spawn_control(
                 commands,
                 entity,
@@ -1669,7 +1683,7 @@ impl Plugin for DossierCardPlugin {
     fn build(&self, app: &mut App) {
         app.add_message::<SubjectPageRequest>()
             .add_message::<DossierControl>()
-            .add_message::<crate::observer_ui::ObserverCommand>()
+            .add_message::<ObserverCommand>()
             .init_resource::<DossierPresentation>()
             .init_resource::<OrganizerArchiveOrigin>()
             .init_resource::<DossierCampaignId>()
@@ -1696,8 +1710,8 @@ impl Plugin for DossierCardPlugin {
                         .run_if(resource_exists::<crate::observer_ui::ObserverUiState>),
                 )
                     .chain()
-                    .after(crate::observer_io::ObserverSet::Install)
-                    .before(crate::observer_io::ObserverSet::Paint),
+                    .after(ObserverSet::Install)
+                    .before(ObserverSet::Paint),
             );
     }
 }
@@ -1705,13 +1719,16 @@ impl Plugin for DossierCardPlugin {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::observer::Perspective;
+    use crate::observer_ui::ObserverCommand;
+    use crate::test_support::EnvVarGuard;
     use babylon_persistence::archive_revision::{
         ArchiveChangePage, ArchiveDossierPage, ArchiveDossierPending, ArchiveDossierState,
     };
-    use babylon_persistence::{
-        observer_reader::ObserverEconomySnapshot, observer_reader::ObserverVisibility,
-        ArchiveCitation, ArchiveSignal,
-    };
+    use babylon_persistence::observer_reader::{ObserverEconomySnapshot, ObserverVisibility};
+    use babylon_persistence::{ArchiveCitation, ArchiveSignal};
+    use bevy::text::LineBreak;
+    use uuid::Uuid;
 
     fn subject(kind: ArchiveSubjectKind, id: &str) -> ArchivePageRef {
         ArchivePageRef::try_new(kind, id.into()).unwrap()
@@ -1734,7 +1751,7 @@ mod tests {
     }
     fn installed(session: &ObserverSession, hash: &str) -> InstalledDossier {
         let read_scope =
-            observation_scope(session.campaign, session.viewed_tick, Some(hash)).unwrap();
+            dossier::observation_scope(session.campaign, session.viewed_tick, Some(hash)).unwrap();
         let subject = subject(ArchiveSubjectKind::County, "26163");
         let page = ArchiveDossierPage {
             revision_id: [1; 32],
@@ -1795,14 +1812,17 @@ mod tests {
         }
     }
     fn chip_app() -> (App, Entity, SubjectPageRequest) {
-        let campaign = CampaignId::from_uuid(uuid::Uuid::nil());
+        let campaign = CampaignId::from_uuid(Uuid::nil());
         let mut session = ObserverSession::new(campaign);
         session.ready(1, Some("a".repeat(64)));
         assert!(session.installed(&session.context()));
         let frame = frame(&session, &"a".repeat(64));
         let installed = installed(&session, &"a".repeat(64));
         let scope = installed.scope.clone();
-        let links = retained_page(&installed.read).unwrap().links.clone();
+        let links = dossier::retained_page(&installed.read)
+            .unwrap()
+            .links
+            .clone();
         let request = chip_request(&links[0], &scope);
         let atlas = CountyAtlas::parse(include_bytes!(concat!(
             env!("CARGO_MANIFEST_DIR"),
@@ -1885,14 +1905,14 @@ mod tests {
             match mutation {
                 0 => {
                     app.world_mut().resource_mut::<DossierCampaignId>().0 =
-                        CampaignId::from_uuid(uuid::Uuid::from_u128(9));
+                        CampaignId::from_uuid(Uuid::from_u128(9));
                 }
                 1 => app.world_mut().resource_mut::<SelectedCounty>().0 = None,
                 2 => app.world_mut().resource_mut::<DossierRefresh>().bump(),
                 3 => app
                     .world_mut()
                     .resource_mut::<ObserverSession>()
-                    .set_perspective(crate::observer::Perspective::PlayerKnowledge),
+                    .set_perspective(Perspective::PlayerKnowledge),
                 4 => {
                     page_mut(
                         app.world_mut()
@@ -1991,7 +2011,7 @@ mod tests {
             .resource_mut::<ObserverSession>()
             .organizer_enabled = true;
         app.insert_resource(OrganizerArchiveOrigin(Some(campaign)))
-            .add_message::<crate::observer_ui::ObserverCommand>()
+            .add_message::<ObserverCommand>()
             .add_systems(Update, sync_organizer_return);
         app.world_mut().run_system_once(spawn_dossier_card).unwrap();
         let navigation = app
@@ -2016,8 +2036,7 @@ mod tests {
             DossierPageView::Card
         );
 
-        app.world_mut()
-            .write_message(crate::observer_ui::ObserverCommand::Archive);
+        app.world_mut().write_message(ObserverCommand::Archive);
         app.update();
         assert_eq!(
             app.world().get::<Node>(navigation).unwrap().display,
@@ -2027,7 +2046,7 @@ mod tests {
 
         app.world_mut().resource_mut::<OrganizerArchiveOrigin>().0 = Some(campaign);
         app.world_mut().resource_mut::<ObserverSession>().campaign =
-            CampaignId::from_uuid(uuid::Uuid::from_u128(2));
+            CampaignId::from_uuid(Uuid::from_u128(2));
         app.update();
         assert!(app.world().resource::<OrganizerArchiveOrigin>().0.is_none());
         assert_eq!(
@@ -2115,13 +2134,13 @@ mod tests {
 
     #[test]
     fn historical_admission_uses_the_installed_period_hash_and_preserves_pending() {
-        let mut session = ObserverSession::new(CampaignId::from_uuid(uuid::Uuid::nil()));
+        let mut session = ObserverSession::new(CampaignId::from_uuid(Uuid::nil()));
         session.ready(2, Some("b".repeat(64)));
         session.inspect_tick(1);
         assert!(session.installed(&session.context()));
         let frame = frame(&session, &"a".repeat(64));
         let mut active = ActiveCountyDossier(Some(installed(&session, &"a".repeat(64))));
-        let page = retained_page(&active.0.as_ref().unwrap().read)
+        let page = dossier::retained_page(&active.0.as_ref().unwrap().read)
             .unwrap()
             .clone();
         active.0.as_mut().unwrap().read.state = ArchiveDossierState::Pending {
@@ -2131,7 +2150,7 @@ mod tests {
         let read = active.for_observer(&session, &frame, 0, "26163").unwrap();
         assert_eq!(read.scope.tick_content_hash(), Some([0xaa; 32]));
         assert_eq!(
-            verified_tick(read),
+            dossier::verified_tick(read),
             None,
             "global progress cannot verify a pending historical page"
         );
@@ -2243,10 +2262,10 @@ mod tests {
 
     #[test]
     fn pending_evidence_expansion_explicitly_waits_instead_of_claiming_empty_history() {
-        let mut session = ObserverSession::new(CampaignId::from_uuid(uuid::Uuid::nil()));
+        let mut session = ObserverSession::new(CampaignId::from_uuid(Uuid::nil()));
         session.ready(1, Some("a".repeat(64)));
         let mut installed = installed(&session, &"a".repeat(64));
-        let page = retained_page(&installed.read).unwrap().clone();
+        let page = dossier::retained_page(&installed.read).unwrap().clone();
         installed.read.processed_tick = 99;
         installed.read.state = ArchiveDossierState::Pending {
             page: Some(page),
@@ -2266,17 +2285,17 @@ mod tests {
     #[test]
     fn retained_signal_labels_and_citations_are_not_reconstructed_from_atom_keys() {
         let signal = signal();
-        let collapsed = retained_signal_segments(&signal, false);
+        let collapsed = dossier_compose::retained_signal_segments(&signal, false);
         assert_eq!(collapsed[0].text, "Original jobs label: ");
         assert_eq!(collapsed[1].text, "1469 annual average jobs");
-        let expanded = retained_signal_segments(&signal, true);
+        let expanded = dossier_compose::retained_signal_segments(&signal, true);
         assert!(expanded[2].text.contains("observed-source"));
         assert!(expanded[2].text.contains("exact/locator"));
     }
 
     #[test]
     fn rendered_signal_rows_stack_and_wrap_without_losing_citation_bytes() {
-        let rows = vec![retained_signal_segments(&signal(), true)];
+        let rows = vec![dossier_compose::retained_signal_segments(&signal(), true)];
         let expected: String = rows[0].iter().map(|part| part.text.as_str()).collect();
         let mut app = App::new();
         app.add_plugins(MinimalPlugins)
@@ -2297,7 +2316,7 @@ mod tests {
         assert_eq!(node.min_width, px(0));
         assert_eq!(
             world.get::<TextLayout>(row).unwrap().linebreak,
-            bevy::text::LineBreak::WordOrCharacter
+            LineBreak::WordOrCharacter
         );
         let actual: String = world
             .get::<Children>(row)
@@ -2310,22 +2329,20 @@ mod tests {
 
     #[test]
     fn campaign_default_uses_the_runtime_default_uuid_without_env() {
-        let env = crate::test_support::EnvVarGuard::lock(CAMPAIGN_ENV);
+        let env = EnvVarGuard::lock(CAMPAIGN_ENV);
         env.remove();
         assert_eq!(
             DossierCampaignId::default().0,
-            CampaignId::from_uuid(uuid::Uuid::from_u128(DEFAULT_CAMPAIGN_UUID))
+            CampaignId::from_uuid(Uuid::from_u128(DEFAULT_CAMPAIGN_UUID))
         );
     }
     #[test]
     fn campaign_default_reads_a_canonical_env_uuid() {
-        let env = crate::test_support::EnvVarGuard::lock(CAMPAIGN_ENV);
+        let env = EnvVarGuard::lock(CAMPAIGN_ENV);
         env.set("28100000-0000-0000-0000-000000000002");
         assert_eq!(
             DossierCampaignId::default().0,
-            CampaignId::from_uuid(uuid::Uuid::from_u128(
-                0x2810_0000_0000_0000_0000_0000_0000_0002
-            ))
+            CampaignId::from_uuid(Uuid::from_u128(0x2810_0000_0000_0000_0000_0000_0000_0002))
         );
     }
     #[test]

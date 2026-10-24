@@ -3,13 +3,14 @@
 use postgres::{GenericClient, IsolationLevel};
 
 use super::record::RevisionRecord;
-use super::storage::{self, signed, unsigned, ReadAuthority};
+use super::storage;
+use super::storage::ReadAuthority;
 use super::{
     ArchiveDossierBounds, ArchiveDossierLink, ArchiveDossierPage, ArchiveDossierPending,
     ArchiveDossierRead, ArchiveDossierState, ArchiveDossierUnavailable, ArchiveLinkedPageState,
     ArchiveReadScope, ArchiveSearchHit, ArchiveSearchRead, ArchiveSearchState,
 };
-use crate::archive::{database, decode, decode_digest, decode_subject_kind, validate_text};
+use crate::archive;
 use crate::{
     ArchivePageRef, SemanticArchiveError, SemanticArchiveReader, SemanticArchiveReaderError,
 };
@@ -39,11 +40,15 @@ impl SemanticArchiveReader {
             .isolation_level(IsolationLevel::RepeatableRead)
             .read_only(true)
             .start()
-            .map_err(|error| boundary(database("begin scoped Archive dossier", &error)))?;
+            .map_err(|error| boundary(archive::database("begin scoped Archive dossier", &error)))?;
         let status = read_status(&mut tx, scope).map_err(boundary)?;
         let state = dossier_state(&mut tx, scope, subject, bounds, &status).map_err(boundary)?;
-        tx.commit()
-            .map_err(|error| boundary(database("commit scoped Archive dossier read", &error)))?;
+        tx.commit().map_err(|error| {
+            boundary(archive::database(
+                "commit scoped Archive dossier read",
+                &error,
+            ))
+        })?;
         Ok(ArchiveDossierRead {
             scope: scope.clone(),
             subject: subject.clone(),
@@ -70,14 +75,14 @@ impl SemanticArchiveReader {
         if query.trim().is_empty() {
             return Err(boundary(SemanticArchiveError::InvalidText));
         }
-        validate_text(query).map_err(boundary)?;
+        archive::validate_text(query).map_err(boundary)?;
         let mut client = self.connect("connect scoped Archive search")?;
         let mut tx = client
             .build_transaction()
             .isolation_level(IsolationLevel::RepeatableRead)
             .read_only(true)
             .start()
-            .map_err(|error| boundary(database("begin scoped Archive search", &error)))?;
+            .map_err(|error| boundary(archive::database("begin scoped Archive search", &error)))?;
         let status = read_status(&mut tx, scope).map_err(boundary)?;
         let mut result = ArchiveSearchRead {
             scope: scope.clone(),
@@ -90,8 +95,12 @@ impl SemanticArchiveReader {
         if !matches!(result.state, ArchiveSearchState::Unavailable(_)) {
             search_hits(&mut tx, scope, query, limit, &mut result).map_err(boundary)?;
         }
-        tx.commit()
-            .map_err(|error| boundary(database("commit scoped Archive search read", &error)))?;
+        tx.commit().map_err(|error| {
+            boundary(archive::database(
+                "commit scoped Archive search read",
+                &error,
+            ))
+        })?;
         Ok(result)
     }
 }
@@ -112,10 +121,10 @@ pub(super) fn read_status(
         FROM public.v_archive_verification_v1 WHERE campaign_id=$1",
             &[campaign.as_uuid()],
         )
-        .map_err(|error| database("read scoped Archive progress", &error))?
+        .map_err(|error| archive::database("read scoped Archive progress", &error))?
         .ok_or(SemanticArchiveError::StoredPageMismatch)?;
-    let durable = unsigned(decode(&row, 0)?)?;
-    let processed = unsigned(decode(&row, 1)?)?;
+    let durable = storage::unsigned(archive::decode(&row, 0)?)?;
+    let processed = storage::unsigned(archive::decode(&row, 1)?)?;
     if processed > durable || scope.tick() > durable {
         return Err(SemanticArchiveError::StoredPageMismatch);
     }
@@ -130,17 +139,20 @@ pub(super) fn read_status(
             .query_opt(
                 "SELECT tick_content_hash, valid, late_grants, worker_contract_sha256 \
             FROM public.v_archive_tick_knowledge_v2 WHERE campaign_id=$1 AND resolve_tick=$2",
-                &[campaign.as_uuid(), &signed(scope.tick())?],
+                &[campaign.as_uuid(), &storage::signed(scope.tick())?],
             )
-            .map_err(|error| database("read scoped pinned Archive knowledge", &error))?;
+            .map_err(|error| archive::database("read scoped pinned Archive knowledge", &error))?;
         if let Some(pin) = pin {
-            if Some(decode_digest(&pin, 0)?) != scope.tick_content_hash()
-                || !decode::<bool>(&pin, 1)?
-                || decode_digest(&pin, 3)? != crate::archive_worker_contract_sha256()
+            if Some(archive::decode_digest(&pin, 0)?) != scope.tick_content_hash()
+                || !archive::decode::<bool>(&pin, 1)?
+                || archive::decode_digest(&pin, 3)? != crate::archive_worker_contract_sha256()
             {
                 return Err(SemanticArchiveError::StoredPageMismatch);
             }
-            if status.pending.is_none() && scope.tick() == durable && decode::<bool>(&pin, 2)? {
+            if status.pending.is_none()
+                && scope.tick() == durable
+                && archive::decode::<bool>(&pin, 2)?
+            {
                 status.pending = Some(ArchiveDossierPending::KnowledgeRefresh);
             }
         } else if status.pending.is_none() {
@@ -162,11 +174,11 @@ fn verify_marker(
         .query_opt(
             "SELECT tick_content_hash FROM public.v_committed_tick_status_v1 \
         WHERE campaign_id=$1 AND resolve_tick=$2",
-            &[campaign.as_uuid(), &signed(scope.tick())?],
+            &[campaign.as_uuid(), &storage::signed(scope.tick())?],
         )
-        .map_err(|error| database("verify exact Archive read marker", &error))?
+        .map_err(|error| archive::database("verify exact Archive read marker", &error))?
         .ok_or(SemanticArchiveError::MissingCommittedReceipt)?;
-    if Some(decode_digest(&row, 0)?) != scope.tick_content_hash() {
+    if Some(archive::decode_digest(&row, 0)?) != scope.tick_content_hash() {
         return Err(SemanticArchiveError::ReceiptMismatch);
     }
     Ok(())
@@ -245,11 +257,11 @@ pub(super) fn subject_granted(
                 campaign.as_uuid(),
                 &subject.kind().as_str(),
                 &subject.id(),
-                &signed(scope.tick())?,
+                &storage::signed(scope.tick())?,
             ],
         )
-        .map_err(|error| database("read scoped Archive subject disclosure", &error))?;
-    decode(&row, 0)
+        .map_err(|error| archive::database("read scoped Archive subject disclosure", &error))?;
+    archive::decode(&row, 0)
 }
 
 pub(super) struct Candidate {
@@ -272,14 +284,14 @@ pub(super) fn candidate(
                 campaign.as_uuid(),
                 &subject.kind().as_str(),
                 &subject.id(),
-                &signed(scope.tick())?,
+                &storage::signed(scope.tick())?,
             ],
         )
-        .map_err(|error| database("select exact retained Archive candidate", &error))?
+        .map_err(|error| archive::database("select exact retained Archive candidate", &error))?
         .map(|row| {
             Ok(Candidate {
-                tick: unsigned(decode(&row, 0)?)?,
-                digest: decode_digest(&row, 1)?,
+                tick: storage::unsigned(archive::decode(&row, 0)?)?,
+                digest: archive::decode_digest(&row, 1)?,
             })
         })
         .transpose()
@@ -296,8 +308,8 @@ pub(super) fn load_candidate(
         WHERE campaign_id=$1 AND subject_kind=$2 AND subject_id=$3 AND effective_tick=$4 AND EXISTS(SELECT 1 FROM public.v_archive_revision_scope_v2 admitted \
             WHERE admitted.campaign_id=$1 AND admitted.subject_kind=$2 AND admitted.subject_id=$3 \
             AND admitted.effective_tick=$4 AND admitted.observation_tick=$5)",storage::COLUMNS),
-        &[campaign.as_uuid(),&subject.kind().as_str(),&subject.id(),&signed(candidate.tick)?,&signed(scope.tick())?])
-        .map_err(|error| database("read exact known Archive publication",&error))?
+        &[campaign.as_uuid(),&subject.kind().as_str(),&subject.id(),&storage::signed(candidate.tick)?,&storage::signed(scope.tick())?])
+        .map_err(|error| archive::database("read exact known Archive publication",&error))?
         .ok_or(SemanticArchiveError::StoredPageMismatch)?;
     let record = storage::decode_record(client, &row, ReadAuthority::Confined)?;
     if record.digest()? != candidate.digest
@@ -404,10 +416,10 @@ fn search_hits(
         FROM latest LEFT JOIN eligible page \
         USING(campaign_id,subject_kind,subject_id,effective_tick)"
             ),
-            &[campaign.as_uuid(), &signed(scope.tick())?],
+            &[campaign.as_uuid(), &storage::signed(scope.tick())?],
         )
-        .map_err(|error| database("validate scoped Archive search eligibility", &error))?;
-    if decode::<bool>(&integrity, 0)? {
+        .map_err(|error| archive::database("validate scoped Archive search eligibility", &error))?;
+    if archive::decode::<bool>(&integrity, 0)? {
         return Err(SemanticArchiveError::StoredPageMismatch);
     }
     let rows = client
@@ -421,12 +433,12 @@ fn search_hits(
             ),
             &[
                 campaign.as_uuid(),
-                &signed(scope.tick())?,
+                &storage::signed(scope.tick())?,
                 &query,
                 &(i64::from(limit) + 1),
             ],
         )
-        .map_err(|error| database("search scoped retained Archive text", &error))?;
+        .map_err(|error| archive::database("search scoped retained Archive text", &error))?;
     result.truncated =
         rows.len() > usize::try_from(limit).map_err(|_| SemanticArchiveError::CollectionBound)?;
     for row in rows
@@ -434,12 +446,12 @@ fn search_hits(
         .take(usize::try_from(limit).map_err(|_| SemanticArchiveError::CollectionBound)?)
     {
         let subject = ArchivePageRef::try_new(
-            decode_subject_kind(&decode::<String>(&row, 0)?)?,
-            decode(&row, 1)?,
+            archive::decode_subject_kind(&archive::decode::<String>(&row, 0)?)?,
+            archive::decode(&row, 1)?,
         )?;
         let candidate = Candidate {
-            tick: unsigned(decode(&row, 2)?)?,
-            digest: decode_digest(&row, 3)?,
+            tick: storage::unsigned(archive::decode(&row, 2)?)?,
+            digest: archive::decode_digest(&row, 3)?,
         };
         let record = load_candidate(client, scope, &subject, &candidate)?;
         result.hits.push(ArchiveSearchHit {

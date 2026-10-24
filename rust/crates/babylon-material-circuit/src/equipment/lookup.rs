@@ -1,12 +1,17 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
-use super::{EquipmentBinding, EquipmentDefinition, ProductiveEquipment, RollingProcessSupply};
+use super::EquipmentBinding;
+use super::EquipmentDefinition;
+use super::ProductiveEquipment;
+use super::RollingProcessSupply;
 
 use crate::{
     CapacitySupply, InstalledProcessCapacity, MaterialCircuitError, MaterialCircuitState, ProcessId,
 };
+use std::ops::Range;
+use std::result::Result as StdResult;
 
-pub(crate) type Result<T> = std::result::Result<T, MaterialCircuitError>;
+pub(crate) type Result<T> = StdResult<T, MaterialCircuitError>;
 
 pub(crate) fn get(state: &MaterialCircuitState) -> Option<&ProductiveEquipment> {
     match &state.capacity_supply {
@@ -44,7 +49,7 @@ impl ProductiveEquipment {
             .map_err(|_| MaterialCircuitError::EquipmentInvariant)?;
         Ok((b, &self.definitions[i]))
     }
-    pub(crate) fn cohorts_for(&self, process: ProcessId) -> std::ops::Range<usize> {
+    pub(crate) fn cohorts_for(&self, process: ProcessId) -> Range<usize> {
         self.cohorts.partition_point(|r| r.process_id < process)
             ..self.cohorts.partition_point(|r| r.process_id <= process)
     }

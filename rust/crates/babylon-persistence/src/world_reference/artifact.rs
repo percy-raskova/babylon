@@ -4,12 +4,14 @@ use super::{CounterpartReference, WorldMember, WorldScope};
 
 use super::parse;
 
-use babylon_kernel::{
-    content_digest::sha256_of,
-    economic_location::{ForeignCounterpart, UsDependency},
-};
+use babylon_kernel::economic_location::{ForeignCounterpart, UsDependency};
 
-use std::{io::Read, sync::OnceLock};
+use babylon_kernel::content_digest;
+use flate2::bufread::GzDecoder;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
+use std::io::Read;
+use std::sync::OnceLock;
 
 pub(crate) const POPULATION: &[u8] = include_bytes!(
     "../../../../../src/babylon/data/reference/economy/world_population_reference_2024.csv.gz"
@@ -100,10 +102,10 @@ impl WorldReference {
         {
             return Err(WorldReferenceError::Bound);
         }
-        if sha256_of(population) != DIGESTS.population
-            || sha256_of(trade) != DIGESTS.trade
-            || sha256_of(membership) != DIGESTS.membership
-            || sha256_of(scope_policy) != DIGESTS.population_scope
+        if content_digest::sha256_of(population) != DIGESTS.population
+            || content_digest::sha256_of(trade) != DIGESTS.trade
+            || content_digest::sha256_of(membership) != DIGESTS.membership
+            || content_digest::sha256_of(scope_policy) != DIGESTS.population_scope
         {
             return Err(WorldReferenceError::ArtifactDigest);
         }
@@ -189,7 +191,7 @@ pub enum WorldReferenceError {
 }
 
 impl std::fmt::Display for WorldReferenceError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         write!(f, "world reference refused: {self:?}")
     }
 }
@@ -207,7 +209,7 @@ pub fn world_reference() -> Result<&'static WorldReference, WorldReferenceError>
 }
 
 pub(crate) fn decode(bytes: &[u8]) -> Result<String, WorldReferenceError> {
-    let mut decoder = flate2::bufread::GzDecoder::new(bytes);
+    let mut decoder = GzDecoder::new(bytes);
     let mut text = String::new();
     decoder
         .by_ref()

@@ -1,13 +1,15 @@
 //! The staffing seam reads one real close and plans against authoritative new hours.
 
+use babylon_material_circuit::CapacitySupply;
+use babylon_material_circuit::CircuitAccounting;
 use babylon_material_circuit::{
-    advance_material_circuit, advance_staffing, close_material_period, BacklogRow, CapacityRow,
-    CommodityDefinition, CorridorCapacity, CorridorId, GoodId, InputOutputCoefficient,
-    InventoryRow, LaborCapacityRow, LaborCoefficient, LogisticsNodeId, MaterialCircuitError,
-    MaterialCircuitState, OrderAccessMode, OrderId, OrderRow, ProcessId, ProcessOutput,
-    ProductionCommitment, RouteId, RouteStage, RouteStageCapacity, SiteId, SiteLogisticsNode,
-    StaffingPolicy, StaffingPoolBinding, StaffingPoolId, StaffingPoolState, StaffingState,
-    StaffingWorkSource, SupplierRoute, SupplierTransport, UnitId,
+    advance_staffing, close_material_period, BacklogRow, CapacityRow, CommodityDefinition,
+    CorridorCapacity, CorridorId, GoodId, InputOutputCoefficient, InventoryRow, LaborCapacityRow,
+    LaborCoefficient, LogisticsNodeId, MaterialCircuitError, MaterialCircuitState, OrderAccessMode,
+    OrderId, OrderRow, ProcessId, ProcessOutput, ProductionCommitment, RouteId, RouteStage,
+    RouteStageCapacity, SiteId, SiteLogisticsNode, StaffingPolicy, StaffingPoolBinding,
+    StaffingPoolId, StaffingPoolState, StaffingState, StaffingWorkSource, SupplierRoute,
+    SupplierTransport, UnitId,
 };
 
 fn site(value: u8) -> SiteId {
@@ -53,12 +55,12 @@ fn binding(processes: &[u8]) -> StaffingPoolBinding {
 
 fn opening() -> MaterialCircuitState {
     MaterialCircuitState {
-        capacity_supply: babylon_material_circuit::CapacitySupply::FiniteSchedule,
+        capacity_supply: CapacitySupply::FiniteSchedule,
         merchants: vec![],
         handling_coefficients: vec![],
         final_demand_principals: vec![],
         final_demand_orders: vec![],
-        accounting: babylon_material_circuit::CircuitAccounting::PhysicalControl,
+        accounting: CircuitAccounting::PhysicalControl,
         maintenance_binding: None,
         maintenance_service: None,
         period: 1,
@@ -183,7 +185,7 @@ fn real_arrival_requests_work_with_zero_employment_then_plans_next_period() {
     let opening = arrival_opening();
     let original = opening.clone();
     let binding = binding(&[1]);
-    let dispatched = close_material_period(&opening)
+    let dispatched = babylon_material_circuit::close_material_period(&opening)
         .unwrap()
         .finish_with_labor(vec![labor(2, 0)])
         .unwrap();
@@ -191,7 +193,7 @@ fn real_arrival_requests_work_with_zero_employment_then_plans_next_period() {
     assert!(dispatched.state.production_commitments.is_empty());
     assert_eq!(opening, original);
 
-    let closed = close_material_period(&dispatched.state).unwrap();
+    let closed = babylon_material_circuit::close_material_period(&dispatched.state).unwrap();
     assert_eq!((closed.closing_period(), closed.next_period()), (2, 3));
     assert_eq!(closed.inventory()[0].quantity, 4);
     let requests = closed
@@ -205,7 +207,7 @@ fn real_arrival_requests_work_with_zero_employment_then_plans_next_period() {
         vec![StaffingPoolState::try_new(binding, 0, 2, 0).unwrap()],
     )
     .unwrap();
-    let staffing = advance_staffing(&people, &requests).unwrap();
+    let staffing = babylon_material_circuit::advance_staffing(&people, &requests).unwrap();
     assert_eq!(staffing.receipts()[0].hires(), 1);
     let arrival = closed
         .finish_with_labor(staffing.next_labor().to_vec())
@@ -214,7 +216,7 @@ fn real_arrival_requests_work_with_zero_employment_then_plans_next_period() {
     assert!(arrival.production.is_empty());
     assert_eq!(arrival.state.production_commitments[0].planned_batches, 2);
     assert_eq!(arrival.state.labor, vec![labor(3, 40)]);
-    let production = close_material_period(&arrival.state)
+    let production = babylon_material_circuit::close_material_period(&arrival.state)
         .unwrap()
         .finish_with_labor(vec![labor(4, 0)])
         .unwrap();
@@ -282,9 +284,9 @@ fn requests_share_inputs_preserve_zero_processes_and_ignore_labor_under_permutat
     twin.capacities.reverse();
     twin.labor = vec![labor(1, 0)];
     let bindings = [binding(&[3, 1, 2])];
-    let closed = close_material_period(&state).unwrap();
+    let closed = babylon_material_circuit::close_material_period(&state).unwrap();
     let requests = closed.staffing_requests(&bindings).unwrap();
-    let permuted = close_material_period(&twin).unwrap();
+    let permuted = babylon_material_circuit::close_material_period(&twin).unwrap();
     assert_eq!(requests, permuted.staffing_requests(&bindings).unwrap());
     assert_eq!(
         requests.iter().map(|row| row.hours()).collect::<Vec<_>>(),
@@ -310,7 +312,7 @@ fn requests_share_inputs_preserve_zero_processes_and_ignore_labor_under_permutat
 #[test]
 fn staffing_requests_refuse_incomplete_duplicate_and_foreign_bindings() {
     let state = shared_opening();
-    let closed = close_material_period(&state).unwrap();
+    let closed = babylon_material_circuit::close_material_period(&state).unwrap();
     for bindings in [vec![], vec![binding(&[1, 2])], vec![binding(&[1, 2, 4])]] {
         assert_eq!(
             closed.staffing_requests(&bindings),
@@ -365,14 +367,14 @@ fn invalid_next_labor_refuses_without_mutating_opening_or_publishing_a_partial_c
         ),
     ] {
         assert_eq!(
-            close_material_period(&state)
+            babylon_material_circuit::close_material_period(&state)
                 .unwrap()
                 .finish_with_labor(rows),
             Err(expected)
         );
         assert_eq!(state, original);
     }
-    let finished = close_material_period(&state)
+    let finished = babylon_material_circuit::close_material_period(&state)
         .unwrap()
         .finish_with_labor(vec![labor(2, 0)])
         .unwrap();
@@ -387,7 +389,7 @@ fn request_hour_overflow_and_closing_period_overflow_refuse_atomically() {
     state.capacities[0].available_batches = 2;
     state.labor_coefficients[0].quantity_per_batch = u64::MAX;
     let original = state.clone();
-    let closed = close_material_period(&state).unwrap();
+    let closed = babylon_material_circuit::close_material_period(&state).unwrap();
     assert_eq!(
         closed.staffing_requests(&[binding(&[1])]),
         Err(MaterialCircuitError::Arithmetic)
@@ -400,7 +402,7 @@ fn request_hour_overflow_and_closing_period_overflow_refuse_atomically() {
     state.labor[0].period = u64::MAX;
     let original = state.clone();
     assert!(matches!(
-        close_material_period(&state),
+        babylon_material_circuit::close_material_period(&state),
         Err(MaterialCircuitError::Arithmetic)
     ));
     assert_eq!(state, original);
@@ -410,8 +412,8 @@ fn request_hour_overflow_and_closing_period_overflow_refuse_atomically() {
 fn supplied_schedule_and_one_shot_use_identical_execution_and_planning() {
     let mut state = opening();
     state.labor.push(labor(2, 20));
-    let one_shot = advance_material_circuit(&state).unwrap();
-    let split = close_material_period(&state)
+    let one_shot = babylon_material_circuit::advance_material_circuit(&state).unwrap();
+    let split = babylon_material_circuit::close_material_period(&state)
         .unwrap()
         .finish_with_labor(vec![labor(2, 20)])
         .unwrap();
@@ -430,7 +432,7 @@ fn zero_current_labor_still_blocks_execution_before_unconstrained_next_period_re
         period: 1,
         planned_batches: 4,
     });
-    let closed = close_material_period(&state).unwrap();
+    let closed = babylon_material_circuit::close_material_period(&state).unwrap();
     assert_eq!(closed.inventory(), state.inventory);
     assert_eq!(
         closed.staffing_requests(&[binding(&[1])]).unwrap()[0].hours(),
@@ -464,7 +466,7 @@ fn replacement_labor_is_sorted_before_the_planner_searches_multiple_principals()
     state.capacities.push(capacity);
     let mut second = labor(2, 20);
     second.site_id = site(2);
-    let next = close_material_period(&state)
+    let next = babylon_material_circuit::close_material_period(&state)
         .unwrap()
         .finish_with_labor(vec![second.clone(), labor(2, 10)])
         .unwrap();

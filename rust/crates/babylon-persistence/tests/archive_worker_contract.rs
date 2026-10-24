@@ -1,6 +1,6 @@
+use babylon_persistence::ArchiveKnowledge;
 use babylon_persistence::{
     archive_batch_matches_receipt, archive_contiguous_watermark, classify_archive_receipt,
-    classify_archive_sweep, model_archive_sweep_pages, model_archive_sweep_pages_with_bounds,
     ArchiveCitation, ArchiveDirtyBatch, ArchiveDossierProducer, ArchiveLink, ArchivePageInput,
     ArchivePageRef, ArchiveProducerOutcome, ArchiveReceiptDisposition, ArchiveReceiptPlan,
     ArchiveSignal, ArchiveSubject, ArchiveSubjectKind, ArchiveWorkerSweepReport,
@@ -114,8 +114,7 @@ fn null_producer_returns_empty_but_valid_outcome() {
         .produce(
             Uuid::nil(),
             &receipt,
-            &babylon_persistence::ArchiveKnowledge::try_new(Vec::new())
-                .expect("empty scripted knowledge"),
+            &ArchiveKnowledge::try_new(Vec::new()).expect("empty scripted knowledge"),
             ArchiveDirtyBatch::MAX_PAGES,
         )
         .expect("null outcome is valid");
@@ -234,7 +233,7 @@ fn classify_receipt_consumes_quiet_ticks_and_stages_undrained_pages() {
 
 #[test]
 fn classify_sweep_preserves_order_and_consumes_complete_receipts() {
-    let plans = classify_archive_sweep(vec![
+    let plans = babylon_persistence::classify_archive_sweep(vec![
         Ok(outcome(empty_batch(1, [0x11; 32]), 0)),
         Ok(full_outcome(2, [0x22; 32])),
         Ok(outcome(empty_batch(3, [0x33; 32]), 0)),
@@ -253,7 +252,7 @@ fn classify_sweep_preserves_order_and_consumes_complete_receipts() {
 
 #[test]
 fn classify_sweep_stops_at_first_producer_error() {
-    let result = classify_archive_sweep(vec![
+    let result = babylon_persistence::classify_archive_sweep(vec![
         Ok(outcome(empty_batch(1, [0x11; 32]), 0)),
         Err(SemanticArchiveError::InvalidText),
         Ok(outcome(empty_batch(3, [0x33; 32]), 0)),
@@ -275,7 +274,8 @@ fn paged_sweep_model_enforces_the_consume_cap_across_keyset_pages() {
         .map(|tick| Ok(full_outcome(tick, [0x22; 32])))
         .collect();
 
-    let model = model_archive_sweep_pages(vec![page_one, page_two]).expect("paged model");
+    let model = babylon_persistence::model_archive_sweep_pages(vec![page_one, page_two])
+        .expect("paged model");
 
     assert_eq!(
         model.consumed(),
@@ -302,7 +302,8 @@ fn paged_sweep_model_keeps_the_scan_bound_as_the_outer_bound() {
         .map(|tick| Ok(outcome(empty_batch(tick, [0x11; 32]), 0)))
         .collect();
 
-    let model = model_archive_sweep_pages_with_bounds(vec![page], 256, 4).expect("bounded model");
+    let model = babylon_persistence::model_archive_sweep_pages_with_bounds(vec![page], 256, 4)
+        .expect("bounded model");
 
     assert_eq!(model.scanned(), 4);
     assert_eq!(model.consumed(), 4);
@@ -383,7 +384,7 @@ impl ArchiveDossierProducer for ScriptedProducer {
         &self,
         _campaign_id: Uuid,
         _receipt: &PendingArchiveReceipt,
-        _knowledge: &babylon_persistence::ArchiveKnowledge,
+        _knowledge: &ArchiveKnowledge,
         page_budget: usize,
     ) -> Result<ArchiveProducerOutcome, SemanticArchiveError> {
         let batch = self.0.batch();
@@ -437,8 +438,7 @@ fn composite_merges_producer_pages_sorted_and_refuses_duplicate_subjects() {
         .produce(
             Uuid::nil(),
             &receipt,
-            &babylon_persistence::ArchiveKnowledge::try_new(Vec::new())
-                .expect("empty scripted knowledge"),
+            &ArchiveKnowledge::try_new(Vec::new()).expect("empty scripted knowledge"),
             ArchiveDirtyBatch::MAX_PAGES,
         )
         .expect("composite merge");
@@ -472,8 +472,7 @@ fn composite_merges_producer_pages_sorted_and_refuses_duplicate_subjects() {
         duplicate.produce(
             Uuid::nil(),
             &receipt,
-            &babylon_persistence::ArchiveKnowledge::try_new(Vec::new())
-                .expect("empty scripted knowledge"),
+            &ArchiveKnowledge::try_new(Vec::new()).expect("empty scripted knowledge"),
             ArchiveDirtyBatch::MAX_PAGES
         ),
         Err(SemanticArchiveError::DuplicateKey),
@@ -517,8 +516,7 @@ fn composite_threads_the_page_budget_and_sums_the_undrained_remainder() {
         .produce(
             Uuid::nil(),
             &receipt,
-            &babylon_persistence::ArchiveKnowledge::try_new(Vec::new())
-                .expect("empty scripted knowledge"),
+            &ArchiveKnowledge::try_new(Vec::new()).expect("empty scripted knowledge"),
             ArchiveDirtyBatch::MAX_PAGES,
         )
         .expect("paged composite merge");
@@ -578,8 +576,7 @@ fn assert_composite_preserves_unfunded_pages(receipt: &PendingArchiveReceipt) {
         .produce(
             Uuid::nil(),
             receipt,
-            &babylon_persistence::ArchiveKnowledge::try_new(Vec::new())
-                .expect("empty scripted knowledge"),
+            &ArchiveKnowledge::try_new(Vec::new()).expect("empty scripted knowledge"),
             ArchiveDirtyBatch::MAX_PAGES,
         )
         .expect("the budget-exhausted composite pages instead of overflowing");
@@ -612,7 +609,7 @@ fn composite_still_refuses_a_producer_that_ignores_the_page_budget() {
             &self,
             _campaign_id: Uuid,
             receipt: &PendingArchiveReceipt,
-            _knowledge: &babylon_persistence::ArchiveKnowledge,
+            _knowledge: &ArchiveKnowledge,
             _page_budget: usize,
         ) -> Result<ArchiveProducerOutcome, SemanticArchiveError> {
             let pages = (0..=ArchiveDirtyBatch::MAX_PAGES)
@@ -648,8 +645,7 @@ fn composite_still_refuses_a_producer_that_ignores_the_page_budget() {
         composite.produce(
             Uuid::nil(),
             &receipt,
-            &babylon_persistence::ArchiveKnowledge::try_new(Vec::new())
-                .expect("empty scripted knowledge"),
+            &ArchiveKnowledge::try_new(Vec::new()).expect("empty scripted knowledge"),
             ArchiveDirtyBatch::MAX_PAGES
         ),
         Err(SemanticArchiveError::CollectionBound),

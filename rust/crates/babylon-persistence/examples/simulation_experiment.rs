@@ -1,15 +1,24 @@
 //! Bounded diagnostic runner using the authoritative material runtime.
 use babylon_bsl::structural_verbs::CollectingSink;
+use babylon_persistence::identity::CampaignId;
+use babylon_persistence::material_runtime::DurableMaterialRuntime;
 use babylon_persistence::simulation_experiment::{report, SimulationExperimentV1};
-use babylon_persistence::{identity::CampaignId, material_runtime::DurableMaterialRuntime};
+
 use babylon_practice_contract::OrderedPracticeActionBatch;
+use postgres::Config;
+use report::ExperimentRun;
 use serde::Serialize;
 use serde_json::json;
-use std::{
-    io::Write,
-    path::{Path, PathBuf},
-};
-type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
+use std::collections::BTreeMap;
+use std::fs::OpenOptions;
+use std::io::Write;
+use std::path::{Path, PathBuf};
+use std::process::ExitCode;
+use std::result::Result as StdResult;
+use std::time::SystemTime;
+use uuid::Uuid;
+
+type Result<T> = StdResult<T, Box<dyn std::error::Error>>;
 fn hex(bytes: &[u8]) -> String {
     use std::fmt::Write;
     let mut out = String::new();
@@ -19,10 +28,7 @@ fn hex(bytes: &[u8]) -> String {
     out
 }
 fn write(path: &Path, bytes: &[u8]) -> Result<()> {
-    let mut f = std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(path)?;
+    let mut f = OpenOptions::new().write(true).create_new(true).open(path)?;
     f.write_all(bytes)?;
     f.sync_all()?;
     Ok(())
@@ -83,7 +89,7 @@ fn run() -> Result<()> {
         persisted_parity(&spec, &run, &dsn, &output)?;
         artifact_names.extend(["parity.json", "campaign.json"]);
     }
-    let mut checksums = std::collections::BTreeMap::new();
+    let mut checksums = BTreeMap::new();
     for name in artifact_names {
         checksums.insert(
             name,
@@ -107,11 +113,11 @@ fn run() -> Result<()> {
 }
 fn persisted_parity(
     spec: &SimulationExperimentV1,
-    run: &report::ExperimentRun,
+    run: &ExperimentRun,
     dsn: &str,
     output: &Path,
 ) -> Result<()> {
-    let config: postgres::Config = dsn.parse()?;
+    let config: Config = dsn.parse()?;
     let foundation = spec.create_foundation()?;
     let digest = foundation.digest();
     let mut id: [u8; 16] = digest[..16]
@@ -119,14 +125,14 @@ fn persisted_parity(
         .map_err(|_| "campaign identity length")?;
     // Each invocation claims a distinct campaign; duplicate deterministic inputs
     // must not take ownership of an existing campaign's durable state.
-    let nonce = std::time::SystemTime::now()
+    let nonce = SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)?
         .as_nanos()
         .to_be_bytes();
     for (a, b) in id.iter_mut().zip(nonce) {
         *a ^= b;
     }
-    let campaign = CampaignId::from_uuid(uuid::Uuid::from_bytes(id));
+    let campaign = CampaignId::from_uuid(Uuid::from_bytes(id));
     let mut runtime = DurableMaterialRuntime::create(&config, campaign, foundation)?;
     // Retain the exact owned campaign even when a later parity check fails.
     // The caller's disposable database lifecycle owns cleanup.
@@ -163,9 +169,9 @@ fn persisted_parity(
     Ok(())
 }
 
-fn main() -> std::process::ExitCode {
+fn main() -> ExitCode {
     match run() {
-        Ok(()) => std::process::ExitCode::SUCCESS,
+        Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             if let Some(output) = std::env::args()
                 .skip(1)
@@ -184,7 +190,7 @@ fn main() -> std::process::ExitCode {
                 }
             }
             eprintln!("simulation experiment failed: {error}");
-            std::process::ExitCode::FAILURE
+            ExitCode::FAILURE
         }
     }
 }

@@ -14,20 +14,17 @@ use babylon_persistence::runtime_session::{
     RUNTIME_SESSION_PROTOCOL_VERSION,
 };
 
-use super::{
-    advance_material_period, validate_connection_target, CampaignId, Config, DisposableTarget,
-    DurableMaterialRuntime, Uuid,
-};
+use super::{CampaignId, Config, DisposableTarget, DurableMaterialRuntime, Uuid};
+use std::io::Cursor;
+use std::io::ErrorKind;
+use std::io::Result as IoResult;
+use thread::JoinHandle;
 
 const STARTUP_LIMIT: Duration = Duration::from_secs(60);
 const EXIT_LIMIT: Duration = Duration::from_secs(30);
 const CLEANUP_LIMIT: Duration = Duration::from_secs(5);
 
-struct RuntimeChild(
-    Child,
-    Arc<Mutex<Vec<u8>>>,
-    Option<thread::JoinHandle<std::io::Result<()>>>,
-);
+struct RuntimeChild(Child, Arc<Mutex<Vec<u8>>>, Option<JoinHandle<IoResult<()>>>);
 
 impl RuntimeChild {
     fn start(target: &DisposableTarget) -> Self {
@@ -158,7 +155,7 @@ impl RuntimeChild {
         input
     }
 
-    fn send(&mut self, request: &RuntimeSessionRequest) -> std::io::Result<()> {
+    fn send(&mut self, request: &RuntimeSessionRequest) -> IoResult<()> {
         let mut bytes = serde_json::to_vec(request).unwrap();
         bytes.push(b'\n');
         let input = self.0.stdin.as_mut().unwrap();
@@ -203,7 +200,7 @@ fn assert_broken_stdout_exits_with_stdin_open(target: &DisposableTarget, campaig
     };
     match child.send(&refresh) {
         Ok(()) => {}
-        Err(error) if error.kind() == std::io::ErrorKind::BrokenPipe => {
+        Err(error) if error.kind() == ErrorKind::BrokenPipe => {
             // Startup progress may already have detected the closed response pipe.
         }
         Err(error) => panic!("unexpected control-pipe error: {error}"),
@@ -474,7 +471,7 @@ fn live_runtime_child_switch_failure_retry_and_epoch_isolation_preserve_campaign
             .unwrap(),
     )
     .unwrap();
-    advance_material_period(&mut durable);
+    super::advance_material_period(&mut durable);
     let original_tail = durable.tail().copied();
     let original_world = durable.session().current_world_hash().unwrap();
     drop(durable);
@@ -629,7 +626,7 @@ fn live_runtime_child_pipe_failure_and_orderly_exit_preserve_committed_world() {
             .unwrap(),
     )
     .unwrap();
-    advance_material_period(&mut runtime);
+    super::advance_material_period(&mut runtime);
     let expected_tail = runtime.tail().copied();
     let expected_world = runtime.session().current_world_hash().unwrap();
     drop(runtime);
@@ -651,7 +648,7 @@ fn live_runtime_child_pipe_failure_and_orderly_exit_preserve_committed_world() {
 }
 
 fn child_dsn(config: &Config) -> String {
-    validate_connection_target(config).unwrap();
+    super::validate_connection_target(config).unwrap();
     let [postgres::config::Host::Tcp(host)] = config.get_hosts() else {
         panic!("runtime process fixture requires one validated local TCP host");
     };
@@ -673,12 +670,12 @@ fn quote_dsn_value(value: &str) -> String {
     format!("'{}'", value.replace('\\', "\\\\").replace('\'', "\\'"))
 }
 
-fn capture_diagnostics(input: &mut impl Read, captured: &Mutex<Vec<u8>>) -> std::io::Result<()> {
+fn capture_diagnostics(input: &mut impl Read, captured: &Mutex<Vec<u8>>) -> IoResult<()> {
     let mut buffer = [0_u8; 1024];
     loop {
         let size = match input.read(&mut buffer) {
             Ok(size) => size,
-            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(error) if error.kind() == ErrorKind::Interrupted => continue,
             Err(error) => return Err(error),
         };
         if size == 0 {
@@ -703,7 +700,7 @@ fn runtime_child_dsn_selects_owned_database_from_uri_and_keyword_configs() {
         // Exercise exact libpq quoting without using or printing real credentials.
         config.password("fixture ' quote \\ slash");
         let parsed: Config = child_dsn(&config).parse().unwrap();
-        validate_connection_target(&parsed).unwrap();
+        super::validate_connection_target(&parsed).unwrap();
         assert_eq!(
             parsed.get_dbname(),
             Some("per281_runtime_materialobserver_42")
@@ -717,7 +714,7 @@ fn runtime_child_dsn_selects_owned_database_from_uri_and_keyword_configs() {
 
 #[test]
 fn runtime_child_diagnostics_are_bounded_and_fully_drained() {
-    let mut source = std::io::Cursor::new(vec![b'x'; 20_000]);
+    let mut source = Cursor::new(vec![b'x'; 20_000]);
     let captured = Mutex::new(Vec::new());
     capture_diagnostics(&mut source, &captured).unwrap();
     assert_eq!(source.position(), 20_000);

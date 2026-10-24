@@ -6,30 +6,60 @@ use std::io::{BufRead, Read, Write};
 
 use std::sync::{mpsc, Mutex};
 
-use babylon_persistence::{
-    observer_reader::ObserverEconomyReader, observer_reader::ObserverEconomySnapshot,
-    observer_reader::ObserverVisibility, runtime_session::RuntimeSessionPreset,
-    runtime_session::RuntimeSessionRequest, runtime_session::RuntimeSessionResponse,
-    runtime_session::RuntimeSessionScope, runtime_session::RuntimeSessionTail,
-    runtime_session::RuntimeSessionTarget, runtime_session::RUNTIME_SESSION_MAX_LINE_BYTES,
-    runtime_session::RUNTIME_SESSION_PROTOCOL_VERSION,
+use babylon_persistence::observer_reader::{
+    ObserverEconomyReader, ObserverEconomySnapshot, ObserverVisibility,
+};
+use babylon_persistence::runtime_session::{
+    RuntimeSessionPreset, RuntimeSessionRequest, RuntimeSessionResponse, RuntimeSessionScope,
+    RuntimeSessionTail, RuntimeSessionTarget, RUNTIME_SESSION_MAX_LINE_BYTES,
+    RUNTIME_SESSION_PROTOCOL_VERSION,
 };
 
 use bevy::ecs::system::SystemParam;
 
 use bevy::prelude::*;
 
-use bevy::tasks::{block_on, AsyncComputeTaskPool, Task};
+use bevy::tasks::{AsyncComputeTaskPool, Task};
 
 use crate::observer::{ObservationContext, ObserverSession, Perspective, SessionPhase};
 
-use crate::observer_controls::{availability, ControlAvailability};
+use crate::observer_controls::ControlAvailability;
 
 use crate::observer_ui::{ObserverCommand, ObserverFeedback, ObserverFrame, ObserverUiState};
 
+use crate::atlas::CountyAtlas;
+use crate::map::SelectedCounty;
+use crate::map_economy_lens::MapLens;
+use crate::observer_audio::ObserverAudioSettings;
+use crate::observer_controls;
+use crate::observer_opening::OpeningPresentation;
+use crate::observer_progress::OperationProgress;
+use crate::observer_ui::ProductionEvidenceOutcome;
+use crate::observer_ui::RoadLayer;
+use crate::organizer::qualification_input::HandlerReceipt;
+use crate::organizer::OrganizerClient;
+use crate::production::PrimaryView;
 use crate::ui::dossier_card::{
     ActiveCountyDossier, DossierCampaignId, DossierFetchState, DossierPageView, DossierRefresh,
 };
+use babylon_kernel::clock::CampaignDuration;
+use babylon_persistence::identity::CampaignId;
+use babylon_persistence::observer_reader::ObserverEconomyError;
+use babylon_persistence::observer_reader::ObserverMaterialCursor;
+use babylon_persistence::runtime_session::OrganizerCommitment;
+use babylon_persistence::runtime_session::OrganizerSnapshot;
+use babylon_persistence::runtime_session::RuntimeSessionErrorCode;
+use bevy::tasks;
+use mpsc::Receiver;
+use mpsc::SyncSender;
+use mpsc::TryRecvError;
+use qualification::Candidate;
+use qualification::Configuration;
+use qualification::NativeAudit;
+use std::path::PathBuf;
+use std::thread::Builder;
+use std::time::Instant;
+use uuid::Uuid;
 
 pub(crate) const LAUNCHER_REQUIRED: &str =
     "This window has no launcher connection. Close it and start Babylon through its launcher.";
@@ -47,8 +77,8 @@ pub enum ObserverSet {
 
 #[derive(Resource)]
 pub(crate) struct RuntimePipe {
-    pub(super) requests: mpsc::SyncSender<RuntimeSessionRequest>,
-    pub(super) responses: Mutex<mpsc::Receiver<Result<RuntimeSessionResponse, String>>>,
+    pub(super) requests: SyncSender<RuntimeSessionRequest>,
+    pub(super) responses: Mutex<Receiver<Result<RuntimeSessionResponse, String>>>,
 }
 
 #[derive(Debug)]
@@ -90,13 +120,13 @@ pub(crate) struct PendingObservation(
 
 pub(crate) struct ObservationRead {
     result: Result<PreparedObservation, String>,
-    cursor: Option<babylon_persistence::observer_reader::ObserverMaterialCursor>,
-    qualification: Option<qualification::Candidate>,
+    cursor: Option<ObserverMaterialCursor>,
+    qualification: Option<Candidate>,
 }
 
 pub(crate) struct PreparedObservation {
     pub(super) snapshot: ObserverEconomySnapshot,
-    pub(super) evidence: crate::observer_ui::ProductionEvidenceOutcome,
+    pub(super) evidence: ProductionEvidenceOutcome,
 }
 
 impl PreparedObservation {
@@ -108,24 +138,21 @@ impl PreparedObservation {
 
 #[derive(Clone, PartialEq, Eq)]
 pub(crate) struct ObservationCacheKey {
-    pub(super) campaign: babylon_persistence::identity::CampaignId,
+    pub(super) campaign: CampaignId,
     pub(super) epoch: Option<u64>,
     pub(super) perspective: Perspective,
     pub(super) foundation: Option<String>,
-    pub(super) qualification: Option<qualification::Configuration>,
+    pub(super) qualification: Option<Configuration>,
 }
 
 impl ObservationCacheKey {
-    fn from_session(
-        session: &ObserverSession,
-        qualification: Option<&qualification::NativeAudit>,
-    ) -> Self {
+    fn from_session(session: &ObserverSession, qualification: Option<&NativeAudit>) -> Self {
         Self {
             campaign: session.campaign,
             epoch: session.runtime_scope().map(|scope| scope.epoch),
             perspective: session.perspective,
             foundation: session.foundation_digest.clone(),
-            qualification: qualification.map(qualification::NativeAudit::key),
+            qualification: qualification.map(NativeAudit::key),
         }
     }
 }
@@ -134,7 +161,7 @@ impl ObservationCacheKey {
 #[derive(Resource, Default)]
 pub(crate) struct ObservationCache {
     key: Option<ObservationCacheKey>,
-    cursor: Option<babylon_persistence::observer_reader::ObserverMaterialCursor>,
+    cursor: Option<ObserverMaterialCursor>,
     full_reader: Option<ObserverEconomyReader>,
 }
 
@@ -151,12 +178,8 @@ impl ObservationCache {
     pub(super) fn reader(
         &mut self,
         visibility: ObserverVisibility,
-        connect: impl FnOnce() -> Result<
-            ObserverEconomyReader,
-            babylon_persistence::observer_reader::ObserverEconomyError,
-        >,
-    ) -> Result<ObserverEconomyReader, babylon_persistence::observer_reader::ObserverEconomyError>
-    {
+        connect: impl FnOnce() -> Result<ObserverEconomyReader, ObserverEconomyError>,
+    ) -> Result<ObserverEconomyReader, ObserverEconomyError> {
         if visibility == ObserverVisibility::FullObserver {
             if let Some(reader) = &self.full_reader {
                 return Ok(reader.clone());
@@ -164,7 +187,7 @@ impl ObservationCache {
         }
         let reader = connect()?;
         if reader.visibility() != visibility {
-            return Err(babylon_persistence::observer_reader::ObserverEconomyError::Authority);
+            return Err(ObserverEconomyError::Authority);
         }
         if visibility == ObserverVisibility::FullObserver {
             // Clones share only the existing admitted immutable source owner.
@@ -189,7 +212,7 @@ pub(crate) struct ShutdownProgress {
 }
 
 #[derive(Resource)]
-pub(crate) struct ContinuationPreference(pub(super) std::path::PathBuf);
+pub(crate) struct ContinuationPreference(pub(super) PathBuf);
 
 pub(crate) fn start_pipe(mut commands: Commands, mut state: ResMut<ObserverSession>) {
     if std::env::var("BABYLON_SESSION_STDIO").as_deref() != Ok("1") {
@@ -209,7 +232,7 @@ pub(crate) fn start_pipe(mut commands: Commands, mut state: ResMut<ObserverSessi
     let (response_tx, response_rx) =
         mpsc::sync_channel::<Result<RuntimeSessionResponse, String>>(8);
     let errors = response_tx.clone();
-    let writer = std::thread::Builder::new()
+    let writer = Builder::new()
         .name("observer-control-writer".into())
         .spawn(move || {
             let mut output = std::io::stdout().lock();
@@ -236,7 +259,7 @@ pub(crate) fn start_pipe(mut commands: Commands, mut state: ResMut<ObserverSessi
         state.fail(format!("Cannot start control writer: {error}"));
         return;
     }
-    let reader = std::thread::Builder::new()
+    let reader = Builder::new()
         .name("observer-control-reader".into())
         .spawn(move || {
             let mut input = std::io::stdin().lock();
@@ -285,7 +308,7 @@ pub(crate) fn start_pipe(mut commands: Commands, mut state: ResMut<ObserverSessi
 pub(crate) fn send_advance(
     pipe: &RuntimePipe,
     state: &mut ObserverSession,
-    qualification: Option<&mut qualification::NativeAudit>,
+    qualification: Option<&mut NativeAudit>,
 ) {
     let Some(request_id) = state.begin_advance() else {
         return;
@@ -324,24 +347,24 @@ pub(crate) fn send_advance(
 }
 
 pub(crate) fn next_response(
-    receiver: &mpsc::Receiver<Result<RuntimeSessionResponse, String>>,
+    receiver: &Receiver<Result<RuntimeSessionResponse, String>>,
 ) -> Result<Option<RuntimeSessionResponse>, String> {
     match receiver.try_recv() {
         Ok(response) => response.map(Some),
-        Err(mpsc::TryRecvError::Disconnected) => {
+        Err(TryRecvError::Disconnected) => {
             Err("Runtime disconnected; reopen to reconcile committed progress.".into())
         }
-        Err(mpsc::TryRecvError::Empty) => Ok(None),
+        Err(TryRecvError::Empty) => Ok(None),
     }
 }
 
 #[derive(SystemParam)]
 pub(crate) struct CampaignReset<'w> {
     preference: Option<Res<'w, ContinuationPreference>>,
-    organizer: Option<ResMut<'w, crate::organizer::OrganizerClient>>,
-    primary: Option<ResMut<'w, crate::production::PrimaryView>>,
-    atlas: Option<Res<'w, crate::atlas::CountyAtlas>>,
-    selected: Option<ResMut<'w, crate::map::SelectedCounty>>,
+    organizer: Option<ResMut<'w, OrganizerClient>>,
+    primary: Option<ResMut<'w, PrimaryView>>,
+    atlas: Option<Res<'w, CountyAtlas>>,
+    selected: Option<ResMut<'w, SelectedCounty>>,
     frame: Option<ResMut<'w, ObserverFrame>>,
     pending: Option<ResMut<'w, PendingObservation>>,
     campaign: Option<ResMut<'w, DossierCampaignId>>,
@@ -349,7 +372,7 @@ pub(crate) struct CampaignReset<'w> {
     fetch: Option<ResMut<'w, DossierFetchState>>,
     view: Option<ResMut<'w, DossierPageView>>,
     ui: Option<ResMut<'w, ObserverUiState>>,
-    qualification: Option<ResMut<'w, qualification::NativeAudit>>,
+    qualification: Option<ResMut<'w, NativeAudit>>,
 }
 
 impl CampaignReset<'_> {
@@ -379,7 +402,7 @@ impl CampaignReset<'_> {
         refresh.bump();
         Ok(())
     }
-    fn organizer(&mut self) -> Result<&mut crate::organizer::OrganizerClient, String> {
+    fn organizer(&mut self) -> Result<&mut OrganizerClient, String> {
         self.organizer
             .as_deref_mut()
             .ok_or_else(|| "Organizer interface is not installed".into())
@@ -389,7 +412,7 @@ impl CampaignReset<'_> {
         &mut self,
         state: &mut ObserverSession,
         request_id: u64,
-        snapshot: babylon_persistence::runtime_session::OrganizerSnapshot,
+        snapshot: OrganizerSnapshot,
     ) -> Result<(), String> {
         let original = self.qualification.is_some().then(|| snapshot.clone());
         self.organizer()?.status(request_id, snapshot, state)?;
@@ -403,7 +426,7 @@ impl CampaignReset<'_> {
         &mut self,
         state: &mut ObserverSession,
         request_id: u64,
-        commitment: babylon_persistence::runtime_session::OrganizerCommitment,
+        commitment: OrganizerCommitment,
     ) -> Result<(), String> {
         self.organizer()?
             .accepted(request_id, commitment.clone(), state)?;
@@ -421,7 +444,7 @@ impl CampaignReset<'_> {
             organizer.reset();
         }
         if let Some(primary) = &mut self.primary {
-            **primary = crate::production::PrimaryView::Map;
+            **primary = PrimaryView::Map;
         }
         if let Some(frame) = &mut self.frame {
             **frame = ObserverFrame::default();
@@ -452,7 +475,7 @@ pub(crate) fn receive(
     mut state: ResMut<ObserverSession>,
     mut refresh: ResMut<DossierRefresh>,
     mut reset: CampaignReset,
-    mut progress: Option<ResMut<crate::observer_progress::OperationProgress>>,
+    mut progress: Option<ResMut<OperationProgress>>,
     time: Res<Time<Real>>,
 ) {
     if state.phase == SessionPhase::Closed || state.runtime_disconnected() {
@@ -547,7 +570,7 @@ pub(crate) struct CampaignAdmission {
     foundation_digest: String,
     tail: RuntimeSessionTail,
     organizer: bool,
-    duration: babylon_kernel::clock::CampaignDuration,
+    duration: CampaignDuration,
 }
 
 pub(crate) fn admit_campaign(
@@ -577,7 +600,7 @@ pub(crate) fn admit_campaign(
         }
         reset.organizer()?.admitted(*state.campaign.as_uuid());
         if let Some(primary) = &mut reset.primary {
-            **primary = crate::production::PrimaryView::Organizer;
+            **primary = PrimaryView::Organizer;
         }
         if let Some(ui) = &mut reset.ui {
             ui.archive_open = false;
@@ -606,11 +629,10 @@ pub(crate) fn refuse_runtime_request(
     state: &mut ObserverSession,
     reset: &mut CampaignReset,
     request_id: Option<u64>,
-    code: babylon_persistence::runtime_session::RuntimeSessionErrorCode,
+    code: RuntimeSessionErrorCode,
     tail: Option<&RuntimeSessionTail>,
 ) -> Result<(), String> {
-    let complete = code
-        == babylon_persistence::runtime_session::RuntimeSessionErrorCode::HorizonComplete
+    let complete = code == RuntimeSessionErrorCode::HorizonComplete
         && state
             .duration
             .is_some_and(|duration| duration.complete(state.durable_tick))
@@ -792,14 +814,14 @@ pub(crate) fn apply_committed_response(
 
 #[derive(SystemParam)]
 pub(crate) struct CommandContext<'w> {
-    qualification: Option<ResMut<'w, qualification::NativeAudit>>,
-    opening: Option<ResMut<'w, crate::observer_opening::OpeningPresentation>>,
+    qualification: Option<ResMut<'w, NativeAudit>>,
+    opening: Option<ResMut<'w, OpeningPresentation>>,
     state: ResMut<'w, ObserverSession>,
     ui: ResMut<'w, ObserverUiState>,
     pipe: Option<Res<'w, RuntimePipe>>,
     frame: Res<'w, ObserverFrame>,
     refresh: ResMut<'w, DossierRefresh>,
-    audio: ResMut<'w, crate::observer_audio::ObserverAudioSettings>,
+    audio: ResMut<'w, ObserverAudioSettings>,
     feedback: ResMut<'w, ObserverFeedback>,
     time: Res<'w, Time>,
 }
@@ -807,7 +829,7 @@ pub(crate) struct CommandContext<'w> {
 pub(crate) fn handle_commands(
     mut commands: MessageReader<ObserverCommand>,
     mut context: CommandContext,
-    mut qualification: Option<ResMut<crate::organizer::qualification_input::HandlerReceipt>>,
+    mut qualification: Option<ResMut<HandlerReceipt>>,
 ) {
     for (command, message_id) in commands.read_with_id() {
         let command = *command;
@@ -834,7 +856,9 @@ pub(crate) fn handle_commands(
             }
             continue;
         }
-        if let ControlAvailability::Disabled(reason) = availability(command, &context.state) {
+        if let ControlAvailability::Disabled(reason) =
+            observer_controls::availability(command, &context.state)
+        {
             if let Some(receipt) = qualification.as_deref_mut() {
                 receipt.observer_finished(
                     message_id,
@@ -957,7 +981,7 @@ pub(crate) fn queue_menu_campaign(command: ObserverCommand, context: &mut Comman
             return;
         };
         RuntimeSessionTarget::New {
-            campaign_id: uuid::Uuid::new_v4().to_string(),
+            campaign_id: Uuid::new_v4().to_string(),
             preset,
         }
     };
@@ -1013,12 +1037,12 @@ pub(crate) fn apply_presentation_command(command: ObserverCommand, context: &mut
     } = context;
     match command {
         ObserverCommand::Relationships => {
-            ui.lens = crate::map_economy_lens::MapLens::Relationships;
+            ui.lens = MapLens::Relationships;
             ui.disclosure = None;
         }
         ObserverCommand::NetworkSector(sector) => {
             ui.network_sector = sector;
-            ui.road_layer = crate::observer_ui::RoadLayer::EconomyNetwork;
+            ui.road_layer = RoadLayer::EconomyNetwork;
             ui.disclosure = None;
         }
         ObserverCommand::RoadLayer(layer) => {
@@ -1027,23 +1051,21 @@ pub(crate) fn apply_presentation_command(command: ObserverCommand, context: &mut
         }
         ObserverCommand::EconomicDetails => ui.economic_details_open = !ui.economic_details_open,
         ObserverCommand::Workforce(metric) => {
-            ui.lens = crate::map_economy_lens::MapLens::Workforce(metric);
+            ui.lens = MapLens::Workforce(metric);
             ui.disclosure = None;
         }
         ObserverCommand::Lens(metric) => {
             ui.economic_details_open = true;
-            ui.lens = crate::map_economy_lens::MapLens::Qcew(metric);
+            ui.lens = MapLens::Qcew(metric);
             ui.disclosure = None;
         }
         ObserverCommand::MaterialLens(kind) => {
             ui.economic_details_open = true;
             let good = match &ui.lens {
-                crate::map_economy_lens::MapLens::Material { good, .. } => good.clone(),
-                crate::map_economy_lens::MapLens::Relationships
-                | crate::map_economy_lens::MapLens::Qcew(_)
-                | crate::map_economy_lens::MapLens::Workforce(_) => None,
+                MapLens::Material { good, .. } => good.clone(),
+                MapLens::Relationships | MapLens::Qcew(_) | MapLens::Workforce(_) => None,
             };
-            ui.lens = crate::map_economy_lens::MapLens::Material { kind, good };
+            ui.lens = MapLens::Material { kind, good };
             ui.lens.reconcile(frame.for_session(state), false);
             ui.disclosure = None;
         }
@@ -1104,7 +1126,7 @@ pub(crate) fn start_observation(
     mut pending: ResMut<PendingObservation>,
     mut cache: ResMut<ObservationCache>,
     mut frame: ResMut<ObserverFrame>,
-    mut qualification: Option<ResMut<qualification::NativeAudit>>,
+    mut qualification: Option<ResMut<NativeAudit>>,
 ) {
     let key = ObservationCacheKey::from_session(&state, qualification.as_deref());
     cache.reconcile(key);
@@ -1164,10 +1186,8 @@ pub(crate) fn start_observation(
     };
     let mut cursor = cache.cursor.take();
     let task = AsyncComputeTaskPool::get().spawn(async move {
-        let started = std::time::Instant::now();
-        let resumed_after = cursor
-            .as_ref()
-            .map(babylon_persistence::observer_reader::ObserverMaterialCursor::completed_tick);
+        let started = Instant::now();
+        let resumed_after = cursor.as_ref().map(ObserverMaterialCursor::completed_tick);
         let mut qualification = None;
         let result = (|| {
             let reader = reader.map_err(|error| error.to_string())?;
@@ -1212,12 +1232,12 @@ pub(crate) fn collect_observation(
     mut cache: ResMut<ObservationCache>,
     mut frame: ResMut<ObserverFrame>,
     ui: Res<ObserverUiState>,
-    mut qualification: Option<ResMut<qualification::NativeAudit>>,
+    mut qualification: Option<ResMut<NativeAudit>>,
 ) {
     let Some((context, task)) = &mut pending.0 else {
         return;
     };
-    let Some(result) = block_on(bevy::tasks::futures_lite::future::poll_once(task)) else {
+    let Some(result) = tasks::block_on(bevy::tasks::futures_lite::future::poll_once(task)) else {
         return;
     };
     let context = context.clone();
@@ -1327,7 +1347,7 @@ pub(crate) fn playback(
     pipe: Option<Res<RuntimePipe>>,
     mut clock: ResMut<PlaybackClock>,
     mut state: ResMut<ObserverSession>,
-    mut qualification: Option<ResMut<qualification::NativeAudit>>,
+    mut qualification: Option<ResMut<NativeAudit>>,
 ) {
     if state.quit_requested {
         return;
@@ -1355,7 +1375,7 @@ pub(crate) fn playback(
 pub(crate) fn send_campaign_switch(
     pipe: Option<Res<RuntimePipe>>,
     mut state: ResMut<ObserverSession>,
-    mut qualification: Option<ResMut<qualification::NativeAudit>>,
+    mut qualification: Option<ResMut<NativeAudit>>,
 ) {
     let Some(pipe) = pipe else {
         return;
@@ -1433,7 +1453,7 @@ pub struct ObserverIoPlugin;
 
 impl Plugin for ObserverIoPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<crate::observer_progress::OperationProgress>()
+        app.init_resource::<OperationProgress>()
             .add_systems(
                 Update,
                 crate::observer_progress::track

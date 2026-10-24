@@ -1,14 +1,17 @@
 //! Exact textual readings from one disclosed production snapshot.
 
-use babylon_persistence::{
-    production_observation::ProductionSite, production_observation::ProductionSnapshot,
-};
+use babylon_persistence::production_observation::{ProductionSite, ProductionSnapshot};
+
 use std::fmt::Write as _;
 
 use super::ProductionReadingSection;
 use crate::observer_ui::grouped;
 use crate::production_brief::committed_plan_status;
 use crate::production_freight::format_freight_mass;
+use babylon_persistence::production_observation::FreightOrderIndex;
+use babylon_persistence::production_observation::PhysicalRouteIndex;
+use babylon_persistence::production_observation::ProductionSiteRole;
+use std::collections::BTreeSet;
 
 pub(super) fn describe(
     site: &ProductionSite,
@@ -33,7 +36,7 @@ pub(super) fn reading_headline(
     } else {
         format!("Period {period} / committed reading\n")
     };
-    let mut outputs = std::collections::BTreeSet::new();
+    let mut outputs = BTreeSet::new();
     for process in &site.processes {
         if !outputs.insert((&process.output_good_id, &process.output_unit_id)) {
             continue;
@@ -175,14 +178,10 @@ pub(super) fn describe_flow(site: &ProductionSite, snapshot: &ProductionSnapshot
 
 pub(super) fn describe_freight(site: &ProductionSite, snapshot: &ProductionSnapshot) -> String {
     let mut value = String::new();
-    let Ok(definitions) =
-        babylon_persistence::production_observation::PhysicalRouteIndex::try_new(snapshot)
-    else {
+    let Ok(definitions) = PhysicalRouteIndex::try_new(snapshot) else {
         return "Physical route details unavailable in this observation.\n".into();
     };
-    let Ok(orders) =
-        babylon_persistence::production_observation::FreightOrderIndex::try_new(snapshot)
-    else {
+    let Ok(orders) = FreightOrderIndex::try_new(snapshot) else {
         return "Freight order details unavailable in this observation.\n".into();
     };
     let accounts = crate::production_freight::shared_accounts_with_index(
@@ -400,7 +399,7 @@ fn describe_sector_context(
     snapshot: &ProductionSnapshot,
 ) {
     describe_national_context(value, site, snapshot);
-    let subjects: std::collections::BTreeSet<_> = snapshot
+    let subjects: BTreeSet<_> = snapshot
         .process_attributions
         .iter()
         .filter(|link| link.site_id == site.id)
@@ -409,9 +408,8 @@ fn describe_sector_context(
     for context in snapshot.observed_contexts.iter().filter(|context| {
         site.is_in_county(&context.county_geoid)
             && (subjects.contains(&context.subject)
-                || (site.roles.contains(
-                    &babylon_persistence::production_observation::ProductionSiteRole::Maintenance,
-                ) && site.sector_code.as_deref() == Some(context.sector_code.as_str())))
+                || (site.roles.contains(&ProductionSiteRole::Maintenance)
+                    && site.sector_code.as_deref() == Some(context.sector_code.as_str())))
     }) {
         writeln!(
             value,
@@ -448,7 +446,7 @@ fn describe_sector_context(
             }
             .expect("String write");
         }
-        let shared_ids: std::collections::BTreeSet<_> = snapshot
+        let shared_ids: BTreeSet<_> = snapshot
             .process_attributions
             .iter()
             .filter(|link| link.cohort_subject == context.subject)
@@ -586,8 +584,7 @@ fn describe_labor_accounts(
             if site.roles.iter().any(|r| {
                 matches!(
                     r,
-                    babylon_persistence::production_observation::ProductionSiteRole::Wholesale
-                        | babylon_persistence::production_observation::ProductionSiteRole::Retail
+                    ProductionSiteRole::Wholesale | ProductionSiteRole::Retail
                 )
             }) || completed.handling_needed != 0
                 || completed.handling_used != 0
@@ -603,9 +600,7 @@ fn describe_labor_accounts(
             }
             if completed.maintenance_needed != 0
                 || completed.maintenance_used != 0
-                || site.roles.contains(
-                    &babylon_persistence::production_observation::ProductionSiteRole::Maintenance,
-                )
+                || site.roles.contains(&ProductionSiteRole::Maintenance)
             {
                 writeln!(
                     value,

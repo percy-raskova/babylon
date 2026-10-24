@@ -4,26 +4,34 @@ use super::{advance, aid, recovery};
 
 use crate::observer::{ObservationContext, ObserverSession, SessionPhase};
 
-use babylon_persistence::{
-    identity::CampaignId,
-    observer_reader::{ObserverEconomySnapshot, ObserverVisibility},
-    qualification_audit::{
-        policy::{canonical_digest, FrozenPolicy},
-        MaterialAudit,
-    },
-};
+use babylon_persistence::identity::CampaignId;
+use babylon_persistence::observer_reader::{ObserverEconomySnapshot, ObserverVisibility};
+use babylon_persistence::qualification_audit::policy::FrozenPolicy;
+use babylon_persistence::qualification_audit::MaterialAudit;
 
 use bevy::prelude::Resource;
 
 use serde::Serialize;
 
-use std::{
-    fs::{self, File, OpenOptions},
-    io::{Read, Write},
-    os::unix::fs::{MetadataExt, OpenOptionsExt},
-    path::{Path, PathBuf},
-    time::Instant,
-};
+use aid::Custody;
+use babylon_kernel::clock::CampaignDuration;
+use babylon_persistence::qualification_audit::aid::Boundary;
+use babylon_persistence::qualification_audit::policy;
+use babylon_persistence::qualification_audit::BoundaryFacts;
+use babylon_persistence::qualification_audit::CountyRoster;
+use babylon_persistence::runtime_session::OrganizerCommitment;
+use babylon_persistence::runtime_session::OrganizerPreview;
+use babylon_persistence::runtime_session::OrganizerSnapshot;
+use babylon_persistence::runtime_session::RuntimeSessionRequest;
+use recovery::Identity;
+use serde_json::Value;
+use std::fs;
+use std::fs::{File, OpenOptions};
+use std::io::ErrorKind;
+use std::io::{Read, Write};
+use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
+use std::path::{Path, PathBuf};
+use std::time::Instant;
 
 pub(in crate::observer_io) const RECORD_BYTES: usize = 4_194_304;
 
@@ -48,8 +56,8 @@ pub(crate) struct NativeAudit {
     pub(super) configuration: Configuration,
     pub(super) scope: Option<Scope>,
     pub(super) audit: Option<MaterialAudit>,
-    pub(super) custody: aid::Custody,
-    pub(super) boundary: Option<recovery::Identity>,
+    pub(super) custody: Custody,
+    pub(super) boundary: Option<Identity>,
     pub(super) recovery: Option<recovery::Pending>,
     pub(super) advance: Option<advance::Pending>,
 }
@@ -58,8 +66,8 @@ pub(in crate::observer_io) struct Work {
     pub(super) configuration: Configuration,
     pub(super) scope: Scope,
     pub(super) audit: MaterialAudit,
-    pub(super) custody: aid::Custody,
-    pub(super) duration: babylon_kernel::clock::CampaignDuration,
+    pub(super) custody: Custody,
+    pub(super) duration: CampaignDuration,
     pub(super) recovery: Option<recovery::Pending>,
 }
 
@@ -75,12 +83,12 @@ pub(in crate::observer_io) struct Record {
     pub(super) tick: u64,
     pub(super) tick_content_hash: Option<String>,
     pub(super) opening: Option<Opening>,
-    pub(super) facts: Option<babylon_persistence::qualification_audit::BoundaryFacts>,
-    pub(super) aid: Option<babylon_persistence::qualification_audit::aid::Boundary>,
-    pub(super) aid_practices: serde_json::Value,
+    pub(super) facts: Option<BoundaryFacts>,
+    pub(super) aid: Option<Boundary>,
+    pub(super) aid_practices: Value,
     pub(super) economic_summary: babylon_persistence::qualification_audit::economic::Summary,
     pub(super) aid_summary: babylon_persistence::qualification_audit::aid::Summary,
-    pub(super) trade_summary: serde_json::Value,
+    pub(super) trade_summary: Value,
 }
 
 #[derive(Serialize)]
@@ -92,16 +100,16 @@ pub(in crate::observer_io) struct Opening {
     pub(super) material_register_sha256: String,
     pub(super) material_register_bytes: usize,
     #[serde(flatten)]
-    pub(super) geography: babylon_persistence::qualification_audit::CountyRoster,
+    pub(super) geography: CountyRoster,
 }
 
 pub(in crate::observer_io) struct Candidate {
     pub(super) scope: Scope,
     pub(super) context: ObservationContext,
     pub(super) audit: MaterialAudit,
-    pub(super) custody: aid::Custody,
+    pub(super) custody: Custody,
     pub(super) record: Record,
-    pub(super) identity: recovery::Identity,
+    pub(super) identity: Identity,
     pub(super) recovery: Option<recovery::Pending>,
 }
 
@@ -120,7 +128,7 @@ impl NativeAudit {
         let [Some(path), Some(hash), Some(periods), Some(directory)] = values else {
             return Err("native audit requires a complete frozen supervisor configuration".into());
         };
-        let hash = canonical_digest(
+        let hash = policy::canonical_digest(
             hash.to_str()
                 .ok_or("native audit policy hash is not canonical")?,
         )
@@ -146,7 +154,7 @@ impl NativeAudit {
             },
             scope: None,
             audit: None,
-            custody: aid::Custody::default(),
+            custody: Custody::default(),
             boundary: None,
             recovery: None,
             advance: None,
@@ -174,7 +182,7 @@ impl NativeAudit {
                 .runtime_scope()
                 .ok_or("native audit runtime scope absent")?
                 .epoch,
-            foundation: canonical_digest(
+            foundation: policy::canonical_digest(
                 session
                     .foundation_digest
                     .as_deref()
@@ -301,7 +309,7 @@ impl NativeAudit {
     pub(crate) fn status(
         &mut self,
         session: &ObserverSession,
-        snapshot: babylon_persistence::runtime_session::OrganizerSnapshot,
+        snapshot: OrganizerSnapshot,
     ) -> Result<(), String> {
         if let Some(recovery) = &self.recovery {
             recovery.verify_status(session, &snapshot)?;
@@ -316,8 +324,8 @@ impl NativeAudit {
     pub(crate) fn stage(
         &mut self,
         session: &ObserverSession,
-        request: &babylon_persistence::runtime_session::RuntimeSessionRequest,
-        preview: Option<&babylon_persistence::runtime_session::OrganizerPreview>,
+        request: &RuntimeSessionRequest,
+        preview: Option<&OrganizerPreview>,
     ) -> Result<(), String> {
         self.custody.stage(session, request, preview)
     }
@@ -326,7 +334,7 @@ impl NativeAudit {
         &mut self,
         session: &ObserverSession,
         request_id: u64,
-        commitment: &babylon_persistence::runtime_session::OrganizerCommitment,
+        commitment: &OrganizerCommitment,
     ) -> Result<(), String> {
         let scope = self
             .scope
@@ -357,7 +365,7 @@ pub(in crate::observer_io) fn publication_matches(
         && session
             .foundation_digest
             .as_deref()
-            .and_then(|h| canonical_digest(h).ok())
+            .and_then(|h| policy::canonical_digest(h).ok())
             == Some(scope.foundation)
         && session.viewed_tick == session.durable_tick
         && tick == session.durable_tick
@@ -382,9 +390,7 @@ impl KnownBinding {
             envelope: snapshot.envelope_digest.clone(),
         }
     }
-    pub(super) fn from_facts(
-        facts: &babylon_persistence::qualification_audit::BoundaryFacts,
-    ) -> Self {
+    pub(super) fn from_facts(facts: &BoundaryFacts) -> Self {
         Self {
             campaign: facts.campaign.clone(),
             tick: facts.tick,
@@ -486,7 +492,7 @@ pub(in crate::observer_io) fn valid_record_name(name: &str) -> bool {
         })
         || name
             .strip_prefix("aid-")
-            .is_some_and(|id| canonical_digest(id).is_ok())
+            .is_some_and(|id| policy::canonical_digest(id).is_ok())
         || name.strip_prefix("recovery-").is_some_and(|suffix| {
             suffix.split_once('-').is_some_and(|(tick, epoch)| {
                 [tick, epoch]
@@ -535,7 +541,7 @@ pub(in crate::observer_io) fn write_named_record(
         verify_directory(directory)?;
         match fs::hard_link(&temporary, &target) {
             Ok(()) => {}
-            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+            Err(error) if error.kind() == ErrorKind::AlreadyExists => {
                 exact_existing(&target, bytes)?;
             }
             Err(_) => return Err("native audit atomic publication failed".into()),

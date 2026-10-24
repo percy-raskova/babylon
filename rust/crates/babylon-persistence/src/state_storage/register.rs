@@ -1,20 +1,25 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
+use super::layout;
 use super::{IdentityEntry, IdentityKind, TypedLookup};
 
 use super::offers;
 
-use crate::storage_compression::{compress_exact, decompress_exact};
-
 use babylon_tick::material_world::{MaterialWorldRegister, MAX_MATERIAL_WORLD_REGISTER_BYTES};
 
-use super::layout::{kind, layout, Layout};
+use super::layout::Layout;
 
-use super::schema::{sections, Cursor, Section};
+use super::schema::{Cursor, Section};
 
 use sha2::{Digest, Sha256};
 
-use std::{collections::BTreeMap, fmt};
+use super::schema;
+use crate::storage_compression;
+use fmt::Formatter;
+use fmt::Result as FmtResult;
+use std::collections::BTreeMap;
+use std::fmt;
+use std::sync::Arc;
 
 pub(crate) const DOMAIN: &[u8] = b"babylon.state-storage.v4\0";
 
@@ -42,7 +47,7 @@ pub enum StorageError {
 }
 
 impl fmt::Display for StorageError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         write!(f, "state storage refused: {self:?}")
     }
 }
@@ -63,10 +68,10 @@ pub struct OpeningRegister {
         clippy::rc_buffer,
         reason = "storage shares the register's exact admitted canonical byte allocation"
     )]
-    bytes: std::sync::Arc<Vec<u8>>,
+    bytes: Arc<Vec<u8>>,
     digest: [u8; 32],
-    pub(super) sections: std::sync::Arc<[Section]>,
-    lookup: std::sync::Arc<TypedLookup>,
+    pub(super) sections: Arc<[Section]>,
+    lookup: Arc<TypedLookup>,
 }
 
 impl OpeningRegister {
@@ -78,10 +83,10 @@ impl OpeningRegister {
             return Err(StorageError::ParentMismatch);
         }
         let bytes = register.shared_canonical_bytes();
-        let parsed = sections(bytes.as_slice())?;
+        let parsed = schema::sections(bytes.as_slice())?;
         let mut lookup = TypedLookup::default();
         for section in &parsed {
-            if let Some(shape) = layout(section.id) {
+            if let Some(shape) = layout::layout(section.id) {
                 normalize(section.raw(bytes.as_slice()), shape, &mut lookup, true)?;
             }
         }
@@ -89,7 +94,7 @@ impl OpeningRegister {
             digest: register.digest(),
             bytes,
             sections: parsed.into(),
-            lookup: std::sync::Arc::new(lookup),
+            lookup: Arc::new(lookup),
         })
     }
     /// Admit canonical opening bytes once for standalone codec tooling.
@@ -223,7 +228,7 @@ pub(crate) fn normalize_with(
                 .try_into()
                 .map_err(|_| StorageError::Layout)?;
             let entry = IdentityEntry {
-                kind: kind(*field, row)?,
+                kind: layout::kind(*field, row)?,
                 bytes,
             };
             let index = reference(entry)?;
@@ -405,7 +410,7 @@ pub(crate) fn expand(
             if index as usize >= prefix {
                 return Err(StorageError::LookupIndex);
             }
-            let expected = kind(*field, &restored)?;
+            let expected = layout::kind(*field, &restored)?;
             restored.extend_from_slice(&lookup.resolve(index, expected)?);
         }
         restored.extend_from_slice(row.get(cursor..).ok_or(StorageError::Framing)?);
@@ -425,7 +430,8 @@ pub(crate) struct Block {
 }
 
 pub(crate) fn compressed(mode: u8, body: Vec<u8>) -> Result<Block, StorageError> {
-    let encoded = compress_exact(&body, MAX_BYTES).map_err(|_| StorageError::Compression)?;
+    let encoded = storage_compression::compress_exact(&body, MAX_BYTES)
+        .map_err(|_| StorageError::Compression)?;
     let body_length = body.len();
     let body_digest = digest(&body);
     drop(body);
@@ -468,7 +474,7 @@ pub(crate) fn block(
         }
         return Ok(literal);
     }
-    let Some(shape) = layout(section.id) else {
+    let Some(shape) = layout::layout(section.id) else {
         return compressed(1, raw.to_vec());
     };
     let count = section.count.ok_or(StorageError::Count)?;
@@ -561,7 +567,7 @@ pub fn encode_register_with_opening(
     if lookup.entries().get(..opening.lookup.entries().len()) != Some(opening.lookup.entries()) {
         return Err(StorageError::ParentMismatch);
     }
-    let current_sections = sections(current_bytes)?;
+    let current_sections = schema::sections(current_bytes)?;
     let old_map = old.iter().map(|s| (s.id, s)).collect::<BTreeMap<_, _>>();
     let mut updated = lookup.clone();
     let mut blocks = Vec::with_capacity(current_sections.len());
@@ -668,7 +674,7 @@ pub(crate) fn validate_body_length(stored: &StoredSection) -> Result<(), Storage
             return Err(StorageError::Framing);
         }
     } else {
-        let shape = layout(stored.id).ok_or(StorageError::Layout)?;
+        let shape = layout::layout(stored.id).ok_or(StorageError::Layout)?;
         let count = stored.count.ok_or(StorageError::Count)?;
         if count > shape.maximum {
             return Err(StorageError::Count);
@@ -706,7 +712,7 @@ pub(crate) fn restore_section(
         return Ok(raw.to_vec());
     }
     validate_body_length(stored)?;
-    let body = decompress_exact(
+    let body = storage_compression::decompress_exact(
         &stored.encoded,
         stored.body_length,
         stored.body_digest,
@@ -728,7 +734,7 @@ pub(crate) fn restore_section(
             prefix,
         );
     }
-    let shape = layout(stored.id).ok_or(StorageError::Layout)?;
+    let shape = layout::layout(stored.id).ok_or(StorageError::Layout)?;
     let count = stored.count.ok_or(StorageError::Count)?;
     if count > shape.maximum
         || stored.raw_length
@@ -918,7 +924,7 @@ pub(crate) fn validate_descriptors(
     canonical: &[u8],
     descriptors: &SectionDescriptors,
 ) -> Result<(), StorageError> {
-    let actual = sections(canonical)?;
+    let actual = schema::sections(canonical)?;
     if actual
         .iter()
         .map(|s| (s.id, s.count, s.end - s.start))

@@ -1,5 +1,51 @@
 use babylon_kernel::currency::Currency;
-use babylon_material_circuit::*;
+use babylon_material_circuit::AccountId;
+use babylon_material_circuit::AidBook;
+use babylon_material_circuit::BacklogRow;
+use babylon_material_circuit::CapacitySupply;
+use babylon_material_circuit::CashAccount;
+use babylon_material_circuit::CircuitAccounting;
+use babylon_material_circuit::CommodityDefinition;
+use babylon_material_circuit::CorridorCapacity;
+use babylon_material_circuit::CorridorId;
+use babylon_material_circuit::EmploymentTerms;
+use babylon_material_circuit::FinalDemandOrder;
+use babylon_material_circuit::FinalDemandPrincipal;
+use babylon_material_circuit::FinalDemandPrincipalId;
+use babylon_material_circuit::FinancialInstitutions;
+use babylon_material_circuit::FundedShift;
+use babylon_material_circuit::GoodId;
+use babylon_material_circuit::HistoricalCostBook;
+use babylon_material_circuit::HouseholdTimeAccounting;
+use babylon_material_circuit::InventoryRow;
+use babylon_material_circuit::LaborCapacityRow;
+use babylon_material_circuit::LaborCompensation;
+use babylon_material_circuit::LogisticsNodeId;
+use babylon_material_circuit::MaterialCircuitError;
+use babylon_material_circuit::MaterialCircuitState;
+use babylon_material_circuit::MaterialPurchase;
+use babylon_material_circuit::MemberLaborCapacityRow;
+use babylon_material_circuit::MerchantHandling;
+use babylon_material_circuit::MerchantHandlingCoefficient;
+use babylon_material_circuit::MerchantRole;
+use babylon_material_circuit::MonetaryBook;
+use babylon_material_circuit::MonetaryCircuit;
+use babylon_material_circuit::MoneyTransferPurpose;
+use babylon_material_circuit::OrderAccessMode;
+use babylon_material_circuit::OrderId;
+use babylon_material_circuit::OrderRow;
+use babylon_material_circuit::OutboundOrderId;
+use babylon_material_circuit::RouteId;
+use babylon_material_circuit::RouteStage;
+use babylon_material_circuit::RouteStageCapacity;
+use babylon_material_circuit::ShiftId;
+use babylon_material_circuit::SiteId;
+use babylon_material_circuit::SiteLogisticsNode;
+use babylon_material_circuit::StaffingMemberId;
+use babylon_material_circuit::StockCarryingValue;
+use babylon_material_circuit::SupplierRoute;
+use babylon_material_circuit::SupplierTransport;
+use babylon_material_circuit::UnitId;
 
 fn money(value: i128) -> Currency {
     Currency::from_micro_units(value)
@@ -33,7 +79,7 @@ fn opening() -> MaterialCircuitState {
     let corridor = CorridorId::from_bytes([8; 32]);
     let handling = CorridorId::from_bytes([9; 32]);
     MaterialCircuitState {
-        capacity_supply: babylon_material_circuit::CapacitySupply::FiniteSchedule,
+        capacity_supply: CapacitySupply::FiniteSchedule,
         period: 1,
         accounting: CircuitAccounting::Monetary(Box::new({
             let book = MonetaryBook::open(vec![
@@ -54,8 +100,8 @@ fn opening() -> MaterialCircuitState {
             MonetaryCircuit {
                 aid: AidBook::default(),
 
-                household_time: babylon_material_circuit::HouseholdTimeAccounting::NotModeled,
-                financial: babylon_material_circuit::FinancialInstitutions::empty(),
+                household_time: HouseholdTimeAccounting::NotModeled,
+                financial: FinancialInstitutions::empty(),
                 costs: HistoricalCostBook::open(
                     &book,
                     [source(), store()]
@@ -226,11 +272,14 @@ fn book(state: &MaterialCircuitState) -> &MonetaryBook {
 
 #[test]
 fn dispatch_keeps_escrow_and_restart_settles_only_actual_arrival() {
-    let (state, reservation) =
-        admit_material_purchase(&opening(), MaterialPurchase::Delivery(delivery()), money(1))
-            .unwrap();
+    let (state, reservation) = babylon_material_circuit::admit_material_purchase(
+        &opening(),
+        MaterialPurchase::Delivery(delivery()),
+        money(1),
+    )
+    .unwrap();
     assert_eq!(reservation.debit.delta, money(-4));
-    let closed = advance_material_circuit(&state).unwrap();
+    let closed = babylon_material_circuit::advance_material_circuit(&state).unwrap();
     assert_eq!(closed.dispatches[0].quantity, 4);
     assert_eq!(
         book(&closed.state).cash(AccountId::Site(source())).unwrap(),
@@ -247,11 +296,15 @@ fn dispatch_keeps_escrow_and_restart_settles_only_actual_arrival() {
     assert_eq!(closed.labor_use[0].funded_hours, 4);
     assert_eq!(closed.labor_use[0].used_hours, 0);
     assert_eq!(closed.labor_use[0].paid_idle_hours, 4);
-    let restored =
-        decode_material_circuit_state(&encode_material_circuit_state(&closed.state).unwrap())
-            .unwrap();
-    let arrived = advance_material_circuit(&restored).unwrap();
-    assert_eq!(arrived, advance_material_circuit(&closed.state).unwrap());
+    let restored = babylon_material_circuit::decode_material_circuit_state(
+        &babylon_material_circuit::encode_material_circuit_state(&closed.state).unwrap(),
+    )
+    .unwrap();
+    let arrived = babylon_material_circuit::advance_material_circuit(&restored).unwrap();
+    assert_eq!(
+        arrived,
+        babylon_material_circuit::advance_material_circuit(&closed.state).unwrap()
+    );
     assert_eq!(arrived.arrivals[0].quantity, 4);
     assert_eq!(
         book(&arrived.state)
@@ -267,13 +320,13 @@ fn dispatch_keeps_escrow_and_restart_settles_only_actual_arrival() {
 
 #[test]
 fn actual_local_handoff_pays_seller_and_reports_paid_idle_separately() {
-    let (state, _) = admit_material_purchase(
+    let (state, _) = babylon_material_circuit::admit_material_purchase(
         &opening(),
         MaterialPurchase::LocalFinalDemand(retail()),
         money(4),
     )
     .unwrap();
-    let closed = advance_material_circuit(&state).unwrap();
+    let closed = babylon_material_circuit::advance_material_circuit(&state).unwrap();
     let buyer = closed
         .income
         .iter()
@@ -322,13 +375,16 @@ fn missing_or_wrong_beneficiary_escrow_refuses_the_whole_material_close() {
     });
     let unchanged = unfunded.clone();
     assert_eq!(
-        advance_material_circuit(&unfunded),
+        babylon_material_circuit::advance_material_circuit(&unfunded),
         Err(MaterialCircuitError::PurchaseInvariant)
     );
     assert_eq!(unfunded, unchanged);
-    let (mut wrong, _) =
-        admit_material_purchase(&opening(), MaterialPurchase::Delivery(delivery()), money(1))
-            .unwrap();
+    let (mut wrong, _) = babylon_material_circuit::admit_material_purchase(
+        &opening(),
+        MaterialPurchase::Delivery(delivery()),
+        money(1),
+    )
+    .unwrap();
     let CircuitAccounting::Monetary(economy) = &mut wrong.accounting else {
         unreachable!()
     };
@@ -336,7 +392,7 @@ fn missing_or_wrong_beneficiary_escrow_refuses_the_whole_material_close() {
     snapshot.purchases[0].seller = AccountId::Household(household());
     economy.book = MonetaryBook::from_snapshot(snapshot).unwrap();
     assert_eq!(
-        advance_material_circuit(&wrong),
+        babylon_material_circuit::advance_material_circuit(&wrong),
         Err(MaterialCircuitError::PurchaseInvariant)
     );
 }
@@ -346,13 +402,21 @@ fn purchase_admission_cannot_spend_the_same_cash_twice_or_leave_an_order_behind(
     let state = opening();
     let unchanged = state.clone();
     assert_eq!(
-        admit_material_purchase(&state, MaterialPurchase::Delivery(delivery()), money(3)),
+        babylon_material_circuit::admit_material_purchase(
+            &state,
+            MaterialPurchase::Delivery(delivery()),
+            money(3)
+        ),
         Err(MaterialCircuitError::MonetaryInvariant)
     );
     assert_eq!(state, unchanged);
-    let (funded, _) =
-        admit_material_purchase(&state, MaterialPurchase::Delivery(delivery()), money(2)).unwrap();
-    let closed = advance_material_circuit(&funded).unwrap();
+    let (funded, _) = babylon_material_circuit::admit_material_purchase(
+        &state,
+        MaterialPurchase::Delivery(delivery()),
+        money(2),
+    )
+    .unwrap();
+    let closed = babylon_material_circuit::advance_material_circuit(&funded).unwrap();
     assert!(closed.wage_accruals.is_empty());
     assert_eq!(closed.labor_use[0].funded_hours, 0);
     assert_eq!(closed.labor_use[0].unfunded_hours, 4);
@@ -368,10 +432,14 @@ fn purchase_admission_cannot_spend_the_same_cash_twice_or_leave_an_order_behind(
 fn freight_loss_refunds_buyer_and_never_becomes_seller_income() {
     let mut state = opening();
     state.route_stages[0].loss_ppm = 500_000;
-    let (state, _) =
-        admit_material_purchase(&state, MaterialPurchase::Delivery(delivery()), money(1)).unwrap();
-    let dispatched = advance_material_circuit(&state).unwrap();
-    let arrived = advance_material_circuit(&dispatched.state).unwrap();
+    let (state, _) = babylon_material_circuit::admit_material_purchase(
+        &state,
+        MaterialPurchase::Delivery(delivery()),
+        money(1),
+    )
+    .unwrap();
+    let dispatched = babylon_material_circuit::advance_material_circuit(&state).unwrap();
+    let arrived = babylon_material_circuit::advance_material_circuit(&dispatched.state).unwrap();
     assert_eq!(arrived.losses[0].quantity, 2);
     assert_eq!(arrived.arrivals[0].quantity, 2);
     assert_eq!(
@@ -439,9 +507,11 @@ fn previously_earned_wages_survive_restart_and_payment_does_not_accrue_them_agai
             .unwrap(),
         money(3)
     );
-    let restored =
-        decode_material_circuit_state(&encode_material_circuit_state(&state).unwrap()).unwrap();
-    let closed = advance_material_circuit(&restored).unwrap();
+    let restored = babylon_material_circuit::decode_material_circuit_state(
+        &babylon_material_circuit::encode_material_circuit_state(&state).unwrap(),
+    )
+    .unwrap();
+    let closed = babylon_material_circuit::advance_material_circuit(&restored).unwrap();
     assert_eq!(closed.wage_accruals.len(), 1);
     assert_eq!(closed.wage_accruals[0].period, 2);
     assert_eq!(closed.wage_accruals[0].amount, money(4));
@@ -468,16 +538,19 @@ fn previously_earned_wages_survive_restart_and_payment_does_not_accrue_them_agai
 
 #[test]
 fn goods_and_a_funded_buyer_do_not_substitute_for_employer_working_cash() {
-    let (state, _) =
-        admit_material_purchase(&opening(), MaterialPurchase::Delivery(delivery()), money(2))
-            .unwrap();
-    let (state, _) = admit_material_purchase(
+    let (state, _) = babylon_material_circuit::admit_material_purchase(
+        &opening(),
+        MaterialPurchase::Delivery(delivery()),
+        money(2),
+    )
+    .unwrap();
+    let (state, _) = babylon_material_circuit::admit_material_purchase(
         &state,
         MaterialPurchase::LocalFinalDemand(retail()),
         money(4),
     )
     .unwrap();
-    let closed = advance_material_circuit(&state).unwrap();
+    let closed = babylon_material_circuit::advance_material_circuit(&state).unwrap();
     assert!(closed.local_fulfillments.is_empty());
     assert_eq!(closed.state.final_demand_orders[0].fulfilled, 0);
     assert_eq!(closed.labor_use[0].unfunded_hours, 4);
@@ -521,7 +594,7 @@ fn a_failure_after_attendance_cannot_publish_wages_or_cash() {
     }
     let before = state.clone();
     assert_eq!(
-        advance_material_circuit(&state),
+        babylon_material_circuit::advance_material_circuit(&state),
         Err(MaterialCircuitError::Arithmetic)
     );
     assert_eq!(state, before);
@@ -535,15 +608,20 @@ fn a_failure_after_attendance_cannot_publish_wages_or_cash() {
 
 #[test]
 fn paid_delivery_cannot_reopen_as_an_unrealized_physical_quantity() {
-    let (state, _) =
-        admit_material_purchase(&opening(), MaterialPurchase::Delivery(delivery()), money(1))
-            .unwrap();
-    let dispatched = advance_material_circuit(&state).unwrap();
-    let mut arrived = advance_material_circuit(&dispatched.state).unwrap().state;
+    let (state, _) = babylon_material_circuit::admit_material_purchase(
+        &opening(),
+        MaterialPurchase::Delivery(delivery()),
+        money(1),
+    )
+    .unwrap();
+    let dispatched = babylon_material_circuit::advance_material_circuit(&state).unwrap();
+    let mut arrived = babylon_material_circuit::advance_material_circuit(&dispatched.state)
+        .unwrap()
+        .state;
     assert_eq!(arrived.orders[0].realized, 4);
     arrived.orders[0].realized = 0;
     assert_eq!(
-        encode_material_circuit_state(&arrived),
+        babylon_material_circuit::encode_material_circuit_state(&arrived),
         Err(MaterialCircuitError::PurchaseInvariant)
     );
 }
@@ -572,9 +650,13 @@ fn historical_cost_partial_dispatch_and_loss_leave_exact_remainders_without_cash
     .unwrap();
     state.corridor_capacities[0].available_grams = 3;
     state.route_stages[0].loss_ppm = 333_334;
-    let (state, _) =
-        admit_material_purchase(&state, MaterialPurchase::Delivery(delivery()), money(2)).unwrap();
-    let first = advance_material_circuit(&state).unwrap();
+    let (state, _) = babylon_material_circuit::admit_material_purchase(
+        &state,
+        MaterialPurchase::Delivery(delivery()),
+        money(2),
+    )
+    .unwrap();
+    let first = babylon_material_circuit::advance_material_circuit(&state).unwrap();
     let CircuitAccounting::Monetary(book) = &first.state.accounting else {
         panic!("paid control");
     };
@@ -589,7 +671,7 @@ fn historical_cost_partial_dispatch_and_loss_leave_exact_remainders_without_cash
             .amount,
         money(2)
     );
-    let second = advance_material_circuit(&first.state).unwrap();
+    let second = babylon_material_circuit::advance_material_circuit(&first.state).unwrap();
     let row = second
         .income
         .iter()

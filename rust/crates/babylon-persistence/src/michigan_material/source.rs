@@ -1,7 +1,8 @@
 //! Fresh statewide campaigns capture qualified files beside the canonical TOML.
 //! Reopening uses the captured catalog and never enters this module.
 
-use std::{io::Read, path::Path};
+use std::io::Read;
+use std::path::Path;
 
 use super::{
     MichiganCapacityOverride, MichiganDeliveryPreset, MichiganIntervention,
@@ -10,8 +11,10 @@ use super::{
 };
 use crate::economic_catalog::SourceArtifactKind as K;
 use crate::michigan_defines::{MichiganDefines, MichiganDefinesError, MAX_MICHIGAN_DEFINES_BYTES};
-use babylon_kernel::content_digest::sha256_of;
+use babylon_kernel::content_digest;
+use flate2::read::GzDecoder;
 use serde::Deserialize;
+use std::fs::File;
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -24,7 +27,7 @@ struct StatewideSources {
 
 fn bounded_bytes(path: &Path, bound: usize) -> Result<Vec<u8>, MichiganDefinesError> {
     let mut bytes = Vec::new();
-    std::fs::File::open(path)
+    File::open(path)
         .map_err(MichiganDefinesError::Read)?
         .take(
             u64::try_from(bound + 1)
@@ -40,13 +43,13 @@ fn bounded_bytes(path: &Path, bound: usize) -> Result<Vec<u8>, MichiganDefinesEr
 
 fn pinned_gzip(path: &Path, expected: &str) -> Result<(Vec<u8>, Vec<u8>), MichiganDefinesError> {
     let compressed = bounded_bytes(path, MAX_MICHIGAN_SOURCE_BYTES)?;
-    if crate::michigan_economy::digest_hex(&sha256_of(&compressed)) != expected {
+    if crate::michigan_economy::digest_hex(&content_digest::sha256_of(&compressed)) != expected {
         return Err(MichiganDefinesError::Material(
             MichiganMaterialError::ArtifactDigest,
         ));
     }
     let mut bytes = Vec::new();
-    flate2::read::GzDecoder::new(compressed.as_slice())
+    GzDecoder::new(compressed.as_slice())
         .take((MAX_MICHIGAN_SOURCE_BYTES + 1) as u64)
         .read_to_end(&mut bytes)
         .map_err(MichiganDefinesError::Read)?;
@@ -66,7 +69,8 @@ pub(super) fn load_statewide(path: &Path) -> Result<MichiganMaterialCatalog, Mic
     let manifest_bytes = bounded_bytes(&directory.join("statewide-sources.json"), 4096)?;
     let manifest: StatewideSources = serde_json::from_slice(&manifest_bytes)
         .map_err(|_| MichiganDefinesError::Material(MichiganMaterialError::ArtifactDecode))?;
-    let defines_hash = crate::michigan_economy::digest_hex(&sha256_of(text.as_bytes()));
+    let defines_hash =
+        crate::michigan_economy::digest_hex(&content_digest::sha256_of(text.as_bytes()));
     if manifest.schema != "MichiganStatewideSourcesV1" || manifest.defines_sha256 != defines_hash {
         return Err(MichiganDefinesError::Material(
             MichiganMaterialError::ArtifactDigest,
@@ -173,7 +177,7 @@ pub(super) fn decode_statewide_sources(
 ) -> Result<(Vec<u8>, MichiganPhysicalNetwork, Vec<MichiganIntervention>), MichiganDefinesError> {
     let manifest: StatewideSources =
         serde_json::from_slice(manifest_bytes).map_err(|_| MichiganDefinesError::Canonical)?;
-    let hash = crate::michigan_economy::digest_hex(&sha256_of(text.as_bytes()));
+    let hash = crate::michigan_economy::digest_hex(&content_digest::sha256_of(text.as_bytes()));
     if manifest.schema != "MichiganStatewideSourcesV1" || manifest.defines_sha256 != hash {
         return Err(MichiganDefinesError::Canonical);
     }
@@ -194,12 +198,12 @@ pub(super) fn decode_statewide_sources(
 }
 fn decode_pinned_gzip(compressed: &[u8], expected: &str) -> Result<Vec<u8>, MichiganDefinesError> {
     if compressed.len() > MAX_MICHIGAN_SOURCE_BYTES
-        || crate::michigan_economy::digest_hex(&sha256_of(compressed)) != expected
+        || crate::michigan_economy::digest_hex(&content_digest::sha256_of(compressed)) != expected
     {
         return Err(MichiganDefinesError::Canonical);
     }
     let mut bytes = Vec::new();
-    flate2::read::GzDecoder::new(compressed)
+    GzDecoder::new(compressed)
         .take((MAX_MICHIGAN_SOURCE_BYTES + 1) as u64)
         .read_to_end(&mut bytes)
         .map_err(MichiganDefinesError::Read)?;

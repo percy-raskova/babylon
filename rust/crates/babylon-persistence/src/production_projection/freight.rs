@@ -19,14 +19,4 @@ use projection::{
 };
 
 use super::ProductionProjectionError;
-#[cfg(test)]
-use crate::michigan_economy::digest_hex;
-#[cfg(test)]
-use crate::production_observation::{
-    ProductionFreightOrderDefinition, ProductionFreightReservation,
-};
 use babylon_material_circuit::MaterialCircuitState;
-#[cfg(test)]
-use babylon_tick::material_world::MaterialTickReceipts;
-#[cfg(test)]
-use std::collections::BTreeMap;

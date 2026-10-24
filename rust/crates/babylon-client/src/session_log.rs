@@ -7,15 +7,20 @@ use bevy::prelude::*;
 
 use crate::atlas::CountyAtlas;
 use crate::campaign_browser::CampaignBrowserCommand;
+use crate::campaign_browser::ComparisonSection;
 use crate::map::SelectedCounty;
 use crate::observer::{ObservationContext, ObserverSession, Perspective, SessionPhase};
 use crate::observer_audio::ObserverAudioSettings;
 use crate::observer_io::ObserverSet;
 use crate::observer_map3d::ObserverMapCamera;
+use crate::observer_ui::NetworkSector;
+use crate::observer_ui::RoadLayer;
 use crate::observer_ui::{
     ObserverCommand, ObserverDisclosure, ObserverFeedback, ObserverFrame, ObserverUiState,
 };
+use crate::production::ProductionReadingSection;
 use crate::production::{PrimaryView, ProductionCamera, ProductionCommand, ProductionNavigation};
+use crate::ui::dossier_card::DossierFetchError;
 use crate::ui::dossier_card::{
     ActiveCountyDossier, DossierCampaignId, DossierFetchState, DossierPageView, DossierRefresh,
     SubjectPageRequest,
@@ -121,15 +126,9 @@ fn observer_command_name(command: ObserverCommand) -> &'static str {
         ObserverCommand::EconomicDetails => "economic_details",
         ObserverCommand::Relationships => "relationships",
         ObserverCommand::NetworkSector(_) => "network_sector",
-        ObserverCommand::RoadLayer(crate::observer_ui::RoadLayer::EconomyNetwork) => {
-            "economy_network"
-        }
-        ObserverCommand::RoadLayer(crate::observer_ui::RoadLayer::SelectedPaths) => {
-            "selected_paths_layer"
-        }
-        ObserverCommand::RoadLayer(crate::observer_ui::RoadLayer::CapturedRoads) => {
-            "captured_roads_layer"
-        }
+        ObserverCommand::RoadLayer(RoadLayer::EconomyNetwork) => "economy_network",
+        ObserverCommand::RoadLayer(RoadLayer::SelectedPaths) => "selected_paths_layer",
+        ObserverCommand::RoadLayer(RoadLayer::CapturedRoads) => "captured_roads_layer",
     }
 }
 
@@ -178,9 +177,9 @@ fn log_requests(
             CampaignBrowserCommand::Open => "campaign_open",
             CampaignBrowserCommand::Compare => "campaign_compare",
             CampaignBrowserCommand::ComparisonSection(section) => match section {
-                crate::campaign_browser::ComparisonSection::Cohorts => "comparison_cohorts",
-                crate::campaign_browser::ComparisonSection::SharedFreight => "comparison_freight",
-                crate::campaign_browser::ComparisonSection::CampaignTotals => "comparison_totals",
+                ComparisonSection::Cohorts => "comparison_cohorts",
+                ComparisonSection::SharedFreight => "comparison_freight",
+                ComparisonSection::CampaignTotals => "comparison_totals",
             },
             CampaignBrowserCommand::CloseComparison => "comparison_close",
             CampaignBrowserCommand::Refresh => "campaign_refresh",
@@ -251,14 +250,14 @@ fn log_feedback(
 // These are independent applied controls, not mutually exclusive session states.
 #[allow(clippy::struct_excessive_bools)]
 struct PresentationSnapshot {
-    network_layer: crate::observer_ui::RoadLayer,
-    network_sector: crate::observer_ui::NetworkSector,
+    network_layer: RoadLayer,
+    network_sector: NetworkSector,
     perspective: Perspective,
     lens: String,
     view: PrimaryView,
     flat: bool,
     details: bool,
-    reading_section: crate::production::ProductionReadingSection,
+    reading_section: ProductionReadingSection,
     disclosure: &'static str,
     evidence: bool,
     economic_details: bool,
@@ -440,10 +439,7 @@ fn log_dossier(
         (DossierFetchState::Idle, None) => "empty",
         (DossierFetchState::InFlight { .. }, _) => "reading",
         (DossierFetchState::WaitingForObservation, _) => "waiting_for_observation",
-        (
-            DossierFetchState::Failed(crate::ui::dossier_card::DossierFetchError::ReaderAbsent(_)),
-            _,
-        ) => "reader_unavailable",
+        (DossierFetchState::Failed(DossierFetchError::ReaderAbsent(_)), _) => "reader_unavailable",
         (DossierFetchState::Failed(_), _) => "read_failed",
     };
     let next = DossierSnapshot {
@@ -601,13 +597,19 @@ fn log_camera(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use babylon_persistence::{
-        identity::CampaignId, observer_reader::ObserverEconomySnapshot,
-        observer_reader::ObserverVisibility, production_observation::ProductionSite,
-        production_observation::ProductionSnapshot,
-    };
+    use babylon_persistence::identity::CampaignId;
+    use babylon_persistence::observer_reader::{ObserverEconomySnapshot, ObserverVisibility};
+    use babylon_persistence::production_observation::{ProductionSite, ProductionSnapshot};
+
+    use crate::logging::RotatingSink;
+    use crate::map_economy_lens::MaterialLensKind;
+    use crate::production::ProductionReadingSection;
+    use crate::ui::dossier_card::DossierFetchError;
+    use bevy::ecs::schedule::ExecutorKind;
+    use bevy::log::tracing_subscriber::fmt::Layer;
     use bevy::log::tracing_subscriber::layer::SubscriberExt as _;
     use std::time::Duration;
+    use uuid::Uuid;
 
     const HIDDEN_SITE: &str = "undisclosed-production-id";
     const HIDDEN_LABEL: &str = "Undisclosed factory label";
@@ -682,19 +684,13 @@ mod tests {
     }
 
     fn captured(drive: impl FnOnce(&mut App)) -> String {
-        let path = std::env::temp_dir().join(format!(
-            "babylon-observer-telemetry-{}",
-            uuid::Uuid::new_v4()
-        ));
-        let sink =
-            crate::logging::RotatingSink::open(&path, 1024 * 1024, 2).expect("rotating sink");
-        let subscriber = bevy::log::tracing_subscriber::registry().with(
-            bevy::log::tracing_subscriber::fmt::Layer::default()
-                .with_ansi(false)
-                .with_writer(sink),
-        );
+        let path =
+            std::env::temp_dir().join(format!("babylon-observer-telemetry-{}", Uuid::new_v4()));
+        let sink = RotatingSink::open(&path, 1024 * 1024, 2).expect("rotating sink");
+        let subscriber = bevy::log::tracing_subscriber::registry()
+            .with(Layer::default().with_ansi(false).with_writer(sink));
         let mut app = App::new();
-        let mut session = ObserverSession::new(CampaignId::from_uuid(uuid::Uuid::nil()));
+        let mut session = ObserverSession::new(CampaignId::from_uuid(Uuid::nil()));
         session.foundation_digest = Some("foundation".into());
         session.ready(0, None);
         assert!(session.installed(&session.context()));
@@ -716,10 +712,10 @@ mod tests {
             .init_resource::<DossierFetchState>()
             .add_plugins(SessionLogPlugin);
         app.edit_schedule(Startup, |schedule| {
-            schedule.set_executor_kind(bevy::ecs::schedule::ExecutorKind::SingleThreaded);
+            schedule.set_executor_kind(ExecutorKind::SingleThreaded);
         });
         app.edit_schedule(Update, |schedule| {
-            schedule.set_executor_kind(bevy::ecs::schedule::ExecutorKind::SingleThreaded);
+            schedule.set_executor_kind(ExecutorKind::SingleThreaded);
         });
         bevy::log::tracing::subscriber::with_default(subscriber, || {
             app.update();
@@ -819,7 +815,7 @@ mod tests {
                 .details_open = true;
             app.world_mut()
                 .resource_mut::<ProductionNavigation>()
-                .reading_section = crate::production::ProductionReadingSection::Freight;
+                .reading_section = ProductionReadingSection::Freight;
             app.world_mut().resource_mut::<UiScale>().0 = 1.15;
             let mut audio = app.world_mut().resource_mut::<ObserverAudioSettings>();
             audio.track = 1;
@@ -900,7 +896,7 @@ mod tests {
                 .set_perspective(Perspective::PlayerKnowledge);
             app.world_mut().resource_mut::<ObserverUiState>().lens =
                 crate::map_economy_lens::MapLens::Material {
-                    kind: crate::map_economy_lens::MaterialLensKind::ProducedThisPeriod,
+                    kind: MaterialLensKind::ProducedThisPeriod,
                     good: Some(crate::map_economy_lens::MaterialGoodKey {
                         good_id: "hidden-good-id".into(),
                         unit_id: "hidden-unit-id".into(),
@@ -922,10 +918,9 @@ mod tests {
             app.world_mut()
                 .resource_mut::<ObserverSession>()
                 .fail("postgres://user:secret@private".into());
-            *app.world_mut().resource_mut::<DossierFetchState>() =
-                DossierFetchState::Failed(crate::ui::dossier_card::DossierFetchError::ReadFailed(
-                    "password=never-log-this".into(),
-                ));
+            *app.world_mut().resource_mut::<DossierFetchState>() = DossierFetchState::Failed(
+                DossierFetchError::ReadFailed("password=never-log-this".into()),
+            );
         });
         assert!(log.contains(HIDDEN_SITE), "valid observer identity: {log}");
         let preview = log

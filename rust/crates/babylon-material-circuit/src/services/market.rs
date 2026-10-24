@@ -1,12 +1,17 @@
-use super::{
-    stage, GoodId, MaterialCircuitError, MaterialCircuitState, Result, ServiceMarketReceipt,
-    ServicePerformanceReceipt, ServicePriceDecision, UnitId,
-};
+use super::GoodId;
+use super::MaterialCircuitError;
+use super::MaterialCircuitState;
+use super::Result;
+use super::ServiceMarketReceipt;
+use super::ServicePerformanceReceipt;
+use super::ServicePriceDecision;
+use super::UnitId;
+use crate::SiteId;
 use crate::{CircuitAccounting, PricePolicy, ServiceOrder};
 use babylon_kernel::currency::Currency;
 use std::collections::BTreeMap;
 
-type MarketKey = (crate::SiteId, GoodId, UnitId);
+type MarketKey = (SiteId, GoodId, UnitId);
 
 pub(super) fn capture(state: &MaterialCircuitState) -> Result<Vec<ServiceMarketReceipt>> {
     let CircuitAccounting::Monetary(e) = &state.accounting else {
@@ -17,7 +22,7 @@ pub(super) fn capture(state: &MaterialCircuitState) -> Result<Vec<ServiceMarketR
     };
     let mut markets = Vec::new();
     for output in &state.process_outputs {
-        if stage(state, output)?.is_none() {
+        if super::stage(state, output)?.is_none() {
             continue;
         }
         let offer = r

@@ -7,13 +7,30 @@ mod michigan_dynamic_hex_foundation;
 #[allow(dead_code)]
 #[path = "support/organizer_aid_fixture.rs"]
 mod organizer_aid_fixture;
+use crate::organizer_aid_fixture::Session;
+use crate::organizer_aid_fixture::MATERIAL;
+use crate::organizer_aid_fixture::PRACTICE;
+use crate::organizer_aid_fixture::PRODUCTS;
 use babylon_bsl::structural_verbs::CollectingSink;
-use babylon_material_circuit::*;
+use babylon_material_circuit::aid_commitment_id;
+use babylon_material_circuit::AccountId;
+use babylon_material_circuit::AidOutcome;
+use babylon_material_circuit::CashAccount;
+use babylon_material_circuit::CircuitAccounting;
+use babylon_material_circuit::CorridorId;
+use babylon_material_circuit::HistoricalCostBook;
+use babylon_material_circuit::HouseholdDemandReceipt;
+use babylon_material_circuit::HouseholdNeedBasis;
+use babylon_material_circuit::MaterialCircuitState;
+use babylon_material_circuit::MonetaryBook;
+use babylon_material_circuit::MoneyLocation;
+use babylon_material_circuit::MoneyTransferPurpose;
+use babylon_material_circuit::OutboundOrderId;
+use babylon_material_circuit::ProcessId;
+use babylon_material_circuit::UnitId;
 use babylon_practice_contract::{OrganizerChoice, OrganizerOutcome};
-use babylon_tick::material_world::{
-    decode_material_receipts, MaterialTickReceipts, MaterialWorldRegister,
-};
-use organizer_aid_fixture::*;
+use babylon_tick::material_world;
+use babylon_tick::material_world::{MaterialTickReceipts, MaterialWorldRegister};
 
 fn paid_handoff(rows: &MaterialTickReceipts, d: &HouseholdDemandReceipt) -> u64 {
     let actual = rows
@@ -80,7 +97,10 @@ fn paid_amount(
 fn exact_paid_handoff(rows: &MaterialTickReceipts) -> u64 {
     rows.household_demand
         .iter()
-        .filter(|r| r.principal_id == household() && r.good_id == good(2))
+        .filter(|r| {
+            r.principal_id == organizer_aid_fixture::household()
+                && r.good_id == organizer_aid_fixture::good(2)
+        })
         .map(|d| paid_handoff(rows, d))
         .try_fold(0_u64, u64::checked_add)
         .unwrap()
@@ -97,7 +117,7 @@ struct Provision {
 fn produced_food(rows: &MaterialTickReceipts, state: &MaterialCircuitState) -> u64 {
     rows.production
         .iter()
-        .filter(|r| r.site_id == site(2))
+        .filter(|r| r.site_id == organizer_aid_fixture::site(2))
         .map(|r| {
             let recipe = state
                 .process_outputs
@@ -106,7 +126,7 @@ fn produced_food(rows: &MaterialTickReceipts, state: &MaterialCircuitState) -> u
                 .unwrap();
             assert_eq!(
                 (recipe.good_id, recipe.unit_id),
-                (good(2), UnitId::from_bytes([1; 32]))
+                (organizer_aid_fixture::good(2), UnitId::from_bytes([1; 32]))
             );
             r.produced_batches
                 .checked_mul(recipe.quantity_per_batch)
@@ -124,12 +144,14 @@ fn paid_supply(rows: &MaterialTickReceipts, state: &MaterialCircuitState) -> u64
                 .iter()
                 .find(|r| r.order_id == delivered.order_id)
                 .unwrap();
-            if order.supplier_site_id != site(2) || order.buyer_site_id != site(3) {
+            if order.supplier_site_id != organizer_aid_fixture::site(2)
+                || order.buyer_site_id != organizer_aid_fixture::site(3)
+            {
                 return 0;
             }
             assert_eq!(
                 (order.good_id, order.unit_id),
-                (good(2), UnitId::from_bytes([1; 32]))
+                (organizer_aid_fixture::good(2), UnitId::from_bytes([1; 32]))
             );
             assert!(rows
                 .arrivals
@@ -148,7 +170,7 @@ fn paid_supply(rows: &MaterialTickReceipts, state: &MaterialCircuitState) -> u64
                 rows,
                 MoneyTransferPurpose::DeliverySettlement(id),
                 MoneyLocation::PurchaseReserve(id),
-                AccountId::Site(site(2)),
+                AccountId::Site(organizer_aid_fixture::site(2)),
             );
             assert_eq!(
                 paid,
@@ -185,7 +207,10 @@ fn read_provision(
     let used = rows
         .household_consumption
         .iter()
-        .filter(|r| r.principal_id == household() && r.good_id == good(2))
+        .filter(|r| {
+            r.principal_id == organizer_aid_fixture::household()
+                && r.good_id == organizer_aid_fixture::good(2)
+        })
         .map(|r| r.consumed_quantity)
         .try_fold(0_u64, u64::checked_add)
         .unwrap();
@@ -194,10 +219,11 @@ fn read_provision(
 fn market_preparation(session: &mut Session, sink: &mut CollectingSink, cut: MarketProvisionCut) {
     let mut proof = Provision::default();
     for _ in 0..2 {
-        let candidate = prepare(session, None);
-        let rows = decode_material_receipts(candidate.material().receipt_bytes()).unwrap();
+        let candidate = organizer_aid_fixture::prepare(session, None);
+        let rows =
+            material_world::decode_material_receipts(candidate.material().receipt_bytes()).unwrap();
         read_provision(&rows, session.material().state(), &mut proof);
-        commit(session, sink, candidate);
+        organizer_aid_fixture::commit(session, sink, candidate);
     }
     if matches!(cut, MarketProvisionCut::None) {
         assert!(proof.produced >= proof.supplier_paid && proof.supplier_paid >= proof.donor_paid);
@@ -212,7 +238,10 @@ fn market_preparation(session: &mut Session, sink: &mut CollectingSink, cut: Mar
             .unwrap()
             .household_stocks
             .iter()
-            .find(|r| r.principal_id == household() && r.good_id == good(2))
+            .find(|r| {
+                r.principal_id == organizer_aid_fixture::household()
+                    && r.good_id == organizer_aid_fixture::good(2)
+            })
             .unwrap();
         assert_eq!(pantry.quantity, retained);
     } else {
@@ -240,15 +269,21 @@ fn actual_gift(rows: &MaterialTickReceipts, positive: bool) {
             gift.quantity
         ),
         (
-            household(),
-            recipient(),
-            good(2),
+            organizer_aid_fixture::household(),
+            organizer_aid_fixture::recipient(),
+            organizer_aid_fixture::good(2),
             UnitId::from_bytes([1; 32]),
             1
         )
     );
-    assert_eq!((gift.cash_amount, gift.contribution_hours), (money(3), 2));
-    assert_eq!(gift.payer, AccountId::Household(household()));
+    assert_eq!(
+        (gift.cash_amount, gift.contribution_hours),
+        (organizer_aid_fixture::money(3), 2)
+    );
+    assert_eq!(
+        gift.payer,
+        AccountId::Household(organizer_aid_fixture::household())
+    );
     assert_eq!((gift.mandate_id, gift.period), ([91; 32], 3));
     assert_eq!(gift.commitment_id, aid_commitment_id([91; 32], 3));
     assert_eq!(
@@ -256,14 +291,14 @@ fn actual_gift(rows: &MaterialTickReceipts, positive: bool) {
             rows,
             MoneyTransferPurpose::AidGrant(gift.commitment_id),
             MoneyLocation::AidReserve(gift.commitment_id),
-            AccountId::Household(recipient())
+            AccountId::Household(organizer_aid_fixture::recipient())
         ),
         3
     );
     let consumed = rows
         .household_consumption
         .iter()
-        .find(|r| r.principal_id == recipient())
+        .find(|r| r.principal_id == organizer_aid_fixture::recipient())
         .unwrap();
     assert_eq!(
         (
@@ -281,12 +316,12 @@ fn market_then_aid(cut: MarketProvisionCut) {
     assert!(state
         .inventory
         .iter()
-        .filter(|r| r.good_id == good(2))
+        .filter(|r| r.good_id == organizer_aid_fixture::good(2))
         .all(|r| r.quantity == 0));
     assert!(state.orders.is_empty() && state.freight.is_empty());
-    let mut config = config();
+    let mut config = organizer_aid_fixture::config();
     config.aid_bindings[0].coordination_hours = 1;
-    let mut session = try_session(
+    let mut session = organizer_aid_fixture::try_session(
         foundation,
         &format!("{MATERIAL}\n{PRODUCTS}\n{PRACTICE}"),
         state,
@@ -297,11 +332,12 @@ fn market_then_aid(cut: MarketProvisionCut) {
     // Designed three-close witness: one-period market route, then separately authorized local gift.
     market_preparation(&mut session, &mut sink, cut);
     let positive = matches!(cut, MarketProvisionCut::None);
-    let accepted = commitment(&session, OrganizerChoice::LocalAid);
-    let candidate = prepare(&session, Some(&accepted));
-    let rows = decode_material_receipts(candidate.material().receipt_bytes()).unwrap();
+    let accepted = organizer_aid_fixture::commitment(&session, OrganizerChoice::LocalAid);
+    let candidate = organizer_aid_fixture::prepare(&session, Some(&accepted));
+    let rows =
+        material_world::decode_material_receipts(candidate.material().receipt_bytes()).unwrap();
     actual_gift(&rows, positive);
-    commit(&mut session, &mut sink, candidate);
+    organizer_aid_fixture::commit(&mut session, &mut sink, candidate);
     let organizer = session.material().organizer_state().unwrap();
     assert_eq!(
         organizer.aid_receipts.last().unwrap().practice.outcome,
@@ -316,7 +352,10 @@ fn market_then_aid(cut: MarketProvisionCut) {
     let CircuitAccounting::Monetary(e) = &session.material().state().accounting else {
         unreachable!()
     };
-    assert_eq!(e.book.total_cash_and_reserves().unwrap(), money(100));
+    assert_eq!(
+        e.book.total_cash_and_reserves().unwrap(),
+        organizer_aid_fixture::money(100)
+    );
 }
 
 #[test]
@@ -353,11 +392,11 @@ enum MarketProvisionCut {
 }
 
 fn market_aid_opening(cut: MarketProvisionCut) -> MaterialCircuitState {
-    let mut state = aid_opening(false);
+    let mut state = organizer_aid_fixture::aid_opening(false);
     state
         .inventory
         .iter_mut()
-        .filter(|r| r.good_id == good(2))
+        .filter(|r| r.good_id == organizer_aid_fixture::good(2))
         .for_each(|r| r.quantity = 0);
     let CircuitAccounting::Monetary(e) = &mut state.accounting else {
         unreachable!()
@@ -368,37 +407,37 @@ fn market_aid_opening(cut: MarketProvisionCut) -> MaterialCircuitState {
         .for_each(|r| r.quantity = 0);
     rows.household_purchases
         .iter_mut()
-        .find(|r| r.principal_id == household())
+        .find(|r| r.principal_id == organizer_aid_fixture::household())
         .unwrap()
         .enabled = !matches!(cut, MarketProvisionCut::Purchase);
     rows.household_purchases
         .iter_mut()
-        .find(|r| r.principal_id == household())
+        .find(|r| r.principal_id == organizer_aid_fixture::household())
         .unwrap()
         .target_closing_stock = 2;
     rows.household_needs
         .iter_mut()
-        .find(|r| r.principal_id == household())
+        .find(|r| r.principal_id == organizer_aid_fixture::household())
         .unwrap()
         .basis = HouseholdNeedBasis::Households;
     let mut stocks = e.costs.snapshot().stocks;
     stocks
         .iter_mut()
-        .filter(|r| r.good_id == good(2))
-        .for_each(|r| r.amount = money(0));
+        .filter(|r| r.good_id == organizer_aid_fixture::good(2))
+        .for_each(|r| r.amount = organizer_aid_fixture::money(0));
     // Finite Designed opening funding, never a mid-run subsidy (total100 micros).
     e.book = MonetaryBook::open(
         [
-            (AccountId::Site(site(1)), 4),
-            (AccountId::Site(site(2)), 32),
-            (AccountId::Site(site(3)), 32),
-            (AccountId::Household(household()), 32),
-            (AccountId::Household(recipient()), 0),
+            (AccountId::Site(organizer_aid_fixture::site(1)), 4),
+            (AccountId::Site(organizer_aid_fixture::site(2)), 32),
+            (AccountId::Site(organizer_aid_fixture::site(3)), 32),
+            (AccountId::Household(organizer_aid_fixture::household()), 32),
+            (AccountId::Household(organizer_aid_fixture::recipient()), 0),
         ]
         .into_iter()
         .map(|(id, amount)| CashAccount {
             id,
-            cash: money(amount),
+            cash: organizer_aid_fixture::money(amount),
         })
         .collect(),
     )

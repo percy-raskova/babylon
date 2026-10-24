@@ -1,11 +1,14 @@
 //! Current H3 and reference-bundle integrity against an explicitly owned disposable runtime.
 
-use babylon_persistence::{
-    postgres_catalog::validate_connection_target, postgres_catalog::CATALOG_CONNECT_TIMEOUT,
-    postgres_catalog::CATALOG_STARTUP_OPTIONS, postgres_catalog::CATALOG_TCP_USER_TIMEOUT,
-    SCHEMA_ADVISORY_LOCK_KEY,
+use babylon_persistence::postgres_catalog::{
+    CATALOG_CONNECT_TIMEOUT, CATALOG_STARTUP_OPTIONS, CATALOG_TCP_USER_TIMEOUT,
 };
+use babylon_persistence::SCHEMA_ADVISORY_LOCK_KEY;
+
+use babylon_persistence::postgres_catalog;
 use postgres::config::Host;
+use postgres::Client;
+use postgres::Error;
 use postgres::{Config, NoTls};
 use std::str::FromStr;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -320,7 +323,7 @@ impl ScratchRole {
         }
     }
 
-    fn try_cleanup(&self) -> Result<(), postgres::Error> {
+    fn try_cleanup(&self) -> Result<(), Error> {
         let mut client = self.admin.connect(NoTls)?;
         let role = quote_identifier(&self.name);
         let sql = format!(
@@ -330,7 +333,7 @@ impl ScratchRole {
     }
 }
 
-fn create_scratch_login(client: &mut postgres::Client, name: &str) -> String {
+fn create_scratch_login(client: &mut Client, name: &str) -> String {
     // Generate and register the credential server-side, so client SQL never
     // contains its cleartext value. The catalog receives a SCRAM verifier.
     client
@@ -398,7 +401,8 @@ fn validate_disposable_harness_target(
     config: &Config,
     canary: Option<&str>,
 ) -> Result<(), DisposableHarnessRejection> {
-    validate_connection_target(config).map_err(|_| DisposableHarnessRejection::Target)?;
+    postgres_catalog::validate_connection_target(config)
+        .map_err(|_| DisposableHarnessRejection::Target)?;
     let target_is_exact = matches!(
         config.get_hosts(),
         [Host::Tcp(host)] if host == "127.0.0.1"

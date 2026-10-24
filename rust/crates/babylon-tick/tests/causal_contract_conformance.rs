@@ -7,17 +7,20 @@
 #![allow(clippy::float_cmp)]
 
 use babylon_bsl::causal_contract::{
-    effect_footprint, parse_rule_contract, validate_governed_attribution, AllowedEffect,
-    EffectSignature, EvidenceClass, RuleRole, GOVERNED_EFFECT_ALLOWANCES,
+    AllowedEffect, EffectSignature, EvidenceClass, RuleRole, GOVERNED_EFFECT_ALLOWANCES,
     GOVERNED_RULE_ATTRIBUTIONS,
 };
+use babylon_bsl::reader::{Atom, SExpr};
 use babylon_bsl::structural_verbs::CollectingSink;
-use babylon_bsl::{reader::read_all, reader::Atom, reader::SExpr};
+
+use babylon_bsl::causal_contract;
+use babylon_bsl::reader;
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_graph::state_hash::CanonicalState;
 use babylon_graph::substrate::{GraphSubstrate, NodeId};
 use babylon_tick::material_staffing::STAFFING_COMPOSITION_ID;
-use babylon_tick::{diagnose_content_set_sources, run_once_into, ContentRuleSource};
+use babylon_tick::ContentRuleSource;
+use babylon_tick::TickReport;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
@@ -231,10 +234,10 @@ fn governed_restricted_effects() -> BTreeMap<(String, &'static str), BTreeSet<St
     by_rule
 }
 
-fn run(scenario: &str, rule: &str) -> (babylon_tick::TickReport, HypergraphStore) {
+fn run(scenario: &str, rule: &str) -> (TickReport, HypergraphStore) {
     let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
-    let report = run_once_into(scenario, rule, &mut graph, &mut sink)
+    let report = babylon_tick::run_once_into(scenario, rule, &mut graph, &mut sink)
         .expect("the causal probe must adjudicate");
     (report, graph)
 }
@@ -243,13 +246,13 @@ fn assert_aggregate_refusal(rule_source: &str, code: &str) {
     let mut graph = HypergraphStore::new();
     let before = graph.state_hash().expect("empty graph hashes");
     let mut sink = CollectingSink::default();
-    let error = run_once_into(ORDERING_SCENARIO, rule_source, &mut graph, &mut sink)
+    let error = babylon_tick::run_once_into(ORDERING_SCENARIO, rule_source, &mut graph, &mut sink)
         .expect_err("the aggregate composition gate must refuse");
     assert!(error.contains(code), "{error}");
     assert_eq!(graph.state_hash().expect("refused graph hashes"), before);
     assert!(sink.events.is_empty());
 
-    let diagnostics = diagnose_content_set_sources(
+    let diagnostics = babylon_tick::diagnose_content_set_sources(
         ORDERING_SCENARIO,
         None,
         &[ContentRuleSource {
@@ -323,7 +326,7 @@ fn restricted_roles_cannot_author_an_outcome_field() {
         let mut graph = HypergraphStore::new();
         let before = graph.state_hash().unwrap();
         let mut sink = CollectingSink::default();
-        let error = run_once_into(SHOCK_PRESENT, &rule, &mut graph, &mut sink)
+        let error = babylon_tick::run_once_into(SHOCK_PRESENT, &rule, &mut graph, &mut sink)
             .expect_err("the default-deny contract must refuse the outcome write");
 
         assert!(error.contains("E-LOAD-060"), "{role}: {error}");
@@ -340,7 +343,7 @@ fn restricted_roles_cannot_author_an_outcome_field() {
 fn verb_like_emit_payload_labels_survive_the_composed_load_and_tick_path() {
     let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
-    let report = run_once_into(
+    let report = babylon_tick::run_once_into(
         SHOCK_PRESENT,
         RECOGNIZER_WITH_VERB_LIKE_PAYLOAD_LABELS,
         &mut graph,
@@ -362,7 +365,7 @@ fn a_failed_working_tick_publishes_neither_effects_nor_a_receipt_report() {
     let before = graph.state_hash().unwrap();
     let mut sink = CollectingSink::default();
 
-    let result = run_once_into(FAILING_SCENARIO, FAILING_RULE, &mut graph, &mut sink);
+    let result = babylon_tick::run_once_into(FAILING_SCENARIO, FAILING_RULE, &mut graph, &mut sink);
 
     assert!(result.is_err());
     assert_eq!(graph.state_hash().unwrap(), before);
@@ -378,7 +381,7 @@ fn aggregate_loader_refuses_a_rank_aware_stale_default_before_publication() {
 #[test]
 fn aggregate_loader_accepts_the_phase_rank_clean_inverse() {
     assert!("consciousness/a-reader" < "solidarity/z-writer");
-    assert!(diagnose_content_set_sources(
+    assert!(babylon_tick::diagnose_content_set_sources(
         ORDERING_SCENARIO,
         None,
         &[ContentRuleSource {
@@ -443,7 +446,7 @@ fn every_production_rule_identity_is_governed_independently_of_its_content() {
     for path in files {
         let source = std::fs::read_to_string(&path)
             .unwrap_or_else(|error| panic!("cannot read {}: {error}", path.display()));
-        let forms = read_all(source.as_bytes())
+        let forms = reader::read_all(source.as_bytes())
             .unwrap_or_else(|error| panic!("cannot parse {}: {error:?}", path.display()));
         assert!(forms.len() <= MAX_FORMS_PER_RULE_PACK);
         for form in forms.into_iter().take(MAX_FORMS_PER_RULE_PACK) {
@@ -455,13 +458,13 @@ fn every_production_rule_identity_is_governed_independently_of_its_content() {
             if !is_rule {
                 continue;
             }
-            let contract = parse_rule_contract(&form)
+            let contract = causal_contract::parse_rule_contract(&form)
                 .unwrap_or_else(|error| panic!("{}: {error}", path.display()));
-            validate_governed_attribution(&contract)
+            causal_contract::validate_governed_attribution(&contract)
                 .unwrap_or_else(|error| panic!("{}: {error}", path.display()));
             parsed_rule_count += 1;
             if contract.role != RuleRole::Mechanic {
-                let effects = effect_footprint(&form)
+                let effects = causal_contract::effect_footprint(&form)
                     .unwrap_or_else(|error| panic!("{}: {error}", path.display()))
                     .iter()
                     .map(footprint_effect)

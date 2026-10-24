@@ -4,11 +4,11 @@ use super::Scope;
 use crate::identity::CampaignId;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
-use std::{
-    fs::File,
-    io::Read,
-    path::{Path, PathBuf},
-};
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
+use std::fs::File;
+use std::io::Read;
+use std::path::{Path, PathBuf};
 
 const POLICY_BYTES: u64 = 65_536;
 
@@ -22,7 +22,7 @@ pub enum Refusal {
     Periods,
 }
 impl std::fmt::Display for Refusal {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         write!(f, "frozen qualification policy refused: {self:?}")
     }
 }
@@ -155,7 +155,9 @@ pub fn canonical_digest(value: &str) -> Result<[u8; 32], Refusal> {
 mod tests {
     use super::*;
     use sha2::{Digest, Sha256};
-    use std::{fs, path::PathBuf};
+    use std::fs;
+    use std::path::PathBuf;
+    use uuid::Uuid;
 
     struct Fixture(PathBuf);
     impl Fixture {
@@ -192,7 +194,7 @@ mod tests {
         let file = Fixture::new();
         let policy = FrozenPolicy::open(&file.0, file.digest(), 52).unwrap();
         let scope = policy.scope(
-            crate::identity::CampaignId::from_uuid(uuid::Uuid::from_u128(1)),
+            crate::identity::CampaignId::from_uuid(Uuid::from_u128(1)),
             [7; 32],
         );
         assert_eq!(scope.renewal_seed_tick, 39);

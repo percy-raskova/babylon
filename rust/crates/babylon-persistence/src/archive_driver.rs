@@ -16,12 +16,3 @@ pub use driver::{
     ArchiveDriver, ArchiveDriverEvent, ArchiveDriverFailure, ArchiveDriverRequestError,
     ArchiveDriverStartError,
 };
-
-#[cfg(test)]
-use crate::identity::CampaignId;
-#[cfg(test)]
-use crate::{ArchiveWorkerCancellation, SemanticArchiveError};
-#[cfg(test)]
-use std::sync::mpsc;
-#[cfg(test)]
-use std::thread;

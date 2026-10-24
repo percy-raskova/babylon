@@ -1,11 +1,21 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
-use super::{EmploymentTerms, LaborCompensation};
+use super::EmploymentTerms;
+use super::LaborCompensation;
 
 use std::collections::BTreeSet;
 
 use babylon_kernel::currency::Currency;
 
+use crate::AidBook;
+use crate::FinalDemandPrincipalId;
+use crate::FinancialInstitutions;
+use crate::FundedShift;
+use crate::HistoricalCostBook;
+use crate::HouseholdTimeAccounting;
+use crate::MemberLaborCapacityRow;
+use crate::RecurringEconomy;
+use crate::ServiceOrder;
 use crate::{
     AccountId, BacklogRow, FinalDemandOrder, MaterialCircuitError, MaterialCircuitState,
     MonetaryBook, MonetaryError, MoneyTransferReceipt, OrderRow, OutboundOrderId, PurchaseEscrow,
@@ -29,14 +39,14 @@ pub enum CircuitAccounting {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MonetaryCircuit {
-    pub aid: crate::AidBook,
-    pub household_time: crate::HouseholdTimeAccounting,
-    pub financial: crate::FinancialInstitutions,
-    pub costs: crate::HistoricalCostBook,
-    pub recurring: Option<Box<crate::RecurringEconomy>>,
+    pub aid: AidBook,
+    pub household_time: HouseholdTimeAccounting,
+    pub financial: FinancialInstitutions,
+    pub costs: HistoricalCostBook,
+    pub recurring: Option<Box<RecurringEconomy>>,
     pub book: MonetaryBook,
     pub employment: Vec<EmploymentTerms>,
-    pub member_labor: Vec<crate::MemberLaborCapacityRow>,
+    pub member_labor: Vec<MemberLaborCapacityRow>,
 }
 
 /// Admission fixes the price and funds the entire accepted principal. Buyers
@@ -45,7 +55,7 @@ pub struct MonetaryCircuit {
 pub enum MaterialPurchase {
     Delivery(OrderRow),
     LocalFinalDemand(FinalDemandOrder),
-    Service(crate::ServiceOrder),
+    Service(ServiceOrder),
 }
 
 impl From<MonetaryError> for MaterialCircuitError {
@@ -258,10 +268,10 @@ pub(crate) fn validate(state: &MaterialCircuitState) -> Result<(), MaterialCircu
 }
 
 pub(crate) fn validate_opening_shifts(
-    shifts: &[crate::FundedShift],
+    shifts: &[FundedShift],
     period: u64,
     sites: &BTreeSet<SiteId>,
-    households: &BTreeSet<crate::FinalDemandPrincipalId>,
+    households: &BTreeSet<FinalDemandPrincipalId>,
 ) -> Result<(), MaterialCircuitError> {
     // A committed opening can contain previously earned but unpaid wages.
     // Half-completed attendance belongs only inside the detached close.

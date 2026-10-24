@@ -2,8 +2,6 @@
 
 use super::super::{lifecycle, ProductionProjectionError};
 
-use crate::michigan_economy::digest_hex;
-
 use babylon_kernel::economic_location::EconomicLocation;
 
 use babylon_material_circuit::{
@@ -15,10 +13,12 @@ use babylon_tick::material_world::MaterialTickReceipts;
 
 use serde::{Deserialize, Serialize};
 
+use crate::michigan_economy;
+use babylon_material_circuit::HouseholdKind;
 use std::collections::BTreeMap;
+use std::result::Result as StdResult;
 
-pub(in crate::production_projection) type Result<T> =
-    std::result::Result<T, ProductionProjectionError>;
+pub(in crate::production_projection) type Result<T> = StdResult<T, ProductionProjectionError>;
 
 pub(in crate::production_projection) type Key = (FinalDemandPrincipalId, GoodId, UnitId);
 
@@ -30,13 +30,11 @@ pub enum ProductionHouseholdKind {
     CollectiveResidence,
 }
 
-impl From<babylon_material_circuit::HouseholdKind> for ProductionHouseholdKind {
-    fn from(kind: babylon_material_circuit::HouseholdKind) -> Self {
+impl From<HouseholdKind> for ProductionHouseholdKind {
+    fn from(kind: HouseholdKind) -> Self {
         match kind {
-            babylon_material_circuit::HouseholdKind::Ordinary => Self::Ordinary,
-            babylon_material_circuit::HouseholdKind::CollectiveResidence => {
-                Self::CollectiveResidence
-            }
+            HouseholdKind::Ordinary => Self::Ordinary,
+            HouseholdKind::CollectiveResidence => Self::CollectiveResidence,
         }
     }
 }
@@ -44,10 +42,8 @@ impl From<babylon_material_circuit::HouseholdKind> for ProductionHouseholdKind {
 impl ProductionHouseholdKind {
     pub(crate) const fn admits_counts(self, persons: u64, households: u64) -> bool {
         let kind = match self {
-            Self::Ordinary => babylon_material_circuit::HouseholdKind::Ordinary,
-            Self::CollectiveResidence => {
-                babylon_material_circuit::HouseholdKind::CollectiveResidence
-            }
+            Self::Ordinary => HouseholdKind::Ordinary,
+            Self::CollectiveResidence => HouseholdKind::CollectiveResidence,
         };
         kind.admits_counts(persons, households)
     }
@@ -149,15 +145,15 @@ pub(in crate::production_projection) fn project_with_labels(
         let (good, unit) = labels(key.1, key.2).ok_or(ProductionProjectionError::Content)?;
         result.push(ProductionHouseholdAccount {
             kind: household.kind.into(),
-            demand_principal_id: digest_hex(&key.0.as_bytes()),
+            demand_principal_id: michigan_economy::digest_hex(&key.0.as_bytes()),
             location: principal.location,
-            good_id: digest_hex(&key.1.as_bytes()),
-            unit_id: digest_hex(&key.2.as_bytes()),
+            good_id: michigan_economy::digest_hex(&key.1.as_bytes()),
+            unit_id: michigan_economy::digest_hex(&key.2.as_bytes()),
             good,
             unit,
             household_count: household.households,
             person_count: household.persons,
-            retailer_site_id: digest_hex(&policy.retailer_site_id.as_bytes()),
+            retailer_site_id: michigan_economy::digest_hex(&policy.retailer_site_id.as_bytes()),
             stock_on_hand: stock.quantity,
             required_per_period: need
                 .required_quantity(household)
@@ -329,26 +325,23 @@ pub(in crate::production_projection) fn received_stock(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use babylon_material_circuit::HouseholdKind;
     use babylon_material_circuit::{CircuitAccounting, HouseholdNeedBasis};
-    use babylon_tick::material_world::{decode_material_receipts, MaterialWorldRegister};
+    use babylon_tick::material_world;
+    use babylon_tick::material_world::MaterialWorldRegister;
 
     #[test]
     fn projection_authenticates_person_and_household_requirements_from_committed_consumption() {
         for (kind, count, basis, required) in [
+            (HouseholdKind::Ordinary, 2, HouseholdNeedBasis::Persons, 4),
             (
-                babylon_material_circuit::HouseholdKind::Ordinary,
-                2,
-                HouseholdNeedBasis::Persons,
-                4,
-            ),
-            (
-                babylon_material_circuit::HouseholdKind::Ordinary,
+                HouseholdKind::Ordinary,
                 2,
                 HouseholdNeedBasis::Households,
                 2,
             ),
             (
-                babylon_material_circuit::HouseholdKind::CollectiveResidence,
+                HouseholdKind::CollectiveResidence,
                 0,
                 HouseholdNeedBasis::Persons,
                 4,
@@ -364,7 +357,8 @@ mod tests {
             recurring.household_needs[0].basis = basis;
             let opening = MaterialWorldRegister::try_new(0, opening).unwrap();
             let next = opening.prepare_next().unwrap();
-            let mut receipts = decode_material_receipts(next.receipt_bytes()).unwrap();
+            let mut receipts =
+                material_world::decode_material_receipts(next.receipt_bytes()).unwrap();
             let project = |receipts: &MaterialTickReceipts| {
                 project_with_labels(
                     next.register().state(),

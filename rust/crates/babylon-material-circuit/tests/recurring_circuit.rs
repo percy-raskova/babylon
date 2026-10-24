@@ -42,5 +42,3 @@ use support::{
 };
 
 use babylon_kernel::currency::Currency;
-
-use babylon_material_circuit::*;

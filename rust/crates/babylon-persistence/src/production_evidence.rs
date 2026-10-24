@@ -18,17 +18,4 @@ mod tests;
 #[path = "production_evidence/evidence.rs"]
 mod evidence;
 
-#[cfg(test)]
-use evidence::{
-    canonicalize_production, diagnostic_field_sizes, diagnostic_production_fields,
-    diagnostic_value_bytes, encode_evidence, EvidenceScope, EvidenceWriter, DOMAIN,
-    MAX_EVIDENCE_BYTES, MAX_ROWS, VERSION,
-};
 pub use evidence::{ProductionEvidenceDigest, ProductionEvidenceError};
-
-#[cfg(test)]
-use crate::observer_reader::{ObserverEconomySnapshot, ObserverVisibility};
-#[cfg(test)]
-use sha2::{Digest as _, Sha256};
-#[cfg(test)]
-use std::io::{self, Write};

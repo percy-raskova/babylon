@@ -4,25 +4,27 @@ use std::collections::BTreeMap;
 
 use babylon_bsl::identity_codec::StableBslValue;
 
-use babylon_graph::{stable_element::StableElementKey, stable_state::StableGraphState};
+use babylon_graph::stable_element::StableElementKey;
+use babylon_graph::stable_state::StableGraphState;
 
-use babylon_tick::{
-    material_staffing::{StaffingComposition, STAFFING_COMPOSITION_ID},
-    material_world::{MaterialTickReceipts, MaterialWorldRegister},
-};
+use babylon_tick::material_staffing::{StaffingComposition, STAFFING_COMPOSITION_ID};
+use babylon_tick::material_world::{MaterialTickReceipts, MaterialWorldRegister};
 
 use super::super::ProductionProjectionError;
 
-use crate::{
-    michigan_economy::digest_hex, production_observation::CompletedProductionStaffing,
-    production_observation::ProductionStaffingAccount,
-    production_observation::ProductionStaffingSubject, stored_tick::StoredEvent,
+use crate::production_observation::{
+    CompletedProductionStaffing, ProductionStaffingAccount, ProductionStaffingSubject,
 };
+use crate::stored_tick::StoredEvent;
 
 use super::members::{StaffingGraph, StaffingWitnesses};
+use crate::michigan_economy;
+use crate::production_observation::ProductionStaffingMemberAccount;
+use babylon_material_circuit::SiteId;
+use babylon_material_circuit::UnitId;
+use std::result::Result as StdResult;
 
-pub(in crate::production_projection) type Result<T> =
-    std::result::Result<T, ProductionProjectionError>;
+pub(in crate::production_projection) type Result<T> = StdResult<T, ProductionProjectionError>;
 
 pub(in crate::production_projection) const EVENT: &str = "WORKFORCE_STAFFING";
 
@@ -108,9 +110,9 @@ pub(crate) fn project_staffing_accounts(
         let members = witnesses.project_members(binding, &current_graph, prior_graph.as_ref())?;
         reconcile_member_changes(completed.as_ref(), &members)?;
         accounts.push(ProductionStaffingAccount {
-            pool_id: digest_hex(&pool.pool_id().as_bytes()),
-            site_id: digest_hex(&pool.site_id().as_bytes()),
-            unit_id: digest_hex(&pool.unit_id().as_bytes()),
+            pool_id: michigan_economy::digest_hex(&pool.pool_id().as_bytes()),
+            site_id: michigan_economy::digest_hex(&pool.site_id().as_bytes()),
+            unit_id: michigan_economy::digest_hex(&pool.unit_id().as_bytes()),
             subject: ProductionStaffingSubject {
                 scenario: scenario.clone(),
                 local_name: local_name.clone(),
@@ -165,15 +167,7 @@ pub(in crate::production_projection) fn event_receipts(
 
 pub(in crate::production_projection) fn current_labor(
     register: &MaterialWorldRegister,
-) -> Result<
-    BTreeMap<
-        (
-            babylon_material_circuit::SiteId,
-            babylon_material_circuit::UnitId,
-        ),
-        u64,
-    >,
-> {
+) -> Result<BTreeMap<(SiteId, UnitId), u64>> {
     let mut labor = BTreeMap::new();
     for row in register
         .state()
@@ -193,7 +187,7 @@ pub(in crate::production_projection) fn current_labor(
 
 pub(in crate::production_projection) fn reconcile_member_changes(
     completed: Option<&CompletedProductionStaffing>,
-    members: &[crate::production_observation::ProductionStaffingMemberAccount],
+    members: &[ProductionStaffingMemberAccount],
 ) -> Result<()> {
     if completed.is_some_and(|done| {
         members

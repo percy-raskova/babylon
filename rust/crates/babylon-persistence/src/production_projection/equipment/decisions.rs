@@ -1,6 +1,6 @@
 //! Authenticate the captured target and actual position without allocating new work.
 use super::{
-    add, Definitions, MaterialCircuitState, MaterialTickReceipts, ProductionProjectionError,
+    Definitions, MaterialCircuitState, MaterialTickReceipts, ProductionProjectionError,
     ProductiveEquipment, Result,
 };
 use babylon_material_circuit::{
@@ -32,7 +32,7 @@ pub(super) fn validate(
     let mut started = Units::new();
     let mut continuing = Units::new();
     for r in &receipt.installation {
-        add(
+        super::add(
             if r.started {
                 &mut started
             } else {
@@ -88,7 +88,7 @@ pub(super) fn validate(
 fn units(rows: impl Iterator<Item = (ProcessId, u64)>) -> Result<Units> {
     let mut result = Units::new();
     for (key, quantity) in rows {
-        add(&mut result, key, quantity)?;
+        super::add(&mut result, key, quantity)?;
     }
     Ok(result)
 }

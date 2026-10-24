@@ -7,6 +7,8 @@ use bevy::window::PrimaryWindow;
 
 use crate::observer::{ObserverSession, Perspective, SessionPhase};
 use crate::observer_ui::{ObserverUiState, ObserverViewport};
+use crate::organizer::OrganizerClient;
+use crate::organizer::OrganizerInspector;
 use crate::production::{PrimaryView, ProductionNavigation};
 
 const SAMPLE_COUNT: usize = 300;
@@ -154,7 +156,7 @@ fn sample_frames(
     time: Res<Time<Real>>,
     view: Res<PrimaryView>,
     navigation: Res<ProductionNavigation>,
-    organizer: Option<Res<crate::organizer::OrganizerClient>>,
+    organizer: Option<Res<OrganizerClient>>,
     session: Res<ObserverSession>,
     ui: Res<ObserverUiState>,
     viewport: Res<ObserverViewport>,
@@ -182,19 +184,14 @@ fn sample_frames(
             mode: match (*view, navigation.flat) {
                 (PrimaryView::Organizer, _) => match organizer
                     .as_ref()
-                    .map_or(crate::organizer::OrganizerInspector::Closed, |client| {
-                        client.inspector
-                    }) {
-                    crate::organizer::OrganizerInspector::Closed => RenderMode::OrganizerDecision,
-                    crate::organizer::OrganizerInspector::Evidence => RenderMode::OrganizerEvidence,
-                    crate::organizer::OrganizerInspector::Relationships => {
-                        RenderMode::OrganizerRelationships
-                    }
-                    crate::organizer::OrganizerInspector::Direction => {
-                        RenderMode::OrganizerDirection
-                    }
-                    crate::organizer::OrganizerInspector::Receipts => RenderMode::OrganizerReceipts,
-                    crate::organizer::OrganizerInspector::Notes => RenderMode::OrganizerNotes,
+                    .map_or(OrganizerInspector::Closed, |client| client.inspector)
+                {
+                    OrganizerInspector::Closed => RenderMode::OrganizerDecision,
+                    OrganizerInspector::Evidence => RenderMode::OrganizerEvidence,
+                    OrganizerInspector::Relationships => RenderMode::OrganizerRelationships,
+                    OrganizerInspector::Direction => RenderMode::OrganizerDirection,
+                    OrganizerInspector::Receipts => RenderMode::OrganizerReceipts,
+                    OrganizerInspector::Notes => RenderMode::OrganizerNotes,
                 },
                 (PrimaryView::Map, _) => RenderMode::Map3d,
                 (PrimaryView::Production, false) => RenderMode::Production3d,
@@ -249,11 +246,12 @@ impl Plugin for ObserverPerformancePlugin {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use uuid::Uuid;
 
     fn scope(mode: RenderMode) -> SamplingScope {
         SamplingScope {
             mode,
-            campaign: CampaignId::from_uuid(uuid::Uuid::nil()),
+            campaign: CampaignId::from_uuid(Uuid::nil()),
             viewed_period: 0,
             perspective: Perspective::FullObserver,
             window_pixels: UVec2::new(1366, 768),

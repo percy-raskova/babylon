@@ -27,11 +27,13 @@
 //! `pressing_space_advances_the_tick_and_updates_the_hash_text` observes
 //! through the client's independent `EngineSession` seam.
 
-use babylon_bsl::scenario::{
-    compose_declaration_preludes, load_scenario, load_scenario_with_prelude,
-};
+use babylon_bsl::scenario;
+use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;
-use babylon_tick::{hex, run_once, run_once_with_prelude};
+use babylon_kernel::replay::ReplaySeed;
+use babylon_kernel::replay::ReplaySessionId;
+use babylon_tick::diagnostic::RuleDiagnosticSession;
+use babylon_tick::hex;
 
 const TWO_CLASSES_SCENARIO: &str = include_str!("../content/scenarios/two-classes.bscn");
 const FUNDAMENTAL_THEOREM_RULE: &str = include_str!("../content/rules/fundamental-theorem.bsl");
@@ -62,19 +64,19 @@ const ORGANIZATION_PRACTICE_PRELUDE: &str =
     include_str!("../content/declarations/organization-practice.bscn");
 
 fn practice_prelude() -> String {
-    compose_declaration_preludes(&[ORGANIZATION_PRACTICE_PRELUDE])
+    scenario::compose_declaration_preludes(&[ORGANIZATION_PRACTICE_PRELUDE])
         .expect("the organization practice prelude composes")
 }
 
 fn practice_worldview_prelude() -> String {
-    compose_declaration_preludes(&[ORGANIZATION_PRACTICE_PRELUDE, WORLDVIEW_PRELUDE])
+    scenario::compose_declaration_preludes(&[ORGANIZATION_PRACTICE_PRELUDE, WORLDVIEW_PRELUDE])
         .expect("the ordered organization and worldview preludes compose")
 }
 
 #[test]
 fn two_classes_fundamental_theorem_hashes_are_pinned() {
-    let report =
-        run_once(TWO_CLASSES_SCENARIO, FUNDAMENTAL_THEOREM_RULE).expect("two-classes tick");
+    let report = babylon_tick::run_once(TWO_CLASSES_SCENARIO, FUNDAMENTAL_THEOREM_RULE)
+        .expect("two-classes tick");
     assert_eq!(
         hex(&report.before),
         "5a44ab0c426eca240a0010cc70321bd0ff944d2eee2408454899a942dc85a205",
@@ -90,7 +92,7 @@ fn two_classes_fundamental_theorem_hashes_are_pinned() {
 
 #[test]
 fn vitality_conformance_hashes_are_pinned() {
-    let report = run_once(VITALITY_SCENARIO, VITALITY_RULE).expect("vitality tick");
+    let report = babylon_tick::run_once(VITALITY_SCENARIO, VITALITY_RULE).expect("vitality tick");
     assert_eq!(
         hex(&report.before),
         "20dbc24fc6ba17067cb26eb4ce4c2792c51cb0402395dc55363a5e4e38572fea",
@@ -115,7 +117,7 @@ fn vitality_conformance_hashes_are_pinned() {
 #[test]
 fn us_counties_lifecycle_demo_hashes_are_pinned() {
     let rule_src = format!("{DEMO_VITALITY_RULE}\n{DEMO_LIFECYCLE_RULE}");
-    let report = run_once(DEMO_SCENARIO, &rule_src).expect("demo tick");
+    let report = babylon_tick::run_once(DEMO_SCENARIO, &rule_src).expect("demo tick");
     assert_eq!(
         hex(&report.before),
         "c190053e6d5d6eb261f1325bf87a6347dad8bb99f4e6fb7f2e297d355ccc28ab",
@@ -147,7 +149,7 @@ fn us_counties_lifecycle_demo_hashes_are_pinned() {
 /// by these bytes.
 #[test]
 fn organization_foundation_hashes_are_pinned() {
-    let report = run_once_with_prelude(
+    let report = babylon_tick::run_once_with_prelude(
         ORG_FOUNDATION_SCENARIO,
         &practice_prelude(),
         ORG_FOUNDATION_RULE,
@@ -203,7 +205,8 @@ fn territory_conformance_hashes_are_pinned() {
     // sink-penal) — this golden is new in this PR, so the re-pin is a
     // measurement, not a ceremony (III.13 baseline ceremonies apply to
     // `tests/baselines/**`, not this crate's own goldens).
-    let report = run_once(TERRITORY_SCENARIO, TERRITORY_RULE).expect("territory tick");
+    let report =
+        babylon_tick::run_once(TERRITORY_SCENARIO, TERRITORY_RULE).expect("territory tick");
     assert_eq!(
         hex(&report.before),
         "3794b114d302a8466889795573ecf3f87547af5c200e1ead11c4fc9fcac88ad6",
@@ -244,7 +247,8 @@ fn territory_conformance_hashes_are_pinned() {
 /// untouched by this content pair's own load/rules.
 #[test]
 fn production_conformance_hashes_are_pinned() {
-    let report = run_once(PRODUCTION_SCENARIO, PRODUCTION_RULE).expect("production tick");
+    let report =
+        babylon_tick::run_once(PRODUCTION_SCENARIO, PRODUCTION_RULE).expect("production tick");
     assert_eq!(
         hex(&report.before),
         "83192431e51d9be36aea347cec0861ebe352e47ee8f9bce4f39840f3e581ad4b",
@@ -281,7 +285,8 @@ fn production_conformance_hashes_are_pinned() {
 /// organization golden's own header spells out, one step further.
 #[test]
 fn worldview_foundation_hashes_are_pinned() {
-    let report = run_once(WORLDVIEW_SCENARIO, WORLDVIEW_RULES).expect("worldview-foundation tick");
+    let report = babylon_tick::run_once(WORLDVIEW_SCENARIO, WORLDVIEW_RULES)
+        .expect("worldview-foundation tick");
     assert_eq!(
         hex(&report.before),
         "098ef6bd62ebc072de94d370242430d84b1b8cf2223b3b190b359ed6e871edbf",
@@ -312,8 +317,8 @@ fn worldview_foundation_hashes_are_pinned() {
 #[test]
 fn worldview_member_order_is_the_ruled_ordinal() {
     let mut graph = HypergraphStore::new();
-    let loaded =
-        load_scenario(WORLDVIEW_SCENARIO, &mut graph).expect("worldview-foundation loads clean");
+    let loaded = scenario::load_scenario(WORLDVIEW_SCENARIO, &mut graph)
+        .expect("worldview-foundation loads clean");
     let ty = loaded
         .enums
         .resolve("WorldView")
@@ -393,7 +398,7 @@ fn worldview_member_order_is_the_ruled_ordinal() {
 /// unchanged.
 #[test]
 fn consciousness_ternary_foundation_hashes_are_pinned() {
-    let report = run_once_with_prelude(
+    let report = babylon_tick::run_once_with_prelude(
         CONSCIOUSNESS_TERNARY_SCENARIO,
         &practice_worldview_prelude(),
         CONSCIOUSNESS_TERNARY_RULES,
@@ -459,9 +464,12 @@ fn consciousness_ternary_foundation_hashes_are_pinned() {
 #[test]
 fn worldview_prelude_member_order_is_the_ruled_ordinal() {
     let mut graph = HypergraphStore::new();
-    let loaded =
-        load_scenario_with_prelude(WORLDVIEW_PRELUDE, "(scenario t/ordinal-probe)", &mut graph)
-            .expect("the worldview prelude loads clean against an empty probe scenario");
+    let loaded = scenario::load_scenario_with_prelude(
+        WORLDVIEW_PRELUDE,
+        "(scenario t/ordinal-probe)",
+        &mut graph,
+    )
+    .expect("the worldview prelude loads clean against an empty probe scenario");
     let ty = loaded
         .enums
         .resolve("WorldView")
@@ -501,7 +509,8 @@ fn worldview_prelude_member_order_is_the_ruled_ordinal() {
 /// this crate's own goldens); it touches none of the 8 existing pins above.
 #[test]
 fn solidarity_conformance_hashes_are_pinned() {
-    let report = run_once(SOLIDARITY_SCENARIO, SOLIDARITY_RULE).expect("solidarity tick");
+    let report =
+        babylon_tick::run_once(SOLIDARITY_SCENARIO, SOLIDARITY_RULE).expect("solidarity tick");
     assert_eq!(
         hex(&report.before),
         "20124f5ca91da3cb30fba41bc373175fdf3b06dc82f3c3b162da172951bb29de",
@@ -556,7 +565,8 @@ const DECOMPOSITION_RULE: &str = include_str!("../content/rules/decomposition.bs
 /// `territory_conformance_hashes_are_pinned`'s own header names.
 #[test]
 fn decomposition_conformance_hashes_are_pinned() {
-    let report = run_once(DECOMPOSITION_SCENARIO, DECOMPOSITION_RULE).expect("decomposition tick");
+    let report = babylon_tick::run_once(DECOMPOSITION_SCENARIO, DECOMPOSITION_RULE)
+        .expect("decomposition tick");
     assert_eq!(
         hex(&report.before),
         "4001e15449fbf467624417f3c4a9cca22e27bdea3320c81669808c5940a7eb8a",
@@ -589,7 +599,7 @@ fn decomposition_conformance_hashes_are_pinned() {
 /// drift, the same role every other pair in this file plays.
 #[test]
 fn decomposition_delay_conformance_hashes_are_pinned() {
-    let report = run_once(DECOMPOSITION_DELAY_SCENARIO, DECOMPOSITION_RULE)
+    let report = babylon_tick::run_once(DECOMPOSITION_DELAY_SCENARIO, DECOMPOSITION_RULE)
         .expect("decomposition-delay tick");
     assert_eq!(
         hex(&report.before),
@@ -645,7 +655,8 @@ const CONTROL_RATIO_RULE: &str = include_str!("../content/rules/control-ratio.bs
 /// own header names.
 #[test]
 fn control_ratio_conformance_hashes_are_pinned() {
-    let report = run_once(CONTROL_RATIO_SCENARIO, CONTROL_RATIO_RULE).expect("control-ratio tick");
+    let report = babylon_tick::run_once(CONTROL_RATIO_SCENARIO, CONTROL_RATIO_RULE)
+        .expect("control-ratio tick");
     assert_eq!(
         hex(&report.before),
         "54f7a559a3c047561979994bd058460a3bd12ba361511117bb5227a32f4ad583",
@@ -671,7 +682,7 @@ fn control_ratio_conformance_hashes_are_pinned() {
 /// REVOLUTION instead of GENOCIDE.
 #[test]
 fn control_ratio_revolution_conformance_hashes_are_pinned() {
-    let report = run_once(CONTROL_RATIO_REVOLUTION_SCENARIO, CONTROL_RATIO_RULE)
+    let report = babylon_tick::run_once(CONTROL_RATIO_REVOLUTION_SCENARIO, CONTROL_RATIO_RULE)
         .expect("control-ratio-revolution tick");
     assert_eq!(
         hex(&report.before),
@@ -696,7 +707,7 @@ fn control_ratio_revolution_conformance_hashes_are_pinned() {
 /// control-capacity 4 exactly): NO crisis, so c03/c04 never fire this tick.
 #[test]
 fn control_ratio_within_capacity_conformance_hashes_are_pinned() {
-    let report = run_once(CONTROL_RATIO_WITHIN_CAPACITY_SCENARIO, CONTROL_RATIO_RULE)
+    let report = babylon_tick::run_once(CONTROL_RATIO_WITHIN_CAPACITY_SCENARIO, CONTROL_RATIO_RULE)
         .expect("control-ratio-within-capacity tick");
     assert_eq!(
         hex(&report.before),
@@ -725,7 +736,7 @@ fn control_ratio_within_capacity_conformance_hashes_are_pinned() {
 /// `actual-ratio`/`control-ratio` entirely (loud absence, not `float("inf")`).
 #[test]
 fn control_ratio_zero_enforcer_conformance_hashes_are_pinned() {
-    let report = run_once(CONTROL_RATIO_ZERO_ENFORCER_SCENARIO, CONTROL_RATIO_RULE)
+    let report = babylon_tick::run_once(CONTROL_RATIO_ZERO_ENFORCER_SCENARIO, CONTROL_RATIO_RULE)
         .expect("control-ratio-zero-enforcer tick");
     assert_eq!(
         hex(&report.before),
@@ -800,7 +811,7 @@ const VITALITY_ATTRITION_RULE: &str = include_str!("../content/rules/vitality-at
 /// this crate's full suite both before and after this pin's own addition.
 #[test]
 fn vitality_attrition_carrier_hashes_are_pinned() {
-    let report = run_once(VITALITY_ATTRITION_SCENARIO, VITALITY_ATTRITION_RULE)
+    let report = babylon_tick::run_once(VITALITY_ATTRITION_SCENARIO, VITALITY_ATTRITION_RULE)
         .expect("vitality-attrition carrier tick");
     assert_eq!(
         hex(&report.before),
@@ -850,7 +861,8 @@ const CARCERAL_ARC_SCENARIO: &str =
 #[test]
 fn carceral_arc_conformance_hashes_are_pinned() {
     let rule_src = format!("{DECOMPOSITION_RULE}\n{CONTROL_RATIO_RULE}");
-    let report = run_once(CARCERAL_ARC_SCENARIO, &rule_src).expect("carceral-arc tick");
+    let report =
+        babylon_tick::run_once(CARCERAL_ARC_SCENARIO, &rule_src).expect("carceral-arc tick");
     assert_eq!(
         hex(&report.before),
         "504a4515c4e6d4d4c369a535c58a21ab98e8ee37ba852819c7b4893473881e74",
@@ -910,8 +922,9 @@ const COMMUNITY_CONTROL_RATIO: &str = include_str!("../content/rules/control-rat
 /// Measured, never derived; touches none of the sixteen prior pins.
 #[test]
 fn community_world_1_hashes_are_pinned() {
-    let report = run_once_with_prelude(COMMUNITY_W1, &practice_prelude(), COMMUNITY_PACK)
-        .expect("world 1 tick");
+    let report =
+        babylon_tick::run_once_with_prelude(COMMUNITY_W1, &practice_prelude(), COMMUNITY_PACK)
+            .expect("world 1 tick");
     assert_eq!(
         hex(&report.before),
         "855f6f9b92a47b909f7d470aa84556c9ac48a319fff0905c142ee58199a392ba",
@@ -929,8 +942,9 @@ fn community_world_1_hashes_are_pinned() {
 /// none of the sixteen prior pins.
 #[test]
 fn community_world_2_hashes_are_pinned() {
-    let report = run_once_with_prelude(COMMUNITY_W2, &practice_prelude(), COMMUNITY_PACK)
-        .expect("world 2 tick");
+    let report =
+        babylon_tick::run_once_with_prelude(COMMUNITY_W2, &practice_prelude(), COMMUNITY_PACK)
+            .expect("world 2 tick");
     assert_eq!(
         hex(&report.before),
         "74c94d50d41bbe816d3f0de17956162d9698aad36a39f2ecf006b169e17eeb6b",
@@ -947,8 +961,9 @@ fn community_world_2_hashes_are_pinned() {
 /// derived; touches none of the sixteen prior pins.
 #[test]
 fn community_world_3_hashes_are_pinned() {
-    let report = run_once_with_prelude(COMMUNITY_W3, &practice_prelude(), COMMUNITY_PACK)
-        .expect("world 3 tick");
+    let report =
+        babylon_tick::run_once_with_prelude(COMMUNITY_W3, &practice_prelude(), COMMUNITY_PACK)
+            .expect("world 3 tick");
     assert_eq!(
         hex(&report.before),
         "cbc85aab2f12b2858ae215e896fe72e2343471b7e40f3e79b4360f321b40c83d",
@@ -966,8 +981,9 @@ fn community_world_3_hashes_are_pinned() {
 /// of the sixteen prior pins.
 #[test]
 fn community_world_4_hashes_are_pinned() {
-    let report = run_once_with_prelude(COMMUNITY_W4, &practice_prelude(), COMMUNITY_PACK)
-        .expect("world 4 tick");
+    let report =
+        babylon_tick::run_once_with_prelude(COMMUNITY_W4, &practice_prelude(), COMMUNITY_PACK)
+            .expect("world 4 tick");
     assert_eq!(
         hex(&report.before),
         "3a021222a3c3d9a5606305feed76e5d20dd0e1a14dd712309ca0f0578e0107b7",
@@ -985,16 +1001,16 @@ fn community_world_4_hashes_are_pinned() {
 /// prior pins.
 #[test]
 fn community_world_5_arc_hashes_are_pinned() {
-    let mut session = babylon_tick::diagnostic::RuleDiagnosticSession::new(
+    let mut session = RuleDiagnosticSession::new(
         COMMUNITY_W5,
         Some(&practice_prelude()),
         COMMUNITY_PACK,
         HypergraphStore::new(),
-        babylon_kernel::replay::ReplaySessionId::try_from("community-decay-arc").expect("literal"),
-        babylon_kernel::replay::ReplaySeed::new(0),
+        ReplaySessionId::try_from("community-decay-arc").expect("literal"),
+        ReplaySeed::new(0),
     )
     .expect("world 5 session");
-    let mut sink = babylon_bsl::structural_verbs::CollectingSink::default();
+    let mut sink = CollectingSink::default();
     let mut last = None;
     for _ in 0..3 {
         last = Some(session.advance(&mut sink).expect("tick"));
@@ -1018,8 +1034,8 @@ fn community_world_5_arc_hashes_are_pinned() {
 #[test]
 fn community_world_5b_seam_hashes_are_pinned() {
     let rules = format!("{COMMUNITY_SOLIDARITY}\n{COMMUNITY_PACK}");
-    let report =
-        run_once_with_prelude(COMMUNITY_W5B, &practice_prelude(), &rules).expect("world 5b tick");
+    let report = babylon_tick::run_once_with_prelude(COMMUNITY_W5B, &practice_prelude(), &rules)
+        .expect("world 5b tick");
     assert_eq!(
         hex(&report.before),
         "43c36eece2e8250410e7730467b2cb48b5e67d8c279391bf29ffd6c2d77acf3b",
@@ -1038,8 +1054,8 @@ fn community_world_5b_seam_hashes_are_pinned() {
 #[test]
 fn community_world_5c_collision_hashes_are_pinned() {
     let rules = format!("{COMMUNITY_CONTROL_RATIO}\n{COMMUNITY_PACK}");
-    let report =
-        run_once_with_prelude(COMMUNITY_W5C, &practice_prelude(), &rules).expect("world 5c tick");
+    let report = babylon_tick::run_once_with_prelude(COMMUNITY_W5C, &practice_prelude(), &rules)
+        .expect("world 5c tick");
     assert_eq!(
         hex(&report.before),
         "1ad177425e34ed4f972d8f530cec9cfe3122ab6bd3c14902ee282cfd71106d4f",
@@ -1057,8 +1073,9 @@ fn community_world_5c_collision_hashes_are_pinned() {
 /// none of the sixteen prior pins.
 #[test]
 fn community_world_6_hashes_are_pinned() {
-    let report = run_once_with_prelude(COMMUNITY_W6, &practice_prelude(), COMMUNITY_PACK)
-        .expect("world 6 tick");
+    let report =
+        babylon_tick::run_once_with_prelude(COMMUNITY_W6, &practice_prelude(), COMMUNITY_PACK)
+            .expect("world 6 tick");
     assert_eq!(
         hex(&report.before),
         "0d10526ca3a6a14eb1e2bac27c63c0e4716d4f9189fc990c07bbd9226d70d946",
@@ -1079,8 +1096,9 @@ fn community_world_6_hashes_are_pinned() {
 #[test]
 fn community_tie_world_hashes_are_pinned() {
     let rules = format!("{CONSCIOUSNESS_TERNARY_RULES}\n{COMMUNITY_PACK}");
-    let report = run_once_with_prelude(COMMUNITY_TIE, &practice_worldview_prelude(), &rules)
-        .expect("tie world tick");
+    let report =
+        babylon_tick::run_once_with_prelude(COMMUNITY_TIE, &practice_worldview_prelude(), &rules)
+            .expect("tie world tick");
     assert_eq!(
         hex(&report.before),
         "347892760ad11bb974b95ce59b8559e7b3862befd0b14444cacf457964119e83",

@@ -8,14 +8,15 @@ use babylon_persistence::archive_revision::{
     ArchiveDossierRead, ArchiveDossierState, ArchiveDossierUnavailable, ArchiveLinkedPageState,
     ArchiveReadScope, ArchiveSearchState,
 };
-use babylon_persistence::{
-    identity::CampaignId, ArchiveAtom, ArchivePageRef, ArchiveSubjectKind, SemanticArchiveReader,
-};
+use babylon_persistence::identity::CampaignId;
+use babylon_persistence::{ArchiveAtom, ArchivePageRef, ArchiveSubjectKind, SemanticArchiveReader};
+
 use bevy::app::AppExit;
 use bevy::prelude::{MessageWriter, Res, Resource};
 use serde_json::{json, Value};
 
 use crate::cli::CliCommand;
+use serde_json::Number;
 
 /// The retained page is readable while pending, but that is not verification.
 #[must_use]
@@ -324,7 +325,7 @@ pub(crate) fn atom_value_json(value: &babylon_persistence::ArchiveAtomValue) -> 
     match value {
         babylon_persistence::ArchiveAtomValue::Text(text) => Value::String(text.clone()),
         babylon_persistence::ArchiveAtomValue::F64(number) => {
-            serde_json::Number::from_f64(*number).map_or(Value::Null, Value::Number)
+            Number::from_f64(*number).map_or(Value::Null, Value::Number)
         }
         babylon_persistence::ArchiveAtomValue::U64(number) => Value::from(*number),
         babylon_persistence::ArchiveAtomValue::Bool(flag) => Value::from(*flag),
@@ -385,9 +386,10 @@ mod tests {
         ArchiveAtomSubject, ArchiveAtomSubjectKind, ArchiveAtomValue, ArchiveCitation,
         ArchiveEvidenceClass, ArchiveSignal,
     };
+    use uuid::Uuid;
 
     fn read(state: ArchiveDossierState) -> ArchiveDossierRead {
-        let campaign = CampaignId::from_uuid(uuid::Uuid::nil());
+        let campaign = CampaignId::from_uuid(Uuid::nil());
         ArchiveDossierRead {
             scope: ArchiveReadScope::committed(campaign, 3, [0xab; 32]).unwrap(),
             subject: county_subject("26163").unwrap(),
@@ -397,7 +399,7 @@ mod tests {
         }
     }
     fn page() -> ArchiveDossierPage {
-        let campaign = CampaignId::from_uuid(uuid::Uuid::nil());
+        let campaign = CampaignId::from_uuid(Uuid::nil());
         let citation =
             ArchiveCitation::try_new("original-source".into(), "original/locator".into()).unwrap();
         ArchiveDossierPage {
@@ -466,7 +468,7 @@ mod tests {
     }
     #[test]
     fn exact_scope_requires_the_selected_hash_and_cannot_fabricate_foundation() {
-        let campaign = CampaignId::from_uuid(uuid::Uuid::nil());
+        let campaign = CampaignId::from_uuid(Uuid::nil());
         assert!(observation_scope(campaign, 0, None)
             .unwrap()
             .tick_content_hash()
@@ -489,7 +491,7 @@ mod tests {
     #[test]
     fn removal_and_numeric_zero_have_different_json_evidence() {
         let atom = ArchiveAtom::try_new(
-            CampaignId::from_uuid(uuid::Uuid::nil()),
+            CampaignId::from_uuid(Uuid::nil()),
             ArchiveAtomSubject::try_new(ArchiveAtomSubjectKind::County, "26163".into()).unwrap(),
             "jobs".into(),
             "jobs".into(),

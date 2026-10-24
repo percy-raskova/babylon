@@ -1,11 +1,19 @@
-use super::{
-    is_service, GoodId, MaterialCircuitError, MaterialCircuitState, Result, ServiceOrder,
-    ServicePerformanceReceipt, UnitId, MAX_SERVICE_RECEIPTS_PER_PERIOD,
-};
+use super::GoodId;
+use super::MaterialCircuitError;
+use super::MaterialCircuitState;
+use super::Result;
+use super::ServiceOrder;
+use super::ServicePerformanceReceipt;
+use super::UnitId;
+use super::MAX_SERVICE_RECEIPTS_PER_PERIOD;
+use crate::OrderId;
 use crate::{
     AccountId, CircuitAccounting, MoneyTransferReceipt, OutboundOrderId, PurchaseEscrow, SiteId,
 };
-use babylon_kernel::{content_digest::sha256_of, currency::Currency};
+use babylon_kernel::content_digest;
+use babylon_kernel::currency::Currency;
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 
 /// Exact identity of a generated current-period service request.
 #[must_use]
@@ -15,7 +23,7 @@ pub fn recurring_service_order_id(
     provider: SiteId,
     good: GoodId,
     unit: UnitId,
-) -> crate::OrderId {
+) -> OrderId {
     let (tag, id) = match buyer {
         AccountId::Site(id) => (1, id.as_bytes()),
         AccountId::Household(id) => (2, id.as_bytes()),
@@ -29,15 +37,15 @@ pub fn recurring_service_order_id(
     bytes.extend_from_slice(&provider.as_bytes());
     bytes.extend_from_slice(&good.as_bytes());
     bytes.extend_from_slice(&unit.as_bytes());
-    crate::OrderId::from_bytes(sha256_of(&bytes))
+    OrderId::from_bytes(content_digest::sha256_of(&bytes))
 }
 /// Exact identity of a top-up against captured, accepted service commitments.
 /// `due` is the strictly order-ID-sorted `(order, quantity, accepted price)` slice.
 #[must_use]
 pub fn recurring_service_topup_order_id(
-    base: crate::OrderId,
-    due: &[(crate::OrderId, u64, Currency)],
-) -> crate::OrderId {
+    base: OrderId,
+    due: &[(OrderId, u64, Currency)],
+) -> OrderId {
     let mut bytes = b"babylon.recurring-service-topup.v1\0".to_vec();
     bytes.extend_from_slice(&base.as_bytes());
     for (order, quantity, price) in due {
@@ -45,10 +53,10 @@ pub fn recurring_service_topup_order_id(
         bytes.extend_from_slice(&quantity.to_be_bytes());
         bytes.extend_from_slice(&price.micro_units().to_be_bytes());
     }
-    crate::OrderId::from_bytes(sha256_of(&bytes))
+    OrderId::from_bytes(content_digest::sha256_of(&bytes))
 }
 struct Request {
-    order_id: crate::OrderId,
+    order_id: OrderId,
     buyer: AccountId,
     provider: SiteId,
     good: GoodId,
@@ -83,7 +91,7 @@ fn requests(state: &MaterialCircuitState) -> Result<Vec<Request>> {
         });
     }
     for p in &r.household_purchases {
-        if !is_service(state, p.good_id, p.unit_id) {
+        if !super::is_service(state, p.good_id, p.unit_id) {
             continue;
         }
         let cohort = r
@@ -127,7 +135,7 @@ fn requests(state: &MaterialCircuitState) -> Result<Vec<Request>> {
 }
 type DueKey = (AccountId, SiteId, GoodId, UnitId);
 fn deduct_due_commitments(state: &MaterialCircuitState, requests: &mut [Request]) -> Result<()> {
-    let mut due = std::collections::BTreeMap::<DueKey, (u64, Vec<&ServiceOrder>)>::new();
+    let mut due = BTreeMap::<DueKey, (u64, Vec<&ServiceOrder>)>::new();
     for order in state
         .service_orders
         .iter()
@@ -178,7 +186,7 @@ pub(super) fn admit(
     };
     let mut result = Vec::new();
     // New orders append until the final sort; index only actual positive admissions.
-    let mut order_ids: std::collections::BTreeSet<_> = state
+    let mut order_ids: BTreeSet<_> = state
         .service_orders
         .iter()
         .map(|row| row.order_id)

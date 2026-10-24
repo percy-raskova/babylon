@@ -1,21 +1,32 @@
 //! Independent source totals and cash/stock/share conservation through native generation.
-use super::*;
+use babylon_kernel::economic_location::EconomicLocation;
+use babylon_material_circuit::CommodityKind;
+use babylon_material_circuit::FinalDemandPrincipalId;
 use babylon_material_circuit::{AccountId, HouseholdKind, HouseholdNeedBasis};
-use babylon_persistence::{
-    national_economy::household_principal,
-    national_household_allocation::{allocate_households, HouseholdBudgetKey},
-    national_households::national_household_reference,
-};
+use babylon_persistence::economic_catalog::EconomicHouseholdSeed;
+use babylon_persistence::economic_catalog::EconomicOpening;
+use babylon_persistence::national_counties;
+use babylon_persistence::national_economy;
+use babylon_persistence::national_economy::NationalAidCapture;
+use babylon_persistence::national_economy::NationalGamePolicy;
+use babylon_persistence::national_household_allocation;
+use babylon_persistence::national_household_allocation::HouseholdBudgetKey;
+use babylon_persistence::national_household_allocation::NationalHouseholdAllocation;
+use babylon_persistence::national_households;
+use babylon_persistence::national_resident_workforce;
+use babylon_tick::material_world::MaterialWorldRegister;
+use std::collections::{BTreeMap, BTreeSet};
+use std::time::Instant;
 
 pub(super) fn assert_people(
     opening: &EconomicOpening,
     policy: &NationalGamePolicy,
-    aid: &babylon_persistence::national_economy::NationalAidCapture,
+    aid: &NationalAidCapture,
 ) {
-    let budgets = allocate_households(
-        national_county_reference().unwrap(),
-        national_household_reference().unwrap(),
-        national_resident_workforce_reference().unwrap(),
+    let budgets = national_household_allocation::allocate_households(
+        national_counties::national_county_reference().unwrap(),
+        national_households::national_household_reference().unwrap(),
+        national_resident_workforce::national_resident_workforce_reference().unwrap(),
         policy.households.private_owner_households_bps,
     )
     .unwrap();
@@ -76,20 +87,17 @@ pub(super) fn assert_people(
 }
 
 fn assert_source_accounts(
-    budgets: &babylon_persistence::national_household_allocation::NationalHouseholdAllocation,
-    households: &BTreeMap<
-        babylon_material_circuit::FinalDemandPrincipalId,
-        &babylon_persistence::economic_catalog::EconomicHouseholdSeed,
-    >,
-    assigned: &BTreeMap<babylon_material_circuit::FinalDemandPrincipalId, (u64, u64)>,
-    aid: &babylon_persistence::national_economy::NationalAidCapture,
+    budgets: &NationalHouseholdAllocation,
+    households: &BTreeMap<FinalDemandPrincipalId, &EconomicHouseholdSeed>,
+    assigned: &BTreeMap<FinalDemandPrincipalId, (u64, u64)>,
+    aid: &NationalAidCapture,
 ) -> usize {
     let mut counted = 0;
     for county in budgets.counties() {
         let location = EconomicLocation::domestic_county(county.county()).unwrap();
         for budget in county.budgets() {
             counted += 1;
-            let principal = household_principal(location, budget.key);
+            let principal = national_economy::household_principal(location, budget.key);
             let row = households[&principal];
             let children: Vec<_> = aid
                 .children
@@ -128,7 +136,7 @@ fn assert_source_accounts(
 pub(super) fn assert_endowments_and_ownership(
     opening: &EconomicOpening,
     policy: &NationalGamePolicy,
-    aid: &babylon_persistence::national_economy::NationalAidCapture,
+    aid: &NationalAidCapture,
 ) {
     let mut totals = BTreeMap::<EconomicLocation, (u64, u64, i128)>::new();
     let mut stock = BTreeMap::<(EconomicLocation, _, _), (u64, i128)>::new();
@@ -153,8 +161,9 @@ pub(super) fn assert_endowments_and_ownership(
             HouseholdBudgetKey::NoEarnerOwner,
         ]
         .into_iter()
-        .any(|key| household.principal_id == household_principal(household.location, key))
-        {
+        .any(|key| {
+            household.principal_id == national_economy::household_principal(household.location, key)
+        }) {
             domestic_owners.insert(household.principal_id);
         }
     }
@@ -212,10 +221,7 @@ pub(super) fn assert_endowments_and_ownership(
     assert_retail_aggregation(opening, policy);
 }
 
-fn assert_ownership(
-    opening: &EconomicOpening,
-    domestic_owners: &BTreeSet<babylon_material_circuit::FinalDemandPrincipalId>,
-) {
+fn assert_ownership(opening: &EconomicOpening, domestic_owners: &BTreeSet<FinalDemandPrincipalId>) {
     let locations: BTreeMap<_, _> = opening
         .households
         .iter()
@@ -309,17 +315,15 @@ fn assert_retail_aggregation(opening: &EconomicOpening, policy: &NationalGamePol
 }
 
 /// Exercise the actual compiler and material register, independently of the source census.
-pub fn assert_admitted_state(
-    opening: &EconomicOpening,
-    aid: &babylon_persistence::national_economy::NationalAidCapture,
-) {
-    use babylon_material_circuit::{encode_material_circuit_state, CircuitAccounting};
-    let start = std::time::Instant::now();
+pub fn assert_admitted_state(opening: &EconomicOpening, aid: &NationalAidCapture) {
+    use babylon_material_circuit::CircuitAccounting;
+    let start = Instant::now();
     let compiled = opening
         .compile()
         .expect("complete current household opening must admit");
     eprintln!("current common admission: {:?}", start.elapsed());
-    let state_bytes = encode_material_circuit_state(&compiled.state).unwrap();
+    let state_bytes =
+        babylon_material_circuit::encode_material_circuit_state(&compiled.state).unwrap();
     let CircuitAccounting::Monetary(e) = &compiled.state.accounting else {
         panic!("national monetary circuit");
     };
@@ -356,8 +360,8 @@ pub fn assert_admitted_state(
         babylon_kernel::content_digest::sha256_of(&state_bytes)
     );
     drop(state_bytes);
-    let start = std::time::Instant::now();
-    let register = babylon_tick::material_world::MaterialWorldRegister::try_new(0, compiled.state)
+    let start = Instant::now();
+    let register = MaterialWorldRegister::try_new(0, compiled.state)
         .expect("complete current opening register must admit");
     eprintln!(
         "current register bytes: {}, elapsed: {:?}",

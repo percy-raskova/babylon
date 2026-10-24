@@ -1,23 +1,21 @@
 //! Authoritative national save growth through the owned, rotating `PostgreSQL` harness.
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_kernel::replay::{ReplaySeed, ReplaySessionId};
-use babylon_persistence::{
-    economic_catalog::CapturedEconomicCatalog,
-    identity::CampaignId,
-    install_current_schema,
-    material_runtime::{DurableMaterialRuntime, MaterialRuntimeFoundation},
-    postgres_catalog::validate_connection_target,
-    preflight_current_schema,
-};
+use babylon_persistence::economic_catalog::CapturedEconomicCatalog;
+use babylon_persistence::identity::CampaignId;
+use babylon_persistence::material_runtime::{DurableMaterialRuntime, MaterialRuntimeFoundation};
+
 use postgres::{Config, NoTls};
-use std::{
-    fs::{self, File, OpenOptions},
-    io::Write,
-    path::PathBuf,
-    process::Command,
-    str::FromStr,
-    time::{Duration, Instant},
-};
+use std::fs;
+use std::fs::{File, OpenOptions};
+use std::io::Write;
+use std::path::PathBuf;
+use std::process::Command;
+use std::str::FromStr;
+use std::time::{Duration, Instant};
+
+use babylon_persistence::postgres_catalog;
+use serde_json::Value;
 use uuid::Uuid;
 
 #[path = "fixtures/national_capture.rs"]
@@ -104,8 +102,7 @@ fn save_qualification_ticks() -> u64 {
     );
     assert!(directory.is_absolute() && directory.is_dir());
     let bytes = fs::read(directory.join("policy.json")).expect("captured storage policy exists");
-    let policy: serde_json::Value =
-        serde_json::from_slice(&bytes).expect("captured storage policy parses");
+    let policy: Value = serde_json::from_slice(&bytes).expect("captured storage policy parses");
     assert_eq!(policy["county_count"].as_u64(), Some(3_144));
     assert_eq!(policy["qualification_ticks"].as_u64(), Some(52));
     let maximum = policy["save_qualification_ticks"]
@@ -182,7 +179,7 @@ fn owned_config() -> Config {
         &std::env::var("BABYLON_NATIONAL_STORAGE_WRITER_DSN").expect("owned writer required"),
     )
     .expect("owned writer config parses");
-    validate_connection_target(&config).expect("validated loopback target");
+    postgres_catalog::validate_connection_target(&config).expect("validated loopback target");
     let mut connection = config.connect(NoTls).expect("owned writer connects");
     let actual: Option<String> = connection
         .query_one(
@@ -225,8 +222,10 @@ fn fresh_measurement_campaign(config: &Config) -> CampaignId {
 fn actual_encoded_national_tick_measures_postgresql_growth_and_recovery() {
     let run_started = Instant::now();
     let config = owned_config();
-    preflight_current_schema(&config).expect("fresh owned current schema preflight");
-    let schema = install_current_schema(&config).expect("exact atomic current schema install");
+    babylon_persistence::preflight_current_schema(&config)
+        .expect("fresh owned current schema preflight");
+    let schema = babylon_persistence::install_current_schema(&config)
+        .expect("exact atomic current schema install");
     eprintln!(
         "current schema installed and admitted: {:?}",
         schema.disposition
@@ -338,7 +337,7 @@ fn retained_national_tick_reopens_without_creating_or_advancing() {
         &std::env::var("BABYLON_NATIONAL_STORAGE_WRITER_DSN").expect("owned writer required"),
     )
     .expect("owned writer config parses");
-    validate_connection_target(&config).expect("validated loopback target");
+    postgres_catalog::validate_connection_target(&config).expect("validated loopback target");
     let mut connection = config.connect(NoTls).expect("owned writer connects");
     let actual: Option<String> = connection
         .query_one(

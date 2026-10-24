@@ -1,9 +1,11 @@
+use babylon_material_circuit::CapacitySupply;
+use babylon_material_circuit::CircuitAccounting;
 use babylon_material_circuit::SupplierTransport;
 use babylon_material_circuit::{
-    advance_material_circuit, encode_material_circuit_state, BacklogRow, CommodityDefinition,
-    CommodityKind, CorridorCapacity, CorridorId, GoodId, InventoryRow, LogisticsNodeId,
-    MaterialCircuitError, MaterialCircuitState, OrderAccessMode, OrderId, OrderRow, RouteId,
-    RouteStage, RouteStageCapacity, SiteId, SiteLogisticsNode, SupplierRoute, UnitId,
+    BacklogRow, CommodityDefinition, CommodityKind, CorridorCapacity, CorridorId, GoodId,
+    InventoryRow, LogisticsNodeId, MaterialCircuitError, MaterialCircuitState, OrderAccessMode,
+    OrderId, OrderRow, RouteId, RouteStage, RouteStageCapacity, SiteId, SiteLogisticsNode,
+    SupplierRoute, UnitId,
 };
 
 fn opening() -> MaterialCircuitState {
@@ -21,12 +23,12 @@ fn opening() -> MaterialCircuitState {
 
 fn empty() -> MaterialCircuitState {
     MaterialCircuitState {
-        capacity_supply: babylon_material_circuit::CapacitySupply::FiniteSchedule,
+        capacity_supply: CapacitySupply::FiniteSchedule,
         merchants: vec![],
         handling_coefficients: vec![],
         final_demand_principals: vec![],
         final_demand_orders: vec![],
-        accounting: babylon_material_circuit::CircuitAccounting::PhysicalControl,
+        accounting: CircuitAccounting::PhysicalControl,
         maintenance_binding: None,
         maintenance_service: None,
         period: 1,
@@ -136,7 +138,7 @@ fn constrained() -> MaterialCircuitState {
     state
 }
 fn quantities(state: &MaterialCircuitState) -> Vec<u64> {
-    advance_material_circuit(state)
+    babylon_material_circuit::advance_material_circuit(state)
         .unwrap()
         .state
         .orders
@@ -160,8 +162,8 @@ fn residual_policy_is_independent_of_input_row_order() {
     reversed.route_stages.reverse();
     reversed.route_stage_capacities.reverse();
     assert_eq!(
-        advance_material_circuit(&state),
-        advance_material_circuit(&reversed)
+        babylon_material_circuit::advance_material_circuit(&state),
+        babylon_material_circuit::advance_material_circuit(&reversed)
     );
     assert_eq!(quantities(&reversed), [1, 2]);
 }
@@ -204,10 +206,13 @@ fn summed_resource_request_overflow_refuses_atomically() {
             grams_per_unit: u64::MAX,
         };
     }
-    let before = encode_material_circuit_state(&state).unwrap();
+    let before = babylon_material_circuit::encode_material_circuit_state(&state).unwrap();
     assert_eq!(
-        advance_material_circuit(&state),
+        babylon_material_circuit::advance_material_circuit(&state),
         Err(MaterialCircuitError::Arithmetic)
     );
-    assert_eq!(encode_material_circuit_state(&state).unwrap(), before);
+    assert_eq!(
+        babylon_material_circuit::encode_material_circuit_state(&state).unwrap(),
+        before
+    );
 }

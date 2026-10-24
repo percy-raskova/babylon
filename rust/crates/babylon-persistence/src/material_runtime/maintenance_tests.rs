@@ -1,12 +1,19 @@
 //! Captured Designed maintenance crosses the real BSL and saved checkpoint boundaries.
-use super::reconstruction_tests::{persisted_graph_copy, stored_copy};
-use super::*;
+use super::reconstruction_tests;
+use super::runtime;
+use super::runtime::MaterialRuntimeFoundation;
+use crate::michigan_content::MichiganContentPreset;
 use crate::michigan_material::{MichiganDeliveryPreset, MichiganMaterialCatalog};
+use babylon_bsl::structural_verbs::CollectingSink;
+use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_material_circuit::{GoodId, OrderId, ProcessId, SiteId};
+use babylon_practice_contract::OrderedPracticeActionBatch;
+use babylon_tick::material_replay::MaterialReplaySession;
 use babylon_tick::material_replay::{MaterialCommitError, PreparedMaterialTick};
-use babylon_tick::material_world::{
-    decode_material_receipts, MaterialTickReceipts, MaterialWorldRegister,
-};
+use babylon_tick::material_world;
+use babylon_tick::material_world::{MaterialTickReceipts, MaterialWorldRegister};
+use babylon_tick::replay_session::ReplayCommitDisposition;
+use synthetic::SyntheticSources;
 
 #[path = "../../tests/fixtures/statewide_synthetic.rs"]
 mod synthetic;
@@ -35,7 +42,7 @@ struct Witness {
 fn captured_catalog() -> MichiganMaterialCatalog {
     // Real source-qualified owners on explicitly synthetic paths. The live
     // qualification separately proves the real network's exact 60 kg grant.
-    let sources = synthetic::SyntheticSources::create();
+    let sources = SyntheticSources::create();
     let catalog = MichiganMaterialCatalog::load_for_preset(
         &sources.path("defines.toml"),
         MichiganDeliveryPreset::StatewideMaintenanceBaseline,
@@ -164,7 +171,8 @@ fn assert_close(candidate: &Candidate, case: Case, witness: &Witness, period: u6
         candidate.graph_report().report().per_rule_fired,
         [("material/period".to_owned(), 1)]
     );
-    let receipts = decode_material_receipts(candidate.material().receipt_bytes()).unwrap();
+    let receipts =
+        material_world::decode_material_receipts(candidate.material().receipt_bytes()).unwrap();
     let maintenance = receipts.maintenance.as_ref().unwrap();
     // No commitment has no production receipt; the maintained process is still
     // present and its physical output is zero. Bound maintenance always receipts.
@@ -312,12 +320,12 @@ fn qualify_case(base: &MichiganMaterialCatalog, case: Case) {
         catalog.graph_scenario_source() == base.graph_scenario_source(),
         case.employed == 1
     );
-    let preset = crate::michigan_content::MichiganContentPreset::new_campaign(case.delivery);
+    let preset = MichiganContentPreset::new_campaign(case.delivery);
     let foundation = preset.create_foundation(&catalog).unwrap();
     let witness = opening_witness(&catalog, case, &foundation);
-    let mut restored = reconstruct_material_foundation(
-        stored_copy(&foundation),
-        persisted_graph_copy(foundation.graph_foundation()),
+    let mut restored = runtime::reconstruct_material_foundation(
+        reconstruction_tests::stored_copy(&foundation),
+        reconstruction_tests::persisted_graph_copy(foundation.graph_foundation()),
         foundation.digest(),
     )
     .unwrap()
@@ -338,7 +346,7 @@ fn qualify_case(base: &MichiganMaterialCatalog, case: Case) {
         assert_close(&candidate, case, &witness, period);
         history.push((
             uninterrupted.material().clone(),
-            decode_material_receipts(candidate.material().receipt_bytes()).unwrap(),
+            material_world::decode_material_receipts(candidate.material().receipt_bytes()).unwrap(),
             candidate.identity().receipt_digest(),
         ));
         assert_full_projection(

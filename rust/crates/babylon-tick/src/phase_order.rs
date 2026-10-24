@@ -16,12 +16,15 @@
 //! Here `str` is a
 //! big-endian `u32` UTF-8 byte length followed by the raw UTF-8 bytes.
 
-use babylon_bsl::mod_anchors::{check_anchor, AnchorDecl, AnchorError, AnchorPosition};
+use babylon_bsl::mod_anchors;
+use babylon_bsl::mod_anchors::{AnchorDecl, AnchorError, AnchorPosition};
 use babylon_bsl::reader::SExpr;
 use babylon_bsl::same_tick_order::RankedRule;
-use babylon_kernel::content_digest::sha256_of;
+use babylon_kernel::content_digest;
 use std::collections::TryReserveError;
 use std::collections::{BTreeMap, HashSet};
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 
 const MATERIAL_BASE_COUNT: usize = 15;
 const ACTION_COUNT: usize = 1;
@@ -309,7 +312,7 @@ pub(crate) enum ScheduleError {
 }
 
 impl std::fmt::Display for ScheduleError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         match self {
             Self::Anchor { source, .. } => write!(f, "{source}"),
             Self::MaterialBaseInterleave {
@@ -397,7 +400,7 @@ pub(crate) fn phase_schedule() -> Result<PhaseSchedule, ScheduleError> {
         bytes.extend_from_slice(&default_rank(*slot)?.to_be_bytes());
     }
     debug_assert_eq!(bytes.len(), capacity);
-    let digest = sha256_of(&bytes);
+    let digest = content_digest::sha256_of(&bytes);
     Ok(PhaseSchedule {
         canonical_bytes: bytes,
         digest,
@@ -488,10 +491,11 @@ pub(crate) fn compile(rule_forms: &[(String, SExpr)]) -> Result<RuleOrderPlan, S
     let mut validation_order: Vec<_> = rule_forms.iter().collect();
     validation_order.sort_by(|(a, _), (b, _)| a.as_bytes().cmp(b.as_bytes()));
     for (id, form) in validation_order {
-        let anchor = check_anchor(form, &systems).map_err(|source| ScheduleError::Anchor {
-            rule_id: id.clone(),
-            source,
-        })?;
+        let anchor =
+            mod_anchors::check_anchor(form, &systems).map_err(|source| ScheduleError::Anchor {
+                rule_id: id.clone(),
+                source,
+            })?;
         let key = execution_key(id, anchor.as_ref())?;
         if let Some(anchor) = anchor {
             if is_material_base_interior(key) {
@@ -721,10 +725,10 @@ fn partition_at(index: usize) -> TickPartition {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use babylon_bsl::reader::read;
+    use babylon_bsl::reader;
 
     fn form(source: &str) -> SExpr {
-        read(source).expect("phase-order fixture parses").0
+        reader::read(source).expect("phase-order fixture parses").0
     }
 
     fn rule(id: &str, anchor: &str) -> (String, SExpr) {

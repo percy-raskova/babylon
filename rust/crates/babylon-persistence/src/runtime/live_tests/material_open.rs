@@ -1,22 +1,26 @@
 //! Open must release its SQL snapshot before reconstructing material authority.
-use super::*;
-use crate::material_runtime::{
-    capture_material_foundation_components, DurableMaterialRuntime, FoundationReadSource,
-    MaterialRuntimeError,
-};
+use super::{CampaignId, CollectingSink, NoTls, OrderedPracticeActionBatch, TestDatabase};
+use crate::material_runtime;
+use crate::material_runtime::{DurableMaterialRuntime, FoundationReadSource, MaterialRuntimeError};
+use crate::michigan_content::MichiganContentPreset;
+use postgres::Row;
 use std::time::Duration;
+use uuid::Uuid;
 
 #[test]
 #[ignore = "requires the task-owned disposable PostgreSQL runtime"]
 fn live_material_open_reconstructs_after_releasing_its_snapshot() {
-    let base = validated_base_config();
-    let database =
-        TestDatabase::create_from_template(&base, &validated_template_name(), "materialopen");
+    let base = super::validated_base_config();
+    let database = TestDatabase::create_from_template(
+        &base,
+        &super::validated_template_name(),
+        "materialopen",
+    );
     let mut config = database.config(&base);
     let application = format!("material-open-control-{}", std::process::id());
     config.application_name(&application);
     let campaign = CampaignId::from_uuid(Uuid::from_u128(0x342_0fe0));
-    let foundation = crate::michigan_content::MichiganContentPreset::FourWeekStandard
+    let foundation = MichiganContentPreset::FourWeekStandard
         .create_foundation_for_campaign(&crate::test_support::catalog(), campaign)
         .unwrap();
     let digest = foundation.digest();
@@ -27,7 +31,7 @@ fn live_material_open_reconstructs_after_releasing_its_snapshot() {
             campaign,
             |snapshot| {
                 snapshot.batch_execute("SET LOCAL idle_in_transaction_session_timeout='100ms'")?;
-                let captured = capture_material_foundation_components(
+                let captured = material_runtime::capture_material_foundation_components(
                     snapshot,
                     campaign,
                     digest,
@@ -84,12 +88,12 @@ fn live_material_open_reconstructs_after_releasing_its_snapshot() {
 #[test]
 #[ignore = "requires the task-owned disposable PostgreSQL runtime"]
 fn live_material_open_refuses_a_changed_foundation_or_committed_tail() {
-    let base = validated_base_config();
+    let base = super::validated_base_config();
     let database =
-        TestDatabase::create_from_template(&base, &validated_template_name(), "opendrift");
+        TestDatabase::create_from_template(&base, &super::validated_template_name(), "opendrift");
     let config = database.config(&base);
     let campaign = CampaignId::from_uuid(Uuid::from_u128(0x342_0fe1));
-    let foundation = crate::michigan_content::MichiganContentPreset::FourWeekStandard
+    let foundation = MichiganContentPreset::FourWeekStandard
         .create_foundation_for_campaign(&crate::test_support::catalog(), campaign)
         .unwrap();
     let digest = foundation.digest();
@@ -99,7 +103,7 @@ fn live_material_open_refuses_a_changed_foundation_or_committed_tail() {
             &config,
             campaign,
             |snapshot| {
-                capture_material_foundation_components(
+                material_runtime::capture_material_foundation_components(
                     snapshot,
                     campaign,
                     digest,
@@ -156,7 +160,7 @@ fn live_material_open_refuses_a_changed_foundation_or_committed_tail() {
 #[test]
 #[ignore = "requires the task-owned disposable PostgreSQL runtime"]
 fn live_capture_fingerprint_distinguishes_raw_values_types_nulls_and_order() {
-    let config = validated_base_config();
+    let config = super::validated_base_config();
     let mut client = config.connect(NoTls).unwrap();
     let first = client.query_one("SELECT 1::int4 AS value", &[]).unwrap();
     let equal = client.query_one("SELECT 1::int4 AS value", &[]).unwrap();
@@ -167,9 +171,7 @@ fn live_capture_fingerprint_distinguishes_raw_values_types_nulls_and_order() {
         .query_one("SELECT NULL::bytea AS value", &[])
         .unwrap();
     let empty = client.query_one("SELECT ''::bytea AS value", &[]).unwrap();
-    let digest = |rows: &[&postgres::Row]| {
-        crate::material_runtime::capture_rows_digest(rows.iter().copied())
-    };
+    let digest = |rows: &[&Row]| crate::material_runtime::capture_rows_digest(rows.iter().copied());
     assert_eq!(digest(&[&first]).unwrap(), digest(&[&equal]).unwrap());
     for row in [&changed, &changed_type, &changed_name, &null, &empty] {
         assert_ne!(digest(&[&first]).unwrap(), digest(&[row]).unwrap());

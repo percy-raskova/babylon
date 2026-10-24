@@ -1,5 +1,9 @@
 //! Checked resource cuts and a deterministic, single-increment-maximal residual fold.
-use super::{BTreeMap, FreightRequest, FreightResourceKey, MaterialCircuitError};
+use super::BTreeMap;
+use super::FreightRequest;
+use super::FreightResourceKey;
+use super::MaterialCircuitError;
+use crate::OrderId;
 
 pub(super) type Groups = BTreeMap<FreightResourceKey, Vec<FreightRequest>>;
 
@@ -33,7 +37,7 @@ pub(super) fn aggregate(groups: &Groups) -> Result<Groups, MaterialCircuitError>
 
 /// Native identity is primary across domains; the explicit discriminator only
 /// resolves equal identities. Source vector positions never choose priority.
-pub(super) fn identity_order(identities: &[(crate::OrderId, u8)]) -> Vec<usize> {
+pub(super) fn identity_order(identities: &[(OrderId, u8)]) -> Vec<usize> {
     let mut order: Vec<_> = (0..identities.len()).collect();
     order.sort_by_key(|&i| identities[i]);
     order
@@ -274,8 +278,8 @@ mod controls {
     }
     #[test]
     fn native_identity_precedes_domain_discriminator_in_residual_order() {
-        let low = crate::OrderId::from_bytes([1; 32]);
-        let high = crate::OrderId::from_bytes([2; 32]);
+        let low = OrderId::from_bytes([1; 32]);
+        let high = OrderId::from_bytes([2; 32]);
         let identities = [(high, 0), (low, 3), (low, 0), (low, 2), (low, 1)];
         assert_eq!(identity_order(&identities), [2, 4, 3, 1, 0]);
     }

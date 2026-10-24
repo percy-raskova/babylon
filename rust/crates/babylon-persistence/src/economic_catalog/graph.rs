@@ -1,13 +1,16 @@
 //! Native instances use the ordinary BSL declaration/type admission path.
 use super::{EconomicCatalogError, EconomicOpening};
 use crate::national_counties::NationalCountyReference;
+use crate::national_economy::NationalAidCapture;
 use babylon_bsl::scenario_seed::{
     EdgeSeed, GraphSeed, HyperedgeSeed, NodeSeed, SeedAttribute, SeedValue,
 };
 use babylon_graph::stable_element::StableElementKey;
+use babylon_practice_contract::OrganizerConfig;
 use std::collections::{BTreeMap, BTreeSet};
+use std::result::Result as StdResult;
 
-type Result<T> = std::result::Result<T, EconomicCatalogError>;
+type Result<T> = StdResult<T, EconomicCatalogError>;
 fn attribute(field: &str, value: u64) -> Result<SeedAttribute> {
     Ok(SeedAttribute {
         field: field.to_owned(),
@@ -43,8 +46,8 @@ pub(super) fn national_seed(
     scope: &str,
     opening: &EconomicOpening,
     counties: &NationalCountyReference,
-    aid: &crate::national_economy::NationalAidCapture,
-    organizer: Option<&babylon_practice_contract::OrganizerConfig>,
+    aid: &NationalAidCapture,
+    organizer: Option<&OrganizerConfig>,
 ) -> Result<GraphSeed> {
     let mut nodes = Vec::new();
     for county in counties.counties() {
@@ -127,7 +130,7 @@ pub(super) fn national_seed(
 fn append_aid_classes(
     scope: &str,
     opening: &EconomicOpening,
-    aid: &crate::national_economy::NationalAidCapture,
+    aid: &NationalAidCapture,
     nodes: &mut Vec<NodeSeed>,
 ) -> Result<()> {
     let staffing_keys: BTreeSet<_> = opening
@@ -178,8 +181,8 @@ type OrganizerActors = [(u64, &'static str, u64); 5];
 fn organizer_rows(
     scope: &str,
     opening: &EconomicOpening,
-    aid: &crate::national_economy::NationalAidCapture,
-    config: &babylon_practice_contract::OrganizerConfig,
+    aid: &NationalAidCapture,
+    config: &OrganizerConfig,
 ) -> Result<OrganizerSeedRows> {
     validate_organizer_seed(scope, opening, aid, config)?;
     let actors = organizer_actors(config);
@@ -195,8 +198,8 @@ fn organizer_rows(
 fn validate_organizer_seed(
     scope: &str,
     opening: &EconomicOpening,
-    aid: &crate::national_economy::NationalAidCapture,
-    config: &babylon_practice_contract::OrganizerConfig,
+    aid: &NationalAidCapture,
+    config: &OrganizerConfig,
 ) -> Result<()> {
     babylon_practice_contract::validate_organizer_config(config)
         .map_err(|_| EconomicCatalogError::Identity)?;
@@ -239,7 +242,7 @@ fn validate_organizer_seed(
     }
     Ok(())
 }
-fn organizer_actors(config: &babylon_practice_contract::OrganizerConfig) -> OrganizerActors {
+fn organizer_actors(config: &OrganizerConfig) -> OrganizerActors {
     [
         (
             config.controlled_actor_id,
@@ -289,8 +292,8 @@ fn organization_nodes(actors: &OrganizerActors) -> Result<Vec<NodeSeed>> {
     Ok(nodes)
 }
 fn participant_nodes(
-    aid: &crate::national_economy::NationalAidCapture,
-    config: &babylon_practice_contract::OrganizerConfig,
+    aid: &NationalAidCapture,
+    config: &OrganizerConfig,
     nodes: &mut Vec<NodeSeed>,
 ) -> Result<BTreeMap<u64, String>> {
     let mut participant_names = BTreeMap::new();
@@ -322,7 +325,7 @@ fn participant_nodes(
 }
 fn participant_bodies(
     actors: &OrganizerActors,
-    config: &babylon_practice_contract::OrganizerConfig,
+    config: &OrganizerConfig,
     participant_names: &BTreeMap<u64, String>,
 ) -> Result<Vec<HyperedgeSeed>> {
     let mut hyperedges = Vec::new();
@@ -371,15 +374,19 @@ fn ordinary_contacts() -> Vec<EdgeSeed> {
 #[cfg(test)]
 mod organizer_seed_tests {
     use super::*;
+    use crate::identity::CampaignId;
+    use crate::michigan_defines::MichiganDefines;
+    use babylon_graph::hypergraph_store::HypergraphStore;
+    use uuid::Uuid;
     #[test]
     fn shared_contributor_bodies_load_as_native_public_incidence_without_extra_people() {
-        let defines = crate::michigan_defines::MichiganDefines::parse(include_str!(concat!(
+        let defines = MichiganDefines::parse(include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../../../content/scenarios/michigan/defines.toml"
         )))
         .unwrap();
         let mut config = crate::organizer_content::config(
-            crate::identity::CampaignId::from_uuid(uuid::Uuid::from_u128(26163)),
+            CampaignId::from_uuid(Uuid::from_u128(26163)),
             &defines.organizer,
             [7; 32],
         )
@@ -443,7 +450,7 @@ mod organizer_seed_tests {
             .all(|edge| edge.target != "wayne-local-aid-partners"
                 && edge.target != "cook-independent-solidarity-partners"));
         let seed = GraphSeed::try_new(nodes, contacts, bodies).unwrap();
-        let mut store = babylon_graph::hypergraph_store::HypergraphStore::new();
+        let mut store = HypergraphStore::new();
         let loaded = babylon_bsl::scenario_seed::load_scenario_with_seed(
             include_str!(concat!(
                 env!("CARGO_MANIFEST_DIR"),

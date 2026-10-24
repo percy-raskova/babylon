@@ -1,16 +1,19 @@
 //! Complete real reader proofs at the same committed national boundary.
 use babylon_kernel::economic_location::EconomicLocation;
-use babylon_persistence::{
-    archive_revision::{ArchiveDossierBounds, ArchiveDossierState, ArchiveReadScope},
-    identity::CampaignId,
-    observer_reader::CommittedMaterialObservation,
-    ArchivePageRef, ArchiveSubjectKind, SemanticArchiveReader,
+use babylon_persistence::archive_revision::{
+    ArchiveDossierBounds, ArchiveDossierState, ArchiveReadScope,
 };
+use babylon_persistence::identity::CampaignId;
+use babylon_persistence::observer_reader::CommittedMaterialObservation;
+use babylon_persistence::{ArchivePageRef, ArchiveSubjectKind, SemanticArchiveReader};
+
 use babylon_tick::material_replay::IdentifiedMaterialTick;
 use postgres::{Config, NoTls};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
-use std::{collections::BTreeSet, path::PathBuf, time::Duration};
+use std::collections::BTreeSet;
+use std::path::PathBuf;
+use std::time::Duration;
 
 pub(super) struct Limits {
     pub archive: Duration,
@@ -254,7 +257,6 @@ pub(super) fn boundary(
 
 #[cfg(test)]
 mod policy_tests {
-    use super::{hex, limits_from_bytes};
     use serde_json::{json, Value};
     use sha2::{Digest, Sha256};
     use std::time::Duration;
@@ -264,13 +266,16 @@ mod policy_tests {
 
     #[test]
     fn captured_qualification_policy_reads_current_contract() {
-        let limits = limits_from_bytes(CURRENT_POLICY);
+        let limits = super::limits_from_bytes(CURRENT_POLICY);
         assert_eq!(limits.archive, Duration::from_secs(180));
         assert_eq!(limits.production, Duration::from_secs(180));
         assert_eq!(limits.material_register_bytes, 1_000_000_000);
         assert_eq!(limits.production_evidence_body_bytes, 1_000_000_000);
         assert_eq!(limits.economic_renewal_window_ticks, 13);
-        assert_eq!(limits.policy_sha256, hex(&Sha256::digest(CURRENT_POLICY)));
+        assert_eq!(
+            limits.policy_sha256,
+            super::hex(&Sha256::digest(CURRENT_POLICY))
+        );
     }
 
     #[test]
@@ -282,21 +287,21 @@ mod policy_tests {
         policy["maximum_production_evidence_body_bytes"] = json!(850_000_000);
         policy["economic_renewal_window_ticks"] = json!(7);
         let bytes = serde_json::to_vec(&policy).unwrap();
-        let limits = limits_from_bytes(&bytes);
+        let limits = super::limits_from_bytes(&bytes);
         assert_eq!(limits.archive, Duration::from_secs(75));
         assert_eq!(limits.production, Duration::from_secs(120));
         assert_eq!(limits.material_register_bytes, 750_000_000);
         assert_eq!(limits.production_evidence_body_bytes, 850_000_000);
         assert_eq!(limits.economic_renewal_window_ticks, 7);
-        assert_eq!(limits.policy_sha256, hex(&Sha256::digest(&bytes)));
+        assert_eq!(limits.policy_sha256, super::hex(&Sha256::digest(&bytes)));
         let mut differently_spaced = bytes.clone();
         differently_spaced.push(b'\n');
         assert_eq!(
-            limits_from_bytes(&differently_spaced).archive,
+            super::limits_from_bytes(&differently_spaced).archive,
             limits.archive
         );
         assert_ne!(
-            limits_from_bytes(&differently_spaced).policy_sha256,
+            super::limits_from_bytes(&differently_spaced).policy_sha256,
             limits.policy_sha256
         );
     }
@@ -335,7 +340,7 @@ mod policy_tests {
             policy[key] = invalid.clone();
             let bytes = serde_json::to_vec(&policy).unwrap();
             assert!(
-                std::panic::catch_unwind(|| limits_from_bytes(&bytes)).is_err(),
+                std::panic::catch_unwind(|| super::limits_from_bytes(&bytes)).is_err(),
                 "unsupported captured policy admitted: {key}={invalid}"
             );
         }

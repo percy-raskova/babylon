@@ -1,9 +1,14 @@
-use super::super::tests::fixture;
-use super::*;
+use super::projection;
+use super::{heading, NetworkLinkKind, NodeKey};
+use crate::observer_map3d::relationships::tests;
+use crate::observer_ui::NetworkSector;
+use babylon_persistence::ProductionHouseholdKind;
+use bevy::prelude::*;
+use std::collections::BTreeSet;
 
 #[test]
 fn county_network_keeps_direct_counterparts_and_local_isolates_but_not_second_hops() {
-    let (session, mut frame, anchors) = fixture();
+    let (session, mut frame, anchors) = tests::fixture();
     let snapshot = frame.0.as_mut().unwrap().production.as_mut().unwrap();
     let mut second_hop = snapshot.sites[1].clone();
     second_hop.id = "second-hop".into();
@@ -14,7 +19,7 @@ fn county_network_keeps_direct_counterparts_and_local_isolates_but_not_second_ho
     let mut isolate = snapshot.sites[0].clone();
     isolate.id = "local-isolate".into();
     snapshot.sites.extend([second_hop, isolate]);
-    let result = project_network(
+    let result = projection::project_network(
         &frame,
         &session,
         &anchors,
@@ -33,7 +38,7 @@ fn county_network_keeps_direct_counterparts_and_local_isolates_but_not_second_ho
             .collect()
     );
     assert!(heading(&result, NetworkSector::All).contains("3 / 5 disclosed cohorts"));
-    let other = project_network(
+    let other = projection::project_network(
         &frame,
         &session,
         &anchors,
@@ -51,7 +56,7 @@ fn county_network_keeps_direct_counterparts_and_local_isolates_but_not_second_ho
 
 #[test]
 fn foreign_direct_counterpart_has_an_explicit_peer_and_no_county_geometry() {
-    let (session, mut frame, anchors) = fixture();
+    let (session, mut frame, anchors) = tests::fixture();
     let snapshot = frame.0.as_mut().unwrap().production.as_mut().unwrap();
     let mut foreign = snapshot.sites[1].clone();
     foreign.id = "canada".into();
@@ -61,7 +66,7 @@ fn foreign_direct_counterpart_has_an_explicit_peer_and_no_county_geometry() {
     imports.supplier_site_ids = vec![foreign.id.clone()];
     snapshot.sites[0].processes[0].inputs.push(imports);
     snapshot.sites.push(foreign);
-    let result = project_network(
+    let result = projection::project_network(
         &frame,
         &session,
         &anchors,
@@ -100,11 +105,11 @@ fn foreign_direct_counterpart_has_an_explicit_peer_and_no_county_geometry() {
 
 #[test]
 fn household_service_needs_are_visible_without_fabricating_retail_orders() {
-    let (session, mut frame, anchors) = fixture();
+    let (session, mut frame, anchors) = tests::fixture();
     let snapshot = frame.0.as_mut().unwrap().production.as_mut().unwrap();
     snapshot.household_service_accounts.push(
         babylon_persistence::ProductionHouseholdServiceAccount {
-            kind: babylon_persistence::ProductionHouseholdKind::Ordinary,
+            kind: ProductionHouseholdKind::Ordinary,
             demand_principal_id: "household".into(),
             location: "county:26163".parse().unwrap(),
             good_id: "care".into(),
@@ -118,7 +123,7 @@ fn household_service_needs_are_visible_without_fabricating_retail_orders() {
             completed: None,
         },
     );
-    let result = project_network(
+    let result = projection::project_network(
         &frame,
         &session,
         &anchors,

@@ -128,6 +128,7 @@ impl<'a> CanonicalMaterialFoundation<'a> {
 
 #[cfg(test)]
 mod tests {
+    use super::CanonicalMaterialFoundation;
     #[test]
     fn measured_national_register_fits_the_current_foundation_envelope() {
         // Actual native register measurement; this is a byte-bound witness,
@@ -171,7 +172,9 @@ mod tests {
 
     #[test]
     fn streamed_framing_matches_exact_current_export_and_digest() {
-        use babylon_kernel::{clock::CampaignDuration, content_digest::sha256_of};
+        use babylon_kernel::clock::CampaignDuration;
+        use babylon_kernel::content_digest::sha256_of;
+
         for duration in [
             CampaignDuration::Continuous,
             CampaignDuration::Finite { final_period: 16 },
@@ -181,10 +184,9 @@ mod tests {
             let preset = b"framing-control";
             let graph = b"graph-section";
             let register = b"register-section";
-            let encoding = super::CanonicalMaterialFoundation::new(
-                preset, duration, &content, graph, register,
-            )
-            .unwrap();
+            let encoding =
+                CanonicalMaterialFoundation::new(preset, duration, &content, graph, register)
+                    .unwrap();
             let mut expected = Vec::new();
             expected.extend_from_slice(super::super::FOUNDATION_DOMAIN);
             expected.extend_from_slice(&3_u32.to_be_bytes());
@@ -198,12 +200,11 @@ mod tests {
             assert_eq!(encoding.digest(), sha256_of(&expected));
             assert_eq!(encoding.export().unwrap(), expected);
             assert!(encoding.matches_bytes(&expected));
-            let same = super::CanonicalMaterialFoundation::new(
-                preset, duration, &content, graph, register,
-            )
-            .unwrap();
+            let same =
+                CanonicalMaterialFoundation::new(preset, duration, &content, graph, register)
+                    .unwrap();
             assert!(encoding.matches_encoding(&same));
-            let changed = super::CanonicalMaterialFoundation::new(
+            let changed = CanonicalMaterialFoundation::new(
                 preset,
                 duration,
                 &content,
@@ -219,7 +220,7 @@ mod tests {
     fn streamed_equality_refuses_any_damage_truncation_or_trailing_bytes() {
         use babylon_kernel::clock::CampaignDuration;
         let content = [47; 32];
-        let encoding = super::CanonicalMaterialFoundation::new(
+        let encoding = CanonicalMaterialFoundation::new(
             b"equality-control",
             CampaignDuration::Continuous,
             &content,
@@ -241,7 +242,7 @@ mod tests {
         trailing.push(0);
         assert!(!encoding.matches_bytes(&trailing));
         for final_period in [0, u64::MAX] {
-            assert!(super::CanonicalMaterialFoundation::new(
+            assert!(CanonicalMaterialFoundation::new(
                 b"equality-control",
                 CampaignDuration::Finite { final_period },
                 &content,

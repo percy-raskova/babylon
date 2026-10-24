@@ -16,18 +16,9 @@ pub(crate) use parse::acs_cell;
 mod artifact;
 
 pub(crate) use artifact::ARTIFACT_SHA256;
-#[cfg(test)]
-use artifact::{decode_gzip, ARTIFACT};
 pub use artifact::{
     national_county_reference, AcsEstimate, CountyReference, InternalPoint,
     NationalCountyReference, NationalCountyReferenceError, ObservationStatus, ResidentEstimates,
     SourceCell, WorkplaceObservations,
 };
 use artifact::{COUNTY_COUNT, MAX_CSV_BYTES};
-
-#[cfg(test)]
-use babylon_kernel::geography::CountyGeoid;
-#[cfg(test)]
-use parse::parse_csv;
-#[cfg(test)]
-use parse::qcew;

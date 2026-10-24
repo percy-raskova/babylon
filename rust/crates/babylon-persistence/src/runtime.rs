@@ -3,16 +3,13 @@
 #[path = "runtime/session.rs"]
 mod session;
 
+#[cfg(test)]
+pub(crate) use session::BslSqlValue;
 pub(crate) use session::{
     bytea_copy_text, capture_campaign_foundation, finish_csv_copy, insert_campaign_foundation_rows,
     insert_typed_tick_pre_marker_rows, reconstruct_graph_foundation_session,
     verify_captured_foundation_components, verify_runtime_schema, verify_runtime_schema_client,
     write_bsl_csv_row, write_csv_row, CapturedCampaignFoundation,
-};
-#[cfg(test)]
-use session::{
-    checked_u32_position, insert_bsl_value_row, insert_choice_receipt_rows,
-    insert_typed_event_rows, require_single_insert, BslSqlValue,
 };
 pub use session::{
     hydrate_campaign_foundation, prepare_committed_tick, CommittedTickReceipt,
@@ -22,13 +19,9 @@ pub use session::{
 #[cfg(test)]
 use crate::identity::CampaignId;
 #[cfg(test)]
-use crate::postgres_catalog::validate_connection_target;
-#[cfg(test)]
 use babylon_bsl::identity_codec::StableBslValue;
 #[cfg(test)]
 use babylon_bsl::structural_verbs::CollectingSink;
-#[cfg(test)]
-use babylon_kernel::content_digest::sha256_of;
 #[cfg(test)]
 use babylon_practice_contract::OrderedPracticeActionBatch;
 #[cfg(test)]
@@ -44,7 +37,15 @@ mod live_tests {
     mod material_open;
     #[path = "territory_controls/controls.rs"]
     mod territory_controls;
+    use super::super::postgres_catalog;
     use super::*;
+    use crate::material_storage::LookupAnchor;
+    use crate::michigan_content::MichiganContentPreset;
+    use crate::michigan_material::MichiganDeliveryPreset;
+    use crate::michigan_material::MichiganMaterialCatalog;
+    use babylon_kernel::content_digest;
+    use babylon_tick::material_world::MaterialWorldRegister;
+    use postgres::Client;
     use postgres::{Config, NoTls};
     use std::str::FromStr;
     use uuid::Uuid;
@@ -54,7 +55,7 @@ mod live_tests {
     const CANARY_ENV: &str = "BABYLON_POSTGRES_DISPOSABLE_CANARY";
     const TEMPLATE_DB_ENV: &str = "BABYLON_RUNTIME_TEMPLATE_DB";
     fn valid_changed_material_receipt(
-        owner: &mut postgres::Client,
+        owner: &mut Client,
         campaign: CampaignId,
         base: &[u8],
     ) -> Vec<u8> {
@@ -70,7 +71,7 @@ mod live_tests {
                     &opening,
                     u64::try_from(index + 1).unwrap(),
                     row.get::<_, &[u8]>(1),
-                    crate::material_storage::LookupAnchor::Previous(chain),
+                    LookupAnchor::Previous(chain),
                 )
                 .unwrap(),
             );
@@ -87,7 +88,7 @@ mod live_tests {
             lookup.chain,
         )
         .unwrap();
-        let original_digest = sha256_of(&receipts);
+        let original_digest = content_digest::sha256_of(&receipts);
         let decoded = babylon_tick::material_world::decode_material_receipts(&receipts).unwrap();
         // Family1 retains exact planned batches; increasing the first plan keeps
         // produced<=planned and all physical quantities/identity joins admissible.
@@ -100,10 +101,9 @@ mod live_tests {
             .unwrap();
         let offset = b"babylon.material-tick-receipts.v16\0".len() + 4 + 8 + 1 + 8 + 32 + 32;
         receipts[offset..offset + 8].copy_from_slice(&planned.to_be_bytes());
-        assert_ne!(sha256_of(&receipts), original_digest);
+        assert_ne!(content_digest::sha256_of(&receipts), original_digest);
         babylon_tick::material_world::decode_material_receipts(&receipts).unwrap();
-        let register =
-            babylon_tick::material_world::MaterialWorldRegister::decode(&register).unwrap();
+        let register = MaterialWorldRegister::decode(&register).unwrap();
         let encoded =
             crate::material_storage::encode(&register, &receipts, &opening, lookup.previous_chain)
                 .unwrap();
@@ -135,15 +135,13 @@ mod live_tests {
             "materialcommitloss",
         );
         let config = database.config(&base);
-        let catalog = crate::michigan_material::MichiganMaterialCatalog::from_defines_toml(
-            include_str!("../../../../content/scenarios/michigan/defines.toml"),
-        )
+        let catalog = MichiganMaterialCatalog::from_defines_toml(include_str!(
+            "../../../../content/scenarios/michigan/defines.toml"
+        ))
         .unwrap();
-        let foundation = crate::michigan_content::MichiganContentPreset::new_campaign(
-            crate::michigan_material::MichiganDeliveryPreset::Standard,
-        )
-        .create_foundation(&catalog)
-        .unwrap();
+        let foundation = MichiganContentPreset::new_campaign(MichiganDeliveryPreset::Standard)
+            .create_foundation(&catalog)
+            .unwrap();
         let digest = foundation.digest();
         let campaign = CampaignId::from_uuid(Uuid::from_u128(0x0033_0c01_1055));
         let mut runtime = DurableMaterialRuntime::create(&config, campaign, foundation).unwrap();
@@ -277,8 +275,8 @@ mod live_tests {
              FROM STDIN WITH (FORMAT csv)",
         ).unwrap();
         for (index, value) in values.iter().enumerate() {
-            let id = bytea_copy_text(&index.to_be_bytes());
-            write_bsl_csv_row(
+            let id = session::bytea_copy_text(&index.to_be_bytes());
+            session::write_bsl_csv_row(
                 &mut writer,
                 &["00000000-0000-0000-0000-000000000001", "1", &id],
                 value,
@@ -286,7 +284,7 @@ mod live_tests {
             )
             .unwrap();
         }
-        finish_csv_copy(writer, values.len(), "finish value proof").unwrap();
+        session::finish_csv_copy(writer, values.len(), "finish value proof").unwrap();
         for (index, value) in values.iter().enumerate() {
             let row = tx.query_one(
                 "SELECT organization_kind_tag,organization_kind_int,organization_kind_currency::text, \
@@ -334,11 +332,9 @@ mod live_tests {
         config: &Config,
         suffix: u128,
     ) -> crate::material_runtime::DurableMaterialRuntime {
-        let foundation = crate::michigan_content::MichiganContentPreset::new_campaign(
-            crate::michigan_material::MichiganDeliveryPreset::Standard,
-        )
-        .create_foundation(&crate::test_support::catalog())
-        .unwrap();
+        let foundation = MichiganContentPreset::new_campaign(MichiganDeliveryPreset::Standard)
+            .create_foundation(&crate::test_support::catalog())
+            .unwrap();
         let campaign = CampaignId::from_uuid(Uuid::from_u128(
             (u128::from(std::process::id()) << 64) | suffix,
         ));
@@ -433,8 +429,8 @@ mod live_tests {
             );
             reference.rollback().unwrap();
             let mut copied = client.transaction().unwrap();
-            insert_choice_receipt_rows(&mut copied, campaign, 1, report).unwrap();
-            insert_typed_event_rows(&mut copied, campaign, 1, report).unwrap();
+            session::insert_choice_receipt_rows(&mut copied, campaign, 1, report).unwrap();
+            session::insert_typed_event_rows(&mut copied, campaign, 1, report).unwrap();
             assert_eq!(
                 event_snapshot(
                     &mut copied,
@@ -567,7 +563,7 @@ mod live_tests {
         assert_event_raw_history_immutable(&mut client, campaign);
     }
 
-    fn assert_event_raw_history_immutable(client: &mut postgres::Client, campaign: CampaignId) {
+    fn assert_event_raw_history_immutable(client: &mut Client, campaign: CampaignId) {
         let before = event_raw_counts(client, campaign);
         for relation in &EVENT_RAW_TABLES[..5] {
             for operation in ["UPDATE", "DELETE"] {
@@ -675,7 +671,7 @@ mod live_tests {
             let choice_receipt_ordinal = event
                 .choice_receipt()
                 .map(|reference| i64::from(reference.encounter_ordinal()));
-            require_single_insert(
+            session::require_single_insert(
                 client.execute(
                     "INSERT INTO pg_temp.event_parent_reference \
                  (campaign_id, resolve_tick, ordinal, event_type, emitting_rule, \
@@ -692,7 +688,7 @@ mod live_tests {
                 "insert tick event",
             )?;
             for (position, (field_name, value)) in event.fields().iter().enumerate() {
-                let position = i64::from(checked_u32_position(position)?);
+                let position = i64::from(session::checked_u32_position(position)?);
                 let prefix: [&(dyn ToSql + Sync); 5] = [
                     campaign_id.as_uuid(),
                     &resolve_tick,
@@ -700,7 +696,7 @@ mod live_tests {
                     &position,
                     field_name,
                 ];
-                insert_bsl_value_row(
+                session::insert_bsl_value_row(
                 client,
                 "INSERT INTO pg_temp.event_field_reference \
                  (campaign_id, resolve_tick, ordinal, position, field_name, value_tag, int_value, \
@@ -722,7 +718,7 @@ mod live_tests {
         assert_eq!(canary.len(), 32);
         let dsn = std::env::var(DSN_ENV).expect("runner supplies the disposable DSN");
         let config = Config::from_str(&dsn).expect("runner DSN parses");
-        validate_connection_target(&config).expect("loopback target");
+        postgres_catalog::validate_connection_target(&config).expect("loopback target");
         assert_eq!(config.get_user(), Some("test"));
         assert_eq!(config.get_dbname(), Some("postgres"));
         let actual: Option<String> = config
@@ -785,7 +781,8 @@ mod live_tests {
                 admin,
                 active: true,
             };
-            verify_runtime_schema(&database.config(base)).expect("current schema authority");
+            session::verify_runtime_schema(&database.config(base))
+                .expect("current schema authority");
             database
         }
 

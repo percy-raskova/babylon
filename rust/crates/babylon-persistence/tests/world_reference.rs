@@ -1,14 +1,14 @@
 //! World source admission cannot double-count reporting areas or invent missing people.
 
 use babylon_kernel::economic_location::{ForeignCounterpart, UsDependency};
+use babylon_persistence::world_reference;
 use babylon_persistence::world_reference::{
-    world_reference, PopulationStatus, UsRelationship, WorldReference, WorldReferenceError,
-    WorldScope,
+    PopulationStatus, UsRelationship, WorldReference, WorldReferenceError, WorldScope,
 };
 
 #[test]
 fn pinned_world_members_have_one_scope_and_nonduplicated_population() {
-    let reference = world_reference().unwrap();
+    let reference = world_reference::world_reference().unwrap();
     assert_eq!(reference.members().len(), 252);
     assert_eq!(reference.counterparts().len(), 12);
     assert_eq!(reference.known_population_persons(), 8_161_972_576);
@@ -53,7 +53,7 @@ fn pinned_world_members_have_one_scope_and_nonduplicated_population() {
 
 #[test]
 fn dependency_missingness_and_designed_scope_remain_visible() {
-    let reference = world_reference().unwrap();
+    let reference = world_reference::world_reference().unwrap();
     let unknown = reference.dependency(UsDependency::MinorOutlyingIslands);
     assert_eq!(
         unknown.population().status(),
@@ -90,7 +90,7 @@ fn dependency_missingness_and_designed_scope_remain_visible() {
 
 #[test]
 fn parent_populations_and_trade_children_remain_separate_measures() {
-    let reference = world_reference().unwrap();
+    let reference = world_reference::world_reference().unwrap();
     let gaza = reference.member("census:5082").unwrap();
     assert_eq!(gaza.population().status(), PopulationStatus::TradeOnly);
     assert_eq!(gaza.population().persons(), None);

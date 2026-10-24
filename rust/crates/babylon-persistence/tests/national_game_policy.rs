@@ -1,9 +1,8 @@
 use babylon_kernel::economic_identity::{EconomicFunction, QcewOwnership};
 use babylon_kernel::economic_location::{EconomicLocation, ForeignCounterpart};
 use babylon_material_circuit::{CommodityKind, HouseholdNeedBasis, ServiceStage};
-use babylon_persistence::national_economy::{
-    source_workplace_target, NationalGamePolicy, NationalGamePolicyError,
-};
+use babylon_persistence::national_economy;
+use babylon_persistence::national_economy::{NationalGamePolicy, NationalGamePolicyError};
 
 const SOURCE: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -201,17 +200,21 @@ fn policy_refuses_unknown_sources_invalid_prices_and_same_stage_inputs() {
 #[test]
 fn source_workplace_identity_keeps_ownership_and_function_independent() {
     let location: EconomicLocation = "county:26163".parse().unwrap();
-    let private =
-        source_workplace_target(location, EconomicFunction::Food, QcewOwnership::Private, 7)
-            .unwrap();
-    let public = source_workplace_target(
+    let private = national_economy::source_workplace_target(
+        location,
+        EconomicFunction::Food,
+        QcewOwnership::Private,
+        7,
+    )
+    .unwrap();
+    let public = national_economy::source_workplace_target(
         location,
         EconomicFunction::Food,
         QcewOwnership::LocalGovernment,
         7,
     )
     .unwrap();
-    let other = source_workplace_target(
+    let other = national_economy::source_workplace_target(
         location,
         EconomicFunction::Manufacturing,
         QcewOwnership::Private,
@@ -227,8 +230,13 @@ fn source_workplace_identity_keeps_ownership_and_function_independent() {
     assert_eq!(private.location, location);
     assert_eq!(
         private,
-        source_workplace_target(location, EconomicFunction::Food, QcewOwnership::Private, 7)
-            .unwrap()
+        national_economy::source_workplace_target(
+            location,
+            EconomicFunction::Food,
+            QcewOwnership::Private,
+            7
+        )
+        .unwrap()
     );
     assert_eq!(
         private.workplace,
